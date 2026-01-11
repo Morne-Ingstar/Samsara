@@ -218,6 +218,35 @@ See [Docs/FILE_GUIDE.md](Docs/FILE_GUIDE.md) for detailed file descriptions.
 - Check `nvidia-smi` works in command prompt
 - App will fall back to CPU if GPU unavailable
 
+## Roadmap
+
+Features planned or in development:
+
+### Usability
+- [ ] Keyboard shortcut to show/hide app settings
+- [ ] Toast notifications when transcription completes
+- [ ] Word/character count in history
+- [ ] Undo last dictation
+- [ ] Dictation statistics (words per day, usage time)
+
+### Transcription
+- [ ] Multiple language switching via tray menu
+- [ ] Spelling mode ("spell charlie alpha tango" -> "cat")
+- [ ] Custom phrase shortcuts ("my email" -> types your email address)
+
+### Voice Commands
+- [ ] Command chaining (e.g., "select all copy")
+- [ ] Repeatable commands ("delete word times three")
+- [ ] Application-specific commands
+- [ ] Voice command confirmation mode
+
+### System
+- [ ] Backup/restore all settings
+- [ ] Import/export commands
+- [ ] System resource usage display (RAM/VRAM)
+- [ ] Tray icon color change when recording
+- [ ] Minimize to tray on close option
+
 ## License
 
 MIT License - see LICENSE file for details.

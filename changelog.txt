@@ -1,6 +1,60 @@
 Samsara Voice Dictation - Changelog
 ====================================
 
+2026-01-11 (continued)
+----------------------
+
+### New Features
+- Dictation History Panel
+  - View all recent transcriptions and commands
+  - Accessible from system tray menu
+  - Copy individual entries to clipboard
+  - Clear history with one click
+  - Shows timestamp and whether entry was a command or dictation
+- Punctuation Voice Commands (20+ new commands)
+  - Period, comma, question mark, exclamation mark
+  - Colon, semicolon, apostrophe, quote
+  - Parentheses, brackets, hyphen, dash, ellipsis
+  - New line, new paragraph, tab, space, backspace
+  - Delete word (ctrl+backspace)
+  - New "text" command type for inserting arbitrary text
+- Cancel Recording Hotkey
+  - Press Escape (configurable) to cancel a recording in progress
+  - Recording is cancelled without transcribing
+  - Configurable in Settings > Hotkeys & Modes
+- Sound Volume Slider
+  - Adjust feedback sound volume from 0-100%
+  - Located in Settings > Sounds tab
+  - Test button to preview volume
+  - Real-time volume adjustment using sounddevice
+- Auto-Start with Windows
+  - Option in Settings > General to start Samsara on login
+  - Creates/removes startup script automatically
+  - Located in Windows Startup folder
+- Auto-Capitalize Sentences
+  - Automatically capitalizes first letter of transcription
+  - Capitalizes after sentence-ending punctuation (. ! ?)
+  - Toggle in Settings > General
+- Number Formatting
+  - Converts spoken numbers to digits (e.g., "twenty one" -> "21")
+  - Handles 0-99 and standalone larger numbers
+  - Toggle in Settings > General
+
+### Improvements
+- Sound playback now uses sounddevice for volume control
+- Fallback to winsound if sounddevice fails
+- History now includes full date and time (YYYY-MM-DD HH:MM:SS)
+
+### Bug Fixes
+- Fixed treeview column headers invisible in dark mode (Commands tab, History window)
+  - Switched from Windows default ttk theme to 'clam' theme which respects custom styling
+  - Headers now show blue background with white text
+- Fixed dictation history not persisting across app restarts
+  - History now saved to history.json file
+  - Loads automatically on startup
+  - Saves after each dictation
+
+
 2026-01-11
 ----------
 
