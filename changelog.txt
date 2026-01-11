@@ -1,0 +1,110 @@
+Samsara Voice Dictation - Changelog
+====================================
+
+2026-01-11
+----------
+
+### Performance Improvements
+- Pre-generate audio feedback tones at startup for instant playback
+- Shortened start tone from ~220ms two-note chime to 60ms single blip
+- Sound now plays immediately on hotkey press while audio stream initializes
+- Overall hotkey-to-feedback delay significantly reduced
+
+### Bug Fixes
+- Fixed system tray menu labels showing corrupted text (e.g., "Settings:Settings", "[ERROR] Exit")
+
+
+2026-01-10
+----------
+
+### UI Modernization
+- Settings window fully converted to CustomTkinter with modern styling
+  - Dark theme support, rounded corners, modern buttons
+  - Grid layout for reliable button placement
+  - Tabbed interface (General, Audio, Modes, Commands, About)
+- Voice Training window fully converted to CustomTkinter
+  - Matching modern theme and styling
+  - Four tabs: Calibration, Vocabulary, Corrections, Advanced
+  - Grid layout with Close button at bottom
+
+### Bug Fixes
+- Fixed Settings window buttons (Save, Apply, Close) not being visible
+- Fixed Voice Training window buttons not being visible
+- Fixed Unicode emoji characters causing crashes on Windows console
+  - Replaced all emojis with ASCII equivalents: [OK], [REC], [ERROR], [WARN], [MIC], [...], etc.
+  - Updated both dictation.py and voice_training.py
+
+### Code Cleanup
+- Removed test files: test_wizard.py, test_splash.py, test_voice_training.py,
+  test_settings.py, syntax_check.py
+- Removed batch files: run_test.bat, run_splash_test.bat, run_full_test.bat,
+  run_settings_test.bat
+- Removed build artifacts and __pycache__ directories
+- Removed old/ folder and miscellaneous test files (pgp_code_extractor.py, "code convo.txt")
+
+
+2026-01-09
+----------
+
+### New Features - First Run Experience
+- Added splash screen with animated loading progress
+  - Shows "Samsara" branding during startup
+  - Displays loading steps: Initializing, Loading config, Setting up keyboard, Loading AI model
+  - Smooth progress bar animation
+- Added first-run setup wizard
+  - Welcome screen with app introduction
+  - Microphone selection with test functionality
+  - Hotkey configuration
+  - Model size selection (tiny/base/small/medium/large-v3)
+  - Creates initial config.json on completion
+
+### New Features - Launcher System
+- Created samsara_launcher.py for graphical launch options
+- Created _launcher.vbs for silent background launching (no console window)
+- Created install.bat for dependency installation
+- Created build.bat for building executable
+
+### New Features - Dictation Modes
+- Hold mode: Hold hotkey to record, release to transcribe
+- Toggle mode: Press hotkey to start/stop recording
+- Continuous mode: Always listening, auto-transcribes on silence pauses
+- Wake word mode: Listen for trigger phrase (e.g., "hey claude") then record command
+
+### New Features - Voice Commands System
+- Added commands.json with 41 predefined voice commands
+- Command categories: Navigation, Text editing, System control, Punctuation
+- Commands include: new line, new paragraph, select all, copy, paste, undo, redo
+- Punctuation commands: period, comma, question mark, exclamation point, etc.
+
+### New Features - Voice Training
+- Microphone level monitor with visual feedback
+- Test phrases for recognition accuracy checking
+- Custom vocabulary system (add technical terms, names)
+- Corrections dictionary (auto-replace misrecognized words)
+- Initial prompt customization for Whisper
+- Export/Import training data backup
+
+
+Prior Development
+-----------------
+
+### Core Application
+- Python-based speech-to-text using faster-whisper
+- GPU acceleration with CUDA support
+- Multiple Whisper model sizes (tiny to large-v3)
+- System tray integration with pystray
+- Global hotkey support with pynput
+- Audio recording with sounddevice
+- Text injection with pyautogui
+
+### Configuration System
+- JSON-based configuration (config.json)
+- Microphone selection
+- Language selection
+- Audio feedback toggle
+- Hotkey customization for all modes
+
+### Voice Training Module
+- Separate voice_training.py module
+- Training data persistence (training_data.json)
+- Recognition calibration tools

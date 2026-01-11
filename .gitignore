@@ -1,0 +1,41 @@
+# Logs
+*.log
+
+# Python cache
+__pycache__/
+*.py[cod]
+*$py.class
+*.pyo
+
+# Virtual environment
+venv/
+env/
+.venv/
+
+# User-specific config and data
+config.json
+training_data.json
+
+# Build artifacts
+build/
+dist/
+*.exe
+*.spec
+
+# IDE
+.idea/
+.vscode/
+*.swp
+*.swo
+
+# Windows
+Thumbs.db
+Desktop.ini
+nul
+
+# Misc
+*.bak
+*.tmp
+
+# Claude Code
+.claude/

@@ -1,0 +1,210 @@
+{
+  "commands": {
+    "open chrome": {
+      "type": "launch",
+      "target": "chrome.exe",
+      "description": "Open Google Chrome"
+    },
+    "open firefox": {
+      "type": "launch",
+      "target": "firefox.exe",
+      "description": "Open Firefox"
+    },
+    "open edge": {
+      "type": "launch",
+      "target": "msedge.exe",
+      "description": "Open Microsoft Edge"
+    },
+    "close window": {
+      "type": "hotkey",
+      "keys": ["alt", "f4"],
+      "description": "Close active window"
+    },
+    "minimize": {
+      "type": "hotkey",
+      "keys": ["win", "down"],
+      "description": "Minimize window"
+    },
+    "maximize": {
+      "type": "hotkey",
+      "keys": ["win", "up"],
+      "description": "Maximize window"
+    },
+    "show desktop": {
+      "type": "hotkey",
+      "keys": ["win", "d"],
+      "description": "Show desktop"
+    },
+    "task manager": {
+      "type": "hotkey",
+      "keys": ["ctrl", "shift", "esc"],
+      "description": "Open Task Manager"
+    },
+    "new tab": {
+      "type": "hotkey",
+      "keys": ["ctrl", "t"],
+      "description": "Open new browser tab"
+    },
+    "close tab": {
+      "type": "hotkey",
+      "keys": ["ctrl", "w"],
+      "description": "Close current tab"
+    },
+    "reopen tab": {
+      "type": "hotkey",
+      "keys": ["ctrl", "shift", "t"],
+      "description": "Reopen closed tab"
+    },
+    "next tab": {
+      "type": "hotkey",
+      "keys": ["ctrl", "tab"],
+      "description": "Switch to next tab"
+    },
+    "previous tab": {
+      "type": "hotkey",
+      "keys": ["ctrl", "shift", "tab"],
+      "description": "Switch to previous tab"
+    },
+    "refresh page": {
+      "type": "hotkey",
+      "keys": ["f5"],
+      "description": "Refresh current page"
+    },
+    "scroll down": {
+      "type": "hotkey",
+      "keys": ["pagedown"],
+      "description": "Scroll down one page"
+    },
+    "scroll up": {
+      "type": "hotkey",
+      "keys": ["pageup"],
+      "description": "Scroll up one page"
+    },
+    "scroll to top": {
+      "type": "hotkey",
+      "keys": ["home"],
+      "description": "Scroll to top of page"
+    },
+    "scroll to bottom": {
+      "type": "hotkey",
+      "keys": ["end"],
+      "description": "Scroll to bottom of page"
+    },
+    "go back": {
+      "type": "hotkey",
+      "keys": ["alt", "left"],
+      "description": "Browser back"
+    },
+    "go forward": {
+      "type": "hotkey",
+      "keys": ["alt", "right"],
+      "description": "Browser forward"
+    },
+    "select all": {
+      "type": "hotkey",
+      "keys": ["ctrl", "a"],
+      "description": "Select all text"
+    },
+    "copy": {
+      "type": "hotkey",
+      "keys": ["ctrl", "c"],
+      "description": "Copy selection"
+    },
+    "cut": {
+      "type": "hotkey",
+      "keys": ["ctrl", "x"],
+      "description": "Cut selection"
+    },
+    "paste": {
+      "type": "hotkey",
+      "keys": ["ctrl", "v"],
+      "description": "Paste from clipboard"
+    },
+    "undo": {
+      "type": "hotkey",
+      "keys": ["ctrl", "z"],
+      "description": "Undo last action"
+    },
+    "redo": {
+      "type": "hotkey",
+      "keys": ["ctrl", "y"],
+      "description": "Redo last action"
+    },
+    "save": {
+      "type": "hotkey",
+      "keys": ["ctrl", "s"],
+      "description": "Save current file"
+    },
+    "find": {
+      "type": "hotkey",
+      "keys": ["ctrl", "f"],
+      "description": "Open find dialog"
+    },
+    "submit": {
+      "type": "hotkey",
+      "keys": ["enter"],
+      "description": "Press Enter"
+    },
+    "escape": {
+      "type": "hotkey",
+      "keys": ["esc"],
+      "description": "Press Escape"
+    },
+    "press e": {
+      "type": "press",
+      "key": "e",
+      "description": "Press E key once"
+    },
+    "press space": {
+      "type": "press",
+      "key": "space",
+      "description": "Press Spacebar once"
+    },
+    "hold forward": {
+      "type": "key_down",
+      "key": "w",
+      "description": "Hold W key down (for gaming)"
+    },
+    "stop forward": {
+      "type": "key_up",
+      "key": "w",
+      "description": "Release W key"
+    },
+    "hold shift": {
+      "type": "key_down",
+      "key": "shift",
+      "description": "Hold Shift key down"
+    },
+    "release shift": {
+      "type": "key_up",
+      "key": "shift",
+      "description": "Release Shift key"
+    },
+    "release all": {
+      "type": "release_all",
+      "description": "Release all held keys"
+    },
+    "double click": {
+      "type": "mouse",
+      "action": "double_click",
+      "description": "Double click mouse"
+    },
+    "left click": {
+      "type": "mouse",
+      "action": "click",
+      "button": "left",
+      "description": "Single left click"
+    },
+    "right click": {
+      "type": "mouse",
+      "action": "click",
+      "button": "right",
+      "description": "Single right click"
+    },
+    "decrypt code": {
+      "type": "launch",
+      "target": "python \"C:\\Users\\Morne\\AppData\\Local\\DictationApp\\pgp_code_extractor.py\"",
+      "description": "Decrypt PGP message and extract verification code"
+    }
+  }
+}
