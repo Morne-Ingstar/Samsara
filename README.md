@@ -1,4 +1,6 @@
-# Samsara Voice Dictation
+# Samsara Voice Dictation & Control
+
+From the Dev: Hi I'm Morne, and my hands fucking hurt. I have had HSD (Hypermobile Spectrum Disorder) for a decade and using a mouse/keyboard hurts, all the time. But thanks to AI tools (I use Claude mainly) I am now able to make a customizable app that greatly reduces the amount of typing and clicking I need to do. I did this after trying similar paid or freemium apps that did similar things but, they were all specialized and split up and I wanted to have something that combined what these apps did and improved on it, but without having to pay money (I'm disabled and unable to work at the moment due to pain) I'm making this app publically available and open source for free because I hope there are some people like me out there that it can help. If you've read this far thank you so much! All I ask is that if you know someone who could benefit from using this app pass it along. I'd also appreciate feedback and input on ways to improve the app, which I'm going to continue to do regardless. Anyway, the rest of this stuff was written by Claude I'll let him take it from there.
 
 A powerful Python-based speech-to-text and voice command application designed for accessibility. Uses OpenAI's Whisper model (via faster-whisper) for accurate, fully offline transcription with GPU acceleration.
 
