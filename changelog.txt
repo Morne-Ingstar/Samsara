@@ -4,11 +4,28 @@ Samsara Voice Dictation - Changelog
 2026-01-11
 ----------
 
+### New Features
+- Voice Commands Manager in Settings
+  - New "Commands" tab showing all 40+ voice commands
+  - Searchable/filterable command list
+  - Add new commands with easy form interface
+  - Edit existing commands
+  - Delete commands
+  - Test/execute commands directly from Settings
+  - Reload commands without app restart
+  - Support for all command types: hotkey, launch, press, key_down, key_up, mouse, release_all
+- Custom sound file support
+  - WAV file playback for audio feedback using Windows winsound
+  - New "Sounds" tab in Settings for customizing feedback sounds
+  - Browse for custom WAV files for: start, stop, success, error
+  - Preview and reset buttons for each sound
+  - Default sounds auto-generated if not present
+- Moved project to C:\Users\Morne\Projects\Samsara
+- Created GitHub repository with README and .gitignore
+
 ### Performance Improvements
-- Pre-generate audio feedback tones at startup for instant playback
-- Shortened start tone from ~220ms two-note chime to 60ms single blip
-- Sound now plays immediately on hotkey press while audio stream initializes
-- Overall hotkey-to-feedback delay significantly reduced
+- Sound plays immediately on hotkey press while audio stream initializes
+- Overall hotkey-to-feedback delay reduced
 
 ### Bug Fixes
 - Fixed system tray menu labels showing corrupted text (e.g., "Settings:Settings", "[ERROR] Exit")

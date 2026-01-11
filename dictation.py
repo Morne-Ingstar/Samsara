@@ -1,5 +1,6 @@
 import os
 import ctypes
+import winsound
 
 # Hide console window IMMEDIATELY before any output
 def _hide_console_now():
@@ -836,8 +837,10 @@ class CommandExecutor:
             
             elif cmd_type == 'launch':
                 # Launch application
-                subprocess.Popen(cmd['target'], shell=True)
-                print(f"[OK] Launching: {cmd['target']}")
+                target = cmd['target']
+                # Use 'start' command on Windows for better compatibility
+                subprocess.Popen(f'start "" "{target}"', shell=True)
+                print(f"[OK] Launching: {target}")
                 return True
             
             else:
@@ -974,6 +977,8 @@ class SettingsWindow:
         # Add tabs
         self.tabview.add("General")
         self.tabview.add("Hotkeys & Modes")
+        self.tabview.add("Commands")
+        self.tabview.add("Sounds")
         self.tabview.add("Advanced")
 
         # === GENERAL TAB ===
@@ -1113,6 +1118,163 @@ class SettingsWindow:
         self.wake_hotkey_btn.pack(side='left')
         self.hotkey_buttons['wake_word_hotkey'] = self.wake_hotkey_btn
 
+        # === COMMANDS TAB ===
+        commands_tab = self.tabview.tab("Commands")
+
+        # Header
+        cmd_header = ctk.CTkFrame(commands_tab, fg_color="transparent")
+        cmd_header.pack(fill='x', pady=(15, 10))
+
+        ctk.CTkLabel(cmd_header, text="Voice Commands",
+                    font=ctk.CTkFont(size=16, weight="bold")).pack(side='left')
+
+        # Search box
+        self.cmd_search_var = tk.StringVar()
+        self.cmd_search_var.trace('w', lambda *args: self.filter_commands())
+        search_entry = ctk.CTkEntry(cmd_header, textvariable=self.cmd_search_var,
+                                   placeholder_text="Search commands...", width=200)
+        search_entry.pack(side='right')
+
+        # Command list frame
+        list_frame = ctk.CTkFrame(commands_tab, corner_radius=10)
+        list_frame.pack(fill='both', expand=True, pady=(0, 10))
+
+        # Treeview for commands (using ttk as CTk doesn't have treeview)
+        tree_container = ctk.CTkFrame(list_frame, fg_color="transparent")
+        tree_container.pack(fill='both', expand=True, padx=10, pady=10)
+
+        # Scrollbar
+        tree_scroll = ttk.Scrollbar(tree_container)
+        tree_scroll.pack(side='right', fill='y')
+
+        # Style the treeview for dark mode
+        style = ttk.Style()
+        style.configure("Commands.Treeview",
+                       background="#2b2b2b",
+                       foreground="white",
+                       fieldbackground="#2b2b2b",
+                       rowheight=28)
+        style.configure("Commands.Treeview.Heading",
+                       background="#1f6aa5",
+                       foreground="white",
+                       font=('Segoe UI', 10, 'bold'))
+        style.map("Commands.Treeview", background=[('selected', '#1f6aa5')])
+
+        self.cmd_tree = ttk.Treeview(tree_container, columns=('phrase', 'type', 'action', 'description'),
+                                     show='headings', yscrollcommand=tree_scroll.set,
+                                     style="Commands.Treeview", height=12)
+        self.cmd_tree.pack(side='left', fill='both', expand=True)
+        tree_scroll.config(command=self.cmd_tree.yview)
+
+        # Column headings
+        self.cmd_tree.heading('phrase', text='Voice Phrase')
+        self.cmd_tree.heading('type', text='Type')
+        self.cmd_tree.heading('action', text='Action')
+        self.cmd_tree.heading('description', text='Description')
+
+        # Column widths
+        self.cmd_tree.column('phrase', width=140, minwidth=100)
+        self.cmd_tree.column('type', width=70, minwidth=60)
+        self.cmd_tree.column('action', width=150, minwidth=100)
+        self.cmd_tree.column('description', width=180, minwidth=100)
+
+        # Populate commands
+        self.populate_commands_list()
+
+        # Button frame
+        cmd_btn_frame = ctk.CTkFrame(commands_tab, fg_color="transparent")
+        cmd_btn_frame.pack(fill='x', pady=(0, 5))
+
+        ctk.CTkButton(cmd_btn_frame, text="Add Command", width=120,
+                     command=self.add_command_dialog).pack(side='left', padx=(0, 5))
+        ctk.CTkButton(cmd_btn_frame, text="Edit", width=80,
+                     command=self.edit_command_dialog).pack(side='left', padx=(0, 5))
+        ctk.CTkButton(cmd_btn_frame, text="Delete", width=80, fg_color="#cc4444", hover_color="#aa3333",
+                     command=self.delete_command).pack(side='left', padx=(0, 5))
+        ctk.CTkButton(cmd_btn_frame, text="Test", width=80, fg_color="gray40",
+                     command=self.test_command).pack(side='left', padx=(0, 5))
+
+        # Reload button on right
+        ctk.CTkButton(cmd_btn_frame, text="Reload", width=80, fg_color="gray40",
+                     command=self.reload_commands).pack(side='right')
+
+        # Info text
+        ctk.CTkLabel(commands_tab,
+                    text="Say these phrases while dictating to trigger actions. Commands work in all modes.",
+                    text_color="gray").pack(anchor='w')
+
+        # === SOUNDS TAB ===
+        sounds_tab = self.tabview.tab("Sounds")
+
+        # Audio Feedback Toggle
+        feedback_label = ctk.CTkLabel(sounds_tab, text="Audio Feedback", font=ctk.CTkFont(size=16, weight="bold"))
+        feedback_label.pack(anchor='w', pady=(15, 10))
+
+        feedback_frame = ctk.CTkFrame(sounds_tab, corner_radius=10)
+        feedback_frame.pack(fill='x', pady=(0, 20))
+
+        self.audio_feedback_var = tk.BooleanVar(value=self.app.config.get('audio_feedback', True))
+        ctk.CTkCheckBox(feedback_frame, text="Enable audio feedback sounds",
+                       variable=self.audio_feedback_var).pack(anchor='w', padx=15, pady=15)
+
+        # Custom Sounds Section
+        sounds_label = ctk.CTkLabel(sounds_tab, text="Custom Sound Files", font=ctk.CTkFont(size=16, weight="bold"))
+        sounds_label.pack(anchor='w', pady=(0, 10))
+
+        ctk.CTkLabel(sounds_tab, text="Replace default sounds with your own WAV files:",
+                    text_color="gray").pack(anchor='w', pady=(0, 10))
+
+        sounds_frame = ctk.CTkFrame(sounds_tab, corner_radius=10)
+        sounds_frame.pack(fill='x', pady=(0, 20))
+
+        # Sound file rows
+        self.sound_labels = {}
+        sound_types = [
+            ('start', 'Recording start:'),
+            ('stop', 'Recording stop:'),
+            ('success', 'Transcription success:'),
+            ('error', 'Error sound:')
+        ]
+
+        for sound_type, label_text in sound_types:
+            row = ctk.CTkFrame(sounds_frame, fg_color="transparent")
+            row.pack(fill='x', padx=15, pady=(10, 5) if sound_type == 'start' else (5, 5))
+
+            ctk.CTkLabel(row, text=label_text, width=140, anchor='w').pack(side='left')
+
+            # Current file label
+            sound_file = self.app.sound_files.get(sound_type)
+            filename = sound_file.name if sound_file and sound_file.exists() else "Not set"
+            file_label = ctk.CTkLabel(row, text=filename, width=150, anchor='w', text_color="gray")
+            file_label.pack(side='left', padx=(0, 10))
+            self.sound_labels[sound_type] = file_label
+
+            # Preview button
+            preview_btn = ctk.CTkButton(row, text="Play", width=60,
+                                        command=lambda st=sound_type: self.preview_sound(st))
+            preview_btn.pack(side='left', padx=(0, 5))
+
+            # Browse button
+            browse_btn = ctk.CTkButton(row, text="Browse...", width=80,
+                                       command=lambda st=sound_type: self.browse_sound(st))
+            browse_btn.pack(side='left', padx=(0, 5))
+
+            # Reset button
+            reset_btn = ctk.CTkButton(row, text="Reset", width=60, fg_color="gray40",
+                                      command=lambda st=sound_type: self.reset_sound(st))
+            reset_btn.pack(side='left')
+
+        # Add padding at bottom
+        ctk.CTkLabel(sounds_frame, text="").pack(pady=5)
+
+        # Info text
+        ctk.CTkLabel(sounds_tab, text="Supported format: WAV files (44100 Hz recommended)",
+                    text_color="gray").pack(anchor='w', pady=(0, 5))
+
+        sounds_folder = Path(__file__).parent / 'sounds'
+        ctk.CTkLabel(sounds_tab, text=f"Sound files location: {sounds_folder}",
+                    text_color="gray").pack(anchor='w')
+
         # === ADVANCED TAB ===
         advanced_tab = self.tabview.tab("Advanced")
 
@@ -1247,6 +1409,7 @@ class SettingsWindow:
         self.app.config['model_size'] = new_model
         self.app.config['command_mode_enabled'] = self.command_mode_var.get()
         self.app.config['show_all_audio_devices'] = self.show_all_devices_var.get()
+        self.app.config['audio_feedback'] = self.audio_feedback_var.get()
 
         self.app.command_mode_enabled = self.command_mode_var.get()
 
@@ -1313,6 +1476,407 @@ class SettingsWindow:
                 pass
             finally:
                 self.window = None
+
+    def preview_sound(self, sound_type):
+        """Play preview of the selected sound"""
+        self.app.play_sound(sound_type)
+
+    def browse_sound(self, sound_type):
+        """Browse for a custom WAV file"""
+        from tkinter import filedialog
+        import shutil
+
+        filename = filedialog.askopenfilename(
+            title=f"Select {sound_type} sound",
+            filetypes=[("WAV files", "*.wav"), ("All files", "*.*")],
+            parent=self.window
+        )
+
+        if filename:
+            # Copy file to sounds folder with correct name
+            dest = self.app.sounds_dir / f"{sound_type}.wav"
+            try:
+                shutil.copy(filename, dest)
+                self.sound_labels[sound_type].configure(text=f"{sound_type}.wav")
+                messagebox.showinfo("Sound Updated",
+                    f"Sound file updated successfully!\n\nFile: {Path(filename).name}",
+                    parent=self.window)
+            except Exception as e:
+                messagebox.showerror("Error", f"Failed to copy sound file:\n{e}", parent=self.window)
+
+    def reset_sound(self, sound_type):
+        """Reset sound to default generated tone"""
+        import wave
+
+        sound_file = self.app.sound_files.get(sound_type)
+        if sound_file and sound_file.exists():
+            sound_file.unlink()  # Delete existing file
+
+        # Regenerate default sound
+        sample_rate = 44100
+
+        def generate_tone(frequency, duration, volume=0.5):
+            n_samples = int(sample_rate * duration)
+            t = np.linspace(0, duration, n_samples, False)
+            tone = np.sin(2 * np.pi * frequency * t) * volume
+            fade_samples = min(int(sample_rate * 0.01), n_samples // 4)
+            if fade_samples > 0:
+                tone[:fade_samples] *= np.linspace(0, 1, fade_samples)
+                tone[-fade_samples:] *= np.linspace(1, 0, fade_samples)
+            return tone
+
+        def save_wav(filepath, audio_data):
+            with wave.open(str(filepath), 'w') as wav_file:
+                wav_file.setnchannels(1)
+                wav_file.setsampwidth(2)
+                wav_file.setframerate(sample_rate)
+                audio_int = (audio_data * 32767).astype(np.int16)
+                wav_file.writeframes(audio_int.tobytes())
+
+        if sound_type == 'start':
+            tone = generate_tone(660, 0.12, volume=0.6)
+            save_wav(sound_file, tone)
+        elif sound_type == 'stop':
+            tone = generate_tone(440, 0.1, volume=0.5)
+            save_wav(sound_file, tone)
+        elif sound_type == 'success':
+            t1 = generate_tone(523, 0.08, volume=0.5)
+            gap = np.zeros(int(sample_rate * 0.02))
+            t2 = generate_tone(659, 0.08, volume=0.5)
+            t3 = generate_tone(784, 0.12, volume=0.5)
+            audio = np.concatenate([t1, gap, t2, gap, t3])
+            save_wav(sound_file, audio)
+        elif sound_type == 'error':
+            t1 = generate_tone(220, 0.15, volume=0.5)
+            gap = np.zeros(int(sample_rate * 0.08))
+            t2 = generate_tone(196, 0.18, volume=0.5)
+            audio = np.concatenate([t1, gap, t2])
+            save_wav(sound_file, audio)
+
+        self.sound_labels[sound_type].configure(text=f"{sound_type}.wav")
+        messagebox.showinfo("Sound Reset", f"'{sound_type}' sound reset to default.", parent=self.window)
+
+    # === COMMAND MANAGEMENT METHODS ===
+
+    def get_command_action_text(self, cmd_data):
+        """Get human-readable action text for a command"""
+        cmd_type = cmd_data.get('type', '')
+        if cmd_type == 'hotkey':
+            keys = cmd_data.get('keys', [])
+            return '+'.join(k.capitalize() for k in keys)
+        elif cmd_type == 'launch':
+            target = cmd_data.get('target', '')
+            # Shorten long paths
+            if len(target) > 30:
+                return '...' + target[-27:]
+            return target
+        elif cmd_type == 'press':
+            return f"Press {cmd_data.get('key', '').upper()}"
+        elif cmd_type == 'key_down':
+            return f"Hold {cmd_data.get('key', '').upper()}"
+        elif cmd_type == 'key_up':
+            return f"Release {cmd_data.get('key', '').upper()}"
+        elif cmd_type == 'mouse':
+            action = cmd_data.get('action', 'click')
+            button = cmd_data.get('button', 'left')
+            return f"{action.replace('_', ' ').title()} ({button})"
+        elif cmd_type == 'release_all':
+            return "Release all keys"
+        return str(cmd_data)
+
+    def populate_commands_list(self, filter_text=''):
+        """Populate the commands treeview"""
+        # Clear existing items
+        for item in self.cmd_tree.get_children():
+            self.cmd_tree.delete(item)
+
+        # Get commands from the app's command executor
+        commands = self.app.command_executor.commands
+
+        for phrase, cmd_data in sorted(commands.items()):
+            # Filter if search text provided
+            if filter_text:
+                search_lower = filter_text.lower()
+                if (search_lower not in phrase.lower() and
+                    search_lower not in cmd_data.get('type', '').lower() and
+                    search_lower not in cmd_data.get('description', '').lower()):
+                    continue
+
+            cmd_type = cmd_data.get('type', 'unknown')
+            action = self.get_command_action_text(cmd_data)
+            description = cmd_data.get('description', '')
+
+            self.cmd_tree.insert('', 'end', values=(phrase, cmd_type, action, description))
+
+    def filter_commands(self):
+        """Filter commands based on search box"""
+        filter_text = self.cmd_search_var.get()
+        self.populate_commands_list(filter_text)
+
+    def get_selected_command(self):
+        """Get the currently selected command phrase"""
+        selection = self.cmd_tree.selection()
+        if not selection:
+            return None
+        item = self.cmd_tree.item(selection[0])
+        return item['values'][0] if item['values'] else None
+
+    def add_command_dialog(self):
+        """Open dialog to add a new command"""
+        self.open_command_editor(None)
+
+    def edit_command_dialog(self):
+        """Open dialog to edit selected command"""
+        phrase = self.get_selected_command()
+        if not phrase:
+            messagebox.showwarning("No Selection", "Please select a command to edit.", parent=self.window)
+            return
+        self.open_command_editor(phrase)
+
+    def open_command_editor(self, edit_phrase=None):
+        """Open the command editor dialog"""
+        dialog = ctk.CTkToplevel(self.window)
+        dialog.title("Edit Command" if edit_phrase else "Add Command")
+        dialog.geometry("500x400")
+        dialog.resizable(False, False)
+        dialog.transient(self.window)
+        dialog.grab_set()
+
+        # Center on parent
+        dialog.update_idletasks()
+        x = self.window.winfo_x() + (self.window.winfo_width() - 500) // 2
+        y = self.window.winfo_y() + (self.window.winfo_height() - 400) // 2
+        dialog.geometry(f"+{x}+{y}")
+
+        # Get existing command data if editing
+        existing_data = {}
+        if edit_phrase:
+            existing_data = self.app.command_executor.commands.get(edit_phrase, {})
+
+        # Voice phrase
+        ctk.CTkLabel(dialog, text="Voice Phrase:", font=ctk.CTkFont(weight="bold")).pack(anchor='w', padx=20, pady=(20, 5))
+        phrase_var = tk.StringVar(value=edit_phrase or '')
+        phrase_entry = ctk.CTkEntry(dialog, textvariable=phrase_var, width=300)
+        phrase_entry.pack(anchor='w', padx=20)
+        ctk.CTkLabel(dialog, text="What you say to trigger this command", text_color="gray").pack(anchor='w', padx=20)
+
+        # Command type
+        ctk.CTkLabel(dialog, text="Command Type:", font=ctk.CTkFont(weight="bold")).pack(anchor='w', padx=20, pady=(15, 5))
+        type_var = tk.StringVar(value=existing_data.get('type', 'hotkey'))
+        type_combo = ctk.CTkComboBox(dialog, variable=type_var, width=200, state='readonly',
+                                     values=['hotkey', 'launch', 'press', 'key_down', 'key_up', 'mouse', 'release_all'])
+        type_combo.pack(anchor='w', padx=20)
+
+        # Dynamic fields frame
+        fields_frame = ctk.CTkFrame(dialog, fg_color="transparent")
+        fields_frame.pack(fill='x', padx=20, pady=(15, 0))
+
+        # Variables for different field types
+        keys_var = tk.StringVar(value='+'.join(existing_data.get('keys', [])))
+        target_var = tk.StringVar(value=existing_data.get('target', ''))
+        key_var = tk.StringVar(value=existing_data.get('key', ''))
+        mouse_action_var = tk.StringVar(value=existing_data.get('action', 'click'))
+        mouse_button_var = tk.StringVar(value=existing_data.get('button', 'left'))
+
+        field_widgets = []
+
+        def update_fields(*args):
+            # Clear existing field widgets
+            for widget in field_widgets:
+                widget.destroy()
+            field_widgets.clear()
+
+            cmd_type = type_var.get()
+
+            if cmd_type == 'hotkey':
+                lbl = ctk.CTkLabel(fields_frame, text="Keys (e.g., ctrl+shift+a):")
+                lbl.pack(anchor='w')
+                field_widgets.append(lbl)
+                entry = ctk.CTkEntry(fields_frame, textvariable=keys_var, width=300)
+                entry.pack(anchor='w')
+                field_widgets.append(entry)
+                hint = ctk.CTkLabel(fields_frame, text="Use + to combine keys: ctrl, shift, alt, win, a-z, 0-9, f1-f12, etc.", text_color="gray")
+                hint.pack(anchor='w')
+                field_widgets.append(hint)
+
+            elif cmd_type == 'launch':
+                lbl = ctk.CTkLabel(fields_frame, text="Program/Command to run:")
+                lbl.pack(anchor='w')
+                field_widgets.append(lbl)
+                entry = ctk.CTkEntry(fields_frame, textvariable=target_var, width=400)
+                entry.pack(anchor='w')
+                field_widgets.append(entry)
+                hint = ctk.CTkLabel(fields_frame, text="e.g., chrome.exe, notepad.exe, or full path", text_color="gray")
+                hint.pack(anchor='w')
+                field_widgets.append(hint)
+
+            elif cmd_type in ('press', 'key_down', 'key_up'):
+                lbl = ctk.CTkLabel(fields_frame, text="Key:")
+                lbl.pack(anchor='w')
+                field_widgets.append(lbl)
+                entry = ctk.CTkEntry(fields_frame, textvariable=key_var, width=150)
+                entry.pack(anchor='w')
+                field_widgets.append(entry)
+                hint = ctk.CTkLabel(fields_frame, text="Single key: a, space, enter, shift, w, etc.", text_color="gray")
+                hint.pack(anchor='w')
+                field_widgets.append(hint)
+
+            elif cmd_type == 'mouse':
+                lbl1 = ctk.CTkLabel(fields_frame, text="Mouse Action:")
+                lbl1.pack(anchor='w')
+                field_widgets.append(lbl1)
+                action_combo = ctk.CTkComboBox(fields_frame, variable=mouse_action_var, width=150, state='readonly',
+                                               values=['click', 'double_click'])
+                action_combo.pack(anchor='w')
+                field_widgets.append(action_combo)
+
+                lbl2 = ctk.CTkLabel(fields_frame, text="Button:")
+                lbl2.pack(anchor='w', pady=(10, 0))
+                field_widgets.append(lbl2)
+                btn_combo = ctk.CTkComboBox(fields_frame, variable=mouse_button_var, width=150, state='readonly',
+                                            values=['left', 'right', 'middle'])
+                btn_combo.pack(anchor='w')
+                field_widgets.append(btn_combo)
+
+            elif cmd_type == 'release_all':
+                lbl = ctk.CTkLabel(fields_frame, text="No additional settings needed.\nThis releases all held keys.", text_color="gray")
+                lbl.pack(anchor='w')
+                field_widgets.append(lbl)
+
+        type_var.trace('w', update_fields)
+        update_fields()  # Initial population
+
+        # Description
+        ctk.CTkLabel(dialog, text="Description:", font=ctk.CTkFont(weight="bold")).pack(anchor='w', padx=20, pady=(15, 5))
+        desc_var = tk.StringVar(value=existing_data.get('description', ''))
+        desc_entry = ctk.CTkEntry(dialog, textvariable=desc_var, width=400)
+        desc_entry.pack(anchor='w', padx=20)
+
+        # Buttons
+        btn_frame = ctk.CTkFrame(dialog, fg_color="transparent")
+        btn_frame.pack(fill='x', padx=20, pady=20)
+
+        def save_command():
+            phrase = phrase_var.get().strip().lower()
+            if not phrase:
+                messagebox.showerror("Error", "Voice phrase is required.", parent=dialog)
+                return
+
+            # Check for duplicate if adding new or renaming
+            if not edit_phrase or phrase != edit_phrase.lower():
+                if phrase in self.app.command_executor.commands:
+                    messagebox.showerror("Error", f"A command with phrase '{phrase}' already exists.", parent=dialog)
+                    return
+
+            cmd_type = type_var.get()
+            cmd_data = {
+                'type': cmd_type,
+                'description': desc_var.get().strip()
+            }
+
+            if cmd_type == 'hotkey':
+                keys = [k.strip().lower() for k in keys_var.get().split('+') if k.strip()]
+                if not keys:
+                    messagebox.showerror("Error", "Please specify at least one key.", parent=dialog)
+                    return
+                cmd_data['keys'] = keys
+
+            elif cmd_type == 'launch':
+                target = target_var.get().strip()
+                if not target:
+                    messagebox.showerror("Error", "Please specify a program to launch.", parent=dialog)
+                    return
+                cmd_data['target'] = target
+
+            elif cmd_type in ('press', 'key_down', 'key_up'):
+                key = key_var.get().strip().lower()
+                if not key:
+                    messagebox.showerror("Error", "Please specify a key.", parent=dialog)
+                    return
+                cmd_data['key'] = key
+
+            elif cmd_type == 'mouse':
+                cmd_data['action'] = mouse_action_var.get()
+                cmd_data['button'] = mouse_button_var.get()
+
+            # Remove old command if renaming
+            if edit_phrase and phrase != edit_phrase.lower():
+                del self.app.command_executor.commands[edit_phrase]
+
+            # Add/update command
+            self.app.command_executor.commands[phrase] = cmd_data
+
+            # Save to file
+            self.save_commands()
+
+            # Refresh list
+            self.populate_commands_list(self.cmd_search_var.get())
+
+            dialog.destroy()
+            messagebox.showinfo("Success", f"Command '{phrase}' saved successfully!", parent=self.window)
+
+        ctk.CTkButton(btn_frame, text="Save", width=100, command=save_command).pack(side='right', padx=(10, 0))
+        ctk.CTkButton(btn_frame, text="Cancel", width=100, fg_color="gray40",
+                     command=dialog.destroy).pack(side='right')
+
+    def delete_command(self):
+        """Delete the selected command"""
+        phrase = self.get_selected_command()
+        if not phrase:
+            messagebox.showwarning("No Selection", "Please select a command to delete.", parent=self.window)
+            return
+
+        if messagebox.askyesno("Confirm Delete",
+                              f"Are you sure you want to delete the command '{phrase}'?",
+                              parent=self.window):
+            if phrase in self.app.command_executor.commands:
+                del self.app.command_executor.commands[phrase]
+                self.save_commands()
+                self.populate_commands_list(self.cmd_search_var.get())
+                messagebox.showinfo("Deleted", f"Command '{phrase}' deleted.", parent=self.window)
+
+    def test_command(self):
+        """Test/execute the selected command"""
+        phrase = self.get_selected_command()
+        if not phrase:
+            messagebox.showwarning("No Selection", "Please select a command to test.", parent=self.window)
+            return
+
+        # Minimize settings window briefly
+        self.window.iconify()
+        self.window.after(500, lambda: self._execute_test_command(phrase))
+
+    def _execute_test_command(self, phrase):
+        """Execute test command after delay"""
+        try:
+            result = self.app.command_executor.execute_command(phrase)
+            self.window.after(500, self.window.deiconify)
+            if result:
+                messagebox.showinfo("Test Result", f"Command '{phrase}' executed successfully!", parent=self.window)
+            else:
+                messagebox.showwarning("Test Result", f"Command '{phrase}' not found or failed.", parent=self.window)
+        except Exception as e:
+            self.window.deiconify()
+            messagebox.showerror("Test Error", f"Error executing command:\n{e}", parent=self.window)
+
+    def reload_commands(self):
+        """Reload commands from file"""
+        try:
+            self.app.command_executor.load_commands()
+            self.populate_commands_list(self.cmd_search_var.get())
+            messagebox.showinfo("Reloaded", f"Loaded {len(self.app.command_executor.commands)} commands.", parent=self.window)
+        except Exception as e:
+            messagebox.showerror("Error", f"Failed to reload commands:\n{e}", parent=self.window)
+
+    def save_commands(self):
+        """Save commands to commands.json"""
+        commands_path = Path(__file__).parent / 'commands.json'
+        try:
+            data = {'commands': self.app.command_executor.commands}
+            with open(commands_path, 'w') as f:
+                json.dump(data, f, indent=2)
+        except Exception as e:
+            messagebox.showerror("Error", f"Failed to save commands:\n{e}", parent=self.window)
 
     def refresh_microphone_list(self):
         """Refresh the microphone list when 'show all devices' is toggled"""
@@ -1389,8 +1953,8 @@ class DictationApp:
         self.recording = False
         self.audio_data = []
 
-        # Pre-generate audio feedback tones for instant playback
-        self._pregenerate_tones()
+        # Set up audio feedback sounds (creates defaults if needed)
+        self._setup_sounds()
 
         # Model settings
         self.model = None
@@ -2080,60 +2644,93 @@ class DictationApp:
         if self.recording:
             self.audio_data.append(indata.copy())
 
-    def _pregenerate_tones(self):
-        """Pre-generate audio tones at startup for instant playback"""
-        sample_rate = 44100
-        self._tone_sample_rate = sample_rate
+    def _setup_sounds(self):
+        """Set up sound files - create defaults if needed"""
+        import wave
+        import struct
 
-        def generate_tone(frequency, duration, volume=0.3, fade_ms=15):
-            """Generate a smooth sine wave tone with fade in/out"""
-            t = np.linspace(0, duration, int(sample_rate * duration), False)
-            tone = np.sin(2 * np.pi * frequency * t) * volume
+        self.sounds_dir = Path(__file__).parent / 'sounds'
+        self.sounds_dir.mkdir(exist_ok=True)
 
-            # Apply fade in/out to prevent clicking
-            fade_samples = int(sample_rate * fade_ms / 1000)
-            if fade_samples > 0 and len(tone) > fade_samples * 2:
-                fade_in = np.linspace(0, 1, fade_samples)
-                fade_out = np.linspace(1, 0, fade_samples)
-                tone[:fade_samples] *= fade_in
-                tone[-fade_samples:] *= fade_out
-
-            return tone.astype(np.float32)
-
-        # Start sound - quick single rising tone (faster than before)
-        self._tones = {
-            'start': generate_tone(880, 0.06),  # A5, short blip
-            'stop': generate_tone(440, 0.08),   # A4
-            'success': np.concatenate([
-                generate_tone(523, 0.06),  # C5
-                np.zeros(int(sample_rate * 0.015), dtype=np.float32),
-                generate_tone(659, 0.06),  # E5
-                np.zeros(int(sample_rate * 0.015), dtype=np.float32),
-                generate_tone(784, 0.1)    # G5
-            ]),
-            'error': np.concatenate([
-                generate_tone(220, 0.12),  # A3
-                np.zeros(int(sample_rate * 0.05), dtype=np.float32),
-                generate_tone(196, 0.15)   # G3
-            ])
+        # Sound file names
+        self.sound_files = {
+            'start': self.sounds_dir / 'start.wav',
+            'stop': self.sounds_dir / 'stop.wav',
+            'success': self.sounds_dir / 'success.wav',
+            'error': self.sounds_dir / 'error.wav'
         }
 
+        # Generate default sounds if they don't exist
+        sample_rate = 44100
+
+        def generate_tone(frequency, duration, volume=0.5):
+            """Generate a sine wave tone"""
+            n_samples = int(sample_rate * duration)
+            t = np.linspace(0, duration, n_samples, False)
+            tone = np.sin(2 * np.pi * frequency * t) * volume
+
+            # Fade in/out to prevent clicks
+            fade_samples = min(int(sample_rate * 0.01), n_samples // 4)
+            if fade_samples > 0:
+                tone[:fade_samples] *= np.linspace(0, 1, fade_samples)
+                tone[-fade_samples:] *= np.linspace(1, 0, fade_samples)
+
+            return tone
+
+        def save_wav(filepath, audio_data):
+            """Save audio data as WAV file"""
+            with wave.open(str(filepath), 'w') as wav_file:
+                wav_file.setnchannels(1)
+                wav_file.setsampwidth(2)  # 16-bit
+                wav_file.setframerate(sample_rate)
+                # Convert float to 16-bit int
+                audio_int = (audio_data * 32767).astype(np.int16)
+                wav_file.writeframes(audio_int.tobytes())
+
+        # Create default sounds if they don't exist
+        if not self.sound_files['start'].exists():
+            # Rising tone
+            tone = generate_tone(660, 0.12, volume=0.6)
+            save_wav(self.sound_files['start'], tone)
+
+        if not self.sound_files['stop'].exists():
+            # Falling tone
+            tone = generate_tone(440, 0.1, volume=0.5)
+            save_wav(self.sound_files['stop'], tone)
+
+        if not self.sound_files['success'].exists():
+            # Happy arpeggio
+            t1 = generate_tone(523, 0.08, volume=0.5)
+            gap = np.zeros(int(sample_rate * 0.02))
+            t2 = generate_tone(659, 0.08, volume=0.5)
+            t3 = generate_tone(784, 0.12, volume=0.5)
+            audio = np.concatenate([t1, gap, t2, gap, t3])
+            save_wav(self.sound_files['success'], audio)
+
+        if not self.sound_files['error'].exists():
+            # Low double beep
+            t1 = generate_tone(220, 0.15, volume=0.5)
+            gap = np.zeros(int(sample_rate * 0.08))
+            t2 = generate_tone(196, 0.18, volume=0.5)
+            audio = np.concatenate([t1, gap, t2])
+            save_wav(self.sound_files['error'], audio)
+
     def play_sound(self, sound_type):
-        """Play audio feedback sounds (non-blocking) using pre-generated tones"""
+        """Play audio feedback sounds using WAV files (non-blocking)"""
         if not self.config.get('audio_feedback', True):
             return
 
-        audio = self._tones.get(sound_type)
-        if audio is None:
+        sound_file = self.sound_files.get(sound_type)
+        if sound_file is None or not sound_file.exists():
             return
 
         def _play():
             try:
-                sd.play(audio, self._tone_sample_rate, blocking=True)
+                winsound.PlaySound(str(sound_file), winsound.SND_FILENAME | winsound.SND_ASYNC)
             except Exception:
                 pass  # Silently ignore audio errors
 
-        # Play sound in background thread to not block recording
+        # Play in background thread
         threading.Thread(target=_play, daemon=True).start()
 
     def start_recording(self):
