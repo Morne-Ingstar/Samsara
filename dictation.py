@@ -1,6 +1,7 @@
 import os
 import ctypes
 import winsound
+import wave
 
 # Hide console window IMMEDIATELY before any output
 def _hide_console_now():
@@ -264,6 +265,8 @@ class FirstRunWizard:
             "language": "en",
             "auto_paste": True,
             "add_trailing_space": True,
+            "auto_capitalize": True,
+            "format_numbers": True,
             "device": "auto",
             "microphone": None,
             "silence_threshold": 2.0,
@@ -842,7 +845,17 @@ class CommandExecutor:
                 subprocess.Popen(f'start "" "{target}"', shell=True)
                 print(f"[OK] Launching: {target}")
                 return True
-            
+
+            elif cmd_type == 'text':
+                # Insert text (for punctuation, snippets, etc.)
+                text_to_insert = cmd.get('text', '')
+                if text_to_insert:
+                    pyperclip.copy(text_to_insert)
+                    time.sleep(0.02)
+                    pyautogui.hotkey('ctrl', 'v')
+                    print(f"[OK] Inserted: {text_to_insert}")
+                return True
+
             else:
                 print(f"[WARN] Unknown command type: {cmd_type}")
                 return False
@@ -1027,9 +1040,23 @@ class SettingsWindow:
         ctk.CTkCheckBox(options_frame, text="Add trailing space after text",
                        variable=self.trailing_space_var).pack(anchor='w', padx=15, pady=(0, 8))
 
+        self.auto_capitalize_var = tk.BooleanVar(value=self.app.config.get('auto_capitalize', True))
+        ctk.CTkCheckBox(options_frame, text="Auto-capitalize sentences",
+                       variable=self.auto_capitalize_var).pack(anchor='w', padx=15, pady=(0, 8))
+
+        self.format_numbers_var = tk.BooleanVar(value=self.app.config.get('format_numbers', True))
+        ctk.CTkCheckBox(options_frame, text="Convert spoken numbers to digits",
+                       variable=self.format_numbers_var).pack(anchor='w', padx=15, pady=(0, 8))
+
         self.command_mode_var = tk.BooleanVar(value=self.app.config.get('command_mode_enabled', True))
         ctk.CTkCheckBox(options_frame, text="Enable voice commands (recommended)",
-                       variable=self.command_mode_var).pack(anchor='w', padx=15, pady=(0, 15))
+                       variable=self.command_mode_var).pack(anchor='w', padx=15, pady=(0, 8))
+
+        # Auto-start option
+        self.auto_start_var = tk.BooleanVar(value=self.check_auto_start())
+        ctk.CTkCheckBox(options_frame, text="Start Samsara with Windows",
+                       variable=self.auto_start_var,
+                       command=self.toggle_auto_start).pack(anchor='w', padx=15, pady=(0, 15))
 
         # Model Section
         model_label = ctk.CTkLabel(general_tab, text="AI Model", font=ctk.CTkFont(size=16, weight="bold"))
@@ -1108,7 +1135,7 @@ class SettingsWindow:
 
         # Wake word hotkey
         row3 = ctk.CTkFrame(hotkey_frame, fg_color="transparent")
-        row3.pack(fill='x', padx=15, pady=(0, 15))
+        row3.pack(fill='x', padx=15, pady=(0, 8))
         ctk.CTkLabel(row3, text="Toggle wake word:", width=150, anchor='w').pack(side='left')
         self.wake_hotkey_var = tk.StringVar(value=self.app.config.get('wake_word_hotkey', 'ctrl+alt+w'))
         self.wake_hotkey_entry = ctk.CTkEntry(row3, textvariable=self.wake_hotkey_var, width=180, state='disabled')
@@ -1117,6 +1144,18 @@ class SettingsWindow:
                                              command=lambda: self.start_capture('wake_word_hotkey'))
         self.wake_hotkey_btn.pack(side='left')
         self.hotkey_buttons['wake_word_hotkey'] = self.wake_hotkey_btn
+
+        # Cancel recording hotkey
+        row4 = ctk.CTkFrame(hotkey_frame, fg_color="transparent")
+        row4.pack(fill='x', padx=15, pady=(0, 15))
+        ctk.CTkLabel(row4, text="Cancel recording:", width=150, anchor='w').pack(side='left')
+        self.cancel_hotkey_var = tk.StringVar(value=self.app.config.get('cancel_hotkey', 'escape'))
+        self.cancel_hotkey_entry = ctk.CTkEntry(row4, textvariable=self.cancel_hotkey_var, width=180, state='disabled')
+        self.cancel_hotkey_entry.pack(side='left', padx=(0, 10))
+        self.cancel_hotkey_btn = ctk.CTkButton(row4, text="Change", width=80,
+                                             command=lambda: self.start_capture('cancel_hotkey'))
+        self.cancel_hotkey_btn.pack(side='left')
+        self.hotkey_buttons['cancel_hotkey'] = self.cancel_hotkey_btn
 
         # === COMMANDS TAB ===
         commands_tab = self.tabview.tab("Commands")
@@ -1149,6 +1188,8 @@ class SettingsWindow:
 
         # Style the treeview for dark mode
         style = ttk.Style()
+        # Use 'clam' theme which allows heading customization (Windows default ignores it)
+        style.theme_use('clam')
         style.configure("Commands.Treeview",
                        background="#2b2b2b",
                        foreground="white",
@@ -1157,7 +1198,10 @@ class SettingsWindow:
         style.configure("Commands.Treeview.Heading",
                        background="#1f6aa5",
                        foreground="white",
-                       font=('Segoe UI', 10, 'bold'))
+                       font=('Segoe UI', 10, 'bold'),
+                       relief='flat')
+        style.map("Commands.Treeview.Heading",
+                 background=[('active', '#2980b9')])
         style.map("Commands.Treeview", background=[('selected', '#1f6aa5')])
 
         self.cmd_tree = ttk.Treeview(tree_container, columns=('phrase', 'type', 'action', 'description'),
@@ -1215,7 +1259,27 @@ class SettingsWindow:
 
         self.audio_feedback_var = tk.BooleanVar(value=self.app.config.get('audio_feedback', True))
         ctk.CTkCheckBox(feedback_frame, text="Enable audio feedback sounds",
-                       variable=self.audio_feedback_var).pack(anchor='w', padx=15, pady=15)
+                       variable=self.audio_feedback_var).pack(anchor='w', padx=15, pady=(15, 10))
+
+        # Volume slider row
+        volume_row = ctk.CTkFrame(feedback_frame, fg_color="transparent")
+        volume_row.pack(fill='x', padx=15, pady=(0, 15))
+
+        ctk.CTkLabel(volume_row, text="Volume:", width=80, anchor='w').pack(side='left')
+
+        self.sound_volume_var = tk.DoubleVar(value=self.app.config.get('sound_volume', 0.5))
+
+        self.volume_slider = ctk.CTkSlider(volume_row, from_=0.0, to=1.0,
+                                           variable=self.sound_volume_var, width=200,
+                                           command=self.on_volume_change)
+        self.volume_slider.pack(side='left', padx=(0, 10))
+
+        self.volume_label = ctk.CTkLabel(volume_row, text=f"{int(self.sound_volume_var.get() * 100)}%", width=50)
+        self.volume_label.pack(side='left')
+
+        # Test volume button
+        ctk.CTkButton(volume_row, text="Test", width=60,
+                     command=lambda: self.app.play_sound('success')).pack(side='left', padx=(10, 0))
 
         # Custom Sounds Section
         sounds_label = ctk.CTkLabel(sounds_tab, text="Custom Sound Files", font=ctk.CTkFont(size=16, weight="bold"))
@@ -1342,6 +1406,9 @@ class SettingsWindow:
         elif hotkey_name == 'wake_word_hotkey':
             self.wake_hotkey_var.set("Press keys...")
             self.wake_hotkey_btn.configure(text="...")
+        elif hotkey_name == 'cancel_hotkey':
+            self.cancel_hotkey_var.set("Press keys...")
+            self.cancel_hotkey_btn.configure(text="...")
 
         self.window.bind('<KeyPress>', self.on_capture_key)
         self.window.bind('<KeyRelease>', self.on_capture_release)
@@ -1369,6 +1436,8 @@ class SettingsWindow:
             self.cont_hotkey_var.set(hotkey_str)
         elif self.capturing_hotkey == 'wake_word_hotkey':
             self.wake_hotkey_var.set(hotkey_str)
+        elif self.capturing_hotkey == 'cancel_hotkey':
+            self.cancel_hotkey_var.set(hotkey_str)
 
     def on_capture_release(self, event):
         if self.capturing_hotkey is None:
@@ -1385,6 +1454,9 @@ class SettingsWindow:
             elif self.capturing_hotkey == 'wake_word_hotkey':
                 self.wake_hotkey_var.set(hotkey_str)
                 self.wake_hotkey_btn.configure(text="Set")
+            elif self.capturing_hotkey == 'cancel_hotkey':
+                self.cancel_hotkey_var.set(hotkey_str)
+                self.cancel_hotkey_btn.configure(text="Set")
 
         self.window.unbind('<KeyPress>')
         self.window.unbind('<KeyRelease>')
@@ -1400,16 +1472,20 @@ class SettingsWindow:
         self.app.config['hotkey'] = self.hotkey_var.get()
         self.app.config['continuous_hotkey'] = self.cont_hotkey_var.get()
         self.app.config['wake_word_hotkey'] = self.wake_hotkey_var.get()
+        self.app.config['cancel_hotkey'] = self.cancel_hotkey_var.get()
         self.app.config['silence_threshold'] = self.silence_var.get()
         self.app.config['min_speech_duration'] = self.min_speech_var.get()
         self.app.config['wake_word'] = self.wake_word_var.get()
         self.app.config['wake_word_timeout'] = self.wake_timeout_var.get()
         self.app.config['auto_paste'] = self.auto_paste_var.get()
         self.app.config['add_trailing_space'] = self.trailing_space_var.get()
+        self.app.config['auto_capitalize'] = self.auto_capitalize_var.get()
+        self.app.config['format_numbers'] = self.format_numbers_var.get()
         self.app.config['model_size'] = new_model
         self.app.config['command_mode_enabled'] = self.command_mode_var.get()
         self.app.config['show_all_audio_devices'] = self.show_all_devices_var.get()
         self.app.config['audio_feedback'] = self.audio_feedback_var.get()
+        self.app.config['sound_volume'] = self.sound_volume_var.get()
 
         self.app.command_mode_enabled = self.command_mode_var.get()
 
@@ -1468,6 +1544,54 @@ class SettingsWindow:
         self.save_settings()
         self.close()
 
+    def get_startup_path(self):
+        """Get the Windows Startup folder path"""
+        startup_folder = Path(os.environ.get('APPDATA', '')) / 'Microsoft' / 'Windows' / 'Start Menu' / 'Programs' / 'Startup'
+        return startup_folder / 'Samsara.vbs'
+
+    def check_auto_start(self):
+        """Check if auto-start is enabled"""
+        startup_file = self.get_startup_path()
+        return startup_file.exists()
+
+    def toggle_auto_start(self):
+        """Enable or disable auto-start with Windows"""
+        startup_file = self.get_startup_path()
+        launcher_path = Path(__file__).parent / '_launcher.vbs'
+
+        if self.auto_start_var.get():
+            # Enable auto-start: create startup script
+            try:
+                # Create a VBS script that launches the app
+                vbs_content = f'''Set WshShell = CreateObject("WScript.Shell")
+WshShell.CurrentDirectory = "{Path(__file__).parent}"
+WshShell.Run """" & "{sys.executable}" & """ """ & "{Path(__file__)}" & """", 0, False
+Set WshShell = Nothing
+'''
+                with open(startup_file, 'w') as f:
+                    f.write(vbs_content)
+                messagebox.showinfo("Auto-Start Enabled",
+                    "Samsara will now start automatically when Windows starts.",
+                    parent=self.window)
+            except Exception as e:
+                messagebox.showerror("Error",
+                    f"Failed to enable auto-start:\n{e}",
+                    parent=self.window)
+                self.auto_start_var.set(False)
+        else:
+            # Disable auto-start: remove startup script
+            try:
+                if startup_file.exists():
+                    startup_file.unlink()
+                messagebox.showinfo("Auto-Start Disabled",
+                    "Samsara will no longer start automatically.",
+                    parent=self.window)
+            except Exception as e:
+                messagebox.showerror("Error",
+                    f"Failed to disable auto-start:\n{e}",
+                    parent=self.window)
+                self.auto_start_var.set(True)
+
     def close(self):
         if self.window:
             try:
@@ -1476,6 +1600,13 @@ class SettingsWindow:
                 pass
             finally:
                 self.window = None
+
+    def on_volume_change(self, value):
+        """Update volume label and apply volume change immediately"""
+        volume = float(value)
+        self.volume_label.configure(text=f"{int(volume * 100)}%")
+        # Apply volume change immediately
+        self.app.config['sound_volume'] = volume
 
     def preview_sound(self, sound_type):
         """Play preview of the selected sound"""
@@ -1664,7 +1795,7 @@ class SettingsWindow:
         ctk.CTkLabel(dialog, text="Command Type:", font=ctk.CTkFont(weight="bold")).pack(anchor='w', padx=20, pady=(15, 5))
         type_var = tk.StringVar(value=existing_data.get('type', 'hotkey'))
         type_combo = ctk.CTkComboBox(dialog, variable=type_var, width=200, state='readonly',
-                                     values=['hotkey', 'launch', 'press', 'key_down', 'key_up', 'mouse', 'release_all'])
+                                     values=['hotkey', 'text', 'launch', 'press', 'key_down', 'key_up', 'mouse', 'release_all'])
         type_combo.pack(anchor='w', padx=20)
 
         # Dynamic fields frame
@@ -1675,6 +1806,7 @@ class SettingsWindow:
         keys_var = tk.StringVar(value='+'.join(existing_data.get('keys', [])))
         target_var = tk.StringVar(value=existing_data.get('target', ''))
         key_var = tk.StringVar(value=existing_data.get('key', ''))
+        text_var = tk.StringVar(value=existing_data.get('text', ''))
         mouse_action_var = tk.StringVar(value=existing_data.get('action', 'click'))
         mouse_button_var = tk.StringVar(value=existing_data.get('button', 'left'))
 
@@ -1696,6 +1828,17 @@ class SettingsWindow:
                 entry.pack(anchor='w')
                 field_widgets.append(entry)
                 hint = ctk.CTkLabel(fields_frame, text="Use + to combine keys: ctrl, shift, alt, win, a-z, 0-9, f1-f12, etc.", text_color="gray")
+                hint.pack(anchor='w')
+                field_widgets.append(hint)
+
+            elif cmd_type == 'text':
+                lbl = ctk.CTkLabel(fields_frame, text="Text to insert:")
+                lbl.pack(anchor='w')
+                field_widgets.append(lbl)
+                entry = ctk.CTkEntry(fields_frame, textvariable=text_var, width=300)
+                entry.pack(anchor='w')
+                field_widgets.append(entry)
+                hint = ctk.CTkLabel(fields_frame, text="Punctuation, symbols, or any text to paste", text_color="gray")
                 hint.pack(anchor='w')
                 field_widgets.append(hint)
 
@@ -1799,6 +1942,13 @@ class SettingsWindow:
                 cmd_data['action'] = mouse_action_var.get()
                 cmd_data['button'] = mouse_button_var.get()
 
+            elif cmd_type == 'text':
+                text_to_insert = text_var.get().strip()
+                if not text_to_insert:
+                    messagebox.showerror("Error", "Please specify text to insert.", parent=dialog)
+                    return
+                cmd_data['text'] = text_to_insert
+
             # Remove old command if renaming
             if edit_phrase and phrase != edit_phrase.lower():
                 del self.app.command_executor.commands[edit_phrase]
@@ -1888,6 +2038,175 @@ class SettingsWindow:
 
         if self.mic_var.get() not in mic_names and mic_names:
             self.mic_var.set(mic_names[0])
+
+
+class HistoryWindow:
+    """Window to view dictation history"""
+
+    def __init__(self, app):
+        self.app = app
+        self.window = None
+
+    def show(self):
+        if self.window is not None:
+            try:
+                self.window.lift()
+                self.window.focus_force()
+                return
+            except:
+                self.window = None
+
+        ctk.set_appearance_mode("system")
+        ctk.set_default_color_theme("blue")
+
+        self.window = ctk.CTkToplevel(self.app.root)
+        self.window.title("Dictation History")
+        self.window.geometry("600x500")
+        self.window.resizable(True, True)
+        self.window.minsize(400, 300)
+
+        self.window.lift()
+        self.window.focus_force()
+        self.window.after(100, lambda: self.window.lift())
+
+        # Use grid layout
+        self.window.grid_rowconfigure(0, weight=1)
+        self.window.grid_columnconfigure(0, weight=1)
+
+        # Main frame
+        main_frame = ctk.CTkFrame(self.window)
+        main_frame.grid(row=0, column=0, sticky='nsew', padx=20, pady=(20, 10))
+        main_frame.grid_rowconfigure(0, weight=1)
+        main_frame.grid_columnconfigure(0, weight=1)
+
+        # Treeview for history
+        tree_container = ctk.CTkFrame(main_frame, fg_color="transparent")
+        tree_container.grid(row=0, column=0, sticky='nsew', padx=10, pady=10)
+        tree_container.grid_rowconfigure(0, weight=1)
+        tree_container.grid_columnconfigure(0, weight=1)
+
+        # Scrollbar
+        tree_scroll = ttk.Scrollbar(tree_container)
+        tree_scroll.grid(row=0, column=1, sticky='ns')
+
+        # Style for dark mode
+        style = ttk.Style()
+        # Use 'clam' theme which allows heading customization (Windows default ignores it)
+        style.theme_use('clam')
+        style.configure("History.Treeview",
+                       background="#2b2b2b",
+                       foreground="white",
+                       fieldbackground="#2b2b2b",
+                       rowheight=28)
+        style.configure("History.Treeview.Heading",
+                       background="#1f6aa5",
+                       foreground="white",
+                       font=('Segoe UI', 10, 'bold'),
+                       relief='flat')
+        style.map("History.Treeview.Heading",
+                 background=[('active', '#2980b9')])
+        style.map("History.Treeview", background=[('selected', '#1f6aa5')])
+
+        self.tree = ttk.Treeview(tree_container, columns=('time', 'type', 'text'),
+                                 show='headings', yscrollcommand=tree_scroll.set,
+                                 style="History.Treeview")
+        self.tree.grid(row=0, column=0, sticky='nsew')
+        tree_scroll.config(command=self.tree.yview)
+
+        # Column headings
+        self.tree.heading('time', text='Time')
+        self.tree.heading('type', text='Type')
+        self.tree.heading('text', text='Text')
+
+        # Column widths
+        self.tree.column('time', width=140, minwidth=120)
+        self.tree.column('type', width=80, minwidth=60)
+        self.tree.column('text', width=400, minwidth=200)
+
+        # Populate history
+        self.refresh_history()
+
+        # Button frame
+        btn_frame = ctk.CTkFrame(self.window, fg_color="transparent", height=60)
+        btn_frame.grid(row=1, column=0, sticky='ew', padx=20, pady=(0, 20))
+        btn_frame.grid_propagate(False)
+
+        ctk.CTkButton(btn_frame, text="Copy Selected", width=120,
+                     command=self.copy_selected).pack(side='left', padx=(0, 5), pady=10)
+        ctk.CTkButton(btn_frame, text="Copy All", width=100,
+                     command=self.copy_all).pack(side='left', padx=(0, 5), pady=10)
+        ctk.CTkButton(btn_frame, text="Clear History", width=100,
+                     fg_color="#cc4444", hover_color="#aa3333",
+                     command=self.clear_history).pack(side='left', pady=10)
+
+        ctk.CTkButton(btn_frame, text="Refresh", width=80,
+                     fg_color="gray40", command=self.refresh_history).pack(side='right', padx=(5, 0), pady=10)
+        ctk.CTkButton(btn_frame, text="Close", width=80,
+                     fg_color="gray40", command=self.close).pack(side='right', pady=10)
+
+        self.window.protocol("WM_DELETE_WINDOW", self.close)
+
+    def refresh_history(self):
+        """Refresh the history list"""
+        # Clear existing
+        for item in self.tree.get_children():
+            self.tree.delete(item)
+
+        # Add history items (newest first)
+        for timestamp, text, is_command in reversed(self.app.history):
+            item_type = "Command" if is_command else "Dictation"
+            # Truncate long text for display
+            display_text = text if len(text) <= 80 else text[:77] + "..."
+            self.tree.insert('', 'end', values=(timestamp, item_type, display_text),
+                           tags=('command' if is_command else 'dictation',))
+
+        # Style tags
+        self.tree.tag_configure('command', foreground='#00CED1')
+        self.tree.tag_configure('dictation', foreground='white')
+
+    def copy_selected(self):
+        """Copy selected item to clipboard"""
+        selection = self.tree.selection()
+        if not selection:
+            messagebox.showinfo("No Selection", "Please select an item to copy.", parent=self.window)
+            return
+
+        # Get full text from history (not truncated display text)
+        item = self.tree.item(selection[0])
+        index = self.tree.index(selection[0])
+        # History is reversed in display, so we need to reverse index
+        history_index = len(self.app.history) - 1 - index
+        if 0 <= history_index < len(self.app.history):
+            _, text, _ = self.app.history[history_index]
+            pyperclip.copy(text)
+            messagebox.showinfo("Copied", "Text copied to clipboard.", parent=self.window)
+
+    def copy_all(self):
+        """Copy all dictation text to clipboard"""
+        texts = [text for _, text, is_cmd in self.app.history if not is_cmd]
+        if texts:
+            pyperclip.copy('\n'.join(texts))
+            messagebox.showinfo("Copied", f"Copied {len(texts)} dictations to clipboard.", parent=self.window)
+        else:
+            messagebox.showinfo("Empty", "No dictation history to copy.", parent=self.window)
+
+    def clear_history(self):
+        """Clear all history"""
+        if messagebox.askyesno("Clear History",
+                              "Are you sure you want to clear all history?",
+                              parent=self.window):
+            self.app.history.clear()
+            self.app.save_history()  # Save empty history to file
+            self.refresh_history()
+
+    def close(self):
+        if self.window:
+            try:
+                self.window.destroy()
+            except:
+                pass
+            finally:
+                self.window = None
 
 
 class DictationApp:
@@ -1982,12 +2301,20 @@ class DictationApp:
         self.is_speaking = False
         self.wake_word_listening = False  # Currently listening for wake word
         self.wake_word_triggered = False  # Wake word detected, ready for command
-        
+
+        # Dictation history
+        self.history_path = Path(__file__).parent / 'history.json'
+        self.max_history = 100  # Keep last 100 items
+        self.history = self.load_history()  # List of (timestamp, text, is_command) tuples
+
         # Settings window
         self.settings_window = SettingsWindow(self)
 
         # Voice Training window
         self.voice_training_window = VoiceTrainingWindow(self)
+
+        # History window
+        self.history_window = HistoryWindow(self)
 
         self.update_splash("Setting up keyboard...")
 
@@ -2030,11 +2357,14 @@ class DictationApp:
             "hotkey": "ctrl+shift",
             "continuous_hotkey": "ctrl+alt+d",
             "wake_word_hotkey": "ctrl+alt+w",
+            "cancel_hotkey": "escape",
             "mode": "hold",
             "model_size": "base",
             "language": "en",
             "auto_paste": True,
             "add_trailing_space": True,
+            "auto_capitalize": True,  # Capitalize first letter and after sentences
+            "format_numbers": True,  # Convert spoken numbers to digits
             "device": "auto",
             "microphone": None,
             "silence_threshold": 2.0,
@@ -2044,6 +2374,7 @@ class DictationApp:
             "wake_word_timeout": 5.0,
             "show_all_audio_devices": False,
             "audio_feedback": True,  # Play sounds for recording start/stop
+            "sound_volume": 0.5,  # Volume for feedback sounds (0.0 to 1.0)
             "first_run_complete": True  # Track if first-run wizard has been completed (default True for existing installs)
         }
         
@@ -2117,13 +2448,117 @@ class DictationApp:
         mic_id = self.config.get('microphone')
         if mic_id is None:
             return "Default"
-        
+
         for mic in self.available_mics:
             if mic['id'] == mic_id:
                 return mic['name']
-        
+
         return "Unknown"
-    
+
+    def load_history(self):
+        """Load history from file"""
+        try:
+            if self.history_path.exists():
+                with open(self.history_path, 'r', encoding='utf-8') as f:
+                    data = json.load(f)
+                    # Convert lists back to tuples
+                    return [tuple(item) for item in data]
+        except Exception as e:
+            print(f"Failed to load history: {e}")
+        return []
+
+    def save_history(self):
+        """Save history to file"""
+        try:
+            with open(self.history_path, 'w', encoding='utf-8') as f:
+                json.dump(self.history, f, ensure_ascii=False, indent=2)
+        except Exception as e:
+            print(f"Failed to save history: {e}")
+
+    def process_transcription(self, text):
+        """Process transcribed text with auto-capitalize and number formatting"""
+        if not text:
+            return text
+
+        # Number word to digit mapping
+        number_words = {
+            'zero': '0', 'one': '1', 'two': '2', 'three': '3', 'four': '4',
+            'five': '5', 'six': '6', 'seven': '7', 'eight': '8', 'nine': '9',
+            'ten': '10', 'eleven': '11', 'twelve': '12', 'thirteen': '13',
+            'fourteen': '14', 'fifteen': '15', 'sixteen': '16', 'seventeen': '17',
+            'eighteen': '18', 'nineteen': '19', 'twenty': '20', 'thirty': '30',
+            'forty': '40', 'fifty': '50', 'sixty': '60', 'seventy': '70',
+            'eighty': '80', 'ninety': '90', 'hundred': '100', 'thousand': '1000',
+            'million': '1000000', 'billion': '1000000000',
+        }
+
+        # Format numbers (e.g., "twenty one" -> "21")
+        if self.config.get('format_numbers', True):
+            import re
+            # Handle compound numbers like "twenty one", "thirty five"
+            tens = {'twenty': 20, 'thirty': 30, 'forty': 40, 'fifty': 50,
+                    'sixty': 60, 'seventy': 70, 'eighty': 80, 'ninety': 90}
+            ones = {'one': 1, 'two': 2, 'three': 3, 'four': 4, 'five': 5,
+                    'six': 6, 'seven': 7, 'eight': 8, 'nine': 9}
+
+            # Pattern for "twenty one" style numbers
+            for ten_word, ten_val in tens.items():
+                for one_word, one_val in ones.items():
+                    pattern = rf'\b{ten_word}[\s-]{one_word}\b'
+                    text = re.sub(pattern, str(ten_val + one_val), text, flags=re.IGNORECASE)
+
+            # Replace standalone number words
+            words = text.split()
+            new_words = []
+            for word in words:
+                # Preserve punctuation attached to word
+                prefix = ''
+                suffix = ''
+                core = word
+
+                # Extract leading/trailing punctuation
+                while core and not core[0].isalnum():
+                    prefix += core[0]
+                    core = core[1:]
+                while core and not core[-1].isalnum():
+                    suffix = core[-1] + suffix
+                    core = core[:-1]
+
+                # Check if core word is a number word
+                if core.lower() in number_words:
+                    new_words.append(prefix + number_words[core.lower()] + suffix)
+                else:
+                    new_words.append(word)
+
+            text = ' '.join(new_words)
+
+        # Auto-capitalize
+        if self.config.get('auto_capitalize', True):
+            if text:
+                # Capitalize first letter
+                text = text[0].upper() + text[1:] if len(text) > 1 else text.upper()
+
+                # Capitalize after sentence-ending punctuation
+                import re
+                # Match . ! ? followed by space and lowercase letter
+                def capitalize_after(match):
+                    return match.group(1) + match.group(2).upper()
+
+                text = re.sub(r'([.!?]\s+)([a-z])', capitalize_after, text)
+
+        return text
+
+    def add_to_history(self, text, is_command=False):
+        """Add a transcription to history"""
+        from datetime import datetime
+        timestamp = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+        self.history.append((timestamp, text, is_command))
+        # Keep only last N items
+        if len(self.history) > self.max_history:
+            self.history = self.history[-self.max_history:]
+        # Save to file
+        self.save_history()
+
     def switch_microphone(self, mic_id):
         """Switch to a different microphone"""
         # Stop any active recording/continuous mode
@@ -2250,6 +2685,12 @@ class DictationApp:
         if cont_keys.issubset(active_keys) and not self.hotkey_pressed:
             self.hotkey_pressed = True
             self.toggle_continuous_mode()
+            return
+
+        # Check for cancel recording hotkey (only when recording)
+        cancel_keys = self.parse_hotkey(self.config.get('cancel_hotkey', 'escape'))
+        if cancel_keys.issubset(active_keys) and self.recording:
+            self.cancel_recording()
             return
 
         # Handle main hotkey based on mode
@@ -2424,21 +2865,24 @@ class DictationApp:
                 if was_command:
                     # Command was executed
                     return
-                
+
                 # Not a command, proceed with dictation
+                # Apply text processing (auto-capitalize, number formatting)
+                text = self.process_transcription(text)
+
                 if self.config['add_trailing_space']:
                     text = text + " "
-                
+
                 print(f"[TEXT] {text}")
-                
+
                 if self.config['auto_paste']:
                     pyperclip.copy(text)
                     time.sleep(0.05)
                     pyautogui.hotkey('ctrl', 'v')
-                    
+
         except Exception as e:
             print(f"Transcription error: {e}")
-    
+
     def transcribe_buffer(self):
         """Transcribe remaining buffer when stopping"""
         if self.speech_buffer:
@@ -2621,16 +3065,19 @@ class DictationApp:
             return
         
         # Not a command, proceed with dictation
+        # Apply text processing (auto-capitalize, number formatting)
+        text = self.process_transcription(text)
+
         if self.config['add_trailing_space']:
             text = text + " "
-        
+
         print(f"[OK] {text}")
-        
+
         if self.config['auto_paste']:
             pyperclip.copy(text)
             time.sleep(0.05)
             pyautogui.hotkey('ctrl', 'v')
-        
+
         self.wake_word_triggered = False
     
     def reset_wake_word(self):
@@ -2716,7 +3163,7 @@ class DictationApp:
             save_wav(self.sound_files['error'], audio)
 
     def play_sound(self, sound_type):
-        """Play audio feedback sounds using WAV files (non-blocking)"""
+        """Play audio feedback sounds using WAV files with volume control (non-blocking)"""
         if not self.config.get('audio_feedback', True):
             return
 
@@ -2724,11 +3171,49 @@ class DictationApp:
         if sound_file is None or not sound_file.exists():
             return
 
+        volume = self.config.get('sound_volume', 0.5)
+
         def _play():
             try:
-                winsound.PlaySound(str(sound_file), winsound.SND_FILENAME | winsound.SND_ASYNC)
+                # Read WAV file
+                with wave.open(str(sound_file), 'rb') as wf:
+                    sample_rate = wf.getframerate()
+                    n_channels = wf.getnchannels()
+                    sample_width = wf.getsampwidth()
+                    n_frames = wf.getnframes()
+                    audio_data = wf.readframes(n_frames)
+
+                # Convert to numpy array
+                if sample_width == 1:
+                    dtype = np.uint8
+                elif sample_width == 2:
+                    dtype = np.int16
+                else:
+                    dtype = np.int32
+
+                audio_array = np.frombuffer(audio_data, dtype=dtype).astype(np.float32)
+
+                # Normalize and apply volume
+                if sample_width == 1:
+                    audio_array = (audio_array - 128) / 128.0
+                else:
+                    audio_array = audio_array / (2 ** (sample_width * 8 - 1))
+
+                audio_array = audio_array * volume
+
+                # Reshape for stereo if needed
+                if n_channels == 2:
+                    audio_array = audio_array.reshape(-1, 2)
+
+                # Play with sounddevice
+                sd.play(audio_array, sample_rate)
+
             except Exception:
-                pass  # Silently ignore audio errors
+                # Fallback to winsound without volume control
+                try:
+                    winsound.PlaySound(str(sound_file), winsound.SND_FILENAME | winsound.SND_ASYNC)
+                except Exception:
+                    pass  # Silently ignore audio errors
 
         # Play in background thread
         threading.Thread(target=_play, daemon=True).start()
@@ -2797,17 +3282,24 @@ class DictationApp:
                 if text:
                     # Check for command mode toggle OR regular commands
                     result, was_command = self.command_executor.process_text(text, self)
-                    
+
                     if was_command:
-                        # Command was executed
+                        # Command was executed - add to history as command
+                        self.add_to_history(text, is_command=True)
                         return
-                    
+
                     # Not a command, proceed with dictation
+                    # Apply text processing (auto-capitalize, number formatting)
+                    text = self.process_transcription(text)
+
                     if self.config['add_trailing_space']:
                         text = text + " "
-                    
+
                     print(f"[OK] {text}")
                     self.play_sound("success")
+
+                    # Add to history
+                    self.add_to_history(text.strip(), is_command=False)
 
                     if self.config['auto_paste']:
                         pyperclip.copy(text)
@@ -2822,6 +3314,22 @@ class DictationApp:
         
         thread = threading.Thread(target=transcribe, daemon=True)
         thread.start()
+
+    def cancel_recording(self):
+        """Cancel recording without transcribing"""
+        if not self.recording:
+            return
+
+        self.recording = False
+        print("[X] Recording cancelled")
+
+        if hasattr(self, 'stream'):
+            self.stream.stop()
+            self.stream.close()
+
+        # Clear audio data without transcribing
+        self.audio_data = []
+        self.play_sound("error")  # Play error sound to indicate cancellation
 
     def create_icon_image(self, active=False):
         """Create system tray icon - clean waveform design"""
@@ -2887,7 +3395,23 @@ class DictationApp:
         except Exception as e:
             print(f"Error opening voice training: {e}")
             messagebox.showerror("Error", f"Failed to open Voice Training:\n{e}")
-    
+
+    def open_history(self):
+        """Open dictation history window"""
+        if self.history_window.window is not None:
+            try:
+                self.history_window.window.lift()
+                self.history_window.window.focus_force()
+                return
+            except:
+                self.history_window.window = None
+
+        try:
+            self.history_window.show()
+        except Exception as e:
+            print(f"Error opening history: {e}")
+            messagebox.showerror("Error", f"Failed to open History:\n{e}")
+
     def create_tray_icon(self):
         """Create and run system tray icon"""
         def get_menu():
@@ -2934,6 +3458,7 @@ class DictationApp:
                 ),
                 pystray.Menu.SEPARATOR,
                 pystray.MenuItem("Settings", self.open_settings),
+                pystray.MenuItem("History", self.open_history),
                 pystray.MenuItem("Voice Training", self.open_voice_training),
                 pystray.MenuItem("Open Config Folder", self.open_config_folder),
                 pystray.MenuItem("View Logs", pystray.Menu(
