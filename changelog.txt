@@ -1,8 +1,50 @@
 Samsara Voice Dictation - Changelog
 ====================================
 
+2026-01-11 (Modular Refactoring)
+--------------------------------
+
+### Code Architecture
+- Modular Package Structure (`samsara/`)
+  - New `samsara` Python package with clean separation of concerns
+  - `samsara.config` - Configuration management with Config class
+  - `samsara.audio` - AudioCapture and AudioPlayer classes
+  - `samsara.speech` - SpeechRecognizer and TextProcessor classes
+  - `samsara.commands` - CommandExecutor with improved interface
+  - `samsara.ui` - UI components (SplashScreen extracted)
+  - All modules support dependency injection for testability
+
+### Developer Tools
+- Migration Guide (MIGRATION.md)
+  - Documentation for using new modular components
+  - Examples of dependency injection patterns
+  - Breaking changes documentation
+- New Module Test Suite (tests/test_modules.py)
+  - Tests for Config module
+  - Tests for TextProcessor
+  - Tests for CommandExecutor
+  - Tests for AudioCapture/AudioPlayer
+  - Tests for SpeechRecognizer
+  - Tests for package imports
+
 2026-01-11 (continued)
 ----------------------
+
+### Developer Tools
+- Comprehensive Unit Test Suite
+  - pytest-based testing framework
+  - Tests for CommandExecutor (command parsing, matching, execution)
+  - Tests for DictationApp (settings, history, text processing)
+  - Tests for VoiceTrainingWindow (corrections, vocabulary, prompts)
+  - Tests for wake word detection and configuration
+  - Tests for settings management
+  - Integration tests for full transcription pipeline
+  - Mocked external dependencies (Whisper, audio, keyboard)
+  - Run with: `pytest` or `pytest -v` for verbose output
+- Architecture Documentation (ARCHITECTURE.md)
+  - Mermaid diagram showing system components
+  - Component overview and data flow
+  - Developer guide for extending the app
 
 ### New Features
 - Dictation History Panel
