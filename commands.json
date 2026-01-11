@@ -201,10 +201,130 @@
       "button": "right",
       "description": "Single right click"
     },
-    "decrypt code": {
-      "type": "launch",
-      "target": "python \"C:\\Users\\Morne\\AppData\\Local\\DictationApp\\pgp_code_extractor.py\"",
-      "description": "Decrypt PGP message and extract verification code"
+    "period": {
+      "type": "text",
+      "text": ".",
+      "description": "Insert period"
+    },
+    "full stop": {
+      "type": "text",
+      "text": ".",
+      "description": "Insert period"
+    },
+    "comma": {
+      "type": "text",
+      "text": ",",
+      "description": "Insert comma"
+    },
+    "question mark": {
+      "type": "text",
+      "text": "?",
+      "description": "Insert question mark"
+    },
+    "exclamation mark": {
+      "type": "text",
+      "text": "!",
+      "description": "Insert exclamation mark"
+    },
+    "exclamation point": {
+      "type": "text",
+      "text": "!",
+      "description": "Insert exclamation mark"
+    },
+    "colon": {
+      "type": "text",
+      "text": ":",
+      "description": "Insert colon"
+    },
+    "semicolon": {
+      "type": "text",
+      "text": ";",
+      "description": "Insert semicolon"
+    },
+    "apostrophe": {
+      "type": "text",
+      "text": "'",
+      "description": "Insert apostrophe"
+    },
+    "quote": {
+      "type": "text",
+      "text": "\"",
+      "description": "Insert double quote"
+    },
+    "open quote": {
+      "type": "text",
+      "text": "\"",
+      "description": "Insert opening quote"
+    },
+    "close quote": {
+      "type": "text",
+      "text": "\"",
+      "description": "Insert closing quote"
+    },
+    "open parenthesis": {
+      "type": "text",
+      "text": "(",
+      "description": "Insert opening parenthesis"
+    },
+    "close parenthesis": {
+      "type": "text",
+      "text": ")",
+      "description": "Insert closing parenthesis"
+    },
+    "open bracket": {
+      "type": "text",
+      "text": "[",
+      "description": "Insert opening bracket"
+    },
+    "close bracket": {
+      "type": "text",
+      "text": "]",
+      "description": "Insert closing bracket"
+    },
+    "hyphen": {
+      "type": "text",
+      "text": "-",
+      "description": "Insert hyphen"
+    },
+    "dash": {
+      "type": "text",
+      "text": " - ",
+      "description": "Insert dash with spaces"
+    },
+    "ellipsis": {
+      "type": "text",
+      "text": "...",
+      "description": "Insert ellipsis"
+    },
+    "new line": {
+      "type": "press",
+      "key": "enter",
+      "description": "Insert new line"
+    },
+    "new paragraph": {
+      "type": "text",
+      "text": "\n\n",
+      "description": "Insert paragraph break"
+    },
+    "tab": {
+      "type": "press",
+      "key": "tab",
+      "description": "Insert tab"
+    },
+    "space": {
+      "type": "text",
+      "text": " ",
+      "description": "Insert space"
+    },
+    "backspace": {
+      "type": "press",
+      "key": "backspace",
+      "description": "Delete previous character"
+    },
+    "delete word": {
+      "type": "hotkey",
+      "keys": ["ctrl", "backspace"],
+      "description": "Delete previous word"
     }
   }
 }
