@@ -80,7 +80,7 @@ See [Docs/VOICE_TRAINING_FEATURE.md](Docs/VOICE_TRAINING_FEATURE.md) for details
 
 ### 1. Clone the Repository
 ```bash
-git clone https://github.com/YOUR_USERNAME/samsara.git
+git clone https://github.com/Morne-Ingstar/samsara.git
 cd samsara
 ```
 
