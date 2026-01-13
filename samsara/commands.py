@@ -5,10 +5,11 @@ Handles voice command loading, matching, and execution.
 """
 
 import json
-import subprocess
 import time
 from pathlib import Path
 from typing import Any, Callable, Dict, Optional, Tuple
+
+from . import platform as plat
 
 # Optional dependencies - may not be available in test environments
 try:
@@ -276,9 +277,12 @@ class CommandExecutor:
     def _execute_launch(self, cmd: Dict[str, Any]) -> bool:
         """Launch an application."""
         target = cmd['target']
-        subprocess.Popen(f'start "" "{target}"', shell=True)
-        print(f"[OK] Launching: {target}")
-        return True
+        success = plat.launch_application(target)
+        if success:
+            print(f"[OK] Launching: {target}")
+        else:
+            print(f"[ERROR] Failed to launch: {target}")
+        return success
 
     def _execute_text(self, cmd: Dict[str, Any]) -> bool:
         """Insert text via clipboard."""

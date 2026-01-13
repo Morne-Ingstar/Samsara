@@ -62,8 +62,8 @@ See [Docs/VOICE_TRAINING_FEATURE.md](Docs/VOICE_TRAINING_FEATURE.md) for details
 ## Requirements
 
 - **Python 3.10+**
-- **Windows 10/11**
-- **CUDA-capable GPU** (recommended) or CPU-only mode
+- **Windows 10/11, macOS, or Linux**
+- **CUDA-capable GPU** (recommended for Windows/Linux) or CPU-only mode
 - **~2-10GB disk space** for Whisper models (downloaded on first use)
 
 ### GPU Requirements by Model
@@ -85,20 +85,69 @@ cd samsara
 ```
 
 ### 2. Install Dependencies
-Run the install script:
-```bash
+
+#### Windows
+```batch
+# Option A: Use the install script
 install.bat
+
+# Option B: Manual installation
+python -m venv venv
+venv\Scripts\activate
+pip install -r requirements.txt
 ```
 
-Or manually with pip:
+#### macOS
 ```bash
+# Install PortAudio (required for audio capture)
+brew install portaudio
+
+# Create virtual environment and install
+python3 -m venv venv
+source venv/bin/activate
+pip install -r requirements.txt
+```
+
+#### Linux (Ubuntu/Debian)
+```bash
+# Install system dependencies
+sudo apt-get update
+sudo apt-get install -y python3-dev portaudio19-dev
+
+# Create virtual environment and install
+python3 -m venv venv
+source venv/bin/activate
+pip install -r requirements.txt
+```
+
+#### Linux (Fedora/RHEL)
+```bash
+# Install system dependencies
+sudo dnf install -y python3-devel portaudio-devel
+
+# Create virtual environment and install
+python3 -m venv venv
+source venv/bin/activate
 pip install -r requirements.txt
 ```
 
 ### 3. First Run
+
+#### Windows
 Launch using the VBS launcher for silent background operation:
 ```
 _launcher.vbs
+```
+
+#### macOS/Linux
+```bash
+source venv/bin/activate
+python dictation.py
+```
+
+Or use the cross-platform launcher:
+```bash
+python samsara_launcher.py
 ```
 
 On first run, a setup wizard will guide you through:
@@ -111,13 +160,21 @@ On first run, a setup wizard will guide you through:
 
 ### Launching the App
 
+#### Windows
 **Recommended**: Double-click `_launcher.vbs` for silent background operation (no console window).
 
 You can create a shortcut to `_launcher.vbs` on your desktop or add it to your startup folder.
 
+#### macOS/Linux
+```bash
+python samsara_launcher.py
+# or
+python dictation.py
+```
+
 **Alternative launchers**:
-- `samsara_launcher.py` - GUI launcher with options
-- Direct Python: `pythonw dictation.py` (silent) or `python dictation.py` (with console)
+- `samsara_launcher.py` - Cross-platform GUI launcher
+- Direct Python: `pythonw dictation.py` (silent on Windows) or `python dictation.py` (with console)
 
 ### Default Hotkeys
 
@@ -198,11 +255,60 @@ See [Docs/FILE_GUIDE.md](Docs/FILE_GUIDE.md) for detailed file descriptions.
 | [MICROPHONE_FEATURE.md](Docs/MICROPHONE_FEATURE.md) | Microphone selection details |
 | [FILE_GUIDE.md](Docs/FILE_GUIDE.md) | File structure reference |
 
+## Platform Notes
+
+### Cross-Platform Support
+
+Samsara is designed to work on Windows, macOS, and Linux. The core functionality (speech recognition, dictation, voice commands) works across all platforms.
+
+### Platform-Specific Differences
+
+| Feature | Windows | macOS | Linux |
+|---------|---------|-------|-------|
+| Silent launcher | `_launcher.vbs` | Use `&` or nohup | Use `&` or nohup |
+| Console hiding | Automatic | N/A | N/A |
+| Auto-start | Startup folder (.vbs) | LaunchAgents (.plist) | XDG autostart (.desktop) |
+| GPU acceleration | CUDA (NVIDIA) | CPU only* | CUDA (NVIDIA) |
+| System tray | Full support | Full support | Requires AppIndicator |
+| Audio fallback | winsound | afplay | paplay/aplay |
+
+*macOS GPU support requires Metal backend which is not yet available in faster-whisper.
+
+### Features with Limited Cross-Platform Support
+
+1. **Console Window Hiding**: Only works on Windows. On macOS/Linux, run with `&` for background execution.
+
+2. **GPU Acceleration**: CUDA is only available on Windows and Linux with NVIDIA GPUs. macOS users should use smaller models (tiny/base) for reasonable performance.
+
+3. **System Tray on Linux**: May require additional packages:
+   ```bash
+   # Ubuntu/Debian
+   sudo apt-get install gir1.2-appindicator3-0.1
+
+   # Fedora
+   sudo dnf install libappindicator-gtk3
+   ```
+
+4. **Global Hotkeys on Linux**: May require X11. Wayland support is limited with pynput.
+
+### macOS-Specific Notes
+
+- **Accessibility Permissions**: You must grant accessibility permissions to your terminal or Python for keyboard monitoring to work.
+  - System Preferences > Security & Privacy > Privacy > Accessibility
+  - Add Terminal.app or your Python executable
+
+- **Microphone Permissions**: Grant microphone access when prompted.
+
+### Linux-Specific Notes
+
+- **Audio Backend**: PulseAudio or ALSA is required for sounddevice.
+- **X11 vs Wayland**: Global hotkeys work best with X11. For Wayland, you may need to run with `XDG_SESSION_TYPE=x11`.
+
 ## Troubleshooting
 
 ### App won't start
 - Check Python is installed and in PATH
-- Run `install.bat` to ensure dependencies are installed
+- Run `pip install -r requirements.txt` to ensure dependencies are installed
 - Try running `python dictation.py` directly to see error messages
 
 ### No transcription / silence

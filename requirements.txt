@@ -1,9 +1,28 @@
+# Samsara Voice Dictation - Dependencies
+# All packages are cross-platform (Windows, macOS, Linux)
+
+# Core - Speech Recognition
 faster-whisper>=1.0.0
+
+# Core - Audio
 sounddevice>=0.4.6
+# Note: Requires PortAudio system library
+#   macOS: brew install portaudio
+#   Ubuntu/Debian: sudo apt-get install portaudio19-dev
+#   Fedora: sudo dnf install portaudio-devel
+
+# Core - Input/Output
 numpy>=1.24.0
 pynput>=1.7.6
 pyperclip>=1.8.2
 pyautogui>=0.9.54
+# Note: pyautogui on Linux may require:
+#   sudo apt-get install python3-tk python3-dev
+#   sudo apt-get install scrot (for screenshot features)
+
+# Core - System Tray
 pystray>=0.19.4
 Pillow>=9.0.0
+
+# Core - UI
 customtkinter>=5.2.0

@@ -11,6 +11,8 @@ from typing import Any, Callable, Dict, List, Optional
 
 import numpy as np
 
+from . import platform as plat
+
 # Optional dependency - may not be available in test environments
 try:
     import sounddevice as sd
@@ -18,12 +20,6 @@ try:
 except ImportError:
     sd = None
     HAS_SOUNDDEVICE = False
-
-try:
-    import winsound
-    HAS_WINSOUND = True
-except ImportError:
-    HAS_WINSOUND = False
 
 
 class AudioCapture:
@@ -302,15 +298,8 @@ class AudioPlayer:
         except Exception:
             pass
 
-        # Fallback to winsound if sounddevice failed or unavailable
-        if HAS_WINSOUND:
-            try:
-                winsound.PlaySound(
-                    str(filepath),
-                    winsound.SND_FILENAME | winsound.SND_ASYNC,
-                )
-            except Exception:
-                pass
+        # Fallback to platform-specific sound playback
+        plat.play_sound_fallback(filepath)
 
     def _ensure_default_sounds(self) -> None:
         """Generate default sounds if they don't exist."""
