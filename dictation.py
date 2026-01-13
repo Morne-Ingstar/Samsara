@@ -1,11 +1,24 @@
 import os
-import ctypes
-import winsound
+import sys
 import wave
 
-# Hide console window IMMEDIATELY before any output
-def _hide_console_now():
+# Platform-specific imports
+if sys.platform == 'win32':
     try:
+        import ctypes
+        import winsound
+        HAS_WINSOUND = True
+    except ImportError:
+        HAS_WINSOUND = False
+else:
+    HAS_WINSOUND = False
+
+# Hide console window IMMEDIATELY before any output (Windows only)
+def _hide_console_now():
+    if sys.platform != 'win32':
+        return
+    try:
+        import ctypes
         hwnd = ctypes.windll.kernel32.GetConsoleWindow()
         if hwnd:
             ctypes.windll.user32.ShowWindow(hwnd, 0)
@@ -14,12 +27,79 @@ def _hide_console_now():
 
 _hide_console_now()
 
+# ============================================================================
+# Single Instance Check - Prevent multiple instances from running
+# ============================================================================
+def _check_single_instance():
+    """
+    Ensure only one instance of Samsara is running.
+    Uses a lock file with platform-specific file locking.
+    Returns the lock file handle (must be kept open) or exits if another instance exists.
+    """
+    from pathlib import Path
+    import tempfile
+
+    lock_file_path = Path(tempfile.gettempdir()) / "samsara.lock"
+
+    try:
+        # Open/create lock file
+        if sys.platform == 'win32':
+            import msvcrt
+            # Open in write mode, create if doesn't exist
+            lock_file = open(lock_file_path, 'w')
+            try:
+                # Try to get exclusive lock (non-blocking)
+                msvcrt.locking(lock_file.fileno(), msvcrt.LK_NBLCK, 1)
+                # Write our PID
+                lock_file.write(str(os.getpid()))
+                lock_file.flush()
+                return lock_file  # Keep file open to maintain lock
+            except (IOError, OSError):
+                # Another instance has the lock
+                lock_file.close()
+                # Try to read the other instance's PID
+                try:
+                    with open(lock_file_path, 'r') as f:
+                        other_pid = f.read().strip()
+                    print(f"[WARN] Samsara is already running (PID: {other_pid})")
+                except:
+                    print("[WARN] Samsara is already running")
+                sys.exit(0)
+        else:
+            # Unix-like systems (macOS, Linux)
+            import fcntl
+            lock_file = open(lock_file_path, 'w')
+            try:
+                # Try to get exclusive lock (non-blocking)
+                fcntl.flock(lock_file.fileno(), fcntl.LOCK_EX | fcntl.LOCK_NB)
+                # Write our PID
+                lock_file.write(str(os.getpid()))
+                lock_file.flush()
+                return lock_file  # Keep file open to maintain lock
+            except (IOError, OSError):
+                # Another instance has the lock
+                lock_file.close()
+                try:
+                    with open(lock_file_path, 'r') as f:
+                        other_pid = f.read().strip()
+                    print(f"[WARN] Samsara is already running (PID: {other_pid})")
+                except:
+                    print("[WARN] Samsara is already running")
+                sys.exit(0)
+    except Exception as e:
+        # If locking fails for any reason, log but continue
+        # (better to have duplicate instances than no instances)
+        print(f"[WARN] Could not check for existing instance: {e}")
+        return None
+
+# Acquire single-instance lock (must keep reference to prevent garbage collection)
+_instance_lock = _check_single_instance()
+
 # Fix OpenMP conflict between numpy and other libraries
 os.environ["KMP_DUPLICATE_LIB_OK"] = "TRUE"
 
 import threading
 import queue
-import sys
 import time
 import subprocess
 import logging
@@ -43,13 +123,31 @@ from voice_training import VoiceTrainingWindow
 
 
 def hide_console():
-    """Hide the console window on Windows"""
+    """Hide the console window (Windows only, no-op on other platforms)"""
+    if sys.platform != 'win32':
+        return
     try:
+        import ctypes
         hwnd = ctypes.windll.kernel32.GetConsoleWindow()
         if hwnd:
             ctypes.windll.user32.ShowWindow(hwnd, 0)
     except:
         pass
+
+
+def open_file_or_folder(path):
+    """Open a file or folder with the system's default handler (cross-platform)"""
+    try:
+        path_str = str(path)
+        if sys.platform == 'win32':
+            os.startfile(path_str)
+        elif sys.platform == 'darwin':  # macOS
+            subprocess.run(['open', path_str], check=True)
+        else:  # Linux
+            subprocess.run(['xdg-open', path_str], check=True)
+        return True
+    except Exception:
+        return False
 
 
 class SplashScreen:
@@ -839,11 +937,18 @@ class CommandExecutor:
                 return True
             
             elif cmd_type == 'launch':
-                # Launch application
+                # Launch application (cross-platform)
                 target = cmd['target']
-                # Use 'start' command on Windows for better compatibility
-                subprocess.Popen(f'start "" "{target}"', shell=True)
-                print(f"[OK] Launching: {target}")
+                try:
+                    if sys.platform == 'win32':
+                        subprocess.Popen(f'start "" "{target}"', shell=True)
+                    elif sys.platform == 'darwin':  # macOS
+                        subprocess.Popen(['open', target])
+                    else:  # Linux
+                        subprocess.Popen(['xdg-open', target])
+                    print(f"[OK] Launching: {target}")
+                except Exception as e:
+                    print(f"[ERROR] Failed to launch {target}: {e}")
                 return True
 
             elif cmd_type == 'text':
@@ -1545,9 +1650,17 @@ class SettingsWindow:
         self.close()
 
     def get_startup_path(self):
-        """Get the Windows Startup folder path"""
-        startup_folder = Path(os.environ.get('APPDATA', '')) / 'Microsoft' / 'Windows' / 'Start Menu' / 'Programs' / 'Startup'
-        return startup_folder / 'Samsara.vbs'
+        """Get the platform-specific startup/autostart file path"""
+        if sys.platform == 'win32':
+            startup_folder = Path(os.environ.get('APPDATA', '')) / 'Microsoft' / 'Windows' / 'Start Menu' / 'Programs' / 'Startup'
+            return startup_folder / 'Samsara.vbs'
+        elif sys.platform == 'darwin':  # macOS
+            return Path.home() / 'Library' / 'LaunchAgents' / 'com.samsara.plist'
+        else:  # Linux
+            config_home = os.environ.get('XDG_CONFIG_HOME', '')
+            if config_home:
+                return Path(config_home) / 'autostart' / 'samsara.desktop'
+            return Path.home() / '.config' / 'autostart' / 'samsara.desktop'
 
     def check_auto_start(self):
         """Check if auto-start is enabled"""
@@ -1555,23 +1668,63 @@ class SettingsWindow:
         return startup_file.exists()
 
     def toggle_auto_start(self):
-        """Enable or disable auto-start with Windows"""
+        """Enable or disable auto-start (cross-platform)"""
         startup_file = self.get_startup_path()
-        launcher_path = Path(__file__).parent / '_launcher.vbs'
+        script_path = Path(__file__)
+        python_exe = sys.executable
 
         if self.auto_start_var.get():
-            # Enable auto-start: create startup script
+            # Enable auto-start: create platform-specific startup entry
             try:
-                # Create a VBS script that launches the app
-                vbs_content = f'''Set WshShell = CreateObject("WScript.Shell")
-WshShell.CurrentDirectory = "{Path(__file__).parent}"
-WshShell.Run """" & "{sys.executable}" & """ """ & "{Path(__file__)}" & """", 0, False
+                startup_file.parent.mkdir(parents=True, exist_ok=True)
+
+                if sys.platform == 'win32':
+                    # Windows VBS script
+                    vbs_content = f'''Set WshShell = CreateObject("WScript.Shell")
+WshShell.CurrentDirectory = "{script_path.parent}"
+WshShell.Run """" & "{python_exe}" & """ """ & "{script_path}" & """", 0, False
 Set WshShell = Nothing
 '''
-                with open(startup_file, 'w') as f:
-                    f.write(vbs_content)
+                    startup_file.write_text(vbs_content)
+
+                elif sys.platform == 'darwin':
+                    # macOS launchd plist
+                    plist_content = f'''<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+    <key>Label</key>
+    <string>com.samsara</string>
+    <key>ProgramArguments</key>
+    <array>
+        <string>{python_exe}</string>
+        <string>{script_path}</string>
+    </array>
+    <key>RunAtLoad</key>
+    <true/>
+    <key>WorkingDirectory</key>
+    <string>{script_path.parent}</string>
+</dict>
+</plist>
+'''
+                    startup_file.write_text(plist_content)
+
+                else:
+                    # Linux .desktop file
+                    desktop_content = f'''[Desktop Entry]
+Type=Application
+Name=Samsara
+Exec={python_exe} {script_path}
+Path={script_path.parent}
+Hidden=false
+NoDisplay=false
+X-GNOME-Autostart-enabled=true
+'''
+                    startup_file.write_text(desktop_content)
+
+                platform_name = "Windows" if sys.platform == 'win32' else ("macOS" if sys.platform == 'darwin' else "Linux")
                 messagebox.showinfo("Auto-Start Enabled",
-                    "Samsara will now start automatically when Windows starts.",
+                    f"Samsara will now start automatically when {platform_name} starts.",
                     parent=self.window)
             except Exception as e:
                 messagebox.showerror("Error",
@@ -1579,7 +1732,7 @@ Set WshShell = Nothing
                     parent=self.window)
                 self.auto_start_var.set(False)
         else:
-            # Disable auto-start: remove startup script
+            # Disable auto-start: remove startup entry
             try:
                 if startup_file.exists():
                     startup_file.unlink()
@@ -3494,13 +3647,13 @@ class DictationApp:
     
     def open_config_folder(self):
         """Open the config folder"""
-        os.startfile(self.config_path.parent)
+        open_file_or_folder(self.config_path.parent)
 
     def open_main_log(self):
         """Open the main log file in default text editor"""
         log_file = LOG_FILE
         if log_file.exists():
-            os.startfile(log_file)
+            open_file_or_folder(log_file)
         else:
             messagebox.showinfo("Log File", "No log file found yet.")
 
@@ -3508,7 +3661,7 @@ class DictationApp:
         """Open the voice training log file"""
         log_file = LOG_DIR / 'voice_training.log'
         if log_file.exists():
-            os.startfile(log_file)
+            open_file_or_folder(log_file)
         else:
             messagebox.showinfo("Log File", "No voice training log file found yet.")
     
