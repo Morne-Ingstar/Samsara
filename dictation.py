@@ -106,8 +106,9 @@ import logging
 from datetime import datetime
 import numpy as np
 import sounddevice as sd
-from pynput import keyboard
+from pynput import keyboard as pynput_keyboard
 from pynput.keyboard import Key, Controller as KeyboardController
+import keyboard  # For reliable simultaneous key state detection
 from pynput.mouse import Button, Controller as MouseController
 import pyperclip
 import pyautogui
@@ -1064,10 +1065,8 @@ class SettingsWindow:
         self.window.resizable(True, True)
         self.window.minsize(650, 600)
 
-        # Make it appear on top and grab focus
-        self.window.lift()
-        self.window.focus_force()
-        self.window.after(100, lambda: self.window.lift())
+        # Hide window while building UI to prevent incremental rendering
+        self.window.withdraw()
 
         # Use grid layout for reliable button placement
         self.window.grid_rowconfigure(0, weight=1)
@@ -1193,7 +1192,16 @@ class SettingsWindow:
         mode_frame = ctk.CTkFrame(hotkey_tab, corner_radius=10)
         mode_frame.pack(fill='x', pady=(0, 20))
 
-        self.mode_var = tk.StringVar(value=self.app.config.get('mode', 'hold'))
+        # Determine current runtime mode (not just config default)
+        # Runtime state overrides config if a mode is actively toggled
+        if self.app.wake_word_active:
+            current_mode = 'wake_word'
+        elif self.app.continuous_active:
+            current_mode = 'continuous'
+        else:
+            current_mode = self.app.config.get('mode', 'hold')
+        
+        self.mode_var = tk.StringVar(value=current_mode)
 
         ctk.CTkRadioButton(mode_frame, text="Hold to record (hold key, release to transcribe)",
                           variable=self.mode_var, value='hold').pack(anchor='w', padx=15, pady=(15, 8))
@@ -1472,6 +1480,25 @@ class SettingsWindow:
         min_speech_entry.pack(side='left', padx=(0, 10))
         ctk.CTkLabel(speech_row, text="seconds").pack(side='left')
 
+        # Performance Settings
+        perf_label = ctk.CTkLabel(advanced_tab, text="Performance", font=ctk.CTkFont(size=16, weight="bold"))
+        perf_label.pack(anchor='w', pady=(0, 10))
+
+        perf_frame = ctk.CTkFrame(advanced_tab, corner_radius=10)
+        perf_frame.pack(fill='x', pady=(0, 20))
+
+        perf_row = ctk.CTkFrame(perf_frame, fg_color="transparent")
+        perf_row.pack(fill='x', padx=15, pady=(15, 5))
+        ctk.CTkLabel(perf_row, text="Performance mode:", width=150, anchor='w').pack(side='left')
+        self.perf_mode_var = tk.StringVar(value=self.app.config.get('performance_mode', 'balanced'))
+        perf_combo = ctk.CTkComboBox(perf_row, variable=self.perf_mode_var,
+                                      values=['fast', 'balanced', 'accurate'],
+                                      width=150, state='readonly')
+        perf_combo.pack(side='left')
+
+        ctk.CTkLabel(perf_frame, text="fast: Lowest latency | balanced: Good tradeoff | accurate: Best quality",
+                    text_color="gray").pack(anchor='w', padx=15, pady=(0, 15))
+
         # Wake Word Settings
         wake_label = ctk.CTkLabel(advanced_tab, text="Wake Word Settings", font=ctk.CTkFont(size=16, weight="bold"))
         wake_label.pack(anchor='w', pady=(0, 10))
@@ -1497,6 +1524,12 @@ class SettingsWindow:
         ctk.CTkLabel(timeout_row, text="seconds").pack(side='left')
 
         self.window.protocol("WM_DELETE_WINDOW", self.close)
+
+        # Show the fully-built window and bring to front
+        self.window.deiconify()
+        self.window.lift()
+        self.window.focus_force()
+        self.window.after(100, lambda: self.window.lift())
 
     def start_capture(self, hotkey_name):
         self.capturing_hotkey = hotkey_name
@@ -1591,6 +1624,7 @@ class SettingsWindow:
         self.app.config['show_all_audio_devices'] = self.show_all_devices_var.get()
         self.app.config['audio_feedback'] = self.audio_feedback_var.get()
         self.app.config['sound_volume'] = self.sound_volume_var.get()
+        self.app.config['performance_mode'] = self.perf_mode_var.get()
 
         self.app.command_mode_enabled = self.command_mode_var.get()
 
@@ -1781,6 +1815,7 @@ X-GNOME-Autostart-enabled=true
             dest = self.app.sounds_dir / f"{sound_type}.wav"
             try:
                 shutil.copy(filename, dest)
+                self.app.reload_sounds()  # Reload cache with new sound
                 self.sound_labels[sound_type].configure(text=f"{sound_type}.wav")
                 messagebox.showinfo("Sound Updated",
                     f"Sound file updated successfully!\n\nFile: {Path(filename).name}",
@@ -1837,6 +1872,7 @@ X-GNOME-Autostart-enabled=true
             audio = np.concatenate([t1, gap, t2])
             save_wav(sound_file, audio)
 
+        self.app.reload_sounds()  # Reload cache with regenerated sound
         self.sound_labels[sound_type].configure(text=f"{sound_type}.wav")
         messagebox.showinfo("Sound Reset", f"'{sound_type}' sound reset to default.", parent=self.window)
 
@@ -2472,7 +2508,7 @@ class DictationApp:
         self.update_splash("Setting up keyboard...")
 
         # Start keyboard listener
-        self.keyboard_listener = keyboard.Listener(
+        self.keyboard_listener = pynput_keyboard.Listener(
             on_press=self.on_key_press,
             on_release=self.on_key_release
         )
@@ -2487,7 +2523,10 @@ class DictationApp:
         print(f"Dictation app starting...")
         print(f"Mode: {mode}")
         print(f"Hotkey: [{self.config['hotkey']}]")
+        print(f"Continuous hotkey: [{self.config.get('continuous_hotkey', 'ctrl+alt+d')}]")
+        print(f"Wake word hotkey: [{self.config.get('wake_word_hotkey', 'ctrl+alt+w')}]")
         print(f"Using model: {self.config['model_size']}")
+        print(f"Hotkey detection: state-based (simultaneous key support)")
 
         # Close splash and start system tray
         self.update_splash("Starting...")
@@ -2528,7 +2567,8 @@ class DictationApp:
             "show_all_audio_devices": False,
             "audio_feedback": True,  # Play sounds for recording start/stop
             "sound_volume": 0.5,  # Volume for feedback sounds (0.0 to 1.0)
-            "first_run_complete": True  # Track if first-run wizard has been completed (default True for existing installs)
+            "first_run_complete": True,  # Track if first-run wizard has been completed (default True for existing installs)
+            "performance_mode": "balanced",  # "fast", "balanced", or "accurate"
         }
         
         if self.config_path.exists():
@@ -2627,6 +2667,65 @@ class DictationApp:
                 json.dump(self.history, f, ensure_ascii=False, indent=2)
         except Exception as e:
             print(f"Failed to save history: {e}")
+
+    def get_transcription_params(self):
+        """Get transcription parameters based on performance mode setting.
+        
+        Returns dict of parameters for model.transcribe()
+        Performance modes:
+        - fast: Lowest latency, may sacrifice some accuracy
+        - balanced: Good speed/accuracy tradeoff (default)
+        - accurate: Best accuracy, slower
+        """
+        mode = self.config.get('performance_mode', 'balanced')
+        
+        base_params = {
+            'language': self.config['language'],
+            'initial_prompt': self.voice_training_window.get_initial_prompt(),
+        }
+        
+        if mode == 'fast':
+            # Fastest settings - greedy decoding, minimal VAD
+            return {
+                **base_params,
+                'beam_size': 1,  # Greedy decoding (fastest)
+                'vad_filter': True,
+                'vad_parameters': dict(
+                    min_silence_duration_ms=300,
+                    speech_pad_ms=100,
+                ),
+                'condition_on_previous_text': False,
+                'without_timestamps': True,
+                'word_timestamps': False,
+                'temperature': 0.0,  # Deterministic (faster)
+            }
+        elif mode == 'accurate':
+            # Most accurate settings
+            return {
+                **base_params,
+                'beam_size': 5,
+                'vad_filter': True,
+                'vad_parameters': dict(
+                    min_silence_duration_ms=500,
+                    speech_pad_ms=300,
+                ),
+                'condition_on_previous_text': True,
+                'without_timestamps': False,
+                'word_timestamps': False,
+            }
+        else:  # balanced (default)
+            return {
+                **base_params,
+                'beam_size': 3,
+                'vad_filter': True,
+                'vad_parameters': dict(
+                    min_silence_duration_ms=500,
+                    speech_pad_ms=200,
+                ),
+                'condition_on_previous_text': False,
+                'without_timestamps': True,
+                'word_timestamps': False,
+            }
 
     def process_transcription(self, text):
         """Process transcribed text with auto-capitalize and number formatting"""
@@ -2737,25 +2836,44 @@ class DictationApp:
             self.loading_model = True
             print("Loading Whisper model (this may take a moment on first run)...")
             
-            # Determine compute device
+            # Determine compute device with detailed logging
             device = self.config['device']
             if device == "auto":
                 try:
                     import torch
-                    device = "cuda" if torch.cuda.is_available() else "cpu"
-                except:
+                    cuda_available = torch.cuda.is_available()
+                    if cuda_available:
+                        device = "cuda"
+                        gpu_name = torch.cuda.get_device_name(0)
+                        gpu_mem = torch.cuda.get_device_properties(0).total_memory / (1024**3)
+                        print(f"[GPU] CUDA available: {gpu_name} ({gpu_mem:.1f} GB)")
+                    else:
+                        device = "cpu"
+                        print("[CPU] CUDA not available, using CPU")
+                except Exception as e:
                     device = "cpu"
+                    print(f"[CPU] Could not detect GPU: {e}")
             
             compute_type = "float16" if device == "cuda" else "int8"
+            print(f"[CONFIG] Model: {self.config['model_size']}, Device: {device}, Compute: {compute_type}")
             
+            load_start = time.time()
             self.model = WhisperModel(
                 self.config['model_size'],
                 device=device,
-                compute_type=compute_type
+                compute_type=compute_type,
+                cpu_threads=4,  # Use multiple CPU threads if on CPU
+                num_workers=2,  # Parallel workers for preprocessing
             )
+            load_time = time.time() - load_start
+            
+            # Store device info for logging
+            self.device_type = device
+            self.compute_type = compute_type
+            
             self.model_loaded = True
             self.loading_model = False
-            print(f"Model loaded! ({device})")
+            print(f"[OK] Model loaded in {load_time:.1f}s ({device}, {compute_type})")
             print("Ready for dictation.")
         
         thread = threading.Thread(target=load, daemon=True)
@@ -2800,7 +2918,7 @@ class DictationApp:
         return None
     
     def get_active_keys(self):
-        """Get keys pressed within the hotkey window"""
+        """Get keys pressed within the hotkey window (legacy, kept for compatibility)"""
         now = time.time()
         active_keys = set()
         for key, press_time in list(self.key_press_times.items()):
@@ -2811,43 +2929,92 @@ class DictationApp:
                 del self.key_press_times[key]
         # Also include currently held keys
         return active_keys | self.current_keys
+    
+    def check_hotkey_state(self, hotkey_str):
+        """Check if all keys in a hotkey combo are currently pressed using state-based detection.
+        
+        This uses the keyboard library's is_pressed() for reliable simultaneous key detection,
+        regardless of the order keys were pressed.
+        """
+        required_keys = self.parse_hotkey(hotkey_str)
+        
+        for key in required_keys:
+            # Map our key names to keyboard library names
+            if key == 'ctrl':
+                if not (keyboard.is_pressed('ctrl') or keyboard.is_pressed('left ctrl') or keyboard.is_pressed('right ctrl')):
+                    return False
+            elif key == 'shift':
+                if not (keyboard.is_pressed('shift') or keyboard.is_pressed('left shift') or keyboard.is_pressed('right shift')):
+                    return False
+            elif key == 'alt':
+                if not (keyboard.is_pressed('alt') or keyboard.is_pressed('left alt') or keyboard.is_pressed('right alt')):
+                    return False
+            elif key == 'win':
+                if not (keyboard.is_pressed('left windows') or keyboard.is_pressed('right windows')):
+                    return False
+            elif key == 'escape':
+                if not keyboard.is_pressed('esc'):
+                    return False
+            else:
+                # Regular key (letter, number, etc.)
+                if not keyboard.is_pressed(key):
+                    return False
+        
+        return True
+    
+    def get_pressed_keys_debug(self):
+        """Return a string of currently pressed keys for debugging"""
+        pressed = []
+        for key in ['ctrl', 'shift', 'alt', 'a', 'b', 'c', 'd', 'e', 'f', 'g', 'h', 'i', 'j', 'k', 'l', 'm', 'n', 'o', 'p', 'q', 'r', 's', 't', 'u', 'v', 'w', 'x', 'y', 'z', 'esc']:
+            try:
+                if keyboard.is_pressed(key):
+                    pressed.append(key)
+            except:
+                pass
+        return '+'.join(pressed) if pressed else 'none'
 
     def on_key_press(self, key):
-        """Handle key press"""
+        """Handle key press - uses state-based checking for reliable simultaneous key detection"""
         key_name = self.get_key_name(key)
         if key_name:
             self.current_keys.add(key_name)
             self.key_press_times[key_name] = time.time()
 
         mode = self.config.get('mode', 'hold')
-        required_keys = self.parse_hotkey(self.config['hotkey'])
-        cont_keys = self.parse_hotkey(self.config.get('continuous_hotkey', 'ctrl+alt+d'))
-        wake_keys = self.parse_hotkey(self.config.get('wake_word_hotkey', 'ctrl+alt+w'))
+        
+        # Get hotkey configs
+        main_hotkey = self.config['hotkey']
+        cont_hotkey = self.config.get('continuous_hotkey', 'ctrl+alt+d')
+        wake_hotkey = self.config.get('wake_word_hotkey', 'ctrl+alt+w')
+        cancel_hotkey = self.config.get('cancel_hotkey', 'escape')
 
-        # Use time-window based key detection for more reliable hotkey matching
-        active_keys = self.get_active_keys()
-
+        # Use state-based detection - checks if keys are CURRENTLY held, regardless of press order
+        # This is more reliable than event-based tracking for simultaneous key combos
+        
         # Check for wake word mode toggle (works in any mode)
-        if wake_keys.issubset(active_keys) and not self.hotkey_pressed:
+        if self.check_hotkey_state(wake_hotkey) and not self.hotkey_pressed:
+            print(f"[HOTKEY] Wake word hotkey detected: {wake_hotkey}")
             self.hotkey_pressed = True
             # Run in separate thread to avoid blocking
             threading.Thread(target=self.toggle_wake_word_mode, daemon=True).start()
             return
         
         # Check for continuous mode toggle (works in any mode)
-        if cont_keys.issubset(active_keys) and not self.hotkey_pressed:
+        if self.check_hotkey_state(cont_hotkey) and not self.hotkey_pressed:
+            print(f"[HOTKEY] Continuous mode hotkey detected: {cont_hotkey}")
             self.hotkey_pressed = True
             self.toggle_continuous_mode()
             return
 
         # Check for cancel recording hotkey (only when recording)
-        cancel_keys = self.parse_hotkey(self.config.get('cancel_hotkey', 'escape'))
-        if cancel_keys.issubset(active_keys) and self.recording:
+        if self.check_hotkey_state(cancel_hotkey) and self.recording:
+            print(f"[HOTKEY] Cancel hotkey detected: {cancel_hotkey}")
             self.cancel_recording()
             return
 
         # Handle main hotkey based on mode
-        if required_keys.issubset(active_keys) and not self.hotkey_pressed:
+        if self.check_hotkey_state(main_hotkey) and not self.hotkey_pressed:
+            print(f"[HOTKEY] Main hotkey detected: {main_hotkey} (mode: {mode})")
             if mode == 'hold':
                 self.hotkey_pressed = True
                 self.start_recording()
@@ -2869,20 +3036,28 @@ class DictationApp:
                 self.toggle_wake_word_mode()
     
     def on_key_release(self, key):
-        """Handle key release"""
+        """Handle key release - uses state-based checking for reliable detection"""
         key_name = self.get_key_name(key)
         if key_name and key_name in self.current_keys:
             self.current_keys.discard(key_name)
         
         mode = self.config.get('mode', 'hold')
-        required_keys = self.parse_hotkey(self.config['hotkey'])
-        cont_keys = self.parse_hotkey(self.config.get('continuous_hotkey', 'ctrl+alt+d'))
-        wake_keys = self.parse_hotkey(self.config.get('wake_word_hotkey', 'ctrl+alt+w'))
         
-        # Reset hotkey flag when keys released
-        if not required_keys.issubset(self.current_keys) and not cont_keys.issubset(self.current_keys) and not wake_keys.issubset(self.current_keys):
+        # Get hotkey configs
+        main_hotkey = self.config['hotkey']
+        cont_hotkey = self.config.get('continuous_hotkey', 'ctrl+alt+d')
+        wake_hotkey = self.config.get('wake_word_hotkey', 'ctrl+alt+w')
+        
+        # Reset hotkey flag when no hotkey combo is currently pressed
+        # Use state-based checking for reliable detection
+        main_pressed = self.check_hotkey_state(main_hotkey)
+        cont_pressed = self.check_hotkey_state(cont_hotkey)
+        wake_pressed = self.check_hotkey_state(wake_hotkey)
+        
+        if not main_pressed and not cont_pressed and not wake_pressed:
             if self.hotkey_pressed:
                 if mode == 'hold' and self.recording:
+                    print(f"[HOTKEY] Main hotkey released, stopping recording")
                     self.stop_recording()
                 self.hotkey_pressed = False
 
@@ -2997,16 +3172,23 @@ class DictationApp:
         """Transcribe a buffer from continuous mode"""
         try:
             audio = np.concatenate(buffer)
+            audio_duration = len(audio) / self.sample_rate
             
-            segments, info = self.model.transcribe(
-                audio,
-                language=self.config['language'],
-                beam_size=5,
-                vad_filter=True,
-                initial_prompt=self.voice_training_window.get_initial_prompt()
-            )
+            # Get transcription parameters based on performance mode
+            transcribe_params = self.get_transcription_params()
+            perf_mode = self.config.get('performance_mode', 'balanced')
+            
+            transcribe_start = time.time()
+            segments, info = self.model.transcribe(audio, **transcribe_params)
             
             text = "".join([segment.text for segment in segments]).strip()
+            transcribe_time = time.time() - transcribe_start
+            
+            # Performance logging
+            rtf = transcribe_time / audio_duration if audio_duration > 0 else 0
+            device_info = getattr(self, 'device_type', 'unknown')
+            print(f"[PERF] Audio: {audio_duration:.1f}s | Transcribe: {transcribe_time*1000:.0f}ms | "
+                  f"RTF: {rtf:.2f}x | Mode: {perf_mode} | Device: {device_info}")
             
             # Apply corrections dictionary
             text = self.voice_training_window.apply_corrections(text)
@@ -3030,11 +3212,13 @@ class DictationApp:
 
                 if self.config['auto_paste']:
                     pyperclip.copy(text)
-                    time.sleep(0.05)
+                    time.sleep(0.02)  # Reduced from 0.05
                     pyautogui.hotkey('ctrl', 'v')
 
         except Exception as e:
             print(f"Transcription error: {e}")
+            import traceback
+            traceback.print_exc()
 
     def transcribe_buffer(self):
         """Transcribe remaining buffer when stopping"""
@@ -3156,16 +3340,23 @@ class DictationApp:
         """Process audio - check for wake word or execute command"""
         try:
             audio = np.concatenate(buffer)
+            audio_duration = len(audio) / self.sample_rate
             
-            segments, info = self.model.transcribe(
-                audio,
-                language=self.config['language'],
-                beam_size=5,
-                vad_filter=True,
-                initial_prompt=self.voice_training_window.get_initial_prompt()
-            )
+            # Get transcription parameters based on performance mode
+            transcribe_params = self.get_transcription_params()
+            perf_mode = self.config.get('performance_mode', 'balanced')
+            
+            transcribe_start = time.time()
+            segments, info = self.model.transcribe(audio, **transcribe_params)
             
             text = "".join([segment.text for segment in segments]).strip()
+            transcribe_time = time.time() - transcribe_start
+            
+            # Performance logging for wake word mode
+            rtf = transcribe_time / audio_duration if audio_duration > 0 else 0
+            device_info = getattr(self, 'device_type', 'unknown')
+            print(f"[PERF/WAKE] Audio: {audio_duration:.1f}s | Transcribe: {transcribe_time*1000:.0f}ms | "
+                  f"RTF: {rtf:.2f}x | Mode: {perf_mode} | Device: {device_info}")
             
             # Apply corrections dictionary
             text = self.voice_training_window.apply_corrections(text).lower()
@@ -3245,7 +3436,7 @@ class DictationApp:
             self.audio_data.append(indata.copy())
 
     def _setup_sounds(self):
-        """Set up sound files - create defaults if needed"""
+        """Set up sound files and audio playback system"""
         import wave
         import struct
 
@@ -3259,6 +3450,18 @@ class DictationApp:
             'success': self.sounds_dir / 'success.wav',
             'error': self.sounds_dir / 'error.wav'
         }
+
+        # Pre-loaded sound data cache (for faster playback)
+        self.sound_cache = {}
+        
+        # Audio playback queue and worker thread
+        self.sound_queue = queue.Queue()
+        self.sound_worker_running = True
+        self.sound_worker_error_count = 0
+        self.sound_worker_max_errors = 5  # Reset after this many consecutive errors
+        self.sound_worker_thread = threading.Thread(target=self._sound_worker, daemon=True, name="SamsaraAudioWorker")
+        self.sound_worker_thread.start()
+        logger.info("[AUDIO] Sound worker thread started")
 
         # Generate default sounds if they don't exist
         sample_rate = 44100
@@ -3315,61 +3518,214 @@ class DictationApp:
             audio = np.concatenate([t1, gap, t2])
             save_wav(self.sound_files['error'], audio)
 
-    def play_sound(self, sound_type):
-        """Play audio feedback sounds using WAV files with volume control (non-blocking)"""
-        if not self.config.get('audio_feedback', True):
-            return
+        # Pre-load all sounds into cache for faster playback
+        self._preload_sounds()
 
+    def _preload_sounds(self):
+        """Pre-load sound files into memory for faster playback"""
+        import wave
+        
+        self.sound_cache = {}
+        for sound_type, sound_file in self.sound_files.items():
+            if sound_file.exists():
+                try:
+                    with wave.open(str(sound_file), 'rb') as wf:
+                        sample_rate = wf.getframerate()
+                        n_channels = wf.getnchannels()
+                        sample_width = wf.getsampwidth()
+                        n_frames = wf.getnframes()
+                        audio_data = wf.readframes(n_frames)
+
+                    # Convert to numpy array
+                    if sample_width == 1:
+                        dtype = np.uint8
+                    elif sample_width == 2:
+                        dtype = np.int16
+                    else:
+                        dtype = np.int32
+
+                    audio_array = np.frombuffer(audio_data, dtype=dtype).astype(np.float32)
+
+                    # Normalize to -1.0 to 1.0
+                    if sample_width == 1:
+                        audio_array = (audio_array - 128) / 128.0
+                    else:
+                        audio_array = audio_array / (2 ** (sample_width * 8 - 1))
+
+                    # Reshape for stereo if needed
+                    if n_channels == 2:
+                        audio_array = audio_array.reshape(-1, 2)
+
+                    self.sound_cache[sound_type] = {
+                        'audio': audio_array,
+                        'sample_rate': sample_rate,
+                        'file_path': sound_file
+                    }
+                    logger.debug(f"[AUDIO] Pre-loaded sound: {sound_type}")
+                except Exception as e:
+                    logger.warning(f"[AUDIO] Failed to pre-load {sound_type}: {e}")
+        
+        logger.info(f"[AUDIO] Pre-loaded {len(self.sound_cache)} sounds")
+
+    def _sound_worker(self):
+        """Background worker thread that processes the sound queue"""
+        logger.info("[AUDIO] Sound worker thread running")
+        
+        while self.sound_worker_running:
+            try:
+                # Wait for a sound to play (with timeout for clean shutdown)
+                try:
+                    sound_request = self.sound_queue.get(timeout=1.0)
+                except queue.Empty:
+                    continue
+                
+                if sound_request is None:  # Shutdown signal
+                    break
+                
+                sound_type, volume = sound_request
+                self._play_sound_internal(sound_type, volume)
+                self.sound_queue.task_done()
+                
+                # Reset error count on success
+                self.sound_worker_error_count = 0
+                
+            except Exception as e:
+                logger.error(f"[AUDIO] Sound worker error: {e}")
+                self.sound_worker_error_count += 1
+                
+                # If too many errors, try to recover
+                if self.sound_worker_error_count >= self.sound_worker_max_errors:
+                    logger.warning("[AUDIO] Too many errors, attempting recovery...")
+                    self._recover_audio_system()
+                    self.sound_worker_error_count = 0
+        
+        logger.info("[AUDIO] Sound worker thread stopped")
+
+    def _play_sound_internal(self, sound_type, volume):
+        """Actually play the sound (called from worker thread)"""
+        cached = self.sound_cache.get(sound_type)
+        
+        if cached is None:
+            # Try to reload if not cached
+            self._preload_sounds()
+            cached = self.sound_cache.get(sound_type)
+            if cached is None:
+                logger.warning(f"[AUDIO] Sound not found: {sound_type}")
+                return
+        
+        try:
+            # Apply volume and play
+            audio = cached['audio'] * volume
+            sample_rate = cached['sample_rate']
+            
+            # Stop any currently playing sound first
+            sd.stop()
+            
+            # Play the sound
+            sd.play(audio, sample_rate)
+            
+            # Wait for playback to complete (important for reliability)
+            sd.wait()
+            
+            logger.debug(f"[AUDIO] Played: {sound_type}")
+            
+        except sd.PortAudioError as e:
+            logger.error(f"[AUDIO] PortAudio error playing {sound_type}: {e}")
+            self._fallback_play(sound_type)
+            raise  # Re-raise to trigger error counting
+            
+        except Exception as e:
+            logger.error(f"[AUDIO] Error playing {sound_type}: {e}")
+            self._fallback_play(sound_type)
+            raise  # Re-raise to trigger error counting
+
+    def _fallback_play(self, sound_type):
+        """Fallback to winsound (Windows only) or system command"""
         sound_file = self.sound_files.get(sound_type)
         if sound_file is None or not sound_file.exists():
             return
+        
+        try:
+            if HAS_WINSOUND:
+                winsound.PlaySound(str(sound_file), winsound.SND_FILENAME | winsound.SND_ASYNC)
+                logger.debug(f"[AUDIO] Fallback (winsound) played: {sound_type}")
+            elif sys.platform == 'darwin':  # macOS
+                subprocess.Popen(['afplay', str(sound_file)], 
+                               stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+                logger.debug(f"[AUDIO] Fallback (afplay) played: {sound_type}")
+            elif sys.platform.startswith('linux'):
+                # Try aplay (ALSA) or paplay (PulseAudio)
+                for player in ['paplay', 'aplay']:
+                    try:
+                        subprocess.Popen([player, str(sound_file)],
+                                       stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+                        logger.debug(f"[AUDIO] Fallback ({player}) played: {sound_type}")
+                        break
+                    except FileNotFoundError:
+                        continue
+        except Exception as e:
+            logger.error(f"[AUDIO] Fallback playback also failed for {sound_type}: {e}")
+
+    def _recover_audio_system(self):
+        """Attempt to recover the audio system after multiple failures"""
+        logger.info("[AUDIO] Attempting audio system recovery...")
+        
+        try:
+            # Stop any pending playback
+            sd.stop()
+            
+            # Small delay to let audio system settle
+            time.sleep(0.1)
+            
+            # Re-initialize sounddevice (query devices forces re-init)
+            sd.query_devices()
+            
+            # Reload sound cache
+            self._preload_sounds()
+            
+            logger.info("[AUDIO] Audio system recovery completed")
+            
+        except Exception as e:
+            logger.error(f"[AUDIO] Recovery failed: {e}")
+
+    def reload_sounds(self):
+        """Reload sounds from disk (call after changing sound files)"""
+        logger.info("[AUDIO] Reloading sounds...")
+        self._preload_sounds()
+
+    def play_sound(self, sound_type):
+        """Play audio feedback sound (non-blocking, queued)"""
+        if not self.config.get('audio_feedback', True):
+            return
+
+        if sound_type not in self.sound_files:
+            logger.warning(f"[AUDIO] Unknown sound type: {sound_type}")
+            return
 
         volume = self.config.get('sound_volume', 0.5)
-
-        def _play():
-            try:
-                # Read WAV file
-                with wave.open(str(sound_file), 'rb') as wf:
-                    sample_rate = wf.getframerate()
-                    n_channels = wf.getnchannels()
-                    sample_width = wf.getsampwidth()
-                    n_frames = wf.getnframes()
-                    audio_data = wf.readframes(n_frames)
-
-                # Convert to numpy array
-                if sample_width == 1:
-                    dtype = np.uint8
-                elif sample_width == 2:
-                    dtype = np.int16
-                else:
-                    dtype = np.int32
-
-                audio_array = np.frombuffer(audio_data, dtype=dtype).astype(np.float32)
-
-                # Normalize and apply volume
-                if sample_width == 1:
-                    audio_array = (audio_array - 128) / 128.0
-                else:
-                    audio_array = audio_array / (2 ** (sample_width * 8 - 1))
-
-                audio_array = audio_array * volume
-
-                # Reshape for stereo if needed
-                if n_channels == 2:
-                    audio_array = audio_array.reshape(-1, 2)
-
-                # Play with sounddevice
-                sd.play(audio_array, sample_rate)
-
-            except Exception:
-                # Fallback to winsound without volume control
+        
+        # Add to queue (non-blocking)
+        try:
+            # Use put_nowait to avoid blocking if queue is full
+            # Clear queue first to prevent sound backlog (only play latest)
+            while not self.sound_queue.empty():
                 try:
-                    winsound.PlaySound(str(sound_file), winsound.SND_FILENAME | winsound.SND_ASYNC)
-                except Exception:
-                    pass  # Silently ignore audio errors
+                    self.sound_queue.get_nowait()
+                except queue.Empty:
+                    break
+            
+            self.sound_queue.put_nowait((sound_type, volume))
+            logger.debug(f"[AUDIO] Queued: {sound_type}")
+        except queue.Full:
+            logger.warning(f"[AUDIO] Queue full, dropping sound: {sound_type}")
 
-        # Play in background thread
-        threading.Thread(target=_play, daemon=True).start()
+    def stop_sound_worker(self):
+        """Stop the sound worker thread (call on app shutdown)"""
+        logger.info("[AUDIO] Stopping sound worker...")
+        self.sound_worker_running = False
+        self.sound_queue.put(None)  # Shutdown signal
+        if self.sound_worker_thread.is_alive():
+            self.sound_worker_thread.join(timeout=2.0)
 
     def start_recording(self):
         """Start recording audio"""
@@ -3419,18 +3775,40 @@ class DictationApp:
         # Transcribe in background to not block hotkey listener
         def transcribe():
             try:
-                segments, info = self.model.transcribe(
-                    audio,
-                    language=self.config['language'],
-                    beam_size=5,
-                    vad_filter=True,
-                    initial_prompt=self.voice_training_window.get_initial_prompt()
-                )
+                total_start = time.time()
+                audio_duration = len(audio) / self.sample_rate
                 
-                text = "".join([segment.text for segment in segments]).strip()
+                # Get initial prompt (for vocabulary hints)
+                prompt_start = time.time()
+                initial_prompt = self.voice_training_window.get_initial_prompt()
+                prompt_time = time.time() - prompt_start
+                
+                # Get transcription parameters based on performance mode
+                transcribe_params = self.get_transcription_params()
+                perf_mode = self.config.get('performance_mode', 'balanced')
+                
+                transcribe_start = time.time()
+                segments, info = self.model.transcribe(audio, **transcribe_params)
+                
+                # Consume the generator to get all text
+                text_parts = []
+                for segment in segments:
+                    text_parts.append(segment.text)
+                text = "".join(text_parts).strip()
+                transcribe_time = time.time() - transcribe_start
                 
                 # Apply corrections dictionary
+                correct_start = time.time()
                 text = self.voice_training_window.apply_corrections(text)
+                correct_time = time.time() - correct_start
+                
+                total_time = time.time() - total_start
+                
+                # Performance logging
+                rtf = transcribe_time / audio_duration if audio_duration > 0 else 0
+                device_info = getattr(self, 'device_type', 'unknown')
+                print(f"[PERF] Audio: {audio_duration:.1f}s | Transcribe: {transcribe_time*1000:.0f}ms | "
+                      f"RTF: {rtf:.2f}x | Mode: {perf_mode} | Device: {device_info}")
                 
                 if text:
                     # Check for command mode toggle OR regular commands
@@ -3443,7 +3821,9 @@ class DictationApp:
 
                     # Not a command, proceed with dictation
                     # Apply text processing (auto-capitalize, number formatting)
+                    process_start = time.time()
                     text = self.process_transcription(text)
+                    process_time = time.time() - process_start
 
                     if self.config['add_trailing_space']:
                         text = text + " "
@@ -3456,13 +3836,15 @@ class DictationApp:
 
                     if self.config['auto_paste']:
                         pyperclip.copy(text)
-                        time.sleep(0.05)
+                        time.sleep(0.02)  # Reduced from 0.05
                         pyautogui.hotkey('ctrl', 'v')
                 else:
                     print("No speech detected")
 
             except Exception as e:
                 print(f"Transcription error: {e}")
+                import traceback
+                traceback.print_exc()
                 self.play_sound("error")
         
         thread = threading.Thread(target=transcribe, daemon=True)
@@ -3569,7 +3951,13 @@ class DictationApp:
         """Create and run system tray icon"""
         def get_menu():
             """Generate menu dynamically to reflect current state"""
-            mode = self.config.get('mode', 'hold')
+            # Determine current runtime mode (not just config default)
+            if self.wake_word_active:
+                mode = 'wake_word'
+            elif self.continuous_active:
+                mode = 'continuous'
+            else:
+                mode = self.config.get('mode', 'hold')
             
             # Create microphone submenu
             mic_menu_items = []
@@ -3670,6 +4058,7 @@ class DictationApp:
         if self.continuous_active:
             self.stop_continuous_mode()
         self.keyboard_listener.stop()
+        self.stop_sound_worker()  # Clean up audio thread
         self.tray_icon.stop()
         sys.exit(0)
 
