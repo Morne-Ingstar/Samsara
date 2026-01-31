@@ -14,6 +14,7 @@ sounddevice>=0.4.6
 # Core - Input/Output
 numpy>=1.24.0
 pynput>=1.7.6
+keyboard>=0.13.5  # For reliable simultaneous key state detection
 pyperclip>=1.8.2
 pyautogui>=0.9.54
 # Note: pyautogui on Linux may require:
