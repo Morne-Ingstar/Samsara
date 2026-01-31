@@ -1,371 +1,304 @@
-# Samsara Voice Dictation & Control
+# 🔄 Samsara
 
-From the Dev: Hi I'm Morne, and my hands fucking hurt. I have had HSD (Hypermobile Spectrum Disorder) for a decade and using a mouse/keyboard hurts, all the time. But thanks to AI tools (I use Claude mainly) I am now able to make a customizable app that greatly reduces the amount of typing and clicking I need to do. I did this after trying similar paid or freemium apps that did similar things but, they were all specialized and split up and I wanted to have something that combined what these apps did and improved on it, but without having to pay money (I'm disabled and unable to work at the moment due to pain) I'm making this app publically available and open source for free because I hope there are some people like me out there that it can help. If you've read this far thank you so much! All I ask is that if you know someone who could benefit from using this app pass it along. I'd also appreciate feedback and input on ways to improve the app, which I'm going to continue to do regardless. Anyway, the rest of this stuff was written by Claude I'll let him take it from there.
+### Voice Dictation & Control for Accessibility
 
-A powerful Python-based speech-to-text and voice command application designed for accessibility. Uses OpenAI's Whisper model (via faster-whisper) for accurate, fully offline transcription with GPU acceleration.
+[![Python 3.10+](https://img.shields.io/badge/python-3.10+-blue.svg)](https://www.python.org/downloads/)
+[![License: MIT](https://img.shields.io/badge/License-MIT-green.svg)](LICENSE)
+[![Platform](https://img.shields.io/badge/platform-Windows%20%7C%20macOS%20%7C%20Linux-lightgrey.svg)]()
 
-Samsara is designed for people who need hands-free computing - whether due to chronic pain, limited mobility, or simply wanting a more efficient workflow.
+---
 
-## Features
+## 💬 From the Developer
 
-### Speech-to-Text
-- **Offline transcription** using OpenAI's Whisper model - no internet required
-- **GPU acceleration** with CUDA for near-instant transcription
-- **Multiple model sizes** from tiny (fastest) to large-v3 (most accurate)
-- **Auto-paste** transcribed text directly into any application
-- **Voice Activity Detection (VAD)** for cleaner transcriptions
+> Hi, I'm Morne, and my hands fucking hurt.
+>
+> I've had HSD (Hypermobile Spectrum Disorder) for a decade. Using a mouse and keyboard hurts—all the time. But thanks to AI tools, I can now build software that reduces how much I need to type and click.
+>
+> I tried paid apps that do similar things, but they were fragmented, expensive, and didn't quite fit my needs. So I built Samsara—combining everything into one free, open-source tool.
+>
+> I'm making this public because I hope it helps others like me. If you know someone who could benefit, please pass it along. Feedback is always welcome.
+>
+> — Morne
 
-### Dictation Modes
-- **Hold Mode**: Hold your hotkey to record, release to transcribe
-- **Toggle Mode**: Press hotkey to start recording, press again to stop
-- **Continuous Mode**: Always listening, auto-transcribes when you pause speaking
-- **Wake Word Mode**: Hands-free activation with a trigger phrase (e.g., "hey samsara")
+---
 
-See [Docs/WAKE_WORD_GUIDE.md](Docs/WAKE_WORD_GUIDE.md) for detailed mode information.
+## ✨ What is Samsara?
 
-### Voice Commands
-- **40+ built-in commands** for navigation, text editing, and system control
-- **Command types**: Hotkeys, app launchers, key press/hold, mouse clicks
-- **Customizable** - add, edit, or remove commands through the Settings UI
-- **Gaming support** - hold/release keys for continuous movement
+Samsara is a **fully offline** voice dictation and command system powered by OpenAI's Whisper. It's designed for people who need hands-free computing—whether due to chronic pain, limited mobility, RSI, or just wanting a faster workflow.
 
-See [Docs/VOICE_COMMANDS.md](Docs/VOICE_COMMANDS.md) for the full command list.
-See [Docs/CUSTOM_COMMANDS.md](Docs/CUSTOM_COMMANDS.md) for adding your own commands.
+**Key highlights:**
+- 🎤 **Speak, don't type** — Dictate text into any application
+- 🔇 **100% offline** — Your voice never leaves your computer
+- ⚡ **GPU accelerated** — Near-instant transcription with CUDA
+- 🎮 **Voice commands** — Control your computer with 40+ built-in commands
+- 🗣️ **Wake word mode** — Hands-free activation ("Hey Samsara...")
+- 🎨 **Customizable** — Sounds, hotkeys, commands, and more
 
-### Voice Training
-- **Custom vocabulary** - add technical terms, names, or jargon that Whisper often misrecognizes
-- **Corrections dictionary** - auto-replace common transcription errors
-- **Microphone calibration** - visual level monitor and test phrases
-- **Initial prompt customization** - bias Whisper toward your domain
+---
 
-See [Docs/VOICE_TRAINING_FEATURE.md](Docs/VOICE_TRAINING_FEATURE.md) for details.
+## 🚀 Quick Start
 
-### Modern Settings Interface
-- **Tabbed settings window** with CustomTkinter dark theme
-- **General**: Microphone selection, model size, basic options
-- **Hotkeys & Modes**: Configure all keyboard shortcuts and recording modes
-- **Commands**: View, search, add, edit, delete, and test voice commands
-- **Sounds**: Customize audio feedback with your own WAV files
-- **Advanced**: Fine-tune continuous mode, wake word settings
+### 1. Install
 
-### Audio Feedback
-- **Customizable sounds** for recording start, stop, success, and error
-- **WAV file support** - use your own sound files
-- **Quick response** - sounds play immediately on hotkey press
-
-### System Integration
-- **System tray** icon with quick access to all features
-- **Background operation** - runs silently without console window
-- **Auto-start** option available
-- **First-run wizard** for easy setup
-
-## Requirements
-
-- **Python 3.10+**
-- **Windows 10/11, macOS, or Linux**
-- **CUDA-capable GPU** (recommended for Windows/Linux) or CPU-only mode
-- **~2-10GB disk space** for Whisper models (downloaded on first use)
-
-### GPU Requirements by Model
-
-| Model | Speed | Accuracy | VRAM Required |
-|-------|-------|----------|---------------|
-| tiny | Fastest | Basic | ~1GB |
-| base | Fast | Good | ~1GB |
-| small | Medium | Better | ~2GB |
-| medium | Slow | Very Good | ~5GB |
-| large-v3 | Slowest | Best | ~10GB |
-
-## Installation
-
-### 1. Clone the Repository
 ```bash
 git clone https://github.com/Morne-Ingstar/samsara.git
 cd samsara
+pip install -r requirements.txt
 ```
 
-### 2. Install Dependencies
+### 2. Run
 
-#### Windows
+**Windows:** Double-click `_launcher.vbs` (runs silently in background)
+
+**macOS/Linux:** `python dictation.py`
+
+### 3. Use
+
+- Hold **Ctrl+Shift** and speak
+- Release to transcribe
+- Text appears at your cursor
+
+That's it! A setup wizard will guide you through first-time configuration.
+
+---
+
+## 🎯 Features
+
+### Speech-to-Text
+| Feature | Description |
+|---------|-------------|
+| **Offline** | Uses Whisper locally—no internet, no cloud, no data collection |
+| **Fast** | GPU acceleration with CUDA for sub-second transcription |
+| **Accurate** | Multiple model sizes from fast (tiny) to precise (large-v3) |
+| **Smart** | Auto-capitalizes sentences, formats numbers, preserves clipboard |
+
+### Dictation Modes
+| Mode | How it works |
+|------|--------------|
+| **Hold** | Hold hotkey to record, release to transcribe |
+| **Toggle** | Press to start, press again to stop |
+| **Continuous** | Always listening, transcribes when you pause |
+| **Wake Word** | Say "Hey Samsara" to activate hands-free |
+
+### Voice Commands
+40+ built-in commands for hands-free control:
+
+```
+"new line"          → Enter key
+"select all"        → Ctrl+A
+"copy that"         → Ctrl+C
+"paste"             → Ctrl+V
+"undo"              → Ctrl+Z
+"period"            → Inserts .
+"question mark"     → Inserts ?
+"open browser"      → Launches default browser
+```
+
+[See full command list →](Docs/VOICE_COMMANDS.md)
+
+### Sound Themes 🎵
+Four built-in audio themes for feedback sounds:
+
+| Theme | Vibe |
+|-------|------|
+| **cute** | Playful bloops (Nintendo/Duolingo style) |
+| **warm** | Rich chords (OS boot sound vibes) |
+| **zen** | Singing bowls and chimes |
+| **chirpy** | Bright bird-like chirps |
+
+Switch themes in Settings → Sounds. Supports WAV, MP3, OGG, FLAC.
+
+### Voice Training
+- Add custom vocabulary (names, technical terms)
+- Auto-correct common mistranscriptions
+- Calibrate microphone sensitivity
+- Import/export training profiles
+
+---
+
+## 💻 System Requirements
+
+| Component | Minimum | Recommended |
+|-----------|---------|-------------|
+| **OS** | Windows 10, macOS 10.15, Ubuntu 20.04 | Windows 11, macOS 13+, Ubuntu 22.04 |
+| **Python** | 3.10 | 3.11+ |
+| **RAM** | 4 GB | 8 GB+ |
+| **GPU** | None (CPU works) | NVIDIA with 4GB+ VRAM |
+| **Disk** | 2 GB | 10 GB (for larger models) |
+
+### Model Sizes
+
+| Model | Speed | Accuracy | VRAM | Disk |
+|-------|-------|----------|------|------|
+| tiny | ⚡⚡⚡⚡ | ★★☆☆ | ~1 GB | ~75 MB |
+| base | ⚡⚡⚡ | ★★★☆ | ~1 GB | ~150 MB |
+| small | ⚡⚡ | ★★★★ | ~2 GB | ~500 MB |
+| medium | ⚡ | ★★★★☆ | ~5 GB | ~1.5 GB |
+| large-v3 | 🐢 | ★★★★★ | ~10 GB | ~3 GB |
+
+---
+
+## 📦 Installation
+
+### Windows
+
 ```batch
-# Option A: Use the install script
+git clone https://github.com/Morne-Ingstar/samsara.git
+cd samsara
 install.bat
+```
 
-# Option B: Manual installation
+Or manually:
+```batch
 python -m venv venv
 venv\Scripts\activate
 pip install -r requirements.txt
 ```
 
-#### macOS
+### macOS
+
 ```bash
-# Install PortAudio (required for audio capture)
 brew install portaudio
-
-# Create virtual environment and install
+git clone https://github.com/Morne-Ingstar/samsara.git
+cd samsara
 python3 -m venv venv
 source venv/bin/activate
 pip install -r requirements.txt
 ```
 
-#### Linux (Ubuntu/Debian)
-```bash
-# Install system dependencies
-sudo apt-get update
-sudo apt-get install -y python3-dev portaudio19-dev
+### Linux (Ubuntu/Debian)
 
-# Create virtual environment and install
+```bash
+sudo apt-get install python3-dev portaudio19-dev
+git clone https://github.com/Morne-Ingstar/samsara.git
+cd samsara
 python3 -m venv venv
 source venv/bin/activate
 pip install -r requirements.txt
 ```
 
-#### Linux (Fedora/RHEL)
+### Optional: MP3 Support
+
+For MP3/OGG/FLAC sound files:
 ```bash
-# Install system dependencies
-sudo dnf install -y python3-devel portaudio-devel
-
-# Create virtual environment and install
-python3 -m venv venv
-source venv/bin/activate
-pip install -r requirements.txt
+pip install pydub
+# Also install ffmpeg:
+# Windows: choco install ffmpeg  (or download from ffmpeg.org)
+# macOS: brew install ffmpeg
+# Linux: sudo apt install ffmpeg
 ```
 
-### 3. First Run
+---
 
-#### Windows
-Launch using the VBS launcher for silent background operation:
-```
-_launcher.vbs
-```
-
-#### macOS/Linux
-```bash
-source venv/bin/activate
-python dictation.py
-```
-
-Or use the cross-platform launcher:
-```bash
-python samsara_launcher.py
-```
-
-On first run, a setup wizard will guide you through:
-1. Welcome screen
-2. Microphone selection and testing
-3. Hotkey configuration
-4. Model size selection
-
-## Usage
-
-### Launching the App
-
-#### Windows
-**Recommended**: Double-click `_launcher.vbs` for silent background operation (no console window).
-
-You can create a shortcut to `_launcher.vbs` on your desktop or add it to your startup folder.
-
-#### macOS/Linux
-```bash
-python samsara_launcher.py
-# or
-python dictation.py
-```
-
-**Alternative launchers**:
-- `samsara_launcher.py` - Cross-platform GUI launcher
-- Direct Python: `pythonw dictation.py` (silent on Windows) or `python dictation.py` (with console)
-
-### Default Hotkeys
+## ⌨️ Default Hotkeys
 
 | Hotkey | Action |
 |--------|--------|
-| **Ctrl+Shift** | Hold to dictate (in hold mode) |
-| **Ctrl+Alt+D** | Toggle continuous mode |
-| **Ctrl+Alt+W** | Toggle wake word mode |
+| `Ctrl+Shift` | Hold to dictate |
+| `Ctrl+Alt+D` | Toggle continuous mode |
+| `Ctrl+Alt+W` | Toggle wake word mode |
+| `Escape` | Cancel current recording |
 
 All hotkeys are customizable in Settings.
 
-### System Tray
+---
 
-Right-click the Samsara icon in the system tray to:
-- Switch microphones
-- View current mode and model
-- Open Settings
-- Open Voice Training
-- View logs
-- Exit the application
-
-### Quick Start
-
-1. Launch Samsara using `_launcher.vbs`
-2. Hold **Ctrl+Shift** and speak
-3. Release to transcribe - text appears at your cursor
-4. Say commands like "new line", "select all", "copy", "paste"
-
-See [Docs/QUICKSTART.md](Docs/QUICKSTART.md) for a detailed getting started guide.
-
-## Configuration
-
-### Settings File
-Configuration is stored in `config.json`. You can edit this directly or use the Settings window.
-
-### Key Settings
-- `microphone` - Selected input device ID
-- `model_size` - Whisper model (tiny/base/small/medium/large-v3)
-- `mode` - Recording mode (hold/toggle/continuous/wake_word)
-- `hotkey` - Main recording hotkey
-- `language` - Transcription language (default: en)
-- `audio_feedback` - Enable/disable sounds
-
-### Custom Sounds
-Place WAV files in the `sounds/` folder:
-- `start.wav` - Recording started
-- `stop.wav` - Recording stopped
-- `success.wav` - Transcription complete
-- `error.wav` - Error occurred
-
-## File Structure
+## 🗂️ Project Structure
 
 ```
-Samsara/
-    dictation.py          # Main application
-    voice_training.py     # Voice training module
-    commands.json         # Voice command definitions
-    config.json           # User settings (created on first run)
-    requirements.txt      # Python dependencies
-    _launcher.vbs         # Silent launcher (recommended)
-    samsara_launcher.py   # GUI launcher
-    install.bat           # Dependency installer
-    sounds/               # Audio feedback files
-    Docs/                 # Documentation
+samsara/
+├── dictation.py          # Main application
+├── voice_training.py     # Training module
+├── commands.json         # Voice command definitions
+├── config.json           # User settings (auto-created)
+├── requirements.txt      # Dependencies
+├── _launcher.vbs         # Silent Windows launcher
+├── sounds/               # Audio feedback files
+│   └── themes/           # Sound theme folders
+├── samsara/              # Modular components
+│   ├── config.py
+│   ├── audio.py
+│   ├── speech.py
+│   └── commands.py
+└── Docs/                 # Documentation
 ```
 
-See [Docs/FILE_GUIDE.md](Docs/FILE_GUIDE.md) for detailed file descriptions.
+---
 
-## Documentation
+## 📚 Documentation
 
-| Document | Description |
-|----------|-------------|
-| [QUICKSTART.md](Docs/QUICKSTART.md) | Getting started guide |
-| [VOICE_COMMANDS.md](Docs/VOICE_COMMANDS.md) | Full list of voice commands |
-| [CUSTOM_COMMANDS.md](Docs/CUSTOM_COMMANDS.md) | How to add your own commands |
-| [VOICE_TRAINING_FEATURE.md](Docs/VOICE_TRAINING_FEATURE.md) | Voice training and calibration |
-| [WAKE_WORD_GUIDE.md](Docs/WAKE_WORD_GUIDE.md) | Wake word and modes guide |
-| [MICROPHONE_FEATURE.md](Docs/MICROPHONE_FEATURE.md) | Microphone selection details |
-| [FILE_GUIDE.md](Docs/FILE_GUIDE.md) | File structure reference |
+| Guide | Description |
+|-------|-------------|
+| [Quick Start](Docs/QUICKSTART.md) | Get up and running in 5 minutes |
+| [Voice Commands](Docs/VOICE_COMMANDS.md) | Full command reference |
+| [Custom Commands](Docs/CUSTOM_COMMANDS.md) | Create your own commands |
+| [Wake Word Guide](Docs/WAKE_WORD_GUIDE.md) | Hands-free activation setup |
+| [Voice Training](Docs/VOICE_TRAINING_FEATURE.md) | Improve recognition accuracy |
 
-## Platform Notes
+---
 
-### Cross-Platform Support
+## 🐛 Troubleshooting
 
-Samsara is designed to work on Windows, macOS, and Linux. The core functionality (speech recognition, dictation, voice commands) works across all platforms.
+**App won't start?**
+- Run `python dictation.py` directly to see errors
+- Check Python 3.10+ is installed
+- Run `pip install -r requirements.txt`
 
-### Platform-Specific Differences
+**No transcription?**
+- Check microphone in Settings
+- Test mic in Voice Training → Calibration
+- Ensure Whisper model is loaded (check tray tooltip)
 
-| Feature | Windows | macOS | Linux |
-|---------|---------|-------|-------|
-| Silent launcher | `_launcher.vbs` | Use `&` or nohup | Use `&` or nohup |
-| Console hiding | Automatic | N/A | N/A |
-| Auto-start | Startup folder (.vbs) | LaunchAgents (.plist) | XDG autostart (.desktop) |
-| GPU acceleration | CUDA (NVIDIA) | CPU only* | CUDA (NVIDIA) |
-| System tray | Full support | Full support | Requires AppIndicator |
-| Audio fallback | winsound | afplay | paplay/aplay |
-
-*macOS GPU support requires Metal backend which is not yet available in faster-whisper.
-
-### Features with Limited Cross-Platform Support
-
-1. **Console Window Hiding**: Only works on Windows. On macOS/Linux, run with `&` for background execution.
-
-2. **GPU Acceleration**: CUDA is only available on Windows and Linux with NVIDIA GPUs. macOS users should use smaller models (tiny/base) for reasonable performance.
-
-3. **System Tray on Linux**: May require additional packages:
-   ```bash
-   # Ubuntu/Debian
-   sudo apt-get install gir1.2-appindicator3-0.1
-
-   # Fedora
-   sudo dnf install libappindicator-gtk3
-   ```
-
-4. **Global Hotkeys on Linux**: May require X11. Wayland support is limited with pynput.
-
-### macOS-Specific Notes
-
-- **Accessibility Permissions**: You must grant accessibility permissions to your terminal or Python for keyboard monitoring to work.
-  - System Preferences > Security & Privacy > Privacy > Accessibility
-  - Add Terminal.app or your Python executable
-
-- **Microphone Permissions**: Grant microphone access when prompted.
-
-### Linux-Specific Notes
-
-- **Audio Backend**: PulseAudio or ALSA is required for sounddevice.
-- **X11 vs Wayland**: Global hotkeys work best with X11. For Wayland, you may need to run with `XDG_SESSION_TYPE=x11`.
-
-## Troubleshooting
-
-### App won't start
-- Check Python is installed and in PATH
-- Run `pip install -r requirements.txt` to ensure dependencies are installed
-- Try running `python dictation.py` directly to see error messages
-
-### No transcription / silence
-- Check microphone is selected correctly in Settings
-- Test microphone in Voice Training > Calibration
-- Ensure model is loaded (check system tray tooltip)
-
-### Commands not working
-- Verify command mode is enabled in Settings
-- Check the command exists in Commands tab
+**Commands not working?**
+- Enable command mode in Settings
 - Commands are case-insensitive
+- Check Commands tab for available commands
 
-### GPU not detected
-- Install CUDA toolkit matching your GPU
-- Check `nvidia-smi` works in command prompt
-- App will fall back to CPU if GPU unavailable
+**GPU not detected?**
+- Install [CUDA Toolkit](https://developer.nvidia.com/cuda-toolkit)
+- Verify with `nvidia-smi`
+- App falls back to CPU automatically
 
-## Roadmap
+---
 
-Features planned or in development:
+## 🗺️ Roadmap
 
-### Usability
-- [ ] Keyboard shortcut to show/hide app settings
-- [ ] Toast notifications when transcription completes
-- [ ] Word/character count in history
+- [ ] Toast notifications on transcription
 - [ ] Undo last dictation
-- [ ] Dictation statistics (words per day, usage time)
-
-### Transcription
-- [ ] Multiple language switching via tray menu
-- [ ] Spelling mode ("spell charlie alpha tango" -> "cat")
-- [ ] Custom phrase shortcuts ("my email" -> types your email address)
-
-### Voice Commands
-- [ ] Command chaining (e.g., "select all copy")
-- [ ] Repeatable commands ("delete word times three")
+- [ ] Command chaining ("select all copy")
 - [ ] Application-specific commands
-- [ ] Voice command confirmation mode
+- [ ] Spelling mode ("spell c-a-t" → "cat")
+- [ ] Usage statistics dashboard
+- [ ] Plugin system for extensions
 
-### System
-- [ ] Backup/restore all settings
-- [ ] Import/export commands
-- [ ] System resource usage display (RAM/VRAM)
-- [ ] Tray icon color change when recording
-- [ ] Minimize to tray on close option
+---
 
-## License
+## 🤝 Contributing
 
-MIT License - see LICENSE file for details.
+Contributions welcome! Please:
+1. Fork the repository
+2. Create a feature branch
+3. Submit a pull request
 
-## Contributing
+For bugs or feature requests, [open an issue](https://github.com/Morne-Ingstar/samsara/issues).
 
-Contributions welcome! Please open an issue or pull request.
+---
 
-## Acknowledgments
+## 📄 License
 
-- [OpenAI Whisper](https://github.com/openai/whisper) - Speech recognition model
-- [faster-whisper](https://github.com/guillaumekln/faster-whisper) - Optimized Whisper implementation
-- [CustomTkinter](https://github.com/TomSchimansky/CustomTkinter) - Modern UI framework
-- [pynput](https://github.com/moses-palmer/pynput) - Keyboard/mouse control
+MIT License — free for personal and commercial use.
+
+---
+
+## 🙏 Acknowledgments
+
+- [OpenAI Whisper](https://github.com/openai/whisper) — Speech recognition model
+- [faster-whisper](https://github.com/guillaumekln/faster-whisper) — Optimized implementation
+- [CustomTkinter](https://github.com/TomSchimansky/CustomTkinter) — Modern UI framework
+- Built with assistance from [Claude](https://anthropic.com) by Anthropic
+
+---
+
+<p align="center">
+  <i>Named after the Buddhist concept of cyclical existence — Samsara helps break the cycle of repetitive strain.</i>
+</p>
