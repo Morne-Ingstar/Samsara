@@ -10,13 +10,13 @@
 
 ## 💬 From the Developer
 
-> Hi, I'm Morne, and my hands fucking hurt.
+> Hi, I'm Morne. My hands fucking hurt.
 >
-> I've had HSD (Hypermobile Spectrum Disorder) for a decade. Using a mouse and keyboard hurts—all the time. But thanks to AI tools, I can now build software that reduces how much I need to type and click.
+> Decade of HSD (Hypermobile Spectrum Disorder). Typing hurts. Clicking hurts. So I built something that lets me do less of both.
 >
-> I tried paid apps that do similar things, but they were fragmented, expensive, and didn't quite fit my needs. So I built Samsara—combining everything into one free, open-source tool.
+> Existing tools were fragmented, expensive, or just didn't work how I needed. Samsara is what I wanted: one free, offline, open-source app that handles dictation and voice commands together.
 >
-> I'm making this public because I hope it helps others like me. If you know someone who could benefit, please pass it along. Feedback is always welcome.
+> If this helps you or someone you know — that's the point. Feedback welcome.
 >
 > — Morne
 
