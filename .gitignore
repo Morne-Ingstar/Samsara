@@ -39,3 +39,17 @@ nul
 
 # Claude Code
 .claude/
+tmpclaude-*
+
+# Dev-only files
+SATURN_HANDOFF.md
+generate_sounds.py
+generate_sounds_hq.py
+generate_variations.py
+test_clipboard_preservation.py
+
+# Sound dev files
+sounds/backup_old/
+sounds/downloads/
+sounds/test_mixkit.mp3
+sounds/variations/
