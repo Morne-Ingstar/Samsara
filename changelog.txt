@@ -1,6 +1,192 @@
 Samsara Voice Dictation - Changelog
 ====================================
 
+2026-01-30
+----------
+
+### Audio System Overhaul
+- Multi-Format Sound Support
+  - Now supports MP3, OGG, FLAC, M4A in addition to WAV
+  - Requires pydub library and ffmpeg for non-WAV formats
+  - Automatic format detection - just drop files in sounds/ folder
+  - Falls back to WAV-only if pydub not installed
+
+- Sound Theme System
+  - Four built-in themes: cute, warm, zen, chirpy
+  - Theme selector in Settings > Sounds tab
+  - Easy one-click theme switching with preview
+  - Themes stored in sounds/themes/ folder
+  - Create custom themes by adding new theme folders
+
+- Audio Quality Improvements
+  - Fixed start sound not playing (winsound conflict with InputStream)
+  - Added 250ms delay before mic input to let sound complete
+  - High-quality sound generation with proper fade in/out
+  - Silence padding at end of sounds to prevent cutoff artifacts
+
+### Wake Word Improvements
+- Faster Response Time
+  - Reduced silence detection threshold for quicker processing
+  - Configurable wake_detection_silence in config (default 1.2s)
+  - Separate wake_command_timeout for post-wake-word listening (5s)
+
+- Better Speech Capture
+  - Fixed issue where speech after wake word was cut off
+  - Increased silence threshold to capture natural "wake word [pause] command" speech
+  - Added garbage filter to ignore noise/hallucinations (punctuation-only output)
+
+### Settings Persistence Fix
+- Mode changes in Settings now properly take effect
+- Stops old mode and starts new mode when Apply is clicked
+- Runtime state now syncs with saved config
+
+### Exit/Quit Fix
+- Exit from system tray menu now works reliably
+- Uses os._exit() to avoid tkinter thread conflicts
+- Properly stops all active modes before exit
+
+### New Dependencies
+- pydub (optional) - for MP3/OGG/FLAC support
+- ffmpeg (system) - required by pydub for audio decoding
+
+
+2026-01-23
+----------
+
+### Wake Word Dictation Enhancements
+- Pause Word Support (Fully Implemented)
+  - Say pause word during dictation to reset the silence timer
+  - Allows thinking mid-dictation without triggering timeout
+  - Pause word stripped from output, remaining text preserved
+  - Configurable phrase: pause, hold on, wait (custom supported)
+  - Disabled by default, enable in Settings > Advanced
+
+- Dictation Auto-Finalization
+  - For dictate/short dictate modes: auto-outputs text after silence timeout
+  - Uses a finalization timer that restarts on each new speech chunk
+  - Long dictate mode unaffected (still requires end word)
+
+- Wake Word Debug Window Improvements
+  - Timer display showing countdown to timeout (color-coded green to red)
+  - Flow indicator showing current step in the wake word pipeline
+  - Mode selector dropdown to force into a dictation mode for testing
+  - Simulate buttons for end word, cancel word, and pause word
+  - Timer resets properly on pause word and new speech
+
+### Performance
+- Audio Cue Latency Fix (Persistent Stream)
+  - Persistent audio output stream stays open for the lifetime of the app
+  - Sound playback requests queued to a dedicated worker thread
+  - Eliminates device re-acquisition delay that worsened after idle/background
+  - All sounds normalized to 44100 Hz mono at load time (no stream recreation)
+  - Stream auto-recovers if audio device disconnects or errors
+
+### Bug Fixes
+- Clipboard Preservation (Full Format Support)
+  - Uses Windows clipboard API (ctypes) to save/restore ALL clipboard formats
+  - Preserves images, files, rich text, HTML - not just plain text
+  - Applies to both dictation output and voice command text insertion
+  - Previous pyperclip-based approach only preserved plain text strings
+
+
+2026-01-21
+----------
+
+### Major Features
+- Expanded Wake Word System
+  - New nested config structure for all wake word settings
+  - Configurable wake phrase with preset dropdown (samsara, hey samsara, computer, jarvis, etc.)
+  - Custom wake phrase support
+  
+- Dictation Modes
+  - "dictate" - Standard mode with configurable silence timeout (default 2s)
+  - "short dictate" - Quick entry mode with shorter timeout (default 1s)
+  - "long dictate" - Extended dictation that waits for end word (default 60s backup timeout)
+  - Say "samsara dictate" to start, then speak naturally
+  
+- End Word Support
+  - Configurable end word to explicitly finish dictation
+  - Preset options: over, done, go, send, execute, that's all, end dictation
+  - Essential for "long dictate" mode
+  - Automatically stripped from output
+  
+- Cancel Word Support (Optional)
+  - Say cancel word to abort current dictation without output
+  - Preset options: cancel, abort, never mind, scratch that
+  - Disabled by default, enable in Settings
+  
+- Pause Word Support (Optional)
+  - Reserved for future use
+  - Disabled by default
+
+### UI Improvements
+- Expanded Wake Word Settings in Settings → Advanced
+  - Wake phrase dropdown with custom option
+  - End word enable/disable checkbox with dropdown
+  - Cancel word enable/disable checkbox with dropdown
+  - Pause word enable/disable checkbox with dropdown
+  - Separate timeout sliders for each dictation mode
+  - "Test Wake Word..." button for debugging
+
+- Enhanced Wake Word Debug Window
+  - Now shows current wake phrase, end word, and dictation mode
+  - Mode-specific timeout sliders (dictate, short dictate, long dictate)
+  - Shows dictation buffer accumulation in log
+  - Tests end word and cancel word detection
+  - Commands help text on startup
+
+### Technical
+- Config Migration
+  - Old flat wake_word/wake_word_timeout settings auto-migrate to new nested structure
+  - Backwards compatible - existing configs automatically upgraded
+  - New wake_word_config nested object in config.json
+
+
+2026-01-20
+----------
+
+### UI Improvements
+- Profile Manager Window Height Fix
+  - Increased height from 700px to 780px to show Close button without scrolling
+- Save Profile Dialog Height Fix
+  - Increased height from 280px to 320px to fully show Save/Cancel buttons
+- Renamed "Dictionary Profiles" to "Voice Training Profiles"
+  - Clearer naming since profiles include vocabulary, corrections, and prompts
+  - Updated description text accordingly
+
+### New Features
+- Voice Training Button in Settings
+  - Added "Voice Training" section to Settings → General tab
+  - "Open Voice Training..." button for easier access
+  - Previously only accessible from system tray menu
+
+### Bug Fixes
+- Fixed App Not Fully Closing on Exit
+  - Quit now properly closes all open windows (Settings, Voice Training, History, Wake Word Debug)
+  - Destroys hidden root Tkinter window
+  - Prevents orphaned Python process remaining in Task Manager
+  - App can now be relaunched immediately after exit
+
+
+2026-01-15
+----------
+
+### UI Improvements
+- Scrollable Settings Tabs
+  - All Settings tabs (General, Hotkeys & Modes, Sounds, Advanced) now use scrollable frames
+  - Fixes content being cut off at the bottom of tabs
+  - Future-proofs UI for additional settings
+- Model Size Dropdown with Disk Space
+  - Whisper model dropdown now shows approximate disk space for each model
+  - Options: tiny (~75 MB), base (~150 MB), small (~500 MB), medium (~1.5 GB), large-v3 (~3 GB)
+  - Helps users understand storage requirements before downloading
+
+### Development
+- Created Samsara-dev folder for active development
+  - Separate from stable Samsara folder to avoid disrupting daily use
+  - Located at C:\Users\Morne\Projects\Samsara-dev
+
+
 2026-01-11 (Modular Refactoring)
 --------------------------------
 

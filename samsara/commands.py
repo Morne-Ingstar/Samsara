@@ -4,12 +4,18 @@ Samsara Commands Module
 Handles voice command loading, matching, and execution.
 """
 
+import ctypes
 import json
+import sys
 import time
+import threading
 from pathlib import Path
 from typing import Any, Callable, Dict, Optional, Tuple
 
 from . import platform as plat
+
+# Lock to prevent concurrent clipboard operations
+_clipboard_lock = threading.Lock()
 
 # Optional dependencies - may not be available in test environments
 try:
@@ -71,6 +77,103 @@ except ImportError:
     pyperclip = None
     pyautogui = None
     HAS_CLIPBOARD = False
+
+
+def _save_clipboard_win32():
+    """Save all clipboard formats using Windows API. Returns dict of format->bytes."""
+    if sys.platform != 'win32':
+        try:
+            return {'text': pyperclip.paste()} if pyperclip else {}
+        except Exception:
+            return {}
+
+    saved = {}
+    user32 = ctypes.windll.user32
+    kernel32 = ctypes.windll.kernel32
+
+    # Retry logic for clipboard access
+    max_retries = 10
+    retry_delay = 0.03
+    clipboard_opened = False
+    for _ in range(max_retries):
+        if user32.OpenClipboard(0):
+            clipboard_opened = True
+            break
+        time.sleep(retry_delay)
+        retry_delay = min(retry_delay * 1.5, 0.1)
+
+    if not clipboard_opened:
+        return saved
+
+    try:
+        fmt = 0
+        while True:
+            fmt = user32.EnumClipboardFormats(fmt)
+            if fmt == 0:
+                break
+            try:
+                handle = user32.GetClipboardData(fmt)
+                if not handle:
+                    continue
+                size = kernel32.GlobalSize(handle)
+                if size <= 0:
+                    continue
+                ptr = kernel32.GlobalLock(handle)
+                if ptr:
+                    raw = ctypes.string_at(ptr, size)
+                    saved[fmt] = raw
+                    kernel32.GlobalUnlock(handle)
+            except Exception:
+                pass
+    finally:
+        user32.CloseClipboard()
+    return saved
+
+
+def _restore_clipboard_win32(saved):
+    """Restore clipboard formats saved by _save_clipboard_win32."""
+    if not saved:
+        return
+
+    if sys.platform != 'win32':
+        text = saved.get('text')
+        if text and pyperclip:
+            try:
+                pyperclip.copy(text)
+            except Exception:
+                pass
+        return
+
+    user32 = ctypes.windll.user32
+    kernel32 = ctypes.windll.kernel32
+    GMEM_MOVEABLE = 0x0002
+
+    # Retry logic
+    max_retries = 10
+    retry_delay = 0.03
+    for _ in range(max_retries):
+        if user32.OpenClipboard(0):
+            break
+        time.sleep(retry_delay)
+        retry_delay = min(retry_delay * 1.5, 0.1)
+    else:
+        return
+
+    try:
+        user32.EmptyClipboard()
+        for fmt, raw in saved.items():
+            h = kernel32.GlobalAlloc(GMEM_MOVEABLE, len(raw))
+            if not h:
+                continue
+            ptr = kernel32.GlobalLock(h)
+            if ptr:
+                ctypes.memmove(ptr, raw, len(raw))
+                kernel32.GlobalUnlock(h)
+                user32.SetClipboardData(fmt, h)
+            else:
+                kernel32.GlobalFree(h)
+    finally:
+        user32.CloseClipboard()
 
 
 class CommandExecutor:
@@ -285,16 +388,24 @@ class CommandExecutor:
         return success
 
     def _execute_text(self, cmd: Dict[str, Any]) -> bool:
-        """Insert text via clipboard."""
+        """Insert text via clipboard while preserving original clipboard content."""
         if not HAS_CLIPBOARD:
             print("[ERROR] Clipboard not available")
             return False
 
         text_to_insert = cmd.get('text', '')
         if text_to_insert:
-            pyperclip.copy(text_to_insert)
-            time.sleep(0.02)
-            pyautogui.hotkey('ctrl', 'v')
+            with _clipboard_lock:
+                saved = _save_clipboard_win32()
+                try:
+                    pyperclip.copy(text_to_insert)
+                    time.sleep(0.02)
+                    pyautogui.hotkey('ctrl', 'v')
+                    time.sleep(0.4)  # Wait for paste to complete
+                except Exception as e:
+                    print(f"[ERROR] Paste failed: {e}")
+                finally:
+                    _restore_clipboard_win32(saved)
 
         return True
 
