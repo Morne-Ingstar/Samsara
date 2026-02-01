@@ -27,3 +27,9 @@ Pillow>=9.0.0
 
 # Core - UI
 customtkinter>=5.2.0
+
+# Core - Notifications (Windows only, optional on other platforms)
+win10toast-click>=0.1.2; sys_platform == "win32"
+
+# Optional - Multi-format audio support (MP3, OGG, FLAC, etc.)
+pydub>=0.25.1  # Also requires ffmpeg installed on system
