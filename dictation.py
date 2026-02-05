@@ -126,6 +126,7 @@ from samsara.ui.profile_manager_ui import ProfileManagerWindow
 from samsara.ui.wake_word_debug import WakeWordDebugWindow
 from samsara.key_macros import KeyMacroManager, get_default_macro_config
 from samsara.notifications import NotificationManager, get_default_notification_config
+from samsara.clipboard import clipboard_lock as _clipboard_lock, save_clipboard as _save_clipboard_win32, restore_clipboard as _restore_clipboard_win32, paste_with_preservation
 
 
 def hide_console():
@@ -821,121 +822,9 @@ Setup takes about 1 minute."""
 
 
 # ============================================================================
-# Clipboard Save/Restore - preserves all clipboard formats via Windows API
+# Clipboard functions now centralized in samsara/clipboard.py
+# Imported at top: _clipboard_lock, _save_clipboard_win32, _restore_clipboard_win32
 # ============================================================================
-
-# Lock to prevent concurrent clipboard operations (race condition in continuous mode)
-_clipboard_lock = threading.Lock()
-
-def _save_clipboard_win32():
-    """Save all clipboard formats using Windows API. Returns dict of format->bytes."""
-    if sys.platform != 'win32':
-        try:
-            return {'text': pyperclip.paste()}
-        except Exception:
-            return {}
-
-    saved = {}
-    user32 = ctypes.windll.user32
-    kernel32 = ctypes.windll.kernel32
-
-    # Retry logic - clipboard may be locked by another application
-    max_retries = 10
-    retry_delay = 0.03  # Start with 30ms
-    clipboard_opened = False
-    for attempt in range(max_retries):
-        if user32.OpenClipboard(0):
-            clipboard_opened = True
-            break
-        time.sleep(retry_delay)
-        retry_delay = min(retry_delay * 1.5, 0.1)  # Cap at 100ms
-
-    if not clipboard_opened:
-        print("[WARN] Could not open clipboard for save after retries - clipboard content will be lost")
-        return saved
-
-    try:
-        fmt = 0
-        while True:
-            fmt = user32.EnumClipboardFormats(fmt)
-            if fmt == 0:
-                break
-            try:
-                handle = user32.GetClipboardData(fmt)
-                if not handle:
-                    continue
-                size = kernel32.GlobalSize(handle)
-                if size <= 0:
-                    continue
-                ptr = kernel32.GlobalLock(handle)
-                if ptr:
-                    raw = ctypes.string_at(ptr, size)
-                    saved[fmt] = raw
-                    kernel32.GlobalUnlock(handle)
-            except Exception:
-                pass
-    finally:
-        user32.CloseClipboard()
-
-    if saved:
-        print(f"[DEBUG] Clipboard saved: {len(saved)} format(s)")
-    else:
-        print("[DEBUG] Clipboard was empty, nothing to preserve")
-
-    return saved
-
-
-def _restore_clipboard_win32(saved):
-    """Restore clipboard formats saved by _save_clipboard_win32."""
-    if not saved:
-        print("[DEBUG] No clipboard content to restore (was empty)")
-        return
-
-    if sys.platform != 'win32':
-        text = saved.get('text')
-        if text:
-            try:
-                pyperclip.copy(text)
-                print("[DEBUG] Clipboard restored (non-Windows)")
-            except Exception:
-                pass
-        return
-
-    user32 = ctypes.windll.user32
-    kernel32 = ctypes.windll.kernel32
-    GMEM_MOVEABLE = 0x0002
-
-    # Retry logic - clipboard may be locked by paste target
-    max_retries = 10
-    retry_delay = 0.03  # Start with 30ms
-    for attempt in range(max_retries):
-        if user32.OpenClipboard(0):
-            break
-        time.sleep(retry_delay)
-        retry_delay = min(retry_delay * 1.5, 0.1)  # Cap at 100ms
-    else:
-        print("[WARN] Could not open clipboard for restore after retries - original content lost")
-        return
-
-    restored_count = 0
-    try:
-        user32.EmptyClipboard()
-        for fmt, raw in saved.items():
-            h = kernel32.GlobalAlloc(GMEM_MOVEABLE, len(raw))
-            if not h:
-                continue
-            ptr = kernel32.GlobalLock(h)
-            if ptr:
-                ctypes.memmove(ptr, raw, len(raw))
-                kernel32.GlobalUnlock(h)
-                user32.SetClipboardData(fmt, h)
-                restored_count += 1
-            else:
-                kernel32.GlobalFree(h)
-    finally:
-        user32.CloseClipboard()
-
-    print(f"[DEBUG] Clipboard restored: {restored_count}/{len(saved)} format(s)")
 
 
 class CommandExecutor:
