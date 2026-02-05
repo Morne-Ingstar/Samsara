@@ -10,6 +10,7 @@ from pathlib import Path
 from typing import Any, Callable, Dict, Optional, Tuple
 
 from . import platform as plat
+from .clipboard import clipboard_lock as _clipboard_lock, save_clipboard as _save_clipboard_win32, restore_clipboard as _restore_clipboard_win32
 
 # Optional dependencies - may not be available in test environments
 try:
@@ -285,16 +286,24 @@ class CommandExecutor:
         return success
 
     def _execute_text(self, cmd: Dict[str, Any]) -> bool:
-        """Insert text via clipboard."""
+        """Insert text via clipboard while preserving original clipboard content."""
         if not HAS_CLIPBOARD:
             print("[ERROR] Clipboard not available")
             return False
 
         text_to_insert = cmd.get('text', '')
         if text_to_insert:
-            pyperclip.copy(text_to_insert)
-            time.sleep(0.02)
-            pyautogui.hotkey('ctrl', 'v')
+            with _clipboard_lock:
+                saved = _save_clipboard_win32()
+                try:
+                    pyperclip.copy(text_to_insert)
+                    time.sleep(0.02)
+                    pyautogui.hotkey('ctrl', 'v')
+                    time.sleep(0.4)  # Wait for paste to complete
+                except Exception as e:
+                    print(f"[ERROR] Paste failed: {e}")
+                finally:
+                    _restore_clipboard_win32(saved)
 
         return True
 
