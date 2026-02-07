@@ -128,6 +128,18 @@ def save_clipboard() -> Dict[int, bytes]:
         print("[WARN] Could not open clipboard for save after retries")
         return saved
     
+    # Formats that are NOT GlobalAlloc memory handles - calling GlobalSize/GlobalLock on these
+    # can cause heap corruption crashes. Only save formats that are actual memory blocks.
+    # Standard clipboard formats that use memory handles:
+    SAFE_FORMATS = {
+        1,   # CF_TEXT
+        7,   # CF_OEMTEXT
+        13,  # CF_UNICODETEXT
+        16,  # CF_LOCALE
+    }
+    # Additional registered text formats we can safely handle
+    # Formats above 0xC000 are registered formats - we'll try common text ones
+    
     try:
         fmt = 0
         while True:
@@ -135,13 +147,19 @@ def save_clipboard() -> Dict[int, bytes]:
             if fmt == 0:
                 break
             
+            # Skip formats that aren't memory handles
+            # Low formats (2-6, 8-12, 14-15, 17) include bitmaps, metafiles, etc.
+            # that use special handles, not GlobalAlloc memory
+            if fmt not in SAFE_FORMATS and fmt < 0xC000:
+                continue
+            
             try:
                 handle = _user32.GetClipboardData(fmt)
                 if not handle:
                     continue
                 
                 size = _kernel32.GlobalSize(handle)
-                if size <= 0:
+                if size <= 0 or size > 100 * 1024 * 1024:  # Skip invalid or >100MB
                     continue
                 
                 ptr = _kernel32.GlobalLock(handle)
