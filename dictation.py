@@ -2800,6 +2800,7 @@ class DictationApp:
         self.model = None
         self.model_loaded = False
         self.loading_model = False
+        self.model_lock = threading.Lock()  # Thread lock for model.transcribe() calls
         
         # Command system
         commands_path = Path(__file__).parent / "commands.json"
@@ -3565,53 +3566,59 @@ class DictationApp:
 
     def continuous_audio_callback(self, indata, frames, time_info, status):
         """Callback for continuous listening - detects speech and silence"""
-        if not self.continuous_active:
-            return
-        
-        # Calculate RMS energy to detect speech
-        audio_chunk = indata.copy().flatten()
-        rms = np.sqrt(np.mean(audio_chunk**2))
-        
-        # Threshold for speech detection (adjust as needed)
-        speech_threshold = 0.01
-        silence_threshold = self.config.get('silence_threshold', 2.0)
-        min_speech = self.config.get('min_speech_duration', 0.3)
+        try:
+            if status:
+                print(f"[WARN] Audio status: {status}")
+            
+            if not self.continuous_active:
+                return
+            
+            # Calculate RMS energy to detect speech
+            audio_chunk = indata.copy().flatten()
+            rms = np.sqrt(np.mean(audio_chunk**2))
+            
+            # Threshold for speech detection (adjust as needed)
+            speech_threshold = 0.01
+            silence_threshold = self.config.get('silence_threshold', 2.0)
+            min_speech = self.config.get('min_speech_duration', 0.3)
 
-        if rms > speech_threshold:
-            # Speech detected
-            self.is_speaking = True
-            self.silence_start = None
-            self.speech_buffer.append(audio_chunk)
-        else:
-            # Silence detected
-            if self.is_speaking:
-                # Still capture some silence at the end for context
+            if rms > speech_threshold:
+                # Speech detected
+                self.is_speaking = True
+                self.silence_start = None
                 self.speech_buffer.append(audio_chunk)
-                
-                if self.silence_start is None:
-                    self.silence_start = time.time()
-                elif time.time() - self.silence_start >= silence_threshold:
-                    # Enough silence - check if we have enough speech
-                    speech_duration = len(self.speech_buffer) * 0.1  # Each block is 100ms
+            else:
+                # Silence detected
+                if self.is_speaking:
+                    # Still capture some silence at the end for context
+                    self.speech_buffer.append(audio_chunk)
                     
-                    if speech_duration >= min_speech:
-                        # Transcribe in background
-                        buffer_copy = self.speech_buffer.copy()
-                        self.speech_buffer = []
-                        self.is_speaking = False
-                        self.silence_start = None
+                    if self.silence_start is None:
+                        self.silence_start = time.time()
+                    elif time.time() - self.silence_start >= silence_threshold:
+                        # Enough silence - check if we have enough speech
+                        speech_duration = len(self.speech_buffer) * 0.1  # Each block is 100ms
                         
-                        thread = threading.Thread(
-                            target=self.transcribe_continuous_buffer,
-                            args=(buffer_copy,),
-                            daemon=True
-                        )
-                        thread.start()
-                    else:
-                        # Not enough speech, discard
-                        self.speech_buffer = []
-                        self.is_speaking = False
-                        self.silence_start = None
+                        if speech_duration >= min_speech:
+                            # Transcribe in background
+                            buffer_copy = self.speech_buffer.copy()
+                            self.speech_buffer = []
+                            self.is_speaking = False
+                            self.silence_start = None
+                            
+                            thread = threading.Thread(
+                                target=self.transcribe_continuous_buffer,
+                                args=(buffer_copy,),
+                                daemon=True
+                            )
+                            thread.start()
+                        else:
+                            # Not enough speech, discard
+                            self.speech_buffer = []
+                            self.is_speaking = False
+                            self.silence_start = None
+        except Exception as e:
+            print(f"[ERROR] Audio callback exception: {e}")
 
     def transcribe_continuous_buffer(self, buffer):
         """Transcribe a buffer from continuous mode"""
@@ -3624,7 +3631,8 @@ class DictationApp:
             perf_mode = self.config.get('performance_mode', 'balanced')
             
             transcribe_start = time.time()
-            segments, info = self.model.transcribe(audio, **transcribe_params)
+            with self.model_lock:
+                segments, info = self.model.transcribe(audio, **transcribe_params)
             
             text = "".join([segment.text for segment in segments]).strip()
             transcribe_time = time.time() - transcribe_start
@@ -3736,61 +3744,67 @@ class DictationApp:
 
     def wake_word_audio_callback(self, indata, frames, time_info, status):
         """Callback for wake word listening"""
-        if not self.wake_word_active:
-            return
-        
-        audio_chunk = indata.copy().flatten()
-        rms = np.sqrt(np.mean(audio_chunk**2))
-        
-        # Get thresholds from config
-        ww_config = self.config.get('wake_word_config', {})
-        audio_config = ww_config.get('audio', {})
-        speech_threshold = audio_config.get('speech_threshold', 0.01)
-        min_speech = audio_config.get('min_speech_duration', 0.3)
-        
-        # Use dynamic silence timeout if in dictation mode, otherwise use fast wake detection
-        if hasattr(self, '_dictation_silence_timeout') and self._dictation_silence_timeout:
-            # In dictation mode - use mode-specific timeout
-            silence_threshold = self._dictation_silence_timeout
-        else:
-            # Not in dictation mode - use longer threshold to capture natural speech
-            # (people pause between wake word and command, e.g., "Saturn [pause] hello world")
-            silence_threshold = audio_config.get('wake_detection_silence', 1.2)
-        
-        if rms > speech_threshold:
-            # Speech detected
-            self.is_speaking = True
-            self.silence_start = None
-            self.speech_buffer.append(audio_chunk)
-        else:
-            # Silence detected
-            if self.is_speaking:
+        try:
+            if status:
+                print(f"[WARN] Audio status: {status}")
+            
+            if not self.wake_word_active:
+                return
+            
+            audio_chunk = indata.copy().flatten()
+            rms = np.sqrt(np.mean(audio_chunk**2))
+            
+            # Get thresholds from config
+            ww_config = self.config.get('wake_word_config', {})
+            audio_config = ww_config.get('audio', {})
+            speech_threshold = audio_config.get('speech_threshold', 0.01)
+            min_speech = audio_config.get('min_speech_duration', 0.3)
+            
+            # Use dynamic silence timeout if in dictation mode, otherwise use fast wake detection
+            if hasattr(self, '_dictation_silence_timeout') and self._dictation_silence_timeout:
+                # In dictation mode - use mode-specific timeout
+                silence_threshold = self._dictation_silence_timeout
+            else:
+                # Not in dictation mode - use longer threshold to capture natural speech
+                # (people pause between wake word and command, e.g., "Saturn [pause] hello world")
+                silence_threshold = audio_config.get('wake_detection_silence', 1.2)
+            
+            if rms > speech_threshold:
+                # Speech detected
+                self.is_speaking = True
+                self.silence_start = None
                 self.speech_buffer.append(audio_chunk)
-                
-                if self.silence_start is None:
-                    self.silence_start = time.time()
-                elif time.time() - self.silence_start >= silence_threshold:
-                    # Enough silence - check if we have enough speech
-                    speech_duration = len(self.speech_buffer) * 0.1
+            else:
+                # Silence detected
+                if self.is_speaking:
+                    self.speech_buffer.append(audio_chunk)
                     
-                    if speech_duration >= min_speech:
-                        # Transcribe to check for wake word or command
-                        buffer_copy = self.speech_buffer.copy()
-                        self.speech_buffer = []
-                        self.is_speaking = False
-                        self.silence_start = None
+                    if self.silence_start is None:
+                        self.silence_start = time.time()
+                    elif time.time() - self.silence_start >= silence_threshold:
+                        # Enough silence - check if we have enough speech
+                        speech_duration = len(self.speech_buffer) * 0.1
                         
-                        thread = threading.Thread(
-                            target=self.process_wake_word_buffer,
-                            args=(buffer_copy,),
-                            daemon=True
-                        )
-                        thread.start()
-                    else:
-                        # Not enough speech, discard
-                        self.speech_buffer = []
-                        self.is_speaking = False
-                        self.silence_start = None
+                        if speech_duration >= min_speech:
+                            # Transcribe to check for wake word or command
+                            buffer_copy = self.speech_buffer.copy()
+                            self.speech_buffer = []
+                            self.is_speaking = False
+                            self.silence_start = None
+                            
+                            thread = threading.Thread(
+                                target=self.process_wake_word_buffer,
+                                args=(buffer_copy,),
+                                daemon=True
+                            )
+                            thread.start()
+                        else:
+                            # Not enough speech, discard
+                            self.speech_buffer = []
+                            self.is_speaking = False
+                            self.silence_start = None
+        except Exception as e:
+            print(f"[ERROR] Audio callback exception: {e}")
     
     def process_wake_word_buffer(self, buffer):
         """Process audio - check for wake word, commands, or dictation content"""
@@ -3803,7 +3817,8 @@ class DictationApp:
             perf_mode = self.config.get('performance_mode', 'balanced')
             
             transcribe_start = time.time()
-            segments, info = self.model.transcribe(audio, **transcribe_params)
+            with self.model_lock:
+                segments, info = self.model.transcribe(audio, **transcribe_params)
             
             text = "".join([segment.text for segment in segments]).strip()
             transcribe_time = time.time() - transcribe_start
@@ -4125,8 +4140,14 @@ class DictationApp:
 
     def audio_callback(self, indata, frames, time_info, status):
         """Callback for audio stream (hold/toggle mode)"""
-        if self.recording:
-            self.audio_data.append(indata.copy())
+        try:
+            if status:
+                print(f"[WARN] Audio status: {status}")
+            
+            if self.recording:
+                self.audio_data.append(indata.copy())
+        except Exception as e:
+            print(f"[ERROR] Audio callback exception: {e}")
 
     def _setup_sounds(self):
         """Set up sound files - create defaults if needed"""
@@ -4507,7 +4528,8 @@ class DictationApp:
                 perf_mode = self.config.get('performance_mode', 'balanced')
                 
                 transcribe_start = time.time()
-                segments, info = self.model.transcribe(audio, **transcribe_params)
+                with self.model_lock:
+                    segments, info = self.model.transcribe(audio, **transcribe_params)
                 
                 text = "".join([segment.text for segment in segments]).strip()
                 transcribe_time = time.time() - transcribe_start

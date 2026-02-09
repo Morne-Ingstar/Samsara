@@ -1,6 +1,26 @@
 Samsara Voice Dictation - Changelog
 ====================================
 
+2026-02-08
+----------
+
+### Stability Improvements
+- Audio Callback Exception Handling
+  - Added try/except wrappers to all three audio callbacks
+  - `continuous_audio_callback`, `wake_word_audio_callback`, `audio_callback`
+  - Prevents silent crashes during audio processing
+  - Logs errors with `[ERROR] Audio callback exception:` prefix
+  - Added sounddevice status warnings for xrun/buffer issues
+
+- Thread Safety for Model Transcription
+  - Added `model_lock` mutex for Whisper transcribe calls
+  - Prevents race conditions when multiple recordings complete simultaneously
+  - All three transcribe locations now protected:
+    - `process_continuous_buffer()`
+    - `process_wake_word_buffer()`
+    - `stop_recording()` transcribe closure
+
+
 2026-02-04
 ----------
 
