@@ -126,6 +126,7 @@ from samsara.ui.profile_manager_ui import ProfileManagerWindow
 from samsara.ui.wake_word_debug import WakeWordDebugWindow
 from samsara.key_macros import KeyMacroManager, get_default_macro_config
 from samsara.notifications import NotificationManager, get_default_notification_config
+from samsara.clipboard import clipboard_lock as _clipboard_lock, save_clipboard as _save_clipboard_win32, restore_clipboard as _restore_clipboard_win32, paste_with_preservation
 
 
 def hide_console():
@@ -821,121 +822,9 @@ Setup takes about 1 minute."""
 
 
 # ============================================================================
-# Clipboard Save/Restore - preserves all clipboard formats via Windows API
+# Clipboard functions now centralized in samsara/clipboard.py
+# Imported at top: _clipboard_lock, _save_clipboard_win32, _restore_clipboard_win32
 # ============================================================================
-
-# Lock to prevent concurrent clipboard operations (race condition in continuous mode)
-_clipboard_lock = threading.Lock()
-
-def _save_clipboard_win32():
-    """Save all clipboard formats using Windows API. Returns dict of format->bytes."""
-    if sys.platform != 'win32':
-        try:
-            return {'text': pyperclip.paste()}
-        except Exception:
-            return {}
-
-    saved = {}
-    user32 = ctypes.windll.user32
-    kernel32 = ctypes.windll.kernel32
-
-    # Retry logic - clipboard may be locked by another application
-    max_retries = 10
-    retry_delay = 0.03  # Start with 30ms
-    clipboard_opened = False
-    for attempt in range(max_retries):
-        if user32.OpenClipboard(0):
-            clipboard_opened = True
-            break
-        time.sleep(retry_delay)
-        retry_delay = min(retry_delay * 1.5, 0.1)  # Cap at 100ms
-
-    if not clipboard_opened:
-        print("[WARN] Could not open clipboard for save after retries - clipboard content will be lost")
-        return saved
-
-    try:
-        fmt = 0
-        while True:
-            fmt = user32.EnumClipboardFormats(fmt)
-            if fmt == 0:
-                break
-            try:
-                handle = user32.GetClipboardData(fmt)
-                if not handle:
-                    continue
-                size = kernel32.GlobalSize(handle)
-                if size <= 0:
-                    continue
-                ptr = kernel32.GlobalLock(handle)
-                if ptr:
-                    raw = ctypes.string_at(ptr, size)
-                    saved[fmt] = raw
-                    kernel32.GlobalUnlock(handle)
-            except Exception:
-                pass
-    finally:
-        user32.CloseClipboard()
-
-    if saved:
-        print(f"[DEBUG] Clipboard saved: {len(saved)} format(s)")
-    else:
-        print("[DEBUG] Clipboard was empty, nothing to preserve")
-
-    return saved
-
-
-def _restore_clipboard_win32(saved):
-    """Restore clipboard formats saved by _save_clipboard_win32."""
-    if not saved:
-        print("[DEBUG] No clipboard content to restore (was empty)")
-        return
-
-    if sys.platform != 'win32':
-        text = saved.get('text')
-        if text:
-            try:
-                pyperclip.copy(text)
-                print("[DEBUG] Clipboard restored (non-Windows)")
-            except Exception:
-                pass
-        return
-
-    user32 = ctypes.windll.user32
-    kernel32 = ctypes.windll.kernel32
-    GMEM_MOVEABLE = 0x0002
-
-    # Retry logic - clipboard may be locked by paste target
-    max_retries = 10
-    retry_delay = 0.03  # Start with 30ms
-    for attempt in range(max_retries):
-        if user32.OpenClipboard(0):
-            break
-        time.sleep(retry_delay)
-        retry_delay = min(retry_delay * 1.5, 0.1)  # Cap at 100ms
-    else:
-        print("[WARN] Could not open clipboard for restore after retries - original content lost")
-        return
-
-    restored_count = 0
-    try:
-        user32.EmptyClipboard()
-        for fmt, raw in saved.items():
-            h = kernel32.GlobalAlloc(GMEM_MOVEABLE, len(raw))
-            if not h:
-                continue
-            ptr = kernel32.GlobalLock(h)
-            if ptr:
-                ctypes.memmove(ptr, raw, len(raw))
-                kernel32.GlobalUnlock(h)
-                user32.SetClipboardData(fmt, h)
-                restored_count += 1
-            else:
-                kernel32.GlobalFree(h)
-    finally:
-        user32.CloseClipboard()
-
-    print(f"[DEBUG] Clipboard restored: {restored_count}/{len(saved)} format(s)")
 
 
 class CommandExecutor:
@@ -1399,12 +1288,16 @@ class SettingsWindow:
 
         # Determine current runtime mode (not just config default)
         # Runtime state overrides config if a mode is actively toggled
-        if self.app.wake_word_active:
+        # Note: combined mode also has wake_word_active=True, so check config first
+        config_mode = self.app.config.get('mode', 'hold')
+        if config_mode == 'combined' and self.app.wake_word_active:
+            current_mode = 'combined'
+        elif self.app.wake_word_active:
             current_mode = 'wake_word'
         elif self.app.continuous_active:
             current_mode = 'continuous'
         else:
-            current_mode = self.app.config.get('mode', 'hold')
+            current_mode = config_mode
         
         self.mode_var = tk.StringVar(value=current_mode)
 
@@ -1415,7 +1308,9 @@ class SettingsWindow:
         ctk.CTkRadioButton(mode_frame, text="Continuous (auto-transcribe on speech pause)",
                           variable=self.mode_var, value='continuous').pack(anchor='w', padx=15, pady=(0, 8))
         ctk.CTkRadioButton(mode_frame, text="Wake word (hands-free activation)",
-                          variable=self.mode_var, value='wake_word').pack(anchor='w', padx=15, pady=(0, 15))
+                          variable=self.mode_var, value='wake_word').pack(anchor='w', padx=15, pady=(0, 8))
+        ctk.CTkRadioButton(mode_frame, text="Combined (wake word + hold-to-record hotkey)",
+                          variable=self.mode_var, value='combined').pack(anchor='w', padx=15, pady=(0, 15))
 
         # Keyboard Shortcuts Section
         hotkey_label = ctk.CTkLabel(hotkey_scroll, text="Keyboard Shortcuts", font=ctk.CTkFont(size=16, weight="bold"))
@@ -2004,8 +1899,9 @@ class SettingsWindow:
         # Apply mode change at runtime - deactivate modes that don't match new selection
         new_mode = self.mode_var.get()
         
-        # Stop wake word mode if it was active but new mode is different
-        if self.app.wake_word_active and new_mode != 'wake_word':
+        # Stop wake word mode if it was active but new mode doesn't need it
+        # (wake_word and combined both use wake word listening)
+        if self.app.wake_word_active and new_mode not in ('wake_word', 'combined'):
             self.app.stop_wake_word_mode()
             print(f"[MODE] Deactivated wake word mode")
         
@@ -2014,10 +1910,14 @@ class SettingsWindow:
             self.app.stop_continuous_mode()
             print(f"[MODE] Deactivated continuous mode")
         
-        # Activate the new mode if it's wake_word or continuous
+        # Activate the new mode if it requires wake_word or continuous
         if new_mode == 'wake_word' and not self.app.wake_word_active:
             self.app.start_wake_word_mode()
             print(f"[MODE] Activated wake word mode")
+        elif new_mode == 'combined' and not self.app.wake_word_active:
+            # Combined mode: start wake word listener, hotkey will also work
+            self.app.start_wake_word_mode()
+            print(f"[MODE] Activated combined mode (wake word + hotkey)")
         elif new_mode == 'continuous' and not self.app.continuous_active:
             self.app.start_continuous_mode()
             print(f"[MODE] Activated continuous mode")
@@ -2911,6 +2811,7 @@ class DictationApp:
         self.model = None
         self.model_loaded = False
         self.loading_model = False
+        self.model_lock = threading.Lock()  # Thread lock for model.transcribe() calls
         
         # Command system
         commands_path = Path(__file__).parent / "commands.json"
@@ -3430,6 +3331,18 @@ class DictationApp:
             self.loading_model = False
             print(f"[OK] Model loaded in {load_time:.1f}s ({device}, {compute_type})")
             print("Ready for dictation.")
+            
+            # Auto-start modes that require always-on listening
+            mode = self.config.get('mode', 'hold')
+            if mode == 'wake_word':
+                print("[AUTO] Starting wake word mode...")
+                self.start_wake_word_mode()
+            elif mode == 'combined':
+                print("[AUTO] Starting combined mode (wake word + hotkey)...")
+                self.start_wake_word_mode()
+            elif mode == 'continuous':
+                print("[AUTO] Starting continuous mode...")
+                self.start_continuous_mode()
         
         thread = threading.Thread(target=load, daemon=True)
         thread.start()
@@ -3589,6 +3502,11 @@ class DictationApp:
                 # In wake word mode, main hotkey toggles wake word listening
                 self.hotkey_pressed = True
                 self.toggle_wake_word_mode()
+            elif mode == 'combined':
+                # Combined mode: hotkey works like hold mode for on-demand recording
+                # Wake word listener runs separately via continuous_stream
+                self.hotkey_pressed = True
+                self.start_recording()
     
     def on_key_release(self, key):
         """Handle key release - uses state-based checking for reliable detection"""
@@ -3611,7 +3529,7 @@ class DictationApp:
         
         if not main_pressed and not cont_pressed and not wake_pressed:
             if self.hotkey_pressed:
-                if mode == 'hold' and self.recording:
+                if (mode == 'hold' or mode == 'combined') and self.recording:
                     print(f"[HOTKEY] Main hotkey released, stopping recording")
                     self.stop_recording()
                 self.hotkey_pressed = False
@@ -3676,53 +3594,59 @@ class DictationApp:
 
     def continuous_audio_callback(self, indata, frames, time_info, status):
         """Callback for continuous listening - detects speech and silence"""
-        if not self.continuous_active:
-            return
-        
-        # Calculate RMS energy to detect speech
-        audio_chunk = indata.copy().flatten()
-        rms = np.sqrt(np.mean(audio_chunk**2))
-        
-        # Threshold for speech detection (adjust as needed)
-        speech_threshold = 0.01
-        silence_threshold = self.config.get('silence_threshold', 2.0)
-        min_speech = self.config.get('min_speech_duration', 0.3)
+        try:
+            if status:
+                print(f"[WARN] Audio status: {status}")
+            
+            if not self.continuous_active:
+                return
+            
+            # Calculate RMS energy to detect speech
+            audio_chunk = indata.copy().flatten()
+            rms = np.sqrt(np.mean(audio_chunk**2))
+            
+            # Threshold for speech detection (adjust as needed)
+            speech_threshold = 0.01
+            silence_threshold = self.config.get('silence_threshold', 2.0)
+            min_speech = self.config.get('min_speech_duration', 0.3)
 
-        if rms > speech_threshold:
-            # Speech detected
-            self.is_speaking = True
-            self.silence_start = None
-            self.speech_buffer.append(audio_chunk)
-        else:
-            # Silence detected
-            if self.is_speaking:
-                # Still capture some silence at the end for context
+            if rms > speech_threshold:
+                # Speech detected
+                self.is_speaking = True
+                self.silence_start = None
                 self.speech_buffer.append(audio_chunk)
-                
-                if self.silence_start is None:
-                    self.silence_start = time.time()
-                elif time.time() - self.silence_start >= silence_threshold:
-                    # Enough silence - check if we have enough speech
-                    speech_duration = len(self.speech_buffer) * 0.1  # Each block is 100ms
+            else:
+                # Silence detected
+                if self.is_speaking:
+                    # Still capture some silence at the end for context
+                    self.speech_buffer.append(audio_chunk)
                     
-                    if speech_duration >= min_speech:
-                        # Transcribe in background
-                        buffer_copy = self.speech_buffer.copy()
-                        self.speech_buffer = []
-                        self.is_speaking = False
-                        self.silence_start = None
+                    if self.silence_start is None:
+                        self.silence_start = time.time()
+                    elif time.time() - self.silence_start >= silence_threshold:
+                        # Enough silence - check if we have enough speech
+                        speech_duration = len(self.speech_buffer) * 0.1  # Each block is 100ms
                         
-                        thread = threading.Thread(
-                            target=self.transcribe_continuous_buffer,
-                            args=(buffer_copy,),
-                            daemon=True
-                        )
-                        thread.start()
-                    else:
-                        # Not enough speech, discard
-                        self.speech_buffer = []
-                        self.is_speaking = False
-                        self.silence_start = None
+                        if speech_duration >= min_speech:
+                            # Transcribe in background
+                            buffer_copy = self.speech_buffer.copy()
+                            self.speech_buffer = []
+                            self.is_speaking = False
+                            self.silence_start = None
+                            
+                            thread = threading.Thread(
+                                target=self.transcribe_continuous_buffer,
+                                args=(buffer_copy,),
+                                daemon=True
+                            )
+                            thread.start()
+                        else:
+                            # Not enough speech, discard
+                            self.speech_buffer = []
+                            self.is_speaking = False
+                            self.silence_start = None
+        except Exception as e:
+            print(f"[ERROR] Audio callback exception: {e}")
 
     def transcribe_continuous_buffer(self, buffer):
         """Transcribe a buffer from continuous mode"""
@@ -3735,7 +3659,8 @@ class DictationApp:
             perf_mode = self.config.get('performance_mode', 'balanced')
             
             transcribe_start = time.time()
-            segments, info = self.model.transcribe(audio, **transcribe_params)
+            with self.model_lock:
+                segments, info = self.model.transcribe(audio, **transcribe_params)
             
             text = "".join([segment.text for segment in segments]).strip()
             transcribe_time = time.time() - transcribe_start
@@ -3847,61 +3772,67 @@ class DictationApp:
 
     def wake_word_audio_callback(self, indata, frames, time_info, status):
         """Callback for wake word listening"""
-        if not self.wake_word_active:
-            return
-        
-        audio_chunk = indata.copy().flatten()
-        rms = np.sqrt(np.mean(audio_chunk**2))
-        
-        # Get thresholds from config
-        ww_config = self.config.get('wake_word_config', {})
-        audio_config = ww_config.get('audio', {})
-        speech_threshold = audio_config.get('speech_threshold', 0.01)
-        min_speech = audio_config.get('min_speech_duration', 0.3)
-        
-        # Use dynamic silence timeout if in dictation mode, otherwise use fast wake detection
-        if hasattr(self, '_dictation_silence_timeout') and self._dictation_silence_timeout:
-            # In dictation mode - use mode-specific timeout
-            silence_threshold = self._dictation_silence_timeout
-        else:
-            # Not in dictation mode - use longer threshold to capture natural speech
-            # (people pause between wake word and command, e.g., "Saturn [pause] hello world")
-            silence_threshold = audio_config.get('wake_detection_silence', 1.2)
-        
-        if rms > speech_threshold:
-            # Speech detected
-            self.is_speaking = True
-            self.silence_start = None
-            self.speech_buffer.append(audio_chunk)
-        else:
-            # Silence detected
-            if self.is_speaking:
+        try:
+            if status:
+                print(f"[WARN] Audio status: {status}")
+            
+            if not self.wake_word_active:
+                return
+            
+            audio_chunk = indata.copy().flatten()
+            rms = np.sqrt(np.mean(audio_chunk**2))
+            
+            # Get thresholds from config
+            ww_config = self.config.get('wake_word_config', {})
+            audio_config = ww_config.get('audio', {})
+            speech_threshold = audio_config.get('speech_threshold', 0.01)
+            min_speech = audio_config.get('min_speech_duration', 0.3)
+            
+            # Use dynamic silence timeout if in dictation mode, otherwise use fast wake detection
+            if hasattr(self, '_dictation_silence_timeout') and self._dictation_silence_timeout:
+                # In dictation mode - use mode-specific timeout
+                silence_threshold = self._dictation_silence_timeout
+            else:
+                # Not in dictation mode - use longer threshold to capture natural speech
+                # (people pause between wake word and command, e.g., "Saturn [pause] hello world")
+                silence_threshold = audio_config.get('wake_detection_silence', 1.2)
+            
+            if rms > speech_threshold:
+                # Speech detected
+                self.is_speaking = True
+                self.silence_start = None
                 self.speech_buffer.append(audio_chunk)
-                
-                if self.silence_start is None:
-                    self.silence_start = time.time()
-                elif time.time() - self.silence_start >= silence_threshold:
-                    # Enough silence - check if we have enough speech
-                    speech_duration = len(self.speech_buffer) * 0.1
+            else:
+                # Silence detected
+                if self.is_speaking:
+                    self.speech_buffer.append(audio_chunk)
                     
-                    if speech_duration >= min_speech:
-                        # Transcribe to check for wake word or command
-                        buffer_copy = self.speech_buffer.copy()
-                        self.speech_buffer = []
-                        self.is_speaking = False
-                        self.silence_start = None
+                    if self.silence_start is None:
+                        self.silence_start = time.time()
+                    elif time.time() - self.silence_start >= silence_threshold:
+                        # Enough silence - check if we have enough speech
+                        speech_duration = len(self.speech_buffer) * 0.1
                         
-                        thread = threading.Thread(
-                            target=self.process_wake_word_buffer,
-                            args=(buffer_copy,),
-                            daemon=True
-                        )
-                        thread.start()
-                    else:
-                        # Not enough speech, discard
-                        self.speech_buffer = []
-                        self.is_speaking = False
-                        self.silence_start = None
+                        if speech_duration >= min_speech:
+                            # Transcribe to check for wake word or command
+                            buffer_copy = self.speech_buffer.copy()
+                            self.speech_buffer = []
+                            self.is_speaking = False
+                            self.silence_start = None
+                            
+                            thread = threading.Thread(
+                                target=self.process_wake_word_buffer,
+                                args=(buffer_copy,),
+                                daemon=True
+                            )
+                            thread.start()
+                        else:
+                            # Not enough speech, discard
+                            self.speech_buffer = []
+                            self.is_speaking = False
+                            self.silence_start = None
+        except Exception as e:
+            print(f"[ERROR] Audio callback exception: {e}")
     
     def process_wake_word_buffer(self, buffer):
         """Process audio - check for wake word, commands, or dictation content"""
@@ -3914,7 +3845,8 @@ class DictationApp:
             perf_mode = self.config.get('performance_mode', 'balanced')
             
             transcribe_start = time.time()
-            segments, info = self.model.transcribe(audio, **transcribe_params)
+            with self.model_lock:
+                segments, info = self.model.transcribe(audio, **transcribe_params)
             
             text = "".join([segment.text for segment in segments]).strip()
             transcribe_time = time.time() - transcribe_start
@@ -4236,8 +4168,14 @@ class DictationApp:
 
     def audio_callback(self, indata, frames, time_info, status):
         """Callback for audio stream (hold/toggle mode)"""
-        if self.recording:
-            self.audio_data.append(indata.copy())
+        try:
+            if status:
+                print(f"[WARN] Audio status: {status}")
+            
+            if self.recording:
+                self.audio_data.append(indata.copy())
+        except Exception as e:
+            print(f"[ERROR] Audio callback exception: {e}")
 
     def _setup_sounds(self):
         """Set up sound files - create defaults if needed"""
@@ -4618,7 +4556,8 @@ class DictationApp:
                 perf_mode = self.config.get('performance_mode', 'balanced')
                 
                 transcribe_start = time.time()
-                segments, info = self.model.transcribe(audio, **transcribe_params)
+                with self.model_lock:
+                    segments, info = self.model.transcribe(audio, **transcribe_params)
                 
                 text = "".join([segment.text for segment in segments]).strip()
                 transcribe_time = time.time() - transcribe_start
