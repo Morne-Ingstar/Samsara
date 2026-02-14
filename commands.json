@@ -1,5 +1,16 @@
 {
   "commands": {
+    "jump five times": {
+      "type": "macro",
+      "steps": [
+        { "action": "press", "key": "space", "delay_after": 250 },
+        { "action": "press", "key": "space", "delay_after": 250 },
+        { "action": "press", "key": "space", "delay_after": 250 },
+        { "action": "press", "key": "space", "delay_after": 250 },
+        { "action": "press", "key": "space" }
+      ],
+      "description": "Press spacebar 5 times for repeated jumps"
+    },
     "open chrome": {
       "type": "launch",
       "target": "chrome.exe",
