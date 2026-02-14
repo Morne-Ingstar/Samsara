@@ -108,9 +108,9 @@ class SpeechRecognizer:
             return self.device
 
         try:
-            import torch
-            return "cuda" if torch.cuda.is_available() else "cpu"
-        except ImportError:
+            import ctranslate2
+            return "cuda" if 'cuda' in ctranslate2.get_supported_compute_types('cuda') else "cpu"
+        except Exception:
             return "cpu"
 
     def transcribe(
