@@ -7,6 +7,12 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 ## [Unreleased]
 
 ### Added
+- **Audio pre-buffer system** — Rolling 1.5s circular buffer captures audio before hotkey press
+  - First words are never lost to startup delay (sound cue, stream initialization)
+  - Pre-buffer audio prepended to recording data automatically
+  - Standalone pre-buffer stream for hold/toggle modes
+  - Wake word stream feeds pre-buffer in combined/wake_word modes
+  - Log prefix `[PRE]` shows captured pre-buffer duration
 - **Macro command example** — "jump five times" demonstrates chained/repeated actions
 - **Standalone Windows EXE distribution** — No Python installation required
   - Single-folder executable built with PyInstaller
@@ -17,6 +23,12 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 - Replaced PyTorch CUDA detection with ctranslate2 native method
   - Eliminates 4.7 GB torch dependency
   - Uses `ctranslate2.get_supported_compute_types()` instead of `torch.cuda.is_available()`
+
+### Fixed
+- **Wake word + hotkey contention** — Wake word transcription now pauses during hotkey recording
+  - Eliminates 200-800ms GPU contention delay when pressing hotkey in combined mode
+  - Wake word audio stream continues running (feeds pre-buffer) but skips transcription
+  - Processing resumes automatically when hotkey recording ends
 
 ### Removed
 - PyTorch, TensorFlow, Keras (not needed for faster-whisper)
