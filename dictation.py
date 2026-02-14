@@ -101,6 +101,7 @@ os.environ["KMP_DUPLICATE_LIB_OK"] = "TRUE"
 import threading
 import queue
 import time
+import collections
 import subprocess
 import logging
 from datetime import datetime
@@ -126,6 +127,7 @@ from samsara.ui.profile_manager_ui import ProfileManagerWindow
 from samsara.ui.wake_word_debug import WakeWordDebugWindow
 from samsara.key_macros import KeyMacroManager, get_default_macro_config
 from samsara.notifications import NotificationManager, get_default_notification_config
+from samsara.alarms import AlarmManager, get_default_alarm_config
 from samsara.clipboard import clipboard_lock as _clipboard_lock, save_clipboard as _save_clipboard_win32, restore_clipboard as _restore_clipboard_win32, paste_with_preservation
 
 
@@ -365,6 +367,7 @@ class FirstRunWizard:
             "hotkey": "ctrl+shift",
             "continuous_hotkey": "ctrl+alt+d",
             "wake_word_hotkey": "ctrl+alt+w",
+            "command_hotkey": "ctrl+alt+c",
             "mode": "hold",
             "model_size": "base",
             "language": "en",
@@ -392,6 +395,7 @@ class FirstRunWizard:
         self.hotkey_var = tk.StringVar(value="ctrl+shift")
         self.continuous_hotkey_var = tk.StringVar(value="ctrl+alt+d")
         self.wake_word_hotkey_var = tk.StringVar(value="ctrl+alt+w")
+        self.command_hotkey_var = tk.StringVar(value="ctrl+alt+c")
         self.capturing_hotkey = None  # Which hotkey is being captured
         self.captured_keys = set()
 
@@ -562,6 +566,7 @@ Setup takes about 1 minute."""
             ("hotkey", self.hotkey_var, "Hold to Record", "Hold keys to record, release to transcribe"),
             ("continuous_hotkey", self.continuous_hotkey_var, "Continuous Mode", "Toggle always-on listening"),
             ("wake_word_hotkey", self.wake_word_hotkey_var, "Wake Word Mode", "Toggle wake word activation"),
+            ("command_hotkey", self.command_hotkey_var, "Command Only", "Hold to speak a command (no text output)"),
         ]
 
         self.hotkey_buttons = {}
@@ -675,6 +680,8 @@ Setup takes about 1 minute."""
                 self.continuous_hotkey_var.set(hotkey)
             elif self.capturing_hotkey == "wake_word_hotkey":
                 self.wake_word_hotkey_var.set(hotkey)
+            elif self.capturing_hotkey == "command_hotkey":
+                self.command_hotkey_var.set(hotkey)
 
         # Reset button appearance
         btn = self.hotkey_buttons[self.capturing_hotkey]
@@ -783,6 +790,7 @@ Setup takes about 1 minute."""
             self.config['hotkey'] = self.hotkey_var.get()
             self.config['continuous_hotkey'] = self.continuous_hotkey_var.get()
             self.config['wake_word_hotkey'] = self.wake_word_hotkey_var.get()
+            self.config['command_hotkey'] = self.command_hotkey_var.get()
             self.config['wake_word'] = self.wake_word_var.get()
 
         self.current_step += 1
@@ -1131,6 +1139,7 @@ class SettingsWindow:
         self.tabview.add("Hotkeys & Modes")
         self.tabview.add("Commands")
         self.tabview.add("Sounds")
+        self.tabview.add("Alarms")
         self.tabview.add("Advanced")
 
         # === GENERAL TAB ===
@@ -1288,12 +1297,16 @@ class SettingsWindow:
 
         # Determine current runtime mode (not just config default)
         # Runtime state overrides config if a mode is actively toggled
-        if self.app.wake_word_active:
+        # Note: combined mode also has wake_word_active=True, so check config first
+        config_mode = self.app.config.get('mode', 'hold')
+        if config_mode == 'combined' and self.app.wake_word_active:
+            current_mode = 'combined'
+        elif self.app.wake_word_active:
             current_mode = 'wake_word'
         elif self.app.continuous_active:
             current_mode = 'continuous'
         else:
-            current_mode = self.app.config.get('mode', 'hold')
+            current_mode = config_mode
         
         self.mode_var = tk.StringVar(value=current_mode)
 
@@ -1304,7 +1317,9 @@ class SettingsWindow:
         ctk.CTkRadioButton(mode_frame, text="Continuous (auto-transcribe on speech pause)",
                           variable=self.mode_var, value='continuous').pack(anchor='w', padx=15, pady=(0, 8))
         ctk.CTkRadioButton(mode_frame, text="Wake word (hands-free activation)",
-                          variable=self.mode_var, value='wake_word').pack(anchor='w', padx=15, pady=(0, 15))
+                          variable=self.mode_var, value='wake_word').pack(anchor='w', padx=15, pady=(0, 8))
+        ctk.CTkRadioButton(mode_frame, text="Combined (wake word + hold-to-record hotkey)",
+                          variable=self.mode_var, value='combined').pack(anchor='w', padx=15, pady=(0, 15))
 
         # Keyboard Shortcuts Section
         hotkey_label = ctk.CTkLabel(hotkey_scroll, text="Keyboard Shortcuts", font=ctk.CTkFont(size=16, weight="bold"))
@@ -1351,6 +1366,18 @@ class SettingsWindow:
                                              command=lambda: self.start_capture('wake_word_hotkey'))
         self.wake_hotkey_btn.pack(side='left')
         self.hotkey_buttons['wake_word_hotkey'] = self.wake_hotkey_btn
+
+        # Command-only hotkey
+        row3b = ctk.CTkFrame(hotkey_frame, fg_color="transparent")
+        row3b.pack(fill='x', padx=15, pady=(0, 8))
+        ctk.CTkLabel(row3b, text="Command only:", width=150, anchor='w').pack(side='left')
+        self.cmd_hotkey_var = tk.StringVar(value=self.app.config.get('command_hotkey', 'ctrl+alt+c'))
+        self.cmd_hotkey_entry = ctk.CTkEntry(row3b, textvariable=self.cmd_hotkey_var, width=180, state='disabled')
+        self.cmd_hotkey_entry.pack(side='left', padx=(0, 10))
+        self.cmd_hotkey_btn = ctk.CTkButton(row3b, text="Change", width=80,
+                                             command=lambda: self.start_capture('command_hotkey'))
+        self.cmd_hotkey_btn.pack(side='left')
+        self.hotkey_buttons['command_hotkey'] = self.cmd_hotkey_btn
 
         # Cancel recording hotkey
         row4 = ctk.CTkFrame(hotkey_frame, fg_color="transparent")
@@ -1581,6 +1608,138 @@ class SettingsWindow:
         ctk.CTkLabel(sounds_scroll, text=f"Sound files location: {sounds_folder}",
                     text_color="gray").pack(anchor='w')
 
+        # === ALARMS TAB ===
+        alarms_tab = self.tabview.tab("Alarms")
+        
+        # Create scrollable frame for Alarms tab content
+        alarms_scroll = ctk.CTkScrollableFrame(alarms_tab, fg_color="transparent")
+        alarms_scroll.pack(fill='both', expand=True)
+
+        # Global Settings Section
+        alarm_settings_label = ctk.CTkLabel(alarms_scroll, text="Alarm Settings", font=ctk.CTkFont(size=16, weight="bold"))
+        alarm_settings_label.pack(anchor='w', pady=(15, 10))
+
+        alarm_settings_frame = ctk.CTkFrame(alarms_scroll, corner_radius=10)
+        alarm_settings_frame.pack(fill='x', pady=(0, 20))
+
+        # Get current alarm config
+        alarm_config = self.app.config.get('alarms', get_default_alarm_config())
+
+        # Enable alarms toggle
+        self.alarms_enabled_var = tk.BooleanVar(value=alarm_config.get('enabled', True))
+        ctk.CTkCheckBox(alarm_settings_frame, text="Enable alarm reminders",
+                       variable=self.alarms_enabled_var).pack(anchor='w', padx=15, pady=(15, 10))
+
+        # Complete hotkey row (user completed the task, gets streak credit)
+        complete_row = ctk.CTkFrame(alarm_settings_frame, fg_color="transparent")
+        complete_row.pack(fill='x', padx=15, pady=(0, 8))
+        ctk.CTkLabel(complete_row, text="Complete hotkey:", width=120, anchor='w').pack(side='left')
+        self.alarm_complete_var = tk.StringVar(value=alarm_config.get('complete_hotkey', 'f7'))
+        self.alarm_complete_entry = ctk.CTkEntry(complete_row, textvariable=self.alarm_complete_var, width=80, state='disabled')
+        self.alarm_complete_entry.pack(side='left', padx=(0, 10))
+        self.alarm_complete_btn = ctk.CTkButton(complete_row, text="Change", width=80,
+                                               command=lambda: self.start_capture('alarm_complete_hotkey'))
+        self.alarm_complete_btn.pack(side='left')
+        ctk.CTkLabel(complete_row, text="✓ Gets streak credit", text_color="#00CED1").pack(side='left', padx=(10, 0))
+        self.hotkey_buttons['alarm_complete_hotkey'] = self.alarm_complete_btn
+
+        # Dismiss hotkey row (just silence, no credit, breaks streak)
+        dismiss_row = ctk.CTkFrame(alarm_settings_frame, fg_color="transparent")
+        dismiss_row.pack(fill='x', padx=15, pady=(0, 10))
+        ctk.CTkLabel(dismiss_row, text="Dismiss hotkey:", width=120, anchor='w').pack(side='left')
+        self.alarm_dismiss_var = tk.StringVar(value=alarm_config.get('dismiss_hotkey', 'f8'))
+        self.alarm_dismiss_entry = ctk.CTkEntry(dismiss_row, textvariable=self.alarm_dismiss_var, width=80, state='disabled')
+        self.alarm_dismiss_entry.pack(side='left', padx=(0, 10))
+        self.alarm_dismiss_btn = ctk.CTkButton(dismiss_row, text="Change", width=80,
+                                               command=lambda: self.start_capture('alarm_dismiss_hotkey'))
+        self.alarm_dismiss_btn.pack(side='left')
+        ctk.CTkLabel(dismiss_row, text="✗ Breaks streak", text_color="#ff6b6b").pack(side='left', padx=(10, 0))
+        self.hotkey_buttons['alarm_dismiss_hotkey'] = self.alarm_dismiss_btn
+
+        # Nag interval row
+        nag_row = ctk.CTkFrame(alarm_settings_frame, fg_color="transparent")
+        nag_row.pack(fill='x', padx=15, pady=(0, 15))
+        ctk.CTkLabel(nag_row, text="Repeat interval:", width=120, anchor='w').pack(side='left')
+        self.alarm_nag_var = tk.IntVar(value=alarm_config.get('nag_interval_seconds', 60))
+        nag_entry = ctk.CTkEntry(nag_row, textvariable=self.alarm_nag_var, width=80)
+        nag_entry.pack(side='left', padx=(0, 10))
+        ctk.CTkLabel(nag_row, text="seconds (how often to replay until dismissed)").pack(side='left')
+
+        # Alarm List Section
+        alarm_list_label = ctk.CTkLabel(alarms_scroll, text="Your Alarms", font=ctk.CTkFont(size=16, weight="bold"))
+        alarm_list_label.pack(anchor='w', pady=(0, 10))
+
+        alarm_list_frame = ctk.CTkFrame(alarms_scroll, corner_radius=10)
+        alarm_list_frame.pack(fill='both', expand=True, pady=(0, 10))
+
+        # Treeview for alarms
+        alarm_tree_container = ctk.CTkFrame(alarm_list_frame, fg_color="transparent")
+        alarm_tree_container.pack(fill='both', expand=True, padx=10, pady=10)
+
+        alarm_tree_scroll = ttk.Scrollbar(alarm_tree_container)
+        alarm_tree_scroll.pack(side='right', fill='y')
+
+        # Style for alarm treeview (increased row height for stats)
+        style = ttk.Style()
+        style.configure("Alarms.Treeview",
+                       background="#2b2b2b",
+                       foreground="white",
+                       fieldbackground="#2b2b2b",
+                       rowheight=36)
+        style.configure("Alarms.Treeview.Heading",
+                       background="#1f6aa5",
+                       foreground="white",
+                       font=('Segoe UI', 10, 'bold'),
+                       relief='flat')
+        style.map("Alarms.Treeview.Heading", background=[('active', '#2980b9')])
+        style.map("Alarms.Treeview", background=[('selected', '#1f6aa5')])
+
+        self.alarm_tree = ttk.Treeview(alarm_tree_container, 
+                                       columns=('enabled', 'name', 'interval', 'streak'),
+                                       show='headings', 
+                                       yscrollcommand=alarm_tree_scroll.set,
+                                       style="Alarms.Treeview", 
+                                       height=8)
+        self.alarm_tree.pack(side='left', fill='both', expand=True)
+        alarm_tree_scroll.config(command=self.alarm_tree.yview)
+
+        # Column headings
+        self.alarm_tree.heading('enabled', text='On')
+        self.alarm_tree.heading('name', text='Name')
+        self.alarm_tree.heading('interval', text='Interval')
+        self.alarm_tree.heading('streak', text='Streak / Best')
+
+        # Column widths
+        self.alarm_tree.column('enabled', width=40, minwidth=40, anchor='center')
+        self.alarm_tree.column('name', width=150, minwidth=100)
+        self.alarm_tree.column('interval', width=80, minwidth=60)
+        self.alarm_tree.column('streak', width=100, minwidth=80, anchor='center')
+
+        # Populate alarms list
+        self.populate_alarms_list()
+
+        # Alarm buttons frame
+        alarm_btn_frame = ctk.CTkFrame(alarms_scroll, fg_color="transparent")
+        alarm_btn_frame.pack(fill='x', pady=(0, 10))
+
+        ctk.CTkButton(alarm_btn_frame, text="Add Alarm", width=100,
+                     command=self.add_alarm_dialog).pack(side='left', padx=(0, 5))
+        ctk.CTkButton(alarm_btn_frame, text="Edit", width=70,
+                     command=self.edit_alarm_dialog).pack(side='left', padx=(0, 5))
+        ctk.CTkButton(alarm_btn_frame, text="Delete", width=70, fg_color="#cc4444", hover_color="#aa3333",
+                     command=self.delete_alarm).pack(side='left', padx=(0, 5))
+        ctk.CTkButton(alarm_btn_frame, text="Toggle", width=70, fg_color="gray40",
+                     command=self.toggle_alarm_enabled).pack(side='left', padx=(0, 5))
+        ctk.CTkButton(alarm_btn_frame, text="Test", width=60, fg_color="gray40",
+                     command=self.test_alarm_sound).pack(side='left', padx=(0, 5))
+        ctk.CTkButton(alarm_btn_frame, text="Reset Stats", width=90, fg_color="gray40",
+                     command=self.reset_alarm_stats).pack(side='left')
+
+        # Info text
+        ctk.CTkLabel(alarms_scroll,
+                    text=f"Complete ({self.alarm_complete_var.get().upper()}) to get streak credit. Dismiss ({self.alarm_dismiss_var.get().upper()}) to silence without credit.",
+                    text_color="gray", wraplength=600).pack(anchor='w', pady=(5, 0))
+
         # === ADVANCED TAB ===
         advanced_tab = self.tabview.tab("Advanced")
         
@@ -1612,6 +1771,72 @@ class SettingsWindow:
         min_speech_entry = ctk.CTkEntry(speech_row, textvariable=self.min_speech_var, width=80)
         min_speech_entry.pack(side='left', padx=(0, 10))
         ctk.CTkLabel(speech_row, text="seconds").pack(side='left')
+
+        # Hardware Acceleration Section
+        hw_label = ctk.CTkLabel(advanced_scroll, text="Hardware Acceleration", font=ctk.CTkFont(size=16, weight="bold"))
+        hw_label.pack(anchor='w', pady=(0, 10))
+
+        hw_frame = ctk.CTkFrame(advanced_scroll, corner_radius=10)
+        hw_frame.pack(fill='x', pady=(0, 20))
+
+        device_row = ctk.CTkFrame(hw_frame, fg_color="transparent")
+        device_row.pack(fill='x', padx=15, pady=(15, 5))
+        ctk.CTkLabel(device_row, text="Compute device:", width=150, anchor='w').pack(side='left')
+        
+        # Device options with display names
+        self.device_display_to_value = {
+            'CPU': 'cpu',
+            'CUDA (NVIDIA GPU)': 'cuda'
+        }
+        self.device_value_to_display = {v: k for k, v in self.device_display_to_value.items()}
+        
+        current_device = self.app.config.get('device', 'cpu')
+        current_device_display = self.device_value_to_display.get(current_device, 'CPU')
+        
+        self.device_var = tk.StringVar(value=current_device_display)
+        device_combo = ctk.CTkComboBox(device_row, variable=self.device_var,
+                                        values=list(self.device_display_to_value.keys()),
+                                        width=180, state='readonly')
+        device_combo.pack(side='left')
+
+        ctk.CTkLabel(hw_frame, text="CUDA requires an NVIDIA GPU with compatible drivers installed",
+                    text_color="gray").pack(anchor='w', padx=15, pady=(0, 5))
+        ctk.CTkLabel(hw_frame, text="Device changes require restart",
+                    text_color="#1f6aa5").pack(anchor='w', padx=15, pady=(0, 10))
+
+        # CUDA Setup Instructions (collapsible)
+        cuda_instructions_frame = ctk.CTkFrame(hw_frame, fg_color="transparent")
+        cuda_instructions_frame.pack(fill='x', padx=15, pady=(0, 15))
+        
+        def toggle_cuda_instructions():
+            if cuda_text_frame.winfo_viewable():
+                cuda_text_frame.pack_forget()
+                cuda_toggle_btn.configure(text="▶ CUDA Setup Instructions")
+            else:
+                cuda_text_frame.pack(fill='x', pady=(5, 0))
+                cuda_toggle_btn.configure(text="▼ CUDA Setup Instructions")
+        
+        cuda_toggle_btn = ctk.CTkButton(cuda_instructions_frame, text="▶ CUDA Setup Instructions",
+                                         command=toggle_cuda_instructions,
+                                         fg_color="transparent", text_color="#1f6aa5",
+                                         hover_color=("gray90", "gray20"),
+                                         anchor='w', width=200)
+        cuda_toggle_btn.pack(anchor='w')
+        
+        cuda_text_frame = ctk.CTkFrame(cuda_instructions_frame, fg_color=("gray95", "gray17"))
+        # Initially hidden - don't pack
+        
+        cuda_instructions = """To enable CUDA support:
+1. Open PowerShell in the Samsara folder
+2. Run: pip uninstall ctranslate2
+3. Run: pip install ctranslate2 --extra-index-url https://download.pytorch.org/whl/cu118
+4. Restart Samsara and select CUDA above"""
+        
+        cuda_text = ctk.CTkTextbox(cuda_text_frame, height=100, wrap='word',
+                                    fg_color="transparent", activate_scrollbars=False)
+        cuda_text.pack(fill='x', padx=10, pady=10)
+        cuda_text.insert('1.0', cuda_instructions)
+        cuda_text.configure(state='disabled')  # Make read-only but selectable
 
         # Performance Settings
         perf_label = ctk.CTkLabel(advanced_scroll, text="Performance", font=ctk.CTkFont(size=16, weight="bold"))
@@ -1763,6 +1988,15 @@ class SettingsWindow:
         elif hotkey_name == 'cancel_hotkey':
             self.cancel_hotkey_var.set("Press keys...")
             self.cancel_hotkey_btn.configure(text="...")
+        elif hotkey_name == 'command_hotkey':
+            self.cmd_hotkey_var.set("Press keys...")
+            self.cmd_hotkey_btn.configure(text="...")
+        elif hotkey_name == 'alarm_complete_hotkey':
+            self.alarm_complete_var.set("Press keys...")
+            self.alarm_complete_btn.configure(text="...")
+        elif hotkey_name == 'alarm_dismiss_hotkey':
+            self.alarm_dismiss_var.set("Press keys...")
+            self.alarm_dismiss_btn.configure(text="...")
 
         self.window.bind('<KeyPress>', self.on_capture_key)
         self.window.bind('<KeyRelease>', self.on_capture_release)
@@ -1792,6 +2026,12 @@ class SettingsWindow:
             self.wake_hotkey_var.set(hotkey_str)
         elif self.capturing_hotkey == 'cancel_hotkey':
             self.cancel_hotkey_var.set(hotkey_str)
+        elif self.capturing_hotkey == 'command_hotkey':
+            self.cmd_hotkey_var.set(hotkey_str)
+        elif self.capturing_hotkey == 'alarm_complete_hotkey':
+            self.alarm_complete_var.set(hotkey_str)
+        elif self.capturing_hotkey == 'alarm_dismiss_hotkey':
+            self.alarm_dismiss_var.set(hotkey_str)
 
     def on_capture_release(self, event):
         if self.capturing_hotkey is None:
@@ -1811,6 +2051,15 @@ class SettingsWindow:
             elif self.capturing_hotkey == 'cancel_hotkey':
                 self.cancel_hotkey_var.set(hotkey_str)
                 self.cancel_hotkey_btn.configure(text="Set")
+            elif self.capturing_hotkey == 'command_hotkey':
+                self.cmd_hotkey_var.set(hotkey_str)
+                self.cmd_hotkey_btn.configure(text="Set")
+            elif self.capturing_hotkey == 'alarm_complete_hotkey':
+                self.alarm_complete_var.set(hotkey_str)
+                self.alarm_complete_btn.configure(text="Set")
+            elif self.capturing_hotkey == 'alarm_dismiss_hotkey':
+                self.alarm_dismiss_var.set(hotkey_str)
+                self.alarm_dismiss_btn.configure(text="Set")
 
         self.window.unbind('<KeyPress>')
         self.window.unbind('<KeyRelease>')
@@ -1824,10 +2073,17 @@ class SettingsWindow:
         new_model = self.model_display_to_value.get(model_display, 'base')
         model_changed = old_model != new_model
 
+        # Track device changes
+        old_device = self.app.config.get('device', 'cpu')
+        device_display = self.device_var.get()
+        new_device = self.device_display_to_value.get(device_display, 'cpu')
+        device_changed = old_device != new_device
+
         self.app.config['mode'] = self.mode_var.get()
         self.app.config['hotkey'] = self.hotkey_var.get()
         self.app.config['continuous_hotkey'] = self.cont_hotkey_var.get()
         self.app.config['wake_word_hotkey'] = self.wake_hotkey_var.get()
+        self.app.config['command_hotkey'] = self.cmd_hotkey_var.get()
         self.app.config['cancel_hotkey'] = self.cancel_hotkey_var.get()
         self.app.config['silence_threshold'] = self.silence_var.get()
         self.app.config['min_speech_duration'] = self.min_speech_var.get()
@@ -1836,6 +2092,7 @@ class SettingsWindow:
         self.app.config['auto_capitalize'] = self.auto_capitalize_var.get()
         self.app.config['format_numbers'] = self.format_numbers_var.get()
         self.app.config['model_size'] = new_model
+        self.app.config['device'] = new_device
         self.app.config['command_mode_enabled'] = self.command_mode_var.get()
         self.app.config['show_all_audio_devices'] = self.show_all_devices_var.get()
         self.app.config['audio_feedback'] = self.audio_feedback_var.get()
@@ -1876,6 +2133,21 @@ class SettingsWindow:
         }
         self.app.config['wake_word_config'] = ww_config
 
+        # Save alarm settings
+        if 'alarms' not in self.app.config:
+            self.app.config['alarms'] = get_default_alarm_config()
+        self.app.config['alarms']['enabled'] = self.alarms_enabled_var.get()
+        self.app.config['alarms']['complete_hotkey'] = self.alarm_complete_var.get()
+        self.app.config['alarms']['dismiss_hotkey'] = self.alarm_dismiss_var.get()
+        self.app.config['alarms']['nag_interval_seconds'] = self.alarm_nag_var.get()
+        
+        # Apply alarm settings at runtime
+        if hasattr(self.app, 'alarm_manager'):
+            if self.alarms_enabled_var.get() and not self.app.alarm_manager.running:
+                self.app.alarm_manager.start()
+            elif not self.alarms_enabled_var.get() and self.app.alarm_manager.running:
+                self.app.alarm_manager.stop()
+
         self.app.command_mode_enabled = self.command_mode_var.get()
 
         mic_name = self.mic_var.get()
@@ -1893,8 +2165,9 @@ class SettingsWindow:
         # Apply mode change at runtime - deactivate modes that don't match new selection
         new_mode = self.mode_var.get()
         
-        # Stop wake word mode if it was active but new mode is different
-        if self.app.wake_word_active and new_mode != 'wake_word':
+        # Stop wake word mode if it was active but new mode doesn't need it
+        # (wake_word and combined both use wake word listening)
+        if self.app.wake_word_active and new_mode not in ('wake_word', 'combined'):
             self.app.stop_wake_word_mode()
             print(f"[MODE] Deactivated wake word mode")
         
@@ -1903,10 +2176,24 @@ class SettingsWindow:
             self.app.stop_continuous_mode()
             print(f"[MODE] Deactivated continuous mode")
         
-        # Activate the new mode if it's wake_word or continuous
+        # Manage pre-buffer stream: standalone stream for hold/toggle,
+        # wake word stream handles pre-buffer for wake_word/combined
+        if new_mode in ('hold', 'toggle'):
+            # Need standalone pre-buffer stream
+            if self.app.model_loaded:
+                self.app._start_prebuffer_stream()
+        else:
+            # Wake word or continuous stream handles audio; stop standalone
+            self.app._stop_prebuffer_stream()
+        
+        # Activate the new mode if it requires wake_word or continuous
         if new_mode == 'wake_word' and not self.app.wake_word_active:
             self.app.start_wake_word_mode()
             print(f"[MODE] Activated wake word mode")
+        elif new_mode == 'combined' and not self.app.wake_word_active:
+            # Combined mode: start wake word listener, hotkey will also work
+            self.app.start_wake_word_mode()
+            print(f"[MODE] Activated combined mode (wake word + hotkey)")
         elif new_mode == 'continuous' and not self.app.continuous_active:
             self.app.start_continuous_mode()
             print(f"[MODE] Activated continuous mode")
@@ -1922,6 +2209,23 @@ class SettingsWindow:
 
         if model_changed:
             self.prompt_restart_for_model(old_model, new_model)
+        elif device_changed:
+            self.prompt_restart_for_device(old_device, new_device)
+
+    def prompt_restart_for_device(self, old_device, new_device):
+        """Ask user if they want to restart to apply new device"""
+        device_names = {'cpu': 'CPU', 'cuda': 'CUDA (GPU)'}
+        old_name = device_names.get(old_device, old_device)
+        new_name = device_names.get(new_device, new_device)
+        result = messagebox.askyesno(
+            "Restart Required",
+            f"Device changed from '{old_name}' to '{new_name}'.\n\n"
+            f"The app needs to restart to use the new device.\n\n"
+            f"Restart now?",
+            parent=self.window
+        )
+        if result:
+            self.restart_app()
 
     def prompt_restart_for_model(self, old_model, new_model):
         """Ask user if they want to restart to apply new model"""
@@ -1938,18 +2242,43 @@ class SettingsWindow:
 
     def restart_app(self):
         """Restart the application"""
+        import subprocess
         print("Restarting application...")
-        self.close()
-
-        python = sys.executable
-        script = os.path.abspath(sys.argv[0])
-
+        
+        # Stop background services first
         if hasattr(self.app, 'tray_icon'):
-            self.app.tray_icon.stop()
+            try:
+                self.app.tray_icon.stop()
+            except:
+                pass
         if hasattr(self.app, 'keyboard_listener'):
-            self.app.keyboard_listener.stop()
-
-        os.execv(python, [python, script])
+            try:
+                self.app.keyboard_listener.stop()
+            except:
+                pass
+        
+        # Spawn new process BEFORE exiting
+        if sys.platform == 'win32':
+            # Use the VBS launcher on Windows for proper console-less restart
+            launcher = Path(__file__).parent / "_launcher.vbs"
+            if launcher.exists():
+                subprocess.Popen(['wscript', str(launcher)], 
+                               creationflags=subprocess.CREATE_NEW_PROCESS_GROUP)
+            else:
+                # Fallback: direct pythonw launch
+                script = Path(__file__).resolve()
+                subprocess.Popen([sys.executable, str(script)],
+                               creationflags=subprocess.CREATE_NEW_PROCESS_GROUP | 
+                                           subprocess.DETACHED_PROCESS)
+        else:
+            # Unix: spawn detached process
+            script = Path(__file__).resolve()
+            subprocess.Popen([sys.executable, str(script)],
+                           start_new_session=True)
+        
+        # Now exit current instance
+        self.close()
+        sys.exit(0)
 
     def save_and_close(self):
         """Save settings and close window"""
@@ -2560,6 +2889,256 @@ X-GNOME-Autostart-enabled=true
         if self.mic_var.get() not in mic_names and mic_names:
             self.mic_var.set(mic_names[0])
 
+    # ==================== ALARM METHODS ====================
+
+    def populate_alarms_list(self):
+        """Populate the alarms treeview with streak stats"""
+        # Clear existing items
+        for item in self.alarm_tree.get_children():
+            self.alarm_tree.delete(item)
+
+        # Get alarms from config
+        alarm_config = self.app.config.get('alarms', get_default_alarm_config())
+        alarms = alarm_config.get('items', [])
+
+        for alarm in alarms:
+            alarm_id = alarm.get('id', alarm.get('name', 'unknown'))
+            enabled = "✓" if alarm.get('enabled', False) else ""
+            name = alarm.get('name', 'Unnamed')
+            interval = f"{alarm.get('interval_minutes', 60)} min"
+            
+            # Get streak info from alarm manager
+            if hasattr(self.app, 'alarm_manager'):
+                stats = self.app.alarm_manager.get_stats(alarm_id)
+                current = stats.get('current_streak', 0)
+                best = stats.get('best_streak', 0)
+                if current > 0 or best > 0:
+                    streak_text = f"🔥 {current} / {best}"
+                else:
+                    streak_text = "—"
+            else:
+                streak_text = "—"
+
+            self.alarm_tree.insert('', 'end', iid=alarm_id,
+                                   values=(enabled, name, interval, streak_text))
+
+    def get_selected_alarm(self):
+        """Get the selected alarm ID"""
+        selection = self.alarm_tree.selection()
+        if selection:
+            return selection[0]
+        return None
+
+    def add_alarm_dialog(self):
+        """Show dialog to add a new alarm"""
+        self._show_alarm_dialog()
+
+    def edit_alarm_dialog(self):
+        """Show dialog to edit selected alarm"""
+        alarm_id = self.get_selected_alarm()
+        if not alarm_id:
+            messagebox.showwarning("No Selection", "Please select an alarm to edit.", parent=self.window)
+            return
+        self._show_alarm_dialog(edit_id=alarm_id)
+
+    def _show_alarm_dialog(self, edit_id=None):
+        """Show add/edit alarm dialog"""
+        dialog = ctk.CTkToplevel(self.window)
+        dialog.title("Edit Alarm" if edit_id else "Add Alarm")
+        dialog.geometry("400x350")
+        dialog.resizable(False, False)
+        dialog.transient(self.window)
+        dialog.grab_set()
+
+        # Get existing data if editing
+        existing_data = {}
+        if edit_id and hasattr(self.app, 'alarm_manager'):
+            existing_data = self.app.alarm_manager.get_alarm(edit_id) or {}
+
+        # Name field
+        ctk.CTkLabel(dialog, text="Alarm Name:", font=ctk.CTkFont(weight="bold")).pack(anchor='w', padx=20, pady=(20, 5))
+        name_var = tk.StringVar(value=existing_data.get('name', ''))
+        name_entry = ctk.CTkEntry(dialog, textvariable=name_var, width=300)
+        name_entry.pack(anchor='w', padx=20)
+
+        # Interval field
+        ctk.CTkLabel(dialog, text="Interval (minutes):", font=ctk.CTkFont(weight="bold")).pack(anchor='w', padx=20, pady=(15, 5))
+        interval_var = tk.IntVar(value=existing_data.get('interval_minutes', 60))
+        interval_frame = ctk.CTkFrame(dialog, fg_color="transparent")
+        interval_frame.pack(anchor='w', padx=20)
+        interval_entry = ctk.CTkEntry(interval_frame, textvariable=interval_var, width=100)
+        interval_entry.pack(side='left')
+        ctk.CTkLabel(interval_frame, text="minutes", text_color="gray").pack(side='left', padx=(10, 0))
+
+        # Sound selection
+        ctk.CTkLabel(dialog, text="Sound:", font=ctk.CTkFont(weight="bold")).pack(anchor='w', padx=20, pady=(15, 5))
+        
+        # Get available sounds
+        sound_options = ['Alarm', 'Chime', 'Bell', 'Gentle']  # Built-in sounds
+        current_sound = existing_data.get('sound', 'alarm')
+        if current_sound in ['alarm', 'chime', 'bell', 'gentle']:
+            current_display = current_sound.title()
+        else:
+            current_display = Path(current_sound).stem.replace('_', ' ').title() if current_sound else 'Alarm'
+            if current_display not in sound_options:
+                sound_options.append(current_display)
+
+        sound_var = tk.StringVar(value=current_display)
+        sound_frame = ctk.CTkFrame(dialog, fg_color="transparent")
+        sound_frame.pack(anchor='w', padx=20, fill='x')
+        
+        sound_combo = ctk.CTkComboBox(sound_frame, variable=sound_var, values=sound_options, width=150)
+        sound_combo.pack(side='left')
+        
+        def browse_sound():
+            from tkinter import filedialog
+            filepath = filedialog.askopenfilename(
+                parent=dialog,
+                title="Select Sound File",
+                filetypes=[("Audio Files", "*.wav *.mp3"), ("WAV Files", "*.wav"), ("MP3 Files", "*.mp3")]
+            )
+            if filepath:
+                filename = Path(filepath).stem.replace('_', ' ').title()
+                current_values = list(sound_combo.cget('values'))
+                if filename not in current_values:
+                    current_values.append(filename)
+                    sound_combo.configure(values=current_values)
+                sound_var.set(filename)
+                # Store full path for later
+                dialog.custom_sound_path = filepath
+
+        ctk.CTkButton(sound_frame, text="Browse...", width=80, command=browse_sound).pack(side='left', padx=(10, 0))
+        
+        def preview_sound():
+            sound_name = sound_var.get().lower().replace(' ', '_')
+            if hasattr(dialog, 'custom_sound_path'):
+                sound_path = dialog.custom_sound_path
+            elif sound_name in ['alarm', 'chime', 'bell', 'gentle']:
+                sound_path = sound_name
+            else:
+                sound_path = sound_name
+            if hasattr(self.app, 'alarm_manager'):
+                threading.Thread(target=lambda: self.app.alarm_manager.play_sound_file(sound_path), daemon=True).start()
+
+        ctk.CTkButton(sound_frame, text="Test", width=60, fg_color="gray40", command=preview_sound).pack(side='left', padx=(10, 0))
+
+        # Enabled checkbox
+        enabled_var = tk.BooleanVar(value=existing_data.get('enabled', True))
+        ctk.CTkCheckBox(dialog, text="Enabled", variable=enabled_var).pack(anchor='w', padx=20, pady=(15, 0))
+
+        # Buttons
+        btn_frame = ctk.CTkFrame(dialog, fg_color="transparent")
+        btn_frame.pack(fill='x', padx=20, pady=20)
+
+        def save_alarm():
+            name = name_var.get().strip()
+            if not name:
+                messagebox.showerror("Error", "Please enter an alarm name.", parent=dialog)
+                return
+
+            interval = interval_var.get()
+            if interval < 1:
+                messagebox.showerror("Error", "Interval must be at least 1 minute.", parent=dialog)
+                return
+
+            # Get sound value
+            sound_display = sound_var.get()
+            if hasattr(dialog, 'custom_sound_path'):
+                sound = dialog.custom_sound_path
+            else:
+                sound = sound_display.lower().replace(' ', '_')
+
+            if edit_id:
+                # Update existing alarm
+                self.app.alarm_manager.update_alarm(
+                    edit_id,
+                    name=name,
+                    interval_minutes=interval,
+                    sound=sound,
+                    enabled=enabled_var.get()
+                )
+            else:
+                # Add new alarm
+                self.app.alarm_manager.add_alarm(
+                    name=name,
+                    interval_minutes=interval,
+                    sound=sound,
+                    enabled=enabled_var.get()
+                )
+
+            self.populate_alarms_list()
+            dialog.destroy()
+            messagebox.showinfo("Success", f"Alarm '{name}' saved!", parent=self.window)
+
+        ctk.CTkButton(btn_frame, text="Save", width=100, command=save_alarm).pack(side='right', padx=(10, 0))
+        ctk.CTkButton(btn_frame, text="Cancel", width=100, fg_color="gray40",
+                     command=dialog.destroy).pack(side='right')
+
+    def delete_alarm(self):
+        """Delete the selected alarm"""
+        alarm_id = self.get_selected_alarm()
+        if not alarm_id:
+            messagebox.showwarning("No Selection", "Please select an alarm to delete.", parent=self.window)
+            return
+
+        # Get alarm name for confirmation
+        alarm = self.app.alarm_manager.get_alarm(alarm_id) if hasattr(self.app, 'alarm_manager') else None
+        alarm_name = alarm.get('name', alarm_id) if alarm else alarm_id
+
+        if messagebox.askyesno("Confirm Delete",
+                              f"Are you sure you want to delete the alarm '{alarm_name}'?",
+                              parent=self.window):
+            if hasattr(self.app, 'alarm_manager'):
+                self.app.alarm_manager.remove_alarm(alarm_id)
+                self.populate_alarms_list()
+                messagebox.showinfo("Deleted", f"Alarm '{alarm_name}' deleted.", parent=self.window)
+
+    def toggle_alarm_enabled(self):
+        """Toggle the selected alarm's enabled state"""
+        alarm_id = self.get_selected_alarm()
+        if not alarm_id:
+            messagebox.showwarning("No Selection", "Please select an alarm to toggle.", parent=self.window)
+            return
+
+        if hasattr(self.app, 'alarm_manager'):
+            new_state = self.app.alarm_manager.toggle_alarm(alarm_id)
+            if new_state is not None:
+                self.populate_alarms_list()
+                state_text = "enabled" if new_state else "disabled"
+                print(f"[ALARM] Toggled alarm {alarm_id}: {state_text}")
+
+    def test_alarm_sound(self):
+        """Test the selected alarm's sound"""
+        alarm_id = self.get_selected_alarm()
+        if not alarm_id:
+            messagebox.showwarning("No Selection", "Please select an alarm to test.", parent=self.window)
+            return
+
+        if hasattr(self.app, 'alarm_manager'):
+            alarm = self.app.alarm_manager.get_alarm(alarm_id)
+            if alarm:
+                # Play in background thread to not block UI
+                threading.Thread(target=lambda: self.app.alarm_manager.play_sound(alarm), daemon=True).start()
+
+    def reset_alarm_stats(self):
+        """Reset streak stats for the selected alarm"""
+        alarm_id = self.get_selected_alarm()
+        if not alarm_id:
+            messagebox.showwarning("No Selection", "Please select an alarm to reset stats.", parent=self.window)
+            return
+
+        # Get alarm name for confirmation
+        alarm = self.app.alarm_manager.get_alarm(alarm_id) if hasattr(self.app, 'alarm_manager') else None
+        alarm_name = alarm.get('name', alarm_id) if alarm else alarm_id
+
+        if messagebox.askyesno("Reset Stats",
+                              f"Reset all stats for '{alarm_name}'?\n\nThis will clear:\n• Current streak\n• Best streak\n• Total completions",
+                              parent=self.window):
+            if hasattr(self.app, 'alarm_manager'):
+                self.app.alarm_manager.reset_stats(alarm_id)
+                self.populate_alarms_list()
+                messagebox.showinfo("Stats Reset", f"Stats for '{alarm_name}' have been reset.", parent=self.window)
+
 
 class HistoryWindow:
     """Window to view dictation history"""
@@ -2791,6 +3370,7 @@ class DictationApp:
         self.sample_rate = 16000
         self.audio_queue = queue.Queue()
         self.recording = False
+        self.command_mode_recording = False  # True when using command-only hotkey
         self.audio_data = []
 
         # Set up audio feedback sounds (creates defaults if needed)
@@ -2823,6 +3403,16 @@ class DictationApp:
         self.is_speaking = False
         self.wake_word_listening = False  # Currently listening for wake word
         self.wake_word_triggered = False  # Wake word detected, ready for command
+        
+        # Pre-buffer: rolling circular buffer captures audio BEFORE hotkey press
+        # so the first ~1.5 seconds of speech are never lost to startup delay.
+        # Each chunk is 100ms at sample_rate (e.g. 1600 samples at 16000Hz).
+        self._prebuffer_seconds = 1.5
+        self._prebuffer_chunks = int(self._prebuffer_seconds / 0.1)  # 15 chunks at 100ms each
+        self._prebuffer = collections.deque(maxlen=self._prebuffer_chunks)
+        self._prebuffer_active = False  # Whether background stream is feeding the pre-buffer
+        self._prebuffer_stream = None  # Standalone pre-buffer stream (when no wake word)
+        self._hotkey_recording = False  # Suppress wake word transcription during hotkey recording
         
         # Dictation mode tracking (for wake word dictation)
         self.dictation_mode = None  # None, 'dictate', 'short_dictate', 'long_dictate'
@@ -2863,6 +3453,17 @@ class DictationApp:
         self.notification_manager = NotificationManager(config_dir)
         if self.config.get('notifications', {}).get('enabled', True):
             self.notification_manager.start()
+
+        # Alarm manager for persistent sound reminders
+        sounds_dir = Path(__file__).parent / 'sounds'
+        self.alarm_manager = AlarmManager(
+            config_dir=config_dir,
+            sounds_dir=sounds_dir,
+            get_config=lambda: self.config,
+            save_config=self.save_config
+        )
+        if self.config.get('alarms', {}).get('enabled', True):
+            self.alarm_manager.start()
 
         self.update_splash("Setting up keyboard...")
 
@@ -2908,8 +3509,9 @@ class DictationApp:
             "hotkey": "ctrl+shift",
             "continuous_hotkey": "ctrl+alt+d",
             "wake_word_hotkey": "ctrl+alt+w",
+            "command_hotkey": "ctrl+alt+c",
             "cancel_hotkey": "escape",
-            "mode": "hold",
+            "mode": "hold",  # Options: "hold", "toggle", "continuous", "wake_word", "combined"
             "model_size": "base",
             "language": "en",
             "auto_paste": True,
@@ -3285,13 +3887,11 @@ class DictationApp:
             device = self.config['device']
             if device == "auto":
                 try:
-                    import torch
-                    cuda_available = torch.cuda.is_available()
+                    import ctranslate2
+                    cuda_available = 'cuda' in ctranslate2.get_supported_compute_types('cuda')
                     if cuda_available:
                         device = "cuda"
-                        gpu_name = torch.cuda.get_device_name(0)
-                        gpu_mem = torch.cuda.get_device_properties(0).total_memory / (1024**3)
-                        print(f"[GPU] CUDA available: {gpu_name} ({gpu_mem:.1f} GB)")
+                        print("[GPU] CUDA available via ctranslate2")
                     else:
                         device = "cpu"
                         print("[CPU] CUDA not available, using CPU")
@@ -3320,6 +3920,23 @@ class DictationApp:
             self.loading_model = False
             print(f"[OK] Model loaded in {load_time:.1f}s ({device}, {compute_type})")
             print("Ready for dictation.")
+            
+            # Auto-start modes that require always-on listening
+            mode = self.config.get('mode', 'hold')
+            if mode == 'wake_word':
+                print("[AUTO] Starting wake word mode...")
+                self.start_wake_word_mode()
+            elif mode == 'combined':
+                print("[AUTO] Starting combined mode (wake word + hotkey)...")
+                self.start_wake_word_mode()
+            elif mode == 'continuous':
+                print("[AUTO] Starting continuous mode...")
+                self.start_continuous_mode()
+            
+            # Start pre-buffer stream for modes without always-on audio
+            # (wake_word and combined already feed the pre-buffer via their stream)
+            if mode in ('hold', 'toggle'):
+                self._start_prebuffer_stream()
         
         thread = threading.Thread(target=load, daemon=True)
         thread.start()
@@ -3431,10 +4048,19 @@ class DictationApp:
         main_hotkey = self.config['hotkey']
         cont_hotkey = self.config.get('continuous_hotkey', 'ctrl+alt+d')
         wake_hotkey = self.config.get('wake_word_hotkey', 'ctrl+alt+w')
+        command_hotkey = self.config.get('command_hotkey', 'ctrl+alt+c')
         cancel_hotkey = self.config.get('cancel_hotkey', 'escape')
 
         # Use state-based detection - checks if keys are CURRENTLY held, regardless of press order
         # This is more reliable than event-based tracking for simultaneous key combos
+        
+        # Check for command-only hotkey (hold to record, match commands only, no text output)
+        if self.check_hotkey_state(command_hotkey) and not self.hotkey_pressed and not self.recording:
+            print(f"[HOTKEY] Command hotkey detected: {command_hotkey}")
+            self.hotkey_pressed = True
+            self.command_mode_recording = True
+            self.start_recording()
+            return
         
         # Check for wake word mode toggle (works in any mode)
         if self.check_hotkey_state(wake_hotkey) and not self.hotkey_pressed:
@@ -3456,6 +4082,25 @@ class DictationApp:
             print(f"[HOTKEY] Cancel hotkey detected: {cancel_hotkey}")
             self.cancel_recording()
             return
+
+        # Check for alarm hotkeys (when an alarm is nagging)
+        if hasattr(self, 'alarm_manager') and self.alarm_manager.is_nagging():
+            complete_hotkey = self.alarm_manager.complete_hotkey
+            dismiss_hotkey = self.alarm_manager.dismiss_hotkey
+            
+            # Check for complete hotkey (user did the task, gets streak credit)
+            if self.check_hotkey_state(complete_hotkey):
+                print(f"[HOTKEY] Alarm complete hotkey detected: {complete_hotkey}")
+                self.alarm_manager.complete()
+                self.play_sound('success')  # Success sound for completion
+                return
+            
+            # Check for dismiss hotkey (just silence, no credit, breaks streak)
+            if self.check_hotkey_state(dismiss_hotkey):
+                print(f"[HOTKEY] Alarm dismiss hotkey detected: {dismiss_hotkey}")
+                self.alarm_manager.dismiss()
+                self.play_sound('stop')  # Neutral sound for dismissal
+                return
 
         # Handle main hotkey based on mode
         if self.check_hotkey_state(main_hotkey) and not self.hotkey_pressed:
@@ -3479,6 +4124,11 @@ class DictationApp:
                 # In wake word mode, main hotkey toggles wake word listening
                 self.hotkey_pressed = True
                 self.toggle_wake_word_mode()
+            elif mode == 'combined':
+                # Combined mode: hotkey works like hold mode for on-demand recording
+                # Wake word listener runs separately via continuous_stream
+                self.hotkey_pressed = True
+                self.start_recording()
     
     def on_key_release(self, key):
         """Handle key release - uses state-based checking for reliable detection"""
@@ -3492,16 +4142,22 @@ class DictationApp:
         main_hotkey = self.config['hotkey']
         cont_hotkey = self.config.get('continuous_hotkey', 'ctrl+alt+d')
         wake_hotkey = self.config.get('wake_word_hotkey', 'ctrl+alt+w')
+        command_hotkey = self.config.get('command_hotkey', 'ctrl+alt+c')
         
         # Reset hotkey flag when no hotkey combo is currently pressed
         # Use state-based checking for reliable detection
         main_pressed = self.check_hotkey_state(main_hotkey)
         cont_pressed = self.check_hotkey_state(cont_hotkey)
         wake_pressed = self.check_hotkey_state(wake_hotkey)
+        command_pressed = self.check_hotkey_state(command_hotkey)
         
-        if not main_pressed and not cont_pressed and not wake_pressed:
+        if not main_pressed and not cont_pressed and not wake_pressed and not command_pressed:
             if self.hotkey_pressed:
-                if mode == 'hold' and self.recording:
+                if self.command_mode_recording and self.recording:
+                    # Command hotkey released - stop recording (will process as command-only)
+                    print(f"[HOTKEY] Command hotkey released, stopping recording")
+                    self.stop_recording()
+                elif (mode == 'hold' or mode == 'combined') and self.recording:
                     print(f"[HOTKEY] Main hotkey released, stopping recording")
                     self.stop_recording()
                 self.hotkey_pressed = False
@@ -3752,6 +4408,16 @@ class DictationApp:
                 return
             
             audio_chunk = indata.copy().flatten()
+            
+            # Always feed the pre-buffer (even during hotkey recording)
+            self._prebuffer.append(audio_chunk.copy())
+            
+            # If hotkey recording is active, skip wake word processing
+            # (the main audio_callback handles recording via its own stream,
+            #  but we keep feeding the pre-buffer from this stream)
+            if self._hotkey_recording:
+                return
+            
             rms = np.sqrt(np.mean(audio_chunk**2))
             
             # Get thresholds from config
@@ -4472,6 +5138,47 @@ class DictationApp:
         except Exception:
             pass
 
+    def _prebuffer_callback(self, indata, frames, time_info, status):
+        """Audio callback for standalone pre-buffer stream (hold/toggle modes).
+        Simply feeds a rolling buffer so audio before hotkey press is captured."""
+        try:
+            if status:
+                pass  # Ignore status warnings for background stream
+            self._prebuffer.append(indata.copy().flatten())
+        except Exception:
+            pass
+
+    def _start_prebuffer_stream(self):
+        """Start a lightweight background audio stream for pre-buffering.
+        Only used in hold/toggle modes where no other stream is running."""
+        if self._prebuffer_stream is not None:
+            return  # Already running
+        try:
+            self._prebuffer_stream = sd.InputStream(
+                samplerate=self.sample_rate,
+                channels=1,
+                dtype=np.float32,
+                callback=self._prebuffer_callback,
+                device=self.config['microphone'],
+                blocksize=int(self.sample_rate * 0.1)  # 100ms blocks
+            )
+            self._prebuffer_stream.start()
+            self._prebuffer_active = True
+            print(f"[PRE] Pre-buffer stream started ({self._prebuffer_seconds}s rolling buffer)")
+        except Exception as e:
+            print(f"[WARN] Could not start pre-buffer stream: {e}")
+
+    def _stop_prebuffer_stream(self):
+        """Stop the standalone pre-buffer stream."""
+        if self._prebuffer_stream is not None:
+            try:
+                self._prebuffer_stream.stop()
+                self._prebuffer_stream.close()
+            except Exception:
+                pass
+            self._prebuffer_stream = None
+            self._prebuffer_active = False
+
     def start_recording(self):
         """Start recording audio"""
         if not self.model_loaded:
@@ -4481,11 +5188,24 @@ class DictationApp:
                 print("Model not loaded!")
             return
 
+        # Suppress wake word processing during hotkey recording
+        self._hotkey_recording = True
+
+        # Grab pre-buffer contents BEFORE playing the start sound
+        # This captures audio from ~1.5s before the hotkey was pressed
+        prebuffer_audio = list(self._prebuffer)
+        self._prebuffer.clear()
+
         # Play start sound using winsound on Windows to avoid InputStream conflict
         self.play_sound("start", use_winsound=True)
         time.sleep(0.15)  # Brief pause for sound to start
 
-        self.audio_data = []
+        # Seed audio_data with pre-buffered audio (speech before hotkey press)
+        self.audio_data = [chunk.reshape(-1, 1) for chunk in prebuffer_audio] if prebuffer_audio else []
+        if prebuffer_audio:
+            prebuf_duration = len(prebuffer_audio) * 0.1
+            print(f"[PRE] Pre-buffer: {prebuf_duration:.1f}s of audio captured before hotkey")
+        
         self.stream = sd.InputStream(
             samplerate=self.sample_rate,
             channels=1,
@@ -4503,6 +5223,7 @@ class DictationApp:
             return
 
         self.recording = False
+        self._hotkey_recording = False  # Re-enable wake word processing
         self.play_sound("stop")
         
         if hasattr(self, 'stream'):
@@ -4543,6 +5264,10 @@ class DictationApp:
                 # Apply corrections dictionary
                 text = self.voice_training_window.apply_corrections(text)
                 
+                # Check if we're in command-only mode (from command hotkey)
+                is_command_mode = self.command_mode_recording
+                self.command_mode_recording = False  # Reset flag
+                
                 if text:
                     # Check for command mode toggle OR regular commands
                     result, was_command = self.command_executor.process_text(text, self)
@@ -4552,7 +5277,13 @@ class DictationApp:
                         self.add_to_history(text, is_command=True)
                         return
 
-                    # Not a command, proceed with dictation
+                    # Not a command
+                    if is_command_mode:
+                        # In command-only mode, don't output text if no command matched
+                        print(f"[CMD] No command matched: '{text}'")
+                        return
+                    
+                    # Regular dictation mode - proceed with text output
                     # Apply text processing (auto-capitalize, number formatting)
                     text = self.process_transcription(text)
 
@@ -4569,6 +5300,7 @@ class DictationApp:
                         self._paste_preserving_clipboard(text)
                 else:
                     print("No speech detected")
+                    self.command_mode_recording = False  # Reset flag on no speech too
 
             except Exception as e:
                 print(f"Transcription error: {e}")
@@ -4583,6 +5315,7 @@ class DictationApp:
             return
 
         self.recording = False
+        self._hotkey_recording = False  # Re-enable wake word processing
         print("[X] Recording cancelled")
 
         if hasattr(self, 'stream'):
@@ -4818,6 +5551,13 @@ class DictationApp:
         try:
             if hasattr(self, 'notification_manager') and self.notification_manager:
                 self.notification_manager.stop()
+        except:
+            pass
+
+        # Stop alarm manager
+        try:
+            if hasattr(self, 'alarm_manager') and self.alarm_manager:
+                self.alarm_manager.stop()
         except:
             pass
 

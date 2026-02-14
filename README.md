@@ -38,15 +38,23 @@ Samsara is a **fully offline** voice dictation and command system powered by Ope
 
 ## 🚀 Quick Start
 
-### 1. Install
+### Option A: Windows Installer (Recommended)
+
+Download the latest release from the [Releases page](https://github.com/Morne-Ingstar/samsara/releases).
+
+1. Run the installer
+2. Launch Samsara from Start Menu
+3. First-run wizard downloads the AI model (~75 MB - 3 GB depending on choice)
+
+No Python required. Just install and go.
+
+### Option B: From Source
 
 ```bash
 git clone https://github.com/Morne-Ingstar/samsara.git
 cd samsara
 pip install -r requirements.txt
 ```
-
-### 2. Run
 
 **Windows:** Double-click `_launcher.vbs` (runs silently in background)
 
@@ -114,6 +122,13 @@ Switch themes in Settings → Sounds. Supports WAV, MP3, OGG, FLAC.
 - Calibrate microphone sensitivity
 - Import/export training profiles
 
+### Alarm Reminders ⏰
+- Interval-based alarms (hydration, stretching, breaks)
+- Plays sound repeatedly until dismissed with hotkey (default: F11)
+- Built-in sounds: alarm, chime, bell, gentle
+- Support for custom WAV/MP3 sound files
+- Configure in Settings → Alarms tab
+
 ---
 
 ## 💻 System Requirements
@@ -140,7 +155,16 @@ Switch themes in Settings → Sounds. Supports WAV, MP3, OGG, FLAC.
 
 ## 📦 Installation
 
-### Windows
+### Windows (Recommended: Installer)
+
+Download the installer from [Releases](https://github.com/Morne-Ingstar/samsara/releases) — no Python required.
+
+The installer:
+- Creates Start Menu shortcuts
+- Adds uninstaller
+- Downloads Whisper model on first run
+
+### Windows (From Source)
 
 ```batch
 git clone https://github.com/Morne-Ingstar/samsara.git
@@ -234,6 +258,7 @@ samsara/
 | [Custom Commands](Docs/CUSTOM_COMMANDS.md) | Create your own commands |
 | [Wake Word Guide](Docs/WAKE_WORD_GUIDE.md) | Hands-free activation setup |
 | [Voice Training](Docs/VOICE_TRAINING_FEATURE.md) | Improve recognition accuracy |
+| [AI Prompt Templates](docs/prompts/) | Use AI to create custom commands, profiles, and macros |
 
 ---
 
@@ -263,6 +288,8 @@ samsara/
 
 ## 🗺️ Roadmap
 
+- [x] Alarm reminders with persistent sound notifications
+- [x] Standalone Windows EXE (no Python needed)
 - [ ] Toast notifications on transcription
 - [ ] Undo last dictation
 - [ ] Command chaining ("select all copy")
