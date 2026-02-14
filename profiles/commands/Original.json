@@ -1,16 +1,10 @@
 {
+  "profile_name": "Original",
+  "description": "Mornes first commands",
+  "author": "Morne/Claude",
+  "version": "1.0",
+  "created": "2026-01-20",
   "commands": {
-    "jump five times": {
-      "type": "macro",
-      "steps": [
-        { "action": "press", "key": "space", "delay_after": 250 },
-        { "action": "press", "key": "space", "delay_after": 250 },
-        { "action": "press", "key": "space", "delay_after": 250 },
-        { "action": "press", "key": "space", "delay_after": 250 },
-        { "action": "press", "key": "space" }
-      ],
-      "description": "Press spacebar 5 times for repeated jumps"
-    },
     "open chrome": {
       "type": "launch",
       "target": "chrome.exe",
@@ -28,137 +22,214 @@
     },
     "close window": {
       "type": "hotkey",
-      "keys": ["alt", "f4"],
+      "keys": [
+        "alt",
+        "f4"
+      ],
       "description": "Close active window"
     },
     "minimize": {
       "type": "hotkey",
-      "keys": ["win", "down"],
+      "keys": [
+        "win",
+        "down"
+      ],
       "description": "Minimize window"
     },
     "maximize": {
       "type": "hotkey",
-      "keys": ["win", "up"],
+      "keys": [
+        "win",
+        "up"
+      ],
       "description": "Maximize window"
     },
     "show desktop": {
       "type": "hotkey",
-      "keys": ["win", "d"],
+      "keys": [
+        "win",
+        "d"
+      ],
       "description": "Show desktop"
     },
     "task manager": {
       "type": "hotkey",
-      "keys": ["ctrl", "shift", "esc"],
+      "keys": [
+        "ctrl",
+        "shift",
+        "esc"
+      ],
       "description": "Open Task Manager"
     },
     "new tab": {
       "type": "hotkey",
-      "keys": ["ctrl", "t"],
+      "keys": [
+        "ctrl",
+        "t"
+      ],
       "description": "Open new browser tab"
     },
     "close tab": {
       "type": "hotkey",
-      "keys": ["ctrl", "w"],
+      "keys": [
+        "ctrl",
+        "w"
+      ],
       "description": "Close current tab"
     },
     "reopen tab": {
       "type": "hotkey",
-      "keys": ["ctrl", "shift", "t"],
+      "keys": [
+        "ctrl",
+        "shift",
+        "t"
+      ],
       "description": "Reopen closed tab"
     },
     "next tab": {
       "type": "hotkey",
-      "keys": ["ctrl", "tab"],
+      "keys": [
+        "ctrl",
+        "tab"
+      ],
       "description": "Switch to next tab"
     },
     "previous tab": {
       "type": "hotkey",
-      "keys": ["ctrl", "shift", "tab"],
+      "keys": [
+        "ctrl",
+        "shift",
+        "tab"
+      ],
       "description": "Switch to previous tab"
     },
     "refresh page": {
       "type": "hotkey",
-      "keys": ["f5"],
+      "keys": [
+        "f5"
+      ],
       "description": "Refresh current page"
     },
     "scroll down": {
       "type": "hotkey",
-      "keys": ["pagedown"],
+      "keys": [
+        "pagedown"
+      ],
       "description": "Scroll down one page"
     },
     "scroll up": {
       "type": "hotkey",
-      "keys": ["pageup"],
+      "keys": [
+        "pageup"
+      ],
       "description": "Scroll up one page"
     },
     "scroll to top": {
       "type": "hotkey",
-      "keys": ["home"],
+      "keys": [
+        "home"
+      ],
       "description": "Scroll to top of page"
     },
     "scroll to bottom": {
       "type": "hotkey",
-      "keys": ["end"],
+      "keys": [
+        "end"
+      ],
       "description": "Scroll to bottom of page"
     },
     "go back": {
       "type": "hotkey",
-      "keys": ["alt", "left"],
+      "keys": [
+        "alt",
+        "left"
+      ],
       "description": "Browser back"
     },
     "go forward": {
       "type": "hotkey",
-      "keys": ["alt", "right"],
+      "keys": [
+        "alt",
+        "right"
+      ],
       "description": "Browser forward"
     },
     "select all": {
       "type": "hotkey",
-      "keys": ["ctrl", "a"],
+      "keys": [
+        "ctrl",
+        "a"
+      ],
       "description": "Select all text"
     },
     "copy": {
       "type": "hotkey",
-      "keys": ["ctrl", "c"],
+      "keys": [
+        "ctrl",
+        "c"
+      ],
       "description": "Copy selection"
     },
     "cut": {
       "type": "hotkey",
-      "keys": ["ctrl", "x"],
+      "keys": [
+        "ctrl",
+        "x"
+      ],
       "description": "Cut selection"
     },
     "paste": {
       "type": "hotkey",
-      "keys": ["ctrl", "v"],
+      "keys": [
+        "ctrl",
+        "v"
+      ],
       "description": "Paste from clipboard"
     },
     "undo": {
       "type": "hotkey",
-      "keys": ["ctrl", "z"],
+      "keys": [
+        "ctrl",
+        "z"
+      ],
       "description": "Undo last action"
     },
     "redo": {
       "type": "hotkey",
-      "keys": ["ctrl", "y"],
+      "keys": [
+        "ctrl",
+        "y"
+      ],
       "description": "Redo last action"
     },
     "save": {
       "type": "hotkey",
-      "keys": ["ctrl", "s"],
+      "keys": [
+        "ctrl",
+        "s"
+      ],
       "description": "Save current file"
     },
     "find": {
       "type": "hotkey",
-      "keys": ["ctrl", "f"],
+      "keys": [
+        "ctrl",
+        "f"
+      ],
       "description": "Open find dialog"
     },
     "submit": {
       "type": "hotkey",
-      "keys": ["enter"],
+      "keys": [
+        "enter"
+      ],
       "description": "Press Enter"
     },
     "escape": {
       "type": "hotkey",
-      "keys": ["esc"],
+      "keys": [
+        "esc"
+      ],
       "description": "Press Escape"
     },
     "press e": {
@@ -334,7 +405,10 @@
     },
     "delete word": {
       "type": "hotkey",
-      "keys": ["ctrl", "backspace"],
+      "keys": [
+        "ctrl",
+        "backspace"
+      ],
       "description": "Delete previous word"
     }
   }
