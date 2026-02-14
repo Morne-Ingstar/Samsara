@@ -1,11 +1,13 @@
 # Logs
 *.log
+build_log.txt
 
 # Python cache
 __pycache__/
 *.py[cod]
 *$py.class
 *.pyo
+.pytest_cache/
 
 # Virtual environment
 venv/
@@ -15,12 +17,12 @@ env/
 # User-specific config and data
 config.json
 training_data.json
+history.json
 
 # Build artifacts
 build/
 dist/
 *.exe
-*.spec
 
 # IDE
 .idea/
@@ -39,17 +41,12 @@ nul
 
 # Claude Code
 .claude/
-tmpclaude-*
 
-# Dev-only files
+# Internal dev notes
 SATURN_HANDOFF.md
-generate_sounds.py
-generate_sounds_hq.py
-generate_variations.py
-test_clipboard_preservation.py
 
-# Sound dev files
+# Sound assets - development only
 sounds/backup_old/
 sounds/downloads/
-sounds/test_mixkit.mp3
+sounds/test_*.mp3
 sounds/variations/
