@@ -137,6 +137,21 @@ from samsara.echo_cancel import EchoCanceller
 from samsara.clipboard import clipboard_lock as _clipboard_lock, save_clipboard as _save_clipboard_win32, restore_clipboard as _restore_clipboard_win32, paste_with_preservation
 
 
+def resample_audio(audio, orig_sr, target_sr=16000):
+    """Resample audio from orig_sr to target_sr using linear interpolation.
+
+    Good enough for speech -- Whisper is robust to minor artifacts.
+    Returns the input unchanged if rates already match.
+    """
+    if orig_sr == target_sr:
+        return audio
+    duration = len(audio) / orig_sr
+    new_length = int(duration * target_sr)
+    old_indices = np.linspace(0, len(audio) - 1, num=len(audio))
+    new_indices = np.linspace(0, len(audio) - 1, num=new_length)
+    return np.interp(new_indices, old_indices, audio).astype(np.float32)
+
+
 def hide_console():
     """Hide the console window (Windows only, no-op on other platforms)"""
     if sys.platform != 'win32':
@@ -531,9 +546,11 @@ Setup takes about 1 minute."""
         self.root.update()
 
         try:
-            # Record for 2 seconds
+            # Record at device native rate for 2 seconds
             duration = 2
-            audio = sd.rec(int(16000 * duration), samplerate=16000,
+            device_info = sd.query_devices(mic_id)
+            native_rate = int(device_info['default_samplerate'])
+            audio = sd.rec(int(native_rate * duration), samplerate=native_rate,
                           channels=1, dtype=np.float32, device=mic_id)
             sd.wait()
 
@@ -1396,19 +1413,7 @@ class SettingsWindow:
         mode_frame = ctk.CTkFrame(hotkey_scroll, corner_radius=10)
         mode_frame.pack(fill='x', pady=(0, 20))
 
-        # Determine current runtime mode (not just config default)
-        # Runtime state overrides config if a mode is actively toggled
-        # Note: combined mode also has wake_word_active=True, so check config first
-        config_mode = self.app.config.get('mode', 'hold')
-        if config_mode == 'combined' and self.app.wake_word_active:
-            current_mode = 'combined'
-        elif self.app.wake_word_active:
-            current_mode = 'wake_word'
-        elif self.app.continuous_active:
-            current_mode = 'continuous'
-        else:
-            current_mode = config_mode
-        
+        current_mode = self.app.config.get('mode', 'hold')
         self.mode_var = tk.StringVar(value=current_mode)
 
         ctk.CTkRadioButton(mode_frame, text="Hold to record (hold key, release to transcribe)",
@@ -1416,11 +1421,13 @@ class SettingsWindow:
         ctk.CTkRadioButton(mode_frame, text="Toggle mode (press to start/stop recording)",
                           variable=self.mode_var, value='toggle').pack(anchor='w', padx=15, pady=(0, 8))
         ctk.CTkRadioButton(mode_frame, text="Continuous (auto-transcribe on speech pause)",
-                          variable=self.mode_var, value='continuous').pack(anchor='w', padx=15, pady=(0, 8))
-        ctk.CTkRadioButton(mode_frame, text="Wake word (hands-free activation)",
-                          variable=self.mode_var, value='wake_word').pack(anchor='w', padx=15, pady=(0, 8))
-        ctk.CTkRadioButton(mode_frame, text="Combined (wake word + hold-to-record hotkey)",
-                          variable=self.mode_var, value='combined').pack(anchor='w', padx=15, pady=(0, 15))
+                          variable=self.mode_var, value='continuous').pack(anchor='w', padx=15, pady=(0, 15))
+
+        # Wake word is a separate checkbox (works alongside any capture mode)
+        self.wake_word_enabled_var = tk.BooleanVar(
+            value=self.app.config.get('wake_word_enabled', False))
+        ctk.CTkCheckBox(mode_frame, text="Enable wake word listener (works with any mode above)",
+                        variable=self.wake_word_enabled_var).pack(anchor='w', padx=15, pady=(0, 15))
 
         # Keyboard Shortcuts Section
         hotkey_label = ctk.CTkLabel(hotkey_scroll, text="Keyboard Shortcuts", font=ctk.CTkFont(size=16, weight="bold"))
@@ -2225,6 +2232,8 @@ class SettingsWindow:
         device_changed = old_device != new_device
 
         self.app.config['mode'] = self._get_var('mode_var', 'mode', 'hold')
+        self.app.config['wake_word_enabled'] = self._get_var(
+            'wake_word_enabled_var', 'wake_word_enabled', False)
         self.app.config['hotkey'] = self._get_var('hotkey_var', 'hotkey', 'ctrl+shift')
         self.app.config['continuous_hotkey'] = self._get_var('cont_hotkey_var', 'continuous_hotkey', 'ctrl+alt+d')
         self.app.config['wake_word_hotkey'] = self._get_var('wake_hotkey_var', 'wake_word_hotkey', 'ctrl+alt+w')
@@ -2339,16 +2348,19 @@ class SettingsWindow:
         new_mode = self.app.config['mode']
         if self.app.apply_mode(new_mode):
             self.app.save_config()
-            # Refresh tray menu so the checkmark reflects the new mode
             if hasattr(self.app, 'tray_icon') and hasattr(self.app, 'get_menu'):
                 try:
                     self.app.tray_icon.menu = self.app.get_menu()
                 except Exception as e:
                     print(f"[MODE] Failed to refresh tray menu: {e}")
 
+        # Apply wake word enable/disable at runtime
+        new_ww = self.app.config.get('wake_word_enabled', False)
+        self.app.set_wake_word_enabled(new_ww)
+
         if mic_changed and hasattr(self.app, 'tray_icon') and hasattr(self.app, 'get_menu'):
             self.app.tray_icon.menu = self.app.get_menu()
-            self.app.tray_icon.title = f"Samsara - {self.app.get_current_microphone_name()}"
+            self.app._update_tray_tooltip()
             print(f"Microphone changed to: {self.app.get_current_microphone_name()}")
 
         print("Settings saved successfully!")
@@ -3511,9 +3523,22 @@ class DictationApp:
 
         # Get available microphones
         self.available_mics = self.get_available_microphones()
+
+        # Validate saved microphone ID against available devices.
+        # Device indices change when switching host APIs (e.g. MME → WASAPI)
+        # or when hardware is added/removed. Fall back to the first available.
+        saved_mic = self.config.get('microphone')
+        valid_ids = {mic['id'] for mic in self.available_mics}
+        if saved_mic not in valid_ids and self.available_mics:
+            old_id = saved_mic
+            self.config['microphone'] = self.available_mics[0]['id']
+            self.save_config()
+            print(f"[CONFIG] Saved microphone {old_id} not found in current devices, "
+                  f"switched to {self.available_mics[0]['name']} (id={self.config['microphone']})")
         
-        # Audio settings
-        self.sample_rate = 16000
+        # Audio settings -- dual sample rates for WASAPI compatibility
+        self.model_rate = 16000      # What Whisper expects
+        self.capture_rate = self._detect_capture_rate(self.config.get('microphone'))
         self.audio_queue = queue.Queue()
         self.recording = False
         self.command_mode_recording = False  # True when using command-only hotkey
@@ -3567,7 +3592,7 @@ class DictationApp:
         
         # Pre-buffer: rolling circular buffer captures audio BEFORE hotkey press
         # so the first ~1.5 seconds of speech are never lost to startup delay.
-        # Each chunk is 100ms at sample_rate (e.g. 1600 samples at 16000Hz).
+        # Each chunk is 100ms at capture_rate. Resampled to model_rate before transcription.
         self._prebuffer_seconds = 1.5
         self._prebuffer_chunks = int(self._prebuffer_seconds / 0.1)  # 15 chunks at 100ms each
         self._prebuffer = collections.deque(maxlen=self._prebuffer_chunks)
@@ -3608,7 +3633,7 @@ class DictationApp:
 
         # Listening state indicator overlay
         self.listening_indicator = ListeningIndicator(self.root)
-        self.listening_indicator.set_mode(self.config.get('mode', 'hold'))
+        self.listening_indicator.set_mode(self._get_mode_display())
         self.listening_indicator.set_position(
             self.config.get('listening_indicator_position', 'bottom-center'))
         if self.config.get('listening_indicator_enabled', False):
@@ -3649,7 +3674,7 @@ class DictationApp:
         # Echo cancellation (removes system audio from mic input)
         aec_config = self.config.get('echo_cancellation', {})
         self.echo_canceller = EchoCanceller(
-            sample_rate=self.sample_rate,
+            sample_rate=self.capture_rate,
             enabled=aec_config.get('enabled', False),
             latency_ms=aec_config.get('latency_ms', 30.0),
         )
@@ -3702,7 +3727,7 @@ class DictationApp:
             "wake_word_hotkey": "ctrl+alt+w",
             "command_hotkey": "ctrl+alt+c",
             "cancel_hotkey": "escape",
-            "mode": "hold",  # Options: "hold", "toggle", "continuous", "wake_word", "combined"
+            "mode": "hold",  # Options: "hold", "toggle", "continuous"
             "model_size": "base",
             "language": "en",
             "auto_paste": True,
@@ -3777,7 +3802,9 @@ class DictationApp:
             "notifications": get_default_notification_config(),
             # Listening state indicator overlay
             "listening_indicator_enabled": False,
-            "listening_indicator_position": "bottom-center"
+            "listening_indicator_position": "bottom-center",
+            # Wake word listener (independent of capture mode)
+            "wake_word_enabled": False
         }
 
         if self.config_path.exists():
@@ -3801,6 +3828,13 @@ class DictationApp:
     
     def _migrate_wake_word_config(self, default_config):
         """Migrate old flat wake word settings to new nested structure"""
+        # Migrate old wake_word/combined modes to wake_word_enabled + hold
+        old_mode = self.config.get('mode')
+        if old_mode in ('wake_word', 'combined'):
+            self.config['wake_word_enabled'] = True
+            self.config['mode'] = 'hold'
+            print(f"[MIGRATE] mode='{old_mode}' -> mode='hold' + wake_word_enabled=True")
+
         # Check if we have old flat config but no new nested config
         if 'wake_word_config' not in self.config:
             # Create new nested config from defaults
@@ -3870,50 +3904,78 @@ class DictationApp:
             print(f"[ERROR] save_config failed: {e}")
             raise
     
+    def _detect_capture_rate(self, device_id):
+        """Query the native sample rate of a device. Falls back to 48000."""
+        try:
+            if device_id is not None:
+                info = sd.query_devices(device_id)
+                rate = int(info['default_samplerate'])
+                print(f"[AUDIO] Device {device_id} native rate: {rate}Hz")
+                return rate
+        except Exception as e:
+            print(f"[WARN] Could not query device {device_id} rate: {e}")
+        return 48000
+
     def get_available_microphones(self):
-        """Get list of available microphone devices"""
+        """Get list of available microphone devices.
+
+        Filters to WASAPI devices only (Windows) to avoid duplicates — the same
+        physical mic appears once per host API (MME, DirectSound, WASAPI, WDM-KS)
+        with different names and truncation rules. WASAPI is the preferred API
+        and gives full-length, consistent device names.
+        """
         devices = sd.query_devices()
+        hostapis = sd.query_hostapis()
         microphones = []
         seen_names = set()
         show_all = self.config.get('show_all_audio_devices', False)
-        
+
+        # Filter to WASAPI devices (preferred for full-length names and low latency).
+        # Streams now open at the device's native rate and resample to 16kHz for Whisper.
+        preferred_api_idx = None
+        for idx, api in enumerate(hostapis):
+            if 'WASAPI' in api['name']:
+                preferred_api_idx = idx
+                break
+
         for i, device in enumerate(devices):
-            # Only include input devices with at least 1 channel
-            if device['max_input_channels'] > 0:
-                name = device['name']
-                
-                # Filter out duplicates
-                if name in seen_names:
+            if device['max_input_channels'] <= 0:
+                continue
+
+            # Filter to preferred API only (unless show_all is enabled or API not found)
+            if preferred_api_idx is not None and not show_all:
+                if device['hostapi'] != preferred_api_idx:
+                    continue
+
+            name = device['name']
+
+            # Deduplicate by normalized name (strip + lowercase)
+            dedup_key = name.strip().lower()
+            if dedup_key in seen_names:
+                continue
+            
+            if not show_all:
+                skip_keywords = [
+                    'Stereo Mix', 'Wave Out Mix', 'What U Hear', 'Loopback', 
+                    'CABLE', 'Virtual Audio', 'VB-Audio', 'Voicemeeter',
+                    'Sound Mapper', 'Primary Sound', 'Wave Speaker', 'Wave Microphone',
+                    'Stream Wave', 'Chat Capture', 'Hands-Free', 'HF Audio', 'Input ()',
+                    'Line In (', 'VDVAD', 'SteelSeries Sonar', 'OCULUSVAD',
+                    'VAD Wave', 'wc4400_8200'
+                ]
+                if any(kw.lower() in name.lower() for kw in skip_keywords):
+                    continue
+                if name.strip() == "Microphone ()":
+                    continue
+                if '@System32\\drivers\\' in name:
                     continue
                 
-                # Apply filters only if "show all devices" is disabled
-                if not show_all:
-                    # Skip common virtual/loopback devices and unwanted system devices
-                    skip_keywords = [
-                        'Stereo Mix', 'Wave Out Mix', 'What U Hear', 'Loopback', 
-                        'CABLE', 'Virtual Audio', 'VB-Audio', 'Voicemeeter',
-                        'Sound Mapper', 'Primary Sound', 'Wave Speaker', 'Wave Microphone',
-                        'Stream Wave', 'Chat Capture', 'Hands-Free', 'HF Audio', 'Input ()',
-                        'Line In (', 'VDVAD', 'SteelSeries Sonar', 'OCULUSVAD',
-                        'VAD Wave', 'wc4400_8200'
-                    ]
-                    if any(keyword.lower() in name.lower() for keyword in skip_keywords):
-                        continue
-                    
-                    # Skip "Microphone ()" with nothing in parentheses
-                    if name.strip() == "Microphone ()":
-                        continue
-                    
-                    # Also skip devices that are clearly drivers/system components
-                    if '@System32\\drivers\\' in name:
-                        continue
-                    
-                seen_names.add(name)
-                microphones.append({
-                    'id': i,
-                    'name': name,
-                    'channels': device['max_input_channels']
-                })
+            seen_names.add(dedup_key)
+            microphones.append({
+                'id': i,
+                'name': name,
+                'channels': device['max_input_channels']
+            })
         
         return microphones
     
@@ -4120,10 +4182,11 @@ class DictationApp:
 
         # Update config + save
         self.config['microphone'] = mic_id
+        self.capture_rate = self._detect_capture_rate(mic_id)
         self.save_config()
 
         mic_name = self.get_current_microphone_name()
-        print(f"[OK] Switched to microphone: {mic_name}")
+        print(f"[OK] Switched to microphone: {mic_name} ({self.capture_rate}Hz)")
 
         # Restart whatever was running, now bound to the new device
         if was_wake_word:
@@ -4138,8 +4201,7 @@ class DictationApp:
                 self._start_prebuffer_stream()
 
         # Update tray icon tooltip
-        if hasattr(self, 'tray_icon'):
-            self.tray_icon.title = f"Samsara - {mic_name}"
+        self._update_tray_tooltip()
 
     def load_model_async(self):
         """Load Whisper model in background thread"""
@@ -4187,20 +4249,18 @@ class DictationApp:
             
             # Auto-start modes that require always-on listening
             mode = self.config.get('mode', 'hold')
-            if mode == 'wake_word':
-                print("[AUTO] Starting wake word mode...")
-                self.start_wake_word_mode()
-            elif mode == 'combined':
-                print("[AUTO] Starting combined mode (wake word + hotkey)...")
-                self.start_wake_word_mode()
-            elif mode == 'continuous':
+            if mode == 'continuous':
                 print("[AUTO] Starting continuous mode...")
                 self.start_continuous_mode()
-            
-            # Start pre-buffer stream for modes without always-on audio
-            # (wake_word and combined already feed the pre-buffer via their stream)
+
+            # Start pre-buffer stream for hold/toggle
             if mode in ('hold', 'toggle'):
                 self._start_prebuffer_stream()
+
+            # Auto-start wake word listener if enabled (works alongside any mode)
+            if self.config.get('wake_word_enabled', False):
+                print("[AUTO] Starting wake word listener...")
+                self.start_wake_word_mode()
         
         thread = threading.Thread(target=load, daemon=True)
         thread.start()
@@ -4343,12 +4403,13 @@ class DictationApp:
             self.start_recording()
             return
         
-        # Check for wake word mode toggle (works in any mode)
+        # Check for wake word enable/disable toggle (works in any mode)
         if self.check_hotkey_state(wake_hotkey) and not self.hotkey_pressed:
             print(f"[HOTKEY] Wake word hotkey detected: {wake_hotkey}")
             self.hotkey_pressed = True
-            # Run in separate thread to avoid blocking
-            threading.Thread(target=self.toggle_wake_word_mode, daemon=True).start()
+            new_state = not self.config.get('wake_word_enabled', False)
+            threading.Thread(target=self.set_wake_word_enabled,
+                             args=(new_state,), daemon=True).start()
             return
         
         # Check for continuous mode toggle (works in any mode)
@@ -4401,15 +4462,6 @@ class DictationApp:
                 # In continuous mode, main hotkey toggles continuous listening
                 self.hotkey_pressed = True
                 self.toggle_continuous_mode()
-            elif mode == 'wake_word':
-                # In wake word mode, main hotkey toggles wake word listening
-                self.hotkey_pressed = True
-                self.toggle_wake_word_mode()
-            elif mode == 'combined':
-                # Combined mode: hotkey works like hold mode for on-demand recording
-                # Wake word listener runs separately via continuous_stream
-                self.hotkey_pressed = True
-                self.start_recording()
     
     def on_key_release(self, key):
         """Handle key release - uses state-based checking for reliable detection"""
@@ -4438,7 +4490,7 @@ class DictationApp:
                     # Command hotkey released - stop recording (will process as command-only)
                     print(f"[HOTKEY] Command hotkey released, stopping recording")
                     self.stop_recording()
-                elif (mode == 'hold' or mode == 'combined') and self.recording:
+                elif mode == 'hold' and self.recording:
                     print(f"[HOTKEY] Main hotkey released, stopping recording")
                     self.stop_recording()
                 self.hotkey_pressed = False
@@ -4467,12 +4519,12 @@ class DictationApp:
         self.is_speaking = False
 
         stream = self._open_stream_with_timeout(
-            samplerate=self.sample_rate,
+            samplerate=self.capture_rate,
             channels=1,
             dtype=np.float32,
             callback=self.continuous_audio_callback,
             device=self.config['microphone'],
-            blocksize=int(self.sample_rate * 0.1)  # 100ms blocks
+            blocksize=int(self.capture_rate * 0.1)  # 100ms blocks
         )
         if stream is None:
             print("[ERROR] Could not open continuous stream — audio subsystem busy. Try again.")
@@ -4579,7 +4631,8 @@ class DictationApp:
         """Transcribe a buffer from continuous mode"""
         try:
             audio = np.concatenate(buffer)
-            audio_duration = len(audio) / self.sample_rate
+            audio = resample_audio(audio, self.capture_rate, self.model_rate)
+            audio_duration = len(audio) / self.model_rate
             
             # Get transcription parameters based on performance mode
             transcribe_params = self.get_transcription_params()
@@ -4657,12 +4710,12 @@ class DictationApp:
         self.wake_word_triggered = False
 
         stream = self._open_stream_with_timeout(
-            samplerate=self.sample_rate,
+            samplerate=self.capture_rate,
             channels=1,
             dtype=np.float32,
             callback=self.wake_word_audio_callback,
             device=self.config['microphone'],
-            blocksize=int(self.sample_rate * 0.1)  # 100ms blocks
+            blocksize=int(self.capture_rate * 0.1)  # 100ms blocks
         )
         if stream is None:
             print("[ERROR] Could not open wake word stream — audio subsystem busy. Try again.")
@@ -4819,7 +4872,8 @@ class DictationApp:
         """Process audio - check for wake word, commands, or dictation content"""
         try:
             audio = np.concatenate(buffer)
-            audio_duration = len(audio) / self.sample_rate
+            audio = resample_audio(audio, self.capture_rate, self.model_rate)
+            audio_duration = len(audio) / self.model_rate
             
             # Get transcription parameters based on performance mode
             transcribe_params = self.get_transcription_params()
@@ -5552,12 +5606,12 @@ class DictationApp:
             return  # Already running
         try:
             stream = self._open_stream_with_timeout(
-                samplerate=self.sample_rate,
+                samplerate=self.capture_rate,
                 channels=1,
                 dtype=np.float32,
                 callback=self._prebuffer_callback,
                 device=self.config['microphone'],
-                blocksize=int(self.sample_rate * 0.1)  # 100ms blocks
+                blocksize=int(self.capture_rate * 0.1)  # 100ms blocks
             )
             if stream is None:
                 print("[WARN] Could not start pre-buffer stream (audio subsystem busy)")
@@ -5616,7 +5670,7 @@ class DictationApp:
         self._recording_start_time = time.time()
         
         stream = self._open_stream_with_timeout(
-            samplerate=self.sample_rate,
+            samplerate=self.capture_rate,
             channels=1,
             dtype=np.float32,
             callback=self.audio_callback,
@@ -5657,9 +5711,12 @@ class DictationApp:
         self.play_sound("stop")
 
         # Restore tray icon to idle state
-        self._stop_icon_chase()
-        if hasattr(self, 'tray_icon'):
-            self.tray_icon.title = f"Samsara - {self.get_current_microphone_name()}"
+        # If wake word is still listening, keep the chase animation
+        if self.wake_word_active:
+            pass  # icon stays animated
+        else:
+            self._stop_icon_chase()
+        self._update_tray_tooltip()
 
         # Update listening indicator
         if hasattr(self, 'listening_indicator'):
@@ -5678,13 +5735,14 @@ class DictationApp:
         
         print("[...] Transcribing...")
         
-        # Combine audio chunks
+        # Combine audio chunks and resample to model rate
         audio = np.concatenate(self.audio_data, axis=0).flatten()
-        
+        audio = resample_audio(audio, self.capture_rate, self.model_rate)
+
         # Transcribe in background to not block hotkey listener
         def transcribe():
             try:
-                audio_duration = len(audio) / self.sample_rate
+                audio_duration = len(audio) / self.model_rate
                 
                 # Get transcription parameters based on performance mode
                 transcribe_params = self.get_transcription_params()
@@ -5778,14 +5836,13 @@ class DictationApp:
             self.root.after(0, self.listening_indicator.flash_error)
 
     def apply_mode(self, new_mode):
-        """Apply a mode change at runtime. Stops listeners that don't match the
-        new mode, manages the prebuffer stream, and starts the new mode's listener.
-        Updates self.config['mode'] but does NOT call save_config (caller decides).
+        """Apply a capture-mode change at runtime.
 
-        Valid modes: 'hold', 'toggle', 'wake_word', 'combined', 'continuous'.
+        Valid modes: 'hold', 'toggle', 'continuous'.
+        Wake word is now a separate boolean (see set_wake_word_enabled).
         Returns True if the mode was applied, False if unchanged or invalid.
         """
-        valid_modes = ('hold', 'toggle', 'wake_word', 'combined', 'continuous')
+        valid_modes = ('hold', 'toggle', 'continuous')
         if new_mode not in valid_modes:
             print(f"[MODE] Refused invalid mode: {new_mode}")
             return False
@@ -5802,44 +5859,61 @@ class DictationApp:
         # Reset toggle state so it doesn't carry over
         self.toggle_active = False
 
-        # Stop wake word mode if it was active but new mode doesn't need it
-        # (wake_word and combined both use wake word listening)
-        if self.wake_word_active and new_mode not in ('wake_word', 'combined'):
-            self.stop_wake_word_mode()
-            print(f"[MODE] Deactivated wake word mode")
-
         # Stop continuous mode if it was active but new mode is different
         if self.continuous_active and new_mode != 'continuous':
             self.stop_continuous_mode()
             print(f"[MODE] Deactivated continuous mode")
 
-        # Manage pre-buffer stream: standalone stream for hold/toggle,
-        # wake word / continuous streams handle their own pre-buffering
+        # Manage pre-buffer stream: hold/toggle get a standalone stream,
+        # continuous mode handles its own audio
         if new_mode in ('hold', 'toggle'):
             if self.model_loaded:
                 self._start_prebuffer_stream()
         else:
             self._stop_prebuffer_stream()
 
-        # Activate the new mode if it requires wake_word or continuous
-        if new_mode == 'wake_word' and not self.wake_word_active:
-            self.start_wake_word_mode()
-            print(f"[MODE] Activated wake word mode")
-        elif new_mode == 'combined' and not self.wake_word_active:
-            self.start_wake_word_mode()
-            print(f"[MODE] Activated combined mode (wake word + hotkey)")
-        elif new_mode == 'continuous' and not self.continuous_active:
+        # Activate continuous if that's the new mode
+        if new_mode == 'continuous' and not self.continuous_active:
             self.start_continuous_mode()
             print(f"[MODE] Activated continuous mode")
 
         self.config['mode'] = new_mode
         print(f"[MODE] Mode changed to: {new_mode}")
 
-        # Update listening indicator mode label
+        # Update listening indicator and tray tooltip
+        display = self._get_mode_display()
         if hasattr(self, 'listening_indicator'):
-            self.root.after(0, self.listening_indicator.set_mode, new_mode)
+            self.root.after(0, self.listening_indicator.set_mode, display)
+        self._update_tray_tooltip()
 
         return True
+
+    def set_wake_word_enabled(self, enabled):
+        """Start or stop the wake word listener independently of capture mode."""
+        self.config['wake_word_enabled'] = enabled
+        self.save_config()
+        if enabled and not self.wake_word_active:
+            self.start_wake_word_mode()
+            print("[WAKE] Wake word listener ENABLED")
+            # Animate tray icon to show wake word is listening
+            if not self.recording and not self.continuous_active:
+                self._start_icon_chase()
+        elif not enabled and self.wake_word_active:
+            self.stop_wake_word_mode()
+            print("[WAKE] Wake word listener DISABLED")
+            # Stop animation if nothing else is actively capturing
+            if not self.recording and not self.continuous_active:
+                self._stop_icon_chase()
+        # Update tray tooltip and menu
+        self._update_tray_tooltip()
+        if hasattr(self, 'tray_icon') and hasattr(self, 'get_menu'):
+            try:
+                self.tray_icon.menu = self.get_menu()
+            except Exception:
+                pass
+        # Update listening indicator mode label
+        if hasattr(self, 'listening_indicator'):
+            self.root.after(0, self.listening_indicator.set_mode, self._get_mode_display())
 
     def switch_mode_from_tray(self, new_mode):
         """Tray-menu entry point: apply the mode, persist it, refresh the menu."""
@@ -5852,6 +5926,22 @@ class DictationApp:
                 self.tray_icon.menu = self.get_menu()
             except Exception as e:
                 print(f"[MODE] Failed to refresh tray menu: {e}")
+        self._update_tray_tooltip()
+
+    def _get_mode_display(self):
+        """Build a display string for the current mode + wake word state."""
+        mode = self.config.get('mode', 'hold').title()
+        if self.config.get('wake_word_enabled', False):
+            return f"{mode} + Wake"
+        return mode
+
+    def _update_tray_tooltip(self):
+        """Refresh the tray icon tooltip to reflect current mode/wake state."""
+        if not hasattr(self, 'tray_icon'):
+            return
+        if self.snoozed:
+            return  # snooze tooltip managed by _update_snooze_tooltip
+        self.tray_icon.title = f"Samsara - {self._get_mode_display()}"
 
     # Wheel icon color scheme
     _WHEEL_COLORS = ['#185FA5', '#C0392B', '#1A1A1A']   # blue, red, black
@@ -6053,6 +6143,7 @@ class DictationApp:
             'mode': self.config.get('mode', 'hold'),
             'continuous_active': self.continuous_active,
             'wake_word_active': self.wake_word_active,
+            'wake_word_enabled': self.config.get('wake_word_enabled', False),
             'recording': self.recording,
             'toggle_active': getattr(self, 'toggle_active', False),
         }
@@ -6104,7 +6195,7 @@ class DictationApp:
             else:
                 self.tray_icon.title = "Samsara - Snoozed (until resumed)"
         else:
-            self.tray_icon.title = f"Samsara - {self.get_current_microphone_name()}"
+            self.tray_icon.title = f"Samsara - {self._get_mode_display()}"
 
     def _on_snooze_expire(self):
         """Called by the snooze timer when duration elapses."""
@@ -6137,10 +6228,12 @@ class DictationApp:
         if mode in ('hold', 'toggle') and self.model_loaded:
             self._start_prebuffer_stream()
 
-        # Restart streaming modes that were active before snooze
+        # Restart continuous mode if it was active
         if prior.get('continuous_active') and mode == 'continuous':
             self.start_continuous_mode()
-        elif prior.get('wake_word_active') and mode in ('wake_word', 'combined'):
+
+        # Restart wake word listener if it was enabled before snooze
+        if prior.get('wake_word_enabled') and not self.wake_word_active:
             self.start_wake_word_mode()
 
         self._snooze_prior_mode_state = None
@@ -6213,24 +6306,18 @@ class DictationApp:
                             radio=True
                         ),
                         pystray.MenuItem(
-                            "Wake Word ('Samsara...')",
-                            lambda _i, _it: self.switch_mode_from_tray('wake_word'),
-                            checked=lambda _it, m='wake_word': self.config.get('mode', 'hold') == m,
-                            radio=True
-                        ),
-                        pystray.MenuItem(
-                            'Combined (Wake Word + Hotkey)',
-                            lambda _i, _it: self.switch_mode_from_tray('combined'),
-                            checked=lambda _it, m='combined': self.config.get('mode', 'hold') == m,
-                            radio=True
-                        ),
-                        pystray.MenuItem(
                             'Continuous',
                             lambda _i, _it: self.switch_mode_from_tray('continuous'),
                             checked=lambda _it, m='continuous': self.config.get('mode', 'hold') == m,
                             radio=True
                         ),
                     )
+                ),
+                pystray.MenuItem(
+                    f"Wake Word ({self.config.get('wake_word_config', {}).get('phrase', 'samsara')})",
+                    lambda _i, _it: self.set_wake_word_enabled(
+                        not self.config.get('wake_word_enabled', False)),
+                    checked=lambda _it: self.config.get('wake_word_enabled', False)
                 ),
                 pystray.MenuItem(
                     f"Hotkey: {self.config['hotkey']}", 
@@ -6300,7 +6387,7 @@ class DictationApp:
         self.tray_icon = pystray.Icon(
             "Samsara",
             self.create_icon_image(),
-            f"Samsara - {self.get_current_microphone_name()}",
+            f"Samsara - {self._get_mode_display()}",
             get_menu()
         )
         
