@@ -323,13 +323,11 @@ class CommandExecutor:
         if text_lower in self.commands:
             return text_lower
 
-        # Check for partial matches
+        # Check for partial matches using word boundaries.
+        # Pad with spaces so boundary checks work at start/end of string.
+        padded = f" {text_lower} "
         for cmd_name in self.commands:
-            if text_lower.startswith(cmd_name + " ") or text_lower.startswith(cmd_name):
-                return cmd_name
-            if text_lower.endswith(" " + cmd_name) or text_lower.endswith(cmd_name):
-                return cmd_name
-            if f" {cmd_name} " in f" {text_lower} ":
+            if f" {cmd_name} " in padded:
                 return cmd_name
 
         return None

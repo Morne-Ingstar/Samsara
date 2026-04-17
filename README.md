@@ -4,92 +4,99 @@
 
 [![Python 3.10+](https://img.shields.io/badge/python-3.10+-blue.svg)](https://www.python.org/downloads/)
 [![License: MIT](https://img.shields.io/badge/License-MIT-green.svg)](LICENSE)
-[![Platform](https://img.shields.io/badge/platform-Windows%20%7C%20macOS%20%7C%20Linux-lightgrey.svg)]()
+[![Platform](https://img.shields.io/badge/platform-Windows-blue.svg)]()
+[![Status](https://img.shields.io/badge/status-early%20dev-orange.svg)]()
 
 ---
 
-## 💬 From the Developer
+## From the Developer
 
 > Hi, I'm Morne, and my hands fucking hurt.
 >
-> I've had HSD (Hypermobile Spectrum Disorder) for a decade. Using a mouse and keyboard hurts—all the time. But thanks to AI tools, I can now build software that reduces how much I need to type and click.
+> I've had HSD (Hypermobile Spectrum Disorder) for a decade. Using a mouse and keyboard hurts — all the time. But thanks to AI tools, I can now build software that reduces how much I need to type and click.
 >
-> I tried paid apps that do similar things, but they were fragmented, expensive, and didn't quite fit my needs. So I built Samsara—combining everything into one free, open-source tool.
+> I tried paid apps that do similar things, but they were fragmented, expensive, and didn't quite fit my needs. So I built Samsara — combining everything into one free, open-source tool.
 >
-> I'm making this public because I hope it helps others like me. If you know someone who could benefit, please pass it along. Feedback is always welcome.
+> This is early-stage software. It works for me daily, but expect rough edges, half-finished features, and occasional breakage. If you find it useful or want to help improve it, I'd love to hear from you.
 >
 > — Morne
 
 ---
 
-## ✨ What is Samsara?
+## What is Samsara?
 
-Samsara is a **fully offline** voice dictation and command system powered by OpenAI's Whisper. It's designed for people who need hands-free computing—whether due to chronic pain, limited mobility, RSI, or just wanting a faster workflow.
+Samsara is a **fully offline** voice dictation and command system powered by OpenAI's Whisper. It runs as a Windows system tray app that records audio, transcribes it locally using your GPU, and types the result into whatever application is focused.
 
-**Key highlights:**
-- 🎤 **Speak, don't type** — Dictate text into any application
-- 🔇 **100% offline** — Your voice never leaves your computer
-- ⚡ **GPU accelerated** — Near-instant transcription with CUDA
-- 🎮 **Voice commands** — Control your computer with 40+ built-in commands
-- 🗣️ **Wake word mode** — Hands-free activation ("Hey Samsara...")
-- 🎨 **Customizable** — Sounds, hotkeys, commands, and more
+Built for accessibility first — specifically for someone with chronic hand pain who needs to minimize keyboard and mouse use.
+
+**What it does well right now:**
+- Hold-to-dictate with near-instant CUDA transcription (~300ms for most utterances)
+- 40+ voice commands (copy, paste, undo, open apps, etc.)
+- Wake word activation ("Jarvis, dictate...")
+- Pre-buffer captures 1.5s of audio *before* you press the hotkey, so first words aren't lost
+- Custom vocabulary and correction dictionaries
+- Sound themes, alarms, and break reminders
+
+**What's rough / in progress:**
+- Settings and debug windows use CustomTkinter and can be sluggish (scrolling, resizing)
+- Wake word mode works but needs tuning per-environment (speech threshold, correction map)
+- Toggle and continuous modes are functional but less tested than hold-to-dictate
+- Cross-platform support exists in theory but Windows is the only tested target
+- The codebase is a ~6,200-line monolith (`dictation.py`) with a partially-completed modular refactor
 
 ---
 
-## 🚀 Quick Start
+## Quick Start
 
-### Option A: Windows Installer (Recommended)
-
-Download the latest release from the [Releases page](https://github.com/Morne-Ingstar/samsara/releases).
-
-1. Run the installer
-2. Launch Samsara from Start Menu
-3. First-run wizard downloads the AI model (~75 MB - 3 GB depending on choice)
-
-No Python required. Just install and go.
-
-### Option B: From Source
+### From Source (recommended for now)
 
 ```bash
-git clone https://github.com/Morne-Ingstar/samsara.git
-cd samsara
+git clone https://github.com/Morne-Ingstar/Samsara.git
+cd Samsara
 pip install -r requirements.txt
+python dictation.py
 ```
 
-**Windows:** Double-click `_launcher.vbs` (runs silently in background)
+A first-run wizard will guide you through microphone selection, model download, and hotkey configuration.
 
-**macOS/Linux:** `python dictation.py`
+### Windows Installer
 
-### 3. Use
+A standalone Windows build (no Python required) is available on the [Releases page](https://github.com/Morne-Ingstar/Samsara/releases). Note: the installer may lag behind the dev branch.
 
-- Hold **Ctrl+Shift** and speak
-- Release to transcribe
-- Text appears at your cursor
+### Usage
 
-That's it! A setup wizard will guide you through first-time configuration.
+- Hold **Ctrl+Shift** and speak, release to transcribe
+- Right-click the tray icon to switch modes, change mic, snooze, or open settings
+- Say your wake word (default: "Jarvis") followed by a command for hands-free control
 
 ---
 
-## 🎯 Features
-
-### Speech-to-Text
-| Feature | Description |
-|---------|-------------|
-| **Offline** | Uses Whisper locally—no internet, no cloud, no data collection |
-| **Fast** | GPU acceleration with CUDA for sub-second transcription |
-| **Accurate** | Multiple model sizes from fast (tiny) to precise (large-v3) |
-| **Smart** | Auto-capitalizes sentences, formats numbers, preserves clipboard |
+## Features
 
 ### Dictation Modes
+
 | Mode | How it works |
-|------|--------------|
-| **Hold** | Hold hotkey to record, release to transcribe |
-| **Toggle** | Press to start, press again to stop |
-| **Continuous** | Always listening, transcribes when you pause |
-| **Wake Word** | Say "Hey Samsara" to activate hands-free |
+|------|-------------|
+| **Hold** (default) | Hold hotkey to record, release to transcribe. Most reliable. |
+| **Toggle** | Tap hotkey to start recording, tap again to stop. Tray icon shows recording state. |
+| **Continuous** | Always listening, auto-transcribes on speech pauses. |
+| **Wake Word** | Say "Jarvis" (or your chosen phrase) to activate hands-free. |
+| **Combined** | Wake word listener + hotkey both active simultaneously. |
+
+All modes switchable instantly from the tray right-click menu — no settings dialog needed.
+
+### Wake Word System
+
+- Configurable wake phrase (Jarvis, Samsara, Computer, or custom)
+- Token-aware matching prevents false triggers on similar words ("samsara-like" won't fire)
+- Dictation sub-modes: "dictate" (auto-timeout), "short dictate" (quick), "long dictate" (waits for end word)
+- End word ("over"), cancel word ("cancel"), pause word ("pause") support
+- Wake word correction map for known Whisper misrecognitions (add entries as you find them)
+- Full debug/observability window with trace pipeline, evaluation panel, and decision timeline
 
 ### Voice Commands
-40+ built-in commands for hands-free control:
+
+40+ built-in commands loaded from `commands.json`:
 
 ```
 "new line"          → Enter key
@@ -97,232 +104,200 @@ That's it! A setup wizard will guide you through first-time configuration.
 "copy that"         → Ctrl+C
 "paste"             → Ctrl+V
 "undo"              → Ctrl+Z
-"period"            → Inserts .
-"question mark"     → Inserts ?
-"open browser"      → Launches default browser
+"open chrome"       → Launches Chrome
 ```
 
-[See full command list →](Docs/VOICE_COMMANDS.md)
+Command types: `hotkey` (key combos), `launch` (start programs), `macro` (scripted multi-step sequences).
 
-### Sound Themes 🎵
-Four built-in audio themes for feedback sounds:
+Custom commands can be added via Settings → Commands tab or by editing `commands.json` directly.
 
-| Theme | Vibe |
-|-------|------|
-| **cute** | Playful bloops (Nintendo/Duolingo style) |
-| **warm** | Rich chords (OS boot sound vibes) |
-| **zen** | Singing bowls and chimes |
-| **chirpy** | Bright bird-like chirps |
+### Audio Pre-Buffer
 
-Switch themes in Settings → Sounds. Supports WAV, MP3, OGG, FLAC.
+A rolling 1.5-second audio buffer runs in the background during hold/toggle modes. When you press the hotkey, the buffer's contents are prepended to your recording — so the first words you speak are never lost to startup latency.
 
-### Voice Training
-- Add custom vocabulary (names, technical terms)
-- Auto-correct common mistranscriptions
-- Calibrate microphone sensitivity
-- Import/export training profiles
+### Accessibility Extras
 
-### Alarm Reminders ⏰
-- Interval-based alarms (hydration, stretching, breaks)
-- Plays sound repeatedly until dismissed with hotkey (default: F11)
-- Built-in sounds: alarm, chime, bell, gentle
-- Support for custom WAV/MP3 sound files
-- Configure in Settings → Alarms tab
+- **Alarm reminders** — interval-based nag-until-dismissed alarms (hydration, stretch, break) with streak tracking
+- **Key macros** — tap-combos and toggle-hold for accessibility (e.g. triple-tap W to auto-hold W)
+- **Toast notifications** — timed reminders via Windows toast
+- **Echo cancellation** — optional WASAPI loopback filter to prevent transcribing system audio (experimental)
+- **Clipboard preservation** — saves and restores your clipboard around every paste operation
+- **Listening indicator** — always-on-top pill overlay showing current mode, pulses teal when recording
+
+### Sound Themes
+
+Four built-in themes: `cute` (playful bloops), `warm` (rich chords), `zen` (singing bowls), `chirpy` (bright chirps). Custom themes supported — add a folder under `sounds/themes/`. Supports WAV, MP3, OGG, FLAC.
+
+### Snooze
+
+Temporarily pause all listening from the tray menu (5 min / 15 min / 30 min / 1 hour / until resumed). Active streams are stopped and auto-restored when snooze expires.
 
 ---
 
-## 💻 System Requirements
+## System Requirements
 
 | Component | Minimum | Recommended |
 |-----------|---------|-------------|
-| **OS** | Windows 10, macOS 10.15, Ubuntu 20.04 | Windows 11, macOS 13+, Ubuntu 22.04 |
+| **OS** | Windows 10 | Windows 11 |
 | **Python** | 3.10 | 3.11+ |
 | **RAM** | 4 GB | 8 GB+ |
 | **GPU** | None (CPU works) | NVIDIA with 4GB+ VRAM |
 | **Disk** | 2 GB | 10 GB (for larger models) |
 
-### Model Sizes
+### Whisper Model Sizes
 
 | Model | Speed | Accuracy | VRAM | Disk |
 |-------|-------|----------|------|------|
-| tiny | ⚡⚡⚡⚡ | ★★☆☆ | ~1 GB | ~75 MB |
-| base | ⚡⚡⚡ | ★★★☆ | ~1 GB | ~150 MB |
-| small | ⚡⚡ | ★★★★ | ~2 GB | ~500 MB |
-| medium | ⚡ | ★★★★☆ | ~5 GB | ~1.5 GB |
-| large-v3 | 🐢 | ★★★★★ | ~10 GB | ~3 GB |
+| tiny | Fast | Fair | ~1 GB | ~75 MB |
+| base | Fast | Good | ~1 GB | ~150 MB |
+| small | Moderate | Good | ~2 GB | ~500 MB |
+| medium | Slow | Very good | ~5 GB | ~1.5 GB |
+| large-v3 | Slowest | Best | ~10 GB | ~3 GB |
 
 ---
 
-## 📦 Installation
-
-### Windows (Recommended: Installer)
-
-Download the installer from [Releases](https://github.com/Morne-Ingstar/samsara/releases) — no Python required.
-
-The installer:
-- Creates Start Menu shortcuts
-- Adds uninstaller
-- Downloads Whisper model on first run
-
-### Windows (From Source)
-
-```batch
-git clone https://github.com/Morne-Ingstar/samsara.git
-cd samsara
-install.bat
-```
-
-Or manually:
-```batch
-python -m venv venv
-venv\Scripts\activate
-pip install -r requirements.txt
-```
-
-### macOS
-
-```bash
-brew install portaudio
-git clone https://github.com/Morne-Ingstar/samsara.git
-cd samsara
-python3 -m venv venv
-source venv/bin/activate
-pip install -r requirements.txt
-```
-
-### Linux (Ubuntu/Debian)
-
-```bash
-sudo apt-get install python3-dev portaudio19-dev
-git clone https://github.com/Morne-Ingstar/samsara.git
-cd samsara
-python3 -m venv venv
-source venv/bin/activate
-pip install -r requirements.txt
-```
-
-### Optional: MP3 Support
-
-For MP3/OGG/FLAC sound files:
-```bash
-pip install pydub
-# Also install ffmpeg:
-# Windows: choco install ffmpeg  (or download from ffmpeg.org)
-# macOS: brew install ffmpeg
-# Linux: sudo apt install ffmpeg
-```
-
----
-
-## ⌨️ Default Hotkeys
+## Default Hotkeys
 
 | Hotkey | Action |
 |--------|--------|
-| `Ctrl+Shift` | Hold to dictate |
+| `Ctrl+Shift` | Hold to dictate (default mode) |
 | `Ctrl+Alt+D` | Toggle continuous mode |
 | `Ctrl+Alt+W` | Toggle wake word mode |
+| `Ctrl+Alt+C` | Command-only recording (no text output) |
 | `Escape` | Cancel current recording |
+| `F7` | Complete alarm (gets streak credit) |
+| `F8` | Dismiss alarm (no credit) |
 
-All hotkeys are customizable in Settings.
+All hotkeys are configurable in Settings.
 
 ---
 
-## 🗂️ Project Structure
+## For Developers
+
+### Architecture Overview
+
+`dictation.py` (~6,200 lines) is the monolith that runs the app. It contains six classes: `SplashScreen`, `FirstRunWizard`, `CommandExecutor`, `SettingsWindow`, `HistoryWindow`, and `DictationApp` (the brain — owns all state, streams, timers, tray, and windows).
+
+Supporting modules live under `samsara/`:
 
 ```
 samsara/
-├── dictation.py          # Main application
-├── voice_training.py     # Training module
-├── commands.json         # Voice command definitions
-├── config.json           # User settings (auto-created)
-├── requirements.txt      # Dependencies
-├── _launcher.vbs         # Silent Windows launcher
-├── sounds/               # Audio feedback files
-│   └── themes/           # Sound theme folders
-├── samsara/              # Modular components
-│   ├── config.py
-│   ├── audio.py
-│   ├── speech.py
-│   └── commands.py
-└── Docs/                 # Documentation
+├── wake_word_matcher.py      # Token-aware wake phrase matching (shared)
+├── wake_corrections.py       # Whisper misrecognition correction map
+├── clipboard.py              # Win32 clipboard save/restore for paste operations
+├── key_macros.py             # Tap-combos and toggle-hold for accessibility
+├── notifications.py          # Windows toast reminders
+├── alarms.py                 # Nag-until-dismissed alarms with streak tracking
+├── echo_cancel.py            # WASAPI loopback + NLMS adaptive filter
+├── profiles.py               # Dictionary/command profile import-export
+├── plugin_commands.py        # Plugin-based command system (scaffold, not yet wired)
+└── ui/
+    ├── wake_word_debug.py    # Wake word debug window with trace pipeline
+    ├── listening_indicator.py # Always-on-top mode/listening overlay
+    ├── profile_manager_ui.py # Profile manager window
+    └── splash.py             # Splash screen (stale — duplicates class in dictation.py)
 ```
 
+**Important caveat:** some modules under `samsara/` are from a partial refactor that was never completed. `samsara/commands.py`, `audio.py`, `config.py`, `platform.py`, `speech.py` are **stale** — only the test suite imports them. The canonical implementations live in `dictation.py`. When in doubt, `dictation.py` is the source of truth.
+
+### Config and Commands
+
+User configuration lives in `config.json` (auto-created on first run, not committed). Voice commands are defined in `commands.json`. Both are documented in detail in the architecture reference (`docs/` or ask for the latest version).
+
+Config saves use atomic writes (temp file + `os.replace`) with automatic `.bak` rotation, so a crash mid-save never corrupts the config file.
+
+### Threading Model
+
+The main thread runs tkinter. Background threads handle: Whisper transcription (guarded by `self.model_lock`), audio stream callbacks (PortAudio), pystray tray icon, pynput keyboard listener, alarm/notification schedulers, and echo cancellation capture. Cross-thread UI updates use `self.root.after(0, callable)`.
+
+### Running Tests
+
+```bash
+cd Samsara
+pip install -r requirements-test.txt
+python -m pytest tests/ -v
+```
+
+The wake word matcher has its own focused test suite:
+```bash
+python -m pytest tests/test_wake_word_matcher.py -v
+```
+
+### Contributing
+
+Contributions welcome. The most impactful areas right now:
+
+1. **Settings UI performance** — the CustomTkinter windows are sluggish; needs either lazy tab loading, widget caching, or a different UI approach
+2. **Wake word robustness** — building the correction map, improving silence detection, possibly adding fuzzy matching
+3. **Completing the modular refactor** — extracting classes from `dictation.py` into the `samsara/` package
+4. **Cross-platform testing** — macOS and Linux are untested
+
+Please fork the repository, create a feature branch, and submit a pull request. For bugs or feature requests, [open an issue](https://github.com/Morne-Ingstar/Samsara/issues).
+
 ---
 
-## 📚 Documentation
-
-| Guide | Description |
-|-------|-------------|
-| [Quick Start](Docs/QUICKSTART.md) | Get up and running in 5 minutes |
-| [Voice Commands](Docs/VOICE_COMMANDS.md) | Full command reference |
-| [Custom Commands](Docs/CUSTOM_COMMANDS.md) | Create your own commands |
-| [Wake Word Guide](Docs/WAKE_WORD_GUIDE.md) | Hands-free activation setup |
-| [Voice Training](Docs/VOICE_TRAINING_FEATURE.md) | Improve recognition accuracy |
-| [AI Prompt Templates](docs/prompts/) | Use AI to create custom commands, profiles, and macros |
-
----
-
-## 🐛 Troubleshooting
+## Troubleshooting
 
 **App won't start?**
-- Run `python dictation.py` directly to see errors
+- Run `python dictation.py` from a terminal to see errors (console is hidden by default)
 - Check Python 3.10+ is installed
 - Run `pip install -r requirements.txt`
 
-**No transcription?**
-- Check microphone in Settings
+**No transcription / first words cut off?**
+- Check microphone selection in Settings or tray menu
 - Test mic in Voice Training → Calibration
 - Ensure Whisper model is loaded (check tray tooltip)
+- Pre-buffer should capture first words — if not, check `[PRE]` lines in console
+
+**Wake word not triggering?**
+- Open Wake Word Debug from the tray menu
+- Check the speech threshold — if the level meter stays green (speaking) continuously, your threshold is too low for your environment
+- Look at the Decision Timeline — does it show the right "Heard:" text? If Whisper is misrendering your wake word, add the variant to `samsara/wake_corrections.py`
 
 **Commands not working?**
-- Enable command mode in Settings
+- Enable command mode in Settings (or say "command mode on")
 - Commands are case-insensitive
-- Check Commands tab for available commands
+- In wake word mode, commands always work regardless of the command-mode toggle
 
 **GPU not detected?**
-- Install [CUDA Toolkit](https://developer.nvidia.com/cuda-toolkit)
-- Verify with `nvidia-smi`
-- App falls back to CPU automatically
+- Samsara uses `ctranslate2` for CUDA detection (no PyTorch required)
+- Verify with `nvidia-smi` that your GPU is visible
+- Falls back to CPU automatically if CUDA isn't available
 
 ---
 
-## 🗺️ Roadmap
+## Roadmap
 
 - [x] Alarm reminders with persistent sound notifications
 - [x] Standalone Windows EXE (no Python needed)
-- [ ] Toast notifications on transcription
+- [x] Wake word debug/observability window
+- [x] Tray-based mode switching (no settings dialog needed)
+- [x] Listening state indicator overlay
+- [x] Snooze listening from tray
+- [x] Token-aware wake word matching (prevents false triggers)
+- [x] Atomic config saves with backup rotation
+- [ ] Plugin system for custom commands
+- [ ] Auto-calibrate speech threshold on startup
 - [ ] Undo last dictation
 - [ ] Command chaining ("select all copy")
-- [ ] Application-specific commands
+- [ ] Application-specific command profiles
 - [ ] Spelling mode ("spell c-a-t" → "cat")
 - [ ] Usage statistics dashboard
-- [ ] Plugin system for extensions
 
 ---
 
-## 🤝 Contributing
-
-Contributions welcome! Please:
-1. Fork the repository
-2. Create a feature branch
-3. Submit a pull request
-
-For bugs or feature requests, [open an issue](https://github.com/Morne-Ingstar/samsara/issues).
-
----
-
-## 📄 License
+## License
 
 MIT License — free for personal and commercial use.
 
 ---
 
-## 🙏 Acknowledgments
+## Acknowledgments
 
 - [OpenAI Whisper](https://github.com/openai/whisper) — Speech recognition model
-- [faster-whisper](https://github.com/guillaumekln/faster-whisper) — Optimized implementation
+- [faster-whisper](https://github.com/guillaumekln/faster-whisper) — Optimized CTranslate2 implementation
 - [CustomTkinter](https://github.com/TomSchimansky/CustomTkinter) — Modern UI framework
-- Built with assistance from [Claude](https://anthropic.com) by Anthropic
+- Built with assistance from [Claude](https://anthropic.com) by Anthropic and [ChatGPT](https://openai.com) by OpenAI
 
 ---
 
