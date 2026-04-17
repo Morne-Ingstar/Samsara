@@ -167,20 +167,19 @@ class TestRecordingModes:
         recording = toggle_active
         assert recording is False
 
-    def test_combined_mode_flow(self, sample_config):
-        """Test combined mode: wake word active AND hotkey works like hold mode"""
-        sample_config['mode'] = 'combined'
+    def test_hold_with_wake_word_flow(self, sample_config):
+        """Test hold mode + wake_word_enabled: wake word active AND hotkey works"""
+        sample_config['mode'] = 'hold'
+        sample_config['wake_word_enabled'] = True
 
-        # Combined mode should have both capabilities
         wake_word_active = False
         recording = False
 
-        # Wake word mode starts automatically in combined mode
+        # Wake word listener starts because wake_word_enabled=True
         wake_word_active = True
         assert wake_word_active is True
 
         # Hotkey still works like hold mode (independently of wake word)
-        # Press starts recording
         recording = True
         assert recording is True
         assert wake_word_active is True  # Wake word stays active
