@@ -22,7 +22,9 @@ history.json
 # Build artifacts
 build/
 dist/
+release/
 *.exe
+*.7z
 
 # IDE
 .idea/
