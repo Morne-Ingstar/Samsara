@@ -52,6 +52,21 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
   Windows-only, disabled by default.
 
 ### Changed
+- **Wake word is now a boolean, not a mode** -- `wake_word_enabled` config flag
+  replaces the old `wake_word` and `combined` capture modes.  Three capture modes
+  remain (hold, toggle, continuous); wake word runs alongside any of them.
+  - Tray menu shows "Wake Word" as a checkable item instead of two radio entries
+  - Settings shows a checkbox beneath the capture-mode radios
+  - `Ctrl+Alt+W` hotkey toggles `wake_word_enabled` on/off
+  - Old configs with `mode='wake_word'` or `mode='combined'` auto-migrate to
+    `mode='hold' + wake_word_enabled=true`
+  - Snooze correctly saves/restores `wake_word_enabled` state
+  - Tray tooltip shows combined state: "Hold + Wake", "Continuous", etc.
+  - Listening indicator pill shows the same combined label
+  - Tray icon chase animation runs while wake word listener is active
+  - Icon stays animated after recording ends if wake word is still listening
+  - Removed all dead 'wake_word'/'combined' mode references from code, tests, and docs
+  - Updated README mode table, ARCHITECTURE.md state diagram, WAKE_WORD_GUIDE.md
 - **Tray mic switching** — Now correctly stops and restarts all active audio
   streams (pre-buffer, wake word, continuous) on the new device. Previously
   only updated config without restarting streams, so the old mic kept recording.
@@ -59,6 +74,13 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 - **Config save is now atomic** — Writes to `.json.tmp` first, rotates the
   existing config to `.json.bak`, then atomically promotes the temp file via
   `os.replace`. Prevents truncation/corruption if serialization fails mid-write.
+- **Dual sample rate architecture** -- Capture at device native rate (44.1/48kHz),
+  resample to 16kHz for Whisper. Fixes WASAPI "Invalid sample rate" errors.
+  - All 5 stream sites updated to use `self.capture_rate`
+  - `resample_audio()` via `np.interp` -- lightweight, no new dependencies
+  - Reverted DirectSound workaround back to WASAPI (proper API, no duplicates)
+  - `_detect_capture_rate()` queries device on init and mic switch
+  - Wake Word Debug window also captures at native rate and resamples
 - **Speech threshold default** raised from 0.01 to 0.03 RMS across all modes
   (config, continuous callback, wake word callback, debug window). The old
   default was below ambient noise floor for most environments, causing
