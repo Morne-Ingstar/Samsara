@@ -22,6 +22,7 @@ history.json
 # Build artifacts
 build/
 dist/
+release/
 *.exe
 
 # IDE
