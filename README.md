@@ -80,10 +80,10 @@ A standalone Windows build (no Python required) is available on the [Releases pa
 | **Hold** (default) | Hold hotkey to record, release to transcribe. Most reliable. |
 | **Toggle** | Tap hotkey to start recording, tap again to stop. Tray icon shows recording state. |
 | **Continuous** | Always listening, auto-transcribes on speech pauses. |
-| **Wake Word** | Say "Jarvis" (or your chosen phrase) to activate hands-free. |
-| **Combined** | Wake word listener + hotkey both active simultaneously. |
 
-All modes switchable instantly from the tray right-click menu — no settings dialog needed.
+**Wake Word** is a separate toggle (not a mode) that works alongside any capture mode above. Enable it via the tray menu checkbox, `Ctrl+Alt+W` hotkey, or Settings. When enabled, say your wake phrase (e.g. "Jarvis") to activate hands-free commands and dictation while still using hotkeys for on-demand recording.
+
+All modes and wake word are switchable instantly from the tray right-click menu.
 
 ### Wake Word System
 
