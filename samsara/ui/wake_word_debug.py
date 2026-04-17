@@ -15,6 +15,16 @@ import sounddevice as sd
 from samsara.wake_word_matcher import match_wake_phrase
 from samsara.wake_corrections import apply_corrections as apply_wake_corrections, was_corrected
 
+def _resample_audio(audio, orig_sr, target_sr=16000):
+    """Lightweight linear-interpolation resample for speech audio."""
+    if orig_sr == target_sr:
+        return audio
+    duration = len(audio) / orig_sr
+    new_length = int(duration * target_sr)
+    old_indices = np.linspace(0, len(audio) - 1, num=len(audio))
+    new_indices = np.linspace(0, len(audio) - 1, num=new_length)
+    return np.interp(new_indices, old_indices, audio).astype(np.float32)
+
 
 class WakeWordDebugWindow:
     """Debug window for testing and tuning wake word detection."""
@@ -725,11 +735,12 @@ class WakeWordDebugWindow:
             self.timer_label.configure(text="--", text_color="#888888")
         self.log("Started listening...")
         try:
+            capture_rate = getattr(self.app, 'capture_rate', 48000)
             self.audio_stream = sd.InputStream(
-                samplerate=16000, channels=1, dtype=np.float32,
+                samplerate=capture_rate, channels=1, dtype=np.float32,
                 callback=self.audio_callback,
                 device=self.app.config.get('microphone'),
-                blocksize=int(16000 * 0.1))
+                blocksize=int(capture_rate * 0.1))
             self.audio_stream.start()
             self._start_ui_poll()
         except Exception as e:
@@ -820,6 +831,9 @@ class WakeWordDebugWindow:
             self.window.after(0, self.update_state, "Processing...", "#FF6B6B")
         try:
             audio = np.concatenate(buffer)
+            capture_rate = getattr(self.app, 'capture_rate', 48000)
+            model_rate = getattr(self.app, 'model_rate', 16000)
+            audio = _resample_audio(audio, capture_rate, model_rate)
             segments, info = self.app.model.transcribe(
                 audio, language=self.app.config['language'], beam_size=5,
                 vad_filter=True,
