@@ -7,6 +7,25 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 ## [Unreleased]
 
 ### Added
+- **Wake word observability** -- Debug window upgraded to structured trace pipeline
+  - Wake Word Evaluation panel shows match decision (type, index, YES/NO) per utterance
+  - Decision Timeline groups all pipeline stages per utterance in a scrollable view
+  - Export Timeline button writes trace to `docs/wake_word_trace_YYYYMMDD_HHMMSS.txt`
+  - Main app pipeline events appear in debug window when open (optional trace callback)
+  - New shared module: `samsara/wake_word_matcher.py` -- token-aware phrase matching
+- **Snooze listening** -- Tray submenu to temporarily pause all listening for 5/15/30/60 min
+  or indefinitely, then auto-resume; hotkeys are ignored while snoozed
+  - Active streams (continuous, wake word) are stopped and restored on resume
+  - Tray tooltip shows snooze state and resume time
+  - Alarm hotkeys still work while snoozed
+- **Listening state indicator overlay** -- Small always-on-top pill window shows current mode
+  and pulses teal (#00CED1) while audio is actively captured
+  - Flashes green on successful dictation, red on errors/cancellation (fades back smoothly)
+  - Configurable position: top/bottom + left/center/right (default: bottom-center)
+  - Settings in General tab: enable/disable toggle and position dropdown
+  - Toggleable via tray menu "Show Listening Indicator" (persisted in config)
+  - Dismissable with middle-click; positions within work area to avoid taskbar overlap
+  - New file: `samsara/ui/listening_indicator.py`
 - **Audio pre-buffer system** — Rolling 1.5s circular buffer captures audio before hotkey press
   - First words are never lost to startup delay (sound cue, stream initialization)
   - Pre-buffer audio prepended to recording data automatically
@@ -18,13 +37,56 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
   - Single-folder executable built with PyInstaller
   - Reduced from 5.8 GB to 1.9 GB (1.07 GB compressed)
   - Whisper models download on first run (not bundled)
+- **Tray mode switching** — Switch between all 5 modes (Hold, Toggle, Wake Word,
+  Combined, Continuous) directly from tray right-click menu with radio checkmarks;
+  no settings dialog needed. Central `apply_mode()` handles all state transitions.
+- **Wake word correction map** — `samsara/wake_corrections.py` provides a
+  token-level substitution map for known Whisper misrecognitions (e.g.
+  "charvis" → "jarvis"). Applied before matching in both main app and debug window.
+  Trace pipeline shows both RAW and CORRECTED text for easy pattern discovery.
+- **Plugin command system** (scaffold) — `samsara/plugin_commands.py` with
+  `@command` decorator, global registry, alias support, and auto-loader for
+  `plugins/commands/*.py`. Not yet wired into `CommandExecutor.process_text`.
+- **Echo cancellation module** — `samsara/echo_cancel.py` uses WASAPI loopback
+  capture + NLMS adaptive filter to subtract system audio from mic input.
+  Windows-only, disabled by default.
 
 ### Changed
+- **Tray mic switching** — Now correctly stops and restarts all active audio
+  streams (pre-buffer, wake word, continuous) on the new device. Previously
+  only updated config without restarting streams, so the old mic kept recording.
+  Uses closure-pattern callbacks to avoid pystray's 2-arg callback limitation.
+- **Config save is now atomic** — Writes to `.json.tmp` first, rotates the
+  existing config to `.json.bak`, then atomically promotes the temp file via
+  `os.replace`. Prevents truncation/corruption if serialization fails mid-write.
+- **Speech threshold default** raised from 0.01 to 0.03 RMS across all modes
+  (config, continuous callback, wake word callback, debug window). The old
+  default was below ambient noise floor for most environments, causing
+  perpetual "Speaking" state that prevented silence detection from firing.
+- **Toggle mode tray feedback** — `start_recording` sets tray icon to teal +
+  tooltip to "RECORDING"; `stop_recording` restores idle state. Critical for
+  toggle mode where there's no physical key-hold to indicate recording state.
+
+### Fixed
+- **Wake Word Debug performance** -- Reduced UI thread load by ~80%
+  - Unified audio level meter + timer into single 4 Hz poll loop (was 10 Hz each)
+  - Added change-detection guards to skip redundant widget reconfigs
+  - Batched log textbox inserts (flush every 200ms instead of per-message)
+- **Settings window performance** -- Eliminated save-time lag and faster open
+  - Removed force-build of unvisited tabs on save; reads config directly instead
+  - Microphone enumeration moved to background thread (window opens instantly)
 - Replaced PyTorch CUDA detection with ctranslate2 native method
   - Eliminates 4.7 GB torch dependency
   - Uses `ctranslate2.get_supported_compute_types()` instead of `torch.cuda.is_available()`
 
 ### Fixed
+- **Wake word substring false-positive** -- `wake_phrase in text` replaced with
+  token-aware `match_wake_phrase()` in both dictation.py and wake_word_debug.py;
+  "samsara-like" no longer triggers wake phrase "samsara"
+- **Listening indicator vanishes behind taskbar** -- Periodically re-asserts topmost;
+  positions inside the work area (excludes taskbar) instead of full screen
+- **Listening indicator settings** -- Added enable/disable toggle and position dropdown
+  to Settings > General; default position changed to top-right to avoid taskbar overlap
 - **Wake word + hotkey contention** — Wake word transcription now pauses during hotkey recording
   - Eliminates 200-800ms GPU contention delay when pressing hotkey in combined mode
   - Wake word audio stream continues running (feeds pre-buffer) but skips transcription
