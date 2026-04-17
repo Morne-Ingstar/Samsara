@@ -1,5 +1,6 @@
 import os
 import sys
+import math
 import wave
 
 # Platform-specific imports
@@ -25,7 +26,7 @@ def _hide_console_now():
     except:
         pass
 
-_hide_console_now()
+# _hide_console_now()  # TEMPORARILY DISABLED for debug — uncomment when done testing
 
 # ============================================================================
 # Single Instance Check - Prevent multiple instances from running
@@ -98,9 +99,11 @@ _instance_lock = _check_single_instance()
 # Fix OpenMP conflict between numpy and other libraries
 os.environ["KMP_DUPLICATE_LIB_OK"] = "TRUE"
 
+import re
 import threading
 import queue
 import time
+import collections
 import subprocess
 import logging
 from datetime import datetime
@@ -124,9 +127,13 @@ from voice_training import VoiceTrainingWindow
 from samsara.profiles import ProfileManager
 from samsara.ui.profile_manager_ui import ProfileManagerWindow
 from samsara.ui.wake_word_debug import WakeWordDebugWindow
+from samsara.ui.listening_indicator import ListeningIndicator
+from samsara.wake_word_matcher import match_wake_phrase
+from samsara.wake_corrections import apply_corrections as apply_wake_corrections, was_corrected
 from samsara.key_macros import KeyMacroManager, get_default_macro_config
 from samsara.notifications import NotificationManager, get_default_notification_config
 from samsara.alarms import AlarmManager, get_default_alarm_config
+from samsara.echo_cancel import EchoCanceller
 from samsara.clipboard import clipboard_lock as _clipboard_lock, save_clipboard as _save_clipboard_win32, restore_clipboard as _restore_clipboard_win32, paste_with_preservation
 
 
@@ -176,7 +183,7 @@ class SplashScreen:
         self.splash.attributes('-topmost', True)
 
         # Window size and centering
-        width, height = 350, 150
+        width, height = 350, 165
         x = (self.splash.winfo_screenwidth() // 2) - (width // 2)
         y = (self.splash.winfo_screenheight() // 2) - (height // 2)
         self.splash.geometry(f"{width}x{height}+{x}+{y}")
@@ -186,7 +193,15 @@ class SplashScreen:
 
         # App name
         tk.Label(self.splash, text="Samsara", font=('Segoe UI', 20, 'bold'),
-                bg='#2d2d2d', fg='#00CED1').pack(pady=(25, 5))
+                bg='#2d2d2d', fg='#00CED1').pack(pady=(25, 2))
+
+        # Flavour subtitle with animated dots
+        self._dot_count = 0
+        self._subtitle_var = tk.StringVar(value="De-articulating Splines.")
+        tk.Label(self.splash, textvariable=self._subtitle_var,
+                 font=('Segoe UI', 9, 'italic'), bg='#2d2d2d',
+                 fg='#666666').pack(pady=(0, 5))
+        self._animate_dots()
 
         # Status text
         self.status_var = tk.StringVar(value="Starting...")
@@ -206,6 +221,15 @@ class SplashScreen:
         self.splash.update()
         self.root.update_idletasks()
         self.root.update()
+
+    def _animate_dots(self):
+        """Cycle the subtitle dots: . → .. → ... → . ..."""
+        self._dot_count = (self._dot_count % 3) + 1
+        self._subtitle_var.set("De-articulating Splines" + "." * self._dot_count)
+        try:
+            self.splash.after(500, self._animate_dots)
+        except Exception:
+            pass  # splash may be closing
 
     def set_status(self, text):
         """Update status text"""
@@ -1093,8 +1117,8 @@ class SettingsWindow:
             except:
                 self.window = None
 
-        # Get available microphones
-        self.available_mics = self.app.get_available_microphones()
+        # Use cached mic list for instant open; refresh in background
+        self.available_mics = self.app.available_mics or []
 
         # Set CustomTkinter appearance based on system
         ctk.set_appearance_mode("system")
@@ -1115,7 +1139,7 @@ class SettingsWindow:
         self.window.grid_columnconfigure(0, weight=1)
 
         # Create tabview (modern tabs)
-        self.tabview = ctk.CTkTabview(self.window, corner_radius=10)
+        self.tabview = ctk.CTkTabview(self.window, corner_radius=10, command=self.on_tab_changed)
         self.tabview.grid(row=0, column=0, sticky='nsew', padx=20, pady=(20, 10))
 
         # Bottom buttons frame
@@ -1141,7 +1165,56 @@ class SettingsWindow:
         self.tabview.add("Alarms")
         self.tabview.add("Advanced")
 
-        # === GENERAL TAB ===
+        # Initialize lazy loading tracking
+        self.built_tabs = {"General"}
+
+        # Build only the General tab initially
+        self.build_general_tab()
+
+        self.window.protocol("WM_DELETE_WINDOW", self.close)
+
+        # Show the fully-built window and bring to front
+        self.window.deiconify()
+        self.window.lift()
+        self.window.focus_force()
+        self.window.after(100, lambda: self.window.lift())
+
+        # Refresh mic list in background so the window opens instantly
+        def _refresh_mics():
+            fresh = self.app.get_available_microphones()
+            if self.window:
+                self.window.after(0, self._apply_mic_refresh, fresh)
+        threading.Thread(target=_refresh_mics, daemon=True).start()
+
+    def _apply_mic_refresh(self, fresh_mics):
+        """Update the mic combobox with a freshly-enumerated mic list."""
+        self.available_mics = fresh_mics
+        self.app.available_mics = fresh_mics
+        if hasattr(self, 'mic_combo') and self.mic_combo:
+            try:
+                names = [m['name'] for m in fresh_mics]
+                self.mic_combo.configure(values=names)
+            except Exception:
+                pass
+
+    def on_tab_changed(self):
+        """Handle tab changes to implement lazy loading."""
+        current_tab = self.tabview.get()
+        if current_tab not in self.built_tabs:
+            build_methods = {
+                "Hotkeys & Modes": self.build_hotkeys_modes_tab,
+                "Commands": self.build_commands_tab,
+                "Sounds": self.build_sounds_tab,
+                "Alarms": self.build_alarms_tab,
+                "Advanced": self.build_advanced_tab,
+            }
+            builder = build_methods.get(current_tab)
+            if builder:
+                builder()
+                self.built_tabs.add(current_tab)
+
+    def build_general_tab(self):
+        """Build the General settings tab."""
         general_tab = self.tabview.tab("General")
         
         # Create scrollable frame for General tab content
@@ -1208,6 +1281,34 @@ class SettingsWindow:
         ctk.CTkCheckBox(options_frame, text="Start Samsara with Windows",
                        variable=self.auto_start_var,
                        command=self.toggle_auto_start).pack(anchor='w', padx=15, pady=(0, 15))
+
+        # Listening Indicator Section
+        indicator_label = ctk.CTkLabel(general_scroll, text="Listening Indicator",
+                                       font=ctk.CTkFont(size=16, weight="bold"))
+        indicator_label.pack(anchor='w', pady=(0, 10))
+
+        indicator_frame = ctk.CTkFrame(general_scroll, corner_radius=10)
+        indicator_frame.pack(fill='x', pady=(0, 20))
+
+        ctk.CTkLabel(indicator_frame,
+                     text="An always-on-top pill that shows your current mode and pulses while recording",
+                     text_color="gray").pack(anchor='w', padx=15, pady=(15, 10))
+
+        self.indicator_enabled_var = tk.BooleanVar(
+            value=self.app.config.get('listening_indicator_enabled', False))
+        ctk.CTkCheckBox(indicator_frame, text="Show listening indicator overlay",
+                        variable=self.indicator_enabled_var).pack(anchor='w', padx=15, pady=(0, 10))
+
+        pos_row = ctk.CTkFrame(indicator_frame, fg_color="transparent")
+        pos_row.pack(fill='x', padx=15, pady=(0, 15))
+        ctk.CTkLabel(pos_row, text="Position:", width=70, anchor='w').pack(side='left')
+        self.indicator_pos_var = tk.StringVar(
+            value=self.app.config.get('listening_indicator_position', 'bottom-center'))
+        pos_combo = ctk.CTkComboBox(pos_row, variable=self.indicator_pos_var,
+                                     values=["top-left", "top-center", "top-right",
+                                             "bottom-left", "bottom-center", "bottom-right"],
+                                     width=160, state='readonly')
+        pos_combo.pack(side='left', padx=(0, 10))
 
         # Profiles Section
         profiles_label = ctk.CTkLabel(general_scroll, text="Profiles", font=ctk.CTkFont(size=16, weight="bold"))
@@ -1280,7 +1381,8 @@ class SettingsWindow:
         ctk.CTkLabel(model_frame, text="Model changes require restart",
                     text_color="#1f6aa5").pack(anchor='w', padx=15, pady=(0, 15))
 
-        # === HOTKEYS & MODES TAB ===
+    def build_hotkeys_modes_tab(self):
+        """Build the Hotkeys & Modes settings tab."""
         hotkey_tab = self.tabview.tab("Hotkeys & Modes")
         
         # Create scrollable frame for Hotkeys tab content
@@ -1390,7 +1492,8 @@ class SettingsWindow:
         self.cancel_hotkey_btn.pack(side='left')
         self.hotkey_buttons['cancel_hotkey'] = self.cancel_hotkey_btn
 
-        # === COMMANDS TAB ===
+    def build_commands_tab(self):
+        """Build the Commands settings tab."""
         commands_tab = self.tabview.tab("Commands")
 
         # Header
@@ -1480,7 +1583,8 @@ class SettingsWindow:
                     text="Say these phrases while dictating to trigger actions. Commands work in all modes.",
                     text_color="gray").pack(anchor='w')
 
-        # === SOUNDS TAB ===
+    def build_sounds_tab(self):
+        """Build the Sounds settings tab."""
         sounds_tab = self.tabview.tab("Sounds")
         
         # Create scrollable frame for Sounds tab content
@@ -1607,7 +1711,8 @@ class SettingsWindow:
         ctk.CTkLabel(sounds_scroll, text=f"Sound files location: {sounds_folder}",
                     text_color="gray").pack(anchor='w')
 
-        # === ALARMS TAB ===
+    def build_alarms_tab(self):
+        """Build the Alarms settings tab."""
         alarms_tab = self.tabview.tab("Alarms")
         
         # Create scrollable frame for Alarms tab content
@@ -1739,7 +1844,8 @@ class SettingsWindow:
                     text=f"Complete ({self.alarm_complete_var.get().upper()}) to get streak credit. Dismiss ({self.alarm_dismiss_var.get().upper()}) to silence without credit.",
                     text_color="gray", wraplength=600).pack(anchor='w', pady=(5, 0))
 
-        # === ADVANCED TAB ===
+    def build_advanced_tab(self):
+        """Build the Advanced settings tab."""
         advanced_tab = self.tabview.tab("Advanced")
         
         # Create scrollable frame for Advanced tab content
@@ -1856,6 +1962,31 @@ class SettingsWindow:
         ctk.CTkLabel(perf_frame, text="fast: Lowest latency | balanced: Good tradeoff | accurate: Best quality",
                     text_color="gray").pack(anchor='w', padx=15, pady=(0, 15))
 
+        # Echo Cancellation Settings
+        aec_label = ctk.CTkLabel(advanced_scroll, text="Echo Cancellation", font=ctk.CTkFont(size=16, weight="bold"))
+        aec_label.pack(anchor='w', pady=(0, 10))
+
+        aec_frame = ctk.CTkFrame(advanced_scroll, corner_radius=10)
+        aec_frame.pack(fill='x', pady=(0, 20))
+
+        aec_config = self.app.config.get('echo_cancellation', {})
+        self.aec_enabled_var = tk.BooleanVar(value=aec_config.get('enabled', False))
+        ctk.CTkCheckBox(aec_frame, text="Enable echo cancellation (removes system audio from mic)",
+                       variable=self.aec_enabled_var).pack(anchor='w', padx=15, pady=(15, 8))
+
+        latency_row = ctk.CTkFrame(aec_frame, fg_color="transparent")
+        latency_row.pack(fill='x', padx=15, pady=(0, 5))
+        ctk.CTkLabel(latency_row, text="Latency compensation:", width=160, anchor='w').pack(side='left')
+        self.aec_latency_var = tk.DoubleVar(value=aec_config.get('latency_ms', 30.0))
+        aec_latency_entry = ctk.CTkEntry(latency_row, textvariable=self.aec_latency_var, width=80)
+        aec_latency_entry.pack(side='left', padx=(0, 10))
+        ctk.CTkLabel(latency_row, text="ms").pack(side='left')
+
+        ctk.CTkLabel(aec_frame,
+                    text="Filters out music/video audio so only your voice is transcribed.\n"
+                         "Requires restart. Windows only (uses WASAPI loopback).",
+                    text_color="gray").pack(anchor='w', padx=15, pady=(0, 15))
+
         # Wake Word Settings
         wake_label = ctk.CTkLabel(advanced_scroll, text="Wake Word Settings", font=ctk.CTkFont(size=16, weight="bold"))
         wake_label.pack(anchor='w', pady=(0, 10))
@@ -1963,14 +2094,6 @@ class SettingsWindow:
         ctk.CTkLabel(debug_row, text="Live testing and parameter tuning",
                     text_color="gray").pack(side='left', padx=(10, 0))
 
-        self.window.protocol("WM_DELETE_WINDOW", self.close)
-
-        # Show the fully-built window and bring to front
-        self.window.deiconify()
-        self.window.lift()
-        self.window.focus_force()
-        self.window.after(100, lambda: self.window.lift())
-
     def start_capture(self, hotkey_name):
         self.capturing_hotkey = hotkey_name
         self.captured_keys = set()
@@ -2065,129 +2188,163 @@ class SettingsWindow:
         self.capturing_hotkey = None
         self.captured_keys = set()
 
+    def _get_var(self, attr, config_key, default=None, nested_keys=None):
+        """Read a setting from the UI variable if the tab was built,
+        otherwise fall back to the existing config value.  This avoids
+        force-building unvisited tabs just to read their defaults."""
+        var = getattr(self, attr, None)
+        if var is not None:
+            return var.get()
+        # Tab was never visited -- keep current config value
+        if nested_keys:
+            val = self.app.config
+            for k in nested_keys:
+                val = val.get(k, {}) if isinstance(val, dict) else {}
+            return val if val != {} else default
+        return self.app.config.get(config_key, default)
+
     def save_settings(self):
+        # No force-building of unvisited tabs -- _get_var falls back to config
+
         old_model = self.app.config.get('model_size', 'base')
         # Convert display name back to actual model value
-        model_display = self.model_var.get()
-        new_model = self.model_display_to_value.get(model_display, 'base')
+        if hasattr(self, 'model_var') and self.model_var is not None:
+            model_display = self.model_var.get()
+            new_model = self.model_display_to_value.get(model_display, 'base')
+        else:
+            new_model = old_model
         model_changed = old_model != new_model
 
         # Track device changes
         old_device = self.app.config.get('device', 'cpu')
-        device_display = self.device_var.get()
-        new_device = self.device_display_to_value.get(device_display, 'cpu')
+        if hasattr(self, 'device_var') and self.device_var is not None:
+            device_display = self.device_var.get()
+            new_device = self.device_display_to_value.get(device_display, 'cpu')
+        else:
+            new_device = old_device
         device_changed = old_device != new_device
 
-        self.app.config['mode'] = self.mode_var.get()
-        self.app.config['hotkey'] = self.hotkey_var.get()
-        self.app.config['continuous_hotkey'] = self.cont_hotkey_var.get()
-        self.app.config['wake_word_hotkey'] = self.wake_hotkey_var.get()
-        self.app.config['command_hotkey'] = self.cmd_hotkey_var.get()
-        self.app.config['cancel_hotkey'] = self.cancel_hotkey_var.get()
-        self.app.config['silence_threshold'] = self.silence_var.get()
-        self.app.config['min_speech_duration'] = self.min_speech_var.get()
-        self.app.config['auto_paste'] = self.auto_paste_var.get()
-        self.app.config['add_trailing_space'] = self.trailing_space_var.get()
-        self.app.config['auto_capitalize'] = self.auto_capitalize_var.get()
-        self.app.config['format_numbers'] = self.format_numbers_var.get()
+        self.app.config['mode'] = self._get_var('mode_var', 'mode', 'hold')
+        self.app.config['hotkey'] = self._get_var('hotkey_var', 'hotkey', 'ctrl+shift')
+        self.app.config['continuous_hotkey'] = self._get_var('cont_hotkey_var', 'continuous_hotkey', 'ctrl+alt+d')
+        self.app.config['wake_word_hotkey'] = self._get_var('wake_hotkey_var', 'wake_word_hotkey', 'ctrl+alt+w')
+        self.app.config['command_hotkey'] = self._get_var('cmd_hotkey_var', 'command_hotkey', 'ctrl+alt+c')
+        self.app.config['cancel_hotkey'] = self._get_var('cancel_hotkey_var', 'cancel_hotkey', 'escape')
+        self.app.config['silence_threshold'] = self._get_var('silence_var', 'silence_threshold', 2.0)
+        self.app.config['min_speech_duration'] = self._get_var('min_speech_var', 'min_speech_duration', 0.3)
+        self.app.config['auto_paste'] = self._get_var('auto_paste_var', 'auto_paste', True)
+        self.app.config['add_trailing_space'] = self._get_var('trailing_space_var', 'add_trailing_space', True)
+        self.app.config['auto_capitalize'] = self._get_var('auto_capitalize_var', 'auto_capitalize', True)
+        self.app.config['format_numbers'] = self._get_var('format_numbers_var', 'format_numbers', True)
         self.app.config['model_size'] = new_model
         self.app.config['device'] = new_device
-        self.app.config['command_mode_enabled'] = self.command_mode_var.get()
-        self.app.config['show_all_audio_devices'] = self.show_all_devices_var.get()
-        self.app.config['audio_feedback'] = self.audio_feedback_var.get()
-        self.app.config['sound_volume'] = self.sound_volume_var.get()
-        self.app.config['performance_mode'] = self.perf_mode_var.get()
+        self.app.config['command_mode_enabled'] = self._get_var('command_mode_var', 'command_mode_enabled', False)
+        self.app.config['show_all_audio_devices'] = self._get_var('show_all_devices_var', 'show_all_audio_devices', False)
+        self.app.config['audio_feedback'] = self._get_var('audio_feedback_var', 'audio_feedback', True)
+        self.app.config['sound_volume'] = self._get_var('sound_volume_var', 'sound_volume', 0.5)
+        self.app.config['performance_mode'] = self._get_var('perf_mode_var', 'performance_mode', 'balanced')
 
-        # Save wake word config
+        # Save listening indicator settings
+        old_indicator_enabled = self.app.config.get('listening_indicator_enabled', False)
+        old_indicator_pos = self.app.config.get('listening_indicator_position', 'bottom-center')
+        new_indicator_enabled = self._get_var('indicator_enabled_var', 'listening_indicator_enabled', False)
+        new_indicator_pos = self._get_var('indicator_pos_var', 'listening_indicator_position', 'bottom-center')
+        self.app.config['listening_indicator_enabled'] = new_indicator_enabled
+        self.app.config['listening_indicator_position'] = new_indicator_pos
+
+        # Apply indicator changes at runtime
+        if hasattr(self.app, 'listening_indicator'):
+            if new_indicator_pos != old_indicator_pos:
+                self.app.root.after(0, self.app.listening_indicator.set_position, new_indicator_pos)
+            if new_indicator_enabled and not old_indicator_enabled:
+                self.app.root.after(0, self.app.listening_indicator.show)
+            elif not new_indicator_enabled and old_indicator_enabled:
+                self.app.root.after(0, self.app.listening_indicator.hide)
+
+        # Save echo cancellation settings
+        self.app.config['echo_cancellation'] = {
+            'enabled': self._get_var('aec_enabled_var', 'enabled', False,
+                                     nested_keys=['echo_cancellation', 'enabled']),
+            'latency_ms': self._get_var('aec_latency_var', 'latency_ms', 30.0,
+                                        nested_keys=['echo_cancellation', 'latency_ms']),
+        }
+
+        # Save wake word config -- only update fields if Advanced tab was visited
         ww_config = self.app.config.get('wake_word_config', {})
-        ww_config['phrase'] = self.wake_phrase_var.get()
-        ww_config['end_word'] = {
-            'enabled': self.end_word_enabled_var.get(),
-            'phrase': self.end_phrase_var.get(),
-            'phrase_options': ww_config.get('end_word', {}).get('phrase_options', [])
-        }
-        ww_config['cancel_word'] = {
-            'enabled': self.cancel_word_enabled_var.get(),
-            'phrase': self.cancel_phrase_var.get(),
-            'phrase_options': ww_config.get('cancel_word', {}).get('phrase_options', [])
-        }
-        ww_config['pause_word'] = {
-            'enabled': self.pause_word_enabled_var.get(),
-            'phrase': self.pause_phrase_var.get(),
-            'phrase_options': ww_config.get('pause_word', {}).get('phrase_options', [])
-        }
-        ww_config['modes'] = {
-            'dictate': {
-                'silence_timeout': self.dictate_timeout_var.get(),
-                'require_end_word': False
-            },
-            'short_dictate': {
-                'silence_timeout': self.short_timeout_var.get(),
-                'require_end_word': False
-            },
-            'long_dictate': {
-                'silence_timeout': self.long_timeout_var.get(),
-                'require_end_word': True
+        if "Advanced" in self.built_tabs:
+            ww_config['phrase'] = self.wake_phrase_var.get()
+            ww_config['end_word'] = {
+                'enabled': self.end_word_enabled_var.get(),
+                'phrase': self.end_phrase_var.get(),
+                'phrase_options': ww_config.get('end_word', {}).get('phrase_options', [])
             }
-        }
+            ww_config['cancel_word'] = {
+                'enabled': self.cancel_word_enabled_var.get(),
+                'phrase': self.cancel_phrase_var.get(),
+                'phrase_options': ww_config.get('cancel_word', {}).get('phrase_options', [])
+            }
+            ww_config['pause_word'] = {
+                'enabled': self.pause_word_enabled_var.get(),
+                'phrase': self.pause_phrase_var.get(),
+                'phrase_options': ww_config.get('pause_word', {}).get('phrase_options', [])
+            }
+            ww_config['modes'] = {
+                'dictate': {
+                    'silence_timeout': self.dictate_timeout_var.get(),
+                    'require_end_word': False
+                },
+                'short_dictate': {
+                    'silence_timeout': self.short_timeout_var.get(),
+                    'require_end_word': False
+                },
+                'long_dictate': {
+                    'silence_timeout': self.long_timeout_var.get(),
+                    'require_end_word': True
+                }
+            }
         self.app.config['wake_word_config'] = ww_config
 
-        # Save alarm settings
+        # Save alarm settings -- only update fields if Alarms tab was visited
         if 'alarms' not in self.app.config:
             self.app.config['alarms'] = get_default_alarm_config()
-        self.app.config['alarms']['enabled'] = self.alarms_enabled_var.get()
-        self.app.config['alarms']['complete_hotkey'] = self.alarm_complete_var.get()
-        self.app.config['alarms']['dismiss_hotkey'] = self.alarm_dismiss_var.get()
-        self.app.config['alarms']['nag_interval_seconds'] = self.alarm_nag_var.get()
+        if "Alarms" in self.built_tabs:
+            self.app.config['alarms']['enabled'] = self.alarms_enabled_var.get()
+            self.app.config['alarms']['complete_hotkey'] = self.alarm_complete_var.get()
+            self.app.config['alarms']['dismiss_hotkey'] = self.alarm_dismiss_var.get()
+            self.app.config['alarms']['nag_interval_seconds'] = self.alarm_nag_var.get()
         
         # Apply alarm settings at runtime
-        if hasattr(self.app, 'alarm_manager'):
+        if "Alarms" in self.built_tabs and hasattr(self.app, 'alarm_manager'):
             if self.alarms_enabled_var.get() and not self.app.alarm_manager.running:
                 self.app.alarm_manager.start()
             elif not self.alarms_enabled_var.get() and self.app.alarm_manager.running:
                 self.app.alarm_manager.stop()
 
-        self.app.command_mode_enabled = self.command_mode_var.get()
+        self.app.command_mode_enabled = self.app.config['command_mode_enabled']
 
-        mic_name = self.mic_var.get()
+        mic_name = self.mic_var.get() if hasattr(self, 'mic_var') and self.mic_var else None
         mic_changed = False
 
-        for mic in self.available_mics:
-            if mic['name'] == mic_name:
-                if self.app.config.get('microphone') != mic['id']:
-                    mic_changed = True
-                    self.app.config['microphone'] = mic['id']
-                break
+        if mic_name:
+            for mic in self.available_mics:
+                if mic['name'] == mic_name:
+                    if self.app.config.get('microphone') != mic['id']:
+                        mic_changed = True
+                        self.app.config['microphone'] = mic['id']
+                    break
 
         self.app.save_config()
 
-        # Apply mode change at runtime - deactivate modes that don't match new selection
-        new_mode = self.mode_var.get()
-        
-        # Stop wake word mode if it was active but new mode doesn't need it
-        # (wake_word and combined both use wake word listening)
-        if self.app.wake_word_active and new_mode not in ('wake_word', 'combined'):
-            self.app.stop_wake_word_mode()
-            print(f"[MODE] Deactivated wake word mode")
-        
-        # Stop continuous mode if it was active but new mode is different
-        if self.app.continuous_active and new_mode != 'continuous':
-            self.app.stop_continuous_mode()
-            print(f"[MODE] Deactivated continuous mode")
-        
-        # Activate the new mode if it requires wake_word or continuous
-        if new_mode == 'wake_word' and not self.app.wake_word_active:
-            self.app.start_wake_word_mode()
-            print(f"[MODE] Activated wake word mode")
-        elif new_mode == 'combined' and not self.app.wake_word_active:
-            # Combined mode: start wake word listener, hotkey will also work
-            self.app.start_wake_word_mode()
-            print(f"[MODE] Activated combined mode (wake word + hotkey)")
-        elif new_mode == 'continuous' and not self.app.continuous_active:
-            self.app.start_continuous_mode()
-            print(f"[MODE] Activated continuous mode")
-        
-        print(f"[MODE] Mode changed to: {new_mode}")
+        # Apply mode change at runtime (delegates to DictationApp.apply_mode)
+        new_mode = self.app.config['mode']
+        if self.app.apply_mode(new_mode):
+            self.app.save_config()
+            # Refresh tray menu so the checkmark reflects the new mode
+            if hasattr(self.app, 'tray_icon') and hasattr(self.app, 'get_menu'):
+                try:
+                    self.app.tray_icon.menu = self.app.get_menu()
+                except Exception as e:
+                    print(f"[MODE] Failed to refresh tray menu: {e}")
 
         if mic_changed and hasattr(self.app, 'tray_icon') and hasattr(self.app, 'get_menu'):
             self.app.tray_icon.menu = self.app.get_menu()
@@ -3375,6 +3532,11 @@ class DictationApp:
         commands_path = Path(__file__).parent / "commands.json"
         self.command_executor = CommandExecutor(commands_path)
         self.command_mode_enabled = self.config.get('command_mode_enabled', True)
+
+        # Wake-word trace hook — the debug window registers a callback here
+        # when open so the main pipeline's decisions show up in its trace view.
+        # None means "no tracing" and _emit_wake_trace becomes a cheap no-op.
+        self._wake_trace_callback = None
         
         # Hotkey settings
         self.hotkey_pressed = False
@@ -3386,12 +3548,32 @@ class DictationApp:
         self.toggle_active = False  # For toggle mode
         self.continuous_active = False  # For continuous mode
         self.wake_word_active = False  # For wake word mode
+
+        # Wake-word trace callback is initialized earlier (see above).
+
+        # Tray icon chase animation state
+        self._icon_chase_offset = 0
+        self._icon_chase_timer = None
+        self._icon_animating = False
+        self._icon_rotation = 0.0        # current rotation angle in radians
+        self._icon_chase_counter = 0     # counts ticks between color shifts
         self.continuous_stream = None
         self.silence_start = None
         self.speech_buffer = []
         self.is_speaking = False
         self.wake_word_listening = False  # Currently listening for wake word
         self.wake_word_triggered = False  # Wake word detected, ready for command
+        self._wake_trace_callback = None  # Optional: debug window registers here
+        
+        # Pre-buffer: rolling circular buffer captures audio BEFORE hotkey press
+        # so the first ~1.5 seconds of speech are never lost to startup delay.
+        # Each chunk is 100ms at sample_rate (e.g. 1600 samples at 16000Hz).
+        self._prebuffer_seconds = 1.5
+        self._prebuffer_chunks = int(self._prebuffer_seconds / 0.1)  # 15 chunks at 100ms each
+        self._prebuffer = collections.deque(maxlen=self._prebuffer_chunks)
+        self._prebuffer_active = False  # Whether background stream is feeding the pre-buffer
+        self._prebuffer_stream = None  # Standalone pre-buffer stream (when no wake word)
+        self._hotkey_recording = False  # Suppress wake word transcription during hotkey recording
         
         # Dictation mode tracking (for wake word dictation)
         self.dictation_mode = None  # None, 'dictate', 'short_dictate', 'long_dictate'
@@ -3405,6 +3587,7 @@ class DictationApp:
         self._dictation_silence_timeout = None  # Dynamic timeout for current mode
         self._dictation_require_end = False  # Whether current mode requires end word
         self._dictation_finalize_timer = None  # Timer for auto-finalizing dictation
+        self._dictation_finalize_lock = threading.Lock()  # Guards output+reset against races
 
         # Dictation history
         self.history_path = Path(__file__).parent / 'history.json'
@@ -3422,6 +3605,25 @@ class DictationApp:
 
         # Wake word debug window
         self.wake_word_debug_window = WakeWordDebugWindow(self)
+
+        # Listening state indicator overlay
+        self.listening_indicator = ListeningIndicator(self.root)
+        self.listening_indicator.set_mode(self.config.get('mode', 'hold'))
+        self.listening_indicator.set_position(
+            self.config.get('listening_indicator_position', 'bottom-center'))
+        if self.config.get('listening_indicator_enabled', False):
+            self.listening_indicator.show()
+
+        # Snooze state
+        self.snoozed = False
+        self._snooze_timer = None
+        self._snooze_resume_time = None  # datetime or None for indefinite
+        self._snooze_prior_mode_state = None  # what to restore on resume
+
+        # Wake word trace callback — set by WakeWordDebugWindow while it is open
+        # so the debug UI can visualize the MAIN app's wake word pipeline, not
+        # just its own parallel implementation. No-op when None.
+        self._wake_trace_callback = None
 
         # Key macro manager
         self.key_macro_manager = KeyMacroManager(self.config)
@@ -3443,6 +3645,16 @@ class DictationApp:
         )
         if self.config.get('alarms', {}).get('enabled', True):
             self.alarm_manager.start()
+
+        # Echo cancellation (removes system audio from mic input)
+        aec_config = self.config.get('echo_cancellation', {})
+        self.echo_canceller = EchoCanceller(
+            sample_rate=self.sample_rate,
+            enabled=aec_config.get('enabled', False),
+            latency_ms=aec_config.get('latency_ms', 30.0),
+        )
+        if self.echo_canceller.enabled:
+            self.echo_canceller.start()
 
         self.update_splash("Setting up keyboard...")
 
@@ -3542,7 +3754,7 @@ class DictationApp:
                     }
                 },
                 "audio": {
-                    "speech_threshold": 0.01,
+                    "speech_threshold": 0.03,
                     "min_speech_duration": 0.3,
                     "wake_detection_silence": 1.2,  # Longer to capture "wake word [pause] command"
                     "wake_command_timeout": 5.0
@@ -3552,12 +3764,20 @@ class DictationApp:
                     "play_sound_on_end": True
                 }
             },
+            # Echo cancellation (removes system audio from mic input)
+            "echo_cancellation": {
+                "enabled": False,
+                "latency_ms": 30.0,
+            },
             # Performance mode for transcription speed/accuracy tradeoff
             "performance_mode": "balanced",  # "fast", "balanced", or "accurate"
             # Key macro system for accessibility (e.g., triple-tap W for auto-run)
             "key_macros": get_default_macro_config(),
             # Notification system for reminders (medication, breaks, hydration)
-            "notifications": get_default_notification_config()
+            "notifications": get_default_notification_config(),
+            # Listening state indicator overlay
+            "listening_indicator_enabled": False,
+            "listening_indicator_position": "bottom-center"
         }
 
         if self.config_path.exists():
@@ -3611,9 +3831,44 @@ class DictationApp:
                 self._deep_update(target[key], value)
     
     def save_config(self):
-        """Save configuration to JSON file"""
-        with open(self.config_path, 'w') as f:
-            json.dump(self.config, f, indent=2)
+        """Save configuration to JSON file atomically.
+
+        Writes to a temp file first, then os.replace() — which is atomic on
+        Windows + POSIX — swaps it into place. If serialization throws
+        partway through (as happened with the MenuItem-in-config bug),
+        config.json is left untouched instead of being truncated.
+
+        Also keeps the previous good copy at config.json.bak so a future
+        corruption (or a bad manual edit) can be recovered in one step.
+        """
+        tmp_path = self.config_path.with_suffix('.json.tmp')
+        bak_path = self.config_path.with_suffix('.json.bak')
+
+        try:
+            # 1. Serialize to temp file. If json.dump raises, the real
+            #    config.json is unaffected.
+            with open(tmp_path, 'w') as f:
+                json.dump(self.config, f, indent=2)
+
+            # 2. Roll the existing good config to .bak (best-effort; ignore
+            #    errors on the very first save when there's nothing to roll).
+            if self.config_path.exists():
+                try:
+                    os.replace(self.config_path, bak_path)
+                except OSError as e:
+                    print(f"[WARN] Could not rotate config to .bak: {e}")
+
+            # 3. Atomically promote tmp -> config.json
+            os.replace(tmp_path, self.config_path)
+        except Exception as e:
+            # Clean up the temp file if we left one lying around
+            try:
+                if tmp_path.exists():
+                    tmp_path.unlink()
+            except OSError:
+                pass
+            print(f"[ERROR] save_config failed: {e}")
+            raise
     
     def get_available_microphones(self):
         """Get list of available microphone devices"""
@@ -3772,7 +4027,6 @@ class DictationApp:
 
         # Format numbers (e.g., "twenty one" -> "21")
         if self.config.get('format_numbers', True):
-            import re
             # Handle compound numbers like "twenty one", "thirty five"
             tens = {'twenty': 20, 'thirty': 30, 'forty': 40, 'fifty': 50,
                     'sixty': 60, 'seventy': 70, 'eighty': 80, 'ninety': 90}
@@ -3817,7 +4071,6 @@ class DictationApp:
                 text = text[0].upper() + text[1:] if len(text) > 1 else text.upper()
 
                 # Capitalize after sentence-ending punctuation
-                import re
                 # Match . ! ? followed by space and lowercase letter
                 def capitalize_after(match):
                     return match.group(1) + match.group(2).upper()
@@ -3838,20 +4091,52 @@ class DictationApp:
         self.save_history()
 
     def switch_microphone(self, mic_id):
-        """Switch to a different microphone"""
-        # Stop any active recording/continuous mode
-        if self.continuous_active:
+        """Switch to a different microphone at runtime.
+
+        Stops every active audio stream, updates config, then restarts the
+        streams that the current mode needs — bound to the new device this time.
+        Without the restart, PortAudio streams continue capturing from the
+        old device because the device ID is fixed at stream-construction time.
+        """
+        if self.config.get('microphone') == mic_id:
+            return  # already on this mic, no-op
+
+        # Remember what was running so we can restore it on the new device
+        was_continuous = self.continuous_active
+        was_wake_word = self.wake_word_active
+        was_prebuffer = self._prebuffer_stream is not None
+        was_recording = self.recording
+
+        # Stop everything first (order matters: active recording before its host stream)
+        if was_recording:
+            # Cancel rather than transcribe — the audio was captured on the wrong device
+            self.cancel_recording()
+        if was_continuous:
             self.stop_continuous_mode()
-        if self.recording:
-            self.stop_recording()
-        
-        # Update config
+        if was_wake_word:
+            self.stop_wake_word_mode()
+        if was_prebuffer:
+            self._stop_prebuffer_stream()
+
+        # Update config + save
         self.config['microphone'] = mic_id
         self.save_config()
-        
+
         mic_name = self.get_current_microphone_name()
         print(f"[OK] Switched to microphone: {mic_name}")
-        
+
+        # Restart whatever was running, now bound to the new device
+        if was_wake_word:
+            self.start_wake_word_mode()
+        if was_continuous:
+            self.start_continuous_mode()
+        if was_prebuffer and self.model_loaded:
+            # Only restart the standalone prebuffer for hold/toggle modes —
+            # wake_word / continuous have their own pre-buffering inside their streams
+            mode = self.config.get('mode', 'hold')
+            if mode in ('hold', 'toggle'):
+                self._start_prebuffer_stream()
+
         # Update tray icon tooltip
         if hasattr(self, 'tray_icon'):
             self.tray_icon.title = f"Samsara - {mic_name}"
@@ -3911,6 +4196,11 @@ class DictationApp:
             elif mode == 'continuous':
                 print("[AUTO] Starting continuous mode...")
                 self.start_continuous_mode()
+            
+            # Start pre-buffer stream for modes without always-on audio
+            # (wake_word and combined already feed the pre-buffer via their stream)
+            if mode in ('hold', 'toggle'):
+                self._start_prebuffer_stream()
         
         thread = threading.Thread(target=load, daemon=True)
         thread.start()
@@ -4016,8 +4306,25 @@ class DictationApp:
             self.current_keys.add(key_name)
             self.key_press_times[key_name] = time.time()
 
+        # While snoozed, still track key state and allow alarm hotkeys,
+        # but skip all dictation/recording hotkeys
+        if self.snoozed:
+            # Check for alarm hotkeys even while snoozed
+            if hasattr(self, 'alarm_manager') and self.alarm_manager.is_nagging():
+                complete_hotkey = self.alarm_manager.complete_hotkey
+                dismiss_hotkey = self.alarm_manager.dismiss_hotkey
+                if self.check_hotkey_state(complete_hotkey):
+                    self.alarm_manager.complete()
+                    self.play_sound('success')
+                    return
+                if self.check_hotkey_state(dismiss_hotkey):
+                    self.alarm_manager.dismiss()
+                    self.play_sound('stop')
+                    return
+            return
+
         mode = self.config.get('mode', 'hold')
-        
+
         # Get hotkey configs
         main_hotkey = self.config['hotkey']
         cont_hotkey = self.config.get('continuous_hotkey', 'ctrl+alt+d')
@@ -4027,7 +4334,7 @@ class DictationApp:
 
         # Use state-based detection - checks if keys are CURRENTLY held, regardless of press order
         # This is more reliable than event-based tracking for simultaneous key combos
-        
+
         # Check for command-only hotkey (hold to record, match commands only, no text output)
         if self.check_hotkey_state(command_hotkey) and not self.hotkey_pressed and not self.recording:
             print(f"[HOTKEY] Command hotkey detected: {command_hotkey}")
@@ -4159,7 +4466,7 @@ class DictationApp:
         self.silence_start = None
         self.is_speaking = False
 
-        self.continuous_stream = sd.InputStream(
+        stream = self._open_stream_with_timeout(
             samplerate=self.sample_rate,
             channels=1,
             dtype=np.float32,
@@ -4167,12 +4474,21 @@ class DictationApp:
             device=self.config['microphone'],
             blocksize=int(self.sample_rate * 0.1)  # 100ms blocks
         )
+        if stream is None:
+            print("[ERROR] Could not open continuous stream — audio subsystem busy. Try again.")
+            self.play_sound("error")
+            return
+        
+        self.continuous_stream = stream
         self.continuous_stream.start()
         self.continuous_active = True
-        
-        # Update tray icon
-        if hasattr(self, 'tray_icon'):
-            self.tray_icon.icon = self.create_icon_image(active=True)
+
+        # Update tray icon — start chase animation
+        self._start_icon_chase()
+
+        # Update listening indicator
+        if hasattr(self, 'listening_indicator'):
+            self.root.after(0, self.listening_indicator.set_listening, True)
 
     def stop_continuous_mode(self):
         """Stop continuous listening mode"""
@@ -4190,9 +4506,12 @@ class DictationApp:
         print("[OFF] Continuous mode STOPPED")
         self.play_sound("stop")
 
-        # Update tray icon
-        if hasattr(self, 'tray_icon'):
-            self.tray_icon.icon = self.create_icon_image(active=False)
+        # Update tray icon — stop chase animation
+        self._stop_icon_chase()
+
+        # Update listening indicator
+        if hasattr(self, 'listening_indicator'):
+            self.root.after(0, self.listening_indicator.set_listening, False)
 
     def continuous_audio_callback(self, indata, frames, time_info, status):
         """Callback for continuous listening - detects speech and silence"""
@@ -4203,12 +4522,18 @@ class DictationApp:
             if not self.continuous_active:
                 return
             
+            # Apply echo cancellation if active
+            audio_chunk = indata.copy()
+            if self.echo_canceller.is_active:
+                audio_chunk = self.echo_canceller.process(audio_chunk)
+            audio_chunk = audio_chunk.flatten()
+            
             # Calculate RMS energy to detect speech
-            audio_chunk = indata.copy().flatten()
             rms = np.sqrt(np.mean(audio_chunk**2))
             
-            # Threshold for speech detection (adjust as needed)
-            speech_threshold = 0.01
+            # Threshold for speech detection (from wake word config, shared across modes)
+            ww_audio = self.config.get('wake_word_config', {}).get('audio', {})
+            speech_threshold = ww_audio.get('speech_threshold', 0.03)
             silence_threshold = self.config.get('silence_threshold', 2.0)
             min_speech = self.config.get('min_speech_duration', 0.3)
 
@@ -4331,7 +4656,7 @@ class DictationApp:
         self.is_speaking = False
         self.wake_word_triggered = False
 
-        self.continuous_stream = sd.InputStream(
+        stream = self._open_stream_with_timeout(
             samplerate=self.sample_rate,
             channels=1,
             dtype=np.float32,
@@ -4339,13 +4664,22 @@ class DictationApp:
             device=self.config['microphone'],
             blocksize=int(self.sample_rate * 0.1)  # 100ms blocks
         )
+        if stream is None:
+            print("[ERROR] Could not open wake word stream — audio subsystem busy. Try again.")
+            self.play_sound("error")
+            return
+        
+        self.continuous_stream = stream
         self.continuous_stream.start()
         self.wake_word_active = True
 
-        # Update tray icon
-        if hasattr(self, 'tray_icon'):
-            self.tray_icon.icon = self.create_icon_image(active=True)
-    
+        # Update tray icon — start chase animation
+        self._start_icon_chase()
+
+        # Update listening indicator
+        if hasattr(self, 'listening_indicator'):
+            self.root.after(0, self.listening_indicator.set_listening, True)
+
     def stop_wake_word_mode(self):
         """Stop wake word listening mode"""
         self.wake_word_active = False
@@ -4361,16 +4695,21 @@ class DictationApp:
         
         # Transcribe any remaining audio if wake word was triggered
         if self.speech_buffer and self.wake_word_triggered:
-            self.transcribe_wake_word_buffer()
-        
+            buffer_copy = self.speech_buffer.copy()
+            self.speech_buffer = []
+            self.process_wake_word_buffer(buffer_copy)
+
         self.speech_buffer = []
         
         print("[OFF] Wake word mode STOPPED")
         self.play_sound("stop")
 
-        # Update tray icon
-        if hasattr(self, 'tray_icon'):
-            self.tray_icon.icon = self.create_icon_image(active=False)
+        # Update tray icon — stop chase animation
+        self._stop_icon_chase()
+
+        # Update listening indicator
+        if hasattr(self, 'listening_indicator'):
+            self.root.after(0, self.listening_indicator.set_listening, False)
 
     def wake_word_audio_callback(self, indata, frames, time_info, status):
         """Callback for wake word listening"""
@@ -4381,13 +4720,27 @@ class DictationApp:
             if not self.wake_word_active:
                 return
             
-            audio_chunk = indata.copy().flatten()
+            # Apply echo cancellation if active
+            audio_chunk = indata.copy()
+            if self.echo_canceller.is_active:
+                audio_chunk = self.echo_canceller.process(audio_chunk)
+            audio_chunk = audio_chunk.flatten()
+            
+            # If hotkey recording is active, skip everything -
+            # the recording stream handles audio capture directly,
+            # and we must NOT feed the pre-buffer to avoid overlap on next session
+            if self._hotkey_recording:
+                return
+            
+            # Feed the pre-buffer (only when not hotkey recording)
+            self._prebuffer.append(audio_chunk.copy())
+            
             rms = np.sqrt(np.mean(audio_chunk**2))
             
             # Get thresholds from config
             ww_config = self.config.get('wake_word_config', {})
             audio_config = ww_config.get('audio', {})
-            speech_threshold = audio_config.get('speech_threshold', 0.01)
+            speech_threshold = audio_config.get('speech_threshold', 0.03)
             min_speech = audio_config.get('min_speech_duration', 0.3)
             
             # Use dynamic silence timeout if in dictation mode, otherwise use fast wake detection
@@ -4436,6 +4789,32 @@ class DictationApp:
         except Exception as e:
             print(f"[ERROR] Audio callback exception: {e}")
     
+    def register_wake_trace_callback(self, callback):
+        """Register a callable that receives wake-word pipeline trace events.
+
+        Called by WakeWordDebugWindow while it is open so the debug UI can
+        visualize the MAIN app's wake word pipeline (not just its own parallel
+        test pipeline). Callback signature: callback(event_dict). Runs on a
+        background thread — the callback is responsible for marshalling onto
+        its own UI thread.
+        """
+        self._wake_trace_callback = callback
+
+    def unregister_wake_trace_callback(self):
+        """Clear the wake-word trace callback."""
+        self._wake_trace_callback = None
+
+    def _emit_wake_trace(self, event):
+        """Emit a structured trace event to the registered callback (no-op if none)."""
+        cb = self._wake_trace_callback
+        if cb is None:
+            return
+        try:
+            cb(event)
+        except Exception as e:
+            # Never let a debug UI bug break the main pipeline
+            print(f"[WARN] wake trace callback failed: {e}")
+
     def process_wake_word_buffer(self, buffer):
         """Process audio - check for wake word, commands, or dictation content"""
         try:
@@ -4469,7 +4848,9 @@ class DictationApp:
             # Get wake word config
             ww_config = self.config.get('wake_word_config', {})
             wake_phrase = ww_config.get('phrase', 'samsara').lower()
-            
+
+            self._emit_wake_trace({"stage": "utterance_start", "raw": text, "normalized": text_lower})
+
             # Check for cancel word first (if in dictation mode)
             if self.wake_dictation_mode:
                 cancel_config = ww_config.get('cancel_word', {})
@@ -4477,8 +4858,10 @@ class DictationApp:
                     cancel_phrase = cancel_config.get('phrase', 'cancel').lower()
                     if cancel_phrase in text_lower:
                         print(f"[CANCEL] Dictation cancelled")
+                        self._emit_wake_trace({"stage": "cancel_word_detected", "phrase": cancel_phrase})
                         self.play_sound("error")
                         self._reset_wake_dictation()
+                        self._emit_wake_trace({"stage": "utterance_end", "result": "cancelled"})
                         return
                 
                 # Check for pause word
@@ -4488,6 +4871,7 @@ class DictationApp:
                     if pause_phrase in text_lower:
                         # Pause word detected - reset silence timer, don't accumulate
                         print(f"[PAUSE] Timer reset (pause word: '{pause_phrase}')")
+                        self._emit_wake_trace({"stage": "pause_word_detected", "phrase": pause_phrase})
                         self.silence_start = None
                         # Strip pause word and accumulate any remaining text
                         remaining = text_lower.replace(pause_phrase, '').strip()
@@ -4498,6 +4882,7 @@ class DictationApp:
                             if cleaned:
                                 self.wake_dictation_buffer.append(cleaned)
                                 print(f"[DICTATE] Buffered (after pause strip): {cleaned}")
+                        self._emit_wake_trace({"stage": "utterance_end", "result": "paused"})
                         return
 
                 # Check for end word
@@ -4507,111 +4892,164 @@ class DictationApp:
                     if end_phrase in text_lower:
                         # End word detected - finalize dictation
                         print(f"[END] End word detected: '{end_phrase}'")
-                        # Remove end word from text
                         end_index = text_lower.rfind(end_phrase)
                         final_text = text[:end_index].strip()
-                        
-                        # Combine with any buffered audio text
                         if self.wake_dictation_buffer:
                             final_text = ' '.join(self.wake_dictation_buffer) + ' ' + final_text
-                        
+                        self._emit_wake_trace({"stage": "end_word_detected", "phrase": end_phrase,
+                                               "buffered_text": ' '.join(self.wake_dictation_buffer),
+                                               "final_output": final_text.strip()})
                         if final_text.strip():
                             self._output_dictation(final_text.strip())
-                        
                         self._reset_wake_dictation()
+                        self._emit_wake_trace({"stage": "utterance_end", "result": "end_word"})
                         return
                 
                 # In dictation mode, accumulate text
                 self.wake_dictation_buffer.append(text)
                 print(f"[DICTATE] Buffered: {text}")
+                self._emit_wake_trace({"stage": "dictation_buffered", "text": text,
+                                       "buffer_size": len(self.wake_dictation_buffer)})
 
-                # For modes that don't require end word, start a finalization timer
-                # If no new speech arrives within the timeout, output accumulated text
                 if not self._dictation_require_end:
                     self._restart_dictation_timer()
+                self._emit_wake_trace({"stage": "utterance_end", "result": "buffered"})
                 return
             
-            # Not in dictation mode - check for wake word
-            if wake_phrase in text_lower:
-                # Wake word detected!
-                print(f"[MIC] Wake word detected: '{wake_phrase}'")
+            # Not in dictation mode - check for wake word (token-aware match)
+            # Apply correction map before matching so known Whisper
+            # misrecognitions ("charvis" -> "jarvis" etc.) still trigger.
+            corrected_lower = apply_wake_corrections(text_lower)
+            correction_applied = was_corrected(text_lower, corrected_lower)
+            if correction_applied:
+                print(f"[CORRECT] '{text_lower}' -> '{corrected_lower}'")
+
+            matched, match_type, match_index = match_wake_phrase(corrected_lower, wake_phrase)
+
+            self._emit_wake_trace({
+                "stage": "wake_word_check", "input": text, "normalized": text_lower,
+                "corrected": corrected_lower, "correction_applied": correction_applied,
+                "wake_phrase": wake_phrase, "matched": matched,
+                "match_type": match_type, "match_index": match_index,
+            })
+
+            if matched:
+                print(f"[MIC] Wake word detected: '{wake_phrase}' ({match_type} @ {match_index})")
                 self.wake_word_triggered = True
                 self.play_sound("start")
-                
-                # Extract command after wake word
-                wake_index = text_lower.find(wake_phrase)
-                command_text = text[wake_index + len(wake_phrase):].strip()
-                
-                # Filter out garbage (just punctuation, single chars)
-                import re
+
+                # Slice from corrected (match_index is a position in corrected_lower)
+                command_text = corrected_lower[match_index + len(wake_phrase):].strip()
+                self._emit_wake_trace({"stage": "command_extract",
+                                       "from_index": match_index, "command": command_text,
+                                       "remainder": ""})
+
                 cleaned_cmd = re.sub(r'[^\w\s]', '', command_text).strip()
                 has_meaningful_command = len(cleaned_cmd) >= 2
-                
+
                 if has_meaningful_command:
-                    # There's a real command after the wake word
                     print(f"[TEXT] Command: {command_text}")
                     self._process_wake_command(command_text)
                 else:
-                    # Just wake word (or garbage like punctuation), waiting for next speech
                     if command_text:
                         print(f"[SKIP] Ignoring noise after wake word: '{command_text}'")
                     print("[LISTEN] Listening for command...")
                     self._start_wake_timeout()
-                    
+
+                self._emit_wake_trace({"stage": "utterance_end",
+                                       "result": "wake_word_detected" if not has_meaningful_command else "command_processed"})
+
+            elif match_type == "substring":
+                print(f"[SKIP] Substring-only wake match @ idx {match_index} -- not firing: '{text}'")
+                self._emit_wake_trace({"stage": "utterance_end", "result": "substring_rejected"})
+
             elif self.wake_word_triggered:
-                # Wake word was already said, this is the command
                 print(f"[TEXT] Command: {text}")
+                self._emit_wake_trace({"stage": "command_extract",
+                                       "from_index": -1, "command": text, "remainder": ""})
                 self._process_wake_command(text)
+                self._emit_wake_trace({"stage": "utterance_end", "result": "followup_command"})
+
+            else:
+                self._emit_wake_trace({"stage": "utterance_end", "result": "no_wake_word"})
                 
         except Exception as e:
             print(f"Wake word processing error: {e}")
             import traceback
             traceback.print_exc()
     
+    # Filler words stripped from wake-word commands before keyword matching.
+    # Kept deliberately small -- these are universally meaningless to a command parser.
+    _FILLER_WORDS = frozenset({'please', 'uh', 'um', 'like'})
+
+    @staticmethod
+    def _strip_fillers(text, fillers):
+        """Remove leading/trailing filler words from *text*, return (stripped, original_words).
+
+        Only whole words at the edges are removed; interior fillers are left alone
+        so they don't corrupt payload text like 'I like cats'.
+        """
+        words = text.split()
+        # Strip leading fillers
+        while words and words[0].lower() in fillers:
+            words.pop(0)
+        # Strip trailing fillers
+        while words and words[-1].lower() in fillers:
+            words.pop()
+        return ' '.join(words)
+
     def _process_wake_command(self, text):
         """Process command after wake word - check for dictation modes or execute"""
         text_lower = text.lower().strip()
         ww_config = self.config.get('wake_word_config', {})
         modes_config = ww_config.get('modes', {})
-        
-        # Check for dictation mode commands
-        if text_lower in ['long dictate', 'long dictation']:
+
+        # Strip filler words from edges for keyword matching
+        stripped = self._strip_fillers(text_lower, self._FILLER_WORDS)
+
+        # Check for dictation mode commands (bare keyword, no payload)
+        if stripped in ['long dictate', 'long dictation']:
             self._start_dictation_mode('long_dictate', modes_config.get('long_dictate', {}))
             return
-        elif text_lower in ['short dictate', 'short dictation', 'quick dictate']:
+        elif stripped in ['short dictate', 'short dictation', 'quick dictate']:
             self._start_dictation_mode('short_dictate', modes_config.get('short_dictate', {}))
             return
-        elif text_lower in ['dictate', 'dictation']:
+        elif stripped in ['dictate', 'dictation']:
             self._start_dictation_mode('dictate', modes_config.get('dictate', {}))
             return
-        
-        # Check if text starts with dictation command and has content after
+
+        # Check if text starts with dictation command and has content after.
+        # Match against the filler-stripped version, then extract the payload
+        # from the original text (preserving case) and strip trailing fillers.
         for cmd, mode_name in [('long dictate', 'long_dictate'), ('short dictate', 'short_dictate'), ('dictate', 'dictate')]:
-            if text_lower.startswith(cmd + ' '):
-                # Start dictation mode with initial content
+            if stripped.startswith(cmd + ' '):
                 mode_config = modes_config.get(mode_name, {})
-                content = text[len(cmd):].strip()
-                self._start_dictation_mode(mode_name, mode_config, initial_content=content)
+                # Payload is everything after the command keyword in the stripped text
+                raw_content = stripped[len(cmd):].strip()
+                content = self._strip_fillers(raw_content, self._FILLER_WORDS)
+                if content:
+                    self._start_dictation_mode(mode_name, mode_config, initial_content=content)
+                else:
+                    # Fillers consumed all content -- treat as bare command
+                    self._start_dictation_mode(mode_name, mode_config)
                 return
-        
-        # Not a dictation command - try regular command execution
-        # Use force_commands=True to bypass command_mode_enabled check in wake word mode
+
+        # Not a dictation command - try regular command execution.
+        # Pass the original text so find_command's word-boundary matching works
+        # (it already tolerates surrounding words like "please copy that").
         result, was_command = self.command_executor.process_text(text, self, force_commands=True)
-        
+
         if was_command:
             self.wake_word_triggered = False
             return
-        
+
         # Filter out garbage/noise (just punctuation, single chars, etc.)
-        import re
-        cleaned = re.sub(r'[^\w\s]', '', text).strip()  # Remove punctuation
+        cleaned = re.sub(r'[^\w\s]', '', text).strip()
         if len(cleaned) < 2:
-            # Too short to be meaningful - probably just noise/hallucination
             print(f"[SKIP] Ignoring noise: '{text}'")
-            # Keep listening for actual command
             self._start_wake_timeout()
             return
-        
+
         # Not a recognized command - treat as simple dictation (immediate output)
         self._output_dictation(text)
         self.wake_word_triggered = False
@@ -4680,11 +5118,12 @@ class DictationApp:
     def _finalize_dictation_timeout(self):
         """Called when the dictation finalization timer expires."""
         try:
-            if self.wake_dictation_mode and self.wake_dictation_buffer and not self._dictation_require_end:
-                final_text = ' '.join(self.wake_dictation_buffer)
-                print(f"[DONE] Dictation complete: {final_text}")
-                self._output_dictation(final_text)
-                self._reset_wake_dictation()
+            with self._dictation_finalize_lock:
+                if self.wake_dictation_mode and self.wake_dictation_buffer and not self._dictation_require_end:
+                    final_text = ' '.join(self.wake_dictation_buffer)
+                    print(f"[DONE] Dictation complete: {final_text}")
+                    self._output_dictation(final_text)
+                    self._reset_wake_dictation()
         except Exception as e:
             print(f"[ERROR] _finalize_dictation_timeout crashed: {e}")
             import traceback
@@ -4718,6 +5157,8 @@ class DictationApp:
 
         print(f"[OK] {text}")
         self.play_sound("success")
+        if hasattr(self, 'listening_indicator'):
+            self.root.after(0, self.listening_indicator.flash_success)
 
         # Add to history
         self.add_to_history(text.strip(), is_command=False)
@@ -4744,25 +5185,26 @@ class DictationApp:
     def reset_wake_word(self):
         """Reset wake word trigger after timeout"""
         try:
-            if self.wake_word_triggered:
-                print("[TIMEOUT] Wake word timeout - say wake word again")
-                self.wake_word_triggered = False
-            
-            # If in dictation mode and timed out, output what we have
-            if self.wake_dictation_mode and self.wake_dictation_buffer:
-                ww_config = self.config.get('wake_word_config', {})
-                require_end = ww_config.get('modes', {}).get(self.wake_dictation_mode, {}).get('require_end_word', False)
-                
-                if not require_end:
-                    # Output buffered content on timeout
-                    final_text = ' '.join(self.wake_dictation_buffer)
-                    print(f"[TIMEOUT] Dictation timeout - outputting: {final_text}")
-                    self._output_dictation(final_text)
-                else:
-                    print(f"[TIMEOUT] Long dictation timeout - say end word or wake word again")
-                    self.play_sound("error")
-            
-            self._reset_wake_dictation()
+            with self._dictation_finalize_lock:
+                if self.wake_word_triggered:
+                    print("[TIMEOUT] Wake word timeout - say wake word again")
+                    self.wake_word_triggered = False
+
+                # If in dictation mode and timed out, output what we have
+                if self.wake_dictation_mode and self.wake_dictation_buffer:
+                    ww_config = self.config.get('wake_word_config', {})
+                    require_end = ww_config.get('modes', {}).get(self.wake_dictation_mode, {}).get('require_end_word', False)
+
+                    if not require_end:
+                        # Output buffered content on timeout
+                        final_text = ' '.join(self.wake_dictation_buffer)
+                        print(f"[TIMEOUT] Dictation timeout - outputting: {final_text}")
+                        self._output_dictation(final_text)
+                    else:
+                        print(f"[TIMEOUT] Long dictation timeout - say end word or wake word again")
+                        self.play_sound("error")
+
+                self._reset_wake_dictation()
         except Exception as e:
             print(f"[ERROR] reset_wake_word crashed: {e}")
             import traceback
@@ -4775,7 +5217,10 @@ class DictationApp:
                 print(f"[WARN] Audio status: {status}")
             
             if self.recording:
-                self.audio_data.append(indata.copy())
+                chunk = indata.copy()
+                if self.echo_canceller.is_active:
+                    chunk = self.echo_canceller.process(chunk)
+                self.audio_data.append(chunk)
         except Exception as e:
             print(f"[ERROR] Audio callback exception: {e}")
 
@@ -4855,10 +5300,13 @@ class DictationApp:
         self._sound_stream_sr = 44100  # Standard sample rate for output stream
         self._load_sound_cache()
 
-        # Sound playback queue and worker thread
-        self._sound_queue = queue.Queue()
-        self._sound_worker = threading.Thread(target=self._sound_playback_worker, daemon=True)
-        self._sound_worker.start()
+        # Persistent output stream for low-latency sound playback.
+        # Unlike sd.play() (which creates/destroys a stream per call and conflicts
+        # with InputStream), a persistent OutputStream coexists safely.
+        self._playback_buffer = np.zeros((0, 1), dtype=np.float32)
+        self._buffer_lock = threading.Lock()
+        self._sound_stream = None
+        self._start_sound_stream()
 
     def _load_sound_cache(self):
         """Pre-load all sound files into memory, normalized to common sample rate.
@@ -4951,156 +5399,186 @@ class DictationApp:
             except Exception as e:
                 print(f"[AUDIO] Failed to load {sound_path}: {e}")
 
-    def _sound_playback_worker(self):
-        """Background thread for sound playback using sd.play() for clean audio."""
-        self._sound_worker_running = True
-        self._sound_error_count = 0
-        max_errors = 5
+    def _start_sound_stream(self):
+        """Start the persistent output stream for sound playback.
         
-        print("[AUDIO] Sound worker thread started")
-
-        while self._sound_worker_running:
-            try:
-                # Wait for sound with timeout for clean shutdown
-                try:
-                    sound_request = self._sound_queue.get(timeout=1.0)
-                except queue.Empty:
-                    continue
-                
-                if sound_request is None:  # Shutdown signal
-                    break
-                
-                audio_array, volume = sound_request
-
-                # Apply volume scaling
-                scaled = (audio_array * volume).flatten()
-                
-                # Use sd.play() for clean, artifact-free playback
-                # This handles buffering internally and avoids choppy audio
-                sd.play(scaled, self._sound_stream_sr)
-                sd.wait()  # Wait for playback to complete
-                
-                self._sound_queue.task_done()
-                self._sound_error_count = 0  # Reset on success
-                
-            except Exception as e:
-                print(f"[AUDIO] Playback error: {e}")
-                self._sound_error_count += 1
-                
-                # If too many errors, try to recover
-                if self._sound_error_count >= max_errors:
-                    self._recover_audio_system()
-                    self._sound_error_count = 0
-        
-        print("[AUDIO] Sound worker thread stopped")
-    
-    def _recover_audio_system(self):
-        """Attempt to recover the audio system after multiple failures"""
-        print("[AUDIO] Attempting audio system recovery...")
-        
+        This stream stays open for the lifetime of the app. Unlike sd.play()
+        (which creates/destroys a temporary stream per call), a persistent
+        OutputStream coexists safely with the InputStream used for recording.
+        """
         try:
-            # Stop any current playback
-            try:
-                sd.stop()
-            except Exception:
-                pass
-            
-            # Small delay to let audio system settle
-            time.sleep(0.1)
-            
-            # Re-initialize sounddevice (query devices forces re-init)
-            sd.query_devices()
-            
-            # Reload sound cache
-            self._load_sound_cache()
-            
-            print("[AUDIO] Audio system recovery completed")
-            
+            self._sound_stream = sd.OutputStream(
+                samplerate=self._sound_stream_sr,
+                channels=1,
+                dtype='float32',
+                callback=self._sound_stream_callback,
+                blocksize=1024,  # ~23ms at 44100Hz — good balance of latency vs efficiency
+            )
+            self._sound_stream.start()
+            print("[AUDIO] Persistent sound stream started")
         except Exception as e:
-            print(f"[AUDIO] Recovery failed: {e}")
-    
-    def _fallback_play(self, sound_type):
-        """Fallback to winsound (Windows only) or system command"""
-        sound_file = self.sound_files.get(sound_type)
-        if sound_file is None or not sound_file.exists():
-            return
-        
-        try:
-            if HAS_WINSOUND:
-                winsound.PlaySound(str(sound_file), winsound.SND_FILENAME | winsound.SND_ASYNC)
-            elif sys.platform == 'darwin':  # macOS
-                subprocess.Popen(['afplay', str(sound_file)], 
-                               stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
-            elif sys.platform.startswith('linux'):
-                # Try aplay (ALSA) or paplay (PulseAudio)
-                for player in ['paplay', 'aplay']:
-                    try:
-                        subprocess.Popen([player, str(sound_file)],
-                                       stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
-                        break
-                    except FileNotFoundError:
-                        continue
-        except Exception as e:
-            print(f"[AUDIO] Fallback playback also failed for {sound_type}: {e}")
-    
+            print(f"[AUDIO] Failed to start sound stream: {e}")
+            self._sound_stream = None
+
+    def _sound_stream_callback(self, outdata, frames, time_info, status):
+        """Callback for the persistent output stream. Feeds audio from buffer."""
+        with self._buffer_lock:
+            n_buffered = len(self._playback_buffer)
+            if n_buffered >= frames:
+                outdata[:] = self._playback_buffer[:frames]
+                self._playback_buffer = self._playback_buffer[frames:]
+            elif n_buffered > 0:
+                outdata[:n_buffered] = self._playback_buffer
+                outdata[n_buffered:] = 0
+                self._playback_buffer = np.zeros((0, 1), dtype=np.float32)
+            else:
+                outdata[:] = 0  # Silence when nothing to play
+
     def reload_sounds(self):
         """Reload sounds from disk (call after changing sound files)"""
         print("[AUDIO] Reloading sounds...")
         self._load_sound_cache()
 
     def play_sound(self, sound_type, use_winsound=False):
-        """Play audio feedback sound via persistent stream (non-blocking, low-latency).
+        """Play audio feedback sound via persistent output stream (non-blocking, low-latency).
+        
+        Writes pre-loaded audio data into the playback buffer. The persistent
+        OutputStream callback drains it automatically. New sounds replace any
+        currently playing sound (clean cutoff, no artifacts).
         
         Args:
             sound_type: 'start', 'stop', 'success', or 'error'
-            use_winsound: If True on Windows, use winsound directly (avoids sd.play/InputStream conflicts)
+            use_winsound: Deprecated/ignored.
         """
         if not self.config.get('audio_feedback', True):
             return
-
-        # On Windows, use winsound for start sounds to avoid conflict with InputStream
-        # Note: winsound only supports WAV files
-        if use_winsound and HAS_WINSOUND:
-            sounds_dir = Path(__file__).parent / 'sounds'
-            # Look for WAV file specifically (winsound doesn't support MP3)
-            sound_path = sounds_dir / f'{sound_type}.wav'
-            if sound_path.exists():
-                try:
-                    winsound.PlaySound(str(sound_path), winsound.SND_FILENAME | winsound.SND_ASYNC)
-                    return
-                except Exception as e:
-                    print(f"[AUDIO] winsound failed: {e}")
-                    # Fall through to regular playback
-            # If no WAV but we have it cached (from MP3), use sounddevice queue instead
-            # (may conflict with InputStream, but better than no sound)
 
         cached = self._sound_cache.get(sound_type)
         if cached is None:
             return
 
         volume = self.config.get('sound_volume', 0.5)
-        
-        # Clear queue to prevent sound backlog (only play latest)
-        while not self._sound_queue.empty():
+        if volume <= 0:
+            return
+
+        # Scale volume and write to buffer — the stream callback handles the rest
+        scaled = (cached * volume).astype(np.float32)
+        with self._buffer_lock:
+            self._playback_buffer = scaled  # Replace buffer (new sound wins)
+
+    def stop_sound_stream(self):
+        """Stop the persistent sound stream (call on app shutdown)"""
+        print("[AUDIO] Stopping sound stream...")
+        if self._sound_stream is not None:
             try:
-                self._sound_queue.get_nowait()
-            except queue.Empty:
-                break
-        
-        self._sound_queue.put((cached, volume))
-    
-    def stop_sound_worker(self):
-        """Stop the sound worker thread (call on app shutdown)"""
-        print("[AUDIO] Stopping sound worker...")
-        self._sound_worker_running = False
-        self._sound_queue.put(None)  # Shutdown signal
-        if hasattr(self, '_sound_worker') and self._sound_worker.is_alive():
-            self._sound_worker.join(timeout=2.0)
-        # Stop any ongoing playback
+                self._sound_stream.stop()
+                self._sound_stream.close()
+            except Exception:
+                pass
+            self._sound_stream = None
+
+    def _prebuffer_callback(self, indata, frames, time_info, status):
+        """Audio callback for standalone pre-buffer stream (hold/toggle modes).
+        Simply feeds a rolling buffer so audio before hotkey press is captured."""
         try:
-            sd.stop()
+            if status:
+                pass  # Ignore status warnings for background stream
+            chunk = indata.copy()
+            if self.echo_canceller.is_active:
+                chunk = self.echo_canceller.process(chunk)
+            self._prebuffer.append(chunk.flatten())
         except Exception:
             pass
+
+    def _open_stream_with_timeout(self, timeout=3.0, retries=2, backoff=0.5, **kwargs):
+        """Open an sd.InputStream with a timeout to prevent hangs.
+        
+        When Windows audio subsystem is disrupted (e.g. headphone connect/disconnect),
+        sd.InputStream() can block indefinitely. This wraps it in a thread with a timeout
+        and retries with backoff.
+        
+        Args:
+            timeout: Seconds to wait for stream creation before giving up
+            retries: Number of retry attempts after first failure
+            backoff: Seconds to wait between retries (doubles each attempt)
+            **kwargs: Passed directly to sd.InputStream()
+            
+        Returns:
+            sd.InputStream or None if all attempts failed
+        """
+        for attempt in range(1 + retries):
+            result = [None]
+            error = [None]
+            
+            def _create():
+                try:
+                    result[0] = sd.InputStream(**kwargs)
+                except Exception as e:
+                    error[0] = e
+            
+            t = threading.Thread(target=_create, daemon=True)
+            t.start()
+            t.join(timeout=timeout)
+            
+            if t.is_alive():
+                # Stream creation hung — PortAudio is probably disrupted
+                wait = backoff * (2 ** attempt)
+                if attempt < retries:
+                    print(f"[WARN] Audio stream open timed out ({timeout}s), retrying in {wait:.1f}s... (attempt {attempt + 1}/{1 + retries})")
+                    time.sleep(wait)
+                    continue
+                else:
+                    print(f"[ERROR] Audio stream open timed out after {1 + retries} attempts. Audio subsystem may be disrupted.")
+                    return None
+            
+            if error[0]:
+                wait = backoff * (2 ** attempt)
+                if attempt < retries:
+                    print(f"[WARN] Audio stream error: {error[0]}, retrying in {wait:.1f}s...")
+                    time.sleep(wait)
+                    continue
+                else:
+                    print(f"[ERROR] Audio stream failed after {1 + retries} attempts: {error[0]}")
+                    return None
+            
+            return result[0]
+        
+        return None
+
+    def _start_prebuffer_stream(self):
+        """Start a lightweight background audio stream for pre-buffering.
+        Only used in hold/toggle modes where no other stream is running."""
+        if self._prebuffer_stream is not None:
+            return  # Already running
+        try:
+            stream = self._open_stream_with_timeout(
+                samplerate=self.sample_rate,
+                channels=1,
+                dtype=np.float32,
+                callback=self._prebuffer_callback,
+                device=self.config['microphone'],
+                blocksize=int(self.sample_rate * 0.1)  # 100ms blocks
+            )
+            if stream is None:
+                print("[WARN] Could not start pre-buffer stream (audio subsystem busy)")
+                return
+            self._prebuffer_stream = stream
+            self._prebuffer_stream.start()
+            self._prebuffer_active = True
+            print(f"[PRE] Pre-buffer stream started ({self._prebuffer_seconds}s rolling buffer)")
+        except Exception as e:
+            print(f"[WARN] Could not start pre-buffer stream: {e}")
+
+    def _stop_prebuffer_stream(self):
+        """Stop the standalone pre-buffer stream."""
+        if self._prebuffer_stream is not None:
+            try:
+                self._prebuffer_stream.stop()
+                self._prebuffer_stream.close()
+            except Exception:
+                pass
+            self._prebuffer_stream = None
+            self._prebuffer_active = False
 
     def start_recording(self):
         """Start recording audio"""
@@ -5111,21 +5589,63 @@ class DictationApp:
                 print("Model not loaded!")
             return
 
+        # Suppress wake word processing during hotkey recording
+        self._hotkey_recording = True
+
+        # Grab pre-buffer contents BEFORE playing the start sound
+        # This captures audio from ~1.5s before the hotkey was pressed
+        prebuffer_audio = list(self._prebuffer)
+        self._prebuffer.clear()
+
+        # Stop the pre-buffer stream to avoid two streams on the same device.
+        # Running dual streams causes PortAudio to deliver overlapping audio data,
+        # leading to duplicated words (especially on quick stops).
+        self._stop_prebuffer_stream()
+
         # Play start sound using winsound on Windows to avoid InputStream conflict
         self.play_sound("start", use_winsound=True)
         time.sleep(0.15)  # Brief pause for sound to start
 
-        self.audio_data = []
-        self.stream = sd.InputStream(
+        # Seed audio_data with pre-buffered audio (speech before hotkey press)
+        self.audio_data = [chunk.reshape(-1, 1) for chunk in prebuffer_audio] if prebuffer_audio else []
+        if prebuffer_audio:
+            prebuf_duration = len(prebuffer_audio) * 0.1
+            print(f"[PRE] Pre-buffer: {prebuf_duration:.1f}s of audio captured before hotkey")
+        
+        # Record timestamp so we can detect overlap between pre-buffer and recording
+        self._recording_start_time = time.time()
+        
+        stream = self._open_stream_with_timeout(
             samplerate=self.sample_rate,
             channels=1,
             dtype=np.float32,
             callback=self.audio_callback,
             device=self.config['microphone']
         )
+        if stream is None:
+            print("[ERROR] Could not open recording stream — audio subsystem may be disrupted by device change. Try again in a moment.")
+            self._hotkey_recording = False
+            self.play_sound("error")
+            if hasattr(self, 'listening_indicator'):
+                self.root.after(0, self.listening_indicator.flash_error)
+            # Try to restart pre-buffer so next attempt works
+            self._start_prebuffer_stream()
+            return
+        
+        self.stream = stream
         self.stream.start()
         self.recording = True
         print("[REC] Recording...")
+
+        # Update tray icon to show active recording (critical for toggle mode
+        # where there's no physical key-hold to indicate state)
+        self._start_icon_chase()
+        if hasattr(self, 'tray_icon'):
+            self.tray_icon.title = f"Samsara - RECORDING"
+
+        # Update listening indicator
+        if hasattr(self, 'listening_indicator'):
+            self.root.after(0, self.listening_indicator.set_listening, True)
 
     def stop_recording(self):
         """Stop recording and transcribe"""
@@ -5133,11 +5653,24 @@ class DictationApp:
             return
 
         self.recording = False
+        self._hotkey_recording = False  # Re-enable wake word processing
         self.play_sound("stop")
+
+        # Restore tray icon to idle state
+        self._stop_icon_chase()
+        if hasattr(self, 'tray_icon'):
+            self.tray_icon.title = f"Samsara - {self.get_current_microphone_name()}"
+
+        # Update listening indicator
+        if hasattr(self, 'listening_indicator'):
+            self.root.after(0, self.listening_indicator.set_listening, False)
         
         if hasattr(self, 'stream'):
             self.stream.stop()
             self.stream.close()
+
+        # Restart pre-buffer stream for next recording session
+        self._start_prebuffer_stream()
 
         if not self.audio_data:
             print("No audio recorded")
@@ -5201,6 +5734,8 @@ class DictationApp:
 
                     print(f"[OK] {text}")
                     self.play_sound("success")
+                    if hasattr(self, 'listening_indicator'):
+                        self.root.after(0, self.listening_indicator.flash_success)
 
                     # Add to history
                     self.add_to_history(text.strip(), is_command=False)
@@ -5214,6 +5749,8 @@ class DictationApp:
             except Exception as e:
                 print(f"Transcription error: {e}")
                 self.play_sound("error")
+                if hasattr(self, 'listening_indicator'):
+                    self.root.after(0, self.listening_indicator.flash_error)
         
         thread = threading.Thread(target=transcribe, daemon=True)
         thread.start()
@@ -5224,6 +5761,7 @@ class DictationApp:
             return
 
         self.recording = False
+        self._hotkey_recording = False  # Re-enable wake word processing
         print("[X] Recording cancelled")
 
         if hasattr(self, 'stream'):
@@ -5234,28 +5772,198 @@ class DictationApp:
         self.audio_data = []
         self.play_sound("error")  # Play error sound to indicate cancellation
 
-    def create_icon_image(self, active=False):
-        """Create system tray icon - clean waveform design"""
+        # Update listening indicator
+        if hasattr(self, 'listening_indicator'):
+            self.root.after(0, self.listening_indicator.set_listening, False)
+            self.root.after(0, self.listening_indicator.flash_error)
+
+    def apply_mode(self, new_mode):
+        """Apply a mode change at runtime. Stops listeners that don't match the
+        new mode, manages the prebuffer stream, and starts the new mode's listener.
+        Updates self.config['mode'] but does NOT call save_config (caller decides).
+
+        Valid modes: 'hold', 'toggle', 'wake_word', 'combined', 'continuous'.
+        Returns True if the mode was applied, False if unchanged or invalid.
+        """
+        valid_modes = ('hold', 'toggle', 'wake_word', 'combined', 'continuous')
+        if new_mode not in valid_modes:
+            print(f"[MODE] Refused invalid mode: {new_mode}")
+            return False
+
+        current_mode = self.config.get('mode', 'hold')
+        if new_mode == current_mode:
+            return False
+
+        # If currently recording (hold or toggle mode), stop the recording
+        if self.recording:
+            self.stop_recording()
+            print(f"[MODE] Stopped active recording before mode switch")
+
+        # Reset toggle state so it doesn't carry over
+        self.toggle_active = False
+
+        # Stop wake word mode if it was active but new mode doesn't need it
+        # (wake_word and combined both use wake word listening)
+        if self.wake_word_active and new_mode not in ('wake_word', 'combined'):
+            self.stop_wake_word_mode()
+            print(f"[MODE] Deactivated wake word mode")
+
+        # Stop continuous mode if it was active but new mode is different
+        if self.continuous_active and new_mode != 'continuous':
+            self.stop_continuous_mode()
+            print(f"[MODE] Deactivated continuous mode")
+
+        # Manage pre-buffer stream: standalone stream for hold/toggle,
+        # wake word / continuous streams handle their own pre-buffering
+        if new_mode in ('hold', 'toggle'):
+            if self.model_loaded:
+                self._start_prebuffer_stream()
+        else:
+            self._stop_prebuffer_stream()
+
+        # Activate the new mode if it requires wake_word or continuous
+        if new_mode == 'wake_word' and not self.wake_word_active:
+            self.start_wake_word_mode()
+            print(f"[MODE] Activated wake word mode")
+        elif new_mode == 'combined' and not self.wake_word_active:
+            self.start_wake_word_mode()
+            print(f"[MODE] Activated combined mode (wake word + hotkey)")
+        elif new_mode == 'continuous' and not self.continuous_active:
+            self.start_continuous_mode()
+            print(f"[MODE] Activated continuous mode")
+
+        self.config['mode'] = new_mode
+        print(f"[MODE] Mode changed to: {new_mode}")
+
+        # Update listening indicator mode label
+        if hasattr(self, 'listening_indicator'):
+            self.root.after(0, self.listening_indicator.set_mode, new_mode)
+
+        return True
+
+    def switch_mode_from_tray(self, new_mode):
+        """Tray-menu entry point: apply the mode, persist it, refresh the menu."""
+        changed = self.apply_mode(new_mode)
+        if changed:
+            self.save_config()
+        # Always refresh the menu so the checkmark reflects current state
+        if hasattr(self, 'tray_icon') and hasattr(self, 'get_menu'):
+            try:
+                self.tray_icon.menu = self.get_menu()
+            except Exception as e:
+                print(f"[MODE] Failed to refresh tray menu: {e}")
+
+    # Wheel icon color scheme
+    _WHEEL_COLORS = ['#185FA5', '#C0392B', '#1A1A1A']   # blue, red, black
+    _WHEEL_IDLE   = ['#555555', '#666666', '#555555']
+    _WHEEL_SNOOZE = ['#333333', '#333333', '#333333']
+    _WHEEL_GOLD   = '#D4A017'
+
+    @staticmethod
+    def _arc_polygon(cx, cy, outer_r, inner_r, start_rad, end_rad, steps=24):
+        """Return polygon points for a thick arc segment."""
+        pts = []
+        for i in range(steps + 1):
+            t = start_rad + (end_rad - start_rad) * i / steps
+            pts.append((cx + outer_r * math.cos(t), cy + outer_r * math.sin(t)))
+        for i in range(steps, -1, -1):
+            t = start_rad + (end_rad - start_rad) * i / steps
+            pts.append((cx + inner_r * math.cos(t), cy + inner_r * math.sin(t)))
+        return pts
+
+    def create_icon_image(self, active=False, color_offset=0, rotation=0.0):
+        """Create system tray icon — segmented wheel design.
+
+        Three arc segments (blue, red, black) with gaps between them.
+        Active state shows full colors + gold center dot.
+        Idle state shows muted greys.
+        color_offset shifts which color sits in which position (chase animation).
+        rotation rotates the entire wheel (in radians).
+        """
         size = 64
         image = Image.new('RGBA', (size, size), (0, 0, 0, 0))
         draw = ImageDraw.Draw(image)
-        
-        # Color: teal when active, dark gray when idle
-        color = '#00CED1' if active else '#555555'
-        
-        # Draw audio waveform bars
-        bar_width = 4
-        gap = 3
-        heights = [15, 28, 42, 28, 15, 35, 20]  # Varied heights
-        x = 8
-        
-        for h in heights:
-            y_top = 32 - (h // 2)
-            y_bottom = 32 + (h // 2)
-            draw.rectangle([x, y_top, x + bar_width, y_bottom], fill=color)
-            x += bar_width + gap
-        
+
+        cx, cy = size / 2, size / 2
+        ring_width = 12
+        outer_r = size / 2 - 1
+        inner_r = outer_r - ring_width
+
+        if getattr(self, 'snoozed', False):
+            colors = self._WHEEL_SNOOZE
+        elif active:
+            colors = self._WHEEL_COLORS
+        else:
+            colors = self._WHEEL_IDLE
+
+        n = len(colors)
+        gap_rad = math.radians(8)
+        arc_len = (2 * math.pi - gap_rad * n) / n
+
+        # Shift colors by offset for chase animation (clockwise)
+        shifted = [colors[(i - color_offset) % n] for i in range(n)]
+
+        for i, color in enumerate(shifted):
+            start = i * (arc_len + gap_rad) - math.pi / 2 + rotation  # 12 o'clock + rotation
+            end = start + arc_len
+            poly = self._arc_polygon(cx, cy, outer_r, inner_r, start, end)
+            draw.polygon(poly, fill=color)
+
+        # Gold center dot (visible when active)
+        dot_r = 3
+        if active and not getattr(self, 'snoozed', False):
+            draw.ellipse([cx - dot_r, cy - dot_r, cx + dot_r, cy + dot_r],
+                         fill=self._WHEEL_GOLD)
+
         return image
+
+    def _start_icon_chase(self):
+        """Start the spinning color-chase animation on the tray icon."""
+        self._icon_animating = True
+        self._icon_chase_offset = 0
+        self._icon_chase_counter = 0
+        self._icon_rotation = 0.0
+        self._icon_chase_tick()
+
+    def _stop_icon_chase(self):
+        """Stop the chase animation and show idle icon."""
+        self._icon_animating = False
+        if self._icon_chase_timer is not None:
+            self._icon_chase_timer.cancel()
+            self._icon_chase_timer = None
+        self._icon_chase_offset = 0
+        self._icon_rotation = 0.0
+        if hasattr(self, 'tray_icon'):
+            self.tray_icon.icon = self.create_icon_image(active=False)
+
+    def _icon_chase_tick(self):
+        """Advance the spin + chase and schedule the next tick.
+
+        Runs at ~80ms (~12 fps) for smooth rotation.
+        Colors shift every 6 ticks (~480ms) for the chase effect.
+        """
+        if not self._icon_animating:
+            return
+
+        # Spin: ~12 RPM = 2*pi per 5s. At 80ms ticks that's ~0.1 rad/tick.
+        self._icon_rotation += 0.1
+
+        # Chase: shift colors every 14 ticks (~1120ms)
+        self._icon_chase_counter += 1
+        if self._icon_chase_counter >= 14:
+            self._icon_chase_counter = 0
+            self._icon_chase_offset = (self._icon_chase_offset + 1) % 3
+
+        if hasattr(self, 'tray_icon'):
+            self.tray_icon.icon = self.create_icon_image(
+                active=True,
+                color_offset=self._icon_chase_offset,
+                rotation=self._icon_rotation)
+
+        self._icon_chase_timer = threading.Timer(
+            0.08, self._icon_chase_tick)
+        self._icon_chase_timer.daemon = True
+        self._icon_chase_timer.start()
     
     def open_settings(self):
         """Open settings window"""
@@ -5331,6 +6039,126 @@ class DictationApp:
             print(f"Error opening wake word debug: {e}")
             messagebox.showerror("Error", f"Failed to open Wake Word Debug:\n{e}")
 
+    def snooze_listening(self, minutes=None):
+        """Temporarily pause all listening for the given duration.
+
+        Args:
+            minutes: Duration in minutes, or None for indefinite snooze.
+        """
+        if self.snoozed:
+            return  # already snoozed
+
+        # Remember what was actively running so we can restore it
+        self._snooze_prior_mode_state = {
+            'mode': self.config.get('mode', 'hold'),
+            'continuous_active': self.continuous_active,
+            'wake_word_active': self.wake_word_active,
+            'recording': self.recording,
+            'toggle_active': getattr(self, 'toggle_active', False),
+        }
+
+        # Stop any active audio capture
+        if self.recording:
+            self.stop_recording()
+        if self.continuous_active:
+            self.stop_continuous_mode()
+        if self.wake_word_active:
+            self.stop_wake_word_mode()
+
+        # Stop pre-buffer stream so no audio processing happens
+        self._stop_prebuffer_stream()
+
+        self.snoozed = True
+        self.play_sound("stop")
+
+        # Update listening indicator to idle + snoozed
+        if hasattr(self, 'listening_indicator'):
+            self.root.after(0, self.listening_indicator.set_listening, False)
+            self.root.after(0, self.listening_indicator.set_snoozed, True)
+
+        # Schedule auto-resume
+        if minutes is not None:
+            import datetime
+            self._snooze_resume_time = datetime.datetime.now() + datetime.timedelta(minutes=minutes)
+            resume_str = self._snooze_resume_time.strftime("%H:%M")
+            print(f"[SNOOZE] Listening snoozed for {minutes} min (resumes at {resume_str})")
+
+            self._snooze_timer = threading.Timer(minutes * 60, self._on_snooze_expire)
+            self._snooze_timer.daemon = True
+            self._snooze_timer.start()
+        else:
+            self._snooze_resume_time = None
+            print("[SNOOZE] Listening snoozed until manually resumed")
+
+        # Update tray tooltip
+        self._update_snooze_tooltip()
+
+    def _update_snooze_tooltip(self):
+        """Set tray icon tooltip to reflect snooze state."""
+        if not hasattr(self, 'tray_icon'):
+            return
+        if self.snoozed:
+            if self._snooze_resume_time is not None:
+                resume_str = self._snooze_resume_time.strftime("%H:%M")
+                self.tray_icon.title = f"Samsara - Snoozed (resumes at {resume_str})"
+            else:
+                self.tray_icon.title = "Samsara - Snoozed (until resumed)"
+        else:
+            self.tray_icon.title = f"Samsara - {self.get_current_microphone_name()}"
+
+    def _on_snooze_expire(self):
+        """Called by the snooze timer when duration elapses."""
+        self._snooze_timer = None
+        self.resume_listening()
+
+    def resume_listening(self):
+        """Cancel snooze and restore the previously active listening mode."""
+        if not self.snoozed:
+            return
+
+        # Cancel pending timer if resuming early
+        if self._snooze_timer is not None:
+            self._snooze_timer.cancel()
+            self._snooze_timer = None
+
+        self.snoozed = False
+        self._snooze_resume_time = None
+        print("[SNOOZE] Listening resumed")
+
+        # Clear snoozed state on indicator
+        if hasattr(self, 'listening_indicator'):
+            self.root.after(0, self.listening_indicator.set_snoozed, False)
+
+        # Restore prior mode state
+        prior = self._snooze_prior_mode_state or {}
+        mode = prior.get('mode', self.config.get('mode', 'hold'))
+
+        # Restart pre-buffer for hold/toggle modes
+        if mode in ('hold', 'toggle') and self.model_loaded:
+            self._start_prebuffer_stream()
+
+        # Restart streaming modes that were active before snooze
+        if prior.get('continuous_active') and mode == 'continuous':
+            self.start_continuous_mode()
+        elif prior.get('wake_word_active') and mode in ('wake_word', 'combined'):
+            self.start_wake_word_mode()
+
+        self._snooze_prior_mode_state = None
+        self.play_sound("start")
+
+        # Restore tray tooltip
+        self._update_snooze_tooltip()
+
+    def toggle_listening_indicator(self):
+        """Toggle the listening indicator overlay on/off and persist to config."""
+        enabled = not self.config.get('listening_indicator_enabled', False)
+        self.config['listening_indicator_enabled'] = enabled
+        self.save_config()
+        if enabled:
+            self.root.after(0, self.listening_indicator.show)
+        else:
+            self.root.after(0, self.listening_indicator.hide)
+
     def create_tray_icon(self):
         """Create and run system tray icon"""
         def get_menu():
@@ -5340,7 +6168,16 @@ class DictationApp:
             # Create microphone submenu
             mic_menu_items = []
             current_mic_id = self.config.get('microphone')
-            
+
+            # Factory: returns a clean 2-arg callback that captures mic_id in
+            # its closure scope. Avoids two pitfalls:
+            #   (a) `lambda _, mid=mic_id: ...` binds menu_item to mid (wrong value)
+            #   (b) `lambda _i, _it, mid=mic_id: ...` exceeds pystray's 2-arg limit
+            def _make_mic_callback(mid):
+                def _cb(_icon, _item):
+                    self.switch_microphone_and_refresh(mid)
+                return _cb
+
             for mic in self.available_mics:
                 mic_id = mic['id']
                 mic_name = mic['name']
@@ -5350,7 +6187,7 @@ class DictationApp:
                 mic_menu_items.append(
                     pystray.MenuItem(
                         f"{'*' if is_current else '   '}{mic_name}",
-                        lambda _, mid=mic_id: self.switch_microphone_and_refresh(mid)
+                        _make_mic_callback(mic_id)
                     )
                 )
             
@@ -5361,9 +6198,39 @@ class DictationApp:
                 ),
                 pystray.Menu.SEPARATOR,
                 pystray.MenuItem(
-                    f"Mode: {mode.title()}", 
-                    lambda: None,
-                    enabled=False
+                    f"Mode: {mode.title()}",
+                    pystray.Menu(
+                        pystray.MenuItem(
+                            'Hold to Talk',
+                            lambda _i, _it: self.switch_mode_from_tray('hold'),
+                            checked=lambda _it, m='hold': self.config.get('mode', 'hold') == m,
+                            radio=True
+                        ),
+                        pystray.MenuItem(
+                            'Toggle (click to start/stop)',
+                            lambda _i, _it: self.switch_mode_from_tray('toggle'),
+                            checked=lambda _it, m='toggle': self.config.get('mode', 'hold') == m,
+                            radio=True
+                        ),
+                        pystray.MenuItem(
+                            "Wake Word ('Samsara...')",
+                            lambda _i, _it: self.switch_mode_from_tray('wake_word'),
+                            checked=lambda _it, m='wake_word': self.config.get('mode', 'hold') == m,
+                            radio=True
+                        ),
+                        pystray.MenuItem(
+                            'Combined (Wake Word + Hotkey)',
+                            lambda _i, _it: self.switch_mode_from_tray('combined'),
+                            checked=lambda _it, m='combined': self.config.get('mode', 'hold') == m,
+                            radio=True
+                        ),
+                        pystray.MenuItem(
+                            'Continuous',
+                            lambda _i, _it: self.switch_mode_from_tray('continuous'),
+                            checked=lambda _it, m='continuous': self.config.get('mode', 'hold') == m,
+                            radio=True
+                        ),
+                    )
                 ),
                 pystray.MenuItem(
                     f"Hotkey: {self.config['hotkey']}", 
@@ -5371,15 +6238,56 @@ class DictationApp:
                     enabled=False
                 ),
                 pystray.MenuItem(
-                    f"Model: {self.config['model_size']}", 
+                    f"Model: {self.config['model_size']}",
                     lambda: None,
                     enabled=False
+                ),
+                pystray.MenuItem(
+                    "Snoozed" if self.snoozed else "Snooze",
+                    pystray.Menu(
+                        pystray.MenuItem(
+                            "Snooze 5 minutes",
+                            lambda _i, _it: self.snooze_listening(5),
+                            enabled=not self.snoozed
+                        ),
+                        pystray.MenuItem(
+                            "Snooze 15 minutes",
+                            lambda _i, _it: self.snooze_listening(15),
+                            enabled=not self.snoozed
+                        ),
+                        pystray.MenuItem(
+                            "Snooze 30 minutes",
+                            lambda _i, _it: self.snooze_listening(30),
+                            enabled=not self.snoozed
+                        ),
+                        pystray.MenuItem(
+                            "Snooze 1 hour",
+                            lambda _i, _it: self.snooze_listening(60),
+                            enabled=not self.snoozed
+                        ),
+                        pystray.MenuItem(
+                            "Snooze until resumed",
+                            lambda _i, _it: self.snooze_listening(None),
+                            enabled=not self.snoozed
+                        ),
+                        pystray.Menu.SEPARATOR,
+                        pystray.MenuItem(
+                            "Resume now",
+                            lambda _i, _it: self.resume_listening(),
+                            enabled=self.snoozed
+                        ),
+                    )
                 ),
                 pystray.Menu.SEPARATOR,
                 pystray.MenuItem("Settings", self.open_settings),
                 pystray.MenuItem("History", self.open_history),
                 pystray.MenuItem("Voice Training", self.open_voice_training),
                 pystray.MenuItem("Wake Word Debug", self.open_wake_word_debug),
+                pystray.MenuItem(
+                    "Show Listening Indicator",
+                    self.toggle_listening_indicator,
+                    checked=lambda _it: self.config.get('listening_indicator_enabled', False)
+                ),
                 pystray.MenuItem("Open Config Folder", self.open_config_folder),
                 pystray.MenuItem("View Logs", pystray.Menu(
                     pystray.MenuItem("Main Log (samsara.log)", self.open_main_log),
@@ -5435,6 +6343,12 @@ class DictationApp:
     def quit_app(self):
         """Exit the application"""
         print("[EXIT] Shutting down Samsara...")
+
+        # Stop icon chase animation timer
+        try:
+            self._stop_icon_chase()
+        except:
+            pass
         
         try:
             if self.continuous_active:
@@ -5469,9 +6383,31 @@ class DictationApp:
         except:
             pass
 
-        # Stop sound worker thread
+        # Stop echo cancellation
         try:
-            self.stop_sound_worker()
+            if hasattr(self, 'echo_canceller'):
+                self.echo_canceller.stop()
+        except:
+            pass
+
+        # Cancel snooze timer
+        try:
+            if self._snooze_timer is not None:
+                self._snooze_timer.cancel()
+                self._snooze_timer = None
+        except:
+            pass
+
+        # Destroy listening indicator
+        try:
+            if hasattr(self, 'listening_indicator'):
+                self.listening_indicator.destroy()
+        except:
+            pass
+
+        # Stop persistent sound stream
+        try:
+            self.stop_sound_stream()
         except:
             pass
 
