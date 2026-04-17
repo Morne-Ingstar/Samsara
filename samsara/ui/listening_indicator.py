@@ -155,14 +155,9 @@ class ListeningIndicator:
 
     def set_mode(self, mode_str):
         """Update the displayed mode name (e.g. 'Hold', 'Wake Word')."""
-        display = {
-            "hold": "Hold",
-            "toggle": "Toggle",
-            "continuous": "Continuous",
-            "wake_word": "Wake Word",
-            "combined": "Combined",
-        }
-        self._mode_text = display.get(mode_str, mode_str.replace("_", " ").title())
+        # mode_str is now a pre-formatted display string like "Hold + Wake"
+        # from DictationApp._get_mode_display(), so use it directly.
+        self._mode_text = mode_str if mode_str else "Hold"
         if self._visible:
             self._draw()
 

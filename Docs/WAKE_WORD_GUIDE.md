@@ -212,7 +212,7 @@ If false triggers occur:
 - **Wait for confirmation**: Look for "👂 Listening for command..."
 - **Speak clearly**: After wake word, speak command clearly
 - **Check timeout**: May have timed out (5s default)
-- **Try combined**: Say wake word + command in one phrase
+- **Try inline**: Say wake word + command in one phrase (e.g. "Jarvis dictate hello")
 
 ### High CPU Usage
 Wake word mode is always listening, which uses CPU.
