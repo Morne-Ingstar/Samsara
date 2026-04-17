@@ -18,11 +18,14 @@ flowchart TB
         PROC[Text Processor<br/>capitalize, numbers]
     end
 
-    subgraph Modes["Recording Modes"]
+    subgraph Modes["Capture Modes"]
         HOLD[Hold Mode]
         TOGGLE[Toggle Mode]
         CONT[Continuous Mode]
-        WAKE[Wake Word Mode]
+    end
+
+    subgraph WakeWord["Wake Word (optional overlay)"]
+        WAKE[Wake Word Listener]
     end
 
     subgraph Output["Output"]
@@ -109,14 +112,20 @@ flowchart TB
       └──► No command → process_transcription() → Paste text
 ```
 
-### Recording Modes
+### Capture Modes
 
 | Mode | Trigger | Behavior |
 |------|---------|----------|
 | **Hold** | Hold hotkey | Records while held, transcribes on release |
 | **Toggle** | Press hotkey | Press to start, press again to stop |
 | **Continuous** | Ctrl+Alt+D | Always listening, auto-transcribes on silence |
-| **Wake Word** | Ctrl+Alt+W | Waits for trigger phrase, then executes command |
+
+### Wake Word (independent toggle)
+
+Wake word is a boolean setting (`wake_word_enabled`) that works alongside any capture mode.
+When enabled (Ctrl+Alt+W or tray checkbox), a background listener waits for the configured
+wake phrase, then processes commands or starts dictation. Hotkey recording still works
+normally -- the `_hotkey_recording` flag suppresses wake word processing during active recording.
 
 ## Key Dependencies
 
