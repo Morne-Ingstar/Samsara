@@ -4,10 +4,19 @@ All notable changes to Samsara will be documented in this file.
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
-## [Unreleased]
+## [0.9.2] - 2026-04-18
 
 ### Added
-- **Command parser module** -- `samsara/command_parser.py` extracts wake word command
+- **4-state dictation model** — Replaces fragmented dictate/short/long modes
+  with clean state machine: Asleep → Command Window → Quick Dictation → Long
+  Dictation. Designed through ARC (multi-AI review process).
+- **Auto-calibrate speech threshold** — Measures ambient noise on startup (1.5s),
+  sets threshold using IQR-based outlier rejection. Floor of 0.0005 (not 0.01).
+  Re-calibrates on mic switch. Configurable via Settings (Auto/Manual toggle).
+- **Frequency-domain echo cancellation** — Replaced sample-by-sample NLMS with
+  block FFT-based adaptive filter. 4096 taps at 16kHz = 256ms echo path.
+  Fully vectorized (no Python for-loops in signal path). Diagnostic logging.
+- **Command parser module** — `samsara/command_parser.py` extracts wake word command
   parsing into pure, testable functions. `parse_wake_command()` returns structured
   intent dicts (type/name/content/raw). Handles dictation keywords, filler stripping,
   Whisper punctuation, colon/dash separators, and joined tokens. 32 tests.
@@ -51,11 +60,30 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 - **Plugin command system** (scaffold) — `samsara/plugin_commands.py` with
   `@command` decorator, global registry, alias support, and auto-loader for
   `plugins/commands/*.py`. Not yet wired into `CommandExecutor.process_text`.
-- **Echo cancellation module** — `samsara/echo_cancel.py` uses WASAPI loopback
-  capture + NLMS adaptive filter to subtract system audio from mic input.
-  Windows-only, disabled by default.
+- **Echo cancellation module** — `samsara/echo_cancel.py` frequency-domain
+  block NLMS with FFT overlap-save. WASAPI loopback capture for reference signal.
+  Windows-only, disabled by default. Periodic diagnostic logging.
+- **Constants module** — `samsara/constants.py` extracts magic numbers (sample
+  rates, thresholds, timing values) from dictation.py
+- **Pipeline tests** — `tests/test_pipeline.py` end-to-end simulation using
+  real modules (wake_word_matcher, wake_corrections, command_parser). 21 tests.
+- **Calibration tests** — `tests/test_calibration.py` validates IQR outlier
+  rejection and threshold calculation
 
 ### Changed
+- **UI extraction** — SettingsWindow, FirstRunWizard, HistoryWindow, SplashScreen
+  extracted from dictation.py into `samsara/ui/`. dictation.py reduced from
+  6,555 to 3,592 lines.
+- **Settings performance** — Lazy tab loading + generator-based staged building.
+  Only builds the visible tab; others build on first click.
+- **Thread-safe buffer** — `buffer_lock` added around all `speech_buffer` access
+  to prevent race conditions between PortAudio callbacks and transcription.
+- **Clipboard error logging** — Replaced 4 silent `except: pass` patterns with
+  `_log_error()` calls for diagnosability.
+- **Clipboard delay** — Reduced from `sleep(0.4)` × 3 = 1.2s per paste to
+  configurable `sleep(0.05)` × 3 = 0.15s.
+- **Stale module cleanup** — Moved deprecated audio.py, config.py, speech.py
+  to `samsara/_stale/`.
 - **Wake word is now a boolean, not a mode** -- `wake_word_enabled` config flag
   replaces the old `wake_word` and `combined` capture modes.  Three capture modes
   remain (hold, toggle, continuous); wake word runs alongside any of them.
