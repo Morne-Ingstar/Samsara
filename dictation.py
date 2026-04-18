@@ -131,6 +131,15 @@ from samsara.ui.listening_indicator import ListeningIndicator
 from samsara.wake_word_matcher import match_wake_phrase
 from samsara.wake_corrections import apply_corrections as apply_wake_corrections, was_corrected
 from samsara.command_parser import parse_wake_command, normalize_command_text
+from samsara.constants import (
+    MODEL_SAMPLE_RATE, DEFAULT_CAPTURE_RATE, PREBUFFER_SECONDS,
+    DEFAULT_SPEECH_THRESHOLD, DEFAULT_MIN_SPEECH_DURATION, DEFAULT_SILENCE_TIMEOUT,
+    WAKE_DETECTION_SILENCE, WAKE_COMMAND_TIMEOUT,
+    ICON_TICK_FAST, ICON_TICK_MEDIUM, ICON_TICK_SLOW,
+    ICON_SPIN_FAST, ICON_SPIN_MEDIUM, ICON_SPIN_SLOW,
+    ICON_CHASE_FAST, ICON_CHASE_MEDIUM, ICON_CHASE_SLOW,
+    CLIPBOARD_PASTE_DELAY, CLIPBOARD_RESTORE_DELAY,
+)
 from samsara.key_macros import KeyMacroManager, get_default_macro_config
 from samsara.notifications import NotificationManager, get_default_notification_config
 from samsara.alarms import AlarmManager, get_default_alarm_config
@@ -138,7 +147,7 @@ from samsara.echo_cancel import EchoCanceller
 from samsara.clipboard import clipboard_lock as _clipboard_lock, save_clipboard as _save_clipboard_win32, restore_clipboard as _restore_clipboard_win32, paste_with_preservation
 
 
-def resample_audio(audio, orig_sr, target_sr=16000):
+def resample_audio(audio, orig_sr, target_sr=MODEL_SAMPLE_RATE):
     """Resample audio from orig_sr to target_sr using linear interpolation.
 
     Good enough for speech -- Whisper is robust to minor artifacts.
@@ -3538,7 +3547,7 @@ class DictationApp:
                   f"switched to {self.available_mics[0]['name']} (id={self.config['microphone']})")
         
         # Audio settings -- dual sample rates for WASAPI compatibility
-        self.model_rate = 16000      # What Whisper expects
+        self.model_rate = MODEL_SAMPLE_RATE
         self.capture_rate = self._detect_capture_rate(self.config.get('microphone'))
         self.audio_queue = queue.Queue()
         self.recording = False
@@ -3587,6 +3596,7 @@ class DictationApp:
         self.continuous_stream = None
         self.silence_start = None
         self.speech_buffer = []
+        self.buffer_lock = threading.Lock()
         self.is_speaking = False
         self.wake_word_listening = False  # Currently listening for wake word
         self.wake_word_triggered = False  # Wake word detected, ready for command
@@ -3595,7 +3605,7 @@ class DictationApp:
         # Pre-buffer: rolling circular buffer captures audio BEFORE hotkey press
         # so the first ~1.5 seconds of speech are never lost to startup delay.
         # Each chunk is 100ms at capture_rate. Resampled to model_rate before transcription.
-        self._prebuffer_seconds = 1.5
+        self._prebuffer_seconds = PREBUFFER_SECONDS
         self._prebuffer_chunks = int(self._prebuffer_seconds / 0.1)  # 15 chunks at 100ms each
         self._prebuffer = collections.deque(maxlen=self._prebuffer_chunks)
         self._prebuffer_active = False  # Whether background stream is feeding the pre-buffer
@@ -3738,8 +3748,8 @@ class DictationApp:
             "format_numbers": True,
             "device": "auto",
             "microphone": None,
-            "silence_threshold": 2.0,
-            "min_speech_duration": 0.3,
+            "silence_threshold": DEFAULT_SILENCE_TIMEOUT,
+            "min_speech_duration": DEFAULT_MIN_SPEECH_DURATION,
             "command_mode_enabled": False,
             "show_all_audio_devices": False,
             "audio_feedback": True,
@@ -3781,10 +3791,10 @@ class DictationApp:
                     }
                 },
                 "audio": {
-                    "speech_threshold": 0.03,
-                    "min_speech_duration": 0.3,
-                    "wake_detection_silence": 1.2,  # Longer to capture "wake word [pause] command"
-                    "wake_command_timeout": 5.0
+                    "speech_threshold": DEFAULT_SPEECH_THRESHOLD,
+                    "min_speech_duration": DEFAULT_MIN_SPEECH_DURATION,
+                    "wake_detection_silence": WAKE_DETECTION_SILENCE,
+                    "wake_command_timeout": WAKE_COMMAND_TIMEOUT,
                 },
                 "feedback": {
                     "play_sound_on_wake": True,
@@ -3907,7 +3917,7 @@ class DictationApp:
             raise
     
     def _detect_capture_rate(self, device_id):
-        """Query the native sample rate of a device. Falls back to 48000."""
+        """Query the native sample rate of a device. Falls back to DEFAULT_CAPTURE_RATE."""
         try:
             if device_id is not None:
                 info = sd.query_devices(device_id)
@@ -3916,7 +3926,7 @@ class DictationApp:
                 return rate
         except Exception as e:
             print(f"[WARN] Could not query device {device_id} rate: {e}")
-        return 48000
+        return DEFAULT_CAPTURE_RATE
 
     def get_available_microphones(self):
         """Get list of available microphone devices.
@@ -4516,7 +4526,8 @@ class DictationApp:
         time.sleep(0.15)  # Brief pause for sound to start
         print("[MIC] Continuous mode ACTIVE - speak naturally, pauses will trigger transcription")
 
-        self.speech_buffer = []
+        with self.buffer_lock:
+            self.speech_buffer = []
         self.silence_start = None
         self.is_speaking = False
 
@@ -4554,9 +4565,12 @@ class DictationApp:
             self.continuous_stream = None
         
         # Transcribe any remaining audio
-        if self.speech_buffer:
-            self.transcribe_buffer()
-        
+        with self.buffer_lock:
+            remaining = self.speech_buffer.copy()
+            self.speech_buffer = []
+        if remaining:
+            self.transcribe_continuous_buffer(remaining)
+
         print("[OFF] Continuous mode STOPPED")
         self.play_sound("stop")
 
@@ -4587,34 +4601,40 @@ class DictationApp:
             
             # Threshold for speech detection (from wake word config, shared across modes)
             ww_audio = self.config.get('wake_word_config', {}).get('audio', {})
-            speech_threshold = ww_audio.get('speech_threshold', 0.03)
-            silence_threshold = self.config.get('silence_threshold', 2.0)
-            min_speech = self.config.get('min_speech_duration', 0.3)
+            speech_threshold = ww_audio.get('speech_threshold', DEFAULT_SPEECH_THRESHOLD)
+            silence_threshold = self.config.get('silence_threshold', DEFAULT_SILENCE_TIMEOUT)
+            min_speech = self.config.get('min_speech_duration', DEFAULT_MIN_SPEECH_DURATION)
 
             if rms > speech_threshold:
                 # Speech detected
                 self.is_speaking = True
                 self.silence_start = None
-                self.speech_buffer.append(audio_chunk)
+                with self.buffer_lock:
+                    self.speech_buffer.append(audio_chunk)
             else:
                 # Silence detected
                 if self.is_speaking:
                     # Still capture some silence at the end for context
-                    self.speech_buffer.append(audio_chunk)
-                    
+                    with self.buffer_lock:
+                        self.speech_buffer.append(audio_chunk)
+
                     if self.silence_start is None:
                         self.silence_start = time.time()
                     elif time.time() - self.silence_start >= silence_threshold:
                         # Enough silence - check if we have enough speech
-                        speech_duration = len(self.speech_buffer) * 0.1  # Each block is 100ms
-                        
-                        if speech_duration >= min_speech:
-                            # Transcribe in background
-                            buffer_copy = self.speech_buffer.copy()
-                            self.speech_buffer = []
+                        with self.buffer_lock:
+                            speech_duration = len(self.speech_buffer) * 0.1  # Each block is 100ms
+
+                            if speech_duration >= min_speech:
+                                buffer_copy = self.speech_buffer.copy()
+                                self.speech_buffer = []
+                            else:
+                                buffer_copy = None
+                                self.speech_buffer = []
+
+                        if buffer_copy is not None:
                             self.is_speaking = False
                             self.silence_start = None
-                            
                             thread = threading.Thread(
                                 target=self.transcribe_continuous_buffer,
                                 args=(buffer_copy,),
@@ -4622,8 +4642,6 @@ class DictationApp:
                             )
                             thread.start()
                         else:
-                            # Not enough speech, discard
-                            self.speech_buffer = []
                             self.is_speaking = False
                             self.silence_start = None
         except Exception as e:
@@ -4681,10 +4699,12 @@ class DictationApp:
 
     def transcribe_buffer(self):
         """Transcribe remaining buffer when stopping"""
-        if self.speech_buffer:
+        with self.buffer_lock:
+            if not self.speech_buffer:
+                return
             buffer_copy = self.speech_buffer.copy()
             self.speech_buffer = []
-            self.transcribe_continuous_buffer(buffer_copy)
+        self.transcribe_continuous_buffer(buffer_copy)
     
     def toggle_wake_word_mode(self):
         """Toggle wake word listening mode"""
@@ -4706,7 +4726,8 @@ class DictationApp:
         wake_word = self.config.get('wake_word', 'hey claude')
         print(f"[LISTEN] Wake word mode ACTIVE - say '{wake_word}' to give commands")
 
-        self.speech_buffer = []
+        with self.buffer_lock:
+            self.speech_buffer = []
         self.silence_start = None
         self.is_speaking = False
         self.wake_word_triggered = False
@@ -4749,12 +4770,15 @@ class DictationApp:
             self.continuous_stream = None
         
         # Transcribe any remaining audio if wake word was triggered
-        if self.speech_buffer and self.wake_word_triggered:
-            buffer_copy = self.speech_buffer.copy()
+        with self.buffer_lock:
+            if self.speech_buffer and self.wake_word_triggered:
+                buffer_copy = self.speech_buffer.copy()
+            else:
+                buffer_copy = None
             self.speech_buffer = []
-            self.process_wake_word_buffer(buffer_copy)
 
-        self.speech_buffer = []
+        if buffer_copy:
+            self.process_wake_word_buffer(buffer_copy)
         
         print("[OFF] Wake word mode STOPPED")
         self.play_sound("stop")
@@ -4795,8 +4819,8 @@ class DictationApp:
             # Get thresholds from config
             ww_config = self.config.get('wake_word_config', {})
             audio_config = ww_config.get('audio', {})
-            speech_threshold = audio_config.get('speech_threshold', 0.03)
-            min_speech = audio_config.get('min_speech_duration', 0.3)
+            speech_threshold = audio_config.get('speech_threshold', DEFAULT_SPEECH_THRESHOLD)
+            min_speech = audio_config.get('min_speech_duration', DEFAULT_MIN_SPEECH_DURATION)
             
             # Use dynamic silence timeout if in dictation mode, otherwise use fast wake detection
             if hasattr(self, '_dictation_silence_timeout') and self._dictation_silence_timeout:
@@ -4805,31 +4829,37 @@ class DictationApp:
             else:
                 # Not in dictation mode - use longer threshold to capture natural speech
                 # (people pause between wake word and command, e.g., "Saturn [pause] hello world")
-                silence_threshold = audio_config.get('wake_detection_silence', 1.2)
+                silence_threshold = audio_config.get('wake_detection_silence', WAKE_DETECTION_SILENCE)
             
             if rms > speech_threshold:
                 # Speech detected
                 self.is_speaking = True
                 self.silence_start = None
-                self.speech_buffer.append(audio_chunk)
+                with self.buffer_lock:
+                    self.speech_buffer.append(audio_chunk)
             else:
                 # Silence detected
                 if self.is_speaking:
-                    self.speech_buffer.append(audio_chunk)
-                    
+                    with self.buffer_lock:
+                        self.speech_buffer.append(audio_chunk)
+
                     if self.silence_start is None:
                         self.silence_start = time.time()
                     elif time.time() - self.silence_start >= silence_threshold:
                         # Enough silence - check if we have enough speech
-                        speech_duration = len(self.speech_buffer) * 0.1
-                        
-                        if speech_duration >= min_speech:
-                            # Transcribe to check for wake word or command
-                            buffer_copy = self.speech_buffer.copy()
-                            self.speech_buffer = []
+                        with self.buffer_lock:
+                            speech_duration = len(self.speech_buffer) * 0.1
+
+                            if speech_duration >= min_speech:
+                                buffer_copy = self.speech_buffer.copy()
+                                self.speech_buffer = []
+                            else:
+                                buffer_copy = None
+                                self.speech_buffer = []
+
+                        if buffer_copy is not None:
                             self.is_speaking = False
                             self.silence_start = None
-                            
                             thread = threading.Thread(
                                 target=self.process_wake_word_buffer,
                                 args=(buffer_copy,),
@@ -4837,8 +4867,6 @@ class DictationApp:
                             )
                             thread.start()
                         else:
-                            # Not enough speech, discard
-                            self.speech_buffer = []
                             self.is_speaking = False
                             self.silence_start = None
         except Exception as e:
@@ -5149,16 +5177,16 @@ class DictationApp:
 
     def _paste_preserving_clipboard(self, text):
         """Paste text via clipboard while preserving the user's original clipboard content."""
+        delay = self.config.get('clipboard_delay', CLIPBOARD_RESTORE_DELAY)
         with _clipboard_lock:
             saved = _save_clipboard_win32()
             try:
                 pyperclip.copy(text)
-                time.sleep(0.05)
+                time.sleep(CLIPBOARD_PASTE_DELAY)
                 pyautogui.hotkey('ctrl', 'v')
 
                 # Wait for paste to complete before restoring
-                # Use longer delay to ensure slow apps have time to read clipboard
-                time.sleep(0.4)
+                time.sleep(delay)
             except Exception as e:
                 print(f"[ERROR] Paste failed: {e}")
             finally:
@@ -5196,7 +5224,7 @@ class DictationApp:
         
         # Use a separate, longer timeout for waiting for command after wake word
         ww_config = self.config.get('wake_word_config', {})
-        timeout = ww_config.get('audio', {}).get('wake_command_timeout', 5.0)
+        timeout = ww_config.get('audio', {}).get('wake_command_timeout', WAKE_COMMAND_TIMEOUT)
         self.wake_word_timer = threading.Timer(timeout, self.reset_wake_word)
         self.wake_word_timer.start()
     
@@ -6017,17 +6045,17 @@ class DictationApp:
 
         # Determine speed from highest-priority active reason
         if 'recording' in self._icon_anim_reasons:
-            tick_interval = 0.08
-            spin_step = 0.15       # fast rotation
-            chase_every = 6        # fast color shift
+            tick_interval = ICON_TICK_FAST
+            spin_step = ICON_SPIN_FAST
+            chase_every = ICON_CHASE_FAST
         elif 'continuous' in self._icon_anim_reasons:
-            tick_interval = 0.08
-            spin_step = 0.1
-            chase_every = 10
+            tick_interval = ICON_TICK_MEDIUM
+            spin_step = ICON_SPIN_MEDIUM
+            chase_every = ICON_CHASE_MEDIUM
         else:  # wake_word or anything else
-            tick_interval = 0.12
-            spin_step = 0.05       # gentle rotation
-            chase_every = 14       # slow color shift
+            tick_interval = ICON_TICK_SLOW
+            spin_step = ICON_SPIN_SLOW
+            chase_every = ICON_CHASE_SLOW
 
         # Spin
         self._icon_rotation += spin_step
