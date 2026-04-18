@@ -2093,6 +2093,10 @@ class DictationApp:
                 self.wake_word_triggered = True
                 self.play_sound("start")
 
+                # Flash the listening indicator to show wake word was heard
+                if hasattr(self, 'listening_indicator'):
+                    self._schedule_ui(self.listening_indicator.flash_wake)
+
                 # Slice from corrected (match_index is a position in corrected_lower)
                 command_text = corrected_lower[match_index + len(wake_phrase):].strip()
                 # Whisper often inserts punctuation between wake word and command
@@ -2164,6 +2168,8 @@ class DictationApp:
                 self.wake_word_triggered = False
                 self.app_state = 'asleep'
                 print("[STATE] command_window -> asleep (command executed)")
+                if hasattr(self, 'listening_indicator'):
+                    self._schedule_ui(self.listening_indicator.flash_success)
                 return
 
             # Not a recognized command -- output as quick dictation
@@ -2215,6 +2221,12 @@ class DictationApp:
 
         self.play_sound("start")
 
+        # Update listening indicator to show active dictation
+        if hasattr(self, 'listening_indicator'):
+            label = "Quick Dictation" if mode_name == 'quick_dictation' else "Long Dictation"
+            self._schedule_ui(self.listening_indicator.set_mode, label)
+            self._schedule_ui(self.listening_indicator.set_listening, True)
+
         if initial_content:
             self.wake_dictation_buffer.append(initial_content)
             print(f"[DICTATE] Initial content: {initial_content}")
@@ -2242,6 +2254,12 @@ class DictationApp:
 
         if old_state != 'asleep':
             print(f"[STATE] {old_state} -> asleep")
+
+        # Reset listening indicator back to idle
+        if hasattr(self, 'listening_indicator'):
+            self._schedule_ui(self.listening_indicator.set_listening, False)
+            mode_display = self._get_mode_display() if hasattr(self, '_get_mode_display') else "Hold"
+            self._schedule_ui(self.listening_indicator.set_mode, mode_display)
 
     def _restart_dictation_timer(self):
         """Restart the finalization timer for non-end-word dictation modes.
