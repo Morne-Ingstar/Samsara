@@ -816,6 +816,69 @@ class SettingsWindow:
         ctk.CTkLabel(speech_row, text="seconds").pack(side='left')
         yield
 
+        # --- Speech Threshold Calibration ---
+        cal_label = ctk.CTkLabel(advanced_scroll, text="Speech Threshold",
+                                  font=ctk.CTkFont(size=16, weight="bold"))
+        cal_label.pack(anchor='w', pady=(0, 10))
+
+        cal_frame = ctk.CTkFrame(advanced_scroll, corner_radius=10)
+        cal_frame.pack(fill='x', pady=(0, 20))
+
+        # Mode radio buttons
+        self.threshold_mode_var = tk.StringVar(
+            value=self.app.config.get('threshold_mode', 'auto'))
+
+        ctk.CTkRadioButton(cal_frame, text="Auto-calibrate on startup (Recommended)",
+                           variable=self.threshold_mode_var, value='auto',
+                           command=self._on_threshold_mode_change
+                           ).pack(anchor='w', padx=15, pady=(15, 5))
+        ctk.CTkRadioButton(cal_frame, text="Manual (use custom value)",
+                           variable=self.threshold_mode_var, value='manual',
+                           command=self._on_threshold_mode_change
+                           ).pack(anchor='w', padx=15, pady=(0, 10))
+
+        # Auto section: current value + recalibrate button
+        self._cal_auto_frame = ctk.CTkFrame(cal_frame, fg_color="transparent")
+        self._cal_auto_frame.pack(fill='x', padx=15, pady=(0, 10))
+        current_thresh = self.app.config.get('wake_word_config', {}).get(
+            'audio', {}).get('speech_threshold', 0.03)
+        self._cal_value_label = ctk.CTkLabel(self._cal_auto_frame,
+                                              text=f"Current: {current_thresh:.4f}",
+                                              text_color="#00CED1")
+        self._cal_value_label.pack(side='left', padx=(0, 15))
+        ctk.CTkButton(self._cal_auto_frame, text="Recalibrate Now", width=130,
+                      command=self._recalibrate_from_settings).pack(side='left')
+
+        # Manual section: threshold entry
+        self._cal_manual_frame = ctk.CTkFrame(cal_frame, fg_color="transparent")
+        self._cal_manual_frame.pack(fill='x', padx=15, pady=(0, 10))
+        ctk.CTkLabel(self._cal_manual_frame, text="Threshold:", width=80,
+                     anchor='w').pack(side='left')
+        self.manual_threshold_var = tk.DoubleVar(value=current_thresh)
+        ctk.CTkEntry(self._cal_manual_frame, textvariable=self.manual_threshold_var,
+                     width=100).pack(side='left', padx=(0, 10))
+        ctk.CTkLabel(self._cal_manual_frame, text="(0.005 - 0.20)",
+                     text_color="gray").pack(side='left')
+
+        # Sensitivity multiplier (power-user)
+        mult_row = ctk.CTkFrame(cal_frame, fg_color="transparent")
+        mult_row.pack(fill='x', padx=15, pady=(0, 15))
+        ctk.CTkLabel(mult_row, text="Sensitivity multiplier:", width=150,
+                     anchor='w').pack(side='left')
+        self.cal_multiplier_var = tk.DoubleVar(
+            value=self.app.config.get('cal_multiplier', 3.0))
+        ctk.CTkSlider(mult_row, from_=1.5, to=6.0,
+                      variable=self.cal_multiplier_var, width=150).pack(side='left', padx=(0, 10))
+        self._cal_mult_label = ctk.CTkLabel(mult_row, text=f"{self.cal_multiplier_var.get():.1f}x",
+                                             width=40)
+        self._cal_mult_label.pack(side='left')
+        self.cal_multiplier_var.trace_add('write', lambda *_: self._cal_mult_label.configure(
+            text=f"{self.cal_multiplier_var.get():.1f}x"))
+
+        # Show/hide based on mode
+        self._on_threshold_mode_change()
+        yield
+
         # --- Hardware Acceleration Section ---
         hw_label = ctk.CTkLabel(advanced_scroll, text="Hardware Acceleration", font=ctk.CTkFont(size=16, weight="bold"))
         hw_label.pack(anchor='w', pady=(0, 10))
@@ -1187,6 +1250,8 @@ class SettingsWindow:
             'audio_feedback': self._get_var('audio_feedback_var', 'audio_feedback', True),
             'sound_volume': self._get_var('sound_volume_var', 'sound_volume', 0.5),
             'performance_mode': self._get_var('perf_mode_var', 'performance_mode', 'balanced'),
+            'threshold_mode': self._get_var('threshold_mode_var', 'threshold_mode', 'auto'),
+            'cal_multiplier': self._get_var('cal_multiplier_var', 'cal_multiplier', 3.0),
         }, save=False)
 
         # Save listening indicator settings
@@ -1251,6 +1316,15 @@ class SettingsWindow:
                     'require_end_word': True
                 }
             }
+        # Apply manual threshold if in manual mode
+        threshold_mode = self._get_var('threshold_mode_var', 'threshold_mode', 'auto')
+        if threshold_mode == 'manual':
+            manual_val = self._get_var('manual_threshold_var', None, 0.03)
+            manual_val = max(0.005, min(0.20, manual_val))
+            if 'audio' not in ww_config:
+                ww_config['audio'] = {}
+            ww_config['audio']['speech_threshold'] = manual_val
+
         self.app.update_config({'wake_word_config': ww_config}, save=False)
 
         # Save alarm settings -- only update fields if Alarms tab was visited
@@ -1521,6 +1595,29 @@ X-GNOME-Autostart-enabled=true
                 pass
             finally:
                 self.window = None
+
+    def _on_threshold_mode_change(self):
+        """Show/hide auto vs manual calibration controls."""
+        mode = self.threshold_mode_var.get()
+        if mode == 'auto':
+            self._cal_auto_frame.pack(fill='x', padx=15, pady=(0, 10))
+            self._cal_manual_frame.pack_forget()
+        else:
+            self._cal_auto_frame.pack_forget()
+            self._cal_manual_frame.pack(fill='x', padx=15, pady=(0, 10))
+
+    def _recalibrate_from_settings(self):
+        """Run calibration and update the display label."""
+        self._cal_value_label.configure(text="Calibrating...")
+        def _do():
+            self.app._run_calibration_if_auto()
+            self.app.save_config()
+            thresh = self.app.config.get('wake_word_config', {}).get(
+                'audio', {}).get('speech_threshold', 0.03)
+            if self.window:
+                self.window.after(0, self._cal_value_label.configure,
+                                 {"text": f"Current: {thresh:.4f}"})
+        threading.Thread(target=_do, daemon=True).start()
 
     def on_volume_change(self, value):
         """Update volume label and apply volume change immediately"""

@@ -39,23 +39,27 @@ def simulate_pipeline(text, wake_phrase="jarvis"):
 # Format: (input_text, expected_wake_matched, expected_type, expected_name, description)
 PIPELINE_CASES = [
     # Clean inputs
-    ("jarvis dictate hello world",          True,  "dictation",    "dictate",       "clean dictate with content"),
-    ("jarvis dictate",                      True,  "dictation",    "dictate",       "bare dictate"),
-    ("jarvis long dictate",                 True,  "dictation",    "long_dictate",  "bare long dictate"),
-    ("jarvis short dictate hello",          True,  "dictation",    "short_dictate", "short dictate with content"),
-    ("jarvis quick dictate",               True,  "dictation",    "short_dictate", "quick dictate synonym"),
+    ("jarvis dictate hello world",          True,  "dictation",    "long_dictation",       "clean dictate with content"),
+    ("jarvis dictate",                      True,  "dictation",    "long_dictation",       "bare dictate"),
+    ("jarvis long dictate",                 True,  "dictation",    "long_dictation",  "bare long dictate"),
+    ("jarvis short dictate hello",          True,  "dictation",    "quick_dictation", "short dictate with content"),
+    ("jarvis quick dictate",               True,  "dictation",    "quick_dictation", "quick dictate synonym"),
 
     # Punctuation noise from Whisper
-    ("jarvis, dictate hello world",         True,  "dictation",    "dictate",       "comma after wake word"),
-    ("jarvis - dictate hello world",        True,  "dictation",    "dictate",       "dash after wake word"),
-    ("jarvis. dictate hello",               True,  "dictation",    "dictate",       "period after wake word"),
+    ("jarvis, dictate hello world",         True,  "dictation",    "long_dictation",       "comma after wake word"),
+    ("jarvis - dictate hello world",        True,  "dictation",    "long_dictation",       "dash after wake word"),
+    ("jarvis. dictate hello",               True,  "dictation",    "long_dictation",       "period after wake word"),
 
     # Weird spacing
-    ("jarvis     dictate     hello world",  True,  "dictation",    "dictate",       "extra spaces"),
+    ("jarvis     dictate     hello world",  True,  "dictation",    "long_dictation",       "extra spaces"),
 
     # Filler words
-    ("jarvis please dictate hello",         True,  "dictation",    "dictate",       "leading filler"),
-    ("jarvis um dictate hello",             True,  "dictation",    "dictate",       "um filler"),
+    ("jarvis please dictate hello",         True,  "dictation",    "long_dictation",       "leading filler"),
+    ("jarvis um dictate hello",             True,  "dictation",    "long_dictation",       "um filler"),
+
+    # "type" keyword → quick_dictation
+    ("jarvis type hello world",             True,  "dictation",    "quick_dictation", "type keyword"),
+    ("jarvis type",                         True,  "dictation",    "quick_dictation", "bare type"),
 
     # Non-dictation commands (should be command_text)
     ("jarvis copy that",                    True,  "command_text", None,            "regular command"),
@@ -63,8 +67,8 @@ PIPELINE_CASES = [
     ("jarvis select all",                   True,  "command_text", None,            "hotkey command"),
 
     # Wake word positions
-    ("hey jarvis dictate hello",            True,  "dictation",    "dictate",       "wake word mid-phrase"),
-    ("so I said jarvis dictate hello",      True,  "dictation",    "dictate",       "wake word late in phrase"),
+    ("hey jarvis dictate hello",            True,  "dictation",    "long_dictation",       "wake word mid-phrase"),
+    ("so I said jarvis dictate hello",      True,  "dictation",    "long_dictation",       "wake word late in phrase"),
 
     # Failure cases -- no wake word
     ("hello world",                         False, None,           None,            "no wake word at all"),
@@ -102,20 +106,20 @@ class TestPipelineEdgeCases:
         matched, intent = simulate_pipeline("JARVIS DICTATE HELLO")
         assert matched
         assert intent["type"] == "dictation"
-        assert intent["name"] == "dictate"
+        assert intent["name"] == "long_dictation"
         assert intent["content"] == "hello"
 
     def test_messy_spacing_and_punctuation(self):
         matched, intent = simulate_pipeline("jarvis  ,  dictate  hello")
         assert matched
         assert intent["type"] == "dictation"
-        assert intent["name"] == "dictate"
+        assert intent["name"] == "long_dictation"
 
     def test_dictation_synonym(self):
         matched, intent = simulate_pipeline("jarvis dictation hello")
         assert matched
         assert intent["type"] == "dictation"
-        assert intent["name"] == "dictate"
+        assert intent["name"] == "long_dictation"
         assert intent["content"] == "hello"
 
     def test_empty_string(self):
@@ -132,7 +136,7 @@ class TestPipelineEdgeCases:
         matched, intent = simulate_pipeline("jarvis long dictate once upon a time")
         assert matched
         assert intent["type"] == "dictation"
-        assert intent["name"] == "long_dictate"
+        assert intent["name"] == "long_dictation"
         assert intent["content"] == "once upon a time"
 
     def test_custom_wake_phrase(self):
@@ -149,4 +153,4 @@ class TestPipelineEdgeCases:
         matched, intent = simulate_pipeline("jarvis \u2014 dictate hello")
         assert matched
         assert intent["type"] == "dictation"
-        assert intent["name"] == "dictate"
+        assert intent["name"] == "long_dictation"

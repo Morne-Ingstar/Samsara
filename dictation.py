@@ -144,6 +144,7 @@ from samsara.constants import (
     ICON_CHASE_FAST, ICON_CHASE_MEDIUM, ICON_CHASE_SLOW,
     CLIPBOARD_PASTE_DELAY, CLIPBOARD_RESTORE_DELAY,
 )
+from samsara.calibration import measure_ambient_rms, calibrate_threshold
 from samsara.key_macros import KeyMacroManager, get_default_macro_config
 from samsara.notifications import NotificationManager, get_default_notification_config
 from samsara.alarms import AlarmManager, get_default_alarm_config
@@ -548,6 +549,10 @@ class DictationApp:
         # Audio settings -- dual sample rates for WASAPI compatibility
         self.model_rate = MODEL_SAMPLE_RATE
         self.capture_rate = self._detect_capture_rate(self.config.get('microphone'))
+
+        # Auto-calibrate speech threshold on startup
+        self._run_calibration_if_auto()
+
         self.audio_queue = queue.Queue()
         self.recording = False
         self.command_mode_recording = False  # True when using command-only hotkey
@@ -616,14 +621,15 @@ class DictationApp:
         self.dictation_buffer = []  # Audio buffer for dictation content
         self.dictation_start_time = None  # When dictation started
         
-        # Wake word dictation mode tracking
-        self.wake_dictation_mode = None  # None, 'dictate', 'short_dictate', 'long_dictate'
-        self.wake_dictation_buffer = []  # Audio buffer for dictation content
-        self.wake_dictation_start_time = None  # When dictation started
-        self._dictation_silence_timeout = None  # Dynamic timeout for current mode
-        self._dictation_require_end = False  # Whether current mode requires end word
-        self._dictation_finalize_timer = None  # Timer for auto-finalizing dictation
-        self._dictation_finalize_lock = threading.Lock()  # Guards output+reset against races
+        # 4-state machine: asleep → command_window → quick_dictation / long_dictation
+        self.app_state = 'asleep'
+        self.wake_dictation_mode = None       # compat alias for app_state dictation type
+        self.wake_dictation_buffer = []       # text chunks accumulated during dictation
+        self.wake_dictation_start_time = None
+        self._dictation_silence_timeout = None
+        self._dictation_require_end = False
+        self._dictation_finalize_timer = None
+        self._dictation_finalize_lock = threading.Lock()
 
         # Dictation history
         self.history_path = Path(__file__).parent / 'history.json'
@@ -775,20 +781,11 @@ class DictationApp:
                     "phrase": "pause",
                     "phrase_options": ["pause", "hold on", "wait"]
                 },
-                "modes": {
-                    "dictate": {
-                        "silence_timeout": 0.6,
-                        "require_end_word": False
-                    },
-                    "short_dictate": {
-                        "silence_timeout": 0.4,
-                        "require_end_word": False
-                    },
-                    "long_dictate": {
-                        "silence_timeout": 60.0,
-                        "require_end_word": True
-                    }
-                },
+                "quick_silence_timeout": 1.0,
+                "end_words": ["over", "done", "end dictation"],
+                "cancel_words": ["cancel", "cancel dictation", "abort"],
+                "pause_words": ["pause", "hold on", "wait"],
+                "resume_words": ["resume", "continue", "go on"],
                 "audio": {
                     "speech_threshold": DEFAULT_SPEECH_THRESHOLD,
                     "min_speech_duration": DEFAULT_MIN_SPEECH_DURATION,
@@ -815,7 +812,10 @@ class DictationApp:
             "listening_indicator_enabled": False,
             "listening_indicator_position": "bottom-center",
             # Wake word listener (independent of capture mode)
-            "wake_word_enabled": False
+            "wake_word_enabled": False,
+            # Speech threshold calibration
+            "threshold_mode": "auto",    # "auto" or "manual"
+            "cal_multiplier": 3.0        # multiplier above ambient for auto mode
         }
 
         if self.config_path.exists():
@@ -965,6 +965,41 @@ class DictationApp:
         except Exception as e:
             print(f"[WARN] Could not query device {device_id} rate: {e}")
         return DEFAULT_CAPTURE_RATE
+
+    def _run_calibration_if_auto(self):
+        """Run mic calibration if threshold_mode is 'auto'. Updates config in place."""
+        mode = self.config.get('threshold_mode', 'auto')
+        if mode != 'auto':
+            thresh = self.config.get('wake_word_config', {}).get('audio', {}).get(
+                'speech_threshold', DEFAULT_SPEECH_THRESHOLD)
+            print(f"[CAL] Threshold mode: manual ({thresh:.4f})")
+            return
+
+        mic_id = self.config.get('microphone')
+        multiplier = self.config.get('cal_multiplier', 3.0)
+        try:
+            rms_samples = measure_ambient_rms(mic_id, self.capture_rate)
+            threshold = calibrate_threshold(rms_samples, multiplier=multiplier)
+            ambient = float(np.median(rms_samples)) if rms_samples else 0.0
+            print(f"[CAL] Ambient RMS: {ambient:.4f} | "
+                  f"Multiplier: {multiplier}x | Threshold: {threshold:.4f}")
+        except Exception as e:
+            threshold = DEFAULT_SPEECH_THRESHOLD
+            print(f"[CAL] Calibration failed ({e}), using default {threshold:.4f}")
+
+        # Apply to wake word audio config
+        ww_config = self.config.get('wake_word_config', {})
+        if 'audio' not in ww_config:
+            ww_config['audio'] = {}
+        ww_config['audio']['speech_threshold'] = threshold
+        self.config['wake_word_config'] = ww_config
+
+    def recalibrate_mic(self):
+        """Re-run calibration in background and update config."""
+        def _do():
+            self._run_calibration_if_auto()
+            self.save_config()
+        threading.Thread(target=_do, daemon=True).start()
 
     def get_available_microphones(self):
         """Get list of available microphone devices.
@@ -1233,6 +1268,7 @@ class DictationApp:
         # Update config + save
         self.config['microphone'] = mic_id
         self.capture_rate = self._detect_capture_rate(mic_id)
+        self._run_calibration_if_auto()
         self.save_config()
 
         mic_name = self.get_current_microphone_name()
@@ -1861,12 +1897,14 @@ class DictationApp:
             min_speech = audio_config.get('min_speech_duration', DEFAULT_MIN_SPEECH_DURATION)
             
             # Use dynamic silence timeout if in dictation mode, otherwise use fast wake detection
-            if hasattr(self, '_dictation_silence_timeout') and self._dictation_silence_timeout:
-                # In dictation mode - use mode-specific timeout
+            if self.app_state == 'long_dictation':
+                # Long dictation: no silence timeout -- mic stays hot indefinitely.
+                # Use a very large value so the silence branch never fires.
+                silence_threshold = 999999.0
+            elif self.app_state == 'quick_dictation' and self._dictation_silence_timeout:
                 silence_threshold = self._dictation_silence_timeout
             else:
-                # Not in dictation mode - use longer threshold to capture natural speech
-                # (people pause between wake word and command, e.g., "Saturn [pause] hello world")
+                # Asleep / command_window -- use wake detection silence
                 silence_threshold = audio_config.get('wake_detection_silence', WAKE_DETECTION_SILENCE)
             
             if rms > speech_threshold:
@@ -1973,52 +2011,47 @@ class DictationApp:
 
             self._emit_wake_trace({"stage": "utterance_start", "raw": text, "normalized": text_lower})
 
-            # Check for cancel word first (if in dictation mode)
-            if self.wake_dictation_mode:
-                cancel_config = ww_config.get('cancel_word', {})
-                if cancel_config.get('enabled', False):
-                    cancel_phrase = cancel_config.get('phrase', 'cancel').lower()
-                    if cancel_phrase in text_lower:
-                        print(f"[CANCEL] Dictation cancelled")
-                        self._emit_wake_trace({"stage": "cancel_word_detected", "phrase": cancel_phrase})
+            # In dictation state (quick_dictation or long_dictation)?
+            if self.app_state in ('quick_dictation', 'long_dictation'):
+                # Check cancel words
+                cancel_words = ww_config.get('cancel_words', ['cancel'])
+                for cw in cancel_words:
+                    if cw.lower() in text_lower:
+                        print(f"[CANCEL] Dictation cancelled ('{cw}')")
+                        self._emit_wake_trace({"stage": "cancel_word_detected", "phrase": cw})
                         self.play_sound("error")
                         self._reset_wake_dictation()
                         self._emit_wake_trace({"stage": "utterance_end", "result": "cancelled"})
                         return
-                
-                # Check for pause word
-                pause_config = ww_config.get('pause_word', {})
-                if pause_config.get('enabled', False):
-                    pause_phrase = pause_config.get('phrase', 'pause').lower()
-                    if pause_phrase in text_lower:
-                        # Pause word detected - reset silence timer, don't accumulate
-                        print(f"[PAUSE] Timer reset (pause word: '{pause_phrase}')")
-                        self._emit_wake_trace({"stage": "pause_word_detected", "phrase": pause_phrase})
-                        self.silence_start = None
-                        # Strip pause word and accumulate any remaining text
-                        remaining = text_lower.replace(pause_phrase, '').strip()
-                        if remaining:
-                            # Get the non-lowered version with pause word removed
-                            pause_idx = text_lower.find(pause_phrase)
-                            cleaned = (text[:pause_idx] + text[pause_idx + len(pause_phrase):]).strip()
-                            if cleaned:
-                                self.wake_dictation_buffer.append(cleaned)
-                                print(f"[DICTATE] Buffered (after pause strip): {cleaned}")
-                        self._emit_wake_trace({"stage": "utterance_end", "result": "paused"})
-                        return
 
-                # Check for end word
-                end_config = ww_config.get('end_word', {})
-                if end_config.get('enabled', False):
-                    end_phrase = end_config.get('phrase', 'over').lower()
-                    if end_phrase in text_lower:
-                        # End word detected - finalize dictation
-                        print(f"[END] End word detected: '{end_phrase}'")
-                        end_index = text_lower.rfind(end_phrase)
+                # Check pause words (long_dictation only)
+                if self.app_state == 'long_dictation':
+                    pause_words = ww_config.get('pause_words', ['pause'])
+                    for pw in pause_words:
+                        if pw.lower() in text_lower:
+                            print(f"[PAUSE] Timer reset ('{pw}')")
+                            self._emit_wake_trace({"stage": "pause_word_detected", "phrase": pw})
+                            self.silence_start = None
+                            remaining = text_lower.replace(pw.lower(), '').strip()
+                            if remaining:
+                                pause_idx = text_lower.find(pw.lower())
+                                cleaned = (text[:pause_idx] + text[pause_idx + len(pw):]).strip()
+                                if cleaned:
+                                    self.wake_dictation_buffer.append(cleaned)
+                                    print(f"[DICTATE] Buffered (after pause strip): {cleaned}")
+                            self._emit_wake_trace({"stage": "utterance_end", "result": "paused"})
+                            return
+
+                # Check end words (primarily long_dictation, but works in both)
+                end_words = ww_config.get('end_words', ['over', 'done'])
+                for ew in end_words:
+                    if ew.lower() in text_lower:
+                        print(f"[END] End word detected: '{ew}'")
+                        end_index = text_lower.rfind(ew.lower())
                         final_text = text[:end_index].strip()
                         if self.wake_dictation_buffer:
                             final_text = ' '.join(self.wake_dictation_buffer) + ' ' + final_text
-                        self._emit_wake_trace({"stage": "end_word_detected", "phrase": end_phrase,
+                        self._emit_wake_trace({"stage": "end_word_detected", "phrase": ew,
                                                "buffered_text": ' '.join(self.wake_dictation_buffer),
                                                "final_output": final_text.strip()})
                         if final_text.strip():
@@ -2026,8 +2059,8 @@ class DictationApp:
                         self._reset_wake_dictation()
                         self._emit_wake_trace({"stage": "utterance_end", "result": "end_word"})
                         return
-                
-                # In dictation mode, accumulate text
+
+                # Accumulate text
                 self.wake_dictation_buffer.append(text)
                 print(f"[DICTATE] Buffered: {text}")
                 self._emit_wake_trace({"stage": "dictation_buffered", "text": text,
@@ -2104,19 +2137,21 @@ class DictationApp:
             traceback.print_exc()
     
     def _process_wake_command(self, text):
-        """Route a wake word command based on parsed intent."""
+        """Route a wake word command based on parsed intent (4-state machine)."""
+        # Transition to command_window while we parse
+        old_state = self.app_state
+        self.app_state = 'command_window'
+        if old_state != 'command_window':
+            print(f"[STATE] {old_state} -> command_window")
+
         intent = parse_wake_command(text)
         print(f"[PARSE] raw='{text}' -> type={intent['type']}, "
               f"name={intent['name']}, content='{intent['content']}'")
 
-        ww_config = self.config.get('wake_word_config', {})
-        modes_config = ww_config.get('modes', {})
-
         if intent["type"] == "dictation":
-            mode_config = modes_config.get(intent["name"], {})
+            # "type hello" → quick_dictation, "dictate" → long_dictation
             self._start_dictation_mode(
                 intent["name"],
-                mode_config,
                 initial_content=intent["content"],
             )
             return
@@ -2127,20 +2162,34 @@ class DictationApp:
                 text, self, force_commands=True)
             if was_command:
                 self.wake_word_triggered = False
+                self.app_state = 'asleep'
+                print("[STATE] command_window -> asleep (command executed)")
                 return
 
-            # Not a recognized command -- output as simple dictation
+            # Not a recognized command -- output as quick dictation
             self._output_dictation(text)
             self.wake_word_triggered = False
+            self.app_state = 'asleep'
+            print("[STATE] command_window -> asleep (text output)")
             return
 
-        # type == "unknown" -- noise/garbage
+        # type == "unknown" -- noise/garbage, back to asleep
         print(f"[SKIP] Ignoring noise: '{text}'")
+        self.app_state = 'asleep'
+        print("[STATE] command_window -> asleep (noise)")
         self._start_wake_timeout()
     
-    def _start_dictation_mode(self, mode_name, mode_config, initial_content=None):
-        """Start a dictation mode (dictate, short_dictate, long_dictate)"""
-        self.wake_dictation_mode = mode_name
+    def _start_dictation_mode(self, mode_name, mode_config=None, initial_content=None):
+        """Enter quick_dictation or long_dictation state.
+
+        Args:
+            mode_name: 'quick_dictation' or 'long_dictation'
+            mode_config: ignored (kept for call-site compat), config read from self.config
+            initial_content: optional first text chunk to buffer
+        """
+        old_state = self.app_state
+        self.app_state = mode_name
+        self.wake_dictation_mode = mode_name  # compat alias
         self.wake_dictation_buffer = []
         self.wake_dictation_start_time = time.time()
         self.wake_word_triggered = False
@@ -2152,25 +2201,30 @@ class DictationApp:
             self._dictation_finalize_timer.cancel()
             self._dictation_finalize_timer = None
 
-        timeout = mode_config.get('silence_timeout', 0.6)
-        require_end = mode_config.get('require_end_word', False)
+        ww_config = self.config.get('wake_word_config', {})
 
-        print(f"[DICTATE] Started {mode_name} mode (timeout: {timeout}s, require_end: {require_end})")
+        if mode_name == 'quick_dictation':
+            timeout = ww_config.get('quick_silence_timeout', 1.0)
+            self._dictation_silence_timeout = timeout
+            self._dictation_require_end = False
+            print(f"[STATE] {old_state} -> quick_dictation (silence timeout: {timeout}s)")
+        else:  # long_dictation
+            self._dictation_silence_timeout = None  # no silence timeout
+            self._dictation_require_end = True
+            print(f"[STATE] {old_state} -> long_dictation (end word required)")
+
         self.play_sound("start")
-
-        # Update silence threshold for this mode
-        self._dictation_silence_timeout = timeout
-        self._dictation_require_end = require_end
 
         if initial_content:
             self.wake_dictation_buffer.append(initial_content)
             print(f"[DICTATE] Initial content: {initial_content}")
-            # Start finalization timer if this mode doesn't require end word
-            if not require_end:
+            if not self._dictation_require_end:
                 self._restart_dictation_timer()
-    
+
     def _reset_wake_dictation(self):
-        """Reset dictation mode state"""
+        """Return to asleep state, clearing all dictation state."""
+        old_state = self.app_state
+        self.app_state = 'asleep'
         self.wake_dictation_mode = None
         self.wake_dictation_buffer = []
         self.wake_dictation_start_time = None
@@ -2185,6 +2239,9 @@ class DictationApp:
         if hasattr(self, '_dictation_finalize_timer') and self._dictation_finalize_timer:
             self._dictation_finalize_timer.cancel()
             self._dictation_finalize_timer = None
+
+        if old_state != 'asleep':
+            print(f"[STATE] {old_state} -> asleep")
 
     def _restart_dictation_timer(self):
         """Restart the finalization timer for non-end-word dictation modes.
@@ -3437,6 +3494,7 @@ class DictationApp:
                     self.toggle_listening_indicator,
                     checked=lambda _it: self.config.get('listening_indicator_enabled', False)
                 ),
+                pystray.MenuItem("Recalibrate Mic", lambda _i, _it: self.recalibrate_mic()),
                 pystray.MenuItem("Open Config Folder", self.open_config_folder),
                 pystray.MenuItem("View Logs", pystray.Menu(
                     pystray.MenuItem("Main Log (samsara.log)", self.open_main_log),

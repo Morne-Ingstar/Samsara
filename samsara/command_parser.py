@@ -19,16 +19,18 @@ import re
 # so payload text like "I like cats" isn't corrupted.
 DEFAULT_FILLERS = frozenset({'please', 'uh', 'um', 'like'})
 
-# Dictation mode keywords, ordered longest-prefix-first so "long dictate"
-# is tried before "dictate". Values are canonical mode names.
+# Dictation mode keywords, ordered longest-prefix-first.
+# "type" → quick_dictation (silence-based auto-finalize, 1s timeout)
+# "dictate" → long_dictation (no silence timeout, requires end word)
 DICTATION_COMMANDS = {
-    "long dictate": "long_dictate",
-    "long dictation": "long_dictate",
-    "short dictate": "short_dictate",
-    "short dictation": "short_dictate",
-    "quick dictate": "short_dictate",
-    "dictate": "dictate",
-    "dictation": "dictate",
+    "long dictate": "long_dictation",
+    "long dictation": "long_dictation",
+    "short dictate": "quick_dictation",
+    "short dictation": "quick_dictation",
+    "quick dictate": "quick_dictation",
+    "dictate": "long_dictation",
+    "dictation": "long_dictation",
+    "type": "quick_dictation",
 }
 
 # Separator characters Whisper may insert between command keyword and payload
