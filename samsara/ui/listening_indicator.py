@@ -202,6 +202,11 @@ class ListeningIndicator:
         if self._visible:
             self._start_flash(_FLASH_ERROR_BG, _FLASH_ERROR_FG)
 
+    def flash_wake(self):
+        """Bright teal flash to indicate wake word was heard."""
+        if self._visible:
+            self._start_flash(_TEAL, _LISTENING_FG)
+
     def destroy(self):
         """Permanently destroy the indicator window."""
         self._stop_pulse()
