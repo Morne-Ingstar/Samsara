@@ -130,6 +130,7 @@ from samsara.ui.wake_word_debug import WakeWordDebugWindow
 from samsara.ui.listening_indicator import ListeningIndicator
 from samsara.wake_word_matcher import match_wake_phrase
 from samsara.wake_corrections import apply_corrections as apply_wake_corrections, was_corrected
+from samsara.command_parser import parse_wake_command, normalize_command_text
 from samsara.key_macros import KeyMacroManager, get_default_macro_config
 from samsara.notifications import NotificationManager, get_default_notification_config
 from samsara.alarms import AlarmManager, get_default_alarm_config
@@ -2264,11 +2265,11 @@ class SettingsWindow:
         # Apply indicator changes at runtime
         if hasattr(self.app, 'listening_indicator'):
             if new_indicator_pos != old_indicator_pos:
-                self.app.root.after(0, self.app.listening_indicator.set_position, new_indicator_pos)
+                self.app._schedule_ui(self.app.listening_indicator.set_position, new_indicator_pos)
             if new_indicator_enabled and not old_indicator_enabled:
-                self.app.root.after(0, self.app.listening_indicator.show)
+                self.app._schedule_ui(self.app.listening_indicator.show)
             elif not new_indicator_enabled and old_indicator_enabled:
-                self.app.root.after(0, self.app.listening_indicator.hide)
+                self.app._schedule_ui(self.app.listening_indicator.hide)
 
         # Save echo cancellation settings
         self.app.config['echo_cancellation'] = {
@@ -3582,6 +3583,7 @@ class DictationApp:
         self._icon_animating = False
         self._icon_rotation = 0.0        # current rotation angle in radians
         self._icon_chase_counter = 0     # counts ticks between color shifts
+        self._icon_anim_reasons = set()  # tracks who wants animation (e.g. 'recording', 'wake_word')
         self.continuous_stream = None
         self.silence_start = None
         self.speech_buffer = []
@@ -4536,11 +4538,11 @@ class DictationApp:
         self.continuous_active = True
 
         # Update tray icon — start chase animation
-        self._start_icon_chase()
+        self._request_icon_chase('continuous')
 
         # Update listening indicator
         if hasattr(self, 'listening_indicator'):
-            self.root.after(0, self.listening_indicator.set_listening, True)
+            self._schedule_ui(self.listening_indicator.set_listening, True)
 
     def stop_continuous_mode(self):
         """Stop continuous listening mode"""
@@ -4559,11 +4561,11 @@ class DictationApp:
         self.play_sound("stop")
 
         # Update tray icon — stop chase animation
-        self._stop_icon_chase()
+        self._release_icon_chase('continuous')
 
         # Update listening indicator
         if hasattr(self, 'listening_indicator'):
-            self.root.after(0, self.listening_indicator.set_listening, False)
+            self._schedule_ui(self.listening_indicator.set_listening, False)
 
     def continuous_audio_callback(self, indata, frames, time_info, status):
         """Callback for continuous listening - detects speech and silence"""
@@ -4727,11 +4729,11 @@ class DictationApp:
         self.wake_word_active = True
 
         # Update tray icon — start chase animation
-        self._start_icon_chase()
+        self._request_icon_chase('wake_word')
 
         # Update listening indicator
         if hasattr(self, 'listening_indicator'):
-            self.root.after(0, self.listening_indicator.set_listening, True)
+            self._schedule_ui(self.listening_indicator.set_listening, True)
 
     def stop_wake_word_mode(self):
         """Stop wake word listening mode"""
@@ -4758,11 +4760,11 @@ class DictationApp:
         self.play_sound("stop")
 
         # Update tray icon — stop chase animation
-        self._stop_icon_chase()
+        self._release_icon_chase('wake_word')
 
         # Update listening indicator
         if hasattr(self, 'listening_indicator'):
-            self.root.after(0, self.listening_indicator.set_listening, False)
+            self._schedule_ui(self.listening_indicator.set_listening, False)
 
     def wake_word_audio_callback(self, indata, frames, time_info, status):
         """Callback for wake word listening"""
@@ -4994,6 +4996,9 @@ class DictationApp:
 
                 # Slice from corrected (match_index is a position in corrected_lower)
                 command_text = corrected_lower[match_index + len(wake_phrase):].strip()
+                # Whisper often inserts punctuation between wake word and command
+                # ("jarvis, dictate" → ", dictate"). Strip any leading non-word chars.
+                command_text = normalize_command_text(command_text)
                 self._emit_wake_trace({"stage": "command_extract",
                                        "from_index": match_index, "command": command_text,
                                        "remainder": ""})
@@ -5032,81 +5037,40 @@ class DictationApp:
             import traceback
             traceback.print_exc()
     
-    # Filler words stripped from wake-word commands before keyword matching.
-    # Kept deliberately small -- these are universally meaningless to a command parser.
-    _FILLER_WORDS = frozenset({'please', 'uh', 'um', 'like'})
-
-    @staticmethod
-    def _strip_fillers(text, fillers):
-        """Remove leading/trailing filler words from *text*, return (stripped, original_words).
-
-        Only whole words at the edges are removed; interior fillers are left alone
-        so they don't corrupt payload text like 'I like cats'.
-        """
-        words = text.split()
-        # Strip leading fillers
-        while words and words[0].lower() in fillers:
-            words.pop(0)
-        # Strip trailing fillers
-        while words and words[-1].lower() in fillers:
-            words.pop()
-        return ' '.join(words)
-
     def _process_wake_command(self, text):
-        """Process command after wake word - check for dictation modes or execute"""
-        text_lower = text.lower().strip()
+        """Route a wake word command based on parsed intent."""
+        intent = parse_wake_command(text)
+        print(f"[PARSE] raw='{text}' -> type={intent['type']}, "
+              f"name={intent['name']}, content='{intent['content']}'")
+
         ww_config = self.config.get('wake_word_config', {})
         modes_config = ww_config.get('modes', {})
 
-        # Strip filler words from edges for keyword matching
-        stripped = self._strip_fillers(text_lower, self._FILLER_WORDS)
-
-        # Check for dictation mode commands (bare keyword, no payload)
-        if stripped in ['long dictate', 'long dictation']:
-            self._start_dictation_mode('long_dictate', modes_config.get('long_dictate', {}))
-            return
-        elif stripped in ['short dictate', 'short dictation', 'quick dictate']:
-            self._start_dictation_mode('short_dictate', modes_config.get('short_dictate', {}))
-            return
-        elif stripped in ['dictate', 'dictation']:
-            self._start_dictation_mode('dictate', modes_config.get('dictate', {}))
+        if intent["type"] == "dictation":
+            mode_config = modes_config.get(intent["name"], {})
+            self._start_dictation_mode(
+                intent["name"],
+                mode_config,
+                initial_content=intent["content"],
+            )
             return
 
-        # Check if text starts with dictation command and has content after.
-        # Match against the filler-stripped version, then extract the payload
-        # from the original text (preserving case) and strip trailing fillers.
-        for cmd, mode_name in [('long dictate', 'long_dictate'), ('short dictate', 'short_dictate'), ('dictate', 'dictate')]:
-            if stripped.startswith(cmd + ' '):
-                mode_config = modes_config.get(mode_name, {})
-                # Payload is everything after the command keyword in the stripped text
-                raw_content = stripped[len(cmd):].strip()
-                content = self._strip_fillers(raw_content, self._FILLER_WORDS)
-                if content:
-                    self._start_dictation_mode(mode_name, mode_config, initial_content=content)
-                else:
-                    # Fillers consumed all content -- treat as bare command
-                    self._start_dictation_mode(mode_name, mode_config)
+        if intent["type"] == "command_text":
+            # Try regular command execution (pass original text for word-boundary matching)
+            result, was_command = self.command_executor.process_text(
+                text, self, force_commands=True)
+            if was_command:
+                self.wake_word_triggered = False
                 return
 
-        # Not a dictation command - try regular command execution.
-        # Pass the original text so find_command's word-boundary matching works
-        # (it already tolerates surrounding words like "please copy that").
-        result, was_command = self.command_executor.process_text(text, self, force_commands=True)
-
-        if was_command:
+            # Not a recognized command -- output as simple dictation
+            self._output_dictation(text)
             self.wake_word_triggered = False
             return
 
-        # Filter out garbage/noise (just punctuation, single chars, etc.)
-        cleaned = re.sub(r'[^\w\s]', '', text).strip()
-        if len(cleaned) < 2:
-            print(f"[SKIP] Ignoring noise: '{text}'")
-            self._start_wake_timeout()
-            return
-
-        # Not a recognized command - treat as simple dictation (immediate output)
-        self._output_dictation(text)
-        self.wake_word_triggered = False
+        # type == "unknown" -- noise/garbage
+        print(f"[SKIP] Ignoring noise: '{text}'")
+        self._start_wake_timeout()
     
     def _start_dictation_mode(self, mode_name, mode_config, initial_content=None):
         """Start a dictation mode (dictate, short_dictate, long_dictate)"""
@@ -5212,7 +5176,7 @@ class DictationApp:
         print(f"[OK] {text}")
         self.play_sound("success")
         if hasattr(self, 'listening_indicator'):
-            self.root.after(0, self.listening_indicator.flash_success)
+            self._schedule_ui(self.listening_indicator.flash_success)
 
         # Add to history
         self.add_to_history(text.strip(), is_command=False)
@@ -5681,7 +5645,7 @@ class DictationApp:
             self._hotkey_recording = False
             self.play_sound("error")
             if hasattr(self, 'listening_indicator'):
-                self.root.after(0, self.listening_indicator.flash_error)
+                self._schedule_ui(self.listening_indicator.flash_error)
             # Try to restart pre-buffer so next attempt works
             self._start_prebuffer_stream()
             return
@@ -5693,13 +5657,13 @@ class DictationApp:
 
         # Update tray icon to show active recording (critical for toggle mode
         # where there's no physical key-hold to indicate state)
-        self._start_icon_chase()
+        self._request_icon_chase('recording')
         if hasattr(self, 'tray_icon'):
             self.tray_icon.title = f"Samsara - RECORDING"
 
         # Update listening indicator
         if hasattr(self, 'listening_indicator'):
-            self.root.after(0, self.listening_indicator.set_listening, True)
+            self._schedule_ui(self.listening_indicator.set_listening, True)
 
     def stop_recording(self):
         """Stop recording and transcribe"""
@@ -5710,17 +5674,13 @@ class DictationApp:
         self._hotkey_recording = False  # Re-enable wake word processing
         self.play_sound("stop")
 
-        # Restore tray icon to idle state
-        # If wake word is still listening, keep the chase animation
-        if self.wake_word_active:
-            pass  # icon stays animated
-        else:
-            self._stop_icon_chase()
+        # Restore tray icon — release recording reason (wake_word may keep it spinning)
+        self._release_icon_chase('recording')
         self._update_tray_tooltip()
 
         # Update listening indicator
         if hasattr(self, 'listening_indicator'):
-            self.root.after(0, self.listening_indicator.set_listening, False)
+            self._schedule_ui(self.listening_indicator.set_listening, False)
         
         if hasattr(self, 'stream'):
             self.stream.stop()
@@ -5793,7 +5753,7 @@ class DictationApp:
                     print(f"[OK] {text}")
                     self.play_sound("success")
                     if hasattr(self, 'listening_indicator'):
-                        self.root.after(0, self.listening_indicator.flash_success)
+                        self._schedule_ui(self.listening_indicator.flash_success)
 
                     # Add to history
                     self.add_to_history(text.strip(), is_command=False)
@@ -5808,7 +5768,7 @@ class DictationApp:
                 print(f"Transcription error: {e}")
                 self.play_sound("error")
                 if hasattr(self, 'listening_indicator'):
-                    self.root.after(0, self.listening_indicator.flash_error)
+                    self._schedule_ui(self.listening_indicator.flash_error)
         
         thread = threading.Thread(target=transcribe, daemon=True)
         thread.start()
@@ -5832,8 +5792,8 @@ class DictationApp:
 
         # Update listening indicator
         if hasattr(self, 'listening_indicator'):
-            self.root.after(0, self.listening_indicator.set_listening, False)
-            self.root.after(0, self.listening_indicator.flash_error)
+            self._schedule_ui(self.listening_indicator.set_listening, False)
+            self._schedule_ui(self.listening_indicator.flash_error)
 
     def apply_mode(self, new_mode):
         """Apply a capture-mode change at runtime.
@@ -5883,7 +5843,7 @@ class DictationApp:
         # Update listening indicator and tray tooltip
         display = self._get_mode_display()
         if hasattr(self, 'listening_indicator'):
-            self.root.after(0, self.listening_indicator.set_mode, display)
+            self._schedule_ui(self.listening_indicator.set_mode, display)
         self._update_tray_tooltip()
 
         return True
@@ -5895,15 +5855,9 @@ class DictationApp:
         if enabled and not self.wake_word_active:
             self.start_wake_word_mode()
             print("[WAKE] Wake word listener ENABLED")
-            # Animate tray icon to show wake word is listening
-            if not self.recording and not self.continuous_active:
-                self._start_icon_chase()
         elif not enabled and self.wake_word_active:
             self.stop_wake_word_mode()
             print("[WAKE] Wake word listener DISABLED")
-            # Stop animation if nothing else is actively capturing
-            if not self.recording and not self.continuous_active:
-                self._stop_icon_chase()
         # Update tray tooltip and menu
         self._update_tray_tooltip()
         if hasattr(self, 'tray_icon') and hasattr(self, 'get_menu'):
@@ -5913,7 +5867,7 @@ class DictationApp:
                 pass
         # Update listening indicator mode label
         if hasattr(self, 'listening_indicator'):
-            self.root.after(0, self.listening_indicator.set_mode, self._get_mode_display())
+            self._schedule_ui(self.listening_indicator.set_mode, self._get_mode_display())
 
     def switch_mode_from_tray(self, new_mode):
         """Tray-menu entry point: apply the mode, persist it, refresh the menu."""
@@ -5948,6 +5902,15 @@ class DictationApp:
     _WHEEL_IDLE   = ['#555555', '#666666', '#555555']
     _WHEEL_SNOOZE = ['#333333', '#333333', '#333333']
     _WHEEL_GOLD   = '#D4A017'
+
+    def _schedule_ui(self, func, *args):
+        """Schedule a function on the tkinter main thread.
+        Silently ignores RuntimeError if the mainloop hasn't started yet
+        (e.g. during the background load thread) or is shutting down."""
+        try:
+            self.root.after(0, func, *args)
+        except RuntimeError:
+            pass
 
     @staticmethod
     def _arc_polygon(cx, cy, outer_r, inner_r, start_rad, end_rad, steps=24):
@@ -6007,6 +5970,18 @@ class DictationApp:
 
         return image
 
+    def _request_icon_chase(self, reason):
+        """Register a reason for the icon to animate. Starts animation if not running."""
+        self._icon_anim_reasons.add(reason)
+        if not self._icon_animating:
+            self._start_icon_chase()
+
+    def _release_icon_chase(self, reason):
+        """Remove a reason for animation. Stops only when ALL reasons are gone."""
+        self._icon_anim_reasons.discard(reason)
+        if not self._icon_anim_reasons and self._icon_animating:
+            self._stop_icon_chase()
+
     def _start_icon_chase(self):
         """Start the spinning color-chase animation on the tray icon."""
         self._icon_animating = True
@@ -6024,34 +5999,56 @@ class DictationApp:
         self._icon_chase_offset = 0
         self._icon_rotation = 0.0
         if hasattr(self, 'tray_icon'):
-            self.tray_icon.icon = self.create_icon_image(active=False)
+            try:
+                self.tray_icon.icon = self.create_icon_image(active=False)
+            except OSError:
+                pass
 
     def _icon_chase_tick(self):
         """Advance the spin + chase and schedule the next tick.
 
-        Runs at ~80ms (~12 fps) for smooth rotation.
-        Colors shift every 6 ticks (~480ms) for the chase effect.
+        Speed varies by active state:
+        - recording:  fast spin + fast chase  (80ms tick, chase every 6 ticks ~480ms)
+        - continuous: medium spin + medium chase (80ms tick, chase every 10 ticks ~800ms)
+        - wake_word:  slow spin + slow chase  (120ms tick, chase every 14 ticks ~1680ms)
         """
         if not self._icon_animating:
             return
 
-        # Spin: ~12 RPM = 2*pi per 5s. At 80ms ticks that's ~0.1 rad/tick.
-        self._icon_rotation += 0.1
+        # Determine speed from highest-priority active reason
+        if 'recording' in self._icon_anim_reasons:
+            tick_interval = 0.08
+            spin_step = 0.15       # fast rotation
+            chase_every = 6        # fast color shift
+        elif 'continuous' in self._icon_anim_reasons:
+            tick_interval = 0.08
+            spin_step = 0.1
+            chase_every = 10
+        else:  # wake_word or anything else
+            tick_interval = 0.12
+            spin_step = 0.05       # gentle rotation
+            chase_every = 14       # slow color shift
 
-        # Chase: shift colors every 14 ticks (~1120ms)
+        # Spin
+        self._icon_rotation += spin_step
+
+        # Chase: shift colors every N ticks
         self._icon_chase_counter += 1
-        if self._icon_chase_counter >= 14:
+        if self._icon_chase_counter >= chase_every:
             self._icon_chase_counter = 0
             self._icon_chase_offset = (self._icon_chase_offset + 1) % 3
 
         if hasattr(self, 'tray_icon'):
-            self.tray_icon.icon = self.create_icon_image(
-                active=True,
-                color_offset=self._icon_chase_offset,
-                rotation=self._icon_rotation)
+            try:
+                self.tray_icon.icon = self.create_icon_image(
+                    active=True,
+                    color_offset=self._icon_chase_offset,
+                    rotation=self._icon_rotation)
+            except OSError:
+                pass  # transient WinError during icon handle swap — skip this frame
 
         self._icon_chase_timer = threading.Timer(
-            0.08, self._icon_chase_tick)
+            tick_interval, self._icon_chase_tick)
         self._icon_chase_timer.daemon = True
         self._icon_chase_timer.start()
     
@@ -6164,8 +6161,8 @@ class DictationApp:
 
         # Update listening indicator to idle + snoozed
         if hasattr(self, 'listening_indicator'):
-            self.root.after(0, self.listening_indicator.set_listening, False)
-            self.root.after(0, self.listening_indicator.set_snoozed, True)
+            self._schedule_ui(self.listening_indicator.set_listening, False)
+            self._schedule_ui(self.listening_indicator.set_snoozed, True)
 
         # Schedule auto-resume
         if minutes is not None:
@@ -6218,7 +6215,7 @@ class DictationApp:
 
         # Clear snoozed state on indicator
         if hasattr(self, 'listening_indicator'):
-            self.root.after(0, self.listening_indicator.set_snoozed, False)
+            self._schedule_ui(self.listening_indicator.set_snoozed, False)
 
         # Restore prior mode state
         prior = self._snooze_prior_mode_state or {}
@@ -6248,9 +6245,9 @@ class DictationApp:
         self.config['listening_indicator_enabled'] = enabled
         self.save_config()
         if enabled:
-            self.root.after(0, self.listening_indicator.show)
+            self._schedule_ui(self.listening_indicator.show)
         else:
-            self.root.after(0, self.listening_indicator.hide)
+            self._schedule_ui(self.listening_indicator.hide)
 
     def create_tray_icon(self):
         """Create and run system tray icon"""
