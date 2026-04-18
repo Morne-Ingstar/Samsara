@@ -60,67 +60,67 @@ class TestParseWakeCommandDictation:
     def test_bare_dictate(self):
         r = parse_wake_command("dictate")
         assert r["type"] == "dictation"
-        assert r["name"] == "dictate"
+        assert r["name"] == "long_dictation"
         assert r["content"] is None
 
     def test_dictate_with_content(self):
         r = parse_wake_command("dictate hello world")
         assert r["type"] == "dictation"
-        assert r["name"] == "dictate"
+        assert r["name"] == "long_dictation"
         assert r["content"] == "hello world"
 
     def test_dictation_synonym(self):
         r = parse_wake_command("dictation hello")
         assert r["type"] == "dictation"
-        assert r["name"] == "dictate"
+        assert r["name"] == "long_dictation"
         assert r["content"] == "hello"
 
     def test_leading_punctuation(self):
         r = parse_wake_command(", dictate hello")
         assert r["type"] == "dictation"
-        assert r["name"] == "dictate"
+        assert r["name"] == "long_dictation"
         assert r["content"] == "hello"
 
     def test_colon_separator(self):
         r = parse_wake_command("dictate: hello world")
         assert r["type"] == "dictation"
-        assert r["name"] == "dictate"
+        assert r["name"] == "long_dictation"
         assert r["content"] == "hello world"
 
     def test_dash_separator(self):
         r = parse_wake_command("dictate - hello")
         assert r["type"] == "dictation"
-        assert r["name"] == "dictate"
+        assert r["name"] == "long_dictation"
         assert r["content"] == "hello"
 
     def test_long_dictate(self):
         r = parse_wake_command("long dictate")
         assert r["type"] == "dictation"
-        assert r["name"] == "long_dictate"
+        assert r["name"] == "long_dictation"
         assert r["content"] is None
 
     def test_short_dictate_with_content(self):
         r = parse_wake_command("short dictate hello")
         assert r["type"] == "dictation"
-        assert r["name"] == "short_dictate"
+        assert r["name"] == "quick_dictation"
         assert r["content"] == "hello"
 
     def test_quick_dictate(self):
         r = parse_wake_command("quick dictate")
         assert r["type"] == "dictation"
-        assert r["name"] == "short_dictate"
+        assert r["name"] == "quick_dictation"
         assert r["content"] is None
 
     def test_filler_stripped(self):
         r = parse_wake_command("please dictate hello")
         assert r["type"] == "dictation"
-        assert r["name"] == "dictate"
+        assert r["name"] == "long_dictation"
         assert r["content"] == "hello"
 
     def test_trailing_filler_stripped_from_content(self):
         r = parse_wake_command("dictate hello world please")
         assert r["type"] == "dictation"
-        assert r["name"] == "dictate"
+        assert r["name"] == "long_dictation"
         assert r["content"] == "hello world"
 
 

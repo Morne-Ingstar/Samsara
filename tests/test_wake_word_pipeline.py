@@ -88,7 +88,6 @@ class TestDictationCommandParsing:
     def test_dictate_command_recognized(self):
         """'dictate' should be treated as a dictation mode, not a regular command."""
         text = "dictate"
-        # The pipeline checks text_lower against known dictation keywords
         assert text.lower() in ['dictate', 'dictation']
 
     def test_dictate_with_content(self):

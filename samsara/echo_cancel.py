@@ -222,92 +222,119 @@ class LoopbackCapture:
 
 
 class AdaptiveEchoCanceller:
-    """NLMS adaptive filter for echo cancellation.
+    """Frequency-domain block NLMS adaptive filter for echo cancellation.
 
-    Subtracts an estimated echo from the microphone signal using the
-    loopback reference.  The filter adapts continuously so it tracks
-    changes in the acoustic path (speaker → mic coupling, latency, EQ).
-
-    Typical usage::
-
-        aec = AdaptiveEchoCanceller(filter_length=800, step_size=0.5)
-        cleaned = aec.process(mic_chunk, ref_chunk)
+    Uses overlap-save method with FFT for efficient convolution.
+    Processes entire blocks at once -- no Python for-loops in the signal path.
     """
 
-    def __init__(
-        self,
-        filter_length: int = 800,
-        step_size: float = 0.3,
-        regularization: float = 1e-6,
-    ):
+    def __init__(self, block_size=1024, filter_blocks=4, step_size=0.02,
+                 regularization=1e-6):
         """
         Args:
-            filter_length: Number of taps in the adaptive filter.
-                At 16 kHz, 800 taps ≈ 50 ms of echo path modeling.
-            step_size: NLMS step size (μ).  0.0–1.0; higher = faster
-                adaptation but more noise.  0.3 is a good default.
+            block_size: Samples per processing block (power of 2). At 16kHz,
+                1024 = 64ms per block.
+            filter_blocks: Number of filter blocks. Total filter length =
+                block_size * filter_blocks. 4 blocks x 1024 = 4096 taps = 256ms
+                of echo path modeling at 16kHz.
+            step_size: NLMS step size (mu). Start conservative at 0.02.
             regularization: Small constant to avoid division by zero.
         """
-        self.filter_length = filter_length
+        self.block_size = block_size
+        self.filter_blocks = filter_blocks
         self.step_size = step_size
         self.reg = regularization
 
-        # Adaptive filter weights
-        self._w = np.zeros(filter_length, dtype=np.float32)
-        # Reference signal delay line
-        self._ref_buf = np.zeros(filter_length, dtype=np.float32)
+        self.fft_size = 2 * block_size  # overlap-save FFT size
+        n_bins = self.fft_size // 2 + 1
 
-    def process(self, mic: np.ndarray, ref: np.ndarray) -> np.ndarray:
-        """Process a chunk of audio.
+        # Frequency-domain filter weights (complex)
+        self._W = np.zeros((filter_blocks, n_bins), dtype=np.complex64)
 
-        Args:
-            mic: Microphone signal (float32, mono, any length).
-            ref: Loopback reference signal (float32, mono, same length as mic).
+        # Reference signal history (frequency domain)
+        self._ref_history = np.zeros((filter_blocks, n_bins), dtype=np.complex64)
 
-        Returns:
-            Cleaned microphone signal with echo subtracted.
+        # Input buffers for overlap-save
+        self._mic_buffer = np.zeros(self.fft_size, dtype=np.float32)
+        self._ref_buffer = np.zeros(self.fft_size, dtype=np.float32)
+
+        # Output accumulator for chunks smaller than block_size
+        self._out_buffer = np.zeros(0, dtype=np.float32)
+
+    def process(self, mic, ref):
+        """Process audio block, removing echo.
+
+        Handles arbitrary input sizes by buffering internally.
+        All heavy computation uses numpy FFT -- no Python for-loops in signal path.
         """
         if len(mic) == 0:
             return mic
 
-        # Ensure matching lengths (truncate the longer one)
         n = min(len(mic), len(ref))
         mic = mic[:n].astype(np.float32)
         ref = ref[:n].astype(np.float32)
 
-        out = np.empty(n, dtype=np.float32)
-        w = self._w
-        ref_buf = self._ref_buf
-        fl = self.filter_length
-        mu = self.step_size
-        reg = self.reg
+        result = np.empty(n, dtype=np.float32)
+        pos = 0
 
-        for i in range(n):
-            # Shift reference into delay line
-            ref_buf = np.roll(ref_buf, 1)
-            ref_buf[0] = ref[i]
+        while pos < n:
+            chunk = min(self.block_size, n - pos)
 
-            # Estimate echo: y_hat = w · ref_buf
-            y_hat = np.dot(w, ref_buf)
+            # Shift buffers and add new data
+            self._mic_buffer[:-chunk] = self._mic_buffer[chunk:]
+            self._mic_buffer[-chunk:] = mic[pos:pos + chunk]
 
-            # Error = mic - echo_estimate  (this is the cleaned signal)
-            error = mic[i] - y_hat
-            out[i] = error
+            self._ref_buffer[:-chunk] = self._ref_buffer[chunk:]
+            self._ref_buffer[-chunk:] = ref[pos:pos + chunk]
 
-            # NLMS weight update
-            power = np.dot(ref_buf, ref_buf) + reg
-            w = w + (mu * error / power) * ref_buf
+            if chunk == self.block_size:
+                # Full block -- process with FFT
+                result[pos:pos + chunk] = self._process_block()
+            else:
+                # Partial block -- pass through (will be processed next call)
+                result[pos:pos + chunk] = mic[pos:pos + chunk]
 
-        # Save state for next chunk
-        self._w = w
-        self._ref_buf = ref_buf
+            pos += chunk
 
-        return out
+        return result
+
+    def _process_block(self):
+        """Process one full block using overlap-save frequency-domain NLMS."""
+        B = self.block_size
+
+        # FFT of current mic and reference blocks
+        Mic = np.fft.rfft(self._mic_buffer)
+        Ref = np.fft.rfft(self._ref_buffer)
+
+        # Shift reference history and store new block
+        self._ref_history[1:] = self._ref_history[:-1]
+        self._ref_history[0] = Ref
+
+        # Estimate echo: sum of W[i] * ref_history[i] in frequency domain
+        Y_hat = np.sum(self._W * self._ref_history, axis=0)
+
+        # Error in frequency domain
+        E = Mic - Y_hat
+
+        # Convert error to time domain (overlap-save: keep last block_size samples)
+        error_td = np.fft.irfft(E, n=self.fft_size)
+        cleaned = error_td[-B:]
+
+        # NLMS weight update (frequency domain)
+        ref_power = np.sum(np.abs(self._ref_history) ** 2, axis=0) + self.reg
+
+        # Update weights -- one vectorized operation per filter block
+        for i in range(self.filter_blocks):
+            self._W[i] += self.step_size * (E * np.conj(self._ref_history[i])) / ref_power
+
+        return cleaned.astype(np.float32)
 
     def reset(self):
-        """Reset the adaptive filter (e.g. when switching audio devices)."""
-        self._w[:] = 0
-        self._ref_buf[:] = 0
+        """Reset the adaptive filter."""
+        self._W[:] = 0
+        self._ref_history[:] = 0
+        self._mic_buffer[:] = 0
+        self._ref_buffer[:] = 0
 
 
 class EchoCanceller:
@@ -327,38 +354,46 @@ class EchoCanceller:
         ec.stop()    # when done
     """
 
+    _FILTER_RATE = 16000  # adaptive filter always runs at 16kHz
+
     def __init__(
         self,
         sample_rate: int = 16000,
         enabled: bool = True,
-        filter_length: int = 800,
-        step_size: float = 0.3,
+        block_size: int = 1024,
+        filter_blocks: int = 4,
+        step_size: float = 0.02,
         latency_ms: float = 30.0,
     ):
         """
         Args:
-            sample_rate: Mic sample rate (Hz).
+            sample_rate: Mic capture rate (Hz). Audio is downsampled to 16kHz
+                for filtering, then upsampled back.
             enabled: Whether AEC is active.
-            filter_length: Adaptive filter taps (800 @ 16kHz = 50ms).
-            step_size: NLMS step size.
-            latency_ms: Estimated system latency (speaker→mic delay)
-                in milliseconds.  Used to align the reference signal.
+            block_size: FFT block size (1024 @ 16kHz = 64ms per block).
+            filter_blocks: Number of blocks (4 x 1024 = 256ms echo path).
+            step_size: NLMS step size (0.02 is conservative).
+            latency_ms: Estimated speaker-to-mic delay in milliseconds.
         """
         self.sample_rate = sample_rate
         self.enabled = enabled
         self.latency_ms = latency_ms
 
+        # Loopback captures at 16kHz (matches filter rate)
         self._loopback = LoopbackCapture(
-            target_rate=sample_rate, buffer_seconds=2.0
+            target_rate=self._FILTER_RATE, buffer_seconds=2.0
         )
         self._aec = AdaptiveEchoCanceller(
-            filter_length=filter_length, step_size=step_size
+            block_size=block_size, filter_blocks=filter_blocks,
+            step_size=step_size,
         )
         self._started = False
 
-        # Track how many mic samples we've processed so we can pull
-        # the right amount of reference audio
-        self._latency_samples = int(sample_rate * latency_ms / 1000.0)
+        # Latency offset in 16kHz samples (reference is at filter rate)
+        self._latency_samples = int(self._FILTER_RATE * latency_ms / 1000.0)
+
+        # Diagnostic logging counter
+        self._process_count = 0
 
     @property
     def is_active(self) -> bool:
@@ -394,8 +429,10 @@ class EchoCanceller:
     def process(self, mic_audio: np.ndarray) -> np.ndarray:
         """Process a microphone audio chunk, removing system audio echo.
 
+        Downsamples to 16kHz for filtering, then upsamples back to capture rate.
+
         Args:
-            mic_audio: float32 mono mic audio (any length).
+            mic_audio: float32 mono mic audio at self.sample_rate.
 
         Returns:
             Cleaned audio (same shape/dtype), or the original if AEC
@@ -404,31 +441,71 @@ class EchoCanceller:
         if not self.is_active:
             return mic_audio
 
-        n = len(mic_audio.flatten())
+        original_shape = mic_audio.shape
+        mic_flat = mic_audio.flatten()
 
-        # Pull the matching amount of reference audio from the ring buffer,
-        # accounting for latency offset
+        # Downsample mic to 16kHz for filtering
+        if self.sample_rate != self._FILTER_RATE:
+            mic_16k = self._resample(mic_flat, self.sample_rate, self._FILTER_RATE)
+        else:
+            mic_16k = mic_flat
+
+        n = len(mic_16k)
+
+        # Pull reference audio from loopback (already at 16kHz)
         ref = self._loopback.get_recent(n + self._latency_samples)
 
-        # Take the older portion (aligned to when the mic actually picked
-        # up the echo)
+        # Align reference to compensate for speaker-to-mic delay
         if len(ref) >= n + self._latency_samples:
-            ref = ref[: n]
+            ref = ref[:n]
         elif len(ref) >= n:
-            ref = ref[: n]
+            ref = ref[:n]
         else:
-            # Not enough reference data yet — pass through
-            return mic_audio
+            return mic_audio  # not enough reference yet
 
-        # Check if reference has any energy (if system is silent, skip AEC
-        # to avoid unnecessary filter noise)
-        ref_rms = np.sqrt(np.mean(ref ** 2))
+        # Skip if system audio is silent
+        ref_rms = float(np.sqrt(np.mean(ref ** 2)))
         if ref_rms < 1e-6:
             return mic_audio
 
-        original_shape = mic_audio.shape
-        cleaned = self._aec.process(mic_audio.flatten(), ref)
+        # Apply adaptive filter at 16kHz
+        cleaned_16k = self._aec.process(mic_16k, ref)
+
+        # Upsample back to capture rate
+        if self.sample_rate != self._FILTER_RATE:
+            cleaned = self._resample(cleaned_16k, self._FILTER_RATE, self.sample_rate)
+            # Match original length exactly
+            orig_len = len(mic_flat)
+            if len(cleaned) > orig_len:
+                cleaned = cleaned[:orig_len]
+            elif len(cleaned) < orig_len:
+                cleaned = np.pad(cleaned, (0, orig_len - len(cleaned)))
+        else:
+            cleaned = cleaned_16k
+
+        # Periodic diagnostic logging (every 100 chunks ~ every 10s)
+        self._process_count += 1
+        if self._process_count % 100 == 1:
+            mic_rms = float(np.sqrt(np.mean(mic_16k ** 2)))
+            cleaned_rms = float(np.sqrt(np.mean(cleaned_16k ** 2)))
+            print(f"[AEC] ref_rms={ref_rms:.6f} mic_rms={mic_rms:.6f} "
+                  f"cleaned_rms={cleaned_rms:.6f}")
+
         return cleaned.reshape(original_shape)
+
+    @staticmethod
+    def _resample(audio, src_rate, dst_rate):
+        """Linear-interpolation resample (matches LoopbackCapture._resample)."""
+        if src_rate == dst_rate:
+            return audio
+        ratio = dst_rate / src_rate
+        n_out = int(len(audio) * ratio)
+        indices = np.arange(n_out) / ratio
+        indices = np.clip(indices, 0, len(audio) - 1)
+        idx_floor = indices.astype(np.intp)
+        idx_ceil = np.minimum(idx_floor + 1, len(audio) - 1)
+        frac = indices - idx_floor
+        return (audio[idx_floor] * (1 - frac) + audio[idx_ceil] * frac).astype(np.float32)
 
     def set_enabled(self, enabled: bool):
         """Enable or disable AEC at runtime."""
@@ -442,4 +519,4 @@ class EchoCanceller:
     def set_latency(self, latency_ms: float):
         """Update the latency compensation."""
         self.latency_ms = latency_ms
-        self._latency_samples = int(self.sample_rate * latency_ms / 1000.0)
+        self._latency_samples = int(self._FILTER_RATE * latency_ms / 1000.0)
