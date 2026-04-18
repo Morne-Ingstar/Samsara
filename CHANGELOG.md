@@ -7,6 +7,10 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 ## [Unreleased]
 
 ### Added
+- **Command parser module** -- `samsara/command_parser.py` extracts wake word command
+  parsing into pure, testable functions. `parse_wake_command()` returns structured
+  intent dicts (type/name/content/raw). Handles dictation keywords, filler stripping,
+  Whisper punctuation, colon/dash separators, and joined tokens. 32 tests.
 - **Wake word observability** -- Debug window upgraded to structured trace pipeline
   - Wake Word Evaluation panel shows match decision (type, index, YES/NO) per utterance
   - Decision Timeline groups all pipeline stages per utterance in a scrollable view
