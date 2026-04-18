@@ -11,6 +11,8 @@ import threading
 import time
 from typing import Dict, Optional
 
+from samsara.constants import CLIPBOARD_PASTE_DELAY, CLIPBOARD_RESTORE_DELAY
+
 # Global lock to prevent concurrent clipboard operations
 clipboard_lock = threading.Lock()
 
@@ -21,6 +23,14 @@ try:
 except ImportError:
     pyperclip = None
     HAS_PYPERCLIP = False
+
+
+def _log_error(msg, exc=None):
+    """Log clipboard errors. Visible in console, not disruptive to user."""
+    if exc:
+        print(f"[CLIPBOARD] {msg}: {exc}")
+    else:
+        print(f"[CLIPBOARD] {msg}")
 
 
 def _setup_win32_api():
@@ -106,8 +116,8 @@ def save_clipboard() -> Dict[int, bytes]:
                 text = pyperclip.paste()
                 if text:
                     return {'text': text.encode('utf-8')}
-            except Exception:
-                pass
+            except Exception as e:
+                _log_error("Failed to save clipboard text fallback", e)
         return {}
     
     saved: Dict[int, bytes] = {}
@@ -170,8 +180,7 @@ def save_clipboard() -> Dict[int, bytes]:
                     finally:
                         _kernel32.GlobalUnlock(handle)
             except Exception as e:
-                # Some formats may not be readable, that's okay
-                pass
+                _log_error(f"Could not read clipboard format {fmt}", e)
     finally:
         _user32.CloseClipboard()
     
@@ -201,8 +210,8 @@ def restore_clipboard(saved: Dict[int, bytes]) -> bool:
             try:
                 pyperclip.copy(text.decode('utf-8'))
                 return True
-            except Exception:
-                pass
+            except Exception as e:
+                _log_error("Failed to restore clipboard text fallback", e)
         return False
     
     GMEM_MOVEABLE = 0x0002
@@ -245,7 +254,7 @@ def restore_clipboard(saved: Dict[int, bytes]) -> bool:
                 else:
                     _kernel32.GlobalFree(h)
             except Exception as e:
-                pass
+                _log_error(f"Failed to restore clipboard format {fmt}", e)
     finally:
         _user32.CloseClipboard()
     
@@ -255,7 +264,7 @@ def restore_clipboard(saved: Dict[int, bytes]) -> bool:
     return restored_count > 0 or len(saved) == 0
 
 
-def paste_with_preservation(text: str, paste_delay: float = 0.05, restore_delay: float = 0.4) -> bool:
+def paste_with_preservation(text: str, paste_delay: float = CLIPBOARD_PASTE_DELAY, restore_delay: float = CLIPBOARD_RESTORE_DELAY) -> bool:
     """
     Paste text via clipboard while preserving original clipboard content.
     
