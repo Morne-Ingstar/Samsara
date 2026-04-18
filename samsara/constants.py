@@ -31,6 +31,13 @@ ICON_CHASE_FAST = 6                # ticks between color shifts (recording)
 ICON_CHASE_MEDIUM = 10             # ticks between color shifts (continuous)
 ICON_CHASE_SLOW = 14               # ticks between color shifts (wake word)
 
+# Calibration
+CALIBRATION_DURATION = 1.5         # seconds of ambient noise measurement
+CALIBRATION_CHUNK_MS = 100         # chunk size in milliseconds
+CALIBRATION_MULTIPLIER = 3.0       # multiplier above ambient median
+CALIBRATION_FLOOR = 0.0005         # minimum threshold (guards electrical noise)
+CALIBRATION_CEILING = 0.15         # maximum threshold (sanity cap)
+
 # Clipboard
 CLIPBOARD_PASTE_DELAY = 0.05       # seconds after copy, before paste
 CLIPBOARD_RESTORE_DELAY = 0.15     # seconds after paste, before restore
