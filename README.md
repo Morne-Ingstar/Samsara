@@ -7,6 +7,10 @@
 [![Platform](https://img.shields.io/badge/platform-Windows-blue.svg)]()
 [![Status](https://img.shields.io/badge/status-early%20dev-orange.svg)]()
 
+<p align="center">
+  <img src="demo.gif" alt="Samsara Demo — saying 'Jarvis, open Chrome' launches Chrome hands-free" width="800">
+</p>
+
 ---
 
 ## From the Developer
