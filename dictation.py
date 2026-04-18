@@ -2093,9 +2093,10 @@ class DictationApp:
                 self.wake_word_triggered = True
                 self.play_sound("start")
 
-                # Flash the listening indicator to show wake word was heard
+                # Light up the indicator — pulse stays on through the command
                 if hasattr(self, 'listening_indicator'):
-                    self._schedule_ui(self.listening_indicator.flash_wake)
+                    self._schedule_ui(self.listening_indicator.set_mode, "Listening...")
+                    self._schedule_ui(self.listening_indicator.set_listening, True)
 
                 # Slice from corrected (match_index is a position in corrected_lower)
                 command_text = corrected_lower[match_index + len(wake_phrase):].strip()
@@ -2161,6 +2162,11 @@ class DictationApp:
             return
 
         if intent["type"] == "command_text":
+            # Show what we're doing on the indicator
+            if hasattr(self, 'listening_indicator'):
+                display = text.title() if len(text) < 25 else text[:22].title() + "..."
+                self._schedule_ui(self.listening_indicator.set_mode, display)
+
             # Try regular command execution (pass original text for word-boundary matching)
             result, was_command = self.command_executor.process_text(
                 text, self, force_commands=True)
@@ -2168,8 +2174,7 @@ class DictationApp:
                 self.wake_word_triggered = False
                 self.app_state = 'asleep'
                 print("[STATE] command_window -> asleep (command executed)")
-                if hasattr(self, 'listening_indicator'):
-                    self._schedule_ui(self.listening_indicator.flash_success)
+                self._indicator_success_and_reset()
                 return
 
             # Not a recognized command -- output as quick dictation
@@ -2177,12 +2182,14 @@ class DictationApp:
             self.wake_word_triggered = False
             self.app_state = 'asleep'
             print("[STATE] command_window -> asleep (text output)")
+            self._indicator_success_and_reset()
             return
 
         # type == "unknown" -- noise/garbage, back to asleep
         print(f"[SKIP] Ignoring noise: '{text}'")
         self.app_state = 'asleep'
         print("[STATE] command_window -> asleep (noise)")
+        self._indicator_reset()
         self._start_wake_timeout()
     
     def _start_dictation_mode(self, mode_name, mode_config=None, initial_content=None):
@@ -2233,6 +2240,26 @@ class DictationApp:
             if not self._dictation_require_end:
                 self._restart_dictation_timer()
 
+    def _indicator_success_and_reset(self):
+        """Flash success on indicator, hold briefly, then return to idle."""
+        if not hasattr(self, 'listening_indicator'):
+            return
+        self._schedule_ui(self.listening_indicator.flash_success)
+        # Hold the lit state for 800ms so the user sees what happened
+        def _delayed_reset():
+            import time
+            time.sleep(0.8)
+            self._indicator_reset()
+        threading.Thread(target=_delayed_reset, daemon=True).start()
+
+    def _indicator_reset(self):
+        """Return indicator to idle state."""
+        if not hasattr(self, 'listening_indicator'):
+            return
+        self._schedule_ui(self.listening_indicator.set_listening, False)
+        mode_display = self._get_mode_display() if hasattr(self, '_get_mode_display') else "Hold"
+        self._schedule_ui(self.listening_indicator.set_mode, mode_display)
+
     def _reset_wake_dictation(self):
         """Return to asleep state, clearing all dictation state."""
         old_state = self.app_state
@@ -2256,10 +2283,7 @@ class DictationApp:
             print(f"[STATE] {old_state} -> asleep")
 
         # Reset listening indicator back to idle
-        if hasattr(self, 'listening_indicator'):
-            self._schedule_ui(self.listening_indicator.set_listening, False)
-            mode_display = self._get_mode_display() if hasattr(self, '_get_mode_display') else "Hold"
-            self._schedule_ui(self.listening_indicator.set_mode, mode_display)
+        self._indicator_reset()
 
     def _restart_dictation_timer(self):
         """Restart the finalization timer for non-end-word dictation modes.
