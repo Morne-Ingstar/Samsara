@@ -13,7 +13,7 @@ import sys
 import threading
 import time
 import tkinter as tk
-from tkinter import messagebox
+from tkinter import messagebox, ttk
 from pathlib import Path
 
 import customtkinter as ctk
@@ -89,11 +89,20 @@ class SettingsWindow:
         self.tabview.add("Alarms")
         self.tabview.add("Advanced")
 
-        # Initialize lazy loading tracking
-        self.built_tabs = {"General"}
+        # Lazy tab loading -- only build tabs on first visit
+        self._tab_builders = {
+            "General": {"built": False, "builder": self.build_general_tab},
+            "Hotkeys & Modes": {"built": False, "builder": self.build_hotkeys_modes_tab},
+            "Commands": {"built": False, "builder": self.build_commands_tab},
+            "Sounds": {"built": False, "builder": self.build_sounds_tab},
+            "Alarms": {"built": False, "builder": self.build_alarms_tab},
+            "Advanced": {"built": False, "builder": self.build_advanced_tab},
+        }
+        # For backward compat with save_settings which checks self.built_tabs
+        self.built_tabs = set()
 
-        # Build only the General tab initially
-        self.build_general_tab()
+        # Build only the default tab (General) via staged loading
+        self._build_tab("General")
 
         self.window.protocol("WM_DELETE_WINDOW", self.close)
 
@@ -122,42 +131,49 @@ class SettingsWindow:
                 pass
 
     def on_tab_changed(self):
-        """Handle tab changes to implement lazy loading."""
+        """Handle tab changes -- build tab on first visit."""
         current_tab = self.tabview.get()
-        if current_tab not in self.built_tabs:
-            build_methods = {
-                "Hotkeys & Modes": self.build_hotkeys_modes_tab,
-                "Commands": self.build_commands_tab,
-                "Sounds": self.build_sounds_tab,
-                "Alarms": self.build_alarms_tab,
-                "Advanced": self.build_advanced_tab,
-            }
-            builder = build_methods.get(current_tab)
-            if builder:
-                builder()
-                self.built_tabs.add(current_tab)
+        self._build_tab(current_tab)
+
+    def _build_tab(self, tab_name):
+        """Build a tab if not already built, using staged loading."""
+        entry = self._tab_builders.get(tab_name)
+        if not entry or entry["built"]:
+            return
+        entry["built"] = True
+        self.built_tabs.add(tab_name)
+
+        builder = entry["builder"]
+        gen = builder()
+        if gen is None:
+            return  # builder is not a generator (legacy)
+
+        def _step():
+            try:
+                next(gen)
+                if self.window:
+                    self.window.after(5, _step)
+            except StopIteration:
+                pass
+        _step()
 
     def build_general_tab(self):
-        """Build the General settings tab."""
+        """Build the General settings tab (generator -- yields between sections)."""
         general_tab = self.tabview.tab("General")
-        
-        # Create scrollable frame for General tab content
+
         general_scroll = ctk.CTkScrollableFrame(general_tab, fg_color="transparent")
         general_scroll.pack(fill='both', expand=True)
 
-        # Microphone Section
-        mic_label = ctk.CTkLabel(general_scroll, text="Microphone", font=ctk.CTkFont(size=16, weight="bold"))
-        mic_label.pack(anchor='w', pady=(15, 10))
-
+        # --- Microphone Section ---
+        ctk.CTkLabel(general_scroll, text="Microphone", font=ctk.CTkFont(size=16, weight="bold")
+                     ).pack(anchor='w', pady=(15, 10))
         mic_frame = ctk.CTkFrame(general_scroll, corner_radius=10)
         mic_frame.pack(fill='x', pady=(0, 20))
-
         ctk.CTkLabel(mic_frame, text="Selected device:").pack(anchor='w', padx=15, pady=(15, 5))
 
         mic_names = [mic['name'] for mic in self.available_mics]
         current_mic_id = self.app.config.get('microphone')
         current_selection = mic_names[0] if mic_names else "No microphones found"
-
         if current_mic_id is not None:
             for mic in self.available_mics:
                 if mic['id'] == current_mic_id:
@@ -168,12 +184,13 @@ class SettingsWindow:
         self.mic_combo = ctk.CTkComboBox(mic_frame, variable=self.mic_var, values=mic_names,
                                          width=400, state='readonly')
         self.mic_combo.pack(anchor='w', padx=15, pady=(0, 10))
-
         self.show_all_devices_var = tk.BooleanVar(value=self.app.config.get('show_all_audio_devices', False))
         ctk.CTkCheckBox(mic_frame, text="Show all audio devices (includes virtual/system devices)",
-                       variable=self.show_all_devices_var, command=self.refresh_microphone_list).pack(anchor='w', padx=15, pady=(0, 15))
+                       variable=self.show_all_devices_var, command=self.refresh_microphone_list
+                       ).pack(anchor='w', padx=15, pady=(0, 15))
+        yield
 
-        # Basic Options Section
+        # --- Basic Options Section ---
         options_label = ctk.CTkLabel(general_scroll, text="Basic Options", font=ctk.CTkFont(size=16, weight="bold"))
         options_label.pack(anchor='w', pady=(0, 10))
 
@@ -205,8 +222,9 @@ class SettingsWindow:
         ctk.CTkCheckBox(options_frame, text="Start Samsara with Windows",
                        variable=self.auto_start_var,
                        command=self.toggle_auto_start).pack(anchor='w', padx=15, pady=(0, 15))
+        yield
 
-        # Listening Indicator Section
+        # --- Listening Indicator Section ---
         indicator_label = ctk.CTkLabel(general_scroll, text="Listening Indicator",
                                        font=ctk.CTkFont(size=16, weight="bold"))
         indicator_label.pack(anchor='w', pady=(0, 10))
@@ -233,8 +251,9 @@ class SettingsWindow:
                                              "bottom-left", "bottom-center", "bottom-right"],
                                      width=160, state='readonly')
         pos_combo.pack(side='left', padx=(0, 10))
+        yield
 
-        # Profiles Section
+        # --- Profiles + Training + Model ---
         profiles_label = ctk.CTkLabel(general_scroll, text="Profiles", font=ctk.CTkFont(size=16, weight="bold"))
         profiles_label.pack(anchor='w', pady=(0, 10))
 
@@ -306,7 +325,7 @@ class SettingsWindow:
                     text_color="#1f6aa5").pack(anchor='w', padx=15, pady=(0, 15))
 
     def build_hotkeys_modes_tab(self):
-        """Build the Hotkeys & Modes settings tab."""
+        """Build the Hotkeys & Modes settings tab (generator)."""
         hotkey_tab = self.tabview.tab("Hotkeys & Modes")
         
         # Create scrollable frame for Hotkeys tab content
@@ -335,8 +354,9 @@ class SettingsWindow:
             value=self.app.config.get('wake_word_enabled', False))
         ctk.CTkCheckBox(mode_frame, text="Enable wake word listener (works with any mode above)",
                         variable=self.wake_word_enabled_var).pack(anchor='w', padx=15, pady=(0, 15))
+        yield
 
-        # Keyboard Shortcuts Section
+        # --- Keyboard Shortcuts Section ---
         hotkey_label = ctk.CTkLabel(hotkey_scroll, text="Keyboard Shortcuts", font=ctk.CTkFont(size=16, weight="bold"))
         hotkey_label.pack(anchor='w', pady=(0, 10))
 
@@ -407,7 +427,7 @@ class SettingsWindow:
         self.hotkey_buttons['cancel_hotkey'] = self.cancel_hotkey_btn
 
     def build_commands_tab(self):
-        """Build the Commands settings tab."""
+        """Build the Commands settings tab (generator)."""
         commands_tab = self.tabview.tab("Commands")
 
         # Header
@@ -474,8 +494,9 @@ class SettingsWindow:
 
         # Populate commands
         self.populate_commands_list()
+        yield
 
-        # Button frame
+        # --- Button frame ---
         cmd_btn_frame = ctk.CTkFrame(commands_tab, fg_color="transparent")
         cmd_btn_frame.pack(fill='x', pady=(0, 5))
 
@@ -498,7 +519,7 @@ class SettingsWindow:
                     text_color="gray").pack(anchor='w')
 
     def build_sounds_tab(self):
-        """Build the Sounds settings tab."""
+        """Build the Sounds settings tab (generator)."""
         sounds_tab = self.tabview.tab("Sounds")
         
         # Create scrollable frame for Sounds tab content
@@ -535,8 +556,9 @@ class SettingsWindow:
         # Test volume button
         ctk.CTkButton(volume_row, text="Test", width=60,
                      command=lambda: self.app.play_sound('success')).pack(side='left', padx=(10, 0))
+        yield
 
-        # Sound Theme Section
+        # --- Sound Theme Section ---
         theme_label = ctk.CTkLabel(sounds_scroll, text="Sound Theme", font=ctk.CTkFont(size=16, weight="bold"))
         theme_label.pack(anchor='w', pady=(0, 10))
 
@@ -576,8 +598,9 @@ class SettingsWindow:
 
         sounds_frame = ctk.CTkFrame(sounds_scroll, corner_radius=10)
         sounds_frame.pack(fill='x', pady=(0, 20))
+        yield
 
-        # Sound file rows
+        # --- Sound file rows ---
         self.sound_labels = {}
         sound_types = [
             ('start', 'Recording start:'),
@@ -626,7 +649,7 @@ class SettingsWindow:
                     text_color="gray").pack(anchor='w')
 
     def build_alarms_tab(self):
-        """Build the Alarms settings tab."""
+        """Build the Alarms settings tab (generator)."""
         alarms_tab = self.tabview.tab("Alarms")
         
         # Create scrollable frame for Alarms tab content
@@ -735,8 +758,9 @@ class SettingsWindow:
 
         # Populate alarms list
         self.populate_alarms_list()
+        yield
 
-        # Alarm buttons frame
+        # --- Alarm buttons frame ---
         alarm_btn_frame = ctk.CTkFrame(alarms_scroll, fg_color="transparent")
         alarm_btn_frame.pack(fill='x', pady=(0, 10))
 
@@ -759,7 +783,7 @@ class SettingsWindow:
                     text_color="gray", wraplength=600).pack(anchor='w', pady=(5, 0))
 
     def build_advanced_tab(self):
-        """Build the Advanced settings tab."""
+        """Build the Advanced settings tab (generator)."""
         advanced_tab = self.tabview.tab("Advanced")
         
         # Create scrollable frame for Advanced tab content
@@ -790,8 +814,9 @@ class SettingsWindow:
         min_speech_entry = ctk.CTkEntry(speech_row, textvariable=self.min_speech_var, width=80)
         min_speech_entry.pack(side='left', padx=(0, 10))
         ctk.CTkLabel(speech_row, text="seconds").pack(side='left')
+        yield
 
-        # Hardware Acceleration Section
+        # --- Hardware Acceleration Section ---
         hw_label = ctk.CTkLabel(advanced_scroll, text="Hardware Acceleration", font=ctk.CTkFont(size=16, weight="bold"))
         hw_label.pack(anchor='w', pady=(0, 10))
 
@@ -875,8 +900,9 @@ class SettingsWindow:
 
         ctk.CTkLabel(perf_frame, text="fast: Lowest latency | balanced: Good tradeoff | accurate: Best quality",
                     text_color="gray").pack(anchor='w', padx=15, pady=(0, 15))
+        yield
 
-        # Echo Cancellation Settings
+        # --- Echo Cancellation Settings ---
         aec_label = ctk.CTkLabel(advanced_scroll, text="Echo Cancellation", font=ctk.CTkFont(size=16, weight="bold"))
         aec_label.pack(anchor='w', pady=(0, 10))
 
@@ -900,8 +926,9 @@ class SettingsWindow:
                     text="Filters out music/video audio so only your voice is transcribed.\n"
                          "Requires restart. Windows only (uses WASAPI loopback).",
                     text_color="gray").pack(anchor='w', padx=15, pady=(0, 15))
+        yield
 
-        # Wake Word Settings
+        # --- Wake Word Settings ---
         wake_label = ctk.CTkLabel(advanced_scroll, text="Wake Word Settings", font=ctk.CTkFont(size=16, weight="bold"))
         wake_label.pack(anchor='w', pady=(0, 10))
 
