@@ -9,6 +9,8 @@
 
 <p align="center">
   <img src="demo.gif" alt="Samsara Demo — saying 'Jarvis, open Chrome' launches Chrome hands-free" width="800">
+  <br>
+  <em>Say "Jarvis, open Chrome" → Samsara hears the wake word, transcribes the command locally via Whisper, and launches Chrome. No cloud, no internet, no typing.</em>
 </p>
 
 ---
