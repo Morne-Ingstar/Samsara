@@ -11,7 +11,7 @@ from typing import Any, Callable, Dict, List, Optional
 
 import numpy as np
 
-from . import platform as plat
+from samsara import platform as plat
 
 # Optional dependency - may not be available in test environments
 try:
