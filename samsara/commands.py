@@ -404,6 +404,18 @@ class CommandExecutor:
         command = self.find_command(text)
         if command:
             if command in self.commands:
+                cmd = self.commands[command]
+                if cmd.get('type') == 'method':
+                    method_name = cmd.get('method')
+                    if self._app and method_name and hasattr(self._app, method_name):
+                        try:
+                            getattr(self._app, method_name)()
+                            return command, True
+                        except Exception as e:
+                            print(f"[ERROR] method '{method_name}' failed: {e}")
+                            return command, False
+                    print(f"[WARN] method '{method_name}' not found on app")
+                    return command, False
                 success = self.execute_command(command)
             else:
                 print(f"[PLUGIN] Executing: {command}")
