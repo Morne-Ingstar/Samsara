@@ -134,7 +134,8 @@ from samsara.ui.wake_word_debug import WakeWordDebugWindow
 from samsara.ui.listening_indicator import ListeningIndicator
 from samsara.wake_word_matcher import match_wake_phrase
 from samsara.wake_corrections import apply_corrections as apply_wake_corrections, was_corrected
-from samsara.command_parser import parse_wake_command, normalize_command_text
+from samsara.command_parser import parse_wake_command, normalize_command_text, strip_wake_echoes
+from samsara import plugin_commands as _plugin_commands
 from samsara.constants import (
     MODEL_SAMPLE_RATE, DEFAULT_CAPTURE_RATE, PREBUFFER_SECONDS,
     DEFAULT_SPEECH_THRESHOLD, DEFAULT_MIN_SPEECH_DURATION, DEFAULT_SILENCE_TIMEOUT,
@@ -243,6 +244,16 @@ class CommandExecutor:
         self.keyboard_controller = KeyboardController()
         self.mouse_controller = MouseController()
         self.load_commands()
+
+        # Plugin commands: auto-load *.py files from plugins/commands/.
+        # Missing directory is not fatal -- app runs fine without plugins.
+        plugins_dir = Path(__file__).parent / "plugins" / "commands"
+        try:
+            _plugin_commands.load_plugins(plugins_dir)
+        except Exception as e:
+            print(f"[PLUGINS] Failed to load plugins: {e}")
+        unique = len({id(entry) for entry in _plugin_commands._REGISTRY.values()})
+        print(f"[PLUGINS] Loaded {unique} plugin commands")
         
         # Key mapping for pynput
         self.key_map = {
@@ -412,7 +423,12 @@ class CommandExecutor:
             # Exact match in the middle with spaces around it
             if f" {cmd_name} " in f" {text_lower} ":
                 return cmd_name
-        
+
+        # Plugin commands -- lower priority than built-ins on name conflict.
+        plugin_entry, _remainder = _plugin_commands.find_command(text)
+        if plugin_entry is not None:
+            return plugin_entry['phrase']
+
         return None
     
     def process_text(self, text, app_instance=None, force_commands=False):
@@ -469,9 +485,13 @@ class CommandExecutor:
         # Try to find and execute a command
         command = self.find_command(text)
         if command:
-            success = self.execute_command(command)
+            if command in self.commands:
+                success = self.execute_command(command)
+            else:
+                print(f"[PLUGIN] Executing: {command}")
+                _phrase, success = _plugin_commands.execute_command(text, app=app_instance)
             return command, success
-        
+
         # Not a command, return text for dictation
         return text, False
 
@@ -2088,6 +2108,14 @@ class DictationApp:
                 # Whisper often inserts punctuation between wake word and command
                 # ("jarvis, dictate" → ", dictate"). Strip any leading non-word chars.
                 command_text = normalize_command_text(command_text)
+
+                command_text, echo_count = strip_wake_echoes(command_text, wake_phrase)
+                if echo_count:
+                    command_text = normalize_command_text(command_text)
+                    print(f"[ECHO] Stripped {echo_count} echo(es) of '{wake_phrase}' from command")
+                    self._emit_wake_trace({"stage": "echo_strip", "removed": echo_count,
+                                           "cleaned": command_text})
+
                 self._emit_wake_trace({"stage": "command_extract",
                                        "from_index": match_index, "command": command_text,
                                        "remainder": ""})
