@@ -7,7 +7,12 @@ from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).parent.parent))
 
-from samsara.command_parser import normalize_command_text, strip_fillers, parse_wake_command
+from samsara.command_parser import (
+    normalize_command_text,
+    strip_fillers,
+    parse_wake_command,
+    strip_wake_echoes,
+)
 
 
 class TestNormalizeCommandText:
@@ -161,3 +166,30 @@ class TestParseWakeCommandPreservesRaw:
         r = parse_wake_command(", Dictate: Hello World")
         assert r["raw"] == ", Dictate: Hello World"
         assert r["type"] == "dictation"
+
+
+class TestStripWakeEchoes:
+    def test_doubled_wake_word(self):
+        cleaned, count = strip_wake_echoes("jarvis jarvis open chrome", "jarvis")
+        assert normalize_command_text(cleaned) == "open chrome"
+        assert count == 1
+
+    def test_doubled_with_punctuation(self):
+        cleaned, count = strip_wake_echoes("jarvis, jarvis, dictate hello", "jarvis")
+        assert normalize_command_text(cleaned) == "dictate hello"
+        assert count == 1
+
+    def test_mid_command_echo(self):
+        cleaned, count = strip_wake_echoes("jarvis open jarvis chrome", "jarvis")
+        assert normalize_command_text(cleaned) == "open chrome"
+        assert count == 1
+
+    def test_partial_word_preserved(self):
+        cleaned, count = strip_wake_echoes("jarvis jarvison settings", "jarvis")
+        assert normalize_command_text(cleaned) == "jarvison settings"
+        assert count == 0
+
+    def test_no_echoes(self):
+        cleaned, count = strip_wake_echoes("open chrome", "jarvis")
+        assert normalize_command_text(cleaned) == "open chrome"
+        assert count == 0
