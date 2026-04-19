@@ -45,6 +45,21 @@ def normalize_command_text(text):
     return text
 
 
+def strip_wake_echoes(text, wake_phrase):
+    """Remove all occurrences of wake_phrase from text (word-boundary aware).
+
+    Returns (cleaned_text, count) where count is the number of *extra* echoes
+    removed beyond the canonical leading wake word (i.e. total matches - 1,
+    floored at 0). Matches are case-insensitive and respect word boundaries,
+    so partial tokens like "jarvison" are preserved.
+    """
+    if not wake_phrase or not text:
+        return text, 0
+    pattern = r'\b' + re.escape(wake_phrase) + r'\b'
+    cleaned, total = re.subn(pattern, '', text, flags=re.IGNORECASE)
+    return cleaned, max(0, total - 1)
+
+
 def strip_fillers(text, fillers=None):
     """Remove leading/trailing filler words from *text*.
 
