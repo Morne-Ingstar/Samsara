@@ -841,7 +841,30 @@ class DictationApp:
             "wake_word_enabled": False,
             # Speech threshold calibration
             "threshold_mode": "auto",    # "auto" or "manual"
-            "cal_multiplier": 3.0        # multiplier above ambient for auto mode
+            "cal_multiplier": 3.0,       # multiplier above ambient for auto mode
+            # Friendly aliases for Windows audio devices. Keys are spoken names
+            # (match the voice command remainder); values are exact Windows
+            # device names (Win+R -> mmsys.cpl to find them). Users customize
+            # these by editing config.json -- no code change needed to add a device.
+            "audio_devices": {
+                "speakers": "Speakers",
+                "headphones": "Headphones",
+                "headset": "Headset Earphone",
+                "earbuds": "Earbuds",
+                "monitor": "DELL U2722D"
+            },
+            # Web shortcuts for "go to X" voice commands. Keys are spoken
+            # aliases; values are target URLs. Users add their own by editing
+            # config.json -- no code change needed.
+            "web_shortcuts": {
+                "mail": "https://mail.google.com",
+                "email": "https://mail.google.com",
+                "youtube": "https://youtube.com",
+                "amazon": "https://amazon.com",
+                "my orders": "https://www.amazon.com/gp/your-account/order-history",
+                "github": "https://github.com",
+                "reddit": "https://reddit.com"
+            }
         }
 
         if self.config_path.exists():
