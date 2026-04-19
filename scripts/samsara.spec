@@ -10,11 +10,22 @@ from pathlib import Path
 
 block_cipher = None
 
-# Get site-packages path
+# Get site-packages path (check both system and user locations)
 import site
-# On Windows conda, index 1 is the actual site-packages
 site_packages_list = site.getsitepackages()
-site_packages = next((p for p in site_packages_list if 'site-packages' in p), site_packages_list[-1])
+user_site = site.getusersitepackages()
+
+# Find ctranslate2 to determine which site-packages is active
+def find_package_dir(pkg_name):
+    """Find a package in system or user site-packages."""
+    for sp in site_packages_list:
+        if os.path.exists(os.path.join(sp, pkg_name)):
+            return sp
+    if os.path.exists(os.path.join(user_site, pkg_name)):
+        return user_site
+    return site_packages_list[-1]
+
+site_packages = find_package_dir('ctranslate2')
 
 # App directory (parent of scripts folder)
 app_dir = Path(SPECPATH).parent
@@ -165,20 +176,27 @@ hiddenimports = [
     
     # Samsara modules
     'samsara',
-    'samsara.audio',
+    'samsara.calibration',
     'samsara.clipboard',
+    'samsara.command_parser',
     'samsara.commands',
-    'samsara.config',
+    'samsara.constants',
+    'samsara.echo_cancel',
     'samsara.key_macros',
     'samsara.notifications',
     'samsara.alarms',
-    'samsara.platform',
     'samsara.profiles',
-    'samsara.speech',
+    'samsara.wake_word_matcher',
+    'samsara.wake_corrections',
+    'samsara.plugin_commands',
     'samsara.ui',
-    'samsara.ui.profile_manager_ui',
+    'samsara.ui.settings_window',
+    'samsara.ui.first_run_wizard',
+    'samsara.ui.history_window',
     'samsara.ui.splash',
+    'samsara.ui.profile_manager_ui',
     'samsara.ui.wake_word_debug',
+    'samsara.ui.listening_indicator',
     'voice_training',
 ]
 
