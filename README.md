@@ -42,8 +42,8 @@ pain who needs to minimize keyboard and mouse use.
 **What it does well right now:**
 - Hold-to-dictate with near-instant CUDA transcription (~300ms)
 - 4-state dictation model: Asleep → Command Window → Quick/Long Dictation
-- 40+ voice commands (copy, paste, undo, open apps, etc.)
-- Wake word activation ("Jarvis, dictate...")
+- 100+ voice commands (apps, browser, media, window management, text editing)
+- Wake word activation ("Jarvis, open Chrome...")
 - Pre-buffer captures 1.5s before hotkey press — first words never lost
 - Auto-calibrating speech threshold with IQR outlier rejection
 - Frequency-domain echo cancellation (WASAPI loopback + FFT-based filter)
@@ -90,9 +90,16 @@ Once Samsara is running, it sits in your **system tray** (bottom-right of your s
 
 **Voice commands:** Say your wake word (default: **"Jarvis"**) followed by a command:
 - *"Jarvis, open Chrome"* — opens Chrome
-- *"Jarvis, copy that"* — copies selected text
-- *"Jarvis, new line"* — presses Enter
+- *"Jarvis, take a screenshot"* — opens the snip tool
+- *"Jarvis, volume up"* — raises system volume
+- *"Jarvis, next song"* — skips to next track
+- *"Jarvis, snap left"* — snaps window to left half of screen
+- *"Jarvis, emoji"* — opens the emoji picker
 - *"Jarvis, dictate"* — starts hands-free dictation (say *"over"* when done)
+- *"Jarvis, scratch that"* — undoes the last thing you dictated
+
+Over **100 built-in commands** covering apps, browser, media, text editing,
+window management, and more. Fully customizable — add your own in Settings.
 
 **Right-click the tray icon** to switch modes, change your microphone, snooze listening, or open settings.
 
@@ -127,18 +134,22 @@ process ([ARC](https://github.com/Morne-Ingstar/ARC)):
 
 ### Voice Commands
 
-40+ built-in commands loaded from `commands.json`:
+100+ built-in commands loaded from `commands.json`:
 
 ```
-"new line"          → Enter key
-"select all"        → Ctrl+A
-"copy that"         → Ctrl+C
-"paste"             → Ctrl+V
-"undo"              → Ctrl+Z
 "open chrome"       → Launches Chrome
+"take a screenshot" → Windows snip tool
+"snap left"         → Snap window to left half
+"volume up"         → Raise system volume
+"next song"         → Skip track
+"emoji"             → Open emoji picker
+"bold"              → Toggle bold (Ctrl+B)
+"scratch that"      → Undo last dictation
+"lock computer"     → Lock screen
 ```
 
-Types: `hotkey` (key combos), `launch` (programs), `macro` (multi-step).
+Types: `hotkey` (key combos), `launch` (programs), `macro` (multi-step),
+`text` (insert characters), `method` (app functions like undo).
 Custom commands via Settings → Commands tab or `commands.json` directly.
 
 ### Audio Pipeline
@@ -250,7 +261,7 @@ All hotkeys configurable in Settings.
 
 - [x] Hold/Toggle/Continuous capture modes
 - [x] Wake word activation with token-aware matching
-- [x] 40+ voice commands with custom command support
+- [x] 100+ voice commands with custom command support
 - [x] Audio pre-buffer (1.5s before hotkey)
 - [x] Alarm reminders with streak tracking
 - [x] Sound themes and snooze
