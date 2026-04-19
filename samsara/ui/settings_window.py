@@ -1569,13 +1569,37 @@ X-GNOME-Autostart-enabled=true
         """Run calibration and update the display label."""
         self._cal_value_label.configure(text="Calibrating...")
         def _do():
-            self.app._run_calibration_if_auto()
-            self.app.save_config()
-            thresh = self.app.config.get('wake_word_config', {}).get(
-                'audio', {}).get('speech_threshold', 0.03)
-            if self.window:
-                self.window.after(0, self._cal_value_label.configure,
-                                 {"text": f"Current: {thresh:.4f}"})
+            try:
+                # Pause active streams so calibration can access the mic
+                had_wake = getattr(self.app, 'wake_word_active', False)
+                had_continuous = getattr(self.app, 'continuous_active', False)
+                if had_wake:
+                    self.app.stop_wake_word_mode()
+                if had_continuous:
+                    self.app.stop_continuous_mode()
+
+                import time
+                time.sleep(0.3)  # let streams release the device
+
+                self.app._run_calibration_if_auto()
+                self.app.save_config()
+
+                # Restart streams that were active
+                if had_wake:
+                    self.app.start_wake_word_mode()
+                if had_continuous:
+                    self.app.start_continuous_mode()
+
+                thresh = self.app.config.get('wake_word_config', {}).get(
+                    'audio', {}).get('speech_threshold', 0.03)
+                if self.window:
+                    self.window.after(0, self._cal_value_label.configure,
+                                     {"text": f"Current: {thresh:.4f}"})
+            except Exception as e:
+                print(f"[CAL] Recalibration failed: {e}")
+                if self.window:
+                    self.window.after(0, self._cal_value_label.configure,
+                                     {"text": f"Failed: {e}"})
         threading.Thread(target=_do, daemon=True).start()
 
     def on_volume_change(self, value):
