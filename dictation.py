@@ -486,6 +486,18 @@ class CommandExecutor:
         command = self.find_command(text)
         if command:
             if command in self.commands:
+                cmd = self.commands[command]
+                if cmd.get('type') == 'method':
+                    method_name = cmd.get('method')
+                    if app_instance and method_name and hasattr(app_instance, method_name):
+                        try:
+                            getattr(app_instance, method_name)()
+                            return command, True
+                        except Exception as e:
+                            print(f"[ERROR] method '{method_name}' failed: {e}")
+                            return command, False
+                    print(f"[WARN] method '{method_name}' not found on app")
+                    return command, False
                 success = self.execute_command(command)
             else:
                 print(f"[PLUGIN] Executing: {command}")
@@ -650,6 +662,14 @@ class DictationApp:
         self._dictation_require_end = False
         self._dictation_finalize_timer = None
         self._dictation_finalize_lock = threading.Lock()
+        self._dictation_paused = False
+
+        # Single-level undo for the last pasted dictation. Shift+Left+Delete
+        # only works if the caret hasn't moved since the paste, so the state
+        # expires after _UNDO_EXPIRY_SECONDS or on the next paste.
+        self._last_dictation_text = None
+        self._last_dictation_length = 0
+        self._undo_timer = None
 
         # Dictation history
         self.history_path = Path(__file__).parent / 'history.json'
@@ -763,6 +783,7 @@ class DictationApp:
             "continuous_hotkey": "ctrl+alt+d",
             "wake_word_hotkey": "ctrl+alt+w",
             "command_hotkey": "ctrl+alt+c",
+            "undo_hotkey": "ctrl+alt+z",
             "cancel_hotkey": "escape",
             "mode": "hold",  # Options: "hold", "toggle", "continuous"
             "model_size": "base",
@@ -1494,6 +1515,14 @@ class DictationApp:
             self.start_recording()
             return
         
+        # Undo hotkey (works in any mode, edge-triggered)
+        undo_hotkey = self.config.get('undo_hotkey', 'ctrl+alt+z')
+        if self.check_hotkey_state(undo_hotkey) and not self.hotkey_pressed:
+            print(f"[HOTKEY] Undo hotkey detected: {undo_hotkey}")
+            self.hotkey_pressed = True
+            threading.Thread(target=self.undo_last_dictation, daemon=True).start()
+            return
+
         # Check for wake word enable/disable toggle (works in any mode)
         if self.check_hotkey_state(wake_hotkey) and not self.hotkey_pressed:
             print(f"[HOTKEY] Wake word hotkey detected: {wake_hotkey}")
@@ -2029,25 +2058,8 @@ class DictationApp:
                         self._emit_wake_trace({"stage": "utterance_end", "result": "cancelled"})
                         return
 
-                # Check pause words (long_dictation only)
-                if self.app_state == 'long_dictation':
-                    pause_words = ww_config.get('pause_words', ['pause'])
-                    for pw in pause_words:
-                        if pw.lower() in text_lower:
-                            print(f"[PAUSE] Timer reset ('{pw}')")
-                            self._emit_wake_trace({"stage": "pause_word_detected", "phrase": pw})
-                            self.silence_start = None
-                            remaining = text_lower.replace(pw.lower(), '').strip()
-                            if remaining:
-                                pause_idx = text_lower.find(pw.lower())
-                                cleaned = (text[:pause_idx] + text[pause_idx + len(pw):]).strip()
-                                if cleaned:
-                                    self.wake_dictation_buffer.append(cleaned)
-                                    print(f"[DICTATE] Buffered (after pause strip): {cleaned}")
-                            self._emit_wake_trace({"stage": "utterance_end", "result": "paused"})
-                            return
-
-                # Check end words (primarily long_dictation, but works in both)
+                # Check end words (primarily long_dictation, but works in both).
+                # Checked before pause/resume so "over" finalizes even while paused.
                 end_words = ww_config.get('end_words', ['over', 'done'])
                 for ew in end_words:
                     if ew.lower() in text_lower:
@@ -2064,6 +2076,49 @@ class DictationApp:
                         self._reset_wake_dictation()
                         self._emit_wake_trace({"stage": "utterance_end", "result": "end_word"})
                         return
+
+                # Pause/resume state machine (long_dictation only)
+                if self.app_state == 'long_dictation':
+                    if self._dictation_paused:
+                        # Only resume words get through; everything else is ignored.
+                        resume_words = ww_config.get('resume_words', ['resume', 'continue', 'go on'])
+                        for rw in resume_words:
+                            if rw.lower() in text_lower:
+                                self._dictation_paused = False
+                                self.play_sound("start")
+                                if hasattr(self, 'listening_indicator'):
+                                    self._schedule_ui(self.listening_indicator.set_mode, "Long Dictation")
+                                    self._schedule_ui(self.listening_indicator.set_listening, True)
+                                print(f"[RESUME] Dictation resumed ('{rw}')")
+                                self._emit_wake_trace({"stage": "resume",
+                                                       "buffer_size": len(self.wake_dictation_buffer)})
+                                self._emit_wake_trace({"stage": "utterance_end", "result": "resumed"})
+                                return
+                        print(f"[PAUSED] Ignoring: '{text}'")
+                        self._emit_wake_trace({"stage": "utterance_end",
+                                               "result": "paused_ignored", "text": text})
+                        return
+
+                    pause_words = ww_config.get('pause_words', ['pause'])
+                    for pw in pause_words:
+                        if pw.lower() in text_lower:
+                            # Preserve any content spoken before the pause word.
+                            pause_idx = text_lower.find(pw.lower())
+                            cleaned = (text[:pause_idx] + text[pause_idx + len(pw):]).strip()
+                            if cleaned:
+                                self.wake_dictation_buffer.append(cleaned)
+                                print(f"[DICTATE] Buffered (pre-pause): {cleaned}")
+                            self._dictation_paused = True
+                            self.silence_start = None
+                            self.play_sound("stop")
+                            if hasattr(self, 'listening_indicator'):
+                                self._schedule_ui(self.listening_indicator.set_mode, "Paused")
+                                self._schedule_ui(self.listening_indicator.set_listening, False)
+                            print(f"[PAUSE] Dictation paused ('{pw}')")
+                            self._emit_wake_trace({"stage": "pause",
+                                                   "buffer_size": len(self.wake_dictation_buffer)})
+                            self._emit_wake_trace({"stage": "utterance_end", "result": "paused"})
+                            return
 
                 # Accumulate text
                 self.wake_dictation_buffer.append(text)
@@ -2219,6 +2274,7 @@ class DictationApp:
         self.wake_dictation_buffer = []
         self.wake_dictation_start_time = time.time()
         self.wake_word_triggered = False
+        self._dictation_paused = False
 
         # Cancel any existing timers
         if hasattr(self, 'wake_word_timer') and self.wake_word_timer:
@@ -2283,6 +2339,7 @@ class DictationApp:
         self.wake_word_triggered = False
         self._dictation_silence_timeout = None
         self._dictation_require_end = False
+        self._dictation_paused = False
 
         if hasattr(self, 'wake_word_timer') and self.wake_word_timer:
             self.wake_word_timer.cancel()
@@ -2325,9 +2382,12 @@ class DictationApp:
             import traceback
             traceback.print_exc()
 
+    _UNDO_EXPIRY_SECONDS = 60.0
+
     def _paste_preserving_clipboard(self, text):
         """Paste text via clipboard while preserving the user's original clipboard content."""
         delay = self.config.get('clipboard_delay', CLIPBOARD_RESTORE_DELAY)
+        paste_ok = False
         with _clipboard_lock:
             saved = _save_clipboard_win32()
             try:
@@ -2337,11 +2397,62 @@ class DictationApp:
 
                 # Wait for paste to complete before restoring
                 time.sleep(delay)
+                paste_ok = True
             except Exception as e:
                 print(f"[ERROR] Paste failed: {e}")
             finally:
                 # Always restore clipboard, even if paste failed
                 _restore_clipboard_win32(saved)
+
+        if paste_ok:
+            self._record_undoable_paste(text)
+
+    def _record_undoable_paste(self, text):
+        """Remember the last pasted text so it can be undone via voice/hotkey."""
+        self._last_dictation_text = text
+        self._last_dictation_length = len(text)
+        self._arm_undo_timer()
+
+    def _arm_undo_timer(self):
+        """Start a fresh expiry timer; cancel any existing one."""
+        if self._undo_timer is not None:
+            self._undo_timer.cancel()
+        self._undo_timer = threading.Timer(self._UNDO_EXPIRY_SECONDS, self._clear_undo)
+        self._undo_timer.daemon = True
+        self._undo_timer.start()
+
+    def _clear_undo(self):
+        """Drop undo state (called on expiry or after a successful undo)."""
+        self._last_dictation_text = None
+        self._last_dictation_length = 0
+        if self._undo_timer is not None:
+            self._undo_timer.cancel()
+            self._undo_timer = None
+
+    def undo_last_dictation(self):
+        """Undo the last dictated text by selecting and deleting it.
+
+        Caveat: this drives Shift+Left + Delete via pyautogui, so it only works
+        if the caret is still at the end of the last pasted run. If the user
+        clicked away or typed since the paste, the selection will grab the
+        wrong characters -- we intentionally do not try to detect that.
+        """
+        if not self._last_dictation_text:
+            print("[UNDO] Nothing to undo")
+            self.play_sound("error")
+            return False
+
+        text = self._last_dictation_text
+        length = self._last_dictation_length
+        for _ in range(length):
+            pyautogui.hotkey('shift', 'left')
+        pyautogui.press('delete')
+
+        preview = text[:50] + ("..." if len(text) > 50 else "")
+        print(f"[UNDO] Removed: {preview}")
+        self.play_sound("success")
+        self._clear_undo()
+        return True
 
     def _output_dictation(self, text):
         """Output dictated text"""
