@@ -317,11 +317,6 @@
       "text": "\n\n",
       "description": "Insert paragraph break"
     },
-    "tab": {
-      "type": "press",
-      "key": "tab",
-      "description": "Insert tab"
-    },
     "space": {
       "type": "text",
       "text": " ",
@@ -397,11 +392,6 @@
       "type": "hotkey",
       "keys": ["win", "i"],
       "description": "Open Windows Settings"
-    },
-    "search": {
-      "type": "hotkey",
-      "keys": ["win", "s"],
-      "description": "Open Windows search"
     },
     "switch window": {
       "type": "hotkey",
