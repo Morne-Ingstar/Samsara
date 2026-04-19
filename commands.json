@@ -336,6 +336,21 @@
       "type": "hotkey",
       "keys": ["ctrl", "backspace"],
       "description": "Delete previous word"
+    },
+    "undo": {
+      "type": "method",
+      "method": "undo_last_dictation",
+      "description": "Remove the last pasted dictation"
+    },
+    "undo that": {
+      "type": "method",
+      "method": "undo_last_dictation",
+      "description": "Remove the last pasted dictation"
+    },
+    "scratch that": {
+      "type": "method",
+      "method": "undo_last_dictation",
+      "description": "Remove the last pasted dictation"
     }
   }
 }
