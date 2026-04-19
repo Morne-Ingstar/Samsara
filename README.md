@@ -56,9 +56,24 @@ pain who needs to minimize keyboard and mouse use.
 
 ---
 
-## Quick Start
+## Getting Started
 
-### From Source (recommended for now)
+### Option 1: Download for Windows (easiest)
+
+1. Go to the [latest release](https://github.com/Morne-Ingstar/Samsara/releases/latest)
+2. Download **Samsara-Windows-v0.9.2.7z**
+3. Extract the folder anywhere (e.g. `C:\Samsara`)
+4. Double-click **Samsara.exe**
+5. A setup wizard walks you through picking your microphone and downloading the AI model
+
+That's it. No Python, no command line, no configuration files.
+
+**NVIDIA GPU recommended** — Samsara uses your graphics card to transcribe speech
+almost instantly (~300ms). It works on CPU too, just slower.
+
+### Option 2: Run from source (for developers)
+
+Requires Python 3.10+ installed.
 
 ```bash
 git clone https://github.com/Morne-Ingstar/Samsara.git
@@ -67,14 +82,19 @@ pip install -r requirements.txt
 python dictation.py
 ```
 
-A first-run wizard will guide you through microphone selection, model
-download, and hotkey configuration.
+### How to use it
 
-### Usage
+Once Samsara is running, it sits in your **system tray** (bottom-right of your screen, near the clock).
 
-- Hold **Ctrl+Shift** and speak, release to transcribe
-- Right-click tray icon to switch modes, change mic, snooze, or open settings
-- Say your wake word (default: "Jarvis") followed by a command
+**Hold-to-dictate:** Hold **Ctrl+Shift**, speak, release — your words appear wherever your cursor is.
+
+**Voice commands:** Say your wake word (default: **"Jarvis"**) followed by a command:
+- *"Jarvis, open Chrome"* — opens Chrome
+- *"Jarvis, copy that"* — copies selected text
+- *"Jarvis, new line"* — presses Enter
+- *"Jarvis, dictate"* — starts hands-free dictation (say *"over"* when done)
+
+**Right-click the tray icon** to switch modes, change your microphone, snooze listening, or open settings.
 
 ---
 
