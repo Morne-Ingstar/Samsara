@@ -336,6 +336,216 @@
       "type": "hotkey",
       "keys": ["ctrl", "backspace"],
       "description": "Delete previous word"
+    },
+    "undo": {
+      "type": "method",
+      "method": "undo_last_dictation",
+      "description": "Remove the last pasted dictation"
+    },
+    "undo that": {
+      "type": "method",
+      "method": "undo_last_dictation",
+      "description": "Remove the last pasted dictation"
+    },
+    "scratch that": {
+      "type": "method",
+      "method": "undo_last_dictation",
+      "description": "Remove the last pasted dictation"
+    },
+
+    "take a screenshot": {
+      "type": "hotkey",
+      "keys": ["win", "shift", "s"],
+      "description": "Open screenshot snip tool"
+    },
+    "screenshot": {
+      "type": "hotkey",
+      "keys": ["win", "shift", "s"],
+      "description": "Open screenshot snip tool"
+    },
+    "lock screen": {
+      "type": "hotkey",
+      "keys": ["win", "l"],
+      "description": "Lock the computer"
+    },
+    "lock computer": {
+      "type": "hotkey",
+      "keys": ["win", "l"],
+      "description": "Lock the computer"
+    },
+    "open notepad": {
+      "type": "launch",
+      "target": "notepad.exe",
+      "description": "Open Notepad"
+    },
+    "open calculator": {
+      "type": "launch",
+      "target": "calc.exe",
+      "description": "Open Calculator"
+    },
+    "open file explorer": {
+      "type": "hotkey",
+      "keys": ["win", "e"],
+      "description": "Open File Explorer"
+    },
+    "open files": {
+      "type": "hotkey",
+      "keys": ["win", "e"],
+      "description": "Open File Explorer"
+    },
+    "open settings": {
+      "type": "hotkey",
+      "keys": ["win", "i"],
+      "description": "Open Windows Settings"
+    },
+    "search": {
+      "type": "hotkey",
+      "keys": ["win", "s"],
+      "description": "Open Windows search"
+    },
+    "switch window": {
+      "type": "hotkey",
+      "keys": ["alt", "tab"],
+      "description": "Switch to next window"
+    },
+    "switch app": {
+      "type": "hotkey",
+      "keys": ["alt", "tab"],
+      "description": "Switch to next window"
+    },
+    "snap left": {
+      "type": "hotkey",
+      "keys": ["win", "left"],
+      "description": "Snap window to left half"
+    },
+    "snap right": {
+      "type": "hotkey",
+      "keys": ["win", "right"],
+      "description": "Snap window to right half"
+    },
+    "full screen": {
+      "type": "hotkey",
+      "keys": ["f11"],
+      "description": "Toggle full screen"
+    },
+    "zoom in": {
+      "type": "hotkey",
+      "keys": ["ctrl", "+"],
+      "description": "Zoom in"
+    },
+    "zoom out": {
+      "type": "hotkey",
+      "keys": ["ctrl", "-"],
+      "description": "Zoom out"
+    },
+    "reset zoom": {
+      "type": "hotkey",
+      "keys": ["ctrl", "0"],
+      "description": "Reset zoom to default"
+    },
+    "volume up": {
+      "type": "hotkey",
+      "keys": ["volumeup"],
+      "description": "Increase volume"
+    },
+    "volume down": {
+      "type": "hotkey",
+      "keys": ["volumedown"],
+      "description": "Decrease volume"
+    },
+    "mute": {
+      "type": "hotkey",
+      "keys": ["volumemute"],
+      "description": "Toggle mute"
+    },
+    "play pause": {
+      "type": "hotkey",
+      "keys": ["playpause"],
+      "description": "Play or pause media"
+    },
+    "pause music": {
+      "type": "hotkey",
+      "keys": ["playpause"],
+      "description": "Pause media playback"
+    },
+    "next track": {
+      "type": "hotkey",
+      "keys": ["nexttrack"],
+      "description": "Skip to next track"
+    },
+    "next song": {
+      "type": "hotkey",
+      "keys": ["nexttrack"],
+      "description": "Skip to next song"
+    },
+    "previous track": {
+      "type": "hotkey",
+      "keys": ["prevtrack"],
+      "description": "Go to previous track"
+    },
+    "bold": {
+      "type": "hotkey",
+      "keys": ["ctrl", "b"],
+      "description": "Toggle bold text"
+    },
+    "italic": {
+      "type": "hotkey",
+      "keys": ["ctrl", "i"],
+      "description": "Toggle italic text"
+    },
+    "underline": {
+      "type": "hotkey",
+      "keys": ["ctrl", "u"],
+      "description": "Toggle underline text"
+    },
+    "print": {
+      "type": "hotkey",
+      "keys": ["ctrl", "p"],
+      "description": "Open print dialog"
+    },
+    "emoji": {
+      "type": "hotkey",
+      "keys": ["win", "."],
+      "description": "Open emoji picker"
+    },
+    "notifications": {
+      "type": "hotkey",
+      "keys": ["win", "n"],
+      "description": "Open notification center"
+    },
+    "select line": {
+      "type": "hotkey",
+      "keys": ["home"],
+      "description": "Go to start of line"
+    },
+    "select word left": {
+      "type": "hotkey",
+      "keys": ["ctrl", "shift", "left"],
+      "description": "Select word to the left"
+    },
+    "select word right": {
+      "type": "hotkey",
+      "keys": ["ctrl", "shift", "right"],
+      "description": "Select word to the right"
+    },
+    "delete line": {
+      "type": "macro",
+      "steps": [
+        { "action": "hotkey", "keys": ["home"] },
+        { "action": "hotkey", "keys": ["shift", "end"] },
+        { "action": "press", "key": "delete" }
+      ],
+      "description": "Select and delete entire line"
+    },
+    "open terminal": {
+      "type": "hotkey",
+      "keys": ["win", "x"],
+      "description": "Open power user menu (then press T for terminal)"
+    },
+    "clipboard history": {
+      "type": "hotkey",
+      "keys": ["win", "v"],
+      "description": "Open clipboard history"
     }
   }
 }
