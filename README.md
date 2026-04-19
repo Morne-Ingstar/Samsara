@@ -261,7 +261,7 @@ All hotkeys configurable in Settings.
 MIT License — free for personal and commercial use.
 
 If Samsara saves your wrists or speeds up your workflow, consider
-[supporting the project](https://morneis.com) — built through chronic
+[supporting the project](https://ko-fi.com/morneingstar) — built through chronic
 pain, kept free for accessibility.
 
 ## Acknowledgments
