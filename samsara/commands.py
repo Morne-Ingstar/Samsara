@@ -10,6 +10,7 @@ from pathlib import Path
 from typing import Any, Callable, Dict, Optional, Tuple
 
 from . import platform as plat
+from . import plugin_commands as _plugin_commands
 from .clipboard import clipboard_lock as _clipboard_lock, save_clipboard as _save_clipboard_win32, restore_clipboard as _restore_clipboard_win32
 
 # Optional dependencies - may not be available in test environments
@@ -101,12 +102,19 @@ class CommandExecutor:
         'f9': Key.f9, 'f10': Key.f10, 'f11': Key.f11, 'f12': Key.f12,
     }
 
-    def __init__(self, commands_path: Optional[Path] = None):
+    def __init__(
+        self,
+        commands_path: Optional[Path] = None,
+        app: Any = None,
+        plugins_dir: Optional[Path] = None,
+    ):
         """
         Initialize command executor.
 
         Args:
             commands_path: Path to commands.json file
+            app: DictationApp instance passed to plugin handlers
+            plugins_dir: Directory to scan for plugin command modules
         """
         if commands_path is None:
             commands_path = Path(__file__).parent.parent / "commands.json"
@@ -119,8 +127,18 @@ class CommandExecutor:
         self.mouse_controller = MouseController()
 
         self._on_command_mode_change: Optional[Callable[[bool], None]] = None
+        self._app = app
 
         self.load_commands()
+
+        if plugins_dir is None:
+            plugins_dir = Path(__file__).parent.parent / "plugins" / "commands"
+        try:
+            _plugin_commands.load_plugins(plugins_dir)
+        except Exception as e:
+            print(f"[PLUGINS] Failed to load plugins: {e}")
+        unique = len({id(entry) for entry in _plugin_commands._REGISTRY.values()})
+        print(f"[PLUGINS] Loaded {unique} plugin commands")
 
     def set_command_mode_callback(
         self,
@@ -330,6 +348,12 @@ class CommandExecutor:
             if f" {cmd_name} " in padded:
                 return cmd_name
 
+        # Plugin commands — lower priority than built-ins, so only consulted
+        # after commands.json has no match.
+        plugin_entry, _remainder = _plugin_commands.find_command(text)
+        if plugin_entry is not None:
+            return plugin_entry['phrase']
+
         return None
 
     def process_text(
@@ -379,7 +403,11 @@ class CommandExecutor:
         # Try to find and execute a command
         command = self.find_command(text)
         if command:
-            success = self.execute_command(command)
+            if command in self.commands:
+                success = self.execute_command(command)
+            else:
+                print(f"[PLUGIN] Executing: {command}")
+                _phrase, success = _plugin_commands.execute_command(text, app=self._app)
             return command, success
 
         # Not a command, return text for dictation
