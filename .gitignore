@@ -25,6 +25,9 @@ dist/
 release/
 *.exe
 
+# External tools (downloaded separately -- see tools/README.md)
+tools/*.exe
+
 # IDE
 .idea/
 .vscode/
