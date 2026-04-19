@@ -766,21 +766,6 @@ class DictationApp:
                 "enabled": True,
                 "phrase": "samsara",
                 "phrase_options": ["samsara", "hey samsara", "computer", "hey computer", "jarvis", "hey jarvis"],
-                "end_word": {
-                    "enabled": True,
-                    "phrase": "over",
-                    "phrase_options": ["over", "done", "go", "send", "execute", "that's all", "end dictation"]
-                },
-                "cancel_word": {
-                    "enabled": False,
-                    "phrase": "cancel",
-                    "phrase_options": ["cancel", "abort", "never mind", "scratch that"]
-                },
-                "pause_word": {
-                    "enabled": False,
-                    "phrase": "pause",
-                    "phrase_options": ["pause", "hold on", "wait"]
-                },
                 "quick_silence_timeout": 1.0,
                 "end_words": ["over", "done", "end dictation"],
                 "cancel_words": ["cancel", "cancel dictation", "abort"],
