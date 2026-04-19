@@ -38,6 +38,7 @@ nul
 
 # Misc
 *.bak
+*.bak-*
 *.tmp
 
 # Claude Code
