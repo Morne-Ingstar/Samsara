@@ -1,4 +1,4 @@
-# 🔄 Samsara
+# <img src="logo.png" width="28" height="28"> Samsara
 
 ### Voice Dictation & Control for Accessibility
 
