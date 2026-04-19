@@ -1014,81 +1014,61 @@ class SettingsWindow:
         wake_phrase_dropdown.pack(side='left', padx=(0, 10))
         ctk.CTkLabel(wake_word_row, text="(or type custom)", text_color="gray").pack(side='left')
 
-        # End word
-        end_config = ww_config.get('end_word', {})
+        # --- 4-State Dictation Settings ---
+        dict_label = ctk.CTkLabel(wake_frame, text="Dictation Settings",
+                                  font=ctk.CTkFont(size=13, weight="bold"))
+        dict_label.pack(anchor='w', padx=15, pady=(5, 8))
+
+        # Quick Dictation silence timeout
+        quick_row = ctk.CTkFrame(wake_frame, fg_color="transparent")
+        quick_row.pack(fill='x', padx=15, pady=(0, 5))
+        ctk.CTkLabel(quick_row, text="Quick Dictation timeout:", width=180, anchor='w').pack(side='left')
+        self.quick_timeout_var = tk.DoubleVar(
+            value=ww_config.get('quick_silence_timeout', 1.0))
+        ctk.CTkEntry(quick_row, textvariable=self.quick_timeout_var, width=60).pack(side='left', padx=(0, 5))
+        ctk.CTkLabel(quick_row, text="sec", width=30).pack(side='left')
+        ctk.CTkLabel(quick_row, text="(silence before auto-finish)",
+                     text_color="gray").pack(side='left', padx=(5, 0))
+
+        # End words
         end_row = ctk.CTkFrame(wake_frame, fg_color="transparent")
-        end_row.pack(fill='x', padx=15, pady=(0, 8))
-        
-        self.end_word_enabled_var = tk.BooleanVar(value=end_config.get('enabled', True))
-        ctk.CTkCheckBox(end_row, text="End word:", variable=self.end_word_enabled_var,
-                       width=120).pack(side='left')
-        
-        end_options = end_config.get('phrase_options', ['over', 'done', 'go', 'send', 'execute'])
-        self.end_phrase_var = tk.StringVar(value=end_config.get('phrase', 'over'))
-        end_dropdown = ctk.CTkComboBox(end_row, variable=self.end_phrase_var,
-                                       values=end_options, width=150)
-        end_dropdown.pack(side='left', padx=(0, 10))
+        end_row.pack(fill='x', padx=15, pady=(0, 5))
+        ctk.CTkLabel(end_row, text="End words:", width=180, anchor='w').pack(side='left')
+        end_words = ww_config.get('end_words', ['over', 'done', 'end dictation'])
+        self.end_words_var = tk.StringVar(value=', '.join(end_words))
+        ctk.CTkEntry(end_row, textvariable=self.end_words_var, width=300).pack(side='left')
+        ctk.CTkLabel(end_row, text="(finish Long Dictation)",
+                     text_color="gray").pack(side='left', padx=(5, 0))
 
-        # Cancel word
-        cancel_config = ww_config.get('cancel_word', {})
+        # Cancel words
         cancel_row = ctk.CTkFrame(wake_frame, fg_color="transparent")
-        cancel_row.pack(fill='x', padx=15, pady=(0, 8))
-        
-        self.cancel_word_enabled_var = tk.BooleanVar(value=cancel_config.get('enabled', False))
-        ctk.CTkCheckBox(cancel_row, text="Cancel word:", variable=self.cancel_word_enabled_var,
-                       width=120).pack(side='left')
-        
-        cancel_options = cancel_config.get('phrase_options', ['cancel', 'abort', 'never mind'])
-        self.cancel_phrase_var = tk.StringVar(value=cancel_config.get('phrase', 'cancel'))
-        cancel_dropdown = ctk.CTkComboBox(cancel_row, variable=self.cancel_phrase_var,
-                                          values=cancel_options, width=150)
-        cancel_dropdown.pack(side='left', padx=(0, 10))
+        cancel_row.pack(fill='x', padx=15, pady=(0, 5))
+        ctk.CTkLabel(cancel_row, text="Cancel words:", width=180, anchor='w').pack(side='left')
+        cancel_words = ww_config.get('cancel_words', ['cancel', 'cancel dictation', 'abort'])
+        self.cancel_words_var = tk.StringVar(value=', '.join(cancel_words))
+        ctk.CTkEntry(cancel_row, textvariable=self.cancel_words_var, width=300).pack(side='left')
+        ctk.CTkLabel(cancel_row, text="(discard current dictation)",
+                     text_color="gray").pack(side='left', padx=(5, 0))
 
-        # Pause word
-        pause_config = ww_config.get('pause_word', {})
+        # Pause words
         pause_row = ctk.CTkFrame(wake_frame, fg_color="transparent")
-        pause_row.pack(fill='x', padx=15, pady=(0, 12))
-        
-        self.pause_word_enabled_var = tk.BooleanVar(value=pause_config.get('enabled', False))
-        ctk.CTkCheckBox(pause_row, text="Pause word:", variable=self.pause_word_enabled_var,
-                       width=120).pack(side='left')
-        
-        pause_options = pause_config.get('phrase_options', ['pause', 'hold on', 'wait'])
-        self.pause_phrase_var = tk.StringVar(value=pause_config.get('phrase', 'pause'))
-        pause_dropdown = ctk.CTkComboBox(pause_row, variable=self.pause_phrase_var,
-                                         values=pause_options, width=150)
-        pause_dropdown.pack(side='left', padx=(0, 10))
+        pause_row.pack(fill='x', padx=15, pady=(0, 5))
+        ctk.CTkLabel(pause_row, text="Pause words:", width=180, anchor='w').pack(side='left')
+        pause_words = ww_config.get('pause_words', ['pause', 'hold on', 'wait'])
+        self.pause_words_var = tk.StringVar(value=', '.join(pause_words))
+        ctk.CTkEntry(pause_row, textvariable=self.pause_words_var, width=300).pack(side='left')
+        ctk.CTkLabel(pause_row, text="(reset silence timer)",
+                     text_color="gray").pack(side='left', padx=(5, 0))
 
-        # Dictation Mode Timeouts section
-        modes_label = ctk.CTkLabel(wake_frame, text="Dictation Mode Timeouts", 
-                                   font=ctk.CTkFont(size=13, weight="bold"))
-        modes_label.pack(anchor='w', padx=15, pady=(5, 8))
-        
-        modes_config = ww_config.get('modes', {})
-        
-        # Dictate timeout
-        dictate_row = ctk.CTkFrame(wake_frame, fg_color="transparent")
-        dictate_row.pack(fill='x', padx=15, pady=(0, 5))
-        ctk.CTkLabel(dictate_row, text="\"dictate\":", width=100, anchor='w').pack(side='left')
-        self.dictate_timeout_var = tk.DoubleVar(value=modes_config.get('dictate', {}).get('silence_timeout', 0.6))
-        ctk.CTkEntry(dictate_row, textvariable=self.dictate_timeout_var, width=60).pack(side='left', padx=(0, 5))
-        ctk.CTkLabel(dictate_row, text="sec", width=30).pack(side='left')
-
-        # Short dictate timeout
-        short_row = ctk.CTkFrame(wake_frame, fg_color="transparent")
-        short_row.pack(fill='x', padx=15, pady=(0, 5))
-        ctk.CTkLabel(short_row, text="\"short dictate\":", width=100, anchor='w').pack(side='left')
-        self.short_timeout_var = tk.DoubleVar(value=modes_config.get('short_dictate', {}).get('silence_timeout', 0.4))
-        ctk.CTkEntry(short_row, textvariable=self.short_timeout_var, width=60).pack(side='left', padx=(0, 5))
-        ctk.CTkLabel(short_row, text="sec", width=30).pack(side='left')
-
-        # Long dictate timeout
-        long_row = ctk.CTkFrame(wake_frame, fg_color="transparent")
-        long_row.pack(fill='x', padx=15, pady=(0, 12))
-        ctk.CTkLabel(long_row, text="\"long dictate\":", width=100, anchor='w').pack(side='left')
-        self.long_timeout_var = tk.DoubleVar(value=modes_config.get('long_dictate', {}).get('silence_timeout', 60.0))
-        ctk.CTkEntry(long_row, textvariable=self.long_timeout_var, width=60).pack(side='left', padx=(0, 5))
-        ctk.CTkLabel(long_row, text="sec (requires end word)", text_color="gray").pack(side='left')
+        # Resume words
+        resume_row = ctk.CTkFrame(wake_frame, fg_color="transparent")
+        resume_row.pack(fill='x', padx=15, pady=(0, 12))
+        ctk.CTkLabel(resume_row, text="Resume words:", width=180, anchor='w').pack(side='left')
+        resume_words = ww_config.get('resume_words', ['resume', 'continue', 'go on'])
+        self.resume_words_var = tk.StringVar(value=', '.join(resume_words))
+        ctk.CTkEntry(resume_row, textvariable=self.resume_words_var, width=300).pack(side='left')
+        ctk.CTkLabel(resume_row, text="(not yet active)",
+                     text_color="gray").pack(side='left', padx=(5, 0))
 
         # Test/Debug button
         debug_row = ctk.CTkFrame(wake_frame, fg_color="transparent")
@@ -1287,35 +1267,14 @@ class SettingsWindow:
         ww_config = self.app.config.get('wake_word_config', {})
         if "Advanced" in self.built_tabs:
             ww_config['phrase'] = self.wake_phrase_var.get()
-            ww_config['end_word'] = {
-                'enabled': self.end_word_enabled_var.get(),
-                'phrase': self.end_phrase_var.get(),
-                'phrase_options': ww_config.get('end_word', {}).get('phrase_options', [])
-            }
-            ww_config['cancel_word'] = {
-                'enabled': self.cancel_word_enabled_var.get(),
-                'phrase': self.cancel_phrase_var.get(),
-                'phrase_options': ww_config.get('cancel_word', {}).get('phrase_options', [])
-            }
-            ww_config['pause_word'] = {
-                'enabled': self.pause_word_enabled_var.get(),
-                'phrase': self.pause_phrase_var.get(),
-                'phrase_options': ww_config.get('pause_word', {}).get('phrase_options', [])
-            }
-            ww_config['modes'] = {
-                'dictate': {
-                    'silence_timeout': self.dictate_timeout_var.get(),
-                    'require_end_word': False
-                },
-                'short_dictate': {
-                    'silence_timeout': self.short_timeout_var.get(),
-                    'require_end_word': False
-                },
-                'long_dictate': {
-                    'silence_timeout': self.long_timeout_var.get(),
-                    'require_end_word': True
-                }
-            }
+            ww_config['quick_silence_timeout'] = float(self.quick_timeout_var.get())
+            ww_config['end_words'] = [w.strip() for w in self.end_words_var.get().split(',') if w.strip()]
+            ww_config['cancel_words'] = [w.strip() for w in self.cancel_words_var.get().split(',') if w.strip()]
+            ww_config['pause_words'] = [w.strip() for w in self.pause_words_var.get().split(',') if w.strip()]
+            ww_config['resume_words'] = [w.strip() for w in self.resume_words_var.get().split(',') if w.strip()]
+            # Remove old-format keys if they exist
+            for old_key in ('end_word', 'cancel_word', 'pause_word', 'modes'):
+                ww_config.pop(old_key, None)
         # Apply manual threshold if in manual mode
         threshold_mode = self._get_var('threshold_mode_var', 'threshold_mode', 'auto')
         if threshold_mode == 'manual':
