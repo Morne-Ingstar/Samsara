@@ -1,92 +1,57 @@
-# 🚀 QUICK START - Voice Commands
+# Quick Start
 
-## Test in 5 Minutes!
+## Download & Run (Windows)
 
-### 1. Restart the App
+1. Go to the [latest release](https://github.com/Morne-Ingstar/Samsara/releases/latest)
+2. Download **Samsara-Windows-v0.9.3.7z**
+3. Extract anywhere, double-click **Samsara.exe**
+4. The setup wizard picks your mic and downloads the AI model
+
+NVIDIA GPU recommended (~300ms transcription). Works on CPU too, just slower.
+
+## From Source
+
+```bash
+git clone https://github.com/Morne-Ingstar/Samsara.git
+cd Samsara
+pip install -r requirements.txt
+python dictation.py
 ```
-Close dictation app if running
-Run: python dictation.py
-```
 
-### 2. Wait for Model
-Look for this in console:
-```
-✓ Loaded 44 voice commands
-Model loaded! (cpu)
-Ready for dictation.
-```
+## Your First Commands
 
-### 3. Test Basic Dictation (Still Works!)
-- Hold **Ctrl+Shift**
-- Say: "Testing one two three"
-- Release
-- Text should paste ✅
+Once running, Samsara sits in your system tray (bottom-right, near the clock).
 
-### 4. Test Your First Command
-- Hold **Ctrl+Shift**
-- Say: "new tab"
-- Release
-- Browser should open new tab ✅
+**Hold-to-dictate:** Hold Ctrl+Shift, speak, release. Text appears at your cursor.
 
-### 5. Test Arc Raiders Commands
+**Voice commands:** Say "Jarvis" followed by a command:
 
-**In any window:**
-- Say: "hold forward"  → W key holds down
-- Say: "release all"   → W key releases
-- Say: "press e"       → Single E press
-- Say: "press space"   → Single spacebar
+| Try saying | What happens |
+|------------|-------------|
+| "Jarvis, open Chrome" | Launches Chrome |
+| "Jarvis, take a screenshot" | Opens snip tool |
+| "Jarvis, snap left" | Snaps window to left half |
+| "Jarvis, where is GitHub" | Finds and switches to your GitHub tab |
+| "Jarvis, go to YouTube" | Opens YouTube in your browser |
+| "Jarvis, going dark" | Mutes + minimizes all + locks screen |
+| "Jarvis, volume up" | Raises system volume |
+| "Jarvis, dictate" | Starts hands-free dictation (say "over" to finish) |
+| "Jarvis, scratch that" | Undoes the last dictation |
 
-### 6. Test More Commands
+## Default Hotkeys
 
-**System:**
-- "show desktop"
-- "minimize"
-- "maximize"
+| Hotkey | Action |
+|--------|--------|
+| Ctrl+Shift | Hold to dictate |
+| Ctrl+Alt+D | Toggle long dictation |
+| Ctrl+Alt+W | Toggle wake word mode |
+| Escape | Cancel current recording |
 
-**Browser:**
-- "scroll down"
-- "scroll up"
-- "close tab"
+All hotkeys are configurable in Settings.
 
-**Text:**
-- "select all"
-- "copy"
-- "paste"
+## Next Steps
 
-### 7. Enable/Disable Commands
-
-Don't want commands? Turn them off:
-- Right-click tray icon → Settings
-- Uncheck "Enable voice commands"
-- Now it's pure dictation only
-
----
-
-## Troubleshooting
-
-### Command Didn't Work?
-- Check console - did it say "✓ Executed"?
-- Try exact phrase: "new tab" not "please open a new tab"
-- Make sure "Enable voice commands" is checked
-
-### Keys Stuck?
-- Say "release all" immediately
-- Always works, no matter what
-
-### Need More Help?
-- See TESTING_GUIDE.md for detailed testing
-- See VOICE_COMMANDS.md for all commands
-- See README.md for full documentation
-
----
-
-## You're All Set! 
-
-**What you can do now:**
-- ✅ Dictate text (like before)
-- ✅ Execute 44 voice commands
-- ✅ Play Arc Raiders hands-free
-- ✅ Control browser, apps, system
-- ✅ Add your own custom commands
-
-**Have fun! 🎮🎤**
+- Right-click the tray icon to explore settings
+- Edit `config.json` to add web shortcuts and audio device aliases
+- Drop Python files in `plugins/commands/` to create custom voice commands
+- See [VOICE_COMMANDS.md](VOICE_COMMANDS.md) for the full command reference
