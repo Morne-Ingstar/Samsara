@@ -71,7 +71,7 @@ try:
     import pyperclip
     import pyautogui
     HAS_CLIPBOARD = True
-except ImportError:
+except Exception:
     pyperclip = None
     pyautogui = None
     HAS_CLIPBOARD = False
