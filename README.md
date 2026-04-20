@@ -11,11 +11,11 @@
   <img src="demo.gif" alt="Samsara Demo" width="800">
 </p>
 
-> *"Jarvis, going dark."*
+> *"Jarvis, open Chrome."*
 >
-> Samsara mutes your system audio, minimizes every window, and locks your screen — all from one voice command.
+> Samsara hears the wake word, transcribes it locally via Whisper in ~300ms, and launches Chrome. No cloud, no internet, no typing.
 >
-> No mouse. No keyboard. No menus.
+> Or try: *"Jarvis, going dark"* — and it mutes your audio, minimizes every window, and locks your screen in one breath.
 
 ---
 
