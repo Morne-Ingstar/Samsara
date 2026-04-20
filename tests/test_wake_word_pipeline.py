@@ -19,17 +19,19 @@ class TestFindCommandBoundaries:
         executor = CommandExecutor(temp_commands_file)
         assert executor.find_command("copy") == "copy"
 
-    def test_command_embedded_in_sentence(self, temp_commands_file):
+    def test_command_embedded_in_sentence_not_matched(self, temp_commands_file):
+        """Command embedded mid-sentence no longer fires (prefix-only matcher)."""
         executor = CommandExecutor(temp_commands_file)
-        assert executor.find_command("please copy that") == "copy"
+        assert executor.find_command("please copy that") is None
 
     def test_command_at_start_of_sentence(self, temp_commands_file):
         executor = CommandExecutor(temp_commands_file)
         assert executor.find_command("copy this text") == "copy"
 
-    def test_command_at_end_of_sentence(self, temp_commands_file):
+    def test_command_at_end_of_sentence_not_matched(self, temp_commands_file):
+        """Command at the end of a longer utterance no longer fires."""
         executor = CommandExecutor(temp_commands_file)
-        assert executor.find_command("I want to copy") == "copy"
+        assert executor.find_command("I want to copy") is None
 
     def test_no_substring_match_on_prefix(self, temp_commands_file):
         """'copy' should NOT match 'copyright'."""
@@ -47,9 +49,15 @@ class TestFindCommandBoundaries:
         # 'new line' is a command; 'renew lineup' should not match
         assert executor.find_command("renew lineup") is None
 
-    def test_multi_word_command_boundary(self, temp_commands_file):
+    def test_multi_word_command_at_start(self, temp_commands_file):
+        """Multi-word command at the start still fires."""
         executor = CommandExecutor(temp_commands_file)
-        assert executor.find_command("please open chrome now") == "open chrome"
+        assert executor.find_command("open chrome now") == "open chrome"
+
+    def test_multi_word_command_not_embedded(self, temp_commands_file):
+        """Multi-word command mid-sentence no longer fires."""
+        executor = CommandExecutor(temp_commands_file)
+        assert executor.find_command("please open chrome now") is None
 
     def test_case_insensitive_boundary(self, temp_commands_file):
         executor = CommandExecutor(temp_commands_file)
