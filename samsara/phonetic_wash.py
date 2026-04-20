@@ -121,9 +121,12 @@ def apply_phonetic_wash(text):
 
         # Phrase corrections (longest keys first so "find the tab" beats
         # any shorter key that might prefix-match).
+        # Use word boundaries to prevent substring corruption
+        # (e.g. "fine tab" must not match inside "define tablet")
         for bad in sorted(_PHRASE_CORRECTIONS, key=len, reverse=True):
-            if bad in cleaned:
-                cleaned = cleaned.replace(bad, _PHRASE_CORRECTIONS[bad])
+            pattern = rf'\b{re.escape(bad)}\b'
+            if re.search(pattern, cleaned):
+                cleaned = re.sub(pattern, _PHRASE_CORRECTIONS[bad], cleaned)
 
         # Per-token word corrections.
         if cleaned:
