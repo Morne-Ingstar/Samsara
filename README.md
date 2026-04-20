@@ -41,8 +41,24 @@ your entire computer — hands-free.
 
 ### 🎙️ The Basics
 - **Hold-to-dictate** — hold Ctrl+Shift, speak, release. Text appears wherever your cursor is. ~300ms latency with NVIDIA GPU.
-- **Wake word** — say **"Jarvis"** (or your custom phrase) to activate commands without touching anything.
+- **Customizable wake word** — pick your own activation phrase. Ships with **"Jarvis"** as the default, or type any custom phrase in Settings.
 - **100+ voice commands** — apps, browser, media, window management, text editing, all customizable.
+
+**Popular wake word choices:**
+| Wake word | Vibe |
+|-----------|------|
+| **Jarvis** | Iron Man's AI assistant (default) |
+| **Computer** | Star Trek bridge officer energy |
+| **Friday** | Tony Stark's second AI |
+| **Oracle** | All-knowing, mystical |
+| **Cortana** | Halo's legendary AI |
+| **Samwise** | Loyal companion who gets things done |
+| **Alfred** | Batman's indispensable butler |
+| **Athena** | Greek goddess of wisdom and strategy |
+| **Bishop** | Aliens — calm under pressure |
+| **Satan** | For those who want their PC to answer to a higher power |
+
+Or type literally anything — "Hey Samsara", "Yo Dave", "Activate", whatever feels natural.
 
 ### ⚡ The Impressive Stuff
 
