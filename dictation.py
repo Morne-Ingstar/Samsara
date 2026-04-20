@@ -146,6 +146,7 @@ from samsara.wake_word_matcher import match_wake_phrase
 from samsara.wake_corrections import apply_corrections as apply_wake_corrections, was_corrected
 from samsara.command_parser import parse_wake_command, normalize_command_text, strip_wake_echoes
 from samsara import plugin_commands as _plugin_commands
+from samsara.command_registry import CommandMatcher
 from samsara.constants import (
     MODEL_SAMPLE_RATE, DEFAULT_CAPTURE_RATE, PREBUFFER_SECONDS,
     DEFAULT_SPEECH_THRESHOLD, DEFAULT_MIN_SPEECH_DURATION, DEFAULT_SILENCE_TIMEOUT,
@@ -264,6 +265,15 @@ class CommandExecutor:
             print(f"[PLUGINS] Failed to load plugins: {e}")
         unique = len({id(entry) for entry in _plugin_commands._REGISTRY.values()})
         print(f"[PLUGINS] Loaded {unique} plugin commands")
+
+        # Unified matcher: same class as samsara/commands.py so runtime and
+        # tests go through identical longest-match logic.
+        self._matcher = CommandMatcher()
+        self._matcher.load_builtins(self.commands)
+        self._matcher.load_plugins(_plugin_commands._REGISTRY)
+        self._matcher.freeze()
+        self._matcher.detect_collisions()
+        _plugin_commands.set_shared_matcher(self._matcher)
         
         # Key mapping for pynput
         self.key_map = {
@@ -414,32 +424,9 @@ class CommandExecutor:
             return False
     
     def find_command(self, text):
-        """Check if transcribed text matches a command"""
-        text_lower = text.lower().strip()
-        
-        # Exact match first
-        if text_lower in self.commands:
-            return text_lower
-        
-        # Check for partial matches - command must be at start or end of text
-        # This prevents false positives
-        for cmd_name in self.commands:
-            # Command at the start
-            if text_lower.startswith(cmd_name + " ") or text_lower.startswith(cmd_name):
-                return cmd_name
-            # Command at the end
-            if text_lower.endswith(" " + cmd_name) or text_lower.endswith(cmd_name):
-                return cmd_name
-            # Exact match in the middle with spaces around it
-            if f" {cmd_name} " in f" {text_lower} ":
-                return cmd_name
-
-        # Plugin commands -- lower priority than built-ins on name conflict.
-        plugin_entry, _remainder = _plugin_commands.find_command(text)
-        if plugin_entry is not None:
-            return plugin_entry['phrase']
-
-        return None
+        """Return the canonical phrase of the best matching command, or None."""
+        entry, _remainder = self._matcher.match(text)
+        return entry.phrase if entry is not None else None
     
     def process_text(self, text, app_instance=None, force_commands=False):
         """Process transcribed text - check for command or return text for dictation
@@ -492,30 +479,34 @@ class CommandExecutor:
             if app_instance and not app_instance.command_mode_enabled:
                 return text, False
 
-        # Try to find and execute a command
-        command = self.find_command(text)
-        if command:
-            if command in self.commands:
-                cmd = self.commands[command]
-                if cmd.get('type') == 'method':
-                    method_name = cmd.get('method')
-                    if app_instance and method_name and hasattr(app_instance, method_name):
-                        try:
-                            getattr(app_instance, method_name)()
-                            return command, True
-                        except Exception as e:
-                            print(f"[ERROR] method '{method_name}' failed: {e}")
-                            return command, False
-                    print(f"[WARN] method '{method_name}' not found on app")
-                    return command, False
-                success = self.execute_command(command)
-            else:
-                print(f"[PLUGIN] Executing: {command}")
-                _phrase, success = _plugin_commands.execute_command(text, app=app_instance)
-            return command, success
+        # Unified matcher: longest-match across built-ins + plugins.
+        entry, remainder = self._matcher.match(text)
+        if entry is None:
+            return text, False
 
-        # Not a command, return text for dictation
-        return text, False
+        if entry.source == 'plugin':
+            print(f"[PLUGIN] Executing: {entry.phrase}")
+            try:
+                success = bool(entry.handler(app_instance, remainder))
+            except Exception as e:
+                print(f"[ERROR] Plugin '{entry.phrase}' failed: {e}")
+                success = False
+            return entry.phrase, success
+
+        if entry.cmd_type == 'method':
+            method_name = entry.data.get('method')
+            if app_instance and method_name and hasattr(app_instance, method_name):
+                try:
+                    getattr(app_instance, method_name)()
+                    return entry.phrase, True
+                except Exception as e:
+                    print(f"[ERROR] method '{method_name}' failed: {e}")
+                    return entry.phrase, False
+            print(f"[WARN] method '{method_name}' not found on app")
+            return entry.phrase, False
+
+        success = self.execute_command(entry.phrase)
+        return entry.phrase, success
 
 
 
