@@ -160,6 +160,7 @@ from samsara.command_parser import parse_wake_command, normalize_command_text, s
 from samsara.phonetic_wash import apply_phonetic_wash
 from samsara import plugin_commands as _plugin_commands
 from samsara.command_registry import CommandMatcher
+from samsara.handlers import CommandContext, get_handler
 from samsara.constants import (
     MODEL_SAMPLE_RATE, DEFAULT_CAPTURE_RATE, PREBUFFER_SECONDS,
     DEFAULT_SPEECH_THRESHOLD, DEFAULT_MIN_SPEECH_DURATION, DEFAULT_SILENCE_TIMEOUT,
@@ -332,106 +333,39 @@ class CommandExecutor:
         # For single character keys
         return key_str.lower() if len(key_str) == 1 else key_str
     
-    def execute_command(self, command_name):
-        """Execute a voice command by name"""
+    def _build_context(self, app_instance=None):
+        """Build a CommandContext for the handler registry.
+
+        app_instance is optional because the in-app executor's execute_command
+        is called from two places: directly (no app hook needed for most
+        types) and through process_text (which has an app_instance to pass
+        down for method-type commands).
+        """
+        return CommandContext(
+            keyboard_controller=self.keyboard_controller,
+            mouse_controller=self.mouse_controller,
+            held_keys=self.held_keys,
+            key_map=self.key_map,
+            app=app_instance,
+        )
+
+    def execute_command(self, command_name, app_instance=None):
+        """Execute a voice command by name via the handler registry."""
         if command_name not in self.commands:
             return False
-        
+
         cmd = self.commands[command_name]
         cmd_type = cmd.get('type')
-        
+        handler = get_handler(cmd_type)
+        if handler is None:
+            print(f"[WARN] Unknown command type: {cmd_type}")
+            return False
+
         try:
-            if cmd_type == 'hotkey':
-                # Execute hotkey combination
-                keys = [self.get_key(k) for k in cmd['keys']]
-                for key in keys[:-1]:
-                    self.keyboard_controller.press(key)
-                self.keyboard_controller.press(keys[-1])
-                self.keyboard_controller.release(keys[-1])
-                for key in reversed(keys[:-1]):
-                    self.keyboard_controller.release(key)
+            success = handler.execute(cmd, self._build_context(app_instance))
+            if success:
                 print(f"[OK] Executed: {command_name}")
-                return True
-            
-            elif cmd_type == 'press':
-                # Single key press
-                key = self.get_key(cmd['key'])
-                self.keyboard_controller.press(key)
-                self.keyboard_controller.release(key)
-                print(f"[OK] Pressed: {cmd['key']}")
-                return True
-            
-            elif cmd_type == 'key_down':
-                # Hold key down
-                key = self.get_key(cmd['key'])
-                self.keyboard_controller.press(key)
-                self.held_keys[cmd['key']] = key
-                print(f"[OK] Holding: {cmd['key']}")
-                return True
-            
-            elif cmd_type == 'key_up':
-                # Release held key
-                key_str = cmd['key']
-                if key_str in self.held_keys:
-                    self.keyboard_controller.release(self.held_keys[key_str])
-                    del self.held_keys[key_str]
-                    print(f"[OK] Released: {key_str}")
-                return True
-            
-            elif cmd_type == 'release_all':
-                # Release all held keys
-                for key in self.held_keys.values():
-                    self.keyboard_controller.release(key)
-                count = len(self.held_keys)
-                self.held_keys.clear()
-                print(f"[OK] Released {count} held keys")
-                return True
-            
-            elif cmd_type == 'mouse':
-                # Mouse actions
-                action = cmd.get('action')
-                if action == 'click':
-                    button = Button.left if cmd.get('button') == 'left' else Button.right
-                    self.mouse_controller.click(button)
-                    print(f"[OK] Mouse {cmd.get('button')} click")
-                elif action == 'double_click':
-                    self.mouse_controller.click(Button.left, 2)
-                    print(f"[OK] Mouse double click")
-                return True
-            
-            elif cmd_type == 'launch':
-                # Launch application (cross-platform)
-                target = cmd['target']
-                try:
-                    if sys.platform == 'win32':
-                        subprocess.Popen(f'start "" "{target}"', shell=True)
-                    elif sys.platform == 'darwin':  # macOS
-                        subprocess.Popen(['open', target])
-                    else:  # Linux
-                        subprocess.Popen(['xdg-open', target])
-                    print(f"[OK] Launching: {target}")
-                except Exception as e:
-                    print(f"[ERROR] Failed to launch {target}: {e}")
-                return True
-
-            elif cmd_type == 'text':
-                # Insert text (for punctuation, snippets, etc.)
-                text_to_insert = cmd.get('text', '')
-                if text_to_insert:
-                    with _clipboard_lock:
-                        saved = _save_clipboard_win32()
-                        pyperclip.copy(text_to_insert)
-                        time.sleep(0.02)
-                        pyautogui.hotkey('ctrl', 'v')
-                        time.sleep(0.4)  # Increased delay for slow apps
-                        _restore_clipboard_win32(saved)
-                    print(f"[OK] Inserted: {text_to_insert}")
-                return True
-
-            else:
-                print(f"[WARN] Unknown command type: {cmd_type}")
-                return False
-                
+            return success
         except Exception as e:
             print(f"[ERROR] Command execution error: {e}")
             return False
@@ -510,19 +444,9 @@ class CommandExecutor:
                 success = False
             return entry.phrase, success
 
-        if entry.cmd_type == 'method':
-            method_name = entry.data.get('method')
-            if app_instance and method_name and hasattr(app_instance, method_name):
-                try:
-                    getattr(app_instance, method_name)()
-                    return entry.phrase, True
-                except Exception as e:
-                    print(f"[ERROR] method '{method_name}' failed: {e}")
-                    return entry.phrase, False
-            print(f"[WARN] method '{method_name}' not found on app")
-            return entry.phrase, False
-
-        success = self.execute_command(entry.phrase)
+        # All built-in types route through execute_command -> handler registry.
+        # app_instance is forwarded so MethodHandler can dispatch type=method.
+        success = self.execute_command(entry.phrase, app_instance=app_instance)
         return entry.phrase, success
 
 
