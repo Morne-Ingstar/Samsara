@@ -17,7 +17,7 @@ DEFAULT_MIN_SPEECH_DURATION = 0.3  # seconds of speech before transcription
 DEFAULT_SILENCE_TIMEOUT = 2.0      # seconds of silence to end recording
 
 # Wake word defaults (overridable via config)
-WAKE_DETECTION_SILENCE = 0.6        # seconds of silence during wake word listening
+WAKE_DETECTION_SILENCE = 0.8        # seconds of silence during wake word listening
 WAKE_COMMAND_TIMEOUT = 5.0         # seconds to wait for command after wake word
 
 # Tray icon animation speeds
