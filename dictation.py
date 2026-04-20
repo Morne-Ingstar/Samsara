@@ -145,6 +145,7 @@ from samsara.ui.listening_indicator import ListeningIndicator
 from samsara.wake_word_matcher import match_wake_phrase
 from samsara.wake_corrections import apply_corrections as apply_wake_corrections, was_corrected
 from samsara.command_parser import parse_wake_command, normalize_command_text, strip_wake_echoes
+from samsara.phonetic_wash import apply_phonetic_wash
 from samsara import plugin_commands as _plugin_commands
 from samsara.command_registry import CommandMatcher
 from samsara.constants import (
@@ -479,8 +480,12 @@ class CommandExecutor:
             if app_instance and not app_instance.command_mode_enabled:
                 return text, False
 
-        # Unified matcher: longest-match across built-ins + plugins.
-        entry, remainder = self._matcher.match(text)
+        # Wash known mis-transcriptions for matching only. Dictation fallthrough
+        # still uses the ORIGINAL text so we don't silently rewrite the user's
+        # words when nothing matched (e.g. the sentence "it was a fine day"
+        # should not become "it was a find day" in typed output).
+        match_text = apply_phonetic_wash(text)
+        entry, remainder = self._matcher.match(match_text)
         if entry is None:
             return text, False
 
@@ -2265,6 +2270,11 @@ class DictationApp:
                     print(f"[ECHO] Stripped {echo_count} echo(es) of '{wake_phrase}' from command")
                     self._emit_wake_trace({"stage": "echo_strip", "removed": echo_count,
                                            "cleaned": command_text})
+
+                # Phonetic wash: undo Whisper's known mis-transcriptions of
+                # command phrases (fine->find, get hub->github, mike->mic, etc.)
+                # BEFORE parse_wake_command and the matcher see the text.
+                command_text = apply_phonetic_wash(command_text)
 
                 self._emit_wake_trace({"stage": "command_extract",
                                        "from_index": match_index, "command": command_text,
