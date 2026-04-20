@@ -116,6 +116,16 @@ from pynput.mouse import Button, Controller as MouseController
 import pyperclip
 import pyautogui
 from faster_whisper import WhisperModel
+
+# torch powers Silero VAD for real-time speech gating in the wake-word audio
+# callback. It's already a transitive dependency of faster-whisper, but we
+# guard the import so the app still starts if a user has a stripped install.
+try:
+    import torch
+    _TORCH_AVAILABLE = True
+except ImportError:
+    torch = None
+    _TORCH_AVAILABLE = False
 import pystray
 from PIL import Image, ImageDraw
 import json
@@ -634,8 +644,11 @@ class DictationApp:
         self.speech_buffer = []
         self.buffer_lock = threading.Lock()
         self.is_speaking = False
-        self._speech_onset_count = 0  # consecutive chunks above threshold (debounce)
-        self._speech_onset_pending = []  # chunks during debounce (kept so we don't lose speech start)
+        # Silero VAD -- real-time speech gate for the wake-word audio callback.
+        # When available, it replaces the old RMS debounce entirely. When it's
+        # not (torch missing or download blocked), we fall back to RMS.
+        self._vad_model = None
+        self._vad_available = False
         self.wake_word_listening = False  # Currently listening for wake word
         self.wake_word_triggered = False  # Wake word detected, ready for command
         self._wake_trace_callback = None  # Optional: debug window registers here
@@ -1382,6 +1395,11 @@ class DictationApp:
             self.model_loaded = True
             self.loading_model = False
             print(f"[OK] Model loaded in {load_time:.1f}s ({device}, {compute_type})")
+
+            # Load Silero VAD for real-time speech gating (async-safe: if this
+            # fails, the wake callback falls back to RMS).
+            self._load_vad_model()
+
             print("Ready for dictation.")
             
             # Auto-start modes that require always-on listening
@@ -1923,6 +1941,56 @@ class DictationApp:
         if hasattr(self, 'listening_indicator'):
             self._schedule_ui(self.listening_indicator.set_listening, False)
 
+    def _load_vad_model(self):
+        """Load Silero VAD for real-time speech detection in the wake callback.
+
+        Runs once after Whisper loads. Any failure (no torch, offline, hub
+        cache miss) sets _vad_available=False and the callback falls back to
+        RMS. Safe to call multiple times -- a successful prior load short-
+        circuits.
+        """
+        if self._vad_available and self._vad_model is not None:
+            return
+        if not _TORCH_AVAILABLE:
+            print("[VAD] torch unavailable, falling back to RMS speech detection")
+            return
+        try:
+            model, _ = torch.hub.load(
+                'snakers4/silero-vad', 'silero_vad',
+                force_reload=False, trust_repo=True,
+            )
+            model.eval()
+            self._vad_model = model
+            self._vad_available = True
+            print("[VAD] Silero VAD loaded for real-time speech detection")
+        except Exception as e:
+            self._vad_model = None
+            self._vad_available = False
+            print(f"[VAD] Silero VAD not available, falling back to RMS: {e}")
+
+    def _vad_is_speech(self, chunk_float32):
+        """Return True if the chunk contains human speech.
+
+        chunk_float32 is the already-flattened mono capture-rate chunk from the
+        audio callback. Caller guarantees _vad_available; we resample to 16kHz,
+        unsqueeze to (1, N) so Silero sees a batched tensor, and run inference
+        under torch.no_grad so we don't build an autograd graph every 100ms
+        (that would leak memory within the hour).
+        """
+        chunk_16k = resample_audio(chunk_float32, self.capture_rate, 16000)
+        tensor = torch.from_numpy(chunk_16k).unsqueeze(0)
+        with torch.no_grad():
+            speech_prob = self._vad_model(tensor, 16000).item()
+        return speech_prob > 0.5
+
+    def _vad_reset(self):
+        """Clear Silero VAD internal state between utterances."""
+        if self._vad_available and self._vad_model is not None:
+            try:
+                self._vad_model.reset_states()
+            except Exception as e:
+                print(f"[VAD] reset_states failed: {e}")
+
     def wake_word_audio_callback(self, indata, frames, time_info, status):
         """Callback for wake word listening"""
         try:
@@ -1966,39 +2034,31 @@ class DictationApp:
                 # Asleep / command_window -- use wake detection silence
                 silence_threshold = audio_config.get('wake_detection_silence', WAKE_DETECTION_SILENCE)
             
-            if rms > speech_threshold:
-                if self.is_speaking:
-                    # Already confirmed speech — keep buffering
-                    self.silence_start = None
-                    with self.buffer_lock:
-                        self.speech_buffer.append(audio_chunk)
-                        # Cap buffer at 5 seconds to prevent unbounded accumulation
-                        if len(self.speech_buffer) >= 50:  # 50 chunks × 100ms = 5s
-                            buffer_copy = self.speech_buffer.copy()
-                            self.speech_buffer = []
-                            self.is_speaking = False
-                            self._speech_onset_count = 0
-                            threading.Thread(
-                                target=self.process_wake_word_buffer,
-                                args=(buffer_copy,), daemon=True
-                            ).start()
-                else:
-                    # Not yet speaking — require 3 consecutive loud chunks
-                    # to filter fan noise / ambient hum from real speech
-                    self._speech_onset_count += 1
-                    self._speech_onset_pending.append(audio_chunk)
-                    if self._speech_onset_count >= 3:  # 300ms of sustained energy
-                        self.is_speaking = True
-                        self.silence_start = None
-                        with self.buffer_lock:
-                            # Prepend the debounce chunks so we don't lose speech start
-                            self.speech_buffer.extend(self._speech_onset_pending)
-                        self._speech_onset_pending = []
+            # Decide whether this chunk contains human speech. VAD is the
+            # primary path; RMS is a fallback when torch/Silero isn't ready.
+            # RMS stays available above for the calibration UI and manual mode.
+            if self._vad_available:
+                try:
+                    is_speech = self._vad_is_speech(audio_chunk)
+                except Exception as e:
+                    # A VAD hiccup shouldn't silence the mic -- degrade to RMS
+                    # for this chunk and log once.
+                    print(f"[VAD] inference error, falling back to RMS: {e}")
+                    is_speech = rms > speech_threshold
             else:
-                # Below threshold — reset onset counter
-                self._speech_onset_count = 0
-                self._speech_onset_pending = []
-                # Silence detected
+                is_speech = rms > speech_threshold
+
+            if is_speech:
+                # Human speech detected -- buffer directly. VAD already filtered
+                # fan/hum/ambient, so no debounce is needed.
+                self.is_speaking = True
+                self.silence_start = None
+                with self.buffer_lock:
+                    self.speech_buffer.append(audio_chunk)
+            else:
+                # Silence (or non-speech noise). Only meaningful if we were
+                # already speaking -- otherwise we'd spin the silence timer on
+                # an empty buffer.
                 if self.is_speaking:
                     with self.buffer_lock:
                         self.speech_buffer.append(audio_chunk)
@@ -2006,29 +2066,23 @@ class DictationApp:
                     if self.silence_start is None:
                         self.silence_start = time.time()
                     elif time.time() - self.silence_start >= silence_threshold:
-                        # Enough silence - check if we have enough speech
+                        # Enough silence -- flush iff we collected enough speech.
                         with self.buffer_lock:
                             speech_duration = len(self.speech_buffer) * 0.1
-
                             if speech_duration >= min_speech:
                                 buffer_copy = self.speech_buffer.copy()
-                                self.speech_buffer = []
                             else:
                                 buffer_copy = None
-                                self.speech_buffer = []
+                            self.speech_buffer = []
 
+                        self.is_speaking = False
+                        self.silence_start = None
                         if buffer_copy is not None:
-                            self.is_speaking = False
-                            self.silence_start = None
-                            thread = threading.Thread(
+                            threading.Thread(
                                 target=self.process_wake_word_buffer,
                                 args=(buffer_copy,),
-                                daemon=True
-                            )
-                            thread.start()
-                        else:
-                            self.is_speaking = False
-                            self.silence_start = None
+                                daemon=True,
+                            ).start()
         except Exception as e:
             print(f"[ERROR] Audio callback exception: {e}")
     
@@ -2258,7 +2312,11 @@ class DictationApp:
             print(f"Wake word processing error: {e}")
             import traceback
             traceback.print_exc()
-    
+        finally:
+            # Clear Silero VAD internal state so the next utterance starts
+            # fresh. Without this, its rolling context bleeds between commands.
+            self._vad_reset()
+
     def _process_wake_command(self, text):
         """Route a wake word command based on parsed intent (4-state machine)."""
         # Transition to command_window while we parse
