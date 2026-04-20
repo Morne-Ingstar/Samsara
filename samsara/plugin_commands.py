@@ -38,6 +38,23 @@ logger = logging.getLogger(__name__)
 # Aliases are also keys in the registry (pointing to the same entry) for O(1) lookup.
 _REGISTRY = {}
 
+# Optional shared matcher. When set by a CommandExecutor at startup, find_command
+# delegates to its longest-match algorithm so standalone callers (e.g. external
+# helpers) see the same routing as the executor's own dispatch.
+_shared_matcher = None
+
+
+def set_shared_matcher(matcher):
+    """Register a CommandMatcher so find_command can delegate to it."""
+    global _shared_matcher
+    _shared_matcher = matcher
+
+
+def clear_shared_matcher():
+    """Drop the shared matcher reference (used by tests)."""
+    global _shared_matcher
+    _shared_matcher = None
+
 
 def command(phrase, aliases=None):
     """Decorator: register a function as a voice command.
@@ -61,19 +78,34 @@ def command(phrase, aliases=None):
 
 
 def find_command(text):
-    """Return (entry, remainder) if text matches a registered command, else (None, '').
+    """Return (entry, remainder) if text matches a registered plugin command, else (None, '').
 
-    Matching rules (same as the JSON command system):
-      - exact match
-      - text starts with phrase (remainder = rest of text)
-      - text ends with phrase (remainder = text before phrase)
-      - phrase appears as whole-word match in middle (remainder = text minus phrase)
+    When a shared matcher is installed, defers to it so longest-match and
+    built-in-priority rules apply. In that mode we still only return plugin
+    matches -- builtin hits map to (None, '') because this function is
+    plugin-scoped by contract.
+
+    Otherwise falls back to the legacy standalone matching (exact / startswith /
+    endswith / word-bounded middle) for callers that construct the registry
+    without an executor.
     """
     if not text:
         return None, ''
+
+    if _shared_matcher is not None:
+        entry, remainder = _shared_matcher.match(text)
+        if entry is None or entry.source != 'plugin':
+            return None, ''
+        # Reconstruct the legacy plugin-entry dict so callers that expect
+        # {'func', 'phrase', 'aliases'} keep working unchanged.
+        return {
+            'func': entry.handler,
+            'phrase': entry.phrase,
+            'aliases': entry.aliases,
+        }, remainder
+
     text_lower = text.lower().strip()
 
-    # Exact match
     if text_lower in _REGISTRY:
         return _REGISTRY[text_lower], ''
 

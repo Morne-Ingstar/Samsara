@@ -198,14 +198,17 @@ class TestCommandExecutor:
         assert executor.find_command("paste") == "paste"
         assert executor.find_command("unknown") is None
 
-    def test_find_command_partial(self, commands_file):
-        """Test finding command with partial match."""
+    def test_find_command_prefix_only(self, commands_file):
+        """Commands must be at the START of the text (token-prefix match)."""
         from samsara.commands import CommandExecutor
 
         executor = CommandExecutor(commands_file)
 
+        # Prefix: "copy that" -> "copy" (command at the start)
         assert executor.find_command("copy that") == "copy"
-        assert executor.find_command("please copy") == "copy"
+        # Suffix / embedded no longer match -- deliberate semantic change
+        # when the unified matcher was introduced to fix collision bugs.
+        assert executor.find_command("please copy") is None
 
     def test_process_text_command_mode_toggle(self, commands_file):
         """Test command mode toggle detection."""
