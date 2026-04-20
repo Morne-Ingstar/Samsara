@@ -93,8 +93,20 @@ def _check_single_instance():
         print(f"[WARN] Could not check for existing instance: {e}")
         return None
 
-# Acquire single-instance lock (must keep reference to prevent garbage collection)
-_instance_lock = _check_single_instance()
+# Single-instance lock is only meaningful when this file is run as the main
+# program. Acquiring it at import time blocks pytest (any import of dictation
+# triggers sys.exit(0) from _check_single_instance when a prior import already
+# holds the lock). The lock is acquired from the __main__ block below via
+# _acquire_instance_lock() -- the module-level name is kept so tests and
+# helpers can reason about it without triggering the check.
+_instance_lock = None
+
+
+def _acquire_instance_lock():
+    """Acquire the single-instance lock. Called from __main__ only."""
+    global _instance_lock
+    _instance_lock = _check_single_instance()
+    return _instance_lock
 
 # Fix OpenMP conflict between numpy and other libraries
 os.environ["KMP_DUPLICATE_LIB_OK"] = "TRUE"
@@ -3913,6 +3925,10 @@ class DictationApp:
 
 if __name__ == "__main__":
     # Console is already hidden at top of file
+
+    # Guard against double-launch. Must run before the splash / audio starts
+    # so a second invocation exits cleanly without grabbing resources.
+    _acquire_instance_lock()
 
     # Show splash screen during startup
     splash = SplashScreen()
