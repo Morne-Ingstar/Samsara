@@ -1,171 +1,161 @@
 # Samsara Architecture
 
-A quick overview of how Samsara works under the hood.
+## System Overview
 
-## System Diagram
+Samsara is a voice-controlled computing tool for Windows. It captures audio
+from the microphone, detects speech using Silero VAD, transcribes via Whisper,
+cleans the text through a phonetic wash layer, matches commands via a unified
+token-based registry, and dispatches actions.
 
-```mermaid
-flowchart TB
-    subgraph Input["Audio Input"]
-        MIC[Microphone]
-        SD[sounddevice]
-    end
-
-    subgraph Core["Core Engine"]
-        DA[DictationApp]
-        WHISPER[faster-whisper<br/>Speech Recognition]
-        CE[CommandExecutor]
-        PROC[Text Processor<br/>capitalize, numbers]
-    end
-
-    subgraph Modes["Capture Modes"]
-        HOLD[Hold Mode]
-        TOGGLE[Toggle Mode]
-        CONT[Continuous Mode]
-    end
-
-    subgraph WakeWord["Wake Word (optional overlay)"]
-        WAKE[Wake Word Listener]
-    end
-
-    subgraph Output["Output"]
-        PASTE[pyautogui<br/>Text Injection]
-        KEYS[pynput<br/>Keyboard/Mouse]
-        LAUNCH[subprocess<br/>App Launcher]
-    end
-
-    subgraph UI["User Interface"]
-        TRAY[System Tray<br/>pystray]
-        SETTINGS[SettingsWindow]
-        TRAINING[VoiceTrainingWindow]
-        HISTORY[HistoryWindow]
-        WIZARD[FirstRunWizard]
-    end
-
-    subgraph Storage["Data Storage"]
-        CONFIG[config.json]
-        COMMANDS[commands.json]
-        HIST_FILE[history.json]
-        TRAINING_DATA[training_data.json]
-    end
-
-    MIC --> SD
-    SD --> DA
-    DA --> WHISPER
-    WHISPER --> CE
-    CE -->|command| KEYS
-    CE -->|command| LAUNCH
-    WHISPER -->|dictation| PROC
-    PROC --> PASTE
-
-    DA --- HOLD
-    DA --- TOGGLE
-    DA --- CONT
-    DA --- WAKE
-
-    TRAY --> SETTINGS
-    TRAY --> TRAINING
-    TRAY --> HISTORY
-
-    SETTINGS --> CONFIG
-    CE --> COMMANDS
-    DA --> HIST_FILE
-    TRAINING --> TRAINING_DATA
-```
-
-## Component Overview
-
-| Component | File | Purpose |
-|-----------|------|---------|
-| **DictationApp** | `dictation.py` | Main orchestrator - manages recording, hotkeys, tray icon, and coordinates all other components |
-| **CommandExecutor** | `dictation.py` | Parses transcribed text, matches voice commands, executes actions (hotkeys, launches, mouse clicks) |
-| **SettingsWindow** | `dictation.py` | CustomTkinter UI for all configuration - hotkeys, sounds, commands, model selection |
-| **VoiceTrainingWindow** | `voice_training.py` | Microphone calibration, custom vocabulary, word corrections, initial prompts |
-| **HistoryWindow** | `dictation.py` | View/copy/clear past dictations and commands |
-| **FirstRunWizard** | `dictation.py` | Initial setup - mic selection, hotkey config, model choice |
-| **SplashScreen** | `dictation.py` | Loading screen shown during startup |
-
-## Data Flow
-
-### Speech Recognition Pipeline
+## Audio → Action Pipeline
 
 ```
-1. User speaks
-      │
-      ▼
-2. sounddevice captures audio (16kHz, mono, float32)
-      │
-      ▼
-3. Audio buffered as numpy array
-      │
-      ▼
-4. faster-whisper transcribes with VAD filter
-      │
-      ▼
-5. VoiceTrainingWindow.apply_corrections() fixes known errors
-      │
-      ▼
-6. CommandExecutor.process_text() checks for commands
-      │
-      ├──► Command found → Execute (hotkey/launch/mouse/etc)
-      │
-      └──► No command → process_transcription() → Paste text
+Microphone (sounddevice, capture at device native rate)
+  │
+  ├─ [Hold/Toggle mode] ──► Direct to Whisper on release/silence
+  │
+  └─ [Wake word mode] ──► Silero VAD (real-time, per-chunk)
+                              │
+                              ├─ No speech → discard (fans, ambient ignored)
+                              │
+                              └─ Speech detected → buffer until 0.8s silence
+                                    │
+                                    ▼
+                              Resample to 16kHz
+                                    │
+                                    ▼
+                              Whisper transcription (faster-whisper, CUDA)
+                                    │
+                                    ▼
+                              Wake corrections (charvis → jarvis)
+                                    │
+                                    ▼
+                              Wake phrase matching (token-aware boundaries)
+                                    │
+                                    ▼
+                              Echo stripping (duplicate wake words)
+                                    │
+                                    ▼
+                              Phonetic wash (fine tab → find tab,
+                                  punctuation stripping, symbol→word)
+                                    │
+                                    ▼
+                              CommandMatcher (token-based, longest-match)
+                                    │
+                                    ├─ Built-in → hotkey/launch/macro/text/method
+                                    ├─ Plugin → handler(app, remainder)
+                                    └─ No match → paste as dictated text
 ```
 
-### Capture Modes
-
-| Mode | Trigger | Behavior |
-|------|---------|----------|
-| **Hold** | Hold hotkey | Records while held, transcribes on release |
-| **Toggle** | Press hotkey | Press to start, press again to stop |
-| **Continuous** | Ctrl+Alt+D | Always listening, auto-transcribes on silence |
-
-### Wake Word (independent toggle)
-
-Wake word is a boolean setting (`wake_word_enabled`) that works alongside any capture mode.
-When enabled (Ctrl+Alt+W or tray checkbox), a background listener waits for the configured
-wake phrase, then processes commands or starts dictation. Hotkey recording still works
-normally -- the `_hotkey_recording` flag suppresses wake word processing during active recording.
-
-## Key Dependencies
-
-| Library | Purpose |
-|---------|---------|
-| `faster-whisper` | OpenAI Whisper implementation (GPU-accelerated) |
-| `sounddevice` | Cross-platform audio recording |
-| `pynput` | Global hotkey detection, keyboard/mouse control |
-| `pyautogui` | Text injection via clipboard paste |
-| `pystray` | System tray icon and menu |
-| `customtkinter` | Modern dark-themed UI widgets |
-| `numpy` | Audio buffer handling |
-
-## File Structure
+## State Machine (4 States)
 
 ```
-Samsara/
-├── dictation.py        # Main app + all UI classes
-├── voice_training.py   # Voice training module
-├── commands.json       # Voice command definitions
-├── config.json         # User settings (created on first run)
-├── history.json        # Dictation history (auto-created)
-├── sounds/             # WAV files for audio feedback
-├── Docs/               # User documentation
-└── _launcher.vbs       # Silent Windows launcher
+         wake word          "dictate"/"type"
+ASLEEP ──────────► COMMAND ──────────────────► LONG DICTATION
+                   WINDOW ──────────────────► QUICK DICTATION
+                     │         hotkey
+                     │
+                     └─► command executed → ASLEEP
+                     └─► 3s timeout → ASLEEP
 ```
 
-## Adding New Features
+| State | Trigger | Behavior |
+|-------|---------|----------|
+| Asleep | Default | VAD + wake word listener active |
+| Command Window | Wake word | 3s window for commands |
+| Quick Dictation | Hotkey or "type" | 0.8s silence auto-finishes |
+| Long Dictation | "dictate" | No timeout, say "over" to finish |
 
-**New voice command type:**
-1. Add handler in `CommandExecutor.execute_command()`
-2. Add UI fields in `SettingsWindow.open_command_editor()`
-3. Add save logic in the editor's `save_command()` function
+## Key Modules
 
-**New setting:**
-1. Add default in `DictationApp.load_config()`
-2. Add UI control in `SettingsWindow.__init__()`
-3. Save in `SettingsWindow.save_settings()`
+### Core
+| File | Purpose |
+|------|---------|
+| `dictation.py` (~3,800 lines) | DictationApp engine + in-app CommandExecutor |
+| `commands.json` | 104 built-in voice command definitions |
+| `voice_training.py` | Mic calibration, vocabulary, corrections |
 
-**New recording mode:**
-1. Add mode handling in `on_key_press()` / `on_key_release()`
-2. Create `start_X_mode()` and `stop_X_mode()` methods
-3. Add audio callback for the mode
+### Command System
+| File | Purpose |
+|------|---------|
+| `samsara/command_registry.py` | Unified CommandMatcher — token-based longest-match |
+| `samsara/commands.py` | Modular CommandExecutor (used by tests) |
+| `samsara/plugin_commands.py` | Plugin registry, @command decorator, load_plugins() |
+| `samsara/phonetic_wash.py` | Fixes Whisper misrecognitions before matching |
+
+### Audio
+| File | Purpose |
+|------|---------|
+| `samsara/calibration.py` | Auto-threshold via IQR outlier rejection |
+| `samsara/echo_cancel.py` | Frequency-domain AEC (FFT + WASAPI loopback) |
+| `samsara/constants.py` | Sample rates, thresholds, timing values |
+
+### Wake Word
+| File | Purpose |
+|------|---------|
+| `samsara/wake_word_matcher.py` | Token-aware wake phrase matching |
+| `samsara/wake_corrections.py` | Whisper misrecognition map for wake phrases |
+| `samsara/command_parser.py` | Intent routing (command vs dictation vs mode) |
+
+### UI (all in samsara/ui/)
+| File | Purpose |
+|------|---------|
+| `settings_window.py` | Settings UI (lazy tabs, staged building) |
+| `listening_indicator.py` | Always-on-top overlay (pulses teal when active) |
+| `wake_word_debug.py` | Debug window with trace pipeline |
+| `first_run_wizard.py` | Setup wizard |
+| `history_window.py` | Dictation history viewer |
+| `splash.py` | Splash screen |
+
+### Plugins (plugins/commands/)
+| File | Purpose |
+|------|---------|
+| `audio_switch.py` | "switch to speakers" — NirCmd device switching |
+| `web_shortcuts.py` | "go to youtube" — config-driven URL bookmarks |
+| `tab_finder.py` | "where is github" — browser tab search |
+| `macros.py` | "going dark" — multi-step workflows |
+| `quick_ask.py` | "ask claude" — IPC to ARC for AI queries |
+
+## Command Matching
+
+The CommandMatcher (`samsara/command_registry.py`) uses token-based
+longest-match semantics. At startup it loads all built-in commands and
+plugins, tokenizes every phrase, sorts by token count descending, and
+freezes the registry.
+
+Example: user says "find tab github"
+- Tokenized: ["find", "tab", "github"]
+- Matcher checks 3-token phrases first, then 2-token, then 1-token
+- "find tab" (2 tokens, plugin) matches before "find" (1 token, built-in)
+- Remainder: "github"
+
+This eliminates all prefix collisions by design.
+
+## Phonetic Wash
+
+Between Whisper output and the CommandMatcher sits a correction layer
+(`samsara/phonetic_wash.py`) that fixes known misrecognitions:
+
+- Phrase corrections: "fine tab" → "find tab", "get hub" → "github"
+- Word corrections: "mike" → "mic" (per-token, whole-word only)
+- Punctuation stripping: "refresh page." → "refresh page"
+- Symbol-to-word: "." → "period" (when entire text is a symbol)
+
+All corrections use word boundaries to prevent substring corruption.
+
+## Speech Detection
+
+Samsara uses Silero VAD (Voice Activity Detection) for real-time speech
+detection in wake word mode. Unlike RMS-based volume thresholds, VAD
+distinguishes human speech from fan noise, ambient hum, and other
+non-vocal sounds regardless of volume level.
+
+Falls back to RMS-based detection if torch is not available.
+
+## Threading Model
+
+- Audio callback: sounddevice callback thread
+- Transcription: new daemon thread per utterance
+- Command dispatch: inline on transcription thread
+- UI updates: marshalled via root.after(0, ...)
+- Whisper calls serialized by model_lock
