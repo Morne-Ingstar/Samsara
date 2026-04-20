@@ -634,6 +634,8 @@ class DictationApp:
         self.speech_buffer = []
         self.buffer_lock = threading.Lock()
         self.is_speaking = False
+        self._speech_onset_count = 0  # consecutive chunks above threshold (debounce)
+        self._speech_onset_pending = []  # chunks during debounce (kept so we don't lose speech start)
         self.wake_word_listening = False  # Currently listening for wake word
         self.wake_word_triggered = False  # Wake word detected, ready for command
         self._wake_trace_callback = None  # Optional: debug window registers here
@@ -1965,22 +1967,37 @@ class DictationApp:
                 silence_threshold = audio_config.get('wake_detection_silence', WAKE_DETECTION_SILENCE)
             
             if rms > speech_threshold:
-                # Speech detected
-                self.is_speaking = True
-                self.silence_start = None
-                with self.buffer_lock:
-                    self.speech_buffer.append(audio_chunk)
-                    # Cap buffer at 5 seconds to prevent unbounded accumulation
-                    # from background noise resetting the silence timer
-                    if len(self.speech_buffer) >= 50:  # 50 chunks × 100ms = 5s
-                        buffer_copy = self.speech_buffer.copy()
-                        self.speech_buffer = []
-                        self.is_speaking = False
-                        threading.Thread(
-                            target=self.process_wake_word_buffer,
-                            args=(buffer_copy,), daemon=True
-                        ).start()
+                if self.is_speaking:
+                    # Already confirmed speech — keep buffering
+                    self.silence_start = None
+                    with self.buffer_lock:
+                        self.speech_buffer.append(audio_chunk)
+                        # Cap buffer at 5 seconds to prevent unbounded accumulation
+                        if len(self.speech_buffer) >= 50:  # 50 chunks × 100ms = 5s
+                            buffer_copy = self.speech_buffer.copy()
+                            self.speech_buffer = []
+                            self.is_speaking = False
+                            self._speech_onset_count = 0
+                            threading.Thread(
+                                target=self.process_wake_word_buffer,
+                                args=(buffer_copy,), daemon=True
+                            ).start()
+                else:
+                    # Not yet speaking — require 3 consecutive loud chunks
+                    # to filter fan noise / ambient hum from real speech
+                    self._speech_onset_count += 1
+                    self._speech_onset_pending.append(audio_chunk)
+                    if self._speech_onset_count >= 3:  # 300ms of sustained energy
+                        self.is_speaking = True
+                        self.silence_start = None
+                        with self.buffer_lock:
+                            # Prepend the debounce chunks so we don't lose speech start
+                            self.speech_buffer.extend(self._speech_onset_pending)
+                        self._speech_onset_pending = []
             else:
+                # Below threshold — reset onset counter
+                self._speech_onset_count = 0
+                self._speech_onset_pending = []
                 # Silence detected
                 if self.is_speaking:
                     with self.buffer_lock:
