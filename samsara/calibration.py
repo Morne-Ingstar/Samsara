@@ -6,7 +6,10 @@ using IQR-based outlier rejection (Tukey's fences).
 """
 
 import numpy as np
-import sounddevice as sd
+try:
+    import sounddevice as sd
+except Exception:
+    sd = None
 import time
 
 from samsara.constants import (
@@ -29,6 +32,9 @@ def measure_ambient_rms(device_id, capture_rate, duration=CALIBRATION_DURATION,
     Returns:
         list of float RMS values, one per chunk.
     """
+    if sd is None:
+        print("[CAL] sounddevice not available — cannot measure ambient RMS")
+        return []
     blocksize = int(capture_rate * chunk_ms / 1000)
     rms_values = []
 
