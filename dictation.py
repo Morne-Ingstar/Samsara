@@ -1970,6 +1970,16 @@ class DictationApp:
                 self.silence_start = None
                 with self.buffer_lock:
                     self.speech_buffer.append(audio_chunk)
+                    # Cap buffer at 5 seconds to prevent unbounded accumulation
+                    # from background noise resetting the silence timer
+                    if len(self.speech_buffer) >= 50:  # 50 chunks × 100ms = 5s
+                        buffer_copy = self.speech_buffer.copy()
+                        self.speech_buffer = []
+                        self.is_speaking = False
+                        threading.Thread(
+                            target=self.process_wake_word_buffer,
+                            args=(buffer_copy,), daemon=True
+                        ).start()
             else:
                 # Silence detected
                 if self.is_speaking:
