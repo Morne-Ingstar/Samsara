@@ -9,11 +9,10 @@ import time
 from pathlib import Path
 from typing import Any, Callable, Dict, Optional, Tuple
 
-from . import platform as plat
 from . import plugin_commands as _plugin_commands
 from .command_registry import CommandMatcher
+from .handlers import CommandContext, get_handler
 from .phonetic_wash import apply_phonetic_wash
-from .clipboard import clipboard_lock as _clipboard_lock, save_clipboard as _save_clipboard_win32, restore_clipboard as _restore_clipboard_win32
 
 # Optional dependencies - may not be available in test environments
 try:
@@ -198,144 +197,36 @@ class CommandExecutor:
             return self.KEY_MAP[key_lower]
         return key_str.lower() if len(key_str) == 1 else key_str
 
+    def _build_context(self) -> CommandContext:
+        """Build a CommandContext pointing at this executor's live state."""
+        return CommandContext(
+            keyboard_controller=self.keyboard_controller,
+            mouse_controller=self.mouse_controller,
+            held_keys=self.held_keys,
+            key_map=self.KEY_MAP,
+            app=self._app,
+        )
+
     def execute_command(self, command_name: str) -> bool:
-        """
-        Execute a voice command by name.
-
-        Args:
-            command_name: Name of command to execute
-
-        Returns:
-            True if command executed successfully
-        """
+        """Execute a voice command by name via the handler registry."""
         if command_name not in self.commands:
             return False
 
         cmd = self.commands[command_name]
         cmd_type = cmd.get('type')
+        handler = get_handler(cmd_type)
+        if handler is None:
+            print(f"[WARN] Unknown command type: {cmd_type}")
+            return False
 
         try:
-            if cmd_type == 'hotkey':
-                return self._execute_hotkey(cmd)
-
-            elif cmd_type == 'press':
-                return self._execute_press(cmd)
-
-            elif cmd_type == 'key_down':
-                return self._execute_key_down(cmd)
-
-            elif cmd_type == 'key_up':
-                return self._execute_key_up(cmd)
-
-            elif cmd_type == 'release_all':
-                return self._execute_release_all()
-
-            elif cmd_type == 'mouse':
-                return self._execute_mouse(cmd)
-
-            elif cmd_type == 'launch':
-                return self._execute_launch(cmd)
-
-            elif cmd_type == 'text':
-                return self._execute_text(cmd)
-
-            else:
-                print(f"[WARN] Unknown command type: {cmd_type}")
-                return False
-
+            success = handler.execute(cmd, self._build_context())
+            if success:
+                print(f"[OK] Executed: {command_name}")
+            return success
         except Exception as e:
             print(f"[ERROR] Command execution error: {e}")
             return False
-
-    def _execute_hotkey(self, cmd: Dict[str, Any]) -> bool:
-        """Execute a hotkey combination."""
-        keys = [self.get_key(k) for k in cmd['keys']]
-
-        for key in keys[:-1]:
-            self.keyboard_controller.press(key)
-
-        self.keyboard_controller.press(keys[-1])
-        self.keyboard_controller.release(keys[-1])
-
-        for key in reversed(keys[:-1]):
-            self.keyboard_controller.release(key)
-
-        return True
-
-    def _execute_press(self, cmd: Dict[str, Any]) -> bool:
-        """Execute a single key press."""
-        key = self.get_key(cmd['key'])
-        self.keyboard_controller.press(key)
-        self.keyboard_controller.release(key)
-        return True
-
-    def _execute_key_down(self, cmd: Dict[str, Any]) -> bool:
-        """Hold a key down."""
-        key = self.get_key(cmd['key'])
-        self.keyboard_controller.press(key)
-        self.held_keys[cmd['key']] = key
-        return True
-
-    def _execute_key_up(self, cmd: Dict[str, Any]) -> bool:
-        """Release a held key."""
-        key_str = cmd['key']
-        if key_str in self.held_keys:
-            self.keyboard_controller.release(self.held_keys[key_str])
-            del self.held_keys[key_str]
-        return True
-
-    def _execute_release_all(self) -> bool:
-        """Release all held keys."""
-        for key in self.held_keys.values():
-            self.keyboard_controller.release(key)
-        count = len(self.held_keys)
-        self.held_keys.clear()
-        print(f"[OK] Released {count} held keys")
-        return True
-
-    def _execute_mouse(self, cmd: Dict[str, Any]) -> bool:
-        """Execute a mouse action."""
-        action = cmd.get('action')
-
-        if action == 'click':
-            button = Button.left if cmd.get('button') == 'left' else Button.right
-            self.mouse_controller.click(button)
-        elif action == 'double_click':
-            self.mouse_controller.click(Button.left, 2)
-
-        return True
-
-    def _execute_launch(self, cmd: Dict[str, Any]) -> bool:
-        """Launch an application."""
-        target = cmd['target']
-        success = plat.launch_application(target)
-        if success:
-            print(f"[OK] Launching: {target}")
-        else:
-            print(f"[ERROR] Failed to launch: {target}")
-        return success
-
-    def _execute_text(self, cmd: Dict[str, Any]) -> bool:
-        """Insert text via clipboard while preserving original clipboard content."""
-        if not HAS_CLIPBOARD:
-            print("[ERROR] Clipboard not available")
-            return False
-
-        text_to_insert = cmd.get('text', '')
-        if text_to_insert:
-            with _clipboard_lock:
-                saved = _save_clipboard_win32()
-                try:
-                    pyperclip.copy(text_to_insert)
-                    time.sleep(0.02)
-                    pyautogui.hotkey('ctrl', 'v')
-                    time.sleep(0.4)  # Wait for paste to complete
-                except Exception as e:
-                    print(f"[ERROR] Paste failed: {e}")
-                finally:
-                    _restore_clipboard_win32(saved)
-
-        return True
 
     def find_command(self, text: str) -> Optional[str]:
         """Return the canonical phrase of the best matching command, or None."""
@@ -402,19 +293,8 @@ class CommandExecutor:
                 success = False
             return entry.phrase, success
 
-        # Built-in path (hotkey/press/.../text) plus the 'method' type.
-        if entry.cmd_type == 'method':
-            method_name = entry.data.get('method')
-            if self._app and method_name and hasattr(self._app, method_name):
-                try:
-                    getattr(self._app, method_name)()
-                    return entry.phrase, True
-                except Exception as e:
-                    print(f"[ERROR] method '{method_name}' failed: {e}")
-                    return entry.phrase, False
-            print(f"[WARN] method '{method_name}' not found on app")
-            return entry.phrase, False
-
+        # All built-in types (hotkey/press/.../text/macro/method) now route
+        # through execute_command -> handler registry.
         success = self.execute_command(entry.phrase)
         return entry.phrase, success
 
