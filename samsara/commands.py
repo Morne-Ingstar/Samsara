@@ -11,6 +11,7 @@ from typing import Any, Callable, Dict, Optional, Tuple
 
 from . import platform as plat
 from . import plugin_commands as _plugin_commands
+from .command_registry import CommandMatcher
 from .clipboard import clipboard_lock as _clipboard_lock, save_clipboard as _save_clipboard_win32, restore_clipboard as _restore_clipboard_win32
 
 # Optional dependencies - may not be available in test environments
@@ -139,6 +140,16 @@ class CommandExecutor:
             print(f"[PLUGINS] Failed to load plugins: {e}")
         unique = len({id(entry) for entry in _plugin_commands._REGISTRY.values()})
         print(f"[PLUGINS] Loaded {unique} plugin commands")
+
+        # Build the unified matcher. Both executors (this one and the one in
+        # dictation.py) use this class so matching semantics stay consistent
+        # between tests and runtime.
+        self._matcher = CommandMatcher()
+        self._matcher.load_builtins(self.commands)
+        self._matcher.load_plugins(_plugin_commands._REGISTRY)
+        self._matcher.freeze()
+        self._matcher.detect_collisions()
+        _plugin_commands.set_shared_matcher(self._matcher)
 
     def set_command_mode_callback(
         self,
@@ -326,35 +337,9 @@ class CommandExecutor:
         return True
 
     def find_command(self, text: str) -> Optional[str]:
-        """
-        Check if transcribed text matches a command.
-
-        Args:
-            text: Transcribed text
-
-        Returns:
-            Command name if found, None otherwise
-        """
-        text_lower = text.lower().strip()
-
-        # Exact match first
-        if text_lower in self.commands:
-            return text_lower
-
-        # Check for partial matches using word boundaries.
-        # Pad with spaces so boundary checks work at start/end of string.
-        padded = f" {text_lower} "
-        for cmd_name in self.commands:
-            if f" {cmd_name} " in padded:
-                return cmd_name
-
-        # Plugin commands — lower priority than built-ins, so only consulted
-        # after commands.json has no match.
-        plugin_entry, _remainder = _plugin_commands.find_command(text)
-        if plugin_entry is not None:
-            return plugin_entry['phrase']
-
-        return None
+        """Return the canonical phrase of the best matching command, or None."""
+        entry, _remainder = self._matcher.match(text)
+        return entry.phrase if entry is not None else None
 
     def process_text(
         self,
@@ -400,30 +385,35 @@ class CommandExecutor:
         if not command_mode_enabled:
             return text, False
 
-        # Try to find and execute a command
-        command = self.find_command(text)
-        if command:
-            if command in self.commands:
-                cmd = self.commands[command]
-                if cmd.get('type') == 'method':
-                    method_name = cmd.get('method')
-                    if self._app and method_name and hasattr(self._app, method_name):
-                        try:
-                            getattr(self._app, method_name)()
-                            return command, True
-                        except Exception as e:
-                            print(f"[ERROR] method '{method_name}' failed: {e}")
-                            return command, False
-                    print(f"[WARN] method '{method_name}' not found on app")
-                    return command, False
-                success = self.execute_command(command)
-            else:
-                print(f"[PLUGIN] Executing: {command}")
-                _phrase, success = _plugin_commands.execute_command(text, app=self._app)
-            return command, success
+        # Unified matcher handles built-ins, plugins, and longest-match semantics.
+        entry, remainder = self._matcher.match(text)
+        if entry is None:
+            return text, False
 
-        # Not a command, return text for dictation
-        return text, False
+        if entry.source == 'plugin':
+            print(f"[PLUGIN] Executing: {entry.phrase}")
+            try:
+                success = bool(entry.handler(self._app, remainder))
+            except Exception as e:
+                print(f"[ERROR] Plugin '{entry.phrase}' failed: {e}")
+                success = False
+            return entry.phrase, success
+
+        # Built-in path (hotkey/press/.../text) plus the 'method' type.
+        if entry.cmd_type == 'method':
+            method_name = entry.data.get('method')
+            if self._app and method_name and hasattr(self._app, method_name):
+                try:
+                    getattr(self._app, method_name)()
+                    return entry.phrase, True
+                except Exception as e:
+                    print(f"[ERROR] method '{method_name}' failed: {e}")
+                    return entry.phrase, False
+            print(f"[WARN] method '{method_name}' not found on app")
+            return entry.phrase, False
+
+        success = self.execute_command(entry.phrase)
+        return entry.phrase, success
 
     def add_command(
         self,
