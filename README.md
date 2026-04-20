@@ -195,15 +195,17 @@ Alarm reminders with streak tracking, key macros for tap-combos, clipboard prese
 
 ### Architecture
 
-`dictation.py` (~3,600 lines) contains `DictationApp` and `CommandExecutor`. UI is fully extracted into `samsara/ui/`. Plugins live in `plugins/commands/`. The codebase was modularized through a structured multi-AI review process ([ARC](https://github.com/Morne-Ingstar/ARC)).
+`dictation.py` (~3,900 lines) contains `DictationApp` and `CommandExecutor`. UI is fully extracted into `samsara/ui/`. Plugins live in `plugins/commands/`. The codebase was modularized through a structured multi-AI review process ([ARC](https://github.com/Morne-Ingstar/ARC)).
 
 ```
 samsara/
 ├── calibration.py          # Auto-calibrate speech threshold (IQR outlier rejection)
 ├── clipboard.py            # Win32 clipboard save/restore
 ├── command_parser.py       # Wake word intent parsing
+├── command_registry.py     # Unified CommandMatcher — token-based longest-match
 ├── constants.py            # Extracted magic numbers
 ├── echo_cancel.py          # Frequency-domain AEC (FFT block NLMS + WASAPI loopback)
+├── phonetic_wash.py        # Fixes Whisper misrecognitions before matching
 ├── wake_word_matcher.py    # Token-aware wake phrase matching
 ├── commands.py             # Command loading and execution
 ├── plugin_commands.py      # Plugin command registry and @command decorator
@@ -213,6 +215,7 @@ plugins/commands/
 ├── web_shortcuts.py        # "go to youtube" — config-driven bookmarks
 ├── tab_finder.py           # "where is github" — browser tab search
 ├── macros.py               # "going dark" — multi-step workflows
+├── quick_ask.py            # "ask claude" — IPC to ARC
 ```
 
 ### Running Tests
@@ -246,10 +249,13 @@ All hotkeys configurable in Settings.
 - [x] Frequency-domain echo cancellation
 - [x] Pre-buffer captures 1.5s before hotkey press
 - [x] Listening indicator overlay with wake word feedback
+- [x] Silero VAD for real-time speech detection (ignores fan noise)
+- [x] Phonetic wash layer (fixes Whisper misrecognitions before matching)
+- [x] Unified CommandMatcher (token-based longest-match, zero collisions)
+- [x] Quick Ask IPC ("ask Claude..." sends to ARC)
 - [ ] Voice-to-code pipeline (JARVIS — ARC review → Claude Code → confirm/reject)
 - [ ] Undo last dictation by voice
 - [ ] True pause/resume for Long Dictation
-- [ ] Echo-stripping for Whisper hallucinations
 - [ ] Command chaining ("select all copy")
 - [ ] Application-specific command profiles
 - [ ] Spelling mode ("spell c-a-t" → "cat")
