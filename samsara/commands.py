@@ -12,6 +12,7 @@ from typing import Any, Callable, Dict, Optional, Tuple
 from . import platform as plat
 from . import plugin_commands as _plugin_commands
 from .command_registry import CommandMatcher
+from .phonetic_wash import apply_phonetic_wash
 from .clipboard import clipboard_lock as _clipboard_lock, save_clipboard as _save_clipboard_win32, restore_clipboard as _restore_clipboard_win32
 
 # Optional dependencies - may not be available in test environments
@@ -385,8 +386,10 @@ class CommandExecutor:
         if not command_mode_enabled:
             return text, False
 
-        # Unified matcher handles built-ins, plugins, and longest-match semantics.
-        entry, remainder = self._matcher.match(text)
+        # Wash known mis-transcriptions for matching only. When nothing matches
+        # the ORIGINAL text is returned so free-form dictation isn't rewritten.
+        match_text = apply_phonetic_wash(text)
+        entry, remainder = self._matcher.match(match_text)
         if entry is None:
             return text, False
 
