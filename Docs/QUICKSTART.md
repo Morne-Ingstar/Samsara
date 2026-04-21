@@ -3,7 +3,7 @@
 ## Download & Run (Windows)
 
 1. Go to the [latest release](https://github.com/Morne-Ingstar/Samsara/releases/latest)
-2. Download **Samsara-Windows-v0.9.3.7z**
+2. Download **Samsara-Windows-v0.9.4.7z**
 3. Extract anywhere, double-click **Samsara.exe**
 4. The setup wizard picks your mic and downloads the AI model
 
