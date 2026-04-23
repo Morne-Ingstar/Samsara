@@ -1916,15 +1916,20 @@ class DictationApp:
 
         chunk_float32 is the already-flattened mono capture-rate chunk from the
         audio callback. Caller guarantees _vad_available; we resample to 16kHz,
-        unsqueeze to (1, N) so Silero sees a batched tensor, and run inference
-        under torch.no_grad so we don't build an autograd graph every 100ms
-        (that would leak memory within the hour).
+        then feed 512-sample windows to Silero (its required input size at 16kHz).
+        Returns True if ANY window contains speech.
         """
         chunk_16k = resample_audio(chunk_float32, self.capture_rate, 16000)
-        tensor = torch.from_numpy(chunk_16k).unsqueeze(0)
-        with torch.no_grad():
-            speech_prob = self._vad_model(tensor, 16000).item()
-        return speech_prob > 0.5
+        # Silero VAD v5 requires exactly 512 samples at 16kHz per call
+        window_size = 512
+        for start in range(0, len(chunk_16k) - window_size + 1, window_size):
+            window = chunk_16k[start:start + window_size]
+            tensor = torch.from_numpy(window).unsqueeze(0)
+            with torch.no_grad():
+                speech_prob = self._vad_model(tensor, 16000).item()
+            if speech_prob > 0.5:
+                return True
+        return False
 
     def _vad_reset(self):
         """Clear Silero VAD internal state between utterances."""
