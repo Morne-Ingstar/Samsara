@@ -1948,8 +1948,14 @@ class DictationApp:
             if not self.wake_word_active:
                 return
             
-            # Apply echo cancellation if active
+            # Apply echo cancellation if active.
+            # IMPORTANT: VAD runs on the RAW mic signal, not AEC output.
+            # AEC can amplify instead of cancel (cleaned_rms >> mic_rms),
+            # which tricks VAD into seeing "speech" in silence. The raw
+            # mic is the ground truth for "is the user talking?"
+            # The AEC output is still buffered for Whisper transcription.
             audio_chunk = indata.copy()
+            raw_chunk = audio_chunk.copy().flatten()  # raw mic for VAD
             if self.echo_canceller.is_active:
                 audio_chunk = self.echo_canceller.process(audio_chunk)
             audio_chunk = audio_chunk.flatten()
@@ -1979,7 +1985,8 @@ class DictationApp:
             # Feed the pre-buffer (only when not hotkey recording)
             self._prebuffer.append(audio_chunk.copy())
             
-            rms = np.sqrt(np.mean(audio_chunk**2))
+            # RMS of raw mic signal (not AEC output) for speech threshold
+            rms = np.sqrt(np.mean(raw_chunk**2))
             
             # Get thresholds from config
             ww_config = self.config.get('wake_word_config', {})
@@ -1998,12 +2005,12 @@ class DictationApp:
                 # Asleep / command_window -- use wake detection silence
                 silence_threshold = audio_config.get('wake_detection_silence', WAKE_DETECTION_SILENCE)
             
-            # Decide whether this chunk contains human speech. VAD is the
-            # primary path; RMS is a fallback when torch/Silero isn't ready.
-            # RMS stays available above for the calibration UI and manual mode.
+            # Decide whether this chunk contains human speech. VAD runs on
+            # the RAW mic signal (not AEC output) to avoid false positives
+            # from AEC amplification artifacts. RMS fallback also uses raw.
             if self._vad_available:
                 try:
-                    is_speech = self._vad_is_speech(audio_chunk)
+                    is_speech = self._vad_is_speech(raw_chunk)
                 except Exception as e:
                     # A VAD hiccup shouldn't silence the mic -- degrade to RMS
                     # for this chunk and log once.
