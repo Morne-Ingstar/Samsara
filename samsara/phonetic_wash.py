@@ -52,6 +52,11 @@ _PHRASE_CORRECTIONS = {
     "open crow": "open chrome",
     "open crone": "open chrome",
     "open krone": "open chrome",
+    "open chrome,": "open chrome",
+    "open chronicles": "open chrome",
+    "open screen": "open chrome",
+    "open crom": "open chrome",
+    "open crumb": "open chrome",
 }
 
 # Single-word corrections applied token-by-token AFTER phrase corrections.
