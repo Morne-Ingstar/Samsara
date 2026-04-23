@@ -2379,12 +2379,16 @@ class DictationApp:
                 self._indicator_success_and_reset()
                 return
 
-            # Not a recognized command -- output as quick dictation
-            self._output_dictation(text)
+            # Not a recognized command -- silently go back to sleep.
+            # DO NOT paste unrecognized text after wake word. If the user
+            # wanted dictation, they'd say "jarvis, type ..." or "jarvis,
+            # dictate". This prevents false wake triggers (e.g. "service"
+            # corrected to "jarvis") from typing garbage into the focused app.
+            print(f"[SKIP] No command match for '{text}' — back to sleep")
             self.wake_word_triggered = False
             self.app_state = 'asleep'
-            print("[STATE] command_window -> asleep (text output)")
-            self._indicator_success_and_reset()
+            print("[STATE] command_window -> asleep (no match)")
+            self._indicator_reset()
             return
 
         # type == "unknown" -- noise/garbage, back to asleep
