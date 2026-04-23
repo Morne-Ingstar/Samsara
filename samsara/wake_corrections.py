@@ -26,6 +26,7 @@ CORRECTIONS = {
     "jarbus": "jarvis",
     "jervice": "jarvis",
     "jervis": "jarvis",
+    "service": "jarvis",
 }
 
 
