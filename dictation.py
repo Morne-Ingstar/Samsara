@@ -1987,6 +1987,19 @@ class DictationApp:
                 self.silence_start = None
                 with self.buffer_lock:
                     self.speech_buffer.append(audio_chunk)
+                    # LAYER 1: Hard buffer cap.  No legitimate wake-word
+                    # utterance exceeds ~5 seconds. If the buffer grows past
+                    # 7 seconds it means AEC leakage, headphone bleed, or
+                    # ambient noise is fooling VAD. Discard immediately —
+                    # sending garbage to Whisper just adds latency.
+                    buffer_seconds = len(self.speech_buffer) * 0.1
+                    if buffer_seconds >= 7.0 and self.app_state not in ('long_dictation', 'quick_dictation'):
+                        print(f"[CAP] Buffer hit {buffer_seconds:.1f}s cap — discarding (likely noise/echo)")
+                        self.speech_buffer = []
+                        self.is_speaking = False
+                        self.silence_start = None
+                        self._vad_reset()
+                        return
             else:
                 # Silence (or non-speech noise). Only meaningful if we were
                 # already speaking -- otherwise we'd spin the silence timer on
