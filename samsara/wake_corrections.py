@@ -18,11 +18,14 @@ The correction is applied token-by-token on the lowercased transcription.
 # Known misrecognitions — add entries as you catch them in the debug console.
 # Start empty; trim or expand as patterns emerge for your voice + mic.
 CORRECTIONS = {
-    # Wake word variants
+    # Wake word variants — Whisper misrecognitions of "jarvis"
     "charvis": "jarvis",
+    "charvus": "jarvis",
     "jarviss": "jarvis",
     "jarves": "jarvis",
     "jarbus": "jarvis",
+    "jervice": "jarvis",
+    "jervis": "jarvis",
 }
 
 
