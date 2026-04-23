@@ -239,7 +239,7 @@ a = Analysis(
         'fairscale',
         'timm',
         'torchvision',  # Not needed for audio
-        'torchaudio',   # faster_whisper doesn't use this
+        # torchaudio is needed by Silero VAD — do NOT exclude
         'xformers',
         'triton',
         'altair',
