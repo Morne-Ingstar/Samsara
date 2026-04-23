@@ -2022,10 +2022,14 @@ class DictationApp:
             if is_speech:
                 # Human speech detected -- buffer directly. VAD already filtered
                 # fan/hum/ambient, so no debounce is needed.
+                # Buffer RAW mic audio, not AEC output. The echo canceller is
+                # actively corrupting the signal (cleaned_rms >> mic_rms) which
+                # makes Whisper reject valid speech or misrecognize words.
+                # Whisper has its own VAD filter that strips non-speech segments.
                 self.is_speaking = True
                 self.silence_start = None
                 with self.buffer_lock:
-                    self.speech_buffer.append(audio_chunk)
+                    self.speech_buffer.append(raw_chunk)
                     self._buffer_rms_history.append(rms)
 
                     # LAYER 2: Stuck-buffer detector. Real speech has big RMS
@@ -2069,7 +2073,7 @@ class DictationApp:
                 # an empty buffer.
                 if self.is_speaking:
                     with self.buffer_lock:
-                        self.speech_buffer.append(audio_chunk)
+                        self.speech_buffer.append(raw_chunk)
                         self._buffer_rms_history.append(rms)
 
                     if self.silence_start is None:
@@ -2151,7 +2155,10 @@ class DictationApp:
             text_lower = text.lower()
             
             if not text:
+                print(f"[HEAR] (nothing — Whisper returned empty for {audio_duration:.1f}s of audio)")
                 return
+            
+            print(f"[HEAR] \"{text}\"")
             
             # Get wake word config
             ww_config = self.config.get('wake_word_config', {})
