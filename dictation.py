@@ -584,6 +584,17 @@ class DictationApp:
         self.wake_word_listening = False  # Currently listening for wake word
         self.wake_word_triggered = False  # Wake word detected, ready for command
         self._wake_trace_callback = None  # Optional: debug window registers here
+
+        # Per-chunk RMS values kept in lock-step with speech_buffer. Used by
+        # the stuck-buffer detector -- real speech has high RMS variance
+        # (consonant/vowel transitions); sustained noise/echo leakage does not.
+        self._buffer_rms_history = []
+
+        # Timestamp of the last successful command execution. While this is
+        # within the 2-second post-command window, the audio callback
+        # suppresses buffering to avoid picking up speaker output (Chrome
+        # launch sound, notifications, etc.) as a new utterance.
+        self._command_executed_at = None
         
         # Pre-buffer: rolling circular buffer captures audio BEFORE hotkey press
         # so the first ~1.5 seconds of speech are never lost to startup delay.
@@ -1937,7 +1948,23 @@ class DictationApp:
             if self.echo_canceller.is_active:
                 audio_chunk = self.echo_canceller.process(audio_chunk)
             audio_chunk = audio_chunk.flatten()
-            
+
+            # Layer 3: Post-command echo suppression. After we just fired a
+            # command, speakers often produce audio (Chrome launch chime,
+            # notification). AEC can't fully strip it, so without this guard
+            # the VAD below would buffer it as a new utterance. The guard is
+            # scoped to asleep/command_window so dictation modes stay hot.
+            if (self._command_executed_at is not None
+                    and self.app_state not in ('long_dictation', 'quick_dictation')):
+                elapsed = time.time() - self._command_executed_at
+                if elapsed < 2.0:
+                    if self.echo_canceller.is_active:
+                        ref_rms = self.echo_canceller.last_ref_rms
+                        if ref_rms is not None and ref_rms > 0.05:
+                            return
+                else:
+                    self._command_executed_at = None
+
             # If hotkey recording is active, skip everything -
             # the recording stream handles audio capture directly,
             # and we must NOT feed the pre-buffer to avoid overlap on next session
@@ -1987,15 +2014,39 @@ class DictationApp:
                 self.silence_start = None
                 with self.buffer_lock:
                     self.speech_buffer.append(audio_chunk)
+                    self._buffer_rms_history.append(rms)
+
+                    # LAYER 2: Stuck-buffer detector. Real speech has big RMS
+                    # swings (consonants vs vowels vs gaps); echo leakage and
+                    # sustained tones are flat. If the last 3s of the buffer
+                    # has near-zero variance in asleep state, discard before
+                    # the 7s hard cap fires -- cuts felt latency from 7s to 3s.
+                    if (self.app_state == 'asleep'
+                            and len(self._buffer_rms_history) >= 30):
+                        recent = self._buffer_rms_history[-30:]
+                        variance = float(np.var(recent))
+                        if variance < 0.0001:
+                            buffer_seconds = len(self._buffer_rms_history) * 0.1
+                            print(f"[CAP] Stuck buffer detected "
+                                  f"({buffer_seconds:.1f}s, var={variance:.6f}) "
+                                  f"-- discarding")
+                            self.speech_buffer = []
+                            self._buffer_rms_history = []
+                            self.is_speaking = False
+                            self.silence_start = None
+                            self._vad_reset()
+                            return
+
                     # LAYER 1: Hard buffer cap.  No legitimate wake-word
                     # utterance exceeds ~5 seconds. If the buffer grows past
                     # 7 seconds it means AEC leakage, headphone bleed, or
-                    # ambient noise is fooling VAD. Discard immediately —
+                    # ambient noise is fooling VAD. Discard immediately --
                     # sending garbage to Whisper just adds latency.
                     buffer_seconds = len(self.speech_buffer) * 0.1
                     if buffer_seconds >= 7.0 and self.app_state not in ('long_dictation', 'quick_dictation'):
-                        print(f"[CAP] Buffer hit {buffer_seconds:.1f}s cap — discarding (likely noise/echo)")
+                        print(f"[CAP] Buffer hit {buffer_seconds:.1f}s cap -- discarding (likely noise/echo)")
                         self.speech_buffer = []
+                        self._buffer_rms_history = []
                         self.is_speaking = False
                         self.silence_start = None
                         self._vad_reset()
@@ -2007,6 +2058,7 @@ class DictationApp:
                 if self.is_speaking:
                     with self.buffer_lock:
                         self.speech_buffer.append(audio_chunk)
+                        self._buffer_rms_history.append(rms)
 
                     if self.silence_start is None:
                         self.silence_start = time.time()
@@ -2019,6 +2071,7 @@ class DictationApp:
                             else:
                                 buffer_copy = None
                             self.speech_buffer = []
+                            self._buffer_rms_history = []
 
                         self.is_speaking = False
                         self.silence_start = None
@@ -2299,6 +2352,10 @@ class DictationApp:
             if was_command:
                 self.wake_word_triggered = False
                 self.app_state = 'asleep'
+                # Arm Layer 3: the wake callback suppresses buffering for the
+                # next 2s so a Chrome launch chime / notification doesn't get
+                # mistaken for a new utterance.
+                self._command_executed_at = time.time()
                 print("[STATE] command_window -> asleep (command executed)")
                 self._indicator_success_and_reset()
                 return

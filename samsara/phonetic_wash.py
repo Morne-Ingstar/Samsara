@@ -49,6 +49,9 @@ _PHRASE_CORRECTIONS = {
     "browse two": "browse to",
     "new lying": "new line",
     "you line": "new line",
+    "open crow": "open chrome",
+    "open crone": "open chrome",
+    "open krone": "open chrome",
 }
 
 # Single-word corrections applied token-by-token AFTER phrase corrections.
