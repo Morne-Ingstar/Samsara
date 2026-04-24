@@ -907,7 +907,7 @@ Change in main Settings -> requires restart"""
                         vocab_words.add(tokens[0])
 
             # Sort (deterministic prompt helps Whisper's prompt cache) and cap.
-            sorted_vocab = sorted(vocab_words)[:30]
+            sorted_vocab = sorted(vocab_words)[:36]
             return ", ".join(sorted_vocab)
         except Exception as e:
             logger.error(f"Error extracting command vocabulary: {e}")
