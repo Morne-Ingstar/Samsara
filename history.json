@@ -1,315 +1,5 @@
 [
   [
-    "2026-04-17 18:34:32",
-    "But I'm very open to suggestions for a model more perfectly suited for this.",
-    false
-  ],
-  [
-    "2026-04-17 18:34:53",
-    "Anyway, I want to make that whole process streamlined and efficient",
-    false
-  ],
-  [
-    "2026-04-17 18:43:50",
-    "How long do you think you would take to build the app?",
-    false
-  ],
-  [
-    "2026-04-17 18:45:05",
-    "I dislike when you talk about calling it for the night and things like that.",
-    false
-  ],
-  [
-    "2026-04-17 18:45:16",
-    "Just imagine that time doesn't exist",
-    false
-  ],
-  [
-    "2026-04-17 18:46:15",
-    "Sorry, I stopped you because before you do that I'd like to make I'd like you to search online and make sure that it doesn't already exist because it probably already exists",
-    false
-  ],
-  [
-    "2026-04-17 19:46:34",
-    "I'd like to basically give...",
-    false
-  ],
-  [
-    "2026-04-17 19:46:53",
-    "I've been developing an app using multiple AI tools for a few months now.",
-    false
-  ],
-  [
-    "2026-04-17 19:47:21",
-    "It started as a simple TTS dictation app, but is now becoming something more akin to an actual AI assistant.",
-    false
-  ],
-  [
-    "2026-04-17 19:47:48",
-    "It has wake word, functionality, and can be given commands which are configurable.",
-    false
-  ],
-  [
-    "2026-04-17 20:40:47",
-    "Okay, I need to give Gemini basically a full picture of code.",
-    false
-  ],
-  [
-    "2026-04-17 20:41:20",
-    "Because what I want to do is like basically a full review of the app in its entirety.",
-    false
-  ],
-  [
-    "2026-04-17 20:41:38",
-    "But the app's big and has a lot of pieces so I can't just throw all of that at Gemini at once.",
-    false
-  ],
-  [
-    "2026-04-17 20:41:45",
-    "How do you suppose we go about doing this?",
-    false
-  ],
-  [
-    "2026-04-17 20:51:09",
-    "I'm working on an app with 2 other AI tools as helpers and I would like you to do an outside review of the code.",
-    false
-  ],
-  [
-    "2026-04-17 20:51:26",
-    "The attached document should have everything that you need, but let me know if you need anything else.",
-    false
-  ],
-  [
-    "2026-04-17 21:31:05",
-    "Hello?",
-    false
-  ],
-  [
-    "2026-04-17 21:31:09",
-    "Check 1-2",
-    false
-  ],
-  [
-    "2026-04-17 21:31:29",
-    "Hello world",
-    false
-  ],
-  [
-    "2026-04-17 21:32:38",
-    "I'd like Gemini to review Prism as well.",
-    false
-  ],
-  [
-    "2026-04-17 21:32:51",
-    "Make a similar document like how you made about Samsara, and I will give that document to Gemini so it can review it.",
-    false
-  ],
-  [
-    "2026-04-17 21:33:09",
-    "There's less to review, but it's more about, I think, you know, just the scope of the idea",
-    false
-  ],
-  [
-    "2026-04-17 21:35:54",
-    "I have something else here for you to review. It's more of a idea than it is in the app.",
-    false
-  ],
-  [
-    "2026-04-17 21:36:23",
-    "But I feel like there might be something to the idea and I wonder if you'd agree.",
-    false
-  ],
-  [
-    "2026-04-17 21:59:13",
-    "And I'd like it to be my idea.",
-    false
-  ],
-  [
-    "2026-04-17 21:59:53",
-    "Both Claude and Gemini have told me that it is not something that already exists, which means it is an invention.",
-    false
-  ],
-  [
-    "2026-04-17 22:00:06",
-    "And I value my inventions.",
-    false
-  ],
-  [
-    "2026-04-17 22:00:59",
-    "I'd like your input on it but i just don't want the idea becoming commonplace with no knowledge of its actual source",
-    false
-  ],
-  [
-    "2026-04-17 22:47:44",
-    "I want to get arc ready for having a get repo.",
-    false
-  ],
-  [
-    "2026-04-17 22:49:53",
-    "Decate",
-    false
-  ],
-  [
-    "2026-04-17 22:50:46",
-    "Hello, so I want to make sure it has a really good readme that sort of outlines why the project was made, what the whole idea behind it is, the naming of it, and what its intended use is, and what makes it different from other multi-agent setups.",
-    false
-  ],
-  [
-    "2026-04-17 23:52:58",
-    "I need a test case to give to Arc",
-    false
-  ],
-  [
-    "2026-04-17 23:53:29",
-    "A problem we have currently that we will then let Arc try to tackle.",
-    false
-  ],
-  [
-    "2026-04-18 00:25:08",
-    "The second stage of her.",
-    false
-  ],
-  [
-    "2026-04-18 00:29:08",
-    "Massively successful coding session",
-    false
-  ],
-  [
-    "2026-04-18 00:30:03",
-    "What supplements should I take now that will help with this?",
-    false
-  ],
-  [
-    "2026-04-18 00:35:09",
-    "Is there any danger to taking 400mg of magnesium glycinate if I already took 400mg 10 hours ago or so?",
-    false
-  ],
-  [
-    "2026-04-18 00:49:06",
-    "Many, many ideas are coming to me on how to improve on this",
-    false
-  ],
-  [
-    "2026-04-18 00:49:55",
-    "For 1 thing, you can add an option to send the auditor's results back to Claude and GPT to see if agreement is found, and if there's disagreement, then return with what the disagreements are.",
-    false
-  ],
-  [
-    "2026-04-18 00:53:26",
-    "You could have an option to turn the results into prompts for something like cloud code.",
-    false
-  ],
-  [
-    "2026-04-18 00:54:52",
-    "You could swap out the auditor like shuffle the positions so that a different model is the starting 1 and a different model is the reviewer and so forth.",
-    false
-  ],
-  [
-    "2026-04-18 00:55:17",
-    "You should be able to choose which model you're interfacing with, like with Gemini, for example, you should be able to choose which version.",
-    false
-  ],
-  [
-    "2026-04-18 00:55:23",
-    "These are just to start.",
-    false
-  ],
-  [
-    "2026-04-18 02:08:02",
-    "Jarvis, jarvis, dictate jarvis, jarvis jarvis",
-    false
-  ],
-  [
-    "2026-04-18 02:20:17",
-    "I was trying to test the...",
-    false
-  ],
-  [
-    "2026-04-18 02:29:33",
-    "So I think what actually happened was it did pick up me saying Jarvis Jarvis Jarvis over and over It just didn't transcribe Probably because the silence threshold wasn't met and I'm guessing probably because the speakers were playing music",
-    false
-  ],
-  [
-    "2026-04-18 02:42:00",
-    "No, that wasn't it. I'm noticing on my microphone interface, I can see that it's picking up the speaker sounds because it's lighting up. Is that normal? I thought with echo cancellation, then the microphone indicator wouldn't be lighting up for sounds produced from the computer.",
-    false
-  ],
-  [
-    "2026-04-18 02:48:23",
-    "Check out here.",
-    false
-  ],
-  [
-    "2026-04-18 02:48:30",
-    "Check 1-2",
-    false
-  ],
-  [
-    "2026-04-18 02:48:59",
-    "Hello, check it out.",
-    false
-  ],
-  [
-    "2026-04-18 11:01:10",
-    "What about making an EXC file?",
-    false
-  ],
-  [
-    "2026-04-18 11:01:21",
-    "What about making it an EX, EXC file?",
-    false
-  ],
-  [
-    "2026-04-18 11:58:36",
-    "Hello world.",
-    false
-  ],
-  [
-    "2026-04-18 11:58:43",
-    "Hello World.",
-    false
-  ],
-  [
-    "2026-04-18 11:58:49",
-    "Hello world.",
-    false
-  ],
-  [
-    "2026-04-18 11:58:54",
-    "Hello world.",
-    false
-  ],
-  [
-    "2026-04-18 11:59:41",
-    "Hello World",
-    false
-  ],
-  [
-    "2026-04-18 11:59:43",
-    "Hello world.",
-    false
-  ],
-  [
-    "2026-04-18 11:59:45",
-    "Hello world.",
-    false
-  ],
-  [
-    "2026-04-18 12:16:22",
-    "See a world in the grain of sand.",
-    false
-  ],
-  [
-    "2026-04-18 12:16:34",
-    "To see a world a new grain of sand.",
-    false
-  ],
-  [
-    "2026-04-18 12:16:49",
-    "And heaven in a wild flower.",
-    false
-  ],
-  [
     "2026-04-18 12:17:59",
     "The CO world in the grain of sand.",
     false
@@ -497,6 +187,316 @@
   [
     "2026-04-19 18:08:55",
     "Fine tab, get hub",
+    false
+  ],
+  [
+    "2026-04-20 15:02:32",
+    "In outer wilds, every so often, there's like this ominous sound, and then like a shaking, and there's like blue flash of light, just like suddenly consumes me and kills me.",
+    false
+  ],
+  [
+    "2026-04-20 15:02:41",
+    "Is that just like a timed event that happens every so often if you stay alive long enough?",
+    false
+  ],
+  [
+    "2026-04-20 19:20:53",
+    "I think for now what I want to do with my website is basically make it so that regular guests don't have access to poetry or anything personal really they can just see the projects and the about page I guess faith too yeah I just want to make sure the projects page really serves as a solid impressive portfolio you know highlight the the way my app is superior to other similar apps. I want to compare it to Microsoft's voice control and stuff like that and poetry and other stuff. Just have it bring up an entry for like a friend code. You know, I'll give that code to my friends and they can access it. But otherwise, yeah, I just ask for a friend code. They can still see that the pages are available, they just when they click on them, it's a ask for a friend code.",
+    false
+  ],
+  [
+    "2026-04-20 19:21:32",
+    "That way I'll feel confident about opening up my website to the public. Once all that's done, I say we take down the password and username entry that blocks the full site. The initial username password that basically completely bars access to the site right now. I want to do away with that and people can just click the guest link.",
+    false
+  ],
+  [
+    "2026-04-21 03:09:12",
+    "Yes, try to always use 4.1 unless you absolutely need to up it.",
+    false
+  ],
+  [
+    "2026-04-21 03:15:14",
+    "The girly books are for my family, they're not mine.",
+    false
+  ],
+  [
+    "2026-04-21 03:15:32",
+    "I just want you to have a list of what books and audiobooks i have maybe make a note in obsidian",
+    false
+  ],
+  [
+    "2026-04-21 03:15:41",
+    "Something you can reference going forward so you can give me recommendations.",
+    false
+  ],
+  [
+    "2026-04-21 03:50:27",
+    "I'm blending some Newman's own medium chunky salsa to make it thin and smooth, because that's how I like salsa.",
+    false
+  ],
+  [
+    "2026-04-21 03:50:33",
+    "I'm thinking of things to add to it to make it better.",
+    false
+  ],
+  [
+    "2026-04-21 03:50:50",
+    "Right now, the options are pepper and Chinese, or crunchy chili onion oil",
+    false
+  ],
+  [
+    "2026-04-21 03:51:10",
+    "The oil is made from olive oil, dried onions, dried garlic, dried red bell peppers, dried chili peppers, dried onions.",
+    false
+  ],
+  [
+    "2026-04-21 03:51:15",
+    "Peppered Chinese are made of peppered Chinese",
+    false
+  ],
+  [
+    "2026-04-21 03:51:45",
+    "What do you think?",
+    false
+  ],
+  [
+    "2026-04-21 03:51:54",
+    "I think I also have some kimchi somewhere",
+    false
+  ],
+  [
+    "2026-04-21 03:52:41",
+    "And artichoke arts.",
+    false
+  ],
+  [
+    "2026-04-21 05:07:14",
+    "For like the fifth time, I have an audiobook shelf server.",
+    false
+  ],
+  [
+    "2026-04-21 05:07:20",
+    "I gave you all the details of how to connect to it.",
+    false
+  ],
+  [
+    "2026-04-21 05:07:26",
+    "I gave you the SSH keys, I even gave you the SFTP login",
+    false
+  ],
+  [
+    "2026-04-21 05:07:36",
+    "Please store all of this in your memory so I don't have to keep telling you all of this.",
+    false
+  ],
+  [
+    "2026-04-21 05:13:44",
+    "I gave you all the details so that you can connect and get the list.",
+    false
+  ],
+  [
+    "2026-04-21 05:13:52",
+    "You keep asking me what to do after I've already told you what to do",
+    false
+  ],
+  [
+    "2026-04-21 05:14:01",
+    "Stop giving me multiple options. Just figure out how to do what I ask you to do.",
+    false
+  ],
+  [
+    "2026-04-21 05:14:08",
+    "You're convoluting things",
+    false
+  ],
+  [
+    "2026-04-21 05:15:23",
+    "Don't ask me to just do it.",
+    false
+  ],
+  [
+    "2026-04-22 15:55:32",
+    "Do you have access to the Arcana's new home?",
+    false
+  ],
+  [
+    "2026-04-22 15:55:33",
+    "Check 1-2",
+    false
+  ],
+  [
+    "2026-04-22 15:57:30",
+    "Okay, are you aware of the full code review that we did of my Samsara app?",
+    false
+  ],
+  [
+    "2026-04-22 15:59:45",
+    "That's not important, I just wanted to make sure you were aware of it.",
+    false
+  ],
+  [
+    "2026-04-22 15:59:53",
+    "Basically, I want to do the same thing about the Arcana website",
+    false
+  ],
+  [
+    "2026-04-22 16:00:46",
+    "Except it's less of a code review, although I do want the code to be reviewed. It's more a review of the website structure, the reasoning I used, the design, and if you could just try to think about potential points that aren't high confidence.",
+    false
+  ],
+  [
+    "2026-04-22 16:00:53",
+    "Do you need me to elaborate?",
+    false
+  ],
+  [
+    "2026-04-22 16:03:51",
+    "I want you to make a document like that 1 for Arcana though.",
+    false
+  ],
+  [
+    "2026-04-22 16:04:55",
+    "The reasoning isn't that complicated. The website serves as a portfolio for my art projects and my writing and my coding projects.",
+    false
+  ],
+  [
+    "2026-04-22 16:05:23",
+    "The design of the website is meant to give a feeling of being like in an arcane wizard's tower reading magical tones and the tones are the different web pages.",
+    false
+  ],
+  [
+    "2026-04-22 16:06:14",
+    "I have a lot of the site locked down to regular guests because I'm sensitive about my writing so at the beginning there's a landing page where you can either enter a code that I give to my friends or you can click just a guy and clicking the just a guy button lets you into the public version of the site",
+    false
+  ],
+  [
+    "2026-04-23 03:41:46",
+    "Open camera",
+    false
+  ],
+  [
+    "2026-04-23 06:09:15",
+    "Is 1 of the names that is built there's like 10 built-in names but 1 of them is so you could say where's youtube and you have a bunch of apps open and you don't remember which 1 was youtube it will open and just focus just on the youtube tab and find it for you or like you say go dark and it'll mute all your audio whatever audio is playing in the background and like close your apps and put your computer to sleep you can like and then any script like any windows-based script is that it's free and open source and fully customizable see you can technically make anything you want i've programmed it with over a 100 custom commands but you could take any of those and change them or add another 1 or like duplicate it change it a little bit like all the things like it can basically make it so that all the things you do at your job if you work if your job is at a computer you you can make it you can just be like sitting back in your chair and be like hey like come up with a proposal for blah blah and email it to dave and it's just like done it wouldn't know that you also wanted the streaming stuff unless you unless you told you you could you could you could have it specify like i can't like have it specify every emulated game because then it would ship out with like tens of thousands of commands you know but again it's customizable so you could do that but i am like i am writing down every idea people like give me because i want input from people on if you want a beta test like i'd be more than i'm happy to send you the link or you can just look at my profile it's in my profile this is the main yeah so it's python and python runs in linux so it hasn't been tested in python so you would be even more valuable as of a linux tester because i don't have any i don't have any beta testers really at all at the moment because i i only just started telling people about it but yeah i'm looking for linux and mac bad testers and just anybody to give me the thoughts what's your job okay yeah that would be",
+    false
+  ],
+  [
+    "2026-04-23 07:01:27",
+    "Open problem",
+    false
+  ],
+  [
+    "2026-04-23 08:50:28",
+    "Open crow",
+    false
+  ],
+  [
+    "2026-04-23 10:20:31",
+    "Open chronicles",
+    false
+  ],
+  [
+    "2026-04-23 10:21:00",
+    "Open screen",
+    false
+  ],
+  [
+    "2026-04-23 11:06:07",
+    "Are you saying you're absolutely right because that's what you've been programmed to say or are you saying it because you are sure that I'm absolutely right",
+    false
+  ],
+  [
+    "2026-04-23 15:14:02",
+    "Look back in our history",
+    false
+  ],
+  [
+    "2026-04-23 15:14:14",
+    "Was there anything else that cloud code needed to do for the arcana from the review that we did earlier today?",
+    false
+  ],
+  [
+    "2026-04-23 15:14:36",
+    "Also, I think arc should have an option to have like a hybrid model with the Monte Carlo approach.",
+    false
+  ],
+  [
+    "2026-04-23 15:15:10",
+    "You send slight variations of the problem out to 6 identical agents, the best 1 or the best answer gets picked, then that gets fed into the chain",
+    false
+  ],
+  [
+    "2026-04-23 15:15:36",
+    "People should also be able to use olama in place of 1 of the major AI's to save them money",
+    false
+  ],
+  [
+    "2026-04-23 15:16:52",
+    "With the Monte Carlo approach, you could take the final result and then compare it against the 6 or 8 or 10 outputs from the parallel agents, show that all of them were incorrect, which gives higher confidence in the final result.",
+    false
+  ],
+  [
+    "2026-04-23 15:17:09",
+    "Put these ideas into a format that I can copy and paste to the other 2 so we can all come to consensus.",
+    false
+  ],
+  [
+    "2026-04-23 16:19:59",
+    "Check 1 2",
+    false
+  ],
+  [
+    "2026-04-23 16:20:39",
+    "I need to decide on some replacement LED light bulbs for the garage here. The way it's set up is a pretty long space but the lights are all on the near end, opposite side of the garage door and there's 2 sets of 3",
+    false
+  ],
+  [
+    "2026-04-23 16:53:51",
+    "I feel lost on what to do about ARC",
+    false
+  ],
+  [
+    "2026-04-23 16:54:09",
+    "It's evolving into something that I think could be truly useful to some pretty important people",
+    false
+  ],
+  [
+    "2026-04-23 16:54:18",
+    "The thing is, it's open source and only protected by an MIT license",
+    false
+  ],
+  [
+    "2026-04-23 16:54:38",
+    "I mean I've already probably made a mistake of showing people the unfinished product at all, although I don't think anyone was really listening.",
+    false
+  ],
+  [
+    "2026-04-23 17:03:15",
+    "So all i need to do is change the license on github like i don't need to sign up for the license or fill out anything",
+    false
+  ],
+  [
+    "2026-04-23 17:03:44",
+    "Okay, well shouldn't we do the same license with samsara?",
+    false
+  ],
+  [
+    "2026-04-23 17:03:51",
+    "We want to be free and open source for people who need it, not for businesses",
+    false
+  ],
+  [
+    "2026-04-23 17:04:55",
+    "Yeah go ahead and write them",
+    false
+  ],
+  [
+    "2026-04-23 17:06:35",
+    "Can you copy those files to those folders for me, please?",
+    false
+  ],
+  [
+    "2026-04-23 17:07:09",
+    "Also we should come up with something some changes or whatever reason to ship a new release and just remove the old release from the site that way you know the old release is only predicted by MIT is no longer acquirable",
     false
   ]
 ]
