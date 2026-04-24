@@ -1750,6 +1750,10 @@ class DictationApp:
             
             # Get transcription parameters based on performance mode
             transcribe_params = self.get_transcription_params()
+            # DISABLE faster-whisper's VAD for hold-to-dictate. The user
+            # explicitly pressed the hotkey — all captured audio is intentional
+            # speech. VAD was stripping 80% of audio, causing garbled output.
+            transcribe_params['vad_filter'] = False
             perf_mode = self.config.get('performance_mode', 'balanced')
             
             transcribe_start = time.time()
@@ -3132,6 +3136,9 @@ class DictationApp:
                 
                 # Get transcription parameters based on performance mode
                 transcribe_params = self.get_transcription_params()
+                # DISABLE faster-whisper's VAD for hotkey-triggered dictation.
+                # User explicitly pressed the hotkey — don't strip their speech.
+                transcribe_params['vad_filter'] = False
                 perf_mode = self.config.get('performance_mode', 'balanced')
                 
                 transcribe_start = time.time()
