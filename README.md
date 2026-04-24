@@ -3,7 +3,7 @@
 ### Voice-Controlled Computing for Accessibility
 
 [![Python 3.10+](https://img.shields.io/badge/python-3.10+-blue.svg)](https://www.python.org/downloads/)
-[![License: MIT](https://img.shields.io/badge/License-MIT-green.svg)](LICENSE)
+[![License: BSL-1.1](https://img.shields.io/badge/License-BSL--1.1-orange.svg)](LICENSE)
 [![Platform](https://img.shields.io/badge/platform-Windows-blue.svg)]()
 [![Status](https://img.shields.io/badge/status-early%20dev-orange.svg)]()
 
@@ -280,7 +280,7 @@ All hotkeys configurable in Settings.
 
 ## License
 
-MIT License — free for personal and commercial use.
+BSL-1.1 (Business Source License) — free for all non-commercial use. Converts to MIT on April 23, 2030. See [LICENSE](LICENSE) for details.
 
 If Samsara saves your wrists or speeds up your workflow, consider
 [supporting the project](https://ko-fi.com/morneingstar) — built through chronic
