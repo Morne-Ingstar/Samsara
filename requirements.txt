@@ -1,6 +1,9 @@
 # Samsara Voice Dictation - Dependencies
 # All packages are cross-platform (Windows, macOS, Linux)
 
+# Screen recording (GIF plugin)
+mss>=9.0
+
 # Core - Speech Recognition
 faster-whisper>=1.0.0
 
