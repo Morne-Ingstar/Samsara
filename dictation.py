@@ -1758,7 +1758,7 @@ class DictationApp:
             
             # Guard: Whisper hallucinates on very short audio (<0.5s).
             # It outputs phantom phrases like "Thank you" or "Subtitles by Amara".
-            if audio_duration < 0.5:
+            if audio_duration < 0.51:
                 print(f"[SKIP] Audio too short ({audio_duration:.2f}s) — skipping transcription")
                 return
             
@@ -3148,7 +3148,7 @@ class DictationApp:
                 perf_mode = self.config.get('performance_mode', 'balanced')
                 
                 # Guard: Whisper hallucinates on very short audio (<0.5s)
-                if audio_duration < 0.5:
+                if audio_duration < 0.51:
                     print(f"[SKIP] Audio too short ({audio_duration:.2f}s) — skipping")
                     self.root.after(0, self._schedule_ui, lambda: None)
                     return
