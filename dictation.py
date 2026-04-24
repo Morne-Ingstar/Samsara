@@ -1756,6 +1756,12 @@ class DictationApp:
             transcribe_params['vad_filter'] = False
             perf_mode = self.config.get('performance_mode', 'balanced')
             
+            # Guard: Whisper hallucinates on very short audio (<0.5s).
+            # It outputs phantom phrases like "Thank you" or "Subtitles by Amara".
+            if audio_duration < 0.5:
+                print(f"[SKIP] Audio too short ({audio_duration:.2f}s) — skipping transcription")
+                return
+            
             transcribe_start = time.time()
             with self.model_lock:
                 segments, info = self.model.transcribe(audio, **transcribe_params)
@@ -3140,6 +3146,12 @@ class DictationApp:
                 # User explicitly pressed the hotkey — don't strip their speech.
                 transcribe_params['vad_filter'] = False
                 perf_mode = self.config.get('performance_mode', 'balanced')
+                
+                # Guard: Whisper hallucinates on very short audio (<0.5s)
+                if audio_duration < 0.5:
+                    print(f"[SKIP] Audio too short ({audio_duration:.2f}s) — skipping")
+                    self.root.after(0, self._schedule_ui, lambda: None)
+                    return
                 
                 transcribe_start = time.time()
                 with self.model_lock:
