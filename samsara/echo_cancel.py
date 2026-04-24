@@ -395,6 +395,12 @@ class EchoCanceller:
         # Diagnostic logging counter
         self._process_count = 0
 
+        # Most recent reference (speaker) RMS, exposed so the wake-word
+        # callback can tell when speakers are actively generating audio
+        # (post-command echo suppression). None until process() has seen
+        # at least one chunk with enough reference data.
+        self.last_ref_rms = None
+
     @property
     def is_active(self) -> bool:
         """True if AEC is enabled AND loopback is running."""
@@ -465,6 +471,7 @@ class EchoCanceller:
 
         # Skip if system audio is silent
         ref_rms = float(np.sqrt(np.mean(ref ** 2)))
+        self.last_ref_rms = ref_rms
         if ref_rms < 1e-6:
             return mic_audio
 
