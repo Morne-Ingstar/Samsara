@@ -58,6 +58,15 @@ class SettingsWindow:
         # Hide window while building UI to prevent incremental rendering
         self.window.withdraw()
 
+        # Apply the Samsara icon (CTkToplevel races with its default icon
+        # ~200ms after construction, so apply now and re-apply after).
+        if hasattr(self.app, '_apply_window_icon'):
+            self.app._apply_window_icon(self.window)
+            try:
+                self.window.after(300, lambda: self.app._apply_window_icon(self.window))
+            except Exception:
+                pass
+
         # Use grid layout for reliable button placement
         self.window.grid_rowconfigure(0, weight=1)
         self.window.grid_columnconfigure(0, weight=1)
