@@ -124,6 +124,15 @@ class VoiceTrainingWindow:
             self.window.resizable(True, True)
             self.window.minsize(700, 650)
 
+            # Apply the Samsara icon (CTkToplevel races with its default
+            # icon ~200ms after construction, so re-apply after).
+            if hasattr(self.app, '_apply_window_icon'):
+                self.app._apply_window_icon(self.window)
+                try:
+                    self.window.after(300, lambda: self.app._apply_window_icon(self.window))
+                except Exception:
+                    pass
+
             # Ensure window appears on top
             self.window.lift()
             self.window.focus_force()
@@ -141,6 +150,8 @@ class VoiceTrainingWindow:
             self.tabview.add("Calibration")
             self.tabview.add("Vocabulary")
             self.tabview.add("Corrections")
+            self.tabview.add("Dictionary")
+            self.tabview.add("History")
             self.tabview.add("Advanced")
 
             # Create tab contents
@@ -152,6 +163,12 @@ class VoiceTrainingWindow:
 
             logger.info("Creating corrections tab")
             self.create_corrections_tab()
+
+            logger.info("Creating dictionary tab")
+            self.create_dictionary_tab()
+
+            logger.info("Creating history tab")
+            self.create_history_tab()
 
             logger.info("Creating advanced tab")
             self.create_advanced_tab()
@@ -648,12 +665,61 @@ automatically applied as a post-processing step."""
         try:
             for item in self.corrections_tree.get_children():
                 self.corrections_tree.delete(item)
-            
+
             for wrong, correct in self.corrections_dict.items():
                 self.corrections_tree.insert('', tk.END, values=(wrong, correct))
         except Exception as e:
             logger.error(f"Error refreshing corrections tree: {e}", exc_info=True)
-    
+
+    # ---- Dictionary tab ---------------------------------------------------
+    #
+    # Delegates to the reusable DictionaryFrame, which is also embedded by
+    # the main hub window.
+
+    def create_dictionary_tab(self):
+        """Mount the shared DictionaryFrame inside the Dictionary tab."""
+        try:
+            from samsara.ui.dictionary_frame import DictionaryFrame
+            tab = self.tabview.tab("Dictionary")
+            self.dictionary_frame = DictionaryFrame(tab, self.app)
+            self.dictionary_frame.pack(fill='both', expand=True)
+            logger.info("Dictionary tab created (delegating to DictionaryFrame)")
+        except Exception as e:
+            logger.error(f"Error creating dictionary tab: {e}", exc_info=True)
+            raise
+
+    # ---- History tab -------------------------------------------------------
+    #
+    # Delegates to the reusable HistoryFrame, which is also embedded by the
+    # main hub window. This keeps the history viewer a single source of truth
+    # -- a fix or feature lands in both places.
+
+    def create_history_tab(self):
+        """Mount the shared HistoryFrame inside the History tab."""
+        try:
+            from samsara.ui.history_frame import HistoryFrame
+            tab = self.tabview.tab("History")
+            self._history_window_open = True
+            self.history_frame = HistoryFrame(
+                tab, self.app,
+                is_visible=lambda: (
+                    self._history_window_open
+                    and self.window is not None
+                    and self._safe_tabview_get() == "History"
+                ),
+            )
+            self.history_frame.pack(fill='both', expand=True)
+            logger.info("History tab created (delegating to HistoryFrame)")
+        except Exception as e:
+            logger.error(f"Error creating history tab: {e}", exc_info=True)
+            raise
+
+    def _safe_tabview_get(self):
+        try:
+            return self.tabview.get()
+        except Exception:
+            return None
+
     def create_advanced_tab(self):
         """Create advanced recognition settings tab"""
         try:
@@ -824,7 +890,11 @@ Change in main Settings -> requires restart"""
         try:
             if self.monitoring:
                 self.stop_monitoring()
-            
+
+            # Stop history polling/debounce timers so they don't fire on a
+            # destroyed window.
+            self._history_window_open = False
+
             self.window.destroy()
             self.window = None
             logger.info("Voice training window closed")
