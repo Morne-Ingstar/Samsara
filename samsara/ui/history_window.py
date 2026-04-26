@@ -36,6 +36,15 @@ class HistoryWindow:
         self.window.resizable(True, True)
         self.window.minsize(400, 300)
 
+        # Apply the Samsara icon (CTkToplevel races with its default icon
+        # ~200ms after construction, so re-apply after).
+        if hasattr(self.app, '_apply_window_icon'):
+            self.app._apply_window_icon(self.window)
+            try:
+                self.window.after(300, lambda: self.app._apply_window_icon(self.window))
+            except Exception:
+                pass
+
         self.window.lift()
         self.window.focus_force()
         self.window.after(100, lambda: self.window.lift())
