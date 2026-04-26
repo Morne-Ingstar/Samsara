@@ -154,6 +154,8 @@ from samsara.ui.settings_window import SettingsWindow
 from samsara.ui.history_window import HistoryWindow
 from samsara.ui.wake_word_debug import WakeWordDebugWindow
 from samsara.ui.listening_indicator import ListeningIndicator
+from samsara.cleanup import clean_text
+from samsara.history import HistoryManager
 from samsara.wake_word_matcher import match_wake_phrase
 from samsara.wake_corrections import apply_corrections as apply_wake_corrections, was_corrected
 from samsara.command_parser import parse_wake_command, normalize_command_text, strip_wake_echoes
@@ -505,6 +507,12 @@ class DictationApp:
             self.root = tk.Tk()
             self.root.withdraw()  # Hide it
 
+        # Apply the segmented-wheel as the default window icon for every
+        # Toplevel (taskbar, top-left corner). Tk's default-flag inherits
+        # to all subsequently created Toplevels -- one call covers the
+        # main hub, settings, voice training, history, wake word debug, etc.
+        self._apply_window_icon(self.root, default=True)
+
         # Get available microphones
         self.available_mics = self.get_available_microphones()
 
@@ -531,6 +539,14 @@ class DictationApp:
         self.recording = False
         self.command_mode_recording = False  # True when using command-only hotkey
         self.audio_data = []
+
+        # Stream health: detect dead PortAudio streams (e.g. after sleep/wake)
+        # and trigger reconnection from a background thread. GIL makes simple
+        # bool reads/writes atomic; this flag has multiple readers but a
+        # well-defined single-writer pattern (callbacks set True, monitor
+        # sets False after successful reconnect).
+        self._stream_dead = False
+        self._running = True
 
         # Set up audio feedback sounds (creates defaults if needed)
         self._setup_sounds()
@@ -634,6 +650,16 @@ class DictationApp:
         self.max_history = 100  # Keep last 100 items
         self.history = self.load_history()  # List of (timestamp, text, is_command) tuples
 
+        # Persistent SQLite-backed history at ~/.samsara/history.db. Separate
+        # from self.history (above) so the existing HistoryWindow keeps working
+        # while the new store records every attempt -- including failures.
+        try:
+            self.history_db = HistoryManager()
+            self.history_db.prune(max_entries=10000)
+        except Exception as e:
+            print(f"[HISTORY] Could not open persistent history: {e}")
+            self.history_db = None
+
         # Settings window
         self.settings_window = SettingsWindow(self)
 
@@ -709,6 +735,11 @@ class DictationApp:
 
         # Load model in background
         self.load_model_async()
+
+        # Stream health monitor: watches _stream_dead flag and reconnects
+        # the PortAudio streams after sleep/wake or device disruption.
+        threading.Thread(target=self._stream_health_monitor,
+                         daemon=True, name="stream-health").start()
         
         mode = self.config.get('mode', 'hold')
         print(f"Dictation app starting...")
@@ -720,11 +751,22 @@ class DictationApp:
         print(f"Hotkey detection: state-based (simultaneous key support)")
 
         # Close splash and start system tray
+        # Main hub window (sidebar nav into History/Dictionary/Settings).
+        # Constructed before the tray so the tray's double-click handler
+        # has something to call. Shown after the tray comes up.
+        from samsara.ui.main_window import MainWindow
+        self.main_window = MainWindow(self)
+
         self.update_splash("Starting...")
         if self.splash:
             self.splash.close()
             self.splash = None
         self.create_tray_icon()
+
+        # Open the main window on launch (after tray is up)
+        print("[UI] Calling show_main_window()...")
+        self.show_main_window()
+        print("[UI] show_main_window() returned")
 
     def update_splash(self, status):
         """Update splash screen status"""
@@ -750,6 +792,7 @@ class DictationApp:
             "add_trailing_space": True,
             "auto_capitalize": True,
             "format_numbers": True,
+            "cleanup_mode": "clean",  # "clean" (filler removal + spacing) or "verbatim"
             "device": "auto",
             "microphone": None,
             "silence_threshold": DEFAULT_SILENCE_TIMEOUT,
@@ -786,6 +829,11 @@ class DictationApp:
                 "enabled": False,
                 "latency_ms": 30.0,
             },
+            # Hub window geometry (size/position persist across sessions)
+            "window_width": 900,
+            "window_height": 650,
+            "window_x": None,
+            "window_y": None,
             # Performance mode for transcription speed/accuracy tradeoff
             "performance_mode": "balanced",  # "fast", "balanced", or "accurate"
             # Key macro system for accessibility (e.g., triple-tap W for auto-run)
@@ -1244,6 +1292,57 @@ class DictationApp:
         # Save to file
         self.save_history()
 
+    def _get_foreground_app(self):
+        """Return the title of the currently focused window, or 'Unknown'."""
+        try:
+            import ctypes
+            user32 = ctypes.windll.user32
+            hwnd = user32.GetForegroundWindow()
+            length = user32.GetWindowTextLengthW(hwnd)
+            if length > 0:
+                buf = ctypes.create_unicode_buffer(length + 1)
+                user32.GetWindowTextW(hwnd, buf, length + 1)
+                return buf.value
+        except Exception:
+            pass
+        return "Unknown"
+
+    def _log_history(self, raw_text, display_text=None, duration_ms=0,
+                     mode="hold", status="success", app_context=None):
+        """Write one entry to the persistent SQLite history (best-effort).
+
+        Wrapped so callers don't need to null-check or try/except every site.
+        Failures here must never break a transcription.
+        """
+        if self.history_db is None:
+            return
+        try:
+            self.history_db.add(
+                raw_text=raw_text,
+                display_text=display_text if display_text is not None else raw_text,
+                app_context=app_context if app_context is not None else self._get_foreground_app(),
+                duration_ms=int(duration_ms),
+                mode=mode,
+                status=status,
+            )
+        except Exception as e:
+            print(f"[HISTORY] log failed: {e}")
+
+    def _notify_main_window(self, text):
+        """Direct callback into the hub window (no event bus).
+
+        Updates its 'last transcription' status preview and refreshes the
+        history list without waiting for the next 5s poll. Best-effort:
+        the hub is optional, so any failure here is swallowed.
+        """
+        win = getattr(self, 'main_window', None)
+        if win is None:
+            return
+        try:
+            win.on_dictation_complete(text)
+        except Exception as e:
+            print(f"[UI] main window notify failed: {e}")
+
     def switch_microphone(self, mic_id):
         """Switch to a different microphone at runtime.
 
@@ -1677,10 +1776,12 @@ class DictationApp:
 
     def continuous_audio_callback(self, indata, frames, time_info, status):
         """Callback for continuous listening - detects speech and silence"""
+        if self._stream_dead:
+            return  # don't process audio from a dying stream
         try:
             if status:
                 print(f"[WARN] Audio status: {status}")
-            
+
             if not self.continuous_active:
                 return
             
@@ -1738,6 +1839,10 @@ class DictationApp:
                         else:
                             self.is_speaking = False
                             self.silence_start = None
+        except (sd.PortAudioError, OSError) as e:
+            print(f"[AUDIO] Stream died -- attempting reconnect... ({e})")
+            self._stream_dead = True
+            return
         except Exception as e:
             print(f"[ERROR] Audio callback exception: {e}")
 
@@ -1790,6 +1895,11 @@ class DictationApp:
                 # Apply text processing (auto-capitalize, number formatting)
                 text = self.process_transcription(text)
 
+                # Deterministic cleanup (filler removal, spacing). Snapshot
+                # raw BEFORE cleanup so history can preserve the original.
+                raw = text
+                text = clean_text(text, mode=self.config.get('cleanup_mode', 'clean'))
+
                 if self.config['add_trailing_space']:
                     text = text + " "
 
@@ -1798,8 +1908,30 @@ class DictationApp:
                 if self.config['auto_paste']:
                     self._paste_preserving_clipboard(text)
 
+                # Log to persistent history
+                self._log_history(
+                    raw_text=raw,
+                    display_text=text.strip(),
+                    duration_ms=int(audio_duration * 1000),
+                    mode="continuous",
+                    status="success",
+                )
+                self._notify_main_window(text.strip())
+
         except Exception as e:
-            print(f"Transcription error: {e}")
+            print(f"[ERROR] Transcription failed: {e}")
+            self._log_history(
+                raw_text="",
+                display_text=f"[FAILED] {e}",
+                mode="continuous",
+                status="failed",
+            )
+            # Notify user so they know to retry
+            try:
+                import winsound
+                winsound.PlaySound("SystemHand", winsound.SND_ALIAS | winsound.SND_ASYNC)
+            except Exception:
+                pass
 
     def transcribe_buffer(self):
         """Transcribe remaining buffer when stopping"""
@@ -1951,10 +2083,12 @@ class DictationApp:
 
     def wake_word_audio_callback(self, indata, frames, time_info, status):
         """Callback for wake word listening"""
+        if self._stream_dead:
+            return  # don't process audio from a dying stream
         try:
             if status:
                 print(f"[WARN] Audio status: {status}")
-            
+
             if not self.wake_word_active:
                 return
             
@@ -2107,9 +2241,13 @@ class DictationApp:
                                 args=(buffer_copy,),
                                 daemon=True,
                             ).start()
+        except (sd.PortAudioError, OSError) as e:
+            print(f"[AUDIO] Stream died -- attempting reconnect... ({e})")
+            self._stream_dead = True
+            return
         except Exception as e:
             print(f"[ERROR] Audio callback exception: {e}")
-    
+
     def register_wake_trace_callback(self, callback):
         """Register a callable that receives wake-word pipeline trace events.
 
@@ -2166,6 +2304,17 @@ class DictationApp:
             
             if not text:
                 print(f"[HEAR] (nothing — Whisper returned empty for {audio_duration:.1f}s of audio)")
+                # Only log when the user actually spoke (>0.5s of audio) but
+                # Whisper returned nothing. Don't spam history with every
+                # silent buffer the wake-word callback flushes.
+                if audio_duration > 0.5:
+                    self._log_history(
+                        raw_text="",
+                        display_text="(no speech detected)",
+                        duration_ms=int(audio_duration * 1000),
+                        mode="wake",
+                        status="empty",
+                    )
                 return
             
             print(f"[HEAR] \"{text}\"")
@@ -2341,9 +2490,21 @@ class DictationApp:
                 self._emit_wake_trace({"stage": "utterance_end", "result": "no_wake_word"})
                 
         except Exception as e:
-            print(f"Wake word processing error: {e}")
+            print(f"[ERROR] Transcription failed: {e}")
             import traceback
             traceback.print_exc()
+            self._log_history(
+                raw_text="",
+                display_text=f"[FAILED] {e}",
+                mode="wake",
+                status="failed",
+            )
+            # Notify user so they know to retry
+            try:
+                import winsound
+                winsound.PlaySound("SystemHand", winsound.SND_ALIAS | winsound.SND_ASYNC)
+            except Exception:
+                pass
         finally:
             # Clear Silero VAD internal state so the next utterance starts
             # fresh. Without this, its rolling context bleeds between commands.
@@ -2607,6 +2768,10 @@ class DictationApp:
         # Apply text processing (auto-capitalize, number formatting)
         text = self.process_transcription(text)
 
+        # Deterministic cleanup (filler removal, spacing).
+        raw = text
+        text = clean_text(text, mode=self.config.get('cleanup_mode', 'clean'))
+
         if self.config['add_trailing_space']:
             text = text + " "
 
@@ -2617,10 +2782,17 @@ class DictationApp:
 
         # Add to history
         self.add_to_history(text.strip(), is_command=False)
+        self._log_history(
+            raw_text=raw,
+            display_text=text.strip(),
+            mode="wake",
+            status="success",
+        )
+        self._notify_main_window(text.strip())
 
         if self.config['auto_paste']:
             self._paste_preserving_clipboard(text)
-    
+
     def _start_wake_timeout(self):
         """Start timeout for wake word command.
         
@@ -2667,15 +2839,21 @@ class DictationApp:
 
     def audio_callback(self, indata, frames, time_info, status):
         """Callback for audio stream (hold/toggle mode)"""
+        if self._stream_dead:
+            return  # don't process audio from a dying stream
         try:
             if status:
                 print(f"[WARN] Audio status: {status}")
-            
+
             if self.recording:
                 chunk = indata.copy()
                 if self.echo_canceller.is_active:
                     chunk = self.echo_canceller.process(chunk)
                 self.audio_data.append(chunk)
+        except (sd.PortAudioError, OSError) as e:
+            print(f"[AUDIO] Stream died -- attempting reconnect... ({e})")
+            self._stream_dead = True
+            return
         except Exception as e:
             print(f"[ERROR] Audio callback exception: {e}")
 
@@ -2877,17 +3055,22 @@ class DictationApp:
 
     def _sound_stream_callback(self, outdata, frames, time_info, status):
         """Callback for the persistent output stream. Feeds audio from buffer."""
-        with self._buffer_lock:
-            n_buffered = len(self._playback_buffer)
-            if n_buffered >= frames:
-                outdata[:] = self._playback_buffer[:frames]
-                self._playback_buffer = self._playback_buffer[frames:]
-            elif n_buffered > 0:
-                outdata[:n_buffered] = self._playback_buffer
-                outdata[n_buffered:] = 0
-                self._playback_buffer = np.zeros((0, 1), dtype=np.float32)
-            else:
-                outdata[:] = 0  # Silence when nothing to play
+        try:
+            with self._buffer_lock:
+                n_buffered = len(self._playback_buffer)
+                if n_buffered >= frames:
+                    outdata[:] = self._playback_buffer[:frames]
+                    self._playback_buffer = self._playback_buffer[frames:]
+                elif n_buffered > 0:
+                    outdata[:n_buffered] = self._playback_buffer
+                    outdata[n_buffered:] = 0
+                    self._playback_buffer = np.zeros((0, 1), dtype=np.float32)
+                else:
+                    outdata[:] = 0  # Silence when nothing to play
+        except (sd.PortAudioError, OSError) as e:
+            print(f"[AUDIO] Stream died -- attempting reconnect... ({e})")
+            self._stream_dead = True
+            return
 
     def reload_sounds(self):
         """Reload sounds from disk (call after changing sound files)"""
@@ -2935,6 +3118,8 @@ class DictationApp:
     def _prebuffer_callback(self, indata, frames, time_info, status):
         """Audio callback for standalone pre-buffer stream (hold/toggle modes).
         Simply feeds a rolling buffer so audio before hotkey press is captured."""
+        if self._stream_dead:
+            return  # don't process audio from a dying stream
         try:
             if status:
                 pass  # Ignore status warnings for background stream
@@ -2942,6 +3127,10 @@ class DictationApp:
             if self.echo_canceller.is_active:
                 chunk = self.echo_canceller.process(chunk)
             self._prebuffer.append(chunk.flatten())
+        except (sd.PortAudioError, OSError) as e:
+            print(f"[AUDIO] Stream died -- attempting reconnect... ({e})")
+            self._stream_dead = True
+            return
         except Exception:
             pass
 
@@ -3034,6 +3223,153 @@ class DictationApp:
                 pass
             self._prebuffer_stream = None
             self._prebuffer_active = False
+
+    def _close_all_streams(self):
+        """Stop and close every active audio stream, swallowing errors per-stream.
+
+        Used by the health monitor before re-opening after sleep/wake. Each
+        stream is wrapped independently so a failure on one doesn't leave
+        others open.
+        """
+        # Persistent output (sound playback) stream
+        try:
+            if self._sound_stream is not None:
+                self._sound_stream.stop()
+                self._sound_stream.close()
+        except Exception:
+            pass
+        self._sound_stream = None
+
+        # Continuous / wake-word input stream (only one is ever active)
+        try:
+            if self.continuous_stream is not None:
+                self.continuous_stream.stop()
+                self.continuous_stream.close()
+        except Exception:
+            pass
+        self.continuous_stream = None
+
+        # Pre-buffer input stream (hold/toggle modes)
+        try:
+            if self._prebuffer_stream is not None:
+                self._prebuffer_stream.stop()
+                self._prebuffer_stream.close()
+        except Exception:
+            pass
+        self._prebuffer_stream = None
+        self._prebuffer_active = False
+
+        # Hold/toggle recording stream (transient, but may exist if user was
+        # holding the hotkey when the PC slept)
+        try:
+            if hasattr(self, 'stream') and self.stream is not None:
+                self.stream.stop()
+                self.stream.close()
+        except Exception:
+            pass
+        if hasattr(self, 'stream'):
+            self.stream = None
+
+    def _open_audio_streams(self):
+        """Open the audio streams that should be active for the current mode.
+
+        Called both at startup and from the health monitor during reconnect
+        after sleep/wake. Re-opens whatever combination of streams matches
+        the current app state (continuous, wake_word, or hold/toggle pre-buffer).
+        Always re-opens the persistent output sound stream.
+        """
+        # Persistent output stream is always needed (sound feedback)
+        self._start_sound_stream()
+        if self._sound_stream is None:
+            raise RuntimeError("failed to open output sound stream")
+
+        # Pick the right input stream based on current state.
+        # continuous and wake-word share self.continuous_stream.
+        if self.continuous_active:
+            stream = self._open_stream_with_timeout(
+                samplerate=self.capture_rate,
+                channels=1,
+                dtype=np.float32,
+                callback=self.continuous_audio_callback,
+                device=self.config['microphone'],
+                blocksize=int(self.capture_rate * 0.1),
+            )
+            if stream is None:
+                raise RuntimeError("failed to open continuous input stream")
+            self.continuous_stream = stream
+            self.continuous_stream.start()
+        elif self.wake_word_active:
+            stream = self._open_stream_with_timeout(
+                samplerate=self.capture_rate,
+                channels=1,
+                dtype=np.float32,
+                callback=self.wake_word_audio_callback,
+                device=self.config['microphone'],
+                blocksize=int(self.capture_rate * 0.1),
+            )
+            if stream is None:
+                raise RuntimeError("failed to open wake-word input stream")
+            self.continuous_stream = stream
+            self.continuous_stream.start()
+        else:
+            # Hold/toggle modes: pre-buffer stream when model is loaded
+            mode = self.config.get('mode', 'hold')
+            if mode in ('hold', 'toggle') and self.model_loaded:
+                self._start_prebuffer_stream()
+
+    def _stream_health_monitor(self):
+        """Background thread: detect dead audio streams and reconnect."""
+        while self._running:
+            time.sleep(3)
+            if not self._stream_dead:
+                continue
+
+            print("[AUDIO] Reconnecting audio stream...")
+            retries = 0
+            max_retries = 5
+
+            while retries < max_retries and self._stream_dead:
+                try:
+                    # Close old streams gracefully
+                    self._close_all_streams()
+                    time.sleep(1)
+
+                    # Re-open streams
+                    self._open_audio_streams()
+
+                    # Re-calibrate ambient noise
+                    self._run_calibration_if_auto()
+
+                    self._stream_dead = False
+                    print(f"[AUDIO] Reconnected successfully after {retries + 1} attempt(s)")
+
+                    # Notify user
+                    try:
+                        from plyer import notification
+                        notification.notify(
+                            title="Samsara",
+                            message="Audio reconnected after sleep/wake",
+                            timeout=3,
+                        )
+                    except ImportError:
+                        # Fallback: Windows toast via PowerShell
+                        import subprocess
+                        subprocess.Popen([
+                            'powershell', '-Command',
+                            '[System.Reflection.Assembly]::LoadWithPartialName("System.Windows.Forms") | Out-Null; '
+                            '[System.Windows.Forms.MessageBox]::Show("Audio reconnected", "Samsara", "OK", "Information")'
+                        ], creationflags=subprocess.CREATE_NO_WINDOW)
+                    except Exception as notify_err:
+                        print(f"[AUDIO] Reconnect notify failed: {notify_err}")
+
+                    break
+                except Exception as e:
+                    retries += 1
+                    print(f"[AUDIO] Reconnect attempt {retries}/{max_retries} failed: {e}")
+                    time.sleep(2 * retries)  # exponential backoff
+
+            if self._stream_dead:
+                print("[AUDIO] Failed to reconnect after max retries")
 
     def start_recording(self):
         """Start recording audio"""
@@ -3180,6 +3516,12 @@ class DictationApp:
                     if was_command:
                         # Command was executed - add to history as command
                         self.add_to_history(text, is_command=True)
+                        self._log_history(
+                            raw_text=text,
+                            duration_ms=int(audio_duration * 1000),
+                            mode="command",
+                            status="success",
+                        )
                         return
 
                     # Not a command
@@ -3187,10 +3529,14 @@ class DictationApp:
                         # In command-only mode, don't output text if no command matched
                         print(f"[CMD] No command matched: '{text}'")
                         return
-                    
+
                     # Regular dictation mode - proceed with text output
                     # Apply text processing (auto-capitalize, number formatting)
                     text = self.process_transcription(text)
+
+                    # Deterministic cleanup (filler removal, spacing).
+                    raw = text
+                    text = clean_text(text, mode=self.config.get('cleanup_mode', 'clean'))
 
                     if self.config['add_trailing_space']:
                         text = text + " "
@@ -3202,19 +3548,49 @@ class DictationApp:
 
                     # Add to history
                     self.add_to_history(text.strip(), is_command=False)
+                    self._log_history(
+                        raw_text=raw,
+                        display_text=text.strip(),
+                        duration_ms=int(audio_duration * 1000),
+                        mode="hold",
+                        status="success",
+                    )
+                    self._notify_main_window(text.strip())
 
                     if self.config['auto_paste']:
                         self._paste_preserving_clipboard(text)
                 else:
                     print("No speech detected")
                     self.command_mode_recording = False  # Reset flag on no speech too
+                    # Only log "empty" when there was actually audio to transcribe.
+                    # Whisper hallucination guard above already filtered <0.5s.
+                    if audio_duration > 0.5:
+                        self._log_history(
+                            raw_text="",
+                            display_text="(no speech detected)",
+                            duration_ms=int(audio_duration * 1000),
+                            mode="hold",
+                            status="empty",
+                        )
 
             except Exception as e:
-                print(f"Transcription error: {e}")
+                print(f"[ERROR] Transcription failed: {e}")
                 self.play_sound("error")
                 if hasattr(self, 'listening_indicator'):
                     self._schedule_ui(self.listening_indicator.flash_error)
-        
+                self._log_history(
+                    raw_text="",
+                    display_text=f"[FAILED] {e}",
+                    mode="hold",
+                    status="failed",
+                )
+                # Notify user so they know to retry
+                try:
+                    import winsound
+                    winsound.PlaySound("SystemHand", winsound.SND_ALIAS | winsound.SND_ASYNC)
+                except Exception:
+                    pass
+
         thread = threading.Thread(target=transcribe, daemon=True)
         thread.start()
 
@@ -3327,6 +3703,46 @@ class DictationApp:
                 print(f"[MODE] Failed to refresh tray menu: {e}")
         self._update_tray_tooltip()
 
+    def show_main_window(self):
+        """Open (or refocus) the main hub window.
+
+        Bound by the tray icon's left-click and by the Show... menu items.
+        Rebinds WM_DELETE_WINDOW so closing minimizes to tray instead of
+        exiting the app -- the tray remains the source of truth for the
+        process lifecycle.
+        """
+        try:
+            print("[UI] Calling main_window.show()...")
+            self.main_window.show()
+            print(f"[UI] main_window.show() done, _toplevel={self.main_window._toplevel}")
+            top = self.main_window._toplevel
+            if top is not None:
+                top.protocol("WM_DELETE_WINDOW", self.hide_main_window)
+        except Exception as e:
+            print(f"[UI] Failed to show main window: {e}")
+
+    def hide_main_window(self):
+        """Close button on the hub: just minimize to tray."""
+        try:
+            self.main_window.hide()
+        except Exception as e:
+            print(f"[UI] Failed to hide main window: {e}")
+
+    def set_cleanup_mode(self, mode):
+        """Tray-menu entry point: switch between 'clean' and 'verbatim' cleanup."""
+        if mode not in ('clean', 'verbatim'):
+            return
+        if self.config.get('cleanup_mode') == mode:
+            return
+        self.config['cleanup_mode'] = mode
+        self.save_config()
+        print(f"[CLEANUP] Mode -> {mode}")
+        if hasattr(self, 'tray_icon') and hasattr(self, 'get_menu'):
+            try:
+                self.tray_icon.menu = self.get_menu()
+            except Exception as e:
+                print(f"[CLEANUP] Failed to refresh tray menu: {e}")
+
     def _get_mode_display(self):
         """Build a display string for the current mode + wake word state."""
         mode = self.config.get('mode', 'hold').title()
@@ -3368,6 +3784,39 @@ class DictationApp:
             t = start_rad + (end_rad - start_rad) * i / steps
             pts.append((cx + inner_r * math.cos(t), cy + inner_r * math.sin(t)))
         return pts
+
+    def _get_window_icon_photos(self):
+        """Build (and cache) Tk PhotoImages of the colored Samsara wheel.
+
+        Used as the window icon (taskbar + top-left corner) for every
+        Toplevel via Tk's iconphoto. We keep references on self so they
+        aren't garbage-collected -- Tk holds them only weakly.
+        """
+        if getattr(self, '_window_icon_photos', None) is not None:
+            return self._window_icon_photos
+        try:
+            from PIL import ImageTk
+            base = self.create_icon_image(active=True)  # full-color wheel
+            sizes = (16, 32, 48, 64)
+            photos = []
+            for s in sizes:
+                resized = base.resize((s, s), Image.LANCZOS)
+                photos.append(ImageTk.PhotoImage(resized, master=self.root))
+            self._window_icon_photos = photos
+        except Exception as e:
+            print(f"[ICON] Could not build window icon photos: {e}")
+            self._window_icon_photos = []
+        return self._window_icon_photos
+
+    def _apply_window_icon(self, win, default=False):
+        """Set the Samsara icon on `win` (and as the default for Toplevels)."""
+        photos = self._get_window_icon_photos()
+        if not photos:
+            return
+        try:
+            win.iconphoto(default, *photos)
+        except Exception as e:
+            print(f"[ICON] iconphoto failed on {win}: {e}")
 
     def create_icon_image(self, active=False, color_offset=0, rotation=0.0):
         """Create system tray icon — segmented wheel design.
@@ -3728,7 +4177,13 @@ class DictationApp:
             
             return pystray.Menu(
                 pystray.MenuItem(
-                    f"[MIC] {self.get_current_microphone_name()}", 
+                    "Show Samsara",
+                    lambda _i, _it: self.show_main_window(),
+                    default=True,  # left-click on tray icon reopens the hub
+                ),
+                pystray.Menu.SEPARATOR,
+                pystray.MenuItem(
+                    f"[MIC] {self.get_current_microphone_name()}",
                     pystray.Menu(*mic_menu_items) if mic_menu_items else None
                 ),
                 pystray.Menu.SEPARATOR,
@@ -3760,6 +4215,23 @@ class DictationApp:
                     lambda _i, _it: self.set_wake_word_enabled(
                         not self.config.get('wake_word_enabled', False)),
                     checked=lambda _it: self.config.get('wake_word_enabled', False)
+                ),
+                pystray.MenuItem(
+                    "Cleanup",
+                    pystray.Menu(
+                        pystray.MenuItem(
+                            "Clean (remove fillers, fix spacing)",
+                            lambda _i, _it: self.set_cleanup_mode('clean'),
+                            checked=lambda _it: self.config.get('cleanup_mode', 'clean') == 'clean',
+                            radio=True
+                        ),
+                        pystray.MenuItem(
+                            "Verbatim (no cleanup)",
+                            lambda _i, _it: self.set_cleanup_mode('verbatim'),
+                            checked=lambda _it: self.config.get('cleanup_mode', 'clean') == 'verbatim',
+                            radio=True
+                        ),
+                    )
                 ),
                 pystray.MenuItem(
                     f"Hotkey: {self.config['hotkey']}", 
@@ -3874,6 +4346,9 @@ class DictationApp:
         """Exit the application"""
         print("[EXIT] Shutting down Samsara...")
 
+        # Signal background threads (e.g. stream-health monitor) to stop
+        self._running = False
+
         # Stop icon chase animation timer
         try:
             self._stop_icon_chase()
@@ -3938,6 +4413,20 @@ class DictationApp:
         # Stop persistent sound stream
         try:
             self.stop_sound_stream()
+        except:
+            pass
+
+        # Close main hub window (saves geometry to config)
+        try:
+            if getattr(self, 'main_window', None) is not None:
+                self.main_window.close()
+        except:
+            pass
+
+        # Close persistent history database
+        try:
+            if getattr(self, 'history_db', None) is not None:
+                self.history_db.close()
         except:
             pass
 

@@ -1,0 +1,117 @@
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="utf-8">
+<title>Portfolio Dashboard</title>
+<style>
+* { margin: 0; padding: 0; box-sizing: border-box; }
+body { background: #0a0a0f; color: #e0e0e0; font-family: 'Segoe UI', sans-serif; }
+.header { display: flex; justify-content: space-between; align-items: center; padding: 20px 40px; border-bottom: 1px solid #1a1a2e; }
+.header h1 { font-size: 18px; color: #888; font-weight: 400; }
+.header .total { text-align: right; }
+.header .total .label { font-size: 12px; color: #555; text-transform: uppercase; letter-spacing: 1px; }
+.header .total .value { font-size: 32px; font-weight: 700; color: #e74c3c; }
+.header .total .change { font-size: 14px; color: #e74c3c; margin-top: 2px; }
+.chart-area { padding: 24px 40px; height: 280px; }
+.chart-area canvas { width: 100%; height: 100%; }
+.grid { display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 12px; padding: 0 40px 24px; }
+.card { background: #12121e; border: 1px solid #1a1a2e; border-radius: 8px; padding: 14px 16px; }
+.card .name { font-size: 12px; color: #555; margin-bottom: 4px; letter-spacing: 0.5px; }
+.card .row { display: flex; justify-content: space-between; align-items: baseline; }
+.card .price { font-size: 20px; font-weight: 600; }
+.card .pct { font-size: 13px; font-weight: 500; }
+.loss { color: #e74c3c; }
+.gain { color: #2ecc71; }
+.alert { background: #1a0a0a; border: 1px solid #e74c3c33; border-radius: 8px; margin: 0 40px 20px; padding: 14px 20px; display: flex; align-items: center; gap: 12px; }
+.alert .dot { width: 8px; height: 8px; border-radius: 50%; background: #e74c3c; animation: pulse 1.5s infinite; }
+@keyframes pulse { 0%,100% { opacity: 1; } 50% { opacity: 0.3; } }
+.alert .text { font-size: 13px; color: #e74c3c; }
+</style>
+</head>
+<body>
+<div class="header">
+<h1>Portfolio Overview</h1>
+<div class="total">
+<div class="label">Total portfolio value</div>
+<div class="value">$1,247.33</div>
+<div class="change">-$47,891.67 (-97.5%) all time</div>
+</div>
+</div>
+
+<div class="alert">
+<div class="dot"></div>
+<div class="text">MARGIN CALL WARNING — Account equity below maintenance requirement. Liquidation may occur.</div>
+</div>
+
+<div class="chart-area">
+<canvas id="chart"></canvas>
+</div>
+
+<div class="grid">
+<div class="card">
+<div class="name">NVIDIA (NVDA)</div>
+<div class="row"><span class="price loss">$2.14</span><span class="pct loss">-94.2%</span></div>
+</div>
+<div class="card">
+<div class="name">TESLA (TSLA)</div>
+<div class="row"><span class="price loss">$0.87</span><span class="pct loss">-99.1%</span></div>
+</div>
+<div class="card">
+<div class="name">APPLE (AAPL)</div>
+<div class="row"><span class="price loss">$3.41</span><span class="pct loss">-91.8%</span></div>
+</div>
+<div class="card">
+<div class="name">BITCOIN (BTC)</div>
+<div class="row"><span class="price loss">$412.00</span><span class="pct loss">-98.7%</span></div>
+</div>
+<div class="card">
+<div class="name">AMAZON (AMZN)</div>
+<div class="row"><span class="price loss">$1.22</span><span class="pct loss">-96.4%</span></div>
+</div>
+<div class="card">
+<div class="name">SAVINGS ACCOUNT</div>
+<div class="row"><span class="price gain">$827.69</span><span class="pct gain">+0.3%</span></div>
+</div>
+</div>
+
+<script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+<script>
+const months = ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec',
+'Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'];
+const values = [49139,51200,48700,52100,47800,44200,39800,35100,28400,22100,15800,11200,
+8400,6100,4800,3200,2900,2400,2100,1800,1600,1400,1300,1247];
+
+new Chart(document.getElementById('chart'), {
+type: 'line',
+data: {
+labels: months,
+datasets: [{
+data: values,
+borderColor: '#e74c3c',
+backgroundColor: 'rgba(231,76,60,0.08)',
+fill: true,
+tension: 0.3,
+pointRadius: 0,
+borderWidth: 2
+}]
+},
+options: {
+responsive: true,
+maintainAspectRatio: false,
+plugins: { legend: { display: false } },
+scales: {
+x: { grid: { color: '#1a1a2e' }, ticks: { color: '#444', font: { size: 10 } } },
+y: {
+grid: { color: '#1a1a2e' },
+ticks: {
+color: '#444',
+font: { size: 10 },
+callback: v => '$' + (v/1000).toFixed(0) + 'k'
+}
+}
+}
+}
+});
+</script>
+</body>
+</html>

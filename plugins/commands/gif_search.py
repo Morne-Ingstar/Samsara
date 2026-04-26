@@ -1,11 +1,10 @@
 """GIF search plugin.
 
-Say "Samsara, make me a gif of dancing cat" and it opens Giphy
-with search results. Simple, no API key needed.
+Say "Samsara, search for a gif of dancing cat" and it opens Giphy.
 
-Trigger phrases:
-  "make me a gif of" / "gif of" / "find a gif of" /
-  "search gif" / "gif me"
+Trigger phrases are deliberately distinct from screen_gif.py:
+  - This plugin: "search gif" / "find a gif" / "gif of" (finding existing GIFs)
+  - screen_gif.py: "record my screen" / "capture screen" (creating new GIFs)
 """
 
 import webbrowser
@@ -14,13 +13,14 @@ import urllib.parse
 from samsara.plugin_commands import command
 
 
-@command("make me a gif of", aliases=[
-    "gif of", "find a gif of", "find me a gif of",
-    "search gif", "gif me", "make a gif of",
-    "get me a gif of", "show me a gif of"
+@command("search for a gif of", aliases=[
+    "find a gif of", "find me a gif of",
+    "search gif", "gif me",
+    "get me a gif of", "look up a gif of",
+    "gif of"
 ])
 def handle_gif(app, remainder):
-    """Search Giphy for a GIF. Usage: 'Samsara, make me a gif of dancing cat'"""
+    """Search Giphy for a GIF. Usage: 'Samsara, search for a gif of dancing cat'"""
     if not remainder or not remainder.strip():
         print("[GIF] No search term provided")
         return True
@@ -31,4 +31,11 @@ def handle_gif(app, remainder):
     
     print(f"[GIF] Searching for: {query}")
     webbrowser.open(url)
+    
+    if hasattr(app, 'play_sound'):
+        try:
+            app.play_sound("start")
+        except Exception:
+            pass
+    
     return True

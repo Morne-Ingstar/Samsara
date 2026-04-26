@@ -1,33 +1,24 @@
-# <img src="logo.png" width="28" height="28"> Samsara
+# ![](logo.png) Samsara
 
 ### Voice-Controlled Computing for Accessibility
 
-[![Python 3.10+](https://img.shields.io/badge/python-3.10+-blue.svg)](https://www.python.org/downloads/)
-[![License: BSL-1.1](https://img.shields.io/badge/License-BSL--1.1-orange.svg)](LICENSE)
-[![Platform](https://img.shields.io/badge/platform-Windows-blue.svg)]()
-[![Status](https://img.shields.io/badge/status-early%20dev-orange.svg)]()
+[![Python 3.10+](https://img.shields.io/badge/python-3.10+-blue.svg)](https://www.python.org/downloads/)[![License: BSL-1.1](https://img.shields.io/badge/License-BSL--1.1-orange.svg)](LICENSE)![Platform](https://img.shields.io/badge/platform-Windows-blue.svg)
 
-<p align="center">
-  <img src="demo.gif" alt="Samsara Demo" width="800">
-</p>
+![Samsara Demo](demo.gif)
 
 > *"Jarvis, open Chrome."*
 >
-> Samsara hears the wake word, transcribes it locally via Whisper in ~300ms, and launches Chrome. No cloud, no internet, no typing.
->
-> Or try: *"Jarvis, going dark"* — and it mutes your audio, minimizes every window, and locks your screen in one breath.
+> Samsara hears the wake word, transcribes locally via Whisper in \~300ms, and launches Chrome. No cloud, no internet, no typing.
 
 ---
 
 ## From the Developer
 
-> Hi, I'm Morne, and my hands fucking hurt.
+> I'm Morne, and my hands fucking hurt.
 >
-> I've had HSD (Hypermobile Spectrum Disorder) for a decade. Using a mouse and keyboard hurts — all the time. But thanks to AI tools, I can now build software that reduces how much I need to type and click.
+> I've had HSD (Hypermobile Spectrum Disorder) for a decade. Using a mouse and keyboard hurts — all the time. I tried paid apps, but they were fragmented, expensive, and didn't fit. So I built Samsara.
 >
-> I tried paid apps that do similar things, but they were fragmented, expensive, and didn't quite fit my needs. So I built Samsara — combining everything into one free, open-source tool.
->
-> This is early-stage software. It works for me daily, but expect rough edges, half-finished features, and occasional breakage. If you find it useful or want to help improve it, I'd love to hear from you.
+> This is early-stage software. It works for me daily, but expect rough edges. If you find it useful, I'd love to hear from you.
 >
 > — Morne
 
@@ -35,117 +26,60 @@
 
 ## What Can It Do?
 
-Samsara is a **fully offline** voice command system powered by OpenAI's Whisper.
-It runs as a Windows system tray app, listens for your wake word, and controls
-your entire computer — hands-free.
+Samsara is a **fully offline** voice control system powered by Whisper. It runs as a Windows app with a main hub window, system tray integration, and hands-free control over your entire computer.
 
-### 🎙️ The Basics
-- **Hold-to-dictate** — hold Ctrl+Shift, speak, release. Text appears wherever your cursor is. ~300ms latency with NVIDIA GPU.
-- **Customizable wake word** — pick your own activation phrase. Ships with **"Jarvis"** as the default, or type any custom phrase in Settings.
-- **100+ voice commands** — apps, browser, media, window management, text editing, all customizable.
+### Dictation
 
-**Popular wake word choices:**
-| Wake word | Vibe |
-|-----------|------|
-| **Jarvis** | Iron Man's AI assistant (default) |
-| **Computer** | Star Trek bridge officer energy |
-| **Friday** | Tony Stark's second AI |
-| **Oracle** | All-knowing, mystical |
-| **Cortana** | Halo's legendary AI |
-| **Samwise** | Loyal companion who gets things done |
-| **Alfred** | Batman's indispensable butler |
-| **Athena** | Greek goddess of wisdom and strategy |
-| **Bishop** | Aliens — calm under pressure |
-| **Satan** | For those who want their PC to answer to a higher power |
+- **Hold-to-dictate** — hold Ctrl+Shift, speak, release. Text appears wherever your cursor is. \~300ms latency with NVIDIA GPU.
+- **Continuous mode** — toggle on, talk freely, toggle off. For long dictation sessions.
+- **Grammar-Lite cleanup** — automatic filler word removal, capitalization, and punctuation. Toggle between Clean and Verbatim modes.
+- **Dictation history** — every transcription logged to a searchable SQLite database. Review, copy, retry failed attempts, track patterns.
 
-Or type literally anything — "Hey Samsara", "Yo Dave", "Activate", whatever feels natural.
+### Voice Commands
 
-### ⚡ The Impressive Stuff
+120+ built-in commands plus a plugin system. Say your wake word (default: "Jarvis", fully customizable) followed by any command.
 
-**Multi-step macros** — single voice commands that chain complex actions:
-| You say | What happens |
-|---------|-------------|
-| *"Jarvis, going dark"* | Mutes audio → minimizes all windows → locks screen |
-| *"Jarvis, focus mode"* | Sets volume to 20% → clears desktop → opens VS Code |
-| *"Jarvis, good morning"* | Sets volume to 50% → opens your mail, GitHub, and daily sites |
-| *"Jarvis, presentation mode"* | Volume to 80% → maximizes current window |
-| *"Jarvis, break time"* | Pauses media → locks screen |
+CategoryExamples**Apps**"open Chrome", "open Word", "open Spotify"**Macros**"going dark" (mute + minimize + lock), "good morning" (mail + GitHub + music)**Audio**"switch to speakers", "use my headset"**Browser**"find tab GitHub", "search for ergonomic keyboards"**Screen**"record my screen", "record this window", "stop recording"**Utilities**"set a timer for 5 minutes", "search for a gif of dancing cat"**Text**"period", "new line", "select all", "undo"
 
-**Audio device switching** — bypass the Windows sound menu entirely:
-| You say | What happens |
-|---------|-------------|
-| *"Jarvis, switch to speakers"* | Instantly changes default audio output |
-| *"Jarvis, use my headset"* | Switches to headset — zero UI, zero clicks |
+### Main Window
 
-Device names are configurable aliases in `config.json`, so you map your own friendly names to exact Windows device names.
+Samsara opens a hub window on launch with three views:
 
-**Browser tab finder** — stop scrolling through 30 tiny favicons:
-| You say | What happens |
-|---------|-------------|
-| *"Jarvis, where is GitHub"* | Focuses your browser, opens tab search, finds and switches to the GitHub tab |
-| *"Jarvis, where is YouTube"* | Same — works across multiple Chrome/Edge windows |
+- **History** — searchable list of all dictations with timestamps, source apps, success/fail status, copy and retry buttons
+- **Dictionary** — unified corrections manager with three tabs: Vocabulary (Whisper hints), Corrections (phonetic wash rules), Wake Words (misrecognition fixes). Add, edit, delete from the UI — changes take effect immediately without restart.
+- **Settings** — microphone, model, hotkeys, cleanup mode, all in one place
 
-**Web shortcuts** — skip bookmarks, skip typing URLs:
-| You say | What happens |
-|---------|-------------|
-| *"Jarvis, go to my orders"* | Opens your Amazon order history directly |
-| *"Jarvis, search for ergonomic keyboards"* | Google search, instantly |
+Closing the window minimizes to tray. Double-click the tray icon to reopen.
 
-All shortcut URLs are configurable — add your own sites in `config.json`.
+### Plugin System
 
-### 🔮 Coming Soon
+Drop a Python file in `plugins/commands/` and it becomes a voice command:
 
-**Voice-to-code pipeline** — say *"Jarvis, improve error handling in the audio module"* and:
-1. Three AIs design the solution through adversarial review ([ARC](https://github.com/Morne-Ingstar/ARC))
-2. Claude Code implements it against your codebase automatically
-3. A final AI audit rates confidence on the actual changes
-4. You say *"Jarvis, confirm"* to commit or *"Jarvis, reject"* to revert
-
-All hands-free. All local. Built on the [JARVIS Pipeline architecture](https://github.com/Morne-Ingstar/ARC).
-
-**Also in progress:** undo last dictation by voice, true pause/resume for long dictation, command chaining, echo-stripping for Whisper hallucinations.
-
-### 🔌 Plugin System
-
-Drop a Python file in `plugins/commands/` and it becomes a voice command. No config changes, no restart required. Ships with 6 plugins out of the box:
-
-| Plugin | Commands |
-|--------|----------|
-| **Audio Switch** | "switch to speakers", "use headset" — dynamic via config aliases |
-| **Web Shortcuts** | "go to YouTube", "search for cat toys" — configurable URL bookmarks |
-| **Tab Finder** | "where is GitHub" — focuses browser + searches tabs |
-| **Macros** | "going dark", "focus mode", "good morning" — multi-step workflows |
-| **Greeting** | "greet me" — demo plugin showing how to build your own |
-
-Write your own in under 10 lines:
 ```python
 from samsara.plugin_commands import command
 
 @command("my custom thing", aliases=["do the thing"])
 def my_command(app, remainder):
-    # remainder = whatever the user said after the trigger phrase
     import webbrowser
     webbrowser.open("https://example.com")
     return True
 ```
 
+Ships with 9 plugins: macros, audio switching, tab finder, web shortcuts, timer, GIF search, screen recording, quick ask (ARC integration), and a demo greeting.
+
 ---
 
 ## Getting Started
 
-### Option 1: Download for Windows (easiest)
+### Download for Windows
 
 1. Go to the [latest release](https://github.com/Morne-Ingstar/Samsara/releases/latest)
-2. Download **Samsara-Windows-v0.9.2.7z**
-3. Extract the folder anywhere (e.g. `C:\Samsara`)
-4. Double-click **Samsara.exe**
-5. A setup wizard walks you through picking your microphone and downloading the AI model
+2. Download **Samsara.exe**
+3. Run it — a setup wizard walks you through microphone selection and model download
 
-That's it. No Python, no command line, no configuration files.
+**NVIDIA GPU recommended** for \~300ms transcription. Works on CPU too, just slower.
 
-**NVIDIA GPU recommended** — Samsara uses your graphics card to transcribe speech almost instantly (~300ms). It works on CPU too, just slower.
-
-### Option 2: Run from source (for developers)
+### Run from Source
 
 ```bash
 git clone https://github.com/Morne-Ingstar/Samsara.git
@@ -154,45 +88,78 @@ pip install -r requirements.txt
 python dictation.py
 ```
 
-### How to use it
-
-Once running, Samsara sits in your **system tray** (bottom-right, near the clock).
-
-**Hold-to-dictate:** Hold **Ctrl+Shift**, speak, release — your words appear wherever your cursor is.
-
-**Wake word:** Say **"Jarvis"** followed by any command. Right-click the tray icon to switch modes, change mic, or open settings.
-
 ---
 
 ## Under the Hood
 
-### Dictation (4-State Machine)
-
-| State | Trigger | Behavior |
-|-------|---------|----------|
-| **Asleep** | Default | Wake word listener active, all other audio discarded |
-| **Command Window** | Wake word detected | 3-second window for action verbs, then back to Asleep |
-| **Quick Dictation** | Hotkey or "type..." | 1.0s silence timeout, auto-transcribes and pastes |
-| **Long Dictation** | "dictate..." | No timeout — say "over" to finish, "pause"/"resume" to suspend |
-
 ### Audio Pipeline
-- **Pre-buffer** — 1.5s rolling buffer captures audio *before* you press the hotkey. First words are never lost.
-- **Dual sample rate** — captures at device native rate (48kHz WASAPI), resamples to 16kHz for Whisper
-- **Auto-calibration** — measures ambient noise on startup, sets speech threshold using IQR-based outlier rejection
-- **Echo cancellation** — frequency-domain block NLMS with FFT overlap-save, subtracts system audio from mic input
 
-### Voice Command Types
-| Type | Example | What it does |
-|------|---------|-------------|
-| `hotkey` | "screenshot" → Win+Shift+S | Sends key combinations |
-| `launch` | "open chrome" → chrome.exe | Launches applications |
-| `macro` | "going dark" → mute+minimize+lock | Chains multiple actions |
-| `text` | "period" → `.` | Inserts characters |
-| `method` | "scratch that" → undo_last_dictation() | Calls app functions |
-| `plugin` | "where is GitHub" → tab_finder | Runs plugin handlers |
+- **Silero VAD** — neural speech detection, ignores fan noise and background hum. Runs on raw mic signal, not AEC output.
+- **Pre-buffer** — 1.5s rolling buffer captures audio before you press the hotkey. First words are never lost.
+- **Echo cancellation** — frequency-domain AEC subtracts system audio from mic input. Whisper receives clean speech.
+- **Auto-calibration** — measures ambient noise on startup using IQR-based outlier rejection.
+- **Auto-reconnect** — if audio dies after sleep/wake, Samsara detects it and reconnects automatically. No restart needed.
 
-### Accessibility Extras
-Alarm reminders with streak tracking, key macros for tap-combos, clipboard preservation around every paste, listening indicator overlay (pulses teal when active), sound themes (cute/warm/zen/chirpy), and snooze from the tray.
+### Architecture
+
+Main hub window (`samsara/ui/main_window.py`) with reusable frame components. Dictation engine in `dictation.py`. Correction pipeline: phonetic wash → wake corrections → grammar cleanup. All user corrections stored in `~/.samsara/` as JSON, hot-reloaded without restart.
+
+```
+samsara/
+├── cleanup.py              # Grammar-Lite post-processing
+├── history.py              # SQLite dictation history
+├── phonetic_wash.py        # Fixes Whisper misrecognitions
+├── wake_corrections.py     # Wake word variant corrections
+├── command_registry.py     # Token-based longest-match resolver
+├── echo_cancel.py          # Frequency-domain AEC
+├── ui/
+│   ├── main_window.py      # Hub window (History/Dictionary/Settings)
+│   ├── history_frame.py    # Searchable dictation history
+│   ├── dictionary_frame.py # Unified corrections manager
+│   ├── settings_window.py  # Configuration
+│   └── ...
+plugins/commands/
+├── macros.py               # "going dark", "focus mode", "good morning"
+├── audio_switch.py         # "switch to speakers"
+├── tab_finder.py           # "find tab GitHub"
+├── timer.py                # "set a timer for 5 minutes"
+├── screen_gif.py           # "record my screen"
+├── gif_search.py           # "search for a gif of cats"
+└── ...
+```
+
+### Tests
+
+```bash
+python -m pytest tests/ -v
+```
+
+---
+
+## Roadmap
+
+### Completed
+- [x] 120+ voice commands with plugin system
+- [x] Multi-step macros (going dark, focus mode, good morning)
+- [x] Main hub window (History, Dictionary, Settings)
+- [x] Dictation history with SQLite search and recovery
+- [x] Unified dictionary UI (vocabulary, corrections, wake words)
+- [x] Grammar-Lite cleanup (filler removal, capitalization)
+- [x] Audio auto-reconnect after sleep/wake
+- [x] Silero VAD speech detection (raw mic signal)
+- [x] Screen recording to GIF by voice
+- [x] Timer with natural language duration
+- [x] Audio device switching, browser tab search
+- [x] Phonetic wash + wake word corrections
+- [x] Echo cancellation, pre-buffer, auto-calibration
+- [x] First-run wizard, splash screen, profiles
+
+### Planned
+- [ ] Voice-to-code pipeline (ARC review → Claude Code → confirm/reject)
+- [ ] Edit-to-learn corrections (edit history → auto-suggest rules)
+- [ ] Snippets / text expansions
+- [ ] Per-app command profiles
+- [ ] Mobile companion app (phone as wireless mic)
 
 ---
 
@@ -200,99 +167,29 @@ Alarm reminders with streak tracking, key macros for tap-combos, clipboard prese
 
 | Component | Minimum | Recommended |
 |-----------|---------|-------------|
-| **OS** | Windows 10 | Windows 11 |
-| **Python** | 3.10 | 3.11+ |
-| **RAM** | 4 GB | 8 GB+ |
-| **GPU** | None (CPU works) | NVIDIA with 4GB+ VRAM |
-
----
-
-## For Developers
-
-### Architecture
-
-`dictation.py` (~3,900 lines) contains `DictationApp` and `CommandExecutor`. UI is fully extracted into `samsara/ui/`. Plugins live in `plugins/commands/`. The codebase was modularized through a structured multi-AI review process ([ARC](https://github.com/Morne-Ingstar/ARC)).
-
-```
-samsara/
-├── calibration.py          # Auto-calibrate speech threshold (IQR outlier rejection)
-├── clipboard.py            # Win32 clipboard save/restore
-├── command_parser.py       # Wake word intent parsing
-├── command_registry.py     # Unified CommandMatcher — token-based longest-match
-├── constants.py            # Extracted magic numbers
-├── echo_cancel.py          # Frequency-domain AEC (FFT block NLMS + WASAPI loopback)
-├── phonetic_wash.py        # Fixes Whisper misrecognitions before matching
-├── wake_word_matcher.py    # Token-aware wake phrase matching
-├── commands.py             # Command loading and execution
-├── plugin_commands.py      # Plugin command registry and @command decorator
-├── ui/                     # All UI (settings, wizard, debug, indicator)
-plugins/commands/
-├── audio_switch.py         # "switch to speakers" — NirCmd-based
-├── web_shortcuts.py        # "go to youtube" — config-driven bookmarks
-├── tab_finder.py           # "where is github" — browser tab search
-├── macros.py               # "going dark" — multi-step workflows
-├── quick_ask.py            # "ask claude" — IPC to ARC
-```
-
-### Running Tests
-
-```bash
-python -m pytest tests/ -v
-```
-
-### Default Hotkeys
-
-| Hotkey | Action |
-|--------|--------|
-| `Ctrl+Shift` | Hold to dictate (Quick Dictation) |
-| `Ctrl+Alt+D` | Toggle Long Dictation (continuous) |
-| `Ctrl+Alt+W` | Toggle wake word mode |
-| `Escape` | Cancel current recording |
-
-All hotkeys configurable in Settings.
-
----
-
-## Roadmap
-
-- [x] 100+ voice commands with plugin system
-- [x] Multi-step macros ("going dark", "focus mode", "good morning")
-- [x] Audio device switching via voice
-- [x] Browser tab search by voice
-- [x] Web shortcuts and Google search by voice
-- [x] 4-state dictation model (Asleep/Command/Quick/Long)
-- [x] Auto-calibrating speech threshold (IQR-based)
-- [x] Frequency-domain echo cancellation
-- [x] Pre-buffer captures 1.5s before hotkey press
-- [x] Listening indicator overlay with wake word feedback
-- [x] Silero VAD for real-time speech detection (ignores fan noise)
-- [x] Phonetic wash layer (fixes Whisper misrecognitions before matching)
-- [x] Unified CommandMatcher (token-based longest-match, zero collisions)
-- [x] Quick Ask IPC ("ask Claude..." sends to ARC)
-- [ ] Voice-to-code pipeline (JARVIS — ARC review → Claude Code → confirm/reject)
-- [ ] Undo last dictation by voice
-- [ ] True pause/resume for Long Dictation
-- [ ] Command chaining ("select all copy")
-- [ ] Application-specific command profiles
-- [ ] Spelling mode ("spell c-a-t" → "cat")
+| OS | Windows 10 | Windows 11 |
+| Python | 3.10 | 3.11+ |
+| RAM | 4 GB | 8 GB+ |
+| GPU | None (CPU works) | NVIDIA 4GB+ VRAM |
 
 ---
 
 ## License
 
-BSL-1.1 (Business Source License) — free for all non-commercial use. Converts to MIT on April 23, 2030. See [LICENSE](LICENSE) for details.
+BSL-1.1 (Business Source License) — free for all non-commercial use.
+Converts to MIT on April 23, 2030. See [LICENSE](LICENSE) for details.
 
-If Samsara saves your wrists or speeds up your workflow, consider
-[supporting the project](https://ko-fi.com/morneingstar) — built through chronic
-pain, kept free for accessibility.
+If Samsara saves your wrists, consider
+[supporting the project](https://ko-fi.com/morneingstar) — built through
+chronic pain, kept free for accessibility.
 
 ## Acknowledgments
 
-- [OpenAI Whisper](https://github.com/openai/whisper) — speech recognition
-- [faster-whisper](https://github.com/guillaumekln/faster-whisper) — CTranslate2 implementation
-- [CustomTkinter](https://github.com/TomSchimansky/CustomTkinter) — modern UI
-- [NirCmd](https://www.nirsoft.net/utils/nircmd.html) — audio device switching
-- Designed with [Claude](https://anthropic.com), [ChatGPT](https://openai.com), and [Gemini](https://deepmind.google) through the [ARC](https://github.com/Morne-Ingstar/ARC) adversarial review process
+- [OpenAI Whisper](https://github.com/openai/whisper) / [faster-whisper](https://github.com/guillaumekln/faster-whisper)
+- [CustomTkinter](https://github.com/TomSchimansky/CustomTkinter)
+- Designed with [Claude](https://anthropic.com), [ChatGPT](https://openai.com),
+  and [Gemini](https://deepmind.google) through the
+  [ARC](https://github.com/Morne-Ingstar/ARC) adversarial review process
 
 ---
 
