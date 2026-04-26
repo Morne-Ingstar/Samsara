@@ -283,6 +283,15 @@ class WakeWordDebugWindow:
         self.window.minsize(700, 900)
         self.window.protocol("WM_DELETE_WINDOW", self.on_close)
 
+        # Apply the Samsara icon (CTkToplevel races with its default icon
+        # ~200ms after construction, so re-apply after).
+        if hasattr(self.app, '_apply_window_icon'):
+            self.app._apply_window_icon(self.window)
+            try:
+                self.window.after(300, lambda: self.app._apply_window_icon(self.window))
+            except Exception:
+                pass
+
         # Register as trace callback on main app
         if hasattr(self.app, '_wake_trace_callback'):
             self.app._wake_trace_callback = self.on_app_trace
