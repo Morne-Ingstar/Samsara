@@ -17,14 +17,24 @@ the wake word has been extracted.
 Only add entries that have been observed as failures. Over-correcting
 is worse than under-correcting -- every rule here is a potential false
 positive on free-form dictation that shares the command pipeline.
+
+User corrections live in ~/.samsara/user_corrections.json as a flat
+{"heard": "should be"} dict. They merge ON TOP of the hardcoded defaults
+(user wins on conflict). Multi-word keys go to phrase corrections;
+single-word keys go to word corrections. The active dicts are recomputed
+at import and whenever reload_corrections() is called from the UI.
 """
 
+import json
 import re
+from pathlib import Path
+
+USER_CORRECTIONS_PATH = Path.home() / ".samsara" / "user_corrections.json"
 
 # Multi-word phrase corrections. Key must appear as a contiguous substring
 # of the cleaned text. Applied before per-word corrections, so "fine tab"
 # (phrase) wins over "fine" -> "find" (word) followed by " tab".
-_PHRASE_CORRECTIONS = {
+_DEFAULT_PHRASE_CORRECTIONS = {
     "fine tab": "find tab",
     "find the tab": "find tab",
     "get hub": "github",
@@ -65,7 +75,7 @@ _PHRASE_CORRECTIONS = {
 # The trade-off is acceptable here because the wash runs on post-wake
 # command text and on matcher input (where false matches are already the
 # common case); the executor's dictation fallthrough uses the ORIGINAL text.
-_WORD_CORRECTIONS = {
+_DEFAULT_WORD_CORRECTIONS = {
     "fine": "find",
     "mike": "mic",
     "tub": "tab",
@@ -74,6 +84,85 @@ _WORD_CORRECTIONS = {
     "screenshots": "screenshot",
     "clicks": "click",
 }
+
+# Active dicts: hardcoded defaults merged with user overrides. apply_phonetic_wash
+# reads from these. Re-populated on reload_corrections().
+_PHRASE_CORRECTIONS = dict(_DEFAULT_PHRASE_CORRECTIONS)
+_WORD_CORRECTIONS = dict(_DEFAULT_WORD_CORRECTIONS)
+
+
+def _load_user_corrections():
+    """Read the user JSON file. Returns a flat {heard: should_be} dict.
+
+    Missing file or unreadable JSON returns an empty dict -- the user can
+    edit the file by hand without breaking startup.
+    """
+    if not USER_CORRECTIONS_PATH.exists():
+        return {}
+    try:
+        with open(USER_CORRECTIONS_PATH, encoding='utf-8') as f:
+            data = json.load(f)
+        if not isinstance(data, dict):
+            return {}
+        return {str(k).lower(): str(v) for k, v in data.items() if k and v}
+    except Exception as e:
+        print(f"[WASH] Could not load user corrections: {e}")
+        return {}
+
+
+def _save_user_corrections(corrections):
+    """Persist the user corrections dict atomically."""
+    USER_CORRECTIONS_PATH.parent.mkdir(parents=True, exist_ok=True)
+    tmp = USER_CORRECTIONS_PATH.with_suffix('.tmp')
+    with open(tmp, 'w', encoding='utf-8') as f:
+        json.dump(corrections, f, indent=2, ensure_ascii=False, sort_keys=True)
+    tmp.replace(USER_CORRECTIONS_PATH)
+
+
+def reload_corrections():
+    """Rebuild the active correction dicts from defaults + user JSON.
+
+    Called by the Voice Training UI after the user adds/removes an entry,
+    so changes take effect on the next transcription without a restart.
+    Multi-word keys land in phrase corrections; single-word in word
+    corrections. User overrides win on conflict.
+    """
+    global _PHRASE_CORRECTIONS, _WORD_CORRECTIONS
+    user = _load_user_corrections()
+    phrase = dict(_DEFAULT_PHRASE_CORRECTIONS)
+    word = dict(_DEFAULT_WORD_CORRECTIONS)
+    for k, v in user.items():
+        if ' ' in k.strip():
+            phrase[k.strip()] = v
+        else:
+            word[k.strip()] = v
+    _PHRASE_CORRECTIONS = phrase
+    _WORD_CORRECTIONS = word
+
+
+def get_default_phrase_corrections():
+    """Read-only view of the hardcoded phrase defaults (for UI display)."""
+    return dict(_DEFAULT_PHRASE_CORRECTIONS)
+
+
+def get_default_word_corrections():
+    """Read-only view of the hardcoded word defaults (for UI display)."""
+    return dict(_DEFAULT_WORD_CORRECTIONS)
+
+
+def get_user_corrections():
+    """Return the current user-overrides dict (loaded fresh from disk)."""
+    return _load_user_corrections()
+
+
+def set_user_corrections(corrections):
+    """Persist new user corrections and hot-reload the active dicts."""
+    _save_user_corrections(corrections)
+    reload_corrections()
+
+
+# Populate active dicts at import time
+reload_corrections()
 
 # Symbols that Whisper renders instead of the spoken word. Only applied
 # when the ENTIRE stripped input is a single symbol -- we don't want to
