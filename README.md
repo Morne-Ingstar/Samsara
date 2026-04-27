@@ -8,7 +8,7 @@
 
 > *"Jarvis, open Chrome."*
 >
-> Samsara hears the wake word, transcribes locally via Whisper in \~300ms, and launches Chrome. No cloud, no internet, no typing.
+> Local voice control via Whisper. \~300ms. No cloud, no internet, no typing.
 
 ---
 
@@ -25,7 +25,6 @@
 ---
 
 ## What Can It Do?
-
 Samsara is a **fully offline** voice control system powered by Whisper. It runs as a Windows app with a main hub window, system tray integration, and hands-free control over your entire computer.
 
 ### Dictation
@@ -37,7 +36,7 @@ Samsara is a **fully offline** voice control system powered by Whisper. It runs 
 
 ### Voice Commands
 
-120+ built-in commands plus a plugin system. Say your wake word (default: "Jarvis", fully customizable) followed by any command.
+120+ built-in commands plus a plugin system. Say a command after your wake word (default: "Jarvis").
 
 CategoryExamples**Apps**"open Chrome", "open Word", "open Spotify"**Macros**"going dark" (mute + minimize + lock), "good morning" (mail + GitHub + music)**Audio**"switch to speakers", "use my headset"**Browser**"find tab GitHub", "search for ergonomic keyboards"**Screen**"record my screen", "record this window", "stop recording"**Utilities**"set a timer for 5 minutes", "search for a gif of dancing cat"**Text**"period", "new line", "select all", "undo"
 
