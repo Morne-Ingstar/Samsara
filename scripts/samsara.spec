@@ -62,6 +62,8 @@ if os.path.exists(sounddevice_data):
 datas.append((str(app_dir / 'sounds'), 'sounds'))
 datas.append((str(app_dir / 'profiles'), 'profiles'))
 datas.append((str(app_dir / 'commands.json'), '.'))
+if (app_dir / 'plugins' / 'assets').exists():
+    datas.append((str(app_dir / 'plugins' / 'assets'), 'plugins/assets'))
 if (app_dir / 'config.json').exists():
     datas.append((str(app_dir / 'config.json'), '.'))
 
@@ -197,6 +199,13 @@ hiddenimports = [
     'samsara.ui.profile_manager_ui',
     'samsara.ui.wake_word_debug',
     'samsara.ui.listening_indicator',
+    'samsara.ui.main_window',
+    'samsara.ui.history_frame',
+    'samsara.ui.dictionary_frame',
+    'samsara.phonetic_wash',
+    'samsara.command_registry',
+    'samsara.history',
+    'samsara.cleanup',
     'voice_training',
 ]
 
