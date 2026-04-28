@@ -55,3 +55,10 @@ sounds/backup_old/
 sounds/downloads/
 sounds/test_*.mp3
 sounds/variations/
+
+
+# Video demo props (not shipped in releases)
+plugins/commands/demo_commands.py
+plugins/commands/wake_routine.py
+plugins/assets/portfolio.html
+plugins/assets/sleep_overlay.py
