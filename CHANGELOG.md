@@ -1,8 +1,73 @@
 # Changelog
 
-All notable changes to Samsara will be documented in this file.
+All notable changes to Samsara are documented here.
 
-The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
+## \[0.9.7\] - 2026-04-27
+
+### Added
+
+- **Hyperion LED strip control** — voice-controlled ambient lighting via Hyperion JSON API. "Jarvis, lights red", "lights effect rainbow", "lights off". Supports hostname, IPv4, and IPv6. 11 preset colors, 14 effect aliases with fuzzy matching.
+
+## \[0.9.6\] - 2026-04-26
+
+### Added
+
+- **Main hub window** — opens on launch with sidebar navigation (History, Dictionary, Settings). Closing minimizes to tray. Double-click tray icon to reopen.
+- **Dictation history** — SQLite database logging every transcription with timestamp, source app (via win32gui), raw text, cleaned text, duration, mode, and success/fail status. Searchable, with copy/retry/delete.
+- **Unified dictionary UI** — three-tab corrections manager (Vocabulary, Corrections, Wake Words) in the main window. Add, edit, delete corrections from the UI. User corrections stored in `~/.samsara/` as JSON, hot-reloaded without restart. Hardcoded defaults are read-only; user overrides merge on top.
+- **Grammar-Lite cleanup** — post-Whisper processing removes filler words (um, uh, like), fixes capitalization, adds missing punctuation. Two modes: Clean (default) and Verbatim. Raw transcript always preserved in history.
+- **Audio auto-reconnect** — stream health monitor detects dead PortAudio streams after sleep/wake, auto-reconnects with exponential backoff (max 5 retries). Windows toast notification on reconnect.
+- **Timer plugin** — "set a timer for 5 minutes" with natural language parsing, background thread, Windows notification on completion.
+- **GIF search plugin** — "search for a gif of dancing cat" opens Giphy.
+- **Screen recording plugin** — "record my screen" / "record this window" captures screen to GIF using mss (DXGI). Persistent red REC indicator, 30-second safety cap, active window capture via ctypes.
+- **Demo commands** — "show me my portfolio" (fake catastrophic stock dashboard), "print me a gun" (FlashForge AD5X integration for promo video).
+- **Edit-to-Learn hook** — placeholder in dictionary UI for future auto-correction learning from history edits.
+
+### Changed
+- Voice Training window refactored into reusable CTkFrame components (HistoryFrame, DictionaryFrame) shared between main window and standalone windows.
+- `on_dictation_complete` callback updates main window status bar directly (no polling for last transcription).
+
+### Fixed
+- **Hold-to-dictate VAD bypass** — faster-whisper's internal VAD was stripping 80% of speech during explicit hotkey recordings. Now disabled for hold-to-dictate and long dictation modes.
+- **Min audio guard** — Whisper hallucinations ("Thank you", "Subtitles by Amara") on sub-0.5s clips. Audio shorter than 0.51s is now silently discarded.
+- **No ghost typing** — unrecognized wake word commands no longer paste garbage into focused apps. No-match goes silently back to sleep.
+
+## [0.9.5] - 2026-04-24
+
+### Added
+- **BSL-1.1 license** — replaces MIT. Free for non-commercial use, converts to MIT April 2030.
+- **Silero VAD v5 fixed** — now receives correct 512-sample chunks at 16kHz (was getting 1600 samples). Returns True if ANY 512-sample window contains speech.
+- **Raw mic pipeline** — VAD runs on raw microphone signal, not AEC output. AEC was amplifying noise 10,000x instead of cancelling. Speech buffer stores raw mic audio for Whisper.
+- **Wake word corrections** — "charvus", "jervice", "jervis", "service" → "jarvis".
+- **[HEAR] debug trace** — every transcription logs what Whisper heard or why it returned empty.
+- **Buffer cap** — 7-second speech buffer cap with stuck buffer detection. Prevents infinite accumulation from ambient noise fooling VAD.
+
+### Changed
+- Old MIT releases (v0.9.0–v0.9.4) deleted from GitHub.
+- README badge updated to BSL-1.1.
+
+## [0.9.4] - 2026-04-21
+
+### Added
+- **Phonetic wash** — post-transcription correction layer. Fixes common Whisper misrecognitions ("open crow" → "open chrome", "you two" → "YouTube").
+- **Command registry** — token-based longest-match resolver with frozen phrase table. Handles prefix overlaps deterministically.
+- **6 plugins shipped** — macros, audio switching, tab finder, web shortcuts, quick ask (ARC IPC), example greeting.
+- **Ko-fi integration** — support link in README and license section.
+- **Test suite** — 347/347 tests passing across 8 test files.
+
+### Changed
+- Command matching upgraded from substring to token-aware longest-match.
+- README rewritten with architecture diagram and feature matrix.
+
+## [0.9.3] - 2026-04-21
+
+### Added
+- **Wake word debug window** — structured trace events, evaluation panel, decision timeline, token-aware wake phrase matcher.
+- **Snooze from tray** — pause all listening for 5/15/30/60 minutes or until manually resumed.
+- **Listening indicator** — borderless always-on-top pill showing current mode, pulses teal during capture.
+
+### Fixed
+- Wake word substring match bug — "samsara-like" no longer falsely triggers on wake phrase "samsara". Now uses token-bounded matching.
 
 ## [0.9.2] - 2026-04-18
 
@@ -149,6 +214,28 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 ### Removed
 - PyTorch, TensorFlow, Keras (not needed for faster-whisper)
 - OpenCV, numba, librosa, pandas, scipy (unused dependencies)
+### Changed
+- ARC refactored: registry router, dead code removal, running guard, persistent config, collapsible UI.
+
+## [0.9.1] - 2026-04-18
+
+### Added
+- **ARC created** — Adversarial Reasoning Chain, multi-AI orchestration tool. Builder/Challenger/Auditor pipeline with Claude, GPT, and Gemini.
+- **Tray quick-switch** — mode submenu in system tray with radio buttons.
+- **Echo cancellation** — frequency-domain AEC with loopback capture.
+- **Auto-calibration** — ambient noise measurement with IQR-based outlier rejection.
+- **4-state dictation model** — hold, toggle, wake word, continuous modes.
+
+### Changed
+- Architecture docs created (ARCHITECTURE.md).
+- Tray icon redesigned (teal theme).
+
+## [0.9.0] - 2026-02-10
+
+### Added
+- Initial release. Hold-to-dictate with Whisper, system tray, basic voice commands, voice training module, configurable hotkeys, CUDA support.
+
+
 
 ---
 
