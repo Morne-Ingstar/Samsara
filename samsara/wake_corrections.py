@@ -37,6 +37,11 @@ CORRECTIONS = {
     "jervice": "jarvis",
     "jervis": "jarvis",
     "service": "jarvis",
+    "charge us": "jarvis",
+    "charge": "jarvis",
+    "driver's": "jarvis",
+    "drivers": "jarvis",
+    "harvest": "jarvis",
 }
 
 
