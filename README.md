@@ -24,9 +24,7 @@
 
 ---
 
-## What Can It Do?
-Samsara is a **fully offline** voice control system powered by Whisper. It runs as a Windows app with a main hub window, system tray integration, and hands-free control over your entire computer.
-
+## What Can It Do?Samsara is a **fully offline** voice control system powered by Whisper. It runs as a Windows app with a main hub window, system tray integration, and hands-free control over your entire computer.
 ### Dictation
 
 - **Hold-to-dictate** — hold Ctrl+Shift, speak, release. Text appears wherever your cursor is. \~300ms latency with NVIDIA GPU.
@@ -46,10 +44,7 @@ Samsara opens a hub window on launch with three views:
 
 - **History** — searchable list of all dictations with timestamps, source apps, success/fail status, copy and retry buttons
 - **Dictionary** — unified corrections manager with three tabs: Vocabulary (Whisper hints), Corrections (phonetic wash rules), Wake Words (misrecognition fixes). Add, edit, delete from the UI — changes take effect immediately without restart.
-- **Settings** — microphone, model, hotkeys, cleanup mode, all in one place
-
-Closing the window minimizes to tray. Double-click the tray icon to reopen.
-
+- **Settings** — microphone, model, hotkeys, cleanup mode, all in one place Closing the window minimizes to tray. Double-click the tray icon to reopen.
 ### Plugin System
 
 Drop a Python file in `plugins/commands/` and it becomes a voice command:
