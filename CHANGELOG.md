@@ -2,11 +2,32 @@
 
 All notable changes to Samsara are documented here.
 
+## [0.9.8] - 2026-04-28
+
+### Added
+- **Streaming dictation** — real-time voice-to-text with live overlay. Text appears and updates as you speak, with a polished final paste on release. Two modes: overlay-only (safe) and direct-paste (text flows into the focused app in real time via Ctrl+A select-and-replace). Configurable via `streaming_mode` and `streaming_direct_paste` in config.
+- **FlashForge 3D printer control** — voice commands for printer status, pause/resume/cancel, chamber light toggle, file listing. TCP M-code protocol on port 8899 with serial+check_code auth. Tested on AD5X firmware v1.2.3.
+- **Spotify music playback** — "Jarvis, play me some music" opens tracks in the Spotify desktop app. Pre-configured library of songs, user-configurable library, volume control, Spotify search fallback.
+- **Wake word corrections** — harvest, charge us, charge, driver's, drivers added to Jarvis recognition.
+
+### Changed
+- Streaming first-chunk latency reduced from 1.3s to 1.0s (0.7s first chunk + 0.3s transcription).
+- Streaming update interval tightened from 1.5s to 1.0s between partials.
+- Partial transcriptions use beam_size=1 (greedy, fast), final pass uses beam_size=5 (full beam search).
+- Pre-buffer skipped in streaming mode to eliminate 1.5s of unnecessary initial latency.
+- History tab performance: callback-based updates replace 5-second polling, pagination limits initial load to 50 entries.
+- Main window UI restyled with blue-teal tinted dark theme.
+
+### Fixed
+- Direct-paste streaming exploits held Ctrl modifier (sends bare 'a' for Ctrl+A) instead of fighting physical key state with SendInput key-up events that Windows immediately overrides.
+- History tab close no longer spams TclError from stale widget redraws.
+
 ## \[0.9.7\] - 2026-04-27
 
 ### Added
 
 - **Hyperion LED strip control** — voice-controlled ambient lighting via Hyperion JSON API. "Jarvis, lights red", "lights effect rainbow", "lights off". Supports hostname, IPv4, and IPv6. 11 preset colors, 14 effect aliases with fuzzy matching.
+
 ## \[0.9.6\] - 2026-04-26
 
 ### Added

@@ -105,7 +105,7 @@ def _parse_temps(resp):
     "three d print a gun", "print me a weapon"
 ])
 def handle_print_gun(app, remainder):
-    """Open the toy gun model in Orca FlashForge slicer."""
+    """Open the toy gun model in Orca and wake up the printer."""
     model_file = app.config.get('flashforge_model_file',
                                 os.path.expanduser(r'~\Downloads\funnygun.3mf'))
     orca = app.config.get('orca_path', ORCA_PATH)
@@ -115,8 +115,18 @@ def handle_print_gun(app, remainder):
         try:
             subprocess.Popen([orca, model_file])
         except FileNotFoundError:
-            # Try opening with default association
             os.startfile(model_file)
+
+        # Wake the printer up — home axes so it moves visibly
+        import threading
+        def _wake_printer():
+            import time
+            time.sleep(1)  # let Orca open first
+            _send(app, "M601 S1")  # request control
+            _send(app, "G28")      # home all axes — head moves, steppers whir
+            print("[3DP] Printer homing...")
+        threading.Thread(target=_wake_printer, daemon=True).start()
+
         if hasattr(app, 'play_sound'):
             try:
                 app.play_sound("start")
@@ -124,7 +134,6 @@ def handle_print_gun(app, remainder):
                 pass
     else:
         print(f"[3DP] Model file not found: {model_file}")
-        print("[3DP] Set flashforge_model_file in config or place funnygun.3mf in Downloads")
     return True
 
 
