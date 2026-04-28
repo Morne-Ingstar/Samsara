@@ -5,9 +5,19 @@ embedded in the main hub window and inside the Voice Training window's
 History tab. Single source of truth for the history UI -- a fix here lands
 everywhere it's mounted.
 
-The frame talks to the app via self.app.history_db. It does not import
-sqlite3 directly. Visibility-gated polling is configurable so the parent
-container can suppress refresh when its host tab is hidden.
+Refresh model:
+  - Initial load fetches PAGE_SIZE rows. More pages fetch from the DB on
+    scroll-near-bottom (offset-paginated).
+  - New dictations are pushed via on_new_entry() from the parent (no full
+    rebuild -- prepends the new card).
+  - A light visibility-gated poll re-checks for new rows every POLL_MS but
+    only does a 1-row "is there anything newer?" query, never a full
+    rebuild. When the host tab is hidden, the poll skips the DB hit.
+  - Refresh button, search query change, and filter change all do a full
+    rebuild (rare, user-initiated).
+
+All DB calls run on a worker thread; results are marshalled back to the
+Tk main thread via after(0, ...).
 """
 
 import logging
@@ -27,6 +37,7 @@ class HistoryFrame(ctk.CTkFrame):
     PAGE_SIZE = 50
     POLL_MS = 5000
     DEBOUNCE_MS = 300
+    FILTERED_FETCH_LIMIT = 500
 
     STATUS_COLORS = {
         'success': '#3ad26a',
@@ -40,8 +51,8 @@ class HistoryFrame(ctk.CTkFrame):
             parent: any Tk widget that can host a CTkFrame.
             app: the DictationApp instance. Must expose .history_db.
             is_visible: optional callable returning True when this frame's
-                host tab/page is currently shown. Polling pauses when False.
-                Defaults to "always visible".
+                host tab/page is currently shown. The poll skips the DB
+                query when this returns False. Defaults to "always visible".
         """
         super().__init__(parent, **kwargs)
         self.app = app
@@ -54,25 +65,31 @@ class HistoryFrame(ctk.CTkFrame):
         self._rows = []
         self._visible_count = 0
         self._loading = False
+        self._has_more_in_db = True   # whether DB has unfetched older rows
+        self._top_row_id = None       # id of the newest row currently shown
         self._search_after_id = None
+        self._poll_after_id = None
         self._expanded_id = None
         self._card_widgets = {}       # row_id -> card frame
         self._filter_buttons = {}
 
         self._build_ui()
         self._reload(force=True)
-        self.after(self.POLL_MS, self._poll)
+        self._schedule_poll()
 
     # ---- Lifecycle -------------------------------------------------------
 
     def destroy(self):
         """Stop polling/debounce timers before tearing down widgets."""
         self._alive = False
-        if self._search_after_id is not None:
-            try:
-                self.after_cancel(self._search_after_id)
-            except Exception:
-                pass
+        for after_id_attr in ('_search_after_id', '_poll_after_id'):
+            after_id = getattr(self, after_id_attr, None)
+            if after_id is not None:
+                try:
+                    self.after_cancel(after_id)
+                except Exception:
+                    pass
+                setattr(self, after_id_attr, None)
         super().destroy()
 
     # ---- Layout ----------------------------------------------------------
@@ -140,6 +157,9 @@ class HistoryFrame(ctk.CTkFrame):
 
     # ---- Filter + search -------------------------------------------------
 
+    def _is_filtered(self):
+        return bool(self._query) or self._filter != "all"
+
     def _set_filter(self, key):
         if key == self._filter:
             return
@@ -174,6 +194,9 @@ class HistoryFrame(ctk.CTkFrame):
     # ---- Data load + render ---------------------------------------------
 
     def _reload(self, force=False):
+        """Full refetch + rebuild. Used for initial load, search/filter
+        changes, and the explicit Refresh button -- never for new-entry
+        push or scroll pagination."""
         if self._loading and not force:
             return
         history_db = getattr(self.app, 'history_db', None)
@@ -188,11 +211,14 @@ class HistoryFrame(ctk.CTkFrame):
         def fetch():
             try:
                 if query:
-                    rows = history_db.search(query, limit=500)
-                else:
-                    rows = history_db.recent(limit=500)
-                if status_filter != "all":
+                    rows = history_db.search(
+                        query, limit=self.FILTERED_FETCH_LIMIT)
+                elif status_filter != "all":
+                    rows = history_db.recent(
+                        limit=self.FILTERED_FETCH_LIMIT)
                     rows = [r for r in rows if r['status'] == status_filter]
+                else:
+                    rows = history_db.recent(limit=self.PAGE_SIZE)
             except Exception as e:
                 logger.error(f"History fetch failed: {e}", exc_info=True)
                 rows = []
@@ -210,8 +236,16 @@ class HistoryFrame(ctk.CTkFrame):
 
     def _apply_rows(self, rows):
         self._loading = False
-        self._rows = rows
+        self._rows = list(rows)
         self._visible_count = 0
+        # In the un-filtered case we know whether the DB has more rows
+        # beyond what we just fetched; in the filtered/search case we
+        # already pulled up to FILTERED_FETCH_LIMIT into memory.
+        if self._is_filtered():
+            self._has_more_in_db = False
+        else:
+            self._has_more_in_db = len(rows) >= self.PAGE_SIZE
+
         if self._expanded_id is not None and not any(
                 r['id'] == self._expanded_id for r in rows):
             self._expanded_id = None
@@ -219,15 +253,18 @@ class HistoryFrame(ctk.CTkFrame):
             child.destroy()
         self._card_widgets = {}
         self._render_more()
+
+        self._top_row_id = self._rows[0]['id'] if self._rows else None
+
         if not rows:
             self._set_status(
-                "No matching entries." if self._query
-                or self._filter != "all"
+                "No matching entries." if self._is_filtered()
                 else "No history yet. Hold Ctrl+Shift and say something to get started.")
         else:
             self._update_status_count()
 
     def _render_more(self):
+        """Render the next slice of in-memory rows into card widgets."""
         end = min(self._visible_count + self.PAGE_SIZE, len(self._rows))
         for row in self._rows[self._visible_count:end]:
             self._render_card(row)
@@ -235,24 +272,69 @@ class HistoryFrame(ctk.CTkFrame):
         self._update_status_count()
 
     def _check_paginate(self):
-        if not self._alive:
-            return
-        if self._visible_count >= len(self._rows):
+        """Scroll-driven pagination.
+
+        Filtered/search results are already fully loaded in memory --
+        just render more cards. Un-filtered results paginate via the DB
+        (LIMIT/OFFSET) so we never hold all 10k entries at once."""
+        if not self._alive or self._loading:
             return
         try:
             _top, bottom = self._list._parent_canvas.yview()
         except Exception:
             return
-        if bottom >= 0.9:
+        if bottom < 0.9:
+            return
+
+        if self._visible_count < len(self._rows):
             self._render_more()
+            return
+
+        if self._is_filtered() or not self._has_more_in_db:
+            return
+
+        history_db = getattr(self.app, 'history_db', None)
+        if history_db is None:
+            return
+        offset = len(self._rows)
+        self._loading = True
+        self._set_status("Loading more...")
+
+        def fetch():
+            try:
+                page = history_db.recent(
+                    limit=self.PAGE_SIZE, offset=offset)
+            except Exception as e:
+                logger.error(f"history page fetch failed: {e}",
+                             exc_info=True)
+                page = []
+            self._after_safe(lambda: self._append_rows(page))
+
+        threading.Thread(target=fetch, daemon=True).start()
+
+    def _append_rows(self, rows):
+        self._loading = False
+        if not rows:
+            self._has_more_in_db = False
+            self._update_status_count()
+            return
+        for row in rows:
+            self._rows.append(row)
+            self._render_card(row)
+            self._visible_count += 1
+        if len(rows) < self.PAGE_SIZE:
+            self._has_more_in_db = False
+        self._update_status_count()
 
     def _update_status_count(self):
         total = len(self._rows)
         shown = self._visible_count
         if total == 0:
             return
-        suffix = "" if shown >= total else " (scroll for more)"
-        self._set_status(f"Showing {shown} of {total} entries{suffix}")
+        suffix = ""
+        if shown < total or self._has_more_in_db:
+            suffix = " (scroll for more)"
+        self._set_status(f"Showing {shown} entries{suffix}")
 
     def _set_status(self, text):
         if self._alive:
@@ -289,11 +371,23 @@ class HistoryFrame(ctk.CTkFrame):
     def _status_color(self, status):
         return self.STATUS_COLORS.get(status, '#888888')
 
-    def _render_card(self, row):
+    def _render_card(self, row, prepend=False):
+        # Capture the current first sibling BEFORE creating the new card
+        # so pack(before=...) inserts the new one above it.
+        before_target = None
+        if prepend:
+            existing = self._list.winfo_children()
+            if existing:
+                before_target = existing[0]
+
         row_id = row['id']
         card = ctk.CTkFrame(self._list, corner_radius=8)
-        card.pack(fill='x', padx=4, pady=3)
         self._card_widgets[row_id] = card
+
+        if before_target is not None:
+            card.pack(fill='x', padx=4, pady=3, before=before_target)
+        else:
+            card.pack(fill='x', padx=4, pady=3)
 
         # Top row: status dot + truncated text + duration
         top = ctk.CTkFrame(card, fg_color="transparent")
@@ -438,11 +532,33 @@ class HistoryFrame(ctk.CTkFrame):
         def do_delete():
             try:
                 history_db.delete(row_id)
+                ok = True
             except Exception as e:
                 logger.error(f"History delete failed: {e}", exc_info=True)
-            self._after_safe(lambda: self._reload(force=True))
+                ok = False
+            self._after_safe(lambda: self._on_deleted(row_id, ok))
 
         threading.Thread(target=do_delete, daemon=True).start()
+
+    def _on_deleted(self, row_id, ok):
+        if not ok:
+            self._set_status("Delete failed -- check log.")
+            return
+        card = self._card_widgets.pop(row_id, None)
+        if card is not None:
+            try:
+                card.destroy()
+            except Exception:
+                pass
+        prev_count = len(self._rows)
+        self._rows = [r for r in self._rows if r['id'] != row_id]
+        if len(self._rows) < prev_count:
+            self._visible_count = max(
+                0, min(self._visible_count, len(self._rows)))
+        if self._expanded_id == row_id:
+            self._expanded_id = None
+        self._top_row_id = self._rows[0]['id'] if self._rows else None
+        self._update_status_count()
 
     def _show_retry(self, row):
         msg = row['display_text'] or row['raw_text'] or "(no detail recorded)"
@@ -450,24 +566,89 @@ class HistoryFrame(ctk.CTkFrame):
             "Failed transcription",
             f"This dictation failed.\n\n{msg}\n\nRe-dictate to try again.")
 
-    # ---- Polling + push refresh -----------------------------------------
+    # ---- Push-based new-entry hook + light visibility-gated poll --------
 
-    def _poll(self):
-        """Re-fetch every POLL_MS while the host tab is visible."""
+    def refresh(self):
+        """Public hook: full reload (used by the Refresh button and any
+        callers that want a hard rebuild). New-entry push should call
+        on_new_entry() instead -- it's the cheap path."""
+        if self._alive:
+            self._reload(force=True)
+
+    def on_new_entry(self):
+        """Push hook: a new dictation just landed in the DB. Off-thread
+        fetch the rows added since our current top, then prepend cards.
+
+        No-ops when a search query or non-default status filter is active
+        (the new entry might not match -- the user can hit Refresh)."""
+        if not self._alive or self._loading or self._is_filtered():
+            return
+        self._fetch_newer_async()
+
+    def _fetch_newer_async(self):
+        history_db = getattr(self.app, 'history_db', None)
+        if history_db is None:
+            return
+        top_id = self._top_row_id
+
+        def fetch():
+            try:
+                # Pull a small window from the top; filter to id > top_id
+                latest = history_db.recent(limit=self.PAGE_SIZE)
+            except Exception as e:
+                logger.error(f"history newer fetch failed: {e}",
+                             exc_info=True)
+                return
+            if top_id is None:
+                new_rows = list(latest)
+            else:
+                new_rows = [r for r in latest if r['id'] > top_id]
+            if not new_rows:
+                return
+            self._after_safe(lambda: self._prepend_rows(new_rows))
+
+        threading.Thread(target=fetch, daemon=True).start()
+
+    def _prepend_rows(self, rows):
+        if not self._alive or not rows:
+            return
+        existing_ids = {r['id'] for r in self._rows}
+        # rows are newest-first from the DB; reverse so we pack them in
+        # oldest-first and the very newest ends up on top.
+        added = 0
+        for row in reversed(rows):
+            if row['id'] in existing_ids:
+                continue
+            self._rows.insert(0, row)
+            existing_ids.add(row['id'])
+            self._render_card(row, prepend=True)
+            self._visible_count += 1
+            added += 1
+        if added and self._rows:
+            self._top_row_id = self._rows[0]['id']
+        if added:
+            self._update_status_count()
+
+    def _schedule_poll(self):
         if not self._alive:
             return
         try:
-            if self._is_visible() and not self._loading:
-                self._reload()
+            self._poll_after_id = self.after(self.POLL_MS, self._poll_tick)
+        except Exception:
+            self._poll_after_id = None
+
+    def _poll_tick(self):
+        """Belt-and-braces backstop: catches new rows that did not arrive
+        via on_new_entry (e.g., voice_training's history tab where the
+        push hook is not wired). Skips DB hits when the host is hidden,
+        loading, or has a filter/search active."""
+        if not self._alive:
+            return
+        try:
+            if (self._is_visible()
+                    and not self._loading
+                    and not self._is_filtered()):
+                self._fetch_newer_async()
         except Exception as e:
             logger.error(f"history poll error: {e}")
-        try:
-            self.after(self.POLL_MS, self._poll)
-        except Exception:
-            pass
-
-    def refresh(self):
-        """Public hook: parent calls this to force a reload (e.g. after a
-        new dictation completes -- avoids waiting for the next poll tick)."""
-        if self._alive:
-            self._reload(force=True)
+        self._schedule_poll()
