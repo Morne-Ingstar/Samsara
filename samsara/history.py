@@ -90,13 +90,14 @@ class HistoryManager:
                 ORDER BY timestamp DESC LIMIT ?
             """, (f"%{query}%", f"%{query}%", limit)).fetchall()
 
-    def recent(self, limit=50):
-        """Get most recent entries."""
+    def recent(self, limit=50, offset=0):
+        """Get most recent entries. Optional offset for scroll-driven pagination."""
         with self._lock:
             return self._conn.execute("""
                 SELECT * FROM history
-                ORDER BY timestamp DESC LIMIT ?
-            """, (limit,)).fetchall()
+                ORDER BY timestamp DESC
+                LIMIT ? OFFSET ?
+            """, (limit, offset)).fetchall()
 
     def delete(self, row_id):
         """Delete a single entry."""

@@ -750,10 +750,9 @@ class DictationApp:
         print(f"Using model: {self.config['model_size']}")
         print(f"Hotkey detection: state-based (simultaneous key support)")
 
-        # Close splash and start system tray
         # Main hub window (sidebar nav into History/Dictionary/Settings).
-        # Constructed before the tray so the tray's double-click handler
-        # has something to call. Shown after the tray comes up.
+        # Constructed before the tray so the tray's left-click handler
+        # has something to call.
         from samsara.ui.main_window import MainWindow
         self.main_window = MainWindow(self)
 
@@ -761,12 +760,12 @@ class DictationApp:
         if self.splash:
             self.splash.close()
             self.splash = None
-        self.create_tray_icon()
 
-        # Open the main window on launch (after tray is up)
-        print("[UI] Calling show_main_window()...")
-        self.show_main_window()
-        print("[UI] show_main_window() returned")
+        # create_tray_icon() ends with mainloop() and blocks the thread,
+        # so anything after it is unreachable. Schedule the hub to open
+        # as soon as the Tk loop starts spinning.
+        self.root.after(0, self.show_main_window)
+        self.create_tray_icon()
 
     def update_splash(self, status):
         """Update splash screen status"""
@@ -793,6 +792,8 @@ class DictationApp:
             "auto_capitalize": True,
             "format_numbers": True,
             "cleanup_mode": "clean",  # "clean" (filler removal + spacing) or "verbatim"
+            "streaming_mode": False,  # live overlay partials in 'hold' mode
+            "streaming_direct_paste": False,  # also paste partials into focused app
             "device": "auto",
             "microphone": None,
             "silence_threshold": DEFAULT_SILENCE_TIMEOUT,
@@ -3383,6 +3384,12 @@ class DictationApp:
         # Suppress wake word processing during hotkey recording
         self._hotkey_recording = True
 
+        # Streaming mode skips the pre-buffer for fast first partial.
+        # Only applies in 'hold' (release-to-finalize) -- toggle/continuous
+        # use the existing batch path.
+        streaming = (self.config.get('streaming_mode', False)
+                     and self.config.get('mode', 'hold') == 'hold')
+
         # Grab pre-buffer contents BEFORE playing the start sound
         # This captures audio from ~1.5s before the hotkey was pressed
         prebuffer_audio = list(self._prebuffer)
@@ -3397,11 +3404,14 @@ class DictationApp:
         self.play_sound("start", use_winsound=True)
         time.sleep(0.15)  # Brief pause for sound to start
 
-        # Seed audio_data with pre-buffered audio (speech before hotkey press)
-        self.audio_data = [chunk.reshape(-1, 1) for chunk in prebuffer_audio] if prebuffer_audio else []
-        if prebuffer_audio:
-            prebuf_duration = len(prebuffer_audio) * 0.1
-            print(f"[PRE] Pre-buffer: {prebuf_duration:.1f}s of audio captured before hotkey")
+        if streaming:
+            self.audio_data = []
+        else:
+            # Seed audio_data with pre-buffered audio (speech before hotkey press)
+            self.audio_data = [chunk.reshape(-1, 1) for chunk in prebuffer_audio] if prebuffer_audio else []
+            if prebuffer_audio:
+                prebuf_duration = len(prebuffer_audio) * 0.1
+                print(f"[PRE] Pre-buffer: {prebuf_duration:.1f}s of audio captured before hotkey")
         
         # Record timestamp so we can detect overlap between pre-buffer and recording
         self._recording_start_time = time.time()
@@ -3437,6 +3447,11 @@ class DictationApp:
         if hasattr(self, 'listening_indicator'):
             self._schedule_ui(self.listening_indicator.set_listening, True)
 
+        if streaming:
+            from samsara.streaming import StreamingSession
+            self._streaming_session = StreamingSession(self)
+            self._streaming_session.start()
+
     def stop_recording(self):
         """Stop recording and transcribe"""
         if not self.recording:
@@ -3461,10 +3476,22 @@ class DictationApp:
         # Restart pre-buffer stream for next recording session
         self._start_prebuffer_stream()
 
+        # If a streaming session is in flight, hand off finalization to it
+        # (it owns the overlay, final pass, paste, and history). The audio
+        # stream is already stopped above, so audio_data is frozen now.
+        sess = getattr(self, '_streaming_session', None)
+        if sess is not None:
+            self._streaming_session = None
+            try:
+                sess.finalize()
+            except Exception as e:
+                print(f"[STREAM] finalize failed: {e}")
+            return
+
         if not self.audio_data:
             print("No audio recorded")
             return
-        
+
         print("[...] Transcribing...")
         
         # Combine audio chunks and resample to model rate
@@ -3607,6 +3634,14 @@ class DictationApp:
             self.stream.stop()
             self.stream.close()
 
+        sess = getattr(self, '_streaming_session', None)
+        if sess is not None:
+            self._streaming_session = None
+            try:
+                sess.cancel()
+            except Exception as e:
+                print(f"[STREAM] cancel failed: {e}")
+
         # Clear audio data without transcribing
         self.audio_data = []
         self.play_sound("error")  # Play error sound to indicate cancellation
@@ -3727,6 +3762,20 @@ class DictationApp:
             self.main_window.hide()
         except Exception as e:
             print(f"[UI] Failed to hide main window: {e}")
+
+    def set_streaming_mode(self, enabled):
+        """Tray-menu entry point: flip the streaming-mode flag."""
+        enabled = bool(enabled)
+        if self.config.get('streaming_mode', False) == enabled:
+            return
+        self.config['streaming_mode'] = enabled
+        self.save_config()
+        print(f"[STREAM] streaming_mode -> {enabled}")
+        if hasattr(self, 'tray_icon') and hasattr(self, 'get_menu'):
+            try:
+                self.tray_icon.menu = self.get_menu()
+            except Exception as e:
+                print(f"[STREAM] Failed to refresh tray menu: {e}")
 
     def set_cleanup_mode(self, mode):
         """Tray-menu entry point: switch between 'clean' and 'verbatim' cleanup."""
@@ -4215,6 +4264,12 @@ class DictationApp:
                     lambda _i, _it: self.set_wake_word_enabled(
                         not self.config.get('wake_word_enabled', False)),
                     checked=lambda _it: self.config.get('wake_word_enabled', False)
+                ),
+                pystray.MenuItem(
+                    "Streaming Mode (live overlay)",
+                    lambda _i, _it: self.set_streaming_mode(
+                        not self.config.get('streaming_mode', False)),
+                    checked=lambda _it: self.config.get('streaming_mode', False)
                 ),
                 pystray.MenuItem(
                     "Cleanup",
