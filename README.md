@@ -21,6 +21,8 @@
 > This is early-stage software. It works for me daily, but expect rough edges. If you find it useful, I'd love to hear from you.
 >
 > — Morne
+>
+> [Read more about the vision behind Samsara →](https://morneis.com/#about)
 
 ---
 
