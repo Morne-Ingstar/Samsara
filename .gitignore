@@ -1,11 +1,13 @@
 # Logs
 *.log
+build_log.txt
 
 # Python cache
 __pycache__/
 *.py[cod]
 *$py.class
 *.pyo
+.pytest_cache/
 
 # Virtual environment
 venv/
@@ -15,12 +17,16 @@ env/
 # User-specific config and data
 config.json
 training_data.json
+history.json
 
 # Build artifacts
 build/
 dist/
+release/
 *.exe
-*.spec
+
+# External tools (downloaded separately -- see tools/README.md)
+tools/*.exe
 
 # IDE
 .idea/
@@ -35,7 +41,24 @@ nul
 
 # Misc
 *.bak
+*.bak-*
 *.tmp
 
 # Claude Code
 .claude/
+
+# Internal dev notes
+SATURN_HANDOFF.md
+
+# Sound assets - development only
+sounds/backup_old/
+sounds/downloads/
+sounds/test_*.mp3
+sounds/variations/
+
+
+# Video demo props (not shipped in releases)
+plugins/commands/demo_commands.py
+plugins/commands/wake_routine.py
+plugins/assets/portfolio.html
+plugins/assets/sleep_overlay.py
