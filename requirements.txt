@@ -1,8 +1,16 @@
 # Samsara Voice Dictation - Dependencies
 # All packages are cross-platform (Windows, macOS, Linux)
 
+# Screen recording (GIF plugin)
+mss>=9.0
+
 # Core - Speech Recognition
 faster-whisper>=1.0.0
+
+# Core - Speech Detection (Silero VAD)
+# torch is a transitive dep of faster-whisper; torchaudio is needed by Silero VAD
+# Version must match torch (e.g. torch 2.7.0 needs torchaudio 2.7.0)
+torchaudio
 
 # Core - Audio
 sounddevice>=0.4.6

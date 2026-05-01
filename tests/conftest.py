@@ -11,6 +11,34 @@ from unittest.mock import Mock, MagicMock, patch
 sys.path.insert(0, str(Path(__file__).parent.parent))
 
 
+@pytest.fixture(autouse=True)
+def _isolate_plugin_registry(tmp_path, monkeypatch):
+    """Keep the real plugins/ directory from leaking into tests.
+
+    Tests that want plugin behavior can register via the @command decorator
+    after this fixture clears the global registry.
+    """
+    from samsara import plugin_commands as _plugin_commands
+    saved = dict(_plugin_commands._REGISTRY)
+    _plugin_commands._REGISTRY.clear()
+
+    original_load = _plugin_commands.load_plugins
+
+    def _scoped_load(plugins_dir):
+        plugins_dir = Path(plugins_dir)
+        project_plugins = Path(__file__).parent.parent / "plugins" / "commands"
+        if plugins_dir.resolve() == project_plugins.resolve():
+            return 0
+        return original_load(plugins_dir)
+
+    monkeypatch.setattr(_plugin_commands, "load_plugins", _scoped_load)
+    try:
+        yield
+    finally:
+        _plugin_commands._REGISTRY.clear()
+        _plugin_commands._REGISTRY.update(saved)
+
+
 # ============================================================================
 # Mock Classes
 # ============================================================================

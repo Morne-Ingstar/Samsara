@@ -32,7 +32,7 @@ class TestSettingsConfiguration:
 
     def test_mode_valid_values(self, sample_config):
         """Test mode has valid value"""
-        valid_modes = ['hold', 'toggle', 'continuous', 'wake_word']
+        valid_modes = ['hold', 'toggle', 'continuous']
         assert sample_config['mode'] in valid_modes
 
     def test_model_size_valid_values(self, sample_config):
