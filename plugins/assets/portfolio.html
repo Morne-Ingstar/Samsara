@@ -1,0 +1,151 @@
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="utf-8">
+<title>Portfolio Dashboard</title>
+<style>
+* { margin: 0; padding: 0; box-sizing: border-box; }
+body { background: #080810; color: #e0e0e0; font-family: 'Segoe UI', sans-serif; overflow: hidden; height: 100vh; display: flex; flex-direction: column; }
+
+.topbar { display: flex; justify-content: space-between; align-items: center; padding: 16px 40px; border-bottom: 1px solid #1a1a2e; }
+.topbar .logo { font-size: 18px; color: #666; letter-spacing: 3px; text-transform: uppercase; }
+.topbar .account { font-size: 14px; color: #444; }
+
+.alert { margin: 16px 40px 0; border-radius: 8px; padding: 16px 24px; display: flex; align-items: center; gap: 14px; background: #2a0808; border: 2px solid #ff2020aa; }
+.alert .dot { width: 12px; height: 12px; border-radius: 50%; background: #ff2020; animation: pulse 1s infinite; flex-shrink: 0; }
+@keyframes pulse { 0%,100% { opacity: 1; } 50% { opacity: 0.2; } }
+.alert .text { font-size: 20px; color: #ff6b6b; font-weight: 500; }
+
+.hero { display: flex; padding: 30px 40px 10px; gap: 40px; align-items: flex-end; }
+.hero-left { flex: 1; }
+.hero-left .label { font-size: 16px; color: #555; text-transform: uppercase; letter-spacing: 2px; margin-bottom: 8px; }
+.hero-left .amount { font-size: 96px; font-weight: 800; color: #ff1111; line-height: 1; letter-spacing: -2px; }
+.hero-left .subtitle { font-size: 20px; color: #ff4444; margin-top: 10px; }
+.hero-right { text-align: right; }
+.hero-right .started { font-size: 16px; color: #444; }
+.hero-right .started-val { font-size: 28px; color: #555; font-weight: 600; }
+
+.chart-area { flex: 1; padding: 10px 40px 20px; min-height: 0; }
+.chart-area canvas { width: 100%; height: 100%; }
+
+.positions { display: flex; gap: 12px; padding: 0 40px 20px; }
+.pos { flex: 1; background: #0e0e1a; border: 1px solid #1a1a2e; border-radius: 8px; padding: 16px; }
+.pos .ticker { font-size: 18px; font-weight: 600; color: #ff4444; }
+.pos .detail { font-size: 13px; color: #444; margin-top: 4px; }
+.pos .loss { font-size: 24px; font-weight: 700; color: #ff2222; margin-top: 8px; }
+.pos .pct { font-size: 14px; color: #ff6666; }
+.pos .tag { display: inline-block; font-size: 11px; text-transform: uppercase; letter-spacing: 1px; padding: 3px 10px; border-radius: 3px; background: #ff000022; color: #ff4444; border: 1px solid #ff000044; margin-top: 6px; }
+</style>
+</head>
+<body>
+
+<div class="topbar">
+  <div class="logo">CryptoVault Pro</div>
+  <div class="account">Account: MJ-4817</div>
+</div>
+
+<div class="alert">
+  <div class="dot"></div>
+  <div class="text">MARGIN CALL — Deposit $248,000 within 24 hours or positions will be liquidated and debt sent to collections.</div>
+</div>
+
+<div class="hero">
+  <div class="hero-left">
+    <div class="label">Account Balance</div>
+    <div class="amount">-$247,891</div>
+    <div class="subtitle">You owe this amount to CryptoVault Pro</div>
+  </div>
+  <div class="hero-right">
+    <div class="started">Initial Deposit</div>
+    <div class="started-val">$4,200</div>
+  </div>
+</div>
+
+<div class="chart-area">
+  <canvas id="chart"></canvas>
+</div>
+
+<div class="positions">
+  <div class="pos">
+    <div class="ticker">BTC/USD — 50x SHORT</div>
+    <div class="detail">Liquidated Apr 14</div>
+    <div class="loss">-$183,085</div>
+    <div class="tag">force liquidated</div>
+  </div>
+  <div class="pos">
+    <div class="ticker">ETH/USD — 25x SHORT</div>
+    <div class="detail">Liquidated Apr 16</div>
+    <div class="loss">-$57,200</div>
+    <div class="tag">force liquidated</div>
+  </div>
+  <div class="pos">
+    <div class="ticker">SOL/USD — 20x SHORT</div>
+    <div class="detail">Liquidated Apr 18</div>
+    <div class="loss">-$72,163</div>
+    <div class="tag">force liquidated</div>
+  </div>
+  <div class="pos">
+    <div class="ticker">DOGE — 100x LONG</div>
+    <div class="detail">Still open</div>
+    <div class="loss">$3.00 left</div>
+    <div class="pct">-99.93%</div>
+  </div>
+</div>
+
+<script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+<script>
+const days = [];
+for (let i = 0; i < 30; i++) {
+  const d = new Date(2026, 2, 28 + i);
+  days.push(d.toLocaleDateString('en-US', {month:'short', day:'numeric'}));
+}
+const equity = [
+  4200, 4800, 5100, 4900, 6200, 7800, 8400, 6100,
+  3200, -2100, -8400, -15000, -28000, -45000, -78000,
+  -120000, -145000, -180000, -210000, -235000, -248000,
+  -252000, -260000, -255000, -250000, -248500, -248200,
+  -248000, -247950, -247891
+];
+
+new Chart(document.getElementById('chart'), {
+  type: 'line',
+  data: {
+    labels: days,
+    datasets: [{
+      data: equity,
+      segment: {
+        borderColor: ctx => ctx.p0.parsed.y >= 0 && ctx.p1.parsed.y >= 0 ? '#22cc55' : '#ff2222'
+      },
+      backgroundColor: 'rgba(255,20,20,0.06)',
+      fill: true,
+      tension: 0.3,
+      pointRadius: 0,
+      borderWidth: 3
+    }]
+  },
+  options: {
+    responsive: true,
+    maintainAspectRatio: false,
+    plugins: { legend: { display: false } },
+    scales: {
+      x: {
+        grid: { color: '#151520' },
+        ticks: { color: '#444', font: { size: 13 }, maxTicksLimit: 8 }
+      },
+      y: {
+        grid: { color: '#151520' },
+        ticks: {
+          color: '#444',
+          font: { size: 13 },
+          callback: v => {
+            if (v >= 0) return '$' + (v/1000).toFixed(0) + 'k';
+            return '-$' + (Math.abs(v)/1000).toFixed(0) + 'k';
+          }
+        }
+      }
+    }
+  }
+});
+</script>
+</body>
+</html>
