@@ -2,57 +2,48 @@
 
 All notable changes to Samsara are documented here.
 
-## [0.9.8] - 2026-04-28
+## [0.9.8] - 2026-05-01
+
+This release bundles all work since v0.9.5: the new main hub window, dictation history, streaming dictation, and four new plugins (Hyperion lights, FlashForge 3D printer, Spotify music, screen recording / GIF search). Also includes substantial reliability fixes for hold-to-dictate, wake word recognition, and audio recovery after sleep/wake.
 
 ### Added
-- **Streaming dictation** — real-time voice-to-text with live overlay. Text appears and updates as you speak, with a polished final paste on release. Two modes: overlay-only (safe) and direct-paste (text flows into the focused app in real time via Ctrl+A select-and-replace). Configurable via `streaming_mode` and `streaming_direct_paste` in config.
-- **FlashForge 3D printer control** — voice commands for printer status, pause/resume/cancel, chamber light toggle, file listing. TCP M-code protocol on port 8899 with serial+check_code auth. Tested on AD5X firmware v1.2.3.
-- **Spotify music playback** — "Jarvis, play me some music" opens tracks in the Spotify desktop app. Pre-configured library of songs, user-configurable library, volume control, Spotify search fallback.
+
+- **Streaming dictation** — real-time voice-to-text with live overlay. Hold the streaming hotkey (CapsLock) and watch text appear and update as you speak, with a polished final paste on release. Two modes: overlay-only (safe) and direct-paste (text flows into the focused app in real time). Configurable via `streaming_mode` and `streaming_direct_paste` in config.
+- **CapsLock streaming hotkey** — suppressed at the OS level so it never toggles caps while Samsara is running. atexit handler guarantees the hook is released even on crash, so users never end up with a stuck CapsLock key.
+- **Main hub window** — opens on launch with sidebar navigation (History, Dictionary, Settings). Closing minimizes to tray. Double-click tray icon to reopen.
+- **Dictation history** — SQLite database logging every transcription with timestamp, source app, raw text, cleaned text, duration, mode, and success/fail status. Searchable, with copy/retry/delete.
+- **Unified dictionary UI** — three-tab corrections manager (Vocabulary, Corrections, Wake Words) in the main window. Add, edit, delete corrections from the UI. User corrections stored in `~/.samsara/` as JSON, hot-reloaded without restart. Hardcoded defaults are read-only; user overrides merge on top.
+- **Grammar-Lite cleanup** — post-Whisper processing removes filler words (um, uh, like), fixes capitalization, adds missing punctuation. Two modes: Clean (default) and Verbatim. Raw transcript always preserved in history.
+- **Hyperion LED strip control** — voice-controlled ambient lighting via Hyperion JSON API. "Jarvis, lights red", "lights effect rainbow", "lights off". Supports hostname, IPv4, and IPv6. 11 preset colors, 14 effect aliases with fuzzy matching.
+- **FlashForge 3D printer control** — voice commands for printer status, pause/resume/cancel, chamber light toggle, file listing. TCP M-code protocol on port 8899. Tested on AD5X firmware v1.2.3.
+- **Spotify music playback** — "Jarvis, play me some music" opens tracks in the Spotify desktop app. Pre-configured library, user-configurable music_library, volume control, Spotify search fallback.
+- **Timer plugin** — "set a timer for 5 minutes" with natural language parsing, background thread, Windows notification on completion.
+- **GIF search plugin** — "search for a gif of dancing cat" opens Giphy.
+- **Screen recording plugin** — "record my screen" / "record this window" captures screen to GIF using mss (DXGI). Persistent red REC indicator, 30-second safety cap, active window capture via ctypes.
+- **Audio auto-reconnect** — stream health monitor detects dead PortAudio streams after sleep/wake, auto-reconnects with exponential backoff (max 5 retries). Windows toast notification on reconnect.
 - **Wake word corrections** — harvest, charge us, charge, driver's, drivers added to Jarvis recognition.
+- **Music command mishearing aliases** — Whisper sometimes hears "place of music" or "plays some music" instead of "play some music". All common variants now route to the same handler.
 
 ### Changed
+
 - Streaming first-chunk latency reduced from 1.3s to 1.0s (0.7s first chunk + 0.3s transcription).
 - Streaming update interval tightened from 1.5s to 1.0s between partials.
 - Partial transcriptions use beam_size=1 (greedy, fast), final pass uses beam_size=5 (full beam search).
 - Pre-buffer skipped in streaming mode to eliminate 1.5s of unnecessary initial latency.
+- Direct-paste cycle uses Ctrl+Z + Ctrl+V instead of select-and-replace by word boundary. Works reliably across Notepad, browser fields, and Obsidian. Tunable via `UNDO_SETTLE_S` and `PASTE_SETTLE_S` constants.
 - History tab performance: callback-based updates replace 5-second polling, pagination limits initial load to 50 entries.
 - Main window UI restyled with blue-teal tinted dark theme.
-
-### Fixed
-- Direct-paste streaming exploits held Ctrl modifier (sends bare 'a' for Ctrl+A) instead of fighting physical key state with SendInput key-up events that Windows immediately overrides.
-- History tab close no longer spams TclError from stale widget redraws.
-
-## \[0.9.7\] - 2026-04-27
-
-### Added
-
-- **Hyperion LED strip control** — voice-controlled ambient lighting via Hyperion JSON API. "Jarvis, lights red", "lights effect rainbow", "lights off". Supports hostname, IPv4, and IPv6. 11 preset colors, 14 effect aliases with fuzzy matching.
-
-## \[0.9.6\] - 2026-04-26
-
-### Added
-
-- **Main hub window** — opens on launch with sidebar navigation (History, Dictionary, Settings). Closing minimizes to tray. Double-click tray icon to reopen.
-- **Dictation history** — SQLite database logging every transcription with timestamp, source app (via win32gui), raw text, cleaned text, duration, mode, and success/fail status. Searchable, with copy/retry/delete.
-- **Unified dictionary UI** — three-tab corrections manager (Vocabulary, Corrections, Wake Words) in the main window. Add, edit, delete corrections from the UI. User corrections stored in `~/.samsara/` as JSON, hot-reloaded without restart. Hardcoded defaults are read-only; user overrides merge on top.
-- **Grammar-Lite cleanup** — post-Whisper processing removes filler words (um, uh, like), fixes capitalization, adds missing punctuation. Two modes: Clean (default) and Verbatim. Raw transcript always preserved in history.
-- **Audio auto-reconnect** — stream health monitor detects dead PortAudio streams after sleep/wake, auto-reconnects with exponential backoff (max 5 retries). Windows toast notification on reconnect.
-- **Timer plugin** — "set a timer for 5 minutes" with natural language parsing, background thread, Windows notification on completion.
-- **GIF search plugin** — "search for a gif of dancing cat" opens Giphy.
-- **Screen recording plugin** — "record my screen" / "record this window" captures screen to GIF using mss (DXGI). Persistent red REC indicator, 30-second safety cap, active window capture via ctypes.
-- **Demo commands** — "show me my portfolio" (fake catastrophic stock dashboard), "print me a gun" (FlashForge AD5X integration for promo video).
-- **Edit-to-Learn hook** — placeholder in dictionary UI for future auto-correction learning from history edits.
-
-### Changed
-
 - Voice Training window refactored into reusable CTkFrame components (HistoryFrame, DictionaryFrame) shared between main window and standalone windows.
-- `on_dictation_complete` callback updates main window status bar directly (no polling for last transcription).
 
 ### Fixed
 
 - **Hold-to-dictate VAD bypass** — faster-whisper's internal VAD was stripping 80% of speech during explicit hotkey recordings. Now disabled for hold-to-dictate and long dictation modes.
 - **Min audio guard** — Whisper hallucinations ("Thank you", "Subtitles by Amara") on sub-0.5s clips. Audio shorter than 0.51s is now silently discarded.
 - **No ghost typing** — unrecognized wake word commands no longer paste garbage into focused apps. No-match goes silently back to sleep.
+- **History tab close** no longer spams TclError from stale widget redraws.
+- **Tk shutdown-race filter** installed on the root window. Suppresses benign "invalid command name" / "application has been destroyed" TclErrors that fire from CTk widget `<Configure>` handlers during teardown. Real exceptions still surface.
+- **Quiet third-party loggers** — torio, torchaudio, urllib3, huggingface_hub pinned to WARNING. voice_training.py raises root logger to DEBUG at import, which was producing FFmpeg traceback spam on every probe.
+- **Streaming module imports** — pyautogui and pyperclip moved to top-level imports. Inline imports in the hot path were an anti-pattern.
 
 ## \[0.9.5\] - 2026-04-24
 
