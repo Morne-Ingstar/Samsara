@@ -75,7 +75,9 @@ def _set_volume(level):
     "play some", "play me some", "play me",
     "play some music", "play me some music",
     "playing some", "playing me some", "playing",
-    "put on some", "put on"
+    "put on some", "put on",
+    "place of music", "place some music", "play of music",
+    "plays some music", "place music", "plays music"
 ])
 def handle_play(app, remainder):
     """Play music. Usage: 'Jarvis, play some sad music'"""

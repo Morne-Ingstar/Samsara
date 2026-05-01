@@ -145,6 +145,46 @@ from pathlib import Path
 import tkinter as tk
 from tkinter import ttk, messagebox
 import customtkinter as ctk
+
+# Silence chatty third-party loggers. voice_training.py calls
+# logging.basicConfig(level=DEBUG) at import, which raises the root
+# logger to DEBUG -- and torio (part of torchaudio) probes for every
+# FFmpeg version on Windows, logging a full traceback per miss. Pin the
+# noisy libraries at WARNING so genuine problems still surface.
+for _name in ("torio", "torio._extension", "torchaudio",
+              "torchaudio._extension", "torch", "urllib3",
+              "huggingface_hub"):
+    logging.getLogger(_name).setLevel(logging.WARNING)
+
+
+def _samsara_install_tk_error_filter(root):
+    """Suppress CustomTkinter shutdown-race noise on the given Tk root.
+
+    When a CTk window is being destroyed, child widgets' <Configure>
+    handlers still fire and try to redraw on canvases the OS has already
+    torn down, raising `_tkinter.TclError: invalid command name ...`.
+    Those exceptions are benign and only appear during teardown.
+
+    tkinter routes widget callback exceptions through the root's
+    `report_callback_exception` (Misc._report_exception calls
+    self._root().report_callback_exception), so installing a filter on
+    the root catches errors from every widget in the tree."""
+    import _tkinter
+    import traceback as _tb_mod
+    original = root.report_callback_exception
+
+    def _filtered(exc, val, tb):
+        if isinstance(val, _tkinter.TclError):
+            msg = str(val)
+            if ("invalid command name" in msg
+                    or "application has been destroyed" in msg):
+                return
+        try:
+            original(exc, val, tb)
+        except Exception:
+            _tb_mod.print_exception(exc, val, tb)
+
+    root.report_callback_exception = _filtered
 from voice_training import VoiceTrainingWindow
 from samsara.profiles import ProfileManager
 from samsara.ui.splash import SplashScreen
@@ -507,6 +547,9 @@ class DictationApp:
             self.root = tk.Tk()
             self.root.withdraw()  # Hide it
 
+        # Filter CTk shutdown-race exceptions out of stderr.
+        _samsara_install_tk_error_filter(self.root)
+
         # Apply the segmented-wheel as the default window icon for every
         # Toplevel (taskbar, top-left corner). Tk's default-flag inherits
         # to all subsequently created Toplevels -- one call covers the
@@ -731,6 +774,15 @@ class DictationApp:
         )
         self.keyboard_listener.start()
 
+        # Install the CapsLock hook used by streaming-mode dictation.
+        # suppress=True means the OS never sees CapsLock while Samsara is
+        # running -- it does not toggle the caps state, and the keyboard
+        # library's hook gets every press/release before any other
+        # listener. The callback is a no-op when streaming_mode is off.
+        self._capslock_held = False
+        self._capslock_hook = None
+        self._install_capslock_hook()
+
         self.update_splash("Loading speech model...")
 
         # Load model in background
@@ -794,6 +846,7 @@ class DictationApp:
             "cleanup_mode": "clean",  # "clean" (filler removal + spacing) or "verbatim"
             "streaming_mode": False,  # live overlay partials in 'hold' mode
             "streaming_direct_paste": False,  # also paste partials into focused app
+            "streaming_hotkey": "capslock",  # hotkey for streaming mode (suppressed; no caps toggle)
             "device": "auto",
             "microphone": None,
             "silence_threshold": DEFAULT_SILENCE_TIMEOUT,
@@ -1598,7 +1651,7 @@ class DictationApp:
             print(f"[HOTKEY] Command hotkey detected: {command_hotkey}")
             self.hotkey_pressed = True
             self.command_mode_recording = True
-            self.start_recording()
+            self.start_recording(streaming=False)
             return
         
         # Undo hotkey (works in any mode, edge-triggered)
@@ -1650,12 +1703,23 @@ class DictationApp:
                 self.play_sound('stop')  # Neutral sound for dismissal
                 return
 
-        # Handle main hotkey based on mode
-        if self.check_hotkey_state(main_hotkey) and not self.hotkey_pressed:
+        # Handle main hotkey based on mode.
+        # Belt-and-braces: require BOTH the OS keyboard state (via
+        # check_hotkey_state) AND pynput's event-tracked self.current_keys
+        # to agree that every required key is held. This catches stale
+        # OS state from synthesized events leaving e.g. shift "pressed"
+        # when the user only physically holds ctrl.
+        required_keys = self.parse_hotkey(main_hotkey)
+        main_event_held = required_keys.issubset(self.current_keys)
+        if (self.check_hotkey_state(main_hotkey)
+                and main_event_held
+                and not self.hotkey_pressed):
             print(f"[HOTKEY] Main hotkey detected: {main_hotkey} (mode: {mode})")
             if mode == 'hold':
                 self.hotkey_pressed = True
-                self.start_recording()
+                # Ctrl+Shift always drives batch mode -- streaming uses
+                # CapsLock as its dedicated hotkey.
+                self.start_recording(streaming=False)
             elif mode == 'toggle':
                 self.hotkey_pressed = True
                 if self.toggle_active:
@@ -1663,7 +1727,7 @@ class DictationApp:
                     self.stop_recording()
                 else:
                     self.toggle_active = True
-                    self.start_recording()
+                    self.start_recording(streaming=False)
             elif mode == 'continuous':
                 # In continuous mode, main hotkey toggles continuous listening
                 self.hotkey_pressed = True
@@ -1700,6 +1764,88 @@ class DictationApp:
                     print(f"[HOTKEY] Main hotkey released, stopping recording")
                     self.stop_recording()
                 self.hotkey_pressed = False
+
+    # ---- CapsLock streaming hotkey --------------------------------------
+
+    def _install_capslock_hook(self):
+        """Hook CapsLock with the keyboard library so it drives streaming
+        dictation without ever toggling the system caps state.
+
+        suppress=True means the OS never sees the CapsLock event -- no
+        toggle, no LED change, no caps. Our callback decides whether to
+        start/stop streaming based on the live streaming_mode config.
+
+        We register an atexit cleanup so the hook is released even if
+        Samsara crashes or is killed via Task Manager -- without this
+        the user can be left with a CapsLock key the OS thinks is
+        permanently consumed."""
+        try:
+            self._capslock_hook = keyboard.hook_key(
+                'caps lock', self._on_capslock_event, suppress=True)
+        except Exception as e:
+            print(f"[CAPSLOCK] Failed to install hook: {e}")
+            self._capslock_hook = None
+            return
+
+        import atexit
+        hook_ref = self._capslock_hook
+
+        def _cleanup_capslock_hook():
+            try:
+                keyboard.unhook(hook_ref)
+            except Exception:
+                pass
+
+        atexit.register(_cleanup_capslock_hook)
+
+    def _on_capslock_event(self, event):
+        """Hooked CapsLock handler. Runs on the keyboard library's hook
+        thread -- spawn worker threads for blocking work."""
+        try:
+            if self.snoozed:
+                return
+            if not self.config.get('streaming_mode', False):
+                return  # event still suppressed; we just don't trigger
+            if not self.model_loaded:
+                return
+
+            if event.event_type == keyboard.KEY_DOWN:
+                if self._capslock_held:
+                    return  # ignore auto-repeat while held
+                self._capslock_held = True
+                threading.Thread(
+                    target=self._capslock_start_streaming,
+                    daemon=True, name="capslock-start").start()
+            elif event.event_type == keyboard.KEY_UP:
+                if not self._capslock_held:
+                    return
+                self._capslock_held = False
+                threading.Thread(
+                    target=self._capslock_stop_streaming,
+                    daemon=True, name="capslock-stop").start()
+        except Exception as e:
+            print(f"[CAPSLOCK] event handler crashed: {e}")
+
+    def _capslock_start_streaming(self):
+        """Worker: start a streaming-mode recording. Wrapped so we can
+        guard against re-entry if the user hammers CapsLock."""
+        try:
+            if self.recording:
+                return
+            print("[CAPSLOCK] press -> streaming start")
+            self.start_recording(streaming=True)
+        except Exception as e:
+            print(f"[CAPSLOCK] start failed: {e}")
+
+    def _capslock_stop_streaming(self):
+        """Worker: stop the streaming recording on CapsLock release."""
+        try:
+            if not self.recording:
+                return
+            print("[CAPSLOCK] release -> streaming stop")
+            self.stop_recording()
+        except Exception as e:
+            print(f"[CAPSLOCK] stop failed: {e}")
 
     def toggle_continuous_mode(self):
         """Toggle continuous listening mode"""
@@ -3372,8 +3518,14 @@ class DictationApp:
             if self._stream_dead:
                 print("[AUDIO] Failed to reconnect after max retries")
 
-    def start_recording(self):
-        """Start recording audio"""
+    def start_recording(self, streaming=None):
+        """Start recording audio.
+
+        streaming overrides:
+          None  -- decide from config (legacy callers).
+          False -- force batch mode (Ctrl+Shift hotkey path).
+          True  -- force streaming (CapsLock hotkey path).
+        """
         if not self.model_loaded:
             if self.loading_model:
                 print("Model still loading, please wait...")
@@ -3384,11 +3536,12 @@ class DictationApp:
         # Suppress wake word processing during hotkey recording
         self._hotkey_recording = True
 
-        # Streaming mode skips the pre-buffer for fast first partial.
-        # Only applies in 'hold' (release-to-finalize) -- toggle/continuous
-        # use the existing batch path.
-        streaming = (self.config.get('streaming_mode', False)
-                     and self.config.get('mode', 'hold') == 'hold')
+        # Caller-forced streaming mode wins; otherwise fall back to the
+        # config + 'hold' check. Streaming-mode in toggle/continuous is
+        # not supported -- those paths use the existing batch behavior.
+        if streaming is None:
+            streaming = (self.config.get('streaming_mode', False)
+                         and self.config.get('mode', 'hold') == 'hold')
 
         # Grab pre-buffer contents BEFORE playing the start sound
         # This captures audio from ~1.5s before the hotkey was pressed
@@ -4266,7 +4419,7 @@ class DictationApp:
                     checked=lambda _it: self.config.get('wake_word_enabled', False)
                 ),
                 pystray.MenuItem(
-                    "Streaming Mode (live overlay)",
+                    "Streaming Mode (CapsLock = stream)",
                     lambda _i, _it: self.set_streaming_mode(
                         not self.config.get('streaming_mode', False)),
                     checked=lambda _it: self.config.get('streaming_mode', False)
@@ -4489,6 +4642,14 @@ class DictationApp:
         try:
             self.keyboard_listener.stop()
         except:
+            pass
+
+        # Release the CapsLock hook so the OS resumes normal toggle behavior
+        try:
+            if getattr(self, '_capslock_hook', None) is not None:
+                keyboard.unhook(self._capslock_hook)
+                self._capslock_hook = None
+        except Exception:
             pass
 
         # Stop tray icon (do this before GUI cleanup)
