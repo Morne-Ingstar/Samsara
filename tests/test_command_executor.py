@@ -15,6 +15,7 @@ sys.path.insert(0, str(Path(__file__).parent.parent))
 
 # Import from the modular package
 from samsara.commands import CommandExecutor
+from samsara import plugin_commands as _plugin_commands
 
 
 class TestCommandExecutorInit:
@@ -230,6 +231,73 @@ class TestProcessText:
 
         assert was_command is True
         callback.assert_called_with(True)
+
+
+class TestPluginCommands:
+    """Plugin commands are loaded and dispatched with lower priority than built-ins."""
+
+    @pytest.fixture(autouse=True)
+    def _clean_registry(self):
+        saved = dict(_plugin_commands._REGISTRY)
+        _plugin_commands._REGISTRY.clear()
+        try:
+            yield
+        finally:
+            _plugin_commands._REGISTRY.clear()
+            _plugin_commands._REGISTRY.update(saved)
+
+    def test_plugin_found_after_builtin(self, temp_commands_file, tmp_path):
+        """find_command returns a plugin phrase when no built-in matches."""
+        calls = []
+
+        @_plugin_commands.command("plugin only")
+        def _plugin(app, text, **kwargs):
+            calls.append(text)
+            return True
+
+        executor = CommandExecutor(temp_commands_file, plugins_dir=tmp_path / "nope")
+
+        # Built-in still wins for built-in phrases
+        assert executor.find_command("copy") == "copy"
+        # Plugin is found when no built-in matches
+        assert executor.find_command("plugin only") == "plugin only"
+
+    def test_builtin_wins_on_name_conflict(self, temp_commands_file, tmp_path):
+        """When a plugin and built-in share a phrase, the built-in wins."""
+        @_plugin_commands.command("copy")
+        def _plugin(app, text, **kwargs):
+            return True
+
+        executor = CommandExecutor(temp_commands_file, plugins_dir=tmp_path / "nope")
+        matched = executor.find_command("copy")
+        assert matched == "copy"
+        # Ensure it's the built-in that fires (plugin returns True but we want built-in path)
+        assert matched in executor.commands
+
+    def test_plugin_dispatched_through_process_text(self, temp_commands_file, tmp_path):
+        """process_text routes a plugin phrase to the plugin handler."""
+        calls = []
+
+        @_plugin_commands.command("plugin only")
+        def _plugin(app, text, **kwargs):
+            calls.append((app, text))
+            return True
+
+        sentinel_app = object()
+        executor = CommandExecutor(
+            temp_commands_file, app=sentinel_app, plugins_dir=tmp_path / "nope"
+        )
+        result, was_command = executor.process_text("plugin only", command_mode_enabled=True)
+        assert was_command is True
+        assert result == "plugin only"
+        assert len(calls) == 1
+        assert calls[0][0] is sentinel_app
+
+    def test_missing_plugins_dir_is_noncrash(self, temp_commands_file, tmp_path):
+        """A missing plugins directory should not prevent construction."""
+        missing = tmp_path / "does_not_exist"
+        executor = CommandExecutor(temp_commands_file, plugins_dir=missing)
+        assert executor.commands  # built-ins still loaded
 
 
 class TestHeldKeys:

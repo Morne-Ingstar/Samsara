@@ -1,6 +1,38 @@
 Samsara Voice Dictation - Changelog
 ====================================
 
+2026-02-09
+----------
+
+### New Feature: Alarm Reminders
+- Persistent alarm system with sound notifications
+  - Alarms play sound repeatedly until dismissed with hotkey
+  - Configurable dismiss hotkey (default: F11)
+  - Configurable nag/repeat interval (default: 60 seconds)
+  - Interval-based alarms (e.g., every 60 minutes for hydration)
+
+- Built-in alarm sounds
+  - Alarm: Classic two-tone repeating
+  - Chime: Pleasant ascending notes
+  - Bell: Bell-like with harmonic decay
+  - Gentle: Soft notification
+  - Support for custom WAV/MP3 sound files
+
+- New "Alarms" tab in Settings
+  - Add/edit/delete alarms
+  - Toggle individual alarms on/off
+  - Sound picker with test button
+  - Browse for custom sound files
+  - Configure dismiss hotkey and nag interval
+
+- Files added:
+  - `samsara/alarms.py` - AlarmManager class
+  - `sounds/alarm.wav` - Default alarm sound
+  - `sounds/chime.wav` - Chime sound
+  - `sounds/bell.wav` - Bell sound
+  - `sounds/gentle.wav` - Gentle notification sound
+
+
 2026-02-08
 ----------
 
