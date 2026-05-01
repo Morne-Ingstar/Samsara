@@ -30,6 +30,23 @@ logger = logging.getLogger(__name__)
 logger.info("Voice Training module loading...")
 
 
+# Words Whisper already transcribes reliably. Do NOT inject these into the
+# initial prompt -- every term added to the prompt raises the chance Whisper
+# hallucinates it from silence ("prompt bleeding"). Only uncommon words and
+# multi-word command phrases justify a prompt slot.
+_COMMON_ENGLISH = {
+    'open', 'close', 'copy', 'cut', 'paste', 'undo', 'redo', 'save',
+    'find', 'print', 'bold', 'italic', 'underline', 'escape', 'submit',
+    'space', 'tab', 'backspace', 'delete', 'select', 'all', 'mute',
+    'zoom', 'scroll', 'up', 'down', 'left', 'right', 'new', 'next',
+    'previous', 'show', 'hide', 'go', 'back', 'forward', 'hold',
+    'stop', 'release', 'press', 'double', 'click', 'line', 'word',
+    'page', 'period', 'comma', 'colon', 'quote', 'dash', 'ask',
+    'use', 'switch', 'volume', 'play', 'pause', 'search', 'for',
+    'to', 'the', 'my', 'me', 'a', 'an', 'is', 'in', 'on', 'at',
+}
+
+
 class VoiceTrainingWindow:
     """Voice training and recognition calibration interface"""
     
@@ -107,6 +124,15 @@ class VoiceTrainingWindow:
             self.window.resizable(True, True)
             self.window.minsize(700, 650)
 
+            # Apply the Samsara icon (CTkToplevel races with its default
+            # icon ~200ms after construction, so re-apply after).
+            if hasattr(self.app, '_apply_window_icon'):
+                self.app._apply_window_icon(self.window)
+                try:
+                    self.window.after(300, lambda: self.app._apply_window_icon(self.window))
+                except Exception:
+                    pass
+
             # Ensure window appears on top
             self.window.lift()
             self.window.focus_force()
@@ -124,6 +150,8 @@ class VoiceTrainingWindow:
             self.tabview.add("Calibration")
             self.tabview.add("Vocabulary")
             self.tabview.add("Corrections")
+            self.tabview.add("Dictionary")
+            self.tabview.add("History")
             self.tabview.add("Advanced")
 
             # Create tab contents
@@ -135,6 +163,12 @@ class VoiceTrainingWindow:
 
             logger.info("Creating corrections tab")
             self.create_corrections_tab()
+
+            logger.info("Creating dictionary tab")
+            self.create_dictionary_tab()
+
+            logger.info("Creating history tab")
+            self.create_history_tab()
 
             logger.info("Creating advanced tab")
             self.create_advanced_tab()
@@ -631,12 +665,61 @@ automatically applied as a post-processing step."""
         try:
             for item in self.corrections_tree.get_children():
                 self.corrections_tree.delete(item)
-            
+
             for wrong, correct in self.corrections_dict.items():
                 self.corrections_tree.insert('', tk.END, values=(wrong, correct))
         except Exception as e:
             logger.error(f"Error refreshing corrections tree: {e}", exc_info=True)
-    
+
+    # ---- Dictionary tab ---------------------------------------------------
+    #
+    # Delegates to the reusable DictionaryFrame, which is also embedded by
+    # the main hub window.
+
+    def create_dictionary_tab(self):
+        """Mount the shared DictionaryFrame inside the Dictionary tab."""
+        try:
+            from samsara.ui.dictionary_frame import DictionaryFrame
+            tab = self.tabview.tab("Dictionary")
+            self.dictionary_frame = DictionaryFrame(tab, self.app)
+            self.dictionary_frame.pack(fill='both', expand=True)
+            logger.info("Dictionary tab created (delegating to DictionaryFrame)")
+        except Exception as e:
+            logger.error(f"Error creating dictionary tab: {e}", exc_info=True)
+            raise
+
+    # ---- History tab -------------------------------------------------------
+    #
+    # Delegates to the reusable HistoryFrame, which is also embedded by the
+    # main hub window. This keeps the history viewer a single source of truth
+    # -- a fix or feature lands in both places.
+
+    def create_history_tab(self):
+        """Mount the shared HistoryFrame inside the History tab."""
+        try:
+            from samsara.ui.history_frame import HistoryFrame
+            tab = self.tabview.tab("History")
+            self._history_window_open = True
+            self.history_frame = HistoryFrame(
+                tab, self.app,
+                is_visible=lambda: (
+                    self._history_window_open
+                    and self.window is not None
+                    and self._safe_tabview_get() == "History"
+                ),
+            )
+            self.history_frame.pack(fill='both', expand=True)
+            logger.info("History tab created (delegating to HistoryFrame)")
+        except Exception as e:
+            logger.error(f"Error creating history tab: {e}", exc_info=True)
+            raise
+
+    def _safe_tabview_get(self):
+        try:
+            return self.tabview.get()
+        except Exception:
+            return None
+
     def create_advanced_tab(self):
         """Create advanced recognition settings tab"""
         try:
@@ -807,7 +890,11 @@ Change in main Settings -> requires restart"""
         try:
             if self.monitoring:
                 self.stop_monitoring()
-            
+
+            # Stop history polling/debounce timers so they don't fire on a
+            # destroyed window.
+            self._history_window_open = False
+
             self.window.destroy()
             self.window = None
             logger.info("Voice training window closed")
@@ -815,20 +902,24 @@ Change in main Settings -> requires restart"""
             logger.error(f"Error closing window: {e}", exc_info=True)
     
     def get_initial_prompt(self):
-        """Get the complete initial prompt with vocabulary"""
+        """Get the complete initial prompt with vocabulary."""
         try:
             parts = []
-            
-            # Add custom prompt
+
             custom_prompt = self.app.config.get('initial_prompt', '')
             if custom_prompt:
                 parts.append(custom_prompt)
-            
-            # Add vocabulary
+
             if self.custom_vocab:
                 vocab_text = ", ".join(self.custom_vocab)
                 parts.append(f"Common terms: {vocab_text}")
-            
+
+            # Auto-inject uncommon command phrases so Whisper knows what
+            # to expect (fixes "find tab" -> "fine tab", etc.).
+            cmd_vocab = self._get_command_vocabulary()
+            if cmd_vocab:
+                parts.append(f"Voice commands: {cmd_vocab}")
+
             prompt = " ".join(parts) if parts else None
             if prompt:
                 logger.debug(f"Using initial prompt: {prompt}")
@@ -836,6 +927,61 @@ Change in main Settings -> requires restart"""
         except Exception as e:
             logger.error(f"Error building initial prompt: {e}", exc_info=True)
             return None
+
+    def _get_command_vocabulary(self):
+        """Return a short comma-separated string of uncommon command phrases
+        suitable for Whisper's initial_prompt.
+
+        Pulls canonical phrases + aliases from the CommandExecutor's matcher
+        and the audio_devices / web_shortcuts config maps. Filters out words
+        Whisper already knows well (see _COMMON_ENGLISH) to avoid prompt
+        bleeding. Capped at 30 terms for the same reason.
+
+        Safe to call before command_executor is attached -- returns ''.
+        """
+        try:
+            matcher = None
+            cmd_exec = getattr(self.app, 'command_executor', None)
+            if cmd_exec is not None:
+                matcher = getattr(cmd_exec, '_matcher', None)
+
+            vocab_words = set()
+
+            if matcher is not None:
+                for entry in matcher.list_commands():
+                    for phrase in [entry.get('phrase', '')] + list(entry.get('aliases', [])):
+                        if not phrase:
+                            continue
+                        tokens = phrase.split()
+                        # Multi-word phrase: keep it whole if at least one
+                        # token is uncommon enough to be worth priming Whisper.
+                        if len(tokens) >= 2:
+                            if any(t not in _COMMON_ENGLISH for t in tokens):
+                                vocab_words.add(phrase)
+                        elif len(tokens) == 1 and tokens[0] not in _COMMON_ENGLISH:
+                            vocab_words.add(tokens[0])
+
+            # User-configured aliases that aren't in commands.json but still
+            # show up as spoken names: add the keys if they're uncommon words.
+            for cfg_key in ('web_shortcuts', 'audio_devices'):
+                cfg_map = self.app.config.get(cfg_key, {}) or {}
+                for key in cfg_map:
+                    key_lower = key.lower().strip()
+                    if not key_lower:
+                        continue
+                    tokens = key_lower.split()
+                    if len(tokens) >= 2:
+                        if any(t not in _COMMON_ENGLISH for t in tokens):
+                            vocab_words.add(key_lower)
+                    elif tokens and tokens[0] not in _COMMON_ENGLISH:
+                        vocab_words.add(tokens[0])
+
+            # Sort (deterministic prompt helps Whisper's prompt cache) and cap.
+            sorted_vocab = sorted(vocab_words)[:36]
+            return ", ".join(sorted_vocab)
+        except Exception as e:
+            logger.error(f"Error extracting command vocabulary: {e}")
+            return ''
     
     def apply_corrections(self, text):
         """Apply corrections dictionary to transcribed text"""

@@ -21,7 +21,7 @@ class TestConfig:
 
     def test_default_config(self, tmp_path):
         """Test config loads defaults when no file exists."""
-        from samsara.config import Config
+        from samsara._stale.config import Config
 
         config_file = tmp_path / "config.json"
         config = Config(config_file)
@@ -34,7 +34,7 @@ class TestConfig:
 
     def test_config_load_existing(self, tmp_path):
         """Test config loads from existing file."""
-        from samsara.config import Config
+        from samsara._stale.config import Config
 
         config_file = tmp_path / "config.json"
         config_file.write_text(json.dumps({
@@ -51,7 +51,7 @@ class TestConfig:
 
     def test_config_save(self, tmp_path):
         """Test config saves to file."""
-        from samsara.config import Config
+        from samsara._stale.config import Config
 
         config_file = tmp_path / "config.json"
         config = Config(config_file)
@@ -63,7 +63,7 @@ class TestConfig:
 
     def test_config_dict_access(self, tmp_path):
         """Test dict-like access to config."""
-        from samsara.config import Config
+        from samsara._stale.config import Config
 
         config = Config(tmp_path / "config.json")
 
@@ -74,7 +74,7 @@ class TestConfig:
 
     def test_config_update(self, tmp_path):
         """Test updating multiple config values."""
-        from samsara.config import Config
+        from samsara._stale.config import Config
 
         config = Config(tmp_path / "config.json")
         config.update({
@@ -87,7 +87,7 @@ class TestConfig:
 
     def test_needs_first_run(self, tmp_path):
         """Test first run detection."""
-        from samsara.config import Config
+        from samsara._stale.config import Config
 
         # No config file - needs first run
         config_file = tmp_path / "config.json"
@@ -110,7 +110,7 @@ class TestTextProcessor:
 
     def test_auto_capitalize(self):
         """Test auto-capitalization."""
-        from samsara.speech import TextProcessor
+        from samsara._stale.speech import TextProcessor
 
         processor = TextProcessor(auto_capitalize=True, format_numbers=False)
 
@@ -120,7 +120,7 @@ class TestTextProcessor:
 
     def test_number_formatting(self):
         """Test number word to digit conversion."""
-        from samsara.speech import TextProcessor
+        from samsara._stale.speech import TextProcessor
 
         processor = TextProcessor(auto_capitalize=False, format_numbers=True)
 
@@ -131,7 +131,7 @@ class TestTextProcessor:
 
     def test_corrections(self):
         """Test word corrections."""
-        from samsara.speech import TextProcessor
+        from samsara._stale.speech import TextProcessor
 
         processor = TextProcessor(
             auto_capitalize=False,
@@ -144,7 +144,7 @@ class TestTextProcessor:
 
     def test_full_processing(self):
         """Test full text processing pipeline."""
-        from samsara.speech import TextProcessor
+        from samsara._stale.speech import TextProcessor
 
         processor = TextProcessor(
             auto_capitalize=True,
@@ -198,14 +198,17 @@ class TestCommandExecutor:
         assert executor.find_command("paste") == "paste"
         assert executor.find_command("unknown") is None
 
-    def test_find_command_partial(self, commands_file):
-        """Test finding command with partial match."""
+    def test_find_command_prefix_only(self, commands_file):
+        """Commands must be at the START of the text (token-prefix match)."""
         from samsara.commands import CommandExecutor
 
         executor = CommandExecutor(commands_file)
 
+        # Prefix: "copy that" -> "copy" (command at the start)
         assert executor.find_command("copy that") == "copy"
-        assert executor.find_command("please copy") == "copy"
+        # Suffix / embedded no longer match -- deliberate semantic change
+        # when the unified matcher was introduced to fix collision bugs.
+        assert executor.find_command("please copy") is None
 
     def test_process_text_command_mode_toggle(self, commands_file):
         """Test command mode toggle detection."""
@@ -250,9 +253,9 @@ class TestAudioCapture:
         ]
 
         with patch.dict('sys.modules', {'sounddevice': mock_sd}):
-            with patch('samsara.audio.sd', mock_sd):
-                with patch('samsara.audio.HAS_SOUNDDEVICE', True):
-                    from samsara.audio import AudioCapture
+            with patch('samsara._stale.audio.sd', mock_sd):
+                with patch('samsara._stale.audio.HAS_SOUNDDEVICE', True):
+                    from samsara._stale.audio import AudioCapture
 
                     devices = AudioCapture.get_devices(show_all=False)
 
@@ -269,9 +272,9 @@ class TestAudioCapture:
         ]
 
         with patch.dict('sys.modules', {'sounddevice': mock_sd}):
-            with patch('samsara.audio.sd', mock_sd):
-                with patch('samsara.audio.HAS_SOUNDDEVICE', True):
-                    from samsara.audio import AudioCapture
+            with patch('samsara._stale.audio.sd', mock_sd):
+                with patch('samsara._stale.audio.HAS_SOUNDDEVICE', True):
+                    from samsara._stale.audio import AudioCapture
 
                     devices = AudioCapture.get_devices(show_all=True)
 
@@ -283,7 +286,7 @@ class TestAudioPlayer:
 
     def test_volume_bounds(self, tmp_path):
         """Test volume is bounded between 0 and 1."""
-        from samsara.audio import AudioPlayer
+        from samsara._stale.audio import AudioPlayer
 
         player = AudioPlayer(sounds_dir=tmp_path, volume=1.5)
         assert player.volume == 1.0
@@ -296,7 +299,7 @@ class TestAudioPlayer:
 
     def test_enabled_flag(self, tmp_path):
         """Test enabled flag controls playback."""
-        from samsara.audio import AudioPlayer
+        from samsara._stale.audio import AudioPlayer
 
         player = AudioPlayer(sounds_dir=tmp_path, enabled=False)
         assert player.enabled is False
@@ -310,7 +313,7 @@ class TestSpeechRecognizer:
 
     def test_init(self):
         """Test initializing recognizer."""
-        from samsara.speech import SpeechRecognizer
+        from samsara._stale.speech import SpeechRecognizer
 
         recognizer = SpeechRecognizer(
             model_size='base',
@@ -326,7 +329,7 @@ class TestSpeechRecognizer:
 
     def test_set_model_size(self):
         """Test changing model size resets loaded state."""
-        from samsara.speech import SpeechRecognizer
+        from samsara._stale.speech import SpeechRecognizer
 
         recognizer = SpeechRecognizer(model_size='base')
         recognizer._loaded = True  # Simulate loaded state
@@ -338,7 +341,7 @@ class TestSpeechRecognizer:
 
     def test_transcribe_not_loaded(self):
         """Test transcribe returns error when not loaded."""
-        from samsara.speech import SpeechRecognizer
+        from samsara._stale.speech import SpeechRecognizer
 
         recognizer = SpeechRecognizer()
         audio = np.zeros(16000, dtype=np.float32)
@@ -357,18 +360,13 @@ class TestModuleImports:
         import samsara
 
         assert hasattr(samsara, '__version__')
-        assert hasattr(samsara, 'Config')
-        assert hasattr(samsara, 'AudioCapture')
-        assert hasattr(samsara, 'AudioPlayer')
-        assert hasattr(samsara, 'SpeechRecognizer')
-        assert hasattr(samsara, 'TextProcessor')
         assert hasattr(samsara, 'CommandExecutor')
 
     def test_import_submodules(self):
         """Test importing individual submodules."""
-        from samsara.config import Config
-        from samsara.audio import AudioCapture, AudioPlayer
-        from samsara.speech import SpeechRecognizer, TextProcessor
+        from samsara._stale.config import Config
+        from samsara._stale.audio import AudioCapture, AudioPlayer
+        from samsara._stale.speech import SpeechRecognizer, TextProcessor
         from samsara.commands import CommandExecutor
 
         assert Config is not None

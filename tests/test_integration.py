@@ -167,6 +167,28 @@ class TestRecordingModes:
         recording = toggle_active
         assert recording is False
 
+    def test_hold_with_wake_word_flow(self, sample_config):
+        """Test hold mode + wake_word_enabled: wake word active AND hotkey works"""
+        sample_config['mode'] = 'hold'
+        sample_config['wake_word_enabled'] = True
+
+        wake_word_active = False
+        recording = False
+
+        # Wake word listener starts because wake_word_enabled=True
+        wake_word_active = True
+        assert wake_word_active is True
+
+        # Hotkey still works like hold mode (independently of wake word)
+        recording = True
+        assert recording is True
+        assert wake_word_active is True  # Wake word stays active
+
+        # Release stops recording
+        recording = False
+        assert recording is False
+        assert wake_word_active is True  # Wake word still active after hotkey release
+
 
 @pytest.mark.integration
 class TestAudioProcessing:

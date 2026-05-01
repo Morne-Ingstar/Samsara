@@ -34,7 +34,9 @@ def create_test_app(config, tmp_path):
         patch('dictation.VoiceTrainingWindow'),
         patch('dictation.HistoryWindow'),
         patch('dictation.CommandExecutor'),
-        patch('dictation.keyboard.Listener'),
+        # dictation imports pynput.keyboard as pynput_keyboard; the bare
+        # "keyboard" module is a different library with no Listener.
+        patch('dictation.pynput_keyboard.Listener'),
         patch('dictation.sd.query_devices', return_value=[]),
         patch('dictation.WhisperModel'),
         patch('dictation.pystray'),
@@ -90,7 +92,7 @@ class TestConfigManagement:
             json.dump(partial_config, f)
 
         with patch('dictation.SplashScreen'):
-            with patch('dictation.keyboard.Listener'):
+            with patch('dictation.pynput_keyboard.Listener'):
                 with patch('dictation.sd.query_devices', return_value=[]):
                     # Import the default config to check against
                     from dictation import DictationApp
@@ -441,13 +443,17 @@ class TestMicrophoneManagement:
 
     def test_get_available_microphones(self, sample_config, tmp_path):
         """Test getting list of available microphones"""
+        # Real sounddevice device dicts include 'hostapi'; the enumeration code
+        # filters on it, so the mock has to carry the same shape.
         mock_devices = [
-            {'name': 'Microphone 1', 'max_input_channels': 2, 'index': 0},
-            {'name': 'Microphone 2', 'max_input_channels': 1, 'index': 1},
-            {'name': 'Speakers', 'max_input_channels': 0, 'index': 2},  # Output device
+            {'name': 'Microphone 1', 'max_input_channels': 2, 'index': 0, 'hostapi': 0},
+            {'name': 'Microphone 2', 'max_input_channels': 1, 'index': 1, 'hostapi': 0},
+            {'name': 'Speakers', 'max_input_channels': 0, 'index': 2, 'hostapi': 0},
         ]
+        mock_hostapis = [{'name': 'MME', 'devices': [0, 1, 2]}]
 
-        with patch('sounddevice.query_devices', return_value=mock_devices):
+        with patch('sounddevice.query_devices', return_value=mock_devices), \
+             patch('sounddevice.query_hostapis', return_value=mock_hostapis):
             app = create_test_app(sample_config, tmp_path)
 
             from dictation import DictationApp
