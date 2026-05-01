@@ -35,6 +35,12 @@ import tkinter as tk
 
 import customtkinter as ctk
 import numpy as np
+import pyautogui
+
+try:
+    import pyperclip
+except ImportError:
+    pyperclip = None
 
 from samsara.cleanup import clean_text
 
@@ -161,13 +167,11 @@ FINAL_BEAM = 5
 NO_SPEECH_THRESHOLD = 0.6
 LOG_PROB_THRESHOLD = -1.0
 
-# Direct-paste mode: previously-pasted partial is replaced by selecting
-# all (Ctrl+A) and pasting over it. While the user is holding the
-# hotkey (Ctrl+Shift) we exploit the held Ctrl by sending bare 'a' --
-# the OS attaches the physical Ctrl, giving us Ctrl+A without having to
-# fight modifier state. For paths where the hotkey is no longer held
-# (final after release, ESC undo) we send an explicit Ctrl+A.
-SELECT_GESTURE_GAP_S = 0.01
+# Direct-paste mode: replace the previous partial via Ctrl+Z undo,
+# then paste the new text. Relies on the target app having a per-paste
+# undo entry (true for Notepad, RichEdit, browsers, IDEs we tested).
+# Tunable settles -- bumping these helps slow apps but adds latency.
+UNDO_SETTLE_S = 0.05
 PASTE_SETTLE_S = 0.02
 
 
@@ -495,11 +499,22 @@ class StreamingSession:
         self._state_lock = threading.Lock()
         self._direct_paste = bool(
             app.config.get('streaming_direct_paste', False))
-        # Number of characters currently typed into the focused app via
-        # the direct-paste mechanism. Reset to 0 at the start of every
-        # session and after the final replacement.
-        self._last_paste_length = 0
-        # Serializes backspace+paste between the worker thread (partials),
+        # Whether the last direct-paste operation actually pasted
+        # something. Drives the Ctrl+Z undo before each new paste so we
+        # replace only our most recent partial, never pre-existing
+        # content. Reset to False at session start and after the final
+        # replacement.
+        self._last_pasted = False
+        # Foreground window captured at session creation. We bail out
+        # of direct paste if focus changes mid-stream so we don't type
+        # into a different app.
+        self._target_hwnd = None
+        if sys.platform == "win32":
+            try:
+                self._target_hwnd = _user32.GetForegroundWindow()
+            except Exception:
+                self._target_hwnd = None
+        # Serializes select+paste between the worker thread (partials),
         # the Tk thread (final), and the cancel undo thread.
         self._paste_lock = threading.Lock()
         self._overlay = StreamingOverlay(app.root, dim=self._direct_paste)
@@ -533,7 +548,7 @@ class StreamingSession:
             self._state = self.STATE_DONE
         self.cancel_event.set()
         self.stop_event.set()
-        if self._direct_paste and self._last_paste_length > 0:
+        if self._direct_paste and self._last_pasted:
             threading.Thread(target=self._undo_direct_paste,
                              daemon=True,
                              name="streaming-cancel-undo").start()
@@ -591,7 +606,7 @@ class StreamingSession:
             # In direct-paste mode, the user has partial text typed into
             # the target app -- erase it on no-speech so we leave a clean
             # slate. Off-thread to avoid blocking Tk.
-            if self._direct_paste and self._last_paste_length > 0:
+            if self._direct_paste and self._last_pasted:
                 threading.Thread(target=self._undo_direct_paste,
                                  daemon=True,
                                  name="streaming-empty-undo").start()
@@ -668,100 +683,91 @@ class StreamingSession:
     # ---- Direct-paste helpers (off the Tk main thread) ------------------
 
     def _direct_paste_partial(self, text):
-        """Replace the previously typed partial with `text` in the focused
-        app. Called from the worker thread between transcribe iterations
-        WHILE the user is still holding the hotkey -- so Ctrl is already
-        physically down. We exploit that: bare 'a' becomes Ctrl+A, and
-        the subsequent paste replaces the selection. No modifier release
-        is needed (or wanted -- the OS re-asserts physical state and
-        synthesized key-ups don't stick)."""
+        """Replace the previously pasted partial with `text` via Ctrl+Z
+        undo + Ctrl+V paste. Runs on the worker thread between
+        transcribe iterations.
+
+        The CapsLock streaming hotkey does not produce held Ctrl/Shift,
+        so the synthesized Ctrl+Z and Ctrl+V chords land cleanly. The
+        target app's per-paste undo entry (Notepad / RichEdit / IDEs)
+        is what makes this safe -- pre-existing content stays intact
+        because we only undo our own paste."""
+        text = text.replace('\n', ' ').replace('\r', ' ')
         with self._paste_lock:
             if self.cancel_event.is_set():
                 return
+            if not self._focus_unchanged():
+                self._last_pasted = False
+                self.cancel_event.set()
+                print("[STREAM] Focus changed -- aborting direct paste")
+                return
             try:
-                if self._last_paste_length > 0:
-                    self._select_all()
+                if self._last_pasted:
+                    pyautogui.hotkey('ctrl', 'z')
+                    time.sleep(UNDO_SETTLE_S)
                 self.app._paste_preserving_clipboard(text)
-                self._last_paste_length = len(text)
-                print(f"[STREAM] Direct paste: {len(text)} chars")
+                self._last_pasted = True
+                if PASTE_SETTLE_S:
+                    time.sleep(PASTE_SETTLE_S)
+                print(f"[STREAM] Direct paste: {len(text.split())} words")
             except Exception as e:
                 print(f"[STREAM] direct partial paste failed: {e}")
 
     def _direct_paste_final(self, text):
-        """Swap partials -> cleaned final text. Daemon thread.
+        """Replace the last partial with the cleaned final text.
 
-        Runs after the user released the hotkey, so Ctrl is no longer
-        physically held -- _select_all sends an explicit Ctrl+A. We
-        still release/restore any lingering modifiers as a guard against
-        the brief race window where the release is mid-flight."""
+        Daemon thread, runs after the user released the hotkey. We
+        still release any lingering Ctrl/Shift via SendInput as a
+        belt-and-braces guard against a brief release-mid-flight race;
+        the safety net is harmless when nothing is held. We never
+        re-press the modifiers afterwards -- a synthetic down without a
+        matching up corrupts OS state."""
+        sanitized = text.replace('\n', ' ').replace('\r', ' ')
         with self._paste_lock:
-            held = _release_held_modifiers()
-            if held:
-                time.sleep(MOD_GUARD_SETTLE_S)
+            _release_held_modifiers()
             try:
-                if self._last_paste_length > 0:
-                    self._select_all()
-                self.app._paste_preserving_clipboard(text)
-                self._last_paste_length = 0
-                print(f"[STREAM] Direct paste (final): {len(text)} chars")
+                if self._last_pasted:
+                    pyautogui.hotkey('ctrl', 'z')
+                    time.sleep(UNDO_SETTLE_S)
+                self.app._paste_preserving_clipboard(sanitized)
+                self._last_pasted = False
+                if PASTE_SETTLE_S:
+                    time.sleep(PASTE_SETTLE_S)
+                print(f"[STREAM] Direct paste (final): "
+                      f"{len(sanitized.split())} words")
             except Exception as e:
                 print(f"[STREAM] direct final paste failed: {e}")
-                # Fallback: copy to clipboard so the user can paste manually.
-                try:
-                    import pyperclip
-                    pyperclip.copy(text)
-                    print("[STREAM] Text copied to clipboard "
-                          "-- paste manually")
-                except Exception:
-                    pass
-            finally:
-                if held:
-                    time.sleep(MOD_GUARD_SETTLE_S)
-                    _press_modifiers(held)
+                # Fallback: leave the cleaned text on the clipboard so
+                # the user can paste it manually.
+                if pyperclip is not None:
+                    try:
+                        pyperclip.copy(sanitized)
+                        print("[STREAM] Text copied to clipboard "
+                              "-- paste manually")
+                    except Exception:
+                        pass
 
     def _undo_direct_paste(self):
-        """Erase whatever direct-paste partials were typed by selecting
-        all and deleting. Called from the ESC-cancel path; the hotkey
-        may or may not still be held, so we release/restore modifiers."""
+        """Cancel: undo the last partial paste so only our text is
+        removed and pre-existing content stays intact."""
         with self._paste_lock:
-            if self._last_paste_length <= 0:
+            if not self._last_pasted:
                 return
-            held = _release_held_modifiers()
-            if held:
-                time.sleep(MOD_GUARD_SETTLE_S)
+            _release_held_modifiers()
             try:
-                print(f"[STREAM] Direct paste (undo): clearing "
-                      f"{self._last_paste_length} chars")
-                self._select_all()
-                import pyautogui
-                pyautogui.press('delete')
-                self._last_paste_length = 0
+                pyautogui.hotkey('ctrl', 'z')
+                self._last_pasted = False
+                print("[STREAM] Direct paste (undo): cleared")
             except Exception as e:
                 print(f"[STREAM] direct paste undo failed: {e}")
-            finally:
-                if held:
-                    time.sleep(MOD_GUARD_SETTLE_S)
-                    _press_modifiers(held)
 
-    @staticmethod
-    def _select_all():
-        """Send Ctrl+A. If Ctrl is physically held (partial path), bare
-        'a' is enough -- the OS attaches the held modifier. Otherwise
-        send the full chord."""
-        import pyautogui
-        ctrl_held = False
-        if sys.platform == "win32":
-            try:
-                ctrl_held = bool(
-                    _user32.GetAsyncKeyState(_VK_LCONTROL) & 0x8000
-                    or _user32.GetAsyncKeyState(_VK_RCONTROL) & 0x8000)
-            except Exception:
-                ctrl_held = False
+    def _focus_unchanged(self):
+        """True if the focused window matches the one captured at
+        session start. Always True on non-Windows or if we couldn't
+        capture the handle -- focus tracking is best-effort."""
+        if sys.platform != "win32" or self._target_hwnd is None:
+            return True
         try:
-            if ctrl_held:
-                pyautogui.press('a')
-            else:
-                pyautogui.hotkey('ctrl', 'a')
+            return _user32.GetForegroundWindow() == self._target_hwnd
         except Exception:
-            pyautogui.hotkey('ctrl', 'a')
-        time.sleep(SELECT_GESTURE_GAP_S)
+            return True
