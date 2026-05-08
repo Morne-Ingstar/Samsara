@@ -2321,9 +2321,15 @@ class DictationApp:
             
             # Use dynamic silence timeout if in dictation mode, otherwise use fast wake detection
             if self.app_state == 'long_dictation':
-                # Long dictation: no silence timeout -- mic stays hot indefinitely.
-                # Use a very large value so the silence branch never fires.
-                silence_threshold = 999999.0
+                # Long dictation: dispatch chunks at normal VAD silence intervals
+                # so audio drains incrementally throughout the session. The
+                # hard-cap timer (15s) is what terminates the session — VAD
+                # silence here just controls when each chunk gets shipped to
+                # transcription. Without this, anything spoken after the first
+                # silence boundary would accumulate in speech_buffer indefinitely
+                # until reset wiped it. Default 1s, configurable.
+                ww_config = self.config.get('wake_word_config', {})
+                silence_threshold = ww_config.get('long_chunk_silence', 1.0)
             elif self.app_state == 'quick_dictation' and self._dictation_silence_timeout:
                 silence_threshold = self._dictation_silence_timeout
             else:
@@ -2417,11 +2423,24 @@ class DictationApp:
                         self.is_speaking = False
                         self.silence_start = None
                         if buffer_copy is not None:
-                            threading.Thread(
-                                target=self.process_wake_word_buffer,
-                                args=(buffer_copy,),
-                                daemon=True,
-                            ).start()
+                            # In long_dictation, dispatch through the tracked
+                            # wrapper so the pending-transcriptions counter
+                            # stays accurate. Other modes use the plain
+                            # fire-and-forget dispatch.
+                            if self.app_state == 'long_dictation':
+                                with self._dictation_finalize_lock:
+                                    self._pending_transcriptions += 1
+                                threading.Thread(
+                                    target=self._process_wake_word_buffer_tracked,
+                                    args=(buffer_copy,),
+                                    daemon=True,
+                                ).start()
+                            else:
+                                threading.Thread(
+                                    target=self.process_wake_word_buffer,
+                                    args=(buffer_copy,),
+                                    daemon=True,
+                                ).start()
         except (sd.PortAudioError, OSError) as e:
             print(f"[AUDIO] Stream died -- attempting reconnect... ({e})")
             self._stream_dead = True
@@ -2784,6 +2803,11 @@ class DictationApp:
             self._dictation_silence_timeout = None  # silence handled by hard-cap, not VAD
             self._dictation_require_end = True
 
+            # Initialize state-driven finalization tracking.
+            # See _maybe_finalize_dictation for the protocol.
+            self._dictation_finalize_requested = False
+            self._pending_transcriptions = 0
+
             # Safety net: hard-cap timer in case end-word handling is
             # misconfigured (e.g. user emptied end_words in config) or VAD
             # never declares silence. After max_duration the dictation is
@@ -2791,7 +2815,9 @@ class DictationApp:
             # configurable via wake_word_config.long_max_duration.
             ww_config = self.config.get('wake_word_config', {})
             max_duration = ww_config.get('long_max_duration', 15.0)
-            print(f"[STATE] {old_state} -> long_dictation (hard-cap: {max_duration}s)")
+            failsafe_duration = ww_config.get('long_failsafe_duration', 60.0)
+            print(f"[STATE] {old_state} -> long_dictation "
+                  f"(hard-cap: {max_duration}s, failsafe: {failsafe_duration}s)")
 
             if hasattr(self, '_dictation_hardcap_timer') and self._dictation_hardcap_timer:
                 self._dictation_hardcap_timer.cancel()
@@ -2800,6 +2826,18 @@ class DictationApp:
             )
             self._dictation_hardcap_timer.daemon = True
             self._dictation_hardcap_timer.start()
+
+            # Absolute failsafe — fires only if the soft hard-cap somehow
+            # fails to drain the pipeline (e.g. stuck transcription worker).
+            # Brutally resets regardless of pending state. Should normally
+            # never fire in healthy operation.
+            if hasattr(self, '_dictation_failsafe_timer') and self._dictation_failsafe_timer:
+                self._dictation_failsafe_timer.cancel()
+            self._dictation_failsafe_timer = threading.Timer(
+                failsafe_duration, self._absolute_failsafe_reset
+            )
+            self._dictation_failsafe_timer.daemon = True
+            self._dictation_failsafe_timer.start()
 
         self.play_sound("start")
 
@@ -2859,6 +2897,15 @@ class DictationApp:
             self._dictation_hardcap_timer.cancel()
             self._dictation_hardcap_timer = None
 
+        if hasattr(self, '_dictation_failsafe_timer') and self._dictation_failsafe_timer:
+            self._dictation_failsafe_timer.cancel()
+            self._dictation_failsafe_timer = None
+
+        # Reset state-driven finalize tracking. Pending count should already
+        # be 0 in healthy operation; clamp defensively in case of timer races.
+        self._dictation_finalize_requested = False
+        self._pending_transcriptions = 0
+
         if old_state != 'asleep':
             print(f"[STATE] {old_state} -> asleep")
 
@@ -2893,22 +2940,153 @@ class DictationApp:
             traceback.print_exc()
 
     def _finalize_dictation_hardcap(self):
-        """Hard-cap callback for long_dictation: forcibly finalize whatever
-        has been buffered, regardless of _dictation_require_end. This is the
-        safety net that keeps long dictation from hanging forever when end
-        words are misconfigured or VAD never declares silence.
+        """Hard-cap soft-finalize for long_dictation. Sets a finalize-requested
+        flag, forces any buffered audio to dispatch immediately, then asks the
+        pipeline to finalize when it next becomes idle.
+
+        This is NOT the absolute kill switch — that's _absolute_failsafe_reset
+        below. The hard-cap is the user-facing "dictation should be done by
+        now" signal. The failsafe is the hung-pipeline backstop.
+
+        Architecture (per tribunal review):
+          - User speaks → cap fires → flag set → buffer flushed
+          - Already-pending transcription completes → finalize check passes
+          - State reset happens once the pipeline is fully drained
         """
         try:
             with self._dictation_finalize_lock:
-                if self.wake_dictation_mode and self.wake_dictation_buffer:
-                    final_text = ' '.join(self.wake_dictation_buffer)
-                    print(f"[DONE] Long dictation hard-cap fired — forcing finalize: {final_text}")
-                    self._output_dictation(final_text)
-                elif self.wake_dictation_mode:
-                    print("[DONE] Long dictation hard-cap fired with empty buffer — resetting state")
-                self._reset_wake_dictation()
+                if self.app_state != 'long_dictation':
+                    return
+                print("[HARDCAP] Time limit reached — flushing audio and requesting finalize")
+                self._dictation_finalize_requested = True
         except Exception as e:
             print(f"[ERROR] _finalize_dictation_hardcap crashed: {e}")
+            import traceback
+            traceback.print_exc()
+            return
+
+        # Force any in-buffer audio to dispatch NOW so the pending counter
+        # captures it. Without this, audio currently being captured but not
+        # yet flushed by VAD silence would be lost.
+        self._flush_speech_buffer_to_transcription()
+
+        # Try to finalize immediately. If transcriptions are still in flight,
+        # this is a no-op and finalize will happen via the completion-side
+        # call to _maybe_finalize_dictation in process_wake_word_buffer.
+        self._maybe_finalize_dictation()
+
+    def _flush_speech_buffer_to_transcription(self):
+        """Force whatever audio is currently in self.speech_buffer to dispatch
+        to transcription, bypassing the VAD silence threshold. Used by the
+        hard-cap to ensure no in-flight audio is lost.
+
+        Returns True if a buffer was dispatched, False if nothing to flush.
+        Increments _pending_transcriptions if dispatched.
+        """
+        with self.buffer_lock:
+            if not self.speech_buffer:
+                return False
+            buffer_copy = self.speech_buffer.copy()
+            self.speech_buffer = []
+            self._buffer_rms_history = []
+
+        self.is_speaking = False
+        self.silence_start = None
+
+        with self._dictation_finalize_lock:
+            self._pending_transcriptions += 1
+
+        threading.Thread(
+            target=self._process_wake_word_buffer_tracked,
+            args=(buffer_copy,),
+            daemon=True,
+        ).start()
+        return True
+
+    def _process_wake_word_buffer_tracked(self, buffer):
+        """Wrapper around process_wake_word_buffer that decrements the
+        pending-transcriptions counter on completion (in finally), then
+        triggers a finalize check. This is what every dispatch site should
+        call instead of process_wake_word_buffer directly when in
+        long_dictation mode.
+        """
+        try:
+            self.process_wake_word_buffer(buffer)
+        finally:
+            with self._dictation_finalize_lock:
+                self._pending_transcriptions = max(0, self._pending_transcriptions - 1)
+            # Outside the lock: maybe_finalize takes its own
+            self._maybe_finalize_dictation()
+
+    def _maybe_finalize_dictation(self):
+        """Centralized finalize check. Called from multiple completion points;
+        only finalizes when ALL of these are true:
+          - In long_dictation state
+          - Finalize has been requested (cap fired or end-word seen)
+          - No pending transcriptions
+          - No active speech (defensive)
+
+        Idempotent and lock-guarded. Safe to call from any thread.
+        """
+        try:
+            with self._dictation_finalize_lock:
+                if self.app_state != 'long_dictation':
+                    return
+                if not self._dictation_finalize_requested:
+                    return
+                if self._pending_transcriptions > 0:
+                    return
+                if getattr(self, 'is_speaking', False):
+                    # Speech started again after cap fired. The next silence
+                    # transition + completion will retrigger this check.
+                    return
+
+                # Pipeline is fully drained. Safe to finalize.
+                if self.wake_dictation_mode and self.wake_dictation_buffer:
+                    final_text = ' '.join(self.wake_dictation_buffer)
+                    print(f"[DONE] Long dictation finalized: {final_text}")
+                    # _output_dictation must be called outside the lock to
+                    # avoid blocking the pipeline on clipboard/UI work.
+                    pending_text = final_text
+                else:
+                    pending_text = None
+                    print("[DONE] Long dictation finalized with empty buffer")
+
+                self._reset_wake_dictation()
+            # Released the lock — now do the user-visible output
+            if pending_text:
+                self._output_dictation(pending_text)
+        except Exception as e:
+            print(f"[ERROR] _maybe_finalize_dictation crashed: {e}")
+            import traceback
+            traceback.print_exc()
+
+    def _absolute_failsafe_reset(self):
+        """Brutal backstop. Called by an absolute timer (longer than the
+        hard-cap). If the pipeline somehow leaks pending counts (worker
+        crash, missed decrement, etc.), this guarantees we never hang.
+
+        Resets state regardless of pending count. Logs loudly because if
+        this fires it indicates a real bug somewhere.
+        """
+        try:
+            with self._dictation_finalize_lock:
+                if self.app_state != 'long_dictation':
+                    return
+                pending = self._pending_transcriptions
+                buf_len = len(self.wake_dictation_buffer) if self.wake_dictation_buffer else 0
+                print(f"[FAILSAFE] Absolute timeout — forcing reset "
+                      f"(pending={pending}, buf_chunks={buf_len}). "
+                      f"This indicates a stuck transcription worker.")
+                if self.wake_dictation_buffer:
+                    pending_text = ' '.join(self.wake_dictation_buffer)
+                else:
+                    pending_text = None
+                self._reset_wake_dictation()
+            if pending_text:
+                self._output_dictation(pending_text)
+        except Exception as e:
+            print(f"[ERROR] _absolute_failsafe_reset crashed: {e}")
             import traceback
             traceback.print_exc()
 
