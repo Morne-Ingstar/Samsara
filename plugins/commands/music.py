@@ -119,37 +119,4 @@ def handle_play(app, remainder):
     return True
 
 
-@command("volume down", aliases=[
-    "lower the volume", "turn it down", "quieter"
-])
-def handle_vol_down(app, remainder):
-    """Lower system volume."""
-    _set_volume(15)
-    print("[MUSIC] Volume lowered")
-    return True
 
-
-@command("volume up", aliases=[
-    "raise the volume", "turn it up", "louder"
-])
-def handle_vol_up(app, remainder):
-    """Raise system volume."""
-    _set_volume(60)
-    print("[MUSIC] Volume raised")
-    return True
-
-
-@command("mute", aliases=["unmute", "toggle mute"])
-def handle_mute(app, remainder):
-    """Toggle system mute."""
-    try:
-        subprocess.Popen(
-            ['powershell', '-Command',
-             '$wshell = New-Object -ComObject WScript.Shell; '
-             '$wshell.SendKeys([char]173)'],
-            creationflags=subprocess.CREATE_NO_WINDOW
-        )
-        print("[MUSIC] Mute toggled")
-    except Exception as e:
-        print(f"[MUSIC] {e}")
-    return True

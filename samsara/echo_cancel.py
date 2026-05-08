@@ -478,6 +478,14 @@ class EchoCanceller:
         # Apply adaptive filter at 16kHz
         cleaned_16k = self._aec.process(mic_16k, ref)
 
+        # Divergence safety: if filter is amplifying, reset weights
+        cleaned_energy = float(np.mean(cleaned_16k ** 2))
+        mic_energy = float(np.mean(mic_16k ** 2))
+        if cleaned_energy > mic_energy * 2.0 and mic_energy > 1e-10:
+            print("[AEC] DIVERGENCE detected - resetting filter weights")
+            self._aec.reset()
+            cleaned_16k = mic_16k  # pass through unfiltered this block
+
         # Upsample back to capture rate
         if self.sample_rate != self._FILTER_RATE:
             cleaned = self._resample(cleaned_16k, self._FILTER_RATE, self.sample_rate)
@@ -495,8 +503,19 @@ class EchoCanceller:
         if self._process_count % 100 == 1:
             mic_rms = float(np.sqrt(np.mean(mic_16k ** 2)))
             cleaned_rms = float(np.sqrt(np.mean(cleaned_16k ** 2)))
+            # Cross-correlation lag measurement
+            lag_str = ""
+            if ref_rms > 0.01 and len(mic_16k) > 256 and len(ref) > 256:
+                try:
+                    corr = np.correlate(mic_16k[:4096], ref[:4096], mode='full')
+                    lag_samples = int(np.argmax(np.abs(corr)) - (len(ref[:4096]) - 1))
+                    lag_ms = lag_samples / self._FILTER_RATE * 1000
+                    lag_str = f" lag={lag_samples}smp({lag_ms:.0f}ms)"
+                except Exception:
+                    pass
+            cancel_pct = int((1 - cleaned_rms / max(mic_rms, 1e-10)) * 100)
             print(f"[AEC] ref_rms={ref_rms:.6f} mic_rms={mic_rms:.6f} "
-                  f"cleaned_rms={cleaned_rms:.6f}")
+                  f"cleaned_rms={cleaned_rms:.6f} cancel={cancel_pct}%{lag_str}")
 
         return cleaned.reshape(original_shape)
 
