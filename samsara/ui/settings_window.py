@@ -898,25 +898,34 @@ class SettingsWindow:
         device_row = ctk.CTkFrame(hw_frame, fg_color="transparent")
         device_row.pack(fill='x', padx=15, pady=(15, 5))
         ctk.CTkLabel(device_row, text="Compute device:", width=150, anchor='w').pack(side='left')
-        
-        # Device options with display names
-        self.device_display_to_value = {
-            'CPU': 'cpu',
-            'CUDA (NVIDIA GPU)': 'cuda'
-        }
+
+        # Device options — CUDA is only offered if the runtime DLLs are
+        # actually present. This prevents users from selecting CUDA, restarting,
+        # and hitting "cublas64_12.dll not found" at model-load time.
+        from samsara.cuda_detect import is_cuda_available, cuda_status_message
+        self.device_display_to_value = {'CPU': 'cpu'}
+        if is_cuda_available():
+            self.device_display_to_value['CUDA (NVIDIA GPU)'] = 'cuda'
         self.device_value_to_display = {v: k for k, v in self.device_display_to_value.items()}
-        
+
+        # If config says cuda but DLLs are missing, surface as CPU in the UI.
+        # The model loader will silently fall back at runtime (see resolve_device).
         current_device = self.app.config.get('device', 'cpu')
-        current_device_display = self.device_value_to_display.get(current_device, 'CPU')
-        
+        if current_device == 'cuda' and not is_cuda_available():
+            current_device_display = 'CPU'
+        else:
+            current_device_display = self.device_value_to_display.get(current_device, 'CPU')
+
         self.device_var = tk.StringVar(value=current_device_display)
         device_combo = ctk.CTkComboBox(device_row, variable=self.device_var,
                                         values=list(self.device_display_to_value.keys()),
                                         width=180, state='readonly')
         device_combo.pack(side='left')
 
-        ctk.CTkLabel(hw_frame, text="CUDA requires an NVIDIA GPU with compatible drivers installed",
-                    text_color="gray").pack(anchor='w', padx=15, pady=(0, 5))
+        # Status hint reflecting actual CUDA availability, not just docs
+        ctk.CTkLabel(hw_frame, text=cuda_status_message(),
+                    text_color="gray", wraplength=600, justify='left').pack(
+                        anchor='w', padx=15, pady=(0, 5))
         ctk.CTkLabel(hw_frame, text="Device changes require restart",
                     text_color="#1f6aa5").pack(anchor='w', padx=15, pady=(0, 10))
 
