@@ -1,0 +1,292 @@
+"""Wake up / morning routine plugin.
+
+"Jarvis, wake up" — the desk comes alive. Lights, apps, browser tabs
+all open in rapid succession. Visually dramatic for demos.
+
+"Jarvis, go to sleep" — darkens the screen with a black overlay process.
+Samsara keeps listening underneath.
+
+Configurable in samsara_config.json under "wake_routine".
+"""
+
+import subprocess
+import webbrowser
+import time
+import threading
+import os
+import sys
+from pathlib import Path
+
+from samsara.plugin_commands import command
+
+# Sleep overlay runs as a separate process (avoids tkinter thread conflicts)
+_overlay_process = None
+
+OVERLAY_SCRIPT = str(Path(__file__).parent.parent / "assets" / "sleep_overlay.py")
+
+DEFAULT_APPS = [
+    r"C:\Users\Morne\AppData\Local\Programs\Obsidian\Obsidian.exe",
+]
+
+DEFAULT_TABS = [
+    "https://claude.ai",
+    "https://youtube.com",
+    "https://instagram.com",
+    "https://github.com",
+]
+
+
+def _dismiss_overlay():
+    """Tell the overlay process to exit gracefully, then force-kill as fallback."""
+    global _overlay_process
+    if _overlay_process is None:
+        return
+    try:
+        # Graceful: send a line to stdin → overlay reads it and destroys itself
+        _overlay_process.stdin.write(b"wake\n")
+        _overlay_process.stdin.flush()
+        _overlay_process.wait(timeout=2)
+    except Exception:
+        try:
+            _overlay_process.terminate()
+            _overlay_process.wait(timeout=1)
+        except Exception:
+            try:
+                _overlay_process.kill()
+            except Exception:
+                pass
+    _overlay_process = None
+
+
+def _run_routine(app):
+    """Execute the full wake-up routine with staggered timing."""
+    config = app.config.get('wake_routine', {})
+
+    # Step 0: Dismiss sleep overlay
+    _dismiss_overlay()
+    time.sleep(0.3)
+
+    # Step 1: Greeting popup (auto-dismisses after 4 seconds)
+    name = app.config.get('user_name', 'Morne')
+    try:
+        greeting_ps = f'''
+Add-Type -AssemblyName PresentationFramework
+Add-Type -AssemblyName System.Windows.Forms
+
+# Get the primary monitor (always show greeting on main screen)
+$screen = [System.Windows.Forms.Screen]::PrimaryScreen
+$bounds = $screen.Bounds
+
+$w = New-Object System.Windows.Window
+$w.WindowStyle = "None"
+$w.AllowsTransparency = $true
+$w.Background = [System.Windows.Media.Brushes]::Transparent
+$w.Topmost = $true
+$w.WindowStartupLocation = "Manual"
+$w.Width = 500
+$w.Height = 120
+$w.Left = $bounds.Left + ($bounds.Width - 500) / 2
+$w.Top = $bounds.Top + ($bounds.Height - 120) / 2
+$w.ShowInTaskbar = $false
+
+$border = New-Object System.Windows.Controls.Border
+$border.Background = New-Object System.Windows.Media.SolidColorBrush ([System.Windows.Media.Color]::FromArgb(230, 20, 20, 30))
+$border.CornerRadius = "12"
+$border.Padding = "30,20,30,20"
+
+$text = New-Object System.Windows.Controls.TextBlock
+$text.Text = "Good morning, {name}."
+$text.Foreground = [System.Windows.Media.Brushes]::White
+$text.FontSize = 28
+$text.FontFamily = "Segoe UI Light"
+$text.HorizontalAlignment = "Center"
+$text.VerticalAlignment = "Center"
+
+$border.Child = $text
+$w.Content = $border
+$w.Show()
+
+$timer = New-Object System.Windows.Threading.DispatcherTimer
+$timer.Interval = [TimeSpan]::FromSeconds(4)
+$timer.Add_Tick({{ $w.Close(); $timer.Stop() }})
+$timer.Start()
+[System.Windows.Threading.Dispatcher]::Run()
+'''
+        subprocess.Popen(
+            ['powershell', '-Command', greeting_ps],
+            creationflags=subprocess.CREATE_NO_WINDOW
+        )
+    except Exception:
+        pass
+
+    time.sleep(0.5)
+
+    # Step 2: Lights
+    if app.config.get('hyperion_host', ''):
+        try:
+            from plugins.commands.hyperion_lights import _send, _effects, _match
+            avail = _effects(app)
+            effect_name = _match('plasma', avail) if avail else 'Plasma'
+            _send(app, {
+                "command": "effect",
+                "effect": {"name": effect_name},
+                "priority": 1,
+                "origin": "Samsara"
+            })
+        except Exception:
+            pass
+
+    time.sleep(0.3)
+
+    # Step 3: Show main window (schedule on main thread)
+    try:
+        if hasattr(app, 'show_main_window') and hasattr(app, 'root'):
+            app.root.after(0, app.show_main_window)
+    except Exception:
+        pass
+
+    time.sleep(0.5)
+
+    # Step 4: Open apps (non-blocking — fire and move on)
+    apps = config.get('apps', DEFAULT_APPS)
+    for a in apps:
+        try:
+            if os.path.exists(a):
+                subprocess.Popen([a])
+            else:
+                subprocess.Popen(a, shell=True)
+            print(f"[WAKE] Opened: {os.path.basename(a)}")
+        except Exception as e:
+            print(f"[WAKE] Failed: {a} — {e}")
+
+    time.sleep(0.3)
+
+    # Step 5: Open browser tabs — force Chrome, maximised, all in one window
+    tabs = config.get('tabs', DEFAULT_TABS)
+    if tabs:
+        firefox_paths = [
+            r"C:\Program Files\Mozilla Firefox\firefox.exe",
+            r"C:\Program Files (x86)\Mozilla Firefox\firefox.exe",
+        ]
+        browser = next((p for p in firefox_paths if os.path.exists(p)), None)
+        flag = "--new-window"
+
+        if not browser:
+            chrome_paths = [
+                r"C:\Program Files\Google\Chrome\Application\chrome.exe",
+                r"C:\Program Files (x86)\Google\Chrome\Application\chrome.exe",
+            ]
+            browser = next((p for p in chrome_paths if os.path.exists(p)), None)
+
+        if browser:
+            subprocess.Popen([browser, flag, tabs[0]])
+            print(f"[WAKE] Tab: {tabs[0]}")
+            time.sleep(3.0)  # wait for Firefox window to exist
+            # Maximize Firefox — retry a few times in case it's still loading
+            maximize_ps = (
+                'Add-Type @"\n'
+                'using System; using System.Runtime.InteropServices;\n'
+                'public class WinHelper {\n'
+                '  [DllImport("user32.dll")] public static extern bool ShowWindow(IntPtr h, int n);\n'
+                '  [DllImport("user32.dll")] public static extern bool SetForegroundWindow(IntPtr h);\n'
+                '}\n'
+                '"@\n'
+                'for ($i=0; $i -lt 5; $i++) {\n'
+                '  $w = Get-Process firefox -ErrorAction SilentlyContinue | Where-Object { $_.MainWindowHandle -ne 0 } | Select-Object -First 1\n'
+                '  if ($w) { [WinHelper]::ShowWindow($w.MainWindowHandle, 3); [WinHelper]::SetForegroundWindow($w.MainWindowHandle); break }\n'
+                '  Start-Sleep -Milliseconds 500\n'
+                '}'
+            )
+            subprocess.Popen(
+                ['powershell', '-Command', maximize_ps],
+                creationflags=subprocess.CREATE_NO_WINDOW
+            )
+            time.sleep(0.8)
+            for url in tabs[1:]:
+                subprocess.Popen([browser, url])
+                print(f"[WAKE] Tab: {url}")
+                time.sleep(1.5)
+        else:
+            # Fallback: system default browser
+            webbrowser.open(tabs[0])
+            print(f"[WAKE] Tab (default browser): {tabs[0]}")
+            time.sleep(1.0)
+            for url in tabs[1:]:
+                webbrowser.open_new_tab(url)
+                print(f"[WAKE] Tab: {url}")
+                time.sleep(0.5)
+
+    # Step 6: Toast notification
+    try:
+        subprocess.Popen([
+            'powershell', '-Command',
+            '[void][System.Reflection.Assembly]::LoadWithPartialName("System.Windows.Forms"); '
+            '$n = New-Object System.Windows.Forms.NotifyIcon; '
+            '$n.Icon = [System.Drawing.SystemIcons]::Information; '
+            '$n.BalloonTipTitle = "Samsara"; '
+            '$n.BalloonTipText = "All systems online. Ready for commands."; '
+            '$n.Visible = $true; '
+            '$n.ShowBalloonTip(3000); '
+            'Start-Sleep -Seconds 4; '
+            '$n.Dispose()'
+        ], creationflags=subprocess.CREATE_NO_WINDOW)
+    except Exception:
+        pass
+
+    print("[WAKE] Workspace ready")
+
+
+@command("wake up", aliases=[
+    "good morning", "rise and shine",
+    "boot up", "come alive"
+])
+def handle_wake(app, remainder):
+    """Wake up — dismiss overlay, lights on, apps open."""
+    print("[WAKE] Initializing workspace...")
+
+    if hasattr(app, 'play_sound'):
+        try:
+            app.play_sound("start")
+        except Exception:
+            pass
+
+    threading.Thread(target=_run_routine, args=(app,),
+                     daemon=True).start()
+    return True
+
+
+@command("go to sleep", aliases=[
+    "sleep mode", "screen off", "go dark",
+    "darken the screen", "nap time", "shut your eyes"
+])
+def handle_sleep(app, remainder):
+    """Darken screen with overlay process. Samsara keeps listening."""
+    global _overlay_process
+
+    if _overlay_process is not None and _overlay_process.poll() is None:
+        print("[WAKE] Already sleeping")
+        return True
+
+    print("[WAKE] Going to sleep (still listening)...")
+
+    # Dim lights
+    if app.config.get('hyperion_host', ''):
+        try:
+            from plugins.commands.hyperion_lights import _send
+            _send(app, {
+                "command": "color", "color": [0, 0, 0],
+                "priority": 1, "origin": "Samsara"
+            })
+        except Exception:
+            pass
+
+    # Launch overlay as separate process
+    _overlay_process = subprocess.Popen(
+        [sys.executable, OVERLAY_SCRIPT],
+        stdin=subprocess.PIPE,
+        stdout=subprocess.DEVNULL,
+        stderr=subprocess.DEVNULL,
+        creationflags=subprocess.CREATE_NO_WINDOW
+    )
+    print(f"[WAKE] Overlay process started (PID: {_overlay_process.pid})")
+    return True
