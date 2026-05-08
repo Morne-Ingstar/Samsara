@@ -2751,6 +2751,22 @@ class DictationApp:
             self._dictation_require_end = True
             print(f"[STATE] {old_state} -> long_dictation (end word required)")
 
+            # Safety net: hard-cap timer in case end-word handling is
+            # misconfigured (e.g. user emptied end_words in config) or VAD
+            # never declares silence. After max_duration the dictation is
+            # finalized with whatever has been buffered so far. Default 60s,
+            # configurable via wake_word_config.long_max_duration.
+            ww_config = self.config.get('wake_word_config', {})
+            max_duration = ww_config.get('long_max_duration', 60.0)
+            if hasattr(self, '_dictation_hardcap_timer') and self._dictation_hardcap_timer:
+                self._dictation_hardcap_timer.cancel()
+            self._dictation_hardcap_timer = threading.Timer(
+                max_duration, self._finalize_dictation_timeout
+            )
+            self._dictation_hardcap_timer.daemon = True
+            self._dictation_hardcap_timer.start()
+            print(f"[STATE] long_dictation hard-cap: {max_duration}s")
+
         self.play_sound("start")
 
         # Update listening indicator to show active dictation
@@ -2804,6 +2820,10 @@ class DictationApp:
         if hasattr(self, '_dictation_finalize_timer') and self._dictation_finalize_timer:
             self._dictation_finalize_timer.cancel()
             self._dictation_finalize_timer = None
+
+        if hasattr(self, '_dictation_hardcap_timer') and self._dictation_hardcap_timer:
+            self._dictation_hardcap_timer.cancel()
+            self._dictation_hardcap_timer = None
 
         if old_state != 'asleep':
             print(f"[STATE] {old_state} -> asleep")
@@ -4452,38 +4472,38 @@ class DictationApp:
                     enabled=False
                 ),
                 pystray.MenuItem(
-                    "Snoozed" if self.snoozed else "Snooze",
+                    lambda _it: "Snoozed" if self.snoozed else "Snooze",
                     pystray.Menu(
                         pystray.MenuItem(
                             "Snooze 5 minutes",
                             lambda _i, _it: self.snooze_listening(5),
-                            enabled=not self.snoozed
+                            enabled=lambda _it: not self.snoozed
                         ),
                         pystray.MenuItem(
                             "Snooze 15 minutes",
                             lambda _i, _it: self.snooze_listening(15),
-                            enabled=not self.snoozed
+                            enabled=lambda _it: not self.snoozed
                         ),
                         pystray.MenuItem(
                             "Snooze 30 minutes",
                             lambda _i, _it: self.snooze_listening(30),
-                            enabled=not self.snoozed
+                            enabled=lambda _it: not self.snoozed
                         ),
                         pystray.MenuItem(
                             "Snooze 1 hour",
                             lambda _i, _it: self.snooze_listening(60),
-                            enabled=not self.snoozed
+                            enabled=lambda _it: not self.snoozed
                         ),
                         pystray.MenuItem(
                             "Snooze until resumed",
                             lambda _i, _it: self.snooze_listening(None),
-                            enabled=not self.snoozed
+                            enabled=lambda _it: not self.snoozed
                         ),
                         pystray.Menu.SEPARATOR,
                         pystray.MenuItem(
                             "Resume now",
                             lambda _i, _it: self.resume_listening(),
-                            enabled=self.snoozed
+                            enabled=lambda _it: self.snoozed
                         ),
                     )
                 ),
