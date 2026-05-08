@@ -1457,6 +1457,17 @@ class DictationApp:
             
             # Determine compute device with detailed logging
             device = self.config['device']
+
+            # Safety net: if config says CUDA but the runtime DLLs aren't
+            # present (e.g. user installed CPU-only build, or moved CUDA pack
+            # away), fall back to CPU silently rather than crashing at model
+            # load time with "cublas64_12.dll not found".
+            from samsara.cuda_detect import resolve_device, is_cuda_available
+            if device == "cuda" and not is_cuda_available():
+                print("[GPU] Config requested CUDA but CUDA pack not detected — "
+                      "falling back to CPU. Install Samsara-CUDA-Pack to enable GPU.")
+                device = "cpu"
+
             if device == "auto":
                 try:
                     import ctranslate2
@@ -1775,10 +1786,20 @@ class DictationApp:
         toggle, no LED change, no caps. Our callback decides whether to
         start/stop streaming based on the live streaming_mode config.
 
+        IMPORTANT: This hook is only installed when streaming_mode is
+        actually enabled. When streaming is off, we leave CapsLock alone
+        so it works as a normal Windows toggle. set_streaming_mode()
+        installs/uninstalls the hook dynamically when the user toggles it.
+
         We register an atexit cleanup so the hook is released even if
         Samsara crashes or is killed via Task Manager -- without this
         the user can be left with a CapsLock key the OS thinks is
         permanently consumed."""
+        # Bail out if streaming mode is off -- no need to grab CapsLock
+        if not self.config.get('streaming_mode', False):
+            self._capslock_hook = None
+            return
+
         try:
             self._capslock_hook = keyboard.hook_key(
                 'caps lock', self._on_capslock_event, suppress=True)
@@ -1797,6 +1818,19 @@ class DictationApp:
                 pass
 
         atexit.register(_cleanup_capslock_hook)
+
+    def _uninstall_capslock_hook(self):
+        """Release the CapsLock hook so the OS gets the key back. Called
+        when streaming_mode is toggled off so CapsLock works normally."""
+        if getattr(self, '_capslock_hook', None) is None:
+            return
+        try:
+            keyboard.unhook(self._capslock_hook)
+            print("[CAPSLOCK] Hook released — CapsLock returned to OS")
+        except Exception as e:
+            print(f"[CAPSLOCK] Failed to release hook: {e}")
+        self._capslock_hook = None
+        self._capslock_held = False
 
     def _on_capslock_event(self, event):
         """Hooked CapsLock handler. Runs on the keyboard library's hook
@@ -2747,25 +2781,25 @@ class DictationApp:
             self._dictation_require_end = False
             print(f"[STATE] {old_state} -> quick_dictation (silence timeout: {timeout}s)")
         else:  # long_dictation
-            self._dictation_silence_timeout = None  # no silence timeout
+            self._dictation_silence_timeout = None  # silence handled by hard-cap, not VAD
             self._dictation_require_end = True
-            print(f"[STATE] {old_state} -> long_dictation (end word required)")
 
             # Safety net: hard-cap timer in case end-word handling is
             # misconfigured (e.g. user emptied end_words in config) or VAD
             # never declares silence. After max_duration the dictation is
-            # finalized with whatever has been buffered so far. Default 60s,
+            # finalized with whatever has been buffered so far. Default 15s,
             # configurable via wake_word_config.long_max_duration.
             ww_config = self.config.get('wake_word_config', {})
-            max_duration = ww_config.get('long_max_duration', 60.0)
+            max_duration = ww_config.get('long_max_duration', 15.0)
+            print(f"[STATE] {old_state} -> long_dictation (hard-cap: {max_duration}s)")
+
             if hasattr(self, '_dictation_hardcap_timer') and self._dictation_hardcap_timer:
                 self._dictation_hardcap_timer.cancel()
             self._dictation_hardcap_timer = threading.Timer(
-                max_duration, self._finalize_dictation_timeout
+                max_duration, self._finalize_dictation_hardcap
             )
             self._dictation_hardcap_timer.daemon = True
             self._dictation_hardcap_timer.start()
-            print(f"[STATE] long_dictation hard-cap: {max_duration}s")
 
         self.play_sound("start")
 
@@ -2855,6 +2889,26 @@ class DictationApp:
                     self._reset_wake_dictation()
         except Exception as e:
             print(f"[ERROR] _finalize_dictation_timeout crashed: {e}")
+            import traceback
+            traceback.print_exc()
+
+    def _finalize_dictation_hardcap(self):
+        """Hard-cap callback for long_dictation: forcibly finalize whatever
+        has been buffered, regardless of _dictation_require_end. This is the
+        safety net that keeps long dictation from hanging forever when end
+        words are misconfigured or VAD never declares silence.
+        """
+        try:
+            with self._dictation_finalize_lock:
+                if self.wake_dictation_mode and self.wake_dictation_buffer:
+                    final_text = ' '.join(self.wake_dictation_buffer)
+                    print(f"[DONE] Long dictation hard-cap fired — forcing finalize: {final_text}")
+                    self._output_dictation(final_text)
+                elif self.wake_dictation_mode:
+                    print("[DONE] Long dictation hard-cap fired with empty buffer — resetting state")
+                self._reset_wake_dictation()
+        except Exception as e:
+            print(f"[ERROR] _finalize_dictation_hardcap crashed: {e}")
             import traceback
             traceback.print_exc()
 
@@ -3944,6 +3998,15 @@ class DictationApp:
         self.config['streaming_mode'] = enabled
         self.save_config()
         print(f"[STREAM] streaming_mode -> {enabled}")
+
+        # Install or release the CapsLock hook to match. When streaming is
+        # off we don't grab CapsLock at all, so it works as normal Windows
+        # caps toggle.
+        if enabled:
+            self._install_capslock_hook()
+        else:
+            self._uninstall_capslock_hook()
+
         if hasattr(self, 'tray_icon') and hasattr(self, 'get_menu'):
             try:
                 self.tray_icon.menu = self.get_menu()
