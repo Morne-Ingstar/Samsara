@@ -860,8 +860,8 @@ class DictationApp:
             # New nested wake word config
             "wake_word_config": {
                 "enabled": True,
-                "phrase": "samsara",
-                "phrase_options": ["samsara", "hey samsara", "computer", "hey computer", "jarvis", "hey jarvis"],
+                "phrase": "jarvis",
+                "phrase_options": ["jarvis", "hey jarvis", "computer", "hey computer", "samsa", "hey samsa"],
                 "quick_silence_timeout": 1.0,
                 "end_words": ["over", "done", "end dictation"],
                 "cancel_words": ["cancel", "cancel dictation", "abort"],
@@ -912,6 +912,13 @@ class DictationApp:
                 "headset": "Headset Earphone",
                 "earbuds": "Earbuds",
                 "monitor": "DELL U2722D"
+            },
+            # Smart Actions: voice-to-markdown brain dump (Phase 1).
+            # Per-user default lands in ~/Documents/Samsara Brain Dump.md.
+            # Settings UI lets the user pick another path or disable earcons.
+            "smart_actions": {
+                "brain_dump_path": str(Path.home() / "Documents" / "Samsara Brain Dump.md"),
+                "earcons_enabled": True,
             },
             # Web shortcuts for "go to X" voice commands. Keys are spoken
             # aliases; values are target URLs. Users add their own by editing
@@ -3342,12 +3349,21 @@ class DictationApp:
 
     def _load_sound_cache(self):
         """Pre-load all sound files into memory, normalized to common sample rate.
-        
+
         Supports WAV natively, and MP3/OGG/FLAC if pydub is installed.
+
+        Loads in two passes:
+          1. Legacy hard-coded names (start/stop/success/error) from
+             self.sound_files -- backed by sounds/<name>.* so user "Browse..."
+             customisations still win.
+          2. Auto-discover any other .wav files in the active theme directory
+             (sounds/themes/<sound_theme>/) by file-stem. This is how the
+             Phase-2 earcon vocabulary (capture_started, capture_saved,
+             agent_routing, etc.) is loaded -- no hard-coded list needed.
         """
         self._sound_cache = {}
         target_sr = self._sound_stream_sr
-        
+
         # Check for pydub support (enables MP3, OGG, FLAC, etc.)
         try:
             from pydub import AudioSegment
@@ -3364,17 +3380,17 @@ class DictationApp:
                 if test_path.exists():
                     sound_path = test_path
                     break
-            
+
             # Also check the original path as-is
             if sound_path is None and sound_file.exists():
                 sound_path = sound_file
-            
+
             if sound_path is None:
                 continue
-                
+
             try:
                 suffix = sound_path.suffix.lower()
-                
+
                 # Use pydub for non-WAV formats
                 if suffix != '.wav' and HAS_PYDUB:
                     audio_seg = AudioSegment.from_file(str(sound_path))
@@ -3431,6 +3447,50 @@ class DictationApp:
             except Exception as e:
                 print(f"[AUDIO] Failed to load {sound_path}: {e}")
 
+        # Pass 2: auto-discover extended earcons in the active theme dir.
+        # Anything not already in the cache (legacy 4 win) gets loaded by
+        # file-stem so new earcons drop in without code changes.
+        try:
+            theme_name = self.config.get('sound_theme', 'cute') if hasattr(self, 'config') else 'cute'
+            themes_root = self.sounds_dir / 'themes' / theme_name
+            if themes_root.is_dir():
+                for wav_path in sorted(themes_root.glob('*.wav')):
+                    name = wav_path.stem
+                    if name in self._sound_cache:
+                        continue  # legacy 4 or already loaded
+                    try:
+                        with wave.open(str(wav_path), 'rb') as wf:
+                            sample_rate = wf.getframerate()
+                            n_channels = wf.getnchannels()
+                            sample_width = wf.getsampwidth()
+                            audio_data = wf.readframes(wf.getnframes())
+
+                        if sample_width == 1:
+                            dtype = np.uint8
+                        elif sample_width == 2:
+                            dtype = np.int16
+                        else:
+                            dtype = np.int32
+
+                        audio_array = np.frombuffer(audio_data, dtype=dtype).astype(np.float32)
+                        if sample_width == 1:
+                            audio_array = (audio_array - 128) / 128.0
+                        else:
+                            audio_array = audio_array / (2 ** (sample_width * 8 - 1))
+                        if n_channels == 2:
+                            audio_array = audio_array.reshape(-1, 2).mean(axis=1)
+                        if sample_rate != target_sr:
+                            duration = len(audio_array) / sample_rate
+                            new_length = int(duration * target_sr)
+                            indices = np.linspace(0, len(audio_array) - 1, new_length)
+                            audio_array = np.interp(indices, np.arange(len(audio_array)), audio_array)
+                        audio_array = audio_array.astype(np.float32).reshape(-1, 1)
+                        self._sound_cache[name] = audio_array
+                    except Exception as e:
+                        print(f"[AUDIO] Failed to load extended earcon {wav_path.name}: {e}")
+        except Exception as e:
+            print(f"[AUDIO] Extended-earcon discovery failed: {e}")
+
     def _start_sound_stream(self):
         """Start the persistent output stream for sound playback.
         
@@ -3478,13 +3538,15 @@ class DictationApp:
 
     def play_sound(self, sound_type, use_winsound=False):
         """Play audio feedback sound via persistent output stream (non-blocking, low-latency).
-        
+
         Writes pre-loaded audio data into the playback buffer. The persistent
         OutputStream callback drains it automatically. New sounds replace any
         currently playing sound (clean cutoff, no artifacts).
-        
+
         Args:
-            sound_type: 'start', 'stop', 'success', or 'error'
+            sound_type: legacy ('start'|'stop'|'success'|'error') or any
+                earcon name auto-discovered from the active theme directory
+                (e.g. 'capture_started', 'thinking_pulse').
             use_winsound: Deprecated/ignored.
         """
         if not self.config.get('audio_feedback', True):
@@ -3492,6 +3554,14 @@ class DictationApp:
 
         cached = self._sound_cache.get(sound_type)
         if cached is None:
+            # Surface unknown names once per name so missing earcons show up
+            # in logs instead of silently dropping.
+            if not hasattr(self, '_warned_sound_misses'):
+                self._warned_sound_misses = set()
+            if sound_type not in self._warned_sound_misses:
+                self._warned_sound_misses.add(sound_type)
+                print(f"[AUDIO] No cached sound for '{sound_type}' "
+                      f"(check sounds/themes/<theme>/{sound_type}.wav)")
             return
 
         volume = self.config.get('sound_volume', 0.5)
