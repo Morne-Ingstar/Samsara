@@ -18,12 +18,15 @@ Priority rules:
   enabled-pack command can still fire.
 """
 
+import threading
+import time
+
 
 class CommandEntry:
     """A single registered command (built-in or plugin)."""
 
     def __init__(self, phrase, source, cmd_type, data=None, handler=None,
-                 aliases=None, pack='core'):
+                 aliases=None, pack='core', debounce=0.0):
         """
         Args:
             phrase: canonical trigger phrase (lowercase, stripped)
@@ -33,6 +36,7 @@ class CommandEntry:
             handler: callable (for plugins)
             aliases: list of alternative trigger phrases
             pack: pack name this command belongs to (default 'core')
+            debounce: seconds to suppress re-execution in command mode
         """
         self.phrase = phrase.lower().strip()
         self.tokens = self.phrase.split()
@@ -43,6 +47,7 @@ class CommandEntry:
         self.handler = handler
         self.aliases = [a.lower().strip() for a in (aliases or [])]
         self.pack = pack or 'core'
+        self.debounce = float(debounce) if debounce else 0.0
 
 
 class CommandMatcher:
@@ -65,6 +70,9 @@ class CommandMatcher:
         self._match_table = []  # [(phrase_tokens, entry), ...] for match()
         self._frozen = False
         self._enabled_packs = None   # None = all packs enabled (no filtering)
+        # Debounce tracking: phrase -> monotonic timestamp of last execution
+        self._last_executions = {}
+        self._exec_lock = threading.Lock()
 
     def set_enabled_packs(self, pack_names):
         """Set which packs are active.
@@ -98,6 +106,7 @@ class CommandMatcher:
                 cmd_type=data.get('type', 'unknown'),
                 data=data,
                 pack=data.get('pack', 'core'),
+                debounce=float(data.get('debounce', 0.0)),
             )
             self._entries[name_lower] = entry
 
@@ -135,6 +144,7 @@ class CommandMatcher:
                 handler=entry_data['func'],
                 aliases=entry_data.get('aliases', []),
                 pack=entry_data.get('pack', 'core'),
+                debounce=float(entry_data.get('debounce', 0.0)),
             )
             self._entries[canonical] = entry
             # Register aliases (skip individually if shadowed)
@@ -223,6 +233,24 @@ class CommandMatcher:
                 return entry, remainder
 
         return None, ''
+
+    def should_suppress(self, entry) -> bool:
+        """Return True if the entry's debounce window has not elapsed.
+
+        Only meaningful when the caller is in command mode; suppresses
+        accidental double-fires of media/navigation/destructive commands.
+        """
+        if entry.debounce <= 0:
+            return False
+        with self._exec_lock:
+            last = self._last_executions.get(entry.phrase, 0.0)
+            return (time.monotonic() - last) < entry.debounce
+
+    def record_execution(self, entry) -> None:
+        """Record that `entry` was just executed (for debounce tracking)."""
+        if entry.debounce > 0:
+            with self._exec_lock:
+                self._last_executions[entry.phrase] = time.monotonic()
 
     def list_commands(self):
         """Return all unique registered commands (for debug/settings)."""
