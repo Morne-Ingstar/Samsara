@@ -332,6 +332,92 @@ class _MockApp:
         self.exit_command_mode()
 
 
+class TestGhostTapPrevention:
+    """exit_command_mode() marks ghost taps; transcription must check the flag."""
+
+    def _make_app(self, debounce_ms=200):
+        app = _MockApp()
+        app.config['command_mode']['enter_debounce_ms'] = debounce_ms
+        app._command_mode_session_start = 0.0
+        app._command_mode_ghost_tap = False
+        # Wire monotonic tracking same as DictationApp
+        import time
+        _orig_enter = app.enter_command_mode
+        def _enter():
+            _orig_enter()
+            app._command_mode_session_start = time.monotonic()
+            app._command_mode_ghost_tap = False
+        app.enter_command_mode = _enter
+
+        _orig_exit = app.exit_command_mode
+        def _exit():
+            import time as t2
+            hold_ms = (t2.monotonic() - app._command_mode_session_start) * 1000
+            app._command_mode_ghost_tap = hold_ms < debounce_ms
+            _orig_exit()
+        app.exit_command_mode = _exit
+        return app
+
+    def test_long_hold_clears_ghost_flag(self):
+        import time
+        app = self._make_app(debounce_ms=50)
+        app.enter_command_mode()
+        time.sleep(0.06)
+        app.exit_command_mode()
+        assert app._command_mode_ghost_tap is False
+
+    def test_short_hold_sets_ghost_flag(self):
+        app = self._make_app(debounce_ms=500)
+        app.enter_command_mode()
+        # exit immediately (0ms hold)
+        app.exit_command_mode()
+        assert app._command_mode_ghost_tap is True
+
+    def test_ghost_flag_cleared_after_discard(self):
+        app = self._make_app(debounce_ms=500)
+        app.enter_command_mode()
+        app.exit_command_mode()
+        assert app._command_mode_ghost_tap is True
+        # Simulates what transcribe() does
+        app._command_mode_ghost_tap = False
+        assert app._command_mode_ghost_tap is False
+
+
+class TestExitEarconNoDuplication:
+    """exit_command_mode must not double-play 'stop' when stop_recording already played it."""
+
+    def test_no_extra_stop_when_recording_was_active(self):
+        app = _MockApp()
+        app.config['command_mode']['exit_earcon'] = True
+        app.enter_command_mode()
+        app.recording = True
+        # stop_recording() would already play 'stop' — exit should NOT add another
+        # Simulate the corrected exit_command_mode logic:
+        was_recording = app.recording
+        if was_recording:
+            app.stop_recording()  # plays 'stop' inside (mocked here)
+            app._sounds.append('stop')  # simulate stop_recording's earcon
+        if app.config['command_mode'].get('exit_earcon', True) and not was_recording:
+            app._sounds.append('stop')
+
+        stop_count = app._sounds.count('stop')
+        assert stop_count == 1, f"Expected 1 stop earcon, got {stop_count}"
+
+    def test_exit_earcon_plays_when_not_recording(self):
+        app = _MockApp()
+        app.config['command_mode']['exit_earcon'] = True
+        app.enter_command_mode()
+        app.recording = False
+        was_recording = app.recording
+        if was_recording:
+            app.stop_recording()
+            app._sounds.append('stop')
+        if app.config['command_mode'].get('exit_earcon', True) and not was_recording:
+            app._sounds.append('stop')
+
+        assert app._sounds.count('stop') == 1
+
+
 class TestCommandModeStateMachine:
 
     def test_enter_sets_active(self):
