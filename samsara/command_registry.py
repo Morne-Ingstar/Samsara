@@ -13,6 +13,9 @@ Priority rules:
 - On exact same-phrase collision, built-ins win (plugins skipped and logged).
 - On prefix overlap (short phrase is a token-prefix of longer phrase), the
   longer phrase wins regardless of source. Collision report logs both.
+- Disabled-pack commands are skipped in match(). If the longest match belongs
+  to a disabled pack the matcher falls through to the next match so a shorter
+  enabled-pack command can still fire.
 """
 
 
@@ -20,7 +23,7 @@ class CommandEntry:
     """A single registered command (built-in or plugin)."""
 
     def __init__(self, phrase, source, cmd_type, data=None, handler=None,
-                 aliases=None):
+                 aliases=None, pack='core'):
         """
         Args:
             phrase: canonical trigger phrase (lowercase, stripped)
@@ -29,6 +32,7 @@ class CommandEntry:
             data: dict from commands.json (for built-ins)
             handler: callable (for plugins)
             aliases: list of alternative trigger phrases
+            pack: pack name this command belongs to (default 'core')
         """
         self.phrase = phrase.lower().strip()
         self.tokens = self.phrase.split()
@@ -38,6 +42,7 @@ class CommandEntry:
         self.data = data or {}
         self.handler = handler
         self.aliases = [a.lower().strip() for a in (aliases or [])]
+        self.pack = pack or 'core'
 
 
 class CommandMatcher:
@@ -45,6 +50,7 @@ class CommandMatcher:
 
     Usage:
         matcher = CommandMatcher()
+        matcher.set_enabled_packs({'core', 'browsers', 'media'})
         matcher.load_builtins(commands_dict)   # from commands.json
         matcher.load_plugins(plugin_registry)  # from plugin_commands
         matcher.freeze()  # sort, detect collisions, lock
@@ -58,6 +64,23 @@ class CommandMatcher:
         self._sorted = []       # canonical entries sorted by token_count desc
         self._match_table = []  # [(phrase_tokens, entry), ...] for match()
         self._frozen = False
+        self._enabled_packs = None   # None = all packs enabled (no filtering)
+
+    def set_enabled_packs(self, pack_names):
+        """Set which packs are active.
+
+        Must be called before freeze(). If never called, all packs are enabled
+        (backwards-compatible default).
+
+        Args:
+            pack_names: set/iterable of pack name strings
+        """
+        self._enabled_packs = set(pack_names)
+
+    def _pack_enabled(self, pack: str) -> bool:
+        if self._enabled_packs is None:
+            return True
+        return pack in self._enabled_packs
 
     def load_builtins(self, commands_dict):
         """Load built-in commands from the parsed commands.json dict.
@@ -74,6 +97,7 @@ class CommandMatcher:
                 source='builtin',
                 cmd_type=data.get('type', 'unknown'),
                 data=data,
+                pack=data.get('pack', 'core'),
             )
             self._entries[name_lower] = entry
 
@@ -81,7 +105,7 @@ class CommandMatcher:
         """Load plugin commands from plugin_commands._REGISTRY.
 
         Args:
-            plugin_registry: dict of phrase -> {func, phrase, aliases, source}
+            plugin_registry: dict of phrase -> {func, phrase, aliases, source, pack}
 
         Plugin commands have LOWER priority than built-ins on exact
         phrase collision. But longest-match means a 2-token plugin
@@ -110,6 +134,7 @@ class CommandMatcher:
                 cmd_type='plugin',
                 handler=entry_data['func'],
                 aliases=entry_data.get('aliases', []),
+                pack=entry_data.get('pack', 'core'),
             )
             self._entries[canonical] = entry
             # Register aliases (skip individually if shadowed)
@@ -155,7 +180,9 @@ class CommandMatcher:
 
         Uses token-based longest-match: tokenizes the input, then
         checks each registered phrase (longest first) for a token
-        prefix match.
+        prefix match. Commands from disabled packs are skipped --
+        the matcher falls through to the next candidate so a shorter
+        enabled-pack command can still fire.
 
         Args:
             text: raw transcribed text (e.g. "find tab github")
@@ -179,10 +206,17 @@ class CommandMatcher:
         # Exact match first (fastest path; also guarantees built-in wins
         # over plugin for identical phrases since built-ins load first)
         if text_lower in self._entries:
-            return self._entries[text_lower], ''
+            entry = self._entries[text_lower]
+            if self._pack_enabled(entry.pack):
+                return entry, ''
+            # Fall through to prefix scan if exact match is from disabled pack
 
-        # Token prefix matching: longest registered phrase first
+        # Token prefix matching: longest registered phrase first.
+        # Skip entries whose pack is disabled -- the loop continues so a
+        # shorter enabled-pack command can still match.
         for phrase_tokens, entry in self._match_table:
+            if not self._pack_enabled(entry.pack):
+                continue
             n = len(phrase_tokens)
             if n <= len(text_tokens) and text_tokens[:n] == phrase_tokens:
                 remainder = ' '.join(text_tokens[n:])
@@ -203,6 +237,7 @@ class CommandMatcher:
                 'source': entry.source,
                 'type': entry.cmd_type,
                 'aliases': entry.aliases,
+                'pack': entry.pack,
             })
         return result
 

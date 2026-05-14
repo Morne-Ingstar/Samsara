@@ -221,7 +221,7 @@ def _do_capture(app, remainder):
     return False
 
 
-@command("new conversation", aliases=["reset conversation", "fresh start"])
+@command("new conversation", aliases=["reset conversation", "fresh start"], pack="smart-actions")
 def handle_new_conversation(app, remainder):
     """End the current Smart Actions session. 'Jarvis, new conversation.'"""
     if hasattr(app, '_smart_actions_session'):
@@ -230,13 +230,13 @@ def handle_new_conversation(app, remainder):
     return True
 
 
-@command("note")
+@command("note", pack="smart-actions")
 def handle_note(app, remainder):
     """Capture a voice note. 'Jarvis, note to call the doctor about it.'"""
     return _do_capture(app, remainder)
 
 
-@command("brain dump")
+@command("brain dump", pack="smart-actions")
 def handle_brain_dump(app, remainder):
     """Capture a voice note. 'Jarvis, brain dump pick up groceries.'"""
     return _do_capture(app, remainder)

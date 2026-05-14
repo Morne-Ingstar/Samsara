@@ -31,7 +31,7 @@ def _nircmd(args):
 
 
 @command("going dark", aliases=["end of day", "shut it down",
-                                "goodnight"])
+                                "goodnight"], pack="macros")
 def going_dark(app, remainder):
     """Mute, minimize everything, lock screen."""
     print("[MACRO] Going dark...")
@@ -44,7 +44,7 @@ def going_dark(app, remainder):
     return True
 
 
-@command("focus mode", aliases=["time to work", "let's work"])
+@command("focus mode", aliases=["time to work", "let's work"], pack="macros")
 def focus_mode(app, remainder):
     """Low volume, open IDE, minimal distractions."""
     print("[MACRO] Entering focus mode...")
@@ -60,7 +60,7 @@ def focus_mode(app, remainder):
     return True
 
 
-@command("break time", aliases=["take a break", "stretch break"])
+@command("break time", aliases=["take a break", "stretch break"], pack="macros")
 def break_time(app, remainder):
     """Pause media, lock screen for a break."""
     print("[MACRO] Break time...")
@@ -71,7 +71,7 @@ def break_time(app, remainder):
     return True
 
 
-@command("morning routine", aliases=["good morning", "start my day"])
+@command("morning routine", aliases=["good morning", "start my day"], pack="macros")
 def morning_routine(app, remainder):
     """Open daily sites, set comfortable volume."""
     print("[MACRO] Good morning...")
@@ -93,7 +93,7 @@ def morning_routine(app, remainder):
     return True
 
 
-@command("presentation mode", aliases=["demo mode"])
+@command("presentation mode", aliases=["demo mode"], pack="macros")
 def presentation_mode(app, remainder):
     """Maximize current window, full-ish volume."""
     print("[MACRO] Presentation mode...")
@@ -108,7 +108,7 @@ def presentation_mode(app, remainder):
 
 
 @command("clear my desk", aliases=["hide everything",
-                                   "clean desktop"])
+                                   "clean desktop"], pack="macros")
 def clear_desk(app, remainder):
     """Minimize all windows."""
     print("[MACRO] Clearing desktop...")
