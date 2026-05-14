@@ -156,17 +156,16 @@ class TestWinRTEngineInit:
 @requires_winsdk
 class TestSpeakNonBlocking:
     def _make_engine_with_mock_playback(self):
-        """Return an engine whose _playback_worker is patched to be instant."""
+        """Return an engine whose audio output is stubbed out."""
         engine = WinRTEngine()
-        # Patch _stream_pcm so no actual OutputStream is opened.
-        engine._stream_pcm = MagicMock()
+        engine._push_chunks = MagicMock()
         return engine
 
     def test_speak_returns_handle_immediately(self):
         engine = WinRTEngine()
         # Patch _synthesize and _stream_pcm so there's no real audio I/O.
         engine._synthesize = MagicMock(return_value=_make_wav_bytes())
-        engine._stream_pcm = MagicMock()
+        engine._push_chunks = MagicMock()
 
         t0 = time.monotonic()
         handle = engine.speak("test phrase")
@@ -179,7 +178,7 @@ class TestSpeakNonBlocking:
     def test_speak_returns_speech_handle(self):
         engine = WinRTEngine()
         engine._synthesize = MagicMock(return_value=_make_wav_bytes())
-        engine._stream_pcm = MagicMock()
+        engine._push_chunks = MagicMock()
         handle = engine.speak("hello")
         assert handle.utterance_id
         engine.shutdown()
@@ -207,7 +206,7 @@ class TestIsSpeaking:
             return _make_wav_bytes(duration=0.05)
 
         engine._synthesize = slow_synth
-        engine._stream_pcm = MagicMock(side_effect=lambda *a, **kw: None)
+        engine._push_chunks = MagicMock(side_effect=lambda *a, **kw: None)
 
         handle = engine.speak("test")
         started.wait(timeout=2.0)
@@ -259,11 +258,12 @@ class TestCancel:
     def test_cancel_sets_handle_state(self):
         engine = WinRTEngine()
         engine._synthesize = MagicMock(return_value=_make_wav_bytes())
-        engine._stream_pcm = MagicMock()
+        engine._push_chunks = MagicMock()
 
         handle = engine.speak("short phrase")
         engine.cancel(handle)
-        assert handle._state == "cancelled"
+        # Phase 1b: cancel sets engine_state to 'cancelling'; handle._state mirrors it
+        assert handle._state in ("cancelling", "cancelled")
         engine.shutdown()
 
 
@@ -276,7 +276,7 @@ class TestOnDoneCallback:
     def test_on_done_called_after_playback(self):
         engine = WinRTEngine()
         engine._synthesize = MagicMock(return_value=_make_wav_bytes(duration=0.01))
-        engine._stream_pcm = MagicMock()
+        engine._push_chunks = MagicMock()
 
         fired = threading.Event()
         engine.speak("callback test", on_done=fired.set)
@@ -294,7 +294,7 @@ class TestOnDoneCallback:
             return _make_wav_bytes(duration=0.01)
 
         engine._synthesize = slow_synth
-        engine._stream_pcm = MagicMock()
+        engine._push_chunks = MagicMock()
 
         callback_fired = threading.Event()
         handle = engine.speak("cancel me", on_done=callback_fired.set)
@@ -319,3 +319,157 @@ class TestEngineUnavailable:
             )
             with pytest.raises(EngineUnavailableError, match="winsdk"):
                 WinRTEngine()
+
+
+# ---------------------------------------------------------------------------
+# Phase 1b: Persistent stream
+# ---------------------------------------------------------------------------
+
+@requires_winsdk
+class TestPersistentStream:
+    def test_persistent_stream_opens_at_init(self):
+        engine = WinRTEngine()
+        assert engine._tts_stream is not None, "Persistent stream should be open after init"
+        assert engine._using_persistent_stream is True
+        engine.shutdown()
+
+    def test_persistent_stream_survives_multiple_speaks(self):
+        engine = WinRTEngine()
+        stream_before = engine._tts_stream
+        engine._synthesize = MagicMock(return_value=_make_wav_bytes(duration=0.01))
+        engine._push_chunks = MagicMock()
+
+        for _ in range(3):
+            fired = threading.Event()
+            engine.speak("repeat", on_done=fired.set)
+            fired.wait(timeout=3.0)
+
+        assert engine._tts_stream is stream_before, "Persistent stream should not have been replaced"
+        engine.shutdown()
+
+    def test_persistent_stream_fallback_on_open_failure(self):
+        import sounddevice as sd
+        with patch.object(sd, 'OutputStream', side_effect=sd.PortAudioError("no device")):
+            engine = WinRTEngine()
+        assert engine._tts_stream is None
+        assert engine._using_persistent_stream is False
+        # Engine should still be functional via ephemeral path
+        engine._synthesize = MagicMock(return_value=_make_wav_bytes(duration=0.01))
+        engine._stream_pcm_ephemeral = MagicMock()
+        fired = threading.Event()
+        engine.speak("fallback test", on_done=fired.set)
+        fired.wait(timeout=3.0)
+        assert fired.is_set()
+        engine.shutdown()
+
+
+# ---------------------------------------------------------------------------
+# Phase 1b: Engine state granularity
+# ---------------------------------------------------------------------------
+
+@requires_winsdk
+class TestEngineState:
+    def test_state_idle_before_speak(self):
+        engine = WinRTEngine()
+        assert engine.get_engine_state() == 'idle'
+        engine.shutdown()
+
+    def test_state_transitions_synthesizing_to_playing(self):
+        engine = WinRTEngine()
+        states_seen = []
+        synthesis_gate = threading.Event()
+
+        def slow_synth(text, voice_id, speed, pitch):
+            states_seen.append(engine.get_engine_state())
+            synthesis_gate.set()
+            time.sleep(0.1)
+            return _make_wav_bytes(duration=0.01)
+
+        engine._synthesize = slow_synth
+        engine._push_chunks = MagicMock()
+
+        fired = threading.Event()
+        engine.speak("state test", on_done=fired.set)
+        synthesis_gate.wait(timeout=2.0)
+        assert 'synthesizing' in states_seen
+        fired.wait(timeout=3.0)
+        assert engine.get_engine_state() == 'idle'
+        engine.shutdown()
+
+    def test_state_cancelling_on_cancel(self):
+        engine = WinRTEngine()
+        started = threading.Event()
+
+        def slow_synth(text, voice_id, speed, pitch):
+            started.set()
+            time.sleep(1.0)
+            return _make_wav_bytes()
+
+        engine._synthesize = slow_synth
+        handle = engine.speak("long phrase")
+        started.wait(timeout=2.0)
+        engine.cancel(handle)
+        # After cancel, state should progress to idle
+        deadline = time.monotonic() + 2.0
+        while engine.get_engine_state() != 'idle' and time.monotonic() < deadline:
+            time.sleep(0.05)
+        assert engine.get_engine_state() == 'idle'
+        engine.shutdown()
+
+
+# ---------------------------------------------------------------------------
+# Phase 1b: Volume fade
+# ---------------------------------------------------------------------------
+
+@requires_winsdk
+class TestVolumeFade:
+    def _make_utterance(self, initial_volume=1.0):
+        from samsara.tts.winrt_engine import _Utterance
+        from samsara.tts.engine_base import SpeechHandle
+        handle = SpeechHandle(utterance_id="test-uid")
+        return _Utterance(handle, None, initial_volume=initial_volume)
+
+    def test_instant_change_when_fade_ms_zero(self):
+        u = self._make_utterance(initial_volume=1.0)
+        u.set_volume_fade(0.3, fade_ms=0)
+        assert u.current_volume == pytest.approx(0.3)
+        assert u.volume_step == 0.0
+
+    def test_fade_produces_nonzero_step(self):
+        u = self._make_utterance(initial_volume=1.0)
+        u.set_volume_fade(0.7, fade_ms=5)
+        assert u.volume_step < 0  # fading down
+        assert u.target_volume == pytest.approx(0.7)
+
+    def test_fade_converges_to_target(self):
+        u = self._make_utterance(initial_volume=1.0)
+        u.set_volume_fade(0.0, fade_ms=5)
+        # Apply enough chunks to exhaust the fade
+        chunk = np.ones(1000, dtype=np.float32)
+        for _ in range(20):
+            u.apply_volume_to_chunk(chunk)
+        assert u.current_volume == pytest.approx(0.0, abs=1e-4)
+        assert u.volume_step == 0.0
+
+    def test_apply_volume_scales_chunk(self):
+        u = self._make_utterance(initial_volume=0.5)
+        chunk = np.ones(100, dtype=np.float32)
+        out = u.apply_volume_to_chunk(chunk)
+        np.testing.assert_allclose(out, 0.5, atol=0.01)
+
+    def test_set_volume_affects_active_utterance(self):
+        if not _HAS_WINSDK:
+            pytest.skip("winsdk not installed")
+        engine = WinRTEngine()
+        engine._synthesize = MagicMock(return_value=_make_wav_bytes(duration=0.1))
+        engine._push_chunks = MagicMock()
+
+        handle = engine.speak("volume test")
+        time.sleep(0.05)  # let worker start
+        engine.set_volume(handle, 0.3, fade_ms=5)
+
+        with engine._active_lock:
+            utterance = engine._active.get(handle.utterance_id)
+        if utterance:
+            assert utterance.target_volume == pytest.approx(0.3, abs=0.01)
+        engine.shutdown()
