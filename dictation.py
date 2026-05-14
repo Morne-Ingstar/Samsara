@@ -621,6 +621,8 @@ class DictationApp:
         self._command_mode_lock = threading.Lock()
         self._command_mode_miss_count = 0
         self._command_mode_inactivity_timer = None
+        self._command_mode_session_start = 0.0  # monotonic time of last enter
+        self._command_mode_ghost_tap = False    # set when hold < enter_debounce_ms
         self._mouse_listener = None
 
         # Wake-word trace hook — the debug window registers a callback here
@@ -2056,6 +2058,8 @@ class DictationApp:
                 return
             self.command_mode_active = True
         self._command_mode_miss_count = 0
+        self._command_mode_session_start = time.monotonic()
+        self._command_mode_ghost_tap = False
         print("[CMD MODE] Entering command mode")
         if hasattr(self, 'listening_indicator'):
             self._schedule_ui(self.listening_indicator.set_command_mode, True)
@@ -2084,14 +2088,23 @@ class DictationApp:
             if not self.command_mode_active:
                 return
             self.command_mode_active = False
+            hold_ms = (time.monotonic() - self._command_mode_session_start) * 1000
+        debounce_ms = self.config.get('command_mode', {}).get('enter_debounce_ms', 200)
+        # Taps shorter than the debounce window are ghost taps — mark so
+        # transcribe() can discard the audio without executing commands.
+        self._command_mode_ghost_tap = (hold_ms < debounce_ms)
+        if self._command_mode_ghost_tap:
+            print(f"[CMD MODE] Ghost tap ({hold_ms:.0f}ms < {debounce_ms}ms) — audio will be discarded")
         print("[CMD MODE] Exiting command mode")
         self._cancel_command_mode_inactivity_timer()
         if hasattr(self, 'listening_indicator'):
             self._schedule_ui(self.listening_indicator.set_command_mode, False)
-        if self.recording:
-            self.stop_recording()
+        was_recording = self.recording
+        if was_recording:
+            self.stop_recording()  # stop_recording() already plays "stop" as acknowledgment
         cfg = self.config.get('command_mode', {})
-        if cfg.get('exit_earcon', True):
+        if cfg.get('exit_earcon', True) and not was_recording:
+            # Only play here when not going through stop_recording() to avoid doubling
             self.play_sound('stop')
 
     def _reset_command_mode_inactivity_timer(self, timeout_s):
@@ -4256,6 +4269,15 @@ class DictationApp:
                 # Check if we're in command-only mode (from command hotkey or Mouse 4)
                 is_command_mode = self.command_mode_recording
                 self.command_mode_recording = False  # Reset flag
+
+                # Ghost-tap prevention (post-Whisper recheck).
+                # If the hold was shorter than enter_debounce_ms the earcon never
+                # played and exit_command_mode() set the ghost flag.  Discard the
+                # audio here so accidental sub-200ms taps cannot fire commands.
+                if is_command_mode and self._command_mode_ghost_tap:
+                    self._command_mode_ghost_tap = False
+                    print("[CMD] Ghost tap — discarding transcription")
+                    return
 
                 if text:
                     text_lower = text.lower().strip()
