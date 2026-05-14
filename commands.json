@@ -861,11 +861,6 @@
       "description": "Open Claude projects list",
       "pack": "ai"
     },
-    "send to arc": {
-      "type": "plugin",
-      "description": "Send clipboard to ARC inbox (plugin command)",
-      "pack": "ai"
-    },
     "open obsidian": {
       "type": "launch",
       "target": "C:\\Users\\Morne\\AppData\\Local\\Programs\\Obsidian\\Obsidian.exe",
@@ -1462,21 +1457,6 @@
       "description": "Toggle reading view (Edge)",
       "pack": "browsers"
     },
-    "volume up": {
-      "type": "plugin",
-      "description": "Increase system volume",
-      "pack": "audio"
-    },
-    "volume down": {
-      "type": "plugin",
-      "description": "Decrease system volume",
-      "pack": "audio"
-    },
-    "mute": {
-      "type": "plugin",
-      "description": "Toggle system mute",
-      "pack": "audio"
-    },
     "open midjourney": {
       "type": "launch",
       "target": "https://www.midjourney.com",
@@ -1699,7 +1679,7 @@
       "type": "hotkey",
       "keys": [
         "alt",
-        "printscreen"
+        "print_screen"
       ],
       "description": "Screenshot active window to clipboard",
       "pack": "screen-capture"
@@ -1863,9 +1843,9 @@
     "high contrast": {
       "type": "hotkey",
       "keys": [
-        "lalt",
-        "lshift",
-        "printscreen"
+        "alt_l",
+        "shift",
+        "print_screen"
       ],
       "description": "Toggle high contrast mode",
       "pack": "accessibility"
