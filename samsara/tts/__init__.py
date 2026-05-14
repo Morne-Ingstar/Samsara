@@ -1,14 +1,16 @@
-"""Samsara TTS subsystem — Phase 1a: WinRT engine foundation.
+"""Samsara TTS subsystem — Phase 1b: engine upgrades + AudioCoordinator.
 
 Public API:
-    WinRTEngine   — primary engine (Windows, requires winsdk)
-    TTSEngine     — abstract base for all engines
-    VoiceInfo     — voice metadata dataclass
-    SpeechHandle  — handle to an in-progress utterance
-    WinRTHelper   — async/sync bridge (internal; exposed for tests)
+    WinRTEngine      — primary engine (Windows, requires winsdk)
+    AudioCoordinator — state machine; use coordinator.speak() from plugins
+    TTSEngine        — abstract base for all engines
+    VoiceInfo        — voice metadata dataclass
+    SpeechHandle     — handle to an in-progress utterance
+    WinRTHelper      — async/sync bridge (internal; exposed for tests)
     TTSError, EngineUnavailableError, RenderError — exceptions
 """
 
+from .coordinator import AudioCoordinator
 from .engine_base import SpeechHandle, TTSEngine, VoiceInfo
 from .exceptions import EngineUnavailableError, RenderError, TTSError
 from .winrt_engine import WinRTEngine
@@ -16,6 +18,7 @@ from .winrt_helper import WinRTHelper, get_helper
 
 __all__ = [
     "WinRTEngine",
+    "AudioCoordinator",
     "TTSEngine",
     "VoiceInfo",
     "SpeechHandle",

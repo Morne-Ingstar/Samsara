@@ -304,8 +304,9 @@ logger.info("=" * 50)
 class CommandExecutor:
     """Executes voice commands - hotkeys, launches, key holds, etc."""
     
-    def __init__(self, commands_path):
+    def __init__(self, commands_path, app=None, plugins_dir=None):
         self.commands_path = commands_path
+        self.app = app
         self.commands = {}
         self.held_keys = {}  # Track currently held keys
         self.keyboard_controller = KeyboardController()
