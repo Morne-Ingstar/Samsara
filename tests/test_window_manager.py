@@ -15,7 +15,10 @@ sys.path.insert(0, str(PROJECT_ROOT))
 # ---------------------------------------------------------------------------
 
 _win32_mocks = {}
-for _mod in ('win32api', 'win32con', 'win32gui', 'win32process', 'psutil'):
+# psutil is a real installed dependency — never stub it, so other test files
+# that import real psutil exception classes (e.g. test_media_keys.py) are
+# unaffected by collection order.
+for _mod in ('win32api', 'win32con', 'win32gui', 'win32process'):
     if _mod not in sys.modules:
         _win32_mocks[_mod] = MagicMock()
         sys.modules[_mod] = _win32_mocks[_mod]
@@ -144,15 +147,14 @@ class TestSavedLayouts:
     @pytest.fixture
     def one_window(self):
         """Minimal movable-window list: one Chrome window."""
-        import win32con as _wc
         win32gui = sys.modules['win32gui']
         win32gui.GetWindowRect.return_value = (100, 100, 900, 700)
         win32gui.GetWindowPlacement.return_value = (0, 1, (0, 0), (0, 0), (100, 100, 900, 700))
-        psutil = sys.modules['psutil']
-        psutil.Process.return_value.name.return_value = 'chrome.exe'
         with patch.object(wm, 'get_all_movable_windows',
                           return_value=[(1001, 'Google Chrome', 9999)]), \
-             patch.object(wm, 'get_monitors', return_value=[MONITOR_1]):
+             patch.object(wm, 'get_monitors', return_value=[MONITOR_1]), \
+             patch.object(wm.psutil, 'Process') as mock_proc:
+            mock_proc.return_value.name.return_value = 'chrome.exe'
             yield
 
     def test_save_layout_creates_file(self, patch_layouts_path, one_window):
@@ -303,13 +305,12 @@ class TestDetectLostWindows:
     def test_detects_off_screen_window(self):
         wins = [(101, 'Ghost App', 1)]
         win32gui = sys.modules['win32gui']
-        # Clear any side_effect set by a prior test before applying return_value
         win32gui.GetWindowRect.side_effect = None
         win32gui.GetWindowRect.return_value = (-2000, -2000, -1000, -1000)
-        psutil = sys.modules['psutil']
-        psutil.Process.return_value.name.return_value = 'ghost.exe'
         with patch.object(wm, 'get_all_movable_windows', return_value=wins), \
-             patch.object(wm, 'get_monitors', return_value=[MONITOR_1]):
+             patch.object(wm, 'get_monitors', return_value=[MONITOR_1]), \
+             patch.object(wm.psutil, 'Process') as mock_proc:
+            mock_proc.return_value.name.return_value = 'ghost.exe'
             lost = wm._detect_lost_windows()
         assert len(lost) == 1
         assert lost[0]['hwnd'] == 101
@@ -321,10 +322,10 @@ class TestDetectLostWindows:
         win32gui.GetWindowRect.side_effect = lambda h: (
             (100, 100, 900, 700) if h == 101 else (-3000, -3000, -2000, -2000)
         )
-        psutil = sys.modules['psutil']
-        psutil.Process.return_value.name.return_value = 'app.exe'
         with patch.object(wm, 'get_all_movable_windows', return_value=wins), \
-             patch.object(wm, 'get_monitors', return_value=[MONITOR_1]):
+             patch.object(wm, 'get_monitors', return_value=[MONITOR_1]), \
+             patch.object(wm.psutil, 'Process') as mock_proc:
+            mock_proc.return_value.name.return_value = 'app.exe'
             lost = wm._detect_lost_windows()
         assert len(lost) == 1
         assert lost[0]['hwnd'] == 102
