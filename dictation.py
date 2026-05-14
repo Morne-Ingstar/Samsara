@@ -553,6 +553,22 @@ class CommandExecutor:
 
 
 
+
+
+def _deep_merge(base, overlay):
+    """Return a deep merge of two dicts. Values from `overlay` win on conflicts.
+    New keys from `base` are preserved. Lists and primitives in overlay replace
+    base entirely (we don't try to merge list elements)."""
+    if not isinstance(base, dict) or not isinstance(overlay, dict):
+        return overlay
+    result = dict(base)
+    for k, v in overlay.items():
+        if k in result and isinstance(result[k], dict) and isinstance(v, dict):
+            result[k] = _deep_merge(result[k], v)
+        else:
+            result[k] = v
+    return result
+
 class DictationApp:
     def __init__(self, splash=None):
         self.splash = splash
@@ -699,7 +715,8 @@ class DictationApp:
         self._icon_rotation = 0.0        # current rotation angle in radians
         self._icon_chase_counter = 0     # counts ticks between color shifts
         self._icon_anim_reasons = set()  # tracks who wants animation (e.g. 'recording', 'wake_word')
-        self.continuous_stream = None
+        self.continuous_stream = None  # owned by continuous mode
+        self.wake_stream = None         # owned by wake word mode
         self.silence_start = None
         self.speech_buffer = []
         self.buffer_lock = threading.Lock()
@@ -797,7 +814,7 @@ class DictationApp:
         self.cheat_sheet = CommandCheatSheet(
             root=self.root,
             execute_cb=lambda phrase: self.command_executor.process_text(
-                phrase, command_mode_enabled=True
+                phrase, self, force_commands=True
             ),
             commands_cb=lambda: self.command_executor._matcher.list_commands(),
             palette_path=palette_path,
@@ -1191,10 +1208,23 @@ class DictationApp:
         bak_path = self.config_path.with_suffix('.json.bak')
 
         try:
+            # 0. Deep-merge with on-disk config so external edits made while
+            #    Samsara was running aren't wiped on save. In-memory values
+            #    win on conflicts; new keys added to disk are preserved.
+            merged = self.config
+            if self.config_path.exists():
+                try:
+                    with open(self.config_path, 'r') as f:
+                        on_disk = json.load(f)
+                    merged = _deep_merge(on_disk, self.config)
+                except (json.JSONDecodeError, OSError) as e:
+                    print(f"[WARN] Could not read on-disk config for merge: {e}")
+                    merged = self.config
+
             # 1. Serialize to temp file. If json.dump raises, the real
             #    config.json is unaffected.
             with open(tmp_path, 'w') as f:
-                json.dump(self.config, f, indent=2)
+                json.dump(merged, f, indent=2)
 
             # 2. Roll the existing good config to .bak (best-effort; ignore
             #    errors on the very first save when there's nothing to roll).
@@ -2254,6 +2284,13 @@ class DictationApp:
                 print("Model still loading, please wait...")
             return
 
+        if self.wake_word_active:
+            # Wake stream already holds the mic. Fan-out inside wake_word_audio_callback
+            # will forward audio to continuous_audio_callback — no second stream needed.
+            print("[CONT] Piggyback on wake stream (fan-out mode)")
+            self.set_app_state(continuous_active=True)
+            return
+
         # Play start sound using winsound on Windows to avoid InputStream conflict
         self.play_sound("start", use_winsound=True)
         time.sleep(0.15)  # Brief pause for sound to start
@@ -2291,11 +2328,16 @@ class DictationApp:
     def stop_continuous_mode(self):
         """Stop continuous listening mode"""
         self.set_app_state(continuous_active=False)
-        
-        if self.continuous_stream:
-            self.continuous_stream.stop()
-            self.continuous_stream.close()
-            self.continuous_stream = None
+
+        if not self.continuous_stream:
+            # Piggyback mode — continuous was riding the wake stream.
+            # Fan-out is now inactive (continuous_active=False), nothing to close.
+            print("[OFF] Continuous mode STOPPED (piggyback)")
+            return
+
+        self.continuous_stream.stop()
+        self.continuous_stream.close()
+        self.continuous_stream = None
         
         # Transcribe any remaining audio
         with self.buffer_lock:
@@ -2523,8 +2565,8 @@ class DictationApp:
             self.play_sound("error")
             return
         
-        self.continuous_stream = stream
-        self.continuous_stream.start()
+        self.wake_stream = stream
+        self.wake_stream.start()
         self.set_app_state(wake_word_active=True)
 
         # Update tray icon -- start chase animation
@@ -2542,11 +2584,11 @@ class DictationApp:
         # Reset dictation mode
         self._reset_wake_dictation()
         
-        if self.continuous_stream:
-            self.continuous_stream.stop()
-            self.continuous_stream.close()
-            self.continuous_stream = None
-        
+        if self.wake_stream:
+            self.wake_stream.stop()
+            self.wake_stream.close()
+            self.wake_stream = None
+
         # Transcribe any remaining audio if wake word was triggered
         with self.buffer_lock:
             if self.speech_buffer and self.wake_word_triggered:
@@ -2802,6 +2844,13 @@ class DictationApp:
                                     args=(buffer_copy,),
                                     daemon=True,
                                 ).start()
+
+            # Fan-out: when continuous mode is active alongside wake word mode,
+            # forward audio to the continuous pipeline. No second PortAudio stream
+            # is opened; the wake stream drives both.
+            if self.continuous_active:
+                self.continuous_audio_callback(indata, frames, time_info, status)
+
         except (sd.PortAudioError, OSError) as e:
             print(f"[AUDIO] Stream died -- attempting reconnect... ({e})")
             self._stream_dead = True
@@ -4071,7 +4120,7 @@ class DictationApp:
             pass
         self._sound_stream = None
 
-        # Continuous / wake-word input stream (only one is ever active)
+        # Continuous mode input stream
         try:
             if self.continuous_stream is not None:
                 self.continuous_stream.stop()
@@ -4079,6 +4128,15 @@ class DictationApp:
         except Exception:
             pass
         self.continuous_stream = None
+
+        # Wake word input stream (separate attribute since Bug 1 fix)
+        try:
+            if self.wake_stream is not None:
+                self.wake_stream.stop()
+                self.wake_stream.close()
+        except Exception:
+            pass
+        self.wake_stream = None
 
         # Pre-buffer input stream (hold/toggle modes)
         try:
@@ -4114,22 +4172,13 @@ class DictationApp:
         if self._sound_stream is None:
             raise RuntimeError("failed to open output sound stream")
 
-        # Pick the right input stream based on current state.
-        # continuous and wake-word share self.continuous_stream.
-        if self.continuous_active:
-            stream = self._open_stream_with_timeout(
-                samplerate=self.capture_rate,
-                channels=1,
-                dtype=np.float32,
-                callback=self.continuous_audio_callback,
-                device=self.config['microphone'],
-                blocksize=int(self.capture_rate * 0.1),
-            )
-            if stream is None:
-                raise RuntimeError("failed to open continuous input stream")
-            self.continuous_stream = stream
-            self.continuous_stream.start()
-        elif self.wake_word_active:
+        # Pick the right input stream(s) based on current state.
+        # Each mode owns its own named attribute:
+        #   self.continuous_stream -- continuous mode (standalone)
+        #   self.wake_stream       -- wake word mode
+        # When both are active, only the wake stream is opened and continuous
+        # audio is delivered via fan-out inside wake_word_audio_callback.
+        if self.wake_word_active:
             stream = self._open_stream_with_timeout(
                 samplerate=self.capture_rate,
                 channels=1,
@@ -4140,6 +4189,21 @@ class DictationApp:
             )
             if stream is None:
                 raise RuntimeError("failed to open wake-word input stream")
+            self.wake_stream = stream
+            self.wake_stream.start()
+            # continuous_active fan-out runs inside wake_word_audio_callback;
+            # no separate continuous stream is needed in this case.
+        elif self.continuous_active:
+            stream = self._open_stream_with_timeout(
+                samplerate=self.capture_rate,
+                channels=1,
+                dtype=np.float32,
+                callback=self.continuous_audio_callback,
+                device=self.config['microphone'],
+                blocksize=int(self.capture_rate * 0.1),
+            )
+            if stream is None:
+                raise RuntimeError("failed to open continuous input stream")
             self.continuous_stream = stream
             self.continuous_stream.start()
         else:
