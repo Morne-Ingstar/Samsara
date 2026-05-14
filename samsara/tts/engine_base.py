@@ -82,6 +82,17 @@ class TTSEngine(ABC):
         """True if any utterance is currently playing."""
 
     @abstractmethod
+    def get_engine_state(self) -> str:
+        """Return current engine state string.
+
+        One of: 'idle', 'synthesizing', 'playing', 'cancelling'.
+
+        Consumers that need finer-grained state than the boolean is_speaking()
+        use this — for example, AudioCoordinator uses 'playing' (not 'synthesizing')
+        as the start-of-interrupt-grace-period signal.
+        """
+
+    @abstractmethod
     def list_voices(self) -> list:
         """Return a list of VoiceInfo objects for installed voices."""
 

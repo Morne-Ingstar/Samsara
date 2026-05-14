@@ -1,22 +1,25 @@
 """WinRTEngine: TTS via Windows Runtime SpeechSynthesis.
 
-Uses winsdk.windows.media.speechsynthesis.SpeechSynthesizer to render
-text to a WAV byte stream, then routes the PCM through a sounddevice
-OutputStream so Samsara owns the audio path (enables future ducking and
-AudioCoordinator integration).
+Phase 1b upgrades over Phase 1a:
+  - Persistent TTS OutputStream owned by the engine (opened at __init__).
+    Eliminates 5-10ms per-utterance stream open overhead. Falls back to
+    ephemeral streams if WASAPI exclusive-mode blocks the persistent open.
+  - Volume fade: set_volume(handle, volume, fade_ms=5) interpolates linearly
+    across fade_ms milliseconds instead of changing instantaneously.
+  - Granular engine state: get_engine_state() returns 'idle'|'synthesizing'|
+    'playing'|'cancelling' so AudioCoordinator can distinguish synthesis lag
+    from actual playback for interrupt-grace-period timing.
 
-Phase 1a scope:
-  - queue_mode: "append" only; other modes degrade to append (logged)
-  - category: stored but not yet used for priority arbitration
-  - set_volume fade_ms: instant change (5 ms interpolation is Phase 1b)
-  - speak() spawns an ephemeral OutputStream per utterance; a persistent
-    TTS stream owned by AudioCoordinator comes in Phase 1b
+Phase 1b still pending (Phase 2):
+  - queue_mode: only "append" is enforced; other modes degrade to append.
+  - category: accepted and stored, not yet used for arbitration.
 """
 
+import collections
 import logging
 import threading
 import uuid
-from typing import Callable, List, Optional
+from typing import Callable, Deque, List, Optional, Tuple
 
 import numpy as np
 
@@ -27,20 +30,14 @@ from .winrt_helper import get_helper
 
 logger = logging.getLogger(__name__)
 
-# Earcon stream runs at 44100 Hz (confirmed in dictation.py _sound_stream_sr).
-# All TTS audio is normalized to this rate before playback so the same
-# sounddevice output format assumption holds everywhere.
-_TARGET_SR = 44100
-_CHUNK_FRAMES = 4096
+_TARGET_SR = 44100  # matches dictation.py _sound_stream_sr
+_CHUNK_FRAMES = 4096  # ~93ms at 44100 Hz
 
 
 def _import_winsdk():
     """Import WinRT speech classes, raising EngineUnavailableError on failure."""
     try:
-        from winsdk.windows.media.speechsynthesis import (
-            SpeechSynthesizer,
-            VoiceGender,
-        )
+        from winsdk.windows.media.speechsynthesis import SpeechSynthesizer, VoiceGender
         from winsdk.windows.storage.streams import DataReader, InputStreamOptions
         return SpeechSynthesizer, VoiceGender, DataReader, InputStreamOptions
     except ImportError as exc:
@@ -53,7 +50,6 @@ def _import_winsdk():
 async def _read_stream_bytes(stream) -> bytes:
     """Read all bytes from a WinRT SpeechSynthesisStream asynchronously."""
     from winsdk.windows.storage.streams import DataReader, InputStreamOptions
-
     size = int(stream.size)
     reader = DataReader(stream)
     reader.input_stream_options = InputStreamOptions.READ_AHEAD
@@ -63,23 +59,80 @@ async def _read_stream_bytes(stream) -> bytes:
 
 
 class _Utterance:
-    """Internal state for a single in-flight speak() call."""
+    """Per-speak() state including volume fade tracking."""
 
-    def __init__(self, handle: SpeechHandle, on_done: Optional[Callable]):
+    def __init__(self, handle: SpeechHandle, on_done: Optional[Callable], initial_volume: float = 1.0):
         self.handle = handle
         self.on_done = on_done
         self.cancelled = threading.Event()
-        self.volume = 1.0        # modified by set_volume()
-        self._volume_lock = threading.Lock()
         self.thread: Optional[threading.Thread] = None
 
-    def get_volume(self) -> float:
-        with self._volume_lock:
-            return self.volume
+        # engine_state tracks finer-grained state than the handle._state.
+        # Written by the worker thread; read by get_engine_state().
+        # Values: 'pending' | 'synthesizing' | 'playing' | 'cancelling' | 'done' | 'failed'
+        self.engine_state: str = 'pending'
+        self._state_lock = threading.Lock()
 
-    def set_volume(self, v: float):
-        with self._volume_lock:
-            self.volume = max(0.0, min(1.0, v))
+        # Volume fade state. All three are protected by _vol_lock.
+        # current_volume: actual volume being applied right now
+        # target_volume: volume we're fading toward
+        # volume_step: per-sample delta (positive = fade up, negative = fade down; 0 = at target)
+        self._vol_lock = threading.Lock()
+        self.current_volume = float(initial_volume)
+        self.target_volume = float(initial_volume)
+        self.volume_step = 0.0
+
+    def set_engine_state(self, state: str) -> None:
+        with self._state_lock:
+            self.engine_state = state
+        self.handle._state = state
+
+    def get_engine_state(self) -> str:
+        with self._state_lock:
+            return self.engine_state
+
+    def set_volume_fade(self, target: float, fade_ms: int) -> None:
+        """Set a new fade target. Thread-safe; callable from any thread."""
+        target = max(0.0, min(1.0, target))
+        fade_samples = int(fade_ms * _TARGET_SR / 1000)
+        with self._vol_lock:
+            self.target_volume = target
+            if fade_samples <= 0:
+                self.current_volume = target
+                self.volume_step = 0.0
+            else:
+                delta = target - self.current_volume
+                self.volume_step = delta / max(fade_samples, 1)
+
+    def apply_volume_to_chunk(self, chunk: np.ndarray) -> np.ndarray:
+        """Apply per-sample volume (with active fade) to a float32 chunk.
+
+        Returns a new float32 array. Updates current_volume and volume_step
+        in-place as the fade progresses.
+        """
+        with self._vol_lock:
+            cur = self.current_volume
+            step = self.volume_step
+            tgt = self.target_volume
+
+        n = len(chunk)
+        if step == 0.0:
+            result = (chunk * cur).astype(np.float32)
+        else:
+            steps = np.arange(n, dtype=np.float32)
+            vols = cur + step * steps
+            if step > 0:
+                vols = np.minimum(vols, tgt)
+            else:
+                vols = np.maximum(vols, tgt)
+            result = (chunk * vols).astype(np.float32)
+            new_cur = float(vols[-1])
+            new_step = 0.0 if new_cur == tgt else step
+            with self._vol_lock:
+                self.current_volume = new_cur
+                self.volume_step = new_step
+
+        return result
 
 
 class WinRTEngine(TTSEngine):
@@ -95,12 +148,64 @@ class WinRTEngine(TTSEngine):
 
         self._helper = get_helper()
 
-        # Build voice list from the static class-level all_voices property.
         self._voices: List[VoiceInfo] = self._build_voice_list()
 
-        # Track active utterances for cancel / is_speaking.
-        self._active: dict[str, _Utterance] = {}
+        # Active utterance tracking (all access under _active_lock).
+        self._active: dict = {}
         self._active_lock = threading.Lock()
+
+        # Persistent TTS OutputStream and its shared buffer.
+        # The buffer holds (float32_array, utterance_uid) tuples so cancel()
+        # can purge a specific utterance's queued audio.
+        self._tts_buffer: Deque[Tuple[np.ndarray, str]] = collections.deque()
+        self._tts_buffer_lock = threading.Lock()
+        self._tts_stream = None
+        self._using_persistent_stream = False
+        self._open_persistent_stream()
+
+    # ------------------------------------------------------------------
+    # Persistent stream management
+    # ------------------------------------------------------------------
+
+    def _open_persistent_stream(self) -> None:
+        """Open the persistent TTS OutputStream. Falls back gracefully."""
+        import sounddevice as sd
+        try:
+            self._tts_stream = sd.OutputStream(
+                samplerate=_TARGET_SR,
+                channels=1,
+                dtype='float32',
+                callback=self._tts_callback,
+                blocksize=_CHUNK_FRAMES,
+            )
+            self._tts_stream.start()
+            self._using_persistent_stream = True
+            logger.info("TTS persistent stream opened at %d Hz", _TARGET_SR)
+        except Exception as exc:
+            logger.warning(
+                "TTS persistent stream failed to open (%s). "
+                "Falling back to per-utterance ephemeral streams.", exc
+            )
+            self._tts_stream = None
+            self._using_persistent_stream = False
+
+    def _tts_callback(self, outdata, frames, time_info, status):
+        """Drain TTS buffer into the audio callback output. Called by PortAudio."""
+        with self._tts_buffer_lock:
+            output = np.zeros(frames, dtype=np.float32)
+            remaining = frames
+            offset = 0
+            while remaining > 0 and self._tts_buffer:
+                chunk, uid = self._tts_buffer[0]
+                take = min(len(chunk), remaining)
+                output[offset:offset + take] = chunk[:take]
+                if take < len(chunk):
+                    self._tts_buffer[0] = (chunk[take:], uid)
+                else:
+                    self._tts_buffer.popleft()
+                offset += take
+                remaining -= take
+        outdata[:, 0] = output
 
     # ------------------------------------------------------------------
     # TTSEngine interface
@@ -118,114 +223,128 @@ class WinRTEngine(TTSEngine):
         queue_mode: str = "append",
         on_done: Optional[Callable] = None,
     ) -> SpeechHandle:
-        """Synthesize text and play it asynchronously.
-
-        Returns a SpeechHandle immediately. Playback happens on a daemon
-        thread so the caller is never blocked.
-
-        Phase 1a: queue_mode values other than "append" degrade silently to
-        "append". category is accepted and stored but not acted on.
-        """
+        """Synthesize text and play it asynchronously. Returns immediately."""
         if queue_mode != "append":
-            logger.debug(
-                "queue_mode=%r not yet implemented; treating as 'append'", queue_mode
-            )
+            logger.debug("queue_mode=%r not implemented; treating as 'append'", queue_mode)
 
         uid = str(uuid.uuid4())
         handle = SpeechHandle(utterance_id=uid, _state="pending")
-        utterance = _Utterance(handle, on_done)
-        utterance.set_volume(volume)
+        utterance = _Utterance(handle, on_done, initial_volume=volume)
 
         with self._active_lock:
             self._active[uid] = utterance
 
         t = threading.Thread(
             target=self._playback_worker,
-            args=(utterance, text, voice_id, speed, pitch, volume),
+            args=(utterance, text, voice_id, speed, pitch),
             daemon=True,
             name=f"tts-{uid[:8]}",
         )
         utterance.thread = t
-        handle._state = "playing"
         t.start()
         return handle
 
     def cancel(self, handle: SpeechHandle) -> None:
-        """Signal a specific utterance to stop at the next chunk boundary."""
+        """Signal a specific utterance to stop. Purges buffered audio."""
         with self._active_lock:
             utterance = self._active.get(handle.utterance_id)
         if utterance:
             utterance.cancelled.set()
-            handle._state = "cancelled"
+            utterance.set_engine_state('cancelling')
+            # Purge this utterance's queued chunks from the persistent buffer.
+            uid = handle.utterance_id
+            with self._tts_buffer_lock:
+                self._tts_buffer = collections.deque(
+                    (chunk, u) for chunk, u in self._tts_buffer if u != uid
+                )
 
     def cancel_all(self) -> None:
-        """Signal all active utterances to stop."""
+        """Signal all active utterances to stop and clear the buffer."""
         with self._active_lock:
             utterances = list(self._active.values())
         for u in utterances:
             u.cancelled.set()
-            u.handle._state = "cancelled"
+            u.set_engine_state('cancelling')
+        with self._tts_buffer_lock:
+            self._tts_buffer.clear()
 
-    def set_volume(
-        self, handle: SpeechHandle, volume: float, fade_ms: int = 5
-    ) -> None:
-        """Adjust the playback volume for a live utterance.
-
-        Phase 1a: fade_ms is ignored; change is instantaneous.
-        """
+    def set_volume(self, handle: SpeechHandle, volume: float, fade_ms: int = 5) -> None:
+        """Adjust playback volume for a live utterance with linear fade."""
         with self._active_lock:
             utterance = self._active.get(handle.utterance_id)
         if utterance:
-            utterance.set_volume(volume)
+            utterance.set_volume_fade(volume, fade_ms)
 
     def is_speaking(self) -> bool:
-        """True if any playback thread is currently active."""
+        """True if any utterance is in synthesizing or playing state."""
         with self._active_lock:
             return bool(self._active)
 
+    def get_engine_state(self) -> str:
+        """Return 'idle', 'synthesizing', 'playing', or 'cancelling'."""
+        with self._active_lock:
+            if not self._active:
+                return 'idle'
+            states = [u.get_engine_state() for u in self._active.values()]
+        # Priority: synthesizing > playing > cancelling (most informative first)
+        if 'synthesizing' in states:
+            return 'synthesizing'
+        if 'playing' in states:
+            return 'playing'
+        if 'cancelling' in states:
+            return 'cancelling'
+        return 'idle'
+
     def list_voices(self) -> List[VoiceInfo]:
-        """Return the cached list of installed OneCore voices."""
         return list(self._voices)
 
     def shutdown(self) -> None:
-        """Cancel all utterances and join playback threads."""
+        """Cancel all utterances, join threads, close the persistent stream.
+
+        The WinRTHelper event loop is a process-level singleton and is NOT
+        shut down here. The helper lives for the lifetime of the process so
+        that multiple WinRTEngine instances can share it without the first
+        to shut down killing the shared loop.
+        """
         self.cancel_all()
         with self._active_lock:
             threads = [u.thread for u in self._active.values() if u.thread]
         for t in threads:
             t.join(timeout=1.0)
-        self._helper.shutdown()
+        if self._tts_stream is not None:
+            try:
+                self._tts_stream.abort()
+                self._tts_stream.close()
+            except Exception:
+                pass
+            self._tts_stream = None
 
     # ------------------------------------------------------------------
     # Internal helpers
     # ------------------------------------------------------------------
 
     def _build_voice_list(self) -> List[VoiceInfo]:
+        from winsdk.windows.media.speechsynthesis import VoiceGender as VG
         voices = []
         for v in self._SpeechSynthesizer.all_voices:
-            gender_val = getattr(v, "gender", None)
-            from winsdk.windows.media.speechsynthesis import VoiceGender as VG
+            gender_val = getattr(v, 'gender', None)
             if gender_val == VG.MALE:
-                gender = "male"
+                gender = 'male'
             elif gender_val == VG.FEMALE:
-                gender = "female"
+                gender = 'female'
             else:
-                gender = "unknown"
-            voices.append(
-                VoiceInfo(
-                    voice_id=v.id,
-                    display_name=v.display_name,
-                    language=v.language,
-                    gender=gender,
-                )
-            )
+                gender = 'unknown'
+            voices.append(VoiceInfo(
+                voice_id=v.id,
+                display_name=v.display_name,
+                language=v.language,
+                gender=gender,
+            ))
         return voices
 
     def _synthesize(self, text: str, voice_id: Optional[str], speed: float, pitch: float) -> bytes:
-        """Synthesize text → raw WAV bytes via WinRT (runs on calling thread)."""
+        """Synthesize text → WAV bytes via WinRT. Blocks until synthesis completes."""
         synth = self._SpeechSynthesizer()
-
-        # Set voice if specified; otherwise use the OS default.
         if voice_id:
             for v in self._SpeechSynthesizer.all_voices:
                 if v.id == voice_id:
@@ -233,15 +352,10 @@ class WinRTEngine(TTSEngine):
                     break
             else:
                 logger.warning("Voice id %r not found; using default", voice_id)
-
-        # Apply speed/pitch via WinRT options BEFORE synthesis (WinRT constraint).
         opts = synth.options
         opts.speaking_rate = max(0.5, min(6.0, speed))
         opts.audio_pitch = max(0.0, min(2.0, pitch))
 
-        # Run both async WinRT calls in one coroutine so they share the event-loop
-        # turn. Calling run_sync twice with nested WinRT objects causes the second
-        # call to receive an IAsyncOperation that can't be submitted a second time.
         async def _do_synthesis():
             stream = await synth.synthesize_text_to_stream_async(text)
             return await _read_stream_bytes(stream)
@@ -257,61 +371,89 @@ class WinRTEngine(TTSEngine):
         voice_id: Optional[str],
         speed: float,
         pitch: float,
-        volume: float,
     ):
-        """Daemon thread: synthesize + stream PCM to sounddevice."""
+        """Daemon thread: synthesize → decode → push PCM → signal completion."""
         uid = utterance.handle.utterance_id
         try:
-            # --- Synthesis ---
+            utterance.set_engine_state('synthesizing')
+
             raw_bytes = self._synthesize(text, voice_id, speed, pitch)
             if utterance.cancelled.is_set():
                 return
 
-            # --- Decode WAV ---
             pcm, sr, _ = parse_wav(raw_bytes)
             pcm = resample_pcm(pcm, sr, _TARGET_SR)
 
-            # Apply initial volume (further changes via set_volume() during playback)
-            pcm = pcm * utterance.get_volume()
+            if utterance.cancelled.is_set():
+                return
 
-            # --- Stream to sounddevice ---
-            self._stream_pcm(pcm, utterance)
+            utterance.set_engine_state('playing')
+
+            if self._using_persistent_stream:
+                self._push_chunks(pcm, utterance, uid)
+            else:
+                self._stream_pcm_ephemeral(pcm, utterance)
 
         except Exception as exc:
             logger.exception("TTS playback failed for utterance %s: %s", uid, exc)
-            utterance.handle._state = "failed"
+            utterance.set_engine_state('failed')
         finally:
             with self._active_lock:
                 self._active.pop(uid, None)
-            utterance.handle._state = utterance.handle._state if utterance.handle._state in ("cancelled", "failed") else "done"
+            if utterance.get_engine_state() not in ('cancelled', 'cancelling', 'failed'):
+                utterance.set_engine_state('done')
             if utterance.on_done and not utterance.cancelled.is_set():
                 try:
                     utterance.on_done()
                 except Exception:
                     logger.exception("on_done callback raised for utterance %s", uid)
 
-    def _stream_pcm(self, pcm: np.ndarray, utterance: _Utterance):
-        """Write PCM chunks to a sounddevice OutputStream.
+    def _push_chunks(self, pcm: np.ndarray, utterance: _Utterance, uid: str) -> None:
+        """Push PCM data into the persistent-stream buffer in chunk-sized pieces."""
+        offset = 0
+        total = len(pcm)
+        while offset < total:
+            if utterance.cancelled.is_set():
+                with self._tts_buffer_lock:
+                    self._tts_buffer = collections.deque(
+                        (c, u) for c, u in self._tts_buffer if u != uid
+                    )
+                break
+            end = min(offset + _CHUNK_FRAMES, total)
+            raw_chunk = pcm[offset:end]
+            scaled = utterance.apply_volume_to_chunk(raw_chunk)
+            with self._tts_buffer_lock:
+                self._tts_buffer.append((scaled, uid))
+            offset = end
 
-        Opens an ephemeral stream per utterance (Phase 1a). A persistent
-        TTS stream shared across utterances comes in Phase 1b with the
-        AudioCoordinator.
-        """
+        # Wait for buffer to drain so on_done fires AFTER the audio plays.
+        # Poll at 10ms intervals; bail early on cancel.
+        if not utterance.cancelled.is_set():
+            while True:
+                with self._tts_buffer_lock:
+                    remaining = sum(len(c) for c, u in self._tts_buffer if u == uid)
+                if remaining == 0:
+                    break
+                if utterance.cancelled.is_set():
+                    break
+                import time
+                time.sleep(0.01)
+
+    def _stream_pcm_ephemeral(self, pcm: np.ndarray, utterance: _Utterance) -> None:
+        """Fallback: open a per-utterance OutputStream and write chunks directly."""
         import sounddevice as sd
-
         try:
             stream = sd.OutputStream(
                 samplerate=_TARGET_SR,
                 channels=1,
-                dtype="float32",
+                dtype='float32',
                 blocksize=_CHUNK_FRAMES,
             )
         except sd.PortAudioError as exc:
             logger.error(
-                "TTS stream unavailable: another process may have exclusive "
-                "audio access. (%s)", exc
+                "TTS stream unavailable (exclusive audio access?): %s", exc
             )
-            utterance.handle._state = "failed"
+            utterance.set_engine_state('failed')
             return
 
         with stream:
@@ -322,8 +464,6 @@ class WinRTEngine(TTSEngine):
                 if utterance.cancelled.is_set():
                     break
                 end = min(offset + _CHUNK_FRAMES, total)
-                chunk = pcm[offset:end].reshape(-1, 1)
-                # Re-apply live volume so set_volume() during playback works.
-                chunk = chunk * utterance.get_volume()
-                stream.write(chunk)
+                chunk = utterance.apply_volume_to_chunk(pcm[offset:end])
+                stream.write(chunk.reshape(-1, 1))
                 offset = end
