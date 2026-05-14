@@ -125,7 +125,7 @@ class HistoryFrame(ctk.CTkFrame):
         ctk.CTkLabel(
             self,
             text="Click an entry to copy. Right-click for more options. "
-                 "Double-click to expand detail.",
+                 "Double-click to edit.",
             text_color="gray", wraplength=600,
         ).pack(anchor='w', pady=(0, 12))
 
@@ -653,14 +653,14 @@ class HistoryFrame(ctk.CTkFrame):
             pass
 
         # --- Event bindings ---
-        # single click = copy; double click = expand; right click = context menu
+        # single click = copy; double click = expand + edit; right click = context menu
         clickable = [card_outer, card_inner, content, top, meta, text_label,
                      left_bar, sdot, cdot]
         for w in clickable:
             w.bind('<Button-1>',
                    lambda _e, r=row: self._copy_row_quick(r))
             w.bind('<Double-1>',
-                   lambda _e, rid=row_id: self._toggle_expand(rid))
+                   lambda _e, r=row: self._double_click_edit(r))
             w.bind('<Button-3>',
                    lambda e, r=row: self._show_context_menu(e, r))
 
@@ -818,7 +818,20 @@ class HistoryFrame(ctk.CTkFrame):
 
     # ---- Inline correction -----------------------------------------------
 
-    _EDIT_BG = '#3a3a3a'   # text widget background while editable
+    # ---- Double-click edit -------------------------------------------------
+
+    def _double_click_edit(self, row):
+        """Double-click: expand the card AND enter correction mode immediately."""
+        row_id = row['id']
+        # Expand if not already expanded
+        if self._expanded_id != row_id:
+            self._toggle_expand(row_id)
+        # Enter correction mode (will retry after 80ms if widget isn't built yet)
+        self._start_inline_correction(row)
+
+    # ---- Inline correction -----------------------------------------------
+
+    _EDIT_BG = '#4a3a2a'   # text widget background while editable (warm tint to clearly signal edit mode)
     _READ_BG = '#2b2b2b'   # text widget background when read-only
 
     def _start_inline_correction(self, row, _retry=False):
@@ -848,6 +861,7 @@ class HistoryFrame(ctk.CTkFrame):
             text_widget.focus_set()
             text_widget.tag_add('sel', '1.0', 'end-1c')
             text_widget.mark_set('insert', 'end-1c')
+            print(f"[HISTORY] Correction mode ACTIVE for row {row_id} — text widget is now editable")
         except Exception as e:
             logger.error("Could not enable text widget for editing: %s", e)
             return
