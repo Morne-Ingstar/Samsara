@@ -1,4 +1,4 @@
-# ![](logo.png) Samsara
+# Samsara
 
 ### Voice-Controlled Computing for Accessibility
 
@@ -7,6 +7,8 @@
 > **The new Samsara site is live: [morneis.com/samsara](https://morneis.com/samsara)**
 >
 > Demo reel, screenshots, philosophy, accessibility framing, downloads, and roadmap — all over there. The README from here down is technical.
+
+**Recent updates:** Local text-to-speech with smart audio ducking, persistent dictation history with search and session grouping, voice-driven window management across monitors, agent webhook bridge with tiered consent, per-app command packs, and continuous command mode.
 
 > *"Jarvis, open Chrome."*
 >
