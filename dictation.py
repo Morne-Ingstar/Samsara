@@ -124,7 +124,7 @@ import sounddevice as sd
 from pynput import keyboard as pynput_keyboard
 from pynput.keyboard import Key, Controller as KeyboardController
 import keyboard  # For reliable simultaneous key state detection
-from pynput.mouse import Button, Controller as MouseController
+from pynput.mouse import Button, Controller as MouseController, Listener as MouseListener
 import pyperclip
 import pyautogui
 from faster_whisper import WhisperModel
@@ -478,6 +478,12 @@ class CommandExecutor:
         if entry is None:
             return text, False
 
+        # Command mode debounce: suppress rapid re-execution of media/destructive cmds
+        in_cmd_mode = getattr(app_instance, 'command_mode_active', False)
+        if in_cmd_mode and self._matcher.should_suppress(entry):
+            print(f"[CMD] Debounce: '{entry.phrase}' still in cooldown")
+            return entry.phrase, False
+
         if entry.source == 'plugin':
             print(f"[PLUGIN] Executing: {entry.phrase}")
             try:
@@ -485,11 +491,15 @@ class CommandExecutor:
             except Exception as e:
                 print(f"[ERROR] Plugin '{entry.phrase}' failed: {e}")
                 success = False
+            if success:
+                self._matcher.record_execution(entry)
             return entry.phrase, success
 
         # All built-in types route through execute_command -> handler registry.
         # app_instance is forwarded so MethodHandler can dispatch type=method.
         success = self.execute_command(entry.phrase, app_instance=app_instance)
+        if success:
+            self._matcher.record_execution(entry)
         return entry.phrase, success
 
 
@@ -605,6 +615,13 @@ class DictationApp:
         commands_path = Path(__file__).parent / "commands.json"
         self.command_executor = CommandExecutor(commands_path, app=self)
         self.command_mode_enabled = self.config.get('command_mode_enabled', True)
+
+        # Mouse 4 command mode (walkie-talkie hold-to-talk)
+        self.command_mode_active = False
+        self._command_mode_lock = threading.Lock()
+        self._command_mode_miss_count = 0
+        self._command_mode_inactivity_timer = None
+        self._mouse_listener = None
 
         # Wake-word trace hook — the debug window registers a callback here
         # when open so the main pipeline's decisions show up in its trace view.
@@ -811,6 +828,9 @@ class DictationApp:
         )
         self.keyboard_listener.start()
 
+        # Mouse listener for Mouse 4 command mode (hold-to-talk / toggle)
+        self._install_mouse_listener()
+
         # Install the CapsLock hook used by streaming-mode dictation.
         # suppress=True means the OS never sees CapsLock while Samsara is
         # running -- it does not toggle the caps state, and the keyboard
@@ -1010,6 +1030,17 @@ class DictationApp:
                 "speaking_vad_threshold_multiplier": 0.6,
                 "thinking_pulse_interval_ms": 1000,
                 "thinking_pulse_enabled": False,
+            },
+            # Mouse 4 walkie-talkie command mode
+            "command_mode": {
+                "enabled": False,           # opt-in; enable to use Mouse 4
+                "mode": "hold",             # "hold" (hold to talk) or "toggle"
+                "button": "mouse4",         # "mouse4" (XButton1) or "mouse5" (XButton2)
+                "enter_debounce_ms": 200,   # delay before playing enter earcon
+                "exit_earcon": True,        # play stop earcon on release/exit
+                "miss_limit": 5,            # toggle: exit after N unmatched recordings
+                "inactivity_timeout_s": 30, # toggle: exit after N seconds silence
+                "tts_char_limit": 50,       # suppress TTS responses longer than this
             },
             # Web shortcuts for "go to X" voice commands. Keys are spoken
             # aliases; values are target URLs. Users add their own by editing
@@ -1983,6 +2014,111 @@ class DictationApp:
             self.stop_recording()
         except Exception as e:
             print(f"[CAPSLOCK] stop failed: {e}")
+
+    # ---- Mouse 4 command mode (walkie-talkie hold-to-talk) ----------------
+
+    def _install_mouse_listener(self):
+        """Start the pynput mouse listener for Mouse 4 command mode."""
+        try:
+            self._mouse_listener = MouseListener(on_click=self._on_mouse_button)
+            self._mouse_listener.start()
+            print("[CMD MODE] Mouse listener started")
+        except Exception as e:
+            print(f"[CMD MODE] Mouse listener failed to start: {e}")
+            self._mouse_listener = None
+
+    def _on_mouse_button(self, x, y, button, pressed):
+        """pynput mouse callback — routes Mouse 4/5 to command mode state machine."""
+        cfg = self.config.get('command_mode', {})
+        if not cfg.get('enabled', False):
+            return
+        btn_name = cfg.get('button', 'mouse4')
+        target = Button.x1 if btn_name == 'mouse4' else Button.x2
+        if button != target:
+            return
+        mode = cfg.get('mode', 'hold')
+        if mode == 'hold':
+            if pressed:
+                self.enter_command_mode()
+            else:
+                self.exit_command_mode()
+        else:  # toggle
+            if pressed:
+                if self.command_mode_active:
+                    self.exit_command_mode()
+                else:
+                    self.enter_command_mode()
+
+    def enter_command_mode(self):
+        """Enter command mode (idempotent). Safe to call from any thread."""
+        with self._command_mode_lock:
+            if self.command_mode_active:
+                return
+            self.command_mode_active = True
+        self._command_mode_miss_count = 0
+        print("[CMD MODE] Entering command mode")
+        if hasattr(self, 'listening_indicator'):
+            self._schedule_ui(self.listening_indicator.set_command_mode, True)
+        cfg = self.config.get('command_mode', {})
+        if cfg.get('mode', 'hold') == 'toggle':
+            timeout_s = cfg.get('inactivity_timeout_s', 30)
+            self._reset_command_mode_inactivity_timer(timeout_s)
+        threading.Thread(target=self._do_enter_command_mode, daemon=True,
+                         name='cmd-mode-enter').start()
+
+    def _do_enter_command_mode(self):
+        """Worker thread: starts recording and fires debounced earcon."""
+        if self.recording:
+            return
+        self.command_mode_recording = True
+        self.start_recording(streaming=False, play_earcon=False)
+        # 200ms debounce: skip earcon for accidental quick taps
+        debounce_ms = self.config.get('command_mode', {}).get('enter_debounce_ms', 200)
+        time.sleep(debounce_ms / 1000.0)
+        if self.command_mode_active:
+            self.play_sound('start', use_winsound=True)
+
+    def exit_command_mode(self):
+        """Exit command mode (idempotent). Safe to call from any thread."""
+        with self._command_mode_lock:
+            if not self.command_mode_active:
+                return
+            self.command_mode_active = False
+        print("[CMD MODE] Exiting command mode")
+        self._cancel_command_mode_inactivity_timer()
+        if hasattr(self, 'listening_indicator'):
+            self._schedule_ui(self.listening_indicator.set_command_mode, False)
+        if self.recording:
+            self.stop_recording()
+        cfg = self.config.get('command_mode', {})
+        if cfg.get('exit_earcon', True):
+            self.play_sound('stop')
+
+    def _reset_command_mode_inactivity_timer(self, timeout_s):
+        self._cancel_command_mode_inactivity_timer()
+        t = threading.Timer(timeout_s, self._on_command_mode_inactivity)
+        t.daemon = True
+        self._command_mode_inactivity_timer = t
+        t.start()
+
+    def _cancel_command_mode_inactivity_timer(self):
+        t = self._command_mode_inactivity_timer
+        if t is not None:
+            t.cancel()
+            self._command_mode_inactivity_timer = None
+
+    def _on_command_mode_inactivity(self):
+        print("[CMD MODE] Inactivity timeout — exiting command mode")
+        self.exit_command_mode()
+
+    def _rearm_command_recording(self):
+        """Re-start recording for the next command in toggle mode."""
+        time.sleep(0.1)
+        if self.command_mode_active and not self.recording:
+            self.command_mode_recording = True
+            self.start_recording(streaming=False, play_earcon=False)
+
+    # -----------------------------------------------------------------------
 
     def toggle_continuous_mode(self):
         """Toggle continuous listening mode"""
@@ -3946,13 +4082,15 @@ class DictationApp:
             if self._stream_dead:
                 print("[AUDIO] Failed to reconnect after max retries")
 
-    def start_recording(self, streaming=None):
+    def start_recording(self, streaming=None, play_earcon=True):
         """Start recording audio.
 
         streaming overrides:
           None  -- decide from config (legacy callers).
           False -- force batch mode (Ctrl+Shift hotkey path).
           True  -- force streaming (CapsLock hotkey path).
+        play_earcon: play the "start" sound and brief wait (skip for command mode
+          which manages its own debounced earcon).
         """
         if not self.model_loaded:
             if self.loading_model:
@@ -3981,9 +4119,11 @@ class DictationApp:
         # leading to duplicated words (especially on quick stops).
         self._stop_prebuffer_stream()
 
-        # Play start sound using winsound on Windows to avoid InputStream conflict
-        self.play_sound("start", use_winsound=True)
-        time.sleep(0.15)  # Brief pause for sound to start
+        # Play start sound using winsound on Windows to avoid InputStream conflict.
+        # Skipped for command mode which manages its own debounced 200ms earcon.
+        if play_earcon:
+            self.play_sound("start", use_winsound=True)
+            time.sleep(0.15)  # Brief pause for sound to start
 
         if streaming:
             self.audio_data = []
@@ -4113,11 +4253,21 @@ class DictationApp:
                 # Apply corrections dictionary
                 text = self.voice_training_window.apply_corrections(text)
                 
-                # Check if we're in command-only mode (from command hotkey)
+                # Check if we're in command-only mode (from command hotkey or Mouse 4)
                 is_command_mode = self.command_mode_recording
                 self.command_mode_recording = False  # Reset flag
-                
+
                 if text:
+                    text_lower = text.lower().strip()
+
+                    # Voice exit from Mouse 4 command mode
+                    if is_command_mode and any(
+                        p in text_lower for p in ["exit command mode", "stop listening"]
+                    ):
+                        print(f"[CMD MODE] Voice exit: '{text_lower}'")
+                        self.exit_command_mode()
+                        return
+
                     # Check for command mode toggle OR regular commands
                     result, was_command = self.command_executor.process_text(text, self)
 
@@ -4132,12 +4282,35 @@ class DictationApp:
                             entry_type="command",
                             matched_command=str(result) if result else None,
                         )
+                        # Toggle mode: reset miss count, refresh inactivity, re-arm
+                        if is_command_mode and self.command_mode_active:
+                            self._command_mode_miss_count = 0
+                            cm_cfg = self.config.get('command_mode', {})
+                            if cm_cfg.get('mode', 'hold') == 'toggle':
+                                timeout_s = cm_cfg.get('inactivity_timeout_s', 30)
+                                self._reset_command_mode_inactivity_timer(timeout_s)
+                                threading.Thread(
+                                    target=self._rearm_command_recording,
+                                    daemon=True).start()
                         return
 
                     # Not a command
                     if is_command_mode:
                         # In command-only mode, don't output text if no command matched
                         print(f"[CMD] No command matched: '{text}'")
+                        # Toggle mode: count miss and maybe exit
+                        if self.command_mode_active:
+                            self._command_mode_miss_count += 1
+                            cm_cfg = self.config.get('command_mode', {})
+                            miss_limit = cm_cfg.get('miss_limit', 5)
+                            if (cm_cfg.get('mode', 'hold') == 'toggle'
+                                    and self._command_mode_miss_count >= miss_limit):
+                                print(f"[CMD MODE] Miss limit ({miss_limit}) reached")
+                                self.exit_command_mode()
+                            elif cm_cfg.get('mode', 'hold') == 'toggle':
+                                threading.Thread(
+                                    target=self._rearm_command_recording,
+                                    daemon=True).start()
                         return
 
                     # Regular dictation mode - proceed with text output
@@ -5106,6 +5279,13 @@ class DictationApp:
         try:
             self.keyboard_listener.stop()
         except:
+            pass
+
+        # Stop mouse listener (Mouse 4 command mode)
+        try:
+            if getattr(self, '_mouse_listener', None) is not None:
+                self._mouse_listener.stop()
+        except Exception:
             pass
 
         # Release the CapsLock hook so the OS resumes normal toggle behavior

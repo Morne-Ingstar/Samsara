@@ -128,6 +128,17 @@ class AudioCoordinator:
 
         Plugins and subsystems should call this instead of engine.speak().
         """
+        # Suppress long TTS responses while command mode is active so the
+        # assistant doesn't talk over the user's next command.
+        if getattr(self.app, 'command_mode_active', False):
+            char_limit = self.app.config.get('command_mode', {}).get('tts_char_limit', 50)
+            if len(text) > char_limit:
+                logger.info(
+                    "AudioCoordinator: TTS suppressed (%d chars > %d) in command mode",
+                    len(text), char_limit,
+                )
+                return SpeechHandle(utterance_id='noop-cmd-mode')
+
         tts_cfg = self.app.config.get('tts', {})
         effective_speed = speed if speed is not None else tts_cfg.get('speed', 1.0)
         effective_volume = volume if volume is not None else tts_cfg.get('volume', 0.8)
