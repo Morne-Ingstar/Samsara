@@ -87,6 +87,9 @@ class HistoryFrame(ctk.CTkFrame):
         # Per-card widget references for inline correction
         self._card_text_labels = {}       # row_id -> text preview CTkLabel
         self._card_top_frames = {}        # row_id -> top CTkFrame (holds the label)
+        self._card_text_widgets = {}      # row_id -> tk.Text in expanded body
+        self._card_correct_buttons = {}   # row_id -> "Correct/Save" CTkButton
+        self._card_cancel_buttons = {}    # row_id -> "Cancel" CTkButton (hidden when idle)
 
         self._build_ui()
         self._reload(force=True)
@@ -275,6 +278,9 @@ class HistoryFrame(ctk.CTkFrame):
         self._card_content = {}
         self._card_text_labels = {}
         self._card_top_frames = {}
+        self._card_text_widgets = {}
+        self._card_correct_buttons = {}
+        self._card_cancel_buttons = {}
         self._session_cards = {}
         self._session_headers = {}
         self._render_session_id = None
@@ -671,6 +677,10 @@ class HistoryFrame(ctk.CTkFrame):
             content = self._card_content.get(rid)
             if row is None or content is None:
                 continue
+            # Clear expanded body refs before destroying widgets
+            self._card_text_widgets.pop(rid, None)
+            self._card_correct_buttons.pop(rid, None)
+            self._card_cancel_buttons.pop(rid, None)
             self._strip_expanded_body(content)
             if rid == self._expanded_id:
                 self._build_expanded_body(content, row)
@@ -716,6 +726,8 @@ class HistoryFrame(ctk.CTkFrame):
         text_widget.insert('1.0', full_text)
         text_widget.configure(state='disabled')
         text_widget.pack(fill='x')
+        # Store so _start_inline_correction() can find and enable it
+        self._card_text_widgets[row['id']] = text_widget
 
         actions = ctk.CTkFrame(body, fg_color="transparent")
         actions.pack(fill='x', pady=(8, 0))
@@ -739,11 +751,21 @@ class HistoryFrame(ctk.CTkFrame):
                 fg_color="gray40",
                 command=lambda r=row: self._retry_row(r),
             ).pack(side='left', padx=(8, 0))
-        ctk.CTkButton(
+
+        correct_btn = ctk.CTkButton(
             actions, text="Correct", width=80, height=28,
             fg_color="gray40",
             command=lambda r=row: self._start_inline_correction(r),
-        ).pack(side='left', padx=(8, 0))
+        )
+        correct_btn.pack(side='left', padx=(8, 0))
+        self._card_correct_buttons[row['id']] = correct_btn
+
+        # Cancel button: created now but not packed. Shown only during edit mode.
+        cancel_btn = ctk.CTkButton(
+            actions, text="Cancel", width=80, height=28,
+            fg_color="#7a4a2a", hover_color="#9a5a30",
+        )
+        self._card_cancel_buttons[row['id']] = cancel_btn
 
     # ---- Actions ---------------------------------------------------------
 
@@ -796,57 +818,91 @@ class HistoryFrame(ctk.CTkFrame):
 
     # ---- Inline correction -----------------------------------------------
 
-    def _start_inline_correction(self, row):
-        """Replace the text preview label with an editable entry widget."""
+    _EDIT_BG = '#3a3a3a'   # text widget background while editable
+    _READ_BG = '#2b2b2b'   # text widget background when read-only
+
+    def _start_inline_correction(self, row, _retry=False):
+        """Enter inline edit mode on the expanded body's tk.Text widget.
+
+        If the card is not yet expanded, expand it first then schedule a
+        second call so the expanded body has time to be created.
+        """
         row_id = row['id']
-        text_label = self._card_text_labels.get(row_id)
-        top_frame = self._card_top_frames.get(row_id)
-        if text_label is None or top_frame is None:
+        text_widget = self._card_text_widgets.get(row_id)
+
+        if text_widget is None:
+            if _retry:
+                logger.warning("No text widget for row %s after expand", row_id)
+                return
+            # Card not expanded — expand it, then retry after Tk renders it
+            if self._expanded_id != row_id:
+                self._toggle_expand(row_id)
+            self.after(80, lambda: self._start_inline_correction(row, _retry=True))
             return
 
         original = (row['display_text'] or row['raw_text'] or "").strip()
+
+        # Enable editing: make writable and visually distinct
         try:
-            text_label.pack_forget()
-        except Exception:
+            text_widget.configure(state='normal', bg=self._EDIT_BG)
+            text_widget.focus_set()
+            text_widget.tag_add('sel', '1.0', 'end-1c')
+            text_widget.mark_set('insert', 'end-1c')
+        except Exception as e:
+            logger.error("Could not enable text widget for editing: %s", e)
             return
 
-        entry = ctk.CTkEntry(top_frame, height=28)
-        entry.pack(side='left', fill='x', expand=True)
-        entry.insert(0, original)
-        entry.select_range(0, 'end')
-        entry.focus_set()
+        # Swap "Correct" → "Save" and wire up "Cancel"
+        correct_btn = self._card_correct_buttons.get(row_id)
+        if correct_btn:
+            correct_btn.configure(
+                text="Save",
+                command=lambda: self._confirm_correction(row, text_widget, original))
 
-        entry.bind('<Return>',
-                   lambda _e: self._confirm_correction(
-                       row, entry, text_label, original))
-        entry.bind('<Escape>',
-                   lambda _e: self._cancel_correction(entry, text_label))
+        cancel_btn = self._card_cancel_buttons.get(row_id)
+        if cancel_btn:
+            cancel_btn.configure(
+                command=lambda: self._cancel_correction(row, text_widget, original))
+            cancel_btn.pack(side='left', padx=(8, 0))
 
-    def _confirm_correction(self, row, entry_widget, text_label, original):
-        corrected = entry_widget.get().strip()
+        # Keyboard shortcuts on the text widget
+        def _on_return(event):
+            self._confirm_correction(row, text_widget, original)
+            return 'break'   # prevent newline insertion
+
+        text_widget.bind('<Return>', _on_return)
+        text_widget.bind('<Escape>',
+                         lambda _e: self._cancel_correction(row, text_widget, original))
+
+    def _confirm_correction(self, row, text_widget, original):
+        """Read the edited text, restore the widget to read-only, and save."""
+        row_id = row['id']
         try:
-            entry_widget.destroy()
+            corrected = text_widget.get('1.0', 'end-1c').strip()
         except Exception:
-            pass
-        # Restore preview label with updated text
-        preview = self._truncate(corrected) if corrected else "(empty)"
-        try:
-            text_label.configure(text=preview)
-            text_label.pack(side='left', fill='x', expand=True)
-        except Exception:
-            pass
+            corrected = original
+
+        self._exit_edit_mode(row_id, text_widget, corrected or original)
 
         if not corrected:
             return
 
-        # Copy corrected text to clipboard
+        # Update the header preview label to show corrected text
+        text_label = self._card_text_labels.get(row_id)
+        if text_label:
+            try:
+                text_label.configure(text=self._truncate(corrected))
+            except Exception:
+                pass
+
+        # Copy to clipboard
         try:
             import pyperclip
             pyperclip.copy(corrected)
         except Exception:
             pass
 
-        # Offer to add to corrections dictionary if text changed
+        # Offer to save mapping to corrections dictionary
         if corrected.strip().lower() != original.strip().lower() and original:
             try:
                 if messagebox.askyesno(
@@ -860,15 +916,37 @@ class HistoryFrame(ctk.CTkFrame):
 
         self._set_status_timed("Correction applied. Text copied to clipboard.")
 
-    def _cancel_correction(self, entry_widget, text_label):
+    def _cancel_correction(self, row, text_widget, original):
+        """Restore the original text and exit edit mode without saving."""
+        row_id = row['id']
+        self._exit_edit_mode(row_id, text_widget, original)
+
+    def _exit_edit_mode(self, row_id, text_widget, display_text):
+        """Shared cleanup: restore read-only state, hide Cancel, restore button."""
         try:
-            entry_widget.destroy()
+            text_widget.configure(state='normal')
+            text_widget.delete('1.0', 'end')
+            text_widget.insert('1.0', display_text)
+            text_widget.configure(state='disabled', bg=self._READ_BG)
+            text_widget.unbind('<Return>')
+            text_widget.unbind('<Escape>')
         except Exception:
             pass
-        try:
-            text_label.pack(side='left', fill='x', expand=True)
-        except Exception:
-            pass
+
+        correct_btn = self._card_correct_buttons.get(row_id)
+        if correct_btn:
+            row = next((r for r in self._rows if r['id'] == row_id), None)
+            if row is not None:
+                correct_btn.configure(
+                    text="Correct",
+                    command=lambda r=row: self._start_inline_correction(r))
+
+        cancel_btn = self._card_cancel_buttons.get(row_id)
+        if cancel_btn:
+            try:
+                cancel_btn.pack_forget()
+            except Exception:
+                pass
 
     def _add_to_corrections(self, original, corrected):
         try:
@@ -908,6 +986,9 @@ class HistoryFrame(ctk.CTkFrame):
         self._card_content.pop(row_id, None)
         self._card_text_labels.pop(row_id, None)
         self._card_top_frames.pop(row_id, None)
+        self._card_text_widgets.pop(row_id, None)
+        self._card_correct_buttons.pop(row_id, None)
+        self._card_cancel_buttons.pop(row_id, None)
         if card is not None:
             try:
                 card.destroy()
