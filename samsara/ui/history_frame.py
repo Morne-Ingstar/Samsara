@@ -81,7 +81,12 @@ class HistoryFrame(ctk.CTkFrame):
         self._collapsed_sessions = set()  # sessions hidden by user
         self._user_expanded = set()       # sessions explicitly expanded by user
         self._session_cards = {}          # session_id -> [card_outer, ...]
-        self._session_headers = {}        # session_id -> (header_frame, chevron_label)
+        self._session_headers = {}        # session_id -> (header_frame, chevron_lbl, count_lbl)
+        self._session_entry_counts = {}   # session_id -> total entry count from _rows
+
+        # Per-card widget references for inline correction
+        self._card_text_labels = {}       # row_id -> text preview CTkLabel
+        self._card_top_frames = {}        # row_id -> top CTkFrame (holds the label)
 
         self._build_ui()
         self._reload(force=True)
@@ -268,18 +273,32 @@ class HistoryFrame(ctk.CTkFrame):
             child.destroy()
         self._card_widgets = {}
         self._card_content = {}
+        self._card_text_labels = {}
+        self._card_top_frames = {}
         self._session_cards = {}
         self._session_headers = {}
         self._render_session_id = None
 
-        # Collapse non-current sessions by default; respect user_expanded
-        current_sid = self._current_session_id or ''
+        # Pre-compute entry counts per session (for collapsed header labels)
+        self._session_entry_counts = {}
         for row in rows:
-            sid = row['session_id'] if 'session_id' in row.keys() else ''
-            if sid and sid != current_sid and sid not in self._user_expanded:
-                self._collapsed_sessions.add(sid)
-            elif sid in self._user_expanded:
-                self._collapsed_sessions.discard(sid)
+            sid = self._row_session_id(row)
+            if sid:
+                self._session_entry_counts[sid] = (
+                    self._session_entry_counts.get(sid, 0) + 1)
+
+        # When a search query is active, expand all sessions so matches are visible.
+        # Otherwise collapse non-current sessions by default, respecting user_expanded.
+        if bool(self._query):
+            self._collapsed_sessions.clear()
+        else:
+            current_sid = self._current_session_id or ''
+            for row in rows:
+                sid = row['session_id'] if 'session_id' in row.keys() else ''
+                if sid and sid != current_sid and sid not in self._user_expanded:
+                    self._collapsed_sessions.add(sid)
+                elif sid in self._user_expanded:
+                    self._collapsed_sessions.discard(sid)
 
         self._render_more()
         self._top_row_id = self._rows[0]['id'] if self._rows else None
@@ -358,9 +377,14 @@ class HistoryFrame(ctk.CTkFrame):
         total = len(self._rows)
         shown = self._visible_count
         if total == 0:
+            if self._query:
+                self._set_status(f"No matches for '{self._query}'")
             return
         suffix = " (scroll for more)" if (shown < total or self._has_more_in_db) else ""
-        self._set_status(f"Showing {shown} entries{suffix}")
+        if self._query:
+            self._set_status(f"{total} results for '{self._query}'{suffix}")
+        else:
+            self._set_status(f"Showing {shown} entries{suffix}")
 
     def _set_status(self, text):
         if self._alive:
@@ -391,6 +415,8 @@ class HistoryFrame(ctk.CTkFrame):
         is_collapsed = session_id in self._collapsed_sessions
         label_text = self._format_session_label(timestamp_iso, is_current)
         chevron = "v" if not is_collapsed else ">"
+        count = self._session_entry_counts.get(session_id, 0)
+        count_text = f"  ({count} entries)" if is_collapsed and count else ""
 
         header = ctk.CTkFrame(
             self._list,
@@ -412,13 +438,18 @@ class HistoryFrame(ctk.CTkFrame):
             font=ctk.CTkFont(size=11, weight="bold"),
             text_color="#88bbff" if is_current else "gray60",
         ).pack(side='left', pady=4)
+        count_lbl = ctk.CTkLabel(
+            header, text=count_text,
+            font=ctk.CTkFont(size=10), text_color="gray50",
+        )
+        count_lbl.pack(side='left', pady=4)
 
-        for w in (header, chevron_lbl):
+        for w in (header, chevron_lbl, count_lbl):
             w.bind('<Button-1>',
-                   lambda _e, sid=session_id, cl=chevron_lbl:
-                   self._toggle_session(sid, cl))
+                   lambda _e, sid=session_id, cl=chevron_lbl, cnl=count_lbl:
+                   self._toggle_session(sid, cl, cnl))
 
-        self._session_headers[session_id] = (header, chevron_lbl)
+        self._session_headers[session_id] = (header, chevron_lbl, count_lbl)
 
     @staticmethod
     def _format_session_label(timestamp_iso, is_current):
@@ -437,7 +468,7 @@ class HistoryFrame(ctk.CTkFrame):
             when = timestamp_iso or "unknown"
         return f"{prefix}: {when}"
 
-    def _toggle_session(self, session_id, chevron_label):
+    def _toggle_session(self, session_id, chevron_label, count_label=None):
         if session_id in self._collapsed_sessions:
             self._user_expanded.add(session_id)
             self._collapsed_sessions.discard(session_id)
@@ -455,6 +486,13 @@ class HistoryFrame(ctk.CTkFrame):
                 chevron_label.configure(text=">")
             except Exception:
                 pass
+            if count_label is not None:
+                count = self._session_entry_counts.get(session_id, 0)
+                try:
+                    count_label.configure(
+                        text=f"  ({count} entries)" if count else "")
+                except Exception:
+                    pass
 
     # ---- Card rendering --------------------------------------------------
 
@@ -514,8 +552,8 @@ class HistoryFrame(ctk.CTkFrame):
             self._render_session_id = session_id
             self._session_cards.setdefault(session_id, [])
 
-        # Skip card body for collapsed sessions
-        if session_id in self._collapsed_sessions:
+        # Skip card body for collapsed sessions (but not while searching)
+        if session_id in self._collapsed_sessions and not self._query:
             return
 
         row_id = row['id']
@@ -583,6 +621,8 @@ class HistoryFrame(ctk.CTkFrame):
             preview = "(no speech detected)"
         text_label = ctk.CTkLabel(top, text=preview, anchor='w', justify='left')
         text_label.pack(side='left', fill='x', expand=True)
+        self._card_text_labels[row_id] = text_label
+        self._card_top_frames[row_id] = top
 
         if row['duration_ms']:
             ctk.CTkLabel(
@@ -699,6 +739,11 @@ class HistoryFrame(ctk.CTkFrame):
                 fg_color="gray40",
                 command=lambda r=row: self._retry_row(r),
             ).pack(side='left', padx=(8, 0))
+        ctk.CTkButton(
+            actions, text="Correct", width=80, height=28,
+            fg_color="gray40",
+            command=lambda r=row: self._start_inline_correction(r),
+        ).pack(side='left', padx=(8, 0))
 
     # ---- Actions ---------------------------------------------------------
 
@@ -723,6 +768,8 @@ class HistoryFrame(ctk.CTkFrame):
             menu.add_command(label="Retry", command=lambda: self._retry_row(row))
         else:
             menu.add_command(label="Retry", state='disabled')
+        menu.add_command(label="Correct...",
+                         command=lambda: self._start_inline_correction(row))
         menu.add_separator()
         menu.add_command(label="Delete", command=lambda: self._delete(row['id']))
         try:
@@ -746,6 +793,92 @@ class HistoryFrame(ctk.CTkFrame):
         except Exception as e:
             logger.error("Retry failed: %s", e)
             self._set_status(f"Retry failed: {e}")
+
+    # ---- Inline correction -----------------------------------------------
+
+    def _start_inline_correction(self, row):
+        """Replace the text preview label with an editable entry widget."""
+        row_id = row['id']
+        text_label = self._card_text_labels.get(row_id)
+        top_frame = self._card_top_frames.get(row_id)
+        if text_label is None or top_frame is None:
+            return
+
+        original = (row['display_text'] or row['raw_text'] or "").strip()
+        try:
+            text_label.pack_forget()
+        except Exception:
+            return
+
+        entry = ctk.CTkEntry(top_frame, height=28)
+        entry.pack(side='left', fill='x', expand=True)
+        entry.insert(0, original)
+        entry.select_range(0, 'end')
+        entry.focus_set()
+
+        entry.bind('<Return>',
+                   lambda _e: self._confirm_correction(
+                       row, entry, text_label, original))
+        entry.bind('<Escape>',
+                   lambda _e: self._cancel_correction(entry, text_label))
+
+    def _confirm_correction(self, row, entry_widget, text_label, original):
+        corrected = entry_widget.get().strip()
+        try:
+            entry_widget.destroy()
+        except Exception:
+            pass
+        # Restore preview label with updated text
+        preview = self._truncate(corrected) if corrected else "(empty)"
+        try:
+            text_label.configure(text=preview)
+            text_label.pack(side='left', fill='x', expand=True)
+        except Exception:
+            pass
+
+        if not corrected:
+            return
+
+        # Copy corrected text to clipboard
+        try:
+            import pyperclip
+            pyperclip.copy(corrected)
+        except Exception:
+            pass
+
+        # Offer to add to corrections dictionary if text changed
+        if corrected.strip().lower() != original.strip().lower() and original:
+            try:
+                if messagebox.askyesno(
+                        "Add to dictionary?",
+                        f"Save correction to dictionary?\n\n"
+                        f"Heard:  {original}\n"
+                        f"Should: {corrected}"):
+                    self._add_to_corrections(original, corrected)
+            except Exception:
+                pass
+
+        self._set_status_timed("Correction applied. Text copied to clipboard.")
+
+    def _cancel_correction(self, entry_widget, text_label):
+        try:
+            entry_widget.destroy()
+        except Exception:
+            pass
+        try:
+            text_label.pack(side='left', fill='x', expand=True)
+        except Exception:
+            pass
+
+    def _add_to_corrections(self, original, corrected):
+        try:
+            from samsara import phonetic_wash as pw
+            cur = pw.get_user_corrections()
+            cur[original.strip().lower()] = corrected.strip()
+            pw.set_user_corrections(cur)
+            self._set_status_timed("Correction saved to dictionary.")
+        except Exception as e:
+            logger.warning("Could not save correction to dictionary: %s", e)
 
     def _delete(self, row_id):
         if not messagebox.askyesno(
@@ -773,6 +906,8 @@ class HistoryFrame(ctk.CTkFrame):
             return
         card = self._card_widgets.pop(row_id, None)
         self._card_content.pop(row_id, None)
+        self._card_text_labels.pop(row_id, None)
+        self._card_top_frames.pop(row_id, None)
         if card is not None:
             try:
                 card.destroy()
