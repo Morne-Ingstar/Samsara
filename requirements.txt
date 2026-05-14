@@ -45,3 +45,6 @@ pydub>=0.25.1  # Also requires ffmpeg installed on system
 # TTS subsystem
 winsdk>=1.0.0b10; sys_platform == "win32"  # WinRT Python bindings for SpeechSynthesis
 scipy>=1.7.0   # PCM resampling (resample_poly) for TTS sample-rate normalization
+
+# UI Automation (Show Numbers overlay clicking)
+uiautomation>=2.0.0; sys_platform == "win32"  # Windows UI Automation tree enumeration
