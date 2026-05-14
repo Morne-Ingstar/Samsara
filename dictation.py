@@ -194,6 +194,7 @@ from samsara.ui.settings_window import SettingsWindow
 from samsara.ui.history_window import HistoryWindow
 from samsara.ui.wake_word_debug import WakeWordDebugWindow
 from samsara.ui.listening_indicator import ListeningIndicator
+from samsara.ui.command_cheatsheet import CommandCheatSheet
 from samsara.cleanup import clean_text
 from samsara.history import HistoryManager
 from samsara.wake_word_matcher import match_wake_phrase
@@ -514,10 +515,6 @@ class CommandExecutor:
 
         # Check if command mode is enabled (skip if force_commands is True, e.g., wake word mode)
         if not force_commands:
-            if not hasattr(self, 'command_mode_enabled'):
-                return text, False
-
-            # If command mode is disabled, return text for dictation
             if app_instance and not app_instance.command_mode_enabled:
                 return text, False
 
@@ -794,6 +791,17 @@ class DictationApp:
             self.config.get('listening_indicator_position', 'bottom-center'))
         if self.config.get('listening_indicator_enabled', False):
             self.listening_indicator.show()
+
+        # Command cheat sheet overlay
+        palette_path = Path(__file__).parent / "command_palette.json"
+        self.cheat_sheet = CommandCheatSheet(
+            root=self.root,
+            execute_cb=lambda phrase: self.command_executor.process_text(
+                phrase, command_mode_enabled=True
+            ),
+            commands_cb=lambda: self.command_executor._matcher.list_commands(),
+            palette_path=palette_path,
+        )
 
         # Snooze state
         self.snoozed = False
@@ -5081,6 +5089,18 @@ class DictationApp:
         else:
             self._schedule_ui(self.listening_indicator.hide)
 
+    def show_cheat_sheet(self):
+        """Show the command reference overlay."""
+        self._schedule_ui(self.cheat_sheet.show)
+
+    def hide_cheat_sheet(self):
+        """Hide the command reference overlay."""
+        self._schedule_ui(self.cheat_sheet.hide)
+
+    def toggle_cheat_sheet(self):
+        """Toggle the command reference overlay."""
+        self._schedule_ui(self.cheat_sheet.toggle)
+
     def create_tray_icon(self):
         """Create and run system tray icon"""
         def get_menu():
@@ -5243,6 +5263,11 @@ class DictationApp:
                     self.toggle_listening_indicator,
                     checked=lambda _it: self.config.get('listening_indicator_enabled', False)
                 ),
+                pystray.MenuItem(
+                    "Command Reference",
+                    lambda _i, _it: self.toggle_cheat_sheet(),
+                    checked=lambda _it: self.cheat_sheet._visible
+                ),
                 pystray.MenuItem("Recalibrate Mic", lambda _i, _it: self.recalibrate_mic()),
                 pystray.MenuItem("Open Config Folder", self.open_config_folder),
                 pystray.MenuItem("View Logs", pystray.Menu(
@@ -5361,6 +5386,13 @@ class DictationApp:
         try:
             if hasattr(self, 'listening_indicator'):
                 self.listening_indicator.destroy()
+        except:
+            pass
+
+        # Destroy command cheat sheet
+        try:
+            if hasattr(self, 'cheat_sheet'):
+                self.cheat_sheet.destroy()
         except:
             pass
 
