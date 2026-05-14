@@ -17,9 +17,67 @@ import logging
 import subprocess
 import sys
 import time
-from typing import Any, Dict, Optional
+from typing import Any, Dict, List, Optional, Tuple
 
 logger = logging.getLogger(__name__)
+
+
+# ---------------------------------------------------------------------------
+# Per-app key-override resolution
+# ---------------------------------------------------------------------------
+
+def _get_foreground_exe_lower() -> Optional[str]:
+    """Return the lowercase exe name of the foreground window's process.
+
+    Returns None when the information is unavailable (no focused window,
+    win32 APIs absent, psutil error, etc.).
+    """
+    try:
+        import win32gui
+        import win32process
+        import psutil
+        hwnd = win32gui.GetForegroundWindow()
+        if not hwnd:
+            return None
+        _, pid = win32process.GetWindowThreadProcessId(hwnd)
+        return psutil.Process(pid).name().lower()
+    except Exception:
+        return None
+
+
+def _resolve_app_override(cmd: dict) -> Tuple[Optional[List], bool]:
+    """Resolve per-app key override for a hotkey command.
+
+    Supports two override formats:
+      - commands.json: {"code.exe": {"keys": "ctrl+t"}}  or  {"keys": null}
+      - plugin decorator: {"code.exe": "ctrl+t"}  or  {"code.exe": None}
+
+    Returns:
+        (keys_list, skip)
+        skip=True means the command is intentionally disabled for this app.
+        keys_list is the resolved list of key strings to press, or None on skip.
+    """
+    base_keys = cmd.get('keys', [])
+    overrides = cmd.get('app_overrides', {})
+    if not overrides:
+        return base_keys, False
+
+    fg_exe = _get_foreground_exe_lower()
+    if fg_exe and fg_exe in overrides:
+        override = overrides[fg_exe]
+        # Normalise both dict {"keys": ...} and bare string/None
+        if isinstance(override, dict):
+            override_keys = override.get('keys')
+        else:
+            override_keys = override
+
+        if override_keys is None:
+            return None, True   # intentional no-op for this app
+        if isinstance(override_keys, str):
+            return override_keys.split('+'), False
+        return override_keys, False  # already a list
+
+    return base_keys, False
 
 
 class CommandContext:
@@ -65,10 +123,24 @@ class CommandHandler:
 
 
 class HotkeyHandler(CommandHandler):
-    """Execute a key combination (e.g. Ctrl+C, Alt+F4)."""
+    """Execute a key combination (e.g. Ctrl+C, Alt+F4).
+
+    Respects per-app overrides declared in the command's ``app_overrides``
+    dict.  A null override means the command is intentionally disabled for
+    that app — the handler logs and returns True (handled, no keys sent).
+    """
 
     def execute(self, cmd, ctx):
-        keys = [ctx.get_key(k) for k in cmd['keys']]
+        resolved_keys, skip = _resolve_app_override(cmd)
+        if skip:
+            logger.info(
+                "Hotkey '%s': disabled for focused app (override=null)",
+                cmd.get('keys'),
+            )
+            return True  # intentional no-op — still counts as handled
+        if not resolved_keys:
+            return False
+        keys = [ctx.get_key(k) for k in resolved_keys]
         for key in keys[:-1]:
             ctx.keyboard.press(key)
         ctx.keyboard.press(keys[-1])

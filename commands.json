@@ -102,7 +102,21 @@
         "t"
       ],
       "description": "Open new browser tab",
-      "pack": "browsers"
+      "pack": "browsers",
+      "app_overrides": {
+        "code.exe": {
+          "keys": null
+        },
+        "explorer.exe": {
+          "keys": null
+        },
+        "notepad.exe": {
+          "keys": null
+        },
+        "devenv.exe": {
+          "keys": null
+        }
+      }
     },
     "close tab": {
       "type": "hotkey",
@@ -111,7 +125,12 @@
         "w"
       ],
       "description": "Close current tab",
-      "pack": "browsers"
+      "pack": "browsers",
+      "app_overrides": {
+        "code.exe": {
+          "keys": "ctrl+f4"
+        }
+      }
     },
     "reopen tab": {
       "type": "hotkey",
@@ -121,7 +140,18 @@
         "t"
       ],
       "description": "Reopen closed tab",
-      "pack": "browsers"
+      "pack": "browsers",
+      "app_overrides": {
+        "explorer.exe": {
+          "keys": null
+        },
+        "notepad.exe": {
+          "keys": null
+        },
+        "devenv.exe": {
+          "keys": null
+        }
+      }
     },
     "next tab": {
       "type": "hotkey",
@@ -629,20 +659,20 @@
     "zoom in": {
       "type": "hotkey",
       "keys": [
-        "ctrl",
+        "win",
         "+"
       ],
-      "description": "Zoom in",
-      "pack": "browsers"
+      "description": "Magnifier: zoom in",
+      "pack": "accessibility"
     },
     "zoom out": {
       "type": "hotkey",
       "keys": [
-        "ctrl",
+        "win",
         "-"
       ],
-      "description": "Zoom out",
-      "pack": "browsers"
+      "description": "Magnifier: zoom out",
+      "pack": "accessibility"
     },
     "reset zoom": {
       "type": "hotkey",
@@ -732,7 +762,12 @@
         "p"
       ],
       "description": "Open print dialog",
-      "pack": "text-editing"
+      "pack": "text-editing",
+      "app_overrides": {
+        "obsidian.exe": {
+          "keys": null
+        }
+      }
     },
     "emoji": {
       "type": "hotkey",
@@ -751,14 +786,6 @@
       ],
       "description": "Open notification center",
       "pack": "core"
-    },
-    "select line": {
-      "type": "hotkey",
-      "keys": [
-        "home"
-      ],
-      "description": "Go to start of line",
-      "pack": "text-editing"
     },
     "select word left": {
       "type": "hotkey",
@@ -805,12 +832,9 @@
       "pack": "text-editing"
     },
     "open terminal": {
-      "type": "hotkey",
-      "keys": [
-        "win",
-        "x"
-      ],
-      "description": "Open power user menu (then press T for terminal)",
+      "type": "launch",
+      "target": "wt.exe",
+      "description": "Open Windows Terminal",
       "pack": "utilities"
     },
     "clipboard history": {
@@ -821,6 +845,1377 @@
       ],
       "description": "Open clipboard history",
       "pack": "utilities"
+    },
+    "open claude": {
+      "type": "launch",
+      "target": "claude.exe",
+      "description": "Open Claude desktop app (update path if needed)",
+      "pack": "ai"
+    },
+    "claude new chat": {
+      "type": "launch",
+      "target": "https://claude.ai/new",
+      "description": "Start a new Claude chat in browser",
+      "pack": "ai"
+    },
+    "open claude web": {
+      "type": "launch",
+      "target": "https://claude.ai",
+      "description": "Open Claude in browser",
+      "pack": "ai"
+    },
+    "claude settings": {
+      "type": "launch",
+      "target": "https://claude.ai/settings",
+      "description": "Open Claude settings in browser",
+      "pack": "ai"
+    },
+    "run claude code": {
+      "type": "launch",
+      "target": "C:\\Users\\Morne\\AppData\\Roaming\\npm\\claude.cmd",
+      "description": "Launch Claude Code in terminal",
+      "pack": "ai"
+    },
+    "open arc": {
+      "type": "launch",
+      "target": "F:\\envs\\sami\\python.exe",
+      "description": "Open ARC adversarial review pipeline",
+      "pack": "ai"
+    },
+    "open chatgpt": {
+      "type": "launch",
+      "target": "https://chat.openai.com",
+      "description": "Open ChatGPT in browser",
+      "pack": "ai"
+    },
+    "open gemini": {
+      "type": "launch",
+      "target": "https://gemini.google.com",
+      "description": "Open Gemini in browser",
+      "pack": "ai"
+    },
+    "open perplexity": {
+      "type": "launch",
+      "target": "https://www.perplexity.ai",
+      "description": "Open Perplexity in browser",
+      "pack": "ai"
+    },
+    "claude projects": {
+      "type": "launch",
+      "target": "https://claude.ai/projects",
+      "description": "Open Claude projects list",
+      "pack": "ai"
+    },
+    "send to arc": {
+      "type": "plugin",
+      "description": "Send clipboard to ARC inbox (plugin command)",
+      "pack": "ai"
+    },
+    "open obsidian": {
+      "type": "launch",
+      "target": "obsidian.exe",
+      "description": "Open Obsidian",
+      "pack": "ai"
+    },
+    "new note": {
+      "type": "hotkey",
+      "keys": [
+        "ctrl",
+        "n"
+      ],
+      "description": "Obsidian: create new note",
+      "pack": "ai"
+    },
+    "obsidian new note": {
+      "type": "hotkey",
+      "keys": [
+        "ctrl",
+        "n"
+      ],
+      "description": "Obsidian: create new note",
+      "pack": "ai"
+    },
+    "quick switcher": {
+      "type": "hotkey",
+      "keys": [
+        "ctrl",
+        "o"
+      ],
+      "description": "Obsidian: open quick switcher",
+      "pack": "ai"
+    },
+    "open note": {
+      "type": "hotkey",
+      "keys": [
+        "ctrl",
+        "o"
+      ],
+      "description": "Obsidian: open quick switcher",
+      "pack": "ai"
+    },
+    "command palette": {
+      "type": "hotkey",
+      "keys": [
+        "ctrl",
+        "p"
+      ],
+      "description": "Obsidian: open command palette",
+      "pack": "ai"
+    },
+    "obsidian search": {
+      "type": "hotkey",
+      "keys": [
+        "ctrl",
+        "shift",
+        "f"
+      ],
+      "description": "Obsidian: search all files",
+      "pack": "ai"
+    },
+    "search all notes": {
+      "type": "hotkey",
+      "keys": [
+        "ctrl",
+        "shift",
+        "f"
+      ],
+      "description": "Obsidian: search all files",
+      "pack": "ai"
+    },
+    "search this note": {
+      "type": "hotkey",
+      "keys": [
+        "ctrl",
+        "f"
+      ],
+      "description": "Obsidian: search current file",
+      "pack": "ai"
+    },
+    "replace in note": {
+      "type": "hotkey",
+      "keys": [
+        "ctrl",
+        "h"
+      ],
+      "description": "Obsidian: search and replace in file",
+      "pack": "ai"
+    },
+    "graph view": {
+      "type": "hotkey",
+      "keys": [
+        "ctrl",
+        "g"
+      ],
+      "description": "Obsidian: open graph view",
+      "pack": "ai"
+    },
+    "open graph": {
+      "type": "hotkey",
+      "keys": [
+        "ctrl",
+        "g"
+      ],
+      "description": "Obsidian: open graph view",
+      "pack": "ai"
+    },
+    "toggle preview": {
+      "type": "hotkey",
+      "keys": [
+        "ctrl",
+        "e"
+      ],
+      "description": "Obsidian: toggle edit/preview mode",
+      "pack": "ai"
+    },
+    "reading mode": {
+      "type": "hotkey",
+      "keys": [
+        "ctrl",
+        "e"
+      ],
+      "description": "Obsidian: toggle edit/preview mode",
+      "pack": "ai"
+    },
+    "obsidian settings": {
+      "type": "hotkey",
+      "keys": [
+        "ctrl",
+        ","
+      ],
+      "description": "Obsidian: open settings",
+      "pack": "ai"
+    },
+    "insert link": {
+      "type": "hotkey",
+      "keys": [
+        "ctrl",
+        "k"
+      ],
+      "description": "Obsidian: insert link",
+      "pack": "ai"
+    },
+    "follow link": {
+      "type": "hotkey",
+      "keys": [
+        "alt",
+        "enter"
+      ],
+      "description": "Obsidian: follow link under cursor",
+      "pack": "ai"
+    },
+    "navigate back": {
+      "type": "hotkey",
+      "keys": [
+        "ctrl",
+        "alt",
+        "left"
+      ],
+      "description": "Obsidian: navigate back",
+      "pack": "ai"
+    },
+    "navigate forward": {
+      "type": "hotkey",
+      "keys": [
+        "ctrl",
+        "alt",
+        "right"
+      ],
+      "description": "Obsidian: navigate forward",
+      "pack": "ai"
+    },
+    "highlight text": {
+      "type": "hotkey",
+      "keys": [
+        "ctrl",
+        "shift",
+        "h"
+      ],
+      "description": "Obsidian: toggle highlight",
+      "pack": "ai"
+    },
+    "obsidian help": {
+      "type": "hotkey",
+      "keys": [
+        "f1"
+      ],
+      "description": "Obsidian: open help",
+      "pack": "ai"
+    },
+    "today's note": {
+      "type": "hotkey",
+      "keys": [
+        "ctrl",
+        "shift",
+        "d"
+      ],
+      "description": "Obsidian: open today's daily note (requires Daily Notes plugin)",
+      "pack": "ai"
+    },
+    "daily note": {
+      "type": "hotkey",
+      "keys": [
+        "ctrl",
+        "shift",
+        "d"
+      ],
+      "description": "Obsidian: open today's daily note",
+      "pack": "ai"
+    },
+    "toggle left sidebar": {
+      "type": "hotkey",
+      "keys": [
+        "ctrl",
+        "shift",
+        "b"
+      ],
+      "description": "Obsidian: toggle left sidebar",
+      "pack": "ai"
+    },
+    "indent line": {
+      "type": "hotkey",
+      "keys": [
+        "ctrl",
+        "]"
+      ],
+      "description": "Obsidian: indent",
+      "pack": "ai"
+    },
+    "unindent line": {
+      "type": "hotkey",
+      "keys": [
+        "ctrl",
+        "["
+      ],
+      "description": "Obsidian: unindent",
+      "pack": "ai"
+    },
+    "open warp": {
+      "type": "launch",
+      "target": "warp.exe",
+      "description": "Open Warp terminal",
+      "pack": "utilities"
+    },
+    "open vs code": {
+      "type": "launch",
+      "target": "code.exe",
+      "description": "Open VS Code",
+      "pack": "utilities"
+    },
+    "open discord": {
+      "type": "launch",
+      "target": "discord.exe",
+      "description": "Open Discord",
+      "pack": "utilities"
+    },
+    "open spotify": {
+      "type": "launch",
+      "target": "spotify.exe",
+      "description": "Open Spotify",
+      "pack": "media"
+    },
+    "open steam": {
+      "type": "launch",
+      "target": "steam.exe",
+      "description": "Open Steam",
+      "pack": "utilities"
+    },
+    "open stremio": {
+      "type": "launch",
+      "target": "stremio.exe",
+      "description": "Open Stremio",
+      "pack": "utilities"
+    },
+    "open paint": {
+      "type": "launch",
+      "target": "mspaint.exe",
+      "description": "Open MS Paint",
+      "pack": "utilities"
+    },
+    "system info": {
+      "type": "hotkey",
+      "keys": [
+        "win",
+        "pause"
+      ],
+      "description": "Open system properties",
+      "pack": "utilities"
+    },
+    "run dialog": {
+      "type": "hotkey",
+      "keys": [
+        "win",
+        "r"
+      ],
+      "description": "Open Run dialog",
+      "pack": "utilities"
+    },
+    "action center": {
+      "type": "hotkey",
+      "keys": [
+        "win",
+        "a"
+      ],
+      "description": "Open action center / quick settings",
+      "pack": "core"
+    },
+    "search windows": {
+      "type": "hotkey",
+      "keys": [
+        "win",
+        "s"
+      ],
+      "description": "Open Windows search",
+      "pack": "core"
+    },
+    "virtual desktop left": {
+      "type": "hotkey",
+      "keys": [
+        "ctrl",
+        "win",
+        "left"
+      ],
+      "description": "Switch to left virtual desktop",
+      "pack": "core"
+    },
+    "virtual desktop right": {
+      "type": "hotkey",
+      "keys": [
+        "ctrl",
+        "win",
+        "right"
+      ],
+      "description": "Switch to right virtual desktop",
+      "pack": "core"
+    },
+    "new virtual desktop": {
+      "type": "hotkey",
+      "keys": [
+        "ctrl",
+        "win",
+        "d"
+      ],
+      "description": "Create new virtual desktop",
+      "pack": "core"
+    },
+    "close virtual desktop": {
+      "type": "hotkey",
+      "keys": [
+        "ctrl",
+        "win",
+        "f4"
+      ],
+      "description": "Close current virtual desktop",
+      "pack": "core"
+    },
+    "snap top left": {
+      "type": "hotkey",
+      "keys": [
+        "win",
+        "left",
+        "up"
+      ],
+      "description": "Snap window to top-left quarter",
+      "pack": "core"
+    },
+    "snap top right": {
+      "type": "hotkey",
+      "keys": [
+        "win",
+        "right",
+        "up"
+      ],
+      "description": "Snap window to top-right quarter",
+      "pack": "core"
+    },
+    "open device manager": {
+      "type": "launch",
+      "target": "devmgmt.msc",
+      "description": "Open Device Manager",
+      "pack": "utilities"
+    },
+    "open event viewer": {
+      "type": "launch",
+      "target": "eventvwr.msc",
+      "description": "Open Event Viewer",
+      "pack": "utilities"
+    },
+    "open services": {
+      "type": "launch",
+      "target": "services.msc",
+      "description": "Open Services",
+      "pack": "utilities"
+    },
+    "open registry": {
+      "type": "launch",
+      "target": "regedit.exe",
+      "description": "Open Registry Editor",
+      "pack": "utilities"
+    },
+    "open disk management": {
+      "type": "launch",
+      "target": "diskmgmt.msc",
+      "description": "Open Disk Management",
+      "pack": "utilities"
+    },
+    "open control panel": {
+      "type": "launch",
+      "target": "control.exe",
+      "description": "Open Control Panel",
+      "pack": "utilities"
+    },
+    "open sound settings": {
+      "type": "launch",
+      "target": "ms-settings:sound",
+      "description": "Open Sound settings",
+      "pack": "utilities"
+    },
+    "open display settings": {
+      "type": "launch",
+      "target": "ms-settings:display",
+      "description": "Open Display settings",
+      "pack": "utilities"
+    },
+    "address bar": {
+      "type": "hotkey",
+      "keys": [
+        "alt",
+        "d"
+      ],
+      "description": "Focus browser address bar",
+      "pack": "browsers"
+    },
+    "go to address bar": {
+      "type": "hotkey",
+      "keys": [
+        "alt",
+        "d"
+      ],
+      "description": "Focus browser address bar",
+      "pack": "browsers"
+    },
+    "open downloads": {
+      "type": "hotkey",
+      "keys": [
+        "ctrl",
+        "j"
+      ],
+      "description": "Open browser downloads",
+      "pack": "browsers"
+    },
+    "open history": {
+      "type": "hotkey",
+      "keys": [
+        "ctrl",
+        "h"
+      ],
+      "description": "Open browser history",
+      "pack": "browsers",
+      "app_overrides": {
+        "obsidian.exe": {
+          "keys": null
+        }
+      }
+    },
+    "open bookmarks": {
+      "type": "hotkey",
+      "keys": [
+        "ctrl",
+        "shift",
+        "o"
+      ],
+      "description": "Open bookmarks manager",
+      "pack": "browsers"
+    },
+    "bookmark this": {
+      "type": "hotkey",
+      "keys": [
+        "ctrl",
+        "d"
+      ],
+      "description": "Bookmark current page",
+      "pack": "browsers"
+    },
+    "duplicate tab": {
+      "type": "macro",
+      "steps": [
+        {
+          "action": "hotkey",
+          "keys": [
+            "alt",
+            "d"
+          ]
+        },
+        {
+          "action": "hotkey",
+          "keys": [
+            "alt",
+            "enter"
+          ]
+        }
+      ],
+      "description": "Duplicate current browser tab",
+      "pack": "browsers"
+    },
+    "mute tab": {
+      "type": "hotkey",
+      "keys": [
+        "ctrl",
+        "m"
+      ],
+      "description": "Mute current tab (Chrome)",
+      "pack": "browsers"
+    },
+    "pin tab": {
+      "type": "hotkey",
+      "keys": [
+        "ctrl",
+        "shift",
+        "p"
+      ],
+      "description": "Pin current tab (Edge)",
+      "pack": "browsers"
+    },
+    "open devtools": {
+      "type": "hotkey",
+      "keys": [
+        "f12"
+      ],
+      "description": "Open browser developer tools",
+      "pack": "browsers"
+    },
+    "hard refresh": {
+      "type": "hotkey",
+      "keys": [
+        "ctrl",
+        "shift",
+        "r"
+      ],
+      "description": "Hard refresh (clear cache)",
+      "pack": "browsers"
+    },
+    "tab one": {
+      "type": "hotkey",
+      "keys": [
+        "ctrl",
+        "1"
+      ],
+      "description": "Switch to tab 1",
+      "pack": "browsers"
+    },
+    "tab two": {
+      "type": "hotkey",
+      "keys": [
+        "ctrl",
+        "2"
+      ],
+      "description": "Switch to tab 2",
+      "pack": "browsers"
+    },
+    "tab three": {
+      "type": "hotkey",
+      "keys": [
+        "ctrl",
+        "3"
+      ],
+      "description": "Switch to tab 3",
+      "pack": "browsers"
+    },
+    "last tab": {
+      "type": "hotkey",
+      "keys": [
+        "ctrl",
+        "9"
+      ],
+      "description": "Switch to last tab",
+      "pack": "browsers"
+    },
+    "private window": {
+      "type": "hotkey",
+      "keys": [
+        "ctrl",
+        "shift",
+        "n"
+      ],
+      "description": "Open private/incognito window",
+      "pack": "browsers"
+    },
+    "reading view": {
+      "type": "hotkey",
+      "keys": [
+        "f9"
+      ],
+      "description": "Toggle reading view (Edge)",
+      "pack": "browsers"
+    },
+    "open extensions": {
+      "type": "launch",
+      "target": "chrome://extensions",
+      "description": "Open browser extensions page",
+      "pack": "browsers"
+    },
+    "volume up": {
+      "type": "plugin",
+      "description": "Increase system volume",
+      "pack": "audio"
+    },
+    "volume down": {
+      "type": "plugin",
+      "description": "Decrease system volume",
+      "pack": "audio"
+    },
+    "mute": {
+      "type": "plugin",
+      "description": "Toggle system mute",
+      "pack": "audio"
+    },
+    "previous song": {
+      "type": "hotkey",
+      "keys": [
+        "prevtrack"
+      ],
+      "description": "Previous track",
+      "pack": "media",
+      "debounce": 1.5
+    },
+    "stop music": {
+      "type": "hotkey",
+      "keys": [
+        "playpause"
+      ],
+      "description": "Stop/pause media",
+      "pack": "media",
+      "debounce": 1.5
+    },
+    "play music": {
+      "type": "hotkey",
+      "keys": [
+        "playpause"
+      ],
+      "description": "Play media",
+      "pack": "media",
+      "debounce": 1.5
+    },
+    "open midjourney": {
+      "type": "launch",
+      "target": "https://www.midjourney.com",
+      "description": "Open Midjourney in browser",
+      "pack": "ai"
+    },
+    "open arcana": {
+      "type": "launch",
+      "target": "https://morneis.com",
+      "description": "Open The Arcana / morneis.com",
+      "pack": "ai"
+    },
+    "go to arcana": {
+      "type": "launch",
+      "target": "https://morneis.com",
+      "description": "Open The Arcana / morneis.com",
+      "pack": "ai"
+    },
+    "open samsara page": {
+      "type": "launch",
+      "target": "https://morneis.com/samsara",
+      "description": "Open Samsara landing page",
+      "pack": "ai"
+    },
+    "open github": {
+      "type": "launch",
+      "target": "https://github.com",
+      "description": "Open GitHub",
+      "pack": "ai"
+    },
+    "my github": {
+      "type": "launch",
+      "target": "https://github.com/Morne-Ingstar",
+      "description": "Open your GitHub profile",
+      "pack": "ai"
+    },
+    "samsara repo": {
+      "type": "launch",
+      "target": "https://github.com/Morne-Ingstar/Samsara",
+      "description": "Open Samsara GitHub repo",
+      "pack": "ai"
+    },
+    "arc repo": {
+      "type": "launch",
+      "target": "https://github.com/Morne-Ingstar/ARC",
+      "description": "Open ARC GitHub repo",
+      "pack": "ai"
+    },
+    "open hugging face": {
+      "type": "launch",
+      "target": "https://huggingface.co",
+      "description": "Open Hugging Face",
+      "pack": "ai"
+    },
+    "open anthropic": {
+      "type": "launch",
+      "target": "https://anthropic.com",
+      "description": "Open Anthropic website",
+      "pack": "ai"
+    },
+    "open claude docs": {
+      "type": "launch",
+      "target": "https://docs.claude.com",
+      "description": "Open Claude documentation",
+      "pack": "ai"
+    },
+    "go to document start": {
+      "type": "hotkey",
+      "keys": [
+        "ctrl",
+        "home"
+      ],
+      "description": "Move cursor to document start",
+      "pack": "text-editing"
+    },
+    "go to document end": {
+      "type": "hotkey",
+      "keys": [
+        "ctrl",
+        "end"
+      ],
+      "description": "Move cursor to document end",
+      "pack": "text-editing"
+    },
+    "word left": {
+      "type": "hotkey",
+      "keys": [
+        "ctrl",
+        "left"
+      ],
+      "description": "Move cursor one word left",
+      "pack": "text-editing"
+    },
+    "word right": {
+      "type": "hotkey",
+      "keys": [
+        "ctrl",
+        "right"
+      ],
+      "description": "Move cursor one word right",
+      "pack": "text-editing"
+    },
+    "select to end": {
+      "type": "hotkey",
+      "keys": [
+        "shift",
+        "end"
+      ],
+      "description": "Select to end of line",
+      "pack": "text-editing"
+    },
+    "select to start": {
+      "type": "hotkey",
+      "keys": [
+        "shift",
+        "home"
+      ],
+      "description": "Select to start of line",
+      "pack": "text-editing"
+    },
+    "select to document end": {
+      "type": "hotkey",
+      "keys": [
+        "ctrl",
+        "shift",
+        "end"
+      ],
+      "description": "Select to end of document",
+      "pack": "text-editing"
+    },
+    "select to document start": {
+      "type": "hotkey",
+      "keys": [
+        "ctrl",
+        "shift",
+        "home"
+      ],
+      "description": "Select to start of document",
+      "pack": "text-editing"
+    },
+    "delete next word": {
+      "type": "hotkey",
+      "keys": [
+        "ctrl",
+        "delete"
+      ],
+      "description": "Delete next word",
+      "pack": "text-editing"
+    },
+    "strikethrough": {
+      "type": "hotkey",
+      "keys": [
+        "alt",
+        "shift",
+        "5"
+      ],
+      "description": "Toggle strikethrough (Google Docs)",
+      "pack": "text-editing"
+    },
+    "heading one": {
+      "type": "hotkey",
+      "keys": [
+        "ctrl",
+        "alt",
+        "1"
+      ],
+      "description": "Apply Heading 1 style (Google Docs/Word)",
+      "pack": "text-editing"
+    },
+    "heading two": {
+      "type": "hotkey",
+      "keys": [
+        "ctrl",
+        "alt",
+        "2"
+      ],
+      "description": "Apply Heading 2 style",
+      "pack": "text-editing"
+    },
+    "heading three": {
+      "type": "hotkey",
+      "keys": [
+        "ctrl",
+        "alt",
+        "3"
+      ],
+      "description": "Apply Heading 3 style",
+      "pack": "text-editing"
+    },
+    "normal text": {
+      "type": "hotkey",
+      "keys": [
+        "ctrl",
+        "alt",
+        "0"
+      ],
+      "description": "Apply Normal/Body text style",
+      "pack": "text-editing"
+    },
+    "record screen": {
+      "type": "hotkey",
+      "keys": [
+        "win",
+        "alt",
+        "r"
+      ],
+      "description": "Start/stop screen recording (Xbox Game Bar)",
+      "pack": "screen-capture"
+    },
+    "game bar": {
+      "type": "hotkey",
+      "keys": [
+        "win",
+        "g"
+      ],
+      "description": "Open Xbox Game Bar",
+      "pack": "screen-capture"
+    },
+    "capture this window": {
+      "type": "hotkey",
+      "keys": [
+        "alt",
+        "printscreen"
+      ],
+      "description": "Screenshot active window to clipboard",
+      "pack": "screen-capture"
+    },
+    "rename file": {
+      "type": "hotkey",
+      "keys": [
+        "f2"
+      ],
+      "description": "Rename selected file",
+      "pack": "utilities"
+    },
+    "delete file": {
+      "type": "hotkey",
+      "keys": [
+        "delete"
+      ],
+      "description": "Delete selected file/item",
+      "pack": "utilities"
+    },
+    "permanent delete": {
+      "type": "hotkey",
+      "keys": [
+        "shift",
+        "delete"
+      ],
+      "description": "Permanently delete (skip recycle bin)",
+      "pack": "utilities"
+    },
+    "new folder": {
+      "type": "hotkey",
+      "keys": [
+        "ctrl",
+        "shift",
+        "n"
+      ],
+      "description": "Create new folder (in Explorer)",
+      "pack": "utilities",
+      "app_overrides": {
+        "chrome.exe": {
+          "keys": null
+        },
+        "msedge.exe": {
+          "keys": null
+        },
+        "firefox.exe": {
+          "keys": null
+        }
+      }
+    },
+    "file properties": {
+      "type": "hotkey",
+      "keys": [
+        "alt",
+        "enter"
+      ],
+      "description": "Open file properties",
+      "pack": "utilities",
+      "app_overrides": {
+        "obsidian.exe": {
+          "keys": null
+        }
+      }
+    },
+    "go up folder": {
+      "type": "hotkey",
+      "keys": [
+        "alt",
+        "up"
+      ],
+      "description": "Navigate up one folder level",
+      "pack": "utilities"
+    },
+    "preview pane": {
+      "type": "hotkey",
+      "keys": [
+        "alt",
+        "p"
+      ],
+      "description": "Toggle preview pane in Explorer",
+      "pack": "utilities"
+    },
+    "open magnifier": {
+      "type": "hotkey",
+      "keys": [
+        "win",
+        "+"
+      ],
+      "description": "Open Windows Magnifier",
+      "pack": "accessibility"
+    },
+    "close magnifier": {
+      "type": "hotkey",
+      "keys": [
+        "win",
+        "esc"
+      ],
+      "description": "Exit Magnifier",
+      "pack": "accessibility"
+    },
+    "read this": {
+      "type": "hotkey",
+      "keys": [
+        "ctrl",
+        "alt",
+        "enter"
+      ],
+      "description": "Magnifier: start reading aloud from cursor",
+      "pack": "accessibility"
+    },
+    "read next sentence": {
+      "type": "hotkey",
+      "keys": [
+        "ctrl",
+        "alt",
+        "k"
+      ],
+      "description": "Magnifier: read next sentence",
+      "pack": "accessibility"
+    },
+    "read previous sentence": {
+      "type": "hotkey",
+      "keys": [
+        "ctrl",
+        "alt",
+        "h"
+      ],
+      "description": "Magnifier: read previous sentence",
+      "pack": "accessibility"
+    },
+    "stop reading": {
+      "type": "hotkey",
+      "keys": [
+        "ctrl",
+        "alt",
+        "enter"
+      ],
+      "description": "Magnifier: pause/stop reading",
+      "pack": "accessibility"
+    },
+    "start narrator": {
+      "type": "hotkey",
+      "keys": [
+        "win",
+        "ctrl",
+        "enter"
+      ],
+      "description": "Start or stop Windows Narrator (screen reader)",
+      "pack": "accessibility"
+    },
+    "stop narrator": {
+      "type": "hotkey",
+      "keys": [
+        "win",
+        "ctrl",
+        "enter"
+      ],
+      "description": "Start or stop Windows Narrator",
+      "pack": "accessibility"
+    },
+    "high contrast": {
+      "type": "hotkey",
+      "keys": [
+        "lalt",
+        "lshift",
+        "printscreen"
+      ],
+      "description": "Toggle high contrast mode",
+      "pack": "accessibility"
+    },
+    "color filters": {
+      "type": "hotkey",
+      "keys": [
+        "win",
+        "ctrl",
+        "c"
+      ],
+      "description": "Toggle color filters (for color blindness)",
+      "pack": "accessibility"
+    },
+    "invert colors": {
+      "type": "launch",
+      "target": "ms-settings:easeofaccess-colorfilter",
+      "description": "Open color filter settings",
+      "pack": "accessibility"
+    },
+    "live captions": {
+      "type": "hotkey",
+      "keys": [
+        "win",
+        "ctrl",
+        "l"
+      ],
+      "description": "Toggle live captions (transcribes any audio on screen)",
+      "pack": "accessibility"
+    },
+    "start captions": {
+      "type": "hotkey",
+      "keys": [
+        "win",
+        "ctrl",
+        "l"
+      ],
+      "description": "Toggle Windows live captions",
+      "pack": "accessibility"
+    },
+    "mono audio": {
+      "type": "launch",
+      "target": "ms-settings:easeofaccess-audio",
+      "description": "Open audio accessibility settings (mono audio, visual alerts)",
+      "pack": "accessibility"
+    },
+    "visual notifications": {
+      "type": "launch",
+      "target": "ms-settings:easeofaccess-audio",
+      "description": "Open audio/visual notification settings",
+      "pack": "accessibility"
+    },
+    "on screen keyboard": {
+      "type": "hotkey",
+      "keys": [
+        "win",
+        "ctrl",
+        "o"
+      ],
+      "description": "Open on-screen keyboard",
+      "pack": "accessibility"
+    },
+    "open keyboard": {
+      "type": "hotkey",
+      "keys": [
+        "win",
+        "ctrl",
+        "o"
+      ],
+      "description": "Open on-screen keyboard",
+      "pack": "accessibility"
+    },
+    "virtual keyboard": {
+      "type": "hotkey",
+      "keys": [
+        "win",
+        "ctrl",
+        "o"
+      ],
+      "description": "Open on-screen keyboard",
+      "pack": "accessibility"
+    },
+    "sticky keys": {
+      "type": "launch",
+      "target": "ms-settings:easeofaccess-keyboard",
+      "description": "Open sticky keys settings (press modifier keys one at a time)",
+      "pack": "accessibility"
+    },
+    "mouse keys": {
+      "type": "launch",
+      "target": "ms-settings:easeofaccess-mouse",
+      "description": "Open mouse keys settings (control mouse with numpad)",
+      "pack": "accessibility"
+    },
+    "pointer settings": {
+      "type": "launch",
+      "target": "ms-settings:easeofaccess-MousePointer",
+      "description": "Open mouse pointer size and color settings",
+      "pack": "accessibility"
+    },
+    "bigger cursor": {
+      "type": "launch",
+      "target": "ms-settings:easeofaccess-MousePointer",
+      "description": "Open cursor size settings",
+      "pack": "accessibility"
+    },
+    "eye control": {
+      "type": "launch",
+      "target": "ms-settings:easeofaccess-eyecontrol",
+      "description": "Open eye control settings (requires compatible eye tracker)",
+      "pack": "accessibility"
+    },
+    "windows voice typing": {
+      "type": "hotkey",
+      "keys": [
+        "win",
+        "h"
+      ],
+      "description": "Open Windows voice typing",
+      "pack": "accessibility"
+    },
+    "speech recognition": {
+      "type": "launch",
+      "target": "ms-settings:easeofaccess-speechrecognition",
+      "description": "Open Windows Speech Recognition settings",
+      "pack": "accessibility"
+    },
+    "accessibility settings": {
+      "type": "hotkey",
+      "keys": [
+        "win",
+        "u"
+      ],
+      "description": "Open all accessibility settings",
+      "pack": "accessibility"
+    },
+    "ease of access": {
+      "type": "hotkey",
+      "keys": [
+        "win",
+        "u"
+      ],
+      "description": "Open accessibility settings",
+      "pack": "accessibility"
+    },
+    "text cursor settings": {
+      "type": "launch",
+      "target": "ms-settings:easeofaccess-cursor",
+      "description": "Open text cursor settings (thickness, color indicator)",
+      "pack": "accessibility"
+    },
+    "cursor indicator": {
+      "type": "launch",
+      "target": "ms-settings:easeofaccess-cursor",
+      "description": "Open text cursor indicator settings",
+      "pack": "accessibility"
+    },
+    "focus mode": {
+      "type": "launch",
+      "target": "ms-settings:quiethours",
+      "description": "Open focus assist / do not disturb settings",
+      "pack": "accessibility"
+    },
+    "do not disturb": {
+      "type": "launch",
+      "target": "ms-settings:quiethours",
+      "description": "Open focus assist settings",
+      "pack": "accessibility"
+    },
+    "focus view": {
+      "type": "hotkey",
+      "keys": [
+        "f9"
+      ],
+      "description": "Toggle immersive reader / reading view (Edge)",
+      "pack": "accessibility"
+    },
+    "immersive reader": {
+      "type": "hotkey",
+      "keys": [
+        "f9"
+      ],
+      "description": "Toggle immersive reader in Edge (clean reading mode)",
+      "pack": "accessibility"
+    },
+    "read aloud": {
+      "type": "hotkey",
+      "keys": [
+        "ctrl",
+        "shift",
+        "u"
+      ],
+      "description": "Start Read Aloud in Edge browser",
+      "pack": "accessibility"
+    },
+    "open nvda": {
+      "type": "launch",
+      "target": "nvda.exe",
+      "description": "Open NVDA screen reader (free, must be installed)",
+      "pack": "accessibility"
+    },
+    "open jaws": {
+      "type": "launch",
+      "target": "jfw.exe",
+      "description": "Open JAWS screen reader (must be installed)",
+      "pack": "accessibility"
+    },
+    "night light": {
+      "type": "launch",
+      "target": "ms-settings:display-advancedgraphics",
+      "description": "Open night light settings (reduce blue light)",
+      "pack": "accessibility"
+    },
+    "display settings": {
+      "type": "launch",
+      "target": "ms-settings:display",
+      "description": "Open display settings (text size, resolution)",
+      "pack": "accessibility"
+    },
+    "text size": {
+      "type": "launch",
+      "target": "ms-settings:easeofaccess-display",
+      "description": "Open text size settings",
+      "pack": "accessibility"
+    },
+    "make text bigger": {
+      "type": "launch",
+      "target": "ms-settings:easeofaccess-display",
+      "description": "Open text size / visual accessibility settings",
+      "pack": "accessibility"
+    },
+    "dark mode": {
+      "type": "launch",
+      "target": "ms-settings:personalization-colors",
+      "description": "Open color/theme settings (toggle dark mode)",
+      "pack": "accessibility"
+    },
+    "type this": {
+      "type": "method",
+      "method": "start_recording",
+      "description": "Start Samsara dictation (alias)",
+      "pack": "accessibility"
+    },
+    "cancel": {
+      "type": "method",
+      "method": "cancel_recording",
+      "description": "Cancel current Samsara recording",
+      "pack": "accessibility"
+    },
+    "start listening": {
+      "type": "method",
+      "method": "start_recording",
+      "description": "Start Samsara recording",
+      "pack": "accessibility"
+    },
+    "bigger text": {
+      "type": "hotkey",
+      "keys": [
+        "ctrl",
+        "="
+      ],
+      "description": "Increase font size (Ctrl+=)",
+      "pack": "text-editing"
+    },
+    "smaller text": {
+      "type": "hotkey",
+      "keys": [
+        "ctrl",
+        "-"
+      ],
+      "description": "Decrease font size (Ctrl+-)",
+      "pack": "text-editing"
     }
   }
 }
