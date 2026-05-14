@@ -124,7 +124,7 @@ import sounddevice as sd
 from pynput import keyboard as pynput_keyboard
 from pynput.keyboard import Key, Controller as KeyboardController
 import keyboard  # For reliable simultaneous key state detection
-from pynput.mouse import Button, Controller as MouseController, Listener as MouseListener
+from pynput.mouse import Button, Controller as MouseController
 import pyperclip
 import pyautogui
 from faster_whisper import WhisperModel
@@ -675,7 +675,7 @@ class DictationApp:
         self._command_mode_inactivity_timer = None
         self._command_mode_session_start = 0.0  # monotonic time of last enter
         self._command_mode_ghost_tap = False    # set when hold < enter_debounce_ms
-        self._mouse_listener = None
+        self._mouse_hook = None
 
         # Wake-word trace hook — the debug window registers a callback here
         # when open so the main pipeline's decisions show up in its trace view.
@@ -1095,6 +1095,7 @@ class DictationApp:
                 "miss_limit": 5,            # toggle: exit after N unmatched recordings
                 "inactivity_timeout_s": 30, # toggle: exit after N seconds silence
                 "tts_char_limit": 50,       # suppress TTS responses longer than this
+                "suppress_button": True,    # consume mouse4/5 click so browsers don't navigate back
             },
             # Web shortcuts for "go to X" voice commands. Keys are spoken
             # aliases; values are target URLs. Users add their own by editing
@@ -2076,25 +2077,37 @@ class DictationApp:
     # ---- Mouse 4 command mode (walkie-talkie hold-to-talk) ----------------
 
     def _install_mouse_listener(self):
-        """Start the pynput mouse listener for Mouse 4 command mode."""
-        try:
-            self._mouse_listener = MouseListener(on_click=self._on_mouse_button)
-            self._mouse_listener.start()
-            print("[CMD MODE] Mouse listener started")
-        except Exception as e:
-            print(f"[CMD MODE] Mouse listener failed to start: {e}")
-            self._mouse_listener = None
+        """Start the Win32 low-level mouse hook for Mouse 4/5 command mode.
 
-    def _on_mouse_button(self, x, y, button, pressed):
-        """pynput mouse callback — routes Mouse 4/5 to command mode state machine."""
+        Only installed when command_mode.button is a mouse source.
+        Keyboard sources (rctrl, f13, etc.) are handled by on_key_press/release.
+        """
+        cfg = self.config.get('command_mode', {})
+        btn = cfg.get('button', 'mouse4')
+        if btn not in ('mouse4', 'mouse5'):
+            self._mouse_hook = None
+            return
+
+        should_suppress = cfg.get('suppress_button', True)
+        suppress_btn = btn if should_suppress else None
+        try:
+            from samsara.mouse_hook import MouseHook
+            self._mouse_hook = MouseHook(
+                on_button_event=self._on_command_button,
+                suppress_button=suppress_btn,
+            )
+            self._mouse_hook.start()
+            print(f"[CMD MODE] Mouse hook started (suppress={suppress_btn})")
+        except Exception as e:
+            print(f"[CMD MODE] Mouse hook failed to start: {e}")
+            self._mouse_hook = None
+
+    def _on_command_button(self, button_name, pressed):
+        """Mouse hook callback — routes the configured button to command mode."""
         cfg = self.config.get('command_mode', {})
         if not cfg.get('enabled', False):
             return
-        btn_name = cfg.get('button', 'mouse4')
-        if btn_name not in ('mouse4', 'mouse5'):
-            return  # keyboard source — handled in on_key_press/release
-        target = Button.x1 if btn_name == 'mouse4' else Button.x2
-        if button != target:
+        if button_name != cfg.get('button', 'mouse4'):
             return
         mode = cfg.get('mode', 'hold')
         if mode == 'hold':
@@ -5389,10 +5402,10 @@ class DictationApp:
         except:
             pass
 
-        # Stop mouse listener (Mouse 4 command mode)
+        # Stop Win32 mouse hook (Mouse 4/5 command mode)
         try:
-            if getattr(self, '_mouse_listener', None) is not None:
-                self._mouse_listener.stop()
+            if getattr(self, '_mouse_hook', None) is not None:
+                self._mouse_hook.stop()
         except Exception:
             pass
 
