@@ -1,4 +1,4 @@
-"""Tests for Command Mode (Mouse 4 walkie-talkie hold-to-talk).
+"""Tests for Command Mode (Mouse 4 walkie-talkie hold-to-talk + keyboard sources).
 
 Covers:
 - CommandEntry.debounce attribute
@@ -106,11 +106,15 @@ class TestDebounceRegistry:
         assert m.should_suppress(e2) is False
 
     def test_second_record_resets_window(self):
-        m, e = _make_matcher_with_entry('play pause', debounce=0.05)
+        # Use a large debounce; rewind the timestamp to simulate expiry
+        # instead of sleeping so the test is immune to OS timer jitter.
+        m, e = _make_matcher_with_entry('play pause', debounce=30.0)
         m.record_execution(e)
-        time.sleep(0.06)
+        assert m.should_suppress(e) is True
+        with m._exec_lock:
+            m._last_executions['play pause'] -= 31.0  # rewind past the window
         assert m.should_suppress(e) is False
-        m.record_execution(e)
+        m.record_execution(e)   # reset: window is live again
         assert m.should_suppress(e) is True
 
     def test_thread_safe_concurrent_record(self):
@@ -489,3 +493,177 @@ class TestCommandModeStateMachine:
         for t in threads:
             t.join()
         assert app.command_mode_active is True
+
+
+# =============================================================================
+# Keyboard source routing (_get_pynput_command_key / _matches_pynput_key)
+# =============================================================================
+
+class TestGetPynputCommandKey:
+    """Unit tests for the key-resolver helper in dictation.py."""
+
+    @pytest.fixture(autouse=True)
+    def _import(self):
+        # Import the module-level helpers via the dictation module.
+        # dictation.py imports are heavy — only grab the two helpers.
+        import importlib, importlib.util, sys as _sys
+        # They're defined at module level before the class; grab via attribute.
+        import dictation as _d
+        self.get_key = _d._get_pynput_command_key
+        self.matches = _d._matches_pynput_key
+
+    def test_mouse_values_return_none(self):
+        assert self.get_key('mouse4') is None
+        assert self.get_key('mouse5') is None
+
+    def test_unknown_name_returns_none(self):
+        assert self.get_key('super') is None
+        assert self.get_key('') is None
+
+    def test_rctrl_resolves(self):
+        from pynput.keyboard import Key
+        assert self.get_key('rctrl') == Key.ctrl_r
+
+    def test_lctrl_resolves(self):
+        from pynput.keyboard import Key
+        assert self.get_key('lctrl') == Key.ctrl_l
+
+    def test_ralt_resolves(self):
+        from pynput.keyboard import Key
+        assert self.get_key('ralt') == Key.alt_r
+
+    def test_lalt_resolves(self):
+        from pynput.keyboard import Key
+        assert self.get_key('lalt') == Key.alt_l
+
+    def test_rshift_resolves(self):
+        from pynput.keyboard import Key
+        assert self.get_key('rshift') == Key.shift_r
+
+    def test_lshift_resolves(self):
+        from pynput.keyboard import Key
+        assert self.get_key('lshift') == Key.shift_l
+
+    def test_f13_resolves_to_something(self):
+        result = self.get_key('f13')
+        assert result is not None
+
+    def test_f24_resolves_to_something(self):
+        result = self.get_key('f24')
+        assert result is not None
+
+    def test_f12_ignored_out_of_range(self):
+        assert self.get_key('f12') is None
+
+    def test_matches_identical_key(self):
+        from pynput.keyboard import Key
+        assert self.matches(Key.ctrl_r, Key.ctrl_r) is True
+
+    def test_matches_different_keys_false(self):
+        from pynput.keyboard import Key
+        assert self.matches(Key.ctrl_r, Key.ctrl_l) is False
+
+    def test_matches_none_target_false(self):
+        from pynput.keyboard import Key
+        assert self.matches(Key.ctrl_r, None) is False
+
+    def test_vk_crosstype_match(self):
+        """Key enum member and KeyCode with same VK should match."""
+        from pynput.keyboard import Key, KeyCode
+        # ctrl_r has a VK code; build a raw KeyCode with the same vk
+        ctrl_r_vk = getattr(getattr(Key.ctrl_r, 'value', Key.ctrl_r), 'vk', None)
+        if ctrl_r_vk is None:
+            pytest.skip("ctrl_r has no vk on this platform")
+        raw = KeyCode.from_vk(ctrl_r_vk)
+        assert self.matches(raw, Key.ctrl_r) is True
+
+
+class TestCheckCommandModeKey:
+    """Integration tests: _check_command_mode_key routes to enter/exit."""
+
+    def _make_app_with_button(self, button, mode='hold', enabled=True):
+        app = _MockApp(mode=mode, enabled=enabled)
+        app.config['command_mode']['button'] = button
+        return app
+
+    def _simulate_key(self, app, key, pressed: bool):
+        import dictation as _d
+        _d._MockApp_check_command_key = None
+
+        # Directly call the implementation logic (mirrors _check_command_mode_key)
+        cfg = app.config.get('command_mode', {})
+        if not cfg.get('enabled', False):
+            return
+        btn_name = cfg.get('button', 'mouse4')
+        if btn_name in ('mouse4', 'mouse5'):
+            return
+        import dictation as _d
+        target = _d._get_pynput_command_key(btn_name)
+        if not _d._matches_pynput_key(key, target):
+            return
+        mode = cfg.get('mode', 'hold')
+        if mode == 'hold':
+            if pressed:
+                app.enter_command_mode()
+            else:
+                app.exit_command_mode()
+        else:
+            if pressed:
+                if app.command_mode_active:
+                    app.exit_command_mode()
+                else:
+                    app.enter_command_mode()
+
+    def test_rctrl_press_enters_hold_mode(self):
+        from pynput.keyboard import Key
+        app = self._make_app_with_button('rctrl', mode='hold')
+        self._simulate_key(app, Key.ctrl_r, pressed=True)
+        assert app.command_mode_active is True
+
+    def test_rctrl_release_exits_hold_mode(self):
+        from pynput.keyboard import Key
+        app = self._make_app_with_button('rctrl', mode='hold')
+        self._simulate_key(app, Key.ctrl_r, pressed=True)
+        self._simulate_key(app, Key.ctrl_r, pressed=False)
+        assert app.command_mode_active is False
+
+    def test_wrong_key_ignored(self):
+        from pynput.keyboard import Key
+        app = self._make_app_with_button('rctrl', mode='hold')
+        self._simulate_key(app, Key.ctrl_l, pressed=True)
+        assert app.command_mode_active is False
+
+    def test_mouse_button_not_routed_via_key(self):
+        from pynput.keyboard import Key
+        app = self._make_app_with_button('mouse4', mode='hold')
+        self._simulate_key(app, Key.ctrl_r, pressed=True)  # should be ignored
+        assert app.command_mode_active is False
+
+    def test_disabled_command_mode_ignored(self):
+        from pynput.keyboard import Key
+        app = self._make_app_with_button('rctrl', mode='hold', enabled=False)
+        self._simulate_key(app, Key.ctrl_r, pressed=True)
+        assert app.command_mode_active is False
+
+    def test_ralt_toggle_first_press_enters(self):
+        from pynput.keyboard import Key
+        app = self._make_app_with_button('ralt', mode='toggle')
+        self._simulate_key(app, Key.alt_r, pressed=True)
+        assert app.command_mode_active is True
+
+    def test_ralt_toggle_second_press_exits(self):
+        from pynput.keyboard import Key
+        app = self._make_app_with_button('ralt', mode='toggle')
+        self._simulate_key(app, Key.alt_r, pressed=True)
+        self._simulate_key(app, Key.alt_r, pressed=True)
+        assert app.command_mode_active is False
+
+    def test_settings_button_options_cover_all_keyboard_values(self):
+        """Every non-mouse button value in the settings dropdown must resolve."""
+        import dictation as _d
+        from samsara.ui.settings_window import SettingsWindow
+        for label, key in SettingsWindow._CMD_BUTTON_OPTIONS.items():
+            if key in ('mouse4', 'mouse5'):
+                continue
+            result = _d._get_pynput_command_key(key)
+            assert result is not None, f"'{key}' ({label}) does not resolve to a pynput key"

@@ -439,10 +439,57 @@ class SettingsWindow:
         self.cancel_hotkey_btn.pack(side='left')
         self.hotkey_buttons['cancel_hotkey'] = self.cancel_hotkey_btn
 
+    # Maps human-readable dropdown labels to config values for command_mode.button
+    _CMD_BUTTON_OPTIONS = {
+        'Mouse 4 (default)': 'mouse4',
+        'Mouse 5':           'mouse5',
+        'Right Ctrl':        'rctrl',
+        'Left Ctrl':         'lctrl',
+        'Right Alt':         'ralt',
+        'Left Alt':          'lalt',
+        'Right Shift':       'rshift',
+        'Left Shift':        'lshift',
+        **{f'F{n}': f'f{n}' for n in range(13, 25)},
+    }
+    _CMD_BUTTON_KEY_TO_LABEL = {}  # populated lazily on first use
+
+    @classmethod
+    def _cmd_button_key_to_label(cls) -> dict:
+        if not cls._CMD_BUTTON_KEY_TO_LABEL:
+            cls._CMD_BUTTON_KEY_TO_LABEL = {v: k for k, v in cls._CMD_BUTTON_OPTIONS.items()}
+        return cls._CMD_BUTTON_KEY_TO_LABEL
+
     def build_commands_tab(self):
         """Build the Commands settings tab (generator)."""
         from samsara.command_packs import PACKS
         commands_tab = self.tabview.tab("Commands")
+
+        # ---- Command Mode Input section -----------------------------------
+        ctk.CTkLabel(commands_tab, text="Command Mode Input",
+                     font=ctk.CTkFont(size=16, weight="bold")
+                     ).pack(anchor='w', pady=(15, 4))
+        ctk.CTkLabel(
+            commands_tab,
+            text="Choose which button activates Mouse 4 command mode (walkie-talkie hold-to-talk).",
+            text_color="gray", wraplength=580,
+        ).pack(anchor='w', pady=(0, 8))
+
+        btn_row = ctk.CTkFrame(commands_tab, fg_color="transparent")
+        btn_row.pack(fill='x', pady=(0, 12))
+        ctk.CTkLabel(btn_row, text="Command Mode Button:", width=190, anchor='w').pack(side='left')
+
+        current_btn_key = self.app.config.get('command_mode', {}).get('button', 'mouse4')
+        current_btn_label = self._cmd_button_key_to_label().get(current_btn_key, 'Mouse 4 (default)')
+        self.cmd_mode_button_var = tk.StringVar(value=current_btn_label)
+        ctk.CTkComboBox(
+            btn_row,
+            variable=self.cmd_mode_button_var,
+            values=list(self._CMD_BUTTON_OPTIONS.keys()),
+            state='readonly',
+            width=200,
+        ).pack(side='left')
+
+        ctk.CTkFrame(commands_tab, height=1, fg_color="gray30").pack(fill='x', pady=(4, 12))
 
         # ---- Command Packs section ----------------------------------------
         ctk.CTkLabel(commands_tab, text="Command Packs",
@@ -1792,6 +1839,14 @@ class SettingsWindow:
         # Save Text-to-Speech settings -- only if the tab was visited
         if "Text-to-Speech" in self.built_tabs and hasattr(self, '_tts_tab'):
             self._tts_tab.save()
+
+        # Save Command Mode button selection
+        if "Commands" in self.built_tabs and hasattr(self, 'cmd_mode_button_var'):
+            new_btn_label = self.cmd_mode_button_var.get()
+            new_btn_key = self._CMD_BUTTON_OPTIONS.get(new_btn_label, 'mouse4')
+            cm_cfg = dict(self.app.config.get('command_mode', {}) or {})
+            cm_cfg['button'] = new_btn_key
+            self.app.update_config({'command_mode': cm_cfg}, save=False)
 
         # Save Command Packs settings -- only if the tab was visited
         if "Commands" in self.built_tabs and hasattr(self, '_pack_vars'):
