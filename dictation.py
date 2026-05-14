@@ -755,6 +755,25 @@ class DictationApp:
         if self.config.get('alarms', {}).get('enabled', True):
             self.alarm_manager.start()
 
+        # TTS engine + AudioCoordinator (optional; off by default)
+        self.tts_engine = None
+        self.audio_coordinator = None
+        if self.config.get('tts', {}).get('enabled', False):
+            try:
+                from samsara.tts import WinRTEngine, AudioCoordinator
+                from samsara.tts.exceptions import EngineUnavailableError
+                self.tts_engine = WinRTEngine()
+                self.audio_coordinator = AudioCoordinator(
+                    self,
+                    engine=self.tts_engine,
+                    config=self.config.get('audio_coordinator', {}),
+                )
+                print("[TTS] Initialized WinRT engine + AudioCoordinator")
+            except Exception as e:
+                print(f"[TTS] Failed to initialize: {e}")
+                self.tts_engine = None
+                self.audio_coordinator = None
+
         # Echo cancellation (removes system audio from mic input)
         aec_config = self.config.get('echo_cancellation', {})
         self.echo_canceller = EchoCanceller(
@@ -919,6 +938,33 @@ class DictationApp:
             "smart_actions": {
                 "brain_dump_path": str(Path.home() / "Documents" / "Samsara Brain Dump.md"),
                 "earcons_enabled": True,
+            },
+            # TTS subsystem (WinRTEngine + AudioCoordinator)
+            "tts": {
+                "enabled": False,   # opt-in; toggle in Settings → Text-to-Speech
+                "voice_id": None,   # None = OS default voice
+                "speed": 1.0,
+                "pitch": 1.0,
+                "volume": 0.8,
+                # Per-context toggles — read by Phase 2 category-driven behavior.
+                # Saved here from Settings UI but not yet acted on at runtime.
+                "use_for_agent_responses": True,
+                "use_for_confirmations": True,
+                "use_for_warnings": True,
+                "use_for_status_updates": True,
+                "use_for_dictation_readback": False,
+                "use_for_errors": True,
+            },
+            "audio_coordinator": {
+                "enabled": True,
+                "duck_factor": 0.7,
+                "duck_default_duration_ms": 300,
+                "duck_fade_ms": 5,
+                "interrupt_grace_period_ms": 200,
+                "speaking_wake_threshold_multiplier": 1.5,
+                "speaking_vad_threshold_multiplier": 0.6,
+                "thinking_pulse_interval_ms": 1000,
+                "thinking_pulse_enabled": False,
             },
             # Web shortcuts for "go to X" voice commands. Keys are spoken
             # aliases; values are target URLs. Users add their own by editing
@@ -1369,7 +1415,9 @@ class DictationApp:
         return "Unknown"
 
     def _log_history(self, raw_text, display_text=None, duration_ms=0,
-                     mode="hold", status="success", app_context=None):
+                     mode="hold", status="success", app_context=None,
+                     entry_type="dictation", log_prob=None,
+                     matched_command=None):
         """Write one entry to the persistent SQLite history (best-effort).
 
         Wrapped so callers don't need to null-check or try/except every site.
@@ -1385,6 +1433,9 @@ class DictationApp:
                 duration_ms=int(duration_ms),
                 mode=mode,
                 status=status,
+                entry_type=entry_type,
+                log_prob=log_prob,
+                matched_command=matched_command,
             )
         except Exception as e:
             print(f"[HISTORY] log failed: {e}")
@@ -2103,6 +2154,7 @@ class DictationApp:
                     duration_ms=int(audio_duration * 1000),
                     mode="continuous",
                     status="success",
+                    entry_type="dictation",
                 )
                 self._notify_main_window(text.strip())
 
@@ -2113,6 +2165,7 @@ class DictationApp:
                 display_text=f"[FAILED] {e}",
                 mode="continuous",
                 status="failed",
+                entry_type="failed",
             )
             # Notify user so they know to retry
             try:
@@ -2521,6 +2574,7 @@ class DictationApp:
                         duration_ms=int(audio_duration * 1000),
                         mode="wake",
                         status="empty",
+                        entry_type="failed",
                     )
                 return
             
@@ -2705,6 +2759,7 @@ class DictationApp:
                 display_text=f"[FAILED] {e}",
                 mode="wake",
                 status="failed",
+                entry_type="failed",
             )
             # Notify user so they know to retry
             try:
@@ -3193,6 +3248,7 @@ class DictationApp:
             display_text=text.strip(),
             mode="wake",
             status="success",
+            entry_type="dictation",
         )
         self._notify_main_window(text.strip())
 
@@ -3551,6 +3607,11 @@ class DictationApp:
         """
         if not self.config.get('audio_feedback', True):
             return
+
+        # Notify AudioCoordinator so it can duck TTS volume if TTS is active.
+        # getattr guard means play_sound works before the coordinator is set up.
+        if getattr(self, 'audio_coordinator', None) is not None:
+            self.audio_coordinator.on_earcon_starting(sound_type)
 
         cached = self._sound_cache.get(sound_type)
         if cached is None:
@@ -4023,6 +4084,8 @@ class DictationApp:
                             duration_ms=int(audio_duration * 1000),
                             mode="command",
                             status="success",
+                            entry_type="command",
+                            matched_command=str(result) if result else None,
                         )
                         return
 
@@ -4056,6 +4119,7 @@ class DictationApp:
                         duration_ms=int(audio_duration * 1000),
                         mode="hold",
                         status="success",
+                        entry_type="dictation",
                     )
                     self._notify_main_window(text.strip())
 
@@ -4073,6 +4137,7 @@ class DictationApp:
                             duration_ms=int(audio_duration * 1000),
                             mode="hold",
                             status="empty",
+                            entry_type="failed",
                         )
 
             except Exception as e:
@@ -4085,6 +4150,7 @@ class DictationApp:
                     display_text=f"[FAILED] {e}",
                     mode="hold",
                     status="failed",
+                    entry_type="failed",
                 )
                 # Notify user so they know to retry
                 try:
@@ -4682,7 +4748,17 @@ class DictationApp:
             """Generate menu dynamically to reflect current state"""
             mode = self.config.get('mode', 'hold')
             
-            # Create microphone submenu
+            # Create microphone submenu.
+            # Refresh the device list every time the menu is built so a mic
+            # connected after startup (e.g. BT earbuds) appears immediately.
+            # Skip the refresh while capture is active — sd.query_devices()
+            # can stutter the audio stream on some drivers during recording.
+            if not (self.recording or self.continuous_active or self.wake_word_active):
+                try:
+                    self.available_mics = self.get_available_microphones()
+                except Exception as e:
+                    print(f"[MIC] Refresh failed, using cached list: {e}")
+
             mic_menu_items = []
             current_mic_id = self.config.get('microphone')
 
@@ -4947,6 +5023,18 @@ class DictationApp:
             if hasattr(self, 'listening_indicator'):
                 self.listening_indicator.destroy()
         except:
+            pass
+
+        # Shut down TTS coordinator + engine before the earcon stream closes
+        try:
+            if getattr(self, 'audio_coordinator', None) is not None:
+                self.audio_coordinator.shutdown()
+        except Exception:
+            pass
+        try:
+            if getattr(self, 'tts_engine', None) is not None:
+                self.tts_engine.shutdown()
+        except Exception:
             pass
 
         # Stop persistent sound stream
