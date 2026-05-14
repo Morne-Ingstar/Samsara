@@ -82,9 +82,9 @@ def _set_volume(level):
 def handle_play(app, remainder):
     """Play music. Usage: 'Jarvis, play some sad music'"""
     if not remainder or remainder.strip().lower() in ('music', 'some music', 'something'):
-        # No specific request — pick the "default"
-        print("[MUSIC] Playing: ambient selection")
-        _open_track(SONGS['mad world'])
+        # No specific request — shuffle Liked Songs on Spotify
+        print("[MUSIC] Playing: Liked Songs (shuffle)")
+        _open_track('spotify:collection:tracks')
         target_vol = int(app.config.get('music_volume', 30))
         threading.Timer(2.0, _set_volume, args=[target_vol]).start()
         return True
