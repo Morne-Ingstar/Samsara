@@ -220,6 +220,58 @@ from samsara.echo_cancel import EchoCanceller
 from samsara.clipboard import clipboard_lock as _clipboard_lock, save_clipboard as _save_clipboard_win32, restore_clipboard as _restore_clipboard_win32, paste_with_preservation
 
 
+def _get_pynput_command_key(button_name: str):
+    """Resolve a command_mode.button string to a pynput Key or KeyCode.
+
+    Returns None for mouse4/mouse5 (those are handled by the mouse listener)
+    and for any unrecognised name.
+
+    Supported keyboard values:
+        rctrl / lctrl / ralt / lalt / rshift / lshift
+        f13 ... f24  (macro-pad / foot-pedal extended function keys)
+    """
+    _SIMPLE = {
+        'rctrl':  Key.ctrl_r,
+        'lctrl':  Key.ctrl_l,
+        'ralt':   Key.alt_r,
+        'lalt':   Key.alt_l,
+        'rshift': Key.shift_r,
+        'lshift': Key.shift_l,
+    }
+    if button_name in _SIMPLE:
+        return _SIMPLE[button_name]
+    if button_name.startswith('f'):
+        tail = button_name[1:]
+        if tail.isdigit():
+            n = int(tail)
+            if 13 <= n <= 24:
+                # pynput defines f13-f20 in Key; f21-f24 may only exist as VK codes
+                try:
+                    return getattr(Key, button_name)
+                except AttributeError:
+                    pass
+                try:
+                    from pynput.keyboard import KeyCode
+                    return KeyCode.from_vk(0x6F + n)   # F1=0x70 → Fn=0x70+(n-1)
+                except Exception:
+                    return None
+    return None
+
+
+def _matches_pynput_key(key, target) -> bool:
+    """True if *key* (from pynput callback) equals *target* (Key or KeyCode)."""
+    if target is None:
+        return False
+    if key == target:
+        return True
+    # Cross-type comparison: Key enum member vs raw KeyCode — compare vk values.
+    target_vk = getattr(getattr(target, 'value', target), 'vk', None)
+    key_vk    = getattr(getattr(key,    'value', key),    'vk', None)
+    if target_vk is not None and key_vk is not None:
+        return target_vk == key_vk
+    return False
+
+
 def resample_audio(audio, orig_sr, target_sr=MODEL_SAMPLE_RATE):
     """Resample audio from orig_sr to target_sr using linear interpolation.
 
@@ -1764,6 +1816,8 @@ class DictationApp:
             self.current_keys.add(key_name)
             self.key_press_times[key_name] = time.time()
 
+        self._check_command_mode_key(key, pressed=True)
+
         # While snoozed, still track key state and allow alarm hotkeys,
         # but skip all dictation/recording hotkeys
         if self.snoozed:
@@ -1885,7 +1939,9 @@ class DictationApp:
         key_name = self.get_key_name(key)
         if key_name and key_name in self.current_keys:
             self.current_keys.discard(key_name)
-        
+
+        self._check_command_mode_key(key, pressed=False)
+
         mode = self.config.get('mode', 'hold')
         
         # Get hotkey configs
@@ -2035,8 +2091,38 @@ class DictationApp:
         if not cfg.get('enabled', False):
             return
         btn_name = cfg.get('button', 'mouse4')
+        if btn_name not in ('mouse4', 'mouse5'):
+            return  # keyboard source — handled in on_key_press/release
         target = Button.x1 if btn_name == 'mouse4' else Button.x2
         if button != target:
+            return
+        mode = cfg.get('mode', 'hold')
+        if mode == 'hold':
+            if pressed:
+                self.enter_command_mode()
+            else:
+                self.exit_command_mode()
+        else:  # toggle
+            if pressed:
+                if self.command_mode_active:
+                    self.exit_command_mode()
+                else:
+                    self.enter_command_mode()
+
+    def _check_command_mode_key(self, key, pressed: bool) -> None:
+        """Route keyboard events to the command mode state machine.
+
+        Called from on_key_press / on_key_release for every key event.
+        No-ops unless command_mode.button is a keyboard source.
+        """
+        cfg = self.config.get('command_mode', {})
+        if not cfg.get('enabled', False):
+            return
+        btn_name = cfg.get('button', 'mouse4')
+        if btn_name in ('mouse4', 'mouse5'):
+            return  # mouse source — handled in _on_mouse_button
+        target = _get_pynput_command_key(btn_name)
+        if not _matches_pynput_key(key, target):
             return
         mode = cfg.get('mode', 'hold')
         if mode == 'hold':
