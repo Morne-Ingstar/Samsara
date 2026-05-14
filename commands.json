@@ -2216,6 +2216,18 @@
       ],
       "description": "Decrease font size (Ctrl+-)",
       "pack": "text-editing"
+    },
+    "show commands": {
+      "type": "method",
+      "method": "show_cheat_sheet",
+      "pack": "core",
+      "description": "Show the command reference overlay"
+    },
+    "hide commands": {
+      "type": "method",
+      "method": "hide_cheat_sheet",
+      "pack": "core",
+      "description": "Hide the command reference overlay"
     }
   }
 }
