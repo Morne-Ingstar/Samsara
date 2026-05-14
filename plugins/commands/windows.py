@@ -343,7 +343,7 @@ def _parse_send_remainder(remainder):
 # Command handlers
 # ---------------------------------------------------------------------------
 
-@command("bring", aliases=["bring back", "get", "grab", "fetch"])
+@command("bring", aliases=["bring back", "get", "grab", "fetch"], pack="window-management")
 def handle_bring(app, remainder):
     logger.info("bring: remainder='%s'", remainder)
     extra_ignore = _get_extra_ignore(app)
@@ -372,7 +372,7 @@ def handle_bring(app, remainder):
     return True
 
 
-@command("send", aliases=["move", "put", "throw"])
+@command("send", aliases=["move", "put", "throw"], pack="window-management")
 def handle_send(app, remainder):
     logger.info("send: remainder='%s'", remainder)
     extra_ignore = _get_extra_ignore(app)
@@ -404,7 +404,7 @@ def handle_send(app, remainder):
     return True
 
 
-@command("movie mode", aliases=["movie time", "couch mode", "tv mode"])
+@command("movie mode", aliases=["movie time", "couch mode", "tv mode"], pack="window-management")
 def handle_movie_mode(app, remainder):
     extra_ignore = _get_extra_ignore(app)
     tv = get_tv_monitor(app)
@@ -445,7 +445,7 @@ def handle_movie_mode(app, remainder):
     "move the mouse to",
     "teleport cursor to",
     "teleport mouse to",
-])
+], pack="window-management")
 def handle_cursor(app, remainder):
     logger.info("cursor: remainder='%s'", remainder)
     monitors = get_monitors()

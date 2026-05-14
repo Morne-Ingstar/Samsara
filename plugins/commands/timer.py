@@ -118,7 +118,7 @@ _timer_lock = threading.Lock()
 @command("set a timer", aliases=[
     "set timer", "timer for", "timer",
     "remind me in", "start a timer", "start timer"
-])
+], pack="utilities")
 def handle_timer(app, remainder):
     """Set a countdown timer. Usage: 'Jarvis, set a timer for 5 minutes'"""
     seconds, error = _parse_duration(remainder)

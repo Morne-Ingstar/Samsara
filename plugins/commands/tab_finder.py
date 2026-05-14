@@ -57,7 +57,7 @@ def _focus_browser():
 
 
 @command("find tab", aliases=["find the tab", "switch to tab",
-                              "where is", "find my"])
+                              "where is", "find my"], pack="browsers")
 def find_tab(app, remainder):
     """Search browser tabs. 'find tab github', 'where is slack'."""
     if not remainder:
