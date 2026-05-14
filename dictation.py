@@ -602,7 +602,7 @@ class DictationApp:
         
         # Command system
         commands_path = Path(__file__).parent / "commands.json"
-        self.command_executor = CommandExecutor(commands_path)
+        self.command_executor = CommandExecutor(commands_path, app=self)
         self.command_mode_enabled = self.config.get('command_mode_enabled', True)
 
         # Wake-word trace hook — the debug window registers a callback here
@@ -774,6 +774,23 @@ class DictationApp:
                 self.tts_engine = None
                 self.audio_coordinator = None
 
+        # Smart Actions Phase 2: webhook bridge, session manager, tool dispatcher
+        try:
+            from samsara.smart_actions_bridge import SmartActionsBridge
+            from samsara.smart_actions_session import SmartActionsSession
+            from samsara.smart_actions_tools import ToolDispatcher
+            sa_config = self.config.get('smart_actions', {})
+            self._smart_actions_bridge = SmartActionsBridge(sa_config)
+            self._smart_actions_session = SmartActionsSession(
+                window_minutes=sa_config.get('session_window_minutes', 5))
+            self._smart_actions_tools = ToolDispatcher(self, sa_config)
+            print("[SMART ACTIONS] Phase 2 bridge/session/tools initialized")
+        except Exception as e:
+            print(f"[SMART ACTIONS] Phase 2 init failed: {e}")
+            self._smart_actions_bridge = None
+            self._smart_actions_session = None
+            self._smart_actions_tools = None
+
         # Echo cancellation (removes system audio from mic input)
         aec_config = self.config.get('echo_cancellation', {})
         self.echo_canceller = EchoCanceller(
@@ -936,8 +953,17 @@ class DictationApp:
             # Per-user default lands in ~/Documents/Samsara Brain Dump.md.
             # Settings UI lets the user pick another path or disable earcons.
             "smart_actions": {
+                "enabled": False,
                 "brain_dump_path": str(Path.home() / "Documents" / "Samsara Brain Dump.md"),
                 "earcons_enabled": True,
+                "endpoint_url": "",
+                "auth_header": "",
+                "timeout_s": 30,
+                "session_window_minutes": 5,
+                "allowed_directories": [str(Path.home() / "Documents")],
+                "allowed_domains": [],
+                "tier2_approvals": {},
+                "routing_verbs": ["ask", "plan", "summarize"],
             },
             # TTS subsystem (WinRTEngine + AudioCoordinator)
             "tts": {

@@ -42,9 +42,19 @@ FILE_HEADER = (
 # Phase 2 added dedicated per-theme WAVs (sounds/themes/<theme>/<name>.wav)
 # and extended play_sound() to auto-discover them, so we no longer alias to
 # the legacy four earcons.
-EARCON_CAPTURE_STARTED = "capture_started"
-EARCON_CAPTURE_SAVED = "capture_saved"
-EARCON_ERROR = "error"
+EARCON_CAPTURE_STARTED  = "capture_started"
+EARCON_CAPTURE_SAVED    = "capture_saved"
+EARCON_ERROR            = "error"
+
+# Phase 2 earcons -- agent pipeline audio vocabulary.
+# EARCON_AGENT_RESPONSE and EARCON_FALLBACK must sound audibly DIFFERENT so
+# the user can tell whether the agent responded or a fallback saved the note.
+EARCON_AGENT_ROUTING    = "agent_routing"
+EARCON_AGENT_RESPONSE   = "agent_response"
+EARCON_THINKING_PULSE   = "thinking_pulse"
+EARCON_CONFIRM_REQUIRED = "confirm_required"
+EARCON_ACTION_COMPLETE  = "action_complete"
+EARCON_FALLBACK         = "fallback"
 
 
 # ---------------------------------------------------------------------------
@@ -67,8 +77,14 @@ def get_config(app):
     if app is not None and hasattr(app, 'config'):
         cfg = app.config.get('smart_actions', {}) or {}
     return {
-        'brain_dump_path': cfg.get('brain_dump_path', str(default_brain_dump_path())),
-        'earcons_enabled': cfg.get('earcons_enabled', True),
+        'brain_dump_path':       cfg.get('brain_dump_path', str(default_brain_dump_path())),
+        'earcons_enabled':       cfg.get('earcons_enabled', True),
+        'enabled':               cfg.get('enabled', False),
+        'endpoint_url':          cfg.get('endpoint_url', ''),
+        'auth_header':           cfg.get('auth_header', ''),
+        'timeout_s':             cfg.get('timeout_s', 30),
+        'session_window_minutes': cfg.get('session_window_minutes', 5),
+        'routing_verbs':         cfg.get('routing_verbs', ['ask', 'plan', 'summarize']),
     }
 
 
@@ -205,6 +221,15 @@ def _do_capture(app, remainder):
     return False
 
 
+@command("new conversation", aliases=["reset conversation", "fresh start"])
+def handle_new_conversation(app, remainder):
+    """End the current Smart Actions session. 'Jarvis, new conversation.'"""
+    if hasattr(app, '_smart_actions_session'):
+        app._smart_actions_session.reset()
+    print("[SMART ACTIONS] Session reset")
+    return True
+
+
 @command("note")
 def handle_note(app, remainder):
     """Capture a voice note. 'Jarvis, note to call the doctor about it.'"""
@@ -243,6 +268,96 @@ def open_brain_dump_file(path):
     except Exception:
         logger.exception(f"[SMART ACTIONS] Could not open brain dump file at {path}")
         return False
+
+
+# ---------------------------------------------------------------------------
+# Phase 2: agent routing
+# ---------------------------------------------------------------------------
+
+def _do_agent_route(app, text, verb):
+    """Route an utterance to the configured AI agent endpoint.
+
+    Called from CommandExecutor's no-match fallback path (NOT via @command
+    decorator) so routing verbs can't steal matches from specific plugins.
+    """
+    smart_cfg = get_config(app)
+
+    # 1. Immediate "I heard you" earcon
+    _play_earcon(app, EARCON_CAPTURE_STARTED, smart_cfg)
+
+    # 2. Session bookkeeping
+    session = getattr(app, '_smart_actions_session', None)
+    if session is None:
+        logger.warning("[SMART ACTIONS] No session object -- falling back")
+        tools = getattr(app, '_smart_actions_tools', None)
+        if tools:
+            tools._fallback_save(text, "session unavailable")
+        return True
+    sid = session.get_or_create_session()
+    session.add_user_turn(text)
+
+    # 3. Bridge check
+    bridge = getattr(app, '_smart_actions_bridge', None)
+    if bridge is None or not bridge.is_configured():
+        logger.info("[SMART ACTIONS] Agent not configured -- falling back")
+        tools = getattr(app, '_smart_actions_tools', None)
+        if tools:
+            tools._fallback_save(text, "agent not configured")
+        return True
+
+    # 4. Routing earcon (distinct from capture_started)
+    _play_earcon(app, EARCON_AGENT_ROUTING, smart_cfg)
+
+    # 5. Thinking pulse (daemon thread, killed via threading.Event)
+    tools = getattr(app, '_smart_actions_tools', None)
+    if tools:
+        tools._start_thinking_pulse()
+
+    # 6. Send request
+    observations = session.consume_observations()
+    response = bridge.send(
+        text, verb, sid, session.context, observations)
+
+    # 7. Stop pulse regardless of outcome
+    if tools:
+        tools._stop_thinking_pulse()
+
+    # 8. Handle failure
+    if response is None:
+        logger.warning("[SMART ACTIONS] Agent unreachable -- falling back")
+        if tools:
+            tools._fallback_save(text, "agent unreachable")
+        return True
+
+    # 9. Handle reply text
+    reply = response.get('reply', '')
+    if reply:
+        session.add_assistant_turn(reply)
+        # Speak via TTS if available
+        coordinator = getattr(app, 'audio_coordinator', None)
+        if coordinator is not None:
+            try:
+                coordinator.speak(reply, category="agent_response")
+            except Exception as e:
+                logger.error("[SMART ACTIONS] TTS speak failed: %s", e)
+        _play_earcon(app, EARCON_AGENT_RESPONSE, smart_cfg)
+        print(f"[SMART ACTIONS] Agent reply: {reply}")
+
+    # 10. Handle tool calls
+    # SECURITY: tier is determined locally in dispatch() -- the response
+    # 'tier' field (if any) is silently ignored.
+    for tc in response.get('tool_calls', []):
+        if tools is None:
+            break
+        result = tools.dispatch(tc)
+        session.add_observation(
+            tc.get('tool', ''),
+            'success' if result.get('success') else 'error',
+            result.get('result'))
+        if result.get('success'):
+            _play_earcon(app, EARCON_ACTION_COMPLETE, smart_cfg)
+
+    return True
 
 
 def validate_brain_dump_path(raw_path):
