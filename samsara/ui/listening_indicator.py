@@ -8,6 +8,7 @@ Flashes green on successful dictation, red on errors.
 
 import sys
 import tkinter as tk
+import tkinter.font as tkfont
 
 
 # Teal color matching tray icon active state
@@ -31,9 +32,11 @@ _FLASH_SUCCESS_FG = "#66FF66"
 _FLASH_ERROR_BG = "#7F0000"
 _FLASH_ERROR_FG = "#FF6666"
 
-# Pill geometry
-_PILL_W = 150
+# Pill geometry — width is now computed dynamically; these are limits/defaults
 _PILL_H = 36
+_PILL_MIN_W = 90     # never shrink below this
+_PILL_PAD_X = 22     # horizontal padding each side of text
+_DOT_SPACE = 22      # extra left-side reservation when recording dot is shown
 _CORNER_RADIUS = 18
 _EDGE_MARGIN = 24
 
@@ -110,6 +113,11 @@ class ListeningIndicator:
         self._snoozed = False
         self._corner = "bottom-center"
         self._visible = False
+
+        # Dynamic width: tracks the pill's current pixel width so we can
+        # skip resize when the text hasn't changed size.
+        self._current_pill_w = _PILL_MIN_W
+        self._pill_font = None  # lazy-created after Tk is ready
 
         # Pulse state
         self._pulse_step = 0
@@ -257,7 +265,7 @@ class ListeningIndicator:
 
         self._canvas = tk.Canvas(
             self._win,
-            width=_PILL_W,
+            width=self._current_pill_w,
             height=_PILL_H,
             bg=transparent,
             highlightthickness=0,
@@ -268,14 +276,17 @@ class ListeningIndicator:
         # Middle-click to dismiss
         self._canvas.bind("<Button-2>", lambda _e: self.hide())
 
-        self._win.geometry(f"{_PILL_W}x{_PILL_H}")
+        # Lazy-create font now that Tk is initialised
+        if self._pill_font is None:
+            family = "Segoe UI" if sys.platform == "win32" else "Helvetica"
+            self._pill_font = tkfont.Font(family=family, size=11, weight="bold")
+
+        self._win.geometry(f"{self._current_pill_w}x{_PILL_H}")
 
     def _draw(self):
-        """Redraw the pill with current state colors."""
+        """Redraw the pill with current state colors, resizing width to fit text."""
         if self._canvas is None:
             return
-
-        self._canvas.delete("all")
 
         # Flash overrides all other color states
         if self._flash_bg is not None:
@@ -299,16 +310,6 @@ class ListeningIndicator:
             bg = _IDLE_BG
             fg = _IDLE_FG
 
-        # Draw rounded rectangle (pill shape)
-        r = _CORNER_RADIUS
-        x0, y0, x1, y1 = 0, 0, _PILL_W, _PILL_H
-        self._canvas.create_arc(x0, y0, x0 + 2 * r, y0 + 2 * r, start=90, extent=90, fill=bg, outline=bg)
-        self._canvas.create_arc(x1 - 2 * r, y0, x1, y0 + 2 * r, start=0, extent=90, fill=bg, outline=bg)
-        self._canvas.create_arc(x0, y1 - 2 * r, x0 + 2 * r, y1, start=180, extent=90, fill=bg, outline=bg)
-        self._canvas.create_arc(x1 - 2 * r, y1 - 2 * r, x1, y1, start=270, extent=90, fill=bg, outline=bg)
-        self._canvas.create_rectangle(x0 + r, y0, x1 - r, y1, fill=bg, outline=bg)
-        self._canvas.create_rectangle(x0, y0 + r, x1, y1 - r, fill=bg, outline=bg)
-
         # Mode text (priority: Snoozed > Command Mode > mode text)
         if self._snoozed:
             label = "Snoozed"
@@ -316,25 +317,68 @@ class ListeningIndicator:
             label = "CMD"
         else:
             label = self._mode_text
-        if self._listening and not self._snoozed and not self._command_mode and self._flash_bg is None:
-            label = f"  {label}"  # space for the dot
-        self._canvas.create_text(
-            _PILL_W // 2, _PILL_H // 2,
-            text=label,
-            fill=fg,
-            font=("Segoe UI", 11, "bold") if sys.platform == "win32" else ("Helvetica", 11, "bold"),
+
+        # Determine whether the recording dot will be shown
+        show_dot = (
+            self._listening
+            and not self._snoozed
+            and not self._command_mode
+            and self._flash_bg is None
         )
 
-        # Recording dot indicator (only when listening and not flashing/command-mode)
-        if self._listening and not self._snoozed and not self._command_mode and self._flash_bg is None:
+        # Compute the pill width needed to fit the label without clipping
+        dot_reserve = _DOT_SPACE if show_dot else 0
+        if self._pill_font is not None:
+            text_w = self._pill_font.measure(label)
+        else:
+            text_w = len(label) * 8  # rough fallback before font is ready
+        pill_w = max(_PILL_MIN_W, text_w + 2 * _PILL_PAD_X + dot_reserve)
+
+        # Resize canvas + window only when the width actually changes
+        if pill_w != self._current_pill_w:
+            self._current_pill_w = pill_w
+            self._canvas.config(width=pill_w)
+            try:
+                self._win.geometry(f"{pill_w}x{_PILL_H}")
+            except tk.TclError:
+                pass
+            self._position_window()
+
+        self._canvas.delete("all")
+
+        # Draw rounded rectangle (pill shape)
+        r = _CORNER_RADIUS
+        x0, y0, x1, y1 = 0, 0, pill_w, _PILL_H
+        self._canvas.create_arc(x0, y0, x0 + 2 * r, y0 + 2 * r, start=90, extent=90, fill=bg, outline=bg)
+        self._canvas.create_arc(x1 - 2 * r, y0, x1, y0 + 2 * r, start=0, extent=90, fill=bg, outline=bg)
+        self._canvas.create_arc(x0, y1 - 2 * r, x0 + 2 * r, y1, start=180, extent=90, fill=bg, outline=bg)
+        self._canvas.create_arc(x1 - 2 * r, y1 - 2 * r, x1, y1, start=270, extent=90, fill=bg, outline=bg)
+        self._canvas.create_rectangle(x0 + r, y0, x1 - r, y1, fill=bg, outline=bg)
+        self._canvas.create_rectangle(x0, y0 + r, x1, y1 - r, fill=bg, outline=bg)
+
+        # Recording dot (left side, vertically centered)
+        if show_dot:
             dot_r = 5
-            dot_x = 16
+            dot_x = 14
             dot_y = _PILL_H // 2
             self._canvas.create_oval(
                 dot_x - dot_r, dot_y - dot_r,
                 dot_x + dot_r, dot_y + dot_r,
                 fill=fg, outline=fg,
             )
+
+        # Text: centered in the full pill, shifted right by half dot_reserve so
+        # the dot doesn't overlap it
+        text_x = (pill_w + dot_reserve) // 2
+        self._canvas.create_text(
+            text_x, _PILL_H // 2,
+            text=label,
+            fill=fg,
+            font=self._pill_font or (
+                ("Segoe UI", 11, "bold") if sys.platform == "win32"
+                else ("Helvetica", 11, "bold")
+            ),
+        )
 
     def _position_window(self):
         """Place the pill in the configured screen position, inside the work area."""
@@ -353,24 +397,25 @@ class ListeningIndicator:
             except tk.TclError:
                 return
 
+        pw = self._current_pill_w
         m = _EDGE_MARGIN
-        cx = wa_x + (wa_w - _PILL_W) // 2  # horizontal center
+        cx = wa_x + (wa_w - pw) // 2  # horizontal center
 
         if self._corner == "top-left":
             x, y = wa_x + m, wa_y + m
         elif self._corner == "top-center":
             x, y = cx, wa_y + m
         elif self._corner == "top-right":
-            x, y = wa_x + wa_w - _PILL_W - m, wa_y + m
+            x, y = wa_x + wa_w - pw - m, wa_y + m
         elif self._corner == "bottom-left":
             x, y = wa_x + m, wa_y + wa_h - _PILL_H - m
         elif self._corner == "bottom-center":
             x, y = cx, wa_y + wa_h - _PILL_H - m
         else:  # bottom-right
-            x, y = wa_x + wa_w - _PILL_W - m, wa_y + wa_h - _PILL_H - m
+            x, y = wa_x + wa_w - pw - m, wa_y + wa_h - _PILL_H - m
 
         try:
-            self._win.geometry(f"{_PILL_W}x{_PILL_H}+{x}+{y}")
+            self._win.geometry(f"{pw}x{_PILL_H}+{x}+{y}")
         except tk.TclError:
             pass
 
