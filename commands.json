@@ -33,19 +33,19 @@
     },
     "open chrome": {
       "type": "launch",
-      "target": "chrome.exe",
+      "target": "C:\\Program Files (x86)\\Google\\Chrome\\Application\\chrome.exe",
       "description": "Open Google Chrome",
       "pack": "browsers"
     },
     "open firefox": {
       "type": "launch",
-      "target": "firefox.exe",
+      "target": "C:\\Program Files\\Mozilla Firefox\\firefox.exe",
       "description": "Open Firefox",
       "pack": "browsers"
     },
     "open edge": {
       "type": "launch",
-      "target": "msedge.exe",
+      "target": "C:\\Program Files (x86)\\Microsoft\\Edge\\Application\\msedge.exe",
       "description": "Open Microsoft Edge",
       "pack": "browsers"
     },
@@ -683,51 +683,6 @@
       "description": "Reset zoom to default",
       "pack": "browsers"
     },
-    "play pause": {
-      "type": "hotkey",
-      "keys": [
-        "playpause"
-      ],
-      "description": "Play or pause media",
-      "pack": "media",
-      "debounce": 1.5
-    },
-    "pause music": {
-      "type": "hotkey",
-      "keys": [
-        "playpause"
-      ],
-      "description": "Pause media playback",
-      "pack": "media",
-      "debounce": 1.5
-    },
-    "next track": {
-      "type": "hotkey",
-      "keys": [
-        "nexttrack"
-      ],
-      "description": "Skip to next track",
-      "pack": "media",
-      "debounce": 1.5
-    },
-    "next song": {
-      "type": "hotkey",
-      "keys": [
-        "nexttrack"
-      ],
-      "description": "Skip to next song",
-      "pack": "media",
-      "debounce": 1.5
-    },
-    "previous track": {
-      "type": "hotkey",
-      "keys": [
-        "prevtrack"
-      ],
-      "description": "Go to previous track",
-      "pack": "media",
-      "debounce": 1.5
-    },
     "bold": {
       "type": "hotkey",
       "keys": [
@@ -848,8 +803,8 @@
     },
     "open claude": {
       "type": "launch",
-      "target": "claude.exe",
-      "description": "Open Claude desktop app (update path if needed)",
+      "target": "https://claude.ai",
+      "description": "Open Claude in browser (desktop app not installed)",
       "pack": "ai"
     },
     "claude new chat": {
@@ -913,7 +868,7 @@
     },
     "open obsidian": {
       "type": "launch",
-      "target": "obsidian.exe",
+      "target": "C:\\Users\\Morne\\AppData\\Local\\Programs\\Obsidian\\Obsidian.exe",
       "description": "Open Obsidian",
       "pack": "ai"
     },
@@ -1151,37 +1106,37 @@
     },
     "open warp": {
       "type": "launch",
-      "target": "warp.exe",
+      "target": "C:\\Users\\Morne\\AppData\\Local\\Programs\\Warp\\Warp.exe",
       "description": "Open Warp terminal",
       "pack": "utilities"
     },
     "open vs code": {
       "type": "launch",
-      "target": "code.exe",
-      "description": "Open VS Code",
+      "target": "https://code.visualstudio.com",
+      "description": "VS Code not installed -- opens download page",
       "pack": "utilities"
     },
     "open discord": {
       "type": "launch",
-      "target": "discord.exe",
+      "target": "C:\\Users\\Morne\\AppData\\Roaming\\Microsoft\\Windows\\Start Menu\\Programs\\Discord Inc\\Discord.lnk",
       "description": "Open Discord",
       "pack": "utilities"
     },
     "open spotify": {
       "type": "launch",
-      "target": "spotify.exe",
+      "target": "C:\\Users\\Morne\\AppData\\Roaming\\Spotify\\Spotify.exe",
       "description": "Open Spotify",
       "pack": "media"
     },
     "open steam": {
       "type": "launch",
-      "target": "steam.exe",
+      "target": "C:\\Program Files (x86)\\Steam\\steam.exe",
       "description": "Open Steam",
       "pack": "utilities"
     },
     "open stremio": {
       "type": "launch",
-      "target": "stremio.exe",
+      "target": "C:\\Users\\Morne\\AppData\\Local\\Programs\\Stremio\\stremio-shell-ng.exe",
       "description": "Open Stremio",
       "pack": "utilities"
     },
@@ -1507,12 +1462,6 @@
       "description": "Toggle reading view (Edge)",
       "pack": "browsers"
     },
-    "open extensions": {
-      "type": "launch",
-      "target": "chrome://extensions",
-      "description": "Open browser extensions page",
-      "pack": "browsers"
-    },
     "volume up": {
       "type": "plugin",
       "description": "Increase system volume",
@@ -1527,33 +1476,6 @@
       "type": "plugin",
       "description": "Toggle system mute",
       "pack": "audio"
-    },
-    "previous song": {
-      "type": "hotkey",
-      "keys": [
-        "prevtrack"
-      ],
-      "description": "Previous track",
-      "pack": "media",
-      "debounce": 1.5
-    },
-    "stop music": {
-      "type": "hotkey",
-      "keys": [
-        "playpause"
-      ],
-      "description": "Stop/pause media",
-      "pack": "media",
-      "debounce": 1.5
-    },
-    "play music": {
-      "type": "hotkey",
-      "keys": [
-        "playpause"
-      ],
-      "description": "Play media",
-      "pack": "media",
-      "debounce": 1.5
     },
     "open midjourney": {
       "type": "launch",
@@ -2141,14 +2063,14 @@
     },
     "open nvda": {
       "type": "launch",
-      "target": "nvda.exe",
+      "target": "C:\\Program Files (x86)\\NVDA\\nvda.exe",
       "description": "Open NVDA screen reader (free, must be installed)",
       "pack": "accessibility"
     },
     "open jaws": {
       "type": "launch",
-      "target": "jfw.exe",
-      "description": "Open JAWS screen reader (must be installed)",
+      "target": "https://www.freedomscientific.com/products/software/jaws/",
+      "description": "JAWS not installed -- opens product page",
       "pack": "accessibility"
     },
     "night light": {
