@@ -262,7 +262,7 @@ _audio = _CoreAudio()
 @command("volume up", aliases=[
     "turn it up", "louder", "increase volume",
     "turn up the volume", "raise the volume"
-])
+], pack="media")
 def handle_volume_up(app, remainder):
     """Increase system volume by 20%."""
     current = _audio.get_volume()
@@ -278,7 +278,7 @@ def handle_volume_up(app, remainder):
 @command("volume down", aliases=[
     "turn it down", "quieter", "decrease volume",
     "lower the volume", "turn down the volume", "softer"
-])
+], pack="media")
 def handle_volume_down(app, remainder):
     """Decrease system volume by 20%."""
     current = _audio.get_volume()
@@ -293,7 +293,7 @@ def handle_volume_down(app, remainder):
 
 @command("toggle mute", aliases=[
     "mute", "unmute", "silence", "unsilence"
-])
+], pack="media")
 def handle_mute(app, remainder):
     """Toggle system mute."""
     muted = _audio.get_mute()

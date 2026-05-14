@@ -78,7 +78,7 @@ def _set_volume(level):
     "put on some", "put on",
     "place of music", "place some music", "play of music",
     "plays some music", "place music", "plays music"
-])
+], pack="media")
 def handle_play(app, remainder):
     """Play music. Usage: 'Jarvis, play some sad music'"""
     if not remainder or remainder.strip().lower() in ('music', 'some music', 'something'):

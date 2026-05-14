@@ -18,7 +18,7 @@ from samsara.plugin_commands import command
     "search gif", "gif me",
     "get me a gif of", "look up a gif of",
     "gif of"
-])
+], pack="screen-capture")
 def handle_gif(app, remainder):
     """Search Giphy for a GIF. Usage: 'Samsara, search for a gif of dancing cat'"""
     if not remainder or not remainder.strip():
