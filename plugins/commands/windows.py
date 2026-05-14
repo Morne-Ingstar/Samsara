@@ -2,18 +2,29 @@
 
 Move windows between monitors by voice.
 
-"Jarvis, bring Chrome here"         - move Chrome to monitor under cursor
-"Jarvis, bring everything here"     - move all valid windows to cursor's monitor
-"Jarvis, send Stremio to TV"        - move Stremio to TV monitor
-"Jarvis, send Chrome to monitor 2"  - move Chrome to specific monitor
-"Jarvis, movie mode"                - Stremio to TV fullscreen, optional Hyperion dim
-"Jarvis, move mouse to TV"          - teleport cursor to TV monitor center
+"Jarvis, bring Chrome here"              - move Chrome to monitor under cursor
+"Jarvis, bring everything here"          - move all valid windows to cursor's monitor
+"Jarvis, send Stremio to TV"             - move Stremio to TV monitor
+"Jarvis, send Chrome to monitor 2"       - move Chrome to specific monitor
+"Jarvis, movie mode"                     - Stremio to TV fullscreen, optional Hyperion dim
+"Jarvis, move mouse to TV"               - teleport cursor to TV monitor center
+"Jarvis, save layout as work"            - save current window arrangement
+"Jarvis, restore layout work"            - restore a saved arrangement
+"Jarvis, list layouts"                   - print saved layout names
+"Jarvis, delete layout work"             - remove a saved layout
+"Jarvis, find lost windows"              - detect off-screen / orphaned windows
+"Jarvis, rescue lost windows"            - move all lost windows to cursor's monitor
+"Jarvis, find Chrome"                    - report state of all Chrome windows
 """
 
 import ctypes
 import ctypes.wintypes
+import json
 import logging
+import os
 import sys
+from datetime import datetime
+from pathlib import Path
 
 import psutil
 import win32api
@@ -433,6 +444,339 @@ def handle_movie_mode(app, remainder):
     except Exception:
         pass
 
+    return True
+
+
+# ---------------------------------------------------------------------------
+# Saved layouts: storage helpers
+# ---------------------------------------------------------------------------
+
+_RESERVED_NAMES = frozenset({'default', 'current', 'none'})
+
+
+def _get_layouts_path():
+    appdata = os.environ.get('APPDATA', str(Path.home() / 'AppData' / 'Roaming'))
+    layouts_dir = Path(appdata) / 'Samsara'
+    layouts_dir.mkdir(parents=True, exist_ok=True)
+    return layouts_dir / 'window_layouts.json'
+
+
+def _load_all_layouts():
+    path = _get_layouts_path()
+    if not path.exists():
+        return {}
+    try:
+        with open(path, 'r', encoding='utf-8') as f:
+            return json.load(f)
+    except Exception as e:
+        logger.error("Failed to load layouts: %s", e)
+        return {}
+
+
+def _save_all_layouts(layouts):
+    path = _get_layouts_path()
+    tmp = path.with_suffix('.json.tmp')
+    try:
+        with open(tmp, 'w', encoding='utf-8') as f:
+            json.dump(layouts, f, indent=2)
+        os.replace(str(tmp), str(path))
+    except Exception as e:
+        logger.error("Failed to save layouts: %s", e)
+        try:
+            tmp.unlink()
+        except OSError:
+            pass
+        raise
+
+
+def _extract_layout_name(remainder):
+    name = remainder.strip().lower()
+    for filler in ('as ', 'called ', 'named ', 'the '):
+        if name.startswith(filler):
+            name = name[len(filler):].strip()
+            break
+    if not name:
+        return None
+    if name in _RESERVED_NAMES:
+        print(f"[LAYOUTS] '{name}' is a reserved name")
+        return None
+    if len(name) > 30:
+        print(f"[LAYOUTS] Name too long (max 30 chars)")
+        return None
+    return name
+
+
+def _save_current_layout(name):
+    monitors = get_monitors()
+    windows_list = []
+
+    for hwnd, _title, pid in get_all_movable_windows():
+        try:
+            rect = win32gui.GetWindowRect(hwnd)
+        except Exception:
+            continue
+
+        # Determine which monitor contains the window's center point
+        cx = (rect[0] + rect[2]) // 2
+        cy = (rect[1] + rect[3]) // 2
+        monitor_index = 1
+        for m in monitors:
+            ml, mt, mr, mb = m['rect']
+            if ml <= cx < mr and mt <= cy < mb:
+                monitor_index = m['index']
+                break
+
+        try:
+            placement = win32gui.GetWindowPlacement(hwnd)
+            maximized = (placement[1] == win32con.SW_SHOWMAXIMIZED)
+        except Exception:
+            maximized = False
+
+        try:
+            app_name = psutil.Process(pid).name()
+        except (psutil.NoSuchProcess, psutil.AccessDenied):
+            app_name = 'unknown'
+
+        windows_list.append({
+            'app': app_name,
+            'title_pattern': '',
+            'monitor_index': monitor_index,
+            'rect': list(rect),
+            'maximized': maximized,
+        })
+
+    layouts = _load_all_layouts()
+    layouts[name] = {
+        'created': datetime.now().isoformat(timespec='seconds'),
+        'windows': windows_list,
+    }
+    _save_all_layouts(layouts)
+    print(f"[LAYOUTS] Saved '{name}' with {len(windows_list)} windows")
+
+
+def _restore_layout(name):
+    layouts = _load_all_layouts()
+    if name not in layouts:
+        print(f"[LAYOUTS] No layout named '{name}'")
+        return
+
+    monitors = get_monitors()
+    entries = layouts[name]['windows']
+    total = len(entries)
+    restored = 0
+
+    for entry in entries:
+        app_name = entry['app']
+        monitor_index = entry.get('monitor_index', 1)
+        saved_rect = entry.get('rect', [100, 100, 900, 700])
+        maximized = entry.get('maximized', False)
+
+        target = get_monitor_by_index(monitor_index, monitors)
+        if target is None:
+            target = next((m for m in monitors if m['primary']),
+                          monitors[0] if monitors else None)
+
+        # Build the restore rect: use saved coords when the monitor is available;
+        # center on the primary/fallback monitor otherwise.
+        if get_monitor_by_index(monitor_index, monitors) is not None:
+            l, t, r2, b = saved_rect
+            restore_l, restore_t, restore_w, restore_h = l, t, r2 - l, b - t
+        else:
+            if target is None:
+                continue
+            w = min(saved_rect[2] - saved_rect[0], target['width'])
+            h = min(saved_rect[3] - saved_rect[1], target['height'])
+            restore_l = target['rect'][0] + (target['width'] - w) // 2
+            restore_t = target['rect'][1] + (target['height'] - h) // 2
+            restore_w, restore_h = w, h
+
+        # Try finding the window — first by exact process name, then by stem
+        hwnds = find_windows_by_app(app_name)
+        if not hwnds:
+            stem = app_name.rsplit('.', 1)[0] if '.' in app_name else app_name
+            hwnds = find_windows_by_app(stem)
+        if not hwnds:
+            print(f"[LAYOUTS] Skipped: {app_name} not running")
+            continue
+
+        for hwnd in hwnds:
+            try:
+                if win32gui.IsIconic(hwnd):
+                    win32gui.ShowWindow(hwnd, win32con.SW_RESTORE)
+                win32gui.SetWindowPos(
+                    hwnd, HWND_TOP,
+                    restore_l, restore_t, restore_w, restore_h,
+                    SWP_SHOWWINDOW,
+                )
+                if maximized:
+                    win32gui.ShowWindow(hwnd, win32con.SW_MAXIMIZE)
+                restored += 1
+            except Exception as e:
+                logger.warning("Restore failed for %s hwnd=%s: %s", app_name, hwnd, e)
+
+    print(f"[LAYOUTS] Restored {restored} of {total} windows")
+
+
+def _delete_layout(name):
+    layouts = _load_all_layouts()
+    if name not in layouts:
+        print(f"[LAYOUTS] No layout named '{name}'")
+        return
+    del layouts[name]
+    _save_all_layouts(layouts)
+    print(f"[LAYOUTS] Deleted '{name}'")
+
+
+# ---------------------------------------------------------------------------
+# Lost window helpers
+# ---------------------------------------------------------------------------
+
+def _is_rect_on_any_monitor(rect, monitors=None):
+    """True if rect has any overlap with any monitor's work area."""
+    if monitors is None:
+        monitors = get_monitors()
+    left, top, right, bottom = rect
+    for m in monitors:
+        ml, mt, mr, mb = m['rect']
+        if right > ml and left < mr and bottom > mt and top < mb:
+            return True
+    return False
+
+
+def _detect_lost_windows():
+    """Return list of dicts for windows whose rect is entirely off all monitors."""
+    monitors = get_monitors()
+    lost = []
+    for hwnd, title, pid in get_all_movable_windows():
+        try:
+            rect = win32gui.GetWindowRect(hwnd)
+        except Exception:
+            continue
+        if not _is_rect_on_any_monitor(rect, monitors):
+            try:
+                app_name = psutil.Process(pid).name()
+            except (psutil.NoSuchProcess, psutil.AccessDenied):
+                app_name = 'unknown'
+            lost.append({
+                'hwnd': hwnd,
+                'title': title,
+                'app': app_name,
+                'rect': rect,
+            })
+    return lost
+
+
+# ---------------------------------------------------------------------------
+# Saved layout commands
+# ---------------------------------------------------------------------------
+
+@command("save layout",
+         aliases=["save window layout", "save this layout"],
+         pack="window-management")
+def handle_save_layout(app, remainder):
+    name = _extract_layout_name(remainder)
+    if not name:
+        print("[LAYOUTS] No valid name provided")
+        return True
+    _save_current_layout(name)
+    return True
+
+
+@command("restore layout",
+         aliases=["load layout", "restore window layout"],
+         pack="window-management")
+def handle_restore_layout(app, remainder):
+    name = _extract_layout_name(remainder)
+    if not name:
+        print("[LAYOUTS] No valid name provided")
+        return True
+    _restore_layout(name)
+    return True
+
+
+@command("list layouts",
+         aliases=["show layouts", "what layouts"],
+         pack="window-management")
+def handle_list_layouts(app, remainder):
+    layouts = _load_all_layouts()
+    if not layouts:
+        print("[LAYOUTS] No saved layouts yet")
+    else:
+        print(f"[LAYOUTS] Available: {', '.join(sorted(layouts.keys()))}")
+    return True
+
+
+@command("delete layout",
+         aliases=["forget layout", "remove layout"],
+         pack="window-management")
+def handle_delete_layout(app, remainder):
+    name = _extract_layout_name(remainder)
+    if not name:
+        print("[LAYOUTS] No valid name provided")
+        return True
+    _delete_layout(name)
+    return True
+
+
+# ---------------------------------------------------------------------------
+# Lost window commands
+# ---------------------------------------------------------------------------
+
+@command("find lost windows",
+         aliases=["lost windows", "where are my windows"],
+         pack="window-management")
+def handle_find_lost_windows(app, remainder):
+    lost = _detect_lost_windows()
+    if not lost:
+        print("[LOST] No lost windows detected")
+    else:
+        print(f"[LOST] Found {len(lost)} lost window(s):")
+        for w in lost:
+            print(f"  - {w['app']}: {w['title'][:60]}")
+    return True
+
+
+@command("rescue lost windows",
+         aliases=["recover windows", "bring back lost windows"],
+         pack="window-management")
+def handle_rescue_lost(app, remainder):
+    lost = _detect_lost_windows()
+    if not lost:
+        print("[LOST] No lost windows to rescue")
+        return True
+    target = get_monitor_under_cursor()
+    for w in lost:
+        move_window_to_monitor(w['hwnd'], target)
+    print(f"[LOST] Rescued {len(lost)} window(s) to monitor {target['index']}")
+    return True
+
+
+@command("find",
+         aliases=["where is", "find window"],
+         pack="window-management")
+def handle_find_specific(app, remainder):
+    if not remainder or not remainder.strip():
+        print("[FIND] No app specified")
+        return True
+    app_name = remainder.strip()
+    hwnds = find_windows_by_app(app_name)
+    if not hwnds:
+        print(f"[FIND] No {app_name} windows open")
+        return True
+    monitors = get_monitors()
+    for hwnd in hwnds:
+        try:
+            rect = win32gui.GetWindowRect(hwnd)
+            title = win32gui.GetWindowText(hwnd)
+            if win32gui.IsIconic(hwnd):
+                status = "minimized"
+            elif _is_rect_on_any_monitor(rect, monitors):
+                status = "visible"
+            else:
+                status = "OFF-SCREEN"
+            print(f"[FIND] {app_name}: {title[:60]} [{status}]")
+        except Exception as e:
+            logger.warning("find_specific hwnd=%s: %s", hwnd, e)
     return True
 
 
