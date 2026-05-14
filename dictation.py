@@ -220,6 +220,58 @@ from samsara.echo_cancel import EchoCanceller
 from samsara.clipboard import clipboard_lock as _clipboard_lock, save_clipboard as _save_clipboard_win32, restore_clipboard as _restore_clipboard_win32, paste_with_preservation
 
 
+def _get_pynput_command_key(button_name: str):
+    """Resolve a command_mode.button string to a pynput Key or KeyCode.
+
+    Returns None for mouse4/mouse5 (those are handled by the mouse listener)
+    and for any unrecognised name.
+
+    Supported keyboard values:
+        rctrl / lctrl / ralt / lalt / rshift / lshift
+        f13 ... f24  (macro-pad / foot-pedal extended function keys)
+    """
+    _SIMPLE = {
+        'rctrl':  Key.ctrl_r,
+        'lctrl':  Key.ctrl_l,
+        'ralt':   Key.alt_r,
+        'lalt':   Key.alt_l,
+        'rshift': Key.shift_r,
+        'lshift': Key.shift_l,
+    }
+    if button_name in _SIMPLE:
+        return _SIMPLE[button_name]
+    if button_name.startswith('f'):
+        tail = button_name[1:]
+        if tail.isdigit():
+            n = int(tail)
+            if 13 <= n <= 24:
+                # pynput defines f13-f20 in Key; f21-f24 may only exist as VK codes
+                try:
+                    return getattr(Key, button_name)
+                except AttributeError:
+                    pass
+                try:
+                    from pynput.keyboard import KeyCode
+                    return KeyCode.from_vk(0x6F + n)   # F1=0x70 → Fn=0x70+(n-1)
+                except Exception:
+                    return None
+    return None
+
+
+def _matches_pynput_key(key, target) -> bool:
+    """True if *key* (from pynput callback) equals *target* (Key or KeyCode)."""
+    if target is None:
+        return False
+    if key == target:
+        return True
+    # Cross-type comparison: Key enum member vs raw KeyCode — compare vk values.
+    target_vk = getattr(getattr(target, 'value', target), 'vk', None)
+    key_vk    = getattr(getattr(key,    'value', key),    'vk', None)
+    if target_vk is not None and key_vk is not None:
+        return target_vk == key_vk
+    return False
+
+
 def resample_audio(audio, orig_sr, target_sr=MODEL_SAMPLE_RATE):
     """Resample audio from orig_sr to target_sr using linear interpolation.
 
@@ -304,8 +356,9 @@ logger.info("=" * 50)
 class CommandExecutor:
     """Executes voice commands - hotkeys, launches, key holds, etc."""
     
-    def __init__(self, commands_path):
+    def __init__(self, commands_path, app=None, plugins_dir=None):
         self.commands_path = commands_path
+        self.app = app
         self.commands = {}
         self.held_keys = {}  # Track currently held keys
         self.keyboard_controller = KeyboardController()
@@ -477,6 +530,12 @@ class CommandExecutor:
         if entry is None:
             return text, False
 
+        # Command mode debounce: suppress rapid re-execution of media/destructive cmds
+        in_cmd_mode = getattr(app_instance, 'command_mode_active', False)
+        if in_cmd_mode and self._matcher.should_suppress(entry):
+            print(f"[CMD] Debounce: '{entry.phrase}' still in cooldown")
+            return entry.phrase, False
+
         if entry.source == 'plugin':
             print(f"[PLUGIN] Executing: {entry.phrase}")
             try:
@@ -484,11 +543,15 @@ class CommandExecutor:
             except Exception as e:
                 print(f"[ERROR] Plugin '{entry.phrase}' failed: {e}")
                 success = False
+            if success:
+                self._matcher.record_execution(entry)
             return entry.phrase, success
 
         # All built-in types route through execute_command -> handler registry.
         # app_instance is forwarded so MethodHandler can dispatch type=method.
         success = self.execute_command(entry.phrase, app_instance=app_instance)
+        if success:
+            self._matcher.record_execution(entry)
         return entry.phrase, success
 
 
@@ -602,8 +665,17 @@ class DictationApp:
         
         # Command system
         commands_path = Path(__file__).parent / "commands.json"
-        self.command_executor = CommandExecutor(commands_path)
+        self.command_executor = CommandExecutor(commands_path, app=self)
         self.command_mode_enabled = self.config.get('command_mode_enabled', True)
+
+        # Mouse 4 command mode (walkie-talkie hold-to-talk)
+        self.command_mode_active = False
+        self._command_mode_lock = threading.Lock()
+        self._command_mode_miss_count = 0
+        self._command_mode_inactivity_timer = None
+        self._command_mode_session_start = 0.0  # monotonic time of last enter
+        self._command_mode_ghost_tap = False    # set when hold < enter_debounce_ms
+        self._mouse_hook = None
 
         # Wake-word trace hook — the debug window registers a callback here
         # when open so the main pipeline's decisions show up in its trace view.
@@ -755,6 +827,42 @@ class DictationApp:
         if self.config.get('alarms', {}).get('enabled', True):
             self.alarm_manager.start()
 
+        # TTS engine + AudioCoordinator (optional; off by default)
+        self.tts_engine = None
+        self.audio_coordinator = None
+        if self.config.get('tts', {}).get('enabled', False):
+            try:
+                from samsara.tts import WinRTEngine, AudioCoordinator
+                from samsara.tts.exceptions import EngineUnavailableError
+                self.tts_engine = WinRTEngine()
+                self.audio_coordinator = AudioCoordinator(
+                    self,
+                    engine=self.tts_engine,
+                    config=self.config.get('audio_coordinator', {}),
+                )
+                print("[TTS] Initialized WinRT engine + AudioCoordinator")
+            except Exception as e:
+                print(f"[TTS] Failed to initialize: {e}")
+                self.tts_engine = None
+                self.audio_coordinator = None
+
+        # Smart Actions Phase 2: webhook bridge, session manager, tool dispatcher
+        try:
+            from samsara.smart_actions_bridge import SmartActionsBridge
+            from samsara.smart_actions_session import SmartActionsSession
+            from samsara.smart_actions_tools import ToolDispatcher
+            sa_config = self.config.get('smart_actions', {})
+            self._smart_actions_bridge = SmartActionsBridge(sa_config)
+            self._smart_actions_session = SmartActionsSession(
+                window_minutes=sa_config.get('session_window_minutes', 5))
+            self._smart_actions_tools = ToolDispatcher(self, sa_config)
+            print("[SMART ACTIONS] Phase 2 bridge/session/tools initialized")
+        except Exception as e:
+            print(f"[SMART ACTIONS] Phase 2 init failed: {e}")
+            self._smart_actions_bridge = None
+            self._smart_actions_session = None
+            self._smart_actions_tools = None
+
         # Echo cancellation (removes system audio from mic input)
         aec_config = self.config.get('echo_cancellation', {})
         self.echo_canceller = EchoCanceller(
@@ -773,6 +881,9 @@ class DictationApp:
             on_release=self.on_key_release
         )
         self.keyboard_listener.start()
+
+        # Mouse listener for Mouse 4 command mode (hold-to-talk / toggle)
+        self._install_mouse_listener()
 
         # Install the CapsLock hook used by streaming-mode dictation.
         # suppress=True means the OS never sees CapsLock while Samsara is
@@ -852,6 +963,24 @@ class DictationApp:
             "silence_threshold": DEFAULT_SILENCE_TIMEOUT,
             "min_speech_duration": DEFAULT_MIN_SPEECH_DURATION,
             "command_mode_enabled": False,
+            "command_packs": {
+                "core": True,
+                "text-editing": True,
+                "window-management": True,
+                "browsers": True,
+                "media": True,
+                "smart-home": False,
+                "3d-printing": False,
+                "stremio": False,
+                "screen-capture": False,
+                "macros": False,
+                "gaming": False,
+                "mouse": False,
+                "audio": False,
+                "utilities": False,
+                "smart-actions": True,
+                "tasks": True,
+            },
             "show_all_audio_devices": False,
             "audio_feedback": True,
             "sound_volume": 0.5,
@@ -860,8 +989,8 @@ class DictationApp:
             # New nested wake word config
             "wake_word_config": {
                 "enabled": True,
-                "phrase": "samsara",
-                "phrase_options": ["samsara", "hey samsara", "computer", "hey computer", "jarvis", "hey jarvis"],
+                "phrase": "jarvis",
+                "phrase_options": ["jarvis", "hey jarvis", "computer", "hey computer", "samsa", "hey samsa"],
                 "quick_silence_timeout": 1.0,
                 "end_words": ["over", "done", "end dictation"],
                 "cancel_words": ["cancel", "cancel dictation", "abort"],
@@ -912,6 +1041,61 @@ class DictationApp:
                 "headset": "Headset Earphone",
                 "earbuds": "Earbuds",
                 "monitor": "DELL U2722D"
+            },
+            # Smart Actions: voice-to-markdown brain dump (Phase 1).
+            # Per-user default lands in ~/Documents/Samsara Brain Dump.md.
+            # Settings UI lets the user pick another path or disable earcons.
+            "smart_actions": {
+                "enabled": False,
+                "brain_dump_path": str(Path.home() / "Documents" / "Samsara Brain Dump.md"),
+                "earcons_enabled": True,
+                "endpoint_url": "",
+                "auth_header": "",
+                "timeout_s": 30,
+                "session_window_minutes": 5,
+                "allowed_directories": [str(Path.home() / "Documents")],
+                "allowed_domains": [],
+                "tier2_approvals": {},
+                "routing_verbs": ["ask", "plan", "summarize"],
+            },
+            # TTS subsystem (WinRTEngine + AudioCoordinator)
+            "tts": {
+                "enabled": False,   # opt-in; toggle in Settings → Text-to-Speech
+                "voice_id": None,   # None = OS default voice
+                "speed": 1.0,
+                "pitch": 1.0,
+                "volume": 0.8,
+                # Per-context toggles — read by Phase 2 category-driven behavior.
+                # Saved here from Settings UI but not yet acted on at runtime.
+                "use_for_agent_responses": True,
+                "use_for_confirmations": True,
+                "use_for_warnings": True,
+                "use_for_status_updates": True,
+                "use_for_dictation_readback": False,
+                "use_for_errors": True,
+            },
+            "audio_coordinator": {
+                "enabled": True,
+                "duck_factor": 0.7,
+                "duck_default_duration_ms": 300,
+                "duck_fade_ms": 5,
+                "interrupt_grace_period_ms": 200,
+                "speaking_wake_threshold_multiplier": 1.5,
+                "speaking_vad_threshold_multiplier": 0.6,
+                "thinking_pulse_interval_ms": 1000,
+                "thinking_pulse_enabled": False,
+            },
+            # Mouse 4 walkie-talkie command mode
+            "command_mode": {
+                "enabled": False,           # opt-in; enable to use Mouse 4
+                "mode": "hold",             # "hold" (hold to talk) or "toggle"
+                "button": "mouse4",         # "mouse4" (XButton1) or "mouse5" (XButton2)
+                "enter_debounce_ms": 200,   # delay before playing enter earcon
+                "exit_earcon": True,        # play stop earcon on release/exit
+                "miss_limit": 5,            # toggle: exit after N unmatched recordings
+                "inactivity_timeout_s": 30, # toggle: exit after N seconds silence
+                "tts_char_limit": 50,       # suppress TTS responses longer than this
+                "suppress_button": True,    # consume mouse4/5 click so browsers don't navigate back
             },
             # Web shortcuts for "go to X" voice commands. Keys are spoken
             # aliases; values are target URLs. Users add their own by editing
@@ -1362,7 +1546,9 @@ class DictationApp:
         return "Unknown"
 
     def _log_history(self, raw_text, display_text=None, duration_ms=0,
-                     mode="hold", status="success", app_context=None):
+                     mode="hold", status="success", app_context=None,
+                     entry_type="dictation", log_prob=None,
+                     matched_command=None):
         """Write one entry to the persistent SQLite history (best-effort).
 
         Wrapped so callers don't need to null-check or try/except every site.
@@ -1378,6 +1564,9 @@ class DictationApp:
                 duration_ms=int(duration_ms),
                 mode=mode,
                 status=status,
+                entry_type=entry_type,
+                log_prob=log_prob,
+                matched_command=matched_command,
             )
         except Exception as e:
             print(f"[HISTORY] log failed: {e}")
@@ -1628,6 +1817,8 @@ class DictationApp:
             self.current_keys.add(key_name)
             self.key_press_times[key_name] = time.time()
 
+        self._check_command_mode_key(key, pressed=True)
+
         # While snoozed, still track key state and allow alarm hotkeys,
         # but skip all dictation/recording hotkeys
         if self.snoozed:
@@ -1749,7 +1940,9 @@ class DictationApp:
         key_name = self.get_key_name(key)
         if key_name and key_name in self.current_keys:
             self.current_keys.discard(key_name)
-        
+
+        self._check_command_mode_key(key, pressed=False)
+
         mode = self.config.get('mode', 'hold')
         
         # Get hotkey configs
@@ -1880,6 +2073,164 @@ class DictationApp:
             self.stop_recording()
         except Exception as e:
             print(f"[CAPSLOCK] stop failed: {e}")
+
+    # ---- Mouse 4 command mode (walkie-talkie hold-to-talk) ----------------
+
+    def _install_mouse_listener(self):
+        """Start the Win32 low-level mouse hook for Mouse 4/5 command mode.
+
+        Only installed when command_mode.button is a mouse source.
+        Keyboard sources (rctrl, f13, etc.) are handled by on_key_press/release.
+        """
+        cfg = self.config.get('command_mode', {})
+        btn = cfg.get('button', 'mouse4')
+        if btn not in ('mouse4', 'mouse5'):
+            self._mouse_hook = None
+            return
+
+        should_suppress = cfg.get('suppress_button', True)
+        suppress_btn = btn if should_suppress else None
+        try:
+            from samsara.mouse_hook import MouseHook
+            self._mouse_hook = MouseHook(
+                on_button_event=self._on_command_button,
+                suppress_button=suppress_btn,
+            )
+            self._mouse_hook.start()
+            print(f"[CMD MODE] Mouse hook started (suppress={suppress_btn})")
+        except Exception as e:
+            print(f"[CMD MODE] Mouse hook failed to start: {e}")
+            self._mouse_hook = None
+
+    def _on_command_button(self, button_name, pressed):
+        """Mouse hook callback — routes the configured button to command mode."""
+        cfg = self.config.get('command_mode', {})
+        if not cfg.get('enabled', False):
+            return
+        if button_name != cfg.get('button', 'mouse4'):
+            return
+        mode = cfg.get('mode', 'hold')
+        if mode == 'hold':
+            if pressed:
+                self.enter_command_mode()
+            else:
+                self.exit_command_mode()
+        else:  # toggle
+            if pressed:
+                if self.command_mode_active:
+                    self.exit_command_mode()
+                else:
+                    self.enter_command_mode()
+
+    def _check_command_mode_key(self, key, pressed: bool) -> None:
+        """Route keyboard events to the command mode state machine.
+
+        Called from on_key_press / on_key_release for every key event.
+        No-ops unless command_mode.button is a keyboard source.
+        """
+        cfg = self.config.get('command_mode', {})
+        if not cfg.get('enabled', False):
+            return
+        btn_name = cfg.get('button', 'mouse4')
+        if btn_name in ('mouse4', 'mouse5'):
+            return  # mouse source — handled in _on_mouse_button
+        target = _get_pynput_command_key(btn_name)
+        if not _matches_pynput_key(key, target):
+            return
+        mode = cfg.get('mode', 'hold')
+        if mode == 'hold':
+            if pressed:
+                self.enter_command_mode()
+            else:
+                self.exit_command_mode()
+        else:  # toggle
+            if pressed:
+                if self.command_mode_active:
+                    self.exit_command_mode()
+                else:
+                    self.enter_command_mode()
+
+    def enter_command_mode(self):
+        """Enter command mode (idempotent). Safe to call from any thread."""
+        with self._command_mode_lock:
+            if self.command_mode_active:
+                return
+            self.command_mode_active = True
+        self._command_mode_miss_count = 0
+        self._command_mode_session_start = time.monotonic()
+        self._command_mode_ghost_tap = False
+        print("[CMD MODE] Entering command mode")
+        if hasattr(self, 'listening_indicator'):
+            self._schedule_ui(self.listening_indicator.set_command_mode, True)
+        cfg = self.config.get('command_mode', {})
+        if cfg.get('mode', 'hold') == 'toggle':
+            timeout_s = cfg.get('inactivity_timeout_s', 30)
+            self._reset_command_mode_inactivity_timer(timeout_s)
+        threading.Thread(target=self._do_enter_command_mode, daemon=True,
+                         name='cmd-mode-enter').start()
+
+    def _do_enter_command_mode(self):
+        """Worker thread: starts recording and fires debounced earcon."""
+        if self.recording:
+            return
+        self.command_mode_recording = True
+        self.start_recording(streaming=False, play_earcon=False)
+        # 200ms debounce: skip earcon for accidental quick taps
+        debounce_ms = self.config.get('command_mode', {}).get('enter_debounce_ms', 200)
+        time.sleep(debounce_ms / 1000.0)
+        if self.command_mode_active:
+            self.play_sound('start', use_winsound=True)
+
+    def exit_command_mode(self):
+        """Exit command mode (idempotent). Safe to call from any thread."""
+        with self._command_mode_lock:
+            if not self.command_mode_active:
+                return
+            self.command_mode_active = False
+            hold_ms = (time.monotonic() - self._command_mode_session_start) * 1000
+        debounce_ms = self.config.get('command_mode', {}).get('enter_debounce_ms', 200)
+        # Taps shorter than the debounce window are ghost taps — mark so
+        # transcribe() can discard the audio without executing commands.
+        self._command_mode_ghost_tap = (hold_ms < debounce_ms)
+        if self._command_mode_ghost_tap:
+            print(f"[CMD MODE] Ghost tap ({hold_ms:.0f}ms < {debounce_ms}ms) — audio will be discarded")
+        print("[CMD MODE] Exiting command mode")
+        self._cancel_command_mode_inactivity_timer()
+        if hasattr(self, 'listening_indicator'):
+            self._schedule_ui(self.listening_indicator.set_command_mode, False)
+        was_recording = self.recording
+        if was_recording:
+            self.stop_recording()  # stop_recording() already plays "stop" as acknowledgment
+        cfg = self.config.get('command_mode', {})
+        if cfg.get('exit_earcon', True) and not was_recording:
+            # Only play here when not going through stop_recording() to avoid doubling
+            self.play_sound('stop')
+
+    def _reset_command_mode_inactivity_timer(self, timeout_s):
+        self._cancel_command_mode_inactivity_timer()
+        t = threading.Timer(timeout_s, self._on_command_mode_inactivity)
+        t.daemon = True
+        self._command_mode_inactivity_timer = t
+        t.start()
+
+    def _cancel_command_mode_inactivity_timer(self):
+        t = self._command_mode_inactivity_timer
+        if t is not None:
+            t.cancel()
+            self._command_mode_inactivity_timer = None
+
+    def _on_command_mode_inactivity(self):
+        print("[CMD MODE] Inactivity timeout — exiting command mode")
+        self.exit_command_mode()
+
+    def _rearm_command_recording(self):
+        """Re-start recording for the next command in toggle mode."""
+        time.sleep(0.1)
+        if self.command_mode_active and not self.recording:
+            self.command_mode_recording = True
+            self.start_recording(streaming=False, play_earcon=False)
+
+    # -----------------------------------------------------------------------
 
     def toggle_continuous_mode(self):
         """Toggle continuous listening mode"""
@@ -2096,6 +2447,7 @@ class DictationApp:
                     duration_ms=int(audio_duration * 1000),
                     mode="continuous",
                     status="success",
+                    entry_type="dictation",
                 )
                 self._notify_main_window(text.strip())
 
@@ -2106,6 +2458,7 @@ class DictationApp:
                 display_text=f"[FAILED] {e}",
                 mode="continuous",
                 status="failed",
+                entry_type="failed",
             )
             # Notify user so they know to retry
             try:
@@ -2514,6 +2867,7 @@ class DictationApp:
                         duration_ms=int(audio_duration * 1000),
                         mode="wake",
                         status="empty",
+                        entry_type="failed",
                     )
                 return
             
@@ -2698,6 +3052,7 @@ class DictationApp:
                 display_text=f"[FAILED] {e}",
                 mode="wake",
                 status="failed",
+                entry_type="failed",
             )
             # Notify user so they know to retry
             try:
@@ -3186,6 +3541,7 @@ class DictationApp:
             display_text=text.strip(),
             mode="wake",
             status="success",
+            entry_type="dictation",
         )
         self._notify_main_window(text.strip())
 
@@ -3342,12 +3698,21 @@ class DictationApp:
 
     def _load_sound_cache(self):
         """Pre-load all sound files into memory, normalized to common sample rate.
-        
+
         Supports WAV natively, and MP3/OGG/FLAC if pydub is installed.
+
+        Loads in two passes:
+          1. Legacy hard-coded names (start/stop/success/error) from
+             self.sound_files -- backed by sounds/<name>.* so user "Browse..."
+             customisations still win.
+          2. Auto-discover any other .wav files in the active theme directory
+             (sounds/themes/<sound_theme>/) by file-stem. This is how the
+             Phase-2 earcon vocabulary (capture_started, capture_saved,
+             agent_routing, etc.) is loaded -- no hard-coded list needed.
         """
         self._sound_cache = {}
         target_sr = self._sound_stream_sr
-        
+
         # Check for pydub support (enables MP3, OGG, FLAC, etc.)
         try:
             from pydub import AudioSegment
@@ -3364,17 +3729,17 @@ class DictationApp:
                 if test_path.exists():
                     sound_path = test_path
                     break
-            
+
             # Also check the original path as-is
             if sound_path is None and sound_file.exists():
                 sound_path = sound_file
-            
+
             if sound_path is None:
                 continue
-                
+
             try:
                 suffix = sound_path.suffix.lower()
-                
+
                 # Use pydub for non-WAV formats
                 if suffix != '.wav' and HAS_PYDUB:
                     audio_seg = AudioSegment.from_file(str(sound_path))
@@ -3431,6 +3796,50 @@ class DictationApp:
             except Exception as e:
                 print(f"[AUDIO] Failed to load {sound_path}: {e}")
 
+        # Pass 2: auto-discover extended earcons in the active theme dir.
+        # Anything not already in the cache (legacy 4 win) gets loaded by
+        # file-stem so new earcons drop in without code changes.
+        try:
+            theme_name = self.config.get('sound_theme', 'cute') if hasattr(self, 'config') else 'cute'
+            themes_root = self.sounds_dir / 'themes' / theme_name
+            if themes_root.is_dir():
+                for wav_path in sorted(themes_root.glob('*.wav')):
+                    name = wav_path.stem
+                    if name in self._sound_cache:
+                        continue  # legacy 4 or already loaded
+                    try:
+                        with wave.open(str(wav_path), 'rb') as wf:
+                            sample_rate = wf.getframerate()
+                            n_channels = wf.getnchannels()
+                            sample_width = wf.getsampwidth()
+                            audio_data = wf.readframes(wf.getnframes())
+
+                        if sample_width == 1:
+                            dtype = np.uint8
+                        elif sample_width == 2:
+                            dtype = np.int16
+                        else:
+                            dtype = np.int32
+
+                        audio_array = np.frombuffer(audio_data, dtype=dtype).astype(np.float32)
+                        if sample_width == 1:
+                            audio_array = (audio_array - 128) / 128.0
+                        else:
+                            audio_array = audio_array / (2 ** (sample_width * 8 - 1))
+                        if n_channels == 2:
+                            audio_array = audio_array.reshape(-1, 2).mean(axis=1)
+                        if sample_rate != target_sr:
+                            duration = len(audio_array) / sample_rate
+                            new_length = int(duration * target_sr)
+                            indices = np.linspace(0, len(audio_array) - 1, new_length)
+                            audio_array = np.interp(indices, np.arange(len(audio_array)), audio_array)
+                        audio_array = audio_array.astype(np.float32).reshape(-1, 1)
+                        self._sound_cache[name] = audio_array
+                    except Exception as e:
+                        print(f"[AUDIO] Failed to load extended earcon {wav_path.name}: {e}")
+        except Exception as e:
+            print(f"[AUDIO] Extended-earcon discovery failed: {e}")
+
     def _start_sound_stream(self):
         """Start the persistent output stream for sound playback.
         
@@ -3478,20 +3887,35 @@ class DictationApp:
 
     def play_sound(self, sound_type, use_winsound=False):
         """Play audio feedback sound via persistent output stream (non-blocking, low-latency).
-        
+
         Writes pre-loaded audio data into the playback buffer. The persistent
         OutputStream callback drains it automatically. New sounds replace any
         currently playing sound (clean cutoff, no artifacts).
-        
+
         Args:
-            sound_type: 'start', 'stop', 'success', or 'error'
+            sound_type: legacy ('start'|'stop'|'success'|'error') or any
+                earcon name auto-discovered from the active theme directory
+                (e.g. 'capture_started', 'thinking_pulse').
             use_winsound: Deprecated/ignored.
         """
         if not self.config.get('audio_feedback', True):
             return
 
+        # Notify AudioCoordinator so it can duck TTS volume if TTS is active.
+        # getattr guard means play_sound works before the coordinator is set up.
+        if getattr(self, 'audio_coordinator', None) is not None:
+            self.audio_coordinator.on_earcon_starting(sound_type)
+
         cached = self._sound_cache.get(sound_type)
         if cached is None:
+            # Surface unknown names once per name so missing earcons show up
+            # in logs instead of silently dropping.
+            if not hasattr(self, '_warned_sound_misses'):
+                self._warned_sound_misses = set()
+            if sound_type not in self._warned_sound_misses:
+                self._warned_sound_misses.add(sound_type)
+                print(f"[AUDIO] No cached sound for '{sound_type}' "
+                      f"(check sounds/themes/<theme>/{sound_type}.wav)")
             return
 
         volume = self.config.get('sound_volume', 0.5)
@@ -3770,13 +4194,15 @@ class DictationApp:
             if self._stream_dead:
                 print("[AUDIO] Failed to reconnect after max retries")
 
-    def start_recording(self, streaming=None):
+    def start_recording(self, streaming=None, play_earcon=True):
         """Start recording audio.
 
         streaming overrides:
           None  -- decide from config (legacy callers).
           False -- force batch mode (Ctrl+Shift hotkey path).
           True  -- force streaming (CapsLock hotkey path).
+        play_earcon: play the "start" sound and brief wait (skip for command mode
+          which manages its own debounced earcon).
         """
         if not self.model_loaded:
             if self.loading_model:
@@ -3805,9 +4231,11 @@ class DictationApp:
         # leading to duplicated words (especially on quick stops).
         self._stop_prebuffer_stream()
 
-        # Play start sound using winsound on Windows to avoid InputStream conflict
-        self.play_sound("start", use_winsound=True)
-        time.sleep(0.15)  # Brief pause for sound to start
+        # Play start sound using winsound on Windows to avoid InputStream conflict.
+        # Skipped for command mode which manages its own debounced 200ms earcon.
+        if play_earcon:
+            self.play_sound("start", use_winsound=True)
+            time.sleep(0.15)  # Brief pause for sound to start
 
         if streaming:
             self.audio_data = []
@@ -3937,11 +4365,30 @@ class DictationApp:
                 # Apply corrections dictionary
                 text = self.voice_training_window.apply_corrections(text)
                 
-                # Check if we're in command-only mode (from command hotkey)
+                # Check if we're in command-only mode (from command hotkey or Mouse 4)
                 is_command_mode = self.command_mode_recording
                 self.command_mode_recording = False  # Reset flag
-                
+
+                # Ghost-tap prevention (post-Whisper recheck).
+                # If the hold was shorter than enter_debounce_ms the earcon never
+                # played and exit_command_mode() set the ghost flag.  Discard the
+                # audio here so accidental sub-200ms taps cannot fire commands.
+                if is_command_mode and self._command_mode_ghost_tap:
+                    self._command_mode_ghost_tap = False
+                    print("[CMD] Ghost tap — discarding transcription")
+                    return
+
                 if text:
+                    text_lower = text.lower().strip()
+
+                    # Voice exit from Mouse 4 command mode
+                    if is_command_mode and any(
+                        p in text_lower for p in ["exit command mode", "stop listening"]
+                    ):
+                        print(f"[CMD MODE] Voice exit: '{text_lower}'")
+                        self.exit_command_mode()
+                        return
+
                     # Check for command mode toggle OR regular commands
                     result, was_command = self.command_executor.process_text(text, self)
 
@@ -3953,13 +4400,38 @@ class DictationApp:
                             duration_ms=int(audio_duration * 1000),
                             mode="command",
                             status="success",
+                            entry_type="command",
+                            matched_command=str(result) if result else None,
                         )
+                        # Toggle mode: reset miss count, refresh inactivity, re-arm
+                        if is_command_mode and self.command_mode_active:
+                            self._command_mode_miss_count = 0
+                            cm_cfg = self.config.get('command_mode', {})
+                            if cm_cfg.get('mode', 'hold') == 'toggle':
+                                timeout_s = cm_cfg.get('inactivity_timeout_s', 30)
+                                self._reset_command_mode_inactivity_timer(timeout_s)
+                                threading.Thread(
+                                    target=self._rearm_command_recording,
+                                    daemon=True).start()
                         return
 
                     # Not a command
                     if is_command_mode:
                         # In command-only mode, don't output text if no command matched
                         print(f"[CMD] No command matched: '{text}'")
+                        # Toggle mode: count miss and maybe exit
+                        if self.command_mode_active:
+                            self._command_mode_miss_count += 1
+                            cm_cfg = self.config.get('command_mode', {})
+                            miss_limit = cm_cfg.get('miss_limit', 5)
+                            if (cm_cfg.get('mode', 'hold') == 'toggle'
+                                    and self._command_mode_miss_count >= miss_limit):
+                                print(f"[CMD MODE] Miss limit ({miss_limit}) reached")
+                                self.exit_command_mode()
+                            elif cm_cfg.get('mode', 'hold') == 'toggle':
+                                threading.Thread(
+                                    target=self._rearm_command_recording,
+                                    daemon=True).start()
                         return
 
                     # Regular dictation mode - proceed with text output
@@ -3986,6 +4458,7 @@ class DictationApp:
                         duration_ms=int(audio_duration * 1000),
                         mode="hold",
                         status="success",
+                        entry_type="dictation",
                     )
                     self._notify_main_window(text.strip())
 
@@ -4003,6 +4476,7 @@ class DictationApp:
                             duration_ms=int(audio_duration * 1000),
                             mode="hold",
                             status="empty",
+                            entry_type="failed",
                         )
 
             except Exception as e:
@@ -4015,6 +4489,7 @@ class DictationApp:
                     display_text=f"[FAILED] {e}",
                     mode="hold",
                     status="failed",
+                    entry_type="failed",
                 )
                 # Notify user so they know to retry
                 try:
@@ -4612,7 +5087,17 @@ class DictationApp:
             """Generate menu dynamically to reflect current state"""
             mode = self.config.get('mode', 'hold')
             
-            # Create microphone submenu
+            # Create microphone submenu.
+            # Refresh the device list every time the menu is built so a mic
+            # connected after startup (e.g. BT earbuds) appears immediately.
+            # Skip the refresh while capture is active — sd.query_devices()
+            # can stutter the audio stream on some drivers during recording.
+            if not (self.recording or self.continuous_active or self.wake_word_active):
+                try:
+                    self.available_mics = self.get_available_microphones()
+                except Exception as e:
+                    print(f"[MIC] Refresh failed, using cached list: {e}")
+
             mic_menu_items = []
             current_mic_id = self.config.get('microphone')
 
@@ -4879,6 +5364,18 @@ class DictationApp:
         except:
             pass
 
+        # Shut down TTS coordinator + engine before the earcon stream closes
+        try:
+            if getattr(self, 'audio_coordinator', None) is not None:
+                self.audio_coordinator.shutdown()
+        except Exception:
+            pass
+        try:
+            if getattr(self, 'tts_engine', None) is not None:
+                self.tts_engine.shutdown()
+        except Exception:
+            pass
+
         # Stop persistent sound stream
         try:
             self.stop_sound_stream()
@@ -4903,6 +5400,13 @@ class DictationApp:
         try:
             self.keyboard_listener.stop()
         except:
+            pass
+
+        # Stop Win32 mouse hook (Mouse 4/5 command mode)
+        try:
+            if getattr(self, '_mouse_hook', None) is not None:
+                self._mouse_hook.stop()
+        except Exception:
             pass
 
         # Release the CapsLock hook so the OS resumes normal toggle behavior

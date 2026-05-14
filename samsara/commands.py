@@ -10,6 +10,7 @@ from pathlib import Path
 from typing import Any, Callable, Dict, Optional, Tuple
 
 from . import plugin_commands as _plugin_commands
+from .command_packs import get_enabled_packs
 from .command_registry import CommandMatcher
 from .handlers import CommandContext, get_handler
 from .phonetic_wash import apply_phonetic_wash
@@ -145,6 +146,11 @@ class CommandExecutor:
         # dictation.py) use this class so matching semantics stay consistent
         # between tests and runtime.
         self._matcher = CommandMatcher()
+        # Apply pack filtering before freezing so disabled packs are excluded
+        # from the matcher's search space entirely.
+        app_config = getattr(app, 'config', {}) if app is not None else {}
+        enabled_packs = get_enabled_packs(app_config)
+        self._matcher.set_enabled_packs(enabled_packs)
         self._matcher.load_builtins(self.commands)
         self._matcher.load_plugins(_plugin_commands._REGISTRY)
         self._matcher.freeze()
@@ -282,6 +288,16 @@ class CommandExecutor:
         match_text = apply_phonetic_wash(text)
         entry, remainder = self._matcher.match(match_text)
         if entry is None:
+            # Smart Actions routing-verb fallback.
+            # Routing verbs are NOT registered as @command decorators -- they
+            # live here so "ask Spotify for jazz" hits the Spotify plugin
+            # (a match), while "ask what the weather is" falls through to here.
+            if self._app is not None and self._is_routing_verb(text):
+                sa_cfg = getattr(self._app, 'config', {}).get('smart_actions', {})
+                if sa_cfg.get('enabled', False):
+                    routed = self._try_smart_actions_route(text)
+                    if routed:
+                        return text, True
             return text, False
 
         if entry.source == 'plugin':
@@ -297,6 +313,23 @@ class CommandExecutor:
         # through execute_command -> handler registry.
         success = self.execute_command(entry.phrase)
         return entry.phrase, success
+
+    def _is_routing_verb(self, text: str) -> bool:
+        sa_cfg = getattr(self._app, 'config', {}).get('smart_actions', {})
+        verbs = set(sa_cfg.get('routing_verbs', ['ask', 'plan', 'summarize']))
+        first = text.strip().split()[0].lower() if text.strip() else ''
+        return first in verbs
+
+    def _try_smart_actions_route(self, text: str) -> bool:
+        """Delegate to _do_agent_route(). Lazy import avoids circular deps."""
+        verb = text.strip().split()[0].lower() if text.strip() else ''
+        try:
+            from plugins.commands.smart_actions import _do_agent_route
+            _do_agent_route(self._app, text, verb)
+            return True
+        except Exception as e:
+            print(f"[SMART ACTIONS] Routing failed: {e}")
+            return False
 
     def add_command(
         self,

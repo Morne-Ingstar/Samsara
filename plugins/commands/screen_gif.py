@@ -311,7 +311,7 @@ def _start_recording(app, remainder, window_only=False):
     "start recording", "record a gif",
     "capture my screen", "screen record",
     "record screen",
-])
+], pack="screen-capture")
 def handle_record_screen(app, remainder):
     """Record full screen as GIF. Usage: 'Samsara, record my screen'"""
     return _start_recording(app, remainder, window_only=False)
@@ -321,7 +321,7 @@ def handle_record_screen(app, remainder):
 @command("record this window", aliases=[
     "capture this window", "record window",
     "record this", "capture this",
-])
+], pack="screen-capture")
 def handle_record_window(app, remainder):
     """Record active window as GIF. Usage: 'Samsara, record this window'"""
     return _start_recording(app, remainder, window_only=True)
@@ -332,7 +332,7 @@ def handle_record_window(app, remainder):
     "done recording", "save the gif", "finish recording",
     "end recording", "stop screen recording",
     "stop the recording"
-])
+], pack="screen-capture")
 def handle_stop_recording(app, remainder):
     """Stop screen recording and save the GIF."""
     global _recording

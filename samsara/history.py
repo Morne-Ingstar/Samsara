@@ -7,8 +7,9 @@ The database lives in ~/.samsara/history.db (user data, not project data).
 
 import sqlite3
 import threading
-from pathlib import Path
+import uuid
 from datetime import datetime
+from pathlib import Path
 
 DB_PATH = Path.home() / ".samsara" / "history.db"
 
@@ -22,7 +23,9 @@ class HistoryManager:
         self._conn = sqlite3.connect(str(path), check_same_thread=False)
         self._conn.row_factory = sqlite3.Row
         self._lock = threading.Lock()
+        self.session_id = str(uuid.uuid4())
         self._create_tables()
+        self._migrate()
 
     def _create_tables(self):
         with self._lock:
@@ -50,9 +53,27 @@ class HistoryManager:
             """)
             self._conn.commit()
 
+    def _migrate(self):
+        """Add new columns when upgrading from an older schema. Safe to run every start."""
+        new_cols = [
+            ("session_id",       "TEXT DEFAULT ''"),
+            ("entry_type",       "TEXT DEFAULT 'dictation'"),
+            ("log_prob",         "REAL DEFAULT NULL"),
+            ("matched_command",  "TEXT DEFAULT NULL"),
+        ]
+        with self._lock:
+            for col, definition in new_cols:
+                try:
+                    self._conn.execute(
+                        f"ALTER TABLE history ADD COLUMN {col} {definition}")
+                    self._conn.commit()
+                except sqlite3.OperationalError:
+                    pass  # column already exists
+
     def add(self, raw_text, display_text="", app_context="",
             duration_ms=0, mode="hold", status="success",
-            audio_path=None):
+            audio_path=None, entry_type="dictation",
+            log_prob=None, matched_command=None):
         """Add a transcription to history. Returns the row id."""
         if not display_text:
             display_text = raw_text
@@ -60,11 +81,13 @@ class HistoryManager:
         with self._lock:
             cursor = self._conn.execute("""
                 INSERT INTO history
-                (timestamp, app_context, raw_text, display_text,
-                 duration_ms, mode, status, audio_path)
-                VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+                    (timestamp, app_context, raw_text, display_text,
+                     duration_ms, mode, status, audio_path,
+                     session_id, entry_type, log_prob, matched_command)
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
             """, (timestamp, app_context, raw_text, display_text,
-                  duration_ms, mode, status, audio_path))
+                  duration_ms, mode, status, audio_path,
+                  self.session_id, entry_type, log_prob, matched_command))
             self._conn.commit()
             return cursor.lastrowid
 
@@ -98,6 +121,45 @@ class HistoryManager:
                 ORDER BY timestamp DESC
                 LIMIT ? OFFSET ?
             """, (limit, offset)).fetchall()
+
+    def recent_filtered(self, status, limit=500, offset=0):
+        """Get recent entries filtered by status. Pushes filter to SQL."""
+        with self._lock:
+            return self._conn.execute("""
+                SELECT * FROM history WHERE status = ?
+                ORDER BY timestamp DESC
+                LIMIT ? OFFSET ?
+            """, (status, limit, offset)).fetchall()
+
+    def get_sessions(self, limit=20):
+        """Return distinct sessions ordered newest first, with start time and entry count."""
+        with self._lock:
+            rows = self._conn.execute("""
+                SELECT
+                    session_id,
+                    MIN(timestamp) AS session_start,
+                    COUNT(*)       AS entry_count
+                FROM history
+                GROUP BY session_id
+                ORDER BY session_start DESC
+                LIMIT ?
+            """, (limit,)).fetchall()
+        return [dict(r) for r in rows]
+
+    def get_session_stats(self, session_id):
+        """Return dict with stats for a session: total, successes, failures, session_start."""
+        with self._lock:
+            row = self._conn.execute("""
+                SELECT
+                    COUNT(*) AS total,
+                    COALESCE(SUM(CASE WHEN status = 'success' THEN 1 ELSE 0 END), 0) AS successes,
+                    COALESCE(SUM(CASE WHEN status = 'failed'  THEN 1 ELSE 0 END), 0) AS failures,
+                    MIN(timestamp) AS session_start
+                FROM history WHERE session_id = ?
+            """, (session_id,)).fetchone()
+        if row is None:
+            return {'total': 0, 'successes': 0, 'failures': 0, 'session_start': None}
+        return dict(row)
 
     def delete(self, row_id):
         """Delete a single entry."""

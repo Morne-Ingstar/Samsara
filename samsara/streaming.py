@@ -669,12 +669,12 @@ class StreamingSession:
             self.app._paste_preserving_clipboard(text)
         except Exception as e:
             print(f"[STREAM] Paste retry failed: {e}")
-            try:
-                import pyperclip
-                pyperclip.copy(text)
-                print("[STREAM] Text copied to clipboard -- paste manually")
-            except Exception:
-                pass
+            if pyperclip is not None:
+                try:
+                    pyperclip.copy(text)
+                    print("[STREAM] Text copied to clipboard -- paste manually")
+                except Exception:
+                    pass
 
     def _mark_done(self):
         with self._state_lock:

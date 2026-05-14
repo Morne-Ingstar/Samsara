@@ -16,7 +16,7 @@ def _clean(text):
     return text.lower().strip().strip(".,!?;:'\"")
 
 
-@command("go to", aliases=["browse to", "pull up", "show me"])
+@command("go to", aliases=["browse to", "pull up", "show me"], pack="utilities")
 def open_site(app, remainder):
     """Open a web shortcut. 'go to youtube', 'pull up my orders'."""
     if not remainder:
@@ -33,7 +33,7 @@ def open_site(app, remainder):
     return False
 
 
-@command("search for", aliases=["look up", "google"])
+@command("search for", aliases=["look up", "google"], pack="utilities")
 def search_web(app, remainder):
     """Search Google. 'search for cat toys', 'google Python tutorials'."""
     if not remainder:
