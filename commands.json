@@ -28,22 +28,26 @@
           "key": "space"
         }
       ],
-      "description": "Press spacebar 5 times for repeated jumps"
+      "description": "Press spacebar 5 times for repeated jumps",
+      "pack": "gaming"
     },
     "open chrome": {
       "type": "launch",
       "target": "chrome.exe",
-      "description": "Open Google Chrome"
+      "description": "Open Google Chrome",
+      "pack": "browsers"
     },
     "open firefox": {
       "type": "launch",
       "target": "firefox.exe",
-      "description": "Open Firefox"
+      "description": "Open Firefox",
+      "pack": "browsers"
     },
     "open edge": {
       "type": "launch",
       "target": "msedge.exe",
-      "description": "Open Microsoft Edge"
+      "description": "Open Microsoft Edge",
+      "pack": "browsers"
     },
     "close window": {
       "type": "hotkey",
@@ -51,7 +55,8 @@
         "alt",
         "f4"
       ],
-      "description": "Close active window"
+      "description": "Close active window",
+      "pack": "core"
     },
     "minimize": {
       "type": "hotkey",
@@ -59,7 +64,8 @@
         "win",
         "down"
       ],
-      "description": "Minimize window"
+      "description": "Minimize window",
+      "pack": "core"
     },
     "maximize": {
       "type": "hotkey",
@@ -67,7 +73,8 @@
         "win",
         "up"
       ],
-      "description": "Maximize window"
+      "description": "Maximize window",
+      "pack": "core"
     },
     "show desktop": {
       "type": "hotkey",
@@ -75,7 +82,8 @@
         "win",
         "d"
       ],
-      "description": "Show desktop"
+      "description": "Show desktop",
+      "pack": "core"
     },
     "task manager": {
       "type": "hotkey",
@@ -84,7 +92,8 @@
         "shift",
         "esc"
       ],
-      "description": "Open Task Manager"
+      "description": "Open Task Manager",
+      "pack": "core"
     },
     "new tab": {
       "type": "hotkey",
@@ -92,7 +101,8 @@
         "ctrl",
         "t"
       ],
-      "description": "Open new browser tab"
+      "description": "Open new browser tab",
+      "pack": "browsers"
     },
     "close tab": {
       "type": "hotkey",
@@ -100,7 +110,8 @@
         "ctrl",
         "w"
       ],
-      "description": "Close current tab"
+      "description": "Close current tab",
+      "pack": "browsers"
     },
     "reopen tab": {
       "type": "hotkey",
@@ -109,7 +120,8 @@
         "shift",
         "t"
       ],
-      "description": "Reopen closed tab"
+      "description": "Reopen closed tab",
+      "pack": "browsers"
     },
     "next tab": {
       "type": "hotkey",
@@ -117,7 +129,8 @@
         "ctrl",
         "tab"
       ],
-      "description": "Switch to next tab"
+      "description": "Switch to next tab",
+      "pack": "browsers"
     },
     "previous tab": {
       "type": "hotkey",
@@ -126,42 +139,48 @@
         "shift",
         "tab"
       ],
-      "description": "Switch to previous tab"
+      "description": "Switch to previous tab",
+      "pack": "browsers"
     },
     "refresh page": {
       "type": "hotkey",
       "keys": [
         "f5"
       ],
-      "description": "Refresh current page"
+      "description": "Refresh current page",
+      "pack": "browsers"
     },
     "scroll down": {
       "type": "hotkey",
       "keys": [
         "pagedown"
       ],
-      "description": "Scroll down one page"
+      "description": "Scroll down one page",
+      "pack": "core"
     },
     "scroll up": {
       "type": "hotkey",
       "keys": [
         "pageup"
       ],
-      "description": "Scroll up one page"
+      "description": "Scroll up one page",
+      "pack": "core"
     },
     "scroll to top": {
       "type": "hotkey",
       "keys": [
         "home"
       ],
-      "description": "Scroll to top of page"
+      "description": "Scroll to top of page",
+      "pack": "core"
     },
     "scroll to bottom": {
       "type": "hotkey",
       "keys": [
         "end"
       ],
-      "description": "Scroll to bottom of page"
+      "description": "Scroll to bottom of page",
+      "pack": "core"
     },
     "go back": {
       "type": "hotkey",
@@ -169,7 +188,8 @@
         "alt",
         "left"
       ],
-      "description": "Browser back"
+      "description": "Browser back",
+      "pack": "browsers"
     },
     "go forward": {
       "type": "hotkey",
@@ -177,7 +197,8 @@
         "alt",
         "right"
       ],
-      "description": "Browser forward"
+      "description": "Browser forward",
+      "pack": "browsers"
     },
     "select all": {
       "type": "hotkey",
@@ -185,7 +206,8 @@
         "ctrl",
         "a"
       ],
-      "description": "Select all text"
+      "description": "Select all text",
+      "pack": "core"
     },
     "copy": {
       "type": "hotkey",
@@ -193,7 +215,8 @@
         "ctrl",
         "c"
       ],
-      "description": "Copy selection"
+      "description": "Copy selection",
+      "pack": "core"
     },
     "cut": {
       "type": "hotkey",
@@ -201,7 +224,8 @@
         "ctrl",
         "x"
       ],
-      "description": "Cut selection"
+      "description": "Cut selection",
+      "pack": "core"
     },
     "paste": {
       "type": "hotkey",
@@ -209,12 +233,14 @@
         "ctrl",
         "v"
       ],
-      "description": "Paste from clipboard"
+      "description": "Paste from clipboard",
+      "pack": "core"
     },
     "undo": {
       "type": "method",
       "method": "undo_last_dictation",
-      "description": "Remove the last pasted dictation"
+      "description": "Remove the last pasted dictation",
+      "pack": "core"
     },
     "redo": {
       "type": "hotkey",
@@ -222,7 +248,8 @@
         "ctrl",
         "y"
       ],
-      "description": "Redo last action"
+      "description": "Redo last action",
+      "pack": "core"
     },
     "save": {
       "type": "hotkey",
@@ -230,7 +257,8 @@
         "ctrl",
         "s"
       ],
-      "description": "Save current file"
+      "description": "Save current file",
+      "pack": "core"
     },
     "find": {
       "type": "hotkey",
@@ -238,187 +266,223 @@
         "ctrl",
         "f"
       ],
-      "description": "Open find dialog"
+      "description": "Open find dialog",
+      "pack": "text-editing"
     },
     "submit": {
       "type": "hotkey",
       "keys": [
         "enter"
       ],
-      "description": "Press Enter"
+      "description": "Press Enter",
+      "pack": "core"
     },
     "escape": {
       "type": "hotkey",
       "keys": [
         "esc"
       ],
-      "description": "Press Escape"
+      "description": "Press Escape",
+      "pack": "core"
     },
     "press e": {
       "type": "press",
       "key": "e",
-      "description": "Press E key once"
+      "description": "Press E key once",
+      "pack": "gaming"
     },
     "press space": {
       "type": "press",
       "key": "space",
-      "description": "Press Spacebar once"
+      "description": "Press Spacebar once",
+      "pack": "gaming"
     },
     "hold forward": {
       "type": "key_down",
       "key": "w",
-      "description": "Hold W key down (for gaming)"
+      "description": "Hold W key down (for gaming)",
+      "pack": "gaming"
     },
     "stop forward": {
       "type": "key_up",
       "key": "w",
-      "description": "Release W key"
+      "description": "Release W key",
+      "pack": "gaming"
     },
     "hold shift": {
       "type": "key_down",
       "key": "shift",
-      "description": "Hold Shift key down"
+      "description": "Hold Shift key down",
+      "pack": "gaming"
     },
     "release shift": {
       "type": "key_up",
       "key": "shift",
-      "description": "Release Shift key"
+      "description": "Release Shift key",
+      "pack": "gaming"
     },
     "release all": {
       "type": "release_all",
-      "description": "Release all held keys"
+      "description": "Release all held keys",
+      "pack": "gaming"
     },
     "double click": {
       "type": "mouse",
       "action": "double_click",
-      "description": "Double click mouse"
+      "description": "Double click mouse",
+      "pack": "mouse"
     },
     "left click": {
       "type": "mouse",
       "action": "click",
       "button": "left",
-      "description": "Single left click"
+      "description": "Single left click",
+      "pack": "mouse"
     },
     "right click": {
       "type": "mouse",
       "action": "click",
       "button": "right",
-      "description": "Single right click"
+      "description": "Single right click",
+      "pack": "mouse"
     },
     "period": {
       "type": "text",
       "text": ".",
-      "description": "Insert period"
+      "description": "Insert period",
+      "pack": "text-editing"
     },
     "full stop": {
       "type": "text",
       "text": ".",
-      "description": "Insert period"
+      "description": "Insert period",
+      "pack": "text-editing"
     },
     "comma": {
       "type": "text",
       "text": ",",
-      "description": "Insert comma"
+      "description": "Insert comma",
+      "pack": "text-editing"
     },
     "question mark": {
       "type": "text",
       "text": "?",
-      "description": "Insert question mark"
+      "description": "Insert question mark",
+      "pack": "text-editing"
     },
     "exclamation mark": {
       "type": "text",
       "text": "!",
-      "description": "Insert exclamation mark"
+      "description": "Insert exclamation mark",
+      "pack": "text-editing"
     },
     "exclamation point": {
       "type": "text",
       "text": "!",
-      "description": "Insert exclamation mark"
+      "description": "Insert exclamation mark",
+      "pack": "text-editing"
     },
     "colon": {
       "type": "text",
       "text": ":",
-      "description": "Insert colon"
+      "description": "Insert colon",
+      "pack": "text-editing"
     },
     "semicolon": {
       "type": "text",
       "text": ";",
-      "description": "Insert semicolon"
+      "description": "Insert semicolon",
+      "pack": "text-editing"
     },
     "apostrophe": {
       "type": "text",
       "text": "'",
-      "description": "Insert apostrophe"
+      "description": "Insert apostrophe",
+      "pack": "text-editing"
     },
     "quote": {
       "type": "text",
       "text": "\"",
-      "description": "Insert double quote"
+      "description": "Insert double quote",
+      "pack": "text-editing"
     },
     "open quote": {
       "type": "text",
       "text": "\"",
-      "description": "Insert opening quote"
+      "description": "Insert opening quote",
+      "pack": "text-editing"
     },
     "close quote": {
       "type": "text",
       "text": "\"",
-      "description": "Insert closing quote"
+      "description": "Insert closing quote",
+      "pack": "text-editing"
     },
     "open parenthesis": {
       "type": "text",
       "text": "(",
-      "description": "Insert opening parenthesis"
+      "description": "Insert opening parenthesis",
+      "pack": "text-editing"
     },
     "close parenthesis": {
       "type": "text",
       "text": ")",
-      "description": "Insert closing parenthesis"
+      "description": "Insert closing parenthesis",
+      "pack": "text-editing"
     },
     "open bracket": {
       "type": "text",
       "text": "[",
-      "description": "Insert opening bracket"
+      "description": "Insert opening bracket",
+      "pack": "text-editing"
     },
     "close bracket": {
       "type": "text",
       "text": "]",
-      "description": "Insert closing bracket"
+      "description": "Insert closing bracket",
+      "pack": "text-editing"
     },
     "hyphen": {
       "type": "text",
       "text": "-",
-      "description": "Insert hyphen"
+      "description": "Insert hyphen",
+      "pack": "text-editing"
     },
     "dash": {
       "type": "text",
       "text": " - ",
-      "description": "Insert dash with spaces"
+      "description": "Insert dash with spaces",
+      "pack": "text-editing"
     },
     "ellipsis": {
       "type": "text",
       "text": "...",
-      "description": "Insert ellipsis"
+      "description": "Insert ellipsis",
+      "pack": "text-editing"
     },
     "new line": {
       "type": "press",
       "key": "enter",
-      "description": "Insert new line"
+      "description": "Insert new line",
+      "pack": "text-editing"
     },
     "new paragraph": {
       "type": "text",
       "text": "\n\n",
-      "description": "Insert paragraph break"
+      "description": "Insert paragraph break",
+      "pack": "text-editing"
     },
     "space": {
       "type": "text",
       "text": " ",
-      "description": "Insert space"
+      "description": "Insert space",
+      "pack": "text-editing"
     },
     "backspace": {
       "type": "press",
       "key": "backspace",
-      "description": "Delete previous character"
+      "description": "Delete previous character",
+      "pack": "text-editing"
     },
     "delete word": {
       "type": "hotkey",
@@ -426,17 +490,20 @@
         "ctrl",
         "backspace"
       ],
-      "description": "Delete previous word"
+      "description": "Delete previous word",
+      "pack": "text-editing"
     },
     "undo that": {
       "type": "method",
       "method": "undo_last_dictation",
-      "description": "Remove the last pasted dictation"
+      "description": "Remove the last pasted dictation",
+      "pack": "core"
     },
     "scratch that": {
       "type": "method",
       "method": "undo_last_dictation",
-      "description": "Remove the last pasted dictation"
+      "description": "Remove the last pasted dictation",
+      "pack": "core"
     },
     "take a screenshot": {
       "type": "hotkey",
@@ -445,7 +512,8 @@
         "shift",
         "s"
       ],
-      "description": "Open screenshot snip tool"
+      "description": "Open screenshot snip tool",
+      "pack": "screen-capture"
     },
     "screenshot": {
       "type": "hotkey",
@@ -454,7 +522,8 @@
         "shift",
         "s"
       ],
-      "description": "Open screenshot snip tool"
+      "description": "Open screenshot snip tool",
+      "pack": "screen-capture"
     },
     "lock screen": {
       "type": "hotkey",
@@ -462,7 +531,8 @@
         "win",
         "l"
       ],
-      "description": "Lock the computer"
+      "description": "Lock the computer",
+      "pack": "core"
     },
     "lock computer": {
       "type": "hotkey",
@@ -470,17 +540,20 @@
         "win",
         "l"
       ],
-      "description": "Lock the computer"
+      "description": "Lock the computer",
+      "pack": "core"
     },
     "open notepad": {
       "type": "launch",
       "target": "notepad.exe",
-      "description": "Open Notepad"
+      "description": "Open Notepad",
+      "pack": "utilities"
     },
     "open calculator": {
       "type": "launch",
       "target": "calc.exe",
-      "description": "Open Calculator"
+      "description": "Open Calculator",
+      "pack": "utilities"
     },
     "open file explorer": {
       "type": "hotkey",
@@ -488,7 +561,8 @@
         "win",
         "e"
       ],
-      "description": "Open File Explorer"
+      "description": "Open File Explorer",
+      "pack": "utilities"
     },
     "open files": {
       "type": "hotkey",
@@ -496,7 +570,8 @@
         "win",
         "e"
       ],
-      "description": "Open File Explorer"
+      "description": "Open File Explorer",
+      "pack": "utilities"
     },
     "open settings": {
       "type": "hotkey",
@@ -504,7 +579,8 @@
         "win",
         "i"
       ],
-      "description": "Open Windows Settings"
+      "description": "Open Windows Settings",
+      "pack": "core"
     },
     "switch window": {
       "type": "hotkey",
@@ -512,7 +588,8 @@
         "alt",
         "tab"
       ],
-      "description": "Switch to next window"
+      "description": "Switch to next window",
+      "pack": "core"
     },
     "switch app": {
       "type": "hotkey",
@@ -520,7 +597,8 @@
         "alt",
         "tab"
       ],
-      "description": "Switch to next window"
+      "description": "Switch to next window",
+      "pack": "core"
     },
     "snap left": {
       "type": "hotkey",
@@ -528,7 +606,8 @@
         "win",
         "left"
       ],
-      "description": "Snap window to left half"
+      "description": "Snap window to left half",
+      "pack": "core"
     },
     "snap right": {
       "type": "hotkey",
@@ -536,14 +615,16 @@
         "win",
         "right"
       ],
-      "description": "Snap window to right half"
+      "description": "Snap window to right half",
+      "pack": "core"
     },
     "full screen": {
       "type": "hotkey",
       "keys": [
         "f11"
       ],
-      "description": "Toggle full screen"
+      "description": "Toggle full screen",
+      "pack": "core"
     },
     "zoom in": {
       "type": "hotkey",
@@ -551,7 +632,8 @@
         "ctrl",
         "+"
       ],
-      "description": "Zoom in"
+      "description": "Zoom in",
+      "pack": "browsers"
     },
     "zoom out": {
       "type": "hotkey",
@@ -559,7 +641,8 @@
         "ctrl",
         "-"
       ],
-      "description": "Zoom out"
+      "description": "Zoom out",
+      "pack": "browsers"
     },
     "reset zoom": {
       "type": "hotkey",
@@ -567,42 +650,48 @@
         "ctrl",
         "0"
       ],
-      "description": "Reset zoom to default"
+      "description": "Reset zoom to default",
+      "pack": "browsers"
     },
     "play pause": {
       "type": "hotkey",
       "keys": [
         "playpause"
       ],
-      "description": "Play or pause media"
+      "description": "Play or pause media",
+      "pack": "media"
     },
     "pause music": {
       "type": "hotkey",
       "keys": [
         "playpause"
       ],
-      "description": "Pause media playback"
+      "description": "Pause media playback",
+      "pack": "media"
     },
     "next track": {
       "type": "hotkey",
       "keys": [
         "nexttrack"
       ],
-      "description": "Skip to next track"
+      "description": "Skip to next track",
+      "pack": "media"
     },
     "next song": {
       "type": "hotkey",
       "keys": [
         "nexttrack"
       ],
-      "description": "Skip to next song"
+      "description": "Skip to next song",
+      "pack": "media"
     },
     "previous track": {
       "type": "hotkey",
       "keys": [
         "prevtrack"
       ],
-      "description": "Go to previous track"
+      "description": "Go to previous track",
+      "pack": "media"
     },
     "bold": {
       "type": "hotkey",
@@ -610,7 +699,8 @@
         "ctrl",
         "b"
       ],
-      "description": "Toggle bold text"
+      "description": "Toggle bold text",
+      "pack": "text-editing"
     },
     "italic": {
       "type": "hotkey",
@@ -618,7 +708,8 @@
         "ctrl",
         "i"
       ],
-      "description": "Toggle italic text"
+      "description": "Toggle italic text",
+      "pack": "text-editing"
     },
     "underline": {
       "type": "hotkey",
@@ -626,7 +717,8 @@
         "ctrl",
         "u"
       ],
-      "description": "Toggle underline text"
+      "description": "Toggle underline text",
+      "pack": "text-editing"
     },
     "print": {
       "type": "hotkey",
@@ -634,7 +726,8 @@
         "ctrl",
         "p"
       ],
-      "description": "Open print dialog"
+      "description": "Open print dialog",
+      "pack": "text-editing"
     },
     "emoji": {
       "type": "hotkey",
@@ -642,7 +735,8 @@
         "win",
         "."
       ],
-      "description": "Open emoji picker"
+      "description": "Open emoji picker",
+      "pack": "utilities"
     },
     "notifications": {
       "type": "hotkey",
@@ -650,14 +744,16 @@
         "win",
         "n"
       ],
-      "description": "Open notification center"
+      "description": "Open notification center",
+      "pack": "core"
     },
     "select line": {
       "type": "hotkey",
       "keys": [
         "home"
       ],
-      "description": "Go to start of line"
+      "description": "Go to start of line",
+      "pack": "text-editing"
     },
     "select word left": {
       "type": "hotkey",
@@ -666,7 +762,8 @@
         "shift",
         "left"
       ],
-      "description": "Select word to the left"
+      "description": "Select word to the left",
+      "pack": "text-editing"
     },
     "select word right": {
       "type": "hotkey",
@@ -675,7 +772,8 @@
         "shift",
         "right"
       ],
-      "description": "Select word to the right"
+      "description": "Select word to the right",
+      "pack": "text-editing"
     },
     "delete line": {
       "type": "macro",
@@ -698,7 +796,8 @@
           "key": "delete"
         }
       ],
-      "description": "Select and delete entire line"
+      "description": "Select and delete entire line",
+      "pack": "text-editing"
     },
     "open terminal": {
       "type": "hotkey",
@@ -706,7 +805,8 @@
         "win",
         "x"
       ],
-      "description": "Open power user menu (then press T for terminal)"
+      "description": "Open power user menu (then press T for terminal)",
+      "pack": "utilities"
     },
     "clipboard history": {
       "type": "hotkey",
@@ -714,7 +814,8 @@
         "win",
         "v"
       ],
-      "description": "Open clipboard history"
+      "description": "Open clipboard history",
+      "pack": "utilities"
     }
   }
 }

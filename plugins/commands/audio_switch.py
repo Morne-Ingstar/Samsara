@@ -27,7 +27,7 @@ def _resolve_device(app, spoken_name):
     return spoken_name
 
 
-@command("switch to", aliases=["use", "switch audio to"])
+@command("switch to", aliases=["use", "switch audio to"], pack="audio")
 def switch_to(app, remainder):
     """Switch audio output. 'switch to speakers', 'use headset', etc."""
     if not remainder:
@@ -38,7 +38,7 @@ def switch_to(app, remainder):
 
 
 @command("switch mic to", aliases=["switch microphone to",
-                                   "use mic", "use microphone"])
+                                   "use mic", "use microphone"], pack="audio")
 def switch_mic(app, remainder):
     """Switch audio input. 'switch mic to headset', etc."""
     if not remainder:

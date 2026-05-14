@@ -63,7 +63,7 @@ def _send_to_arc(model, question):
         return False
 
 
-@command("ask")
+@command("ask", pack="utilities")
 def ask_default(app, remainder):
     """Ask with default model (Claude). 'ask why is my dict broken'."""
     if not remainder:

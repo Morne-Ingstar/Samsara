@@ -1,10 +1,14 @@
-# ![](logo.png) Samsara
+# Samsara
 
 ### Voice-Controlled Computing for Accessibility
 
 [![Python 3.10+](https://img.shields.io/badge/python-3.10+-blue.svg)](https://www.python.org/downloads/)[![License: BSL-1.1](https://img.shields.io/badge/License-BSL--1.1-orange.svg)](LICENSE)![Platform](https://img.shields.io/badge/platform-Windows-blue.svg)![Status: Beta](https://img.shields.io/badge/status-beta-yellow.svg)
 
-![Samsara Demo](demo.gif)
+> **The new Samsara site is live: [morneis.com/samsara](https://morneis.com/samsara)**
+>
+> Demo reel, screenshots, philosophy, accessibility framing, downloads, and roadmap — all over there. The README from here down is technical.
+
+**Recent updates:** Local text-to-speech with smart audio ducking, persistent dictation history with search and session grouping, voice-driven window management across monitors, agent webhook bridge with tiered consent, per-app command packs, and continuous command mode.
 
 > *"Jarvis, open Chrome."*
 >
@@ -22,7 +26,7 @@
 >
 > — Morne
 >
-> [Read more about the vision behind Samsara →](https://morneis.com/#about)
+> [Read more about the vision behind Samsara →](https://morneis.com/samsara)
 
 ---
 

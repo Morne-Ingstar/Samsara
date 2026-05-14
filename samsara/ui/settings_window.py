@@ -95,7 +95,9 @@ class SettingsWindow:
         self.tabview.add("Hotkeys & Modes")
         self.tabview.add("Commands")
         self.tabview.add("Sounds")
+        self.tabview.add("Text-to-Speech")
         self.tabview.add("Alarms")
+        self.tabview.add("Smart Actions")
         self.tabview.add("Advanced")
 
         # Lazy tab loading -- only build tabs on first visit
@@ -104,7 +106,9 @@ class SettingsWindow:
             "Hotkeys & Modes": {"built": False, "builder": self.build_hotkeys_modes_tab},
             "Commands": {"built": False, "builder": self.build_commands_tab},
             "Sounds": {"built": False, "builder": self.build_sounds_tab},
+            "Text-to-Speech": {"built": False, "builder": self.build_tts_tab},
             "Alarms": {"built": False, "builder": self.build_alarms_tab},
+            "Smart Actions": {"built": False, "builder": self.build_smart_actions_tab},
             "Advanced": {"built": False, "builder": self.build_advanced_tab},
         }
         # For backward compat with save_settings which checks self.built_tabs
@@ -437,8 +441,100 @@ class SettingsWindow:
 
     def build_commands_tab(self):
         """Build the Commands settings tab (generator)."""
+        from samsara.command_packs import PACKS
         commands_tab = self.tabview.tab("Commands")
 
+        # ---- Command Packs section ----------------------------------------
+        ctk.CTkLabel(commands_tab, text="Command Packs",
+                     font=ctk.CTkFont(size=16, weight="bold")
+                     ).pack(anchor='w', pady=(15, 4))
+        ctk.CTkLabel(
+            commands_tab,
+            text="Enable the packs you use. Disabling unused packs improves recognition accuracy.",
+            text_color="gray", wraplength=580,
+        ).pack(anchor='w', pady=(0, 8))
+
+        packs_scroll = ctk.CTkScrollableFrame(commands_tab, height=220,
+                                               corner_radius=10)
+        packs_scroll.pack(fill='x', pady=(0, 4))
+
+        current_packs = self.app.config.get('command_packs', {})
+        self._pack_vars = {}  # pack_id -> BooleanVar
+
+        # Count commands per pack (builtin + plugin)
+        pack_counts = {}
+        try:
+            import json as _json
+            d = _json.load(open('commands.json', encoding='utf-8'))
+            for cmd in d.get('commands', d).values():
+                p = cmd.get('pack', 'core')
+                pack_counts[p] = pack_counts.get(p, 0) + 1
+        except Exception:
+            pass
+        try:
+            from samsara import plugin_commands as _pc
+            seen = set()
+            for entry_data in _pc._REGISTRY.values():
+                eid = id(entry_data)
+                if eid in seen:
+                    continue
+                seen.add(eid)
+                p = entry_data.get('pack', 'core')
+                pack_counts[p] = pack_counts.get(p, 0) + 1
+        except Exception:
+            pass
+
+        for pack_id, meta in PACKS.items():
+            is_always_on = meta['always_on']
+            default = meta['default_enabled']
+            enabled = current_packs.get(pack_id, default)
+
+            row = ctk.CTkFrame(packs_scroll, fg_color="transparent")
+            row.pack(fill='x', pady=2)
+
+            var = tk.BooleanVar(value=enabled or is_always_on)
+            self._pack_vars[pack_id] = var
+
+            cb = ctk.CTkCheckBox(
+                row, text="", variable=var, width=24,
+                state='disabled' if is_always_on else 'normal',
+            )
+            cb.pack(side='left')
+
+            count = pack_counts.get(pack_id, 0)
+            count_str = f"  ({count} commands)" if count else ""
+            label_text = (f"{meta['label']}"
+                          f"{'  •  always on' if is_always_on else ''}{count_str}")
+            ctk.CTkLabel(row, text=label_text,
+                         font=ctk.CTkFont(
+                             size=12,
+                             weight="bold" if is_always_on else "normal"),
+                         text_color="gray60" if is_always_on else "white",
+                         anchor='w').pack(side='left', padx=(4, 8))
+            ctk.CTkLabel(row, text=meta['description'],
+                         text_color="gray", font=ctk.CTkFont(size=11),
+                         anchor='w').pack(side='left')
+
+        # Restart notice — shown/hidden based on whether any pack was toggled
+        self._packs_restart_label = ctk.CTkLabel(
+            commands_tab,
+            text="Restart Samsara to apply pack changes.",
+            text_color="#e2c355",
+            font=ctk.CTkFont(size=11),
+        )
+        # Bind changes to show the restart notice
+        def _on_pack_toggle(*_):
+            try:
+                self._packs_restart_label.pack(anchor='w', pady=(0, 4))
+            except Exception:
+                pass
+        for var in self._pack_vars.values():
+            var.trace_add('write', _on_pack_toggle)
+
+        ctk.CTkFrame(commands_tab, height=1, fg_color="gray30").pack(
+            fill='x', pady=(6, 10))
+
+        # ---- Command list section (existing) ---------------------------------
         # Header
         cmd_header = ctk.CTkFrame(commands_tab, fg_color="transparent")
         cmd_header.pack(fill='x', pady=(15, 10))
@@ -597,6 +693,49 @@ class SettingsWindow:
         theme_desc = ctk.CTkLabel(theme_frame, text="cute = playful bloops  •  warm = OS boot vibes  •  zen = singing bowls  •  classic = original",
                                   text_color="gray", font=ctk.CTkFont(size=11))
         theme_desc.pack(anchor='w', padx=15, pady=(0, 15))
+
+        # --- Smart Actions Earcons ---
+        # Per-theme Phase-2 earcon vocabulary. Each "Test" button just calls
+        # play_sound(name); the active theme determines which WAV plays.
+        earcons_label = ctk.CTkLabel(sounds_scroll, text="Smart Actions Earcons",
+                                     font=ctk.CTkFont(size=16, weight="bold"))
+        earcons_label.pack(anchor='w', pady=(0, 8))
+
+        ctk.CTkLabel(sounds_scroll,
+                     text="Preview the Smart Actions audio cues for the active theme.",
+                     text_color="gray", font=ctk.CTkFont(size=11)
+                     ).pack(anchor='w', pady=(0, 8))
+
+        earcons_frame = ctk.CTkFrame(sounds_scroll, corner_radius=10)
+        earcons_frame.pack(fill='x', pady=(0, 20))
+
+        # Order matters here -- groups related cues together visually.
+        EARCON_PREVIEWS = [
+            ('capture_started',  'Capture started'),
+            ('capture_saved',    'Capture saved'),
+            ('agent_routing',    'Agent routing'),
+            ('agent_response',   'Agent response'),
+            ('confirm_required', 'Confirm required'),
+            ('action_complete',  'Action complete'),
+            ('thinking_pulse',   'Thinking pulse'),
+        ]
+
+        grid = ctk.CTkFrame(earcons_frame, fg_color="transparent")
+        grid.pack(fill='x', padx=15, pady=(15, 15))
+
+        cols = 3
+        for idx, (earcon_name, label_text) in enumerate(EARCON_PREVIEWS):
+            row = idx // cols
+            col = idx % cols
+            cell = ctk.CTkFrame(grid, fg_color="transparent")
+            cell.grid(row=row, column=col, sticky='ew', padx=(0, 10), pady=4)
+            ctk.CTkLabel(cell, text=label_text, width=130, anchor='w'
+                         ).pack(side='left')
+            ctk.CTkButton(cell, text="Test", width=60,
+                          command=lambda n=earcon_name: self.app.play_sound(n)
+                          ).pack(side='left')
+        for c in range(cols):
+            grid.grid_columnconfigure(c, weight=1)
 
         # Custom Sounds Section
         sounds_label = ctk.CTkLabel(sounds_scroll, text="Custom Sound Files", font=ctk.CTkFont(size=16, weight="bold"))
@@ -790,6 +929,284 @@ class SettingsWindow:
         ctk.CTkLabel(alarms_scroll,
                     text=f"Complete ({self.alarm_complete_var.get().upper()}) to get streak credit. Dismiss ({self.alarm_dismiss_var.get().upper()}) to silence without credit.",
                     text_color="gray", wraplength=600).pack(anchor='w', pady=(5, 0))
+
+    def build_tts_tab(self):
+        """Build the Text-to-Speech settings tab (generator)."""
+        from samsara.ui.tts_settings_tab import TTSSettingsTab
+        self._tts_tab = TTSSettingsTab(self)
+        yield from self._tts_tab.build()
+
+    def build_smart_actions_tab(self):
+        """Build the Smart Actions tab -- brain dump path + earcons."""
+        from tkinter import filedialog
+
+        # Lazy import so tests that exercise the plugin directly don't need
+        # the full settings stack loaded.
+        try:
+            from plugins.commands import smart_actions as _smart_actions
+        except Exception:
+            _smart_actions = None
+
+        sa_tab = self.tabview.tab("Smart Actions")
+        sa_scroll = ctk.CTkScrollableFrame(sa_tab, fg_color="transparent")
+        sa_scroll.pack(fill='both', expand=True)
+
+        # Header / description
+        header = ctk.CTkLabel(sa_scroll, text="Brain Dump",
+                              font=ctk.CTkFont(size=16, weight="bold"))
+        header.pack(anchor='w', pady=(15, 10))
+
+        desc = ctk.CTkLabel(
+            sa_scroll,
+            text=("Say 'Jarvis, note ...' or 'Jarvis, brain dump ...' to append a\n"
+                  "timestamped entry to your brain dump file."),
+            text_color="gray", justify='left')
+        desc.pack(anchor='w', padx=2, pady=(0, 10))
+
+        sa_frame = ctk.CTkFrame(sa_scroll, corner_radius=10)
+        sa_frame.pack(fill='x', pady=(0, 20))
+
+        sa_config = self.app.config.get('smart_actions', {}) or {}
+        default_path = sa_config.get('brain_dump_path', '')
+        if not default_path and _smart_actions is not None:
+            default_path = str(_smart_actions.default_brain_dump_path())
+
+        # --- Path row ---
+        path_label = ctk.CTkLabel(sa_frame, text="Brain dump location:")
+        path_label.pack(anchor='w', padx=15, pady=(15, 4))
+
+        path_row = ctk.CTkFrame(sa_frame, fg_color="transparent")
+        path_row.pack(fill='x', padx=15, pady=(0, 4))
+
+        self.smart_actions_path_var = tk.StringVar(value=default_path)
+        path_entry = ctk.CTkEntry(path_row, textvariable=self.smart_actions_path_var,
+                                  width=440)
+        path_entry.pack(side='left', padx=(0, 6))
+
+        def _browse_path():
+            initial = self.smart_actions_path_var.get().strip()
+            initial_dir = str(Path(initial).expanduser().parent) if initial else str(Path.home())
+            initial_file = Path(initial).name if initial else "Samsara Brain Dump.md"
+            chosen = filedialog.asksaveasfilename(
+                title="Choose brain dump file",
+                defaultextension=".md",
+                initialdir=initial_dir,
+                initialfile=initial_file,
+                filetypes=[("Markdown", "*.md"), ("Text", "*.txt"), ("All files", "*.*")],
+                parent=self.window,
+            )
+            if chosen:
+                self.smart_actions_path_var.set(chosen)
+                self._validate_smart_actions_path()
+
+        ctk.CTkButton(path_row, text="Browse...", width=90,
+                      command=_browse_path).pack(side='left')
+
+        # Validation feedback label
+        self._smart_actions_status_label = ctk.CTkLabel(
+            sa_frame, text="", text_color="gray", justify='left', wraplength=540)
+        self._smart_actions_status_label.pack(anchor='w', padx=15, pady=(0, 10))
+
+        # Re-validate when the user finishes typing
+        self.smart_actions_path_var.trace_add(
+            'write', lambda *_: self._validate_smart_actions_path())
+        self._validate_smart_actions_path()
+
+        # --- Earcons toggle ---
+        self.smart_actions_earcons_var = tk.BooleanVar(
+            value=bool(sa_config.get('earcons_enabled', True)))
+        ctk.CTkCheckBox(sa_frame, text="Play earcons on capture (capture started + saved)",
+                        variable=self.smart_actions_earcons_var
+                        ).pack(anchor='w', padx=15, pady=(0, 10))
+
+        # --- Open file button ---
+        def _open_file():
+            if _smart_actions is None:
+                messagebox.showerror(
+                    "Smart Actions",
+                    "Smart Actions plugin is not loaded.",
+                    parent=self.window)
+                return
+            current = self.smart_actions_path_var.get().strip()
+            if not _smart_actions.open_brain_dump_file(current):
+                messagebox.showerror(
+                    "Smart Actions",
+                    f"Could not open brain dump file:\n{current}",
+                    parent=self.window)
+
+        ctk.CTkButton(sa_frame, text="Open brain dump file", width=200,
+                      command=_open_file).pack(anchor='w', padx=15, pady=(0, 15))
+
+        # ------------------------------------------------------------------ #
+        # Phase 2: Agent Endpoint                                              #
+        # ------------------------------------------------------------------ #
+        ctk.CTkLabel(sa_scroll, text="Agent Endpoint",
+                     font=ctk.CTkFont(size=14, weight="bold")
+                     ).pack(anchor='w', pady=(10, 6))
+
+        agent_frame = ctk.CTkFrame(sa_scroll, corner_radius=10)
+        agent_frame.pack(fill='x', pady=(0, 16))
+
+        # Enable toggle
+        self._sa_enabled_var = tk.BooleanVar(
+            value=bool(sa_config.get('enabled', False)))
+        ctk.CTkCheckBox(agent_frame, text="Enable Smart Actions agent routing",
+                        variable=self._sa_enabled_var
+                        ).pack(anchor='w', padx=15, pady=(14, 6))
+
+        # URL row
+        url_row = ctk.CTkFrame(agent_frame, fg_color="transparent")
+        url_row.pack(fill='x', padx=15, pady=(0, 4))
+        ctk.CTkLabel(url_row, text="Endpoint URL:", width=120, anchor='w').pack(side='left')
+        self._sa_url_var = tk.StringVar(value=sa_config.get('endpoint_url', ''))
+        ctk.CTkEntry(url_row, textvariable=self._sa_url_var,
+                     width=360, placeholder_text="https://your-agent.example.com/v1/chat"
+                     ).pack(side='left', padx=(0, 6))
+
+        # Auth row
+        auth_row = ctk.CTkFrame(agent_frame, fg_color="transparent")
+        auth_row.pack(fill='x', padx=15, pady=(0, 4))
+        ctk.CTkLabel(auth_row, text="Auth header:", width=120, anchor='w').pack(side='left')
+        self._sa_auth_var = tk.StringVar(value=sa_config.get('auth_header', ''))
+        auth_entry = ctk.CTkEntry(auth_row, textvariable=self._sa_auth_var,
+                                  width=300, show='*',
+                                  placeholder_text="Bearer sk-...")
+        auth_entry.pack(side='left', padx=(0, 6))
+
+        def _toggle_auth_show():
+            auth_entry.configure(show='' if auth_entry.cget('show') == '*' else '*')
+        ctk.CTkButton(auth_row, text="Show/Hide", width=90,
+                      command=_toggle_auth_show).pack(side='left')
+
+        # Test connection button + status
+        test_row = ctk.CTkFrame(agent_frame, fg_color="transparent")
+        test_row.pack(fill='x', padx=15, pady=(6, 14))
+        self._sa_test_label = ctk.CTkLabel(test_row, text="", text_color="gray",
+                                           font=ctk.CTkFont(size=11))
+
+        def _test_connection():
+            from samsara.smart_actions_bridge import SmartActionsBridge
+            url = self._sa_url_var.get().strip()
+            auth = self._sa_auth_var.get().strip()
+            self._sa_test_label.configure(text="Testing...", text_color="gray")
+            self._sa_test_label.pack(side='left', padx=(10, 0))
+
+            def _do_test():
+                bridge = SmartActionsBridge({'endpoint_url': url, 'auth_header': auth})
+                ok, msg = bridge.test_connection(timeout_s=5)
+                color = "#1f6aa5" if ok else "#c0392b"
+                prefix = "Connected" if ok else "Unreachable"
+                try:
+                    self._sa_test_label.configure(
+                        text=f"{prefix}: {msg}", text_color=color)
+                except Exception:
+                    pass
+
+            import threading
+            threading.Thread(target=_do_test, daemon=True).start()
+
+        ctk.CTkButton(test_row, text="Test Connection", width=140,
+                      command=_test_connection).pack(side='left')
+        self._sa_test_label.pack(side='left', padx=(10, 0))
+
+        # Session window
+        session_row = ctk.CTkFrame(agent_frame, fg_color="transparent")
+        session_row.pack(fill='x', padx=15, pady=(0, 4))
+        ctk.CTkLabel(session_row, text="Session window:", width=120,
+                     anchor='w').pack(side='left')
+        self._sa_session_var = tk.IntVar(
+            value=int(sa_config.get('session_window_minutes', 5)))
+        ctk.CTkEntry(session_row, textvariable=self._sa_session_var,
+                     width=60).pack(side='left', padx=(0, 6))
+        ctk.CTkLabel(session_row, text="minutes of inactivity before new session"
+                     ).pack(side='left')
+
+        # ------------------------------------------------------------------ #
+        # Phase 2: Security                                                    #
+        # ------------------------------------------------------------------ #
+        ctk.CTkLabel(sa_scroll, text="Security",
+                     font=ctk.CTkFont(size=14, weight="bold")
+                     ).pack(anchor='w', pady=(10, 6))
+
+        sec_frame = ctk.CTkFrame(sa_scroll, corner_radius=10)
+        sec_frame.pack(fill='x', pady=(0, 16))
+
+        # Allowed directories
+        ctk.CTkLabel(sec_frame, text="Allowed directories for file operations:",
+                     anchor='w').pack(anchor='w', padx=15, pady=(14, 4))
+
+        self._sa_dirs_var = tk.StringVar(
+            value='\n'.join(sa_config.get('allowed_directories',
+                                         [str(Path.home() / 'Documents')])))
+        dirs_box = ctk.CTkTextbox(sec_frame, height=70, width=500)
+        dirs_box.insert('1.0', self._sa_dirs_var.get())
+        dirs_box.pack(padx=15, pady=(0, 6))
+
+        # Allowed domains
+        ctk.CTkLabel(sec_frame, text="Allowed domains for webhook triggers:",
+                     anchor='w').pack(anchor='w', padx=15, pady=(6, 4))
+        self._sa_domains_var = tk.StringVar(
+            value='\n'.join(sa_config.get('allowed_domains', [])))
+        domains_box = ctk.CTkTextbox(sec_frame, height=70, width=500)
+        domains_box.insert('1.0', self._sa_domains_var.get())
+        domains_box.pack(padx=15, pady=(0, 6))
+
+        # Memorized approvals
+        ctk.CTkLabel(sec_frame, text="Memorized approvals:",
+                     anchor='w').pack(anchor='w', padx=15, pady=(6, 4))
+        approvals = sa_config.get('tier2_approvals', {})
+        approvals_text = '\n'.join(approvals.keys()) if approvals else '(none)'
+        approvals_box = ctk.CTkTextbox(sec_frame, height=60, width=500,
+                                       state='disabled')
+        approvals_box.configure(state='normal')
+        approvals_box.insert('1.0', approvals_text)
+        approvals_box.configure(state='disabled')
+        approvals_box.pack(padx=15, pady=(0, 6))
+
+        def _revoke_approvals():
+            from tkinter import messagebox
+            if not approvals:
+                return
+            if messagebox.askyesno(
+                    "Revoke approvals",
+                    "Remove ALL memorized approvals? You will be asked to confirm "
+                    "each action again.",
+                    parent=self.window):
+                sa = self.app.config.setdefault('smart_actions', {})
+                sa['tier2_approvals'] = {}
+                if hasattr(self.app, 'save_config'):
+                    self.app.save_config()
+                approvals_box.configure(state='normal')
+                approvals_box.delete('1.0', 'end')
+                approvals_box.insert('1.0', '(none)')
+                approvals_box.configure(state='disabled')
+
+        ctk.CTkButton(sec_frame, text="Revoke All Approvals", width=180,
+                      fg_color="#7a2a2a", hover_color="#9a3030",
+                      command=_revoke_approvals
+                      ).pack(anchor='w', padx=15, pady=(0, 14))
+
+        # Stash references needed by save_settings
+        self._sa_dirs_box = dirs_box
+        self._sa_domains_box = domains_box
+
+    def _validate_smart_actions_path(self):
+        """Refresh the validation status label under the brain dump path entry."""
+        if not hasattr(self, '_smart_actions_status_label'):
+            return
+        try:
+            from plugins.commands import smart_actions as _smart_actions
+        except Exception:
+            self._smart_actions_status_label.configure(
+                text="(plugin not loaded -- save still works, path will be used at runtime)",
+                text_color="gray")
+            return
+
+        raw = self.smart_actions_path_var.get()
+        ok, msg = _smart_actions.validate_brain_dump_path(raw)
+        self._smart_actions_status_label.configure(
+            text=msg,
+            text_color=("#1f6aa5" if ok else "#c0392b"))
 
     def build_advanced_tab(self):
         """Build the Advanced settings tab (generator)."""
@@ -1024,13 +1441,55 @@ class SettingsWindow:
         wake_word_row.pack(fill='x', padx=15, pady=(15, 8))
         ctk.CTkLabel(wake_word_row, text="Wake phrase:", width=120, anchor='w').pack(side='left')
         
-        phrase_options = ww_config.get('phrase_options', ['samsara', 'hey samsara', 'computer', 'jarvis'])
-        current_phrase = ww_config.get('phrase', 'samsara')
+        phrase_options = list(ww_config.get('phrase_options', ['jarvis', 'hey jarvis', 'computer', 'hey computer', 'samsa', 'hey samsa']))
+        current_phrase = ww_config.get('phrase', 'jarvis')
+        # Track the list as instance state so Add/Remove can mutate it.
+        self._phrase_options = list(phrase_options)
         self.wake_phrase_var = tk.StringVar(value=current_phrase)
-        wake_phrase_dropdown = ctk.CTkComboBox(wake_word_row, variable=self.wake_phrase_var,
-                                               values=phrase_options, width=150)
-        wake_phrase_dropdown.pack(side='left', padx=(0, 10))
-        ctk.CTkLabel(wake_word_row, text="(or type custom)", text_color="gray").pack(side='left')
+        self._wake_phrase_dropdown = ctk.CTkComboBox(
+            wake_word_row, variable=self.wake_phrase_var,
+            values=self._phrase_options, width=150)
+        self._wake_phrase_dropdown.pack(side='left', padx=(0, 10))
+        ctk.CTkLabel(wake_word_row, text="(active wake phrase)", text_color="gray").pack(side='left')
+
+        # Manage list of available wake phrases
+        manage_row = ctk.CTkFrame(wake_frame, fg_color="transparent")
+        manage_row.pack(fill='x', padx=15, pady=(0, 8))
+        ctk.CTkLabel(manage_row, text="Add phrase:", width=120, anchor='w').pack(side='left')
+        self._new_phrase_var = tk.StringVar()
+        new_phrase_entry = ctk.CTkEntry(
+            manage_row, textvariable=self._new_phrase_var, width=150,
+            placeholder_text="e.g. computer")
+        new_phrase_entry.pack(side='left', padx=(0, 6))
+
+        def _add_phrase():
+            phrase = self._new_phrase_var.get().strip().lower()
+            if not phrase:
+                return
+            if phrase in self._phrase_options:
+                self._new_phrase_var.set("")
+                self.wake_phrase_var.set(phrase)
+                return
+            self._phrase_options.append(phrase)
+            self._wake_phrase_dropdown.configure(values=self._phrase_options)
+            self.wake_phrase_var.set(phrase)
+            self._new_phrase_var.set("")
+
+        def _remove_phrase():
+            phrase = self.wake_phrase_var.get().strip().lower()
+            if not phrase or phrase not in self._phrase_options:
+                return
+            if len(self._phrase_options) <= 1:
+                # Don't let the list become empty -- the matcher needs at
+                # least one wake phrase or the wake-word system breaks.
+                return
+            self._phrase_options.remove(phrase)
+            self._wake_phrase_dropdown.configure(values=self._phrase_options)
+            # Pick the first remaining option as the new active phrase.
+            self.wake_phrase_var.set(self._phrase_options[0])
+
+        ctk.CTkButton(manage_row, text="Add", width=60, command=_add_phrase).pack(side='left', padx=(0, 4))
+        ctk.CTkButton(manage_row, text="Remove selected", width=120, command=_remove_phrase).pack(side='left')
 
         # --- 4-State Dictation Settings ---
         dict_label = ctk.CTkLabel(wake_frame, text="Dictation Settings",
@@ -1285,6 +1744,15 @@ class SettingsWindow:
         ww_config = self.app.config.get('wake_word_config', {})
         if "Advanced" in self.built_tabs:
             ww_config['phrase'] = self.wake_phrase_var.get()
+            # Save the user-managed list of wake phrases. If the active
+            # phrase was typed but never added via the Add button, include
+            # it so the user's choice survives.
+            if hasattr(self, '_phrase_options'):
+                phrases = list(self._phrase_options)
+                active = self.wake_phrase_var.get().strip().lower()
+                if active and active not in phrases:
+                    phrases.append(active)
+                ww_config['phrase_options'] = phrases
             ww_config['quick_silence_timeout'] = float(self.quick_timeout_var.get())
             ww_config['end_words'] = [w.strip() for w in self.end_words_var.get().split(',') if w.strip()]
             ww_config['cancel_words'] = [w.strip() for w in self.cancel_words_var.get().split(',') if w.strip()]
@@ -1320,6 +1788,50 @@ class SettingsWindow:
                 self.app.alarm_manager.start()
             elif not self.alarms_enabled_var.get() and self.app.alarm_manager.running:
                 self.app.alarm_manager.stop()
+
+        # Save Text-to-Speech settings -- only if the tab was visited
+        if "Text-to-Speech" in self.built_tabs and hasattr(self, '_tts_tab'):
+            self._tts_tab.save()
+
+        # Save Command Packs settings -- only if the tab was visited
+        if "Commands" in self.built_tabs and hasattr(self, '_pack_vars'):
+            from samsara.command_packs import PACKS
+            new_packs = dict(self.app.config.get('command_packs', {}) or {})
+            for pack_id, var in self._pack_vars.items():
+                meta = PACKS.get(pack_id, {})
+                if not meta.get('always_on'):
+                    try:
+                        new_packs[pack_id] = bool(var.get())
+                    except Exception:
+                        pass
+            self.app.update_config({'command_packs': new_packs}, save=False)
+
+        # Save Smart Actions settings -- only if the tab was visited
+        if "Smart Actions" in self.built_tabs:
+            sa_cfg = dict(self.app.config.get('smart_actions', {}) or {})
+            sa_cfg['brain_dump_path'] = self.smart_actions_path_var.get().strip() or sa_cfg.get('brain_dump_path', '')
+            sa_cfg['earcons_enabled'] = bool(self.smart_actions_earcons_var.get())
+            # Phase 2 fields
+            if hasattr(self, '_sa_enabled_var'):
+                sa_cfg['enabled'] = bool(self._sa_enabled_var.get())
+            if hasattr(self, '_sa_url_var'):
+                sa_cfg['endpoint_url'] = self._sa_url_var.get().strip()
+            if hasattr(self, '_sa_auth_var'):
+                sa_cfg['auth_header'] = self._sa_auth_var.get().strip()
+            if hasattr(self, '_sa_session_var'):
+                try:
+                    sa_cfg['session_window_minutes'] = int(self._sa_session_var.get())
+                except (ValueError, tk.TclError):
+                    pass
+            if hasattr(self, '_sa_dirs_box'):
+                raw = self._sa_dirs_box.get('1.0', 'end').strip()
+                sa_cfg['allowed_directories'] = [
+                    d.strip() for d in raw.splitlines() if d.strip()]
+            if hasattr(self, '_sa_domains_box'):
+                raw = self._sa_domains_box.get('1.0', 'end').strip()
+                sa_cfg['allowed_domains'] = [
+                    d.strip() for d in raw.splitlines() if d.strip()]
+            self.app.update_config({'smart_actions': sa_cfg}, save=False)
 
         self.app.command_mode_enabled = self.app.config['command_mode_enabled']
 
