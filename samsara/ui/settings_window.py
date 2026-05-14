@@ -489,6 +489,19 @@ class SettingsWindow:
             width=200,
         ).pack(side='left')
 
+        suppress_val = self.app.config.get('command_mode', {}).get('suppress_button', True)
+        self.cmd_mode_suppress_var = tk.BooleanVar(value=suppress_val)
+        ctk.CTkCheckBox(
+            commands_tab,
+            text="Suppress browser-back when using Mouse 4/5 for commands",
+            variable=self.cmd_mode_suppress_var,
+        ).pack(anchor='w', padx=2, pady=(4, 0))
+        ctk.CTkLabel(
+            commands_tab,
+            text="    When enabled, Mouse 4/5 only triggers command mode and never navigates back in browsers.",
+            text_color="gray", font=ctk.CTkFont(size=11), anchor='w',
+        ).pack(anchor='w', pady=(0, 8))
+
         ctk.CTkFrame(commands_tab, height=1, fg_color="gray30").pack(fill='x', pady=(4, 12))
 
         # ---- Command Packs section ----------------------------------------
@@ -1840,12 +1853,14 @@ class SettingsWindow:
         if "Text-to-Speech" in self.built_tabs and hasattr(self, '_tts_tab'):
             self._tts_tab.save()
 
-        # Save Command Mode button selection
+        # Save Command Mode button + suppress settings
         if "Commands" in self.built_tabs and hasattr(self, 'cmd_mode_button_var'):
             new_btn_label = self.cmd_mode_button_var.get()
             new_btn_key = self._CMD_BUTTON_OPTIONS.get(new_btn_label, 'mouse4')
             cm_cfg = dict(self.app.config.get('command_mode', {}) or {})
             cm_cfg['button'] = new_btn_key
+            if hasattr(self, 'cmd_mode_suppress_var'):
+                cm_cfg['suppress_button'] = bool(self.cmd_mode_suppress_var.get())
             self.app.update_config({'command_mode': cm_cfg}, save=False)
 
         # Save Command Packs settings -- only if the tab was visited
