@@ -20,16 +20,16 @@ import re
 DEFAULT_FILLERS = frozenset({'please', 'uh', 'um', 'like'})
 
 # Dictation mode keywords, ordered longest-prefix-first.
-# "type" → quick_dictation (silence-based auto-finalize, 1s timeout)
-# "dictate" → long_dictation (no silence timeout, requires end word)
+# "type" / "dictate" → quick_dictation (silence-based auto-finalize, 1s timeout)
+# "long dictate" → long_dictation (no silence timeout, requires end word)
 DICTATION_COMMANDS = {
     "long dictate": "long_dictation",
     "long dictation": "long_dictation",
     "short dictate": "quick_dictation",
     "short dictation": "quick_dictation",
     "quick dictate": "quick_dictation",
-    "dictate": "long_dictation",
-    "dictation": "long_dictation",
+    "dictate": "quick_dictation",
+    "dictation": "quick_dictation",
     "type": "quick_dictation",
 }
 

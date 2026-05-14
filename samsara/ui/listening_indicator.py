@@ -19,6 +19,12 @@ _LISTENING_FG = "#FFFFFF"
 _SNOOZE_BG = "#3D2E00"
 _SNOOZE_FG = "#CC9900"
 
+# Command mode colors (orange/amber)
+_CMD_BG = "#4d2600"
+_CMD_FG = "#ff8c00"
+_CMD_ACTIVE_BG = "#7a3d00"
+_CMD_ACTIVE_FG = "#ffa500"
+
 # Status flash colors
 _FLASH_SUCCESS_BG = "#1B5E20"
 _FLASH_SUCCESS_FG = "#66FF66"
@@ -119,6 +125,9 @@ class ListeningIndicator:
         # Topmost re-assertion loop id
         self._topmost_after_id = None
 
+        # Command mode state
+        self._command_mode = False
+
     # ------------------------------------------------------------------
     # Public API
     # ------------------------------------------------------------------
@@ -181,6 +190,14 @@ class ListeningIndicator:
         if snoozed == self._snoozed:
             return
         self._snoozed = snoozed
+        if self._visible:
+            self._draw()
+
+    def set_command_mode(self, active):
+        """Show orange/amber command mode state in the pill."""
+        if active == self._command_mode:
+            return
+        self._command_mode = active
         if self._visible:
             self._draw()
 
@@ -267,6 +284,13 @@ class ListeningIndicator:
         elif self._snoozed:
             bg = _SNOOZE_BG
             fg = _SNOOZE_FG
+        elif self._command_mode and self._listening:
+            t = self._pulse_step / _PULSE_STEPS
+            bg = _lerp_color(_CMD_BG, _CMD_ACTIVE_BG, t)
+            fg = _CMD_ACTIVE_FG
+        elif self._command_mode:
+            bg = _CMD_BG
+            fg = _CMD_FG
         elif self._listening:
             t = self._pulse_step / _PULSE_STEPS
             bg = _lerp_color(_TEAL_DIM, _TEAL, t)
@@ -285,9 +309,14 @@ class ListeningIndicator:
         self._canvas.create_rectangle(x0 + r, y0, x1 - r, y1, fill=bg, outline=bg)
         self._canvas.create_rectangle(x0, y0 + r, x1, y1 - r, fill=bg, outline=bg)
 
-        # Mode text (show "Snoozed" when snooze is active)
-        label = "Snoozed" if self._snoozed else self._mode_text
-        if self._listening and not self._snoozed and self._flash_bg is None:
+        # Mode text (priority: Snoozed > Command Mode > mode text)
+        if self._snoozed:
+            label = "Snoozed"
+        elif self._command_mode:
+            label = "CMD"
+        else:
+            label = self._mode_text
+        if self._listening and not self._snoozed and not self._command_mode and self._flash_bg is None:
             label = f"  {label}"  # space for the dot
         self._canvas.create_text(
             _PILL_W // 2, _PILL_H // 2,
@@ -296,8 +325,8 @@ class ListeningIndicator:
             font=("Segoe UI", 11, "bold") if sys.platform == "win32" else ("Helvetica", 11, "bold"),
         )
 
-        # Recording dot indicator (only when listening and not flashing)
-        if self._listening and not self._snoozed and self._flash_bg is None:
+        # Recording dot indicator (only when listening and not flashing/command-mode)
+        if self._listening and not self._snoozed and not self._command_mode and self._flash_bg is None:
             dot_r = 5
             dot_x = 16
             dot_y = _PILL_H // 2
@@ -371,6 +400,8 @@ class ListeningIndicator:
         t = self._flash_step / _FLASH_FADE_STEPS
         if self._snoozed:
             target_bg, target_fg = _SNOOZE_BG, _SNOOZE_FG
+        elif self._command_mode:
+            target_bg, target_fg = _CMD_BG, _CMD_FG
         elif self._listening:
             target_bg = _lerp_color(_TEAL_DIM, _TEAL, 0.5)
             target_fg = _LISTENING_FG
