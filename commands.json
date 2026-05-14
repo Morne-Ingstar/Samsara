@@ -659,7 +659,8 @@
         "playpause"
       ],
       "description": "Play or pause media",
-      "pack": "media"
+      "pack": "media",
+      "debounce": 1.5
     },
     "pause music": {
       "type": "hotkey",
@@ -667,7 +668,8 @@
         "playpause"
       ],
       "description": "Pause media playback",
-      "pack": "media"
+      "pack": "media",
+      "debounce": 1.5
     },
     "next track": {
       "type": "hotkey",
@@ -675,7 +677,8 @@
         "nexttrack"
       ],
       "description": "Skip to next track",
-      "pack": "media"
+      "pack": "media",
+      "debounce": 1.5
     },
     "next song": {
       "type": "hotkey",
@@ -683,7 +686,8 @@
         "nexttrack"
       ],
       "description": "Skip to next song",
-      "pack": "media"
+      "pack": "media",
+      "debounce": 1.5
     },
     "previous track": {
       "type": "hotkey",
@@ -691,7 +695,8 @@
         "prevtrack"
       ],
       "description": "Go to previous track",
-      "pack": "media"
+      "pack": "media",
+      "debounce": 1.5
     },
     "bold": {
       "type": "hotkey",
