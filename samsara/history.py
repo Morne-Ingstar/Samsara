@@ -131,6 +131,21 @@ class HistoryManager:
                 LIMIT ? OFFSET ?
             """, (status, limit, offset)).fetchall()
 
+    def get_sessions(self, limit=20):
+        """Return distinct sessions ordered newest first, with start time and entry count."""
+        with self._lock:
+            rows = self._conn.execute("""
+                SELECT
+                    session_id,
+                    MIN(timestamp) AS session_start,
+                    COUNT(*)       AS entry_count
+                FROM history
+                GROUP BY session_id
+                ORDER BY session_start DESC
+                LIMIT ?
+            """, (limit,)).fetchall()
+        return [dict(r) for r in rows]
+
     def get_session_stats(self, session_id):
         """Return dict with stats for a session: total, successes, failures, session_start."""
         with self._lock:

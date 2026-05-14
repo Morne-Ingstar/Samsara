@@ -197,3 +197,74 @@ def test_session_stats_different_session(tmp_db):
     assert stats['successes'] == 0
     assert stats['failures']  == 0
     hm.close()
+
+
+# ---------------------------------------------------------------------------
+# Phase 2 additions
+# ---------------------------------------------------------------------------
+
+def test_load_recent_respects_limit(tmp_db):
+    hm = HistoryManager(db_path=tmp_db)
+    for i in range(20):
+        hm.add(f"entry {i}", status="success")
+    rows = hm.recent(limit=5)
+    assert len(rows) == 5
+    hm.close()
+
+
+def test_load_recent_newest_first(tmp_db):
+    import time as _time
+    hm = HistoryManager(db_path=tmp_db)
+    hm.add("first",  status="success")
+    _time.sleep(0.01)
+    hm.add("second", status="success")
+    _time.sleep(0.01)
+    hm.add("third",  status="success")
+    rows = hm.recent(limit=10)
+    texts = [r['raw_text'] for r in rows]
+    assert texts[0] == "third"
+    assert texts[-1] == "first"
+    hm.close()
+
+
+def test_search_no_match(tmp_db):
+    hm = HistoryManager(db_path=tmp_db)
+    hm.add("open Chrome",  status="success")
+    hm.add("lights green", status="success")
+    results = hm.search("xyzzy_nonexistent")
+    assert len(results) == 0
+    hm.close()
+
+
+def test_get_sessions(tmp_db):
+    import sqlite3, uuid as _uuid
+    hm = HistoryManager(db_path=tmp_db)
+
+    # Write entries under a second fake session_id
+    fake_sid = _uuid.uuid4().hex[:12]
+    with hm._lock:
+        for text in ("alpha", "beta", "gamma"):
+            hm._conn.execute("""
+                INSERT INTO history
+                    (timestamp, raw_text, display_text, status,
+                     session_id, entry_type)
+                VALUES (datetime('now'), ?, ?, 'success', ?, 'dictation')
+            """, (text, text, fake_sid))
+        hm._conn.commit()
+
+    # Current session has no entries yet; add one
+    hm.add("delta", status="success")
+
+    sessions = hm.get_sessions(limit=20)
+    session_ids = [s['session_id'] for s in sessions]
+    assert hm.session_id in session_ids
+    assert fake_sid in session_ids
+
+    # Each session has an entry_count
+    for s in sessions:
+        assert s['entry_count'] >= 1
+        assert s['session_start'] is not None
+
+    # Ordered newest first
+    assert sessions[0]['session_start'] >= sessions[-1]['session_start']
+    hm.close()
