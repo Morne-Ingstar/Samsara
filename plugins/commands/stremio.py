@@ -65,7 +65,7 @@ ExitApp, 0
     "pause the video", "pause the movie", "pause the show",
     "pause the stream", "stop the video", "stop playing",
     "hold on", "pause it"
-])
+], pack="stremio")
 def handle_pause(app, remainder):
     print("[STREMIO] Pausing")
     return _send_stremio_key("Space")
@@ -75,7 +75,7 @@ def handle_pause(app, remainder):
     "play stremio", "resume the video", "resume the movie",
     "resume the show", "resume the stream", "continue playing",
     "unpause", "unpause stremio", "keep playing", "resume it"
-])
+], pack="stremio")
 def handle_resume(app, remainder):
     print("[STREMIO] Resuming")
     return _send_stremio_key("Space")
@@ -83,7 +83,7 @@ def handle_resume(app, remainder):
 
 @command("skip forward", aliases=[
     "skip ahead", "fast forward", "go forward", "forward", "next bit"
-])
+], pack="stremio")
 def handle_skip_forward(app, remainder):
     print("[STREMIO] Skipping forward")
     script = """#NoEnv
@@ -102,7 +102,7 @@ ExitApp, 0
 
 @command("skip back", aliases=[
     "go back", "rewind", "back up", "skip backward", "go backwards"
-])
+], pack="stremio")
 def handle_skip_back(app, remainder):
     print("[STREMIO] Skipping back")
     script = """#NoEnv
@@ -122,13 +122,13 @@ ExitApp, 0
 @command("fullscreen", aliases=[
     "toggle fullscreen", "full screen", "exit fullscreen",
     "stremio fullscreen", "go fullscreen"
-])
+], pack="stremio")
 def handle_fullscreen(app, remainder):
     print("[STREMIO] Toggling fullscreen")
     return _send_stremio_key("f")
 
 
-@command("mute stremio", aliases=["unmute stremio", "silence stremio"])
+@command("mute stremio", aliases=["unmute stremio", "silence stremio"], pack="stremio")
 def handle_mute_stremio(app, remainder):
     print("[STREMIO] Toggling mute")
     return _send_stremio_key("m")
@@ -136,7 +136,7 @@ def handle_mute_stremio(app, remainder):
 
 @command("open stremio", aliases=[
     "launch stremio", "start stremio", "bring up stremio"
-])
+], pack="stremio")
 def handle_open_stremio(app, remainder):
     print("[STREMIO] Launching")
     subprocess.Popen(
@@ -146,7 +146,7 @@ def handle_open_stremio(app, remainder):
     return True
 
 
-@command("close stremio", aliases=["quit stremio", "exit stremio"])
+@command("close stremio", aliases=["quit stremio", "exit stremio"], pack="stremio")
 def handle_close_stremio(app, remainder):
     print("[STREMIO] Closing")
     subprocess.run(

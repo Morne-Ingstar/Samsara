@@ -56,12 +56,17 @@ def clear_shared_matcher():
     _shared_matcher = None
 
 
-def command(phrase, aliases=None):
+def command(phrase, aliases=None, pack='core'):
     """Decorator: register a function as a voice command.
 
     The decorated function is called as `func(app, remainder)` where `remainder`
     is text after the matched phrase (empty string if none). Return True if the
     command handled the input, False to fall through to the next handler.
+
+    Args:
+        phrase: primary trigger phrase
+        aliases: list of alternative trigger phrases
+        pack: command pack this command belongs to (default 'core')
     """
     def decorator(func):
         entry = {
@@ -69,6 +74,7 @@ def command(phrase, aliases=None):
             'phrase': phrase.lower().strip(),
             'aliases': [a.lower().strip() for a in (aliases or [])],
             'source': getattr(func, '__module__', 'unknown'),
+            'pack': pack,
         }
         _REGISTRY[entry['phrase']] = entry
         for alias in entry['aliases']:

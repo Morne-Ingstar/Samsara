@@ -441,8 +441,100 @@ class SettingsWindow:
 
     def build_commands_tab(self):
         """Build the Commands settings tab (generator)."""
+        from samsara.command_packs import PACKS
         commands_tab = self.tabview.tab("Commands")
 
+        # ---- Command Packs section ----------------------------------------
+        ctk.CTkLabel(commands_tab, text="Command Packs",
+                     font=ctk.CTkFont(size=16, weight="bold")
+                     ).pack(anchor='w', pady=(15, 4))
+        ctk.CTkLabel(
+            commands_tab,
+            text="Enable the packs you use. Disabling unused packs improves recognition accuracy.",
+            text_color="gray", wraplength=580,
+        ).pack(anchor='w', pady=(0, 8))
+
+        packs_scroll = ctk.CTkScrollableFrame(commands_tab, height=220,
+                                               corner_radius=10)
+        packs_scroll.pack(fill='x', pady=(0, 4))
+
+        current_packs = self.app.config.get('command_packs', {})
+        self._pack_vars = {}  # pack_id -> BooleanVar
+
+        # Count commands per pack (builtin + plugin)
+        pack_counts = {}
+        try:
+            import json as _json
+            d = _json.load(open('commands.json', encoding='utf-8'))
+            for cmd in d.get('commands', d).values():
+                p = cmd.get('pack', 'core')
+                pack_counts[p] = pack_counts.get(p, 0) + 1
+        except Exception:
+            pass
+        try:
+            from samsara import plugin_commands as _pc
+            seen = set()
+            for entry_data in _pc._REGISTRY.values():
+                eid = id(entry_data)
+                if eid in seen:
+                    continue
+                seen.add(eid)
+                p = entry_data.get('pack', 'core')
+                pack_counts[p] = pack_counts.get(p, 0) + 1
+        except Exception:
+            pass
+
+        for pack_id, meta in PACKS.items():
+            is_always_on = meta['always_on']
+            default = meta['default_enabled']
+            enabled = current_packs.get(pack_id, default)
+
+            row = ctk.CTkFrame(packs_scroll, fg_color="transparent")
+            row.pack(fill='x', pady=2)
+
+            var = tk.BooleanVar(value=enabled or is_always_on)
+            self._pack_vars[pack_id] = var
+
+            cb = ctk.CTkCheckBox(
+                row, text="", variable=var, width=24,
+                state='disabled' if is_always_on else 'normal',
+            )
+            cb.pack(side='left')
+
+            count = pack_counts.get(pack_id, 0)
+            count_str = f"  ({count} commands)" if count else ""
+            label_text = (f"{meta['label']}"
+                          f"{'  •  always on' if is_always_on else ''}{count_str}")
+            ctk.CTkLabel(row, text=label_text,
+                         font=ctk.CTkFont(
+                             size=12,
+                             weight="bold" if is_always_on else "normal"),
+                         text_color="gray60" if is_always_on else "white",
+                         anchor='w').pack(side='left', padx=(4, 8))
+            ctk.CTkLabel(row, text=meta['description'],
+                         text_color="gray", font=ctk.CTkFont(size=11),
+                         anchor='w').pack(side='left')
+
+        # Restart notice — shown/hidden based on whether any pack was toggled
+        self._packs_restart_label = ctk.CTkLabel(
+            commands_tab,
+            text="Restart Samsara to apply pack changes.",
+            text_color="#e2c355",
+            font=ctk.CTkFont(size=11),
+        )
+        # Bind changes to show the restart notice
+        def _on_pack_toggle(*_):
+            try:
+                self._packs_restart_label.pack(anchor='w', pady=(0, 4))
+            except Exception:
+                pass
+        for var in self._pack_vars.values():
+            var.trace_add('write', _on_pack_toggle)
+
+        ctk.CTkFrame(commands_tab, height=1, fg_color="gray30").pack(
+            fill='x', pady=(6, 10))
+
+        # ---- Command list section (existing) ---------------------------------
         # Header
         cmd_header = ctk.CTkFrame(commands_tab, fg_color="transparent")
         cmd_header.pack(fill='x', pady=(15, 10))
@@ -1700,6 +1792,19 @@ class SettingsWindow:
         # Save Text-to-Speech settings -- only if the tab was visited
         if "Text-to-Speech" in self.built_tabs and hasattr(self, '_tts_tab'):
             self._tts_tab.save()
+
+        # Save Command Packs settings -- only if the tab was visited
+        if "Commands" in self.built_tabs and hasattr(self, '_pack_vars'):
+            from samsara.command_packs import PACKS
+            new_packs = dict(self.app.config.get('command_packs', {}) or {})
+            for pack_id, var in self._pack_vars.items():
+                meta = PACKS.get(pack_id, {})
+                if not meta.get('always_on'):
+                    try:
+                        new_packs[pack_id] = bool(var.get())
+                    except Exception:
+                        pass
+            self.app.update_config({'command_packs': new_packs}, save=False)
 
         # Save Smart Actions settings -- only if the tab was visited
         if "Smart Actions" in self.built_tabs:

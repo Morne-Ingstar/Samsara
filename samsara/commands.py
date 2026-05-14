@@ -10,6 +10,7 @@ from pathlib import Path
 from typing import Any, Callable, Dict, Optional, Tuple
 
 from . import plugin_commands as _plugin_commands
+from .command_packs import get_enabled_packs
 from .command_registry import CommandMatcher
 from .handlers import CommandContext, get_handler
 from .phonetic_wash import apply_phonetic_wash
@@ -145,6 +146,11 @@ class CommandExecutor:
         # dictation.py) use this class so matching semantics stay consistent
         # between tests and runtime.
         self._matcher = CommandMatcher()
+        # Apply pack filtering before freezing so disabled packs are excluded
+        # from the matcher's search space entirely.
+        app_config = getattr(app, 'config', {}) if app is not None else {}
+        enabled_packs = get_enabled_packs(app_config)
+        self._matcher.set_enabled_packs(enabled_packs)
         self._matcher.load_builtins(self.commands)
         self._matcher.load_plugins(_plugin_commands._REGISTRY)
         self._matcher.freeze()
