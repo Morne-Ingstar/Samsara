@@ -56,7 +56,7 @@ def clear_shared_matcher():
     _shared_matcher = None
 
 
-def command(phrase, aliases=None, pack='core', debounce=0.0):
+def command(phrase, aliases=None, pack='core', debounce=0.0, app_overrides=None):
     """Decorator: register a function as a voice command.
 
     The decorated function is called as `func(app, remainder)` where `remainder`
@@ -68,6 +68,9 @@ def command(phrase, aliases=None, pack='core', debounce=0.0):
         aliases: list of alternative trigger phrases
         pack: command pack this command belongs to (default 'core')
         debounce: seconds to suppress re-execution in command mode (0 = no debounce)
+        app_overrides: dict mapping lowercase exe names to key strings or None.
+            Example: {"code.exe": "ctrl+shift+n", "notepad.exe": None}
+            None means the command is disabled in that app.
     """
     def decorator(func):
         entry = {
@@ -77,6 +80,7 @@ def command(phrase, aliases=None, pack='core', debounce=0.0):
             'source': getattr(func, '__module__', 'unknown'),
             'pack': pack,
             'debounce': float(debounce),
+            'app_overrides': dict(app_overrides) if app_overrides else {},
         }
         _REGISTRY[entry['phrase']] = entry
         for alias in entry['aliases']:

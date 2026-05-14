@@ -26,7 +26,7 @@ class CommandEntry:
     """A single registered command (built-in or plugin)."""
 
     def __init__(self, phrase, source, cmd_type, data=None, handler=None,
-                 aliases=None, pack='core', debounce=0.0):
+                 aliases=None, pack='core', debounce=0.0, app_overrides=None):
         """
         Args:
             phrase: canonical trigger phrase (lowercase, stripped)
@@ -37,6 +37,7 @@ class CommandEntry:
             aliases: list of alternative trigger phrases
             pack: pack name this command belongs to (default 'core')
             debounce: seconds to suppress re-execution in command mode
+            app_overrides: per-app key binding overrides
         """
         self.phrase = phrase.lower().strip()
         self.tokens = self.phrase.split()
@@ -48,6 +49,7 @@ class CommandEntry:
         self.aliases = [a.lower().strip() for a in (aliases or [])]
         self.pack = pack or 'core'
         self.debounce = float(debounce) if debounce else 0.0
+        self.app_overrides = dict(app_overrides) if app_overrides else {}
 
 
 class CommandMatcher:
@@ -107,6 +109,7 @@ class CommandMatcher:
                 data=data,
                 pack=data.get('pack', 'core'),
                 debounce=float(data.get('debounce', 0.0)),
+                app_overrides=data.get('app_overrides', {}),
             )
             self._entries[name_lower] = entry
 
@@ -145,6 +148,7 @@ class CommandMatcher:
                 aliases=entry_data.get('aliases', []),
                 pack=entry_data.get('pack', 'core'),
                 debounce=float(entry_data.get('debounce', 0.0)),
+                app_overrides=entry_data.get('app_overrides', {}),
             )
             self._entries[canonical] = entry
             # Register aliases (skip individually if shadowed)
