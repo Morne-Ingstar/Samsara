@@ -304,8 +304,9 @@ logger.info("=" * 50)
 class CommandExecutor:
     """Executes voice commands - hotkeys, launches, key holds, etc."""
     
-    def __init__(self, commands_path):
+    def __init__(self, commands_path, app=None, plugins_dir=None):
         self.commands_path = commands_path
+        self.app = app
         self.commands = {}
         self.held_keys = {}  # Track currently held keys
         self.keyboard_controller = KeyboardController()
@@ -602,7 +603,7 @@ class DictationApp:
         
         # Command system
         commands_path = Path(__file__).parent / "commands.json"
-        self.command_executor = CommandExecutor(commands_path)
+        self.command_executor = CommandExecutor(commands_path, app=self)
         self.command_mode_enabled = self.config.get('command_mode_enabled', True)
 
         # Wake-word trace hook — the debug window registers a callback here
@@ -755,6 +756,42 @@ class DictationApp:
         if self.config.get('alarms', {}).get('enabled', True):
             self.alarm_manager.start()
 
+        # TTS engine + AudioCoordinator (optional; off by default)
+        self.tts_engine = None
+        self.audio_coordinator = None
+        if self.config.get('tts', {}).get('enabled', False):
+            try:
+                from samsara.tts import WinRTEngine, AudioCoordinator
+                from samsara.tts.exceptions import EngineUnavailableError
+                self.tts_engine = WinRTEngine()
+                self.audio_coordinator = AudioCoordinator(
+                    self,
+                    engine=self.tts_engine,
+                    config=self.config.get('audio_coordinator', {}),
+                )
+                print("[TTS] Initialized WinRT engine + AudioCoordinator")
+            except Exception as e:
+                print(f"[TTS] Failed to initialize: {e}")
+                self.tts_engine = None
+                self.audio_coordinator = None
+
+        # Smart Actions Phase 2: webhook bridge, session manager, tool dispatcher
+        try:
+            from samsara.smart_actions_bridge import SmartActionsBridge
+            from samsara.smart_actions_session import SmartActionsSession
+            from samsara.smart_actions_tools import ToolDispatcher
+            sa_config = self.config.get('smart_actions', {})
+            self._smart_actions_bridge = SmartActionsBridge(sa_config)
+            self._smart_actions_session = SmartActionsSession(
+                window_minutes=sa_config.get('session_window_minutes', 5))
+            self._smart_actions_tools = ToolDispatcher(self, sa_config)
+            print("[SMART ACTIONS] Phase 2 bridge/session/tools initialized")
+        except Exception as e:
+            print(f"[SMART ACTIONS] Phase 2 init failed: {e}")
+            self._smart_actions_bridge = None
+            self._smart_actions_session = None
+            self._smart_actions_tools = None
+
         # Echo cancellation (removes system audio from mic input)
         aec_config = self.config.get('echo_cancellation', {})
         self.echo_canceller = EchoCanceller(
@@ -852,6 +889,24 @@ class DictationApp:
             "silence_threshold": DEFAULT_SILENCE_TIMEOUT,
             "min_speech_duration": DEFAULT_MIN_SPEECH_DURATION,
             "command_mode_enabled": False,
+            "command_packs": {
+                "core": True,
+                "text-editing": True,
+                "window-management": True,
+                "browsers": True,
+                "media": True,
+                "smart-home": False,
+                "3d-printing": False,
+                "stremio": False,
+                "screen-capture": False,
+                "macros": False,
+                "gaming": False,
+                "mouse": False,
+                "audio": False,
+                "utilities": False,
+                "smart-actions": True,
+                "tasks": True,
+            },
             "show_all_audio_devices": False,
             "audio_feedback": True,
             "sound_volume": 0.5,
@@ -860,8 +915,8 @@ class DictationApp:
             # New nested wake word config
             "wake_word_config": {
                 "enabled": True,
-                "phrase": "samsara",
-                "phrase_options": ["samsara", "hey samsara", "computer", "hey computer", "jarvis", "hey jarvis"],
+                "phrase": "jarvis",
+                "phrase_options": ["jarvis", "hey jarvis", "computer", "hey computer", "samsa", "hey samsa"],
                 "quick_silence_timeout": 1.0,
                 "end_words": ["over", "done", "end dictation"],
                 "cancel_words": ["cancel", "cancel dictation", "abort"],
@@ -912,6 +967,49 @@ class DictationApp:
                 "headset": "Headset Earphone",
                 "earbuds": "Earbuds",
                 "monitor": "DELL U2722D"
+            },
+            # Smart Actions: voice-to-markdown brain dump (Phase 1).
+            # Per-user default lands in ~/Documents/Samsara Brain Dump.md.
+            # Settings UI lets the user pick another path or disable earcons.
+            "smart_actions": {
+                "enabled": False,
+                "brain_dump_path": str(Path.home() / "Documents" / "Samsara Brain Dump.md"),
+                "earcons_enabled": True,
+                "endpoint_url": "",
+                "auth_header": "",
+                "timeout_s": 30,
+                "session_window_minutes": 5,
+                "allowed_directories": [str(Path.home() / "Documents")],
+                "allowed_domains": [],
+                "tier2_approvals": {},
+                "routing_verbs": ["ask", "plan", "summarize"],
+            },
+            # TTS subsystem (WinRTEngine + AudioCoordinator)
+            "tts": {
+                "enabled": False,   # opt-in; toggle in Settings → Text-to-Speech
+                "voice_id": None,   # None = OS default voice
+                "speed": 1.0,
+                "pitch": 1.0,
+                "volume": 0.8,
+                # Per-context toggles — read by Phase 2 category-driven behavior.
+                # Saved here from Settings UI but not yet acted on at runtime.
+                "use_for_agent_responses": True,
+                "use_for_confirmations": True,
+                "use_for_warnings": True,
+                "use_for_status_updates": True,
+                "use_for_dictation_readback": False,
+                "use_for_errors": True,
+            },
+            "audio_coordinator": {
+                "enabled": True,
+                "duck_factor": 0.7,
+                "duck_default_duration_ms": 300,
+                "duck_fade_ms": 5,
+                "interrupt_grace_period_ms": 200,
+                "speaking_wake_threshold_multiplier": 1.5,
+                "speaking_vad_threshold_multiplier": 0.6,
+                "thinking_pulse_interval_ms": 1000,
+                "thinking_pulse_enabled": False,
             },
             # Web shortcuts for "go to X" voice commands. Keys are spoken
             # aliases; values are target URLs. Users add their own by editing
@@ -1362,7 +1460,9 @@ class DictationApp:
         return "Unknown"
 
     def _log_history(self, raw_text, display_text=None, duration_ms=0,
-                     mode="hold", status="success", app_context=None):
+                     mode="hold", status="success", app_context=None,
+                     entry_type="dictation", log_prob=None,
+                     matched_command=None):
         """Write one entry to the persistent SQLite history (best-effort).
 
         Wrapped so callers don't need to null-check or try/except every site.
@@ -1378,6 +1478,9 @@ class DictationApp:
                 duration_ms=int(duration_ms),
                 mode=mode,
                 status=status,
+                entry_type=entry_type,
+                log_prob=log_prob,
+                matched_command=matched_command,
             )
         except Exception as e:
             print(f"[HISTORY] log failed: {e}")
@@ -2096,6 +2199,7 @@ class DictationApp:
                     duration_ms=int(audio_duration * 1000),
                     mode="continuous",
                     status="success",
+                    entry_type="dictation",
                 )
                 self._notify_main_window(text.strip())
 
@@ -2106,6 +2210,7 @@ class DictationApp:
                 display_text=f"[FAILED] {e}",
                 mode="continuous",
                 status="failed",
+                entry_type="failed",
             )
             # Notify user so they know to retry
             try:
@@ -2321,9 +2426,15 @@ class DictationApp:
             
             # Use dynamic silence timeout if in dictation mode, otherwise use fast wake detection
             if self.app_state == 'long_dictation':
-                # Long dictation: no silence timeout -- mic stays hot indefinitely.
-                # Use a very large value so the silence branch never fires.
-                silence_threshold = 999999.0
+                # Long dictation: dispatch chunks at normal VAD silence intervals
+                # so audio drains incrementally throughout the session. The
+                # hard-cap timer (15s) is what terminates the session — VAD
+                # silence here just controls when each chunk gets shipped to
+                # transcription. Without this, anything spoken after the first
+                # silence boundary would accumulate in speech_buffer indefinitely
+                # until reset wiped it. Default 1s, configurable.
+                ww_config = self.config.get('wake_word_config', {})
+                silence_threshold = ww_config.get('long_chunk_silence', 1.0)
             elif self.app_state == 'quick_dictation' and self._dictation_silence_timeout:
                 silence_threshold = self._dictation_silence_timeout
             else:
@@ -2417,11 +2528,24 @@ class DictationApp:
                         self.is_speaking = False
                         self.silence_start = None
                         if buffer_copy is not None:
-                            threading.Thread(
-                                target=self.process_wake_word_buffer,
-                                args=(buffer_copy,),
-                                daemon=True,
-                            ).start()
+                            # In long_dictation, dispatch through the tracked
+                            # wrapper so the pending-transcriptions counter
+                            # stays accurate. Other modes use the plain
+                            # fire-and-forget dispatch.
+                            if self.app_state == 'long_dictation':
+                                with self._dictation_finalize_lock:
+                                    self._pending_transcriptions += 1
+                                threading.Thread(
+                                    target=self._process_wake_word_buffer_tracked,
+                                    args=(buffer_copy,),
+                                    daemon=True,
+                                ).start()
+                            else:
+                                threading.Thread(
+                                    target=self.process_wake_word_buffer,
+                                    args=(buffer_copy,),
+                                    daemon=True,
+                                ).start()
         except (sd.PortAudioError, OSError) as e:
             print(f"[AUDIO] Stream died -- attempting reconnect... ({e})")
             self._stream_dead = True
@@ -2495,6 +2619,7 @@ class DictationApp:
                         duration_ms=int(audio_duration * 1000),
                         mode="wake",
                         status="empty",
+                        entry_type="failed",
                     )
                 return
             
@@ -2679,6 +2804,7 @@ class DictationApp:
                 display_text=f"[FAILED] {e}",
                 mode="wake",
                 status="failed",
+                entry_type="failed",
             )
             # Notify user so they know to retry
             try:
@@ -2784,6 +2910,11 @@ class DictationApp:
             self._dictation_silence_timeout = None  # silence handled by hard-cap, not VAD
             self._dictation_require_end = True
 
+            # Initialize state-driven finalization tracking.
+            # See _maybe_finalize_dictation for the protocol.
+            self._dictation_finalize_requested = False
+            self._pending_transcriptions = 0
+
             # Safety net: hard-cap timer in case end-word handling is
             # misconfigured (e.g. user emptied end_words in config) or VAD
             # never declares silence. After max_duration the dictation is
@@ -2791,7 +2922,9 @@ class DictationApp:
             # configurable via wake_word_config.long_max_duration.
             ww_config = self.config.get('wake_word_config', {})
             max_duration = ww_config.get('long_max_duration', 15.0)
-            print(f"[STATE] {old_state} -> long_dictation (hard-cap: {max_duration}s)")
+            failsafe_duration = ww_config.get('long_failsafe_duration', 60.0)
+            print(f"[STATE] {old_state} -> long_dictation "
+                  f"(hard-cap: {max_duration}s, failsafe: {failsafe_duration}s)")
 
             if hasattr(self, '_dictation_hardcap_timer') and self._dictation_hardcap_timer:
                 self._dictation_hardcap_timer.cancel()
@@ -2800,6 +2933,18 @@ class DictationApp:
             )
             self._dictation_hardcap_timer.daemon = True
             self._dictation_hardcap_timer.start()
+
+            # Absolute failsafe — fires only if the soft hard-cap somehow
+            # fails to drain the pipeline (e.g. stuck transcription worker).
+            # Brutally resets regardless of pending state. Should normally
+            # never fire in healthy operation.
+            if hasattr(self, '_dictation_failsafe_timer') and self._dictation_failsafe_timer:
+                self._dictation_failsafe_timer.cancel()
+            self._dictation_failsafe_timer = threading.Timer(
+                failsafe_duration, self._absolute_failsafe_reset
+            )
+            self._dictation_failsafe_timer.daemon = True
+            self._dictation_failsafe_timer.start()
 
         self.play_sound("start")
 
@@ -2859,6 +3004,15 @@ class DictationApp:
             self._dictation_hardcap_timer.cancel()
             self._dictation_hardcap_timer = None
 
+        if hasattr(self, '_dictation_failsafe_timer') and self._dictation_failsafe_timer:
+            self._dictation_failsafe_timer.cancel()
+            self._dictation_failsafe_timer = None
+
+        # Reset state-driven finalize tracking. Pending count should already
+        # be 0 in healthy operation; clamp defensively in case of timer races.
+        self._dictation_finalize_requested = False
+        self._pending_transcriptions = 0
+
         if old_state != 'asleep':
             print(f"[STATE] {old_state} -> asleep")
 
@@ -2893,22 +3047,153 @@ class DictationApp:
             traceback.print_exc()
 
     def _finalize_dictation_hardcap(self):
-        """Hard-cap callback for long_dictation: forcibly finalize whatever
-        has been buffered, regardless of _dictation_require_end. This is the
-        safety net that keeps long dictation from hanging forever when end
-        words are misconfigured or VAD never declares silence.
+        """Hard-cap soft-finalize for long_dictation. Sets a finalize-requested
+        flag, forces any buffered audio to dispatch immediately, then asks the
+        pipeline to finalize when it next becomes idle.
+
+        This is NOT the absolute kill switch — that's _absolute_failsafe_reset
+        below. The hard-cap is the user-facing "dictation should be done by
+        now" signal. The failsafe is the hung-pipeline backstop.
+
+        Architecture (per tribunal review):
+          - User speaks → cap fires → flag set → buffer flushed
+          - Already-pending transcription completes → finalize check passes
+          - State reset happens once the pipeline is fully drained
         """
         try:
             with self._dictation_finalize_lock:
-                if self.wake_dictation_mode and self.wake_dictation_buffer:
-                    final_text = ' '.join(self.wake_dictation_buffer)
-                    print(f"[DONE] Long dictation hard-cap fired — forcing finalize: {final_text}")
-                    self._output_dictation(final_text)
-                elif self.wake_dictation_mode:
-                    print("[DONE] Long dictation hard-cap fired with empty buffer — resetting state")
-                self._reset_wake_dictation()
+                if self.app_state != 'long_dictation':
+                    return
+                print("[HARDCAP] Time limit reached — flushing audio and requesting finalize")
+                self._dictation_finalize_requested = True
         except Exception as e:
             print(f"[ERROR] _finalize_dictation_hardcap crashed: {e}")
+            import traceback
+            traceback.print_exc()
+            return
+
+        # Force any in-buffer audio to dispatch NOW so the pending counter
+        # captures it. Without this, audio currently being captured but not
+        # yet flushed by VAD silence would be lost.
+        self._flush_speech_buffer_to_transcription()
+
+        # Try to finalize immediately. If transcriptions are still in flight,
+        # this is a no-op and finalize will happen via the completion-side
+        # call to _maybe_finalize_dictation in process_wake_word_buffer.
+        self._maybe_finalize_dictation()
+
+    def _flush_speech_buffer_to_transcription(self):
+        """Force whatever audio is currently in self.speech_buffer to dispatch
+        to transcription, bypassing the VAD silence threshold. Used by the
+        hard-cap to ensure no in-flight audio is lost.
+
+        Returns True if a buffer was dispatched, False if nothing to flush.
+        Increments _pending_transcriptions if dispatched.
+        """
+        with self.buffer_lock:
+            if not self.speech_buffer:
+                return False
+            buffer_copy = self.speech_buffer.copy()
+            self.speech_buffer = []
+            self._buffer_rms_history = []
+
+        self.is_speaking = False
+        self.silence_start = None
+
+        with self._dictation_finalize_lock:
+            self._pending_transcriptions += 1
+
+        threading.Thread(
+            target=self._process_wake_word_buffer_tracked,
+            args=(buffer_copy,),
+            daemon=True,
+        ).start()
+        return True
+
+    def _process_wake_word_buffer_tracked(self, buffer):
+        """Wrapper around process_wake_word_buffer that decrements the
+        pending-transcriptions counter on completion (in finally), then
+        triggers a finalize check. This is what every dispatch site should
+        call instead of process_wake_word_buffer directly when in
+        long_dictation mode.
+        """
+        try:
+            self.process_wake_word_buffer(buffer)
+        finally:
+            with self._dictation_finalize_lock:
+                self._pending_transcriptions = max(0, self._pending_transcriptions - 1)
+            # Outside the lock: maybe_finalize takes its own
+            self._maybe_finalize_dictation()
+
+    def _maybe_finalize_dictation(self):
+        """Centralized finalize check. Called from multiple completion points;
+        only finalizes when ALL of these are true:
+          - In long_dictation state
+          - Finalize has been requested (cap fired or end-word seen)
+          - No pending transcriptions
+          - No active speech (defensive)
+
+        Idempotent and lock-guarded. Safe to call from any thread.
+        """
+        try:
+            with self._dictation_finalize_lock:
+                if self.app_state != 'long_dictation':
+                    return
+                if not self._dictation_finalize_requested:
+                    return
+                if self._pending_transcriptions > 0:
+                    return
+                if getattr(self, 'is_speaking', False):
+                    # Speech started again after cap fired. The next silence
+                    # transition + completion will retrigger this check.
+                    return
+
+                # Pipeline is fully drained. Safe to finalize.
+                if self.wake_dictation_mode and self.wake_dictation_buffer:
+                    final_text = ' '.join(self.wake_dictation_buffer)
+                    print(f"[DONE] Long dictation finalized: {final_text}")
+                    # _output_dictation must be called outside the lock to
+                    # avoid blocking the pipeline on clipboard/UI work.
+                    pending_text = final_text
+                else:
+                    pending_text = None
+                    print("[DONE] Long dictation finalized with empty buffer")
+
+                self._reset_wake_dictation()
+            # Released the lock — now do the user-visible output
+            if pending_text:
+                self._output_dictation(pending_text)
+        except Exception as e:
+            print(f"[ERROR] _maybe_finalize_dictation crashed: {e}")
+            import traceback
+            traceback.print_exc()
+
+    def _absolute_failsafe_reset(self):
+        """Brutal backstop. Called by an absolute timer (longer than the
+        hard-cap). If the pipeline somehow leaks pending counts (worker
+        crash, missed decrement, etc.), this guarantees we never hang.
+
+        Resets state regardless of pending count. Logs loudly because if
+        this fires it indicates a real bug somewhere.
+        """
+        try:
+            with self._dictation_finalize_lock:
+                if self.app_state != 'long_dictation':
+                    return
+                pending = self._pending_transcriptions
+                buf_len = len(self.wake_dictation_buffer) if self.wake_dictation_buffer else 0
+                print(f"[FAILSAFE] Absolute timeout — forcing reset "
+                      f"(pending={pending}, buf_chunks={buf_len}). "
+                      f"This indicates a stuck transcription worker.")
+                if self.wake_dictation_buffer:
+                    pending_text = ' '.join(self.wake_dictation_buffer)
+                else:
+                    pending_text = None
+                self._reset_wake_dictation()
+            if pending_text:
+                self._output_dictation(pending_text)
+        except Exception as e:
+            print(f"[ERROR] _absolute_failsafe_reset crashed: {e}")
             import traceback
             traceback.print_exc()
 
@@ -3008,6 +3293,7 @@ class DictationApp:
             display_text=text.strip(),
             mode="wake",
             status="success",
+            entry_type="dictation",
         )
         self._notify_main_window(text.strip())
 
@@ -3164,12 +3450,21 @@ class DictationApp:
 
     def _load_sound_cache(self):
         """Pre-load all sound files into memory, normalized to common sample rate.
-        
+
         Supports WAV natively, and MP3/OGG/FLAC if pydub is installed.
+
+        Loads in two passes:
+          1. Legacy hard-coded names (start/stop/success/error) from
+             self.sound_files -- backed by sounds/<name>.* so user "Browse..."
+             customisations still win.
+          2. Auto-discover any other .wav files in the active theme directory
+             (sounds/themes/<sound_theme>/) by file-stem. This is how the
+             Phase-2 earcon vocabulary (capture_started, capture_saved,
+             agent_routing, etc.) is loaded -- no hard-coded list needed.
         """
         self._sound_cache = {}
         target_sr = self._sound_stream_sr
-        
+
         # Check for pydub support (enables MP3, OGG, FLAC, etc.)
         try:
             from pydub import AudioSegment
@@ -3186,17 +3481,17 @@ class DictationApp:
                 if test_path.exists():
                     sound_path = test_path
                     break
-            
+
             # Also check the original path as-is
             if sound_path is None and sound_file.exists():
                 sound_path = sound_file
-            
+
             if sound_path is None:
                 continue
-                
+
             try:
                 suffix = sound_path.suffix.lower()
-                
+
                 # Use pydub for non-WAV formats
                 if suffix != '.wav' and HAS_PYDUB:
                     audio_seg = AudioSegment.from_file(str(sound_path))
@@ -3253,6 +3548,50 @@ class DictationApp:
             except Exception as e:
                 print(f"[AUDIO] Failed to load {sound_path}: {e}")
 
+        # Pass 2: auto-discover extended earcons in the active theme dir.
+        # Anything not already in the cache (legacy 4 win) gets loaded by
+        # file-stem so new earcons drop in without code changes.
+        try:
+            theme_name = self.config.get('sound_theme', 'cute') if hasattr(self, 'config') else 'cute'
+            themes_root = self.sounds_dir / 'themes' / theme_name
+            if themes_root.is_dir():
+                for wav_path in sorted(themes_root.glob('*.wav')):
+                    name = wav_path.stem
+                    if name in self._sound_cache:
+                        continue  # legacy 4 or already loaded
+                    try:
+                        with wave.open(str(wav_path), 'rb') as wf:
+                            sample_rate = wf.getframerate()
+                            n_channels = wf.getnchannels()
+                            sample_width = wf.getsampwidth()
+                            audio_data = wf.readframes(wf.getnframes())
+
+                        if sample_width == 1:
+                            dtype = np.uint8
+                        elif sample_width == 2:
+                            dtype = np.int16
+                        else:
+                            dtype = np.int32
+
+                        audio_array = np.frombuffer(audio_data, dtype=dtype).astype(np.float32)
+                        if sample_width == 1:
+                            audio_array = (audio_array - 128) / 128.0
+                        else:
+                            audio_array = audio_array / (2 ** (sample_width * 8 - 1))
+                        if n_channels == 2:
+                            audio_array = audio_array.reshape(-1, 2).mean(axis=1)
+                        if sample_rate != target_sr:
+                            duration = len(audio_array) / sample_rate
+                            new_length = int(duration * target_sr)
+                            indices = np.linspace(0, len(audio_array) - 1, new_length)
+                            audio_array = np.interp(indices, np.arange(len(audio_array)), audio_array)
+                        audio_array = audio_array.astype(np.float32).reshape(-1, 1)
+                        self._sound_cache[name] = audio_array
+                    except Exception as e:
+                        print(f"[AUDIO] Failed to load extended earcon {wav_path.name}: {e}")
+        except Exception as e:
+            print(f"[AUDIO] Extended-earcon discovery failed: {e}")
+
     def _start_sound_stream(self):
         """Start the persistent output stream for sound playback.
         
@@ -3300,20 +3639,35 @@ class DictationApp:
 
     def play_sound(self, sound_type, use_winsound=False):
         """Play audio feedback sound via persistent output stream (non-blocking, low-latency).
-        
+
         Writes pre-loaded audio data into the playback buffer. The persistent
         OutputStream callback drains it automatically. New sounds replace any
         currently playing sound (clean cutoff, no artifacts).
-        
+
         Args:
-            sound_type: 'start', 'stop', 'success', or 'error'
+            sound_type: legacy ('start'|'stop'|'success'|'error') or any
+                earcon name auto-discovered from the active theme directory
+                (e.g. 'capture_started', 'thinking_pulse').
             use_winsound: Deprecated/ignored.
         """
         if not self.config.get('audio_feedback', True):
             return
 
+        # Notify AudioCoordinator so it can duck TTS volume if TTS is active.
+        # getattr guard means play_sound works before the coordinator is set up.
+        if getattr(self, 'audio_coordinator', None) is not None:
+            self.audio_coordinator.on_earcon_starting(sound_type)
+
         cached = self._sound_cache.get(sound_type)
         if cached is None:
+            # Surface unknown names once per name so missing earcons show up
+            # in logs instead of silently dropping.
+            if not hasattr(self, '_warned_sound_misses'):
+                self._warned_sound_misses = set()
+            if sound_type not in self._warned_sound_misses:
+                self._warned_sound_misses.add(sound_type)
+                print(f"[AUDIO] No cached sound for '{sound_type}' "
+                      f"(check sounds/themes/<theme>/{sound_type}.wav)")
             return
 
         volume = self.config.get('sound_volume', 0.5)
@@ -3775,6 +4129,8 @@ class DictationApp:
                             duration_ms=int(audio_duration * 1000),
                             mode="command",
                             status="success",
+                            entry_type="command",
+                            matched_command=str(result) if result else None,
                         )
                         return
 
@@ -3808,6 +4164,7 @@ class DictationApp:
                         duration_ms=int(audio_duration * 1000),
                         mode="hold",
                         status="success",
+                        entry_type="dictation",
                     )
                     self._notify_main_window(text.strip())
 
@@ -3825,6 +4182,7 @@ class DictationApp:
                             duration_ms=int(audio_duration * 1000),
                             mode="hold",
                             status="empty",
+                            entry_type="failed",
                         )
 
             except Exception as e:
@@ -3837,6 +4195,7 @@ class DictationApp:
                     display_text=f"[FAILED] {e}",
                     mode="hold",
                     status="failed",
+                    entry_type="failed",
                 )
                 # Notify user so they know to retry
                 try:
@@ -4434,7 +4793,17 @@ class DictationApp:
             """Generate menu dynamically to reflect current state"""
             mode = self.config.get('mode', 'hold')
             
-            # Create microphone submenu
+            # Create microphone submenu.
+            # Refresh the device list every time the menu is built so a mic
+            # connected after startup (e.g. BT earbuds) appears immediately.
+            # Skip the refresh while capture is active — sd.query_devices()
+            # can stutter the audio stream on some drivers during recording.
+            if not (self.recording or self.continuous_active or self.wake_word_active):
+                try:
+                    self.available_mics = self.get_available_microphones()
+                except Exception as e:
+                    print(f"[MIC] Refresh failed, using cached list: {e}")
+
             mic_menu_items = []
             current_mic_id = self.config.get('microphone')
 
@@ -4699,6 +5068,18 @@ class DictationApp:
             if hasattr(self, 'listening_indicator'):
                 self.listening_indicator.destroy()
         except:
+            pass
+
+        # Shut down TTS coordinator + engine before the earcon stream closes
+        try:
+            if getattr(self, 'audio_coordinator', None) is not None:
+                self.audio_coordinator.shutdown()
+        except Exception:
+            pass
+        try:
+            if getattr(self, 'tts_engine', None) is not None:
+                self.tts_engine.shutdown()
+        except Exception:
             pass
 
         # Stop persistent sound stream

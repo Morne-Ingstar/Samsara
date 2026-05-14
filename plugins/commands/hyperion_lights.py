@@ -90,7 +90,7 @@ def _match(name, avail):
 @command("lights", aliases=[
     "set lights to", "set the lights to", "change lights to",
     "make the lights", "light color", "set lights", "lights to"
-])
+], pack="smart-home")
 def handle_color(app, remainder):
     if not remainder:
         return True
@@ -105,7 +105,7 @@ def handle_color(app, remainder):
 
 @command("light effect", aliases=[
     "lights effect", "run effect", "start effect", "play effect", "effect"
-])
+], pack="smart-home")
 def handle_effect(app, remainder):
     if not remainder:
         return True
@@ -117,21 +117,21 @@ def handle_effect(app, remainder):
     return True
 
 
-@command("lights off", aliases=["turn off the lights","turn lights off","kill the lights","lights out"])
+@command("lights off", aliases=["turn off the lights","turn lights off","kill the lights","lights out"], pack="smart-home")
 def handle_off(app, remainder):
     _send(app, {"command":"color","color":[0,0,0],"priority":1,"origin":"Samsara"})
     print("[LIGHTS] Off")
     return True
 
 
-@command("lights on", aliases=["turn on the lights","turn lights on"])
+@command("lights on", aliases=["turn on the lights","turn lights on"], pack="smart-home")
 def handle_on(app, remainder):
     _send(app, {"command":"clear","priority":1})
     print("[LIGHTS] Restored")
     return True
 
 
-@command("list effects", aliases=["what effects are there","show effects"])
+@command("list effects", aliases=["what effects are there","show effects"], pack="smart-home")
 def handle_list(app, remainder):
     fx = _effects(app)
     if fx:
