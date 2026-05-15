@@ -988,7 +988,7 @@ class DictationApp:
         self._capslock_hook = None
         self._install_capslock_hook()
 
-        self.update_splash("Loading speech model...")
+        self.update_splash("Loading speech model — may take 30-60s on first run...")
 
         # Load model in background
         self.load_model_async()
@@ -1013,10 +1013,12 @@ class DictationApp:
         from samsara.ui.main_window import MainWindow
         self.main_window = MainWindow(self)
 
+        # NOTE: Splash is intentionally NOT closed here. load_model_async runs
+        # the heavy Whisper/CUDA load on a background thread; closing the splash
+        # before that finishes leaves the user with no indicator that the app
+        # is still warming up. The model-load worker now closes the splash on
+        # completion via _schedule_ui(self._on_model_loaded_close_splash).
         self.update_splash("Starting...")
-        if self.splash:
-            self.splash.close()
-            self.splash = None
 
         # create_tray_icon() ends with mainloop() and blocks the thread,
         # so anything after it is unreachable. Schedule the hub to open
@@ -1031,6 +1033,16 @@ class DictationApp:
                 self.splash.set_status(status)
             except:
                 pass
+
+    def _close_splash_post_load(self):
+        """Close the splash screen after the model has finished loading.
+        Runs on the UI thread via _schedule_ui."""
+        if self.splash:
+            try:
+                self.splash.close()
+            except Exception as e:
+                print(f"[SPLASH] close() failed: {e}")
+            self.splash = None
 
     def load_config(self):
         """Load configuration from JSON file"""
@@ -1838,6 +1850,15 @@ class DictationApp:
             self.loading_model = False
             print(f"[OK] Model loaded in {load_time:.1f}s ({device}, {compute_type})")
 
+            # Marshal to UI thread: close the splash now that the app is
+            # truly ready to dictate. Until this point, the splash has been
+            # showing "Loading speech model..." which is accurate.
+            try:
+                if self.splash:
+                    self._schedule_ui(self._close_splash_post_load)
+            except Exception as e:
+                print(f"[SPLASH] Could not close splash: {e}")
+
             # Load Silero VAD for real-time speech gating (async-safe: if this
             # fails, the wake callback falls back to RMS).
             self._load_vad_model()
@@ -2484,9 +2505,15 @@ class DictationApp:
             # Calculate RMS energy to detect speech
             rms = np.sqrt(np.mean(audio_chunk**2))
             
-            # Threshold for speech detection (from wake word config, shared across modes)
+            # Speech threshold for continuous mode.
+            # Historically this read from wake_word_config.audio.speech_threshold,
+            # which is calibrated for wake-word activation (intentionally high to
+            # avoid false wakes). Continuous mode needs a lower, more permissive
+            # threshold to catch normal-volume speech. Falls back to the wake
+            # threshold for backward compat if the dedicated key isn't set.
             ww_audio = self.config.get('wake_word_config', {}).get('audio', {})
-            speech_threshold = ww_audio.get('speech_threshold', DEFAULT_SPEECH_THRESHOLD)
+            wake_threshold = ww_audio.get('speech_threshold', DEFAULT_SPEECH_THRESHOLD)
+            speech_threshold = self.config.get('continuous_speech_threshold', DEFAULT_SPEECH_THRESHOLD)
             silence_threshold = self.config.get('silence_threshold', DEFAULT_SILENCE_TIMEOUT)
             min_speech = self.config.get('min_speech_duration', DEFAULT_MIN_SPEECH_DURATION)
 
@@ -5631,6 +5658,13 @@ class DictationApp:
             if hasattr(self, 'cheat_sheet'):
                 self.cheat_sheet.destroy()
         except:
+            pass
+
+        # Destroy show-numbers layered overlay
+        try:
+            from plugins.commands.show_numbers import _destroy_overlay_completely
+            _destroy_overlay_completely()
+        except Exception:
             pass
 
         # Shut down TTS coordinator + engine before the earcon stream closes
