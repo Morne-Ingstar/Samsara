@@ -135,7 +135,7 @@ async def _send_action(action_name):
 # Voice commands
 # ---------------------------------------------------------------------------
 
-@command("pause this", aliases=["pause focused", "pause active"],
+@command("pause this", aliases=["pause focused", "pause active", "pause music", "stop music", "play pause"],
          pack="media", debounce=1.5)
 def handle_pause_this(app, remainder):
     ok, msg = _run_async(_send_action('pause')) or (False, "error")
@@ -159,7 +159,7 @@ def handle_toggle_this(app, remainder):
     return True
 
 
-@command("next track this", aliases=["next this", "skip this"],
+@command("next track this", aliases=["next this", "skip this", "next track", "next song", "skip song"],
          pack="media", debounce=0.8)
 def handle_next_this(app, remainder):
     ok, msg = _run_async(_send_action('next')) or (False, "error")
@@ -167,7 +167,7 @@ def handle_next_this(app, remainder):
     return True
 
 
-@command("previous track this", aliases=["previous this", "back this"],
+@command("previous track this", aliases=["previous this", "back this", "previous track", "previous song", "back a song", "previous"],
          pack="media", debounce=0.8)
 def handle_prev_this(app, remainder):
     ok, msg = _run_async(_send_action('previous')) or (False, "error")
