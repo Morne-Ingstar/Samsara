@@ -248,12 +248,18 @@ def _get_pynput_command_key(button_name: str):
         f13 ... f24  (macro-pad / foot-pedal extended function keys)
     """
     _SIMPLE = {
-        'rctrl':  Key.ctrl_r,
-        'lctrl':  Key.ctrl_l,
-        'ralt':   Key.alt_r,
-        'lalt':   Key.alt_l,
-        'rshift': Key.shift_r,
-        'lshift': Key.shift_l,
+        'rctrl':      Key.ctrl_r,
+        'right_ctrl': Key.ctrl_r,
+        'lctrl':      Key.ctrl_l,
+        'left_ctrl':  Key.ctrl_l,
+        'ralt':       Key.alt_r,
+        'right_alt':  Key.alt_r,
+        'lalt':       Key.alt_l,
+        'left_alt':   Key.alt_l,
+        'rshift':     Key.shift_r,
+        'right_shift': Key.shift_r,
+        'lshift':     Key.shift_l,
+        'left_shift': Key.shift_l,
     }
     if button_name in _SIMPLE:
         return _SIMPLE[button_name]
@@ -505,16 +511,18 @@ class CommandExecutor:
         if "command mode on" in text_lower or "command mode enable" in text_lower or "enable command mode" in text_lower:
             if app_instance:
                 app_instance.command_mode_enabled = True
-                app_instance.config['command_mode_enabled'] = True
-                app_instance.save_config()
+                with app_instance._config_lock:
+                    app_instance.config['command_mode_enabled'] = True
+                    app_instance.save_config()
                 print("[OK] Command mode ENABLED")
             return "command_mode_on", True
         
         if "command mode off" in text_lower or "command mode disable" in text_lower or "disable command mode" in text_lower:
             if app_instance:
                 app_instance.command_mode_enabled = False
-                app_instance.config['command_mode_enabled'] = False
-                app_instance.save_config()
+                with app_instance._config_lock:
+                    app_instance.config['command_mode_enabled'] = False
+                    app_instance.save_config()
                 print("[OFF] Command mode DISABLED")
             return "command_mode_off", True
 
@@ -633,6 +641,11 @@ class DictationApp:
     def __init__(self, splash=None):
         self.splash = splash
         self.config_path = Path(__file__).parent / "config.json"
+        # Protects all self.config mutations and save_config disk writes.
+        # MUST be held before any mutation to self.config that precedes a save,
+        # and before calling save_config() directly.
+        # Never hold while doing audio work, VAD, AEC, model loading, or UI rendering.
+        self._config_lock = threading.Lock()
 
         # Check if first-run wizard is needed
         # Only show wizard if config doesn't exist at all (truly new installation)
@@ -672,7 +685,8 @@ class DictationApp:
             # No splash after wizard - user already saw UI
 
         self.update_splash("Loading configuration...")
-        self.load_config()
+        with self._config_lock:
+            self.load_config()
 
         self.update_splash("Setting up audio...")
 
@@ -707,8 +721,9 @@ class DictationApp:
         valid_ids = {mic['id'] for mic in self.available_mics}
         if saved_mic not in valid_ids and self.available_mics:
             old_id = saved_mic
-            self.config['microphone'] = self.available_mics[0]['id']
-            self.save_config()
+            with self._config_lock:
+                self.config['microphone'] = self.available_mics[0]['id']
+                self.save_config()
             print(f"[CONFIG] Saved microphone {old_id} not found in current devices, "
                   f"switched to {self.available_mics[0]['name']} (id={self.config['microphone']})")
         
@@ -757,6 +772,14 @@ class DictationApp:
         self._command_mode_inactivity_timer = None
         self._command_mode_session_start = 0.0  # monotonic time of last enter
         self._command_mode_ghost_tap = False    # set when hold < enter_debounce_ms
+
+        # Ava mode — Right Alt held = talk to Ollama/Ava
+        self.ava_mode_active = False
+        self.ava_mode_recording = False
+        self._ava_mode_ghost_tap = False
+        self._ava_mode_session_start = 0.0
+        self._ava_mode_lock = threading.Lock()
+
         self._mouse_hook = None
 
         # Wake-word trace hook — the debug window registers a callback here
@@ -919,25 +942,32 @@ class DictationApp:
             config_dir=config_dir,
             sounds_dir=sounds_dir,
             get_config=lambda: self.config,
-            save_config=self.save_config
+            save_config=self.persist_config
         )
         if self.config.get('alarms', {}).get('enabled', True):
             self.alarm_manager.start()
 
         # TTS engine + AudioCoordinator (optional; off by default)
+        # engine selection: config tts.engine = "winrt" (default) or "edge"
         self.tts_engine = None
         self.audio_coordinator = None
         if self.config.get('tts', {}).get('enabled', False):
             try:
-                from samsara.tts import WinRTEngine, AudioCoordinator
+                from samsara.tts import WinRTEngine, EdgeTTSEngine, AudioCoordinator
                 from samsara.tts.exceptions import EngineUnavailableError
-                self.tts_engine = WinRTEngine()
+                tts_engine_name = self.config.get('tts', {}).get('engine', 'winrt').lower()
+                if tts_engine_name == 'edge':
+                    self.tts_engine = EdgeTTSEngine()
+                    print("[TTS] Initialized EdgeTTS engine (Azure Neural voices)")
+                else:
+                    self.tts_engine = WinRTEngine()
+                    print("[TTS] Initialized WinRT engine")
                 self.audio_coordinator = AudioCoordinator(
                     self,
                     engine=self.tts_engine,
                     config=self.config.get('audio_coordinator', {}),
                 )
-                print("[TTS] Initialized WinRT engine + AudioCoordinator")
+                print("[TTS] AudioCoordinator ready")
             except Exception as e:
                 print(f"[TTS] Failed to initialize: {e}")
                 self.tts_engine = None
@@ -1287,7 +1317,14 @@ class DictationApp:
 
         Also keeps the previous good copy at config.json.bak so a future
         corruption (or a bad manual edit) can be recovered in one step.
+
+        Caller MUST hold self._config_lock.  Use persist_config() for
+        external or fire-and-forget saves where you don't already hold it.
         """
+        assert self._config_lock.locked(), (
+            "save_config() called without holding _config_lock! "
+            "Acquire _config_lock before mutating config and calling save_config()."
+        )
         tmp_path = self.config_path.with_suffix('.json.tmp')
         bak_path = self.config_path.with_suffix('.json.bak')
 
@@ -1329,7 +1366,33 @@ class DictationApp:
                 pass
             print(f"[ERROR] save_config failed: {e}")
             raise
-    
+
+    def persist_config(self) -> None:
+        """Persist current in-memory config to disk. Thread-safe.
+
+        For external callers (AlarmManager callback, settings_window) that
+        don't hold _config_lock.  Acquires the lock then delegates to
+        save_config().
+        """
+        with self._config_lock:
+            self.save_config()
+
+    def update_config_and_save(self, updates: dict) -> None:
+        """Atomically apply updates to self.config and persist to disk.
+
+        Use for simple key/value updates from any thread.
+        For complex multi-step mutations acquire self._config_lock directly.
+        """
+        with self._config_lock:
+            self.config.update(updates)
+            self.save_config()
+
+    def revoke_tier2_approvals(self) -> None:
+        """Clear all memorised Tier-2 approvals and persist. Called from Settings UI."""
+        with self._config_lock:
+            self.config.setdefault('smart_actions', {})['tier2_approvals'] = {}
+            self.save_config()
+
     def update_config(self, changes, save=True):
         """Apply config changes and optionally save to disk.
 
@@ -1337,22 +1400,26 @@ class DictationApp:
         place to hook side-effects (stream restarts, UI updates) and future
         plugin notifications.
 
+        The mutation and optional save are performed under _config_lock.
+        Side-effects (apply_mode, set_wake_word_enabled, capture-rate
+        detection) run after the lock is released — they may do audio work.
+
         Args:
             changes: dict of key-value pairs to update
             save: whether to persist to disk (default True)
         """
-        self.config.update(changes)
+        with self._config_lock:
+            self.config.update(changes)
+            if save:
+                self.save_config()
 
-        # Apply runtime side-effects for keys that need them
+        # Side-effects outside the lock — may start/stop streams or do audio work
         if 'mode' in changes:
             self.apply_mode(changes['mode'])
         if 'wake_word_enabled' in changes:
             self.set_wake_word_enabled(changes['wake_word_enabled'])
         if 'microphone' in changes:
             self.capture_rate = self._detect_capture_rate(changes['microphone'])
-
-        if save:
-            self.save_config()
 
     def set_app_state(self, **kwargs):
         """Update application state flags with transition logging.
@@ -1403,17 +1470,18 @@ class DictationApp:
             print(f"[CAL] Calibration failed ({e}), using default {threshold:.4f}")
 
         # Apply to wake word audio config
-        ww_config = self.config.get('wake_word_config', {})
-        if 'audio' not in ww_config:
-            ww_config['audio'] = {}
-        ww_config['audio']['speech_threshold'] = threshold
-        self.config['wake_word_config'] = ww_config
+        with self._config_lock:
+            ww_config = self.config.get('wake_word_config', {})
+            if 'audio' not in ww_config:
+                ww_config['audio'] = {}
+            ww_config['audio']['speech_threshold'] = threshold
+            self.config['wake_word_config'] = ww_config
 
     def recalibrate_mic(self):
         """Re-run calibration in background and update config."""
         def _do():
             self._run_calibration_if_auto()
-            self.save_config()
+            self.persist_config()
         threading.Thread(target=_do, daemon=True).start()
 
     def get_available_microphones(self):
@@ -1772,14 +1840,15 @@ class DictationApp:
         if was_prebuffer:
             self._stop_prebuffer_stream()
 
-        # Update config + save
-        self.config['microphone'] = mic_id
+        # Update config fields (mutations under lock, audio work outside)
         mic_entry = next((m for m in self.available_mics if m['id'] == mic_id), None)
-        if mic_entry:
-            self.config['microphone_name'] = mic_entry['name']
+        with self._config_lock:
+            self.config['microphone'] = mic_id
+            if mic_entry:
+                self.config['microphone_name'] = mic_entry['name']
         self.capture_rate = self._detect_capture_rate(mic_id)
-        self._run_calibration_if_auto()
-        self.save_config()
+        self._run_calibration_if_auto()  # internally locks its own mutation
+        self.persist_config()
 
         mic_name = self.get_current_microphone_name()
         print(f"[OK] Switched to microphone: {mic_name} ({self.capture_rate}Hz)")
@@ -2299,31 +2368,43 @@ class DictationApp:
         No-ops unless command_mode.button is a keyboard source.
         """
         cfg = self.config.get('command_mode', {})
-        if not cfg.get('enabled', False):
-            return
+        cmd_enabled = cfg.get('enabled', False)
         btn_name = cfg.get('button', 'mouse4')
-        if btn_name in ('mouse4', 'mouse5'):
-            return  # mouse source — handled in _on_mouse_button
-        target = _get_pynput_command_key(btn_name)
-        if not _matches_pynput_key(key, target):
+        is_mouse = btn_name in ('mouse4', 'mouse5')
+
+        # Command mode keyboard handling (skip if disabled or mouse source)
+        if cmd_enabled and not is_mouse:
+            target = _get_pynput_command_key(btn_name)
+            if _matches_pynput_key(key, target):
+                mode = cfg.get('mode', 'hold')
+                if mode == 'hold':
+                    if pressed:
+                        self.enter_command_mode()
+                    else:
+                        self.exit_command_mode()
+                else:  # toggle
+                    if pressed:
+                        if self.command_mode_active:
+                            self.exit_command_mode()
+                        else:
+                            self.enter_command_mode()
+                return
+
+        # Right Alt → Ava mode (mutual exclusion with command mode)
+        if not self.config.get('ava_mode_enabled', True):
             return
-        mode = cfg.get('mode', 'hold')
-        if mode == 'hold':
-            if pressed:
-                self.enter_command_mode()
-            else:
-                self.exit_command_mode()
-        else:  # toggle
-            if pressed:
-                if self.command_mode_active:
-                    self.exit_command_mode()
-                else:
-                    self.enter_command_mode()
+        ava_key_name = self.config.get('ava_mode_key', 'right_alt')
+        ava_target = _get_pynput_command_key(ava_key_name)
+        if ava_target is not None and _matches_pynput_key(key, ava_target):
+            if pressed and not self.ava_mode_active and not self.command_mode_active:
+                self.enter_ava_mode()
+            elif not pressed and self.ava_mode_active:
+                self.exit_ava_mode()
 
     def enter_command_mode(self):
         """Enter command mode (idempotent). Safe to call from any thread."""
         with self._command_mode_lock:
-            if self.command_mode_active:
+            if self.command_mode_active or self.ava_mode_active:
                 return
             self.command_mode_active = True
         self._command_mode_miss_count = 0
@@ -2375,6 +2456,76 @@ class DictationApp:
         if cfg.get('exit_earcon', True) and not was_recording:
             # Only play here when not going through stop_recording() to avoid doubling
             self.play_sound('stop')
+
+    # ── Ava mode (Right Alt hold-to-talk → Ollama) ───────────────────────────
+
+    def enter_ava_mode(self):
+        """Enter Ava mode (idempotent). Safe to call from any thread."""
+        with self._ava_mode_lock:
+            if self.ava_mode_active or self.command_mode_active:
+                return
+            self.ava_mode_active = True
+        self._ava_mode_session_start = time.monotonic()
+        self._ava_mode_ghost_tap = False
+        print("[AVA MODE] Entering Ava mode")
+        if hasattr(self, 'listening_indicator'):
+            self._schedule_ui(self.listening_indicator.set_command_mode, True)
+        threading.Thread(target=self._do_enter_ava_mode, daemon=True,
+                         name='ava-mode-enter').start()
+
+    def _do_enter_ava_mode(self):
+        """Worker thread: starts recording and fires debounced earcon."""
+        if self.recording:
+            return
+        self.ava_mode_recording = True
+        self.start_recording(streaming=False, play_earcon=False)
+        debounce_ms = self.config.get('command_mode', {}).get('enter_debounce_ms', 200)
+        time.sleep(debounce_ms / 1000.0)
+        if self.ava_mode_active:
+            self.play_sound('start', use_winsound=True)
+
+    def exit_ava_mode(self):
+        """Exit Ava mode (idempotent). Safe to call from any thread."""
+        with self._ava_mode_lock:
+            if not self.ava_mode_active:
+                return
+            self.ava_mode_active = False
+            hold_ms = (time.monotonic() - self._ava_mode_session_start) * 1000
+        debounce_ms = self.config.get('command_mode', {}).get('enter_debounce_ms', 200)
+        self._ava_mode_ghost_tap = (hold_ms < debounce_ms)
+        if self._ava_mode_ghost_tap:
+            print(f"[AVA MODE] Ghost tap ({hold_ms:.0f}ms < {debounce_ms}ms) — audio will be discarded")
+        print("[AVA MODE] Exiting Ava mode")
+        if hasattr(self, 'listening_indicator'):
+            self._schedule_ui(self.listening_indicator.set_command_mode, False)
+        was_recording = self.recording
+        if was_recording:
+            self.stop_recording()
+        elif not self._ava_mode_ghost_tap:
+            self.play_sound('stop')
+
+    def _route_to_ava(self, text: str):
+        """Send transcribed speech to Ollama via the ask_ollama plugin."""
+        def _worker():
+            try:
+                from plugins.commands.ask_ollama import handle_ask_ava
+                handle_ask_ava(self, remainder=text)
+            except ImportError:
+                if hasattr(self, 'audio_coordinator') and self.audio_coordinator:
+                    self.audio_coordinator.speak(
+                        "Ollama plugin is not installed.",
+                        category="error",
+                    )
+                else:
+                    print(f"[AVA] Ollama plugin not found. User said: {text}")
+            except Exception as e:
+                print(f"[AVA] Error: {e}")
+                if hasattr(self, 'audio_coordinator') and self.audio_coordinator:
+                    self.audio_coordinator.speak(
+                        "Sorry, I had an error processing that.",
+                        category="error",
+                    )
+        threading.Thread(target=_worker, daemon=True, name="Ava-worker").start()
 
     def _reset_command_mode_inactivity_timer(self, timeout_s):
         self._cancel_command_mode_inactivity_timer()
@@ -4612,17 +4763,21 @@ class DictationApp:
                 # Apply corrections dictionary
                 text = self.voice_training_window.apply_corrections(text)
                 
-                # Check if we're in command-only mode (from command hotkey or Mouse 4)
+                # Check which mode produced this recording
                 is_command_mode = self.command_mode_recording
-                self.command_mode_recording = False  # Reset flag
+                is_ava_mode = self.ava_mode_recording
+                self.command_mode_recording = False
+                self.ava_mode_recording = False
 
-                # Ghost-tap prevention (post-Whisper recheck).
-                # If the hold was shorter than enter_debounce_ms the earcon never
-                # played and exit_command_mode() set the ghost flag.  Discard the
-                # audio here so accidental sub-200ms taps cannot fire commands.
+                # Ghost-tap prevention — discard accidental sub-debounce taps
                 if is_command_mode and self._command_mode_ghost_tap:
                     self._command_mode_ghost_tap = False
                     print("[CMD] Ghost tap — discarding transcription")
+                    return
+
+                if is_ava_mode and self._ava_mode_ghost_tap:
+                    self._ava_mode_ghost_tap = False
+                    print("[AVA] Ghost tap — discarding transcription")
                     return
 
                 if text:
@@ -4685,6 +4840,11 @@ class DictationApp:
                                 threading.Thread(
                                     target=self._rearm_command_recording,
                                     daemon=True).start()
+                        return
+
+                    # --- Ava mode (Right Alt) ---
+                    if is_ava_mode:
+                        self._route_to_ava(text)
                         return
 
                     # Regular dictation mode - proceed with text output
@@ -4840,8 +5000,9 @@ class DictationApp:
 
     def set_wake_word_enabled(self, enabled):
         """Start or stop the wake word listener independently of capture mode."""
-        self.config['wake_word_enabled'] = enabled
-        self.save_config()
+        with self._config_lock:
+            self.config['wake_word_enabled'] = enabled
+            self.save_config()
         if enabled and not self.wake_word_active:
             self.start_wake_word_mode()
             print("[WAKE] Wake word listener ENABLED")
@@ -4863,7 +5024,7 @@ class DictationApp:
         """Tray-menu entry point: apply the mode, persist it, refresh the menu."""
         changed = self.apply_mode(new_mode)
         if changed:
-            self.save_config()
+            self.persist_config()
         # Always refresh the menu so the checkmark reflects current state
         if hasattr(self, 'tray_icon') and hasattr(self, 'get_menu'):
             try:
@@ -4902,8 +5063,9 @@ class DictationApp:
         enabled = bool(enabled)
         if self.config.get('streaming_mode', False) == enabled:
             return
-        self.config['streaming_mode'] = enabled
-        self.save_config()
+        with self._config_lock:
+            self.config['streaming_mode'] = enabled
+            self.save_config()
         print(f"[STREAM] streaming_mode -> {enabled}")
 
         # Install or release the CapsLock hook to match. When streaming is
@@ -4926,8 +5088,9 @@ class DictationApp:
             return
         if self.config.get('cleanup_mode') == mode:
             return
-        self.config['cleanup_mode'] = mode
-        self.save_config()
+        with self._config_lock:
+            self.config['cleanup_mode'] = mode
+            self.save_config()
         print(f"[CLEANUP] Mode -> {mode}")
         if hasattr(self, 'tray_icon') and hasattr(self, 'get_menu'):
             try:
@@ -5370,8 +5533,9 @@ class DictationApp:
     def toggle_listening_indicator(self):
         """Toggle the listening indicator overlay on/off and persist to config."""
         enabled = not self.config.get('listening_indicator_enabled', False)
-        self.config['listening_indicator_enabled'] = enabled
-        self.save_config()
+        with self._config_lock:
+            self.config['listening_indicator_enabled'] = enabled
+            self.save_config()
         if enabled:
             self._schedule_ui(self.listening_indicator.show)
         else:

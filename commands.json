@@ -2400,6 +2400,20 @@
       "target": "steam://nav/downloads",
       "description": "Open Steam downloads view",
       "pack": "gaming"
+    },
+    "hey ava": {
+      "type": "plugin",
+      "plugin": "samsara_plugin_ask_ollama",
+      "aliases": ["ava", "ask ava", "samsara think", "think about", "what do you think"],
+      "pack": "ai",
+      "description": "Ask Ava (local Ollama LLM) a question or get help with a command"
+    },
+    "is it safe to": {
+      "type": "plugin",
+      "plugin": "samsara_plugin_ask_ollama",
+      "aliases": ["should i", "is it okay to"],
+      "pack": "ai",
+      "description": "Ask Ava if an action is safe before doing it"
     }
   }
 }
