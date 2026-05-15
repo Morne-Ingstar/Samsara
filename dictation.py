@@ -4636,42 +4636,43 @@ class DictationApp:
                         self.exit_command_mode()
                         return
 
-                    # Check for command mode toggle OR regular commands
-                    result, was_command = self.command_executor.process_text(text, self)
-
-                    if was_command:
-                        _store_cmd = self.command_executor.commands.get(result) or {'type': 'plugin'}
-                        if (result and not _is_repeat_blacklisted(result, _store_cmd)
-                                and self.command_executor.find_command(result) == result):
-                            self._last_command = _store_cmd
-                            self._last_command_name = result
-                        # Command was executed - add to history as command
-                        self.add_to_history(text, is_command=True)
-                        self._log_history(
-                            raw_text=text,
-                            duration_ms=int(audio_duration * 1000),
-                            mode="command",
-                            status="success",
-                            entry_type="command",
-                            matched_command=str(result) if result else None,
-                        )
-                        # Toggle mode: reset miss count, refresh inactivity, re-arm
-                        if is_command_mode and self.command_mode_active:
-                            self._command_mode_miss_count = 0
-                            cm_cfg = self.config.get('command_mode', {})
-                            if cm_cfg.get('mode', 'hold') == 'toggle':
-                                timeout_s = cm_cfg.get('inactivity_timeout_s', 30)
-                                self._reset_command_mode_inactivity_timer(timeout_s)
-                                threading.Thread(
-                                    target=self._rearm_command_recording,
-                                    daemon=True).start()
-                        return
-
-                    # Not a command
+                    # Command matching ONLY runs in command mode (Right Ctrl / Mouse 4).
+                    # Hold-to-dictate (Ctrl+Shift) always outputs text — never matches
+                    # commands, so words like "bring", "copy", "cut" are transcribed
+                    # as-is rather than firing the corresponding voice command.
                     if is_command_mode:
-                        # In command-only mode, don't output text if no command matched
+                        result, was_command = self.command_executor.process_text(text, self)
+
+                        if was_command:
+                            _store_cmd = self.command_executor.commands.get(result) or {'type': 'plugin'}
+                            if (result and not _is_repeat_blacklisted(result, _store_cmd)
+                                    and self.command_executor.find_command(result) == result):
+                                self._last_command = _store_cmd
+                                self._last_command_name = result
+                            # Command was executed - add to history as command
+                            self.add_to_history(text, is_command=True)
+                            self._log_history(
+                                raw_text=text,
+                                duration_ms=int(audio_duration * 1000),
+                                mode="command",
+                                status="success",
+                                entry_type="command",
+                                matched_command=str(result) if result else None,
+                            )
+                            # Toggle mode: reset miss count, refresh inactivity, re-arm
+                            if self.command_mode_active:
+                                self._command_mode_miss_count = 0
+                                cm_cfg = self.config.get('command_mode', {})
+                                if cm_cfg.get('mode', 'hold') == 'toggle':
+                                    timeout_s = cm_cfg.get('inactivity_timeout_s', 30)
+                                    self._reset_command_mode_inactivity_timer(timeout_s)
+                                    threading.Thread(
+                                        target=self._rearm_command_recording,
+                                        daemon=True).start()
+                            return
+
+                        # No command matched in command mode — don't output text
                         print(f"[CMD] No command matched: '{text}'")
-                        # Toggle mode: count miss and maybe exit
                         if self.command_mode_active:
                             self._command_mode_miss_count += 1
                             cm_cfg = self.config.get('command_mode', {})
