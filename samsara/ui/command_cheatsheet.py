@@ -65,9 +65,11 @@ class CommandCheatSheet:
         self._canvas_win_id = None
         self._resize_data: dict = {}
         self._drag_data: dict = {}
+        self._opacity: float = 0.85
+        self._opacity_var: Optional[tk.IntVar] = None
         self._geom = {"x": None, "y": None, "w": _DEFAULT_W, "h": _DEFAULT_H}
 
-        self._load_palette()
+        self._load_palette()  # sets self._opacity from saved data
 
     # ------------------------------------------------------------------
     # Public API
@@ -127,6 +129,7 @@ class CommandCheatSheet:
         self._win = tk.Toplevel(self._root)
         self._win.overrideredirect(True)
         self._win.attributes("-topmost", True)
+        self._win.attributes("-alpha", self._opacity)
         self._win.configure(bg=_BORDER)
         self._win.minsize(_MIN_W, _MIN_H)
 
@@ -192,6 +195,40 @@ class CommandCheatSheet:
         close_btn.bind("<Button-1>", lambda _e: self.hide())
         close_btn.bind("<Enter>", lambda _e: close_btn.configure(fg="#e06060"))
         close_btn.bind("<Leave>", lambda _e: close_btn.configure(fg=_TEXT_SEC))
+
+        # Opacity slider
+        opacity_lbl = tk.Label(
+            bar, text="opacity",
+            bg=_SURFACE, fg=_TEXT_SEC,
+            font=(_FONT, 8),
+        )
+        opacity_lbl.pack(side="right", padx=(0, 2))
+
+        self._opacity_var = tk.IntVar(value=int(self._opacity * 100))
+        opacity_slider = tk.Scale(
+            bar,
+            variable=self._opacity_var,
+            from_=20, to=100,
+            orient="horizontal",
+            length=70,
+            showvalue=False,
+            bg=_SURFACE, fg=_TEXT_SEC,
+            troughcolor=_BG,
+            highlightthickness=0,
+            bd=0,
+            sliderlength=12,
+            width=8,
+        )
+        opacity_slider.pack(side="right", padx=(0, 4))
+        opacity_slider.bind("<Motion>",
+            lambda _e: self._win.attributes("-alpha", self._opacity_var.get() / 100))
+        opacity_slider.bind("<ButtonRelease-1>",
+            lambda _e: self._on_opacity_release())
+
+    def _on_opacity_release(self):
+        """Save opacity after slider interaction ends."""
+        self._opacity = self._opacity_var.get() / 100
+        self._save_palette()
 
     def _build_filter_bar(self, parent: tk.Frame):
         bar = tk.Frame(parent, bg=_BG, height=_FILTER_H)
@@ -291,7 +328,9 @@ class CommandCheatSheet:
         unpinned = [c for c in filtered if c["phrase"] not in self._pinned]
         ordered = pinned + unpinned
 
-        self._render_rows(ordered)
+        MAX_ROWS = 80
+        self._total_count = len(ordered)
+        self._render_rows(ordered[:MAX_ROWS])
 
     def _render_rows(self, commands: List[dict]):
         if self._inner is None:
@@ -577,6 +616,7 @@ class CommandCheatSheet:
                 data = json.loads(self._palette_path.read_text(encoding="utf-8"))
                 self._pinned = set(data.get("pinned", []))
                 geom = data.get("geometry", {})
+                self._opacity = float(data.get("opacity", 0.85))
                 self._geom["x"] = geom.get("x")
                 self._geom["y"] = geom.get("y")
                 self._geom["w"] = geom.get("w", _DEFAULT_W)
@@ -590,6 +630,7 @@ class CommandCheatSheet:
         try:
             data = {
                 "pinned": sorted(self._pinned),
+                "opacity": round(self._opacity, 2),
                 "geometry": {
                     "x": self._win.winfo_x(),
                     "y": self._win.winfo_y(),
