@@ -22,6 +22,8 @@ import numpy as np
 from samsara.profiles import ProfileManager
 from samsara.ui.profile_manager_ui import ProfileManagerWindow
 from samsara.alarms import get_default_alarm_config
+from samsara.ui.tabs.general_tab import GeneralTab
+from samsara.ui.tabs.advanced_tab import AdvancedTab
 
 
 class SettingsWindow:
@@ -101,15 +103,17 @@ class SettingsWindow:
         self.tabview.add("Advanced")
 
         # Lazy tab loading -- only build tabs on first visit
+        self.general_tab = GeneralTab(self.tabview.tab("General"), self.app, self)
+        self.advanced_tab = AdvancedTab(self.tabview.tab("Advanced"), self.app)
         self._tab_builders = {
-            "General": {"built": False, "builder": self.build_general_tab},
+            "General": {"built": False, "builder": self.general_tab.build},
             "Hotkeys & Modes": {"built": False, "builder": self.build_hotkeys_modes_tab},
             "Commands": {"built": False, "builder": self.build_commands_tab},
             "Sounds": {"built": False, "builder": self.build_sounds_tab},
             "Text-to-Speech": {"built": False, "builder": self.build_tts_tab},
             "Alarms": {"built": False, "builder": self.build_alarms_tab},
             "Smart Actions": {"built": False, "builder": self.build_smart_actions_tab},
-            "Advanced": {"built": False, "builder": self.build_advanced_tab},
+            "Advanced": {"built": False, "builder": self.advanced_tab.build},
         }
         # For backward compat with save_settings which checks self.built_tabs
         self.built_tabs = set()
@@ -136,10 +140,10 @@ class SettingsWindow:
         """Update the mic combobox with a freshly-enumerated mic list."""
         self.available_mics = fresh_mics
         self.app.available_mics = fresh_mics
-        if hasattr(self, 'mic_combo') and self.mic_combo:
+        if hasattr(self, 'general_tab') and self.general_tab.mic_combo is not None:
             try:
                 names = [m['name'] for m in fresh_mics]
-                self.mic_combo.configure(values=names)
+                self.general_tab.mic_combo.configure(values=names)
             except Exception:
                 pass
 
@@ -170,180 +174,7 @@ class SettingsWindow:
                 pass
         _step()
 
-    def build_general_tab(self):
-        """Build the General settings tab (generator -- yields between sections)."""
-        general_tab = self.tabview.tab("General")
-
-        general_scroll = ctk.CTkScrollableFrame(general_tab, fg_color="transparent")
-        general_scroll.pack(fill='both', expand=True)
-
-        # --- Microphone Section ---
-        ctk.CTkLabel(general_scroll, text="Microphone", font=ctk.CTkFont(size=16, weight="bold")
-                     ).pack(anchor='w', pady=(15, 10))
-        mic_frame = ctk.CTkFrame(general_scroll, corner_radius=10)
-        mic_frame.pack(fill='x', pady=(0, 20))
-        ctk.CTkLabel(mic_frame, text="Selected device:").pack(anchor='w', padx=15, pady=(15, 5))
-
-        mic_names = [mic['name'] for mic in self.available_mics]
-        current_mic_id = self.app.config.get('microphone')
-        current_selection = mic_names[0] if mic_names else "No microphones found"
-        if current_mic_id is not None:
-            for mic in self.available_mics:
-                if mic['id'] == current_mic_id:
-                    current_selection = mic['name']
-                    break
-
-        self.mic_var = tk.StringVar(value=current_selection)
-        self.mic_combo = ctk.CTkComboBox(mic_frame, variable=self.mic_var, values=mic_names,
-                                         width=400, state='readonly')
-        self.mic_combo.pack(anchor='w', padx=15, pady=(0, 10))
-        self.show_all_devices_var = tk.BooleanVar(value=self.app.config.get('show_all_audio_devices', False))
-        ctk.CTkCheckBox(mic_frame, text="Show all audio devices (includes virtual/system devices)",
-                       variable=self.show_all_devices_var, command=self.refresh_microphone_list
-                       ).pack(anchor='w', padx=15, pady=(0, 15))
-        yield
-
-        # --- Basic Options Section ---
-        options_label = ctk.CTkLabel(general_scroll, text="Basic Options", font=ctk.CTkFont(size=16, weight="bold"))
-        options_label.pack(anchor='w', pady=(0, 10))
-
-        options_frame = ctk.CTkFrame(general_scroll, corner_radius=10)
-        options_frame.pack(fill='x', pady=(0, 20))
-
-        self.auto_paste_var = tk.BooleanVar(value=self.app.config.get('auto_paste', True))
-        ctk.CTkCheckBox(options_frame, text="Automatically paste transcribed text",
-                       variable=self.auto_paste_var).pack(anchor='w', padx=15, pady=(15, 8))
-
-        self.trailing_space_var = tk.BooleanVar(value=self.app.config.get('add_trailing_space', True))
-        ctk.CTkCheckBox(options_frame, text="Add trailing space after text",
-                       variable=self.trailing_space_var).pack(anchor='w', padx=15, pady=(0, 8))
-
-        self.auto_capitalize_var = tk.BooleanVar(value=self.app.config.get('auto_capitalize', True))
-        ctk.CTkCheckBox(options_frame, text="Auto-capitalize sentences",
-                       variable=self.auto_capitalize_var).pack(anchor='w', padx=15, pady=(0, 8))
-
-        self.format_numbers_var = tk.BooleanVar(value=self.app.config.get('format_numbers', True))
-        ctk.CTkCheckBox(options_frame, text="Convert spoken numbers to digits",
-                       variable=self.format_numbers_var).pack(anchor='w', padx=15, pady=(0, 8))
-
-        self.command_mode_var = tk.BooleanVar(value=self.app.config.get('command_mode_enabled', True))
-        ctk.CTkCheckBox(options_frame, text="Enable voice commands (recommended)",
-                       variable=self.command_mode_var).pack(anchor='w', padx=15, pady=(0, 8))
-
-        # Auto-start option
-        self.auto_start_var = tk.BooleanVar(value=self.check_auto_start())
-        ctk.CTkCheckBox(options_frame, text="Start Samsara with Windows",
-                       variable=self.auto_start_var,
-                       command=self.toggle_auto_start).pack(anchor='w', padx=15, pady=(0, 15))
-        yield
-
-        # --- Listening Indicator Section ---
-        indicator_label = ctk.CTkLabel(general_scroll, text="Listening Indicator",
-                                       font=ctk.CTkFont(size=16, weight="bold"))
-        indicator_label.pack(anchor='w', pady=(0, 10))
-
-        indicator_frame = ctk.CTkFrame(general_scroll, corner_radius=10)
-        indicator_frame.pack(fill='x', pady=(0, 20))
-
-        ctk.CTkLabel(indicator_frame,
-                     text="An always-on-top pill that shows your current mode and pulses while recording",
-                     text_color="gray").pack(anchor='w', padx=15, pady=(15, 10))
-
-        self.indicator_enabled_var = tk.BooleanVar(
-            value=self.app.config.get('listening_indicator_enabled', False))
-        ctk.CTkCheckBox(indicator_frame, text="Show listening indicator overlay",
-                        variable=self.indicator_enabled_var).pack(anchor='w', padx=15, pady=(0, 10))
-
-        pos_row = ctk.CTkFrame(indicator_frame, fg_color="transparent")
-        pos_row.pack(fill='x', padx=15, pady=(0, 15))
-        ctk.CTkLabel(pos_row, text="Position:", width=70, anchor='w').pack(side='left')
-        self.indicator_pos_var = tk.StringVar(
-            value=self.app.config.get('listening_indicator_position', 'bottom-center'))
-        pos_combo = ctk.CTkComboBox(pos_row, variable=self.indicator_pos_var,
-                                     values=["top-left", "top-center", "top-right",
-                                             "bottom-left", "bottom-center", "bottom-right"],
-                                     width=160, state='readonly')
-        pos_combo.pack(side='left', padx=(0, 10))
-        yield
-
-        # --- Profiles + Training + Model ---
-        profiles_label = ctk.CTkLabel(general_scroll, text="Profiles", font=ctk.CTkFont(size=16, weight="bold"))
-        profiles_label.pack(anchor='w', pady=(0, 10))
-
-        profiles_frame = ctk.CTkFrame(general_scroll, corner_radius=10)
-        profiles_frame.pack(fill='x', pady=(0, 20))
-
-        profiles_desc = ctk.CTkLabel(profiles_frame, 
-                                     text="Save and load vocabulary and command configurations",
-                                     text_color="gray")
-        profiles_desc.pack(anchor='w', padx=15, pady=(15, 10))
-
-        ctk.CTkButton(profiles_frame, text="Manage Profiles...", width=160,
-                     command=self.open_profile_manager).pack(anchor='w', padx=15, pady=(0, 15))
-
-        # Voice Training Section
-        training_label = ctk.CTkLabel(general_scroll, text="Voice Training", font=ctk.CTkFont(size=16, weight="bold"))
-        training_label.pack(anchor='w', pady=(0, 10))
-
-        training_frame = ctk.CTkFrame(general_scroll, corner_radius=10)
-        training_frame.pack(fill='x', pady=(0, 20))
-
-        training_desc = ctk.CTkLabel(training_frame, 
-                                     text="Customize vocabulary, corrections, and microphone calibration",
-                                     text_color="gray")
-        training_desc.pack(anchor='w', padx=15, pady=(15, 10))
-
-        ctk.CTkButton(training_frame, text="Open Voice Training...", width=180,
-                     command=self.open_voice_training).pack(anchor='w', padx=15, pady=(0, 15))
-
-        # Model Section
-        model_label = ctk.CTkLabel(general_scroll, text="AI Model", font=ctk.CTkFont(size=16, weight="bold"))
-        model_label.pack(anchor='w', pady=(0, 10))
-
-        model_frame = ctk.CTkFrame(general_scroll, corner_radius=10)
-        model_frame.pack(fill='x')
-
-        ctk.CTkLabel(model_frame, text="Whisper model size:").pack(anchor='w', padx=15, pady=(15, 5))
-
-        # Model options with disk space info
-        model_options = [
-            'tiny (~75 MB)',
-            'tiny.en — English-only (~75 MB)',
-            'base (~150 MB)',
-            'base.en — English-only (~150 MB)',
-            'small (~500 MB)',
-            'small.en — English-only, recommended (~500 MB)',
-            'medium (~1.5 GB)',
-            'medium.en — English-only (~1.5 GB)',
-            'large-v3 (~3 GB)'
-        ]
-        # Map display names to actual values
-        self.model_display_to_value = {
-            'tiny (~75 MB)': 'tiny',
-            'tiny.en — English-only (~75 MB)': 'tiny.en',
-            'base (~150 MB)': 'base',
-            'base.en — English-only (~150 MB)': 'base.en',
-            'small (~500 MB)': 'small',
-            'small.en — English-only, recommended (~500 MB)': 'small.en',
-            'medium (~1.5 GB)': 'medium',
-            'medium.en — English-only (~1.5 GB)': 'medium.en',
-            'large-v3 (~3 GB)': 'large-v3'
-        }
-        self.model_value_to_display = {v: k for k, v in self.model_display_to_value.items()}
-
-        current_model = self.app.config.get('model_size', 'base')
-        current_display = self.model_value_to_display.get(current_model, 'base (~150 MB)')
-
-        self.model_var = tk.StringVar(value=current_display)
-        model_combo = ctk.CTkComboBox(model_frame, variable=self.model_var,
-                                      values=model_options,
-                                      width=400, state='readonly')
-        model_combo.pack(anchor='w', padx=15, pady=(0, 5))
-
-        ctk.CTkLabel(model_frame, text=".en variants are more accurate for English-only speakers. small.en on GPU is the sweet spot.",
-                    text_color="gray").pack(anchor='w', padx=15, pady=(0, 5))
-        ctk.CTkLabel(model_frame, text="Model changes require restart",
-                    text_color="#1f6aa5").pack(anchor='w', padx=15, pady=(0, 15))
+    # build_general_tab() extracted to samsara/ui/tabs/general_tab.py (GeneralTab)
 
     def build_hotkeys_modes_tab(self):
         """Build the Hotkeys & Modes settings tab (generator)."""
@@ -1274,353 +1105,6 @@ class SettingsWindow:
             text=msg,
             text_color=("#1f6aa5" if ok else "#c0392b"))
 
-    def build_advanced_tab(self):
-        """Build the Advanced settings tab (generator)."""
-        advanced_tab = self.tabview.tab("Advanced")
-        
-        # Create scrollable frame for Advanced tab content
-        advanced_scroll = ctk.CTkScrollableFrame(advanced_tab, fg_color="transparent")
-        advanced_scroll.pack(fill='both', expand=True)
-
-        # Continuous Mode Settings
-        cont_label = ctk.CTkLabel(advanced_scroll, text="Continuous Mode Settings", font=ctk.CTkFont(size=16, weight="bold"))
-        cont_label.pack(anchor='w', pady=(15, 10))
-
-        cont_frame = ctk.CTkFrame(advanced_scroll, corner_radius=10)
-        cont_frame.pack(fill='x', pady=(0, 20))
-
-        # Silence threshold
-        silence_row = ctk.CTkFrame(cont_frame, fg_color="transparent")
-        silence_row.pack(fill='x', padx=15, pady=(15, 8))
-        ctk.CTkLabel(silence_row, text="Silence threshold:", width=150, anchor='w').pack(side='left')
-        self.silence_var = tk.DoubleVar(value=self.app.config.get('silence_threshold', 2.0))
-        silence_entry = ctk.CTkEntry(silence_row, textvariable=self.silence_var, width=80)
-        silence_entry.pack(side='left', padx=(0, 10))
-        ctk.CTkLabel(silence_row, text="seconds").pack(side='left')
-
-        # Min speech duration
-        speech_row = ctk.CTkFrame(cont_frame, fg_color="transparent")
-        speech_row.pack(fill='x', padx=15, pady=(0, 15))
-        ctk.CTkLabel(speech_row, text="Min speech duration:", width=150, anchor='w').pack(side='left')
-        self.min_speech_var = tk.DoubleVar(value=self.app.config.get('min_speech_duration', 0.3))
-        min_speech_entry = ctk.CTkEntry(speech_row, textvariable=self.min_speech_var, width=80)
-        min_speech_entry.pack(side='left', padx=(0, 10))
-        ctk.CTkLabel(speech_row, text="seconds").pack(side='left')
-        yield
-
-        # --- Speech Threshold Calibration ---
-        cal_label = ctk.CTkLabel(advanced_scroll, text="Speech Threshold",
-                                  font=ctk.CTkFont(size=16, weight="bold"))
-        cal_label.pack(anchor='w', pady=(0, 10))
-
-        cal_frame = ctk.CTkFrame(advanced_scroll, corner_radius=10)
-        cal_frame.pack(fill='x', pady=(0, 20))
-
-        # Mode radio buttons
-        self.threshold_mode_var = tk.StringVar(
-            value=self.app.config.get('threshold_mode', 'auto'))
-
-        ctk.CTkRadioButton(cal_frame, text="Auto-calibrate on startup (Recommended)",
-                           variable=self.threshold_mode_var, value='auto',
-                           command=self._on_threshold_mode_change
-                           ).pack(anchor='w', padx=15, pady=(15, 5))
-        ctk.CTkRadioButton(cal_frame, text="Manual (use custom value)",
-                           variable=self.threshold_mode_var, value='manual',
-                           command=self._on_threshold_mode_change
-                           ).pack(anchor='w', padx=15, pady=(0, 10))
-
-        # Auto section: current value + recalibrate button
-        self._cal_auto_frame = ctk.CTkFrame(cal_frame, fg_color="transparent")
-        self._cal_auto_frame.pack(fill='x', padx=15, pady=(0, 10))
-        current_thresh = self.app.config.get('wake_word_config', {}).get(
-            'audio', {}).get('speech_threshold', 0.03)
-        self._cal_value_label = ctk.CTkLabel(self._cal_auto_frame,
-                                              text=f"Current: {current_thresh:.4f}",
-                                              text_color="#00CED1")
-        self._cal_value_label.pack(side='left', padx=(0, 15))
-        ctk.CTkButton(self._cal_auto_frame, text="Recalibrate Now", width=130,
-                      command=self._recalibrate_from_settings).pack(side='left')
-
-        # Manual section: threshold entry
-        self._cal_manual_frame = ctk.CTkFrame(cal_frame, fg_color="transparent")
-        self._cal_manual_frame.pack(fill='x', padx=15, pady=(0, 10))
-        ctk.CTkLabel(self._cal_manual_frame, text="Threshold:", width=80,
-                     anchor='w').pack(side='left')
-        self.manual_threshold_var = tk.DoubleVar(value=current_thresh)
-        ctk.CTkEntry(self._cal_manual_frame, textvariable=self.manual_threshold_var,
-                     width=100).pack(side='left', padx=(0, 10))
-        ctk.CTkLabel(self._cal_manual_frame, text="(0.005 - 0.20)",
-                     text_color="gray").pack(side='left')
-
-        # Sensitivity multiplier (power-user)
-        mult_row = ctk.CTkFrame(cal_frame, fg_color="transparent")
-        mult_row.pack(fill='x', padx=15, pady=(0, 15))
-        ctk.CTkLabel(mult_row, text="Sensitivity multiplier:", width=150,
-                     anchor='w').pack(side='left')
-        self.cal_multiplier_var = tk.DoubleVar(
-            value=self.app.config.get('cal_multiplier', 3.0))
-        ctk.CTkSlider(mult_row, from_=1.5, to=6.0,
-                      variable=self.cal_multiplier_var, width=150).pack(side='left', padx=(0, 10))
-        self._cal_mult_label = ctk.CTkLabel(mult_row, text=f"{self.cal_multiplier_var.get():.1f}x",
-                                             width=40)
-        self._cal_mult_label.pack(side='left')
-        self.cal_multiplier_var.trace_add('write', lambda *_: self._cal_mult_label.configure(
-            text=f"{self.cal_multiplier_var.get():.1f}x"))
-
-        # Show/hide based on mode
-        self._on_threshold_mode_change()
-        yield
-
-        # --- Hardware Acceleration Section ---
-        hw_label = ctk.CTkLabel(advanced_scroll, text="Hardware Acceleration", font=ctk.CTkFont(size=16, weight="bold"))
-        hw_label.pack(anchor='w', pady=(0, 10))
-
-        hw_frame = ctk.CTkFrame(advanced_scroll, corner_radius=10)
-        hw_frame.pack(fill='x', pady=(0, 20))
-
-        device_row = ctk.CTkFrame(hw_frame, fg_color="transparent")
-        device_row.pack(fill='x', padx=15, pady=(15, 5))
-        ctk.CTkLabel(device_row, text="Compute device:", width=150, anchor='w').pack(side='left')
-
-        # Device options — CUDA is only offered if the runtime DLLs are
-        # actually present. This prevents users from selecting CUDA, restarting,
-        # and hitting "cublas64_12.dll not found" at model-load time.
-        from samsara.cuda_detect import is_cuda_available, cuda_status_message
-        self.device_display_to_value = {'CPU': 'cpu'}
-        if is_cuda_available():
-            self.device_display_to_value['CUDA (NVIDIA GPU)'] = 'cuda'
-        self.device_value_to_display = {v: k for k, v in self.device_display_to_value.items()}
-
-        # If config says cuda but DLLs are missing, surface as CPU in the UI.
-        # The model loader will silently fall back at runtime (see resolve_device).
-        current_device = self.app.config.get('device', 'cpu')
-        if current_device == 'cuda' and not is_cuda_available():
-            current_device_display = 'CPU'
-        else:
-            current_device_display = self.device_value_to_display.get(current_device, 'CPU')
-
-        self.device_var = tk.StringVar(value=current_device_display)
-        device_combo = ctk.CTkComboBox(device_row, variable=self.device_var,
-                                        values=list(self.device_display_to_value.keys()),
-                                        width=180, state='readonly')
-        device_combo.pack(side='left')
-
-        # Status hint reflecting actual CUDA availability, not just docs
-        ctk.CTkLabel(hw_frame, text=cuda_status_message(),
-                    text_color="gray", wraplength=600, justify='left').pack(
-                        anchor='w', padx=15, pady=(0, 5))
-        ctk.CTkLabel(hw_frame, text="Device changes require restart",
-                    text_color="#1f6aa5").pack(anchor='w', padx=15, pady=(0, 10))
-
-        # CUDA Setup Instructions (collapsible)
-        cuda_instructions_frame = ctk.CTkFrame(hw_frame, fg_color="transparent")
-        cuda_instructions_frame.pack(fill='x', padx=15, pady=(0, 15))
-        
-        def toggle_cuda_instructions():
-            if cuda_text_frame.winfo_viewable():
-                cuda_text_frame.pack_forget()
-                cuda_toggle_btn.configure(text="▶ CUDA Setup Instructions")
-            else:
-                cuda_text_frame.pack(fill='x', pady=(5, 0))
-                cuda_toggle_btn.configure(text="▼ CUDA Setup Instructions")
-        
-        cuda_toggle_btn = ctk.CTkButton(cuda_instructions_frame, text="▶ CUDA Setup Instructions",
-                                         command=toggle_cuda_instructions,
-                                         fg_color="transparent", text_color="#1f6aa5",
-                                         hover_color=("gray90", "gray20"),
-                                         anchor='w', width=200)
-        cuda_toggle_btn.pack(anchor='w')
-        
-        cuda_text_frame = ctk.CTkFrame(cuda_instructions_frame, fg_color=("gray95", "gray17"))
-        # Initially hidden - don't pack
-        
-        cuda_instructions = """To enable CUDA support:
-1. Open PowerShell in the Samsara folder
-2. Run: pip uninstall ctranslate2
-3. Run: pip install ctranslate2 --extra-index-url https://download.pytorch.org/whl/cu118
-4. Restart Samsara and select CUDA above"""
-        
-        cuda_text = ctk.CTkTextbox(cuda_text_frame, height=100, wrap='word',
-                                    fg_color="transparent", activate_scrollbars=False)
-        cuda_text.pack(fill='x', padx=10, pady=10)
-        cuda_text.insert('1.0', cuda_instructions)
-        cuda_text.configure(state='disabled')  # Make read-only but selectable
-
-        # Performance Settings
-        perf_label = ctk.CTkLabel(advanced_scroll, text="Performance", font=ctk.CTkFont(size=16, weight="bold"))
-        perf_label.pack(anchor='w', pady=(0, 10))
-
-        perf_frame = ctk.CTkFrame(advanced_scroll, corner_radius=10)
-        perf_frame.pack(fill='x', pady=(0, 20))
-
-        perf_row = ctk.CTkFrame(perf_frame, fg_color="transparent")
-        perf_row.pack(fill='x', padx=15, pady=(15, 5))
-        ctk.CTkLabel(perf_row, text="Performance mode:", width=150, anchor='w').pack(side='left')
-        self.perf_mode_var = tk.StringVar(value=self.app.config.get('performance_mode', 'balanced'))
-        perf_combo = ctk.CTkComboBox(perf_row, variable=self.perf_mode_var,
-                                      values=['fast', 'balanced', 'accurate'],
-                                      width=150, state='readonly')
-        perf_combo.pack(side='left')
-
-        ctk.CTkLabel(perf_frame, text="fast: Lowest latency | balanced: Good tradeoff | accurate: Best quality",
-                    text_color="gray").pack(anchor='w', padx=15, pady=(0, 15))
-        yield
-
-        # --- Echo Cancellation Settings ---
-        aec_label = ctk.CTkLabel(advanced_scroll, text="Echo Cancellation", font=ctk.CTkFont(size=16, weight="bold"))
-        aec_label.pack(anchor='w', pady=(0, 10))
-
-        aec_frame = ctk.CTkFrame(advanced_scroll, corner_radius=10)
-        aec_frame.pack(fill='x', pady=(0, 20))
-
-        aec_config = self.app.config.get('echo_cancellation', {})
-        self.aec_enabled_var = tk.BooleanVar(value=aec_config.get('enabled', False))
-        ctk.CTkCheckBox(aec_frame, text="Enable echo cancellation (removes system audio from mic)",
-                       variable=self.aec_enabled_var).pack(anchor='w', padx=15, pady=(15, 8))
-
-        latency_row = ctk.CTkFrame(aec_frame, fg_color="transparent")
-        latency_row.pack(fill='x', padx=15, pady=(0, 5))
-        ctk.CTkLabel(latency_row, text="Latency compensation:", width=160, anchor='w').pack(side='left')
-        self.aec_latency_var = tk.DoubleVar(value=aec_config.get('latency_ms', 30.0))
-        aec_latency_entry = ctk.CTkEntry(latency_row, textvariable=self.aec_latency_var, width=80)
-        aec_latency_entry.pack(side='left', padx=(0, 10))
-        ctk.CTkLabel(latency_row, text="ms").pack(side='left')
-
-        ctk.CTkLabel(aec_frame,
-                    text="Filters out music/video audio so only your voice is transcribed.\n"
-                         "Requires restart. Windows only (uses WASAPI loopback).",
-                    text_color="gray").pack(anchor='w', padx=15, pady=(0, 15))
-        yield
-
-        # --- Wake Word Settings ---
-        wake_label = ctk.CTkLabel(advanced_scroll, text="Wake Word Settings", font=ctk.CTkFont(size=16, weight="bold"))
-        wake_label.pack(anchor='w', pady=(0, 10))
-
-        wake_frame = ctk.CTkFrame(advanced_scroll, corner_radius=10)
-        wake_frame.pack(fill='x')
-
-        # Get wake word config
-        ww_config = self.app.config.get('wake_word_config', {})
-        
-        # Wake word phrase
-        wake_word_row = ctk.CTkFrame(wake_frame, fg_color="transparent")
-        wake_word_row.pack(fill='x', padx=15, pady=(15, 8))
-        ctk.CTkLabel(wake_word_row, text="Wake phrase:", width=120, anchor='w').pack(side='left')
-        
-        phrase_options = list(ww_config.get('phrase_options', ['jarvis', 'hey jarvis', 'computer', 'hey computer', 'samsa', 'hey samsa']))
-        current_phrase = ww_config.get('phrase', 'jarvis')
-        # Track the list as instance state so Add/Remove can mutate it.
-        self._phrase_options = list(phrase_options)
-        self.wake_phrase_var = tk.StringVar(value=current_phrase)
-        self._wake_phrase_dropdown = ctk.CTkComboBox(
-            wake_word_row, variable=self.wake_phrase_var,
-            values=self._phrase_options, width=150)
-        self._wake_phrase_dropdown.pack(side='left', padx=(0, 10))
-        ctk.CTkLabel(wake_word_row, text="(active wake phrase)", text_color="gray").pack(side='left')
-
-        # Manage list of available wake phrases
-        manage_row = ctk.CTkFrame(wake_frame, fg_color="transparent")
-        manage_row.pack(fill='x', padx=15, pady=(0, 8))
-        ctk.CTkLabel(manage_row, text="Add phrase:", width=120, anchor='w').pack(side='left')
-        self._new_phrase_var = tk.StringVar()
-        new_phrase_entry = ctk.CTkEntry(
-            manage_row, textvariable=self._new_phrase_var, width=150,
-            placeholder_text="e.g. computer")
-        new_phrase_entry.pack(side='left', padx=(0, 6))
-
-        def _add_phrase():
-            phrase = self._new_phrase_var.get().strip().lower()
-            if not phrase:
-                return
-            if phrase in self._phrase_options:
-                self._new_phrase_var.set("")
-                self.wake_phrase_var.set(phrase)
-                return
-            self._phrase_options.append(phrase)
-            self._wake_phrase_dropdown.configure(values=self._phrase_options)
-            self.wake_phrase_var.set(phrase)
-            self._new_phrase_var.set("")
-
-        def _remove_phrase():
-            phrase = self.wake_phrase_var.get().strip().lower()
-            if not phrase or phrase not in self._phrase_options:
-                return
-            if len(self._phrase_options) <= 1:
-                # Don't let the list become empty -- the matcher needs at
-                # least one wake phrase or the wake-word system breaks.
-                return
-            self._phrase_options.remove(phrase)
-            self._wake_phrase_dropdown.configure(values=self._phrase_options)
-            # Pick the first remaining option as the new active phrase.
-            self.wake_phrase_var.set(self._phrase_options[0])
-
-        ctk.CTkButton(manage_row, text="Add", width=60, command=_add_phrase).pack(side='left', padx=(0, 4))
-        ctk.CTkButton(manage_row, text="Remove selected", width=120, command=_remove_phrase).pack(side='left')
-
-        # --- 4-State Dictation Settings ---
-        dict_label = ctk.CTkLabel(wake_frame, text="Dictation Settings",
-                                  font=ctk.CTkFont(size=13, weight="bold"))
-        dict_label.pack(anchor='w', padx=15, pady=(5, 8))
-
-        # Quick Dictation silence timeout
-        quick_row = ctk.CTkFrame(wake_frame, fg_color="transparent")
-        quick_row.pack(fill='x', padx=15, pady=(0, 5))
-        ctk.CTkLabel(quick_row, text="Quick Dictation timeout:", width=180, anchor='w').pack(side='left')
-        self.quick_timeout_var = tk.DoubleVar(
-            value=ww_config.get('quick_silence_timeout', 1.0))
-        ctk.CTkEntry(quick_row, textvariable=self.quick_timeout_var, width=60).pack(side='left', padx=(0, 5))
-        ctk.CTkLabel(quick_row, text="sec", width=30).pack(side='left')
-        ctk.CTkLabel(quick_row, text="(silence before auto-finish)",
-                     text_color="gray").pack(side='left', padx=(5, 0))
-
-        # End words
-        end_row = ctk.CTkFrame(wake_frame, fg_color="transparent")
-        end_row.pack(fill='x', padx=15, pady=(0, 5))
-        ctk.CTkLabel(end_row, text="End words:", width=180, anchor='w').pack(side='left')
-        end_words = ww_config.get('end_words', ['over', 'done', 'end dictation'])
-        self.end_words_var = tk.StringVar(value=', '.join(end_words))
-        ctk.CTkEntry(end_row, textvariable=self.end_words_var, width=300).pack(side='left')
-        ctk.CTkLabel(end_row, text="(finish Long Dictation)",
-                     text_color="gray").pack(side='left', padx=(5, 0))
-
-        # Cancel words
-        cancel_row = ctk.CTkFrame(wake_frame, fg_color="transparent")
-        cancel_row.pack(fill='x', padx=15, pady=(0, 5))
-        ctk.CTkLabel(cancel_row, text="Cancel words:", width=180, anchor='w').pack(side='left')
-        cancel_words = ww_config.get('cancel_words', ['cancel', 'cancel dictation', 'abort'])
-        self.cancel_words_var = tk.StringVar(value=', '.join(cancel_words))
-        ctk.CTkEntry(cancel_row, textvariable=self.cancel_words_var, width=300).pack(side='left')
-        ctk.CTkLabel(cancel_row, text="(discard current dictation)",
-                     text_color="gray").pack(side='left', padx=(5, 0))
-
-        # Pause words
-        pause_row = ctk.CTkFrame(wake_frame, fg_color="transparent")
-        pause_row.pack(fill='x', padx=15, pady=(0, 5))
-        ctk.CTkLabel(pause_row, text="Pause words:", width=180, anchor='w').pack(side='left')
-        pause_words = ww_config.get('pause_words', ['pause', 'hold on', 'wait'])
-        self.pause_words_var = tk.StringVar(value=', '.join(pause_words))
-        ctk.CTkEntry(pause_row, textvariable=self.pause_words_var, width=300).pack(side='left')
-        ctk.CTkLabel(pause_row, text="(reset silence timer)",
-                     text_color="gray").pack(side='left', padx=(5, 0))
-
-        # Resume words
-        resume_row = ctk.CTkFrame(wake_frame, fg_color="transparent")
-        resume_row.pack(fill='x', padx=15, pady=(0, 12))
-        ctk.CTkLabel(resume_row, text="Resume words:", width=180, anchor='w').pack(side='left')
-        resume_words = ww_config.get('resume_words', ['resume', 'continue', 'go on'])
-        self.resume_words_var = tk.StringVar(value=', '.join(resume_words))
-        ctk.CTkEntry(resume_row, textvariable=self.resume_words_var, width=300).pack(side='left')
-        ctk.CTkLabel(resume_row, text="(not yet active)",
-                     text_color="gray").pack(side='left', padx=(5, 0))
-
-        # Test/Debug button
-        debug_row = ctk.CTkFrame(wake_frame, fg_color="transparent")
-        debug_row.pack(fill='x', padx=15, pady=(0, 15))
-        ctk.CTkButton(debug_row, text="Test Wake Word...", width=150,
-                     command=self.open_wake_word_debug).pack(side='left')
-        ctk.CTkLabel(debug_row, text="Live testing and parameter tuning",
-                    text_color="gray").pack(side='left', padx=(10, 0))
-
     def start_capture(self, hotkey_name):
         self.capturing_hotkey = hotkey_name
         self.captured_keys = set()
@@ -1734,24 +1218,14 @@ class SettingsWindow:
         # No force-building of unvisited tabs -- _get_var falls back to config
 
         old_model = self.app.config.get('model_size', 'base')
-        # Convert display name back to actual model value
-        if hasattr(self, 'model_var') and self.model_var is not None:
-            model_display = self.model_var.get()
-            new_model = self.model_display_to_value.get(model_display, 'base')
-        else:
-            new_model = old_model
+
+        # General tab: mic, basic options, model, listening indicator
+        gen_result = self.general_tab.save()
+        new_model = gen_result['new_model']
         model_changed = old_model != new_model
+        mic_changed = gen_result['mic_changed']
 
-        # Track device changes
-        old_device = self.app.config.get('device', 'cpu')
-        if hasattr(self, 'device_var') and self.device_var is not None:
-            device_display = self.device_var.get()
-            new_device = self.device_display_to_value.get(device_display, 'cpu')
-        else:
-            new_device = old_device
-        device_changed = old_device != new_device
-
-        # Batch all simple config changes (save=False; we save once at the end)
+        # Batch non-General/non-Advanced config changes (save=False; we save once at the end)
         self.app.update_config({
             'mode': self._get_var('mode_var', 'mode', 'hold'),
             'wake_word_enabled': self._get_var('wake_word_enabled_var', 'wake_word_enabled', False),
@@ -1760,83 +1234,12 @@ class SettingsWindow:
             'wake_word_hotkey': self._get_var('wake_hotkey_var', 'wake_word_hotkey', 'ctrl+alt+w'),
             'command_hotkey': self._get_var('cmd_hotkey_var', 'command_hotkey', 'ctrl+alt+c'),
             'cancel_hotkey': self._get_var('cancel_hotkey_var', 'cancel_hotkey', 'escape'),
-            'silence_threshold': self._get_var('silence_var', 'silence_threshold', 2.0),
-            'min_speech_duration': self._get_var('min_speech_var', 'min_speech_duration', 0.3),
-            'auto_paste': self._get_var('auto_paste_var', 'auto_paste', True),
-            'add_trailing_space': self._get_var('trailing_space_var', 'add_trailing_space', True),
-            'auto_capitalize': self._get_var('auto_capitalize_var', 'auto_capitalize', True),
-            'format_numbers': self._get_var('format_numbers_var', 'format_numbers', True),
-            'model_size': new_model,
-            'device': new_device,
-            'command_mode_enabled': self._get_var('command_mode_var', 'command_mode_enabled', False),
-            'show_all_audio_devices': self._get_var('show_all_devices_var', 'show_all_audio_devices', False),
             'audio_feedback': self._get_var('audio_feedback_var', 'audio_feedback', True),
             'sound_volume': self._get_var('sound_volume_var', 'sound_volume', 0.5),
-            'performance_mode': self._get_var('perf_mode_var', 'performance_mode', 'balanced'),
-            'threshold_mode': self._get_var('threshold_mode_var', 'threshold_mode', 'auto'),
-            'cal_multiplier': self._get_var('cal_multiplier_var', 'cal_multiplier', 3.0),
         }, save=False)
 
-        # Save listening indicator settings
-        old_indicator_enabled = self.app.config.get('listening_indicator_enabled', False)
-        old_indicator_pos = self.app.config.get('listening_indicator_position', 'bottom-center')
-        new_indicator_enabled = self._get_var('indicator_enabled_var', 'listening_indicator_enabled', False)
-        new_indicator_pos = self._get_var('indicator_pos_var', 'listening_indicator_position', 'bottom-center')
-        self.app.update_config({
-            'listening_indicator_enabled': new_indicator_enabled,
-            'listening_indicator_position': new_indicator_pos,
-        }, save=False)
-
-        # Apply indicator changes at runtime
-        if hasattr(self.app, 'listening_indicator'):
-            if new_indicator_pos != old_indicator_pos:
-                self.app._schedule_ui(self.app.listening_indicator.set_position, new_indicator_pos)
-            if new_indicator_enabled and not old_indicator_enabled:
-                self.app._schedule_ui(self.app.listening_indicator.show)
-            elif not new_indicator_enabled and old_indicator_enabled:
-                self.app._schedule_ui(self.app.listening_indicator.hide)
-
-        # Save echo cancellation settings
-        self.app.update_config({
-            'echo_cancellation': {
-                'enabled': self._get_var('aec_enabled_var', 'enabled', False,
-                                         nested_keys=['echo_cancellation', 'enabled']),
-                'latency_ms': self._get_var('aec_latency_var', 'latency_ms', 30.0,
-                                            nested_keys=['echo_cancellation', 'latency_ms']),
-            },
-        }, save=False)
-
-        # Save wake word config -- only update fields if Advanced tab was visited
-        ww_config = self.app.config.get('wake_word_config', {})
-        if "Advanced" in self.built_tabs:
-            ww_config['phrase'] = self.wake_phrase_var.get()
-            # Save the user-managed list of wake phrases. If the active
-            # phrase was typed but never added via the Add button, include
-            # it so the user's choice survives.
-            if hasattr(self, '_phrase_options'):
-                phrases = list(self._phrase_options)
-                active = self.wake_phrase_var.get().strip().lower()
-                if active and active not in phrases:
-                    phrases.append(active)
-                ww_config['phrase_options'] = phrases
-            ww_config['quick_silence_timeout'] = float(self.quick_timeout_var.get())
-            ww_config['end_words'] = [w.strip() for w in self.end_words_var.get().split(',') if w.strip()]
-            ww_config['cancel_words'] = [w.strip() for w in self.cancel_words_var.get().split(',') if w.strip()]
-            ww_config['pause_words'] = [w.strip() for w in self.pause_words_var.get().split(',') if w.strip()]
-            ww_config['resume_words'] = [w.strip() for w in self.resume_words_var.get().split(',') if w.strip()]
-            # Remove old-format keys if they exist
-            for old_key in ('end_word', 'cancel_word', 'pause_word', 'modes'):
-                ww_config.pop(old_key, None)
-        # Apply manual threshold if in manual mode
-        threshold_mode = self._get_var('threshold_mode_var', 'threshold_mode', 'auto')
-        if threshold_mode == 'manual':
-            manual_val = self._get_var('manual_threshold_var', None, 0.03)
-            manual_val = max(0.005, min(0.20, manual_val))
-            if 'audio' not in ww_config:
-                ww_config['audio'] = {}
-            ww_config['audio']['speech_threshold'] = manual_val
-
-        self.app.update_config({'wake_word_config': ww_config}, save=False)
+        # Advanced tab: device, thresholds, AEC, wake word
+        adv_info = self.advanced_tab.save()
 
         # Save alarm settings -- only update fields if Alarms tab was visited
         if 'alarms' not in self.app.config:
@@ -1911,18 +1314,6 @@ class SettingsWindow:
 
         self.app.command_mode_enabled = self.app.config['command_mode_enabled']
 
-        mic_name = self.mic_var.get() if hasattr(self, 'mic_var') and self.mic_var else None
-        mic_changed = False
-
-        if mic_name:
-            for mic in self.available_mics:
-                if mic['name'] == mic_name:
-                    if self.app.config.get('microphone') != mic['id']:
-                        mic_changed = True
-                        self.app.update_config({'microphone': mic['id']}, save=False)
-                    self.app.update_config({'microphone_name': mic['name']}, save=False)
-                    break
-
         self.app.persist_config()
 
         # Apply mode change at runtime (delegates to DictationApp.apply_mode)
@@ -1948,8 +1339,8 @@ class SettingsWindow:
 
         if model_changed:
             self.prompt_restart_for_model(old_model, new_model)
-        elif device_changed:
-            self.prompt_restart_for_device(old_device, new_device)
+        elif adv_info['device_changed']:
+            self.prompt_restart_for_device(adv_info['old_device'], adv_info['new_device'])
 
     def prompt_restart_for_device(self, old_device, new_device):
         """Ask user if they want to restart to apply new device"""
@@ -2048,7 +1439,7 @@ class SettingsWindow:
         script_path = Path(__file__)
         python_exe = sys.executable
 
-        if self.auto_start_var.get():
+        if self.general_tab.auto_start_var.get():
             # Enable auto-start: create platform-specific startup entry
             try:
                 startup_file.parent.mkdir(parents=True, exist_ok=True)
@@ -2105,7 +1496,7 @@ X-GNOME-Autostart-enabled=true
                 messagebox.showerror("Error",
                     f"Failed to enable auto-start:\n{e}",
                     parent=self.window)
-                self.auto_start_var.set(False)
+                self.general_tab.auto_start_var.set(False)
         else:
             # Disable auto-start: remove startup entry
             try:
@@ -2118,7 +1509,7 @@ X-GNOME-Autostart-enabled=true
                 messagebox.showerror("Error",
                     f"Failed to disable auto-start:\n{e}",
                     parent=self.window)
-                self.auto_start_var.set(True)
+                self.general_tab.auto_start_var.set(True)
 
     def open_profile_manager(self):
         """Open the profile manager window."""
@@ -2161,53 +1552,6 @@ X-GNOME-Autostart-enabled=true
                 pass
             finally:
                 self.window = None
-
-    def _on_threshold_mode_change(self):
-        """Show/hide auto vs manual calibration controls."""
-        mode = self.threshold_mode_var.get()
-        if mode == 'auto':
-            self._cal_auto_frame.pack(fill='x', padx=15, pady=(0, 10))
-            self._cal_manual_frame.pack_forget()
-        else:
-            self._cal_auto_frame.pack_forget()
-            self._cal_manual_frame.pack(fill='x', padx=15, pady=(0, 10))
-
-    def _recalibrate_from_settings(self):
-        """Run calibration and update the display label."""
-        self._cal_value_label.configure(text="Calibrating...")
-        def _do():
-            try:
-                # Pause active streams so calibration can access the mic
-                had_wake = getattr(self.app, 'wake_word_active', False)
-                had_continuous = getattr(self.app, 'continuous_active', False)
-                if had_wake:
-                    self.app.stop_wake_word_mode()
-                if had_continuous:
-                    self.app.stop_continuous_mode()
-
-                import time
-                time.sleep(0.3)  # let streams release the device
-
-                self.app._run_calibration_if_auto()
-                self.app.persist_config()
-
-                # Restart streams that were active
-                if had_wake:
-                    self.app.start_wake_word_mode()
-                if had_continuous:
-                    self.app.start_continuous_mode()
-
-                thresh = self.app.config.get('wake_word_config', {}).get(
-                    'audio', {}).get('speech_threshold', 0.03)
-                if self.window:
-                    self.window.after(0, self._cal_value_label.configure,
-                                     {"text": f"Current: {thresh:.4f}"})
-            except Exception as e:
-                print(f"[CAL] Recalibration failed: {e}")
-                if self.window:
-                    self.window.after(0, self._cal_value_label.configure,
-                                     {"text": f"Failed: {e}"})
-        threading.Thread(target=_do, daemon=True).start()
 
     def on_volume_change(self, value):
         """Update volume label and apply volume change immediately"""
@@ -2664,15 +2008,15 @@ X-GNOME-Autostart-enabled=true
             messagebox.showerror("Error", f"Failed to save commands:\n{e}", parent=self.window)
 
     def refresh_microphone_list(self):
-        """Refresh the microphone list when 'show all devices' is toggled"""
-        self.app.config['show_all_audio_devices'] = self.show_all_devices_var.get()
+        """Refresh the microphone list when 'show all devices' is toggled."""
+        self.app.config['show_all_audio_devices'] = self.general_tab.show_all_devices_var.get()
         self.available_mics = self.app.get_available_microphones()
 
         mic_names = [mic['name'] for mic in self.available_mics]
-        self.mic_combo.configure(values=mic_names)
+        self.general_tab.mic_combo.configure(values=mic_names)
 
-        if self.mic_var.get() not in mic_names and mic_names:
-            self.mic_var.set(mic_names[0])
+        if self.general_tab.mic_var.get() not in mic_names and mic_names:
+            self.general_tab.mic_var.set(mic_names[0])
 
     # ==================== ALARM METHODS ====================
 
