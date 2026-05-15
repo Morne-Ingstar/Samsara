@@ -14,8 +14,51 @@ import webbrowser
 import subprocess
 import threading
 import os
+import asyncio
 
 from samsara.plugin_commands import command
+
+
+# ---------------------------------------------------------------------------
+# TEMP HACK — REVISIT
+# Spotify URIs (spotify:collection:tracks, spotify:track:...) open Spotify
+# but do not auto-play. Workaround: 2.5s after opening, send an SMTC play
+# command to the foreground media session. Same backend used by media_keys.py.
+#
+# This is brittle:
+#   - Race condition if Spotify takes >2.5s to register a session
+#   - If another media app is already foreground, this plays THAT instead
+#   - No verification that Spotify actually got the play command
+#
+# Proper fix: Spotify Web API (OAuth, refresh tokens, full control).
+# See: C:\Users\Morne\Documents\Claude\REVISIT.md
+# ---------------------------------------------------------------------------
+def _spotify_play_kick():
+    """Send an SMTC play command to whatever just took focus."""
+    try:
+        from winsdk.windows.media.control import (
+            GlobalSystemMediaTransportControlsSessionManager as SessionManager,
+        )
+
+        async def _kick():
+            try:
+                mgr = await SessionManager.request_async()
+                session = mgr.get_current_session()
+                if session:
+                    await session.try_play_async()
+                    print("[MUSIC] SMTC play kick sent")
+                else:
+                    print("[MUSIC] SMTC play kick: no current session yet")
+            except Exception as e:
+                print(f"[MUSIC] SMTC play kick failed: {e}")
+
+        loop = asyncio.new_event_loop()
+        try:
+            loop.run_until_complete(_kick())
+        finally:
+            loop.close()
+    except Exception as e:
+        print(f"[MUSIC] SMTC play kick init failed: {e}")
 
 
 def _open_track(uri_or_url):
@@ -87,6 +130,8 @@ def handle_play(app, remainder):
         _open_track('spotify:collection:tracks')
         target_vol = int(app.config.get('music_volume', 30))
         threading.Timer(2.0, _set_volume, args=[target_vol]).start()
+        # TEMP: send play kick after Spotify registers SMTC session
+        threading.Timer(2.5, _spotify_play_kick).start()
         return True
 
     query = remainder.strip().lower()
@@ -99,6 +144,8 @@ def handle_play(app, remainder):
             # Set modest volume after a short delay (let browser open)
             target_vol = int(app.config.get('music_volume', 30))
             threading.Timer(2.0, _set_volume, args=[target_vol]).start()
+            # TEMP: send play kick after Spotify has time to register SMTC session
+            threading.Timer(2.5, _spotify_play_kick).start()
             return True
 
     # Check user-configured songs
