@@ -8,7 +8,7 @@
 >
 > Demo reel, screenshots, philosophy, accessibility framing, downloads, and roadmap — all over there. The README from here down is technical.
 
-**Recent updates:** Local text-to-speech with smart audio ducking, persistent dictation history with search and session grouping, voice-driven window management across monitors, agent webhook bridge with tiered consent, per-app command packs, and continuous command mode.
+**Recent updates:** Ava voice AI (hold Right Alt, talk to local Ollama, get spoken responses), Text-to-Speech with smart audio ducking, Show Numbers overlay for hands-free clicking, Command Cheat Sheet, Mouse 4 walkie-talkie command mode, window manager with saved layouts, Smart Actions webhook bridge, 320+ commands, deferred text selection, 5-speed scrolling, repeat/again, v0.9.9.
 
 > *"Jarvis, open Chrome."*
 >
@@ -42,9 +42,27 @@ Samsara is a **fully offline** voice control system powered by Whisper. It runs 
 - **Grammar-Lite cleanup** — automatic filler word removal, capitalization, and punctuation. Toggle between Clean and Verbatim modes.
 - **Dictation history** — every transcription logged to a searchable SQLite database. Review, copy, retry failed attempts, track patterns.
 
+### Voice AI — Ava
+
+Hold Right Alt and speak. Ava sends your question to a local Ollama LLM and reads the answer back to you via TTS — no cloud, no API key, no typing. Fully offline.
+
+- Ask anything: "Ava, what's the capital of Mongolia?"
+- Get coding help: "Ava, what does this error mean?"
+- Responses are spoken aloud and also displayed in the history panel
+- Uses whatever Ollama model you have installed locally
+- TTS is interruptible — start talking and Ava stops
+
+Also reachable by voice in command mode: hold Right Ctrl and say "Hey Ava, [question]" or "Is it safe to [action]".
+
+### Text-to-Speech
+
+Samsara can speak. Uses EdgeTTS or Windows Natural voices — not the robotic pyttsx3 voices. The smart AudioCoordinator manages the audio: music ducks while Samsara speaks, the mic stays clean, and if you start talking mid-response, TTS stops immediately.
+
+Enabled and configured in Settings → TTS tab. Off by default.
+
 ### Voice Commands
 
-140+ built-in commands plus a plugin system. Say a command after your wake word (default: "Jarvis").
+320+ built-in commands plus a plugin system. Say a command after your wake word (default: "Jarvis").
 
 | Category | Examples |
 |----------|----------|
@@ -58,6 +76,12 @@ Samsara is a **fully offline** voice control system powered by Whisper. It runs 
 | **3D Printing** | "printer status", "pause print", "cancel print", "printer light" |
 | **Utilities** | "set a timer for 5 minutes", "search for a gif of dancing cat" |
 | **Text** | "period", "new line", "select all", "undo" |
+| **Scrolling** | "scroll up a little", "scroll up", "scroll up medium", "scroll up high", "scroll up fast" — plus down variants |
+| **Text Selection** | "mark here", "select to here" — anchor-based selection across any scroll distance |
+| **Repeat** | "again", "repeat" — re-fire the last command |
+| **Volume** | "volume up", "volume down", "mute" — Core Audio API, no media keys |
+| **Streaming** | "play on stremio", "stremio pause", "stremio fullscreen" |
+| **Voice AI** | Hold Right Alt → speak to Ava (Ollama) → hear response |
 
 ### Smart Home & IoT
 
@@ -71,9 +95,15 @@ Samsara talks directly to hardware on your network:
 
 Samsara opens a hub window on launch with three views:
 
-- **History** — searchable list of all dictations with timestamps, source apps, success/fail status, copy and retry buttons.
+- **History** — searchable list of all dictations with timestamps, source apps, success/fail status, copy and retry buttons. Phase 2: inline correction, session grouping, type/confidence indicators.
 - **Dictionary** — unified corrections manager with three tabs: Vocabulary (Whisper hints), Corrections (phonetic wash rules), Wake Words (misrecognition fixes). Add, edit, delete from the UI — changes take effect immediately without restart.
-- **Settings** — microphone, model, hotkeys, cleanup mode, streaming mode, all in one place.
+- **Settings** — microphone, model, hotkeys, cleanup mode, streaming mode, TTS, all in one place.
+
+Plus standalone overlays (Win32 layered windows — always above all apps, DPI-aware, per-pixel alpha):
+
+- **Command Cheat Sheet** — floating always-on-top overlay listing every active command. Opacity slider, filterable by pack. Toggle from tray or by voice.
+- **Show Numbers** — voice-driven clicking: an overlay numbers every interactive element on screen. Say the number to click it. Fully hands-free UI navigation.
+- **Listening Indicator** — a pill that pulses and shows current mode (dictating / command / Ava / streaming) at the corner of your screen.
 
 Closing the window minimizes to tray. Double-click the tray icon to reopen.
 
@@ -91,7 +121,7 @@ def my_command(app, remainder):
     return True
 ```
 
-Ships with 14 plugins including smart home control, music playback, 3D printer integration, macros, audio switching, tab finder, web shortcuts, timer, GIF search, screen recording, and more.
+Ships with 18 plugins including smart home control, music playback, 3D printer integration, macros, audio switching, tab finder, web shortcuts, timer, GIF search, screen recording, voice AI / Ava (Ollama), scroll (5-speed mouse wheel), text marker (deferred range selection), volume/mute (Core Audio API), Stremio, and more.
 
 ---
 
@@ -161,6 +191,7 @@ Plugins are configured through `config.json`. For smart home and IoT plugins:
 - **Echo cancellation** — frequency-domain AEC subtracts system audio from mic input. Dictate over music and Whisper still hears you.
 - **Auto-calibration** — measures ambient noise on startup using IQR-based outlier rejection.
 - **Auto-reconnect** — if audio dies after sleep/wake, Samsara detects it and reconnects automatically. No restart needed.
+- **Single-stream fan-out** — wake word mode and continuous mode share one PortAudio InputStream. Eliminates a WASAPI device contention bug that previously silenced continuous mode entirely when both were active simultaneously.
 
 ### Streaming Architecture
 
@@ -177,6 +208,8 @@ First text appears in ~1 second. The overlay shows what's being transcribed even
 ### Architecture
 
 Main hub window (`samsara/ui/main_window.py`) with reusable frame components. Dictation engine in `dictation.py`. Streaming engine in `samsara/streaming.py`. Correction pipeline: phonetic wash → wake corrections → grammar cleanup. All user corrections stored in `~/.samsara/` as JSON, hot-reloaded without restart.
+
+All overlays (listening indicator, Show Numbers, Command Cheat Sheet) are Win32 layered windows, not Tkinter widgets — they stay above all apps, have correct DPI scaling, and support per-pixel alpha transparency.
 
 ```
 samsara/
@@ -216,7 +249,21 @@ python -m pytest tests/ -v
 ## Roadmap
 
 ### Completed
-- [x] 140+ voice commands with plugin system
+- [x] 320+ voice commands with plugin system
+- [x] Voice AI / Ava — local Ollama integration, hold Right Alt to talk
+- [x] Text-to-Speech with EdgeTTS / Windows Natural voices and smart audio ducking
+- [x] Mouse 4 / keyboard command mode (hold-to-talk walkie-talkie, ghost-tap prevention)
+- [x] Win32 layered window overlays (listening indicator, Show Numbers, Command Cheat Sheet)
+- [x] Window manager v2 — move apps between monitors, saved layouts, lost window recovery
+- [x] Smart Actions webhook bridge with tiered consent system
+- [x] Command packs — named groups (core, browsers, AI, etc.) with per-user enable/disable UI
+- [x] Deferred text selection — "mark here" / "select to here"
+- [x] 5-speed scrolling via Win32 SendInput (works in Electron, browsers, all apps)
+- [x] Repeat / again — re-fire last safe command
+- [x] Core Audio API volume and mute (no media keys, no pycaw)
+- [x] Stremio voice control via AutoHotkey v1
+- [x] Per-app keyboard shortcuts (app_overrides — different keys per app)
+- [x] History panel phase 2 — inline correction, session grouping, search, type/confidence
 - [x] Streaming dictation with live overlay and direct-paste
 - [x] Smart home control (Hyperion LED strips)
 - [x] 3D printer control (FlashForge AD5X)
@@ -229,17 +276,25 @@ python -m pytest tests/ -v
 - [x] Audio auto-reconnect after sleep/wake
 - [x] Silero VAD speech detection (raw mic signal)
 - [x] Echo cancellation, pre-buffer, auto-calibration
+- [x] Single-stream fan-out (wake word + continuous share one PortAudio stream)
 - [x] Screen recording to GIF by voice
 - [x] Audio device switching, browser tab search
 - [x] Phonetic wash + wake word corrections
 - [x] First-run wizard, splash screen, profiles
+- [x] v0.9.9 release
 
 ### Planned
+- [ ] Speaker verification (local, via Resemblyzer)
+- [ ] Music-reactive lighting
+- [ ] Voice Training panel (calibration, test phrases, corrections)
+- [ ] End-word / cancel-word dictation protocol
 - [ ] Voice-to-code pipeline (ARC review → Claude Code → confirm/reject)
 - [ ] Edit-to-learn corrections (edit history → auto-suggest rules)
 - [ ] Snippets / text expansions
 - [ ] Per-app command profiles
 - [ ] Mobile companion app (phone as wireless mic)
+- [ ] Cross-platform support
+- [ ] Eye-tracking integration
 
 ---
 
