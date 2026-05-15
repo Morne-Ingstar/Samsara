@@ -324,34 +324,164 @@ class WinRTEngine(TTSEngine):
     # ------------------------------------------------------------------
 
     def _build_voice_list(self) -> List[VoiceInfo]:
-        from winsdk.windows.media.speechsynthesis import VoiceGender as VG
+        """Enumerate available TTS voices.
+
+        Tries the WinRT SpeechSynthesizer.all_voices API first (works on
+        newer winsdk builds).  Falls back to a direct registry scan when
+        the WinRT API is unavailable or returns an empty list — this also
+        picks up Natural HD voices (Ava, Aria, Jenny, etc.) that have been
+        unlocked via tools/Enable-NaturalVoices.ps1.
+        """
+        # --- WinRT path (preferred) ---
+        try:
+            from winsdk.windows.media.speechsynthesis import VoiceGender as VG
+            all_voices = getattr(self._SpeechSynthesizer, 'all_voices', None)
+            if all_voices is not None and len(all_voices) > 0:
+                voices = []
+                for v in all_voices:
+                    gender_val = getattr(v, 'gender', None)
+                    if gender_val == VG.MALE:
+                        gender = 'male'
+                    elif gender_val == VG.FEMALE:
+                        gender = 'female'
+                    else:
+                        gender = 'unknown'
+                    voices.append(VoiceInfo(
+                        voice_id=v.id,
+                        display_name=v.display_name,
+                        language=v.language,
+                        gender=gender,
+                    ))
+                if voices:
+                    return voices
+        except Exception as exc:
+            logger.debug("WinRT voice enumeration failed, using registry fallback: %s", exc)
+
+        # --- Registry fallback ---
+        # Reads from both the standard Speech_OneCore path and the legacy
+        # Speech path.  Natural HD voices copied by Enable-NaturalVoices.ps1
+        # end up in Speech_OneCore\Voices\Tokens and will appear here.
+        return self._build_voice_list_from_registry()
+
+    def _build_voice_list_from_registry(self) -> List[VoiceInfo]:
+        """Read TTS voice tokens directly from the Windows registry."""
+        import winreg
         voices = []
-        for v in self._SpeechSynthesizer.all_voices:
-            gender_val = getattr(v, 'gender', None)
-            if gender_val == VG.MALE:
-                gender = 'male'
-            elif gender_val == VG.FEMALE:
-                gender = 'female'
-            else:
+        seen_ids = set()
+
+        registry_paths = [
+            (winreg.HKEY_LOCAL_MACHINE,
+             r"SOFTWARE\Microsoft\Speech_OneCore\Voices\Tokens"),
+            (winreg.HKEY_LOCAL_MACHINE,
+             r"SOFTWARE\Microsoft\Speech\Voices\Tokens"),
+        ]
+
+        for hive, base_path in registry_paths:
+            try:
+                base_key = winreg.OpenKey(hive, base_path)
+            except OSError:
+                continue
+
+            i = 0
+            while True:
+                try:
+                    token_name = winreg.EnumKey(base_key, i)
+                    i += 1
+                except OSError:
+                    break
+
+                token_path = base_path + "\\" + token_name
+                try:
+                    token_key = winreg.OpenKey(hive, token_path)
+                    display_name, _ = winreg.QueryValueEx(token_key, "")
+                except OSError:
+                    continue
+
+                # Build a stable voice_id from the registry path
+                hive_prefix = "HKEY_LOCAL_MACHINE" if hive == winreg.HKEY_LOCAL_MACHINE else "HKEY_CURRENT_USER"
+                voice_id = f"{hive_prefix}\\{token_path}"
+
+                if voice_id in seen_ids:
+                    winreg.CloseKey(token_key)
+                    continue
+                seen_ids.add(voice_id)
+
+                # Read attributes subkey for gender / language
                 gender = 'unknown'
-            voices.append(VoiceInfo(
-                voice_id=v.id,
-                display_name=v.display_name,
-                language=v.language,
-                gender=gender,
-            ))
+                language = 'en-US'
+                try:
+                    attr_key = winreg.OpenKey(hive, token_path + "\\Attributes")
+                    try:
+                        g, _ = winreg.QueryValueEx(attr_key, "Gender")
+                        gender = g.lower() if g.lower() in ('male', 'female') else 'unknown'
+                    except OSError:
+                        pass
+                    try:
+                        lang_code, _ = winreg.QueryValueEx(attr_key, "Language")
+                        # Language is stored as a hex locale id (e.g. "409" = 0x409 = en-US).
+                        # Always parse as hex — the value is LCID in hex, never decimal.
+                        try:
+                            import locale
+                            lcid = int(lang_code, 16)
+                            language = locale.windows_locale.get(lcid, 'en-US')
+                            # windows_locale returns "en_US" style — normalise to "en-US"
+                            language = language.replace('_', '-') if language else 'en-US'
+                        except Exception:
+                            language = 'en-US'
+                    except OSError:
+                        pass
+                    winreg.CloseKey(attr_key)
+                except OSError:
+                    pass
+
+                winreg.CloseKey(token_key)
+
+                voices.append(VoiceInfo(
+                    voice_id=voice_id,
+                    display_name=display_name,
+                    language=language,
+                    gender=gender,
+                ))
+
         return voices
 
     def _synthesize(self, text: str, voice_id: Optional[str], speed: float, pitch: float) -> bytes:
         """Synthesize text → WAV bytes via WinRT. Blocks until synthesis completes."""
         synth = self._SpeechSynthesizer()
         if voice_id:
-            for v in self._SpeechSynthesizer.all_voices:
-                if v.id == voice_id:
-                    synth.voice = v
-                    break
-            else:
+            # Try WinRT all_voices first (works on newer winsdk builds)
+            matched = False
+            try:
+                all_voices = getattr(self._SpeechSynthesizer, 'all_voices', None)
+                if all_voices:
+                    for v in all_voices:
+                        if v.id == voice_id:
+                            synth.voice = v
+                            matched = True
+                            break
+            except Exception:
+                pass
+
+            # Fallback: set voice via WinRT try_set_default_voice_async using
+            # the registry token. This supports Natural HD voices unlocked by
+            # Enable-NaturalVoices.ps1 whose voice_id is a registry path.
+            if not matched:
+                try:
+                    # Build a token-id string WinRT understands from the
+                    # registry path voice_id (e.g. "HKEY_LOCAL_MACHINE\...")
+                    async def _set_voice():
+                        result = await synth.try_set_default_voice_async(voice_id)
+                        return result
+                    self._helper.run_sync(_set_voice())
+                    matched = True
+                except Exception as exc:
+                    logger.warning(
+                        "Could not set voice %r via WinRT token: %s. Using default.", voice_id, exc
+                    )
+
+            if not matched:
                 logger.warning("Voice id %r not found; using default", voice_id)
+
         opts = synth.options
         opts.speaking_rate = max(0.5, min(6.0, speed))
         opts.audio_pitch = max(0.0, min(2.0, pitch))
