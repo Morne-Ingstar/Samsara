@@ -114,6 +114,29 @@ pip install -r requirements.txt
 python dictation.py
 ```
 
+### Enabling CUDA (NVIDIA GPU)
+
+If you have an NVIDIA GPU, Samsara will run dramatically faster on CUDA (~10x). The Settings → Advanced tab has a device dropdown for CUDA / CPU.
+
+**The dropdown only offers CUDA if Samsara can find the CUDA runtime DLLs at startup.** When installing from source with a fresh environment, those DLLs (`cublas64_12.dll`, `cublasLt64_12.dll`) are not bundled with `ctranslate2` and Samsara will silently fall back to CPU.
+
+Two ways to fix this:
+
+**Option A — Copy from torch (if torch is installed):**
+
+Torch bundles its own copy of cuBLAS. Copy the two DLLs into ctranslate2's folder:
+
+```bash
+copy "<env>\Lib\site-packages\torch\lib\cublas64_12.dll" "<env>\Lib\site-packages\ctranslate2\"
+copy "<env>\Lib\site-packages\torch\lib\cublasLt64_12.dll" "<env>\Lib\site-packages\ctranslate2\"
+```
+
+**Option B — Install the CUDA Pack:**
+
+Download `Samsara-CUDA-Pack-vX.X.X.zip` from the [GitHub releases page](https://github.com/Morne-Ingstar/Samsara/releases) and extract the DLLs into your `ctranslate2` site-packages folder.
+
+Once the DLLs are in place, restart Samsara, open Settings → Advanced, and select **CUDA (NVIDIA GPU)** in the device dropdown. The startup log should show `Device: cuda, Compute: float16`.
+
 ### Configuring Plugins
 
 Plugins are configured through `config.json`. For smart home and IoT plugins:

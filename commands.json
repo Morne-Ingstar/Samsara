@@ -2144,6 +2144,262 @@
       "method": "repeat_last_command",
       "description": "Repeat the last executed command",
       "pack": "core"
+    },
+    "move to right monitor": {
+      "type": "hotkey",
+      "keys": [
+        "win",
+        "shift",
+        "right"
+      ],
+      "description": "Move active window one monitor to the right",
+      "pack": "window-management"
+    },
+    "move to left monitor": {
+      "type": "hotkey",
+      "keys": [
+        "win",
+        "shift",
+        "left"
+      ],
+      "description": "Move active window one monitor to the left",
+      "pack": "window-management"
+    },
+    "move to next monitor": {
+      "type": "hotkey",
+      "keys": [
+        "win",
+        "shift",
+        "right"
+      ],
+      "description": "Move active window one monitor to the right",
+      "pack": "window-management"
+    },
+    "send to far right": {
+      "type": "macro",
+      "steps": [
+        {
+          "action": "hotkey",
+          "keys": [
+            "win",
+            "shift",
+            "right"
+          ],
+          "delay_after": 300
+        },
+        {
+          "action": "hotkey",
+          "keys": [
+            "win",
+            "shift",
+            "right"
+          ]
+        }
+      ],
+      "description": "Move active window to the far-right monitor (2 steps right)",
+      "pack": "window-management"
+    },
+    "send to far left": {
+      "type": "macro",
+      "steps": [
+        {
+          "action": "hotkey",
+          "keys": [
+            "win",
+            "shift",
+            "left"
+          ],
+          "delay_after": 300
+        },
+        {
+          "action": "hotkey",
+          "keys": [
+            "win",
+            "shift",
+            "left"
+          ]
+        }
+      ],
+      "description": "Move active window to the far-left monitor (2 steps left)",
+      "pack": "window-management"
+    },
+    "send to middle monitor": {
+      "type": "macro",
+      "steps": [
+        {
+          "action": "hotkey",
+          "keys": [
+            "win",
+            "shift",
+            "left"
+          ],
+          "delay_after": 300
+        },
+        {
+          "action": "hotkey",
+          "keys": [
+            "win",
+            "shift",
+            "left"
+          ],
+          "delay_after": 300
+        },
+        {
+          "action": "hotkey",
+          "keys": [
+            "win",
+            "shift",
+            "right"
+          ]
+        }
+      ],
+      "description": "Normalize to far left, then step once right to reach middle monitor",
+      "pack": "window-management"
+    },
+    "send to main monitor": {
+      "type": "macro",
+      "steps": [
+        {
+          "action": "hotkey",
+          "keys": [
+            "win",
+            "shift",
+            "left"
+          ],
+          "delay_after": 300
+        },
+        {
+          "action": "hotkey",
+          "keys": [
+            "win",
+            "shift",
+            "left"
+          ]
+        }
+      ],
+      "description": "Move active window to the main (far-left) monitor",
+      "pack": "window-management"
+    },
+    "restore window": {
+      "type": "hotkey",
+      "keys": [
+        "win",
+        "down"
+      ],
+      "description": "Restore (un-maximize) the active window so it can be moved",
+      "pack": "window-management"
+    },
+    "send maximized right": {
+      "type": "macro",
+      "steps": [
+        {
+          "action": "hotkey",
+          "keys": [
+            "win",
+            "down"
+          ],
+          "delay_after": 150
+        },
+        {
+          "action": "hotkey",
+          "keys": [
+            "win",
+            "shift",
+            "right"
+          ],
+          "delay_after": 250
+        },
+        {
+          "action": "hotkey",
+          "keys": [
+            "win",
+            "up"
+          ]
+        }
+      ],
+      "description": "Restore, move right one monitor, re-maximize",
+      "pack": "window-management"
+    },
+    "send maximized left": {
+      "type": "macro",
+      "steps": [
+        {
+          "action": "hotkey",
+          "keys": [
+            "win",
+            "down"
+          ],
+          "delay_after": 150
+        },
+        {
+          "action": "hotkey",
+          "keys": [
+            "win",
+            "shift",
+            "left"
+          ],
+          "delay_after": 250
+        },
+        {
+          "action": "hotkey",
+          "keys": [
+            "win",
+            "up"
+          ]
+        }
+      ],
+      "description": "Restore, move left one monitor, re-maximize",
+      "pack": "window-management"
+    },
+    "remove file": {
+      "type": "hotkey",
+      "keys": [
+        "delete"
+      ],
+      "description": "Remove a file (preferred over 'delete file' to avoid collision with 'delete line')",
+      "pack": "utilities"
+    },
+    "open twitch": {
+      "type": "launch",
+      "target": "https://www.twitch.tv/",
+      "description": "Open Twitch in browser",
+      "pack": "media"
+    },
+    "open twitch directory": {
+      "type": "launch",
+      "target": "https://www.twitch.tv/directory",
+      "description": "Open Twitch browse / directory",
+      "pack": "media"
+    },
+    "open twitch following": {
+      "type": "launch",
+      "target": "https://www.twitch.tv/directory/following",
+      "description": "Open Twitch channels you follow",
+      "pack": "media"
+    },
+    "steam library": {
+      "type": "launch",
+      "target": "steam://nav/library",
+      "description": "Open Steam library view",
+      "pack": "gaming"
+    },
+    "steam friends": {
+      "type": "launch",
+      "target": "steam://open/friends",
+      "description": "Open Steam friends list",
+      "pack": "gaming"
+    },
+    "steam store": {
+      "type": "launch",
+      "target": "steam://nav/store",
+      "description": "Open Steam store",
+      "pack": "gaming"
+    },
+    "steam downloads": {
+      "type": "launch",
+      "target": "steam://nav/downloads",
+      "description": "Open Steam downloads view",
+      "pack": "gaming"
     }
   }
 }
