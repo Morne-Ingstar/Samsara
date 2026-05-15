@@ -5266,6 +5266,36 @@ class DictationApp:
         # Restore tray tooltip
         self._update_snooze_tooltip()
 
+    def calibrate_echo_cancellation(self):
+        """Run AEC lag calibration on a worker thread (blocking sd.play/rec)."""
+        if self._is_audio_capture_active():
+            print("[AEC-CAL] Cannot calibrate while audio capture is active. "
+                  "Stop dictation and try again.")
+            return
+
+        def _run():
+            print("[AEC-CAL] Starting calibration...")
+            try:
+                result = self.echo_canceller.calibrate_lag(
+                    mic_device_index=self.config.get('microphone'),
+                    mic_rate=self.capture_rate,
+                )
+            except Exception as e:
+                print(f"[AEC-CAL] Calibration failed with exception: {e}")
+                return
+
+            print(f"[AEC-CAL] Result: {result}")
+            if result['success']:
+                lag = result['lag_ms']
+                print(
+                    f"[AEC-CAL] To apply this value, edit config.json: "
+                    f'"echo_cancellation": {{"latency_ms": {lag:.1f}}}'
+                )
+            else:
+                print(f"[AEC-CAL] Calibration not reliable: {result['message']}")
+
+        threading.Thread(target=_run, daemon=True, name="aec-calibrate").start()
+
     def _dispatch_command(self, _cmd):
         """Re-execute self._last_command_name via the normal dispatch path."""
         self.command_executor.process_text(self._last_command_name, self)
@@ -5472,6 +5502,10 @@ class DictationApp:
                     checked=lambda _it: self.cheat_sheet._visible
                 ),
                 pystray.MenuItem("Recalibrate Mic", lambda _i, _it: self.recalibrate_mic()),
+                pystray.MenuItem(
+                    "Calibrate Echo Cancellation",
+                    lambda _i, _it: self.calibrate_echo_cancellation(),
+                ),
                 pystray.MenuItem("Open Config Folder", self.open_config_folder),
                 pystray.MenuItem("View Logs", pystray.Menu(
                     pystray.MenuItem("Main Log (samsara.log)", self.open_main_log),
