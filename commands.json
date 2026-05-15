@@ -2126,6 +2126,24 @@
       "key": "delete",
       "description": "Delete selected text",
       "pack": "text-editing"
+    },
+    "enter": {
+      "type": "press",
+      "key": "enter",
+      "description": "Press Enter key",
+      "pack": "core"
+    },
+    "repeat": {
+      "type": "method",
+      "method": "repeat_last_command",
+      "description": "Repeat the last executed command",
+      "pack": "core"
+    },
+    "again": {
+      "type": "method",
+      "method": "repeat_last_command",
+      "description": "Repeat the last executed command",
+      "pack": "core"
     }
   }
 }
