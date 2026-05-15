@@ -62,3 +62,4 @@ plugins/commands/demo_commands.py
 plugins/commands/wake_routine.py
 plugins/assets/portfolio.html
 plugins/assets/sleep_overlay.py
+command_palette.json
