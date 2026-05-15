@@ -23,8 +23,8 @@ Locks:
 
   - app.model_lock (existing): serializes Whisper calls. Acquired
     non-blocking for partials -- if held, skip and try next interval.
-  - audio_data is read via list() snapshot; CPython list ops are
-    GIL-atomic, so a separate buffer_lock would be cosmetic.
+  - audio_data is read via list() snapshot under app.audio_data_lock,
+    protecting compound check-then-read against concurrent clear().
 """
 
 import ctypes
@@ -416,7 +416,8 @@ class StreamingWorker(threading.Thread):
 
     def _snapshot_audio(self):
         app = self._session.app
-        chunks = list(app.audio_data)
+        with app.audio_data_lock:
+            chunks = list(app.audio_data)
         if not chunks:
             return None
         try:
