@@ -106,6 +106,12 @@ PACKS = {
         'always_on': False,
         'default_enabled': True,
     },
+    'accessibility': {
+        'label': 'Accessibility',
+        'description': 'Show Numbers overlay, semantic clicking by voice',
+        'always_on': False,
+        'default_enabled': True,
+    },
 }
 
 

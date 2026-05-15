@@ -142,6 +142,22 @@ import pystray
 from PIL import Image, ImageDraw
 import json
 from pathlib import Path
+# Per-monitor DPI awareness must be declared before tkinter or win32api do
+# anything coordinate-related.  Without it, UIA BoundingRectangle (logical
+# coords on a 150% display) and win32api.SetCursorPos (physical pixels)
+# disagree — overlay labels appear in the right place but fallback clicks
+# miss by a scaling-factor offset.
+if sys.platform == 'win32':
+    import ctypes as _dpi_ctypes
+    try:
+        _dpi_ctypes.windll.shcore.SetProcessDpiAwareness(2)  # PER_MONITOR_DPI_AWARE_V2
+    except (AttributeError, OSError):
+        try:
+            _dpi_ctypes.windll.user32.SetProcessDPIAware()   # Win7 fallback
+        except Exception:
+            pass
+    del _dpi_ctypes
+
 import tkinter as tk
 from tkinter import ttk, messagebox
 import customtkinter as ctk
