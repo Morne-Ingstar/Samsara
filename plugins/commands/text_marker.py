@@ -23,6 +23,7 @@ from samsara.plugin_commands import command
 
 _marker_set: bool = False
 _marker_pos: tuple | None = None   # (x, y) in screen pixels
+_marker_hwnd: int | None = None    # foreground window when anchor was set
 
 # ── Win32 SendInput structures ────────────────────────────────────────────────
 
@@ -164,11 +165,12 @@ def _shift_click(x: int, y: int) -> None:
 )
 def mark_here(app, remainder):
     """Anchor the selection start at the current mouse position."""
-    global _marker_set, _marker_pos
+    global _marker_set, _marker_pos, _marker_hwnd
 
     x, y = _get_cursor_pos()
     _left_click(x, y)
     _marker_pos = (x, y)
+    _marker_hwnd = user32.GetForegroundWindow()
     _marker_set = True
     print(f"[MARKER] Anchor set at ({x}, {y})")
     return True
@@ -181,15 +183,26 @@ def mark_here(app, remainder):
 )
 def select_to_here(app, remainder):
     """Extend the selection from the anchor to the current mouse position."""
-    global _marker_set, _marker_pos
+    global _marker_set, _marker_pos, _marker_hwnd
 
     if not _marker_set:
         print("[MARKER] No anchor set — say 'mark here' first")
+        return False
+
+    if user32.GetForegroundWindow() != _marker_hwnd:
+        print(
+            "[MARKER] Warning: active window changed since anchor was set — clearing "
+            "anchor. Refocus your target and say 'mark here' again."
+        )
+        _marker_set = False
+        _marker_pos = None
+        _marker_hwnd = None
         return False
 
     x, y = _get_cursor_pos()
     _shift_click(x, y)
     _marker_set = False
     _marker_pos = None
+    _marker_hwnd = None
     print(f"[MARKER] Selected to ({x}, {y}) — anchor cleared")
     return True
