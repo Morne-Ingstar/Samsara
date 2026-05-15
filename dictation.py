@@ -505,16 +505,18 @@ class CommandExecutor:
         if "command mode on" in text_lower or "command mode enable" in text_lower or "enable command mode" in text_lower:
             if app_instance:
                 app_instance.command_mode_enabled = True
-                app_instance.config['command_mode_enabled'] = True
-                app_instance.save_config()
+                with app_instance._config_lock:
+                    app_instance.config['command_mode_enabled'] = True
+                    app_instance.save_config()
                 print("[OK] Command mode ENABLED")
             return "command_mode_on", True
         
         if "command mode off" in text_lower or "command mode disable" in text_lower or "disable command mode" in text_lower:
             if app_instance:
                 app_instance.command_mode_enabled = False
-                app_instance.config['command_mode_enabled'] = False
-                app_instance.save_config()
+                with app_instance._config_lock:
+                    app_instance.config['command_mode_enabled'] = False
+                    app_instance.save_config()
                 print("[OFF] Command mode DISABLED")
             return "command_mode_off", True
 
@@ -633,6 +635,11 @@ class DictationApp:
     def __init__(self, splash=None):
         self.splash = splash
         self.config_path = Path(__file__).parent / "config.json"
+        # Protects all self.config mutations and save_config disk writes.
+        # MUST be held before any mutation to self.config that precedes a save,
+        # and before calling save_config() directly.
+        # Never hold while doing audio work, VAD, AEC, model loading, or UI rendering.
+        self._config_lock = threading.Lock()
 
         # Check if first-run wizard is needed
         # Only show wizard if config doesn't exist at all (truly new installation)
@@ -672,7 +679,8 @@ class DictationApp:
             # No splash after wizard - user already saw UI
 
         self.update_splash("Loading configuration...")
-        self.load_config()
+        with self._config_lock:
+            self.load_config()
 
         self.update_splash("Setting up audio...")
 
@@ -707,8 +715,9 @@ class DictationApp:
         valid_ids = {mic['id'] for mic in self.available_mics}
         if saved_mic not in valid_ids and self.available_mics:
             old_id = saved_mic
-            self.config['microphone'] = self.available_mics[0]['id']
-            self.save_config()
+            with self._config_lock:
+                self.config['microphone'] = self.available_mics[0]['id']
+                self.save_config()
             print(f"[CONFIG] Saved microphone {old_id} not found in current devices, "
                   f"switched to {self.available_mics[0]['name']} (id={self.config['microphone']})")
         
@@ -919,7 +928,7 @@ class DictationApp:
             config_dir=config_dir,
             sounds_dir=sounds_dir,
             get_config=lambda: self.config,
-            save_config=self.save_config
+            save_config=self.persist_config
         )
         if self.config.get('alarms', {}).get('enabled', True):
             self.alarm_manager.start()
@@ -1287,7 +1296,14 @@ class DictationApp:
 
         Also keeps the previous good copy at config.json.bak so a future
         corruption (or a bad manual edit) can be recovered in one step.
+
+        Caller MUST hold self._config_lock.  Use persist_config() for
+        external or fire-and-forget saves where you don't already hold it.
         """
+        assert self._config_lock.locked(), (
+            "save_config() called without holding _config_lock! "
+            "Acquire _config_lock before mutating config and calling save_config()."
+        )
         tmp_path = self.config_path.with_suffix('.json.tmp')
         bak_path = self.config_path.with_suffix('.json.bak')
 
@@ -1329,7 +1345,33 @@ class DictationApp:
                 pass
             print(f"[ERROR] save_config failed: {e}")
             raise
-    
+
+    def persist_config(self) -> None:
+        """Persist current in-memory config to disk. Thread-safe.
+
+        For external callers (AlarmManager callback, settings_window) that
+        don't hold _config_lock.  Acquires the lock then delegates to
+        save_config().
+        """
+        with self._config_lock:
+            self.save_config()
+
+    def update_config_and_save(self, updates: dict) -> None:
+        """Atomically apply updates to self.config and persist to disk.
+
+        Use for simple key/value updates from any thread.
+        For complex multi-step mutations acquire self._config_lock directly.
+        """
+        with self._config_lock:
+            self.config.update(updates)
+            self.save_config()
+
+    def revoke_tier2_approvals(self) -> None:
+        """Clear all memorised Tier-2 approvals and persist. Called from Settings UI."""
+        with self._config_lock:
+            self.config.setdefault('smart_actions', {})['tier2_approvals'] = {}
+            self.save_config()
+
     def update_config(self, changes, save=True):
         """Apply config changes and optionally save to disk.
 
@@ -1337,22 +1379,26 @@ class DictationApp:
         place to hook side-effects (stream restarts, UI updates) and future
         plugin notifications.
 
+        The mutation and optional save are performed under _config_lock.
+        Side-effects (apply_mode, set_wake_word_enabled, capture-rate
+        detection) run after the lock is released — they may do audio work.
+
         Args:
             changes: dict of key-value pairs to update
             save: whether to persist to disk (default True)
         """
-        self.config.update(changes)
+        with self._config_lock:
+            self.config.update(changes)
+            if save:
+                self.save_config()
 
-        # Apply runtime side-effects for keys that need them
+        # Side-effects outside the lock — may start/stop streams or do audio work
         if 'mode' in changes:
             self.apply_mode(changes['mode'])
         if 'wake_word_enabled' in changes:
             self.set_wake_word_enabled(changes['wake_word_enabled'])
         if 'microphone' in changes:
             self.capture_rate = self._detect_capture_rate(changes['microphone'])
-
-        if save:
-            self.save_config()
 
     def set_app_state(self, **kwargs):
         """Update application state flags with transition logging.
@@ -1403,17 +1449,18 @@ class DictationApp:
             print(f"[CAL] Calibration failed ({e}), using default {threshold:.4f}")
 
         # Apply to wake word audio config
-        ww_config = self.config.get('wake_word_config', {})
-        if 'audio' not in ww_config:
-            ww_config['audio'] = {}
-        ww_config['audio']['speech_threshold'] = threshold
-        self.config['wake_word_config'] = ww_config
+        with self._config_lock:
+            ww_config = self.config.get('wake_word_config', {})
+            if 'audio' not in ww_config:
+                ww_config['audio'] = {}
+            ww_config['audio']['speech_threshold'] = threshold
+            self.config['wake_word_config'] = ww_config
 
     def recalibrate_mic(self):
         """Re-run calibration in background and update config."""
         def _do():
             self._run_calibration_if_auto()
-            self.save_config()
+            self.persist_config()
         threading.Thread(target=_do, daemon=True).start()
 
     def get_available_microphones(self):
@@ -1772,14 +1819,15 @@ class DictationApp:
         if was_prebuffer:
             self._stop_prebuffer_stream()
 
-        # Update config + save
-        self.config['microphone'] = mic_id
+        # Update config fields (mutations under lock, audio work outside)
         mic_entry = next((m for m in self.available_mics if m['id'] == mic_id), None)
-        if mic_entry:
-            self.config['microphone_name'] = mic_entry['name']
+        with self._config_lock:
+            self.config['microphone'] = mic_id
+            if mic_entry:
+                self.config['microphone_name'] = mic_entry['name']
         self.capture_rate = self._detect_capture_rate(mic_id)
-        self._run_calibration_if_auto()
-        self.save_config()
+        self._run_calibration_if_auto()  # internally locks its own mutation
+        self.persist_config()
 
         mic_name = self.get_current_microphone_name()
         print(f"[OK] Switched to microphone: {mic_name} ({self.capture_rate}Hz)")
@@ -4840,8 +4888,9 @@ class DictationApp:
 
     def set_wake_word_enabled(self, enabled):
         """Start or stop the wake word listener independently of capture mode."""
-        self.config['wake_word_enabled'] = enabled
-        self.save_config()
+        with self._config_lock:
+            self.config['wake_word_enabled'] = enabled
+            self.save_config()
         if enabled and not self.wake_word_active:
             self.start_wake_word_mode()
             print("[WAKE] Wake word listener ENABLED")
@@ -4863,7 +4912,7 @@ class DictationApp:
         """Tray-menu entry point: apply the mode, persist it, refresh the menu."""
         changed = self.apply_mode(new_mode)
         if changed:
-            self.save_config()
+            self.persist_config()
         # Always refresh the menu so the checkmark reflects current state
         if hasattr(self, 'tray_icon') and hasattr(self, 'get_menu'):
             try:
@@ -4902,8 +4951,9 @@ class DictationApp:
         enabled = bool(enabled)
         if self.config.get('streaming_mode', False) == enabled:
             return
-        self.config['streaming_mode'] = enabled
-        self.save_config()
+        with self._config_lock:
+            self.config['streaming_mode'] = enabled
+            self.save_config()
         print(f"[STREAM] streaming_mode -> {enabled}")
 
         # Install or release the CapsLock hook to match. When streaming is
@@ -4926,8 +4976,9 @@ class DictationApp:
             return
         if self.config.get('cleanup_mode') == mode:
             return
-        self.config['cleanup_mode'] = mode
-        self.save_config()
+        with self._config_lock:
+            self.config['cleanup_mode'] = mode
+            self.save_config()
         print(f"[CLEANUP] Mode -> {mode}")
         if hasattr(self, 'tray_icon') and hasattr(self, 'get_menu'):
             try:
@@ -5370,8 +5421,9 @@ class DictationApp:
     def toggle_listening_indicator(self):
         """Toggle the listening indicator overlay on/off and persist to config."""
         enabled = not self.config.get('listening_indicator_enabled', False)
-        self.config['listening_indicator_enabled'] = enabled
-        self.save_config()
+        with self._config_lock:
+            self.config['listening_indicator_enabled'] = enabled
+            self.save_config()
         if enabled:
             self._schedule_ui(self.listening_indicator.show)
         else:
