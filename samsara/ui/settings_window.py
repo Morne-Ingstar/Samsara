@@ -308,31 +308,39 @@ class SettingsWindow:
         # Model options with disk space info
         model_options = [
             'tiny (~75 MB)',
+            'tiny.en — English-only (~75 MB)',
             'base (~150 MB)',
+            'base.en — English-only (~150 MB)',
             'small (~500 MB)',
+            'small.en — English-only, recommended (~500 MB)',
             'medium (~1.5 GB)',
+            'medium.en — English-only (~1.5 GB)',
             'large-v3 (~3 GB)'
         ]
         # Map display names to actual values
         self.model_display_to_value = {
             'tiny (~75 MB)': 'tiny',
+            'tiny.en — English-only (~75 MB)': 'tiny.en',
             'base (~150 MB)': 'base',
+            'base.en — English-only (~150 MB)': 'base.en',
             'small (~500 MB)': 'small',
+            'small.en — English-only, recommended (~500 MB)': 'small.en',
             'medium (~1.5 GB)': 'medium',
+            'medium.en — English-only (~1.5 GB)': 'medium.en',
             'large-v3 (~3 GB)': 'large-v3'
         }
         self.model_value_to_display = {v: k for k, v in self.model_display_to_value.items()}
-        
+
         current_model = self.app.config.get('model_size', 'base')
         current_display = self.model_value_to_display.get(current_model, 'base (~150 MB)')
-        
+
         self.model_var = tk.StringVar(value=current_display)
         model_combo = ctk.CTkComboBox(model_frame, variable=self.model_var,
                                       values=model_options,
-                                      width=200, state='readonly')
+                                      width=400, state='readonly')
         model_combo.pack(anchor='w', padx=15, pady=(0, 5))
 
-        ctk.CTkLabel(model_frame, text="tiny: Fastest  |  base: Recommended  |  large-v3: Most accurate",
+        ctk.CTkLabel(model_frame, text=".en variants are more accurate for English-only speakers. small.en on GPU is the sweet spot.",
                     text_color="gray").pack(anchor='w', padx=15, pady=(0, 5))
         ctk.CTkLabel(model_frame, text="Model changes require restart",
                     text_color="#1f6aa5").pack(anchor='w', padx=15, pady=(0, 15))

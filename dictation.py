@@ -2885,10 +2885,35 @@ class DictationApp:
             if self._vad_available:
                 try:
                     is_speech = self._vad_is_speech(raw_chunk)
+                    # Reset error counter on success
+                    self._vad_consec_errors = 0
                 except Exception as e:
                     # A VAD hiccup shouldn't silence the mic -- degrade to RMS
-                    # for this chunk and log once.
-                    print(f"[VAD] inference error, falling back to RMS: {e}")
+                    # for this chunk. Reset VAD state to try to recover. If we
+                    # hit too many consecutive failures, disable VAD entirely
+                    # for the rest of the session (Silero state corrupts
+                    # permanently sometimes on device-switch / sample-rate
+                    # transitions). Rate-limit the log to once per 30s.
+                    now = time.time()
+                    last = getattr(self, '_vad_error_last_log', 0.0)
+                    self._vad_consec_errors = getattr(self, '_vad_consec_errors', 0) + 1
+
+                    if now - last >= 30.0:
+                        print(f"[VAD] inference error (suppressing further VAD errors for 30s): {type(e).__name__}: {e}")
+                        self._vad_error_last_log = now
+
+                    # Try to recover by resetting Silero's recurrent state
+                    try:
+                        self._vad_reset()
+                    except Exception:
+                        pass
+
+                    # After 50 consecutive errors (~5s of bad chunks at 100ms each),
+                    # give up on Silero for this session and use RMS for everything.
+                    if self._vad_consec_errors >= 50:
+                        print(f"[VAD] 50 consecutive errors -- disabling VAD for this session, RMS only")
+                        self._vad_available = False
+
                     is_speech = rms > speech_threshold
             else:
                 is_speech = rms > speech_threshold

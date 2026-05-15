@@ -2,6 +2,57 @@
 
 All notable changes to Samsara are documented here.
 
+## [0.9.9] - 2026-05-15
+
+Focused on accessibility, voice-control surface area, and reliability. Adds a floating command cheat sheet, monitor-to-monitor window moves, a phonetic-collision audit, a voice-driven semantic clicking overlay, and an echo-cancellation calibration tool. Also fixes several silent failures around config persistence, CUDA fallback, and Whisper model selection that were degrading user experience without obvious symptoms.
+
+### Added
+
+- **Floating command cheat sheet** — semi-transparent always-on-top window listing your voice commands. Resizable, draggable, click-through-friendly. Real-time filter bar, manual pinning (★/☆) so you can keep your most-used commands at the top, and click-to-execute fires the same command path as voice. 300ms teal flash before execution gives visual feedback. Position, size, opacity, and pinned commands persist to `command_palette.json`. Trigger via tray menu "Command Reference" or voice: "show commands" / "hide commands".
+- **Show numbers overlay (experimental)** — voice-driven semantic clicking. "Jarvis, show numbers" labels every clickable element in the foreground window with a number; "Jarvis, click 7" performs a left-click on element 7. Supports "click thirty seven", "click 7 twice" (double), "click 7 right". Uses Windows UI Automation tree, foreground-window scope only. Auto-dismisses on click, hide command, foreground change, or 30s inactivity.
+- **AEC calibration harness** — "Calibrate Echo Cancellation" in the tray menu plays a 50ms log-chirp through speakers, records the mic, and cross-correlates to measure speaker-to-mic latency. Reports a confidence-scored lag in milliseconds for tuning `latency_ms` in the echo cancellation config. Replaces guessing with measurement.
+- **Phonetic collision audit tool** (`tools/phonetic_audit.py`) — uses CMU pronouncing dict to find command pairs that sound similar. One-shot report identifies homophones, near-collisions, and overlaps with common English speech. Run before any command-naming changes.
+- **Command routing test harness** (`tools/test_commands.py`) — validates every registered command (builtins + plugins) can resolve to a handler. Catches broken hotkey keys, missing methods, dead plugin references, and stale paths before users hit them. Run before each release.
+- **AI command pack** — open Claude / ChatGPT / Gemini / Perplexity / Midjourney / Anthropic / Hugging Face / GitHub, plus shortcuts to Claude desktop, projects, settings, and new chat. 18 commands total.
+- **Accessibility command pack** — Magnifier (zoom in/out), Narrator (start/stop), high contrast, color filters, live captions, mono audio, on-screen keyboard, sticky keys, mouse keys, eye control, big cursor, accessibility settings, focus mode / do not disturb, immersive reader, night light, dark mode, and more. 44 commands total.
+- **Window manager voice commands** — "send to far right", "send to far left", "send to middle monitor", "send to main monitor" for multi-monitor setups. "send maximized right" / "send maximized left" handle maximized windows automatically. Standard "move to next monitor" / "move to right monitor" for single-step moves.
+- **Steam navigation commands** — "steam library", "steam friends", "steam store", "steam downloads" via `steam://` protocol URIs.
+- **Twitch commands** — "open twitch", "open twitch directory", "open twitch following".
+- **Obsidian command pack** — 27 commands for new note, quick switcher, palette, search, replace, graph view, daily note, indent/unindent, and more.
+- **Per-monitor DPI awareness** — Samsara now calls `SetProcessDpiAwareness(2)` at startup. Fixes click-coordinate offset issues on 150% scaling and HiDPI displays.
+- **Bluetooth mic refresh** — mic list refreshes when the tray menu opens. New mics (especially BT earbuds) appear without restarting Samsara. Name-based reconciliation handles unstable PortAudio device indices across reconnects. Skips refresh during active capture.
+- **Whisper `.en` model variants in Settings** — `tiny.en`, `base.en`, `small.en`, `medium.en` now appear in the model dropdown. `small.en` is the recommended sweet spot for English speakers on GPU.
+- **Continuous mode** has its own speech threshold (`continuous_speech_threshold`, default 0.03), independent of wake word threshold which is intentionally higher to avoid false activations.
+
+### Changed
+
+- **Splash screen stays visible until the model has actually loaded.** Previously closed after 3 seconds even though Whisper could still be loading for another 20-60s, leaving users wondering why dictation wasn't working. Now reflects real readiness.
+- **Settings window opens at 920×700** (was 700×700). With the additional packs and tabs added this release, the old size squished tabs together.
+- **Media commands route through SMTC plugin** — "pause music", "play music", "next track", "previous track" now use Windows SMTC (System Media Transport Controls) via the `media_keys` plugin. Replaces broken pynput `playpause` / `nexttrack` / `prevtrack` virtual-key strings that never actually worked. Reliable across Spotify, browser tabs, Stremio, and any other media app.
+- **Phonetic-aware command aliases** — `remove file` added as the preferred trigger for file deletion (was `delete file`, phonetically too close to `delete line`). Old phrase kept as alias.
+- **Streaming dictation direct-paste** uses validated Ctrl+Z + Ctrl+V cycle (ARC-reviewed, empirically tested). Word-boundary selection replaced.
+- **Tray menu "Command Reference"** toggle opens / hides the cheat sheet.
+
+### Fixed
+
+- **Config save no longer wipes external edits.** `save_config()` now deep-merges in-memory config over the on-disk file before writing. Previously, editing `config.json` externally while Samsara was running would silently lose those changes when Samsara exited and overwrote the file with its in-memory state. This was the root cause of the recurring "command packs disappear after restart" pattern.
+- **CUDA detection works correctly.** The Settings dropdown previously hid the CUDA option when `cublas64_12.dll` wasn't findable, which made it look like CUDA support was missing. Added README documentation and detection guidance. Samsara also no longer silently falls back to CPU at model load when the user explicitly selected CUDA — a clear log line surfaces what happened.
+- **Command mode (Right Ctrl)** now actually executes commands. A wrong-object `hasattr` guard in `CommandExecutor.process_text` was blocking every execution path. ARC tribunal review identified the root cause.
+- **Click-to-execute in cheat sheet** uses the same code path as wake-word command mode (`force_commands=True`). Previously called a non-existent keyword argument and silently no-op'd.
+- **VAD/Silero error spam** — TorchScript exceptions from Silero VAD are now rate-limited (one log per 30s), the model state is reset on error to attempt recovery, and after 50 consecutive failures Samsara disables VAD for the session and runs on RMS-only speech detection. Previously dumped a 30-line traceback on every audio chunk during a state-corruption episode.
+- **Continuous mode** now reads from `continuous_speech_threshold` instead of `wake_word_config.audio.speech_threshold`. The wake threshold (typically 0.15) was too high for normal-volume speech, so continuous mode captured nothing.
+- **Settings model dropdown** displays the currently-selected `.en` variant correctly. Previously fell back to showing `base (~150 MB)` for any `.en` model because the display map didn't include them.
+- **Splash screen** is now closed by the model-load worker thread on completion, not pre-emptively closed by the main thread before the worker even starts.
+- **Continuous mode toggle wiring fix** — Right Ctrl + voice commands now properly enter command mode regardless of starting state.
+
+### Known issues
+
+- Some commands may still trigger Whisper's `no_speech_threshold` filter (default 0.6) and be silently discarded on borderline audio. Working as designed, but worth knowing if a transcribed phrase mysteriously fails to appear.
+- The show numbers overlay currently uses Tkinter with `-transparentcolor` which can darken the entire screen on some Windows configurations instead of showing crisp labels. A Win32 layered-window rewrite is planned for the next release.
+- VAD/Silero state corruption is suppressed in the logs but the underlying torch issue remains. Doesn't affect functionality (RMS fallback works) but if you see persistent `[VAD] inference error` lines, the dictation pipeline is still operating correctly.
+
+---
+
 ## [0.9.8] - 2026-05-01
 
 This release bundles all work since v0.9.5: the new main hub window, dictation history, streaming dictation, and four new plugins (Hyperion lights, FlashForge 3D printer, Spotify music, screen recording / GIF search). Also includes substantial reliability fixes for hold-to-dictate, wake word recognition, and audio recovery after sleep/wake.
