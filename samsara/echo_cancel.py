@@ -28,6 +28,23 @@ except ImportError:
     HAS_PYAUDIO = False
 
 
+def _make_calibration_click(rate: int = 16000, duration_s: float = 0.05) -> np.ndarray:
+    """Generate a Hann-windowed log chirp 200 Hz -> 4 kHz for lag calibration.
+
+    A chirp is preferred over a click impulse: it deposits more acoustic
+    energy into the room, survives speaker rolloff better, and still
+    produces a sharp cross-correlation peak when matched against itself.
+    """
+    n = int(rate * duration_s)
+    t = np.linspace(0, duration_s, n, endpoint=False)
+    f0, f1 = 200.0, 4000.0
+    K = duration_s / np.log(f1 / f0)
+    phase = 2 * np.pi * f0 * K * (np.exp(t / K) - 1)
+    chirp = np.sin(phase)
+    window = np.hanning(n)
+    return (chirp * window * 0.3).astype(np.float32)
+
+
 class LoopbackCapture:
     """Captures system audio output via WASAPI loopback.
 
@@ -546,3 +563,124 @@ class EchoCanceller:
         """Update the latency compensation."""
         self.latency_ms = latency_ms
         self._latency_samples = int(self._FILTER_RATE * latency_ms / 1000.0)
+
+    def calibrate_lag(self, mic_device_index=None, mic_rate=None) -> dict:
+        """Measure speaker-to-mic latency using a controlled transient.
+
+        Plays a Hann-windowed log chirp (200 Hz -> 4 kHz, 50 ms) through
+        the default output device, records the mic for ~1.5 s, and locates
+        the received chirp via cross-correlation.
+
+        Args:
+            mic_device_index: sounddevice device index for the mic.
+                              None = system default input.
+            mic_rate: Native mic capture rate (Hz). None = self.sample_rate.
+
+        Returns dict with keys:
+            success      (bool)
+            lag_samples  (int,   at 16 kHz)
+            lag_ms       (float)
+            confidence   (float, 0-1; peak-to-median correlation ratio / 10)
+            message      (str)
+
+        Does NOT modify self.latency_ms or self._latency_samples.
+        """
+        import sounddevice as sd
+
+        RATE = self._FILTER_RATE          # 16 kHz
+        mic_rate = mic_rate or self.sample_rate
+
+        click = _make_calibration_click(rate=RATE, duration_s=0.05)
+
+        pre_s  = 0.20
+        tail_s = 1.20
+        total_s = pre_s + 0.05 + tail_s
+
+        pre  = np.zeros(int(RATE * pre_s),  dtype=np.float32)
+        tail = np.zeros(int(RATE * tail_s), dtype=np.float32)
+        out_signal = np.concatenate([pre, click, tail])
+
+        print(f"[AEC-CAL] Playing calibration chirp ({len(out_signal) / RATE:.2f}s total)...")
+
+        mic_samples = int(mic_rate * total_s)
+        recording = sd.rec(
+            mic_samples,
+            samplerate=mic_rate,
+            channels=1,
+            dtype='float32',
+            device=mic_device_index,
+            blocking=False,
+        )
+
+        try:
+            sd.play(out_signal, samplerate=RATE, blocking=True)
+        except Exception as e:
+            sd.stop()
+            return {
+                'success': False,
+                'lag_samples': 0, 'lag_ms': 0.0, 'confidence': 0.0,
+                'message': f'Playback failed: {e}',
+            }
+
+        sd.wait()
+        mic = recording.flatten()
+
+        if mic_rate != RATE:
+            mic = self._resample(mic, mic_rate, RATE)
+
+        # Cross-correlation: mic[i..i+len(click)] vs click
+        corr = np.correlate(mic, click, mode='valid')
+        abs_corr = np.abs(corr)
+
+        if len(abs_corr) == 0:
+            return {
+                'success': False,
+                'lag_samples': 0, 'lag_ms': 0.0, 'confidence': 0.0,
+                'message': 'Mic recording too short for cross-correlation.',
+            }
+
+        peak_idx = int(np.argmax(abs_corr))
+        peak_val = float(abs_corr[peak_idx])
+
+        # Confidence: peak / median of non-peak region
+        mask = np.ones(len(abs_corr), dtype=bool)
+        guard = min(int(RATE * 0.02), max(1, len(abs_corr) // 4))
+        lo = max(0, peak_idx - guard)
+        hi = min(len(abs_corr), peak_idx + guard)
+        mask[lo:hi] = False
+        baseline = float(np.median(abs_corr[mask])) + 1e-9 if mask.any() else peak_val + 1e-9
+        confidence = float(min(1.0, (peak_val / baseline) / 10.0))
+
+        # lag = where the click lands in mic - where we placed it in out_signal
+        expected_start = int(RATE * pre_s)
+        lag_samples = peak_idx - expected_start
+        lag_ms = lag_samples / RATE * 1000.0
+
+        # Plausibility check: accept -50ms..+500ms
+        if lag_samples < -int(RATE * 0.05) or lag_samples > int(RATE * 0.5):
+            return {
+                'success': False,
+                'lag_samples': lag_samples,
+                'lag_ms': lag_ms,
+                'confidence': confidence,
+                'message': (
+                    f'Measured lag {lag_ms:.0f}ms is outside the plausible 0-500ms range. '
+                    f'Confidence={confidence:.2f}. Check speaker volume and mic levels.'
+                ),
+            }
+
+        msg = (
+            f'Measured lag: {lag_samples} samples = {lag_ms:.1f}ms '
+            f'(confidence {confidence:.2f}).'
+        )
+        if confidence < 0.3:
+            msg += ' WARNING: low confidence — try increasing speaker volume.'
+
+        print(f'[AEC-CAL] {msg}')
+        return {
+            'success': confidence >= 0.3,
+            'lag_samples': lag_samples,
+            'lag_ms': lag_ms,
+            'confidence': confidence,
+            'message': msg,
+        }
