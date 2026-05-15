@@ -9,22 +9,23 @@ Commands:
     "click thirty seven" — spoken numbers also accepted
 
 Architecture:
-    Single fullscreen transparent tk.Toplevel with one Canvas — NOT one
-    Toplevel per element.  The window carries WS_EX_TRANSPARENT so the
-    user's physical mouse clicks pass straight through to the app below.
+    Single fullscreen Win32 layered window (per-pixel alpha via
+    UpdateLayeredWindow).  No Tkinter — the overlay is rendered with PIL and
+    pushed to the window via a DIB section.  WS_EX_TRANSPARENT lets physical
+    mouse clicks pass through to the app below.
 
     Threading model:
       - UIA enumeration runs on the plugin worker thread (COM is thread-safe)
-      - ALL tkinter operations are marshalled to the main thread via
-        app._schedule_ui(), never called directly from a worker thread
+      - Overlay show/hide are direct Win32 calls — no _schedule_ui() needed
+      - The foreground-window poll uses app.root.after() for scheduling
 """
 
 import logging
 import re
 import threading
-import tkinter as tk
 
 from samsara.plugin_commands import command
+from samsara.ui.layered_overlay import LayeredOverlay
 
 logger = logging.getLogger(__name__)
 
@@ -37,12 +38,11 @@ except ImportError:
     logger.warning("[OVERLAY] uiautomation not available — win32 fallback active")
 
 # ---------------------------------------------------------------------------
-# Module-level state  (one overlay set at a time)
+# Module-level state  (one overlay at a time)
 # ---------------------------------------------------------------------------
 
 _state_lock = threading.RLock()
-_overlay_window: "tk.Toplevel | None" = None
-_overlay_canvas: "tk.Canvas | None" = None
+_overlay: "LayeredOverlay | None" = None
 _elements: list = []            # index 0 corresponds to label "1"
 _dismiss_timer: "threading.Timer | None" = None
 _fg_check_after_id = None       # root.after id for foreground poll
@@ -295,70 +295,30 @@ def _perform_click(element, modifier: str) -> bool:
 
 
 # ---------------------------------------------------------------------------
-# Overlay rendering — ALL functions below MUST run on the main UI thread
+# Overlay rendering — Win32 per-pixel alpha, safe to call from any thread
 # ---------------------------------------------------------------------------
 
-def _make_click_through(hwnd: int) -> None:
-    """Apply WS_EX_LAYERED|WS_EX_TRANSPARENT so the overlay is click-through."""
-    try:
-        import win32gui, win32con
-        ex = win32gui.GetWindowLong(hwnd, win32con.GWL_EXSTYLE)
-        ex |= win32con.WS_EX_LAYERED | win32con.WS_EX_TRANSPARENT
-        win32gui.SetWindowLong(hwnd, win32con.GWL_EXSTYLE, ex)
-    except Exception as e:
-        logger.warning("[OVERLAY] Could not make click-through: %s", e)
+def _draw_overlay(app, elements: list) -> None:
+    """Build label list and push to the LayeredOverlay window."""
+    global _overlay, _fg_hwnd_at_show
 
-
-def _draw_overlays_on_ui_thread(app, elements: list) -> None:
-    """Create the single fullscreen canvas and draw all labels.
-
-    MUST be called via app._schedule_ui() — never directly from a worker thread.
-    """
-    global _overlay_window, _overlay_canvas, _elements, _fg_hwnd_at_show
-
-    _destroy_overlay_on_ui_thread(app)   # clear any prior overlay
+    _destroy_overlay()   # clear any prior overlay
 
     if not elements:
         return
 
-    sw = app.root.winfo_screenwidth()
-    sh = app.root.winfo_screenheight()
-
-    win = tk.Toplevel(app.root)
-    win.overrideredirect(True)
-    win.attributes('-topmost', True)
-    win.attributes('-alpha', 0.95)
-    win.configure(bg='magenta')
-    win.geometry(f"{sw}x{sh}+0+0")
-    win.attributes('-transparentcolor', 'magenta')
-    win.update_idletasks()
-
-    _make_click_through(win.winfo_id())
-
-    canvas = tk.Canvas(win, width=sw, height=sh, bg='magenta',
-                       highlightthickness=0, bd=0)
-    canvas.pack(fill='both', expand=True)
-
-    for i, elem in enumerate(elements, 1):
-        x, y = elem['rect'][0], elem['rect'][1]
-        bw, bh = 28, 22
-        canvas.create_rectangle(
-            x, y, x + bw, y + bh,
-            fill='#ff9500', outline='#1a1a1a', width=1,
-        )
-        canvas.create_text(
-            x + bw // 2, y + bh // 2,
-            text=str(i),
-            font=('Segoe UI', 11, 'bold'),
-            fill='white',
-        )
-
     with _state_lock:
-        _overlay_window = win
-        _overlay_canvas = canvas
+        if _overlay is None:
+            _overlay = LayeredOverlay()
         _elements[:] = [e['control'] for e in elements]
 
-    # Record foreground hwnd for the change-detection poll
+    labels = [
+        (e['rect'][0], e['rect'][1], 28, 22, str(i))
+        for i, e in enumerate(elements, 1)
+    ]
+
+    _overlay.show(labels)
+
     try:
         import win32gui
         _fg_hwnd_at_show = win32gui.GetForegroundWindow()
@@ -370,16 +330,12 @@ def _draw_overlays_on_ui_thread(app, elements: list) -> None:
     print(f"[OVERLAY] Showing {len(elements)} numbered clickables")
 
 
-def _destroy_overlay_on_ui_thread(app=None) -> None:
-    """Tear down the overlay window and reset all state.
-
-    MUST be called via app._schedule_ui() — never directly from a worker thread.
-    """
-    global _overlay_window, _overlay_canvas, _fg_check_after_id
+def _destroy_overlay(app=None) -> None:
+    """Hide the overlay and reset state."""
+    global _fg_check_after_id
 
     _cancel_dismiss_timer()
 
-    # Cancel foreground poll
     if _fg_check_after_id is not None and app is not None:
         try:
             app.root.after_cancel(_fg_check_after_id)
@@ -387,16 +343,23 @@ def _destroy_overlay_on_ui_thread(app=None) -> None:
             pass
         _fg_check_after_id = None
 
-    if _overlay_window is not None:
-        try:
-            _overlay_window.destroy()
-        except Exception:
-            pass
-        _overlay_window = None
-        _overlay_canvas = None
+    if _overlay is not None:
+        _overlay.hide()
 
     with _state_lock:
         _elements.clear()
+
+
+def _destroy_overlay_completely() -> None:
+    """Full teardown — call on app quit."""
+    global _overlay
+    _destroy_overlay()
+    if _overlay is not None:
+        try:
+            _overlay.destroy()
+        except Exception:
+            pass
+        _overlay = None
 
 
 # ---------------------------------------------------------------------------
@@ -419,7 +382,7 @@ def _schedule_dismiss_timer(app, seconds: int = _AUTO_DISMISS_S) -> None:
     global _dismiss_timer
 
     def _fire():
-        app._schedule_ui(_destroy_overlay_on_ui_thread, app)
+        _destroy_overlay(app)
         print("[OVERLAY] Auto-dismissed after timeout")
 
     t = threading.Timer(seconds, _fire)
@@ -433,14 +396,14 @@ def _start_fg_poll(app) -> None:
 
     def _poll():
         global _fg_check_after_id
-        if _overlay_window is None:
+        if _overlay is None or not _overlay.is_visible():
             _fg_check_after_id = None
             return
         try:
             import win32gui
             cur = win32gui.GetForegroundWindow()
             if _fg_hwnd_at_show and cur != _fg_hwnd_at_show:
-                _destroy_overlay_on_ui_thread(app)
+                _destroy_overlay(app)
                 print("[OVERLAY] Auto-dismissed: foreground window changed")
                 return
         except Exception:
@@ -518,12 +481,12 @@ def _parse_click_target(text: str):
          aliases=["show clickable", "show labels", "label things"],
          pack="accessibility")
 def handle_show_numbers(app, remainder):
-    """Enumerate clickable elements then draw overlays on the UI thread."""
+    """Enumerate clickable elements then draw overlays."""
     elements = _enumerate_foreground_clickables()
     if not elements:
         print("[OVERLAY] No clickable elements found in foreground window")
         return True
-    app._schedule_ui(_draw_overlays_on_ui_thread, app, elements)
+    _draw_overlay(app, elements)
     return True
 
 
@@ -531,7 +494,7 @@ def handle_show_numbers(app, remainder):
          aliases=["dismiss numbers", "hide labels", "clear labels"],
          pack="accessibility")
 def handle_hide_numbers(app, remainder):
-    app._schedule_ui(_destroy_overlay_on_ui_thread, app)
+    _destroy_overlay(app)
     return True
 
 
@@ -574,7 +537,7 @@ def handle_click(app, remainder):
         print(f"[OVERLAY] Element {number} no longer valid — try 'show numbers' again")
         return True
 
-    app._schedule_ui(_destroy_overlay_on_ui_thread, app)
+    _destroy_overlay(app)
     return True
 
 
