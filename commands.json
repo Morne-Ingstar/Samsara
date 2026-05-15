@@ -180,22 +180,6 @@
       "description": "Refresh current page",
       "pack": "browsers"
     },
-    "scroll down": {
-      "type": "hotkey",
-      "keys": [
-        "pagedown"
-      ],
-      "description": "Scroll down one page",
-      "pack": "core"
-    },
-    "scroll up": {
-      "type": "hotkey",
-      "keys": [
-        "pageup"
-      ],
-      "description": "Scroll up one page",
-      "pack": "core"
-    },
     "scroll to top": {
       "type": "hotkey",
       "keys": [
@@ -2130,6 +2114,18 @@
       "method": "hide_cheat_sheet",
       "pack": "core",
       "description": "Hide the command reference overlay"
+    },
+    "delete": {
+      "type": "press",
+      "key": "delete",
+      "description": "Delete selected text or item",
+      "pack": "text-editing"
+    },
+    "delete selection": {
+      "type": "press",
+      "key": "delete",
+      "description": "Delete selected text",
+      "pack": "text-editing"
     }
   }
 }
