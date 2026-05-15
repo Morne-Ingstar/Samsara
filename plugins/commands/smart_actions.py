@@ -316,7 +316,7 @@ def _do_agent_route(app, text, verb):
     # 6. Send request
     observations = session.consume_observations()
     response = bridge.send(
-        text, verb, sid, session.context, observations)
+        text, verb, sid, session.snapshot_context(), observations)
 
     # 7. Stop pulse regardless of outcome
     if tools:
