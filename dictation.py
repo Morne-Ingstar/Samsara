@@ -555,6 +555,50 @@ class CommandExecutor:
 
 
 
+# ---------------------------------------------------------------------------
+# Repeat / again command support
+# ---------------------------------------------------------------------------
+
+_REPEAT_BLACKLIST_TYPES = {
+    "launch",
+    "mouse",
+}
+
+_REPEAT_BLACKLIST_NAMES = {
+    "close tab",
+    "close window",
+    "close virtual desktop",
+    "delete file",
+    "permanent delete",
+    "delete word",
+    "delete next word",
+    "delete line",
+    "new tab",
+    "reopen tab",
+    "duplicate tab",
+    "submit",
+    "cut",
+    "record screen",
+    "new note",
+    "obsidian new note",
+    "start narrator",
+    "stop narrator",
+    "backspace",
+    "delete",
+    "delete selection",
+    "repeat",
+    "again",
+}
+
+
+def _is_repeat_blacklisted(name: str, command: dict) -> bool:
+    if name in _REPEAT_BLACKLIST_NAMES:
+        return True
+    if command.get("type") in _REPEAT_BLACKLIST_TYPES:
+        return True
+    return False
+
+
 def _deep_merge(base, overlay):
     """Return a deep merge of two dicts. Values from `overlay` win on conflicts.
     New keys from `base` are preserved. Lists and primitives in overlay replace
@@ -680,6 +724,10 @@ class DictationApp:
         commands_path = Path(__file__).parent / "commands.json"
         self.command_executor = CommandExecutor(commands_path, app=self)
         self.command_mode_enabled = self.config.get('command_mode_enabled', True)
+
+        # Repeat / again state
+        self._last_command = None       # command dict of last repeatable command
+        self._last_command_name = None  # canonical phrase of last repeatable command
 
         # Mouse 4 command mode (walkie-talkie hold-to-talk)
         self.command_mode_active = False
@@ -2468,8 +2516,13 @@ class DictationApp:
             if text:
                 # Check for command mode toggle OR regular commands
                 result, was_command = self.command_executor.process_text(text, self)
-                
+
                 if was_command:
+                    _store_cmd = self.command_executor.commands.get(result) or {'type': 'plugin'}
+                    if (result and not _is_repeat_blacklisted(result, _store_cmd)
+                            and self.command_executor.find_command(result) == result):
+                        self._last_command = _store_cmd
+                        self._last_command_name = result
                     # Command was executed
                     return
 
@@ -3152,6 +3205,11 @@ class DictationApp:
             result, was_command = self.command_executor.process_text(
                 text, self, force_commands=True)
             if was_command:
+                _store_cmd = self.command_executor.commands.get(result) or {'type': 'plugin'}
+                if (result and not _is_repeat_blacklisted(result, _store_cmd)
+                        and self.command_executor.find_command(result) == result):
+                    self._last_command = _store_cmd
+                    self._last_command_name = result
                 self.wake_word_triggered = False
                 self.app_state = 'asleep'
                 # Arm Layer 3: the wake callback suppresses buffering for the
@@ -4465,6 +4523,11 @@ class DictationApp:
                     result, was_command = self.command_executor.process_text(text, self)
 
                     if was_command:
+                        _store_cmd = self.command_executor.commands.get(result) or {'type': 'plugin'}
+                        if (result and not _is_repeat_blacklisted(result, _store_cmd)
+                                and self.command_executor.find_command(result) == result):
+                            self._last_command = _store_cmd
+                            self._last_command_name = result
                         # Command was executed - add to history as command
                         self.add_to_history(text, is_command=True)
                         self._log_history(
@@ -5142,6 +5205,18 @@ class DictationApp:
 
         # Restore tray tooltip
         self._update_snooze_tooltip()
+
+    def _dispatch_command(self, _cmd):
+        """Re-execute self._last_command_name via the normal dispatch path."""
+        self.command_executor.process_text(self._last_command_name, self)
+
+    def repeat_last_command(self):
+        """Re-execute the last repeatable command ("repeat" / "again")."""
+        if self._last_command is None:
+            print("[REPEAT] No repeatable command in history.")
+            return
+        print(f"[REPEAT] {self._last_command_name}")
+        self._dispatch_command(self._last_command)
 
     def toggle_listening_indicator(self):
         """Toggle the listening indicator overlay on/off and persist to config."""
