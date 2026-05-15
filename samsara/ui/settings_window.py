@@ -51,9 +51,9 @@ class SettingsWindow:
         # Create modern CTk window
         self.window = ctk.CTkToplevel(self.app.root)
         self.window.title("Samsara Settings")
-        self.window.geometry("700x700")
+        self.window.geometry("920x700")
         self.window.resizable(True, True)
-        self.window.minsize(650, 600)
+        self.window.minsize(860, 600)
 
         # Hide window while building UI to prevent incremental rendering
         self.window.withdraw()
@@ -1914,6 +1914,7 @@ class SettingsWindow:
                     if self.app.config.get('microphone') != mic['id']:
                         mic_changed = True
                         self.app.update_config({'microphone': mic['id']}, save=False)
+                    self.app.config['microphone_name'] = mic['name']
                     break
 
         self.app.save_config()

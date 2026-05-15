@@ -679,6 +679,11 @@ class DictationApp:
         # Get available microphones
         self.available_mics = self.get_available_microphones()
 
+        # Try name-based reconciliation first — stable across index changes.
+        # _reconcile_microphone_selection is defined later in the class but
+        # resolved at call time, so this is safe.
+        self._reconcile_microphone_selection()
+
         # Validate saved microphone ID against available devices.
         # Device indices change when switching host APIs (e.g. MME → WASAPI)
         # or when hardware is added/removed. Fall back to the first available.
@@ -1672,6 +1677,42 @@ class DictationApp:
         except Exception as e:
             print(f"[UI] main window notify failed: {e}")
 
+    def _is_audio_capture_active(self) -> bool:
+        """True if ANY audio input stream is currently open.
+
+        Used to guard mic-list refreshes — sd.query_devices() can stutter
+        active PortAudio streams on some drivers.
+        """
+        return (
+            self.recording
+            or self.continuous_active
+            or self.wake_word_active
+            or self._prebuffer_stream is not None
+        )
+
+    def _reconcile_microphone_selection(self) -> None:
+        """Reconcile self.config['microphone'] against the current device list using name.
+
+        PortAudio indices are not stable across reconnects or reboots.
+        If a stored microphone_name is found in the current list under a different
+        index, the config is updated silently so the right device is used.
+        Does NOT save — the caller decides whether to persist.
+        """
+        stored_name = self.config.get('microphone_name')
+        if not stored_name:
+            return  # older config with no stored name — no-op
+
+        for mic in self.available_mics:
+            if mic['name'] == stored_name:
+                if self.config.get('microphone') != mic['id']:
+                    old_idx = self.config.get('microphone')
+                    self.config['microphone'] = mic['id']
+                    print(f"[MIC] Reconciled '{stored_name}': index {old_idx} -> {mic['id']}")
+                return  # found — whether index changed or not, we're done
+
+        print(f"[MIC] Selected device '{stored_name}' not currently available "
+              "— keeping last-known index")
+
     def switch_microphone(self, mic_id):
         """Switch to a different microphone at runtime.
 
@@ -1702,6 +1743,9 @@ class DictationApp:
 
         # Update config + save
         self.config['microphone'] = mic_id
+        mic_entry = next((m for m in self.available_mics if m['id'] == mic_id), None)
+        if mic_entry:
+            self.config['microphone_name'] = mic_entry['name']
         self.capture_rate = self._detect_capture_rate(mic_id)
         self._run_calibration_if_auto()
         self.save_config()
@@ -5249,13 +5293,17 @@ class DictationApp:
             # Create microphone submenu.
             # Refresh the device list every time the menu is built so a mic
             # connected after startup (e.g. BT earbuds) appears immediately.
-            # Skip the refresh while capture is active — sd.query_devices()
-            # can stutter the audio stream on some drivers during recording.
-            if not (self.recording or self.continuous_active or self.wake_word_active):
+            # Skip the refresh while any capture stream is active — sd.query_devices()
+            # can stutter PortAudio streams on some drivers.
+            if not self._is_audio_capture_active():
                 try:
                     self.available_mics = self.get_available_microphones()
+                    self._reconcile_microphone_selection()
+                    print(f"[MIC] Refreshed microphone list: {len(self.available_mics)} devices found")
                 except Exception as e:
                     print(f"[MIC] Refresh failed, using cached list: {e}")
+            else:
+                print("[MIC] Skipping mic refresh during active capture")
 
             mic_menu_items = []
             current_mic_id = self.config.get('microphone')
