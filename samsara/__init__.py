@@ -4,7 +4,7 @@ Samsara Voice Dictation & Control
 A modular speech-to-text and voice command application.
 """
 
-__version__ = "1.0.0"
+__version__ = "0.9.9"
 
 # Active modules (may fail on headless systems — pyautogui needs a display)
 try:
