@@ -248,12 +248,18 @@ def _get_pynput_command_key(button_name: str):
         f13 ... f24  (macro-pad / foot-pedal extended function keys)
     """
     _SIMPLE = {
-        'rctrl':  Key.ctrl_r,
-        'lctrl':  Key.ctrl_l,
-        'ralt':   Key.alt_r,
-        'lalt':   Key.alt_l,
-        'rshift': Key.shift_r,
-        'lshift': Key.shift_l,
+        'rctrl':      Key.ctrl_r,
+        'right_ctrl': Key.ctrl_r,
+        'lctrl':      Key.ctrl_l,
+        'left_ctrl':  Key.ctrl_l,
+        'ralt':       Key.alt_r,
+        'right_alt':  Key.alt_r,
+        'lalt':       Key.alt_l,
+        'left_alt':   Key.alt_l,
+        'rshift':     Key.shift_r,
+        'right_shift': Key.shift_r,
+        'lshift':     Key.shift_l,
+        'left_shift': Key.shift_l,
     }
     if button_name in _SIMPLE:
         return _SIMPLE[button_name]
@@ -766,6 +772,14 @@ class DictationApp:
         self._command_mode_inactivity_timer = None
         self._command_mode_session_start = 0.0  # monotonic time of last enter
         self._command_mode_ghost_tap = False    # set when hold < enter_debounce_ms
+
+        # Ava mode — Right Alt held = talk to Ollama/Ava
+        self.ava_mode_active = False
+        self.ava_mode_recording = False
+        self._ava_mode_ghost_tap = False
+        self._ava_mode_session_start = 0.0
+        self._ava_mode_lock = threading.Lock()
+
         self._mouse_hook = None
 
         # Wake-word trace hook — the debug window registers a callback here
@@ -934,19 +948,26 @@ class DictationApp:
             self.alarm_manager.start()
 
         # TTS engine + AudioCoordinator (optional; off by default)
+        # engine selection: config tts.engine = "winrt" (default) or "edge"
         self.tts_engine = None
         self.audio_coordinator = None
         if self.config.get('tts', {}).get('enabled', False):
             try:
-                from samsara.tts import WinRTEngine, AudioCoordinator
+                from samsara.tts import WinRTEngine, EdgeTTSEngine, AudioCoordinator
                 from samsara.tts.exceptions import EngineUnavailableError
-                self.tts_engine = WinRTEngine()
+                tts_engine_name = self.config.get('tts', {}).get('engine', 'winrt').lower()
+                if tts_engine_name == 'edge':
+                    self.tts_engine = EdgeTTSEngine()
+                    print("[TTS] Initialized EdgeTTS engine (Azure Neural voices)")
+                else:
+                    self.tts_engine = WinRTEngine()
+                    print("[TTS] Initialized WinRT engine")
                 self.audio_coordinator = AudioCoordinator(
                     self,
                     engine=self.tts_engine,
                     config=self.config.get('audio_coordinator', {}),
                 )
-                print("[TTS] Initialized WinRT engine + AudioCoordinator")
+                print("[TTS] AudioCoordinator ready")
             except Exception as e:
                 print(f"[TTS] Failed to initialize: {e}")
                 self.tts_engine = None
@@ -2347,31 +2368,43 @@ class DictationApp:
         No-ops unless command_mode.button is a keyboard source.
         """
         cfg = self.config.get('command_mode', {})
-        if not cfg.get('enabled', False):
-            return
+        cmd_enabled = cfg.get('enabled', False)
         btn_name = cfg.get('button', 'mouse4')
-        if btn_name in ('mouse4', 'mouse5'):
-            return  # mouse source — handled in _on_mouse_button
-        target = _get_pynput_command_key(btn_name)
-        if not _matches_pynput_key(key, target):
+        is_mouse = btn_name in ('mouse4', 'mouse5')
+
+        # Command mode keyboard handling (skip if disabled or mouse source)
+        if cmd_enabled and not is_mouse:
+            target = _get_pynput_command_key(btn_name)
+            if _matches_pynput_key(key, target):
+                mode = cfg.get('mode', 'hold')
+                if mode == 'hold':
+                    if pressed:
+                        self.enter_command_mode()
+                    else:
+                        self.exit_command_mode()
+                else:  # toggle
+                    if pressed:
+                        if self.command_mode_active:
+                            self.exit_command_mode()
+                        else:
+                            self.enter_command_mode()
+                return
+
+        # Right Alt → Ava mode (mutual exclusion with command mode)
+        if not self.config.get('ava_mode_enabled', True):
             return
-        mode = cfg.get('mode', 'hold')
-        if mode == 'hold':
-            if pressed:
-                self.enter_command_mode()
-            else:
-                self.exit_command_mode()
-        else:  # toggle
-            if pressed:
-                if self.command_mode_active:
-                    self.exit_command_mode()
-                else:
-                    self.enter_command_mode()
+        ava_key_name = self.config.get('ava_mode_key', 'right_alt')
+        ava_target = _get_pynput_command_key(ava_key_name)
+        if ava_target is not None and _matches_pynput_key(key, ava_target):
+            if pressed and not self.ava_mode_active and not self.command_mode_active:
+                self.enter_ava_mode()
+            elif not pressed and self.ava_mode_active:
+                self.exit_ava_mode()
 
     def enter_command_mode(self):
         """Enter command mode (idempotent). Safe to call from any thread."""
         with self._command_mode_lock:
-            if self.command_mode_active:
+            if self.command_mode_active or self.ava_mode_active:
                 return
             self.command_mode_active = True
         self._command_mode_miss_count = 0
@@ -2423,6 +2456,76 @@ class DictationApp:
         if cfg.get('exit_earcon', True) and not was_recording:
             # Only play here when not going through stop_recording() to avoid doubling
             self.play_sound('stop')
+
+    # ── Ava mode (Right Alt hold-to-talk → Ollama) ───────────────────────────
+
+    def enter_ava_mode(self):
+        """Enter Ava mode (idempotent). Safe to call from any thread."""
+        with self._ava_mode_lock:
+            if self.ava_mode_active or self.command_mode_active:
+                return
+            self.ava_mode_active = True
+        self._ava_mode_session_start = time.monotonic()
+        self._ava_mode_ghost_tap = False
+        print("[AVA MODE] Entering Ava mode")
+        if hasattr(self, 'listening_indicator'):
+            self._schedule_ui(self.listening_indicator.set_command_mode, True)
+        threading.Thread(target=self._do_enter_ava_mode, daemon=True,
+                         name='ava-mode-enter').start()
+
+    def _do_enter_ava_mode(self):
+        """Worker thread: starts recording and fires debounced earcon."""
+        if self.recording:
+            return
+        self.ava_mode_recording = True
+        self.start_recording(streaming=False, play_earcon=False)
+        debounce_ms = self.config.get('command_mode', {}).get('enter_debounce_ms', 200)
+        time.sleep(debounce_ms / 1000.0)
+        if self.ava_mode_active:
+            self.play_sound('start', use_winsound=True)
+
+    def exit_ava_mode(self):
+        """Exit Ava mode (idempotent). Safe to call from any thread."""
+        with self._ava_mode_lock:
+            if not self.ava_mode_active:
+                return
+            self.ava_mode_active = False
+            hold_ms = (time.monotonic() - self._ava_mode_session_start) * 1000
+        debounce_ms = self.config.get('command_mode', {}).get('enter_debounce_ms', 200)
+        self._ava_mode_ghost_tap = (hold_ms < debounce_ms)
+        if self._ava_mode_ghost_tap:
+            print(f"[AVA MODE] Ghost tap ({hold_ms:.0f}ms < {debounce_ms}ms) — audio will be discarded")
+        print("[AVA MODE] Exiting Ava mode")
+        if hasattr(self, 'listening_indicator'):
+            self._schedule_ui(self.listening_indicator.set_command_mode, False)
+        was_recording = self.recording
+        if was_recording:
+            self.stop_recording()
+        elif not self._ava_mode_ghost_tap:
+            self.play_sound('stop')
+
+    def _route_to_ava(self, text: str):
+        """Send transcribed speech to Ollama via the ask_ollama plugin."""
+        def _worker():
+            try:
+                from plugins.commands.ask_ollama import handle_ask_ava
+                handle_ask_ava(self, remainder=text)
+            except ImportError:
+                if hasattr(self, 'audio_coordinator') and self.audio_coordinator:
+                    self.audio_coordinator.speak(
+                        "Ollama plugin is not installed.",
+                        category="error",
+                    )
+                else:
+                    print(f"[AVA] Ollama plugin not found. User said: {text}")
+            except Exception as e:
+                print(f"[AVA] Error: {e}")
+                if hasattr(self, 'audio_coordinator') and self.audio_coordinator:
+                    self.audio_coordinator.speak(
+                        "Sorry, I had an error processing that.",
+                        category="error",
+                    )
+        threading.Thread(target=_worker, daemon=True, name="Ava-worker").start()
 
     def _reset_command_mode_inactivity_timer(self, timeout_s):
         self._cancel_command_mode_inactivity_timer()
@@ -4660,17 +4763,21 @@ class DictationApp:
                 # Apply corrections dictionary
                 text = self.voice_training_window.apply_corrections(text)
                 
-                # Check if we're in command-only mode (from command hotkey or Mouse 4)
+                # Check which mode produced this recording
                 is_command_mode = self.command_mode_recording
-                self.command_mode_recording = False  # Reset flag
+                is_ava_mode = self.ava_mode_recording
+                self.command_mode_recording = False
+                self.ava_mode_recording = False
 
-                # Ghost-tap prevention (post-Whisper recheck).
-                # If the hold was shorter than enter_debounce_ms the earcon never
-                # played and exit_command_mode() set the ghost flag.  Discard the
-                # audio here so accidental sub-200ms taps cannot fire commands.
+                # Ghost-tap prevention — discard accidental sub-debounce taps
                 if is_command_mode and self._command_mode_ghost_tap:
                     self._command_mode_ghost_tap = False
                     print("[CMD] Ghost tap — discarding transcription")
+                    return
+
+                if is_ava_mode and self._ava_mode_ghost_tap:
+                    self._ava_mode_ghost_tap = False
+                    print("[AVA] Ghost tap — discarding transcription")
                     return
 
                 if text:
@@ -4733,6 +4840,11 @@ class DictationApp:
                                 threading.Thread(
                                     target=self._rearm_command_recording,
                                     daemon=True).start()
+                        return
+
+                    # --- Ava mode (Right Alt) ---
+                    if is_ava_mode:
+                        self._route_to_ava(text)
                         return
 
                     # Regular dictation mode - proceed with text output
