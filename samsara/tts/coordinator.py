@@ -98,6 +98,7 @@ class AudioCoordinator:
         self._interrupt_poll_thread: Optional[threading.Thread] = None
         self._interrupt_grace_active = False
         self._interrupt_grace_timer: Optional[threading.Timer] = None
+        self._active_interruptible = True
 
         # Thinking-pulse timer chain.
         self._thinking_pulse_timer: Optional[threading.Timer] = None
@@ -123,6 +124,7 @@ class AudioCoordinator:
         speed: Optional[float] = None,
         volume: Optional[float] = None,
         on_done: Optional[Callable] = None,
+        interruptible: bool = True,
     ) -> SpeechHandle:
         """High-level TTS entry point. Manages state, thresholds, and ducking.
 
@@ -164,6 +166,7 @@ class AudioCoordinator:
         )
 
         self._active_handle = handle
+        self._active_interruptible = interruptible
         self.transition_to(SPEAKING, context={'utterance_id': handle.utterance_id, 'text': text})
         return handle
 
@@ -356,6 +359,9 @@ class AudioCoordinator:
                 time.sleep(0.025)
                 continue
             if getattr(self.app, 'is_speaking', False):
+                if not getattr(self, '_active_interruptible', True):
+                    time.sleep(0.025)
+                    continue
                 self._on_user_speech_interrupt()
                 break
             time.sleep(0.025)
