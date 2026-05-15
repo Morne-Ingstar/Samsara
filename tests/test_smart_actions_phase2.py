@@ -146,9 +146,10 @@ class TestSession:
     def test_session_expires_after_window(self):
         s = SmartActionsSession(window_minutes=5)
         sid1 = s.get_or_create_session()
-        # Force expiry by backdating last_activity
+        # Force expiry via test helper (direct attribute write is bypassed to
+        # preserve lock discipline outside test context)
         from datetime import datetime, timedelta
-        s.last_activity = datetime.now() - timedelta(minutes=6)
+        s._backdate_last_activity(datetime.now() - timedelta(minutes=6))
         sid2 = s.get_or_create_session()
         assert sid1 != sid2
 
@@ -157,9 +158,9 @@ class TestSession:
         s.get_or_create_session()
         s.add_user_turn("hello")
         s.reset()
-        assert s.session_id is None
-        assert s.context == []
-        assert s.pending_observations == []
+        assert not s.has_active_session()
+        assert s.snapshot_context() == []
+        assert s.snapshot_observations() == []
 
     def test_session_context_accumulates(self):
         s = SmartActionsSession()
@@ -167,9 +168,10 @@ class TestSession:
         s.add_user_turn("plan my week")
         s.add_assistant_turn("Here's a plan...")
         s.add_user_turn("add physio on Tuesday")
-        assert len(s.context) == 3
-        assert s.context[0]['role'] == 'user'
-        assert s.context[1]['role'] == 'assistant'
+        ctx = s.snapshot_context()
+        assert len(ctx) == 3
+        assert ctx[0]['role'] == 'user'
+        assert ctx[1]['role'] == 'assistant'
 
     def test_session_observations_consumed(self):
         s = SmartActionsSession()
@@ -180,7 +182,7 @@ class TestSession:
         assert len(obs) == 2
         assert obs[0]['tool'] == 'paste_text'
         # After consume, pending is empty
-        assert s.pending_observations == []
+        assert s.snapshot_observations() == []
         assert s.consume_observations() == []
 
 
