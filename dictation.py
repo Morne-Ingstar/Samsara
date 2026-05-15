@@ -789,6 +789,9 @@ class DictationApp:
         self.silence_start = None
         self.speech_buffer = []
         self.buffer_lock = threading.Lock()
+        # Protects ONLY self.audio_data (hold-to-dictate / streaming capture buffer).
+        # Lock order: never acquire buffer_lock while holding audio_data_lock.
+        self.audio_data_lock = threading.Lock()
         self.is_speaking = False
         # Silero VAD -- real-time speech gate for the wake-word audio callback.
         # When available, it replaces the old RMS debounce entirely. When it's
@@ -3831,7 +3834,8 @@ class DictationApp:
                 chunk = indata.copy()
                 if self.echo_canceller.is_active:
                     chunk = self.echo_canceller.process(chunk)
-                self.audio_data.append(chunk)
+                with self.audio_data_lock:
+                    self.audio_data.append(chunk)
         except (sd.PortAudioError, OSError) as e:
             print(f"[AUDIO] Stream died -- attempting reconnect... ({e})")
             self._stream_dead = True
@@ -4479,14 +4483,13 @@ class DictationApp:
             self.play_sound("start", use_winsound=True)
             time.sleep(0.15)  # Brief pause for sound to start
 
-        if streaming:
-            self.audio_data = []
-        else:
-            # Seed audio_data with pre-buffered audio (speech before hotkey press)
-            self.audio_data = [chunk.reshape(-1, 1) for chunk in prebuffer_audio] if prebuffer_audio else []
-            if prebuffer_audio:
-                prebuf_duration = len(prebuffer_audio) * 0.1
-                print(f"[PRE] Pre-buffer: {prebuf_duration:.1f}s of audio captured before hotkey")
+        with self.audio_data_lock:
+            self.audio_data.clear()
+            if not streaming and prebuffer_audio:
+                self.audio_data.extend(chunk.reshape(-1, 1) for chunk in prebuffer_audio)
+        if not streaming and prebuffer_audio:
+            prebuf_duration = len(prebuffer_audio) * 0.1
+            print(f"[PRE] Pre-buffer: {prebuf_duration:.1f}s of audio captured before hotkey")
         
         # Record timestamp so we can detect overlap between pre-buffer and recording
         self._recording_start_time = time.time()
@@ -4563,14 +4566,16 @@ class DictationApp:
                 print(f"[STREAM] finalize failed: {e}")
             return
 
-        if not self.audio_data:
-            print("No audio recorded")
-            return
+        with self.audio_data_lock:
+            if not self.audio_data:
+                print("No audio recorded")
+                return
+            audio_snapshot = list(self.audio_data)
 
         print("[...] Transcribing...")
-        
+
         # Combine audio chunks and resample to model rate
-        audio = np.concatenate(self.audio_data, axis=0).flatten()
+        audio = np.concatenate(audio_snapshot, axis=0).flatten()
         audio = resample_audio(audio, self.capture_rate, self.model_rate)
 
         # Transcribe in background to not block hotkey listener
@@ -4770,7 +4775,8 @@ class DictationApp:
                 print(f"[STREAM] cancel failed: {e}")
 
         # Clear audio data without transcribing
-        self.audio_data = []
+        with self.audio_data_lock:
+            self.audio_data.clear()
         self.play_sound("error")  # Play error sound to indicate cancellation
 
         # Update listening indicator
