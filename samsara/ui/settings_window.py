@@ -1240,10 +1240,8 @@ class SettingsWindow:
                     "Remove ALL memorized approvals? You will be asked to confirm "
                     "each action again.",
                     parent=self.window):
-                sa = self.app.config.setdefault('smart_actions', {})
-                sa['tier2_approvals'] = {}
-                if hasattr(self.app, 'save_config'):
-                    self.app.save_config()
+                if hasattr(self.app, 'revoke_tier2_approvals'):
+                    self.app.revoke_tier2_approvals()
                 approvals_box.configure(state='normal')
                 approvals_box.delete('1.0', 'end')
                 approvals_box.insert('1.0', '(none)')
@@ -1922,15 +1920,15 @@ class SettingsWindow:
                     if self.app.config.get('microphone') != mic['id']:
                         mic_changed = True
                         self.app.update_config({'microphone': mic['id']}, save=False)
-                    self.app.config['microphone_name'] = mic['name']
+                    self.app.update_config({'microphone_name': mic['name']}, save=False)
                     break
 
-        self.app.save_config()
+        self.app.persist_config()
 
         # Apply mode change at runtime (delegates to DictationApp.apply_mode)
         new_mode = self.app.config['mode']
         if self.app.apply_mode(new_mode):
-            self.app.save_config()
+            self.app.persist_config()
             if hasattr(self.app, 'tray_icon') and hasattr(self.app, 'get_menu'):
                 try:
                     self.app.tray_icon.menu = self.app.get_menu()
@@ -2191,7 +2189,7 @@ X-GNOME-Autostart-enabled=true
                 time.sleep(0.3)  # let streams release the device
 
                 self.app._run_calibration_if_auto()
-                self.app.save_config()
+                self.app.persist_config()
 
                 # Restart streams that were active
                 if had_wake:
