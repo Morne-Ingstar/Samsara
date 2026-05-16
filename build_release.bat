@@ -15,6 +15,11 @@ taskkill /f /im Samsara.exe 2>nul
 timeout /t 2 /nobreak >nul
 
 echo.
+echo [1.5/4] Cleaning previous build...
+if exist "dist" rmdir /s /q dist
+if exist "build" rmdir /s /q build
+
+echo.
 echo [2/4] Running PyInstaller with spec file...
 python -m PyInstaller --clean --noconfirm scripts\samsara.spec
 

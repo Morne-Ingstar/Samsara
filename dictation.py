@@ -1129,7 +1129,7 @@ class DictationApp:
         self._install_capslock_hook()
 
         # Tell the user if the model needs to be downloaded vs just loaded
-        _model_size = self.config.get('model_size', 'small.en')
+        _model_size = self.config.get('model_size', 'base')
         _model_folder = f"models--Systran--faster-whisper-{_model_size}"
         _model_cache = os.path.join(
             os.path.expanduser("~"), ".cache", "huggingface", "hub", _model_folder

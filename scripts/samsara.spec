@@ -62,10 +62,10 @@ if os.path.exists(sounddevice_data):
 datas.append((str(app_dir / 'sounds'), 'sounds'))
 datas.append((str(app_dir / 'profiles'), 'profiles'))
 datas.append((str(app_dir / 'commands.json'), '.'))
-if (app_dir / 'plugins' / 'assets').exists():
-    datas.append((str(app_dir / 'plugins' / 'assets'), 'plugins/assets'))
-if (app_dir / 'config.json').exists():
-    datas.append((str(app_dir / 'config.json'), '.'))
+# Bundle the entire plugins directory so commands/*.py are available at runtime
+datas.append((str(app_dir / 'plugins'), 'plugins'))
+# NOTE: config.json is intentionally NOT bundled — it contains dev-machine
+# paths and credentials. A fresh config is generated on first run.
 
 # ============================================================================
 # BINARIES (DLLs)
