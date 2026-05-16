@@ -263,6 +263,7 @@ from samsara.notifications import NotificationManager, get_default_notification_
 from samsara.alarms import AlarmManager, get_default_alarm_config
 from samsara.echo_cancel import EchoCanceller
 from samsara.clipboard import clipboard_lock as _clipboard_lock, save_clipboard as _save_clipboard_win32, restore_clipboard as _restore_clipboard_win32, paste_with_preservation
+from samsara.wake_detector import WakeWordDetector
 
 
 def _get_pynput_command_key(button_name: str):
@@ -930,6 +931,13 @@ class DictationApp:
         self.wake_word_listening = False  # Currently listening for wake word
         self.wake_word_triggered = False  # Wake word detected, ready for command
         self._wake_trace_callback = None  # Optional: debug window registers here
+        self._wake_transcription_in_progress = False  # Prevents concurrent Whisper calls on CPU
+
+        # OpenWakeWord pre-filter: fast (~5ms) ONNX wake-word model that gates
+        # Whisper calls. On CPU this drops idle load from ~100% to near zero.
+        # Initialised lazily in _load_oww_model() after the Whisper model loads.
+        self._wake_detector = None
+        self._oww_wake_detected = False  # Set by OWW; consumed by silence flush
 
         # Per-chunk RMS values kept in lock-step with speech_buffer. Used by
         # the stuck-buffer detector -- real speech has high RMS variance
@@ -1550,6 +1558,14 @@ class DictationApp:
             self.set_wake_word_enabled(changes['wake_word_enabled'])
         if 'microphone' in changes:
             self.capture_rate = self._detect_capture_rate(changes['microphone'])
+        if 'wake_word_config' in changes:
+            new_phrase = changes['wake_word_config'].get('phrase', '')
+            old_phrase = (
+                (self._wake_detector._wake_phrase if self._wake_detector else '')
+            )
+            if new_phrase and new_phrase.lower() != old_phrase:
+                self._oww_wake_detected = False
+                self._wake_detector = WakeWordDetector(new_phrase)
 
     def set_app_state(self, **kwargs):
         """Update application state flags with transition logging.
@@ -2068,6 +2084,9 @@ class DictationApp:
             # Load Silero VAD for real-time speech gating (async-safe: if this
             # fails, the wake callback falls back to RMS).
             self._load_vad_model()
+
+            print("[INIT] Loading OpenWakeWord pre-filter...")
+            self._load_oww_model()
 
             print("Ready for dictation.")
             
@@ -3077,6 +3096,23 @@ class DictationApp:
             self._vad_available = False
             print(f"[VAD] Silero VAD not available, falling back to RMS: {e}")
 
+    def _load_oww_model(self):
+        """Load the OpenWakeWord model for the configured wake phrase.
+
+        Called once after Whisper loads. Any failure (package not installed,
+        no model for the phrase) leaves _wake_detector.is_available == False
+        and the audio callback falls back to Whisper-based detection.
+        Safe to call multiple times -- already-loaded detector short-circuits.
+        """
+        if self._wake_detector is not None and self._wake_detector.is_available:
+            return
+        wake_phrase = self.config.get('wake_word_config', {}).get('phrase', 'jarvis')
+        self._wake_detector = WakeWordDetector(wake_phrase)
+        if self._wake_detector.is_available:
+            print(f"[OWW] Wake word pre-filter active for '{wake_phrase}'")
+        else:
+            print(f"[OWW] No pre-filter for '{wake_phrase}' — using Whisper detection")
+
     def _vad_is_speech(self, chunk_float32):
         """Return True if the chunk contains human speech.
 
@@ -3250,6 +3286,19 @@ class DictationApp:
             else:
                 is_speech = rms > speech_threshold
 
+            # OWW pre-filter: feed every chunk when in asleep state so the
+            # model maintains its rolling context. OWW is ~5ms on CPU and
+            # runs synchronously here so the flag is set before the
+            # silence-flush check below.
+            if (self.app_state == 'asleep'
+                    and not self.wake_word_triggered
+                    and self._wake_detector is not None
+                    and self._wake_detector.is_available):
+                _oww_chunk = resample_audio(raw_chunk, self.capture_rate, 16000)
+                if self._wake_detector.detected(_oww_chunk):
+                    self._oww_wake_detected = True
+                    self._wake_detector.reset()
+
             if is_speech:
                 # Human speech detected -- buffer directly. VAD already filtered
                 # fan/hum/ambient, so no debounce is needed.
@@ -3323,24 +3372,42 @@ class DictationApp:
                         self.is_speaking = False
                         self.silence_start = None
                         if buffer_copy is not None:
-                            # In long_dictation, dispatch through the tracked
-                            # wrapper so the pending-transcriptions counter
-                            # stays accurate. Other modes use the plain
-                            # fire-and-forget dispatch.
-                            if self.app_state == 'long_dictation':
-                                with self._dictation_finalize_lock:
-                                    self._pending_transcriptions += 1
-                                threading.Thread(
-                                    target=self._process_wake_word_buffer_tracked,
-                                    args=(buffer_copy,),
-                                    daemon=True,
-                                ).start()
+                            # OWW gate: when the pre-filter is active and we
+                            # are in asleep state (not command_window or
+                            # dictation), only dispatch to Whisper if OWW
+                            # confirmed a wake word in this buffer window.
+                            # In all other states (command_window, dictation)
+                            # the gate is bypassed — Whisper must always fire.
+                            _oww_gated = (
+                                self._wake_detector is not None
+                                and self._wake_detector.is_available
+                                and self.app_state == 'asleep'
+                                and not self.wake_word_triggered
+                            )
+                            if _oww_gated and not self._oww_wake_detected:
+                                # No wake word detected — discard buffer quietly
+                                if self._wake_detector is not None:
+                                    self._wake_detector.reset()
                             else:
-                                threading.Thread(
-                                    target=self.process_wake_word_buffer,
-                                    args=(buffer_copy,),
-                                    daemon=True,
-                                ).start()
+                                self._oww_wake_detected = False
+                                # In long_dictation, dispatch through the tracked
+                                # wrapper so the pending-transcriptions counter
+                                # stays accurate. Other modes use the plain
+                                # fire-and-forget dispatch.
+                                if self.app_state == 'long_dictation':
+                                    with self._dictation_finalize_lock:
+                                        self._pending_transcriptions += 1
+                                    threading.Thread(
+                                        target=self._process_wake_word_buffer_tracked,
+                                        args=(buffer_copy,),
+                                        daemon=True,
+                                    ).start()
+                                else:
+                                    threading.Thread(
+                                        target=self.process_wake_word_buffer,
+                                        args=(buffer_copy,),
+                                        daemon=True,
+                                    ).start()
 
             # Fan-out: when continuous mode is active alongside wake word mode,
             # forward audio to the continuous pipeline. No second PortAudio stream
@@ -3383,11 +3450,39 @@ class DictationApp:
 
     def process_wake_word_buffer(self, buffer):
         """Process audio - check for wake word, commands, or dictation content"""
+        _set_in_progress = False
         try:
             audio = np.concatenate(buffer)
             audio = resample_audio(audio, self.capture_rate, self.model_rate)
             audio_duration = len(audio) / self.model_rate
-            
+
+            # FIX 1: RMS energy gate — skip Whisper on silent audio.
+            # On CPU machines Whisper takes ~1s per call; calling it on every
+            # chunk saturates the CPU. This gate rejects the buffer early if the
+            # RMS is below the calibrated speech threshold so Whisper only runs
+            # when actual speech energy is present.
+            ww_config = self.config.get('wake_word_config', {})
+            audio_config = ww_config.get('audio', {})
+            speech_threshold = audio_config.get('speech_threshold', DEFAULT_SPEECH_THRESHOLD)
+            audio_rms = np.sqrt(np.mean(audio.astype(np.float32) ** 2))
+            if audio_rms < speech_threshold:
+                logging.debug(
+                    f"[WAKE] Below speech threshold (RMS {audio_rms:.4f} < {speech_threshold:.4f}), skipping"
+                )
+                return
+
+            # FIX 2: In-progress flag — prevent concurrent Whisper calls.
+            # On CPU a transcription can take longer than the next buffer window,
+            # causing a queue of overlapping calls. Drop the new buffer if a
+            # transcription is already running; on CPU the stale audio is useless
+            # anyway. _set_in_progress tracks whether THIS call set the flag so
+            # the outer finally only clears it when we own it.
+            if self._wake_transcription_in_progress:
+                logging.debug("[WAKE] Transcription already in progress, skipping")
+                return
+            self._wake_transcription_in_progress = True
+            _set_in_progress = True
+
             # Get transcription parameters based on performance mode
             transcribe_params = self.get_transcription_params()
             # When Silero is unavailable we relied on RMS to gate speech into
@@ -3621,6 +3716,8 @@ class DictationApp:
             except Exception:
                 pass
         finally:
+            if _set_in_progress:
+                self._wake_transcription_in_progress = False
             # Clear Silero VAD internal state so the next utterance starts
             # fresh. Without this, its rolling context bleeds between commands.
             self._vad_reset()
