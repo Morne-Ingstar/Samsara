@@ -32,11 +32,16 @@ class MSLLHOOKSTRUCT(ctypes.Structure):
     ]
 
 
+# Use LPARAM (not POINTER(MSLLHOOKSTRUCT)) for the third argument.
+# Python 3.13 tightened WINFUNCTYPE type validation; passing a ctypes
+# Pointer type here causes ArgumentError when SetWindowsHookExW is called.
+# The standard Windows HOOKPROC signature passes l_param as a raw pointer
+# integer (LPARAM); we cast it to POINTER(MSLLHOOKSTRUCT) inside the callback.
 LowLevelMouseProc = ctypes.WINFUNCTYPE(
     ctypes.c_long,
     ctypes.c_int,
     ctypes.wintypes.WPARAM,
-    ctypes.POINTER(MSLLHOOKSTRUCT),
+    ctypes.wintypes.LPARAM,
 )
 
 
@@ -70,7 +75,7 @@ class MouseHook:
 
         is_xbutton = w_param in (WM_XBUTTONDOWN, WM_XBUTTONUP)
         if is_xbutton:
-            info = l_param.contents
+            info = ctypes.cast(l_param, ctypes.POINTER(MSLLHOOKSTRUCT)).contents
             xbutton = (info.mouseData >> 16) & 0xFFFF
             button_name = 'mouse4' if xbutton == XBUTTON1 else 'mouse5'
             pressed = (w_param == WM_XBUTTONDOWN)
@@ -99,7 +104,13 @@ class MouseHook:
 
     def _run(self):
         self._thread_id = _kernel32.GetCurrentThreadId()
-        self._hook_id = _user32.SetWindowsHookExW(WH_MOUSE_LL, self._proc, None, 0)
+        try:
+            self._hook_id = _user32.SetWindowsHookExW(WH_MOUSE_LL, self._proc, None, 0)
+        except (ctypes.ArgumentError, OSError) as e:
+            print(f"[CMD MODE] Mouse hook failed: {e}")
+            print("[CMD MODE] Mouse button command mode disabled on this system")
+            self._ready.set()
+            return
         if not self._hook_id:
             print("[MOUSE HOOK] SetWindowsHookExW failed")
             self._ready.set()
