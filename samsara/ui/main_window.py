@@ -545,7 +545,11 @@ class MainWindow:
         h = max(MIN_HEIGHT, h)
         if x is not None and y is not None:
             try:
-                win.geometry(f"{w}x{h}+{int(x)}+{int(y)}")
+                screen_w = win.winfo_screenwidth()
+                screen_h = win.winfo_screenheight()
+                x = max(0, min(int(x), screen_w - 100))
+                y = max(0, min(int(y), screen_h - 100))
+                win.geometry(f"{w}x{h}+{x}+{y}")
                 return
             except Exception:
                 pass
