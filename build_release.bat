@@ -35,6 +35,11 @@ echo Build successful:
 dir dist\Samsara\Samsara.exe | findstr "Samsara"
 
 echo.
+echo [2.5/4] Removing torch if leaked into build...
+if exist "dist\Samsara\_internal\torch" rmdir /s /q "dist\Samsara\_internal\torch"
+if exist "dist\Samsara\_internal\torchaudio" rmdir /s /q "dist\Samsara\_internal\torchaudio"
+
+echo.
 echo [3/4] Compressing dist\Samsara -> %ARCHIVE%
 if exist "%ARCHIVE%" del "%ARCHIVE%"
 7z a -mx=5 "%ARCHIVE%" "dist\Samsara\*" -r
