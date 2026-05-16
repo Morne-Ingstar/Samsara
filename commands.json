@@ -303,42 +303,49 @@
       "type": "press",
       "key": "e",
       "description": "Press E key once",
-      "pack": "gaming"
+      "pack": "gaming",
+      "ai_visible": false
     },
     "press space": {
       "type": "press",
       "key": "space",
       "description": "Press Spacebar once",
-      "pack": "gaming"
+      "pack": "gaming",
+      "ai_visible": false
     },
     "hold forward": {
       "type": "key_down",
       "key": "w",
       "description": "Hold W key down (for gaming)",
-      "pack": "gaming"
+      "pack": "gaming",
+      "ai_visible": false
     },
     "stop forward": {
       "type": "key_up",
       "key": "w",
       "description": "Release W key",
-      "pack": "gaming"
+      "pack": "gaming",
+      "ai_visible": false
     },
     "hold shift": {
       "type": "key_down",
       "key": "shift",
       "description": "Hold Shift key down",
-      "pack": "gaming"
+      "pack": "gaming",
+      "ai_visible": false
     },
     "release shift": {
       "type": "key_up",
       "key": "shift",
       "description": "Release Shift key",
-      "pack": "gaming"
+      "pack": "gaming",
+      "ai_visible": false
     },
     "release all": {
       "type": "release_all",
       "description": "Release all held keys",
-      "pack": "gaming"
+      "pack": "gaming",
+      "ai_visible": false
     },
     "double click": {
       "type": "mouse",
@@ -364,7 +371,8 @@
       "type": "text",
       "text": ".",
       "description": "Insert period",
-      "pack": "text-editing"
+      "pack": "text-editing",
+      "ai_visible": false
     },
     "full stop": {
       "type": "text",
@@ -376,103 +384,120 @@
       "type": "text",
       "text": ",",
       "description": "Insert comma",
-      "pack": "text-editing"
+      "pack": "text-editing",
+      "ai_visible": false
     },
     "question mark": {
       "type": "text",
       "text": "?",
       "description": "Insert question mark",
-      "pack": "text-editing"
+      "pack": "text-editing",
+      "ai_visible": false
     },
     "exclamation mark": {
       "type": "text",
       "text": "!",
       "description": "Insert exclamation mark",
-      "pack": "text-editing"
+      "pack": "text-editing",
+      "ai_visible": false
     },
     "exclamation point": {
       "type": "text",
       "text": "!",
       "description": "Insert exclamation mark",
-      "pack": "text-editing"
+      "pack": "text-editing",
+      "ai_visible": false
     },
     "colon": {
       "type": "text",
       "text": ":",
       "description": "Insert colon",
-      "pack": "text-editing"
+      "pack": "text-editing",
+      "ai_visible": false
     },
     "semicolon": {
       "type": "text",
       "text": ";",
       "description": "Insert semicolon",
-      "pack": "text-editing"
+      "pack": "text-editing",
+      "ai_visible": false
     },
     "apostrophe": {
       "type": "text",
       "text": "'",
       "description": "Insert apostrophe",
-      "pack": "text-editing"
+      "pack": "text-editing",
+      "ai_visible": false
     },
     "quote": {
       "type": "text",
       "text": "\"",
       "description": "Insert double quote",
-      "pack": "text-editing"
+      "pack": "text-editing",
+      "ai_visible": false
     },
     "open quote": {
       "type": "text",
       "text": "\"",
       "description": "Insert opening quote",
-      "pack": "text-editing"
+      "pack": "text-editing",
+      "ai_visible": false
     },
     "close quote": {
       "type": "text",
       "text": "\"",
       "description": "Insert closing quote",
-      "pack": "text-editing"
+      "pack": "text-editing",
+      "ai_visible": false
     },
     "open parenthesis": {
       "type": "text",
       "text": "(",
       "description": "Insert opening parenthesis",
-      "pack": "text-editing"
+      "pack": "text-editing",
+      "ai_visible": false
     },
     "close parenthesis": {
       "type": "text",
       "text": ")",
       "description": "Insert closing parenthesis",
-      "pack": "text-editing"
+      "pack": "text-editing",
+      "ai_visible": false
     },
     "open bracket": {
       "type": "text",
       "text": "[",
       "description": "Insert opening bracket",
-      "pack": "text-editing"
+      "pack": "text-editing",
+      "ai_visible": false
     },
     "close bracket": {
       "type": "text",
       "text": "]",
       "description": "Insert closing bracket",
-      "pack": "text-editing"
+      "pack": "text-editing",
+      "ai_visible": false
     },
     "hyphen": {
       "type": "text",
       "text": "-",
       "description": "Insert hyphen",
-      "pack": "text-editing"
+      "pack": "text-editing",
+      "ai_visible": false
     },
     "dash": {
       "type": "text",
       "text": " - ",
       "description": "Insert dash with spaces",
-      "pack": "text-editing"
+      "pack": "text-editing",
+      "ai_visible": false
     },
     "ellipsis": {
       "type": "text",
       "text": "...",
       "description": "Insert ellipsis",
-      "pack": "text-editing"
+      "pack": "text-editing",
+      "ai_visible": false
     },
     "new line": {
       "type": "press",
@@ -1111,12 +1136,6 @@
       "type": "launch",
       "target": "C:\\Program Files (x86)\\Steam\\steam.exe",
       "description": "Open Steam",
-      "pack": "utilities"
-    },
-    "open stremio": {
-      "type": "launch",
-      "target": "C:\\Users\\Morne\\AppData\\Local\\Programs\\Stremio\\stremio-shell-ng.exe",
-      "description": "Open Stremio",
       "pack": "utilities"
     },
     "open paint": {
@@ -1987,12 +2006,6 @@
       "description": "Open text cursor indicator settings",
       "pack": "accessibility"
     },
-    "focus mode": {
-      "type": "launch",
-      "target": "ms-settings:quiethours",
-      "description": "Open focus assist / do not disturb settings",
-      "pack": "accessibility"
-    },
     "do not disturb": {
       "type": "launch",
       "target": "ms-settings:quiethours",
@@ -2137,13 +2150,15 @@
       "type": "method",
       "method": "repeat_last_command",
       "description": "Repeat the last executed command",
-      "pack": "core"
+      "pack": "core",
+      "ai_visible": false
     },
     "again": {
       "type": "method",
       "method": "repeat_last_command",
       "description": "Repeat the last executed command",
-      "pack": "core"
+      "pack": "core",
+      "ai_visible": false
     },
     "move to right monitor": {
       "type": "hotkey",
@@ -2400,20 +2415,6 @@
       "target": "steam://nav/downloads",
       "description": "Open Steam downloads view",
       "pack": "gaming"
-    },
-    "hey ava": {
-      "type": "plugin",
-      "plugin": "samsara_plugin_ask_ollama",
-      "aliases": ["ava", "ask ava", "samsara think", "think about", "what do you think"],
-      "pack": "ai",
-      "description": "Ask Ava (local Ollama LLM) a question or get help with a command"
-    },
-    "is it safe to": {
-      "type": "plugin",
-      "plugin": "samsara_plugin_ask_ollama",
-      "aliases": ["should i", "is it okay to"],
-      "pack": "ai",
-      "description": "Ask Ava if an action is safe before doing it"
     }
   }
 }
