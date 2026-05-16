@@ -127,6 +127,28 @@ import keyboard  # For reliable simultaneous key state detection
 from pynput.mouse import Button, Controller as MouseController
 import pyperclip
 import pyautogui
+# Check for Visual C++ Redistributable before any DLL-dependent imports.
+# ctranslate2 (used by faster-whisper) requires msvcp140.dll which ships with
+# the VC++ redist. On a clean machine this may not be installed.
+if sys.platform == 'win32':
+    try:
+        import ctypes as _ctypes
+        _ctypes.cdll.LoadLibrary("msvcp140.dll")
+    except OSError:
+        import tkinter as _tk
+        from tkinter import messagebox as _mb
+        _r = _tk.Tk()
+        _r.withdraw()
+        _mb.showerror(
+            "Missing Dependency",
+            "Samsara requires the Visual C++ Redistributable.\n\n"
+            "Download it from:\n"
+            "https://aka.ms/vs/17/release/vc_redist.x64.exe\n\n"
+            "Install it and restart Samsara."
+        )
+        _r.destroy()
+        sys.exit(1)
+
 from faster_whisper import WhisperModel
 
 # torch powers Silero VAD for real-time speech gating in the wake-word audio
@@ -345,18 +367,24 @@ def open_file_or_folder(path):
 
 
 
-# Set up logging to file and console
-LOG_DIR = Path(__file__).parent
-LOG_FILE = LOG_DIR / 'samsara.log'
+# Set up logging — persistent file in ~/.samsara/logs/ + console
+from logging.handlers import RotatingFileHandler as _RotatingFileHandler
 
-# Create logger
-logger = logging.getLogger('Samsara')
-logger.setLevel(logging.DEBUG)
+LOG_DIR = Path(os.path.expanduser("~")) / ".samsara" / "logs"
+LOG_DIR.mkdir(parents=True, exist_ok=True)
+LOG_FILE = LOG_DIR / "samsara.log"
 
-# File handler - logs everything
-file_handler = logging.FileHandler(LOG_FILE, encoding='utf-8')
+_log_fmt = logging.Formatter("%(asctime)s - %(levelname)s - %(message)s")
+
+# File handler — DEBUG level, rotating 5 MB × 3 backups, UTF-8
+file_handler = _RotatingFileHandler(
+    LOG_FILE,
+    maxBytes=5 * 1024 * 1024,
+    backupCount=3,
+    encoding="utf-8",
+)
 file_handler.setLevel(logging.DEBUG)
-file_handler.setFormatter(logging.Formatter('%(asctime)s - %(levelname)s - %(message)s'))
+file_handler.setFormatter(_log_fmt)
 
 # Console handler — force UTF-8 so Unicode chars (arrows, etc.) don't
 # raise UnicodeEncodeError on cp1252 Windows consoles.
@@ -364,10 +392,16 @@ console_handler = logging.StreamHandler(
     open(sys.stdout.fileno(), mode='w', encoding='utf-8', buffering=1, closefd=False)
 )
 console_handler.setLevel(logging.DEBUG)
-console_handler.setFormatter(logging.Formatter('%(asctime)s - %(message)s'))
+console_handler.setFormatter(logging.Formatter("%(asctime)s - %(message)s"))
 
-logger.addHandler(file_handler)
-logger.addHandler(console_handler)
+# Attach to root logger so all loggers (including exception hooks) feed here
+_root_logger = logging.getLogger()
+_root_logger.setLevel(logging.DEBUG)
+_root_logger.addHandler(file_handler)
+_root_logger.addHandler(console_handler)
+
+# Keep a named logger for Samsara's own print-override path
+logger = logging.getLogger("Samsara")
 
 # Suppress noisy third-party debug output
 logging.getLogger("PIL").setLevel(logging.WARNING)
@@ -383,6 +417,38 @@ def print(*args, **kwargs):
     message = ' '.join(str(arg) for arg in args)
     logger.info(message)
     _original_print(*args, **kwargs)
+
+
+# ── Global exception hooks — log to file before crashing ─────────────────────
+
+def _uncaught_exception_handler(exc_type, exc_value, exc_tb):
+    import traceback as _tb
+    logging.critical(
+        "Uncaught exception:\n" +
+        "".join(_tb.format_exception(exc_type, exc_value, exc_tb))
+    )
+    sys.__excepthook__(exc_type, exc_value, exc_tb)
+
+sys.excepthook = _uncaught_exception_handler
+
+
+_original_thread_init = threading.Thread.__init__
+
+def _patched_thread_init(self, *args, **kwargs):
+    _original_thread_init(self, *args, **kwargs)
+    _original_run = self.run
+    def _wrapped_run():
+        try:
+            _original_run()
+        except Exception:
+            import traceback as _tb
+            logging.critical(
+                f"Uncaught exception in thread {self.name}:\n" +
+                _tb.format_exc()
+            )
+    self.run = _wrapped_run
+
+threading.Thread.__init__ = _patched_thread_init
 
 logger.info("=" * 50)
 logger.info(f"Samsara starting at {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}")
@@ -664,9 +730,9 @@ class DictationApp:
         # Never hold while doing audio work, VAD, AEC, model loading, or UI rendering.
         self._config_lock = threading.Lock()
 
-        # Check if first-run wizard is needed
-        # Only show wizard if config doesn't exist at all (truly new installation)
-        # Existing configs without first_run_complete are assumed to be from before the wizard was added
+        # Check if first-run wizard is needed.
+        # Triggers when: config missing, first_run_complete absent/false,
+        # or no microphone was ever configured.
         need_wizard = False
         if not self.config_path.exists():
             need_wizard = True
@@ -674,12 +740,11 @@ class DictationApp:
             try:
                 with open(self.config_path, 'r') as f:
                     existing_config = json.load(f)
-                    # Only show wizard if first_run_complete is explicitly False
-                    # (meaning wizard was started but not completed)
-                    if 'first_run_complete' in existing_config and not existing_config['first_run_complete']:
-                        need_wizard = True
-            except:
-                # Config file is corrupted, show wizard
+                if not existing_config.get('first_run_complete', False):
+                    need_wizard = True
+                elif existing_config.get('microphone') is None:
+                    need_wizard = True
+            except Exception:
                 need_wizard = True
 
         # Run first-run wizard if needed
@@ -701,6 +766,7 @@ class DictationApp:
                 print("Setup wizard cancelled - using default settings")
             # No splash after wizard - user already saw UI
 
+        print("[INIT] Loading config...")
         self.update_splash("Loading configuration...")
         with self._config_lock:
             self.load_config()
@@ -723,7 +789,7 @@ class DictationApp:
         # main hub, settings, voice training, history, wake word debug, etc.
         self._apply_window_icon(self.root, default=True)
 
-        # Get available microphones
+        print("[INIT] Enumerating audio devices...")
         self.available_mics = self.get_available_microphones()
 
         # Try name-based reconciliation first — stable across index changes.
@@ -741,9 +807,24 @@ class DictationApp:
             with self._config_lock:
                 self.config['microphone'] = self.available_mics[0]['id']
                 self.save_config()
+            new_name = self.available_mics[0]['name']
             print(f"[CONFIG] Saved microphone {old_id} not found in current devices, "
-                  f"switched to {self.available_mics[0]['name']} (id={self.config['microphone']})")
-        
+                  f"switched to {new_name} (id={self.config['microphone']})")
+            # Notify the user so they can confirm the right mic is selected
+            def _mic_changed_dialog():
+                try:
+                    from tkinter import messagebox
+                    messagebox.showwarning(
+                        "Microphone Changed",
+                        f"Your previously selected microphone was not found on this machine.\n\n"
+                        f"Samsara has switched to: {new_name}\n\n"
+                        f"If this is wrong, open Settings to choose the correct microphone."
+                    )
+                except Exception:
+                    pass
+            if hasattr(self, 'root') and self.root:
+                self.root.after(2000, _mic_changed_dialog)
+
         # Audio settings -- dual sample rates for WASAPI compatibility
         self.model_rate = MODEL_SAMPLE_RATE
         self.capture_rate = self._detect_capture_rate(self.config.get('microphone'))
@@ -773,7 +854,7 @@ class DictationApp:
         self.loading_model = False
         self.model_lock = threading.Lock()  # Thread lock for model.transcribe() calls
         
-        # Command system
+        print("[INIT] Loading plugins...")
         commands_path = Path(__file__).parent / "commands.json"
         self.command_executor = CommandExecutor(commands_path, app=self)
         self.command_mode_enabled = self.config.get('command_mode_enabled', True)
@@ -901,7 +982,7 @@ class DictationApp:
             print(f"[HISTORY] Could not open persistent history: {e}")
             self.history_db = None
 
-        # Settings window
+        print("[INIT] Building UI...")
         self.settings_window = SettingsWindow(self)
 
         # Voice Training window
@@ -964,6 +1045,7 @@ class DictationApp:
         if self.config.get('alarms', {}).get('enabled', True):
             self.alarm_manager.start()
 
+        print("[INIT] Initializing TTS...")
         # TTS engine + AudioCoordinator (optional; off by default)
         # engine selection: config tts.engine = "winrt" (default) or "edge"
         self.tts_engine = None
@@ -1038,7 +1120,16 @@ class DictationApp:
         self._capslock_hook = None
         self._install_capslock_hook()
 
-        self.update_splash("Loading speech model — may take 30-60s on first run...")
+        # Tell the user if the model needs to be downloaded vs just loaded
+        _model_size = self.config.get('model_size', 'small.en')
+        _model_folder = f"models--Systran--faster-whisper-{_model_size}"
+        _model_cache = os.path.join(
+            os.path.expanduser("~"), ".cache", "huggingface", "hub", _model_folder
+        )
+        if os.path.exists(_model_cache):
+            self.update_splash("Loading speech model...")
+        else:
+            self.update_splash("Downloading speech model (first run only, may take a few minutes)...")
 
         # Load model in background
         self.load_model_async()
@@ -1093,6 +1184,17 @@ class DictationApp:
             except Exception as e:
                 print(f"[SPLASH] close() failed: {e}")
             self.splash = None
+
+    def _show_startup_error(self, message: str):
+        """Show a startup-failure dialog and exit. Runs on the UI thread."""
+        self._close_splash_post_load()
+        from tkinter import messagebox
+        messagebox.showerror(
+            "Samsara failed to start",
+            f"An error occurred during startup:\n\n{message}\n\n"
+            "Check the log file for the full traceback."
+        )
+        self.quit_app()
 
     def load_config(self):
         """Load configuration from JSON file"""
@@ -1889,9 +1991,12 @@ class DictationApp:
 
     def load_model_async(self):
         """Load Whisper model in background thread"""
+        self._startup_failed = False
+
         def load():
+          try:
             self.loading_model = True
-            print("Loading Whisper model (this may take a moment on first run)...")
+            print("[INIT] Loading Whisper model...")
             
             # Determine compute device with detailed logging
             device = self.config['device']
@@ -1950,6 +2055,7 @@ class DictationApp:
             except Exception as e:
                 print(f"[SPLASH] Could not close splash: {e}")
 
+            print("[INIT] Loading Silero VAD...")
             # Load Silero VAD for real-time speech gating (async-safe: if this
             # fails, the wake callback falls back to RMS).
             self._load_vad_model()
@@ -1962,7 +2068,7 @@ class DictationApp:
                 print("[AUTO] Starting continuous mode...")
                 self.start_continuous_mode()
 
-            # Start pre-buffer stream for hold/toggle
+            print("[INIT] Starting audio streams...")
             if mode in ('hold', 'toggle'):
                 self._start_prebuffer_stream()
 
@@ -1970,7 +2076,16 @@ class DictationApp:
             if self.config.get('wake_word_enabled', False):
                 print("[AUTO] Starting wake word listener...")
                 self.start_wake_word_mode()
-        
+            print("[INIT] Startup complete.")
+          except Exception as _exc:
+            import traceback
+            traceback.print_exc()
+            self.loading_model = False
+            self._startup_failed = True
+            err_msg = str(_exc)
+            self.update_splash(f"Startup error: {err_msg}")
+            self._schedule_ui(self._show_startup_error, err_msg)
+
         thread = threading.Thread(target=load, daemon=True)
         thread.start()
     
@@ -5836,11 +5951,17 @@ class DictationApp:
 
     def open_main_log(self):
         """Open the main log file in default text editor"""
-        log_file = LOG_FILE
-        if log_file.exists():
-            open_file_or_folder(log_file)
+        if LOG_FILE.exists():
+            open_file_or_folder(LOG_FILE)
         else:
             messagebox.showinfo("Log File", "No log file found yet.")
+
+    def open_log_file(self):
+        """Open the Samsara log file in Notepad (voice command target)."""
+        if LOG_FILE.exists():
+            subprocess.Popen(["notepad.exe", str(LOG_FILE)])
+        else:
+            print("[LOG] No log file found.")
 
     def open_voice_training_log(self):
         """Open the voice training log file"""
