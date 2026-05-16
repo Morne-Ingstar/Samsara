@@ -7,6 +7,7 @@ from samsara import ava_corrections
 from samsara import ava_profile
 from samsara import cloud_llm
 from samsara.languages import LANGUAGES
+from samsara.premium import is_premium
 from samsara.plugin_commands import command
 
 _LANG_CODE_TO_NAME = dict(LANGUAGES)
@@ -283,12 +284,18 @@ def ask_ollama(prompt, app, model=None, system=None):
 
     # ── Cloud LLM path ──
     if cloud_llm.is_enabled(app):
-        print("[AVA CLOUD] Routing to cloud provider")
-        cloud_response = cloud_llm.send(system, prompt, app)
-        if not cloud_response.startswith("Error:"):
-            return cloud_response
-        print(f"[AVA CLOUD] {cloud_response}")
-        print("[AVA CLOUD] Falling back to local Ollama")
+        if not is_premium(app):
+            print("[AVA CLOUD] Premium license required for cloud LLM")
+            speak(app, "Cloud mode requires a premium license. "
+                       "You can add one in Settings under Ava Cloud.")
+            # Fall through to local Ollama
+        else:
+            print("[AVA CLOUD] Routing to cloud provider")
+            cloud_response = cloud_llm.send(system, prompt, app)
+            if not cloud_response.startswith("Error:"):
+                return cloud_response
+            print(f"[AVA CLOUD] {cloud_response}")
+            print("[AVA CLOUD] Falling back to local Ollama")
 
     # ── Local Ollama path ──
     if not _check_ollama_available(host, timeout=1):
@@ -792,9 +799,13 @@ def handle_stop_schedule(app, remainder="", **kwargs):
 )
 def toggle_cloud(app, remainder="", **kwargs):
     global _cloud_notice_shown
+    if not is_premium(app):
+        speak(app, "Cloud mode requires a premium license. "
+                   "Check Settings, Ava Cloud tab for details.")
+        return
     cfg = app.config.get("cloud_llm", {})
     if not cfg.get("api_key"):
-        speak(app, "No API key configured. Add one in config under cloud LLM.")
+        speak(app, "No API key configured. Add one in Settings under Ava Cloud.")
         return
     currently_enabled = cfg.get("enabled", False)
     cfg["enabled"] = not currently_enabled
