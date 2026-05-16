@@ -7,6 +7,7 @@ hotkey configuration, and wake word setup.
 
 import json
 import tkinter as tk
+from tkinter import ttk
 from pathlib import Path
 
 import numpy as np

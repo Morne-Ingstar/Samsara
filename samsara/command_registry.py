@@ -18,6 +18,7 @@ Priority rules:
   enabled-pack command can still fire.
 """
 
+import re
 import threading
 import time
 
@@ -212,15 +213,20 @@ class CommandMatcher:
             return None, ''
 
         text_lower = text.lower().strip()
-        text_tokens = text_lower.split()
+        # Strip punctuation from tokens for matching only.
+        # Whisper adds trailing punctuation to short utterances ("Yes." "Yeah.")
+        # which prevents single-word commands like "yes" from ever matching.
+        # The original text is NOT modified here — callers hold the raw string
+        # and use it for dictation paste if no command matches.
+        clean_lower = re.sub(r'[^\w\s]', '', text_lower)
+        text_tokens = clean_lower.split()
 
         if not text_tokens:
             return None, ''
 
-        # Exact match first (fastest path; also guarantees built-in wins
-        # over plugin for identical phrases since built-ins load first)
-        if text_lower in self._entries:
-            entry = self._entries[text_lower]
+        # Exact match on cleaned text (fastest path; built-ins win on collision)
+        if clean_lower in self._entries:
+            entry = self._entries[clean_lower]
             if self._pack_enabled(entry.pack):
                 return entry, ''
             # Fall through to prefix scan if exact match is from disabled pack
