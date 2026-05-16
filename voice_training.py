@@ -798,8 +798,7 @@ Change in main Settings -> requires restart"""
         """Apply language change"""
         try:
             new_lang = self.lang_var.get()
-            self.app.config['language'] = new_lang
-            self.app.save_config()
+            self.app.update_config_and_save({'language': new_lang})
             messagebox.showinfo("Language Changed", f"Language set to: {new_lang}\n\nChange takes effect immediately.")
             logger.info(f"Language changed to: {new_lang}")
         except Exception as e:
@@ -810,8 +809,7 @@ Change in main Settings -> requires restart"""
         """Save custom initial prompt"""
         try:
             prompt = self.prompt_text.get('1.0', tk.END).strip()
-            self.app.config['initial_prompt'] = prompt
-            self.app.save_config()
+            self.app.update_config_and_save({'initial_prompt': prompt})
             messagebox.showinfo("Saved", "Initial prompt saved successfully!")
             logger.info("Initial prompt saved")
         except Exception as e:
@@ -877,7 +875,7 @@ Change in main Settings -> requires restart"""
                     self.lang_var.set(data['language'])
                 
                 self.save_training_data()
-                self.app.save_config()
+                self.app.persist_config()
                 
                 messagebox.showinfo("Success", "Training data imported successfully!")
                 logger.info(f"Imported training data from: {filename}")

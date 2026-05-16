@@ -666,7 +666,7 @@ class WakeWordDebugWindow:
         ww_config['modes']['short_dictate'] = {'silence_timeout': self.short_timeout_var.get(), 'require_end_word': False}
         ww_config['modes']['long_dictate'] = {'silence_timeout': self.long_timeout_var.get(), 'require_end_word': True}
         self.app.config['wake_word_config'] = ww_config
-        self.app.save_config()
+        self.app.persist_config()
         self.log("Settings applied and saved to config!")
 
     def update_flow(self, step):
