@@ -1244,6 +1244,7 @@ class DictationApp:
             "sound_volume": 0.5,
             "sound_theme": "cute",
             "first_run_complete": True,
+            "premium_license": "",
             # New nested wake word config
             "wake_word_config": {
                 "enabled": True,
