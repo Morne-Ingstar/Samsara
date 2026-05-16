@@ -48,3 +48,15 @@ scipy>=1.7.0   # PCM resampling (resample_poly) for TTS sample-rate normalizatio
 
 # UI Automation (Show Numbers overlay clicking)
 uiautomation>=2.0.0; sys_platform == "win32"  # Windows UI Automation tree enumeration
+
+# HTTP client (Ava/Ollama plugin, cloud LLM)
+requests>=2.28.0
+
+# Process/system info (window management plugin)
+psutil>=5.9.0
+
+# Win32 API bindings (window management, mouse hook)
+pywin32>=306; sys_platform == "win32"
+
+# Embedded browser overlay (task list window)
+pywebview>=5.0
