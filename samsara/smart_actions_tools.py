@@ -304,8 +304,8 @@ class ToolDispatcher:
             if self.app and hasattr(self.app, 'config'):
                 sa = self.app.config.setdefault('smart_actions', {})
                 sa.setdefault('tier2_approvals', {})[key] = True
-                if hasattr(self.app, 'save_config'):
-                    self.app.save_config()
+                if hasattr(self.app, 'persist_config'):
+                    self.app.persist_config()
         except Exception as e:
             logger.error("[TOOLS] Could not persist approval: %s", e)
 

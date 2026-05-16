@@ -567,7 +567,7 @@ class MainWindow:
             if x_str.lstrip('-').isdigit() and y_str.lstrip('-').isdigit():
                 cfg['window_x'] = int(x_str)
                 cfg['window_y'] = int(y_str)
-            self.app.save_config()
+            self.app.persist_config()
         except Exception as e:
             logger.error(f"Failed to save window geometry: {e}")
 
