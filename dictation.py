@@ -369,6 +369,14 @@ console_handler.setFormatter(logging.Formatter('%(asctime)s - %(message)s'))
 logger.addHandler(file_handler)
 logger.addHandler(console_handler)
 
+# Suppress noisy third-party debug output
+logging.getLogger("PIL").setLevel(logging.WARNING)
+logging.getLogger("PIL.Image").setLevel(logging.WARNING)
+logging.getLogger("httpcore").setLevel(logging.WARNING)
+logging.getLogger("httpx").setLevel(logging.WARNING)
+logging.getLogger("urllib3").setLevel(logging.WARNING)
+logging.getLogger("comtypes").setLevel(logging.WARNING)
+
 # Override print to also log
 _original_print = print
 def print(*args, **kwargs):
@@ -1276,7 +1284,8 @@ class DictationApp:
                 self.config = default_config
         else:
             self.config = default_config
-            self.save_config()
+            with self._config_lock:
+                self.save_config()
     
     def _migrate_wake_word_config(self, default_config):
         """Migrate old flat wake word settings to new nested structure"""
@@ -1302,7 +1311,8 @@ class DictationApp:
                 self.config['wake_word_config']['audio']['min_speech_duration'] = self.config['min_speech_duration']
             
             # Save migrated config
-            self.save_config()
+            with self._config_lock:
+                self.save_config()
             print("[CONFIG] Migrated wake word settings to new format")
         else:
             # Ensure all nested keys exist (for configs created between versions)

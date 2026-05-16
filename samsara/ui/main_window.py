@@ -561,13 +561,11 @@ class MainWindow:
             w = int(w_str)
             h = int(h_str)
             x_str, _, y_str = pos.partition('+')
-            cfg = self.app.config
-            cfg['window_width'] = w
-            cfg['window_height'] = h
+            changes = {'window_width': w, 'window_height': h}
             if x_str.lstrip('-').isdigit() and y_str.lstrip('-').isdigit():
-                cfg['window_x'] = int(x_str)
-                cfg['window_y'] = int(y_str)
-            self.app.persist_config()
+                changes['window_x'] = int(x_str)
+                changes['window_y'] = int(y_str)
+            self.app.update_config(changes)
         except Exception as e:
             logger.error(f"Failed to save window geometry: {e}")
 
