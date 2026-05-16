@@ -7,6 +7,7 @@ Creates a standalone directory-based distribution
 import os
 import sys
 from pathlib import Path
+from PyInstaller.utils.hooks import collect_all
 
 block_cipher = None
 
@@ -48,10 +49,10 @@ faster_whisper_assets = os.path.join(site_packages, 'faster_whisper', 'assets')
 if os.path.exists(faster_whisper_assets):
     datas.append((faster_whisper_assets, 'faster_whisper/assets'))
 
-# 2b. OpenWakeWord ONNX models (hey_jarvis, alexa, hey_mycroft, etc.)
-oww_resources = os.path.join(site_packages, 'openwakeword', 'resources')
-if os.path.exists(oww_resources):
-    datas.append((oww_resources, 'openwakeword/resources'))
+# 2b. OpenWakeWord — collect everything (Python files, ONNX models, resources)
+oww_datas, oww_binaries, oww_hiddenimports = collect_all('openwakeword')
+datas    += oww_datas
+binaries += oww_binaries
 
 # 3. customtkinter themes and assets
 customtkinter_path = os.path.join(site_packages, 'customtkinter')
@@ -256,13 +257,11 @@ hiddenimports = [
     # Samsara OWW pre-filter
     'samsara.wake_detector',
 
-    # OpenWakeWord
-    'openwakeword',
-    'openwakeword.model',
-    'openwakeword.utils',
-
     'voice_training',
 ]
+
+# Merge imports collected by collect_all('openwakeword')
+hiddenimports += oww_hiddenimports
 
 # ============================================================================
 # ANALYSIS
@@ -287,7 +286,12 @@ a = Analysis(
         'jupyter',
         # Exclude heavy ML frameworks not needed for faster_whisper
         'torch',
+		'torch._C',
+		'torch.cuda',
+		'torch.nn',
+	    'torch.utils',
         'torchgen',
+		'torchaudio',
         'tensorflow',
         'keras',
         'tensorboard',
