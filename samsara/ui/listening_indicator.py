@@ -118,7 +118,7 @@ def _get_font():
     if _font_cache is None:
         for path in _FONT_PATHS:
             try:
-                _font_cache = ImageFont.truetype(path, 11)
+                _font_cache = ImageFont.truetype(path, 13)
                 return _font_cache
             except Exception:
                 pass
