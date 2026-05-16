@@ -60,3 +60,6 @@ pywin32>=306; sys_platform == "win32"
 
 # Embedded browser overlay (task list window)
 pywebview>=5.0
+
+# Wake word pre-filter (gates Whisper calls — reduces CPU on machines without GPU)
+openwakeword>=0.6.0
