@@ -2415,6 +2415,12 @@
       "target": "steam://nav/downloads",
       "description": "Open Steam downloads view",
       "pack": "gaming"
+    },
+    "open log": {
+      "type": "method",
+      "method": "open_log_file",
+      "description": "Open the Samsara log file in Notepad",
+      "pack": "core"
     }
   }
 }
