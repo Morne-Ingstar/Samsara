@@ -114,6 +114,11 @@ class AudioCoordinator:
     # Public API
     # ------------------------------------------------------------------
 
+    @property
+    def is_speaking(self) -> bool:
+        """True while the coordinator is in the SPEAKING state."""
+        return self._state == SPEAKING
+
     def speak(
         self,
         text: str,
