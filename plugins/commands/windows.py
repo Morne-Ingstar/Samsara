@@ -751,8 +751,8 @@ def handle_rescue_lost(app, remainder):
     return True
 
 
-@command("find",
-         aliases=["where is", "find window"],
+@command("find window",
+         aliases=["where is"],
          pack="window-management")
 def handle_find_specific(app, remainder):
     if not remainder or not remainder.strip():

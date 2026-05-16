@@ -82,7 +82,7 @@ def handle_resume(app, remainder):
 
 
 @command("skip forward", aliases=[
-    "skip ahead", "fast forward", "go forward", "forward", "next bit"
+    "skip ahead", "fast forward", "forward", "next bit"
 ], pack="stremio")
 def handle_skip_forward(app, remainder):
     print("[STREMIO] Skipping forward")
@@ -101,7 +101,7 @@ ExitApp, 0
 
 
 @command("skip back", aliases=[
-    "go back", "rewind", "back up", "skip backward", "go backwards"
+    "rewind", "back up", "skip backward", "go backwards"
 ], pack="stremio")
 def handle_skip_back(app, remainder):
     print("[STREMIO] Skipping back")
@@ -120,7 +120,7 @@ ExitApp, 0
 
 
 @command("fullscreen", aliases=[
-    "toggle fullscreen", "full screen", "exit fullscreen",
+    "toggle fullscreen", "exit fullscreen",
     "stremio fullscreen", "go fullscreen"
 ], pack="stremio")
 def handle_fullscreen(app, remainder):
