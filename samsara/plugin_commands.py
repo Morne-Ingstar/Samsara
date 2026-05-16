@@ -56,7 +56,8 @@ def clear_shared_matcher():
     _shared_matcher = None
 
 
-def command(phrase, aliases=None, pack='core', debounce=0.0, app_overrides=None):
+def command(phrase, aliases=None, pack='core', debounce=0.0, app_overrides=None,
+            ai_visible=True):
     """Decorator: register a function as a voice command.
 
     The decorated function is called as `func(app, remainder)` where `remainder`
@@ -71,6 +72,7 @@ def command(phrase, aliases=None, pack='core', debounce=0.0, app_overrides=None)
         app_overrides: dict mapping lowercase exe names to key strings or None.
             Example: {"code.exe": "ctrl+shift+n", "notepad.exe": None}
             None means the command is disabled in that app.
+        ai_visible: if False, excluded from Ava's injected command list (default True)
     """
     def decorator(func):
         entry = {
@@ -81,6 +83,7 @@ def command(phrase, aliases=None, pack='core', debounce=0.0, app_overrides=None)
             'pack': pack,
             'debounce': float(debounce),
             'app_overrides': dict(app_overrides) if app_overrides else {},
+            'ai_visible': bool(ai_visible),
         }
         _REGISTRY[entry['phrase']] = entry
         for alias in entry['aliases']:
