@@ -24,6 +24,7 @@ from samsara.ui.profile_manager_ui import ProfileManagerWindow
 from samsara.alarms import get_default_alarm_config
 from samsara.ui.tabs.general_tab import GeneralTab
 from samsara.ui.tabs.advanced_tab import AdvancedTab
+from samsara.ui.tabs.cloud_llm_tab import CloudLLMTab
 
 
 class SettingsWindow:
@@ -98,6 +99,7 @@ class SettingsWindow:
         self.tabview.add("Commands")
         self.tabview.add("Sounds")
         self.tabview.add("Text-to-Speech")
+        self.tabview.add("Ava / Cloud")
         self.tabview.add("Alarms")
         self.tabview.add("Smart Actions")
         self.tabview.add("Advanced")
@@ -105,12 +107,14 @@ class SettingsWindow:
         # Lazy tab loading -- only build tabs on first visit
         self.general_tab = GeneralTab(self.tabview.tab("General"), self.app, self)
         self.advanced_tab = AdvancedTab(self.tabview.tab("Advanced"), self.app)
+        self.cloud_llm_tab = CloudLLMTab(self.tabview.tab("Ava / Cloud"), self.app)
         self._tab_builders = {
             "General": {"built": False, "builder": self.general_tab.build},
             "Hotkeys & Modes": {"built": False, "builder": self.build_hotkeys_modes_tab},
             "Commands": {"built": False, "builder": self.build_commands_tab},
             "Sounds": {"built": False, "builder": self.build_sounds_tab},
             "Text-to-Speech": {"built": False, "builder": self.build_tts_tab},
+            "Ava / Cloud": {"built": False, "builder": self.cloud_llm_tab.build},
             "Alarms": {"built": False, "builder": self.build_alarms_tab},
             "Smart Actions": {"built": False, "builder": self.build_smart_actions_tab},
             "Advanced": {"built": False, "builder": self.advanced_tab.build},
@@ -1261,6 +1265,10 @@ class SettingsWindow:
         # Save Text-to-Speech settings -- only if the tab was visited
         if "Text-to-Speech" in self.built_tabs and hasattr(self, '_tts_tab'):
             self._tts_tab.save()
+
+        # Save Ava / Cloud LLM settings -- only if the tab was visited
+        if "Ava / Cloud" in self.built_tabs and hasattr(self, 'cloud_llm_tab'):
+            self.cloud_llm_tab.save()
 
         # Save Command Mode button + suppress settings
         if "Commands" in self.built_tabs and hasattr(self, 'cmd_mode_button_var'):
