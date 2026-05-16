@@ -388,9 +388,17 @@ file_handler.setFormatter(_log_fmt)
 
 # Console handler — force UTF-8 so Unicode chars (arrows, etc.) don't
 # raise UnicodeEncodeError on cp1252 Windows consoles.
-console_handler = logging.StreamHandler(
-    open(sys.stdout.fileno(), mode='w', encoding='utf-8', buffering=1, closefd=False)
-)
+# In the packaged EXE (console=False) sys.stdout is None and fileno()
+# would crash; fall back to stderr (StreamHandler handles None silently).
+if sys.stdout is not None and hasattr(sys.stdout, 'fileno'):
+    try:
+        console_handler = logging.StreamHandler(
+            open(sys.stdout.fileno(), mode='w', encoding='utf-8', buffering=1, closefd=False)
+        )
+    except (OSError, AttributeError):
+        console_handler = logging.StreamHandler(sys.stderr)
+else:
+    console_handler = logging.StreamHandler(sys.stderr)
 console_handler.setLevel(logging.DEBUG)
 console_handler.setFormatter(logging.Formatter("%(asctime)s - %(message)s"))
 
