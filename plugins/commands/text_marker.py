@@ -206,3 +206,48 @@ def select_to_here(app, remainder):
     _marker_hwnd = None
     print(f"[MARKER] Selected to ({x}, {y}) — anchor cleared")
     return True
+
+
+# ── Select paragraph (triple-click) ──────────────────────────────────────────
+
+def _triple_click():
+    """Send three rapid left clicks at the current mouse position."""
+    x, y = _get_cursor_pos()
+    abs_x, abs_y = _to_absolute(x, y)
+
+    clicks = []
+    for _ in range(3):
+        down = _INPUT()
+        down.type = INPUT_MOUSE
+        down.u.mi.dx = abs_x
+        down.u.mi.dy = abs_y
+        down.u.mi.dwFlags = MOUSEEVENTF_LEFTDOWN | MOUSEEVENTF_ABSOLUTE | MOUSEEVENTF_VIRTUALDESK
+        down.u.mi.mouseData = 0
+        down.u.mi.time = 0
+        down.u.mi.dwExtraInfo = None
+        clicks.append(down)
+
+        up = _INPUT()
+        up.type = INPUT_MOUSE
+        up.u.mi.dx = abs_x
+        up.u.mi.dy = abs_y
+        up.u.mi.dwFlags = MOUSEEVENTF_LEFTUP | MOUSEEVENTF_ABSOLUTE | MOUSEEVENTF_VIRTUALDESK
+        up.u.mi.mouseData = 0
+        up.u.mi.time = 0
+        up.u.mi.dwExtraInfo = None
+        clicks.append(up)
+
+    arr = (_INPUT * len(clicks))(*clicks)
+    user32.SendInput(len(clicks), ctypes.pointer(arr[0]), ctypes.sizeof(_INPUT))
+
+
+@command(
+    "select paragraph",
+    aliases=["select this paragraph", "grab paragraph", "select block"],
+    pack="text-editing",
+)
+def select_paragraph(app, remainder="", **kwargs):
+    """Triple-click at current mouse position to select the paragraph."""
+    _triple_click()
+    print("[MARKER] Triple-click — paragraph selected")
+    return True
