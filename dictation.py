@@ -3177,6 +3177,12 @@ class DictationApp:
             ww_config = self.config.get('wake_word_config', {})
             audio_config = ww_config.get('audio', {})
             speech_threshold = audio_config.get('speech_threshold', DEFAULT_SPEECH_THRESHOLD)
+            # When Silero is unavailable we fall back to RMS gating.
+            # DEFAULT_SPEECH_THRESHOLD (0.03) is tuned for typical mics; quiet
+            # USB headsets can have speech RMS as low as 0.005. Cap at 0.01 so
+            # uncalibrated quiet mics still get their audio buffered.
+            if not self._vad_available:
+                speech_threshold = min(speech_threshold, 0.01)
             min_speech = audio_config.get('min_speech_duration', DEFAULT_MIN_SPEECH_DURATION)
             
             # Use dynamic silence timeout if in dictation mode, otherwise use fast wake detection
@@ -3375,15 +3381,21 @@ class DictationApp:
             
             # Get transcription parameters based on performance mode
             transcribe_params = self.get_transcription_params()
+            # When Silero is unavailable we relied on RMS to gate speech into
+            # the buffer. Whisper's own vad_filter then strips quiet audio a
+            # second time — on low-gain mics this removes everything, producing
+            # empty transcription. Disable it so RMS-gated audio passes through.
+            if not self._vad_available:
+                transcribe_params['vad_filter'] = False
             perf_mode = self.config.get('performance_mode', 'balanced')
-            
+
             transcribe_start = time.time()
             with self.model_lock:
                 segments, info = self.model.transcribe(audio, **transcribe_params)
-            
+
             text = "".join([segment.text for segment in segments]).strip()
             transcribe_time = time.time() - transcribe_start
-            
+
             # Performance logging for wake word mode
             rtf = transcribe_time / audio_duration if audio_duration > 0 else 0
             device_info = getattr(self, 'device_type', 'unknown')
