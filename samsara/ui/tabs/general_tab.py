@@ -12,10 +12,16 @@ import tkinter as tk
 
 import customtkinter as ctk
 
+from samsara.languages import LANGUAGES, DEFAULT_TTS_VOICES
+
 
 class GeneralTab:
     """General settings tab: Microphone, Basic Options, Listening Indicator,
     Profiles, Voice Training, AI Model."""
+
+    # Language display <-> code maps (derived from shared languages module)
+    LANG_DISPLAY_TO_CODE = {name: code for name, code in LANGUAGES}
+    LANG_CODE_TO_DISPLAY = {code: name for name, code in LANGUAGES}
 
     # Model display <-> internal-value maps live here, not on SettingsWindow.
     MODEL_DISPLAY_TO_VALUE = {
@@ -54,7 +60,9 @@ class GeneralTab:
         self.auto_start_var = None
         self.indicator_enabled_var = None
         self.indicator_pos_var = None
+        self.language_var = None
         self.model_var = None
+        self._lang_warning_label = None
 
     # ------------------------------------------------------------------
     # Build (generator — yields between sections for staged loading)
@@ -208,8 +216,23 @@ class GeneralTab:
 
         model_frame = ctk.CTkFrame(general_scroll, corner_radius=10)
         model_frame.pack(fill='x')
-        ctk.CTkLabel(model_frame, text="Whisper model size:"
+
+        # --- Language ---
+        ctk.CTkLabel(model_frame, text="Transcription language:"
                      ).pack(anchor='w', padx=15, pady=(15, 5))
+
+        lang_names = [name for name, _ in LANGUAGES]
+        current_lang_code = self.app.config.get('language', 'en')
+        current_lang_display = self.LANG_CODE_TO_DISPLAY.get(current_lang_code, 'English')
+
+        self.language_var = tk.StringVar(value=current_lang_display)
+        ctk.CTkComboBox(model_frame, variable=self.language_var,
+                        values=lang_names, width=250, state='readonly'
+                        ).pack(anchor='w', padx=15, pady=(0, 10))
+
+        # --- Model ---
+        ctk.CTkLabel(model_frame, text="Whisper model size:"
+                     ).pack(anchor='w', padx=15, pady=(0, 5))
 
         model_options = list(self.MODEL_DISPLAY_TO_VALUE.keys())
         current_model = self.app.config.get('model_size', 'base')
@@ -219,6 +242,17 @@ class GeneralTab:
         ctk.CTkComboBox(model_frame, variable=self.model_var,
                         values=model_options, width=400, state='readonly'
                         ).pack(anchor='w', padx=15, pady=(0, 5))
+
+        # Warning label: shown when a non-English language + .en model are selected
+        self._lang_warning_label = ctk.CTkLabel(
+            model_frame, text="",
+            text_color="#E8A020",
+            wraplength=460,
+            justify='left',
+            font=ctk.CTkFont(size=12),
+        )
+        self._lang_warning_label.pack(anchor='w', padx=15, pady=(0, 4))
+
         ctk.CTkLabel(model_frame,
                      text=".en variants are more accurate for English-only speakers. small.en on GPU is the sweet spot.",
                      text_color="gray"
@@ -227,7 +261,31 @@ class GeneralTab:
                      text_color="#1f6aa5"
                      ).pack(anchor='w', padx=15, pady=(0, 15))
 
+        # Wire traces so warning updates live as dropdowns change
+        self.language_var.trace_add('write', self._on_language_or_model_changed)
+        self.model_var.trace_add('write', self._on_language_or_model_changed)
+        self._on_language_or_model_changed()  # set initial state
+
         self._built = True
+
+    # ------------------------------------------------------------------
+    # Callbacks
+    # ------------------------------------------------------------------
+
+    def _on_language_or_model_changed(self, *_):
+        if self._lang_warning_label is None or self.language_var is None or self.model_var is None:
+            return
+        lang_display = self.language_var.get()
+        lang_code = self.LANG_DISPLAY_TO_CODE.get(lang_display, "en")
+        model_value = self.MODEL_DISPLAY_TO_VALUE.get(self.model_var.get(), "")
+        if lang_code != "en" and model_value.endswith(".en"):
+            self._lang_warning_label.configure(
+                text=f"You're using an English-only model. Switch to the multilingual "
+                     f"version (e.g. 'small' instead of 'small.en') for best results "
+                     f"in {lang_display}."
+            )
+        else:
+            self._lang_warning_label.configure(text="")
 
     # ------------------------------------------------------------------
     # Save
@@ -291,5 +349,24 @@ class GeneralTab:
                         self.app.update_config({'microphone': mic['id']}, save=False)
                     self.app.update_config({'microphone_name': mic['name']}, save=False)
                     break
+
+        # Language + TTS voice auto-switch
+        if self.language_var is not None:
+            lang_display = self.language_var.get()
+            new_lang = self.LANG_DISPLAY_TO_CODE.get(lang_display, 'en')
+            old_lang = self.app.config.get('language', 'en')
+            self.app.update_config({'language': new_lang}, save=False)
+
+            if new_lang != old_lang:
+                old_default_voice = DEFAULT_TTS_VOICES.get(old_lang)
+                new_default_voice = DEFAULT_TTS_VOICES.get(new_lang)
+                current_voice = self.app.config.get('tts', {}).get('voice_id')
+                # Only auto-switch if the user never customized the voice
+                if new_default_voice and (
+                    current_voice == old_default_voice or current_voice is None
+                ):
+                    tts_cfg = dict(self.app.config.get('tts', {}) or {})
+                    tts_cfg['voice_id'] = new_default_voice
+                    self.app.update_config({'tts': tts_cfg}, save=False)
 
         return {'new_model': new_model, 'mic_changed': mic_changed}

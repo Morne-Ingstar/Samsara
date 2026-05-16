@@ -348,7 +348,7 @@ Setup takes about 1 minute."""
                 font=('Segoe UI', 8), bg='#2d2d2d', fg='#888888').pack(anchor='w')
 
         # Dropdown with preset options
-        wake_words = ["hey samsara", "ok samsara", "hey computer", "listen up", "voice command"]
+        wake_words = ["samsara", "hey samsara", "samsa", "computer", "hey computer", "jarvis", "hey jarvis"]
         self.wake_word_combo = ttk.Combobox(wake_frame, textvariable=self.wake_word_var,
                                             values=wake_words, width=16, font=('Segoe UI', 9))
         self.wake_word_combo.pack(side='right', padx=5)

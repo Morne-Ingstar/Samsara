@@ -169,7 +169,11 @@ import customtkinter as ctk
 # noisy libraries at WARNING so genuine problems still surface.
 for _name in ("torio", "torio._extension", "torchaudio",
               "torchaudio._extension", "torch", "urllib3",
-              "huggingface_hub"):
+              "huggingface_hub",
+              "PIL", "PIL.Image", "PIL.PngImagePlugin",
+              "PIL.JpegImagePlugin", "PIL.TiffImagePlugin",
+              "httpcore", "httpx",
+              "comtypes", "comtypes.client"):
     logging.getLogger(_name).setLevel(logging.WARNING)
 
 
@@ -217,6 +221,8 @@ from samsara.wake_word_matcher import match_wake_phrase
 from samsara.wake_corrections import apply_corrections as apply_wake_corrections, was_corrected
 from samsara.command_parser import parse_wake_command, normalize_command_text, strip_wake_echoes
 from samsara.phonetic_wash import apply_phonetic_wash
+from samsara.command_stats import increment_command_count
+from samsara import ava_corrections as _ava_corrections
 from samsara import plugin_commands as _plugin_commands
 from samsara.command_registry import CommandMatcher
 from samsara.handlers import CommandContext, get_handler
@@ -352,8 +358,11 @@ file_handler = logging.FileHandler(LOG_FILE, encoding='utf-8')
 file_handler.setLevel(logging.DEBUG)
 file_handler.setFormatter(logging.Formatter('%(asctime)s - %(levelname)s - %(message)s'))
 
-# Console handler - also logs everything when console is visible
-console_handler = logging.StreamHandler(sys.stdout)
+# Console handler — force UTF-8 so Unicode chars (arrows, etc.) don't
+# raise UnicodeEncodeError on cp1252 Windows consoles.
+console_handler = logging.StreamHandler(
+    open(sys.stdout.fileno(), mode='w', encoding='utf-8', buffering=1, closefd=False)
+)
 console_handler.setLevel(logging.DEBUG)
 console_handler.setFormatter(logging.Formatter('%(asctime)s - %(message)s'))
 
@@ -2764,6 +2773,8 @@ class DictationApp:
                             and self.command_executor.find_command(result) == result):
                         self._last_command = _store_cmd
                         self._last_command_name = result
+                    if result:
+                        increment_command_count(result)
                     # Command was executed
                     return
 
@@ -2837,8 +2848,8 @@ class DictationApp:
         # Play start sound using winsound on Windows to avoid InputStream conflict
         self.play_sound("start", use_winsound=True)
         time.sleep(0.15)  # Brief pause for sound to start
-        wake_word = self.config.get('wake_word', 'hey claude')
-        print(f"[LISTEN] Wake word mode ACTIVE - say '{wake_word}' to give commands")
+        phrase = self.config.get('wake_word_config', {}).get('phrase', 'hey samsara')
+        print(f"[LISTEN] Wake word mode ACTIVE - say '{phrase}' to give commands")
 
         with self.buffer_lock:
             self.speech_buffer = []
@@ -2925,6 +2936,7 @@ class DictationApp:
             model.eval()
             self._vad_model = model
             self._vad_available = True
+            self._vad_lock = threading.Lock()
             print("[VAD] Silero VAD loaded for real-time speech detection")
         except Exception as e:
             self._vad_model = None
@@ -2939,14 +2951,27 @@ class DictationApp:
         then feed 512-sample windows to Silero (its required input size at 16kHz).
         Returns True if ANY window contains speech.
         """
+        if not self._vad_available or self._vad_model is None:
+            return False
         chunk_16k = resample_audio(chunk_float32, self.capture_rate, 16000)
-        # Silero VAD v5 requires exactly 512 samples at 16kHz per call
+        # Guarantee 1D — sounddevice returns (N, 1) for mono in some configs
+        if chunk_16k.ndim > 1:
+            chunk_16k = chunk_16k.flatten()
         window_size = 512
         for start in range(0, len(chunk_16k) - window_size + 1, window_size):
             window = chunk_16k[start:start + window_size]
-            tensor = torch.from_numpy(window).unsqueeze(0)
-            with torch.no_grad():
-                speech_prob = self._vad_model(tensor, 16000).item()
+            # Force float32 and correct shape before model call
+            tensor = torch.from_numpy(window).float().unsqueeze(0)
+            if tensor.shape != (1, 512):
+                continue
+            with self._vad_lock:
+                with torch.no_grad():
+                    try:
+                        speech_prob = self._vad_model(tensor, 16000).item()
+                    except RuntimeError as e:
+                        print(f"[VAD] State corruption caught, auto-resetting: {e}")
+                        self._vad_model.reset_states()
+                        continue
             if speech_prob > 0.5:
                 return True
         return False
@@ -2954,10 +2979,11 @@ class DictationApp:
     def _vad_reset(self):
         """Clear Silero VAD internal state between utterances."""
         if self._vad_available and self._vad_model is not None:
-            try:
-                self._vad_model.reset_states()
-            except Exception as e:
-                print(f"[VAD] reset_states failed: {e}")
+            with self._vad_lock:
+                try:
+                    self._vad_model.reset_states()
+                except Exception as e:
+                    print(f"[VAD] reset_states failed: {e}")
 
     def wake_word_audio_callback(self, indata, frames, time_info, status):
         """Callback for wake word listening"""
@@ -3003,7 +3029,19 @@ class DictationApp:
             # and we must NOT feed the pre-buffer to avoid overlap on next session
             if self._hotkey_recording:
                 return
-            
+
+            # Suppress while TTS is speaking AND for 300ms after it stops.
+            # The 300ms hold-off covers the acoustic tail (room reverb, mic
+            # ring) so Ava's voice doesn't bleed into the pre-buffer.
+            # _tts_last_speaking is updated on every callback while speaking,
+            # so it marks the last moment TTS audio was live on the mic.
+            _coordinator = getattr(self, 'audio_coordinator', None)
+            if _coordinator and _coordinator.is_speaking:
+                self._tts_last_speaking = time.monotonic()
+                return
+            if (time.monotonic() - getattr(self, '_tts_last_speaking', 0.0) < 0.3):
+                return
+
             # Feed the pre-buffer (only when not hotkey recording)
             self._prebuffer.append(audio_chunk.copy())
             
@@ -3476,6 +3514,8 @@ class DictationApp:
                         and self.command_executor.find_command(result) == result):
                     self._last_command = _store_cmd
                     self._last_command_name = result
+                if result:
+                    increment_command_count(result)
                 self.wake_word_triggered = False
                 self.app_state = 'asleep'
                 # Arm Layer 3: the wake callback suppresses buffering for the
@@ -4515,6 +4555,9 @@ class DictationApp:
             if stream is None:
                 raise RuntimeError("failed to open wake-word input stream")
             self.wake_stream = stream
+            # Clear stale VAD hidden state from the previous stream session
+            # before callbacks start firing on the new stream.
+            self._vad_reset()
             self.wake_stream.start()
             # continuous_active fan-out runs inside wake_word_audio_callback;
             # no separate continuous stream is needed in this case.
@@ -4530,6 +4573,7 @@ class DictationApp:
             if stream is None:
                 raise RuntimeError("failed to open continuous input stream")
             self.continuous_stream = stream
+            self._vad_reset()
             self.continuous_stream.start()
         else:
             # Hold/toggle modes: pre-buffer stream when model is loaded
@@ -4622,6 +4666,19 @@ class DictationApp:
         # This captures audio from ~1.5s before the hotkey was pressed
         prebuffer_audio = list(self._prebuffer)
         self._prebuffer.clear()
+
+        # Discard pre-buffer if TTS was active recently — it may contain
+        # Ava's own voice which would be transcribed as the user's input.
+        # Use a 500ms window (wider than the 300ms callback hold-off) to
+        # account for the extra latency between start_recording() being
+        # called and the callback timestamp being last updated.
+        _coordinator = getattr(self, 'audio_coordinator', None)
+        if _coordinator and _coordinator.is_speaking:
+            prebuffer_audio = []
+            print("[PRE] Pre-buffer discarded — TTS actively speaking")
+        elif time.monotonic() - getattr(self, '_tts_last_speaking', 0.0) < 0.5:
+            prebuffer_audio = []
+            print("[PRE] Pre-buffer discarded — TTS ended too recently")
 
         # Stop the pre-buffer stream to avoid two streams on the same device.
         # Running dual streams causes PortAudio to deliver overlapping audio data,
@@ -4804,6 +4861,8 @@ class DictationApp:
                                     and self.command_executor.find_command(result) == result):
                                 self._last_command = _store_cmd
                                 self._last_command_name = result
+                            if result:
+                                increment_command_count(result)
                             # Command was executed - add to history as command
                             self.add_to_history(text, is_command=True)
                             self._log_history(
@@ -5922,6 +5981,12 @@ class DictationApp:
         except:
             pass
         
+        # Flush Ava alias use-count to disk before exit
+        try:
+            _ava_corrections.flush_pending()
+        except Exception:
+            pass
+
         # Force exit - os._exit bypasses cleanup but guarantees termination
         # This is necessary because pystray calls us from a background thread
         # and tkinter GUI cleanup from non-main thread can hang
