@@ -176,11 +176,23 @@ hiddenimports = [
     'huggingface_hub',
     'huggingface_hub.file_download',
     
-    # Samsara modules
+    # HTTP client
+    'requests',
+    'urllib3',
+
+    # Process info
+    'psutil',
+
+    # Win32 bindings
+    'win32process',
+
+    # Samsara core modules
     'samsara',
     'samsara.calibration',
     'samsara.clipboard',
     'samsara.command_parser',
+    'samsara.command_registry',
+    'samsara.command_stats',
     'samsara.commands',
     'samsara.constants',
     'samsara.echo_cancel',
@@ -191,6 +203,28 @@ hiddenimports = [
     'samsara.wake_word_matcher',
     'samsara.wake_corrections',
     'samsara.plugin_commands',
+    'samsara.phonetic_wash',
+    'samsara.history',
+    'samsara.cleanup',
+    'samsara.languages',
+    'samsara.tasks_store',
+    'samsara.cloud_llm',
+    'samsara.ava_corrections',
+    'samsara.ava_profile',
+
+    # Samsara TTS subsystem
+    'samsara.tts',
+    'samsara.tts.coordinator',
+    'samsara.tts.winrt_engine',
+    'samsara.tts.edge_engine',
+    'samsara.tts.exceptions',
+
+    # Samsara Smart Actions
+    'samsara.smart_actions_bridge',
+    'samsara.smart_actions_session',
+    'samsara.smart_actions_tools',
+
+    # Samsara UI
     'samsara.ui',
     'samsara.ui.settings_window',
     'samsara.ui.first_run_wizard',
@@ -199,13 +233,21 @@ hiddenimports = [
     'samsara.ui.profile_manager_ui',
     'samsara.ui.wake_word_debug',
     'samsara.ui.listening_indicator',
+    'samsara.ui.layered_overlay',
     'samsara.ui.main_window',
     'samsara.ui.history_frame',
     'samsara.ui.dictionary_frame',
-    'samsara.phonetic_wash',
-    'samsara.command_registry',
-    'samsara.history',
-    'samsara.cleanup',
+    'samsara.ui.command_cheatsheet',
+    'samsara.ui.tts_settings_tab',
+    'samsara.ui.task_overlay',
+    'samsara.ui.tabs',
+    'samsara.ui.tabs.general_tab',
+    'samsara.ui.tabs.advanced_tab',
+    'samsara.ui.tabs.cloud_llm_tab',
+
+    # Samsara CUDA detection
+    'samsara.cuda_detect',
+
     'voice_training',
 ]
 
