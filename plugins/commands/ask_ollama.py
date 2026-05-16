@@ -706,7 +706,7 @@ def handle_is_it_safe(app, remainder="", **kwargs):
 
 @command(
     "yes",
-    aliases=["confirm it", "do it", "go ahead", "yeah do it"],
+    aliases=["confirm it", "do it", "go ahead", "yeah do it", "yeah", "yep", "yup", "sure"],
     pack="ai",
     ai_visible=False,
 )
