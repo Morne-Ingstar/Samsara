@@ -8,7 +8,7 @@ Can be opened from the Qt settings General tab or any other caller.
 import threading
 from pathlib import Path
 
-from PySide6.QtCore import Qt
+from PySide6.QtCore import Qt, QTimer
 from PySide6.QtWidgets import (
     QApplication, QMainWindow, QWidget, QVBoxLayout, QHBoxLayout,
     QScrollArea, QLabel, QComboBox, QPushButton,
@@ -126,11 +126,22 @@ class ProfileManagerQt:
 
     def _create(self):
         qt_app = QApplication.instance()
+        owns_app = qt_app is None
         if qt_app is None:
             qt_app = QApplication([])
+        if owns_app:
+            self._init_window()
+            qt_app.exec()
+            self._window = None
+        else:
+            QTimer.singleShot(0, qt_app, self._init_window)
+
+    def _init_window(self):
         self._window = _ProfileManagerWindow(self._pm, self._cb)
+        self._window.destroyed.connect(self._on_destroyed)
         self._window.show()
-        qt_app.exec()
+
+    def _on_destroyed(self):
         self._window = None
 
 

@@ -419,11 +419,22 @@ class SettingsQt:
 
     def _create(self):
         qt_app = QApplication.instance()
+        owns_app = qt_app is None
         if qt_app is None:
             qt_app = QApplication([])
+        if owns_app:
+            self._init_window()
+            qt_app.exec()
+            self._window = None
+        else:
+            QTimer.singleShot(0, qt_app, self._init_window)
+
+    def _init_window(self):
         self._window = _SettingsWindow(self.app)
+        self._window.destroyed.connect(self._on_destroyed)
         self._window.show()
-        qt_app.exec()
+
+    def _on_destroyed(self):
         self._window = None
 
 
