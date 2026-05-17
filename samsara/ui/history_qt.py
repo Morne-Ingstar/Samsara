@@ -9,7 +9,7 @@ same pattern as settings_qt.py.
 import threading
 from datetime import datetime
 
-from PySide6.QtCore import Qt, Signal
+from PySide6.QtCore import Qt, QTimer, Signal
 from PySide6.QtGui import QBrush, QColor
 from PySide6.QtWidgets import (
     QApplication, QMainWindow, QWidget, QVBoxLayout, QHBoxLayout,
@@ -181,11 +181,22 @@ class HistoryQt:
 
     def _create(self):
         qt_app = QApplication.instance()
+        owns_app = qt_app is None
         if qt_app is None:
             qt_app = QApplication([])
+        if owns_app:
+            self._init_window()
+            qt_app.exec()
+            self._window = None
+        else:
+            QTimer.singleShot(0, qt_app, self._init_window)
+
+    def _init_window(self):
         self._window = _HistoryWindow(self.app)
+        self._window.destroyed.connect(self._on_destroyed)
         self._window.show()
-        qt_app.exec()
+
+    def _on_destroyed(self):
         self._window = None
 
 
