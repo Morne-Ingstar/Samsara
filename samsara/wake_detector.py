@@ -39,7 +39,7 @@ class WakeWordDetector:
             # Wake word confirmed — send buffer to Whisper for command.
     """
 
-    def __init__(self, wake_phrase, threshold=0.5):
+    def __init__(self, wake_phrase, threshold=0.2):
         self._wake_phrase  = wake_phrase.lower().strip()
         self._threshold    = threshold
         self._model        = None
@@ -76,9 +76,9 @@ class WakeWordDetector:
                 f"[OWW] Loaded '{model_name}' model for "
                 f"wake phrase '{self._wake_phrase}'"
             )
-        except ImportError:
+        except ImportError as e:
             logger.warning(
-                "[OWW] openwakeword not installed - "
+                f"[OWW] openwakeword import failed: {e} - "
                 "falling back to Whisper-based detection"
             )
         except Exception as e:

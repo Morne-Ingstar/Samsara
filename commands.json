@@ -274,15 +274,6 @@
       "description": "Save current file",
       "pack": "core"
     },
-    "find": {
-      "type": "hotkey",
-      "keys": [
-        "ctrl",
-        "f"
-      ],
-      "description": "Open find dialog",
-      "pack": "text-editing"
-    },
     "submit": {
       "type": "hotkey",
       "keys": [
