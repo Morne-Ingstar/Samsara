@@ -52,7 +52,6 @@ if os.path.exists(faster_whisper_assets):
 # 2b. OpenWakeWord — collect everything (Python files, ONNX models, resources)
 oww_datas, oww_binaries, oww_hiddenimports = collect_all('openwakeword')
 datas    += oww_datas
-binaries += oww_binaries
 
 # 3. customtkinter themes and assets
 customtkinter_path = os.path.join(site_packages, 'customtkinter')
@@ -77,6 +76,9 @@ datas.append((str(app_dir / 'plugins'), 'plugins'))
 # BINARIES (DLLs)
 # ============================================================================
 binaries = []
+
+# OpenWakeWord binaries (collected earlier)
+binaries += oww_binaries
 
 # ctranslate2 DLLs
 for dll in ['ctranslate2.dll', 'cudnn64_9.dll', 'libiomp5md.dll']:
@@ -250,6 +252,8 @@ hiddenimports = [
     'samsara.ui.tabs.general_tab',
     'samsara.ui.tabs.advanced_tab',
     'samsara.ui.tabs.cloud_llm_tab',
+    'samsara.ui.tabs.hotkeys_tab',
+    'samsara.ui.tabs.sounds_tab',
 
     # Samsara CUDA detection
     'samsara.cuda_detect',
@@ -280,7 +284,6 @@ a = Analysis(
         'charset_normalizer',
         # Exclude unnecessary large packages
         'matplotlib',
-        'scipy',
         'pandas',
         'IPython',
         'jupyter',
@@ -313,8 +316,6 @@ a = Analysis(
         'altair',
         'streamlit',
         'gradio',
-        'sklearn',
-        'scikit-learn',
         # More unused transitive deps
         'cv2',
         'opencv-python',
@@ -323,7 +324,6 @@ a = Analysis(
         'librosa',
         'pandas',
         'h5py',
-        'scipy',
         'pytest',
     ],
     win_no_prefer_redirects=False,
