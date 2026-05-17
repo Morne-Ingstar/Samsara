@@ -763,7 +763,11 @@ class DictationApp:
                 self.splash.root.destroy()  # Fully destroy splash's root
                 self.splash = None
             print("First run detected - launching setup wizard...")
-            wizard = FirstRunWizard(self.config_path)
+            try:
+                from samsara.ui.first_run_wizard_qt import FirstRunWizardQt
+                wizard = FirstRunWizardQt(self.config_path)
+            except ImportError:
+                wizard = FirstRunWizard(self.config_path)
             wizard_result = wizard.run()
             if wizard_result:
                 # Wizard completed successfully, save the config
@@ -1020,14 +1024,24 @@ class DictationApp:
 
         # Command cheat sheet overlay
         palette_path = Path(__file__).parent / "command_palette.json"
-        self.cheat_sheet = CommandCheatSheet(
-            root=self.root,
-            execute_cb=lambda phrase: self.command_executor.process_text(
-                phrase, self, force_commands=True
-            ),
-            commands_cb=lambda: self.command_executor._matcher.list_commands(),
-            palette_path=palette_path,
-        )
+        try:
+            from samsara.ui.command_cheatsheet_qt import CommandCheatSheetQt
+            self.cheat_sheet = CommandCheatSheetQt(
+                execute_cb=lambda phrase: self.command_executor.process_text(
+                    phrase, self, force_commands=True
+                ),
+                commands_cb=lambda: self.command_executor._matcher.list_commands(),
+                palette_path=palette_path,
+            )
+        except ImportError:
+            self.cheat_sheet = CommandCheatSheet(
+                root=self.root,
+                execute_cb=lambda phrase: self.command_executor.process_text(
+                    phrase, self, force_commands=True
+                ),
+                commands_cb=lambda: self.command_executor._matcher.list_commands(),
+                palette_path=palette_path,
+            )
 
         # Snooze state
         self.snoozed = False
@@ -5605,22 +5619,29 @@ class DictationApp:
     
     def open_settings(self):
         """Open settings window"""
-        # If window already exists and is open, just bring it to front
+        try:
+            from samsara.ui.settings_qt import SettingsQt
+            if not hasattr(self, '_settings_qt'):
+                self._settings_qt = SettingsQt(self)
+            self._settings_qt.show()
+            return
+        except ImportError:
+            pass
+        except Exception as e:
+            print(f"[SETTINGS] Qt window error: {e}")
+
+        # Tkinter fallback
         if self.settings_window.window is not None:
             try:
                 self.settings_window.window.lift()
                 self.settings_window.window.focus_force()
                 return
             except:
-                # Window was closed improperly, reset it
                 self.settings_window.window = None
-
-        # Call directly on main thread to prevent issues
         try:
             self.settings_window.show()
         except Exception as e:
             print(f"Error opening settings: {e}")
-            # Reset the window and try again
             self.settings_window.window = None
             try:
                 self.settings_window.show()
@@ -5647,6 +5668,18 @@ class DictationApp:
 
     def open_history(self):
         """Open dictation history window"""
+        try:
+            from samsara.ui.history_qt import HistoryQt
+            if not hasattr(self, '_history_qt'):
+                self._history_qt = HistoryQt(self)
+            self._history_qt.show()
+            return
+        except ImportError:
+            pass
+        except Exception as e:
+            print(f"[HISTORY] Qt window error: {e}")
+
+        # Tkinter fallback
         if self.history_window.window is not None:
             try:
                 self.history_window.window.lift()
@@ -5654,7 +5687,6 @@ class DictationApp:
                 return
             except:
                 self.history_window.window = None
-
         try:
             self.history_window.show()
         except Exception as e:
