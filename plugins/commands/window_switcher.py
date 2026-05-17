@@ -53,11 +53,14 @@ WM_CLOSE          = 0x0010
 # ---------------------------------------------------------------------------
 
 _lock          = threading.Lock()
-_overlays      = []     # list of tk.Toplevel
+_overlays      = []     # list of tk.Toplevel (Tkinter fallback)
 _mapping       = {}     # {"A": (hwnd, title, is_minimized), ...}
 _active        = False  # overlays currently showing
 _dismiss_timer = None
 _app_ref       = None
+
+_manager       = None   # _OverlayManager instance (Qt path)
+_manager_lock  = threading.Lock()
 
 _AUTO_DISMISS_S = 30.0
 
@@ -298,10 +301,123 @@ def _destroy_overlays_sync() -> None:
     _overlays.clear()
 
 
+def _make_overlay_manager_class():
+    """Return the _OverlayManager class, importing PySide6 lazily."""
+    from PySide6.QtCore import QObject, Signal, Slot, Qt
+    from PySide6.QtWidgets import QApplication, QWidget, QLabel
+    from PySide6.QtGui import QFont
+
+    class _OverlayManager(QObject):
+        """Owns Qt overlay widgets. Always lives on the Qt event-loop thread.
+
+        Signals are emitted from any thread; Qt routes them via QueuedConnection
+        when sender and receiver are on different threads.
+        """
+        _show_sig = Signal(object)   # payload: mapping dict
+        _hide_sig = Signal()
+
+        def __init__(self):
+            super().__init__()
+            self._widgets = []
+            self._show_sig.connect(self._do_show)
+            self._hide_sig.connect(self._do_hide)
+
+        @Slot(object)
+        def _do_show(self, mapping):
+            for w in self._widgets:
+                w.deleteLater()
+            self._widgets.clear()
+
+            qt_app = QApplication.instance()
+            if qt_app is None:
+                return
+            dpr = qt_app.devicePixelRatio()
+
+            for letter, (hwnd, title, is_min) in sorted(mapping.items()):
+                if is_min:
+                    continue
+                try:
+                    rect = wintypes.RECT()
+                    user32.GetWindowRect(hwnd, ctypes.byref(rect))
+
+                    pill = 54
+                    # Convert physical pixels -> logical pixels for Qt
+                    cx = int(rect.left / dpr) + 8
+                    cy = int(rect.top  / dpr) + 8
+
+                    win = QWidget(
+                        None,
+                        Qt.FramelessWindowHint | Qt.WindowStaysOnTopHint | Qt.Tool,
+                    )
+                    win.setAttribute(Qt.WA_TranslucentBackground)
+                    win.setFixedSize(pill, pill)
+                    win.move(cx, cy)
+
+                    lbl = QLabel(letter, win)
+                    lbl.setAlignment(Qt.AlignCenter)
+                    lbl.setFont(QFont("Segoe UI", 22, QFont.Bold))
+                    lbl.setStyleSheet(
+                        "color: white;"
+                        " background-color: rgba(26,26,26,224);"
+                        " border-radius: 8px;"
+                    )
+                    lbl.setFixedSize(pill, pill)
+
+                    win.setWindowOpacity(0.88)
+                    win.show()
+                    self._widgets.append(win)
+                except Exception as e:
+                    print(f"[WINSW] Qt overlay {letter} ({title[:30]}): {e}")
+
+        @Slot()
+        def _do_hide(self):
+            for w in self._widgets:
+                w.deleteLater()
+            self._widgets.clear()
+
+        def request_show(self, mapping: dict):
+            self._show_sig.emit(mapping)
+
+        def request_hide(self):
+            self._hide_sig.emit()
+
+    return _OverlayManager
+
+
+def _get_manager():
+    """Return the singleton _OverlayManager, creating it if needed.
+
+    The manager is pinned to the Qt event-loop thread via moveToThread so that
+    its slots always run there regardless of which thread calls request_show/hide.
+    Returns None when PySide6 is unavailable or Qt has not started yet.
+    """
+    global _manager
+    if _manager is not None:
+        return _manager
+    with _manager_lock:
+        if _manager is not None:
+            return _manager
+        try:
+            from PySide6.QtWidgets import QApplication
+            qt_app = QApplication.instance()
+            if qt_app is None:
+                return None
+            cls = _make_overlay_manager_class()
+            mgr = cls()
+            mgr.moveToThread(qt_app.thread())
+            _manager = mgr
+        except Exception as e:
+            print(f"[WINSW] overlay manager init failed: {e}")
+    return _manager
+
+
 def _dismiss_all(clear_mapping: bool = True) -> None:
     """Dismiss overlays, optionally clear mapping. Main-thread only."""
     global _active, _mapping
     _destroy_overlays_sync()
+    mgr = _manager
+    if mgr is not None:
+        mgr.request_hide()
     _active = False
     if clear_mapping:
         with _lock:
@@ -566,7 +682,11 @@ def handle_show_windows(app, remainder):
         _active  = True
     _app_ref = app
 
-    app.root.after(0, lambda: _create_overlays(app, new_mapping))
+    mgr = _get_manager()
+    if mgr is not None:
+        mgr.request_show(new_mapping)
+    else:
+        app.root.after(0, lambda: _create_overlays(app, new_mapping))
     _reset_timer()
 
     visible_count = sum(1 for _, _, m in new_mapping.values() if not m)
