@@ -1012,7 +1012,11 @@ class DictationApp:
         self.history_window = HistoryWindow(self)
 
         # Wake word debug window
-        self.wake_word_debug_window = WakeWordDebugWindow(self)
+        try:
+            from samsara.ui.wake_word_debug_qt import WakeWordDebugQt
+            self.wake_word_debug_window = WakeWordDebugQt(self)
+        except ImportError:
+            self.wake_word_debug_window = WakeWordDebugWindow(self)
 
         # Listening state indicator overlay
         self.listening_indicator = ListeningIndicator(self.root)
@@ -2123,6 +2127,15 @@ class DictationApp:
                 print("[AUTO] Starting wake word listener...")
                 self.start_wake_word_mode()
             print("[INIT] Startup complete.")
+
+            # Ensure clean state — reset any recording flags that may have
+            # been tripped by keyboard events during startup
+            self.recording = False
+            self.hotkey_pressed = False
+            self.command_mode_recording = False
+            self._hotkey_recording = False
+            if hasattr(self, 'listening_indicator'):
+                self._schedule_ui(self.listening_indicator.set_listening, False)
           except Exception as _exc:
             import traceback
             traceback.print_exc()
@@ -5692,14 +5705,6 @@ class DictationApp:
 
     def open_wake_word_debug(self):
         """Open wake word debug/test window"""
-        if self.wake_word_debug_window.window is not None:
-            try:
-                self.wake_word_debug_window.window.lift()
-                self.wake_word_debug_window.window.focus_force()
-                return
-            except:
-                self.wake_word_debug_window.window = None
-
         try:
             self.wake_word_debug_window.show()
         except Exception as e:
