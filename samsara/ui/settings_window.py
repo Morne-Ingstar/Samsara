@@ -25,15 +25,18 @@ from samsara.alarms import get_default_alarm_config
 from samsara.ui.tabs.general_tab import GeneralTab
 from samsara.ui.tabs.advanced_tab import AdvancedTab
 from samsara.ui.tabs.cloud_llm_tab import CloudLLMTab
+from samsara.ui.tabs.hotkeys_tab import HotkeysTab
+from samsara.ui.tabs.sounds_tab import SoundsTab
+from samsara.ui.tts_settings_tab import TTSSettingsTab
 
 
 class SettingsWindow:
     def __init__(self, app):
         self.app = app
         self.window = None
-        self.capturing_hotkey = None
-        self.captured_keys = set()
         self.available_mics = []
+        # Populated by HotkeysTab.build() and build_alarms_tab() as tabs are visited.
+        self.hotkey_buttons = {}
 
     def show(self):
         if self.window is not None:
@@ -104,20 +107,25 @@ class SettingsWindow:
         self.tabview.add("Smart Actions")
         self.tabview.add("Advanced")
 
-        # Lazy tab loading -- only build tabs on first visit
-        self.general_tab = GeneralTab(self.tabview.tab("General"), self.app, self)
-        self.advanced_tab = AdvancedTab(self.tabview.tab("Advanced"), self.app)
+        # Instantiate extracted tab classes
+        self.general_tab   = GeneralTab(self.tabview.tab("General"), self.app, self)
+        self.hotkeys_tab   = HotkeysTab(self.tabview.tab("Hotkeys & Modes"), self.app, self)
+        self.sounds_tab    = SoundsTab(self.tabview.tab("Sounds"), self.app, self)
+        self.tts_tab       = TTSSettingsTab(self)
+        self.advanced_tab  = AdvancedTab(self.tabview.tab("Advanced"), self.app)
         self.cloud_llm_tab = CloudLLMTab(self.tabview.tab("Ava / Cloud"), self.app)
+
+        # Lazy tab loading -- only build tabs on first visit
         self._tab_builders = {
-            "General": {"built": False, "builder": self.general_tab.build},
-            "Hotkeys & Modes": {"built": False, "builder": self.build_hotkeys_modes_tab},
-            "Commands": {"built": False, "builder": self.build_commands_tab},
-            "Sounds": {"built": False, "builder": self.build_sounds_tab},
-            "Text-to-Speech": {"built": False, "builder": self.build_tts_tab},
-            "Ava / Cloud": {"built": False, "builder": self.cloud_llm_tab.build},
-            "Alarms": {"built": False, "builder": self.build_alarms_tab},
-            "Smart Actions": {"built": False, "builder": self.build_smart_actions_tab},
-            "Advanced": {"built": False, "builder": self.advanced_tab.build},
+            "General":        {"built": False, "builder": self.general_tab.build},
+            "Hotkeys & Modes":{"built": False, "builder": self.hotkeys_tab.build},
+            "Commands":       {"built": False, "builder": self.build_commands_tab},
+            "Sounds":         {"built": False, "builder": self.sounds_tab.build},
+            "Text-to-Speech": {"built": False, "builder": self.tts_tab.build},
+            "Ava / Cloud":    {"built": False, "builder": self.cloud_llm_tab.build},
+            "Alarms":         {"built": False, "builder": self.build_alarms_tab},
+            "Smart Actions":  {"built": False, "builder": self.build_smart_actions_tab},
+            "Advanced":       {"built": False, "builder": self.advanced_tab.build},
         }
         # For backward compat with save_settings which checks self.built_tabs
         self.built_tabs = set()
@@ -178,109 +186,10 @@ class SettingsWindow:
                 pass
         _step()
 
-    # build_general_tab() extracted to samsara/ui/tabs/general_tab.py (GeneralTab)
-
-    def build_hotkeys_modes_tab(self):
-        """Build the Hotkeys & Modes settings tab (generator)."""
-        hotkey_tab = self.tabview.tab("Hotkeys & Modes")
-        
-        # Create scrollable frame for Hotkeys tab content
-        hotkey_scroll = ctk.CTkScrollableFrame(hotkey_tab, fg_color="transparent")
-        hotkey_scroll.pack(fill='both', expand=True)
-
-        # Recording Mode Section
-        mode_label = ctk.CTkLabel(hotkey_scroll, text="Recording Mode", font=ctk.CTkFont(size=16, weight="bold"))
-        mode_label.pack(anchor='w', pady=(15, 10))
-
-        mode_frame = ctk.CTkFrame(hotkey_scroll, corner_radius=10)
-        mode_frame.pack(fill='x', pady=(0, 20))
-
-        current_mode = self.app.config.get('mode', 'hold')
-        self.mode_var = tk.StringVar(value=current_mode)
-
-        ctk.CTkRadioButton(mode_frame, text="Hold to record (hold key, release to transcribe)",
-                          variable=self.mode_var, value='hold').pack(anchor='w', padx=15, pady=(15, 8))
-        ctk.CTkRadioButton(mode_frame, text="Toggle mode (press to start/stop recording)",
-                          variable=self.mode_var, value='toggle').pack(anchor='w', padx=15, pady=(0, 8))
-        ctk.CTkRadioButton(mode_frame, text="Continuous (auto-transcribe on speech pause)",
-                          variable=self.mode_var, value='continuous').pack(anchor='w', padx=15, pady=(0, 15))
-
-        # Wake word is a separate checkbox (works alongside any capture mode)
-        self.wake_word_enabled_var = tk.BooleanVar(
-            value=self.app.config.get('wake_word_enabled', False))
-        ctk.CTkCheckBox(mode_frame, text="Enable wake word listener (works with any mode above)",
-                        variable=self.wake_word_enabled_var).pack(anchor='w', padx=15, pady=(0, 15))
-        yield
-
-        # --- Keyboard Shortcuts Section ---
-        hotkey_label = ctk.CTkLabel(hotkey_scroll, text="Keyboard Shortcuts", font=ctk.CTkFont(size=16, weight="bold"))
-        hotkey_label.pack(anchor='w', pady=(0, 10))
-
-        hotkey_frame = ctk.CTkFrame(hotkey_scroll, corner_radius=10)
-        hotkey_frame.pack(fill='x')
-
-        # Hotkey rows
-        self.hotkey_buttons = {}
-
-        # Record hotkey
-        row1 = ctk.CTkFrame(hotkey_frame, fg_color="transparent")
-        row1.pack(fill='x', padx=15, pady=(15, 8))
-        ctk.CTkLabel(row1, text="Record hotkey:", width=150, anchor='w').pack(side='left')
-        self.hotkey_var = tk.StringVar(value=self.app.config.get('hotkey', 'ctrl+shift'))
-        self.hotkey_entry = ctk.CTkEntry(row1, textvariable=self.hotkey_var, width=180, state='disabled')
-        self.hotkey_entry.pack(side='left', padx=(0, 10))
-        self.hotkey_btn = ctk.CTkButton(row1, text="Change", width=80,
-                                        command=lambda: self.start_capture('hotkey'))
-        self.hotkey_btn.pack(side='left')
-        self.hotkey_buttons['hotkey'] = self.hotkey_btn
-
-        # Continuous hotkey
-        row2 = ctk.CTkFrame(hotkey_frame, fg_color="transparent")
-        row2.pack(fill='x', padx=15, pady=(0, 8))
-        ctk.CTkLabel(row2, text="Toggle continuous:", width=150, anchor='w').pack(side='left')
-        self.cont_hotkey_var = tk.StringVar(value=self.app.config.get('continuous_hotkey', 'ctrl+alt+d'))
-        self.cont_hotkey_entry = ctk.CTkEntry(row2, textvariable=self.cont_hotkey_var, width=180, state='disabled')
-        self.cont_hotkey_entry.pack(side='left', padx=(0, 10))
-        self.cont_hotkey_btn = ctk.CTkButton(row2, text="Change", width=80,
-                                             command=lambda: self.start_capture('continuous_hotkey'))
-        self.cont_hotkey_btn.pack(side='left')
-        self.hotkey_buttons['continuous_hotkey'] = self.cont_hotkey_btn
-
-        # Wake word hotkey
-        row3 = ctk.CTkFrame(hotkey_frame, fg_color="transparent")
-        row3.pack(fill='x', padx=15, pady=(0, 8))
-        ctk.CTkLabel(row3, text="Toggle wake word:", width=150, anchor='w').pack(side='left')
-        self.wake_hotkey_var = tk.StringVar(value=self.app.config.get('wake_word_hotkey', 'ctrl+alt+w'))
-        self.wake_hotkey_entry = ctk.CTkEntry(row3, textvariable=self.wake_hotkey_var, width=180, state='disabled')
-        self.wake_hotkey_entry.pack(side='left', padx=(0, 10))
-        self.wake_hotkey_btn = ctk.CTkButton(row3, text="Change", width=80,
-                                             command=lambda: self.start_capture('wake_word_hotkey'))
-        self.wake_hotkey_btn.pack(side='left')
-        self.hotkey_buttons['wake_word_hotkey'] = self.wake_hotkey_btn
-
-        # Command-only hotkey
-        row3b = ctk.CTkFrame(hotkey_frame, fg_color="transparent")
-        row3b.pack(fill='x', padx=15, pady=(0, 8))
-        ctk.CTkLabel(row3b, text="Command only:", width=150, anchor='w').pack(side='left')
-        self.cmd_hotkey_var = tk.StringVar(value=self.app.config.get('command_hotkey', 'ctrl+alt+c'))
-        self.cmd_hotkey_entry = ctk.CTkEntry(row3b, textvariable=self.cmd_hotkey_var, width=180, state='disabled')
-        self.cmd_hotkey_entry.pack(side='left', padx=(0, 10))
-        self.cmd_hotkey_btn = ctk.CTkButton(row3b, text="Change", width=80,
-                                             command=lambda: self.start_capture('command_hotkey'))
-        self.cmd_hotkey_btn.pack(side='left')
-        self.hotkey_buttons['command_hotkey'] = self.cmd_hotkey_btn
-
-        # Cancel recording hotkey
-        row4 = ctk.CTkFrame(hotkey_frame, fg_color="transparent")
-        row4.pack(fill='x', padx=15, pady=(0, 15))
-        ctk.CTkLabel(row4, text="Cancel recording:", width=150, anchor='w').pack(side='left')
-        self.cancel_hotkey_var = tk.StringVar(value=self.app.config.get('cancel_hotkey', 'escape'))
-        self.cancel_hotkey_entry = ctk.CTkEntry(row4, textvariable=self.cancel_hotkey_var, width=180, state='disabled')
-        self.cancel_hotkey_entry.pack(side='left', padx=(0, 10))
-        self.cancel_hotkey_btn = ctk.CTkButton(row4, text="Change", width=80,
-                                             command=lambda: self.start_capture('cancel_hotkey'))
-        self.cancel_hotkey_btn.pack(side='left')
-        self.hotkey_buttons['cancel_hotkey'] = self.cancel_hotkey_btn
+    # build_general_tab()   → samsara/ui/tabs/general_tab.py  (GeneralTab)
+    # build_hotkeys_modes_tab() → samsara/ui/tabs/hotkeys_tab.py (HotkeysTab)
+    # build_sounds_tab()    → samsara/ui/tabs/sounds_tab.py   (SoundsTab)
+    # build_tts_tab()       → samsara/ui/tts_settings_tab.py  (TTSSettingsTab)
 
     # Maps human-readable dropdown labels to config values for command_mode.button
     _CMD_BUTTON_OPTIONS = {
@@ -526,178 +435,7 @@ class SettingsWindow:
                     text="Say these phrases while dictating to trigger actions. Commands work in all modes.",
                     text_color="gray").pack(anchor='w')
 
-    def build_sounds_tab(self):
-        """Build the Sounds settings tab (generator)."""
-        sounds_tab = self.tabview.tab("Sounds")
-        
-        # Create scrollable frame for Sounds tab content
-        sounds_scroll = ctk.CTkScrollableFrame(sounds_tab, fg_color="transparent")
-        sounds_scroll.pack(fill='both', expand=True)
-
-        # Audio Feedback Toggle
-        feedback_label = ctk.CTkLabel(sounds_scroll, text="Audio Feedback", font=ctk.CTkFont(size=16, weight="bold"))
-        feedback_label.pack(anchor='w', pady=(15, 10))
-
-        feedback_frame = ctk.CTkFrame(sounds_scroll, corner_radius=10)
-        feedback_frame.pack(fill='x', pady=(0, 20))
-
-        self.audio_feedback_var = tk.BooleanVar(value=self.app.config.get('audio_feedback', True))
-        ctk.CTkCheckBox(feedback_frame, text="Enable audio feedback sounds",
-                       variable=self.audio_feedback_var).pack(anchor='w', padx=15, pady=(15, 10))
-
-        # Volume slider row
-        volume_row = ctk.CTkFrame(feedback_frame, fg_color="transparent")
-        volume_row.pack(fill='x', padx=15, pady=(0, 15))
-
-        ctk.CTkLabel(volume_row, text="Volume:", width=80, anchor='w').pack(side='left')
-
-        self.sound_volume_var = tk.DoubleVar(value=self.app.config.get('sound_volume', 0.5))
-
-        self.volume_slider = ctk.CTkSlider(volume_row, from_=0.0, to=1.0,
-                                           variable=self.sound_volume_var, width=200,
-                                           command=self.on_volume_change)
-        self.volume_slider.pack(side='left', padx=(0, 10))
-
-        self.volume_label = ctk.CTkLabel(volume_row, text=f"{int(self.sound_volume_var.get() * 100)}%", width=50)
-        self.volume_label.pack(side='left')
-
-        # Test volume button
-        ctk.CTkButton(volume_row, text="Test", width=60,
-                     command=lambda: self.app.play_sound('success')).pack(side='left', padx=(10, 0))
-        yield
-
-        # --- Sound Theme Section ---
-        theme_label = ctk.CTkLabel(sounds_scroll, text="Sound Theme", font=ctk.CTkFont(size=16, weight="bold"))
-        theme_label.pack(anchor='w', pady=(0, 10))
-
-        theme_frame = ctk.CTkFrame(sounds_scroll, corner_radius=10)
-        theme_frame.pack(fill='x', pady=(0, 20))
-
-        theme_row = ctk.CTkFrame(theme_frame, fg_color="transparent")
-        theme_row.pack(fill='x', padx=15, pady=15)
-
-        ctk.CTkLabel(theme_row, text="Theme:", width=80, anchor='w').pack(side='left')
-
-        # Get available themes
-        themes_dir = Path(__file__).parent / 'sounds' / 'themes'
-        available_themes = ['cute', 'warm', 'zen', 'classic']
-        if themes_dir.exists():
-            available_themes = [d.name for d in themes_dir.iterdir() if d.is_dir() and (d / 'start.wav').exists()]
-
-        self.sound_theme_var = tk.StringVar(value=self.app.config.get('sound_theme', 'cute'))
-        self.theme_combo = ctk.CTkComboBox(theme_row, variable=self.sound_theme_var,
-                                           values=available_themes, width=150, state='readonly')
-        self.theme_combo.pack(side='left', padx=(0, 10))
-
-        ctk.CTkButton(theme_row, text="Apply Theme", width=100,
-                     command=self.apply_sound_theme).pack(side='left', padx=(0, 10))
-
-        # Theme descriptions
-        theme_desc = ctk.CTkLabel(theme_frame, text="cute = playful bloops  •  warm = OS boot vibes  •  zen = singing bowls  •  classic = original",
-                                  text_color="gray", font=ctk.CTkFont(size=11))
-        theme_desc.pack(anchor='w', padx=15, pady=(0, 15))
-
-        # --- Smart Actions Earcons ---
-        # Per-theme Phase-2 earcon vocabulary. Each "Test" button just calls
-        # play_sound(name); the active theme determines which WAV plays.
-        earcons_label = ctk.CTkLabel(sounds_scroll, text="Smart Actions Earcons",
-                                     font=ctk.CTkFont(size=16, weight="bold"))
-        earcons_label.pack(anchor='w', pady=(0, 8))
-
-        ctk.CTkLabel(sounds_scroll,
-                     text="Preview the Smart Actions audio cues for the active theme.",
-                     text_color="gray", font=ctk.CTkFont(size=11)
-                     ).pack(anchor='w', pady=(0, 8))
-
-        earcons_frame = ctk.CTkFrame(sounds_scroll, corner_radius=10)
-        earcons_frame.pack(fill='x', pady=(0, 20))
-
-        # Order matters here -- groups related cues together visually.
-        EARCON_PREVIEWS = [
-            ('capture_started',  'Capture started'),
-            ('capture_saved',    'Capture saved'),
-            ('agent_routing',    'Agent routing'),
-            ('agent_response',   'Agent response'),
-            ('confirm_required', 'Confirm required'),
-            ('action_complete',  'Action complete'),
-            ('thinking_pulse',   'Thinking pulse'),
-        ]
-
-        grid = ctk.CTkFrame(earcons_frame, fg_color="transparent")
-        grid.pack(fill='x', padx=15, pady=(15, 15))
-
-        cols = 3
-        for idx, (earcon_name, label_text) in enumerate(EARCON_PREVIEWS):
-            row = idx // cols
-            col = idx % cols
-            cell = ctk.CTkFrame(grid, fg_color="transparent")
-            cell.grid(row=row, column=col, sticky='ew', padx=(0, 10), pady=4)
-            ctk.CTkLabel(cell, text=label_text, width=130, anchor='w'
-                         ).pack(side='left')
-            ctk.CTkButton(cell, text="Test", width=60,
-                          command=lambda n=earcon_name: self.app.play_sound(n)
-                          ).pack(side='left')
-        for c in range(cols):
-            grid.grid_columnconfigure(c, weight=1)
-
-        # Custom Sounds Section
-        sounds_label = ctk.CTkLabel(sounds_scroll, text="Custom Sound Files", font=ctk.CTkFont(size=16, weight="bold"))
-        sounds_label.pack(anchor='w', pady=(0, 10))
-
-        ctk.CTkLabel(sounds_scroll, text="Replace default sounds with your own WAV files:",
-                    text_color="gray").pack(anchor='w', pady=(0, 10))
-
-        sounds_frame = ctk.CTkFrame(sounds_scroll, corner_radius=10)
-        sounds_frame.pack(fill='x', pady=(0, 20))
-        yield
-
-        # --- Sound file rows ---
-        self.sound_labels = {}
-        sound_types = [
-            ('start', 'Recording start:'),
-            ('stop', 'Recording stop:'),
-            ('success', 'Transcription success:'),
-            ('error', 'Error sound:')
-        ]
-
-        for sound_type, label_text in sound_types:
-            row = ctk.CTkFrame(sounds_frame, fg_color="transparent")
-            row.pack(fill='x', padx=15, pady=(10, 5) if sound_type == 'start' else (5, 5))
-
-            ctk.CTkLabel(row, text=label_text, width=140, anchor='w').pack(side='left')
-
-            # Current file label
-            sound_file = self.app.sound_files.get(sound_type)
-            filename = sound_file.name if sound_file and sound_file.exists() else "Not set"
-            file_label = ctk.CTkLabel(row, text=filename, width=150, anchor='w', text_color="gray")
-            file_label.pack(side='left', padx=(0, 10))
-            self.sound_labels[sound_type] = file_label
-
-            # Preview button
-            preview_btn = ctk.CTkButton(row, text="Play", width=60,
-                                        command=lambda st=sound_type: self.preview_sound(st))
-            preview_btn.pack(side='left', padx=(0, 5))
-
-            # Browse button
-            browse_btn = ctk.CTkButton(row, text="Browse...", width=80,
-                                       command=lambda st=sound_type: self.browse_sound(st))
-            browse_btn.pack(side='left', padx=(0, 5))
-
-            # Reset button
-            reset_btn = ctk.CTkButton(row, text="Reset", width=60, fg_color="gray40",
-                                      command=lambda st=sound_type: self.reset_sound(st))
-            reset_btn.pack(side='left')
-
-        # Add padding at bottom
-        ctk.CTkLabel(sounds_frame, text="").pack(pady=5)
-
-        # Info text
-        ctk.CTkLabel(sounds_scroll, text="Supported format: WAV files (44100 Hz recommended)",
-                    text_color="gray").pack(anchor='w', pady=(0, 5))
-
-        sounds_folder = Path(__file__).parent / 'sounds'
-        ctk.CTkLabel(sounds_scroll, text=f"Sound files location: {sounds_folder}",
-                    text_color="gray").pack(anchor='w')
+    # build_sounds_tab() extracted to samsara/ui/tabs/sounds_tab.py (SoundsTab)
 
     def build_alarms_tab(self):
         """Build the Alarms settings tab (generator)."""
@@ -833,11 +571,7 @@ class SettingsWindow:
                     text=f"Complete ({self.alarm_complete_var.get().upper()}) to get streak credit. Dismiss ({self.alarm_dismiss_var.get().upper()}) to silence without credit.",
                     text_color="gray", wraplength=600).pack(anchor='w', pady=(5, 0))
 
-    def build_tts_tab(self):
-        """Build the Text-to-Speech settings tab (generator)."""
-        from samsara.ui.tts_settings_tab import TTSSettingsTab
-        self._tts_tab = TTSSettingsTab(self)
-        yield from self._tts_tab.build()
+    # build_tts_tab() extracted to samsara/ui/tts_settings_tab.py (TTSSettingsTab)
 
     def build_smart_actions_tab(self):
         """Build the Smart Actions tab -- brain dump path + earcons."""
@@ -1110,98 +844,9 @@ class SettingsWindow:
             text_color=("#1f6aa5" if ok else "#c0392b"))
 
     def start_capture(self, hotkey_name):
-        self.capturing_hotkey = hotkey_name
-        self.captured_keys = set()
-
-        if hotkey_name == 'hotkey':
-            self.hotkey_var.set("Press keys...")
-            self.hotkey_btn.configure(text="...")
-        elif hotkey_name == 'continuous_hotkey':
-            self.cont_hotkey_var.set("Press keys...")
-            self.cont_hotkey_btn.configure(text="...")
-        elif hotkey_name == 'wake_word_hotkey':
-            self.wake_hotkey_var.set("Press keys...")
-            self.wake_hotkey_btn.configure(text="...")
-        elif hotkey_name == 'cancel_hotkey':
-            self.cancel_hotkey_var.set("Press keys...")
-            self.cancel_hotkey_btn.configure(text="...")
-        elif hotkey_name == 'command_hotkey':
-            self.cmd_hotkey_var.set("Press keys...")
-            self.cmd_hotkey_btn.configure(text="...")
-        elif hotkey_name == 'alarm_complete_hotkey':
-            self.alarm_complete_var.set("Press keys...")
-            self.alarm_complete_btn.configure(text="...")
-        elif hotkey_name == 'alarm_dismiss_hotkey':
-            self.alarm_dismiss_var.set("Press keys...")
-            self.alarm_dismiss_btn.configure(text="...")
-
-        self.window.bind('<KeyPress>', self.on_capture_key)
-        self.window.bind('<KeyRelease>', self.on_capture_release)
-
-    def on_capture_key(self, event):
-        if self.capturing_hotkey is None:
-            return
-
-        key = event.keysym.lower()
-        if key in ('control_l', 'control_r'):
-            key = 'ctrl'
-        elif key in ('shift_l', 'shift_r'):
-            key = 'shift'
-        elif key in ('alt_l', 'alt_r'):
-            key = 'alt'
-        elif key in ('super_l', 'super_r', 'win_l', 'win_r'):
-            key = 'win'
-
-        self.captured_keys.add(key)
-        hotkey_str = '+'.join(sorted(self.captured_keys))
-
-        if self.capturing_hotkey == 'hotkey':
-            self.hotkey_var.set(hotkey_str)
-        elif self.capturing_hotkey == 'continuous_hotkey':
-            self.cont_hotkey_var.set(hotkey_str)
-        elif self.capturing_hotkey == 'wake_word_hotkey':
-            self.wake_hotkey_var.set(hotkey_str)
-        elif self.capturing_hotkey == 'cancel_hotkey':
-            self.cancel_hotkey_var.set(hotkey_str)
-        elif self.capturing_hotkey == 'command_hotkey':
-            self.cmd_hotkey_var.set(hotkey_str)
-        elif self.capturing_hotkey == 'alarm_complete_hotkey':
-            self.alarm_complete_var.set(hotkey_str)
-        elif self.capturing_hotkey == 'alarm_dismiss_hotkey':
-            self.alarm_dismiss_var.set(hotkey_str)
-
-    def on_capture_release(self, event):
-        if self.capturing_hotkey is None:
-            return
-
-        hotkey_str = '+'.join(sorted(self.captured_keys))
-        if hotkey_str:
-            if self.capturing_hotkey == 'hotkey':
-                self.hotkey_var.set(hotkey_str)
-                self.hotkey_btn.configure(text="Set")
-            elif self.capturing_hotkey == 'continuous_hotkey':
-                self.cont_hotkey_var.set(hotkey_str)
-                self.cont_hotkey_btn.configure(text="Set")
-            elif self.capturing_hotkey == 'wake_word_hotkey':
-                self.wake_hotkey_var.set(hotkey_str)
-                self.wake_hotkey_btn.configure(text="Set")
-            elif self.capturing_hotkey == 'cancel_hotkey':
-                self.cancel_hotkey_var.set(hotkey_str)
-                self.cancel_hotkey_btn.configure(text="Set")
-            elif self.capturing_hotkey == 'command_hotkey':
-                self.cmd_hotkey_var.set(hotkey_str)
-                self.cmd_hotkey_btn.configure(text="Set")
-            elif self.capturing_hotkey == 'alarm_complete_hotkey':
-                self.alarm_complete_var.set(hotkey_str)
-                self.alarm_complete_btn.configure(text="Set")
-            elif self.capturing_hotkey == 'alarm_dismiss_hotkey':
-                self.alarm_dismiss_var.set(hotkey_str)
-                self.alarm_dismiss_btn.configure(text="Set")
-
-        self.window.unbind('<KeyPress>')
-        self.window.unbind('<KeyRelease>')
-        self.capturing_hotkey = None
-        self.captured_keys = set()
+        """Delegate hotkey capture to HotkeysTab (which owns all capture state)."""
+        if hasattr(self, 'hotkeys_tab') and self.hotkeys_tab is not None:
+            self.hotkeys_tab.start_capture(hotkey_name)
 
     def _get_var(self, attr, config_key, default=None, nested_keys=None):
         """Read a setting from the UI variable if the tab was built,
@@ -1229,18 +874,13 @@ class SettingsWindow:
         model_changed = old_model != new_model
         mic_changed = gen_result['mic_changed']
 
-        # Batch non-General/non-Advanced config changes (save=False; we save once at the end)
-        self.app.update_config({
-            'mode': self._get_var('mode_var', 'mode', 'hold'),
-            'wake_word_enabled': self._get_var('wake_word_enabled_var', 'wake_word_enabled', False),
-            'hotkey': self._get_var('hotkey_var', 'hotkey', 'ctrl+shift'),
-            'continuous_hotkey': self._get_var('cont_hotkey_var', 'continuous_hotkey', 'ctrl+alt+d'),
-            'wake_word_hotkey': self._get_var('wake_hotkey_var', 'wake_word_hotkey', 'ctrl+alt+w'),
-            'command_hotkey': self._get_var('cmd_hotkey_var', 'command_hotkey', 'ctrl+alt+c'),
-            'cancel_hotkey': self._get_var('cancel_hotkey_var', 'cancel_hotkey', 'escape'),
-            'audio_feedback': self._get_var('audio_feedback_var', 'audio_feedback', True),
-            'sound_volume': self._get_var('sound_volume_var', 'sound_volume', 0.5),
-        }, save=False)
+        # Hotkeys & Modes tab -- only if visited
+        if "Hotkeys & Modes" in self.built_tabs:
+            self.hotkeys_tab.save()
+
+        # Sounds tab -- only if visited
+        if "Sounds" in self.built_tabs:
+            self.sounds_tab.save()
 
         # Advanced tab: device, thresholds, AEC, wake word
         adv_info = self.advanced_tab.save()
@@ -1263,8 +903,8 @@ class SettingsWindow:
                 self.app.alarm_manager.stop()
 
         # Save Text-to-Speech settings -- only if the tab was visited
-        if "Text-to-Speech" in self.built_tabs and hasattr(self, '_tts_tab'):
-            self._tts_tab.save()
+        if "Text-to-Speech" in self.built_tabs:
+            self.tts_tab.save()
 
         # Save Ava / Cloud LLM settings -- only if the tab was visited
         if "Ava / Cloud" in self.built_tabs and hasattr(self, 'cloud_llm_tab'):
@@ -1560,119 +1200,6 @@ X-GNOME-Autostart-enabled=true
                 pass
             finally:
                 self.window = None
-
-    def on_volume_change(self, value):
-        """Update volume label and apply volume change immediately"""
-        volume = float(value)
-        self.volume_label.configure(text=f"{int(volume * 100)}%")
-        # Apply volume change immediately
-        self.app.update_config({'sound_volume': volume}, save=False)
-
-    def apply_sound_theme(self):
-        """Apply the selected sound theme"""
-        import shutil
-        theme = self.sound_theme_var.get()
-        themes_dir = Path(__file__).parent / 'sounds' / 'themes' / theme
-        sounds_dir = Path(__file__).parent / 'sounds'
-        
-        if not themes_dir.exists():
-            print(f"[WARN] Theme folder not found: {themes_dir}")
-            return
-        
-        # Copy theme sounds to main sounds folder
-        for wav in themes_dir.glob('*.wav'):
-            shutil.copy2(wav, sounds_dir / wav.name)
-        
-        # Save theme preference
-        self.app.update_config({'sound_theme': theme})
-        
-        # Reload sound cache
-        self.app._load_sound_cache()
-        
-        # Play success sound to preview
-        self.app.play_sound('success')
-        print(f"[OK] Sound theme applied: {theme}")
-
-    def preview_sound(self, sound_type):
-        """Play preview of the selected sound"""
-        self.app.play_sound(sound_type)
-
-    def browse_sound(self, sound_type):
-        """Browse for a custom WAV file"""
-        from tkinter import filedialog
-        import shutil
-
-        filename = filedialog.askopenfilename(
-            title=f"Select {sound_type} sound",
-            filetypes=[("WAV files", "*.wav"), ("All files", "*.*")],
-            parent=self.window
-        )
-
-        if filename:
-            # Copy file to sounds folder with correct name
-            dest = self.app.sounds_dir / f"{sound_type}.wav"
-            try:
-                shutil.copy(filename, dest)
-                self.app._load_sound_cache()
-                self.sound_labels[sound_type].configure(text=f"{sound_type}.wav")
-                messagebox.showinfo("Sound Updated",
-                    f"Sound file updated successfully!\n\nFile: {Path(filename).name}",
-                    parent=self.window)
-            except Exception as e:
-                messagebox.showerror("Error", f"Failed to copy sound file:\n{e}", parent=self.window)
-
-    def reset_sound(self, sound_type):
-        """Reset sound to default generated tone"""
-        import wave
-
-        sound_file = self.app.sound_files.get(sound_type)
-        if sound_file and sound_file.exists():
-            sound_file.unlink()  # Delete existing file
-
-        # Regenerate default sound
-        sample_rate = 44100
-
-        def generate_tone(frequency, duration, volume=0.5):
-            n_samples = int(sample_rate * duration)
-            t = np.linspace(0, duration, n_samples, False)
-            tone = np.sin(2 * np.pi * frequency * t) * volume
-            fade_samples = min(int(sample_rate * 0.01), n_samples // 4)
-            if fade_samples > 0:
-                tone[:fade_samples] *= np.linspace(0, 1, fade_samples)
-                tone[-fade_samples:] *= np.linspace(1, 0, fade_samples)
-            return tone
-
-        def save_wav(filepath, audio_data):
-            with wave.open(str(filepath), 'w') as wav_file:
-                wav_file.setnchannels(1)
-                wav_file.setsampwidth(2)
-                wav_file.setframerate(sample_rate)
-                audio_int = (audio_data * 32767).astype(np.int16)
-                wav_file.writeframes(audio_int.tobytes())
-
-        if sound_type == 'start':
-            tone = generate_tone(660, 0.12, volume=0.6)
-            save_wav(sound_file, tone)
-        elif sound_type == 'stop':
-            tone = generate_tone(440, 0.1, volume=0.5)
-            save_wav(sound_file, tone)
-        elif sound_type == 'success':
-            t1 = generate_tone(523, 0.08, volume=0.5)
-            gap = np.zeros(int(sample_rate * 0.02))
-            t2 = generate_tone(659, 0.08, volume=0.5)
-            t3 = generate_tone(784, 0.12, volume=0.5)
-            audio = np.concatenate([t1, gap, t2, gap, t3])
-            save_wav(sound_file, audio)
-        elif sound_type == 'error':
-            t1 = generate_tone(220, 0.15, volume=0.5)
-            gap = np.zeros(int(sample_rate * 0.08))
-            t2 = generate_tone(196, 0.18, volume=0.5)
-            audio = np.concatenate([t1, gap, t2])
-            save_wav(sound_file, audio)
-
-        self.app._load_sound_cache()
-        self.sound_labels[sound_type].configure(text=f"{sound_type}.wav")
-        messagebox.showinfo("Sound Reset", f"'{sound_type}' sound reset to default.", parent=self.window)
 
     # === COMMAND MANAGEMENT METHODS ===
 
