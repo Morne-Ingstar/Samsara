@@ -1181,8 +1181,12 @@ class DictationApp:
         # Main hub window (sidebar nav into History/Dictionary/Settings).
         # Constructed before the tray so the tray's left-click handler
         # has something to call.
-        from samsara.ui.main_window import MainWindow
-        self.main_window = MainWindow(self)
+        try:
+            from samsara.ui.main_window_qt import MainWindowQt
+            self.main_window = MainWindowQt(self)
+        except ImportError:
+            from samsara.ui.main_window import MainWindow
+            self.main_window = MainWindow(self)
 
         # NOTE: Splash is intentionally NOT closed here. load_model_async runs
         # the heavy Whisper/CUDA load on a background thread; closing the splash
@@ -5350,18 +5354,11 @@ class DictationApp:
         self._update_tray_tooltip()
 
     def show_main_window(self):
-        """Open (or refocus) the main hub window.
-
-        Bound by the tray icon's left-click and by the Show... menu items.
-        Rebinds WM_DELETE_WINDOW so closing minimizes to tray instead of
-        exiting the app -- the tray remains the source of truth for the
-        process lifecycle.
-        """
+        """Open (or refocus) the main hub window."""
         try:
-            print("[UI] Calling main_window.show()...")
             self.main_window.show()
-            print(f"[UI] main_window.show() done, _toplevel={self.main_window._toplevel}")
-            top = self.main_window._toplevel
+            # Tkinter fallback: rebind close to minimize-to-tray.
+            top = getattr(self.main_window, '_toplevel', None)
             if top is not None:
                 top.protocol("WM_DELETE_WINDOW", self.hide_main_window)
         except Exception as e:
