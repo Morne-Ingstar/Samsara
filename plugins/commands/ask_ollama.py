@@ -387,9 +387,8 @@ def handle_response(app, response, original_text=None):
             command_name = re.sub(r'\bclose the\b', 'close', command_name)
             command_name = re.sub(r'\s+', ' ', command_name).strip()
         if command_name and command_name not in _UNSAFE_COMMANDS:
-            # Safe by default — execute immediately
+            # Safe by default — execute immediately, earcon is enough feedback
             if hasattr(app, "command_executor"):
-                speak(app, parsed["confirm_text"])
                 app.command_executor.execute_command(command_name, app)
                 _track_alias_uses(original_text)
             else:

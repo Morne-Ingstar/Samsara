@@ -143,7 +143,7 @@ class FirstRunWizard:
         self.captured_keys = set()
 
         # Wake word variable
-        self.wake_word_var = tk.StringVar(value="hey samsara")
+        self.wake_word_var = tk.StringVar(value="jarvis")
 
         self.show_step()
         self.root.protocol("WM_DELETE_WINDOW", self.on_close)
@@ -345,17 +345,15 @@ Setup takes about 1 minute."""
 
         tk.Label(left_frame, text="Wake Word Phrase", font=('Segoe UI', 10, 'bold'),
                 bg='#2d2d2d', fg='white').pack(anchor='w')
-        tk.Label(left_frame, text="Say this to activate voice commands",
+        tk.Label(left_frame, text='Say "Jarvis" or "Hey Jarvis" to activate voice commands',
                 font=('Segoe UI', 8), bg='#2d2d2d', fg='#888888').pack(anchor='w')
 
-        # Dropdown with preset options
-        wake_words = ["samsara", "hey samsara", "samsa", "computer", "hey computer", "jarvis", "hey jarvis"]
-        self.wake_word_combo = ttk.Combobox(wake_frame, textvariable=self.wake_word_var,
-                                            values=wake_words, width=16, font=('Segoe UI', 9))
-        self.wake_word_combo.pack(side='right', padx=5)
+        # Fixed wake word for now — OpenWakeWord only has a Jarvis model
+        tk.Label(wake_frame, text="jarvis", font=('Consolas', 11, 'bold'),
+                bg='#2d2d2d', fg='#00CED1').pack(side='right', padx=10)
 
         tk.Label(self.content_frame,
-                text="You can also type a custom wake word above.",
+                text="More wake word options coming soon.",
                 font=('Segoe UI', 9), bg='#2d2d2d', fg='#666666').pack(pady=(10, 0))
 
     def start_hotkey_capture(self, key_name):
