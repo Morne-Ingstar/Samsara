@@ -254,6 +254,8 @@ hiddenimports = [
     'samsara.ui.tabs.cloud_llm_tab',
     'samsara.ui.tabs.hotkeys_tab',
     'samsara.ui.tabs.sounds_tab',
+    'samsara.ui.tabs.commands_tab',
+    'samsara.ui.tabs.alarms_tab',
 
     # Samsara CUDA detection
     'samsara.cuda_detect',
