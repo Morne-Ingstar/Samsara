@@ -661,8 +661,8 @@ class TestCheckCommandModeKey:
     def test_settings_button_options_cover_all_keyboard_values(self):
         """Every non-mouse button value in the settings dropdown must resolve."""
         import dictation as _d
-        from samsara.ui.settings_window import SettingsWindow
-        for label, key in SettingsWindow._CMD_BUTTON_OPTIONS.items():
+        from samsara.ui.settings_qt import _CMD_BUTTON_OPTIONS
+        for label, key in _CMD_BUTTON_OPTIONS.items():
             if key in ('mouse4', 'mouse5'):
                 continue
             result = _d._get_pynput_command_key(key)

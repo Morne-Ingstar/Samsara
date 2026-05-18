@@ -231,7 +231,6 @@ def _samsara_install_tk_error_filter(root):
             _tb_mod.print_exception(exc, val, tb)
 
     root.report_callback_exception = _filtered
-from voice_training import VoiceTrainingWindow
 try:
     from samsara.ui.voice_training_qt import VoiceTrainingQt as _VoiceTrainingQt
 except Exception as _vt_err:
@@ -248,14 +247,8 @@ except Exception as _ag_err:
     _AvaGuideQt = None
     print(f"[INIT] AvaGuideQt unavailable: {_ag_err}")
 from samsara.profiles import ProfileManager
-from samsara.ui.splash import SplashScreen
-from samsara.ui.first_run_wizard import FirstRunWizard
-from samsara.ui.profile_manager_ui import ProfileManagerWindow
-from samsara.ui.settings_window import SettingsWindow
 from samsara.ui.history_window import HistoryWindow
-from samsara.ui.wake_word_debug import WakeWordDebugWindow
 from samsara.ui.listening_indicator import ListeningIndicator
-from samsara.ui.command_cheatsheet import CommandCheatSheet
 from samsara.cleanup import clean_text
 from samsara.history import HistoryManager
 from samsara.wake_word_matcher import match_wake_phrase
@@ -782,11 +775,8 @@ class DictationApp:
                 self.splash.root.destroy()  # Fully destroy splash's root
                 self.splash = None
             print("First run detected - launching setup wizard...")
-            try:
-                from samsara.ui.first_run_wizard_qt import FirstRunWizardQt
-                wizard = FirstRunWizardQt(self.config_path)
-            except ImportError:
-                wizard = FirstRunWizard(self.config_path)
+            from samsara.ui.first_run_wizard_qt import FirstRunWizardQt
+            wizard = FirstRunWizardQt(self.config_path)
             wizard_result = wizard.run()
             if wizard_result:
                 # Wizard completed successfully, save the config
@@ -1027,18 +1017,17 @@ class DictationApp:
             self.history_db = None
 
         print("[INIT] Building UI...")
-        self.settings_window = SettingsWindow(self)
 
-        # Voice Training window — prefer Qt version if available
+        # Voice Training window
         if _VoiceTrainingQt is not None:
             try:
                 self.voice_training_window = _VoiceTrainingQt(self)
                 print("[INIT] Using VoiceTrainingQt")
             except Exception as _e:
-                print(f"[INIT] VoiceTrainingQt init failed, falling back: {_e}")
-                self.voice_training_window = VoiceTrainingWindow(self)
+                print(f"[INIT] VoiceTrainingQt unavailable: {_e}")
+                self.voice_training_window = None
         else:
-            self.voice_training_window = VoiceTrainingWindow(self)
+            self.voice_training_window = None
 
         # Mic setup wizard
         self.mic_setup_wizard = (
@@ -1058,7 +1047,8 @@ class DictationApp:
             from samsara.ui.wake_word_debug_qt import WakeWordDebugQt
             self.wake_word_debug_window = WakeWordDebugQt(self)
         except ImportError:
-            self.wake_word_debug_window = WakeWordDebugWindow(self)
+            print("[INIT] WakeWordDebugQt unavailable")
+            self.wake_word_debug_window = None
 
         # Listening state indicator overlay
         self.listening_indicator = ListeningIndicator(self.root)
@@ -1070,24 +1060,14 @@ class DictationApp:
 
         # Command cheat sheet overlay
         palette_path = Path(__file__).parent / "command_palette.json"
-        try:
-            from samsara.ui.command_cheatsheet_qt import CommandCheatSheetQt
-            self.cheat_sheet = CommandCheatSheetQt(
-                execute_cb=lambda phrase: self.command_executor.process_text(
-                    phrase, self, force_commands=True
-                ),
-                commands_cb=lambda: self.command_executor._matcher.list_commands(),
-                palette_path=palette_path,
-            )
-        except ImportError:
-            self.cheat_sheet = CommandCheatSheet(
-                root=self.root,
-                execute_cb=lambda phrase: self.command_executor.process_text(
-                    phrase, self, force_commands=True
-                ),
-                commands_cb=lambda: self.command_executor._matcher.list_commands(),
-                palette_path=palette_path,
-            )
+        from samsara.ui.command_cheatsheet_qt import CommandCheatSheetQt
+        self.cheat_sheet = CommandCheatSheetQt(
+            execute_cb=lambda phrase: self.command_executor.process_text(
+                phrase, self, force_commands=True
+            ),
+            commands_cb=lambda: self.command_executor._matcher.list_commands(),
+            palette_path=palette_path,
+        )
 
         # Snooze state
         self.snoozed = False
@@ -1227,12 +1207,8 @@ class DictationApp:
         # Main hub window (sidebar nav into History/Dictionary/Settings).
         # Constructed before the tray so the tray's left-click handler
         # has something to call.
-        try:
-            from samsara.ui.main_window_qt import MainWindowQt
-            self.main_window = MainWindowQt(self)
-        except ImportError:
-            from samsara.ui.main_window import MainWindow
-            self.main_window = MainWindow(self)
+        from samsara.ui.main_window_qt import MainWindowQt
+        self.main_window = MainWindowQt(self)
 
         # NOTE: Splash is intentionally NOT closed here. load_model_async runs
         # the heavy Whisper/CUDA load on a background thread; closing the splash
@@ -5742,34 +5718,12 @@ class DictationApp:
     def open_settings(self):
         """Open settings window"""
         try:
-            from samsara.ui.settings_qt import SettingsQt
             if not hasattr(self, '_settings_qt'):
+                from samsara.ui.settings_qt import SettingsQt
                 self._settings_qt = SettingsQt(self)
             self._settings_qt.show()
-            return
-        except ImportError:
-            pass
         except Exception as e:
-            print(f"[SETTINGS] Qt window error: {e}")
-
-        # Tkinter fallback
-        if self.settings_window.window is not None:
-            try:
-                self.settings_window.window.lift()
-                self.settings_window.window.focus_force()
-                return
-            except:
-                self.settings_window.window = None
-        try:
-            self.settings_window.show()
-        except Exception as e:
-            print(f"Error opening settings: {e}")
-            self.settings_window.window = None
-            try:
-                self.settings_window.show()
-            except Exception as e2:
-                print(f"Failed to open settings after reset: {e2}")
-                messagebox.showerror("Error", f"Failed to open Settings:\n{e2}")
+            print(f"[SETTINGS] Error opening settings: {e}")
     
     def open_voice_training(self):
         """Open voice training window"""
@@ -6430,11 +6384,8 @@ if __name__ == "__main__":
     _acquire_instance_lock()
 
     # Show splash screen during startup
-    try:
-        from samsara.ui.splash_qt import SplashScreenQt
-        splash = SplashScreenQt()
-    except ImportError:
-        splash = SplashScreen()
+    from samsara.ui.splash_qt import SplashScreenQt
+    splash = SplashScreenQt()
     splash.set_status("Initializing...")
 
     app = None
