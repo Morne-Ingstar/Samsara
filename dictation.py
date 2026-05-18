@@ -3337,9 +3337,25 @@ class DictationApp:
                 # actively corrupting the signal (cleaned_rms >> mic_rms) which
                 # makes Whisper reject valid speech or misrecognize words.
                 # Whisper has its own VAD filter that strips non-speech segments.
+                speech_onset = not self.is_speaking  # first speech frame?
                 self.is_speaking = True
                 self.silence_start = None
                 with self.buffer_lock:
+                    # On speech onset, prepend the rolling pre-buffer so the
+                    # first ~300-500ms of audio before VAD triggered is
+                    # included. Without this, VAD fires slightly after the
+                    # user starts speaking and short leading words like "the",
+                    # "a", "and" are clipped from the buffer entirely.
+                    if speech_onset and self._prebuffer:
+                        prebuf = list(self._prebuffer)
+                        self._prebuffer.clear()
+                        for pb_chunk in prebuf:
+                            self.speech_buffer.append(pb_chunk)
+                            self._buffer_rms_history.append(
+                                float(np.sqrt(np.mean(pb_chunk**2)))
+                            )
+                        prebuf_ms = len(prebuf) * 100
+                        print(f"[PRE] Prepended {prebuf_ms}ms pre-buffer to speech onset")
                     self.speech_buffer.append(raw_chunk)
                     self._buffer_rms_history.append(rms)
 
@@ -3486,6 +3502,27 @@ class DictationApp:
             audio = np.concatenate(buffer)
             audio = resample_audio(audio, self.capture_rate, self.model_rate)
             audio_duration = len(audio) / self.model_rate
+
+            # DEBUG: dump raw audio before Whisper for onset-clipping diagnosis.
+            # Enable with config key debug_dump_wake_audio: true
+            # Listen to the WAV — if the first word is already missing, it's a
+            # pipeline/prebuffer issue, not Whisper.
+            if self.config.get('debug_dump_wake_audio', False):
+                try:
+                    import wave as _wave
+                    _dump_dir = Path(os.path.expanduser("~")) / ".samsara" / "debug_audio"
+                    _dump_dir.mkdir(parents=True, exist_ok=True)
+                    _ts = datetime.now().strftime("%H%M%S_%f")
+                    _dump_path = _dump_dir / f"wake_{_ts}.wav"
+                    _int16 = (audio * 32767).clip(-32768, 32767).astype(np.int16)
+                    with _wave.open(str(_dump_path), 'w') as _wf:
+                        _wf.setnchannels(1)
+                        _wf.setsampwidth(2)
+                        _wf.setframerate(self.model_rate)
+                        _wf.writeframes(_int16.tobytes())
+                    print(f"[DEBUG] Dumped wake audio -> {_dump_path} ({audio_duration:.2f}s)")
+                except Exception as _de:
+                    print(f"[DEBUG] Audio dump failed: {_de}")
 
             # FIX 1: RMS energy gate — skip Whisper on silent audio.
             # On CPU machines Whisper takes ~1s per call; calling it on every
