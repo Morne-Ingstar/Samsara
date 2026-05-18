@@ -23,7 +23,7 @@ import threading
 from datetime import datetime
 
 from PySide6.QtCore import Qt, QTimer, Signal, Slot
-from PySide6.QtGui import QColor, QFont
+from PySide6.QtGui import QColor
 from PySide6.QtWidgets import (
     QAbstractItemView, QApplication, QComboBox, QFrame,
     QHBoxLayout, QHeaderView, QLabel, QLineEdit, QListWidget,
@@ -286,7 +286,6 @@ class _HistoryPanel(QWidget):
         self._detail = QPlainTextEdit()
         self._detail.setReadOnly(True)
         self._detail.setFixedHeight(64)
-        self._detail.setFont(QFont("Consolas", 11))
         root.addWidget(self._detail)
 
     # ---- Data ---------------------------------------------------------------
@@ -455,8 +454,7 @@ class _MainWindow(QMainWindow):
         hlay = QHBoxLayout(header)
         hlay.setContentsMargins(20, 0, 20, 0)
         title = QLabel("Samsara")
-        title.setFont(QFont("Segoe UI", 16, QFont.Bold))
-        title.setStyleSheet(f"color: {_TEXT_PRI};")
+        title.setStyleSheet(f"color: {_TEXT_PRI}; font-size: 16px; font-weight: 700;")
         self._badge = QLabel("ready")
         self._badge.setStyleSheet(f"color: {_TEXT_SEC}; font-size: 11px;")
         hlay.addWidget(title)

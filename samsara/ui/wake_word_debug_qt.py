@@ -17,7 +17,7 @@ from pathlib import Path
 import numpy as np
 
 from PySide6.QtCore import Qt, QTimer, Signal, Slot
-from PySide6.QtGui import QFont, QColor
+from PySide6.QtGui import QColor
 from PySide6.QtWidgets import (
     QApplication, QComboBox, QDoubleSpinBox, QFrame,
     QHBoxLayout, QLabel, QMainWindow, QPlainTextEdit,
@@ -139,8 +139,10 @@ def _card():
 
 def _section_label(text):
     lbl = QLabel(text)
-    lbl.setFont(QFont("Segoe UI", 13, QFont.Bold))
-    lbl.setStyleSheet(f"color: {_TEXT_PRI}; background: transparent;")
+    lbl.setStyleSheet(
+        f"color: {_TEXT_PRI}; background: transparent;"
+        " font-size: 13px; font-weight: 700;"
+    )
     return lbl
 
 
