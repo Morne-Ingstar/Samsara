@@ -45,6 +45,16 @@ _ERROR    = "#f87171"
 _WARNING  = "#fbbf24"
 _MUTED    = "#4a5568"
 
+# Applied directly to primary buttons so Windows 11's native style engine
+# can't override the colours through stylesheet inheritance.
+_PRIMARY_SS = (
+    f"QPushButton{{background:{_ACCENT};color:{_BG};"
+    f"border:none;border-radius:4px;font-weight:bold;padding:6px 18px;}}"
+    f"QPushButton:hover{{background:#4ab8c8;color:{_BG};}}"
+    f"QPushButton:disabled{{background:{_ELEVATED};color:{_MUTED};"
+    f"border:1px solid {_BORDER};}}"
+)
+
 _SS = f"""
 QDialog, QWidget {{
     background: {_BG};
@@ -351,7 +361,7 @@ class _WizardWindow(QDialog):
         nav_lay.addWidget(self._skip_btn)
 
         self._next_btn = QPushButton("Next")
-        self._next_btn.setObjectName("primary")
+        self._next_btn.setStyleSheet(_PRIMARY_SS)
         self._next_btn.setFixedWidth(110)
         self._next_btn.clicked.connect(self._go_next)
         nav_lay.addWidget(self._next_btn)
