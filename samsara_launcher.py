@@ -25,22 +25,7 @@ def show_msg(message, title="Samsara", error=False):
         except Exception:
             pass
 
-    # Try tkinter as cross-platform fallback
-    try:
-        import tkinter as tk
-        from tkinter import messagebox
-        root = tk.Tk()
-        root.withdraw()
-        if error:
-            messagebox.showerror(title, message)
-        else:
-            messagebox.showinfo(title, message)
-        root.destroy()
-        return
-    except ImportError:
-        pass
-
-    # Last resort: print to console
+    # Fall back to console output
     prefix = "ERROR: " if error else ""
     print(f"{prefix}{title}: {message}")
 

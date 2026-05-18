@@ -135,18 +135,16 @@ if sys.platform == 'win32':
         import ctypes as _ctypes
         _ctypes.cdll.LoadLibrary("msvcp140.dll")
     except OSError:
-        import tkinter as _tk
-        from tkinter import messagebox as _mb
-        _r = _tk.Tk()
-        _r.withdraw()
-        _mb.showerror(
+        from PySide6.QtWidgets import QApplication as _QApp, QMessageBox as _QMB
+        _app = _QApp.instance() or _QApp(sys.argv)
+        _QMB.critical(
+            None,
             "Missing Dependency",
             "Samsara requires the Visual C++ Redistributable.\n\n"
             "Download it from:\n"
             "https://aka.ms/vs/17/release/vc_redist.x64.exe\n\n"
-            "Install it and restart Samsara."
+            "Install it and restart Samsara.",
         )
-        _r.destroy()
         sys.exit(1)
 
 from faster_whisper import WhisperModel
@@ -168,7 +166,7 @@ except Exception as _tray_err:
     print(f"[INIT] SamsaraTrayQt unavailable: {_tray_err}")
 import json
 from pathlib import Path
-# Per-monitor DPI awareness must be declared before tkinter or win32api do
+# Per-monitor DPI awareness must be declared before win32api does
 # anything coordinate-related.  Without it, UIA BoundingRectangle (logical
 # coords on a 150% display) and win32api.SetCursorPos (physical pixels)
 # disagree — overlay labels appear in the right place but fallback clicks
