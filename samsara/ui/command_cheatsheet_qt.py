@@ -17,7 +17,7 @@ from typing import Callable, List
 from PySide6.QtCore import Qt, QTimer, Signal, QPoint
 from PySide6.QtGui import QColor, QCursor
 from PySide6.QtWidgets import (
-    QApplication, QMainWindow, QWidget, QVBoxLayout, QHBoxLayout,
+    QApplication, QComboBox, QMainWindow, QWidget, QVBoxLayout, QHBoxLayout,
     QLabel, QListWidget, QListWidgetItem, QLineEdit,
     QFrame, QSizeGrip, QSlider, QMenu, QAbstractItemView,
 )
@@ -92,6 +92,31 @@ QSlider::handle:horizontal {{
 QSlider::sub-page:horizontal {{ background: {_ACCENT}; border-radius: 1px; }}
 QMenu {{ background: {_SURFACE}; color: {_TEXT_PRI}; border: 1px solid {_BORDER}; }}
 QMenu::item:selected {{ background: {_ACCENT_DIM}; color: {_ACCENT}; }}
+QComboBox {{
+    background: {_SURFACE};
+    color: {_TEXT_PRI};
+    border: none;
+    border-radius: 3px;
+    padding: 3px 8px;
+    font-size: 11px;
+    min-width: 120px;
+}}
+QComboBox:hover {{ background: {_ELEVATED}; }}
+QComboBox::drop-down {{ border: none; width: 18px; }}
+QComboBox::down-arrow {{
+    width: 8px; height: 8px;
+    border-left: 4px solid transparent;
+    border-right: 4px solid transparent;
+    border-top: 5px solid {_TEXT_SEC};
+}}
+QComboBox QAbstractItemView {{
+    background: {_SURFACE};
+    color: {_TEXT_PRI};
+    border: 1px solid {_BORDER};
+    selection-background-color: {_ACCENT_DIM};
+    selection-color: {_ACCENT};
+    outline: none;
+}}
 """
 
 
@@ -317,85 +342,65 @@ class _StaticRow(QFrame):
 
 
 # ---------------------------------------------------------------------------
-# Category tab bar
+# Category selector — compact dropdown replacing the old tab strip
 # ---------------------------------------------------------------------------
 
-class _TabBtn(QLabel):
-    def __init__(self, label: str, pack_id: str, on_select, parent=None):
-        super().__init__(label, parent)
-        self._pack_id = pack_id
-        self._on_select = on_select
-        self._active = False
-        self.setCursor(QCursor(Qt.CursorShape.PointingHandCursor))
-        self._update_style()
-
-    def set_active(self, active: bool):
-        self._active = active
-        self._update_style()
-
-    def _update_style(self):
-        if self._active:
-            self.setStyleSheet(
-                f"color:{_ACCENT};font-size:11px;font-weight:bold;"
-                f"border-bottom:2px solid {_ACCENT};padding:4px 8px 2px 8px;"
-            )
-        else:
-            self.setStyleSheet(
-                f"color:{_TEXT_SEC};font-size:11px;"
-                f"border-bottom:2px solid transparent;padding:4px 8px 2px 8px;"
-            )
-
-    def mousePressEvent(self, e):
-        if e.button() == Qt.MouseButton.LeftButton:
-            self._on_select(self._pack_id)
-
-    def enterEvent(self, e):
-        if not self._active:
-            self.setStyleSheet(
-                f"color:{_TEXT_PRI};font-size:11px;"
-                f"border-bottom:2px solid {_BORDER};padding:4px 8px 2px 8px;"
-            )
-
-    def leaveEvent(self, e):
-        self._update_style()
-
-
 class _CategoryTabBar(QWidget):
+    """A single-row category picker using a QComboBox.
+
+    Replaces the original horizontal tab strip, which became unreadable
+    at the window's default width once enough command packs were registered.
+    A dropdown takes exactly one line regardless of how many categories exist.
+    """
+
     def __init__(self, on_select, parent=None):
         super().__init__(parent)
         self._on_select = on_select
-        self._tabs: List[_TabBtn] = []
+        self._pack_ids: List[str] = []
 
         self.setFixedHeight(32)
         self.setStyleSheet(
             f"background:{_SURFACE};border-bottom:1px solid {_BORDER};"
         )
 
-        self._layout = QHBoxLayout(self)
-        self._layout.setContentsMargins(6, 0, 6, 0)
-        self._layout.setSpacing(0)
+        lay = QHBoxLayout(self)
+        lay.setContentsMargins(8, 0, 8, 0)
+        lay.setSpacing(6)
+
+        cat_lbl = QLabel("Category")
+        cat_lbl.setStyleSheet(f"color:{_TEXT_SEC};font-size:10px;")
+        lay.addWidget(cat_lbl)
+
+        self._combo = QComboBox()
+        self._combo.setStyleSheet(_SS)
+        self._combo.setSizeAdjustPolicy(
+            QComboBox.SizeAdjustPolicy.AdjustToContents
+        )
+        self._combo.currentIndexChanged.connect(self._on_changed)
+        lay.addWidget(self._combo)
+        lay.addStretch()
 
     def set_categories(self, pack_ids: List[str], active_id: str):
-        for tab in self._tabs:
-            tab.deleteLater()
-        self._tabs.clear()
-        while self._layout.count():
-            item = self._layout.takeAt(0)
-            if item.widget():
-                item.widget().deleteLater()
-
-        for pid in ["All"] + pack_ids:
-            label = "All" if pid == "All" else _pack_label(pid)
-            btn = _TabBtn(label, pid, self._on_select, self)
-            btn.set_active(pid == active_id)
-            self._layout.addWidget(btn)
-            self._tabs.append(btn)
-
-        self._layout.addStretch()
+        self._pack_ids = ["All"] + pack_ids
+        self._combo.blockSignals(True)
+        self._combo.clear()
+        for pid in self._pack_ids:
+            label = "All commands" if pid == "All" else _pack_label(pid)
+            self._combo.addItem(label, userData=pid)
+        # Restore selection
+        idx = self._pack_ids.index(active_id) if active_id in self._pack_ids else 0
+        self._combo.setCurrentIndex(idx)
+        self._combo.blockSignals(False)
 
     def set_active(self, pack_id: str):
-        for tab in self._tabs:
-            tab.set_active(tab._pack_id == pack_id)
+        if pack_id in self._pack_ids:
+            self._combo.blockSignals(True)
+            self._combo.setCurrentIndex(self._pack_ids.index(pack_id))
+            self._combo.blockSignals(False)
+
+    def _on_changed(self, index: int):
+        if 0 <= index < len(self._pack_ids):
+            self._on_select(self._pack_ids[index])
 
 
 # ---------------------------------------------------------------------------
