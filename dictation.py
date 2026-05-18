@@ -5553,6 +5553,8 @@ class DictationApp:
         Safe to call from any thread.  Falls back to a direct call if Qt
         is not available so non-GUI code paths (tests, CI) still work.
         """
+        if not self._running:
+            return
         from PySide6.QtCore import QTimer
         from PySide6.QtWidgets import QApplication
         qt_app = QApplication.instance()
@@ -6435,8 +6437,20 @@ if __name__ == "__main__":
         splash = SplashScreen()
     splash.set_status("Initializing...")
 
+    app = None
     try:
         app = DictationApp(splash)
     except Exception as e:
         splash.close()
         raise e
+    finally:
+        # os._exit(0) in quit_app bypasses this block, which is correct —
+        # quit_app already releases the hook explicitly before exiting.
+        # This finally only fires on an exception or KeyboardInterrupt that
+        # propagates to __main__ without going through quit_app, ensuring
+        # CapsLock is always returned to the OS on abnormal exits.
+        if app is not None:
+            try:
+                app._uninstall_capslock_hook()
+            except Exception:
+                pass
