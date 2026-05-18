@@ -5063,7 +5063,14 @@ class DictationApp:
             return
 
         self.set_app_state(recording=False)
-        self._hotkey_recording = False  # Re-enable wake word processing
+        # Only re-enable wake word if a new recording hasn't already started.
+        # The deferred stop (trailing buffer) can fire AFTER the user has
+        # pressed the hotkey again and started a new recording. In that case
+        # hotkey_pressed is True and clearing _hotkey_recording here would
+        # open the wake path mid-recording, letting it inject audio into the
+        # active hold-mode session (observed: "loop loop loop" artifact).
+        if not self.hotkey_pressed:
+            self._hotkey_recording = False
         self.play_sound("stop")
 
         # Restore tray icon — release recording reason (wake_word may keep it spinning)
@@ -5303,7 +5310,8 @@ class DictationApp:
             return
 
         self.set_app_state(recording=False)
-        self._hotkey_recording = False  # Re-enable wake word processing
+        if not self.hotkey_pressed:
+            self._hotkey_recording = False  # Re-enable wake word processing
         print("[X] Recording cancelled")
 
         if hasattr(self, 'stream'):
