@@ -211,6 +211,21 @@ class GeneralTab:
                       command=self.sw.open_mic_setup_guide
                       ).pack(anchor='w', padx=15, pady=(0, 15))
 
+        ctk.CTkLabel(general_scroll, text="Ava — AI Assistant",
+                     font=ctk.CTkFont(size=16, weight="bold")
+                     ).pack(anchor='w', pady=(0, 10))
+
+        ava_frame = ctk.CTkFrame(general_scroll, corner_radius=10)
+        ava_frame.pack(fill='x', pady=(0, 20))
+        ctk.CTkLabel(ava_frame,
+                     text="Set up Ava, Samsara's local AI assistant. "
+                          "Ava lets you speak naturally instead of memorising exact commands.",
+                     text_color="gray", wraplength=540
+                     ).pack(anchor='w', padx=15, pady=(15, 10))
+        ctk.CTkButton(ava_frame, text="Set Up Ava...", width=160,
+                      command=self.sw.open_ava_guide
+                      ).pack(anchor='w', padx=15, pady=(0, 15))
+
         ctk.CTkLabel(general_scroll, text="Voice Training",
                      font=ctk.CTkFont(size=16, weight="bold")
                      ).pack(anchor='w', pady=(0, 10))
