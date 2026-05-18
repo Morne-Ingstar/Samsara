@@ -216,11 +216,17 @@ class _HistoryPanel(QWidget):
         "failed":       QColor("#FF6666"),
     }
 
+    # Signal to marshal DB results back onto the Qt thread before
+    # touching any widgets — background threads must not call _populate
+    # directly or Qt silently drops the updates.
+    _rows_ready = Signal(list)
+
     def __init__(self, app, parent=None):
         super().__init__(parent)
         self._app = app
-        self._rows = []   # list of row dicts from DB
+        self._rows = []
         self._setup_ui()
+        self._rows_ready.connect(self._on_rows_ready)
         QTimer.singleShot(0, self._load)
 
     # ---- UI -----------------------------------------------------------------
@@ -293,14 +299,15 @@ class _HistoryPanel(QWidget):
             except Exception:
                 return []
 
-        def _done(rows):
-            self._rows = rows
-            self._apply_filter()
-
         threading.Thread(
-            target=lambda: _done(_fetch()),
+            target=lambda: self._rows_ready.emit(_fetch()),
             daemon=True, name="history-panel-load",
         ).start()
+
+    @Slot(list)
+    def _on_rows_ready(self, rows: list):
+        self._rows = rows
+        self._apply_filter()
 
     def _apply_filter(self):
         q    = self._search.text().lower()
