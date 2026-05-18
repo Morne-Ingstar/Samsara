@@ -233,6 +233,11 @@ try:
 except Exception as _vt_err:
     _VoiceTrainingQt = None
     print(f"[INIT] VoiceTrainingQt unavailable: {_vt_err}")
+try:
+    from samsara.ui.mic_setup_wizard_qt import MicSetupWizardQt as _MicSetupWizardQt
+except Exception as _msw_err:
+    _MicSetupWizardQt = None
+    print(f"[INIT] MicSetupWizardQt unavailable: {_msw_err}")
 from samsara.profiles import ProfileManager
 from samsara.ui.splash import SplashScreen
 from samsara.ui.first_run_wizard import FirstRunWizard
@@ -1020,6 +1025,11 @@ class DictationApp:
                 self.voice_training_window = VoiceTrainingWindow(self)
         else:
             self.voice_training_window = VoiceTrainingWindow(self)
+
+        # Mic setup wizard
+        self.mic_setup_wizard = (
+            _MicSetupWizardQt(self) if _MicSetupWizardQt is not None else None
+        )
 
         # History window
         self.history_window = HistoryWindow(self)
@@ -5736,6 +5746,11 @@ class DictationApp:
         except Exception as e:
             print(f"Error opening voice training: {e}")
 
+    def open_mic_setup_guide(self):
+        """Open the guided mic setup wizard."""
+        if self.mic_setup_wizard is not None:
+            self.mic_setup_wizard.show()
+
     def open_history(self):
         """Open dictation history window"""
         try:
@@ -6093,6 +6108,7 @@ class DictationApp:
                 pystray.MenuItem(
                     "Tools",
                     pystray.Menu(
+                        pystray.MenuItem("Mic Setup Guide", self.open_mic_setup_guide),
                         pystray.MenuItem("Voice Training", self.open_voice_training),
                         pystray.MenuItem("Wake Word Debug", self.open_wake_word_debug),
                         pystray.MenuItem("Recalibrate Mic", lambda _i, _it: self.recalibrate_mic()),

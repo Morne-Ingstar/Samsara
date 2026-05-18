@@ -196,6 +196,21 @@ class GeneralTab:
                       command=self.sw.open_profile_manager
                       ).pack(anchor='w', padx=15, pady=(0, 15))
 
+        ctk.CTkLabel(general_scroll, text="Microphone Setup",
+                     font=ctk.CTkFont(size=16, weight="bold")
+                     ).pack(anchor='w', pady=(0, 10))
+
+        setup_frame = ctk.CTkFrame(general_scroll, corner_radius=10)
+        setup_frame.pack(fill='x', pady=(0, 20))
+        ctk.CTkLabel(setup_frame,
+                     text="Step-by-step guide: pick your device, set your level, "
+                          "and confirm your wake word is working.",
+                     text_color="gray", wraplength=540
+                     ).pack(anchor='w', padx=15, pady=(15, 10))
+        ctk.CTkButton(setup_frame, text="Run Mic Setup Guide...", width=190,
+                      command=self.sw.open_mic_setup_guide
+                      ).pack(anchor='w', padx=15, pady=(0, 15))
+
         ctk.CTkLabel(general_scroll, text="Voice Training",
                      font=ctk.CTkFont(size=16, weight="bold")
                      ).pack(anchor='w', pady=(0, 10))

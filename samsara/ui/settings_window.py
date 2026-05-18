@@ -765,6 +765,10 @@ X-GNOME-Autostart-enabled=true
         """Open the voice training window from settings."""
         self.app.open_voice_training()
 
+    def open_mic_setup_guide(self):
+        """Open the guided mic setup wizard from settings."""
+        self.app.open_mic_setup_guide()
+
     def open_wake_word_debug(self):
         """Open the wake word debug window from settings."""
         self.app.open_wake_word_debug()
