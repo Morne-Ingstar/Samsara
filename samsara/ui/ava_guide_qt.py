@@ -118,6 +118,14 @@ _MODELS = [
 _OLLAMA_URL = "http://localhost:11434"
 _OLLAMA_DOWNLOAD = "https://ollama.com/download"
 
+_AVA_KEY_OPTIONS = [
+    ("Right Alt (default)", "right_alt"),
+    ("Right Ctrl",          "rctrl"),
+    ("F13",                 "f13"),
+    ("Mouse button 4",      "mouse4"),
+    ("Mouse button 5",      "mouse5"),
+]
+
 
 def _ping_ollama(timeout: int = 3) -> tuple[bool, list[str]]:
     """Return (is_running, list_of_installed_model_names)."""
@@ -531,8 +539,8 @@ class _WizardWindow(QDialog):
     def _build_done_page(self) -> QWidget:
         page = QWidget()
         lay = QVBoxLayout(page)
-        lay.setContentsMargins(32, 32, 32, 16)
-        lay.setSpacing(14)
+        lay.setContentsMargins(32, 24, 32, 16)
+        lay.setSpacing(12)
 
         title = QLabel("Ava is ready.")
         title.setStyleSheet(
@@ -544,14 +552,46 @@ class _WizardWindow(QDialog):
         self._done_summary = QLabel("")
         self._done_summary.setAlignment(Qt.AlignmentFlag.AlignCenter)
         self._done_summary.setWordWrap(True)
-        self._done_summary.setStyleSheet(
-            f"color:{_TEXT_SEC};font-size:12px;"
-        )
+        self._done_summary.setStyleSheet(f"color:{_TEXT_SEC};font-size:12px;")
         lay.addWidget(self._done_summary)
 
-        lay.addSpacing(8)
+        # ---- Activation key selector ----
+        key_frame = QWidget()
+        key_frame.setStyleSheet(
+            f"background:{_SURFACE};border-radius:6px;border:1px solid {_BORDER};"
+        )
+        kf_lay = QVBoxLayout(key_frame)
+        kf_lay.setContentsMargins(16, 12, 16, 12)
+        kf_lay.setSpacing(8)
 
-        # How to use section
+        kf_lay.addWidget(_small_bold("Activation key", _ACCENT))
+        kf_lay.addWidget(_body(
+            "Hold this key and speak — Ava listens while you hold it, "
+            "then responds when you release."
+        ))
+
+        key_row = QHBoxLayout()
+        key_row.setSpacing(10)
+        key_row.addWidget(_label("Key:"))
+
+        self._key_combo = QComboBox()
+        for display, value in _AVA_KEY_OPTIONS:
+            self._key_combo.addItem(display, userData=value)
+
+        current_key = self._app.config.get("ava_mode_key", "right_alt")
+        for i, (_, value) in enumerate(_AVA_KEY_OPTIONS):
+            if value == current_key:
+                self._key_combo.setCurrentIndex(i)
+                break
+
+        self._key_combo.currentIndexChanged.connect(self._on_ava_key_changed)
+        key_row.addWidget(self._key_combo)
+        key_row.addStretch()
+        kf_lay.addLayout(key_row)
+
+        lay.addWidget(key_frame)
+
+        # ---- How to use ----
         usage_frame = QWidget()
         usage_frame.setStyleSheet(
             f"background:{_SURFACE};border-radius:6px;border:1px solid {_BORDER};"
@@ -564,10 +604,11 @@ class _WizardWindow(QDialog):
 
         wake = self._app.config.get("wake_word_config", {}).get("phrase", "Jarvis")
         usage_lines = [
-            f'Say  "{wake.title()}, hey Ava"  then speak naturally.',
-            f'Say  "{wake.title()}, Ava local"  to force a local model response.',
-            "Ava reads your active command list and tries to route your request.",
-            'Say "Ava cancel" at any time to stop a running response.',
+            f'"{wake.title()}, hey Ava" also works — no key needed, fully hands-free.',
+            f'"{wake.title()}, Ava local" — same as above, but guaranteed to stay '
+            f'on your computer. Nothing sent online.',
+            f'"{wake.title()}, Ava cancel" — if Ava asked a question and is waiting '
+            f'for your answer, this clears it.',
         ]
         for line in usage_lines:
             row = QHBoxLayout()
@@ -848,6 +889,14 @@ class _WizardWindow(QDialog):
         ]
         self._done_summary.setText("\n".join(parts))
         self._enable_pack_btn.setVisible(not ai_enabled)
+
+    def _on_ava_key_changed(self, index: int):
+        if 0 <= index < len(_AVA_KEY_OPTIONS):
+            value = _AVA_KEY_OPTIONS[index][1]
+            try:
+                self._app.update_config({"ava_mode_key": value}, save=True)
+            except Exception:
+                pass
 
     def _enable_ai_pack(self):
         try:
