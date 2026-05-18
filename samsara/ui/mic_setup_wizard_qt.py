@@ -6,7 +6,7 @@ A simple 4-step wizard that walks new users through:
   3. Testing wake word detection
   4. Confirming everything is set
 
-Designed to be approachable — no technical parameters, no jargon.
+Designed to be approachable -- no technical parameters, no jargon.
 All the numbers happen behind the scenes.
 
 Public API (same wrapper pattern as all Qt windows):
@@ -22,15 +22,15 @@ import sounddevice as sd
 
 from PySide6.QtCore import Qt, QTimer, Signal
 from PySide6.QtWidgets import (
-    QApplication, QDialog, QFrame, QHBoxLayout, QLabel,
-    QPushButton, QSizePolicy, QStackedWidget, QVBoxLayout,
-    QWidget, QComboBox, QProgressBar,
+    QApplication, QComboBox, QDialog, QFrame, QHBoxLayout, QLabel,
+    QProgressBar, QPushButton, QSizePolicy, QStackedWidget, QVBoxLayout,
+    QWidget,
 )
 
 from samsara.constants import DEFAULT_CAPTURE_RATE
 
 # ---------------------------------------------------------------------------
-# Colours — shared with the rest of the Qt UI
+# Colours
 # ---------------------------------------------------------------------------
 
 _BG       = "#0b0e14"
@@ -71,18 +71,13 @@ QPushButton#primary {{
     border-color: {_ACCENT};
     font-weight: bold;
 }}
-QPushButton#primary:hover {{
-    background: #4ab8c8;
-}}
+QPushButton#primary:hover {{ background: #4ab8c8; }}
 QPushButton#ghost {{
     background: transparent;
     color: {_TEXT_SEC};
     border: none;
 }}
-QPushButton#ghost:hover {{
-    color: {_TEXT_PRI};
-    background: transparent;
-}}
+QPushButton#ghost:hover {{ color: {_TEXT_PRI}; background: transparent; }}
 QComboBox {{
     background: {_SURFACE};
     border: 1px solid {_BORDER};
@@ -107,26 +102,22 @@ QProgressBar {{
 QProgressBar::chunk {{ background: {_SUCCESS}; border-radius: 5px; }}
 """
 
-# Level zones (fraction 0-1)
-_ZONE_LOW  = 0.12   # below this: too quiet
-_ZONE_HIGH = 0.72   # above this: too loud
-# How long the level must stay in the green zone before auto-enabling the
-# "calibrate" button (seconds).
-_GREEN_DWELL_S = 1.5
-# How many OWW hits count as a passing wake-word test.
+# Level zones expressed as a fraction of the normalised bar (0.0-1.0).
+# Bar is normalised so that RMS 0.20 = full scale.
+# Thresholds are intentionally generous: even a padded interface mic at
+# 1 ft will read 0.01-0.03 RMS, which puts it comfortably in the green.
+_ZONE_LOW   = 0.025    # below this (RMS < 0.005): near-silence, essentially off
+_ZONE_HIGH  = 0.90     # above this (RMS > 0.18):  very loud, risk of clipping
+_GREEN_DWELL_S = 1.5   # seconds level must stay green before Next enables
+
 _OWW_PASS_THRESHOLD = 2
-# How many attempts the test offers.
-_OWW_ATTEMPTS = 3
-# Seconds per attempt before it times out.
+_OWW_ATTEMPTS       = 3
 _OWW_ATTEMPT_TIMEOUT = 8.0
-# RMS noise floor — don't amplify below this for OWW normalisation.
-_OWW_NOISE_FLOOR = 0.005
-# Target RMS for OWW normalisation (matches dictation.py).
-_OWW_TARGET_RMS = 0.10
+_OWW_NOISE_FLOOR    = 0.005
+_OWW_TARGET_RMS     = 0.10
 
 
 def _resample(audio, orig_sr, target_sr=16000):
-    """Linear-interpolation resample — same logic as dictation.py."""
     if orig_sr == target_sr or len(audio) == 0:
         return audio
     new_len = int(len(audio) * target_sr / orig_sr)
@@ -138,7 +129,6 @@ def _resample(audio, orig_sr, target_sr=16000):
 
 
 def _query_input_devices():
-    """Return list of (index, name) for all input devices."""
     devices = []
     try:
         for i, dev in enumerate(sd.query_devices()):
@@ -150,7 +140,6 @@ def _query_input_devices():
 
 
 def _detect_capture_rate(device_index):
-    """Query the device's preferred sample rate, fall back to default."""
     try:
         info = sd.query_devices(device_index)
         rate = int(info.get("default_samplerate", DEFAULT_CAPTURE_RATE))
@@ -164,7 +153,7 @@ def _detect_capture_rate(device_index):
 # ---------------------------------------------------------------------------
 
 class MicSetupWizardQt:
-    """Drop-in Qt wizard — same open/close pattern as other Qt windows."""
+    """Drop-in Qt wizard -- same open/close pattern as other Qt windows."""
 
     def __init__(self, app):
         self.app = app
@@ -190,12 +179,17 @@ class MicSetupWizardQt:
             QTimer.singleShot(0, self._window.close)
 
     def _init_window(self):
-        self._window = _WizardWindow(self.app)
+        self._window = _WizardWindow(self._app if hasattr(self, '_app') else self.app)
         self._window.destroyed.connect(self._on_destroyed)
         self._window.show()
 
     def _on_destroyed(self):
         self._window = None
+
+    # Keep attribute access consistent whether callers use app or _app
+    @property
+    def _app(self):
+        return self.app
 
 
 # ---------------------------------------------------------------------------
@@ -204,9 +198,8 @@ class MicSetupWizardQt:
 
 class _WizardWindow(QDialog):
 
-    # Signals for audio-thread → Qt-thread marshalling
-    _level_sig  = Signal(float)   # normalised 0.0-1.0 RMS
-    _oww_hit_sig = Signal()       # one wake-word detection
+    _level_sig   = Signal(float)   # raw RMS from audio thread
+    _oww_hit_sig = Signal()        # OWW detection from audio thread
 
     _STEP_DEVICE = 0
     _STEP_LEVEL  = 1
@@ -224,29 +217,31 @@ class _WizardWindow(QDialog):
         super().__init__()
         self._app = app
 
-        # Audio state
+        # Single persistent audio stream — opened on first step,
+        # closed only in closeEvent. Never reopened mid-navigation.
         self._stream          = None
         self._stream_lock     = threading.Lock()
-        self._monitoring      = False
+        self._wizard_active   = False   # master flag for the audio worker
+        self._selected_device = None    # sounddevice index (None = default)
         self._capture_rate    = DEFAULT_CAPTURE_RATE
-        self._selected_device = None   # sounddevice index (None = default)
+        self._current_step    = -1      # set by _go_to()
 
-        # Level / calibration state
-        self._level_history   = collections.deque(maxlen=20)  # 2s of 100ms
-        self._green_since     = None   # monotonic time when entered green zone
-        self._cal_threshold   = None   # saved speech_threshold value
+        # Level state
+        self._level_history   = collections.deque(maxlen=20)
+        self._green_since     = None
+        self._cal_threshold   = None
 
         # OWW state
         self._oww_detector    = None
+        self._oww_running     = False   # True only during wake word step
         self._oww_hits        = 0
-        self._oww_running     = False
-        self._oww_attempt_idx = 0      # which slot (0/1/2) we are filling
-        self._attempt_started = None   # monotonic time of current attempt start
-        self._attempt_labels  = []     # QLabel slots on the wake page
-        self._oww_result_lbl  = None   # hint/result text below slots
+        self._oww_attempt_idx = 0
+        self._attempt_started = None
+        self._attempt_labels  = []
+        self._oww_poll_timer  = None
 
         self.setWindowTitle("Microphone Setup")
-        self.setFixedSize(560, 460)
+        self.setFixedSize(560, 480)
         self.setStyleSheet(_SS)
         self.setWindowFlags(
             Qt.WindowType.Dialog |
@@ -276,29 +271,27 @@ class _WizardWindow(QDialog):
         )
         hdr_lay = QHBoxLayout(hdr)
         hdr_lay.setContentsMargins(24, 0, 24, 0)
-
         self._title_lbl = QLabel()
         self._title_lbl.setStyleSheet(
             f"color:{_TEXT_PRI};font-size:15px;font-weight:bold;"
         )
         hdr_lay.addWidget(self._title_lbl, stretch=1)
-
         self._step_lbl = QLabel()
-        self._step_lbl.setStyleSheet(f"color:{_TEXT_SEC};font-size:11px;")
+        self._step_lbl.setStyleSheet(f"color:{_TEXT_SEC};font-size:12px;")
         hdr_lay.addWidget(self._step_lbl)
-
         root.addWidget(hdr)
 
-        # ---- Progress dots ----
+        # ---- Progress dots bar ----
+        # Height must accommodate two lines: dot (10px) + label (14px) + spacing
         dots_bar = QWidget()
-        dots_bar.setFixedHeight(28)
+        dots_bar.setFixedHeight(52)
         dots_bar.setStyleSheet(
             f"background:{_SURFACE};border-bottom:1px solid {_BORDER};"
         )
         dots_lay = QHBoxLayout(dots_bar)
-        dots_lay.setContentsMargins(24, 0, 24, 0)
+        dots_lay.setContentsMargins(24, 6, 24, 6)
         dots_lay.setSpacing(0)
-        self._dots: list[QLabel] = []
+        self._dots: list = []
         step_names = ["Device", "Level", "Wake word", "Done"]
         for i, name in enumerate(step_names):
             if i > 0:
@@ -307,13 +300,14 @@ class _WizardWindow(QDialog):
                 line.setSizePolicy(
                     QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Fixed
                 )
-                line.setStyleSheet(f"background:{_BORDER};")
+                line.setStyleSheet(f"background:{_BORDER};margin-bottom:14px;")
                 dots_lay.addWidget(line)
             col = QVBoxLayout()
             col.setSpacing(2)
-            dot = QLabel("●")
+            col.setContentsMargins(0, 0, 0, 0)
+            dot = QLabel("*")
             dot.setAlignment(Qt.AlignmentFlag.AlignCenter)
-            dot.setStyleSheet(f"color:{_MUTED};font-size:9px;")
+            dot.setStyleSheet(f"color:{_MUTED};font-size:14px;font-weight:bold;")
             lbl = QLabel(name)
             lbl.setAlignment(Qt.AlignmentFlag.AlignCenter)
             lbl.setStyleSheet(f"color:{_MUTED};font-size:10px;")
@@ -348,7 +342,6 @@ class _WizardWindow(QDialog):
         self._back_btn.setFixedWidth(88)
         self._back_btn.clicked.connect(self._go_back)
         nav_lay.addWidget(self._back_btn)
-
         nav_lay.addStretch()
 
         self._skip_btn = QPushButton("Skip")
@@ -372,15 +365,11 @@ class _WizardWindow(QDialog):
         lay = QVBoxLayout(page)
         lay.setContentsMargins(32, 28, 32, 20)
         lay.setSpacing(16)
-
         lay.addWidget(_body(
             "Select the microphone you'll be speaking into, then say a "
             "few words to confirm it's picking up your voice."
         ))
-
-        # Device dropdown
         row = QHBoxLayout()
-        row.setSpacing(10)
         row.addWidget(_label("Microphone:"))
         self._device_combo = QComboBox()
         self._device_combo.setSizePolicy(
@@ -390,16 +379,12 @@ class _WizardWindow(QDialog):
         self._device_combo.currentIndexChanged.connect(self._on_device_changed)
         row.addWidget(self._device_combo, stretch=1)
         lay.addLayout(row)
-
-        # Level bar
         lay.addWidget(_label("Signal:"))
         self._device_level_bar = _LevelBar()
         lay.addWidget(self._device_level_bar)
-
         self._device_status = QLabel("Say something to test the mic...")
         self._device_status.setStyleSheet(f"color:{_TEXT_SEC};font-size:12px;")
         lay.addWidget(self._device_status)
-
         lay.addStretch()
         return page
 
@@ -408,45 +393,38 @@ class _WizardWindow(QDialog):
         lay = QVBoxLayout(page)
         lay.setContentsMargins(32, 28, 32, 20)
         lay.setSpacing(16)
-
         lay.addWidget(_body(
             "Speak at the distance and volume you'll normally use. "
-            "Aim for the green zone — it means Samsara will hear you "
+            "Aim for the green zone -- it means Samsara will hear you "
             "clearly without picking up too much background noise."
         ))
-
         self._level_bar = _LevelBar()
         lay.addWidget(self._level_bar)
-
         self._level_hint = QLabel("")
         self._level_hint.setStyleSheet(
             f"color:{_TEXT_SEC};font-size:12px;font-style:italic;"
         )
         self._level_hint.setAlignment(Qt.AlignmentFlag.AlignCenter)
         lay.addWidget(self._level_hint)
-
-        zone_legend = QHBoxLayout()
-        zone_legend.setSpacing(20)
-        zone_legend.addStretch()
+        legend = QHBoxLayout()
+        legend.addStretch()
         for color, text in [(_ERROR, "Too quiet"), (_SUCCESS, "Good"), (_WARNING, "Too loud")]:
-            dot = QLabel("●")
-            dot.setStyleSheet(f"color:{color};font-size:10px;")
+            dot = QLabel("*")
+            dot.setStyleSheet(f"color:{color};font-size:12px;font-weight:bold;")
             lbl = QLabel(text)
             lbl.setStyleSheet(f"color:{_TEXT_SEC};font-size:11px;")
-            zone_legend.addWidget(dot)
-            zone_legend.addWidget(lbl)
-        zone_legend.addStretch()
-        lay.addLayout(zone_legend)
-
+            legend.addWidget(dot)
+            legend.addWidget(lbl)
+            legend.addSpacing(16)
+        legend.addStretch()
+        lay.addLayout(legend)
         lay.addStretch()
-
         self._cal_status = QLabel("")
         self._cal_status.setStyleSheet(
             f"color:{_SUCCESS};font-size:12px;font-weight:bold;"
         )
         self._cal_status.setAlignment(Qt.AlignmentFlag.AlignCenter)
         lay.addWidget(self._cal_status)
-
         return page
 
     def _build_wake_page(self) -> QWidget:
@@ -454,16 +432,12 @@ class _WizardWindow(QDialog):
         lay = QVBoxLayout(page)
         lay.setContentsMargins(32, 28, 32, 20)
         lay.setSpacing(14)
-
         wake_phrase = self._app.config.get('wake_word_config', {}).get('phrase', 'Jarvis')
-
         self._wake_intro = _body(
             f'Say <b>"{wake_phrase.title()}"</b> three times at your normal '
-            f'speaking volume. Each time Samsara hears it, one circle will light up.'
+            f'speaking volume. Each circle lights up when Samsara hears it.'
         )
         lay.addWidget(self._wake_intro)
-
-        # Three attempt slots
         slots_row = QHBoxLayout()
         slots_row.addStretch()
         self._attempt_labels = []
@@ -475,15 +449,12 @@ class _WizardWindow(QDialog):
             self._attempt_labels.append(slot)
         slots_row.addStretch()
         lay.addLayout(slots_row)
-
         self._oww_result_lbl = QLabel("")
         self._oww_result_lbl.setAlignment(Qt.AlignmentFlag.AlignCenter)
         self._oww_result_lbl.setWordWrap(True)
         self._oww_result_lbl.setStyleSheet(f"color:{_TEXT_SEC};font-size:12px;")
         lay.addWidget(self._oww_result_lbl)
-
         lay.addStretch()
-
         self._oww_tip = QLabel("")
         self._oww_tip.setWordWrap(True)
         self._oww_tip.setAlignment(Qt.AlignmentFlag.AlignCenter)
@@ -491,7 +462,6 @@ class _WizardWindow(QDialog):
             f"color:{_TEXT_SEC};font-size:11px;font-style:italic;"
         )
         lay.addWidget(self._oww_tip)
-
         return page
 
     def _build_done_page(self) -> QWidget:
@@ -499,34 +469,27 @@ class _WizardWindow(QDialog):
         lay = QVBoxLayout(page)
         lay.setContentsMargins(32, 36, 32, 20)
         lay.setSpacing(12)
-
         title = QLabel("Microphone is ready.")
         title.setStyleSheet(
             f"color:{_SUCCESS};font-size:18px;font-weight:bold;"
         )
         title.setAlignment(Qt.AlignmentFlag.AlignCenter)
         lay.addWidget(title)
-
         self._done_summary = QLabel("")
         self._done_summary.setAlignment(Qt.AlignmentFlag.AlignCenter)
         self._done_summary.setWordWrap(True)
-        self._done_summary.setStyleSheet(
-            f"color:{_TEXT_SEC};font-size:12px;line-height:1.6;"
-        )
+        self._done_summary.setStyleSheet(f"color:{_TEXT_SEC};font-size:12px;")
         lay.addWidget(self._done_summary)
-
         lay.addStretch()
-
         adv_btn = QPushButton("Open Wake Word Debug (advanced)")
         adv_btn.setObjectName("ghost")
         adv_btn.clicked.connect(self._open_debug)
-        adv_btn.setFixedWidth(260)
+        adv_btn.setFixedWidth(280)
         adv_row = QHBoxLayout()
         adv_row.addStretch()
         adv_row.addWidget(adv_btn)
         adv_row.addStretch()
         lay.addLayout(adv_row)
-
         return page
 
     # ----------------------------------------------------------------
@@ -534,8 +497,16 @@ class _WizardWindow(QDialog):
     # ----------------------------------------------------------------
 
     def _go_to(self, step: int):
-        self._stop_audio()
+        prev_step = self._current_step
         self._current_step = step
+
+        # Stop OWW poll timer whenever we leave the wake word step
+        if prev_step == self._STEP_WAKE:
+            self._oww_running = False
+            if self._oww_poll_timer is not None:
+                self._oww_poll_timer.stop()
+                self._oww_poll_timer = None
+
         self._stack.setCurrentIndex(step)
 
         # Header
@@ -545,13 +516,13 @@ class _WizardWindow(QDialog):
         # Dots
         for i, (dot, lbl) in enumerate(self._dots):
             if i < step:
-                dot.setStyleSheet(f"color:{_SUCCESS};font-size:9px;")
+                dot.setStyleSheet(f"color:{_SUCCESS};font-size:14px;font-weight:bold;")
                 lbl.setStyleSheet(f"color:{_SUCCESS};font-size:10px;")
             elif i == step:
-                dot.setStyleSheet(f"color:{_ACCENT};font-size:9px;")
+                dot.setStyleSheet(f"color:{_ACCENT};font-size:14px;font-weight:bold;")
                 lbl.setStyleSheet(f"color:{_ACCENT};font-size:10px;font-weight:bold;")
             else:
-                dot.setStyleSheet(f"color:{_MUTED};font-size:9px;")
+                dot.setStyleSheet(f"color:{_MUTED};font-size:14px;font-weight:bold;")
                 lbl.setStyleSheet(f"color:{_MUTED};font-size:10px;")
 
         # Nav bar
@@ -559,25 +530,23 @@ class _WizardWindow(QDialog):
         if step == self._STEP_DONE:
             self._skip_btn.hide()
             self._next_btn.setText("Finish")
-            self._next_btn.setObjectName("primary")
-            self._next_btn.setStyle(self._next_btn.style())
         else:
             self._skip_btn.show()
-            self._next_btn.setText("Next  →")
+            self._next_btn.setText("Next  ->")
 
         # Step-specific setup
         if step == self._STEP_DEVICE:
             self._next_btn.setEnabled(True)
-            self._start_audio_monitoring()
+            self._ensure_audio_running()
 
         elif step == self._STEP_LEVEL:
             self._next_btn.setEnabled(False)
-            self._next_btn.setText("Calibrate  →")
+            self._next_btn.setText("Calibrate  ->")
             self._level_hint.setText("")
             self._cal_status.setText("")
             self._green_since = None
             self._level_history.clear()
-            self._start_audio_monitoring()
+            self._ensure_audio_running()
 
         elif step == self._STEP_WAKE:
             self._oww_hits = 0
@@ -585,10 +554,11 @@ class _WizardWindow(QDialog):
             for slot in self._attempt_labels:
                 slot.reset()
             self._oww_result_lbl.setText("")
+            self._oww_result_lbl.setStyleSheet(f"color:{_TEXT_SEC};font-size:12px;")
             self._oww_tip.setText("")
             self._next_btn.setEnabled(False)
-            self._next_btn.setText("Continue  →")
-            self._start_oww_test()
+            self._next_btn.setText("Continue  ->")
+            self._setup_oww_test()
 
         elif step == self._STEP_DONE:
             self._build_done_summary()
@@ -612,71 +582,80 @@ class _WizardWindow(QDialog):
             self._go_to(self._current_step + 1)
 
     # ----------------------------------------------------------------
-    # Audio monitoring (steps 1 and 2)
+    # Single persistent audio worker
+    #
+    # One thread runs for the lifetime of the wizard.  It reads chunks
+    # from the selected device and emits _level_sig on every chunk.
+    # When _current_step == _STEP_WAKE and _oww_running is True it also
+    # runs OWW detection.  No stream is ever opened or closed mid-
+    # navigation -- this eliminates the WASAPI device-conflict crash.
     # ----------------------------------------------------------------
 
-    def _populate_devices(self):
-        self._device_combo.blockSignals(True)
-        self._device_combo.clear()
-        self._input_devices = _query_input_devices()
+    def _ensure_audio_running(self):
+        """Start the audio worker if it isn't already running."""
+        if not self._wizard_active:
+            self._wizard_active = True
+            self._selected_device = self._device_combo.currentData()
+            self._capture_rate = _detect_capture_rate(self._selected_device)
+            threading.Thread(
+                target=self._audio_worker,
+                daemon=True,
+                name="wizard-audio",
+            ).start()
 
-        current_cfg = self._app.config.get('microphone')  # None = default
-        default_idx = 0
-        for i, (dev_idx, name) in enumerate(self._input_devices):
-            self._device_combo.addItem(name, userData=dev_idx)
-            if dev_idx == current_cfg:
-                default_idx = i
+    def _audio_worker(self):
+        """Persistent audio loop. Runs until _wizard_active is False.
 
-        # Add a "System default" option at the top
-        self._device_combo.insertItem(0, "System default", userData=None)
-        if current_cfg is None:
-            default_idx = 0
-        else:
-            default_idx += 1
-
-        self._device_combo.setCurrentIndex(default_idx)
-        self._device_combo.blockSignals(False)
-        self._selected_device = self._device_combo.currentData()
-
-    def _on_device_changed(self, _index: int):
-        self._selected_device = self._device_combo.currentData()
-        self._capture_rate = _detect_capture_rate(self._selected_device)
-        if self._monitoring:
-            self._stop_audio()
-            self._start_audio_monitoring()
-
-    def _start_audio_monitoring(self):
-        self._monitoring = True
-        self._capture_rate = _detect_capture_rate(self._selected_device)
-        blocksize = int(self._capture_rate * 0.1)  # 100 ms
-
-        def _run():
+        When device changes, the inner read-loop exits (device mismatch),
+        the stream is closed, and the outer loop immediately reopens a
+        stream for the new device -- seamless from the UI's perspective.
+        """
+        while self._wizard_active:
+            device = self._selected_device
+            capture_rate = _detect_capture_rate(device)
+            blocksize = int(capture_rate * 0.1)
             stream = None
             try:
                 stream = sd.InputStream(
-                    samplerate=self._capture_rate,
+                    samplerate=capture_rate,
                     channels=1,
                     dtype=np.float32,
-                    device=self._selected_device,
+                    device=device,
                     blocksize=blocksize,
                 )
                 stream.start()
                 with self._stream_lock:
                     self._stream = stream
-                while self._monitoring:
+
+                while self._wizard_active and self._selected_device == device:
                     try:
                         data, _ = stream.read(blocksize)
                         chunk = data.flatten()
                         rms = float(np.sqrt(np.mean(chunk ** 2)))
                         self._level_sig.emit(rms)
+
+                        # OWW detection only when wake word step is active
+                        if (self._current_step == self._STEP_WAKE
+                                and self._oww_running
+                                and self._oww_detector is not None):
+                            oww_chunk = _resample(chunk, capture_rate, 16000)
+                            if rms > _OWW_NOISE_FLOOR:
+                                gain = min(_OWW_TARGET_RMS / rms, 20.0)
+                                oww_chunk = np.clip(oww_chunk * gain, -1.0, 1.0)
+                            if self._oww_detector.detected(oww_chunk):
+                                self._oww_hit_sig.emit()
+
                         time.sleep(0.08)
                     except Exception:
                         break
+
             except Exception as exc:
                 print(f"[WIZARD] Audio stream error: {exc}")
+                time.sleep(0.3)
             finally:
                 with self._stream_lock:
-                    self._stream = None
+                    if self._stream is stream:
+                        self._stream = None
                 if stream:
                     try:
                         stream.stop()
@@ -684,10 +663,9 @@ class _WizardWindow(QDialog):
                     except Exception:
                         pass
 
-        threading.Thread(target=_run, daemon=True, name="wizard-audio").start()
-
     def _stop_audio(self):
-        self._monitoring = False
+        """Signal the worker to exit and close the current stream."""
+        self._wizard_active = False
         self._oww_running = False
         with self._stream_lock:
             stream = self._stream
@@ -698,15 +676,45 @@ class _WizardWindow(QDialog):
             except Exception:
                 pass
 
-    def _on_level(self, rms: float):
-        """Update level bar and step-specific logic."""
-        level = min(rms / 0.20, 1.0)  # normalise: 0.20 RMS = full bar
+    # ----------------------------------------------------------------
+    # Level monitoring
+    # ----------------------------------------------------------------
 
+    def _populate_devices(self):
+        self._device_combo.blockSignals(True)
+        self._device_combo.clear()
+        self._input_devices = _query_input_devices()
+        current_cfg = self._app.config.get('microphone')
+        default_idx = 0
+        self._device_combo.addItem("System default", userData=None)
+        for i, (dev_idx, name) in enumerate(self._input_devices):
+            self._device_combo.addItem(name, userData=dev_idx)
+            if dev_idx == current_cfg:
+                default_idx = i + 1
+        if current_cfg is None:
+            default_idx = 0
+        self._device_combo.setCurrentIndex(default_idx)
+        self._device_combo.blockSignals(False)
+        self._selected_device = self._device_combo.currentData()
+
+    def _on_device_changed(self, _index: int):
+        """When the user picks a new device, update the flag.
+
+        The audio worker's inner loop detects the device mismatch and
+        exits; the outer loop reopens a stream for the new device.
+        No explicit restart is needed -- the worker handles it.
+        """
+        self._selected_device = self._device_combo.currentData()
+        self._capture_rate = _detect_capture_rate(self._selected_device)
+
+    def _on_level(self, rms: float):
+        level = min(rms / 0.20, 1.0)
         step = self._current_step
+
         if step == self._STEP_DEVICE:
             self._device_level_bar.set_level(level)
-            if rms > 0.01:
-                self._device_status.setText("Signal detected — mic is working.")
+            if rms > 0.008:
+                self._device_status.setText("Signal detected -- mic is working.")
                 self._device_status.setStyleSheet(f"color:{_SUCCESS};font-size:12px;")
             else:
                 self._device_status.setText("Say something to test the mic...")
@@ -717,172 +725,107 @@ class _WizardWindow(QDialog):
             self._level_history.append(rms)
             now = time.monotonic()
 
-            if rms < _ZONE_LOW * 0.20:
-                zone = "low"
+            if level < _ZONE_LOW:
                 self._level_hint.setText(
-                    "Too quiet — speak up a little, or increase your interface gain."
+                    "Essentially silent -- check the mic is connected and selected above."
                 )
                 self._level_hint.setStyleSheet(f"color:{_ERROR};font-size:12px;")
                 self._green_since = None
-            elif rms > _ZONE_HIGH * 0.20:
-                zone = "high"
+            elif level > _ZONE_HIGH:
                 self._level_hint.setText(
-                    "A bit loud — back off slightly or turn down the gain."
+                    "Very loud -- you may get clipping. Back off slightly or reduce gain."
                 )
                 self._level_hint.setStyleSheet(f"color:{_WARNING};font-size:12px;")
                 self._green_since = None
             else:
-                zone = "good"
-                self._level_hint.setText("Level looks good — keep talking naturally.")
+                self._level_hint.setText("Level looks good -- keep talking naturally.")
                 self._level_hint.setStyleSheet(f"color:{_SUCCESS};font-size:12px;")
                 if self._green_since is None:
                     self._green_since = now
 
-            # Enable Next once level has been in the green zone long enough
-            if zone == "good" and self._green_since is not None:
-                dwell = now - self._green_since
-                if dwell >= _GREEN_DWELL_S and not self._next_btn.isEnabled():
-                    self._next_btn.setEnabled(True)
-                    self._cal_status.setText(
-                        "Calibrate & Continue when you're happy with the level."
-                    )
+            if (level >= _ZONE_LOW and level <= _ZONE_HIGH
+                    and self._green_since is not None
+                    and (now - self._green_since) >= _GREEN_DWELL_S
+                    and not self._next_btn.isEnabled()):
+                self._next_btn.setEnabled(True)
+                self._cal_status.setText(
+                    "Calibrate & Continue when you're happy with the level."
+                )
 
     def _do_calibrate(self):
-        """Save the measured speech threshold from recent level history."""
         if not self._level_history:
             return
         avg_rms = float(np.mean(list(self._level_history)))
-        # Threshold = 25% of normal speaking RMS. Low enough to catch quiet
-        # speech; high enough to ignore ambient noise.
         threshold = max(avg_rms * 0.25, 0.003)
         self._cal_threshold = threshold
-
         cfg = self._app.config.get('wake_word_config', {})
         if 'audio' not in cfg:
             cfg['audio'] = {}
         cfg['audio']['speech_threshold'] = round(threshold, 5)
         self._app.update_config({'wake_word_config': cfg}, save=True)
-
         self._cal_status.setText(
-            f"Calibrated — threshold set to {threshold:.4f}"
+            f"Calibrated -- threshold set to {threshold:.4f}"
         )
 
     # ----------------------------------------------------------------
-    # Wake word test (step 3)
+    # Wake word test
     # ----------------------------------------------------------------
 
-    def _start_oww_test(self):
+    def _setup_oww_test(self):
+        """Initialise OWW detector and start the attempt timer."""
         wake_phrase = self._app.config.get('wake_word_config', {}).get('phrase', 'jarvis')
         oww_threshold = float(
             self._app.config.get('wake_word_config', {}).get('oww_threshold', 0.2)
         )
-
         try:
             from samsara.wake_detector import WakeWordDetector
             self._oww_detector = WakeWordDetector(wake_phrase, threshold=oww_threshold)
         except Exception as exc:
-            print(f"[WIZARD] WakeWordDetector failed: {exc}")
+            print(f"[WIZARD] WakeWordDetector init failed: {exc}")
             self._oww_detector = None
 
         if self._oww_detector is None or not self._oww_detector.is_available:
             self._oww_result_lbl.setText(
-                f'No pre-built model for "{wake_phrase}" — '
-                f"wake word testing uses Whisper (no preview available here)."
+                f'No built-in model for "{wake_phrase}" -- '
+                f"Whisper handles detection instead (no live preview here)."
             )
             self._oww_tip.setText(
-                'Use "Test Wake Word..." in Settings → Advanced to run a live test.'
+                'Use "Test Wake Word..." in Settings -> Advanced to run a live test.'
             )
             self._next_btn.setEnabled(True)
             return
 
         self._oww_running = True
         self._attempt_started = time.monotonic()
-        self._capture_rate = _detect_capture_rate(self._selected_device)
-        blocksize = int(self._capture_rate * 0.1)
+        self._ensure_audio_running()
 
-        def _run():
-            stream = None
-            try:
-                stream = sd.InputStream(
-                    samplerate=self._capture_rate,
-                    channels=1,
-                    dtype=np.float32,
-                    device=self._selected_device,
-                    blocksize=blocksize,
-                )
-                stream.start()
-                with self._stream_lock:
-                    self._stream = stream
-
-                while self._oww_running:
-                    try:
-                        data, _ = stream.read(blocksize)
-                        chunk = data.flatten()
-                        rms = float(np.sqrt(np.mean(chunk ** 2)))
-
-                        # Normalise for OWW (same as dictation.py)
-                        oww_chunk = _resample(chunk, self._capture_rate, 16000)
-                        if rms > _OWW_NOISE_FLOOR:
-                            gain = min(_OWW_TARGET_RMS / rms, 20.0)
-                            oww_chunk = np.clip(oww_chunk * gain, -1.0, 1.0)
-
-                        if self._oww_detector.detected(oww_chunk):
-                            self._oww_hit_sig.emit()
-
-                        # Per-attempt timeout
-                        if (self._attempt_started is not None and
-                                time.monotonic() - self._attempt_started > _OWW_ATTEMPT_TIMEOUT):
-                            self._oww_hit_sig.emit()  # advance slot as a miss
-
-                        time.sleep(0.08)
-                    except Exception:
-                        break
-            except Exception as exc:
-                print(f"[WIZARD] OWW stream error: {exc}")
-            finally:
-                with self._stream_lock:
-                    self._stream = None
-                if stream:
-                    try:
-                        stream.stop()
-                        stream.close()
-                    except Exception:
-                        pass
-
-        threading.Thread(target=_run, daemon=True, name="wizard-oww").start()
-
-        # Poll for attempt timeouts
         self._oww_poll_timer = QTimer(self)
-        self._oww_poll_timer.setInterval(500)
+        self._oww_poll_timer.setInterval(400)
         self._oww_poll_timer.timeout.connect(self._oww_poll)
         self._oww_poll_timer.start()
 
     def _oww_poll(self):
-        """Check for attempt timeout from the Qt timer."""
+        """Qt-thread timer: advance to the next slot when one times out."""
         if not self._oww_running:
             self._oww_poll_timer.stop()
+            self._oww_poll_timer = None
             return
-        if (self._attempt_started is not None and
-                self._oww_attempt_idx < _OWW_ATTEMPTS and
-                time.monotonic() - self._attempt_started > _OWW_ATTEMPT_TIMEOUT):
+        if (self._oww_attempt_idx < _OWW_ATTEMPTS
+                and self._attempt_started is not None
+                and time.monotonic() - self._attempt_started > _OWW_ATTEMPT_TIMEOUT):
             self._advance_attempt(hit=False)
 
     def _on_oww_hit(self):
-        """Called on Qt thread when OWW fires or attempt times out."""
-        if self._oww_attempt_idx >= _OWW_ATTEMPTS:
-            return
-        self._advance_attempt(hit=True)
+        if self._oww_attempt_idx < _OWW_ATTEMPTS:
+            self._advance_attempt(hit=True)
 
     def _advance_attempt(self, hit: bool):
         idx = self._oww_attempt_idx
         if idx >= _OWW_ATTEMPTS:
             return
-
-        slot = self._attempt_labels[idx]
-        slot.set_result(hit)
+        self._attempt_labels[idx].set_result(hit)
         if hit:
             self._oww_hits += 1
-
         self._oww_attempt_idx += 1
         self._attempt_started = time.monotonic()
 
@@ -893,25 +836,24 @@ class _WizardWindow(QDialog):
                 'wake_word_config', {}
             ).get('phrase', 'Jarvis')
             self._oww_result_lbl.setText(
-                f'{self._oww_hits}/{self._oww_attempt_idx} heard so far — '
+                f'{self._oww_hits}/{self._oww_attempt_idx} heard -- '
                 f'say "{wake_phrase.title()}" again.'
             )
 
     def _finish_oww_test(self):
         self._oww_running = False
-        if hasattr(self, '_oww_poll_timer'):
+        if self._oww_poll_timer is not None:
             self._oww_poll_timer.stop()
+            self._oww_poll_timer = None
 
         passed = self._oww_hits >= _OWW_PASS_THRESHOLD
-
         if passed:
             self._oww_result_lbl.setText(
-                f"Detected {self._oww_hits}/{_OWW_ATTEMPTS} times — wake word is working."
+                f"Detected {self._oww_hits}/{_OWW_ATTEMPTS} -- wake word is working."
             )
             self._oww_result_lbl.setStyleSheet(
                 f"color:{_SUCCESS};font-size:12px;font-weight:bold;"
             )
-            self._oww_tip.setText("")
         else:
             self._oww_result_lbl.setText(
                 f"Only detected {self._oww_hits}/{_OWW_ATTEMPTS} times."
@@ -919,16 +861,17 @@ class _WizardWindow(QDialog):
             self._oww_result_lbl.setStyleSheet(
                 f"color:{_WARNING};font-size:12px;font-weight:bold;"
             )
-            tips = []
-            if self._oww_hits == 0:
-                tips.append("Try speaking more directly toward the mic.")
-                tips.append(
-                    'Lower the Wake word sensitivity in Settings → Advanced '
-                    '(try 0.10).'
+            tips = (
+                "Try speaking more directly toward the mic and a little slower."
+                if self._oww_hits == 0 else
+                "Speak at a steady, natural pace -- don't rush the word."
+            )
+            if self._oww_hits < _OWW_PASS_THRESHOLD:
+                tips += (
+                    "  If it keeps missing, lower 'Wake word sensitivity' "
+                    "in Settings -> Advanced (try 0.10)."
                 )
-            else:
-                tips.append("Speak at a steady, natural pace — don't rush the word.")
-            self._oww_tip.setText("  ".join(tips))
+            self._oww_tip.setText(tips)
 
         self._next_btn.setEnabled(True)
 
@@ -938,25 +881,22 @@ class _WizardWindow(QDialog):
 
     def _build_done_summary(self):
         parts = []
-        # Device
-        dev_name = self._device_combo.currentText()
-        parts.append(f"Microphone:  {dev_name}")
-        # Threshold
+        parts.append(f"Microphone:  {self._device_combo.currentText()}")
         if self._cal_threshold is not None:
-            parts.append(f"Speech threshold:  calibrated ({self._cal_threshold:.4f})")
+            parts.append(
+                f"Speech threshold:  calibrated ({self._cal_threshold:.4f})"
+            )
         else:
-            parts.append("Speech threshold:  default (not calibrated this session)")
-        # Wake word result
+            parts.append("Speech threshold:  using existing setting")
         if self._oww_hits > 0:
             parts.append(
                 f"Wake word:  detected {self._oww_hits}/{_OWW_ATTEMPTS} during test"
             )
         else:
-            parts.append("Wake word:  test skipped")
+            parts.append("Wake word:  test skipped or not applicable")
         self._done_summary.setText("\n".join(parts))
 
     def _finish(self):
-        """Save device choice and close."""
         dev_idx = self._device_combo.currentData()
         if dev_idx is not None:
             try:
@@ -977,6 +917,9 @@ class _WizardWindow(QDialog):
 
     def closeEvent(self, e):
         self._stop_audio()
+        if self._oww_poll_timer is not None:
+            self._oww_poll_timer.stop()
+            self._oww_poll_timer = None
         e.accept()
 
 
@@ -985,8 +928,6 @@ class _WizardWindow(QDialog):
 # ---------------------------------------------------------------------------
 
 class _LevelBar(QWidget):
-    """Horizontal level bar that changes colour by zone."""
-
     def __init__(self, parent=None):
         super().__init__(parent)
         self.setFixedHeight(36)
@@ -1002,15 +943,9 @@ class _LevelBar(QWidget):
             f"border-radius:5px;}}"
             f"QProgressBar::chunk{{background:{_SUCCESS};border-radius:4px;}}"
         )
-        # Zone markers painted on top via overlay frames
-        container = QWidget()
-        container_lay = QVBoxLayout(container)
-        container_lay.setContentsMargins(0, 0, 0, 0)
-        container_lay.addWidget(self._bar)
-        lay.addWidget(container)
+        lay.addWidget(self._bar)
 
     def set_level(self, level: float):
-        """level: 0.0 to 1.0"""
         pct = int(min(max(level, 0.0), 1.0) * 100)
         self._bar.setValue(pct)
         if level < _ZONE_LOW:
@@ -1027,70 +962,50 @@ class _LevelBar(QWidget):
 
 
 class _AttemptSlot(QWidget):
-    """Numbered circle that shows pending / heard / missed state."""
-
     _SIZE = 64
 
     def __init__(self, number: int, parent=None):
         super().__init__(parent)
         self._number = number
-        self.setFixedSize(self._SIZE, self._SIZE + 20)
-
+        self.setFixedSize(self._SIZE, self._SIZE + 22)
         lay = QVBoxLayout(self)
         lay.setContentsMargins(0, 0, 0, 0)
         lay.setSpacing(4)
         lay.setAlignment(Qt.AlignmentFlag.AlignHCenter)
-
         self._circle = QLabel(str(number))
         self._circle.setFixedSize(self._SIZE, self._SIZE)
         self._circle.setAlignment(Qt.AlignmentFlag.AlignCenter)
-        self._circle.setStyleSheet(
-            f"border-radius:{self._SIZE//2}px;"
-            f"background:{_ELEVATED};"
-            f"color:{_TEXT_SEC};"
-            f"font-size:20px;font-weight:bold;"
-            f"border:2px solid {_BORDER};"
-        )
+        self._apply_style(str(number), _ELEVATED, _TEXT_SEC, _BORDER)
         lay.addWidget(self._circle)
-
         self._lbl = QLabel("waiting")
         self._lbl.setAlignment(Qt.AlignmentFlag.AlignCenter)
         self._lbl.setStyleSheet(f"color:{_MUTED};font-size:10px;")
         lay.addWidget(self._lbl)
 
-    def reset(self):
-        self._circle.setText(str(self._number))
+    def _apply_style(self, text, bg, fg, border):
+        self._circle.setText(text)
         self._circle.setStyleSheet(
-            f"border-radius:{self._SIZE//2}px;"
-            f"background:{_ELEVATED};"
-            f"color:{_TEXT_SEC};"
-            f"font-size:20px;font-weight:bold;"
-            f"border:2px solid {_BORDER};"
+            f"border-radius:{self._SIZE // 2}px;"
+            f"background:{bg};"
+            f"color:{fg};"
+            f"font-size:18px;font-weight:bold;"
+            f"border:2px solid {border};"
         )
+
+    def reset(self):
+        self._apply_style(str(self._number), _ELEVATED, _TEXT_SEC, _BORDER)
         self._lbl.setText("waiting")
         self._lbl.setStyleSheet(f"color:{_MUTED};font-size:10px;")
 
     def set_result(self, heard: bool):
         if heard:
-            self._circle.setText("OK")
-            self._circle.setStyleSheet(
-                f"border-radius:{self._SIZE//2}px;"
-                f"background:{_SUCCESS};"
-                f"color:{_BG};"
-                f"font-size:14px;font-weight:bold;"
-                f"border:2px solid {_SUCCESS};"
-            )
+            self._apply_style("OK", _SUCCESS, _BG, _SUCCESS)
             self._lbl.setText("heard")
-            self._lbl.setStyleSheet(f"color:{_SUCCESS};font-size:10px;font-weight:bold;")
-        else:
-            self._circle.setText("--")
-            self._circle.setStyleSheet(
-                f"border-radius:{self._SIZE//2}px;"
-                f"background:{_ELEVATED};"
-                f"color:{_ERROR};"
-                f"font-size:16px;font-weight:bold;"
-                f"border:2px solid {_ERROR};"
+            self._lbl.setStyleSheet(
+                f"color:{_SUCCESS};font-size:10px;font-weight:bold;"
             )
+        else:
+            self._apply_style("--", _ELEVATED, _ERROR, _ERROR)
             self._lbl.setText("missed")
             self._lbl.setStyleSheet(f"color:{_ERROR};font-size:10px;")
 
@@ -1104,5 +1019,5 @@ def _label(text: str) -> QLabel:
 def _body(text: str) -> QLabel:
     lbl = QLabel(text)
     lbl.setWordWrap(True)
-    lbl.setStyleSheet(f"color:{_TEXT_PRI};font-size:13px;line-height:1.5;")
+    lbl.setStyleSheet(f"color:{_TEXT_PRI};font-size:13px;")
     return lbl
