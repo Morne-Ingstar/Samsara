@@ -176,18 +176,10 @@ class TestPluginCommandDebounce:
 
 class TestListeningIndicatorCommandMode:
 
-    @pytest.fixture(autouse=True, scope='class')
-    def tk_root(self):
-        import tkinter as tk
-        root = tk.Tk()
-        root.withdraw()
-        yield root
-        root.destroy()
-
     @pytest.fixture(autouse=True)
-    def indicator(self, tk_root):
+    def indicator(self):
         from samsara.ui.listening_indicator import ListeningIndicator
-        ind = ListeningIndicator(tk_root)
+        ind = ListeningIndicator()
         self._ind = ind
         yield ind
 
