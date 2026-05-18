@@ -49,6 +49,7 @@ class NotificationManager:
         self.reminders = []
         self.toaster = ToastNotifier() if HAS_TOAST else None
         self.running = False
+        self.paused = False
         self.thread = None
         self.on_notification = None  # Callback for notification events
         self.load_reminders()
@@ -147,6 +148,21 @@ class NotificationManager:
                 self.save_reminders()
                 return reminder['enabled']
         return None
+
+    def pause(self):
+        """Pause all reminders without removing them."""
+        self.paused = True
+        print("[NOTIFY] Reminders paused")
+
+    def resume(self):
+        """Resume all reminders."""
+        self.paused = False
+        print("[NOTIFY] Reminders resumed")
+
+    @property
+    def is_paused(self):
+        """Whether reminders are globally paused."""
+        return self.paused
 
     def show_notification(self, title, message, duration=5):
         """
