@@ -150,7 +150,6 @@ class CommandCheatSheetQt:
 
     def _create(self):
         qt_app = QApplication.instance()
-        print(f"[CHEATSHEET] _create: qt_app={qt_app}, thread={threading.current_thread().name}")
         if qt_app is None:
             qt_app = QApplication([])
             self._init_window()
@@ -159,22 +158,13 @@ class CommandCheatSheetQt:
             self._window = None
         else:
             QTimer.singleShot(0, qt_app, self._init_window)
-            print("[CHEATSHEET] posted _init_window to Qt thread")
 
     def _init_window(self):
-        print(f"[CHEATSHEET] _init_window called on thread={threading.current_thread().name}")
-        try:
-            self._window = _CheatSheetWindow(
-                self._execute_cb, self._commands_cb, self._palette_path
-            )
-            self._window.destroyed.connect(self._on_window_destroyed)
-            self._window.show()
-            print(f"[CHEATSHEET] window shown, visible={self._window.isVisible()}, "
-                  f"pos=({self._window.x()},{self._window.y()})")
-        except Exception as exc:
-            import traceback
-            print(f"[CHEATSHEET] _init_window FAILED: {exc}")
-            traceback.print_exc()
+        self._window = _CheatSheetWindow(
+            self._execute_cb, self._commands_cb, self._palette_path
+        )
+        self._window.destroyed.connect(self._on_window_destroyed)
+        self._window.show()
 
     def _on_window_destroyed(self):
         self._visible = False
@@ -350,13 +340,22 @@ class _CheatSheetWindow(QMainWindow):
         self.setMinimumSize(280, 180)
         self.setStyleSheet(_SS)
 
-        # Position — clamp saved coordinates to visible screen area
-        scr = QApplication.primaryScreen().availableGeometry()
+        # Position — restore saved coordinates, clamping so the full window
+        # fits within the screen it's on.  Falls back to primary screen if the
+        # saved position is off all screens (e.g. after unplugging a monitor).
+        w = self._geom.get("w", _DEFAULT_W)
+        h = self._geom.get("h", _DEFAULT_H)
         if self._geom["x"] is not None:
-            x = max(scr.left(), min(int(self._geom["x"]), scr.right()  - 80))
-            y = max(scr.top(),  min(int(self._geom["y"]), scr.bottom() - 80))
+            from PySide6.QtCore import QPoint
+            from PySide6.QtGui import QGuiApplication
+            saved_pt = QPoint(int(self._geom["x"]), int(self._geom["y"]))
+            scr = (QGuiApplication.screenAt(saved_pt) or
+                   QApplication.primaryScreen()).availableGeometry()
+            x = max(scr.left(), min(int(self._geom["x"]), scr.right()  - w))
+            y = max(scr.top(),  min(int(self._geom["y"]), scr.bottom() - h))
             self.move(x, y)
         else:
+            scr = QApplication.primaryScreen().availableGeometry()
             self.move(scr.right() - _DEFAULT_W - 40, (scr.height() - _DEFAULT_H) // 2)
 
         # ---- Layout ---------------------------------------------------------
