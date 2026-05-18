@@ -1,18 +1,14 @@
 """Streaming dictation: live partial transcription with overlay.
 
-Architecture (converged after two ARC rounds):
+Architecture:
 
   - Audio capture stays in dictation.py (audio_callback writes app.audio_data).
   - StreamingSession owns the lifecycle: spawn worker, manage overlay,
     finalize on hotkey release.
   - StreamingWorker (daemon thread) snapshots app.audio_data every ~1.5s,
-    runs Whisper at beam_size=1, schedules overlay updates on the Tk thread.
+    runs Whisper at beam_size=1, posts overlay updates via Qt signals.
   - On stop_event the worker runs a final beam_size=5 pass with full
-    Grammar-Lite cleanup, then schedules paste + overlay close on the
-    Tk thread.
-  - All Tk widgets are created/touched only from the main thread via
-    root.after(0, ...). The overlay is a CTkToplevel parented to app.root
-    -- never a separate Tk root (Tcl_AsyncDelete crash).
+    Grammar-Lite cleanup, then posts paste + overlay close to the Qt thread.
 
 Latency budget (for 'hold' streaming):
 
@@ -31,9 +27,7 @@ import ctypes
 import sys
 import threading
 import time
-import tkinter as tk
 
-import customtkinter as ctk
 import numpy as np
 import pyautogui
 
@@ -175,148 +169,8 @@ UNDO_SETTLE_S = 0.05
 PASTE_SETTLE_S = 0.02
 
 
-class StreamingOverlay:
-    """Floating overlay window. All methods run on the Tk main thread."""
-
-    STATE_LISTENING = "listening"
-    STATE_PROCESSING = "processing"
-    STATE_DONE = "done"
-
-    def __init__(self, root, dim=False):
-        self._root = root
-        self._dim = dim
-        self._top = None
-        self._frame = None
-        self._label = None
-        self._fade_after = None
-
-    def show(self):
-        if self._top is not None:
-            return
-        top = ctk.CTkToplevel(self._root)
-        top.overrideredirect(True)
-        top.attributes("-topmost", True)
-        base_alpha = DIM_ALPHA if self._dim else ALPHA
-        try:
-            top.attributes("-alpha", base_alpha)
-        except tk.TclError:
-            pass
-        top.configure(fg_color=BG_COLOR)
-
-        # Border lives on a left-edge frame so we can recolor it per state.
-        self._border = ctk.CTkFrame(
-            top, width=4, fg_color=LISTENING_BORDER, corner_radius=0)
-        self._border.pack(side="left", fill="y")
-
-        self._frame = ctk.CTkFrame(top, fg_color=BG_COLOR, corner_radius=0)
-        self._frame.pack(side="left", fill="both", expand=True,
-                         padx=(8, 12), pady=10)
-
-        font_size = DIM_FONT_SIZE if self._dim else FONT_SIZE
-        initial_text = ("Listening (direct paste)..."
-                        if self._dim else "Listening...")
-        self._label = ctk.CTkLabel(
-            self._frame,
-            text=initial_text,
-            text_color=TEXT_COLOR,
-            font=ctk.CTkFont(family=FONT_FAMILY, size=font_size),
-            wraplength=OVERLAY_W - 40,
-            justify="left",
-            anchor="w",
-        )
-        self._label.pack(fill="both", expand=True)
-
-        self._top = top
-        self._position()
-
-    def update_text(self, text, state=None):
-        if self._top is None or self._label is None:
-            return
-        try:
-            self._label.configure(text=text or "")
-            if state is not None:
-                self._set_border(state)
-            self._position()
-        except tk.TclError:
-            pass
-
-    def flash_done_and_fade(self, on_complete):
-        if self._top is None:
-            if on_complete:
-                on_complete()
-            return
-        try:
-            self._set_border(self.STATE_DONE)
-        except tk.TclError:
-            pass
-        start_alpha = DIM_ALPHA if self._dim else ALPHA
-        self._begin_fade(on_complete, alpha=start_alpha)
-
-    def close(self):
-        if self._fade_after is not None:
-            try:
-                self._root.after_cancel(self._fade_after)
-            except tk.TclError:
-                pass
-            self._fade_after = None
-        if self._top is not None:
-            try:
-                self._top.destroy()
-            except tk.TclError:
-                pass
-            self._top = None
-            self._label = None
-            self._frame = None
-
-    def _set_border(self, state):
-        if state == self.STATE_DONE:
-            color = DONE_BORDER
-        else:
-            color = LISTENING_BORDER
-        try:
-            self._border.configure(fg_color=color)
-        except tk.TclError:
-            pass
-
-    def _position(self):
-        if self._top is None:
-            return
-        try:
-            self._top.update_idletasks()
-            sw = self._top.winfo_screenwidth()
-            sh = self._top.winfo_screenheight()
-            req_h = max(OVERLAY_MIN_H,
-                        min(OVERLAY_MAX_H, self._top.winfo_reqheight()))
-            x = (sw - OVERLAY_W) // 2
-            y = sh - TASKBAR_RESERVE - OVERLAY_GAP_ABOVE_TASKBAR - req_h
-            self._top.geometry(f"{OVERLAY_W}x{req_h}+{x}+{y}")
-        except tk.TclError:
-            pass
-
-    def _begin_fade(self, on_complete, alpha=ALPHA):
-        if self._top is None:
-            if on_complete:
-                on_complete()
-            return
-        next_alpha = alpha - 0.08
-        if next_alpha <= 0.05:
-            self.close()
-            if on_complete:
-                on_complete()
-            return
-        try:
-            self._top.attributes("-alpha", max(0.0, next_alpha))
-        except tk.TclError:
-            self.close()
-            if on_complete:
-                on_complete()
-            return
-        self._fade_after = self._root.after(
-            40, lambda: self._begin_fade(on_complete, next_alpha))
-
-
 # ---------------------------------------------------------------------------
-# Qt overlay (preferred when PySide6 is available)
+# Qt overlay
 # ---------------------------------------------------------------------------
 
 class _StreamingWidget:
@@ -447,9 +301,9 @@ class StreamingOverlayQt:
     thread on first show() so it never touches Qt from the Tk main thread.
     """
 
-    STATE_LISTENING  = StreamingOverlay.STATE_LISTENING
-    STATE_PROCESSING = StreamingOverlay.STATE_PROCESSING
-    STATE_DONE       = StreamingOverlay.STATE_DONE
+    STATE_LISTENING  = "listening"
+    STATE_PROCESSING = "processing"
+    STATE_DONE       = "done"
 
     def __init__(self, dim: bool = False):
         self._dim    = dim
@@ -696,14 +550,7 @@ class StreamingSession:
         # Serializes select+paste between the worker thread (partials),
         # the Tk thread (final), and the cancel undo thread.
         self._paste_lock = threading.Lock()
-        try:
-            from PySide6.QtWidgets import QApplication
-            if QApplication.instance() is not None:
-                self._overlay = StreamingOverlayQt(dim=self._direct_paste)
-            else:
-                self._overlay = StreamingOverlay(app.root, dim=self._direct_paste)
-        except ImportError:
-            self._overlay = StreamingOverlay(app.root, dim=self._direct_paste)
+        self._overlay = StreamingOverlayQt(dim=self._direct_paste)
         self._worker = StreamingWorker(self)
         self._last_partial = ""
 
@@ -711,7 +558,7 @@ class StreamingSession:
 
     def start(self):
         """Begin partial loop. Audio stream must already be running."""
-        self.app.root.after(0, self._overlay.show)
+        self._overlay.show()
         self._worker.start()
         with self._state_lock:
             self._state = self.STATE_STREAMING
@@ -738,14 +585,13 @@ class StreamingSession:
             threading.Thread(target=self._undo_direct_paste,
                              daemon=True,
                              name="streaming-cancel-undo").start()
-        self.app.root.after(0, self._overlay.close)
+        self._overlay.close()
 
     # ---- Worker -> session callbacks (called from worker thread) --------
 
     def on_partial(self, text):
         self._last_partial = text
-        self.app.root.after(0, self._overlay.update_text, text,
-                            StreamingOverlay.STATE_PROCESSING)
+        self._overlay.update_text(text, StreamingOverlayQt.STATE_PROCESSING)
         if self._direct_paste and text:
             # Runs on the worker thread -- pyautogui + clipboard ops are
             # blocking and must not run on the Tk main thread.
@@ -753,16 +599,15 @@ class StreamingSession:
 
     def on_timeout(self):
         print("[STREAM] Max duration reached -- auto-finalizing")
-        # Tell the app to stop the audio stream too -- mirror hotkey release.
-        self.app.root.after(0, self._on_timeout_main)
+        self.app._schedule_ui(self._on_timeout_main)
 
     def on_cancelled(self):
-        self.app.root.after(0, self._overlay.close)
+        self._overlay.close()
 
     def on_final(self, final_text, raw_text=None, duration_s=0.0,
                  elapsed_ms=0):
-        self.app.root.after(0, self._deliver_final, final_text, raw_text,
-                            duration_s, elapsed_ms)
+        self.app._schedule_ui(self._deliver_final, final_text, raw_text,
+                              duration_s, elapsed_ms)
 
     # ---- Main-thread handlers -------------------------------------------
 
@@ -797,13 +642,13 @@ class StreamingSession:
                                  daemon=True,
                                  name="streaming-empty-undo").start()
             self._overlay.update_text("(no speech)",
-                                      StreamingOverlay.STATE_DONE)
+                                      StreamingOverlayQt.STATE_DONE)
             self._overlay.flash_done_and_fade(self._mark_done)
             return
 
         # Update overlay to show final text.
         self._overlay.update_text(text.rstrip(),
-                                  StreamingOverlay.STATE_DONE)
+                                  StreamingOverlayQt.STATE_DONE)
         print(f"[OK] {text}")
         try:
             self.app.play_sound("success")
@@ -830,9 +675,6 @@ class StreamingSession:
 
         if self.app.config.get('auto_paste', True):
             if self._direct_paste:
-                # Replace the partials already in the target app with the
-                # cleaned final text. Off-thread because backspace + paste
-                # is blocking and we are on the Tk main thread here.
                 threading.Thread(target=self._direct_paste_final,
                                  args=(text,),
                                  daemon=True,
@@ -848,7 +690,10 @@ class StreamingSession:
             return
         except Exception as e:
             print(f"[STREAM] Paste failed once: {e} -- retrying in 100ms")
-        self.app.root.after(100, self._paste_retry_then_clipboard, text)
+        from PySide6.QtCore import QTimer
+        from PySide6.QtWidgets import QApplication
+        QTimer.singleShot(100, QApplication.instance(),
+                          lambda: self._paste_retry_then_clipboard(text))
 
     def _paste_retry_then_clipboard(self, text):
         try:
