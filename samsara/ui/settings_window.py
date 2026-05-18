@@ -24,6 +24,7 @@ from samsara.ui.tabs.hotkeys_tab import HotkeysTab
 from samsara.ui.tabs.sounds_tab import SoundsTab
 from samsara.ui.tabs.commands_tab import CommandsTab
 from samsara.ui.tabs.alarms_tab import AlarmsTab
+from samsara.ui.tabs.health_tab import HealthTab
 from samsara.ui.tts_settings_tab import TTSSettingsTab
 
 
@@ -101,6 +102,7 @@ class SettingsWindow:
         self.tabview.add("Text-to-Speech")
         self.tabview.add("Ava / Cloud")
         self.tabview.add("Alarms")
+        self.tabview.add("Health")
         self.tabview.add("Smart Actions")
         self.tabview.add("Advanced")
 
@@ -110,6 +112,7 @@ class SettingsWindow:
         self.sounds_tab    = SoundsTab(self.tabview.tab("Sounds"), self.app, self)
         self.commands_tab  = CommandsTab(self.tabview.tab("Commands"), self.app, self)
         self.alarms_tab    = AlarmsTab(self.tabview.tab("Alarms"), self.app, self)
+        self.health_tab    = HealthTab(self.tabview.tab("Health"), self.app, self)
         self.tts_tab       = TTSSettingsTab(self)
         self.advanced_tab  = AdvancedTab(self.tabview.tab("Advanced"), self.app)
         self.cloud_llm_tab = CloudLLMTab(self.tabview.tab("Ava / Cloud"), self.app)
@@ -123,6 +126,7 @@ class SettingsWindow:
             "Text-to-Speech": {"built": False, "builder": self.tts_tab.build},
             "Ava / Cloud":    {"built": False, "builder": self.cloud_llm_tab.build},
             "Alarms":         {"built": False, "builder": self.alarms_tab.build},
+            "Health":         {"built": False, "builder": self.health_tab.build},
             "Smart Actions":  {"built": False, "builder": self.build_smart_actions_tab},
             "Advanced":       {"built": False, "builder": self.advanced_tab.build},
         }
