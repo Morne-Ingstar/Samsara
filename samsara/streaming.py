@@ -315,6 +315,184 @@ class StreamingOverlay:
             40, lambda: self._begin_fade(on_complete, next_alpha))
 
 
+# ---------------------------------------------------------------------------
+# Qt overlay (preferred when PySide6 is available)
+# ---------------------------------------------------------------------------
+
+class _StreamingWidget:
+    """Internal Qt widget — created on the samsara-qt thread."""
+
+    def __init__(self, dim: bool):
+        from PySide6.QtWidgets import QWidget, QHBoxLayout, QVBoxLayout, QLabel, QApplication
+        from PySide6.QtCore import Qt, QTimer, Signal, Slot
+        from PySide6.QtGui import QFont
+
+        # Inline QWidget subclass so we can define Signals
+        class _W(QWidget):
+            _update_sig = Signal(str, str)
+            _flash_sig  = Signal(object)
+            _close_sig  = Signal()
+
+            def __init__(self, dim, parent=None):
+                super().__init__(
+                    parent,
+                    Qt.WindowType.FramelessWindowHint |
+                    Qt.WindowType.WindowStaysOnTopHint |
+                    Qt.WindowType.Tool,
+                )
+                self._dim = dim
+                self._fade_alpha = DIM_ALPHA if dim else ALPHA
+                self._on_complete = None
+
+                self._fade_timer = QTimer(self)
+                self._fade_timer.setInterval(40)
+                self._fade_timer.timeout.connect(self._fade_step)
+
+                lay = QHBoxLayout(self)
+                lay.setContentsMargins(0, 0, 0, 0)
+                lay.setSpacing(0)
+
+                self._border = QWidget()
+                self._border.setFixedWidth(4)
+                self._border.setStyleSheet(f"background:{LISTENING_BORDER};")
+                lay.addWidget(self._border)
+
+                content = QWidget()
+                content.setStyleSheet(f"background:{BG_COLOR};")
+                cLay = QVBoxLayout(content)
+                cLay.setContentsMargins(8, 10, 12, 10)
+                fs = DIM_FONT_SIZE if dim else FONT_SIZE
+                init = "Listening (direct paste)..." if dim else "Listening..."
+                self._label = QLabel(init)
+                self._label.setWordWrap(True)
+                self._label.setStyleSheet(
+                    f"color:{TEXT_COLOR};font-size:{fs}px;"
+                    f"font-family:'{FONT_FAMILY}';background:transparent;"
+                )
+                self._label.setMinimumWidth(OVERLAY_W - 40)
+                self._label.setMaximumWidth(OVERLAY_W - 40)
+                cLay.addWidget(self._label)
+                lay.addWidget(content, stretch=1)
+
+                self.setFixedWidth(OVERLAY_W)
+                self.setWindowOpacity(DIM_ALPHA if dim else ALPHA)
+
+                self._update_sig.connect(self._on_update)
+                self._flash_sig.connect(self._on_flash)
+                self._close_sig.connect(self._on_close)
+
+            def show_overlay(self):
+                self._border.setStyleSheet(f"background:{LISTENING_BORDER};")
+                self._fade_timer.stop()
+                self.setWindowOpacity(DIM_ALPHA if self._dim else ALPHA)
+                self._fade_alpha = DIM_ALPHA if self._dim else ALPHA
+                self._position()
+                self.show()
+                self.raise_()
+
+            def _position(self):
+                scr = QApplication.primaryScreen().availableGeometry()
+                hint_h = self._label.heightForWidth(OVERLAY_W - 40)
+                req_h  = max(OVERLAY_MIN_H,
+                             min(OVERLAY_MAX_H, hint_h + 20))
+                self.setFixedHeight(req_h)
+                x = scr.left() + (scr.width() - OVERLAY_W) // 2
+                y = scr.bottom() - TASKBAR_RESERVE - OVERLAY_GAP_ABOVE_TASKBAR - req_h
+                self.move(x, y)
+
+            def _on_update(self, text, state):
+                self._label.setText(text)
+                if state == "done":
+                    self._border.setStyleSheet(f"background:{DONE_BORDER};")
+                elif state:
+                    self._border.setStyleSheet(f"background:{LISTENING_BORDER};")
+                self._position()
+
+            def _on_flash(self, on_complete):
+                self._on_complete = on_complete
+                self._border.setStyleSheet(f"background:{DONE_BORDER};")
+                self._fade_alpha = DIM_ALPHA if self._dim else ALPHA
+                self._fade_timer.start()
+
+            def _on_close(self):
+                self._fade_timer.stop()
+                self.hide()
+                cb, self._on_complete = self._on_complete, None
+                if cb:
+                    cb()
+
+            def _fade_step(self):
+                self._fade_alpha -= 0.08
+                if self._fade_alpha <= 0.05:
+                    self._fade_timer.stop()
+                    self.hide()
+                    cb, self._on_complete = self._on_complete, None
+                    if cb:
+                        cb()
+                    return
+                self.setWindowOpacity(max(0.0, self._fade_alpha))
+
+        self._w = _W(dim)
+
+    def show_overlay(self):      self._w.show_overlay()
+    def update(self, text, st):  self._w._update_sig.emit(text, st or "")
+    def flash(self, cb):         self._w._flash_sig.emit(cb)
+    def close(self):             self._w._close_sig.emit()
+
+
+class StreamingOverlayQt:
+    """Thread-safe Qt drop-in for StreamingOverlay.
+
+    Public API is identical.  Widget is created lazily on the samsara-qt
+    thread on first show() so it never touches Qt from the Tk main thread.
+    """
+
+    STATE_LISTENING  = StreamingOverlay.STATE_LISTENING
+    STATE_PROCESSING = StreamingOverlay.STATE_PROCESSING
+    STATE_DONE       = StreamingOverlay.STATE_DONE
+
+    def __init__(self, dim: bool = False):
+        self._dim    = dim
+        self._widget: "_StreamingWidget | None" = None
+
+    def _ensure(self):
+        """Create the widget on the Qt thread if not already done."""
+        from PySide6.QtWidgets import QApplication
+        from PySide6.QtCore import QTimer
+        qt_app = QApplication.instance()
+        if qt_app is None or self._widget is not None:
+            return
+        def _make():
+            self._widget = _StreamingWidget(self._dim)
+        QTimer.singleShot(0, qt_app, _make)
+
+    def show(self):
+        from PySide6.QtWidgets import QApplication
+        from PySide6.QtCore import QTimer
+        qt_app = QApplication.instance()
+        if qt_app is None:
+            return
+        def _show():
+            if self._widget is None:
+                self._widget = _StreamingWidget(self._dim)
+            self._widget.show_overlay()
+        QTimer.singleShot(0, qt_app, _show)
+
+    def update_text(self, text, state=None):
+        if self._widget is not None:
+            self._widget.update(text or "", state or "")
+
+    def flash_done_and_fade(self, on_complete):
+        if self._widget is not None:
+            self._widget.flash(on_complete)
+        elif on_complete:
+            on_complete()
+
+    def close(self):
+        if self._widget is not None:
+            self._widget.close()
+
+
 class StreamingWorker(threading.Thread):
     """Daemon thread: runs partial Whisper passes, then a final pass on stop."""
 
@@ -518,7 +696,14 @@ class StreamingSession:
         # Serializes select+paste between the worker thread (partials),
         # the Tk thread (final), and the cancel undo thread.
         self._paste_lock = threading.Lock()
-        self._overlay = StreamingOverlay(app.root, dim=self._direct_paste)
+        try:
+            from PySide6.QtWidgets import QApplication
+            if QApplication.instance() is not None:
+                self._overlay = StreamingOverlayQt(dim=self._direct_paste)
+            else:
+                self._overlay = StreamingOverlay(app.root, dim=self._direct_paste)
+        except ImportError:
+            self._overlay = StreamingOverlay(app.root, dim=self._direct_paste)
         self._worker = StreamingWorker(self)
         self._last_partial = ""
 
