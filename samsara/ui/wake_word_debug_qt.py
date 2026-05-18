@@ -1256,10 +1256,6 @@ class _DebugWindow(QMainWindow):
                 except Exception:
                     pass
                 self.audio_stream = None
-        if hasattr(self._app, '_wake_trace_callback'):
-            cb = getattr(self._app, '_wake_trace_callback', None)
-            if cb is not None and hasattr(cb, '__self__') and cb.__self__ is self:
-                self._app._wake_trace_callback = None
         e.accept()
 
 
@@ -1315,10 +1311,19 @@ class WakeWordDebugQt:
     def _init_window(self):
         self._window = _DebugWindow(self._app)
         self._window.destroyed.connect(self._on_destroyed)
-        # Register as the app's trace callback
-        if hasattr(self._app, '_wake_trace_callback'):
+        # Register with the proper API; fall back to direct attribute set
+        if hasattr(self._app, 'register_wake_trace_callback'):
+            self._app.register_wake_trace_callback(self.on_app_trace)
+        elif hasattr(self._app, '_wake_trace_callback'):
             self._app._wake_trace_callback = self.on_app_trace
         self._window.show()
 
     def _on_destroyed(self):
+        # Unregister callback only if we were the one that registered it
+        cb = getattr(self._app, '_wake_trace_callback', None)
+        if cb is self.on_app_trace:
+            if hasattr(self._app, 'unregister_wake_trace_callback'):
+                self._app.unregister_wake_trace_callback()
+            else:
+                self._app._wake_trace_callback = None
         self._window = None
