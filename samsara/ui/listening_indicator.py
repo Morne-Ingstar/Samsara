@@ -12,8 +12,8 @@ Key improvements over the Tkinter version:
   - Pulse animation runs on a background thread — no root.after() dependency
   - Efficient: only a ~90x36 px image is allocated and pushed per frame
 
-Public API is identical to the old Tkinter version.  root parameter is
-accepted for backwards compatibility but is not used.
+Public API: show/hide/set_mode/set_listening/set_snoozed/set_command_mode/
+set_position/flash_success/flash_error/flash_wake/destroy.
 """
 
 import ctypes
@@ -180,8 +180,7 @@ def _get_work_area() -> tuple:
 class ListeningIndicator:
     """Always-on-top pill overlay — Win32 per-pixel-alpha, no Tkinter."""
 
-    def __init__(self, root=None):
-        # root accepted for API backwards compatibility, not used
+    def __init__(self):
         self._lock        = threading.Lock()
         self._render_lock = threading.Lock()
         self._hwnd        = 0
