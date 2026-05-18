@@ -83,7 +83,7 @@ def handle_complete_alarm(app, remainder="", **kwargs):
 
 @command(
     "dismiss alarm",
-    aliases=["skip alarm", "snooze alarm", "silence alarm"],
+    aliases=["skip alarm", "snooze alarm", "quiet alarm"],
     pack="alarms",
 )
 def handle_dismiss_alarm(app, remainder="", **kwargs):
@@ -177,4 +177,18 @@ def handle_disable_alarm(app, remainder="", **kwargs):
     name = result.get("name", alarm_id)
     mgr.update_alarm(alarm_id, enabled=False)
     _speak(app, f"Disabled {name} alarm.")
+    return True
+
+
+@command(
+    "show alarms",
+    aliases=["alarm status", "alarm overview"],
+    pack="alarms",
+)
+def handle_show_alarms(app, remainder="", **kwargs):
+    from samsara.ui.status_overlay import get_overlay
+    get_overlay().toggle(
+        notification_manager=getattr(app, "notification_manager", None),
+        alarm_manager=getattr(app, "alarm_manager", None),
+    )
     return True

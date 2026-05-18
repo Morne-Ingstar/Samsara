@@ -67,6 +67,62 @@ _DEFAULT_PHRASE_CORRECTIONS = {
     "open screen": "open chrome",
     "open crom": "open chrome",
     "open crumb": "open chrome",
+
+    # ── Alarm commands ────────────────────────────────────────────────────
+    # "silence alarm" was removed as a command alias (conflicts with media
+    # mute), but users who naturally say it should still dismiss the alarm.
+    "silence alarm": "dismiss alarm",
+    "silence the alarm": "dismiss alarm",
+    # Article insertion — strict token-prefix matching fails on "the"
+    "complete the alarm": "complete alarm",
+    "dismiss the alarm": "dismiss alarm",
+    "disable the alarm": "disable alarm",
+    "enable the alarm": "enable alarm",
+    "read the alarms": "read alarms",
+    "show the alarms": "show alarms",
+    # Whisper mishearing / past-tense hallucination
+    "compete alarm": "complete alarm",
+    "completed alarm": "complete alarm",
+    "competed alarm": "complete alarm",
+    "dismissed alarm": "dismiss alarm",
+    # dis-miss vs dis-able risk — Whisper sometimes confuses these
+    # under noisy conditions; route to the right command explicitly
+    "dis miss alarm": "dismiss alarm",
+    "dis able alarm": "disable alarm",
+
+    # ── Reminder commands ─────────────────────────────────────────────────
+    # to/two Whisper homophone — the most common source of reminder failures
+    "remind me two": "remind me to",
+    "remind me too": "remind me to",
+    # Article insertion
+    "cancel the reminder": "cancel reminder",
+    "remove the reminder": "cancel reminder",
+    "show the reminders": "show reminders",
+    "read the reminders": "read reminders",
+    "list the reminders": "list reminders",
+
+    # ── Health commands ───────────────────────────────────────────────────
+    # "took" → common Whisper mishearings
+    "two medication": "took medication",
+    "tool medication": "took medication",
+    # "pain level" — number word variations handled by _parse_pain_level,
+    # but Whisper sometimes emits the word "levels" (plural)
+    "pain levels": "pain level",
+    "pain leveling": "pain level",
+    # Symptom command — "symptoms" already an alias, but Whisper sometimes
+    # renders the full gerund form
+    "i am feeling": "i'm feeling",
+
+    # ── Scroll additions (page commands) ─────────────────────────────────
+    "page app": "page up",
+    "paid up": "page up",
+    "paid down": "page down",
+    "scroll to the top": "scroll to top",
+    "scroll to the bottom": "scroll to bottom",
+    "go to the top": "scroll to top",
+    "go to the bottom": "scroll to bottom",
+    "jump to the top": "jump to top",
+    "jump to the bottom": "jump to bottom",
 }
 
 # Single-word corrections applied token-by-token AFTER phrase corrections.

@@ -111,7 +111,7 @@ def _format_entry_speech(entry):
 
 @command(
     "pain level",
-    aliases=["pain", "my pain is", "pain is", "pain at"],
+    aliases=["my pain is", "pain is", "pain at", "log pain"],
     pack="health",
 )
 def handle_pain_level(app, remainder="", **kwargs):
@@ -144,8 +144,8 @@ def handle_pain_level(app, remainder="", **kwargs):
 
 @command(
     "took",
-    aliases=["take", "medication", "taking", "just took", "had a", "popped a",
-             "popped"],
+    aliases=["take", "medication", "just took", "popped a", "popped",
+             "log medication", "log med"],
     pack="health",
 )
 def handle_medication(app, remainder="", **kwargs):
@@ -174,8 +174,7 @@ def handle_medication(app, remainder="", **kwargs):
 
 @command(
     "symptom",
-    aliases=["symptoms", "feeling", "i feel", "i'm feeling", "log symptom",
-             "my body", "my health"],
+    aliases=["symptoms", "i feel", "i'm feeling", "log symptom"],
     pack="health",
 )
 def handle_symptom(app, remainder="", **kwargs):

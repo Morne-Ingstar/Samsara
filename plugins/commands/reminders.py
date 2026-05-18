@@ -277,3 +277,17 @@ def handle_cancel_all_reminders(app, remainder="", **kwargs):
 
     _speak(app, "All reminders cleared.")
     return True
+
+
+@command(
+    "show reminders",
+    aliases=["reminder overview", "reminder status"],
+    pack="utilities",
+)
+def handle_show_reminders(app, remainder="", **kwargs):
+    from samsara.ui.status_overlay import get_overlay
+    get_overlay().toggle(
+        notification_manager=getattr(app, "notification_manager", None),
+        alarm_manager=getattr(app, "alarm_manager", None),
+    )
+    return True
