@@ -407,6 +407,7 @@ class SettingsQt:
     def show(self):
         if self._window is not None:
             try:
+                self._window.show()
                 self._window.raise_()
                 self._window.activateWindow()
                 return
@@ -519,6 +520,18 @@ class _SettingsWindow(QMainWindow):
 
         apply_btn = QPushButton("Apply && Close")
         apply_btn.setFixedWidth(140)
+        apply_btn.setStyleSheet(
+            "QPushButton {"
+            " background-color: #5EEAD4;"
+            " color: #0A0A0B;"
+            " border: none;"
+            " border-radius: 6px;"
+            " padding: 10px 24px;"
+            " font-weight: 600;"
+            " font-size: 14px;"
+            "}"
+            "QPushButton:hover { background-color: #4DD8C2; }"
+        )
         apply_btn.clicked.connect(self._apply_and_close)
         btn_layout.addWidget(apply_btn)
 
