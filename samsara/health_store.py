@@ -26,7 +26,24 @@ def _load():
     global _data
     try:
         with open(_LOG_PATH, "r", encoding="utf-8") as f:
-            _data = json.load(f)
+            loaded = json.load(f)
+        if not isinstance(loaded, dict):
+            raise ValueError("health log root is not a dict")
+        entries = loaded.get("entries", [])
+        if not isinstance(entries, list):
+            entries = []
+        # Repair next_id if it's missing or invalid — derive from the highest
+        # entry id so we never issue a duplicate.
+        saved_next = loaded.get("next_id")
+        max_id = max(
+            (e["id"] for e in entries if isinstance(e, dict) and isinstance(e.get("id"), int)),
+            default=0,
+        )
+        if isinstance(saved_next, int) and saved_next > max_id:
+            next_id = saved_next
+        else:
+            next_id = max_id + 1
+        _data = {"entries": entries, "next_id": next_id}
     except FileNotFoundError:
         _data = {"entries": [], "next_id": 1}
     except Exception as e:
@@ -77,11 +94,11 @@ def get_all() -> list:
 
 
 def get_recent(hours: int = 24) -> list:
-    """Return entries from the last N hours."""
+    """Return entries from the last N hours (exclusive: cutoff is not included)."""
     cutoff = datetime.now(timezone.utc) - timedelta(hours=hours)
     cutoff_str = cutoff.isoformat().replace("+00:00", "Z")
     with _lock:
-        return [dict(e) for e in _data["entries"] if e["timestamp"] >= cutoff_str]
+        return [dict(e) for e in _data["entries"] if e["timestamp"] > cutoff_str]
 
 
 def get_by_type(entry_type: str, hours: int = None) -> list:
@@ -91,7 +108,7 @@ def get_by_type(entry_type: str, hours: int = None) -> list:
     if hours is not None:
         cutoff = datetime.now(timezone.utc) - timedelta(hours=hours)
         cutoff_str = cutoff.isoformat().replace("+00:00", "Z")
-        entries = [e for e in entries if e["timestamp"] >= cutoff_str]
+        entries = [e for e in entries if e["timestamp"] > cutoff_str]
     return [dict(e) for e in entries]
 
 
@@ -109,7 +126,7 @@ def get_today() -> list:
     today_start = datetime.now().replace(hour=0, minute=0, second=0, microsecond=0)
     today_utc = today_start.astimezone(timezone.utc).isoformat().replace("+00:00", "Z")
     with _lock:
-        return [dict(e) for e in _data["entries"] if e["timestamp"] >= today_utc]
+        return [dict(e) for e in _data["entries"] if e["timestamp"] > today_utc]
 
 
 def export_csv(filepath: str = None) -> str:
