@@ -160,11 +160,17 @@ class SplashScreenQt:
         qt_app.setQuitOnLastWindowClosed(False)
 
         self._widget = _SplashWidget()
+        # Clear the Python reference on the Qt thread when the C++ object
+        # is destroyed, so we never drop it on the wrong thread.
+        self._widget.destroyed.connect(self._on_widget_destroyed)
         self._widget.show()
         qt_app.processEvents()
         self._qt_ready.set()
 
         qt_app.exec()
+
+    def _on_widget_destroyed(self):
+        self._widget = None
 
     # ---- Public API ---------------------------------------------------------
 
@@ -174,15 +180,25 @@ class SplashScreenQt:
             self._widget._status_sig.emit(text)
 
     def close(self):
-        """Enforce minimum display time then dismiss the splash."""
-        elapsed = time.time() - self._start_time
-        remaining = _MIN_DISPLAY_S - elapsed
-        if remaining > 0:
-            time.sleep(remaining)
+        """Dismiss the splash, honouring the minimum display time.
 
-        if self._widget is not None:
-            self._widget._close_sig.emit()
-            self._widget = None
+        The sleep runs on a background thread so the Tkinter main thread
+        is never blocked.  The Python reference to _widget is only cleared
+        via the destroyed signal on the Qt thread — never from here — so
+        Qt's internal timer cleanup always runs on the correct thread.
+        """
+        def _do_close():
+            elapsed = time.time() - self._start_time
+            remaining = _MIN_DISPLAY_S - elapsed
+            if remaining > 0:
+                time.sleep(remaining)
+            w = self._widget
+            if w is not None:
+                w._close_sig.emit()
+                # Do NOT touch self._widget here — _on_widget_destroyed
+                # clears it on the Qt thread after the C++ object is gone.
+
+        threading.Thread(target=_do_close, daemon=True, name="splash-close").start()
 
     def get_root(self):
         """Return the hidden tk.Tk() root for the app to reuse."""
