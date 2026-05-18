@@ -731,7 +731,10 @@ class DictationApp:
         if need_wizard:
             # Close splash for wizard - wizard has its own UI
             if self.splash:
-                self.splash.root.destroy()  # Fully destroy splash's root
+                try:
+                    self.splash.close()
+                except Exception as e:
+                    print(f"[SPLASH] close() failed: {e}")
                 self.splash = None
             print("First run detected - launching setup wizard...")
             from samsara.ui.first_run_wizard_qt import FirstRunWizardQt
