@@ -206,36 +206,6 @@ class ToolDispatcher:
         except ImportError:
             pass
 
-        # Tkinter fallback
-        root = getattr(self.app, 'root', None)
-        if root is None:
-            raise RuntimeError("No Tk root")
-
-        def _make():
-            import tkinter as tk
-            top = tk.Toplevel(root)
-            top.title("Smart Actions — Unsaved Text")
-            top.attributes("-topmost", True)
-            top.geometry("480x200")
-            top.resizable(True, True)
-            tk.Label(top, text="The following text could not be saved:",
-                     anchor='w').pack(fill='x', padx=12, pady=(12, 4))
-            txt = tk.Text(top, height=4, wrap='word')
-            txt.insert('1.0', text)
-            txt.configure(state='disabled')
-            txt.pack(fill='both', expand=True, padx=12, pady=(0, 4))
-            def _copy_close():
-                try:
-                    import pyperclip
-                    pyperclip.copy(text)
-                except Exception:
-                    pass
-                top.destroy()
-            tk.Button(top, text="Copy to Clipboard",
-                      command=_copy_close).pack(pady=8)
-
-        root.after(0, _make)
-
     # ---- Dispatch ------------------------------------------------------------
 
     def dispatch(self, tool_call: dict) -> Dict[str, Any]:
@@ -358,20 +328,12 @@ class ToolDispatcher:
 
     def _confirm_dialog(self, description: str,
                         allow_always: bool) -> Tuple[bool, bool]:
-        """Blocking confirmation dialog. Tries Qt first, falls back to Tkinter."""
-        try:
-            from PySide6.QtWidgets import (
-                QApplication, QDialog, QVBoxLayout, QHBoxLayout,
-                QLabel, QPushButton,
-            )
-            from PySide6.QtCore import Qt, QTimer
-            qt_app = QApplication.instance()
-            if qt_app is not None:
-                return self._qt_confirm_dialog(
-                    description, allow_always, qt_app)
-        except ImportError:
-            pass
-        return self._tk_confirm_dialog(description, allow_always)
+        """Blocking confirmation dialog shown on the Qt thread."""
+        from PySide6.QtWidgets import QApplication
+        qt_app = QApplication.instance()
+        if qt_app is not None:
+            return self._qt_confirm_dialog(description, allow_always, qt_app)
+        return False, False
 
     def _qt_confirm_dialog(self, description: str, allow_always: bool,
                            qt_app) -> Tuple[bool, bool]:
@@ -442,59 +404,6 @@ class ToolDispatcher:
             dlg.show()
 
         QTimer.singleShot(0, qt_app, _make)
-        done.wait(timeout=120)
-        return result['approved'], result['always']
-
-    def _tk_confirm_dialog(self, description: str,
-                           allow_always: bool) -> Tuple[bool, bool]:
-        import tkinter as tk
-        root = getattr(self.app, 'root', None)
-        result: Dict[str, Any] = {'approved': False, 'always': False}
-        done = threading.Event()
-
-        def _make():
-            top = tk.Toplevel(root)
-            top.title("Smart Actions")
-            top.attributes("-topmost", True)
-            top.resizable(False, False)
-            if root:
-                top.grab_set()
-            tk.Label(top, text="The agent wants to:",
-                     font=('Segoe UI', 10),
-                     anchor='w').pack(anchor='w', padx=16, pady=(16, 4))
-            tk.Label(top, text=description,
-                     font=('Segoe UI', 10, 'bold'),
-                     wraplength=400, anchor='w',
-                     justify='left').pack(anchor='w', padx=24, pady=(0, 16))
-            row = tk.Frame(top)
-            row.pack(pady=(0, 14))
-
-            def _approve():
-                result['approved'] = True
-                top.destroy()
-                done.set()
-
-            def _reject():
-                top.destroy()
-                done.set()
-
-            def _always():
-                result['approved'] = True
-                result['always'] = True
-                top.destroy()
-                done.set()
-
-            tk.Button(row, text="Approve",
-                      width=12, command=_approve).pack(side='left', padx=4)
-            tk.Button(row, text="Reject",
-                      width=12, command=_reject).pack(side='left', padx=4)
-            if allow_always:
-                tk.Button(row, text="Always allow this",
-                          width=16, command=_always).pack(side='left', padx=4)
-            top.protocol("WM_DELETE_WINDOW", _reject)
-
-        if root is not None:
-            root.after(0, _make)
         done.wait(timeout=120)
         return result['approved'], result['always']
 
