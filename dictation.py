@@ -184,15 +184,7 @@ if sys.platform == 'win32':
             pass
     del _dpi_ctypes
 
-import tkinter as tk
-from tkinter import ttk, messagebox
-import customtkinter as ctk
-
-# Silence chatty third-party loggers. voice_training.py calls
-# logging.basicConfig(level=DEBUG) at import, which raises the root
-# logger to DEBUG -- and torio (part of torchaudio) probes for every
-# FFmpeg version on Windows, logging a full traceback per miss. Pin the
-# noisy libraries at WARNING so genuine problems still surface.
+# Silence chatty third-party loggers that flood the console on import.
 for _name in ("torio", "torio._extension", "torchaudio",
               "torchaudio._extension", "torch", "urllib3",
               "huggingface_hub",
@@ -201,36 +193,6 @@ for _name in ("torio", "torio._extension", "torchaudio",
               "httpcore", "httpx",
               "comtypes", "comtypes.client"):
     logging.getLogger(_name).setLevel(logging.WARNING)
-
-
-def _samsara_install_tk_error_filter(root):
-    """Suppress CustomTkinter shutdown-race noise on the given Tk root.
-
-    When a CTk window is being destroyed, child widgets' <Configure>
-    handlers still fire and try to redraw on canvases the OS has already
-    torn down, raising `_tkinter.TclError: invalid command name ...`.
-    Those exceptions are benign and only appear during teardown.
-
-    tkinter routes widget callback exceptions through the root's
-    `report_callback_exception` (Misc._report_exception calls
-    self._root().report_callback_exception), so installing a filter on
-    the root catches errors from every widget in the tree."""
-    import _tkinter
-    import traceback as _tb_mod
-    original = root.report_callback_exception
-
-    def _filtered(exc, val, tb):
-        if isinstance(val, _tkinter.TclError):
-            msg = str(val)
-            if ("invalid command name" in msg
-                    or "application has been destroyed" in msg):
-                return
-        try:
-            original(exc, val, tb)
-        except Exception:
-            _tb_mod.print_exception(exc, val, tb)
-
-    root.report_callback_exception = _filtered
 try:
     from samsara.ui.voice_training_qt import VoiceTrainingQt as _VoiceTrainingQt
 except Exception as _vt_err:
@@ -247,7 +209,6 @@ except Exception as _ag_err:
     _AvaGuideQt = None
     print(f"[INIT] AvaGuideQt unavailable: {_ag_err}")
 from samsara.profiles import ProfileManager
-from samsara.ui.history_window import HistoryWindow
 from samsara.ui.listening_indicator import ListeningIndicator
 from samsara.cleanup import clean_text
 from samsara.history import HistoryManager
@@ -795,16 +756,6 @@ class DictationApp:
 
         self.update_splash("Setting up audio...")
 
-        # Reuse root from splash, or create new hidden one
-        if self.splash:
-            self.root = self.splash.get_root()
-        else:
-            self.root = tk.Tk()
-            self.root.withdraw()  # Hide it
-
-        # Filter CTk shutdown-race exceptions out of stderr.
-        _samsara_install_tk_error_filter(self.root)
-
         # Set the Samsara wheel as the default icon for all Qt windows.
         try:
             from PySide6.QtGui import QIcon, QImage, QPixmap
@@ -841,23 +792,17 @@ class DictationApp:
                   f"switched to {new_name} (id={self.config['microphone']})")
             # Notify the user so they can confirm the right mic is selected
             def _mic_changed_dialog():
-                try:
-                    from tkinter import messagebox
-                    messagebox.showwarning(
-                        "Microphone Changed",
-                        f"Your previously selected microphone was not found on this machine.\n\n"
-                        f"Samsara has switched to: {new_name}\n\n"
-                        f"If this is wrong, open Settings to choose the correct microphone."
-                    )
-                except Exception:
-                    pass
+                from PySide6.QtWidgets import QMessageBox
+                QMessageBox.warning(
+                    None,
+                    "Microphone Changed",
+                    f"Your previously selected microphone was not found on this machine.\n\n"
+                    f"Samsara has switched to: {new_name}\n\n"
+                    f"If this is wrong, open Settings to choose the correct microphone.",
+                )
             from PySide6.QtCore import QTimer
             from PySide6.QtWidgets import QApplication as _QApp
-            _qt = _QApp.instance()
-            if _qt is not None:
-                QTimer.singleShot(2000, _qt, _mic_changed_dialog)
-            elif hasattr(self, 'root') and self.root:
-                self.root.after(2000, _mic_changed_dialog)
+            QTimer.singleShot(2000, _QApp.instance(), _mic_changed_dialog)
 
         # Audio settings -- dual sample rates for WASAPI compatibility
         self.model_rate = MODEL_SAMPLE_RATE
@@ -1045,9 +990,6 @@ class DictationApp:
         self.ava_guide = (
             _AvaGuideQt(self) if _AvaGuideQt is not None else None
         )
-
-        # History window
-        self.history_window = HistoryWindow(self)
 
         # Wake word debug window
         try:
@@ -1247,11 +1189,12 @@ class DictationApp:
     def _show_startup_error(self, message: str):
         """Show a startup-failure dialog and exit. Runs on the UI thread."""
         self._close_splash_post_load()
-        from tkinter import messagebox
-        messagebox.showerror(
+        from PySide6.QtWidgets import QMessageBox
+        QMessageBox.critical(
+            None,
             "Samsara failed to start",
             f"An error occurred during startup:\n\n{message}\n\n"
-            "Check the log file for the full traceback."
+            "Check the log file for the full traceback.",
         )
         self.quit_app()
 
@@ -5698,29 +5641,12 @@ class DictationApp:
     def open_history(self):
         """Open dictation history window"""
         try:
-            from samsara.ui.history_qt import HistoryQt
             if not hasattr(self, '_history_qt'):
+                from samsara.ui.history_qt import HistoryQt
                 self._history_qt = HistoryQt(self)
             self._history_qt.show()
-            return
-        except ImportError:
-            pass
         except Exception as e:
-            print(f"[HISTORY] Qt window error: {e}")
-
-        # Tkinter fallback
-        if self.history_window.window is not None:
-            try:
-                self.history_window.window.lift()
-                self.history_window.window.focus_force()
-                return
-            except:
-                self.history_window.window = None
-        try:
-            self.history_window.show()
-        except Exception as e:
-            print(f"Error opening history: {e}")
-            messagebox.showerror("Error", f"Failed to open History:\n{e}")
+            print(f"[HISTORY] Error opening history: {e}")
 
     def open_wake_word_debug(self):
         """Open wake word debug/test window"""
@@ -5728,7 +5654,6 @@ class DictationApp:
             self.wake_word_debug_window.show()
         except Exception as e:
             print(f"Error opening wake word debug: {e}")
-            messagebox.showerror("Error", f"Failed to open Wake Word Debug:\n{e}")
 
     def snooze_listening(self, minutes=None):
         """Temporarily pause all listening for the given duration.
@@ -5941,7 +5866,8 @@ class DictationApp:
         if LOG_FILE.exists():
             open_file_or_folder(LOG_FILE)
         else:
-            messagebox.showinfo("Log File", "No log file found yet.")
+            from PySide6.QtWidgets import QMessageBox
+            QMessageBox.information(None, "Log File", "No log file found yet.")
 
     def open_log_file(self):
         """Open the Samsara log file in Notepad (voice command target)."""
@@ -5956,7 +5882,8 @@ class DictationApp:
         if log_file.exists():
             open_file_or_folder(log_file)
         else:
-            messagebox.showinfo("Log File", "No voice training log file found yet.")
+            from PySide6.QtWidgets import QMessageBox
+            QMessageBox.information(None, "Log File", "No voice training log file found yet.")
     
     def quit_app(self):
         """Exit the application"""
