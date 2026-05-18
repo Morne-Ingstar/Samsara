@@ -805,11 +805,18 @@ class DictationApp:
         # Filter CTk shutdown-race exceptions out of stderr.
         _samsara_install_tk_error_filter(self.root)
 
-        # Apply the segmented-wheel as the default window icon for every
-        # Toplevel (taskbar, top-left corner). Tk's default-flag inherits
-        # to all subsequently created Toplevels -- one call covers the
-        # main hub, settings, voice training, history, wake word debug, etc.
-        self._apply_window_icon(self.root, default=True)
+        # Set the Samsara wheel as the default icon for all Qt windows.
+        try:
+            from PySide6.QtGui import QIcon, QImage, QPixmap
+            from PySide6.QtWidgets import QApplication
+            _icon_pil = self.create_icon_image(active=True).convert("RGBA")
+            _icon_qi  = QImage(
+                _icon_pil.tobytes(), _icon_pil.width, _icon_pil.height,
+                QImage.Format.Format_RGBA8888,
+            )
+            QApplication.instance().setWindowIcon(QIcon(QPixmap.fromImage(_icon_qi)))
+        except Exception as _e:
+            print(f"[ICON] Could not set Qt window icon: {_e}")
 
         print("[INIT] Enumerating audio devices...")
         self.available_mics = self.get_available_microphones()
@@ -5532,39 +5539,6 @@ class DictationApp:
             t = start_rad + (end_rad - start_rad) * i / steps
             pts.append((cx + inner_r * math.cos(t), cy + inner_r * math.sin(t)))
         return pts
-
-    def _get_window_icon_photos(self):
-        """Build (and cache) Tk PhotoImages of the colored Samsara wheel.
-
-        Used as the window icon (taskbar + top-left corner) for every
-        Toplevel via Tk's iconphoto. We keep references on self so they
-        aren't garbage-collected -- Tk holds them only weakly.
-        """
-        if getattr(self, '_window_icon_photos', None) is not None:
-            return self._window_icon_photos
-        try:
-            from PIL import ImageTk
-            base = self.create_icon_image(active=True)  # full-color wheel
-            sizes = (16, 32, 48, 64)
-            photos = []
-            for s in sizes:
-                resized = base.resize((s, s), Image.LANCZOS)
-                photos.append(ImageTk.PhotoImage(resized, master=self.root))
-            self._window_icon_photos = photos
-        except Exception as e:
-            print(f"[ICON] Could not build window icon photos: {e}")
-            self._window_icon_photos = []
-        return self._window_icon_photos
-
-    def _apply_window_icon(self, win, default=False):
-        """Set the Samsara icon on `win` (and as the default for Toplevels)."""
-        photos = self._get_window_icon_photos()
-        if not photos:
-            return
-        try:
-            win.iconphoto(default, *photos)
-        except Exception as e:
-            print(f"[ICON] iconphoto failed on {win}: {e}")
 
     def create_icon_image(self, active=False, color_offset=0, rotation=0.0):
         """Create system tray icon — segmented wheel design.
