@@ -2431,10 +2431,12 @@ class DictationApp:
                 if self.command_mode_recording and self.recording:
                     # Command hotkey released - stop recording (will process as command-only)
                     print(f"[HOTKEY] Command hotkey released, stopping recording")
-                    self.stop_recording()
+                    threading.Thread(target=self.stop_recording, daemon=True,
+                                     name='stop-rec').start()
                 elif mode == 'hold' and self.recording:
                     print(f"[HOTKEY] Main hotkey released, stopping recording")
-                    self.stop_recording()
+                    threading.Thread(target=self.stop_recording, daemon=True,
+                                     name='stop-rec').start()
                 self.hotkey_pressed = False
 
     # ---- CapsLock streaming hotkey --------------------------------------
@@ -5120,6 +5122,11 @@ class DictationApp:
             self._schedule_ui(self.listening_indicator.set_listening, False)
         
         if hasattr(self, 'stream'):
+            # Trailing buffer: keep capturing briefly after the button is released
+            # so the last word isn't clipped. 250 ms covers ~1 syllable at normal pace.
+            tail_ms = self.config.get('recording_tail_ms', 250)
+            if tail_ms > 0:
+                time.sleep(tail_ms / 1000)
             self.stream.stop()
             self.stream.close()
 
