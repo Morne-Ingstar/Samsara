@@ -383,7 +383,7 @@ class _CheatSheetWindow(QMainWindow):
         lay.addWidget(self._filter)
 
         _sep = lambda: [s := QFrame(), s.setFixedHeight(1),
-                        s.setStyleSheet(f"background:{_BORDER};")][2]
+                        s.setStyleSheet(f"background:{_BORDER};")][0]
 
         lay.addWidget(_sep())
 
