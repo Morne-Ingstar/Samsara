@@ -5420,13 +5420,8 @@ class DictationApp:
         elif not enabled and self.wake_word_active:
             self.stop_wake_word_mode()
             print("[WAKE] Wake word listener DISABLED")
-        # Update tray tooltip and menu
+        # Update tray tooltip
         self._update_tray_tooltip()
-        if hasattr(self, 'tray_icon') and hasattr(self, 'get_menu'):
-            try:
-                self.tray_icon.menu = self.get_menu()
-            except Exception:
-                pass
         # Update listening indicator mode label
         if hasattr(self, 'listening_indicator'):
             self._schedule_ui(self.listening_indicator.set_mode, self._get_mode_display())
@@ -5436,12 +5431,6 @@ class DictationApp:
         changed = self.apply_mode(new_mode)
         if changed:
             self.persist_config()
-        # Always refresh the menu so the checkmark reflects current state
-        if hasattr(self, 'tray_icon') and hasattr(self, 'get_menu'):
-            try:
-                self.tray_icon.menu = self.get_menu()
-            except Exception as e:
-                print(f"[MODE] Failed to refresh tray menu: {e}")
         self._update_tray_tooltip()
 
     def show_main_window(self):
@@ -5480,11 +5469,6 @@ class DictationApp:
         else:
             self._uninstall_capslock_hook()
 
-        if hasattr(self, 'tray_icon') and hasattr(self, 'get_menu'):
-            try:
-                self.tray_icon.menu = self.get_menu()
-            except Exception as e:
-                print(f"[STREAM] Failed to refresh tray menu: {e}")
 
     def set_cleanup_mode(self, mode):
         """Tray-menu entry point: switch between 'clean' and 'verbatim' cleanup."""
@@ -5496,11 +5480,6 @@ class DictationApp:
             self.config['cleanup_mode'] = mode
             self.save_config()
         print(f"[CLEANUP] Mode -> {mode}")
-        if hasattr(self, 'tray_icon') and hasattr(self, 'get_menu'):
-            try:
-                self.tray_icon.menu = self.get_menu()
-            except Exception as e:
-                print(f"[CLEANUP] Failed to refresh tray menu: {e}")
 
     def _get_mode_display(self):
         """Build a display string for the current mode + wake word state."""
@@ -5956,247 +5935,28 @@ class DictationApp:
         self._schedule_ui(self.cheat_sheet.toggle)
 
     def create_tray_icon(self):
-        """Create and run system tray icon.
+        """Create the Qt system tray icon and block the main thread.
 
-        Uses QSystemTrayIcon when Qt is available (preferred).
-        The Qt path creates the icon on the samsara-qt thread, then keeps
-        the main thread alive with a lightweight sleep loop.  No Tk
-        mainloop() required -- the root window is kept as a hidden
-        stub for any remaining CTk fallback windows only.
-
-        Falls back to the legacy pystray path if Qt is unavailable.
+        Creates SamsaraTrayQt on the samsara-qt thread via QTimer.singleShot,
+        then keeps the main thread alive with a lightweight sleep loop.
+        quit_app() sets self._running = False then calls os._exit(0).
         """
         from PySide6.QtCore import QTimer
         qt_app = __import__('PySide6.QtWidgets', fromlist=['QApplication']).QApplication.instance()
 
-        if _SamsaraTrayQt is not None and qt_app is not None:
-            def _create():
-                self.tray_icon = _SamsaraTrayQt(self)
+        def _create():
+            self.tray_icon = _SamsaraTrayQt(self)
 
-            QTimer.singleShot(0, qt_app, _create)
-            QTimer.singleShot(0, qt_app, self.show_main_window)
+        QTimer.singleShot(0, qt_app, _create)
+        QTimer.singleShot(0, qt_app, self.show_main_window)
 
-            # Keep the main thread alive without blocking on Tk mainloop().
-            # quit_app() sets self._running = False and then calls os._exit(0).
-            while self._running:
-                import time as _t
-                _t.sleep(0.2)
-            return
-
-        # ----------------------------------------------------------------
-        # Legacy pystray fallback (used when Qt tray is unavailable)
-        # ----------------------------------------------------------------
-        import pystray as _pystray
-
-        def get_menu():
-            """Generate menu dynamically to reflect current state"""
-            mode = self.config.get('mode', 'hold')
-            
-            # Create microphone submenu.
-            # Refresh the device list every time the menu is built so a mic
-            # connected after startup (e.g. BT earbuds) appears immediately.
-            # Skip the refresh while any capture stream is active — sd.query_devices()
-            # can stutter PortAudio streams on some drivers.
-            if not self._is_audio_capture_active():
-                try:
-                    self.available_mics = self.get_available_microphones()
-                    self._reconcile_microphone_selection()
-                    print(f"[MIC] Refreshed microphone list: {len(self.available_mics)} devices found")
-                except Exception as e:
-                    print(f"[MIC] Refresh failed, using cached list: {e}")
-            else:
-                print("[MIC] Skipping mic refresh during active capture")
-
-            mic_menu_items = []
-            current_mic_id = self.config.get('microphone')
-
-            # Factory: returns a clean 2-arg callback that captures mic_id in
-            # its closure scope. Avoids two pitfalls:
-            #   (a) `lambda _, mid=mic_id: ...` binds menu_item to mid (wrong value)
-            #   (b) `lambda _i, _it, mid=mic_id: ...` exceeds pystray's 2-arg limit
-            def _make_mic_callback(mid):
-                def _cb(_icon, _item):
-                    self.switch_microphone_and_refresh(mid)
-                return _cb
-
-            for mic in self.available_mics:
-                mic_id = mic['id']
-                mic_name = mic['name']
-                is_current = (mic_id == current_mic_id)
-                
-                # Create menu item with checkmark for current mic
-                mic_menu_items.append(
-                    _pystray.MenuItem(
-                        f"{'*' if is_current else '   '}{mic_name}",
-                        _make_mic_callback(mic_id)
-                    )
-                )
-            
-            return _pystray.Menu(
-                _pystray.MenuItem(
-                    "Show Samsara",
-                    lambda _i, _it: self.show_main_window(),
-                    default=True,
-                ),
-                _pystray.Menu.SEPARATOR,
-                _pystray.MenuItem(
-                    f"[MIC] {self.get_current_microphone_name()}",
-                    _pystray.Menu(*mic_menu_items) if mic_menu_items else None
-                ),
-                _pystray.MenuItem(
-                    f"Mode: {mode.title()}",
-                    _pystray.Menu(
-                        _pystray.MenuItem(
-                            'Hold to Talk',
-                            lambda _i, _it: self.switch_mode_from_tray('hold'),
-                            checked=lambda _it, m='hold': self.config.get('mode', 'hold') == m,
-                            radio=True
-                        ),
-                        _pystray.MenuItem(
-                            'Toggle (click to start/stop)',
-                            lambda _i, _it: self.switch_mode_from_tray('toggle'),
-                            checked=lambda _it, m='toggle': self.config.get('mode', 'hold') == m,
-                            radio=True
-                        ),
-                        _pystray.MenuItem(
-                            'Continuous',
-                            lambda _i, _it: self.switch_mode_from_tray('continuous'),
-                            checked=lambda _it, m='continuous': self.config.get('mode', 'hold') == m,
-                            radio=True
-                        ),
-                    )
-                ),
-                _pystray.MenuItem(
-                    f"Wake Word ({self.config.get('wake_word_config', {}).get('phrase', 'samsara')})",
-                    lambda _i, _it: self.set_wake_word_enabled(
-                        not self.config.get('wake_word_enabled', False)),
-                    checked=lambda _it: self.config.get('wake_word_enabled', False)
-                ),
-                _pystray.MenuItem(
-                    "Streaming Mode (CapsLock)",
-                    lambda _i, _it: self.set_streaming_mode(
-                        not self.config.get('streaming_mode', False)),
-                    checked=lambda _it: self.config.get('streaming_mode', False)
-                ),
-                _pystray.MenuItem(
-                    lambda _it: "Snoozed" if self.snoozed else "Snooze",
-                    _pystray.Menu(
-                        _pystray.MenuItem(
-                            "5 minutes",
-                            lambda _i, _it: self.snooze_listening(5),
-                            enabled=lambda _it: not self.snoozed
-                        ),
-                        _pystray.MenuItem(
-                            "15 minutes",
-                            lambda _i, _it: self.snooze_listening(15),
-                            enabled=lambda _it: not self.snoozed
-                        ),
-                        _pystray.MenuItem(
-                            "30 minutes",
-                            lambda _i, _it: self.snooze_listening(30),
-                            enabled=lambda _it: not self.snoozed
-                        ),
-                        _pystray.MenuItem(
-                            "1 hour",
-                            lambda _i, _it: self.snooze_listening(60),
-                            enabled=lambda _it: not self.snoozed
-                        ),
-                        _pystray.MenuItem(
-                            "Until resumed",
-                            lambda _i, _it: self.snooze_listening(None),
-                            enabled=lambda _it: not self.snoozed
-                        ),
-                        _pystray.Menu.SEPARATOR,
-                        _pystray.MenuItem(
-                            "Resume now",
-                            lambda _i, _it: self.resume_listening(),
-                            enabled=lambda _it: self.snoozed
-                        ),
-                    )
-                ),
-                _pystray.Menu.SEPARATOR,
-                _pystray.MenuItem("Settings", self.open_settings),
-                _pystray.MenuItem("History", self.open_history),
-                _pystray.MenuItem(
-                    "Command Reference",
-                    lambda _i, _it: self.toggle_cheat_sheet(),
-                    checked=lambda _it: self.cheat_sheet._visible
-                ),
-                _pystray.MenuItem(
-                    "Show Listening Indicator",
-                    self.toggle_listening_indicator,
-                    checked=lambda _it: self.config.get('listening_indicator_enabled', False)
-                ),
-                _pystray.MenuItem(
-                    "Tools",
-                    _pystray.Menu(
-                        _pystray.MenuItem("Mic Setup Guide", self.open_mic_setup_guide),
-                        _pystray.MenuItem("Ava Guide", self.open_ava_guide),
-                        _pystray.MenuItem("Voice Training", self.open_voice_training),
-                        _pystray.MenuItem("Wake Word Debug", self.open_wake_word_debug),
-                        _pystray.MenuItem("Recalibrate Mic", lambda _i, _it: self.recalibrate_mic()),
-                        _pystray.MenuItem(
-                            "Calibrate Echo Cancellation",
-                            lambda _i, _it: self.calibrate_echo_cancellation(),
-                        ),
-                        _pystray.Menu.SEPARATOR,
-                        _pystray.MenuItem(
-                            "Cleanup",
-                            _pystray.Menu(
-                                _pystray.MenuItem(
-                                    "Clean (remove fillers)",
-                                    lambda _i, _it: self.set_cleanup_mode('clean'),
-                                    checked=lambda _it: self.config.get('cleanup_mode', 'clean') == 'clean',
-                                    radio=True
-                                ),
-                                _pystray.MenuItem(
-                                    "Verbatim (no cleanup)",
-                                    lambda _i, _it: self.set_cleanup_mode('verbatim'),
-                                    checked=lambda _it: self.config.get('cleanup_mode', 'clean') == 'verbatim',
-                                    radio=True
-                                ),
-                            )
-                        ),
-                        _pystray.Menu.SEPARATOR,
-                        _pystray.MenuItem("Open Config Folder", self.open_config_folder),
-                        _pystray.MenuItem("View Logs", _pystray.Menu(
-                            _pystray.MenuItem("Main Log", self.open_main_log),
-                            _pystray.MenuItem("Voice Training Log", self.open_voice_training_log),
-                        )),
-                        _pystray.Menu.SEPARATOR,
-                        _pystray.MenuItem(
-                            f"Hotkey: {self.config['hotkey']}",
-                            lambda: None,
-                            enabled=False
-                        ),
-                        _pystray.MenuItem(
-                            f"Model: {self.config['model_size']}",
-                            lambda: None,
-                            enabled=False
-                        ),
-                    )
-                ),
-                _pystray.Menu.SEPARATOR,
-                _pystray.MenuItem("Exit", self.quit_app)
-            )
-        
-        self.tray_icon = _pystray.Icon(
-            "Samsara",
-            self.create_icon_image(),
-            f"Samsara - {self._get_mode_display()}",
-            get_menu()
-        )
-        self.get_menu = get_menu
-        self.root.after(0, self.show_main_window)
-        self.tray_icon.run_detached()
-        self.root.mainloop()
+        while self._running:
+            import time as _t
+            _t.sleep(0.2)
     
     def switch_microphone_and_refresh(self, mic_id):
         """Switch microphone and refresh the tray menu"""
         self.switch_microphone(mic_id)
-        # Recreate menu to show updated checkmark
-        if hasattr(self, 'tray_icon') and hasattr(self, 'get_menu'):
-            self.tray_icon.menu = self.get_menu()
     
     def open_config_folder(self):
         """Open the config folder"""
