@@ -32,6 +32,8 @@ from PySide6.QtWidgets import (
     QTableWidgetItem, QTabWidget, QVBoxLayout, QWidget,
 )
 
+from samsara.ui.dictionary_panel_qt import DictionaryPanelQt
+
 # ---------------------------------------------------------------------------
 # Constants — match Tkinter version
 # ---------------------------------------------------------------------------
@@ -406,165 +408,6 @@ class _HistoryPanel(QWidget):
         self._load()
 
 
-# ---------------------------------------------------------------------------
-# Dictionary panel
-# ---------------------------------------------------------------------------
-
-class _DictionaryPanel(QWidget):
-    """Vocabulary / Corrections / Wake Words editor."""
-
-    def __init__(self, app, parent=None):
-        super().__init__(parent)
-        self._app = app
-        self._setup_ui()
-
-    def _setup_ui(self):
-        lay = QVBoxLayout(self)
-        lay.setContentsMargins(0, 0, 0, 0)
-        lay.setSpacing(0)
-
-        tabs = QTabWidget()
-        lay.addWidget(tabs)
-
-        tabs.addTab(self._make_vocab_tab(),   "Vocabulary")
-        tabs.addTab(self._make_kv_tab("corrections"), "Corrections")
-        tabs.addTab(self._make_kv_tab("wake"),        "Wake Words")
-
-    # ---- Vocabulary tab -----------------------------------------------------
-
-    def _make_vocab_tab(self):
-        w = QWidget()
-        lay = QVBoxLayout(w)
-        lay.setContentsMargins(12, 12, 12, 12)
-        lay.setSpacing(8)
-
-        lay.addWidget(_label(
-            "Words and phrases Whisper will recognise. One per line.",
-            color=_TEXT_SEC, size=12,
-        ))
-
-        self._vocab_list = QListWidget()
-        lay.addWidget(self._vocab_list, stretch=1)
-        self._load_vocab()
-
-        row = QHBoxLayout()
-        self._vocab_input = QLineEdit()
-        self._vocab_input.setPlaceholderText("Add word or phrase...")
-        self._vocab_input.returnPressed.connect(self._vocab_add)
-        add_btn = _btn("Add")
-        add_btn.clicked.connect(self._vocab_add)
-        rem_btn = _btn("Remove")
-        rem_btn.clicked.connect(self._vocab_remove)
-        save_btn = _btn("Save", accent=True)
-        save_btn.clicked.connect(self._vocab_save)
-        row.addWidget(self._vocab_input, stretch=1)
-        row.addWidget(add_btn)
-        row.addWidget(rem_btn)
-        row.addWidget(save_btn)
-        lay.addLayout(row)
-        return w
-
-    def _load_vocab(self):
-        self._vocab_list.clear()
-        vt = getattr(self._app, 'voice_training_window', None)
-        vocab = vt.custom_vocab if vt is not None else []
-        for word in vocab:
-            self._vocab_list.addItem(str(word))
-
-    def _vocab_add(self):
-        text = self._vocab_input.text().strip()
-        if not text:
-            return
-        self._vocab_list.addItem(text)
-        self._vocab_input.clear()
-
-    def _vocab_remove(self):
-        for item in self._vocab_list.selectedItems():
-            self._vocab_list.takeItem(self._vocab_list.row(item))
-
-    def _vocab_save(self):
-        words = [self._vocab_list.item(i).text()
-                 for i in range(self._vocab_list.count())]
-        vt = getattr(self._app, 'voice_training_window', None)
-        if vt is not None:
-            vt.custom_vocab = words
-            try:
-                vt.save_training_data()
-            except Exception as e:
-                print(f"[DICT] Vocab save error: {e}")
-
-    # ---- Key-value tabs (Corrections + Wake Words) --------------------------
-
-    def _make_kv_tab(self, mode: str):
-        w = QWidget()
-        lay = QVBoxLayout(w)
-        lay.setContentsMargins(12, 12, 12, 12)
-        lay.setSpacing(8)
-
-        desc = ("Phonetic overrides: heard phrase -> intended text."
-                if mode == "corrections"
-                else "Wake word misrecognitions: heard -> correct phrase.")
-        lay.addWidget(_label(desc, color=_TEXT_SEC, size=12))
-
-        lst = QListWidget()
-        lay.addWidget(lst, stretch=1)
-
-        input_row = QHBoxLayout()
-        heard = QLineEdit()
-        heard.setPlaceholderText("Heard...")
-        intended = QLineEdit()
-        intended.setPlaceholderText("Intended...")
-        add_btn  = _btn("Add")
-        rem_btn  = _btn("Remove")
-        save_btn = _btn("Save", accent=True)
-        input_row.addWidget(heard, stretch=1)
-        input_row.addWidget(QLabel("->"))
-        input_row.addWidget(intended, stretch=1)
-        input_row.addWidget(add_btn)
-        input_row.addWidget(rem_btn)
-        input_row.addWidget(save_btn)
-        lay.addLayout(input_row)
-
-        if mode == "corrections":
-            import samsara.phonetic_wash as _mod
-        else:
-            import samsara.wake_corrections as _mod
-
-        def _load():
-            lst.clear()
-            for k, v in (_mod.get_user_corrections() or {}).items():
-                lst.addItem(f"{k}  ->  {v}")
-
-        def _add():
-            h = heard.text().strip()
-            i = intended.text().strip()
-            if h and i:
-                lst.addItem(f"{h}  ->  {i}")
-                heard.clear()
-                intended.clear()
-
-        def _remove():
-            for item in lst.selectedItems():
-                lst.takeItem(lst.row(item))
-
-        def _save():
-            corrections = {}
-            for idx in range(lst.count()):
-                parts = lst.item(idx).text().split("  ->  ", 1)
-                if len(parts) == 2:
-                    corrections[parts[0].strip()] = parts[1].strip()
-            try:
-                _mod.set_user_corrections(corrections)
-                _mod.reload_corrections()
-            except Exception as e:
-                print(f"[DICT] Save error ({mode}): {e}")
-
-        _load()
-        add_btn.clicked.connect(_add)
-        rem_btn.clicked.connect(_remove)
-        save_btn.clicked.connect(_save)
-        heard.returnPressed.connect(_add)
-        return w
 
 
 # ---------------------------------------------------------------------------
@@ -710,7 +553,7 @@ class _MainWindow(QMainWindow):
         if name == "History":
             return _HistoryPanel(self._app)
         if name == "Dictionary":
-            return _DictionaryPanel(self._app)
+            return DictionaryPanelQt(self._app)
         return None
 
     def _highlight(self, active: str):
