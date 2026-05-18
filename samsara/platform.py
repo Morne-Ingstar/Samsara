@@ -114,20 +114,7 @@ def show_message_box(title: str, message: str, error: bool = False) -> None:
             flags = 0x10 if error else 0x40  # MB_ICONERROR or MB_ICONINFORMATION
             ctypes.windll.user32.MessageBoxW(0, message, title, flags)
         else:
-            # Use tkinter as cross-platform fallback
-            try:
-                import tkinter as tk
-                from tkinter import messagebox
-                root = tk.Tk()
-                root.withdraw()
-                if error:
-                    messagebox.showerror(title, message)
-                else:
-                    messagebox.showinfo(title, message)
-                root.destroy()
-            except ImportError:
-                # Last resort: print to console
-                print(f"{title}: {message}")
+            print(f"{title}: {message}")
     except Exception:
         print(f"{title}: {message}")
 
