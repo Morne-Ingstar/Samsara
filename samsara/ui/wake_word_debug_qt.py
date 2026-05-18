@@ -1,8 +1,9 @@
-"""PySide6 wake word debug window — Phase 1.
+"""PySide6 wake word debug window — Phase 1 + 2.
 
-Passive observation mode: receives trace events and log messages from
-the live wake word pipeline via signals and displays them in real time.
-Active test mode (standalone audio capture + transcription) is Phase 2.
+Passive observation: receives trace events from the live pipeline.
+Active test mode: standalone sounddevice audio capture, Whisper
+transcription, and full wake word matching pipeline in a self-contained
+loop, mirroring the Tkinter version's Start Test / Stop workflow.
 
 Public API matches WakeWordDebugWindow exactly:
     show() / close() / on_app_trace(event)
@@ -12,6 +13,8 @@ import threading
 import time
 from datetime import datetime
 from pathlib import Path
+
+import numpy as np
 
 from PySide6.QtCore import Qt, QTimer, Signal, Slot
 from PySide6.QtGui import QFont, QColor
@@ -110,6 +113,20 @@ QScrollBar::add-line:vertical, QScrollBar::sub-line:vertical {{ height: 0; }}
 
 
 # ---------------------------------------------------------------------------
+# Audio helpers
+# ---------------------------------------------------------------------------
+
+def _resample_audio(audio: np.ndarray, orig_sr: int, target_sr: int = 16000) -> np.ndarray:
+    """Linear-interpolation resample — lightweight, no scipy dependency."""
+    if orig_sr == target_sr:
+        return audio
+    new_length  = int(len(audio) / orig_sr * target_sr)
+    old_indices = np.linspace(0, len(audio) - 1, num=len(audio))
+    new_indices = np.linspace(0, len(audio) - 1, num=new_length)
+    return np.interp(new_indices, old_indices, audio).astype(np.float32)
+
+
+# ---------------------------------------------------------------------------
 # Helpers
 # ---------------------------------------------------------------------------
 
@@ -156,27 +173,37 @@ class _DebugWindow(QMainWindow):
     _heard_sig   = Signal(str)
     _flow_sig    = Signal(str)
     _eval_sig    = Signal(dict)
-    _level_sig   = Signal(float)      # Phase 2: RMS from audio stream
+    _level_sig   = Signal(float)      # RMS from audio callback thread
+    _timer_sig   = Signal(str, str)   # text, colour for timer label
+    _btns_sig    = Signal(bool)       # True = test running
 
     def __init__(self, app):
         super().__init__()
         self._app         = app
-        self._trace_buf   = []          # list of utterance blocks
-        self._current_blk = []          # in-flight utterance events
-        self._log_pending = []          # lines not yet flushed to widget
+        self._trace_buf   = []
+        self._current_blk = []
+        self._log_pending = []
         self._log_timer   = QTimer(self)
         self._log_timer.setSingleShot(True)
         self._log_timer.setInterval(200)
         self._log_timer.timeout.connect(self._flush_log)
 
-        # Active-test state (populated by Phase 2)
-        self.running        = False
-        self.audio_stream   = None
-        self._speech_thresh = 0.03
-        self._min_speech    = 0.3
-        self._dictate_to    = 2.0
-        self._short_to      = 1.0
-        self._long_to       = 60.0
+        # Active-test audio state
+        self.running          = False
+        self.audio_stream     = None
+        self._speech_buffer   = []
+        self._silence_start   = None
+        self._is_speaking     = False
+        self._wake_triggered  = False
+        self._dictation_mode  = None
+        self._dictation_buf   = []
+        self._dictation_start = None
+
+        # UI poll timer (level meter + countdown)
+        self._poll_timer = QTimer(self)
+        self._poll_timer.setInterval(250)
+        self._poll_timer.timeout.connect(self._poll_tick)
+        self._pending_rms = None
 
         self.setWindowTitle("Wake Word Debug")
         self.setStyleSheet(_SS)
@@ -504,6 +531,8 @@ class _DebugWindow(QMainWindow):
         self._flow_sig.connect(self._set_flow)
         self._eval_sig.connect(self._update_eval)
         self._level_sig.connect(self._update_level)
+        self._timer_sig.connect(self._set_timer)
+        self._btns_sig.connect(self._set_buttons)
 
     # ----------------------------------------------------------------
     # Trace pipeline (mirrors the Tkinter version)
@@ -690,6 +719,49 @@ class _DebugWindow(QMainWindow):
         self._level_bar.setStyleSheet(
             f"QSlider::sub-page:horizontal {{ background: {color}; border-radius: 2px; }}")
 
+    @Slot(str, str)
+    def _set_timer(self, text: str, color: str):
+        self._timer_lbl.setText(text)
+        self._timer_lbl.setStyleSheet(f"color: {color}; background: transparent;")
+
+    @Slot(bool)
+    def _set_buttons(self, running: bool):
+        self._start_btn.setEnabled(not running)
+        self._stop_btn.setEnabled(running)
+
+    def _poll_tick(self):
+        rms = self._pending_rms
+        if rms is not None:
+            self._pending_rms = None
+            self._level_sig.emit(rms)
+        if self._dictation_mode and self._dictation_start:
+            self._update_timer_display()
+
+    def _update_timer_display(self):
+        if not self._dictation_mode or not self._dictation_start:
+            self._timer_sig.emit("--", _TEXT_SEC)
+            return
+        timeout = {
+            'long_dictate':  self._long_spin.value(),
+            'short_dictate': self._short_spin.value(),
+        }.get(self._dictation_mode, self._dictate_spin.value())
+        remaining = max(0.0, timeout - (time.time() - self._dictation_start))
+        if remaining > 0:
+            color = _GREEN if remaining > timeout * 0.3 else _ERROR
+            self._timer_sig.emit(f"{remaining:.1f}s", color)
+        else:
+            self._timer_sig.emit("0.0s", _ERROR)
+            if not self._get_require_end():
+                self.log(f"Timer expired — output: \"{' '.join(self._dictation_buf)}\"")
+                self._reset_listening_state()
+
+    def _get_require_end(self) -> bool:
+        return (self._app.config
+                .get('wake_word_config', {})
+                .get('modes', {})
+                .get(self._dictation_mode or '', {})
+                .get('require_end_word', False))
+
     def _on_thresh_change(self, value: float):
         self._thresh_lbl.setText(f"{value:.3f}")
 
@@ -774,14 +846,333 @@ class _DebugWindow(QMainWindow):
         self.log("Settings applied and saved.")
 
     # ----------------------------------------------------------------
-    # Test controls (Phase 2 fills _on_start / _on_stop)
+    # Active test — start / stop
     # ----------------------------------------------------------------
 
     def _on_start(self):
-        self.log("[Phase 2] Standalone audio test not yet implemented.")
+        if not getattr(self._app, 'model_loaded', False):
+            self.log("ERROR: Model not loaded yet. Please wait...")
+            return
+        import sounddevice as sd
+
+        self.running         = True
+        self._speech_buffer  = []
+        self._silence_start  = None
+        self._is_speaking    = False
+        self._wake_triggered = False
+        self._dictation_mode = None
+        self._dictation_buf  = []
+        self._dictation_start = None
+
+        self._btns_sig.emit(True)
+        self._state_sig.emit("Listening for wake word...", _CYAN)
+        self._mode_sig.emit(None)
+        self._flow_sig.emit("Listening...")
+        self._timer_sig.emit("--", _TEXT_SEC)
+        self.log("Started listening...")
+
+        try:
+            capture_rate = getattr(self._app, 'capture_rate', 48000)
+            self.audio_stream = sd.InputStream(
+                samplerate=capture_rate,
+                channels=1,
+                dtype=np.float32,
+                callback=self._audio_callback,
+                device=self._app.config.get('microphone'),
+                blocksize=int(capture_rate * 0.1),
+            )
+            self.audio_stream.start()
+            self._poll_timer.start()
+        except Exception as e:
+            self.log(f"ERROR starting audio: {e}")
+            self._on_stop()
 
     def _on_stop(self):
-        pass
+        self.running = False
+        self._poll_timer.stop()
+        self._dictation_mode  = None
+        self._dictation_start = None
+        self._pending_rms     = None
+
+        if self.audio_stream:
+            try:
+                self.audio_stream.stop()
+                self.audio_stream.close()
+            except Exception:
+                pass
+            self.audio_stream = None
+
+        self._btns_sig.emit(False)
+        self._state_sig.emit("Stopped", _TEXT_SEC)
+        self._mode_sig.emit(None)
+        self._flow_sig.emit("Idle")
+        self._timer_sig.emit("--", _TEXT_SEC)
+        self._level_sig.emit(0.0)
+        self.log("Stopped listening.")
+
+    # ----------------------------------------------------------------
+    # Audio callback (sounddevice thread)
+    # ----------------------------------------------------------------
+
+    def _audio_callback(self, indata, frames, time_info, status):
+        if not self.running:
+            return
+        chunk = indata.copy().flatten()
+        rms   = float(np.sqrt(np.mean(chunk ** 2)))
+        self._pending_rms = rms
+
+        thresh     = self._thresh_spin.value()
+        min_speech = self._min_spin.value()
+
+        if self._dictation_mode == 'long_dictate':
+            sil_timeout = self._long_spin.value()
+        elif self._dictation_mode == 'short_dictate':
+            sil_timeout = self._short_spin.value()
+        else:
+            sil_timeout = self._dictate_spin.value()
+
+        if rms > thresh:
+            if not self._is_speaking:
+                self._is_speaking = True
+                mode_str = self._dictation_mode or 'listening'
+                self._state_sig.emit(f"Speaking ({mode_str})", _GREEN)
+            self._silence_start = None
+            self._speech_buffer.append(chunk)
+        elif self._is_speaking:
+            self._speech_buffer.append(chunk)
+            if self._silence_start is None:
+                self._silence_start = time.time()
+            elif time.time() - self._silence_start >= sil_timeout:
+                dur = len(self._speech_buffer) * 0.1
+                if dur >= min_speech:
+                    buf = self._speech_buffer.copy()
+                    self._speech_buffer = []
+                    self._is_speaking   = False
+                    self._silence_start = None
+                    threading.Thread(
+                        target=self._process_audio,
+                        args=(buf,),
+                        daemon=True,
+                        name="wake-debug-process",
+                    ).start()
+                else:
+                    self.log(f"Discarded: too short ({dur:.1f}s)")
+                    self._speech_buffer = []
+                    self._is_speaking   = False
+                    self._silence_start = None
+                    self._reset_listening_state()
+
+    # ----------------------------------------------------------------
+    # Audio processing (worker thread)
+    # ----------------------------------------------------------------
+
+    def _process_audio(self, buffer: list):
+        self._state_sig.emit("Processing...", _ERROR)
+        try:
+            audio        = np.concatenate(buffer)
+            capture_rate = getattr(self._app, 'capture_rate', 48000)
+            model_rate   = getattr(self._app, 'model_rate',   16000)
+            audio        = _resample_audio(audio, capture_rate, model_rate)
+
+            vt = getattr(self._app, 'voice_training_window', None)
+            initial_prompt = vt.get_initial_prompt() if vt else None
+            segments, _ = self._app.model.transcribe(
+                audio,
+                language=self._app.config.get('language', 'en'),
+                beam_size=5,
+                vad_filter=True,
+                initial_prompt=initial_prompt,
+            )
+            text = "".join(s.text for s in segments).strip()
+            if vt:
+                text = vt.apply_corrections(text)
+
+            if not text:
+                self.log("No speech detected")
+                self._reset_listening_state()
+                return
+
+            text_lower = text.lower()
+            ww_cfg     = self._app.config.get('wake_word_config', {})
+            wake_phrase = ww_cfg.get('phrase', 'samsara').lower()
+            self._heard_sig.emit(text)
+
+            from samsara.wake_corrections import (
+                apply_corrections as _wake_corr,
+                was_corrected     as _was_corr,
+            )
+            corrected          = _wake_corr(text_lower)
+            correction_applied = _was_corr(text_lower, corrected)
+
+            self.trace({
+                'stage': 'utterance_start',
+                'raw': text, 'normalized': text_lower,
+                'corrected': corrected,
+                'correction_applied': correction_applied,
+            })
+
+            if self._dictation_mode:
+                result = self._handle_dictation(text, text_lower, ww_cfg)
+                self.trace({'stage': 'utterance_end', 'result': result})
+                return
+
+            from samsara.wake_word_matcher import match_wake_phrase
+            matched, match_type, match_index = match_wake_phrase(corrected, wake_phrase)
+            self.trace({
+                'stage': 'wake_word_check',
+                'input': text, 'normalized': text_lower,
+                'corrected': corrected,
+                'correction_applied': correction_applied,
+                'wake_phrase': wake_phrase,
+                'matched': matched,
+                'match_type': match_type,
+                'match_index': match_index,
+            })
+
+            if matched:
+                self._wake_triggered = True
+                command = corrected[match_index + len(wake_phrase):].strip()
+                self.trace({'stage': 'command_extract',
+                            'from_index': match_index, 'command': command})
+                if command:
+                    self._classify_command(command)
+                else:
+                    self._state_sig.emit("Waiting for command...", _GOLD)
+                    self._flow_sig.emit("Wake Word [*] -> Waiting...")
+                    self.trace({'stage': 'command_classify', 'command': '',
+                                'classification': 'waiting_for_command',
+                                'matched_keyword': ''})
+                self.trace({'stage': 'utterance_end',
+                            'result': 'wake_word_detected' if not command else 'command_processed'})
+            elif self._wake_triggered:
+                self.trace({'stage': 'command_extract',
+                            'from_index': -1, 'command': text})
+                self._classify_command(text)
+                self.trace({'stage': 'utterance_end', 'result': 'followup_command'})
+            else:
+                self.trace({'stage': 'utterance_end', 'result': 'no_wake_word'})
+                self._reset_listening_state()
+
+        except Exception as e:
+            self.log(f"ERROR: {e}")
+            self._state_sig.emit("Error — see log", "#FF0000")
+
+    def _handle_dictation(self, text: str, text_lower: str, ww_cfg: dict) -> str:
+        cancel_cfg = ww_cfg.get('cancel_word', {})
+        if cancel_cfg.get('enabled') and cancel_cfg.get('phrase', 'cancel').lower() in text_lower:
+            phrase = cancel_cfg['phrase'].lower()
+            self.trace({'stage': 'cancel_word_detected', 'phrase': phrase})
+            self._dictation_mode = None
+            self._dictation_buf  = []
+            self._wake_triggered = False
+            self._dictation_start = None
+            self._mode_sig.emit(None)
+            self._reset_listening_state()
+            return 'cancelled'
+
+        pause_cfg = ww_cfg.get('pause_word', {})
+        if pause_cfg.get('enabled') and pause_cfg.get('phrase', 'pause').lower() in text_lower:
+            phrase = pause_cfg['phrase'].lower()
+            self.trace({'stage': 'pause_word_detected', 'phrase': phrase})
+            self._silence_start   = None
+            self._dictation_start = time.time()
+            remaining = text_lower.replace(phrase, '').strip()
+            if remaining:
+                idx     = text_lower.find(phrase)
+                cleaned = (text[:idx] + text[idx + len(phrase):]).strip()
+                if cleaned:
+                    self._dictation_buf.append(cleaned)
+            self._reset_listening_state()
+            return 'paused'
+
+        end_cfg = ww_cfg.get('end_word', {})
+        if end_cfg.get('enabled'):
+            end_phrase = end_cfg.get('phrase', 'over').lower()
+            if end_phrase in text_lower:
+                idx   = text_lower.rfind(end_phrase)
+                final = text[:idx].strip()
+                if self._dictation_buf:
+                    final = ' '.join(self._dictation_buf) + ' ' + final
+                self.trace({'stage': 'end_word_detected', 'phrase': end_phrase,
+                            'buffered_text': ' '.join(self._dictation_buf),
+                            'final_output': final.strip()})
+                self._dictation_mode  = None
+                self._dictation_buf   = []
+                self._wake_triggered  = False
+                self._dictation_start = None
+                self._mode_sig.emit(None)
+                self._reset_listening_state()
+                return 'end_word'
+
+        self._dictation_buf.append(text)
+        self._dictation_start = time.time()
+        self.trace({'stage': 'dictation_buffered', 'text': text,
+                    'buffer_size': len(self._dictation_buf)})
+        self._reset_listening_state()
+        return 'buffered'
+
+    def _classify_command(self, command: str):
+        cl = command.lower().strip()
+        for keywords, mode in [
+            (['long dictate', 'long dictation'], 'long_dictate'),
+            (['short dictate', 'short dictation', 'quick dictate'], 'short_dictate'),
+            (['dictate', 'dictation'], 'dictate'),
+        ]:
+            if cl in keywords:
+                self.trace({'stage': 'command_classify', 'command': command,
+                            'classification': 'dictation_mode',
+                            'matched_keyword': cl})
+                self.trace({'stage': 'mode_switch',
+                            'from_mode': self._dictation_mode, 'to_mode': mode})
+                self._enter_dictation_mode(mode)
+                return
+        for cmd, mode in [('long dictate', 'long_dictate'),
+                          ('short dictate', 'short_dictate'),
+                          ('dictate', 'dictate')]:
+            if cl.startswith(cmd + ' '):
+                content = command[len(cmd):].strip()
+                self.trace({'stage': 'command_classify', 'command': command,
+                            'classification': 'dictation_mode',
+                            'matched_keyword': cmd})
+                self.trace({'stage': 'mode_switch',
+                            'from_mode': self._dictation_mode, 'to_mode': mode})
+                self._enter_dictation_mode(mode, initial_content=content)
+                return
+        self.trace({'stage': 'command_classify', 'command': command,
+                    'classification': 'freeform_text', 'matched_keyword': ''})
+        self._flow_sig.emit("Wake Word -> Command -> Done")
+        self._wake_triggered = False
+        self._reset_listening_state()
+
+    def _enter_dictation_mode(self, mode: str, initial_content: str = None):
+        self._dictation_mode  = mode
+        self._dictation_buf   = [initial_content] if initial_content else []
+        self._wake_triggered  = False
+        self._dictation_start = time.time()
+        display = mode.replace('_', ' ').title()
+        msg = (f"-> Starting {display} with: \"{initial_content}\""
+               if initial_content else f"-> Starting {display} mode")
+        self.log(msg)
+        self._mode_sig.emit(mode)
+        self._state_sig.emit(f"Dictating ({mode.replace('_', ' ')})...", _GOLD)
+        self._flow_sig.emit(f"Wake Word -> {display} -> [Recording...]")
+
+    def _reset_listening_state(self):
+        if not self.running:
+            return
+        if self._dictation_mode:
+            self._state_sig.emit(
+                f"Dictating ({self._dictation_mode.replace('_', ' ')})...", _GOLD)
+        elif self._wake_triggered:
+            self._state_sig.emit("Waiting for command...", _GOLD)
+        else:
+            self._state_sig.emit("Listening for wake word...", _CYAN)
+            self._flow_sig.emit("Listening...")
+            self._timer_sig.emit("--", _TEXT_SEC)
+
+    # ----------------------------------------------------------------
+    # Test controls (Phase 2 complete)
+    # ----------------------------------------------------------------
 
     def _force_enter_mode(self):
         mode = self._mode_combo.currentText()
@@ -791,14 +1182,22 @@ class _DebugWindow(QMainWindow):
         if not self.running:
             self.log("Start the test first before forcing a mode.")
             return
+        self._dictation_mode  = mode
+        self._dictation_buf   = []
+        self._wake_triggered  = False
+        self._dictation_start = time.time()
         self._mode_sig.emit(mode)
-        self.log(f"Forced into {mode} mode.")
+        self._state_sig.emit(f"Dictating ({mode.replace('_', ' ')})...", _GOLD)
+        self.log(f"Forced into {mode} mode — speak now.")
 
     def _reset_test_mode(self):
+        self._dictation_mode  = None
+        self._dictation_buf   = []
+        self._wake_triggered  = False
+        self._dictation_start = None
         self._mode_sig.emit(None)
         self._flow_sig.emit("Idle")
-        self._timer_lbl.setText("--")
-        self._timer_lbl.setStyleSheet(f"color: {_TEXT_SEC}; background: transparent;")
+        self._timer_sig.emit("--", _TEXT_SEC)
         if self.running:
             self._state_sig.emit("Listening for wake word...", _CYAN)
             self.log("Reset to wake word listening.")
@@ -807,14 +1206,27 @@ class _DebugWindow(QMainWindow):
         if not self.running:
             self.log("Not running — start test first.")
             return
-        ww = self._app.config.get('wake_word_config', {})
-        cfg_key = {'end': 'end_word', 'cancel': 'cancel_word', 'pause': 'pause_word'}[word_type]
-        cfg = ww.get(cfg_key, {})
+        if not self._dictation_mode:
+            self.log("Not in dictation mode — enter a mode first.")
+            return
+        ww  = self._app.config.get('wake_word_config', {})
+        key = {'end': 'end_word', 'cancel': 'cancel_word', 'pause': 'pause_word'}[word_type]
+        cfg = ww.get(key, {})
         if not cfg.get('enabled', False):
             self.log(f"{word_type} word is disabled in config.")
             return
         phrase = cfg.get('phrase', word_type)
-        self.log(f"[SIM] {word_type} word '{phrase}'")
+        if word_type == 'end':
+            output = ' '.join(self._dictation_buf) if self._dictation_buf else '(empty)'
+            self.log(f"[SIM] End word '{phrase}' — output: \"{output}\"")
+            self._reset_test_mode()
+        elif word_type == 'cancel':
+            self.log(f"[SIM] Cancel word '{phrase}' — dictation aborted.")
+            self._reset_test_mode()
+        elif word_type == 'pause':
+            self._silence_start   = None
+            self._dictation_start = time.time()
+            self.log(f"[SIM] Pause word '{phrase}' — timer reset.")
 
     # ----------------------------------------------------------------
     # Lifecycle
@@ -834,11 +1246,20 @@ class _DebugWindow(QMainWindow):
 
     def closeEvent(self, e):
         self._log_timer.stop()
+        self._poll_timer.stop()
+        if self.running:
+            self.running = False
+            if self.audio_stream:
+                try:
+                    self.audio_stream.stop()
+                    self.audio_stream.close()
+                except Exception:
+                    pass
+                self.audio_stream = None
         if hasattr(self._app, '_wake_trace_callback'):
-            if getattr(self._app, '_wake_trace_callback', None) is not None:
-                cb = self._app._wake_trace_callback
-                if hasattr(cb, '__self__') and cb.__self__ is self:
-                    self._app._wake_trace_callback = None
+            cb = getattr(self._app, '_wake_trace_callback', None)
+            if cb is not None and hasattr(cb, '__self__') and cb.__self__ is self:
+                self._app._wake_trace_callback = None
         e.accept()
 
 
