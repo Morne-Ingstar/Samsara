@@ -1051,7 +1051,7 @@ class DictationApp:
             self.wake_word_debug_window = None
 
         # Listening state indicator overlay
-        self.listening_indicator = ListeningIndicator(self.root)
+        self.listening_indicator = ListeningIndicator()
         self.listening_indicator.set_mode(self._get_mode_display())
         self.listening_indicator.set_position(
             self.config.get('listening_indicator_position', 'bottom-center'))
