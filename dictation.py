@@ -815,6 +815,7 @@ class DictationApp:
         self.audio_queue = queue.Queue()
         self.recording = False
         self.command_mode_recording = False  # True when using command-only hotkey
+        self._stop_in_flight = False         # True while stop_recording + trailing sleep is pending
         self.audio_data = []
 
         # Stream health: detect dead PortAudio streams (e.g. after sleep/wake)
@@ -2250,6 +2251,9 @@ class DictationApp:
 
         # Check for command-only hotkey (hold to record, match commands only, no text output)
         if self.check_hotkey_state(command_hotkey) and not self.hotkey_pressed and not self.recording:
+            if self._stop_in_flight:
+                print("[HOTKEY] Ignored re-trigger while stop in flight")
+                return
             print(f"[HOTKEY] Command hotkey detected: {command_hotkey}")
             self.hotkey_pressed = True
             self.command_mode_recording = True
@@ -2316,6 +2320,9 @@ class DictationApp:
         if (self.check_hotkey_state(main_hotkey)
                 and main_event_held
                 and not self.hotkey_pressed):
+            if self._stop_in_flight:
+                print("[HOTKEY] Ignored re-trigger while stop in flight")
+                return
             print(f"[HOTKEY] Main hotkey detected: {main_hotkey} (mode: {mode})")
             if mode == 'hold':
                 self.hotkey_pressed = True
@@ -2360,16 +2367,26 @@ class DictationApp:
         
         if not main_pressed and not cont_pressed and not wake_pressed and not command_pressed:
             if self.hotkey_pressed:
+                def _deferred_stop():
+                    try:
+                        self.stop_recording()
+                    finally:
+                        self._stop_in_flight = False
+
                 if self.command_mode_recording and self.recording:
-                    # Command hotkey released - stop recording (will process as command-only)
                     print(f"[HOTKEY] Command hotkey released, stopping recording")
-                    threading.Thread(target=self.stop_recording, daemon=True,
+                    self._stop_in_flight = True
+                    threading.Thread(target=_deferred_stop, daemon=True,
                                      name='stop-rec').start()
+                    self.hotkey_pressed = False
                 elif mode == 'hold' and self.recording:
                     print(f"[HOTKEY] Main hotkey released, stopping recording")
-                    threading.Thread(target=self.stop_recording, daemon=True,
+                    self._stop_in_flight = True
+                    threading.Thread(target=_deferred_stop, daemon=True,
                                      name='stop-rec').start()
-                self.hotkey_pressed = False
+                    self.hotkey_pressed = False
+                else:
+                    self.hotkey_pressed = False
 
     # ---- CapsLock streaming hotkey --------------------------------------
 
@@ -4948,6 +4965,10 @@ class DictationApp:
                 print("Model still loading, please wait...")
             else:
                 print("Model not loaded!")
+            return
+
+        if self._stop_in_flight:
+            print("[HOTKEY] start_recording ignored — stop still in flight")
             return
 
         # Suppress wake word processing during hotkey recording
