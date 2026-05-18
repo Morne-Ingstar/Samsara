@@ -160,8 +160,12 @@ try:
 except ImportError:
     torch = None
     _TORCH_AVAILABLE = False
-import pystray
 from PIL import Image, ImageDraw
+try:
+    from samsara.ui.tray_qt import SamsaraTrayQt as _SamsaraTrayQt
+except Exception as _tray_err:
+    _SamsaraTrayQt = None
+    print(f"[INIT] SamsaraTrayQt unavailable: {_tray_err}")
 import json
 from pathlib import Path
 # Per-monitor DPI awareness must be declared before tkinter or win32api do
@@ -850,7 +854,12 @@ class DictationApp:
                     )
                 except Exception:
                     pass
-            if hasattr(self, 'root') and self.root:
+            from PySide6.QtCore import QTimer
+            from PySide6.QtWidgets import QApplication as _QApp
+            _qt = _QApp.instance()
+            if _qt is not None:
+                QTimer.singleShot(2000, _qt, _mic_changed_dialog)
+            elif hasattr(self, 'root') and self.root:
                 self.root.after(2000, _mic_changed_dialog)
 
         # Audio settings -- dual sample rates for WASAPI compatibility
@@ -1232,10 +1241,6 @@ class DictationApp:
         # completion via _schedule_ui(self._on_model_loaded_close_splash).
         self.update_splash("Starting...")
 
-        # create_tray_icon() ends with mainloop() and blocks the thread,
-        # so anything after it is unreachable. Schedule the hub to open
-        # as soon as the Tk loop starts spinning.
-        self.root.after(0, self.show_main_window)
         self.create_tray_icon()
 
     def update_splash(self, status):
@@ -5172,7 +5177,7 @@ class DictationApp:
                 # Guard: Whisper hallucinates on very short audio (<0.5s)
                 if audio_duration < 0.51:
                     print(f"[SKIP] Audio too short ({audio_duration:.2f}s) — skipping")
-                    self.root.after(0, self._schedule_ui, lambda: None)
+                    pass  # no-op: was draining Tk event queue, not needed with Qt
                     return
                 
                 transcribe_start = time.time()
@@ -5543,13 +5548,21 @@ class DictationApp:
     _WHEEL_GOLD   = '#D4A017'
 
     def _schedule_ui(self, func, *args):
-        """Schedule a function on the tkinter main thread.
-        Silently ignores RuntimeError if the mainloop hasn't started yet
-        (e.g. during the background load thread) or is shutting down."""
-        try:
-            self.root.after(0, func, *args)
-        except RuntimeError:
-            pass
+        """Schedule a function on the Qt main thread (replaces root.after).
+
+        Safe to call from any thread.  Falls back to a direct call if Qt
+        is not available so non-GUI code paths (tests, CI) still work.
+        """
+        from PySide6.QtCore import QTimer
+        from PySide6.QtWidgets import QApplication
+        qt_app = QApplication.instance()
+        if qt_app is not None:
+            QTimer.singleShot(0, qt_app, lambda: func(*args))
+        else:
+            try:
+                func(*args)
+            except Exception:
+                pass
 
     @staticmethod
     def _arc_polygon(cx, cy, outer_r, inner_r, start_rad, end_rad, steps=24):
@@ -5987,7 +6000,38 @@ class DictationApp:
         self._schedule_ui(self.cheat_sheet.toggle)
 
     def create_tray_icon(self):
-        """Create and run system tray icon"""
+        """Create and run system tray icon.
+
+        Uses QSystemTrayIcon when Qt is available (preferred).
+        The Qt path creates the icon on the samsara-qt thread, then keeps
+        the main thread alive with a lightweight sleep loop.  No Tk
+        mainloop() required -- the root window is kept as a hidden
+        stub for any remaining CTk fallback windows only.
+
+        Falls back to the legacy pystray path if Qt is unavailable.
+        """
+        from PySide6.QtCore import QTimer
+        qt_app = __import__('PySide6.QtWidgets', fromlist=['QApplication']).QApplication.instance()
+
+        if _SamsaraTrayQt is not None and qt_app is not None:
+            def _create():
+                self.tray_icon = _SamsaraTrayQt(self)
+
+            QTimer.singleShot(0, qt_app, _create)
+            QTimer.singleShot(0, qt_app, self.show_main_window)
+
+            # Keep the main thread alive without blocking on Tk mainloop().
+            # quit_app() sets self._running = False and then calls os._exit(0).
+            while self._running:
+                import time as _t
+                _t.sleep(0.2)
+            return
+
+        # ----------------------------------------------------------------
+        # Legacy pystray fallback (used when Qt tray is unavailable)
+        # ----------------------------------------------------------------
+        import pystray as _pystray
+
         def get_menu():
             """Generate menu dynamically to reflect current state"""
             mode = self.config.get('mode', 'hold')
@@ -6026,39 +6070,39 @@ class DictationApp:
                 
                 # Create menu item with checkmark for current mic
                 mic_menu_items.append(
-                    pystray.MenuItem(
+                    _pystray.MenuItem(
                         f"{'*' if is_current else '   '}{mic_name}",
                         _make_mic_callback(mic_id)
                     )
                 )
             
-            return pystray.Menu(
-                pystray.MenuItem(
+            return _pystray.Menu(
+                _pystray.MenuItem(
                     "Show Samsara",
                     lambda _i, _it: self.show_main_window(),
                     default=True,
                 ),
-                pystray.Menu.SEPARATOR,
-                pystray.MenuItem(
+                _pystray.Menu.SEPARATOR,
+                _pystray.MenuItem(
                     f"[MIC] {self.get_current_microphone_name()}",
-                    pystray.Menu(*mic_menu_items) if mic_menu_items else None
+                    _pystray.Menu(*mic_menu_items) if mic_menu_items else None
                 ),
-                pystray.MenuItem(
+                _pystray.MenuItem(
                     f"Mode: {mode.title()}",
-                    pystray.Menu(
-                        pystray.MenuItem(
+                    _pystray.Menu(
+                        _pystray.MenuItem(
                             'Hold to Talk',
                             lambda _i, _it: self.switch_mode_from_tray('hold'),
                             checked=lambda _it, m='hold': self.config.get('mode', 'hold') == m,
                             radio=True
                         ),
-                        pystray.MenuItem(
+                        _pystray.MenuItem(
                             'Toggle (click to start/stop)',
                             lambda _i, _it: self.switch_mode_from_tray('toggle'),
                             checked=lambda _it, m='toggle': self.config.get('mode', 'hold') == m,
                             radio=True
                         ),
-                        pystray.MenuItem(
+                        _pystray.MenuItem(
                             'Continuous',
                             lambda _i, _it: self.switch_mode_from_tray('continuous'),
                             checked=lambda _it, m='continuous': self.config.get('mode', 'hold') == m,
@@ -6066,90 +6110,90 @@ class DictationApp:
                         ),
                     )
                 ),
-                pystray.MenuItem(
+                _pystray.MenuItem(
                     f"Wake Word ({self.config.get('wake_word_config', {}).get('phrase', 'samsara')})",
                     lambda _i, _it: self.set_wake_word_enabled(
                         not self.config.get('wake_word_enabled', False)),
                     checked=lambda _it: self.config.get('wake_word_enabled', False)
                 ),
-                pystray.MenuItem(
+                _pystray.MenuItem(
                     "Streaming Mode (CapsLock)",
                     lambda _i, _it: self.set_streaming_mode(
                         not self.config.get('streaming_mode', False)),
                     checked=lambda _it: self.config.get('streaming_mode', False)
                 ),
-                pystray.MenuItem(
+                _pystray.MenuItem(
                     lambda _it: "Snoozed" if self.snoozed else "Snooze",
-                    pystray.Menu(
-                        pystray.MenuItem(
+                    _pystray.Menu(
+                        _pystray.MenuItem(
                             "5 minutes",
                             lambda _i, _it: self.snooze_listening(5),
                             enabled=lambda _it: not self.snoozed
                         ),
-                        pystray.MenuItem(
+                        _pystray.MenuItem(
                             "15 minutes",
                             lambda _i, _it: self.snooze_listening(15),
                             enabled=lambda _it: not self.snoozed
                         ),
-                        pystray.MenuItem(
+                        _pystray.MenuItem(
                             "30 minutes",
                             lambda _i, _it: self.snooze_listening(30),
                             enabled=lambda _it: not self.snoozed
                         ),
-                        pystray.MenuItem(
+                        _pystray.MenuItem(
                             "1 hour",
                             lambda _i, _it: self.snooze_listening(60),
                             enabled=lambda _it: not self.snoozed
                         ),
-                        pystray.MenuItem(
+                        _pystray.MenuItem(
                             "Until resumed",
                             lambda _i, _it: self.snooze_listening(None),
                             enabled=lambda _it: not self.snoozed
                         ),
-                        pystray.Menu.SEPARATOR,
-                        pystray.MenuItem(
+                        _pystray.Menu.SEPARATOR,
+                        _pystray.MenuItem(
                             "Resume now",
                             lambda _i, _it: self.resume_listening(),
                             enabled=lambda _it: self.snoozed
                         ),
                     )
                 ),
-                pystray.Menu.SEPARATOR,
-                pystray.MenuItem("Settings", self.open_settings),
-                pystray.MenuItem("History", self.open_history),
-                pystray.MenuItem(
+                _pystray.Menu.SEPARATOR,
+                _pystray.MenuItem("Settings", self.open_settings),
+                _pystray.MenuItem("History", self.open_history),
+                _pystray.MenuItem(
                     "Command Reference",
                     lambda _i, _it: self.toggle_cheat_sheet(),
                     checked=lambda _it: self.cheat_sheet._visible
                 ),
-                pystray.MenuItem(
+                _pystray.MenuItem(
                     "Show Listening Indicator",
                     self.toggle_listening_indicator,
                     checked=lambda _it: self.config.get('listening_indicator_enabled', False)
                 ),
-                pystray.MenuItem(
+                _pystray.MenuItem(
                     "Tools",
-                    pystray.Menu(
-                        pystray.MenuItem("Mic Setup Guide", self.open_mic_setup_guide),
-                        pystray.MenuItem("Ava Guide", self.open_ava_guide),
-                        pystray.MenuItem("Voice Training", self.open_voice_training),
-                        pystray.MenuItem("Wake Word Debug", self.open_wake_word_debug),
-                        pystray.MenuItem("Recalibrate Mic", lambda _i, _it: self.recalibrate_mic()),
-                        pystray.MenuItem(
+                    _pystray.Menu(
+                        _pystray.MenuItem("Mic Setup Guide", self.open_mic_setup_guide),
+                        _pystray.MenuItem("Ava Guide", self.open_ava_guide),
+                        _pystray.MenuItem("Voice Training", self.open_voice_training),
+                        _pystray.MenuItem("Wake Word Debug", self.open_wake_word_debug),
+                        _pystray.MenuItem("Recalibrate Mic", lambda _i, _it: self.recalibrate_mic()),
+                        _pystray.MenuItem(
                             "Calibrate Echo Cancellation",
                             lambda _i, _it: self.calibrate_echo_cancellation(),
                         ),
-                        pystray.Menu.SEPARATOR,
-                        pystray.MenuItem(
+                        _pystray.Menu.SEPARATOR,
+                        _pystray.MenuItem(
                             "Cleanup",
-                            pystray.Menu(
-                                pystray.MenuItem(
+                            _pystray.Menu(
+                                _pystray.MenuItem(
                                     "Clean (remove fillers)",
                                     lambda _i, _it: self.set_cleanup_mode('clean'),
                                     checked=lambda _it: self.config.get('cleanup_mode', 'clean') == 'clean',
                                     radio=True
                                 ),
-                                pystray.MenuItem(
+                                _pystray.MenuItem(
                                     "Verbatim (no cleanup)",
                                     lambda _i, _it: self.set_cleanup_mode('verbatim'),
                                     checked=lambda _it: self.config.get('cleanup_mode', 'clean') == 'verbatim',
@@ -6157,43 +6201,38 @@ class DictationApp:
                                 ),
                             )
                         ),
-                        pystray.Menu.SEPARATOR,
-                        pystray.MenuItem("Open Config Folder", self.open_config_folder),
-                        pystray.MenuItem("View Logs", pystray.Menu(
-                            pystray.MenuItem("Main Log", self.open_main_log),
-                            pystray.MenuItem("Voice Training Log", self.open_voice_training_log),
+                        _pystray.Menu.SEPARATOR,
+                        _pystray.MenuItem("Open Config Folder", self.open_config_folder),
+                        _pystray.MenuItem("View Logs", _pystray.Menu(
+                            _pystray.MenuItem("Main Log", self.open_main_log),
+                            _pystray.MenuItem("Voice Training Log", self.open_voice_training_log),
                         )),
-                        pystray.Menu.SEPARATOR,
-                        pystray.MenuItem(
+                        _pystray.Menu.SEPARATOR,
+                        _pystray.MenuItem(
                             f"Hotkey: {self.config['hotkey']}",
                             lambda: None,
                             enabled=False
                         ),
-                        pystray.MenuItem(
+                        _pystray.MenuItem(
                             f"Model: {self.config['model_size']}",
                             lambda: None,
                             enabled=False
                         ),
                     )
                 ),
-                pystray.Menu.SEPARATOR,
-                pystray.MenuItem("Exit", self.quit_app)
+                _pystray.Menu.SEPARATOR,
+                _pystray.MenuItem("Exit", self.quit_app)
             )
         
-        self.tray_icon = pystray.Icon(
+        self.tray_icon = _pystray.Icon(
             "Samsara",
             self.create_icon_image(),
             f"Samsara - {self._get_mode_display()}",
             get_menu()
         )
-        
-        # Store the menu generator for updates
         self.get_menu = get_menu
-
-        # Run pystray in detached mode (separate thread) so tkinter can run on main thread
+        self.root.after(0, self.show_main_window)
         self.tray_icon.run_detached()
-
-        # Run tkinter mainloop on main thread (required for window controls to work)
         self.root.mainloop()
     
     def switch_microphone_and_refresh(self, mic_id):
@@ -6376,9 +6415,8 @@ class DictationApp:
         except Exception:
             pass
 
-        # Force exit - os._exit bypasses cleanup but guarantees termination
-        # This is necessary because pystray calls us from a background thread
-        # and tkinter GUI cleanup from non-main thread can hang
+        # Force exit — bypasses any remaining thread cleanup but guarantees
+        # termination even if a background thread or Qt modal is blocking.
         print("[EXIT] Goodbye!")
         os._exit(0)
 
