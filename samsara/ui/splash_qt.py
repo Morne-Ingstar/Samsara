@@ -1,7 +1,6 @@
 """PySide6 splash screen for Samsara.
 
-Drop-in replacement for SplashScreen with the same public API:
-    set_status(text) / close() / get_root()
+Public API: set_status(text) / close()
 
 Architecture note
 -----------------
@@ -12,15 +11,10 @@ subsequent Qt window (Settings, History, Main, etc.) will find
 QApplication.instance() already set, take the owns_app=False path, and
 post its window creation to this thread — eliminating the race condition
 where whichever window opened first would claim the Qt thread.
-
-The hidden tk.Tk() root is still created here so dictation.py can reuse
-it for after() scheduling, the listening indicator, and the tray icon,
-exactly as before.
 """
 
 import threading
 import time
-import tkinter as tk
 
 from PySide6.QtCore import Qt, QTimer, Signal, Slot
 from PySide6.QtGui import QColor, QFont
@@ -149,10 +143,6 @@ class SplashScreenQt:
         self._thread.start()
         self._qt_ready.wait(timeout=5.0)
 
-        # Hidden Tkinter root reused by the app for after(), tray icon, etc.
-        self.root = tk.Tk()
-        self.root.withdraw()
-
     def _run_qt(self):
         qt_app = QApplication([])
         # Keep the event loop alive after the splash closes so all
@@ -182,10 +172,10 @@ class SplashScreenQt:
     def close(self):
         """Dismiss the splash, honouring the minimum display time.
 
-        The sleep runs on a background thread so the Tkinter main thread
-        is never blocked.  The Python reference to _widget is only cleared
-        via the destroyed signal on the Qt thread — never from here — so
-        Qt's internal timer cleanup always runs on the correct thread.
+        The sleep runs on a background thread so the main thread is never
+        blocked.  The Python reference to _widget is only cleared via the
+        destroyed signal on the Qt thread — never from here — so Qt's
+        internal timer cleanup always runs on the correct thread.
         """
         def _do_close():
             elapsed = time.time() - self._start_time
@@ -200,6 +190,3 @@ class SplashScreenQt:
 
         threading.Thread(target=_do_close, daemon=True, name="splash-close").start()
 
-    def get_root(self):
-        """Return the hidden tk.Tk() root for the app to reuse."""
-        return self.root
