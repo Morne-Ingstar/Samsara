@@ -572,6 +572,14 @@ class _SettingsWindow(QMainWindow):
             "Audio input device used for speech recognition",
             mic_combo,
         ))
+        layout.addSpacing(8)
+
+        setup_btn = QPushButton("Run Mic Setup Guide...")
+        setup_btn.setFixedWidth(190)
+        setup_btn.clicked.connect(
+            lambda: getattr(self.app, 'open_mic_setup_guide', lambda: None)()
+        )
+        layout.addWidget(setup_btn)
         layout.addSpacing(16)
 
         # Section: AI Model
@@ -860,6 +868,19 @@ class _SettingsWindow(QMainWindow):
             "Quick silence timeout",
             "Seconds of silence that ends a wake-word listening session early",
             quick_silence_spin,
+        ))
+        layout.addSpacing(8)
+
+        oww_spin = QDoubleSpinBox()
+        oww_spin.setRange(0.05, 1.0)
+        oww_spin.setSingleStep(0.05)
+        oww_spin.setDecimals(2)
+        oww_spin.setValue(float(ww_cfg.get('oww_threshold', 0.20)))
+        self._widgets['oww_threshold'] = oww_spin
+        layout.addLayout(self._setting_row(
+            "Wake word sensitivity",
+            "0.05 = very sensitive, 0.50 = strict.  Only affects Jarvis/Alexa/Mycroft models.",
+            oww_spin,
         ))
         layout.addSpacing(20)
 
@@ -3456,6 +3477,7 @@ class _SettingsWindow(QMainWindow):
             ww_audio['wake_command_timeout'] = self._widgets['wake_cmd_timeout'].value()
             ww_cfg['audio'] = ww_audio
             ww_cfg['quick_silence_timeout'] = self._widgets['quick_silence'].value()
+            ww_cfg['oww_threshold'] = max(0.01, min(1.0, self._widgets['oww_threshold'].value()))
             updates['wake_word_config'] = ww_cfg
 
         # Command mode nested config
