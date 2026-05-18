@@ -308,6 +308,20 @@ class AdvancedTab:
         ctk.CTkButton(manage_row, text="Add", width=60, command=_add_phrase).pack(side='left', padx=(0, 4))
         ctk.CTkButton(manage_row, text="Remove selected", width=120, command=_remove_phrase).pack(side='left')
 
+        # OWW detection sensitivity
+        # Lower threshold = more sensitive (triggers on quieter / less confident matches).
+        # Useful for users with padded interfaces, distant mics, or low gain.
+        # Default 0.20 suits most setups; go lower only if detection feels sluggish.
+        oww_row = ctk.CTkFrame(wake_frame, fg_color="transparent")
+        oww_row.pack(fill='x', padx=15, pady=(4, 8))
+        ctk.CTkLabel(oww_row, text="Wake word sensitivity:", width=180, anchor='w').pack(side='left')
+        self.oww_threshold_var = tk.DoubleVar(
+            value=ww_config.get('oww_threshold', 0.20))
+        ctk.CTkEntry(oww_row, textvariable=self.oww_threshold_var, width=60).pack(side='left', padx=(0, 5))
+        ctk.CTkLabel(oww_row,
+                     text="(0.05 = very sensitive, 0.50 = strict — only affects Jarvis/Alexa/Mycroft)",
+                     text_color="gray").pack(side='left', padx=(5, 0))
+
         # --- 4-State Dictation Settings ---
         dict_label = ctk.CTkLabel(wake_frame, text="Dictation Settings",
                                   font=ctk.CTkFont(size=13, weight="bold"))
@@ -416,6 +430,11 @@ class AdvancedTab:
             phrases.append(active)
         ww_config['phrase_options'] = phrases
         ww_config['quick_silence_timeout'] = float(self.quick_timeout_var.get())
+        try:
+            oww_val = float(self.oww_threshold_var.get())
+            ww_config['oww_threshold'] = max(0.01, min(1.0, oww_val))
+        except (ValueError, TypeError):
+            pass
         ww_config['end_words'] = [w.strip() for w in self.end_words_var.get().split(',') if w.strip()]
         ww_config['cancel_words'] = [w.strip() for w in self.cancel_words_var.get().split(',') if w.strip()]
         ww_config['pause_words'] = [w.strip() for w in self.pause_words_var.get().split(',') if w.strip()]

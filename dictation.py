@@ -1600,7 +1600,10 @@ class DictationApp:
             )
             if new_phrase and new_phrase.lower() != old_phrase:
                 self._oww_wake_detected = False
-                self._wake_detector = WakeWordDetector(new_phrase)
+                oww_threshold = float(
+                    changes['wake_word_config'].get('oww_threshold', 0.2)
+                )
+                self._wake_detector = WakeWordDetector(new_phrase, threshold=oww_threshold)
 
     def set_app_state(self, **kwargs):
         """Update application state flags with transition logging.
@@ -3150,8 +3153,10 @@ class DictationApp:
         """
         if self._wake_detector is not None and self._wake_detector.is_available:
             return
-        wake_phrase = self.config.get('wake_word_config', {}).get('phrase', 'jarvis')
-        self._wake_detector = WakeWordDetector(wake_phrase)
+        ww_cfg = self.config.get('wake_word_config', {})
+        wake_phrase = ww_cfg.get('phrase', 'jarvis')
+        oww_threshold = float(ww_cfg.get('oww_threshold', 0.2))
+        self._wake_detector = WakeWordDetector(wake_phrase, threshold=oww_threshold)
         if self._wake_detector.is_available:
             print(f"[OWW] Wake word pre-filter active for '{wake_phrase}'")
         else:
@@ -3339,6 +3344,21 @@ class DictationApp:
                     and self._wake_detector is not None
                     and self._wake_detector.is_available):
                 _oww_chunk = resample_audio(raw_chunk, self.capture_rate, 16000)
+                # Normalise the OWW chunk to a consistent RMS before the model
+                # sees it. OWW models are trained on typical-volume speech
+                # (~0.10 RMS in float32). A padded audio interface, distant mic,
+                # or conservatively set interface gain can produce signals 5-20x
+                # quieter, which maps to int16 amplitudes well below the model's
+                # training distribution, causing scores to stay near zero even on
+                # a clear wake word. Normalisation brings all signals into the
+                # expected range without touching the Whisper speech buffer.
+                # Only apply when signal is above the noise floor (avoids
+                # amplifying pure silence into something that resembles speech).
+                if rms > 0.005:
+                    _oww_gain = min(0.10 / rms, 20.0)   # cap at ~26 dB
+                    _oww_chunk = np.clip(
+                        _oww_chunk.astype(np.float32) * _oww_gain, -1.0, 1.0
+                    )
                 if self._wake_detector.detected(_oww_chunk):
                     self._oww_wake_detected = True
                     self._wake_detector.reset()
