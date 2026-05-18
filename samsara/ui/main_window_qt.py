@@ -248,7 +248,7 @@ class _HistoryPanel(QWidget):
         self._search.textChanged.connect(self._apply_filter)
 
         self._type_combo = QComboBox()
-        self._type_combo.addItems(["All types", "command", "dictation", "failed"])
+        self._type_combo.addItems(["All types", "dictation", "command", "failed"])
         self._type_combo.currentTextChanged.connect(self._apply_filter)
 
         self._refresh_btn = _btn("Refresh")
@@ -295,8 +295,11 @@ class _HistoryPanel(QWidget):
             if db is None:
                 return []
             try:
-                return db.get_recent(HISTORY_LIMIT)
-            except Exception:
+                # Convert sqlite3.Row objects to dicts so .get() works
+                # and column names are stable regardless of row_factory.
+                return [dict(r) for r in db.recent(HISTORY_LIMIT)]
+            except Exception as e:
+                print(f"[HISTORY PANEL] fetch error: {e}")
                 return []
 
         threading.Thread(
@@ -314,11 +317,14 @@ class _HistoryPanel(QWidget):
         filt = self._type_combo.currentText()
         rows = self._rows
         if filt != "All types":
-            rows = [r for r in rows if r.get("type", "") == filt]
-        if q:
             rows = [r for r in rows
-                    if q in (r.get("text") or "").lower()
-                    or q in (r.get("type") or "").lower()]
+                    if r.get("entry_type", "dictation") == filt
+                    or (filt == "failed" and r.get("status") == "failed")]
+        if q:
+            text_col = lambda r: (r.get("display_text") or r.get("raw_text") or "")
+            rows = [r for r in rows
+                    if q in text_col(r).lower()
+                    or q in r.get("entry_type", "").lower()]
         self._populate(rows)
 
     def _populate(self, rows):
@@ -333,14 +339,17 @@ class _HistoryPanel(QWidget):
             except Exception:
                 pass
 
-            rtype = row.get("type", "")
-            text  = row.get("text", "")
+            etype  = row.get("entry_type", "dictation")
+            status = row.get("status", "success")
+            # Show "failed" label when status is failed regardless of entry_type
+            label  = "failed" if status == "failed" else etype
+            text   = row.get("display_text") or row.get("raw_text") or ""
 
             t_item = QTableWidgetItem(ts)
-            y_item = QTableWidgetItem(rtype)
+            y_item = QTableWidgetItem(label)
             x_item = QTableWidgetItem(text)
 
-            color = self._COLORS.get(rtype)
+            color = self._COLORS.get(label) or self._COLORS.get(etype)
             if color:
                 for item in (t_item, y_item, x_item):
                     item.setForeground(color)
