@@ -6284,7 +6284,11 @@ if __name__ == "__main__":
     _acquire_instance_lock()
 
     # Show splash screen during startup
-    splash = SplashScreen()
+    try:
+        from samsara.ui.splash_qt import SplashScreenQt
+        splash = SplashScreenQt()
+    except ImportError:
+        splash = SplashScreen()
     splash.set_status("Initializing...")
 
     try:
