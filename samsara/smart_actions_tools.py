@@ -175,6 +175,38 @@ class ToolDispatcher:
         return "printed_to_console"
 
     def _show_recovery_modal(self, text: str):
+        try:
+            from PySide6.QtWidgets import (
+                QApplication, QDialog, QVBoxLayout, QLabel,
+                QPlainTextEdit, QPushButton,
+            )
+            from PySide6.QtCore import Qt, QTimer
+            qt_app = QApplication.instance()
+            if qt_app is not None:
+                def _make():
+                    dlg = QDialog()
+                    dlg.setWindowTitle("Smart Actions — Unsaved Text")
+                    dlg.setWindowFlags(
+                        dlg.windowFlags() | Qt.WindowType.WindowStaysOnTopHint)
+                    dlg.resize(480, 220)
+                    lay = QVBoxLayout(dlg)
+                    lay.addWidget(QLabel("The following text could not be saved:"))
+                    txt = QPlainTextEdit(text)
+                    txt.setReadOnly(True)
+                    lay.addWidget(txt)
+                    btn = QPushButton("Copy to Clipboard")
+                    def _copy_close():
+                        QApplication.clipboard().setText(text)
+                        dlg.accept()
+                    btn.clicked.connect(_copy_close)
+                    lay.addWidget(btn)
+                    dlg.show()
+                QTimer.singleShot(0, qt_app, _make)
+                return
+        except ImportError:
+            pass
+
+        # Tkinter fallback
         root = getattr(self.app, 'root', None)
         if root is None:
             raise RuntimeError("No Tk root")
@@ -186,14 +218,12 @@ class ToolDispatcher:
             top.attributes("-topmost", True)
             top.geometry("480x200")
             top.resizable(True, True)
-
             tk.Label(top, text="The following text could not be saved:",
                      anchor='w').pack(fill='x', padx=12, pady=(12, 4))
             txt = tk.Text(top, height=4, wrap='word')
             txt.insert('1.0', text)
             txt.configure(state='disabled')
             txt.pack(fill='both', expand=True, padx=12, pady=(0, 4))
-
             def _copy_close():
                 try:
                     import pyperclip
@@ -201,7 +231,6 @@ class ToolDispatcher:
                 except Exception:
                     pass
                 top.destroy()
-
             tk.Button(top, text="Copy to Clipboard",
                       command=_copy_close).pack(pady=8)
 
@@ -322,10 +351,99 @@ class ToolDispatcher:
         args = tool_call.get('args', {})
         desc = self._describe_tool_call(tool_name, args)
         try:
-            return self._tk_confirm_dialog(desc, allow_always)
+            return self._confirm_dialog(desc, allow_always)
         except Exception as e:
             logger.error("[TOOLS] Confirmation dialog failed: %s — rejecting", e)
             return False, False
+
+    def _confirm_dialog(self, description: str,
+                        allow_always: bool) -> Tuple[bool, bool]:
+        """Blocking confirmation dialog. Tries Qt first, falls back to Tkinter."""
+        try:
+            from PySide6.QtWidgets import (
+                QApplication, QDialog, QVBoxLayout, QHBoxLayout,
+                QLabel, QPushButton,
+            )
+            from PySide6.QtCore import Qt, QTimer
+            qt_app = QApplication.instance()
+            if qt_app is not None:
+                return self._qt_confirm_dialog(
+                    description, allow_always, qt_app)
+        except ImportError:
+            pass
+        return self._tk_confirm_dialog(description, allow_always)
+
+    def _qt_confirm_dialog(self, description: str, allow_always: bool,
+                           qt_app) -> Tuple[bool, bool]:
+        from PySide6.QtWidgets import (
+            QDialog, QVBoxLayout, QHBoxLayout, QLabel, QPushButton,
+        )
+        from PySide6.QtCore import Qt, QTimer
+
+        result: Dict[str, Any] = {'approved': False, 'always': False}
+        done = threading.Event()
+
+        def _make():
+            dlg = QDialog()
+            dlg.setWindowTitle("Smart Actions")
+            dlg.setWindowFlags(
+                dlg.windowFlags() |
+                Qt.WindowType.WindowStaysOnTopHint |
+                Qt.WindowType.Dialog,
+            )
+            dlg.setFixedWidth(440)
+
+            lay = QVBoxLayout(dlg)
+            lay.setContentsMargins(16, 16, 16, 14)
+            lay.setSpacing(10)
+
+            hdr = QLabel("The agent wants to:")
+            hdr.setStyleSheet("font-size: 13px;")
+            lay.addWidget(hdr)
+
+            desc_lbl = QLabel(description)
+            desc_lbl.setWordWrap(True)
+            desc_lbl.setStyleSheet("font-size: 13px; font-weight: 600;")
+            lay.addWidget(desc_lbl)
+
+            btn_row = QHBoxLayout()
+            btn_row.setSpacing(8)
+
+            def _approve():
+                result['approved'] = True
+                dlg.accept()
+
+            def _reject():
+                dlg.reject()
+
+            def _always():
+                result['approved'] = True
+                result['always'] = True
+                dlg.accept()
+
+            approve_btn = QPushButton("Approve")
+            reject_btn  = QPushButton("Reject")
+            approve_btn.setMinimumWidth(100)
+            reject_btn.setMinimumWidth(100)
+            approve_btn.clicked.connect(_approve)
+            reject_btn.clicked.connect(_reject)
+            btn_row.addStretch()
+            btn_row.addWidget(approve_btn)
+            btn_row.addWidget(reject_btn)
+            if allow_always:
+                always_btn = QPushButton("Always allow")
+                always_btn.setMinimumWidth(110)
+                always_btn.clicked.connect(_always)
+                btn_row.addWidget(always_btn)
+            lay.addLayout(btn_row)
+
+            # Safety net: mark done if dialog is dismissed any way
+            dlg.finished.connect(lambda _: done.set())
+            dlg.show()
+
+        QTimer.singleShot(0, qt_app, _make)
+        done.wait(timeout=120)
+        return result['approved'], result['always']
 
     def _tk_confirm_dialog(self, description: str,
                            allow_always: bool) -> Tuple[bool, bool]:
@@ -341,7 +459,6 @@ class ToolDispatcher:
             top.resizable(False, False)
             if root:
                 top.grab_set()
-
             tk.Label(top, text="The agent wants to:",
                      font=('Segoe UI', 10),
                      anchor='w').pack(anchor='w', padx=16, pady=(16, 4))
@@ -349,7 +466,6 @@ class ToolDispatcher:
                      font=('Segoe UI', 10, 'bold'),
                      wraplength=400, anchor='w',
                      justify='left').pack(anchor='w', padx=24, pady=(0, 16))
-
             row = tk.Frame(top)
             row.pack(pady=(0, 14))
 
@@ -375,7 +491,6 @@ class ToolDispatcher:
             if allow_always:
                 tk.Button(row, text="Always allow this",
                           width=16, command=_always).pack(side='left', padx=4)
-
             top.protocol("WM_DELETE_WINDOW", _reject)
 
         if root is not None:
