@@ -769,6 +769,10 @@ X-GNOME-Autostart-enabled=true
         """Open the guided mic setup wizard from settings."""
         self.app.open_mic_setup_guide()
 
+    def open_ava_guide(self):
+        """Open the Ava setup guide from settings."""
+        self.app.open_ava_guide()
+
     def open_wake_word_debug(self):
         """Open the wake word debug window from settings."""
         self.app.open_wake_word_debug()
