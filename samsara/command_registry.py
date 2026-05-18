@@ -27,7 +27,8 @@ class CommandEntry:
     """A single registered command (built-in or plugin)."""
 
     def __init__(self, phrase, source, cmd_type, data=None, handler=None,
-                 aliases=None, pack='core', debounce=0.0, app_overrides=None):
+                 aliases=None, pack='core', debounce=0.0, app_overrides=None,
+                 description=''):
         """
         Args:
             phrase: canonical trigger phrase (lowercase, stripped)
@@ -39,6 +40,7 @@ class CommandEntry:
             pack: pack name this command belongs to (default 'core')
             debounce: seconds to suppress re-execution in command mode
             app_overrides: per-app key binding overrides
+            description: human-readable summary of what the command does
         """
         self.phrase = phrase.lower().strip()
         self.tokens = self.phrase.split()
@@ -51,6 +53,7 @@ class CommandEntry:
         self.pack = pack or 'core'
         self.debounce = float(debounce) if debounce else 0.0
         self.app_overrides = dict(app_overrides) if app_overrides else {}
+        self.description = description or ''
 
 
 class CommandMatcher:
@@ -111,6 +114,7 @@ class CommandMatcher:
                 pack=data.get('pack', 'core'),
                 debounce=float(data.get('debounce', 0.0)),
                 app_overrides=data.get('app_overrides', {}),
+                description=data.get('description', ''),
             )
             self._entries[name_lower] = entry
 
@@ -141,6 +145,11 @@ class CommandMatcher:
                 print(f"[REGISTRY] Plugin '{canonical}' shadowed by built-in")
                 continue
 
+            func = entry_data.get('func')
+            doc = ''
+            if func and func.__doc__:
+                doc = func.__doc__.strip().split('\n')[0].strip()
+
             entry = CommandEntry(
                 phrase=canonical,
                 source='plugin',
@@ -150,6 +159,7 @@ class CommandMatcher:
                 pack=entry_data.get('pack', 'core'),
                 debounce=float(entry_data.get('debounce', 0.0)),
                 app_overrides=entry_data.get('app_overrides', {}),
+                description=doc,
             )
             self._entries[canonical] = entry
             # Register aliases (skip individually if shadowed)
@@ -276,6 +286,7 @@ class CommandMatcher:
                 'type': entry.cmd_type,
                 'aliases': entry.aliases,
                 'pack': entry.pack,
+                'description': entry.description,
             })
         return result
 
