@@ -38,6 +38,15 @@ _BORDER   = "#2a3345"
 _DEFAULT_W = 440
 _DEFAULT_H = 520
 
+
+def _pack_label(pack_id: str) -> str:
+    try:
+        from samsara.command_packs import PACKS
+        return PACKS.get(pack_id, {}).get("label", pack_id.replace("-", " ").title())
+    except Exception:
+        return pack_id.replace("-", " ").title()
+
+
 _SS = f"""
 QMainWindow, QWidget {{ background: {_BG}; color: {_TEXT_PRI}; font-family: 'Segoe UI', sans-serif; font-size: 12px; }}
 QListWidget {{
@@ -197,7 +206,7 @@ class _TitleBar(QWidget):
         lay.addWidget(op_lbl)
 
         self._opacity_slider = QSlider(Qt.Orientation.Horizontal)
-        self._opacity_slider.setRange(20, 100)
+        self._opacity_slider.setRange(35, 100)
         self._opacity_slider.setValue(int(win.windowOpacity() * 100))
         self._opacity_slider.setFixedWidth(70)
         self._opacity_slider.setStyleSheet(_SS)
@@ -308,6 +317,88 @@ class _StaticRow(QFrame):
 
 
 # ---------------------------------------------------------------------------
+# Category tab bar
+# ---------------------------------------------------------------------------
+
+class _TabBtn(QLabel):
+    def __init__(self, label: str, pack_id: str, on_select, parent=None):
+        super().__init__(label, parent)
+        self._pack_id = pack_id
+        self._on_select = on_select
+        self._active = False
+        self.setCursor(QCursor(Qt.CursorShape.PointingHandCursor))
+        self._update_style()
+
+    def set_active(self, active: bool):
+        self._active = active
+        self._update_style()
+
+    def _update_style(self):
+        if self._active:
+            self.setStyleSheet(
+                f"color:{_ACCENT};font-size:11px;font-weight:bold;"
+                f"border-bottom:2px solid {_ACCENT};padding:4px 8px 2px 8px;"
+            )
+        else:
+            self.setStyleSheet(
+                f"color:{_TEXT_SEC};font-size:11px;"
+                f"border-bottom:2px solid transparent;padding:4px 8px 2px 8px;"
+            )
+
+    def mousePressEvent(self, e):
+        if e.button() == Qt.MouseButton.LeftButton:
+            self._on_select(self._pack_id)
+
+    def enterEvent(self, e):
+        if not self._active:
+            self.setStyleSheet(
+                f"color:{_TEXT_PRI};font-size:11px;"
+                f"border-bottom:2px solid {_BORDER};padding:4px 8px 2px 8px;"
+            )
+
+    def leaveEvent(self, e):
+        self._update_style()
+
+
+class _CategoryTabBar(QWidget):
+    def __init__(self, on_select, parent=None):
+        super().__init__(parent)
+        self._on_select = on_select
+        self._tabs: List[_TabBtn] = []
+
+        self.setFixedHeight(32)
+        self.setStyleSheet(
+            f"background:{_SURFACE};border-bottom:1px solid {_BORDER};"
+        )
+
+        self._layout = QHBoxLayout(self)
+        self._layout.setContentsMargins(6, 0, 6, 0)
+        self._layout.setSpacing(0)
+
+    def set_categories(self, pack_ids: List[str], active_id: str):
+        for tab in self._tabs:
+            tab.deleteLater()
+        self._tabs.clear()
+        while self._layout.count():
+            item = self._layout.takeAt(0)
+            if item.widget():
+                item.widget().deleteLater()
+
+        for pid in ["All"] + pack_ids:
+            label = "All" if pid == "All" else _pack_label(pid)
+            btn = _TabBtn(label, pid, self._on_select, self)
+            btn.set_active(pid == active_id)
+            self._layout.addWidget(btn)
+            self._tabs.append(btn)
+
+        self._layout.addStretch()
+
+    def set_active(self, pack_id: str):
+        for tab in self._tabs:
+            tab.set_active(tab._pack_id == pack_id)
+
+
+# ---------------------------------------------------------------------------
 # Main window
 # ---------------------------------------------------------------------------
 
@@ -325,6 +416,7 @@ class _CheatSheetWindow(QMainWindow):
         self._palette_path = palette_path
         self._all: List[dict] = []
         self._pinned: set = set()
+        self._active_category = "All"
         self._opacity = 0.85
         self._geom = {"x": None, "y": None, "w": _DEFAULT_W, "h": _DEFAULT_H}
 
@@ -340,20 +432,11 @@ class _CheatSheetWindow(QMainWindow):
         self.setMinimumSize(280, 180)
         self.setStyleSheet(_SS)
 
-        # Position — restore saved coordinates, clamping so the full window
-        # fits within the screen it's on.  Falls back to primary screen if the
-        # saved position is off all screens (e.g. after unplugging a monitor).
-        w = self._geom.get("w", _DEFAULT_W)
-        h = self._geom.get("h", _DEFAULT_H)
+        # Initial position: restore saved coords if present, otherwise
+        # default to the right-centre of the primary screen.
+        # showEvent will clamp to screen on every show() call.
         if self._geom["x"] is not None:
-            from PySide6.QtCore import QPoint
-            from PySide6.QtGui import QGuiApplication
-            saved_pt = QPoint(int(self._geom["x"]), int(self._geom["y"]))
-            scr = (QGuiApplication.screenAt(saved_pt) or
-                   QApplication.primaryScreen()).availableGeometry()
-            x = max(scr.left(), min(int(self._geom["x"]), scr.right()  - w))
-            y = max(scr.top(),  min(int(self._geom["y"]), scr.bottom() - h))
-            self.move(x, y)
+            self.move(int(self._geom["x"]), int(self._geom["y"]))
         else:
             scr = QApplication.primaryScreen().availableGeometry()
             self.move(scr.right() - _DEFAULT_W - 40, (scr.height() - _DEFAULT_H) // 2)
@@ -401,6 +484,10 @@ class _CheatSheetWindow(QMainWindow):
         self._static_layout.setSpacing(0)
         lay.addWidget(self._static_pane)
 
+        # Category tab bar
+        self._category_bar = _CategoryTabBar(self._set_category)
+        lay.addWidget(self._category_bar)
+
         # Command list
         self._list = QListWidget()
         self._list.setStyleSheet(_SS)
@@ -434,6 +521,30 @@ class _CheatSheetWindow(QMainWindow):
             print(f"[CHEATSHEET] commands_cb error: {exc}")
             self._all = []
         self._rebuild_static_pane()
+
+        # Build ordered pack list from PACKS definition, only include packs
+        # that have at least one command currently loaded.
+        try:
+            from samsara.command_packs import PACKS
+            pack_order = list(PACKS.keys())
+        except Exception:
+            pack_order = []
+        seen: set = set()
+        pack_ids: List[str] = []
+        for pid in pack_order:
+            if any(c.get("pack", "") == pid for c in self._all):
+                pack_ids.append(pid)
+                seen.add(pid)
+        for c in self._all:
+            pid = c.get("pack", "")
+            if pid and pid not in seen:
+                pack_ids.append(pid)
+                seen.add(pid)
+
+        if self._active_category != "All" and self._active_category not in pack_ids:
+            self._active_category = "All"
+
+        self._category_bar.set_categories(pack_ids, self._active_category)
         self._apply_filter(self._filter.text())
 
     def _apply_filter(self, text: str = ""):
@@ -446,6 +557,13 @@ class _CheatSheetWindow(QMainWindow):
             ]
         else:
             filtered = list(self._all)
+
+        # Category filter
+        if self._active_category != "All":
+            filtered = [
+                c for c in filtered
+                if c.get("pack", "core") == self._active_category
+            ]
 
         # Pinned items live in static pane — exclude from scroll list
         unpinned = [c for c in filtered if c["phrase"] not in self._pinned]
@@ -467,6 +585,12 @@ class _CheatSheetWindow(QMainWindow):
             item.setForeground(QColor(_TEXT_PRI))
             self._list.addItem(item)
         self._list.blockSignals(False)
+
+    def _set_category(self, cat: str):
+        self._active_category = cat
+        self._category_bar.set_active(cat)
+        self._apply_filter(self._filter.text())
+        self._save_palette()
 
     # ----------------------------------------------------------------
     # Static pane (Most Used + Pinned)
@@ -601,8 +725,9 @@ class _CheatSheetWindow(QMainWindow):
                 data = json.loads(
                     self._palette_path.read_text(encoding="utf-8")
                 )
-                self._pinned  = set(data.get("pinned", []))
-                self._opacity = float(data.get("opacity", 0.85))
+                self._pinned          = set(data.get("pinned", []))
+                self._opacity         = max(0.35, float(data.get("opacity", 0.85)))
+                self._active_category = data.get("last_category", "All")
                 g = data.get("geometry", {})
                 self._geom = {
                     "x": g.get("x"),
@@ -616,8 +741,9 @@ class _CheatSheetWindow(QMainWindow):
     def _save_palette(self):
         try:
             data = {
-                "pinned":   sorted(self._pinned),
-                "opacity":  round(self.windowOpacity(), 2),
+                "pinned":        sorted(self._pinned),
+                "opacity":       round(self.windowOpacity(), 2),
+                "last_category": self._active_category,
                 "geometry": {
                     "x": self.x(), "y": self.y(),
                     "w": self.width(), "h": self.height(),
@@ -628,6 +754,25 @@ class _CheatSheetWindow(QMainWindow):
             )
         except Exception as exc:
             print(f"[CHEATSHEET] Save palette: {exc}")
+
+    def showEvent(self, e):
+        super().showEvent(e)
+        self._clamp_to_screen()
+
+    def _clamp_to_screen(self):
+        """Move the window back inside its screen if any part is off-screen.
+
+        Frameless windows bypass OS edge-clamping, so this must be called
+        explicitly on every show() to guard against saved off-screen coords.
+        """
+        from PySide6.QtGui import QGuiApplication
+        w, h = self.width(), self.height()
+        scr = (QGuiApplication.screenAt(self.frameGeometry().topLeft()) or
+               QApplication.primaryScreen()).availableGeometry()
+        x = max(scr.left(), min(self.x(), scr.right()  - w))
+        y = max(scr.top(),  min(self.y(), scr.bottom() - h))
+        if x != self.x() or y != self.y():
+            self.move(x, y)
 
     def closeEvent(self, e):
         self._save_palette()

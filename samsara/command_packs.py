@@ -106,6 +106,30 @@ PACKS = {
         'always_on': False,
         'default_enabled': True,
     },
+    'health': {
+        'label': 'Health Tracking',
+        'description': 'Pain levels, medication logging, symptom tracking, health summaries',
+        'always_on': False,
+        'default_enabled': True,
+    },
+    'alarms': {
+        'label': 'Alarm Commands',
+        'description': 'Voice control for alarms — complete, dismiss, list, enable/disable',
+        'always_on': False,
+        'default_enabled': True,
+    },
+    'discord': {
+        'label': 'Discord',
+        'description': 'Send messages to Discord channels via webhook',
+        'always_on': False,
+        'default_enabled': False,
+    },
+    'ai': {
+        'label': 'AI Assistant',
+        'description': 'Local AI via Ollama — ask questions, summarise, generate text',
+        'always_on': False,
+        'default_enabled': False,
+    },
     'accessibility': {
         'label': 'Accessibility',
         'description': 'Show Numbers overlay, semantic clicking by voice',

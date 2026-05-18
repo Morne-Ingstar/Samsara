@@ -228,6 +228,11 @@ def _samsara_install_tk_error_filter(root):
 
     root.report_callback_exception = _filtered
 from voice_training import VoiceTrainingWindow
+try:
+    from samsara.ui.voice_training_qt import VoiceTrainingQt as _VoiceTrainingQt
+except Exception as _vt_err:
+    _VoiceTrainingQt = None
+    print(f"[INIT] VoiceTrainingQt unavailable: {_vt_err}")
 from samsara.profiles import ProfileManager
 from samsara.ui.splash import SplashScreen
 from samsara.ui.first_run_wizard import FirstRunWizard
@@ -1005,8 +1010,16 @@ class DictationApp:
         print("[INIT] Building UI...")
         self.settings_window = SettingsWindow(self)
 
-        # Voice Training window
-        self.voice_training_window = VoiceTrainingWindow(self)
+        # Voice Training window — prefer Qt version if available
+        if _VoiceTrainingQt is not None:
+            try:
+                self.voice_training_window = _VoiceTrainingQt(self)
+                print("[INIT] Using VoiceTrainingQt")
+            except Exception as _e:
+                print(f"[INIT] VoiceTrainingQt init failed, falling back: {_e}")
+                self.voice_training_window = VoiceTrainingWindow(self)
+        else:
+            self.voice_training_window = VoiceTrainingWindow(self)
 
         # History window
         self.history_window = HistoryWindow(self)
@@ -5698,20 +5711,10 @@ class DictationApp:
     
     def open_voice_training(self):
         """Open voice training window"""
-        if self.voice_training_window.window is not None:
-            try:
-                self.voice_training_window.window.lift()
-                self.voice_training_window.window.focus_force()
-                return
-            except:
-                self.voice_training_window.window = None
-
-        # Don't use threading for window creation - call directly on main thread
         try:
             self.voice_training_window.show()
         except Exception as e:
             print(f"Error opening voice training: {e}")
-            messagebox.showerror("Error", f"Failed to open Voice Training:\n{e}")
 
     def open_history(self):
         """Open dictation history window"""
@@ -5976,14 +5979,13 @@ class DictationApp:
                 pystray.MenuItem(
                     "Show Samsara",
                     lambda _i, _it: self.show_main_window(),
-                    default=True,  # left-click on tray icon reopens the hub
+                    default=True,
                 ),
                 pystray.Menu.SEPARATOR,
                 pystray.MenuItem(
                     f"[MIC] {self.get_current_microphone_name()}",
                     pystray.Menu(*mic_menu_items) if mic_menu_items else None
                 ),
-                pystray.Menu.SEPARATOR,
                 pystray.MenuItem(
                     f"Mode: {mode.title()}",
                     pystray.Menu(
@@ -6014,63 +6016,36 @@ class DictationApp:
                     checked=lambda _it: self.config.get('wake_word_enabled', False)
                 ),
                 pystray.MenuItem(
-                    "Streaming Mode (CapsLock = stream)",
+                    "Streaming Mode (CapsLock)",
                     lambda _i, _it: self.set_streaming_mode(
                         not self.config.get('streaming_mode', False)),
                     checked=lambda _it: self.config.get('streaming_mode', False)
                 ),
                 pystray.MenuItem(
-                    "Cleanup",
-                    pystray.Menu(
-                        pystray.MenuItem(
-                            "Clean (remove fillers, fix spacing)",
-                            lambda _i, _it: self.set_cleanup_mode('clean'),
-                            checked=lambda _it: self.config.get('cleanup_mode', 'clean') == 'clean',
-                            radio=True
-                        ),
-                        pystray.MenuItem(
-                            "Verbatim (no cleanup)",
-                            lambda _i, _it: self.set_cleanup_mode('verbatim'),
-                            checked=lambda _it: self.config.get('cleanup_mode', 'clean') == 'verbatim',
-                            radio=True
-                        ),
-                    )
-                ),
-                pystray.MenuItem(
-                    f"Hotkey: {self.config['hotkey']}", 
-                    lambda: None,
-                    enabled=False
-                ),
-                pystray.MenuItem(
-                    f"Model: {self.config['model_size']}",
-                    lambda: None,
-                    enabled=False
-                ),
-                pystray.MenuItem(
                     lambda _it: "Snoozed" if self.snoozed else "Snooze",
                     pystray.Menu(
                         pystray.MenuItem(
-                            "Snooze 5 minutes",
+                            "5 minutes",
                             lambda _i, _it: self.snooze_listening(5),
                             enabled=lambda _it: not self.snoozed
                         ),
                         pystray.MenuItem(
-                            "Snooze 15 minutes",
+                            "15 minutes",
                             lambda _i, _it: self.snooze_listening(15),
                             enabled=lambda _it: not self.snoozed
                         ),
                         pystray.MenuItem(
-                            "Snooze 30 minutes",
+                            "30 minutes",
                             lambda _i, _it: self.snooze_listening(30),
                             enabled=lambda _it: not self.snoozed
                         ),
                         pystray.MenuItem(
-                            "Snooze 1 hour",
+                            "1 hour",
                             lambda _i, _it: self.snooze_listening(60),
                             enabled=lambda _it: not self.snoozed
                         ),
                         pystray.MenuItem(
-                            "Snooze until resumed",
+                            "Until resumed",
                             lambda _i, _it: self.snooze_listening(None),
                             enabled=lambda _it: not self.snoozed
                         ),
@@ -6085,28 +6060,63 @@ class DictationApp:
                 pystray.Menu.SEPARATOR,
                 pystray.MenuItem("Settings", self.open_settings),
                 pystray.MenuItem("History", self.open_history),
-                pystray.MenuItem("Voice Training", self.open_voice_training),
-                pystray.MenuItem("Wake Word Debug", self.open_wake_word_debug),
+                pystray.MenuItem(
+                    "Command Reference",
+                    lambda _i, _it: self.toggle_cheat_sheet(),
+                    checked=lambda _it: self.cheat_sheet._visible
+                ),
                 pystray.MenuItem(
                     "Show Listening Indicator",
                     self.toggle_listening_indicator,
                     checked=lambda _it: self.config.get('listening_indicator_enabled', False)
                 ),
                 pystray.MenuItem(
-                    "Command Reference",
-                    lambda _i, _it: self.toggle_cheat_sheet(),
-                    checked=lambda _it: self.cheat_sheet._visible
+                    "Tools",
+                    pystray.Menu(
+                        pystray.MenuItem("Voice Training", self.open_voice_training),
+                        pystray.MenuItem("Wake Word Debug", self.open_wake_word_debug),
+                        pystray.MenuItem("Recalibrate Mic", lambda _i, _it: self.recalibrate_mic()),
+                        pystray.MenuItem(
+                            "Calibrate Echo Cancellation",
+                            lambda _i, _it: self.calibrate_echo_cancellation(),
+                        ),
+                        pystray.Menu.SEPARATOR,
+                        pystray.MenuItem(
+                            "Cleanup",
+                            pystray.Menu(
+                                pystray.MenuItem(
+                                    "Clean (remove fillers)",
+                                    lambda _i, _it: self.set_cleanup_mode('clean'),
+                                    checked=lambda _it: self.config.get('cleanup_mode', 'clean') == 'clean',
+                                    radio=True
+                                ),
+                                pystray.MenuItem(
+                                    "Verbatim (no cleanup)",
+                                    lambda _i, _it: self.set_cleanup_mode('verbatim'),
+                                    checked=lambda _it: self.config.get('cleanup_mode', 'clean') == 'verbatim',
+                                    radio=True
+                                ),
+                            )
+                        ),
+                        pystray.Menu.SEPARATOR,
+                        pystray.MenuItem("Open Config Folder", self.open_config_folder),
+                        pystray.MenuItem("View Logs", pystray.Menu(
+                            pystray.MenuItem("Main Log", self.open_main_log),
+                            pystray.MenuItem("Voice Training Log", self.open_voice_training_log),
+                        )),
+                        pystray.Menu.SEPARATOR,
+                        pystray.MenuItem(
+                            f"Hotkey: {self.config['hotkey']}",
+                            lambda: None,
+                            enabled=False
+                        ),
+                        pystray.MenuItem(
+                            f"Model: {self.config['model_size']}",
+                            lambda: None,
+                            enabled=False
+                        ),
+                    )
                 ),
-                pystray.MenuItem("Recalibrate Mic", lambda _i, _it: self.recalibrate_mic()),
-                pystray.MenuItem(
-                    "Calibrate Echo Cancellation",
-                    lambda _i, _it: self.calibrate_echo_cancellation(),
-                ),
-                pystray.MenuItem("Open Config Folder", self.open_config_folder),
-                pystray.MenuItem("View Logs", pystray.Menu(
-                    pystray.MenuItem("Main Log (samsara.log)", self.open_main_log),
-                    pystray.MenuItem("Voice Training Log", self.open_voice_training_log)
-                )),
                 pystray.Menu.SEPARATOR,
                 pystray.MenuItem("Exit", self.quit_app)
             )
