@@ -797,34 +797,40 @@ class DictationApp:
 
         print("[INIT] Building UI...")
 
-        # Voice Training window
+        # Voice Training window — create on Qt thread
+        self.voice_training_window = None
         if _VoiceTrainingQt is not None:
-            try:
-                self.voice_training_window = _VoiceTrainingQt(self)
-                print("[INIT] Using VoiceTrainingQt")
-            except Exception as _e:
-                print(f"[INIT] VoiceTrainingQt unavailable: {_e}")
-                self.voice_training_window = None
-        else:
-            self.voice_training_window = None
+            def _init_vt():
+                try:
+                    self.voice_training_window = _VoiceTrainingQt(self)
+                except Exception as _e:
+                    print(f"[INIT] VoiceTrainingQt unavailable: {_e}")
+            self._schedule_ui(_init_vt)
+            print("[INIT] Using VoiceTrainingQt")
 
-        # Mic setup wizard
-        self.mic_setup_wizard = (
-            _MicSetupWizardQt(self) if _MicSetupWizardQt is not None else None
-        )
+        # Mic setup wizard — create on Qt thread
+        self.mic_setup_wizard = None
+        if _MicSetupWizardQt is not None:
+            def _init_mic_wiz():
+                self.mic_setup_wizard = _MicSetupWizardQt(self)
+            self._schedule_ui(_init_mic_wiz)
 
-        # Ava setup guide
-        self.ava_guide = (
-            _AvaGuideQt(self) if _AvaGuideQt is not None else None
-        )
+        # Ava setup guide — create on Qt thread
+        self.ava_guide = None
+        if _AvaGuideQt is not None:
+            def _init_ava_guide():
+                self.ava_guide = _AvaGuideQt(self)
+            self._schedule_ui(_init_ava_guide)
 
-        # Wake word debug window
+        # Wake word debug window — create on Qt thread
+        self.wake_word_debug_window = None
         try:
             from samsara.ui.wake_word_debug_qt import WakeWordDebugQt
-            self.wake_word_debug_window = WakeWordDebugQt(self)
+            def _init_wwd():
+                self.wake_word_debug_window = WakeWordDebugQt(self)
+            self._schedule_ui(_init_wwd)
         except ImportError:
             print("[INIT] WakeWordDebugQt unavailable")
-            self.wake_word_debug_window = None
 
         # Listening state indicator overlay — must be created on the Qt thread.
         # ListeningIndicator is a QWidget; creating it on the main thread
@@ -866,13 +872,17 @@ class DictationApp:
         # Command cheat sheet overlay
         palette_path = Path(__file__).parent / "command_palette.json"
         from samsara.ui.command_cheatsheet_qt import CommandCheatSheetQt
-        self.cheat_sheet = CommandCheatSheetQt(
-            execute_cb=lambda phrase: self.command_executor.process_text(
-                phrase, self, force_commands=True
-            ),
-            commands_cb=lambda: self.command_executor._matcher.list_commands(),
-            palette_path=palette_path,
-        )
+        # Command cheat sheet — create on Qt thread
+        self.cheat_sheet = None
+        def _init_cheatsheet():
+            self.cheat_sheet = CommandCheatSheetQt(
+                execute_cb=lambda phrase: self.command_executor.process_text(
+                    phrase, self, force_commands=True
+                ),
+                commands_cb=lambda: self.command_executor._matcher.list_commands(),
+                palette_path=palette_path,
+            )
+        self._schedule_ui(_init_cheatsheet)
 
         # Snooze state
         self.snoozed = False
@@ -1024,10 +1034,12 @@ class DictationApp:
         print(f"Hotkey detection: state-based (simultaneous key support)")
 
         # Main hub window (sidebar nav into History/Dictionary/Settings).
-        # Constructed before the tray so the tray's left-click handler
-        # has something to call.
+        # Must be created on the Qt thread — same as all other QWidgets.
         from samsara.ui.main_window_qt import MainWindowQt
-        self.main_window = MainWindowQt(self)
+        self.main_window = None
+        def _init_main_window():
+            self.main_window = MainWindowQt(self)
+        self._schedule_ui(_init_main_window)
 
         # NOTE: Splash is intentionally NOT closed here. load_model_async runs
         # the heavy Whisper/CUDA load on a background thread; closing the splash
