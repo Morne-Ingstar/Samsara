@@ -68,6 +68,15 @@ class DictationSessionConsumer:
         self._active         = True
         self._epoch_at_start = None
 
+        # Snap cursor to the current write head BEFORE rewinding.
+        # Between the previous drain() and this activate(), the writer
+        # has been continuously advancing. Without this snap, the cursor
+        # is still at the old drain position (potentially seconds stale),
+        # and rewind(PREBUFFER_FRAMES) goes backwards from THERE —
+        # capturing stale audio from the gap between recordings, which
+        # produces doubled transcriptions.
+        self._reader._read_cursor = self._engine._ring.write_cursor
+
         _coordinator = getattr(self._app, 'audio_coordinator', None)
         if _coordinator and _coordinator.is_speaking:
             print("[PRE] Pre-buffer skipped — TTS actively speaking")
