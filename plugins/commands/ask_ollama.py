@@ -6,6 +6,7 @@ import requests
 from samsara import ava_corrections
 from samsara import ava_profile
 from samsara import cloud_llm
+from samsara.ava_memory import AvaMemory
 from samsara.languages import LANGUAGES
 from samsara.premium import is_premium
 from samsara.plugin_commands import command
@@ -282,6 +283,11 @@ def ask_ollama(prompt, app, model=None, system=None):
             f"confirmation descriptions must be in {lang_name}."
         )
 
+    # ── Conversation memory ──
+    if not hasattr(app, "_ava_memory"):
+        app._ava_memory = AvaMemory()
+    app._ava_memory.add_user(prompt)
+
     # ── Cloud LLM path ──
     if cloud_llm.is_enabled(app):
         if not is_premium(app):
@@ -291,8 +297,10 @@ def ask_ollama(prompt, app, model=None, system=None):
             # Fall through to local Ollama
         else:
             print("[AVA CLOUD] Routing to cloud provider")
-            cloud_response = cloud_llm.send(system, prompt, app)
+            messages = app._ava_memory.get_messages(system, token_limit=8000)
+            cloud_response = cloud_llm.send(system, prompt, app, messages=messages)
             if not cloud_response.startswith("Error:"):
+                app._ava_memory.add_assistant(cloud_response)
                 return cloud_response
             print(f"[AVA CLOUD] {cloud_response}")
             print("[AVA CLOUD] Falling back to local Ollama")
@@ -301,22 +309,24 @@ def ask_ollama(prompt, app, model=None, system=None):
     if not _check_ollama_available(host, timeout=1):
         return "__OLLAMA_DOWN__"
 
+    messages = app._ava_memory.get_messages(system, token_limit=3000)
     payload = {
         "model": model,
-        "prompt": prompt,
+        "messages": messages,
         "stream": False,
     }
-    if system:
-        payload["system"] = system
 
     try:
         response = requests.post(
-            f"{host}/api/generate",
+            f"{host}/api/chat",
             json=payload,
             timeout=get_timeout(app),
         )
         response.raise_for_status()
-        return response.json().get("response", "").strip()
+        reply = response.json().get("message", {}).get("content", "").strip()
+        if reply:
+            app._ava_memory.add_assistant(reply)
+        return reply
     except requests.exceptions.ConnectionError:
         return "Ollama is not running. Start it with: ollama serve"
     except Exception as e:
@@ -788,6 +798,18 @@ def handle_stop_schedule(app, remainder="", **kwargs):
         return
     _stop_schedule()
     speak(app, "Schedule stopped.")
+
+
+@command(
+    "ava forget",
+    aliases=["forget conversation", "clear memory", "new conversation", "start over ava"],
+    pack="ai",
+    ai_visible=False,
+)
+def handle_ava_forget(app, remainder="", **kwargs):
+    if hasattr(app, "_ava_memory"):
+        app._ava_memory.clear()
+    speak(app, "Conversation cleared.")
 
 
 @command(

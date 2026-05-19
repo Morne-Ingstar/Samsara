@@ -45,11 +45,15 @@ def _get_provider_config(app):
     return provider, base_url, model
 
 
-def send(system_prompt, user_message, app, timeout=30):
+def send(system_prompt, user_message, app, timeout=30, messages=None):
     """
     Send a request to the configured cloud LLM.
     Returns the response text string, or an error string starting with
     "Error:" on failure.
+
+    If messages is provided it is used as the full messages array (including
+    system prompt and conversation history). Otherwise falls back to a single
+    system + user turn (backward-compatible with callers that don't use memory).
 
     Handles two API formats:
     - OpenAI-compatible (DeepSeek, OpenAI): POST /chat/completions
@@ -66,11 +70,11 @@ def send(system_prompt, user_message, app, timeout=30):
     try:
         if provider == "anthropic":
             return _send_anthropic(base_url, api_key, model, system_prompt,
-                                   user_message, timeout)
+                                   user_message, timeout, messages=messages)
         else:
             return _send_openai_compatible(base_url, api_key, model,
                                            system_prompt, user_message,
-                                           timeout)
+                                           timeout, messages=messages)
     except requests.exceptions.ConnectionError:
         return "Error: Could not connect to the cloud LLM provider."
     except requests.exceptions.Timeout:
@@ -80,18 +84,20 @@ def send(system_prompt, user_message, app, timeout=30):
 
 
 def _send_openai_compatible(base_url, api_key, model, system_prompt,
-                             user_message, timeout):
+                             user_message, timeout, messages=None):
     url = f"{base_url}/chat/completions"
     headers = {
         "Content-Type": "application/json",
         "Authorization": f"Bearer {api_key}",
     }
-    payload = {
-        "model": model,
-        "messages": [
+    if messages is None:
+        messages = [
             {"role": "system", "content": system_prompt},
             {"role": "user", "content": user_message},
-        ],
+        ]
+    payload = {
+        "model": model,
+        "messages": messages,
         "max_tokens": 300,
         "temperature": 0.3,
     }
@@ -102,20 +108,28 @@ def _send_openai_compatible(base_url, api_key, model, system_prompt,
 
 
 def _send_anthropic(base_url, api_key, model, system_prompt,
-                    user_message, timeout):
+                    user_message, timeout, messages=None):
     url = f"{base_url}/messages"
     headers = {
         "Content-Type": "application/json",
         "x-api-key": api_key,
         "anthropic-version": "2023-06-01",
     }
+    # Anthropic requires system content in a top-level field, not in messages.
+    if messages is not None:
+        system = next(
+            (m["content"] for m in messages if m["role"] == "system"),
+            system_prompt,
+        )
+        api_messages = [m for m in messages if m["role"] != "system"]
+    else:
+        system = system_prompt
+        api_messages = [{"role": "user", "content": user_message}]
     payload = {
         "model": model,
         "max_tokens": 300,
-        "system": system_prompt,
-        "messages": [
-            {"role": "user", "content": user_message},
-        ],
+        "system": system,
+        "messages": api_messages,
     }
     response = requests.post(url, json=payload, headers=headers, timeout=timeout)
     response.raise_for_status()
