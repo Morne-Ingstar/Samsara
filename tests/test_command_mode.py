@@ -177,11 +177,12 @@ class TestPluginCommandDebounce:
 class TestListeningIndicatorCommandMode:
 
     @pytest.fixture(autouse=True)
-    def indicator(self):
+    def indicator(self, qapp):
         from samsara.ui.listening_indicator import ListeningIndicator
         ind = ListeningIndicator()
         self._ind = ind
         yield ind
+        ind.destroy()
 
     def test_initial_command_mode_false(self, indicator):
         assert indicator._command_mode is False

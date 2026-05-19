@@ -288,3 +288,13 @@ def mock_subprocess():
     with patch('subprocess.Popen') as mock_popen:
         mock_popen.return_value = Mock()
         yield mock_popen
+
+
+@pytest.fixture(scope="session")
+def qapp():
+    """Session-scoped QApplication for tests that instantiate Qt widgets."""
+    from PySide6.QtWidgets import QApplication
+    app = QApplication.instance()
+    if app is None:
+        app = QApplication([])
+    yield app
