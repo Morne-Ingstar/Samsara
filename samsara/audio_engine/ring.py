@@ -165,8 +165,29 @@ class Reader:
         # Overrun detection: writer has lapped this reader
         if (wc - self._read_cursor) > RING_FRAMES:
             self.overrun_count += 1
-            new_cursor = wc - PREBUFFER_FRAMES
-            self._read_cursor = max(0, new_cursor)
+            self._read_cursor = max(0, wc - PREBUFFER_FRAMES)
+
+            # Defense-in-depth against the stale-slot TOCTOU race (MA-1, ACE-02):
+            # Between repositioning and the actual pcm read below, a fast writer
+            # could advance write_cursor by another RING_FRAMES and overwrite the
+            # very slot we just repositioned to, producing a torn frame
+            # (seq from one write cycle, pcm from another).
+            #
+            # The concurrent stress test (test_ring_concurrent.py) does NOT fire
+            # this race at realistic capture rates because RING_FRAMES (100) writes
+            # take ~1s at 10ms/frame — far longer than the nanoseconds needed to
+            # read one slot. However, at synthetic tight-loop write rates the race
+            # is theoretically possible.
+            #
+            # Fix: re-read write_cursor after repositioning and step forward again
+            # if we were lapped a second time. Bounded by RING_FRAMES iterations;
+            # does NOT add a lock and cannot stall the writer.
+            _guard = 0
+            while (self._bus._write_cursor - self._read_cursor) > RING_FRAMES:
+                self._read_cursor = max(0, self._bus._write_cursor - PREBUFFER_FRAMES)
+                _guard += 1
+                if _guard >= RING_FRAMES:
+                    break   # safety valve — impossible at real audio rates
 
         slot = self._read_cursor % RING_FRAMES
         frame = Frame(

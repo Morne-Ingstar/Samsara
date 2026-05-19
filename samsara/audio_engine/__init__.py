@@ -26,6 +26,7 @@ from .ring import (
     OVERRUN,
 )
 from .engine import AudioCaptureEngine
+from .debug_recorder import DebugRecorder
 
 __all__ = [
     # Data structure
@@ -33,6 +34,7 @@ __all__ = [
     'FrameBus',
     'Reader',
     'AudioCaptureEngine',
+    'DebugRecorder',
     # Sentinels
     'EMPTY',
     'OVERRUN',

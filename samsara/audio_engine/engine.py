@@ -1,75 +1,61 @@
-"""AudioCaptureEngine — interface definition (ACE-01, no PortAudio yet).
+"""AudioCaptureEngine — ACE-02: real PortAudio capture alongside the legacy path.
 
-The engine is the single owner of the PortAudio stream (added in ACE-02).
-It resamples native-rate audio to 16kHz int16 (ACE-02), writes the FrameBus,
-and manages consumer registration/lifecycle.
+The engine owns exactly one sounddevice InputStream. It resamples native-rate
+audio to 16kHz int16 once at the head, writes the FrameBus, and exposes a
+consumer registry so multiple downstream readers can process the same stream.
 
-This file defines the full method surface of AudioCaptureEngine so that:
-  - Consumers can be coded against a stable interface before ACE-02.
-  - The consumer lifecycle contract is formally defined now, not retrofitted.
-  - Tests can prove the interface seam exists (start/stop raise ACE-02 stubs).
+The legacy capture path in dictation.py is UNCHANGED. The engine runs in
+parallel behind the `ace_debug_capture: true` config flag and is a passive
+observer until ACE-03 begins migrating individual modes.
 
-PortAudio (sounddevice) is NOT imported here. It will be added in ACE-02
-alongside the real capture implementation.
+== Concurrency (Model A, ACE-00 cleared) ==
 
-== Consumer lifecycle contract ==
+Single writer (the PortAudio callback thread), many readers (registered
+consumers). No locks on the read/write path. See ring.py for the full
+atomicity argument.
 
-register_consumer(name) -> Reader:
-    Records a (name, Reader) pair in the engine's consumer registry.
-    Returns a Reader positioned at the current write head with no history.
-    To access pre-trigger audio, call reader.rewind(PREBUFFER_FRAMES) once
-    before starting your read loop.
+== Resampling ==
 
-unregister_consumer(reader) -> None:
-    Removes the (name, reader) record from the registry and calls
-    reader.invalidate(). Any further call to reader.read_next() or
-    reader.rewind() on an unregistered Reader raises RuntimeError.
+Native device rate → 16kHz int16 via scipy.signal.resample_poly with a
+pre-computed up/down ratio initialized in start(). For 44100Hz input:
+  up=160, down=441  →  4410 samples → exactly 1600 samples = FRAME_SIZE.
+For 48000Hz input:
+  up=1, down=3      →  4800 samples → exactly 1600 samples = FRAME_SIZE.
+The output is guaranteed to be FRAME_SIZE via pad/truncate with a warning
+flag if the resampler produces an unexpected count.
 
-Registry does NOT leak: unregister_consumer guarantees the Reader object
-is dropped from the registry dict and invalidated atomically under the
-registry lock. The FrameBus's lossy design handles the zombie case: if a
-consumer vanishes without calling unregister_consumer, its Reader simply
-gets lapped (overrun_count increments) without stalling capture. The
-registry will hold a reference until an explicit unregister; this is the
-only memory-leak risk and it is bounded by the number of registered
-consumers (typically 5-10).
+== Consumer lifecycle ==
 
-== [LOCKED] Epoch / discontinuity contract ==
-
-bump_device_epoch() delegates to FrameBus.bump_device_epoch(). The engine
-passes the new epoch to every subsequent ring.write() call (ACE-02). The
-epoch change is the transport-level signal that the audio stream is not
-contiguous. Consumer policy (abort utterance, reset VAD state) is
-consumer-side; the epoch value on each Frame is the observable trigger.
-No per-consumer epoch policy is permitted — all consumers see the same
-epoch change at the same frame boundary.
-
-== Observability ==
-
-metrics() returns a dict with all required fields populated as placeholders
-in ACE-01. Real values are populated in ACE-02+ as the capture path,
-histogram, and lag tracking are implemented.
+See ACE-01 engine.py docstring — contract is unchanged.
 """
 
+import collections
+import math
 import threading
+import time
 from typing import Any
 
-from .frame import PREBUFFER_FRAMES
+import numpy as np
+
+from .frame import FRAME_SIZE, PREBUFFER_FRAMES, SAMPLE_RATE
 from .ring import FrameBus, Reader
+
+# sounddevice is imported lazily in start() so the module can be imported
+# in test environments without a microphone.
+
+
+def _gcd(a: int, b: int) -> int:
+    while b:
+        a, b = b, a % b
+    return a
 
 
 class AudioCaptureEngine:
     """Single owner of the PortAudio stream and FrameBus writer.
 
-    Instantiate with a pre-constructed FrameBus. Multiple engine instances
-    sharing a bus are not supported (single-writer invariant).
-
     Args:
-        ring:   A FrameBus instance. The engine holds a reference but does
-                not own the FrameBus's lifecycle — callers may inspect the
-                bus directly (e.g. in tests).
-        config: Optional app config dict. Reserved for ACE-02 (device
-                selection, sample rate, blocksize). Ignored in ACE-01.
+        ring:   FrameBus instance. Engine is the sole writer.
+        config: App config dict. Reads 'microphone' for device selection.
     """
 
     def __init__(self, ring: FrameBus, config: dict | None = None) -> None:
@@ -77,65 +63,156 @@ class AudioCaptureEngine:
         self._config  = config or {}
         self._running = False
 
-        # Consumer registry: list of (name, Reader) tuples.
-        # Protected by _registry_lock for register/unregister operations.
-        # The registry is NOT on the hot audio path; lock contention here
-        # does not affect capture timing.
+        self._stream          = None    # sounddevice.InputStream
+        self._native_rate     = SAMPLE_RATE
+        self._up:   int       = 1
+        self._down: int       = 1
+        self._blocksize:int   = 0
+        self._size_warned     = False   # flag set in callback, logged on metrics()
+        self._resample_poly   = None    # bound in start(); None = no resampling needed
+
+        # Overflow counter — plain int, GIL-atomic (ACE-00)
+        self._overflow_count: int = 0
+
+        # Callback duration histogram (pre-allocated deque, no growth in callback)
+        self._cb_durations: collections.deque = collections.deque(maxlen=10000)
+
         self._consumers: list[tuple[str, Reader]] = []
         self._registry_lock = threading.Lock()
 
-        # Metrics storage (populated progressively from ACE-02 onwards)
         self._dropped_frames: int = 0
-        self._epoch_log: list[tuple[float, int]] = []   # (timestamp, epoch)
-        # Callback duration histogram (p50/p95/p99/max) — ACE-02 populates
-        self._cb_durations: list[float] = []
+        self._epoch_log: list[tuple[float, int]] = []
 
     # ── Stream lifecycle ──────────────────────────────────────────────────────
 
     def start(self) -> None:
-        """Open the PortAudio stream and begin writing to the ring.
+        """Open a sounddevice InputStream and begin writing to the ring.
 
-        NOT IMPLEMENTED — PortAudio capture is added in ACE-02.
-
-        Raises:
-            NotImplementedError: always, until ACE-02.
+        Computes the polyphase resample ratio (native_rate → SAMPLE_RATE)
+        once here so the callback never recomputes it. The resampler
+        (scipy.signal.resample_poly) is stateless per-call, so no persistent
+        filter state needs to be carried across callbacks.
         """
-        raise NotImplementedError(
-            "AudioCaptureEngine.start() is not implemented yet. "
-            "PortAudio stream setup lands in ACE-02."
+        if self._running:
+            return
+
+        import sounddevice as sd
+
+        device = self._config.get('microphone', None)
+
+        try:
+            dev_info = sd.query_devices(device, kind='input')
+            self._native_rate = int(dev_info['default_samplerate'])
+        except Exception as exc:
+            print(f"[ACE] device query failed ({exc}), using default")
+            self._native_rate = SAMPLE_RATE
+
+        # Pre-compute resample ratio (GCD reduction)
+        g = _gcd(self._native_rate, SAMPLE_RATE)
+        self._up   = SAMPLE_RATE          // g
+        self._down = self._native_rate    // g
+
+        # blocksize: native_rate * FRAME_MS/1000  (e.g. 44100*0.1 = 4410)
+        from .frame import FRAME_MS
+        self._blocksize = int(self._native_rate * FRAME_MS // 1000)
+
+        # Pre-import resample_poly so the callback never pays the import cost.
+        # The function reference is stored on self; the callback uses it directly.
+        if self._up != 1 or self._down != 1:
+            from scipy.signal import resample_poly as _rp
+            self._resample_poly = _rp
+        else:
+            self._resample_poly = None
+
+        print(
+            f"[ACE] Starting engine: device={device!r}  "
+            f"native={self._native_rate}Hz  "
+            f"resample={self._up}/{self._down}  "
+            f"blocksize={self._blocksize}"
         )
+
+        self._stream = sd.InputStream(
+            samplerate  = self._native_rate,
+            channels    = 1,
+            dtype       = np.float32,
+            blocksize   = self._blocksize,
+            device      = device,
+            callback    = self._on_audio_block,
+        )
+        self._running = True
+        self._stream.start()
 
     def stop(self) -> None:
-        """Stop the PortAudio stream.
+        """Stop and close the PortAudio stream."""
+        self._running = False
+        if self._stream is not None:
+            try:
+                self._stream.stop()
+                self._stream.close()
+            except Exception as exc:
+                print(f"[ACE] stream stop error: {exc}")
+            self._stream = None
+        print("[ACE] Engine stopped.")
 
-        NOT IMPLEMENTED — PortAudio capture is added in ACE-02.
+    # ── Capture callback (HOT PATH — no locks, no logging, no allocation) ────
 
-        Raises:
-            NotImplementedError: always, until ACE-02.
+    def _on_audio_block(
+        self,
+        indata:    np.ndarray,
+        frames:    int,
+        time_info: Any,
+        status:    Any,
+    ) -> None:
+        """PortAudio callback — runs on PortAudio's realtime thread.
+
+        Rules (ACE-00 discipline):
+          - No locks.
+          - No logging / print.
+          - No dynamic allocation beyond what numpy/scipy internally does
+            (these release the GIL; GC pressure is acceptable per ACE-00).
+          - write_cursor increment is the commit fence (see ring.py).
         """
-        raise NotImplementedError(
-            "AudioCaptureEngine.stop() is not implemented yet. "
-            "PortAudio stream teardown lands in ACE-02."
-        )
+        t = time.perf_counter()
+
+        if status:
+            self._overflow_count += 1   # GIL-atomic plain int
+
+        flat = indata[:, 0]   # mono float32, length = blocksize
+
+        # Resample native rate → 16kHz int16.
+        # _resample_poly is bound in start() — no import cost in the callback.
+        if self._resample_poly is not None:
+            resampled = self._resample_poly(flat, self._up, self._down)
+        else:
+            resampled = flat
+
+        n = len(resampled)
+        if n == FRAME_SIZE:
+            pcm_f32 = resampled
+        elif n < FRAME_SIZE:
+            # Pad with zeros — set flag for metric logging outside callback
+            pcm_f32 = np.zeros(FRAME_SIZE, dtype=np.float32)
+            pcm_f32[:n] = resampled
+            self._size_warned = True
+        else:
+            # Truncate — set flag for metric logging outside callback
+            pcm_f32 = resampled[:FRAME_SIZE]
+            self._size_warned = True
+
+        pcm = np.clip(pcm_f32 * 32767.0, -32768, 32767).astype(np.int16)
+
+        self._ring.write(pcm, t, self._ring.device_epoch)
+
+        self._cb_durations.append(time.perf_counter() - t)
 
     # ── Consumer management ───────────────────────────────────────────────────
 
     def register_consumer(self, name: str) -> Reader:
         """Register a named consumer and return its read cursor.
 
-        The returned Reader is positioned at the current write head with
-        no pre-trigger history. Call reader.rewind(PREBUFFER_FRAMES) to
-        access the rolling prebuffer window before starting the read loop.
-
-        Args:
-            name: human-readable consumer identifier (e.g. "vad",
-                  "wake_detector"). Used in metrics and log output.
-                  Duplicate names are permitted (the registry stores all
-                  (name, reader) pairs).
-
-        Returns:
-            A Reader owned by this engine's registry. Do not share Readers
-            between threads without external synchronisation.
+        The Reader starts at the current write head. Call
+        reader.rewind(PREBUFFER_FRAMES) before the read loop to access
+        rolling pre-trigger history.
         """
         reader = self._ring.new_reader()
         with self._registry_lock:
@@ -143,62 +220,17 @@ class AudioCaptureEngine:
         return reader
 
     def unregister_consumer(self, reader: Reader) -> None:
-        """Remove a consumer from the registry and invalidate its Reader.
-
-        After this call, any attempt to call reader.read_next() or
-        reader.rewind() raises RuntimeError. The caller must not retain
-        a reference to the Reader beyond this call.
-
-        Args:
-            reader: the Reader previously returned by register_consumer().
-                    If the reader is not found in the registry, this is a
-                    no-op (idempotent; safe to call on already-removed readers).
-        """
+        """Remove a consumer and invalidate its Reader (idempotent)."""
         with self._registry_lock:
             self._consumers = [
                 (n, r) for (n, r) in self._consumers if r is not reader
             ]
         reader.invalidate()
 
-    # ── PortAudio callback stub ───────────────────────────────────────────────
-
-    def _on_audio_block(
-        self,
-        indata: Any,
-        frames: int,
-        time_info: Any,
-        status: Any,
-    ) -> None:
-        """PortAudio stream callback — implemented in ACE-02.
-
-        In ACE-02 this will:
-          1. Measure callback entry time for the duration histogram.
-          2. Check status for overflow/underflow; update metrics.
-          3. Resample indata from native device rate to 16kHz int16.
-          4. Call self._ring.write(pcm, t_capture, self._ring.device_epoch).
-
-        Args:
-            indata:    raw audio block from PortAudio (float32, native rate).
-            frames:    number of frames in indata.
-            time_info: PortAudio timing struct.
-            status:    PortAudio status flags (overflow / underflow).
-        """
-
     # ── Epoch management ──────────────────────────────────────────────────────
 
     def bump_device_epoch(self) -> int:
-        """Increment the device epoch and record the change in the epoch log.
-
-        [LOCKED] DISCONTINUITY RULE: call this whenever the audio stream
-        is reopened (device switch, BT reconnect, sample-rate change,
-        stream recovery). The new epoch is passed to all subsequent
-        ring.write() calls so consumers see the boundary on the frame
-        that follows.
-
-        Returns:
-            The new device_epoch value.
-        """
-        import time
+        """Increment device_epoch. [LOCKED] discontinuity rule — see ring.py."""
         new_epoch = self._ring.bump_device_epoch()
         self._epoch_log.append((time.perf_counter(), new_epoch))
         return new_epoch
@@ -206,50 +238,37 @@ class AudioCaptureEngine:
     # ── Metrics ───────────────────────────────────────────────────────────────
 
     def metrics(self) -> dict:
-        """Return a snapshot of engine health metrics.
+        """Return engine health metrics.
 
-        All histogram fields are placeholder zeros in ACE-01. They will be
-        populated by the real capture path in ACE-02. The dict shape is
-        defined here so consumers can be coded against a stable schema.
-
-        Returns:
-            dict with keys:
-                dropped_frames (int):     total frames where seq gap > 1
-                                          (populated ACE-02).
-                per_consumer_overruns (dict[str, int]):
-                                          name -> overrun count for each
-                                          registered consumer.
-                per_consumer_lag (dict[str, int]):
-                                          name -> frames behind write cursor.
-                cb_duration_p50_ms (float):  callback duration histogram.
-                cb_duration_p95_ms (float):  placeholder 0.0 until ACE-02.
-                cb_duration_p99_ms (float):  placeholder 0.0 until ACE-02.
-                cb_duration_max_ms (float):  placeholder 0.0 until ACE-02.
-                device_epoch_log (list[tuple[float,int]]):
-                                          [(perf_counter_ts, epoch), ...].
-                write_cursor (int):       current ring write position.
+        Callback duration histogram is now populated from real capture data.
+        All other fields match the ACE-01 schema (no consumers depend on
+        previously-placeholder values changing).
         """
+        if self._size_warned:
+            print("[ACE] WARNING: resampler produced unexpected frame size — "
+                  "check native_rate / FRAME_SIZE ratio")
+            self._size_warned = False
+
         with self._registry_lock:
             consumers_snapshot = list(self._consumers)
 
         wc = self._ring.write_cursor
 
-        per_overruns = {n: r.overrun_count for n, r in consumers_snapshot}
+        per_overruns = {n: r.overrun_count  for n, r in consumers_snapshot}
         per_lag      = {n: max(0, wc - r._read_cursor) for n, r in consumers_snapshot}
 
-        # Histogram: populated in ACE-02 from self._cb_durations
         if self._cb_durations:
-            import numpy as _np
-            a = _np.array(self._cb_durations) * 1000  # to ms
-            cb_p50 = float(_np.percentile(a, 50))
-            cb_p95 = float(_np.percentile(a, 95))
-            cb_p99 = float(_np.percentile(a, 99))
+            a = np.array(self._cb_durations) * 1000.0   # ms
+            cb_p50 = float(np.percentile(a, 50))
+            cb_p95 = float(np.percentile(a, 95))
+            cb_p99 = float(np.percentile(a, 99))
             cb_max = float(a.max())
         else:
             cb_p50 = cb_p95 = cb_p99 = cb_max = 0.0
 
         return {
             'dropped_frames':         self._dropped_frames,
+            'overflow_count':         self._overflow_count,
             'per_consumer_overruns':  per_overruns,
             'per_consumer_lag':       per_lag,
             'cb_duration_p50_ms':     cb_p50,
@@ -261,9 +280,8 @@ class AudioCaptureEngine:
         }
 
     def __repr__(self) -> str:
-        n = len(self._consumers)
         return (
             f"AudioCaptureEngine(running={self._running}, "
-            f"consumers={n}, "
+            f"consumers={len(self._consumers)}, "
             f"write_cursor={self._ring.write_cursor})"
         )
