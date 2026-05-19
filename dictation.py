@@ -1303,7 +1303,13 @@ class DictationApp:
                 app=self,
             )
 
-            print("[ACE] Engine started — hold-mode + continuous dictation ready")
+            from samsara.audio_engine.wake_consumer import WakeConsumer
+            self._wake_consumer = WakeConsumer(
+                engine=self._ace_engine,
+                app=self,
+            )
+
+            print("[ACE] Engine started — hold / continuous / wake dictation ready")
         except Exception as exc:
             print(f"[ACE] Engine failed to start: {exc}")
             self._ace_engine         = None
@@ -1551,25 +1557,45 @@ class DictationApp:
             }
         }
 
+        _loaded_from_disk = False
         if self.config_path.exists():
             try:
                 with open(self.config_path, 'r') as f:
                     self.config = json.load(f)
-                
-                # Migrate old flat wake word config to new nested structure
-                self._migrate_wake_word_config(default_config)
-                
-                # Fill in any missing top-level keys
-                for key in default_config:
-                    if key not in self.config:
-                        self.config[key] = default_config[key]
-                
-            except:
-                self.config = default_config
+                _loaded_from_disk = True
+            except json.JSONDecodeError as _je:
+                bak_path = self.config_path.with_suffix('.json.bak')
+                print(f"[CONFIG] config.json has invalid JSON: {_je}")
+                if bak_path.exists():
+                    try:
+                        with open(bak_path, 'r') as f:
+                            self.config = json.load(f)
+                        _loaded_from_disk = True
+                        print("[CONFIG] Loaded from config.json.bak (backup)")
+                    except Exception:
+                        print("[CONFIG] Backup also invalid — using defaults")
+                else:
+                    print("[CONFIG] No backup found — using defaults")
+            except Exception:
+                pass  # fall through to defaults below
+
+        if _loaded_from_disk:
+            # Migrate old flat wake word config to new nested structure
+            self._migrate_wake_word_config(default_config)
+
+            # Fill in any missing top-level keys
+            for key in default_config:
+                if key not in self.config:
+                    self.config[key] = default_config[key]
         else:
             self.config = default_config
-            with self._config_lock:
-                self.save_config()
+            # save_config() requires _config_lock to be held; load_config is
+            # always called under _config_lock so calling save_config() directly
+            # (not re-acquiring the lock) is correct here.
+            self.save_config()
+
+        # Record the on-disk state so save_config can do three-way merging.
+        self._config_last_disk_snapshot = copy.deepcopy(self.config)
     
     def _migrate_wake_word_config(self, default_config):
         """Migrate old flat wake word settings to new nested structure"""
@@ -1632,15 +1658,17 @@ class DictationApp:
         bak_path = self.config_path.with_suffix('.json.bak')
 
         try:
-            # 0. Deep-merge with on-disk config so external edits made while
-            #    Samsara was running aren't wiped on save. In-memory values
-            #    win on conflicts; new keys added to disk are preserved.
+            # 0. Three-way merge: (last-known-disk, in-memory, current-disk).
+            #    External edits (keys changed on disk since our last read/write)
+            #    are preserved unless the app also changed the same key at
+            #    runtime (in which case the runtime value wins).
             merged = self.config
             if self.config_path.exists():
                 try:
                     with open(self.config_path, 'r') as f:
                         on_disk = json.load(f)
-                    merged = _deep_merge(on_disk, self.config)
+                    last_snap = getattr(self, '_config_last_disk_snapshot', None) or {}
+                    merged = _three_way_merge(last_snap, self.config, on_disk)
                 except (json.JSONDecodeError, OSError) as e:
                     print(f"[WARN] Could not read on-disk config for merge: {e}")
                     merged = self.config
@@ -1660,6 +1688,10 @@ class DictationApp:
 
             # 3. Atomically promote tmp -> config.json
             os.replace(tmp_path, self.config_path)
+
+            # 4. Sync in-memory config and snapshot to what was written.
+            self.config = merged
+            self._config_last_disk_snapshot = copy.deepcopy(merged)
         except Exception as e:
             # Clean up the temp file if we left one lying around
             try:
@@ -1734,6 +1766,94 @@ class DictationApp:
                     changes['wake_word_config'].get('oww_threshold', 0.2)
                 )
                 self._wake_detector = WakeWordDetector(new_phrase, threshold=oww_threshold)
+
+    def reload_config_from_disk(self) -> int:
+        """Re-read config.json from disk and apply any changes to the running app.
+
+        Returns the number of top-level keys that changed.
+        Logs each changed key.  Fires the same side-effects as update_config.
+        Safe to call from any thread.
+
+        Used by the "reload config" voice command and by _on_config_file_changed.
+        """
+        try:
+            with open(self.config_path, 'r') as f:
+                new_disk = json.load(f)
+        except json.JSONDecodeError as e:
+            print(f"[CONFIG] reload_config_from_disk: invalid JSON — {e}")
+            return 0
+        except OSError as e:
+            print(f"[CONFIG] reload_config_from_disk: could not read file — {e}")
+            return 0
+        return self._apply_disk_config(new_disk)
+
+    def _on_config_file_changed(self, new_disk_config: dict) -> None:
+        """Callback from ConfigWatcher when an external edit is detected."""
+        self._apply_disk_config(new_disk_config)
+
+    def _apply_disk_config(self, new_disk_config: dict) -> int:
+        """Apply a freshly-read on-disk config to the running app.
+
+        Performs a three-way merge (last-snapshot + memory + disk) so that
+        external edits win for keys the app hasn't touched at runtime, while
+        runtime state wins for keys the app actively manages.
+
+        Returns the number of top-level keys that changed.
+        """
+        changed: dict = {}
+        with self._config_lock:
+            last_snap = self._config_last_disk_snapshot or {}
+            merged = _three_way_merge(last_snap, self.config, new_disk_config)
+
+            # Compute diff for logging and side-effects
+            all_keys = set(self.config) | set(merged)
+            for k in all_keys:
+                old_v = self.config.get(k, _MISSING)
+                new_v = merged.get(k, _MISSING)
+                if old_v != new_v:
+                    changed[k] = (old_v, new_v)
+
+            self.config = merged
+            self._config_last_disk_snapshot = copy.deepcopy(new_disk_config)
+
+        for key, (old_v, new_v) in changed.items():
+            print(f"[CONFIG] External edit detected: {key} changed "
+                  f"{old_v!r} -> {new_v!r}")
+
+        # Fire the same side-effects as update_config
+        if 'mode' in changed:
+            try:
+                self.apply_mode(changed['mode'][1])
+            except Exception as e:
+                print(f"[CONFIG] apply_mode error: {e}")
+        if 'wake_word_enabled' in changed:
+            try:
+                self.set_wake_word_enabled(changed['wake_word_enabled'][1])
+            except Exception as e:
+                print(f"[CONFIG] set_wake_word_enabled error: {e}")
+        if 'microphone' in changed:
+            try:
+                self.capture_rate = self._detect_capture_rate(changed['microphone'][1])
+            except Exception as e:
+                print(f"[CONFIG] capture_rate update error: {e}")
+        if 'wake_word_config' in changed:
+            try:
+                new_ww = changed['wake_word_config'][1]
+                if isinstance(new_ww, dict):
+                    new_phrase = new_ww.get('phrase', '')
+                    old_phrase = (
+                        self._wake_detector._wake_phrase if self._wake_detector else ''
+                    )
+                    if new_phrase and new_phrase.lower() != old_phrase:
+                        self._oww_wake_detected = False
+                        oww_threshold = float(new_ww.get('oww_threshold', 0.2))
+                        self._wake_detector = WakeWordDetector(
+                            new_phrase, threshold=oww_threshold
+                        )
+            except Exception as e:
+                print(f"[CONFIG] wake_word_config update error: {e}")
+
+        return len(changed)
 
     def set_app_state(self, **kwargs):
         """Update application state flags with transition logging.
@@ -3193,79 +3313,79 @@ class DictationApp:
             self.start_wake_word_mode()
     
     def start_wake_word_mode(self):
-        """Start wake word listening - always listening for wake word"""
+        """Start wake word listening — always listening for wake word."""
         if not self.model_loaded:
             if self.loading_model:
                 print("Model still loading, please wait...")
             return
 
-        # Play start sound using winsound on Windows to avoid InputStream conflict
         self.play_sound("start", use_winsound=True)
-        time.sleep(0.15)  # Brief pause for sound to start
+        time.sleep(0.15)
         phrase = self.config.get('wake_word_config', {}).get('phrase', 'hey samsara')
         print(f"[LISTEN] Wake word mode ACTIVE - say '{phrase}' to give commands")
 
-        with self.buffer_lock:
-            self.speech_buffer = []
-        self.silence_start = None
-        self.is_speaking = False
+        self.silence_start       = None
+        self.is_speaking         = False
         self.wake_word_triggered = False
 
-        stream = self._open_stream_with_timeout(
-            samplerate=self.capture_rate,
-            channels=1,
-            dtype=np.float32,
-            callback=self.wake_word_audio_callback,
-            device=self.config['microphone'],
-            blocksize=int(self.capture_rate * 0.1)  # 100ms blocks
-        )
-        if stream is None:
-            print("[ERROR] Could not open wake word stream — audio subsystem busy. Try again.")
-            self.play_sound("error")
-            return
-        
-        self.wake_stream = stream
-        self.wake_stream.start()
+        if self._wake_consumer is not None:
+            # ACE path: WakeConsumer polls the ring — no separate PortAudio stream.
+            # Engine and wake consumer share the same device, no stream conflict.
+            with self.buffer_lock:
+                self.speech_buffer = []
+            self._wake_consumer.start()
+        else:
+            # Legacy fallback (ACE engine unavailable)
+            with self.buffer_lock:
+                self.speech_buffer = []
+            stream = self._open_stream_with_timeout(
+                samplerate=self.capture_rate,
+                channels=1,
+                dtype=np.float32,
+                callback=self.wake_word_audio_callback,
+                device=self.config['microphone'],
+                blocksize=int(self.capture_rate * 0.1),
+            )
+            if stream is None:
+                print("[ERROR] Could not open wake word stream — audio subsystem busy.")
+                self.play_sound("error")
+                return
+            self.wake_stream = stream
+            self.wake_stream.start()
+
         self.set_app_state(wake_word_active=True)
-
-        # Update tray icon -- start chase animation
         self._request_icon_chase('wake_word')
-
-        # Update listening indicator
         if hasattr(self, 'listening_indicator'):
             self._schedule_ui(self.listening_indicator.set_listening, True)
 
     def stop_wake_word_mode(self):
-        """Stop wake word listening mode"""
+        """Stop wake word listening mode."""
         self.set_app_state(wake_word_active=False)
         self.wake_word_triggered = False
-        
-        # Reset dictation mode
         self._reset_wake_dictation()
-        
-        if self.wake_stream:
+
+        if self._wake_consumer is not None and self._wake_consumer._running:
+            # ACE path: stop consumer, transcribe remaining frames if triggered
+            remaining = self._wake_consumer.stop()
+            if remaining and self.wake_word_triggered:
+                self.process_wake_word_buffer(remaining, src_rate=16000)
+        elif self.wake_stream:
+            # Legacy fallback
             self.wake_stream.stop()
             self.wake_stream.close()
             self.wake_stream = None
+            with self.buffer_lock:
+                if self.speech_buffer and self.wake_word_triggered:
+                    buffer_copy = self.speech_buffer.copy()
+                else:
+                    buffer_copy = None
+                self.speech_buffer = []
+            if buffer_copy:
+                self.process_wake_word_buffer(buffer_copy)
 
-        # Transcribe any remaining audio if wake word was triggered
-        with self.buffer_lock:
-            if self.speech_buffer and self.wake_word_triggered:
-                buffer_copy = self.speech_buffer.copy()
-            else:
-                buffer_copy = None
-            self.speech_buffer = []
-
-        if buffer_copy:
-            self.process_wake_word_buffer(buffer_copy)
-        
         print("[OFF] Wake word mode STOPPED")
         self.play_sound("stop")
-
-        # Update tray icon — stop chase animation
         self._release_icon_chase('wake_word')
-
-        # Update listening indicator
         if hasattr(self, 'listening_indicator'):
             self._schedule_ui(self.listening_indicator.set_listening, False)
 
@@ -3316,17 +3436,18 @@ class DictationApp:
         else:
             print(f"[OWW] No pre-filter for '{wake_phrase}' — using Whisper detection")
 
-    def _vad_is_speech(self, chunk_float32):
+    def _vad_is_speech(self, chunk_float32, src_rate=None):
         """Return True if the chunk contains human speech.
 
-        chunk_float32 is the already-flattened mono capture-rate chunk from the
-        audio callback. Caller guarantees _vad_available; we resample to 16kHz,
-        then feed 512-sample windows to Silero (its required input size at 16kHz).
-        Returns True if ANY window contains speech.
+        chunk_float32: flattened mono audio at src_rate.
+        src_rate: sample rate of chunk_float32 (default: self.capture_rate).
+                  Pass SAMPLE_RATE (16kHz) when chunk comes from the ACE ring.
         """
         if not self._vad_available or self._vad_model is None:
             return False
-        chunk_16k = resample_audio(chunk_float32, self.capture_rate, 16000)
+        if src_rate is None:
+            src_rate = self.capture_rate
+        chunk_16k = resample_audio(chunk_float32, src_rate, 16000)
         # Guarantee 1D — sounddevice returns (N, 1) for mono in some configs
         if chunk_16k.ndim > 1:
             chunk_16k = chunk_16k.flatten()
@@ -3680,12 +3801,18 @@ class DictationApp:
             # Never let a debug UI bug break the main pipeline
             print(f"[WARN] wake trace callback failed: {e}")
 
-    def process_wake_word_buffer(self, buffer):
-        """Process audio - check for wake word, commands, or dictation content"""
+    def process_wake_word_buffer(self, buffer, src_rate=None):
+        """Process audio — check for wake word, commands, or dictation content.
+
+        src_rate: sample rate of audio in buffer (default: self.capture_rate).
+                  Pass SAMPLE_RATE (16kHz) when buffer comes from the ACE ring.
+        """
+        if src_rate is None:
+            src_rate = self.capture_rate
         _set_in_progress = False
         try:
             audio = np.concatenate(buffer)
-            audio = resample_audio(audio, self.capture_rate, self.model_rate)
+            audio = resample_audio(audio, src_rate, self.model_rate)
             audio_duration = len(audio) / self.model_rate
 
             # DEBUG: dump raw audio before Whisper for onset-clipping diagnosis.
@@ -4275,15 +4402,13 @@ class DictationApp:
         ).start()
         return True
 
-    def _process_wake_word_buffer_tracked(self, buffer):
+    def _process_wake_word_buffer_tracked(self, buffer, src_rate=None):
         """Wrapper around process_wake_word_buffer that decrements the
         pending-transcriptions counter on completion (in finally), then
-        triggers a finalize check. This is what every dispatch site should
-        call instead of process_wake_word_buffer directly when in
-        long_dictation mode.
+        triggers a finalize check.
         """
         try:
-            self.process_wake_word_buffer(buffer)
+            self.process_wake_word_buffer(buffer, src_rate=src_rate)
         finally:
             with self._dictation_finalize_lock:
                 self._pending_transcriptions = max(0, self._pending_transcriptions - 1)
@@ -6114,6 +6239,13 @@ class DictationApp:
 
         # Signal background threads (e.g. stream-health monitor) to stop
         self._running = False
+
+        # Stop config file watcher
+        try:
+            if self._config_watcher is not None:
+                self._config_watcher.stop()
+        except Exception:
+            pass
 
         # Stop icon chase animation timer
         try:

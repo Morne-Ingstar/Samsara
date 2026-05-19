@@ -26,6 +26,7 @@ from .engine import AudioCaptureEngine
 from .debug_recorder import DebugRecorder
 from .dictation_consumer import DictationSessionConsumer
 from .continuous_consumer import ContinuousConsumer
+from .wake_consumer import WakeConsumer
 
 __all__ = [
     # Data structure
@@ -36,6 +37,7 @@ __all__ = [
     'DebugRecorder',
     'DictationSessionConsumer',
     'ContinuousConsumer',
+    'WakeConsumer',
     # Sentinels
     'EMPTY',
     'OVERRUN',
