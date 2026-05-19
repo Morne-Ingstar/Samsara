@@ -448,6 +448,19 @@ class StreamingWorker(threading.Thread):
 
     def _snapshot_audio(self):
         app = self._session.app
+
+        # ACE-04B: use the DictationSessionConsumer's streaming accumulator
+        # when available (avoids audio_data + audio_data_lock entirely).
+        consumer = getattr(app, '_dictation_consumer', None)
+        if consumer is not None and hasattr(consumer, 'snapshot_streaming_audio'):
+            audio = consumer.snapshot_streaming_audio()
+            if audio is None or audio.size == 0:
+                return None
+            if audio.size / app.model_rate < MIN_PARTIAL_AUDIO_S:
+                return None
+            return audio  # already at model_rate (16kHz) — no resample needed
+
+        # Legacy fallback (ACE consumer unavailable)
         with app.audio_data_lock:
             chunks = list(app.audio_data)
         if not chunks:

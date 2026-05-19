@@ -1,3 +1,4 @@
+import copy
 import os
 import sys
 import math
@@ -700,6 +701,55 @@ def _deep_merge(base, overlay):
             result[k] = v
     return result
 
+
+_MISSING = object()
+
+
+def _three_way_merge(base, memory, disk):
+    """Three-way config merge.
+
+    base   = last known on-disk state (snapshot taken when we last read/wrote)
+    memory = current in-memory config
+    disk   = current on-disk file
+
+    Rules per key:
+    - Only disk changed  -> use disk  (external edit; honour it)
+    - Only memory changed -> use memory (runtime state; keep it)
+    - Both changed        -> memory wins (app is authoritative for its own writes)
+    - Neither changed     -> use memory (same as base)
+    - New key in disk only -> include from disk
+    - New key in memory only -> include from memory
+
+    Nested dicts apply the same logic recursively.
+    """
+    if not (isinstance(base, dict) and isinstance(memory, dict) and isinstance(disk, dict)):
+        return memory
+    all_keys = set(base) | set(memory) | set(disk)
+    result = {}
+    for key in all_keys:
+        b = base.get(key, _MISSING)
+        m = memory.get(key, _MISSING)
+        d = disk.get(key, _MISSING)
+
+        if m is _MISSING and d is _MISSING:
+            continue  # key existed only in base (deleted from both) — drop it
+        if d is _MISSING:
+            result[key] = m  # only in memory
+        elif m is _MISSING:
+            result[key] = d  # only on disk
+        elif b is _MISSING:
+            result[key] = m  # new in both: memory wins
+        elif isinstance(b, dict) and isinstance(m, dict) and isinstance(d, dict):
+            result[key] = _three_way_merge(b, m, d)
+        else:
+            mem_changed = m != b
+            disk_changed = d != b
+            if disk_changed and not mem_changed:
+                result[key] = d   # only disk changed -> honour external edit
+            else:
+                result[key] = m   # memory changed (or neither) -> keep runtime value
+    return result
+
 class DictationApp:
     def __init__(self, splash=None):
         self.splash = splash
@@ -709,6 +759,11 @@ class DictationApp:
         # and before calling save_config() directly.
         # Never hold while doing audio work, VAD, AEC, model loading, or UI rendering.
         self._config_lock = threading.Lock()
+        # Snapshot of config as last read from / written to disk.
+        # Used by save_config for three-way merging and by reload_config_from_disk.
+        self._config_last_disk_snapshot: dict = {}
+        # File-system watcher; started after load_config completes.
+        self._config_watcher = None
 
         # Check if first-run wizard is needed.
         # Triggers when: config missing, first_run_complete absent/false,
@@ -1155,7 +1210,8 @@ class DictationApp:
         self._dictation_consumer   = None
         self._continuous_consumer  = None
         self._wake_consumer        = None    # ACE-04C
-        self._ace_dictation_active = False   # True while hold-mode uses ACE consumer path
+        self._ace_dictation_active  = False   # True while hold-mode uses ACE consumer path
+        self._ace_streaming_active  = False   # True while CapsLock streaming uses ACE consumer
         self._start_ace_engine()
         if self.config.get('ace_debug_capture', False) and self._ace_engine is not None:
             self._start_ace_debug_rec()
@@ -1181,6 +1237,18 @@ class DictationApp:
         # is still warming up. The model-load worker now closes the splash on
         # completion via _schedule_ui(self._on_model_loaded_close_splash).
         self.update_splash("Starting...")
+
+        # Start config file watcher — detects external edits and reloads.
+        try:
+            from samsara.config_watch import ConfigWatcher
+            self._config_watcher = ConfigWatcher(
+                self.config_path,
+                self._on_config_file_changed,
+            )
+            self._config_watcher.start()
+            print("[CONFIG] File watcher started")
+        except Exception as _cw_err:
+            print(f"[CONFIG] File watcher unavailable: {_cw_err}")
 
         self.create_tray_icon()
 
@@ -5109,29 +5177,35 @@ class DictationApp:
             self._dictation_consumer.activate()
             self._ace_dictation_active = True
         else:
-            # Legacy streaming path (CapsLock / streaming_mode=true) — ACE-04 will migrate.
-            # Opens a dedicated PortAudio stream with audio_callback.
+            # CapsLock streaming path (ACE-04B).
             self._ace_dictation_active = False
-            self._stop_prebuffer_stream()
-            with self.audio_data_lock:
-                self.audio_data.clear()
-            stream = self._open_stream_with_timeout(
-                samplerate=self.capture_rate,
-                channels=1,
-                dtype=np.float32,
-                callback=self.audio_callback,
-                device=self.config['microphone']
-            )
-            if stream is None:
-                print("[ERROR] Could not open streaming session stream.")
-                self._hotkey_recording = False
-                self.play_sound("error")
-                if hasattr(self, 'listening_indicator'):
-                    self._schedule_ui(self.listening_indicator.flash_error)
-                self._start_prebuffer_stream()
-                return
-            self.stream = stream
-            self.stream.start()
+            if self._dictation_consumer is not None:
+                # ACE path: streaming accumulator in consumer, no separate stream.
+                self._dictation_consumer.activate_streaming()
+                self._ace_streaming_active = True
+            else:
+                # Legacy fallback: open PortAudio stream with audio_callback.
+                self._ace_streaming_active = False
+                self._stop_prebuffer_stream()
+                with self.audio_data_lock:
+                    self.audio_data.clear()
+                stream = self._open_stream_with_timeout(
+                    samplerate=self.capture_rate,
+                    channels=1,
+                    dtype=np.float32,
+                    callback=self.audio_callback,
+                    device=self.config['microphone']
+                )
+                if stream is None:
+                    print("[ERROR] Could not open streaming session stream.")
+                    self._hotkey_recording = False
+                    self.play_sound("error")
+                    if hasattr(self, 'listening_indicator'):
+                        self._schedule_ui(self.listening_indicator.flash_error)
+                    self._start_prebuffer_stream()
+                    return
+                self.stream = stream
+                self.stream.start()
 
         self.set_app_state(recording=True)
 
@@ -5191,13 +5265,19 @@ class DictationApp:
                     self._schedule_ui(self.listening_indicator.flash_error)
                 return
         else:
-            # Legacy streaming path: close the PortAudio stream, finalize session.
-            if hasattr(self, 'stream') and self.stream is not None:
-                self.stream.stop()
-                self.stream.close()
-                self.stream = None
-            # Restart prebuffer stream for the legacy path
-            self._start_prebuffer_stream()
+            # Streaming path (CapsLock): close stream or stop consumer accumulator.
+            if getattr(self, '_ace_streaming_active', False):
+                # ACE-04B: consumer stop_streaming() called inside StreamingSession.
+                # The session finalize() will call _snapshot_audio() which uses
+                # consumer.snapshot_streaming_audio() — no stream to close here.
+                self._ace_streaming_active = False
+            else:
+                # Legacy fallback: close the PortAudio stream.
+                if hasattr(self, 'stream') and self.stream is not None:
+                    self.stream.stop()
+                    self.stream.close()
+                    self.stream = None
+                self._start_prebuffer_stream()
 
             # Streaming session (CapsLock path): hand off to it and return.
             sess = getattr(self, '_streaming_session', None)
@@ -5207,6 +5287,13 @@ class DictationApp:
                     sess.finalize()
                 except Exception as e:
                     print(f"[STREAM] finalize failed: {e}")
+                # Stop streaming accumulator after finalize drains it
+                if self._dictation_consumer is not None and hasattr(
+                        self._dictation_consumer, 'stop_streaming'):
+                    try:
+                        self._dictation_consumer.stop_streaming()
+                    except Exception:
+                        pass
                 return
 
             with self.audio_data_lock:
