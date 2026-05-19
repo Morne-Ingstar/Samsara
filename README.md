@@ -281,7 +281,7 @@ python -m pytest tests/ -v
 - [x] 410+ voice commands with 28-plugin system
 - [x] Voice AI / Ava — local Ollama + optional cloud (DeepSeek/OpenAI/Anthropic)
 - [x] Text-to-Speech with EdgeTTS / Windows Natural voices and smart audio ducking
-- [x] Mouse 4 / keyboard command mode (hold-to-talk walkie-talkie)
+- [x] Keyboard command mode (hold-to-talk walkie-talkie)
 - [x] Show Numbers overlay for hands-free clicking
 - [x] Window manager v2 — letter-based targeting, move between monitors, saved layouts
 - [x] Streaming dictation with live overlay and direct-paste
