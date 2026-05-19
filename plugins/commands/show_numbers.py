@@ -567,6 +567,8 @@ def handle_show_numbers(app, remainder):
         print("[OVERLAY] No clickable elements found in foreground window")
         return True
     _draw_overlay(app, elements)
+    if hasattr(app, 'hints'):
+        app.hints.increment('show_numbers_used')
     return True
 
 

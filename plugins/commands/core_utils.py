@@ -10,6 +10,26 @@ import time
 
 from samsara.plugin_commands import command
 
+# ---------------------------------------------------------------------------
+# Per-app suggestion map for "what can I say"
+# ---------------------------------------------------------------------------
+
+_APP_SUGGESTIONS = {
+    'chrome.exe':   "Try 'new tab', 'close tab', 'find tab', 'show numbers', 'scroll down', 'go to address bar'.",
+    'msedge.exe':   "Try 'new tab', 'close tab', 'find tab', 'show numbers', 'scroll down', 'go to address bar'.",
+    'firefox.exe':  "Try 'new tab', 'close tab', 'find tab', 'show numbers', 'scroll down', 'go to address bar'.",
+    'code.exe':     "Try 'save', 'undo', 'select all', 'show numbers', 'scroll down'.",
+    'discord.exe':  "Try 'scroll down', 'show numbers', 'mute'.",
+    'slack.exe':    "Try 'scroll down', 'show numbers'.",
+    'notepad.exe':  "Try 'select all', 'undo', 'save'.",
+    'explorer.exe': "Try 'show numbers', 'scroll down'.",
+}
+
+_FALLBACK_SUGGESTION = (
+    "Try 'show numbers' to click by voice, 'scroll down', 'undo', 'select all'."
+    " Say 'open cheat sheet' for the full list."
+)
+
 
 def speak_if_available(app, text):
     if hasattr(app, 'audio_coordinator') and app.audio_coordinator:
@@ -90,3 +110,37 @@ def reload_config(app, remainder="", **kwargs):
     except Exception as e:
         print(f"[CONFIG] reload_config command error: {e}")
         speak_if_available(app, "Config reload failed.")
+
+
+@command(
+    "what can I say",
+    aliases=["help", "what are my commands", "what commands do I have"],
+    pack="core",
+)
+def what_can_i_say(app, remainder="", **kwargs):
+    """Speak the most relevant commands for the current foreground app."""
+    try:
+        from samsara.handlers import _get_foreground_exe_lower
+        exe = _get_foreground_exe_lower()
+        msg = _APP_SUGGESTIONS.get(exe or '', _FALLBACK_SUGGESTION)
+    except Exception:
+        msg = _FALLBACK_SUGGESTION
+    speak_if_available(app, msg)
+    return True
+
+
+@command(
+    "reset hints",
+    aliases=["replay hints", "show hints again"],
+    pack="core",
+    ai_visible=False,
+)
+def reset_hints(app, remainder="", **kwargs):
+    """Clear hint history so all contextual hints fire again."""
+    hints = getattr(app, 'hints', None)
+    if hints is None:
+        speak_if_available(app, "Hints not available.")
+        return True
+    hints.reset()
+    speak_if_available(app, "Hints reset.")
+    return True
