@@ -53,7 +53,6 @@ WM_CLOSE          = 0x0010
 # ---------------------------------------------------------------------------
 
 _lock          = threading.Lock()
-_overlays      = []     # list of tk.Toplevel (Tkinter fallback)
 _mapping       = {}     # {"A": (hwnd, title, is_minimized), ...}
 _active        = False  # overlays currently showing
 _dismiss_timer = None
@@ -148,21 +147,13 @@ _SKIP_TITLES = frozenset({
 })
 
 def _own_hwnd(app) -> set:
-    """Return hwnds of Samsara's own Tkinter windows (to exclude from listing)."""
-    hwnds = set()
-    if app is None:
-        return hwnds
-    try:
-        root = app.root
-        hwnds.add(root.winfo_id())
-        for child in root.winfo_children():
-            try:
-                hwnds.add(child.winfo_id())
-            except Exception:
-                pass
-    except Exception:
-        pass
-    return hwnds
+    """Return hwnds to exclude from window listing.
+
+    Samsara's Qt windows are already filtered by title prefix in
+    _get_all_windows ('if title.startswith("Samsara"): return True'),
+    so no hwnd exclusion is needed here.
+    """
+    return set()
 
 
 def _get_all_windows(exclude_hwnds: set = None) -> list:
@@ -247,58 +238,6 @@ def _set_click_through(win_id: int) -> None:
             win_id, GWL_EXSTYLE, style | WS_EX_LAYERED | WS_EX_TRANSPARENT)
     except Exception as e:
         print(f"[WINSW] click-through failed: {e}")
-
-
-def _create_overlays(app, mapping: dict) -> None:
-    """Create one Toplevel label per visible window. Main-thread only."""
-    global _overlays
-    _destroy_overlays_sync()
-
-    try:
-        import tkinter as tk
-    except ImportError:
-        return
-
-    for letter, (hwnd, title, is_min) in sorted(mapping.items()):
-        if is_min:
-            continue
-        try:
-            rect = wintypes.RECT()
-            user32.GetWindowRect(hwnd, ctypes.byref(rect))
-
-            pill_w, pill_h = 54, 54
-            cx = (rect.left + rect.right) // 2 - pill_w // 2
-            cy = rect.top + 10
-
-            win = tk.Toplevel(app.root)
-            win.overrideredirect(True)
-            win.attributes('-topmost', True)
-            win.attributes('-alpha', 0.88)
-            win.configure(bg='#1a1a1a')
-            win.geometry(f"{pill_w}x{pill_h}+{cx}+{cy}")
-
-            lbl = tk.Label(win, text=letter,
-                           font=('Segoe UI', 26, 'bold'),
-                           fg='white', bg='#1a1a1a')
-            lbl.place(relx=0.5, rely=0.5, anchor='center')
-
-            win.update_idletasks()
-            _set_click_through(win.winfo_id())
-
-            _overlays.append(win)
-        except Exception as e:
-            print(f"[WINSW] overlay for {letter} ({title[:30]}): {e}")
-
-
-def _destroy_overlays_sync() -> None:
-    """Destroy all overlays. Main-thread only."""
-    global _overlays
-    for win in list(_overlays):
-        try:
-            win.destroy()
-        except Exception:
-            pass
-    _overlays.clear()
 
 
 def _make_overlay_manager_class():
@@ -412,9 +351,8 @@ def _get_manager():
 
 
 def _dismiss_all(clear_mapping: bool = True) -> None:
-    """Dismiss overlays, optionally clear mapping. Main-thread only."""
+    """Dismiss overlays, optionally clear mapping. Thread-safe."""
     global _active, _mapping
-    _destroy_overlays_sync()
     mgr = _manager
     if mgr is not None:
         mgr.request_hide()
@@ -448,7 +386,7 @@ def _reset_timer() -> None:
 
     def _fire():
         try:
-            app.root.after(0, lambda: _dismiss_all(clear_mapping=True))
+            _dismiss_all(clear_mapping=True)
             print("[WINSW] Auto-dismissed after 30s inactivity")
         except Exception:
             pass
@@ -685,8 +623,6 @@ def handle_show_windows(app, remainder):
     mgr = _get_manager()
     if mgr is not None:
         mgr.request_show(new_mapping)
-    else:
-        app.root.after(0, lambda: _create_overlays(app, new_mapping))
     _reset_timer()
 
     visible_count = sum(1 for _, _, m in new_mapping.values() if not m)
@@ -716,7 +652,7 @@ def handle_window_switch(app, remainder):
 
     hwnd, title, _ = entry
     _force_focus(hwnd)
-    app.root.after(0, lambda: _dismiss_all(clear_mapping=False))
+    _dismiss_all(clear_mapping=False)
     _cancel_timer()
     print(f"[WINSW] Switched to: {title}")
     return True
@@ -986,7 +922,7 @@ def handle_window_tile(app, remainder):
 def handle_hide_windows(app, remainder):
     global _app_ref
     _app_ref = app
-    app.root.after(0, lambda: _dismiss_all(clear_mapping=True))
+    _dismiss_all(clear_mapping=True)
     print("[WINSW] Dismissed window labels")
     return True
 

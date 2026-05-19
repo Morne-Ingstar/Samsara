@@ -87,39 +87,53 @@ def _get_active_window_bounds():
 
 def _show_recording_indicator():
     """Show a persistent always-on-top red REC indicator.
-    
+
     Privacy safety: user always knows recording is active.
-    Runs on a daemon thread with its own Tk root.
+    Called from a daemon thread; schedules widget creation on the Qt
+    main thread via QTimer.singleShot so Qt is not touched off-thread.
     """
-    global _indicator_window
     try:
-        import tkinter as tk
-        
-        indicator = tk.Tk()
-        indicator.overrideredirect(True)
-        indicator.attributes('-topmost', True)
-        indicator.attributes('-alpha', 0.85)
-        indicator.geometry('80x30+10+10')
-        indicator.configure(bg='#cc0000')
-        
-        label = tk.Label(indicator, text='\u25CF REC', fg='white',
-                         bg='#cc0000', font=('Arial', 12, 'bold'))
-        label.pack(expand=True)
-        
-        _indicator_window = indicator
-        
-        def _pulse():
-            if not _recording:
-                indicator.destroy()
+        from PySide6.QtCore import QTimer
+        from PySide6.QtWidgets import QApplication, QLabel
+        from PySide6.QtCore import Qt
+        from PySide6.QtGui import QFont
+
+        def _create():
+            global _indicator_window
+            qt_app = QApplication.instance()
+            if qt_app is None:
                 return
-            # Pulse opacity
-            current = indicator.attributes('-alpha')
-            new_alpha = 0.5 if current > 0.7 else 0.85
-            indicator.attributes('-alpha', new_alpha)
-            indicator.after(500, _pulse)
-        
-        indicator.after(500, _pulse)
-        indicator.mainloop()
+
+            indicator = QLabel('\u25CF REC')
+            indicator.setWindowFlags(
+                Qt.FramelessWindowHint | Qt.WindowStaysOnTopHint | Qt.Tool
+            )
+            indicator.setStyleSheet(
+                "background-color: #cc0000; color: white;"
+                " padding: 4px 10px; border-radius: 4px;"
+            )
+            indicator.setFont(QFont('Arial', 12, QFont.Bold))
+            indicator.adjustSize()
+            indicator.move(10, 10)
+            indicator.setWindowOpacity(0.85)
+            indicator.show()
+            _indicator_window = indicator
+
+            _high = [True]
+
+            def _pulse():
+                if not _recording:
+                    indicator.deleteLater()
+                    global _indicator_window
+                    _indicator_window = None
+                    return
+                indicator.setWindowOpacity(0.5 if _high[0] else 0.85)
+                _high[0] = not _high[0]
+                QTimer.singleShot(500, _pulse)
+
+            QTimer.singleShot(500, _pulse)
+
+        QTimer.singleShot(0, _create)
     except Exception as e:
         print(f"[GIF] Indicator error: {e}")
 
