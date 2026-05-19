@@ -218,8 +218,7 @@ from samsara.phonetic_wash import apply_phonetic_wash
 from samsara.command_stats import increment_command_count
 from samsara import ava_corrections as _ava_corrections
 from samsara import plugin_commands as _plugin_commands
-from samsara.command_registry import CommandMatcher
-from samsara.handlers import CommandContext, get_handler
+from samsara.commands import CommandExecutor
 from samsara.constants import (
     MODEL_SAMPLE_RATE, DEFAULT_CAPTURE_RATE,
     DEFAULT_SPEECH_THRESHOLD, DEFAULT_MIN_SPEECH_DURATION, DEFAULT_SILENCE_TIMEOUT,
@@ -435,209 +434,6 @@ logger.info("=" * 50)
 logger.info(f"Samsara starting at {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}")
 logger.info("=" * 50)
 
-
-
-# ============================================================================
-
-
-class CommandExecutor:
-    """Executes voice commands - hotkeys, launches, key holds, etc."""
-    
-    def __init__(self, commands_path, app=None, plugins_dir=None):
-        self.commands_path = commands_path
-        self.app = app
-        self.commands = {}
-        self.held_keys = {}  # Track currently held keys
-        self.keyboard_controller = KeyboardController()
-        self.mouse_controller = MouseController()
-        self.load_commands()
-
-        # Plugin commands: auto-load *.py files from plugins/commands/.
-        # Missing directory is not fatal -- app runs fine without plugins.
-        plugins_dir = Path(__file__).parent / "plugins" / "commands"
-        try:
-            _plugin_commands.load_plugins(plugins_dir)
-        except Exception as e:
-            print(f"[PLUGINS] Failed to load plugins: {e}")
-        unique = len({id(entry) for entry in _plugin_commands._REGISTRY.values()})
-        print(f"[PLUGINS] Loaded {unique} plugin commands")
-
-        # Unified matcher: same class as samsara/commands.py so runtime and
-        # tests go through identical longest-match logic.
-        self._matcher = CommandMatcher()
-        self._matcher.load_builtins(self.commands)
-        self._matcher.load_plugins(_plugin_commands._REGISTRY)
-        self._matcher.freeze()
-        self._matcher.detect_collisions()
-        _plugin_commands.set_shared_matcher(self._matcher)
-        
-        # Key mapping for pynput
-        self.key_map = {
-            'ctrl': Key.ctrl,
-            'shift': Key.shift,
-            'alt': Key.alt,
-            'win': Key.cmd,
-            'enter': Key.enter,
-            'esc': Key.esc,
-            'space': Key.space,
-            'tab': Key.tab,
-            'backspace': Key.backspace,
-            'delete': Key.delete,
-            'home': Key.home,
-            'end': Key.end,
-            'pageup': Key.page_up,
-            'pagedown': Key.page_down,
-            'up': Key.up,
-            'down': Key.down,
-            'left': Key.left,
-            'right': Key.right,
-            'f1': Key.f1, 'f2': Key.f2, 'f3': Key.f3, 'f4': Key.f4,
-            'f5': Key.f5, 'f6': Key.f6, 'f7': Key.f7, 'f8': Key.f8,
-            'f9': Key.f9, 'f10': Key.f10, 'f11': Key.f11, 'f12': Key.f12,
-        }
-    
-    def load_commands(self):
-        """Load commands from JSON file"""
-        try:
-            with open(self.commands_path, 'r') as f:
-                data = json.load(f)
-                self.commands = data.get('commands', {})
-            print(f"[OK] Loaded {len(self.commands)} voice commands")
-        except Exception as e:
-            print(f"[WARN] Could not load commands: {e}")
-            self.commands = {}
-    
-    def get_key(self, key_str):
-        """Convert key string to pynput Key object"""
-        key_lower = key_str.lower()
-        if key_lower in self.key_map:
-            return self.key_map[key_lower]
-        # For single character keys
-        return key_str.lower() if len(key_str) == 1 else key_str
-    
-    def _build_context(self, app_instance=None):
-        """Build a CommandContext for the handler registry.
-
-        app_instance is optional because the in-app executor's execute_command
-        is called from two places: directly (no app hook needed for most
-        types) and through process_text (which has an app_instance to pass
-        down for method-type commands).
-        """
-        return CommandContext(
-            keyboard_controller=self.keyboard_controller,
-            mouse_controller=self.mouse_controller,
-            held_keys=self.held_keys,
-            key_map=self.key_map,
-            app=app_instance,
-        )
-
-    def execute_command(self, command_name, app_instance=None):
-        """Execute a voice command by name via the handler registry."""
-        if command_name not in self.commands:
-            return False
-
-        cmd = self.commands[command_name]
-        cmd_type = cmd.get('type')
-        handler = get_handler(cmd_type)
-        if handler is None:
-            print(f"[WARN] Unknown command type: {cmd_type}")
-            return False
-
-        try:
-            success = handler.execute(cmd, self._build_context(app_instance))
-            if success:
-                print(f"[OK] Executed: {command_name}")
-            return success
-        except Exception as e:
-            print(f"[ERROR] Command execution error: {e}")
-            return False
-    
-    def find_command(self, text):
-        """Return the canonical phrase of the best matching command, or None."""
-        entry, _remainder = self._matcher.match(text)
-        return entry.phrase if entry is not None else None
-    
-    def process_text(self, text, app_instance=None, force_commands=False):
-        """Process transcribed text - check for command or return text for dictation
-        
-        Args:
-            text: Transcribed text to process
-            app_instance: Reference to the main app for state access
-            force_commands: If True, always check commands (bypasses command_mode_enabled check).
-                           Used by wake word mode where commands should always work.
-        """
-        if not text:
-            return None, False
-        
-        text_lower = text.lower().strip()
-        
-        # ALWAYS check for command mode toggle commands first
-        if "command mode on" in text_lower or "command mode enable" in text_lower or "enable command mode" in text_lower:
-            if app_instance:
-                app_instance.command_mode_enabled = True
-                with app_instance._config_lock:
-                    app_instance.config['command_mode_enabled'] = True
-                    app_instance.save_config()
-                print("[OK] Command mode ENABLED")
-            return "command_mode_on", True
-        
-        if "command mode off" in text_lower or "command mode disable" in text_lower or "disable command mode" in text_lower:
-            if app_instance:
-                app_instance.command_mode_enabled = False
-                with app_instance._config_lock:
-                    app_instance.config['command_mode_enabled'] = False
-                    app_instance.save_config()
-                print("[OFF] Command mode DISABLED")
-            return "command_mode_off", True
-
-        # Check for reminder commands (ALWAYS works, regardless of command mode)
-        if app_instance and hasattr(app_instance, 'notification_manager'):
-            reminder_result = app_instance.notification_manager.parse_remind_command(text)
-            if reminder_result:
-                minutes, task = reminder_result
-                message = task if task else "Time's up!"
-                app_instance.notification_manager.add_quick_reminder(minutes, message)
-                print(f"[OK] Reminder set for {minutes} minutes: {message}")
-                app_instance.play_sound("success")
-                return f"reminder_{minutes}min", True
-
-        # Check if command mode is enabled (skip if force_commands is True, e.g., wake word mode)
-        if not force_commands:
-            if app_instance and not app_instance.command_mode_enabled:
-                return text, False
-
-        # Wash known mis-transcriptions for matching only. Dictation fallthrough
-        # still uses the ORIGINAL text so we don't silently rewrite the user's
-        # words when nothing matched (e.g. the sentence "it was a fine day"
-        # should not become "it was a find day" in typed output).
-        match_text = apply_phonetic_wash(text)
-        entry, remainder = self._matcher.match(match_text)
-        if entry is None:
-            return text, False
-
-        # Command mode debounce: suppress rapid re-execution of media/destructive cmds
-        in_cmd_mode = getattr(app_instance, 'command_mode_active', False)
-        if in_cmd_mode and self._matcher.should_suppress(entry):
-            print(f"[CMD] Debounce: '{entry.phrase}' still in cooldown")
-            return entry.phrase, False
-
-        if entry.source == 'plugin':
-            print(f"[PLUGIN] Executing: {entry.phrase}")
-            try:
-                success = bool(entry.handler(app_instance, remainder))
-            except Exception as e:
-                print(f"[ERROR] Plugin '{entry.phrase}' failed: {e}")
-                success = False
-            if success:
-                self._matcher.record_execution(entry)
-            return entry.phrase, success
-
-        # All built-in types route through execute_command -> handler registry.
-        # app_instance is forwarded so MethodHandler can dispatch type=method.
-        success = self.execute_command(entry.phrase, app_instance=app_instance)
-        if success:
-            self._matcher.record_execution(entry)
-        return entry.phrase, success
 
 
 
@@ -1037,6 +833,24 @@ class DictationApp:
             self.config.get('listening_indicator_position', 'bottom-center'))
         if self.config.get('listening_indicator_enabled', False):
             self.listening_indicator.show()
+
+        # Vision bridge (optional; requires vision.enabled: true in config)
+        self._vision_bridge = None
+        vision_cfg = self.config.get("vision", {})
+        if vision_cfg.get("enabled", False):
+            try:
+                from samsara.vision import VisionBridge
+                self._vision_bridge = VisionBridge(self)
+                if vision_cfg.get("warmup", True):
+                    threading.Thread(
+                        target=self._vision_bridge.warmup,
+                        daemon=True,
+                        name="vision-warmup",
+                    ).start()
+                    print("[VISION] Warmup started in background.")
+            except Exception as e:
+                print(f"[VISION] Init failed: {e}")
+                self._vision_bridge = None
 
         # Command cheat sheet overlay
         palette_path = Path(__file__).parent / "command_palette.json"
@@ -1445,6 +1259,13 @@ class DictationApp:
             # Listening state indicator overlay
             "listening_indicator_enabled": False,
             "listening_indicator_position": "bottom-center",
+            # Vision bridge (local Ollama vision model, opt-in)
+            "vision": {
+                "enabled": False,
+                "model": "qwen2.5vl:3b",
+                "warmup": True,
+                "timeout": 90,
+            },
             # Wake word listener (independent of capture mode)
             "wake_word_enabled": False,
             # Speech threshold calibration

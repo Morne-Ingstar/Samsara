@@ -211,21 +211,22 @@ class TestCommandExecutor:
         assert executor.find_command("please copy") is None
 
     def test_process_text_command_mode_toggle(self, commands_file):
-        """Test command mode toggle detection."""
+        """Test command mode toggle detection updates app state."""
+        import threading
         from samsara.commands import CommandExecutor
 
         executor = CommandExecutor(commands_file)
-        callback = Mock()
 
-        result, was_command = executor.process_text(
-            "enable command mode",
-            command_mode_enabled=False,
-            on_mode_change=callback,
-        )
+        mock_app = Mock()
+        mock_app.command_mode_enabled = False
+        mock_app._config_lock = threading.Lock()
+        mock_app.config = {}
+
+        result, was_command = executor.process_text("enable command mode", mock_app)
 
         assert was_command is True
         assert result == "command_mode_on"
-        callback.assert_called_with(True)
+        assert mock_app.command_mode_enabled is True
 
     def test_get_command(self, commands_file):
         """Test command lookup by name."""

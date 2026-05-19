@@ -197,11 +197,12 @@ class TestProcessText:
         """Test that process_text finds and executes commands"""
         executor = CommandExecutor(temp_commands_file)
 
-        # Mock the keyboard controller
         executor.keyboard_controller.press = Mock()
         executor.keyboard_controller.release = Mock()
 
-        result, was_command = executor.process_text("copy", command_mode_enabled=True)
+        # force_commands=True bypasses the command_mode_enabled gate so no mock
+        # app is needed for a simple matching test.
+        result, was_command = executor.process_text("copy", force_commands=True)
 
         assert was_command is True
 
@@ -209,23 +210,24 @@ class TestProcessText:
         """Test that process_text returns False for non-commands"""
         executor = CommandExecutor(temp_commands_file)
 
-        result, was_command = executor.process_text("hello world", command_mode_enabled=True)
+        result, was_command = executor.process_text("hello world", force_commands=True)
 
         assert was_command is False
 
     def test_process_text_command_mode_toggle(self, temp_commands_file):
-        """Test command mode toggle phrases"""
+        """Test command mode toggle phrases update app state directly."""
+        import threading
         executor = CommandExecutor(temp_commands_file)
-        callback = Mock()
 
-        result, was_command = executor.process_text(
-            "enable command mode",
-            command_mode_enabled=False,
-            on_mode_change=callback
-        )
+        mock_app = Mock()
+        mock_app.command_mode_enabled = False
+        mock_app._config_lock = threading.Lock()
+        mock_app.config = {}
+
+        result, was_command = executor.process_text("enable command mode", mock_app)
 
         assert was_command is True
-        callback.assert_called_with(True)
+        assert mock_app.command_mode_enabled is True
 
 
 class TestPluginCommands:
@@ -282,7 +284,9 @@ class TestPluginCommands:
         executor = CommandExecutor(
             temp_commands_file, app=sentinel_app, plugins_dir=tmp_path / "nope"
         )
-        result, was_command = executor.process_text("plugin only", command_mode_enabled=True)
+        # No app_instance arg: falls back to self._app == sentinel_app.
+        # force_commands=True bypasses the command_mode_enabled gate.
+        result, was_command = executor.process_text("plugin only", force_commands=True)
         assert was_command is True
         assert result == "plugin only"
         assert len(calls) == 1
