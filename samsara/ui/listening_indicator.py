@@ -51,6 +51,9 @@ _FLASH_SUCCESS_BG = "#1B5E20"
 _FLASH_SUCCESS_FG = "#66FF66"
 _FLASH_ERROR_BG   = "#7F0000"
 _FLASH_ERROR_FG   = "#FF6666"
+_VISION_BG        = "#2d0050"
+_VISION_BG_BRIGHT = "#4a0080"
+_VISION_FG        = "#cc88ff"
 
 # ---------------------------------------------------------------------------
 # Geometry
@@ -118,6 +121,7 @@ class ListeningIndicator(QWidget):
         self._snoozed      = False
         self._corner       = "bottom-center"
         self._command_mode = False
+        self._thinking     = False
 
         # Pulse state
         self._pulse_step      = 0
@@ -148,11 +152,13 @@ class ListeningIndicator(QWidget):
             self._pulse_timer.start()
 
     def hide(self):
+        self._thinking = False
         self._pulse_timer.stop()
         self._flash_timer.stop()
         super().hide()
 
     def destroy(self, destroyWindow=True, destroySubWindows=True):
+        self._thinking = False
         self._pulse_timer.stop()
         self._flash_timer.stop()
         super().hide()
@@ -201,6 +207,24 @@ class ListeningIndicator(QWidget):
         self._corner = corner
         if self.isVisible():
             self._reposition()
+
+    def set_thinking(self, active: bool):
+        """Activate/deactivate the pulsing purple 'Vision' state."""
+        if active == self._thinking:
+            return
+        self._thinking = active
+        if not self.isVisible():
+            return
+        if active:
+            self._pulse_step = 0
+            self._pulse_direction = 1
+            self._pulse_timer.start()
+        else:
+            if not self._listening:
+                self._pulse_timer.stop()
+                self._pulse_step = 0
+        self._reposition()
+        self.update()
 
     def flash_success(self):
         if self.isVisible():
@@ -264,6 +288,9 @@ class ListeningIndicator(QWidget):
             else:
                 label = self._mode_text
             return self._flash_bg, self._flash_fg, label, False
+
+        if self._thinking:
+            return _lerp_color(_VISION_BG, _VISION_BG_BRIGHT, t), _VISION_FG, "Vision", False
 
         if self._snoozed:
             return _SNOOZE_BG, _SNOOZE_FG, "Snoozed", False
@@ -354,7 +381,7 @@ class ListeningIndicator(QWidget):
     # ------------------------------------------------------------------
 
     def _pulse_tick(self):
-        if not self._listening or not self.isVisible():
+        if (not self._listening and not self._thinking) or not self.isVisible():
             self._pulse_timer.stop()
             return
         self._pulse_step += self._pulse_direction
