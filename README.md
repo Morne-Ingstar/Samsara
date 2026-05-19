@@ -101,11 +101,11 @@ Samsara talks directly to hardware on your network:
 
 Samsara opens a hub window on launch with three views:
 
-- **History** — searchable list of all dictations with timestamps, source apps, success/fail status, copy and retry buttons. Phase 2: inline correction, session grouping, type/confidence indicators.
+- **History** — searchable list of all dictations with timestamps, source apps, success/fail status, copy and retry buttons. Inline correction, session grouping, type/confidence indicators.
 - **Dictionary** — unified corrections manager with three tabs: Vocabulary (Whisper hints), Corrections (phonetic wash rules), Wake Words (misrecognition fixes). Add, edit, delete from the UI — changes take effect immediately without restart.
 - **Settings** — microphone, model, hotkeys, cleanup mode, streaming mode, TTS, all in one place.
 
-Plus standalone overlays (Win32 layered windows — always above all apps, DPI-aware, per-pixel alpha):
+Plus standalone overlays (PySide6 — always above all apps, DPI-aware, click-through):
 
 - **Command Cheat Sheet** — floating always-on-top overlay listing every active command. Opacity slider, filterable by pack. Toggle from tray or by voice.
 - **Show Numbers** — voice-driven clicking: an overlay numbers every interactive element on screen. Say the number to click it. Fully hands-free UI navigation.
@@ -127,7 +127,7 @@ def my_command(app, remainder):
     return True
 ```
 
-Ships with 18 plugins including smart home control, music playback, 3D printer integration, macros, audio switching, tab finder, web shortcuts, timer, GIF search, screen recording, voice AI / Ava (Ollama), scroll (5-speed mouse wheel), text marker (deferred range selection), volume/mute (Core Audio API), Stremio, and more.
+Ships with 28 plugins including health tracking, voice reminders, alarm management, voice AI / Ava (Ollama + cloud LLM), smart home control, music playback, 3D printer integration, macros, audio switching, tab finder, web shortcuts, timer, GIF search, screen recording, scroll (5-speed + horizontal + page nav), text marker (deferred range selection), volume/mute (Core Audio API), window switcher (letter-based targeting), show numbers (hands-free clicking), Stremio, and more.
 
 ---
 
