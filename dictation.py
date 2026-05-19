@@ -922,13 +922,15 @@ class DictationApp:
         # launch sound, notifications, etc.) as a new utterance.
         self._command_executed_at = None
         
-        # Pre-buffer: ACE-03 — the rolling pre-trigger window is provided by the
-        # ACE engine ring and DictationSessionConsumer.rewind(). The legacy
-        # _prebuffer deque and prebuffer PortAudio stream are removed from the
-        # hold path. ACE-04 will remove the remaining wake-path references.
-        self._prebuffer_seconds = PREBUFFER_SECONDS   # kept for _start_prebuffer_stream print
-        self._prebuffer_active  = False               # ACE-04: legacy wake path may set this
-        self._prebuffer_stream  = None                # ACE-04: no longer started for hold mode
+        # Pre-buffer: the hold path now uses the ACE engine ring (ACE-03).
+        # The wake path still uses this deque — ACE-04 will migrate it.
+        # _prebuffer_stream is no longer started for hold mode, but the deque
+        # must remain for wake_word_audio_callback which appends to it.
+        self._prebuffer_seconds = PREBUFFER_SECONDS
+        self._prebuffer_chunks  = int(self._prebuffer_seconds / 0.1)  # 15 chunks at 100ms
+        self._prebuffer         = collections.deque(maxlen=self._prebuffer_chunks)
+        self._prebuffer_active  = False
+        self._prebuffer_stream  = None   # ACE-03: no longer started for hold mode
         self._hotkey_recording = False  # Suppress wake word transcription during hotkey recording
         
         # Dictation mode tracking (for wake word dictation)
@@ -2180,8 +2182,8 @@ class DictationApp:
                 self.start_continuous_mode()
 
             print("[INIT] Starting audio streams...")
-            if mode in ('hold', 'toggle'):
-                self._start_prebuffer_stream()
+            # Hold/toggle: ACE engine ring provides rolling pre-buffer (ACE-03).
+            # No separate prebuffer PortAudio stream needed at startup.
 
             # Auto-start wake word listener if enabled (works alongside any mode)
             if self.config.get('wake_word_enabled', False):
