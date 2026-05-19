@@ -922,14 +922,13 @@ class DictationApp:
         # launch sound, notifications, etc.) as a new utterance.
         self._command_executed_at = None
         
-        # Pre-buffer: rolling circular buffer captures audio BEFORE hotkey press
-        # so the first ~1.5 seconds of speech are never lost to startup delay.
-        # Each chunk is 100ms at capture_rate. Resampled to model_rate before transcription.
-        self._prebuffer_seconds = PREBUFFER_SECONDS
-        self._prebuffer_chunks = int(self._prebuffer_seconds / 0.1)  # 15 chunks at 100ms each
-        self._prebuffer = collections.deque(maxlen=self._prebuffer_chunks)
-        self._prebuffer_active = False  # Whether background stream is feeding the pre-buffer
-        self._prebuffer_stream = None  # Standalone pre-buffer stream (when no wake word)
+        # Pre-buffer: ACE-03 — the rolling pre-trigger window is provided by the
+        # ACE engine ring and DictationSessionConsumer.rewind(). The legacy
+        # _prebuffer deque and prebuffer PortAudio stream are removed from the
+        # hold path. ACE-04 will remove the remaining wake-path references.
+        self._prebuffer_seconds = PREBUFFER_SECONDS   # kept for _start_prebuffer_stream print
+        self._prebuffer_active  = False               # ACE-04: legacy wake path may set this
+        self._prebuffer_stream  = None                # ACE-04: no longer started for hold mode
         self._hotkey_recording = False  # Suppress wake word transcription during hotkey recording
         
         # Dictation mode tracking (for wake word dictation)
@@ -1146,14 +1145,16 @@ class DictationApp:
         threading.Thread(target=self._stream_health_monitor,
                          daemon=True, name="stream-health").start()
 
-        # ACE debug capture — passive observer alongside the legacy path.
-        # Enabled by: config["ace_debug_capture"] = true
-        # Writes timestamped WAVs to ~/.samsara/debug_audio/ for perceptual
-        # equivalence verification. Default false so prod is unaffected.
-        self._ace_engine       = None
-        self._ace_debug_rec    = None
-        if self.config.get('ace_debug_capture', False):
-            self._start_ace_debug_capture()
+        # ACE engine — always started for hold-mode dictation (ACE-03).
+        # DictationSessionConsumer replaces the bespoke prebuffer + audio_callback path.
+        # DebugRecorder is optional: set config["ace_debug_capture"] = true to enable.
+        self._ace_engine         = None
+        self._ace_debug_rec      = None
+        self._dictation_consumer = None
+        self._ace_dictation_active = False   # True while hold-mode uses ACE consumer path
+        self._start_ace_engine()
+        if self.config.get('ace_debug_capture', False) and self._ace_engine is not None:
+            self._start_ace_debug_rec()
 
         mode = self.config.get('mode', 'hold')
         print(f"Dictation app starting...")
@@ -1197,21 +1198,42 @@ class DictationApp:
                 print(f"[SPLASH] close() failed: {e}")
             self.splash = None
 
-    def _start_ace_debug_capture(self) -> None:
-        """Start the ACE debug capture engine and DebugRecorder.
+    def _start_ace_engine(self) -> None:
+        """Start the ACE AudioCaptureEngine and DictationSessionConsumer.
 
-        Called from __init__ when config['ace_debug_capture'] is true.
-        The engine runs alongside the legacy path as a passive observer;
-        it does not affect dictation, commands, or wake-word detection.
+        Called unconditionally from __init__. The engine runs permanently
+        at the native device rate, resampling to 16kHz int16 into the
+        FrameBus ring. DictationSessionConsumer provides the hold-mode
+        prebuffer rewind and frame accumulation for each utterance.
         """
         try:
             from samsara.audio_engine import FrameBus, AudioCaptureEngine
-            from samsara.audio_engine.debug_recorder import DebugRecorder
+            from samsara.audio_engine.dictation_consumer import DictationSessionConsumer
 
             ring = FrameBus()
             self._ace_engine = AudioCaptureEngine(ring, config=self.config)
             self._ace_engine.start()
+            self._dictation_consumer = DictationSessionConsumer(
+                engine=self._ace_engine,
+                app=self,
+            )
+            print("[ACE] Engine started — hold-mode dictation ready")
+        except Exception as exc:
+            print(f"[ACE] Engine failed to start: {exc}")
+            self._ace_engine         = None
+            self._dictation_consumer = None
 
+    def _start_ace_debug_rec(self) -> None:
+        """Attach a DebugRecorder to the running ACE engine.
+
+        Called from __init__ when config['ace_debug_capture'] is true.
+        Writes timestamped WAVs to ~/.samsara/debug_audio/ for perceptual
+        equivalence verification.
+        """
+        if self._ace_engine is None:
+            return
+        try:
+            from samsara.audio_engine.debug_recorder import DebugRecorder
             output_dir = os.path.join(
                 os.path.expanduser("~"), ".samsara", "debug_audio"
             )
@@ -1221,14 +1243,20 @@ class DictationApp:
                 max_seconds=30.0,
             )
             self._ace_debug_rec.start_recording()
-            print(f"[ACE] Debug capture active — WAVs → {output_dir}")
+            print(f"[ACE] Debug capture active -> {output_dir}")
         except Exception as exc:
-            print(f"[ACE] Debug capture failed to start: {exc}")
-            self._ace_engine    = None
+            print(f"[ACE] Debug recorder failed to start: {exc}")
             self._ace_debug_rec = None
 
-    def _stop_ace_debug_capture(self) -> None:
-        """Stop the ACE debug capture engine and flush any pending WAV."""
+    def _stop_ace_engine(self) -> None:
+        """Deactivate consumer, flush debug WAV, stop engine. Called from quit_app."""
+        if self._dictation_consumer is not None:
+            try:
+                self._dictation_consumer.deactivate()
+            except Exception as exc:
+                print(f"[ACE] Consumer deactivate error: {exc}")
+            self._dictation_consumer = None
+
         if self._ace_debug_rec is not None:
             try:
                 path = self._ace_debug_rec.stop_recording()
@@ -1981,6 +2009,7 @@ class DictationApp:
             or self.continuous_active
             or self.wake_word_active
             or self._prebuffer_stream is not None
+            or (self._ace_engine is not None and self._ace_engine._running)
         )
 
     def _reconcile_microphone_selection(self) -> None:
@@ -2047,17 +2076,23 @@ class DictationApp:
         mic_name = self.get_current_microphone_name()
         print(f"[OK] Switched to microphone: {mic_name} ({self.capture_rate}Hz)")
 
+        # Restart ACE engine on new device — bumps device_epoch so any
+        # in-flight consumer sees the discontinuity via frame.device_epoch.
+        if self._ace_engine is not None:
+            try:
+                self._ace_engine.bump_device_epoch()
+                self._ace_engine.stop()
+                self._ace_engine._config['microphone'] = mic_id
+                self._ace_engine.start()
+                print("[ACE] Engine restarted on new device")
+            except Exception as exc:
+                print(f"[ACE] Engine restart on mic switch failed: {exc}")
+
         # Restart whatever was running, now bound to the new device
         if was_wake_word:
             self.start_wake_word_mode()
         if was_continuous:
             self.start_continuous_mode()
-        if was_prebuffer and self.model_loaded:
-            # Only restart the standalone prebuffer for hold/toggle modes —
-            # wake_word / continuous have their own pre-buffering inside their streams
-            mode = self.config.get('mode', 'hold')
-            if mode in ('hold', 'toggle'):
-                self._start_prebuffer_stream()
 
         # Update tray icon tooltip
         self._update_tray_tooltip()
@@ -4386,7 +4421,11 @@ class DictationApp:
             traceback.print_exc()
 
     def audio_callback(self, indata, frames, time_info, status):
-        """Callback for audio stream (hold/toggle mode)"""
+        """Audio callback for legacy streaming mode (CapsLock path) only.
+
+        The hold/toggle non-streaming path uses the ACE engine ring (ACE-03).
+        This callback is retained for StreamingSession until ACE-04 migrates it.
+        """
         if self._stream_dead:
             return  # don't process audio from a dying stream
         try:
@@ -4733,23 +4772,13 @@ class DictationApp:
             self._sound_stream = None
 
     def _prebuffer_callback(self, indata, frames, time_info, status):
-        """Audio callback for standalone pre-buffer stream (hold/toggle modes).
-        Simply feeds a rolling buffer so audio before hotkey press is captured."""
-        if self._stream_dead:
-            return  # don't process audio from a dying stream
-        try:
-            if status:
-                pass  # Ignore status warnings for background stream
-            chunk = indata.copy()
-            if self.echo_canceller.is_active:
-                chunk = self.echo_canceller.process(chunk)
-            self._prebuffer.append(chunk.flatten())
-        except (sd.PortAudioError, OSError) as e:
-            print(f"[AUDIO] Stream died -- attempting reconnect... ({e})")
-            self._stream_dead = True
-            return
-        except Exception:
-            pass
+        """Legacy pre-buffer callback — removed in ACE-03.
+
+        The hold-mode prebuffer is now provided by the ACE engine ring.
+        This stub is kept so _start_prebuffer_stream() doesn't NameError
+        on the callback= kwarg. ACE-04 will remove it entirely.
+        """
+        pass
 
     def _open_stream_with_timeout(self, timeout=3.0, retries=2, backoff=0.5, **kwargs):
         """Open an sd.InputStream with a timeout to prevent hangs.
@@ -4948,10 +4977,9 @@ class DictationApp:
             self._vad_reset()
             self.continuous_stream.start()
         else:
-            # Hold/toggle modes: pre-buffer stream when model is loaded
-            mode = self.config.get('mode', 'hold')
-            if mode in ('hold', 'toggle') and self.model_loaded:
-                self._start_prebuffer_stream()
+            # Hold/toggle: ACE engine ring provides rolling pre-buffer —
+            # no separate prebuffer PortAudio stream needed (ACE-03).
+            pass
 
     def _stream_health_monitor(self):
         """Background thread: detect dead audio streams and reconnect."""
@@ -5038,65 +5066,52 @@ class DictationApp:
             streaming = (self.config.get('streaming_mode', False)
                          and self.config.get('mode', 'hold') == 'hold')
 
-        # Grab pre-buffer contents BEFORE playing the start sound
-        # This captures audio from ~1.5s before the hotkey was pressed
-        prebuffer_audio = list(self._prebuffer)
-        self._prebuffer.clear()
-
-        # Discard pre-buffer if TTS was active recently — it may contain
-        # Ava's own voice which would be transcribed as the user's input.
-        # Use a 500ms window (wider than the 300ms callback hold-off) to
-        # account for the extra latency between start_recording() being
-        # called and the callback timestamp being last updated.
-        _coordinator = getattr(self, 'audio_coordinator', None)
-        if _coordinator and _coordinator.is_speaking:
-            prebuffer_audio = []
-            print("[PRE] Pre-buffer discarded — TTS actively speaking")
-        elif time.monotonic() - getattr(self, '_tts_last_speaking', 0.0) < 0.5:
-            prebuffer_audio = []
-            print("[PRE] Pre-buffer discarded — TTS ended too recently")
-
-        # Stop the pre-buffer stream to avoid two streams on the same device.
-        # Running dual streams causes PortAudio to deliver overlapping audio data,
-        # leading to duplicated words (especially on quick stops).
-        self._stop_prebuffer_stream()
-
-        # Play start sound using winsound on Windows to avoid InputStream conflict.
+        # Play start sound before opening capture.
         # Skipped for command mode which manages its own debounced 200ms earcon.
         if play_earcon:
             self.play_sound("start", use_winsound=True)
             time.sleep(0.15)  # Brief pause for sound to start
 
-        with self.audio_data_lock:
-            self.audio_data.clear()
-            if not streaming and prebuffer_audio:
-                self.audio_data.extend(chunk.reshape(-1, 1) for chunk in prebuffer_audio)
-        if not streaming and prebuffer_audio:
-            prebuf_duration = len(prebuffer_audio) * 0.1
-            print(f"[PRE] Pre-buffer: {prebuf_duration:.1f}s of audio captured before hotkey")
-        
-        # Record timestamp so we can detect overlap between pre-buffer and recording
         self._recording_start_time = time.time()
-        
-        stream = self._open_stream_with_timeout(
-            samplerate=self.capture_rate,
-            channels=1,
-            dtype=np.float32,
-            callback=self.audio_callback,
-            device=self.config['microphone']
-        )
-        if stream is None:
-            print("[ERROR] Could not open recording stream — audio subsystem may be disrupted by device change. Try again in a moment.")
-            self._hotkey_recording = False
-            self.play_sound("error")
-            if hasattr(self, 'listening_indicator'):
-                self._schedule_ui(self.listening_indicator.flash_error)
-            # Try to restart pre-buffer so next attempt works
-            self._start_prebuffer_stream()
-            return
-        
-        self.stream = stream
-        self.stream.start()
+
+        if not streaming:
+            # ACE path (ACE-03): DictationSessionConsumer provides audio from the
+            # permanent engine ring. activate() rewinds to include prebuffer history
+            # and applies the TTS contamination guard internally.
+            if self._dictation_consumer is None:
+                print("[ERROR] ACE dictation consumer not available — cannot record")
+                self._hotkey_recording = False
+                self.play_sound("error")
+                if hasattr(self, 'listening_indicator'):
+                    self._schedule_ui(self.listening_indicator.flash_error)
+                return
+            self._dictation_consumer.activate()
+            self._ace_dictation_active = True
+        else:
+            # Legacy streaming path (CapsLock / streaming_mode=true) — ACE-04 will migrate.
+            # Opens a dedicated PortAudio stream with audio_callback.
+            self._ace_dictation_active = False
+            self._stop_prebuffer_stream()
+            with self.audio_data_lock:
+                self.audio_data.clear()
+            stream = self._open_stream_with_timeout(
+                samplerate=self.capture_rate,
+                channels=1,
+                dtype=np.float32,
+                callback=self.audio_callback,
+                device=self.config['microphone']
+            )
+            if stream is None:
+                print("[ERROR] Could not open streaming session stream.")
+                self._hotkey_recording = False
+                self.play_sound("error")
+                if hasattr(self, 'listening_indicator'):
+                    self._schedule_ui(self.listening_indicator.flash_error)
+                self._start_prebuffer_stream()
+                return
+            self.stream = stream
+            self.stream.start()
+
         self.set_app_state(recording=True)
 
         # Update tray icon to show active recording (critical for toggle mode
@@ -5138,41 +5153,51 @@ class DictationApp:
         if hasattr(self, 'listening_indicator'):
             self._schedule_ui(self.listening_indicator.set_listening, False)
         
-        if hasattr(self, 'stream'):
-            # Trailing buffer: keep capturing briefly after the button is released
-            # so the last word isn't clipped. 250 ms covers ~1 syllable at normal pace.
-            tail_ms = self.config.get('recording_tail_ms', 250)
-            if tail_ms > 0:
-                time.sleep(tail_ms / 1000)
-            self.stream.stop()
-            self.stream.close()
+        # Trailing buffer: keep capturing briefly after the button is released
+        # so the last word isn't clipped. 250 ms covers ~1 syllable at normal pace.
+        tail_ms = self.config.get('recording_tail_ms', 250)
+        if tail_ms > 0:
+            time.sleep(tail_ms / 1000)
 
-        # Restart pre-buffer stream for next recording session
-        self._start_prebuffer_stream()
-
-        # If a streaming session is in flight, hand off finalization to it
-        # (it owns the overlay, final pass, paste, and history). The audio
-        # stream is already stopped above, so audio_data is frozen now.
-        sess = getattr(self, '_streaming_session', None)
-        if sess is not None:
-            self._streaming_session = None
-            try:
-                sess.finalize()
-            except Exception as e:
-                print(f"[STREAM] finalize failed: {e}")
-            return
-
-        with self.audio_data_lock:
-            if not self.audio_data:
-                print("No audio recorded")
+        if getattr(self, '_ace_dictation_active', False):
+            # ACE path (ACE-03): drain consumer frames; no stream to close.
+            self._ace_dictation_active = False
+            audio = self._dictation_consumer.drain()
+            if audio is None:
+                print("[ACE] No audio captured or epoch abort")
+                self.play_sound("error")
+                if hasattr(self, 'listening_indicator'):
+                    self._schedule_ui(self.listening_indicator.flash_error)
                 return
-            audio_snapshot = list(self.audio_data)
+        else:
+            # Legacy streaming path: close the PortAudio stream, finalize session.
+            if hasattr(self, 'stream') and self.stream is not None:
+                self.stream.stop()
+                self.stream.close()
+                self.stream = None
+            # Restart prebuffer stream for the legacy path
+            self._start_prebuffer_stream()
+
+            # Streaming session (CapsLock path): hand off to it and return.
+            sess = getattr(self, '_streaming_session', None)
+            if sess is not None:
+                self._streaming_session = None
+                try:
+                    sess.finalize()
+                except Exception as e:
+                    print(f"[STREAM] finalize failed: {e}")
+                return
+
+            with self.audio_data_lock:
+                if not self.audio_data:
+                    print("No audio recorded")
+                    return
+                audio_snapshot = list(self.audio_data)
+
+            audio = np.concatenate(audio_snapshot, axis=0).flatten()
+            audio = resample_audio(audio, self.capture_rate, self.model_rate)
 
         print("[...] Transcribing...")
-
-        # Combine audio chunks and resample to model rate
-        audio = np.concatenate(audio_snapshot, axis=0).flatten()
-        audio = resample_audio(audio, self.capture_rate, self.model_rate)
 
         # Transcribe in background to not block hotkey listener
         def transcribe():
@@ -5371,21 +5396,27 @@ class DictationApp:
             self._hotkey_recording = False  # Re-enable wake word processing
         print("[X] Recording cancelled")
 
-        if hasattr(self, 'stream'):
-            self.stream.stop()
-            self.stream.close()
+        if getattr(self, '_ace_dictation_active', False):
+            # ACE path: discard accumulated frames, no stream to close.
+            self._ace_dictation_active = False
+            if self._dictation_consumer is not None:
+                self._dictation_consumer.cancel()
+        else:
+            # Legacy streaming path: close stream, cancel session.
+            if hasattr(self, 'stream') and self.stream is not None:
+                self.stream.stop()
+                self.stream.close()
+                self.stream = None
+            sess = getattr(self, '_streaming_session', None)
+            if sess is not None:
+                self._streaming_session = None
+                try:
+                    sess.cancel()
+                except Exception as e:
+                    print(f"[STREAM] cancel failed: {e}")
+            with self.audio_data_lock:
+                self.audio_data.clear()
 
-        sess = getattr(self, '_streaming_session', None)
-        if sess is not None:
-            self._streaming_session = None
-            try:
-                sess.cancel()
-            except Exception as e:
-                print(f"[STREAM] cancel failed: {e}")
-
-        # Clear audio data without transcribing
-        with self.audio_data_lock:
-            self.audio_data.clear()
         self.play_sound("error")  # Play error sound to indicate cancellation
 
         # Update listening indicator
@@ -5422,12 +5453,10 @@ class DictationApp:
             self.stop_continuous_mode()
             print(f"[MODE] Deactivated continuous mode")
 
-        # Manage pre-buffer stream: hold/toggle get a standalone stream,
-        # continuous mode handles its own audio
-        if new_mode in ('hold', 'toggle'):
-            if self.model_loaded:
-                self._start_prebuffer_stream()
-        else:
+        # Hold/toggle: ACE engine ring provides rolling pre-buffer (ACE-03).
+        # No separate prebuffer PortAudio stream needed.
+        # Other modes (continuous) still stop it if it was running.
+        if new_mode not in ('hold', 'toggle'):
             self._stop_prebuffer_stream()
 
         # Activate continuous if that's the new mode
@@ -5837,9 +5866,8 @@ class DictationApp:
         prior = self._snooze_prior_mode_state or {}
         mode = prior.get('mode', self.config.get('mode', 'hold'))
 
-        # Restart pre-buffer for hold/toggle modes
-        if mode in ('hold', 'toggle') and self.model_loaded:
-            self._start_prebuffer_stream()
+        # Hold/toggle: ACE engine ring provides rolling pre-buffer (ACE-03).
+        # No separate prebuffer stream to restart.
 
         # Restart continuous mode if it was active
         if prior.get('continuous_active') and mode == 'continuous':
@@ -6018,10 +6046,10 @@ class DictationApp:
         except:
             pass
 
-        # Stop ACE debug capture engine (flushes final WAV if active)
+        # Stop ACE engine (deactivates consumer, flushes debug WAV if any)
         try:
-            if hasattr(self, '_ace_debug_rec') or hasattr(self, '_ace_engine'):
-                self._stop_ace_debug_capture()
+            if hasattr(self, '_ace_engine') or hasattr(self, '_dictation_consumer'):
+                self._stop_ace_engine()
         except:
             pass
 

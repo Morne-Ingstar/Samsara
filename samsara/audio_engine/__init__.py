@@ -1,12 +1,8 @@
 """samsara.audio_engine — AudioCaptureEngine transport layer.
 
 ACE-01: Frame + FrameBus + AudioCaptureEngine interfaces.
-        Pre-allocated NumPy ring, atomic cursors. No PortAudio yet.
-
-Nothing in the existing codebase imports this package. The legacy
-capture path in dictation.py is untouched and remains the only path
-that drives the running app. These modules are imported only by
-tests/audio_engine/ until ACE-02.
+ACE-02: Real PortAudio capture, DebugRecorder, equivalence harness.
+ACE-03: DictationSessionConsumer — hold-mode dictation via ring.
 """
 
 from .frame import (
@@ -27,6 +23,7 @@ from .ring import (
 )
 from .engine import AudioCaptureEngine
 from .debug_recorder import DebugRecorder
+from .dictation_consumer import DictationSessionConsumer
 
 __all__ = [
     # Data structure
@@ -35,6 +32,7 @@ __all__ = [
     'Reader',
     'AudioCaptureEngine',
     'DebugRecorder',
+    'DictationSessionConsumer',
     # Sentinels
     'EMPTY',
     'OVERRUN',
