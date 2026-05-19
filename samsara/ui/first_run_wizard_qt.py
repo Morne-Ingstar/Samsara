@@ -13,7 +13,7 @@ from pathlib import Path
 
 from PySide6.QtCore import Qt, Signal
 from PySide6.QtWidgets import (
-    QApplication, QMainWindow, QWidget, QVBoxLayout, QHBoxLayout,
+    QApplication, QCheckBox, QMainWindow, QWidget, QVBoxLayout, QHBoxLayout,
     QLabel, QComboBox, QPushButton, QButtonGroup, QRadioButton,
     QFrame, QScrollArea,
 )
@@ -371,6 +371,7 @@ class _WizardWindow(QMainWindow):
         self._summary_labels: list[QLabel] = []
         self._use_case_group: QButtonGroup | None = None
         self._tip_lbl: QLabel | None = None
+        self._no_hints_cb: QCheckBox | None = None
 
         self._pages = [
             self._build_welcome(),
@@ -719,6 +720,12 @@ class _WizardWindow(QMainWindow):
         note.setWordWrap(True)
         note.setStyleSheet("color:#8A8A92;font-size:12px;")
         lay.addWidget(note)
+        lay.addSpacing(12)
+
+        self._no_hints_cb = QCheckBox("Don't show me hints (you can re-enable this in Settings)")
+        self._no_hints_cb.setStyleSheet("color:#8A8A92;font-size:12px;")
+        lay.addWidget(self._no_hints_cb)
+
         lay.addStretch()
         return w
 
@@ -824,6 +831,8 @@ class _WizardWindow(QMainWindow):
     def _finish(self):
         self._collect_step()
         self._config['first_run_complete'] = True
+        if self._no_hints_cb is not None and self._no_hints_cb.isChecked():
+            self._config['hints_enabled'] = False
         self.result = self._config
         self.close()
 

@@ -221,7 +221,7 @@ from samsara import plugin_commands as _plugin_commands
 from samsara.command_registry import CommandMatcher
 from samsara.handlers import CommandContext, get_handler
 from samsara.constants import (
-    MODEL_SAMPLE_RATE, DEFAULT_CAPTURE_RATE, PREBUFFER_SECONDS,
+    MODEL_SAMPLE_RATE, DEFAULT_CAPTURE_RATE,
     DEFAULT_SPEECH_THRESHOLD, DEFAULT_MIN_SPEECH_DURATION, DEFAULT_SILENCE_TIMEOUT,
     WAKE_DETECTION_SILENCE, WAKE_COMMAND_TIMEOUT,
     ICON_TICK_FAST, ICON_TICK_MEDIUM, ICON_TICK_SLOW,
@@ -867,17 +867,10 @@ class DictationApp:
         # Auto-calibrate speech threshold on startup
         self._run_calibration_if_auto()
 
-        self.audio_queue = queue.Queue()
         self.recording = False
         self.command_mode_recording = False  # True when using command-only hotkey
         self._stop_in_flight = False         # True while stop_recording + trailing sleep is pending
 
-        # Stream health: detect dead PortAudio streams (e.g. after sleep/wake)
-        # and trigger reconnection from a background thread. GIL makes simple
-        # bool reads/writes atomic; this flag has multiple readers but a
-        # well-defined single-writer pattern (callbacks set True, monitor
-        # sets False after successful reconnect).
-        self._stream_dead = False
         self._running = True
 
         # Set up audio feedback sounds (creates defaults if needed)
@@ -944,7 +937,6 @@ class DictationApp:
         self.is_speaking = False
         self.speech_buffer = []
         self.buffer_lock = threading.Lock()
-        self._buffer_rms_history = []
         # Silero VAD -- real-time speech gate for the wake-word audio callback.
         # When available, it replaces the old RMS debounce entirely. When it's
         # not (torch missing or download blocked), we fall back to RMS.
@@ -1089,6 +1081,10 @@ class DictationApp:
         if self.config.get('alarms', {}).get('enabled', True):
             self.alarm_manager.start()
 
+        # Contextual hint system
+        from samsara.hints import HintManager
+        self.hints = HintManager(self)
+
         print("[INIT] Initializing TTS...")
         # TTS engine + AudioCoordinator (optional; off by default)
         # engine selection: config tts.engine = "winrt" (default) or "edge"
@@ -1178,10 +1174,6 @@ class DictationApp:
         # Load model in background
         self.load_model_async()
 
-        # Stream health monitor: watches _stream_dead flag and reconnects
-        # the PortAudio streams after sleep/wake or device disruption.
-        threading.Thread(target=self._stream_health_monitor,
-                         daemon=True, name="stream-health").start()
 
         # ACE engine — always started for hold-mode dictation (ACE-03).
         # DictationSessionConsumer replaces the bespoke prebuffer + audio_callback path.
@@ -3114,6 +3106,15 @@ class DictationApp:
                         self._last_command_name = result
                     if result:
                         increment_command_count(result)
+                        if hasattr(self, 'hints'):
+                            n = self.hints.increment('command_count')
+                            if n == 10 and self.hints.get_counter('show_numbers_used') == 0:
+                                self.hints.maybe_show(
+                                    'show_numbers_intro',
+                                    "Tip: say 'show numbers' to click things by voice"
+                                    " -- no mouse needed.",
+                                    delay_s=2.0,
+                                )
                     # Command was executed
                     return
 
@@ -3192,6 +3193,14 @@ class DictationApp:
         self._request_icon_chase('wake_word')
         if hasattr(self, 'listening_indicator'):
             self._schedule_ui(self.listening_indicator.set_listening, True)
+
+        if hasattr(self, 'hints'):
+            self.hints.maybe_show(
+                'wake_mode_activated',
+                "Wake word active. Say 'Jarvis' followed by a command."
+                " Try 'Jarvis, show numbers' to click by voice.",
+                delay_s=2.0,
+            )
 
     def stop_wake_word_mode(self):
         """Stop wake word listening mode."""
@@ -3913,7 +3922,6 @@ class DictationApp:
                 return False
             buffer_copy = self.speech_buffer.copy()
             self.speech_buffer = []
-            self._buffer_rms_history = []
 
         self.is_speaking = False
         self.silence_start = None
@@ -4424,8 +4432,7 @@ class DictationApp:
                 else:
                     outdata[:] = 0  # Silence when nothing to play
         except (sd.PortAudioError, OSError) as e:
-            print(f"[AUDIO] Stream died -- attempting reconnect... ({e})")
-            self._stream_dead = True
+            print(f"[AUDIO] Sound stream error: {e}")
             return
 
     def reload_sounds(self):
@@ -4486,76 +4493,6 @@ class DictationApp:
                 pass
             self._sound_stream = None
 
-    def _open_stream_with_timeout(self, timeout=3.0, retries=2, backoff=0.5, **kwargs):
-        """Open an sd.InputStream with a timeout to prevent hangs.
-        
-        When Windows audio subsystem is disrupted (e.g. headphone connect/disconnect),
-        sd.InputStream() can block indefinitely. This wraps it in a thread with a timeout
-        and retries with backoff.
-        
-        Args:
-            timeout: Seconds to wait for stream creation before giving up
-            retries: Number of retry attempts after first failure
-            backoff: Seconds to wait between retries (doubles each attempt)
-            **kwargs: Passed directly to sd.InputStream()
-            
-        Returns:
-            sd.InputStream or None if all attempts failed
-        """
-        for attempt in range(1 + retries):
-            result = [None]
-            error = [None]
-            
-            def _create():
-                try:
-                    result[0] = sd.InputStream(**kwargs)
-                except Exception as e:
-                    error[0] = e
-            
-            t = threading.Thread(target=_create, daemon=True)
-            t.start()
-            t.join(timeout=timeout)
-            
-            if t.is_alive():
-                # Stream creation hung — PortAudio is probably disrupted
-                wait = backoff * (2 ** attempt)
-                if attempt < retries:
-                    print(f"[WARN] Audio stream open timed out ({timeout}s), retrying in {wait:.1f}s... (attempt {attempt + 1}/{1 + retries})")
-                    time.sleep(wait)
-                    continue
-                else:
-                    print(f"[ERROR] Audio stream open timed out after {1 + retries} attempts. Audio subsystem may be disrupted.")
-                    return None
-            
-            if error[0]:
-                wait = backoff * (2 ** attempt)
-                if attempt < retries:
-                    print(f"[WARN] Audio stream error: {error[0]}, retrying in {wait:.1f}s...")
-                    time.sleep(wait)
-                    continue
-                else:
-                    print(f"[ERROR] Audio stream failed after {1 + retries} attempts: {error[0]}")
-                    return None
-            
-            return result[0]
-        
-        return None
-
-    def _stream_health_monitor(self):
-        """Background thread: detect dead audio streams and reconnect.
-
-        ACE-05: _stream_dead is no longer set by ACE engine callbacks so this
-        loop is effectively dormant. The reconnect body that called
-        _close_all_streams() and _open_audio_streams() has been removed along
-        with those methods in ACE-05.
-        """
-        while self._running:
-            time.sleep(3)
-            if not self._stream_dead:
-                continue
-            # ACE engine handles its own reconnect via device_epoch bump.
-            # Nothing to do here; clear the flag so the loop doesn't spin.
-            self._stream_dead = False
 
     def start_recording(self, streaming=None, play_earcon=True):
         """Start recording audio.
@@ -4594,8 +4531,6 @@ class DictationApp:
             self.play_sound("start", use_winsound=True)
             time.sleep(0.15)  # Brief pause for sound to start
 
-        self._recording_start_time = time.time()
-
         if not streaming:
             # ACE path (ACE-03): DictationSessionConsumer provides audio from the
             # permanent engine ring. activate() rewinds to include prebuffer history
@@ -4615,6 +4550,13 @@ class DictationApp:
             # ACE path: streaming accumulator in consumer, no separate stream.
             self._dictation_consumer.activate_streaming()
             self._ace_streaming_active = True
+            if hasattr(self, 'hints'):
+                self.hints.maybe_show(
+                    'streaming_mode',
+                    "Streaming: text appears live as you speak."
+                    " Final version replaces it on release.",
+                    delay_s=1.0,
+                )
 
         self.set_app_state(recording=True)
 
@@ -4847,6 +4789,20 @@ class DictationApp:
 
                     if self.config['auto_paste']:
                         self._paste_preserving_clipboard(text)
+
+                    if hasattr(self, 'hints'):
+                        self.hints.maybe_show(
+                            'first_dictation_undo',
+                            "Tip: say 'undo' to undo what was just typed.",
+                        )
+                        n = self.hints.increment('hold_dictations')
+                        if n == 3:
+                            self.hints.maybe_show(
+                                'wake_word_suggestion',
+                                "Tip: try wake word mode — say 'Jarvis, [command]'"
+                                " without holding any keys. Enable it in Settings.",
+                                delay_s=2.0,
+                            )
                 else:
                     print("No speech detected")
                     self.command_mode_recording = False  # Reset flag on no speech too

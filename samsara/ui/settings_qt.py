@@ -692,6 +692,27 @@ class _SettingsWindow(QMainWindow):
 
         layout.addSpacing(16)
 
+        # ---- Section: Hints ------------------------------------------------
+        layout.addWidget(self._section_title("Hints"))
+        layout.addSpacing(4)
+
+        hints_enabled = QCheckBox()
+        hints_enabled.setChecked(bool(self.app.config.get('hints_enabled', True)))
+        self._widgets['hints_enabled'] = hints_enabled
+        layout.addLayout(self._setting_row(
+            "Show contextual hints",
+            "One-time tips that appear after key actions (first dictation, wake word, etc.)",
+            hints_enabled,
+        ))
+        layout.addSpacing(8)
+
+        reset_hints_btn = QPushButton("Reset hints")
+        reset_hints_btn.setProperty("class", "secondary")
+        reset_hints_btn.setFixedWidth(130)
+        reset_hints_btn.clicked.connect(self._reset_hints)
+        layout.addWidget(reset_hints_btn)
+        layout.addSpacing(16)
+
         # ---- Section: Profiles ---------------------------------------------
         layout.addWidget(self._section_title("Profiles"))
         layout.addSpacing(4)
@@ -711,6 +732,12 @@ class _SettingsWindow(QMainWindow):
         layout.addStretch()
         scroll.setWidget(container)
         return scroll
+
+    def _reset_hints(self):
+        hints = getattr(self.app, 'hints', None)
+        if hints is not None:
+            hints.reset()
+        print("[HINTS] History reset — all hints will fire again on next trigger")
 
     def _open_profile_manager(self):
         from pathlib import Path
@@ -3459,7 +3486,16 @@ class _SettingsWindow(QMainWindow):
             'model_size':         self._widgets['model_combo'].currentText(),
             'language':           self._widgets['lang_name_to_code'].get(
                                       self._widgets['lang_combo'].currentText(), 'en'),
+            'hints_enabled':      self._widgets['hints_enabled'].isChecked(),
         })
+
+        # Sync hints enabled/disabled state on the live HintManager
+        hints = getattr(self.app, 'hints', None)
+        if hints is not None:
+            if self._widgets['hints_enabled'].isChecked():
+                hints._enabled = True
+            else:
+                hints._enabled = False
 
         mic_name = self._widgets['mic_combo'].currentText()
         mic_id = self._widgets['mic_names_to_id'].get(mic_name)
