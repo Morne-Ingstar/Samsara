@@ -69,7 +69,19 @@ except ImportError:
 
 
 class CommandExecutor:
-    """Executes voice commands - hotkeys, launches, key holds, etc."""
+    """Executes voice commands — hotkeys, launches, key holds, etc.
+
+    This is the single authoritative implementation.  dictation.py imports it;
+    tests validate it directly.  The class carries the full production feature
+    set: command debounce, reminder parsing, force_commands bypass for wake
+    word mode, and Smart Actions routing.
+
+    Args:
+        commands_path: Path to commands.json (defaults to repo root).
+        app:          DictationApp instance stored as self._app.  Passed to
+                      plugin handlers and used for state reads/writes.
+        plugins_dir:  Plugin directory to scan (defaults to plugins/commands/).
+    """
 
     KEY_MAP = {
         'ctrl': Key.ctrl,
@@ -100,28 +112,15 @@ class CommandExecutor:
         commands_path: Optional[Path] = None,
         app: Any = None,
         plugins_dir: Optional[Path] = None,
-    ):
-        """
-        Initialize command executor.
-
-        Args:
-            commands_path: Path to commands.json file
-            app: DictationApp instance passed to plugin handlers
-            plugins_dir: Directory to scan for plugin command modules
-        """
+    ) -> None:
         if commands_path is None:
             commands_path = Path(__file__).parent.parent / "commands.json"
         self.commands_path = Path(commands_path)
-
+        self._app = app
         self.commands: Dict[str, Dict[str, Any]] = {}
         self.held_keys: Dict[str, Any] = {}
-
         self.keyboard_controller = KeyboardController()
         self.mouse_controller = MouseController()
-
-        self._on_command_mode_change: Optional[Callable[[bool], None]] = None
-        self._app = app
-
         self.load_commands()
 
         if plugins_dir is None:
@@ -133,12 +132,7 @@ class CommandExecutor:
         unique = len({id(entry) for entry in _plugin_commands._REGISTRY.values()})
         print(f"[PLUGINS] Loaded {unique} plugin commands")
 
-        # Build the unified matcher. Both executors (this one and the one in
-        # dictation.py) use this class so matching semantics stay consistent
-        # between tests and runtime.
         self._matcher = CommandMatcher()
-        # Apply pack filtering before freezing so disabled packs are excluded
-        # from the matcher's search space entirely.
         app_config = getattr(app, 'config', {}) if app is not None else {}
         enabled_packs = get_enabled_packs(app_config)
         self._matcher.set_enabled_packs(enabled_packs)
@@ -148,20 +142,9 @@ class CommandExecutor:
         self._matcher.detect_collisions()
         _plugin_commands.set_shared_matcher(self._matcher)
 
-    def set_command_mode_callback(
-        self,
-        callback: Callable[[bool], None],
-    ) -> None:
-        """
-        Set callback for command mode changes.
-
-        Args:
-            callback: Function called with True/False when mode changes
-        """
-        self._on_command_mode_change = callback
+    # ── Command file I/O ────────────────────────────────────────────────────────
 
     def load_commands(self) -> None:
-        """Load commands from JSON file."""
         try:
             with open(self.commands_path, 'r', encoding='utf-8') as f:
                 data = json.load(f)
@@ -172,39 +155,47 @@ class CommandExecutor:
             self.commands = {}
 
     def save_commands(self) -> None:
-        """Save commands to JSON file."""
         try:
             with open(self.commands_path, 'w', encoding='utf-8') as f:
                 json.dump({'commands': self.commands}, f, indent=2)
         except Exception as e:
             print(f"[ERROR] Could not save commands: {e}")
 
+    def get_command(self, name: str) -> Optional[Dict[str, Any]]:
+        """Return the command dict for *name*, or None if not found."""
+        return self.commands.get(name.lower())
+
+    def list_commands(self) -> Dict[str, Dict[str, Any]]:
+        """Return a shallow copy of the full commands dict."""
+        return self.commands.copy()
+
+    # ── Key helpers ─────────────────────────────────────────────────────────────
+
     def get_key(self, key_str: str) -> Any:
-        """
-        Convert key string to pynput Key object.
-
-        Args:
-            key_str: Key name string
-
-        Returns:
-            pynput Key object or character
-        """
         key_lower = key_str.lower()
         if key_lower in self.KEY_MAP:
             return self.KEY_MAP[key_lower]
         return key_str.lower() if len(key_str) == 1 else key_str
 
-    def _build_context(self) -> CommandContext:
-        """Build a CommandContext pointing at this executor's live state."""
+    # ── Dispatch core ───────────────────────────────────────────────────────────
+
+    def _build_context(self, app_instance: Any = None) -> CommandContext:
+        """Build a CommandContext for the handler registry.
+
+        Falls back to self._app when app_instance is not given so callers
+        that don't have a per-call app reference (e.g. Ava's execute_command
+        call) still get a fully-populated context.
+        """
+        effective_app = app_instance if app_instance is not None else self._app
         return CommandContext(
             keyboard_controller=self.keyboard_controller,
             mouse_controller=self.mouse_controller,
             held_keys=self.held_keys,
             key_map=self.KEY_MAP,
-            app=self._app,
+            app=effective_app,
         )
 
-    def execute_command(self, command_name: str) -> bool:
+    def execute_command(self, command_name: str, app_instance: Any = None) -> bool:
         """Execute a voice command by name via the handler registry."""
         if command_name not in self.commands:
             return False
@@ -217,7 +208,7 @@ class CommandExecutor:
             return False
 
         try:
-            success = handler.execute(cmd, self._build_context())
+            success = handler.execute(cmd, self._build_context(app_instance))
             if success:
                 print(f"[OK] Executed: {command_name}")
             return success
@@ -233,77 +224,107 @@ class CommandExecutor:
     def process_text(
         self,
         text: str,
-        command_mode_enabled: bool = True,
-        on_mode_change: Optional[Callable[[bool], None]] = None,
-    ) -> Tuple[str, bool]:
-        """
-        Process transcribed text - check for command or return for dictation.
+        app_instance: Any = None,
+        force_commands: bool = False,
+    ) -> Tuple[Optional[str], bool]:
+        """Process transcribed text — execute a command or return text for dictation.
 
         Args:
-            text: Transcribed text
-            command_mode_enabled: Whether command mode is active
-            on_mode_change: Callback for command mode toggle
+            text:          Transcribed text.
+            app_instance:  DictationApp passed per-call.  When None, self._app
+                           is used as a fallback so tests that provide app at
+                           construction time work without re-passing it.
+            force_commands: Skip the command_mode_enabled gate.  Used by wake
+                           word mode where commands always execute.
 
         Returns:
-            Tuple of (result_text, was_command)
+            (result, was_command) where result is the matched command phrase,
+            the processed text, or None on empty input.
         """
         if not text:
-            return "", False
+            return None, False
 
+        effective_app = app_instance if app_instance is not None else self._app
         text_lower = text.lower().strip()
-        callback = on_mode_change or self._on_command_mode_change
 
-        # Check for command mode toggle commands
-        if any(phrase in text_lower for phrase in [
-            "command mode on", "command mode enable", "enable command mode"
-        ]):
-            if callback:
-                callback(True)
+        # Command mode toggle — always processed, regardless of mode state
+        if ("command mode on" in text_lower
+                or "command mode enable" in text_lower
+                or "enable command mode" in text_lower):
+            if effective_app:
+                effective_app.command_mode_enabled = True
+                with effective_app._config_lock:
+                    effective_app.config['command_mode_enabled'] = True
+                    effective_app.save_config()
             print("[OK] Command mode ENABLED")
             return "command_mode_on", True
 
-        if any(phrase in text_lower for phrase in [
-            "command mode off", "command mode disable", "disable command mode"
-        ]):
-            if callback:
-                callback(False)
+        if ("command mode off" in text_lower
+                or "command mode disable" in text_lower
+                or "disable command mode" in text_lower):
+            if effective_app:
+                effective_app.command_mode_enabled = False
+                with effective_app._config_lock:
+                    effective_app.config['command_mode_enabled'] = False
+                    effective_app.save_config()
             print("[OFF] Command mode DISABLED")
             return "command_mode_off", True
 
-        # If command mode is disabled, return text for dictation
-        if not command_mode_enabled:
-            return text, False
+        # Reminder commands — always work regardless of command mode
+        if effective_app and hasattr(effective_app, 'notification_manager'):
+            reminder_result = effective_app.notification_manager.parse_remind_command(text)
+            if reminder_result:
+                minutes, task = reminder_result
+                message = task if task else "Time's up!"
+                effective_app.notification_manager.add_quick_reminder(minutes, message)
+                print(f"[OK] Reminder set for {minutes} minutes: {message}")
+                effective_app.play_sound("success")
+                return f"reminder_{minutes}min", True
 
-        # Wash known mis-transcriptions for matching only. When nothing matches
-        # the ORIGINAL text is returned so free-form dictation isn't rewritten.
+        # Gate on command_mode_enabled — bypassed by wake word mode via force_commands
+        if not force_commands:
+            if effective_app and not effective_app.command_mode_enabled:
+                return text, False
+
+        # Phonetic wash for matching only; original text is returned on fallthrough
+        # so free-form dictation output is never silently rewritten.
         match_text = apply_phonetic_wash(text)
         entry, remainder = self._matcher.match(match_text)
         if entry is None:
-            # Smart Actions routing-verb fallback.
-            # Routing verbs are NOT registered as @command decorators -- they
-            # live here so "ask Spotify for jazz" hits the Spotify plugin
-            # (a match), while "ask what the weather is" falls through to here.
+            # Smart Actions routing-verb fallback (e.g. "ask Spotify for jazz").
+            # Routing verbs are not @command entries — they live here so they
+            # only trigger when no real command matched.
             if self._app is not None and self._is_routing_verb(text):
                 sa_cfg = getattr(self._app, 'config', {}).get('smart_actions', {})
                 if sa_cfg.get('enabled', False):
-                    routed = self._try_smart_actions_route(text)
-                    if routed:
+                    if self._try_smart_actions_route(text):
                         return text, True
             return text, False
+
+        # Command mode debounce: suppress rapid re-execution of flagged commands
+        in_cmd_mode = getattr(effective_app, 'command_mode_active', False)
+        if in_cmd_mode and self._matcher.should_suppress(entry):
+            print(f"[CMD] Debounce: '{entry.phrase}' still in cooldown")
+            return entry.phrase, False
 
         if entry.source == 'plugin':
             print(f"[PLUGIN] Executing: {entry.phrase}")
             try:
-                success = bool(entry.handler(self._app, remainder))
+                success = bool(entry.handler(effective_app, remainder))
             except Exception as e:
                 print(f"[ERROR] Plugin '{entry.phrase}' failed: {e}")
                 success = False
+            if success:
+                self._matcher.record_execution(entry)
             return entry.phrase, success
 
-        # All built-in types (hotkey/press/.../text/macro/method) now route
-        # through execute_command -> handler registry.
-        success = self.execute_command(entry.phrase)
+        # Built-in command types route through execute_command -> handler registry
+        success = self.execute_command(entry.phrase, app_instance=effective_app)
+        if success:
+            self._matcher.record_execution(entry)
         return entry.phrase, success
+
+    # ── Smart Actions routing ───────────────────────────────────────────────────
 
     def _is_routing_verb(self, text: str) -> bool:
         sa_cfg = getattr(self._app, 'config', {}).get('smart_actions', {})
@@ -312,7 +333,6 @@ class CommandExecutor:
         return first in verbs
 
     def _try_smart_actions_route(self, text: str) -> bool:
-        """Delegate to _do_agent_route(). Lazy import avoids circular deps."""
         verb = text.strip().split()[0].lower() if text.strip() else ''
         try:
             from plugins.commands.smart_actions import _do_agent_route
@@ -321,11 +341,3 @@ class CommandExecutor:
         except Exception as e:
             print(f"[SMART ACTIONS] Routing failed: {e}")
             return False
-
-    def get_command(self, name: str) -> Optional[Dict[str, Any]]:
-        """Return the command dict for *name*, or None if not found."""
-        return self.commands.get(name.lower())
-
-    def list_commands(self) -> Dict[str, Dict[str, Any]]:
-        """Return a shallow copy of the full commands dict."""
-        return self.commands.copy()

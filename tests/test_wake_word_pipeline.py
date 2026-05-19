@@ -220,24 +220,33 @@ class TestFillerWordStripping:
         assert stripped == "short dictate"
 
 
-class TestProcessTextDualSignature:
-    """The DictationApp.process_text wrapper uses (text, app_instance, force_commands)
-    while CommandExecutor.process_text uses (text, command_mode_enabled, on_mode_change).
-    These must not be confused.
+class TestProcessTextSignature:
+    """Validate the consolidated CommandExecutor.process_text signature:
+    (text, app_instance=None, force_commands=False).
+
+    There is now a single class (samsara/commands.py) used by both dictation.py
+    and the test suite.  The old library-only (command_mode_enabled, on_mode_change)
+    signature no longer exists.
     """
 
-    def test_command_executor_process_text_signature(self, temp_commands_file):
-        """CommandExecutor.process_text takes positional command_mode_enabled bool."""
+    def test_command_executor_process_text_force_commands(self, temp_commands_file):
+        """force_commands=True bypasses the app gate so commands always execute."""
         executor = CommandExecutor(temp_commands_file)
         executor.keyboard_controller.press = Mock()
         executor.keyboard_controller.release = Mock()
-        # Calling with correct signature
-        result, was_cmd = executor.process_text("copy", command_mode_enabled=True)
+        result, was_cmd = executor.process_text("copy", force_commands=True)
         assert was_cmd is True
 
     def test_command_executor_disabled_mode(self, temp_commands_file):
-        """With command_mode_enabled=False, commands should not execute."""
+        """With app.command_mode_enabled=False, commands should not execute."""
+        import threading
         executor = CommandExecutor(temp_commands_file)
-        result, was_cmd = executor.process_text("copy", command_mode_enabled=False)
+        mock_app = Mock()
+        mock_app.command_mode_enabled = False
+        mock_app._config_lock = threading.Lock()
+        mock_app.config = {}
+        # Reminder parsing must not fire for plain "copy"
+        mock_app.notification_manager.parse_remind_command.return_value = None
+        result, was_cmd = executor.process_text("copy", mock_app)
         assert was_cmd is False
         assert result == "copy"  # returned as dictation text

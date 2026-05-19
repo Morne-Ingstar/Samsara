@@ -97,36 +97,36 @@ class TestCommandModeToggle:
     """Tests for command mode toggle via voice"""
 
     def test_enable_command_mode_phrase(self, temp_commands_file):
-        """Test 'enable command mode' phrase"""
+        """Test 'enable command mode' phrase updates app state."""
+        import threading
         from samsara.commands import CommandExecutor
         executor = CommandExecutor(temp_commands_file)
 
-        callback = Mock()
+        mock_app = Mock()
+        mock_app.command_mode_enabled = False
+        mock_app._config_lock = threading.Lock()
+        mock_app.config = {}
 
-        result, was_command = executor.process_text(
-            "enable command mode",
-            command_mode_enabled=False,
-            on_mode_change=callback
-        )
+        result, was_command = executor.process_text("enable command mode", mock_app)
 
         assert was_command is True
-        callback.assert_called_with(True)
+        assert mock_app.command_mode_enabled is True
 
     def test_disable_command_mode_phrase(self, temp_commands_file):
-        """Test 'disable command mode' phrase"""
+        """Test 'disable command mode' phrase updates app state."""
+        import threading
         from samsara.commands import CommandExecutor
         executor = CommandExecutor(temp_commands_file)
 
-        callback = Mock()
+        mock_app = Mock()
+        mock_app.command_mode_enabled = True
+        mock_app._config_lock = threading.Lock()
+        mock_app.config = {}
 
-        result, was_command = executor.process_text(
-            "disable command mode",
-            command_mode_enabled=True,
-            on_mode_change=callback
-        )
+        result, was_command = executor.process_text("disable command mode", mock_app)
 
         assert was_command is True
-        callback.assert_called_with(False)
+        assert mock_app.command_mode_enabled is False
 
 
 @pytest.mark.integration
@@ -269,15 +269,10 @@ class TestFullCommandExecution:
         from samsara.commands import CommandExecutor
         executor = CommandExecutor(temp_commands_file)
 
-        # Mock keyboard controller
         executor.keyboard_controller.press = Mock()
         executor.keyboard_controller.release = Mock()
 
-        # Simulated transcription
-        text = "close window"
-
-        # Find and execute
-        result, was_command = executor.process_text(text, command_mode_enabled=True)
+        result, was_command = executor.process_text("close window", force_commands=True)
 
         assert was_command is True
 
@@ -288,10 +283,7 @@ class TestFullCommandExecution:
         with patch('time.sleep'):
             executor = CommandExecutor(temp_commands_file)
 
-            result, was_command = executor.process_text(
-                "period",
-                command_mode_enabled=True
-            )
+            result, was_command = executor.process_text("period", force_commands=True)
 
             assert was_command is True
 
@@ -300,10 +292,7 @@ class TestFullCommandExecution:
         from samsara.commands import CommandExecutor
         executor = CommandExecutor(temp_commands_file)
 
-        result, was_command = executor.process_text(
-            "open chrome",
-            command_mode_enabled=True
-        )
+        result, was_command = executor.process_text("open chrome", force_commands=True)
 
         assert was_command is True
         mock_subprocess.assert_called_once()
