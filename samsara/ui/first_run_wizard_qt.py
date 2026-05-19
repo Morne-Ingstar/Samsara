@@ -184,11 +184,56 @@ class _HotkeyBtn(QPushButton):
 
 _STEPS = [
     ("Welcome",    "Welcome to Samsara"),
+    ("Use Case",   "How Will You Use Samsara?"),
     ("Microphone", "Select Your Microphone"),
     ("Model",      "Choose Recognition Quality"),
     ("Shortcuts",  "Shortcuts & Wake Word"),
     ("Complete",   "Setup Complete!"),
 ]
+
+# Config deltas applied when the user selects a use case.
+# Nested dicts are merged into the existing config sub-dict.
+_USE_CASE_CONFIGS = {
+    "chronic_pain": {
+        "wake_word_enabled": True,
+        "tts": {"enabled": True},
+        "mode": "hold",
+        "audio_feedback": True,
+    },
+    "privacy": {
+        "cloud_llm": {"enabled": False},
+        "wake_word_enabled": True,
+    },
+    "power_user": {
+        "wake_word_enabled": True,
+        "streaming_mode": True,
+        "command_mode_enabled": True,
+    },
+    "just_dictation": {
+        "wake_word_enabled": False,
+        "mode": "hold",
+    },
+}
+
+_USE_CASE_TIPS = {
+    "chronic_pain": (
+        "Try saying: 'Jarvis, pain level 6' to log your pain level, or "
+        "'Jarvis, took ibuprofen 400mg' to track medication. "
+        "Say 'health summary' for a spoken overview of your day."
+    ),
+    "privacy": (
+        "All your data stays on this machine. Voice recognition runs locally "
+        "via Whisper — nothing is sent to the cloud."
+    ),
+    "power_user": (
+        "CapsLock streaming is enabled. Hold CapsLock for live transcription. "
+        "Check out the Command Reference for all available voice commands."
+    ),
+    "just_dictation": (
+        "Hold Ctrl+Shift, speak, and release. "
+        "Text appears wherever your cursor is."
+    ),
+}
 
 _DEFAULTS = {
     "hotkey":              "ctrl+shift",
@@ -320,12 +365,16 @@ class _WizardWindow(QMainWindow):
         # Build all pages up front (they're cheap)
         self._mic_combo: QComboBox | None = None
         self._mic_status: QLabel | None = None
+        self._mic_page: QWidget | None = None
         self._model_group: QButtonGroup | None = None
         self._hotkey_btns: dict[str, _HotkeyBtn] = {}
         self._summary_labels: list[QLabel] = []
+        self._use_case_group: QButtonGroup | None = None
+        self._tip_lbl: QLabel | None = None
 
         self._pages = [
             self._build_welcome(),
+            self._build_use_case(),
             self._build_microphone(),
             self._build_model(),
             self._build_shortcuts(),
@@ -395,9 +444,10 @@ class _WizardWindow(QMainWindow):
         sf_layout.setSpacing(10)
 
         for icon, text in [
-            ("1.", "Select your microphone"),
-            ("2.", "Choose speech recognition quality"),
-            ("3.", "Set your keyboard shortcuts"),
+            ("1.", "Choose how you'll use Samsara"),
+            ("2.", "Select your microphone"),
+            ("3.", "Choose speech recognition quality"),
+            ("4.", "Set your keyboard shortcuts"),
         ]:
             row = QHBoxLayout()
             icon_lbl = QLabel(icon)
@@ -420,8 +470,61 @@ class _WizardWindow(QMainWindow):
         lay.addStretch()
         return w
 
+    def _build_use_case(self) -> QWidget:
+        w, lay = self._padded()
+        sub = QLabel("Pick the option that fits best. You can change everything later in Settings.")
+        sub.setWordWrap(True)
+        sub.setStyleSheet("color:#8A8A92;font-size:13px;")
+        lay.addWidget(sub)
+        lay.addSpacing(4)
+
+        self._use_case_group = QButtonGroup(w)
+        _CASES = [
+            ("chronic_pain",   "I have chronic pain or limited mobility",
+             "Set up for hands-free use with health tracking, voice reminders, and spoken feedback."),
+            ("privacy",        "I value privacy and want local-only voice control",
+             "Everything stays on your machine. No cloud, no accounts, no data leaves your computer."),
+            ("power_user",     "I'm a power user / developer",
+             "Scriptable voice macros, command packs, and deep customization."),
+            ("just_dictation", "Just dictation",
+             "Simple speech-to-text. Press a key, speak, release."),
+        ]
+        for i, (value, title, desc) in enumerate(_CASES):
+            card = QFrame()
+            card.setStyleSheet(
+                "QFrame{background:#111114;border-radius:8px;"
+                "border:1px solid rgba(255,255,255,0.06);}"
+            )
+            cl = QHBoxLayout(card)
+            cl.setContentsMargins(14, 12, 14, 12)
+            cl.setSpacing(10)
+
+            rb = QRadioButton()
+            rb.setProperty("_value", value)
+            if value == "just_dictation":
+                rb.setChecked(True)
+            self._use_case_group.addButton(rb, i)
+            cl.addWidget(rb, alignment=Qt.AlignmentFlag.AlignTop)
+
+            text_col = QVBoxLayout()
+            text_col.setSpacing(3)
+            name_lbl = QLabel(title)
+            name_lbl.setStyleSheet("font-weight:600;font-size:13px;color:#E8E8EA;")
+            desc_lbl = QLabel(desc)
+            desc_lbl.setWordWrap(True)
+            desc_lbl.setStyleSheet("color:#8A8A92;font-size:12px;")
+            text_col.addWidget(name_lbl)
+            text_col.addWidget(desc_lbl)
+            cl.addLayout(text_col, stretch=1)
+
+            lay.addWidget(card)
+
+        lay.addStretch()
+        return w
+
     def _build_microphone(self) -> QWidget:
         w, lay = self._padded()
+        self._mic_page = w  # saved for _on_mic_result lookup
         sub = QLabel("Choose the microphone Samsara will listen on.")
         sub.setStyleSheet("color:#8A8A92;font-size:13px;")
         lay.addWidget(sub)
@@ -595,6 +698,20 @@ class _WizardWindow(QMainWindow):
             cl.addWidget(lbl)
         lay.addWidget(card)
 
+        # Use-case-specific tip — populated in _fill_summary()
+        tip_frame = QFrame()
+        tip_frame.setStyleSheet(
+            "QFrame{background:rgba(94,234,212,0.06);border-radius:8px;"
+            "border:1px solid rgba(94,234,212,0.18);}"
+        )
+        tf_lay = QVBoxLayout(tip_frame)
+        tf_lay.setContentsMargins(16, 12, 16, 12)
+        self._tip_lbl = QLabel("")
+        self._tip_lbl.setWordWrap(True)
+        self._tip_lbl.setStyleSheet("color:#AAFAF0;font-size:12px;")
+        tf_lay.addWidget(self._tip_lbl)
+        lay.addWidget(tip_frame)
+
         note = QLabel(
             "The model downloads on first use. "
             "Look for the Samsara tray icon to get started."
@@ -642,6 +759,8 @@ class _WizardWindow(QMainWindow):
 
     def _go_next(self):
         self._collect_step()
+        if _STEPS[self._step][0] == "Use Case":
+            self._apply_use_case_defaults()
         if self._step == len(_STEPS) - 1:
             self._finish()
             return
@@ -656,7 +775,12 @@ class _WizardWindow(QMainWindow):
     def _collect_step(self):
         """Read UI values for the current step into self._config."""
         step_name = _STEPS[self._step][0]
-        if step_name == "Microphone" and self._mic_combo:
+        if step_name == "Use Case" and self._use_case_group:
+            checked = self._use_case_group.checkedButton()
+            self._config['_use_case'] = (
+                checked.property("_value") if checked else "just_dictation"
+            )
+        elif step_name == "Microphone" and self._mic_combo:
             mic_name = self._mic_combo.currentText()
             for m in self._mics:
                 if m['name'] == mic_name:
@@ -690,11 +814,32 @@ class _WizardWindow(QMainWindow):
         for lbl, text in zip(self._summary_labels, lines):
             lbl.setText(text)
 
+        # Populate the use-case tip
+        if self._tip_lbl is not None:
+            use_case = self._config.get('_use_case', 'just_dictation')
+            tip = _USE_CASE_TIPS.get(use_case, "")
+            self._tip_lbl.setText(tip)
+            self._tip_lbl.parentWidget().setVisible(bool(tip))
+
     def _finish(self):
         self._collect_step()
         self._config['first_run_complete'] = True
         self.result = self._config
         self.close()
+
+    def _apply_use_case_defaults(self):
+        """Apply config defaults for the selected use case."""
+        use_case = self._config.get('_use_case', 'just_dictation')
+        updates = _USE_CASE_CONFIGS.get(use_case, {})
+        for key, val in updates.items():
+            if isinstance(val, dict):
+                existing = self._config.setdefault(key, {})
+                if isinstance(existing, dict):
+                    existing.update(val)
+                else:
+                    self._config[key] = dict(val)
+            else:
+                self._config[key] = val
 
     def closeEvent(self, event):
         # X button — save defaults so the wizard doesn't re-appear
@@ -776,7 +921,10 @@ class _WizardWindow(QMainWindow):
             return
         if msg == "_btn_restore_":
             # Find and re-enable the test button
-            for child in self._pages[1].findChildren(QPushButton):
+            search_page = self._mic_page or (self._pages[2] if len(self._pages) > 2 else None)
+            if search_page is None:
+                return
+            for child in search_page.findChildren(QPushButton):
                 if "Test" in child.text() or "Listen" in child.text():
                     child.setText("Test Microphone")
                     child.setEnabled(True)
