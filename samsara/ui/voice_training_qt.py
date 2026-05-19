@@ -251,6 +251,10 @@ class VoiceTrainingQt:
             logger.error(f"Error applying corrections: {exc}", exc_info=True)
             return text
 
+    def calculate_similarity(self, s1: str, s2: str) -> float:
+        """Word-set Jaccard similarity as a percentage (0–100)."""
+        return _word_similarity(s1, s2)
+
     def _get_command_vocabulary(self) -> str:
         try:
             matcher = None

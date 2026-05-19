@@ -20,7 +20,9 @@ def _isolate_plugin_registry(tmp_path, monkeypatch):
     """
     from samsara import plugin_commands as _plugin_commands
     saved = dict(_plugin_commands._REGISTRY)
+    saved_matcher = _plugin_commands._shared_matcher
     _plugin_commands._REGISTRY.clear()
+    _plugin_commands._shared_matcher = None
 
     original_load = _plugin_commands.load_plugins
 
@@ -37,6 +39,7 @@ def _isolate_plugin_registry(tmp_path, monkeypatch):
     finally:
         _plugin_commands._REGISTRY.clear()
         _plugin_commands._REGISTRY.update(saved)
+        _plugin_commands._shared_matcher = saved_matcher
 
 
 # ============================================================================

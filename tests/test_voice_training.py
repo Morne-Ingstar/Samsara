@@ -16,8 +16,7 @@ sys.path.insert(0, str(Path(__file__).parent.parent))
 # ============================================================================
 
 def create_test_voice_training(tmp_path, custom_vocab=None, corrections=None):
-    """Create a VoiceTrainingWindow with mocked dependencies"""
-    # Create training data file if needed
+    """Create a VoiceTrainingQt instance with test data pre-loaded."""
     training_data = {
         'vocabulary': custom_vocab or [],
         'corrections': corrections or {}
@@ -26,17 +25,12 @@ def create_test_voice_training(tmp_path, custom_vocab=None, corrections=None):
     with open(training_file, 'w') as f:
         json.dump(training_data, f)
 
-    # Mock the app
     mock_app = Mock()
     mock_app.config_path = tmp_path / 'config.json'
     mock_app.config = {'initial_prompt': ''}
 
-    # Patch UI components
-    with patch('voice_training.ctk'):
-        with patch('voice_training.sd'):
-            from voice_training import VoiceTrainingWindow
-            vt = VoiceTrainingWindow(mock_app)
-            return vt
+    from samsara.ui.voice_training_qt import VoiceTrainingQt
+    return VoiceTrainingQt(mock_app)
 
 
 # ============================================================================
@@ -257,18 +251,15 @@ class TestTrainingDataPersistence:
 
     def test_load_training_data_missing_file(self, tmp_path):
         """Test loading when training file doesn't exist"""
-        # Create app mock pointing to non-existent training file
         mock_app = Mock()
         mock_app.config_path = tmp_path / 'config.json'
         mock_app.config = {'initial_prompt': ''}
 
-        with patch('voice_training.ctk'):
-            with patch('voice_training.sd'):
-                from voice_training import VoiceTrainingWindow
-                vt = VoiceTrainingWindow(mock_app)
+        from samsara.ui.voice_training_qt import VoiceTrainingQt
+        vt = VoiceTrainingQt(mock_app)
 
-                assert vt.custom_vocab == []
-                assert vt.corrections_dict == {}
+        assert vt.custom_vocab == []
+        assert vt.corrections_dict == {}
 
     def test_save_training_data(self, tmp_path):
         """Test saving training data to file"""
@@ -294,11 +285,9 @@ class TestTrainingDataPersistence:
         mock_app.config_path = tmp_path / 'config.json'
         mock_app.config = {'initial_prompt': ''}
 
-        with patch('voice_training.ctk'):
-            with patch('voice_training.sd'):
-                from voice_training import VoiceTrainingWindow
-                vt = VoiceTrainingWindow(mock_app)
+        from samsara.ui.voice_training_qt import VoiceTrainingQt
+        vt = VoiceTrainingQt(mock_app)
 
-                # Should fall back to empty defaults
-                assert vt.custom_vocab == []
-                assert vt.corrections_dict == {}
+        # Should fall back to empty defaults
+        assert vt.custom_vocab == []
+        assert vt.corrections_dict == {}

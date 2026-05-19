@@ -26,20 +26,17 @@ def create_test_app(config, tmp_path):
     with open(commands_file, 'w') as f:
         json.dump({"commands": {}}, f)
 
-    # We need to mock many things before importing
+    # Mock external dependencies that are still module-level in dictation.py.
+    # SplashScreen, FirstRunWizard, SettingsWindow, VoiceTrainingWindow,
+    # HistoryWindow, and pystray were removed during the CTk→Qt migration
+    # and no longer exist as dictation module attributes.
     patches = [
-        patch('dictation.SplashScreen'),
-        patch('dictation.FirstRunWizard'),
-        patch('dictation.SettingsWindow'),
-        patch('dictation.VoiceTrainingWindow'),
-        patch('dictation.HistoryWindow'),
         patch('dictation.CommandExecutor'),
         # dictation imports pynput.keyboard as pynput_keyboard; the bare
         # "keyboard" module is a different library with no Listener.
         patch('dictation.pynput_keyboard.Listener'),
         patch('dictation.sd.query_devices', return_value=[]),
         patch('dictation.WhisperModel'),
-        patch('dictation.pystray'),
         patch('dictation.winsound'),
     ]
 
@@ -91,44 +88,42 @@ class TestConfigManagement:
         with open(config_file, 'w') as f:
             json.dump(partial_config, f)
 
-        with patch('dictation.SplashScreen'):
-            with patch('dictation.pynput_keyboard.Listener'):
-                with patch('dictation.sd.query_devices', return_value=[]):
-                    # Import the default config to check against
-                    from dictation import DictationApp
+        with patch('dictation.pynput_keyboard.Listener'):
+            with patch('dictation.sd.query_devices', return_value=[]):
+                # Import the default config to check against
+                from dictation import DictationApp
 
-                    # Create a mock app to test load_config
-                    app = Mock()
-                    app.config_path = config_file
-                    app.config = {}
+                # Create a mock app to test load_config
+                app = Mock()
+                app.config_path = config_file
+                app.config = {}
 
-                    # Call load_config
-                    DictationApp.load_config(app)
+                # Call load_config
+                DictationApp.load_config(app)
 
-                    # Check defaults were applied
-                    assert app.config['hotkey'] == 'ctrl+shift'
-                    assert 'mode' in app.config
-                    assert 'language' in app.config
+                # Check defaults were applied
+                assert app.config['hotkey'] == 'ctrl+shift'
+                assert 'mode' in app.config
+                assert 'language' in app.config
 
     def test_save_config(self, tmp_path, sample_config):
         """Test saving configuration to file"""
         config_file = tmp_path / "config.json"
 
-        with patch('dictation.SplashScreen'):
-            from dictation import DictationApp
+        from dictation import DictationApp
 
-            app = Mock()
-            app.config_path = config_file
-            app.config = sample_config
+        app = Mock()
+        app.config_path = config_file
+        app.config = sample_config
 
-            DictationApp.save_config(app)
+        DictationApp.save_config(app)
 
-            # Verify file was written
-            assert config_file.exists()
-            with open(config_file) as f:
-                saved = json.load(f)
-            assert saved['hotkey'] == sample_config['hotkey']
-            assert saved['mode'] == sample_config['mode']
+        # Verify file was written
+        assert config_file.exists()
+        with open(config_file) as f:
+            saved = json.load(f)
+        assert saved['hotkey'] == sample_config['hotkey']
+        assert saved['mode'] == sample_config['mode']
 
 
 # ============================================================================

@@ -22,8 +22,11 @@ for _mod in ('win32gui', 'win32process'):
 import psutil as _psutil_real
 
 # Provide a stub winsdk so the module loads even when the real one is absent
-# in a stripped CI environment.
-if 'winsdk' not in sys.modules:
+# in a stripped CI environment. Use try/import rather than a sys.modules check
+# so we don't overwrite a real winsdk package that was just not imported yet.
+try:
+    import winsdk as _winsdk_check  # noqa: F401
+except ImportError:
     _winsdk_stub = MagicMock()
     sys.modules['winsdk'] = _winsdk_stub
     sys.modules['winsdk.windows'] = _winsdk_stub

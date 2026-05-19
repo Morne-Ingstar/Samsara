@@ -83,15 +83,13 @@ class TestTranscriptionPipeline:
         mock_app.config_path = tmp_path / 'config.json'
         mock_app.config = {'initial_prompt': ''}
 
-        with patch('voice_training.ctk'):
-            with patch('voice_training.sd'):
-                from voice_training import VoiceTrainingWindow
-                vt = VoiceTrainingWindow(mock_app)
+        from samsara.ui.voice_training_qt import VoiceTrainingQt
+        vt = VoiceTrainingQt(mock_app)
 
-                transcribed = "teh quick brown fox adn teh lazy dog"
-                corrected = vt.apply_corrections(transcribed)
+        transcribed = "teh quick brown fox adn teh lazy dog"
+        corrected = vt.apply_corrections(transcribed)
 
-                assert corrected == "the quick brown fox and the lazy dog"
+        assert corrected == "the quick brown fox and the lazy dog"
 
 
 @pytest.mark.integration
