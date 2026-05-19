@@ -100,12 +100,23 @@ class AudioCaptureEngine:
 
         device = self._config.get('microphone', None)
 
-        try:
-            dev_info = sd.query_devices(device, kind='input')
-            self._native_rate = int(dev_info['default_samplerate'])
-        except Exception as exc:
-            print(f"[ACE] device query failed ({exc}), using default")
-            self._native_rate = SAMPLE_RATE
+        # If the caller passed an explicit rate (e.g. to match a concurrent
+        # stream on the same WASAPI device), use it directly; otherwise query.
+        # WASAPI shared mode serves multiple streams through separate clients.
+        # When two clients request different sample rates, Windows routes them
+        # via different audio engines and only one gets callbacks reliably.
+        # Forcing the ACE engine to the same rate as the app's other streams
+        # (wake word, prebuffer) ensures they share a single WASAPI session.
+        explicit_rate = self._config.get('_capture_rate')
+        if explicit_rate:
+            self._native_rate = int(explicit_rate)
+        else:
+            try:
+                dev_info = sd.query_devices(device, kind='input')
+                self._native_rate = int(dev_info['default_samplerate'])
+            except Exception as exc:
+                print(f"[ACE] device query failed ({exc}), using default")
+                self._native_rate = SAMPLE_RATE
 
         # Pre-compute resample ratio (GCD reduction)
         g = _gcd(self._native_rate, SAMPLE_RATE)
