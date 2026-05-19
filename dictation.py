@@ -871,7 +871,6 @@ class DictationApp:
         self.recording = False
         self.command_mode_recording = False  # True when using command-only hotkey
         self._stop_in_flight = False         # True while stop_recording + trailing sleep is pending
-        self.audio_data = []
 
         # Stream health: detect dead PortAudio streams (e.g. after sleep/wake)
         # and trigger reconnection from a background thread. GIL makes simple
@@ -941,15 +940,11 @@ class DictationApp:
         self._icon_rotation = 0.0        # current rotation angle in radians
         self._icon_chase_counter = 0     # counts ticks between color shifts
         self._icon_anim_reasons = set()  # tracks who wants animation (e.g. 'recording', 'wake_word')
-        self.continuous_stream = None  # owned by continuous mode
-        self.wake_stream = None         # owned by wake word mode
         self.silence_start = None
+        self.is_speaking = False
         self.speech_buffer = []
         self.buffer_lock = threading.Lock()
-        # Protects ONLY self.audio_data (hold-to-dictate / streaming capture buffer).
-        # Lock order: never acquire buffer_lock while holding audio_data_lock.
-        self.audio_data_lock = threading.Lock()
-        self.is_speaking = False
+        self._buffer_rms_history = []
         # Silero VAD -- real-time speech gate for the wake-word audio callback.
         # When available, it replaces the old RMS debounce entirely. When it's
         # not (torch missing or download blocked), we fall back to RMS.
@@ -966,26 +961,12 @@ class DictationApp:
         self._wake_detector = None
         self._oww_wake_detected = False  # Set by OWW; consumed by silence flush
 
-        # Per-chunk RMS values kept in lock-step with speech_buffer. Used by
-        # the stuck-buffer detector -- real speech has high RMS variance
-        # (consonant/vowel transitions); sustained noise/echo leakage does not.
-        self._buffer_rms_history = []
-
         # Timestamp of the last successful command execution. While this is
         # within the 2-second post-command window, the audio callback
         # suppresses buffering to avoid picking up speaker output (Chrome
         # launch sound, notifications, etc.) as a new utterance.
         self._command_executed_at = None
         
-        # Pre-buffer: the hold path now uses the ACE engine ring (ACE-03).
-        # The wake path still uses this deque — ACE-04 will migrate it.
-        # _prebuffer_stream is no longer started for hold mode, but the deque
-        # must remain for wake_word_audio_callback which appends to it.
-        self._prebuffer_seconds = PREBUFFER_SECONDS
-        self._prebuffer_chunks  = int(self._prebuffer_seconds / 0.1)  # 15 chunks at 100ms
-        self._prebuffer         = collections.deque(maxlen=self._prebuffer_chunks)
-        self._prebuffer_active  = False
-        self._prebuffer_stream  = None   # ACE-03: no longer started for hold mode
         self._hotkey_recording = False  # Suppress wake word transcription during hotkey recording
         
         # Dictation mode tracking (for wake word dictation)
@@ -2220,7 +2201,6 @@ class DictationApp:
             self.recording
             or self.continuous_active
             or self.wake_word_active
-            or self._prebuffer_stream is not None
             or (self._ace_engine is not None and self._ace_engine._running)
         )
 
@@ -2261,7 +2241,6 @@ class DictationApp:
         # Remember what was running so we can restore it on the new device
         was_continuous = self.continuous_active
         was_wake_word = self.wake_word_active
-        was_prebuffer = self._prebuffer_stream is not None
         was_recording = self.recording
 
         # Stop everything first (order matters: active recording before its host stream)
@@ -2272,8 +2251,6 @@ class DictationApp:
             self.stop_continuous_mode()
         if was_wake_word:
             self.stop_wake_word_mode()
-        if was_prebuffer:
-            self._stop_prebuffer_stream()
 
         # Update config fields (mutations under lock, audio work outside)
         mic_entry = next((m for m in self.available_mics if m['id'] == mic_id), None)
@@ -3056,31 +3033,9 @@ class DictationApp:
         time.sleep(0.15)
         print("[MIC] Continuous mode ACTIVE — speak naturally, pauses will trigger transcription")
 
-        self.silence_start = None
-        self.is_speaking   = False
-
-        if self._continuous_consumer is not None:
-            # ACE path: ring consumer handles capture — no separate PortAudio stream.
-            # Works alongside wake word mode without stream conflict.
-            self._continuous_consumer.start()
-        else:
-            # Legacy fallback (ACE engine unavailable)
-            with self.buffer_lock:
-                self.speech_buffer = []
-            stream = self._open_stream_with_timeout(
-                samplerate=self.capture_rate,
-                channels=1,
-                dtype=np.float32,
-                callback=self.continuous_audio_callback,
-                device=self.config['microphone'],
-                blocksize=int(self.capture_rate * 0.1),
-            )
-            if stream is None:
-                print("[ERROR] Could not open continuous stream — audio subsystem busy.")
-                self.play_sound("error")
-                return
-            self.continuous_stream = stream
-            self.continuous_stream.start()
+        # ACE path: ring consumer handles capture — no separate PortAudio stream.
+        # Works alongside wake word mode without stream conflict.
+        self._continuous_consumer.start()
 
         self.set_app_state(continuous_active=True)
         self._request_icon_chase('continuous')
@@ -3096,102 +3051,12 @@ class DictationApp:
             remaining = self._continuous_consumer.stop()
             if remaining:
                 self.transcribe_continuous_buffer(remaining, src_rate=16000)
-        elif self.continuous_stream:
-            # Legacy fallback path
-            self.continuous_stream.stop()
-            self.continuous_stream.close()
-            self.continuous_stream = None
-            with self.buffer_lock:
-                remaining = self.speech_buffer.copy()
-                self.speech_buffer = []
-            if remaining:
-                self.transcribe_continuous_buffer(remaining)
-        else:
-            pass   # was piggyback or ACE consumer already idle
 
         print("[OFF] Continuous mode STOPPED")
         self.play_sound("stop")
         self._release_icon_chase('continuous')
         if hasattr(self, 'listening_indicator'):
             self._schedule_ui(self.listening_indicator.set_listening, False)
-
-    def continuous_audio_callback(self, indata, frames, time_info, status):
-        """Callback for continuous listening - detects speech and silence"""
-        if self._stream_dead:
-            return  # don't process audio from a dying stream
-        try:
-            if status:
-                print(f"[WARN] Audio status: {status}")
-
-            if not self.continuous_active:
-                return
-            
-            # Apply echo cancellation if active
-            audio_chunk = indata.copy()
-            if self.echo_canceller.is_active:
-                audio_chunk = self.echo_canceller.process(audio_chunk)
-            audio_chunk = audio_chunk.flatten()
-            
-            # Calculate RMS energy to detect speech
-            rms = np.sqrt(np.mean(audio_chunk**2))
-            
-            # Speech threshold for continuous mode.
-            # Historically this read from wake_word_config.audio.speech_threshold,
-            # which is calibrated for wake-word activation (intentionally high to
-            # avoid false wakes). Continuous mode needs a lower, more permissive
-            # threshold to catch normal-volume speech. Falls back to the wake
-            # threshold for backward compat if the dedicated key isn't set.
-            ww_audio = self.config.get('wake_word_config', {}).get('audio', {})
-            wake_threshold = ww_audio.get('speech_threshold', DEFAULT_SPEECH_THRESHOLD)
-            speech_threshold = self.config.get('continuous_speech_threshold', DEFAULT_SPEECH_THRESHOLD)
-            silence_threshold = self.config.get('silence_threshold', DEFAULT_SILENCE_TIMEOUT)
-            min_speech = self.config.get('min_speech_duration', DEFAULT_MIN_SPEECH_DURATION)
-
-            if rms > speech_threshold:
-                # Speech detected
-                self.is_speaking = True
-                self.silence_start = None
-                with self.buffer_lock:
-                    self.speech_buffer.append(audio_chunk)
-            else:
-                # Silence detected
-                if self.is_speaking:
-                    # Still capture some silence at the end for context
-                    with self.buffer_lock:
-                        self.speech_buffer.append(audio_chunk)
-
-                    if self.silence_start is None:
-                        self.silence_start = time.time()
-                    elif time.time() - self.silence_start >= silence_threshold:
-                        # Enough silence - check if we have enough speech
-                        with self.buffer_lock:
-                            speech_duration = len(self.speech_buffer) * 0.1  # Each block is 100ms
-
-                            if speech_duration >= min_speech:
-                                buffer_copy = self.speech_buffer.copy()
-                                self.speech_buffer = []
-                            else:
-                                buffer_copy = None
-                                self.speech_buffer = []
-
-                        if buffer_copy is not None:
-                            self.is_speaking = False
-                            self.silence_start = None
-                            thread = threading.Thread(
-                                target=self.transcribe_continuous_buffer,
-                                args=(buffer_copy,),
-                                daemon=True
-                            )
-                            thread.start()
-                        else:
-                            self.is_speaking = False
-                            self.silence_start = None
-        except (sd.PortAudioError, OSError) as e:
-            print(f"[AUDIO] Stream died -- attempting reconnect... ({e})")
-            self._stream_dead = True
-            return
-        except Exception as e:
-            print(f"[ERROR] Audio callback exception: {e}")
 
     def transcribe_continuous_buffer(self, buffer, src_rate=None):
         """Transcribe a buffer from continuous mode.
@@ -3296,15 +3161,6 @@ class DictationApp:
             except Exception:
                 pass
 
-    def transcribe_buffer(self):
-        """Transcribe remaining buffer when stopping"""
-        with self.buffer_lock:
-            if not self.speech_buffer:
-                return
-            buffer_copy = self.speech_buffer.copy()
-            self.speech_buffer = []
-        self.transcribe_continuous_buffer(buffer_copy)
-    
     def toggle_wake_word_mode(self):
         """Toggle wake word listening mode"""
         if self.wake_word_active:
@@ -3328,30 +3184,9 @@ class DictationApp:
         self.is_speaking         = False
         self.wake_word_triggered = False
 
-        if self._wake_consumer is not None:
-            # ACE path: WakeConsumer polls the ring — no separate PortAudio stream.
-            # Engine and wake consumer share the same device, no stream conflict.
-            with self.buffer_lock:
-                self.speech_buffer = []
-            self._wake_consumer.start()
-        else:
-            # Legacy fallback (ACE engine unavailable)
-            with self.buffer_lock:
-                self.speech_buffer = []
-            stream = self._open_stream_with_timeout(
-                samplerate=self.capture_rate,
-                channels=1,
-                dtype=np.float32,
-                callback=self.wake_word_audio_callback,
-                device=self.config['microphone'],
-                blocksize=int(self.capture_rate * 0.1),
-            )
-            if stream is None:
-                print("[ERROR] Could not open wake word stream — audio subsystem busy.")
-                self.play_sound("error")
-                return
-            self.wake_stream = stream
-            self.wake_stream.start()
+        # ACE path: WakeConsumer polls the ring — no separate PortAudio stream.
+        # Engine and wake consumer share the same device, no stream conflict.
+        self._wake_consumer.start()
 
         self.set_app_state(wake_word_active=True)
         self._request_icon_chase('wake_word')
@@ -3369,19 +3204,6 @@ class DictationApp:
             remaining = self._wake_consumer.stop()
             if remaining and self.wake_word_triggered:
                 self.process_wake_word_buffer(remaining, src_rate=16000)
-        elif self.wake_stream:
-            # Legacy fallback
-            self.wake_stream.stop()
-            self.wake_stream.close()
-            self.wake_stream = None
-            with self.buffer_lock:
-                if self.speech_buffer and self.wake_word_triggered:
-                    buffer_copy = self.speech_buffer.copy()
-                else:
-                    buffer_copy = None
-                self.speech_buffer = []
-            if buffer_copy:
-                self.process_wake_word_buffer(buffer_copy)
 
         print("[OFF] Wake word mode STOPPED")
         self.play_sound("stop")
@@ -3478,302 +3300,6 @@ class DictationApp:
                     self._vad_model.reset_states()
                 except Exception as e:
                     print(f"[VAD] reset_states failed: {e}")
-
-    def wake_word_audio_callback(self, indata, frames, time_info, status):
-        """Callback for wake word listening"""
-        if self._stream_dead:
-            return  # don't process audio from a dying stream
-        try:
-            if status:
-                print(f"[WARN] Audio status: {status}")
-
-            if not self.wake_word_active:
-                return
-            
-            # Apply echo cancellation if active.
-            # IMPORTANT: VAD runs on the RAW mic signal, not AEC output.
-            # AEC can amplify instead of cancel (cleaned_rms >> mic_rms),
-            # which tricks VAD into seeing "speech" in silence. The raw
-            # mic is the ground truth for "is the user talking?"
-            # The AEC output is still buffered for Whisper transcription.
-            audio_chunk = indata.copy()
-            raw_chunk = audio_chunk.copy().flatten()  # raw mic for VAD
-            if self.echo_canceller.is_active:
-                audio_chunk = self.echo_canceller.process(audio_chunk)
-            audio_chunk = audio_chunk.flatten()
-
-            # Layer 3: Post-command echo suppression. After we just fired a
-            # command, speakers often produce audio (Chrome launch chime,
-            # notification). AEC can't fully strip it, so without this guard
-            # the VAD below would buffer it as a new utterance. The guard is
-            # scoped to asleep/command_window so dictation modes stay hot.
-            if (self._command_executed_at is not None
-                    and self.app_state not in ('long_dictation', 'quick_dictation')):
-                elapsed = time.time() - self._command_executed_at
-                if elapsed < 2.0:
-                    if self.echo_canceller.is_active:
-                        ref_rms = self.echo_canceller.last_ref_rms
-                        if ref_rms is not None and ref_rms > 0.05:
-                            return
-                else:
-                    self._command_executed_at = None
-
-            # If hotkey recording is active, skip everything -
-            # the recording stream handles audio capture directly,
-            # and we must NOT feed the pre-buffer to avoid overlap on next session
-            if self._hotkey_recording:
-                return
-
-            # Suppress while TTS is speaking AND for 300ms after it stops.
-            # The 300ms hold-off covers the acoustic tail (room reverb, mic
-            # ring) so Ava's voice doesn't bleed into the pre-buffer.
-            # _tts_last_speaking is updated on every callback while speaking,
-            # so it marks the last moment TTS audio was live on the mic.
-            _coordinator = getattr(self, 'audio_coordinator', None)
-            if _coordinator and _coordinator.is_speaking:
-                self._tts_last_speaking = time.monotonic()
-                return
-            if (time.monotonic() - getattr(self, '_tts_last_speaking', 0.0) < 0.3):
-                return
-
-            # Feed the pre-buffer (only when not hotkey recording)
-            self._prebuffer.append(audio_chunk.copy())
-            
-            # RMS of raw mic signal (not AEC output) for speech threshold
-            rms = np.sqrt(np.mean(raw_chunk**2))
-            
-            # Get thresholds from config
-            ww_config = self.config.get('wake_word_config', {})
-            audio_config = ww_config.get('audio', {})
-            speech_threshold = audio_config.get('speech_threshold', DEFAULT_SPEECH_THRESHOLD)
-            # When Silero is unavailable we fall back to RMS gating.
-            # DEFAULT_SPEECH_THRESHOLD (0.03) is tuned for typical mics; quiet
-            # USB headsets can have speech RMS as low as 0.005. Cap at 0.01 so
-            # uncalibrated quiet mics still get their audio buffered.
-            if not self._vad_available:
-                speech_threshold = min(speech_threshold, 0.01)
-            min_speech = audio_config.get('min_speech_duration', DEFAULT_MIN_SPEECH_DURATION)
-            
-            # Use dynamic silence timeout if in dictation mode, otherwise use fast wake detection
-            if self.app_state == 'long_dictation':
-                # Long dictation: dispatch chunks at normal VAD silence intervals
-                # so audio drains incrementally throughout the session. The
-                # hard-cap timer (15s) is what terminates the session — VAD
-                # silence here just controls when each chunk gets shipped to
-                # transcription. Without this, anything spoken after the first
-                # silence boundary would accumulate in speech_buffer indefinitely
-                # until reset wiped it. Default 1s, configurable.
-                ww_config = self.config.get('wake_word_config', {})
-                silence_threshold = ww_config.get('long_chunk_silence', 1.0)
-            elif self.app_state == 'quick_dictation' and self._dictation_silence_timeout:
-                silence_threshold = self._dictation_silence_timeout
-            else:
-                # Asleep / command_window -- use wake detection silence
-                silence_threshold = audio_config.get('wake_detection_silence', WAKE_DETECTION_SILENCE)
-            
-            # Decide whether this chunk contains human speech. VAD runs on
-            # the RAW mic signal (not AEC output) to avoid false positives
-            # from AEC amplification artifacts. RMS fallback also uses raw.
-            if self._vad_available:
-                try:
-                    is_speech = self._vad_is_speech(raw_chunk)
-                    # Reset error counter on success
-                    self._vad_consec_errors = 0
-                except Exception as e:
-                    # A VAD hiccup shouldn't silence the mic -- degrade to RMS
-                    # for this chunk. Reset VAD state to try to recover. If we
-                    # hit too many consecutive failures, disable VAD entirely
-                    # for the rest of the session (Silero state corrupts
-                    # permanently sometimes on device-switch / sample-rate
-                    # transitions). Rate-limit the log to once per 30s.
-                    now = time.time()
-                    last = getattr(self, '_vad_error_last_log', 0.0)
-                    self._vad_consec_errors = getattr(self, '_vad_consec_errors', 0) + 1
-
-                    if now - last >= 30.0:
-                        print(f"[VAD] inference error (suppressing further VAD errors for 30s): {type(e).__name__}: {e}")
-                        self._vad_error_last_log = now
-
-                    # Try to recover by resetting Silero's recurrent state
-                    try:
-                        self._vad_reset()
-                    except Exception:
-                        pass
-
-                    # After 50 consecutive errors (~5s of bad chunks at 100ms each),
-                    # give up on Silero for this session and use RMS for everything.
-                    if self._vad_consec_errors >= 50:
-                        print(f"[VAD] 50 consecutive errors -- disabling VAD for this session, RMS only")
-                        self._vad_available = False
-
-                    is_speech = rms > speech_threshold
-            else:
-                is_speech = rms > speech_threshold
-
-            # OWW pre-filter: feed every chunk when in asleep state so the
-            # model maintains its rolling context. OWW is ~5ms on CPU and
-            # runs synchronously here so the flag is set before the
-            # silence-flush check below.
-            if (self.app_state == 'asleep'
-                    and not self.wake_word_triggered
-                    and self._wake_detector is not None
-                    and self._wake_detector.is_available):
-                _oww_chunk = resample_audio(raw_chunk, self.capture_rate, 16000)
-                # Normalise the OWW chunk to a consistent RMS before the model
-                # sees it. OWW models are trained on typical-volume speech
-                # (~0.10 RMS in float32). A padded audio interface, distant mic,
-                # or conservatively set interface gain can produce signals 5-20x
-                # quieter, which maps to int16 amplitudes well below the model's
-                # training distribution, causing scores to stay near zero even on
-                # a clear wake word. Normalisation brings all signals into the
-                # expected range without touching the Whisper speech buffer.
-                # Only apply when signal is above the noise floor (avoids
-                # amplifying pure silence into something that resembles speech).
-                if rms > 0.005:
-                    _oww_gain = min(0.10 / rms, 20.0)   # cap at ~26 dB
-                    _oww_chunk = np.clip(
-                        _oww_chunk.astype(np.float32) * _oww_gain, -1.0, 1.0
-                    )
-                if self._wake_detector.detected(_oww_chunk):
-                    self._oww_wake_detected = True
-                    self._wake_detector.reset()
-
-            if is_speech:
-                # Human speech detected -- buffer directly. VAD already filtered
-                # fan/hum/ambient, so no debounce is needed.
-                # Buffer RAW mic audio, not AEC output. The echo canceller is
-                # actively corrupting the signal (cleaned_rms >> mic_rms) which
-                # makes Whisper reject valid speech or misrecognize words.
-                # Whisper has its own VAD filter that strips non-speech segments.
-                speech_onset = not self.is_speaking  # first speech frame?
-                self.is_speaking = True
-                self.silence_start = None
-                with self.buffer_lock:
-                    # On speech onset, prepend the rolling pre-buffer so the
-                    # first ~300-500ms of audio before VAD triggered is
-                    # included. Without this, VAD fires slightly after the
-                    # user starts speaking and short leading words like "the",
-                    # "a", "and" are clipped from the buffer entirely.
-                    if speech_onset and self._prebuffer:
-                        prebuf = list(self._prebuffer)
-                        self._prebuffer.clear()
-                        for pb_chunk in prebuf:
-                            self.speech_buffer.append(pb_chunk)
-                            self._buffer_rms_history.append(
-                                float(np.sqrt(np.mean(pb_chunk**2)))
-                            )
-                        prebuf_ms = len(prebuf) * 100
-                        print(f"[PRE] Prepended {prebuf_ms}ms pre-buffer to speech onset")
-                    self.speech_buffer.append(raw_chunk)
-                    self._buffer_rms_history.append(rms)
-
-                    # LAYER 2: Stuck-buffer detector. Real speech has big RMS
-                    # swings (consonants vs vowels vs gaps); echo leakage and
-                    # sustained tones are flat. If the last 3s of the buffer
-                    # has near-zero variance in asleep state, discard before
-                    # the 7s hard cap fires -- cuts felt latency from 7s to 3s.
-                    if (self.app_state == 'asleep'
-                            and len(self._buffer_rms_history) >= 30):
-                        recent = self._buffer_rms_history[-30:]
-                        variance = float(np.var(recent))
-                        if variance < 0.0001:
-                            buffer_seconds = len(self._buffer_rms_history) * 0.1
-                            print(f"[CAP] Stuck buffer detected "
-                                  f"({buffer_seconds:.1f}s, var={variance:.6f}) "
-                                  f"-- discarding")
-                            self.speech_buffer = []
-                            self._buffer_rms_history = []
-                            self.is_speaking = False
-                            self.silence_start = None
-                            self._vad_reset()
-                            return
-
-                    # LAYER 1: Hard buffer cap.  No legitimate wake-word
-                    # utterance exceeds ~5 seconds. If the buffer grows past
-                    # 7 seconds it means AEC leakage, headphone bleed, or
-                    # ambient noise is fooling VAD. Discard immediately --
-                    # sending garbage to Whisper just adds latency.
-                    buffer_seconds = len(self.speech_buffer) * 0.1
-                    if buffer_seconds >= 7.0 and self.app_state not in ('long_dictation', 'quick_dictation'):
-                        print(f"[CAP] Buffer hit {buffer_seconds:.1f}s cap -- discarding (likely noise/echo)")
-                        self.speech_buffer = []
-                        self._buffer_rms_history = []
-                        self.is_speaking = False
-                        self.silence_start = None
-                        self._vad_reset()
-                        return
-            else:
-                # Silence (or non-speech noise). Only meaningful if we were
-                # already speaking -- otherwise we'd spin the silence timer on
-                # an empty buffer.
-                if self.is_speaking:
-                    with self.buffer_lock:
-                        self.speech_buffer.append(raw_chunk)
-                        self._buffer_rms_history.append(rms)
-
-                    if self.silence_start is None:
-                        self.silence_start = time.time()
-                    elif time.time() - self.silence_start >= silence_threshold:
-                        # Enough silence -- flush iff we collected enough speech.
-                        with self.buffer_lock:
-                            speech_duration = len(self.speech_buffer) * 0.1
-                            if speech_duration >= min_speech:
-                                buffer_copy = self.speech_buffer.copy()
-                            else:
-                                buffer_copy = None
-                            self.speech_buffer = []
-                            self._buffer_rms_history = []
-
-                        self.is_speaking = False
-                        self.silence_start = None
-                        if buffer_copy is not None:
-                            # OWW gate: when the pre-filter is active and we
-                            # are in asleep state (not command_window or
-                            # dictation), only dispatch to Whisper if OWW
-                            # confirmed a wake word in this buffer window.
-                            # In all other states (command_window, dictation)
-                            # the gate is bypassed — Whisper must always fire.
-                            _oww_gated = (
-                                self._wake_detector is not None
-                                and self._wake_detector.is_available
-                                and self.app_state == 'asleep'
-                                and not self.wake_word_triggered
-                            )
-                            if _oww_gated and not self._oww_wake_detected:
-                                # No wake word detected — discard buffer quietly
-                                if self._wake_detector is not None:
-                                    self._wake_detector.reset()
-                            else:
-                                self._oww_wake_detected = False
-                                # In long_dictation, dispatch through the tracked
-                                # wrapper so the pending-transcriptions counter
-                                # stays accurate. Other modes use the plain
-                                # fire-and-forget dispatch.
-                                if self.app_state == 'long_dictation':
-                                    with self._dictation_finalize_lock:
-                                        self._pending_transcriptions += 1
-                                    threading.Thread(
-                                        target=self._process_wake_word_buffer_tracked,
-                                        args=(buffer_copy,),
-                                        daemon=True,
-                                    ).start()
-                                else:
-                                    threading.Thread(
-                                        target=self.process_wake_word_buffer,
-                                        args=(buffer_copy,),
-                                        daemon=True,
-                                    ).start()
-
-            # ACE-04A: ContinuousConsumer reads from the ring independently.
-            # The legacy fan-out call is removed — continuous mode no longer
-            # rides the wake stream.
-
-        except (sd.PortAudioError, OSError) as e:
-            print(f"[AUDIO] Stream died -- attempting reconnect... ({e})")
-            self._stream_dead = True
-            return
-        except Exception as e:
-            print(f"[ERROR] Audio callback exception: {e}")
 
     def register_wake_trace_callback(self, callback):
         """Register a callable that receives wake-word pipeline trace events.
@@ -4634,31 +4160,6 @@ class DictationApp:
             import traceback
             traceback.print_exc()
 
-    def audio_callback(self, indata, frames, time_info, status):
-        """Audio callback for legacy streaming mode (CapsLock path) only.
-
-        The hold/toggle non-streaming path uses the ACE engine ring (ACE-03).
-        This callback is retained for StreamingSession until ACE-04 migrates it.
-        """
-        if self._stream_dead:
-            return  # don't process audio from a dying stream
-        try:
-            if status:
-                print(f"[WARN] Audio status: {status}")
-
-            if self.recording:
-                chunk = indata.copy()
-                if self.echo_canceller.is_active:
-                    chunk = self.echo_canceller.process(chunk)
-                with self.audio_data_lock:
-                    self.audio_data.append(chunk)
-        except (sd.PortAudioError, OSError) as e:
-            print(f"[AUDIO] Stream died -- attempting reconnect... ({e})")
-            self._stream_dead = True
-            return
-        except Exception as e:
-            print(f"[ERROR] Audio callback exception: {e}")
-
     def _setup_sounds(self):
         """Set up sound files - create defaults if needed"""
         import wave
@@ -4985,15 +4486,6 @@ class DictationApp:
                 pass
             self._sound_stream = None
 
-    def _prebuffer_callback(self, indata, frames, time_info, status):
-        """Legacy pre-buffer callback — removed in ACE-03.
-
-        The hold-mode prebuffer is now provided by the ACE engine ring.
-        This stub is kept so _start_prebuffer_stream() doesn't NameError
-        on the callback= kwarg. ACE-04 will remove it entirely.
-        """
-        pass
-
     def _open_stream_with_timeout(self, timeout=3.0, retries=2, backoff=0.5, **kwargs):
         """Open an sd.InputStream with a timeout to prevent hangs.
         
@@ -5049,205 +4541,21 @@ class DictationApp:
         
         return None
 
-    def _start_prebuffer_stream(self):
-        """Start a lightweight background audio stream for pre-buffering.
-        Only used in hold/toggle modes where no other stream is running."""
-        if self._prebuffer_stream is not None:
-            return  # Already running
-        try:
-            stream = self._open_stream_with_timeout(
-                samplerate=self.capture_rate,
-                channels=1,
-                dtype=np.float32,
-                callback=self._prebuffer_callback,
-                device=self.config['microphone'],
-                blocksize=int(self.capture_rate * 0.1)  # 100ms blocks
-            )
-            if stream is None:
-                print("[WARN] Could not start pre-buffer stream (audio subsystem busy)")
-                return
-            self._prebuffer_stream = stream
-            self._prebuffer_stream.start()
-            self._prebuffer_active = True
-            print(f"[PRE] Pre-buffer stream started ({self._prebuffer_seconds}s rolling buffer)")
-        except Exception as e:
-            print(f"[WARN] Could not start pre-buffer stream: {e}")
-
-    def _stop_prebuffer_stream(self):
-        """Stop the standalone pre-buffer stream."""
-        if self._prebuffer_stream is not None:
-            try:
-                self._prebuffer_stream.stop()
-                self._prebuffer_stream.close()
-            except Exception:
-                pass
-            self._prebuffer_stream = None
-            self._prebuffer_active = False
-
-    def _close_all_streams(self):
-        """Stop and close every active audio stream, swallowing errors per-stream.
-
-        Used by the health monitor before re-opening after sleep/wake. Each
-        stream is wrapped independently so a failure on one doesn't leave
-        others open.
-        """
-        # Persistent output (sound playback) stream
-        try:
-            if self._sound_stream is not None:
-                self._sound_stream.stop()
-                self._sound_stream.close()
-        except Exception:
-            pass
-        self._sound_stream = None
-
-        # Continuous mode input stream
-        try:
-            if self.continuous_stream is not None:
-                self.continuous_stream.stop()
-                self.continuous_stream.close()
-        except Exception:
-            pass
-        self.continuous_stream = None
-
-        # Wake word input stream (separate attribute since Bug 1 fix)
-        try:
-            if self.wake_stream is not None:
-                self.wake_stream.stop()
-                self.wake_stream.close()
-        except Exception:
-            pass
-        self.wake_stream = None
-
-        # Pre-buffer input stream (hold/toggle modes)
-        try:
-            if self._prebuffer_stream is not None:
-                self._prebuffer_stream.stop()
-                self._prebuffer_stream.close()
-        except Exception:
-            pass
-        self._prebuffer_stream = None
-        self._prebuffer_active = False
-
-        # Hold/toggle recording stream (transient, but may exist if user was
-        # holding the hotkey when the PC slept)
-        try:
-            if hasattr(self, 'stream') and self.stream is not None:
-                self.stream.stop()
-                self.stream.close()
-        except Exception:
-            pass
-        if hasattr(self, 'stream'):
-            self.stream = None
-
-    def _open_audio_streams(self):
-        """Open the audio streams that should be active for the current mode.
-
-        Called both at startup and from the health monitor during reconnect
-        after sleep/wake. Re-opens whatever combination of streams matches
-        the current app state (continuous, wake_word, or hold/toggle pre-buffer).
-        Always re-opens the persistent output sound stream.
-        """
-        # Persistent output stream is always needed (sound feedback)
-        self._start_sound_stream()
-        if self._sound_stream is None:
-            raise RuntimeError("failed to open output sound stream")
-
-        # Pick the right input stream(s) based on current state.
-        # Each mode owns its own named attribute:
-        #   self.continuous_stream -- continuous mode (standalone)
-        #   self.wake_stream       -- wake word mode
-        # When both are active, only the wake stream is opened and continuous
-        # audio is delivered via fan-out inside wake_word_audio_callback.
-        if self.wake_word_active:
-            stream = self._open_stream_with_timeout(
-                samplerate=self.capture_rate,
-                channels=1,
-                dtype=np.float32,
-                callback=self.wake_word_audio_callback,
-                device=self.config['microphone'],
-                blocksize=int(self.capture_rate * 0.1),
-            )
-            if stream is None:
-                raise RuntimeError("failed to open wake-word input stream")
-            self.wake_stream = stream
-            # Clear stale VAD hidden state from the previous stream session
-            # before callbacks start firing on the new stream.
-            self._vad_reset()
-            self.wake_stream.start()
-            # continuous_active fan-out runs inside wake_word_audio_callback;
-            # no separate continuous stream is needed in this case.
-        elif self.continuous_active:
-            stream = self._open_stream_with_timeout(
-                samplerate=self.capture_rate,
-                channels=1,
-                dtype=np.float32,
-                callback=self.continuous_audio_callback,
-                device=self.config['microphone'],
-                blocksize=int(self.capture_rate * 0.1),
-            )
-            if stream is None:
-                raise RuntimeError("failed to open continuous input stream")
-            self.continuous_stream = stream
-            self._vad_reset()
-            self.continuous_stream.start()
-        else:
-            # Hold/toggle: ACE engine ring provides rolling pre-buffer —
-            # no separate prebuffer PortAudio stream needed (ACE-03).
-            pass
-
     def _stream_health_monitor(self):
-        """Background thread: detect dead audio streams and reconnect."""
+        """Background thread: detect dead audio streams and reconnect.
+
+        ACE-05: _stream_dead is no longer set by ACE engine callbacks so this
+        loop is effectively dormant. The reconnect body that called
+        _close_all_streams() and _open_audio_streams() has been removed along
+        with those methods in ACE-05.
+        """
         while self._running:
             time.sleep(3)
             if not self._stream_dead:
                 continue
-
-            print("[AUDIO] Reconnecting audio stream...")
-            retries = 0
-            max_retries = 5
-
-            while retries < max_retries and self._stream_dead:
-                try:
-                    # Close old streams gracefully
-                    self._close_all_streams()
-                    time.sleep(1)
-
-                    # Re-open streams
-                    self._open_audio_streams()
-
-                    # Re-calibrate ambient noise
-                    self._run_calibration_if_auto()
-
-                    self._stream_dead = False
-                    print(f"[AUDIO] Reconnected successfully after {retries + 1} attempt(s)")
-
-                    # Notify user
-                    try:
-                        from plyer import notification
-                        notification.notify(
-                            title="Samsara",
-                            message="Audio reconnected after sleep/wake",
-                            timeout=3,
-                        )
-                    except ImportError:
-                        # Fallback: Windows toast via PowerShell
-                        import subprocess
-                        subprocess.Popen([
-                            'powershell', '-Command',
-                            '[System.Reflection.Assembly]::LoadWithPartialName("System.Windows.Forms") | Out-Null; '
-                            '[System.Windows.Forms.MessageBox]::Show("Audio reconnected", "Samsara", "OK", "Information")'
-                        ], creationflags=subprocess.CREATE_NO_WINDOW)
-                    except Exception as notify_err:
-                        print(f"[AUDIO] Reconnect notify failed: {notify_err}")
-
-                    break
-                except Exception as e:
-                    retries += 1
-                    print(f"[AUDIO] Reconnect attempt {retries}/{max_retries} failed: {e}")
-                    time.sleep(2 * retries)  # exponential backoff
-
-            if self._stream_dead:
-                print("[AUDIO] Failed to reconnect after max retries")
+            # ACE engine handles its own reconnect via device_epoch bump.
+            # Nothing to do here; clear the flag so the loop doesn't spin.
+            self._stream_dead = False
 
     def start_recording(self, streaming=None, play_earcon=True):
         """Start recording audio.
@@ -5304,33 +4612,9 @@ class DictationApp:
         else:
             # CapsLock streaming path (ACE-04B).
             self._ace_dictation_active = False
-            if self._dictation_consumer is not None:
-                # ACE path: streaming accumulator in consumer, no separate stream.
-                self._dictation_consumer.activate_streaming()
-                self._ace_streaming_active = True
-            else:
-                # Legacy fallback: open PortAudio stream with audio_callback.
-                self._ace_streaming_active = False
-                self._stop_prebuffer_stream()
-                with self.audio_data_lock:
-                    self.audio_data.clear()
-                stream = self._open_stream_with_timeout(
-                    samplerate=self.capture_rate,
-                    channels=1,
-                    dtype=np.float32,
-                    callback=self.audio_callback,
-                    device=self.config['microphone']
-                )
-                if stream is None:
-                    print("[ERROR] Could not open streaming session stream.")
-                    self._hotkey_recording = False
-                    self.play_sound("error")
-                    if hasattr(self, 'listening_indicator'):
-                        self._schedule_ui(self.listening_indicator.flash_error)
-                    self._start_prebuffer_stream()
-                    return
-                self.stream = stream
-                self.stream.start()
+            # ACE path: streaming accumulator in consumer, no separate stream.
+            self._dictation_consumer.activate_streaming()
+            self._ace_streaming_active = True
 
         self.set_app_state(recording=True)
 
@@ -5390,19 +4674,9 @@ class DictationApp:
                     self._schedule_ui(self.listening_indicator.flash_error)
                 return
         else:
-            # Streaming path (CapsLock): close stream or stop consumer accumulator.
-            if getattr(self, '_ace_streaming_active', False):
-                # ACE-04B: consumer stop_streaming() called inside StreamingSession.
-                # The session finalize() will call _snapshot_audio() which uses
-                # consumer.snapshot_streaming_audio() — no stream to close here.
-                self._ace_streaming_active = False
-            else:
-                # Legacy fallback: close the PortAudio stream.
-                if hasattr(self, 'stream') and self.stream is not None:
-                    self.stream.stop()
-                    self.stream.close()
-                    self.stream = None
-                self._start_prebuffer_stream()
+            # Streaming path (CapsLock): ACE-04B consumer accumulator — no stream to close.
+            # consumer stop_streaming() called inside StreamingSession.finalize().
+            self._ace_streaming_active = False
 
             # Streaming session (CapsLock path): hand off to it and return.
             sess = getattr(self, '_streaming_session', None)
@@ -5420,15 +4694,6 @@ class DictationApp:
                     except Exception:
                         pass
                 return
-
-            with self.audio_data_lock:
-                if not self.audio_data:
-                    print("No audio recorded")
-                    return
-                audio_snapshot = list(self.audio_data)
-
-            audio = np.concatenate(audio_snapshot, axis=0).flatten()
-            audio = resample_audio(audio, self.capture_rate, self.model_rate)
 
         print("[...] Transcribing...")
 
@@ -5634,21 +4899,6 @@ class DictationApp:
             self._ace_dictation_active = False
             if self._dictation_consumer is not None:
                 self._dictation_consumer.cancel()
-        else:
-            # Legacy streaming path: close stream, cancel session.
-            if hasattr(self, 'stream') and self.stream is not None:
-                self.stream.stop()
-                self.stream.close()
-                self.stream = None
-            sess = getattr(self, '_streaming_session', None)
-            if sess is not None:
-                self._streaming_session = None
-                try:
-                    sess.cancel()
-                except Exception as e:
-                    print(f"[STREAM] cancel failed: {e}")
-            with self.audio_data_lock:
-                self.audio_data.clear()
 
         self.play_sound("error")  # Play error sound to indicate cancellation
 
@@ -5685,12 +4935,6 @@ class DictationApp:
         if self.continuous_active and new_mode != 'continuous':
             self.stop_continuous_mode()
             print(f"[MODE] Deactivated continuous mode")
-
-        # Hold/toggle: ACE engine ring provides rolling pre-buffer (ACE-03).
-        # No separate prebuffer PortAudio stream needed.
-        # Other modes (continuous) still stop it if it was running.
-        if new_mode not in ('hold', 'toggle'):
-            self._stop_prebuffer_stream()
 
         # Activate continuous if that's the new mode
         if new_mode == 'continuous' and not self.continuous_active:
@@ -6030,9 +5274,6 @@ class DictationApp:
             self.stop_continuous_mode()
         if self.wake_word_active:
             self.stop_wake_word_mode()
-
-        # Stop pre-buffer stream so no audio processing happens
-        self._stop_prebuffer_stream()
 
         self.snoozed = True
         self.play_sound("stop")
