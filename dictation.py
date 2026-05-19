@@ -1213,7 +1213,13 @@ class DictationApp:
             from samsara.audio_engine.dictation_consumer import DictationSessionConsumer
 
             ring = FrameBus()
-            self._ace_engine = AudioCaptureEngine(ring, config=self.config)
+            # Pass the app's detected capture rate so the ACE engine opens at
+            # the same sample rate as the wake word and prebuffer streams.
+            # Both run on the same WASAPI device; mismatched rates cause one
+            # stream to stop receiving callbacks (WASAPI dual-client starvation).
+            engine_config = dict(self.config)
+            engine_config['_capture_rate'] = self.capture_rate
+            self._ace_engine = AudioCaptureEngine(ring, config=engine_config)
             self._ace_engine.start()
             self._dictation_consumer = DictationSessionConsumer(
                 engine=self._ace_engine,
@@ -2084,7 +2090,8 @@ class DictationApp:
             try:
                 self._ace_engine.bump_device_epoch()
                 self._ace_engine.stop()
-                self._ace_engine._config['microphone'] = mic_id
+                self._ace_engine._config['microphone']    = mic_id
+                self._ace_engine._config['_capture_rate'] = self.capture_rate
                 self._ace_engine.start()
                 print("[ACE] Engine restarted on new device")
             except Exception as exc:
