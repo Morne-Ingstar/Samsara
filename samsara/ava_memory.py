@@ -47,6 +47,19 @@ class AvaMemory:
         with self._lock:
             self._history.clear()
 
+    def pop_last_if_user(self) -> bool:
+        """Remove the last message if it is an unpaired user turn.
+
+        Called when all LLM backends fail so the orphaned user message
+        does not appear as [user, user] at the start of the next turn.
+        Returns True if a message was removed.
+        """
+        with self._lock:
+            if self._history and self._history[-1]['role'] == 'user':
+                self._history.pop()
+                return True
+        return False
+
     def turn_count(self):
         with self._lock:
             return sum(1 for m in self._history if m["role"] == "user")

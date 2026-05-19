@@ -307,6 +307,7 @@ def ask_ollama(prompt, app, model=None, system=None):
 
     # ── Local Ollama path ──
     if not _check_ollama_available(host, timeout=1):
+        app._ava_memory.pop_last_if_user()
         return "__OLLAMA_DOWN__"
 
     messages = app._ava_memory.get_messages(system, token_limit=3000)
@@ -328,8 +329,10 @@ def ask_ollama(prompt, app, model=None, system=None):
             app._ava_memory.add_assistant(reply)
         return reply
     except requests.exceptions.ConnectionError:
+        app._ava_memory.pop_last_if_user()
         return "Ollama is not running. Start it with: ollama serve"
     except Exception as e:
+        app._ava_memory.pop_last_if_user()
         return f"Error reaching Ollama: {e}"
 
 

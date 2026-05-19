@@ -4621,6 +4621,10 @@ class DictationApp:
             self._ace_streaming_active = False
 
             # Streaming session (CapsLock path): hand off to it and return.
+            # The StreamingWorker calls consumer.stop_streaming() inside
+            # _final_pass() to get the authoritative final audio; do NOT call
+            # it here -- that would clear _streaming_frames before the worker
+            # reads them, causing a silent loss of the recording.
             sess = getattr(self, '_streaming_session', None)
             if sess is not None:
                 self._streaming_session = None
@@ -4628,13 +4632,6 @@ class DictationApp:
                     sess.finalize()
                 except Exception as e:
                     print(f"[STREAM] finalize failed: {e}")
-                # Stop streaming accumulator after finalize drains it
-                if self._dictation_consumer is not None and hasattr(
-                        self._dictation_consumer, 'stop_streaming'):
-                    try:
-                        self._dictation_consumer.stop_streaming()
-                    except Exception:
-                        pass
                 return
 
         print("[...] Transcribing...")

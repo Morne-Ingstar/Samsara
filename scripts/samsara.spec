@@ -241,7 +241,6 @@ hiddenimports = [
     'samsara.ui.profile_manager_ui',
     'samsara.ui.wake_word_debug',
     'samsara.ui.listening_indicator',
-    'samsara.ui.layered_overlay',
     'samsara.ui.main_window',
     'samsara.ui.history_frame',
     'samsara.ui.dictionary_frame',

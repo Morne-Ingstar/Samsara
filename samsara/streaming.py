@@ -410,11 +410,21 @@ class StreamingWorker(threading.Thread):
     def _final_pass(self):
         app = self._session.app
         try:
+            # Acquire final audio by stopping the accumulator.  stop_streaming()
+            # stops the drain thread and returns all frames atomically -- no race
+            # with dictation.py's stop_recording(), which no longer calls it.
+            # Done OUTSIDE model_lock: join can take up to 2s on slow threads.
+            consumer = getattr(app, '_dictation_consumer', None)
+            if consumer is not None and hasattr(consumer, 'stop_streaming'):
+                audio = consumer.stop_streaming()
+            else:
+                audio = self._snapshot_audio()   # non-ACE fallback
+
+            if audio is None or audio.size == 0:
+                self._session.on_final(None)
+                return
+
             with app.model_lock:
-                audio = self._snapshot_audio()
-                if audio is None:
-                    self._session.on_final(None)
-                    return
                 params = self._final_params()
                 t0 = time.time()
                 segments, _ = app.model.transcribe(audio, **params)
