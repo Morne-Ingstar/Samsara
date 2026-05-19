@@ -1,31 +1,35 @@
 """Show Numbers overlay — semantic voice clicking via numbered labels.
 
 Commands:
-    "show numbers"       — draw numbered labels on clickable UI elements
-    "hide numbers"       — dismiss the overlay
-    "click N"            — left-click element N
-    "click N twice"      — double-click element N
-    "click N right"      — right-click element N
-    "click thirty seven" — spoken numbers also accepted
+    "show numbers"       -- draw numbered labels on clickable UI elements
+    "hide numbers"       -- dismiss the overlay
+    "refresh numbers"    -- re-enumerate and redraw without dismissing first
+    "click N"            -- left-click element N
+    "click N twice"      -- double-click element N
+    "click N right"      -- right-click element N
+    "click thirty seven" -- spoken numbers also accepted
 
 Architecture:
-    Single fullscreen Win32 layered window (per-pixel alpha via
-    UpdateLayeredWindow).  No Tkinter — the overlay is rendered with PIL and
-    pushed to the window via a DIB section.  WS_EX_TRANSPARENT lets physical
-    mouse clicks pass through to the app below.
+    Fullscreen Qt widget (FramelessWindowHint, WA_TranslucentBackground,
+    WindowTransparentForInput) renders numbered pill labels via QPainter.
+    Physical mouse clicks pass through. Does not steal focus.
 
     Threading model:
       - UIA enumeration runs on the plugin worker thread (COM is thread-safe)
-      - Overlay show/hide are direct Win32 calls — no _schedule_ui() needed
-      - The foreground-window poll uses app.root.after() for scheduling
+      - Qt window create/update runs on the Qt main thread via QTimer.singleShot
+      - Foreground-window poll is a QTimer on the Qt main thread
+      - Auto-dismiss uses threading.Timer (any thread) -> QTimer.singleShot -> Qt
 """
 
 import logging
 import re
 import threading
+import time
+
+from PySide6.QtCore import QTimer
 
 from samsara.plugin_commands import command
-from samsara.ui.layered_overlay import LayeredOverlay
+from samsara.ui.numbers_overlay_qt import NumbersOverlayWindow
 
 logger = logging.getLogger(__name__)
 
@@ -35,21 +39,44 @@ try:
 except ImportError:
     auto = None
     _UIA_AVAILABLE = False
-    logger.warning("[OVERLAY] uiautomation not available — win32 fallback active")
+    logger.warning("[OVERLAY] uiautomation not available -- win32 fallback active")
 
 # ---------------------------------------------------------------------------
 # Module-level state  (one overlay at a time)
 # ---------------------------------------------------------------------------
 
-_state_lock = threading.RLock()
-_overlay: "LayeredOverlay | None" = None
-_elements: list = []            # index 0 corresponds to label "1"
+_state_lock     = threading.RLock()
+_elements: list = []                             # index 0 -> label "1"
 _dismiss_timer: "threading.Timer | None" = None
-_fg_check_after_id = None       # root.after id for foreground poll
-_fg_hwnd_at_show: int = 0       # foreground hwnd when overlay was shown
+_overlay_window: "NumbersOverlayWindow | None" = None   # Qt thread only
+_fg_timer: "QTimer | None" = None                       # Qt thread only
+_fg_hwnd_at_show: int = 0
 
+_enum_cache: "dict | None" = None   # {'hwnd': int, 't': float, 'elements': list}
+_CACHE_TTL      = 10.0   # seconds
 _AUTO_DISMISS_S = 30
-_FG_POLL_MS = 2000
+_FG_POLL_MS     = 2000
+
+# ---------------------------------------------------------------------------
+# Pill geometry
+# ---------------------------------------------------------------------------
+
+_PILL_H = 22
+
+def _pill_w(text: str) -> int:
+    return 28 if len(text) == 1 else 36
+
+# ---------------------------------------------------------------------------
+# TTS helper (mirrors alarm_commands._speak)
+# ---------------------------------------------------------------------------
+
+def _speak(app, text: str) -> None:
+    if hasattr(app, "audio_coordinator") and app.audio_coordinator:
+        app.audio_coordinator.speak(text, category="agent_response", interruptible=False)
+    elif hasattr(app, "tts_engine") and app.tts_engine:
+        app.tts_engine.speak(text)
+    else:
+        print(f"[OVERLAY] {text}")
 
 # ---------------------------------------------------------------------------
 # Clickable types accepted by the filter
@@ -96,7 +123,6 @@ def _is_useful_clickable(control, parent_rect_screen) -> bool:
         return False
     if w > 1500 or h > 1000:
         return False
-    # Manual overlap check — IsOffscreen lies for scrolled/hidden/tab content
     if not _rect_intersects(rect, parent_rect_screen):
         return False
     try:
@@ -110,7 +136,7 @@ def _is_useful_clickable(control, parent_rect_screen) -> bool:
 def _enumerate_foreground_clickables() -> list:
     """Walk the foreground window's UIA subtree; return useful clickables.
 
-    Safe to call from a worker thread — UIA is COM, not tkinter.
+    Safe to call from a worker thread -- UIA is COM, not Qt.
     """
     if not _UIA_AVAILABLE:
         return _enumerate_win32_fallback()
@@ -147,7 +173,6 @@ def _enumerate_foreground_clickables() -> list:
     _walk(fg)
     return results
 
-
 # ---------------------------------------------------------------------------
 # Win32 fallback (when uiautomation not installed)
 # ---------------------------------------------------------------------------
@@ -181,7 +206,7 @@ class _Win32Control:
         self._send(left=False, double=False)
 
     def _send(self, left: bool, double: bool):
-        import time
+        import time as _time
         import win32api, win32con
         x, y = self._center()
         win32api.SetCursorPos((x, y))
@@ -189,7 +214,7 @@ class _Win32Control:
             win32api.mouse_event(win32con.MOUSEEVENTF_LEFTDOWN, 0, 0, 0, 0)
             win32api.mouse_event(win32con.MOUSEEVENTF_LEFTUP, 0, 0, 0, 0)
             if double:
-                time.sleep(0.05)
+                _time.sleep(0.05)
                 win32api.mouse_event(win32con.MOUSEEVENTF_LEFTDOWN, 0, 0, 0, 0)
                 win32api.mouse_event(win32con.MOUSEEVENTF_LEFTUP, 0, 0, 0, 0)
         else:
@@ -237,6 +262,64 @@ def _enumerate_win32_fallback() -> list:
         logger.error("[OVERLAY] EnumChildWindows failed: %s", e)
     return results
 
+# ---------------------------------------------------------------------------
+# Element enumeration cache
+# ---------------------------------------------------------------------------
+
+def _cached_enumerate() -> list:
+    global _enum_cache
+    try:
+        import win32gui
+        hwnd = win32gui.GetForegroundWindow()
+    except Exception:
+        hwnd = 0
+
+    now = time.time()
+    if (
+        _enum_cache is not None
+        and _enum_cache['hwnd'] == hwnd
+        and now - _enum_cache['t'] < _CACHE_TTL
+    ):
+        print("[OVERLAY] Using cached element list")
+        return list(_enum_cache['elements'])
+
+    elements = _enumerate_foreground_clickables()
+    if hwnd and elements:
+        _enum_cache = {'hwnd': hwnd, 't': now, 'elements': elements}
+    return elements
+
+
+def _invalidate_cache() -> None:
+    global _enum_cache
+    _enum_cache = None
+
+# ---------------------------------------------------------------------------
+# Collision avoidance
+# ---------------------------------------------------------------------------
+
+def _place_labels(elements: list) -> list:
+    """Compute pill positions with downward nudging to avoid overlaps.
+
+    Returns list of [screen_x, screen_y, pill_w, pill_h, text].
+    """
+    placed = []
+    for i, e in enumerate(elements, 1):
+        rx, ry = e['rect'][0], e['rect'][1]
+        text   = str(i)
+        pw, ph = _pill_w(text), _PILL_H
+
+        for step in range(20):
+            cy = ry + step * (ph + 2)
+            collision = any(
+                rx < px + ppw and rx + pw > px and cy < py + pph and cy + ph > py
+                for px, py, ppw, pph, _ in placed
+            )
+            if not collision:
+                placed.append([rx, cy, pw, ph, text])
+                break
+        else:
+            placed.append([rx, ry, pw, ph, text])   # accept overlap after 20 attempts
+    return placed
 
 # ---------------------------------------------------------------------------
 # Click execution
@@ -247,13 +330,13 @@ def _click_with_validation(element, modifier: str) -> bool:
     try:
         rect = element.BoundingRectangle
         if rect.width() <= 0 or rect.height() <= 0:
-            logger.warning("[OVERLAY] Element no longer valid — UI changed")
+            logger.warning("[OVERLAY] Element no longer valid -- UI changed")
             return False
         if not element.IsEnabled:
-            logger.warning("[OVERLAY] Element disabled — UI changed")
+            logger.warning("[OVERLAY] Element disabled -- UI changed")
             return False
     except Exception:
-        logger.warning("[OVERLAY] Element handle stale — UI changed")
+        logger.warning("[OVERLAY] Element handle stale -- UI changed")
         return False
 
     return _perform_click(element, modifier)
@@ -273,7 +356,7 @@ def _perform_click(element, modifier: str) -> bool:
         logger.info("[OVERLAY] UIA click failed (%s), falling back to mouse", e)
 
     try:
-        import win32api, win32con, time
+        import win32api, win32con
         rect = element.BoundingRectangle
         x = (rect.left + rect.right) // 2
         y = (rect.top + rect.bottom) // 2
@@ -293,77 +376,69 @@ def _perform_click(element, modifier: str) -> bool:
         logger.error("[OVERLAY] Win32 fallback click failed: %s", e)
         return False
 
-
 # ---------------------------------------------------------------------------
-# Overlay rendering — Win32 per-pixel alpha, safe to call from any thread
+# Qt overlay -- all functions below must run on the Qt main thread
+# unless otherwise noted
 # ---------------------------------------------------------------------------
 
-def _draw_overlay(app, elements: list) -> None:
-    """Build label list and push to the LayeredOverlay window."""
-    global _overlay, _fg_hwnd_at_show
+def _show_overlay_qt(labels: list, fg_hwnd: int, app) -> None:
+    """Create or update the overlay window. Qt main thread only."""
+    global _overlay_window, _fg_timer, _fg_hwnd_at_show
 
-    _destroy_overlay()   # clear any prior overlay
+    _fg_hwnd_at_show = fg_hwnd
 
-    if not elements:
-        return
+    if _overlay_window is not None and not _overlay_window.isHidden():
+        _overlay_window.update_labels(labels)
+    else:
+        if _overlay_window is not None:
+            _overlay_window.close()
+        _overlay_window = NumbersOverlayWindow(labels)
+        _overlay_window.showNoActivate() if hasattr(_overlay_window, 'showNoActivate') else _overlay_window.show()
 
-    with _state_lock:
-        if _overlay is None:
-            _overlay = LayeredOverlay()
-        _elements[:] = [e['control'] for e in elements]
-
-    labels = [
-        (e['rect'][0], e['rect'][1], 28, 22, str(i))
-        for i, e in enumerate(elements, 1)
-    ]
-
-    _overlay.show(labels)
-
-    try:
-        import win32gui
-        _fg_hwnd_at_show = win32gui.GetForegroundWindow()
-    except Exception:
-        _fg_hwnd_at_show = 0
-
-    _schedule_dismiss_timer(app)
-    _start_fg_poll(app)
-    print(f"[OVERLAY] Showing {len(elements)} numbered clickables")
+    # (Re-)start foreground poll
+    _stop_fg_timer_qt()
+    _fg_timer = QTimer()
+    _fg_timer.setInterval(_FG_POLL_MS)
+    _fg_timer.timeout.connect(lambda: _fg_poll_qt(app))
+    _fg_timer.start()
 
 
-def _destroy_overlay(app=None) -> None:
-    """Hide the overlay and reset state."""
-    global _fg_check_after_id
-
-    _cancel_dismiss_timer()
-
-    if _fg_check_after_id is not None and app is not None:
-        try:
-            app.root.after_cancel(_fg_check_after_id)
-        except Exception:
-            pass
-        _fg_check_after_id = None
-
-    if _overlay is not None:
-        _overlay.hide()
-
+def _hide_overlay_qt() -> None:
+    """Close the overlay window and stop the fg timer. Qt main thread only."""
+    global _overlay_window
+    _stop_fg_timer_qt()
+    if _overlay_window is not None:
+        _overlay_window.close()
+        _overlay_window = None
     with _state_lock:
         _elements.clear()
 
 
-def _destroy_overlay_completely() -> None:
-    """Full teardown — call on app quit."""
-    global _overlay
-    _destroy_overlay()
-    if _overlay is not None:
-        try:
-            _overlay.destroy()
-        except Exception:
-            pass
-        _overlay = None
+def _stop_fg_timer_qt() -> None:
+    """Stop and release the foreground poll timer. Qt main thread only."""
+    global _fg_timer
+    if _fg_timer is not None:
+        _fg_timer.stop()
+        _fg_timer.deleteLater()
+        _fg_timer = None
 
+
+def _fg_poll_qt(app) -> None:
+    """Periodic foreground-HWND check. Qt main thread only."""
+    if _overlay_window is None or _overlay_window.isHidden():
+        _stop_fg_timer_qt()
+        return
+    try:
+        import win32gui
+        cur = win32gui.GetForegroundWindow()
+        if _fg_hwnd_at_show and cur != _fg_hwnd_at_show:
+            print("[OVERLAY] Auto-dismissed: foreground window changed")
+            _destroy_overlay(app)
+    except Exception:
+        pass
 
 # ---------------------------------------------------------------------------
-# Auto-dismiss: timeout + foreground-window change
+# Auto-dismiss + overlay lifecycle (thread-safe)
 # ---------------------------------------------------------------------------
 
 def _cancel_dismiss_timer() -> None:
@@ -378,12 +453,11 @@ def _cancel_dismiss_timer() -> None:
 
 def _schedule_dismiss_timer(app, seconds: int = _AUTO_DISMISS_S) -> None:
     _cancel_dismiss_timer()
-
     global _dismiss_timer
 
     def _fire():
-        _destroy_overlay(app)
         print("[OVERLAY] Auto-dismissed after timeout")
+        _destroy_overlay(app)
 
     t = threading.Timer(seconds, _fire)
     t.daemon = True
@@ -391,28 +465,36 @@ def _schedule_dismiss_timer(app, seconds: int = _AUTO_DISMISS_S) -> None:
     _dismiss_timer = t
 
 
-def _start_fg_poll(app) -> None:
-    """Schedule a recurring main-thread check for foreground window change."""
+def _draw_overlay(app, elements: list) -> None:
+    """Build label list and show the Qt overlay. Safe to call from any thread."""
+    global _fg_hwnd_at_show
 
-    def _poll():
-        global _fg_check_after_id
-        if _overlay is None or not _overlay.is_visible():
-            _fg_check_after_id = None
-            return
-        try:
-            import win32gui
-            cur = win32gui.GetForegroundWindow()
-            if _fg_hwnd_at_show and cur != _fg_hwnd_at_show:
-                _destroy_overlay(app)
-                print("[OVERLAY] Auto-dismissed: foreground window changed")
-                return
-        except Exception:
-            pass
-        _fg_check_after_id = app.root.after(_FG_POLL_MS, _poll)
+    labels = _place_labels(elements)
 
-    global _fg_check_after_id
-    _fg_check_after_id = app.root.after(_FG_POLL_MS, _poll)
+    with _state_lock:
+        _elements[:] = [e['control'] for e in elements]
 
+    try:
+        import win32gui
+        fg_hwnd = win32gui.GetForegroundWindow()
+    except Exception:
+        fg_hwnd = 0
+
+    _cancel_dismiss_timer()
+    QTimer.singleShot(0, lambda: _show_overlay_qt(labels, fg_hwnd, app))
+    _schedule_dismiss_timer(app)
+    print(f"[OVERLAY] Showing {len(elements)} numbered clickables")
+
+
+def _destroy_overlay(app=None) -> None:
+    """Thread-safe dismiss: cancel timers and schedule Qt cleanup."""
+    _cancel_dismiss_timer()
+    QTimer.singleShot(0, _hide_overlay_qt)
+
+
+def _destroy_overlay_completely() -> None:
+    """Full teardown -- call on app quit."""
+    _destroy_overlay()
 
 # ---------------------------------------------------------------------------
 # Spoken number parsing
@@ -454,7 +536,6 @@ def _parse_spoken_number(text: str) -> "int | None":
     return total if found and 0 <= total <= 99 else None
 
 
-# Keep the old name as an alias for the existing tests
 def _parse_click_target(text: str):
     """Legacy parser: returns (number | None, modifier_str).
 
@@ -472,7 +553,6 @@ def _parse_click_target(text: str):
 
     return _parse_spoken_number(text), modifier
 
-
 # ---------------------------------------------------------------------------
 # Voice commands
 # ---------------------------------------------------------------------------
@@ -481,8 +561,8 @@ def _parse_click_target(text: str):
          aliases=["show clickable", "show labels", "label things"],
          pack="accessibility")
 def handle_show_numbers(app, remainder):
-    """Enumerate clickable elements then draw overlays."""
-    elements = _enumerate_foreground_clickables()
+    """Enumerate clickable elements then draw overlay."""
+    elements = _cached_enumerate()
     if not elements:
         print("[OVERLAY] No clickable elements found in foreground window")
         return True
@@ -495,6 +575,20 @@ def handle_show_numbers(app, remainder):
          pack="accessibility")
 def handle_hide_numbers(app, remainder):
     _destroy_overlay(app)
+    return True
+
+
+@command("refresh numbers",
+         aliases=["update numbers"],
+         pack="accessibility")
+def handle_refresh_numbers(app, remainder):
+    """Re-enumerate the foreground window and redraw without dismissing first."""
+    _invalidate_cache()
+    elements = _enumerate_foreground_clickables()
+    if not elements:
+        print("[OVERLAY] No clickable elements found -- overlay unchanged")
+        return True
+    _draw_overlay(app, elements)
     return True
 
 
@@ -516,7 +610,6 @@ def handle_click(app, remainder):
         modifier = 'right'
         text = re.sub(r'\bright\b', '', text)
 
-    # Strip click-verb residue
     text = re.sub(r'^(click|tap|press|select)\s+', '', text.strip())
 
     number = _parse_spoken_number(text)
@@ -526,15 +619,19 @@ def handle_click(app, remainder):
 
     with _state_lock:
         if not _elements:
-            print("[OVERLAY] No overlay active — use 'show numbers' first")
+            print("[OVERLAY] No overlay active -- use 'show numbers' first")
             return True
         if number < 1 or number > len(_elements):
-            print(f"[OVERLAY] No element labeled {number} (have {len(_elements)})")
+            msg = f"Element {number} is not available. There are {len(_elements)} elements."
+            print(f"[OVERLAY] {msg}")
+            _speak(app, msg)
             return True
         element = _elements[number - 1]
 
     if not _click_with_validation(element, modifier):
-        print(f"[OVERLAY] Element {number} no longer valid — try 'show numbers' again")
+        msg = f"Element {number} is no longer available."
+        print(f"[OVERLAY] {msg}")
+        _speak(app, msg)
         return True
 
     _destroy_overlay(app)
