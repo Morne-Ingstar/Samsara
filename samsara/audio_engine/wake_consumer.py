@@ -140,28 +140,32 @@ class WakeConsumer:
         raw_chunk = frame.pcm.astype(np.float32) / 32767.0   # shape: (FRAME_SIZE,)
 
         # ── Post-command echo suppression (same guard as legacy callback) ─────
-        if (app._command_executed_at is not None
-                and app.app_state not in ('long_dictation', 'quick_dictation')):
-            elapsed = time.time() - app._command_executed_at
-            if elapsed < 2.0:
-                if app.echo_canceller.is_active:
-                    ref_rms = getattr(app.echo_canceller, 'last_ref_rms', None)
-                    if ref_rms is not None and ref_rms > 0.05:
-                        return
-            else:
-                app._command_executed_at = None
+        # Guards only apply BEFORE speech onset. Once app.is_speaking is True,
+        # we must keep capturing to avoid dropping frames mid-utterance.
+        # (ARC audit: early-return guards prematurely truncating active utterances)
+        if not app.is_speaking:
+            if (app._command_executed_at is not None
+                    and app.app_state not in ('long_dictation', 'quick_dictation')):
+                elapsed = time.time() - app._command_executed_at
+                if elapsed < 2.0:
+                    if app.echo_canceller.is_active:
+                        ref_rms = getattr(app.echo_canceller, 'last_ref_rms', None)
+                        if ref_rms is not None and ref_rms > 0.05:
+                            return
+                else:
+                    app._command_executed_at = None
 
-        # ── Hotkey-recording suppression ──────────────────────────────────────
-        if app._hotkey_recording:
-            return   # skip policy but cursor advances (frame already read)
+            # ── Hotkey-recording suppression ──────────────────────────────────
+            if app._hotkey_recording:
+                return   # skip policy but cursor advances (frame already read)
 
-        # ── TTS guard ─────────────────────────────────────────────────────────
-        _coordinator = getattr(app, 'audio_coordinator', None)
-        if _coordinator and _coordinator.is_speaking:
-            app._tts_last_speaking = time.monotonic()
-            return
-        if time.monotonic() - getattr(app, '_tts_last_speaking', 0.0) < 0.3:
-            return
+            # ── TTS guard ─────────────────────────────────────────────────────
+            _coordinator = getattr(app, 'audio_coordinator', None)
+            if _coordinator and _coordinator.is_speaking:
+                app._tts_last_speaking = time.monotonic()
+                return
+            if time.monotonic() - getattr(app, '_tts_last_speaking', 0.0) < 0.3:
+                return
 
         # ── RMS on raw signal (not AEC) ───────────────────────────────────────
         rms = float(np.sqrt(np.mean(raw_chunk ** 2)))
@@ -227,6 +231,10 @@ class WakeConsumer:
             if speech_onset:
                 # Ring prebuffer rewind: replaces the legacy _prebuffer deque drain.
                 # Rewind PREBUFFER_FRAMES and re-read them into the utterance buffer.
+                # The current frame (raw_chunk) is included in the re-read since the
+                # cursor was at this position before the rewind. Do NOT append
+                # raw_chunk again after — that would double the onset frame.
+                # (ARC audit: double-appending of speech onset frame)
                 self._reader.rewind(PREBUFFER_FRAMES)
                 for _ in range(PREBUFFER_FRAMES):
                     pb_frame = self._reader.read_next()
@@ -239,9 +247,10 @@ class WakeConsumer:
                     )
                 if self._utterance_frames:
                     print(f"[PRE] Prepended {len(self._utterance_frames) * FRAME_MS}ms pre-buffer to wake onset")
-
-            self._utterance_frames.append(raw_chunk)
-            self._buffer_rms_history.append(rms)
+            else:
+                # Non-onset speech frame — append normally
+                self._utterance_frames.append(raw_chunk)
+                self._buffer_rms_history.append(rms)
 
             # Stuck-buffer detector (same as legacy callback)
             if (app.app_state == 'asleep'
