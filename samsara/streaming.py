@@ -1,12 +1,15 @@
 """Streaming dictation: live partial transcription with overlay.
 
-Architecture:
+Architecture (ACE-04B):
 
-  - Audio capture stays in dictation.py (audio_callback writes app.audio_data).
+  - Audio capture: DictationSessionConsumer drain thread fills _streaming_frames
+    from the ACE engine ring. activate_streaming() starts the drain thread;
+    stop_streaming() stops it and returns all accumulated audio.
   - StreamingSession owns the lifecycle: spawn worker, manage overlay,
     finalize on hotkey release.
-  - StreamingWorker (daemon thread) snapshots app.audio_data every ~1.5s,
-    runs Whisper at beam_size=1, posts overlay updates via Qt signals.
+  - StreamingWorker (daemon thread) calls snapshot_streaming_audio() every
+    ~1.5s for non-destructive partial snapshots, runs Whisper at beam_size=1,
+    posts overlay updates via Qt signals.
   - On stop_event the worker runs a final beam_size=5 pass with full
     Grammar-Lite cleanup, then posts paste + overlay close to the Qt thread.
 
@@ -19,8 +22,8 @@ Locks:
 
   - app.model_lock (existing): serializes Whisper calls. Acquired
     non-blocking for partials -- if held, skip and try next interval.
-  - audio_data is read via list() snapshot under app.audio_data_lock,
-    protecting compound check-then-read against concurrent clear().
+  - _streaming_lock in DictationSessionConsumer: protects _streaming_frames
+    for concurrent access between the drain thread and snapshot_streaming_audio().
 """
 
 import ctypes
@@ -545,7 +548,7 @@ class StreamingSession:
             except Exception:
                 self._target_hwnd = None
         # Serializes select+paste between the worker thread (partials),
-        # the Tk thread (final), and the cancel undo thread.
+        # the main Qt thread (final), and the cancel undo thread.
         self._paste_lock = threading.Lock()
         self._overlay = StreamingOverlayQt(dim=self._direct_paste)
         self._worker = StreamingWorker(self)

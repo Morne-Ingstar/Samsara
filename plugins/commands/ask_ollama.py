@@ -442,7 +442,7 @@ def _execute_safe(app, action):
                 app.command_executor.execute_command(action["command"])
             except Exception as e:
                 print(f"[AVA SCHEDULER] Command error: {e}")
-        # _schedule_ui marshals to app.root.after(0, ...) — safe from background threads
+        # _schedule_ui marshals to Qt main thread via QTimer.singleShot — safe from background threads
         if hasattr(app, "_schedule_ui"):
             app._schedule_ui(_run)
         else:
