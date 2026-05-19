@@ -157,6 +157,207 @@ _ollama_health_lock = threading.Lock()
 _cloud_notice_shown = False
 
 
+# ── Vision-intent detection ───────────────────────────────────────────────────
+
+_VISION_FULL_PHRASES = [
+    "what's on my screen",
+    "what is on my screen",
+    "what's on the screen",
+    "what is on the screen",
+    "what do you see",
+    "look at my screen",
+    "describe my screen",
+    "describe the screen",
+    "see my screen",
+]
+
+_VISION_WINDOW_DESCRIBE_PHRASES = [
+    "what's in window",
+    "what is in window",
+    "what's on window",
+    "what is on window",
+    "describe window",
+    "read window",
+    "look at window",
+]
+
+_VISION_WINDOW_COPY_PHRASES = [
+    "copy the text from window",
+    "copy text from window",
+    "copy from window",
+    "extract from window",
+    "get text from window",
+]
+
+
+def _extract_window_letter(text: str):
+    """Return the single uppercase letter after 'window' in text, or None."""
+    m = re.search(r'\bwindow\s+(\w+)', text, re.IGNORECASE)
+    if not m:
+        return None
+    token = m.group(1).lower()
+    if len(token) == 1 and token.isalpha():
+        return token.upper()
+    try:
+        from plugins.commands.window_switcher import PHONETIC
+        letter = PHONETIC.get(token)
+        if letter:
+            return letter
+    except ImportError:
+        pass
+    return None
+
+
+def _parse_vision_intent(text: str):
+    """Detect a vision request in text.
+
+    Returns (intent, letter) where intent is one of:
+      'describe_full'   - describe the whole screen
+      'describe_window' - describe one specific window
+      'copy_from'       - copy text out of a window
+    Returns None if no vision intent is detected.
+    """
+    t = text.lower().strip()
+    letter = _extract_window_letter(t)
+
+    for phrase in _VISION_WINDOW_COPY_PHRASES:
+        if phrase in t:
+            return ("copy_from", letter)
+
+    for phrase in _VISION_WINDOW_DESCRIBE_PHRASES:
+        if phrase in t and letter:
+            return ("describe_window", letter)
+
+    for phrase in _VISION_FULL_PHRASES:
+        if phrase in t:
+            return ("describe_full", None)
+
+    return None
+
+
+def _get_vision_bridge(app):
+    """Lazy-init VisionBridge. Reuses existing instance if already created."""
+    if not getattr(app, "_vision_bridge", None):
+        from samsara.vision import VisionBridge
+        bridge = VisionBridge(app)
+        app._vision_bridge = bridge
+        if getattr(app, "config", {}).get("vision", {}).get("warmup", True):
+            threading.Thread(
+                target=bridge.warmup, daemon=True, name="vision-warmup",
+            ).start()
+    return app._vision_bridge
+
+
+def _set_thinking(app, active: bool):
+    """Set the listening indicator thinking state (marshals to Qt thread)."""
+    def _do():
+        ind = getattr(app, "listening_indicator", None)
+        if ind is not None:
+            ind.set_thinking(active)
+    if hasattr(app, "_schedule_ui"):
+        app._schedule_ui(_do)
+    else:
+        _do()
+
+
+def _focus_and_copy(letter: str | None):
+    """Focus a window by letter (if given), then select-all + copy."""
+    import ctypes
+    import time
+    SW_RESTORE = 9
+    if letter:
+        try:
+            from plugins.commands.window_switcher import get_window_by_letter
+            hwnd = get_window_by_letter(letter)
+            if hwnd:
+                ctypes.windll.user32.ShowWindow(hwnd, SW_RESTORE)
+                ctypes.windll.user32.SetForegroundWindow(hwnd)
+                time.sleep(0.4)
+        except Exception as e:
+            print(f"[VISION] Window focus failed: {e}")
+    try:
+        from pynput.keyboard import Controller, Key
+        kb = Controller()
+        kb.press(Key.ctrl)
+        kb.press('a')
+        kb.release('a')
+        kb.release(Key.ctrl)
+        time.sleep(0.15)
+        kb.press(Key.ctrl)
+        kb.press('c')
+        kb.release('c')
+        kb.release(Key.ctrl)
+    except Exception as e:
+        print(f"[VISION] Select-all/copy failed: {e}")
+
+
+def _handle_vision_request(app, text: str, intent: str, letter):
+    """Execute a vision-routed request. Runs inside the Ava worker thread."""
+    speak(app, "Let me look.")
+    _set_thinking(app, True)
+    try:
+        bridge = _get_vision_bridge(app)
+        if not bridge.is_available():
+            speak(app, "Vision isn't available right now.")
+            return
+
+        if letter:
+            image_b64 = bridge.screenshot_by_letter(letter)
+            if image_b64 is None:
+                speak(app, f"Window {letter} isn't assigned. Say show windows first.")
+                return
+        else:
+            image_b64 = bridge.screenshot_full()
+
+        if intent == "describe_full":
+            prompt = (
+                "Describe what's on this screen in 2 to 3 short sentences. "
+                "Mention the main applications and any notable content. "
+                "Be concise — this will be read aloud via text-to-speech."
+            )
+            description = bridge.describe(image_b64, prompt)
+            if not description:
+                speak(app, "I couldn't get a response from the vision model.")
+                return
+            if len(description) > 500:
+                description = description[:500].rsplit('.', 1)[0] + '.'
+            speak(app, description)
+
+        elif intent == "describe_window":
+            prompt = (
+                "Describe the contents of this window in 2 to 3 short sentences. "
+                "What application is it? What is the main content visible? "
+                "Be concise — this will be read aloud via text-to-speech."
+            )
+            description = bridge.describe(image_b64, prompt)
+            if not description:
+                speak(app, "I couldn't get a response from the vision model.")
+                return
+            if len(description) > 500:
+                description = description[:500].rsplit('.', 1)[0] + '.'
+            speak(app, description)
+
+        elif intent == "copy_from":
+            describe_prompt = (
+                "Describe the main content of this window in one sentence. "
+                "Be concise — spoken aloud to confirm the copy."
+            )
+            description = bridge.describe(image_b64, describe_prompt)
+            _focus_and_copy(letter)
+            if description and len(description) > 300:
+                description = description[:300].rsplit('.', 1)[0] + '.'
+            if description:
+                speak(app, f"Done. {description}")
+            else:
+                speak(app, "Done.")
+
+    except Exception as e:
+        print(f"[VISION] Request failed: {e}")
+        speak(app, "Something went wrong with the vision request.")
+    finally:
+        _set_thinking(app, False)
+
+
 # ── Config helpers ────────────────────────────────────────────────────────────
 
 def _ollama_config(app):
@@ -680,6 +881,15 @@ def handle_ask_ava(app, remainder="", **kwargs):
     def _worker():
         if _check_teaching_intent(app, remainder):
             return
+
+        # Vision intent — short-circuit before calling the LLM
+        if getattr(app, "config", {}).get("vision", {}).get("enabled", False):
+            vision_intent = _parse_vision_intent(remainder)
+            if vision_intent:
+                intent, letter = vision_intent
+                _handle_vision_request(app, remainder, intent, letter)
+                return
+
         if hasattr(app, "play_sound"):
             app.play_sound("ava_thinking")
         try:

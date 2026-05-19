@@ -597,6 +597,18 @@ def _resolve(app, letter: str):
         return None
     return entry
 
+
+def get_window_by_letter(letter: str):
+    """Return the HWND for the given letter, or None if not assigned.
+
+    No side effects — does not speak an error. Used by vision bridge
+    and other callers that handle the missing-window case themselves.
+    """
+    letter = letter.upper()
+    with _lock:
+        entry = _mapping.get(letter)
+    return entry[0] if entry else None
+
 # ---------------------------------------------------------------------------
 # "show windows" — entry point
 # ---------------------------------------------------------------------------
