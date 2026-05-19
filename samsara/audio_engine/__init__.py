@@ -3,6 +3,7 @@
 ACE-01: Frame + FrameBus + AudioCaptureEngine interfaces.
 ACE-02: Real PortAudio capture, DebugRecorder, equivalence harness.
 ACE-03: DictationSessionConsumer — hold-mode dictation via ring.
+ACE-04: ContinuousConsumer, WakeConsumer — remaining paths migrated.
 """
 
 from .frame import (
@@ -24,6 +25,7 @@ from .ring import (
 from .engine import AudioCaptureEngine
 from .debug_recorder import DebugRecorder
 from .dictation_consumer import DictationSessionConsumer
+from .continuous_consumer import ContinuousConsumer
 
 __all__ = [
     # Data structure
@@ -33,6 +35,7 @@ __all__ = [
     'AudioCaptureEngine',
     'DebugRecorder',
     'DictationSessionConsumer',
+    'ContinuousConsumer',
     # Sentinels
     'EMPTY',
     'OVERRUN',

@@ -1150,9 +1150,11 @@ class DictationApp:
         # ACE engine — always started for hold-mode dictation (ACE-03).
         # DictationSessionConsumer replaces the bespoke prebuffer + audio_callback path.
         # DebugRecorder is optional: set config["ace_debug_capture"] = true to enable.
-        self._ace_engine         = None
-        self._ace_debug_rec      = None
-        self._dictation_consumer = None
+        self._ace_engine           = None
+        self._ace_debug_rec        = None
+        self._dictation_consumer   = None
+        self._continuous_consumer  = None
+        self._wake_consumer        = None    # ACE-04C
         self._ace_dictation_active = False   # True while hold-mode uses ACE consumer path
         self._start_ace_engine()
         if self.config.get('ace_debug_capture', False) and self._ace_engine is not None:
@@ -1221,11 +1223,19 @@ class DictationApp:
             engine_config['_capture_rate'] = self.capture_rate
             self._ace_engine = AudioCaptureEngine(ring, config=engine_config)
             self._ace_engine.start()
+
             self._dictation_consumer = DictationSessionConsumer(
                 engine=self._ace_engine,
                 app=self,
             )
-            print("[ACE] Engine started — hold-mode dictation ready")
+
+            from samsara.audio_engine.continuous_consumer import ContinuousConsumer
+            self._continuous_consumer = ContinuousConsumer(
+                engine=self._ace_engine,
+                app=self,
+            )
+
+            print("[ACE] Engine started — hold-mode + continuous dictation ready")
         except Exception as exc:
             print(f"[ACE] Engine failed to start: {exc}")
             self._ace_engine         = None
@@ -1257,13 +1267,19 @@ class DictationApp:
             self._ace_debug_rec = None
 
     def _stop_ace_engine(self) -> None:
-        """Deactivate consumer, flush debug WAV, stop engine. Called from quit_app."""
-        if self._dictation_consumer is not None:
-            try:
-                self._dictation_consumer.deactivate()
-            except Exception as exc:
-                print(f"[ACE] Consumer deactivate error: {exc}")
-            self._dictation_consumer = None
+        """Deactivate all consumers, flush debug WAV, stop engine. Called from quit_app."""
+        for _attr, _name in [
+            ('_dictation_consumer',  'dictation'),
+            ('_continuous_consumer', 'continuous'),
+            ('_wake_consumer',       'wake'),
+        ]:
+            consumer = getattr(self, _attr, None)
+            if consumer is not None:
+                try:
+                    consumer.deactivate()
+                except Exception as exc:
+                    print(f"[ACE] {_name} consumer deactivate error: {exc}")
+                setattr(self, _attr, None)
 
         if self._ace_debug_rec is not None:
             try:
@@ -2842,81 +2858,72 @@ class DictationApp:
             self.start_continuous_mode()
     
     def start_continuous_mode(self):
-        """Start continuous listening with auto-transcribe on silence"""
+        """Start continuous listening with auto-transcribe on silence."""
         if not self.model_loaded:
             if self.loading_model:
                 print("Model still loading, please wait...")
             return
 
-        if self.wake_word_active:
-            # Wake stream already holds the mic. Fan-out inside wake_word_audio_callback
-            # will forward audio to continuous_audio_callback — no second stream needed.
-            print("[CONT] Piggyback on wake stream (fan-out mode)")
-            self.set_app_state(continuous_active=True)
-            return
-
-        # Play start sound using winsound on Windows to avoid InputStream conflict
         self.play_sound("start", use_winsound=True)
-        time.sleep(0.15)  # Brief pause for sound to start
-        print("[MIC] Continuous mode ACTIVE - speak naturally, pauses will trigger transcription")
+        time.sleep(0.15)
+        print("[MIC] Continuous mode ACTIVE — speak naturally, pauses will trigger transcription")
 
-        with self.buffer_lock:
-            self.speech_buffer = []
         self.silence_start = None
-        self.is_speaking = False
+        self.is_speaking   = False
 
-        stream = self._open_stream_with_timeout(
-            samplerate=self.capture_rate,
-            channels=1,
-            dtype=np.float32,
-            callback=self.continuous_audio_callback,
-            device=self.config['microphone'],
-            blocksize=int(self.capture_rate * 0.1)  # 100ms blocks
-        )
-        if stream is None:
-            print("[ERROR] Could not open continuous stream — audio subsystem busy. Try again.")
-            self.play_sound("error")
-            return
-        
-        self.continuous_stream = stream
-        self.continuous_stream.start()
+        if self._continuous_consumer is not None:
+            # ACE path: ring consumer handles capture — no separate PortAudio stream.
+            # Works alongside wake word mode without stream conflict.
+            self._continuous_consumer.start()
+        else:
+            # Legacy fallback (ACE engine unavailable)
+            with self.buffer_lock:
+                self.speech_buffer = []
+            stream = self._open_stream_with_timeout(
+                samplerate=self.capture_rate,
+                channels=1,
+                dtype=np.float32,
+                callback=self.continuous_audio_callback,
+                device=self.config['microphone'],
+                blocksize=int(self.capture_rate * 0.1),
+            )
+            if stream is None:
+                print("[ERROR] Could not open continuous stream — audio subsystem busy.")
+                self.play_sound("error")
+                return
+            self.continuous_stream = stream
+            self.continuous_stream.start()
+
         self.set_app_state(continuous_active=True)
-
-        # Update tray icon -- start chase animation
         self._request_icon_chase('continuous')
-
-        # Update listening indicator
         if hasattr(self, 'listening_indicator'):
             self._schedule_ui(self.listening_indicator.set_listening, True)
 
     def stop_continuous_mode(self):
-        """Stop continuous listening mode"""
+        """Stop continuous listening mode."""
         self.set_app_state(continuous_active=False)
 
-        if not self.continuous_stream:
-            # Piggyback mode — continuous was riding the wake stream.
-            # Fan-out is now inactive (continuous_active=False), nothing to close.
-            print("[OFF] Continuous mode STOPPED (piggyback)")
-            return
-
-        self.continuous_stream.stop()
-        self.continuous_stream.close()
-        self.continuous_stream = None
-        
-        # Transcribe any remaining audio
-        with self.buffer_lock:
-            remaining = self.speech_buffer.copy()
-            self.speech_buffer = []
-        if remaining:
-            self.transcribe_continuous_buffer(remaining)
+        if self._continuous_consumer is not None and self._continuous_consumer._running:
+            # ACE path: stop consumer, transcribe remaining frames
+            remaining = self._continuous_consumer.stop()
+            if remaining:
+                self.transcribe_continuous_buffer(remaining, src_rate=16000)
+        elif self.continuous_stream:
+            # Legacy fallback path
+            self.continuous_stream.stop()
+            self.continuous_stream.close()
+            self.continuous_stream = None
+            with self.buffer_lock:
+                remaining = self.speech_buffer.copy()
+                self.speech_buffer = []
+            if remaining:
+                self.transcribe_continuous_buffer(remaining)
+        else:
+            pass   # was piggyback or ACE consumer already idle
 
         print("[OFF] Continuous mode STOPPED")
         self.play_sound("stop")
-
-        # Update tray icon — stop chase animation
         self._release_icon_chase('continuous')
-
-        # Update listening indicator
         if hasattr(self, 'listening_indicator'):
             self._schedule_ui(self.listening_indicator.set_listening, False)
 
@@ -2998,11 +3005,18 @@ class DictationApp:
         except Exception as e:
             print(f"[ERROR] Audio callback exception: {e}")
 
-    def transcribe_continuous_buffer(self, buffer):
-        """Transcribe a buffer from continuous mode"""
+    def transcribe_continuous_buffer(self, buffer, src_rate=None):
+        """Transcribe a buffer from continuous mode.
+
+        src_rate: sample rate of the audio in buffer. Defaults to
+        self.capture_rate for backward compatibility. Pass SAMPLE_RATE
+        (16000) when buffer comes from the ACE ring (already at model rate).
+        """
+        if src_rate is None:
+            src_rate = self.capture_rate
         try:
             audio = np.concatenate(buffer)
-            audio = resample_audio(audio, self.capture_rate, self.model_rate)
+            audio = resample_audio(audio, src_rate, self.model_rate)
             audio_duration = len(audio) / self.model_rate
             
             # Get transcription parameters based on performance mode
@@ -3561,11 +3575,9 @@ class DictationApp:
                                         daemon=True,
                                     ).start()
 
-            # Fan-out: when continuous mode is active alongside wake word mode,
-            # forward audio to the continuous pipeline. No second PortAudio stream
-            # is opened; the wake stream drives both.
-            if self.continuous_active:
-                self.continuous_audio_callback(indata, frames, time_info, status)
+            # ACE-04A: ContinuousConsumer reads from the ring independently.
+            # The legacy fan-out call is removed — continuous mode no longer
+            # rides the wake stream.
 
         except (sd.PortAudioError, OSError) as e:
             print(f"[AUDIO] Stream died -- attempting reconnect... ({e})")
