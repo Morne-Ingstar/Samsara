@@ -30,14 +30,15 @@ FRAME_SIZE: int = SAMPLE_RATE * FRAME_MS // 1000
 
 # ── Ring sizing ────────────────────────────────────────────────────────────────
 
-RING_SECONDS: int = 10
+RING_SECONDS: int = 60
 """Total ring buffer depth in seconds. Must satisfy:
-RING_SECONDS >= PREBUFFER_SECONDS + slack (10 >= 1.5 + 8.5). ✓
-Larger values cost memory (RING_FRAMES * FRAME_SIZE * 2 bytes = ~3.2 MB
-at current settings) but provide a deeper overrun safety margin."""
+RING_SECONDS >= PREBUFFER_SECONDS + max_utterance_duration.
+At 60s: supports utterances up to 58.5s before overrun.
+Cost: RING_FRAMES * FRAME_SIZE * 2 bytes = ~19.2 MB at current
+settings — acceptable for a desktop application."""
 
 RING_FRAMES: int = RING_SECONDS * 1000 // FRAME_MS
-"""Number of Frame slots in the ring: 10 * 1000 // 100 = 100."""
+"""Number of Frame slots in the ring: 60 * 1000 // 100 = 600."""
 
 # ── Prebuffer sizing — must mirror samsara.constants, never diverge ───────────
 
