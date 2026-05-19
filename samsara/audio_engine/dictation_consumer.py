@@ -37,6 +37,7 @@ produces garbage transcripts. drain() returns None on epoch mismatch;
 stop_recording treats None as "no audio captured" and plays an error earcon.
 """
 
+import threading
 import time
 
 import numpy as np
@@ -144,6 +145,81 @@ class DictationSessionConsumer:
         pcm_int16 = np.concatenate(self._frames)
         self._frames.clear()
         return pcm_int16.astype(np.float32) / 32767.0
+
+    # ── CapsLock streaming accumulator (ACE-04B) ─────────────────────────────
+    #
+    # The streaming session (streaming.py StreamingWorker) calls
+    # snapshot_streaming_audio() repeatedly for partial passes, then
+    # stop_streaming() for the final pass. Frames accumulate in
+    # _streaming_frames; snapshots are non-destructive reads.
+
+    def activate_streaming(self) -> None:
+        """Start accumulating for a CapsLock streaming session.
+
+        Snaps to current write head and rewinds to prebuffer window (same
+        TTS guards as activate()). A drain thread accumulates frames into
+        _streaming_frames for StreamingWorker to snapshot.
+        """
+        self._streaming_frames: list = []
+        self._streaming_stop  = threading.Event()
+        self._streaming_lock  = threading.Lock()
+
+        # Snap + rewind (same logic as activate())
+        self._reader._read_cursor = self._engine._ring.write_cursor
+        _coordinator = getattr(self._app, 'audio_coordinator', None)
+        if _coordinator and _coordinator.is_speaking:
+            print("[PRE] Streaming: pre-buffer skipped — TTS actively speaking")
+        elif time.monotonic() - getattr(self._app, '_tts_last_speaking', 0.0) < 0.5:
+            print("[PRE] Streaming: pre-buffer skipped — TTS ended too recently")
+        else:
+            self._reader.rewind(PREBUFFER_FRAMES)
+
+        self._streaming_thread = threading.Thread(
+            target=self._streaming_drain_loop,
+            daemon=True,
+            name="streaming-consumer",
+        )
+        self._streaming_thread.start()
+
+    def _streaming_drain_loop(self) -> None:
+        """Background thread: drain ring → _streaming_frames while session runs."""
+        while not self._streaming_stop.is_set():
+            frame = self._reader.read_next()
+            if frame is EMPTY:
+                time.sleep(0.005)
+                continue
+            pcm = frame.pcm.copy()   # [MA-2]
+            pcm_f32 = pcm.astype(np.float32) / 32767.0
+            with self._streaming_lock:
+                self._streaming_frames.append(pcm_f32)
+
+    def snapshot_streaming_audio(self) -> 'np.ndarray | None':
+        """Return assembled float32 audio without clearing the accumulator.
+
+        Called by StreamingWorker for each partial transcription pass.
+        Thread-safe non-destructive read.
+        """
+        with self._streaming_lock:
+            frames = list(self._streaming_frames)
+        if not frames:
+            return None
+        audio = np.concatenate(frames)
+        if audio.size == 0:
+            return None
+        return audio
+
+    def stop_streaming(self) -> 'np.ndarray | None':
+        """Stop accumulating and return all audio for the final pass."""
+        self._streaming_stop.set()
+        if hasattr(self, '_streaming_thread') and self._streaming_thread is not None:
+            self._streaming_thread.join(timeout=2.0)
+            self._streaming_thread = None
+        with self._streaming_lock:
+            frames = list(self._streaming_frames)
+            self._streaming_frames = []
+        if not frames:
+            return None
+        return np.concatenate(frames)
 
     # ── App shutdown ──────────────────────────────────────────────────────────
 
