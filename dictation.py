@@ -826,13 +826,24 @@ class DictationApp:
             print("[INIT] WakeWordDebugQt unavailable")
             self.wake_word_debug_window = None
 
-        # Listening state indicator overlay
-        self.listening_indicator = ListeningIndicator()
-        self.listening_indicator.set_mode(self._get_mode_display())
-        self.listening_indicator.set_position(
-            self.config.get('listening_indicator_position', 'bottom-center'))
-        if self.config.get('listening_indicator_enabled', False):
-            self.listening_indicator.show()
+        # Listening state indicator overlay — must be created on the Qt thread.
+        # ListeningIndicator is a QWidget; creating it on the main thread
+        # causes "Timers cannot be started from another thread" and freezes
+        # the entire Qt event loop.
+        self.listening_indicator = None  # set by _init_indicator on Qt thread
+
+        def _init_indicator():
+            self.listening_indicator = ListeningIndicator()
+            self.listening_indicator.set_mode(self._get_mode_display())
+            self.listening_indicator.set_position(
+                self.config.get('listening_indicator_position', 'bottom-center'))
+            if self.config.get('listening_indicator_enabled', False):
+                self.listening_indicator.show()
+
+        from PySide6.QtCore import QTimer
+        qt_app = __import__('PySide6.QtWidgets', fromlist=['QApplication']).QApplication.instance()
+        if qt_app:
+            QTimer.singleShot(0, qt_app, _init_indicator)
 
         # Vision bridge (optional; requires vision.enabled: true in config)
         self._vision_bridge = None
