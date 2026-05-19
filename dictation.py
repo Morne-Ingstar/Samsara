@@ -1145,7 +1145,16 @@ class DictationApp:
         # the PortAudio streams after sleep/wake or device disruption.
         threading.Thread(target=self._stream_health_monitor,
                          daemon=True, name="stream-health").start()
-        
+
+        # ACE debug capture — passive observer alongside the legacy path.
+        # Enabled by: config["ace_debug_capture"] = true
+        # Writes timestamped WAVs to ~/.samsara/debug_audio/ for perceptual
+        # equivalence verification. Default false so prod is unaffected.
+        self._ace_engine       = None
+        self._ace_debug_rec    = None
+        if self.config.get('ace_debug_capture', False):
+            self._start_ace_debug_capture()
+
         mode = self.config.get('mode', 'hold')
         print(f"Dictation app starting...")
         print(f"Mode: {mode}")
@@ -1187,6 +1196,54 @@ class DictationApp:
             except Exception as e:
                 print(f"[SPLASH] close() failed: {e}")
             self.splash = None
+
+    def _start_ace_debug_capture(self) -> None:
+        """Start the ACE debug capture engine and DebugRecorder.
+
+        Called from __init__ when config['ace_debug_capture'] is true.
+        The engine runs alongside the legacy path as a passive observer;
+        it does not affect dictation, commands, or wake-word detection.
+        """
+        try:
+            from samsara.audio_engine import FrameBus, AudioCaptureEngine
+            from samsara.audio_engine.debug_recorder import DebugRecorder
+
+            ring = FrameBus()
+            self._ace_engine = AudioCaptureEngine(ring, config=self.config)
+            self._ace_engine.start()
+
+            output_dir = os.path.join(
+                os.path.expanduser("~"), ".samsara", "debug_audio"
+            )
+            self._ace_debug_rec = DebugRecorder(
+                engine=self._ace_engine,
+                output_dir=output_dir,
+                max_seconds=30.0,
+            )
+            self._ace_debug_rec.start_recording()
+            print(f"[ACE] Debug capture active — WAVs → {output_dir}")
+        except Exception as exc:
+            print(f"[ACE] Debug capture failed to start: {exc}")
+            self._ace_engine    = None
+            self._ace_debug_rec = None
+
+    def _stop_ace_debug_capture(self) -> None:
+        """Stop the ACE debug capture engine and flush any pending WAV."""
+        if self._ace_debug_rec is not None:
+            try:
+                path = self._ace_debug_rec.stop_recording()
+                if path:
+                    print(f"[ACE] Final debug WAV: {path}")
+            except Exception as exc:
+                print(f"[ACE] DebugRecorder stop error: {exc}")
+            self._ace_debug_rec = None
+
+        if self._ace_engine is not None:
+            try:
+                self._ace_engine.stop()
+            except Exception as exc:
+                print(f"[ACE] Engine stop error: {exc}")
+            self._ace_engine = None
 
     def _show_startup_error(self, message: str):
         """Show a startup-failure dialog and exit. Runs on the UI thread."""
@@ -5958,6 +6015,13 @@ class DictationApp:
         try:
             if hasattr(self, 'alarm_manager') and self.alarm_manager:
                 self.alarm_manager.stop()
+        except:
+            pass
+
+        # Stop ACE debug capture engine (flushes final WAV if active)
+        try:
+            if hasattr(self, '_ace_debug_rec') or hasattr(self, '_ace_engine'):
+                self._stop_ace_debug_capture()
         except:
             pass
 
