@@ -227,17 +227,21 @@ class TestCommandExecutor:
         assert result == "command_mode_on"
         callback.assert_called_with(True)
 
-    def test_add_remove_command(self, commands_file):
-        """Test adding and removing commands."""
+    def test_get_command(self, commands_file):
+        """Test command lookup by name."""
         from samsara.commands import CommandExecutor
 
         executor = CommandExecutor(commands_file)
 
-        executor.add_command('test', 'hotkey', keys=['ctrl', 't'])
-        assert 'test' in executor.commands
+        # Commands loaded from JSON are accessible via get_command
+        assert executor.get_command('copy') is not None
+        assert executor.get_command('nonexistent') is None
 
-        executor.remove_command('test')
-        assert 'test' not in executor.commands
+        # list_commands returns a copy of the current commands dict
+        cmds = executor.list_commands()
+        assert isinstance(cmds, dict)
+        assert 'copy' in cmds
+        assert 'paste' in cmds
 
 
 class TestAudioCapture:
