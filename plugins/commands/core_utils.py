@@ -69,3 +69,24 @@ def restart_app(app, remainder="", **kwargs):
 
     speak_if_available(app, "Restarting.")
     threading.Thread(target=_do_restart, daemon=True).start()
+
+
+@command(
+    "reload config",
+    aliases=["refresh config", "reread config", "reload configuration"],
+    pack="core",
+    ai_visible=False,
+)
+def reload_config(app, remainder="", **kwargs):
+    if not hasattr(app, 'reload_config_from_disk'):
+        speak_if_available(app, "Config reload not available.")
+        return
+    try:
+        n = app.reload_config_from_disk()
+        if n == 0:
+            speak_if_available(app, "Config reloaded. No changes.")
+        else:
+            speak_if_available(app, f"Config reloaded. {n} key{'s' if n != 1 else ''} changed.")
+    except Exception as e:
+        print(f"[CONFIG] reload_config command error: {e}")
+        speak_if_available(app, "Config reload failed.")
