@@ -285,18 +285,15 @@ class TestFullCommandExecution:
         """Test complete text insertion command flow"""
         from samsara.commands import CommandExecutor
 
-        with patch('samsara.commands.HAS_CLIPBOARD', True):
-            with patch('samsara.commands.pyperclip', create=True):
-                with patch('samsara.commands.pyautogui', create=True):
-                    with patch('time.sleep'):
-                        executor = CommandExecutor(temp_commands_file)
+        with patch('time.sleep'):
+            executor = CommandExecutor(temp_commands_file)
 
-                        result, was_command = executor.process_text(
-                            "period",
-                            command_mode_enabled=True
-                        )
+            result, was_command = executor.process_text(
+                "period",
+                command_mode_enabled=True
+            )
 
-                        assert was_command is True
+            assert was_command is True
 
     def test_launch_command_full_flow(self, temp_commands_file, mock_subprocess):
         """Test complete launch command flow"""

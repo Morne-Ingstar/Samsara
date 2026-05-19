@@ -381,7 +381,7 @@ def handle_response(app, response, original_text=None):
     if response.startswith("EXECUTE "):
         command_name = response[8:].strip()
         if hasattr(app, "command_executor"):
-            app.command_executor.execute_command(command_name, app)
+            app.command_executor.execute_command(command_name)
         else:
             speak(app, f"Cannot execute '{command_name}'. Command executor unavailable.")
         return
@@ -399,7 +399,7 @@ def handle_response(app, response, original_text=None):
         if command_name and command_name not in _UNSAFE_COMMANDS:
             # Safe by default — execute immediately, earcon is enough feedback
             if hasattr(app, "command_executor"):
-                app.command_executor.execute_command(command_name, app)
+                app.command_executor.execute_command(command_name)
                 _track_alias_uses(original_text)
             else:
                 speak(app, "Command executor unavailable.")
@@ -439,7 +439,7 @@ def _execute_safe(app, action):
     if action.get("command"):
         def _run():
             try:
-                app.command_executor.execute_command(action["command"], app)
+                app.command_executor.execute_command(action["command"])
             except Exception as e:
                 print(f"[AVA SCHEDULER] Command error: {e}")
         # _schedule_ui marshals to app.root.after(0, ...) — safe from background threads

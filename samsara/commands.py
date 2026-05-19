@@ -67,15 +67,6 @@ except ImportError:
 
     HAS_PYNPUT = False
 
-try:
-    import pyperclip
-    import pyautogui
-    HAS_CLIPBOARD = True
-except Exception:
-    pyperclip = None
-    pyautogui = None
-    HAS_CLIPBOARD = False
-
 
 class CommandExecutor:
     """Executes voice commands - hotkeys, launches, key holds, etc."""
@@ -331,52 +322,10 @@ class CommandExecutor:
             print(f"[SMART ACTIONS] Routing failed: {e}")
             return False
 
-    def add_command(
-        self,
-        name: str,
-        command_type: str,
-        **kwargs: Any,
-    ) -> None:
-        """
-        Add a new command.
-
-        Args:
-            name: Command name (trigger phrase)
-            command_type: Type of command
-            **kwargs: Command parameters
-        """
-        self.commands[name.lower()] = {
-            'type': command_type,
-            **kwargs,
-        }
-
-    def remove_command(self, name: str) -> bool:
-        """
-        Remove a command.
-
-        Args:
-            name: Command name to remove
-
-        Returns:
-            True if command was removed
-        """
-        if name.lower() in self.commands:
-            del self.commands[name.lower()]
-            return True
-        return False
-
     def get_command(self, name: str) -> Optional[Dict[str, Any]]:
-        """
-        Get a command by name.
-
-        Args:
-            name: Command name
-
-        Returns:
-            Command dict or None
-        """
+        """Return the command dict for *name*, or None if not found."""
         return self.commands.get(name.lower())
 
     def list_commands(self) -> Dict[str, Dict[str, Any]]:
-        """Get all commands."""
+        """Return a shallow copy of the full commands dict."""
         return self.commands.copy()

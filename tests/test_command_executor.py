@@ -136,15 +136,10 @@ class TestCommandExecution:
 
     def test_execute_text_command(self, temp_commands_file, mock_pyperclip, mock_pyautogui):
         """Test executing a text insertion command"""
-        with patch('samsara.commands.HAS_CLIPBOARD', True):
-            with patch('samsara.commands.pyperclip', create=True) as mock_clip:
-                with patch('samsara.commands.pyautogui', create=True) as mock_pag:
-                    with patch('time.sleep'):
-                        executor = CommandExecutor(temp_commands_file)
-
-                        result = executor.execute_command("period")
-
-                        assert result is True
+        with patch('time.sleep'):
+            executor = CommandExecutor(temp_commands_file)
+            result = executor.execute_command("period")
+            assert result is True
 
     def test_execute_mouse_double_click(self, temp_commands_file):
         """Test executing a mouse double-click command"""
