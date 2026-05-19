@@ -231,6 +231,7 @@ from samsara.constants import (
 )
 from samsara.calibration import measure_ambient_rms, calibrate_threshold
 from samsara.key_macros import KeyMacroManager, get_default_macro_config
+from samsara.mode import Mode, ModeStateMachine
 from samsara.notifications import NotificationManager, get_default_notification_config
 from samsara.alarms import AlarmManager, get_default_alarm_config
 from samsara.echo_cancel import EchoCanceller
@@ -868,7 +869,6 @@ class DictationApp:
         self._run_calibration_if_auto()
 
         self.audio_queue = queue.Queue()
-        self.recording = False
         self.command_mode_recording = False  # True when using command-only hotkey
         self._stop_in_flight = False         # True while stop_recording + trailing sleep is pending
 
@@ -926,10 +926,11 @@ class DictationApp:
         self.key_press_times = {}  # Track when each key was pressed
         self.hotkey_window = 0.3  # 300ms window for hotkey detection
         
-        # Mode tracking
-        self.toggle_active = False  # For toggle mode
-        self.continuous_active = False  # For continuous mode
-        self.wake_word_active = False  # For wake word mode
+        # Mode state machine — single source of truth for current operating mode.
+        # recording, toggle_active, wake_word_active are @property shims backed by
+        # this machine.  continuous_active is tracked separately (can coexist with WAKE).
+        self._mode_machine = ModeStateMachine()
+        self._continuous_mode_active = False  # separate bool; coexists with WAKE
 
         # Wake-word trace callback is initialized earlier (see above).
 
@@ -1836,6 +1837,44 @@ class DictationApp:
 
         return len(changed)
 
+    # ── Mode property shims ──────────────────────────────────────────────────
+    # Read-only views backed by _mode_machine.  No-op setters prevent
+    # AttributeError from any remaining legacy set_app_state() calls and
+    # from code that still writes these attributes directly.
+
+    @property
+    def recording(self) -> bool:
+        """True when in any active-capture mode."""
+        return self._mode_machine.is_recording()
+
+    @recording.setter
+    def recording(self, _value) -> None:
+        pass  # legacy no-op; transitions happen via _mode_machine
+
+    @property
+    def toggle_active(self) -> bool:
+        return self._mode_machine.mode == Mode.TOGGLE
+
+    @toggle_active.setter
+    def toggle_active(self, _value) -> None:
+        pass  # legacy no-op
+
+    @property
+    def continuous_active(self) -> bool:
+        return self._continuous_mode_active
+
+    @continuous_active.setter
+    def continuous_active(self, value) -> None:
+        self._continuous_mode_active = bool(value)
+
+    @property
+    def wake_word_active(self) -> bool:
+        return self._mode_machine.mode == Mode.WAKE
+
+    @wake_word_active.setter
+    def wake_word_active(self, _value) -> None:
+        pass  # legacy no-op
+
     def set_app_state(self, **kwargs):
         """Update application state flags with transition logging.
 
@@ -2379,9 +2418,10 @@ class DictationApp:
                 self.start_wake_word_mode()
             print("[INIT] Startup complete.")
 
-            # Ensure clean state — reset any recording flags that may have
-            # been tripped by keyboard events during startup
-            self.recording = False
+            # Ensure clean state — reset any recording that may have been
+            # triggered by keyboard events during startup
+            if self._mode_machine.is_recording():
+                self._mode_machine.transition(Mode.IDLE)
             self.hotkey_pressed = False
             self.command_mode_recording = False
             self._hotkey_recording = False
@@ -2539,6 +2579,7 @@ class DictationApp:
             print(f"[HOTKEY] Command hotkey detected: {command_hotkey}")
             self.hotkey_pressed = True
             self.command_mode_recording = True
+            self._mode_machine.transition(Mode.COMMAND)
             self.start_recording(streaming=False)
             return
         
@@ -2610,14 +2651,15 @@ class DictationApp:
                 self.hotkey_pressed = True
                 # Ctrl+Shift always drives batch mode -- streaming uses
                 # CapsLock as its dedicated hotkey.
+                self._mode_machine.transition(Mode.HOLD)
                 self.start_recording(streaming=False)
             elif mode == 'toggle':
                 self.hotkey_pressed = True
                 if self.toggle_active:
-                    self.toggle_active = False
+                    self._mode_machine.transition(Mode.IDLE)
                     self.stop_recording()
                 else:
-                    self.toggle_active = True
+                    self._mode_machine.transition(Mode.TOGGLE)
                     self.start_recording(streaming=False)
             elif mode == 'continuous':
                 # In continuous mode, main hotkey toggles continuous listening
@@ -2761,6 +2803,7 @@ class DictationApp:
             if self.recording:
                 return
             print("[CAPSLOCK] press -> streaming start")
+            self._mode_machine.transition(Mode.STREAMING)
             self.start_recording(streaming=True)
         except Exception as e:
             print(f"[CAPSLOCK] start failed: {e}")
@@ -2887,6 +2930,7 @@ class DictationApp:
         if self.recording:
             return
         self.command_mode_recording = True
+        self._mode_machine.transition(Mode.COMMAND)
         self.start_recording(streaming=False, play_earcon=False)
         # 200ms debounce: skip earcon for accidental quick taps
         debounce_ms = self.config.get('command_mode', {}).get('enter_debounce_ms', 200)
@@ -2940,6 +2984,7 @@ class DictationApp:
         if self.recording:
             return
         self.ava_mode_recording = True
+        self._mode_machine.transition(Mode.AVA)
         self.start_recording(streaming=False, play_earcon=False)
         debounce_ms = self.config.get('command_mode', {}).get('enter_debounce_ms', 200)
         time.sleep(debounce_ms / 1000.0)
@@ -3011,6 +3056,7 @@ class DictationApp:
         time.sleep(0.1)
         if self.command_mode_active and not self.recording:
             self.command_mode_recording = True
+            self._mode_machine.transition(Mode.COMMAND)
             self.start_recording(streaming=False, play_earcon=False)
 
     # -----------------------------------------------------------------------
@@ -3037,14 +3083,14 @@ class DictationApp:
         # Works alongside wake word mode without stream conflict.
         self._continuous_consumer.start()
 
-        self.set_app_state(continuous_active=True)
+        self._continuous_mode_active = True
         self._request_icon_chase('continuous')
         if hasattr(self, 'listening_indicator'):
             self._schedule_ui(self.listening_indicator.set_listening, True)
 
     def stop_continuous_mode(self):
         """Stop continuous listening mode."""
-        self.set_app_state(continuous_active=False)
+        self._continuous_mode_active = False
 
         if self._continuous_consumer is not None and self._continuous_consumer._running:
             # ACE path: stop consumer, transcribe remaining frames
@@ -3188,14 +3234,14 @@ class DictationApp:
         # Engine and wake consumer share the same device, no stream conflict.
         self._wake_consumer.start()
 
-        self.set_app_state(wake_word_active=True)
+        self._mode_machine.transition(Mode.WAKE)
         self._request_icon_chase('wake_word')
         if hasattr(self, 'listening_indicator'):
             self._schedule_ui(self.listening_indicator.set_listening, True)
 
     def stop_wake_word_mode(self):
         """Stop wake word listening mode."""
-        self.set_app_state(wake_word_active=False)
+        self._mode_machine.transition(Mode.IDLE)
         self.wake_word_triggered = False
         self._reset_wake_dictation()
 
@@ -4616,8 +4662,6 @@ class DictationApp:
             self._dictation_consumer.activate_streaming()
             self._ace_streaming_active = True
 
-        self.set_app_state(recording=True)
-
         # Update tray icon to show active recording (critical for toggle mode
         # where there's no physical key-hold to indicate state)
         self._request_icon_chase('recording')
@@ -4638,7 +4682,13 @@ class DictationApp:
         if not self.recording:
             return
 
-        self.set_app_state(recording=False)
+        # Return to WAKE if the wake consumer is still running, otherwise IDLE.
+        _wake_still_running = (
+            self.config.get('wake_word_enabled', False)
+            and getattr(self, '_wake_consumer', None) is not None
+            and self._wake_consumer._running
+        )
+        self._mode_machine.transition(Mode.WAKE if _wake_still_running else Mode.IDLE)
         # Only re-enable wake word if a new recording hasn't already started.
         # The deferred stop (trailing buffer) can fire AFTER the user has
         # pressed the hotkey again and started a new recording. In that case
@@ -4889,7 +4939,12 @@ class DictationApp:
         if not self.recording:
             return
 
-        self.set_app_state(recording=False)
+        _wake_still_running = (
+            self.config.get('wake_word_enabled', False)
+            and getattr(self, '_wake_consumer', None) is not None
+            and self._wake_consumer._running
+        )
+        self._mode_machine.transition(Mode.WAKE if _wake_still_running else Mode.IDLE)
         if not self.hotkey_pressed:
             self._hotkey_recording = False  # Re-enable wake word processing
         print("[X] Recording cancelled")
@@ -4927,9 +4982,6 @@ class DictationApp:
         if self.recording:
             self.stop_recording()
             print(f"[MODE] Stopped active recording before mode switch")
-
-        # Reset toggle state so it doesn't carry over
-        self.toggle_active = False
 
         # Stop continuous mode if it was active but new mode is different
         if self.continuous_active and new_mode != 'continuous':
