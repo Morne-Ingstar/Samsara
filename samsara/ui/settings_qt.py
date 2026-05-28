@@ -3192,6 +3192,24 @@ class _SettingsWindow(QMainWindow):
         cs_layout.addWidget(enable_note)
         cs_layout.addSpacing(8)
 
+        # Ava Personality toggle
+        cs_layout.addWidget(self._section_title("Ava Personality"))
+        cs_layout.addSpacing(4)
+        personality_combo = QComboBox()
+        personality_combo.addItems(["Relaxed", "Strict"])
+        current = self.app.config.get("ava_personality", "relaxed")
+        personality_combo.setCurrentText("Strict" if current == "strict" else "Relaxed")
+        self._widgets['ava_personality'] = personality_combo
+        cs_layout.addWidget(personality_combo)
+        personality_note = QLabel(
+            "Relaxed: natural conversation, longer answers, self-aware. "
+            "Strict: tight persona, 1-3 sentences, stays in character."
+        )
+        personality_note.setWordWrap(True)
+        personality_note.setStyleSheet("color: #8A8A92; font-size: 12px; margin-left: 4px;")
+        cs_layout.addWidget(personality_note)
+        cs_layout.addSpacing(8)
+
         # Provider
         cs_layout.addWidget(self._section_title("Provider"))
         cs_layout.addSpacing(4)
@@ -3634,6 +3652,11 @@ class _SettingsWindow(QMainWindow):
                 elif 'model' in cfg:
                     del cfg['model']
                 updates['cloud_llm'] = cfg
+
+        # Ava personality
+        if 'ava_personality' in self._widgets:
+            val = self._widgets['ava_personality'].currentText().lower()
+            updates['ava_personality'] = val
 
         # Advanced tab
         if 'adv_device' in self._widgets:
