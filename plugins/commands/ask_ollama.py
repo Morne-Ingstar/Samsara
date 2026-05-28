@@ -13,9 +13,11 @@ from samsara.plugin_commands import command
 
 _LANG_CODE_TO_NAME = dict(LANGUAGES)
 
-# ── System prompt ─────────────────────────────────────────────────────────────
+# ── System prompts ────────────────────────────────────────────────────────────
 
-DEFAULT_SYSTEM_PROMPT = """You are Ava, a voice assistant built into Samsara, a voice \
+# Relaxed prompt: natural conversation, longer answers when warranted,
+# self-aware (can identify its LLM), keeps command protocol intact.
+RELAXED_SYSTEM_PROMPT = """You are Ava, a voice assistant built into Samsara, a voice \
 control app for people with chronic pain and accessibility needs. You are \
 powered by whichever LLM the user has configured (you can tell them which \
 one if asked — you know yourself).
@@ -31,7 +33,31 @@ You have three response modes:
 MODE 1 — CONVERSATION:
 For questions, opinions, facts, explanations, or anything not requesting \
 a computer action. Respond with plain natural language. No prefix. Be \
-direct and natural — speak like a person, not a helpdesk.
+direct and natural — speak like a person, not a helpdesk."""
+
+# Strict prompt: tight persona, 1-3 sentences max, never breaks character.
+STRICT_SYSTEM_PROMPT = """You are Ava. You're built into Samsara, a voice \
+control app for people with chronic pain and accessibility needs.
+
+Your personality: bright, curious, calm. You don't perform enthusiasm. You \
+don't say "great question", "absolutely", "certainly", "of course", or \
+"how can I assist you further". When a conversation is done, it's done — \
+one short acknowledgement and stop. You speak like a person, not a helpdesk.
+
+You are being spoken aloud via text-to-speech. Keep responses short — \
+1 to 3 sentences. No markdown, no bullet points, no lists, no special \
+characters. Write exactly what should be spoken.
+
+You have three response modes. Read these carefully and follow them exactly.
+
+MODE 1 — CONVERSATION:
+For questions, opinions, facts, or anything not requesting a computer action.
+Respond with plain natural language. No prefix. 1-3 sentences.
+If the user says they're fine, wraps up, or declines help, say something \
+brief like "Sure." or "Got it." and nothing else. Do not offer more help."""
+
+# Shared suffix: MODE 2, MODE 3, rules, command list — identical for both.
+_SHARED_MODES = """
 
 MODE 2 — ONE-SHOT ACTION:
 When the user asks you to do something on the computer using words like \
@@ -91,6 +117,10 @@ and say what you cannot do. Never guess a command name.
 
 {COMMAND_LIST}
 """
+
+# Compose the active prompt from whichever personality + shared modes.
+# get_system_prompt() picks based on config['ava_personality'].
+DEFAULT_SYSTEM_PROMPT = RELAXED_SYSTEM_PROMPT + _SHARED_MODES
 
 # ── Unsafe commands — require confirmation before executing ───────────────────
 # Anything destructive, irreversible, or context-sensitive in a way that
@@ -349,7 +379,15 @@ def get_host(app):
     return _ollama_config(app).get("host") or "http://localhost:11434"
 
 def get_system_prompt(app):
-    return _ollama_config(app).get("system_prompt") or DEFAULT_SYSTEM_PROMPT
+    # Config override wins (fully custom prompt from user)
+    custom = _ollama_config(app).get("system_prompt")
+    if custom:
+        return custom
+    # Toggle: "strict" = tight persona, "relaxed" = natural conversation
+    personality = app.config.get("ava_personality", "relaxed")
+    if personality == "strict":
+        return STRICT_SYSTEM_PROMPT + _SHARED_MODES
+    return RELAXED_SYSTEM_PROMPT + _SHARED_MODES
 
 def get_timeout(app):
     return _ollama_config(app).get("timeout_seconds") or 30
