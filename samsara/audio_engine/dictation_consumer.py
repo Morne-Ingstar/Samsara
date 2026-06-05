@@ -64,10 +64,20 @@ class DictationSessionConsumer:
 
         Rewinds to include prebuffer history unless TTS was speaking
         recently, then clears accumulated frames for the new utterance.
+
+        A background drain thread then reads the ring continuously for the
+        duration of the hold and accumulates copied frames into _frames.
+        This is what allows utterances longer than the ring's ~58.5s
+        effective window: the reader never falls behind the writer, so the
+        overrun handler never fires. (The previous design read the ring
+        only once at release in drain(), so any hold longer than the ring
+        capacity was lapped and truncated to the last prebuffer window.)
         """
         self._frames.clear()
         self._active         = True
         self._epoch_at_start = None
+        self._drain_stop     = threading.Event()
+        self._frames_lock    = threading.Lock()
 
         # Snap cursor to the current write head BEFORE rewinding.
         # Between the previous drain() and this activate(), the writer
@@ -86,20 +96,54 @@ class DictationSessionConsumer:
         else:
             self._reader.rewind(PREBUFFER_FRAMES)
 
+        self._drain_thread = threading.Thread(
+            target=self._hold_drain_loop,
+            daemon=True,
+            name="dictation-hold-consumer",
+        )
+        self._drain_thread.start()
+
+    def _hold_drain_loop(self) -> None:
+        """Background thread: drain ring → _frames continuously during a hold.
+
+        Mirrors _streaming_drain_loop. Copies each frame (MA-2: frame.pcm is
+        a view into ring memory that the writer overwrites after the ring
+        wraps) and accumulates the raw int16 pcm. Epoch checking and echo
+        cancellation are deferred to drain(), which assembles the final
+        audio — keeping per-frame work in this hot loop minimal.
+        """
+        while not self._drain_stop.is_set():
+            frame = self._reader.read_next()
+            if frame is EMPTY:
+                time.sleep(0.005)
+                continue
+            if self._epoch_at_start is None:
+                self._epoch_at_start = frame.device_epoch
+            with self._frames_lock:
+                self._frames.append((frame.device_epoch, frame.pcm.copy()))  # [MA-2]
+
     def cancel(self) -> None:
         """Discard accumulated frames without assembling audio.
 
         Safe to call even if activate() was never called.
         """
+        stop = getattr(self, '_drain_stop', None)
+        if stop is not None:
+            stop.set()
+        thread = getattr(self, '_drain_thread', None)
+        if thread is not None:
+            thread.join(timeout=2.0)
+            self._drain_thread = None
         self._frames.clear()
         self._active = False
 
     def drain(self) -> 'np.ndarray | None':
-        """Read all available ring frames and return assembled float32 audio.
+        """Stop the drain thread and return assembled float32 audio.
 
-        Reads until the ring is empty, then assembles accumulated frames
-        into a single float32 ndarray at 16 kHz (model rate). Echo
-        cancellation is applied per-frame when the canceller is active.
+        The background _hold_drain_loop has been accumulating (epoch, pcm)
+        tuples for the whole hold. Here we stop it, then assemble: apply the
+        epoch-discontinuity check and per-frame echo cancellation, and
+        concatenate into a single float32 ndarray at 16 kHz (model rate).
 
         Returns:
             float32 ndarray at 16kHz, or None when:
@@ -110,25 +154,43 @@ class DictationSessionConsumer:
         """
         self._active = False
 
+        # Stop the background drain thread and flush any final frames.
+        stop = getattr(self, '_drain_stop', None)
+        if stop is not None:
+            stop.set()
+        thread = getattr(self, '_drain_thread', None)
+        if thread is not None:
+            thread.join(timeout=2.0)
+            self._drain_thread = None
+
         if self._reader is None:
             return None
 
-        echo_canceller = getattr(self._app, 'echo_canceller', None)
-
+        # Catch any frames written between the thread's last read and stop.
         while True:
             frame = self._reader.read_next()
             if frame is EMPTY:
                 break
-
             if self._epoch_at_start is None:
                 self._epoch_at_start = frame.device_epoch
+            with self._frames_lock:
+                self._frames.append((frame.device_epoch, frame.pcm.copy()))  # [MA-2]
 
-            if frame.device_epoch != self._epoch_at_start:
+        with self._frames_lock:
+            collected = list(self._frames)
+            self._frames.clear()
+
+        if not collected:
+            return None
+
+        echo_canceller = getattr(self._app, 'echo_canceller', None)
+        start_epoch = collected[0][0]
+        out_frames = []
+
+        for epoch, pcm in collected:
+            if epoch != start_epoch:
                 print("[ACE] Epoch change mid-utterance — aborting dictation")
-                self._frames.clear()
                 return None
-
-            pcm = frame.pcm.copy()   # [MA-2] COPY: frame.pcm is a VIEW into ring memory
 
             if echo_canceller and echo_canceller.is_active:
                 pcm_f32   = pcm.astype(np.float32) / 32767.0
@@ -137,13 +199,9 @@ class DictationSessionConsumer:
                 ).flatten()
                 pcm = np.clip(processed * 32767.0, -32768, 32767).astype(np.int16)
 
-            self._frames.append(pcm)
+            out_frames.append(pcm)
 
-        if not self._frames:
-            return None
-
-        pcm_int16 = np.concatenate(self._frames)
-        self._frames.clear()
+        pcm_int16 = np.concatenate(out_frames)
         return pcm_int16.astype(np.float32) / 32767.0
 
     # ── CapsLock streaming accumulator (ACE-04B) ─────────────────────────────
