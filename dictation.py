@@ -1,5 +1,6 @@
 import copy
 import os
+import shutil
 import sys
 import math
 import wave
@@ -230,6 +231,7 @@ from samsara.constants import (
 )
 from samsara.calibration import measure_ambient_rms, calibrate_threshold
 from samsara.key_macros import KeyMacroManager, get_default_macro_config
+from samsara.learning import AdaptiveLearner
 from samsara.notifications import NotificationManager, get_default_notification_config
 from samsara.alarms import AlarmManager, get_default_alarm_config
 from samsara.echo_cancel import EchoCanceller
@@ -600,6 +602,8 @@ class DictationApp:
                 # Wizard was cancelled, use defaults but mark as complete
                 print("Setup wizard cancelled - using default settings")
             # No splash after wizard - user already saw UI
+            # Auto-launch tutorial after wizard (first run only)
+            self._launch_tutorial_after_wizard = True
 
         print("[INIT] Loading config...")
         self.update_splash("Loading configuration...")
@@ -708,6 +712,11 @@ class DictationApp:
         # when open so the main pipeline's decisions show up in its trace view.
         # None means "no tracing" and _emit_wake_trace becomes a cheap no-op.
         self._wake_trace_callback = None
+
+        # Tutorial interaction hooks — lightweight one-shot callables registered
+        # by TutorialWindow and removed when the window closes.
+        # Keys: 'dictation', 'command', 'ava'
+        self._tutorial_hooks: dict = {}
         
         # Hotkey settings
         self.hotkey_pressed = False
@@ -884,6 +893,18 @@ class DictationApp:
             )
         self._schedule_ui(_init_cheatsheet)
 
+        # Tutorial — auto-launch on first run (after wizard), on Qt thread.
+        # On subsequent startups tutorial_complete is True so this is a no-op.
+        if getattr(self, '_launch_tutorial_after_wizard', False) and \
+                not self.config.get('tutorial_complete', False):
+            def _init_tutorial():
+                try:
+                    from samsara.ui.tutorial_qt import show_tutorial
+                    show_tutorial(self)
+                except Exception as _e:
+                    print(f"[TUTORIAL] Failed to launch tutorial: {_e}")
+            self._schedule_ui(_init_tutorial)
+
         # Snooze state
         self.snoozed = False
         self._snooze_timer = None
@@ -898,6 +919,9 @@ class DictationApp:
         # Key macro manager
         self.key_macro_manager = KeyMacroManager(self.config)
         self.key_macro_manager.start()
+
+        # Adaptive learning for transcription corrections
+        self.adaptive_learner = AdaptiveLearner(Path(__file__).parent)
 
         # Notification manager for reminders
         config_dir = Path(__file__).parent
@@ -1201,6 +1225,7 @@ class DictationApp:
             "wake_word_hotkey": "ctrl+alt+w",
             "command_hotkey": "ctrl+alt+c",
             "undo_hotkey": "ctrl+alt+z",
+            "correction_hotkey": "ctrl+alt+r",
             "cancel_hotkey": "escape",
             "mode": "hold",  # Options: "hold", "toggle", "continuous"
             "model_size": "base",
@@ -1437,9 +1462,10 @@ class DictationApp:
             if 'min_speech_duration' in self.config:
                 self.config['wake_word_config']['audio']['min_speech_duration'] = self.config['min_speech_duration']
             
-            # Save migrated config
-            with self._config_lock:
-                self.save_config()
+            # Save migrated config — _config_lock is already held by the
+            # load_config() caller, so do not re-acquire (threading.Lock is
+            # not reentrant and would deadlock).
+            self.save_config()
             print("[CONFIG] Migrated wake word settings to new format")
         else:
             # Ensure all nested keys exist (for configs created between versions)
@@ -1495,16 +1521,30 @@ class DictationApp:
             with open(tmp_path, 'w') as f:
                 json.dump(merged, f, indent=2)
 
-            # 2. Roll the existing good config to .bak (best-effort; ignore
-            #    errors on the very first save when there's nothing to roll).
+            # 2. Back up current config.  Use shutil.copy2 (read → write to a
+            #    different path) rather than os.replace/rename.  On Windows,
+            #    MoveFileExW fails with access denied when any open handle on
+            #    the source file lacks FILE_SHARE_DELETE — Python's default
+            #    open() never sets that flag, so the config watcher's
+            #    background read would block the rename.
             if self.config_path.exists():
                 try:
-                    os.replace(self.config_path, bak_path)
+                    shutil.copy2(self.config_path, bak_path)
                 except OSError as e:
-                    print(f"[WARN] Could not rotate config to .bak: {e}")
+                    print(f"[WARN] Could not backup config to .bak: {e}")
 
-            # 3. Atomically promote tmp -> config.json
-            os.replace(tmp_path, self.config_path)
+            # 3. Write serialised config directly to config.json.  open() in
+            #    'w' mode succeeds even while other handles have the file open
+            #    for reading (Python opens with FILE_SHARE_READ|FILE_SHARE_WRITE
+            #    by default), unlike os.replace() which requires FILE_SHARE_DELETE
+            #    on every existing handle.
+            tmp_text = tmp_path.read_text(encoding='utf-8')
+            with open(self.config_path, 'w', encoding='utf-8') as f:
+                f.write(tmp_text)
+            try:
+                tmp_path.unlink()
+            except OSError:
+                pass
 
             # 4. Sync in-memory config and snapshot to what was written.
             self.config = merged
@@ -2386,6 +2426,14 @@ class DictationApp:
             threading.Thread(target=self.undo_last_dictation, daemon=True).start()
             return
 
+        # Correction report hotkey (works in any mode, edge-triggered)
+        correction_hotkey = self.config.get('correction_hotkey', 'ctrl+alt+r')
+        if self.check_hotkey_state(correction_hotkey) and not self.hotkey_pressed:
+            print(f"[HOTKEY] Correction hotkey detected: {correction_hotkey}")
+            self.hotkey_pressed = True
+            self._schedule_ui(self._report_correction_dialog)
+            return
+
         # Check for wake word enable/disable toggle (works in any mode)
         if self.check_hotkey_state(wake_hotkey) and not self.hotkey_pressed:
             print(f"[HOTKEY] Wake word hotkey detected: {wake_hotkey}")
@@ -2823,6 +2871,11 @@ class DictationApp:
                         "Sorry, I had an error processing that.",
                         category="error",
                     )
+            finally:
+                # Tutorial Ava hook — fires after Ava finishes (success or error)
+                _tut_ava = self._tutorial_hooks.pop('ava', None)
+                if _tut_ava:
+                    self._schedule_ui(_tut_ava)
         threading.Thread(target=_worker, daemon=True, name="Ava-worker").start()
 
     def _reset_command_mode_inactivity_timer(self, timeout_s):
@@ -2952,15 +3005,37 @@ class DictationApp:
                         increment_command_count(result)
                         if hasattr(self, 'hints'):
                             n = self.hints.increment('command_count')
-                            if n == 10 and self.hints.get_counter('show_numbers_used') == 0:
+                            if n == 1:
+                                self.hints.maybe_show(
+                                    'first_command_success',
+                                    "Voice command executed. Say 'what can I say?' to"
+                                    " browse all available commands.",
+                                    delay_s=1.5,
+                                )
+                            elif n == 5 and self.hints.get_counter('show_numbers_used') == 0:
                                 self.hints.maybe_show(
                                     'show_numbers_intro',
-                                    "Tip: say 'show numbers' to click things by voice"
-                                    " -- no mouse needed.",
+                                    "Tip: say 'show numbers' to click anything on screen"
+                                    " by voice -- no mouse needed.",
                                     delay_s=2.0,
                                 )
+                    # Tutorial command hook — one-shot, fires for ANY command
+                    _tut_cmd = self._tutorial_hooks.pop('command', None)
+                    if _tut_cmd:
+                        try:
+                            _tut_cmd(result or "")
+                        except Exception:
+                            pass
                     # Command was executed
                     return
+
+                # Tutorial dictation hook — one-shot, removed after first fire
+                _tut_dict = self._tutorial_hooks.pop('dictation', None)
+                if _tut_dict:
+                    try:
+                        _tut_dict(text)
+                    except Exception:
+                        pass
 
                 # Not a command, proceed with dictation
                 # Apply text processing (auto-capitalize, number formatting)
@@ -3889,6 +3964,7 @@ class DictationApp:
 
         if paste_ok:
             self._record_undoable_paste(text)
+            self.adaptive_learner.record_transcription(text)
 
     def _record_undoable_paste(self, text):
         """Remember the last pasted text so it can be undone via voice/hotkey."""
@@ -3937,6 +4013,51 @@ class DictationApp:
         self._clear_undo()
         return True
 
+    def _report_correction_dialog(self):
+        """Show the correction-reporting dialog (must be called on the Qt thread)."""
+        from PySide6.QtWidgets import QInputDialog, QMessageBox
+
+        last = self.adaptive_learner.get_last_transcription()
+        original, ok = QInputDialog.getText(
+            None,
+            "Report Correction",
+            "What did Samsara transcribe? (edit if needed)",
+            text=last,
+        )
+        if not ok or not original.strip():
+            return
+
+        corrected, ok = QInputDialog.getText(
+            None,
+            "Report Correction",
+            f'What should "{original.strip()}" be?',
+        )
+        if not ok or not corrected.strip():
+            return
+
+        original = original.strip()
+        corrected = corrected.strip()
+
+        threshold_reached = self.adaptive_learner.record_correction(original, corrected)
+        print(f"[LEARN] Correction recorded: '{original}' -> '{corrected}'")
+
+        if threshold_reached:
+            reply = QMessageBox.question(
+                None,
+                "Add to Dictionary?",
+                f'Samsara has seen this correction {self.adaptive_learner.THRESHOLD} times.\n\n'
+                f'Add "{original}" -> "{corrected}" to your corrections dictionary?',
+                QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No,
+            )
+            if reply == QMessageBox.StandardButton.Yes:
+                vt = getattr(self, 'voice_training_window', None)
+                if vt is not None:
+                    vt.corrections_dict[original] = corrected
+                    vt.save_training_data()
+                self.adaptive_learner.mark_promoted(original, corrected)
+                print(f"[LEARN] Promoted to dictionary: '{original}' -> '{corrected}'")
+                self.play_sound("success")
+
     def _output_dictation(self, text):
         """Output dictated text"""
         # Apply text processing (auto-capitalize, number formatting)
@@ -3967,6 +4088,22 @@ class DictationApp:
 
         if self.config['auto_paste']:
             self._paste_preserving_clipboard(text)
+
+        if hasattr(self, 'hints'):
+            self.hints.maybe_show(
+                'first_wake_dictation',
+                "Wake dictation pasted. Say 'undo' to remove it, or follow"
+                " up with another wake word command.",
+                delay_s=1.5,
+            )
+            n = self.hints.increment('wake_dictations')
+            if n == 3:
+                self.hints.maybe_show(
+                    'wake_dictation_end_word',
+                    "Tip: say an end word like 'over' after dictating to finish"
+                    " immediately instead of waiting for silence.",
+                    delay_s=2.0,
+                )
 
     def _start_wake_timeout(self):
         """Start timeout for wake word command.
@@ -4491,11 +4628,29 @@ class DictationApp:
                 # User explicitly pressed the hotkey — don't strip their speech.
                 transcribe_params['vad_filter'] = False
                 perf_mode = self.config.get('performance_mode', 'balanced')
-                
+
+                # Long-recording guard: warn approaching the ring buffer limit (~58.5s).
+                # The ring holds 60s; prebuffer takes 1.5s, so effective max is ~58.5s.
+                # Recordings beyond that are truncated silently by the ring overrun handler.
+                _RING_LIMIT_S = 58.5
+                if audio_duration > 50.0:
+                    print(
+                        f"[WARN] Long recording: {audio_duration:.1f}s. "
+                        f"Ring buffer limit is ~{_RING_LIMIT_S:.0f}s — "
+                        f"hold any longer and the audio will be truncated to the last 1.5s."
+                    )
+
+                # Whisper chunks audio >30s into separate passes with no cross-chunk
+                # context when condition_on_previous_text=False (the balanced/fast default).
+                # For long recordings this causes hallucinations and word-splits at the
+                # 30-second boundary. Enable conditioning for recordings over 30s so
+                # the second chunk keeps the thread of what was being said.
+                if audio_duration > 30.0:
+                    transcribe_params['condition_on_previous_text'] = True
+
                 # Guard: Whisper hallucinates on very short audio (<0.5s)
                 if audio_duration < 0.51:
                     print(f"[SKIP] Audio too short ({audio_duration:.2f}s) — skipping")
-                    pass  # no-op: was draining Tk event queue, not needed with Qt
                     return
                 
                 transcribe_start = time.time()
@@ -4644,6 +4799,20 @@ class DictationApp:
                                 " without holding any keys. Enable it in Settings.",
                                 delay_s=2.0,
                             )
+                        elif n == 5:
+                            self.hints.maybe_show(
+                                'command_mode_intro',
+                                "Tip: hold the hotkey and say a command like 'new line',"
+                                " 'undo', or 'select all' to control your keyboard by voice.",
+                                delay_s=2.0,
+                            )
+                        elif n == 10:
+                            self.hints.maybe_show(
+                                'dictation_cleanup_tip',
+                                "Tip: if transcription adds unwanted filler words or"
+                                " punctuation, try 'Verbatim' cleanup mode in Settings.",
+                                delay_s=2.0,
+                            )
                 else:
                     print("No speech detected")
                     self.command_mode_recording = False  # Reset flag on no speech too
@@ -4740,6 +4909,28 @@ class DictationApp:
 
         self.config['mode'] = new_mode
         print(f"[MODE] Mode changed to: {new_mode}")
+
+        if hasattr(self, 'hints'):
+            if new_mode == 'toggle':
+                self.hints.maybe_show(
+                    'toggle_mode_first',
+                    "Toggle mode: tap the hotkey once to start, tap again to stop."
+                    " Good for longer dictations without holding a key.",
+                    delay_s=1.5,
+                )
+            elif new_mode == 'continuous':
+                self.hints.maybe_show(
+                    'continuous_mode_first',
+                    "Continuous mode: recording stays on and handles pauses"
+                    " automatically. Press the hotkey to stop.",
+                    delay_s=1.5,
+                )
+            elif new_mode == 'hold':
+                self.hints.maybe_show(
+                    'hold_mode_return',
+                    "Hold mode: hold the hotkey while speaking, release to transcribe.",
+                    delay_s=1.5,
+                )
 
         # Update listening indicator and tray tooltip
         display = self._get_mode_display()
@@ -5027,6 +5218,16 @@ class DictationApp:
         """Open the Ava setup guide."""
         if self.ava_guide is not None:
             self.ava_guide.show()
+
+    def show_tutorial(self):
+        """Show the interactive tutorial window. Safe to call from any thread."""
+        def _open():
+            try:
+                from samsara.ui.tutorial_qt import show_tutorial
+                show_tutorial(self)
+            except Exception as _e:
+                print(f"[TUTORIAL] Failed to open tutorial: {_e}")
+        self._schedule_ui(_open)
 
     def open_history(self):
         """Open dictation history window"""
