@@ -256,6 +256,24 @@
       "description": "Remove the last pasted dictation",
       "pack": "core"
     },
+    "open settings": {
+      "type": "method",
+      "method": "open_settings",
+      "description": "Open the Samsara settings window",
+      "pack": "core"
+    },
+    "show tutorial": {
+      "type": "method",
+      "method": "show_tutorial",
+      "description": "Open the interactive Samsara tutorial",
+      "pack": "core"
+    },
+    "run tutorial": {
+      "type": "method",
+      "method": "show_tutorial",
+      "description": "Open the interactive Samsara tutorial",
+      "pack": "core"
+    },
     "redo": {
       "type": "hotkey",
       "keys": [
