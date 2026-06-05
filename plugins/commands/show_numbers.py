@@ -29,7 +29,7 @@ import time
 from PySide6.QtCore import QTimer
 
 from samsara.plugin_commands import command
-from samsara.ui.numbers_overlay_qt import NumbersOverlayWindow
+from samsara.ui.numbers_overlay_qt import NumbersOverlayWindow, phys_to_logical
 
 logger = logging.getLogger(__name__)
 
@@ -156,9 +156,11 @@ def _enumerate_foreground_clickables() -> list:
         try:
             if _is_useful_clickable(ctrl, fg_screen):
                 r = ctrl.BoundingRectangle
+                lx1, ly1 = phys_to_logical(r.left, r.top)
+                lx2, ly2 = phys_to_logical(r.right, r.bottom)
                 results.append({
                     'control': ctrl,
-                    'rect': (r.left, r.top, r.right, r.bottom),
+                    'rect': (lx1, ly1, lx2, ly2),
                     'name': ctrl.Name or '',
                     'type': ctrl.ControlTypeName,
                 })
@@ -246,9 +248,11 @@ def _enumerate_win32_fallback() -> list:
                 rect = win32gui.GetWindowRect(hwnd)
                 l, t, r, b = rect
                 if r - l > 0 and b - t > 0:
+                    ll, lt = phys_to_logical(l, t)
+                    lr, lb = phys_to_logical(r, b)
                     results.append({
                         'control': _Win32Control(hwnd, rect),
-                        'rect': rect,
+                        'rect': (ll, lt, lr, lb),
                         'name': win32gui.GetWindowText(hwnd),
                         'type': cls,
                     })
