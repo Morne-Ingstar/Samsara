@@ -201,6 +201,9 @@ class SamsaraTrayQt(QObject):
 
         # ---- Tools submenu ----
         tools_sub = QMenu("Tools")
+        tools_sub.addAction("Interactive Tutorial").triggered.connect(
+            lambda: app.show_tutorial())
+        tools_sub.addSeparator()
         tools_sub.addAction("Mic Setup Guide").triggered.connect(
             lambda: app.open_mic_setup_guide())
         tools_sub.addAction("Ava Guide").triggered.connect(
