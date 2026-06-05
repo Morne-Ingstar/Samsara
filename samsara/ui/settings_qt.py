@@ -593,6 +593,36 @@ class _SettingsWindow(QMainWindow):
             lambda: getattr(self.app, 'open_mic_setup_guide', lambda: None)()
         )
         layout.addWidget(setup_btn)
+        layout.addSpacing(8)
+
+        tutorial_btn = QPushButton("Replay Tutorial")
+        tutorial_btn.setFixedWidth(190)
+        tutorial_btn.setToolTip(
+            "Re-open the interactive tutorial to practice dictation, "
+            "commands, show-numbers, and Ava."
+        )
+        tutorial_btn.clicked.connect(
+            lambda: getattr(self.app, 'show_tutorial', lambda: None)()
+        )
+        layout.addWidget(tutorial_btn)
+        layout.addSpacing(8)
+
+        ava_guide_btn = QPushButton("Ava Setup Guide...")
+        ava_guide_btn.setFixedWidth(190)
+        ava_guide_btn.setToolTip("Step-by-step guide to installing Ollama and setting up Ava.")
+        ava_guide_btn.clicked.connect(
+            lambda: getattr(self.app, 'open_ava_guide', lambda: None)()
+        )
+        layout.addWidget(ava_guide_btn)
+        layout.addSpacing(8)
+
+        vt_btn = QPushButton("Voice Training...")
+        vt_btn.setFixedWidth(190)
+        vt_btn.setToolTip("Train Samsara to recognise your specific pronunciations and corrections.")
+        vt_btn.clicked.connect(
+            lambda: getattr(self.app, 'open_voice_training', lambda: None)()
+        )
+        layout.addWidget(vt_btn)
         layout.addSpacing(16)
 
         # Section: AI Model
@@ -707,7 +737,6 @@ class _SettingsWindow(QMainWindow):
         layout.addSpacing(8)
 
         reset_hints_btn = QPushButton("Reset hints")
-        reset_hints_btn.setProperty("class", "secondary")
         reset_hints_btn.setFixedWidth(130)
         reset_hints_btn.clicked.connect(self._reset_hints)
         layout.addWidget(reset_hints_btn)
@@ -3210,6 +3239,42 @@ class _SettingsWindow(QMainWindow):
         cs_layout.addWidget(personality_note)
         cs_layout.addSpacing(8)
 
+        # Conversation Memory
+        cs_layout.addWidget(self._section_title("Conversation Memory"))
+        cs_layout.addSpacing(4)
+        mem_cfg = self.app.config.get("ava_memory", {})
+
+        memory_combo = QComboBox()
+        memory_combo.addItems(["Clear on close", "Keep last session"])
+        mem_mode = mem_cfg.get("mode", "clear")
+        memory_combo.setCurrentText(
+            "Keep last session" if mem_mode == "last" else "Clear on close"
+        )
+        self._widgets['ava_memory_mode'] = memory_combo
+        cs_layout.addWidget(memory_combo)
+
+        memory_note = QLabel(
+            "Clear on close: Ava forgets the conversation when Samsara exits. "
+            "Keep last session: the conversation is restored on next launch."
+        )
+        memory_note.setWordWrap(True)
+        memory_note.setStyleSheet("color: #8A8A92; font-size: 12px; margin-left: 4px;")
+        cs_layout.addWidget(memory_note)
+        cs_layout.addSpacing(6)
+
+        turns_spin = QSpinBox()
+        turns_spin.setRange(5, 500)
+        turns_spin.setSingleStep(5)
+        turns_spin.setValue(int(mem_cfg.get("max_turns", 20)))
+        self._widgets['ava_memory_max_turns'] = turns_spin
+        cs_layout.addLayout(self._setting_row(
+            "Max turns remembered",
+            "How many back-and-forth turns Ava keeps. Higher = more context, "
+            "slightly higher cost per reply.",
+            turns_spin,
+        ))
+        cs_layout.addSpacing(8)
+
         # Provider
         cs_layout.addWidget(self._section_title("Provider"))
         cs_layout.addSpacing(4)
@@ -3657,6 +3722,17 @@ class _SettingsWindow(QMainWindow):
         if 'ava_personality' in self._widgets:
             val = self._widgets['ava_personality'].currentText().lower()
             updates['ava_personality'] = val
+
+        # Ava conversation memory
+        if 'ava_memory_mode' in self._widgets:
+            mem_updates = dict(self.app.config.get('ava_memory', {}))
+            mode_text = self._widgets['ava_memory_mode'].currentText()
+            mem_updates['mode'] = 'last' if mode_text == 'Keep last session' else 'clear'
+            if 'ava_memory_max_turns' in self._widgets:
+                mem_updates['max_turns'] = int(
+                    self._widgets['ava_memory_max_turns'].value()
+                )
+            updates['ava_memory'] = mem_updates
 
         # Advanced tab
         if 'adv_device' in self._widgets:
