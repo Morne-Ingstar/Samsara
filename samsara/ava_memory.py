@@ -1,18 +1,25 @@
 """
-In-memory conversation history for Ava.
+Conversation history for Ava.
 
-History is session-only — clears on app restart. No persistence to disk.
+By default history is session-only and clears on app restart. If a
+persist_path is supplied, history is loaded on construction and can be
+written back to disk via save(), giving optional cross-restart continuity.
 Thread-safe: add_user/add_assistant/clear can be called from any thread.
 """
 
+import json
+import os
 import threading
 
 
 class AvaMemory:
-    def __init__(self, max_turns=20):
+    def __init__(self, max_turns=20, persist_path=None):
         self._history = []
         self._max_turns = max_turns
         self._lock = threading.Lock()
+        self._persist_path = persist_path
+        if persist_path:
+            self.load()
 
     def add_user(self, text):
         with self._lock:
@@ -46,6 +53,50 @@ class AvaMemory:
     def clear(self):
         with self._lock:
             self._history.clear()
+        if self._persist_path:
+            try:
+                os.remove(self._persist_path)
+            except FileNotFoundError:
+                pass
+            except OSError:
+                pass
+
+    def save(self):
+        """Persist history to disk atomically. No-op if no persist_path set.
+
+        Never raises — a save failure must not crash a turn or shutdown.
+        """
+        if not self._persist_path:
+            return
+        with self._lock:
+            data = json.dumps(self._history, ensure_ascii=False)
+        tmp = self._persist_path + ".tmp"
+        try:
+            with open(tmp, "w", encoding="utf-8") as f:
+                f.write(data)
+            os.replace(tmp, self._persist_path)  # atomic on Windows + POSIX
+        except Exception:
+            try:
+                os.remove(tmp)
+            except OSError:
+                pass
+
+    def load(self):
+        """Load history from disk if present. Silent on any failure.
+
+        A corrupt or partial file is ignored and we start fresh rather
+        than crash. Loaded history is trimmed to the turn cap.
+        """
+        if not self._persist_path or not os.path.exists(self._persist_path):
+            return
+        try:
+            with open(self._persist_path, "r", encoding="utf-8") as f:
+                loaded = json.load(f)
+        except Exception:
+            return
+        if isinstance(loaded, list):
+            with self._lock:
+                self._history = loaded[-(self._max_turns * 2):]
 
     def pop_last_if_user(self) -> bool:
         """Remove the last message if it is an unpaired user turn.

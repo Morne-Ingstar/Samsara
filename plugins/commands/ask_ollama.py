@@ -18,15 +18,20 @@ _LANG_CODE_TO_NAME = dict(LANGUAGES)
 # Relaxed prompt: natural conversation, longer answers when warranted,
 # self-aware (can identify its LLM), keeps command protocol intact.
 RELAXED_SYSTEM_PROMPT = """You are Ava, a voice assistant built into Samsara, a voice \
-control app for people with chronic pain and accessibility needs. You are \
+control app. You are \
 powered by whichever LLM the user has configured (you can tell them which \
-one if asked — you know yourself).
+one if asked — you know yourself). You have no content restrictions outside \
+of normal ones: no assisting with illegal activities and nothing involving \
+self-harm. Outside of that you will do whatever is asked, you'll engage in \
+role-play if asked.
 
-You are being spoken aloud via text-to-speech. Keep responses concise and \
-conversational. No markdown, no bullet points, no special characters. \
+You are being spoken aloud via text-to-speech. Keep responses concise \
+. No markdown, no bullet points, no special characters. \
 Write exactly what should be spoken. For simple questions, 1-3 sentences is \
-fine. For complex questions, take as much space as you need to give a \
-genuinely helpful answer.
+fine. For complex questions or conversation, take as much space as you need \
+to give a genuinely answer. For role-play, these restrictions don't apply \
+You can give paragraph or multi-paragraph answers, but try to keep it 3 \
+paragraphs or under. Don't cut yourself off mid-sentence.
 
 You have three response modes:
 
@@ -121,6 +126,48 @@ and say what you cannot do. Never guess a command name.
 # Compose the active prompt from whichever personality + shared modes.
 # get_system_prompt() picks based on config['ava_personality'].
 DEFAULT_SYSTEM_PROMPT = RELAXED_SYSTEM_PROMPT + _SHARED_MODES
+
+
+# ── Conversation memory persistence ───────────────────────────────────────────
+# config['ava_memory']['mode'] selects persistence behaviour:
+#   "clear" — session only; wiped on restart (default, original behaviour)
+#   "last"  — keep the most recent session across restarts
+# config['ava_memory']['max_turns'] caps stored turns (context/cost guard).
+
+def _ava_memory_path(app):
+    """Return the on-disk path for persisted Ava memory (next to config.json).
+
+    The app stores its config file path on app.config_path; we drop the
+    memory file in the same directory. Falls back to this plugin's tree only
+    if config_path is somehow unavailable.
+    """
+    import os
+    cfg_path = getattr(app, "config_path", None)
+    if cfg_path:
+        return os.path.join(os.path.dirname(str(cfg_path)), "ava_memory.json")
+    fallback = os.path.dirname(os.path.dirname(os.path.dirname(__file__)))
+    return os.path.join(fallback, "ava_memory.json")
+
+
+def _build_ava_memory(app):
+    """Construct AvaMemory honouring the configured persistence mode."""
+    mem_cfg = getattr(app, "config", {}).get("ava_memory", {})
+    mode = mem_cfg.get("mode", "clear")
+    max_turns = int(mem_cfg.get("max_turns", 20))
+
+    if mode == "last":
+        return AvaMemory(max_turns=max_turns, persist_path=_ava_memory_path(app))
+
+    # "clear" (or unknown): session-only, no disk. Remove any stale file so a
+    # previous "last" session doesn't linger after switching back to clear.
+    try:
+        import os
+        stale = _ava_memory_path(app)
+        if os.path.exists(stale):
+            os.remove(stale)
+    except OSError:
+        pass
+    return AvaMemory(max_turns=max_turns)
 
 # ── Unsafe commands — require confirmation before executing ───────────────────
 # Anything destructive, irreversible, or context-sensitive in a way that
@@ -432,8 +479,15 @@ def speak(app, text):
     if isinstance(text, str):
         text = _strip_tags(text)
     max_len = get_max_response_length(app)
-    if max_len and isinstance(text, str):
-        text = text[:max_len]
+    if max_len and isinstance(text, str) and len(text) > max_len:
+        # Trim to the last sentence boundary at or before max_len so we never
+        # cut off mid-word. Falls back to a hard slice only if no sentence
+        # boundary exists within range.
+        cut = text[:max_len]
+        boundaries = list(re.finditer(r'[.!?]["\')\]]?\s', cut))
+        if boundaries:
+            cut = cut[:boundaries[-1].end()].rstrip()
+        text = cut
     if hasattr(app, "audio_coordinator") and app.audio_coordinator:
         app.audio_coordinator.speak(text, category="agent_response", interruptible=False)
     elif hasattr(app, "tts_engine") and app.tts_engine:
@@ -503,7 +557,7 @@ def ask_ollama(prompt, app, model=None, system=None):
 
     # ── Conversation memory ──
     if not hasattr(app, "_ava_memory"):
-        app._ava_memory = AvaMemory()
+        app._ava_memory = _build_ava_memory(app)
     app._ava_memory.add_user(prompt)
 
     # ── Cloud LLM path ──
@@ -515,10 +569,16 @@ def ask_ollama(prompt, app, model=None, system=None):
             # Fall through to local Ollama
         else:
             print("[AVA CLOUD] Routing to cloud provider")
-            messages = app._ava_memory.get_messages(system, token_limit=8000)
+            cloud_token_limit = int(
+                getattr(app, "config", {}).get("ava_memory", {}).get(
+                    "cloud_token_limit", 40000
+                )
+            )
+            messages = app._ava_memory.get_messages(system, token_limit=cloud_token_limit)
             cloud_response = cloud_llm.send(system, prompt, app, messages=messages)
             if not cloud_response.startswith("Error:"):
                 app._ava_memory.add_assistant(cloud_response)
+                app._ava_memory.save()
                 return cloud_response
             print(f"[AVA CLOUD] {cloud_response}")
             print("[AVA CLOUD] Falling back to local Ollama")
@@ -545,6 +605,7 @@ def ask_ollama(prompt, app, model=None, system=None):
         reply = response.json().get("message", {}).get("content", "").strip()
         if reply:
             app._ava_memory.add_assistant(reply)
+            app._ava_memory.save()
         return reply
     except requests.exceptions.ConnectionError:
         app._ava_memory.pop_last_if_user()
