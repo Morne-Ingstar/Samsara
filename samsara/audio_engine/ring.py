@@ -162,9 +162,20 @@ class Reader:
         if self._read_cursor == wc:
             return EMPTY
 
-        # Overrun detection: writer has lapped this reader
+        # Overrun detection: writer has lapped this reader.
+        # For hold-mode dictation this means the utterance exceeded RING_SECONDS
+        # (~58.5 s effective limit). Only the last PREBUFFER_FRAMES are returned.
         if (wc - self._read_cursor) > RING_FRAMES:
             self.overrun_count += 1
+            lost_frames = (wc - self._read_cursor) - RING_FRAMES
+            lost_seconds = lost_frames * FRAME_MS / 1000.0
+            print(
+                f"[RING] Overrun on consumer '{getattr(self, '_name', '?')}': "
+                f"reader was {lost_frames} frames ({lost_seconds:.1f}s) behind write head. "
+                f"Ring capacity is {RING_FRAMES * FRAME_MS / 1000:.0f}s — "
+                f"utterances longer than ~{(RING_FRAMES - PREBUFFER_FRAMES) * FRAME_MS / 1000:.1f}s "
+                f"will be truncated to the last {PREBUFFER_FRAMES * FRAME_MS / 1000:.1f}s."
+            )
             self._read_cursor = max(0, wc - PREBUFFER_FRAMES)
 
             # Defense-in-depth against the stale-slot TOCTOU race (MA-1, ACE-02):
