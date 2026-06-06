@@ -59,7 +59,8 @@ _elements: list = []                             # index 0 -> label "1"
 _dismiss_timer: "threading.Timer | None" = None
 _overlay_window: "NumbersOverlayWindow | None" = None   # Qt thread only
 _fg_timer: "QTimer | None" = None                       # Qt thread only
-_fg_hwnd_at_show: int = 0
+_fg_hwnd_at_show: int = 0                               # HWND of target window
+_overlay_hwnd:    int = 0                               # HWND of overlay itself
 _overlay_screen_name: str = ''                          # Qt thread only
 
 _enum_cache: "dict | None" = None   # {'hwnd': int, 't': float, 'elements': list}
@@ -434,7 +435,7 @@ def _perform_click(element, modifier: str, keys: frozenset = frozenset()) -> boo
 
 def _show_overlay_qt(labels: list, fg_hwnd: int, app) -> None:
     """Create or update the overlay window. Qt main thread only."""
-    global _overlay_window, _fg_timer, _fg_hwnd_at_show, _overlay_screen_name
+    global _overlay_window, _fg_timer, _fg_hwnd_at_show, _overlay_hwnd, _overlay_screen_name
 
     print(f"[OVERLAY] _show_overlay_qt called on Qt thread — {len(labels)} label(s)")
     _fg_hwnd_at_show = fg_hwnd
@@ -468,6 +469,13 @@ def _show_overlay_qt(labels: list, fg_hwnd: int, app) -> None:
         _overlay_screen_name = active_name
         _overlay_window.show()
 
+    # Capture the overlay's own HWND so _fg_poll_qt can exclude it.
+    # winId() is only valid after show(); int() converts from shiboken.VoidPtr.
+    try:
+        _overlay_hwnd = int(_overlay_window.winId())
+    except Exception:
+        _overlay_hwnd = 0
+
     # (Re-)start foreground poll
     _stop_fg_timer_qt()
     _fg_timer = QTimer()
@@ -478,12 +486,13 @@ def _show_overlay_qt(labels: list, fg_hwnd: int, app) -> None:
 
 def _hide_overlay_qt() -> None:
     """Close the overlay window and stop the fg timer. Qt main thread only."""
-    global _overlay_window, _overlay_screen_name
+    global _overlay_window, _overlay_screen_name, _overlay_hwnd
     _stop_fg_timer_qt()
     if _overlay_window is not None:
         _overlay_window.close()
         _overlay_window = None
     _overlay_screen_name = ''
+    _overlay_hwnd = 0
     with _state_lock:
         _elements.clear()
 
@@ -505,8 +514,13 @@ def _fg_poll_qt(app) -> None:
     try:
         import win32gui
         cur = win32gui.GetForegroundWindow()
-        if _fg_hwnd_at_show and cur != _fg_hwnd_at_show:
-            print("[OVERLAY] Auto-dismissed: foreground window changed")
+        # Dismiss only when focus has moved to a window that is neither the
+        # original target window nor the overlay itself. The overlay can briefly
+        # hold focus on some monitors when first shown; treating it as a foreign
+        # window would cause a false auto-dismiss within the first poll cycle.
+        if _fg_hwnd_at_show and cur != _fg_hwnd_at_show and cur != _overlay_hwnd:
+            print(f"[OVERLAY] Auto-dismissed: foreground window changed "
+                  f"(target={_fg_hwnd_at_show:#x} overlay={_overlay_hwnd:#x} cur={cur:#x})")
             _destroy_overlay(app)
     except Exception:
         pass
