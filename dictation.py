@@ -415,48 +415,16 @@ def open_file_or_folder(path):
 
 
 
-# Set up logging — persistent file in ~/.samsara/logs/ + per-session file + console
+# Set up logging — persistent file in ~/.samsara/logs/ + console
 from logging.handlers import RotatingFileHandler as _RotatingFileHandler
 
 LOG_DIR = Path(os.path.expanduser("~")) / ".samsara" / "logs"
 LOG_DIR.mkdir(parents=True, exist_ok=True)
 LOG_FILE = LOG_DIR / "samsara.log"
 
-# Per-session log: one fresh file per launch in sessions/ subdir
-_SESSION_DIR  = LOG_DIR / "sessions"
-_SESSION_DIR.mkdir(parents=True, exist_ok=True)
-_SESSION_TS   = datetime.now().strftime("%Y%m%d_%H%M%S")
-_SESSION_LOG  = _SESSION_DIR / f"session_{_SESSION_TS}.log"
-_SESSION_KEEP = 20  # number of session files to retain
-
-# Prune old session files before creating the new one.
-# Keep (_SESSION_KEEP - 1) most recent so total stays at _SESSION_KEEP after
-# adding today's file.
-try:
-    _existing_sessions = sorted(
-        _SESSION_DIR.glob("session_*.log"),
-        key=lambda _p: _p.stat().st_mtime,
-    )
-    _prune_count = max(len(_existing_sessions) - (_SESSION_KEEP - 1), 0)
-    for _old_session in _existing_sessions[:_prune_count]:
-        try:
-            _old_session.unlink()
-        except Exception:
-            pass
-except Exception:
-    pass
-
-# Pointer file so tooling can locate "the run I just did" without timestamp guessing
-try:
-    (LOG_DIR / "latest_session_path.txt").write_text(
-        str(_SESSION_LOG) + "\n", encoding="utf-8"
-    )
-except Exception:
-    pass
-
 _log_fmt = logging.Formatter("%(asctime)s - %(levelname)s - %(message)s")
 
-# Rotating file handler — DEBUG, 5 MB × 3 backups, UTF-8 (unchanged)
+# File handler — DEBUG level, rotating 5 MB × 3 backups, UTF-8
 file_handler = _RotatingFileHandler(
     LOG_FILE,
     maxBytes=5 * 1024 * 1024,
@@ -465,16 +433,6 @@ file_handler = _RotatingFileHandler(
 )
 file_handler.setLevel(logging.DEBUG)
 file_handler.setFormatter(_log_fmt)
-
-# Per-session handler — fresh file every launch, line-buffered so a crash still
-# leaves a complete partial log. delay=False creates the file immediately.
-session_handler = logging.FileHandler(_SESSION_LOG, encoding="utf-8", delay=False)
-session_handler.setLevel(logging.DEBUG)
-session_handler.setFormatter(_log_fmt)
-try:
-    session_handler.stream.reconfigure(line_buffering=True)
-except Exception:
-    pass
 
 # Console handler — force UTF-8 so Unicode chars (arrows, etc.) don't
 # raise UnicodeEncodeError on cp1252 Windows consoles.
@@ -496,7 +454,6 @@ console_handler.setFormatter(logging.Formatter("%(asctime)s - %(message)s"))
 _root_logger = logging.getLogger()
 _root_logger.setLevel(logging.DEBUG)
 _root_logger.addHandler(file_handler)
-_root_logger.addHandler(session_handler)
 _root_logger.addHandler(console_handler)
 
 # Keep a named logger for Samsara's own print-override path
@@ -3045,7 +3002,6 @@ class DictationApp:
         if self.command_mode_active and not self.recording:
             self.command_mode_recording = True
             self.start_recording(streaming=False, play_earcon=False)
-
     def _handle_command_mode_utterance(self, buffer: list, src_rate: int) -> None:
         """Transcribe and execute one VAD-gated utterance in toggle command mode.
 
@@ -5704,14 +5660,6 @@ class DictationApp:
             subprocess.Popen(["notepad.exe", str(LOG_FILE)])
         else:
             print("[LOG] No log file found.")
-
-    def open_latest_session_log(self):
-        """Open the current session log in the default text editor."""
-        if _SESSION_LOG.exists():
-            open_file_or_folder(_SESSION_LOG)
-        else:
-            from PySide6.QtWidgets import QMessageBox
-            QMessageBox.information(None, "Log File", "No session log file found yet.")
 
     def open_voice_training_log(self):
         """Open the voice training log file"""

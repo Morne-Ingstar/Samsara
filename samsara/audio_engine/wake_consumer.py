@@ -102,10 +102,18 @@ class WakeConsumer:
 
     # ── Poll loop ─────────────────────────────────────────────────────────────
 
+    @staticmethod
+    def _is_toggle_cmd(app) -> bool:
+        """True when toggle command mode is active (not wake-word or hold mode)."""
+        return (
+            getattr(app, 'command_mode_active', False)
+            and app.config.get('command_mode', {}).get('mode', 'hold') == 'toggle'
+        )
+
     def _poll_loop(self) -> None:
         app = self._app
         while self._running:
-            if not app.wake_word_active:
+            if not (app.wake_word_active or self._is_toggle_cmd(app)):
                 time.sleep(0.005)
                 continue
 
@@ -178,7 +186,12 @@ class WakeConsumer:
             speech_threshold = min(speech_threshold, 0.01)
         min_speech = audio_config.get('min_speech_duration', DEFAULT_MIN_SPEECH_DURATION)
 
-        if app.app_state == 'long_dictation':
+        if self._is_toggle_cmd(app):
+            # Per-utterance silence gap for sustained command mode.
+            # Distinct from inactivity_timeout_s (30s), which ends the whole session.
+            silence_threshold = app.config.get('command_mode', {}).get(
+                'utterance_silence_s', 1.0)
+        elif app.app_state == 'long_dictation':
             silence_threshold = ww_config.get('long_chunk_silence', 1.0)
         elif app.app_state == 'quick_dictation' and app._dictation_silence_timeout:
             silence_threshold = app._dictation_silence_timeout
@@ -252,8 +265,11 @@ class WakeConsumer:
                 self._utterance_frames.append(raw_chunk)
                 self._buffer_rms_history.append(rms)
 
-            # Stuck-buffer detector (same as legacy callback)
+            # Stuck-buffer detector (same as legacy callback).
+            # Skip during command mode — a deliberate pause between commands
+            # looks like a flat signal and would wrongly clear the buffer.
             if (app.app_state == 'asleep'
+                    and not app.command_mode_active
                     and len(self._buffer_rms_history) >= 30):
                 recent   = self._buffer_rms_history[-30:]
                 variance = float(np.var(recent))
@@ -310,6 +326,19 @@ class WakeConsumer:
     def _flush(self, buffer_copy: list) -> None:
         """Dispatch utterance to process_wake_word_buffer, respecting OWW gate."""
         app = self._app
+
+        # Toggle command mode: bypass OWW gate and execute as a single command
+        # utterance.  The WakeConsumer re-arms automatically for the next
+        # utterance; no external re-arm call is needed.
+        if self._is_toggle_cmd(app):
+            threading.Thread(
+                target=app._handle_command_mode_utterance,
+                args=(buffer_copy, SAMPLE_RATE),
+                daemon=True,
+                name='cmd-utt',
+            ).start()
+            return
+
         _oww_gated = (
             app._wake_detector is not None
             and app._wake_detector.is_available
