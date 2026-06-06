@@ -13,18 +13,24 @@ Public API:
 
 import json
 import os
+import threading
 from pathlib import Path
 
 _DATA_DIR = Path(os.path.expanduser("~")) / ".samsara"
 
 
 class HintManager:
+    _FLUSH_DELAY = 5.0   # seconds to coalesce counter-only writes
+
     def __init__(self, app) -> None:
         self._app      = app
         self._shown: set  = set()
         self._counters: dict = {}
         self._toast    = None   # active HintToast; None when idle
         self._enabled: bool = app.config.get('hints_enabled', True)
+
+        self._save_lock = threading.Lock()   # guards _pending_save_timer only
+        self._pending_save_timer = None
 
         _DATA_DIR.mkdir(exist_ok=True)
         self._hints_file = _DATA_DIR / "hints_shown.json"
@@ -73,9 +79,14 @@ class HintManager:
             pass
 
     def increment(self, counter_id: str) -> int:
-        """Increment a named counter and return the new value."""
+        """Increment a named counter and return the new value.
+
+        The in-memory update is synchronous.  The disk write is deferred and
+        coalesced: rapid calls within _FLUSH_DELAY seconds produce at most
+        one write instead of one per call.
+        """
         self._counters[counter_id] = self._counters.get(counter_id, 0) + 1
-        self._save()
+        self._schedule_save()
         return self._counters[counter_id]
 
     def get_counter(self, counter_id: str) -> int:
@@ -103,6 +114,28 @@ class HintManager:
         self._save()
 
     # ── Internal ────────────────────────────────────────────────────────────────
+
+    def shutdown(self) -> None:
+        """Cancel any pending debounced write and flush to disk immediately.
+
+        Call during clean shutdown so counters inside the debounce window
+        aren't lost.  Safe to call from any thread.
+        """
+        with self._save_lock:
+            if self._pending_save_timer is not None:
+                self._pending_save_timer.cancel()
+                self._pending_save_timer = None
+        self._save()
+
+    def _schedule_save(self) -> None:
+        """Cancel any pending save timer and start a fresh debounce timer."""
+        with self._save_lock:
+            if self._pending_save_timer is not None:
+                self._pending_save_timer.cancel()
+            t = threading.Timer(self._FLUSH_DELAY, self._save)
+            t.daemon = True   # never block process shutdown
+            self._pending_save_timer = t
+            t.start()
 
     def _on_dismiss(self) -> None:
         self._toast = None
