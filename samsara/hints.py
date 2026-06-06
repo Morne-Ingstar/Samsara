@@ -121,10 +121,15 @@ class HintManager:
             pass
 
     def _save(self) -> None:
+        tmp = str(self._hints_file) + '.tmp'
         try:
             data = {'shown': sorted(self._shown), 'counters': self._counters}
-            self._hints_file.write_text(
-                json.dumps(data, indent=2), encoding='utf-8'
-            )
-        except Exception:
-            pass
+            with open(tmp, 'w', encoding='utf-8') as f:
+                json.dump(data, f, indent=2)
+            os.replace(tmp, self._hints_file)
+        except Exception as e:
+            print(f"[HINTS] Save failed: {e}")
+            try:
+                os.remove(tmp)
+            except OSError:
+                pass
