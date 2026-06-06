@@ -35,7 +35,10 @@ from PySide6.QtWidgets import QApplication
 
 from samsara.plugin_commands import command
 from samsara.ui import qt_runtime
-from samsara.ui.numbers_overlay_qt import NumbersOverlayWindow, phys_to_logical, _COORD_DEBUG
+from samsara.ui.numbers_overlay_qt import (
+    NumbersOverlayWindow, phys_to_logical, _COORD_DEBUG,
+    _ensure_dpi_thread_context,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -440,6 +443,11 @@ def _show_overlay_qt(labels: list, fg_hwnd: int, app) -> None:
     else:
         if _overlay_window is not None:
             _overlay_window.close()
+        # Set thread-level per-monitor DPI V2 context before HWND creation.
+        # QWidget HWNDs are created lazily at show() time on this (samsara-qt)
+        # thread.  Without this, the overlay may inherit system-DPI-aware
+        # context for that thread -> wrong devicePixelRatio() -> paint misalign.
+        _ensure_dpi_thread_context()
         _overlay_window = NumbersOverlayWindow(labels)
         _overlay_window.showNoActivate() if hasattr(_overlay_window, 'showNoActivate') else _overlay_window.show()
 
@@ -673,6 +681,44 @@ def handle_show_overlay_test(app, remainder):
 
     qt_runtime.post(lambda: _show_overlay_qt(labels, fg_hwnd, app))
     print("[OVERLAY-TEST] Queued 4 test labels — watch for [OVERLAY] _show_overlay_qt called")
+    return True
+
+
+@command("overlay grid",
+         aliases=["grid test", "overlay grid test"],
+         pack="accessibility")
+def handle_overlay_grid(app, remainder):
+    """Phase-2 diagnostic: draw pills at KNOWN logical coordinates.
+
+    Places 5 pills at fixed positions that span the primary monitor:
+      top-left (100,100), top-center (1000,100), top-right (2400,100),
+      bottom-left (100,1300), center (1280,720).
+    If the overlay geometry is correct these pills appear exactly where stated.
+    If they cluster or appear at scaled positions the coordinate mapping is wrong.
+    """
+    _pill_h  = _PILL_H
+    _pill_w2 = _pill_w("TL")
+
+    labels = [
+        [100,  100,  _pill_w2, _pill_h, "TL"],   # top-left
+        [1000, 100,  _pill_w2, _pill_h, "TC"],   # top-center
+        [2400, 100,  _pill_w2, _pill_h, "TR"],   # top-right corner
+        [100,  1300, _pill_w2, _pill_h, "BL"],   # bottom-left
+        [1280, 720,  _pill_w2, _pill_h, "MM"],   # logical center 2560x1440
+    ]
+
+    try:
+        import win32gui
+        fg_hwnd = win32gui.GetForegroundWindow()
+    except Exception:
+        fg_hwnd = 0
+
+    qt_runtime.post(lambda: _show_overlay_qt(labels, fg_hwnd, app))
+    print(
+        "[OVERLAY-GRID] Grid test queued — pills should appear at:\n"
+        "  TL=(100,100)  TC=(1000,100)  TR=(2400,100)\n"
+        "  BL=(100,1300)  MM=(1280,720 center of 2560x1440)"
+    )
     return True
 
 
