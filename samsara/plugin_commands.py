@@ -59,7 +59,9 @@ def clear_shared_matcher():
 def command(phrase, aliases=None, pack='core', debounce=0.0, app_overrides=None,
             ai_visible=True,
             risk_class='safe', ai_composable=False, side_effects=None,
-            preconditions=None, voice_triggerable=True, param_schema=None):
+            preconditions=None, voice_triggerable=True, param_schema=None,
+            reversible=False, preview_template='',
+            side_effect_category=None):
     """Decorator: register a function as a voice command.
 
     The decorated function is called as `func(app, remainder)` where `remainder`
@@ -83,6 +85,8 @@ def command(phrase, aliases=None, pack='core', debounce=0.0, app_overrides=None,
         side_effects: list of side-effect category strings documenting what the
             command touches, e.g. ['audio', 'ui', 'keystrokes', 'file',
             'clipboard', 'launch', 'network', 'system'].
+        side_effect_category: alias for side_effects; if both provided, side_effects
+            takes precedence.
         preconditions: list of machine-checkable condition id strings that must hold
             before execution, e.g. ['no_unsaved_changes', 'expected_app'].
             Enforcement is a later phase; this field captures the requirement.
@@ -91,8 +95,14 @@ def command(phrase, aliases=None, pack='core', debounce=0.0, app_overrides=None,
         param_schema: dict mapping param names to constraint specs, e.g.
             {"level": {"type": "int", "min": 0, "max": 100, "required": True}}.
             Empty dict (default) means only free-text remainder is accepted.
+        reversible: True if the command's effects can be undone (default False).
+            Separate from risk_class -- a reversible command may still be destructive
+            but have an undo path.
+        preview_template: human-readable template describing what will happen, e.g.
+            "Increase volume to {current+20}%". Empty string if not provided.
     """
     def decorator(func):
+        resolved_side_effects = list(side_effects or side_effect_category or [])
         entry = {
             'func': func,
             'phrase': phrase.lower().strip(),
@@ -104,10 +114,12 @@ def command(phrase, aliases=None, pack='core', debounce=0.0, app_overrides=None,
             'ai_visible': bool(ai_visible),
             'risk_class': risk_class,
             'ai_composable': bool(ai_composable),
-            'side_effects': list(side_effects or []),
+            'side_effects': resolved_side_effects,
             'preconditions': list(preconditions or []),
             'voice_triggerable': bool(voice_triggerable),
             'param_schema': dict(param_schema or {}),
+            'reversible': bool(reversible),
+            'preview_template': str(preview_template),
         }
         _REGISTRY[entry['phrase']] = entry
         for alias in entry['aliases']:
@@ -224,8 +236,11 @@ def list_commands():
             'risk_class': entry.get('risk_class', 'safe'),
             'ai_composable': entry.get('ai_composable', False),
             'side_effects': entry.get('side_effects', []),
+            'side_effect_category': entry.get('side_effects', []),
             'preconditions': entry.get('preconditions', []),
             'voice_triggerable': entry.get('voice_triggerable', True),
             'param_schema': entry.get('param_schema', {}),
+            'reversible': entry.get('reversible', False),
+            'preview_template': entry.get('preview_template', ''),
         })
     return sorted(result, key=lambda x: x['phrase'])

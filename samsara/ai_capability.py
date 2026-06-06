@@ -14,49 +14,12 @@ No AI calls here -- pure validation logic only.
 import hashlib
 import json
 
-
-# ---------------------------------------------------------------------------
-# Machine-readable settings constraints
-#
-# Extracted from samsara/ui/settings_qt.py widget parameters. This dict is the
-# single importable source for settings bounds; the Qt UI reads from config and
-# enforces the same ranges via widget min/max, so these must stay in sync.
-#
-# Format per key:
-#   type: 'int' | 'float' | 'bool' | 'str' | 'enum'
-#   min, max: numeric bounds (int/float only)
-#   options: allowed values (enum only)
-#   default: the app default when key is absent from config
-# ---------------------------------------------------------------------------
-
-_SETTINGS_SCHEMA = {
-    # Ollama / local LLM
-    "ollama.enabled":             {"type": "bool",  "default": True},
-    "ollama.host":                {"type": "str",   "default": "http://localhost:11434"},
-    "ollama.model":               {"type": "str",   "default": "llama3"},
-    "ollama.timeout_seconds":     {"type": "int",   "min": 5,    "max": 300,  "default": 30},
-    "ollama.max_response_length": {"type": "int",   "min": 100,  "max": 4000, "default": 800},
-    "ollama.safety_gate_enabled": {"type": "bool",  "default": True},
-    # Command trigger
-    "command.trigger_mode":       {"type": "enum",  "options": ["hold", "toggle", "continuous"], "default": "hold"},
-    "command.button":             {"type": "enum",
-                                   "options": ["mouse4", "mouse5", "rctrl", "lctrl",
-                                               "ralt", "lalt", "rshift", "lshift"],
-                                   "default": "mouse4"},
-    # TTS / audio
-    "tts.rate":                   {"type": "float", "min": 0.2,  "max": 5.0,  "default": 1.0},
-    "audio.input_sensitivity":    {"type": "float", "min": 0.05, "max": 1.0,  "default": 0.3},
-    # Transcription
-    "transcription.mode":         {"type": "enum",  "options": ["clean", "verbatim"], "default": "clean"},
-    # Click simulation
-    "click.type":                 {"type": "enum",  "options": ["click", "double_click"], "default": "click"},
-    "click.button":               {"type": "enum",  "options": ["left", "right", "middle"], "default": "left"},
-}
+from samsara.config_schema import SETTINGS_SCHEMA
 
 
 def get_settings_constraints():
     """Return a copy of the machine-readable settings constraints dict."""
-    return dict(_SETTINGS_SCHEMA)
+    return dict(SETTINGS_SCHEMA)
 
 
 # ---------------------------------------------------------------------------
@@ -65,6 +28,9 @@ def get_settings_constraints():
 
 def get_capability_snapshot(matcher, settings_constraints=None):
     """Build a versioned snapshot of all AI-composable commands.
+
+    Commands with ai_visible=False are excluded from both the composable set
+    and all_action_ids -- the AI should not know they exist.
 
     Args:
         matcher: a frozen CommandMatcher instance (or None for an empty snapshot).
@@ -85,9 +51,11 @@ def get_capability_snapshot(matcher, settings_constraints=None):
                     "voice_triggerable": bool,
                     "aliases": list[str],
                     "param_schema": dict,
+                    "reversible": bool,
+                    "preview_template": str,
                 }
             },
-            "all_action_ids": list[str],   # every registered command, composable or not
+            "all_action_ids": list[str],   # ai_visible commands, composable or not
             "settings": dict,              # settings_constraints
         }
 
@@ -104,6 +72,8 @@ def get_capability_snapshot(matcher, settings_constraints=None):
     all_action_ids = []
 
     for cmd in all_cmds:
+        if not cmd.get("ai_visible", True):
+            continue
         all_action_ids.append(cmd["phrase"])
         if not cmd.get("ai_composable", False):
             continue
@@ -117,6 +87,8 @@ def get_capability_snapshot(matcher, settings_constraints=None):
             "voice_triggerable": cmd.get("voice_triggerable", True),
             "aliases":           cmd.get("aliases", []),
             "param_schema":      cmd.get("param_schema", {}),
+            "reversible":        cmd.get("reversible", False),
+            "preview_template":  cmd.get("preview_template", ""),
         }
 
     # Version: sha256 of the composable set's risk fingerprint.
