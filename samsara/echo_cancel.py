@@ -9,10 +9,13 @@ Windows-only. Degrades gracefully on other platforms or when
 loopback capture is unavailable.
 """
 
+import json
 import logging
+import os
 import threading
 import time
 from collections import deque
+from pathlib import Path
 from typing import Optional
 
 import numpy as np
@@ -26,6 +29,30 @@ try:
 except ImportError:
     pyaudio = None
     HAS_PYAUDIO = False
+
+
+_AEC_CACHE_PATH = Path.home() / ".samsara" / "aec_latency_cache.json"
+
+
+def _load_latency_cache() -> dict:
+    """Return the AEC per-device latency cache, or {} on any read error."""
+    try:
+        with open(_AEC_CACHE_PATH, 'r') as f:
+            return json.load(f)
+    except (FileNotFoundError, json.JSONDecodeError, OSError):
+        return {}
+
+
+def _save_latency_cache(cache: dict) -> None:
+    """Atomically write the latency cache (tmp + os.replace)."""
+    try:
+        _AEC_CACHE_PATH.parent.mkdir(parents=True, exist_ok=True)
+        tmp = _AEC_CACHE_PATH.with_suffix('.tmp')
+        with open(tmp, 'w') as f:
+            json.dump(cache, f, indent=2)
+        os.replace(str(tmp), str(_AEC_CACHE_PATH))
+    except OSError as e:
+        logger.warning("[AEC] Failed to save latency cache: %s", e)
 
 
 def _make_calibration_click(rate: int = 16000, duration_s: float = 0.05) -> np.ndarray:
@@ -71,6 +98,7 @@ class LoopbackCapture:
         # Source device info (populated on start)
         self._device_rate: int = 0
         self._device_channels: int = 0
+        self._device_name: str = ""
 
     @property
     def is_running(self) -> bool:
@@ -125,6 +153,13 @@ class LoopbackCapture:
 
             self._device_rate = int(loopback_device["defaultSampleRate"])
             self._device_channels = int(loopback_device["maxInputChannels"])
+            # PyAudioWPatch device dicts carry name/index/hostApi/channel counts
+            # but no stable endpoint GUID. The name is stable for permanent
+            # audio devices (changes only if the user renames the device in
+            # Windows Sound settings), so use it as the latency cache key.
+            self._device_name = loopback_device.get("name", "")
+            if not self._device_name:
+                logger.warning("[AEC] Loopback device has no name — latency cache disabled")
 
             frames_per_buffer = int(self._device_rate * 0.05)  # 50 ms chunks
 
@@ -220,7 +255,7 @@ class LoopbackCapture:
         if src_rate == dst_rate:
             return audio
         ratio = dst_rate / src_rate
-        n_out = int(len(audio) * ratio)
+        n_out = int(round(len(audio) * ratio))
         indices = np.arange(n_out) / ratio
         # Clamp to valid range
         indices = np.clip(indices, 0, len(audio) - 1)
@@ -380,7 +415,7 @@ class EchoCanceller:
         block_size: int = 1024,
         filter_blocks: int = 4,
         step_size: float = 0.02,
-        latency_ms: float = 30.0,
+        latency_ms: float = 100.0,
     ):
         """
         Args:
@@ -391,6 +426,9 @@ class EchoCanceller:
             filter_blocks: Number of blocks (4 x 1024 = 256ms echo path).
             step_size: NLMS step size (0.02 is conservative).
             latency_ms: Estimated speaker-to-mic delay in milliseconds.
+                Default 100ms is the WASAPI shared-mode midpoint (80-180ms
+                range). start() overrides this from the per-device cache if
+                a prior calibrate_and_cache() run produced a confident result.
         """
         self.sample_rate = sample_rate
         self.enabled = enabled
@@ -438,6 +476,7 @@ class EchoCanceller:
         if ok:
             self._started = True
             self._aec.reset()
+            self._apply_cached_latency()
             logger.info("[AEC] Echo cancellation active")
         else:
             logger.warning("[AEC] Could not start — continuing without echo cancellation")
@@ -475,16 +514,20 @@ class EchoCanceller:
 
         n = len(mic_16k)
 
-        # Pull reference audio from loopback (already at 16kHz)
-        ref = self._loopback.get_recent(n + self._latency_samples)
+        # Pull reference audio from loopback (already at 16kHz).
+        # get_recent returns oldest-first; the current mic block's echo was
+        # emitted from (n + L) samples ago to L samples ago, which is ref[:n].
+        need = n + self._latency_samples
+        ref_full = self._loopback.get_recent(need)
 
-        # Align reference to compensate for speaker-to-mic delay
-        if len(ref) >= n + self._latency_samples:
-            ref = ref[:n]
-        elif len(ref) >= n:
-            ref = ref[:n]
-        else:
-            return mic_audio  # not enough reference yet
+        # Left-pad with zeros when the ring hasn't yet filled the full window.
+        # Without padding, a shorter slice shifts the applied delay each call,
+        # which corrupts the NLMS weights. Zero-padding keeps the delay constant
+        # at exactly _latency_samples from the first chunk onward.
+        missing = need - len(ref_full)
+        if missing > 0:
+            ref_full = np.pad(ref_full, (missing, 0), mode='constant')
+        ref = ref_full[:n]
 
         # Skip if system audio is silent
         ref_rms = float(np.sqrt(np.mean(ref ** 2)))
@@ -542,7 +585,7 @@ class EchoCanceller:
         if src_rate == dst_rate:
             return audio
         ratio = dst_rate / src_rate
-        n_out = int(len(audio) * ratio)
+        n_out = int(round(len(audio) * ratio))
         indices = np.arange(n_out) / ratio
         indices = np.clip(indices, 0, len(audio) - 1)
         idx_floor = indices.astype(np.intp)
@@ -563,6 +606,73 @@ class EchoCanceller:
         """Update the latency compensation."""
         self.latency_ms = latency_ms
         self._latency_samples = int(self._FILTER_RATE * latency_ms / 1000.0)
+
+    def _apply_cached_latency(self) -> None:
+        """Load per-device cached latency on startup, or set 100ms static default.
+
+        Called automatically by start() after loopback capture succeeds.
+        The loopback device name (LoopbackCapture._device_name) is the cache key.
+        """
+        device_key = self._loopback._device_name
+        if not device_key:
+            return
+
+        cache = _load_latency_cache()
+        if device_key in cache:
+            cached_ms = float(cache[device_key])
+            self.set_latency(cached_ms)
+            logger.info(
+                "[AEC] Loaded cached latency %.0f ms for device '%s'",
+                cached_ms, device_key,
+            )
+        else:
+            self.set_latency(100.0)
+            logger.info(
+                "[AEC] No cached latency for '%s' — using 100ms default. "
+                "Call calibrate_and_cache() to measure the actual delay.",
+                device_key,
+            )
+
+    def calibrate_and_cache(self, mic_device_index=None) -> dict:
+        """Measure speaker-to-mic latency, apply if confident, and persist per device.
+
+        Wraps calibrate_lag() with a stricter confidence gate (>= 0.5 vs the
+        internal 0.3). A cached wrong value is worse than the 100ms default, so
+        the threshold is intentionally conservative.
+
+        Returns the same dict as calibrate_lag(). On success also calls
+        set_latency() so the new value takes effect immediately without restart.
+        """
+        result = self.calibrate_lag(mic_device_index=mic_device_index)
+        if not result['success']:
+            logger.warning("[AEC-CAL] Calibration failed: %s", result['message'])
+            return result
+
+        if result['confidence'] < 0.5:
+            logger.warning(
+                "[AEC-CAL] Confidence %.2f < 0.5 — not caching (lag %.0f ms). "
+                "Increase speaker volume and try again.",
+                result['confidence'], result['lag_ms'],
+            )
+            return result
+
+        lag_ms = result['lag_ms']
+        self.set_latency(lag_ms)
+        logger.info(
+            "[AEC-CAL] Latency set to %.0f ms (confidence %.2f)",
+            lag_ms, result['confidence'],
+        )
+
+        device_key = self._loopback._device_name
+        if device_key:
+            cache = _load_latency_cache()
+            cache[device_key] = lag_ms
+            _save_latency_cache(cache)
+            logger.info("[AEC-CAL] Cached latency for device '%s'", device_key)
+        else:
+            logger.warning("[AEC-CAL] Device name unavailable — result not cached")
+
+        return result
 
     def calibrate_lag(self, mic_device_index=None, mic_rate=None) -> dict:
         """Measure speaker-to-mic latency using a controlled transient.
