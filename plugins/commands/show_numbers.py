@@ -27,6 +27,7 @@ import threading
 import time
 
 from PySide6.QtCore import QTimer
+from PySide6.QtWidgets import QApplication
 
 from samsara.plugin_commands import command
 from samsara.ui.numbers_overlay_qt import NumbersOverlayWindow, phys_to_logical
@@ -389,6 +390,7 @@ def _show_overlay_qt(labels: list, fg_hwnd: int, app) -> None:
     """Create or update the overlay window. Qt main thread only."""
     global _overlay_window, _fg_timer, _fg_hwnd_at_show
 
+    print(f"[OVERLAY] _show_overlay_qt called on Qt thread — {len(labels)} label(s)")
     _fg_hwnd_at_show = fg_hwnd
 
     if _overlay_window is not None and not _overlay_window.isHidden():
@@ -485,7 +487,14 @@ def _draw_overlay(app, elements: list) -> None:
         fg_hwnd = 0
 
     _cancel_dismiss_timer()
-    QTimer.singleShot(0, lambda: _show_overlay_qt(labels, fg_hwnd, app))
+    qt_app = QApplication.instance()
+    if qt_app is not None:
+        # 3-arg form: context object binds the callback to the Qt event-loop
+        # thread ("samsara-qt"). Without it, the callback is queued into the
+        # calling worker thread's event loop, which doesn't exist, so it never fires.
+        QTimer.singleShot(0, qt_app, lambda: _show_overlay_qt(labels, fg_hwnd, app))
+    else:
+        logger.warning("[OVERLAY] No QApplication instance — overlay cannot show")
     _schedule_dismiss_timer(app)
     print(f"[OVERLAY] Showing {len(elements)} numbered clickables")
 
@@ -493,7 +502,9 @@ def _draw_overlay(app, elements: list) -> None:
 def _destroy_overlay(app=None) -> None:
     """Thread-safe dismiss: cancel timers and schedule Qt cleanup."""
     _cancel_dismiss_timer()
-    QTimer.singleShot(0, _hide_overlay_qt)
+    qt_app = QApplication.instance()
+    if qt_app is not None:
+        QTimer.singleShot(0, qt_app, _hide_overlay_qt)
 
 
 def _destroy_overlay_completely() -> None:
@@ -560,6 +571,66 @@ def _parse_click_target(text: str):
 # ---------------------------------------------------------------------------
 # Voice commands
 # ---------------------------------------------------------------------------
+
+@command("show overlay test",
+         aliases=["overlay test", "show numbers debug"],
+         pack="accessibility")
+def handle_show_overlay_test(app, remainder):
+    """Phase-1 diagnostic: render 4 hardcoded labels, bypassing all UIA/enumeration code.
+
+    Logs Qt event-loop state so the root cause of a blank overlay is visible.
+    Keep this command in place — it costs nothing and confirms the renderer works
+    independently of element enumeration.
+    """
+    import threading
+    from PySide6.QtCore import QThread
+
+    qt_app = QApplication.instance()
+    print(f"[OVERLAY-TEST] QApplication.instance() = {qt_app}")
+    if qt_app is not None:
+        qt_thread = qt_app.thread()
+        cur_thread = QThread.currentThread()
+        on_qt_thread = qt_thread is cur_thread
+        print(
+            f"[OVERLAY-TEST] Qt-app thread id={int(qt_thread.currentThreadId())}  "
+            f"current thread id={int(cur_thread.currentThreadId())}  "
+            f"on-Qt-thread={on_qt_thread}"
+        )
+        print(
+            f"[OVERLAY-TEST] Python thread: {threading.current_thread().name!r}"
+        )
+        if on_qt_thread:
+            print("[OVERLAY-TEST] Called from Qt thread — singleShot will fire")
+        else:
+            print(
+                "[OVERLAY-TEST] Called from worker thread — singleShot(0, qt_app, cb) "
+                "routes to Qt thread via running event loop"
+            )
+    else:
+        print("[OVERLAY-TEST] WARNING: No QApplication — Qt event loop not running!")
+
+    # Hardcoded labels at fixed logical coordinates; bypasses UIA, placement,
+    # DPI conversion, and the entire element enumeration stack.
+    labels = [
+        [100, 100, 40, 30, "1"],
+        [200, 100, 40, 30, "2"],
+        [300, 100, 40, 30, "3"],
+        [400, 100, 40, 30, "4"],
+    ]
+
+    try:
+        import win32gui
+        fg_hwnd = win32gui.GetForegroundWindow()
+    except Exception:
+        fg_hwnd = 0
+
+    if qt_app is not None:
+        QTimer.singleShot(0, qt_app, lambda: _show_overlay_qt(labels, fg_hwnd, app))
+        print("[OVERLAY-TEST] Queued 4 test labels — watch for [OVERLAY] _show_overlay_qt called")
+    else:
+        print("[OVERLAY-TEST] Cannot show overlay — no QApplication instance")
+    return True
+
 
 @command("show numbers",
          aliases=["show clickable", "show labels", "label things"],
