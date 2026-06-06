@@ -57,7 +57,9 @@ def clear_shared_matcher():
 
 
 def command(phrase, aliases=None, pack='core', debounce=0.0, app_overrides=None,
-            ai_visible=True):
+            ai_visible=True,
+            risk_class='safe', ai_composable=False, side_effects=None,
+            preconditions=None, voice_triggerable=True, param_schema=None):
     """Decorator: register a function as a voice command.
 
     The decorated function is called as `func(app, remainder)` where `remainder`
@@ -73,6 +75,22 @@ def command(phrase, aliases=None, pack='core', debounce=0.0, app_overrides=None,
             Example: {"code.exe": "ctrl+shift+n", "notepad.exe": None}
             None means the command is disabled in that app.
         ai_visible: if False, excluded from Ava's injected command list (default True)
+
+        -- AI Config Assistant safety metadata (all optional, default to safe) --
+        risk_class: 'safe' | 'reversible' | 'destructive' (default 'safe')
+        ai_composable: if True, may be included in AI-generated macros.
+            Defaults to FALSE -- explicit opt-in per ARC narrow-subset requirement.
+        side_effects: list of side-effect category strings documenting what the
+            command touches, e.g. ['audio', 'ui', 'keystrokes', 'file',
+            'clipboard', 'launch', 'network', 'system'].
+        preconditions: list of machine-checkable condition id strings that must hold
+            before execution, e.g. ['no_unsaved_changes', 'expected_app'].
+            Enforcement is a later phase; this field captures the requirement.
+        voice_triggerable: if False, command must not fire from voice transcription.
+            Destructive commands should set this False to require hotkey/UI. Default True.
+        param_schema: dict mapping param names to constraint specs, e.g.
+            {"level": {"type": "int", "min": 0, "max": 100, "required": True}}.
+            Empty dict (default) means only free-text remainder is accepted.
     """
     def decorator(func):
         entry = {
@@ -84,6 +102,12 @@ def command(phrase, aliases=None, pack='core', debounce=0.0, app_overrides=None,
             'debounce': float(debounce),
             'app_overrides': dict(app_overrides) if app_overrides else {},
             'ai_visible': bool(ai_visible),
+            'risk_class': risk_class,
+            'ai_composable': bool(ai_composable),
+            'side_effects': list(side_effects or []),
+            'preconditions': list(preconditions or []),
+            'voice_triggerable': bool(voice_triggerable),
+            'param_schema': dict(param_schema or {}),
         }
         _REGISTRY[entry['phrase']] = entry
         for alias in entry['aliases']:
@@ -195,5 +219,13 @@ def list_commands():
             'phrase': entry['phrase'],
             'aliases': entry['aliases'],
             'source': entry['source'],
+            'pack': entry.get('pack', 'core'),
+            'ai_visible': entry.get('ai_visible', True),
+            'risk_class': entry.get('risk_class', 'safe'),
+            'ai_composable': entry.get('ai_composable', False),
+            'side_effects': entry.get('side_effects', []),
+            'preconditions': entry.get('preconditions', []),
+            'voice_triggerable': entry.get('voice_triggerable', True),
+            'param_schema': entry.get('param_schema', {}),
         })
     return sorted(result, key=lambda x: x['phrase'])
