@@ -31,7 +31,10 @@ def _nircmd(args):
 
 
 @command("going dark", aliases=["end of day", "shut it down",
-                                "goodnight"], pack="macros")
+                                "goodnight"], pack="macros",
+         risk_class='destructive', ai_composable=False,
+         voice_triggerable=False,
+         side_effects=['audio', 'ui', 'system'])
 def going_dark(app, remainder):
     """Mute, minimize everything, lock screen."""
     print("[MACRO] Going dark...")
@@ -44,7 +47,9 @@ def going_dark(app, remainder):
     return True
 
 
-@command("focus mode", aliases=["time to work", "let's work"], pack="macros")
+@command("focus mode", aliases=["time to work", "let's work"], pack="macros",
+         risk_class='reversible', ai_composable=False,
+         side_effects=['audio', 'ui', 'launch'])
 def focus_mode(app, remainder):
     """Low volume, open IDE, minimal distractions."""
     print("[MACRO] Entering focus mode...")
@@ -60,7 +65,9 @@ def focus_mode(app, remainder):
     return True
 
 
-@command("break time", aliases=["take a break", "stretch break"], pack="macros")
+@command("break time", aliases=["take a break", "stretch break"], pack="macros",
+         risk_class='reversible', ai_composable=False,
+         side_effects=['audio', 'system'])
 def break_time(app, remainder):
     """Pause media, lock screen for a break."""
     print("[MACRO] Break time...")
@@ -71,7 +78,9 @@ def break_time(app, remainder):
     return True
 
 
-@command("morning routine", aliases=["good morning", "start my day"], pack="macros")
+@command("morning routine", aliases=["good morning", "start my day"], pack="macros",
+         risk_class='reversible', ai_composable=False,
+         side_effects=['audio', 'network'])
 def morning_routine(app, remainder):
     """Open daily sites, set comfortable volume."""
     print("[MACRO] Good morning...")
@@ -93,7 +102,9 @@ def morning_routine(app, remainder):
     return True
 
 
-@command("presentation mode", aliases=["demo mode"], pack="macros")
+@command("presentation mode", aliases=["demo mode"], pack="macros",
+         risk_class='reversible', ai_composable=False,
+         side_effects=['audio', 'ui', 'keystrokes'])
 def presentation_mode(app, remainder):
     """Maximize current window, full-ish volume."""
     print("[MACRO] Presentation mode...")
@@ -108,7 +119,8 @@ def presentation_mode(app, remainder):
 
 
 @command("clear my desk", aliases=["hide everything",
-                                   "clean desktop"], pack="macros")
+                                   "clean desktop"], pack="macros",
+         risk_class='safe', ai_composable=True, side_effects=['ui'])
 def clear_desk(app, remainder):
     """Minimize all windows."""
     print("[MACRO] Clearing desktop...")

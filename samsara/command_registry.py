@@ -28,7 +28,10 @@ class CommandEntry:
 
     def __init__(self, phrase, source, cmd_type, data=None, handler=None,
                  aliases=None, pack='core', debounce=0.0, app_overrides=None,
-                 description=''):
+                 description='',
+                 ai_visible=True, risk_class='safe', ai_composable=False,
+                 side_effects=None, preconditions=None, voice_triggerable=True,
+                 param_schema=None):
         """
         Args:
             phrase: canonical trigger phrase (lowercase, stripped)
@@ -41,6 +44,15 @@ class CommandEntry:
             debounce: seconds to suppress re-execution in command mode
             app_overrides: per-app key binding overrides
             description: human-readable summary of what the command does
+
+            -- AI Config Assistant safety metadata --
+            ai_visible: if False, excluded from Ava's injected command list
+            risk_class: 'safe' | 'reversible' | 'destructive'
+            ai_composable: if True, may be included in AI-generated macros
+            side_effects: list of side-effect category strings
+            preconditions: list of machine-checkable condition id strings
+            voice_triggerable: if False, must not fire from voice transcription
+            param_schema: dict of param_name -> constraint spec
         """
         self.phrase = phrase.lower().strip()
         self.tokens = self.phrase.split()
@@ -54,6 +66,13 @@ class CommandEntry:
         self.debounce = float(debounce) if debounce else 0.0
         self.app_overrides = dict(app_overrides) if app_overrides else {}
         self.description = description or ''
+        self.ai_visible = bool(ai_visible)
+        self.risk_class = risk_class or 'safe'
+        self.ai_composable = bool(ai_composable)
+        self.side_effects = list(side_effects or [])
+        self.preconditions = list(preconditions or [])
+        self.voice_triggerable = bool(voice_triggerable)
+        self.param_schema = dict(param_schema or {})
 
 
 class CommandMatcher:
@@ -160,6 +179,13 @@ class CommandMatcher:
                 debounce=float(entry_data.get('debounce', 0.0)),
                 app_overrides=entry_data.get('app_overrides', {}),
                 description=doc,
+                ai_visible=entry_data.get('ai_visible', True),
+                risk_class=entry_data.get('risk_class', 'safe'),
+                ai_composable=entry_data.get('ai_composable', False),
+                side_effects=entry_data.get('side_effects', []),
+                preconditions=entry_data.get('preconditions', []),
+                voice_triggerable=entry_data.get('voice_triggerable', True),
+                param_schema=entry_data.get('param_schema', {}),
             )
             self._entries[canonical] = entry
             # Register aliases (skip individually if shadowed)
@@ -287,6 +313,13 @@ class CommandMatcher:
                 'aliases': entry.aliases,
                 'pack': entry.pack,
                 'description': entry.description,
+                'ai_visible': entry.ai_visible,
+                'risk_class': entry.risk_class,
+                'ai_composable': entry.ai_composable,
+                'side_effects': entry.side_effects,
+                'preconditions': entry.preconditions,
+                'voice_triggerable': entry.voice_triggerable,
+                'param_schema': entry.param_schema,
             })
         return result
 
