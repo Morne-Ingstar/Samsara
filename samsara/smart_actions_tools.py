@@ -276,8 +276,11 @@ class ToolDispatcher:
                 return False, "No URL provided"
             if not self.allowed_domains:
                 return False, "No allowed_domains configured"
+            from urllib.parse import urlparse
+            netloc = urlparse(url).netloc.split(':')[0].lower()
             for domain in self.allowed_domains:
-                if url.startswith(domain):
+                allowed = urlparse(domain).netloc.split(':')[0].lower() or domain.lower()
+                if netloc == allowed or netloc.endswith('.' + allowed):
                     return True, "OK"
             return False, f"URL not in allowed_domains"
 
