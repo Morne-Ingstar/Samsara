@@ -460,3 +460,234 @@ class TestDecoratorBackwardCompat:
         assert entry["ai_composable"] is False
 
         _REGISTRY.pop("test probe gamma", None)
+
+
+# ---------------------------------------------------------------------------
+# Tests: ai_visible=False filtering in snapshot
+# ---------------------------------------------------------------------------
+
+class TestAiVisibleSnapshotFiltering:
+    def _make_matcher_with_hidden(self):
+        class _M:
+            def list_commands(self):
+                return [
+                    {
+                        "phrase": "volume up",
+                        "ai_visible": True,
+                        "ai_composable": True,
+                        "risk_class": "safe",
+                        "side_effects": ["audio"],
+                        "aliases": [], "pack": "media",
+                        "description": "Increase volume.",
+                        "preconditions": [], "voice_triggerable": True,
+                        "param_schema": {}, "reversible": False, "preview_template": "",
+                    },
+                    {
+                        "phrase": "hidden internal",
+                        "ai_visible": False,
+                        "ai_composable": False,
+                        "risk_class": "safe",
+                        "side_effects": [],
+                        "aliases": [], "pack": "core",
+                        "description": "Internal only.",
+                        "preconditions": [], "voice_triggerable": True,
+                        "param_schema": {}, "reversible": False, "preview_template": "",
+                    },
+                    {
+                        "phrase": "hidden composable",
+                        "ai_visible": False,
+                        "ai_composable": True,
+                        "risk_class": "safe",
+                        "side_effects": [],
+                        "aliases": [], "pack": "core",
+                        "description": "Composable but hidden.",
+                        "preconditions": [], "voice_triggerable": True,
+                        "param_schema": {}, "reversible": False, "preview_template": "",
+                    },
+                ]
+        return _M()
+
+    def test_hidden_commands_not_in_all_action_ids(self):
+        snap = get_capability_snapshot(self._make_matcher_with_hidden())
+        assert "hidden internal" not in snap["all_action_ids"]
+        assert "hidden composable" not in snap["all_action_ids"]
+
+    def test_hidden_commands_not_in_composable_set(self):
+        snap = get_capability_snapshot(self._make_matcher_with_hidden())
+        assert "hidden internal" not in snap["commands"]
+        assert "hidden composable" not in snap["commands"]
+
+    def test_visible_commands_still_present(self):
+        snap = get_capability_snapshot(self._make_matcher_with_hidden())
+        assert "volume up" in snap["all_action_ids"]
+        assert "volume up" in snap["commands"]
+
+    def test_validator_treats_hidden_as_nonexistent(self):
+        snap = get_capability_snapshot(self._make_matcher_with_hidden())
+        proposal = {"steps": [{"action_id": "hidden composable", "params": {}}]}
+        result = validate_proposal(proposal, snap)
+        assert result["valid"] is False
+        assert any("does not exist" in e for e in result["errors"])
+
+
+# ---------------------------------------------------------------------------
+# Tests: reversible and preview_template new fields
+# ---------------------------------------------------------------------------
+
+class TestNewMetadataFields:
+    def test_reversible_defaults_false_in_registry(self):
+        from samsara.plugin_commands import command, _REGISTRY
+
+        @command("test meta reversible default", pack="test")
+        def _h(app, r):
+            return True
+
+        entry = _REGISTRY.get("test meta reversible default")
+        assert entry is not None
+        assert entry["reversible"] is False
+        _REGISTRY.pop("test meta reversible default", None)
+
+    def test_preview_template_defaults_empty_in_registry(self):
+        from samsara.plugin_commands import command, _REGISTRY
+
+        @command("test meta preview default", pack="test")
+        def _h(app, r):
+            return True
+
+        entry = _REGISTRY.get("test meta preview default")
+        assert entry is not None
+        assert entry["preview_template"] == ""
+        _REGISTRY.pop("test meta preview default", None)
+
+    def test_reversible_and_preview_template_can_be_set(self):
+        from samsara.plugin_commands import command, _REGISTRY
+
+        @command("test meta fields set", pack="test",
+                 reversible=True, preview_template="Undo the last action")
+        def _h(app, r):
+            return True
+
+        entry = _REGISTRY.get("test meta fields set")
+        assert entry is not None
+        assert entry["reversible"] is True
+        assert entry["preview_template"] == "Undo the last action"
+        _REGISTRY.pop("test meta fields set", None)
+
+    def test_reversible_and_preview_template_in_list_commands(self):
+        from samsara.plugin_commands import command, _REGISTRY, list_commands
+
+        @command("test meta lc fields", pack="test",
+                 reversible=True, preview_template="Do the thing")
+        def _h(app, r):
+            return True
+
+        cmds = list_commands()
+        found = next((c for c in cmds if c["phrase"] == "test meta lc fields"), None)
+        assert found is not None
+        assert found["reversible"] is True
+        assert found["preview_template"] == "Do the thing"
+        _REGISTRY.pop("test meta lc fields", None)
+
+    def test_side_effect_category_alias_in_list_commands(self):
+        from samsara.plugin_commands import command, _REGISTRY, list_commands
+
+        @command("test meta sec alias", pack="test", side_effects=["audio", "ui"])
+        def _h(app, r):
+            return True
+
+        cmds = list_commands()
+        found = next((c for c in cmds if c["phrase"] == "test meta sec alias"), None)
+        assert found is not None
+        assert found["side_effect_category"] == ["audio", "ui"]
+        assert found["side_effects"] == found["side_effect_category"]
+        _REGISTRY.pop("test meta sec alias", None)
+
+    def test_side_effect_category_param_accepted(self):
+        from samsara.plugin_commands import command, _REGISTRY
+
+        @command("test meta sec param", pack="test", side_effect_category=["file"])
+        def _h(app, r):
+            return True
+
+        entry = _REGISTRY.get("test meta sec param")
+        assert entry is not None
+        assert entry["side_effects"] == ["file"]
+        _REGISTRY.pop("test meta sec param", None)
+
+    def test_new_fields_in_snapshot(self):
+        class _M:
+            def list_commands(self):
+                return [{
+                    "phrase": "undo last",
+                    "ai_visible": True,
+                    "ai_composable": True,
+                    "risk_class": "reversible",
+                    "side_effects": ["ui"],
+                    "aliases": [], "pack": "core",
+                    "description": "Undo.",
+                    "preconditions": [],
+                    "voice_triggerable": True,
+                    "param_schema": {},
+                    "reversible": True,
+                    "preview_template": "Undo the last typed text",
+                }]
+
+        snap = get_capability_snapshot(_M())
+        cmd = snap["commands"].get("undo last")
+        assert cmd is not None
+        assert cmd["reversible"] is True
+        assert cmd["preview_template"] == "Undo the last typed text"
+
+
+# ---------------------------------------------------------------------------
+# Tests: expanded config schema
+# ---------------------------------------------------------------------------
+
+class TestExpandedConfigSchema:
+    def test_model_size_present_and_enum(self):
+        s = get_settings_constraints()
+        assert "model_size" in s
+        assert s["model_size"]["type"] == "enum"
+        assert "base" in s["model_size"]["options"]
+
+    def test_tts_speed_present(self):
+        s = get_settings_constraints()
+        assert "tts.speed" in s
+        assert s["tts.speed"]["min"] < s["tts.speed"]["max"]
+
+    def test_command_mode_debounce_present(self):
+        s = get_settings_constraints()
+        assert "command_mode.enter_debounce_ms" in s
+        e = s["command_mode.enter_debounce_ms"]
+        assert e["type"] == "int"
+        assert e["min"] == 0
+        assert e["max"] == 2000
+
+    def test_cloud_llm_provider_options(self):
+        s = get_settings_constraints()
+        assert "cloud_llm.provider" in s
+        assert "anthropic" in s["cloud_llm.provider"]["options"]
+        assert "deepseek" in s["cloud_llm.provider"]["options"]
+
+    def test_depends_on_present_for_conditional_settings(self):
+        s = get_settings_constraints()
+        assert "echo_cancellation.latency_ms" in s
+        assert "depends_on" in s["echo_cancellation.latency_ms"]
+
+    def test_listening_indicator_position_enum(self):
+        s = get_settings_constraints()
+        assert "listening_indicator_position" in s
+        pos = s["listening_indicator_position"]
+        assert pos["type"] == "enum"
+        assert "bottom-center" in pos["options"]
+
+    def test_ava_memory_max_turns_bounds(self):
+        s = get_settings_constraints()
+        assert "ava_memory.max_turns" in s
+        e = s["ava_memory.max_turns"]
+        assert e["min"] == 5
+        assert e["max"] == 500
+
+    def test_total_key_count_exceeds_phase2a(self):
+        s = get_settings_constraints()
+        assert len(s) > 13

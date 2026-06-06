@@ -31,7 +31,7 @@ class CommandEntry:
                  description='',
                  ai_visible=True, risk_class='safe', ai_composable=False,
                  side_effects=None, preconditions=None, voice_triggerable=True,
-                 param_schema=None):
+                 param_schema=None, reversible=False, preview_template=''):
         """
         Args:
             phrase: canonical trigger phrase (lowercase, stripped)
@@ -53,6 +53,8 @@ class CommandEntry:
             preconditions: list of machine-checkable condition id strings
             voice_triggerable: if False, must not fire from voice transcription
             param_schema: dict of param_name -> constraint spec
+            reversible: True if effects can be undone
+            preview_template: human-readable template describing what will happen
         """
         self.phrase = phrase.lower().strip()
         self.tokens = self.phrase.split()
@@ -73,6 +75,8 @@ class CommandEntry:
         self.preconditions = list(preconditions or [])
         self.voice_triggerable = bool(voice_triggerable)
         self.param_schema = dict(param_schema or {})
+        self.reversible = bool(reversible)
+        self.preview_template = str(preview_template)
 
 
 class CommandMatcher:
@@ -186,6 +190,8 @@ class CommandMatcher:
                 preconditions=entry_data.get('preconditions', []),
                 voice_triggerable=entry_data.get('voice_triggerable', True),
                 param_schema=entry_data.get('param_schema', {}),
+                reversible=entry_data.get('reversible', False),
+                preview_template=entry_data.get('preview_template', ''),
             )
             self._entries[canonical] = entry
             # Register aliases (skip individually if shadowed)
@@ -317,9 +323,12 @@ class CommandMatcher:
                 'risk_class': entry.risk_class,
                 'ai_composable': entry.ai_composable,
                 'side_effects': entry.side_effects,
+                'side_effect_category': entry.side_effects,
                 'preconditions': entry.preconditions,
                 'voice_triggerable': entry.voice_triggerable,
                 'param_schema': entry.param_schema,
+                'reversible': entry.reversible,
+                'preview_template': entry.preview_template,
             })
         return result
 
