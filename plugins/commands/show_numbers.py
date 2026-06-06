@@ -37,7 +37,7 @@ from samsara.plugin_commands import command
 from samsara.ui import qt_runtime
 from samsara.ui.numbers_overlay_qt import (
     NumbersOverlayWindow, phys_to_logical, _COORD_DEBUG,
-    _ensure_dpi_thread_context,
+    _ensure_dpi_thread_context, screen_for_hwnd,
 )
 
 logger = logging.getLogger(__name__)
@@ -60,6 +60,7 @@ _dismiss_timer: "threading.Timer | None" = None
 _overlay_window: "NumbersOverlayWindow | None" = None   # Qt thread only
 _fg_timer: "QTimer | None" = None                       # Qt thread only
 _fg_hwnd_at_show: int = 0
+_overlay_screen_name: str = ''                          # Qt thread only
 
 _enum_cache: "dict | None" = None   # {'hwnd': int, 't': float, 'elements': list}
 _CACHE_TTL      = 10.0   # seconds
@@ -433,23 +434,39 @@ def _perform_click(element, modifier: str, keys: frozenset = frozenset()) -> boo
 
 def _show_overlay_qt(labels: list, fg_hwnd: int, app) -> None:
     """Create or update the overlay window. Qt main thread only."""
-    global _overlay_window, _fg_timer, _fg_hwnd_at_show
+    global _overlay_window, _fg_timer, _fg_hwnd_at_show, _overlay_screen_name
 
     print(f"[OVERLAY] _show_overlay_qt called on Qt thread — {len(labels)} label(s)")
     _fg_hwnd_at_show = fg_hwnd
 
-    if _overlay_window is not None and not _overlay_window.isHidden():
+    active_screen = screen_for_hwnd(fg_hwnd)
+    if active_screen is None:
+        print("[OVERLAY] ERROR: no screen found for hwnd, aborting")
+        return
+    active_name = active_screen.name()
+
+    if _COORD_DEBUG:
+        logger.debug(
+            "[OVERLAY] active screen: %s geo=%s dpr=%.2f",
+            active_name, active_screen.geometry(), active_screen.devicePixelRatio(),
+        )
+
+    # Same screen + already visible -> update labels in place (no HWND recreate)
+    same_screen = (
+        _overlay_window is not None
+        and not _overlay_window.isHidden()
+        and active_name == _overlay_screen_name
+    )
+
+    if same_screen:
         _overlay_window.update_labels(labels)
     else:
         if _overlay_window is not None:
             _overlay_window.close()
-        # Set thread-level per-monitor DPI V2 context before HWND creation.
-        # QWidget HWNDs are created lazily at show() time on this (samsara-qt)
-        # thread.  Without this, the overlay may inherit system-DPI-aware
-        # context for that thread -> wrong devicePixelRatio() -> paint misalign.
         _ensure_dpi_thread_context()
-        _overlay_window = NumbersOverlayWindow(labels)
-        _overlay_window.showNoActivate() if hasattr(_overlay_window, 'showNoActivate') else _overlay_window.show()
+        _overlay_window = NumbersOverlayWindow(labels, active_screen)
+        _overlay_screen_name = active_name
+        _overlay_window.show()
 
     # (Re-)start foreground poll
     _stop_fg_timer_qt()
@@ -461,11 +478,12 @@ def _show_overlay_qt(labels: list, fg_hwnd: int, app) -> None:
 
 def _hide_overlay_qt() -> None:
     """Close the overlay window and stop the fg timer. Qt main thread only."""
-    global _overlay_window
+    global _overlay_window, _overlay_screen_name
     _stop_fg_timer_qt()
     if _overlay_window is not None:
         _overlay_window.close()
         _overlay_window = None
+    _overlay_screen_name = ''
     with _state_lock:
         _elements.clear()
 
@@ -523,7 +541,26 @@ def _schedule_dismiss_timer(app, seconds: int = _AUTO_DISMISS_S) -> None:
 
 def _draw_overlay(app, elements: list) -> None:
     """Build label list and show the Qt overlay. Safe to call from any thread."""
-    global _fg_hwnd_at_show
+    try:
+        import win32gui
+        fg_hwnd = win32gui.GetForegroundWindow()
+    except Exception:
+        fg_hwnd = 0
+
+    # Limit to elements whose center falls on the active monitor.
+    # One monitor = one DPI scale = coherent coordinate space for the overlay.
+    active_screen = screen_for_hwnd(fg_hwnd)
+    if active_screen is not None:
+        geo = active_screen.geometry()
+        ax0, ay0 = geo.x(), geo.y()
+        ax1, ay1 = ax0 + geo.width(), ay0 + geo.height()
+        on_active = [
+            e for e in elements
+            if ax0 <= (e['rect'][0] + e['rect'][2]) // 2 < ax1
+            and ay0 <= (e['rect'][1] + e['rect'][3]) // 2 < ay1
+        ]
+        if on_active:
+            elements = on_active
 
     labels = _place_labels(elements)
 
@@ -537,16 +574,10 @@ def _draw_overlay(app, elements: list) -> None:
     with _state_lock:
         _elements[:] = [e['control'] for e in elements]
 
-    try:
-        import win32gui
-        fg_hwnd = win32gui.GetForegroundWindow()
-    except Exception:
-        fg_hwnd = 0
-
     _cancel_dismiss_timer()
     qt_runtime.post(lambda: _show_overlay_qt(labels, fg_hwnd, app))
     _schedule_dismiss_timer(app)
-    print(f"[OVERLAY] Showing {len(elements)} numbered clickables")
+    print(f"[OVERLAY] Showing {len(elements)} numbered clickables (active monitor)")
 
 
 def _destroy_overlay(app=None) -> None:
@@ -684,41 +715,68 @@ def handle_show_overlay_test(app, remainder):
     return True
 
 
+def _show_grid_qt(fg_hwnd: int, app) -> None:
+    """Draw diagnostic grid on the active monitor. Qt main thread only.
+
+    Computes pill positions at the time of rendering from the actual active
+    screen geometry so coordinates are always correct regardless of monitor
+    layout or DPI scale.
+    """
+    global _overlay_window, _overlay_screen_name
+
+    active_screen = screen_for_hwnd(fg_hwnd)
+    if active_screen is None:
+        active_screen = QApplication.primaryScreen()
+    if active_screen is None:
+        print("[OVERLAY-GRID] ERROR: no screen available")
+        return
+
+    geo = active_screen.geometry()
+    x0, y0, w, h = geo.x(), geo.y(), geo.width(), geo.height()
+    pw, ph = _pill_w("TL"), _PILL_H
+
+    labels = [
+        [x0 + 100,         y0 + 100,        pw, ph, "TL"],
+        [x0 + w // 2,      y0 + 100,        pw, ph, "TC"],
+        [x0 + w - 160,     y0 + 100,        pw, ph, "TR"],
+        [x0 + 100,         y0 + h - 140,    pw, ph, "BL"],
+        [x0 + w // 2,      y0 + h // 2,     pw, ph, "MM"],
+    ]
+
+    if _overlay_window is not None:
+        _overlay_window.close()
+    _ensure_dpi_thread_context()
+    _overlay_window = NumbersOverlayWindow(labels, active_screen)
+    _overlay_screen_name = active_screen.name()
+    _overlay_window.show()
+
+    print(
+        f"[OVERLAY-GRID] Grid on {active_screen.name()} "
+        f"{w}x{h} @{active_screen.devicePixelRatio():.1f}x:\n"
+        f"  TL=({x0+100},{y0+100})  TC=({x0+w//2},{y0+100})"
+        f"  TR=({x0+w-160},{y0+100})\n"
+        f"  BL=({x0+100},{y0+h-140})  MM=({x0+w//2},{y0+h//2})"
+    )
+
+
 @command("overlay grid",
          aliases=["grid test", "overlay grid test"],
          pack="accessibility")
 def handle_overlay_grid(app, remainder):
-    """Phase-2 diagnostic: draw pills at KNOWN logical coordinates.
+    """Diagnostic: draw 5 test pills spanning the active monitor.
 
-    Places 5 pills at fixed positions that span the primary monitor:
-      top-left (100,100), top-center (1000,100), top-right (2400,100),
-      bottom-left (100,1300), center (1280,720).
-    If the overlay geometry is correct these pills appear exactly where stated.
-    If they cluster or appear at scaled positions the coordinate mapping is wrong.
+    Positions (TL, TC, TR, BL, MM) are computed on the Qt thread from the
+    actual screen geometry so coordinates are always relative to whatever
+    monitor the foreground window is on.  Check the log for exact values.
     """
-    _pill_h  = _PILL_H
-    _pill_w2 = _pill_w("TL")
-
-    labels = [
-        [100,  100,  _pill_w2, _pill_h, "TL"],   # top-left
-        [1000, 100,  _pill_w2, _pill_h, "TC"],   # top-center
-        [2400, 100,  _pill_w2, _pill_h, "TR"],   # top-right corner
-        [100,  1300, _pill_w2, _pill_h, "BL"],   # bottom-left
-        [1280, 720,  _pill_w2, _pill_h, "MM"],   # logical center 2560x1440
-    ]
-
     try:
         import win32gui
         fg_hwnd = win32gui.GetForegroundWindow()
     except Exception:
         fg_hwnd = 0
 
-    qt_runtime.post(lambda: _show_overlay_qt(labels, fg_hwnd, app))
-    print(
-        "[OVERLAY-GRID] Grid test queued — pills should appear at:\n"
-        "  TL=(100,100)  TC=(1000,100)  TR=(2400,100)\n"
-        "  BL=(100,1300)  MM=(1280,720 center of 2560x1440)"
-    )
+    qt_runtime.post(lambda: _show_grid_qt(fg_hwnd, app))
+    print("[OVERLAY-GRID] Grid test queued — check log for pill coordinates")
     return True
 
 
