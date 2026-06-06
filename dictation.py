@@ -415,16 +415,48 @@ def open_file_or_folder(path):
 
 
 
-# Set up logging — persistent file in ~/.samsara/logs/ + console
+# Set up logging — persistent file in ~/.samsara/logs/ + per-session file + console
 from logging.handlers import RotatingFileHandler as _RotatingFileHandler
 
 LOG_DIR = Path(os.path.expanduser("~")) / ".samsara" / "logs"
 LOG_DIR.mkdir(parents=True, exist_ok=True)
 LOG_FILE = LOG_DIR / "samsara.log"
 
+# Per-session log: one fresh file per launch in sessions/ subdir
+_SESSION_DIR  = LOG_DIR / "sessions"
+_SESSION_DIR.mkdir(parents=True, exist_ok=True)
+_SESSION_TS   = datetime.now().strftime("%Y%m%d_%H%M%S")
+_SESSION_LOG  = _SESSION_DIR / f"session_{_SESSION_TS}.log"
+_SESSION_KEEP = 20  # number of session files to retain
+
+# Prune old session files before creating the new one.
+# Keep (_SESSION_KEEP - 1) most recent so total stays at _SESSION_KEEP after
+# adding today's file.
+try:
+    _existing_sessions = sorted(
+        _SESSION_DIR.glob("session_*.log"),
+        key=lambda _p: _p.stat().st_mtime,
+    )
+    _prune_count = max(len(_existing_sessions) - (_SESSION_KEEP - 1), 0)
+    for _old_session in _existing_sessions[:_prune_count]:
+        try:
+            _old_session.unlink()
+        except Exception:
+            pass
+except Exception:
+    pass
+
+# Pointer file so tooling can locate "the run I just did" without timestamp guessing
+try:
+    (LOG_DIR / "latest_session_path.txt").write_text(
+        str(_SESSION_LOG) + "\n", encoding="utf-8"
+    )
+except Exception:
+    pass
+
 _log_fmt = logging.Formatter("%(asctime)s - %(levelname)s - %(message)s")
 
-# File handler — DEBUG level, rotating 5 MB × 3 backups, UTF-8
+# Rotating file handler — DEBUG, 5 MB × 3 backups, UTF-8 (unchanged)
 file_handler = _RotatingFileHandler(
     LOG_FILE,
     maxBytes=5 * 1024 * 1024,
@@ -433,6 +465,16 @@ file_handler = _RotatingFileHandler(
 )
 file_handler.setLevel(logging.DEBUG)
 file_handler.setFormatter(_log_fmt)
+
+# Per-session handler — fresh file every launch, line-buffered so a crash still
+# leaves a complete partial log. delay=False creates the file immediately.
+session_handler = logging.FileHandler(_SESSION_LOG, encoding="utf-8", delay=False)
+session_handler.setLevel(logging.DEBUG)
+session_handler.setFormatter(_log_fmt)
+try:
+    session_handler.stream.reconfigure(line_buffering=True)
+except Exception:
+    pass
 
 # Console handler — force UTF-8 so Unicode chars (arrows, etc.) don't
 # raise UnicodeEncodeError on cp1252 Windows consoles.
@@ -454,6 +496,7 @@ console_handler.setFormatter(logging.Formatter("%(asctime)s - %(message)s"))
 _root_logger = logging.getLogger()
 _root_logger.setLevel(logging.DEBUG)
 _root_logger.addHandler(file_handler)
+_root_logger.addHandler(session_handler)
 _root_logger.addHandler(console_handler)
 
 # Keep a named logger for Samsara's own print-override path
@@ -2850,13 +2893,25 @@ class DictationApp:
                          name='cmd-mode-enter').start()
 
     def _do_enter_command_mode(self):
-        """Worker thread: starts recording and fires debounced earcon."""
+        """Worker thread: arms command mode and fires debounced earcon."""
+        cfg = self.config.get('command_mode', {})
+        debounce_ms = cfg.get('enter_debounce_ms', 200)
+        if cfg.get('mode', 'hold') == 'toggle':
+            # Toggle (sustained) mode: per-utterance dispatch via WakeConsumer VAD.
+            # Do NOT call start_recording() — that activates the dictation consumer
+            # (accumulate-until-release) and sets _hotkey_recording=True, which
+            # suppresses the WakeConsumer.  The WakeConsumer is already running;
+            # _is_toggle_cmd() makes it service frames while command_mode_active.
+            time.sleep(debounce_ms / 1000.0)
+            if self.command_mode_active:
+                self.play_sound('start', use_winsound=True)
+            return
+        # Hold mode: accumulate audio via dictation consumer until key release.
         if self.recording:
             return
         self.command_mode_recording = True
         self.start_recording(streaming=False, play_earcon=False)
         # 200ms debounce: skip earcon for accidental quick taps
-        debounce_ms = self.config.get('command_mode', {}).get('enter_debounce_ms', 200)
         time.sleep(debounce_ms / 1000.0)
         if self.command_mode_active:
             self.play_sound('start', use_winsound=True)
@@ -2979,11 +3034,104 @@ class DictationApp:
         self.exit_command_mode()
 
     def _rearm_command_recording(self):
-        """Re-start recording for the next command in toggle mode."""
+        """Re-start recording for the next command in hold mode.
+
+        Toggle mode: WakeConsumer re-arms automatically on each utterance-end
+        silence boundary, so this is a no-op there.
+        """
+        if self.config.get('command_mode', {}).get('mode', 'hold') == 'toggle':
+            return
         time.sleep(0.1)
         if self.command_mode_active and not self.recording:
             self.command_mode_recording = True
             self.start_recording(streaming=False, play_earcon=False)
+
+    def _handle_command_mode_utterance(self, buffer: list, src_rate: int) -> None:
+        """Transcribe and execute one VAD-gated utterance in toggle command mode.
+
+        Called from WakeConsumer._flush() for each silence-bounded utterance
+        while command_mode_active and mode=='toggle'.  The WakeConsumer resets
+        its utterance buffer after calling _flush(), so it re-arms automatically
+        for the next utterance — no explicit re-arm is needed here.
+
+        Two timeouts are in play (do not conflate):
+          utterance_silence_s  (~1 s, WakeConsumer)  -- ends THIS command
+          inactivity_timeout_s (30 s, threading.Timer) -- ends the whole session
+        """
+        if self._wake_transcription_in_progress:
+            print('[CMD-UTT] Transcription already in progress — skipping utterance')
+            return
+        self._wake_transcription_in_progress = True
+        try:
+            audio = np.concatenate(buffer)
+            audio = resample_audio(audio, src_rate, self.model_rate)
+            audio_duration = len(audio) / self.model_rate
+
+            if audio_duration < 0.3:
+                return
+
+            print(f'[CMD-UTT] Transcribing {audio_duration:.1f}s utterance')
+
+            transcribe_params = self.get_transcription_params()
+            transcribe_params['vad_filter'] = False
+
+            with self.model_lock:
+                segments, _ = self.model.transcribe(audio, **transcribe_params)
+            text = ''.join(s.text for s in segments).strip()
+            text = self.voice_training_window.apply_corrections(text)
+
+            if not text:
+                print('[CMD-UTT] Empty transcription')
+                return
+
+            print(f'[CMD-UTT] "{text}"')
+
+            if self._command_mode_ghost_tap:
+                self._command_mode_ghost_tap = False
+                print('[CMD-UTT] Ghost tap — discarding')
+                return
+
+            result, was_command = self.command_executor.process_text(text, self)
+
+            if was_command:
+                _store_cmd = self.command_executor.commands.get(result) or {'type': 'plugin'}
+                if (result
+                        and not _is_repeat_blacklisted(result, _store_cmd)
+                        and self.command_executor.find_command(result) == result):
+                    self._last_command = _store_cmd
+                    self._last_command_name = result
+                if result:
+                    increment_command_count(result)
+                self.add_to_history(text, is_command=True)
+                self._log_history(
+                    raw_text=text,
+                    duration_ms=int(audio_duration * 1000),
+                    mode='command',
+                    status='success',
+                    entry_type='command',
+                    matched_command=str(result) if result else None,
+                )
+                if self.command_mode_active:
+                    self._command_mode_miss_count = 0
+                    cm_cfg = self.config.get('command_mode', {})
+                    timeout_s = cm_cfg.get('inactivity_timeout_s', 30)
+                    self._reset_command_mode_inactivity_timer(timeout_s)
+            else:
+                print(f'[CMD] No command matched: "{text}"')
+                if self.command_mode_active:
+                    self._command_mode_miss_count += 1
+                    cm_cfg = self.config.get('command_mode', {})
+                    miss_limit = cm_cfg.get('miss_limit', 5)
+                    if self._command_mode_miss_count >= miss_limit:
+                        print(f'[CMD MODE] Miss limit ({miss_limit}) reached')
+                        self.exit_command_mode()
+        except Exception as exc:
+            print(f'[CMD-UTT] Error: {exc}')
+            import traceback
+            traceback.print_exc()
+        finally:
+            self._wake_transcription_in_progress = False
+            self._vad_reset()
 
     # -----------------------------------------------------------------------
 
@@ -5556,6 +5704,14 @@ class DictationApp:
             subprocess.Popen(["notepad.exe", str(LOG_FILE)])
         else:
             print("[LOG] No log file found.")
+
+    def open_latest_session_log(self):
+        """Open the current session log in the default text editor."""
+        if _SESSION_LOG.exists():
+            open_file_or_folder(_SESSION_LOG)
+        else:
+            from PySide6.QtWidgets import QMessageBox
+            QMessageBox.information(None, "Log File", "No session log file found yet.")
 
     def open_voice_training_log(self):
         """Open the voice training log file"""
