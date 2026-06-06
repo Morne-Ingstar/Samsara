@@ -382,66 +382,67 @@ class WinRTEngine(TTSEngine):
             except OSError:
                 continue
 
-            i = 0
-            while True:
-                try:
-                    token_name = winreg.EnumKey(base_key, i)
-                    i += 1
-                except OSError:
-                    break
-
-                token_path = base_path + "\\" + token_name
-                try:
-                    token_key = winreg.OpenKey(hive, token_path)
-                    display_name, _ = winreg.QueryValueEx(token_key, "")
-                except OSError:
-                    continue
-
-                # Build a stable voice_id from the registry path
-                hive_prefix = "HKEY_LOCAL_MACHINE" if hive == winreg.HKEY_LOCAL_MACHINE else "HKEY_CURRENT_USER"
-                voice_id = f"{hive_prefix}\\{token_path}"
-
-                if voice_id in seen_ids:
-                    winreg.CloseKey(token_key)
-                    continue
-                seen_ids.add(voice_id)
-
-                # Read attributes subkey for gender / language
-                gender = 'unknown'
-                language = 'en-US'
-                try:
-                    attr_key = winreg.OpenKey(hive, token_path + "\\Attributes")
+            with base_key:
+                i = 0
+                while True:
                     try:
-                        g, _ = winreg.QueryValueEx(attr_key, "Gender")
-                        gender = g.lower() if g.lower() in ('male', 'female') else 'unknown'
+                        token_name = winreg.EnumKey(base_key, i)
+                        i += 1
                     except OSError:
-                        pass
+                        break
+
+                    token_path = base_path + "\\" + token_name
                     try:
-                        lang_code, _ = winreg.QueryValueEx(attr_key, "Language")
-                        # Language is stored as a hex locale id (e.g. "409" = 0x409 = en-US).
-                        # Always parse as hex — the value is LCID in hex, never decimal.
+                        token_key = winreg.OpenKey(hive, token_path)
+                        display_name, _ = winreg.QueryValueEx(token_key, "")
+                    except OSError:
+                        continue
+
+                    # Build a stable voice_id from the registry path
+                    hive_prefix = "HKEY_LOCAL_MACHINE" if hive == winreg.HKEY_LOCAL_MACHINE else "HKEY_CURRENT_USER"
+                    voice_id = f"{hive_prefix}\\{token_path}"
+
+                    if voice_id in seen_ids:
+                        winreg.CloseKey(token_key)
+                        continue
+                    seen_ids.add(voice_id)
+
+                    # Read attributes subkey for gender / language
+                    gender = 'unknown'
+                    language = 'en-US'
+                    try:
+                        attr_key = winreg.OpenKey(hive, token_path + "\\Attributes")
                         try:
-                            import locale
-                            lcid = int(lang_code, 16)
-                            language = locale.windows_locale.get(lcid, 'en-US')
-                            # windows_locale returns "en_US" style — normalise to "en-US"
-                            language = language.replace('_', '-') if language else 'en-US'
-                        except Exception:
-                            language = 'en-US'
+                            g, _ = winreg.QueryValueEx(attr_key, "Gender")
+                            gender = g.lower() if g.lower() in ('male', 'female') else 'unknown'
+                        except OSError:
+                            pass
+                        try:
+                            lang_code, _ = winreg.QueryValueEx(attr_key, "Language")
+                            # Language is stored as a hex locale id (e.g. "409" = 0x409 = en-US).
+                            # Always parse as hex — the value is LCID in hex, never decimal.
+                            try:
+                                import locale
+                                lcid = int(lang_code, 16)
+                                language = locale.windows_locale.get(lcid, 'en-US')
+                                # windows_locale returns "en_US" style — normalise to "en-US"
+                                language = language.replace('_', '-') if language else 'en-US'
+                            except Exception:
+                                language = 'en-US'
+                        except OSError:
+                            pass
+                        winreg.CloseKey(attr_key)
                     except OSError:
                         pass
-                    winreg.CloseKey(attr_key)
-                except OSError:
-                    pass
 
-                winreg.CloseKey(token_key)
+                    winreg.CloseKey(token_key)
 
-                voices.append(VoiceInfo(
-                    voice_id=voice_id,
-                    display_name=display_name,
-                    language=language,
-                    gender=gender,
-                ))
+                    voices.append(VoiceInfo(
+                        voice_id=voice_id,
+                        display_name=display_name,
+                        language=language,
+                        gender=gender,
+                    ))
 
         return voices
 
