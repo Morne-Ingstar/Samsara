@@ -297,6 +297,80 @@ def _matches_pynput_key(key, target) -> bool:
     return False
 
 
+def _split_audio_at_silences(
+    audio,
+    sample_rate,
+    *,
+    min_silence_s=0.3,
+    max_chunk_s=25.0,
+    silence_threshold=0.015,
+):
+    """Split long audio at silence boundaries for chunked Whisper transcription.
+
+    Splits the waveform at pauses rather than at arbitrary 30-second
+    boundaries so Whisper never straddles a word.  Does NOT discard any
+    samples — every sample appears in exactly one returned chunk.
+
+    Args:
+        audio: float32 mono array at sample_rate Hz.
+        sample_rate: samples per second (e.g. 16000).
+        min_silence_s: minimum quiet-region duration to use as a split.
+        max_chunk_s: target maximum chunk length; chunks are force-split
+            here when no silence is found within the window.
+        silence_threshold: per-window RMS below which a 100 ms window is
+            counted as silence. 0.015 ≈ -36 dBFS; covers breath/room tone
+            between sentences in typical microphone recordings.
+
+    Returns:
+        list of float32 arrays, always at least one element.
+        Returns [audio] unchanged when the full recording fits in one chunk.
+    """
+    if len(audio) / sample_rate <= max_chunk_s:
+        return [audio]
+
+    win_samples = max(1, int(sample_rate * 0.1))   # 100 ms analysis windows
+    n_windows   = len(audio) // win_samples
+    if n_windows == 0:
+        return [audio]
+
+    # Vectorised RMS per window — much faster than a Python loop
+    trimmed   = audio[:n_windows * win_samples]
+    frames    = trimmed.reshape(n_windows, win_samples)
+    rms       = np.sqrt(np.mean(frames ** 2, axis=1))
+    is_silent = rms < silence_threshold
+
+    # Collect candidate split points: centre of each silence run ≥ min_silence_s
+    min_silent_wins = max(1, int(min_silence_s / 0.1))
+    split_samples   = []
+    i = 0
+    while i < n_windows:
+        if is_silent[i]:
+            j = i
+            while j < n_windows and is_silent[j]:
+                j += 1
+            if (j - i) >= min_silent_wins:
+                split_samples.append(int(((i + j) // 2) * win_samples))
+            i = j
+        else:
+            i += 1
+
+    # Build chunks greedily: advance to the latest silence split within
+    # max_chunk_s, or force-split there if no silence is found.
+    max_chunk_samp = int(sample_rate * max_chunk_s)
+    chunks, start  = [], 0
+    while start < len(audio):
+        target = start + max_chunk_samp
+        if target >= len(audio):
+            chunks.append(audio[start:])
+            break
+        candidates = [s for s in split_samples if start < s <= target]
+        end        = candidates[-1] if candidates else target
+        chunks.append(audio[start:end])
+        start = end
+
+    return chunks if chunks else [audio]
+
+
 def resample_audio(audio, orig_sr, target_sr=MODEL_SAMPLE_RATE):
     """Resample audio from orig_sr to target_sr using linear interpolation.
 
@@ -4629,37 +4703,45 @@ class DictationApp:
                 transcribe_params['vad_filter'] = False
                 perf_mode = self.config.get('performance_mode', 'balanced')
 
-                # Long-recording guard: warn approaching the ring buffer limit (~58.5s).
-                # The ring holds 60s; prebuffer takes 1.5s, so effective max is ~58.5s.
-                # Recordings beyond that are truncated silently by the ring overrun handler.
-                _RING_LIMIT_S = 58.5
-                if audio_duration > 50.0:
-                    print(
-                        f"[WARN] Long recording: {audio_duration:.1f}s. "
-                        f"Ring buffer limit is ~{_RING_LIMIT_S:.0f}s — "
-                        f"hold any longer and the audio will be truncated to the last 1.5s."
-                    )
-
-                # Whisper chunks audio >30s into separate passes with no cross-chunk
-                # context when condition_on_previous_text=False (the balanced/fast default).
-                # For long recordings this causes hallucinations and word-splits at the
-                # 30-second boundary. Enable conditioning for recordings over 30s so
-                # the second chunk keeps the thread of what was being said.
-                if audio_duration > 30.0:
-                    transcribe_params['condition_on_previous_text'] = True
-
                 # Guard: Whisper hallucinates on very short audio (<0.5s)
                 if audio_duration < 0.51:
                     print(f"[SKIP] Audio too short ({audio_duration:.2f}s) — skipping")
                     return
-                
+
                 transcribe_start = time.time()
-                with self.model_lock:
-                    segments, info = self.model.transcribe(audio, **transcribe_params)
-                
-                text = "".join([segment.text for segment in segments]).strip()
+
+                if audio_duration > 30.0:
+                    # Long audio: split at silence boundaries before transcription.
+                    # Whisper's internal 30s chunking splits at arbitrary positions
+                    # that can land mid-word.  Splitting at silence boundaries first
+                    # keeps each chunk acoustically clean.
+                    #
+                    # Do NOT set condition_on_previous_text=True here — conditioning
+                    # over long stitched sequences triggers Whisper's repetition-loop
+                    # hallucination bug (the model echos earlier text indefinitely).
+                    chunks = _split_audio_at_silences(audio, self.model_rate)
+                    print(f"[LONG] {audio_duration:.1f}s recording split into "
+                          f"{len(chunks)} chunk(s) at silence boundaries")
+                    texts = []
+                    for idx, chunk in enumerate(chunks):
+                        chunk_dur = len(chunk) / self.model_rate
+                        if chunk_dur < 0.2:
+                            continue
+                        with self.model_lock:
+                            segs, _ = self.model.transcribe(chunk, **transcribe_params)
+                        chunk_text = "".join(s.text for s in segs).strip()
+                        if chunk_text:
+                            texts.append(chunk_text)
+                        print(f"[LONG] Chunk {idx + 1}/{len(chunks)}: "
+                              f"{chunk_dur:.1f}s → {len(chunk_text)} chars")
+                    text = " ".join(texts).strip()
+                else:
+                    with self.model_lock:
+                        segments, info = self.model.transcribe(audio, **transcribe_params)
+                    text = "".join([segment.text for segment in segments]).strip()
+
                 transcribe_time = time.time() - transcribe_start
-                
+
                 # Performance logging
                 rtf = transcribe_time / audio_duration if audio_duration > 0 else 0
                 device_info = getattr(self, 'device_type', 'unknown')
