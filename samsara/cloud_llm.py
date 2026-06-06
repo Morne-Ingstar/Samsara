@@ -7,9 +7,6 @@ Samsara does not store conversation content beyond the local session.
 """
 
 import requests
-import threading
-
-_config_lock = threading.Lock()
 
 
 def is_enabled(app):
@@ -36,7 +33,7 @@ def _get_provider_config(app):
         },
         "anthropic": {
             "base_url": "https://api.anthropic.com/v1",
-            "model": "claude-sonnet-4-20250514",
+            "model": cfg.get("anthropic_model", "claude-sonnet-4-20250514"),
         },
     }
     provider_cfg = providers.get(provider, default_providers.get(provider, {}))
@@ -66,15 +63,18 @@ def send(system_prompt, user_message, app, timeout=30, messages=None):
 
     provider, base_url, model = _get_provider_config(app)
     timeout = cfg.get("timeout_seconds", timeout)
+    max_tokens = cfg.get("max_tokens", 300)
 
     try:
         if provider == "anthropic":
             return _send_anthropic(base_url, api_key, model, system_prompt,
-                                   user_message, timeout, messages=messages)
+                                   user_message, timeout, max_tokens,
+                                   messages=messages)
         else:
             return _send_openai_compatible(base_url, api_key, model,
                                            system_prompt, user_message,
-                                           timeout, messages=messages)
+                                           timeout, max_tokens,
+                                           messages=messages)
     except requests.exceptions.ConnectionError:
         return "Error: Could not connect to the cloud LLM provider."
     except requests.exceptions.Timeout:
@@ -84,7 +84,7 @@ def send(system_prompt, user_message, app, timeout=30, messages=None):
 
 
 def _send_openai_compatible(base_url, api_key, model, system_prompt,
-                             user_message, timeout, messages=None):
+                             user_message, timeout, max_tokens=300, messages=None):
     url = f"{base_url}/chat/completions"
     headers = {
         "Content-Type": "application/json",
@@ -98,7 +98,7 @@ def _send_openai_compatible(base_url, api_key, model, system_prompt,
     payload = {
         "model": model,
         "messages": messages,
-        "max_tokens": 300,
+        "max_tokens": max_tokens,
         "temperature": 0.3,
     }
     response = requests.post(url, json=payload, headers=headers, timeout=timeout)
@@ -108,7 +108,7 @@ def _send_openai_compatible(base_url, api_key, model, system_prompt,
 
 
 def _send_anthropic(base_url, api_key, model, system_prompt,
-                    user_message, timeout, messages=None):
+                    user_message, timeout, max_tokens=300, messages=None):
     url = f"{base_url}/messages"
     headers = {
         "Content-Type": "application/json",
@@ -127,7 +127,7 @@ def _send_anthropic(base_url, api_key, model, system_prompt,
         api_messages = [{"role": "user", "content": user_message}]
     payload = {
         "model": model,
-        "max_tokens": 300,
+        "max_tokens": max_tokens,
         "system": system,
         "messages": api_messages,
     }
