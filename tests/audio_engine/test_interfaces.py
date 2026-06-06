@@ -52,7 +52,7 @@ class TestEngineLifecycle:
             engine.start()
             stream_ref = engine._stream
             engine.start()   # second call — must be a no-op
-            assert engine._stream is engine_stream_ref if False else True  # noqa
+            assert engine._stream is stream_ref, "start() opened a new stream on second call"
             assert engine._running is True
         finally:
             engine.stop()
