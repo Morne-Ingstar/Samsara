@@ -15,6 +15,9 @@ _PILL_BG  = QColor(18, 18, 22, 230)
 _PILL_BD  = QColor(70, 70, 80, 200)
 _TEXT_CLR = QColor(255, 255, 255, 255)
 
+# Set True to emit [DPI-COORD] debug lines. Turn off after confirming fix.
+_COORD_DEBUG = False
+
 # ---------------------------------------------------------------------------
 # DPI-aware physical-to-logical coordinate conversion
 # ---------------------------------------------------------------------------
@@ -49,12 +52,22 @@ def _win32_monitor_rects() -> list:
 
 
 def phys_to_logical(px: int, py: int) -> tuple:
-    """Convert physical screen coordinates to Qt logical coordinates.
+    """Convert screen coordinates to Qt logical coordinates.
 
-    UIA BoundingRectangle returns physical pixels. Qt uses logical (DPI-scaled)
-    pixels. On a 200% DPI 4K monitor, physical (2000, 100) -> logical (1000, 50).
+    Handles two coordinate modes automatically:
+
+    * Physical mode (per-monitor DPI V2 active): Win32 rcMonitor width exceeds
+      Qt logical width by the scale factor. Divide offset by ratio to convert.
+
+    * Logical mode (DPI awareness not in effect for this API path): rcMonitor
+      width matches Qt logical width. Coordinates are already logical; return
+      unchanged.  Applying division here was the top-left-cluster bug.
+
     Falls back to identity if conversion data is unavailable.
     """
+    import logging as _log
+    _logger = _log.getLogger(__name__)
+
     try:
         phys_rects = _win32_monitor_rects()
         qt_screens = sorted(
@@ -68,8 +81,40 @@ def phys_to_logical(px: int, py: int) -> tuple:
             if pl <= px < pr and pt <= py < pb:
                 ratio = screen.devicePixelRatio()
                 geo = screen.geometry()
+                win32_w = pr - pl
+                qt_w    = geo.width()
+                # Determine coordinate mode:
+                # Logical: Win32 origins AND dimensions match Qt logical values.
+                # Physical: at least the width or origin differs (DPI V2 active).
+                # Width alone is insufficient for 100% DPI secondaries whose
+                # physical width equals logical width but origin shifts left.
+                is_logical = (
+                    abs(win32_w - qt_w) <= 2
+                    and pl == geo.x()
+                    and pt == geo.y()
+                )
+
+                if is_logical:
+                    # Win32 and Qt agree on origin and size: both use the same
+                    # coordinate space. No conversion needed.
+                    if _COORD_DEBUG:
+                        _logger.debug(
+                            "[DPI-COORD] phys_to_logical(%d,%d): logical mode "
+                            "(win32_w=%d == qt_w=%d, ratio=%.2f) -> (%d,%d)",
+                            px, py, win32_w, qt_w, ratio, px, py,
+                        )
+                    return px, py
+
+                # Origins or dimensions differ: Win32 returns physical pixels.
                 lx = geo.x() + (px - pl) / ratio
                 ly = geo.y() + (py - pt) / ratio
+                if _COORD_DEBUG:
+                    _logger.debug(
+                        "[DPI-COORD] phys_to_logical(%d,%d): physical mode "
+                        "(win32_w=%d, qt_w=%d, pl=%d, geo_x=%d, ratio=%.2f) -> (%d,%d)",
+                        px, py, win32_w, qt_w, pl, geo.x(), ratio,
+                        round(lx), round(ly),
+                    )
                 return round(lx), round(ly)
     except Exception:
         pass

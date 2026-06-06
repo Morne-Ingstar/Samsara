@@ -1,13 +1,17 @@
 """Show Numbers overlay — semantic voice clicking via numbered labels.
 
 Commands:
-    "show numbers"       -- draw numbered labels on clickable UI elements
-    "hide numbers"       -- dismiss the overlay
-    "refresh numbers"    -- re-enumerate and redraw without dismissing first
-    "click N"            -- left-click element N
-    "click N twice"      -- double-click element N
-    "click N right"      -- right-click element N
-    "click thirty seven" -- spoken numbers also accepted
+    "show numbers"            -- draw numbered labels on clickable UI elements
+    "hide numbers"            -- dismiss the overlay
+    "refresh numbers"         -- re-enumerate and redraw without dismissing first
+    "click N"                 -- left-click element N
+    "click N twice"           -- double-click element N
+    "click N right"           -- right-click element N
+    "ctrl click N"            -- Ctrl+click element N
+    "shift click N"           -- Shift+click element N
+    "alt click N"             -- Alt+click element N
+    "shift click N right"     -- Shift+right-click (modifiers combinable)
+    "click thirty seven"      -- spoken numbers also accepted
 
 Architecture:
     Fullscreen Qt widget (FramelessWindowHint, WA_TranslucentBackground,
@@ -30,7 +34,8 @@ from PySide6.QtCore import QTimer
 from PySide6.QtWidgets import QApplication
 
 from samsara.plugin_commands import command
-from samsara.ui.numbers_overlay_qt import NumbersOverlayWindow, phys_to_logical
+from samsara.ui import qt_runtime
+from samsara.ui.numbers_overlay_qt import NumbersOverlayWindow, phys_to_logical, _COORD_DEBUG
 
 logger = logging.getLogger(__name__)
 
@@ -157,8 +162,21 @@ def _enumerate_foreground_clickables() -> list:
         try:
             if _is_useful_clickable(ctrl, fg_screen):
                 r = ctrl.BoundingRectangle
+                if _COORD_DEBUG and len(results) < 5:
+                    logger.debug(
+                        "[DPI-COORD] elem %d raw UIA: left=%d top=%d right=%d bottom=%d "
+                        "(%s '%s')",
+                        len(results) + 1,
+                        r.left, r.top, r.right, r.bottom,
+                        ctrl.ControlTypeName, (ctrl.Name or '')[:30],
+                    )
                 lx1, ly1 = phys_to_logical(r.left, r.top)
                 lx2, ly2 = phys_to_logical(r.right, r.bottom)
+                if _COORD_DEBUG and len(results) < 5:
+                    logger.debug(
+                        "[DPI-COORD] elem %d after conversion: (%d,%d) -> (%d,%d)",
+                        len(results) + 1, r.left, r.top, lx1, ly1,
+                    )
                 results.append({
                     'control': ctrl,
                     'rect': (lx1, ly1, lx2, ly2),
@@ -330,7 +348,27 @@ def _place_labels(elements: list) -> list:
 # Click execution
 # ---------------------------------------------------------------------------
 
-def _click_with_validation(element, modifier: str) -> bool:
+_KEY_VK_MAP = {'shift': 0x10, 'ctrl': 0x11, 'alt': 0x12}  # VK_SHIFT/CONTROL/MENU
+
+
+def _apply_modifier_keys(keys: frozenset, fn) -> None:
+    """Hold keyboard modifier keys, call fn(), release them. No-op if keys empty."""
+    if not keys:
+        fn()
+        return
+    import win32api
+    KEYEVENTF_KEYUP = 0x0002
+    pressed = [_KEY_VK_MAP[k] for k in sorted(keys) if k in _KEY_VK_MAP]
+    for vk in pressed:
+        win32api.keybd_event(vk, 0, 0, 0)
+    try:
+        fn()
+    finally:
+        for vk in reversed(pressed):
+            win32api.keybd_event(vk, 0, KEYEVENTF_KEYUP, 0)
+
+
+def _click_with_validation(element, modifier: str, keys: frozenset = frozenset()) -> bool:
     """Validate element is still alive, then click. Returns True on success."""
     try:
         rect = element.BoundingRectangle
@@ -344,18 +382,18 @@ def _click_with_validation(element, modifier: str) -> bool:
         logger.warning("[OVERLAY] Element handle stale -- UI changed")
         return False
 
-    return _perform_click(element, modifier)
+    return _perform_click(element, modifier, keys)
 
 
-def _perform_click(element, modifier: str) -> bool:
-    """UIA-first click, then Win32 fallback."""
+def _perform_click(element, modifier: str, keys: frozenset = frozenset()) -> bool:
+    """UIA-first click, then Win32 fallback. keys holds modifier key names to hold."""
     try:
         if modifier == 'double':
-            element.DoubleClick(simulateMove=False)
+            _apply_modifier_keys(keys, lambda: element.DoubleClick(simulateMove=False))
         elif modifier == 'right':
-            element.RightClick(simulateMove=False)
+            _apply_modifier_keys(keys, lambda: element.RightClick(simulateMove=False))
         else:
-            element.Click(simulateMove=False)
+            _apply_modifier_keys(keys, lambda: element.Click(simulateMove=False))
         return True
     except Exception as e:
         logger.info("[OVERLAY] UIA click failed (%s), falling back to mouse", e)
@@ -366,16 +404,20 @@ def _perform_click(element, modifier: str) -> bool:
         x = (rect.left + rect.right) // 2
         y = (rect.top + rect.bottom) // 2
         win32api.SetCursorPos((x, y))
-        if modifier == 'right':
-            win32api.mouse_event(win32con.MOUSEEVENTF_RIGHTDOWN, 0, 0, 0, 0)
-            win32api.mouse_event(win32con.MOUSEEVENTF_RIGHTUP, 0, 0, 0, 0)
-        else:
-            win32api.mouse_event(win32con.MOUSEEVENTF_LEFTDOWN, 0, 0, 0, 0)
-            win32api.mouse_event(win32con.MOUSEEVENTF_LEFTUP, 0, 0, 0, 0)
-            if modifier == 'double':
-                time.sleep(0.05)
+
+        def _do_mouse():
+            if modifier == 'right':
+                win32api.mouse_event(win32con.MOUSEEVENTF_RIGHTDOWN, 0, 0, 0, 0)
+                win32api.mouse_event(win32con.MOUSEEVENTF_RIGHTUP, 0, 0, 0, 0)
+            else:
                 win32api.mouse_event(win32con.MOUSEEVENTF_LEFTDOWN, 0, 0, 0, 0)
                 win32api.mouse_event(win32con.MOUSEEVENTF_LEFTUP, 0, 0, 0, 0)
+                if modifier == 'double':
+                    time.sleep(0.05)
+                    win32api.mouse_event(win32con.MOUSEEVENTF_LEFTDOWN, 0, 0, 0, 0)
+                    win32api.mouse_event(win32con.MOUSEEVENTF_LEFTUP, 0, 0, 0, 0)
+
+        _apply_modifier_keys(keys, _do_mouse)
         return True
     except Exception as e:
         logger.error("[OVERLAY] Win32 fallback click failed: %s", e)
@@ -477,6 +519,13 @@ def _draw_overlay(app, elements: list) -> None:
 
     labels = _place_labels(elements)
 
+    if _COORD_DEBUG:
+        for lbl in labels[:5]:
+            logger.debug(
+                "[DPI-COORD] pill: screen_x=%d screen_y=%d w=%d h=%d label=%s",
+                lbl[0], lbl[1], lbl[2], lbl[3], lbl[4],
+            )
+
     with _state_lock:
         _elements[:] = [e['control'] for e in elements]
 
@@ -487,14 +536,7 @@ def _draw_overlay(app, elements: list) -> None:
         fg_hwnd = 0
 
     _cancel_dismiss_timer()
-    qt_app = QApplication.instance()
-    if qt_app is not None:
-        # 3-arg form: context object binds the callback to the Qt event-loop
-        # thread ("samsara-qt"). Without it, the callback is queued into the
-        # calling worker thread's event loop, which doesn't exist, so it never fires.
-        QTimer.singleShot(0, qt_app, lambda: _show_overlay_qt(labels, fg_hwnd, app))
-    else:
-        logger.warning("[OVERLAY] No QApplication instance — overlay cannot show")
+    qt_runtime.post(lambda: _show_overlay_qt(labels, fg_hwnd, app))
     _schedule_dismiss_timer(app)
     print(f"[OVERLAY] Showing {len(elements)} numbered clickables")
 
@@ -502,9 +544,7 @@ def _draw_overlay(app, elements: list) -> None:
 def _destroy_overlay(app=None) -> None:
     """Thread-safe dismiss: cancel timers and schedule Qt cleanup."""
     _cancel_dismiss_timer()
-    qt_app = QApplication.instance()
-    if qt_app is not None:
-        QTimer.singleShot(0, qt_app, _hide_overlay_qt)
+    qt_runtime.post(_hide_overlay_qt)
 
 
 def _destroy_overlay_completely() -> None:
@@ -552,11 +592,18 @@ def _parse_spoken_number(text: str) -> "int | None":
 
 
 def _parse_click_target(text: str):
-    """Legacy parser: returns (number | None, modifier_str).
+    """Legacy parser: returns (number | None, modifier_str, keys_frozenset).
 
     modifier is 'single' | 'double' | 'right'.
+    keys is a frozenset of 'shift' | 'ctrl' | 'alt'.
     """
     text = re.sub(r'^(click|tap|press|select)\s+', '', text.strip().lower())
+
+    keys: set = set()
+    for kw in ('shift', 'ctrl', 'alt'):
+        if re.search(r'\b' + kw + r'\b', text):
+            keys.add(kw)
+            text = re.sub(r'\b' + kw + r'\b', '', text)
 
     modifier = 'single'
     if re.search(r'\b(twice|double)\b', text):
@@ -566,7 +613,7 @@ def _parse_click_target(text: str):
         modifier = 'right'
         text = re.sub(r'\bright\b', '', text)
 
-    return _parse_spoken_number(text), modifier
+    return _parse_spoken_number(text), modifier, frozenset(keys)
 
 # ---------------------------------------------------------------------------
 # Voice commands
@@ -624,11 +671,8 @@ def handle_show_overlay_test(app, remainder):
     except Exception:
         fg_hwnd = 0
 
-    if qt_app is not None:
-        QTimer.singleShot(0, qt_app, lambda: _show_overlay_qt(labels, fg_hwnd, app))
-        print("[OVERLAY-TEST] Queued 4 test labels — watch for [OVERLAY] _show_overlay_qt called")
-    else:
-        print("[OVERLAY-TEST] Cannot show overlay — no QApplication instance")
+    qt_runtime.post(lambda: _show_overlay_qt(labels, fg_hwnd, app))
+    print("[OVERLAY-TEST] Queued 4 test labels — watch for [OVERLAY] _show_overlay_qt called")
     return True
 
 
@@ -673,11 +717,19 @@ def handle_refresh_numbers(app, remainder):
          aliases=["tap", "press"],
          pack="accessibility")
 def handle_click(app, remainder):
-    """Usage: 'click 7', 'click thirty seven', 'click 7 twice', 'click 7 right'."""
+    """Usage: 'click 7', 'click thirty seven', 'click 7 twice', 'click 7 right',
+              'ctrl click 7', 'shift click 7', 'alt click 7', 'shift click 7 right'."""
     if not remainder or not remainder.strip():
         return True
 
     text = remainder.strip().lower()
+
+    keys: set = set()
+    for kw in ('shift', 'ctrl', 'alt'):
+        if re.search(r'\b' + kw + r'\b', text):
+            keys.add(kw)
+            text = re.sub(r'\b' + kw + r'\b', '', text)
+    keys_frozen = frozenset(keys)
 
     modifier = 'single'
     if re.search(r'\b(twice|double)\b', text):
@@ -705,7 +757,7 @@ def handle_click(app, remainder):
             return True
         element = _elements[number - 1]
 
-    if not _click_with_validation(element, modifier):
+    if not _click_with_validation(element, modifier, keys_frozen):
         msg = f"Element {number} is no longer available."
         print(f"[OVERLAY] {msg}")
         _speak(app, msg)
