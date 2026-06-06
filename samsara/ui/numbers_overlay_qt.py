@@ -9,7 +9,7 @@ import ctypes.wintypes as _wt
 import logging
 import sys
 
-from PySide6.QtCore import Qt, QRect, QRectF
+from PySide6.QtCore import Qt, QPoint, QRect, QRectF
 from PySide6.QtGui import QColor, QPainter, QPainterPath, QFont
 from PySide6.QtWidgets import QApplication, QWidget
 
@@ -20,7 +20,7 @@ _PILL_BD  = QColor(70, 70, 80, 200)
 _TEXT_CLR = QColor(255, 255, 255, 255)
 
 # Set True to emit [DPI-COORD] and [OVERLAY-GEOM] debug lines.
-_COORD_DEBUG = False
+_COORD_DEBUG = True
 
 # ---------------------------------------------------------------------------
 # Thread-level DPI awareness (Phase 3 fix)
@@ -146,20 +146,59 @@ def phys_to_logical(px: int, py: int) -> tuple:
 
 
 # ---------------------------------------------------------------------------
+# Active screen detection
+# ---------------------------------------------------------------------------
+
+def screen_for_hwnd(hwnd: int) -> "QScreen":
+    """Return the QScreen that hwnd is on.
+
+    Safe to call from any thread.  phys_to_logical adapts to the calling
+    thread's DPI context so MonitorFromWindow + GetMonitorInfo coordinates
+    are correctly mapped regardless of whether the thread is DPI V2-aware.
+    Falls back to the primary screen.
+    """
+    if hwnd and sys.platform == 'win32':
+        try:
+            MONITOR_DEFAULTTONEAREST = 2
+            hmon = ctypes.windll.user32.MonitorFromWindow(
+                ctypes.c_ssize_t(hwnd), MONITOR_DEFAULTTONEAREST
+            )
+            if hmon:
+                info = _MONITORINFO()
+                info.cbSize = ctypes.sizeof(_MONITORINFO)
+                ctypes.windll.user32.GetMonitorInfoW(hmon, ctypes.byref(info))
+                r = info.rcMonitor
+                # +1 moves one pixel inside the monitor, avoiding boundary ambiguity
+                lx, ly = phys_to_logical(r.left + 1, r.top + 1)
+                screen = QApplication.screenAt(QPoint(lx, ly))
+                if screen is not None:
+                    return screen
+        except Exception:
+            pass
+    primary = QApplication.primaryScreen()
+    if primary is not None:
+        return primary
+    screens = QApplication.screens()
+    return screens[0] if screens else None
+
+
+# ---------------------------------------------------------------------------
 # Overlay window
 # ---------------------------------------------------------------------------
 
 class NumbersOverlayWindow(QWidget):
-    """Fullscreen transparent click-through window spanning all monitors.
+    """Click-through overlay covering ONE monitor with numbered pill labels.
 
-    Renders numbered pill labels via QPainter at absolute screen logical
-    coordinates.  Call update_labels() to refresh in place.
+    Positioned to cover target_screen only — no multi-monitor spanning.
+    Labels carry absolute screen logical coordinates; paintEvent subtracts
+    the screen's logical origin (self._virt.x()/y()) to get widget-local
+    coords.  Call update_labels() to refresh in place.
     """
 
-    def __init__(self, labels: list) -> None:
-        # Ensure the thread creating HWNDs has per-monitor DPI V2 context.
-        # HWND creation is deferred to show() time; setting context here
-        # ensures it is active on this thread when show() fires.
+    def __init__(self, labels: list, target_screen: "QScreen") -> None:
+        # Set per-monitor DPI V2 on this thread before HWND creation.
+        # Qt creates HWNDs lazily at show() time; the thread context at that
+        # moment determines the HWND's effective DPI awareness.
         _ensure_dpi_thread_context()
 
         super().__init__(None)
@@ -174,16 +213,14 @@ class NumbersOverlayWindow(QWidget):
         self.setAttribute(Qt.WA_TranslucentBackground, True)
         self.setAttribute(Qt.WA_ShowWithoutActivating, True)
 
-        virt = QRect()
-        for screen in QApplication.screens():
-            virt = virt.united(screen.geometry())
-        self._virt = virt
-        self.setGeometry(virt)
+        geo = target_screen.geometry()   # logical rect of the target screen
+        self._virt = geo                 # origin used by paintEvent
+        self.setGeometry(geo)
 
         if _COORD_DEBUG:
             _logger.debug(
-                "[OVERLAY-GEOM] _virt: x=%d y=%d w=%d h=%d",
-                virt.x(), virt.y(), virt.width(), virt.height(),
+                "[OVERLAY-GEOM] target screen: name=%s geo=%s dpr=%.2f",
+                target_screen.name(), geo, target_screen.devicePixelRatio(),
             )
             _logger.debug(
                 "[OVERLAY-GEOM] setGeometry: x=%d y=%d w=%d h=%d",
@@ -195,24 +232,6 @@ class NumbersOverlayWindow(QWidget):
                 self.devicePixelRatio(),
                 self.screen().name() if self.screen() else 'None',
             )
-            for i, s in enumerate(QApplication.screens()):
-                _logger.debug(
-                    "[OVERLAY-GEOM] screen[%d]: geo=%s dpr=%.2f name=%s",
-                    i, s.geometry(), s.devicePixelRatio(), s.name(),
-                )
-            app = QApplication.instance()
-            if app:
-                try:
-                    _logger.debug(
-                        "[OVERLAY-GEOM] Qt attrs: AA_EnableHighDpiScaling=%s "
-                        "AA_UseHighDpiPixmaps=%s",
-                        app.testAttribute(Qt.AA_EnableHighDpiScaling),
-                        app.testAttribute(Qt.AA_UseHighDpiPixmaps),
-                    )
-                except AttributeError:
-                    _logger.debug(
-                        "[OVERLAY-GEOM] Qt6: high-DPI attrs removed (always on)"
-                    )
 
     def update_labels(self, labels: list) -> None:
         self._labels = labels
