@@ -117,7 +117,7 @@ class AudioCoordinator:
     @property
     def is_speaking(self) -> bool:
         """True while the coordinator is in the SPEAKING state."""
-        return self._state == SPEAKING
+        return self._state == SPEAKING  # intentionally lock-free: str read is atomic in CPython
 
     def speak(
         self,

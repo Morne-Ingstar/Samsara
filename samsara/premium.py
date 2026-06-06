@@ -16,6 +16,7 @@ _LICENSE_SALT = "samsara-premium-2026"
 _lock = threading.Lock()
 
 
+# TODO Phase 2: use _hash_key for server-side validation
 def _hash_key(key: str) -> str:
     return hashlib.sha256(
         f"{_LICENSE_SALT}:{key.strip()}".encode()

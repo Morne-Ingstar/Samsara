@@ -259,6 +259,16 @@ def main():
         if DEBUG:
             show_msg(f"Using Python:\n{python_exe}")
 
+        # Verify required packages before handing off to the app.
+        if not check_dependencies(python_exe):
+            show_error(
+                "Missing required packages!\n\n"
+                "Please run:\n"
+                "  pip install faster_whisper pystray sounddevice\n\n"
+                "Or run install.bat to set up automatically."
+            )
+            return 1
+
         # Launch the app
         launch_app(python_exe, script, env, app_dir)
 
