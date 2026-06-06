@@ -379,6 +379,15 @@ class AdaptiveEchoCanceller:
         for i in range(self.filter_blocks):
             self._W[i] += self.step_size * (E * np.conj(self._ref_history[i])) / ref_power
 
+        if not hasattr(self, '_diag_count'):
+            self._diag_count = 0
+        self._diag_count += 1
+        if self._diag_count % 50 == 1:
+            w_norm = float(np.sum(np.abs(self._W)))
+            yhat_rms = float(np.sqrt(np.mean(np.abs(Y_hat) ** 2)))
+            e_minus_mic = float(np.max(np.abs(E - Mic)))
+            print(f"[AEC-DIAG] W_norm={w_norm:.6f} Y_hat_rms={yhat_rms:.6f} E_minus_mic={e_minus_mic:.6f}")
+
         return cleaned.astype(np.float32)
 
     def reset(self):
@@ -415,7 +424,7 @@ class EchoCanceller:
         block_size: int = 1024,
         filter_blocks: int = 4,
         step_size: float = 0.02,
-        latency_ms: float = 100.0,
+        latency_ms: float = 50.0,
     ):
         """
         Args:
