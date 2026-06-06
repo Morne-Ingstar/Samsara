@@ -19,11 +19,13 @@ import numpy as np
 from PySide6.QtCore import Qt, QTimer, Signal, Slot
 from PySide6.QtGui import QColor
 from PySide6.QtWidgets import (
-    QApplication, QComboBox, QDoubleSpinBox, QFrame,
+    QComboBox, QDoubleSpinBox, QFrame,
     QHBoxLayout, QLabel, QMainWindow, QPlainTextEdit,
     QPushButton, QScrollArea, QSizePolicy, QSlider,
     QVBoxLayout, QWidget,
 )
+
+from samsara.ui import qt_runtime
 
 # ---------------------------------------------------------------------------
 # Palette
@@ -1271,24 +1273,22 @@ class WakeWordDebugQt:
     def __init__(self, app):
         self._app    = app
         self._window: "_DebugWindow | None" = None
-        self._thread = None
+        self._init_posted = False
 
     # ---- Public API (callable from any thread) ------------------------------
 
     def show(self):
         if self._window is not None:
-            QTimer.singleShot(0, self._window.show)
-            QTimer.singleShot(0, self._window.raise_)
-            QTimer.singleShot(0, self._window.activateWindow)
-        else:
-            self._thread = threading.Thread(
-                target=self._create, daemon=True, name="wake-debug-qt",
-            )
-            self._thread.start()
+            qt_runtime.post(self._window.show)
+            qt_runtime.post(self._window.raise_)
+            qt_runtime.post(self._window.activateWindow)
+        elif not self._init_posted:
+            self._init_posted = True
+            qt_runtime.post(self._init_window)
 
     def close(self):
         if self._window is not None:
-            QTimer.singleShot(0, self._window.close)
+            qt_runtime.post(self._window.close)
             self._window = None
 
     def on_app_trace(self, event: dict):
@@ -1296,21 +1296,10 @@ class WakeWordDebugQt:
         if self._window is not None:
             self._window.trace(event)
 
-    # ---- Thread -------------------------------------------------------------
-
-    def _create(self):
-        qt_app   = QApplication.instance()
-        owns_app = qt_app is None
-        if qt_app is None:
-            qt_app = QApplication([])
-        if owns_app:
-            self._init_window()
-            qt_app.exec()
-            self._window = None
-        else:
-            QTimer.singleShot(0, qt_app, self._init_window)
+    # ---- Qt-thread ----------------------------------------------------------
 
     def _init_window(self):
+        """Runs on the Qt thread."""
         self._window = _DebugWindow(self._app)
         self._window.destroyed.connect(self._on_destroyed)
         # Register with the proper API; fall back to direct attribute set
@@ -1329,3 +1318,4 @@ class WakeWordDebugQt:
             else:
                 self._app._wake_trace_callback = None
         self._window = None
+        self._init_posted = False

@@ -32,6 +32,7 @@ from PySide6.QtWidgets import (
     QTableWidgetItem, QTabWidget, QVBoxLayout, QWidget,
 )
 
+from samsara.ui import qt_runtime
 from samsara.ui.dictionary_panel_qt import DictionaryPanelQt
 
 # ---------------------------------------------------------------------------
@@ -678,51 +679,36 @@ class MainWindowQt:
     def __init__(self, app):
         self._app    = app
         self._window: "_MainWindow | None" = None
-        self._thread: "threading.Thread | None" = None
+        self._init_posted = False
 
     # ---- Public API (callable from any thread) ------------------------------
 
     def show(self):
         if self._window is not None:
-            QTimer.singleShot(0, self._window.show)
-            QTimer.singleShot(0, self._window.raise_)
-            QTimer.singleShot(0, self._window.activateWindow)
-        else:
-            self._thread = threading.Thread(
-                target=self._create, daemon=True, name="main-window-qt",
-            )
-            self._thread.start()
+            qt_runtime.post(self._window.show)
+            qt_runtime.post(self._window.raise_)
+            qt_runtime.post(self._window.activateWindow)
+        elif not self._init_posted:
+            self._init_posted = True
+            qt_runtime.post(self._init_window)
 
     def hide(self):
         if self._window is not None:
-            QTimer.singleShot(0, self._window.hide)
+            qt_runtime.post(self._window.hide)
 
     def close(self):
         if self._window is not None:
-            QTimer.singleShot(0, self._window.force_close)
+            qt_runtime.post(self._window.force_close)
             self._window = None
 
     def on_dictation_complete(self, text: str):
         if self._window is not None:
             self._window._dictation_sig.emit(text)
 
-    # ---- Thread -------------------------------------------------------------
-
-    def _create(self):
-        qt_app = QApplication.instance()
-        owns_app = qt_app is None
-        if qt_app is None:
-            qt_app = QApplication([])
-        if owns_app:
-            self._window = _MainWindow(self._app)
-            self._window.destroyed.connect(self._on_destroyed)
-            self._window.show()
-            qt_app.exec()
-            self._window = None
-        else:
-            QTimer.singleShot(0, qt_app, self._init_window)
+    # ---- Qt-thread ----------------------------------------------------------
 
     def _init_window(self):
+        """Runs on the Qt thread."""
         self._window = _MainWindow(self._app)
         self._window.destroyed.connect(self._on_destroyed)
         self._window.show()

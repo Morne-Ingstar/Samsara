@@ -1,21 +1,22 @@
 """
 PySide6 settings window for Samsara.
 
-Runs on its own daemon thread; the main thread belongs to Tkinter.
-QApplication.exec() blocks — this is the same pattern as pywebview in task_overlay.py.
+All Qt operations are posted to the shared qt_runtime event loop.
 """
 
 import threading
 
 from PySide6.QtCore import Qt, QTimer, Signal
 from PySide6.QtWidgets import (
-    QApplication, QMainWindow, QWidget, QHBoxLayout, QVBoxLayout,
+    QMainWindow, QWidget, QHBoxLayout, QVBoxLayout,
     QListWidget, QListWidgetItem, QStackedWidget, QScrollArea,
     QLabel, QComboBox, QCheckBox, QPushButton, QFrame,
     QDoubleSpinBox, QSpinBox, QLineEdit, QSlider,
     QTableWidget, QTableWidgetItem, QHeaderView,
     QDialog, QMessageBox, QFormLayout, QGridLayout,
 )
+
+from samsara.ui import qt_runtime
 
 
 # ---------------------------------------------------------------------------
@@ -402,42 +403,21 @@ class SettingsQt:
     def __init__(self, app):
         self.app = app
         self._window = None
-        self._thread = None
+        self._init_posted = False
 
     def show(self):
         if self._window is not None:
-            try:
-                self._window.show()
-                self._window.raise_()
-                self._window.activateWindow()
-                return
-            except Exception:
-                self._window = None
-
-        self._thread = threading.Thread(
-            target=self._create, daemon=True, name="settings-qt"
-        )
-        self._thread.start()
-
-    def _create(self):
-        qt_app = QApplication.instance()
-        owns_app = qt_app is None
-        if qt_app is None:
-            qt_app = QApplication([])
-        if owns_app:
-            self._init_window()
-            qt_app.exec()
-            self._window = None
-        else:
-            QTimer.singleShot(0, qt_app, self._init_window)
+            qt_runtime.post(self._window.show)
+            qt_runtime.post(self._window.raise_)
+            qt_runtime.post(self._window.activateWindow)
+        elif not self._init_posted:
+            self._init_posted = True
+            qt_runtime.post(self._init_window)
 
     def _init_window(self):
+        """Runs on the Qt thread."""
         self._window = _SettingsWindow(self.app)
-        self._window.destroyed.connect(self._on_destroyed)
         self._window.show()
-
-    def _on_destroyed(self):
-        self._window = None
 
 
 # ---------------------------------------------------------------------------
@@ -536,6 +516,10 @@ class _SettingsWindow(QMainWindow):
         btn_layout.addWidget(apply_btn)
 
         root.addWidget(btn_bar)
+
+    def closeEvent(self, e):
+        e.ignore()
+        self.hide()
 
     # ------------------------------------------------------------------
     # Tab builders

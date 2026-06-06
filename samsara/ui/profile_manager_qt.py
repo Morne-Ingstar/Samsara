@@ -10,10 +10,12 @@ from pathlib import Path
 
 from PySide6.QtCore import Qt, QTimer
 from PySide6.QtWidgets import (
-    QApplication, QMainWindow, QWidget, QVBoxLayout, QHBoxLayout,
+    QMainWindow, QWidget, QVBoxLayout, QHBoxLayout,
     QScrollArea, QLabel, QComboBox, QPushButton,
     QDialog, QFormLayout, QLineEdit, QFrame, QMessageBox, QFileDialog,
 )
+
+from samsara.ui import qt_runtime
 
 
 _STYLESHEET = """
@@ -102,47 +104,27 @@ def _danger(label: str, width: int = 0) -> QPushButton:
 # ---------------------------------------------------------------------------
 
 class ProfileManagerQt:
-    """Wrapper that owns the daemon thread and the window instance."""
+    """Wrapper around _ProfileManagerWindow using the shared qt_runtime."""
 
     def __init__(self, pm, on_profiles_changed=None):
         self._pm = pm
         self._cb = on_profiles_changed
         self._window = None
-        self._thread = None
+        self._init_posted = False
 
     def show(self):
         if self._window is not None:
-            try:
-                self._window.raise_()
-                self._window.activateWindow()
-                return
-            except Exception:
-                self._window = None
-
-        self._thread = threading.Thread(
-            target=self._create, daemon=True, name="profile-manager-qt"
-        )
-        self._thread.start()
-
-    def _create(self):
-        qt_app = QApplication.instance()
-        owns_app = qt_app is None
-        if qt_app is None:
-            qt_app = QApplication([])
-        if owns_app:
-            self._init_window()
-            qt_app.exec()
-            self._window = None
-        else:
-            QTimer.singleShot(0, qt_app, self._init_window)
+            qt_runtime.post(self._window.show)
+            qt_runtime.post(self._window.raise_)
+            qt_runtime.post(self._window.activateWindow)
+        elif not self._init_posted:
+            self._init_posted = True
+            qt_runtime.post(self._init_window)
 
     def _init_window(self):
+        """Runs on the Qt thread."""
         self._window = _ProfileManagerWindow(self._pm, self._cb)
-        self._window.destroyed.connect(self._on_destroyed)
         self._window.show()
-
-    def _on_destroyed(self):
-        self._window = None
 
 
 # ---------------------------------------------------------------------------
@@ -325,6 +307,10 @@ class _ProfileManagerWindow(QMainWindow):
 
     def _combo_for(self, ptype: str) -> QComboBox:
         return self._dict_combo if ptype == 'dictionary' else self._cmd_combo
+
+    def closeEvent(self, e):
+        e.ignore()
+        self.hide()
 
     def _selected(self, ptype: str) -> str:
         val = self._combo_for(ptype).currentText()

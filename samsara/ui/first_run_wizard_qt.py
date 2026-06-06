@@ -18,6 +18,8 @@ from PySide6.QtWidgets import (
     QFrame, QScrollArea,
 )
 
+from samsara.ui import qt_runtime
+
 
 # ---------------------------------------------------------------------------
 # Stylesheet
@@ -265,28 +267,39 @@ _DEFAULTS = {
 # ---------------------------------------------------------------------------
 
 class FirstRunWizardQt:
-    """Drop-in replacement for FirstRunWizard with a Qt UI."""
+    """Drop-in replacement for FirstRunWizard with a Qt UI.
+
+    run() blocks the calling thread until the wizard is complete or
+    dismissed, without owning the event loop.
+    """
 
     def __init__(self, config_path):
         self.config_path = config_path
 
     def run(self) -> dict | None:
-        qt_app = QApplication.instance()
-        if qt_app is None:
-            qt_app = QApplication([])
+        qt_runtime.ensure_started()
 
-        win = _WizardWindow(self.config_path)
-        win.show()
+        result_holder = [None]
+        done = threading.Event()
 
-        # Center on screen
-        screen = qt_app.primaryScreen().availableGeometry()
-        win.move(
-            screen.center().x() - win.width() // 2,
-            screen.center().y() - win.height() // 2,
-        )
+        def _create():
+            win = _WizardWindow(self.config_path)
+            app = QApplication.instance()
+            if app:
+                screen = app.primaryScreen().availableGeometry()
+                win.move(
+                    screen.center().x() - win.width() // 2,
+                    screen.center().y() - win.height() // 2,
+                )
+            win._finished.connect(lambda r: (
+                result_holder.__setitem__(0, r),
+                done.set(),
+            ))
+            win.show()
 
-        qt_app.exec()
-        return win.result
+        qt_runtime.post(_create)
+        done.wait()
+        return result_holder[0]
 
 
 # ---------------------------------------------------------------------------
@@ -295,6 +308,7 @@ class FirstRunWizardQt:
 
 class _WizardWindow(QMainWindow):
     _mic_result = Signal(str, str)   # (message, hex-color)
+    _finished   = Signal(object)     # emits result just before close
 
     def __init__(self, config_path):
         super().__init__()
@@ -851,10 +865,11 @@ class _WizardWindow(QMainWindow):
                 self._config[key] = val
 
     def closeEvent(self, event):
-        # X button — save defaults so the wizard doesn't re-appear
+        # Ensure result is always set before signalling done.
         if self.result is None:
             self._config['first_run_complete'] = True
             self.result = self._config
+        self._finished.emit(self.result)
         event.accept()
 
     # ------------------------------------------------------------------

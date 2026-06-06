@@ -2005,8 +2005,17 @@ class DictationApp:
 
     def process_transcription(self, text):
         """Process transcribed text with auto-capitalize and number formatting"""
+        self._skip_cleanup = False
         if not text:
             return text
+
+        # Case formatter: first-token-only, opt-in via enable_case_formatters config
+        if self.config.get('enable_case_formatters', False):
+            from samsara.formatters import apply_case_formatter
+            _formatted = apply_case_formatter(text)
+            if _formatted is not None:
+                self._skip_cleanup = True   # tell caller to bypass clean_text
+                return _formatted
 
         # Number word to digit mapping
         number_words = {
@@ -3118,7 +3127,8 @@ class DictationApp:
                 # Deterministic cleanup (filler removal, spacing). Snapshot
                 # raw BEFORE cleanup so history can preserve the original.
                 raw = text
-                text = clean_text(text, mode=self.config.get('cleanup_mode', 'clean'))
+                _cmode = 'verbatim' if getattr(self, '_skip_cleanup', False) else self.config.get('cleanup_mode', 'clean')
+                text = clean_text(text, mode=_cmode)
 
                 if self.config['add_trailing_space']:
                     text = text + " "
@@ -4139,7 +4149,8 @@ class DictationApp:
 
         # Deterministic cleanup (filler removal, spacing).
         raw = text
-        text = clean_text(text, mode=self.config.get('cleanup_mode', 'clean'))
+        _cmode = 'verbatim' if getattr(self, '_skip_cleanup', False) else self.config.get('cleanup_mode', 'clean')
+        text = clean_text(text, mode=_cmode)
 
         if self.config['add_trailing_space']:
             text = text + " "
@@ -4843,7 +4854,8 @@ class DictationApp:
 
                     # Deterministic cleanup (filler removal, spacing).
                     raw = text
-                    text = clean_text(text, mode=self.config.get('cleanup_mode', 'clean'))
+                    _cmode = 'verbatim' if getattr(self, '_skip_cleanup', False) else self.config.get('cleanup_mode', 'clean')
+                    text = clean_text(text, mode=_cmode)
 
                     if self.config['add_trailing_space']:
                         text = text + " "
