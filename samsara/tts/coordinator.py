@@ -160,6 +160,9 @@ class AudioCoordinator:
                 except Exception:
                     logger.exception("AudioCoordinator: on_done callback raised")
 
+        self._active_interruptible = interruptible
+        self.transition_to(SPEAKING, context={'text': text})
+
         handle = self.engine.speak(
             text,
             voice_id=effective_voice,
@@ -171,8 +174,6 @@ class AudioCoordinator:
         )
 
         self._active_handle = handle
-        self._active_interruptible = interruptible
-        self.transition_to(SPEAKING, context={'utterance_id': handle.utterance_id, 'text': text})
         return handle
 
     def cancel_speech(self) -> None:
