@@ -196,12 +196,12 @@ class TestRingConcurrent:
             f"write_cursor {bus.write_cursor} != iters {iters[0]}"
         )
 
-        # 3. Slow reader must have been lapped (overrun > 0).
-        #    RING_FRAMES=100 * 10ms = 1s round trip; SLOW_SLEEP_S=1.2s > that.
-        assert results["slow"].overrun_count > 0, (
-            f"Slow reader had 0 overruns after {TEST_DURATION_S}s — "
-            "overrun-recovery path was not exercised"
-        )
+        # 3. Slow-reader overrun: with RING_FRAMES=600 (60-second ring) the slow
+        #    reader sleeps only 1.2 s per cycle — it cannot be reliably lapped
+        #    within a 6-second test without making the suite unacceptably slow.
+        #    Overrun-recovery correctness is verified deterministically in
+        #    test_overrun_recovery_is_deterministic below.  The slow reader
+        #    continues to run here as extra concurrent load for invariant 4.
 
         # 4. No torn frames on any reader — this is the stale-slot race check.
         all_errors = []
@@ -228,4 +228,46 @@ class TestRingConcurrent:
         assert results["fast"].overrun_count == 0, (
             f"Fast reader had {results['fast'].overrun_count} overruns — "
             "it should keep up with the write rate"
+        )
+
+    def test_overrun_recovery_is_deterministic(self):
+        """Force a reader to be lapped and verify overrun-recovery correctness.
+
+        Drives the writer a fixed number of frames past the reader so the
+        overrun condition is triggered without any wall-clock racing.  Verifies:
+          - overrun_count increments exactly once
+          - read_next() returns a frame (not EMPTY) after recovery
+          - the recovered frame is within the prebuffer window
+          - no torn frame (seq and pcm[0] belong to the same write cycle)
+        """
+        bus    = FrameBus()
+        reader = bus.new_reader()   # cursor at write head (0)
+
+        # Write enough to lap the reader unambiguously.
+        # Overrun fires when (write_cursor - read_cursor) > RING_FRAMES.
+        # read_cursor is 0, so we need write_cursor > RING_FRAMES.
+        total = RING_FRAMES + PREBUFFER_FRAMES + 5
+        for seq in range(total):
+            pcm      = np.zeros(FRAME_SIZE, dtype=np.int16)
+            pcm[0]   = np.int16(seq % 32767)
+            bus.write(pcm, time.perf_counter(), 0)
+
+        # The reader is now lapped; the next read must trigger overrun recovery.
+        frame = reader.read_next()
+
+        assert reader.overrun_count == 1, (
+            f"expected exactly 1 overrun, got {reader.overrun_count}"
+        )
+        assert frame is not EMPTY, (
+            "overrun recovery should return a frame, not EMPTY"
+        )
+        # After recovery the cursor sits at write_cursor - PREBUFFER_FRAMES,
+        # so the returned frame's seq must be within the prebuffer window.
+        assert frame.seq >= total - PREBUFFER_FRAMES - 1, (
+            f"recovered frame seq {frame.seq} not in prebuffer window "
+            f"(expected >= {total - PREBUFFER_FRAMES - 1})"
+        )
+        # Torn-frame guard: seq and pcm[0] must belong to the same write cycle.
+        assert frame.pcm[0] == frame.seq % 32767, (
+            f"torn frame after recovery: seq={frame.seq} pcm[0]={frame.pcm[0]}"
         )
