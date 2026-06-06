@@ -75,7 +75,7 @@ class WakeConsumer:
         self._last_epoch         = None
         self._running = True
         # Snap to current write head — skip pre-wake-mode ring history
-        self._reader._read_cursor = self._engine._ring.write_cursor
+        self._reader.snap_to_head()
         self._thread = threading.Thread(
             target=self._poll_loop, daemon=True, name="wake-consumer"
         )

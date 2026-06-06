@@ -126,13 +126,14 @@ class Reader:
     beyond the Reader object itself until the registry drops it.
     """
 
-    __slots__ = ('_bus', '_read_cursor', 'overrun_count', '_invalidated')
+    __slots__ = ('_bus', '_read_cursor', 'overrun_count', '_invalidated', '_name')
 
     def __init__(self, bus: 'FrameBus', initial_cursor: int) -> None:
         self._bus          = bus
         self._read_cursor  = initial_cursor
         self.overrun_count = 0
         self._invalidated  = False
+        self._name: str | None = None
 
     def read_next(self) -> Union[Frame, _Sentinel]:
         """Return the next Frame, or EMPTY if the ring has no new data.
@@ -233,6 +234,12 @@ class Reader:
         min_cursor = max(0, wc - RING_FRAMES)
         self._read_cursor = max(self._read_cursor - n_frames, min_cursor)
 
+    def snap_to_head(self) -> None:
+        """Move read cursor to the current write head (skip buffered backlog)."""
+        if self._invalidated:
+            raise RuntimeError("Reader is invalidated.")
+        self._read_cursor = self._bus._write_cursor
+
     def invalidate(self) -> None:
         """Mark this Reader as dead. Called by AudioCaptureEngine.unregister_consumer()."""
         self._invalidated = True
@@ -297,7 +304,7 @@ class FrameBus:
 
     # ── Reader factory ────────────────────────────────────────────────────────
 
-    def new_reader(self) -> Reader:
+    def new_reader(self, name: str | None = None) -> Reader:
         """Return a new Reader positioned at the current write head.
 
         The reader starts with no buffered history (read_cursor ==
@@ -305,8 +312,13 @@ class FrameBus:
         reader.rewind(PREBUFFER_FRAMES) immediately after obtaining the
         reader — this positions it at the start of the prebuffer window
         already captured in the ring.
+
+        Args:
+            name: optional consumer label; shows in overrun log messages.
         """
-        return Reader(self, self._write_cursor)
+        reader = Reader(self, self._write_cursor)
+        reader._name = name
+        return reader
 
     # ── Epoch management ──────────────────────────────────────────────────────
 
