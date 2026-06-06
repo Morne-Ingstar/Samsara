@@ -19,6 +19,8 @@ import sys
 import time
 from typing import Any, Dict, List, Optional, Tuple
 
+from .constants import CLIPBOARD_POST_PASTE_SETTLE
+
 logger = logging.getLogger(__name__)
 
 
@@ -154,7 +156,7 @@ class PressHandler(CommandHandler):
     """Press and release a single key."""
 
     def execute(self, cmd, ctx):
-        key = ctx.get_key(cmd['key'])
+        key = ctx.get_key(cmd.get('key', ''))
         ctx.keyboard.press(key)
         ctx.keyboard.release(key)
         return True
@@ -257,7 +259,7 @@ class TextHandler(CommandHandler):
                     pyperclip.copy(text_to_insert)
                     time.sleep(0.02)
                     pyautogui.hotkey('ctrl', 'v')
-                    time.sleep(0.4)
+                    time.sleep(CLIPBOARD_POST_PASTE_SETTLE)
                 except Exception as e:
                     logger.error(f"Paste failed: {e}")
                 finally:

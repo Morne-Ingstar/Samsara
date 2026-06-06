@@ -1,7 +1,8 @@
 """
 Vision bridge — local screenshot capture + Ollama vision model.
 
-Privacy boundary: screenshots never leave this machine. The vision model
+Privacy boundary: by default, screenshots never leave this machine; this
+holds only while ollama.host points to a local instance. The vision model
 (qwen2.5vl:3b) runs locally via Ollama. Cloud LLM paths receive only
 TEXT descriptions produced by the local model, never raw images or
 base64-encoded data.

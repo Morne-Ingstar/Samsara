@@ -23,15 +23,19 @@ DEFAULT_FILLERS = frozenset({'please', 'uh', 'um', 'like'})
 # "type" / "dictate" → quick_dictation (silence-based auto-finalize, 1s timeout)
 # "long dictate" → long_dictation (no silence timeout, requires end word)
 DICTATION_COMMANDS = {
-    "long dictate": "long_dictation",
+    "short dictation": "quick_dictation",
     "long dictation": "long_dictation",
     "short dictate": "quick_dictation",
-    "short dictation": "quick_dictation",
     "quick dictate": "quick_dictation",
-    "dictate": "quick_dictation",
+    "long dictate": "long_dictation",
     "dictation": "quick_dictation",
+    "dictate": "quick_dictation",
     "type": "quick_dictation",
 }
+assert all(
+    len(k1) >= len(k2)
+    for k1, k2 in zip(DICTATION_COMMANDS, list(DICTATION_COMMANDS)[1:])
+), "DICTATION_COMMANDS must be ordered longest-prefix-first"
 
 # Separator characters Whisper may insert between command keyword and payload
 _SEP_PATTERN = r'[\s:,\-]+'
