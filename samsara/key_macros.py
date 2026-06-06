@@ -90,6 +90,7 @@ class KeyMacroManager:
         self.listener = None
         self.running = False
         self.on_macro_triggered = None  # Callback for UI feedback
+        self._lock = threading.Lock()
 
     def start(self):
         """Start listening for macro triggers."""
@@ -118,8 +119,9 @@ class KeyMacroManager:
             self.listener.stop()
             self.listener = None
 
-        # Release any keys we're holding
-        for key in list(self.held_keys):
+        with self._lock:
+            keys_to_release = set(self.held_keys)
+        for key in keys_to_release:
             self._release_key(key)
 
         print("[MACROS] Key macro listener stopped")
@@ -137,11 +139,14 @@ class KeyMacroManager:
 
     def get_held_keys(self):
         """Return the set of currently held keys."""
-        return set(self.held_keys)
+        with self._lock:
+            return set(self.held_keys)
 
     def release_all_held(self):
         """Release all keys currently held by macros."""
-        for key in list(self.held_keys):
+        with self._lock:
+            keys_to_release = set(self.held_keys)
+        for key in keys_to_release:
             self._release_key(key)
         print("[MACROS] Released all held keys")
 
@@ -157,13 +162,13 @@ class KeyMacroManager:
         # Track modifier keys
         if key_name in ('ctrl', 'shift', 'alt', 'ctrl_l', 'ctrl_r',
                         'shift_l', 'shift_r', 'alt_l', 'alt_r'):
-            # Normalize modifier names
-            if 'ctrl' in key_name:
-                self.current_modifiers.add('ctrl')
-            elif 'shift' in key_name:
-                self.current_modifiers.add('shift')
-            elif 'alt' in key_name:
-                self.current_modifiers.add('alt')
+            with self._lock:
+                if 'ctrl' in key_name:
+                    self.current_modifiers.add('ctrl')
+                elif 'shift' in key_name:
+                    self.current_modifiers.add('shift')
+                elif 'alt' in key_name:
+                    self.current_modifiers.add('alt')
 
         macros = self.config.get('key_macros', {}).get('macros', [])
 
@@ -191,13 +196,13 @@ class KeyMacroManager:
         if not key_name:
             return
 
-        # Track modifier releases
-        if 'ctrl' in key_name:
-            self.current_modifiers.discard('ctrl')
-        elif 'shift' in key_name:
-            self.current_modifiers.discard('shift')
-        elif 'alt' in key_name:
-            self.current_modifiers.discard('alt')
+        with self._lock:
+            if 'ctrl' in key_name:
+                self.current_modifiers.discard('ctrl')
+            elif 'shift' in key_name:
+                self.current_modifiers.discard('shift')
+            elif 'alt' in key_name:
+                self.current_modifiers.discard('alt')
 
     def _handle_tap(self, key_name, macro):
         """Handle tap combo detection."""
@@ -206,19 +211,19 @@ class KeyMacroManager:
         window = trigger.get('window_ms', 500) / 1000
         required_taps = trigger.get('taps', 3)
 
-        # Clean old taps outside the window
-        if key_name not in self.tap_history:
-            self.tap_history[key_name] = []
+        with self._lock:
+            if key_name not in self.tap_history:
+                self.tap_history[key_name] = []
+            self.tap_history[key_name] = [
+                t for t in self.tap_history[key_name]
+                if now - t < window
+            ]
+            self.tap_history[key_name].append(now)
+            fire = len(self.tap_history[key_name]) >= required_taps
+            if fire:
+                self.tap_history[key_name] = []
 
-        self.tap_history[key_name] = [
-            t for t in self.tap_history[key_name]
-            if now - t < window
-        ]
-        self.tap_history[key_name].append(now)
-
-        # Check if we've reached the required tap count
-        if len(self.tap_history[key_name]) >= required_taps:
-            self.tap_history[key_name] = []  # Reset tap counter
+        if fire:
             self._execute_action(macro)
 
     def _check_hotkey_match(self, trigger, pressed_key):
@@ -234,9 +239,10 @@ class KeyMacroManager:
         if pressed_key not in non_modifiers:
             return False
 
-        # Check if required modifiers are held
         required_modifiers = required_keys & {'ctrl', 'shift', 'alt'}
-        return required_modifiers == (self.current_modifiers & required_modifiers)
+        with self._lock:
+            current = frozenset(self.current_modifiers)
+        return required_modifiers == (current & required_modifiers)
 
     def _execute_action(self, macro):
         """Execute a macro's action."""
@@ -247,7 +253,9 @@ class KeyMacroManager:
         macro_name = macro.get('name', 'Unknown')
 
         if action_type == 'toggle_hold':
-            if key in self.held_keys:
+            with self._lock:
+                is_held = key in self.held_keys
+            if is_held:
                 self._release_key(key)
                 print(f"[MACROS] '{macro_name}': Released {key}")
                 if self.on_macro_triggered:
@@ -277,13 +285,15 @@ class KeyMacroManager:
 
     def _hold_key(self, key):
         """Start holding a key."""
-        self.held_keys.add(key)
+        with self._lock:
+            self.held_keys.add(key)
         key_obj = get_key_object(key)
         self.keyboard.press(key_obj)
 
     def _release_key(self, key):
         """Release a held key."""
-        self.held_keys.discard(key)
+        with self._lock:
+            self.held_keys.discard(key)
         key_obj = get_key_object(key)
         self.keyboard.release(key_obj)
 
