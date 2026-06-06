@@ -275,6 +275,29 @@ class TestScopeChecks:
             'webhook_trigger', {'url': 'https://api.example.com/tasks'})
         assert allowed
 
+    def test_scope_rejects_domain_prefix_bypass(self):
+        """https://example.com.evil.com must not match when example.com is allowed."""
+        d = _make_dispatcher(config={
+            'allowed_directories': [],
+            'allowed_domains': ['https://example.com'],
+            'tier2_approvals': {},
+        })
+        allowed, reason = d._check_scope(
+            'webhook_trigger', {'url': 'https://example.com.evil.com/steal'})
+        assert not allowed
+        assert 'not in allowed_domains' in reason
+
+    def test_scope_allows_true_subdomain(self):
+        """api.example.com must be accepted when example.com is allowed."""
+        d = _make_dispatcher(config={
+            'allowed_directories': [],
+            'allowed_domains': ['https://example.com'],
+            'tier2_approvals': {},
+        })
+        allowed, _ = d._check_scope(
+            'webhook_trigger', {'url': 'https://api.example.com/v1/data'})
+        assert allowed
+
 
 class TestTier2ApprovalScope:
     def test_tier2_approval_exact_scope(self, tmp_path):
