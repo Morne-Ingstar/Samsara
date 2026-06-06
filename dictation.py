@@ -216,7 +216,7 @@ from samsara.wake_word_matcher import match_wake_phrase
 from samsara.wake_corrections import apply_corrections as apply_wake_corrections, was_corrected
 from samsara.command_parser import parse_wake_command, normalize_command_text, strip_wake_echoes
 from samsara.phonetic_wash import apply_phonetic_wash
-from samsara.command_stats import increment_command_count
+from samsara.command_stats import increment_command_count, flush as flush_command_stats
 from samsara import ava_corrections as _ava_corrections
 from samsara import plugin_commands as _plugin_commands
 from samsara.commands import CommandExecutor
@@ -5712,6 +5712,18 @@ class DictationApp:
         # Flush Ava alias use-count to disk before exit
         try:
             _ava_corrections.flush_pending()
+        except Exception:
+            pass
+
+        # Flush debounced command stats and hint counters so counts inside
+        # the 5-second coalesce window are not lost on clean shutdown.
+        try:
+            flush_command_stats()
+        except Exception:
+            pass
+        try:
+            if hasattr(self, 'hints') and self.hints is not None:
+                self.hints.shutdown()
         except Exception:
             pass
 
