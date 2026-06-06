@@ -20,7 +20,20 @@ _PILL_BD  = QColor(70, 70, 80, 200)
 _TEXT_CLR = QColor(255, 255, 255, 255)
 
 # Set True to emit [DPI-COORD] and [OVERLAY-GEOM] debug lines.
-_COORD_DEBUG = True
+# False by default to keep session logs clean; enable only when diagnosing
+# coordinate or DPI issues on a specific machine.
+_COORD_DEBUG = False
+
+# Pill anchor offsets in logical pixels.
+# Each pill's bottom-right corner is placed at (element_x + DX, element_y + DY)
+# so labels float just outside the element corner rather than covering its content.
+# DX = -(pill_width) + margin_right, DY = -(pill_height) + margin_bottom.
+# These are added to the raw element logical coord before computing pill top-left:
+#   pill_x = element_x - pill_width + PILL_ANCHOR_DX
+#   pill_y = element_y - pill_height + PILL_ANCHOR_DY
+# A value of -4 leaves a 4px gap between the pill's right/bottom edge and the corner.
+PILL_ANCHOR_DX = -4
+PILL_ANCHOR_DY = -4
 
 # ---------------------------------------------------------------------------
 # Thread-level DPI awareness (Phase 3 fix)
@@ -266,13 +279,18 @@ class NumbersOverlayWindow(QWidget):
             )
             for lbl in self._labels[:3]:
                 sx, sy, pw, ph, text = lbl
-                ox, oy = self._virt.x(), self._virt.y()
-                rx = (sx - ox) * coord_scale
-                ry = (sy - oy) * coord_scale
+                _ox, _oy = self._virt.x(), self._virt.y()
+                _ax = max(_ox, min(sx - pw + PILL_ANCHOR_DX,
+                                   _ox + self._virt.width() - pw))
+                _ay = max(_oy, min(sy - ph + PILL_ANCHOR_DY,
+                                   _oy + self._virt.height() - ph))
+                rx = (_ax - _ox) * coord_scale
+                ry = (_ay - _oy) * coord_scale
                 _logger.debug(
-                    "[OVERLAY-PAINT] pill '%s': screen=(%d,%d) "
+                    "[OVERLAY-PAINT] pill '%s': elem=(%d,%d) anchor=(%d,%d) "
                     "local=(%.1f,%.1f) sz=(%.0fx%.0f)",
-                    text, sx, sy, rx, ry, pw * coord_scale, ph * coord_scale,
+                    text, sx, sy, _ax, _ay, rx, ry,
+                    pw * coord_scale, ph * coord_scale,
                 )
 
         font = QFont("Segoe UI", 11, QFont.Bold)
@@ -282,8 +300,14 @@ class NumbersOverlayWindow(QWidget):
         oy = self._virt.y()
 
         for sx, sy, pw, ph, text in self._labels:
-            lx = (sx - ox) * coord_scale
-            ly = (sy - oy) * coord_scale
+            # Anchor: pill bottom-right at element top-left minus a small margin.
+            # Clamp so pills near screen edges stay fully on-screen.
+            ax = max(ox, min(sx - pw + PILL_ANCHOR_DX,
+                             ox + self._virt.width() - pw))
+            ay = max(oy, min(sy - ph + PILL_ANCHOR_DY,
+                             oy + self._virt.height() - ph))
+            lx = (ax - ox) * coord_scale
+            ly = (ay - oy) * coord_scale
             lw = pw * coord_scale
             lh = ph * coord_scale
             rect = QRectF(lx, ly, lw, lh)
