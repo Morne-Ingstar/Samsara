@@ -74,6 +74,7 @@ import numpy as np
 
 from .frame import (
     Frame,
+    FRAME_MS,
     FRAME_SIZE,
     RING_FRAMES,
     PREBUFFER_FRAMES,
