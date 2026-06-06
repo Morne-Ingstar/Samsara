@@ -58,8 +58,17 @@ def _load():
 
 def _save():
     os.makedirs(os.path.dirname(_CORRECTIONS_PATH), exist_ok=True)
-    with open(_CORRECTIONS_PATH, 'w', encoding='utf-8') as f:
-        json.dump({'aliases': _aliases}, f, indent=2)
+    tmp = _CORRECTIONS_PATH + '.tmp'
+    try:
+        with open(tmp, 'w', encoding='utf-8') as f:
+            json.dump({'aliases': _aliases}, f, indent=2)
+        os.replace(tmp, _CORRECTIONS_PATH)
+    except Exception as e:
+        print(f"[AVA CORRECTIONS] Save failed: {e}")
+        try:
+            os.remove(tmp)
+        except OSError:
+            pass
 
 
 def flush_pending():

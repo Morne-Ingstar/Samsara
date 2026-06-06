@@ -18,8 +18,17 @@ def _load():
 
 def _save():
     os.makedirs(os.path.dirname(_STATS_PATH), exist_ok=True)
-    with open(_STATS_PATH, 'w', encoding='utf-8') as f:
-        json.dump(_stats, f, indent=2)
+    tmp = _STATS_PATH + '.tmp'
+    try:
+        with open(tmp, 'w', encoding='utf-8') as f:
+            json.dump(_stats, f, indent=2)
+        os.replace(tmp, _STATS_PATH)
+    except Exception as e:
+        print(f"[STATS] Save failed: {e}")
+        try:
+            os.remove(tmp)
+        except OSError:
+            pass
 
 
 def increment_command_count(name: str):

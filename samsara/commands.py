@@ -5,6 +5,7 @@ Handles voice command loading, matching, and execution.
 """
 
 import json
+import os
 import time
 from pathlib import Path
 from typing import Any, Callable, Dict, Optional, Tuple
@@ -155,11 +156,28 @@ class CommandExecutor:
             self.commands = {}
 
     def save_commands(self) -> None:
+        # commands.json lives in the app root, which is monitored by the
+        # config file watcher.  os.replace requires FILE_SHARE_DELETE on
+        # all open handles — Python's open() never sets that flag, so a
+        # rename would fail with PermissionError while the watcher runs.
+        # Mirror save_config's workaround: serialize to a .tmp, read it
+        # back as a string, then overwrite the live file in a single write
+        # call (open('w') uses FILE_SHARE_READ|FILE_SHARE_WRITE, which
+        # succeeds even while the watcher holds a read handle).
+        tmp_path = str(self.commands_path) + '.tmp'
         try:
-            with open(self.commands_path, 'w', encoding='utf-8') as f:
+            with open(tmp_path, 'w', encoding='utf-8') as f:
                 json.dump({'commands': self.commands}, f, indent=2)
+            tmp_text = open(tmp_path, 'r', encoding='utf-8').read()
+            with open(self.commands_path, 'w', encoding='utf-8') as f:
+                f.write(tmp_text)
         except Exception as e:
             print(f"[ERROR] Could not save commands: {e}")
+        finally:
+            try:
+                os.remove(tmp_path)
+            except OSError:
+                pass
 
     def get_command(self, name: str) -> Optional[Dict[str, Any]]:
         """Return the command dict for *name*, or None if not found."""

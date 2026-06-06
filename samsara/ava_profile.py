@@ -100,8 +100,17 @@ def _load():
 def _save_locked():
     """Persist to disk. Caller MUST hold _profile_lock."""
     os.makedirs(os.path.dirname(_PROFILE_PATH), exist_ok=True)
-    with open(_PROFILE_PATH, 'w', encoding='utf-8') as f:
-        json.dump({'profile': _profile}, f, indent=2)
+    tmp = _PROFILE_PATH + '.tmp'
+    try:
+        with open(tmp, 'w', encoding='utf-8') as f:
+            json.dump({'profile': _profile}, f, indent=2)
+        os.replace(tmp, _PROFILE_PATH)
+    except Exception as e:
+        print(f"[AVA PROFILE] Save failed: {e}")
+        try:
+            os.remove(tmp)
+        except OSError:
+            pass
 
 # ---------------------------------------------------------------------------
 # Validation
