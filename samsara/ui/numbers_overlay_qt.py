@@ -6,17 +6,46 @@ mouse clicks pass straight through to the app below. Does not steal focus.
 
 import ctypes
 import ctypes.wintypes as _wt
+import logging
+import sys
 
 from PySide6.QtCore import Qt, QRect, QRectF
 from PySide6.QtGui import QColor, QPainter, QPainterPath, QFont
 from PySide6.QtWidgets import QApplication, QWidget
 
+_logger = logging.getLogger(__name__)
+
 _PILL_BG  = QColor(18, 18, 22, 230)
 _PILL_BD  = QColor(70, 70, 80, 200)
 _TEXT_CLR = QColor(255, 255, 255, 255)
 
-# Set True to emit [DPI-COORD] debug lines. Turn off after confirming fix.
+# Set True to emit [DPI-COORD] and [OVERLAY-GEOM] debug lines.
 _COORD_DEBUG = False
+
+# ---------------------------------------------------------------------------
+# Thread-level DPI awareness (Phase 3 fix)
+# ---------------------------------------------------------------------------
+
+def _ensure_dpi_thread_context() -> None:
+    """Set per-monitor DPI V2 awareness on the calling thread.
+
+    The samsara-qt thread creates Qt HWNDs.  SetProcessDpiAwareness is
+    process-wide but Windows assigns per-thread DPI context based on the
+    thread that calls CreateWindow.  Without this, HWNDs created on the
+    background Qt thread may inherit system-DPI-aware context, causing
+    devicePixelRatio() to be 1.0 on a 1.5x screen and the painter to use
+    physical instead of logical coordinates -> top-left cluster bug.
+    """
+    if sys.platform != 'win32':
+        return
+    try:
+        # DPI_AWARENESS_CONTEXT_PER_MONITOR_AWARE_V2 == (HANDLE)(LONG_PTR)-4
+        ctypes.windll.user32.SetThreadDpiAwarenessContext(
+            ctypes.c_ssize_t(-4)
+        )
+    except Exception:
+        pass
+
 
 # ---------------------------------------------------------------------------
 # DPI-aware physical-to-logical coordinate conversion
@@ -36,7 +65,7 @@ _MONITORENUMPROC = ctypes.WINFUNCTYPE(
 
 
 def _win32_monitor_rects() -> list:
-    """Return physical monitor rects from Win32, sorted (left, top)."""
+    """Return Win32 monitor rects (physical or logical, same as Qt), sorted (left, top)."""
     rects = []
 
     def _cb(hmon, hdc, lprect, lparam):
@@ -65,9 +94,6 @@ def phys_to_logical(px: int, py: int) -> tuple:
 
     Falls back to identity if conversion data is unavailable.
     """
-    import logging as _log
-    _logger = _log.getLogger(__name__)
-
     try:
         phys_rects = _win32_monitor_rects()
         qt_screens = sorted(
@@ -95,8 +121,6 @@ def phys_to_logical(px: int, py: int) -> tuple:
                 )
 
                 if is_logical:
-                    # Win32 and Qt agree on origin and size: both use the same
-                    # coordinate space. No conversion needed.
                     if _COORD_DEBUG:
                         _logger.debug(
                             "[DPI-COORD] phys_to_logical(%d,%d): logical mode "
@@ -121,14 +145,23 @@ def phys_to_logical(px: int, py: int) -> tuple:
     return px, py
 
 
+# ---------------------------------------------------------------------------
+# Overlay window
+# ---------------------------------------------------------------------------
+
 class NumbersOverlayWindow(QWidget):
     """Fullscreen transparent click-through window spanning all monitors.
 
-    Renders numbered pill labels via QPainter at absolute screen coordinates.
-    Call update_labels() to refresh labels in place without recreating the window.
+    Renders numbered pill labels via QPainter at absolute screen logical
+    coordinates.  Call update_labels() to refresh in place.
     """
 
     def __init__(self, labels: list) -> None:
+        # Ensure the thread creating HWNDs has per-monitor DPI V2 context.
+        # HWND creation is deferred to show() time; setting context here
+        # ensures it is active on this thread when show() fires.
+        _ensure_dpi_thread_context()
+
         super().__init__(None)
         self._labels = labels   # list of [screen_x, screen_y, pill_w, pill_h, text]
 
@@ -147,6 +180,40 @@ class NumbersOverlayWindow(QWidget):
         self._virt = virt
         self.setGeometry(virt)
 
+        if _COORD_DEBUG:
+            _logger.debug(
+                "[OVERLAY-GEOM] _virt: x=%d y=%d w=%d h=%d",
+                virt.x(), virt.y(), virt.width(), virt.height(),
+            )
+            _logger.debug(
+                "[OVERLAY-GEOM] setGeometry: x=%d y=%d w=%d h=%d",
+                self.geometry().x(), self.geometry().y(),
+                self.geometry().width(), self.geometry().height(),
+            )
+            _logger.debug(
+                "[OVERLAY-GEOM] devicePixelRatio=%.2f screen=%s",
+                self.devicePixelRatio(),
+                self.screen().name() if self.screen() else 'None',
+            )
+            for i, s in enumerate(QApplication.screens()):
+                _logger.debug(
+                    "[OVERLAY-GEOM] screen[%d]: geo=%s dpr=%.2f name=%s",
+                    i, s.geometry(), s.devicePixelRatio(), s.name(),
+                )
+            app = QApplication.instance()
+            if app:
+                try:
+                    _logger.debug(
+                        "[OVERLAY-GEOM] Qt attrs: AA_EnableHighDpiScaling=%s "
+                        "AA_UseHighDpiPixmaps=%s",
+                        app.testAttribute(Qt.AA_EnableHighDpiScaling),
+                        app.testAttribute(Qt.AA_UseHighDpiPixmaps),
+                    )
+                except AttributeError:
+                    _logger.debug(
+                        "[OVERLAY-GEOM] Qt6: high-DPI attrs removed (always on)"
+                    )
+
     def update_labels(self, labels: list) -> None:
         self._labels = labels
         self.update()
@@ -158,6 +225,37 @@ class NumbersOverlayWindow(QWidget):
         painter = QPainter(self)
         painter.setRenderHint(QPainter.Antialiasing, True)
 
+        # Detect and compensate for DPR mismatch.
+        # If the overlay HWND was created with incorrect thread DPI context,
+        # self.devicePixelRatio() < screen.devicePixelRatio().  In that case
+        # the painter operates in physical pixels while our pill coords are in
+        # screen logical pixels.  Scale painter so logical coords map correctly.
+        widget_dpr = self.devicePixelRatio()
+        screen     = self.screen()
+        screen_dpr = screen.devicePixelRatio() if screen else widget_dpr
+        # coord_scale > 1.0 when the widget DPR is lower than the screen DPR
+        # (e.g. widget=1.0, screen=1.5 -> scale=1.5 so logical 1000 -> physical 1500)
+        coord_scale = screen_dpr / widget_dpr if widget_dpr > 0 else 1.0
+
+        if _COORD_DEBUG:
+            _logger.debug(
+                "[OVERLAY-PAINT] widget_dpr=%.2f screen_dpr=%.2f coord_scale=%.3f "
+                "ox=%d oy=%d widget_w=%d widget_h=%d",
+                widget_dpr, screen_dpr, coord_scale,
+                self._virt.x(), self._virt.y(),
+                self.width(), self.height(),
+            )
+            for lbl in self._labels[:3]:
+                sx, sy, pw, ph, text = lbl
+                ox, oy = self._virt.x(), self._virt.y()
+                rx = (sx - ox) * coord_scale
+                ry = (sy - oy) * coord_scale
+                _logger.debug(
+                    "[OVERLAY-PAINT] pill '%s': screen=(%d,%d) "
+                    "local=(%.1f,%.1f) sz=(%.0fx%.0f)",
+                    text, sx, sy, rx, ry, pw * coord_scale, ph * coord_scale,
+                )
+
         font = QFont("Segoe UI", 11, QFont.Bold)
         painter.setFont(font)
 
@@ -165,7 +263,11 @@ class NumbersOverlayWindow(QWidget):
         oy = self._virt.y()
 
         for sx, sy, pw, ph, text in self._labels:
-            rect = QRectF(sx - ox, sy - oy, pw, ph)
+            lx = (sx - ox) * coord_scale
+            ly = (sy - oy) * coord_scale
+            lw = pw * coord_scale
+            lh = ph * coord_scale
+            rect = QRectF(lx, ly, lw, lh)
 
             path = QPainterPath()
             path.addRoundedRect(rect, 4.0, 4.0)
