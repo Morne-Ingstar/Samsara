@@ -86,7 +86,7 @@ class DictationSessionConsumer:
         # and rewind(PREBUFFER_FRAMES) goes backwards from THERE —
         # capturing stale audio from the gap between recordings, which
         # produces doubled transcriptions.
-        self._reader._read_cursor = self._engine._ring.write_cursor
+        self._reader.snap_to_head()
 
         _coordinator = getattr(self._app, 'audio_coordinator', None)
         if _coordinator and _coordinator.is_speaking:
@@ -223,7 +223,7 @@ class DictationSessionConsumer:
         self._streaming_lock  = threading.Lock()
 
         # Snap + rewind (same logic as activate())
-        self._reader._read_cursor = self._engine._ring.write_cursor
+        self._reader.snap_to_head()
         _coordinator = getattr(self._app, 'audio_coordinator', None)
         if _coordinator and _coordinator.is_speaking:
             print("[PRE] Streaming: pre-buffer skipped — TTS actively speaking")

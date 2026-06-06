@@ -225,7 +225,7 @@ class AudioCaptureEngine:
         reader.rewind(PREBUFFER_FRAMES) before the read loop to access
         rolling pre-trigger history.
         """
-        reader = self._ring.new_reader()
+        reader = self._ring.new_reader(name)
         with self._registry_lock:
             self._consumers.append((name, reader))
         return reader
