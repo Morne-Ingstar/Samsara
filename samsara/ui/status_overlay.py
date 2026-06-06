@@ -6,21 +6,20 @@ Public API:
     StatusOverlay.hide()
     StatusOverlay.toggle(notification_manager, alarm_manager)
 
-Runs on the existing Qt event loop when one is present (Samsara's normal
-case), or spins up its own if called in isolation (tests / standalone).
 Auto-refreshes every 2 seconds so alarm nagging state stays current.
 """
 
-import threading
 from datetime import datetime
 
 from PySide6.QtCore import Qt, QTimer, Signal, Slot
 from PySide6.QtGui import QFont
 from PySide6.QtWidgets import (
-    QApplication, QFrame, QHBoxLayout, QLabel,
+    QFrame, QHBoxLayout, QLabel,
     QMainWindow, QPushButton, QScrollArea,
     QVBoxLayout, QWidget,
 )
+
+from samsara.ui import qt_runtime
 
 # ── Palette (matches task_overlay.py dark theme) ──────────────────────────────
 
@@ -318,30 +317,24 @@ class StatusOverlay:
 
     def __init__(self):
         self._window: "_StatusWindow | None" = None
+        self._init_posted = False
 
     def show(self, notification_manager=None, alarm_manager=None):
-        qt_app = QApplication.instance()
         if self._window is not None:
             self._window._nm = notification_manager
             self._window._am = alarm_manager
             self._window._refresh_sig.emit()
-            QTimer.singleShot(0, self._window.show)
-            QTimer.singleShot(0, self._window.raise_)
-        elif qt_app is not None:
-            QTimer.singleShot(
-                0, lambda: self._init_window(notification_manager, alarm_manager)
+            qt_runtime.post(self._window.show)
+            qt_runtime.post(self._window.raise_)
+        elif not self._init_posted:
+            self._init_posted = True
+            qt_runtime.post(
+                lambda: self._init_window(notification_manager, alarm_manager)
             )
-        else:
-            self._nm = notification_manager
-            self._am = alarm_manager
-            t = threading.Thread(
-                target=self._run_standalone, daemon=True, name="status-overlay"
-            )
-            t.start()
 
     def hide(self):
         if self._window is not None:
-            QTimer.singleShot(0, self._window.hide)
+            qt_runtime.post(self._window.hide)
 
     def toggle(self, notification_manager=None, alarm_manager=None):
         if self._window is not None and self._window.isVisible():
@@ -350,18 +343,9 @@ class StatusOverlay:
             self.show(notification_manager, alarm_manager)
 
     def _init_window(self, notification_manager, alarm_manager):
+        """Runs on the Qt thread."""
         self._window = _StatusWindow(notification_manager, alarm_manager)
-        self._window.destroyed.connect(self._on_destroyed)
         self._window.show()
-
-    def _run_standalone(self):
-        qt_app = QApplication([])
-        self._init_window(self._nm, self._am)
-        qt_app.exec()
-        self._window = None
-
-    def _on_destroyed(self):
-        self._window = None
 
 
 # Module-level singleton — imported by both alarm_commands and reminders plugins

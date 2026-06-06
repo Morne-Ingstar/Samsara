@@ -22,12 +22,14 @@ import numpy as np
 import sounddevice as sd
 from PySide6.QtCore import Qt, QTimer, Signal
 from PySide6.QtWidgets import (
-    QAbstractItemView, QApplication, QComboBox, QFileDialog,
+    QAbstractItemView, QComboBox, QFileDialog,
     QFrame, QHBoxLayout, QHeaderView, QLabel, QLineEdit,
     QListWidget, QMainWindow, QMessageBox, QProgressBar,
     QPushButton, QScrollArea, QSizePolicy, QTableWidget,
     QTableWidgetItem, QTabWidget, QTextEdit, QVBoxLayout, QWidget,
 )
+
+from samsara.ui import qt_runtime
 
 logger = logging.getLogger(__name__)
 
@@ -188,6 +190,7 @@ class VoiceTrainingQt:
         self.app = app
         self._window: "_TrainingWindow | None" = None
         self._monitoring = False
+        self._init_posted = False
         self.custom_vocab: List[str] = []
         self.corrections_dict: dict = {}
         self.load_training_data()
@@ -298,22 +301,21 @@ class VoiceTrainingQt:
     # ----------------------------------------------------------------
 
     def show(self):
-        qt_app = QApplication.instance()
-        if qt_app is None:
-            return
         if self._window is not None:
-            QTimer.singleShot(0, self._window.show)
-            QTimer.singleShot(0, self._window.raise_)
-            QTimer.singleShot(0, self._window.activateWindow)
-            return
-        QTimer.singleShot(0, qt_app, self._init_window)
+            qt_runtime.post(self._window.show)
+            qt_runtime.post(self._window.raise_)
+            qt_runtime.post(self._window.activateWindow)
+        elif not self._init_posted:
+            self._init_posted = True
+            qt_runtime.post(self._init_window)
 
     def close(self):
         self._monitoring = False
         if self._window is not None:
-            QTimer.singleShot(0, self._window.close)
+            qt_runtime.post(self._window.close)
 
     def _init_window(self):
+        """Runs on the Qt thread."""
         self._window = _TrainingWindow(self)
         self._window.destroyed.connect(self._on_destroyed)
         self._window.show()
@@ -321,6 +323,7 @@ class VoiceTrainingQt:
     def _on_destroyed(self):
         self._monitoring = False
         self._window = None
+        self._init_posted = False
 
 
 # ---------------------------------------------------------------------------

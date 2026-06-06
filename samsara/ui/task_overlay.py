@@ -3,25 +3,31 @@
 Public API (unchanged):
     show(tasks) / hide() / refresh(tasks)
 
-Features added:
+Features:
     - Text input at top — type and Enter to add a task
     - Checkbox per row — click to toggle completion
     - Delete button per row — click to remove
     - Hover highlight on each row
     - Voice commands still work via refresh()
+
+Architecture note
+-----------------
+All Qt operations are posted to the shared qt_runtime event loop via
+qt_runtime.post().  The overlay creates its window once on first show and
+reuses it on every subsequent show — closeEvent hides rather than destroys
+so the Python reference stays valid and reopening is always reliable.
 """
 
-import threading
-
 from PySide6.QtCore import Qt, QTimer, Signal, Slot
-from PySide6.QtGui import QColor, QFont
+from PySide6.QtGui import QFont
 from PySide6.QtWidgets import (
-    QApplication, QCheckBox, QHBoxLayout, QLabel, QLineEdit,
+    QCheckBox, QHBoxLayout, QLabel, QLineEdit,
     QListWidget, QListWidgetItem, QMainWindow, QPushButton,
     QVBoxLayout, QWidget,
 )
 
 from samsara import tasks_store
+from samsara.ui import qt_runtime
 
 # ---------------------------------------------------------------------------
 # Colours
@@ -182,7 +188,7 @@ class _TaskRow(QWidget):
 class _TaskWindow(QMainWindow):
     _refresh_sig = Signal(list)
 
-    def __init__(self, tasks: list):
+    def __init__(self):
         super().__init__()
         self.setWindowTitle("Tasks")
         self.setWindowFlags(Qt.WindowStaysOnTopHint | Qt.Tool)
@@ -277,7 +283,15 @@ class _TaskWindow(QMainWindow):
 
     def showEvent(self, e):
         super().showEvent(e)
-        QTimer.singleShot(0, self._input.setFocus)
+        # 3-arg form: binds to self so it fires on the Qt thread even if
+        # showEvent is triggered by a cross-thread show() call.
+        QTimer.singleShot(0, self, self._input.setFocus)
+
+    def closeEvent(self, e):
+        # Hide instead of destroy — keeps the Python reference valid so
+        # reopening never requires recreating the window.
+        e.ignore()
+        self.hide()
 
     @Slot(list)
     def _on_refresh(self, _tasks: list):
@@ -289,46 +303,30 @@ class _TaskWindow(QMainWindow):
 # ---------------------------------------------------------------------------
 
 class TaskOverlay:
+    """Thread-safe wrapper around _TaskWindow using the shared qt_runtime."""
+
     def __init__(self):
         self._window: "_TaskWindow | None" = None
-        self._thread: "threading.Thread | None" = None
+        self._init_posted = False
 
     def show(self, tasks: list):
         if self._window is not None:
             self._window._refresh_sig.emit(tasks)
-            QTimer.singleShot(0, self._window.show)
-            QTimer.singleShot(0, self._window.raise_)
-        else:
-            self._thread = threading.Thread(
-                target=self._create, args=(tasks,),
-                daemon=True, name="task-overlay",
-            )
-            self._thread.start()
+            qt_runtime.post(self._window.show)
+            qt_runtime.post(self._window.raise_)
+        elif not self._init_posted:
+            self._init_posted = True
+            qt_runtime.post(self._init_window)
 
     def hide(self):
         if self._window is not None:
-            QTimer.singleShot(0, self._window.hide)
+            qt_runtime.post(self._window.hide)
 
     def refresh(self, tasks: list):
         if self._window is not None:
             self._window._refresh_sig.emit(tasks)
 
-    def _create(self, tasks: list):
-        qt_app   = QApplication.instance()
-        owns_app = qt_app is None
-        if qt_app is None:
-            qt_app = QApplication([])
-        if owns_app:
-            self._init_window(tasks)
-            qt_app.exec()
-            self._window = None
-        else:
-            QTimer.singleShot(0, qt_app, lambda: self._init_window(tasks))
-
-    def _init_window(self, tasks: list):
-        self._window = _TaskWindow(tasks)
-        self._window.destroyed.connect(self._on_destroyed)
+    def _init_window(self):
+        """Runs on the Qt thread via qt_runtime.post()."""
+        self._window = _TaskWindow()
         self._window.show()
-
-    def _on_destroyed(self):
-        self._window = None

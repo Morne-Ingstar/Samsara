@@ -4,24 +4,26 @@ Public API: set_status(text) / close()
 
 Architecture note
 -----------------
-The splash starts a permanent Qt event loop on a daemon thread with
-QApplication.setQuitOnLastWindowClosed(False).  This thread becomes the
-single Qt event-loop thread for the entire process lifetime.  Every
-subsequent Qt window (Settings, History, Main, etc.) will find
-QApplication.instance() already set, take the owns_app=False path, and
-post its window creation to this thread — eliminating the race condition
-where whichever window opened first would claim the Qt thread.
+Thread/QApplication ownership belongs entirely to qt_runtime.  This module
+creates the splash widget on the Qt thread via qt_runtime.post() and
+exposes a thread-safe set_status / close API.  It no longer manages its
+own thread or QApplication instance.
 """
 
+import logging
 import threading
 import time
 
 from PySide6.QtCore import Qt, QTimer, Signal, Slot
-from PySide6.QtGui import QColor, QFont
+from PySide6.QtGui import QFont
 from PySide6.QtWidgets import (
-    QApplication, QFrame, QHBoxLayout, QLabel,
+    QApplication, QLabel,
     QProgressBar, QVBoxLayout, QWidget,
 )
+
+from samsara.ui import qt_runtime
+
+log = logging.getLogger(__name__)
 
 _MIN_DISPLAY_S = 3.0
 
@@ -42,7 +44,6 @@ class _SplashWidget(QWidget):
         self.setAttribute(Qt.WA_TranslucentBackground, False)
         self.setFixedSize(350, 165)
 
-        # Centre on primary screen
         screen = QApplication.primaryScreen().geometry()
         self.move(
             screen.center().x() - 175,
@@ -90,7 +91,7 @@ class _SplashWidget(QWidget):
         outer.addSpacing(4)
 
         self._bar = QProgressBar()
-        self._bar.setRange(0, 0)   # indeterminate
+        self._bar.setRange(0, 0)
         self._bar.setFixedHeight(6)
         self._bar.setTextVisible(False)
         self._bar.setStyleSheet("""
@@ -124,42 +125,34 @@ class _SplashWidget(QWidget):
 
 
 # ---------------------------------------------------------------------------
-# Public class — same API as SplashScreen
+# Public class
 # ---------------------------------------------------------------------------
 
 class SplashScreenQt:
-    """Qt splash screen that also seeds the permanent Qt event-loop thread."""
+    """Qt splash screen backed by the shared qt_runtime event loop."""
 
     def __init__(self):
-        self._start_time = time.time()
+        self._start_time   = time.time()
         self._widget: "_SplashWidget | None" = None
-        self._qt_ready   = threading.Event()
+        self._widget_ready = threading.Event()
 
-        # Start the permanent Qt thread before creating the Tkinter root so
-        # QApplication is established first (avoids DPI-awareness fight with CTk).
-        self._thread = threading.Thread(
-            target=self._run_qt, daemon=True, name="samsara-qt",
-        )
-        self._thread.start()
-        self._qt_ready.wait(timeout=5.0)
+        # Start the shared Qt runtime (idempotent) then create the widget on
+        # its thread.  We must wait for widget creation before returning so
+        # that set_status() calls made immediately after __init__ are safe.
+        qt_runtime.ensure_started()
+        qt_runtime.post(self._create_widget)
+        if not self._widget_ready.wait(timeout=5.0):
+            log.warning("SplashScreenQt: widget not created within 5 s")
 
-    def _run_qt(self):
-        qt_app = QApplication([])
-        # Keep the event loop alive after the splash closes so all
-        # subsequent Qt windows can use the same thread.
-        qt_app.setQuitOnLastWindowClosed(False)
-
+    def _create_widget(self):
+        """Runs on the Qt thread via qt_runtime.post()."""
         self._widget = _SplashWidget()
-        # Clear the Python reference on the Qt thread when the C++ object
-        # is destroyed, so we never drop it on the wrong thread.
         self._widget.destroyed.connect(self._on_widget_destroyed)
         self._widget.show()
-        qt_app.processEvents()
-        self._qt_ready.set()
-
-        qt_app.exec()
+        self._widget_ready.set()
 
     def _on_widget_destroyed(self):
+        """Runs on the Qt thread when the C++ object is finalised."""
         self._widget = None
 
     # ---- Public API ---------------------------------------------------------
@@ -172,21 +165,17 @@ class SplashScreenQt:
     def close(self):
         """Dismiss the splash, honouring the minimum display time.
 
-        The sleep runs on a background thread so the main thread is never
-        blocked.  The Python reference to _widget is only cleared via the
-        destroyed signal on the Qt thread — never from here — so Qt's
-        internal timer cleanup always runs on the correct thread.
+        The sleep runs on a throw-away thread so the caller is never blocked.
+        The Python reference to _widget is cleared only via the destroyed
+        signal on the Qt thread.
         """
         def _do_close():
-            elapsed = time.time() - self._start_time
+            elapsed   = time.time() - self._start_time
             remaining = _MIN_DISPLAY_S - elapsed
             if remaining > 0:
                 time.sleep(remaining)
             w = self._widget
             if w is not None:
                 w._close_sig.emit()
-                # Do NOT touch self._widget here — _on_widget_destroyed
-                # clears it on the Qt thread after the C++ object is gone.
 
         threading.Thread(target=_do_close, daemon=True, name="splash-close").start()
-

@@ -12,11 +12,13 @@ from datetime import datetime
 from PySide6.QtCore import Qt, QTimer, Signal
 from PySide6.QtGui import QBrush, QColor
 from PySide6.QtWidgets import (
-    QApplication, QMainWindow, QWidget, QVBoxLayout, QHBoxLayout,
+    QMainWindow, QWidget, QVBoxLayout, QHBoxLayout,
     QTableWidget, QTableWidgetItem, QHeaderView,
     QLineEdit, QComboBox, QPushButton, QLabel, QPlainTextEdit,
     QFrame, QMessageBox,
 )
+
+from samsara.ui import qt_runtime
 
 
 # ---------------------------------------------------------------------------
@@ -163,41 +165,21 @@ class HistoryQt:
     def __init__(self, app):
         self.app = app
         self._window = None
-        self._thread = None
+        self._init_posted = False
 
     def show(self):
         if self._window is not None:
-            try:
-                self._window.raise_()
-                self._window.activateWindow()
-                return
-            except Exception:
-                self._window = None
-
-        self._thread = threading.Thread(
-            target=self._create, daemon=True, name="history-qt"
-        )
-        self._thread.start()
-
-    def _create(self):
-        qt_app = QApplication.instance()
-        owns_app = qt_app is None
-        if qt_app is None:
-            qt_app = QApplication([])
-        if owns_app:
-            self._init_window()
-            qt_app.exec()
-            self._window = None
-        else:
-            QTimer.singleShot(0, qt_app, self._init_window)
+            qt_runtime.post(self._window.show)
+            qt_runtime.post(self._window.raise_)
+            qt_runtime.post(self._window.activateWindow)
+        elif not self._init_posted:
+            self._init_posted = True
+            qt_runtime.post(self._init_window)
 
     def _init_window(self):
+        """Runs on the Qt thread."""
         self._window = _HistoryWindow(self.app)
-        self._window.destroyed.connect(self._on_destroyed)
         self._window.show()
-
-    def _on_destroyed(self):
-        self._window = None
 
 
 # ---------------------------------------------------------------------------
@@ -311,6 +293,10 @@ class _HistoryWindow(QMainWindow):
         self._reload()
 
     # ------------------------------------------------------------------
+    def closeEvent(self, e):
+        e.ignore()
+        self.hide()
+
     # Data
     # ------------------------------------------------------------------
 

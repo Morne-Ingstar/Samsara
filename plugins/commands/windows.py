@@ -827,3 +827,102 @@ def handle_cursor(app, remainder):
                 logger.warning("Cursor teleport to app failed: %s", e)
 
     return True
+
+
+# ---------------------------------------------------------------------------
+# Window snap (halves and quadrants)
+# ---------------------------------------------------------------------------
+
+_SNAP_DIRECTIONS = frozenset({
+    'left', 'right', 'top', 'bottom',
+    'top left', 'top right', 'bottom left', 'bottom right',
+})
+
+
+def _get_monitor_for_window(hwnd, monitors=None):
+    """Return the monitor whose work area contains the center of hwnd."""
+    if monitors is None:
+        monitors = get_monitors()
+    try:
+        rect = win32gui.GetWindowRect(hwnd)
+    except Exception:
+        return next((m for m in monitors if m['primary']), monitors[0] if monitors else None)
+    cx = (rect[0] + rect[2]) // 2
+    cy = (rect[1] + rect[3]) // 2
+    for m in monitors:
+        ml, mt, mr, mb = m['rect']
+        if ml <= cx < mr and mt <= cy < mb:
+            return m
+    return next((m for m in monitors if m['primary']), monitors[0] if monitors else None)
+
+
+def _snap_rect(monitor, direction):
+    """Return (x, y, w, h) for snapping a window to direction on monitor.
+
+    Uses the work area so the snapped window never hides behind the taskbar.
+    Odd pixel widths/heights are given to the right/bottom zone, consistent
+    with Windows' own snapping behaviour.
+    """
+    l, t, r, b = monitor['rect']
+    w = r - l
+    h = b - t
+    hw = w // 2
+    hh = h // 2
+
+    table = {
+        'left':         (l,      t,      hw,     h),
+        'right':        (l + hw, t,      w - hw, h),
+        'top':          (l,      t,      w,      hh),
+        'bottom':       (l,      t + hh, w,      h - hh),
+        'top left':     (l,      t,      hw,     hh),
+        'top right':    (l + hw, t,      w - hw, hh),
+        'bottom left':  (l,      t + hh, hw,     h - hh),
+        'bottom right': (l + hw, t + hh, w - hw, h - hh),
+    }
+    return table.get(direction)
+
+
+@command("snap", aliases=["dock"], pack="window-management")
+def handle_snap(app, remainder):
+    direction = remainder.strip().lower()
+    if direction not in _SNAP_DIRECTIONS:
+        print(
+            f"[SNAP] Unknown direction '{direction}'. "
+            "Say: left, right, top, bottom, top left, top right, "
+            "bottom left, or bottom right."
+        )
+        return True
+
+    hwnd = win32gui.GetForegroundWindow()
+    if not hwnd:
+        print("[SNAP] No foreground window")
+        return True
+
+    # Restore before resizing: SetWindowPos has no effect on maximized windows
+    # and produces wrong coords on minimized ones.
+    if win32gui.IsIconic(hwnd):
+        win32gui.ShowWindow(hwnd, win32con.SW_RESTORE)
+    try:
+        if win32gui.GetWindowPlacement(hwnd)[1] == win32con.SW_SHOWMAXIMIZED:
+            win32gui.ShowWindow(hwnd, win32con.SW_RESTORE)
+    except Exception:
+        pass
+
+    monitors = get_monitors()
+    monitor = _get_monitor_for_window(hwnd, monitors)
+    if not monitor:
+        print("[SNAP] Could not determine monitor for foreground window")
+        return True
+
+    snap = _snap_rect(monitor, direction)
+    if snap is None:
+        return True
+
+    x, y, w, h = snap
+    title = win32gui.GetWindowText(hwnd)
+    logger.info(
+        "Snap '%s' %s -> monitor %s (%d,%d %dx%d)",
+        title, direction, monitor['index'], x, y, w, h,
+    )
+    win32gui.SetWindowPos(hwnd, HWND_TOP, x, y, w, h, SWP_SHOWWINDOW)
+    return True

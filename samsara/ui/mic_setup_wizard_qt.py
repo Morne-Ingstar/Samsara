@@ -22,12 +22,13 @@ import sounddevice as sd
 
 from PySide6.QtCore import Qt, QTimer, Signal
 from PySide6.QtWidgets import (
-    QApplication, QComboBox, QDialog, QFrame, QHBoxLayout, QLabel,
+    QComboBox, QDialog, QFrame, QHBoxLayout, QLabel,
     QProgressBar, QPushButton, QSizePolicy, QStackedWidget, QVBoxLayout,
     QWidget,
 )
 
 from samsara.constants import DEFAULT_CAPTURE_RATE
+from samsara.ui import qt_runtime
 
 # ---------------------------------------------------------------------------
 # Colours
@@ -168,33 +169,34 @@ class MicSetupWizardQt:
     def __init__(self, app):
         self.app = app
         self._window: "_WizardWindow | None" = None
+        self._init_posted = False
 
     @property
     def window(self):
         return self._window
 
     def show(self):
-        qt_app = QApplication.instance()
-        if qt_app is None:
-            return
         if self._window is not None:
-            QTimer.singleShot(0, self._window.show)
-            QTimer.singleShot(0, self._window.raise_)
-            QTimer.singleShot(0, self._window.activateWindow)
-            return
-        QTimer.singleShot(0, qt_app, self._init_window)
+            qt_runtime.post(self._window.show)
+            qt_runtime.post(self._window.raise_)
+            qt_runtime.post(self._window.activateWindow)
+        elif not self._init_posted:
+            self._init_posted = True
+            qt_runtime.post(self._init_window)
 
     def close(self):
         if self._window is not None:
-            QTimer.singleShot(0, self._window.close)
+            qt_runtime.post(self._window.close)
 
     def _init_window(self):
+        """Runs on the Qt thread."""
         self._window = _WizardWindow(self._app if hasattr(self, '_app') else self.app)
         self._window.destroyed.connect(self._on_destroyed)
         self._window.show()
 
     def _on_destroyed(self):
         self._window = None
+        self._init_posted = False
 
     # Keep attribute access consistent whether callers use app or _app
     @property

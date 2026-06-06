@@ -4,23 +4,23 @@ PySide6 command cheat sheet for Samsara.
 Drop-in replacement for CommandCheatSheet with the same public API:
     show() / hide() / toggle() / destroy() / refresh()
 
-Runs on its own daemon thread.  show() / hide() / toggle() are safe
-to call from any thread (including the Tkinter main thread) because
-they route through QTimer.singleShot which is documented as thread-safe.
+All Qt operations are posted to the shared qt_runtime event loop.
+show() / hide() / toggle() are safe to call from any thread.
 """
 
 import json
-import threading
 from pathlib import Path
 from typing import Callable, List
 
 from PySide6.QtCore import Qt, QTimer, Signal, QPoint
 from PySide6.QtGui import QColor, QCursor
 from PySide6.QtWidgets import (
-    QApplication, QComboBox, QMainWindow, QWidget, QVBoxLayout, QHBoxLayout,
+    QComboBox, QMainWindow, QWidget, QVBoxLayout, QHBoxLayout,
     QLabel, QListWidget, QListWidgetItem, QLineEdit,
     QFrame, QSizeGrip, QSlider, QMenu, QAbstractItemView,
 )
+
+from samsara.ui import qt_runtime
 
 # ---------------------------------------------------------------------------
 # Colour palette — matches the Tkinter version
@@ -138,7 +138,7 @@ class CommandCheatSheetQt:
         self._commands_cb = commands_cb or (lambda: [])
         self._palette_path = Path(palette_path) if palette_path else Path("command_palette.json")
         self._window: "_CheatSheetWindow | None" = None
-        self._thread: "threading.Thread | None" = None
+        self._init_posted = False
         self._visible = False
 
     # ----------------------------------------------------------------
@@ -146,24 +146,21 @@ class CommandCheatSheetQt:
     # ----------------------------------------------------------------
 
     def show(self):
+        self._visible = True
         if self._window is not None:
-            self._visible = True
-            QTimer.singleShot(0, self._window.show)
-            QTimer.singleShot(0, self._window.raise_)
-        else:
-            self._visible = True
-            self._thread = threading.Thread(
-                target=self._create, daemon=True, name="cheatsheet-qt"
-            )
-            self._thread.start()
+            qt_runtime.post(self._window.show)
+            qt_runtime.post(self._window.raise_)
+        elif not self._init_posted:
+            self._init_posted = True
+            qt_runtime.post(self._init_window)
 
     def hide(self):
         self._visible = False
         if self._window is not None:
-            QTimer.singleShot(0, self._window.hide)
+            qt_runtime.post(self._window.hide)
 
     def toggle(self):
-        if self._visible:
+        if self._window is not None and self._window.isVisible():
             self.hide()
         else:
             self.show()
@@ -171,38 +168,24 @@ class CommandCheatSheetQt:
     def destroy(self):
         self._visible = False
         if self._window is not None:
-            QTimer.singleShot(0, self._window.deleteLater)
+            qt_runtime.post(self._window.deleteLater)
             self._window = None
+            self._init_posted = False
 
     def refresh(self):
         if self._window is not None and self._visible:
-            QTimer.singleShot(0, self._window.refresh_commands)
+            qt_runtime.post(self._window.refresh_commands)
 
     # ----------------------------------------------------------------
-    # Thread
+    # Qt-thread
     # ----------------------------------------------------------------
-
-    def _create(self):
-        qt_app = QApplication.instance()
-        if qt_app is None:
-            qt_app = QApplication([])
-            self._init_window()
-            qt_app.exec()
-            self._visible = False
-            self._window = None
-        else:
-            QTimer.singleShot(0, qt_app, self._init_window)
 
     def _init_window(self):
+        """Runs on the Qt thread."""
         self._window = _CheatSheetWindow(
             self._execute_cb, self._commands_cb, self._palette_path
         )
-        self._window.destroyed.connect(self._on_window_destroyed)
         self._window.show()
-
-    def _on_window_destroyed(self):
-        self._visible = False
-        self._window = None
 
 
 # ---------------------------------------------------------------------------
@@ -781,7 +764,8 @@ class _CheatSheetWindow(QMainWindow):
 
     def closeEvent(self, e):
         self._save_palette()
-        e.accept()
+        e.ignore()
+        self.hide()
 
     def hideEvent(self, e):
         self._save_palette()

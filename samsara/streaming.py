@@ -448,8 +448,8 @@ class StreamingWorker(threading.Thread):
                 pass
 
             raw = text
-            cleaned = clean_text(text,
-                                 mode=app.config.get('cleanup_mode', 'clean'))
+            _cmode = 'verbatim' if getattr(app, '_skip_cleanup', False) else app.config.get('cleanup_mode', 'clean')
+            cleaned = clean_text(text, mode=_cmode)
             if app.config.get('add_trailing_space', True):
                 cleaned = cleaned + " "
             self._session.on_final(cleaned, raw_text=raw,

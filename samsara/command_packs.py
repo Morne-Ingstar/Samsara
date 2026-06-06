@@ -16,6 +16,12 @@ PACKS = {
         'always_on': True,
         'default_enabled': True,
     },
+    'experimental': {
+        'label': 'Experimental',
+        'description': 'In-development features (workflow capture, etc.) — may be unstable',
+        'always_on': False,
+        'default_enabled': False,
+    },
     'text-editing': {
         'label': 'Text Editing',
         'description': 'Punctuation, formatting, bold/italic/underline, find, select',
