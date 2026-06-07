@@ -110,10 +110,19 @@ class WakeConsumer:
             and app.config.get('command_mode', {}).get('mode', 'hold') == 'toggle'
         )
 
+    @staticmethod
+    def _is_ai_cmd_mode(app) -> bool:
+        """True when AI command mode is active."""
+        return getattr(app, 'ai_command_mode_active', False)
+
     def _poll_loop(self) -> None:
         app = self._app
         while self._running:
-            if not (app.wake_word_active or self._is_toggle_cmd(app)):
+            if not (
+                app.wake_word_active
+                or self._is_toggle_cmd(app)
+                or self._is_ai_cmd_mode(app)
+            ):
                 time.sleep(0.005)
                 continue
 
@@ -326,6 +335,16 @@ class WakeConsumer:
     def _flush(self, buffer_copy: list) -> None:
         """Dispatch utterance to process_wake_word_buffer, respecting OWW gate."""
         app = self._app
+
+        # AI command mode: route utterance to the AI resolver queue.
+        if self._is_ai_cmd_mode(app):
+            threading.Thread(
+                target=app._handle_ai_command_utterance,
+                args=(buffer_copy, SAMPLE_RATE),
+                daemon=True,
+                name='ai-cmd-utt',
+            ).start()
+            return
 
         # Toggle command mode: bypass OWW gate and execute as a single command
         # utterance.  The WakeConsumer re-arms automatically for the next
