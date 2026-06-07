@@ -772,6 +772,7 @@ class DictationApp:
         self._command_mode_inactivity_timer = None
         self._command_mode_session_start = 0.0  # monotonic time of last enter
         self._command_mode_ghost_tap = False    # set when hold < enter_debounce_ms
+        self._command_mode_key_held = False      # edge-trigger guard vs OS key auto-repeat
 
         # Ava mode — Right Alt held = talk to Ollama/Ava
         self.ava_mode_active = False
@@ -779,6 +780,12 @@ class DictationApp:
         self._ava_mode_ghost_tap = False
         self._ava_mode_session_start = 0.0
         self._ava_mode_lock = threading.Lock()
+        self._ava_mode_key_held = False          # edge-trigger guard vs OS key auto-repeat
+
+        # AI command mode -- LLM-backed voice-to-command translator (toggle)
+        self.ai_command_mode_active = False
+        self._ai_cmd_mode_lock = threading.Lock()
+        self._ai_cmd_key_held = False            # edge-trigger guard vs OS key auto-repeat
 
         self._mouse_hook = None
 
@@ -2806,6 +2813,18 @@ class DictationApp:
             target = _get_pynput_command_key(btn_name)
             if _matches_pynput_key(key, target):
                 mode = cfg.get('mode', 'hold')
+                # Edge-trigger: collapse OS key auto-repeat (and any phantom
+                # press/release pairs from the LL hook) to a single rising edge
+                # on press and a single falling edge on release.  Without this,
+                # a held key fires enter/exit ~30x/sec → earcon chirp storm.
+                if pressed:
+                    if self._command_mode_key_held:
+                        return  # auto-repeat — already handled the real press
+                    self._command_mode_key_held = True
+                else:
+                    if not self._command_mode_key_held:
+                        return  # phantom release with no matching real press
+                    self._command_mode_key_held = False
                 if mode == 'hold':
                     if pressed:
                         self.enter_command_mode()
@@ -2825,10 +2844,39 @@ class DictationApp:
         ava_key_name = self.config.get('ava_mode_key', 'right_alt')
         ava_target = _get_pynput_command_key(ava_key_name)
         if ava_target is not None and _matches_pynput_key(key, ava_target):
+            if pressed:
+                if self._ava_mode_key_held:
+                    return  # auto-repeat
+                self._ava_mode_key_held = True
+            else:
+                if not self._ava_mode_key_held:
+                    return  # phantom release
+                self._ava_mode_key_held = False
             if pressed and not self.ava_mode_active and not self.command_mode_active:
                 self.enter_ava_mode()
             elif not pressed and self.ava_mode_active:
                 self.exit_ava_mode()
+            return
+
+        # AI command mode (toggle; mutual exclusion with command mode and ava mode)
+        ai_cfg = self.config.get('ai_command_mode', {})
+        if ai_cfg.get('enabled', True):
+            ai_key_name = ai_cfg.get('key', 'right_ctrl')
+            ai_target = _get_pynput_command_key(ai_key_name)
+            if ai_target is not None and _matches_pynput_key(key, ai_target):
+                if pressed:
+                    if self._ai_cmd_key_held:
+                        return  # auto-repeat
+                    self._ai_cmd_key_held = True
+                else:
+                    if not self._ai_cmd_key_held:
+                        return  # phantom release
+                    self._ai_cmd_key_held = False
+                if pressed:
+                    if self.ai_command_mode_active:
+                        self.exit_ai_command_mode()
+                    else:
+                        self.enter_ai_command_mode()
 
     def enter_command_mode(self):
         """Enter command mode (idempotent). Safe to call from any thread."""
@@ -2944,6 +2992,102 @@ class DictationApp:
             self.stop_recording()
         elif not self._ava_mode_ghost_tap:
             self.play_sound('stop')
+
+    # ------------------------------------------------------------------
+    # AI command mode
+    # ------------------------------------------------------------------
+
+    def enter_ai_command_mode(self):
+        """Enter AI command mode (idempotent, toggle). Safe from any thread."""
+        with self._ai_cmd_mode_lock:
+            if self.ai_command_mode_active:
+                return
+            if self.command_mode_active or self.ava_mode_active:
+                return
+            self.ai_command_mode_active = True
+        print("[AI-CMD] Entering AI command mode")
+        if hasattr(self, 'listening_indicator'):
+            self._schedule_ui(self.listening_indicator.set_command_mode, True)
+        threading.Thread(target=self._do_enter_ai_command_mode, daemon=True,
+                         name='ai-cmd-enter').start()
+
+    def _do_enter_ai_command_mode(self):
+        """Worker: play entry earcon and optionally warm up the model."""
+        debounce_ms = self.config.get('command_mode', {}).get('enter_debounce_ms', 200)
+        time.sleep(debounce_ms / 1000.0)
+        if self.ai_command_mode_active:
+            self.play_sound('start', use_winsound=True)
+        ai_cfg = self.config.get('ai_command_mode', {})
+        if ai_cfg.get('keep_warm', True):
+            try:
+                from samsara.ai_command_mode import warm_up  # noqa: PLC0415
+                warm_up(self)
+            except Exception:
+                pass
+
+    def exit_ai_command_mode(self):
+        """Exit AI command mode (idempotent). Drains queue. Safe from any thread."""
+        with self._ai_cmd_mode_lock:
+            if not self.ai_command_mode_active:
+                return
+            self.ai_command_mode_active = False
+        print("[AI-CMD] Exiting AI command mode")
+        if hasattr(self, 'listening_indicator'):
+            self._schedule_ui(self.listening_indicator.set_command_mode, False)
+        try:
+            from samsara.ai_command_mode import cancel_queue, reset_cancel  # noqa: PLC0415
+            cancel_queue()
+            reset_cancel()
+        except Exception:
+            pass
+        self.play_sound('stop')
+
+    def _handle_ai_command_utterance(self, buffer: list, src_rate: int) -> None:
+        """Transcribe one VAD-gated utterance and push to the AI command queue.
+
+        Called from WakeConsumer._flush() while ai_command_mode_active.
+        Shares _wake_transcription_in_progress with _handle_command_mode_utterance
+        to prevent concurrent transcriptions.
+        Stop-words are checked before enqueue so cancel is always responsive.
+        """
+        if self._wake_transcription_in_progress:
+            print('[AI-CMD-UTT] Transcription in progress -- skipping')
+            return
+        self._wake_transcription_in_progress = True
+        try:
+            audio = np.concatenate(buffer)
+            audio = resample_audio(audio, src_rate, self.model_rate)
+            audio_duration = len(audio) / self.model_rate
+            if audio_duration < 0.3:
+                return
+            print(f'[AI-CMD-UTT] Transcribing {audio_duration:.1f}s')
+            transcribe_params = self.get_transcription_params()
+            transcribe_params['vad_filter'] = False
+            with self.model_lock:
+                segments, _ = self.model.transcribe(audio, **transcribe_params)
+            text = ''.join(s.text for s in segments).strip()
+            text = self.voice_training_window.apply_corrections(text)
+            if not text:
+                return
+            print(f'[AI-CMD-UTT] "{text}"')
+            text_lower = text.lower().strip()
+            # Stop-word gate: cancel before touching the queue
+            from samsara.ai_command_mode import (  # noqa: PLC0415
+                _STOP_WORDS, cancel_queue, reset_cancel,
+            )
+            if text_lower in _STOP_WORDS:
+                cancel_queue()
+                reset_cancel()
+                return
+            from samsara.ai_command_mode import enqueue_utterance  # noqa: PLC0415
+            enqueue_utterance(self, text)
+        except Exception as exc:
+            print(f'[AI-CMD-UTT] Error: {exc}')
+            import traceback  # noqa: PLC0415
+            traceback.print_exc()
+        finally:
+            self._wake_transcription_in_progress = False
+            self._vad_reset()
 
     def _route_to_ava(self, text: str):
         """Send transcribed speech to Ollama via the ask_ollama plugin."""
