@@ -90,6 +90,31 @@ _CMD_BUTTON_OPTIONS = {
 _CMD_BUTTON_KEY_TO_LABEL = {v: k for k, v in _CMD_BUTTON_OPTIONS.items()}
 
 # ---------------------------------------------------------------------------
+# AI Command Mode tab constants
+# ---------------------------------------------------------------------------
+
+_AI_CMD_KEY_OPTIONS: dict = {
+    'Right Ctrl':   'right_ctrl',
+    'Right Shift':  'right_shift',
+    'Right Alt':    'right_alt',
+    'Left Ctrl':    'left_ctrl',
+    'Left Shift':   'left_shift',
+    'Left Alt':     'left_alt',
+    **{f'F{n}': f'f{n}' for n in range(1, 25)},
+}
+_AI_CMD_KEY_TO_LABEL: dict = {v: k for k, v in _AI_CMD_KEY_OPTIONS.items()}
+
+# Canonical alias map: normalise rctrl/right_ctrl etc. before comparing
+_KEY_NORMALIZE: dict = {
+    'right_ctrl':  'right_ctrl', 'rctrl':  'right_ctrl',
+    'left_ctrl':   'left_ctrl',  'lctrl':  'left_ctrl',
+    'right_alt':   'right_alt',  'ralt':   'right_alt',
+    'left_alt':    'left_alt',   'lalt':   'left_alt',
+    'right_shift': 'right_shift', 'rshift': 'right_shift',
+    'left_shift':  'left_shift',  'lshift': 'left_shift',
+}
+
+# ---------------------------------------------------------------------------
 # Cloud LLM / Ava tab constants
 # ---------------------------------------------------------------------------
 
@@ -392,6 +417,7 @@ _TAB_NAMES = [
     "Alarms",
     "Health",
     "Advanced",
+    "AI Commands",
 ]
 
 
@@ -472,7 +498,8 @@ class _SettingsWindow(QMainWindow):
         self._stack.addWidget(self._build_ava_cloud_tab())  # 5  Ava / Cloud
         self._stack.addWidget(self._build_alarms_tab())     # 6  Alarms
         self._stack.addWidget(self._build_health_tab())     # 7  Health
-        self._stack.addWidget(self._build_advanced_tab())   # 8  Advanced
+        self._stack.addWidget(self._build_advanced_tab())      # 8  Advanced
+        self._stack.addWidget(self._build_ai_commands_tab())  # 9  AI Commands
 
         self._sidebar.currentRowChanged.connect(self._stack.setCurrentIndex)
 
@@ -3061,6 +3088,197 @@ class _SettingsWindow(QMainWindow):
         scroll.setWidget(container)
         return scroll
 
+    def _build_ai_commands_tab(self):
+        from samsara.ai_command_mode import _DEFAULTS as _AIMD  # noqa: PLC0415
+
+        scroll = QScrollArea()
+        scroll.setWidgetResizable(True)
+        scroll.setHorizontalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAlwaysOff)
+
+        container = QWidget()
+        layout = QVBoxLayout(container)
+        layout.setContentsMargins(28, 24, 28, 24)
+        layout.setSpacing(8)
+
+        ai_cfg = self.app.config.get('ai_command_mode', {}) or {}
+
+        layout.addWidget(self._section_title("AI Command Mode"))
+        layout.addSpacing(4)
+
+        intro = QLabel(
+            "Translates free-form voice speech into sequences of voice commands "
+            "using a local Ollama LLM. Requires Ollama running with the configured model."
+        )
+        intro.setWordWrap(True)
+        intro.setStyleSheet("color: #8A8A92; font-size: 12px;")
+        layout.addWidget(intro)
+        layout.addSpacing(12)
+
+        # --- Enable ------------------------------------------------------------
+        ai_enabled = QCheckBox()
+        ai_enabled.setChecked(bool(ai_cfg.get('enabled', _AIMD['enabled'])))
+        self._widgets['ai_cmd_enabled'] = ai_enabled
+        layout.addLayout(self._setting_row(
+            "Enabled",
+            "Activate the LLM-backed voice-to-command translator",
+            ai_enabled,
+        ))
+        layout.addSpacing(12)
+
+        # --- Activation key + collision warning --------------------------------
+        layout.addWidget(self._section_title("Activation"))
+        layout.addSpacing(4)
+
+        key_val = ai_cfg.get('key', _AIMD['key'])
+        key_label = _AI_CMD_KEY_TO_LABEL.get(key_val, list(_AI_CMD_KEY_OPTIONS.keys())[0])
+        ai_key_combo = QComboBox()
+        ai_key_combo.addItems(list(_AI_CMD_KEY_OPTIONS.keys()))
+        if key_label in _AI_CMD_KEY_OPTIONS:
+            ai_key_combo.setCurrentText(key_label)
+        self._widgets['ai_cmd_key'] = ai_key_combo
+        layout.addLayout(self._setting_row(
+            "Activation key",
+            "Key that toggles AI Command Mode on/off. Must differ from Ava mode key and Command Mode button.",
+            ai_key_combo,
+        ))
+
+        collision_warn = QLabel("")
+        collision_warn.setWordWrap(True)
+        collision_warn.setStyleSheet(
+            "color: #E89020; font-size: 12px; "
+            "background-color: rgba(232,144,32,0.07); "
+            "border: 1px solid rgba(232,144,32,0.2); "
+            "border-radius: 6px; padding: 6px 10px;"
+        )
+        collision_warn.setVisible(False)
+        self._widgets['ai_cmd_collision_warn'] = collision_warn
+        layout.addWidget(collision_warn)
+        layout.addSpacing(4)
+
+        ai_key_combo.currentIndexChanged.connect(
+            lambda _idx: self._check_ai_cmd_key_collision()
+        )
+        self._check_ai_cmd_key_collision()
+
+        wake_phrase_edit = QLineEdit()
+        wake_phrase_edit.setText(ai_cfg.get('wake_phrase', _AIMD['wake_phrase']))
+        wake_phrase_edit.setPlaceholderText("e.g. command mode")
+        self._widgets['ai_cmd_wake_phrase'] = wake_phrase_edit
+        layout.addLayout(self._setting_row(
+            "Wake phrase",
+            "Spoken phrase that enters this mode (when used in wake-phrase mode)",
+            wake_phrase_edit,
+        ))
+        layout.addSpacing(12)
+
+        # --- Model -------------------------------------------------------------
+        layout.addWidget(self._section_title("Model"))
+        layout.addSpacing(4)
+
+        model_edit = QLineEdit()
+        model_edit.setText(ai_cfg.get('model', _AIMD['model']))
+        model_edit.setPlaceholderText("e.g. llama3.2:3b")
+        self._widgets['ai_cmd_model'] = model_edit
+        layout.addLayout(self._setting_row(
+            "Ollama model",
+            "Model Ollama uses for command resolution. Must be pulled via 'ollama pull <name>'.",
+            model_edit,
+        ))
+        layout.addSpacing(12)
+
+        # --- Behaviour ---------------------------------------------------------
+        layout.addWidget(self._section_title("Behaviour"))
+        layout.addSpacing(4)
+
+        show_hud = QCheckBox()
+        show_hud.setChecked(bool(ai_cfg.get('show_plan_hud', _AIMD['show_plan_hud'])))
+        self._widgets['ai_cmd_show_hud'] = show_hud
+        layout.addLayout(self._setting_row(
+            "Show plan HUD",
+            "Display the resolved command plan on-screen while it executes",
+            show_hud,
+        ))
+        layout.addSpacing(8)
+
+        keep_warm = QCheckBox()
+        keep_warm.setChecked(bool(ai_cfg.get('keep_warm', _AIMD['keep_warm'])))
+        self._widgets['ai_cmd_keep_warm'] = keep_warm
+        layout.addLayout(self._setting_row(
+            "Keep model warm",
+            "Fire a dummy request when entering the mode to pre-load the model, "
+            "reducing first-utterance latency",
+            keep_warm,
+        ))
+        layout.addSpacing(8)
+
+        queue_spin = QSpinBox()
+        queue_spin.setRange(1, 10)
+        queue_spin.setValue(int(ai_cfg.get('queue_depth_cap', _AIMD['queue_depth_cap'])))
+        self._widgets['ai_cmd_queue_depth'] = queue_spin
+        layout.addLayout(self._setting_row(
+            "Queue depth cap",
+            "Maximum utterances queued before the oldest is dropped with a spoken warning",
+            queue_spin,
+        ))
+        layout.addSpacing(8)
+
+        settle_spin = QDoubleSpinBox()
+        settle_spin.setRange(0.0, 5.0)
+        settle_spin.setSingleStep(0.1)
+        settle_spin.setDecimals(1)
+        settle_spin.setSuffix(" s")
+        settle_spin.setValue(float(ai_cfg.get('step_settle_seconds', _AIMD['step_settle_seconds'])))
+        self._widgets['ai_cmd_step_settle'] = settle_spin
+        layout.addLayout(self._setting_row(
+            "Step settle delay",
+            "Pause between consecutive command steps in a multi-step plan",
+            settle_spin,
+        ))
+
+        layout.addStretch()
+        scroll.setWidget(container)
+        return scroll
+
+    def _check_ai_cmd_key_collision(self) -> None:
+        warn = self._widgets.get('ai_cmd_collision_warn')
+        key_combo = self._widgets.get('ai_cmd_key')
+        if warn is None or key_combo is None:
+            return
+
+        selected_label = key_combo.currentText()
+        selected_code = _AI_CMD_KEY_OPTIONS.get(selected_label, '')
+        selected_norm = _KEY_NORMALIZE.get(selected_code, selected_code)
+
+        conflicts: list = []
+
+        # Compare against ava_mode_key
+        ava_widget = self._widgets.get('ava_mode_key')
+        if isinstance(ava_widget, _HotkeyButton):
+            ava_raw = ava_widget.combo
+        else:
+            ava_raw = self.app.config.get('ava_mode_key', 'right_alt')
+        if _KEY_NORMALIZE.get(ava_raw, ava_raw) == selected_norm:
+            conflicts.append("Ava mode key")
+
+        # Compare against command_mode.button (Hotkeys tab or Commands tab widget)
+        cmd_btn_widget = self._widgets.get('cmd_button') or self._widgets.get('cmd_tab_button')
+        if cmd_btn_widget is not None:
+            cmd_raw = cmd_btn_widget.currentText()
+        else:
+            cmd_raw = self.app.config.get('command_mode', {}).get('button', 'mouse4')
+        if _KEY_NORMALIZE.get(cmd_raw, cmd_raw) == selected_norm:
+            conflicts.append("Command Mode button")
+
+        if conflicts:
+            warn.setText(
+                "Key collision: this key is also used by "
+                + " and ".join(conflicts)
+                + ". Each mode must have a distinct activation key."
+            )
+            warn.setVisible(True)
+        else:
+            warn.setVisible(False)
+
     def _build_ava_cloud_tab(self):
         from samsara import premium
 
@@ -3753,6 +3971,20 @@ class _SettingsWindow(QMainWindow):
                 existing_ww_audio['speech_threshold'] = val
                 existing_ww['audio'] = existing_ww_audio
                 updates['wake_word_config'] = existing_ww
+
+        # AI Command Mode — merge into existing dict to preserve keys not surfaced in the UI
+        if 'ai_cmd_enabled' in self._widgets:
+            ai_cfg = dict(self.app.config.get('ai_command_mode', {}) or {})
+            key_label = self._widgets['ai_cmd_key'].currentText()
+            ai_cfg['enabled']             = self._widgets['ai_cmd_enabled'].isChecked()
+            ai_cfg['key']                 = _AI_CMD_KEY_OPTIONS.get(key_label, ai_cfg.get('key', 'right_ctrl'))
+            ai_cfg['wake_phrase']         = self._widgets['ai_cmd_wake_phrase'].text().strip()
+            ai_cfg['model']               = self._widgets['ai_cmd_model'].text().strip()
+            ai_cfg['show_plan_hud']       = self._widgets['ai_cmd_show_hud'].isChecked()
+            ai_cfg['keep_warm']           = self._widgets['ai_cmd_keep_warm'].isChecked()
+            ai_cfg['queue_depth_cap']     = self._widgets['ai_cmd_queue_depth'].value()
+            ai_cfg['step_settle_seconds'] = self._widgets['ai_cmd_step_settle'].value()
+            updates['ai_command_mode'] = ai_cfg
 
         with self.app._config_lock:
             self.app.config.update(updates)

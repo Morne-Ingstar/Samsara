@@ -43,6 +43,8 @@ _DEFAULTS: dict[str, Any] = {
     "step_settle_seconds": 0.4,
     "show_plan_hud": True,
     "keep_warm": True,
+    "ready_cue_enabled": True,
+    "ready_cue_dir": "assets/sounds/ava_cues",
 }
 
 # Words that trigger immediate queue-cancel (checked inline before enqueue)
@@ -376,8 +378,47 @@ def reset_cancel() -> None:
     _cancel.clear()
 
 
-def warm_up(app) -> None:
-    """Fire a throwaway resolve call to load the model into Ollama's memory."""
+def _play_ready_cue(app) -> None:
+    """Pick a random WAV from the ready-cue directory and play it synchronously.
+
+    Blocks until playback finishes so the caller can arm the mic immediately
+    after returning. Degrades silently if the directory is missing or empty.
+    """
+    import random
+    from pathlib import Path
+
+    cfg = _cfg(app)
+    if not cfg.get("ready_cue_enabled", _DEFAULTS["ready_cue_enabled"]):
+        return
+
+    cue_dir_str = cfg.get("ready_cue_dir", _DEFAULTS["ready_cue_dir"])
+    cue_path = Path(cue_dir_str)
+    if not cue_path.is_absolute():
+        repo_root = Path(__file__).resolve().parent.parent
+        cue_path = repo_root / cue_dir_str
+
+    if not cue_path.is_dir():
+        return
+
+    wavs = sorted(cue_path.glob("*.wav"))
+    if not wavs:
+        return
+
+    chosen = random.choice(wavs)
+    print(f"[AI-CMD] Ready cue: {chosen.name}")
+    try:
+        import winsound
+        winsound.PlaySound(str(chosen), winsound.SND_FILENAME)
+    except Exception as exc:
+        print(f"[AI-CMD] Ready cue playback failed: {exc}")
+
+
+def warm_up(app, on_done=None) -> None:
+    """Fire a throwaway resolve call to load the model into Ollama's memory.
+
+    on_done: optional zero-argument callable invoked on the warm-up thread
+    after the resolve call returns. Used to chain the ready-cue and mic-arm.
+    """
     cfg = _cfg(app)
     model = cfg.get("model", _DEFAULTS["model"])
     host = _host(app)
@@ -386,5 +427,10 @@ def warm_up(app) -> None:
         print(f"[AI-CMD] Warming up {model!r}...")
         resolve_utterance("test", ["screenshot"], model, host)
         print("[AI-CMD] Warm-up done.")
+        if on_done is not None:
+            try:
+                on_done()
+            except Exception as exc:
+                print(f"[AI-CMD] warm_up on_done error: {exc}")
 
     threading.Thread(target=_do, daemon=True, name="ai-cmd-warmup").start()
