@@ -3107,7 +3107,7 @@ class _SettingsWindow(QMainWindow):
 
         intro = QLabel(
             "Translates free-form voice speech into sequences of voice commands "
-            "using a local Ollama LLM. Requires Ollama running with the configured model."
+            "using a local Ollama LLM or the cloud provider configured in the Ava Cloud tab."
         )
         intro.setWordWrap(True)
         intro.setStyleSheet("color: #8A8A92; font-size: 12px;")
@@ -3175,15 +3175,33 @@ class _SettingsWindow(QMainWindow):
         layout.addWidget(self._section_title("Model"))
         layout.addSpacing(4)
 
+        backend_val = ai_cfg.get('backend', _AIMD['backend'])
+        backend_combo = QComboBox()
+        backend_combo.addItems(['Local (Ollama)', 'Cloud'])
+        backend_combo.setCurrentText('Cloud' if backend_val == 'cloud' else 'Local (Ollama)')
+        self._widgets['ai_cmd_backend'] = backend_combo
+        layout.addLayout(self._setting_row(
+            "Backend",
+            "Local: resolves commands via Ollama. Cloud: uses the provider in the Ava Cloud tab.",
+            backend_combo,
+        ))
+        layout.addSpacing(8)
+
         model_edit = QLineEdit()
         model_edit.setText(ai_cfg.get('model', _AIMD['model']))
         model_edit.setPlaceholderText("e.g. llama3.2:3b")
+        model_edit.setEnabled(backend_val != 'cloud')
         self._widgets['ai_cmd_model'] = model_edit
         layout.addLayout(self._setting_row(
             "Ollama model",
-            "Model Ollama uses for command resolution. Must be pulled via 'ollama pull <name>'.",
+            "Model used when backend is Local. Ignored for Cloud (configure in Ava Cloud tab).",
             model_edit,
         ))
+
+        def _update_model_enabled():
+            model_edit.setEnabled(backend_combo.currentText() == 'Local (Ollama)')
+        backend_combo.currentIndexChanged.connect(lambda _: _update_model_enabled())
+
         layout.addSpacing(12)
 
         # --- Behaviour ---------------------------------------------------------
@@ -3979,6 +3997,7 @@ class _SettingsWindow(QMainWindow):
             ai_cfg['enabled']             = self._widgets['ai_cmd_enabled'].isChecked()
             ai_cfg['key']                 = _AI_CMD_KEY_OPTIONS.get(key_label, ai_cfg.get('key', 'right_ctrl'))
             ai_cfg['wake_phrase']         = self._widgets['ai_cmd_wake_phrase'].text().strip()
+            ai_cfg['backend']             = 'cloud' if self._widgets['ai_cmd_backend'].currentText() == 'Cloud' else 'ollama'
             ai_cfg['model']               = self._widgets['ai_cmd_model'].text().strip()
             ai_cfg['show_plan_hud']       = self._widgets['ai_cmd_show_hud'].isChecked()
             ai_cfg['keep_warm']           = self._widgets['ai_cmd_keep_warm'].isChecked()

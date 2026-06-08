@@ -38,6 +38,7 @@ _DEFAULTS: dict[str, Any] = {
     "enabled": True,
     "key": "right_ctrl",
     "wake_phrase": "command mode",
+    "backend": "ollama",
     "model": "llama3.2:3b",
     "queue_depth_cap": 3,
     "step_settle_seconds": 0.4,
@@ -152,6 +153,39 @@ def _build_menu(app) -> list[str]:
             if entry.get("ai_visible", True)
         )
     return []
+
+
+def _resolve_via_cloud(utterance: str, menu: list[str], app) -> list[str]:
+    """Resolve utterance via the configured cloud LLM provider.
+
+    Reuses the existing cloud_llm plumbing (send_json) — no new HTTP client.
+    Returns a validated in-menu command list, same contract as resolve_utterance().
+    """
+    from samsara import cloud_llm  # noqa: PLC0415
+    cloud_cfg = app.config.get("cloud_llm", {})
+    if not cloud_cfg.get("api_key", ""):
+        _speak(app, "No cloud API key is configured. Add one in Settings under Ava Cloud.")
+        return []
+    cmd_list = ", ".join(menu[:200])
+    system = _SYSTEM_PROMPT.replace("{COMMAND_LIST}", cmd_list)
+    raw = cloud_llm.send_json(system, utterance, app)
+    if raw.startswith("Error:"):
+        print(f"[AI-CMD] Cloud resolver error: {raw}")
+        _speak(app, "Cloud resolver failed. Check your API key and network, then try again.")
+        return []
+    try:
+        parsed = json.loads(raw)
+        actions = parsed.get("actions", [])
+        menu_set = set(menu)
+        return [
+            a["command"]
+            for a in actions
+            if isinstance(a, dict) and isinstance(a.get("command"), str)
+            and a["command"] in menu_set
+        ]
+    except Exception as exc:
+        print(f"[AI-CMD] Cloud resolve parse error: {exc} | raw: {raw!r}")
+        return []
 
 
 # ---------------------------------------------------------------------------
@@ -276,14 +310,18 @@ def _process_utterance(app, utterance: str) -> None:  # noqa: C901
         return
 
     # --- Resolve utterance --------------------------------------------------
-    model = cfg.get("model", _DEFAULTS["model"])
-    host = _host(app)
     menu = _build_menu(app)
+    backend = cfg.get("backend", _DEFAULTS["backend"])
 
-    print(f"[AI-CMD] Resolving: {utterance!r}")
+    print(f"[AI-CMD] Resolving via {backend!r}: {utterance!r}")
     _duck(app, True)
     try:
-        actions = resolve_utterance(utterance, menu, model, host)
+        if backend == "cloud":
+            actions = _resolve_via_cloud(utterance, menu, app)
+        else:
+            model = cfg.get("model", _DEFAULTS["model"])
+            host = _host(app)
+            actions = resolve_utterance(utterance, menu, model, host)
     finally:
         _duck(app, False)
 
@@ -418,8 +456,24 @@ def warm_up(app, on_done=None) -> None:
 
     on_done: optional zero-argument callable invoked on the warm-up thread
     after the resolve call returns. Used to chain the ready-cue and mic-arm.
+
+    When backend is 'cloud', skips the Ollama call and fires on_done directly
+    (still async so the caller's flow is consistent).
     """
     cfg = _cfg(app)
+    backend = cfg.get("backend", _DEFAULTS["backend"])
+
+    if backend == "cloud":
+        def _cloud_noop():
+            print("[AI-CMD] Cloud backend -- skipping Ollama warm-up.")
+            if on_done is not None:
+                try:
+                    on_done()
+                except Exception as exc:
+                    print(f"[AI-CMD] warm_up on_done error: {exc}")
+        threading.Thread(target=_cloud_noop, daemon=True, name="ai-cmd-warmup").start()
+        return
+
     model = cfg.get("model", _DEFAULTS["model"])
     host = _host(app)
 

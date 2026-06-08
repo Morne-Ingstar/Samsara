@@ -138,6 +138,61 @@ def _send_anthropic(base_url, api_key, model, system_prompt,
     return " ".join(text_blocks).strip()
 
 
+def send_json(system_prompt, user_message, app):
+    """Like send() but optimised for constrained JSON output.
+
+    Uses temperature=0 and response_format=json_object for OpenAI-compatible
+    providers. Anthropic has no JSON mode; the prompt carries the constraint.
+    Returns the response text string, or an "Error:..." string on failure.
+    """
+    cfg = _get_config(app)
+    api_key = cfg.get("api_key", "")
+    if not api_key:
+        return "Error: No API key configured for cloud LLM."
+
+    provider, base_url, model = _get_provider_config(app)
+    timeout = cfg.get("timeout_seconds", 30)
+    max_tokens = cfg.get("max_tokens", 300)
+
+    try:
+        if provider == "anthropic":
+            return _send_anthropic(base_url, api_key, model, system_prompt,
+                                   user_message, timeout, max_tokens)
+        else:
+            return _send_openai_json(base_url, api_key, model, system_prompt,
+                                     user_message, timeout, max_tokens)
+    except requests.exceptions.ConnectionError:
+        return "Error: Could not connect to the cloud LLM provider."
+    except requests.exceptions.Timeout:
+        return f"Error: Cloud LLM request timed out after {timeout}s."
+    except Exception as e:
+        return f"Error: Cloud LLM request failed: {e}"
+
+
+def _send_openai_json(base_url, api_key, model, system_prompt,
+                      user_message, timeout, max_tokens=300):
+    url = f"{base_url}/chat/completions"
+    headers = {
+        "Content-Type": "application/json",
+        "Authorization": f"Bearer {api_key}",
+    }
+    messages = [
+        {"role": "system", "content": system_prompt},
+        {"role": "user", "content": user_message},
+    ]
+    payload = {
+        "model": model,
+        "messages": messages,
+        "max_tokens": max_tokens,
+        "temperature": 0,
+        "response_format": {"type": "json_object"},
+    }
+    response = requests.post(url, json=payload, headers=headers, timeout=timeout)
+    response.raise_for_status()
+    data = response.json()
+    return data["choices"][0]["message"]["content"].strip()
+
+
 def check_available(app):
     """Quick health check. Returns (True, provider_name) or (False, error_string)."""
     if not is_enabled(app):
