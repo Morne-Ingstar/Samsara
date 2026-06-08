@@ -247,7 +247,7 @@ def _get_pynput_command_key(button_name: str):
 
     Supported keyboard values:
         rctrl / lctrl / ralt / lalt / rshift / lshift
-        f13 ... f24  (macro-pad / foot-pedal extended function keys)
+        f1 ... f24  (function keys; f13-f24 are macro-pad / foot-pedal keys)
     """
     _SIMPLE = {
         'rctrl':      Key.ctrl_r,
@@ -269,15 +269,15 @@ def _get_pynput_command_key(button_name: str):
         tail = button_name[1:]
         if tail.isdigit():
             n = int(tail)
-            if 13 <= n <= 24:
-                # pynput defines f13-f20 in Key; f21-f24 may only exist as VK codes
+            if 1 <= n <= 24:
+                # pynput defines f1-f20 in Key; f21-f24 may only exist as VK codes
                 try:
                     return getattr(Key, button_name)
                 except AttributeError:
                     pass
                 try:
                     from pynput.keyboard import KeyCode
-                    return KeyCode.from_vk(0x6F + n)   # F1=0x70 → Fn=0x70+(n-1)
+                    return KeyCode.from_vk(0x6F + n)   # F1=0x70 → Fn=0x6F+n
                 except Exception:
                     return None
     return None
@@ -786,6 +786,8 @@ class DictationApp:
         self.ai_command_mode_active = False
         self._ai_cmd_mode_lock = threading.Lock()
         self._ai_cmd_key_held = False            # edge-trigger guard vs OS key auto-repeat
+        self._ai_cmd_ready = threading.Event()
+        self._ai_cmd_ready.set()  # starts set; cleared during entry until cue finishes
 
         self._mouse_hook = None
 
@@ -3005,6 +3007,7 @@ class DictationApp:
             if self.command_mode_active or self.ava_mode_active:
                 return
             self.ai_command_mode_active = True
+        self._ai_cmd_ready.clear()  # Mic gate: unblocks only after cue finishes
         print("[AI-CMD] Entering AI command mode")
         if hasattr(self, 'listening_indicator'):
             self._schedule_ui(self.listening_indicator.set_command_mode, True)
@@ -3012,18 +3015,28 @@ class DictationApp:
                          name='ai-cmd-enter').start()
 
     def _do_enter_ai_command_mode(self):
-        """Worker: play entry earcon and optionally warm up the model."""
+        """Worker: play entry earcon, warm up model, play ready cue, then arm mic."""
         debounce_ms = self.config.get('command_mode', {}).get('enter_debounce_ms', 200)
         time.sleep(debounce_ms / 1000.0)
-        if self.ai_command_mode_active:
-            self.play_sound('start', use_winsound=True)
+        if not self.ai_command_mode_active:
+            self._ai_cmd_ready.set()
+            return
+        self.play_sound('start', use_winsound=True)
         ai_cfg = self.config.get('ai_command_mode', {})
+
+        def _on_ready():
+            from samsara.ai_command_mode import _play_ready_cue  # noqa: PLC0415
+            _play_ready_cue(self)
+            self._ai_cmd_ready.set()
+
         if ai_cfg.get('keep_warm', True):
             try:
                 from samsara.ai_command_mode import warm_up  # noqa: PLC0415
-                warm_up(self)
+                warm_up(self, on_done=_on_ready)
             except Exception:
-                pass
+                self._ai_cmd_ready.set()
+        else:
+            _on_ready()
 
     def exit_ai_command_mode(self):
         """Exit AI command mode (idempotent). Drains queue. Safe from any thread."""
@@ -3031,6 +3044,7 @@ class DictationApp:
             if not self.ai_command_mode_active:
                 return
             self.ai_command_mode_active = False
+        self._ai_cmd_ready.set()  # Unblock utterance gate if cue is still playing
         print("[AI-CMD] Exiting AI command mode")
         if hasattr(self, 'listening_indicator'):
             self._schedule_ui(self.listening_indicator.set_command_mode, False)
@@ -3050,6 +3064,9 @@ class DictationApp:
         to prevent concurrent transcriptions.
         Stop-words are checked before enqueue so cancel is always responsive.
         """
+        if not self._ai_cmd_ready.wait(timeout=60):
+            print('[AI-CMD-UTT] Ready timeout -- dropping utterance')
+            return
         if self._wake_transcription_in_progress:
             print('[AI-CMD-UTT] Transcription in progress -- skipping')
             return
