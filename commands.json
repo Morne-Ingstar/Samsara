@@ -85,6 +85,24 @@
       "description": "Show desktop",
       "pack": "core"
     },
+    "minimize all": {
+      "type": "hotkey",
+      "keys": [
+        "win",
+        "d"
+      ],
+      "description": "Minimize all windows (show desktop)",
+      "pack": "core"
+    },
+    "minimize everything": {
+      "type": "hotkey",
+      "keys": [
+        "win",
+        "d"
+      ],
+      "description": "Minimize all windows (show desktop)",
+      "pack": "core"
+    },
     "task manager": {
       "type": "hotkey",
       "keys": [
