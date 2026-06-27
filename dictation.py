@@ -1742,6 +1742,8 @@ class DictationApp:
             self.set_wake_word_enabled(changes['wake_word_enabled'])
         if 'microphone' in changes:
             self.capture_rate = self._detect_capture_rate(changes['microphone'])
+        if 'gesture' in changes:
+            self.set_gesture_enabled(changes['gesture'].get('enabled', False))
         if 'wake_word_config' in changes:
             new_phrase = changes['wake_word_config'].get('phrase', '')
             old_phrase = (

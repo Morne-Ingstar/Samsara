@@ -162,6 +162,14 @@ class SamsaraTrayQt(QObject):
             lambda checked: app.set_streaming_mode(checked)
         )
 
+        # ---- Gesture lane ----
+        gesture_act = menu.addAction("Gesture Lane  (webcam)")
+        gesture_act.setCheckable(True)
+        gesture_act.setChecked(bool(app.config.get('gesture', {}).get('enabled', False)))
+        gesture_act.triggered.connect(
+            lambda checked: app.set_gesture_enabled(checked)
+        )
+
         # ---- Snooze submenu ----
         snoozed = getattr(app, 'snoozed', False)
         snooze_sub = QMenu("Snoozed" if snoozed else "Snooze")

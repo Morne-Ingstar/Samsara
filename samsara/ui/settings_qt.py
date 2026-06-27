@@ -3084,6 +3084,27 @@ class _SettingsWindow(QMainWindow):
             pos_combo,
         ))
 
+        layout.addSpacing(20)
+
+        # ---- Section: Gesture Lane -----------------------------------------
+        layout.addWidget(self._section_title("Gesture Lane"))
+        layout.addSpacing(4)
+
+        gesture_note = QLabel(
+            "Recognizes deliberate hand poses via your webcam and maps each one to "
+            "an existing command.  The camera runs at low resolution (640x480) and "
+            "is released completely when this is off.  Requires mediapipe."
+        )
+        gesture_note.setWordWrap(True)
+        gesture_note.setStyleSheet("color: #8A8A92; font-size: 12px;")
+        layout.addWidget(gesture_note)
+        layout.addSpacing(6)
+
+        gesture_cb = QCheckBox("Enable gesture lane (webcam hand poses)")
+        gesture_cb.setChecked(bool(self.app.config.get('gesture', {}).get('enabled', False)))
+        self._widgets['adv_gesture_enabled'] = gesture_cb
+        layout.addWidget(gesture_cb)
+
         layout.addStretch()
         scroll.setWidget(container)
         return scroll
@@ -3975,6 +3996,10 @@ class _SettingsWindow(QMainWindow):
             updates['listening_indicator_position'] = (
                 self._widgets['adv_indicator_pos'].currentText()
             )
+            if 'adv_gesture_enabled' in self._widgets:
+                gesture_cfg = dict(self.app.config.get('gesture', {}) or {})
+                gesture_cfg['enabled'] = self._widgets['adv_gesture_enabled'].isChecked()
+                updates['gesture'] = gesture_cfg
             # Apply manual threshold to wake_word_config if in manual mode
             if self._widgets['adv_threshold_mode'].currentText() == 'manual':
                 ww_cfg = dict(self.app.config.get('wake_word_config', {}) or {})
