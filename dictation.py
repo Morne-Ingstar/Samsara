@@ -1041,6 +1041,10 @@ class DictationApp:
         self.hints = HintManager(self)
 
         print("[INIT] Initializing TTS...")
+        # Gesture input lane (optional; off by default)
+        self._camera_service = None
+        self._gesture_loop = None
+
         # TTS engine + AudioCoordinator (optional; off by default)
         # engine selection: config tts.engine = "winrt" (default) or "edge"
         self.tts_engine = None
@@ -1493,7 +1497,28 @@ class DictationApp:
                 "my orders": "https://www.amazon.com/gp/your-account/order-history",
                 "github": "https://github.com",
                 "reddit": "https://reddit.com"
-            }
+            },
+            # Gesture input lane (webcam hand-pose -> command). Opt-in; disabled
+            # by default. Requires mediapipe and opencv-python in the environment.
+            "gesture": {
+                "enabled": False,
+                "device_index": 0,
+                "hold_ms": 350,
+                "refractory_neutral_frames": 8,
+                "min_detection_confidence": 0.6,
+                "min_tracking_confidence": 0.5,
+                "profile": {
+                    "width": 640,
+                    "height": 480,
+                    "fps": 30,
+                },
+                "poses": {
+                    "open_palm": "dictation_toggle",
+                    "peace":     "ava_mode",
+                    "fist":      "stop_cancel",
+                    "shaka":     "window_chooser",
+                },
+            },
         }
 
         _loaded_from_disk = False
@@ -2367,6 +2392,11 @@ class DictationApp:
             if self.config.get('wake_word_enabled', False):
                 print("[AUTO] Starting wake word listener...")
                 self.start_wake_word_mode()
+
+            # Auto-start gesture lane if enabled
+            if self.config.get('gesture', {}).get('enabled', False):
+                self._start_gesture_lane()
+
             print("[INIT] Startup complete.")
 
             # Ensure clean state — reset any recording flags that may have
@@ -5321,6 +5351,58 @@ class DictationApp:
 
         return True
 
+    def _start_gesture_lane(self) -> None:
+        """Start CameraService + GestureLoop. Safe to call from any thread."""
+        if self._gesture_loop is not None:
+            return
+        try:
+            from samsara.vision.camera_service import CameraService
+            from samsara.vision.gesture_loop import GestureLoop
+            gesture_cfg = self.config.get('gesture', {})
+            device_index = gesture_cfg.get('device_index', 0)
+            profile = gesture_cfg.get('profile', {})
+            svc = CameraService.get_instance()
+            svc.start(device_index=device_index, profile=profile or None)
+            self._camera_service = svc
+            loop = GestureLoop(self, svc, gesture_cfg)
+            loop.start()
+            self._gesture_loop = loop
+            print("[GESTURE] Lane started")
+        except Exception as _e:
+            print(f"[GESTURE] Failed to start: {_e}")
+            self._camera_service = None
+            self._gesture_loop = None
+
+    def _stop_gesture_lane(self) -> None:
+        """Stop GestureLoop and release camera handle."""
+        loop = self._gesture_loop
+        if loop is not None:
+            try:
+                loop.stop()
+            except Exception:
+                pass
+            self._gesture_loop = None
+        svc = self._camera_service
+        if svc is not None:
+            try:
+                svc.stop()
+            except Exception:
+                pass
+            self._camera_service = None
+        print("[GESTURE] Lane stopped")
+
+    def set_gesture_enabled(self, enabled: bool) -> None:
+        """Enable or disable the gesture lane and persist the setting."""
+        with self._config_lock:
+            self.config.setdefault('gesture', {})['enabled'] = enabled
+            self.save_config()
+        if enabled and self._gesture_loop is None:
+            self._start_gesture_lane()
+            print("[GESTURE] Lane ENABLED")
+        elif not enabled and self._gesture_loop is not None:
+            self._stop_gesture_lane()
+            print("[GESTURE] Lane DISABLED")
+
     def set_wake_word_enabled(self, enabled):
         """Start or stop the wake word listener independently of capture mode."""
         with self._config_lock:
@@ -5884,7 +5966,12 @@ class DictationApp:
                 self.stop_wake_word_mode()
         except:
             pass
-        
+
+        try:
+            self._stop_gesture_lane()
+        except Exception:
+            pass
+
         # Stop key macro manager (releases any held keys)
         try:
             if hasattr(self, 'key_macro_manager') and self.key_macro_manager:
