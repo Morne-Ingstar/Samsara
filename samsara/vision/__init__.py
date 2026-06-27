@@ -1,5 +1,5 @@
 """
-Vision bridge — local screenshot capture + Ollama vision model.
+Vision bridge -- local screenshot capture + Ollama vision model.
 
 Privacy boundary: by default, screenshots never leave this machine; this
 holds only while ollama.host points to a local instance. The vision model
