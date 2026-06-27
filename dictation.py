@@ -644,15 +644,28 @@ class DictationApp:
         if not self.config_path.exists():
             need_wizard = True
         else:
-            try:
-                with open(self.config_path, 'r') as f:
-                    existing_config = json.load(f)
-                if not existing_config.get('first_run_complete', False):
+            for _attempt in range(3):
+                try:
+                    with open(self.config_path, 'r') as f:
+                        existing_config = json.load(f)
+                    if not existing_config.get('first_run_complete', False):
+                        need_wizard = True
+                    elif existing_config.get('microphone') is None:
+                        need_wizard = True
+                    break
+                except (OSError, PermissionError) as _e:
+                    logger.warning("[CONFIG] pre-wizard check attempt %d failed: %s", _attempt + 1, _e)
+                    if _attempt < 2:
+                        time.sleep(0.1)
+                    else:
+                        logger.warning("[CONFIG] pre-wizard check failed 3x -- skipping wizard (assuming valid config)")
+                        need_wizard = False
+                except json.JSONDecodeError:
                     need_wizard = True
-                elif existing_config.get('microphone') is None:
+                    break
+                except Exception:
                     need_wizard = True
-            except Exception:
-                need_wizard = True
+                    break
 
         # Run first-run wizard if needed
         if need_wizard:
@@ -1302,6 +1315,7 @@ class DictationApp:
 
     def load_config(self):
         """Load configuration from JSON file"""
+        logger.debug("[CONFIG] load_config: entry")
         default_config = {
             "hotkey": "ctrl+shift",
             "continuous_hotkey": "ctrl+alt+d",
@@ -1483,10 +1497,14 @@ class DictationApp:
         }
 
         _loaded_from_disk = False
+        logger.debug("[CONFIG] load_config: checking config_path existence")
         if self.config_path.exists():
+            logger.debug("[CONFIG] load_config: opening config.json")
             try:
                 with open(self.config_path, 'r') as f:
+                    logger.debug("[CONFIG] load_config: reading JSON")
                     self.config = json.load(f)
+                    logger.debug("[CONFIG] load_config: JSON loaded ok")
                 _loaded_from_disk = True
             except json.JSONDecodeError as _je:
                 bak_path = self.config_path.with_suffix('.json.bak')
@@ -1506,7 +1524,9 @@ class DictationApp:
 
         if _loaded_from_disk:
             # Migrate old flat wake word config to new nested structure
+            logger.debug("[CONFIG] load_config: starting _migrate_wake_word_config")
             self._migrate_wake_word_config(default_config)
+            logger.debug("[CONFIG] load_config: _migrate_wake_word_config done")
 
             # Fill in any missing top-level keys
             for key in default_config:
@@ -1520,7 +1540,9 @@ class DictationApp:
             self.save_config()
 
         # Record the on-disk state so save_config can do three-way merging.
+        logger.debug("[CONFIG] load_config: starting deepcopy snapshot")
         self._config_last_disk_snapshot = copy.deepcopy(self.config)
+        logger.debug("[CONFIG] load_config: done")
     
     def _migrate_wake_word_config(self, default_config):
         """Migrate old flat wake word settings to new nested structure"""
