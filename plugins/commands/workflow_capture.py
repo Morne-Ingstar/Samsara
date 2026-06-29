@@ -31,12 +31,8 @@ except ImportError:
     _PYNPUT = False
     logger.warning("[CAPTURE] pynput not available -- keyboard/mouse capture disabled")
 
-try:
-    import uiautomation as _auto
-    _UIA = True
-except ImportError:
-    _auto = None
-    _UIA = False
+_auto = None
+_UIA = None  # None = not yet attempted; True/False = result
 
 try:
     import win32gui
@@ -138,6 +134,14 @@ def _coarse_region(x: int, y: int) -> str:
 
 def _resolve_click(x: int, y: int) -> str:
     """Privacy-safe description of what was clicked — role+name+app or coarse region."""
+    global _auto, _UIA
+    if _UIA is None:
+        try:
+            import uiautomation as _m
+            _auto = _m
+            _UIA = True
+        except ImportError:
+            _UIA = False
     if _UIA:
         try:
             ctrl = _auto.ControlFromPoint(x, y)
@@ -160,6 +164,14 @@ def _resolve_click(x: int, y: int) -> str:
 
 def _resolve_focused_field() -> str:
     """Privacy-safe description of the focused input field — never its content."""
+    global _auto, _UIA
+    if _UIA is None:
+        try:
+            import uiautomation as _m
+            _auto = _m
+            _UIA = True
+        except ImportError:
+            _UIA = False
     if _UIA:
         try:
             focused = _auto.GetFocusedControl()

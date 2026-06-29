@@ -199,10 +199,12 @@ def load_plugins(plugins_dir):
         logger.info(f"Plugin directory does not exist, skipping: {plugins_path}")
         return 0
 
+    import time as _time
     loaded = 0
     for py_file in plugins_path.glob("*.py"):
         if py_file.name.startswith('_'):
             continue  # skip __init__.py, private files
+        _pt0 = _time.monotonic()
         try:
             spec = importlib.util.spec_from_file_location(
                 f"samsara_plugin_{py_file.stem}", py_file
@@ -210,7 +212,11 @@ def load_plugins(plugins_dir):
             module = importlib.util.module_from_spec(spec)
             spec.loader.exec_module(module)
             loaded += 1
-            logger.info(f"Loaded plugin: {py_file.name}")
+            _pms = (_time.monotonic() - _pt0) * 1000
+            if _pms > 50:
+                print(f"[BOOT] plugin {py_file.name}: {_pms:.0f}ms  *** SLOW ***")
+            else:
+                logger.info(f"Loaded plugin: {py_file.name} ({_pms:.0f}ms)")
         except Exception as e:
             logger.exception(f"Failed to load plugin {py_file.name}: {e}")
 

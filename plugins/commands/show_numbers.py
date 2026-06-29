@@ -42,13 +42,8 @@ from samsara.ui.numbers_overlay_qt import (
 
 logger = logging.getLogger(__name__)
 
-try:
-    import uiautomation as auto
-    _UIA_AVAILABLE = True
-except ImportError:
-    auto = None
-    _UIA_AVAILABLE = False
-    logger.warning("[OVERLAY] uiautomation not available -- win32 fallback active")
+_uia_mod = None
+_UIA_AVAILABLE = None  # None = not yet attempted; True/False = result
 
 # ---------------------------------------------------------------------------
 # Module-level state  (one overlay at a time)
@@ -149,9 +144,20 @@ def _enumerate_foreground_clickables() -> list:
 
     Safe to call from a worker thread -- UIA is COM, not Qt.
     """
+    global _uia_mod, _UIA_AVAILABLE
+    if _UIA_AVAILABLE is None:
+        try:
+            import uiautomation as _m
+            _uia_mod = _m
+            _UIA_AVAILABLE = True
+        except ImportError:
+            _UIA_AVAILABLE = False
+            logger.warning("[OVERLAY] uiautomation not available -- win32 fallback active")
+
     if not _UIA_AVAILABLE:
         return _enumerate_win32_fallback()
 
+    auto = _uia_mod
     fg = auto.GetForegroundControl()
     if fg is None:
         return []
