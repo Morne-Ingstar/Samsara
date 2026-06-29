@@ -1169,8 +1169,11 @@ def _health_monitor_loop():
                 pass
         return _check_ollama_available(host)
 
+    first_run = True
     while True:
-        time.sleep(30)
+        if not first_run:
+            time.sleep(30)
+        first_run = False
         try:
             now_up = _check()
             app = _app_ref[0]
@@ -1198,14 +1201,6 @@ def _start_health_monitor(app=None):
     t.start()
     return t
 
-
-# Seed initial state synchronously (fast, 1-second timeout already in _check_ollama_available)
-try:
-    _ollama_up = _check_ollama_available("http://localhost:11434")
-    _ollama_health_state = "up" if _ollama_up else "down"
-except Exception:
-    _ollama_up = False
-    _ollama_health_state = "down"
 
 _start_health_monitor()
 

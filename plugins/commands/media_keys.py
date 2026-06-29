@@ -24,16 +24,6 @@ from samsara.plugin_commands import command
 
 logger = logging.getLogger(__name__)
 
-try:
-    from winsdk.windows.media.control import (
-        GlobalSystemMediaTransportControlsSessionManager as SessionManager,
-    )
-    _WINSDK_AVAILABLE = True
-except ImportError:
-    SessionManager = None
-    _WINSDK_AVAILABLE = False
-    logger.warning("[MEDIA KEYS] winsdk not available — SMTC commands disabled")
-
 
 # ---------------------------------------------------------------------------
 # Helpers
@@ -62,7 +52,12 @@ async def _get_session_for_process(target_process_name):
 
     Strategy: strip .exe, lowercase, substring match.
     """
-    if not _WINSDK_AVAILABLE:
+    try:
+        from winsdk.windows.media.control import (
+            GlobalSystemMediaTransportControlsSessionManager as SessionManager,
+        )
+    except ImportError:
+        logger.warning("[MEDIA KEYS] winsdk not available -- SMTC commands disabled")
         return None
     try:
         manager = await SessionManager.request_async()
