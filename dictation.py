@@ -386,6 +386,35 @@ def resample_audio(audio, orig_sr, target_sr=MODEL_SAMPLE_RATE):
     return np.interp(new_indices, old_indices, audio).astype(np.float32)
 
 
+def _is_hallucinated_segments(seg_list, text):
+    """True if the transcription shows Whisper's degenerate-repetition signature.
+    Uses telemetry Whisper already computed; no re-inference. Conservative:
+    only fires on clear signatures so real speech is never dropped."""
+    t = (text or "").strip()
+    if not t:
+        return False
+    # Signature A: high compression ratio on any segment (repetition compresses hard).
+    # Whisper's own reject threshold is 2.4; we use a slightly higher 3.0 to stay
+    # conservative and avoid touching borderline-but-real speech.
+    for s in seg_list:
+        cr = getattr(s, "compression_ratio", None)
+        if cr is not None and cr > 3.0:
+            return True
+    # Signature B: low lexical diversity repetition (e.g. "click click click click").
+    words = t.lower().split()
+    if len(words) >= 4:
+        uniq = len(set(words))
+        if uniq <= max(2, len(words) // 4):
+            return True
+    # Signature C: very high no_speech_prob across all segments AND short output
+    # (near-silent buffer that still emitted a token or two).
+    if seg_list:
+        nsp = [getattr(s, "no_speech_prob", 0.0) or 0.0 for s in seg_list]
+        if nsp and min(nsp) > 0.8 and len(words) <= 3:
+            return True
+    return False
+
+
 def hide_console():
     """Hide the console window (Windows only, no-op on other platforms)"""
     if sys.platform != 'win32':
@@ -5102,7 +5131,12 @@ class DictationApp:
                             continue
                         with self.model_lock:
                             segs, _ = self.model.transcribe(chunk, **transcribe_params)
-                        chunk_text = "".join(s.text for s in segs).strip()
+                        _segs_list = list(segs)
+                        chunk_text = "".join(s.text for s in _segs_list).strip()
+                        if _is_hallucinated_segments(_segs_list, chunk_text):
+                            logging.getLogger("Samsara").info(
+                                f"[GUARD] Suppressed hallucinated chunk {idx+1}: {chunk_text!r}")
+                            chunk_text = ""
                         if chunk_text:
                             texts.append(chunk_text)
                         print(f"[LONG] Chunk {idx + 1}/{len(chunks)}: "
@@ -5111,7 +5145,12 @@ class DictationApp:
                 else:
                     with self.model_lock:
                         segments, info = self.model.transcribe(audio, **transcribe_params)
-                    text = "".join([segment.text for segment in segments]).strip()
+                    _seg_list = list(segments)
+                    text = "".join([s.text for s in _seg_list]).strip()
+                    if _is_hallucinated_segments(_seg_list, text):
+                        logging.getLogger("Samsara").info(
+                            f"[GUARD] Suppressed hallucination: {text!r}")
+                        text = ""
 
                 transcribe_time = time.time() - transcribe_start
 
