@@ -415,6 +415,17 @@ def open_file_or_folder(path):
 
 
 
+# Force stdout/stderr to UTF-8 so Unicode in transcriptions (arrows, em-dashes,
+# smart quotes, emoji) can never raise UnicodeEncodeError on cp1252 Windows consoles.
+# errors="replace" guarantees output can never crash a caller even on un-encodable bytes.
+for _stream_name in ("stdout", "stderr"):
+    _stream = getattr(sys, _stream_name, None)
+    if _stream is not None and hasattr(_stream, "reconfigure"):
+        try:
+            _stream.reconfigure(encoding="utf-8", errors="replace")
+        except (ValueError, OSError):
+            pass  # packaged EXE / redirected / already-closed stream — non-fatal
+
 # Set up logging — persistent file in ~/.samsara/logs/ + console
 from logging.handlers import RotatingFileHandler as _RotatingFileHandler
 
@@ -472,7 +483,16 @@ _original_print = print
 def print(*args, **kwargs):
     message = ' '.join(str(arg) for arg in args)
     logger.info(message)
-    _original_print(*args, **kwargs)
+    try:
+        _original_print(*args, **kwargs)
+    except UnicodeEncodeError:
+        # Last-resort: stdout still not UTF-8 (redirected pipe etc.).
+        # The message is already in the UTF-8 log file via logger.info above,
+        # so it is safe to emit an ASCII-safe fallback to the console.
+        try:
+            _original_print(message.encode("ascii", "replace").decode("ascii"), **kwargs)
+        except Exception:
+            pass  # never let console output break a caller
 
 
 # ── Global exception hooks — log to file before crashing ─────────────────────
@@ -626,6 +646,15 @@ class DictationApp:
     def __init__(self, splash=None):
         self.splash = splash
         self.config_path = Path(__file__).parent / "config.json"
+
+        # Boot-phase timing -- measure first, fix later.
+        _bt0 = time.monotonic()
+        _btp = [_bt0]  # mutable cell so the closure can write it
+        def _boot(label: str) -> None:
+            now = time.monotonic()
+            print(f"[BOOT] {label}: {(now - _btp[0]) * 1000:.0f}ms  (total {(now - _bt0) * 1000:.0f}ms)")
+            _btp[0] = now
+        self._boot_log = _boot  # expose so load_model_async can use it
         # Protects all self.config mutations and save_config disk writes.
         # MUST be held before any mutation to self.config that precedes a save,
         # and before calling save_config() directly.
@@ -696,6 +725,7 @@ class DictationApp:
         self.update_splash("Loading configuration...")
         with self._config_lock:
             self.load_config()
+        _boot("config load")
 
         self.update_splash("Setting up audio...")
 
@@ -714,6 +744,7 @@ class DictationApp:
 
         print("[INIT] Enumerating audio devices...")
         self.available_mics = self.get_available_microphones()
+        _boot("audio device enumeration")
 
         # Try name-based reconciliation first — stable across index changes.
         # _reconcile_microphone_selection is defined later in the class but
@@ -753,6 +784,7 @@ class DictationApp:
 
         # Auto-calibrate speech threshold on startup
         self._run_calibration_if_auto()
+        _boot("mic calibration")
 
         self.recording = False
         self.command_mode_recording = False  # True when using command-only hotkey
@@ -762,6 +794,7 @@ class DictationApp:
 
         # Set up audio feedback sounds (creates defaults if needed)
         self._setup_sounds()
+        _boot("sound setup")
 
         # Model settings
         self.model = None
@@ -773,6 +806,7 @@ class DictationApp:
         commands_path = Path(__file__).parent / "commands.json"
         self.command_executor = CommandExecutor(commands_path, app=self)
         self.command_mode_enabled = self.config.get('command_mode_enabled', True)
+        _boot("plugin discovery + command executor")
 
         # Repeat / again state
         self._last_command = None       # command dict of last repeatable command
@@ -899,6 +933,7 @@ class DictationApp:
         except Exception as e:
             print(f"[HISTORY] Could not open persistent history: {e}")
             self.history_db = None
+        _boot("history / SQLite init")
 
         print("[INIT] Building UI...")
 
@@ -1070,6 +1105,7 @@ class DictationApp:
                 print(f"[TTS] Failed to initialize: {e}")
                 self.tts_engine = None
                 self.audio_coordinator = None
+        _boot("TTS engine init")
 
         # Smart Actions Phase 2: webhook bridge, session manager, tool dispatcher
         try:
@@ -1087,6 +1123,7 @@ class DictationApp:
             self._smart_actions_bridge = None
             self._smart_actions_session = None
             self._smart_actions_tools = None
+        _boot("smart actions init")
 
         # Echo cancellation (removes system audio from mic input)
         aec_config = self.config.get('echo_cancellation', {})
@@ -1106,6 +1143,7 @@ class DictationApp:
             on_release=self.on_key_release
         )
         self.keyboard_listener.start()
+        _boot("keyboard/mouse listener setup")
 
         # Mouse listener for Mouse 4 command mode (hold-to-talk / toggle)
         self._install_mouse_listener()
@@ -1132,7 +1170,7 @@ class DictationApp:
 
         # Load model in background
         self.load_model_async()
-
+        _boot("model load kicked off (async)")
 
         # ACE engine — always started for hold-mode dictation (ACE-03).
         # DictationSessionConsumer replaces the bespoke prebuffer + audio_callback path.
@@ -1147,6 +1185,7 @@ class DictationApp:
         self._start_ace_engine()
         if self.config.get('ace_debug_capture', False) and self._ace_engine is not None:
             self._start_ace_debug_rec()
+        _boot("ACE audio engine start")
 
         mode = self.config.get('mode', 'hold')
         print(f"Dictation app starting...")
@@ -2370,16 +2409,19 @@ class DictationApp:
             except Exception as e:
                 print(f"[SPLASH] Could not close splash: {e}")
 
+            _boot_log = getattr(self, '_boot_log', lambda s: None)
             print("[INIT] Loading Silero VAD...")
             # Load Silero VAD for real-time speech gating (async-safe: if this
             # fails, the wake callback falls back to RMS).
             self._load_vad_model()
+            _boot_log("async: Silero VAD load")
 
             print("[INIT] Loading OpenWakeWord pre-filter...")
             self._load_oww_model()
+            _boot_log("async: OpenWakeWord model load")
 
             print("Ready for dictation.")
-            
+
             # Auto-start modes that require always-on listening
             mode = self.config.get('mode', 'hold')
             if mode == 'continuous':
@@ -2394,6 +2436,7 @@ class DictationApp:
             if self.config.get('wake_word_enabled', False):
                 print("[AUTO] Starting wake word listener...")
                 self.start_wake_word_mode()
+            _boot_log("async: wake word + audio stream start")
 
             # Auto-start gesture lane if enabled
             if self.config.get('gesture', {}).get('enabled', False):
