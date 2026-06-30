@@ -671,6 +671,66 @@ def _three_way_merge(base, memory, disk):
                 result[key] = m   # memory changed (or neither) -> keep runtime value
     return result
 
+
+def _resolve_target_window(process_name, exclude_pids=None):
+    """Find the first visible (or minimized) top-level window whose owning
+    process matches *process_name* (case-insensitive executable name).
+
+    Returns (hwnd, title) or None.
+    exclude_pids: set of int PIDs to skip (Samsara's own PID, terminal PIDs).
+
+    Uses psutil for fast PID-by-name lookup, then EnumWindows to find a
+    window owned by one of those PIDs — same Win32 pattern as window_switcher.
+    """
+    import ctypes
+    import ctypes.wintypes as _wt
+    try:
+        import psutil as _ps
+    except ImportError:
+        print("[WAKE-TARGET] psutil not available — cannot resolve target window")
+        return None
+
+    exclude = exclude_pids or set()
+    target_pids = set()
+    try:
+        for proc in _ps.process_iter(['pid', 'name']):
+            name = proc.info.get('name') or ''
+            if name.lower() == process_name.lower() and proc.info['pid'] not in exclude:
+                target_pids.add(proc.info['pid'])
+    except Exception as exc:
+        print(f"[WAKE-TARGET] process enumeration error: {exc}")
+        return None
+
+    if not target_pids:
+        return None
+
+    _user32 = ctypes.windll.user32
+    found = []
+
+    def _enum_cb(hwnd, _):
+        visible   = bool(_user32.IsWindowVisible(hwnd))
+        minimized = bool(_user32.IsIconic(hwnd))
+        if not visible and not minimized:
+            return True
+        pid = _wt.DWORD(0)
+        _user32.GetWindowThreadProcessId(hwnd, ctypes.byref(pid))
+        if pid.value not in target_pids:
+            return True
+        title_len = _user32.GetWindowTextLengthW(hwnd)
+        if title_len == 0:
+            return True
+        buf = ctypes.create_unicode_buffer(title_len + 1)
+        _user32.GetWindowTextW(hwnd, buf, title_len + 1)
+        title = buf.value
+        if title:
+            found.append((hwnd, title))
+        return True
+
+    _WNDPROC = ctypes.WINFUNCTYPE(_wt.BOOL, _wt.HWND, _wt.LPARAM)
+    _user32.EnumWindows(_WNDPROC(_enum_cb), 0)
+    return found[0] if found else None
+
+
 class DictationApp:
     def __init__(self, splash=None):
         self.splash = splash
@@ -916,6 +976,11 @@ class DictationApp:
         # Initialised lazily in _load_oww_model() after the Whisper model loads.
         self._wake_detector = None
         self._oww_wake_detected = False  # Set by OWW; consumed by silence flush
+
+        # Phase 1 multi-wakeword: per-target OWW detectors (id -> WakeWordDetector|None).
+        # None means that target uses Whisper-transcript fallback.
+        # Loaded lazily in _load_wake_target_models() after the Whisper model loads.
+        self._wake_target_detectors: dict = {}
 
         # Timestamp of the last successful command execution. While this is
         # within the 2-second post-command window, the audio callback
@@ -1457,6 +1522,26 @@ class DictationApp:
                     "play_sound_on_end": True
                 }
             },
+            # Phase 1 multi-wakeword: phrase -> target_process -> focus+dictate.
+            # Each entry binds a spoken phrase to a target application by process name.
+            # Missing oww_model -> Whisper-transcript fallback (match_wake_phrase).
+            # Drop trained .onnx files into samsara/wake_models/ to enable OWW pre-filter.
+            "wake_targets": [
+                {
+                    "id": "claude",
+                    "phrase": "hey claude",
+                    "oww_model": "hey_claude.onnx",
+                    "target_process": "claude.exe",
+                    "enabled": True,
+                },
+                {
+                    "id": "hermes",
+                    "phrase": "activate hermes",
+                    "oww_model": "activate_hermes.onnx",
+                    "target_process": "Hermes.exe",
+                    "enabled": True,
+                },
+            ],
             # Echo cancellation (removes system audio from mic input)
             "echo_cancellation": {
                 "enabled": False,
@@ -1645,6 +1730,11 @@ class DictationApp:
             self.config['wake_word_enabled'] = True
             self.config['mode'] = 'hold'
             print(f"[MIGRATE] mode='{old_mode}' -> mode='hold' + wake_word_enabled=True")
+
+        # Phase 1 multi-wakeword: inject wake_targets default when missing.
+        if 'wake_targets' not in self.config:
+            self.config['wake_targets'] = default_config.get('wake_targets', [])
+            print("[MIGRATE] Injected default wake_targets (Phase 1 multi-wakeword)")
 
         # Check if we have old flat config but no new nested config
         if 'wake_word_config' not in self.config:
@@ -2447,6 +2537,7 @@ class DictationApp:
 
             print("[INIT] Loading OpenWakeWord pre-filter...")
             self._load_oww_model()
+            self._load_wake_target_models()
             _boot_log("async: OpenWakeWord model load")
 
             print("Ready for dictation.")
@@ -3661,6 +3752,109 @@ class DictationApp:
         else:
             print(f"[OWW] No pre-filter for '{wake_phrase}' — using Whisper detection")
 
+    def _load_wake_target_models(self):
+        """Load OWW models for all enabled wake_targets (Phase 1 multi-wakeword).
+
+        Looks for custom .onnx files under samsara/wake_models/. When a model
+        file is absent that target uses Whisper-transcript matching via
+        match_wake_phrase — adequate for long phrases like "hey claude" /
+        "activate hermes". Drop trained .onnx files there and restart to activate
+        the OWW pre-filter for those targets.
+        """
+        targets = self.config.get('wake_targets', [])
+        if not targets:
+            return
+
+        models_dir = Path(__file__).parent / 'samsara' / 'wake_models'
+        oww_threshold = float(self.config.get('wake_word_config', {}).get('oww_threshold', 0.2))
+
+        for target in targets:
+            if not target.get('enabled', True):
+                continue
+            tid        = target.get('id', '')
+            phrase     = target.get('phrase', '')
+            model_file = target.get('oww_model', '')
+            model_path = (models_dir / model_file) if model_file else None
+
+            if model_path and model_path.exists():
+                detector = WakeWordDetector(phrase, threshold=oww_threshold,
+                                            model_path=str(model_path))
+                self._wake_target_detectors[tid] = detector
+                status = "OWW pre-filter active" if detector.is_available else "load failed — Whisper fallback"
+                print(f"[OWW] Wake target '{tid}' ({phrase}): {status}")
+            else:
+                self._wake_target_detectors[tid] = None
+                missing = f" ('{model_file}' not in wake_models/)" if model_file else ""
+                print(f"[OWW] Wake target '{tid}' ({phrase}): no model{missing} — Whisper fallback")
+
+    def _check_wake_targets(self, corrected_lower):
+        """Match corrected transcript against all enabled wake_targets.
+
+        Returns the first matching target dict, or None if no target matched.
+        Called from process_wake_word_buffer before the legacy single-phrase check.
+        """
+        for target in self.config.get('wake_targets', []):
+            if not target.get('enabled', True):
+                continue
+            phrase = target.get('phrase', '').lower().strip()
+            if not phrase:
+                continue
+            matched, _, _ = match_wake_phrase(corrected_lower, phrase)
+            if matched:
+                return target
+        return None
+
+    def _dispatch_wake_target(self, target, corrected_lower=''):
+        """Focus the target window and start a quick_dictation session.
+
+        Called from process_wake_word_buffer when a wake_target phrase is
+        detected. Focuses (and restores if minimized) the target window via
+        window_switcher._force_focus, then enters quick_dictation mode so
+        the user's next utterance is typed into that window. Session ends via
+        the existing silence/timeout mechanism (Phase 2 will refine this).
+        """
+        process_name = target.get('target_process', '')
+        phrase       = target.get('phrase', '').lower().strip()
+        tid          = target.get('id', phrase)
+
+        print(f"[WAKE-TARGET] '{phrase}' matched — targeting '{process_name}'")
+
+        own_pid = os.getpid()
+        result  = _resolve_target_window(process_name, exclude_pids={own_pid})
+
+        if result is None:
+            print(f"[WAKE-TARGET] No window found for '{process_name}' — process not running?")
+            self.play_sound("error")
+            return
+
+        hwnd, title = result
+        print(f"[WAKE-TARGET] Found window: '{title}' (hwnd={hwnd})")
+
+        try:
+            from plugins.commands import window_switcher as _ws
+            _ws._force_focus(hwnd)
+            print(f"[WAKE-TARGET] Focused '{title}'")
+        except Exception as exc:
+            print(f"[WAKE-TARGET] Focus failed: {exc}")
+            self.play_sound("error")
+            return
+
+        # Extract any trailing speech spoken after the wake phrase in this same
+        # utterance (e.g. "hey claude write a summary" -> "write a summary").
+        initial_content = None
+        if corrected_lower and phrase in corrected_lower:
+            _, _, match_index = match_wake_phrase(corrected_lower, phrase)
+            if match_index >= 0:
+                remainder = corrected_lower[match_index + len(phrase):].strip()
+                remainder = re.sub(r'^[^\w]+', '', remainder).strip()
+                if remainder:
+                    initial_content = remainder
+                    print(f"[WAKE-TARGET] Pre-buffering trailing speech: '{initial_content}'")
+
+        # Start quick_dictation — the existing pipeline delivers the next
+        # utterance(s) into wake_dictation_buffer -> _output_dictation -> focused window.
+        self._start_dictation_mode('quick_dictation', initial_content=initial_content)
+
     def _vad_is_speech(self, chunk_float32, src_rate=None):
         """Return True if the chunk contains human speech.
 
@@ -3936,6 +4130,14 @@ class DictationApp:
             correction_applied = was_corrected(text_lower, corrected_lower)
             if correction_applied:
                 print(f"[CORRECT] '{text_lower}' -> '{corrected_lower}'")
+
+            # Phase 1: check multi-wake targets BEFORE the legacy single-phrase check.
+            # Each enabled wake_target has a distinct phrase ("hey claude",
+            # "activate hermes") that doesn't overlap with legacy jarvis phrases.
+            _wake_target = self._check_wake_targets(corrected_lower)
+            if _wake_target is not None:
+                self._dispatch_wake_target(_wake_target, corrected_lower=corrected_lower)
+                return
 
             matched, match_type, match_index = match_wake_phrase(corrected_lower, wake_phrase)
 
