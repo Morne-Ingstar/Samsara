@@ -37,6 +37,7 @@ from typing import Any
 
 import numpy as np
 
+from scipy.signal import resample_poly
 from .frame import FRAME_SIZE, PREBUFFER_FRAMES, SAMPLE_RATE
 from .ring import FrameBus, Reader
 
@@ -127,11 +128,9 @@ class AudioCaptureEngine:
         from .frame import FRAME_MS
         self._blocksize = int(self._native_rate * FRAME_MS // 1000)
 
-        # Pre-import resample_poly so the callback never pays the import cost.
         # The function reference is stored on self; the callback uses it directly.
         if self._up != 1 or self._down != 1:
-            from scipy.signal import resample_poly as _rp
-            self._resample_poly = _rp
+            self._resample_poly = resample_poly
         else:
             self._resample_poly = None
 
