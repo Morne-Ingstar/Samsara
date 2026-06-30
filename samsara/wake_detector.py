@@ -4,11 +4,13 @@ Runs as a pre-filter before Whisper to prevent CPU saturation.
 
 OpenWakeWord uses ONNX models that run in ~5ms on CPU.
 Pre-built models: hey_jarvis, alexa, hey_mycroft.
-Custom models can be trained for other wake phrases.
+Custom models can be trained for other wake phrases and dropped into
+samsara/wake_models/ — pass model_path to WakeWordDetector to use them.
 """
 
 import logging
 import threading
+from pathlib import Path
 
 import numpy as np
 
@@ -26,6 +28,8 @@ PHRASE_TO_MODEL = {
 
 # Phrases that have no pre-built OWW model fall back to Whisper-based
 # detection: "samsara", "hey samsara", "samsa", "computer", "hey computer".
+# Custom phrases ("hey claude", "activate hermes") also fall back until their
+# .onnx files are trained and placed in samsara/wake_models/.
 
 
 class WakeWordDetector:
@@ -37,11 +41,15 @@ class WakeWordDetector:
         # In audio callback (16kHz int16 or float32 audio):
         if detector.detected(chunk_16k):
             # Wake word confirmed — send buffer to Whisper for command.
+
+    For custom ONNX models (e.g. trained via openWakeWord's training pipeline):
+        detector = WakeWordDetector("hey claude", model_path="/path/to/hey_claude.onnx")
     """
 
-    def __init__(self, wake_phrase, threshold=0.2):
+    def __init__(self, wake_phrase, threshold=0.2, model_path=None):
         self._wake_phrase  = wake_phrase.lower().strip()
         self._threshold    = threshold
+        self._model_path   = str(model_path) if model_path else None
         self._model        = None
         self._model_name   = None   # prediction dict key, e.g. 'hey_jarvis'
         self._available    = False
@@ -54,7 +62,49 @@ class WakeWordDetector:
     # ------------------------------------------------------------------
 
     def _init_model(self):
-        """Try to load the OpenWakeWord ONNX model for the configured phrase."""
+        """Try to load the OpenWakeWord ONNX model for the configured phrase.
+
+        Resolution order:
+          1. Custom model_path (if provided and file exists).
+          2. Pre-trained model via PHRASE_TO_MODEL lookup.
+          3. No model → is_available stays False → Whisper-based fallback.
+        """
+        # 1. Custom ONNX path (drop-in from samsara/wake_models/)
+        if self._model_path:
+            if not Path(self._model_path).exists():
+                logger.warning(
+                    f"[OWW] Custom model path '{self._model_path}' not found "
+                    f"for '{self._wake_phrase}' — falling back to Whisper detection"
+                )
+            else:
+                try:
+                    from openwakeword.model import Model  # noqa: PLC0415
+                    self._model = Model(
+                        wakeword_models=[self._model_path],
+                        inference_framework="onnx",
+                    )
+                    # Prediction dict key is the stem of the file (e.g. "hey_claude")
+                    self._model_name = Path(self._model_path).stem
+                    self._available  = True
+                    logger.info(
+                        f"[OWW] Loaded custom model '{self._model_name}' "
+                        f"from {self._model_path} for phrase '{self._wake_phrase}'"
+                    )
+                    return
+                except ImportError as exc:
+                    logger.warning(
+                        f"[OWW] openwakeword import failed: {exc} — "
+                        "falling back to Whisper-based detection"
+                    )
+                    return
+                except Exception as exc:
+                    logger.warning(
+                        f"[OWW] Custom model load failed for '{self._wake_phrase}': {exc} — "
+                        "falling back to Whisper-based detection"
+                    )
+                    return
+
+        # 2. Pre-trained model via phrase lookup
         model_name = PHRASE_TO_MODEL.get(self._wake_phrase)
 
         if model_name is None:
