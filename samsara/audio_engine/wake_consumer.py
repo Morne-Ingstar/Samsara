@@ -358,11 +358,16 @@ class WakeConsumer:
             ).start()
             return
 
+        _has_wake_targets = any(
+            t.get('enabled', True)
+            for t in getattr(app, 'config', {}).get('wake_targets', [])
+        )
         _oww_gated = (
             app._wake_detector is not None
             and app._wake_detector.is_available
             and app.app_state == 'asleep'
             and not app.wake_word_triggered
+            and not _has_wake_targets
         )
         if _oww_gated and not app._oww_wake_detected:
             if app._wake_detector is not None:
