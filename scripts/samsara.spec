@@ -116,6 +116,13 @@ if INCLUDE_CUDA:
             if os.path.exists(dll_path):
                 # Put in ctranslate2 folder so the stub can find them
                 binaries.append((dll_path, 'ctranslate2'))
+                print(f"[SPEC-CUDA] bundling {dll}")
+            else:
+                print(f"[SPEC-CUDA] MISSING {dll} at {dll_path}")
+    else:
+        print(f"[SPEC-CUDA] torch_lib_path does not exist: {torch_lib_path}")
+else:
+    print("[SPEC-CUDA] INCLUDE_CUDA not set — CPU-only build")
 
 # PortAudio DLLs
 portaudio_path = os.path.join(sounddevice_data, 'portaudio-binaries')
