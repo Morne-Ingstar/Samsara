@@ -869,7 +869,7 @@ class DictationApp:
                 self.splash = None
             print("First run detected - launching setup wizard...")
             from samsara.ui.first_run_wizard_qt import FirstRunWizardQt
-            wizard = FirstRunWizardQt(self.config_path)
+            wizard = FirstRunWizardQt(self.config_path, self)
             wizard_result = wizard.run()
             if wizard_result:
                 # Wizard completed successfully, save the config

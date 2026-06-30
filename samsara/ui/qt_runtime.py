@@ -15,7 +15,7 @@ shutdown(timeout=5.0)     -- hide windows, quit loop, join thread
 import logging
 import threading
 
-from PySide6.QtCore import QTimer
+from PySide6.QtCore import Qt, QTimer
 from PySide6.QtWidgets import QApplication
 
 log = logging.getLogger(__name__)
@@ -126,6 +126,9 @@ def shutdown(timeout: float = 5.0) -> None:
 def _run_loop() -> None:
     """Entry point for the samsara-qt thread.  Runs exactly once per process."""
     global _app, _state
+    QApplication.setHighDpiScaleFactorRoundingPolicy(
+        Qt.HighDpiScaleFactorRoundingPolicy.PassThrough
+    )
     app = QApplication([])
     app.setQuitOnLastWindowClosed(False)
     # processEvents() pumps any immediate init events so callers can begin

@@ -67,8 +67,9 @@ QPushButton {
     font-weight: 600;
     font-size: 14px;
 }
-QPushButton:hover { background-color: #4DD8C2; }
-QPushButton:disabled { background-color: #1E1E24; color: #444; }
+QPushButton:hover { background-color: #4DD8C2; color: #0A0A0B; }
+QPushButton:pressed { background-color: #3DC8B0; color: #0A0A0B; }
+QPushButton:disabled { background-color: #1E1E24; color: #555555; }
 QPushButton[class="secondary"] {
     background-color: transparent;
     color: #8A8A92;
@@ -78,7 +79,15 @@ QPushButton[class="secondary"]:hover {
     background-color: rgba(255,255,255,0.05);
     color: #E8E8EA;
 }
-QPushButton[class="secondary"]:disabled { opacity: 0.3; }
+QPushButton[class="secondary"]:pressed {
+    background-color: rgba(255,255,255,0.08);
+    color: #E8E8EA;
+}
+QPushButton[class="secondary"]:disabled {
+    background-color: transparent;
+    color: #3A3A40;
+    border-color: rgba(255,255,255,0.06);
+}
 """
 
 # ---------------------------------------------------------------------------
@@ -273,17 +282,19 @@ class FirstRunWizardQt:
     dismissed, without owning the event loop.
     """
 
-    def __init__(self, config_path):
+    def __init__(self, config_path, app=None):
         self.config_path = config_path
+        self._app = app
 
     def run(self) -> dict | None:
         qt_runtime.ensure_started()
 
         result_holder = [None]
         done = threading.Event()
+        samsara_app = self._app
 
         def _create():
-            win = _WizardWindow(self.config_path)
+            win = _WizardWindow(self.config_path, samsara_app)
             app = QApplication.instance()
             if app:
                 screen = app.primaryScreen().availableGeometry()
@@ -310,9 +321,10 @@ class _WizardWindow(QMainWindow):
     _mic_result = Signal(str, str)   # (message, hex-color)
     _finished   = Signal(object)     # emits result just before close
 
-    def __init__(self, config_path):
+    def __init__(self, config_path, samsara_app=None):
         super().__init__()
         self.config_path = config_path
+        self._samsara_app = samsara_app
         self.result = None
         self._step = 0
         self._config = dict(_DEFAULTS)
@@ -879,26 +891,32 @@ class _WizardWindow(QMainWindow):
     def _load_mics(self):
         """Enumerate microphones in a background thread, update combo when done."""
         try:
-            import sounddevice as sd
-            devices = sd.query_devices()
-            skip = {
-                'stereo mix', 'wave out mix', 'what u hear', 'loopback',
-                'cable', 'virtual audio', 'vb-audio', 'voicemeeter',
-                'sound mapper', 'primary sound',
-            }
-            mics: list[dict] = []
-            seen: set[str] = set()
-            for i, dev in enumerate(devices):
-                if dev['max_input_channels'] <= 0:
-                    continue
-                name: str = dev['name']
-                if not name.strip() or name in seen:
-                    continue
-                if any(kw in name.lower() for kw in skip):
-                    continue
-                seen.add(name)
-                mics.append({'id': i, 'name': name})
-            self._mics = mics
+            if self._samsara_app is not None:
+                mics = self._samsara_app.get_available_microphones()
+                self._mics = [{'id': m['id'], 'name': m['name']} for m in mics]
+            else:
+                import sounddevice as sd
+                devices = sd.query_devices()
+                hostapis = sd.query_hostapis()
+                preferred_api_idx = None
+                for idx, api in enumerate(hostapis):
+                    if 'WASAPI' in api['name']:
+                        preferred_api_idx = idx
+                        break
+                mics: list[dict] = []
+                seen: set[str] = set()
+                for i, dev in enumerate(devices):
+                    if dev['max_input_channels'] <= 0:
+                        continue
+                    if preferred_api_idx is not None and dev['hostapi'] != preferred_api_idx:
+                        continue
+                    name: str = dev['name']
+                    dedup_key = name.strip().lower()
+                    if not dedup_key or dedup_key in seen:
+                        continue
+                    seen.add(dedup_key)
+                    mics.append({'id': i, 'name': name})
+                self._mics = mics
         except Exception:
             self._mics = []
         # Update combo on Qt thread via signal
