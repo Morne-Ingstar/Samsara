@@ -1854,15 +1854,22 @@ class DictationApp:
 
         # Check if we have old flat config but no new nested config
         if 'wake_word_config' not in self.config:
-            # Create new nested config from defaults
-            self.config['wake_word_config'] = default_config['wake_word_config'].copy()
-            
+            # Create new nested config from defaults (deep copy so nested
+            # dicts are not shared with default_config)
+            import copy as _copy
+            self.config['wake_word_config'] = _copy.deepcopy(default_config['wake_word_config'])
+
             # Migrate old values if they exist
             if 'wake_word' in self.config:
                 self.config['wake_word_config']['phrase'] = self.config['wake_word']
             if 'wake_word_timeout' in self.config:
-                # Apply old timeout to dictate mode
-                self.config['wake_word_config']['modes']['dictate']['silence_timeout'] = self.config['wake_word_timeout']
+                # Old flat timeout. The 'modes' nesting no longer exists in the
+                # schema; only apply if the current default actually has that
+                # path, otherwise drop it silently (schema moved on).
+                _wwc = self.config['wake_word_config']
+                _modes = _wwc.get('modes')
+                if isinstance(_modes, dict) and isinstance(_modes.get('dictate'), dict):
+                    _modes['dictate']['silence_timeout'] = self.config['wake_word_timeout']
             if 'min_speech_duration' in self.config:
                 self.config['wake_word_config']['audio']['min_speech_duration'] = self.config['min_speech_duration']
             
