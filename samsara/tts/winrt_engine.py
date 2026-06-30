@@ -298,6 +298,25 @@ class WinRTEngine(TTSEngine):
     def list_voices(self) -> List[VoiceInfo]:
         return list(self._voices)
 
+    def restart_stream(self) -> None:
+        """Close and reopen the persistent TTS OutputStream on the current default device.
+
+        Called by the output-device watcher in dictation.py when the Windows
+        default audio output changes. Drops buffered audio for the old device.
+        """
+        with self._tts_buffer_lock:
+            self._tts_buffer.clear()
+        if self._tts_stream is not None:
+            try:
+                self._tts_stream.abort()
+                self._tts_stream.close()
+            except Exception:
+                pass
+            self._tts_stream = None
+        self._using_persistent_stream = False
+        self._open_persistent_stream()
+        logger.info('[TTS] Stream restarted after output device change')
+
     def shutdown(self) -> None:
         """Cancel all utterances, join threads, close the persistent stream.
 
