@@ -240,6 +240,8 @@ from samsara.wake_detector import WakeWordDetector
 
 
 _WAKE_PRIMER_DELAY = 0.12
+_WAKE_SESSION_TIMEOUT_S   = 10.0   # inactivity ends the open-ended wake session
+_WAKE_SESSION_CHUNK_GAP_S = 1.0    # per-utterance VAD silence gap within a session
 
 
 def _get_pynput_command_key(button_name: str):
@@ -3865,10 +3867,63 @@ class DictationApp:
                     initial_content = remainder
                     print(f"[WAKE-TARGET] Pre-buffering trailing speech: '{initial_content}'")
 
-        # Start quick_dictation — the existing pipeline delivers the next
-        # utterance(s) into wake_dictation_buffer -> _output_dictation -> focused window.
+        # Start open-ended wake session: per-utterance delivery, ends on inactivity.
+        self._start_wake_session(initial_content=initial_content)
+
+    def _start_wake_session(self, initial_content=None):
+        """Enter open-ended wake session state.
+
+        Each transcribed utterance is delivered immediately.  The session stays
+        alive through silence and only ends after _WAKE_SESSION_TIMEOUT_S of
+        inactivity or via the global cancel path.
+        """
+        old_state = self.app_state
+        self.app_state = 'wake_session'
+        self.wake_dictation_mode = 'wake_session'
+        self.wake_dictation_buffer = []
+        self.wake_dictation_start_time = time.time()
+        self.wake_word_triggered = False
+        self._dictation_paused = False
+        self._dictation_require_end = False
+        self._dictation_silence_timeout = _WAKE_SESSION_CHUNK_GAP_S
         self._wake_target_active = True
-        self._start_dictation_mode('quick_dictation', initial_content=initial_content)
+        self._wake_session_first_chunk = True
+
+        if hasattr(self, 'wake_word_timer') and self.wake_word_timer:
+            self.wake_word_timer.cancel()
+
+        print(f"[STATE] {old_state} -> wake_session "
+              f"(chunk gap: {_WAKE_SESSION_CHUNK_GAP_S}s, "
+              f"inactivity timeout: {_WAKE_SESSION_TIMEOUT_S}s)")
+
+        self._restart_wake_session_timer()
+        self.play_sound("start")
+
+        if hasattr(self, 'listening_indicator'):
+            self._schedule_ui(self.listening_indicator.set_mode, "Wake Session")
+            self._schedule_ui(self.listening_indicator.set_listening, True)
+
+        if initial_content:
+            self._output_dictation(initial_content)
+
+    def _restart_wake_session_timer(self):
+        """Reset the inactivity countdown; called after each delivered utterance."""
+        existing = getattr(self, '_wake_session_inactivity_timer', None)
+        if existing is not None:
+            existing.cancel()
+        t = threading.Timer(_WAKE_SESSION_TIMEOUT_S, self._end_wake_session)
+        t.daemon = True
+        t.start()
+        self._wake_session_inactivity_timer = t
+
+    def _end_wake_session(self):
+        """End the wake session and re-arm wake detection (called by inactivity timer)."""
+        existing = getattr(self, '_wake_session_inactivity_timer', None)
+        if existing is not None:
+            existing.cancel()
+            self._wake_session_inactivity_timer = None
+        print("[WAKE-SESSION] ended (inactivity timeout)")
+        self._reset_wake_dictation()
 
     def _vad_is_speech(self, chunk_float32, src_rate=None):
         """Return True if the chunk contains human speech.
@@ -4052,8 +4107,8 @@ class DictationApp:
 
             self._emit_wake_trace({"stage": "utterance_start", "raw": text, "normalized": text_lower})
 
-            # In dictation state (quick_dictation or long_dictation)?
-            if self.app_state in ('quick_dictation', 'long_dictation'):
+            # In dictation state (quick_dictation, long_dictation, or wake_session)?
+            if self.app_state in ('quick_dictation', 'long_dictation', 'wake_session'):
                 # Check cancel words
                 cancel_words = ww_config.get('cancel_words', ['cancel'])
                 for cw in cancel_words:
@@ -4061,9 +4116,18 @@ class DictationApp:
                         print(f"[CANCEL] Dictation cancelled ('{cw}')")
                         self._emit_wake_trace({"stage": "cancel_word_detected", "phrase": cw})
                         self.play_sound("error")
-                        self._reset_wake_dictation()
+                        if self.app_state == 'wake_session':
+                            self._end_wake_session()
+                        else:
+                            self._reset_wake_dictation()
                         self._emit_wake_trace({"stage": "utterance_end", "result": "cancelled"})
                         return
+
+                # wake_session: deliver each utterance immediately, no end-words, no buffering.
+                if self.app_state == 'wake_session':
+                    self._output_dictation(text.strip())
+                    self._emit_wake_trace({"stage": "utterance_end", "result": "wake_session_delivered"})
+                    return
 
                 # Check end words (primarily long_dictation, but works in both).
                 # Checked before pause/resume so "over" finalizes even while paused.
@@ -4457,6 +4521,12 @@ class DictationApp:
         self._dictation_finalize_requested = False
         self._pending_transcriptions = 0
         self._wake_target_active = False
+        self._wake_session_first_chunk = True
+
+        existing = getattr(self, '_wake_session_inactivity_timer', None)
+        if existing is not None:
+            existing.cancel()
+            self._wake_session_inactivity_timer = None
 
         if old_state != 'asleep':
             print(f"[STATE] {old_state} -> asleep")
@@ -4796,7 +4866,13 @@ class DictationApp:
 
         if self.config['auto_paste']:
             if getattr(self, '_wake_target_active', False):
-                self._deliver_text_to_focused_editor(text)
+                if getattr(self, '_wake_session_first_chunk', True):
+                    self._deliver_text_to_focused_editor(text)
+                    self._wake_session_first_chunk = False
+                else:
+                    self._paste_preserving_clipboard(' ' + text)
+                if self.app_state == 'wake_session':
+                    self._restart_wake_session_timer()
             else:
                 self._paste_preserving_clipboard(text)
 
