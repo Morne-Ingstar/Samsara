@@ -122,7 +122,15 @@ import subprocess
 import logging
 from datetime import datetime
 import numpy as np
+_PRE_SD_T = time.perf_counter()
 import sounddevice as sd
+_POST_SD_T = time.perf_counter()
+_sd_import_ms = (_POST_SD_T - _PRE_SD_T) * 1000
+sys.stdout.write(f"[BOOT-DIAG] sounddevice import (PortAudio init): {_sd_import_ms:.0f}ms\n")
+sys.stdout.flush()
+if _sd_import_ms > 5000:
+    sys.stdout.write(f"[BOOT-DIAG] SLOW STEP: sounddevice import {_sd_import_ms:.0f}ms\n")
+    sys.stdout.flush()
 from pynput import keyboard as pynput_keyboard
 from pynput.keyboard import Key, Controller as KeyboardController
 import keyboard  # For reliable simultaneous key state detection
@@ -237,6 +245,12 @@ from samsara.alarms import AlarmManager, get_default_alarm_config
 from samsara.echo_cancel import EchoCanceller
 from samsara.clipboard import clipboard_lock as _clipboard_lock, save_clipboard as _save_clipboard_win32, restore_clipboard as _restore_clipboard_win32, paste_with_preservation
 from samsara.wake_detector import WakeWordDetector
+
+
+_WAKE_PRIMER_DELAY = 0.12
+_WAKE_SESSION_TIMEOUT_S   = 10.0            # inactivity ends the open-ended wake session
+_WAKE_SESSION_CHUNK_GAP_S = 1.0             # per-utterance VAD silence gap within a session
+_WAKE_SESSION_SEND_WORDS  = ['over', 'send'] # default send terminators that finalize a wake session
 
 
 def _get_pynput_command_key(button_name: str):
@@ -565,6 +579,33 @@ logger.info("=" * 50)
 
 
 # ---------------------------------------------------------------------------
+# Adaptive wake-word energy gate constants
+# ---------------------------------------------------------------------------
+# EMA weight applied to ambient-only frames when updating the noise floor.
+# Slow (0.05) so transient louder sounds don't inflate the floor estimate.
+_NOISE_FLOOR_ALPHA = 0.05
+
+# A frame is considered ambient (eligible to update the floor) when its RMS
+# is below (current_floor * _NOISE_FLOOR_SPEECH_RATIO).  Value of 2.0 means
+# "less than twice the floor" = clearly not speech.
+_NOISE_FLOOR_SPEECH_RATIO = 2.0
+
+# Minimum noise floor so zero/near-silence input never drives the floor to
+# zero and lets every subsequent buffer pass.
+_NOISE_FLOOR_MIN = 0.0005
+
+# Speech passes the gate when rms >= floor * _SPEECH_FLOOR_RATIO.
+# 1.5x the ambient floor distinguishes speech from background noise.
+# Low-gain mics (headsets, USB w/ AGC) have a narrow speech-to-ambient
+# margin (~1.5-1.6x), so an aggressive ratio gates real speech out.
+_SPEECH_FLOOR_RATIO = 1.5
+
+# Hard absolute minimum so pure DC / zeroed buffers cannot pass even on a
+# completely silent mic.
+_ABS_FLOOR_MIN = 0.002
+
+
+# ---------------------------------------------------------------------------
 # Repeat / again command support
 # ---------------------------------------------------------------------------
 
@@ -671,6 +712,66 @@ def _three_way_merge(base, memory, disk):
                 result[key] = m   # memory changed (or neither) -> keep runtime value
     return result
 
+
+def _resolve_target_window(process_name, exclude_pids=None):
+    """Find the first visible (or minimized) top-level window whose owning
+    process matches *process_name* (case-insensitive executable name).
+
+    Returns (hwnd, title) or None.
+    exclude_pids: set of int PIDs to skip (Samsara's own PID, terminal PIDs).
+
+    Uses psutil for fast PID-by-name lookup, then EnumWindows to find a
+    window owned by one of those PIDs — same Win32 pattern as window_switcher.
+    """
+    import ctypes
+    import ctypes.wintypes as _wt
+    try:
+        import psutil as _ps
+    except ImportError:
+        print("[WAKE-TARGET] psutil not available — cannot resolve target window")
+        return None
+
+    exclude = exclude_pids or set()
+    target_pids = set()
+    try:
+        for proc in _ps.process_iter(['pid', 'name']):
+            name = proc.info.get('name') or ''
+            if name.lower() == process_name.lower() and proc.info['pid'] not in exclude:
+                target_pids.add(proc.info['pid'])
+    except Exception as exc:
+        print(f"[WAKE-TARGET] process enumeration error: {exc}")
+        return None
+
+    if not target_pids:
+        return None
+
+    _user32 = ctypes.windll.user32
+    found = []
+
+    def _enum_cb(hwnd, _):
+        visible   = bool(_user32.IsWindowVisible(hwnd))
+        minimized = bool(_user32.IsIconic(hwnd))
+        if not visible and not minimized:
+            return True
+        pid = _wt.DWORD(0)
+        _user32.GetWindowThreadProcessId(hwnd, ctypes.byref(pid))
+        if pid.value not in target_pids:
+            return True
+        title_len = _user32.GetWindowTextLengthW(hwnd)
+        if title_len == 0:
+            return True
+        buf = ctypes.create_unicode_buffer(title_len + 1)
+        _user32.GetWindowTextW(hwnd, buf, title_len + 1)
+        title = buf.value
+        if title:
+            found.append((hwnd, title))
+        return True
+
+    _WNDPROC = ctypes.WINFUNCTYPE(_wt.BOOL, _wt.HWND, _wt.LPARAM)
+    _user32.EnumWindows(_WNDPROC(_enum_cb), 0)
+    return found[0] if found else None
+
+
 class DictationApp:
     def __init__(self, splash=None):
         self.splash = splash
@@ -684,6 +785,19 @@ class DictationApp:
             print(f"[BOOT] {label}: {(now - _btp[0]) * 1000:.0f}ms  (total {(now - _bt0) * 1000:.0f}ms)")
             _btp[0] = now
         self._boot_log = _boot  # expose so load_model_async can use it
+
+        # [BOOT-DIAG] perf_counter-based timing for slow-boot diagnosis.
+        _bdiag_t0 = time.perf_counter()
+        _bdiag_tp = [_bdiag_t0]
+        def _bdiag(label: str) -> None:
+            now = time.perf_counter()
+            dt_step  = (now - _bdiag_tp[0]) * 1000
+            dt_total = (now - _bdiag_t0)    * 1000
+            _bdiag_tp[0] = now
+            logger.info(f"[BOOT-DIAG] {label}: {dt_step:.0f}ms (total {dt_total:.0f}ms)")
+            if dt_step > 5000:
+                logger.info(f"[BOOT-DIAG] SLOW STEP: {label} {dt_step:.0f}ms")
+        logger.info(f"[BOOT-DIAG] __init__ entry (perf_counter since sounddevice: {(_bdiag_t0 - _PRE_SD_T)*1000:.0f}ms)")
         # Protects all self.config mutations and save_config disk writes.
         # MUST be held before any mutation to self.config that precedes a save,
         # and before calling save_config() directly.
@@ -755,6 +869,7 @@ class DictationApp:
         with self._config_lock:
             self.load_config()
         _boot("config load")
+        _bdiag("config load")
 
         self.update_splash("Setting up audio...")
 
@@ -774,6 +889,7 @@ class DictationApp:
         print("[INIT] Enumerating audio devices...")
         self.available_mics = self.get_available_microphones()
         _boot("audio device enumeration")
+        _bdiag("get_available_microphones (sd.query_devices+hostapis)")
 
         # Try name-based reconciliation first — stable across index changes.
         # _reconcile_microphone_selection is defined later in the class but
@@ -809,11 +925,21 @@ class DictationApp:
 
         # Audio settings -- dual sample rates for WASAPI compatibility
         self.model_rate = MODEL_SAMPLE_RATE
+        _t = time.perf_counter()
         self.capture_rate = self._detect_capture_rate(self.config.get('microphone'))
+        _dt = (time.perf_counter() - _t) * 1000
+        logger.info(f"[BOOT-DIAG] detect_capture_rate (sd.query_devices): {_dt:.0f}ms")
+        if _dt > 5000:
+            logger.info(f"[BOOT-DIAG] SLOW STEP: detect_capture_rate {_dt:.0f}ms")
 
         # Auto-calibrate speech threshold on startup
+        _t = time.perf_counter()
         self._run_calibration_if_auto()
+        _dt = (time.perf_counter() - _t) * 1000
         _boot("mic calibration")
+        logger.info(f"[BOOT-DIAG] mic calibration (sd.InputStream open+1.5s record): {_dt:.0f}ms")
+        if _dt > 5000:
+            logger.info(f"[BOOT-DIAG] SLOW STEP: mic calibration {_dt:.0f}ms")
 
         self.recording = False
         self.command_mode_recording = False  # True when using command-only hotkey
@@ -824,6 +950,7 @@ class DictationApp:
         # Set up audio feedback sounds (creates defaults if needed)
         self._setup_sounds()
         _boot("sound setup")
+        _bdiag("sound setup")
 
         # Model settings
         self.model = None
@@ -836,6 +963,7 @@ class DictationApp:
         self.command_executor = CommandExecutor(commands_path, app=self)
         self.command_mode_enabled = self.config.get('command_mode_enabled', True)
         _boot("plugin discovery + command executor")
+        _bdiag("plugin discovery + command executor")
 
         # Repeat / again state
         self._last_command = None       # command dict of last repeatable command
@@ -911,11 +1039,29 @@ class DictationApp:
         self._wake_trace_callback = None  # Optional: debug window registers here
         self._wake_transcription_in_progress = False  # Prevents concurrent Whisper calls on CPU
 
+        # Rolling noise-floor estimate for adaptive wake energy gate.
+        # Seeded from measured_noise_floor config key when available so the
+        # floor survives restart; otherwise the first buffer initialises it.
+        _saved_floor = (
+            self.config
+            .get('wake_word_config', {})
+            .get('audio', {})
+            .get('measured_noise_floor', None)
+        )
+        self._wake_noise_floor: float | None = (
+            float(_saved_floor) if _saved_floor else None
+        )
+
         # OpenWakeWord pre-filter: fast (~5ms) ONNX wake-word model that gates
         # Whisper calls. On CPU this drops idle load from ~100% to near zero.
         # Initialised lazily in _load_oww_model() after the Whisper model loads.
         self._wake_detector = None
         self._oww_wake_detected = False  # Set by OWW; consumed by silence flush
+
+        # Phase 1 multi-wakeword: per-target OWW detectors (id -> WakeWordDetector|None).
+        # None means that target uses Whisper-transcript fallback.
+        # Loaded lazily in _load_wake_target_models() after the Whisper model loads.
+        self._wake_target_detectors: dict = {}
 
         # Timestamp of the last successful command execution. While this is
         # within the 2-second post-command window, the audio callback
@@ -963,6 +1109,7 @@ class DictationApp:
             print(f"[HISTORY] Could not open persistent history: {e}")
             self.history_db = None
         _boot("history / SQLite init")
+        _bdiag("history / SQLite init")
 
         print("[INIT] Building UI...")
 
@@ -1135,6 +1282,7 @@ class DictationApp:
                 self.tts_engine = None
                 self.audio_coordinator = None
         _boot("TTS engine init")
+        _bdiag("TTS engine init")
 
         # Smart Actions Phase 2: webhook bridge, session manager, tool dispatcher
         try:
@@ -1153,6 +1301,7 @@ class DictationApp:
             self._smart_actions_session = None
             self._smart_actions_tools = None
         _boot("smart actions init")
+        _bdiag("smart actions init")
 
         # Echo cancellation (removes system audio from mic input)
         aec_config = self.config.get('echo_cancellation', {})
@@ -1173,6 +1322,7 @@ class DictationApp:
         )
         self.keyboard_listener.start()
         _boot("keyboard/mouse listener setup")
+        _bdiag("keyboard/mouse listener setup")
 
         # Mouse listener for Mouse 4 command mode (hold-to-talk / toggle)
         self._install_mouse_listener()
@@ -1200,6 +1350,7 @@ class DictationApp:
         # Load model in background
         self.load_model_async()
         _boot("model load kicked off (async)")
+        _bdiag("model load kicked off (async)")
 
         # ACE engine — always started for hold-mode dictation (ACE-03).
         # DictationSessionConsumer replaces the bespoke prebuffer + audio_callback path.
@@ -1211,10 +1362,15 @@ class DictationApp:
         self._wake_consumer        = None    # ACE-04C
         self._ace_dictation_active  = False   # True while hold-mode uses ACE consumer path
         self._ace_streaming_active  = False   # True while CapsLock streaming uses ACE consumer
+        _t = time.perf_counter()
         self._start_ace_engine()
+        _dt = (time.perf_counter() - _t) * 1000
         if self.config.get('ace_debug_capture', False) and self._ace_engine is not None:
             self._start_ace_debug_rec()
         _boot("ACE audio engine start")
+        logger.info(f"[BOOT-DIAG] _start_ace_engine (total): {_dt:.0f}ms")
+        if _dt > 5000:
+            logger.info(f"[BOOT-DIAG] SLOW STEP: _start_ace_engine {_dt:.0f}ms")
 
         mode = self.config.get('mode', 'hold')
         print(f"Dictation app starting...")
@@ -1292,7 +1448,13 @@ class DictationApp:
             engine_config = dict(self.config)
             engine_config['_capture_rate'] = self.capture_rate
             self._ace_engine = AudioCaptureEngine(ring, config=engine_config)
+            logger.info("[BOOT-DIAG] ACE engine.start() called (sd.query_devices + sd.InputStream open)")
+            _t = time.perf_counter()
             self._ace_engine.start()
+            _dt = (time.perf_counter() - _t) * 1000
+            logger.info(f"[BOOT-DIAG] ACE engine.start() returned: {_dt:.0f}ms")
+            if _dt > 5000:
+                logger.info(f"[BOOT-DIAG] SLOW STEP: ACE engine.start() {_dt:.0f}ms")
 
             self._dictation_consumer = DictationSessionConsumer(
                 engine=self._ace_engine,
@@ -1457,6 +1619,26 @@ class DictationApp:
                     "play_sound_on_end": True
                 }
             },
+            # Phase 1 multi-wakeword: phrase -> target_process -> focus+dictate.
+            # Each entry binds a spoken phrase to a target application by process name.
+            # Missing oww_model -> Whisper-transcript fallback (match_wake_phrase).
+            # Drop trained .onnx files into samsara/wake_models/ to enable OWW pre-filter.
+            "wake_targets": [
+                {
+                    "id": "claude",
+                    "phrase": "hey claude",
+                    "oww_model": "hey_claude.onnx",
+                    "target_process": "claude.exe",
+                    "enabled": True,
+                },
+                {
+                    "id": "hermes",
+                    "phrase": "activate hermes",
+                    "oww_model": "activate_hermes.onnx",
+                    "target_process": "Hermes.exe",
+                    "enabled": True,
+                },
+            ],
             # Echo cancellation (removes system audio from mic input)
             "echo_cancellation": {
                 "enabled": False,
@@ -1645,6 +1827,11 @@ class DictationApp:
             self.config['wake_word_enabled'] = True
             self.config['mode'] = 'hold'
             print(f"[MIGRATE] mode='{old_mode}' -> mode='hold' + wake_word_enabled=True")
+
+        # Phase 1 multi-wakeword: inject wake_targets default when missing.
+        if 'wake_targets' not in self.config:
+            self.config['wake_targets'] = default_config.get('wake_targets', [])
+            print("[MIGRATE] Injected default wake_targets (Phase 1 multi-wakeword)")
 
         # Check if we have old flat config but no new nested config
         if 'wake_word_config' not in self.config:
@@ -2447,6 +2634,7 @@ class DictationApp:
 
             print("[INIT] Loading OpenWakeWord pre-filter...")
             self._load_oww_model()
+            self._load_wake_target_models()
             _boot_log("async: OpenWakeWord model load")
 
             print("Ready for dictation.")
@@ -3628,10 +3816,16 @@ class DictationApp:
             print("[VAD] torch unavailable, falling back to RMS speech detection")
             return
         try:
+            logger.info("[BOOT-DIAG] torch.hub.load (Silero VAD) called — may contact GitHub if cache stale")
+            _t = time.perf_counter()
             model, _ = torch.hub.load(
                 'snakers4/silero-vad', 'silero_vad',
                 force_reload=False, trust_repo=True,
             )
+            _dt = (time.perf_counter() - _t) * 1000
+            logger.info(f"[BOOT-DIAG] torch.hub.load (Silero VAD) returned: {_dt:.0f}ms")
+            if _dt > 5000:
+                logger.info(f"[BOOT-DIAG] SLOW STEP: torch.hub.load (Silero VAD) {_dt:.0f}ms")
             model.eval()
             self._vad_model = model
             self._vad_available = True
@@ -3660,6 +3854,208 @@ class DictationApp:
             print(f"[OWW] Wake word pre-filter active for '{wake_phrase}'")
         else:
             print(f"[OWW] No pre-filter for '{wake_phrase}' — using Whisper detection")
+
+    def _load_wake_target_models(self):
+        """Load OWW models for all enabled wake_targets (Phase 1 multi-wakeword).
+
+        Looks for custom .onnx files under samsara/wake_models/. When a model
+        file is absent that target uses Whisper-transcript matching via
+        match_wake_phrase — adequate for long phrases like "hey claude" /
+        "activate hermes". Drop trained .onnx files there and restart to activate
+        the OWW pre-filter for those targets.
+        """
+        targets = self.config.get('wake_targets', [])
+        if not targets:
+            return
+
+        models_dir = Path(__file__).parent / 'samsara' / 'wake_models'
+        oww_threshold = float(self.config.get('wake_word_config', {}).get('oww_threshold', 0.2))
+
+        for target in targets:
+            if not target.get('enabled', True):
+                continue
+            tid        = target.get('id', '')
+            phrase     = target.get('phrase', '')
+            model_file = target.get('oww_model', '')
+            model_path = (models_dir / model_file) if model_file else None
+
+            if model_path and model_path.exists():
+                detector = WakeWordDetector(phrase, threshold=oww_threshold,
+                                            model_path=str(model_path))
+                self._wake_target_detectors[tid] = detector
+                status = "OWW pre-filter active" if detector.is_available else "load failed — Whisper fallback"
+                print(f"[OWW] Wake target '{tid}' ({phrase}): {status}")
+            else:
+                self._wake_target_detectors[tid] = None
+                missing = f" ('{model_file}' not in wake_models/)" if model_file else ""
+                print(f"[OWW] Wake target '{tid}' ({phrase}): no model{missing} — Whisper fallback")
+
+    def _check_wake_targets(self, corrected_lower):
+        """Match corrected transcript against all enabled wake_targets.
+
+        Returns the first matching target dict, or None if no target matched.
+        Called from process_wake_word_buffer before the legacy single-phrase check.
+        """
+        for target in self.config.get('wake_targets', []):
+            if not target.get('enabled', True):
+                continue
+            phrase = target.get('phrase', '').lower().strip()
+            if not phrase:
+                continue
+            matched, _, _ = match_wake_phrase(corrected_lower, phrase)
+            if matched:
+                return target
+        return None
+
+    def _dispatch_wake_target(self, target, corrected_lower=''):
+        """Focus the target window and start a quick_dictation session.
+
+        Called from process_wake_word_buffer when a wake_target phrase is
+        detected. Focuses (and restores if minimized) the target window via
+        window_switcher._force_focus, then enters quick_dictation mode so
+        the user's next utterance is typed into that window. Session ends via
+        the existing silence/timeout mechanism (Phase 2 will refine this).
+        """
+        process_name = target.get('target_process', '')
+        phrase       = target.get('phrase', '').lower().strip()
+        tid          = target.get('id', phrase)
+
+        print(f"[WAKE-TARGET] '{phrase}' matched — targeting '{process_name}'")
+
+        own_pid = os.getpid()
+        result  = _resolve_target_window(process_name, exclude_pids={own_pid})
+
+        if result is None:
+            print(f"[WAKE-TARGET] No window found for '{process_name}' — process not running?")
+            self.play_sound("error")
+            return
+
+        hwnd, title = result
+        print(f"[WAKE-TARGET] Found window: '{title}' (hwnd={hwnd})")
+
+        try:
+            from plugins.commands import window_switcher as _ws
+            focused = _ws._force_focus(hwnd)
+            if focused:
+                logger.info("[WAKE-TARGET] Focused %r", title)
+            else:
+                import ctypes as _ct
+                _fg = _ct.windll.user32.GetForegroundWindow()
+                _fgl = _ct.windll.user32.GetWindowTextLengthW(_fg)
+                _fgb = _ct.create_unicode_buffer(_fgl + 1)
+                _ct.windll.user32.GetWindowTextW(_fg, _fgb, _fgl + 1)
+                logger.warning(
+                    "[WAKE-TARGET] FOCUS FAILED for %r (foreground still %r) — proceeding to dictate anyway",
+                    title, _fgb.value or "<unknown>",
+                )
+        except Exception as exc:
+            print(f"[WAKE-TARGET] Focus failed: {exc}")
+            self.play_sound("error")
+            return
+
+        # Extract any trailing speech spoken after the wake phrase in this same
+        # utterance (e.g. "hey claude write a summary" -> "write a summary").
+        initial_content = None
+        if corrected_lower and phrase in corrected_lower:
+            _, _, match_index = match_wake_phrase(corrected_lower, phrase)
+            if match_index >= 0:
+                remainder = corrected_lower[match_index + len(phrase):].strip()
+                remainder = re.sub(r'^[^\w]+', '', remainder).strip()
+                if remainder:
+                    initial_content = remainder
+                    print(f"[WAKE-TARGET] Pre-buffering trailing speech: '{initial_content}'")
+
+        # Resolve per-target send policy.  Explicit key in config wins; otherwise
+        # default by process/id name: hermes-targeted sessions stage only (never
+        # auto-submit), all other targets press Enter on send-word detection.
+        if 'send_policy' in target:
+            _send_policy = target['send_policy']
+        elif 'hermes' in process_name.lower() or 'hermes' in tid.lower():
+            _send_policy = 'stage_only'
+        else:
+            _send_policy = 'enter'
+
+        # Start open-ended wake session: per-utterance delivery, ends on inactivity.
+        self._start_wake_session(initial_content=initial_content, send_policy=_send_policy)
+
+    def _start_wake_session(self, initial_content=None, send_policy='enter'):
+        """Enter open-ended wake session state.
+
+        Each transcribed utterance is delivered immediately.  The session stays
+        alive through silence and only ends after _WAKE_SESSION_TIMEOUT_S of
+        inactivity or via the global cancel path.
+
+        send_policy: 'enter' — press Enter after send-word detection (claude targets).
+                     'stage_only' — text staged, Enter suppressed (hermes/agentic targets).
+        """
+        old_state = self.app_state
+        self.app_state = 'wake_session'
+        logger.info(f"[WS-DIAG] app_state set to {self.app_state!r}")
+        self.wake_dictation_mode = 'wake_session'
+        self.wake_dictation_buffer = []
+        self.wake_dictation_start_time = time.time()
+        self.wake_word_triggered = False
+        self._dictation_paused = False
+        self._dictation_require_end = False
+        self._dictation_silence_timeout = _WAKE_SESSION_CHUNK_GAP_S
+        self._wake_target_active = True
+        self._wake_session_first_chunk = True
+        self._wake_session_send_policy = send_policy
+
+        if hasattr(self, 'wake_word_timer') and self.wake_word_timer:
+            self.wake_word_timer.cancel()
+
+        print(f"[STATE] {old_state} -> wake_session "
+              f"(chunk gap: {_WAKE_SESSION_CHUNK_GAP_S}s, "
+              f"inactivity timeout: {_WAKE_SESSION_TIMEOUT_S}s, "
+              f"send_policy: {send_policy})")
+
+        self._restart_wake_session_timer()
+        logger.info(
+            f"[WS-DIAG] start_wake_session: app_state={self.app_state!r} "
+            f"timer_id={id(getattr(self,'_wake_session_inactivity_timer',None))}"
+        )
+        self.play_sound("start")
+
+        if hasattr(self, 'listening_indicator'):
+            self._schedule_ui(self.listening_indicator.set_mode, "Wake Session")
+            self._schedule_ui(self.listening_indicator.set_listening, True)
+
+        if initial_content:
+            self._output_dictation(initial_content)
+
+    def _restart_wake_session_timer(self):
+        """Reset the inactivity countdown; called after each delivered utterance."""
+        existing = getattr(self, '_wake_session_inactivity_timer', None)
+        logger.info(
+            f"[WS-DIAG] restart_wake_session_timer CALLED: "
+            f"app_state={self.app_state!r} had_existing={existing is not None} "
+            f"existing_id={id(existing)}"
+        )
+        if existing is not None:
+            existing.cancel()
+        t = threading.Timer(_WAKE_SESSION_TIMEOUT_S, self._end_wake_session)
+        t.daemon = True
+        t.start()
+        self._wake_session_inactivity_timer = t
+        logger.info(
+            f"[WS-DIAG] restart_wake_session_timer ARMED: "
+            f"new timer_id={id(t)} for {_WAKE_SESSION_TIMEOUT_S}s"
+        )
+
+    def _end_wake_session(self):
+        """End the wake session and re-arm wake detection (called by inactivity timer)."""
+        import traceback as _tb
+        logger.info(
+            f"[WS-DIAG] end_wake_session ENTERED: app_state={self.app_state!r} "
+            f"caller={_tb.extract_stack()[-2].name}"
+        )
+        existing = getattr(self, '_wake_session_inactivity_timer', None)
+        if existing is not None:
+            existing.cancel()
+            self._wake_session_inactivity_timer = None
+        print("[WAKE-SESSION] ended (inactivity timeout)")
+        self._reset_wake_dictation()
 
     def _vad_is_speech(self, chunk_float32, src_rate=None):
         """Return True if the chunk contains human speech.
@@ -3730,6 +4126,65 @@ class DictationApp:
             # Never let a debug UI bug break the main pipeline
             print(f"[WARN] wake trace callback failed: {e}")
 
+    def calibrate_wake_mic(self, seconds: float = 3.0) -> float | None:
+        """Sample ambient audio for *seconds* and seed the adaptive noise floor.
+
+        Uses the ACE engine ring (via a temporary registered consumer) so no
+        second InputStream is opened.  If the ACE engine is not running (legacy
+        path), falls back to the most recent frames already buffered in the ring
+        (rewind) and averages whatever is available.
+
+        Returns the measured floor RMS, or None if no frames were available.
+        Persists the result to wake_word_config.audio.measured_noise_floor so
+        the floor survives a restart and seeds the EMA on next boot.
+        """
+        import logging as _log
+        from samsara.audio_engine.frame import FRAME_MS as _FMS
+
+        engine = getattr(self, '_ace_engine', None)
+        if engine is None or not engine._running:
+            _log.getLogger().warning("[CAL] ACE engine not running — calibrate_wake_mic has no audio source")
+            return None
+
+        frames_needed = int(seconds * 1000 / _FMS)
+        reader = engine.register_consumer("wake-calibration")
+        # Rewind into existing ring history for an instant sample if enough
+        # history exists; otherwise we read forward in real time.
+        from samsara.audio_engine.ring import EMPTY as _EMPTY
+        from samsara.audio_engine.frame import PREBUFFER_FRAMES as _PF
+        rewind_n = min(frames_needed, _PF)
+        reader.rewind(rewind_n)
+
+        rms_values = []
+        deadline = time.monotonic() + seconds
+
+        while time.monotonic() < deadline:
+            frame = reader.read_next()
+            if frame is _EMPTY:
+                time.sleep(0.005)
+                continue
+            chunk = frame.pcm.astype(np.float32) / 32767.0
+            rms_values.append(float(np.sqrt(np.mean(chunk ** 2))))
+
+        engine.unregister_consumer(reader)
+
+        if not rms_values:
+            _log.getLogger().warning("[CAL] calibrate_wake_mic: no frames collected")
+            return None
+
+        measured = float(np.median(rms_values))
+        measured = max(measured, _NOISE_FLOOR_MIN)
+        self._wake_noise_floor = measured
+        _log.getLogger().info(f"[CAL] Wake mic calibrated: floor={measured:.5f} ({len(rms_values)} frames)")
+
+        # Persist so the floor survives restart.
+        with self._config_lock:
+            self.config.setdefault('wake_word_config', {}).setdefault('audio', {})
+            self.config['wake_word_config']['audio']['measured_noise_floor'] = measured
+            self.save_config()
+
+        return measured
+
     def process_wake_word_buffer(self, buffer, src_rate=None):
         """Process audio — check for wake word, commands, or dictation content.
 
@@ -3767,18 +4222,45 @@ class DictationApp:
 
             # FIX 1: RMS energy gate — skip Whisper on silent audio.
             # On CPU machines Whisper takes ~1s per call; calling it on every
-            # chunk saturates the CPU. This gate rejects the buffer early if the
-            # RMS is below the calibrated speech threshold so Whisper only runs
-            # when actual speech energy is present.
+            # chunk saturates the CPU. This gate rejects the buffer early when
+            # the audio energy is not meaningfully above the ambient noise floor.
             ww_config = self.config.get('wake_word_config', {})
             audio_config = ww_config.get('audio', {})
-            speech_threshold = audio_config.get('speech_threshold', DEFAULT_SPEECH_THRESHOLD)
-            audio_rms = np.sqrt(np.mean(audio.astype(np.float32) ** 2))
-            if audio_rms < speech_threshold:
-                logging.debug(
-                    f"[WAKE] Below speech threshold (RMS {audio_rms:.4f} < {speech_threshold:.4f}), skipping"
-                )
-                return
+            audio_rms = float(np.sqrt(np.mean(audio.astype(np.float32) ** 2)))
+
+            use_adaptive = audio_config.get('adaptive_gate', True)
+            if use_adaptive:
+                # Update rolling noise-floor estimate from ambient-only frames.
+                if self._wake_noise_floor is None:
+                    self._wake_noise_floor = max(audio_rms, _NOISE_FLOOR_MIN)
+                elif audio_rms < self._wake_noise_floor * _NOISE_FLOOR_SPEECH_RATIO:
+                    self._wake_noise_floor = max(
+                        (1.0 - _NOISE_FLOOR_ALPHA) * self._wake_noise_floor
+                        + _NOISE_FLOOR_ALPHA * audio_rms,
+                        _NOISE_FLOOR_MIN,
+                    )
+
+                # Absolute backstop only — the legacy speech_threshold is NOT
+                # used as a hard floor here, because a desktop-tuned value
+                # (e.g. 0.0200) would clamp the adaptive gate upward and defeat
+                # the whole point for low-gain mics. Adaptive mode trusts the
+                # measured floor; _ABS_FLOOR_MIN just blocks pure-DC buffers.
+                gate_level = max(self._wake_noise_floor * _SPEECH_FLOOR_RATIO, _ABS_FLOOR_MIN)
+
+                if audio_rms < gate_level:
+                    logging.debug(
+                        f"[WAKE] gated (rms {audio_rms:.4f} < adaptive {gate_level:.4f}"
+                        f" [floor {self._wake_noise_floor:.4f} x{_SPEECH_FLOOR_RATIO}]) -- skipping"
+                    )
+                    return
+            else:
+                # adaptive_gate=False: exact original fixed-threshold behaviour.
+                speech_threshold = audio_config.get('speech_threshold', DEFAULT_SPEECH_THRESHOLD)
+                if audio_rms < speech_threshold:
+                    logging.debug(
+                        f"[WAKE] Below speech threshold (RMS {audio_rms:.4f} < {speech_threshold:.4f}), skipping"
+                    )
+                    return
 
             # FIX 2: In-progress flag — prevent concurrent Whisper calls.
             # On CPU a transcription can take longer than the next buffer window,
@@ -3801,6 +4283,12 @@ class DictationApp:
             if not self._vad_available:
                 transcribe_params['vad_filter'] = False
             perf_mode = self.config.get('performance_mode', 'balanced')
+
+            # Restart wake-session inactivity timer at flush time so transcription
+            # latency never races the 10s window.  _output_dictation also restarts
+            # it on delivery; the double-reset per utterance is harmless.
+            if self.app_state == 'wake_session':
+                self._restart_wake_session_timer()
 
             transcribe_start = time.time()
             with self.model_lock:
@@ -3843,8 +4331,8 @@ class DictationApp:
 
             self._emit_wake_trace({"stage": "utterance_start", "raw": text, "normalized": text_lower})
 
-            # In dictation state (quick_dictation or long_dictation)?
-            if self.app_state in ('quick_dictation', 'long_dictation'):
+            # In dictation state (quick_dictation, long_dictation, or wake_session)?
+            if self.app_state in ('quick_dictation', 'long_dictation', 'wake_session'):
                 # Check cancel words
                 cancel_words = ww_config.get('cancel_words', ['cancel'])
                 for cw in cancel_words:
@@ -3852,9 +4340,48 @@ class DictationApp:
                         print(f"[CANCEL] Dictation cancelled ('{cw}')")
                         self._emit_wake_trace({"stage": "cancel_word_detected", "phrase": cw})
                         self.play_sound("error")
-                        self._reset_wake_dictation()
+                        if self.app_state == 'wake_session':
+                            self._end_wake_session()
+                        else:
+                            self._reset_wake_dictation()
                         self._emit_wake_trace({"stage": "utterance_end", "result": "cancelled"})
                         return
+
+                # wake_session: check for send terminator before immediate delivery.
+                # Control words are end-of-utterance only: the LAST token of the
+                # stabilized transcript (stripped of trailing punctuation) must be an
+                # exact match. Mid-utterance occurrences ("come over here") pass through
+                # as normal dictated text.
+                if self.app_state == 'wake_session':
+                    _send_words = ww_config.get('send_words', _WAKE_SESSION_SEND_WORDS)
+                    _tokens = text.strip().split()
+                    _matched_sw = None
+                    if _tokens:
+                        _last_tok = _tokens[-1].rstrip('.,!?').lower()
+                        _matched_sw = next(
+                            (_sw for _sw in _send_words if _sw.lower() == _last_tok),
+                            None,
+                        )
+                    if _matched_sw is not None:
+                        _pre = ' '.join(_tokens[:-1])
+                        if _pre:
+                            self._output_dictation(_pre)
+                        _policy = getattr(self, '_wake_session_send_policy', 'enter')
+                        if _policy == 'enter':
+                            time.sleep(0.05)
+                            pyautogui.press('return')
+                            self.play_sound("success")
+                            print(f"[WAKE-SESSION] sent — '{_matched_sw}' detected, Enter pressed")
+                        else:
+                            self.play_sound("action_complete")
+                            print(f"[WAKE-SESSION] staged — '{_matched_sw}' detected, Enter suppressed (stage_only)")
+                        self._emit_wake_trace({"stage": "utterance_end", "result": "wake_session_sent",
+                                               "send_word": _matched_sw, "policy": _policy})
+                        self._end_wake_session()
+                        return
+                    self._output_dictation(text.strip())
+                    self._emit_wake_trace({"stage": "utterance_end", "result": "wake_session_delivered"})
+                    return
 
                 # Check end words (primarily long_dictation, but works in both).
                 # Checked before pause/resume so "over" finalizes even while paused.
@@ -3936,6 +4463,20 @@ class DictationApp:
             correction_applied = was_corrected(text_lower, corrected_lower)
             if correction_applied:
                 print(f"[CORRECT] '{text_lower}' -> '{corrected_lower}'")
+
+            logger.info(
+                "[WAKE-CHECK] transcript=%r targets=%r",
+                corrected_lower,
+                [t.get('phrase') for t in self.config.get('wake_targets', []) if t.get('enabled', True)],
+            )
+
+            # Phase 1: check multi-wake targets BEFORE the legacy single-phrase check.
+            # Each enabled wake_target has a distinct phrase ("hey claude",
+            # "activate hermes") that doesn't overlap with legacy jarvis phrases.
+            _wake_target = self._check_wake_targets(corrected_lower)
+            if _wake_target is not None:
+                self._dispatch_wake_target(_wake_target, corrected_lower=corrected_lower)
+                return
 
             matched, match_type, match_index = match_wake_phrase(corrected_lower, wake_phrase)
 
@@ -4107,6 +4648,7 @@ class DictationApp:
         """
         old_state = self.app_state
         self.app_state = mode_name
+        logger.info(f"[WS-DIAG] app_state set to {self.app_state!r} (was {old_state!r}) via _start_dictation_mode")
         self.wake_dictation_mode = mode_name  # compat alias
         self.wake_dictation_buffer = []
         self.wake_dictation_start_time = time.time()
@@ -4205,6 +4747,7 @@ class DictationApp:
         """Return to asleep state, clearing all dictation state."""
         old_state = self.app_state
         self.app_state = 'asleep'
+        logger.info(f"[WS-DIAG] app_state set to {self.app_state!r} (was {old_state!r})")
         self.wake_dictation_mode = None
         self.wake_dictation_buffer = []
         self.wake_dictation_start_time = None
@@ -4233,6 +4776,14 @@ class DictationApp:
         # be 0 in healthy operation; clamp defensively in case of timer races.
         self._dictation_finalize_requested = False
         self._pending_transcriptions = 0
+        self._wake_target_active = False
+        self._wake_session_first_chunk = True
+        self._wake_session_send_policy = 'enter'
+
+        existing = getattr(self, '_wake_session_inactivity_timer', None)
+        if existing is not None:
+            existing.cancel()
+            self._wake_session_inactivity_timer = None
 
         if old_state != 'asleep':
             print(f"[STATE] {old_state} -> asleep")
@@ -4246,6 +4797,7 @@ class DictationApp:
         After accumulating text, this timer gives the user a window to keep speaking.
         If no new speech arrives within the timeout, the accumulated text is output.
         """
+        logger.info(f"[WS-DIAG] _restart_dictation_timer called: app_state={self.app_state!r}")
         if hasattr(self, '_dictation_finalize_timer') and self._dictation_finalize_timer:
             self._dictation_finalize_timer.cancel()
 
@@ -4255,6 +4807,7 @@ class DictationApp:
 
     def _finalize_dictation_timeout(self):
         """Called when the dictation finalization timer expires."""
+        logger.info(f"[WS-DIAG] _finalize_dictation_timeout called: app_state={self.app_state!r}")
         try:
             with self._dictation_finalize_lock:
                 if self.wake_dictation_mode and self.wake_dictation_buffer and not self._dictation_require_end:
@@ -4441,6 +4994,14 @@ class DictationApp:
             self._record_undoable_paste(text)
             self.adaptive_learner.record_transcription(text)
 
+    def _deliver_text_to_focused_editor(self, text):
+        # backspace removes focus-primer char; assumes empty input box at session start
+        pyautogui.press('x')
+        time.sleep(_WAKE_PRIMER_DELAY)
+        pyautogui.press('backspace')
+        time.sleep(_WAKE_PRIMER_DELAY)
+        self._paste_preserving_clipboard(text)
+
     def _record_undoable_paste(self, text):
         """Remember the last pasted text so it can be undone via voice/hotkey."""
         self._last_dictation_text = text
@@ -4563,7 +5124,26 @@ class DictationApp:
         self._notify_main_window(text.strip())
 
         if self.config['auto_paste']:
-            self._paste_preserving_clipboard(text)
+            logger.info(
+                f"[WS-DIAG] _output_dictation: wake_target_active="
+                f"{getattr(self,'_wake_target_active',None)} "
+                f"first_chunk={getattr(self,'_wake_session_first_chunk',None)} "
+                f"app_state={self.app_state!r}"
+            )
+            if getattr(self, '_wake_target_active', False):
+                if getattr(self, '_wake_session_first_chunk', True):
+                    self._deliver_text_to_focused_editor(text)
+                    self._wake_session_first_chunk = False
+                else:
+                    self._paste_preserving_clipboard(' ' + text)
+                logger.info(
+                    f"[WS-DIAG] about to check restart: app_state={self.app_state!r} "
+                    f"(will restart={self.app_state == 'wake_session'})"
+                )
+                if self.app_state == 'wake_session':
+                    self._restart_wake_session_timer()
+            else:
+                self._paste_preserving_clipboard(text)
 
         if hasattr(self, 'hints'):
             self.hints.maybe_show(
@@ -6204,14 +6784,26 @@ class DictationApp:
 
 if __name__ == "__main__":
     # Console is already hidden at top of file
+    _DIAG_MAIN_T = time.perf_counter()
+    print(f"[BOOT-DIAG] __main__: entry (since sounddevice import: {(_DIAG_MAIN_T - _POST_SD_T)*1000:.0f}ms)", flush=True)
 
     # Guard against double-launch. Must run before the splash / audio starts
     # so a second invocation exits cleanly without grabbing resources.
+    _t = time.perf_counter()
     _acquire_instance_lock()
+    _dt = (time.perf_counter() - _t) * 1000
+    print(f"[BOOT-DIAG] instance lock (_check_single_instance): {_dt:.0f}ms", flush=True)
+    if _dt > 5000:
+        print(f"[BOOT-DIAG] SLOW STEP: instance lock {_dt:.0f}ms", flush=True)
 
     # Show splash screen during startup
+    _t = time.perf_counter()
     from samsara.ui.splash_qt import SplashScreenQt
     splash = SplashScreenQt()
+    _dt = (time.perf_counter() - _t) * 1000
+    print(f"[BOOT-DIAG] splash init (SplashScreenQt): {_dt:.0f}ms", flush=True)
+    if _dt > 5000:
+        print(f"[BOOT-DIAG] SLOW STEP: splash init {_dt:.0f}ms", flush=True)
     splash.set_status("Initializing...")
 
     app = None

@@ -37,15 +37,17 @@ from samsara.plugin_commands import command
 # Win32 bindings
 # ---------------------------------------------------------------------------
 
-user32  = ctypes.windll.user32
-ole32   = ctypes.windll.ole32
-_c_void = ctypes.c_void_p
-HRESULT = ctypes.HRESULT
+user32   = ctypes.windll.user32
+kernel32 = ctypes.windll.kernel32
+ole32    = ctypes.windll.ole32
+_c_void  = ctypes.c_void_p
+HRESULT  = ctypes.HRESULT
 
 GWL_EXSTYLE       = -20
 WS_EX_LAYERED     = 0x00080000
 WS_EX_TRANSPARENT = 0x00000020
 SW_RESTORE        = 9
+SW_SHOW           = 5
 WM_CLOSE          = 0x0010
 
 # ---------------------------------------------------------------------------
@@ -400,19 +402,81 @@ def _reset_timer() -> None:
 # Focus helper
 # ---------------------------------------------------------------------------
 
-def _force_focus(hwnd: int) -> None:
-    """Restore if minimized, then force foreground."""
-    if user32.IsIconic(hwnd):
-        user32.ShowWindow(hwnd, SW_RESTORE)
-    current     = user32.GetForegroundWindow()
-    current_tid = user32.GetWindowThreadProcessId(current, None)
-    target_tid  = user32.GetWindowThreadProcessId(hwnd,    None)
-    if current_tid != target_tid:
-        user32.AttachThreadInput(current_tid, target_tid, True)
-        user32.SetForegroundWindow(hwnd)
-        user32.AttachThreadInput(current_tid, target_tid, False)
-    else:
-        user32.SetForegroundWindow(hwnd)
+def _force_focus(hwnd: int) -> bool:
+    """Restore if minimized, then steal foreground using the full incantation.
+
+    Steps:
+      1. Restore if minimised.
+      2. Relax the foreground lock timeout to 0 (best-effort).
+      3. Dual AttachThreadInput: both the current-foreground thread AND the
+         calling thread attach to the target thread's input queue — this is
+         what makes the steal work from background/audio threads.
+      4. ShowWindow, BringWindowToTop, TOPMOST flip, SetForegroundWindow,
+         SetActiveWindow, SetFocus.
+      5. Detach inputs.
+      6. Verify via GetForegroundWindow() == hwnd after a 50 ms settle.
+
+    Returns True if the window is actually in the foreground afterwards,
+    False if Windows still refused (caller should proceed anyway and log it).
+    Backward-safe: all existing callers ignore the return value.
+    """
+    try:
+        # 1. Restore if minimised
+        if user32.IsIconic(hwnd):
+            user32.ShowWindow(hwnd, SW_RESTORE)
+
+        # 2. Capture current foreground and thread IDs
+        fg      = user32.GetForegroundWindow()
+        fg_tid  = user32.GetWindowThreadProcessId(fg,   None)
+        tgt_tid = user32.GetWindowThreadProcessId(hwnd, None)
+        our_tid = kernel32.GetCurrentThreadId()
+
+        # 3. Relax foreground lock timeout to 0 ms (best-effort; needs UIPI access)
+        try:
+            _tmo = ctypes.c_ulong(0)
+            user32.SystemParametersInfoW(0x2001, 0, ctypes.byref(_tmo), 0x0002)
+        except Exception:
+            pass
+
+        # 4. Attach both the foreground-owner thread AND our calling thread to
+        #    the target's input queue, then perform the full steal sequence.
+        _SWP_NOMOVE     = 0x0002
+        _SWP_NOSIZE     = 0x0001
+        _SWP_NOACTIVATE = 0x0010
+        _SWP_FLAGS      = _SWP_NOMOVE | _SWP_NOSIZE | _SWP_NOACTIVATE
+
+        attached_fg = bool(
+            fg_tid and fg_tid != tgt_tid and
+            user32.AttachThreadInput(fg_tid, our_tid, True)
+        )
+        attached_us = bool(
+            our_tid and our_tid != tgt_tid and
+            user32.AttachThreadInput(our_tid, tgt_tid, True)
+        )
+        try:
+            user32.ShowWindow(hwnd, SW_SHOW)
+            user32.BringWindowToTop(hwnd)
+            # TOPMOST flip brings the window above everything without
+            # permanently pinning it as always-on-top.
+            user32.SetWindowPos(hwnd, ctypes.c_void_p(-1), 0, 0, 0, 0, _SWP_FLAGS)
+            user32.SetWindowPos(hwnd, ctypes.c_void_p(-2), 0, 0, 0, 0, _SWP_FLAGS)
+            user32.SetForegroundWindow(hwnd)
+            user32.SetActiveWindow(hwnd)
+            user32.SetFocus(hwnd)
+        finally:
+            if attached_us:
+                user32.AttachThreadInput(our_tid, tgt_tid, False)
+            if attached_fg:
+                user32.AttachThreadInput(fg_tid, our_tid, False)
+
+        # 5. Authoritative verification: trust GetForegroundWindow, not the
+        #    return value of SetForegroundWindow (which lies under lock).
+        time.sleep(0.05)
+        return user32.GetForegroundWindow() == hwnd
+
+    except Exception as exc:
+        print(f"[FORCE-FOCUS] Error: {exc}")
+        return False
 
 # ---------------------------------------------------------------------------
 # Monitor helpers (delegates to windows.py)

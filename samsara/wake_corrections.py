@@ -20,6 +20,7 @@ dict; it gets rebuilt at import and whenever reload_corrections() is called.
 """
 
 import json
+import re
 from pathlib import Path
 
 USER_CORRECTIONS_PATH = Path.home() / ".samsara" / "user_wake_corrections.json"
@@ -42,6 +43,36 @@ CORRECTIONS = {
     "driver's": "jarvis",
     "drivers": "jarvis",
     "harvest": "jarvis",
+    # Phase 1 multi-wakeword — "hey claude" misrecognitions.
+    # Multi-word keys are handled by the phrase-level pass in apply_corrections.
+    # Single-word keys ("clawed", "claud") are safe because they are not
+    # common words — no collision risk with legitimate speech.
+    "hey cloud": "hey claude",
+    "hey clod": "hey claude",
+    "hey clawed": "hey claude",
+    "hey claud": "hey claude",
+    "hey, claude": "hey claude",
+    "a claude": "hey claude",
+    "a cloud": "hey claude",
+    "hey claude.": "hey claude",
+    "hit clod": "hey claude",
+    "hit claude": "hey claude",
+    "hay claude": "hey claude",
+    "pay claude": "hey claude",
+    "clawed": "claude",
+    "claud": "claude",
+    # Phase 1 multi-wakeword — "activate hermes" misrecognitions.
+    # Self-mapping provides separator-tolerant pattern so "activate, hermes"
+    # (correctly spelled, comma inserted by Whisper) is also normalised.
+    "activate hermes": "activate hermes",
+    "activate hermès": "activate hermes",
+    "activate hermies": "activate hermes",
+    "activate herpes": "activate hermes",
+    "activate hermez": "activate hermes",
+    "activate her mes": "activate hermes",
+    "activate harmony's": "activate hermes",
+    "activate her mess": "activate hermes",
+    "activate her message": "activate hermes",
 }
 
 
@@ -72,6 +103,73 @@ def _save_user_corrections(corrections):
 # Active dict: defaults merged with user overrides. apply_corrections reads here.
 FULL_CORRECTIONS = dict(CORRECTIONS)
 
+# Separator chars Whisper inserts between wake-phrase words ("hey, claude").
+# Hyphen and apostrophe are intentionally excluded — they are word-internal.
+_SEP = r'[\s,.;:!?]+'
+
+# Derived state rebuilt by _rebuild_derived() / reload_corrections().
+_PHRASE_CORRECTIONS: dict = {}
+_TOKEN_CORRECTIONS:  dict = {}
+_CANONICAL_VALUES: frozenset = frozenset()   # set of all correction values
+_PHRASE_NORM_MAP: dict = {}                  # normalised-key -> canonical value
+_PHRASE_PATTERN = None                       # compiled re.Pattern or None
+
+
+def _norm_key(s):
+    """Lowercase, collapse separator chars to one space, strip.
+
+    Used to normalise phrase keys for lookup and to normalise matched spans
+    so the replacement value can be found: 'hey, clod' -> 'hey clod'.
+    """
+    s = s.lower()
+    s = re.sub(_SEP, ' ', s)
+    return s.strip()
+
+
+def _build_phrase_pattern(key):
+    """Return a bounded, separator-tolerant regex pattern for a phrase key.
+
+    Inter-word spaces in the normalised key become _SEP groups so Whisper-
+    inserted commas/periods between words still trigger the match.
+    Lookarounds (?<!\\w) / (?!\\w) ensure the pattern never fires inside a
+    longer word or partially into the already-correct phrase.
+    Returns None for single-word keys (handled by the token pass instead).
+    """
+    norm = _norm_key(key)
+    words = norm.split()
+    if len(words) < 2:
+        return None
+    inner = _SEP.join(re.escape(w) for w in words)
+    return r'(?<!\w)' + inner + r'(?!\w)'
+
+
+def _rebuild_derived():
+    global _PHRASE_CORRECTIONS, _TOKEN_CORRECTIONS
+    global _CANONICAL_VALUES, _PHRASE_NORM_MAP, _PHRASE_PATTERN
+    _PHRASE_CORRECTIONS = {k: v for k, v in FULL_CORRECTIONS.items() if ' ' in k}
+    _TOKEN_CORRECTIONS  = {k: v for k, v in FULL_CORRECTIONS.items() if ' ' not in k}
+    _CANONICAL_VALUES   = frozenset(FULL_CORRECTIONS.values())
+
+    # Build normalised-key -> canonical-value lookup for phrase substitution.
+    _PHRASE_NORM_MAP = {}
+    for k, v in _PHRASE_CORRECTIONS.items():
+        nk = _norm_key(k)
+        if nk not in _PHRASE_NORM_MAP:
+            _PHRASE_NORM_MAP[nk] = v
+
+    # Build and compile the combined phrase regex (longest keys first so more
+    # specific alternatives shadow overlapping shorter ones).
+    if _PHRASE_CORRECTIONS:
+        seen, parts = set(), []
+        for k in sorted(_PHRASE_CORRECTIONS, key=len, reverse=True):
+            pat = _build_phrase_pattern(k)
+            if pat and pat not in seen:
+                seen.add(pat)
+                parts.append(pat)
+        _PHRASE_PATTERN = re.compile('|'.join(parts), re.IGNORECASE) if parts else None
+    else:
+        _PHRASE_PATTERN = None
+
 
 def reload_corrections():
     """Rebuild FULL_CORRECTIONS from CORRECTIONS + user overrides.
@@ -81,6 +179,7 @@ def reload_corrections():
     """
     global FULL_CORRECTIONS
     FULL_CORRECTIONS = {**CORRECTIONS, **_load_user_corrections()}
+    _rebuild_derived()
 
 
 def get_default_corrections():
@@ -99,22 +198,49 @@ def set_user_corrections(corrections):
     reload_corrections()
 
 
-# Populate FULL_CORRECTIONS at import
+# Populate FULL_CORRECTIONS and derived sub-dicts at import
 reload_corrections()
 
 
 def apply_corrections(text):
     """Return text with any known wake-word misrecognitions substituted.
 
-    Token-level substitution preserves surrounding words and punctuation:
-        "hey charvis dictate" -> "hey jarvis dictate"
-        "charvis, open chrome" -> "jarvis, open chrome"
+    Two-pass approach:
+      1. Phrase-level pass (multi-word keys) with three properties:
+         a) Separator tolerance — inter-word spaces in keys match any run of
+            Whisper-inserted punctuation/whitespace so "hey, clod" triggers
+            the "hey clod" -> "hey claude" correction.
+         b) Whole-phrase / word-boundary matching — (?<!w) / (?!w) lookarounds
+            prevent a shorter key from matching inside a longer word or the
+            already-correct phrase, e.g. "hey claud" key cannot match inside
+            "hey claude" because the trailing 'e' is a word character.
+         c) Canonical short-circuit — if the input is already a correct wake
+            phrase (literal case-insensitive match against the set of all
+            correction values), it is returned unchanged before any pattern
+            can corrupt it.
+      2. Token-level pass (single-word keys) — unchanged token-by-token
+         substitution preserving surrounding punctuation.
 
     Safe to call on empty strings. Non-string input returns unchanged.
     """
     if not text or not isinstance(text, str):
         return text
     if not FULL_CORRECTIONS:
+        return text
+
+    # C) Canonical short-circuit: if the input is already a correct canonical
+    # phrase return it unchanged — no pattern can alter it.
+    if text.strip().lower() in _CANONICAL_VALUES:
+        return text
+
+    # 1. Phrase-level pass (multi-word keys).
+    if _PHRASE_PATTERN is not None:
+        def _phrase_sub(m):
+            return _PHRASE_NORM_MAP.get(_norm_key(m.group(0)), m.group(0))
+        text = _PHRASE_PATTERN.sub(_phrase_sub, text)
+
+    # 2. Token-level pass (single-word keys; unchanged)
+    if not _TOKEN_CORRECTIONS:
         return text
 
     out_tokens = []
@@ -131,7 +257,7 @@ def apply_corrections(text):
             trailing = core[-1] + trailing
             core = core[:-1]
 
-        replacement = FULL_CORRECTIONS.get(core.lower(), core)
+        replacement = _TOKEN_CORRECTIONS.get(core.lower(), core)
         out_tokens.append(f"{leading}{replacement}{trailing}")
 
     return " ".join(out_tokens)
