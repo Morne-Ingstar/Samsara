@@ -1,8 +1,8 @@
 @echo off
-title Building Samsara v0.10.0
+title Building Samsara v0.12.0
 cd /d C:\Users\Morne\Projects\Samsara-dev
 
-set VERSION=0.10.0
+set VERSION=0.12.0
 set ARCHIVE=dist\Samsara-Windows-v%VERSION%.7z
 
 echo ============================================
