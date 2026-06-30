@@ -595,8 +595,10 @@ _NOISE_FLOOR_SPEECH_RATIO = 2.0
 _NOISE_FLOOR_MIN = 0.0005
 
 # Speech passes the gate when rms >= floor * _SPEECH_FLOOR_RATIO.
-# 2.5x the ambient floor distinguishes speech from background noise.
-_SPEECH_FLOOR_RATIO = 2.5
+# 1.5x the ambient floor distinguishes speech from background noise.
+# Low-gain mics (headsets, USB w/ AGC) have a narrow speech-to-ambient
+# margin (~1.5-1.6x), so an aggressive ratio gates real speech out.
+_SPEECH_FLOOR_RATIO = 1.5
 
 # Hard absolute minimum so pure DC / zeroed buffers cannot pass even on a
 # completely silent mic.
@@ -4238,10 +4240,12 @@ class DictationApp:
                         _NOISE_FLOOR_MIN,
                     )
 
-                # Override absolute backstop with user speech_threshold when set.
-                user_threshold = audio_config.get('speech_threshold', 0.0)
-                abs_min = max(_ABS_FLOOR_MIN, user_threshold) if user_threshold > 0 else _ABS_FLOOR_MIN
-                gate_level = max(self._wake_noise_floor * _SPEECH_FLOOR_RATIO, abs_min)
+                # Absolute backstop only — the legacy speech_threshold is NOT
+                # used as a hard floor here, because a desktop-tuned value
+                # (e.g. 0.0200) would clamp the adaptive gate upward and defeat
+                # the whole point for low-gain mics. Adaptive mode trusts the
+                # measured floor; _ABS_FLOOR_MIN just blocks pure-DC buffers.
+                gate_level = max(self._wake_noise_floor * _SPEECH_FLOOR_RATIO, _ABS_FLOOR_MIN)
 
                 if audio_rms < gate_level:
                     logging.debug(
