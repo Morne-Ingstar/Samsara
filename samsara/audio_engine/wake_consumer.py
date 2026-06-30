@@ -162,7 +162,7 @@ class WakeConsumer:
         # (ARC audit: early-return guards prematurely truncating active utterances)
         if not app.is_speaking:
             if (app._command_executed_at is not None
-                    and app.app_state not in ('long_dictation', 'quick_dictation')):
+                    and app.app_state not in ('long_dictation', 'quick_dictation', 'wake_session')):
                 elapsed = time.time() - app._command_executed_at
                 if elapsed < 2.0:
                     if app.echo_canceller.is_active:
@@ -202,7 +202,7 @@ class WakeConsumer:
                 'utterance_silence_s', 1.0)
         elif app.app_state == 'long_dictation':
             silence_threshold = ww_config.get('long_chunk_silence', 1.0)
-        elif app.app_state == 'quick_dictation' and app._dictation_silence_timeout:
+        elif app.app_state in ('quick_dictation', 'wake_session') and app._dictation_silence_timeout:
             silence_threshold = app._dictation_silence_timeout
         else:
             silence_threshold = audio_config.get('wake_detection_silence', WAKE_DETECTION_SILENCE)
@@ -297,7 +297,7 @@ class WakeConsumer:
 
             # Hard buffer cap (same as legacy callback)
             buffer_s = len(self._utterance_frames) * (FRAME_MS / 1000.0)
-            if buffer_s >= 7.0 and app.app_state not in ('long_dictation', 'quick_dictation'):
+            if buffer_s >= 7.0 and app.app_state not in ('long_dictation', 'quick_dictation', 'wake_session'):
                 print(f"[CAP] Buffer at {buffer_s:.1f}s cap — discarding (likely noise/echo)")
                 self._utterance_frames   = []
                 self._buffer_rms_history = []
