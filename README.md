@@ -8,11 +8,18 @@
 >
 > Demo reel, screenshots, philosophy, accessibility framing, downloads, and roadmap — all over there. The README from here down is technical.
 
-**Recent updates (v0.11.0):** AudioCaptureEngine — unified single-stream audio architecture replacing 3 separate PortAudio streams with one lock-free ring buffer. Full PySide6 migration (zero Tkinter). Ava conversational memory (multi-turn, cloud + local). Config file-watch with three-way merge (edit config while running). First-run accessibility wizard (chronic pain / privacy / power user paths). Health tracking by voice (pain, medication, symptoms). Explicit mode state machine. 410+ commands, 28 plugins.
-
-> *"Jarvis, open Chrome."*
+> *"Hey Claude."* — your app focuses, you talk, you say *"over"*, it sends.
 >
 > Local voice control via Whisper. ~300ms. No cloud, no internet, no typing.
+
+---
+
+## What's New in v0.12.0
+
+- **Hands-free multi-wakeword dictation** — say a named wake phrase ("Hey Claude", "Activate Hermes"), the target app focuses, and you dictate straight into it. End with "over" to submit. Fully hands-free, no hotkey.
+- **Adaptive microphone gate** — wake detection now measures speech against a rolling noise floor instead of a fixed threshold, so low-output mics (headsets, USB mics with AGC) just work without manual tuning.
+- **One-word media controls** — "play", "pause", "next", "mute" fire like the button on a Bluetooth earbud, acting on whatever's playing.
+- **31 plugins**, 410+ commands, single-stream audio engine, full PySide6 UI.
 
 ---
 
@@ -33,6 +40,18 @@
 ## What Can It Do?
 
 Samsara is a **fully offline** voice control system powered by Whisper. It runs as a Windows app with a main hub window, system tray integration, and hands-free control over your entire computer.
+
+### Hands-Free Wake (flagship)
+
+No hotkey, no hands. Bind a spoken phrase to an app and Samsara does the rest.
+
+- **"Hey Claude"** → the Claude window focuses (restored if minimized) and a dictation session opens targeting it. Talk, pause to think, keep talking — the session survives silence and appends each utterance.
+- **"over"** → submits. Only the *last* word you speak is checked, so "tell them to come over here" types normally and just "...and that's the plan. over." sends.
+- **Per-target send policy** — Claude submits on "over"; agentic targets like Hermes leave the text staged so nothing fires without you.
+- **Earcons** — audio cues for session-start and sent, so you know the state without looking.
+- **Any mic** — the adaptive noise-floor gate means a quiet headset mic triggers wake words just as reliably as a desktop condenser.
+
+Wake phrases, targets, and send behavior are all configurable. Built on custom OpenWakeWord models with a Whisper-transcript fallback.
 
 ### Dictation
 
@@ -78,6 +97,7 @@ Enabled and configured in Settings → TTS tab. Off by default.
 | **Browser** | "find tab GitHub", "search for ergonomic keyboards" |
 | **Screen** | "record my screen", "record this window", "stop recording" |
 | **Smart Home** | "lights red", "lights off", "light effect rainbow" |
+| **Media** | "play", "pause", "next", "mute" — earbud-style transport on the current session |
 | **Music** | "play me some music", "play moonlight", "volume down" |
 | **3D Printing** | "printer status", "pause print", "cancel print", "printer light" |
 | **Utilities** | "set a timer for 5 minutes", "search for a gif of dancing cat" |
@@ -85,7 +105,7 @@ Enabled and configured in Settings → TTS tab. Off by default.
 | **Scrolling** | "scroll up a little", "scroll up", "scroll up medium", "scroll up high", "scroll up fast" — plus down variants |
 | **Text Selection** | "mark here", "select to here" — anchor-based selection across any scroll distance |
 | **Repeat** | "again", "repeat" — re-fire the last command |
-| **Volume** | "volume up", "volume down", "mute" — Core Audio API, no media keys |
+| **Volume** | "volume up", "volume down" — Core Audio API, no media keys |
 | **Streaming** | "play on stremio", "stremio pause", "stremio fullscreen" |
 | **Voice AI** | Hold Right Alt → speak to Ava (Ollama) → hear response |
 
@@ -95,7 +115,7 @@ Samsara talks directly to hardware on your network:
 
 - **Hyperion LED strips** — "lights red", "lights off", "light effect rainbow". 11 preset colors, 14 effect aliases with fuzzy matching against your Hyperion instance. Supports IPv4, IPv6, and hostnames.
 - **FlashForge 3D printers** — "printer status" (temperatures, progress, state), "pause print", "resume print", "cancel print", "printer light". TCP M-code protocol, tested on AD5X.
-- **Spotify** — "play me some music", "play hurt", "volume up". Opens tracks directly in the desktop app with configurable song library.
+- **Spotify** — earbud-style "play / pause / next / mute" plus a configurable song library ("play hurt", "play moonlight"). Opens tracks directly in the desktop app.
 
 ### Main Window
 
@@ -109,7 +129,7 @@ Plus standalone overlays (PySide6 — always above all apps, DPI-aware, click-th
 
 - **Command Cheat Sheet** — floating always-on-top overlay listing every active command. Opacity slider, filterable by pack. Toggle from tray or by voice.
 - **Show Numbers** — voice-driven clicking: an overlay numbers every interactive element on screen. Say the number to click it. Fully hands-free UI navigation.
-- **Listening Indicator** — a pill that pulses and shows current mode (dictating / command / Ava / streaming) at the corner of your screen.
+- **Listening Indicator** — a pill that pulses and shows current mode (dictating / command / Ava / wake / streaming) at the corner of your screen.
 
 Closing the window minimizes to tray. Double-click the tray icon to reopen.
 
@@ -127,7 +147,7 @@ def my_command(app, remainder):
     return True
 ```
 
-Ships with 28 plugins including health tracking, voice reminders, alarm management, voice AI / Ava (Ollama + cloud LLM), smart home control, music playback, 3D printer integration, macros, audio switching, tab finder, web shortcuts, timer, GIF search, screen recording, scroll (5-speed + horizontal + page nav), text marker (deferred range selection), volume/mute (Core Audio API), window switcher (letter-based targeting), show numbers (hands-free clicking), Stremio, and more.
+Ships with 31 plugins including health tracking, voice reminders, alarm management, voice AI / Ava (Ollama + cloud LLM), smart home control, music and media transport, 3D printer integration, macros, audio switching, tab finder, web shortcuts, timer, GIF search, screen recording, scroll (5-speed + horizontal + page nav), text marker (deferred range selection), volume/mute (Core Audio API), window switcher (letter-based targeting), show numbers (hands-free clicking), Stremio, and more.
 
 ---
 
@@ -173,18 +193,24 @@ Download `Samsara-CUDA-Pack-vX.X.X.zip` from the [GitHub releases page](https://
 
 Once the DLLs are in place, restart Samsara, open Settings → Advanced, and select **CUDA (NVIDIA GPU)** in the device dropdown. The startup log should show `Device: cuda, Compute: float16`.
 
-### Configuring Plugins
+### Configuring Wake Targets & Plugins
 
-Plugins are configured through `config.json`. For smart home and IoT plugins:
+Hands-free wake targets and plugin settings live in `config.json`.
 
 ```json
 {
+  "wake_targets": [
+    { "phrase": "hey claude", "target_process": "claude.exe", "send_policy": "enter" },
+    { "phrase": "activate hermes", "target_process": "Hermes.exe", "send_policy": "stage_only" }
+  ],
   "hyperion_host": "your-hyperion-ip-or-hostname",
   "hyperion_port": 19444,
   "flashforge_ip": "your-printer-ip",
   "music_volume": 30
 }
 ```
+
+`send_policy: "enter"` submits on the send word; `"stage_only"` leaves text staged for agentic targets that shouldn't auto-fire.
 
 ---
 
@@ -193,6 +219,7 @@ Plugins are configured through `config.json`. For smart home and IoT plugins:
 ### Audio Pipeline
 
 - **AudioCaptureEngine (ACE)** — a single PortAudio stream writes 16kHz int16 frames into a lock-free ring buffer. All consumers (wake word, VAD, dictation, streaming, debug) read from the same ring via independent cursors. No consumer can stall capture. Writer-dominant lossy design: a slow consumer only hurts itself.
+- **Adaptive wake gate** — wake detection passes audio to Whisper when its energy rises above a rolling ambient noise floor (floor × ratio), not a fixed absolute threshold. This makes wake words fire reliably across mics of wildly different sensitivity — a quiet headset and a hot desktop condenser both work without tuning.
 - **Silero VAD** — neural speech detection, ignores fan noise and background hum. Runs on raw mic signal, not AEC output.
 - **Pre-buffer** — 1.5s rolling window is built into the ring. "Drain prebuffer on speech onset" is a cursor rewind, not a copy — structurally impossible to forget.
 - **Echo cancellation** — frequency-domain AEC subtracts system audio from mic input. Dictate over music and Whisper still hears you.
@@ -213,7 +240,7 @@ First text appears in ~1 second. The overlay shows what's being transcribed even
 
 ### Architecture
 
-PySide6 UI with a main hub window (`samsara/ui/main_window_qt.py`). AudioCaptureEngine in `samsara/audio_engine/` — single PortAudio stream, lock-free ring buffer, independent consumer cursors. Dictation engine in `dictation.py` with an explicit mode state machine (`samsara/mode.py`). Streaming engine in `samsara/streaming.py`. Ava voice AI with conversational memory (`samsara/ava_memory.py`). Config file-watch with three-way merge (`samsara/config_watch.py`). Correction pipeline: phonetic wash → wake corrections → grammar cleanup. All user corrections stored in `~/.samsara/` as JSON, hot-reloaded without restart.
+PySide6 UI with a main hub window (`samsara/ui/main_window_qt.py`). AudioCaptureEngine in `samsara/audio_engine/` — single PortAudio stream, lock-free ring buffer, independent consumer cursors. Dictation engine in `dictation.py` with an explicit mode state machine (`samsara/mode.py`) and the hands-free wake-session loop. Streaming engine in `samsara/streaming.py`. Ava voice AI with conversational memory (`samsara/ava_memory.py`). Config file-watch with three-way merge (`samsara/config_watch.py`). Correction pipeline: phonetic wash → wake corrections → grammar cleanup. All user corrections stored in `~/.samsara/` as JSON, hot-reloaded without restart.
 
 ```
 samsara/
@@ -226,6 +253,9 @@ samsara/
 │   ├── wake_consumer.py        # Wake word + VAD policy loop
 │   └── debug_recorder.py       # WAV dump consumer (opt-in)
 ├── mode.py                     # Mode enum + ModeStateMachine
+├── wake_detector.py            # OpenWakeWord pre-filter (per-target models)
+├── wake_word_matcher.py        # Transcript-level wake phrase matching
+├── wake_corrections.py         # Wake word variant corrections
 ├── ava_memory.py               # Conversational memory (session-scoped)
 ├── config_watch.py             # File-watch + three-way merge
 ├── streaming.py                # Real-time streaming dictation engine
@@ -233,7 +263,6 @@ samsara/
 ├── history.py                  # SQLite dictation history
 ├── health_store.py             # Pain/medication/symptom logging
 ├── phonetic_wash.py            # Fixes Whisper misrecognitions
-├── wake_corrections.py         # Wake word variant corrections
 ├── command_registry.py         # Token-based longest-match resolver
 ├── tts/
 │   ├── coordinator.py          # Audio ducking, interrupt, state machine
@@ -250,11 +279,12 @@ plugins/commands/
 ├── reminders.py                # "remind me to stretch every 30 min"
 ├── ask_ollama.py               # Voice AI / Ava (Ollama + cloud LLM)
 ├── hyperion_lights.py          # "lights red", "light effect rainbow"
-├── window_switcher.py          # Letter-based window targeting
+├── window_switcher.py          # Letter-based window targeting + wake focus
 ├── show_numbers.py             # Hands-free overlay clicking
 ├── scroll.py                   # 5-speed + horizontal + page nav
+├── music.py                    # Spotify + earbud-style media transport
 ├── volume.py                   # Core Audio API volume/mute
-└── ...                         # 28 plugins total
+└── ...                         # 31 plugins total
 ```
 
 ### Tests
@@ -268,6 +298,8 @@ python -m pytest tests/ -v
 ## Roadmap
 
 ### Completed
+- [x] **Hands-free multi-wakeword dictation** — "Hey Claude"/"Activate Hermes" → focus + dictate, "over" to send, per-target send policy, earcons
+- [x] **Adaptive microphone gate** — noise-floor-relative wake detection that works across any mic
 - [x] **AudioCaptureEngine** — single-stream lock-free ring buffer replacing 3 separate PortAudio streams
 - [x] **Full PySide6 migration** — zero Tkinter/CustomTkinter in the codebase
 - [x] **Ava conversational memory** — multi-turn, cloud + local Ollama, "ava forget" to reset
@@ -278,10 +310,11 @@ python -m pytest tests/ -v
 - [x] **Medication dictionary** — 100+ medication names for speech recognition accuracy
 - [x] **Voice reminders & alarms** — "remind me to stretch every 30 min", streaks, gamification
 - [x] **Expanded scrolling** — scroll to top/bottom, page up/down, horizontal scroll
-- [x] 410+ voice commands with 28-plugin system
+- [x] 410+ voice commands with 31-plugin system
 - [x] Voice AI / Ava — local Ollama + optional cloud (DeepSeek/OpenAI/Anthropic)
 - [x] Text-to-Speech with EdgeTTS / Windows Natural voices and smart audio ducking
 - [x] Keyboard command mode (hold-to-talk walkie-talkie)
+- [x] Earbud-style media transport ("play"/"pause"/"next"/"mute")
 - [x] Show Numbers overlay for hands-free clicking
 - [x] Window manager v2 — letter-based targeting, move between monitors, saved layouts
 - [x] Streaming dictation with live overlay and direct-paste
@@ -292,12 +325,11 @@ python -m pytest tests/ -v
 - [x] Smart home (Hyperion LED strips, FlashForge 3D printers, Spotify)
 - [x] Dictation history with SQLite search and recovery
 - [x] Echo cancellation, pre-buffer, auto-calibration, auto-reconnect
-- [x] v0.11.0 release
 
 ### Planned
+- [ ] Streaming integration with hands-free wake sessions
 - [ ] macOS support (platform abstraction layer designed, 7 port stages written)
 - [ ] Ava Hemispheres — split-brain agent (cloud intelligence + local vision + Samsara actions)
-- [ ] Show numbers refinement & overlay polish
 - [ ] Symbolic targeting language for interaction compression
 - [ ] Guided demo interactions for new users
 - [ ] Speaker verification (local, via Resemblyzer)
@@ -329,6 +361,7 @@ chronic pain, kept free for accessibility.
 ## Acknowledgments
 
 - [OpenAI Whisper](https://github.com/openai/whisper) / [faster-whisper](https://github.com/guillaumekln/faster-whisper)
+- [OpenWakeWord](https://github.com/dscripka/openWakeWord) for custom wake-phrase models
 - [PySide6](https://doc.qt.io/qtforpython-6/) (Qt for Python)
 - Designed with [Claude](https://anthropic.com), [ChatGPT](https://openai.com),
   and [Gemini](https://deepmind.google) through the
