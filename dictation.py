@@ -4222,22 +4222,22 @@ class DictationApp:
                         return
 
                 # wake_session: check for send terminator before immediate delivery.
-                # A send word (rfind, same style as end_words) strips the control word,
-                # delivers any preceding text, presses Enter (policy='enter') or not
-                # (policy='stage_only'), plays the appropriate earcon, and ends the session.
+                # Control words are end-of-utterance only: the LAST token of the
+                # stabilized transcript (stripped of trailing punctuation) must be an
+                # exact match. Mid-utterance occurrences ("come over here") pass through
+                # as normal dictated text.
                 if self.app_state == 'wake_session':
                     _send_words = ww_config.get('send_words', _WAKE_SESSION_SEND_WORDS)
+                    _tokens = text.strip().split()
                     _matched_sw = None
-                    _matched_idx = -1
-                    for _sw in _send_words:
-                        _sw_l = _sw.lower()
-                        if _sw_l in text_lower:
-                            _idx = text_lower.rfind(_sw_l)
-                            if _idx > _matched_idx:
-                                _matched_sw = _sw
-                                _matched_idx = _idx
+                    if _tokens:
+                        _last_tok = _tokens[-1].rstrip('.,!?').lower()
+                        _matched_sw = next(
+                            (_sw for _sw in _send_words if _sw.lower() == _last_tok),
+                            None,
+                        )
                     if _matched_sw is not None:
-                        _pre = text[:_matched_idx].strip()
+                        _pre = ' '.join(_tokens[:-1])
                         if _pre:
                             self._output_dictation(_pre)
                         _policy = getattr(self, '_wake_session_send_policy', 'enter')
