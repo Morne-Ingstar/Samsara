@@ -58,6 +58,7 @@ CORRECTIONS = {
     "hit clod": "hey claude",
     "hit claude": "hey claude",
     "hay claude": "hey claude",
+    "pay claude": "hey claude",
     "clawed": "claude",
     "claud": "claude",
     # Phase 1 multi-wakeword — "activate hermes" misrecognitions.

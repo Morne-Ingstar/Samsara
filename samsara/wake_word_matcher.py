@@ -37,6 +37,26 @@ _WORD_CHAR = re.compile(r"\w")
 # triggering), instead of being mistaken for prefix/suffix matches.
 _INTERNAL_PUNCT = frozenset("-'")
 
+# Sentence punctuation that Whisper inserts mid-phrase (e.g. "hey, claude").
+# Replaced with a space before matching so the literal find still works.
+# Hyphen and apostrophe are intentionally excluded: they are word-internal
+# per _INTERNAL_PUNCT and must not be treated as boundaries.
+_PUNCT_TO_SPACE = re.compile(r"[,.;:!?]+")
+_MULTI_SPACE    = re.compile(r" {2,}")
+
+
+def _normalize_for_match(s):
+    """Lowercase, convert sentence punctuation to spaces, collapse runs of spaces.
+
+    'hey, claude.'  -> 'hey claude'
+    'samsara-like'  -> 'samsara-like'   (hyphen preserved)
+    "samsara's"     -> "samsara's"      (apostrophe preserved)
+    """
+    s = s.lower()
+    s = _PUNCT_TO_SPACE.sub(" ", s)
+    s = _MULTI_SPACE.sub(" ", s)
+    return s.strip()
+
 
 def _is_boundary(ch):
     """True if *ch* is a word boundary character (non-word, or None for edge).
@@ -60,30 +80,39 @@ def match_wake_phrase(text, phrase):
         match_index  : character position of the phrase in text_lower, or -1 if not present.
 
     Case-insensitive. Leading/trailing whitespace in text is tolerated.
+    Sentence punctuation (, . ; : ! ?) inside either argument is normalised to
+    a single space before matching, so 'hey, claude' matches 'hey claude'.
+    Hyphens and apostrophes are NOT normalised (they are word-internal per
+    _INTERNAL_PUNCT), preserving the existing substring semantics for
+    'samsara-like' and "samsara's".
+
+    match_index refers to a position in the normalised text (not the original).
+    Callers that slice for a command tail (e.g. corrected[match_index + len(phrase):])
+    will get a slightly wrong result when the original contained mid-phrase
+    punctuation — but this only matters for multi-word wake phrases with a trailing
+    command, which no current caller relies on correctly in that edge case.
     """
     if not text or not phrase:
         return (False, "none", -1)
 
-    text_lower = text.lower()
-    phrase_lower = phrase.lower().strip()
-    if not phrase_lower:
+    text_norm   = _normalize_for_match(text)
+    phrase_norm = _normalize_for_match(phrase)
+    if not phrase_norm:
         return (False, "none", -1)
 
-    stripped = text_lower.strip()
-
     # 1. Exact match (ignoring surrounding whitespace)
-    if stripped == phrase_lower:
+    if text_norm == phrase_norm:
         return (True, "exact", 0)
 
-    # Find first occurrence of the phrase anywhere
-    idx = text_lower.find(phrase_lower)
+    # Find first occurrence of the phrase anywhere in the normalised text
+    idx = text_norm.find(phrase_norm)
     if idx == -1:
         return (False, "none", -1)
 
     # Determine boundary characters on either side of the match
-    before = text_lower[idx - 1] if idx > 0 else None
-    end = idx + len(phrase_lower)
-    after = text_lower[end] if end < len(text_lower) else None
+    before = text_norm[idx - 1] if idx > 0 else None
+    end = idx + len(phrase_norm)
+    after = text_norm[end] if end < len(text_norm) else None
 
     left_ok = _is_boundary(before)
     right_ok = _is_boundary(after)
