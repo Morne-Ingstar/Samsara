@@ -8,10 +8,12 @@ Runs synchronously on the main thread (same contract as the Tkinter version):
 """
 
 import json
+import math
 import threading
 from pathlib import Path
 
-from PySide6.QtCore import Qt, Signal
+from PySide6.QtCore import Qt, QTimer, Signal
+from PySide6.QtGui import QColor, QPainter
 from PySide6.QtWidgets import (
     QApplication, QCheckBox, QMainWindow, QWidget, QVBoxLayout, QHBoxLayout,
     QLabel, QComboBox, QPushButton, QButtonGroup, QRadioButton,
@@ -190,6 +192,79 @@ class _HotkeyBtn(QPushButton):
 
 
 # ---------------------------------------------------------------------------
+# Live microphone level meter
+# ---------------------------------------------------------------------------
+
+class _MicLevelMeter(QWidget):
+    """Horizontal bar meter: colour zones, peak hold, smoothed ballistics.
+
+    Gain mapping: sqrt(rms * 20) — a 0.01 RMS headset maps to ~45 % fill,
+    clearly visible without distorting louder inputs.
+    Attack 0.70, decay 0.12 per 40 ms tick; peak holds ~1.1 s then falls.
+    """
+
+    _BG    = QColor(14, 14, 18)
+    _ZONES = [
+        (0.50, QColor(94,  234, 212)),  # 0-50 %  teal
+        (0.75, QColor(232, 144,  32)),  # 50-75 % amber
+        (1.01, QColor(255,  68,  68)),  # 75-100% red
+    ]
+
+    def __init__(self, parent=None):
+        super().__init__(parent)
+        self.setFixedHeight(20)
+        self._level     = 0.0
+        self._peak      = 0.0
+        self._peak_hold = 0
+
+    def set_rms(self, rms_raw: float) -> None:
+        target = math.sqrt(min(rms_raw * 20.0, 1.0))
+        if target > self._level:
+            self._level += (target - self._level) * 0.70   # fast attack
+        else:
+            self._level += (target - self._level) * 0.12   # slow decay
+        if self._level > self._peak:
+            self._peak = self._level
+            self._peak_hold = 28                            # ~1.1 s at 40 ms
+        else:
+            self._peak_hold -= 1
+            if self._peak_hold <= 0:
+                self._peak = max(0.0, self._peak - 0.018)
+        self.update()
+
+    def reset(self) -> None:
+        self._level = self._peak = 0.0
+        self._peak_hold = 0
+        self.update()
+
+    def paintEvent(self, event) -> None:
+        w = self.width()
+        h = self.height()
+        p = QPainter(self)
+        p.setRenderHint(QPainter.RenderHint.Antialiasing, False)
+        p.fillRect(0, 0, w, h, self._BG)
+
+        lv   = max(0.0, min(1.0, self._level))
+        prev = 0
+        for thresh, color in self._ZONES:
+            seg = int(min(thresh, lv) * w)
+            if seg > prev:
+                p.fillRect(prev, 2, seg - prev, h - 4, color)
+            prev = seg
+            if lv <= thresh:
+                break
+
+        pk = max(0.0, min(1.0, self._peak))
+        if pk > 0.02:
+            px = int(pk * w)
+            p.fillRect(max(0, px - 1), 1, 2, h - 2, QColor(255, 255, 255, 200))
+
+        p.setPen(QColor(255, 255, 255, 25))
+        p.drawRect(0, 0, w - 1, h - 1)
+        p.end()
+
+
+# ---------------------------------------------------------------------------
 # Step metadata
 # ---------------------------------------------------------------------------
 
@@ -332,7 +407,15 @@ class _WizardWindow(QMainWindow):
         self._mic_result.connect(self._on_mic_result)
 
         self.setWindowTitle("Samsara Setup")
-        self.setFixedSize(600, 560)
+        _scr = QApplication.primaryScreen()
+        if _scr:
+            _av = _scr.availableGeometry()
+            _w = max(720, min(1100, int(_av.width()  * 0.46)))
+            _h = max(680, min(980,  int(_av.height() * 0.72)))
+        else:
+            _w, _h = 860, 760
+        self.setMinimumSize(720, 680)
+        self.resize(_w, _h)
         self.setStyleSheet(_SS)
 
         central = QWidget()
@@ -398,6 +481,13 @@ class _WizardWindow(QMainWindow):
         self._use_case_group: QButtonGroup | None = None
         self._tip_lbl: QLabel | None = None
         self._no_hints_cb: QCheckBox | None = None
+        self._meter: _MicLevelMeter | None = None
+        self._meter_timer: QTimer | None = None
+        self._meter_ace_reader = None
+        self._meter_stream = None
+        self._meter_rms_holder: list = [0.0]
+        self._last_meter_rms: float = 0.0
+        self._meter_passed: bool = False
 
         self._pages = [
             self._build_welcome(),
@@ -560,20 +650,18 @@ class _WizardWindow(QMainWindow):
         self._mic_combo = QComboBox()
         self._mic_combo.addItem("Scanning for microphones…")
         self._mic_combo.setEnabled(False)
+        self._mic_combo.currentIndexChanged.connect(self._on_mic_device_changed)
         lay.addWidget(self._mic_combo)
 
-        test_row = QHBoxLayout()
-        test_btn = QPushButton("Test Microphone")
-        test_btn.setProperty("class", "secondary")
-        test_btn.style().unpolish(test_btn)
-        test_btn.style().polish(test_btn)
-        test_btn.setFixedWidth(160)
-        test_btn.clicked.connect(lambda: self._test_mic(test_btn))
-        test_row.addWidget(test_btn)
-        test_row.addStretch()
-        lay.addLayout(test_row)
+        lay.addSpacing(8)
+        meter_lbl = QLabel("Input Level")
+        meter_lbl.setStyleSheet("color:#8A8A92;font-size:11px;")
+        lay.addWidget(meter_lbl)
 
-        self._mic_status = QLabel("")
+        self._meter = _MicLevelMeter()
+        lay.addWidget(self._meter)
+
+        self._mic_status = QLabel("Speak to test your microphone")
         self._mic_status.setStyleSheet("color:#8A8A92;font-size:12px;")
         lay.addWidget(self._mic_status)
 
@@ -760,6 +848,9 @@ class _WizardWindow(QMainWindow):
     # ------------------------------------------------------------------
 
     def _show_step(self):
+        # Tear down any running meter; restart if entering the mic step
+        self._stop_meter()
+
         # Swap page content
         page = self._pages[self._step]
         if self._current_page is not None:
@@ -789,6 +880,10 @@ class _WizardWindow(QMainWindow):
         # Populate complete page summary when we reach it
         if is_last:
             self._fill_summary()
+
+        # Start level meter on microphone step
+        if _STEPS[self._step][0] == "Microphone":
+            self._start_meter()
 
     def _go_next(self):
         self._collect_step()
@@ -877,6 +972,7 @@ class _WizardWindow(QMainWindow):
                 self._config[key] = val
 
     def closeEvent(self, event):
+        self._stop_meter()
         # Ensure result is always set before signalling done.
         if self.result is None:
             self._config['first_run_complete'] = True
@@ -922,54 +1018,159 @@ class _WizardWindow(QMainWindow):
         # Update combo on Qt thread via signal
         self._mic_result.emit("_load_done_", "")
 
-    def _test_mic(self, btn: QPushButton):
-        mic_name = self._mic_combo.currentText() if self._mic_combo else ""
-        mic_id   = next((m['id'] for m in self._mics if m['name'] == mic_name), None)
-        if mic_id is None:
-            self._on_mic_result("Please select a microphone.", "#FF6666")
+    # ------------------------------------------------------------------
+    # Meter helpers
+    # ------------------------------------------------------------------
+
+    def _get_current_mic_id(self):
+        if not self._mics or not self._mic_combo:
+            return None
+        name = self._mic_combo.currentText()
+        for m in self._mics:
+            if m['name'] == name:
+                return m['id']
+        return None
+
+    def _on_mic_device_changed(self, _index: int):
+        if _STEPS[self._step][0] == "Microphone":
+            self._start_meter()
+
+    def _start_meter(self):
+        """Start (or restart) the level meter for the currently selected mic."""
+        self._stop_meter()  # idempotent — tears down any existing resources
+        if self._meter is None:
             return
 
-        btn.setEnabled(False)
-        btn.setText("Listening…")
-        self._on_mic_result("Speak now…", "#8A8A92")
+        mic_id = self._get_current_mic_id()
 
-        def _do():
+        ace = None
+        if self._samsara_app is not None:
+            ace = getattr(self._samsara_app, '_ace_engine', None)
+        use_ace = ace is not None and getattr(ace, '_running', False)
+
+        if use_ace:
+            self._meter_ace_reader = ace.register_consumer("wizard-meter")
+            print("[WIZARD] Meter: ACE ring consumer")
+        else:
+            # ACE engine not yet started (typical at first-run — wizard runs
+            # before _start_ace_engine() in __init__).  Open a minimal
+            # transient InputStream solely for level metering; fully closed
+            # in _stop_meter() when the mic step is exited.
+            print(f"[WIZARD] Meter: transient sounddevice stream (device={mic_id!r})")
+            self._meter_stream = self._open_meter_stream(mic_id)
+
+        timer = QTimer(self)
+        timer.setInterval(40)
+        timer.timeout.connect(self._meter_tick)
+        timer.start()
+        self._meter_timer = timer
+
+    def _stop_meter(self):
+        """Stop the meter timer and release all audio resources."""
+        if self._meter_timer is not None:
+            self._meter_timer.stop()
+            self._meter_timer.deleteLater()
+            self._meter_timer = None
+
+        if self._meter_ace_reader is not None:
+            ace = None
+            if self._samsara_app is not None:
+                ace = getattr(self._samsara_app, '_ace_engine', None)
+            if ace is not None:
+                try:
+                    ace.unregister_consumer(self._meter_ace_reader)
+                except Exception:
+                    pass
+            self._meter_ace_reader = None
+
+        if self._meter_stream is not None:
             try:
-                import numpy as np
-                import sounddevice as sd
-                info = sd.query_devices(mic_id)
-                rate = int(info['default_samplerate'])
-                audio = sd.rec(int(rate * 2), samplerate=rate,
-                               channels=1, dtype='float32', device=mic_id)
-                sd.wait()
-                rms = float((audio ** 2).mean() ** 0.5)
-                if rms > 0.01:
-                    self._mic_result.emit("Microphone working — audio detected.", "#5EEAD4")
-                else:
-                    self._mic_result.emit("Very quiet — try speaking louder.", "#E89020")
-            except Exception as exc:
-                self._mic_result.emit(f"Error: {str(exc)[:50]}", "#FF6666")
-            finally:
-                # Re-enable button on Qt thread
-                self._mic_result.emit("_btn_restore_", "")
-                btn._restore = True  # flag for handler
+                self._meter_stream.stop()
+                self._meter_stream.close()
+            except Exception:
+                pass
+            self._meter_stream = None
 
-        btn._restore = False
-        threading.Thread(target=_do, daemon=True).start()
+        self._meter_rms_holder = [0.0]
+        self._last_meter_rms = 0.0
+        self._meter_passed = False
+        if self._meter is not None:
+            self._meter.reset()
+        if self._mic_status is not None:
+            self._mic_status.setText("Speak to test your microphone")
+            self._mic_status.setStyleSheet("color:#8A8A92;font-size:12px;")
+
+    def _open_meter_stream(self, device_id):
+        """Open a minimal transient InputStream for meter-only use."""
+        try:
+            import numpy as np
+            import sounddevice as sd
+            rms_holder = self._meter_rms_holder
+
+            def _cb(indata, frames, time_info, status):
+                block = indata[:, 0]
+                rms_holder[0] = float(np.sqrt(np.mean(block * block)))
+
+            stream = sd.InputStream(
+                device=device_id,
+                channels=1,
+                dtype='float32',
+                blocksize=512,
+                callback=_cb,
+            )
+            stream.start()
+            return stream
+        except Exception as exc:
+            print(f"[WIZARD] Meter stream error: {exc}")
+            return None
+
+    def _meter_tick(self):
+        """Qt-thread timer callback: read audio, update meter widget."""
+        if self._meter is None:
+            return
+        import numpy as np
+
+        rms = 0.0
+        if self._meter_ace_reader is not None:
+            try:
+                from samsara.audio_engine.ring import EMPTY
+                ace = getattr(self._samsara_app, '_ace_engine', None)
+                if ace is not None:
+                    chunks = []
+                    while True:
+                        frame = self._meter_ace_reader.read_next()
+                        if frame is EMPTY:
+                            break
+                        chunks.append(frame.pcm.astype(np.float32) / 32767.0)
+                    if chunks:
+                        block = np.concatenate(chunks)
+                        rms = float(np.sqrt(np.mean(block * block)))
+                        self._last_meter_rms = rms
+                    else:
+                        # No new frame this tick; decay the stored value
+                        self._last_meter_rms *= 0.85
+                        rms = self._last_meter_rms
+            except Exception:
+                pass
+        elif self._meter_stream is not None:
+            rms = self._meter_rms_holder[0]
+
+        self._meter.set_rms(rms)
+        self._update_mic_pass(rms)
+
+    def _update_mic_pass(self, rms: float):
+        """Show 'Microphone active' once sustained audio is detected."""
+        if self._mic_status is None or self._meter_passed:
+            return
+        mapped = math.sqrt(min(rms * 20.0, 1.0))
+        if mapped > 0.15:   # ~0.003 raw RMS — any real audio above noise floor
+            self._meter_passed = True
+            self._mic_status.setText("Microphone active")
+            self._mic_status.setStyleSheet("color:#5EEAD4;font-size:12px;")
 
     def _on_mic_result(self, msg: str, color: str):
         if msg == "_load_done_":
             self._populate_mic_combo()
-            return
-        if msg == "_btn_restore_":
-            # Find and re-enable the test button
-            search_page = self._mic_page or (self._pages[2] if len(self._pages) > 2 else None)
-            if search_page is None:
-                return
-            for child in search_page.findChildren(QPushButton):
-                if "Test" in child.text() or "Listen" in child.text():
-                    child.setText("Test Microphone")
-                    child.setEnabled(True)
             return
         if self._mic_status:
             self._mic_status.setText(msg)
@@ -987,3 +1188,6 @@ class _WizardWindow(QMainWindow):
             self._mic_combo.addItem("No microphones detected")
             self._mic_combo.setEnabled(False)
         self._mic_combo.blockSignals(False)
+        # Restart meter now that device list is ready
+        if _STEPS[self._step][0] == "Microphone":
+            self._start_meter()
