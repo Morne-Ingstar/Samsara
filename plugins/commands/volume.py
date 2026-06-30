@@ -294,7 +294,7 @@ def handle_volume_down(app, remainder):
 
 
 @command("toggle mute", aliases=[
-    "mute", "unmute", "silence", "unsilence"
+    "silence", "unsilence"
 ], pack="media",
     risk_class='safe', ai_composable=True, side_effects=['audio'])
 def handle_mute(app, remainder):
