@@ -35,6 +35,56 @@ if sys.platform == 'win32':
 else:
     HAS_WINSOUND = False
 
+
+def _get_default_render_id():
+    """Return the Windows endpoint ID string of the current default audio output device.
+
+    Queries IMMDeviceEnumerator (same COM path as plugins/commands/volume.py).
+    Returns None on non-Windows or any failure — callers treat None as "unknown."
+    """
+    if sys.platform != 'win32':
+        return None
+    try:
+        import struct, ctypes
+        from ctypes import HRESULT, POINTER, byref, c_void_p, c_wchar_p, WINFUNCTYPE
+
+        def _guid(s):
+            p = s.strip('{}').split('-')
+            return struct.pack('<IHH', int(p[0], 16), int(p[1], 16),
+                               int(p[2], 16)) + bytes.fromhex(p[3] + p[4])
+
+        def _vt(ptr, idx, ret, *args):
+            fn = ctypes.cast(ptr, POINTER(POINTER(c_void_p)))[0][idx]
+            return WINFUNCTYPE(ret, *args)(fn)
+
+        _CLSID = _guid('{BCDE0395-E52F-467C-8E3D-C4579291692E}')
+        _IID   = _guid('{A95664D2-9614-4F35-A746-DE8DB63617E6}')
+        ole32  = ctypes.windll.ole32
+        ole32.CoInitializeEx(None, 0)
+
+        enum = c_void_p()
+        if ole32.CoCreateInstance(_CLSID, None, 23, _IID, byref(enum)) != 0:
+            return None
+        dev = c_void_p()
+        # vtable[4] = GetDefaultAudioEndpoint(eRender=0, eConsole=0)
+        hr = _vt(enum, 4, HRESULT, c_void_p, ctypes.c_uint, ctypes.c_uint,
+                 POINTER(c_void_p))(enum, 0, 0, byref(dev))
+        _vt(enum, 2, ctypes.c_ulong, c_void_p)(enum)   # Release enumerator
+        if hr != 0 or not dev:
+            return None
+        id_ptr = c_wchar_p()
+        # vtable[5] = GetId(ppstrId)
+        hr = _vt(dev, 5, HRESULT, c_void_p, POINTER(c_wchar_p))(dev, byref(id_ptr))
+        _vt(dev, 2, ctypes.c_ulong, c_void_p)(dev)     # Release device
+        if hr != 0:
+            return None
+        result = id_ptr.value
+        ole32.CoTaskMemFree(id_ptr)
+        return result
+    except Exception:
+        return None
+
+
 # Hide console window IMMEDIATELY before any output (Windows only)
 def _hide_console_now():
     if sys.platform != 'win32':
@@ -5315,6 +5365,14 @@ class DictationApp:
         self._sound_stream = None
         self._start_sound_stream()
 
+        # Daemon thread that polls Windows for default output device changes
+        # and restarts the output streams when the user switches devices.
+        self._output_watcher_stop = threading.Event()
+        threading.Thread(
+            target=self._watch_output_device, daemon=True,
+            name='samsara-output-watcher',
+        ).start()
+
     def _load_sound_cache(self):
         """Pre-load all sound files into memory, normalized to common sample rate.
 
@@ -5555,6 +5613,30 @@ class DictationApp:
             except Exception:
                 pass
             self._sound_stream = None
+
+    def _watch_output_device(self):
+        """Daemon thread: poll Windows every 2 s for default output device changes."""
+        current_id = _get_default_render_id()
+        stop = getattr(self, '_output_watcher_stop', None)
+        if stop is None:
+            return
+        while not stop.wait(2.0):
+            new_id = _get_default_render_id()
+            if new_id and new_id != current_id:
+                current_id = new_id
+                try:
+                    self._on_output_device_changed()
+                except Exception as exc:
+                    print(f'[AUDIO] Device change handler error: {exc}')
+
+    def _on_output_device_changed(self):
+        """Restart output streams after the Windows default audio device changes."""
+        print('[AUDIO] Default output device changed — restarting streams')
+        self.stop_sound_stream()
+        self._start_sound_stream()
+        eng = getattr(self, 'tts_engine', None)
+        if eng is not None and hasattr(eng, 'restart_stream'):
+            eng.restart_stream()
 
 
     def start_recording(self, streaming=None, play_earcon=True):
@@ -6735,6 +6817,14 @@ class DictationApp:
         try:
             if getattr(self, 'tts_engine', None) is not None:
                 self.tts_engine.shutdown()
+        except Exception:
+            pass
+
+        # Stop output device watcher before closing the stream it manages
+        try:
+            stop_evt = getattr(self, '_output_watcher_stop', None)
+            if stop_evt is not None:
+                stop_evt.set()
         except Exception:
             pass
 
