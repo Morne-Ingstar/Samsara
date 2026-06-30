@@ -3879,6 +3879,7 @@ class DictationApp:
         """
         old_state = self.app_state
         self.app_state = 'wake_session'
+        logger.info(f"[WS-DIAG] app_state set to {self.app_state!r}")
         self.wake_dictation_mode = 'wake_session'
         self.wake_dictation_buffer = []
         self.wake_dictation_start_time = time.time()
@@ -3897,6 +3898,10 @@ class DictationApp:
               f"inactivity timeout: {_WAKE_SESSION_TIMEOUT_S}s)")
 
         self._restart_wake_session_timer()
+        logger.info(
+            f"[WS-DIAG] start_wake_session: app_state={self.app_state!r} "
+            f"timer_id={id(getattr(self,'_wake_session_inactivity_timer',None))}"
+        )
         self.play_sound("start")
 
         if hasattr(self, 'listening_indicator'):
@@ -3909,15 +3914,29 @@ class DictationApp:
     def _restart_wake_session_timer(self):
         """Reset the inactivity countdown; called after each delivered utterance."""
         existing = getattr(self, '_wake_session_inactivity_timer', None)
+        logger.info(
+            f"[WS-DIAG] restart_wake_session_timer CALLED: "
+            f"app_state={self.app_state!r} had_existing={existing is not None} "
+            f"existing_id={id(existing)}"
+        )
         if existing is not None:
             existing.cancel()
         t = threading.Timer(_WAKE_SESSION_TIMEOUT_S, self._end_wake_session)
         t.daemon = True
         t.start()
         self._wake_session_inactivity_timer = t
+        logger.info(
+            f"[WS-DIAG] restart_wake_session_timer ARMED: "
+            f"new timer_id={id(t)} for {_WAKE_SESSION_TIMEOUT_S}s"
+        )
 
     def _end_wake_session(self):
         """End the wake session and re-arm wake detection (called by inactivity timer)."""
+        import traceback as _tb
+        logger.info(
+            f"[WS-DIAG] end_wake_session ENTERED: app_state={self.app_state!r} "
+            f"caller={_tb.extract_stack()[-2].name}"
+        )
         existing = getattr(self, '_wake_session_inactivity_timer', None)
         if existing is not None:
             existing.cancel()
@@ -4065,6 +4084,12 @@ class DictationApp:
             if not self._vad_available:
                 transcribe_params['vad_filter'] = False
             perf_mode = self.config.get('performance_mode', 'balanced')
+
+            # Restart wake-session inactivity timer at flush time so transcription
+            # latency never races the 10s window.  _output_dictation also restarts
+            # it on delivery; the double-reset per utterance is harmless.
+            if self.app_state == 'wake_session':
+                self._restart_wake_session_timer()
 
             transcribe_start = time.time()
             with self.model_lock:
@@ -4394,6 +4419,7 @@ class DictationApp:
         """
         old_state = self.app_state
         self.app_state = mode_name
+        logger.info(f"[WS-DIAG] app_state set to {self.app_state!r} (was {old_state!r}) via _start_dictation_mode")
         self.wake_dictation_mode = mode_name  # compat alias
         self.wake_dictation_buffer = []
         self.wake_dictation_start_time = time.time()
@@ -4492,6 +4518,7 @@ class DictationApp:
         """Return to asleep state, clearing all dictation state."""
         old_state = self.app_state
         self.app_state = 'asleep'
+        logger.info(f"[WS-DIAG] app_state set to {self.app_state!r} (was {old_state!r})")
         self.wake_dictation_mode = None
         self.wake_dictation_buffer = []
         self.wake_dictation_start_time = None
@@ -4540,6 +4567,7 @@ class DictationApp:
         After accumulating text, this timer gives the user a window to keep speaking.
         If no new speech arrives within the timeout, the accumulated text is output.
         """
+        logger.info(f"[WS-DIAG] _restart_dictation_timer called: app_state={self.app_state!r}")
         if hasattr(self, '_dictation_finalize_timer') and self._dictation_finalize_timer:
             self._dictation_finalize_timer.cancel()
 
@@ -4549,6 +4577,7 @@ class DictationApp:
 
     def _finalize_dictation_timeout(self):
         """Called when the dictation finalization timer expires."""
+        logger.info(f"[WS-DIAG] _finalize_dictation_timeout called: app_state={self.app_state!r}")
         try:
             with self._dictation_finalize_lock:
                 if self.wake_dictation_mode and self.wake_dictation_buffer and not self._dictation_require_end:
@@ -4865,12 +4894,22 @@ class DictationApp:
         self._notify_main_window(text.strip())
 
         if self.config['auto_paste']:
+            logger.info(
+                f"[WS-DIAG] _output_dictation: wake_target_active="
+                f"{getattr(self,'_wake_target_active',None)} "
+                f"first_chunk={getattr(self,'_wake_session_first_chunk',None)} "
+                f"app_state={self.app_state!r}"
+            )
             if getattr(self, '_wake_target_active', False):
                 if getattr(self, '_wake_session_first_chunk', True):
                     self._deliver_text_to_focused_editor(text)
                     self._wake_session_first_chunk = False
                 else:
                     self._paste_preserving_clipboard(' ' + text)
+                logger.info(
+                    f"[WS-DIAG] about to check restart: app_state={self.app_state!r} "
+                    f"(will restart={self.app_state == 'wake_session'})"
+                )
                 if self.app_state == 'wake_session':
                     self._restart_wake_session_timer()
             else:
