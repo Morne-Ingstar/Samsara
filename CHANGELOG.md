@@ -2,6 +2,25 @@
 
 All notable changes to Samsara are documented here.
 
+## [0.12.0] - 2026-06-30
+
+Hands-free multi-wakeword dictation and microphone-agnostic wake detection.
+
+### Added
+
+- **Multi-wakeword hands-free dictation** — say a named wake phrase ("Hey Claude", "Activate Hermes") to focus that app's window and start dictating into it, fully hands-free. Wake phrases are configurable per target (process-name targeting, restores minimized windows). Custom OpenWakeWord models with Whisper-transcript fallback.
+- **Open-ended wake sessions** — a wake-triggered session survives silence (does not end on a short pause), appending each spoken utterance into the target. Ends on inactivity timeout or a spoken send word.
+- **Send terminator** — end an utterance with "over"/"send" to submit; only the final spoken word is checked, so the word mid-sentence is typed normally. Per-target send policy: Claude submits on send; agentic targets (Hermes) leave text staged.
+- **Earcons** — session-start and sent audio cues for hands-free feedback.
+- **Adaptive microphone gate** — wake detection now measures speech relative to a rolling ambient noise floor instead of a fixed energy threshold, so low-output mics (headsets, USB mics with AGC) work without manual tuning. Includes a mic-calibration helper.
+
+### Fixed
+
+- Wake-session inactivity timer no longer races in-flight transcription (last utterance could be dropped).
+- Wake corrections no longer self-corrupt on repeated canonical phrases.
+
+---
+
 ## [0.9.9] - 2026-05-15
 
 Focused on accessibility, voice-control surface area, and reliability. Adds a floating command cheat sheet, monitor-to-monitor window moves, a phonetic-collision audit, a voice-driven semantic clicking overlay, and an echo-cancellation calibration tool. Also fixes several silent failures around config persistence, CUDA fallback, and Whisper model selection that were degrading user experience without obvious symptoms.
