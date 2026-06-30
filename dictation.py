@@ -122,7 +122,15 @@ import subprocess
 import logging
 from datetime import datetime
 import numpy as np
+_PRE_SD_T = time.perf_counter()
 import sounddevice as sd
+_POST_SD_T = time.perf_counter()
+_sd_import_ms = (_POST_SD_T - _PRE_SD_T) * 1000
+sys.stdout.write(f"[BOOT-DIAG] sounddevice import (PortAudio init): {_sd_import_ms:.0f}ms\n")
+sys.stdout.flush()
+if _sd_import_ms > 5000:
+    sys.stdout.write(f"[BOOT-DIAG] SLOW STEP: sounddevice import {_sd_import_ms:.0f}ms\n")
+    sys.stdout.flush()
 from pynput import keyboard as pynput_keyboard
 from pynput.keyboard import Key, Controller as KeyboardController
 import keyboard  # For reliable simultaneous key state detection
@@ -240,8 +248,9 @@ from samsara.wake_detector import WakeWordDetector
 
 
 _WAKE_PRIMER_DELAY = 0.12
-_WAKE_SESSION_TIMEOUT_S   = 10.0   # inactivity ends the open-ended wake session
-_WAKE_SESSION_CHUNK_GAP_S = 1.0    # per-utterance VAD silence gap within a session
+_WAKE_SESSION_TIMEOUT_S   = 10.0            # inactivity ends the open-ended wake session
+_WAKE_SESSION_CHUNK_GAP_S = 1.0             # per-utterance VAD silence gap within a session
+_WAKE_SESSION_SEND_WORDS  = ['over', 'send'] # default send terminators that finalize a wake session
 
 
 def _get_pynput_command_key(button_name: str):
@@ -749,6 +758,19 @@ class DictationApp:
             print(f"[BOOT] {label}: {(now - _btp[0]) * 1000:.0f}ms  (total {(now - _bt0) * 1000:.0f}ms)")
             _btp[0] = now
         self._boot_log = _boot  # expose so load_model_async can use it
+
+        # [BOOT-DIAG] perf_counter-based timing for slow-boot diagnosis.
+        _bdiag_t0 = time.perf_counter()
+        _bdiag_tp = [_bdiag_t0]
+        def _bdiag(label: str) -> None:
+            now = time.perf_counter()
+            dt_step  = (now - _bdiag_tp[0]) * 1000
+            dt_total = (now - _bdiag_t0)    * 1000
+            _bdiag_tp[0] = now
+            logger.info(f"[BOOT-DIAG] {label}: {dt_step:.0f}ms (total {dt_total:.0f}ms)")
+            if dt_step > 5000:
+                logger.info(f"[BOOT-DIAG] SLOW STEP: {label} {dt_step:.0f}ms")
+        logger.info(f"[BOOT-DIAG] __init__ entry (perf_counter since sounddevice: {(_bdiag_t0 - _PRE_SD_T)*1000:.0f}ms)")
         # Protects all self.config mutations and save_config disk writes.
         # MUST be held before any mutation to self.config that precedes a save,
         # and before calling save_config() directly.
@@ -820,6 +842,7 @@ class DictationApp:
         with self._config_lock:
             self.load_config()
         _boot("config load")
+        _bdiag("config load")
 
         self.update_splash("Setting up audio...")
 
@@ -839,6 +862,7 @@ class DictationApp:
         print("[INIT] Enumerating audio devices...")
         self.available_mics = self.get_available_microphones()
         _boot("audio device enumeration")
+        _bdiag("get_available_microphones (sd.query_devices+hostapis)")
 
         # Try name-based reconciliation first — stable across index changes.
         # _reconcile_microphone_selection is defined later in the class but
@@ -874,11 +898,21 @@ class DictationApp:
 
         # Audio settings -- dual sample rates for WASAPI compatibility
         self.model_rate = MODEL_SAMPLE_RATE
+        _t = time.perf_counter()
         self.capture_rate = self._detect_capture_rate(self.config.get('microphone'))
+        _dt = (time.perf_counter() - _t) * 1000
+        logger.info(f"[BOOT-DIAG] detect_capture_rate (sd.query_devices): {_dt:.0f}ms")
+        if _dt > 5000:
+            logger.info(f"[BOOT-DIAG] SLOW STEP: detect_capture_rate {_dt:.0f}ms")
 
         # Auto-calibrate speech threshold on startup
+        _t = time.perf_counter()
         self._run_calibration_if_auto()
+        _dt = (time.perf_counter() - _t) * 1000
         _boot("mic calibration")
+        logger.info(f"[BOOT-DIAG] mic calibration (sd.InputStream open+1.5s record): {_dt:.0f}ms")
+        if _dt > 5000:
+            logger.info(f"[BOOT-DIAG] SLOW STEP: mic calibration {_dt:.0f}ms")
 
         self.recording = False
         self.command_mode_recording = False  # True when using command-only hotkey
@@ -889,6 +923,7 @@ class DictationApp:
         # Set up audio feedback sounds (creates defaults if needed)
         self._setup_sounds()
         _boot("sound setup")
+        _bdiag("sound setup")
 
         # Model settings
         self.model = None
@@ -901,6 +936,7 @@ class DictationApp:
         self.command_executor = CommandExecutor(commands_path, app=self)
         self.command_mode_enabled = self.config.get('command_mode_enabled', True)
         _boot("plugin discovery + command executor")
+        _bdiag("plugin discovery + command executor")
 
         # Repeat / again state
         self._last_command = None       # command dict of last repeatable command
@@ -1033,6 +1069,7 @@ class DictationApp:
             print(f"[HISTORY] Could not open persistent history: {e}")
             self.history_db = None
         _boot("history / SQLite init")
+        _bdiag("history / SQLite init")
 
         print("[INIT] Building UI...")
 
@@ -1205,6 +1242,7 @@ class DictationApp:
                 self.tts_engine = None
                 self.audio_coordinator = None
         _boot("TTS engine init")
+        _bdiag("TTS engine init")
 
         # Smart Actions Phase 2: webhook bridge, session manager, tool dispatcher
         try:
@@ -1223,6 +1261,7 @@ class DictationApp:
             self._smart_actions_session = None
             self._smart_actions_tools = None
         _boot("smart actions init")
+        _bdiag("smart actions init")
 
         # Echo cancellation (removes system audio from mic input)
         aec_config = self.config.get('echo_cancellation', {})
@@ -1243,6 +1282,7 @@ class DictationApp:
         )
         self.keyboard_listener.start()
         _boot("keyboard/mouse listener setup")
+        _bdiag("keyboard/mouse listener setup")
 
         # Mouse listener for Mouse 4 command mode (hold-to-talk / toggle)
         self._install_mouse_listener()
@@ -1270,6 +1310,7 @@ class DictationApp:
         # Load model in background
         self.load_model_async()
         _boot("model load kicked off (async)")
+        _bdiag("model load kicked off (async)")
 
         # ACE engine — always started for hold-mode dictation (ACE-03).
         # DictationSessionConsumer replaces the bespoke prebuffer + audio_callback path.
@@ -1281,10 +1322,15 @@ class DictationApp:
         self._wake_consumer        = None    # ACE-04C
         self._ace_dictation_active  = False   # True while hold-mode uses ACE consumer path
         self._ace_streaming_active  = False   # True while CapsLock streaming uses ACE consumer
+        _t = time.perf_counter()
         self._start_ace_engine()
+        _dt = (time.perf_counter() - _t) * 1000
         if self.config.get('ace_debug_capture', False) and self._ace_engine is not None:
             self._start_ace_debug_rec()
         _boot("ACE audio engine start")
+        logger.info(f"[BOOT-DIAG] _start_ace_engine (total): {_dt:.0f}ms")
+        if _dt > 5000:
+            logger.info(f"[BOOT-DIAG] SLOW STEP: _start_ace_engine {_dt:.0f}ms")
 
         mode = self.config.get('mode', 'hold')
         print(f"Dictation app starting...")
@@ -1362,7 +1408,13 @@ class DictationApp:
             engine_config = dict(self.config)
             engine_config['_capture_rate'] = self.capture_rate
             self._ace_engine = AudioCaptureEngine(ring, config=engine_config)
+            logger.info("[BOOT-DIAG] ACE engine.start() called (sd.query_devices + sd.InputStream open)")
+            _t = time.perf_counter()
             self._ace_engine.start()
+            _dt = (time.perf_counter() - _t) * 1000
+            logger.info(f"[BOOT-DIAG] ACE engine.start() returned: {_dt:.0f}ms")
+            if _dt > 5000:
+                logger.info(f"[BOOT-DIAG] SLOW STEP: ACE engine.start() {_dt:.0f}ms")
 
             self._dictation_consumer = DictationSessionConsumer(
                 engine=self._ace_engine,
@@ -3724,10 +3776,16 @@ class DictationApp:
             print("[VAD] torch unavailable, falling back to RMS speech detection")
             return
         try:
+            logger.info("[BOOT-DIAG] torch.hub.load (Silero VAD) called — may contact GitHub if cache stale")
+            _t = time.perf_counter()
             model, _ = torch.hub.load(
                 'snakers4/silero-vad', 'silero_vad',
                 force_reload=False, trust_repo=True,
             )
+            _dt = (time.perf_counter() - _t) * 1000
+            logger.info(f"[BOOT-DIAG] torch.hub.load (Silero VAD) returned: {_dt:.0f}ms")
+            if _dt > 5000:
+                logger.info(f"[BOOT-DIAG] SLOW STEP: torch.hub.load (Silero VAD) {_dt:.0f}ms")
             model.eval()
             self._vad_model = model
             self._vad_available = True
@@ -3867,15 +3925,28 @@ class DictationApp:
                     initial_content = remainder
                     print(f"[WAKE-TARGET] Pre-buffering trailing speech: '{initial_content}'")
 
-        # Start open-ended wake session: per-utterance delivery, ends on inactivity.
-        self._start_wake_session(initial_content=initial_content)
+        # Resolve per-target send policy.  Explicit key in config wins; otherwise
+        # default by process/id name: hermes-targeted sessions stage only (never
+        # auto-submit), all other targets press Enter on send-word detection.
+        if 'send_policy' in target:
+            _send_policy = target['send_policy']
+        elif 'hermes' in process_name.lower() or 'hermes' in tid.lower():
+            _send_policy = 'stage_only'
+        else:
+            _send_policy = 'enter'
 
-    def _start_wake_session(self, initial_content=None):
+        # Start open-ended wake session: per-utterance delivery, ends on inactivity.
+        self._start_wake_session(initial_content=initial_content, send_policy=_send_policy)
+
+    def _start_wake_session(self, initial_content=None, send_policy='enter'):
         """Enter open-ended wake session state.
 
         Each transcribed utterance is delivered immediately.  The session stays
         alive through silence and only ends after _WAKE_SESSION_TIMEOUT_S of
         inactivity or via the global cancel path.
+
+        send_policy: 'enter' — press Enter after send-word detection (claude targets).
+                     'stage_only' — text staged, Enter suppressed (hermes/agentic targets).
         """
         old_state = self.app_state
         self.app_state = 'wake_session'
@@ -3889,13 +3960,15 @@ class DictationApp:
         self._dictation_silence_timeout = _WAKE_SESSION_CHUNK_GAP_S
         self._wake_target_active = True
         self._wake_session_first_chunk = True
+        self._wake_session_send_policy = send_policy
 
         if hasattr(self, 'wake_word_timer') and self.wake_word_timer:
             self.wake_word_timer.cancel()
 
         print(f"[STATE] {old_state} -> wake_session "
               f"(chunk gap: {_WAKE_SESSION_CHUNK_GAP_S}s, "
-              f"inactivity timeout: {_WAKE_SESSION_TIMEOUT_S}s)")
+              f"inactivity timeout: {_WAKE_SESSION_TIMEOUT_S}s, "
+              f"send_policy: {send_policy})")
 
         self._restart_wake_session_timer()
         logger.info(
@@ -4148,8 +4221,38 @@ class DictationApp:
                         self._emit_wake_trace({"stage": "utterance_end", "result": "cancelled"})
                         return
 
-                # wake_session: deliver each utterance immediately, no end-words, no buffering.
+                # wake_session: check for send terminator before immediate delivery.
+                # A send word (rfind, same style as end_words) strips the control word,
+                # delivers any preceding text, presses Enter (policy='enter') or not
+                # (policy='stage_only'), plays the appropriate earcon, and ends the session.
                 if self.app_state == 'wake_session':
+                    _send_words = ww_config.get('send_words', _WAKE_SESSION_SEND_WORDS)
+                    _matched_sw = None
+                    _matched_idx = -1
+                    for _sw in _send_words:
+                        _sw_l = _sw.lower()
+                        if _sw_l in text_lower:
+                            _idx = text_lower.rfind(_sw_l)
+                            if _idx > _matched_idx:
+                                _matched_sw = _sw
+                                _matched_idx = _idx
+                    if _matched_sw is not None:
+                        _pre = text[:_matched_idx].strip()
+                        if _pre:
+                            self._output_dictation(_pre)
+                        _policy = getattr(self, '_wake_session_send_policy', 'enter')
+                        if _policy == 'enter':
+                            time.sleep(0.05)
+                            pyautogui.press('return')
+                            self.play_sound("success")
+                            print(f"[WAKE-SESSION] sent — '{_matched_sw}' detected, Enter pressed")
+                        else:
+                            self.play_sound("action_complete")
+                            print(f"[WAKE-SESSION] staged — '{_matched_sw}' detected, Enter suppressed (stage_only)")
+                        self._emit_wake_trace({"stage": "utterance_end", "result": "wake_session_sent",
+                                               "send_word": _matched_sw, "policy": _policy})
+                        self._end_wake_session()
+                        return
                     self._output_dictation(text.strip())
                     self._emit_wake_trace({"stage": "utterance_end", "result": "wake_session_delivered"})
                     return
@@ -4549,6 +4652,7 @@ class DictationApp:
         self._pending_transcriptions = 0
         self._wake_target_active = False
         self._wake_session_first_chunk = True
+        self._wake_session_send_policy = 'enter'
 
         existing = getattr(self, '_wake_session_inactivity_timer', None)
         if existing is not None:
@@ -6554,14 +6658,26 @@ class DictationApp:
 
 if __name__ == "__main__":
     # Console is already hidden at top of file
+    _DIAG_MAIN_T = time.perf_counter()
+    print(f"[BOOT-DIAG] __main__: entry (since sounddevice import: {(_DIAG_MAIN_T - _POST_SD_T)*1000:.0f}ms)", flush=True)
 
     # Guard against double-launch. Must run before the splash / audio starts
     # so a second invocation exits cleanly without grabbing resources.
+    _t = time.perf_counter()
     _acquire_instance_lock()
+    _dt = (time.perf_counter() - _t) * 1000
+    print(f"[BOOT-DIAG] instance lock (_check_single_instance): {_dt:.0f}ms", flush=True)
+    if _dt > 5000:
+        print(f"[BOOT-DIAG] SLOW STEP: instance lock {_dt:.0f}ms", flush=True)
 
     # Show splash screen during startup
+    _t = time.perf_counter()
     from samsara.ui.splash_qt import SplashScreenQt
     splash = SplashScreenQt()
+    _dt = (time.perf_counter() - _t) * 1000
+    print(f"[BOOT-DIAG] splash init (SplashScreenQt): {_dt:.0f}ms", flush=True)
+    if _dt > 5000:
+        print(f"[BOOT-DIAG] SLOW STEP: splash init {_dt:.0f}ms", flush=True)
     splash.set_status("Initializing...")
 
     app = None
