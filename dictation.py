@@ -5,6 +5,25 @@ import sys
 import math
 import wave
 
+# In a windowed PyInstaller build (console=False), sys.stdout/sys.stderr are
+# None. Any module-level print()/sys.stdout.write() then raises
+# "'NoneType' object has no attribute 'write'" and the exe dies on launch.
+# Install a no-op stream so all existing stdout/stderr writes are safe.
+class _NullStream:
+    def write(self, *a, **k):
+        return 0
+    def flush(self, *a, **k):
+        pass
+    def reconfigure(self, *a, **k):
+        pass
+    def isatty(self):
+        return False
+
+if sys.stdout is None:
+    sys.stdout = _NullStream()
+if sys.stderr is None:
+    sys.stderr = _NullStream()
+
 # Platform-specific imports
 if sys.platform == 'win32':
     try:
