@@ -206,6 +206,9 @@ import keyboard  # For reliable simultaneous key state detection
 from pynput.mouse import Button, Controller as MouseController
 import pyperclip
 import pyautogui
+if sys.stdout is not None:
+    sys.stdout.write(f"[PRE-LOG] +{(time.perf_counter()-_POST_SD_T)*1000:.0f}ms (after input libs)\n")
+    sys.stdout.flush()
 # Check for Visual C++ Redistributable before any DLL-dependent imports.
 # ctranslate2 (used by faster-whisper) requires msvcp140.dll which ships with
 # the VC++ redist. On a clean machine this may not be installed.
@@ -227,6 +230,9 @@ if sys.platform == 'win32':
         sys.exit(1)
 
 from faster_whisper import WhisperModel
+if sys.stdout is not None:
+    sys.stdout.write(f"[PRE-LOG] +{(time.perf_counter()-_POST_SD_T)*1000:.0f}ms (after faster_whisper)\n")
+    sys.stdout.flush()
 
 # torch powers Silero VAD for real-time speech gating in the wake-word audio
 # callback. It's already a transitive dependency of faster-whisper, but we
@@ -315,6 +321,11 @@ from samsara.echo_cancel import EchoCanceller
 from samsara.clipboard import clipboard_lock as _clipboard_lock, save_clipboard as _save_clipboard_win32, restore_clipboard as _restore_clipboard_win32, paste_with_preservation
 from samsara.wake_detector import WakeWordDetector
 
+# Minimum gap (ms) between AEC loopback open and ACE mic open.
+# The Arctis Nova Pro Wireless WASAPI driver stalls 10-18 s when a second
+# PortAudio client opens the same physical device within ~20 ms of the first.
+# 600 ms is a conservative safe value measured empirically.
+_AEC_TO_MIC_MIN_GAP_MS = 600
 
 _WAKE_PRIMER_DELAY = 0.12
 _WAKE_SESSION_TIMEOUT_S   = 10.0            # inactivity ends the open-ended wake session
@@ -538,6 +549,9 @@ for _stream_name in ("stdout", "stderr"):
         except (ValueError, OSError):
             pass  # packaged EXE / redirected / already-closed stream — non-fatal
 
+if sys.stdout is not None:
+    sys.stdout.write(f"[PRE-LOG] +{(time.perf_counter()-_POST_SD_T)*1000:.0f}ms (before logging setup)\n")
+    sys.stdout.flush()
 # Set up logging — persistent file in ~/.samsara/logs/ + console
 from logging.handlers import RotatingFileHandler as _RotatingFileHandler
 
@@ -1380,7 +1394,8 @@ class DictationApp:
             latency_ms=aec_config.get('latency_ms', 30.0),
         )
         if self.echo_canceller.enabled:
-            self.echo_canceller.start()
+            if self.echo_canceller.start():
+                self._aec_open_t = time.perf_counter()
 
         self.update_splash("Setting up keyboard...")
 
@@ -1518,6 +1533,16 @@ class DictationApp:
             engine_config['_capture_rate'] = self.capture_rate
             self._ace_engine = AudioCaptureEngine(ring, config=engine_config)
             logger.info("[BOOT-DIAG] ACE engine.start() called (sd.query_devices + sd.InputStream open)")
+            _aec_open_t = getattr(self, '_aec_open_t', None)
+            if _aec_open_t is not None:
+                elapsed_s = time.perf_counter() - _aec_open_t
+                remainder_s = _AEC_TO_MIC_MIN_GAP_MS / 1000.0 - elapsed_s
+                if remainder_s > 0:
+                    logger.info(
+                        f"[BOOT-DIAG] AEC/ACE gap: {elapsed_s*1000:.0f}ms elapsed, "
+                        f"sleeping {remainder_s*1000:.0f}ms to reach {_AEC_TO_MIC_MIN_GAP_MS}ms"
+                    )
+                    time.sleep(remainder_s)
             _t = time.perf_counter()
             self._ace_engine.start()
             _dt = (time.perf_counter() - _t) * 1000
