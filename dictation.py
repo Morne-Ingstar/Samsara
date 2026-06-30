@@ -3832,8 +3832,19 @@ class DictationApp:
 
         try:
             from plugins.commands import window_switcher as _ws
-            _ws._force_focus(hwnd)
-            print(f"[WAKE-TARGET] Focused '{title}'")
+            focused = _ws._force_focus(hwnd)
+            if focused:
+                logger.info("[WAKE-TARGET] Focused %r", title)
+            else:
+                import ctypes as _ct
+                _fg = _ct.windll.user32.GetForegroundWindow()
+                _fgl = _ct.windll.user32.GetWindowTextLengthW(_fg)
+                _fgb = _ct.create_unicode_buffer(_fgl + 1)
+                _ct.windll.user32.GetWindowTextW(_fg, _fgb, _fgl + 1)
+                logger.warning(
+                    "[WAKE-TARGET] FOCUS FAILED for %r (foreground still %r) — proceeding to dictate anyway",
+                    title, _fgb.value or "<unknown>",
+                )
         except Exception as exc:
             print(f"[WAKE-TARGET] Focus failed: {exc}")
             self.play_sound("error")
