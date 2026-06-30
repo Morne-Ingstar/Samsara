@@ -239,6 +239,9 @@ from samsara.clipboard import clipboard_lock as _clipboard_lock, save_clipboard 
 from samsara.wake_detector import WakeWordDetector
 
 
+_WAKE_PRIMER_DELAY = 0.12
+
+
 def _get_pynput_command_key(button_name: str):
     """Resolve a command_mode.button string to a pynput Key or KeyCode.
 
@@ -3864,6 +3867,7 @@ class DictationApp:
 
         # Start quick_dictation — the existing pipeline delivers the next
         # utterance(s) into wake_dictation_buffer -> _output_dictation -> focused window.
+        self._wake_target_active = True
         self._start_dictation_mode('quick_dictation', initial_content=initial_content)
 
     def _vad_is_speech(self, chunk_float32, src_rate=None):
@@ -4452,6 +4456,7 @@ class DictationApp:
         # be 0 in healthy operation; clamp defensively in case of timer races.
         self._dictation_finalize_requested = False
         self._pending_transcriptions = 0
+        self._wake_target_active = False
 
         if old_state != 'asleep':
             print(f"[STATE] {old_state} -> asleep")
@@ -4660,6 +4665,14 @@ class DictationApp:
             self._record_undoable_paste(text)
             self.adaptive_learner.record_transcription(text)
 
+    def _deliver_text_to_focused_editor(self, text):
+        # backspace removes focus-primer char; assumes empty input box at session start
+        pyautogui.press('x')
+        time.sleep(_WAKE_PRIMER_DELAY)
+        pyautogui.press('backspace')
+        time.sleep(_WAKE_PRIMER_DELAY)
+        self._paste_preserving_clipboard(text)
+
     def _record_undoable_paste(self, text):
         """Remember the last pasted text so it can be undone via voice/hotkey."""
         self._last_dictation_text = text
@@ -4782,7 +4795,10 @@ class DictationApp:
         self._notify_main_window(text.strip())
 
         if self.config['auto_paste']:
-            self._paste_preserving_clipboard(text)
+            if getattr(self, '_wake_target_active', False):
+                self._deliver_text_to_focused_editor(text)
+            else:
+                self._paste_preserving_clipboard(text)
 
         if hasattr(self, 'hints'):
             self.hints.maybe_show(
