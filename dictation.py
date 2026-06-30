@@ -579,6 +579,31 @@ logger.info("=" * 50)
 
 
 # ---------------------------------------------------------------------------
+# Adaptive wake-word energy gate constants
+# ---------------------------------------------------------------------------
+# EMA weight applied to ambient-only frames when updating the noise floor.
+# Slow (0.05) so transient louder sounds don't inflate the floor estimate.
+_NOISE_FLOOR_ALPHA = 0.05
+
+# A frame is considered ambient (eligible to update the floor) when its RMS
+# is below (current_floor * _NOISE_FLOOR_SPEECH_RATIO).  Value of 2.0 means
+# "less than twice the floor" = clearly not speech.
+_NOISE_FLOOR_SPEECH_RATIO = 2.0
+
+# Minimum noise floor so zero/near-silence input never drives the floor to
+# zero and lets every subsequent buffer pass.
+_NOISE_FLOOR_MIN = 0.0005
+
+# Speech passes the gate when rms >= floor * _SPEECH_FLOOR_RATIO.
+# 2.5x the ambient floor distinguishes speech from background noise.
+_SPEECH_FLOOR_RATIO = 2.5
+
+# Hard absolute minimum so pure DC / zeroed buffers cannot pass even on a
+# completely silent mic.
+_ABS_FLOOR_MIN = 0.002
+
+
+# ---------------------------------------------------------------------------
 # Repeat / again command support
 # ---------------------------------------------------------------------------
 
@@ -1011,6 +1036,19 @@ class DictationApp:
         self.wake_word_triggered = False  # Wake word detected, ready for command
         self._wake_trace_callback = None  # Optional: debug window registers here
         self._wake_transcription_in_progress = False  # Prevents concurrent Whisper calls on CPU
+
+        # Rolling noise-floor estimate for adaptive wake energy gate.
+        # Seeded from measured_noise_floor config key when available so the
+        # floor survives restart; otherwise the first buffer initialises it.
+        _saved_floor = (
+            self.config
+            .get('wake_word_config', {})
+            .get('audio', {})
+            .get('measured_noise_floor', None)
+        )
+        self._wake_noise_floor: float | None = (
+            float(_saved_floor) if _saved_floor else None
+        )
 
         # OpenWakeWord pre-filter: fast (~5ms) ONNX wake-word model that gates
         # Whisper calls. On CPU this drops idle load from ~100% to near zero.
@@ -4086,6 +4124,65 @@ class DictationApp:
             # Never let a debug UI bug break the main pipeline
             print(f"[WARN] wake trace callback failed: {e}")
 
+    def calibrate_wake_mic(self, seconds: float = 3.0) -> float | None:
+        """Sample ambient audio for *seconds* and seed the adaptive noise floor.
+
+        Uses the ACE engine ring (via a temporary registered consumer) so no
+        second InputStream is opened.  If the ACE engine is not running (legacy
+        path), falls back to the most recent frames already buffered in the ring
+        (rewind) and averages whatever is available.
+
+        Returns the measured floor RMS, or None if no frames were available.
+        Persists the result to wake_word_config.audio.measured_noise_floor so
+        the floor survives a restart and seeds the EMA on next boot.
+        """
+        import logging as _log
+        from samsara.audio_engine.frame import FRAME_MS as _FMS
+
+        engine = getattr(self, '_ace_engine', None)
+        if engine is None or not engine._running:
+            _log.getLogger().warning("[CAL] ACE engine not running — calibrate_wake_mic has no audio source")
+            return None
+
+        frames_needed = int(seconds * 1000 / _FMS)
+        reader = engine.register_consumer("wake-calibration")
+        # Rewind into existing ring history for an instant sample if enough
+        # history exists; otherwise we read forward in real time.
+        from samsara.audio_engine.ring import EMPTY as _EMPTY
+        from samsara.audio_engine.frame import PREBUFFER_FRAMES as _PF
+        rewind_n = min(frames_needed, _PF)
+        reader.rewind(rewind_n)
+
+        rms_values = []
+        deadline = time.monotonic() + seconds
+
+        while time.monotonic() < deadline:
+            frame = reader.read_next()
+            if frame is _EMPTY:
+                time.sleep(0.005)
+                continue
+            chunk = frame.pcm.astype(np.float32) / 32767.0
+            rms_values.append(float(np.sqrt(np.mean(chunk ** 2))))
+
+        engine.unregister_consumer(reader)
+
+        if not rms_values:
+            _log.getLogger().warning("[CAL] calibrate_wake_mic: no frames collected")
+            return None
+
+        measured = float(np.median(rms_values))
+        measured = max(measured, _NOISE_FLOOR_MIN)
+        self._wake_noise_floor = measured
+        _log.getLogger().info(f"[CAL] Wake mic calibrated: floor={measured:.5f} ({len(rms_values)} frames)")
+
+        # Persist so the floor survives restart.
+        with self._config_lock:
+            self.config.setdefault('wake_word_config', {}).setdefault('audio', {})
+            self.config['wake_word_config']['audio']['measured_noise_floor'] = measured
+            self.save_config()
+
+        return measured
+
     def process_wake_word_buffer(self, buffer, src_rate=None):
         """Process audio — check for wake word, commands, or dictation content.
 
@@ -4123,18 +4220,43 @@ class DictationApp:
 
             # FIX 1: RMS energy gate — skip Whisper on silent audio.
             # On CPU machines Whisper takes ~1s per call; calling it on every
-            # chunk saturates the CPU. This gate rejects the buffer early if the
-            # RMS is below the calibrated speech threshold so Whisper only runs
-            # when actual speech energy is present.
+            # chunk saturates the CPU. This gate rejects the buffer early when
+            # the audio energy is not meaningfully above the ambient noise floor.
             ww_config = self.config.get('wake_word_config', {})
             audio_config = ww_config.get('audio', {})
-            speech_threshold = audio_config.get('speech_threshold', DEFAULT_SPEECH_THRESHOLD)
-            audio_rms = np.sqrt(np.mean(audio.astype(np.float32) ** 2))
-            if audio_rms < speech_threshold:
-                logging.debug(
-                    f"[WAKE] Below speech threshold (RMS {audio_rms:.4f} < {speech_threshold:.4f}), skipping"
-                )
-                return
+            audio_rms = float(np.sqrt(np.mean(audio.astype(np.float32) ** 2)))
+
+            use_adaptive = audio_config.get('adaptive_gate', True)
+            if use_adaptive:
+                # Update rolling noise-floor estimate from ambient-only frames.
+                if self._wake_noise_floor is None:
+                    self._wake_noise_floor = max(audio_rms, _NOISE_FLOOR_MIN)
+                elif audio_rms < self._wake_noise_floor * _NOISE_FLOOR_SPEECH_RATIO:
+                    self._wake_noise_floor = max(
+                        (1.0 - _NOISE_FLOOR_ALPHA) * self._wake_noise_floor
+                        + _NOISE_FLOOR_ALPHA * audio_rms,
+                        _NOISE_FLOOR_MIN,
+                    )
+
+                # Override absolute backstop with user speech_threshold when set.
+                user_threshold = audio_config.get('speech_threshold', 0.0)
+                abs_min = max(_ABS_FLOOR_MIN, user_threshold) if user_threshold > 0 else _ABS_FLOOR_MIN
+                gate_level = max(self._wake_noise_floor * _SPEECH_FLOOR_RATIO, abs_min)
+
+                if audio_rms < gate_level:
+                    logging.debug(
+                        f"[WAKE] gated (rms {audio_rms:.4f} < adaptive {gate_level:.4f}"
+                        f" [floor {self._wake_noise_floor:.4f} x{_SPEECH_FLOOR_RATIO}]) -- skipping"
+                    )
+                    return
+            else:
+                # adaptive_gate=False: exact original fixed-threshold behaviour.
+                speech_threshold = audio_config.get('speech_threshold', DEFAULT_SPEECH_THRESHOLD)
+                if audio_rms < speech_threshold:
+                    logging.debug(
+                        f"[WAKE] Below speech threshold (RMS {audio_rms:.4f} < {speech_threshold:.4f}), skipping"
+                    )
+                    return
 
             # FIX 2: In-progress flag — prevent concurrent Whisper calls.
             # On CPU a transcription can take longer than the next buffer window,
