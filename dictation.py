@@ -4131,6 +4131,12 @@ class DictationApp:
             if correction_applied:
                 print(f"[CORRECT] '{text_lower}' -> '{corrected_lower}'")
 
+            logger.info(
+                "[WAKE-CHECK] transcript=%r targets=%r",
+                corrected_lower,
+                [t.get('phrase') for t in self.config.get('wake_targets', []) if t.get('enabled', True)],
+            )
+
             # Phase 1: check multi-wake targets BEFORE the legacy single-phrase check.
             # Each enabled wake_target has a distinct phrase ("hey claude",
             # "activate hermes") that doesn't overlap with legacy jarvis phrases.

@@ -48,10 +48,16 @@ CORRECTIONS = {
     # Single-word keys ("clawed", "claud") are safe because they are not
     # common words — no collision risk with legitimate speech.
     "hey cloud": "hey claude",
+    "hey clod": "hey claude",
     "hey clawed": "hey claude",
     "hey claud": "hey claude",
+    "hey, claude": "hey claude",
     "a claude": "hey claude",
+    "a cloud": "hey claude",
     "hey claude.": "hey claude",
+    "hit clod": "hey claude",
+    "hit claude": "hey claude",
+    "hay claude": "hey claude",
     "clawed": "claude",
     "claud": "claude",
     # Phase 1 multi-wakeword — "activate hermes" misrecognitions.
@@ -60,6 +66,9 @@ CORRECTIONS = {
     "activate herpes": "activate hermes",
     "activate hermez": "activate hermes",
     "activate her mes": "activate hermes",
+    "activate harmony's": "activate hermes",
+    "activate her mess": "activate hermes",
+    "activate her message": "activate hermes",
 }
 
 
