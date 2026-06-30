@@ -2,7 +2,7 @@
 PySide6 dictation history window for Samsara.
 
 Reads from app.history_db (HistoryManager / SQLite) with a fallback
-to the legacy app.history list.  Runs on its own daemon thread --
+to the legacy app.history list.  Runs on its own daemon thread —
 same pattern as settings_qt.py.
 """
 
@@ -12,166 +12,136 @@ from datetime import datetime
 from PySide6.QtCore import Qt, QTimer, Signal
 from PySide6.QtGui import QBrush, QColor
 from PySide6.QtWidgets import (
-    QApplication, QMainWindow, QWidget, QVBoxLayout, QHBoxLayout,
+    QMainWindow, QWidget, QVBoxLayout, QHBoxLayout,
     QTableWidget, QTableWidgetItem, QHeaderView,
     QLineEdit, QComboBox, QPushButton, QLabel, QPlainTextEdit,
-    QFrame, QMenu, QMessageBox,
+    QFrame, QMessageBox,
 )
 
 from samsara.ui import qt_runtime
 
 
 # ---------------------------------------------------------------------------
-# Colour palette -- mirrors main_window_qt.py for visual consistency
+# Stylesheet — self-contained dark theme matching Samsara palette
 # ---------------------------------------------------------------------------
 
-_BG         = "#0b0e14"
-_SURFACE    = "#131820"
-_ELEVATED   = "#1a2030"
-_BORDER     = "#2a3345"
-_ACCENT     = "#5cc4d4"
-_ACCENT_DIM = "#1a3a42"
-_TEXT_PRI   = "#e4e8ef"
-_TEXT_SEC   = "#7a8599"
-_ERROR      = "#f87171"
-
-
-# ---------------------------------------------------------------------------
-# Stylesheet
-# ---------------------------------------------------------------------------
-
-_STYLESHEET = f"""
-QMainWindow, QWidget {{
-    background-color: {_BG};
-    color: {_TEXT_PRI};
+_STYLESHEET = """
+QMainWindow, QWidget {
+    background-color: #0A0A0B;
+    color: #E8E8EA;
     font-family: 'Segoe UI', system-ui, sans-serif;
     font-size: 13px;
-}}
-QTableWidget {{
-    background-color: {_SURFACE};
-    alternate-background-color: rgba(255,255,255,0.022);
-    gridline-color: transparent;
-    color: {_TEXT_PRI};
-    border: none;
+}
+QTableWidget {
+    background-color: #111114;
+    gridline-color: rgba(255,255,255,0.05);
+    color: #E8E8EA;
+    border: 1px solid rgba(255,255,255,0.08);
+    border-radius: 6px;
     outline: none;
-}}
-QTableWidget::item {{
-    padding: 6px 10px;
+}
+QTableWidget::item {
+    padding: 5px 8px;
     border: none;
-}}
-QTableWidget::item:selected {{
-    background-color: {_ACCENT_DIM};
-    color: {_ACCENT};
-}}
-QHeaderView::section {{
-    background-color: {_SURFACE};
-    color: {_TEXT_SEC};
-    padding: 5px 10px;
+}
+QTableWidget::item:selected {
+    background-color: rgba(94,234,212,0.15);
+    color: #E8E8EA;
+}
+QTableWidget {
+    alternate-background-color: rgba(255,255,255,0.02);
+}
+QHeaderView::section {
+    background-color: #16161A;
+    color: #8A8A92;
+    padding: 6px 8px;
     border: none;
-    border-bottom: 1px solid {_BORDER};
-    font-size: 11px;
+    border-bottom: 1px solid rgba(255,255,255,0.08);
+    border-right: 1px solid rgba(255,255,255,0.04);
+    font-size: 12px;
     font-weight: 600;
-    text-transform: uppercase;
-    letter-spacing: 0.04em;
-}}
-QLineEdit {{
-    background-color: {_SURFACE};
-    border: 1px solid {_BORDER};
-    border-radius: 4px;
+}
+QLineEdit {
+    background-color: #16161A;
+    border: 1px solid rgba(255,255,255,0.14);
+    border-radius: 6px;
+    padding: 7px 12px;
+    color: #E8E8EA;
+}
+QLineEdit:focus {
+    border-color: rgba(94,234,212,0.5);
+}
+QComboBox {
+    background-color: #16161A;
+    border: 1px solid rgba(255,255,255,0.14);
+    border-radius: 6px;
     padding: 6px 10px;
-    color: {_TEXT_PRI};
-    font-size: 12px;
-}}
-QLineEdit:focus {{
-    border-color: {_ACCENT};
-}}
-QComboBox {{
-    background-color: {_SURFACE};
-    border: 1px solid {_BORDER};
-    border-radius: 4px;
-    padding: 6px 10px;
-    color: {_TEXT_PRI};
-    font-size: 12px;
-    min-width: 110px;
-}}
-QComboBox::drop-down {{ border: none; width: 22px; }}
-QComboBox QAbstractItemView {{
-    background-color: {_ELEVATED};
-    color: {_TEXT_PRI};
-    selection-background-color: {_ACCENT_DIM};
-    border: 1px solid {_BORDER};
-}}
-QPushButton {{
-    background-color: {_SURFACE};
-    border: 1px solid {_BORDER};
-    border-radius: 4px;
-    color: {_TEXT_PRI};
-    padding: 5px 14px;
-    font-size: 12px;
-}}
-QPushButton:hover {{
-    background-color: {_ELEVATED};
-    border-color: {_ACCENT};
-}}
-QPushButton:pressed {{
-    background-color: {_ACCENT_DIM};
-}}
-QPushButton[class="danger"] {{
-    background-color: rgba(200,60,60,0.12);
-    color: {_ERROR};
-    border: 1px solid rgba(200,60,60,0.28);
-}}
-QPushButton[class="danger"]:hover {{
-    background-color: rgba(200,60,60,0.22);
-    border-color: {_ERROR};
-}}
-QPlainTextEdit {{
-    background-color: {_ELEVATED};
+    color: #E8E8EA;
+    min-width: 100px;
+}
+QComboBox::drop-down { border: none; width: 24px; }
+QComboBox QAbstractItemView {
+    background-color: #16161A;
+    color: #E8E8EA;
+    selection-background-color: rgba(94,234,212,0.2);
+    border: 1px solid rgba(255,255,255,0.14);
+}
+QPushButton {
+    background-color: #5EEAD4;
+    color: #0A0A0B;
     border: none;
-    color: {_TEXT_PRI};
+    border-radius: 6px;
+    padding: 7px 16px;
+    font-weight: 600;
+    font-size: 13px;
+}
+QPushButton:hover { background-color: #4DD8C2; }
+QPushButton[class="secondary"] {
+    background-color: transparent;
+    color: #8A8A92;
+    border: 1px solid rgba(255,255,255,0.14);
+}
+QPushButton[class="secondary"]:hover {
+    background-color: rgba(255,255,255,0.05);
+    color: #E8E8EA;
+}
+QPushButton[class="danger"] {
+    background-color: rgba(200,60,60,0.15);
+    color: #FF8888;
+    border: 1px solid rgba(200,60,60,0.3);
+}
+QPushButton[class="danger"]:hover { background-color: rgba(200,60,60,0.25); }
+QPlainTextEdit {
+    background-color: #111114;
+    border: none;
+    color: #E8E8EA;
     font-family: 'Consolas', 'Courier New', monospace;
     font-size: 12px;
-    padding: 8px 10px;
-}}
-QMenu {{
-    background-color: {_ELEVATED};
-    color: {_TEXT_PRI};
-    border: 1px solid {_BORDER};
-    padding: 4px 0;
-    font-size: 12px;
-}}
-QMenu::item {{
-    padding: 5px 24px 5px 16px;
-}}
-QMenu::item:selected {{
-    background-color: {_ACCENT_DIM};
-    color: {_ACCENT};
-}}
-QMenu::separator {{
-    height: 1px;
-    background-color: {_BORDER};
-    margin: 2px 8px;
-}}
+    padding: 6px 8px;
+}
 """
 
-# Row foreground colour by entry type / status
+# Row colour by entry type / status
 _COLORS = {
-    'command':      QColor(_ACCENT),
-    'wake_command': QColor(_ACCENT),
-    'failed':       QColor(_ERROR),
+    'command':      QColor("#5EEAD4"),
+    'wake_command': QColor("#5EEAD4"),
+    'failed':       QColor("#FF6666"),
 }
 
 
 def _fmt_ts(ts: str) -> str:
-    """ISO timestamp -> 'YYYY-MM-DD HH:MM:SS' for table; lexicographic == chronological."""
+    """ISO timestamp -> 'HH:MM:SS' for table, full ISO in detail."""
     try:
-        return datetime.fromisoformat(ts).strftime("%Y-%m-%d %H:%M:%S")
+        return datetime.fromisoformat(ts).strftime("%H:%M:%S")
     except Exception:
-        return ts[:19] if ts else ""
+        return (ts[:8] if ts else "")
 
 
 def _sec_btn(label: str, width: int = 0) -> QPushButton:
     b = QPushButton(label)
+    b.setProperty("class", "secondary")
+    b.style().unpolish(b)
+    b.style().polish(b)
     if width:
         b.setFixedWidth(width)
     return b
@@ -227,22 +197,22 @@ class _HistoryWindow(QMainWindow):
         self._status_signal.connect(self._set_status)
 
         self.setWindowTitle("Dictation History")
-        self.resize(820, 580)
+        self.resize(720, 560)
         self.setMinimumSize(500, 380)
         self.setStyleSheet(_STYLESHEET)
 
         central = QWidget()
         self.setCentralWidget(central)
         root = QVBoxLayout(central)
-        root.setContentsMargins(12, 10, 12, 10)
-        root.setSpacing(8)
+        root.setContentsMargins(16, 14, 16, 14)
+        root.setSpacing(10)
 
         # ---- Search + filter row ----------------------------------------
         top_row = QHBoxLayout()
-        top_row.setSpacing(6)
+        top_row.setSpacing(8)
 
         self._search = QLineEdit()
-        self._search.setPlaceholderText("Search history...")
+        self._search.setPlaceholderText("Search history…")
         self._search.textChanged.connect(lambda _: self._reload())
         top_row.addWidget(self._search, stretch=1)
 
@@ -259,55 +229,41 @@ class _HistoryWindow(QMainWindow):
 
         # ---- History table ----------------------------------------------
         self._table = QTableWidget(0, 4)
-        self._table.setHorizontalHeaderLabels(["Date / Time", "Type", "Mode", "Text"])
+        self._table.setHorizontalHeaderLabels(["Time", "Type", "Mode", "Text"])
         hh = self._table.horizontalHeader()
         hh.setSectionResizeMode(0, QHeaderView.ResizeMode.ResizeToContents)
         hh.setSectionResizeMode(1, QHeaderView.ResizeMode.ResizeToContents)
         hh.setSectionResizeMode(2, QHeaderView.ResizeMode.ResizeToContents)
         hh.setSectionResizeMode(3, QHeaderView.ResizeMode.Stretch)
         self._table.verticalHeader().setVisible(False)
-        self._table.verticalHeader().setDefaultSectionSize(30)
         self._table.setEditTriggers(QTableWidget.EditTrigger.NoEditTriggers)
         self._table.setSelectionBehavior(QTableWidget.SelectionBehavior.SelectRows)
         self._table.setSelectionMode(QTableWidget.SelectionMode.SingleSelection)
         self._table.setAlternatingRowColors(True)
-        self._table.setShowGrid(False)
-        self._table.currentCellChanged.connect(
-            lambda row, _col, _prev_row, _prev_col: self._on_row_changed(row)
-        )
-
-        # Right-click context menu
-        self._table.setContextMenuPolicy(Qt.ContextMenuPolicy.CustomContextMenu)
-        self._table.customContextMenuRequested.connect(self._on_context_menu)
-        # Double-click to copy
-        self._table.cellDoubleClicked.connect(self._on_cell_double_clicked)
-
+        self._table.currentRowChanged.connect(self._on_row_changed)
         root.addWidget(self._table, stretch=1)
 
         # ---- Detail pane ------------------------------------------------
         detail_frame = QFrame()
-        detail_frame.setObjectName("detail_frame")
         detail_frame.setStyleSheet(
-            f"QFrame#detail_frame {{ background-color: {_ELEVATED};"
-            f" border-top: 1px solid {_BORDER}; }}"
+            "QFrame{background:#111114;"
+            "border:1px solid rgba(255,255,255,0.08);border-radius:6px;}"
         )
         detail_frame_layout = QVBoxLayout(detail_frame)
         detail_frame_layout.setContentsMargins(0, 0, 0, 0)
-        detail_frame_layout.setSpacing(0)
         self._detail = QPlainTextEdit()
         self._detail.setReadOnly(True)
-        self._detail.setFixedHeight(76)
-        self._detail.setPlaceholderText("Select a row -- or double-click to copy.")
+        self._detail.setFixedHeight(64)
+        self._detail.setPlaceholderText("Select a row to see the full text.")
         detail_frame_layout.addWidget(self._detail)
         root.addWidget(detail_frame)
 
         # ---- Button bar -------------------------------------------------
         bar = QHBoxLayout()
-        bar.setSpacing(6)
-        bar.setContentsMargins(0, 2, 0, 0)
+        bar.setSpacing(8)
 
         self._status_lbl = QLabel("")
-        self._status_lbl.setStyleSheet(f"color: {_TEXT_SEC}; font-size: 12px;")
+        self._status_lbl.setStyleSheet("color: #8A8A92; font-size: 12px;")
         bar.addWidget(self._status_lbl)
         bar.addStretch()
 
@@ -394,11 +350,9 @@ class _HistoryWindow(QMainWindow):
                 r = self._table.rowCount()
                 self._table.insertRow(r)
 
-                # Col 0: timestamp -- UserRole = row_id, ToolTip = raw ISO for detail pane
-                raw_ts = str(row['timestamp'])
-                ts_item = QTableWidgetItem(_fmt_ts(raw_ts))
+                # Col 0: timestamp — stores row_id in UserRole
+                ts_item = QTableWidgetItem(_fmt_ts(str(row['timestamp'])))
                 ts_item.setData(Qt.ItemDataRole.UserRole, row['id'])
-                ts_item.setToolTip(raw_ts)
                 self._table.setItem(r, 0, ts_item)
 
                 # Col 1: entry type
@@ -415,14 +369,14 @@ class _HistoryWindow(QMainWindow):
                     str(row.get('mode', ''))
                 ))
 
-                # Col 3: text -- UserRole = full text for copy/detail operations
+                # Col 3: text — stores full text in UserRole
                 full = str(row.get('display_text', '') or row.get('raw_text', ''))
-                display = full if len(full) <= 90 else full[:87] + "..."
+                display = full if len(full) <= 90 else full[:87] + "…"
                 text_item = QTableWidgetItem(display)
                 text_item.setData(Qt.ItemDataRole.UserRole, full)
                 self._table.setItem(r, 3, text_item)
 
-                # Foreground colour by type / status
+                # Colour by type / status
                 status = str(row.get('status', 'success'))
                 color = _COLORS.get(etype) or (_COLORS.get('failed') if status == 'failed' else None)
                 if color:
@@ -439,27 +393,18 @@ class _HistoryWindow(QMainWindow):
         self._detail.clear()
 
     # ------------------------------------------------------------------
-    # Selection + full-text helpers
+    # Selection
     # ------------------------------------------------------------------
-
-    def _full_text_for_row(self, row: int) -> str:
-        """Return stored full text for table row index `row`."""
-        if row < 0:
-            return ""
-        item = self._table.item(row, 3)
-        return (item.data(Qt.ItemDataRole.UserRole) or item.text()) if item else ""
 
     def _on_row_changed(self, row: int):
         if row < 0:
             self._detail.clear()
             return
-        full_text = self._full_text_for_row(row)
-        ts_item = self._table.item(row, 0)
-        raw_ts = ts_item.toolTip() if ts_item else ""
-        if raw_ts:
-            self._detail.setPlainText(f"[{raw_ts}]\n{full_text}")
-        else:
-            self._detail.setPlainText(full_text)
+        item = self._table.item(row, 3)
+        if item:
+            self._detail.setPlainText(
+                item.data(Qt.ItemDataRole.UserRole) or item.text()
+            )
 
     def _current_row(self) -> int:
         return self._table.currentRow()
@@ -472,37 +417,11 @@ class _HistoryWindow(QMainWindow):
         return item.data(Qt.ItemDataRole.UserRole) if item else None
 
     def _current_full_text(self) -> str:
-        return self._full_text_for_row(self._current_row())
-
-    # ------------------------------------------------------------------
-    # Context menu + double-click affordances (Item A)
-    # ------------------------------------------------------------------
-
-    def _on_cell_double_clicked(self, row: int, _col: int):
-        """Double-click on any cell copies that row's full text."""
-        text = self._full_text_for_row(row)
-        if text:
-            QApplication.clipboard().setText(text)
-            self._set_status("Copied to clipboard.")
-
-    def _on_context_menu(self, pos):
-        """Right-click context menu: resolves row under cursor, not current selection."""
-        row = self._table.rowAt(pos.y())
+        row = self._current_row()
         if row < 0:
-            return
-        self._table.selectRow(row)
-        menu = QMenu(self)
-        copy_act = menu.addAction("Copy")
-        menu.addSeparator()
-        del_act = menu.addAction("Delete")
-        action = menu.exec(self._table.viewport().mapToGlobal(pos))
-        if action == copy_act:
-            text = self._full_text_for_row(row)
-            if text:
-                QApplication.clipboard().setText(text)
-                self._set_status("Copied to clipboard.")
-        elif action == del_act:
-            self._delete_selected()
+            return ""
+        item = self._table.item(row, 3)
+        return (item.data(Qt.ItemDataRole.UserRole) or item.text()) if item else ""
 
     # ------------------------------------------------------------------
     # Actions
