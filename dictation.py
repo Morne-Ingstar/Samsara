@@ -891,6 +891,11 @@ class DictationApp:
         self._config_last_disk_snapshot: dict = {}
         # File-system watcher; started after load_config completes.
         self._config_watcher = None
+        # Mobile companion supervisor (samsara/mobile); started after full
+        # init completes, only when config['mobile_companion']['enabled'] is
+        # True (default False). None means "never started" -- quit_app()
+        # must tolerate that.
+        self.mobile_supervisor = None
 
         # Check if first-run wizard is needed.
         # Triggers when: config missing, first_run_complete absent/false,
@@ -2761,6 +2766,11 @@ class DictationApp:
                 self._start_gesture_lane()
 
             print("[INIT] Startup complete.")
+
+            # Mobile companion (Phase 1: subprocess + IPC bridge, stub ping
+            # only). No-op unless config['mobile_companion']['enabled'] is
+            # explicitly True.
+            self._start_mobile_companion()
 
             # Ensure clean state — reset any recording flags that may have
             # been tripped by keyboard events during startup
@@ -6193,6 +6203,39 @@ class DictationApp:
         with self._config_lock:
             self.config.setdefault('gesture', {})['enabled'] = enabled
             self.save_config()
+
+    def _start_mobile_companion(self) -> None:
+        """Start the mobile companion subsystem (Phase 1: stub ping only).
+
+        Gated behind config['mobile_companion']['enabled'] (default False).
+        Any failure here (bad config, bind/spawn failure) is caught and
+        logged -- this must never take the host down. Supervisor.start()
+        itself already degrades to "feature disabled" on port conflicts;
+        this try/except is the outer guard against anything unexpected.
+        """
+        if not self.config.get('mobile_companion', {}).get('enabled', False):
+            return
+        try:
+            from samsara.mobile.supervisor import Supervisor
+            supervisor = Supervisor()
+            if supervisor.start():
+                self.mobile_supervisor = supervisor
+                print(f"[MOBILE] Companion started (interpreter: {supervisor.interpreter_used})")
+            else:
+                print("[MOBILE] Companion failed to start; feature disabled, host unaffected")
+        except Exception as _e:
+            print(f"[MOBILE] Failed to start: {_e}")
+            self.mobile_supervisor = None
+
+    def _stop_mobile_companion(self) -> None:
+        """Stop the mobile companion subsystem, if it was started."""
+        supervisor = self.mobile_supervisor
+        if supervisor is not None:
+            try:
+                supervisor.stop()
+            except Exception:
+                pass
+            self.mobile_supervisor = None
         if enabled and self._gesture_loop is None:
             self._start_gesture_lane()
             print("[GESTURE] Lane ENABLED")
@@ -6766,6 +6809,12 @@ class DictationApp:
 
         try:
             self._stop_gesture_lane()
+        except Exception:
+            pass
+
+        # Stop mobile companion subsystem (subprocess + IPC bridge), if started
+        try:
+            self._stop_mobile_companion()
         except Exception:
             pass
 
