@@ -1,4 +1,4 @@
-"""Samsara Mobile Companion -- supervisor (Phase 1).
+"""Samsara Mobile Companion -- supervisor (Phase 2: real controls).
 
 Owned by the main app (DictationApp). start()/stop() are the only entry
 points that do I/O -- nothing in this module binds a socket or spawns a
@@ -9,6 +9,17 @@ launches server_proc.py as a separate subprocess that owns the LAN-facing
 HTTP server. If either the IPC bind or the HTTP subprocess fails to come up
 (e.g. a port already in use), the whole feature disables itself and start()
 returns False -- it never raises into app startup.
+
+Two distinct secrets are generated per start(), for two distinct trust
+boundaries:
+  - the IPC token authenticates the subprocess to the in-process bridge
+    (127.0.0.1 only, never leaves this machine's loopback interface).
+  - the HTTP token authenticates LAN clients (phone, curl, etc.) to the
+    subprocess's HTTP server, since Phase 2 exposes real system controls
+    (volume, mute, media transport) on the LAN interface.
+These must never be the same value -- the HTTP token is meant to be shared
+with LAN clients (e.g. via a QR code in a later phase), and doing so must
+never expose the IPC channel.
 """
 
 import logging
@@ -21,6 +32,12 @@ import time
 from pathlib import Path
 
 from .bridge import Bridge, make_ping_handler
+from .handlers import (
+    make_status_handler,
+    make_volume_set_handler,
+    make_mute_set_handler,
+    make_transport_handler,
+)
 from . import server_proc
 
 logger = logging.getLogger(__name__)
@@ -95,7 +112,8 @@ class Supervisor:
         self._http_host = http_host
         self._bridge = None
         self._proc = None
-        self._token = None
+        self._token = None       # IPC token: subprocess -> bridge (loopback only)
+        self._http_token = None  # HTTP token: LAN clients -> subprocess
         self._watchdog_thread = None
         self._stop_event = threading.Event()
         self._enabled = False
@@ -117,6 +135,11 @@ class Supervisor:
         """The in-process bridge (or None). Exposed for tests/diagnostics."""
         return self._bridge
 
+    @property
+    def http_token(self):
+        """The shared secret LAN clients must present to the HTTP layer (or None)."""
+        return self._http_token
+
     def start(self):
         """Bring up the bridge + subprocess. Returns True on success.
 
@@ -127,8 +150,13 @@ class Supervisor:
             return True
 
         self._token = secrets.token_hex(16)
+        self._http_token = secrets.token_hex(16)
         self._bridge = Bridge(self._token)
         self._bridge.register("ping", make_ping_handler())
+        self._bridge.register("status", make_status_handler())
+        self._bridge.register("volume_set", make_volume_set_handler())
+        self._bridge.register("mute_set", make_mute_set_handler())
+        self._bridge.register("transport", make_transport_handler())
 
         try:
             ipc_port = self._bridge.start()
@@ -169,6 +197,10 @@ class Supervisor:
         logger.info(
             "[MOBILE] Supervisor started: HTTP subprocess pid=%s on %s:%s, IPC on 127.0.0.1:%s",
             self._proc.pid, http_host, self._http_port, ipc_port,
+        )
+        logger.info(
+            "[MOBILE] Test with: curl \"http://%s:%s/api/status?token=%s\"",
+            http_host, self._http_port, self._http_token,
         )
         return True
 
@@ -214,6 +246,7 @@ class Supervisor:
             "--ipc-token", self._token,
             "--http-port", str(self._http_port),
             "--http-host", http_host,
+            "--http-token", self._http_token,
         ]
         repo_root = Path(__file__).resolve().parents[2]
         return subprocess.Popen(cmd, cwd=str(repo_root))

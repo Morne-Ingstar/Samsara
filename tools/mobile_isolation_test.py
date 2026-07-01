@@ -37,8 +37,8 @@ HTTP_PORT_CHECK_5 = 18744
 HTTP_REQUEST_TIMEOUT_SECONDS = 5.0
 
 
-def _ping(port):
-    with urllib.request.urlopen(f"http://127.0.0.1:{port}/ping", timeout=HTTP_REQUEST_TIMEOUT_SECONDS) as resp:
+def _ping(port, token):
+    with urllib.request.urlopen(f"http://127.0.0.1:{port}/ping?token={token}", timeout=HTTP_REQUEST_TIMEOUT_SECONDS) as resp:
         return json.loads(resp.read().decode("utf-8"))
 
 
@@ -49,7 +49,7 @@ def check_1_and_2_ping_then_kill():
         started = supervisor.start()
         assert started, "supervisor.start() should succeed with a free port"
 
-        reply = _ping(HTTP_PORT_CHECK_1_2)
+        reply = _ping(HTTP_PORT_CHECK_1_2, supervisor.http_token)
         assert reply.get("ok") is True, f"expected ok:true, got {reply}"
         assert "pong" in reply, f"expected 'pong' in reply, got {reply}"
         print(f"  [1] PASS: /ping round-tripped through subprocess -> bridge: {reply}")
