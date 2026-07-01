@@ -1,6 +1,7 @@
 import copy
 import os
 import shutil
+import string
 import sys
 import math
 import wave
@@ -332,6 +333,19 @@ _WAKE_SESSION_TIMEOUT_S   = 10.0            # inactivity ends the open-ended wak
 _WAKE_SESSION_CHUNK_GAP_S = 1.0             # per-utterance VAD silence gap within a session
 _WAKE_SESSION_SEND_WORDS  = ['over', 'send'] # default send terminators that finalize a wake session
 
+# --- Whisper hallucination prevention ("Gate and Reset" architecture) ---
+# Causal fixes (input/model level) replacing the old output-text-only
+# heuristic, which is demoted to a backstop (_is_hallucinated_segments).
+# Per ARC tribunal verdict, arc_20260701_143252.md.
+_NO_SPEECH_THRESHOLD = 0.6   # faster-whisper native: per-segment silence-probability cutoff
+_LOGPROB_THRESHOLD   = -1.0  # faster-whisper native: log_prob_threshold (avg log-prob floor)
+_GATE_MAX_BUFFER_S   = 3.0   # only buffers this short or shorter are VAD-gated; longer
+                             # real dictation bypasses the gate entirely (no added latency)
+_GATE_MIN_CONTIG_MS  = 150   # minimum CONTIGUOUS high-confidence speech run required to pass
+_GATE_VAD_PROB       = 0.45  # Silero speech-probability threshold for the contiguous-run gate
+_FADE_MS             = 50    # linear fade-in/out applied to hotkey buffers, kills the
+                             # press/release click transient before it can reach VAD or Whisper
+
 
 def _get_pynput_command_key(button_name: str):
     """Resolve a command_mode.button string to a pynput Key or KeyCode.
@@ -465,6 +479,30 @@ def _split_audio_at_silences(
     return chunks if chunks else [audio]
 
 
+def _fade_edges(audio, sample_rate, fade_ms=_FADE_MS):
+    """Apply a linear fade-in/out to the first/last fade_ms of audio.
+
+    Kills the high-energy transient from the physical hotkey press/release,
+    which Whisper otherwise hears as "click click click". Returns a new
+    array; does not modify the input in place.
+
+    Clamps the fade length to at most half the buffer so in/out ramps never
+    overlap on a very short buffer (the hotkey path already skips anything
+    under 0.51s, but this stays safe regardless of caller).
+    """
+    n = len(audio)
+    fade_samples = int(sample_rate * fade_ms / 1000.0)
+    fade_samples = min(fade_samples, n // 2)
+    if fade_samples <= 0:
+        return audio
+    out = np.asarray(audio, dtype=np.float32).copy()
+    ramp_in = np.linspace(0.0, 1.0, fade_samples, dtype=np.float32)
+    ramp_out = np.linspace(1.0, 0.0, fade_samples, dtype=np.float32)
+    out[:fade_samples] *= ramp_in
+    out[-fade_samples:] *= ramp_out
+    return out
+
+
 def resample_audio(audio, orig_sr, target_sr=MODEL_SAMPLE_RATE):
     """Resample audio from orig_sr to target_sr using linear interpolation.
 
@@ -482,6 +520,17 @@ def resample_audio(audio, orig_sr, target_sr=MODEL_SAMPLE_RATE):
 
 def _is_hallucinated_segments(seg_list, text):
     """True if the transcription shows Whisper's degenerate-repetition signature.
+
+    BACKSTOP ONLY. The primary hallucination defenses are causal and run
+    before/during transcription: faster-whisper's native no_speech_threshold/
+    log_prob_threshold, the per-press condition_on_previous_text=False +
+    initial_prompt="" reset, the contiguous-confidence VAD gate on short
+    buffers, and the click-fade (see module-level _NO_SPEECH_THRESHOLD /
+    _GATE_* / _FADE_MS constants and _buffer_has_contiguous_speech). This
+    output-text heuristic is a cheap last-resort net for whatever slips
+    through those, not the primary defense -- do not extend its signatures;
+    fix causes upstream instead.
+
     Uses telemetry Whisper already computed; no re-inference. Conservative:
     only fires on clear signatures so real speech is never dropped."""
     t = (text or "").strip()
@@ -495,7 +544,10 @@ def _is_hallucinated_segments(seg_list, text):
         if cr is not None and cr > 3.0:
             return True
     # Signature B: low lexical diversity repetition (e.g. "click click click click").
-    words = t.lower().split()
+    # Strip surrounding punctuation before comparing words so "click," "click."
+    # "click!" count as the same repeated word instead of inflating diversity.
+    words = [w.strip(string.punctuation) for w in t.lower().split()]
+    words = [w for w in words if w]
     if len(words) >= 4:
         uniq = len(set(words))
         if uniq <= max(2, len(words) // 4):
@@ -2388,10 +2440,16 @@ class DictationApp:
         - accurate: Best accuracy, slower
         """
         mode = self.config.get('performance_mode', 'balanced')
-        
+
         base_params = {
             'language': self.config['language'],
             'initial_prompt': self.voice_training_window.get_initial_prompt(),
+            # Native faster-whisper silence suppression (primary hallucination
+            # defense -- see "Gate and Reset" architecture, module-level
+            # constants above). More causal than any post-hoc text check:
+            # Whisper itself returns empty on low-speech-probability audio.
+            'no_speech_threshold': _NO_SPEECH_THRESHOLD,
+            'log_prob_threshold': _LOGPROB_THRESHOLD,
         }
         
         if mode == 'fast':
@@ -4221,6 +4279,116 @@ class DictationApp:
                 except Exception as e:
                     print(f"[VAD] reset_states failed: {e}")
 
+    def _buffer_has_contiguous_speech(self, audio, src_rate,
+                                       min_ms=_GATE_MIN_CONTIG_MS,
+                                       prob_threshold=_GATE_VAD_PROB):
+        """True if `audio` contains a CONTIGUOUS run of >= min_ms high-confidence speech.
+
+        Unlike _vad_is_speech (which early-exits on the first speech-probable
+        frame -- fine for live "is anyone talking" gating), this tracks the
+        LONGEST contiguous run of frames above prob_threshold and requires it
+        to span at least min_ms. That's what rejects rhythmic line-noise
+        (speech-probable in total, but never contiguous) while still passing
+        a short whispered word.
+
+        Reuses the same Silero model/lock as _vad_is_speech (no second VAD
+        model). Falls back to _zcr_energy_contiguous_speech (Fix 5) if Silero
+        is unavailable. Fails OPEN (returns True) if neither can run --
+        eating real speech is worse than letting a rare beep through.
+        """
+        if not self._vad_available or self._vad_model is None:
+            return self._zcr_energy_contiguous_speech(audio, src_rate, min_ms=min_ms)
+
+        chunk_16k = resample_audio(audio, src_rate, 16000)
+        if chunk_16k.ndim > 1:
+            chunk_16k = chunk_16k.flatten()
+
+        window_size = 512
+        frame_ms = window_size / 16000 * 1000.0  # 32ms per Silero frame
+        min_contig_frames = max(1, int(min_ms / frame_ms))
+
+        contig = 0
+        best_contig = 0
+        for start in range(0, len(chunk_16k) - window_size + 1, window_size):
+            window = chunk_16k[start:start + window_size]
+            tensor = torch.from_numpy(window).float().unsqueeze(0)
+            if tensor.shape != (1, 512):
+                continue
+            with self._vad_lock:
+                with torch.no_grad():
+                    try:
+                        speech_prob = self._vad_model(tensor, 16000).item()
+                    except RuntimeError as e:
+                        print(f"[VAD] State corruption caught, auto-resetting: {e}")
+                        self._vad_model.reset_states()
+                        contig = 0
+                        continue
+            if speech_prob > prob_threshold:
+                contig += 1
+                best_contig = max(best_contig, contig)
+            else:
+                contig = 0
+
+        return best_contig >= min_contig_frames
+
+    def _zcr_energy_contiguous_speech(self, audio, src_rate,
+                                       min_ms=_GATE_MIN_CONTIG_MS,
+                                       zcr_low=0.02, zcr_high=0.30):
+        """Fallback presence gate when Silero VAD is unavailable (Fix 5).
+
+        Windowed zero-crossing-rate + energy check: a window counts as
+        speech-like if its short-time energy clears an adaptive floor AND its
+        ZCR falls in the speech-plausible band (electrical hum/line noise
+        typically sits outside this band even when energy is high). Requires
+        the same contiguous-run length as the VAD path.
+
+        Fails OPEN (returns True) on any failure or a buffer too short to
+        analyze -- see _buffer_has_contiguous_speech's docstring for why.
+        """
+        try:
+            audio = np.asarray(audio, dtype=np.float32)
+            if audio.ndim > 1:
+                audio = audio.flatten()
+
+            window_samples = max(1, int(src_rate * 0.032))  # ~32ms, matches Silero frame size
+            n_windows = len(audio) // window_samples
+            if n_windows == 0:
+                return True  # fail open -- buffer too short to analyze
+
+            trimmed = audio[:n_windows * window_samples]
+            frames = trimmed.reshape(n_windows, window_samples)
+
+            energy = np.sqrt(np.mean(frames ** 2, axis=1))
+            # Adaptive floor: a fixed multiple of the buffer's own median
+            # energy, so this works across mic gain/environment rather than
+            # a fixed absolute threshold.
+            noise_floor = np.median(energy)
+            energy_thresh = max(noise_floor * 2.0, 1e-4)
+
+            signs = np.sign(frames)
+            signs[signs == 0] = 1
+            zero_crossings = np.abs(np.diff(signs, axis=1)) > 0
+            zcr = np.mean(zero_crossings, axis=1)
+
+            speech_like = (energy > energy_thresh) & (zcr > zcr_low) & (zcr < zcr_high)
+
+            frame_ms = window_samples / src_rate * 1000.0
+            min_contig_frames = max(1, int(min_ms / frame_ms))
+
+            contig = 0
+            best_contig = 0
+            for is_speech in speech_like:
+                if is_speech:
+                    contig += 1
+                    best_contig = max(best_contig, contig)
+                else:
+                    contig = 0
+
+            return best_contig >= min_contig_frames
+        except Exception as e:
+            print(f"[GATE] ZCR fallback failed, failing open: {e}")
+            return True
+
     def register_wake_trace_callback(self, callback):
         """Register a callable that receives wake-word pipeline trace events.
 
@@ -5830,17 +5998,40 @@ class DictationApp:
         def transcribe():
             try:
                 audio_duration = len(audio) / self.model_rate
-                
+
                 # Get transcription parameters based on performance mode
                 transcribe_params = self.get_transcription_params()
                 # DISABLE faster-whisper's VAD for hotkey-triggered dictation.
                 # User explicitly pressed the hotkey — don't strip their speech.
                 transcribe_params['vad_filter'] = False
+                # Force a clean slate on EVERY hotkey press. Conditioning on
+                # tokens/prompt carried over from a previous press is what let
+                # hallucinations escalate over a session -- each press must
+                # start with zero residual state, independent of the [LONG]
+                # path below (which has its own reasons not to condition).
+                transcribe_params['condition_on_previous_text'] = False
+                transcribe_params['initial_prompt'] = ""
                 perf_mode = self.config.get('performance_mode', 'balanced')
 
                 # Guard: Whisper hallucinates on very short audio (<0.5s)
                 if audio_duration < 0.51:
                     print(f"[SKIP] Audio too short ({audio_duration:.2f}s) — skipping")
+                    return
+
+                # Kill the mechanical hotkey press/release click transient
+                # before it can trigger the gate below or Whisper itself.
+                audio_faded = _fade_edges(audio, self.model_rate, _FADE_MS)
+
+                # Short-buffer presence gate: hallucinations concentrate in
+                # short, near-silent buffers. Buffers longer than
+                # _GATE_MAX_BUFFER_S bypass the gate entirely -- real
+                # dictation must never pay VAD latency or risk being gated.
+                if audio_duration <= _GATE_MAX_BUFFER_S and not self._buffer_has_contiguous_speech(
+                    audio_faded, self.model_rate,
+                    min_ms=_GATE_MIN_CONTIG_MS, prob_threshold=_GATE_VAD_PROB,
+                ):
+                    print(f"[GATE] No contiguous speech in short buffer "
+                          f"({audio_duration:.2f}s) — skipping")
                     return
 
                 transcribe_start = time.time()
@@ -5854,7 +6045,8 @@ class DictationApp:
                     # Do NOT set condition_on_previous_text=True here — conditioning
                     # over long stitched sequences triggers Whisper's repetition-loop
                     # hallucination bug (the model echos earlier text indefinitely).
-                    chunks = _split_audio_at_silences(audio, self.model_rate)
+                    # initial_prompt is also cleared above, for consistency.
+                    chunks = _split_audio_at_silences(audio_faded, self.model_rate)
                     print(f"[LONG] {audio_duration:.1f}s recording split into "
                           f"{len(chunks)} chunk(s) at silence boundaries")
                     texts = []
@@ -5877,7 +6069,7 @@ class DictationApp:
                     text = " ".join(texts).strip()
                 else:
                     with self.model_lock:
-                        segments, info = self.model.transcribe(audio, **transcribe_params)
+                        segments, info = self.model.transcribe(audio_faded, **transcribe_params)
                     _seg_list = list(segments)
                     text = "".join([s.text for s in _seg_list]).strip()
                     if _is_hallucinated_segments(_seg_list, text):
