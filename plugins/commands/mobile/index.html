@@ -1,0 +1,445 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no, viewport-fit=cover">
+<meta name="theme-color" content="#0d1117">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<meta name="apple-mobile-web-app-title" content="Samsara">
+<link rel="manifest" href="/manifest.json">
+<title>Samsara Remote</title>
+<style>
+  *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+  :root {
+    --bg: #0d1117;
+    --surface: #161b22;
+    --border: #30363d;
+    --text: #c9d1d9;
+    --muted: #8b949e;
+    --accent: #58a6ff;
+    --danger: #f85149;
+    --green: #3fb950;
+    --radius: 16px;
+    --tap-min: 48px;
+  }
+
+  body {
+    font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', system-ui, sans-serif;
+    background: var(--bg);
+    color: var(--text);
+    min-height: 100dvh;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    padding: 20px;
+    -webkit-tap-highlight-color: transparent;
+    user-select: none;
+    -webkit-user-select: none;
+    touch-action: manipulation;
+  }
+
+  /* ── connection bar ── */
+  .conn-bar {
+    position: fixed; top: 0; left: 0; right: 0;
+    display: flex; align-items: center; gap: 8px;
+    padding: 8px 16px;
+    background: var(--surface);
+    border-bottom: 1px solid var(--border);
+    font-size: 13px; color: var(--muted);
+    z-index: 10;
+  }
+  .conn-dot {
+    width: 8px; height: 8px; border-radius: 50%; flex-shrink: 0;
+  }
+  .conn-dot.on { background: var(--green); }
+  .conn-dot.off { background: var(--danger); }
+
+  /* ── main card ── */
+  .card {
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: var(--radius);
+    padding: 24px;
+    width: 100%;
+    max-width: 400px;
+    display: flex; flex-direction: column; gap: 16px;
+  }
+
+  /* ── app selector ── */
+  .app-selector {
+    display: flex; gap: 8px;
+  }
+  .app-btn {
+    flex: 1;
+    padding: 10px 0;
+    border-radius: 12px; border: 1px solid var(--border);
+    background: var(--bg); color: var(--muted);
+    font-size: 14px; cursor: pointer;
+    transition: background 0.1s, color 0.1s, border-color 0.1s;
+  }
+  .app-btn.active {
+    background: var(--accent); color: #fff; border-color: var(--accent);
+  }
+
+  /* ── volume section ── */
+  .vol-row {
+    display: flex; align-items: center; gap: 12px;
+  }
+  .vol-btn {
+    width: var(--tap-min); height: var(--tap-min);
+    border-radius: 12px; border: 1px solid var(--border);
+    background: var(--bg); color: var(--text);
+    font-size: 22px; cursor: pointer;
+    display: flex; align-items: center; justify-content: center;
+    flex-shrink: 0;
+    transition: background 0.1s;
+  }
+  .vol-btn:active { background: var(--accent); color: #fff; }
+  .vol-slider-wrap { flex: 1; }
+  .vol-slider {
+    -webkit-appearance: none; appearance: none;
+    width: 100%; height: 8px; border-radius: 4px;
+    background: var(--border); outline: none;
+  }
+  .vol-slider::-webkit-slider-thumb {
+    -webkit-appearance: none; appearance: none;
+    width: 28px; height: 28px; border-radius: 50%;
+    background: var(--accent); cursor: pointer; border: 2px solid var(--bg);
+  }
+  .vol-pct {
+    font-size: 14px; color: var(--muted);
+    min-width: 36px; text-align: center;
+  }
+
+  /* ── transport row ── */
+  .transport-row {
+    display: flex; justify-content: center; gap: 16px;
+    padding: 8px 0;
+  }
+  .tx-btn {
+    width: 72px; height: 72px;
+    border-radius: 50%; border: 2px solid var(--border);
+    background: var(--bg); color: var(--text);
+    font-size: 28px; cursor: pointer;
+    display: flex; align-items: center; justify-content: center;
+    transition: background 0.1s, transform 0.1s;
+  }
+  .tx-btn:active {
+    background: var(--accent); color: #fff;
+    transform: scale(0.93);
+  }
+  .tx-btn.play-btn {
+    width: 80px; height: 80px;
+    font-size: 32px;
+    border-color: var(--accent);
+  }
+
+  /* ── mute ── */
+  .mute-row {
+    display: flex; justify-content: center;
+  }
+  .mute-btn {
+    padding: 10px 24px;
+    border-radius: 12px; border: 1px solid var(--border);
+    background: var(--bg); color: var(--muted);
+    font-size: 16px; cursor: pointer;
+    transition: background 0.1s;
+  }
+  .mute-btn:active { background: var(--accent); color: #fff; }
+  .mute-btn.active { background: var(--danger); color: #fff; border-color: var(--danger); }
+
+  /* ── settings (collapsed) ── */
+  .settings-toggle {
+    text-align: center; font-size: 13px; color: var(--muted);
+    cursor: pointer; padding: 8px;
+  }
+  .settings-panel {
+    display: none; flex-direction: column; gap: 8px;
+  }
+  .settings-panel.open { display: flex; }
+  .settings-panel input {
+    width: 100%; padding: 10px; border-radius: 8px;
+    border: 1px solid var(--border); background: var(--bg);
+    color: var(--text); font-size: 15px;
+    text-align: center;
+  }
+  .settings-panel button {
+    padding: 8px; border-radius: 8px;
+    border: 1px solid var(--border); background: var(--accent);
+    color: #fff; font-size: 14px; cursor: pointer;
+  }
+
+  /* ── toast ── */
+  .toast {
+    position: fixed; bottom: 30px; left: 50%; transform: translateX(-50%);
+    background: var(--surface); border: 1px solid var(--border);
+    padding: 10px 20px; border-radius: 12px;
+    font-size: 14px; opacity: 0; transition: opacity 0.3s;
+    pointer-events: none; z-index: 20;
+  }
+  .toast.show { opacity: 1; }
+
+  @media (max-width: 360px) {
+    .tx-btn { width: 60px; height: 60px; font-size: 24px; }
+    .tx-btn.play-btn { width: 68px; height: 68px; font-size: 28px; }
+  }
+</style>
+</head>
+<body>
+
+<div class="conn-bar">
+  <span class="conn-dot off" id="connDot"></span>
+  <span id="connLabel">Disconnected</span>
+  <span style="flex:1"></span>
+  <span id="fgApp" style="font-size:11px;color:var(--muted)"></span>
+</div>
+
+<div class="card">
+
+  <!-- App selector -->
+  <div class="app-selector" id="appSelector">
+    <button class="app-btn" id="appBtnCurrent" data-mode="current" aria-label="Control current media">Current</button>
+    <button class="app-btn" id="appBtnStremio" data-mode="stremio" aria-label="Control Stremio">Stremio</button>
+  </div>
+
+  <!-- Volume -->
+  <div class="vol-row">
+    <button class="vol-btn" id="volDown" aria-label="Volume down">🔉</button>
+    <div class="vol-slider-wrap">
+      <input type="range" class="vol-slider" id="volSlider" min="0" max="100" value="50">
+    </div>
+    <span class="vol-pct" id="volPct">50%</span>
+    <button class="vol-btn" id="volUp" aria-label="Volume up">🔊</button>
+  </div>
+
+  <!-- Transport -->
+  <div class="transport-row">
+    <button class="tx-btn" id="btnPrev" aria-label="Previous">⏮</button>
+    <button class="tx-btn play-btn" id="btnPlay" aria-label="Play/Pause">▶</button>
+    <button class="tx-btn" id="btnNext" aria-label="Next">⏭</button>
+  </div>
+
+  <!-- Mute -->
+  <div class="mute-row">
+    <button class="mute-btn" id="btnMute" aria-label="Mute">🔇  Mute</button>
+  </div>
+
+  <!-- Settings -->
+  <div class="settings-toggle" id="settingsToggle">⚙️  Settings</div>
+  <div class="settings-panel" id="settingsPanel">
+    <input type="text" id="serverInput" placeholder="192.168.1.50:8742" inputmode="url">
+    <button id="connectBtn">Connect</button>
+  </div>
+
+</div>
+
+<div class="toast" id="toast"></div>
+
+<script>
+// ── State ──────────────────────────────────────────────────────────────────
+// Injected server-side at serve time (see server_proc.py's TOKEN_PLACEHOLDER) --
+// this page was served BY the Samsara host you're about to talk to, so its
+// own API token comes along with it automatically.
+const SAMSARA_TOKEN = '__SAMSARA_HTTP_TOKEN__';
+let server = localStorage.getItem('samsara_server') || '';
+let isPlaying = false;
+let appMode = localStorage.getItem('samsara_app_mode') || 'stremio';
+
+// Auto-detect: if loaded from the server itself, use that origin
+if (!server && location.hostname !== 'localhost' && location.hostname !== '127.0.0.1') {
+  server = location.host;
+  localStorage.setItem('samsara_server', server);
+}
+document.getElementById('serverInput').value = server;
+
+// ── DOM refs ───────────────────────────────────────────────────────────────
+const connDot = document.getElementById('connDot');
+const connLabel = document.getElementById('connLabel');
+const volSlider = document.getElementById('volSlider');
+const volPct = document.getElementById('volPct');
+const btnPlay = document.getElementById('btnPlay');
+const btnMute = document.getElementById('btnMute');
+const toast = document.getElementById('toast');
+
+// ── API helpers ────────────────────────────────────────────────────────────
+async function api(method, path, body) {
+  if (!server) {
+    flash('No server set - open Settings');
+    return null;
+  }
+  const opts = { method, headers: {} };
+  if (body) {
+    opts.headers['Content-Type'] = 'application/json';
+    opts.body = JSON.stringify(body);
+  }
+  try {
+    const sep = path.includes('?') ? '&' : '?';
+    const resp = await fetch(`http://${server}${path}${sep}token=${encodeURIComponent(SAMSARA_TOKEN)}`, opts);
+    setConnected(true);
+    if (!resp.ok) {
+      flash(`Server error (${resp.status})`);
+      return null;
+    }
+    const json = await resp.json();
+    if (json && json.ok === false) {
+      flash(json.error || 'Command failed');
+    }
+    return json;
+  } catch (e) {
+    setConnected(false);
+    flash('Cannot reach server');
+    return null;
+  }
+}
+
+function setConnected(ok) {
+  connDot.className = 'conn-dot ' + (ok ? 'on' : 'off');
+  connLabel.textContent = ok ? 'Connected' : 'Disconnected';
+}
+
+// ── App mode (Current vs. a targeted app) ─────────────────────────────────
+function transportPath(action) {
+  return appMode === 'stremio' ? `/api/app/${action}` : `/api/${action}`;
+}
+
+function transportBody() {
+  return appMode === 'stremio' ? { app: 'stremio' } : undefined;
+}
+
+function updateAppSelector() {
+  document.getElementById('appBtnCurrent').classList.toggle('active', appMode === 'current');
+  document.getElementById('appBtnStremio').classList.toggle('active', appMode === 'stremio');
+}
+
+document.getElementById('appSelector').addEventListener('click', (e) => {
+  const btn = e.target.closest('.app-btn');
+  if (!btn) return;
+  appMode = btn.dataset.mode;
+  localStorage.setItem('samsara_app_mode', appMode);
+  updateAppSelector();
+  flash(appMode === 'stremio' ? 'Controlling Stremio' : 'Controlling current media');
+});
+
+updateAppSelector();
+
+// ── Actions ────────────────────────────────────────────────────────────────
+async function refreshStatus() {
+  const s = await api('GET', '/api/status');
+  if (!s) return;
+  if (s.volume != null) {
+    volSlider.value = s.volume;
+    volPct.textContent = s.volume + '%';
+  }
+  if (s.muted != null) {
+    updateMuteButton(s.muted);
+  }
+  if (s.foreground_app) {
+    document.getElementById('fgApp').textContent = '🎯 ' + s.foreground_app.replace('.exe','');
+  }
+}
+
+function updateMuteButton(muted) {
+  btnMute.textContent = muted ? '🔊  Unmute' : '🔇  Mute';
+  btnMute.classList.toggle('active', muted);
+}
+
+function flash(msg) {
+  toast.textContent = msg;
+  toast.classList.add('show');
+  setTimeout(() => toast.classList.remove('show'), 1500);
+}
+
+// ── Event bindings ─────────────────────────────────────────────────────────
+
+// Play / Pause (toggle)
+btnPlay.addEventListener('click', async () => {
+  const r = await api('POST', transportPath('toggle'), transportBody());
+  if (r?.ok) {
+    isPlaying = !isPlaying;
+    btnPlay.textContent = isPlaying ? '⏸' : '▶';
+    flash(isPlaying ? 'Playing' : 'Paused');
+  }
+});
+
+document.getElementById('btnPrev').addEventListener('click', async () => {
+  const r = await api('POST', transportPath('previous'), transportBody());
+  if (r?.ok) flash('Previous');
+});
+
+document.getElementById('btnNext').addEventListener('click', async () => {
+  const r = await api('POST', transportPath('next'), transportBody());
+  if (r?.ok) flash('Next');
+});
+
+// Volume slider
+let volTimer = null;
+volSlider.addEventListener('input', () => {
+  volPct.textContent = volSlider.value + '%';
+  clearTimeout(volTimer);
+  volTimer = setTimeout(async () => {
+    await api('POST', '/api/volume', { level: parseInt(volSlider.value) });
+  }, 100);
+});
+
+// Volume buttons
+document.getElementById('volUp').addEventListener('click', async () => {
+  const cur = parseInt(volSlider.value);
+  const next = Math.min(100, Math.ceil((cur + 1) / 4) * 4); // snap to 4% steps
+  volSlider.value = next;
+  volPct.textContent = next + '%';
+  await api('POST', '/api/volume', { level: next });
+});
+
+document.getElementById('volDown').addEventListener('click', async () => {
+  const cur = parseInt(volSlider.value);
+  const prev = Math.max(0, Math.floor((cur - 1) / 4) * 4);
+  volSlider.value = prev;
+  volPct.textContent = prev + '%';
+  await api('POST', '/api/volume', { level: prev });
+});
+
+// Mute
+btnMute.addEventListener('click', async () => {
+  const r = await api('POST', '/api/mute', { action: 'toggle' });
+  if (r != null) updateMuteButton(r.muted);
+});
+
+// Settings
+document.getElementById('settingsToggle').addEventListener('click', () => {
+  document.getElementById('settingsPanel').classList.toggle('open');
+});
+
+document.getElementById('connectBtn').addEventListener('click', () => {
+  const input = document.getElementById('serverInput').value.trim();
+  if (input) {
+    server = input;
+    localStorage.setItem('samsara_server', server);
+    refreshStatus();
+    document.getElementById('settingsPanel').classList.remove('open');
+    flash('Connected');
+  }
+});
+
+// Keyboard shortcuts (for testing on desktop)
+document.addEventListener('keydown', (e) => {
+  if (e.target.tagName === 'INPUT') return;
+  switch (e.code) {
+    case 'Space': e.preventDefault(); btnPlay.click(); break;
+    case 'ArrowLeft': document.getElementById('btnPrev').click(); break;
+    case 'ArrowRight': document.getElementById('btnNext').click(); break;
+    case 'ArrowUp': document.getElementById('volUp').click(); break;
+    case 'ArrowDown': document.getElementById('volDown').click(); break;
+    case 'KeyM': btnMute.click(); break;
+  }
+});
+
+// ── Init ───────────────────────────────────────────────────────────────────
+refreshStatus();
+// Periodic refresh (every 10s) to keep volume in sync
+setInterval(refreshStatus, 10000);
+</script>
+</body>
+</html>

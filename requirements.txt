@@ -63,3 +63,6 @@ pywebview>=5.0
 
 # Wake word pre-filter (gates Whisper calls — reduces CPU on machines without GPU)
 openwakeword>=0.6.0
+
+# Mobile companion: local QR code generation for the phone connect URL
+qrcode>=7.4.0

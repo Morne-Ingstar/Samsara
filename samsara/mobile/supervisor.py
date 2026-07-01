@@ -1,4 +1,4 @@
-"""Samsara Mobile Companion -- supervisor (Phase 2: real controls).
+"""Samsara Mobile Companion -- supervisor (Phase 3: PWA + app-targeted transport).
 
 Owned by the main app (DictationApp). start()/stop() are the only entry
 points that do I/O -- nothing in this module binds a socket or spawns a
@@ -15,11 +15,15 @@ boundaries:
   - the IPC token authenticates the subprocess to the in-process bridge
     (127.0.0.1 only, never leaves this machine's loopback interface).
   - the HTTP token authenticates LAN clients (phone, curl, etc.) to the
-    subprocess's HTTP server, since Phase 2 exposes real system controls
-    (volume, mute, media transport) on the LAN interface.
+    subprocess's HTTP server, since real system controls (volume, mute,
+    media transport) are exposed on the LAN interface.
 These must never be the same value -- the HTTP token is meant to be shared
-with LAN clients (e.g. via a QR code in a later phase), and doing so must
-never expose the IPC channel.
+with LAN clients (server_proc.py injects it into the served index.html), and
+doing so must never expose the IPC channel. Note this means the token is a
+"must load the page first" gate rather than a secret proof against anyone
+who can already reach the LAN server and view-source the page -- the real
+boundary is the LAN itself; the token mainly blocks blind/automated clients
+that never load the page.
 """
 
 import logging
@@ -37,6 +41,7 @@ from .handlers import (
     make_volume_set_handler,
     make_mute_set_handler,
     make_transport_handler,
+    make_app_transport_handler,
 )
 from . import server_proc
 
@@ -118,6 +123,7 @@ class Supervisor:
         self._stop_event = threading.Event()
         self._enabled = False
         self._restart_count = 0
+        self._resolved_http_host = None
         self.interpreter_used = None
 
     @property
@@ -140,6 +146,21 @@ class Supervisor:
         """The shared secret LAN clients must present to the HTTP layer (or None)."""
         return self._http_token
 
+    @property
+    def http_host(self):
+        """The resolved LAN host the subprocess is bound to (or None before start())."""
+        return self._resolved_http_host
+
+    @property
+    def http_port(self):
+        return self._http_port
+
+    def connect_url(self):
+        """The URL a phone should open (or None if the feature isn't running)."""
+        if not self._resolved_http_host:
+            return None
+        return f"http://{self._resolved_http_host}:{self._http_port}/"
+
     def start(self):
         """Bring up the bridge + subprocess. Returns True on success.
 
@@ -157,6 +178,7 @@ class Supervisor:
         self._bridge.register("volume_set", make_volume_set_handler())
         self._bridge.register("mute_set", make_mute_set_handler())
         self._bridge.register("transport", make_transport_handler())
+        self._bridge.register("transport_app", make_app_transport_handler())
 
         try:
             ipc_port = self._bridge.start()
@@ -166,6 +188,7 @@ class Supervisor:
             return False
 
         http_host = self._http_host or _get_lan_ip()
+        self._resolved_http_host = http_host
 
         try:
             self._proc = self._spawn_subprocess(ipc_port, http_host)
@@ -173,6 +196,7 @@ class Supervisor:
             logger.warning("[MOBILE] Subprocess spawn failed, feature disabled: %s", e)
             self._bridge.stop()
             self._bridge = None
+            self._resolved_http_host = None
             return False
 
         # Give the subprocess a moment to either bind its HTTP port or die
@@ -185,6 +209,7 @@ class Supervisor:
             self._bridge.stop()
             self._bridge = None
             self._proc = None
+            self._resolved_http_host = None
             return False
 
         self._enabled = True
@@ -233,6 +258,7 @@ class Supervisor:
             self._bridge = None
 
         self._enabled = False
+        self._resolved_http_host = None
         logger.info("[MOBILE] Supervisor stopped")
 
     # -- internals -----------------------------------------------------------

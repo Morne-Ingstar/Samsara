@@ -1,0 +1,14 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512" fill="none">
+  <defs>
+    <linearGradient id="bg" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0%" stop-color="#161b22"/>
+      <stop offset="100%" stop-color="#0d1117"/>
+    </linearGradient>
+  </defs>
+  <!-- Background -->
+  <rect width="512" height="512" rx="96" fill="url(#bg)"/>
+  <!-- Play triangle -->
+  <polygon points="200,140 200,372 400,256" fill="#58a6ff" stroke="#58a6ff" stroke-width="8" stroke-linejoin="round"/>
+  <!-- Subtle ring -->
+  <circle cx="256" cy="256" r="220" fill="none" stroke="#30363d" stroke-width="4"/>
+</svg>
