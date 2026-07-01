@@ -16,6 +16,12 @@ DEFAULT_SPEECH_THRESHOLD = 0.03    # RMS level to detect speech
 DEFAULT_MIN_SPEECH_DURATION = 0.3  # seconds of speech before transcription
 DEFAULT_SILENCE_TIMEOUT = 2.0      # seconds of silence to end recording
 
+# Continuous-mode commit trigger defaults (overridable via config)
+DEFAULT_CONTINUOUS_COMMIT_TRIGGER = 'silence'  # 'silence' (auto, today's behavior) | 'key' (manual)
+DEFAULT_CONTINUOUS_COMMIT_HOTKEY = 'ctrl+space'  # hotkey that commits when trigger == 'key'
+DEFAULT_CONTINUOUS_MAX_BUFFER_S = 60.0  # safety cap: auto-commit an un-committed 'key'-mode
+                                        # session past this many seconds of accumulated speech
+
 # Wake word defaults (overridable via config)
 WAKE_DETECTION_SILENCE = 0.8        # seconds of silence during wake word listening
 WAKE_COMMAND_TIMEOUT = 5.0         # seconds to wait for command after wake word
