@@ -3,15 +3,27 @@
 Replaces continuous_audio_callback + the per-mode PortAudio InputStream
 in start_continuous_mode with a single long-lived ring consumer.
 
-Policy is unchanged from continuous_audio_callback:
+Policy is unchanged from continuous_audio_callback when
+continuous_commit_trigger == "silence" (the default):
   - RMS gate for speech detection (configurable threshold).
   - No prebuffer rewind — continuous mode has no pre-trigger window.
   - Echo cancellation applied (AEC output used for Whisper, same as old callback).
   - Silence timeout flushes accumulated frames to transcribe_continuous_buffer.
 
+When continuous_commit_trigger == "key" (variant A, commit-as-you-go):
+  - Silence never auto-commits -- it's unlimited thinking time.
+  - Dead-air frames during silence are NOT appended (only speech frames are),
+    so a manual commit's buffer is speech-only across pause-separated phrases.
+  - commit_now() (called from the hotkey handler) flushes on demand.
+  - continuous_max_buffer_s bounds an un-committed session so it can't grow
+    unbounded if the user forgets to tap the commit hotkey.
+
 Thread model: single daemon thread polling the ring at ~5ms intervals.
 Flushed utterances are dispatched to transcribe_continuous_buffer on
-separate daemon threads (same as the old callback).
+separate daemon threads (same as the old callback). commit_now() may be
+called from a different thread (the keyboard listener) while the poll
+thread is concurrently appending frames; _frames_lock protects the shared
+frame-list state against that race.
 """
 
 import threading
@@ -23,6 +35,8 @@ from .frame import FRAME_MS, SAMPLE_RATE
 from .ring import EMPTY
 
 from samsara.constants import (
+    DEFAULT_CONTINUOUS_COMMIT_TRIGGER,
+    DEFAULT_CONTINUOUS_MAX_BUFFER_S,
     DEFAULT_MIN_SPEECH_DURATION,
     DEFAULT_SILENCE_TIMEOUT,
     DEFAULT_SPEECH_THRESHOLD,
@@ -49,6 +63,10 @@ class ContinuousConsumer:
         self._speech_frames: list = []   # float32 arrays at SAMPLE_RATE
         self._is_speaking   = False
         self._silence_start: float | None = None
+        # Guards _speech_frames/_is_speaking/_silence_start against the poll
+        # thread (_process_frame) and any other thread (commit_now(), stop())
+        # touching them concurrently.
+        self._frames_lock = threading.Lock()
 
     # ── Lifecycle ─────────────────────────────────────────────────────────────
 
@@ -73,10 +91,11 @@ class ContinuousConsumer:
         if self._thread is not None:
             self._thread.join(timeout=2.0)
             self._thread = None
-        remaining = list(self._speech_frames)
-        self._speech_frames = []
-        self._is_speaking   = False
-        self._silence_start = None
+        with self._frames_lock:
+            remaining = list(self._speech_frames)
+            self._speech_frames = []
+            self._is_speaking   = False
+            self._silence_start = None
         return remaining
 
     def deactivate(self) -> None:
@@ -86,6 +105,21 @@ class ContinuousConsumer:
             self._engine.unregister_consumer(self._reader)
         except Exception:
             pass
+
+    # ── Manual commit (continuous_commit_trigger == "key") ──────────────────
+
+    def commit_now(self) -> None:
+        """Manually commit accumulated speech now.
+
+        Safe to call from any thread (e.g. the keyboard listener) while
+        _process_frame runs concurrently on the poll thread. No-op if
+        there's nothing to commit (accumulated speech below
+        min_speech_duration) -- logs nothing in that case, since the user
+        didn't actually say anything to commit.
+        """
+        committed = self._flush()
+        if committed:
+            print("[CONTINUOUS] Manual commit")
 
     # ── Poll loop ─────────────────────────────────────────────────────────────
 
@@ -122,34 +156,68 @@ class ContinuousConsumer:
         # Thresholds (same config keys as the legacy continuous_audio_callback)
         speech_threshold  = app.config.get('continuous_speech_threshold', DEFAULT_SPEECH_THRESHOLD)
         silence_threshold = app.config.get('silence_threshold', DEFAULT_SILENCE_TIMEOUT)
-        min_speech        = app.config.get('min_speech_duration', DEFAULT_MIN_SPEECH_DURATION)
+        trigger = app.config.get('continuous_commit_trigger', DEFAULT_CONTINUOUS_COMMIT_TRIGGER)
 
         if rms > speech_threshold:
-            self._is_speaking   = True
-            self._silence_start = None
-            self._speech_frames.append(audio_chunk)
-        else:
-            if self._is_speaking:
+            with self._frames_lock:
+                self._is_speaking   = True
+                self._silence_start = None
                 self._speech_frames.append(audio_chunk)
+        elif self._is_speaking:
+            if trigger == 'key':
+                # Key-commit mode: silence is unlimited thinking time, never
+                # a commit -- the silence-timeout flush below is skipped
+                # entirely. Dead-air frames are NOT appended either, so the
+                # eventual commit's buffer stays speech-only across
+                # pause-separated phrases. The session stays open
+                # (_is_speaking untouched) until commit_now() or the safety
+                # cap below fires.
+                max_buffer_s = app.config.get('continuous_max_buffer_s', DEFAULT_CONTINUOUS_MAX_BUFFER_S)
+                speech_duration = len(self._speech_frames) * (FRAME_MS / 1000.0)
+                if speech_duration >= max_buffer_s:
+                    print("[CONTINUOUS] Max buffer reached — auto-committing")
+                    self._flush()
+            else:
+                # trigger == "silence" (default): EXACTLY today's behavior,
+                # unchanged.
+                with self._frames_lock:
+                    self._speech_frames.append(audio_chunk)
 
                 if self._silence_start is None:
                     self._silence_start = time.time()
                 elif time.time() - self._silence_start >= silence_threshold:
-                    speech_duration = len(self._speech_frames) * (FRAME_MS / 1000.0)
-                    if speech_duration >= min_speech:
-                        buffer_copy = list(self._speech_frames)
-                    else:
-                        buffer_copy = None
-                    self._speech_frames = []
-                    self._is_speaking   = False
-                    self._silence_start = None
+                    self._flush()
 
-                    if buffer_copy is not None:
-                        threading.Thread(
-                            target=app.transcribe_continuous_buffer,
-                            args=(buffer_copy, SAMPLE_RATE),
-                            daemon=True,
-                        ).start()
+    def _flush(self) -> bool:
+        """Copy accumulated speech frames (if any), reset state, dispatch transcription.
+
+        Thread-safe against _process_frame's concurrent appends via
+        _frames_lock. Returns True if a transcription was actually
+        dispatched, False if there was nothing to commit (below
+        min_speech_duration).
+        """
+        app = self._app
+        min_speech = app.config.get('min_speech_duration', DEFAULT_MIN_SPEECH_DURATION)
+
+        with self._frames_lock:
+            speech_duration = len(self._speech_frames) * (FRAME_MS / 1000.0)
+            if speech_duration >= min_speech:
+                buffer_copy = list(self._speech_frames)
+            else:
+                buffer_copy = None
+            self._speech_frames = []
+            self._is_speaking   = False
+            self._silence_start = None
+
+        if buffer_copy is None:
+            return False
+
+        threading.Thread(
+            target=app.transcribe_continuous_buffer,
+            args=(buffer_copy, SAMPLE_RATE),
+            daemon=True,
+        ).start()
+        return True
 
     def __repr__(self) -> str:
         return (
