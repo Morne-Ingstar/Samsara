@@ -1,12 +1,18 @@
-"""Samsara Mobile Companion -- subprocess entry point (Phase 1).
+"""Samsara Mobile Companion -- subprocess entry point (Phase 2: real controls).
 
 Run as: F:\\envs\\sami\\python.exe -m samsara.mobile.server_proc
 
 This process runs the LAN-facing HTTP server. It NEVER touches Samsara's
-COM-based backends (volume.py, music.py) directly -- it isn't even in the
-same OS process as the COM-initialized main app. Every control request is
-forwarded as JSON-RPC over a 127.0.0.1 socket to the in-process bridge
+COM-based backends (volume.py, media_keys.py) directly -- it isn't even in
+the same OS process as the COM-initialized main app. Every control request
+is forwarded as JSON-RPC over a 127.0.0.1 socket to the in-process bridge
 (bridge.py), which dispatches it to a handler on the main Samsara side.
+
+Every route requires a `token` query parameter matching --http-token. This
+is a SEPARATE secret from --ipc-token: the IPC token authenticates this
+subprocess to the bridge (loopback only, never sent to a LAN client); the
+HTTP token authenticates LAN clients (phone, curl) to this subprocess, since
+Phase 2 exposes real system controls on the LAN interface.
 
 All I/O (socket connect, HTTP bind) happens inside serve()/main(), never at
 import time -- this module is safe to import for inspection or testing
@@ -19,6 +25,7 @@ import logging
 import os
 import socket
 from http.server import HTTPServer, BaseHTTPRequestHandler
+from urllib.parse import urlparse, parse_qs
 
 logger = logging.getLogger(__name__)
 
@@ -29,6 +36,7 @@ ENV_IPC_PORT = "SAMSARA_MOBILE_IPC_PORT"
 ENV_IPC_TOKEN = "SAMSARA_MOBILE_IPC_TOKEN"
 ENV_HTTP_PORT = "SAMSARA_MOBILE_HTTP_PORT"
 ENV_HTTP_HOST = "SAMSARA_MOBILE_HTTP_HOST"
+ENV_HTTP_TOKEN = "SAMSARA_MOBILE_HTTP_TOKEN"
 
 DEFAULT_HTTP_PORT = 8742
 
@@ -36,10 +44,14 @@ DEFAULT_HTTP_PORT = 8742
 IPC_CONNECT_TIMEOUT_SECONDS = 5.0
 IPC_HOST = "127.0.0.1"
 
+# Transport actions exposed as their own routes (no request body needed --
+# the action is the route itself).
+TRANSPORT_ROUTES = ("play", "pause", "toggle", "next", "previous")
 
-def _forward_to_bridge(ipc_port, token, action, params=None):
+
+def _forward_to_bridge(ipc_port, ipc_token, action, params=None):
     """Send one JSON-RPC request to the in-process bridge, return its reply dict."""
-    request = {"token": token, "action": action, "params": params or {}}
+    request = {"token": ipc_token, "action": action, "params": params or {}}
     with socket.create_connection((IPC_HOST, ipc_port), timeout=IPC_CONNECT_TIMEOUT_SECONDS) as sock:
         sock.sendall((json.dumps(request) + "\n").encode("utf-8"))
         sock.settimeout(IPC_CONNECT_TIMEOUT_SECONDS)
@@ -56,8 +68,8 @@ def _forward_to_bridge(ipc_port, token, action, params=None):
         return {"ok": False, "error": f"malformed bridge reply: {e}"}
 
 
-def make_handler(ipc_port, token):
-    """Build a BaseHTTPRequestHandler class closed over the bridge connection info."""
+def make_handler(ipc_port, ipc_token, http_token):
+    """Build a BaseHTTPRequestHandler class closed over the bridge/auth info."""
 
     class MobileRequestHandler(BaseHTTPRequestHandler):
         def log_message(self, fmt, *args):
@@ -71,14 +83,62 @@ def make_handler(ipc_port, token):
             self.end_headers()
             self.wfile.write(body)
 
+        def _authorized(self, query):
+            return (query.get("token") or [None])[0] == http_token
+
+        def _forward(self, action, params=None):
+            try:
+                reply = _forward_to_bridge(ipc_port, ipc_token, action, params)
+            except OSError as e:
+                self._send_json({"ok": False, "error": f"bridge unreachable: {e}"}, 502)
+                return
+            self._send_json(reply)
+
+        def _read_json_body(self):
+            length = int(self.headers.get("Content-Length", 0))
+            raw = self.rfile.read(length) if length > 0 else b"{}"
+            try:
+                return json.loads(raw.decode("utf-8"))
+            except (json.JSONDecodeError, UnicodeDecodeError):
+                return {}
+
         def do_GET(self):
-            if self.path.rstrip("/") == "/ping":
-                try:
-                    reply = _forward_to_bridge(ipc_port, token, "ping")
-                except OSError as e:
-                    self._send_json({"ok": False, "error": f"bridge unreachable: {e}"}, 502)
-                    return
-                self._send_json(reply)
+            parsed = urlparse(self.path)
+            path = parsed.path.rstrip("/") or "/"
+            query = parse_qs(parsed.query)
+
+            if not self._authorized(query):
+                self._send_json({"ok": False, "error": "unauthorized"}, 401)
+                return
+
+            if path == "/ping":
+                self._forward("ping")
+                return
+            if path == "/api/status":
+                self._forward("status")
+                return
+            self._send_json({"ok": False, "error": "unknown endpoint"}, 404)
+
+        def do_POST(self):
+            parsed = urlparse(self.path)
+            path = parsed.path.rstrip("/") or "/"
+            query = parse_qs(parsed.query)
+
+            if not self._authorized(query):
+                self._send_json({"ok": False, "error": "unauthorized"}, 401)
+                return
+
+            if path == "/api/volume":
+                body = self._read_json_body()
+                self._forward("volume_set", {"level": body.get("level")})
+                return
+            if path == "/api/mute":
+                body = self._read_json_body()
+                self._forward("mute_set", {"action": body.get("action", "toggle")})
+                return
+            if path.startswith("/api/") and path[len("/api/"):] in TRANSPORT_ROUTES:
+                action = path[len("/api/"):]
+                self._forward("transport", {"action": action})
                 return
             self._send_json({"ok": False, "error": "unknown endpoint"}, 404)
 
@@ -107,6 +167,7 @@ def parse_args(argv=None):
     parser.add_argument("--ipc-token", type=str, default=None)
     parser.add_argument("--http-port", type=int, default=None)
     parser.add_argument("--http-host", type=str, default=None)
+    parser.add_argument("--http-token", type=str, default=None)
     return parser.parse_args(argv)
 
 
@@ -114,16 +175,19 @@ def resolve_config(argv=None):
     """Merge argv flags (preferred) with env var fallbacks into a concrete config."""
     args = parse_args(argv)
     ipc_port = args.ipc_port or int(os.environ.get(ENV_IPC_PORT, "0"))
-    token = args.ipc_token or os.environ.get(ENV_IPC_TOKEN, "")
+    ipc_token = args.ipc_token or os.environ.get(ENV_IPC_TOKEN, "")
     http_port = args.http_port or int(os.environ.get(ENV_HTTP_PORT, str(DEFAULT_HTTP_PORT)))
     http_host = args.http_host or os.environ.get(ENV_HTTP_HOST) or get_lan_ip()
-    if not ipc_port or not token:
+    http_token = args.http_token or os.environ.get(ENV_HTTP_TOKEN, "")
+    if not ipc_port or not ipc_token:
         raise SystemExit("server_proc requires --ipc-port and --ipc-token (or matching env vars)")
-    return ipc_port, token, http_host, http_port
+    if not http_token:
+        raise SystemExit("server_proc requires --http-token (or matching env var)")
+    return ipc_port, ipc_token, http_host, http_port, http_token
 
 
-def serve(ipc_port, token, http_host, http_port):
-    handler_cls = make_handler(ipc_port, token)
+def serve(ipc_port, ipc_token, http_host, http_port, http_token):
+    handler_cls = make_handler(ipc_port, ipc_token, http_token)
     httpd = HTTPServer((http_host, http_port), handler_cls)
     logger.info(
         "[MOBILE-PROC] Serving on %s:%s, forwarding to bridge at 127.0.0.1:%s",
@@ -135,8 +199,8 @@ def serve(ipc_port, token, http_host, http_port):
 
 def main(argv=None):
     logging.basicConfig(level=logging.INFO)
-    ipc_port, token, http_host, http_port = resolve_config(argv)
-    serve(ipc_port, token, http_host, http_port)
+    ipc_port, ipc_token, http_host, http_port, http_token = resolve_config(argv)
+    serve(ipc_port, ipc_token, http_host, http_port, http_token)
 
 
 if __name__ == "__main__":

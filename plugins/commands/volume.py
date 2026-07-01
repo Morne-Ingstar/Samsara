@@ -215,14 +215,14 @@ class _CoreAudio:
 
     def get_mute(self):
         """Get mute state.
-        IAudioEndpointVolume vtable index 13: GetMute
+        IAudioEndpointVolume vtable index 15: GetMute
         """
         vol = self._get_volume_interface()
         if not vol:
             return None
         try:
             func = _get_vtable_func(
-                vol, 13, HRESULT,
+                vol, 15, HRESULT,
                 c_void_p,              # this
                 POINTER(ctypes.c_int)  # pbMute
             )
@@ -236,14 +236,14 @@ class _CoreAudio:
 
     def set_mute(self, mute):
         """Set mute state.
-        IAudioEndpointVolume vtable index 12: SetMute
+        IAudioEndpointVolume vtable index 14: SetMute
         """
         vol = self._get_volume_interface()
         if not vol:
             return False
         try:
             func = _get_vtable_func(
-                vol, 12, HRESULT,
+                vol, 14, HRESULT,
                 c_void_p,      # this
                 ctypes.c_int,  # bMute
                 c_void_p       # pguidEventContext
