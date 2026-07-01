@@ -957,17 +957,37 @@ class DictationApp:
         self.update_splash("Setting up audio...")
 
         # Set the Samsara wheel as the default icon for all Qt windows.
+        #
+        # QImage/QPixmap/QIcon are GUI objects that must be constructed on
+        # the Qt thread; this __init__ runs on a different thread. Building
+        # them here used to intermittently deadlock boot (observed ~67% of
+        # cold boots hanging at exactly this point, before audio device
+        # enumeration). The PIL rendering (create_icon_image) isn't Qt and
+        # stays here; only the QImage/QPixmap/QIcon/setWindowIcon calls move
+        # onto the Qt thread via qt_runtime.post(), fire-and-forget so boot
+        # never blocks on it.
         try:
-            from PySide6.QtGui import QIcon, QImage, QPixmap
-            from PySide6.QtWidgets import QApplication
             _icon_pil = self.create_icon_image(active=True).convert("RGBA")
-            _icon_qi  = QImage(
-                _icon_pil.tobytes(), _icon_pil.width, _icon_pil.height,
-                QImage.Format.Format_RGBA8888,
-            )
-            QApplication.instance().setWindowIcon(QIcon(QPixmap.fromImage(_icon_qi)))
+            _icon_bytes = _icon_pil.tobytes()
+            _icon_w, _icon_h = _icon_pil.width, _icon_pil.height
+
+            def _apply_window_icon():
+                try:
+                    from PySide6.QtGui import QIcon, QImage, QPixmap
+                    from PySide6.QtWidgets import QApplication
+                    icon_qi = QImage(
+                        _icon_bytes, _icon_w, _icon_h,
+                        QImage.Format.Format_RGBA8888,
+                    )
+                    QApplication.instance().setWindowIcon(QIcon(QPixmap.fromImage(icon_qi)))
+                except Exception as _e:
+                    print(f"[ICON] Could not set Qt window icon: {_e}")
+
+            from samsara.ui import qt_runtime
+            qt_runtime.ensure_started()
+            qt_runtime.post(_apply_window_icon)
         except Exception as _e:
-            print(f"[ICON] Could not set Qt window icon: {_e}")
+            print(f"[ICON] Could not prepare window icon: {_e}")
 
         print("[INIT] Enumerating audio devices...")
         self.available_mics = self.get_available_microphones()
