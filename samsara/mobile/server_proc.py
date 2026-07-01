@@ -1,4 +1,4 @@
-"""Samsara Mobile Companion -- subprocess entry point (Phase 2: real controls).
+"""Samsara Mobile Companion -- subprocess entry point (Phase 3: PWA + controls).
 
 Run as: F:\\envs\\sami\\python.exe -m samsara.mobile.server_proc
 
@@ -8,11 +8,19 @@ the same OS process as the COM-initialized main app. Every control request
 is forwarded as JSON-RPC over a 127.0.0.1 socket to the in-process bridge
 (bridge.py), which dispatches it to a handler on the main Samsara side.
 
-Every route requires a `token` query parameter matching --http-token. This
-is a SEPARATE secret from --ipc-token: the IPC token authenticates this
-subprocess to the bridge (loopback only, never sent to a LAN client); the
-HTTP token authenticates LAN clients (phone, curl) to this subprocess, since
-Phase 2 exposes real system controls on the LAN interface.
+Every /api/* and /ping route requires a `token` query parameter matching
+--http-token. This is a SEPARATE secret from --ipc-token: the IPC token
+authenticates this subprocess to the bridge (loopback only, never sent to a
+LAN client); the HTTP token authenticates LAN clients (phone, curl) to this
+subprocess, since real system controls are exposed on the LAN interface.
+
+The static PWA (index.html, manifest.json, icon.svg -- served from
+plugins/commands/mobile/) is intentionally NOT token-gated: index.html is
+how a client gets the token in the first place (it's injected into the page
+at serve time, replacing a placeholder). This makes the token a "must load
+the page" gate rather than a secret against anyone who can already reach
+this LAN server and view-source the page -- the real trust boundary is the
+LAN itself.
 
 All I/O (socket connect, HTTP bind) happens inside serve()/main(), never at
 import time -- this module is safe to import for inspection or testing
@@ -25,6 +33,7 @@ import logging
 import os
 import socket
 from http.server import HTTPServer, BaseHTTPRequestHandler
+from pathlib import Path
 from urllib.parse import urlparse, parse_qs
 
 logger = logging.getLogger(__name__)
@@ -47,6 +56,21 @@ IPC_HOST = "127.0.0.1"
 # Transport actions exposed as their own routes (no request body needed --
 # the action is the route itself).
 TRANSPORT_ROUTES = ("play", "pause", "toggle", "next", "previous")
+
+# Static PWA assets, served from the existing plugins/commands/mobile/
+# directory (unrelated to this package -- kept where the frontend already
+# lived rather than duplicated).
+STATIC_DIR = Path(__file__).resolve().parents[2] / "plugins" / "commands" / "mobile"
+STATIC_FILES = {
+    "/": "index.html",
+    "/index.html": "index.html",
+    "/manifest.json": "manifest.json",
+    "/icon.svg": "icon.svg",
+}
+# Placeholder in index.html that gets replaced with the real HTTP token at
+# serve time, so the page's own fetch() calls can authenticate immediately.
+TOKEN_PLACEHOLDER = "__SAMSARA_HTTP_TOKEN__"
+_NO_CACHE = "no-cache, no-store, must-revalidate"
 
 
 def _forward_to_bridge(ipc_port, ipc_token, action, params=None):
@@ -102,10 +126,33 @@ def make_handler(ipc_port, ipc_token, http_token):
             except (json.JSONDecodeError, UnicodeDecodeError):
                 return {}
 
+        def _serve_static(self, filename):
+            file_path = STATIC_DIR / filename
+            try:
+                data = file_path.read_bytes()
+            except (OSError, FileNotFoundError):
+                self.send_error(404)
+                return
+            if filename == "index.html":
+                data = data.replace(TOKEN_PLACEHOLDER.encode("utf-8"), http_token.encode("utf-8"))
+            content_type = _guess_mime(file_path.suffix)
+            cache_control = _NO_CACHE if file_path.suffix == ".html" else "public, max-age=3600"
+            self.send_response(200)
+            self.send_header("Content-Type", content_type)
+            self.send_header("Content-Length", str(len(data)))
+            self.send_header("Cache-Control", cache_control)
+            self.end_headers()
+            self.wfile.write(data)
+
         def do_GET(self):
             parsed = urlparse(self.path)
             path = parsed.path.rstrip("/") or "/"
             query = parse_qs(parsed.query)
+
+            # Static assets are unauthenticated -- see module docstring for why.
+            if path in STATIC_FILES:
+                self._serve_static(STATIC_FILES[path])
+                return
 
             if not self._authorized(query):
                 self._send_json({"ok": False, "error": "unauthorized"}, 401)
@@ -136,6 +183,17 @@ def make_handler(ipc_port, ipc_token, http_token):
                 body = self._read_json_body()
                 self._forward("mute_set", {"action": body.get("action", "toggle")})
                 return
+            if path.startswith("/api/app/"):
+                action = path[len("/api/app/"):]
+                if action not in TRANSPORT_ROUTES:
+                    self._send_json({"ok": False, "error": "unknown endpoint"}, 404)
+                    return
+                body = self._read_json_body()
+                params = {"action": action}
+                if body.get("app"):
+                    params["app"] = body["app"]
+                self._forward("transport_app", params)
+                return
             if path.startswith("/api/") and path[len("/api/"):] in TRANSPORT_ROUTES:
                 action = path[len("/api/"):]
                 self._forward("transport", {"action": action})
@@ -143,6 +201,16 @@ def make_handler(ipc_port, ipc_token, http_token):
             self._send_json({"ok": False, "error": "unknown endpoint"}, 404)
 
     return MobileRequestHandler
+
+
+def _guess_mime(suffix):
+    return {
+        ".html": "text/html; charset=utf-8",
+        ".json": "application/manifest+json",
+        ".svg": "image/svg+xml",
+        ".png": "image/png",
+        ".ico": "image/x-icon",
+    }.get(suffix, "application/octet-stream")
 
 
 def get_lan_ip():
