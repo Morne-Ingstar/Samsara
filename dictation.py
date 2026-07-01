@@ -2514,6 +2514,32 @@ class DictationApp:
                 'word_timestamps': False,
             }
 
+    def _build_hotkey_transcribe_params(self):
+        """Build model.transcribe() kwargs for the hotkey dictation path.
+
+        Starts from get_transcription_params() (mode-based defaults) and
+        forces the hotkey-specific overrides: VAD disabled (the user
+        explicitly pressed the hotkey -- don't strip their speech), and a
+        clean per-press state reset (no residual conditioning/prompt carried
+        over from a previous press -- see the "Gate and Reset"
+        hallucination-prevention architecture, module-level constants near
+        the top of this file). Used by both the normal (<30s) and [LONG]
+        branches of the hotkey transcribe() closure -- they share this same
+        dict, so this is the single place that guarantee is enforced.
+        """
+        transcribe_params = self.get_transcription_params()
+        # DISABLE faster-whisper's VAD for hotkey-triggered dictation.
+        # User explicitly pressed the hotkey — don't strip their speech.
+        transcribe_params['vad_filter'] = False
+        # Force a clean slate on EVERY hotkey press. Conditioning on
+        # tokens/prompt carried over from a previous press is what let
+        # hallucinations escalate over a session -- each press must
+        # start with zero residual state, independent of the [LONG]
+        # path (which has its own reasons not to condition).
+        transcribe_params['condition_on_previous_text'] = False
+        transcribe_params['initial_prompt'] = ""
+        return transcribe_params
+
     def process_transcription(self, text):
         """Process transcribed text with auto-capitalize and number formatting"""
         self._skip_cleanup = False
@@ -6032,18 +6058,10 @@ class DictationApp:
             try:
                 audio_duration = len(audio) / self.model_rate
 
-                # Get transcription parameters based on performance mode
-                transcribe_params = self.get_transcription_params()
-                # DISABLE faster-whisper's VAD for hotkey-triggered dictation.
-                # User explicitly pressed the hotkey — don't strip their speech.
-                transcribe_params['vad_filter'] = False
-                # Force a clean slate on EVERY hotkey press. Conditioning on
-                # tokens/prompt carried over from a previous press is what let
-                # hallucinations escalate over a session -- each press must
-                # start with zero residual state, independent of the [LONG]
-                # path below (which has its own reasons not to condition).
-                transcribe_params['condition_on_previous_text'] = False
-                transcribe_params['initial_prompt'] = ""
+                # Get transcription parameters based on performance mode,
+                # with the hotkey-path overrides (VAD off, clean-slate reset)
+                # applied -- see _build_hotkey_transcribe_params.
+                transcribe_params = self._build_hotkey_transcribe_params()
                 perf_mode = self.config.get('performance_mode', 'balanced')
 
                 # Guard: Whisper hallucinates on very short audio (<0.5s)
