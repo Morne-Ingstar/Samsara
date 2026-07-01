@@ -307,6 +307,8 @@ from samsara.commands import CommandExecutor
 from samsara.constants import (
     MODEL_SAMPLE_RATE, DEFAULT_CAPTURE_RATE,
     DEFAULT_SPEECH_THRESHOLD, DEFAULT_MIN_SPEECH_DURATION, DEFAULT_SILENCE_TIMEOUT,
+    DEFAULT_CONTINUOUS_COMMIT_TRIGGER, DEFAULT_CONTINUOUS_COMMIT_HOTKEY,
+    DEFAULT_CONTINUOUS_MAX_BUFFER_S,
     WAKE_DETECTION_SILENCE, WAKE_COMMAND_TIMEOUT,
     ICON_TICK_FAST, ICON_TICK_MEDIUM, ICON_TICK_SLOW,
     ICON_SPIN_FAST, ICON_SPIN_MEDIUM, ICON_SPIN_SLOW,
@@ -339,8 +341,10 @@ _WAKE_SESSION_SEND_WORDS  = ['over', 'send'] # default send terminators that fin
 # Per ARC tribunal verdict, arc_20260701_143252.md.
 _NO_SPEECH_THRESHOLD = 0.6   # faster-whisper native: per-segment silence-probability cutoff
 _LOGPROB_THRESHOLD   = -1.0  # faster-whisper native: log_prob_threshold (avg log-prob floor)
-_GATE_MAX_BUFFER_S   = 3.0   # only buffers this short or shorter are VAD-gated; longer
-                             # real dictation bypasses the gate entirely (no added latency)
+_GATE_MAX_BUFFER_S   = 8.0   # only buffers this short or shorter are VAD-gated; longer
+                             # real dictation bypasses the gate entirely (no added latency).
+                             # Raised 3.0->8.0: 3-6s near-silent/whisper holds were bypassing
+                             # the gate and producing phantom "Thank you for watching" text.
 _GATE_MIN_CONTIG_MS  = 150   # minimum CONTIGUOUS high-confidence speech run required to pass
 _GATE_VAD_PROB       = 0.45  # Silero speech-probability threshold for the contiguous-run gate
 _FADE_MS             = 50    # linear fade-in/out applied to hotkey buffers, kills the
@@ -1739,6 +1743,21 @@ class DictationApp:
             "microphone": None,
             "silence_threshold": DEFAULT_SILENCE_TIMEOUT,
             "min_speech_duration": DEFAULT_MIN_SPEECH_DURATION,
+            # Continuous mode commit trigger: "silence" is today's fixed
+            # 2s-auto-commit behavior (unchanged). "key" lets the user talk
+            # with unlimited thinking pauses and commit each utterance by
+            # tapping continuous_commit_hotkey instead. Set to "key" in
+            # config/Settings to enable -- not turned on by default.
+            "continuous_commit_trigger": DEFAULT_CONTINUOUS_COMMIT_TRIGGER,
+            # Hotkey that commits the accumulated speech when trigger == "key".
+            # Only ever active while continuous mode is running with that
+            # trigger -- never live in hold/toggle modes.
+            "continuous_commit_hotkey": DEFAULT_CONTINUOUS_COMMIT_HOTKEY,
+            # Safety cap (seconds of accumulated speech): bounds an
+            # un-committed "key"-mode session so it can't grow unbounded if
+            # the user forgets to tap the commit hotkey. No effect in
+            # "silence" mode.
+            "continuous_max_buffer_s": DEFAULT_CONTINUOUS_MAX_BUFFER_S,
             "command_mode_enabled": False,
             "command_packs": {
                 "core": True,
@@ -3034,6 +3053,20 @@ class DictationApp:
             self.hotkey_pressed = True
             self.toggle_continuous_mode()
             return
+
+        # Continuous-mode manual commit hotkey. ONLY live while continuous
+        # mode is actually running with trigger == "key" -- never in
+        # hold/toggle modes, and never in continuous mode's default
+        # "silence" trigger.
+        if (mode == 'continuous' and self.continuous_active
+                and self.config.get('continuous_commit_trigger', DEFAULT_CONTINUOUS_COMMIT_TRIGGER) == 'key'):
+            commit_hotkey = self.config.get('continuous_commit_hotkey', DEFAULT_CONTINUOUS_COMMIT_HOTKEY)
+            if self.check_hotkey_state(commit_hotkey) and not self.hotkey_pressed:
+                print(f"[HOTKEY] Continuous commit hotkey detected: {commit_hotkey}")
+                self.hotkey_pressed = True
+                if self._continuous_consumer is not None:
+                    self._continuous_consumer.commit_now()
+                return
 
         # Check for cancel recording hotkey (only when recording)
         if self.check_hotkey_state(cancel_hotkey) and self.recording:
