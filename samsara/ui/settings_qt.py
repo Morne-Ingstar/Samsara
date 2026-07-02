@@ -191,11 +191,12 @@ class _HotkeyButton(QPushButton):
         "}"
     )
 
-    def __init__(self, combo: str):
+    def __init__(self, combo: str, on_change=None):
         super().__init__(combo or "—")
         self._combo = combo
         self._capturing = False
         self._held: set[str] = set()
+        self._on_change = on_change   # optional callable(), fired after a new combo is captured
         self.setMinimumWidth(180)
         self.setFocusPolicy(Qt.FocusPolicy.StrongFocus)
         self.setStyleSheet(self._IDLE)
@@ -218,6 +219,8 @@ class _HotkeyButton(QPushButton):
             self._combo = _combo_str(self._held)
         self.setText(self._combo or "—")
         self.setStyleSheet(self._IDLE)
+        if self._on_change is not None:
+            self._on_change()
 
     def keyPressEvent(self, event):
         if not self._capturing:
@@ -411,7 +414,7 @@ QDialog {
 
 _TAB_NAMES = [
     "General",
-    "Hotkeys",
+    "Modes",
     "Commands",
     "Sounds",
     "TTS",
@@ -419,7 +422,6 @@ _TAB_NAMES = [
     "Alarms",
     "Health",
     "Advanced",
-    "AI Commands",
 ]  # order matches self._stack.addWidget(...) calls in __init__ -- tab
    # INDICES must not change; _SIDEBAR_GROUPS below only changes their
    # VISUAL order/grouping in the sidebar.
@@ -428,7 +430,7 @@ _TAB_NAMES = [
 # Close; "Tools" tabs (Commands editor, Alarms manager, Health log) save
 # instantly -- see each tab's "apply immediately" caption.
 _SIDEBAR_GROUPS = [
-    ("Settings", ["General", "Hotkeys", "Sounds", "TTS", "Ava / Cloud", "Advanced", "AI Commands"]),
+    ("Settings", ["General", "Modes", "Sounds", "TTS", "Ava / Cloud", "Advanced"]),
     ("Tools",    ["Commands", "Alarms", "Health"]),
 ]
 
@@ -531,7 +533,7 @@ class _SettingsWindow(QMainWindow):
         body_layout.addWidget(self._stack, stretch=1)
 
         self._stack.addWidget(self._build_general_tab())    # 0  General
-        self._stack.addWidget(self._build_hotkeys_tab())    # 1  Hotkeys
+        self._stack.addWidget(self._build_modes_tab())      # 1  Modes
         self._stack.addWidget(self._build_commands_tab())   # 2  Commands
         self._stack.addWidget(self._build_sounds_tab())     # 3  Sounds
         self._stack.addWidget(self._build_tts_tab())         # 4  TTS
@@ -539,7 +541,6 @@ class _SettingsWindow(QMainWindow):
         self._stack.addWidget(self._build_alarms_tab())     # 6  Alarms
         self._stack.addWidget(self._build_health_tab())     # 7  Health
         self._stack.addWidget(self._build_advanced_tab())      # 8  Advanced
-        self._stack.addWidget(self._build_ai_commands_tab())  # 9  AI Commands
 
         self._stack.setCurrentIndex(self._sidebar_row_to_stack_index[first_selectable_row])
         self._sidebar.currentRowChanged.connect(self._on_sidebar_row_changed)
@@ -880,7 +881,17 @@ class _SettingsWindow(QMainWindow):
             self._profile_manager_qt = ProfileManagerQt(pm, _on_changed)
         self._profile_manager_qt.show()
 
-    def _build_hotkeys_tab(self):
+    # Amber "may conflict" style, shared by the Modes tab collision banner.
+    _COLLISION_WARN_STYLE = (
+        "color: #E89020; font-size: 12px; "
+        "background-color: rgba(232,144,32,0.07); "
+        "border: 1px solid rgba(232,144,32,0.2); "
+        "border-radius: 6px; padding: 6px 10px;"
+    )
+
+    def _build_modes_tab(self):
+        from samsara.ai_command_mode import _DEFAULTS as _AIMD  # noqa: PLC0415
+
         scroll = QScrollArea()
         scroll.setWidgetResizable(True)
         scroll.setHorizontalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAlwaysOff)
@@ -894,9 +905,19 @@ class _SettingsWindow(QMainWindow):
         ww_cfg = cfg.get('wake_word_config', {}) or {}
         ww_audio = ww_cfg.get('audio', {}) or {}
         cmd_cfg = cfg.get('command_mode', {}) or {}
+        ai_cfg = cfg.get('ai_command_mode', {}) or {}
 
-        # ---- Section: Recording Mode -------------------------------------------
-        layout.addWidget(self._section_title("Recording Mode"))
+        # One tab-wide collision banner, shown above every section.
+        collision_warn = QLabel("")
+        collision_warn.setWordWrap(True)
+        collision_warn.setStyleSheet(self._COLLISION_WARN_STYLE)
+        collision_warn.setVisible(False)
+        self._widgets['modes_collision_warn'] = collision_warn
+        layout.addWidget(collision_warn)
+        layout.addSpacing(8)
+
+        # ---- Section 1: Dictation ------------------------------------------
+        layout.addWidget(self._section_title("Dictation"))
         layout.addSpacing(4)
 
         mode_combo = QComboBox()
@@ -911,6 +932,30 @@ class _SettingsWindow(QMainWindow):
         ))
         layout.addSpacing(8)
 
+        _dictation_hotkeys = [
+            ('hotkey',            cfg.get('hotkey', 'ctrl+shift'),
+             "Record",             "Hold key to record (or toggle, depending on mode)"),
+            ('continuous_hotkey', cfg.get('continuous_hotkey', 'ctrl+alt+d'),
+             "Toggle continuous",  "Switch into continuous auto-transcribe mode"),
+            ('streaming_hotkey',  cfg.get('streaming_hotkey', 'capslock'),
+             "Streaming",          "Toggle live streaming mode (partials shown in overlay)"),
+            ('cancel_hotkey',     cfg.get('cancel_hotkey', 'escape'),
+             "Cancel recording",   "Abort the current recording without transcribing"),
+            ('undo_hotkey',       cfg.get('undo_hotkey', 'ctrl+alt+z'),
+             "Undo",               "Remove the last transcription from the focused app"),
+        ]
+        for config_key, default, label, desc in _dictation_hotkeys:
+            btn = _HotkeyButton(cfg.get(config_key, default), on_change=self._check_modes_collisions)
+            self._widgets[config_key] = btn
+            layout.addLayout(self._setting_row(label, desc, btn))
+            layout.addSpacing(6)
+
+        layout.addSpacing(14)
+
+        # ---- Section 2: Wake Words -----------------------------------------
+        layout.addWidget(self._section_title("Wake Words"))
+        layout.addSpacing(4)
+
         wake_enabled = QCheckBox()
         wake_enabled.setChecked(bool(cfg.get('wake_word_enabled', False)))
         self._widgets['wake_word_enabled'] = wake_enabled
@@ -919,57 +964,31 @@ class _SettingsWindow(QMainWindow):
             "Enable 'Jarvis' detection — works alongside any recording mode above",
             wake_enabled,
         ))
-        layout.addSpacing(20)
+        layout.addSpacing(8)
 
-        # ---- Section: Keyboard Shortcuts ----------------------------------------
-        layout.addWidget(self._section_title("Keyboard Shortcuts"))
-        layout.addSpacing(4)
-
-        _hotkeys = [
-            ('hotkey',            cfg.get('hotkey', 'ctrl+shift'),
-             "Record",             "Hold key to record (or toggle, depending on mode)"),
-            ('continuous_hotkey', cfg.get('continuous_hotkey', 'ctrl+alt+d'),
-             "Toggle continuous",  "Switch into continuous auto-transcribe mode"),
-            ('wake_word_hotkey',  cfg.get('wake_word_hotkey', 'ctrl+alt+w'),
-             "Toggle wake word",   "Enable or disable the wake word listener at runtime"),
-            ('command_hotkey',    cfg.get('command_hotkey', 'ctrl+alt+c'),
-             "Command only",       "Record but only match voice commands, no text output"),
-            ('streaming_hotkey',  cfg.get('streaming_hotkey', 'capslock'),
-             "Streaming",          "Toggle live streaming mode (partials shown in overlay)"),
-            ('cancel_hotkey',     cfg.get('cancel_hotkey', 'escape'),
-             "Cancel recording",   "Abort the current recording without transcribing"),
-            ('undo_hotkey',       cfg.get('undo_hotkey', 'ctrl+alt+z'),
-             "Undo",               "Remove the last transcription from the focused app"),
-            ('ava_mode_key',      cfg.get('ava_mode_key', 'right_alt'),
-             "Ava mode",           "Hold to talk to Ava (LLM assistant mode)"),
-        ]
-
-        for config_key, default, label, desc in _hotkeys:
-            btn = _HotkeyButton(cfg.get(config_key, default))
-            self._widgets[config_key] = btn
-            layout.addLayout(self._setting_row(label, desc, btn))
-            layout.addSpacing(6)
-
-        layout.addSpacing(14)
-
-        # ---- Section: Wake Word -------------------------------------------------
-        layout.addWidget(self._section_title("Wake Word"))
-        layout.addSpacing(4)
+        wake_word_btn = _HotkeyButton(
+            cfg.get('wake_word_hotkey', 'ctrl+alt+w'), on_change=self._check_modes_collisions
+        )
+        self._widgets['wake_word_hotkey'] = wake_word_btn
+        layout.addLayout(self._setting_row(
+            "Toggle wake word",
+            "Enable or disable the wake word listener at runtime",
+            wake_word_btn,
+        ))
+        layout.addSpacing(6)
 
         phrases = ww_cfg.get('phrase_options', ['jarvis'])
         primary_phrase = phrases[0] if phrases else 'jarvis'
-        phrase_row = QHBoxLayout()
         phrase_label = QLabel(f'"{primary_phrase}"')
         phrase_label.setStyleSheet(
             "color: #5EEAD4; font-size: 14px; font-weight: 600; "
             "font-family: 'Consolas', 'Courier New', monospace;"
         )
-        phrase_row.addLayout(self._setting_row(
+        layout.addLayout(self._setting_row(
             "Wake phrase",
             "The word or phrase Samsara listens for to activate recording",
             phrase_label,
         ))
-        layout.addLayout(phrase_row)
         layout.addSpacing(4)
 
         note = QLabel("Additional custom wake phrases can be added via wake_targets in "
@@ -1026,14 +1045,45 @@ class _SettingsWindow(QMainWindow):
         ))
         layout.addSpacing(20)
 
-        # ---- Section: Command Mode ----------------------------------------------
+        # ---- Section 3: Command Mode -----------------------------------------
         layout.addWidget(self._section_title("Command Mode"))
         layout.addSpacing(4)
 
-        # Button picker lives on the Commands tab only ('cmd_tab_button') --
-        # it uses friendly labels there. Keeping a second raw-key picker here
-        # meant both wrote command_mode.button and the Commands tab always
-        # won (it's applied later in _apply_and_close).
+        desc0 = QLabel(
+            "Choose which button activates command mode (walkie-talkie hold-to-talk)."
+        )
+        desc0.setStyleSheet("color: #8A8A92; font-size: 12px;")
+        layout.addWidget(desc0)
+        layout.addSpacing(4)
+
+        current_btn_key   = cmd_cfg.get('button', 'mouse4')
+        current_btn_label = _CMD_BUTTON_KEY_TO_LABEL.get(current_btn_key, 'Mouse 4 (default)')
+        btn_combo = QComboBox()
+        btn_combo.addItems(list(_CMD_BUTTON_OPTIONS.keys()))
+        btn_combo.setCurrentText(current_btn_label)
+        self._widgets['cmd_tab_button'] = btn_combo
+        layout.addLayout(self._setting_row(
+            "Command Mode Button",
+            "Physical button or key that activates walkie-talkie command mode",
+            btn_combo,
+        ))
+        btn_combo.currentIndexChanged.connect(lambda _idx: self._check_modes_collisions())
+        layout.addSpacing(4)
+
+        suppress_cb = QCheckBox(
+            "Suppress browser-back when using Mouse 4/5 for commands"
+        )
+        suppress_cb.setChecked(bool(cmd_cfg.get('suppress_button', True)))
+        self._widgets['cmd_tab_suppress'] = suppress_cb
+        layout.addWidget(suppress_cb)
+
+        suppress_note = QLabel(
+            "    When enabled, Mouse 4/5 only triggers command mode and never navigates back."
+        )
+        suppress_note.setStyleSheet("color: #8A8A92; font-size: 12px;")
+        layout.addWidget(suppress_note)
+        layout.addSpacing(8)
+
         cmd_mode_combo = QComboBox()
         cmd_mode_combo.addItems(['hold', 'toggle'])
         cmd_mode_combo.setCurrentText(cmd_cfg.get('mode', 'hold'))
@@ -1080,6 +1130,157 @@ class _SettingsWindow(QMainWindow):
             "Toggle mode: exit command mode after this many unmatched recordings",
             miss_spin,
         ))
+        layout.addSpacing(8)
+
+        command_hotkey_btn = _HotkeyButton(
+            cfg.get('command_hotkey', 'ctrl+alt+c'), on_change=self._check_modes_collisions
+        )
+        self._widgets['command_hotkey'] = command_hotkey_btn
+        layout.addLayout(self._setting_row(
+            "Command only",
+            "Record but only match voice commands, no text output",
+            command_hotkey_btn,
+        ))
+        layout.addSpacing(20)
+
+        # ---- Section 4: AI Command Mode --------------------------------------
+        layout.addWidget(self._section_title("AI Command Mode"))
+        layout.addSpacing(4)
+
+        intro = QLabel(
+            "Translates free-form voice speech into sequences of voice commands "
+            "using a local Ollama LLM or the cloud provider configured in the Ava Cloud tab."
+        )
+        intro.setWordWrap(True)
+        intro.setStyleSheet("color: #8A8A92; font-size: 12px;")
+        layout.addWidget(intro)
+        layout.addSpacing(12)
+
+        ai_enabled = QCheckBox()
+        ai_enabled.setChecked(bool(ai_cfg.get('enabled', _AIMD['enabled'])))
+        self._widgets['ai_cmd_enabled'] = ai_enabled
+        layout.addLayout(self._setting_row(
+            "Enabled",
+            "Activate the LLM-backed voice-to-command translator",
+            ai_enabled,
+        ))
+        layout.addSpacing(8)
+
+        key_val = ai_cfg.get('key', _AIMD['key'])
+        key_label = _AI_CMD_KEY_TO_LABEL.get(key_val, list(_AI_CMD_KEY_OPTIONS.keys())[0])
+        ai_key_combo = QComboBox()
+        ai_key_combo.addItems(list(_AI_CMD_KEY_OPTIONS.keys()))
+        if key_label in _AI_CMD_KEY_OPTIONS:
+            ai_key_combo.setCurrentText(key_label)
+        self._widgets['ai_cmd_key'] = ai_key_combo
+        layout.addLayout(self._setting_row(
+            "Activation key",
+            "Key that toggles AI Command Mode on/off. Must differ from every other activation binding on this tab.",
+            ai_key_combo,
+        ))
+        ai_key_combo.currentIndexChanged.connect(lambda _idx: self._check_modes_collisions())
+        layout.addSpacing(8)
+
+        wake_phrase_edit = QLineEdit()
+        wake_phrase_edit.setText(ai_cfg.get('wake_phrase', _AIMD['wake_phrase']))
+        wake_phrase_edit.setPlaceholderText("e.g. command mode")
+        self._widgets['ai_cmd_wake_phrase'] = wake_phrase_edit
+        layout.addLayout(self._setting_row(
+            "Wake phrase",
+            "Spoken phrase that enters this mode (when used in wake-phrase mode)",
+            wake_phrase_edit,
+        ))
+        layout.addSpacing(12)
+
+        backend_val = ai_cfg.get('backend', _AIMD['backend'])
+        backend_combo = QComboBox()
+        backend_combo.addItems(['Local (Ollama)', 'Cloud'])
+        backend_combo.setCurrentText('Cloud' if backend_val == 'cloud' else 'Local (Ollama)')
+        self._widgets['ai_cmd_backend'] = backend_combo
+        layout.addLayout(self._setting_row(
+            "Backend",
+            "Local: resolves commands via Ollama. Cloud: uses the provider in the Ava Cloud tab.",
+            backend_combo,
+        ))
+        layout.addSpacing(8)
+
+        model_edit = QLineEdit()
+        model_edit.setText(ai_cfg.get('model', _AIMD['model']))
+        model_edit.setPlaceholderText("e.g. llama3.2:3b")
+        model_edit.setEnabled(backend_val != 'cloud')
+        self._widgets['ai_cmd_model'] = model_edit
+        layout.addLayout(self._setting_row(
+            "Ollama model",
+            "Model used when backend is Local. Ignored for Cloud (configure in Ava Cloud tab).",
+            model_edit,
+        ))
+
+        def _update_model_enabled():
+            model_edit.setEnabled(backend_combo.currentText() == 'Local (Ollama)')
+        backend_combo.currentIndexChanged.connect(lambda _: _update_model_enabled())
+        layout.addSpacing(8)
+
+        show_hud = QCheckBox()
+        show_hud.setChecked(bool(ai_cfg.get('show_plan_hud', _AIMD['show_plan_hud'])))
+        self._widgets['ai_cmd_show_hud'] = show_hud
+        layout.addLayout(self._setting_row(
+            "Show plan HUD",
+            "Display the resolved command plan on-screen while it executes",
+            show_hud,
+        ))
+        layout.addSpacing(8)
+
+        keep_warm = QCheckBox()
+        keep_warm.setChecked(bool(ai_cfg.get('keep_warm', _AIMD['keep_warm'])))
+        self._widgets['ai_cmd_keep_warm'] = keep_warm
+        layout.addLayout(self._setting_row(
+            "Keep model warm",
+            "Fire a dummy request when entering the mode to pre-load the model, "
+            "reducing first-utterance latency",
+            keep_warm,
+        ))
+        layout.addSpacing(8)
+
+        queue_spin = QSpinBox()
+        queue_spin.setRange(1, 10)
+        queue_spin.setValue(int(ai_cfg.get('queue_depth_cap', _AIMD['queue_depth_cap'])))
+        self._widgets['ai_cmd_queue_depth'] = queue_spin
+        layout.addLayout(self._setting_row(
+            "Queue depth cap",
+            "Maximum utterances queued before the oldest is dropped with a spoken warning",
+            queue_spin,
+        ))
+        layout.addSpacing(8)
+
+        settle_spin = QDoubleSpinBox()
+        settle_spin.setRange(0.0, 5.0)
+        settle_spin.setSingleStep(0.1)
+        settle_spin.setDecimals(1)
+        settle_spin.setSuffix(" s")
+        settle_spin.setValue(float(ai_cfg.get('step_settle_seconds', _AIMD['step_settle_seconds'])))
+        self._widgets['ai_cmd_step_settle'] = settle_spin
+        layout.addLayout(self._setting_row(
+            "Step settle delay",
+            "Pause between consecutive command steps in a multi-step plan",
+            settle_spin,
+        ))
+        layout.addSpacing(20)
+
+        # ---- Section 5: Ava --------------------------------------------------
+        layout.addWidget(self._section_title("Ava"))
+        layout.addSpacing(4)
+
+        ava_btn = _HotkeyButton(
+            cfg.get('ava_mode_key', 'right_alt'), on_change=self._check_modes_collisions
+        )
+        self._widgets['ava_mode_key'] = ava_btn
+        layout.addLayout(self._setting_row(
+            "Ava mode",
+            "Hold to talk to Ava (LLM assistant mode)",
+            ava_btn,
+        ))
+
+        self._check_modes_collisions()
 
         def _save(_acc):
             updates = {}
@@ -1106,21 +1307,121 @@ class _SettingsWindow(QMainWindow):
                 ww_cfg['oww_threshold'] = max(0.01, min(1.0, self._widgets['oww_threshold'].value()))
                 updates['wake_word_config'] = ww_cfg
 
-            # Command mode nested config ('button' is set by the Commands
-            # tab's cmd_tab_button -- that's the single home for it)
+            # Command mode nested config -- button/suppress_button now live
+            # here alongside mode/debounce/timeout/miss_limit; single writer.
             if 'cmd_mode' in self._widgets:
                 cmd_cfg = dict(self.app.config.get('command_mode', {}) or {})
                 cmd_cfg['mode'] = self._widgets['cmd_mode'].currentText()
                 cmd_cfg['enter_debounce_ms'] = self._widgets['cmd_debounce'].value()
                 cmd_cfg['inactivity_timeout_s'] = self._widgets['cmd_timeout'].value()
                 cmd_cfg['miss_limit'] = self._widgets['cmd_miss_limit'].value()
+                btn_label = self._widgets['cmd_tab_button'].currentText()
+                cmd_cfg['button'] = _CMD_BUTTON_OPTIONS.get(btn_label, 'mouse4')
+                cmd_cfg['suppress_button'] = self._widgets['cmd_tab_suppress'].isChecked()
                 updates['command_mode'] = cmd_cfg
+
+            if 'ai_cmd_enabled' in self._widgets:
+                ai_cfg_out = dict(self.app.config.get('ai_command_mode', {}) or {})
+                key_label = self._widgets['ai_cmd_key'].currentText()
+                ai_cfg_out['enabled']             = self._widgets['ai_cmd_enabled'].isChecked()
+                ai_cfg_out['key']                 = _AI_CMD_KEY_OPTIONS.get(key_label, ai_cfg_out.get('key', 'right_ctrl'))
+                ai_cfg_out['wake_phrase']         = self._widgets['ai_cmd_wake_phrase'].text().strip()
+                ai_cfg_out['backend']             = 'cloud' if self._widgets['ai_cmd_backend'].currentText() == 'Cloud' else 'ollama'
+                ai_cfg_out['model']               = self._widgets['ai_cmd_model'].text().strip()
+                ai_cfg_out['show_plan_hud']       = self._widgets['ai_cmd_show_hud'].isChecked()
+                ai_cfg_out['keep_warm']           = self._widgets['ai_cmd_keep_warm'].isChecked()
+                ai_cfg_out['queue_depth_cap']     = self._widgets['ai_cmd_queue_depth'].value()
+                ai_cfg_out['step_settle_seconds'] = self._widgets['ai_cmd_step_settle'].value()
+                updates['ai_command_mode'] = ai_cfg_out
+
             return updates
         self._save_fns.append(_save)
 
         layout.addStretch()
         scroll.setWidget(container)
         return scroll
+
+    def _check_modes_collisions(self) -> None:
+        """Tab-wide activation-binding collision checker for the Modes tab.
+
+        Collects every _HotkeyButton combo plus the command-mode button and
+        the AI-command key, normalizes each into a set of per-token keys
+        (so multi-key combos like 'ctrl+shift' compare correctly), then
+        flags exact-duplicate sets as errors and strict-subset relationships
+        (e.g. 'ctrl+shift' vs 'ctrl+shift+a') as "may shadow" warnings.
+        Both severities render in the same amber banner -- there is no
+        separate error styling in this UI, so treat exact duplicates as the
+        more urgent wording within one shared message.
+        """
+        warn = self._widgets.get('modes_collision_warn')
+        if warn is None:
+            return
+
+        hotkey_labels = {
+            'hotkey':            'Record',
+            'continuous_hotkey': 'Toggle continuous',
+            'wake_word_hotkey':  'Toggle wake word',
+            'command_hotkey':    'Command only',
+            'streaming_hotkey':  'Streaming',
+            'cancel_hotkey':     'Cancel recording',
+            'undo_hotkey':       'Undo',
+            'ava_mode_key':      'Ava mode',
+        }
+
+        bindings: list = []  # (label, raw_combo)
+        for config_key, label in hotkey_labels.items():
+            widget = self._widgets.get(config_key)
+            if isinstance(widget, _HotkeyButton) and widget.combo:
+                bindings.append((label, widget.combo))
+
+        cmd_btn_widget = self._widgets.get('cmd_tab_button')
+        if cmd_btn_widget is not None:
+            raw = _CMD_BUTTON_OPTIONS.get(cmd_btn_widget.currentText(), cmd_btn_widget.currentText())
+            bindings.append(("Command Mode button", raw))
+
+        ai_key_widget = self._widgets.get('ai_cmd_key')
+        if ai_key_widget is not None:
+            raw = _AI_CMD_KEY_OPTIONS.get(ai_key_widget.currentText(), ai_key_widget.currentText())
+            bindings.append(("AI Command Mode key", raw))
+
+        def _normalize(combo: str) -> frozenset:
+            tokens = [t for t in combo.split('+') if t]
+            return frozenset(_KEY_NORMALIZE.get(t, t) for t in tokens)
+
+        normed = [(label, combo, _normalize(combo)) for label, combo in bindings]
+
+        # Exact duplicates: group labels sharing an identical normalized set.
+        by_norm: dict = {}
+        for label, combo, norm in normed:
+            by_norm.setdefault(norm, []).append(label)
+
+        messages: list = []
+        for norm, labels in by_norm.items():
+            if len(labels) > 1:
+                messages.append(
+                    f"{', '.join(labels)} all use the same key ({'+'.join(sorted(norm))}) "
+                    "-- each must have a distinct activation binding."
+                )
+
+        # Strict-subset relationships ("may shadow"), skipping exact matches.
+        for i, (label_a, combo_a, norm_a) in enumerate(normed):
+            for label_b, combo_b, norm_b in normed[i + 1:]:
+                if norm_a == norm_b:
+                    continue
+                if norm_a < norm_b:
+                    messages.append(
+                        f'"{label_a}" ({combo_a}) may shadow "{label_b}" ({combo_b}).'
+                    )
+                elif norm_b < norm_a:
+                    messages.append(
+                        f'"{label_b}" ({combo_b}) may shadow "{label_a}" ({combo_a}).'
+                    )
+
+        if messages:
+            warn.setText("Key collision: " + " ".join(messages))
+            warn.setVisible(True)
+        else:
+            warn.setVisible(False)
 
     def _build_commands_tab(self):
         import json
@@ -1133,50 +1434,6 @@ class _SettingsWindow(QMainWindow):
         layout.setSpacing(8)
 
         cfg = self.app.config
-        cmd_cfg = cfg.get('command_mode', {}) or {}
-
-        # ---- Section: Command Mode Input ------------------------------------
-        layout.addWidget(self._section_title("Command Mode Input"))
-
-        desc0 = QLabel(
-            "Choose which button activates command mode (walkie-talkie hold-to-talk)."
-        )
-        desc0.setStyleSheet("color: #8A8A92; font-size: 12px;")
-        layout.addWidget(desc0)
-        layout.addSpacing(4)
-
-        current_btn_key   = cmd_cfg.get('button', 'mouse4')
-        current_btn_label = _CMD_BUTTON_KEY_TO_LABEL.get(current_btn_key, 'Mouse 4 (default)')
-        btn_combo = QComboBox()
-        btn_combo.addItems(list(_CMD_BUTTON_OPTIONS.keys()))
-        btn_combo.setCurrentText(current_btn_label)
-        self._widgets['cmd_tab_button'] = btn_combo
-        layout.addLayout(self._setting_row(
-            "Command Mode Button",
-            "Physical button or key that activates walkie-talkie command mode",
-            btn_combo,
-        ))
-        layout.addSpacing(4)
-
-        suppress_cb = QCheckBox(
-            "Suppress browser-back when using Mouse 4/5 for commands"
-        )
-        suppress_cb.setChecked(bool(cmd_cfg.get('suppress_button', True)))
-        self._widgets['cmd_tab_suppress'] = suppress_cb
-        layout.addWidget(suppress_cb)
-
-        suppress_note = QLabel(
-            "    When enabled, Mouse 4/5 only triggers command mode and never navigates back."
-        )
-        suppress_note.setStyleSheet("color: #8A8A92; font-size: 12px;")
-        layout.addWidget(suppress_note)
-        layout.addSpacing(6)
-
-        sep1 = QFrame()
-        sep1.setFrameShape(QFrame.Shape.HLine)
-        sep1.setStyleSheet("background-color: rgba(255,255,255,0.06); max-height: 1px;")
-        layout.addWidget(sep1)
-        layout.addSpacing(4)
 
         # ---- Section: Command Packs ----------------------------------------
         layout.addWidget(self._section_title("Command Packs"))
@@ -1387,17 +1644,6 @@ class _SettingsWindow(QMainWindow):
 
         def _save(acc):
             updates = {}
-            # button + suppress merge onto whatever the Hotkeys tab already
-            # wrote to command_mode (mode/debounce/timeout/miss_limit) --
-            # read from acc (updates so far), not self.app.config, so this
-            # tab's write doesn't clobber that one.
-            if 'cmd_tab_button' in self._widgets:
-                cmd_cfg = dict(acc.get('command_mode', self.app.config.get('command_mode', {})) or {})
-                btn_label = self._widgets['cmd_tab_button'].currentText()
-                cmd_cfg['button'] = _CMD_BUTTON_OPTIONS.get(btn_label, 'mouse4')
-                cmd_cfg['suppress_button'] = self._widgets['cmd_tab_suppress'].isChecked()
-                updates['command_mode'] = cmd_cfg
-
             if '_pack_checkboxes' in self._widgets:
                 from samsara.command_packs import PACKS
                 new_packs = dict(self.app.config.get('command_packs', {}) or {})
@@ -3320,7 +3566,7 @@ class _SettingsWindow(QMainWindow):
                     gesture_cfg['enabled'] = self._widgets['adv_gesture_enabled'].isChecked()
                     updates['gesture'] = gesture_cfg
                 # Apply manual threshold to wake_word_config if in manual mode --
-                # merge onto whatever the Hotkeys tab already wrote (read from
+                # merge onto whatever the Modes tab already wrote (read from
                 # acc), not self.app.config, so that write isn't clobbered.
                 if self._widgets['adv_threshold_mode'].currentText() == 'manual':
                     ww_cfg = dict(self.app.config.get('wake_word_config', {}) or {})
@@ -3340,235 +3586,6 @@ class _SettingsWindow(QMainWindow):
         layout.addStretch()
         scroll.setWidget(container)
         return scroll
-
-    def _build_ai_commands_tab(self):
-        from samsara.ai_command_mode import _DEFAULTS as _AIMD  # noqa: PLC0415
-
-        scroll = QScrollArea()
-        scroll.setWidgetResizable(True)
-        scroll.setHorizontalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAlwaysOff)
-
-        container = QWidget()
-        layout = QVBoxLayout(container)
-        layout.setContentsMargins(28, 24, 28, 24)
-        layout.setSpacing(8)
-
-        ai_cfg = self.app.config.get('ai_command_mode', {}) or {}
-
-        layout.addWidget(self._section_title("AI Command Mode"))
-        layout.addSpacing(4)
-
-        intro = QLabel(
-            "Translates free-form voice speech into sequences of voice commands "
-            "using a local Ollama LLM or the cloud provider configured in the Ava Cloud tab."
-        )
-        intro.setWordWrap(True)
-        intro.setStyleSheet("color: #8A8A92; font-size: 12px;")
-        layout.addWidget(intro)
-        layout.addSpacing(12)
-
-        # --- Enable ------------------------------------------------------------
-        ai_enabled = QCheckBox()
-        ai_enabled.setChecked(bool(ai_cfg.get('enabled', _AIMD['enabled'])))
-        self._widgets['ai_cmd_enabled'] = ai_enabled
-        layout.addLayout(self._setting_row(
-            "Enabled",
-            "Activate the LLM-backed voice-to-command translator",
-            ai_enabled,
-        ))
-        layout.addSpacing(12)
-
-        # --- Activation key + collision warning --------------------------------
-        layout.addWidget(self._section_title("Activation"))
-        layout.addSpacing(4)
-
-        key_val = ai_cfg.get('key', _AIMD['key'])
-        key_label = _AI_CMD_KEY_TO_LABEL.get(key_val, list(_AI_CMD_KEY_OPTIONS.keys())[0])
-        ai_key_combo = QComboBox()
-        ai_key_combo.addItems(list(_AI_CMD_KEY_OPTIONS.keys()))
-        if key_label in _AI_CMD_KEY_OPTIONS:
-            ai_key_combo.setCurrentText(key_label)
-        self._widgets['ai_cmd_key'] = ai_key_combo
-        layout.addLayout(self._setting_row(
-            "Activation key",
-            "Key that toggles AI Command Mode on/off. Must differ from Ava mode key and Command Mode button.",
-            ai_key_combo,
-        ))
-
-        collision_warn = QLabel("")
-        collision_warn.setWordWrap(True)
-        collision_warn.setStyleSheet(
-            "color: #E89020; font-size: 12px; "
-            "background-color: rgba(232,144,32,0.07); "
-            "border: 1px solid rgba(232,144,32,0.2); "
-            "border-radius: 6px; padding: 6px 10px;"
-        )
-        collision_warn.setVisible(False)
-        self._widgets['ai_cmd_collision_warn'] = collision_warn
-        layout.addWidget(collision_warn)
-        layout.addSpacing(4)
-
-        ai_key_combo.currentIndexChanged.connect(
-            lambda _idx: self._check_ai_cmd_key_collision()
-        )
-        self._check_ai_cmd_key_collision()
-
-        wake_phrase_edit = QLineEdit()
-        wake_phrase_edit.setText(ai_cfg.get('wake_phrase', _AIMD['wake_phrase']))
-        wake_phrase_edit.setPlaceholderText("e.g. command mode")
-        self._widgets['ai_cmd_wake_phrase'] = wake_phrase_edit
-        layout.addLayout(self._setting_row(
-            "Wake phrase",
-            "Spoken phrase that enters this mode (when used in wake-phrase mode)",
-            wake_phrase_edit,
-        ))
-        layout.addSpacing(12)
-
-        # --- Model -------------------------------------------------------------
-        layout.addWidget(self._section_title("Model"))
-        layout.addSpacing(4)
-
-        backend_val = ai_cfg.get('backend', _AIMD['backend'])
-        backend_combo = QComboBox()
-        backend_combo.addItems(['Local (Ollama)', 'Cloud'])
-        backend_combo.setCurrentText('Cloud' if backend_val == 'cloud' else 'Local (Ollama)')
-        self._widgets['ai_cmd_backend'] = backend_combo
-        layout.addLayout(self._setting_row(
-            "Backend",
-            "Local: resolves commands via Ollama. Cloud: uses the provider in the Ava Cloud tab.",
-            backend_combo,
-        ))
-        layout.addSpacing(8)
-
-        model_edit = QLineEdit()
-        model_edit.setText(ai_cfg.get('model', _AIMD['model']))
-        model_edit.setPlaceholderText("e.g. llama3.2:3b")
-        model_edit.setEnabled(backend_val != 'cloud')
-        self._widgets['ai_cmd_model'] = model_edit
-        layout.addLayout(self._setting_row(
-            "Ollama model",
-            "Model used when backend is Local. Ignored for Cloud (configure in Ava Cloud tab).",
-            model_edit,
-        ))
-
-        def _update_model_enabled():
-            model_edit.setEnabled(backend_combo.currentText() == 'Local (Ollama)')
-        backend_combo.currentIndexChanged.connect(lambda _: _update_model_enabled())
-
-        layout.addSpacing(12)
-
-        # --- Behaviour ---------------------------------------------------------
-        layout.addWidget(self._section_title("Behaviour"))
-        layout.addSpacing(4)
-
-        show_hud = QCheckBox()
-        show_hud.setChecked(bool(ai_cfg.get('show_plan_hud', _AIMD['show_plan_hud'])))
-        self._widgets['ai_cmd_show_hud'] = show_hud
-        layout.addLayout(self._setting_row(
-            "Show plan HUD",
-            "Display the resolved command plan on-screen while it executes",
-            show_hud,
-        ))
-        layout.addSpacing(8)
-
-        keep_warm = QCheckBox()
-        keep_warm.setChecked(bool(ai_cfg.get('keep_warm', _AIMD['keep_warm'])))
-        self._widgets['ai_cmd_keep_warm'] = keep_warm
-        layout.addLayout(self._setting_row(
-            "Keep model warm",
-            "Fire a dummy request when entering the mode to pre-load the model, "
-            "reducing first-utterance latency",
-            keep_warm,
-        ))
-        layout.addSpacing(8)
-
-        queue_spin = QSpinBox()
-        queue_spin.setRange(1, 10)
-        queue_spin.setValue(int(ai_cfg.get('queue_depth_cap', _AIMD['queue_depth_cap'])))
-        self._widgets['ai_cmd_queue_depth'] = queue_spin
-        layout.addLayout(self._setting_row(
-            "Queue depth cap",
-            "Maximum utterances queued before the oldest is dropped with a spoken warning",
-            queue_spin,
-        ))
-        layout.addSpacing(8)
-
-        settle_spin = QDoubleSpinBox()
-        settle_spin.setRange(0.0, 5.0)
-        settle_spin.setSingleStep(0.1)
-        settle_spin.setDecimals(1)
-        settle_spin.setSuffix(" s")
-        settle_spin.setValue(float(ai_cfg.get('step_settle_seconds', _AIMD['step_settle_seconds'])))
-        self._widgets['ai_cmd_step_settle'] = settle_spin
-        layout.addLayout(self._setting_row(
-            "Step settle delay",
-            "Pause between consecutive command steps in a multi-step plan",
-            settle_spin,
-        ))
-
-        def _save(_acc):
-            updates = {}
-            if 'ai_cmd_enabled' in self._widgets:
-                ai_cfg_out = dict(self.app.config.get('ai_command_mode', {}) or {})
-                key_label = self._widgets['ai_cmd_key'].currentText()
-                ai_cfg_out['enabled']             = self._widgets['ai_cmd_enabled'].isChecked()
-                ai_cfg_out['key']                 = _AI_CMD_KEY_OPTIONS.get(key_label, ai_cfg_out.get('key', 'right_ctrl'))
-                ai_cfg_out['wake_phrase']         = self._widgets['ai_cmd_wake_phrase'].text().strip()
-                ai_cfg_out['backend']             = 'cloud' if self._widgets['ai_cmd_backend'].currentText() == 'Cloud' else 'ollama'
-                ai_cfg_out['model']               = self._widgets['ai_cmd_model'].text().strip()
-                ai_cfg_out['show_plan_hud']       = self._widgets['ai_cmd_show_hud'].isChecked()
-                ai_cfg_out['keep_warm']           = self._widgets['ai_cmd_keep_warm'].isChecked()
-                ai_cfg_out['queue_depth_cap']     = self._widgets['ai_cmd_queue_depth'].value()
-                ai_cfg_out['step_settle_seconds'] = self._widgets['ai_cmd_step_settle'].value()
-                updates['ai_command_mode'] = ai_cfg_out
-            return updates
-        self._save_fns.append(_save)
-
-        layout.addStretch()
-        scroll.setWidget(container)
-        return scroll
-
-    def _check_ai_cmd_key_collision(self) -> None:
-        warn = self._widgets.get('ai_cmd_collision_warn')
-        key_combo = self._widgets.get('ai_cmd_key')
-        if warn is None or key_combo is None:
-            return
-
-        selected_label = key_combo.currentText()
-        selected_code = _AI_CMD_KEY_OPTIONS.get(selected_label, '')
-        selected_norm = _KEY_NORMALIZE.get(selected_code, selected_code)
-
-        conflicts: list = []
-
-        # Compare against ava_mode_key
-        ava_widget = self._widgets.get('ava_mode_key')
-        if isinstance(ava_widget, _HotkeyButton):
-            ava_raw = ava_widget.combo
-        else:
-            ava_raw = self.app.config.get('ava_mode_key', 'right_alt')
-        if _KEY_NORMALIZE.get(ava_raw, ava_raw) == selected_norm:
-            conflicts.append("Ava mode key")
-
-        # Compare against command_mode.button (Commands tab widget -- the
-        # single home for this setting; it holds a friendly label like
-        # "Right Ctrl", so map back to the raw key before normalizing).
-        cmd_btn_widget = self._widgets.get('cmd_tab_button')
-        if cmd_btn_widget is not None:
-            cmd_raw = _CMD_BUTTON_OPTIONS.get(cmd_btn_widget.currentText(), cmd_btn_widget.currentText())
-        else:
-            cmd_raw = self.app.config.get('command_mode', {}).get('button', 'mouse4')
-        if _KEY_NORMALIZE.get(cmd_raw, cmd_raw) == selected_norm:
-            conflicts.append("Command Mode button")
-
-        if conflicts:
-            warn.setText(
-                "Key collision: this key is also used by "
-                + " and ".join(conflicts)
-                + ". Each mode must have a distinct activation key."
-            )
-            warn.setVisible(True)
-        else:
-            warn.setVisible(False)
 
     def _build_ava_cloud_tab(self):
         from samsara import premium
@@ -4096,12 +4113,12 @@ class _SettingsWindow(QMainWindow):
         dict, then a single locked config.update + save_config.
 
         Registration order preserves the merge semantics tabs depend on:
-        Hotkeys (command_mode mode/debounce/timeout/miss_limit,
-        wake_word_config wake_command_timeout/quick_silence/oww_threshold)
-        is registered before Commands (command_mode button/suppress_button)
-        and before Advanced (wake_word_config manual speech_threshold) --
-        each later fn reads the accumulated `updates` dict to merge onto
-        the earlier tab's partial write instead of clobbering it.
+        Modes (command_mode mode/debounce/timeout/miss_limit/button/suppress_button,
+        wake_word_config wake_command_timeout/quick_silence/oww_threshold,
+        ai_command_mode) is registered before Advanced (wake_word_config
+        manual speech_threshold) -- Advanced's fn reads the accumulated
+        `updates` dict to merge onto the Modes tab's partial write instead
+        of clobbering it.
         """
         updates: dict = {}
         for save_fn in self._save_fns:

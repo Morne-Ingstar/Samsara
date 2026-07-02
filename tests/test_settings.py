@@ -55,16 +55,16 @@ class TestSettingsWindowConstruction:
         assert win is not None
 
     def test_cmd_button_widget_removed(self, qapp):
-        """Hotkeys tab's raw-key button picker was removed -- the Commands
-        tab's friendly-label picker (cmd_tab_button) is the single home."""
+        """The old raw-key button picker was removed -- cmd_tab_button
+        (now on the Modes tab) is the single home."""
         from samsara.ui.settings_qt import _SettingsWindow
         win = _SettingsWindow(_StubApp())
         assert 'cmd_button' not in win._widgets
         assert 'cmd_tab_button' in win._widgets
 
     def test_threshold_mode_widget_removed(self, qapp):
-        """Hotkeys tab's threshold_mode/cal_multiplier were removed -- the
-        Advanced tab's adv_threshold_mode/adv_cal_multiplier are the single home."""
+        """threshold_mode/cal_multiplier live only on the Advanced tab's
+        adv_threshold_mode/adv_cal_multiplier -- single home."""
         from samsara.ui.settings_qt import _SettingsWindow
         win = _SettingsWindow(_StubApp())
         assert 'threshold_mode' not in win._widgets
@@ -72,9 +72,55 @@ class TestSettingsWindowConstruction:
         assert 'adv_threshold_mode' in win._widgets
         assert 'adv_cal_multiplier' in win._widgets
 
+    def test_modes_tab_replaces_hotkeys_and_ai_commands(self, qapp):
+        """Modes tab consolidates Hotkeys + AI Commands + the Commands tab's
+        button picker -- those source tabs are gone."""
+        from samsara.ui.settings_qt import _SettingsWindow, _TAB_NAMES
+        win = _SettingsWindow(_StubApp())
+        assert 'Modes' in _TAB_NAMES
+        assert 'Hotkeys' not in _TAB_NAMES
+        assert 'AI Commands' not in _TAB_NAMES
+        assert len(_TAB_NAMES) == 9
+
+        sidebar_labels = {win._sidebar.item(i).text() for i in range(win._sidebar.count())}
+        assert 'Modes' in sidebar_labels
+        assert 'Hotkeys' not in sidebar_labels
+        assert 'AI Commands' not in sidebar_labels
+
+    def test_modes_tab_save_fn_key_union(self, qapp):
+        """Firing the Modes tab's save fn must produce the same key set the
+        old Hotkeys + AI Commands saves produced together (config keys must
+        not change -- this is a UI reorganization only)."""
+        from samsara.ui.settings_qt import _SettingsWindow
+        stub = _StubApp()
+        win = _SettingsWindow(stub)
+
+        # _save_fns[1] is the Modes tab's fn -- General is [0], Modes is next
+        # (registration order == _stack.addWidget order in __init__).
+        modes_save_fn = win._save_fns[1]
+        produced = modes_save_fn({})
+
+        expected_keys = {
+            'hotkey', 'continuous_hotkey', 'wake_word_hotkey', 'command_hotkey',
+            'streaming_hotkey', 'cancel_hotkey', 'undo_hotkey', 'ava_mode_key',
+            'mode', 'wake_word_enabled', 'wake_word_config', 'command_mode',
+            'ai_command_mode',
+        }
+        assert set(produced.keys()) == expected_keys
+
+    def test_modes_tab_save_fn_command_mode_has_button(self, qapp):
+        """command_mode.button/suppress_button are now written by the Modes
+        tab's single save fn (previously split across Hotkeys + Commands)."""
+        from samsara.ui.settings_qt import _SettingsWindow
+        win = _SettingsWindow(_StubApp())
+        modes_save_fn = win._save_fns[1]
+        produced = modes_save_fn({})
+        assert 'button' in produced['command_mode']
+        assert 'suppress_button' in produced['command_mode']
+
 
 class TestSidebarGrouping:
-    """Sidebar has 2 non-selectable group headers (Settings / Tools) + 10
+    """Sidebar has 2 non-selectable group headers (Settings / Tools) + 9
     selectable tabs, and each Tools tab shows an instant-apply caption."""
 
     def test_header_and_selectable_row_counts(self, qapp):
@@ -92,17 +138,18 @@ class TestSidebarGrouping:
                 headers.append(item.text())
 
         assert len(headers) == 2
-        assert len(selectable) == 10
+        assert len(selectable) == 9
         assert set(headers) == {'SETTINGS', 'TOOLS'}
 
     def test_tab_indices_unchanged(self, qapp):
         """Stack widget order/indices must be untouched by the regrouping --
-        only the sidebar's visual row order changed."""
+        only the sidebar's visual row order changed. Modes occupies the old
+        Hotkeys slot (index 1); AI Commands (old index 9) is gone."""
         from samsara.ui.settings_qt import _SettingsWindow
         win = _SettingsWindow(_StubApp())
         expected = {
-            'General': 0, 'Hotkeys': 1, 'Commands': 2, 'Sounds': 3, 'TTS': 4,
-            'Ava / Cloud': 5, 'Alarms': 6, 'Health': 7, 'Advanced': 8, 'AI Commands': 9,
+            'General': 0, 'Modes': 1, 'Commands': 2, 'Sounds': 3, 'TTS': 4,
+            'Ava / Cloud': 5, 'Alarms': 6, 'Health': 7, 'Advanced': 8,
         }
         for row, stack_index in win._sidebar_row_to_stack_index.items():
             name = win._sidebar.item(row).text()
@@ -134,6 +181,63 @@ class TestSidebarGrouping:
         assert expected_substring in all_text, (
             f"{tab_name} tab has no caption containing {expected_substring!r}"
         )
+
+
+class TestModesCollisionDetection:
+    """Generalized Modes-tab-wide activation-binding collision checker."""
+
+    def test_exact_duplicate_shows_banner_naming_both(self, qapp):
+        from samsara.ui.settings_qt import _SettingsWindow, _TAB_NAMES
+        win = _SettingsWindow(_StubApp())
+        win._stack.setCurrentIndex(_TAB_NAMES.index('Modes'))  # non-current stack pages report not-visible
+
+        win._widgets['ava_mode_key']._combo = 'right_ctrl'
+        win._widgets['ai_cmd_key'].setCurrentText('Right Ctrl')
+        win._check_modes_collisions()
+
+        warn = win._widgets['modes_collision_warn']
+        assert warn.isVisibleTo(win)
+        assert 'Ava mode' in warn.text()
+        assert 'AI Command Mode key' in warn.text()
+
+    def test_no_collision_hides_banner(self, qapp):
+        from samsara.ui.settings_qt import _SettingsWindow
+        win = _SettingsWindow(_StubApp())
+        win._check_modes_collisions()
+        warn = win._widgets['modes_collision_warn']
+        assert not warn.isVisible()
+
+    def test_superset_combo_shows_may_shadow_note(self, qapp):
+        from samsara.ui.settings_qt import _SettingsWindow, _TAB_NAMES
+        win = _SettingsWindow(_StubApp())
+        win._stack.setCurrentIndex(_TAB_NAMES.index('Modes'))
+
+        win._widgets['hotkey']._combo = 'ctrl+shift'
+        win._widgets['continuous_hotkey']._combo = 'ctrl+shift+a'
+        win._check_modes_collisions()
+
+        warn = win._widgets['modes_collision_warn']
+        assert warn.isVisibleTo(win)
+        assert 'may shadow' in warn.text()
+        assert 'Record' in warn.text()
+        assert 'Toggle continuous' in warn.text()
+
+    def test_hotkey_capture_triggers_recheck(self, qapp):
+        """_HotkeyButton's on_change hook fires the collision check without
+        the caller needing to call it manually."""
+        from samsara.ui.settings_qt import _SettingsWindow, _TAB_NAMES
+        win = _SettingsWindow(_StubApp())
+        win._stack.setCurrentIndex(_TAB_NAMES.index('Modes'))
+
+        ava_btn = win._widgets['ava_mode_key']
+        ai_key_combo = win._widgets['ai_cmd_key']
+        ai_key_combo.setCurrentText('Right Ctrl')
+
+        ava_btn._held = {'right_ctrl'}
+        ava_btn._finish_capture()
+
+        warn = win._widgets['modes_collision_warn']
+        assert warn.isVisibleTo(win)
 
 
 class TestApplyAndCloseSnapshot:
