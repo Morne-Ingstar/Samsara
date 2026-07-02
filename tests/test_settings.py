@@ -118,6 +118,47 @@ class TestSettingsWindowConstruction:
         assert 'button' in produced['command_mode']
         assert 'suppress_button' in produced['command_mode']
 
+    def test_modes_tab_save_fn_command_mode_enabled_reflects_checkbox(self, qapp):
+        """The 'Enable command mode' checkbox is the single writer for
+        command_mode.enabled -- toggling it must change what the save fn
+        emits, both off->on and on->off."""
+        from samsara.ui.settings_qt import _SettingsWindow
+        win = _SettingsWindow(_StubApp())
+        modes_save_fn = win._save_fns[1]
+
+        # Default (empty config) construction: unchecked.
+        assert win._widgets['cmd_tab_enabled'].isChecked() is False
+        produced = modes_save_fn({})
+        assert produced['command_mode']['enabled'] is False
+
+        win._widgets['cmd_tab_enabled'].setChecked(True)
+        produced = modes_save_fn({})
+        assert produced['command_mode']['enabled'] is True
+
+        win._widgets['cmd_tab_enabled'].setChecked(False)
+        produced = modes_save_fn({})
+        assert produced['command_mode']['enabled'] is False
+
+    def test_modes_tab_command_mode_enabled_checkbox_reflects_existing_config(self, qapp):
+        """Constructing the tab against a config with command_mode.enabled
+        already True must pre-check the box (not just default it off)."""
+        from samsara.ui.settings_qt import _SettingsWindow
+        stub = _StubApp()
+        stub.config = {"command_mode": {"enabled": True}}
+        win = _SettingsWindow(stub)
+        assert win._widgets['cmd_tab_enabled'].isChecked() is True
+
+    def test_modes_tab_command_mode_button_default_is_right_ctrl(self, qapp):
+        """Fresh/empty config -> the button combo defaults to Right Ctrl,
+        not the old Mouse 4 default."""
+        from samsara.ui.settings_qt import _SettingsWindow, _CMD_BUTTON_OPTIONS
+        win = _SettingsWindow(_StubApp())
+        assert win._widgets['cmd_tab_button'].currentText() == 'Right Ctrl (default)'
+        modes_save_fn = win._save_fns[1]
+        produced = modes_save_fn({})
+        assert produced['command_mode']['button'] == 'rctrl'
+        assert _CMD_BUTTON_OPTIONS['Mouse 4'] == 'mouse4'  # still selectable, just not default
+
 
 class TestSidebarGrouping:
     """Sidebar has 2 non-selectable group headers (Settings / Tools) + 9

@@ -50,7 +50,8 @@
   },
   "command_hotkey": "ctrl+alt+c",
   "command_mode": {
-    "button": "mouse4",
+    "button": "rctrl",
+    "enabled": false,
     "enter_debounce_ms": 200,
     "inactivity_timeout_s": 30,
     "miss_limit": 5,

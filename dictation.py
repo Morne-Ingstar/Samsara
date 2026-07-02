@@ -1951,11 +1951,12 @@ class DictationApp:
                 "thinking_pulse_interval_ms": 1000,
                 "thinking_pulse_enabled": False,
             },
-            # Mouse 4 walkie-talkie command mode
+            # Walkie-talkie command mode (also hosts the unified session --
+            # dictate/Ava voice switching -- when mode is "toggle")
             "command_mode": {
-                "enabled": False,           # opt-in; enable to use Mouse 4
+                "enabled": False,           # opt-in; see Modes tab -> Command Mode
                 "mode": "hold",             # "hold" (hold to talk) or "toggle"
-                "button": "mouse4",         # "mouse4" (XButton1) or "mouse5" (XButton2)
+                "button": "rctrl",          # "rctrl" (default), "mouse4"/"mouse5" (XButton1/2), or other keys -- see _CMD_BUTTON_OPTIONS
                 "enter_debounce_ms": 200,   # delay before playing enter earcon
                 "exit_earcon": True,        # play stop earcon on release/exit
                 "miss_limit": 5,            # toggle: exit after N unmatched recordings
@@ -3356,7 +3357,7 @@ class DictationApp:
         Keyboard sources (rctrl, f13, etc.) are handled by on_key_press/release.
         """
         cfg = self.config.get('command_mode', {})
-        btn = cfg.get('button', 'mouse4')
+        btn = cfg.get('button', 'rctrl')
         if btn not in ('mouse4', 'mouse5'):
             self._mouse_hook = None
             return
@@ -3380,7 +3381,7 @@ class DictationApp:
         cfg = self.config.get('command_mode', {})
         if not cfg.get('enabled', False):
             return
-        if button_name != cfg.get('button', 'mouse4'):
+        if button_name != cfg.get('button', 'rctrl'):
             return
         mode = cfg.get('mode', 'hold')
         if mode == 'hold':
@@ -3403,7 +3404,7 @@ class DictationApp:
         """
         cfg = self.config.get('command_mode', {})
         cmd_enabled = cfg.get('enabled', False)
-        btn_name = cfg.get('button', 'mouse4')
+        btn_name = cfg.get('button', 'rctrl')
         is_mouse = btn_name in ('mouse4', 'mouse5')
 
         # Command mode keyboard handling (skip if disabled or mouse source)

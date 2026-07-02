@@ -79,14 +79,14 @@ _SPECIAL_KEYS = {
 # ---------------------------------------------------------------------------
 
 _CMD_BUTTON_OPTIONS = {
-    'Mouse 4 (default)': 'mouse4',
-    'Mouse 5':           'mouse5',
-    'Right Ctrl':        'rctrl',
-    'Left Ctrl':         'lctrl',
-    'Right Alt':         'ralt',
-    'Left Alt':          'lalt',
-    'Right Shift':       'rshift',
-    'Left Shift':        'lshift',
+    'Mouse 4':              'mouse4',
+    'Mouse 5':              'mouse5',
+    'Right Ctrl (default)': 'rctrl',
+    'Left Ctrl':            'lctrl',
+    'Right Alt':            'ralt',
+    'Left Alt':             'lalt',
+    'Right Shift':          'rshift',
+    'Left Shift':           'lshift',
     **{f'F{n}': f'f{n}' for n in range(13, 25)},
 }
 _CMD_BUTTON_KEY_TO_LABEL = {v: k for k, v in _CMD_BUTTON_OPTIONS.items()}
@@ -1049,6 +1049,16 @@ class _SettingsWindow(QMainWindow):
         layout.addWidget(self._section_title("Command Mode"))
         layout.addSpacing(4)
 
+        cmd_enabled_cb = QCheckBox()
+        cmd_enabled_cb.setChecked(bool(cmd_cfg.get('enabled', False)))
+        self._widgets['cmd_tab_enabled'] = cmd_enabled_cb
+        layout.addLayout(self._setting_row(
+            "Enable command mode",
+            "Also hosts the unified session (dictate/Ava voice switching) when mode is toggle.",
+            cmd_enabled_cb,
+        ))
+        layout.addSpacing(8)
+
         desc0 = QLabel(
             "Choose which button activates command mode (walkie-talkie hold-to-talk)."
         )
@@ -1056,8 +1066,8 @@ class _SettingsWindow(QMainWindow):
         layout.addWidget(desc0)
         layout.addSpacing(4)
 
-        current_btn_key   = cmd_cfg.get('button', 'mouse4')
-        current_btn_label = _CMD_BUTTON_KEY_TO_LABEL.get(current_btn_key, 'Mouse 4 (default)')
+        current_btn_key   = cmd_cfg.get('button', 'rctrl')
+        current_btn_label = _CMD_BUTTON_KEY_TO_LABEL.get(current_btn_key, 'Right Ctrl (default)')
         btn_combo = QComboBox()
         btn_combo.addItems(list(_CMD_BUTTON_OPTIONS.keys()))
         btn_combo.setCurrentText(current_btn_label)
@@ -1311,12 +1321,13 @@ class _SettingsWindow(QMainWindow):
             # here alongside mode/debounce/timeout/miss_limit; single writer.
             if 'cmd_mode' in self._widgets:
                 cmd_cfg = dict(self.app.config.get('command_mode', {}) or {})
+                cmd_cfg['enabled'] = self._widgets['cmd_tab_enabled'].isChecked()
                 cmd_cfg['mode'] = self._widgets['cmd_mode'].currentText()
                 cmd_cfg['enter_debounce_ms'] = self._widgets['cmd_debounce'].value()
                 cmd_cfg['inactivity_timeout_s'] = self._widgets['cmd_timeout'].value()
                 cmd_cfg['miss_limit'] = self._widgets['cmd_miss_limit'].value()
                 btn_label = self._widgets['cmd_tab_button'].currentText()
-                cmd_cfg['button'] = _CMD_BUTTON_OPTIONS.get(btn_label, 'mouse4')
+                cmd_cfg['button'] = _CMD_BUTTON_OPTIONS.get(btn_label, 'rctrl')
                 cmd_cfg['suppress_button'] = self._widgets['cmd_tab_suppress'].isChecked()
                 updates['command_mode'] = cmd_cfg
 
