@@ -220,14 +220,14 @@ class TestProcessText:
         executor = CommandExecutor(temp_commands_file)
 
         mock_app = Mock()
-        mock_app.command_mode_enabled = False
+        mock_app.command_matching_enabled = False
         mock_app._config_lock = threading.Lock()
         mock_app.config = {}
 
         result, was_command = executor.process_text("enable command mode", mock_app)
 
         assert was_command is True
-        assert mock_app.command_mode_enabled is True
+        assert mock_app.command_matching_enabled is True
 
 
 class TestPluginCommands:
