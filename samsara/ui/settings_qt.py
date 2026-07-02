@@ -8,6 +8,7 @@ import shutil
 import threading
 
 from PySide6.QtCore import Qt, QTimer, Signal
+from PySide6.QtGui import QColor, QFont
 from PySide6.QtWidgets import (
     QMainWindow, QWidget, QHBoxLayout, QVBoxLayout,
     QListWidget, QListWidgetItem, QStackedWidget, QScrollArea,
@@ -419,6 +420,16 @@ _TAB_NAMES = [
     "Health",
     "Advanced",
     "AI Commands",
+]  # order matches self._stack.addWidget(...) calls in __init__ -- tab
+   # INDICES must not change; _SIDEBAR_GROUPS below only changes their
+   # VISUAL order/grouping in the sidebar.
+
+# Two visually distinct sidebar groups. "Settings" tabs go through Apply &&
+# Close; "Tools" tabs (Commands editor, Alarms manager, Health log) save
+# instantly -- see each tab's "apply immediately" caption.
+_SIDEBAR_GROUPS = [
+    ("Settings", ["General", "Hotkeys", "Sounds", "TTS", "Ava / Cloud", "Advanced", "AI Commands"]),
+    ("Tools",    ["Commands", "Alarms", "Health"]),
 ]
 
 
@@ -459,6 +470,14 @@ class _SettingsWindow(QMainWindow):
         super().__init__()
         self.app = app
         self._widgets = {}
+        # Each _build_x_tab registers a save callable here: fn(updates_so_far)
+        # -> dict of top-level config updates for its own tab. Called in
+        # registration order (== tab-build order below) by _apply_and_close.
+        # updates_so_far lets a later tab's fn merge onto an earlier tab's
+        # partial write to the same nested key (command_mode, wake_word_config)
+        # instead of clobbering it -- same semantics the old monolith had by
+        # reading self.app.config.get(...) / updates.get(...) procedurally.
+        self._save_fns: list = []
         self._test_result.connect(self._on_test_result)
 
         self.setWindowTitle("Samsara Settings")
@@ -481,11 +500,31 @@ class _SettingsWindow(QMainWindow):
         root.addWidget(body, stretch=1)
 
         self._sidebar = QListWidget()
-        self._sidebar.setFixedWidth(164)
+        self._sidebar.setFixedWidth(176)
         self._sidebar.setFocusPolicy(Qt.FocusPolicy.NoFocus)
-        for name in _TAB_NAMES:
-            self._sidebar.addItem(QListWidgetItem(name))
-        self._sidebar.setCurrentRow(0)
+
+        # Sidebar rows no longer map 1:1 to stack indices (group headers are
+        # interspersed and unselectable) -- build an explicit row->stack-index
+        # map instead of relying on row == index.
+        name_to_stack_index = {name: i for i, name in enumerate(_TAB_NAMES)}
+        self._sidebar_row_to_stack_index: dict = {}
+        row = 0
+        for group_label, tab_names in _SIDEBAR_GROUPS:
+            header_item = QListWidgetItem(group_label.upper())
+            header_item.setFlags(Qt.ItemFlag.NoItemFlags)  # not selectable/enabled -- clicks do nothing
+            header_item.setForeground(QColor("#55555C"))
+            header_item.setFont(QFont("Segoe UI", 9, QFont.Weight.Bold))
+            self._sidebar.addItem(header_item)
+            row += 1
+
+            for name in tab_names:
+                self._sidebar.addItem(QListWidgetItem(name))
+                self._sidebar_row_to_stack_index[row] = name_to_stack_index[name]
+                row += 1
+
+        # First selectable row is always row 1 (row 0 is the first group's header).
+        first_selectable_row = 1
+        self._sidebar.setCurrentRow(first_selectable_row)
         body_layout.addWidget(self._sidebar)
 
         self._stack = QStackedWidget()
@@ -502,7 +541,8 @@ class _SettingsWindow(QMainWindow):
         self._stack.addWidget(self._build_advanced_tab())      # 8  Advanced
         self._stack.addWidget(self._build_ai_commands_tab())  # 9  AI Commands
 
-        self._sidebar.currentRowChanged.connect(self._stack.setCurrentIndex)
+        self._stack.setCurrentIndex(self._sidebar_row_to_stack_index[first_selectable_row])
+        self._sidebar.currentRowChanged.connect(self._on_sidebar_row_changed)
 
         # Separator above button bar
         sep = QFrame()
@@ -518,13 +558,17 @@ class _SettingsWindow(QMainWindow):
         btn_layout.setContentsMargins(20, 12, 20, 12)
         btn_layout.addStretch()
 
-        cancel_btn = QPushButton("Cancel")
-        cancel_btn.setProperty("class", "secondary")
-        cancel_btn.style().unpolish(cancel_btn)
-        cancel_btn.style().polish(cancel_btn)
-        cancel_btn.setFixedWidth(100)
-        cancel_btn.clicked.connect(self.close)
-        btn_layout.addWidget(cancel_btn)
+        # "Close", not "Cancel" -- several tabs (Commands editor, Alarms
+        # manager, license activate/remove, sound theme apply) save
+        # instantly, so "Cancel" would imply a rollback that doesn't exist
+        # for those. This button just dismisses the window.
+        close_btn = QPushButton("Close")
+        close_btn.setProperty("class", "secondary")
+        close_btn.style().unpolish(close_btn)
+        close_btn.style().polish(close_btn)
+        close_btn.setFixedWidth(100)
+        close_btn.clicked.connect(self.close)
+        btn_layout.addWidget(close_btn)
 
         apply_btn = QPushButton("Apply && Close")
         apply_btn.setFixedWidth(140)
@@ -548,6 +592,14 @@ class _SettingsWindow(QMainWindow):
     def closeEvent(self, e):
         e.ignore()
         self.hide()
+
+    def _on_sidebar_row_changed(self, row: int) -> None:
+        """Map a sidebar row to its stack index. Header rows aren't in the
+        map (they're unselectable, so this shouldn't normally fire for one,
+        but .get() makes that a no-op rather than a crash either way)."""
+        stack_index = self._sidebar_row_to_stack_index.get(row)
+        if stack_index is not None:
+            self._stack.setCurrentIndex(stack_index)
 
     # ------------------------------------------------------------------
     # Tab builders
@@ -769,6 +821,33 @@ class _SettingsWindow(QMainWindow):
         manage_btn.setFixedWidth(170)
         manage_btn.clicked.connect(self._open_profile_manager)
         layout.addWidget(manage_btn)
+
+        def _save(_acc):
+            updates = {
+                'auto_paste':         self._widgets['auto_paste'].isChecked(),
+                'add_trailing_space': self._widgets['trailing_space'].isChecked(),
+                'auto_capitalize':    self._widgets['auto_capitalize'].isChecked(),
+                'format_numbers':     self._widgets['format_numbers'].isChecked(),
+                'cleanup_mode':       self._widgets['cleanup_mode'].currentText(),
+                'model_size':         self._widgets['model_combo'].currentText(),
+                'language':           self._widgets['lang_name_to_code'].get(
+                                          self._widgets['lang_combo'].currentText(), 'en'),
+                'hints_enabled':      self._widgets['hints_enabled'].isChecked(),
+            }
+            # Sync hints enabled/disabled state on the live HintManager.
+            # hints_enabled is already persisted to config above (this call
+            # just syncs the already-constructed instance's in-memory flag).
+            hints = getattr(self.app, 'hints', None)
+            if hints is not None:
+                hints.set_enabled(self._widgets['hints_enabled'].isChecked())
+
+            mic_name = self._widgets['mic_combo'].currentText()
+            mic_id = self._widgets['mic_names_to_id'].get(mic_name)
+            if mic_id is not None:
+                updates['microphone'] = mic_id
+                updates['microphone_name'] = mic_name
+            return updates
+        self._save_fns.append(_save)
 
         layout.addStretch()
         scroll.setWidget(container)
@@ -1002,6 +1081,43 @@ class _SettingsWindow(QMainWindow):
             miss_spin,
         ))
 
+        def _save(_acc):
+            updates = {}
+            for key in ('hotkey', 'continuous_hotkey', 'wake_word_hotkey',
+                        'command_hotkey', 'streaming_hotkey', 'cancel_hotkey',
+                        'undo_hotkey', 'ava_mode_key'):
+                btn = self._widgets.get(key)
+                if isinstance(btn, _HotkeyButton):
+                    updates[key] = btn.combo
+
+            if 'mode' in self._widgets:
+                updates['mode'] = self._widgets['mode'].currentText()
+            if 'wake_word_enabled' in self._widgets:
+                updates['wake_word_enabled'] = self._widgets['wake_word_enabled'].isChecked()
+
+            # Wake word nested config (threshold_mode/cal_multiplier are set
+            # by the Advanced tab -- the single home for those two)
+            if 'wake_cmd_timeout' in self._widgets:
+                ww_cfg = dict(self.app.config.get('wake_word_config', {}) or {})
+                ww_audio = dict(ww_cfg.get('audio', {}) or {})
+                ww_audio['wake_command_timeout'] = self._widgets['wake_cmd_timeout'].value()
+                ww_cfg['audio'] = ww_audio
+                ww_cfg['quick_silence_timeout'] = self._widgets['quick_silence'].value()
+                ww_cfg['oww_threshold'] = max(0.01, min(1.0, self._widgets['oww_threshold'].value()))
+                updates['wake_word_config'] = ww_cfg
+
+            # Command mode nested config ('button' is set by the Commands
+            # tab's cmd_tab_button -- that's the single home for it)
+            if 'cmd_mode' in self._widgets:
+                cmd_cfg = dict(self.app.config.get('command_mode', {}) or {})
+                cmd_cfg['mode'] = self._widgets['cmd_mode'].currentText()
+                cmd_cfg['enter_debounce_ms'] = self._widgets['cmd_debounce'].value()
+                cmd_cfg['inactivity_timeout_s'] = self._widgets['cmd_timeout'].value()
+                cmd_cfg['miss_limit'] = self._widgets['cmd_miss_limit'].value()
+                updates['command_mode'] = cmd_cfg
+            return updates
+        self._save_fns.append(_save)
+
         layout.addStretch()
         scroll.setWidget(container)
         return scroll
@@ -1182,6 +1298,11 @@ class _SettingsWindow(QMainWindow):
         cmd_header.addWidget(search_box)
         layout.addLayout(cmd_header)
 
+        instant_note = QLabel("Changes to commands below apply immediately.")
+        instant_note.setStyleSheet("color: #8A8A92; font-size: 12px;")
+        layout.addWidget(instant_note)
+        layout.addSpacing(4)
+
         # Table
         table = QTableWidget(0, 4)
         table.setHorizontalHeaderLabels(['Voice Phrase', 'Type', 'Action', 'Description'])
@@ -1263,6 +1384,30 @@ class _SettingsWindow(QMainWindow):
         footer = QLabel("Say these phrases while recording to trigger actions.")
         footer.setStyleSheet("color: #8A8A92; font-size: 12px;")
         layout.addWidget(footer)
+
+        def _save(acc):
+            updates = {}
+            # button + suppress merge onto whatever the Hotkeys tab already
+            # wrote to command_mode (mode/debounce/timeout/miss_limit) --
+            # read from acc (updates so far), not self.app.config, so this
+            # tab's write doesn't clobber that one.
+            if 'cmd_tab_button' in self._widgets:
+                cmd_cfg = dict(acc.get('command_mode', self.app.config.get('command_mode', {})) or {})
+                btn_label = self._widgets['cmd_tab_button'].currentText()
+                cmd_cfg['button'] = _CMD_BUTTON_OPTIONS.get(btn_label, 'mouse4')
+                cmd_cfg['suppress_button'] = self._widgets['cmd_tab_suppress'].isChecked()
+                updates['command_mode'] = cmd_cfg
+
+            if '_pack_checkboxes' in self._widgets:
+                from samsara.command_packs import PACKS
+                new_packs = dict(self.app.config.get('command_packs', {}) or {})
+                for pack_id, cb in self._widgets['_pack_checkboxes'].items():
+                    meta = PACKS.get(pack_id, {})
+                    if not meta.get('always_on'):
+                        new_packs[pack_id] = cb.isChecked()
+                updates['command_packs'] = new_packs
+            return updates
+        self._save_fns.append(_save)
 
         return outer
 
@@ -1730,6 +1875,10 @@ class _SettingsWindow(QMainWindow):
         apply_row.addWidget(apply_theme_btn)
         apply_row.addStretch()
         layout.addLayout(apply_row)
+
+        theme_instant_note = QLabel("\"Apply Theme\" copies the theme's sounds immediately.")
+        theme_instant_note.setStyleSheet("color: #8A8A92; font-size: 12px;")
+        layout.addWidget(theme_instant_note)
         layout.addSpacing(20)
 
         # ---- Section: Earcon Preview -------------------------------------------
@@ -1836,6 +1985,15 @@ class _SettingsWindow(QMainWindow):
             file_row.addWidget(play_btn)
             file_row.addStretch()
             layout.addLayout(file_row)
+
+        def _save(_acc):
+            updates = {}
+            if 'sound_feedback' in self._widgets:
+                updates['audio_feedback'] = self._widgets['sound_feedback'].isChecked()
+                updates['sound_volume'] = self._widgets['sound_volume_slider'].value() / 100.0
+                updates['sound_theme'] = self._widgets['sound_theme_combo'].currentText()
+            return updates
+        self._save_fns.append(_save)
 
         layout.addStretch()
         scroll.setWidget(container)
@@ -2133,6 +2291,31 @@ class _SettingsWindow(QMainWindow):
             )
         when_toggle.clicked.connect(_toggle_when)
 
+        def _save(_acc):
+            updates = {}
+            if 'tts_enabled' in self._widgets:
+                tts_cfg = dict(self.app.config.get('tts', {}) or {})
+                tts_cfg['enabled'] = self._widgets['tts_enabled'].isChecked()
+                tts_cfg['engine']  = self._widgets['tts_engine'].currentText()
+                voice_label = self._widgets['tts_voice_combo'].currentText()
+                voice_id    = self._widgets.get('tts_voice_label_to_id', {}).get(voice_label)
+                if voice_id:
+                    tts_cfg['voice_id'] = voice_id
+                tts_cfg['speed']  = self._widgets['tts_speed'].value()
+                tts_cfg['pitch']  = self._widgets['tts_pitch'].value()
+                tts_cfg['volume'] = self._widgets['tts_volume_slider'].value() / 100.0
+                for wkey, _label, cfg_key, _default in _WHEN_TOGGLES:
+                    if wkey in self._widgets:
+                        tts_cfg[cfg_key] = self._widgets[wkey].isChecked()
+                updates['tts'] = tts_cfg
+                # Audio coordinator duck settings
+                ac_cfg = dict(self.app.config.get('audio_coordinator', {}) or {})
+                ac_cfg['enabled']     = self._widgets['tts_duck_enabled'].isChecked()
+                ac_cfg['duck_factor'] = self._widgets['tts_duck_slider'].value() / 100.0
+                updates['audio_coordinator'] = ac_cfg
+            return updates
+        self._save_fns.append(_save)
+
         layout.addStretch()
         scroll.setWidget(container)
         return scroll
@@ -2224,6 +2407,9 @@ class _SettingsWindow(QMainWindow):
 
         # ---- Section: Alarm List --------------------------------------------
         layout.addWidget(self._section_title("Your Alarms"))
+        instant_note = QLabel("Changes to alarms below apply immediately.")
+        instant_note.setStyleSheet("color: #8A8A92; font-size: 12px;")
+        layout.addWidget(instant_note)
         layout.addSpacing(4)
 
         table = QTableWidget(0, 4)
@@ -2286,6 +2472,33 @@ class _SettingsWindow(QMainWindow):
         btn_row.addWidget(reset_btn)
 
         layout.addLayout(btn_row)
+
+        def _save(_acc):
+            updates = {}
+            if 'alarms_enabled' in self._widgets:
+                from samsara.alarms import get_default_alarm_config
+                alarms_cfg = dict(
+                    self.app.config.get('alarms', get_default_alarm_config()) or {}
+                )
+                alarms_cfg['enabled'] = self._widgets['alarms_enabled'].isChecked()
+                for wkey, cfg_key in [
+                    ('alarms_complete_key', 'complete_hotkey'),
+                    ('alarms_dismiss_key',  'dismiss_hotkey'),
+                ]:
+                    btn = self._widgets.get(wkey)
+                    if isinstance(btn, _HotkeyButton):
+                        alarms_cfg[cfg_key] = btn.combo
+                alarms_cfg['nag_interval_seconds'] = self._widgets['alarms_nag'].value()
+                updates['alarms'] = alarms_cfg
+                am = getattr(self.app, 'alarm_manager', None)
+                if am:
+                    if alarms_cfg['enabled'] and not getattr(am, 'running', False):
+                        am.start()
+                    elif not alarms_cfg['enabled'] and getattr(am, 'running', False):
+                        am.stop()
+            return updates
+        self._save_fns.append(_save)
+
         return outer
 
     # Alarms tab helpers
@@ -2515,6 +2728,15 @@ class _SettingsWindow(QMainWindow):
 
         # _fmt_time lives in _refresh_health_log (where it's actually used) --
         # this tab only builds the static command reference + table chrome.
+
+        instant_note = QLabel(
+            "This tab is read-only — nothing here goes through Apply && Close. "
+            "Health entries are logged automatically by voice command."
+        )
+        instant_note.setWordWrap(True)
+        instant_note.setStyleSheet("color: #8A8A92; font-size: 12px;")
+        layout.addWidget(instant_note)
+        layout.addSpacing(8)
 
         # ---- Section: Voice Command Reference ----
         layout.addWidget(self._section_title("Voice Commands"))
@@ -3071,6 +3293,50 @@ class _SettingsWindow(QMainWindow):
         self._widgets['adv_gesture_enabled'] = gesture_cb
         layout.addWidget(gesture_cb)
 
+        def _save(acc):
+            updates = {}
+            if 'adv_device' in self._widgets:
+                device_map  = self._widgets['adv_device_map']
+                device_disp = self._widgets['adv_device'].currentText()
+                updates['device']            = device_map.get(device_disp, 'cpu')
+                updates['compute_type']      = self._widgets['adv_compute_type'].currentText()
+                updates['performance_mode']  = self._widgets['adv_perf_mode'].currentText()
+                updates['silence_threshold'] = self._widgets['adv_silence'].value()
+                updates['min_speech_duration'] = self._widgets['adv_min_speech'].value()
+                updates['threshold_mode']    = self._widgets['adv_threshold_mode'].currentText()
+                updates['cal_multiplier']    = self._widgets['adv_cal_multiplier'].value()
+                updates['echo_cancellation'] = {
+                    'enabled':    self._widgets['adv_aec_enabled'].isChecked(),
+                    'latency_ms': self._widgets['adv_aec_latency'].value(),
+                }
+                updates['listening_indicator_enabled']  = (
+                    self._widgets['adv_indicator_enabled'].isChecked()
+                )
+                updates['listening_indicator_position'] = (
+                    self._widgets['adv_indicator_pos'].currentText()
+                )
+                if 'adv_gesture_enabled' in self._widgets:
+                    gesture_cfg = dict(self.app.config.get('gesture', {}) or {})
+                    gesture_cfg['enabled'] = self._widgets['adv_gesture_enabled'].isChecked()
+                    updates['gesture'] = gesture_cfg
+                # Apply manual threshold to wake_word_config if in manual mode --
+                # merge onto whatever the Hotkeys tab already wrote (read from
+                # acc), not self.app.config, so that write isn't clobbered.
+                if self._widgets['adv_threshold_mode'].currentText() == 'manual':
+                    ww_cfg = dict(self.app.config.get('wake_word_config', {}) or {})
+                    ww_audio = dict(ww_cfg.get('audio', {}) or {})
+                    val = self._widgets['adv_manual_threshold'].value()
+                    val = max(0.005, min(0.20, val))
+                    ww_audio['speech_threshold'] = val
+                    ww_cfg['audio'] = ww_audio
+                    existing_ww = acc.get('wake_word_config', ww_cfg)
+                    existing_ww_audio = dict(existing_ww.get('audio', {}) or {})
+                    existing_ww_audio['speech_threshold'] = val
+                    existing_ww['audio'] = existing_ww_audio
+                    updates['wake_word_config'] = existing_ww
+            return updates
+        self._save_fns.append(_save)
+
         layout.addStretch()
         scroll.setWidget(container)
         return scroll
@@ -3240,6 +3506,24 @@ class _SettingsWindow(QMainWindow):
             settle_spin,
         ))
 
+        def _save(_acc):
+            updates = {}
+            if 'ai_cmd_enabled' in self._widgets:
+                ai_cfg_out = dict(self.app.config.get('ai_command_mode', {}) or {})
+                key_label = self._widgets['ai_cmd_key'].currentText()
+                ai_cfg_out['enabled']             = self._widgets['ai_cmd_enabled'].isChecked()
+                ai_cfg_out['key']                 = _AI_CMD_KEY_OPTIONS.get(key_label, ai_cfg_out.get('key', 'right_ctrl'))
+                ai_cfg_out['wake_phrase']         = self._widgets['ai_cmd_wake_phrase'].text().strip()
+                ai_cfg_out['backend']             = 'cloud' if self._widgets['ai_cmd_backend'].currentText() == 'Cloud' else 'ollama'
+                ai_cfg_out['model']               = self._widgets['ai_cmd_model'].text().strip()
+                ai_cfg_out['show_plan_hud']       = self._widgets['ai_cmd_show_hud'].isChecked()
+                ai_cfg_out['keep_warm']           = self._widgets['ai_cmd_keep_warm'].isChecked()
+                ai_cfg_out['queue_depth_cap']     = self._widgets['ai_cmd_queue_depth'].value()
+                ai_cfg_out['step_settle_seconds'] = self._widgets['ai_cmd_step_settle'].value()
+                updates['ai_command_mode'] = ai_cfg_out
+            return updates
+        self._save_fns.append(_save)
+
         layout.addStretch()
         scroll.setWidget(container)
         return scroll
@@ -3404,6 +3688,11 @@ class _SettingsWindow(QMainWindow):
         lic_stack.setCurrentIndex(1 if has_license else 0)
         lic_frame_layout.addWidget(lic_stack)
         layout.addWidget(lic_frame)
+
+        license_instant_note = QLabel("Activating or removing a license applies immediately.")
+        license_instant_note.setStyleSheet("color: #8A8A92; font-size: 12px;")
+        layout.addWidget(license_instant_note)
+        layout.addSpacing(8)
 
         # ---- Cloud settings (hidden when unlicensed) -----------------------
         cloud_settings = QWidget()
@@ -3612,6 +3901,42 @@ class _SettingsWindow(QMainWindow):
         cs_layout.addWidget(privacy)
 
         layout.addWidget(cloud_settings)
+
+        def _save(_acc):
+            updates = {}
+            if 'cloud_enabled' in self._widgets:
+                from samsara import premium
+                if premium.is_premium(self.app):
+                    provider_display = self._widgets['cloud_provider'].currentText()
+                    provider = _DISPLAY_TO_CODE.get(provider_display, 'deepseek')
+                    api_key = self._widgets['cloud_api_key'].text().strip()
+                    model_override = self._widgets['cloud_model'].text().strip()
+                    cloud_cfg = dict(self.app.config.get('cloud_llm', {}) or {})
+                    cloud_cfg['enabled'] = self._widgets['cloud_enabled'].isChecked()
+                    cloud_cfg['provider'] = provider
+                    cloud_cfg['api_key'] = api_key
+                    cloud_cfg['timeout_seconds'] = self._widgets['cloud_timeout'].value()
+                    if model_override:
+                        cloud_cfg['model'] = model_override
+                    elif 'model' in cloud_cfg:
+                        del cloud_cfg['model']
+                    updates['cloud_llm'] = cloud_cfg
+
+            if 'ava_personality' in self._widgets:
+                updates['ava_personality'] = self._widgets['ava_personality'].currentText().lower()
+
+            if 'ava_memory_mode' in self._widgets:
+                mem_updates = dict(self.app.config.get('ava_memory', {}))
+                mode_text = self._widgets['ava_memory_mode'].currentText()
+                mem_updates['mode'] = 'last' if mode_text == 'Keep last session' else 'clear'
+                if 'ava_memory_max_turns' in self._widgets:
+                    mem_updates['max_turns'] = int(
+                        self._widgets['ava_memory_max_turns'].value()
+                    )
+                updates['ava_memory'] = mem_updates
+            return updates
+        self._save_fns.append(_save)
+
         layout.addStretch()
         scroll.setWidget(container)
         return scroll
@@ -3766,236 +4091,21 @@ class _SettingsWindow(QMainWindow):
     # ------------------------------------------------------------------
 
     def _apply_and_close(self):
-        updates = {}
+        """Collect updates from each tab's registered save fn, in
+        registration order (== tab-build order in __init__), merge into one
+        dict, then a single locked config.update + save_config.
 
-        # General tab
-        updates.update({
-            'auto_paste':         self._widgets['auto_paste'].isChecked(),
-            'add_trailing_space': self._widgets['trailing_space'].isChecked(),
-            'auto_capitalize':    self._widgets['auto_capitalize'].isChecked(),
-            'format_numbers':     self._widgets['format_numbers'].isChecked(),
-            'cleanup_mode':       self._widgets['cleanup_mode'].currentText(),
-            'model_size':         self._widgets['model_combo'].currentText(),
-            'language':           self._widgets['lang_name_to_code'].get(
-                                      self._widgets['lang_combo'].currentText(), 'en'),
-            'hints_enabled':      self._widgets['hints_enabled'].isChecked(),
-        })
-
-        # Sync hints enabled/disabled state on the live HintManager.
-        # hints_enabled is already persisted to config above (this call
-        # just syncs the already-constructed instance's in-memory flag).
-        hints = getattr(self.app, 'hints', None)
-        if hints is not None:
-            hints.set_enabled(self._widgets['hints_enabled'].isChecked())
-
-        mic_name = self._widgets['mic_combo'].currentText()
-        mic_id = self._widgets['mic_names_to_id'].get(mic_name)
-        if mic_id is not None:
-            updates['microphone'] = mic_id
-            updates['microphone_name'] = mic_name
-
-        # Hotkeys tab — flat hotkey keys
-        for key in ('hotkey', 'continuous_hotkey', 'wake_word_hotkey',
-                    'command_hotkey', 'streaming_hotkey', 'cancel_hotkey',
-                    'undo_hotkey', 'ava_mode_key'):
-            btn = self._widgets.get(key)
-            if isinstance(btn, _HotkeyButton):
-                updates[key] = btn.combo
-
-        # Recording mode + wake word enable
-        if 'mode' in self._widgets:
-            updates['mode'] = self._widgets['mode'].currentText()
-        if 'wake_word_enabled' in self._widgets:
-            updates['wake_word_enabled'] = self._widgets['wake_word_enabled'].isChecked()
-
-        # Wake word nested config (threshold_mode/cal_multiplier are set
-        # below, from the Advanced tab -- the single home for those two)
-        if 'wake_cmd_timeout' in self._widgets:
-            ww_cfg = dict(self.app.config.get('wake_word_config', {}) or {})
-            ww_audio = dict(ww_cfg.get('audio', {}) or {})
-            ww_audio['wake_command_timeout'] = self._widgets['wake_cmd_timeout'].value()
-            ww_cfg['audio'] = ww_audio
-            ww_cfg['quick_silence_timeout'] = self._widgets['quick_silence'].value()
-            ww_cfg['oww_threshold'] = max(0.01, min(1.0, self._widgets['oww_threshold'].value()))
-            updates['wake_word_config'] = ww_cfg
-
-        # Command mode nested config
-        if 'cmd_mode' in self._widgets:
-            cmd_cfg = dict(self.app.config.get('command_mode', {}) or {})
-            cmd_cfg['mode'] = self._widgets['cmd_mode'].currentText()
-            # 'button' is set below from the Commands tab's cmd_tab_button --
-            # that's now the single home for this setting.
-            cmd_cfg['enter_debounce_ms'] = self._widgets['cmd_debounce'].value()
-            cmd_cfg['inactivity_timeout_s'] = self._widgets['cmd_timeout'].value()
-            cmd_cfg['miss_limit'] = self._widgets['cmd_miss_limit'].value()
-            updates['command_mode'] = cmd_cfg
-
-        # Commands tab — button + suppress merge into command_mode (after hotkeys tab write)
-        if 'cmd_tab_button' in self._widgets:
-            cmd_cfg = dict(updates.get('command_mode',
-                           self.app.config.get('command_mode', {})) or {})
-            btn_label = self._widgets['cmd_tab_button'].currentText()
-            cmd_cfg['button'] = _CMD_BUTTON_OPTIONS.get(btn_label, 'mouse4')
-            cmd_cfg['suppress_button'] = self._widgets['cmd_tab_suppress'].isChecked()
-            updates['command_mode'] = cmd_cfg
-
-        # Commands tab — pack enables
-        if '_pack_checkboxes' in self._widgets:
-            from samsara.command_packs import PACKS
-            new_packs = dict(self.app.config.get('command_packs', {}) or {})
-            for pack_id, cb in self._widgets['_pack_checkboxes'].items():
-                meta = PACKS.get(pack_id, {})
-                if not meta.get('always_on'):
-                    new_packs[pack_id] = cb.isChecked()
-            updates['command_packs'] = new_packs
-
-        # TTS tab
-        if 'tts_enabled' in self._widgets:
-            tts_cfg = dict(self.app.config.get('tts', {}) or {})
-            tts_cfg['enabled'] = self._widgets['tts_enabled'].isChecked()
-            tts_cfg['engine']  = self._widgets['tts_engine'].currentText()
-            voice_label = self._widgets['tts_voice_combo'].currentText()
-            voice_id    = self._widgets.get('tts_voice_label_to_id', {}).get(voice_label)
-            if voice_id:
-                tts_cfg['voice_id'] = voice_id
-            tts_cfg['speed']  = self._widgets['tts_speed'].value()
-            tts_cfg['pitch']  = self._widgets['tts_pitch'].value()
-            tts_cfg['volume'] = self._widgets['tts_volume_slider'].value() / 100.0
-            for wkey, cfg_key in [
-                ('tts_use_agent',    'use_for_agent_responses'),
-                ('tts_use_confirm',  'use_for_confirmations'),
-                ('tts_use_warnings', 'use_for_warnings'),
-                ('tts_use_status',   'use_for_status_updates'),
-                ('tts_use_readback', 'use_for_dictation_readback'),
-                ('tts_use_errors',   'use_for_errors'),
-            ]:
-                if wkey in self._widgets:
-                    tts_cfg[cfg_key] = self._widgets[wkey].isChecked()
-            updates['tts'] = tts_cfg
-            # Audio coordinator duck settings
-            ac_cfg = dict(self.app.config.get('audio_coordinator', {}) or {})
-            ac_cfg['enabled']     = self._widgets['tts_duck_enabled'].isChecked()
-            ac_cfg['duck_factor'] = self._widgets['tts_duck_slider'].value() / 100.0
-            updates['audio_coordinator'] = ac_cfg
-
-        # Alarms tab
-        if 'alarms_enabled' in self._widgets:
-            from samsara.alarms import get_default_alarm_config
-            alarms_cfg = dict(
-                self.app.config.get('alarms', get_default_alarm_config()) or {}
-            )
-            alarms_cfg['enabled'] = self._widgets['alarms_enabled'].isChecked()
-            for wkey, cfg_key in [
-                ('alarms_complete_key', 'complete_hotkey'),
-                ('alarms_dismiss_key',  'dismiss_hotkey'),
-            ]:
-                btn = self._widgets.get(wkey)
-                if isinstance(btn, _HotkeyButton):
-                    alarms_cfg[cfg_key] = btn.combo
-            alarms_cfg['nag_interval_seconds'] = self._widgets['alarms_nag'].value()
-            updates['alarms'] = alarms_cfg
-            am = getattr(self.app, 'alarm_manager', None)
-            if am:
-                if alarms_cfg['enabled'] and not getattr(am, 'running', False):
-                    am.start()
-                elif not alarms_cfg['enabled'] and getattr(am, 'running', False):
-                    am.stop()
-
-        # Sounds tab
-        if 'sound_feedback' in self._widgets:
-            updates['audio_feedback'] = self._widgets['sound_feedback'].isChecked()
-            updates['sound_volume'] = self._widgets['sound_volume_slider'].value() / 100.0
-            updates['sound_theme'] = self._widgets['sound_theme_combo'].currentText()
-
-        # Cloud LLM (only when licensed and tab was built)
-        if 'cloud_enabled' in self._widgets:
-            from samsara import premium
-            if premium.is_premium(self.app):
-                provider_display = self._widgets['cloud_provider'].currentText()
-                provider = _DISPLAY_TO_CODE.get(provider_display, 'deepseek')
-                api_key = self._widgets['cloud_api_key'].text().strip()
-                model_override = self._widgets['cloud_model'].text().strip()
-                cfg = dict(self.app.config.get('cloud_llm', {}) or {})
-                cfg['enabled'] = self._widgets['cloud_enabled'].isChecked()
-                cfg['provider'] = provider
-                cfg['api_key'] = api_key
-                cfg['timeout_seconds'] = self._widgets['cloud_timeout'].value()
-                if model_override:
-                    cfg['model'] = model_override
-                elif 'model' in cfg:
-                    del cfg['model']
-                updates['cloud_llm'] = cfg
-
-        # Ava personality
-        if 'ava_personality' in self._widgets:
-            val = self._widgets['ava_personality'].currentText().lower()
-            updates['ava_personality'] = val
-
-        # Ava conversation memory
-        if 'ava_memory_mode' in self._widgets:
-            mem_updates = dict(self.app.config.get('ava_memory', {}))
-            mode_text = self._widgets['ava_memory_mode'].currentText()
-            mem_updates['mode'] = 'last' if mode_text == 'Keep last session' else 'clear'
-            if 'ava_memory_max_turns' in self._widgets:
-                mem_updates['max_turns'] = int(
-                    self._widgets['ava_memory_max_turns'].value()
-                )
-            updates['ava_memory'] = mem_updates
-
-        # Advanced tab
-        if 'adv_device' in self._widgets:
-            device_map  = self._widgets['adv_device_map']
-            device_disp = self._widgets['adv_device'].currentText()
-            updates['device']            = device_map.get(device_disp, 'cpu')
-            updates['compute_type']      = self._widgets['adv_compute_type'].currentText()
-            updates['performance_mode']  = self._widgets['adv_perf_mode'].currentText()
-            updates['silence_threshold'] = self._widgets['adv_silence'].value()
-            updates['min_speech_duration'] = self._widgets['adv_min_speech'].value()
-            updates['threshold_mode']    = self._widgets['adv_threshold_mode'].currentText()
-            updates['cal_multiplier']    = self._widgets['adv_cal_multiplier'].value()
-            updates['echo_cancellation'] = {
-                'enabled':    self._widgets['adv_aec_enabled'].isChecked(),
-                'latency_ms': self._widgets['adv_aec_latency'].value(),
-            }
-            updates['listening_indicator_enabled']  = (
-                self._widgets['adv_indicator_enabled'].isChecked()
-            )
-            updates['listening_indicator_position'] = (
-                self._widgets['adv_indicator_pos'].currentText()
-            )
-            if 'adv_gesture_enabled' in self._widgets:
-                gesture_cfg = dict(self.app.config.get('gesture', {}) or {})
-                gesture_cfg['enabled'] = self._widgets['adv_gesture_enabled'].isChecked()
-                updates['gesture'] = gesture_cfg
-            # Apply manual threshold to wake_word_config if in manual mode
-            if self._widgets['adv_threshold_mode'].currentText() == 'manual':
-                ww_cfg = dict(self.app.config.get('wake_word_config', {}) or {})
-                ww_audio = dict(ww_cfg.get('audio', {}) or {})
-                val = self._widgets['adv_manual_threshold'].value()
-                val = max(0.005, min(0.20, val))
-                ww_audio['speech_threshold'] = val
-                ww_cfg['audio'] = ww_audio
-                # Merge with any existing wake_word_config update from Hotkeys tab
-                existing_ww = updates.get('wake_word_config', ww_cfg)
-                existing_ww_audio = dict(existing_ww.get('audio', {}) or {})
-                existing_ww_audio['speech_threshold'] = val
-                existing_ww['audio'] = existing_ww_audio
-                updates['wake_word_config'] = existing_ww
-
-        # AI Command Mode — merge into existing dict to preserve keys not surfaced in the UI
-        if 'ai_cmd_enabled' in self._widgets:
-            ai_cfg = dict(self.app.config.get('ai_command_mode', {}) or {})
-            key_label = self._widgets['ai_cmd_key'].currentText()
-            ai_cfg['enabled']             = self._widgets['ai_cmd_enabled'].isChecked()
-            ai_cfg['key']                 = _AI_CMD_KEY_OPTIONS.get(key_label, ai_cfg.get('key', 'right_ctrl'))
-            ai_cfg['wake_phrase']         = self._widgets['ai_cmd_wake_phrase'].text().strip()
-            ai_cfg['backend']             = 'cloud' if self._widgets['ai_cmd_backend'].currentText() == 'Cloud' else 'ollama'
-            ai_cfg['model']               = self._widgets['ai_cmd_model'].text().strip()
-            ai_cfg['show_plan_hud']       = self._widgets['ai_cmd_show_hud'].isChecked()
-            ai_cfg['keep_warm']           = self._widgets['ai_cmd_keep_warm'].isChecked()
-            ai_cfg['queue_depth_cap']     = self._widgets['ai_cmd_queue_depth'].value()
-            ai_cfg['step_settle_seconds'] = self._widgets['ai_cmd_step_settle'].value()
-            updates['ai_command_mode'] = ai_cfg
+        Registration order preserves the merge semantics tabs depend on:
+        Hotkeys (command_mode mode/debounce/timeout/miss_limit,
+        wake_word_config wake_command_timeout/quick_silence/oww_threshold)
+        is registered before Commands (command_mode button/suppress_button)
+        and before Advanced (wake_word_config manual speech_threshold) --
+        each later fn reads the accumulated `updates` dict to merge onto
+        the earlier tab's partial write instead of clobbering it.
+        """
+        updates: dict = {}
+        for save_fn in self._save_fns:
+            updates.update(save_fn(updates))
 
         with self.app._config_lock:
             self.app.config.update(updates)
