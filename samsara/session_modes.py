@@ -8,9 +8,14 @@ LATCHED MODES instead of always executing every utterance as a command.
                             same as today.
     SessionMode.DICTATE  -- utterances are typed into the locked focus
                             target instead of matched against commands.
-
-A third mode (AVA) is Phase 2 and deliberately NOT added here -- see the
-SessionMode docstring for how the dispatch below stays additive for it.
+    SessionMode.AVA      -- Phase 2. Every utterance goes to the local agent
+                            as natural language (see _dispatch_ava). The
+                            agent NEVER auto-sends the DICTATE stage buffer;
+                            an explicit reference ("submit that") is the
+                            only way it gets attached to a request, and
+                            agent exchanges are never pushed onto the
+                            scratch-that stack -- an agent turn can't be
+                            unsent.
 
 This module is pure orchestration: it never touches audio, Whisper, pyautogui,
 or Qt directly. All side effects (injecting text, removing characters,
@@ -48,13 +53,15 @@ log = logging.getLogger("Samsara.session_modes")
 # ---------------------------------------------------------------------------
 
 class SessionMode(Enum):
-    """COMMAND is the hub and the default entry mode. DICTATE is a lane you
-    switch into and back out of. A future AVA member slots in the same way:
-    add the enum value, a whole-utterance switch phrase, a prefix switch
-    ("ava "), and a _dispatch_in_mode branch -- the abort/scratch-that/
-    switch-word plumbing above does not change."""
+    """COMMAND is the hub and the default entry mode. DICTATE and AVA are
+    lanes you switch into and back out of; any-to-any transitions work
+    identically regardless of current mode, since match_switch_word() is a
+    pure function of the utterance text and _switch_mode() unconditionally
+    sets the new mode -- the abort/scratch-that/switch-word plumbing does
+    not change per mode."""
     COMMAND = "command"
     DICTATE = "dictate"
+    AVA = "ava"
 
 
 TERMINAL_PUNCTUATION = ".!?:;"
@@ -71,13 +78,15 @@ _WHOLE_UTTERANCE_SWITCHES: dict[str, SessionMode] = {
     "dictate mode": SessionMode.DICTATE,
     "dictation mode": SessionMode.DICTATE,
     "dictate": SessionMode.DICTATE,
+    "ava": SessionMode.AVA,
+    "ava mode": SessionMode.AVA,
 }
 
-# Prefix forms: "dictate <payload>" switches mode AND delivers payload as the
-# first chunk of the new mode. Reserve the same shape for "ava " in Phase 2 --
-# add a key here, nothing else in this matcher needs to change.
+# Prefix forms: "dictate <payload>" / "ava <payload>" switch mode AND deliver
+# the payload as the first chunk/utterance of the new mode.
 _PREFIX_SWITCHES: dict[str, SessionMode] = {
     "dictate": SessionMode.DICTATE,
+    "ava": SessionMode.AVA,
 }
 
 SCRATCH_THAT_PHRASE = "scratch that"
@@ -149,6 +158,54 @@ def _strip_leading_token_preserving_case(raw_text: str, prefix_word: str) -> str
     if idx < len(tokens) and tokens[idx].strip(string.punctuation).lower() == prefix_word:
         idx += 1
     return " ".join(tokens[idx:])
+
+
+# ---------------------------------------------------------------------------
+# Stage-buffer reference detection (AVA mode, Phase 2)
+# ---------------------------------------------------------------------------
+
+# Unambiguous noun phrases -- position in the utterance doesn't matter.
+_STAGE_REFERENCE_PHRASES = ("the text", "what i dictated", "the dictation")
+
+
+def detect_stage_reference(text: str) -> bool:
+    """True only for an EXPLICIT reference to the DICTATE stage buffer.
+
+    Deterministic token/phrase check, no NLU, by design (see Phase 2 spec).
+    Two rules, either one is sufficient:
+
+      1. Any of _STAGE_REFERENCE_PHRASES appears anywhere in the normalized
+         text ("send the text", "check the dictation") -- unambiguous noun
+         phrases, position doesn't matter.
+      2. "that" or "this" appears as a token but is NOT the first word of
+         the (filler-stripped) utterance -- i.e. used as the object of a
+         verb ("submit that", "read this") rather than a sentence-initial
+         demonstrative/subject ("that was fun", "this is great").
+
+    Accepted ambiguity: rule 2 is a POSITION heuristic, not semantic
+    understanding, so it also matches non-reference object-shaped uses like
+    "was that clear" or "did you like that". This is a deliberate,
+    documented trade-off: a false positive here only ever means extra
+    (possibly irrelevant) context gets attached to an agent request -- it
+    never causes an unwanted ACTION, because the caller never sends the
+    buffer without this function returning True, and the agent never
+    auto-acts on staged text regardless. Narrowing the heuristic further to
+    kill those false positives would risk the opposite failure -- silently
+    missing real references like "check that" -- which defeats the point of
+    the feature. Given the choice, over-attaching harmless context beats
+    dropping an intended one.
+    """
+    normalized = normalize_utterance(text)
+    if not normalized:
+        return False
+    for phrase in _STAGE_REFERENCE_PHRASES:
+        if phrase in normalized:
+            return True
+    words = normalized.split()
+    for i, word in enumerate(words):
+        if word in ("that", "this") and i > 0:
+            return True
+    return False
 
 
 # ---------------------------------------------------------------------------
@@ -326,7 +383,7 @@ class DispatchOutcome:
     kind: str
     # one of: "empty" | "abort" | "scratch_success" | "scratch_refuse" |
     # "mode_switch" | "command_executed" | "command_miss" |
-    # "dictate_injected" | "dictate_suppressed_focus_lock"
+    # "dictate_injected" | "dictate_suppressed_focus_lock" | "ava_dispatched"
     detail: dict = field(default_factory=dict)
 
 
@@ -334,6 +391,11 @@ ForegroundResolver = Callable[[], Optional[str]]
 InjectFn = Callable[[str], None]
 RemoveCharsFn = Callable[[int], None]
 CommandDispatchFn = Callable[[str], CommandDispatchResult]
+# (utterance_text, stage_buffer_context_or_None) -> None. Fire-and-forget from
+# this module's perspective -- the manager never blocks on or observes the
+# agent's response. Threading/queueing/depth-limiting is the wired callable's
+# job (dictation.py), same division of labor as inject_fn/command_dispatch_fn.
+AgentDispatchFn = Callable[[str, Optional[str]], None]
 
 
 # ---------------------------------------------------------------------------
@@ -354,6 +416,7 @@ class SessionModeManager:
         inject_fn: InjectFn,
         remove_chars_fn: RemoveCharsFn,
         command_dispatch_fn: CommandDispatchFn,
+        agent_dispatch_fn: AgentDispatchFn,
         on_mode_change: Optional[Callable[[SessionMode], None]] = None,
         on_focus_lock_revert: Optional[Callable[[], None]] = None,
         on_scratch_result: Optional[Callable[[bool], None]] = None,
@@ -365,6 +428,7 @@ class SessionModeManager:
         self._inject_fn = inject_fn
         self._remove_chars_fn = remove_chars_fn
         self._command_dispatch_fn = command_dispatch_fn
+        self._agent_dispatch_fn = agent_dispatch_fn
         self._on_mode_change = on_mode_change
         self._on_focus_lock_revert = on_focus_lock_revert
         self._on_scratch_result = on_scratch_result
@@ -375,6 +439,7 @@ class SessionModeManager:
         self._stack = UnitOfWorkStack()
         self._dictate_target_process: Optional[str] = None
         self._last_dictate_ended_terminal: Optional[bool] = None
+        self._stage_buffer: str = ""
 
     # -- session lifecycle -----------------------------------------------
 
@@ -385,10 +450,18 @@ class SessionModeManager:
         self._stack = UnitOfWorkStack()
         self._dictate_target_process = None
         self._last_dictate_ended_terminal = None
+        self._stage_buffer = ""
 
     @property
     def stack_depth(self) -> int:
         return len(self._stack)
+
+    @property
+    def stage_buffer(self) -> str:
+        """The accumulated text from the most recent DICTATE excursion,
+        available for explicit reference from AVA (or any mode) until it is
+        sent or a fresh DICTATE entry / session reset clears it."""
+        return self._stage_buffer
 
     # -- dispatch -----------------------------------------------------------
 
@@ -436,9 +509,13 @@ class SessionModeManager:
     def _switch_mode(self, new_mode: SessionMode) -> None:
         if new_mode is SessionMode.DICTATE and self.mode is not SessionMode.DICTATE:
             # Lock onto whatever's focused right now -- injections later in
-            # this DICTATE lane must stay within this process.
+            # this DICTATE lane must stay within this process. A fresh
+            # DICTATE entry also starts a fresh stage buffer -- "what I
+            # dictated" from AVA should mean THIS excursion, not some stale
+            # one from earlier in the session.
             self._dictate_target_process = self._foreground_exe_resolver()
             self._last_dictate_ended_terminal = None
+            self._stage_buffer = ""
         self.mode = new_mode
         if self._on_mode_change:
             self._on_mode_change(new_mode)
@@ -452,6 +529,8 @@ class SessionModeManager:
             return self._dispatch_command(text)
         if self.mode is SessionMode.DICTATE:
             return self._dispatch_dictate(text)
+        if self.mode is SessionMode.AVA:
+            return self._dispatch_ava(text)
         raise AssertionError(f"unhandled SessionMode {self.mode!r}")  # pragma: no cover
 
     def _dispatch_command(self, text: str) -> DispatchOutcome:
@@ -487,11 +566,38 @@ class SessionModeManager:
 
         self._inject_fn(to_inject)
         self._last_dictate_ended_terminal = chunk_ends_terminal(adjusted)
+        # Mirrors exactly what got injected (to_inject already carries the
+        # seam-join leading space for non-first chunks) -- this IS "what I
+        # dictated" for AVA's stage-reference contract. Suppressed chunks
+        # (focus-lock reverted, above) never reach here, so nothing that
+        # wasn't actually typed ends up in the buffer.
+        self._stage_buffer += to_inject
         self._stack.push(StackItem(
             kind="dictation_chunk", payload=to_inject, mode=SessionMode.DICTATE,
             timestamp=self._clock(), extra={"target_process": self._dictate_target_process},
         ))
         return DispatchOutcome(kind="dictate_injected", detail={"text": to_inject})
+
+    def _dispatch_ava(self, text: str) -> DispatchOutcome:
+        """Every AVA-mode utterance goes to the agent as natural language.
+        The DICTATE stage buffer is attached ONLY when detect_stage_reference
+        finds an explicit reference AND the buffer is non-empty -- never by
+        default. Attaching (an "explicit send") clears the buffer here, at
+        dispatch time: this module is synchronous and fire-and-forget
+        towards the agent (see AgentDispatchFn) and never observes whether
+        the agent's response succeeds, so "the moment Samsara hands off a
+        buffer-attached request" is the only deterministic point at which
+        "sent" can be defined. Agent turns are never pushed onto the
+        scratch-that stack -- an agent exchange can't be unsent."""
+        context = None
+        if detect_stage_reference(text) and self._stage_buffer:
+            context = self._stage_buffer
+            self._stage_buffer = ""
+        self._agent_dispatch_fn(text, context)
+        return DispatchOutcome(
+            kind="ava_dispatched",
+            detail={"text": text, "has_context": context is not None},
+        )
 
     # -- scratch that / retype that ------------------------------------------
 
