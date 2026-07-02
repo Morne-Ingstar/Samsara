@@ -256,7 +256,7 @@ class CommandExecutor:
             app_instance:  DictationApp passed per-call.  When None, self._app
                            is used as a fallback so tests that provide app at
                            construction time work without re-passing it.
-            force_commands: Skip the command_mode_enabled gate.  Used by wake
+            force_commands: Skip the command_matching_enabled gate.  Used by wake
                            word mode where commands always execute.
 
         Returns:
@@ -274,9 +274,9 @@ class CommandExecutor:
                 or "command mode enable" in text_lower
                 or "enable command mode" in text_lower):
             if effective_app:
-                effective_app.command_mode_enabled = True
+                effective_app.command_matching_enabled = True
                 with effective_app._config_lock:
-                    effective_app.config['command_mode_enabled'] = True
+                    effective_app.config.setdefault('command_mode', {})['command_matching_enabled'] = True
                     effective_app.save_config()
             print("[OK] Command mode ENABLED")
             return "command_mode_on", True
@@ -285,9 +285,9 @@ class CommandExecutor:
                 or "command mode disable" in text_lower
                 or "disable command mode" in text_lower):
             if effective_app:
-                effective_app.command_mode_enabled = False
+                effective_app.command_matching_enabled = False
                 with effective_app._config_lock:
-                    effective_app.config['command_mode_enabled'] = False
+                    effective_app.config.setdefault('command_mode', {})['command_matching_enabled'] = False
                     effective_app.save_config()
             print("[OFF] Command mode DISABLED")
             return "command_mode_off", True
@@ -303,9 +303,9 @@ class CommandExecutor:
                 effective_app.play_sound("success")
                 return f"reminder_{minutes}min", True
 
-        # Gate on command_mode_enabled — bypassed by wake word mode via force_commands
+        # Gate on command_matching_enabled — bypassed by wake word mode via force_commands
         if not force_commands:
-            if effective_app and not effective_app.command_mode_enabled:
+            if effective_app and not effective_app.command_matching_enabled:
                 return text, False
 
         # Phonetic wash for matching only; original text is returned on fallthrough
