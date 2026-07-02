@@ -91,7 +91,6 @@ def _schedule_label(schedule: dict) -> str:
 
 class _StatusWindow(QMainWindow):
     _refresh_sig = Signal()
-    _mode_sig = Signal(str, str)  # (mode_name, accent_color_hex)
 
     def __init__(self, notification_manager, alarm_manager):
         super().__init__()
@@ -109,7 +108,6 @@ class _StatusWindow(QMainWindow):
         self._render()
 
         self._refresh_sig.connect(self._render)
-        self._mode_sig.connect(self._set_mode_slot)
 
         self._timer = QTimer(self)
         self._timer.timeout.connect(self._render)
@@ -129,15 +127,6 @@ class _StatusWindow(QMainWindow):
         hdr.setFont(QFont("Segoe UI", 14, QFont.Bold))
         hdr.setStyleSheet(f"color: {_ACCENT}; background: transparent;")
         hdr_row.addWidget(hdr, stretch=1)
-
-        # Persistent unified-session mode indicator (COMMAND vs DICTATE).
-        # Hidden until the first set_mode() call -- most overlay opens have
-        # nothing to do with the session mode.
-        self._mode_badge = QLabel("")
-        self._mode_badge.setFont(QFont("Segoe UI", 10, QFont.Bold))
-        self._mode_badge.setStyleSheet(f"color: {_TEXT_MUT}; background: transparent;")
-        self._mode_badge.hide()
-        hdr_row.addWidget(self._mode_badge)
 
         close_btn = QPushButton("x")
         close_btn.setFixedSize(22, 22)
@@ -316,14 +305,6 @@ class _StatusWindow(QMainWindow):
         spacer.setStyleSheet("background: transparent;")
         layout.addWidget(spacer)
 
-    @Slot(str, str)
-    def _set_mode_slot(self, name: str, color: str):
-        self._mode_badge.setText(f"● {name}")
-        self._mode_badge.setStyleSheet(
-            f"color: {color}; background: transparent; padding: 0 4px;"
-        )
-        self._mode_badge.show()
-
     def closeEvent(self, e):
         e.ignore()
         self.hide()
@@ -361,31 +342,21 @@ class StatusOverlay:
         else:
             self.show(notification_manager, alarm_manager)
 
-    def set_mode(self, name: str, color: str) -> None:
-        """Persistent unified-session mode indicator (COMMAND vs DICTATE).
-
-        Safe to call before the overlay has ever been shown -- lazily
-        creates the window (with no reminder/alarm managers attached) the
-        same way show() does, then makes the mode badge visible.
-        """
-        if self._window is not None:
-            self._window._mode_sig.emit(name, color)
-            qt_runtime.post(self._window.show)
-            qt_runtime.post(self._window.raise_)
-        elif not self._init_posted:
-            self._init_posted = True
-            qt_runtime.post(lambda: self._init_window_with_mode(name, color))
-
     def _init_window(self, notification_manager, alarm_manager):
         """Runs on the Qt thread."""
-        self._window = _StatusWindow(notification_manager, alarm_manager)
-        self._window.show()
-
-    def _init_window_with_mode(self, name: str, color: str):
-        """Runs on the Qt thread. Lazy first-time creation triggered by
-        set_mode() rather than show() -- no reminder/alarm managers yet."""
-        self._init_window(None, None)
-        self._window._mode_sig.emit(name, color)
+        try:
+            self._window = _StatusWindow(notification_manager, alarm_manager)
+            self._window.show()
+        except Exception as exc:
+            # Leave _window as None and reset _init_posted so a future
+            # show()/toggle() call can retry construction. Without this
+            # reset, one failed construction would brick the window
+            # forever: _window stays None, _init_posted stays True, and
+            # neither the "already exists" nor "first-time init" branch of
+            # show() would ever fire again -- the window would vanish and
+            # never reopen.
+            print(f"[STATUS-OVERLAY] Window init failed, will retry on next show(): {exc}")
+            self._init_posted = False
 
 
 # Module-level singleton — imported by both alarm_commands and reminders plugins

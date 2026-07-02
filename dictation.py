@@ -3620,18 +3620,22 @@ class DictationApp:
                 return
         self._start_ava_session_worker(next_text)
 
+    # Session mode badge (COMMAND/DICTATE/AVA) accent colors. Lives on the
+    # listening indicator pill -- NEVER on samsara.ui.status_overlay (the
+    # Reminders & Alarms window). That window must never be shown, hidden,
+    # or otherwise touched by session code; an earlier version wired the
+    # badge there and every mode transition popped/hid the user's Reminders
+    # window as a side effect.
+    _MODE_OVERLAY = {
+        SessionMode.COMMAND: ("COMMAND", "#5EEAD4"),
+        SessionMode.DICTATE: ("DICTATE", "#f59e0b"),
+        SessionMode.AVA: ("AVA", "#A78BFA"),
+    }
+
     def _update_mode_overlay(self, mode: "SessionMode") -> None:
-        try:
-            from samsara.ui.status_overlay import get_overlay
-            _MODE_OVERLAY = {
-                SessionMode.COMMAND: ("COMMAND", "#5EEAD4"),
-                SessionMode.DICTATE: ("DICTATE", "#f59e0b"),
-                SessionMode.AVA: ("AVA", "#A78BFA"),
-            }
-            name, color = _MODE_OVERLAY.get(mode, ("COMMAND", "#5EEAD4"))
-            get_overlay().set_mode(name, color)
-        except Exception as exc:
-            print(f"[SESSION] Mode overlay update failed: {exc}")
+        name, color = self._MODE_OVERLAY.get(mode, ("COMMAND", "#5EEAD4"))
+        if hasattr(self, 'listening_indicator'):
+            self._schedule_ui(self.listening_indicator.set_session_mode, name, color)
 
     def enter_command_mode(self):
         """Enter command mode (idempotent). Safe to call from any thread."""
@@ -3652,6 +3656,11 @@ class DictationApp:
             # Unified session: every toggle-mode entry starts fresh in
             # COMMAND -- reset() discards any mode state from a prior session.
             self._ensure_session_mode_manager().reset()
+            if hasattr(self, 'listening_indicator'):
+                # Force-visible for the session's duration regardless of
+                # listening_indicator_enabled -- restored to the
+                # config-controlled state in exit_command_mode().
+                self._schedule_ui(self.listening_indicator.show)
             self._update_mode_overlay(SessionMode.COMMAND)
         threading.Thread(target=self._do_enter_command_mode, daemon=True,
                          name='cmd-mode-enter').start()
@@ -3699,12 +3708,17 @@ class DictationApp:
         # re-entry (enter_command_mode) always starts fresh in COMMAND.
         if self._session_mode_manager is not None:
             self._session_mode_manager.reset()
-        try:
-            from samsara.ui.status_overlay import get_overlay
-            get_overlay().hide()
-        except Exception:
-            pass
+        is_toggle_session = self.config.get('command_mode', {}).get('mode', 'hold') == 'toggle'
         if hasattr(self, 'listening_indicator'):
+            if is_toggle_session:
+                # Clear the session badge and restore whatever visibility
+                # listening_indicator_enabled calls for -- it was
+                # force-visible only for the session's duration (see
+                # enter_command_mode). The Reminders & Alarms window
+                # (status_overlay.py) is never touched here.
+                self._schedule_ui(self.listening_indicator.set_session_mode, None, None)
+                if not self.config.get('listening_indicator_enabled', False):
+                    self._schedule_ui(self.listening_indicator.hide)
             self._schedule_ui(self.listening_indicator.set_command_mode, False)
         was_recording = self.recording
         if was_recording:
