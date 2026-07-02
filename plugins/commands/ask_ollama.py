@@ -10,6 +10,10 @@ from samsara.ava_memory import AvaMemory
 from samsara.languages import LANGUAGES
 from samsara.plugin_commands import command
 
+from samsara.log import get_logger
+
+logger = get_logger(__name__)
+
 _LANG_CODE_TO_NAME = dict(LANGUAGES)
 
 # ── System prompts ────────────────────────────────────────────────────────────
@@ -195,8 +199,8 @@ def _build_ava_memory(app):
         stale = _ava_memory_path(app)
         if os.path.exists(stale):
             os.remove(stale)
-    except OSError:
-        pass
+    except OSError as e:
+        logger.debug(f"_build_ava_memory: {e}")
     return AvaMemory(max_turns=max_turns)
 
 # ── Unsafe commands — require confirmation before executing ───────────────────
@@ -302,8 +306,8 @@ def _extract_window_letter(text: str):
         letter = PHONETIC.get(token)
         if letter:
             return letter
-    except ImportError:
-        pass
+    except ImportError as e:
+        logger.debug(f"_extract_window_letter: {e}")
     return None
 
 
@@ -1282,8 +1286,8 @@ def _health_monitor_loop():
         if app is not None:
             try:
                 host = get_host(app)
-            except Exception:
-                pass
+            except Exception as e:
+                logger.debug(f"_check: {e}")
         return _check_ollama_available(host)
 
     first_run = True
@@ -1305,12 +1309,12 @@ def _health_monitor_loop():
                 if app is not None and hasattr(app, "play_sound"):
                     try:
                         app.play_sound("error")
-                    except Exception:
-                        pass
+                    except Exception as e:
+                        logger.debug(f"_health_monitor_loop: {e}")
             elif transition == ("down", "up") and notify:
                 print("[OLLAMA] Reconnected")
-        except Exception:
-            pass
+        except Exception as e:
+            logger.debug(f"_health_monitor_loop: {e}")
 
 
 def _start_health_monitor(app=None):

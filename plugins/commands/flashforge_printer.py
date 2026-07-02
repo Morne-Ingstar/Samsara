@@ -28,6 +28,10 @@ import os
 
 from samsara.plugin_commands import command
 
+from samsara.log import get_logger
+
+logger = get_logger(__name__)
+
 TCP_PORT = 8899
 ORCA_PATH = r"C:\Program Files\Flashforge\Orca-Flashforge\orca-flashforge.exe"
 
@@ -130,8 +134,8 @@ def handle_print_gun(app, remainder):
         if hasattr(app, 'play_sound'):
             try:
                 app.play_sound("start")
-            except Exception:
-                pass
+            except Exception as e:
+                logger.debug(f"handle_print_gun: {e}")
     else:
         print(f"[3DP] Model file not found: {model_file}")
     return True

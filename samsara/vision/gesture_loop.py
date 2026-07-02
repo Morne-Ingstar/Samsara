@@ -78,8 +78,8 @@ class GestureLoop:
         if self._mp_hands is not None:
             try:
                 self._mp_hands.close()
-            except Exception:
-                pass
+            except Exception as e:
+                logger.debug(f"stop: {e}")
             self._mp_hands = None
         logger.info("[GESTURE] Loop stopped")
 
@@ -152,8 +152,8 @@ class GestureLoop:
 
         try:
             hands.close()
-        except Exception:
-            pass
+        except Exception as e:
+            logger.debug(f"_poll_loop: {e}")
         self._mp_hands = None
 
     @staticmethod

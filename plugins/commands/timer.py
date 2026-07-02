@@ -17,6 +17,10 @@ import sys
 
 from samsara.plugin_commands import command
 
+from samsara.log import get_logger
+
+logger = get_logger(__name__)
+
 
 def _parse_duration(text):
     """Parse natural language duration into seconds.
@@ -95,8 +99,8 @@ def _timer_thread(seconds, label, app):
             app.play_sound("start")
             time.sleep(0.5)
             app.play_sound("start")  # play twice for attention
-        except Exception:
-            pass
+        except Exception as e:
+            logger.debug(f"_timer_thread: {e}")
     
     # Windows toast notification
     if sys.platform == 'win32':
@@ -106,8 +110,8 @@ def _timer_thread(seconds, label, app):
                 f'[System.Reflection.Assembly]::LoadWithPartialName("System.Windows.Forms") | Out-Null; '
                 f'[System.Windows.Forms.MessageBox]::Show("{msg}", "Samsara Timer", "OK", "Information")'
             ], creationflags=subprocess.CREATE_NO_WINDOW)
-        except Exception:
-            pass
+        except Exception as e:
+            logger.debug(f"_timer_thread: {e}")
 
 
 # Active timers for status tracking
@@ -153,7 +157,7 @@ def handle_timer(app, remainder):
                 app.listening_indicator.set_mode,
                 f"Timer: {duration_str}"
             )
-        except Exception:
-            pass
+        except Exception as e:
+            logger.debug(f"handle_timer: {e}")
     
     return True

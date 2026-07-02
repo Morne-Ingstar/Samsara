@@ -908,8 +908,8 @@ class _TrainingWindow(QMainWindow):
             self._tr.save_training_data()
             try:
                 self._tr.app.persist_config()
-            except Exception:
-                pass
+            except Exception as e:
+                logger.debug(f"_import_data: {e}")
             QMessageBox.information(self, "Import Complete",
                                     "Training data imported successfully.")
         except Exception as exc:

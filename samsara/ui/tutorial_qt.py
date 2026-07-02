@@ -31,6 +31,10 @@ from PySide6.QtWidgets import (
     QPushButton, QScrollArea, QTextEdit, QVBoxLayout, QWidget,
 )
 
+from samsara.log import get_logger
+
+logger = get_logger(__name__)
+
 # ---------------------------------------------------------------------------
 # Stylesheet — identical palette to first_run_wizard_qt.py
 # ---------------------------------------------------------------------------
@@ -750,8 +754,8 @@ class TutorialWindow(QMainWindow):
         if hasattr(self._app, 'persist_config'):
             try:
                 self._app.persist_config()
-            except Exception:
-                pass
+            except Exception as e:
+                logger.debug(f"_mark_tutorial_complete: {e}")
 
     # ------------------------------------------------------------------
     # Hint timer

@@ -30,6 +30,10 @@ import time
 import urllib.request
 from typing import Any, Optional
 
+from samsara.log import get_logger
+
+logger = get_logger(__name__)
+
 # ---------------------------------------------------------------------------
 # Defaults -- applied when config key is absent or partially populated
 # ---------------------------------------------------------------------------
@@ -210,8 +214,8 @@ def _duck(app, duck: bool) -> None:
             ac.duck_mic()
         else:
             ac.unduck_mic()
-    except AttributeError:
-        pass
+    except AttributeError as e:
+        logger.debug(f"_duck: {e}")
 
 
 # ---------------------------------------------------------------------------
@@ -393,8 +397,8 @@ def enqueue_utterance(app, utterance: str) -> None:
         _speak(app, "I'm a bit behind -- hold on.")
         try:
             _task_queue.get_nowait()
-        except queue.Empty:
-            pass
+        except queue.Empty as e:
+            logger.debug(f"enqueue_utterance: {e}")
     _task_queue.put_nowait(utterance)
 
 

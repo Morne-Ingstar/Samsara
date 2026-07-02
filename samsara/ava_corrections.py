@@ -9,6 +9,10 @@ import re
 import threading
 from datetime import datetime
 
+from samsara.log import get_logger
+
+logger = get_logger(__name__)
+
 _CORRECTIONS_PATH = os.path.join(
     os.path.expanduser('~'), '.samsara', 'ava_corrections.json'
 )
@@ -67,8 +71,8 @@ def _save():
         print(f"[AVA CORRECTIONS] Save failed: {e}")
         try:
             os.remove(tmp)
-        except OSError:
-            pass
+        except OSError as e:
+            logger.debug(f"_save: {e}")
 
 
 def flush_pending():

@@ -19,6 +19,10 @@ from datetime import datetime, timedelta
 from pathlib import Path
 import json
 
+from samsara.log import get_logger
+
+logger = get_logger(__name__)
+
 # Windows toast notifications
 try:
     from win10toast_click import ToastNotifier
@@ -300,8 +304,8 @@ class NotificationManager:
                 target = datetime.fromisoformat(schedule.get('at', ''))
                 if now >= target and not last_fired:
                     return True
-            except (ValueError, TypeError):
-                pass
+            except (ValueError, TypeError) as e:
+                logger.debug(f"_is_due: {e}")
 
         return False
 

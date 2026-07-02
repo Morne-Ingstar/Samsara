@@ -27,6 +27,10 @@ from PySide6.QtWidgets import (
 
 from samsara.ui import qt_runtime
 
+from samsara.log import get_logger
+
+logger = get_logger(__name__)
+
 # ---------------------------------------------------------------------------
 # Palette
 # ---------------------------------------------------------------------------
@@ -902,8 +906,8 @@ class _DebugWindow(QMainWindow):
             try:
                 self.audio_stream.stop()
                 self.audio_stream.close()
-            except Exception:
-                pass
+            except Exception as e:
+                logger.debug(f"_on_stop: {e}")
             self.audio_stream = None
 
         self._btns_sig.emit(False)
@@ -1257,8 +1261,8 @@ class _DebugWindow(QMainWindow):
                 try:
                     self.audio_stream.stop()
                     self.audio_stream.close()
-                except Exception:
-                    pass
+                except Exception as e:
+                    logger.debug(f"closeEvent: {e}")
                 self.audio_stream = None
         e.accept()
 

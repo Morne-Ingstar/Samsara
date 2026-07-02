@@ -310,8 +310,8 @@ class WinRTEngine(TTSEngine):
             try:
                 self._tts_stream.abort()
                 self._tts_stream.close()
-            except Exception:
-                pass
+            except Exception as e:
+                logger.debug(f"TTS stream abort/close failed during restart: {e}")
             self._tts_stream = None
         self._using_persistent_stream = False
         self._open_persistent_stream()
@@ -334,8 +334,8 @@ class WinRTEngine(TTSEngine):
             try:
                 self._tts_stream.abort()
                 self._tts_stream.close()
-            except Exception:
-                pass
+            except Exception as e:
+                logger.debug(f"TTS stream abort/close failed during shutdown: {e}")
             self._tts_stream = None
 
     # ------------------------------------------------------------------
@@ -434,8 +434,8 @@ class WinRTEngine(TTSEngine):
                         try:
                             g, _ = winreg.QueryValueEx(attr_key, "Gender")
                             gender = g.lower() if g.lower() in ('male', 'female') else 'unknown'
-                        except OSError:
-                            pass
+                        except OSError as e:
+                            logger.debug(f"Registry Gender lookup failed for {token_path}: {e}")
                         try:
                             lang_code, _ = winreg.QueryValueEx(attr_key, "Language")
                             # Language is stored as a hex locale id (e.g. "409" = 0x409 = en-US).
@@ -448,11 +448,11 @@ class WinRTEngine(TTSEngine):
                                 language = language.replace('_', '-') if language else 'en-US'
                             except Exception:
                                 language = 'en-US'
-                        except OSError:
-                            pass
+                        except OSError as e:
+                            logger.debug(f"Registry Language lookup failed for {token_path}: {e}")
                         winreg.CloseKey(attr_key)
-                    except OSError:
-                        pass
+                    except OSError as e:
+                        logger.debug(f"Registry Attributes key read failed for {token_path}: {e}")
 
                     winreg.CloseKey(token_key)
 
@@ -479,8 +479,8 @@ class WinRTEngine(TTSEngine):
                             synth.voice = v
                             matched = True
                             break
-            except Exception:
-                pass
+            except Exception as e:
+                logger.debug(f"WinRT all_voices voice matching failed: {e}")
 
             # Fallback: set voice via WinRT try_set_default_voice_async using
             # the registry token. This supports Natural HD voices unlocked by

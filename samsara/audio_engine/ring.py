@@ -79,6 +79,9 @@ from .frame import (
     RING_FRAMES,
     PREBUFFER_FRAMES,
 )
+from samsara.log import get_logger
+
+logger = get_logger(__name__)
 
 
 # ── Sentinels ─────────────────────────────────────────────────────────────────
@@ -171,7 +174,7 @@ class Reader:
             self.overrun_count += 1
             lost_frames = (wc - self._read_cursor) - RING_FRAMES
             lost_seconds = lost_frames * FRAME_MS / 1000.0
-            print(
+            logger.warning(
                 f"[RING] Overrun on consumer '{getattr(self, '_name', '?')}': "
                 f"reader was {lost_frames} frames ({lost_seconds:.1f}s) behind write head. "
                 f"Ring capacity is {RING_FRAMES * FRAME_MS / 1000:.0f}s — "

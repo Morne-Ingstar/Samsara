@@ -27,6 +27,10 @@ from PySide6.QtWidgets import (
 
 from samsara.ui import qt_runtime
 
+from samsara.log import get_logger
+
+logger = get_logger(__name__)
+
 # ---------------------------------------------------------------------------
 # Colours — identical to mic_setup_wizard_qt.py
 # ---------------------------------------------------------------------------
@@ -868,8 +872,8 @@ class _WizardWindow(QDialog):
             cfg = dict(self._app.config.get("ollama", {}))
             cfg["model"] = model_name
             self._app.update_config({"ollama": cfg}, save=True)
-        except Exception:
-            pass
+        except Exception as e:
+            logger.debug(f"_save_model_choice: {e}")
 
     # ----------------------------------------------------------------
     # Done step
@@ -898,8 +902,8 @@ class _WizardWindow(QDialog):
             value = _AVA_KEY_OPTIONS[index][1]
             try:
                 self._app.update_config({"ava_mode_key": value}, save=True)
-            except Exception:
-                pass
+            except Exception as e:
+                logger.debug(f"_on_ava_key_changed: {e}")
 
     def _enable_ai_pack(self):
         try:
@@ -926,8 +930,8 @@ class _WizardWindow(QDialog):
         if self._pull_proc is not None:
             try:
                 self._pull_proc.terminate()
-            except Exception:
-                pass
+            except Exception as e:
+                logger.debug(f"closeEvent: {e}")
         e.accept()
 
 

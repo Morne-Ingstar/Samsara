@@ -194,8 +194,8 @@ class LoopbackCapture:
             try:
                 self._stream.stop_stream()
                 self._stream.close()
-            except Exception:
-                pass
+            except Exception as e:
+                logger.debug(f"stop: {e}")
             self._stream = None
         self._cleanup_pa()
         logger.info("[AEC] Loopback capture stopped")
@@ -244,8 +244,8 @@ class LoopbackCapture:
                     self._buffer[: n - first] = audio[first:]
                 self._write_pos = end % buf_len
 
-        except Exception:
-            pass  # never crash the audio callback
+        except Exception as e:
+            logger.debug(f"_stream_callback: {e}")
 
         return (None, pyaudio.paContinue)
 
@@ -268,8 +268,8 @@ class LoopbackCapture:
         if self._pa is not None:
             try:
                 self._pa.terminate()
-            except Exception:
-                pass
+            except Exception as e:
+                logger.debug(f"_cleanup_pa: {e}")
             self._pa = None
 
 
@@ -580,8 +580,8 @@ class EchoCanceller:
                     lag_samples = int(np.argmax(np.abs(corr)) - (len(ref[:4096]) - 1))
                     lag_ms = lag_samples / self._FILTER_RATE * 1000
                     lag_str = f" lag={lag_samples}smp({lag_ms:.0f}ms)"
-                except Exception:
-                    pass
+                except Exception as e:
+                    logger.debug(f"process: {e}")
             cancel_pct = int((1 - cleaned_rms / max(mic_rms, 1e-10)) * 100)
             print(f"[AEC] ref_rms={ref_rms:.6f} mic_rms={mic_rms:.6f} "
                   f"cleaned_rms={cleaned_rms:.6f} cancel={cancel_pct}%{lag_str}")

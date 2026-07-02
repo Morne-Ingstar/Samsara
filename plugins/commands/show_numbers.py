@@ -134,8 +134,8 @@ def _is_useful_clickable(control, parent_rect_screen) -> bool:
     try:
         if not control.IsEnabled:
             return False
-    except Exception:
-        pass
+    except Exception as e:
+        logger.debug(f"_is_useful_clickable: {e}")
     return True
 
 
@@ -194,13 +194,13 @@ def _enumerate_foreground_clickables() -> list:
                     'name': ctrl.Name or '',
                     'type': ctrl.ControlTypeName,
                 })
-        except Exception:
-            pass
+        except Exception as e:
+            logger.debug(f"_walk: {e}")
         try:
             for child in ctrl.GetChildren():
                 _walk(child, depth + 1)
-        except Exception:
-            pass
+        except Exception as e:
+            logger.debug(f"_walk: {e}")
 
     _walk(fg)
     return results
@@ -286,8 +286,8 @@ def _enumerate_win32_fallback() -> list:
                         'name': win32gui.GetWindowText(hwnd),
                         'type': cls,
                     })
-            except Exception:
-                pass
+            except Exception as e:
+                logger.debug(f"_cb: {e}")
         return True
 
     try:
@@ -528,8 +528,8 @@ def _fg_poll_qt(app) -> None:
             print(f"[OVERLAY] Auto-dismissed: foreground window changed "
                   f"(target={_fg_hwnd_at_show:#x} overlay={_overlay_hwnd:#x} cur={cur:#x})")
             _destroy_overlay(app)
-    except Exception:
-        pass
+    except Exception as e:
+        logger.debug(f"_fg_poll_qt: {e}")
 
 # ---------------------------------------------------------------------------
 # Auto-dismiss + overlay lifecycle (thread-safe)
@@ -540,8 +540,8 @@ def _cancel_dismiss_timer() -> None:
     if _dismiss_timer is not None:
         try:
             _dismiss_timer.cancel()
-        except Exception:
-            pass
+        except Exception as e:
+            logger.debug(f"_cancel_dismiss_timer: {e}")
         _dismiss_timer = None
 
 

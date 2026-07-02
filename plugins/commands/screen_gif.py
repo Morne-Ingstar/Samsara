@@ -20,6 +20,10 @@ from datetime import datetime
 
 from samsara.plugin_commands import command
 
+from samsara.log import get_logger
+
+logger = get_logger(__name__)
+
 
 # Recording state
 _recording = False
@@ -43,13 +47,13 @@ def _get_capture_engine():
     try:
         import mss
         return 'mss'
-    except ImportError:
-        pass
+    except ImportError as e:
+        logger.debug(f"_get_capture_engine: {e}")
     try:
         from PIL import ImageGrab
         return 'pil'
-    except ImportError:
-        pass
+    except ImportError as e:
+        logger.debug(f"_get_capture_engine: {e}")
     return None
 
 
@@ -80,8 +84,8 @@ def _get_active_window_bounds():
                 "top": rect.top, "left": rect.left,
                 "width": width, "height": height
             }
-    except Exception:
-        pass
+    except Exception as e:
+        logger.debug(f"_get_active_window_bounds: {e}")
     return None
 
 
@@ -313,8 +317,8 @@ def _start_recording(app, remainder, window_only=False):
     if hasattr(app, 'play_sound'):
         try:
             app.play_sound("start")
-        except Exception:
-            pass
+        except Exception as e:
+            logger.debug(f"_start_recording: {e}")
     return True
 
 
@@ -360,13 +364,13 @@ def handle_stop_recording(app, remainder):
     if hasattr(app, 'play_sound'):
         try:
             app.play_sound("stop")
-        except Exception:
-            pass
+        except Exception as e:
+            logger.debug(f"handle_stop_recording: {e}")
     
     if hasattr(app, '_indicator_reset'):
         try:
             app._indicator_reset()
-        except Exception:
-            pass
+        except Exception as e:
+            logger.debug(f"handle_stop_recording: {e}")
     
     return True

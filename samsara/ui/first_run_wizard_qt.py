@@ -23,6 +23,10 @@ from PySide6.QtWidgets import (
 
 from samsara.ui import qt_runtime
 
+from samsara.log import get_logger
+
+logger = get_logger(__name__)
+
 _logger = logging.getLogger("Samsara")
 
 # If the wizard window never appears within this many seconds of posting its
@@ -1157,16 +1161,16 @@ class _WizardWindow(QMainWindow):
             if ace is not None:
                 try:
                     ace.unregister_consumer(self._meter_ace_reader)
-                except Exception:
-                    pass
+                except Exception as e:
+                    logger.debug(f"_stop_meter: {e}")
             self._meter_ace_reader = None
 
         if self._meter_stream is not None:
             try:
                 self._meter_stream.stop()
                 self._meter_stream.close()
-            except Exception:
-                pass
+            except Exception as e:
+                logger.debug(f"_stop_meter: {e}")
             self._meter_stream = None
 
         self._meter_rms_holder = [0.0]
@@ -1228,8 +1232,8 @@ class _WizardWindow(QMainWindow):
                         # No new frame this tick; decay the stored value
                         self._last_meter_rms *= 0.85
                         rms = self._last_meter_rms
-            except Exception:
-                pass
+            except Exception as e:
+                logger.debug(f"_meter_tick: {e}")
         elif self._meter_stream is not None:
             rms = self._meter_rms_holder[0]
 

@@ -195,5 +195,5 @@ class WakeWordDetector:
         with self._lock:
             try:
                 self._model.reset()
-            except Exception:
-                pass
+            except Exception as e:
+                logger.debug(f"reset: {e}")

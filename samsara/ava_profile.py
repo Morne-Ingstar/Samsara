@@ -8,6 +8,10 @@ import os
 import re
 import threading
 
+from samsara.log import get_logger
+
+logger = get_logger(__name__)
+
 _PROFILE_PATH = os.path.join(
     os.path.expanduser('~'), '.samsara', 'ava_profile.json'
 )
@@ -109,8 +113,8 @@ def _save_locked():
         print(f"[AVA PROFILE] Save failed: {e}")
         try:
             os.remove(tmp)
-        except OSError:
-            pass
+        except OSError as e:
+            logger.debug(f"_save_locked: {e}")
 
 # ---------------------------------------------------------------------------
 # Validation

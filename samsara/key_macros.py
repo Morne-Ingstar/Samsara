@@ -10,6 +10,10 @@ import threading
 from pynput import keyboard
 from pynput.keyboard import Controller, Key
 
+from samsara.log import get_logger
+
+logger = get_logger(__name__)
+
 
 # Map string key names to pynput Key objects
 SPECIAL_KEYS = {
@@ -67,8 +71,8 @@ def get_key_name(key):
             return key.char.lower()
         elif hasattr(key, 'name'):
             return key.name.lower()
-    except AttributeError:
-        pass
+    except AttributeError as e:
+        logger.debug(f"get_key_name: {e}")
     return None
 
 

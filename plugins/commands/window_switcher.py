@@ -33,6 +33,10 @@ import time
 
 from samsara.plugin_commands import command
 
+from samsara.log import get_logger
+
+logger = get_logger(__name__)
+
 # ---------------------------------------------------------------------------
 # Win32 bindings
 # ---------------------------------------------------------------------------
@@ -373,8 +377,8 @@ def _cancel_timer() -> None:
     if _dismiss_timer is not None:
         try:
             _dismiss_timer.cancel()
-        except Exception:
-            pass
+        except Exception as e:
+            logger.debug(f"_cancel_timer: {e}")
         _dismiss_timer = None
 
 
@@ -390,8 +394,8 @@ def _reset_timer() -> None:
         try:
             _dismiss_all(clear_mapping=True)
             print("[WINSW] Auto-dismissed after 30s inactivity")
-        except Exception:
-            pass
+        except Exception as e:
+            logger.debug(f"_fire: {e}")
 
     t = threading.Timer(_AUTO_DISMISS_S, _fire)
     t.daemon = True
@@ -435,8 +439,8 @@ def _force_focus(hwnd: int) -> bool:
         try:
             _tmo = ctypes.c_ulong(0)
             user32.SystemParametersInfoW(0x2001, 0, ctypes.byref(_tmo), 0x0002)
-        except Exception:
-            pass
+        except Exception as e:
+            logger.debug(f"_force_focus: {e}")
 
         # 4. Attach both the foreground-owner thread AND our calling thread to
         #    the target's input queue, then perform the full steal sequence.

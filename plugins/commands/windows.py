@@ -256,8 +256,8 @@ def get_all_movable_windows(extra_ignore=None):
             _, pid = win32process.GetWindowThreadProcessId(hwnd)
             title = win32gui.GetWindowText(hwnd)
             results.append((hwnd, title, pid))
-        except Exception:
-            pass
+        except Exception as e:
+            logger.debug(f"_cb: {e}")
         return True
 
     win32gui.EnumWindows(_cb, None)
@@ -441,8 +441,8 @@ def handle_movie_mode(app, remainder):
                 "priority": 1,
                 "origin": "Samsara",
             })
-    except Exception:
-        pass
+    except Exception as e:
+        logger.debug(f"handle_movie_mode: {e}")
 
     return True
 
@@ -484,8 +484,8 @@ def _save_all_layouts(layouts):
         logger.error("Failed to save layouts: %s", e)
         try:
             tmp.unlink()
-        except OSError:
-            pass
+        except OSError as e:
+            logger.debug(f"_save_all_layouts: {e}")
         raise
 
 
@@ -905,8 +905,8 @@ def handle_snap(app, remainder):
     try:
         if win32gui.GetWindowPlacement(hwnd)[1] == win32con.SW_SHOWMAXIMIZED:
             win32gui.ShowWindow(hwnd, win32con.SW_RESTORE)
-    except Exception:
-        pass
+    except Exception as e:
+        logger.debug(f"handle_snap: {e}")
 
     monitors = get_monitors()
     monitor = _get_monitor_for_window(hwnd, monitors)

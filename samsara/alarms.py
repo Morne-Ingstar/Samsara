@@ -21,6 +21,10 @@ from typing import Optional, Callable, Dict, List, Any
 
 # Windows sound playback
 import sys
+
+from samsara.log import get_logger
+
+logger = get_logger(__name__)
 if sys.platform == 'win32':
     try:
         import winsound
@@ -391,14 +395,14 @@ class AlarmManager:
                 try:
                     winsound.PlaySound(str(sound_path), winsound.SND_FILENAME | winsound.SND_ASYNC)
                     return
-                except Exception:
-                    pass
+                except Exception as e:
+                    logger.debug(f"_fallback_play: {e}")
             
             # System beep as last resort
             try:
                 winsound.Beep(880, 500)
-            except Exception:
-                pass
+            except Exception as e:
+                logger.debug(f"_fallback_play: {e}")
     
     def play_sound_file(self, sound_path: str, volume: float = 0.7):
         """Play a specific sound file (for preview in settings)."""
@@ -421,8 +425,8 @@ class AlarmManager:
         elif HAS_WINSOUND and path.exists():
             try:
                 winsound.PlaySound(str(path), winsound.SND_FILENAME)
-            except Exception:
-                pass
+            except Exception as e:
+                logger.debug(f"play_sound_file: {e}")
     
     def start(self):
         """Start the alarm check loop."""

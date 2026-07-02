@@ -12,6 +12,10 @@ meta-commands as actions in a generated plan.
 """
 from samsara.plugin_commands import command
 
+from samsara.log import get_logger
+
+logger = get_logger(__name__)
+
 
 @command(
     "command mode",
@@ -43,6 +47,6 @@ def handle_ai_command_cancel(app, remainder="", **kwargs):
         from samsara.ai_command_mode import cancel_queue, reset_cancel  # noqa: PLC0415
         cancel_queue()
         reset_cancel()
-    except ImportError:
-        pass
+    except ImportError as e:
+        logger.debug(f"handle_ai_command_cancel: {e}")
     return True

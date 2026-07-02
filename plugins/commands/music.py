@@ -18,6 +18,10 @@ import asyncio
 
 from samsara.plugin_commands import command
 
+from samsara.log import get_logger
+
+logger = get_logger(__name__)
+
 
 # ---------------------------------------------------------------------------
 # TEMP HACK � REVISIT
@@ -201,8 +205,8 @@ def _spotify_mute_toggle():
         try:
             if pid.value:
                 proc_name = psutil.Process(pid.value).name().lower()
-        except Exception:
-            pass
+        except Exception as e:
+            logger.debug(f"_spotify_mute_toggle: {e}")
 
         if proc_name != 'spotify.exe':
             _vf(ctrl2, 2, ctypes.c_ulong, c_void_p)(ctrl2)

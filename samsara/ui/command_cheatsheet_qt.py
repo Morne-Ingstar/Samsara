@@ -22,6 +22,10 @@ from PySide6.QtWidgets import (
 
 from samsara.ui import qt_runtime
 
+from samsara.log import get_logger
+
+logger = get_logger(__name__)
+
 # ---------------------------------------------------------------------------
 # Colour palette — matches the Tkinter version
 # ---------------------------------------------------------------------------
@@ -723,8 +727,8 @@ class _CheatSheetWindow(QMainWindow):
                     "w": g.get("w", _DEFAULT_W),
                     "h": g.get("h", _DEFAULT_H),
                 }
-        except Exception:
-            pass
+        except Exception as e:
+            logger.debug(f"_load_palette: {e}")
 
     def _save_palette(self):
         try:

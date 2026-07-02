@@ -16,6 +16,10 @@ from .command_registry import CommandMatcher
 from .handlers import CommandContext, get_handler
 from .phonetic_wash import apply_phonetic_wash
 
+from samsara.log import get_logger
+
+logger = get_logger(__name__)
+
 # Optional dependencies - may not be available in test environments
 try:
     from pynput.keyboard import Key, Controller as KeyboardController
@@ -176,8 +180,8 @@ class CommandExecutor:
         finally:
             try:
                 os.remove(tmp_path)
-            except OSError:
-                pass
+            except OSError as e:
+                logger.debug(f"save_commands: {e}")
 
     def get_command(self, name: str) -> Optional[Dict[str, Any]]:
         """Return the command dict for *name*, or None if not found."""

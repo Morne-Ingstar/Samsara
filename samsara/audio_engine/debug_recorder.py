@@ -44,6 +44,9 @@ import numpy as np
 from .engine import AudioCaptureEngine
 from .frame import FRAME_SIZE, SAMPLE_RATE
 from .ring import EMPTY
+from samsara.log import get_logger
+
+logger = get_logger(__name__)
 
 
 class DebugRecorder:
@@ -97,7 +100,7 @@ class DebugRecorder:
             name="debug-recorder",
         )
         self._thread.start()
-        print(f"[DebugRecorder] Recording started -> {self._output_dir}")
+        logger.info(f"[DebugRecorder] Recording started -> {self._output_dir}")
 
     def stop_recording(self) -> Optional[str]:
         """Stop accumulating and flush accumulated frames to a WAV file.
@@ -121,7 +124,7 @@ class DebugRecorder:
             self._reader = None
 
         if not self._frames:
-            print("[DebugRecorder] No frames accumulated — no file written.")
+            logger.info("[DebugRecorder] No frames accumulated — no file written.")
             return None
 
         path = self._flush_wav()
@@ -148,13 +151,13 @@ class DebugRecorder:
             self._frames.append(frame.pcm.copy())
 
             if len(self._frames) >= self._max_frames:
-                print(
+                logger.debug(
                     f"[DebugRecorder] max_seconds reached "
                     f"({self._max_frames} frames) — auto-flushing."
                 )
                 path = self._flush_wav()
                 self._frames = []
-                print(f"[DebugRecorder] Auto-flush wrote: {path}")
+                logger.debug(f"[DebugRecorder] Auto-flush wrote: {path}")
 
     # ── WAV output ────────────────────────────────────────────────────────────
 
@@ -174,7 +177,7 @@ class DebugRecorder:
             wf.writeframes(audio.tobytes())
 
         duration_s = len(audio) / SAMPLE_RATE
-        print(
+        logger.info(
             f"[DebugRecorder] Wrote {path}  "
             f"({duration_s:.1f}s, {len(self._frames)} frames)"
         )
