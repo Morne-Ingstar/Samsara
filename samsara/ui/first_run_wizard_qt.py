@@ -7,6 +7,7 @@ Runs synchronously on the main thread (same contract as the Tkinter version):
     # result is a dict on success, None on hard cancel
 """
 
+import copy
 import json
 import logging
 import math
@@ -318,7 +319,7 @@ _USE_CASE_CONFIGS = {
     "power_user": {
         "wake_word_enabled": True,
         "streaming_mode": True,
-        "command_mode_enabled": True,
+        "command_mode": {"command_matching_enabled": True},
     },
     "just_dictation": {
         "wake_word_enabled": False,
@@ -362,7 +363,7 @@ _DEFAULTS = {
     "microphone":          None,
     "silence_threshold":   2.0,
     "min_speech_duration": 0.3,
-    "command_mode_enabled": False,
+    "command_mode": {"command_matching_enabled": False},
     "wake_word":           "jarvis",
     "wake_word_timeout":   5.0,
     "show_all_audio_devices": False,
@@ -481,7 +482,11 @@ class _WizardWindow(QMainWindow):
         self._samsara_app = samsara_app
         self.result = None
         self._step = 0
-        self._config = dict(_DEFAULTS)
+        # deepcopy, not dict(): _DEFAULTS now has a nested dict
+        # ("command_mode") -- a shallow copy would share that dict object
+        # across every wizard instance, so _apply_use_case_defaults()
+        # mutating it in place would leak into the next run.
+        self._config = copy.deepcopy(_DEFAULTS)
         self._mics: list[dict] = []
         self._mic_result.connect(self._on_mic_result)
 

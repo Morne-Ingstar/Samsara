@@ -1157,7 +1157,12 @@ class DictationApp:
         logger.info("[INIT] Loading plugins...")
         commands_path = Path(__file__).parent / "commands.json"
         self.command_executor = CommandExecutor(commands_path, app=self)
-        self.command_mode_enabled = self.config.get('command_mode_enabled', True)
+        # Gates command MATCHING during regular dictation -- distinct from
+        # command_mode.enabled, which gates the walkie-talkie button/session
+        # listener. Renamed from the legacy top-level 'command_mode_enabled'
+        # (see _migrate_command_matching_enabled_flag in load_config).
+        self.command_matching_enabled = self.config.get('command_mode', {}).get(
+            'command_matching_enabled', True)
         _boot("plugin discovery + command executor")
         _bdiag("plugin discovery + command executor")
 
@@ -1822,7 +1827,6 @@ class DictationApp:
             # the user forgets to tap the commit hotkey. No effect in
             # "silence" mode.
             "continuous_max_buffer_s": DEFAULT_CONTINUOUS_MAX_BUFFER_S,
-            "command_mode_enabled": False,
             "command_packs": {
                 "core": True,
                 "text-editing": True,
@@ -1977,6 +1981,9 @@ class DictationApp:
             # dictate/Ava voice switching -- when mode is "toggle")
             "command_mode": {
                 "enabled": False,           # opt-in; see Modes tab -> Command Mode
+                "command_matching_enabled": False,  # gates command MATCHING during
+                                            # regular dictation (spoken "command mode
+                                            # on/off") -- distinct from "enabled" above
                 "mode": "hold",             # "hold" (hold to talk) or "toggle"
                 "button": "rctrl",          # "rctrl" (default), "mouse4"/"mouse5" (XButton1/2), or other keys -- see _CMD_BUTTON_OPTIONS
                 "enter_debounce_ms": 200,   # delay before playing enter earcon
@@ -2059,6 +2066,8 @@ class DictationApp:
             self._migrate_wake_word_config(default_config)
             logger.debug("[CONFIG] load_config: _migrate_wake_word_config done")
 
+            self._migrate_command_matching_enabled_flag()
+
             # Fill in any missing top-level keys
             for key in default_config:
                 if key not in self.config:
@@ -2119,6 +2128,29 @@ class DictationApp:
             # Ensure all nested keys exist (for configs created between versions)
             self._deep_update(self.config['wake_word_config'], default_config['wake_word_config'])
     
+    def _migrate_command_matching_enabled_flag(self):
+        """Migrate the legacy top-level 'command_mode_enabled' flag into
+        'command_mode.command_matching_enabled'.
+
+        Two near-identically-named flags coexisted: top-level
+        'command_mode_enabled' (legacy -- gates command MATCHING during
+        regular dictation) and nested 'command_mode.enabled' (gates the
+        walkie-talkie button/session listener, unrelated). Renaming the
+        legacy one to live inside the same 'command_mode' sub-dict, next to
+        its actual sibling settings, makes the two impossible to confuse by
+        name alone. Runs once per legacy config; a config that never had the
+        top-level key (fresh installs, already-migrated configs) is a no-op.
+        """
+        if 'command_mode_enabled' not in self.config:
+            return
+        legacy_value = self.config.pop('command_mode_enabled')
+        self.config.setdefault('command_mode', {})['command_matching_enabled'] = legacy_value
+        self.save_config()
+        logger.info(
+            f"[MIGRATE] command_mode_enabled={legacy_value!r} -> "
+            f"command_mode.command_matching_enabled={legacy_value!r}"
+        )
+
     def _deep_update(self, target, source):
         """Recursively update target dict with missing keys from source"""
         for key, value in source.items():
