@@ -70,6 +70,50 @@ class TestExactMatchBuiltinWins:
         assert remainder == ''
 
 
+class TestParameterizedVerbPrecedence:
+    """app_verbs.py registers bare single-token verbs ("open", "focus",
+    "close") that hand-parse the remainder -- this only works as a
+    fallback if every existing 2+-token literal macro ("open chrome",
+    "close tab", etc.) keeps precedence. Longest-match-wins (already
+    exercised generically above) gives this for free; these tests pin the
+    EXACT scenario down."""
+
+    def test_explicit_open_chrome_macro_beats_parameterized_open(self):
+        matcher = CommandMatcher()
+        matcher.load_builtins(_builtin('open chrome', cmd_type='launch', target='chrome.exe'))
+        matcher.load_plugins(_plugin_entry('open'))
+        matcher.freeze()
+
+        entry, remainder = matcher.match('open chrome')
+        assert entry.source == 'builtin'
+        assert entry.phrase == 'open chrome'
+        assert remainder == ''
+
+    def test_parameterized_open_still_fires_for_unlisted_names(self):
+        """No literal "open notepad2000" macro exists -- the bare "open"
+        verb is the one that fires, carrying the app name as remainder."""
+        matcher = CommandMatcher()
+        matcher.load_builtins(_builtin('open chrome', cmd_type='launch', target='chrome.exe'))
+        matcher.load_plugins(_plugin_entry('open'))
+        matcher.freeze()
+
+        entry, remainder = matcher.match('open notepad2000')
+        assert entry.source == 'plugin'
+        assert entry.phrase == 'open'
+        assert remainder == 'notepad2000'
+
+    def test_close_tab_builtin_beats_parameterized_close(self):
+        matcher = CommandMatcher()
+        matcher.load_builtins(_builtin('close tab', cmd_type='hotkey', keys=['ctrl', 'w']))
+        matcher.load_plugins(_plugin_entry('close'))
+        matcher.freeze()
+
+        entry, remainder = matcher.match('close tab')
+        assert entry.source == 'builtin'
+        assert entry.phrase == 'close tab'
+        assert remainder == ''
+
+
 class TestPluginAliases:
     def test_plugin_aliases_match(self):
         """Aliases resolve to the same canonical entry."""
