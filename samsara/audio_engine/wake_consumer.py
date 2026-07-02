@@ -118,24 +118,46 @@ class WakeConsumer:
 
     def _poll_loop(self) -> None:
         app = self._app
-        while self._running:
-            if not (
-                app.wake_word_active
-                or self._is_toggle_cmd(app)
-                or self._is_ai_cmd_mode(app)
-            ):
-                time.sleep(0.005)
-                continue
+        try:
+            while self._running:
+                if not (
+                    app.wake_word_active
+                    or self._is_toggle_cmd(app)
+                    or self._is_ai_cmd_mode(app)
+                ):
+                    time.sleep(0.005)
+                    continue
 
-            frame = self._reader.read_next()
-            if frame is EMPTY:
-                time.sleep(0.005)
-                continue
+                frame = self._reader.read_next()
+                if frame is EMPTY:
+                    time.sleep(0.005)
+                    continue
 
+                try:
+                    self._process_frame(frame)
+                except Exception as exc:
+                    print(f"[ERROR] Wake consumer frame error: {exc}")
+        except Exception as exc:
+            # This poll loop is the session's ONLY audio consumer. If
+            # something escapes the per-frame guard above and kills this
+            # thread, the session would otherwise go deaf while staying
+            # latched (command_mode_active still True) -- silently. Fail
+            # LOUD instead: log, earcon, and force the toggle-mode session
+            # to end rather than leave a zombie session nobody can hear.
+            print(f"[ERROR] Wake consumer loop died: {exc}")
+            import traceback
+            traceback.print_exc()
+            self._running = False
             try:
-                self._process_frame(frame)
-            except Exception as exc:
-                print(f"[ERROR] Wake consumer frame error: {exc}")
+                if getattr(app, "play_sound", None):
+                    app.play_sound("error")
+            except Exception:
+                pass
+            try:
+                if self._is_toggle_cmd(app):
+                    app.exit_command_mode()
+            except Exception:
+                pass
 
     def _process_frame(self, frame) -> None:  # noqa: C901 (complexity mirrors legacy callback)
         app = self._app

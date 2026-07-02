@@ -1169,6 +1169,7 @@ class DictationApp:
         self._command_mode_lock = threading.Lock()
         self._command_mode_miss_count = 0
         self._command_mode_inactivity_timer = None
+        self._command_mode_timer_lock = threading.Lock()
         self._command_mode_session_start = 0.0  # monotonic time of last enter
         self._command_mode_ghost_tap = False    # set when hold < enter_debounce_ms
         self._command_mode_key_held = False      # edge-trigger guard vs OS key auto-repeat
@@ -3523,9 +3524,9 @@ class DictationApp:
                 )
                 if self.command_mode_active:
                     self._command_mode_miss_count = 0
-                    cm_cfg = self.config.get('command_mode', {})
-                    timeout_s = cm_cfg.get('inactivity_timeout_s', 30)
-                    self._reset_command_mode_inactivity_timer(timeout_s)
+                    # Inactivity timer reset happens once, uniformly, in
+                    # _handle_session_dispatch_outcome (the single chokepoint)
+                    # after dispatch_utterance returns -- not duplicated here.
                 return CommandDispatchResult(matched=True, phrase=result)
 
             print(f'[CMD] No command matched: "{text}"')
@@ -3621,7 +3622,13 @@ class DictationApp:
     def _on_ava_session_request_done(self) -> None:
         """handle_ask_ava's on_done hook -- fires exactly once per request
         (early-exit or full worker cycle). Drains the next queued utterance
-        if any, else clears the in-flight flag."""
+        if any, else clears the in-flight flag.
+
+        Also touches the session-activity chokepoint: a slow agent response
+        must not let the inactivity timer expire out from under a user who
+        is still mid-conversation with Ava, waiting on an answer that
+        hasn't landed yet."""
+        self._touch_session_activity()
         with self._ava_session_dispatch_lock:
             if self._ava_session_dispatch_queue:
                 next_text = self._ava_session_dispatch_queue.popleft()
@@ -3925,21 +3932,75 @@ class DictationApp:
         threading.Thread(target=_worker, daemon=True, name="Ava-worker").start()
 
     def _reset_command_mode_inactivity_timer(self, timeout_s):
-        self._cancel_command_mode_inactivity_timer()
-        t = threading.Timer(timeout_s, self._on_command_mode_inactivity)
-        t.daemon = True
-        self._command_mode_inactivity_timer = t
-        t.start()
+        with self._command_mode_timer_lock:
+            self._cancel_command_mode_inactivity_timer_locked()
+            t = threading.Timer(timeout_s, self._on_command_mode_inactivity)
+            t.daemon = True
+            self._command_mode_inactivity_timer = t
+            t.start()
 
     def _cancel_command_mode_inactivity_timer(self):
+        with self._command_mode_timer_lock:
+            self._cancel_command_mode_inactivity_timer_locked()
+
+    def _cancel_command_mode_inactivity_timer_locked(self):
+        """Caller must hold _command_mode_timer_lock. Cancel-then-clear is
+        the only mutation of _command_mode_inactivity_timer -- every reset
+        and every cancel goes through this, under the lock, so concurrent
+        activity signals (e.g. an AVA on_done firing on the Ava-worker
+        thread at the same moment a fresh command-mode utterance is
+        dispatched on its own per-utterance thread) can never race and leak
+        a second live timer."""
         t = self._command_mode_inactivity_timer
         if t is not None:
             t.cancel()
             self._command_mode_inactivity_timer = None
 
+    def _touch_session_activity(self) -> None:
+        """Single chokepoint for the unified toggle-command-mode session's
+        inactivity timer. Every activity signal -- a matched or missed
+        command, a DICTATE chunk, an AVA utterance dispatch (substantive or
+        not), any mode transition, scratch-that, abort, and AVA
+        agent-response completion (_on_ava_session_request_done) -- resets
+        the SAME timer here instead of each lane rolling its own reset.
+        A discarded near-silence buffer never reaches this method at all:
+        WakeConsumer drops those before _handle_command_mode_utterance is
+        ever invoked, so genuinely idle silence still times out normally."""
+        if not self.command_mode_active:
+            return
+        cm_cfg = self.config.get('command_mode', {})
+        if cm_cfg.get('mode', 'hold') != 'toggle':
+            return
+        timeout_s = cm_cfg.get('inactivity_timeout_s', 30)
+        self._reset_command_mode_inactivity_timer(timeout_s)
+
     def _on_command_mode_inactivity(self):
-        print("[CMD MODE] Inactivity timeout — exiting command mode")
-        self.exit_command_mode()
+        """threading.Timer callback -- runs on its own thread. Must never
+        raise uncaught: a raise here would leave the session latched
+        (command_mode_active still True) but with its only path back to
+        COMMAND-mode listening broken -- deaf but latched, a zombie
+        session. On any failure inside exit_command_mode(), force the same
+        end-state directly (flip the flag, cancel the timer, reset mode
+        state) so the session provably ends rather than hanging."""
+        try:
+            print("[CMD MODE] Inactivity timeout — exiting command mode")
+            self.exit_command_mode()
+        except Exception as exc:
+            print(f"[CMD MODE] Inactivity handler failed: {exc} -- forcing session end")
+            import traceback
+            traceback.print_exc()
+            try:
+                self.play_sound('error')
+            except Exception:
+                pass
+            with self._command_mode_lock:
+                self.command_mode_active = False
+            self._cancel_command_mode_inactivity_timer()
+            if self._session_mode_manager is not None:
+                try:
+                    self._session_mode_manager.reset()
+                except Exception:
+                    pass
 
     def _rearm_command_recording(self):
         """Re-start recording for the next command in hold mode.
@@ -4014,9 +4075,18 @@ class DictationApp:
             print(f'[SESSION] mode={manager.mode.value} outcome={outcome.kind} detail={outcome.detail}')
             self._handle_session_dispatch_outcome(outcome, text)
         except Exception as exc:
+            # Any exception here (transcription error, injection failure,
+            # a lane's dispatch blowing up) must earcon and leave the
+            # session ALIVE in its current mode -- never propagate and kill
+            # this utterance's thread silently. Mode/command_mode_active
+            # are untouched, so the next utterance dispatches normally.
             print(f'[CMD-UTT] Error: {exc}')
             import traceback
             traceback.print_exc()
+            try:
+                self.play_sound('error')
+            except Exception:
+                pass
         finally:
             self._wake_transcription_in_progress = False
             self._vad_reset()
@@ -4026,7 +4096,13 @@ class DictationApp:
         don't belong inside SessionModeManager itself (earcons, the
         command-mode inactivity timer) -- split out from
         _handle_command_mode_utterance so this logic is testable without a
-        full transcription pipeline."""
+        full transcription pipeline.
+
+        _touch_session_activity() is the SINGLE chokepoint for the unified
+        session's inactivity timer: every outcome except "empty" (a
+        discarded near-silence/blank transcription -- never activity) resets
+        it here, once, regardless of which lane produced it. This replaces
+        the old scattered per-lane resets (COMMAND-only, and AVA-only)."""
         if outcome.kind == "ava_rejected_not_substantive":
             # Coughs/"uh"/stray syllables that survive the hallucination
             # gates but aren't worth an agent API call + spoken reply. No
@@ -4036,17 +4112,8 @@ class DictationApp:
             # queue-full-drop case in _ava_session_agent_dispatch_fn).
             print(f'[AVA] Rejected non-substantive utterance: "{text}"')
             self.play_sound('scratch_refuse')
-        if outcome.kind in ("ava_dispatched", "ava_rejected_not_substantive"):
-            # AVA lane only -- any utterance here means the user is audibly
-            # present, whether it passed the substance gate or not.
-            # COMMAND/DICTATE inactivity-reset behavior is untouched
-            # (COMMAND already resets on a matched command elsewhere in
-            # this file; DICTATE has no reset today either way -- both
-            # pre-existing, out of scope here).
-            cm_cfg = self.config.get('command_mode', {})
-            self._reset_command_mode_inactivity_timer(
-                cm_cfg.get('inactivity_timeout_s', 30)
-            )
+        if outcome.kind != "empty":
+            self._touch_session_activity()
 
     def _compute_switch_gate_signals(self, audio, seg_list) -> "UtteranceSignals":
         """Compute the switch/scratch-that anti-hallucination gate signals
