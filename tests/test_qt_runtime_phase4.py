@@ -9,20 +9,33 @@ Acceptance criteria (from the original code prompt):
 Run:
     python tests/test_qt_runtime_phase4.py
 
-All tests share one runtime lifecycle (start once, shutdown at the end).
+All checks share one runtime lifecycle (start once, shutdown at the end) --
+see test_qt_runtime_phase1.py's module docstring for why, under pytest, this
+whole sequence runs inside an isolated subprocess rather than in-process:
+qt_runtime's dedicated "samsara-qt" thread must be the first thing in the
+process to construct a QApplication, which the shared pytest process running
+the full suite cannot guarantee (an earlier test file's session-scoped
+`qapp` fixture may already have built one on the main thread), and check 3
+below calls qt_runtime.shutdown() -- a one-shot, unrecoverable transition by
+design (_run_loop() runs "exactly once per process") that would otherwise
+poison every qt_runtime test in every file that runs afterward in the same
+session.
 """
 
 import sys
 import threading
 import time
+from pathlib import Path
 
-sys.path.insert(0, str(__import__("pathlib").Path(__file__).parents[1]))
+sys.path.insert(0, str(Path(__file__).parents[1]))
+sys.path.insert(0, str(Path(__file__).parent))  # for the bare _qt_subprocess_helper import below
 
 from PySide6.QtWidgets import QApplication
 
 from samsara.ui import qt_runtime
 from samsara.ui.numbers_overlay_qt import NumbersOverlayWindow
 from samsara.ui.task_overlay import TaskOverlay
+from _qt_subprocess_helper import run_isolated
 
 
 # ---------------------------------------------------------------------------
@@ -49,7 +62,7 @@ def _post_wait(cb, timeout: float = 3.0) -> bool:
 
 
 # ---------------------------------------------------------------------------
-# Test 1: show_numbers renders with NO other Qt window open
+# Check 1: show_numbers renders with NO other Qt window open
 #
 # Root cause of the original bug: _draw_overlay() called
 # QApplication.instance() at dispatch time. If no other component had started
@@ -60,7 +73,7 @@ def _post_wait(cb, timeout: float = 3.0) -> bool:
 # creation succeeds even when topLevelWidgets() is empty beforehand.
 # ---------------------------------------------------------------------------
 
-def test_numbers_overlay_no_prior_window() -> None:
+def check_numbers_overlay_no_prior_window() -> None:
     qt_runtime.ensure_started()
 
     # Verify no top-level widgets exist yet (clean slate).
@@ -83,7 +96,10 @@ def test_numbers_overlay_no_prior_window() -> None:
     window_holder: list = []
 
     def _create():
-        win = NumbersOverlayWindow(labels)
+        # NumbersOverlayWindow requires a target_screen (QScreen) argument --
+        # this call site predates that parameter being added; use the
+        # primary screen, queried on the Qt thread where it's safe to touch.
+        win = NumbersOverlayWindow(labels, QApplication.primaryScreen())
         win.show()
         window_holder.append(win)
 
@@ -102,7 +118,7 @@ def test_numbers_overlay_no_prior_window() -> None:
 
 
 # ---------------------------------------------------------------------------
-# Test 2: task_overlay reopens repeatably — extended regression (10 cycles)
+# Check 2: task_overlay reopens repeatably — extended regression (10 cycles)
 #
 # The original bug: second close destroyed the widget; subsequent show() tried
 # to call methods on a deleted C++ object -> crash.  HIDE policy keeps the
@@ -111,7 +127,7 @@ def test_numbers_overlay_no_prior_window() -> None:
 
 REOPEN_CYCLES = 10
 
-def test_task_overlay_reopen_regression() -> None:
+def check_task_overlay_reopen_regression() -> None:
     overlay = TaskOverlay()
 
     for cycle in range(1, REOPEN_CYCLES + 1):
@@ -146,7 +162,7 @@ def test_task_overlay_reopen_regression() -> None:
 
 
 # ---------------------------------------------------------------------------
-# Test 3: startup/shutdown lifecycle
+# Check 3: startup/shutdown lifecycle
 #
 # Verifies:
 #   - is_alive() is True while running
@@ -156,8 +172,8 @@ def test_task_overlay_reopen_regression() -> None:
 #   - One QApplication throughout
 # ---------------------------------------------------------------------------
 
-def test_startup_shutdown_lifecycle() -> None:
-    assert qt_runtime.is_alive(), "runtime should still be alive at test-3 start"
+def check_startup_shutdown_lifecycle() -> None:
+    assert qt_runtime.is_alive(), "runtime should still be alive at check-3 start"
 
     # Confirm QApplication is healthy.
     app_check: list = []
@@ -201,6 +217,19 @@ def test_startup_shutdown_lifecycle() -> None:
 
 
 # ---------------------------------------------------------------------------
+# Isolated-subprocess pytest entry point
+# ---------------------------------------------------------------------------
+
+def test_phase4_in_isolated_subprocess():
+    """Run this file's own __main__ checks in a clean subprocess.
+
+    See _qt_subprocess_helper.py for why success is judged by the printed
+    completion marker rather than the subprocess's own exit code.
+    """
+    run_isolated(Path(__file__), "All Phase 4 regression tests PASSED.")
+
+
+# ---------------------------------------------------------------------------
 # Entry point
 # ---------------------------------------------------------------------------
 
@@ -208,17 +237,17 @@ if __name__ == "__main__":
     print("--- Phase 4: Regression tests ---\n")
 
     print("Test 1: show_numbers overlay renders with no prior Qt window")
-    test_numbers_overlay_no_prior_window()
+    check_numbers_overlay_no_prior_window()
     print()
 
     print(f"Test 2: task_overlay reopens repeatably ({REOPEN_CYCLES} cycles)")
-    test_task_overlay_reopen_regression()
+    check_task_overlay_reopen_regression()
     print()
 
     print("Test 3: startup/shutdown lifecycle")
-    test_startup_shutdown_lifecycle()
+    check_startup_shutdown_lifecycle()
     print()
 
     print("All Phase 4 regression tests PASSED.")
-    # qt_runtime.shutdown() was called inside test 3; do not call again.
+    # qt_runtime.shutdown() was called inside check 3; do not call again.
     sys.exit(0)

@@ -537,16 +537,21 @@ class TestGetPynputCommandKey:
         from pynput.keyboard import Key
         assert self.get_key('lshift') == Key.shift_l
 
-    def test_f13_resolves_to_something(self):
-        result = self.get_key('f13')
-        assert result is not None
+    @pytest.mark.parametrize("n", range(1, 25))
+    def test_f1_through_f24_resolve(self, n):
+        # Widened from f13-f24 to f1-f24 in 07128d1 (F1-F24 keys support).
+        result = self.get_key(f'f{n}')
+        assert result is not None, f"f{n} should resolve"
 
-    def test_f24_resolves_to_something(self):
-        result = self.get_key('f24')
-        assert result is not None
+    def test_f0_out_of_range_returns_none(self):
+        assert self.get_key('f0') is None
 
-    def test_f12_ignored_out_of_range(self):
-        assert self.get_key('f12') is None
+    def test_f25_out_of_range_returns_none(self):
+        assert self.get_key('f25') is None
+
+    def test_f_non_numeric_returns_none(self):
+        assert self.get_key('fx') is None
+        assert self.get_key('f') is None
 
     def test_matches_identical_key(self):
         from pynput.keyboard import Key
