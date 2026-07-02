@@ -323,6 +323,10 @@ from samsara.alarms import AlarmManager, get_default_alarm_config
 from samsara.echo_cancel import EchoCanceller
 from samsara.clipboard import clipboard_lock as _clipboard_lock, save_clipboard as _save_clipboard_win32, restore_clipboard as _restore_clipboard_win32, paste_with_preservation
 from samsara.wake_detector import WakeWordDetector
+from samsara.handlers import _get_foreground_exe_lower
+from samsara.session_modes import (
+    SessionMode, SessionModeManager, UtteranceSignals, CommandDispatchResult,
+)
 
 # Minimum gap (ms) between AEC loopback open and ACE mic open.
 # The Arctis Nova Pro Wireless WASAPI driver stalls 10-18 s when a second
@@ -1159,6 +1163,12 @@ class DictationApp:
         self._command_mode_ghost_tap = False    # set when hold < enter_debounce_ms
         self._command_mode_key_held = False      # edge-trigger guard vs OS key auto-repeat
 
+        # Unified session state machine (COMMAND <-> DICTATE) for toggle
+        # command mode. Constructed lazily on first toggle-mode entry;
+        # reset() (not reconstruction) on every later entry/exit so the
+        # wired-up callables are built once. See samsara/session_modes.py.
+        self._session_mode_manager: "SessionModeManager | None" = None
+
         # Ava mode — Right Alt held = talk to Ollama/Ava
         self.ava_mode_active = False
         self.ava_mode_recording = False
@@ -1942,6 +1952,8 @@ class DictationApp:
                 "inactivity_timeout_s": 30, # toggle: exit after N seconds silence
                 "tts_char_limit": 50,       # suppress TTS responses longer than this
                 "suppress_button": True,    # consume mouse4/5 click so browsers don't navigate back
+                "utterance_silence_s": 1.0,         # toggle, COMMAND sub-mode: per-utterance VAD silence gap
+                "dictate_utterance_silence_s": 2.0, # toggle, DICTATE sub-mode: longer gap for mid-sentence pauses
             },
             # Web shortcuts for "go to X" voice commands. Keys are spoken
             # aliases; values are target URLs. Users add their own by editing
@@ -3454,6 +3466,108 @@ class DictationApp:
                     else:
                         self.enter_ai_command_mode()
 
+    # ── Unified session mode state machine (COMMAND <-> DICTATE) ────────────
+
+    def _ensure_session_mode_manager(self) -> "SessionModeManager":
+        """Lazily build the SessionModeManager with its wired callables.
+
+        Built once; every session entry/exit calls reset() on this same
+        instance rather than reconstructing it (session end always discards
+        MODE STATE -- current mode, the unit-of-work stack -- but the
+        wiring itself is stable for the app's lifetime).
+        """
+        if self._session_mode_manager is not None:
+            return self._session_mode_manager
+
+        def _command_dispatch_fn(text: str) -> CommandDispatchResult:
+            audio_duration = getattr(self, '_current_utterance_duration_s', 0.0)
+            result, was_command = self.command_executor.process_text(text, self)
+            if was_command:
+                _store_cmd = self.command_executor.commands.get(result) or {'type': 'plugin'}
+                if (result
+                        and not _is_repeat_blacklisted(result, _store_cmd)
+                        and self.command_executor.find_command(result) == result):
+                    self._last_command = _store_cmd
+                    self._last_command_name = result
+                if result:
+                    increment_command_count(result)
+                self.add_to_history(text, is_command=True)
+                self._log_history(
+                    raw_text=text,
+                    duration_ms=int(audio_duration * 1000),
+                    mode='command',
+                    status='success',
+                    entry_type='command',
+                    matched_command=str(result) if result else None,
+                )
+                if self.command_mode_active:
+                    self._command_mode_miss_count = 0
+                    cm_cfg = self.config.get('command_mode', {})
+                    timeout_s = cm_cfg.get('inactivity_timeout_s', 30)
+                    self._reset_command_mode_inactivity_timer(timeout_s)
+                return CommandDispatchResult(matched=True, phrase=result)
+
+            print(f'[CMD] No command matched: "{text}"')
+            if self.command_mode_active:
+                self._command_mode_miss_count += 1
+                cm_cfg = self.config.get('command_mode', {})
+                miss_limit = cm_cfg.get('miss_limit', 5)
+                if self._command_mode_miss_count >= miss_limit:
+                    print(f'[CMD MODE] Miss limit ({miss_limit}) reached')
+                    self.exit_command_mode()
+            return CommandDispatchResult(matched=False, phrase=None)
+
+        def _inject_fn(text: str) -> None:
+            self._paste_preserving_clipboard(text)
+
+        def _remove_chars_fn(n: int) -> None:
+            # Same select-back + delete idiom as undo_last_dictation() --
+            # reused, not new injection code.
+            for _ in range(n):
+                pyautogui.hotkey('shift', 'left')
+            pyautogui.press('delete')
+
+        def _on_mode_change(mode: "SessionMode") -> None:
+            self.play_sound('mode_command' if mode is SessionMode.COMMAND else 'mode_dictate')
+            self._update_mode_overlay(mode)
+
+        def _on_focus_lock_revert() -> None:
+            print('[SESSION] Focus-lock revert -- foreground window changed, suppressing injection')
+            self.play_sound('focus_lock_revert')
+            self._update_mode_overlay(SessionMode.COMMAND)
+
+        def _on_scratch_result(success: bool) -> None:
+            self.play_sound('scratch_success' if success else 'scratch_refuse')
+
+        def _on_abort() -> None:
+            print('[SESSION] Global abort phrase -- exiting command mode')
+            self.exit_command_mode()
+
+        ww_cfg = self.config.get('wake_word_config', {})
+        abort_phrases = ww_cfg.get('cancel_words', ['cancel', 'cancel dictation', 'abort'])
+
+        self._session_mode_manager = SessionModeManager(
+            abort_phrases=abort_phrases,
+            foreground_exe_resolver=_get_foreground_exe_lower,
+            inject_fn=_inject_fn,
+            remove_chars_fn=_remove_chars_fn,
+            command_dispatch_fn=_command_dispatch_fn,
+            on_mode_change=_on_mode_change,
+            on_focus_lock_revert=_on_focus_lock_revert,
+            on_scratch_result=_on_scratch_result,
+            on_abort=_on_abort,
+        )
+        return self._session_mode_manager
+
+    def _update_mode_overlay(self, mode: "SessionMode") -> None:
+        try:
+            from samsara.ui.status_overlay import get_overlay
+            name = "COMMAND" if mode is SessionMode.COMMAND else "DICTATE"
+            color = "#5EEAD4" if mode is SessionMode.COMMAND else "#f59e0b"
+            get_overlay().set_mode(name, color)
+        except Exception as exc:
+            print(f"[SESSION] Mode overlay update failed: {exc}")
+
     def enter_command_mode(self):
         """Enter command mode (idempotent). Safe to call from any thread."""
         with self._command_mode_lock:
@@ -3470,6 +3584,10 @@ class DictationApp:
         if cfg.get('mode', 'hold') == 'toggle':
             timeout_s = cfg.get('inactivity_timeout_s', 30)
             self._reset_command_mode_inactivity_timer(timeout_s)
+            # Unified session: every toggle-mode entry starts fresh in
+            # COMMAND -- reset() discards any mode state from a prior session.
+            self._ensure_session_mode_manager().reset()
+            self._update_mode_overlay(SessionMode.COMMAND)
         threading.Thread(target=self._do_enter_command_mode, daemon=True,
                          name='cmd-mode-enter').start()
 
@@ -3512,6 +3630,15 @@ class DictationApp:
             print(f"[CMD MODE] Ghost tap ({hold_ms:.0f}ms < {debounce_ms}ms) — audio will be discarded")
         print("[CMD MODE] Exiting command mode")
         self._cancel_command_mode_inactivity_timer()
+        # Unified session: session end always discards mode state --
+        # re-entry (enter_command_mode) always starts fresh in COMMAND.
+        if self._session_mode_manager is not None:
+            self._session_mode_manager.reset()
+        try:
+            from samsara.ui.status_overlay import get_overlay
+            get_overlay().hide()
+        except Exception:
+            pass
         if hasattr(self, 'listening_indicator'):
             self._schedule_ui(self.listening_indicator.set_command_mode, False)
         was_recording = self.recording
@@ -3738,7 +3865,8 @@ class DictationApp:
             self.command_mode_recording = True
             self.start_recording(streaming=False, play_earcon=False)
     def _handle_command_mode_utterance(self, buffer: list, src_rate: int) -> None:
-        """Transcribe and execute one VAD-gated utterance in toggle command mode.
+        """Transcribe and dispatch one VAD-gated utterance in the unified
+        toggle-command-mode session (COMMAND <-> DICTATE).
 
         Called from WakeConsumer._flush() for each silence-bounded utterance
         while command_mode_active and mode=='toggle'.  The WakeConsumer resets
@@ -3746,8 +3874,14 @@ class DictationApp:
         for the next utterance — no explicit re-arm is needed here.
 
         Two timeouts are in play (do not conflate):
-          utterance_silence_s  (~1 s, WakeConsumer)  -- ends THIS command
+          utterance_silence_s / dictate_utterance_silence_s (WakeConsumer,
+              picked by current SessionMode) -- ends THIS utterance
           inactivity_timeout_s (30 s, threading.Timer) -- ends the whole session
+
+        Dispatch itself (abort phrase, "scratch that", switch words, and
+        per-mode handling) lives in SessionModeManager -- this method's job
+        is just: transcribe, compute the hallucination-gate signals the
+        switch matcher needs, and hand the text off.
         """
         if self._wake_transcription_in_progress:
             print('[CMD-UTT] Transcription already in progress — skipping utterance')
@@ -3768,7 +3902,8 @@ class DictationApp:
 
             with self.model_lock:
                 segments, _ = self.model.transcribe(audio, **transcribe_params)
-            text = ''.join(s.text for s in segments).strip()
+            seg_list = list(segments)
+            text = ''.join(s.text for s in seg_list).strip()
             text = self.voice_training_window.apply_corrections(text)
 
             if not text:
@@ -3782,40 +3917,12 @@ class DictationApp:
                 print('[CMD-UTT] Ghost tap — discarding')
                 return
 
-            result, was_command = self.command_executor.process_text(text, self)
+            signals = self._compute_switch_gate_signals(audio, seg_list)
+            self._current_utterance_duration_s = audio_duration
 
-            if was_command:
-                _store_cmd = self.command_executor.commands.get(result) or {'type': 'plugin'}
-                if (result
-                        and not _is_repeat_blacklisted(result, _store_cmd)
-                        and self.command_executor.find_command(result) == result):
-                    self._last_command = _store_cmd
-                    self._last_command_name = result
-                if result:
-                    increment_command_count(result)
-                self.add_to_history(text, is_command=True)
-                self._log_history(
-                    raw_text=text,
-                    duration_ms=int(audio_duration * 1000),
-                    mode='command',
-                    status='success',
-                    entry_type='command',
-                    matched_command=str(result) if result else None,
-                )
-                if self.command_mode_active:
-                    self._command_mode_miss_count = 0
-                    cm_cfg = self.config.get('command_mode', {})
-                    timeout_s = cm_cfg.get('inactivity_timeout_s', 30)
-                    self._reset_command_mode_inactivity_timer(timeout_s)
-            else:
-                print(f'[CMD] No command matched: "{text}"')
-                if self.command_mode_active:
-                    self._command_mode_miss_count += 1
-                    cm_cfg = self.config.get('command_mode', {})
-                    miss_limit = cm_cfg.get('miss_limit', 5)
-                    if self._command_mode_miss_count >= miss_limit:
-                        print(f'[CMD MODE] Miss limit ({miss_limit}) reached')
-                        self.exit_command_mode()
+            manager = self._ensure_session_mode_manager()
+            outcome = manager.dispatch_utterance(text, signals)
+            print(f'[SESSION] mode={manager.mode.value} outcome={outcome.kind} detail={outcome.detail}')
         except Exception as exc:
             print(f'[CMD-UTT] Error: {exc}')
             import traceback
@@ -3823,6 +3930,26 @@ class DictationApp:
         finally:
             self._wake_transcription_in_progress = False
             self._vad_reset()
+
+    def _compute_switch_gate_signals(self, audio, seg_list) -> "UtteranceSignals":
+        """Compute the switch/scratch-that anti-hallucination gate signals
+        from the SAME existing detectors dictation.py already uses
+        (_buffer_has_contiguous_speech, per-segment compression_ratio) --
+        no new DSP. Fails CLOSED (None / empty) on any error, matching the
+        gate's own fail-closed contract."""
+        has_contiguous_speech = None
+        try:
+            if self._vad_available and self._vad_model is not None:
+                has_contiguous_speech = self._buffer_has_contiguous_speech(audio, self.model_rate)
+        except Exception as exc:
+            print(f'[SESSION] contiguous-speech gate errored (failing closed): {exc}')
+            has_contiguous_speech = None
+
+        compression_ratios = tuple(getattr(s, 'compression_ratio', None) for s in seg_list)
+        return UtteranceSignals(
+            has_contiguous_speech=has_contiguous_speech,
+            compression_ratios=compression_ratios,
+        )
 
     # -----------------------------------------------------------------------
 
