@@ -1163,11 +1163,21 @@ class DictationApp:
         self._command_mode_ghost_tap = False    # set when hold < enter_debounce_ms
         self._command_mode_key_held = False      # edge-trigger guard vs OS key auto-repeat
 
-        # Unified session state machine (COMMAND <-> DICTATE) for toggle
-        # command mode. Constructed lazily on first toggle-mode entry;
+        # Unified session state machine (COMMAND <-> DICTATE <-> AVA) for
+        # toggle command mode. Constructed lazily on first toggle-mode entry;
         # reset() (not reconstruction) on every later entry/exit so the
         # wired-up callables are built once. See samsara/session_modes.py.
         self._session_mode_manager: "SessionModeManager | None" = None
+
+        # SessionMode.AVA request-in-flight tracking (Phase 2). Distinct from
+        # ava_mode_active/ava_mode_recording below, which belong to the
+        # separate hold-to-talk Ava path (Right Alt) -- this queue only
+        # serializes utterances dispatched through the LATCHED AVA session
+        # mode, so a second "ava ..." utterance said while the agent is still
+        # answering the first one doesn't spawn a second concurrent request.
+        self._ava_session_dispatch_lock = threading.Lock()
+        self._ava_session_request_in_flight = False
+        self._ava_session_dispatch_queue: "collections.deque" = collections.deque(maxlen=3)
 
         # Ava mode — Right Alt held = talk to Ollama/Ava
         self.ava_mode_active = False
@@ -3527,8 +3537,14 @@ class DictationApp:
                 pyautogui.hotkey('shift', 'left')
             pyautogui.press('delete')
 
+        _MODE_EARCONS = {
+            SessionMode.COMMAND: 'mode_command',
+            SessionMode.DICTATE: 'mode_dictate',
+            SessionMode.AVA: 'mode_ava',
+        }
+
         def _on_mode_change(mode: "SessionMode") -> None:
-            self.play_sound('mode_command' if mode is SessionMode.COMMAND else 'mode_dictate')
+            self.play_sound(_MODE_EARCONS.get(mode, 'mode_command'))
             self._update_mode_overlay(mode)
 
         def _on_focus_lock_revert() -> None:
@@ -3552,6 +3568,7 @@ class DictationApp:
             inject_fn=_inject_fn,
             remove_chars_fn=_remove_chars_fn,
             command_dispatch_fn=_command_dispatch_fn,
+            agent_dispatch_fn=self._ava_session_agent_dispatch_fn,
             on_mode_change=_on_mode_change,
             on_focus_lock_revert=_on_focus_lock_revert,
             on_scratch_result=_on_scratch_result,
@@ -3559,11 +3576,58 @@ class DictationApp:
         )
         return self._session_mode_manager
 
+    def _ava_session_agent_dispatch_fn(self, text: str, context: "str | None") -> None:
+        """Wired into SessionModeManager as agent_dispatch_fn (SessionMode.AVA).
+
+        Builds the prompt (with a delimited STAGED TEXT block when the
+        stage-buffer was explicitly referenced) and hands off to the SAME
+        agent pipeline hold-to-talk Ava uses -- plugins.commands.ask_ollama.
+        handle_ask_ava -- no second agent client. Concurrent AVA-mode
+        utterances are serialized through a depth-3 queue (oldest dropped)
+        so at most one request is ever in flight; this function itself never
+        blocks the caller (the utterance-processing thread).
+        """
+        payload_text = f"STAGED TEXT:\n{context}\n\n{text}" if context else text
+
+        with self._ava_session_dispatch_lock:
+            if self._ava_session_request_in_flight:
+                if len(self._ava_session_dispatch_queue) >= self._ava_session_dispatch_queue.maxlen:
+                    print('[AVA-SESSION] Queue full (3) -- dropping oldest queued utterance')
+                    # No existing queue-warning earcon in this codebase --
+                    # reuse scratch_refuse (Phase 1's "this didn't go
+                    # through" sound) rather than adding a new asset.
+                    self.play_sound('scratch_refuse')
+                self._ava_session_dispatch_queue.append(payload_text)
+                return
+            self._ava_session_request_in_flight = True
+
+        self._start_ava_session_worker(payload_text)
+
+    def _start_ava_session_worker(self, payload_text: str) -> None:
+        from plugins.commands.ask_ollama import handle_ask_ava
+        handle_ask_ava(self, remainder=payload_text, on_done=self._on_ava_session_request_done)
+
+    def _on_ava_session_request_done(self) -> None:
+        """handle_ask_ava's on_done hook -- fires exactly once per request
+        (early-exit or full worker cycle). Drains the next queued utterance
+        if any, else clears the in-flight flag."""
+        with self._ava_session_dispatch_lock:
+            if self._ava_session_dispatch_queue:
+                next_text = self._ava_session_dispatch_queue.popleft()
+            else:
+                self._ava_session_request_in_flight = False
+                return
+        self._start_ava_session_worker(next_text)
+
     def _update_mode_overlay(self, mode: "SessionMode") -> None:
         try:
             from samsara.ui.status_overlay import get_overlay
-            name = "COMMAND" if mode is SessionMode.COMMAND else "DICTATE"
-            color = "#5EEAD4" if mode is SessionMode.COMMAND else "#f59e0b"
+            _MODE_OVERLAY = {
+                SessionMode.COMMAND: ("COMMAND", "#5EEAD4"),
+                SessionMode.DICTATE: ("DICTATE", "#f59e0b"),
+                SessionMode.AVA: ("AVA", "#A78BFA"),
+            }
+            name, color = _MODE_OVERLAY.get(mode, ("COMMAND", "#5EEAD4"))
             get_overlay().set_mode(name, color)
         except Exception as exc:
             print(f"[SESSION] Mode overlay update failed: {exc}")

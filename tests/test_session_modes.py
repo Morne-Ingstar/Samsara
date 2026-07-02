@@ -22,6 +22,7 @@ from samsara.session_modes import (
     seam_join,
     chunk_ends_terminal,
     check_focus_lock,
+    detect_stage_reference,
     SWITCH_WORD_MAX_COMPRESSION_RATIO,
 )
 
@@ -63,6 +64,10 @@ class TestSwitchWordMatcher:
         ("dictation mode", SessionMode.DICTATE),
         ("dictate", SessionMode.DICTATE),
         ("Dictate!", SessionMode.DICTATE),
+        ("ava", SessionMode.AVA),
+        ("Ava", SessionMode.AVA),
+        ("ava mode", SessionMode.AVA),
+        ("Ava Mode!", SessionMode.AVA),
     ])
     def test_whole_utterance_match(self, text, expected_mode):
         m = match_switch_word(text)
@@ -83,6 +88,18 @@ class TestSwitchWordMatcher:
         assert m.is_prefix is True
         assert m.payload == "hello world"
 
+    def test_ava_prefix_form_with_payload(self):
+        m = match_switch_word("ava what time is it")
+        assert m is not None
+        assert m.target_mode is SessionMode.AVA
+        assert m.is_prefix is True
+        assert m.payload == "what time is it"
+
+    def test_ava_prefix_form_preserves_original_casing_and_punctuation(self):
+        m = match_switch_word("ava What's the weather?")
+        assert m is not None
+        assert m.payload == "What's the weather?"
+
     def test_prefix_form_preserves_original_casing_and_punctuation(self):
         m = match_switch_word("dictate Hello, World!")
         assert m is not None
@@ -99,6 +116,8 @@ class TestSwitchWordMatcher:
         "please dictate this for me",          # "dictate" not utterance-initial
         "the command mode is useful",          # "command mode" not utterance-initial
         "I heard a command mode reference",
+        "tell ava later",                      # "ava" not utterance-initial
+        "we should try ava mode sometime",
     ])
     def test_mid_utterance_substring_never_matches(self, text):
         assert match_switch_word(text) is None
@@ -240,6 +259,9 @@ KNOWN_HALLUCINATION_SHAPES = [
     ("dictate mode", False, (45.0,)),                      # hallucinated transcript that HAPPENS to read as a switch phrase
     ("scratch that", True, (30.0,)),                       # speech gate ok but compression ratio exploded
     ("command mode", None, ()),                            # both signals unavailable
+    ("ava ava ava", False, (36.0,)),                       # repeated-word hallucination shape, sub-floor energy
+    ("ava", False, (2.1,)),                                 # sub-floor energy, plausible-looking short word
+    ("ava mode", None, (60.0,)),                            # gate unavailable AND exploded ratio
 ]
 
 
@@ -330,6 +352,54 @@ class TestCheckFocusLock:
 
 
 # ---------------------------------------------------------------------------
+# detect_stage_reference (AVA mode, Phase 2)
+# ---------------------------------------------------------------------------
+
+class TestDetectStageReference:
+    @pytest.mark.parametrize("text", [
+        "submit that",
+        "send that",
+        "send the text",
+        "use this",
+        "attach that",
+        "what I dictated",
+        "the dictation",
+        "check the text please",
+        "Submit That!",             # case + punctuation
+        "um, submit that",          # leading filler stripped before the position check
+        "please send this over",
+    ])
+    def test_positive_explicit_references(self, text):
+        assert detect_stage_reference(text) is True
+
+    @pytest.mark.parametrize("text", [
+        "that was fun",             # "that" sentence-initial -- subject, not object
+        "this is great",
+        "that's nice",
+        "hello there",
+        "",
+        "this",                     # bare word, still sentence-initial (index 0)
+        "that",
+        "open chrome",
+    ])
+    def test_negative_non_references(self, text):
+        assert detect_stage_reference(text) is False
+
+    def test_accepted_ambiguity_object_shaped_non_reference(self):
+        """Documented trade-off: rule 2 is a position heuristic, not
+        semantic understanding, so an object-shaped non-reference like "was
+        that clear" also matches. Accepted because the failure mode is only
+        ever "extra harmless context attached", never an unwanted action --
+        see detect_stage_reference's docstring."""
+        assert detect_stage_reference("was that clear") is True
+
+    def test_phrase_rule_ignores_position(self):
+        # Unlike the that/this rule, the explicit noun-phrase rule fires
+        # regardless of where it appears in the utterance.
+        assert detect_stage_reference("the text needs work") is True
+
+
+# ---------------------------------------------------------------------------
 # SessionModeManager integration: fixtures + dispatch behavior
 # ---------------------------------------------------------------------------
 
@@ -345,6 +415,7 @@ def manager_factory():
             "inject": Mock(),
             "remove_chars": Mock(),
             "command_dispatch": Mock(return_value=CommandDispatchResultFor(command_matches)),
+            "agent_dispatch": Mock(),
             "on_mode_change": Mock(),
             "on_focus_lock_revert": Mock(),
             "on_scratch_result": Mock(),
@@ -356,6 +427,7 @@ def manager_factory():
             inject_fn=mocks["inject"],
             remove_chars_fn=mocks["remove_chars"],
             command_dispatch_fn=mocks["command_dispatch"],
+            agent_dispatch_fn=mocks["agent_dispatch"],
             on_mode_change=mocks["on_mode_change"],
             on_focus_lock_revert=mocks["on_focus_lock_revert"],
             on_scratch_result=mocks["on_scratch_result"],
@@ -562,6 +634,164 @@ class TestSessionModeManagerDispatch:
 
 
 # ---------------------------------------------------------------------------
+# AVA mode dispatch (Phase 2): agent routing + stage-buffer contract
+# ---------------------------------------------------------------------------
+
+class TestSessionModeManagerAvaDispatch:
+    def test_whole_utterance_switch_to_ava(self, manager_factory):
+        mgr, mocks = manager_factory()
+        outcome = mgr.dispatch_utterance("ava", GOOD_SIGNALS)
+        assert outcome.kind == "mode_switch"
+        assert mgr.mode is SessionMode.AVA
+        mocks["on_mode_change"].assert_called_once_with(SessionMode.AVA)
+
+    def test_ava_prefix_switch_delivers_payload_to_agent(self, manager_factory):
+        mgr, mocks = manager_factory()
+        outcome = mgr.dispatch_utterance("ava what time is it", GOOD_SIGNALS)
+        assert mgr.mode is SessionMode.AVA
+        assert outcome.kind == "ava_dispatched"
+        mocks["agent_dispatch"].assert_called_once_with("what time is it", None)
+
+    def test_plain_ava_utterance_routes_to_agent_dispatch(self, manager_factory):
+        mgr, mocks = manager_factory()
+        mgr.force_mode(SessionMode.AVA)
+        outcome = mgr.dispatch_utterance("what is the capital of France", GOOD_SIGNALS)
+        assert outcome.kind == "ava_dispatched"
+        mocks["agent_dispatch"].assert_called_once_with(
+            "what is the capital of France", None
+        )
+
+    def test_ava_utterance_never_pushes_scratch_stack(self, manager_factory):
+        mgr, mocks = manager_factory()
+        mgr.force_mode(SessionMode.AVA)
+        mgr.dispatch_utterance("tell me a joke", GOOD_SIGNALS)
+        assert mgr.stack_depth == 0  # agent turns are never undoable units of work
+
+    def test_buffer_not_attached_when_no_reference_even_if_nonempty(self, manager_factory):
+        mgr, mocks = manager_factory(foreground="notepad.exe")
+        mgr.force_mode(SessionMode.DICTATE)
+        mgr.dispatch_utterance("Hello world", GOOD_SIGNALS)
+        assert mgr.stage_buffer == "Hello world"
+        mgr.force_mode(SessionMode.AVA)
+        mgr.dispatch_utterance("what time is it", GOOD_SIGNALS)  # no reference word
+        mocks["agent_dispatch"].assert_called_once_with("what time is it", None)
+        assert mgr.stage_buffer == "Hello world"  # untouched
+
+    def test_buffer_not_attached_when_reference_detected_but_buffer_empty(self, manager_factory):
+        mgr, mocks = manager_factory()
+        mgr.force_mode(SessionMode.AVA)
+        mgr.dispatch_utterance("submit that", GOOD_SIGNALS)  # nothing was ever dictated
+        mocks["agent_dispatch"].assert_called_once_with("submit that", None)
+
+    def test_buffer_attached_only_when_reference_detected_and_nonempty(self, manager_factory):
+        mgr, mocks = manager_factory(foreground="notepad.exe")
+        mgr.force_mode(SessionMode.DICTATE)
+        mgr.dispatch_utterance("Hello world", GOOD_SIGNALS)
+        mgr.force_mode(SessionMode.AVA)
+        mgr.dispatch_utterance("submit that", GOOD_SIGNALS)
+        mocks["agent_dispatch"].assert_called_once_with("submit that", "Hello world")
+
+    def test_buffer_cleared_after_explicit_send(self, manager_factory):
+        mgr, mocks = manager_factory(foreground="notepad.exe")
+        mgr.force_mode(SessionMode.DICTATE)
+        mgr.dispatch_utterance("Hello world", GOOD_SIGNALS)
+        mgr.force_mode(SessionMode.AVA)
+        mgr.dispatch_utterance("submit that", GOOD_SIGNALS)
+        assert mgr.stage_buffer == ""
+
+    def test_no_code_path_sends_buffer_without_detected_reference(self, manager_factory):
+        """Dispatch several non-reference AVA utterances while the buffer is
+        non-empty -- the mock must NEVER see the buffer contents, only None
+        as the second argument, every single time."""
+        mgr, mocks = manager_factory(foreground="notepad.exe")
+        mgr.force_mode(SessionMode.DICTATE)
+        mgr.dispatch_utterance("sensitive staged content", GOOD_SIGNALS)
+        mgr.force_mode(SessionMode.AVA)
+        for utt in ("what time is it", "tell me a joke", "how are you", "this is great"):
+            mgr.dispatch_utterance(utt, GOOD_SIGNALS)
+        for call in mocks["agent_dispatch"].call_args_list:
+            assert call.args[1] is None, f"buffer leaked on call {call!r}"
+        assert mgr.stage_buffer == "sensitive staged content"  # never consumed
+
+    def test_scratch_that_in_ava_mode_pops_prior_dictation_entry(self, manager_factory):
+        mgr, mocks = manager_factory(foreground="notepad.exe")
+        mgr.force_mode(SessionMode.DICTATE)
+        mgr.dispatch_utterance("Hello world", GOOD_SIGNALS)
+        mgr.force_mode(SessionMode.AVA)
+        outcome = mgr.dispatch_utterance("scratch that", GOOD_SIGNALS)
+        assert outcome.kind == "scratch_success"
+        mocks["remove_chars"].assert_called_once_with(len("Hello world"))
+
+    def test_scratch_that_in_ava_mode_refuses_when_stack_empty(self, manager_factory):
+        mgr, mocks = manager_factory()
+        mgr.force_mode(SessionMode.AVA)
+        outcome = mgr.dispatch_utterance("scratch that", GOOD_SIGNALS)
+        assert outcome.kind == "scratch_refuse"
+
+    def test_ava_switch_gated_by_hallucination_check_falls_through(self, manager_factory):
+        mgr, mocks = manager_factory(command_matches=None)
+        bad_signals = UtteranceSignals(has_contiguous_speech=False, compression_ratios=(50.0,))
+        outcome = mgr.dispatch_utterance("ava", bad_signals)
+        assert mgr.mode is SessionMode.COMMAND  # never switched
+        assert outcome.kind == "command_miss"   # fell through to COMMAND dispatch instead
+        mocks["command_dispatch"].assert_called_once_with("ava")
+
+
+# ---------------------------------------------------------------------------
+# AVA mode transitions (Phase 2): any-to-any, matching Phase 1's contract
+# ---------------------------------------------------------------------------
+
+class TestSessionModeManagerAvaTransitions:
+    def test_ava_to_dictate_via_prefix_delivers_text(self, manager_factory):
+        mgr, mocks = manager_factory(foreground="notepad.exe")
+        mgr.force_mode(SessionMode.AVA)
+        outcome = mgr.dispatch_utterance("dictate hello there", GOOD_SIGNALS)
+        assert mgr.mode is SessionMode.DICTATE
+        assert outcome.kind == "dictate_injected"
+        mocks["inject"].assert_called_once_with("hello there")
+
+    def test_ava_to_dictate_mode_whole_switch(self, manager_factory):
+        mgr, mocks = manager_factory()
+        mgr.force_mode(SessionMode.AVA)
+        outcome = mgr.dispatch_utterance("dictate mode", GOOD_SIGNALS)
+        assert outcome.kind == "mode_switch"
+        assert mgr.mode is SessionMode.DICTATE
+
+    def test_ava_to_command_mode(self, manager_factory):
+        mgr, mocks = manager_factory()
+        mgr.force_mode(SessionMode.AVA)
+        outcome = mgr.dispatch_utterance("command mode", GOOD_SIGNALS)
+        assert outcome.kind == "mode_switch"
+        assert mgr.mode is SessionMode.COMMAND
+
+    def test_dictate_to_ava_prefix_with_payload(self, manager_factory):
+        mgr, mocks = manager_factory(foreground="notepad.exe")
+        mgr.force_mode(SessionMode.DICTATE)
+        outcome = mgr.dispatch_utterance("ava what time is it", GOOD_SIGNALS)
+        assert mgr.mode is SessionMode.AVA
+        assert outcome.kind == "ava_dispatched"
+        mocks["agent_dispatch"].assert_called_once_with("what time is it", None)
+
+    def test_command_to_ava_and_back(self, manager_factory):
+        mgr, mocks = manager_factory()
+        mgr.dispatch_utterance("ava", GOOD_SIGNALS)
+        assert mgr.mode is SessionMode.AVA
+        mgr.dispatch_utterance("command mode", GOOD_SIGNALS)
+        assert mgr.mode is SessionMode.COMMAND
+
+    def test_fresh_dictate_entry_from_ava_starts_a_new_stage_buffer(self, manager_factory):
+        mgr, mocks = manager_factory(foreground="notepad.exe")
+        mgr.force_mode(SessionMode.DICTATE)
+        mgr.dispatch_utterance("old text", GOOD_SIGNALS)
+        mgr.force_mode(SessionMode.AVA)
+        assert mgr.stage_buffer == "old text"
+        mgr.force_mode(SessionMode.DICTATE)  # fresh DICTATE entry
+        assert mgr.stage_buffer == ""
+        mgr.dispatch_utterance("new text", GOOD_SIGNALS)
+        assert mgr.stage_buffer == "new text"
+
+
+# ---------------------------------------------------------------------------
 # Mode-reset-on-session-timeout
 # ---------------------------------------------------------------------------
 
@@ -601,3 +831,17 @@ class TestSessionReset:
         assert mgr.mode is SessionMode.COMMAND
         assert mgr.stack_depth == 0
         assert mgr.retype_last_suppressed() is False  # suppressed item discarded too
+
+    def test_session_timeout_from_ava_reenters_at_command(self, manager_factory):
+        mgr, mocks = manager_factory(foreground="notepad.exe")
+        mgr.force_mode(SessionMode.DICTATE)
+        mgr.dispatch_utterance("staged text", GOOD_SIGNALS)
+        mgr.force_mode(SessionMode.AVA)
+        assert mgr.mode is SessionMode.AVA
+        assert mgr.stage_buffer == "staged text"
+
+        mgr.reset()  # simulates 30s inactivity_timeout_s session end
+
+        assert mgr.mode is SessionMode.COMMAND
+        assert mgr.stage_buffer == ""
+        assert mgr.stack_depth == 0

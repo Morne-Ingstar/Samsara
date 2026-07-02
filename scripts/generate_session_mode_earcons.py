@@ -5,6 +5,10 @@ Adds the following earcons to every theme directory under sounds/themes/:
 
   mode_command       - single confident grounded blip, "back at the hub"
   mode_dictate       - soft rising-then-falling sweep, "now listening for prose"
+  mode_ava           - two short ascending chimes, "now talking to the agent" --
+                       rhythmically distinct from both of the above: one blip
+                       (command) and one continuous sweep (dictate) vs two
+                       crisp rising notes here
   focus_lock_revert  - descending two-blip, warning (not alarming) -- focus
                        moved, injection suppressed, auto-reverted to COMMAND
   scratch_success    - quick descending "erase" swipe
@@ -121,6 +125,34 @@ def make_mode_dictate(tune):
     return samples
 
 
+def make_mode_ava(tune):
+    """Enter AVA: two short ascending chimes -- 'now talking to the agent'.
+    Rhythmically distinct from mode_command (one blip) and mode_dictate (one
+    continuous sweep): two crisp notes rising in pitch read as an attentive
+    greeting rather than a hub-return or a listening-for-prose cue."""
+    pitch, dur_k, harm = tune['pitch'], tune['dur'], tune['harm']
+    blip_dur = 0.09 * dur_k
+    gap_dur = 0.045 * dur_k
+    f1 = 620 * pitch
+    f2 = 880 * pitch
+
+    def _blip(freq):
+        n = int(SAMPLE_RATE * blip_dur)
+        out = [0.0] * n
+        for i in range(n):
+            t = i / SAMPLE_RATE
+            env = (1 - math.exp(-t * 90)) * math.exp(-t * 12)
+            out[i] = _tone(t, freq, harm) * env
+        return out
+
+    samples = []
+    samples.extend(_blip(f1))
+    samples.extend(_silence(gap_dur))
+    samples.extend(_blip(f2))
+    _cosine_fade(samples, 0.006, 0.03)
+    return samples
+
+
 def make_focus_lock_revert(tune):
     """Focus moved, injection suppressed, auto-reverted: descending
     two-blip. Distinct from 'error' -- a warning, not an alarm."""
@@ -195,6 +227,7 @@ def make_scratch_refuse(tune):
 EARCONS = {
     'mode_command':      (make_mode_command,      1.00),
     'mode_dictate':       (make_mode_dictate,      1.00),
+    'mode_ava':           (make_mode_ava,          1.00),
     'focus_lock_revert':  (make_focus_lock_revert, 1.00),
     'scratch_success':    (make_scratch_success,   0.95),
     'scratch_refuse':     (make_scratch_refuse,    0.85),

@@ -937,38 +937,54 @@ def _check_teaching_intent(app, text):
     pack="ai",
     ai_visible=False,
 )
-def handle_ask_ava(app, remainder="", **kwargs):
+def handle_ask_ava(app, remainder="", on_done=None, **kwargs):
+    """on_done: optional zero-arg callback fired exactly once, however this
+    call exits -- early return (disabled/empty/unreachable) or after the
+    worker thread finishes (success, short-circuit, or exception). Added for
+    session-mode AVA's request-in-flight tracking (samsara/session_modes.py);
+    existing callers (hold-to-talk's _route_to_ava) don't pass it, so this is
+    a no-op addition with zero behavior change for them."""
+    def _done():
+        if on_done is not None:
+            on_done()
+
     if not is_enabled(app):
+        _done()
         return
     if not remainder:
         speak(app, "Yes? How can I help?")
+        _done()
         return
     if not cloud_llm.is_enabled(app):
         host = get_host(app)
         if not _check_ollama_available(host):
             speak(app, "Ollama is not reachable.")
+            _done()
             return
 
     def _worker():
-        if _check_teaching_intent(app, remainder):
-            return
-
-        # Vision intent — short-circuit before calling the LLM
-        if getattr(app, "config", {}).get("vision", {}).get("enabled", False):
-            vision_intent = _parse_vision_intent(remainder)
-            if vision_intent:
-                intent, letter = vision_intent
-                _handle_vision_request(app, remainder, intent, letter)
+        try:
+            if _check_teaching_intent(app, remainder):
                 return
 
-        if hasattr(app, "play_sound"):
-            app.play_sound("ava_thinking")
-        try:
-            response = ask_ollama(remainder, app)
-            handle_response(app, response, original_text=remainder)
-        except Exception as e:
-            print(f"[OLLAMA] Error in worker: {e}")
-            speak(app, "Sorry, something went wrong.")
+            # Vision intent — short-circuit before calling the LLM
+            if getattr(app, "config", {}).get("vision", {}).get("enabled", False):
+                vision_intent = _parse_vision_intent(remainder)
+                if vision_intent:
+                    intent, letter = vision_intent
+                    _handle_vision_request(app, remainder, intent, letter)
+                    return
+
+            if hasattr(app, "play_sound"):
+                app.play_sound("ava_thinking")
+            try:
+                response = ask_ollama(remainder, app)
+                handle_response(app, response, original_text=remainder)
+            except Exception as e:
+                print(f"[OLLAMA] Error in worker: {e}")
+                speak(app, "Sorry, something went wrong.")
+        finally:
+            _done()
 
     threading.Thread(target=_worker, daemon=True).start()
 
