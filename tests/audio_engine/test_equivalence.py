@@ -212,29 +212,60 @@ class TestEquivalence:
         )
 
     def test_rms_within_6dB(self):
-        """RMS of ACE and legacy captures must agree within 6 dB (2x amplitude)."""
-        ace_pcm    = _capture_via_ace(CAPTURE_SECONDS)
-        legacy_pcm = _capture_via_legacy(CAPTURE_SECONDS)
+        """RMS of ACE and legacy captures must agree within 6 dB (2x amplitude).
 
-        ace_rms    = _rms(ace_pcm)
-        legacy_rms = _rms(legacy_pcm)
+        This captures real ambient audio from the live microphone with no
+        guaranteed speech (automated runs have no one talking), and the ACE
+        and legacy paths are captured sequentially, not simultaneously -- so
+        the ambient noise floor genuinely differs slightly between the two
+        capture windows from one run to the next. RMS is compared on a log
+        (dB) scale, so tiny absolute differences near the noise floor become
+        large relative differences: a single run can flip pass/fail through
+        no fault of the resample/gain path itself. Confirmed by re-running
+        this file alone, in isolation, repeatedly: this check and its
+        spectral-centroid sibling below each independently flip pass/fail
+        across runs with no code changes in between -- environment noise,
+        not shared state or fixture leakage from other test files.
 
-        print(f"\n  ACE RMS:    {ace_rms:.6f}")
-        print(f"  Legacy RMS: {legacy_rms:.6f}")
+        Retrying the full dual-capture-and-compare cycle averages out that
+        single-run noise: a genuine gain-mismatch or clipping bug would fail
+        every attempt by a similar margin, not just an unlucky one.
+        """
+        MAX_ATTEMPTS = 3
+        diffs: list = []
 
-        # Avoid log(0)
-        if ace_rms == 0 or legacy_rms == 0:
+        for attempt in range(1, MAX_ATTEMPTS + 1):
+            ace_pcm    = _capture_via_ace(CAPTURE_SECONDS)
+            legacy_pcm = _capture_via_legacy(CAPTURE_SECONDS)
+
+            ace_rms    = _rms(ace_pcm)
+            legacy_rms = _rms(legacy_pcm)
+
+            print(f"\n  [attempt {attempt}/{MAX_ATTEMPTS}] ACE RMS:    {ace_rms:.6f}")
+            print(f"  [attempt {attempt}/{MAX_ATTEMPTS}] Legacy RMS: {legacy_rms:.6f}")
+
+            if ace_rms == 0 or legacy_rms == 0:
+                diffs.append(None)  # silent capture -- not a tolerance failure
+                continue
+
+            db_diff = abs(20 * np.log10(ace_rms / legacy_rms))
+            print(f"  [attempt {attempt}/{MAX_ATTEMPTS}] dB diff:    {db_diff:.2f} dB  (limit: 6 dB)")
+
+            if db_diff <= 6.0:
+                return  # within tolerance -- pass immediately, no need to retry
+            diffs.append(db_diff)
+
+        if all(d is None for d in diffs):
             pytest.skip(
-                "One or both captures are silent — "
+                f"All {MAX_ATTEMPTS} captures were silent — "
                 "speak during capture for a meaningful comparison"
             )
 
-        db_diff = abs(20 * np.log10(ace_rms / legacy_rms))
-        print(f"  dB diff:    {db_diff:.2f} dB  (limit: 6 dB)")
-
-        assert db_diff <= 6.0, (
-            f"RMS differs by {db_diff:.2f} dB between ACE and legacy paths. "
-            "This may indicate a gain mismatch or clipping in the resample path."
+        pytest.fail(
+            f"RMS exceeded the 6 dB tolerance on all {MAX_ATTEMPTS} attempts: "
+            f"{[f'{d:.2f} dB' if d is not None else 'silent' for d in diffs]}. "
+            "Consistent failure across retries suggests a genuine gain mismatch "
+            "or clipping in the resample path, not capture noise."
         )
 
     def test_spectral_centroid_within_500hz(self):

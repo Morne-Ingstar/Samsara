@@ -37,9 +37,21 @@ import importlib
 import plugins.commands.media_keys as mk
 importlib.reload(mk)
 
-# Force _WINSDK_AVAILABLE to True for tests that exercise the WinRT path,
-# since we'll be injecting our own SessionManager mock anyway.
-mk._WINSDK_AVAILABLE = True
+
+def _patch_session_manager(sm_mock):
+    """media_keys imports SessionManager lazily, inside _get_session_for_process
+    (`from winsdk.windows.media.control import ... as SessionManager`), so there
+    is no module-level mk.SessionManager to patch — patching that attribute is a
+    no-op against the live code path. Patch the attribute on the actual
+    winsdk.windows.media.control module instead (importlib.import_module rather
+    than a sys.modules lookup, since with the real winsdk package installed
+    that submodule isn't necessarily registered in sys.modules yet just from
+    `import winsdk` -- it's real winmd-backed dynamic loading, only guaranteed
+    present after something actually imports it).
+    """
+    control_mod = importlib.import_module('winsdk.windows.media.control')
+    return patch.object(control_mod, 'GlobalSystemMediaTransportControlsSessionManager',
+                         sm_mock, create=True)
 
 
 # ---------------------------------------------------------------------------
@@ -111,16 +123,18 @@ class TestGetSessionForProcess:
     def test_matches_by_substring(self):
         spotify_session = _make_session('Spotify.Spotify')
         manager = _make_manager(spotify_session)
-        with patch.object(mk, 'SessionManager') as sm:
-            sm.request_async = AsyncMock(return_value=manager)
+        sm = MagicMock()
+        sm.request_async = AsyncMock(return_value=manager)
+        with _patch_session_manager(sm):
             result = self._run(mk._get_session_for_process('spotify.exe'))
         assert result is spotify_session
 
     def test_matches_process_stem_without_exe(self):
         firefox_session = _make_session('Firefox-308046B0AF4A39CB')
         manager = _make_manager(firefox_session)
-        with patch.object(mk, 'SessionManager') as sm:
-            sm.request_async = AsyncMock(return_value=manager)
+        sm = MagicMock()
+        sm.request_async = AsyncMock(return_value=manager)
+        with _patch_session_manager(sm):
             result = self._run(mk._get_session_for_process('firefox.exe'))
         assert result is firefox_session
 
@@ -128,34 +142,45 @@ class TestGetSessionForProcess:
         s1 = _make_session('Spotify.Spotify')
         s2 = _make_session('Spotify.SpotifyWeb')
         manager = _make_manager(s1, s2)
-        with patch.object(mk, 'SessionManager') as sm:
-            sm.request_async = AsyncMock(return_value=manager)
+        sm = MagicMock()
+        sm.request_async = AsyncMock(return_value=manager)
+        with _patch_session_manager(sm):
             result = self._run(mk._get_session_for_process('spotify.exe'))
         assert result is s1
 
     def test_no_match_returns_none(self):
         vlc_session = _make_session('vlc')
         manager = _make_manager(vlc_session)
-        with patch.object(mk, 'SessionManager') as sm:
-            sm.request_async = AsyncMock(return_value=manager)
+        sm = MagicMock()
+        sm.request_async = AsyncMock(return_value=manager)
+        with _patch_session_manager(sm):
             result = self._run(mk._get_session_for_process('spotify.exe'))
         assert result is None
 
     def test_empty_sessions_returns_none(self):
         manager = _make_manager()
-        with patch.object(mk, 'SessionManager') as sm:
-            sm.request_async = AsyncMock(return_value=manager)
+        sm = MagicMock()
+        sm.request_async = AsyncMock(return_value=manager)
+        with _patch_session_manager(sm):
             result = self._run(mk._get_session_for_process('spotify.exe'))
         assert result is None
 
     def test_returns_none_when_winsdk_unavailable(self):
-        with patch.object(mk, '_WINSDK_AVAILABLE', False):
+        # Simulate winsdk genuinely missing: swap in a bare module object with
+        # no GlobalSystemMediaTransportControlsSessionManager attribute, so the
+        # `from winsdk.windows.media.control import ... as SessionManager`
+        # inside _get_session_for_process raises ImportError, same as it would
+        # with winsdk not installed at all.
+        import types
+        bare_module = types.ModuleType('winsdk.windows.media.control')
+        with patch.dict(sys.modules, {'winsdk.windows.media.control': bare_module}):
             result = self._run(mk._get_session_for_process('spotify.exe'))
         assert result is None
 
     def test_returns_none_when_manager_raises(self):
-        with patch.object(mk, 'SessionManager') as sm:
-            sm.request_async = AsyncMock(side_effect=RuntimeError("WinRT unavailable"))
+        sm = MagicMock()
+        sm.request_async = AsyncMock(side_effect=RuntimeError("WinRT unavailable"))
+        with _patch_session_manager(sm):
             result = self._run(mk._get_session_for_process('spotify.exe'))
         assert result is None
 
@@ -165,8 +190,9 @@ class TestGetSessionForProcess:
             fget=lambda s: (_ for _ in ()).throw(RuntimeError("bad")))
         good_session = _make_session('Spotify.Spotify')
         manager = _make_manager(bad_session, good_session)
-        with patch.object(mk, 'SessionManager') as sm:
-            sm.request_async = AsyncMock(return_value=manager)
+        sm = MagicMock()
+        sm.request_async = AsyncMock(return_value=manager)
+        with _patch_session_manager(sm):
             result = self._run(mk._get_session_for_process('spotify.exe'))
         assert result is good_session
 
