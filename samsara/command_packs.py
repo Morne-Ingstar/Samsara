@@ -142,6 +142,12 @@ PACKS = {
         'always_on': False,
         'default_enabled': True,
     },
+    'session': {
+        'label': 'Unified Session',
+        'description': 'Toggle command mode recovery commands (e.g. "retype that")',
+        'always_on': True,
+        'default_enabled': True,
+    },
 }
 
 

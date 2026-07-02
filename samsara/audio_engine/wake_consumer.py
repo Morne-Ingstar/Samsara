@@ -42,6 +42,7 @@ from samsara.constants import (
     DEFAULT_SPEECH_THRESHOLD,
     WAKE_DETECTION_SILENCE,
 )
+from samsara.session_modes import SessionMode
 
 
 class WakeConsumer:
@@ -196,10 +197,16 @@ class WakeConsumer:
         min_speech = audio_config.get('min_speech_duration', DEFAULT_MIN_SPEECH_DURATION)
 
         if self._is_toggle_cmd(app):
-            # Per-utterance silence gap for sustained command mode.
-            # Distinct from inactivity_timeout_s (30s), which ends the whole session.
-            silence_threshold = app.config.get('command_mode', {}).get(
-                'utterance_silence_s', 1.0)
+            # Per-utterance silence gap for the unified session. Distinct
+            # from inactivity_timeout_s (30s), which ends the whole session.
+            # DICTATE gets a longer gap (mid-sentence pauses shouldn't cut
+            # a chunk short); COMMAND keeps the tighter default.
+            cm_cfg = app.config.get('command_mode', {})
+            session_mgr = getattr(app, '_session_mode_manager', None)
+            if session_mgr is not None and session_mgr.mode is SessionMode.DICTATE:
+                silence_threshold = cm_cfg.get('dictate_utterance_silence_s', 2.0)
+            else:
+                silence_threshold = cm_cfg.get('utterance_silence_s', 1.0)
         elif app.app_state == 'long_dictation':
             silence_threshold = ww_config.get('long_chunk_silence', 1.0)
         elif app.app_state in ('quick_dictation', 'wake_session') and app._dictation_silence_timeout:
