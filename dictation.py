@@ -1190,6 +1190,13 @@ class DictationApp:
         self._command_mode_ghost_tap = False    # set when hold < enter_debounce_ms
         self._command_mode_key_held = False      # edge-trigger guard vs OS key auto-repeat
 
+        # Set while the ACE input stream is recovering from an unexpected
+        # device loss -- an announced outage must not let the session's
+        # inactivity timer expire out from under a user who is simply
+        # waiting for their mic to come back. See _touch_session_activity,
+        # _pause_session_inactivity_for_device_recovery.
+        self._session_recovery_pause = False
+
         # Unified session state machine (COMMAND <-> DICTATE <-> AVA) for
         # toggle command mode. Constructed lazily on first toggle-mode entry;
         # reset() (not reconstruction) on every later entry/exit so the
@@ -1676,7 +1683,12 @@ class DictationApp:
             # stream to stop receiving callbacks (WASAPI dual-client starvation).
             engine_config = dict(self.config)
             engine_config['_capture_rate'] = self.capture_rate
-            self._ace_engine = AudioCaptureEngine(ring, config=engine_config)
+            self._ace_engine = AudioCaptureEngine(
+                ring, config=engine_config,
+                on_stream_death=self._on_ace_stream_death,
+                on_recovery_success=self._on_ace_recovery_success,
+                on_give_up=self._on_ace_recovery_give_up,
+            )
             logger.info("[BOOT-DIAG] ACE engine.start() called (sd.query_devices + sd.InputStream open)")
             _aec_open_t = getattr(self, '_aec_open_t', None)
             if _aec_open_t is not None:
@@ -1742,6 +1754,74 @@ class DictationApp:
         except Exception as exc:
             logger.exception(f"[ACE] Debug recorder failed to start: {exc}")
             self._ace_debug_rec = None
+
+    def _on_ace_stream_death(self) -> None:
+        """AudioCaptureEngine.on_stream_death -- the input device died
+        unexpectedly (unplugged, BT dropped). Runs on whatever thread
+        sounddevice's finished_callback fires on.
+
+        Ends whatever utterance was in flight NOW rather than leaving it
+        frozen until recovery succeeds or gives up (no new frames arrive
+        during the outage, so nothing would otherwise flush or discard it),
+        and pauses the session's inactivity timer so a user waiting for
+        their mic to reconnect doesn't get silently kicked out of an
+        otherwise-fine session."""
+        logger.error("[ACE] Audio device lost -- entering recovery")
+        try:
+            self.play_sound('error')
+        except Exception as e:
+            logger.debug(f"[ACE] Death earcon failed: {e}")
+
+        wc = getattr(self, '_wake_consumer', None)
+        if wc is not None:
+            try:
+                wc.abort_utterance()
+            except Exception as e:
+                logger.debug(f"[ACE] WakeConsumer abort during device loss failed: {e}")
+
+        if self.continuous_active:
+            cc = getattr(self, '_continuous_consumer', None)
+            if cc is not None:
+                try:
+                    cc.abort()
+                except Exception as e:
+                    logger.debug(f"[ACE] ContinuousConsumer abort during device loss failed: {e}")
+
+        self._pause_session_inactivity_for_device_recovery()
+
+    def _on_ace_recovery_success(self) -> None:
+        """AudioCaptureEngine.on_recovery_success -- the device reappeared
+        and the stream was rebuilt on the same FrameBus; all consumers
+        resume automatically (they never re-register)."""
+        logger.info("[ACE] Audio device recovered -- stream rebuilt")
+        try:
+            self.play_sound('start')
+        except Exception as e:
+            logger.debug(f"[ACE] Recovery earcon failed: {e}")
+        self._resume_session_inactivity_after_device_recovery()
+
+    def _on_ace_recovery_give_up(self) -> None:
+        """AudioCaptureEngine.on_give_up -- 60s of polling never found the
+        device again. Loud failure, but the app stays alive: the user can
+        still reconnect the device and pick it (or another) from the tray
+        mic menu, which will restart the engine via switch_microphone()."""
+        logger.error("[ACE] Audio device recovery gave up after 60s -- device never reappeared")
+        try:
+            self.play_sound('error')
+        except Exception as e:
+            logger.debug(f"[ACE] Give-up earcon failed: {e}")
+        nm = getattr(self, 'notification_manager', None)
+        if nm is not None:
+            try:
+                nm.show_notification(
+                    "Microphone Lost",
+                    "Samsara can't hear you. Reconnect your mic and select it "
+                    "from the tray menu.",
+                    duration=10,
+                )
+            except Exception as e:
+                logger.debug(f"[ACE] Give-up notification failed: {e}")
+        self._resume_session_inactivity_after_device_recovery()
 
     def _stop_ace_engine(self) -> None:
         """Deactivate all consumers, flush debug WAV, stop engine. Called from quit_app."""
@@ -2870,8 +2950,9 @@ class DictationApp:
             try:
                 self._ace_engine.bump_device_epoch()
                 self._ace_engine.stop()
-                self._ace_engine._config['microphone']    = mic_id
-                self._ace_engine._config['_capture_rate'] = self.capture_rate
+                self._ace_engine._config['microphone']      = mic_id
+                self._ace_engine._config['microphone_name'] = self.config.get('microphone_name')
+                self._ace_engine._config['_capture_rate']   = self.capture_rate
                 self._ace_engine.start()
                 logger.debug("[ACE] Engine restarted on new device")
             except Exception as exc:
@@ -4012,14 +4093,38 @@ class DictationApp:
         the SAME timer here instead of each lane rolling its own reset.
         A discarded near-silence buffer never reaches this method at all:
         WakeConsumer drops those before _handle_command_mode_utterance is
-        ever invoked, so genuinely idle silence still times out normally."""
+        ever invoked, so genuinely idle silence still times out normally.
+
+        No-ops while _session_recovery_pause is set -- an announced device
+        outage must not have some other in-flight signal quietly re-arm the
+        timer out from under the deliberate pause below."""
         if not self.command_mode_active:
+            return
+        if self._session_recovery_pause:
             return
         cm_cfg = self.config.get('command_mode', {})
         if cm_cfg.get('mode', 'hold') != 'toggle':
             return
         timeout_s = cm_cfg.get('inactivity_timeout_s', 30)
         self._reset_command_mode_inactivity_timer(timeout_s)
+
+    def _pause_session_inactivity_for_device_recovery(self) -> None:
+        """Cancel the inactivity timer for the duration of an announced ACE
+        device outage -- a user waiting for their mic to reconnect must
+        never have the session silently exit out from under them just
+        because no utterances could possibly arrive while the stream is
+        down. Does not touch command_mode_active; the session stays
+        latched exactly as the recovery contract requires."""
+        self._session_recovery_pause = True
+        self._cancel_command_mode_inactivity_timer()
+
+    def _resume_session_inactivity_after_device_recovery(self) -> None:
+        """Clear the recovery pause and re-arm the timer with a fresh full
+        window -- called on both recovery success and give-up, since either
+        way the outage is now "announced and over" from the session's
+        perspective."""
+        self._session_recovery_pause = False
+        self._touch_session_activity()
 
     def _on_command_mode_inactivity(self):
         """threading.Timer callback -- runs on its own thread. Must never

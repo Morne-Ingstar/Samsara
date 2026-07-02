@@ -109,6 +109,16 @@ class ContinuousConsumer:
         except Exception as e:
             logger.debug(f"unregister_consumer failed during deactivate: {e}")
 
+    def abort(self) -> None:
+        """Immediately discard in-progress speech accumulation -- called
+        when the audio device dies mid-utterance. Discards rather than
+        flushes: the audio may be truncated mid-word with no guarantee
+        frames resume soon, unlike a normal silence-timeout commit."""
+        with self._frames_lock:
+            self._speech_frames = []
+            self._is_speaking   = False
+            self._silence_start = None
+
     # ── Manual commit (continuous_commit_trigger == "key") ──────────────────
 
     def commit_now(self) -> None:

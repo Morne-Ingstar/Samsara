@@ -62,7 +62,14 @@ class AudioCaptureEngine:
         config: App config dict. Reads 'microphone' for device selection.
     """
 
-    def __init__(self, ring: FrameBus, config: dict | None = None) -> None:
+    def __init__(
+        self,
+        ring: FrameBus,
+        config: dict | None = None,
+        on_stream_death: "Any" = None,
+        on_recovery_success: "Any" = None,
+        on_give_up: "Any" = None,
+    ) -> None:
         self._ring    = ring
         self._config  = config or {}
         self._running = False
@@ -87,22 +94,45 @@ class AudioCaptureEngine:
         self._dropped_frames: int = 0
         self._epoch_log: list[tuple[float, int]] = []
 
+        # ── Disconnect/reconnect recovery (device unplugged mid-session) ──
+        # device_name is the STABLE identifier recovery re-resolves against
+        # (PortAudio indices shift on re-enumeration; names don't). Optional
+        # callables let the caller (DictationApp) earcon/log/pause-timer
+        # without this engine knowing anything about the app -- same
+        # constructor-injected-callable pattern as SessionModeManager.
+        self._device_name: "str | None" = None
+        self._recovering  = False
+        self._on_stream_death     = on_stream_death
+        self._on_recovery_success = on_recovery_success
+        self._on_give_up          = on_give_up
+
     # ── Stream lifecycle ──────────────────────────────────────────────────────
 
     def start(self) -> None:
-        """Open a sounddevice InputStream and begin writing to the ring.
+        """Open a sounddevice InputStream and begin writing to the ring."""
+        if self._running:
+            return
+        # Stashed for recovery only -- the initial open below is UNCHANGED
+        # from before (still opens by config['microphone'], the already-
+        # reconciled index/None) so first-boot behavior is untouched.
+        self._device_name = self._config.get('microphone_name')
+        device = self._config.get('microphone', None)
+        self._open_stream(device)
+        self._running = True
+
+    def _open_stream(self, device) -> None:
+        """Build the polyphase resample ratio for `device` and open the
+        InputStream. Used by both start() and the recovery loop -- a
+        recovered device may have a different native rate than the one
+        that just died, so the ratio is always recomputed here, never
+        cached from a prior open.
 
         Computes the polyphase resample ratio (native_rate → SAMPLE_RATE)
         once here so the callback never recomputes it. The resampler
         (scipy.signal.resample_poly) is stateless per-call, so no persistent
         filter state needs to be carried across callbacks.
         """
-        if self._running:
-            return
-
         import sounddevice as sd
-
-        device = self._config.get('microphone', None)
 
         # If the caller passed an explicit rate (e.g. to match a concurrent
         # stream on the same WASAPI device), use it directly; otherwise query.
@@ -138,34 +168,116 @@ class AudioCaptureEngine:
             self._resample_poly = None
 
         logger.info(
-            f"[ACE] Starting engine: device={device!r}  "
+            f"[ACE] Opening stream: device={device!r}  "
             f"native={self._native_rate}Hz  "
             f"resample={self._up}/{self._down}  "
             f"blocksize={self._blocksize}"
         )
 
         self._stream = sd.InputStream(
-            samplerate  = self._native_rate,
-            channels    = 1,
-            dtype       = np.float32,
-            blocksize   = self._blocksize,
-            device      = device,
-            callback    = self._on_audio_block,
+            samplerate       = self._native_rate,
+            channels         = 1,
+            dtype            = np.float32,
+            blocksize        = self._blocksize,
+            device           = device,
+            callback         = self._on_audio_block,
+            finished_callback= self._on_stream_finished,
         )
-        self._running = True
         self._stream.start()
 
     def stop(self) -> None:
-        """Stop and close the PortAudio stream."""
-        self._running = False
+        """Stop and close the PortAudio stream (deliberate, external stop --
+        e.g. app shutdown or a user-initiated mic switch). Clears _running
+        BEFORE tearing down the stream so _on_stream_finished can tell this
+        apart from an unexpected death (which fires with _running still
+        True) and skip triggering recovery."""
+        self._running   = False
+        self._recovering = False
+        self._teardown_stream_only()
+        logger.info("[ACE] Engine stopped.")
+
+    def _teardown_stream_only(self) -> None:
+        """Close self._stream without touching _running -- used both by
+        stop() and internally between recovery retry attempts, where the
+        engine must stay "supposed to be running" throughout."""
         if self._stream is not None:
             try:
                 self._stream.stop()
                 self._stream.close()
             except Exception as exc:
-                logger.exception(f"[ACE] stream stop error: {exc}")
+                logger.debug(f"[ACE] stream teardown error: {exc}")
             self._stream = None
-        logger.info("[ACE] Engine stopped.")
+
+    # ── Disconnect/reconnect recovery ─────────────────────────────────────────
+
+    def _on_stream_finished(self) -> None:
+        """sounddevice finished_callback -- fires whenever the stream stops,
+        for ANY reason (deliberate stop() or an unexpected device death).
+
+        Runs on a PortAudio-managed thread, near-instantly after the stream
+        actually stops -- this is the detection mechanism (no separate
+        healthy-state polling thread; requirement is "no polling while
+        healthy" and this is purely event-driven).
+        """
+        if not self._running:
+            return  # deliberate stop() already cleared this -- not a death
+        if self._recovering:
+            return  # already handling a prior death; avoid a second thread
+        logger.error("[ACE] Input stream died unexpectedly -- entering recovery")
+        self._recovering = True
+        if self._on_stream_death:
+            try:
+                self._on_stream_death()
+            except Exception:
+                logger.exception("[ACE] on_stream_death callback failed")
+        threading.Thread(
+            target=self._recovery_loop, daemon=True, name="ace-recovery",
+        ).start()
+
+    def _recovery_loop(self) -> None:
+        """Poll for the configured device every 2s for up to 60s.
+
+        Re-resolves by NAME (self._device_name, captured at start()) so a
+        BT device reappearing under a different PortAudio index is still
+        recognized as the same device -- sounddevice accepts a device name
+        string directly and re-resolves it fresh on every InputStream()
+        call, so no index caching/matching is needed here at all. Falls
+        back to the originally configured id/None (system default) only
+        when no name was stored (older config, or "auto" device selection,
+        where None always means "whatever the OS default is right now").
+        """
+        device = self._device_name or self._config.get('microphone', None)
+        deadline = time.monotonic() + 60.0
+        try:
+            while self._running and time.monotonic() < deadline:
+                time.sleep(2.0)
+                if not self._running:
+                    return  # a deliberate stop() happened while we waited
+                try:
+                    self._teardown_stream_only()  # never two streams alive at once
+                    self._open_stream(device)
+                    self.bump_device_epoch()  # signal the discontinuity to consumers
+                    logger.info("[ACE] Recovery succeeded -- stream rebuilt")
+                    self._recovering = False
+                    if self._on_recovery_success:
+                        try:
+                            self._on_recovery_success()
+                        except Exception:
+                            logger.exception("[ACE] on_recovery_success callback failed")
+                    return
+                except Exception as exc:
+                    logger.debug(f"[ACE] Recovery attempt failed, retrying in 2s: {exc}")
+            if self._running:
+                logger.error(
+                    "[ACE] Recovery gave up after 60s -- device never reappeared"
+                )
+                if self._on_give_up:
+                    try:
+                        self._on_give_up()
+                    except Exception:
+                        logger.exception("[ACE] on_give_up callback failed")
+        finally:
+            self._recovering = False
 
     # ── Capture callback (HOT PATH — no locks, no logging, no allocation) ────
 
