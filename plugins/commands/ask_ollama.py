@@ -67,11 +67,39 @@ MODE 2 — ONE-SHOT ACTION:
 When the user asks you to do something on the computer using words like \
 "can you", "could you", "open", "close", "launch", "go to", "switch to", \
 "press", "start", "stop".
-Respond with EXACTLY two lines and nothing else:
+
+If the request is about a SPECIFIC APP OR WINDOW BY NAME -- focusing it,
+opening it, or closing it -- respond with EXACTLY two lines and nothing else:
+CONFIRM <one plain sentence describing what you will do>
+ACTION2 <verb> | <argument>
+
+<verb> must be exactly one of: focus, open, close.
+<argument> is the app/window name IN THE USER'S OWN WORDS, unchanged -- do
+not normalize it, abbreviate it, or substitute a known command name for it.
+The argument is resolved against installed apps and live windows separately
+from this conversation; you never pick the actual target, only the verb
+and the argument.
+
+Examples:
+User: focus the claude desktop app
+CONFIRM Focus Claude.
+ACTION2 focus | the claude desktop app
+
+User: open notepad
+CONFIRM Open Notepad.
+ACTION2 open | notepad
+
+User: close spotify
+CONFIRM Close Spotify.
+ACTION2 close | spotify
+
+For everything else -- a FIXED, LISTED command (see the list at the bottom) --
+respond with EXACTLY two lines and nothing else:
 CONFIRM <one plain sentence describing what you will do>
 ACTION <exact command name from the list below>
 
-Do not add any other text before, between, or after these two lines.
+Do not add any other text before, between, or after these two lines,
+whichever of ACTION2 or ACTION applies.
 
 Examples:
 User: can you open Chrome
@@ -113,9 +141,12 @@ SCHEDULE 30 scroll down
 {USER_ALIASES}
 
 IMPORTANT RULES:
-- Never mix prose with ACTION, SCHEDULE, or CONFIRM tags.
-- If you are not certain which command name to use, respond conversationally \
-and say what you cannot do. Never guess a command name.
+- Never mix prose with ACTION, ACTION2, SCHEDULE, or CONFIRM tags.
+- If you are not certain which command name to use for ACTION, respond \
+conversationally and say what you cannot do. Never guess a command name.
+- If a request isn't a focus/open/close of a specific app or window (ACTION2)
+and doesn't match a listed command (ACTION) either, respond conversationally
+and say what you can't do. Never substitute the nearest listed command.
 - Never say "Please wait while I..." or similar. Just output the two lines.
 - The command name in ACTION or SCHEDULE must come from this list exactly:
 
@@ -193,6 +224,19 @@ _UNSAFE_COMMANDS = {
     # Email / messaging send (when added)
     "send email", "send message",
 }
+
+# ── ACTION2 grammar v2 -- parameterized app/window verbs ──────────────────────
+# ACTION2 <verb> | <argument>: deterministic resolution (samsara.app_index +
+# plugins.commands.app_verbs.resolve_window) picks the target, never the
+# model. Extensible: add a verb here AND a matching entry in
+# plugins.commands.app_verbs.ACTION2_VERB_FUNCS.
+ACTION2_VERBS = ("focus", "open", "close")
+
+# Same spirit as _UNSAFE_COMMANDS above: "close" can lose unsaved work, so it
+# requires confirmation like "close tab"/"close window" already do. "focus"
+# and "open" are no more risky than the existing "open chrome"-style macros
+# (never in _UNSAFE_COMMANDS), so they execute immediately.
+_UNSAFE_ACTION2_VERBS = {"close"}
 
 # ── Module-level state ────────────────────────────────────────────────────────
 
@@ -611,14 +655,25 @@ def ask_ollama(prompt, app, model=None, system=None):
 # ── Response parser ───────────────────────────────────────────────────────────
 
 def _parse_structured_response(response):
-    """Parse CONFIRM+ACTION and CONFIRM+SCHEDULE two-line responses.
+    """Parse CONFIRM+ACTION, CONFIRM+ACTION2, and CONFIRM+SCHEDULE two-line
+    responses.
 
-    Returns a dict with 'type' in ('action', 'schedule', 'conversation').
+    Returns a dict with 'type' in ('action', 'action2', 'schedule', 'conversation').
     """
     confirm_match = re.search(r"^CONFIRM\s+(.+)$", response, re.MULTILINE | re.IGNORECASE)
+    action2_match = re.search(r"^ACTION2\s+(\w+)\s*\|\s*(.+)$", response, re.MULTILINE | re.IGNORECASE)
+    # "ACTION\s+" requires whitespace immediately after ACTION, so this never
+    # matches an "ACTION2 ..." line (no whitespace between ACTION and 2).
     action_match  = re.search(r"^ACTION\s+(.+)$",  response, re.MULTILINE | re.IGNORECASE)
     sched_match   = re.search(r"^SCHEDULE\s+(\d+)\s+(.+)$", response, re.MULTILINE | re.IGNORECASE)
 
+    if confirm_match and action2_match:
+        return {
+            "type": "action2",
+            "confirm_text": confirm_match.group(1).strip(),
+            "verb": action2_match.group(1).strip().lower(),
+            "argument": action2_match.group(2).strip(),
+        }
     if confirm_match and action_match:
         return {
             "type": "action",
@@ -690,6 +745,27 @@ def handle_response(app, response, original_text=None):
                 }
             speak(app, parsed["confirm_text"] + " -- say yes to confirm, or say ava cancel.")
 
+    elif parsed["type"] == "action2":
+        verb = parsed["verb"]
+        argument = parsed["argument"]
+        if verb not in ACTION2_VERBS:
+            # Model hallucinated an unlisted verb -- fail closed, no guessing.
+            speak(app, f"I don't know how to {verb} things.")
+        elif verb in _UNSAFE_ACTION2_VERBS:
+            with _pending_action_lock:
+                _pending_action = {
+                    "type": "action2",
+                    "verb": verb,
+                    "argument": argument,
+                    "confirm_text": parsed["confirm_text"],
+                    "original_text": original_text or "",
+                    "expires": time.time() + 30,
+                }
+            speak(app, parsed["confirm_text"] + " -- say yes to confirm, or say ava cancel.")
+        else:
+            _execute_action2(app, verb, argument)
+            _track_alias_uses(original_text)
+
     elif parsed["type"] == "schedule":
         with _pending_action_lock:
             _pending_action = {
@@ -705,6 +781,30 @@ def handle_response(app, response, original_text=None):
 
     else:
         speak(app, response)
+
+
+def _execute_action2(app, verb, argument):
+    """Execute an ACTION2 verb via the SAME deterministic resolvers the
+    plain "focus/open/close <x>" voice commands use (plugins.commands.
+    app_verbs) -- one resolution path, Ava-specific feedback layered here.
+    Resolver miss -> speak failure, execute nothing. Success is silent here
+    (matching the existing ACTION path's "earcon is enough feedback" for
+    immediate, non-confirmed execution) -- returns the ActionResult so a
+    confirmed (post "yes") caller can say "Done." itself.
+    """
+    from plugins.commands.app_verbs import ActionResult, do_close, do_focus, do_open
+
+    verb_funcs = {"focus": do_focus, "open": do_open, "close": do_close}
+    action_fn = verb_funcs.get(verb)
+    if action_fn is None:
+        speak(app, f"I don't know how to {verb} things.")
+        return ActionResult.NOT_FOUND
+    result = action_fn(argument)
+    if result is ActionResult.NOT_RUNNING:
+        speak(app, f"{argument} is not running.")
+    elif result is not ActionResult.DONE:
+        speak(app, f"Couldn't find {argument}.")
+    return result
 
 
 # ── Scheduler ─────────────────────────────────────────────────────────────────
@@ -1045,6 +1145,18 @@ def handle_ava_confirm(app, remainder="", **kwargs):
             _execute_safe(app, action)
             _track_alias_uses(action.get("original_text", ""))
             speak(app, "Done.")
+        except Exception as e:
+            speak(app, f"Command failed: {e}")
+
+    elif action["type"] == "action2":
+        with _pending_action_lock:
+            _pending_action = None
+        try:
+            from plugins.commands.app_verbs import ActionResult
+            result = _execute_action2(app, action["verb"], action["argument"])
+            _track_alias_uses(action.get("original_text", ""))
+            if result is ActionResult.DONE:
+                speak(app, "Done.")
         except Exception as e:
             speak(app, f"Command failed: {e}")
 

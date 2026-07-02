@@ -1150,6 +1150,16 @@ class DictationApp:
         _boot("plugin discovery + command executor")
         _bdiag("plugin discovery + command executor")
 
+        # App index for parameterized "focus/open/close <x>" voice verbs
+        # (plugins/commands/app_verbs.py) -- loads the on-disk cache
+        # instantly (if any) and kicks a background thread to enumerate
+        # fresh; never blocks boot.
+        try:
+            from samsara.app_index import get_app_index
+            get_app_index().ensure_built_async()
+        except Exception as exc:
+            print(f"[APP-INDEX] Could not start background build: {exc}")
+
         # Repeat / again state
         self._last_command = None       # command dict of last repeatable command
         self._last_command_name = None  # canonical phrase of last repeatable command
