@@ -104,6 +104,26 @@ class WakeConsumer:
         except Exception as e:
             logger.debug(f"unregister_consumer failed during deactivate: {e}")
 
+    def abort_utterance(self) -> None:
+        """Immediately discard any in-progress utterance and reset speech
+        state -- called when the audio device dies mid-utterance.
+
+        This is the same cleanup _process_frame's epoch-change branch does,
+        but callable directly and immediately: an epoch bump alone only
+        triggers that cleanup on the NEXT frame, and during a device outage
+        no new frames arrive at all (the engine has stopped writing), so
+        without this the stale buffer would sit frozen -- neither flushed
+        nor discarded -- for the whole recovery window."""
+        app = self._app
+        self._utterance_frames   = []
+        self._buffer_rms_history = []
+        app.is_speaking   = False
+        app.silence_start = None
+        try:
+            app._vad_reset()
+        except Exception as e:
+            logger.debug(f"abort_utterance: vad reset failed: {e}")
+
     # ── Poll loop ─────────────────────────────────────────────────────────────
 
     @staticmethod
