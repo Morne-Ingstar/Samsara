@@ -8,6 +8,7 @@ Runs synchronously on the main thread (same contract as the Tkinter version):
 """
 
 import json
+import logging
 import math
 import threading
 from pathlib import Path
@@ -21,6 +22,14 @@ from PySide6.QtWidgets import (
 )
 
 from samsara.ui import qt_runtime
+
+_logger = logging.getLogger("Samsara")
+
+# If the wizard window never appears within this many seconds of posting its
+# creation, give up and continue boot with defaults rather than hang forever.
+# Never applies once the window has actually shown -- a user genuinely
+# taking their time in the wizard is never timed out.
+_WIZARD_SHOW_TIMEOUT_S = 120.0
 
 
 # ---------------------------------------------------------------------------
@@ -366,24 +375,47 @@ class FirstRunWizardQt:
 
         result_holder = [None]
         done = threading.Event()
+        shown_holder = [False]
         samsara_app = self._app
 
         def _create():
-            win = _WizardWindow(self.config_path, samsara_app)
-            app = QApplication.instance()
-            if app:
-                screen = app.primaryScreen().availableGeometry()
-                win.move(
-                    screen.center().x() - win.width() // 2,
-                    screen.center().y() - win.height() // 2,
+            # A broken wizard must never zombie the app. Anything that
+            # throws here (frozen-build asset paths, the mic-meter's
+            # transient InputStream, screen-geometry calls, etc.) is caught,
+            # logged with a full traceback, and treated as "wizard failed" --
+            # boot continues with defaults exactly like a hard cancel.
+            try:
+                win = _WizardWindow(self.config_path, samsara_app)
+                app = QApplication.instance()
+                if app:
+                    screen = app.primaryScreen().availableGeometry()
+                    win.move(
+                        screen.center().x() - win.width() // 2,
+                        screen.center().y() - win.height() // 2,
+                    )
+                win._finished.connect(lambda r: (
+                    result_holder.__setitem__(0, r),
+                    done.set(),
+                ))
+                win.show()
+                shown_holder[0] = True
+            except Exception:
+                _logger.exception(
+                    "[WIZARD] Creation failed — continuing with default config"
                 )
-            win._finished.connect(lambda r: (
-                result_holder.__setitem__(0, r),
-                done.set(),
-            ))
-            win.show()
+                result_holder[0] = None
+                done.set()
 
         qt_runtime.post(_create)
+
+        # Watchdog: if the window never even appeared within the timeout,
+        # give up and proceed with defaults. Once shown_holder is True the
+        # user is looking at it -- wait indefinitely, no cap.
+        if not done.wait(timeout=_WIZARD_SHOW_TIMEOUT_S) and not shown_holder[0]:
+            _logger.warning(
+                "[WIZARD] Timed out before showing — continuing with defaults"
+            )
+            return None
         done.wait()
         return result_holder[0]
 
