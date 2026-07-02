@@ -110,13 +110,14 @@ SETTINGS_SCHEMA = {
     "command.button": {
         "type": "enum",
         "options": ["mouse4", "mouse5", "rctrl", "lctrl", "ralt", "lalt", "rshift", "lshift"],
-        "default": "mouse4",
+        "default": "rctrl",
         "tab": "commands",
     },
+    "command_mode.enabled": {"type": "bool", "default": False, "tab": "commands"},
     "command_mode.button": {
         "type": "enum",
         "options": ["mouse4", "mouse5", "rctrl", "f13", "right_alt"],
-        "default": "mouse4",
+        "default": "rctrl",
         "tab": "commands",
     },
     "command_mode.mode": {
