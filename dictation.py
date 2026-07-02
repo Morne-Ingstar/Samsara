@@ -922,7 +922,17 @@ def _resolve_target_window(process_name, exclude_pids=None):
 class DictationApp:
     def __init__(self, splash=None):
         self.splash = splash
-        self.config_path = Path(__file__).parent / "config.json"
+        if getattr(sys, 'frozen', False):
+            # Frozen (PyInstaller onedir) builds: __file__ resolves inside
+            # the bundle (sys._MEIPASS / "_internal\"), which gets wiped by
+            # a clean rebuild -- config could never persist across builds,
+            # so first-run fired (and the wizard hung, see first_run_wizard_qt.py)
+            # on every fresh install/rebuild. Mirror LOG_DIR's stable per-user
+            # directory instead, same as history.db and debug_audio already do.
+            self.config_path = Path(os.path.expanduser("~")) / ".samsara" / "config.json"
+            self.config_path.parent.mkdir(parents=True, exist_ok=True)
+        else:
+            self.config_path = Path(__file__).parent / "config.json"
 
         # Boot-phase timing -- measure first, fix later.
         _bt0 = time.monotonic()
@@ -997,6 +1007,10 @@ class DictationApp:
                 self.splash = None
             print("First run detected - launching setup wizard...")
             from samsara.ui.first_run_wizard_qt import FirstRunWizardQt
+            logger.debug(
+                "[WIZ-DIAG] calling wizard.run() from thread name=%r ident=%s",
+                threading.current_thread().name, threading.get_ident(),
+            )
             wizard = FirstRunWizardQt(self.config_path, self)
             wizard_result = wizard.run()
             if wizard_result:
