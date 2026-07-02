@@ -26,6 +26,7 @@ def _make_stub():
         def __init__(self):
             self.config = {'command_mode': {'inactivity_timeout_s': 30, 'mode': 'toggle'}}
             self.command_mode_active = True
+            self._session_recovery_pause = False
             self._sounds = []
             self.reset_calls = []
 

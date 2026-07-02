@@ -40,6 +40,7 @@ def _make_touch_stub(mode='toggle', active=True):
 
         def __init__(self):
             self.command_mode_active = active
+            self._session_recovery_pause = False
             self.config = {'command_mode': {'mode': mode, 'inactivity_timeout_s': 30}}
             self.reset_calls = []
 

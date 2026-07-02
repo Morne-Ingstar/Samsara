@@ -238,11 +238,11 @@ class TestProcessTextSignature:
         assert was_cmd is True
 
     def test_command_executor_disabled_mode(self, temp_commands_file):
-        """With app.command_mode_enabled=False, commands should not execute."""
+        """With app.command_matching_enabled=False, commands should not execute."""
         import threading
         executor = CommandExecutor(temp_commands_file)
         mock_app = Mock()
-        mock_app.command_mode_enabled = False
+        mock_app.command_matching_enabled = False
         mock_app._config_lock = threading.Lock()
         mock_app.config = {}
         # Reminder parsing must not fire for plain "copy"
