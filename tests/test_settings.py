@@ -240,6 +240,52 @@ class TestModesCollisionDetection:
         assert warn.isVisibleTo(win)
 
 
+class TestAvaCloudTabNoLicenseGate:
+    """Cloud AI is bring-your-own-key and free -- the settings tab must show
+    every cloud control unconditionally, with no license/supporter-key gate
+    hiding them. The old QStackedWidget gate (cloud_settings_widget) and its
+    visibility toggle are gone for good."""
+
+    def test_cloud_settings_visible_without_any_key(self, qapp):
+        from samsara.ui.settings_qt import _SettingsWindow, _TAB_NAMES
+        win = _SettingsWindow(_StubApp())
+        win._stack.setCurrentIndex(_TAB_NAMES.index('Ava / Cloud'))
+
+        for widget_key in ('cloud_enabled', 'cloud_provider', 'cloud_api_key',
+                            'cloud_model', 'cloud_timeout', 'ava_personality',
+                            'ava_memory_mode', 'ava_memory_max_turns'):
+            widget = win._widgets[widget_key]
+            assert widget.isVisibleTo(win), f"{widget_key} should be visible with no license"
+            assert widget.isEnabled(), f"{widget_key} should be enabled with no license"
+
+    def test_gating_widget_removed(self, qapp):
+        from samsara.ui.settings_qt import _SettingsWindow
+        win = _SettingsWindow(_StubApp())
+        assert 'cloud_settings_widget' not in win._widgets
+
+    def test_supporter_key_row_present_but_optional(self, qapp):
+        """The relabeled supporter-key row still exists (for the future
+        managed-key slot) but starts on the no-key page."""
+        from samsara.ui.settings_qt import _SettingsWindow
+        win = _SettingsWindow(_StubApp())
+        assert 'cloud_license_entry' in win._widgets
+        assert 'cloud_license_stack' in win._widgets
+        assert win._widgets['cloud_license_stack'].currentIndex() == 0
+
+    def test_save_fn_writes_cloud_settings_without_license(self, qapp):
+        """Firing the Ava/Cloud save fn must persist cloud_llm settings with
+        no premium_license present at all."""
+        from samsara.ui.settings_qt import _SettingsWindow, _TAB_NAMES
+        win = _SettingsWindow(_StubApp())
+        win._widgets['cloud_enabled'].setChecked(True)
+        win._widgets['cloud_api_key'].setText('sk-test-key')
+
+        ava_cloud_save_fn = win._save_fns[_TAB_NAMES.index('Ava / Cloud')]
+        produced = ava_cloud_save_fn({})
+        assert produced['cloud_llm']['enabled'] is True
+        assert produced['cloud_llm']['api_key'] == 'sk-test-key'
+
+
 class TestApplyAndCloseSnapshot:
     """Regression test for the per-tab save-function refactor.
 

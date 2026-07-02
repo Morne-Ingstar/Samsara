@@ -1,12 +1,21 @@
-"""Premium license validation for Samsara Cloud AI features.
+"""Supporter key validation for Samsara.
+
+Samsara is free — every feature, forever. Local capability is never gated
+on anything in this module, and neither is bring-your-own-key Cloud AI
+(that only needs cloud_llm.enabled + an API key, see samsara.cloud_llm).
+
+This module exists for the optional "supporter key" a patron can enter to
+mark their install as a supporter. It currently unlocks nothing — it is a
+placeholder slot for a future managed-key feature (a Samsara-hosted API
+key for non-technical users) and possibly other patron perks. Nothing in
+the codebase may branch on validate_key()/is_premium() to gate a feature;
+if you're tempted to add such a check, don't — see the Ava/Cloud tab and
+plugins/commands/ask_ollama.py for how BYOK cloud access is actually
+gated (enabled + api_key only).
 
 v1 validation is intentionally simple — format check only, no server.
-The goal is to distinguish paying users from accidental clicks, not to
-prevent determined pirates. Swap out validate_key() for server-side
-validation later without changing anything else.
-
-Keys are never logged, never printed to console, never included in
-any debug output.
+Keys are never logged, never printed to console, never included in any
+debug output.
 """
 
 import hashlib
@@ -16,7 +25,7 @@ _LICENSE_SALT = "samsara-premium-2026"
 _lock = threading.Lock()
 
 
-# TODO Phase 2: use _hash_key for server-side validation
+# TODO Phase 2 (managed key): use _hash_key for server-side validation
 def _hash_key(key: str) -> str:
     return hashlib.sha256(
         f"{_LICENSE_SALT}:{key.strip()}".encode()
@@ -41,20 +50,30 @@ def validate_key(key) -> bool:
 
 
 def is_premium(app) -> bool:
-    """Return True if the current installation has a valid premium license."""
+    """Return True if a valid supporter key is stored.
+
+    Despite the name (kept for import compatibility), this does NOT gate
+    any feature — it only reports whether a supporter key is present, for
+    UI display (e.g. showing the masked-key state). Equivalent to
+    has_supporter_key().
+    """
     with _lock:
         key = getattr(app, 'config', {}).get("premium_license", "")
     return validate_key(key)
 
 
+# Clearer name for new call sites; same check as is_premium().
+has_supporter_key = is_premium
+
+
 def get_license_key(app) -> str:
-    """Return the current license key or empty string."""
+    """Return the current supporter key or empty string."""
     with _lock:
         return getattr(app, 'config', {}).get("premium_license", "")
 
 
 def set_license_key(app, key: str) -> None:
-    """Save a license key to config. Does not persist to disk."""
+    """Save a supporter key to config. Does not persist to disk."""
     with _lock:
         app.config["premium_license"] = key.strip()
 
