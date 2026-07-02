@@ -19,6 +19,11 @@ Public API (unchanged from Win32 version):
   set_listening(bool)
   set_snoozed(bool)
   set_command_mode(active: bool)
+  set_session_mode(name: str | None, color: str | None)  -- unified session
+      (COMMAND/DICTATE/AVA) badge; takes priority over all other display
+      state while non-None. Visibility is NOT this method's concern --
+      dictation.py force-shows the pill for the session's duration and
+      restores config-controlled visibility on session end.
   set_position(corner: str)
   flash_success() / flash_error() / flash_wake()
 """
@@ -123,6 +128,13 @@ class ListeningIndicator(QWidget):
         self._command_mode = False
         self._thinking     = False
 
+        # Unified session mode badge (COMMAND/DICTATE/AVA) -- set by
+        # samsara.session_modes via dictation.py._update_mode_overlay().
+        # Takes priority over every other display state while non-None;
+        # None means no session is active, fall through to normal states.
+        self._session_mode_name  = None
+        self._session_mode_color = None
+
         # Pulse state
         self._pulse_step      = 0
         self._pulse_direction = 1
@@ -197,6 +209,20 @@ class ListeningIndicator(QWidget):
         if active == self._command_mode:
             return
         self._command_mode = active
+        if self.isVisible():
+            self._reposition()
+            self.update()
+
+    def set_session_mode(self, name, color):
+        """Unified session mode badge (COMMAND/DICTATE/AVA). name=None (with
+        color=None) clears it, returning to normal listening-state display.
+        Does NOT change visibility -- callers force-show/restore visibility
+        around the session's lifetime separately (see dictation.py
+        enter_command_mode/exit_command_mode)."""
+        if name == self._session_mode_name and color == self._session_mode_color:
+            return
+        self._session_mode_name = name
+        self._session_mode_color = color
         if self.isVisible():
             self._reposition()
             self.update()
@@ -288,6 +314,13 @@ class ListeningIndicator(QWidget):
             else:
                 label = self._mode_text
             return self._flash_bg, self._flash_fg, label, False
+
+        if self._session_mode_name:
+            # Unified session (COMMAND/DICTATE/AVA) dominates the generic
+            # CMD/listening states while active -- it's strictly more
+            # informative. A transient flash (above) still interrupts it
+            # briefly for success/error confirmation.
+            return _IDLE_BG, self._session_mode_color, self._session_mode_name, False
 
         if self._thinking:
             return _lerp_color(_VISION_BG, _VISION_BG_BRIGHT, t), _VISION_FG, "Vision", False
