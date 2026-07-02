@@ -556,6 +556,14 @@ def _is_hallucinated_segments(seg_list, text):
         uniq = len(set(words))
         if uniq <= max(2, len(words) // 4):
             return True
+    # Signature D: the ENTIRE transcription is 2-3 identical tokens (e.g.
+    # "click click", "beep beep beep"). Too short to trip Signature B's
+    # >=4-word check, but a bare whole-utterance 2-3 token repeat is
+    # essentially never real speech. An embedded mention inside real speech
+    # ("I heard a click click sound") is untouched -- this only fires when
+    # the repeat IS the whole transcription, not part of a longer one.
+    if 2 <= len(words) <= 3 and len(set(words)) == 1:
+        return True
     # Signature C: very high no_speech_prob across all segments AND short output
     # (near-silent buffer that still emitted a token or two).
     if seg_list:
@@ -4388,7 +4396,16 @@ class DictationApp:
             else:
                 contig = 0
 
-        return best_contig >= min_contig_frames
+        passed = best_contig >= min_contig_frames
+        if passed:
+            # Evidence trail for the next leak: a gate PASS is otherwise
+            # invisible (only SKIP is logged today), so there's no ground
+            # truth for why a given buffer reached Whisper.
+            logging.getLogger("Samsara").debug(
+                "[GATE] pass: max contiguous speech %dms (buffer %.1fs)",
+                round(best_contig * frame_ms), len(audio) / src_rate,
+            )
+        return passed
 
     def _zcr_energy_contiguous_speech(self, audio, src_rate,
                                        min_ms=_GATE_MIN_CONTIG_MS,
@@ -4443,7 +4460,13 @@ class DictationApp:
                 else:
                     contig = 0
 
-            return best_contig >= min_contig_frames
+            passed = best_contig >= min_contig_frames
+            if passed:
+                logging.getLogger("Samsara").debug(
+                    "[GATE] pass: max contiguous speech %dms (buffer %.1fs) [ZCR fallback]",
+                    round(best_contig * frame_ms), len(audio) / src_rate,
+                )
+            return passed
         except Exception as e:
             print(f"[GATE] ZCR fallback failed, failing open: {e}")
             return True
