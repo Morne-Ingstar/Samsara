@@ -2,7 +2,7 @@
 Interactive hands-on tutorial for Samsara.
 
 Architecture mirrors first_run_wizard_qt.py exactly:
-  - Same _SS stylesheet (dark #0A0A0B, teal #5EEAD4 accent, Segoe UI)
+  - Shared samsara.ui.theme stylesheet (BG0/BG1/BG2 surfaces, cyan accent, Segoe UI)
   - _WizardWindow-style class: header bar with step dots, page title,
     page stack, Back/Next nav
   - Same _padded() helper and _STEPS pattern
@@ -14,9 +14,8 @@ Steps (Ava step is omitted when Ava is not configured):
   0  Welcome     — passive: "takes two minutes" + Let's go
   1  Dictation   — speak → text lands in box → green check
   2  Command     — say "scroll down" → area scrolls → green check
-  3  Numbers     — say "show numbers" then "click N" → click detected
-  4  Ava         — hold Ava key, ask anything → Ava responds (optional)
-  5  Done        — checklist recap, all four items ticked
+  3  Ava         — hold Ava key, ask anything → Ava responds (optional)
+  4  Done        — checklist recap, all items ticked
 
 Interaction detection hooks (registered on app, removed on window close):
   app._tutorial_hooks['dictation']  one-shot cb(text) after dictation
@@ -32,72 +31,9 @@ from PySide6.QtWidgets import (
 )
 
 from samsara.log import get_logger
+from samsara.ui import theme
 
 logger = get_logger(__name__)
-
-# ---------------------------------------------------------------------------
-# Stylesheet — identical palette to first_run_wizard_qt.py
-# ---------------------------------------------------------------------------
-
-_SS = """
-QMainWindow, QWidget {
-    background-color: #0A0A0B;
-    color: #E8E8EA;
-    font-family: 'Segoe UI', system-ui, sans-serif;
-    font-size: 14px;
-}
-QLabel  { color: #E8E8EA; }
-QTextEdit {
-    background-color: #16161A;
-    border: 1px solid rgba(255,255,255,0.14);
-    border-radius: 6px;
-    padding: 8px;
-    color: #E8E8EA;
-    font-size: 15px;
-}
-QScrollArea { border: none; background: transparent; }
-QPushButton {
-    background-color: #5EEAD4;
-    color: #0A0A0B;
-    border: none;
-    border-radius: 6px;
-    padding: 10px 24px;
-    font-weight: 600;
-    font-size: 14px;
-}
-QPushButton:hover   { background-color: #4DD8C2; }
-QPushButton:pressed { background-color: #3DC8B0; }
-QPushButton:disabled { background-color: #2E6F66; color: #0A0A0B; }
-QPushButton[class="primary"] {
-    background-color: #5EEAD4;
-    color: #0A0A0B;
-    border: none;
-    border-radius: 6px;
-    padding: 10px 24px;
-    font-weight: 600;
-    font-size: 14px;
-}
-QPushButton[class="primary"]:hover   { background-color: #4DD8C2; color: #0A0A0B; }
-QPushButton[class="primary"]:pressed { background-color: #3DC8B0; color: #0A0A0B; }
-QPushButton[class="primary"]:disabled { background-color: #2E6F66; color: #0A0A0B; }
-QPushButton[class="secondary"] {
-    background-color: transparent;
-    color: #8A8A92;
-    border: 1px solid rgba(255,255,255,0.14);
-}
-QPushButton[class="secondary"]:hover {
-    background-color: rgba(255,255,255,0.05);
-    color: #E8E8EA;
-}
-QPushButton[class="danger"] {
-    background-color: transparent;
-    color: #8A8A92;
-    border: none;
-    font-size: 12px;
-    padding: 4px 10px;
-}
-QPushButton[class="danger"]:hover { color: #FF8080; }
-"""
 
 # How long to wait before showing the "need a hand?" hint and skip link
 _HINT_DELAY_MS = 20_000
@@ -153,7 +89,7 @@ class TutorialWindow(QMainWindow):
 
         self.setWindowTitle("Samsara Tutorial")
         self.setFixedSize(620, 540)
-        self.setStyleSheet(_SS)
+        self.setStyleSheet(theme.build_stylesheet())
         # Stay on top so the user can still use the tutorial while interacting
         # with other windows; WindowStaysOnTopHint avoids stealing focus.
         self.setWindowFlags(
@@ -168,7 +104,7 @@ class TutorialWindow(QMainWindow):
 
         # ---- Header bar: step counter + dots --------------------------------
         header = QWidget()
-        header.setStyleSheet("background:#111114;")
+        header.setStyleSheet(f"background:{theme.BG1};")
         header.setFixedHeight(64)
         hl = QHBoxLayout(header)
         hl.setContentsMargins(28, 0, 28, 0)
@@ -189,7 +125,7 @@ class TutorialWindow(QMainWindow):
 
         sep_top = QFrame()
         sep_top.setFrameShape(QFrame.Shape.HLine)
-        sep_top.setStyleSheet("background:rgba(255,255,255,0.06);max-height:1px;")
+        sep_top.setStyleSheet(f"background:{theme.BORDER_FAINT};max-height:1px;")
         root.addWidget(sep_top)
 
         # ---- Page title -----------------------------------------------------
@@ -218,13 +154,13 @@ class TutorialWindow(QMainWindow):
 
         sep_bot = QFrame()
         sep_bot.setFrameShape(QFrame.Shape.HLine)
-        sep_bot.setStyleSheet("background:rgba(255,255,255,0.06);max-height:1px;")
+        sep_bot.setStyleSheet(f"background:{theme.BORDER_FAINT};max-height:1px;")
         root.addWidget(sep_bot)
 
         # ---- Nav bar --------------------------------------------------------
         nav = QWidget()
         nav.setFixedHeight(64)
-        nav.setStyleSheet("background:#111114;")
+        theme.style_footer(nav)
         nl = QHBoxLayout(nav)
         nl.setContentsMargins(28, 12, 28, 12)
 
@@ -238,17 +174,13 @@ class TutorialWindow(QMainWindow):
         nl.addStretch()
 
         self._skip_step_btn = QPushButton("Skip this step")
-        self._skip_step_btn.setProperty("class", "secondary")
-        self._skip_step_btn.style().unpolish(self._skip_step_btn)
-        self._skip_step_btn.style().polish(self._skip_step_btn)
+        theme.make_secondary(self._skip_step_btn)
         self._skip_step_btn.setFixedWidth(120)
         self._skip_step_btn.clicked.connect(self._skip_step)
         nl.addWidget(self._skip_step_btn)
 
         self._next_btn = QPushButton("Next")
-        self._next_btn.setProperty("class", "primary")
-        self._next_btn.style().unpolish(self._next_btn)
-        self._next_btn.style().polish(self._next_btn)
+        theme.make_primary(self._next_btn)
         self._next_btn.setFixedWidth(150)
         self._next_btn.clicked.connect(self._go_next)
         nl.addWidget(self._next_btn)
@@ -277,7 +209,6 @@ class TutorialWindow(QMainWindow):
             ("welcome",   "Welcome to Samsara"),
             ("dictation", "Talk → It Types"),
             ("command",   "Say a Command"),
-            ("numbers",   "Click Without a Mouse"),
         ]
         if self._ava_enabled:
             base.append(("ava", "Ask Ava"))
@@ -299,32 +230,32 @@ class TutorialWindow(QMainWindow):
         """Tinted instruction card used on interactive steps."""
         frame = QFrame()
         frame.setStyleSheet(
-            "QFrame{background:#111114;border-radius:8px;"
-            "border:1px solid rgba(94,234,212,0.18);}"
+            f"QFrame{{background:{theme.BG1};border-radius:8px;"
+            f"border:1px solid rgba(92,196,212,0.25);}}"
         )
         fl = QVBoxLayout(frame)
         fl.setContentsMargins(16, 12, 16, 12)
         lbl = QLabel(text)
         lbl.setWordWrap(True)
-        lbl.setStyleSheet("color:#AAFAF0;font-size:13px;")
+        lbl.setStyleSheet(f"color:{theme.TEXT_PRIMARY};font-size:13px;")
         fl.addWidget(lbl)
         return frame
 
     def _success_banner(self, text: str) -> QFrame:
         frame = QFrame()
         frame.setStyleSheet(
-            "QFrame{background:rgba(94,234,212,0.08);border-radius:8px;"
-            "border:1px solid rgba(94,234,212,0.3);}"
+            f"QFrame{{background:rgba(92,196,212,0.08);border-radius:8px;"
+            f"border:1px solid rgba(92,196,212,0.3);}}"
         )
         fl = QHBoxLayout(frame)
         fl.setContentsMargins(14, 10, 14, 10)
         fl.setSpacing(10)
         check = QLabel("✓")
-        check.setStyleSheet("color:#5EEAD4;font-size:22px;font-weight:bold;")
+        check.setStyleSheet(f"color:{theme.ACCENT};font-size:22px;font-weight:bold;")
         fl.addWidget(check, alignment=Qt.AlignmentFlag.AlignVCenter)
         msg = QLabel(text)
         msg.setWordWrap(True)
-        msg.setStyleSheet("color:#AAFAF0;font-size:13px;")
+        msg.setStyleSheet(f"color:{theme.TEXT_PRIMARY};font-size:13px;")
         fl.addWidget(msg, stretch=1)
         return frame
 
@@ -333,7 +264,6 @@ class TutorialWindow(QMainWindow):
             "welcome":   self._build_welcome,
             "dictation": self._build_dictation,
             "command":   self._build_command,
-            "numbers":   self._build_numbers,
             "ava":       self._build_ava,
             "done":      self._build_done,
         }
@@ -359,17 +289,13 @@ class TutorialWindow(QMainWindow):
         lay.addSpacing(8)
 
         things_frame = QFrame()
-        things_frame.setStyleSheet(
-            "QFrame{background:#111114;border-radius:8px;"
-            "border:1px solid rgba(255,255,255,0.06);}"
-        )
+        theme.style_card(things_frame)
         tf = QVBoxLayout(things_frame)
         tf.setContentsMargins(20, 16, 20, 16)
         tf.setSpacing(10)
         for icon, label in [
             ("🎙", "Talk → text appears wherever you're typing"),
             ("⚡", "Say a command → it happens"),
-            ("🔢", "Say numbers → click anything, hands-free"),
             ("✨", "Ask Ava → your on-device voice assistant"),
         ]:
             row = QHBoxLayout()
@@ -440,8 +366,8 @@ class TutorialWindow(QMainWindow):
         self._scroll_area.setWidgetResizable(True)
         self._scroll_area.setFixedHeight(120)
         self._scroll_area.setStyleSheet(
-            "QScrollArea{background:#111114;border:1px solid rgba(255,255,255,0.08);"
-            "border-radius:6px;}"
+            f"QScrollArea{{background:{theme.BG1};border:1px solid {theme.BORDER};"
+            f"border-radius:6px;}}"
         )
         inner = QWidget()
         inner_lay = QVBoxLayout(inner)
@@ -468,49 +394,6 @@ class TutorialWindow(QMainWindow):
         self._cmd_hint.setStyleSheet("color:#8A8A92;font-size:12px;")
         self._cmd_hint.setVisible(False)
         lay.addWidget(self._cmd_hint)
-
-        lay.addStretch()
-        return w
-
-    def _build_numbers(self) -> QWidget:
-        w, lay = self._padded()
-
-        wake = self._app.config.get('wake_word', 'jarvis') if hasattr(self._app, 'config') else 'jarvis'
-        lay.addWidget(self._instruction_box(
-            f"Say  \"show numbers\"  — numbered labels appear on every clickable element.\n"
-            f"Then say  \"click [number]\"  to click one of the buttons below."
-        ))
-
-        # Clickable dummy buttons — the show-numbers overlay will label them
-        btn_row = QHBoxLayout()
-        self._num_buttons: list[QPushButton] = []
-        for label in ("Button A", "Button B", "Button C"):
-            btn = QPushButton(label)
-            btn.setProperty("class", "secondary")
-            btn.style().unpolish(btn)
-            btn.style().polish(btn)
-            btn.setAccessibleName(label)
-            btn.setMinimumHeight(44)
-            btn.clicked.connect(self._on_numbers_click)
-            self._num_buttons.append(btn)
-            btn_row.addWidget(btn)
-        lay.addLayout(btn_row)
-
-        self._num_success = self._success_banner(
-            "That's how you click anything, anywhere — hands-free. "
-            "Numbers appear on every link, button, and control on screen."
-        )
-        self._num_success.setVisible(False)
-        lay.addWidget(self._num_success)
-
-        self._num_hint = QLabel(
-            f"💡 Say 'show numbers' first, wait for the overlay, then say 'click 1' "
-            f"(or whichever number appears on a button below)."
-        )
-        self._num_hint.setWordWrap(True)
-        self._num_hint.setStyleSheet("color:#8A8A92;font-size:12px;")
-        self._num_hint.setVisible(False)
-        lay.addWidget(self._num_hint)
 
         lay.addStretch()
         return w
@@ -551,8 +434,8 @@ class TutorialWindow(QMainWindow):
     def _build_done(self) -> QWidget:
         w, lay = self._padded()
 
-        done_lbl = QLabel("You know the four things that matter.")
-        done_lbl.setStyleSheet("color:#5EEAD4;font-size:15px;font-weight:600;")
+        done_lbl = QLabel("You know the things that matter.")
+        done_lbl.setStyleSheet(f"color:{theme.ACCENT};font-size:15px;font-weight:600;")
         lay.addWidget(done_lbl)
         lay.addSpacing(4)
 
@@ -560,16 +443,12 @@ class TutorialWindow(QMainWindow):
         checklist_items = [
             (1, "✓  Dictated text — talk, it types"),
             (2, "✓  Ran a command — voice controls your computer"),
-            (3, "✓  Clicked by voice — numbers on everything"),
         ]
         if self._ava_enabled:
-            checklist_items.append((4, "✓  Talked to Ava — your on-device assistant"))
+            checklist_items.append((3, "✓  Talked to Ava — your on-device assistant"))
 
         card = QFrame()
-        card.setStyleSheet(
-            "QFrame{background:#111114;border-radius:8px;"
-            "border:1px solid rgba(94,234,212,0.18);}"
-        )
+        theme.style_card(card)
         cl = QVBoxLayout(card)
         cl.setContentsMargins(18, 14, 18, 14)
         cl.setSpacing(8)
@@ -579,14 +458,14 @@ class TutorialWindow(QMainWindow):
             icon_lbl = QLabel("✓")
             completed = step_idx in self._completed
             icon_lbl.setStyleSheet(
-                f"color:{'#5EEAD4' if completed else '#3a3a44'};"
+                f"color:{theme.ACCENT if completed else theme.TEXT_DISABLED};"
                 f"font-size:16px;font-weight:bold;"
             )
             icon_lbl.setFixedWidth(24)
             row.addWidget(icon_lbl)
             text_lbl = QLabel(text[2:] if text.startswith("✓  ") else text)
             text_lbl.setStyleSheet(
-                f"color:{'#E8E8EA' if completed else '#4a4a56'};"
+                f"color:{theme.TEXT_PRIMARY if completed else theme.TEXT_DISABLED};"
                 f"font-size:13px;"
             )
             row.addWidget(text_lbl)
@@ -625,9 +504,9 @@ class TutorialWindow(QMainWindow):
         for title, desc, method in _GUIDES:
             guide_card = QFrame()
             guide_card.setStyleSheet(
-                "QFrame{background:#111114;border-radius:8px;"
-                "border:1px solid rgba(255,255,255,0.06);}"
-                "QFrame:hover{border-color:rgba(94,234,212,0.25);}"
+                f"QFrame{{background:{theme.BG1};border-radius:8px;"
+                f"border:1px solid {theme.BORDER};}}"
+                f"QFrame:hover{{border-color:rgba(92,196,212,0.4);}}"
             )
             gc_lay = QHBoxLayout(guide_card)
             gc_lay.setContentsMargins(14, 10, 12, 10)
@@ -644,9 +523,7 @@ class TutorialWindow(QMainWindow):
             gc_lay.addLayout(text_col, stretch=1)
 
             open_btn = QPushButton("Open →")
-            open_btn.setProperty("class", "secondary")
-            open_btn.style().unpolish(open_btn)
-            open_btn.style().polish(open_btn)
+            theme.make_secondary(open_btn)
             open_btn.setFixedWidth(76)
             open_btn.setFixedHeight(34)
             _m = method  # capture for lambda
@@ -684,14 +561,14 @@ class TutorialWindow(QMainWindow):
         # Dots
         for i, dot in enumerate(self._dots):
             dot.setStyleSheet(
-                "color:#5EEAD4;font-size:10px;" if i == self._step
-                else "color:#444;font-size:10px;"
+                f"color:{theme.ACCENT};font-size:10px;" if i == self._step
+                else f"color:{theme.TEXT_DISABLED};font-size:10px;"
             )
 
         is_last    = self._step == len(self._steps) - 1
         is_welcome = key == "welcome"
         is_done    = key == "done"
-        is_interactive = key in ("dictation", "command", "numbers", "ava")
+        is_interactive = key in ("dictation", "command", "ava")
 
         # Nav button states
         self._skip_step_btn.setVisible(is_interactive)
@@ -776,7 +653,6 @@ class TutorialWindow(QMainWindow):
         hints = {
             "dictation": getattr(self, '_dict_hint', None),
             "command":   getattr(self, '_cmd_hint',  None),
-            "numbers":   getattr(self, '_num_hint',  None),
             "ava":       getattr(self, '_ava_hint',  None),
         }
         hint_widget = hints.get(key)
@@ -784,9 +660,9 @@ class TutorialWindow(QMainWindow):
             hint_widget.setVisible(True)
         # Make skip-step button more visible
         self._skip_step_btn.setStyleSheet(
-            "QPushButton{background:transparent;color:#5EEAD4;"
-            "border:1px solid rgba(94,234,212,0.3);border-radius:6px;"
-            "font-size:12px;padding:4px 10px;}"
+            f"QPushButton{{background:transparent;color:{theme.ACCENT};"
+            f"border:1px solid {theme.ACCENT};border-radius:6px;"
+            f"font-size:{theme.FONT_SIZE_CAPTION}px;padding:4px 10px;}}"
         )
 
     # ------------------------------------------------------------------
@@ -812,7 +688,6 @@ class TutorialWindow(QMainWindow):
             def _cb():
                 self._step_signal.emit("ava_done", "")
             self._app._tutorial_hooks['ava'] = _cb
-        # "numbers" success is detected locally via button clicks — no app hook needed
 
     def _remove_hook(self, key: str):
         if hasattr(self._app, '_tutorial_hooks'):
@@ -862,28 +737,6 @@ class TutorialWindow(QMainWindow):
             self._cmd_success.setVisible(True)
         if hasattr(self, '_cmd_hint'):
             self._cmd_hint.setVisible(False)
-        self._next_btn.setEnabled(True)
-
-    def _on_numbers_click(self):
-        """Called when any tutorial button is clicked (by voice or mouse)."""
-        # Find step index for "numbers"
-        for i, (key, _) in enumerate(self._steps):
-            if key == "numbers":
-                numbers_step = i
-                break
-        else:
-            return
-        if numbers_step in self._completed:
-            return
-        self._completed.add(numbers_step)
-        self._cancel_hint_timer()
-        if hasattr(self, '_num_success'):
-            self._num_success.setVisible(True)
-        if hasattr(self, '_num_hint'):
-            self._num_hint.setVisible(False)
-        # Disable the buttons so they can't be clicked twice
-        for btn in self._num_buttons:
-            btn.setEnabled(False)
         self._next_btn.setEnabled(True)
 
     def _complete_ava(self):
