@@ -12,6 +12,10 @@ import urllib.parse
 
 from samsara.plugin_commands import command
 
+from samsara.log import get_logger
+
+logger = get_logger(__name__)
+
 
 @command("search for a gif of", aliases=[
     "find a gif of", "find me a gif of",
@@ -35,7 +39,7 @@ def handle_gif(app, remainder):
     if hasattr(app, 'play_sound'):
         try:
             app.play_sound("start")
-        except Exception:
-            pass
+        except Exception as e:
+            logger.debug(f"handle_gif: {e}")
     
     return True

@@ -10,6 +10,10 @@ import os
 
 from samsara.plugin_commands import command
 
+from samsara.log import get_logger
+
+logger = get_logger(__name__)
+
 AHK_EXE = r'C:\Program Files\AutoHotkey\v1.1.37.02\AutoHotkeyU64.exe'
 
 
@@ -39,8 +43,8 @@ def _run_ahk(script):
     finally:
         try:
             os.unlink(tmp.name)
-        except Exception:
-            pass
+        except Exception as e:
+            logger.debug(f"_run_ahk: {e}")
 
 
 def _send_stremio_key(key):

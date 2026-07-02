@@ -40,6 +40,9 @@ except ImportError:
     pyperclip = None
 
 from samsara.cleanup import clean_text
+from samsara.log import get_logger
+
+logger = get_logger(__name__)
 
 
 # ---- Modifier-release plumbing (Windows) -----------------------------------
@@ -102,7 +105,7 @@ if sys.platform == "win32":
                 time=0, dwExtraInfo=None)
             _user32.SendInput(1, ctypes.byref(inp), ctypes.sizeof(_INPUT))
         except Exception as e:
-            print(f"[STREAM] SendInput vk={vk:#x} failed: {e}")
+            logger.debug(f"[STREAM] SendInput vk={vk:#x} failed: {e}")
 
     def _release_held_modifiers():
         """Release any currently-held Ctrl/Shift keys. Returns the list of
@@ -115,7 +118,7 @@ if sys.platform == "win32":
             for vk in held:
                 _send_key_event(vk, key_up=True)
         except Exception as e:
-            print(f"[STREAM] release_held_modifiers failed: {e}")
+            logger.debug(f"[STREAM] release_held_modifiers failed: {e}")
         return held
 
     def _press_modifiers(vks):
@@ -125,7 +128,7 @@ if sys.platform == "win32":
             for vk in vks:
                 _send_key_event(vk, key_up=False)
         except Exception as e:
-            print(f"[STREAM] press_modifiers failed: {e}")
+            logger.debug(f"[STREAM] press_modifiers failed: {e}")
 
 else:
     def _release_held_modifiers():
@@ -363,14 +366,14 @@ class StreamingWorker(threading.Thread):
         try:
             self._loop_partials()
         except Exception as e:
-            print(f"[STREAM] Worker partial loop crashed: {e}")
+            logger.exception(f"[STREAM] Worker partial loop crashed: {e}")
         if self._cancel_event.is_set():
             self._session.on_cancelled()
             return
         try:
             self._final_pass()
         except Exception as e:
-            print(f"[STREAM] Final pass crashed: {e}")
+            logger.exception(f"[STREAM] Final pass crashed: {e}")
             self._session.on_final(None)
 
     def _loop_partials(self):
@@ -385,7 +388,7 @@ class StreamingWorker(threading.Thread):
                 return
             text = self._transcribe_partial()
             if text:
-                print(f"[STREAM] Partial: {text}")
+                logger.debug(f"[STREAM] Partial: {text}")
                 self._session.on_partial(text)
 
     def _transcribe_partial(self):
@@ -402,7 +405,7 @@ class StreamingWorker(threading.Thread):
             text = "".join(seg.text for seg in segments).strip()
             return self._partial_cleanup(text)
         except Exception as e:
-            print(f"[STREAM] Partial transcribe failed: {e}")
+            logger.exception(f"[STREAM] Partial transcribe failed: {e}")
             return None
         finally:
             lock.release()
@@ -439,13 +442,13 @@ class StreamingWorker(threading.Thread):
 
             try:
                 text = app.voice_training_window.apply_corrections(text)
-            except Exception:
-                pass
+            except Exception as e:
+                logger.debug(f"[STREAM] apply_corrections failed: {e}")
 
             try:
                 text = app.process_transcription(text)
-            except Exception:
-                pass
+            except Exception as e:
+                logger.debug(f"[STREAM] process_transcription failed: {e}")
 
             raw = text
             _cmode = 'verbatim' if getattr(app, '_skip_cleanup', False) else app.config.get('cleanup_mode', 'clean')
@@ -456,7 +459,7 @@ class StreamingWorker(threading.Thread):
                                    duration_s=duration_s,
                                    elapsed_ms=elapsed_ms)
         except Exception as e:
-            print(f"[STREAM] Final pass error: {e}")
+            logger.exception(f"[STREAM] Final pass error: {e}")
             self._session.on_final(None)
 
     def _snapshot_audio(self):
@@ -477,7 +480,8 @@ class StreamingWorker(threading.Thread):
         app = self._session.app
         try:
             prompt = app.voice_training_window.get_initial_prompt()
-        except Exception:
+        except Exception as e:
+            logger.debug(f"[STREAM] get_initial_prompt failed: {e}")
             prompt = None
         return {
             'language': app.config.get('language', 'en'),
@@ -496,7 +500,8 @@ class StreamingWorker(threading.Thread):
         app = self._session.app
         try:
             params = app.get_transcription_params()
-        except Exception:
+        except Exception as e:
+            logger.debug(f"[STREAM] get_transcription_params failed: {e}")
             params = {
                 'language': app.config.get('language', 'en'),
                 'initial_prompt': None,
@@ -555,7 +560,8 @@ class StreamingSession:
         if sys.platform == "win32":
             try:
                 self._target_hwnd = _user32.GetForegroundWindow()
-            except Exception:
+            except Exception as e:
+                logger.debug(f"[STREAM] GetForegroundWindow failed: {e}")
                 self._target_hwnd = None
         # Serializes select+paste between the worker thread (partials),
         # the main Qt thread (final), and the cancel undo thread.
@@ -608,7 +614,7 @@ class StreamingSession:
             self._direct_paste_partial(text)
 
     def on_timeout(self):
-        print("[STREAM] Max duration reached -- auto-finalizing")
+        logger.info("[STREAM] Max duration reached -- auto-finalizing")
         self.app._schedule_ui(self._on_timeout_main)
 
     def on_cancelled(self):
@@ -626,13 +632,13 @@ class StreamingSession:
             if self.app.recording:
                 self.app.stop_recording()
         except Exception as e:
-            print(f"[STREAM] Auto-stop after timeout failed: {e}")
+            logger.exception(f"[STREAM] Auto-stop after timeout failed: {e}")
 
     def _deliver_final(self, text, raw_text, duration_s, elapsed_ms):
         with self._state_lock:
             self._state = self.STATE_PASTING
         if not text or not text.strip():
-            print("[STREAM] No speech detected")
+            logger.info("[STREAM] No speech detected")
             if duration_s > MIN_PARTIAL_AUDIO_S:
                 try:
                     self.app._log_history(
@@ -642,8 +648,8 @@ class StreamingSession:
                         mode="streaming",
                         status="empty",
                     )
-                except Exception:
-                    pass
+                except Exception as e:
+                    logger.debug(f"[STREAM] _log_history (empty) failed: {e}")
             # In direct-paste mode, the user has partial text typed into
             # the target app -- erase it on no-speech so we leave a clean
             # slate. Off-thread to avoid blocking Tk.
@@ -659,15 +665,15 @@ class StreamingSession:
         # Update overlay to show final text.
         self._overlay.update_text(text.rstrip(),
                                   StreamingOverlayQt.STATE_DONE)
-        print(f"[OK] {text}")
+        logger.info(f"[OK] {text}")
         try:
             self.app.play_sound("success")
-        except Exception:
-            pass
+        except Exception as e:
+            logger.debug(f"[STREAM] play_sound('success') failed: {e}")
         try:
             self.app.add_to_history(text.strip(), is_command=False)
         except Exception as e:
-            print(f"[STREAM] add_to_history failed: {e}")
+            logger.exception(f"[STREAM] add_to_history failed: {e}")
         try:
             self.app._log_history(
                 raw_text=raw_text if raw_text is not None else text,
@@ -676,12 +682,12 @@ class StreamingSession:
                 mode="streaming",
                 status="success",
             )
-        except Exception:
-            pass
+        except Exception as e:
+            logger.debug(f"[STREAM] _log_history (success) failed: {e}")
         try:
             self.app._notify_main_window(text.strip())
-        except Exception:
-            pass
+        except Exception as e:
+            logger.debug(f"[STREAM] _notify_main_window failed: {e}")
 
         if self.app.config.get('auto_paste', True):
             if self._direct_paste:
@@ -699,7 +705,7 @@ class StreamingSession:
             self.app._paste_preserving_clipboard(text)
             return
         except Exception as e:
-            print(f"[STREAM] Paste failed once: {e} -- retrying in 100ms")
+            logger.exception(f"[STREAM] Paste failed once: {e} -- retrying in 100ms")
         from PySide6.QtCore import QTimer
         from PySide6.QtWidgets import QApplication
         QTimer.singleShot(100, QApplication.instance(),
@@ -709,13 +715,13 @@ class StreamingSession:
         try:
             self.app._paste_preserving_clipboard(text)
         except Exception as e:
-            print(f"[STREAM] Paste retry failed: {e}")
+            logger.exception(f"[STREAM] Paste retry failed: {e}")
             if pyperclip is not None:
                 try:
                     pyperclip.copy(text)
-                    print("[STREAM] Text copied to clipboard -- paste manually")
-                except Exception:
-                    pass
+                    logger.info("[STREAM] Text copied to clipboard -- paste manually")
+                except Exception as e:
+                    logger.exception(f"[STREAM] Clipboard copy fallback failed: {e}")
 
     def _mark_done(self):
         with self._state_lock:
@@ -740,7 +746,7 @@ class StreamingSession:
             if not self._focus_unchanged():
                 self._last_pasted = False
                 self.cancel_event.set()
-                print("[STREAM] Focus changed -- aborting direct paste")
+                logger.warning("[STREAM] Focus changed -- aborting direct paste")
                 return
             try:
                 if self._last_pasted:
@@ -750,9 +756,9 @@ class StreamingSession:
                 self._last_pasted = True
                 if PASTE_SETTLE_S:
                     time.sleep(PASTE_SETTLE_S)
-                print(f"[STREAM] Direct paste: {len(text.split())} words")
+                logger.debug(f"[STREAM] Direct paste: {len(text.split())} words")
             except Exception as e:
-                print(f"[STREAM] direct partial paste failed: {e}")
+                logger.exception(f"[STREAM] direct partial paste failed: {e}")
 
     def _direct_paste_final(self, text):
         """Replace the last partial with the cleaned final text.
@@ -774,19 +780,19 @@ class StreamingSession:
                 self._last_pasted = False
                 if PASTE_SETTLE_S:
                     time.sleep(PASTE_SETTLE_S)
-                print(f"[STREAM] Direct paste (final): "
-                      f"{len(sanitized.split())} words")
+                logger.debug(f"[STREAM] Direct paste (final): "
+                             f"{len(sanitized.split())} words")
             except Exception as e:
-                print(f"[STREAM] direct final paste failed: {e}")
+                logger.exception(f"[STREAM] direct final paste failed: {e}")
                 # Fallback: leave the cleaned text on the clipboard so
                 # the user can paste it manually.
                 if pyperclip is not None:
                     try:
                         pyperclip.copy(sanitized)
-                        print("[STREAM] Text copied to clipboard "
-                              "-- paste manually")
-                    except Exception:
-                        pass
+                        logger.info("[STREAM] Text copied to clipboard "
+                                    "-- paste manually")
+                    except Exception as e:
+                        logger.exception(f"[STREAM] Clipboard copy fallback failed: {e}")
 
     def _undo_direct_paste(self):
         """Cancel: undo the last partial paste so only our text is
@@ -798,9 +804,9 @@ class StreamingSession:
             try:
                 pyautogui.hotkey('ctrl', 'z')
                 self._last_pasted = False
-                print("[STREAM] Direct paste (undo): cleared")
+                logger.info("[STREAM] Direct paste (undo): cleared")
             except Exception as e:
-                print(f"[STREAM] direct paste undo failed: {e}")
+                logger.exception(f"[STREAM] direct paste undo failed: {e}")
 
     def _focus_unchanged(self):
         """True if the focused window matches the one captured at
@@ -810,5 +816,6 @@ class StreamingSession:
             return True
         try:
             return _user32.GetForegroundWindow() == self._target_hwnd
-        except Exception:
+        except Exception as e:
+            logger.debug(f"[STREAM] GetForegroundWindow check failed: {e}")
             return True

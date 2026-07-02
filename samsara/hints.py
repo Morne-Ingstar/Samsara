@@ -16,6 +16,10 @@ import os
 import threading
 from pathlib import Path
 
+from samsara.log import get_logger
+
+logger = get_logger(__name__)
+
 _DATA_DIR = Path(os.path.expanduser("~")) / ".samsara"
 
 
@@ -75,8 +79,8 @@ class HintManager:
             qt_app = QApplication.instance()
             if qt_app is not None:
                 QTimer.singleShot(int(delay_s * 1000), qt_app, _show)
-        except Exception:
-            pass
+        except Exception as e:
+            logger.debug(f"maybe_show: {e}")
 
     def increment(self, counter_id: str) -> int:
         """Increment a named counter and return the new value.
@@ -97,15 +101,15 @@ class HintManager:
         self._enabled = False
         try:
             self._app.update_config_and_save({'hints_enabled': False})
-        except Exception:
-            pass
+        except Exception as e:
+            logger.debug(f"disable: {e}")
 
     def enable(self) -> None:
         self._enabled = True
         try:
             self._app.update_config_and_save({'hints_enabled': True})
-        except Exception:
-            pass
+        except Exception as e:
+            logger.debug(f"enable: {e}")
 
     def set_enabled(self, enabled: bool) -> None:
         """Update the live in-memory flag only -- does NOT write config.
@@ -160,8 +164,8 @@ class HintManager:
                 data = json.loads(self._hints_file.read_text(encoding='utf-8'))
                 self._shown    = set(data.get('shown', []))
                 self._counters = dict(data.get('counters', {}))
-        except Exception:
-            pass
+        except Exception as e:
+            logger.debug(f"_load: {e}")
 
     def _save(self) -> None:
         tmp = str(self._hints_file) + '.tmp'
@@ -174,5 +178,5 @@ class HintManager:
             print(f"[HINTS] Save failed: {e}")
             try:
                 os.remove(tmp)
-            except OSError:
-                pass
+            except OSError as e:
+                logger.debug(f"_save: {e}")

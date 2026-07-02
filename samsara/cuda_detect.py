@@ -21,6 +21,10 @@ import sys
 from pathlib import Path
 from typing import Optional
 
+from samsara.log import get_logger
+
+logger = get_logger(__name__)
+
 
 # The DLL whose presence we use as the marker. cublas64_12.dll is the
 # largest of the bundled CUDA libs and is the one whose absence causes the
@@ -45,8 +49,8 @@ def _probable_search_paths() -> list[Path]:
         import ctranslate2  # noqa: F401
         ct2_path = Path(ctranslate2.__file__).parent
         paths.append(ct2_path)
-    except Exception:
-        pass
+    except Exception as e:
+        logger.debug(f"_probable_search_paths: {e}")
 
     # Anywhere on PATH (in case user installed CUDA system-wide)
     for p in os.environ.get("PATH", "").split(os.pathsep):

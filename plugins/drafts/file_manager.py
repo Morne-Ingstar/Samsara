@@ -18,6 +18,10 @@ from pathlib import Path
 
 from samsara.plugin_commands import command
 
+from samsara.log import get_logger
+
+logger = get_logger(__name__)
+
 
 # Common search locations
 _SEARCH_ROOTS = [
@@ -182,8 +186,8 @@ def handle_find_file(app, remainder):
                     creationflags=subprocess.CREATE_NO_WINDOW
                 )
                 print(f"[FILE] Opened Explorer at: {first.parent}")
-            except Exception:
-                pass
+            except Exception as e:
+                logger.debug(f"_search: {e}")
     
     threading.Thread(target=_search, daemon=True, name="file-search").start()
     return True
@@ -252,8 +256,8 @@ def handle_move_file(app, remainder):
                     ['explorer', '/select,', str(dest_path)],
                     creationflags=subprocess.CREATE_NO_WINDOW
                 )
-            except Exception:
-                pass
+            except Exception as e:
+                logger.debug(f"_do_move: {e}")
         else:
             print(f"[FILE] {message}")
     

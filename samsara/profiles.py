@@ -10,6 +10,10 @@ from pathlib import Path
 from datetime import datetime
 from typing import Optional, Dict, Any, Tuple, List
 
+from samsara.log import get_logger
+
+logger = get_logger(__name__)
+
 
 class ProfileManager:
     """Manages dictionary and command profiles for Samsara."""
@@ -103,8 +107,8 @@ class ProfileManager:
             with open(self.config_path, 'r', encoding='utf-8') as f:
                 config = json.load(f)
                 initial_prompt = config.get('initial_prompt', '')
-        except Exception:
-            pass
+        except Exception as e:
+            logger.debug(f"save_dictionary_profile: {e}")
         
         # Create profile structure
         profile = {
@@ -409,8 +413,8 @@ class ProfileManager:
             config['initial_prompt'] = prompt
             with open(self.config_path, 'w', encoding='utf-8') as f:
                 json.dump(config, f, indent=2, ensure_ascii=False)
-        except Exception:
-            pass  # Non-critical, ignore errors
+        except Exception as e:
+            logger.debug(f"_update_config_initial_prompt: {e}")
     
     def get_active_profile_names(self) -> Dict[str, Optional[str]]:
         """
@@ -439,5 +443,5 @@ class ProfileManager:
                 config['active_command_profile'] = commands
             with open(self.config_path, 'w', encoding='utf-8') as f:
                 json.dump(config, f, indent=2, ensure_ascii=False)
-        except Exception:
-            pass
+        except Exception as e:
+            logger.debug(f"set_active_profile_names: {e}")

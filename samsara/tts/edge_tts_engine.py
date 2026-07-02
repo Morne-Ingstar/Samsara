@@ -259,8 +259,8 @@ class EdgeTTSEngine(TTSEngine):
                 if on_done:
                     try:
                         on_done()
-                    except Exception:
-                        pass
+                    except Exception as e:
+                        logger.debug(f"[EdgeTTS] on_done callback failed: {e}")
 
         t = threading.Thread(target=_worker, daemon=True, name="EdgeTTS-worker")
         t.start()

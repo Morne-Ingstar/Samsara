@@ -78,8 +78,8 @@ class ConfigWatcher:
             try:
                 self._observer.stop()
                 self._observer.join(timeout=2)
-            except Exception:
-                pass
+            except Exception as e:
+                logger.debug(f"stop: {e}")
 
     # ── internals ─────────────────────────────────────────────────────────────
 
@@ -156,8 +156,8 @@ class ConfigWatcher:
                     mtime = self._path.stat().st_mtime
                     if mtime != self._last_mtime:
                         self._schedule_fire()
-                except OSError:
-                    pass
+                except OSError as e:
+                    logger.debug(f"_poll: {e}")
 
         self._poll_thread = threading.Thread(
             target=_poll, daemon=True, name="config-watcher"

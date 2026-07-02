@@ -134,8 +134,8 @@ class CameraService:
         with self._readers_lock:
             try:
                 self._readers.remove(reader)
-            except ValueError:
-                pass
+            except ValueError as e:
+                logger.debug(f"unsubscribe: {e}")
 
     # ---- Snapshot (Phase 2 vision probe entry point) -----------------------
 

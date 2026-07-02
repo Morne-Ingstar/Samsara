@@ -11,6 +11,10 @@ import json
 import os
 import threading
 
+from samsara.log import get_logger
+
+logger = get_logger(__name__)
+
 
 class AvaMemory:
     def __init__(self, max_turns=20, persist_path=None):
@@ -56,10 +60,10 @@ class AvaMemory:
         if self._persist_path:
             try:
                 os.remove(self._persist_path)
-            except FileNotFoundError:
-                pass
-            except OSError:
-                pass
+            except FileNotFoundError as e:
+                logger.debug(f"clear: {e}")
+            except OSError as e:
+                logger.debug(f"clear: {e}")
 
     def save(self):
         """Persist history to disk atomically. No-op if no persist_path set.
@@ -78,8 +82,8 @@ class AvaMemory:
         except Exception:
             try:
                 os.remove(tmp)
-            except OSError:
-                pass
+            except OSError as e:
+                logger.debug(f"save: {e}")
 
     def load(self):
         """Load history from disk if present. Silent on any failure.

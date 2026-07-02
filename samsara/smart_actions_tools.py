@@ -203,8 +203,8 @@ class ToolDispatcher:
                     dlg.show()
                 QTimer.singleShot(0, qt_app, _make)
                 return
-        except ImportError:
-            pass
+        except ImportError as e:
+            logger.debug(f"_show_recovery_modal: {e}")
 
     # ---- Dispatch ------------------------------------------------------------
 

@@ -33,6 +33,7 @@ import numpy as np
 
 from .frame import FRAME_MS, SAMPLE_RATE
 from .ring import EMPTY
+from samsara.log import get_logger
 
 from samsara.constants import (
     DEFAULT_CONTINUOUS_COMMIT_TRIGGER,
@@ -41,6 +42,8 @@ from samsara.constants import (
     DEFAULT_SILENCE_TIMEOUT,
     DEFAULT_SPEECH_THRESHOLD,
 )
+
+logger = get_logger(__name__)
 
 
 class ContinuousConsumer:
@@ -103,8 +106,8 @@ class ContinuousConsumer:
         self.stop()
         try:
             self._engine.unregister_consumer(self._reader)
-        except Exception:
-            pass
+        except Exception as e:
+            logger.debug(f"unregister_consumer failed during deactivate: {e}")
 
     # ── Manual commit (continuous_commit_trigger == "key") ──────────────────
 
@@ -119,7 +122,7 @@ class ContinuousConsumer:
         """
         committed = self._flush()
         if committed:
-            print("[CONTINUOUS] Manual commit")
+            logger.info("[CONTINUOUS] Manual commit")
 
     # ── Poll loop ─────────────────────────────────────────────────────────────
 
@@ -175,7 +178,7 @@ class ContinuousConsumer:
                 max_buffer_s = app.config.get('continuous_max_buffer_s', DEFAULT_CONTINUOUS_MAX_BUFFER_S)
                 speech_duration = len(self._speech_frames) * (FRAME_MS / 1000.0)
                 if speech_duration >= max_buffer_s:
-                    print("[CONTINUOUS] Max buffer reached — auto-committing")
+                    logger.debug("[CONTINUOUS] Max buffer reached — auto-committing")
                     self._flush()
             else:
                 # trigger == "silence" (default): EXACTLY today's behavior,

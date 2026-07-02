@@ -20,6 +20,10 @@ from PySide6.QtWidgets import (
 
 from samsara.ui import qt_runtime
 
+from samsara.log import get_logger
+
+logger = get_logger(__name__)
+
 
 # ---------------------------------------------------------------------------
 # Stylesheet — self-contained dark theme matching Samsara palette
@@ -486,8 +490,8 @@ class _HistoryWindow(QMainWindow):
         if hasattr(self.app, 'save_history'):
             try:
                 self.app.save_history()
-            except Exception:
-                pass
+            except Exception as e:
+                logger.debug(f"_clear_all: {e}")
 
         self._reload()
 

@@ -13,6 +13,10 @@ import numpy as np
 
 from samsara import platform as plat
 
+from samsara.log import get_logger
+
+logger = get_logger(__name__)
+
 # Optional dependency - may not be available in test environments
 try:
     import sounddevice as sd
@@ -295,8 +299,8 @@ class AudioPlayer:
                 sd.play(audio_array, sample_rate)
                 return
 
-        except Exception:
-            pass
+        except Exception as e:
+            logger.debug(f"_play_file: {e}")
 
         # Fallback to platform-specific sound playback
         plat.play_sound_fallback(filepath)

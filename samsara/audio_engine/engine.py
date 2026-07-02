@@ -40,6 +40,9 @@ import numpy as np
 from scipy.signal import resample_poly
 from .frame import FRAME_SIZE, PREBUFFER_FRAMES, SAMPLE_RATE
 from .ring import FrameBus, Reader
+from samsara.log import get_logger
+
+logger = get_logger(__name__)
 
 # sounddevice is imported lazily in start() so the module can be imported
 # in test environments without a microphone.
@@ -116,7 +119,7 @@ class AudioCaptureEngine:
                 dev_info = sd.query_devices(device, kind='input')
                 self._native_rate = int(dev_info['default_samplerate'])
             except Exception as exc:
-                print(f"[ACE] device query failed ({exc}), using default")
+                logger.exception(f"[ACE] device query failed ({exc}), using default")
                 self._native_rate = SAMPLE_RATE
 
         # Pre-compute resample ratio (GCD reduction)
@@ -134,7 +137,7 @@ class AudioCaptureEngine:
         else:
             self._resample_poly = None
 
-        print(
+        logger.info(
             f"[ACE] Starting engine: device={device!r}  "
             f"native={self._native_rate}Hz  "
             f"resample={self._up}/{self._down}  "
@@ -160,9 +163,9 @@ class AudioCaptureEngine:
                 self._stream.stop()
                 self._stream.close()
             except Exception as exc:
-                print(f"[ACE] stream stop error: {exc}")
+                logger.exception(f"[ACE] stream stop error: {exc}")
             self._stream = None
-        print("[ACE] Engine stopped.")
+        logger.info("[ACE] Engine stopped.")
 
     # ── Capture callback (HOT PATH — no locks, no logging, no allocation) ────
 
@@ -255,8 +258,8 @@ class AudioCaptureEngine:
         previously-placeholder values changing).
         """
         if self._size_warned:
-            print("[ACE] WARNING: resampler produced unexpected frame size — "
-                  "check native_rate / FRAME_SIZE ratio")
+            logger.warning("[ACE] WARNING: resampler produced unexpected frame size — "
+                           "check native_rate / FRAME_SIZE ratio")
             self._size_warned = False
 
         with self._registry_lock:

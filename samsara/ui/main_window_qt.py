@@ -35,6 +35,10 @@ from PySide6.QtWidgets import (
 from samsara.ui import qt_runtime
 from samsara.ui.dictionary_panel_qt import DictionaryPanelQt
 
+from samsara.log import get_logger
+
+logger = get_logger(__name__)
+
 # ---------------------------------------------------------------------------
 # Constants — match Tkinter version
 # ---------------------------------------------------------------------------
@@ -338,8 +342,8 @@ class _HistoryPanel(QWidget):
             ts = row.get("timestamp", "")
             try:
                 ts = datetime.fromisoformat(ts).strftime("%H:%M:%S")
-            except Exception:
-                pass
+            except Exception as e:
+                logger.debug(f"_populate: {e}")
 
             etype  = row.get("entry_type", "dictation")
             status = row.get("status", "success")
@@ -395,8 +399,8 @@ class _HistoryPanel(QWidget):
         if db and row_id is not None:
             try:
                 db.delete(row_id)
-            except Exception:
-                pass
+            except Exception as e:
+                logger.debug(f"_delete: {e}")
         self._table.removeRow(row)
 
     # ---- Public -------------------------------------------------------------
@@ -608,8 +612,8 @@ class _MainWindow(QMainWindow):
         if panel is not None and self._stack.currentWidget() is panel:
             try:
                 panel.on_new_entry()
-            except Exception:
-                pass
+            except Exception as e:
+                logger.debug(f"_on_dictation: {e}")
 
     # ---- Geometry -----------------------------------------------------------
 
@@ -626,8 +630,8 @@ class _MainWindow(QMainWindow):
                 y = max(0, min(int(y), screen.height() - 100))
                 self.setGeometry(x, y, w, h)
                 return
-            except Exception:
-                pass
+            except Exception as e:
+                logger.debug(f"_restore_geometry: {e}")
         self.resize(w, h)
 
     def _save_geometry(self):

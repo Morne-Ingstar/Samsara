@@ -44,6 +44,9 @@ import numpy as np
 
 from .frame import PREBUFFER_FRAMES
 from .ring import EMPTY
+from samsara.log import get_logger
+
+logger = get_logger(__name__)
 
 
 class DictationSessionConsumer:
@@ -90,9 +93,9 @@ class DictationSessionConsumer:
 
         _coordinator = getattr(self._app, 'audio_coordinator', None)
         if _coordinator and _coordinator.is_speaking:
-            print("[PRE] Pre-buffer skipped — TTS actively speaking")
+            logger.debug("[PRE] Pre-buffer skipped — TTS actively speaking")
         elif time.monotonic() - getattr(self._app, '_tts_last_speaking', 0.0) < 0.5:
-            print("[PRE] Pre-buffer skipped — TTS ended too recently")
+            logger.debug("[PRE] Pre-buffer skipped — TTS ended too recently")
         else:
             self._reader.rewind(PREBUFFER_FRAMES)
 
@@ -189,7 +192,7 @@ class DictationSessionConsumer:
 
         for epoch, pcm in collected:
             if epoch != start_epoch:
-                print("[ACE] Epoch change mid-utterance — aborting dictation")
+                logger.warning("[ACE] Epoch change mid-utterance — aborting dictation")
                 return None
 
             if echo_canceller and echo_canceller.is_active:
@@ -226,9 +229,9 @@ class DictationSessionConsumer:
         self._reader.snap_to_head()
         _coordinator = getattr(self._app, 'audio_coordinator', None)
         if _coordinator and _coordinator.is_speaking:
-            print("[PRE] Streaming: pre-buffer skipped — TTS actively speaking")
+            logger.debug("[PRE] Streaming: pre-buffer skipped — TTS actively speaking")
         elif time.monotonic() - getattr(self._app, '_tts_last_speaking', 0.0) < 0.5:
-            print("[PRE] Streaming: pre-buffer skipped — TTS ended too recently")
+            logger.debug("[PRE] Streaming: pre-buffer skipped — TTS ended too recently")
         else:
             self._reader.rewind(PREBUFFER_FRAMES)
 
@@ -287,8 +290,8 @@ class DictationSessionConsumer:
         if self._reader is not None:
             try:
                 self._engine.unregister_consumer(self._reader)
-            except Exception:
-                pass
+            except Exception as e:
+                logger.debug(f"unregister_consumer failed during deactivate: {e}")
             self._reader = None
 
     def __repr__(self) -> str:

@@ -20,6 +20,10 @@ from PySide6.QtWidgets import (
 
 from samsara.ui import qt_runtime
 
+from samsara.log import get_logger
+
+logger = get_logger(__name__)
+
 
 # ---------------------------------------------------------------------------
 # Hotkey capture helpers
@@ -871,13 +875,13 @@ class _SettingsWindow(QMainWindow):
                 if hasattr(self.app, 'load_commands'):
                     try:
                         self.app.load_commands()
-                    except Exception:
-                        pass
+                    except Exception as e:
+                        logger.debug(f"_on_changed: {e}")
                 if hasattr(self.app, 'load_training_data'):
                     try:
                         self.app.load_training_data()
-                    except Exception:
-                        pass
+                    except Exception as e:
+                        logger.debug(f"_on_changed: {e}")
             self._profile_manager_qt = ProfileManagerQt(pm, _on_changed)
         self._profile_manager_qt.show()
 
@@ -1484,8 +1488,8 @@ class _SettingsWindow(QMainWindow):
                 for cmd in raw.get('commands', raw).values():
                     p = cmd.get('pack', 'core')
                     pack_counts[p] = pack_counts.get(p, 0) + 1
-        except Exception:
-            pass
+        except Exception as e:
+            logger.debug(f"_build_commands_tab: {e}")
         try:
             from samsara import plugin_commands as _pc
             seen: set = set()
@@ -1496,8 +1500,8 @@ class _SettingsWindow(QMainWindow):
                 seen.add(eid)
                 p = entry.get('pack', 'core')
                 pack_counts[p] = pack_counts.get(p, 0) + 1
-        except Exception:
-            pass
+        except Exception as e:
+            logger.debug(f"_build_commands_tab: {e}")
 
         restart_lbl = QLabel("Restart Samsara to apply pack changes.")
         restart_lbl.setStyleSheet("color: #E2A030; font-size: 12px;")
@@ -2265,8 +2269,8 @@ class _SettingsWindow(QMainWindow):
         try:
             self.app.play_sound(sound_key)
             return
-        except Exception:
-            pass
+        except Exception as e:
+            logger.debug(f"_play: {e}")
         try:
             import winsound
             wav = sounds_dir / f"{sound_key}.wav"
@@ -2290,12 +2294,12 @@ class _SettingsWindow(QMainWindow):
                     print(f"[SOUNDS] copy {wav.name}: {e}")
             try:
                 self.app._load_sound_cache()
-            except Exception:
-                pass
+            except Exception as e:
+                logger.debug(f"_do: {e}")
             try:
                 self.app.play_sound('success')
-            except Exception:
-                pass
+            except Exception as e:
+                logger.debug(f"_do: {e}")
             print(f"[SOUNDS] Theme applied: {theme}")
 
         threading.Thread(target=_do, daemon=True).start()
@@ -2358,8 +2362,8 @@ class _SettingsWindow(QMainWindow):
                     voice_labels.append(lbl)
                     label_to_id[lbl] = v.voice_id
                     id_to_label[v.voice_id] = lbl
-            except Exception:
-                pass
+            except Exception as e:
+                logger.debug(f"_build_tts_tab: {e}")
 
         current_voice_id = cfg.get('voice_id')
         if voice_labels:
@@ -2893,8 +2897,8 @@ class _SettingsWindow(QMainWindow):
         if am:
             try:
                 sound_opts = [s['value'] for s in am.get_available_sounds()]
-            except Exception:
-                pass
+            except Exception as e:
+                logger.debug(f"_open_alarm_dialog: {e}")
         sound_combo = QComboBox()
         sound_combo.addItems(sound_opts)
         current_snd = existing.get('sound', 'alarm')
@@ -3251,8 +3255,8 @@ class _SettingsWindow(QMainWindow):
         os.makedirs(folder, exist_ok=True)
         try:
             subprocess.Popen(["explorer", folder])
-        except Exception:
-            pass
+        except Exception as e:
+            logger.debug(f"_open_health_folder: {e}")
 
     def _load_medication_dictionary(self):
         """Load the bundled medication dictionary into the vocabulary."""

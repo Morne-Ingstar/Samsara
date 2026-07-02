@@ -30,6 +30,10 @@ from PySide6.QtWidgets import (
 from samsara.constants import DEFAULT_CAPTURE_RATE
 from samsara.ui import qt_runtime
 
+from samsara.log import get_logger
+
+logger = get_logger(__name__)
+
 # ---------------------------------------------------------------------------
 # Colours
 # ---------------------------------------------------------------------------
@@ -145,8 +149,8 @@ def _query_input_devices():
         for i, dev in enumerate(sd.query_devices()):
             if dev.get("max_input_channels", 0) > 0:
                 devices.append((i, dev["name"]))
-    except Exception:
-        pass
+    except Exception as e:
+        logger.debug(f"_query_input_devices: {e}")
     return devices
 
 
@@ -672,8 +676,8 @@ class _WizardWindow(QDialog):
                     try:
                         stream.stop()
                         stream.close()
-                    except Exception:
-                        pass
+                    except Exception as e:
+                        logger.debug(f"_audio_worker: {e}")
 
     def _stop_audio(self):
         """Signal the worker to exit and close the current stream."""
@@ -685,8 +689,8 @@ class _WizardWindow(QDialog):
             try:
                 stream.stop()
                 stream.close()
-            except Exception:
-                pass
+            except Exception as e:
+                logger.debug(f"_stop_audio: {e}")
 
     # ----------------------------------------------------------------
     # Level monitoring
@@ -913,15 +917,15 @@ class _WizardWindow(QDialog):
         if dev_idx is not None:
             try:
                 self._app.update_config_and_save({'microphone': dev_idx})
-            except Exception:
-                pass
+            except Exception as e:
+                logger.debug(f"_finish: {e}")
         self.close()
 
     def _open_debug(self):
         try:
             self._app.open_wake_word_debug()
-        except Exception:
-            pass
+        except Exception as e:
+            logger.debug(f"_open_debug: {e}")
 
     # ----------------------------------------------------------------
     # Cleanup

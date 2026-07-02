@@ -13,6 +13,10 @@ from PySide6.QtCore import Qt, QPoint, QRect, QRectF
 from PySide6.QtGui import QColor, QPainter, QPainterPath, QFont
 from PySide6.QtWidgets import QApplication, QWidget
 
+from samsara.log import get_logger
+
+logger = get_logger(__name__)
+
 _logger = logging.getLogger(__name__)
 
 _PILL_BG  = QColor(18, 18, 22, 230)
@@ -56,8 +60,8 @@ def _ensure_dpi_thread_context() -> None:
         ctypes.windll.user32.SetThreadDpiAwarenessContext(
             ctypes.c_ssize_t(-4)
         )
-    except Exception:
-        pass
+    except Exception as e:
+        logger.debug(f"_ensure_dpi_thread_context: {e}")
 
 
 # ---------------------------------------------------------------------------
@@ -153,8 +157,8 @@ def phys_to_logical(px: int, py: int) -> tuple:
                         round(lx), round(ly),
                     )
                 return round(lx), round(ly)
-    except Exception:
-        pass
+    except Exception as e:
+        logger.debug(f"phys_to_logical: {e}")
     return px, py
 
 
@@ -186,8 +190,8 @@ def screen_for_hwnd(hwnd: int) -> "QScreen":
                 screen = QApplication.screenAt(QPoint(lx, ly))
                 if screen is not None:
                     return screen
-        except Exception:
-            pass
+        except Exception as e:
+            logger.debug(f"screen_for_hwnd: {e}")
     primary = QApplication.primaryScreen()
     if primary is not None:
         return primary

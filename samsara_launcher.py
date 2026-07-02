@@ -8,6 +8,10 @@ import os
 from pathlib import Path
 import shutil
 
+from samsara.log import get_logger
+
+logger = get_logger(__name__)
+
 # Platform detection
 IS_WINDOWS = sys.platform == 'win32'
 IS_MACOS = sys.platform == 'darwin'
@@ -22,8 +26,8 @@ def show_msg(message, title="Samsara", error=False):
             flags = 0x10 if error else 0x40
             ctypes.windll.user32.MessageBoxW(0, message, title, flags)
             return
-        except Exception:
-            pass
+        except Exception as e:
+            logger.debug(f"show_msg: {e}")
 
     # Fall back to console output
     prefix = "ERROR: " if error else ""

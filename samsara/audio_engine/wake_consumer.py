@@ -43,6 +43,9 @@ from samsara.constants import (
     WAKE_DETECTION_SILENCE,
 )
 from samsara.session_modes import SessionMode
+from samsara.log import get_logger
+
+logger = get_logger(__name__)
 
 
 class WakeConsumer:
@@ -98,8 +101,8 @@ class WakeConsumer:
         self.stop()
         try:
             self._engine.unregister_consumer(self._reader)
-        except Exception:
-            pass
+        except Exception as e:
+            logger.debug(f"unregister_consumer failed during deactivate: {e}")
 
     # ── Poll loop ─────────────────────────────────────────────────────────────
 
@@ -136,7 +139,7 @@ class WakeConsumer:
                 try:
                     self._process_frame(frame)
                 except Exception as exc:
-                    print(f"[ERROR] Wake consumer frame error: {exc}")
+                    logger.exception(f"[ERROR] Wake consumer frame error: {exc}")
         except Exception as exc:
             # This poll loop is the session's ONLY audio consumer. If
             # something escapes the per-frame guard above and kills this
@@ -164,15 +167,15 @@ class WakeConsumer:
 
         # Epoch-change detection: abort utterance and reset state
         if self._last_epoch is not None and frame.device_epoch != self._last_epoch:
-            print("[ACE] Wake path: epoch change — aborting utterance, resetting state")
+            logger.warning("[ACE] Wake path: epoch change — aborting utterance, resetting state")
             self._utterance_frames   = []
             self._buffer_rms_history = []
             app.is_speaking   = False
             app.silence_start = None
             try:
                 app._vad_reset()
-            except Exception:
-                pass
+            except Exception as e:
+                logger.debug(f"_vad_reset failed after epoch change: {e}")
         self._last_epoch = frame.device_epoch
 
         # Convert int16 ring frame -> float32 at SAMPLE_RATE
@@ -247,14 +250,14 @@ class WakeConsumer:
                 last = getattr(app, '_vad_error_last_log', 0.0)
                 app._vad_consec_errors = getattr(app, '_vad_consec_errors', 0) + 1
                 if now - last >= 30.0:
-                    print(f"[VAD] inference error (suppressing 30s): {type(exc).__name__}: {exc}")
+                    logger.exception(f"[VAD] inference error (suppressing 30s): {type(exc).__name__}: {exc}")
                     app._vad_error_last_log = now
                 try:
                     app._vad_reset()
-                except Exception:
-                    pass
+                except Exception as e:
+                    logger.debug(f"_vad_reset failed after VAD inference error: {e}")
                 if app._vad_consec_errors >= 50:
-                    print("[VAD] 50 consecutive errors — disabling VAD for session, RMS only")
+                    logger.warning("[VAD] 50 consecutive errors — disabling VAD for session, RMS only")
                     app._vad_available = False
                 is_speech = rms > speech_threshold
         else:
@@ -297,7 +300,7 @@ class WakeConsumer:
                         float(np.sqrt(np.mean(pb_pcm ** 2)))
                     )
                 if self._utterance_frames:
-                    print(f"[PRE] Prepended {len(self._utterance_frames) * FRAME_MS}ms pre-buffer to wake onset")
+                    logger.debug(f"[PRE] Prepended {len(self._utterance_frames) * FRAME_MS}ms pre-buffer to wake onset")
             else:
                 # Non-onset speech frame — append normally
                 self._utterance_frames.append(raw_chunk)
@@ -313,29 +316,29 @@ class WakeConsumer:
                 variance = float(np.var(recent))
                 if variance < 0.0001:
                     buf_s = len(self._buffer_rms_history) * (FRAME_MS / 1000.0)
-                    print(f"[CAP] Stuck buffer ({buf_s:.1f}s, var={variance:.6f}) — discarding")
+                    logger.debug(f"[CAP] Stuck buffer ({buf_s:.1f}s, var={variance:.6f}) — discarding")
                     self._utterance_frames   = []
                     self._buffer_rms_history = []
                     app.is_speaking   = False
                     app.silence_start = None
                     try:
                         app._vad_reset()
-                    except Exception:
-                        pass
+                    except Exception as e:
+                        logger.debug(f"_vad_reset failed after stuck-buffer discard: {e}")
                     return
 
             # Hard buffer cap (same as legacy callback)
             buffer_s = len(self._utterance_frames) * (FRAME_MS / 1000.0)
             if buffer_s >= 7.0 and app.app_state not in ('long_dictation', 'quick_dictation', 'wake_session'):
-                print(f"[CAP] Buffer at {buffer_s:.1f}s cap — discarding (likely noise/echo)")
+                logger.debug(f"[CAP] Buffer at {buffer_s:.1f}s cap — discarding (likely noise/echo)")
                 self._utterance_frames   = []
                 self._buffer_rms_history = []
                 app.is_speaking   = False
                 app.silence_start = None
                 try:
                     app._vad_reset()
-                except Exception:
-                    pass
+                except Exception as e:
+                    logger.debug(f"_vad_reset failed after hard buffer cap: {e}")
                 return
 
         else:

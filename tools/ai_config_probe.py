@@ -15,6 +15,10 @@ import re
 import time
 from pathlib import Path
 
+from samsara.log import get_logger
+
+logger = get_logger(__name__)
+
 ROOT = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(ROOT))
 
@@ -269,8 +273,8 @@ def _get_ollama_model():
             models = r.json().get("models", [])
             if models:
                 return models[0]["name"]
-    except Exception:
-        pass
+    except Exception as e:
+        logger.debug(f"_get_ollama_model: {e}")
     return None
 
 

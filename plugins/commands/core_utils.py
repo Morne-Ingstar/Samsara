@@ -10,6 +10,10 @@ import time
 
 from samsara.plugin_commands import command
 
+from samsara.log import get_logger
+
+logger = get_logger(__name__)
+
 # ---------------------------------------------------------------------------
 # Per-app suggestion map for "what can I say"
 # ---------------------------------------------------------------------------
@@ -36,8 +40,8 @@ def speak_if_available(app, text):
         try:
             app.audio_coordinator.speak(text, category="agent_response",
                                         interruptible=False)
-        except Exception:
-            pass
+        except Exception as e:
+            logger.debug(f"speak_if_available: {e}")
 
 
 def _build_restart_args() -> tuple[list[str], str]:

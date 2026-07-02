@@ -21,6 +21,10 @@ from PySide6.QtWidgets import (
 
 from samsara.ui import qt_runtime
 
+from samsara.log import get_logger
+
+logger = get_logger(__name__)
+
 # ── Palette (matches task_overlay.py dark theme) ──────────────────────────────
 
 _BG       = "#0A0A0B"
@@ -205,8 +209,8 @@ class _StatusWindow(QMainWindow):
                     r for r in self._nm.get_all_reminders()
                     if r.get("enabled", True)
                 ]
-            except Exception:
-                pass
+            except Exception as e:
+                logger.debug(f"_render: {e}")
 
         if reminders:
             for r in reminders:
@@ -227,8 +231,8 @@ class _StatusWindow(QMainWindow):
         if self._am is not None:
             try:
                 alarms = list(self._am.items)
-            except Exception:
-                pass
+            except Exception as e:
+                logger.debug(f"_render: {e}")
 
         if alarms:
             for alarm in alarms:
@@ -242,8 +246,8 @@ class _StatusWindow(QMainWindow):
                     try:
                         stats = self._am.get_stats(alarm_id)
                         streak = stats.get("current_streak", 0)
-                    except Exception:
-                        pass
+                    except Exception as e:
+                        logger.debug(f"_render: {e}")
 
                 state = f"streak {streak}" if enabled else "disabled"
                 detail = f"{interval} min  |  {state}"

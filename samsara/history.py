@@ -11,6 +11,10 @@ import uuid
 from datetime import datetime
 from pathlib import Path
 
+from samsara.log import get_logger
+
+logger = get_logger(__name__)
+
 DB_PATH = Path.home() / ".samsara" / "history.db"
 
 
@@ -67,8 +71,8 @@ class HistoryManager:
                     self._conn.execute(
                         f"ALTER TABLE history ADD COLUMN {col} {definition}")
                     self._conn.commit()
-                except sqlite3.OperationalError:
-                    pass  # column already exists
+                except sqlite3.OperationalError as e:
+                    logger.debug(f"_migrate: {e}")
 
     def add(self, raw_text, display_text="", app_context="",
             duration_ms=0, mode="hold", status="success",

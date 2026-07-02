@@ -14,6 +14,10 @@ from PySide6.QtCore import Qt, QObject, Signal
 from PySide6.QtGui import QAction, QActionGroup, QIcon, QImage, QPixmap
 from PySide6.QtWidgets import QMenu, QSystemTrayIcon
 
+from samsara.log import get_logger
+
+logger = get_logger(__name__)
+
 
 class SamsaraTrayQt(QObject):
     """QSystemTrayIcon wrapper matching pystray.Icon's property interface."""
@@ -39,8 +43,8 @@ class SamsaraTrayQt(QObject):
         # Initial icon + tooltip
         try:
             self._apply_icon(app.create_icon_image(active=False))
-        except Exception:
-            pass
+        except Exception as e:
+            logger.debug(f"__init__: {e}")
         self._tray.setToolTip("Samsara")
         self._tray.show()
 
@@ -88,8 +92,8 @@ class SamsaraTrayQt(QObject):
         ):
             try:
                 self._app.show_main_window()
-            except Exception:
-                pass
+            except Exception as e:
+                logger.debug(f"_on_activated: {e}")
 
     def _rebuild_menu(self):
         """Rebuild the full context menu from live app state.
@@ -114,8 +118,8 @@ class SamsaraTrayQt(QObject):
             try:
                 app.available_mics = app.get_available_microphones()
                 app._reconcile_microphone_selection()
-            except Exception:
-                pass
+            except Exception as e:
+                logger.debug(f"_rebuild_menu: {e}")
         current_mic = app.config.get('microphone')
         for mic in app.available_mics:
             act = mic_sub.addAction(mic['name'])

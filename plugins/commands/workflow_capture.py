@@ -151,14 +151,14 @@ def _resolve_click(x: int, y: int) -> str:
                 hwnd = ctrl.NativeWindowHandle
                 app = _app_name(hwnd or None)
                 return f"{role} '{name}' in {app}" if name else f"{role} in {app}"
-        except Exception:
-            pass
+        except Exception as e:
+            logger.debug(f"_resolve_click: {e}")
     if _WIN32:
         try:
             hwnd = win32gui.WindowFromPoint((x, y))
             return f"click in {_app_name(hwnd)} at {_coarse_region(x, y)}"
-        except Exception:
-            pass
+        except Exception as e:
+            logger.debug(f"_resolve_click: {e}")
     return f"click at {_coarse_region(x, y)}"
 
 
@@ -181,8 +181,8 @@ def _resolve_focused_field() -> str:
                 hwnd = focused.NativeWindowHandle
                 app = _app_name(hwnd or None)
                 return f"{role} '{name}' in {app}" if name else f"{role} in {app}"
-        except Exception:
-            pass
+        except Exception as e:
+            logger.debug(f"_resolve_focused_field: {e}")
     return f"field in {_app_name()}"
 
 
@@ -269,8 +269,8 @@ def _get_fg_pid() -> int:
         if hwnd:
             _, pid = win32process.GetWindowThreadProcessId(hwnd)
             return pid
-    except Exception:
-        pass
+    except Exception as e:
+        logger.debug(f"_get_fg_pid: {e}")
     return 0
 
 
@@ -302,8 +302,8 @@ def _on_new_proc(name: str, pid: int, ppid: int) -> None:
     if _WIN32 and ppid:
         try:
             parent_name = _psutil.Process(ppid).name()
-        except Exception:
-            pass
+        except Exception as e:
+            logger.debug(f"_on_new_proc: {e}")
 
     label = f"spawned {name} (parent: {parent_name})"
     _log('proc', label)
@@ -381,8 +381,8 @@ def _proc_loop_psutil(stop: threading.Event) -> None:
                     par  = proc.parent()
                     ppid = par.pid if par else 0
                     _on_new_proc(name, pid, ppid)
-                except (_psutil.NoSuchProcess, _psutil.AccessDenied):
-                    pass
+                except (_psutil.NoSuchProcess, _psutil.AccessDenied) as e:
+                    logger.debug(f"_proc_loop_psutil: {e}")
                 except Exception as exc:
                     logger.debug("[CAPTURE] proc poll pid %d: %s", pid, exc)
             prev_pids = curr_pids
@@ -415,8 +415,8 @@ def _focus_loop(stop: threading.Event) -> None:
             if hwnd and hwnd != last_hwnd:
                 last_hwnd = hwnd
                 _log('focus', f"switched to {_app_name(hwnd)}")
-        except Exception:
-            pass
+        except Exception as e:
+            logger.debug(f"_focus_loop: {e}")
 
 
 # ---------------------------------------------------------------------------
@@ -586,8 +586,8 @@ def handle_start_capture(app, remainder):
     try:
         from samsara.ui import workflow_capture_qt
         workflow_capture_qt.set_active_indicator(True)
-    except Exception:
-        pass
+    except Exception as e:
+        logger.debug(f"handle_start_capture: {e}")
     return True
 
 

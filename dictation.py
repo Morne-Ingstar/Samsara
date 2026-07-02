@@ -95,8 +95,8 @@ def _hide_console_now():
         hwnd = ctypes.windll.kernel32.GetConsoleWindow()
         if hwnd:
             ctypes.windll.user32.ShowWindow(hwnd, 0)
-    except:
-        pass
+    except Exception as e:
+        logger.debug(f"Could not hide console window: {e}")
 
 # _hide_console_now()  # TEMPORARILY DISABLED for debug — uncomment when done testing
 
@@ -134,9 +134,10 @@ def _check_single_instance():
                 try:
                     with open(lock_file_path, 'r') as f:
                         other_pid = f.read().strip()
-                    print(f"[WARN] Samsara is already running (PID: {other_pid})")
-                except:
-                    print("[WARN] Samsara is already running")
+                    logger.warning(f"[WARN] Samsara is already running (PID: {other_pid})")
+                except Exception as e:
+                    logger.debug(f"Could not read other instance PID: {e}")
+                    logger.warning("[WARN] Samsara is already running")
                 sys.exit(0)
         else:
             # Unix-like systems (macOS, Linux)
@@ -155,14 +156,15 @@ def _check_single_instance():
                 try:
                     with open(lock_file_path, 'r') as f:
                         other_pid = f.read().strip()
-                    print(f"[WARN] Samsara is already running (PID: {other_pid})")
-                except:
-                    print("[WARN] Samsara is already running")
+                    logger.warning(f"[WARN] Samsara is already running (PID: {other_pid})")
+                except Exception as e:
+                    logger.debug(f"Could not read other instance PID: {e}")
+                    logger.warning("[WARN] Samsara is already running")
                 sys.exit(0)
     except Exception as e:
         # If locking fails for any reason, log but continue
         # (better to have duplicate instances than no instances)
-        print(f"[WARN] Could not check for existing instance: {e}")
+        logger.warning(f"[WARN] Could not check for existing instance: {e}")
         return None
 
 # Single-instance lock is only meaningful when this file is run as the main
@@ -264,8 +266,11 @@ if sys.platform == 'win32':
     except (AttributeError, OSError):
         try:
             _dpi_ctypes.windll.user32.SetProcessDPIAware()   # Win7 fallback
-        except Exception:
-            pass
+        except Exception as _dpi_err:
+            # Pre-logging-setup: logger isn't configured yet at this point in
+            # module import, so this stays print()-only (matches the
+            # neighboring [INIT] fallback prints just below).
+            print(f"[INIT] DPI awareness unavailable: {_dpi_err}")
     del _dpi_ctypes
 
 # Silence chatty third-party loggers that flood the console on import.
@@ -390,11 +395,12 @@ def _get_pynput_command_key(button_name: str):
                 try:
                     return getattr(Key, button_name)
                 except AttributeError:
-                    pass
+                    logger.debug(f"{button_name} not in pynput.Key -- falling back to VK code")
                 try:
                     from pynput.keyboard import KeyCode
                     return KeyCode.from_vk(0x6F + n)   # F1=0x70 → Fn=0x6F+n
-                except Exception:
+                except Exception as e:
+                    logger.debug(f"KeyCode.from_vk fallback failed for {button_name}: {e}")
                     return None
     return None
 
@@ -586,8 +592,8 @@ def hide_console():
         hwnd = ctypes.windll.kernel32.GetConsoleWindow()
         if hwnd:
             ctypes.windll.user32.ShowWindow(hwnd, 0)
-    except:
-        pass
+    except Exception as e:
+        logger.debug(f"Could not hide console window: {e}")
 
 
 def open_file_or_folder(path):
@@ -614,8 +620,11 @@ for _stream_name in ("stdout", "stderr"):
     if _stream is not None and hasattr(_stream, "reconfigure"):
         try:
             _stream.reconfigure(encoding="utf-8", errors="replace")
-        except (ValueError, OSError):
-            pass  # packaged EXE / redirected / already-closed stream — non-fatal
+        except (ValueError, OSError) as _reconf_err:
+            # Pre-logging-setup: logger isn't configured yet at this point in
+            # module import -- print() is the only channel available.
+            print(f"[INIT] {_stream_name} UTF-8 reconfigure skipped (packaged EXE / "
+                  f"redirected / already-closed stream): {_reconf_err}")
 
 if sys.stdout is not None:
     sys.stdout.write(f"[PRE-LOG] +{(time.perf_counter()-_POST_SD_T)*1000:.0f}ms (before logging setup)\n")
@@ -685,8 +694,10 @@ def print(*args, **kwargs):
         # so it is safe to emit an ASCII-safe fallback to the console.
         try:
             _original_print(message.encode("ascii", "replace").decode("ascii"), **kwargs)
-        except Exception:
-            pass  # never let console output break a caller
+        except Exception as e:
+            # never let console output break a caller -- already in the log
+            # file via logger.info(message) above, so this is display-only.
+            logger.debug(f"ASCII-fallback console print also failed: {e}")
 
 
 # ── Global exception hooks — log to file before crashing ─────────────────────
@@ -879,7 +890,7 @@ def _resolve_target_window(process_name, exclude_pids=None):
     try:
         import psutil as _ps
     except ImportError:
-        print("[WAKE-TARGET] psutil not available — cannot resolve target window")
+        logger.debug("[WAKE-TARGET] psutil not available — cannot resolve target window")
         return None
 
     exclude = exclude_pids or set()
@@ -890,7 +901,7 @@ def _resolve_target_window(process_name, exclude_pids=None):
             if name.lower() == process_name.lower() and proc.info['pid'] not in exclude:
                 target_pids.add(proc.info['pid'])
     except Exception as exc:
-        print(f"[WAKE-TARGET] process enumeration error: {exc}")
+        logger.exception(f"[WAKE-TARGET] process enumeration error: {exc}")
         return None
 
     if not target_pids:
@@ -943,7 +954,7 @@ class DictationApp:
         _btp = [_bt0]  # mutable cell so the closure can write it
         def _boot(label: str) -> None:
             now = time.monotonic()
-            print(f"[BOOT] {label}: {(now - _btp[0]) * 1000:.0f}ms  (total {(now - _bt0) * 1000:.0f}ms)")
+            logger.info(f"[BOOT] {label}: {(now - _btp[0]) * 1000:.0f}ms  (total {(now - _bt0) * 1000:.0f}ms)")
             _btp[0] = now
         self._boot_log = _boot  # expose so load_model_async can use it
 
@@ -1007,9 +1018,9 @@ class DictationApp:
                 try:
                     self.splash.close()
                 except Exception as e:
-                    print(f"[SPLASH] close() failed: {e}")
+                    logger.exception(f"[SPLASH] close() failed: {e}")
                 self.splash = None
-            print("First run detected - launching setup wizard...")
+            logger.info("First run detected - launching setup wizard...")
             from samsara.ui.first_run_wizard_qt import FirstRunWizardQt
             logger.debug(
                 "[WIZ-DIAG] calling wizard.run() from thread name=%r ident=%s",
@@ -1021,15 +1032,15 @@ class DictationApp:
                 # Wizard completed successfully, save the config
                 with open(self.config_path, 'w') as f:
                     json.dump(wizard_result, f, indent=2)
-                print("Setup wizard completed successfully!")
+                logger.info("Setup wizard completed successfully!")
             else:
                 # Wizard was cancelled, use defaults but mark as complete
-                print("Setup wizard cancelled - using default settings")
+                logger.info("Setup wizard cancelled - using default settings")
             # No splash after wizard - user already saw UI
             # Auto-launch tutorial after wizard (first run only)
             self._launch_tutorial_after_wizard = True
 
-        print("[INIT] Loading config...")
+        logger.info("[INIT] Loading config...")
         self.update_splash("Loading configuration...")
         with self._config_lock:
             self.load_config()
@@ -1063,15 +1074,15 @@ class DictationApp:
                     )
                     QApplication.instance().setWindowIcon(QIcon(QPixmap.fromImage(icon_qi)))
                 except Exception as _e:
-                    print(f"[ICON] Could not set Qt window icon: {_e}")
+                    logger.exception(f"[ICON] Could not set Qt window icon: {_e}")
 
             from samsara.ui import qt_runtime
             qt_runtime.ensure_started()
             qt_runtime.post(_apply_window_icon)
         except Exception as _e:
-            print(f"[ICON] Could not prepare window icon: {_e}")
+            logger.exception(f"[ICON] Could not prepare window icon: {_e}")
 
-        print("[INIT] Enumerating audio devices...")
+        logger.info("[INIT] Enumerating audio devices...")
         self.available_mics = self.get_available_microphones()
         _boot("audio device enumeration")
         _bdiag("get_available_microphones (sd.query_devices+hostapis)")
@@ -1092,7 +1103,7 @@ class DictationApp:
                 self.config['microphone'] = self.available_mics[0]['id']
                 self.save_config()
             new_name = self.available_mics[0]['name']
-            print(f"[CONFIG] Saved microphone {old_id} not found in current devices, "
+            logger.info(f"[CONFIG] Saved microphone {old_id} not found in current devices, "
                   f"switched to {new_name} (id={self.config['microphone']})")
             # Notify the user so they can confirm the right mic is selected
             def _mic_changed_dialog():
@@ -1143,7 +1154,7 @@ class DictationApp:
         self.loading_model = False
         self.model_lock = threading.Lock()  # Thread lock for model.transcribe() calls
         
-        print("[INIT] Loading plugins...")
+        logger.info("[INIT] Loading plugins...")
         commands_path = Path(__file__).parent / "commands.json"
         self.command_executor = CommandExecutor(commands_path, app=self)
         self.command_mode_enabled = self.config.get('command_mode_enabled', True)
@@ -1158,7 +1169,7 @@ class DictationApp:
             from samsara.app_index import get_app_index
             get_app_index().ensure_built_async()
         except Exception as exc:
-            print(f"[APP-INDEX] Could not start background build: {exc}")
+            logger.exception(f"[APP-INDEX] Could not start background build: {exc}")
 
         # Repeat / again state
         self._last_command = None       # command dict of last repeatable command
@@ -1318,12 +1329,12 @@ class DictationApp:
             self.history_db = HistoryManager()
             self.history_db.prune(max_entries=10000)
         except Exception as e:
-            print(f"[HISTORY] Could not open persistent history: {e}")
+            logger.exception(f"[HISTORY] Could not open persistent history: {e}")
             self.history_db = None
         _boot("history / SQLite init")
         _bdiag("history / SQLite init")
 
-        print("[INIT] Building UI...")
+        logger.info("[INIT] Building UI...")
 
         # Voice Training window — create on Qt thread
         self.voice_training_window = None
@@ -1332,9 +1343,9 @@ class DictationApp:
                 try:
                     self.voice_training_window = _VoiceTrainingQt(self)
                 except Exception as _e:
-                    print(f"[INIT] VoiceTrainingQt unavailable: {_e}")
+                    logger.debug(f"[INIT] VoiceTrainingQt unavailable: {_e}")
             self._schedule_ui(_init_vt)
-            print("[INIT] Using VoiceTrainingQt")
+            logger.info("[INIT] Using VoiceTrainingQt")
 
         # Mic setup wizard — create on Qt thread
         self.mic_setup_wizard = None
@@ -1358,7 +1369,7 @@ class DictationApp:
                 self.wake_word_debug_window = WakeWordDebugQt(self)
             self._schedule_ui(_init_wwd)
         except ImportError:
-            print("[INIT] WakeWordDebugQt unavailable")
+            logger.debug("[INIT] WakeWordDebugQt unavailable")
 
         # Listening state indicator overlay — must be created on the Qt thread.
         # ListeningIndicator is a QWidget; creating it on the main thread
@@ -1392,9 +1403,9 @@ class DictationApp:
                         daemon=True,
                         name="vision-warmup",
                     ).start()
-                    print("[VISION] Warmup started in background.")
+                    logger.info("[VISION] Warmup started in background.")
             except Exception as e:
-                print(f"[VISION] Init failed: {e}")
+                logger.exception(f"[VISION] Init failed: {e}")
                 self._vision_bridge = None
 
         # Command cheat sheet overlay
@@ -1421,7 +1432,7 @@ class DictationApp:
                     from samsara.ui.tutorial_qt import show_tutorial
                     show_tutorial(self)
                 except Exception as _e:
-                    print(f"[TUTORIAL] Failed to launch tutorial: {_e}")
+                    logger.exception(f"[TUTORIAL] Failed to launch tutorial: {_e}")
             self._schedule_ui(_init_tutorial)
 
         # Snooze state
@@ -1463,7 +1474,7 @@ class DictationApp:
         from samsara.hints import HintManager
         self.hints = HintManager(self)
 
-        print("[INIT] Initializing TTS...")
+        logger.info("[INIT] Initializing TTS...")
         # Gesture input lane (optional; off by default)
         self._camera_service = None
         self._gesture_loop = None
@@ -1479,18 +1490,18 @@ class DictationApp:
                 tts_engine_name = self.config.get('tts', {}).get('engine', 'winrt').lower()
                 if tts_engine_name == 'edge':
                     self.tts_engine = EdgeTTSEngine()
-                    print("[TTS] Initialized EdgeTTS engine (Azure Neural voices)")
+                    logger.info("[TTS] Initialized EdgeTTS engine (Azure Neural voices)")
                 else:
                     self.tts_engine = WinRTEngine()
-                    print("[TTS] Initialized WinRT engine")
+                    logger.info("[TTS] Initialized WinRT engine")
                 self.audio_coordinator = AudioCoordinator(
                     self,
                     engine=self.tts_engine,
                     config=self.config.get('audio_coordinator', {}),
                 )
-                print("[TTS] AudioCoordinator ready")
+                logger.info("[TTS] AudioCoordinator ready")
             except Exception as e:
-                print(f"[TTS] Failed to initialize: {e}")
+                logger.exception(f"[TTS] Failed to initialize: {e}")
                 self.tts_engine = None
                 self.audio_coordinator = None
         _boot("TTS engine init")
@@ -1506,9 +1517,9 @@ class DictationApp:
             self._smart_actions_session = SmartActionsSession(
                 window_minutes=sa_config.get('session_window_minutes', 5))
             self._smart_actions_tools = ToolDispatcher(self, sa_config)
-            print("[SMART ACTIONS] Phase 2 bridge/session/tools initialized")
+            logger.info("[SMART ACTIONS] Phase 2 bridge/session/tools initialized")
         except Exception as e:
-            print(f"[SMART ACTIONS] Phase 2 init failed: {e}")
+            logger.exception(f"[SMART ACTIONS] Phase 2 init failed: {e}")
             self._smart_actions_bridge = None
             self._smart_actions_session = None
             self._smart_actions_tools = None
@@ -1586,13 +1597,13 @@ class DictationApp:
             logger.info(f"[BOOT-DIAG] SLOW STEP: _start_ace_engine {_dt:.0f}ms")
 
         mode = self.config.get('mode', 'hold')
-        print(f"Dictation app starting...")
-        print(f"Mode: {mode}")
-        print(f"Hotkey: [{self.config['hotkey']}]")
-        print(f"Continuous hotkey: [{self.config.get('continuous_hotkey', 'ctrl+alt+d')}]")
-        print(f"Wake word hotkey: [{self.config.get('wake_word_hotkey', 'ctrl+alt+w')}]")
-        print(f"Using model: {self.config['model_size']}")
-        print(f"Hotkey detection: state-based (simultaneous key support)")
+        logger.info(f"Dictation app starting...")
+        logger.info(f"Mode: {mode}")
+        logger.info(f"Hotkey: [{self.config['hotkey']}]")
+        logger.info(f"Continuous hotkey: [{self.config.get('continuous_hotkey', 'ctrl+alt+d')}]")
+        logger.info(f"Wake word hotkey: [{self.config.get('wake_word_hotkey', 'ctrl+alt+w')}]")
+        logger.info(f"Using model: {self.config['model_size']}")
+        logger.info(f"Hotkey detection: state-based (simultaneous key support)")
 
         # Main hub window (sidebar nav into History/Dictionary/Settings).
         # Must be created on the Qt thread — same as all other QWidgets.
@@ -1617,9 +1628,9 @@ class DictationApp:
                 self._on_config_file_changed,
             )
             self._config_watcher.start()
-            print("[CONFIG] File watcher started")
+            logger.info("[CONFIG] File watcher started")
         except Exception as _cw_err:
-            print(f"[CONFIG] File watcher unavailable: {_cw_err}")
+            logger.warning(f"[CONFIG] File watcher unavailable: {_cw_err}")
 
         self.create_tray_icon()
 
@@ -1628,8 +1639,8 @@ class DictationApp:
         if self.splash:
             try:
                 self.splash.set_status(status)
-            except:
-                pass
+            except Exception as e:
+                logger.debug(f"Splash status update failed: {e}")
 
     def _close_splash_post_load(self):
         """Close the splash screen after the model has finished loading.
@@ -1638,7 +1649,7 @@ class DictationApp:
             try:
                 self.splash.close()
             except Exception as e:
-                print(f"[SPLASH] close() failed: {e}")
+                logger.exception(f"[SPLASH] close() failed: {e}")
             self.splash = None
 
     def _start_ace_engine(self) -> None:
@@ -1696,9 +1707,9 @@ class DictationApp:
                 app=self,
             )
 
-            print("[ACE] Engine started — hold / continuous / wake dictation ready")
+            logger.debug("[ACE] Engine started — hold / continuous / wake dictation ready")
         except Exception as exc:
-            print(f"[ACE] Engine failed to start: {exc}")
+            logger.exception(f"[ACE] Engine failed to start: {exc}")
             self._ace_engine         = None
             self._dictation_consumer = None
 
@@ -1722,9 +1733,9 @@ class DictationApp:
                 max_seconds=30.0,
             )
             self._ace_debug_rec.start_recording()
-            print(f"[ACE] Debug capture active -> {output_dir}")
+            logger.debug(f"[ACE] Debug capture active -> {output_dir}")
         except Exception as exc:
-            print(f"[ACE] Debug recorder failed to start: {exc}")
+            logger.exception(f"[ACE] Debug recorder failed to start: {exc}")
             self._ace_debug_rec = None
 
     def _stop_ace_engine(self) -> None:
@@ -1739,23 +1750,23 @@ class DictationApp:
                 try:
                     consumer.deactivate()
                 except Exception as exc:
-                    print(f"[ACE] {_name} consumer deactivate error: {exc}")
+                    logger.exception(f"[ACE] {_name} consumer deactivate error: {exc}")
                 setattr(self, _attr, None)
 
         if self._ace_debug_rec is not None:
             try:
                 path = self._ace_debug_rec.stop_recording()
                 if path:
-                    print(f"[ACE] Final debug WAV: {path}")
+                    logger.debug(f"[ACE] Final debug WAV: {path}")
             except Exception as exc:
-                print(f"[ACE] DebugRecorder stop error: {exc}")
+                logger.exception(f"[ACE] DebugRecorder stop error: {exc}")
             self._ace_debug_rec = None
 
         if self._ace_engine is not None:
             try:
                 self._ace_engine.stop()
             except Exception as exc:
-                print(f"[ACE] Engine stop error: {exc}")
+                logger.exception(f"[ACE] Engine stop error: {exc}")
             self._ace_engine = None
 
     def _show_startup_error(self, message: str):
@@ -2024,19 +2035,23 @@ class DictationApp:
                 _loaded_from_disk = True
             except json.JSONDecodeError as _je:
                 bak_path = self.config_path.with_suffix('.json.bak')
-                print(f"[CONFIG] config.json has invalid JSON: {_je}")
+                logger.exception(f"[CONFIG] config.json has invalid JSON: {_je}")
                 if bak_path.exists():
                     try:
                         with open(bak_path, 'r') as f:
                             self.config = json.load(f)
                         _loaded_from_disk = True
-                        print("[CONFIG] Loaded from config.json.bak (backup)")
-                    except Exception:
-                        print("[CONFIG] Backup also invalid — using defaults")
+                        logger.info("[CONFIG] Loaded from config.json.bak (backup)")
+                    except Exception as _bak_err:
+                        logger.error(f"[CONFIG] Backup also invalid — using defaults: {_bak_err}")
                 else:
-                    print("[CONFIG] No backup found — using defaults")
-            except Exception:
-                pass  # fall through to defaults below
+                    logger.warning("[CONFIG] No backup found — using defaults")
+            except Exception as _cfg_err:
+                # config IO failure the user should be able to find in the log
+                # even though load_config() itself must still fall through to
+                # defaults here -- a broken/unreadable config.json must never
+                # prevent the app from starting.
+                logger.exception(f"[CONFIG] config.json read failed — using defaults: {_cfg_err}")
 
         if _loaded_from_disk:
             # Migrate old flat wake word config to new nested structure
@@ -2067,12 +2082,12 @@ class DictationApp:
         if old_mode in ('wake_word', 'combined'):
             self.config['wake_word_enabled'] = True
             self.config['mode'] = 'hold'
-            print(f"[MIGRATE] mode='{old_mode}' -> mode='hold' + wake_word_enabled=True")
+            logger.info(f"[MIGRATE] mode='{old_mode}' -> mode='hold' + wake_word_enabled=True")
 
         # Phase 1 multi-wakeword: inject wake_targets default when missing.
         if 'wake_targets' not in self.config:
             self.config['wake_targets'] = default_config.get('wake_targets', [])
-            print("[MIGRATE] Injected default wake_targets (Phase 1 multi-wakeword)")
+            logger.info("[MIGRATE] Injected default wake_targets (Phase 1 multi-wakeword)")
 
         # Check if we have old flat config but no new nested config
         if 'wake_word_config' not in self.config:
@@ -2099,7 +2114,7 @@ class DictationApp:
             # load_config() caller, so do not re-acquire (threading.Lock is
             # not reentrant and would deadlock).
             self.save_config()
-            print("[CONFIG] Migrated wake word settings to new format")
+            logger.info("[CONFIG] Migrated wake word settings to new format")
         else:
             # Ensure all nested keys exist (for configs created between versions)
             self._deep_update(self.config['wake_word_config'], default_config['wake_word_config'])
@@ -2146,7 +2161,7 @@ class DictationApp:
                     last_snap = getattr(self, '_config_last_disk_snapshot', None) or {}
                     merged = _three_way_merge(last_snap, self.config, on_disk)
                 except (json.JSONDecodeError, OSError) as e:
-                    print(f"[WARN] Could not read on-disk config for merge: {e}")
+                    logger.warning(f"[WARN] Could not read on-disk config for merge: {e}")
                     merged = self.config
 
             # 1. Serialize to temp file. If json.dump raises, the real
@@ -2164,7 +2179,7 @@ class DictationApp:
                 try:
                     shutil.copy2(self.config_path, bak_path)
                 except OSError as e:
-                    print(f"[WARN] Could not backup config to .bak: {e}")
+                    logger.warning(f"[WARN] Could not backup config to .bak: {e}")
 
             # 3. Write serialised config directly to config.json.  open() in
             #    'w' mode succeeds even while other handles have the file open
@@ -2176,8 +2191,8 @@ class DictationApp:
                 f.write(tmp_text)
             try:
                 tmp_path.unlink()
-            except OSError:
-                pass
+            except OSError as e:
+                logger.debug(f"Temp config file cleanup failed: {e}")
 
             # 4. Sync in-memory config and snapshot to what was written.
             self.config = merged
@@ -2187,9 +2202,9 @@ class DictationApp:
             try:
                 if tmp_path.exists():
                     tmp_path.unlink()
-            except OSError:
-                pass
-            print(f"[ERROR] save_config failed: {e}")
+            except OSError as _cleanup_err:
+                logger.debug(f"Temp config file cleanup failed after save error: {_cleanup_err}")
+            logger.exception(f"[ERROR] save_config failed: {e}")
             raise
 
     def persist_config(self) -> None:
@@ -2272,10 +2287,10 @@ class DictationApp:
             with open(self.config_path, 'r') as f:
                 new_disk = json.load(f)
         except json.JSONDecodeError as e:
-            print(f"[CONFIG] reload_config_from_disk: invalid JSON — {e}")
+            logger.exception(f"[CONFIG] reload_config_from_disk: invalid JSON — {e}")
             return 0
         except OSError as e:
-            print(f"[CONFIG] reload_config_from_disk: could not read file — {e}")
+            logger.exception(f"[CONFIG] reload_config_from_disk: could not read file — {e}")
             return 0
         return self._apply_disk_config(new_disk)
 
@@ -2309,7 +2324,7 @@ class DictationApp:
             self._config_last_disk_snapshot = copy.deepcopy(new_disk_config)
 
         for key, (old_v, new_v) in changed.items():
-            print(f"[CONFIG] External edit detected: {key} changed "
+            logger.info(f"[CONFIG] External edit detected: {key} changed "
                   f"{old_v!r} -> {new_v!r}")
 
         # Fire the same side-effects as update_config
@@ -2317,17 +2332,17 @@ class DictationApp:
             try:
                 self.apply_mode(changed['mode'][1])
             except Exception as e:
-                print(f"[CONFIG] apply_mode error: {e}")
+                logger.exception(f"[CONFIG] apply_mode error: {e}")
         if 'wake_word_enabled' in changed:
             try:
                 self.set_wake_word_enabled(changed['wake_word_enabled'][1])
             except Exception as e:
-                print(f"[CONFIG] set_wake_word_enabled error: {e}")
+                logger.exception(f"[CONFIG] set_wake_word_enabled error: {e}")
         if 'microphone' in changed:
             try:
                 self.capture_rate = self._detect_capture_rate(changed['microphone'][1])
             except Exception as e:
-                print(f"[CONFIG] capture_rate update error: {e}")
+                logger.exception(f"[CONFIG] capture_rate update error: {e}")
         if 'wake_word_config' in changed:
             try:
                 new_ww = changed['wake_word_config'][1]
@@ -2343,7 +2358,7 @@ class DictationApp:
                             new_phrase, threshold=oww_threshold
                         )
             except Exception as e:
-                print(f"[CONFIG] wake_word_config update error: {e}")
+                logger.exception(f"[CONFIG] wake_word_config update error: {e}")
 
         return len(changed)
 
@@ -2355,12 +2370,12 @@ class DictationApp:
         """
         for key, value in kwargs.items():
             if not hasattr(self, key):
-                print(f"[WARN] Unknown state key: {key}")
+                logger.warning(f"[WARN] Unknown state key: {key}")
                 continue
             old = getattr(self, key)
             if old != value:
                 setattr(self, key, value)
-                print(f"[STATE] {key}: {old} -> {value}")
+                logger.debug(f"[STATE] {key}: {old} -> {value}")
 
     def _detect_capture_rate(self, device_id):
         """Query the native sample rate of a device. Falls back to DEFAULT_CAPTURE_RATE."""
@@ -2368,10 +2383,10 @@ class DictationApp:
             if device_id is not None:
                 info = sd.query_devices(device_id)
                 rate = int(info['default_samplerate'])
-                print(f"[AUDIO] Device {device_id} native rate: {rate}Hz")
+                logger.info(f"[AUDIO] Device {device_id} native rate: {rate}Hz")
                 return rate
         except Exception as e:
-            print(f"[WARN] Could not query device {device_id} rate: {e}")
+            logger.exception(f"[WARN] Could not query device {device_id} rate: {e}")
         return DEFAULT_CAPTURE_RATE
 
     def _run_calibration_if_auto(self):
@@ -2380,7 +2395,7 @@ class DictationApp:
         if mode != 'auto':
             thresh = self.config.get('wake_word_config', {}).get('audio', {}).get(
                 'speech_threshold', DEFAULT_SPEECH_THRESHOLD)
-            print(f"[CAL] Threshold mode: manual ({thresh:.4f})")
+            logger.debug(f"[CAL] Threshold mode: manual ({thresh:.4f})")
             return
 
         mic_id = self.config.get('microphone')
@@ -2389,11 +2404,11 @@ class DictationApp:
             rms_samples = measure_ambient_rms(mic_id, self.capture_rate)
             threshold = calibrate_threshold(rms_samples, multiplier=multiplier)
             ambient = float(np.median(rms_samples)) if rms_samples else 0.0
-            print(f"[CAL] Ambient RMS: {ambient:.4f} | "
+            logger.debug(f"[CAL] Ambient RMS: {ambient:.4f} | "
                   f"Multiplier: {multiplier}x | Threshold: {threshold:.4f}")
         except Exception as e:
             threshold = DEFAULT_SPEECH_THRESHOLD
-            print(f"[CAL] Calibration failed ({e}), using default {threshold:.4f}")
+            logger.exception(f"[CAL] Calibration failed ({e}), using default {threshold:.4f}")
 
         # Apply to wake word audio config
         with self._config_lock:
@@ -2494,7 +2509,7 @@ class DictationApp:
                     # Convert lists back to tuples
                     return [tuple(item) for item in data]
         except Exception as e:
-            print(f"Failed to load history: {e}")
+            logger.exception(f"Failed to load history: {e}")
         return []
 
     def save_history(self):
@@ -2503,7 +2518,7 @@ class DictationApp:
             with open(self.history_path, 'w', encoding='utf-8') as f:
                 json.dump(self.history, f, ensure_ascii=False, indent=2)
         except Exception as e:
-            print(f"Failed to save history: {e}")
+            logger.exception(f"Failed to save history: {e}")
 
     def get_transcription_params(self):
         """Get transcription parameters based on performance mode setting.
@@ -2698,8 +2713,8 @@ class DictationApp:
                 buf = ctypes.create_unicode_buffer(length + 1)
                 user32.GetWindowTextW(hwnd, buf, length + 1)
                 return buf.value
-        except Exception:
-            pass
+        except Exception as e:
+            logger.debug(f"Could not read foreground window title: {e}")
         return "Unknown"
 
     def _log_history(self, raw_text, display_text=None, duration_ms=0,
@@ -2726,7 +2741,7 @@ class DictationApp:
                 matched_command=matched_command,
             )
         except Exception as e:
-            print(f"[HISTORY] log failed: {e}")
+            logger.exception(f"[HISTORY] log failed: {e}")
 
     def _notify_main_window(self, text):
         """Direct callback into the hub window (no event bus).
@@ -2741,7 +2756,7 @@ class DictationApp:
         try:
             win.on_dictation_complete(text)
         except Exception as e:
-            print(f"[UI] main window notify failed: {e}")
+            logger.exception(f"[UI] main window notify failed: {e}")
 
     def _is_audio_capture_active(self) -> bool:
         """True if ANY audio input stream is currently open.
@@ -2773,10 +2788,10 @@ class DictationApp:
                 if self.config.get('microphone') != mic['id']:
                     old_idx = self.config.get('microphone')
                     self.config['microphone'] = mic['id']
-                    print(f"[MIC] Reconciled '{stored_name}': index {old_idx} -> {mic['id']}")
+                    logger.debug(f"[MIC] Reconciled '{stored_name}': index {old_idx} -> {mic['id']}")
                 return  # found — whether index changed or not, we're done
 
-        print(f"[MIC] Selected device '{stored_name}' not currently available "
+        logger.debug(f"[MIC] Selected device '{stored_name}' not currently available "
               "— keeping last-known index")
 
     def switch_microphone(self, mic_id):
@@ -2815,7 +2830,7 @@ class DictationApp:
         self.persist_config()
 
         mic_name = self.get_current_microphone_name()
-        print(f"[OK] Switched to microphone: {mic_name} ({self.capture_rate}Hz)")
+        logger.info(f"[OK] Switched to microphone: {mic_name} ({self.capture_rate}Hz)")
 
         # Restart ACE engine on new device — bumps device_epoch so any
         # in-flight consumer sees the discontinuity via frame.device_epoch.
@@ -2826,9 +2841,9 @@ class DictationApp:
                 self._ace_engine._config['microphone']    = mic_id
                 self._ace_engine._config['_capture_rate'] = self.capture_rate
                 self._ace_engine.start()
-                print("[ACE] Engine restarted on new device")
+                logger.debug("[ACE] Engine restarted on new device")
             except Exception as exc:
-                print(f"[ACE] Engine restart on mic switch failed: {exc}")
+                logger.exception(f"[ACE] Engine restart on mic switch failed: {exc}")
 
         # Restart whatever was running, now bound to the new device
         if was_wake_word:
@@ -2846,7 +2861,7 @@ class DictationApp:
         def load():
           try:
             self.loading_model = True
-            print("[INIT] Loading Whisper model...")
+            logger.info("[INIT] Loading Whisper model...")
             
             # Determine compute device with detailed logging
             device = self.config['device']
@@ -2857,7 +2872,7 @@ class DictationApp:
             # load time with "cublas64_12.dll not found".
             from samsara.cuda_detect import resolve_device, is_cuda_available
             if device == "cuda" and not is_cuda_available():
-                print("[GPU] Config requested CUDA but CUDA pack not detected — "
+                logger.debug("[GPU] Config requested CUDA but CUDA pack not detected — "
                       "falling back to CPU. Install Samsara-CUDA-Pack to enable GPU.")
                 device = "cpu"
 
@@ -2867,16 +2882,16 @@ class DictationApp:
                     cuda_available = 'cuda' in ctranslate2.get_supported_compute_types('cuda')
                     if cuda_available:
                         device = "cuda"
-                        print("[GPU] CUDA available via ctranslate2")
+                        logger.debug("[GPU] CUDA available via ctranslate2")
                     else:
                         device = "cpu"
-                        print("[CPU] CUDA not available, using CPU")
+                        logger.debug("[CPU] CUDA not available, using CPU")
                 except Exception as e:
                     device = "cpu"
-                    print(f"[CPU] Could not detect GPU: {e}")
+                    logger.exception(f"[CPU] Could not detect GPU: {e}")
             
             compute_type = "float16" if device == "cuda" else "int8"
-            print(f"[CONFIG] Model: {self.config['model_size']}, Device: {device}, Compute: {compute_type}")
+            logger.info(f"[CONFIG] Model: {self.config['model_size']}, Device: {device}, Compute: {compute_type}")
             
             load_start = time.time()
             self.model = WhisperModel(
@@ -2894,7 +2909,7 @@ class DictationApp:
             
             self.model_loaded = True
             self.loading_model = False
-            print(f"[OK] Model loaded in {load_time:.1f}s ({device}, {compute_type})")
+            logger.info(f"[OK] Model loaded in {load_time:.1f}s ({device}, {compute_type})")
 
             # Marshal to UI thread: close the splash now that the app is
             # truly ready to dictate. Until this point, the splash has been
@@ -2903,35 +2918,35 @@ class DictationApp:
                 if self.splash:
                     self._schedule_ui(self._close_splash_post_load)
             except Exception as e:
-                print(f"[SPLASH] Could not close splash: {e}")
+                logger.exception(f"[SPLASH] Could not close splash: {e}")
 
             _boot_log = getattr(self, '_boot_log', lambda s: None)
-            print("[INIT] Loading Silero VAD...")
+            logger.info("[INIT] Loading Silero VAD...")
             # Load Silero VAD for real-time speech gating (async-safe: if this
             # fails, the wake callback falls back to RMS).
             self._load_vad_model()
             _boot_log("async: Silero VAD load")
 
-            print("[INIT] Loading OpenWakeWord pre-filter...")
+            logger.info("[INIT] Loading OpenWakeWord pre-filter...")
             self._load_oww_model()
             self._load_wake_target_models()
             _boot_log("async: OpenWakeWord model load")
 
-            print("Ready for dictation.")
+            logger.info("Ready for dictation.")
 
             # Auto-start modes that require always-on listening
             mode = self.config.get('mode', 'hold')
             if mode == 'continuous':
-                print("[AUTO] Starting continuous mode...")
+                logger.info("[AUTO] Starting continuous mode...")
                 self.start_continuous_mode()
 
-            print("[INIT] Starting audio streams...")
+            logger.info("[INIT] Starting audio streams...")
             # Hold/toggle: ACE engine ring provides rolling pre-buffer (ACE-03).
             # No separate prebuffer PortAudio stream needed at startup.
 
             # Auto-start wake word listener if enabled (works alongside any mode)
             if self.config.get('wake_word_enabled', False):
-                print("[AUTO] Starting wake word listener...")
+                logger.info("[AUTO] Starting wake word listener...")
                 self.start_wake_word_mode()
             _boot_log("async: wake word + audio stream start")
 
@@ -2939,7 +2954,7 @@ class DictationApp:
             if self.config.get('gesture', {}).get('enabled', False):
                 self._start_gesture_lane()
 
-            print("[INIT] Startup complete.")
+            logger.info("[INIT] Startup complete.")
 
             # Ensure clean state — reset any recording flags that may have
             # been tripped by keyboard events during startup
@@ -2995,8 +3010,8 @@ class DictationApp:
                 elif 'win' in name or 'super' in name or 'cmd' in name:
                     return 'win'
                 return name
-        except:
-            pass
+        except Exception as e:
+            logger.debug(f"Key name normalization failed: {e}")
         return None
     
     def get_active_keys(self):
@@ -3051,8 +3066,8 @@ class DictationApp:
             try:
                 if keyboard.is_pressed(key):
                     pressed.append(key)
-            except:
-                pass
+            except Exception as e:
+                logger.debug(f"is_pressed check failed for {key!r}: {e}")
         return '+'.join(pressed) if pressed else 'none'
 
     def on_key_press(self, key):
@@ -3096,9 +3111,9 @@ class DictationApp:
         # Check for command-only hotkey (hold to record, match commands only, no text output)
         if self.check_hotkey_state(command_hotkey) and not self.hotkey_pressed and not self.recording:
             if self._stop_in_flight:
-                print("[HOTKEY] Ignored re-trigger while stop in flight")
+                logger.debug("[HOTKEY] Ignored re-trigger while stop in flight")
                 return
-            print(f"[HOTKEY] Command hotkey detected: {command_hotkey}")
+            logger.debug(f"[HOTKEY] Command hotkey detected: {command_hotkey}")
             self.hotkey_pressed = True
             self.command_mode_recording = True
             self.start_recording(streaming=False)
@@ -3107,7 +3122,7 @@ class DictationApp:
         # Undo hotkey (works in any mode, edge-triggered)
         undo_hotkey = self.config.get('undo_hotkey', 'ctrl+alt+z')
         if self.check_hotkey_state(undo_hotkey) and not self.hotkey_pressed:
-            print(f"[HOTKEY] Undo hotkey detected: {undo_hotkey}")
+            logger.debug(f"[HOTKEY] Undo hotkey detected: {undo_hotkey}")
             self.hotkey_pressed = True
             threading.Thread(target=self.undo_last_dictation, daemon=True).start()
             return
@@ -3115,14 +3130,14 @@ class DictationApp:
         # Correction report hotkey (works in any mode, edge-triggered)
         correction_hotkey = self.config.get('correction_hotkey', 'ctrl+alt+r')
         if self.check_hotkey_state(correction_hotkey) and not self.hotkey_pressed:
-            print(f"[HOTKEY] Correction hotkey detected: {correction_hotkey}")
+            logger.debug(f"[HOTKEY] Correction hotkey detected: {correction_hotkey}")
             self.hotkey_pressed = True
             self._schedule_ui(self._report_correction_dialog)
             return
 
         # Check for wake word enable/disable toggle (works in any mode)
         if self.check_hotkey_state(wake_hotkey) and not self.hotkey_pressed:
-            print(f"[HOTKEY] Wake word hotkey detected: {wake_hotkey}")
+            logger.debug(f"[HOTKEY] Wake word hotkey detected: {wake_hotkey}")
             self.hotkey_pressed = True
             new_state = not self.config.get('wake_word_enabled', False)
             threading.Thread(target=self.set_wake_word_enabled,
@@ -3131,7 +3146,7 @@ class DictationApp:
         
         # Check for continuous mode toggle (works in any mode)
         if self.check_hotkey_state(cont_hotkey) and not self.hotkey_pressed:
-            print(f"[HOTKEY] Continuous mode hotkey detected: {cont_hotkey}")
+            logger.debug(f"[HOTKEY] Continuous mode hotkey detected: {cont_hotkey}")
             self.hotkey_pressed = True
             self.toggle_continuous_mode()
             return
@@ -3144,7 +3159,7 @@ class DictationApp:
                 and self.config.get('continuous_commit_trigger', DEFAULT_CONTINUOUS_COMMIT_TRIGGER) == 'key'):
             commit_hotkey = self.config.get('continuous_commit_hotkey', DEFAULT_CONTINUOUS_COMMIT_HOTKEY)
             if self.check_hotkey_state(commit_hotkey) and not self.hotkey_pressed:
-                print(f"[HOTKEY] Continuous commit hotkey detected: {commit_hotkey}")
+                logger.debug(f"[HOTKEY] Continuous commit hotkey detected: {commit_hotkey}")
                 self.hotkey_pressed = True
                 if self._continuous_consumer is not None:
                     self._continuous_consumer.commit_now()
@@ -3152,7 +3167,7 @@ class DictationApp:
 
         # Check for cancel recording hotkey (only when recording)
         if self.check_hotkey_state(cancel_hotkey) and self.recording:
-            print(f"[HOTKEY] Cancel hotkey detected: {cancel_hotkey}")
+            logger.debug(f"[HOTKEY] Cancel hotkey detected: {cancel_hotkey}")
             self.cancel_recording()
             return
 
@@ -3163,14 +3178,14 @@ class DictationApp:
             
             # Check for complete hotkey (user did the task, gets streak credit)
             if self.check_hotkey_state(complete_hotkey):
-                print(f"[HOTKEY] Alarm complete hotkey detected: {complete_hotkey}")
+                logger.debug(f"[HOTKEY] Alarm complete hotkey detected: {complete_hotkey}")
                 self.alarm_manager.complete()
                 self.play_sound('success')  # Success sound for completion
                 return
             
             # Check for dismiss hotkey (just silence, no credit, breaks streak)
             if self.check_hotkey_state(dismiss_hotkey):
-                print(f"[HOTKEY] Alarm dismiss hotkey detected: {dismiss_hotkey}")
+                logger.debug(f"[HOTKEY] Alarm dismiss hotkey detected: {dismiss_hotkey}")
                 self.alarm_manager.dismiss()
                 self.play_sound('stop')  # Neutral sound for dismissal
                 return
@@ -3187,9 +3202,9 @@ class DictationApp:
                 and main_event_held
                 and not self.hotkey_pressed):
             if self._stop_in_flight:
-                print("[HOTKEY] Ignored re-trigger while stop in flight")
+                logger.debug("[HOTKEY] Ignored re-trigger while stop in flight")
                 return
-            print(f"[HOTKEY] Main hotkey detected: {main_hotkey} (mode: {mode})")
+            logger.debug(f"[HOTKEY] Main hotkey detected: {main_hotkey} (mode: {mode})")
             if mode == 'hold':
                 self.hotkey_pressed = True
                 # Ctrl+Shift always drives batch mode -- streaming uses
@@ -3240,13 +3255,13 @@ class DictationApp:
                         self._stop_in_flight = False
 
                 if self.command_mode_recording and self.recording:
-                    print(f"[HOTKEY] Command hotkey released, stopping recording")
+                    logger.debug(f"[HOTKEY] Command hotkey released, stopping recording")
                     self._stop_in_flight = True
                     threading.Thread(target=_deferred_stop, daemon=True,
                                      name='stop-rec').start()
                     self.hotkey_pressed = False
                 elif mode == 'hold' and self.recording:
-                    print(f"[HOTKEY] Main hotkey released, stopping recording")
+                    logger.debug(f"[HOTKEY] Main hotkey released, stopping recording")
                     self._stop_in_flight = True
                     threading.Thread(target=_deferred_stop, daemon=True,
                                      name='stop-rec').start()
@@ -3282,7 +3297,7 @@ class DictationApp:
             self._capslock_hook = keyboard.hook_key(
                 'caps lock', self._on_capslock_event, suppress=True)
         except Exception as e:
-            print(f"[CAPSLOCK] Failed to install hook: {e}")
+            logger.error(f"[CAPSLOCK] Failed to install hook: {e}")
             self._capslock_hook = None
             return
 
@@ -3292,8 +3307,8 @@ class DictationApp:
         def _cleanup_capslock_hook():
             try:
                 keyboard.unhook(hook_ref)
-            except Exception:
-                pass
+            except Exception as e:
+                logger.debug(f"[CAPSLOCK] atexit unhook failed: {e}")
 
         atexit.register(_cleanup_capslock_hook)
 
@@ -3304,9 +3319,9 @@ class DictationApp:
             return
         try:
             keyboard.unhook(self._capslock_hook)
-            print("[CAPSLOCK] Hook released — CapsLock returned to OS")
+            logger.info("[CAPSLOCK] Hook released — CapsLock returned to OS")
         except Exception as e:
-            print(f"[CAPSLOCK] Failed to release hook: {e}")
+            logger.exception(f"[CAPSLOCK] Failed to release hook: {e}")
         self._capslock_hook = None
         self._capslock_held = False
 
@@ -3336,7 +3351,7 @@ class DictationApp:
                     target=self._capslock_stop_streaming,
                     daemon=True, name="capslock-stop").start()
         except Exception as e:
-            print(f"[CAPSLOCK] event handler crashed: {e}")
+            logger.exception(f"[CAPSLOCK] event handler crashed: {e}")
 
     def _capslock_start_streaming(self):
         """Worker: start a streaming-mode recording. Wrapped so we can
@@ -3344,20 +3359,20 @@ class DictationApp:
         try:
             if self.recording:
                 return
-            print("[CAPSLOCK] press -> streaming start")
+            logger.info("[CAPSLOCK] press -> streaming start")
             self.start_recording(streaming=True)
         except Exception as e:
-            print(f"[CAPSLOCK] start failed: {e}")
+            logger.exception(f"[CAPSLOCK] start failed: {e}")
 
     def _capslock_stop_streaming(self):
         """Worker: stop the streaming recording on CapsLock release."""
         try:
             if not self.recording:
                 return
-            print("[CAPSLOCK] release -> streaming stop")
+            logger.info("[CAPSLOCK] release -> streaming stop")
             self.stop_recording()
         except Exception as e:
-            print(f"[CAPSLOCK] stop failed: {e}")
+            logger.exception(f"[CAPSLOCK] stop failed: {e}")
 
     # ---- Mouse 4 command mode (walkie-talkie hold-to-talk) ----------------
 
@@ -3382,9 +3397,9 @@ class DictationApp:
                 suppress_button=suppress_btn,
             )
             self._mouse_hook.start()
-            print(f"[CMD MODE] Mouse hook started (suppress={suppress_btn})")
+            logger.info(f"[CMD MODE] Mouse hook started (suppress={suppress_btn})")
         except Exception as e:
-            print(f"[CMD MODE] Mouse hook failed to start: {e}")
+            logger.exception(f"[CMD MODE] Mouse hook failed to start: {e}")
             self._mouse_hook = None
 
     def _on_command_button(self, button_name, pressed):
@@ -3529,13 +3544,13 @@ class DictationApp:
                     # after dispatch_utterance returns -- not duplicated here.
                 return CommandDispatchResult(matched=True, phrase=result)
 
-            print(f'[CMD] No command matched: "{text}"')
+            logger.info(f'[CMD] No command matched: "{text}"')
             if self.command_mode_active:
                 self._command_mode_miss_count += 1
                 cm_cfg = self.config.get('command_mode', {})
                 miss_limit = cm_cfg.get('miss_limit', 5)
                 if self._command_mode_miss_count >= miss_limit:
-                    print(f'[CMD MODE] Miss limit ({miss_limit}) reached')
+                    logger.info(f'[CMD MODE] Miss limit ({miss_limit}) reached')
                     self.exit_command_mode()
             return CommandDispatchResult(matched=False, phrase=None)
 
@@ -3560,7 +3575,7 @@ class DictationApp:
             self._update_mode_overlay(mode)
 
         def _on_focus_lock_revert() -> None:
-            print('[SESSION] Focus-lock revert -- foreground window changed, suppressing injection')
+            logger.info('[SESSION] Focus-lock revert -- foreground window changed, suppressing injection')
             self.play_sound('focus_lock_revert')
             self._update_mode_overlay(SessionMode.COMMAND)
 
@@ -3568,7 +3583,7 @@ class DictationApp:
             self.play_sound('scratch_success' if success else 'scratch_refuse')
 
         def _on_abort() -> None:
-            print('[SESSION] Global abort phrase -- exiting command mode')
+            logger.info('[SESSION] Global abort phrase -- exiting command mode')
             self.exit_command_mode()
 
         ww_cfg = self.config.get('wake_word_config', {})
@@ -3604,7 +3619,7 @@ class DictationApp:
         with self._ava_session_dispatch_lock:
             if self._ava_session_request_in_flight:
                 if len(self._ava_session_dispatch_queue) >= self._ava_session_dispatch_queue.maxlen:
-                    print('[AVA-SESSION] Queue full (3) -- dropping oldest queued utterance')
+                    logger.info('[AVA-SESSION] Queue full (3) -- dropping oldest queued utterance')
                     # No existing queue-warning earcon in this codebase --
                     # reuse scratch_refuse (Phase 1's "this didn't go
                     # through" sound) rather than adding a new asset.
@@ -3663,7 +3678,7 @@ class DictationApp:
         self._command_mode_miss_count = 0
         self._command_mode_session_start = time.monotonic()
         self._command_mode_ghost_tap = False
-        print("[CMD MODE] Entering command mode")
+        logger.info("[CMD MODE] Entering command mode")
         if hasattr(self, 'listening_indicator'):
             self._schedule_ui(self.listening_indicator.set_command_mode, True)
         cfg = self.config.get('command_mode', {})
@@ -3718,8 +3733,8 @@ class DictationApp:
         # transcribe() can discard the audio without executing commands.
         self._command_mode_ghost_tap = (hold_ms < debounce_ms)
         if self._command_mode_ghost_tap:
-            print(f"[CMD MODE] Ghost tap ({hold_ms:.0f}ms < {debounce_ms}ms) — audio will be discarded")
-        print("[CMD MODE] Exiting command mode")
+            logger.info(f"[CMD MODE] Ghost tap ({hold_ms:.0f}ms < {debounce_ms}ms) — audio will be discarded")
+        logger.info("[CMD MODE] Exiting command mode")
         self._cancel_command_mode_inactivity_timer()
         # Unified session: session end always discards mode state --
         # re-entry (enter_command_mode) always starts fresh in COMMAND.
@@ -3755,7 +3770,7 @@ class DictationApp:
             self.ava_mode_active = True
         self._ava_mode_session_start = time.monotonic()
         self._ava_mode_ghost_tap = False
-        print("[AVA MODE] Entering Ava mode")
+        logger.info("[AVA MODE] Entering Ava mode")
         if hasattr(self, 'listening_indicator'):
             self._schedule_ui(self.listening_indicator.set_command_mode, True)
         threading.Thread(target=self._do_enter_ava_mode, daemon=True,
@@ -3782,8 +3797,8 @@ class DictationApp:
         debounce_ms = self.config.get('command_mode', {}).get('enter_debounce_ms', 200)
         self._ava_mode_ghost_tap = (hold_ms < debounce_ms)
         if self._ava_mode_ghost_tap:
-            print(f"[AVA MODE] Ghost tap ({hold_ms:.0f}ms < {debounce_ms}ms) — audio will be discarded")
-        print("[AVA MODE] Exiting Ava mode")
+            logger.info(f"[AVA MODE] Ghost tap ({hold_ms:.0f}ms < {debounce_ms}ms) — audio will be discarded")
+        logger.info("[AVA MODE] Exiting Ava mode")
         if hasattr(self, 'listening_indicator'):
             self._schedule_ui(self.listening_indicator.set_command_mode, False)
         was_recording = self.recording
@@ -3805,7 +3820,7 @@ class DictationApp:
                 return
             self.ai_command_mode_active = True
         self._ai_cmd_ready.clear()  # Mic gate: unblocks only after cue finishes
-        print("[AI-CMD] Entering AI command mode")
+        logger.info("[AI-CMD] Entering AI command mode")
         if hasattr(self, 'listening_indicator'):
             self._schedule_ui(self.listening_indicator.set_command_mode, True)
         threading.Thread(target=self._do_enter_ai_command_mode, daemon=True,
@@ -3842,15 +3857,15 @@ class DictationApp:
                 return
             self.ai_command_mode_active = False
         self._ai_cmd_ready.set()  # Unblock utterance gate if cue is still playing
-        print("[AI-CMD] Exiting AI command mode")
+        logger.info("[AI-CMD] Exiting AI command mode")
         if hasattr(self, 'listening_indicator'):
             self._schedule_ui(self.listening_indicator.set_command_mode, False)
         try:
             from samsara.ai_command_mode import cancel_queue, reset_cancel  # noqa: PLC0415
             cancel_queue()
             reset_cancel()
-        except Exception:
-            pass
+        except Exception as e:
+            logger.debug(f"[AI-CMD] Queue cancel/reset on exit failed: {e}")
         self.play_sound('stop')
 
     def _handle_ai_command_utterance(self, buffer: list, src_rate: int) -> None:
@@ -3862,10 +3877,10 @@ class DictationApp:
         Stop-words are checked before enqueue so cancel is always responsive.
         """
         if not self._ai_cmd_ready.wait(timeout=60):
-            print('[AI-CMD-UTT] Ready timeout -- dropping utterance')
+            logger.info('[AI-CMD-UTT] Ready timeout -- dropping utterance')
             return
         if self._wake_transcription_in_progress:
-            print('[AI-CMD-UTT] Transcription in progress -- skipping')
+            logger.info('[AI-CMD-UTT] Transcription in progress -- skipping')
             return
         self._wake_transcription_in_progress = True
         try:
@@ -3874,7 +3889,7 @@ class DictationApp:
             audio_duration = len(audio) / self.model_rate
             if audio_duration < 0.3:
                 return
-            print(f'[AI-CMD-UTT] Transcribing {audio_duration:.1f}s')
+            logger.info(f'[AI-CMD-UTT] Transcribing {audio_duration:.1f}s')
             transcribe_params = self.get_transcription_params()
             transcribe_params['vad_filter'] = False
             with self.model_lock:
@@ -3883,7 +3898,7 @@ class DictationApp:
             text = self.voice_training_window.apply_corrections(text)
             if not text:
                 return
-            print(f'[AI-CMD-UTT] "{text}"')
+            logger.info(f'[AI-CMD-UTT] "{text}"')
             text_lower = text.lower().strip()
             # Stop-word gate: cancel before touching the queue
             from samsara.ai_command_mode import (  # noqa: PLC0415
@@ -3896,7 +3911,7 @@ class DictationApp:
             from samsara.ai_command_mode import enqueue_utterance  # noqa: PLC0415
             enqueue_utterance(self, text)
         except Exception as exc:
-            print(f'[AI-CMD-UTT] Error: {exc}')
+            logger.exception(f'[AI-CMD-UTT] Error: {exc}')
             import traceback  # noqa: PLC0415
             traceback.print_exc()
         finally:
@@ -3916,9 +3931,9 @@ class DictationApp:
                         category="error",
                     )
                 else:
-                    print(f"[AVA] Ollama plugin not found. User said: {text}")
+                    logger.debug(f"[AVA] Ollama plugin not found. User said: {text}")
             except Exception as e:
-                print(f"[AVA] Error: {e}")
+                logger.exception(f"[AVA] Error: {e}")
                 if hasattr(self, 'audio_coordinator') and self.audio_coordinator:
                     self.audio_coordinator.speak(
                         "Sorry, I had an error processing that.",
@@ -3983,24 +3998,22 @@ class DictationApp:
         end-state directly (flip the flag, cancel the timer, reset mode
         state) so the session provably ends rather than hanging."""
         try:
-            print("[CMD MODE] Inactivity timeout — exiting command mode")
+            logger.info("[CMD MODE] Inactivity timeout — exiting command mode")
             self.exit_command_mode()
         except Exception as exc:
-            print(f"[CMD MODE] Inactivity handler failed: {exc} -- forcing session end")
-            import traceback
-            traceback.print_exc()
+            logger.exception(f"[CMD MODE] Inactivity handler failed: {exc} -- forcing session end")
             try:
                 self.play_sound('error')
-            except Exception:
-                pass
+            except Exception as e:
+                logger.debug(f"[CMD MODE] Error earcon failed: {e}")
             with self._command_mode_lock:
                 self.command_mode_active = False
             self._cancel_command_mode_inactivity_timer()
             if self._session_mode_manager is not None:
                 try:
                     self._session_mode_manager.reset()
-                except Exception:
-                    pass
+                except Exception as e:
+                    logger.debug(f"[CMD MODE] Session mode manager reset failed during forced end: {e}")
 
     def _rearm_command_recording(self):
         """Re-start recording for the next command in hold mode.
@@ -4034,7 +4047,7 @@ class DictationApp:
         switch matcher needs, and hand the text off.
         """
         if self._wake_transcription_in_progress:
-            print('[CMD-UTT] Transcription already in progress — skipping utterance')
+            logger.info('[CMD-UTT] Transcription already in progress — skipping utterance')
             return
         self._wake_transcription_in_progress = True
         try:
@@ -4045,7 +4058,7 @@ class DictationApp:
             if audio_duration < 0.3:
                 return
 
-            print(f'[CMD-UTT] Transcribing {audio_duration:.1f}s utterance')
+            logger.debug(f'[CMD-UTT] Transcribing {audio_duration:.1f}s utterance')
 
             transcribe_params = self.get_transcription_params()
             transcribe_params['vad_filter'] = False
@@ -4057,14 +4070,14 @@ class DictationApp:
             text = self.voice_training_window.apply_corrections(text)
 
             if not text:
-                print('[CMD-UTT] Empty transcription')
+                logger.debug('[CMD-UTT] Empty transcription')
                 return
 
-            print(f'[CMD-UTT] "{text}"')
+            logger.debug(f'[CMD-UTT] "{text}"')
 
             if self._command_mode_ghost_tap:
                 self._command_mode_ghost_tap = False
-                print('[CMD-UTT] Ghost tap — discarding')
+                logger.debug('[CMD-UTT] Ghost tap — discarding')
                 return
 
             signals = self._compute_switch_gate_signals(audio, seg_list)
@@ -4072,7 +4085,7 @@ class DictationApp:
 
             manager = self._ensure_session_mode_manager()
             outcome = manager.dispatch_utterance(text, signals)
-            print(f'[SESSION] mode={manager.mode.value} outcome={outcome.kind} detail={outcome.detail}')
+            logger.info(f'[SESSION] mode={manager.mode.value} outcome={outcome.kind} detail={outcome.detail}')
             self._handle_session_dispatch_outcome(outcome, text)
         except Exception as exc:
             # Any exception here (transcription error, injection failure,
@@ -4080,13 +4093,11 @@ class DictationApp:
             # session ALIVE in its current mode -- never propagate and kill
             # this utterance's thread silently. Mode/command_mode_active
             # are untouched, so the next utterance dispatches normally.
-            print(f'[CMD-UTT] Error: {exc}')
-            import traceback
-            traceback.print_exc()
+            logger.exception(f'[CMD-UTT] Error: {exc}')
             try:
                 self.play_sound('error')
-            except Exception:
-                pass
+            except Exception as e:
+                logger.debug(f'[CMD-UTT] Error earcon failed: {e}')
         finally:
             self._wake_transcription_in_progress = False
             self._vad_reset()
@@ -4110,7 +4121,7 @@ class DictationApp:
             # scratch_refuse (the established "this didn't go through"
             # sound; same choice already made for the AVA dispatch
             # queue-full-drop case in _ava_session_agent_dispatch_fn).
-            print(f'[AVA] Rejected non-substantive utterance: "{text}"')
+            logger.info(f'[AVA] Rejected non-substantive utterance: "{text}"')
             self.play_sound('scratch_refuse')
         if outcome.kind != "empty":
             self._touch_session_activity()
@@ -4126,7 +4137,7 @@ class DictationApp:
             if self._vad_available and self._vad_model is not None:
                 has_contiguous_speech = self._buffer_has_contiguous_speech(audio, self.model_rate)
         except Exception as exc:
-            print(f'[SESSION] contiguous-speech gate errored (failing closed): {exc}')
+            logger.exception(f'[SESSION] contiguous-speech gate errored (failing closed): {exc}')
             has_contiguous_speech = None
 
         compression_ratios = tuple(getattr(s, 'compression_ratio', None) for s in seg_list)
@@ -4148,12 +4159,12 @@ class DictationApp:
         """Start continuous listening with auto-transcribe on silence."""
         if not self.model_loaded:
             if self.loading_model:
-                print("Model still loading, please wait...")
+                logger.info("Model still loading, please wait...")
             return
 
         self.play_sound("start", use_winsound=True)
         time.sleep(0.15)
-        print("[MIC] Continuous mode ACTIVE — speak naturally, pauses will trigger transcription")
+        logger.debug("[MIC] Continuous mode ACTIVE — speak naturally, pauses will trigger transcription")
 
         # ACE path: ring consumer handles capture — no separate PortAudio stream.
         # Works alongside wake word mode without stream conflict.
@@ -4174,7 +4185,7 @@ class DictationApp:
             if remaining:
                 self.transcribe_continuous_buffer(remaining, src_rate=16000)
 
-        print("[OFF] Continuous mode STOPPED")
+        logger.info("[OFF] Continuous mode STOPPED")
         self.play_sound("stop")
         self._release_icon_chase('continuous')
         if hasattr(self, 'listening_indicator'):
@@ -4205,7 +4216,7 @@ class DictationApp:
             # Guard: Whisper hallucinates on very short audio (<0.5s).
             # It outputs phantom phrases like "Thank you" or "Subtitles by Amara".
             if audio_duration < 0.51:
-                print(f"[SKIP] Audio too short ({audio_duration:.2f}s) — skipping transcription")
+                logger.info(f"[SKIP] Audio too short ({audio_duration:.2f}s) — skipping transcription")
                 return
             
             transcribe_start = time.time()
@@ -4218,7 +4229,7 @@ class DictationApp:
             # Performance logging
             rtf = transcribe_time / audio_duration if audio_duration > 0 else 0
             device_info = getattr(self, 'device_type', 'unknown')
-            print(f"[PERF] Audio: {audio_duration:.1f}s | Transcribe: {transcribe_time*1000:.0f}ms | "
+            logger.debug(f"[PERF] Audio: {audio_duration:.1f}s | Transcribe: {transcribe_time*1000:.0f}ms | "
                   f"RTF: {rtf:.2f}x | Mode: {perf_mode} | Device: {device_info}")
             
             # Apply corrections dictionary
@@ -4257,8 +4268,8 @@ class DictationApp:
                     if _tut_cmd:
                         try:
                             _tut_cmd(result or "")
-                        except Exception:
-                            pass
+                        except Exception as e:
+                            logger.debug(f"Tutorial command hook failed: {e}")
                     # Command was executed
                     return
 
@@ -4267,8 +4278,8 @@ class DictationApp:
                 if _tut_dict:
                     try:
                         _tut_dict(text)
-                    except Exception:
-                        pass
+                    except Exception as e:
+                        logger.debug(f"Tutorial dictation hook failed: {e}")
 
                 # Not a command, proceed with dictation
                 # Apply text processing (auto-capitalize, number formatting)
@@ -4283,7 +4294,7 @@ class DictationApp:
                 if self.config['add_trailing_space']:
                     text = text + " "
 
-                print(f"[TEXT] {text}")
+                logger.info(f"[TEXT] {text}")
 
                 if self.config['auto_paste']:
                     self._paste_preserving_clipboard(text)
@@ -4300,7 +4311,7 @@ class DictationApp:
                 self._notify_main_window(text.strip())
 
         except Exception as e:
-            print(f"[ERROR] Transcription failed: {e}")
+            logger.exception(f"[ERROR] Transcription failed: {e}")
             self._log_history(
                 raw_text="",
                 display_text=f"[FAILED] {e}",
@@ -4312,8 +4323,8 @@ class DictationApp:
             try:
                 import winsound
                 winsound.PlaySound("SystemHand", winsound.SND_ALIAS | winsound.SND_ASYNC)
-            except Exception:
-                pass
+            except Exception as _snd_err:
+                logger.debug(f"Failure earcon (winsound) unavailable: {_snd_err}")
 
     def toggle_wake_word_mode(self):
         """Toggle wake word listening mode"""
@@ -4326,13 +4337,13 @@ class DictationApp:
         """Start wake word listening — always listening for wake word."""
         if not self.model_loaded:
             if self.loading_model:
-                print("Model still loading, please wait...")
+                logger.info("Model still loading, please wait...")
             return
 
         self.play_sound("start", use_winsound=True)
         time.sleep(0.15)
         phrase = self.config.get('wake_word_config', {}).get('phrase', 'hey samsara')
-        print(f"[LISTEN] Wake word mode ACTIVE - say '{phrase}' to give commands")
+        logger.info(f"[LISTEN] Wake word mode ACTIVE - say '{phrase}' to give commands")
 
         self.silence_start       = None
         self.is_speaking         = False
@@ -4367,7 +4378,7 @@ class DictationApp:
             if remaining and self.wake_word_triggered:
                 self.process_wake_word_buffer(remaining, src_rate=16000)
 
-        print("[OFF] Wake word mode STOPPED")
+        logger.info("[OFF] Wake word mode STOPPED")
         self.play_sound("stop")
         self._release_icon_chase('wake_word')
         if hasattr(self, 'listening_indicator'):
@@ -4384,7 +4395,7 @@ class DictationApp:
         if self._vad_available and self._vad_model is not None:
             return
         if not _TORCH_AVAILABLE:
-            print("[VAD] torch unavailable, falling back to RMS speech detection")
+            logger.debug("[VAD] torch unavailable, falling back to RMS speech detection")
             return
         try:
             logger.info("[BOOT-DIAG] torch.hub.load (Silero VAD) called — may contact GitHub if cache stale")
@@ -4401,11 +4412,11 @@ class DictationApp:
             self._vad_model = model
             self._vad_available = True
             self._vad_lock = threading.Lock()
-            print("[VAD] Silero VAD loaded for real-time speech detection")
+            logger.debug("[VAD] Silero VAD loaded for real-time speech detection")
         except Exception as e:
             self._vad_model = None
             self._vad_available = False
-            print(f"[VAD] Silero VAD not available, falling back to RMS: {e}")
+            logger.debug(f"[VAD] Silero VAD not available, falling back to RMS: {e}")
 
     def _load_oww_model(self):
         """Load the OpenWakeWord model for the configured wake phrase.
@@ -4422,9 +4433,9 @@ class DictationApp:
         oww_threshold = float(ww_cfg.get('oww_threshold', 0.2))
         self._wake_detector = WakeWordDetector(wake_phrase, threshold=oww_threshold)
         if self._wake_detector.is_available:
-            print(f"[OWW] Wake word pre-filter active for '{wake_phrase}'")
+            logger.debug(f"[OWW] Wake word pre-filter active for '{wake_phrase}'")
         else:
-            print(f"[OWW] No pre-filter for '{wake_phrase}' — using Whisper detection")
+            logger.debug(f"[OWW] No pre-filter for '{wake_phrase}' — using Whisper detection")
 
     def _load_wake_target_models(self):
         """Load OWW models for all enabled wake_targets (Phase 1 multi-wakeword).
@@ -4455,11 +4466,11 @@ class DictationApp:
                                             model_path=str(model_path))
                 self._wake_target_detectors[tid] = detector
                 status = "OWW pre-filter active" if detector.is_available else "load failed — Whisper fallback"
-                print(f"[OWW] Wake target '{tid}' ({phrase}): {status}")
+                logger.debug(f"[OWW] Wake target '{tid}' ({phrase}): {status}")
             else:
                 self._wake_target_detectors[tid] = None
                 missing = f" ('{model_file}' not in wake_models/)" if model_file else ""
-                print(f"[OWW] Wake target '{tid}' ({phrase}): no model{missing} — Whisper fallback")
+                logger.debug(f"[OWW] Wake target '{tid}' ({phrase}): no model{missing} — Whisper fallback")
 
     def _check_wake_targets(self, corrected_lower):
         """Match corrected transcript against all enabled wake_targets.
@@ -4491,18 +4502,18 @@ class DictationApp:
         phrase       = target.get('phrase', '').lower().strip()
         tid          = target.get('id', phrase)
 
-        print(f"[WAKE-TARGET] '{phrase}' matched — targeting '{process_name}'")
+        logger.info(f"[WAKE-TARGET] '{phrase}' matched — targeting '{process_name}'")
 
         own_pid = os.getpid()
         result  = _resolve_target_window(process_name, exclude_pids={own_pid})
 
         if result is None:
-            print(f"[WAKE-TARGET] No window found for '{process_name}' — process not running?")
+            logger.info(f"[WAKE-TARGET] No window found for '{process_name}' — process not running?")
             self.play_sound("error")
             return
 
         hwnd, title = result
-        print(f"[WAKE-TARGET] Found window: '{title}' (hwnd={hwnd})")
+        logger.info(f"[WAKE-TARGET] Found window: '{title}' (hwnd={hwnd})")
 
         try:
             from plugins.commands import window_switcher as _ws
@@ -4520,7 +4531,7 @@ class DictationApp:
                     title, _fgb.value or "<unknown>",
                 )
         except Exception as exc:
-            print(f"[WAKE-TARGET] Focus failed: {exc}")
+            logger.exception(f"[WAKE-TARGET] Focus failed: {exc}")
             self.play_sound("error")
             return
 
@@ -4534,7 +4545,7 @@ class DictationApp:
                 remainder = re.sub(r'^[^\w]+', '', remainder).strip()
                 if remainder:
                     initial_content = remainder
-                    print(f"[WAKE-TARGET] Pre-buffering trailing speech: '{initial_content}'")
+                    logger.info(f"[WAKE-TARGET] Pre-buffering trailing speech: '{initial_content}'")
 
         # Resolve per-target send policy.  Explicit key in config wins; otherwise
         # default by process/id name: hermes-targeted sessions stage only (never
@@ -4576,7 +4587,7 @@ class DictationApp:
         if hasattr(self, 'wake_word_timer') and self.wake_word_timer:
             self.wake_word_timer.cancel()
 
-        print(f"[STATE] {old_state} -> wake_session "
+        logger.debug(f"[STATE] {old_state} -> wake_session "
               f"(chunk gap: {_WAKE_SESSION_CHUNK_GAP_S}s, "
               f"inactivity timeout: {_WAKE_SESSION_TIMEOUT_S}s, "
               f"send_policy: {send_policy})")
@@ -4625,7 +4636,7 @@ class DictationApp:
         if existing is not None:
             existing.cancel()
             self._wake_session_inactivity_timer = None
-        print("[WAKE-SESSION] ended (inactivity timeout)")
+        logger.info("[WAKE-SESSION] ended (inactivity timeout)")
         self._reset_wake_dictation()
 
     def _vad_is_speech(self, chunk_float32, src_rate=None):
@@ -4655,7 +4666,7 @@ class DictationApp:
                     try:
                         speech_prob = self._vad_model(tensor, 16000).item()
                     except RuntimeError as e:
-                        print(f"[VAD] State corruption caught, auto-resetting: {e}")
+                        logger.exception(f"[VAD] State corruption caught, auto-resetting: {e}")
                         self._vad_model.reset_states()
                         continue
             if speech_prob > 0.5:
@@ -4669,7 +4680,7 @@ class DictationApp:
                 try:
                     self._vad_model.reset_states()
                 except Exception as e:
-                    print(f"[VAD] reset_states failed: {e}")
+                    logger.exception(f"[VAD] reset_states failed: {e}")
 
     def _buffer_has_contiguous_speech(self, audio, src_rate,
                                        min_ms=_GATE_MIN_CONTIG_MS,
@@ -4711,7 +4722,7 @@ class DictationApp:
                     try:
                         speech_prob = self._vad_model(tensor, 16000).item()
                     except RuntimeError as e:
-                        print(f"[VAD] State corruption caught, auto-resetting: {e}")
+                        logger.exception(f"[VAD] State corruption caught, auto-resetting: {e}")
                         self._vad_model.reset_states()
                         contig = 0
                         continue
@@ -4793,7 +4804,7 @@ class DictationApp:
                 )
             return passed
         except Exception as e:
-            print(f"[GATE] ZCR fallback failed, failing open: {e}")
+            logger.debug(f"[GATE] ZCR fallback failed, failing open: {e}")
             return True
 
     def register_wake_trace_callback(self, callback):
@@ -4820,7 +4831,7 @@ class DictationApp:
             cb(event)
         except Exception as e:
             # Never let a debug UI bug break the main pipeline
-            print(f"[WARN] wake trace callback failed: {e}")
+            logger.exception(f"[WARN] wake trace callback failed: {e}")
 
     def calibrate_wake_mic(self, seconds: float = 3.0) -> float | None:
         """Sample ambient audio for *seconds* and seed the adaptive noise floor.
@@ -4912,9 +4923,9 @@ class DictationApp:
                         _wf.setsampwidth(2)
                         _wf.setframerate(self.model_rate)
                         _wf.writeframes(_int16.tobytes())
-                    print(f"[DEBUG] Dumped wake audio -> {_dump_path} ({audio_duration:.2f}s)")
+                    logger.debug(f"[DEBUG] Dumped wake audio -> {_dump_path} ({audio_duration:.2f}s)")
                 except Exception as _de:
-                    print(f"[DEBUG] Audio dump failed: {_de}")
+                    logger.exception(f"[DEBUG] Audio dump failed: {_de}")
 
             # FIX 1: RMS energy gate — skip Whisper on silent audio.
             # On CPU machines Whisper takes ~1s per call; calling it on every
@@ -4996,7 +5007,7 @@ class DictationApp:
             # Performance logging for wake word mode
             rtf = transcribe_time / audio_duration if audio_duration > 0 else 0
             device_info = getattr(self, 'device_type', 'unknown')
-            print(f"[PERF/WAKE] Audio: {audio_duration:.1f}s | Transcribe: {transcribe_time*1000:.0f}ms | "
+            logger.info(f"[PERF/WAKE] Audio: {audio_duration:.1f}s | Transcribe: {transcribe_time*1000:.0f}ms | "
                   f"RTF: {rtf:.2f}x | Mode: {perf_mode} | Device: {device_info}")
             
             # Apply corrections dictionary
@@ -5004,7 +5015,7 @@ class DictationApp:
             text_lower = text.lower()
             
             if not text:
-                print(f"[HEAR] (nothing — Whisper returned empty for {audio_duration:.1f}s of audio)")
+                logger.info(f"[HEAR] (nothing — Whisper returned empty for {audio_duration:.1f}s of audio)")
                 # Only log when the user actually spoke (>0.5s of audio) but
                 # Whisper returned nothing. Don't spam history with every
                 # silent buffer the wake-word callback flushes.
@@ -5019,7 +5030,7 @@ class DictationApp:
                     )
                 return
             
-            print(f"[HEAR] \"{text}\"")
+            logger.info(f"[HEAR] \"{text}\"")
             
             # Get wake word config
             ww_config = self.config.get('wake_word_config', {})
@@ -5033,7 +5044,7 @@ class DictationApp:
                 cancel_words = ww_config.get('cancel_words', ['cancel'])
                 for cw in cancel_words:
                     if cw.lower() in text_lower:
-                        print(f"[CANCEL] Dictation cancelled ('{cw}')")
+                        logger.info(f"[CANCEL] Dictation cancelled ('{cw}')")
                         self._emit_wake_trace({"stage": "cancel_word_detected", "phrase": cw})
                         self.play_sound("error")
                         if self.app_state == 'wake_session':
@@ -5067,10 +5078,10 @@ class DictationApp:
                             time.sleep(0.05)
                             pyautogui.press('return')
                             self.play_sound("success")
-                            print(f"[WAKE-SESSION] sent — '{_matched_sw}' detected, Enter pressed")
+                            logger.info(f"[WAKE-SESSION] sent — '{_matched_sw}' detected, Enter pressed")
                         else:
                             self.play_sound("action_complete")
-                            print(f"[WAKE-SESSION] staged — '{_matched_sw}' detected, Enter suppressed (stage_only)")
+                            logger.info(f"[WAKE-SESSION] staged — '{_matched_sw}' detected, Enter suppressed (stage_only)")
                         self._emit_wake_trace({"stage": "utterance_end", "result": "wake_session_sent",
                                                "send_word": _matched_sw, "policy": _policy})
                         self._end_wake_session()
@@ -5084,7 +5095,7 @@ class DictationApp:
                 end_words = ww_config.get('end_words', ['over', 'done'])
                 for ew in end_words:
                     if ew.lower() in text_lower:
-                        print(f"[END] End word detected: '{ew}'")
+                        logger.info(f"[END] End word detected: '{ew}'")
                         end_index = text_lower.rfind(ew.lower())
                         final_text = text[:end_index].strip()
                         if self.wake_dictation_buffer:
@@ -5110,12 +5121,12 @@ class DictationApp:
                                 if hasattr(self, 'listening_indicator'):
                                     self._schedule_ui(self.listening_indicator.set_mode, "Long Dictation")
                                     self._schedule_ui(self.listening_indicator.set_listening, True)
-                                print(f"[RESUME] Dictation resumed ('{rw}')")
+                                logger.info(f"[RESUME] Dictation resumed ('{rw}')")
                                 self._emit_wake_trace({"stage": "resume",
                                                        "buffer_size": len(self.wake_dictation_buffer)})
                                 self._emit_wake_trace({"stage": "utterance_end", "result": "resumed"})
                                 return
-                        print(f"[PAUSED] Ignoring: '{text}'")
+                        logger.info(f"[PAUSED] Ignoring: '{text}'")
                         self._emit_wake_trace({"stage": "utterance_end",
                                                "result": "paused_ignored", "text": text})
                         return
@@ -5128,14 +5139,14 @@ class DictationApp:
                             cleaned = (text[:pause_idx] + text[pause_idx + len(pw):]).strip()
                             if cleaned:
                                 self.wake_dictation_buffer.append(cleaned)
-                                print(f"[DICTATE] Buffered (pre-pause): {cleaned}")
+                                logger.info(f"[DICTATE] Buffered (pre-pause): {cleaned}")
                             self._dictation_paused = True
                             self.silence_start = None
                             self.play_sound("stop")
                             if hasattr(self, 'listening_indicator'):
                                 self._schedule_ui(self.listening_indicator.set_mode, "Paused")
                                 self._schedule_ui(self.listening_indicator.set_listening, False)
-                            print(f"[PAUSE] Dictation paused ('{pw}')")
+                            logger.info(f"[PAUSE] Dictation paused ('{pw}')")
                             self._emit_wake_trace({"stage": "pause",
                                                    "buffer_size": len(self.wake_dictation_buffer)})
                             self._emit_wake_trace({"stage": "utterance_end", "result": "paused"})
@@ -5143,7 +5154,7 @@ class DictationApp:
 
                 # Accumulate text
                 self.wake_dictation_buffer.append(text)
-                print(f"[DICTATE] Buffered: {text}")
+                logger.info(f"[DICTATE] Buffered: {text}")
                 self._emit_wake_trace({"stage": "dictation_buffered", "text": text,
                                        "buffer_size": len(self.wake_dictation_buffer)})
 
@@ -5158,7 +5169,7 @@ class DictationApp:
             corrected_lower = apply_wake_corrections(text_lower)
             correction_applied = was_corrected(text_lower, corrected_lower)
             if correction_applied:
-                print(f"[CORRECT] '{text_lower}' -> '{corrected_lower}'")
+                logger.info(f"[CORRECT] '{text_lower}' -> '{corrected_lower}'")
 
             logger.info(
                 "[WAKE-CHECK] transcript=%r targets=%r",
@@ -5184,7 +5195,7 @@ class DictationApp:
             })
 
             if matched:
-                print(f"[MIC] Wake word detected: '{wake_phrase}' ({match_type} @ {match_index})")
+                logger.debug(f"[MIC] Wake word detected: '{wake_phrase}' ({match_type} @ {match_index})")
                 self.wake_word_triggered = True
                 self.play_sound("start")
 
@@ -5202,7 +5213,7 @@ class DictationApp:
                 command_text, echo_count = strip_wake_echoes(command_text, wake_phrase)
                 if echo_count:
                     command_text = normalize_command_text(command_text)
-                    print(f"[ECHO] Stripped {echo_count} echo(es) of '{wake_phrase}' from command")
+                    logger.info(f"[ECHO] Stripped {echo_count} echo(es) of '{wake_phrase}' from command")
                     self._emit_wake_trace({"stage": "echo_strip", "removed": echo_count,
                                            "cleaned": command_text})
 
@@ -5219,23 +5230,23 @@ class DictationApp:
                 has_meaningful_command = len(cleaned_cmd) >= 2
 
                 if has_meaningful_command:
-                    print(f"[TEXT] Command: {command_text}")
+                    logger.info(f"[TEXT] Command: {command_text}")
                     self._process_wake_command(command_text)
                 else:
                     if command_text:
-                        print(f"[SKIP] Ignoring noise after wake word: '{command_text}'")
-                    print("[LISTEN] Listening for command...")
+                        logger.info(f"[SKIP] Ignoring noise after wake word: '{command_text}'")
+                    logger.info("[LISTEN] Listening for command...")
                     self._start_wake_timeout()
 
                 self._emit_wake_trace({"stage": "utterance_end",
                                        "result": "wake_word_detected" if not has_meaningful_command else "command_processed"})
 
             elif match_type == "substring":
-                print(f"[SKIP] Substring-only wake match @ idx {match_index} -- not firing: '{text}'")
+                logger.debug(f"[SKIP] Substring-only wake match @ idx {match_index} -- not firing: '{text}'")
                 self._emit_wake_trace({"stage": "utterance_end", "result": "substring_rejected"})
 
             elif self.wake_word_triggered:
-                print(f"[TEXT] Command: {text}")
+                logger.info(f"[TEXT] Command: {text}")
                 self._emit_wake_trace({"stage": "command_extract",
                                        "from_index": -1, "command": text, "remainder": ""})
                 self._process_wake_command(text)
@@ -5245,9 +5256,7 @@ class DictationApp:
                 self._emit_wake_trace({"stage": "utterance_end", "result": "no_wake_word"})
                 
         except Exception as e:
-            print(f"[ERROR] Transcription failed: {e}")
-            import traceback
-            traceback.print_exc()
+            logger.exception(f"[ERROR] Transcription failed: {e}")
             self._log_history(
                 raw_text="",
                 display_text=f"[FAILED] {e}",
@@ -5259,8 +5268,8 @@ class DictationApp:
             try:
                 import winsound
                 winsound.PlaySound("SystemHand", winsound.SND_ALIAS | winsound.SND_ASYNC)
-            except Exception:
-                pass
+            except Exception as _snd_err:
+                logger.debug(f"Failure earcon (winsound) unavailable: {_snd_err}")
         finally:
             if _set_in_progress:
                 self._wake_transcription_in_progress = False
@@ -5274,10 +5283,10 @@ class DictationApp:
         old_state = self.app_state
         self.app_state = 'command_window'
         if old_state != 'command_window':
-            print(f"[STATE] {old_state} -> command_window")
+            logger.debug(f"[STATE] {old_state} -> command_window")
 
         intent = parse_wake_command(text)
-        print(f"[PARSE] raw='{text}' -> type={intent['type']}, "
+        logger.info(f"[PARSE] raw='{text}' -> type={intent['type']}, "
               f"name={intent['name']}, content='{intent['content']}'")
 
         if intent["type"] == "dictation":
@@ -5311,7 +5320,7 @@ class DictationApp:
                 # next 2s so a Chrome launch chime / notification doesn't get
                 # mistaken for a new utterance.
                 self._command_executed_at = time.time()
-                print("[STATE] command_window -> asleep (command executed)")
+                logger.debug("[STATE] command_window -> asleep (command executed)")
                 self._indicator_success_and_reset()
                 return
 
@@ -5320,17 +5329,17 @@ class DictationApp:
             # wanted dictation, they'd say "jarvis, type ..." or "jarvis,
             # dictate". This prevents false wake triggers (e.g. "service"
             # corrected to "jarvis") from typing garbage into the focused app.
-            print(f"[SKIP] No command match for '{text}' — back to sleep")
+            logger.info(f"[SKIP] No command match for '{text}' — back to sleep")
             self.wake_word_triggered = False
             self.app_state = 'asleep'
-            print("[STATE] command_window -> asleep (no match)")
+            logger.debug("[STATE] command_window -> asleep (no match)")
             self._indicator_reset()
             return
 
         # type == "unknown" -- noise/garbage, back to asleep
-        print(f"[SKIP] Ignoring noise: '{text}'")
+        logger.info(f"[SKIP] Ignoring noise: '{text}'")
         self.app_state = 'asleep'
-        print("[STATE] command_window -> asleep (noise)")
+        logger.debug("[STATE] command_window -> asleep (noise)")
         self._indicator_reset()
         self._start_wake_timeout()
     
@@ -5364,7 +5373,7 @@ class DictationApp:
             timeout = ww_config.get('quick_silence_timeout', 1.0)
             self._dictation_silence_timeout = timeout
             self._dictation_require_end = False
-            print(f"[STATE] {old_state} -> quick_dictation (silence timeout: {timeout}s)")
+            logger.debug(f"[STATE] {old_state} -> quick_dictation (silence timeout: {timeout}s)")
         else:  # long_dictation
             self._dictation_silence_timeout = None  # silence handled by hard-cap, not VAD
             self._dictation_require_end = True
@@ -5382,7 +5391,7 @@ class DictationApp:
             ww_config = self.config.get('wake_word_config', {})
             max_duration = ww_config.get('long_max_duration', 15.0)
             failsafe_duration = ww_config.get('long_failsafe_duration', 60.0)
-            print(f"[STATE] {old_state} -> long_dictation "
+            logger.debug(f"[STATE] {old_state} -> long_dictation "
                   f"(hard-cap: {max_duration}s, failsafe: {failsafe_duration}s)")
 
             if hasattr(self, '_dictation_hardcap_timer') and self._dictation_hardcap_timer:
@@ -5415,7 +5424,7 @@ class DictationApp:
 
         if initial_content:
             self.wake_dictation_buffer.append(initial_content)
-            print(f"[DICTATE] Initial content: {initial_content}")
+            logger.info(f"[DICTATE] Initial content: {initial_content}")
             if not self._dictation_require_end:
                 self._restart_dictation_timer()
 
@@ -5482,7 +5491,7 @@ class DictationApp:
             self._wake_session_inactivity_timer = None
 
         if old_state != 'asleep':
-            print(f"[STATE] {old_state} -> asleep")
+            logger.debug(f"[STATE] {old_state} -> asleep")
 
         # Reset listening indicator back to idle
         self._indicator_reset()
@@ -5508,11 +5517,11 @@ class DictationApp:
             with self._dictation_finalize_lock:
                 if self.wake_dictation_mode and self.wake_dictation_buffer and not self._dictation_require_end:
                     final_text = ' '.join(self.wake_dictation_buffer)
-                    print(f"[DONE] Dictation complete: {final_text}")
+                    logger.info(f"[DONE] Dictation complete: {final_text}")
                     self._output_dictation(final_text)
                     self._reset_wake_dictation()
         except Exception as e:
-            print(f"[ERROR] _finalize_dictation_timeout crashed: {e}")
+            logger.exception(f"[ERROR] _finalize_dictation_timeout crashed: {e}")
             import traceback
             traceback.print_exc()
 
@@ -5534,10 +5543,10 @@ class DictationApp:
             with self._dictation_finalize_lock:
                 if self.app_state != 'long_dictation':
                     return
-                print("[HARDCAP] Time limit reached — flushing audio and requesting finalize")
+                logger.info("[HARDCAP] Time limit reached — flushing audio and requesting finalize")
                 self._dictation_finalize_requested = True
         except Exception as e:
-            print(f"[ERROR] _finalize_dictation_hardcap crashed: {e}")
+            logger.exception(f"[ERROR] _finalize_dictation_hardcap crashed: {e}")
             import traceback
             traceback.print_exc()
             return
@@ -5618,20 +5627,20 @@ class DictationApp:
                 # Pipeline is fully drained. Safe to finalize.
                 if self.wake_dictation_mode and self.wake_dictation_buffer:
                     final_text = ' '.join(self.wake_dictation_buffer)
-                    print(f"[DONE] Long dictation finalized: {final_text}")
+                    logger.info(f"[DONE] Long dictation finalized: {final_text}")
                     # _output_dictation must be called outside the lock to
                     # avoid blocking the pipeline on clipboard/UI work.
                     pending_text = final_text
                 else:
                     pending_text = None
-                    print("[DONE] Long dictation finalized with empty buffer")
+                    logger.info("[DONE] Long dictation finalized with empty buffer")
 
                 self._reset_wake_dictation()
             # Released the lock — now do the user-visible output
             if pending_text:
                 self._output_dictation(pending_text)
         except Exception as e:
-            print(f"[ERROR] _maybe_finalize_dictation crashed: {e}")
+            logger.exception(f"[ERROR] _maybe_finalize_dictation crashed: {e}")
             import traceback
             traceback.print_exc()
 
@@ -5649,7 +5658,7 @@ class DictationApp:
                     return
                 pending = self._pending_transcriptions
                 buf_len = len(self.wake_dictation_buffer) if self.wake_dictation_buffer else 0
-                print(f"[FAILSAFE] Absolute timeout — forcing reset "
+                logger.info(f"[FAILSAFE] Absolute timeout — forcing reset "
                       f"(pending={pending}, buf_chunks={buf_len}). "
                       f"This indicates a stuck transcription worker.")
                 if self.wake_dictation_buffer:
@@ -5660,7 +5669,7 @@ class DictationApp:
             if pending_text:
                 self._output_dictation(pending_text)
         except Exception as e:
-            print(f"[ERROR] _absolute_failsafe_reset crashed: {e}")
+            logger.exception(f"[ERROR] _absolute_failsafe_reset crashed: {e}")
             import traceback
             traceback.print_exc()
 
@@ -5681,7 +5690,7 @@ class DictationApp:
                 time.sleep(delay)
                 paste_ok = True
             except Exception as e:
-                print(f"[ERROR] Paste failed: {e}")
+                logger.exception(f"[ERROR] Paste failed: {e}")
             finally:
                 # Always restore clipboard, even if paste failed
                 _restore_clipboard_win32(saved)
@@ -5729,7 +5738,7 @@ class DictationApp:
         wrong characters -- we intentionally do not try to detect that.
         """
         if not self._last_dictation_text:
-            print("[UNDO] Nothing to undo")
+            logger.info("[UNDO] Nothing to undo")
             self.play_sound("error")
             return False
 
@@ -5740,7 +5749,7 @@ class DictationApp:
         pyautogui.press('delete')
 
         preview = text[:50] + ("..." if len(text) > 50 else "")
-        print(f"[UNDO] Removed: {preview}")
+        logger.info(f"[UNDO] Removed: {preview}")
         self.play_sound("success")
         self._clear_undo()
         return True
@@ -5771,7 +5780,7 @@ class DictationApp:
         corrected = corrected.strip()
 
         threshold_reached = self.adaptive_learner.record_correction(original, corrected)
-        print(f"[LEARN] Correction recorded: '{original}' -> '{corrected}'")
+        logger.info(f"[LEARN] Correction recorded: '{original}' -> '{corrected}'")
 
         if threshold_reached:
             reply = QMessageBox.question(
@@ -5787,7 +5796,7 @@ class DictationApp:
                     vt.corrections_dict[original] = corrected
                     vt.save_training_data()
                 self.adaptive_learner.mark_promoted(original, corrected)
-                print(f"[LEARN] Promoted to dictionary: '{original}' -> '{corrected}'")
+                logger.info(f"[LEARN] Promoted to dictionary: '{original}' -> '{corrected}'")
                 self.play_sound("success")
 
     def _output_dictation(self, text):
@@ -5803,7 +5812,7 @@ class DictationApp:
         if self.config['add_trailing_space']:
             text = text + " "
 
-        print(f"[OK] {text}")
+        logger.info(f"[OK] {text}")
         self.play_sound("success")
         if hasattr(self, 'listening_indicator'):
             self._schedule_ui(self.listening_indicator.flash_success)
@@ -5878,7 +5887,7 @@ class DictationApp:
         try:
             with self._dictation_finalize_lock:
                 if self.wake_word_triggered:
-                    print("[TIMEOUT] Wake word timeout - say wake word again")
+                    logger.debug("[TIMEOUT] Wake word timeout - say wake word again")
                     self.wake_word_triggered = False
 
                 # If in dictation mode and timed out, output what we have
@@ -5889,15 +5898,15 @@ class DictationApp:
                     if not require_end:
                         # Output buffered content on timeout
                         final_text = ' '.join(self.wake_dictation_buffer)
-                        print(f"[TIMEOUT] Dictation timeout - outputting: {final_text}")
+                        logger.debug(f"[TIMEOUT] Dictation timeout - outputting: {final_text}")
                         self._output_dictation(final_text)
                     else:
-                        print(f"[TIMEOUT] Long dictation timeout - say end word or wake word again")
+                        logger.debug(f"[TIMEOUT] Long dictation timeout - say end word or wake word again")
                         self.play_sound("error")
 
                 self._reset_wake_dictation()
         except Exception as e:
-            print(f"[ERROR] reset_wake_word crashed: {e}")
+            logger.exception(f"[ERROR] reset_wake_word crashed: {e}")
             import traceback
             traceback.print_exc()
 
@@ -6051,7 +6060,7 @@ class DictationApp:
                     continue
                 elif suffix != '.wav':
                     # Non-WAV without pydub - skip
-                    print(f"[AUDIO] Skipping {sound_path.name} - install pydub for MP3/OGG support")
+                    logger.info(f"[AUDIO] Skipping {sound_path.name} - install pydub for MP3/OGG support")
                     continue
                 
                 # Native WAV loading
@@ -6091,7 +6100,7 @@ class DictationApp:
 
                 self._sound_cache[sound_type] = audio_array
             except Exception as e:
-                print(f"[AUDIO] Failed to load {sound_path}: {e}")
+                logger.exception(f"[AUDIO] Failed to load {sound_path}: {e}")
 
         # Pass 2: auto-discover extended earcons in the active theme dir.
         # Anything not already in the cache (legacy 4 win) gets loaded by
@@ -6133,9 +6142,9 @@ class DictationApp:
                         audio_array = audio_array.astype(np.float32).reshape(-1, 1)
                         self._sound_cache[name] = audio_array
                     except Exception as e:
-                        print(f"[AUDIO] Failed to load extended earcon {wav_path.name}: {e}")
+                        logger.exception(f"[AUDIO] Failed to load extended earcon {wav_path.name}: {e}")
         except Exception as e:
-            print(f"[AUDIO] Extended-earcon discovery failed: {e}")
+            logger.exception(f"[AUDIO] Extended-earcon discovery failed: {e}")
 
     def _start_sound_stream(self):
         """Start the persistent output stream for sound playback.
@@ -6153,9 +6162,9 @@ class DictationApp:
                 blocksize=1024,  # ~23ms at 44100Hz — good balance of latency vs efficiency
             )
             self._sound_stream.start()
-            print("[AUDIO] Persistent sound stream started")
+            logger.info("[AUDIO] Persistent sound stream started")
         except Exception as e:
-            print(f"[AUDIO] Failed to start sound stream: {e}")
+            logger.exception(f"[AUDIO] Failed to start sound stream: {e}")
             self._sound_stream = None
 
     def _sound_stream_callback(self, outdata, frames, time_info, status):
@@ -6173,12 +6182,12 @@ class DictationApp:
                 else:
                     outdata[:] = 0  # Silence when nothing to play
         except (sd.PortAudioError, OSError) as e:
-            print(f"[AUDIO] Sound stream error: {e}")
+            logger.exception(f"[AUDIO] Sound stream error: {e}")
             return
 
     def reload_sounds(self):
         """Reload sounds from disk (call after changing sound files)"""
-        print("[AUDIO] Reloading sounds...")
+        logger.info("[AUDIO] Reloading sounds...")
         self._load_sound_cache()
 
     def play_sound(self, sound_type, use_winsound=False):
@@ -6210,7 +6219,7 @@ class DictationApp:
                 self._warned_sound_misses = set()
             if sound_type not in self._warned_sound_misses:
                 self._warned_sound_misses.add(sound_type)
-                print(f"[AUDIO] No cached sound for '{sound_type}' "
+                logger.info(f"[AUDIO] No cached sound for '{sound_type}' "
                       f"(check sounds/themes/<theme>/{sound_type}.wav)")
             return
 
@@ -6225,13 +6234,13 @@ class DictationApp:
 
     def stop_sound_stream(self):
         """Stop the persistent sound stream (call on app shutdown)"""
-        print("[AUDIO] Stopping sound stream...")
+        logger.info("[AUDIO] Stopping sound stream...")
         if self._sound_stream is not None:
             try:
                 self._sound_stream.stop()
                 self._sound_stream.close()
-            except Exception:
-                pass
+            except Exception as e:
+                logger.debug(f"[AUDIO] Sound stream stop/close failed: {e}")
             self._sound_stream = None
 
     def _watch_output_device(self):
@@ -6247,11 +6256,11 @@ class DictationApp:
                 try:
                     self._on_output_device_changed()
                 except Exception as exc:
-                    print(f'[AUDIO] Device change handler error: {exc}')
+                    logger.exception(f'[AUDIO] Device change handler error: {exc}')
 
     def _on_output_device_changed(self):
         """Restart output streams after the Windows default audio device changes."""
-        print('[AUDIO] Default output device changed — restarting streams')
+        logger.info('[AUDIO] Default output device changed — restarting streams')
         self.stop_sound_stream()
         self._start_sound_stream()
         eng = getattr(self, 'tts_engine', None)
@@ -6271,13 +6280,13 @@ class DictationApp:
         """
         if not self.model_loaded:
             if self.loading_model:
-                print("Model still loading, please wait...")
+                logger.info("Model still loading, please wait...")
             else:
-                print("Model not loaded!")
+                logger.info("Model not loaded!")
             return
 
         if self._stop_in_flight:
-            print("[HOTKEY] start_recording ignored — stop still in flight")
+            logger.debug("[HOTKEY] start_recording ignored — stop still in flight")
             return
 
         # Suppress wake word processing during hotkey recording
@@ -6301,7 +6310,7 @@ class DictationApp:
             # permanent engine ring. activate() rewinds to include prebuffer history
             # and applies the TTS contamination guard internally.
             if self._dictation_consumer is None:
-                print("[ERROR] ACE dictation consumer not available — cannot record")
+                logger.error("[ERROR] ACE dictation consumer not available — cannot record")
                 self._hotkey_recording = False
                 self.play_sound("error")
                 if hasattr(self, 'listening_indicator'):
@@ -6375,7 +6384,7 @@ class DictationApp:
             self._ace_dictation_active = False
             audio = self._dictation_consumer.drain()
             if audio is None:
-                print("[ACE] No audio captured or epoch abort")
+                logger.debug("[ACE] No audio captured or epoch abort")
                 self.play_sound("error")
                 if hasattr(self, 'listening_indicator'):
                     self._schedule_ui(self.listening_indicator.flash_error)
@@ -6396,10 +6405,10 @@ class DictationApp:
                 try:
                     sess.finalize()
                 except Exception as e:
-                    print(f"[STREAM] finalize failed: {e}")
+                    logger.exception(f"[STREAM] finalize failed: {e}")
                 return
 
-        print("[...] Transcribing...")
+        logger.info("[...] Transcribing...")
 
         # Transcribe in background to not block hotkey listener
         def transcribe():
@@ -6414,7 +6423,7 @@ class DictationApp:
 
                 # Guard: Whisper hallucinates on very short audio (<0.5s)
                 if audio_duration < 0.51:
-                    print(f"[SKIP] Audio too short ({audio_duration:.2f}s) — skipping")
+                    logger.info(f"[SKIP] Audio too short ({audio_duration:.2f}s) — skipping")
                     return
 
                 # Kill the mechanical hotkey press/release click transient
@@ -6429,7 +6438,7 @@ class DictationApp:
                     audio_faded, self.model_rate,
                     min_ms=_GATE_MIN_CONTIG_MS, prob_threshold=_GATE_VAD_PROB,
                 ):
-                    print(f"[GATE] No contiguous speech in short buffer "
+                    logger.debug(f"[GATE] No contiguous speech in short buffer "
                           f"({audio_duration:.2f}s) — skipping")
                     return
 
@@ -6446,7 +6455,7 @@ class DictationApp:
                     # hallucination bug (the model echos earlier text indefinitely).
                     # initial_prompt is also cleared above, for consistency.
                     chunks = _split_audio_at_silences(audio_faded, self.model_rate)
-                    print(f"[LONG] {audio_duration:.1f}s recording split into "
+                    logger.info(f"[LONG] {audio_duration:.1f}s recording split into "
                           f"{len(chunks)} chunk(s) at silence boundaries")
                     texts = []
                     for idx, chunk in enumerate(chunks):
@@ -6463,7 +6472,7 @@ class DictationApp:
                             chunk_text = ""
                         if chunk_text:
                             texts.append(chunk_text)
-                        print(f"[LONG] Chunk {idx + 1}/{len(chunks)}: "
+                        logger.info(f"[LONG] Chunk {idx + 1}/{len(chunks)}: "
                               f"{chunk_dur:.1f}s → {len(chunk_text)} chars")
                     text = " ".join(texts).strip()
                 else:
@@ -6481,7 +6490,7 @@ class DictationApp:
                 # Performance logging
                 rtf = transcribe_time / audio_duration if audio_duration > 0 else 0
                 device_info = getattr(self, 'device_type', 'unknown')
-                print(f"[PERF] Audio: {audio_duration:.1f}s | Transcribe: {transcribe_time*1000:.0f}ms | "
+                logger.debug(f"[PERF] Audio: {audio_duration:.1f}s | Transcribe: {transcribe_time*1000:.0f}ms | "
                       f"RTF: {rtf:.2f}x | Mode: {perf_mode} | Device: {device_info}")
                 
                 # Apply corrections dictionary
@@ -6496,12 +6505,12 @@ class DictationApp:
                 # Ghost-tap prevention — discard accidental sub-debounce taps
                 if is_command_mode and self._command_mode_ghost_tap:
                     self._command_mode_ghost_tap = False
-                    print("[CMD] Ghost tap — discarding transcription")
+                    logger.info("[CMD] Ghost tap — discarding transcription")
                     return
 
                 if is_ava_mode and self._ava_mode_ghost_tap:
                     self._ava_mode_ghost_tap = False
-                    print("[AVA] Ghost tap — discarding transcription")
+                    logger.info("[AVA] Ghost tap — discarding transcription")
                     return
 
                 if text:
@@ -6511,7 +6520,7 @@ class DictationApp:
                     if is_command_mode and any(
                         p in text_lower for p in ["exit command mode", "stop listening"]
                     ):
-                        print(f"[CMD MODE] Voice exit: '{text_lower}'")
+                        logger.info(f"[CMD MODE] Voice exit: '{text_lower}'")
                         self.exit_command_mode()
                         return
 
@@ -6553,14 +6562,14 @@ class DictationApp:
                             return
 
                         # No command matched in command mode — don't output text
-                        print(f"[CMD] No command matched: '{text}'")
+                        logger.info(f"[CMD] No command matched: '{text}'")
                         if self.command_mode_active:
                             self._command_mode_miss_count += 1
                             cm_cfg = self.config.get('command_mode', {})
                             miss_limit = cm_cfg.get('miss_limit', 5)
                             if (cm_cfg.get('mode', 'hold') == 'toggle'
                                     and self._command_mode_miss_count >= miss_limit):
-                                print(f"[CMD MODE] Miss limit ({miss_limit}) reached")
+                                logger.info(f"[CMD MODE] Miss limit ({miss_limit}) reached")
                                 self.exit_command_mode()
                             elif cm_cfg.get('mode', 'hold') == 'toggle':
                                 threading.Thread(
@@ -6585,7 +6594,7 @@ class DictationApp:
                     if self.config['add_trailing_space']:
                         text = text + " "
 
-                    print(f"[OK] {text}")
+                    logger.info(f"[OK] {text}")
                     self.play_sound("success")
                     if hasattr(self, 'listening_indicator'):
                         self._schedule_ui(self.listening_indicator.flash_success)
@@ -6633,7 +6642,7 @@ class DictationApp:
                                 delay_s=2.0,
                             )
                 else:
-                    print("No speech detected")
+                    logger.info("No speech detected")
                     self.command_mode_recording = False  # Reset flag on no speech too
                     # Only log "empty" when there was actually audio to transcribe.
                     # Whisper hallucination guard above already filtered <0.5s.
@@ -6648,7 +6657,7 @@ class DictationApp:
                         )
 
             except Exception as e:
-                print(f"[ERROR] Transcription failed: {e}")
+                logger.exception(f"[ERROR] Transcription failed: {e}")
                 self.play_sound("error")
                 if hasattr(self, 'listening_indicator'):
                     self._schedule_ui(self.listening_indicator.flash_error)
@@ -6663,8 +6672,8 @@ class DictationApp:
                 try:
                     import winsound
                     winsound.PlaySound("SystemHand", winsound.SND_ALIAS | winsound.SND_ASYNC)
-                except Exception:
-                    pass
+                except Exception as _snd_err:
+                    logger.debug(f"Failure earcon (winsound) unavailable: {_snd_err}")
 
         thread = threading.Thread(target=transcribe, daemon=True)
         thread.start()
@@ -6677,7 +6686,7 @@ class DictationApp:
         self.set_app_state(recording=False)
         if not self.hotkey_pressed:
             self._hotkey_recording = False  # Re-enable wake word processing
-        print("[X] Recording cancelled")
+        logger.info("[X] Recording cancelled")
 
         if getattr(self, '_ace_dictation_active', False):
             # ACE path: discard accumulated frames, no stream to close.
@@ -6701,7 +6710,7 @@ class DictationApp:
         """
         valid_modes = ('hold', 'toggle', 'continuous')
         if new_mode not in valid_modes:
-            print(f"[MODE] Refused invalid mode: {new_mode}")
+            logger.info(f"[MODE] Refused invalid mode: {new_mode}")
             return False
 
         current_mode = self.config.get('mode', 'hold')
@@ -6711,7 +6720,7 @@ class DictationApp:
         # If currently recording (hold or toggle mode), stop the recording
         if self.recording:
             self.stop_recording()
-            print(f"[MODE] Stopped active recording before mode switch")
+            logger.info(f"[MODE] Stopped active recording before mode switch")
 
         # Reset toggle state so it doesn't carry over
         self.toggle_active = False
@@ -6719,15 +6728,15 @@ class DictationApp:
         # Stop continuous mode if it was active but new mode is different
         if self.continuous_active and new_mode != 'continuous':
             self.stop_continuous_mode()
-            print(f"[MODE] Deactivated continuous mode")
+            logger.info(f"[MODE] Deactivated continuous mode")
 
         # Activate continuous if that's the new mode
         if new_mode == 'continuous' and not self.continuous_active:
             self.start_continuous_mode()
-            print(f"[MODE] Activated continuous mode")
+            logger.info(f"[MODE] Activated continuous mode")
 
         self.config['mode'] = new_mode
-        print(f"[MODE] Mode changed to: {new_mode}")
+        logger.info(f"[MODE] Mode changed to: {new_mode}")
 
         if hasattr(self, 'hints'):
             if new_mode == 'toggle':
@@ -6775,9 +6784,9 @@ class DictationApp:
             loop = GestureLoop(self, svc, gesture_cfg)
             loop.start()
             self._gesture_loop = loop
-            print("[GESTURE] Lane started")
+            logger.info("[GESTURE] Lane started")
         except Exception as _e:
-            print(f"[GESTURE] Failed to start: {_e}")
+            logger.error(f"[GESTURE] Failed to start: {_e}")
             self._camera_service = None
             self._gesture_loop = None
 
@@ -6787,17 +6796,17 @@ class DictationApp:
         if loop is not None:
             try:
                 loop.stop()
-            except Exception:
-                pass
+            except Exception as e:
+                logger.debug(f"[GESTURE] Loop stop failed: {e}")
             self._gesture_loop = None
         svc = self._camera_service
         if svc is not None:
             try:
                 svc.stop()
-            except Exception:
-                pass
+            except Exception as e:
+                logger.debug(f"[GESTURE] Camera service stop failed: {e}")
             self._camera_service = None
-        print("[GESTURE] Lane stopped")
+        logger.info("[GESTURE] Lane stopped")
 
     def set_gesture_enabled(self, enabled: bool) -> None:
         """Enable or disable the gesture lane and persist the setting."""
@@ -6806,10 +6815,10 @@ class DictationApp:
             self.save_config()
         if enabled and self._gesture_loop is None:
             self._start_gesture_lane()
-            print("[GESTURE] Lane ENABLED")
+            logger.info("[GESTURE] Lane ENABLED")
         elif not enabled and self._gesture_loop is not None:
             self._stop_gesture_lane()
-            print("[GESTURE] Lane DISABLED")
+            logger.info("[GESTURE] Lane DISABLED")
 
     def set_wake_word_enabled(self, enabled):
         """Start or stop the wake word listener independently of capture mode."""
@@ -6818,10 +6827,10 @@ class DictationApp:
             self.save_config()
         if enabled and not self.wake_word_active:
             self.start_wake_word_mode()
-            print("[WAKE] Wake word listener ENABLED")
+            logger.info("[WAKE] Wake word listener ENABLED")
         elif not enabled and self.wake_word_active:
             self.stop_wake_word_mode()
-            print("[WAKE] Wake word listener DISABLED")
+            logger.info("[WAKE] Wake word listener DISABLED")
         # Update tray tooltip
         self._update_tray_tooltip()
         # Update listening indicator mode label
@@ -6844,14 +6853,14 @@ class DictationApp:
             if top is not None:
                 top.protocol("WM_DELETE_WINDOW", self.hide_main_window)
         except Exception as e:
-            print(f"[UI] Failed to show main window: {e}")
+            logger.exception(f"[UI] Failed to show main window: {e}")
 
     def hide_main_window(self):
         """Close button on the hub: just minimize to tray."""
         try:
             self.main_window.hide()
         except Exception as e:
-            print(f"[UI] Failed to hide main window: {e}")
+            logger.exception(f"[UI] Failed to hide main window: {e}")
 
     def set_streaming_mode(self, enabled):
         """Tray-menu entry point: flip the streaming-mode flag."""
@@ -6861,7 +6870,7 @@ class DictationApp:
         with self._config_lock:
             self.config['streaming_mode'] = enabled
             self.save_config()
-        print(f"[STREAM] streaming_mode -> {enabled}")
+        logger.info(f"[STREAM] streaming_mode -> {enabled}")
 
         # Install or release the CapsLock hook to match. When streaming is
         # off we don't grab CapsLock at all, so it works as normal Windows
@@ -6881,7 +6890,7 @@ class DictationApp:
         with self._config_lock:
             self.config['cleanup_mode'] = mode
             self.save_config()
-        print(f"[CLEANUP] Mode -> {mode}")
+        logger.info(f"[CLEANUP] Mode -> {mode}")
 
     def _get_mode_display(self):
         """Build a display string for the current mode + wake word state."""
@@ -6921,7 +6930,7 @@ class DictationApp:
             try:
                 func(*args)
             except Exception:
-                pass
+                logger.exception("_schedule_ui direct-call fallback failed")
 
     @staticmethod
     def _arc_polygon(cx, cy, outer_r, inner_r, start_rad, end_rad, steps=24):
@@ -7012,8 +7021,8 @@ class DictationApp:
         if hasattr(self, 'tray_icon'):
             try:
                 self.tray_icon.icon = self.create_icon_image(active=False)
-            except OSError:
-                pass
+            except OSError as e:
+                logger.debug(f"Tray icon idle-image swap failed: {e}")
 
     def _icon_chase_tick(self):
         """Advance the spin + chase and schedule the next tick.
@@ -7055,8 +7064,9 @@ class DictationApp:
                     active=True,
                     color_offset=self._icon_chase_offset,
                     rotation=self._icon_rotation)
-            except OSError:
-                pass  # transient WinError during icon handle swap — skip this frame
+            except OSError as e:
+                # transient WinError during icon handle swap — skip this frame
+                logger.debug(f"Tray icon animation frame swap failed: {e}")
 
         self._icon_chase_timer = threading.Timer(
             tick_interval, self._icon_chase_tick)
@@ -7071,14 +7081,14 @@ class DictationApp:
                 self._settings_qt = SettingsQt(self)
             self._settings_qt.show()
         except Exception as e:
-            print(f"[SETTINGS] Error opening settings: {e}")
+            logger.exception(f"[SETTINGS] Error opening settings: {e}")
     
     def open_voice_training(self):
         """Open voice training window"""
         try:
             self.voice_training_window.show()
         except Exception as e:
-            print(f"Error opening voice training: {e}")
+            logger.exception(f"Error opening voice training: {e}")
 
     def open_mic_setup_guide(self):
         """Open the guided mic setup wizard."""
@@ -7097,7 +7107,7 @@ class DictationApp:
                 from samsara.ui.tutorial_qt import show_tutorial
                 show_tutorial(self)
             except Exception as _e:
-                print(f"[TUTORIAL] Failed to open tutorial: {_e}")
+                logger.exception(f"[TUTORIAL] Failed to open tutorial: {_e}")
         self._schedule_ui(_open)
 
     def open_history(self):
@@ -7108,14 +7118,14 @@ class DictationApp:
                 self._history_qt = HistoryQt(self)
             self._history_qt.show()
         except Exception as e:
-            print(f"[HISTORY] Error opening history: {e}")
+            logger.exception(f"[HISTORY] Error opening history: {e}")
 
     def open_wake_word_debug(self):
         """Open wake word debug/test window"""
         try:
             self.wake_word_debug_window.show()
         except Exception as e:
-            print(f"Error opening wake word debug: {e}")
+            logger.exception(f"Error opening wake word debug: {e}")
 
     def snooze_listening(self, minutes=None):
         """Temporarily pause all listening for the given duration.
@@ -7157,14 +7167,14 @@ class DictationApp:
             import datetime
             self._snooze_resume_time = datetime.datetime.now() + datetime.timedelta(minutes=minutes)
             resume_str = self._snooze_resume_time.strftime("%H:%M")
-            print(f"[SNOOZE] Listening snoozed for {minutes} min (resumes at {resume_str})")
+            logger.info(f"[SNOOZE] Listening snoozed for {minutes} min (resumes at {resume_str})")
 
             self._snooze_timer = threading.Timer(minutes * 60, self._on_snooze_expire)
             self._snooze_timer.daemon = True
             self._snooze_timer.start()
         else:
             self._snooze_resume_time = None
-            print("[SNOOZE] Listening snoozed until manually resumed")
+            logger.info("[SNOOZE] Listening snoozed until manually resumed")
 
         # Update tray tooltip
         self._update_snooze_tooltip()
@@ -7199,7 +7209,7 @@ class DictationApp:
 
         self.snoozed = False
         self._snooze_resume_time = None
-        print("[SNOOZE] Listening resumed")
+        logger.info("[SNOOZE] Listening resumed")
 
         # Clear snoozed state on indicator
         if hasattr(self, 'listening_indicator'):
@@ -7229,30 +7239,30 @@ class DictationApp:
     def calibrate_echo_cancellation(self):
         """Run AEC lag calibration on a worker thread (blocking sd.play/rec)."""
         if self._is_audio_capture_active():
-            print("[AEC-CAL] Cannot calibrate while audio capture is active. "
+            logger.debug("[AEC-CAL] Cannot calibrate while audio capture is active. "
                   "Stop dictation and try again.")
             return
 
         def _run():
-            print("[AEC-CAL] Starting calibration...")
+            logger.debug("[AEC-CAL] Starting calibration...")
             try:
                 result = self.echo_canceller.calibrate_lag(
                     mic_device_index=self.config.get('microphone'),
                     mic_rate=self.capture_rate,
                 )
             except Exception as e:
-                print(f"[AEC-CAL] Calibration failed with exception: {e}")
+                logger.exception(f"[AEC-CAL] Calibration failed with exception: {e}")
                 return
 
-            print(f"[AEC-CAL] Result: {result}")
+            logger.debug(f"[AEC-CAL] Result: {result}")
             if result['success']:
                 lag = result['lag_ms']
-                print(
+                logger.debug(
                     f"[AEC-CAL] To apply this value, edit config.json: "
                     f'"echo_cancellation": {{"latency_ms": {lag:.1f}}}'
                 )
             else:
-                print(f"[AEC-CAL] Calibration not reliable: {result['message']}")
+                logger.debug(f"[AEC-CAL] Calibration not reliable: {result['message']}")
 
         threading.Thread(target=_run, daemon=True, name="aec-calibrate").start()
 
@@ -7263,9 +7273,9 @@ class DictationApp:
     def repeat_last_command(self):
         """Re-execute the last repeatable command ("repeat" / "again")."""
         if self._last_command is None:
-            print("[REPEAT] No repeatable command in history.")
+            logger.info("[REPEAT] No repeatable command in history.")
             return
-        print(f"[REPEAT] {self._last_command_name}")
+        logger.info(f"[REPEAT] {self._last_command_name}")
         self._dispatch_command(self._last_command)
 
     def toggle_listening_indicator(self):
@@ -7332,7 +7342,7 @@ class DictationApp:
         if LOG_FILE.exists():
             subprocess.Popen(["notepad.exe", str(LOG_FILE)])
         else:
-            print("[LOG] No log file found.")
+            logger.info("[LOG] No log file found.")
 
     def open_voice_training_log(self):
         """Open the voice training log file"""
@@ -7345,217 +7355,223 @@ class DictationApp:
     
     def quit_app(self):
         """Exit the application"""
-        print("[EXIT] Shutting down Samsara...")
+        logger.info("[EXIT] Shutting down Samsara...")
 
         # Signal background threads (e.g. stream-health monitor) to stop
         self._running = False
+
+        # Every step below is independent, best-effort teardown: one
+        # subsystem failing to stop cleanly must never block the rest of
+        # shutdown or the final os._exit(0) -- so each keeps swallowing
+        # after logging (Tier 1 "genuinely-optional" rule for exit-path
+        # cleanup), never re-raising.
 
         # Stop config file watcher
         try:
             if self._config_watcher is not None:
                 self._config_watcher.stop()
-        except Exception:
-            pass
+        except Exception as e:
+            logger.debug(f"[EXIT] Config watcher stop failed: {e}")
 
         # Stop icon chase animation timer
         try:
             self._stop_icon_chase()
-        except:
-            pass
-        
+        except Exception as e:
+            logger.debug(f"[EXIT] Icon chase stop failed: {e}")
+
         try:
             if self.continuous_active:
                 self.stop_continuous_mode()
-        except:
-            pass
-        
+        except Exception as e:
+            logger.debug(f"[EXIT] Continuous mode stop failed: {e}")
+
         try:
             if self.wake_word_active:
                 self.stop_wake_word_mode()
-        except:
-            pass
+        except Exception as e:
+            logger.debug(f"[EXIT] Wake word mode stop failed: {e}")
 
         try:
             self._stop_gesture_lane()
-        except Exception:
-            pass
+        except Exception as e:
+            logger.debug(f"[EXIT] Gesture lane stop failed: {e}")
 
         # Stop key macro manager (releases any held keys)
         try:
             if hasattr(self, 'key_macro_manager') and self.key_macro_manager:
                 self.key_macro_manager.stop()
-        except:
-            pass
+        except Exception as e:
+            logger.debug(f"[EXIT] Key macro manager stop failed: {e}")
 
         # Stop notification manager
         try:
             if hasattr(self, 'notification_manager') and self.notification_manager:
                 self.notification_manager.stop()
-        except:
-            pass
+        except Exception as e:
+            logger.debug(f"[EXIT] Notification manager stop failed: {e}")
 
         # Stop alarm manager
         try:
             if hasattr(self, 'alarm_manager') and self.alarm_manager:
                 self.alarm_manager.stop()
-        except:
-            pass
+        except Exception as e:
+            logger.debug(f"[EXIT] Alarm manager stop failed: {e}")
 
         # Stop ACE engine (deactivates consumer, flushes debug WAV if any)
         try:
             if hasattr(self, '_ace_engine') or hasattr(self, '_dictation_consumer'):
                 self._stop_ace_engine()
-        except:
-            pass
+        except Exception as e:
+            logger.debug(f"[EXIT] ACE engine stop failed: {e}")
 
         # Stop echo cancellation
         try:
             if hasattr(self, 'echo_canceller'):
                 self.echo_canceller.stop()
-        except:
-            pass
+        except Exception as e:
+            logger.debug(f"[EXIT] Echo canceller stop failed: {e}")
 
         # Cancel snooze timer
         try:
             if self._snooze_timer is not None:
                 self._snooze_timer.cancel()
                 self._snooze_timer = None
-        except:
-            pass
+        except Exception as e:
+            logger.debug(f"[EXIT] Snooze timer cancel failed: {e}")
 
         # Destroy listening indicator
         try:
             if hasattr(self, 'listening_indicator'):
                 self.listening_indicator.destroy()
-        except:
-            pass
+        except Exception as e:
+            logger.debug(f"[EXIT] Listening indicator destroy failed: {e}")
 
         # Destroy command cheat sheet
         try:
             if hasattr(self, 'cheat_sheet'):
                 self.cheat_sheet.destroy()
-        except:
-            pass
+        except Exception as e:
+            logger.debug(f"[EXIT] Cheat sheet destroy failed: {e}")
 
         # Destroy show-numbers layered overlay
         try:
             from plugins.commands.show_numbers import _destroy_overlay_completely
             _destroy_overlay_completely()
-        except Exception:
-            pass
+        except Exception as e:
+            logger.debug(f"[EXIT] Show-numbers overlay destroy failed: {e}")
 
         # Shut down TTS coordinator + engine before the earcon stream closes
         try:
             if getattr(self, 'audio_coordinator', None) is not None:
                 self.audio_coordinator.shutdown()
-        except Exception:
-            pass
+        except Exception as e:
+            logger.debug(f"[EXIT] Audio coordinator shutdown failed: {e}")
         try:
             if getattr(self, 'tts_engine', None) is not None:
                 self.tts_engine.shutdown()
-        except Exception:
-            pass
+        except Exception as e:
+            logger.debug(f"[EXIT] TTS engine shutdown failed: {e}")
 
         # Stop output device watcher before closing the stream it manages
         try:
             stop_evt = getattr(self, '_output_watcher_stop', None)
             if stop_evt is not None:
                 stop_evt.set()
-        except Exception:
-            pass
+        except Exception as e:
+            logger.debug(f"[EXIT] Output device watcher stop failed: {e}")
 
         # Stop persistent sound stream
         try:
             self.stop_sound_stream()
-        except:
-            pass
+        except Exception as e:
+            logger.debug(f"[EXIT] Sound stream stop failed: {e}")
 
         # Close main hub window (saves geometry to config)
         try:
             if getattr(self, 'main_window', None) is not None:
                 self.main_window.close()
-        except:
-            pass
+        except Exception as e:
+            logger.debug(f"[EXIT] Main window close failed: {e}")
 
         # Close persistent history database
         try:
             if getattr(self, 'history_db', None) is not None:
                 self.history_db.close()
-        except:
-            pass
+        except Exception as e:
+            logger.debug(f"[EXIT] History DB close failed: {e}")
 
         # Stop keyboard listener
         try:
             self.keyboard_listener.stop()
-        except:
-            pass
+        except Exception as e:
+            logger.debug(f"[EXIT] Keyboard listener stop failed: {e}")
 
         # Stop Win32 mouse hook (Mouse 4/5 command mode)
         try:
             if getattr(self, '_mouse_hook', None) is not None:
                 self._mouse_hook.stop()
-        except Exception:
-            pass
+        except Exception as e:
+            logger.debug(f"[EXIT] Mouse hook stop failed: {e}")
 
         # Release the CapsLock hook so the OS resumes normal toggle behavior
         try:
             if getattr(self, '_capslock_hook', None) is not None:
                 keyboard.unhook(self._capslock_hook)
                 self._capslock_hook = None
-        except Exception:
-            pass
+        except Exception as e:
+            logger.debug(f"[EXIT] CapsLock unhook failed: {e}")
 
         # Stop tray icon (do this before GUI cleanup)
         try:
             self.tray_icon.stop()
-        except:
-            pass
-        
+        except Exception as e:
+            logger.debug(f"[EXIT] Tray icon stop failed: {e}")
+
         # Flush Ava alias use-count to disk before exit
         try:
             _ava_corrections.flush_pending()
-        except Exception:
-            pass
+        except Exception as e:
+            logger.debug(f"[EXIT] Ava alias flush failed: {e}")
 
         # Flush debounced command stats and hint counters so counts inside
         # the 5-second coalesce window are not lost on clean shutdown.
         try:
             flush_command_stats()
-        except Exception:
-            pass
+        except Exception as e:
+            logger.debug(f"[EXIT] Command stats flush failed: {e}")
         try:
             if hasattr(self, 'hints') and self.hints is not None:
                 self.hints.shutdown()
-        except Exception:
-            pass
+        except Exception as e:
+            logger.debug(f"[EXIT] Hints shutdown failed: {e}")
 
         # Force exit — bypasses any remaining thread cleanup but guarantees
         # termination even if a background thread or Qt modal is blocking.
-        print("[EXIT] Goodbye!")
+        logger.info("[EXIT] Goodbye!")
         os._exit(0)
 
 if __name__ == "__main__":
     # Console is already hidden at top of file
     _DIAG_MAIN_T = time.perf_counter()
-    print(f"[BOOT-DIAG] __main__: entry (since sounddevice import: {(_DIAG_MAIN_T - _POST_SD_T)*1000:.0f}ms)", flush=True)
+    logger.debug(f"[BOOT-DIAG] __main__: entry (since sounddevice import: {(_DIAG_MAIN_T - _POST_SD_T)*1000:.0f}ms)")
 
     # Guard against double-launch. Must run before the splash / audio starts
     # so a second invocation exits cleanly without grabbing resources.
     _t = time.perf_counter()
     _acquire_instance_lock()
     _dt = (time.perf_counter() - _t) * 1000
-    print(f"[BOOT-DIAG] instance lock (_check_single_instance): {_dt:.0f}ms", flush=True)
+    logger.debug(f"[BOOT-DIAG] instance lock (_check_single_instance): {_dt:.0f}ms")
     if _dt > 5000:
-        print(f"[BOOT-DIAG] SLOW STEP: instance lock {_dt:.0f}ms", flush=True)
+        logger.debug(f"[BOOT-DIAG] SLOW STEP: instance lock {_dt:.0f}ms")
 
     # Show splash screen during startup
     _t = time.perf_counter()
     from samsara.ui.splash_qt import SplashScreenQt
     splash = SplashScreenQt()
     _dt = (time.perf_counter() - _t) * 1000
-    print(f"[BOOT-DIAG] splash init (SplashScreenQt): {_dt:.0f}ms", flush=True)
+    logger.debug(f"[BOOT-DIAG] splash init (SplashScreenQt): {_dt:.0f}ms")
     if _dt > 5000:
-        print(f"[BOOT-DIAG] SLOW STEP: splash init {_dt:.0f}ms", flush=True)
+        logger.debug(f"[BOOT-DIAG] SLOW STEP: splash init {_dt:.0f}ms")
     splash.set_status("Initializing...")
 
     app = None
@@ -7573,5 +7589,5 @@ if __name__ == "__main__":
         if app is not None:
             try:
                 app._uninstall_capslock_hook()
-            except Exception:
-                pass
+            except Exception as e:
+                logger.warning(f"CapsLock hook release on abnormal exit failed: {e}")

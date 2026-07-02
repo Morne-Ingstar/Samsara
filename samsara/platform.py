@@ -10,6 +10,10 @@ import sys
 from pathlib import Path
 from typing import Optional, Callable
 
+from samsara.log import get_logger
+
+logger = get_logger(__name__)
+
 
 # Platform detection
 IS_WINDOWS = sys.platform == 'win32'
@@ -95,8 +99,8 @@ def hide_console_window() -> None:
         hwnd = ctypes.windll.kernel32.GetConsoleWindow()
         if hwnd:
             ctypes.windll.user32.ShowWindow(hwnd, 0)
-    except Exception:
-        pass
+    except Exception as e:
+        logger.debug(f"hide_console_window: {e}")
 
 
 def show_message_box(title: str, message: str, error: bool = False) -> None:
@@ -300,8 +304,8 @@ def play_sound_fallback(filepath: Path) -> bool:
                     return True
                 except FileNotFoundError:
                     continue
-    except Exception:
-        pass
+    except Exception as e:
+        logger.debug(f"play_sound_fallback: {e}")
     return False
 
 

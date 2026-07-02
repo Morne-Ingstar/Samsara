@@ -2,6 +2,10 @@ import json
 import os
 import threading
 
+from samsara.log import get_logger
+
+logger = get_logger(__name__)
+
 _STATS_PATH = os.path.join(os.path.expanduser('~'), '.samsara', 'command_stats.json')
 _stats = {}
 _lock = threading.Lock()          # protects _stats and _pending_timer
@@ -35,8 +39,8 @@ def _save():
         print(f"[STATS] Save failed: {e}")
         try:
             os.remove(tmp)
-        except OSError:
-            pass
+        except OSError as e:
+            logger.debug(f"_save: {e}")
 
 
 def _schedule_flush():
