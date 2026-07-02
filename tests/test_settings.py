@@ -4,10 +4,73 @@ Tests for SettingsWindow and configuration management.
 import pytest
 import json
 import sys
+import threading
 from pathlib import Path
+from types import SimpleNamespace
 from unittest.mock import Mock, patch, MagicMock
 
 sys.path.insert(0, str(Path(__file__).parent.parent))
+
+
+class _StubApp:
+    """Minimal app stand-in for headlessly constructing _SettingsWindow.
+
+    All _build_*_tab methods read config via .get(key, default), so an
+    empty config dict is enough -- this deliberately does NOT duplicate
+    DictationApp's real default_config (that would drift out of sync);
+    it only provides the handful of non-config attributes the tabs touch
+    during __init__ (command_executor, hints, alarm_manager, etc).
+    """
+
+    def __init__(self):
+        self.config = {}
+        self._config_lock = threading.Lock()
+        self.command_executor = SimpleNamespace(commands={}, find_command=lambda p: None)
+        self.hints = None
+        self.alarm_manager = None
+
+    def play_sound(self, *a, **k):
+        pass
+
+    def save_config(self):
+        pass
+
+    def load_commands(self):
+        return {}
+
+    def load_training_data(self):
+        pass
+
+    def _load_sound_cache(self):
+        pass
+
+
+class TestSettingsWindowConstruction:
+    """Headless construction check -- also locks in that the duplicate
+    command_mode.button / threshold_mode+cal_multiplier widgets stay gone."""
+
+    def test_constructs_without_error(self, qapp):
+        from samsara.ui.settings_qt import _SettingsWindow
+        win = _SettingsWindow(_StubApp())
+        assert win is not None
+
+    def test_cmd_button_widget_removed(self, qapp):
+        """Hotkeys tab's raw-key button picker was removed -- the Commands
+        tab's friendly-label picker (cmd_tab_button) is the single home."""
+        from samsara.ui.settings_qt import _SettingsWindow
+        win = _SettingsWindow(_StubApp())
+        assert 'cmd_button' not in win._widgets
+        assert 'cmd_tab_button' in win._widgets
+
+    def test_threshold_mode_widget_removed(self, qapp):
+        """Hotkeys tab's threshold_mode/cal_multiplier were removed -- the
+        Advanced tab's adv_threshold_mode/adv_cal_multiplier are the single home."""
+        from samsara.ui.settings_qt import _SettingsWindow
+        win = _SettingsWindow(_StubApp())
+        assert 'threshold_mode' not in win._widgets
+        assert 'cal_multiplier' not in win._widgets
+        assert 'adv_threshold_mode' in win._widgets
+        assert 'adv_cal_multiplier' in win._widgets
 
 
 class TestSettingsConfiguration:

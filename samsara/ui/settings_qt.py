@@ -4,6 +4,7 @@ PySide6 settings window for Samsara.
 All Qt operations are posted to the shared qt_runtime event loop.
 """
 
+import shutil
 import threading
 
 from PySide6.QtCore import Qt, QTimer, Signal
@@ -884,8 +885,6 @@ class _SettingsWindow(QMainWindow):
             "color: #5EEAD4; font-size: 14px; font-weight: 600; "
             "font-family: 'Consolas', 'Courier New', monospace;"
         )
-        note_label = QLabel("  More wake word options coming soon.")
-        note_label.setStyleSheet("color: #8A8A92; font-size: 12px;")
         phrase_row.addLayout(self._setting_row(
             "Wake phrase",
             "The word or phrase Samsara listens for to activate recording",
@@ -894,34 +893,17 @@ class _SettingsWindow(QMainWindow):
         layout.addLayout(phrase_row)
         layout.addSpacing(4)
 
-        note = QLabel("More wake word options coming soon.")
+        note = QLabel("Additional custom wake phrases can be added via wake_targets in "
+                       "config, each with its own trained model.")
         note.setStyleSheet("color: #8A8A92; font-size: 12px; margin-left: 0px;")
         layout.addWidget(note)
         layout.addSpacing(8)
 
-        threshold_combo = QComboBox()
-        threshold_combo.addItems(['auto', 'manual'])
-        threshold_combo.setCurrentText(cfg.get('threshold_mode', 'auto'))
-        self._widgets['threshold_mode'] = threshold_combo
-        layout.addLayout(self._setting_row(
-            "Speech threshold mode",
-            "auto: calibrate on startup.  manual: use a fixed multiplier below",
-            threshold_combo,
-        ))
-        layout.addSpacing(8)
-
-        cal_spin = QDoubleSpinBox()
-        cal_spin.setRange(1.0, 10.0)
-        cal_spin.setSingleStep(0.1)
-        cal_spin.setDecimals(1)
-        cal_spin.setValue(float(cfg.get('cal_multiplier', 3.0)))
-        self._widgets['cal_multiplier'] = cal_spin
-        layout.addLayout(self._setting_row(
-            "Calibration multiplier",
-            "Auto mode: signal must be this many times louder than ambient to count as speech",
-            cal_spin,
-        ))
-        layout.addSpacing(8)
+        # Speech threshold mode + calibration multiplier live on the
+        # Advanced tab only ('adv_threshold_mode' / 'adv_cal_multiplier') --
+        # it also has the manual-threshold row, so it's the natural single
+        # home. Advanced tab widgets are built after this tab and always
+        # won when both existed.
 
         wake_timeout_spin = QDoubleSpinBox()
         wake_timeout_spin.setRange(1.0, 30.0)
@@ -959,7 +941,8 @@ class _SettingsWindow(QMainWindow):
         self._widgets['oww_threshold'] = oww_spin
         layout.addLayout(self._setting_row(
             "Wake word sensitivity",
-            "0.05 = very sensitive, 0.50 = strict.  Only affects Jarvis/Alexa/Mycroft models.",
+            "0.05 = very sensitive, 0.50 = strict.  Applies to all OpenWakeWord models, "
+            "including custom phrases added via wake_targets.",
             oww_spin,
         ))
         layout.addSpacing(20)
@@ -968,21 +951,10 @@ class _SettingsWindow(QMainWindow):
         layout.addWidget(self._section_title("Command Mode"))
         layout.addSpacing(4)
 
-        _button_options = ['mouse4', 'mouse5', 'rctrl', 'f13', 'right_alt']
-        cmd_button_combo = QComboBox()
-        cmd_button_combo.addItems(_button_options)
-        current_btn = cmd_cfg.get('button', 'mouse4')
-        if current_btn not in _button_options:
-            cmd_button_combo.addItem(current_btn)
-        cmd_button_combo.setCurrentText(current_btn)
-        self._widgets['cmd_button'] = cmd_button_combo
-        layout.addLayout(self._setting_row(
-            "Button",
-            "Physical button that activates walkie-talkie command mode",
-            cmd_button_combo,
-        ))
-        layout.addSpacing(8)
-
+        # Button picker lives on the Commands tab only ('cmd_tab_button') --
+        # it uses friendly labels there. Keeping a second raw-key picker here
+        # meant both wrote command_mode.button and the Commands tab always
+        # won (it's applied later in _apply_and_close).
         cmd_mode_combo = QComboBox()
         cmd_mode_combo.addItems(['hold', 'toggle'])
         cmd_mode_combo.setCurrentText(cmd_cfg.get('mode', 'hold'))
@@ -1430,7 +1402,11 @@ class _SettingsWindow(QMainWindow):
                 self._test_result.emit(msg, "#5EEAD4" if ok else "#FF6666")
             except Exception as exc:
                 self._test_result.emit(f"Error: {exc}", "#FF6666")
-            self.showNormal()
+            # showNormal() is a QWidget method -- must run on the Qt thread,
+            # not this worker thread. qt_runtime.post() is the established
+            # marshal-a-callable-onto-the-Qt-thread idiom used throughout
+            # the codebase (already imported in this module).
+            qt_runtime.post(self.showNormal)
         threading.Thread(target=_run, daemon=True).start()
 
     def _edit_selected_command(self, table: QTableWidget) -> None:
@@ -1644,7 +1620,6 @@ class _SettingsWindow(QMainWindow):
 
     def _build_sounds_tab(self):
         from pathlib import Path
-        import shutil
 
         scroll = QScrollArea()
         scroll.setWidgetResizable(True)
@@ -1779,7 +1754,6 @@ class _SettingsWindow(QMainWindow):
         ]
 
         grid_widget = QWidget()
-        from PySide6.QtWidgets import QGridLayout
         grid = QGridLayout(grid_widget)
         grid.setContentsMargins(0, 0, 0, 0)
         grid.setHorizontalSpacing(12)
@@ -1888,7 +1862,6 @@ class _SettingsWindow(QMainWindow):
 
     def _apply_sound_theme(self, theme: str, sounds_dir, themes_dir) -> None:
         """Copy WAV files from the selected theme folder into sounds_dir."""
-        import shutil
         theme_path = themes_dir / theme
         if not theme_path.exists():
             print(f"[SOUNDS] Theme folder not found: {theme_path}")
@@ -2531,8 +2504,6 @@ class _SettingsWindow(QMainWindow):
         QMessageBox.information(self, "Saved", f"Alarm '{name}' saved.")
 
     def _build_health_tab(self):
-        from datetime import datetime, timezone
-
         scroll = QScrollArea()
         scroll.setWidgetResizable(True)
         scroll.setHorizontalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAlwaysOff)
@@ -2542,15 +2513,8 @@ class _SettingsWindow(QMainWindow):
         layout.setContentsMargins(28, 24, 28, 24)
         layout.setSpacing(8)
 
-        def _fmt_time(ts):
-            try:
-                dt = datetime.fromisoformat(ts.replace("Z", "+00:00"))
-                local = dt.astimezone()
-                h = local.hour % 12 or 12
-                ampm = "AM" if local.hour < 12 else "PM"
-                return f"{h}:{local.minute:02d} {ampm}"
-            except Exception:
-                return ts
+        # _fmt_time lives in _refresh_health_log (where it's actually used) --
+        # this tab only builds the static command reference + table chrome.
 
         # ---- Section: Voice Command Reference ----
         layout.addWidget(self._section_title("Voice Commands"))
@@ -3046,7 +3010,9 @@ class _SettingsWindow(QMainWindow):
         self._widgets['adv_aec_latency'] = aec_latency_spin
         layout.addLayout(self._setting_row(
             "Latency compensation",
-            "How far back to look for the system audio that matches what the mic captured",
+            "How far back to look for the system audio that matches what the mic captured. "
+            "Experimental — current default is likely wrong; changing this without measured "
+            "loopback latency can make echo cancellation worse.",
             aec_latency_spin,
         ))
         layout.addSpacing(20)
@@ -3299,10 +3265,12 @@ class _SettingsWindow(QMainWindow):
         if _KEY_NORMALIZE.get(ava_raw, ava_raw) == selected_norm:
             conflicts.append("Ava mode key")
 
-        # Compare against command_mode.button (Hotkeys tab or Commands tab widget)
-        cmd_btn_widget = self._widgets.get('cmd_button') or self._widgets.get('cmd_tab_button')
+        # Compare against command_mode.button (Commands tab widget -- the
+        # single home for this setting; it holds a friendly label like
+        # "Right Ctrl", so map back to the raw key before normalizing).
+        cmd_btn_widget = self._widgets.get('cmd_tab_button')
         if cmd_btn_widget is not None:
-            cmd_raw = cmd_btn_widget.currentText()
+            cmd_raw = _CMD_BUTTON_OPTIONS.get(cmd_btn_widget.currentText(), cmd_btn_widget.currentText())
         else:
             cmd_raw = self.app.config.get('command_mode', {}).get('button', 'mouse4')
         if _KEY_NORMALIZE.get(cmd_raw, cmd_raw) == selected_norm:
@@ -3813,13 +3781,12 @@ class _SettingsWindow(QMainWindow):
             'hints_enabled':      self._widgets['hints_enabled'].isChecked(),
         })
 
-        # Sync hints enabled/disabled state on the live HintManager
+        # Sync hints enabled/disabled state on the live HintManager.
+        # hints_enabled is already persisted to config above (this call
+        # just syncs the already-constructed instance's in-memory flag).
         hints = getattr(self.app, 'hints', None)
         if hints is not None:
-            if self._widgets['hints_enabled'].isChecked():
-                hints._enabled = True
-            else:
-                hints._enabled = False
+            hints.set_enabled(self._widgets['hints_enabled'].isChecked())
 
         mic_name = self._widgets['mic_combo'].currentText()
         mic_id = self._widgets['mic_names_to_id'].get(mic_name)
@@ -3841,10 +3808,9 @@ class _SettingsWindow(QMainWindow):
         if 'wake_word_enabled' in self._widgets:
             updates['wake_word_enabled'] = self._widgets['wake_word_enabled'].isChecked()
 
-        # Wake word nested config
-        if 'threshold_mode' in self._widgets:
-            updates['threshold_mode'] = self._widgets['threshold_mode'].currentText()
-            updates['cal_multiplier'] = self._widgets['cal_multiplier'].value()
+        # Wake word nested config (threshold_mode/cal_multiplier are set
+        # below, from the Advanced tab -- the single home for those two)
+        if 'wake_cmd_timeout' in self._widgets:
             ww_cfg = dict(self.app.config.get('wake_word_config', {}) or {})
             ww_audio = dict(ww_cfg.get('audio', {}) or {})
             ww_audio['wake_command_timeout'] = self._widgets['wake_cmd_timeout'].value()
@@ -3857,7 +3823,8 @@ class _SettingsWindow(QMainWindow):
         if 'cmd_mode' in self._widgets:
             cmd_cfg = dict(self.app.config.get('command_mode', {}) or {})
             cmd_cfg['mode'] = self._widgets['cmd_mode'].currentText()
-            cmd_cfg['button'] = self._widgets['cmd_button'].currentText()
+            # 'button' is set below from the Commands tab's cmd_tab_button --
+            # that's now the single home for this setting.
             cmd_cfg['enter_debounce_ms'] = self._widgets['cmd_debounce'].value()
             cmd_cfg['inactivity_timeout_s'] = self._widgets['cmd_timeout'].value()
             cmd_cfg['miss_limit'] = self._widgets['cmd_miss_limit'].value()

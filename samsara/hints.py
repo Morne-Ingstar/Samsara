@@ -107,6 +107,16 @@ class HintManager:
         except Exception:
             pass
 
+    def set_enabled(self, enabled: bool) -> None:
+        """Update the live in-memory flag only -- does NOT write config.
+
+        For callers (e.g. the Settings window) that already persist
+        hints_enabled as part of a broader config update and just need to
+        sync the already-constructed HintManager instance afterward.
+        Use enable()/disable() instead when config should be written too.
+        """
+        self._enabled = enabled
+
     def reset(self) -> None:
         """Clear shown history -- all hints will fire again on next trigger."""
         self._shown.clear()
