@@ -371,14 +371,36 @@ class FirstRunWizardQt:
         self._app = app
 
     def run(self) -> dict | None:
+        _logger.debug(
+            "[WIZ-DIAG] FirstRunWizardQt.run() entry, thread ident=%s",
+            threading.get_ident(),
+        )
         qt_runtime.ensure_started()
+        _logger.debug("[WIZ-DIAG] qt_runtime.ensure_started() returned")
 
         result_holder = [None]
         done = threading.Event()
         shown_holder = [False]
         samsara_app = self._app
+        # Every other Qt window in this codebase keeps its window alive via a
+        # persistent `self._window` attribute (see history_qt.py, settings_qt.py,
+        # main_window_qt.py, etc.). This wizard was the one exception: `win` was
+        # a bare local inside _create(), so once _create() returned, nothing
+        # held a Python reference to it -- CPython's refcounting GC'd the
+        # QMainWindow almost immediately after show(), silently destroying it
+        # before closeEvent()/_finished could ever fire. Because shown_holder
+        # was already True by then, the watchdog below disarms its own timeout
+        # ("once shown, wait indefinitely"), so done.wait() below blocked
+        # forever with no window on screen and no recovery -- a real,
+        # unrecoverable hang. win_holder pins a live reference for run()'s
+        # entire blocking wait, exactly mirroring the self._window pattern.
+        win_holder = [None]
 
         def _create():
+            _logger.debug(
+                "[WIZ-DIAG] _create entered on thread ident=%s",
+                threading.get_ident(),
+            )
             # A broken wizard must never zombie the app. Anything that
             # throws here (frozen-build asset paths, the mic-meter's
             # transient InputStream, screen-geometry calls, etc.) is caught,
@@ -386,6 +408,8 @@ class FirstRunWizardQt:
             # boot continues with defaults exactly like a hard cancel.
             try:
                 win = _WizardWindow(self.config_path, samsara_app)
+                win_holder[0] = win  # keep alive -- see win_holder comment above
+                _logger.debug("[WIZ-DIAG] _create: _WizardWindow constructed")
                 app = QApplication.instance()
                 if app:
                     screen = app.primaryScreen().availableGeometry()
@@ -399,6 +423,7 @@ class FirstRunWizardQt:
                 ))
                 win.show()
                 shown_holder[0] = True
+                _logger.debug("[WIZ-DIAG] _create: win.show() completed, shown_holder=True")
             except Exception:
                 _logger.exception(
                     "[WIZARD] Creation failed — continuing with default config"
@@ -406,7 +431,12 @@ class FirstRunWizardQt:
                 result_holder[0] = None
                 done.set()
 
+        _logger.debug(
+            "[WIZ-DIAG] about to call qt_runtime.post(_create), thread ident=%s",
+            threading.get_ident(),
+        )
         qt_runtime.post(_create)
+        _logger.debug("[WIZ-DIAG] qt_runtime.post(_create) returned, about to wait on Event")
 
         # Watchdog: if the window never even appeared within the timeout,
         # give up and proceed with defaults. Once shown_holder is True the
@@ -417,6 +447,7 @@ class FirstRunWizardQt:
             )
             return None
         done.wait()
+        _logger.debug("[WIZ-DIAG] run(): done, returning result")
         return result_holder[0]
 
 

@@ -80,7 +80,12 @@ def post(cb) -> None:
             log.warning("qt_runtime.post: dropping callback (state=%d) %r", _state, cb)
             return
         app = _app
+    log.debug(
+        "[WIZ-DIAG] post(): state=RUNNING, scheduling %r, calling thread ident=%s",
+        cb, threading.get_ident(),
+    )
     QTimer.singleShot(0, app, cb)
+    log.debug("[WIZ-DIAG] post(): QTimer.singleShot() call returned")
 
 
 def is_alive() -> bool:
