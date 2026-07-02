@@ -80,7 +80,19 @@ QPushButton {
 }
 QPushButton:hover { background-color: #4DD8C2; color: #0A0A0B; }
 QPushButton:pressed { background-color: #3DC8B0; color: #0A0A0B; }
-QPushButton:disabled { background-color: #1E1E24; color: #555555; }
+QPushButton:disabled { background-color: #2E6F66; color: #0A0A0B; }
+QPushButton[class="primary"] {
+    background-color: #5EEAD4;
+    color: #0A0A0B;
+    border: none;
+    border-radius: 6px;
+    padding: 10px 24px;
+    font-weight: 600;
+    font-size: 14px;
+}
+QPushButton[class="primary"]:hover { background-color: #4DD8C2; color: #0A0A0B; }
+QPushButton[class="primary"]:pressed { background-color: #3DC8B0; color: #0A0A0B; }
+QPushButton[class="primary"]:disabled { background-color: #2E6F66; color: #0A0A0B; }
 QPushButton[class="secondary"] {
     background-color: transparent;
     color: #8A8A92;
@@ -585,6 +597,9 @@ class _WizardWindow(QMainWindow):
         nl.addStretch()
 
         self._next_btn = QPushButton("Next")
+        self._next_btn.setProperty("class", "primary")
+        self._next_btn.style().unpolish(self._next_btn)
+        self._next_btn.style().polish(self._next_btn)
         self._next_btn.setFixedWidth(150)
         self._next_btn.clicked.connect(self._go_next)
         nl.addWidget(self._next_btn)
