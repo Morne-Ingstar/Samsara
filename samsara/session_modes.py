@@ -209,6 +209,75 @@ def detect_stage_reference(text: str) -> bool:
 
 
 # ---------------------------------------------------------------------------
+# Substance gate (AVA mode, Phase 2.5): reject micro-utterances before they
+# become an agent API call + spoken reply
+# ---------------------------------------------------------------------------
+
+# Deliberately a SEPARATE set from normalize_utterance's _LEADING_FILLERS --
+# that list only strips LEADING filler words for switch-word matching; this
+# gate needs to catch filler tokens ANYWHERE in the utterance ("um okay" is
+# two filler tokens, not one leading filler followed by real content).
+_SUBSTANCE_FILLER_TOKENS = frozenset({
+    "uh", "um", "hmm", "mhm", "ah", "oh", "eh", "huh", "hm",
+    "you", "the", "a", "yeah", "okay", "ok",
+})
+
+# Short but complete one-word turns that must never be rejected just for
+# being short -- overrides every other rule below.
+_SUBSTANTIVE_ONE_WORD_ALLOWLIST = frozenset({
+    "yes", "no", "stop", "continue", "why", "how",
+})
+
+_SUBSTANCE_MIN_LENGTH = 4  # characters, raw (pre-normalization) length
+
+
+def _substance_tokens(text: str) -> list:
+    """lowercase + strip punctuation only -- no filler-stripping. That's
+    normalize_utterance's job for switch-word matching, a different concern
+    from this gate's own _SUBSTANCE_FILLER_TOKENS set below."""
+    t = (text or "").strip().lower()
+    t = t.translate(str.maketrans("", "", string.punctuation))
+    return t.split()
+
+
+def is_substantive_utterance(text: str) -> bool:
+    """AVA-lane-only gate: reject micro-utterances -- coughs, "uh", stray
+    syllables -- that survive the near-silence/hallucination gates and
+    transcribe as tiny valid strings, before each one costs an agent API
+    request and a spoken reply. Deterministic, no NLU.
+
+    Rejects when ANY of (unless the single-word allowlist exception below
+    applies first):
+      - fewer than 2 words after normalization (lowercase, strip punctuation)
+      - total length < 4 characters
+      - every token is in _SUBSTANCE_FILLER_TOKENS (whole-utterance filler
+        like "um okay" is rejected even though it's two words)
+
+    The one-word allowlist ("yes", "no", "stop", "continue", "why", "how")
+    is checked FIRST and overrides the length/word-count rules -- "no" (2
+    characters) and "why" (3 characters) are complete, meaningful turns
+    despite being short; the length rule exists to catch tiny NON-turns
+    (stray syllables, hallucination fragments), not these.
+    """
+    tokens = _substance_tokens(text)
+
+    if len(tokens) == 1 and tokens[0] in _SUBSTANTIVE_ONE_WORD_ALLOWLIST:
+        return True
+
+    if len(tokens) < 2:
+        return False
+
+    stripped = (text or "").strip()
+    if len(stripped) < _SUBSTANCE_MIN_LENGTH:
+        return False
+
+    if all(tok in _SUBSTANCE_FILLER_TOKENS for tok in tokens):
+        return False
+
+    return True
+
+
+# ---------------------------------------------------------------------------
 # Anti-hallucination gate for switch words / scratch-that
 # ---------------------------------------------------------------------------
 
@@ -383,7 +452,8 @@ class DispatchOutcome:
     kind: str
     # one of: "empty" | "abort" | "scratch_success" | "scratch_refuse" |
     # "mode_switch" | "command_executed" | "command_miss" |
-    # "dictate_injected" | "dictate_suppressed_focus_lock" | "ava_dispatched"
+    # "dictate_injected" | "dictate_suppressed_focus_lock" | "ava_dispatched" |
+    # "ava_rejected_not_substantive"
     detail: dict = field(default_factory=dict)
 
 
@@ -579,7 +649,15 @@ class SessionModeManager:
         return DispatchOutcome(kind="dictate_injected", detail={"text": to_inject})
 
     def _dispatch_ava(self, text: str) -> DispatchOutcome:
-        """Every AVA-mode utterance goes to the agent as natural language.
+        """Every AVA-mode utterance goes to the agent as natural language --
+        except micro-utterances that fail is_substantive_utterance (coughs,
+        "uh", stray syllables): those never reach _agent_dispatch_fn at all,
+        so they never enter the caller's request queue and never cost an
+        API call. This substance gate runs AFTER abort/scratch-that/switch-
+        word handling (dispatch_utterance's job, above _dispatch_in_mode) --
+        it only ever sees text already committed to being ordinary AVA
+        content, so it can never eat a mode switch.
+
         The DICTATE stage buffer is attached ONLY when detect_stage_reference
         finds an explicit reference AND the buffer is non-empty -- never by
         default. Attaching (an "explicit send") clears the buffer here, at
@@ -589,6 +667,9 @@ class SessionModeManager:
         buffer-attached request" is the only deterministic point at which
         "sent" can be defined. Agent turns are never pushed onto the
         scratch-that stack -- an agent exchange can't be unsent."""
+        if not is_substantive_utterance(text):
+            return DispatchOutcome(kind="ava_rejected_not_substantive", detail={"text": text})
+
         context = None
         if detect_stage_reference(text) and self._stage_buffer:
             context = self._stage_buffer

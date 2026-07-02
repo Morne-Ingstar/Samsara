@@ -4002,6 +4002,7 @@ class DictationApp:
             manager = self._ensure_session_mode_manager()
             outcome = manager.dispatch_utterance(text, signals)
             print(f'[SESSION] mode={manager.mode.value} outcome={outcome.kind} detail={outcome.detail}')
+            self._handle_session_dispatch_outcome(outcome, text)
         except Exception as exc:
             print(f'[CMD-UTT] Error: {exc}')
             import traceback
@@ -4009,6 +4010,33 @@ class DictationApp:
         finally:
             self._wake_transcription_in_progress = False
             self._vad_reset()
+
+    def _handle_session_dispatch_outcome(self, outcome: "DispatchOutcome", text: str) -> None:
+        """Side effects keyed on the unified session's dispatch outcome that
+        don't belong inside SessionModeManager itself (earcons, the
+        command-mode inactivity timer) -- split out from
+        _handle_command_mode_utterance so this logic is testable without a
+        full transcription pipeline."""
+        if outcome.kind == "ava_rejected_not_substantive":
+            # Coughs/"uh"/stray syllables that survive the hallucination
+            # gates but aren't worth an agent API call + spoken reply. No
+            # existing "miss" earcon in this codebase -- reuse
+            # scratch_refuse (the established "this didn't go through"
+            # sound; same choice already made for the AVA dispatch
+            # queue-full-drop case in _ava_session_agent_dispatch_fn).
+            print(f'[AVA] Rejected non-substantive utterance: "{text}"')
+            self.play_sound('scratch_refuse')
+        if outcome.kind in ("ava_dispatched", "ava_rejected_not_substantive"):
+            # AVA lane only -- any utterance here means the user is audibly
+            # present, whether it passed the substance gate or not.
+            # COMMAND/DICTATE inactivity-reset behavior is untouched
+            # (COMMAND already resets on a matched command elsewhere in
+            # this file; DICTATE has no reset today either way -- both
+            # pre-existing, out of scope here).
+            cm_cfg = self.config.get('command_mode', {})
+            self._reset_command_mode_inactivity_timer(
+                cm_cfg.get('inactivity_timeout_s', 30)
+            )
 
     def _compute_switch_gate_signals(self, audio, seg_list) -> "UtteranceSignals":
         """Compute the switch/scratch-that anti-hallucination gate signals

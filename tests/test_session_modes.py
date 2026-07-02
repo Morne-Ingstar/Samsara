@@ -23,6 +23,7 @@ from samsara.session_modes import (
     chunk_ends_terminal,
     check_focus_lock,
     detect_stage_reference,
+    is_substantive_utterance,
     SWITCH_WORD_MAX_COMPRESSION_RATIO,
 )
 
@@ -400,6 +401,63 @@ class TestDetectStageReference:
 
 
 # ---------------------------------------------------------------------------
+# is_substantive_utterance (AVA mode substance gate, Phase 2.5)
+# ---------------------------------------------------------------------------
+
+class TestIsSubstantiveUtterance:
+    @pytest.mark.parametrize("text", [
+        "uh",
+        "you",
+        "um okay",
+        "hm",
+        "cat",           # 3-char string
+        "xyz",           # 3-char string
+        "",
+        "   ",
+        "um",
+        "the a",         # 2 tokens, both filler
+        "okay yeah",     # 2 tokens, both filler
+    ])
+    def test_rejects_micro_utterances(self, text):
+        assert is_substantive_utterance(text) is False
+
+    @pytest.mark.parametrize("text", [
+        "no",
+        "stop",
+        "yes",
+        "continue",
+        "why",
+        "how",
+        "what time is it",
+        "submit that",
+        "tell me a joke",
+        "How Are You",     # case-insensitive, still 3 real words
+    ])
+    def test_accepts_substantive_utterances(self, text):
+        assert is_substantive_utterance(text) is True
+
+    def test_one_word_allowlist_overrides_length_rule(self):
+        # "no" is 2 characters -- shorter than the 4-char minimum -- but the
+        # allowlist exception must win; it's a complete, meaningful turn.
+        assert is_substantive_utterance("no") is True
+
+    def test_one_word_non_allowlisted_short_word_rejected(self):
+        assert is_substantive_utterance("go") is False
+
+    def test_two_short_words_still_rejected_by_length(self):
+        # 2 tokens (passes the word-count rule) but only 3 characters total --
+        # the length rule catches what the word-count rule alone would miss.
+        assert is_substantive_utterance("a b") is False
+
+    def test_punctuation_and_case_do_not_affect_result(self):
+        assert is_substantive_utterance("Submit That!") is True
+        assert is_substantive_utterance("Uh...") is False
+
+    def test_none_input_rejected(self):
+        assert is_substantive_utterance(None) is False
+
+
+# ---------------------------------------------------------------------------
 # SessionModeManager integration: fixtures + dispatch behavior
 # ---------------------------------------------------------------------------
 
@@ -735,6 +793,52 @@ class TestSessionModeManagerAvaDispatch:
         assert mgr.mode is SessionMode.COMMAND  # never switched
         assert outcome.kind == "command_miss"   # fell through to COMMAND dispatch instead
         mocks["command_dispatch"].assert_called_once_with("ava")
+
+    # -- substance gate (Phase 2.5) --------------------------------------
+
+    def test_non_substantive_utterance_never_reaches_agent(self, manager_factory):
+        mgr, mocks = manager_factory()
+        mgr.force_mode(SessionMode.AVA)
+        outcome = mgr.dispatch_utterance("uh", GOOD_SIGNALS)
+        assert outcome.kind == "ava_rejected_not_substantive"
+        mocks["agent_dispatch"].assert_not_called()
+
+    def test_substantive_utterance_dispatches_normally(self, manager_factory):
+        mgr, mocks = manager_factory()
+        mgr.force_mode(SessionMode.AVA)
+        outcome = mgr.dispatch_utterance("what time is it", GOOD_SIGNALS)
+        assert outcome.kind == "ava_dispatched"
+        mocks["agent_dispatch"].assert_called_once_with("what time is it", None)
+
+    def test_rejected_utterance_does_not_consume_stage_buffer(self, manager_factory):
+        """A rejected micro-utterance must not clear the stage buffer --
+        it never even reaches the stage-reference check."""
+        mgr, mocks = manager_factory(foreground="notepad.exe")
+        mgr.force_mode(SessionMode.DICTATE)
+        mgr.dispatch_utterance("Hello world", GOOD_SIGNALS)
+        mgr.force_mode(SessionMode.AVA)
+        mgr.dispatch_utterance("uh", GOOD_SIGNALS)
+        assert mgr.stage_buffer == "Hello world"
+        mocks["agent_dispatch"].assert_not_called()
+
+    def test_one_word_allowlisted_utterance_dispatches(self, manager_factory):
+        mgr, mocks = manager_factory()
+        mgr.force_mode(SessionMode.AVA)
+        outcome = mgr.dispatch_utterance("no", GOOD_SIGNALS)
+        assert outcome.kind == "ava_dispatched"
+        mocks["agent_dispatch"].assert_called_once_with("no", None)
+
+    def test_switch_word_in_ava_not_consumed_by_substance_gate(self, manager_factory):
+        """Dispatch order is unchanged: switch words are matched in
+        dispatch_utterance() BEFORE _dispatch_in_mode()/_dispatch_ava() ever
+        runs, so the substance gate never even sees "command mode" -- it
+        can't eat it, regardless of how short it might otherwise look."""
+        mgr, mocks = manager_factory()
+        mgr.force_mode(SessionMode.AVA)
+        outcome = mgr.dispatch_utterance("command mode", GOOD_SIGNALS)
+        assert outcome.kind == "mode_switch"
+        assert mgr.mode is SessionMode.COMMAND
+        mocks["agent_dispatch"].assert_not_called()
 
 
 # ---------------------------------------------------------------------------
