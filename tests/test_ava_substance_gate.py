@@ -21,9 +21,11 @@ def _make_stub():
 
     class _Stub:
         _handle_session_dispatch_outcome = _d.DictationApp._handle_session_dispatch_outcome
+        _touch_session_activity = _d.DictationApp._touch_session_activity
 
         def __init__(self):
-            self.config = {'command_mode': {'inactivity_timeout_s': 30}}
+            self.config = {'command_mode': {'inactivity_timeout_s': 30, 'mode': 'toggle'}}
+            self.command_mode_active = True
             self._sounds = []
             self.reset_calls = []
 
@@ -56,13 +58,23 @@ class TestHandleSessionDispatchOutcome:
         assert stub.reset_calls == [30]
         assert "scratch_refuse" not in stub._sounds
 
-    def test_other_outcomes_do_not_touch_timer_or_earcon(self):
-        """COMMAND/DICTATE outcomes are untouched by this AVA-only wiring."""
+    def test_every_non_empty_outcome_touches_the_single_chokepoint(self):
+        """Fixed behavior (was the bug this file's sibling task closed):
+        every lane's non-empty outcome resets the SAME inactivity timer via
+        _touch_session_activity, not just the AVA lane."""
         stub, DispatchOutcome = _make_stub()
         for kind in ("command_executed", "command_miss", "dictate_injected",
                      "dictate_suppressed_focus_lock", "mode_switch",
-                     "scratch_success", "scratch_refuse", "abort", "empty"):
+                     "scratch_success", "scratch_refuse", "abort"):
+            stub.reset_calls = []
             outcome = DispatchOutcome(kind=kind, detail={})
             stub._handle_session_dispatch_outcome(outcome, "text")
+            assert stub.reset_calls == [30], f"kind={kind} did not touch the timer"
+
+    def test_empty_outcome_does_not_touch_timer(self):
+        """A discarded near-silence/blank transcription is never activity."""
+        stub, DispatchOutcome = _make_stub()
+        outcome = DispatchOutcome(kind="empty", detail={})
+        stub._handle_session_dispatch_outcome(outcome, "")
         assert stub.reset_calls == []
         assert stub._sounds == []
