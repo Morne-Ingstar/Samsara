@@ -73,6 +73,92 @@ class TestSettingsWindowConstruction:
         assert 'adv_cal_multiplier' in win._widgets
 
 
+class TestSidebarGrouping:
+    """Sidebar has 2 non-selectable group headers (Settings / Tools) + 10
+    selectable tabs, and each Tools tab shows an instant-apply caption."""
+
+    def test_header_and_selectable_row_counts(self, qapp):
+        from PySide6.QtCore import Qt
+        from samsara.ui.settings_qt import _SettingsWindow
+        win = _SettingsWindow(_StubApp())
+
+        headers = []
+        selectable = []
+        for i in range(win._sidebar.count()):
+            item = win._sidebar.item(i)
+            if item.flags() & Qt.ItemFlag.ItemIsSelectable:
+                selectable.append(item.text())
+            else:
+                headers.append(item.text())
+
+        assert len(headers) == 2
+        assert len(selectable) == 10
+        assert set(headers) == {'SETTINGS', 'TOOLS'}
+
+    def test_tab_indices_unchanged(self, qapp):
+        """Stack widget order/indices must be untouched by the regrouping --
+        only the sidebar's visual row order changed."""
+        from samsara.ui.settings_qt import _SettingsWindow
+        win = _SettingsWindow(_StubApp())
+        expected = {
+            'General': 0, 'Hotkeys': 1, 'Commands': 2, 'Sounds': 3, 'TTS': 4,
+            'Ava / Cloud': 5, 'Alarms': 6, 'Health': 7, 'Advanced': 8, 'AI Commands': 9,
+        }
+        for row, stack_index in win._sidebar_row_to_stack_index.items():
+            name = win._sidebar.item(row).text()
+            assert expected[name] == stack_index
+
+    def test_clicking_a_header_does_nothing(self, qapp):
+        from samsara.ui.settings_qt import _SettingsWindow
+        win = _SettingsWindow(_StubApp())
+        before = win._stack.currentIndex()
+        header_row = next(
+            i for i in range(win._sidebar.count())
+            if i not in win._sidebar_row_to_stack_index
+        )
+        win._on_sidebar_row_changed(header_row)
+        assert win._stack.currentIndex() == before
+
+    @pytest.mark.parametrize("tab_name,stack_index,expected_substring", [
+        ("Commands", 2, "apply immediately"),
+        ("Alarms",   6, "apply immediately"),
+        ("Health",   7, "read-only"),
+    ])
+    def test_tool_tab_shows_instant_apply_caption(self, qapp, tab_name, stack_index, expected_substring):
+        from PySide6.QtWidgets import QLabel
+        from samsara.ui.settings_qt import _SettingsWindow
+        win = _SettingsWindow(_StubApp())
+        win._stack.setCurrentIndex(stack_index)
+        tab_widget = win._stack.widget(stack_index)
+        all_text = " ".join(lbl.text() for lbl in tab_widget.findChildren(QLabel)).lower()
+        assert expected_substring in all_text, (
+            f"{tab_name} tab has no caption containing {expected_substring!r}"
+        )
+
+
+class TestApplyAndCloseSnapshot:
+    """Regression test for the per-tab save-function refactor.
+
+    tests/fixtures/settings_apply_and_close_snapshot.json was captured from
+    the PRE-refactor _apply_and_close monolith, calling it on a freshly
+    constructed window (default widget state, empty starting config) and
+    dumping the resulting config dict. If the refactor changes what gets
+    written for the same inputs, this test catches it.
+    """
+
+    def test_apply_and_close_matches_pre_refactor_snapshot(self, qapp):
+        from samsara.ui.settings_qt import _SettingsWindow
+
+        snapshot_path = Path(__file__).parent / "fixtures" / "settings_apply_and_close_snapshot.json"
+        expected = json.loads(snapshot_path.read_text())
+
+        stub = _StubApp()
+        win = _SettingsWindow(stub)
+        win._apply_and_close()
+
+        assert stub.config == expected
+
+
 class TestSettingsConfiguration:
     """Tests for settings configuration values"""
 

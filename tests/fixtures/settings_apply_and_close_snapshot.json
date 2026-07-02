@@ -1,0 +1,125 @@
+{
+  "add_trailing_space": true,
+  "ai_command_mode": {
+    "backend": "ollama",
+    "enabled": true,
+    "keep_warm": true,
+    "key": "right_ctrl",
+    "model": "llama3.2:3b",
+    "queue_depth_cap": 3,
+    "show_plan_hud": true,
+    "step_settle_seconds": 0.4,
+    "wake_phrase": "command mode"
+  },
+  "alarms": {
+    "complete_hotkey": "f7",
+    "dismiss_hotkey": "f8",
+    "enabled": true,
+    "items": [
+      {
+        "enabled": false,
+        "id": "hydration_default",
+        "interval_minutes": 60,
+        "name": "Hydration",
+        "sound": "alarm"
+      }
+    ],
+    "nag_interval_seconds": 60
+  },
+  "audio_coordinator": {
+    "duck_factor": 0.7,
+    "enabled": true
+  },
+  "audio_feedback": true,
+  "auto_capitalize": true,
+  "auto_paste": true,
+  "ava_memory": {
+    "max_turns": 20,
+    "mode": "clear"
+  },
+  "ava_mode_key": "right_alt",
+  "ava_personality": "relaxed",
+  "cal_multiplier": 3.0,
+  "cancel_hotkey": "escape",
+  "cleanup_mode": "clean",
+  "command_hotkey": "ctrl+alt+c",
+  "command_mode": {
+    "button": "mouse4",
+    "enter_debounce_ms": 200,
+    "inactivity_timeout_s": 30,
+    "miss_limit": 5,
+    "mode": "hold",
+    "suppress_button": true
+  },
+  "command_packs": {
+    "3d-printing": false,
+    "accessibility": true,
+    "ai": false,
+    "alarms": true,
+    "audio": false,
+    "browsers": true,
+    "discord": false,
+    "experimental": false,
+    "gaming": false,
+    "health": true,
+    "macros": false,
+    "media": true,
+    "mouse": false,
+    "screen-capture": false,
+    "smart-actions": true,
+    "smart-home": false,
+    "stremio": false,
+    "tasks": true,
+    "text-editing": true,
+    "utilities": false,
+    "window-management": true
+  },
+  "compute_type": "float16",
+  "continuous_hotkey": "ctrl+alt+d",
+  "device": "cpu",
+  "echo_cancellation": {
+    "enabled": false,
+    "latency_ms": 30.0
+  },
+  "format_numbers": true,
+  "gesture": {
+    "enabled": false
+  },
+  "hints_enabled": true,
+  "hotkey": "ctrl+shift",
+  "language": "en",
+  "listening_indicator_enabled": false,
+  "listening_indicator_position": "bottom-center",
+  "min_speech_duration": 0.3,
+  "mode": "hold",
+  "model_size": "base",
+  "performance_mode": "balanced",
+  "silence_threshold": 2.0,
+  "sound_theme": "cute",
+  "sound_volume": 0.5,
+  "streaming_hotkey": "capslock",
+  "threshold_mode": "auto",
+  "tts": {
+    "enabled": false,
+    "engine": "winrt",
+    "pitch": 1.0,
+    "speed": 1.0,
+    "use_for_agent_responses": true,
+    "use_for_confirmations": true,
+    "use_for_dictation_readback": false,
+    "use_for_errors": true,
+    "use_for_status_updates": true,
+    "use_for_warnings": true,
+    "volume": 0.8
+  },
+  "undo_hotkey": "ctrl+alt+z",
+  "wake_word_config": {
+    "audio": {
+      "wake_command_timeout": 5.0
+    },
+    "oww_threshold": 0.2,
+    "quick_silence_timeout": 1.0
+  },
+  "wake_word_enabled": false,
+  "wake_word_hotkey": "ctrl+alt+w"
+}
