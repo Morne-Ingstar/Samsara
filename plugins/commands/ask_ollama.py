@@ -8,7 +8,6 @@ from samsara import ava_profile
 from samsara import cloud_llm
 from samsara.ava_memory import AvaMemory
 from samsara.languages import LANGUAGES
-from samsara.premium import is_premium
 from samsara.plugin_commands import command
 
 _LANG_CODE_TO_NAME = dict(LANGUAGES)
@@ -560,28 +559,22 @@ def ask_ollama(prompt, app, model=None, system=None):
         app._ava_memory = _build_ava_memory(app)
     app._ava_memory.add_user(prompt)
 
-    # ── Cloud LLM path ──
+    # ── Cloud LLM path (bring-your-own-key, no license required) ──
     if cloud_llm.is_enabled(app):
-        if not is_premium(app):
-            print("[AVA CLOUD] Premium license required for cloud LLM")
-            speak(app, "Cloud mode requires a premium license. "
-                       "You can add one in Settings under Ava Cloud.")
-            # Fall through to local Ollama
-        else:
-            print("[AVA CLOUD] Routing to cloud provider")
-            cloud_token_limit = int(
-                getattr(app, "config", {}).get("ava_memory", {}).get(
-                    "cloud_token_limit", 40000
-                )
+        print("[AVA CLOUD] Routing to cloud provider")
+        cloud_token_limit = int(
+            getattr(app, "config", {}).get("ava_memory", {}).get(
+                "cloud_token_limit", 40000
             )
-            messages = app._ava_memory.get_messages(system, token_limit=cloud_token_limit)
-            cloud_response = cloud_llm.send(system, prompt, app, messages=messages)
-            if not cloud_response.startswith("Error:"):
-                app._ava_memory.add_assistant(cloud_response)
-                app._ava_memory.save()
-                return cloud_response
-            print(f"[AVA CLOUD] {cloud_response}")
-            print("[AVA CLOUD] Falling back to local Ollama")
+        )
+        messages = app._ava_memory.get_messages(system, token_limit=cloud_token_limit)
+        cloud_response = cloud_llm.send(system, prompt, app, messages=messages)
+        if not cloud_response.startswith("Error:"):
+            app._ava_memory.add_assistant(cloud_response)
+            app._ava_memory.save()
+            return cloud_response
+        print(f"[AVA CLOUD] {cloud_response}")
+        print("[AVA CLOUD] Falling back to local Ollama")
 
     # ── Local Ollama path ──
     if not _check_ollama_available(host, timeout=1):
@@ -1111,10 +1104,6 @@ def handle_ava_forget(app, remainder="", **kwargs):
 )
 def toggle_cloud(app, remainder="", **kwargs):
     global _cloud_notice_shown
-    if not is_premium(app):
-        speak(app, "Cloud mode requires a premium license. "
-                   "Check Settings, Ava Cloud tab for details.")
-        return
     cfg = app.config.get("cloud_llm", {})
     if not cfg.get("api_key"):
         speak(app, "No API key configured. Add one in Settings under Ava Cloud.")

@@ -3599,164 +3599,47 @@ class _SettingsWindow(QMainWindow):
         layout.setContentsMargins(28, 24, 28, 24)
         layout.setSpacing(12)
 
-        key = premium.get_license_key(self.app)
-        has_license = premium.validate_key(key)
-
-        # ---- License header ------------------------------------------------
-        layout.addWidget(self._section_title("Cloud AI — Premium Feature"))
-        layout.addSpacing(4)
-
-        lic_frame = QFrame()
-        lic_frame.setStyleSheet(
-            "QFrame { background-color: #111114; border-radius: 8px; "
-            "border: 1px solid rgba(255,255,255,0.06); }"
-        )
-        lic_frame_layout = QVBoxLayout(lic_frame)
-        lic_frame_layout.setContentsMargins(16, 16, 16, 16)
-        lic_frame_layout.setSpacing(0)
-
-        # QStackedWidget: index 0 = unlicensed, index 1 = licensed
-        lic_stack = QStackedWidget()
-        lic_stack.setStyleSheet("background: transparent;")
-        self._widgets['cloud_license_stack'] = lic_stack
-
-        # -- Page 0: unlicensed ---
-        unlicensed_page = QWidget()
-        unlicensed_page.setStyleSheet("background: transparent;")
-        up_layout = QVBoxLayout(unlicensed_page)
-        up_layout.setContentsMargins(0, 0, 0, 0)
-        up_layout.setSpacing(10)
-
-        exp_text = (
-            "Samsara is free. Every voice command, dictation feature, plugin, and the "
-            "local AI assistant are yours with no restrictions, no trial period, no nag screens.\n\n"
-            "Cloud AI connects Ava to larger language models for more capable conversations "
-            "and smarter command interpretation. Revenue from Cloud AI licenses helps fund "
-            "Samsara's continued development as a free accessibility tool.\n\n"
-            "If you need Samsara for accessibility and genuinely cannot afford a license, "
-            "get in touch at morneis.com/samsara/business — we'll work something out."
-        )
-        exp_label = QLabel(exp_text)
-        exp_label.setWordWrap(True)
-        exp_label.setStyleSheet("color: #8A8A92; font-size: 12px; background: transparent;")
-        up_layout.addWidget(exp_label)
-
-        key_row = QHBoxLayout()
-        key_row.setSpacing(8)
-        key_row_lbl = QLabel("License key:")
-        key_row_lbl.setStyleSheet("color: #E8E8EA; font-size: 13px; background: transparent;")
-        key_row_lbl.setFixedWidth(95)
-        license_entry = QLineEdit()
-        license_entry.setPlaceholderText("SAMSARA-XXXX-XXXX-XXXX")
-        self._widgets['cloud_license_entry'] = license_entry
-        activate_btn = QPushButton("Activate")
-        activate_btn.setFixedWidth(90)
-        activate_btn.clicked.connect(self._activate_license)
-        key_row.addWidget(key_row_lbl)
-        key_row.addWidget(license_entry, stretch=1)
-        key_row.addWidget(activate_btn)
-        up_layout.addLayout(key_row)
-
-        license_status = QLabel("")
-        license_status.setStyleSheet("color: #FF6666; font-size: 12px; background: transparent;")
-        self._widgets['cloud_license_status'] = license_status
-        up_layout.addWidget(license_status)
-
-        link_lbl = QLabel("Get a license at morneis.com/samsara/premium")
-        link_lbl.setStyleSheet("color: #5EEAD4; font-size: 12px; background: transparent;")
-        up_layout.addWidget(link_lbl)
-
-        lic_stack.addWidget(unlicensed_page)  # index 0
-
-        # -- Page 1: licensed ---
-        licensed_page = QWidget()
-        licensed_page.setStyleSheet("background: transparent;")
-        lp_layout = QVBoxLayout(licensed_page)
-        lp_layout.setContentsMargins(0, 0, 0, 0)
-        lp_layout.setSpacing(6)
-
-        active_lbl = QLabel("Premium license active")
-        active_lbl.setStyleSheet(
-            "color: #5EEAD4; font-size: 13px; font-weight: bold; background: transparent;"
-        )
-        lp_layout.addWidget(active_lbl)
-
-        masked_lbl = QLabel(premium.masked_key(key) if has_license else "")
-        masked_lbl.setStyleSheet(
-            "color: #8A8A92; font-size: 11px; "
-            "font-family: 'Consolas', 'Courier New', monospace; background: transparent;"
-        )
-        self._widgets['cloud_masked_key'] = masked_lbl
-        lp_layout.addWidget(masked_lbl)
-
-        remove_btn = QPushButton("Remove License")
-        remove_btn.setFixedWidth(140)
-        remove_btn.setStyleSheet(
-            "QPushButton { background-color: transparent; color: #8A8A92; "
-            "border: 1px solid rgba(255,255,255,0.14); border-radius: 6px; "
-            "padding: 7px 14px; font-size: 13px; }"
-            "QPushButton:hover { background-color: rgba(255,255,255,0.04); color: #E8E8EA; }"
-        )
-        remove_btn.clicked.connect(self._remove_license)
-        lp_layout.addWidget(remove_btn, alignment=Qt.AlignmentFlag.AlignLeft)
-
-        lic_stack.addWidget(licensed_page)  # index 1
-
-        lic_stack.setCurrentIndex(1 if has_license else 0)
-        lic_frame_layout.addWidget(lic_stack)
-        layout.addWidget(lic_frame)
-
-        license_instant_note = QLabel("Activating or removing a license applies immediately.")
-        license_instant_note.setStyleSheet("color: #8A8A92; font-size: 12px;")
-        layout.addWidget(license_instant_note)
-        layout.addSpacing(8)
-
-        # ---- Cloud settings (hidden when unlicensed) -----------------------
-        cloud_settings = QWidget()
-        cloud_settings.setVisible(has_license)
-        self._widgets['cloud_settings_widget'] = cloud_settings
-        cs_layout = QVBoxLayout(cloud_settings)
-        cs_layout.setContentsMargins(0, 8, 0, 0)
-        cs_layout.setSpacing(12)
-
         cfg = self.app.config.get('cloud_llm', {}) or {}
 
-        # Enable
+        # ---- Section: Cloud AI (bring your own key) -- always visible ------
+        layout.addWidget(self._section_title("Cloud AI (bring your own key)"))
+        layout.addSpacing(4)
+
         cloud_enabled = QCheckBox("Enable Cloud LLM (Ava routes requests to the cloud provider)")
         cloud_enabled.setChecked(bool(cfg.get('enabled', False)))
         self._widgets['cloud_enabled'] = cloud_enabled
-        cs_layout.addWidget(cloud_enabled)
+        layout.addWidget(cloud_enabled)
 
         enable_note = QLabel(
             "When enabled, voice requests are sent to the selected provider. "
-            "Falls back to local Ollama on error."
+            "Falls back to local Ollama on error. Free — just needs your own API key below."
         )
         enable_note.setWordWrap(True)
         enable_note.setStyleSheet("color: #8A8A92; font-size: 12px; margin-left: 26px;")
-        cs_layout.addWidget(enable_note)
-        cs_layout.addSpacing(8)
+        layout.addWidget(enable_note)
+        layout.addSpacing(8)
 
         # Ava Personality toggle
-        cs_layout.addWidget(self._section_title("Ava Personality"))
-        cs_layout.addSpacing(4)
+        layout.addWidget(self._section_title("Ava Personality"))
+        layout.addSpacing(4)
         personality_combo = QComboBox()
         personality_combo.addItems(["Relaxed", "Strict"])
         current = self.app.config.get("ava_personality", "relaxed")
         personality_combo.setCurrentText("Strict" if current == "strict" else "Relaxed")
         self._widgets['ava_personality'] = personality_combo
-        cs_layout.addWidget(personality_combo)
+        layout.addWidget(personality_combo)
         personality_note = QLabel(
             "Relaxed: natural conversation, longer answers, self-aware. "
             "Strict: tight persona, 1-3 sentences, stays in character."
         )
         personality_note.setWordWrap(True)
         personality_note.setStyleSheet("color: #8A8A92; font-size: 12px; margin-left: 4px;")
-        cs_layout.addWidget(personality_note)
-        cs_layout.addSpacing(8)
+        layout.addWidget(personality_note)
+        layout.addSpacing(8)
 
         # Conversation Memory
-        cs_layout.addWidget(self._section_title("Conversation Memory"))
-        cs_layout.addSpacing(4)
+        layout.addWidget(self._section_title("Conversation Memory"))
+        layout.addSpacing(4)
         mem_cfg = self.app.config.get("ava_memory", {})
 
         memory_combo = QComboBox()
@@ -3766,7 +3649,7 @@ class _SettingsWindow(QMainWindow):
             "Keep last session" if mem_mode == "last" else "Clear on close"
         )
         self._widgets['ava_memory_mode'] = memory_combo
-        cs_layout.addWidget(memory_combo)
+        layout.addWidget(memory_combo)
 
         memory_note = QLabel(
             "Clear on close: Ava forgets the conversation when Samsara exits. "
@@ -3774,25 +3657,25 @@ class _SettingsWindow(QMainWindow):
         )
         memory_note.setWordWrap(True)
         memory_note.setStyleSheet("color: #8A8A92; font-size: 12px; margin-left: 4px;")
-        cs_layout.addWidget(memory_note)
-        cs_layout.addSpacing(6)
+        layout.addWidget(memory_note)
+        layout.addSpacing(6)
 
         turns_spin = QSpinBox()
         turns_spin.setRange(5, 500)
         turns_spin.setSingleStep(5)
         turns_spin.setValue(int(mem_cfg.get("max_turns", 20)))
         self._widgets['ava_memory_max_turns'] = turns_spin
-        cs_layout.addLayout(self._setting_row(
+        layout.addLayout(self._setting_row(
             "Max turns remembered",
             "How many back-and-forth turns Ava keeps. Higher = more context, "
             "slightly higher cost per reply.",
             turns_spin,
         ))
-        cs_layout.addSpacing(8)
+        layout.addSpacing(8)
 
         # Provider
-        cs_layout.addWidget(self._section_title("Provider"))
-        cs_layout.addSpacing(4)
+        layout.addWidget(self._section_title("Provider"))
+        layout.addSpacing(4)
 
         current_provider = cfg.get('provider', 'deepseek')
         current_display = _CODE_TO_DISPLAY.get(current_provider, _PROVIDER_DISPLAY[0])
@@ -3800,7 +3683,7 @@ class _SettingsWindow(QMainWindow):
         provider_combo.addItems(_PROVIDER_DISPLAY)
         provider_combo.setCurrentText(current_display)
         self._widgets['cloud_provider'] = provider_combo
-        cs_layout.addLayout(self._setting_row(
+        layout.addLayout(self._setting_row(
             "Provider",
             "Cloud AI provider that processes your voice requests",
             provider_combo,
@@ -3819,10 +3702,23 @@ class _SettingsWindow(QMainWindow):
         info_label.setStyleSheet("color: #8A8A92; font-size: 12px; background: transparent;")
         info_card_layout.addWidget(info_label)
         self._widgets['cloud_info_label'] = info_label
-        cs_layout.addWidget(info_card)
+        layout.addWidget(info_card)
 
         provider_combo.currentTextChanged.connect(self._on_cloud_provider_changed)
-        cs_layout.addSpacing(8)
+        layout.addSpacing(8)
+
+        # Explainer above the API key row
+        explainer = QLabel(
+            "Getting a key from your chosen provider is the only requirement — "
+            "no Samsara account, no payment to us."
+        )
+        explainer.setWordWrap(True)
+        explainer.setStyleSheet("color: #8A8A92; font-size: 12px;")
+        layout.addWidget(explainer)
+        setup_link = QLabel("Setup guide: morneis.com/samsara")
+        setup_link.setStyleSheet("color: #5EEAD4; font-size: 12px;")
+        layout.addWidget(setup_link)
+        layout.addSpacing(4)
 
         # API Key (entry + show/hide button as a container widget)
         api_key_container = QWidget()
@@ -3850,12 +3746,12 @@ class _SettingsWindow(QMainWindow):
         )
         ak_layout.addWidget(api_key_entry, stretch=1)
         ak_layout.addWidget(show_btn)
-        cs_layout.addLayout(self._setting_row(
+        layout.addLayout(self._setting_row(
             "API Key",
             "Stored locally in config.json only — never transmitted to Samsara servers.",
             api_key_container,
         ))
-        cs_layout.addSpacing(8)
+        layout.addSpacing(8)
 
         # Model override
         current_model = cfg.get('model', '')
@@ -3866,12 +3762,12 @@ class _SettingsWindow(QMainWindow):
         )
         model_entry.setMinimumWidth(220)
         self._widgets['cloud_model'] = model_entry
-        cs_layout.addLayout(self._setting_row(
+        layout.addLayout(self._setting_row(
             "Model override",
             "Leave blank to use the provider's default model shown in the placeholder",
             model_entry,
         ))
-        cs_layout.addSpacing(8)
+        layout.addSpacing(8)
 
         # Timeout
         timeout_spin = QSpinBox()
@@ -3880,12 +3776,12 @@ class _SettingsWindow(QMainWindow):
         timeout_spin.setSuffix(" s")
         timeout_spin.setValue(int(cfg.get('timeout_seconds', 30)))
         self._widgets['cloud_timeout'] = timeout_spin
-        cs_layout.addLayout(self._setting_row(
+        layout.addLayout(self._setting_row(
             "Timeout",
             "Seconds to wait for the cloud provider before showing an error",
             timeout_spin,
         ))
-        cs_layout.addSpacing(12)
+        layout.addSpacing(12)
 
         # Test connection
         test_row = QHBoxLayout()
@@ -3899,8 +3795,8 @@ class _SettingsWindow(QMainWindow):
         test_row.addWidget(test_btn)
         test_row.addWidget(test_status)
         test_row.addStretch()
-        cs_layout.addLayout(test_row)
-        cs_layout.addSpacing(8)
+        layout.addLayout(test_row)
+        layout.addSpacing(8)
 
         # Privacy notice
         privacy = QLabel(
@@ -3915,29 +3811,130 @@ class _SettingsWindow(QMainWindow):
             "border: 1px solid rgba(232,144,32,0.2); "
             "border-radius: 6px; padding: 10px 12px;"
         )
-        cs_layout.addWidget(privacy)
+        layout.addWidget(privacy)
+        layout.addSpacing(20)
 
-        layout.addWidget(cloud_settings)
+        # ---- Section: Support Samsara ---------------------------------------
+        layout.addWidget(self._section_title("Support Samsara"))
+        layout.addSpacing(4)
+
+        support_text = QLabel(
+            "Samsara is free — every feature, forever. If it's useful to you and you "
+            "want to support development, supporters get early builds and a managed "
+            "cloud key (no API setup) is coming. morneis.com/samsara/support"
+        )
+        support_text.setWordWrap(True)
+        support_text.setStyleSheet("color: #8A8A92; font-size: 12px;")
+        layout.addWidget(support_text)
+        layout.addSpacing(8)
+
+        key = premium.get_license_key(self.app)
+        has_key = premium.validate_key(key)
+
+        supporter_frame = QFrame()
+        supporter_frame.setStyleSheet(
+            "QFrame { background-color: #111114; border-radius: 8px; "
+            "border: 1px solid rgba(255,255,255,0.06); }"
+        )
+        supporter_frame_layout = QVBoxLayout(supporter_frame)
+        supporter_frame_layout.setContentsMargins(16, 16, 16, 16)
+        supporter_frame_layout.setSpacing(0)
+
+        # QStackedWidget: index 0 = no key, index 1 = key stored. This never
+        # gates anything -- it only decides which of these two rows to show.
+        supporter_stack = QStackedWidget()
+        supporter_stack.setStyleSheet("background: transparent;")
+        self._widgets['cloud_license_stack'] = supporter_stack
+
+        # -- Page 0: no supporter key ---
+        no_key_page = QWidget()
+        no_key_page.setStyleSheet("background: transparent;")
+        nk_layout = QVBoxLayout(no_key_page)
+        nk_layout.setContentsMargins(0, 0, 0, 0)
+        nk_layout.setSpacing(10)
+
+        key_row = QHBoxLayout()
+        key_row.setSpacing(8)
+        key_row_lbl = QLabel("Supporter key (optional):")
+        key_row_lbl.setStyleSheet("color: #E8E8EA; font-size: 13px; background: transparent;")
+        key_row_lbl.setFixedWidth(150)
+        license_entry = QLineEdit()
+        license_entry.setPlaceholderText("SAMSARA-XXXX-XXXX-XXXX")
+        self._widgets['cloud_license_entry'] = license_entry
+        activate_btn = QPushButton("Activate")
+        activate_btn.setFixedWidth(90)
+        activate_btn.clicked.connect(self._activate_license)
+        key_row.addWidget(key_row_lbl)
+        key_row.addWidget(license_entry, stretch=1)
+        key_row.addWidget(activate_btn)
+        nk_layout.addLayout(key_row)
+
+        license_status = QLabel("")
+        license_status.setStyleSheet("color: #FF6666; font-size: 12px; background: transparent;")
+        self._widgets['cloud_license_status'] = license_status
+        nk_layout.addWidget(license_status)
+
+        supporter_stack.addWidget(no_key_page)  # index 0
+
+        # -- Page 1: supporter key stored ---
+        has_key_page = QWidget()
+        has_key_page.setStyleSheet("background: transparent;")
+        hk_layout = QVBoxLayout(has_key_page)
+        hk_layout.setContentsMargins(0, 0, 0, 0)
+        hk_layout.setSpacing(6)
+
+        active_lbl = QLabel("Supporter key active")
+        active_lbl.setStyleSheet(
+            "color: #5EEAD4; font-size: 13px; font-weight: bold; background: transparent;"
+        )
+        hk_layout.addWidget(active_lbl)
+
+        masked_lbl = QLabel(premium.masked_key(key) if has_key else "")
+        masked_lbl.setStyleSheet(
+            "color: #8A8A92; font-size: 11px; "
+            "font-family: 'Consolas', 'Courier New', monospace; background: transparent;"
+        )
+        self._widgets['cloud_masked_key'] = masked_lbl
+        hk_layout.addWidget(masked_lbl)
+
+        remove_btn = QPushButton("Remove Key")
+        remove_btn.setFixedWidth(120)
+        remove_btn.setStyleSheet(
+            "QPushButton { background-color: transparent; color: #8A8A92; "
+            "border: 1px solid rgba(255,255,255,0.14); border-radius: 6px; "
+            "padding: 7px 14px; font-size: 13px; }"
+            "QPushButton:hover { background-color: rgba(255,255,255,0.04); color: #E8E8EA; }"
+        )
+        remove_btn.clicked.connect(self._remove_license)
+        hk_layout.addWidget(remove_btn, alignment=Qt.AlignmentFlag.AlignLeft)
+
+        supporter_stack.addWidget(has_key_page)  # index 1
+
+        supporter_stack.setCurrentIndex(1 if has_key else 0)
+        supporter_frame_layout.addWidget(supporter_stack)
+        layout.addWidget(supporter_frame)
+
+        supporter_instant_note = QLabel("Activating or removing a supporter key applies immediately.")
+        supporter_instant_note.setStyleSheet("color: #8A8A92; font-size: 12px;")
+        layout.addWidget(supporter_instant_note)
 
         def _save(_acc):
             updates = {}
             if 'cloud_enabled' in self._widgets:
-                from samsara import premium
-                if premium.is_premium(self.app):
-                    provider_display = self._widgets['cloud_provider'].currentText()
-                    provider = _DISPLAY_TO_CODE.get(provider_display, 'deepseek')
-                    api_key = self._widgets['cloud_api_key'].text().strip()
-                    model_override = self._widgets['cloud_model'].text().strip()
-                    cloud_cfg = dict(self.app.config.get('cloud_llm', {}) or {})
-                    cloud_cfg['enabled'] = self._widgets['cloud_enabled'].isChecked()
-                    cloud_cfg['provider'] = provider
-                    cloud_cfg['api_key'] = api_key
-                    cloud_cfg['timeout_seconds'] = self._widgets['cloud_timeout'].value()
-                    if model_override:
-                        cloud_cfg['model'] = model_override
-                    elif 'model' in cloud_cfg:
-                        del cloud_cfg['model']
-                    updates['cloud_llm'] = cloud_cfg
+                provider_display = self._widgets['cloud_provider'].currentText()
+                provider = _DISPLAY_TO_CODE.get(provider_display, 'deepseek')
+                api_key = self._widgets['cloud_api_key'].text().strip()
+                model_override = self._widgets['cloud_model'].text().strip()
+                cloud_cfg = dict(self.app.config.get('cloud_llm', {}) or {})
+                cloud_cfg['enabled'] = self._widgets['cloud_enabled'].isChecked()
+                cloud_cfg['provider'] = provider
+                cloud_cfg['api_key'] = api_key
+                cloud_cfg['timeout_seconds'] = self._widgets['cloud_timeout'].value()
+                if model_override:
+                    cloud_cfg['model'] = model_override
+                elif 'model' in cloud_cfg:
+                    del cloud_cfg['model']
+                updates['cloud_llm'] = cloud_cfg
 
             if 'ava_personality' in self._widgets:
                 updates['ava_personality'] = self._widgets['ava_personality'].currentText().lower()
@@ -3976,6 +3973,9 @@ class _SettingsWindow(QMainWindow):
             model_entry.setPlaceholderText(f"Default: {_DEFAULT_MODELS.get(code, '')}")
 
     def _activate_license(self):
+        """Store an optional supporter key. Unlocks no capability -- purely
+        a display-state toggle (masked-key page) plus a slot for the future
+        managed-key feature. Cloud AI itself needs only enabled + api_key."""
         from samsara import premium
         entry = self._widgets.get('cloud_license_entry')
         if not entry:
@@ -3990,34 +3990,27 @@ class _SettingsWindow(QMainWindow):
         with self.app._config_lock:
             self.app.config['premium_license'] = key
             self.app.save_config()
-        # Switch license panel to licensed state
+        # Switch supporter-key panel to the "key stored" state
         stack = self._widgets.get('cloud_license_stack')
         if stack:
             stack.setCurrentIndex(1)
         masked_lbl = self._widgets.get('cloud_masked_key')
         if masked_lbl:
             masked_lbl.setText(premium.masked_key(key))
-        cloud_widget = self._widgets.get('cloud_settings_widget')
-        if cloud_widget:
-            cloud_widget.setVisible(True)
         if status_lbl:
             status_lbl.setText("")
 
     def _remove_license(self):
+        """Remove the optional supporter key. Does not touch cloud_llm --
+        BYOK cloud access is independent of this key."""
         from samsara import premium
         premium.set_license_key(self.app, "")
-        cfg = dict(self.app.config.get('cloud_llm', {}) or {})
-        cfg['enabled'] = False
         with self.app._config_lock:
             self.app.config['premium_license'] = ""
-            self.app.config['cloud_llm'] = cfg
             self.app.save_config()
         stack = self._widgets.get('cloud_license_stack')
         if stack:
             stack.setCurrentIndex(0)
-        cloud_widget = self._widgets.get('cloud_settings_widget')
-        if cloud_widget:
-            cloud_widget.setVisible(False)
         entry = self._widgets.get('cloud_license_entry')
         if entry:
             entry.clear()
@@ -4033,9 +4026,6 @@ class _SettingsWindow(QMainWindow):
         btn.setText("Hide" if checked else "Show")
 
     def _run_test_connection(self):
-        from samsara import premium
-        if not premium.is_premium(self.app):
-            return
         api_key_entry = self._widgets.get('cloud_api_key')
         api_key = api_key_entry.text().strip() if api_key_entry else ""
         if not api_key:

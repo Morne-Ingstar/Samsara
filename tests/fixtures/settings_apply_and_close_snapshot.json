@@ -42,6 +42,12 @@
   "cal_multiplier": 3.0,
   "cancel_hotkey": "escape",
   "cleanup_mode": "clean",
+  "cloud_llm": {
+    "api_key": "",
+    "enabled": false,
+    "provider": "deepseek",
+    "timeout_seconds": 30
+  },
   "command_hotkey": "ctrl+alt+c",
   "command_mode": {
     "button": "mouse4",

@@ -338,7 +338,6 @@ SETTINGS_SCHEMA = {
         "type": "bool",
         "default": False,
         "tab": "ava",
-        "depends_on": "has_premium_license",
     },
     "cloud_llm.provider": {
         "type": "enum",
@@ -361,14 +360,12 @@ SETTINGS_SCHEMA = {
         "options": ["relaxed", "strict"],
         "default": "relaxed",
         "tab": "ava",
-        "depends_on": "has_premium_license",
     },
     "ava_memory.mode": {
         "type": "enum",
         "options": ["clear", "last"],
         "default": "clear",
         "tab": "ava",
-        "depends_on": "has_premium_license",
     },
     "ava_memory.max_turns": {
         "type": "int",
@@ -377,7 +374,6 @@ SETTINGS_SCHEMA = {
         "step": 5,
         "default": 20,
         "tab": "ava",
-        "depends_on": "has_premium_license",
     },
 
     # Ollama / local LLM (also in Ava tab)
