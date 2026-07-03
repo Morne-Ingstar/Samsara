@@ -22,7 +22,8 @@ from PySide6.QtWidgets import (
     QFrame, QScrollArea,
 )
 
-from samsara.ui import qt_runtime
+from samsara.runtime import thread_registry
+from samsara.ui import qt_runtime, theme
 
 from samsara.log import get_logger
 
@@ -35,88 +36,6 @@ _logger = logging.getLogger("Samsara")
 # Never applies once the window has actually shown -- a user genuinely
 # taking their time in the wizard is never timed out.
 _WIZARD_SHOW_TIMEOUT_S = 120.0
-
-
-# ---------------------------------------------------------------------------
-# Stylesheet
-# ---------------------------------------------------------------------------
-
-_SS = """
-QMainWindow, QWidget {
-    background-color: #0A0A0B;
-    color: #E8E8EA;
-    font-family: 'Segoe UI', system-ui, sans-serif;
-    font-size: 14px;
-}
-QLabel { color: #E8E8EA; }
-QComboBox {
-    background-color: #16161A;
-    border: 1px solid rgba(255,255,255,0.14);
-    border-radius: 6px;
-    padding: 8px 12px;
-    color: #E8E8EA;
-}
-QComboBox::drop-down { border: none; width: 24px; }
-QComboBox QAbstractItemView {
-    background-color: #16161A;
-    color: #E8E8EA;
-    selection-background-color: rgba(94,234,212,0.2);
-    border: 1px solid rgba(255,255,255,0.14);
-}
-QRadioButton { color: #E8E8EA; spacing: 8px; }
-QRadioButton::indicator {
-    width: 16px; height: 16px;
-    border-radius: 8px;
-    border: 2px solid rgba(255,255,255,0.25);
-    background: #16161A;
-}
-QRadioButton::indicator:checked {
-    background: #5EEAD4;
-    border-color: #5EEAD4;
-}
-QPushButton {
-    background-color: #5EEAD4;
-    color: #0A0A0B;
-    border: none;
-    border-radius: 6px;
-    padding: 10px 24px;
-    font-weight: 600;
-    font-size: 14px;
-}
-QPushButton:hover { background-color: #4DD8C2; color: #0A0A0B; }
-QPushButton:pressed { background-color: #3DC8B0; color: #0A0A0B; }
-QPushButton:disabled { background-color: #2E6F66; color: #0A0A0B; }
-QPushButton[class="primary"] {
-    background-color: #5EEAD4;
-    color: #0A0A0B;
-    border: none;
-    border-radius: 6px;
-    padding: 10px 24px;
-    font-weight: 600;
-    font-size: 14px;
-}
-QPushButton[class="primary"]:hover { background-color: #4DD8C2; color: #0A0A0B; }
-QPushButton[class="primary"]:pressed { background-color: #3DC8B0; color: #0A0A0B; }
-QPushButton[class="primary"]:disabled { background-color: #2E6F66; color: #0A0A0B; }
-QPushButton[class="secondary"] {
-    background-color: transparent;
-    color: #8A8A92;
-    border: 1px solid rgba(255,255,255,0.14);
-}
-QPushButton[class="secondary"]:hover {
-    background-color: rgba(255,255,255,0.05);
-    color: #E8E8EA;
-}
-QPushButton[class="secondary"]:pressed {
-    background-color: rgba(255,255,255,0.08);
-    color: #E8E8EA;
-}
-QPushButton[class="secondary"]:disabled {
-    background-color: transparent;
-    color: #3A3A40;
-    border-color: rgba(255,255,255,0.06);
-}
-"""
 
 # ---------------------------------------------------------------------------
 # Hotkey capture button (self-contained, no import from settings_qt)
@@ -155,15 +74,15 @@ def _combo(held: set) -> str:
 
 class _HotkeyBtn(QPushButton):
     _IDLE = (
-        "QPushButton{background:#16161A;border:1px solid rgba(255,255,255,0.14);"
-        "border-radius:6px;color:#E8E8EA;font-size:12px;"
-        "font-family:'Consolas','Courier New',monospace;padding:6px 14px;}"
-        "QPushButton:hover{background:#1E1E24;}"
+        f"QPushButton{{background:{theme.BG2};border:1px solid {theme.BORDER};"
+        f"border-radius:6px;color:{theme.TEXT_PRIMARY};font-size:12px;"
+        f"font-family:'Consolas','Courier New',monospace;padding:6px 14px;}}"
+        f"QPushButton:hover{{background:{theme.BG2};border-color:{theme.ACCENT};}}"
     )
     _ACTIVE = (
-        "QPushButton{background:rgba(94,234,212,0.08);border:1px solid #5EEAD4;"
-        "border-radius:6px;color:#5EEAD4;font-size:12px;"
-        "font-family:'Consolas','Courier New',monospace;padding:6px 14px;}"
+        f"QPushButton{{background:rgba(92,196,212,0.08);border:1px solid {theme.ACCENT};"
+        f"border-radius:6px;color:{theme.ACCENT};font-size:12px;"
+        f"font-family:'Consolas','Courier New',monospace;padding:6px 14px;}}"
     )
 
     def __init__(self, combo: str):
@@ -229,9 +148,9 @@ class _MicLevelMeter(QWidget):
     Attack 0.70, decay 0.12 per 40 ms tick; peak holds ~1.1 s then falls.
     """
 
-    _BG    = QColor(14, 14, 18)
+    _BG    = QColor(19, 24, 32)         # theme.BG1
     _ZONES = [
-        (0.50, QColor(94,  234, 212)),  # 0-50 %  teal
+        (0.50, QColor(92, 196, 212)),   # 0-50 %  theme.ACCENT
         (0.75, QColor(232, 144,  32)),  # 50-75 % amber
         (1.01, QColor(255,  68,  68)),  # 75-100% red
     ]
@@ -331,7 +250,7 @@ _USE_CASE_TIPS = {
     "chronic_pain": (
         "Try saying: 'Jarvis, pain level 6' to log your pain level, or "
         "'Jarvis, took ibuprofen 400mg' to track medication. "
-        "Say 'health summary' for a spoken overview of your day."
+        "Say 'Jarvis, health summary' for a spoken overview of your day."
     ),
     "privacy": (
         "All your data stays on this machine. Voice recognition runs locally "
@@ -500,7 +419,7 @@ class _WizardWindow(QMainWindow):
             _w, _h = 860, 760
         self.setMinimumSize(720, 680)
         self.resize(_w, _h)
-        self.setStyleSheet(_SS)
+        self.setStyleSheet(theme.build_stylesheet())
 
         central = QWidget()
         self.setCentralWidget(central)
@@ -510,7 +429,7 @@ class _WizardWindow(QMainWindow):
 
         # ---- Header bar ---------------------------------------------------
         header = QWidget()
-        header.setStyleSheet("background:#111114;")
+        header.setStyleSheet(f"background:{theme.BG1};")
         header.setFixedHeight(64)
         hl = QHBoxLayout(header)
         hl.setContentsMargins(28, 0, 28, 0)
@@ -533,7 +452,7 @@ class _WizardWindow(QMainWindow):
 
         sep_top = QFrame()
         sep_top.setFrameShape(QFrame.Shape.HLine)
-        sep_top.setStyleSheet("background:rgba(255,255,255,0.06);max-height:1px;")
+        sep_top.setStyleSheet(f"background:{theme.BORDER_FAINT};max-height:1px;")
         root.addWidget(sep_top)
 
         # ---- Page title ---------------------------------------------------
@@ -585,20 +504,18 @@ class _WizardWindow(QMainWindow):
 
         sep_bot = QFrame()
         sep_bot.setFrameShape(QFrame.Shape.HLine)
-        sep_bot.setStyleSheet("background:rgba(255,255,255,0.06);max-height:1px;")
+        sep_bot.setStyleSheet(f"background:{theme.BORDER_FAINT};max-height:1px;")
         root.addWidget(sep_bot)
 
         # ---- Nav buttons --------------------------------------------------
         nav = QWidget()
         nav.setFixedHeight(64)
-        nav.setStyleSheet("background:#111114;")
+        theme.style_footer(nav)
         nl = QHBoxLayout(nav)
         nl.setContentsMargins(28, 12, 28, 12)
 
         self._back_btn = QPushButton("Back")
-        self._back_btn.setProperty("class", "secondary")
-        self._back_btn.style().unpolish(self._back_btn)
-        self._back_btn.style().polish(self._back_btn)
+        theme.make_secondary(self._back_btn)
         self._back_btn.setFixedWidth(90)
         self._back_btn.clicked.connect(self._go_back)
         nl.addWidget(self._back_btn)
@@ -606,9 +523,7 @@ class _WizardWindow(QMainWindow):
         nl.addStretch()
 
         self._next_btn = QPushButton("Next")
-        self._next_btn.setProperty("class", "primary")
-        self._next_btn.style().unpolish(self._next_btn)
-        self._next_btn.style().polish(self._next_btn)
+        theme.make_primary(self._next_btn)
         self._next_btn.setFixedWidth(150)
         self._next_btn.clicked.connect(self._go_next)
         nl.addWidget(self._next_btn)
@@ -616,7 +531,7 @@ class _WizardWindow(QMainWindow):
         root.addWidget(nav)
 
         # Enumerate microphones in background so page 2 is ready
-        threading.Thread(target=self._load_mics, daemon=True).start()
+        thread_registry.spawn("first_run_wizard_qt._load_mics", self._load_mics, daemon=True)
 
         self._show_step()
 
@@ -639,10 +554,7 @@ class _WizardWindow(QMainWindow):
         lay.addSpacing(8)
 
         steps_frame = QFrame()
-        steps_frame.setStyleSheet(
-            "QFrame{background:#111114;border-radius:8px;"
-            "border:1px solid rgba(255,255,255,0.06);}"
-        )
+        theme.style_card(steps_frame)
         sf_layout = QVBoxLayout(steps_frame)
         sf_layout.setContentsMargins(20, 16, 20, 16)
         sf_layout.setSpacing(10)
@@ -695,10 +607,7 @@ class _WizardWindow(QMainWindow):
         ]
         for i, (value, title, desc) in enumerate(_CASES):
             card = QFrame()
-            card.setStyleSheet(
-                "QFrame{background:#111114;border-radius:8px;"
-                "border:1px solid rgba(255,255,255,0.06);}"
-            )
+            theme.style_card(card)
             cl = QHBoxLayout(card)
             cl.setContentsMargins(14, 12, 14, 12)
             cl.setSpacing(10)
@@ -773,10 +682,7 @@ class _WizardWindow(QMainWindow):
         ]
         for i, (value, title, desc) in enumerate(_MODELS):
             card = QFrame()
-            card.setStyleSheet(
-                "QFrame{background:#111114;border-radius:8px;"
-                "border:1px solid rgba(255,255,255,0.06);}"
-            )
+            theme.style_card(card)
             cl = QHBoxLayout(card)
             cl.setContentsMargins(14, 12, 14, 12)
 
@@ -863,8 +769,8 @@ class _WizardWindow(QMainWindow):
 
         ww_lbl = QLabel("jarvis")
         ww_lbl.setStyleSheet(
-            "color:#5EEAD4;font-size:13px;font-weight:bold;"
-            "font-family:'Consolas','Courier New',monospace;"
+            f"color:{theme.ACCENT};font-size:13px;font-weight:bold;"
+            f"font-family:'Consolas','Courier New',monospace;"
         )
         ww_row.addWidget(ww_lbl, alignment=Qt.AlignmentFlag.AlignVCenter)
         lay.addLayout(ww_row)
@@ -880,22 +786,19 @@ class _WizardWindow(QMainWindow):
         w, lay = self._padded()
 
         done_lbl = QLabel("You're all set — Samsara is ready.")
-        done_lbl.setStyleSheet("color:#5EEAD4;font-size:14px;")
+        done_lbl.setStyleSheet(f"color:{theme.ACCENT};font-size:14px;")
         lay.addWidget(done_lbl)
         lay.addSpacing(4)
 
         card = QFrame()
-        card.setStyleSheet(
-            "QFrame{background:#111114;border-radius:8px;"
-            "border:1px solid rgba(255,255,255,0.06);}"
-        )
+        theme.style_card(card)
         cl = QVBoxLayout(card)
         cl.setContentsMargins(16, 14, 16, 14)
         cl.setSpacing(6)
         # Placeholder labels — populated in _show_step when we arrive here
         for _ in range(6):
             lbl = QLabel("")
-            lbl.setStyleSheet("color:#E8E8EA;font-size:13px;")
+            lbl.setStyleSheet(f"color:{theme.TEXT_PRIMARY};font-size:13px;")
             self._summary_labels.append(lbl)
             cl.addWidget(lbl)
         lay.addWidget(card)
@@ -903,14 +806,14 @@ class _WizardWindow(QMainWindow):
         # Use-case-specific tip — populated in _fill_summary()
         tip_frame = QFrame()
         tip_frame.setStyleSheet(
-            "QFrame{background:rgba(94,234,212,0.06);border-radius:8px;"
-            "border:1px solid rgba(94,234,212,0.18);}"
+            f"QFrame{{background:rgba(92,196,212,0.08);border-radius:8px;"
+            f"border:1px solid rgba(92,196,212,0.25);}}"
         )
         tf_lay = QVBoxLayout(tip_frame)
         tf_lay.setContentsMargins(16, 12, 16, 12)
         self._tip_lbl = QLabel("")
         self._tip_lbl.setWordWrap(True)
-        self._tip_lbl.setStyleSheet("color:#AAFAF0;font-size:12px;")
+        self._tip_lbl.setStyleSheet(f"color:{theme.TEXT_PRIMARY};font-size:12px;")
         tf_lay.addWidget(self._tip_lbl)
         lay.addWidget(tip_frame)
 
@@ -955,8 +858,8 @@ class _WizardWindow(QMainWindow):
         # Dots
         for i, dot in enumerate(self._dots):
             dot.setStyleSheet(
-                "color:#5EEAD4;font-size:10px;" if i == self._step
-                else "color:#444;font-size:10px;"
+                f"color:{theme.ACCENT};font-size:10px;" if i == self._step
+                else f"color:{theme.TEXT_DISABLED};font-size:10px;"
             )
 
         # Button states
@@ -1253,7 +1156,7 @@ class _WizardWindow(QMainWindow):
         if mapped > 0.15:   # ~0.003 raw RMS — any real audio above noise floor
             self._meter_passed = True
             self._mic_status.setText("Microphone active")
-            self._mic_status.setStyleSheet("color:#5EEAD4;font-size:12px;")
+            self._mic_status.setStyleSheet(f"color:{theme.ACCENT};font-size:12px;")
 
     def _on_mic_result(self, msg: str, color: str):
         if msg == "_load_done_":
