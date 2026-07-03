@@ -19,7 +19,6 @@ History and Dictionary are embedded QWidget panels.
 Close button hides to tray (closeEvent suppressed); app.close() force-closes.
 """
 
-import threading
 from datetime import datetime
 
 from PySide6.QtCore import Qt, QTimer, Signal, Slot
@@ -32,6 +31,7 @@ from PySide6.QtWidgets import (
     QTableWidgetItem, QTabWidget, QVBoxLayout, QWidget,
 )
 
+from samsara.runtime import thread_registry
 from samsara.ui import qt_runtime
 from samsara.ui.dictionary_panel_qt import DictionaryPanelQt
 
@@ -308,10 +308,11 @@ class _HistoryPanel(QWidget):
                 print(f"[HISTORY PANEL] fetch error: {e}")
                 return []
 
-        threading.Thread(
-            target=lambda: self._rows_ready.emit(_fetch()),
-            daemon=True, name="history-panel-load",
-        ).start()
+        thread_registry.spawn(
+            "history-panel-load",
+            lambda: self._rows_ready.emit(_fetch()),
+            daemon=True,
+        )
 
     @Slot(list)
     def _on_rows_ready(self, rows: list):

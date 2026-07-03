@@ -14,7 +14,6 @@ Public API (same wrapper pattern as MicSetupWizardQt):
 
 import json
 import subprocess
-import threading
 import urllib.error
 import urllib.request
 
@@ -25,6 +24,7 @@ from PySide6.QtWidgets import (
     QVBoxLayout, QWidget,
 )
 
+from samsara.runtime import thread_registry
 from samsara.ui import qt_runtime
 
 from samsara.log import get_logger
@@ -721,7 +721,7 @@ class _WizardWindow(QDialog):
             running, models = _ping_ollama()
             self._ollama_status_sig.emit(running, models)
 
-        threading.Thread(target=_run, daemon=True, name="ava-ping").start()
+        thread_registry.spawn("ava-ping", _run, daemon=True)
 
     def _on_ollama_status(self, running: bool, models: list):
         self._ollama_check_btn.setEnabled(True)
@@ -766,9 +766,9 @@ class _WizardWindow(QDialog):
             # also fire model refresh via same signal path
             self._pull_line_sig.emit("")  # sentinel to trigger _refresh_model_status
 
-        threading.Thread(
-            target=_run, daemon=True, name="ava-model-check"
-        ).start()
+        thread_registry.spawn(
+            "ava-model-check", _run, daemon=True
+        )
 
     def _refresh_model_status(self):
         sel = self._selected_model_name
@@ -851,7 +851,7 @@ class _WizardWindow(QDialog):
                 self._pulling = False
             self._pull_done_sig.emit(success)
 
-        threading.Thread(target=_run, daemon=True, name="ava-pull").start()
+        thread_registry.spawn("ava-pull", _run, daemon=True)
 
     def _on_pull_done(self, success: bool):
         self._pull_btn.setEnabled(True)

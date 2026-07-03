@@ -18,6 +18,7 @@ from PySide6.QtWidgets import (
 )
 
 from samsara.ui import qt_runtime
+from samsara.runtime import thread_registry
 
 _log = __import__('logging').getLogger(__name__)
 
@@ -241,12 +242,12 @@ class _ReviewWindow(QWidget):
         self._signals.set_busy.emit(True)
         self._result.setPlainText("Summarising and sending to AI…")
 
-        threading.Thread(
-            target=self._run_analysis,
+        thread_registry.spawn(
+            'wf-capture-analyze',
+            self._run_analysis,
             args=(selected, use_cloud, app),
             daemon=True,
-            name='wf-capture-analyze',
-        ).start()
+        )
 
     def _run_analysis(self, selected: list, use_cloud: bool, app):
         try:

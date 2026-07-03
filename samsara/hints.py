@@ -17,10 +17,12 @@ import threading
 from pathlib import Path
 
 from samsara.log import get_logger
+from samsara.paths import samsara_home_dir
+from samsara.runtime import thread_registry
 
 logger = get_logger(__name__)
 
-_DATA_DIR = Path(os.path.expanduser("~")) / ".samsara"
+_DATA_DIR = samsara_home_dir()
 
 
 class HintManager:
@@ -146,10 +148,9 @@ class HintManager:
         with self._save_lock:
             if self._pending_save_timer is not None:
                 self._pending_save_timer.cancel()
-            t = threading.Timer(self._FLUSH_DELAY, self._save)
-            t.daemon = True   # never block process shutdown
+            t = thread_registry.timer(
+                "hints.flush", self._FLUSH_DELAY, self._save, daemon=True)   # never block process shutdown
             self._pending_save_timer = t
-            t.start()
 
     def _on_dismiss(self) -> None:
         self._toast = None

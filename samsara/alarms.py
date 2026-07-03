@@ -23,6 +23,7 @@ from typing import Optional, Callable, Dict, List, Any
 import sys
 
 from samsara.log import get_logger
+from samsara.runtime import thread_registry
 
 logger = get_logger(__name__)
 if sys.platform == 'win32':
@@ -434,8 +435,7 @@ class AlarmManager:
             return
         
         self.running = True
-        self.thread = threading.Thread(target=self._check_loop, daemon=True)
-        self.thread.start()
+        self.thread = thread_registry.spawn("alarms._check_loop", self._check_loop, daemon=True)
         print("[ALARM] Alarm manager started")
     
     def stop(self):
@@ -494,12 +494,7 @@ class AlarmManager:
         # Start nagging
         self.nagging_alarm_id = alarm_id
         self.nag_stop_event.clear()
-        self.nag_thread = threading.Thread(
-            target=self._nag_loop, 
-            args=(alarm,), 
-            daemon=True
-        )
-        self.nag_thread.start()
+        self.nag_thread = thread_registry.spawn("alarms._nag_loop", self._nag_loop, args=(alarm,), daemon=True)
         
         if self.on_alarm_triggered:
             self.on_alarm_triggered(alarm)

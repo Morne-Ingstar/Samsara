@@ -34,6 +34,7 @@ import numpy as np
 from .frame import FRAME_MS, SAMPLE_RATE
 from .ring import EMPTY
 from samsara.log import get_logger
+from samsara.runtime import thread_registry
 
 from samsara.constants import (
     DEFAULT_CONTINUOUS_COMMIT_TRIGGER,
@@ -83,10 +84,9 @@ class ContinuousConsumer:
         self._running = True
         # Snap to current write head — skip stale ring history
         self._reader.snap_to_head()
-        self._thread = threading.Thread(
-            target=self._poll_loop, daemon=True, name="continuous-consumer"
+        self._thread = thread_registry.spawn(
+            "continuous-consumer", self._poll_loop, daemon=True
         )
-        self._thread.start()
 
     def stop(self) -> list:
         """Stop polling and return any accumulated speech frames for final flush."""
@@ -225,11 +225,12 @@ class ContinuousConsumer:
         if buffer_copy is None:
             return False
 
-        threading.Thread(
-            target=app.transcribe_continuous_buffer,
+        thread_registry.spawn(
+            "continuous_consumer.transcribe_continuous_buffer",
+            app.transcribe_continuous_buffer,
             args=(buffer_copy, SAMPLE_RATE),
             daemon=True,
-        ).start()
+        )
         return True
 
     def __repr__(self) -> str:

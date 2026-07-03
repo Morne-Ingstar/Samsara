@@ -29,6 +29,9 @@ from difflib import SequenceMatcher
 from pathlib import Path
 from typing import Optional
 
+from samsara.paths import samsara_home_dir
+from samsara.runtime import thread_registry
+
 # ---------------------------------------------------------------------------
 # Shared name-matching primitive -- also used by the window resolver
 # (plugins/commands/app_verbs.py) so both share identical scoring/floor logic.
@@ -205,7 +208,7 @@ def launch_app(entry: AppEntry) -> bool:
 # AppIndex -- boot-time background build, disk cache, resolve()
 # ---------------------------------------------------------------------------
 
-_CACHE_PATH = Path(os.path.expanduser("~")) / ".samsara" / "app_index.json"
+_CACHE_PATH = samsara_home_dir() / "app_index.json"
 REFRESH_INTERVAL_S = 30 * 60
 
 
@@ -232,13 +235,11 @@ class AppIndex:
         if cached:
             with self._lock:
                 self._apps = cached
-        threading.Thread(target=self._refresh_now, daemon=True,
-                          name="app-index-build").start()
+        thread_registry.spawn("app-index-build", self._refresh_now, daemon=True)
 
     def refresh_async(self) -> None:
         """On-demand refresh, e.g. a future 'refresh app list' voice command."""
-        threading.Thread(target=self._refresh_now, daemon=True,
-                          name="app-index-refresh").start()
+        thread_registry.spawn("app-index-refresh", self._refresh_now, daemon=True)
 
     def resolve(self, name: str) -> Optional[AppEntry]:
         apps = self.apps
@@ -265,9 +266,7 @@ class AppIndex:
             self._schedule_next_refresh()
 
     def _schedule_next_refresh(self) -> None:
-        t = threading.Timer(REFRESH_INTERVAL_S, self._refresh_now)
-        t.daemon = True
-        t.start()
+        t = thread_registry.timer("app_index.refresh", REFRESH_INTERVAL_S, self._refresh_now, daemon=True)
         self._refresh_timer = t
 
     def _load_cache(self) -> list:

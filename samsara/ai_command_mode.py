@@ -31,6 +31,7 @@ import urllib.request
 from typing import Any, Optional
 
 from samsara.log import get_logger
+from samsara.runtime import thread_registry
 
 logger = get_logger(__name__)
 
@@ -378,10 +379,7 @@ def _ensure_worker(app) -> None:
         if _worker_started:
             return
         _worker_started = True
-    t = threading.Thread(
-        target=_worker_loop, args=(app,), daemon=True, name="ai-cmd-worker"
-    )
-    t.start()
+    t = thread_registry.spawn("ai-cmd-worker", _worker_loop, args=(app,), daemon=True)
 
 
 # ---------------------------------------------------------------------------
@@ -475,7 +473,7 @@ def warm_up(app, on_done=None) -> None:
                     on_done()
                 except Exception as exc:
                     print(f"[AI-CMD] warm_up on_done error: {exc}")
-        threading.Thread(target=_cloud_noop, daemon=True, name="ai-cmd-warmup").start()
+        thread_registry.spawn("ai-cmd-warmup", _cloud_noop, daemon=True)
         return
 
     model = cfg.get("model", _DEFAULTS["model"])
@@ -491,4 +489,4 @@ def warm_up(app, on_done=None) -> None:
             except Exception as exc:
                 print(f"[AI-CMD] warm_up on_done error: {exc}")
 
-    threading.Thread(target=_do, daemon=True, name="ai-cmd-warmup").start()
+    thread_registry.spawn("ai-cmd-warmup", _do, daemon=True)

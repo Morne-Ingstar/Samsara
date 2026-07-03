@@ -23,6 +23,8 @@ from typing import Callable, Deque, List, Optional, Tuple
 
 import numpy as np
 
+from samsara.runtime import thread_registry
+
 from .audio_utils import parse_wav, resample_pcm
 from .engine_base import SpeechHandle, TTSEngine, VoiceInfo
 from .exceptions import EngineUnavailableError, RenderError
@@ -234,14 +236,13 @@ class WinRTEngine(TTSEngine):
         with self._active_lock:
             self._active[uid] = utterance
 
-        t = threading.Thread(
-            target=self._playback_worker,
+        t = thread_registry.spawn(
+            f"tts-{uid[:8]}",
+            self._playback_worker,
             args=(utterance, text, voice_id, speed, pitch),
             daemon=True,
-            name=f"tts-{uid[:8]}",
         )
         utterance.thread = t
-        t.start()
         return handle
 
     def cancel(self, handle: SpeechHandle) -> None:

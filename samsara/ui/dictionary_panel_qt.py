@@ -15,7 +15,6 @@ label update so the Qt event loop is never blocked.
 """
 
 import logging
-import threading
 
 from PySide6.QtCore import Qt, Signal, QObject
 from PySide6.QtWidgets import (
@@ -23,6 +22,8 @@ from PySide6.QtWidgets import (
     QLabel, QLineEdit, QListWidget, QMessageBox, QPushButton,
     QTableWidget, QTableWidgetItem, QTabWidget, QVBoxLayout, QWidget,
 )
+
+from samsara.runtime import thread_registry
 
 logger = logging.getLogger(__name__)
 
@@ -222,7 +223,7 @@ class DictionaryPanelQt(QWidget):
         self._vocab_list.addItem(word)
         self._vocab_input.clear()
         self._vocab_status.setText("")
-        threading.Thread(target=self._save_vocab, daemon=True).start()
+        thread_registry.spawn("dictionary_panel_qt._save_vocab", self._save_vocab, daemon=True)
 
     def _vocab_remove(self):
         rows = sorted(
@@ -237,7 +238,7 @@ class DictionaryPanelQt(QWidget):
             self._vocab_list.takeItem(row)
             if word in vocab:
                 vocab.remove(word)
-        threading.Thread(target=self._save_vocab, daemon=True).start()
+        thread_registry.spawn("dictionary_panel_qt._save_vocab", self._save_vocab, daemon=True)
 
     def _vocab_export(self):
         import json
@@ -284,7 +285,7 @@ class DictionaryPanelQt(QWidget):
                     vocab.append(w)
                     self._vocab_list.addItem(w)
                     added += 1
-            threading.Thread(target=self._save_vocab, daemon=True).start()
+            thread_registry.spawn("dictionary_panel_qt._save_vocab", self._save_vocab, daemon=True)
             self._vocab_status.setText(
                 f"Imported {added} new word(s) — skipped duplicates."
             )
@@ -465,7 +466,7 @@ class DictionaryPanelQt(QWidget):
                     if qt:
                         QTimer.singleShot(0, qt, lambda: status_lbl.setText(f"Save failed: {exc}"))
 
-        threading.Thread(target=_do, daemon=True).start()
+        thread_registry.spawn("dictionary_panel_qt._kv_add", _do, daemon=True)
 
     def _kv_remove(self, table, mode, status_lbl):
         rows = sorted(
@@ -508,7 +509,7 @@ class DictionaryPanelQt(QWidget):
             except Exception as exc:
                 logger.error(f"[DICT] {mode} remove failed: {exc}", exc_info=True)
 
-        threading.Thread(target=_do, daemon=True).start()
+        thread_registry.spawn("dictionary_panel_qt._kv_remove", _do, daemon=True)
 
     def _kv_reload(self, table, mode, status_lbl):
         """Reload table from source after a background save completes."""

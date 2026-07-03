@@ -1,0 +1,30 @@
+# Justified exceptions to tools/check_thread_discipline.py.
+# One "relative/path.py:lineno" per line. Add a comment above each entry
+# explaining why it isn't routed through samsara.runtime.thread_registry.
+
+# Explicitly out of scope per the thread-registry migration task: a small
+# standalone subprocess helper, not part of the app's own thread lifecycle.
+plugins/assets/sleep_overlay.py:75
+
+# Standalone throwaway architecture spike -- docstring says "Does NOT import
+# Samsara modules"; not part of the shipped app.
+tools/qt_threading_spike.py:456
+
+# Dead code: nothing imports samsara._stale.* (see tests/test_modules.py
+# docstring -- "_stale is dead code"). Not reachable, not worth wiring up.
+samsara/_stale/audio.py:264
+samsara/_stale/speech.py:98
+
+# The single persistent samsara-qt event-loop thread. Migration task called
+# this out explicitly: register() it, do not restructure its construction
+# (ensure_started() is idempotent/lock-guarded startup code we don't want to
+# touch). It IS registered -- see thread_registry.register(_thread,
+# "samsara-qt") immediately after .start() in this same function.
+samsara/ui/qt_runtime.py:60
+
+# Duck-restore timer must land in _duck_timers *before* it starts so a
+# concurrent _cancel_duck_timers() can never race a freshly-started one;
+# thread_registry.timer() starts immediately on construction, which would
+# invert that ordering. Kept as raw construction + register() right after
+# .start() to preserve the exact original sequencing.
+samsara/tts/coordinator.py:216

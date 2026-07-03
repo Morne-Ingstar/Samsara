@@ -19,6 +19,7 @@ import asyncio
 from samsara.plugin_commands import command
 
 from samsara.log import get_logger
+from samsara.runtime import thread_registry
 
 logger = get_logger(__name__)
 
@@ -338,9 +339,9 @@ def handle_play(app, remainder):
         print("[MUSIC] Playing: Liked Songs (shuffle)")
         _open_track('spotify:collection:tracks')
         target_vol = int(app.config.get('music_volume', 30))
-        threading.Timer(2.0, _set_volume, args=[target_vol]).start()
+        thread_registry.timer("music.set_volume", 2.0, _set_volume, args=[target_vol])
         # TEMP: send play kick after Spotify registers SMTC session
-        threading.Timer(2.5, _spotify_play_kick).start()
+        thread_registry.timer("music.spotify_play_kick", 2.5, _spotify_play_kick)
         return True
 
     query = remainder.strip().lower()
@@ -352,9 +353,9 @@ def handle_play(app, remainder):
             _open_track(url)
             # Set modest volume after a short delay (let browser open)
             target_vol = int(app.config.get('music_volume', 30))
-            threading.Timer(2.0, _set_volume, args=[target_vol]).start()
+            thread_registry.timer("music.set_volume", 2.0, _set_volume, args=[target_vol])
             # TEMP: send play kick after Spotify has time to register SMTC session
-            threading.Timer(2.5, _spotify_play_kick).start()
+            thread_registry.timer("music.spotify_play_kick", 2.5, _spotify_play_kick)
             return True
 
     # Check user-configured songs
@@ -364,7 +365,7 @@ def handle_play(app, remainder):
             print(f"[MUSIC] Playing: {name}")
             _open_track(url)
             target_vol = int(app.config.get('music_volume', 30))
-            threading.Timer(2.0, _set_volume, args=[target_vol]).start()
+            thread_registry.timer("music.set_volume", 2.0, _set_volume, args=[target_vol])
             return True
 
     # Fallback: search Spotify

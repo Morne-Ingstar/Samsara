@@ -15,6 +15,8 @@ import time
 
 import cv2
 
+from samsara.runtime import thread_registry
+
 logger = logging.getLogger(__name__)
 
 _GESTURE_PROFILE = {"width": 640, "height": 480, "fps": 30}
@@ -107,10 +109,9 @@ class CameraService:
             return
         self._running = True
         self._run_event.set()
-        self._poll_thread = threading.Thread(
-            target=self._poll_loop, daemon=True, name="gesture-cam"
+        self._poll_thread = thread_registry.spawn(
+            "gesture-cam", self._poll_loop, daemon=True
         )
-        self._poll_thread.start()
         logger.info("[CAM] CameraService started (device=%d, profile=%s)", device_index, profile)
 
     def stop(self) -> None:

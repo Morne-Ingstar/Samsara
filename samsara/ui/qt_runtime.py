@@ -18,6 +18,8 @@ import threading
 from PySide6.QtCore import Qt, QTimer
 from PySide6.QtWidgets import QApplication
 
+from samsara.runtime import thread_registry
+
 log = logging.getLogger(__name__)
 
 # ---------------------------------------------------------------------------
@@ -59,6 +61,7 @@ def ensure_started() -> None:
                 target=_run_loop, daemon=False, name="samsara-qt"
             )
             _thread.start()
+            thread_registry.register(_thread, "samsara-qt")
         else:
             raise RuntimeError(
                 "Qt runtime has already been shut down and cannot be restarted"

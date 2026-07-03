@@ -20,6 +20,7 @@ from pathlib import Path
 import json
 
 from samsara.log import get_logger
+from samsara.runtime import thread_registry
 
 logger = get_logger(__name__)
 
@@ -194,8 +195,7 @@ class NotificationManager:
                 except Exception as e:
                     print(f"[NOTIFY ERROR] {e}")
 
-            toast_thread = threading.Thread(target=show, daemon=True)
-            toast_thread.start()
+            toast_thread = thread_registry.spawn("notifications.show", show, daemon=True)
 
             if self.on_notification:
                 self.on_notification(title, message)
@@ -214,8 +214,7 @@ class NotificationManager:
             print("[NOTIFY] Toast notifications not available (install win10toast or win10toast-click)")
 
         self.running = True
-        self.thread = threading.Thread(target=self._check_loop, daemon=True)
-        self.thread.start()
+        self.thread = thread_registry.spawn("notifications._check_loop", self._check_loop, daemon=True)
         print("[NOTIFY] Notification manager started")
 
     def stop(self):

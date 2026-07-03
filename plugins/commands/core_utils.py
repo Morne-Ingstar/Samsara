@@ -5,10 +5,10 @@ Core utility commands — app-level controls (restart, quit, etc.).
 import os
 import subprocess
 import sys
-import threading
 import time
 
 from samsara.plugin_commands import command
+from samsara.runtime import thread_registry
 
 from samsara.log import get_logger
 
@@ -92,7 +92,7 @@ def restart_app(app, remainder="", **kwargs):
         app.quit_app()
 
     speak_if_available(app, "Restarting.")
-    threading.Thread(target=_do_restart, daemon=True).start()
+    thread_registry.spawn("core_utils._do_restart", _do_restart, daemon=True)
 
 
 @command(

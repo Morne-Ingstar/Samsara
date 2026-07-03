@@ -13,10 +13,10 @@ Trigger phrases:
 
 import os
 import subprocess
-import threading
 from pathlib import Path
 
 from samsara.plugin_commands import command
+from samsara.runtime import thread_registry
 
 from samsara.log import get_logger
 
@@ -189,7 +189,7 @@ def handle_find_file(app, remainder):
             except Exception as e:
                 logger.debug(f"_search: {e}")
     
-    threading.Thread(target=_search, daemon=True, name="file-search").start()
+    thread_registry.spawn("file-search", _search, daemon=True)
     return True
 
 
@@ -261,7 +261,7 @@ def handle_move_file(app, remainder):
         else:
             print(f"[FILE] {message}")
     
-    threading.Thread(target=_do_move, daemon=True, name="file-move").start()
+    thread_registry.spawn("file-move", _do_move, daemon=True)
     return True
 
 

@@ -45,6 +45,7 @@ import numpy as np
 from .frame import PREBUFFER_FRAMES
 from .ring import EMPTY
 from samsara.log import get_logger
+from samsara.runtime import thread_registry
 
 logger = get_logger(__name__)
 
@@ -99,12 +100,9 @@ class DictationSessionConsumer:
         else:
             self._reader.rewind(PREBUFFER_FRAMES)
 
-        self._drain_thread = threading.Thread(
-            target=self._hold_drain_loop,
-            daemon=True,
-            name="dictation-hold-consumer",
+        self._drain_thread = thread_registry.spawn(
+            "dictation-hold-consumer", self._hold_drain_loop, daemon=True
         )
-        self._drain_thread.start()
 
     def _hold_drain_loop(self) -> None:
         """Background thread: drain ring → _frames continuously during a hold.
@@ -235,12 +233,9 @@ class DictationSessionConsumer:
         else:
             self._reader.rewind(PREBUFFER_FRAMES)
 
-        self._streaming_thread = threading.Thread(
-            target=self._streaming_drain_loop,
-            daemon=True,
-            name="streaming-consumer",
+        self._streaming_thread = thread_registry.spawn(
+            "streaming-consumer", self._streaming_drain_loop, daemon=True
         )
-        self._streaming_thread.start()
 
     def _streaming_drain_loop(self) -> None:
         """Background thread: drain ring → _streaming_frames while session runs."""

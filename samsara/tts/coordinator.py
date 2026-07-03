@@ -21,6 +21,8 @@ import threading
 import time
 from typing import Callable, Dict, List, Optional
 
+from samsara.runtime import thread_registry
+
 from .engine_base import SpeechHandle, TTSEngine
 
 logger = logging.getLogger(__name__)
@@ -208,11 +210,15 @@ class AudioCoordinator:
 
         # Schedule restore outside the lock to avoid holding it during Timer
         # construction (the Timer callback itself acquires the lock).
+        # Registered via register(), not thread_registry.timer(): the timer
+        # must land in _duck_timers before it starts so a concurrent
+        # _cancel_duck_timers() can never race a freshly-started one.
         t = threading.Timer(duration_ms / 1000.0, self._on_duck_restore)
         t.daemon = True
         with self._state_lock:
             self._duck_timers.append(t)
         t.start()
+        thread_registry.register(t, "tts.duck_restore")
 
     def transition_to(self, new_state: str, context: dict = None) -> bool:
         """Request a state transition. Thread-safe; validates legality.
@@ -314,13 +320,12 @@ class AudioCoordinator:
         # AND the grace window has elapsed.
         self._schedule_interrupt_grace()
 
-        t = threading.Thread(
-            target=self._interrupt_poll_loop,
+        t = thread_registry.spawn(
+            'tts-interrupt-poll',
+            self._interrupt_poll_loop,
             daemon=True,
-            name='tts-interrupt-poll',
         )
         self._interrupt_poll_thread = t
-        t.start()
 
     def _schedule_interrupt_grace(self) -> None:
         """Wait until engine is in 'playing' state, then start grace timer."""
@@ -335,16 +340,15 @@ class AudioCoordinator:
             # Engine is now playing (or timed out). Start the grace timer.
             if not self._interrupt_poll_active:
                 return
-            t = threading.Timer(
+            t = thread_registry.timer(
+                "tts.interrupt_grace",
                 self._interrupt_grace_ms / 1000.0,
                 self._on_grace_expired,
+                daemon=True,
             )
-            t.daemon = True
             self._interrupt_grace_timer = t
-            t.start()
 
-        threading.Thread(target=_watch_for_playing, daemon=True,
-                         name='tts-grace-watch').start()
+        thread_registry.spawn('tts-grace-watch', _watch_for_playing, daemon=True)
 
     def _on_grace_expired(self) -> None:
         self._interrupt_grace_active = False
@@ -413,17 +417,17 @@ class AudioCoordinator:
                 return
             if hasattr(self.app, 'play_sound'):
                 self.app.play_sound('thinking_pulse')
-            self._thinking_pulse_timer = threading.Timer(
-                self._thinking_pulse_interval_ms / 1000.0, _pulse
+            self._thinking_pulse_timer = thread_registry.timer(
+                "tts.thinking_pulse",
+                self._thinking_pulse_interval_ms / 1000.0, _pulse,
+                daemon=True,
             )
-            self._thinking_pulse_timer.daemon = True
-            self._thinking_pulse_timer.start()
 
-        self._thinking_pulse_timer = threading.Timer(
-            self._thinking_pulse_interval_ms / 1000.0, _pulse
+        self._thinking_pulse_timer = thread_registry.timer(
+            "tts.thinking_pulse",
+            self._thinking_pulse_interval_ms / 1000.0, _pulse,
+            daemon=True,
         )
-        self._thinking_pulse_timer.daemon = True
-        self._thinking_pulse_timer.start()
 
     def _stop_thinking_pulse(self) -> None:
         if self._thinking_pulse_timer is not None:

@@ -3,10 +3,12 @@ import os
 import threading
 
 from samsara.log import get_logger
+from samsara.paths import samsara_home_dir
+from samsara.runtime import thread_registry
 
 logger = get_logger(__name__)
 
-_STATS_PATH = os.path.join(os.path.expanduser('~'), '.samsara', 'command_stats.json')
+_STATS_PATH = str(samsara_home_dir() / "command_stats.json")
 _stats = {}
 _lock = threading.Lock()          # protects _stats and _pending_timer
 _pending_timer = None             # one-shot debounce timer for disk writes
@@ -51,9 +53,8 @@ def _schedule_flush():
     global _pending_timer
     if _pending_timer is not None:
         _pending_timer.cancel()
-    _pending_timer = threading.Timer(_FLUSH_DELAY, _save)
-    _pending_timer.daemon = True   # never block process shutdown
-    _pending_timer.start()
+    _pending_timer = thread_registry.timer(
+        "command_stats.flush", _FLUSH_DELAY, _save, daemon=True)   # never block process shutdown
 
 
 def increment_command_count(name: str):

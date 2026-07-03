@@ -25,6 +25,8 @@ import os
 import threading
 import time
 
+from samsara.runtime import thread_registry
+
 logger = logging.getLogger(__name__)
 
 # Suppress MediaPipe / oneDNN noise before the import
@@ -60,10 +62,9 @@ class GestureLoop:
             return
         self._reader = self._camera.subscribe()
         self._running = True
-        self._thread = threading.Thread(
-            target=self._poll_loop, daemon=True, name="gesture-loop"
+        self._thread = thread_registry.spawn(
+            "gesture-loop", self._poll_loop, daemon=True
         )
-        self._thread.start()
         logger.info("[GESTURE] Loop started")
 
     def stop(self) -> None:
@@ -169,12 +170,12 @@ class GestureLoop:
 
     def _dispatch(self, action: str) -> None:
         """Fire *action* on a short-lived daemon thread so the poll loop is free."""
-        threading.Thread(
-            target=self._execute_action,
+        thread_registry.spawn(
+            f"gesture-act-{action}",
+            self._execute_action,
             args=(action,),
             daemon=True,
-            name=f"gesture-act-{action}",
-        ).start()
+        )
 
     def _execute_action(self, action: str) -> None:
         app = self._app

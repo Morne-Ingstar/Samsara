@@ -41,6 +41,7 @@ except ImportError:
 
 from samsara.cleanup import clean_text
 from samsara.log import get_logger
+from samsara.runtime import thread_registry
 
 logger = get_logger(__name__)
 
@@ -576,6 +577,7 @@ class StreamingSession:
         """Begin partial loop. Audio stream must already be running."""
         self._overlay.show()
         self._worker.start()
+        thread_registry.register(self._worker, "streaming-worker")
         with self._state_lock:
             self._state = self.STATE_STREAMING
 
@@ -598,9 +600,8 @@ class StreamingSession:
         self.cancel_event.set()
         self.stop_event.set()
         if self._direct_paste and self._last_pasted:
-            threading.Thread(target=self._undo_direct_paste,
-                             daemon=True,
-                             name="streaming-cancel-undo").start()
+            thread_registry.spawn("streaming-cancel-undo", self._undo_direct_paste,
+                             daemon=True)
         self._overlay.close()
 
     # ---- Worker -> session callbacks (called from worker thread) --------
@@ -654,9 +655,8 @@ class StreamingSession:
             # the target app -- erase it on no-speech so we leave a clean
             # slate. Off-thread to avoid blocking Tk.
             if self._direct_paste and self._last_pasted:
-                threading.Thread(target=self._undo_direct_paste,
-                                 daemon=True,
-                                 name="streaming-empty-undo").start()
+                thread_registry.spawn("streaming-empty-undo", self._undo_direct_paste,
+                                 daemon=True)
             self._overlay.update_text("(no speech)",
                                       StreamingOverlayQt.STATE_DONE)
             self._overlay.flash_done_and_fade(self._mark_done)
@@ -691,10 +691,9 @@ class StreamingSession:
 
         if self.app.config.get('auto_paste', True):
             if self._direct_paste:
-                threading.Thread(target=self._direct_paste_final,
+                thread_registry.spawn("streaming-final-paste", self._direct_paste_final,
                                  args=(text,),
-                                 daemon=True,
-                                 name="streaming-final-paste").start()
+                                 daemon=True)
             else:
                 self._paste_with_retry(text)
 

@@ -13,12 +13,12 @@ Voice commands:
 import json
 import logging
 import re
-import threading
 import urllib.error
 import urllib.request
 
 from samsara import tasks_store
 from samsara.plugin_commands import command
+from samsara.runtime import thread_registry
 
 logger = logging.getLogger(__name__)
 
@@ -79,7 +79,7 @@ def _post_task_bg(app, text):
         except Exception as e:
             logger.warning("[TASKS] Arcana sync failed (non-blocking): %s", e)
 
-    threading.Thread(target=_do_post, daemon=True, name="tasks-arcana-sync").start()
+    thread_registry.spawn("tasks-arcana-sync", _do_post, daemon=True)
 
 
 def _parse_position(remainder):

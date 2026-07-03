@@ -45,6 +45,7 @@ from .engine import AudioCaptureEngine
 from .frame import FRAME_SIZE, SAMPLE_RATE
 from .ring import EMPTY
 from samsara.log import get_logger
+from samsara.runtime import thread_registry
 
 logger = get_logger(__name__)
 
@@ -94,12 +95,9 @@ class DebugRecorder:
         self._recording = True
         self._stop_event.clear()
 
-        self._thread = threading.Thread(
-            target=self._drain_loop,
-            daemon=True,
-            name="debug-recorder",
+        self._thread = thread_registry.spawn(
+            "debug-recorder", self._drain_loop, daemon=True
         )
-        self._thread.start()
         logger.info(f"[DebugRecorder] Recording started -> {self._output_dir}")
 
     def stop_recording(self) -> Optional[str]:

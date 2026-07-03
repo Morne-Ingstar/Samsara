@@ -10,6 +10,8 @@ import ctypes
 import ctypes.wintypes
 import threading
 
+from samsara.runtime import thread_registry
+
 # Win32 constants
 WH_MOUSE_LL = 14
 WM_XBUTTONDOWN = 0x020B
@@ -97,9 +99,7 @@ class MouseHook:
     def start(self):
         """Install the hook on a dedicated thread (Win32 requires this)."""
         self._ready.clear()
-        self._thread = threading.Thread(target=self._run, daemon=True,
-                                        name='mouse-hook')
-        self._thread.start()
+        self._thread = thread_registry.spawn('mouse-hook', self._run, daemon=True)
         self._ready.wait(timeout=2.0)
 
     def _run(self):

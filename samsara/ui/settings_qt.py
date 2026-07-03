@@ -19,6 +19,7 @@ from PySide6.QtWidgets import (
 )
 
 from samsara.ui import qt_runtime
+from samsara.runtime import thread_registry
 
 from samsara.log import get_logger
 
@@ -1813,7 +1814,7 @@ class _SettingsWindow(QMainWindow):
             # marshal-a-callable-onto-the-Qt-thread idiom used throughout
             # the codebase (already imported in this module).
             qt_runtime.post(self.showNormal)
-        threading.Thread(target=_run, daemon=True).start()
+        thread_registry.spawn("settings_qt._run", _run, daemon=True)
 
     def _edit_selected_command(self, table: QTableWidget) -> None:
         phrase = self._selected_phrase(table)
@@ -2302,7 +2303,7 @@ class _SettingsWindow(QMainWindow):
                 logger.debug(f"_do: {e}")
             print(f"[SOUNDS] Theme applied: {theme}")
 
-        threading.Thread(target=_do, daemon=True).start()
+        thread_registry.spawn("settings_qt._do", _do, daemon=True)
 
     # ------------------------------------------------------------------
     # TTS tab
@@ -2845,9 +2846,10 @@ class _SettingsWindow(QMainWindow):
         if am:
             alarm = am.get_alarm(alarm_id)
             if alarm:
-                threading.Thread(
-                    target=lambda: am.play_sound(alarm), daemon=True
-                ).start()
+                thread_registry.spawn(
+                    "settings_qt._test_selected_alarm",
+                    lambda: am.play_sound(alarm), daemon=True
+                )
 
     def _reset_alarm_stats(self, table: QTableWidget) -> None:
         alarm_id = self._selected_alarm_id(table)
@@ -3251,7 +3253,8 @@ class _SettingsWindow(QMainWindow):
 
     def _open_health_folder(self):
         import os, subprocess
-        folder = os.path.join(os.path.expanduser("~"), ".samsara")
+        from samsara.paths import samsara_home_dir
+        folder = str(samsara_home_dir())
         os.makedirs(folder, exist_ok=True)
         try:
             subprocess.Popen(["explorer", folder])
@@ -4070,7 +4073,7 @@ class _SettingsWindow(QMainWindow):
                 color = "#FF6666"
             self._test_result.emit(msg, color)
 
-        threading.Thread(target=_do, daemon=True).start()
+        thread_registry.spawn("settings_qt._do", _do, daemon=True)
 
     def _on_test_result(self, msg: str, color: str):
         label = self._widgets.get('cloud_test_status')

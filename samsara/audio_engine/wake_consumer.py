@@ -44,6 +44,7 @@ from samsara.constants import (
 )
 from samsara.session_modes import SessionMode
 from samsara.log import get_logger
+from samsara.runtime import thread_registry
 
 logger = get_logger(__name__)
 
@@ -80,10 +81,9 @@ class WakeConsumer:
         self._running = True
         # Snap to current write head — skip pre-wake-mode ring history
         self._reader.snap_to_head()
-        self._thread = threading.Thread(
-            target=self._poll_loop, daemon=True, name="wake-consumer"
+        self._thread = thread_registry.spawn(
+            "wake-consumer", self._poll_loop, daemon=True
         )
-        self._thread.start()
 
     def stop(self) -> list:
         """Stop the policy loop and return remaining utterance frames."""
@@ -390,24 +390,24 @@ class WakeConsumer:
 
         # AI command mode: route utterance to the AI resolver queue.
         if self._is_ai_cmd_mode(app):
-            threading.Thread(
-                target=app._handle_ai_command_utterance,
+            thread_registry.spawn(
+                'ai-cmd-utt',
+                app._handle_ai_command_utterance,
                 args=(buffer_copy, SAMPLE_RATE),
                 daemon=True,
-                name='ai-cmd-utt',
-            ).start()
+            )
             return
 
         # Toggle command mode: bypass OWW gate and execute as a single command
         # utterance.  The WakeConsumer re-arms automatically for the next
         # utterance; no external re-arm call is needed.
         if self._is_toggle_cmd(app):
-            threading.Thread(
-                target=app._handle_command_mode_utterance,
+            thread_registry.spawn(
+                'cmd-utt',
+                app._handle_command_mode_utterance,
                 args=(buffer_copy, SAMPLE_RATE),
                 daemon=True,
-                name='cmd-utt',
-            ).start()
+            )
             return
 
         _has_wake_targets = any(
@@ -431,17 +431,19 @@ class WakeConsumer:
         if app.app_state == 'long_dictation':
             with app._dictation_finalize_lock:
                 app._pending_transcriptions += 1
-            threading.Thread(
-                target=app._process_wake_word_buffer_tracked,
+            thread_registry.spawn(
+                "wake_consumer._process_wake_word_buffer_tracked",
+                app._process_wake_word_buffer_tracked,
                 args=(buffer_copy, SAMPLE_RATE),
                 daemon=True,
-            ).start()
+            )
         else:
-            threading.Thread(
-                target=app.process_wake_word_buffer,
+            thread_registry.spawn(
+                "wake_consumer.process_wake_word_buffer",
+                app.process_wake_word_buffer,
                 args=(buffer_copy, SAMPLE_RATE),
                 daemon=True,
-            ).start()
+            )
 
     def __repr__(self) -> str:
         return (

@@ -24,6 +24,8 @@ import threading
 from pathlib import Path
 from typing import Any, Dict, List, Optional, Tuple
 
+from samsara.runtime import thread_registry
+
 logger = logging.getLogger(__name__)
 
 # ---- Tier constants ---------------------------------------------------------
@@ -113,8 +115,7 @@ class ToolDispatcher:
             while not self._thinking_stop.wait(1.0):
                 _play_earcon(self.app, EARCON_THINKING_PULSE, smart_cfg)
 
-        threading.Thread(target=_pulse, daemon=True,
-                         name="sa-thinking-pulse").start()
+        thread_registry.spawn("sa-thinking-pulse", _pulse, daemon=True)
 
     def _stop_thinking_pulse(self):
         """Kill the pulse. Thread exits within 1s (next wait() returns True)."""
