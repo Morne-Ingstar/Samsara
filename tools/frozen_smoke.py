@@ -222,6 +222,32 @@ def check_no_self_respawn(pid: int) -> Check:
     return check.ok("no child Samsara.exe processes")
 
 
+def cleanup_stale_lock(pid: int) -> None:
+    """Delete %TEMP%\\samsara.lock if it names the PID we just terminated.
+
+    terminate()/kill() (TerminateProcess) release the OS-level msvcrt lock
+    on the file immediately, but nothing unlinks the file itself, so its
+    stale PID sits there until something removes it. dictation.py's own
+    _steal_stale_lock_if_any() would catch this on the *next* launch too,
+    but back-to-back harness runs (this scenario, then the wizard scenario,
+    in the same smoke-test invocation) start their next launch fast enough
+    that cleaning it up here immediately is worth doing rather than relying
+    on that later.
+    """
+    lock_path = Path(tempfile.gettempdir()) / "samsara.lock"
+    if not lock_path.exists():
+        return
+    try:
+        recorded_pid = int(lock_path.read_text().strip())
+    except (OSError, ValueError):
+        return
+    if recorded_pid == pid:
+        try:
+            lock_path.unlink()
+        except OSError:
+            pass
+
+
 def graceful_shutdown(proc: subprocess.Popen, timeout_s: float = SHUTDOWN_TIMEOUT_S) -> Check:
     """No scriptable graceful-exit mechanism exists: quit_app() (dictation.py)
     is only reachable via the tray "Exit" menu item (a GUI click) or a fatal
@@ -240,10 +266,12 @@ def graceful_shutdown(proc: subprocess.Popen, timeout_s: float = SHUTDOWN_TIMEOU
             proc.wait(timeout=5.0)
         except subprocess.TimeoutExpired:
             return check.fail(f"process survived terminate() + kill() past {timeout_s + 5:.0f}s")
+        cleanup_stale_lock(proc.pid)
         return check.fail(
             f"did not exit within {timeout_s:.0f}s of terminate() "
             f"(no scriptable graceful-exit mechanism exists); force-killed"
         )
+    cleanup_stale_lock(proc.pid)
     return check.ok(
         "terminate() -- no scriptable graceful-exit mechanism exists "
         f"(tray-menu Exit is GUI-only); exited within {timeout_s:.0f}s"

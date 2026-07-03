@@ -249,3 +249,49 @@ def test_check_no_self_respawn_passes_with_no_copies(monkeypatch):
     monkeypatch.setattr(frozen_smoke, "psutil", _FakePsutil)
     check = frozen_smoke.check_no_self_respawn(999999)
     assert check.passed is True
+
+
+# ---------------------------------------------------------------------------
+# cleanup_stale_lock -- deletes %TEMP%\samsara.lock after terminate() if it
+# still names the PID that was just killed (dictation.py's own
+# _steal_stale_lock_if_any would catch this on the *next* launch too, but
+# this harness cleans it up immediately for back-to-back scenario runs).
+# ---------------------------------------------------------------------------
+
+def test_cleanup_stale_lock_removes_matching_pid(tmp_path, monkeypatch):
+    monkeypatch.setattr(frozen_smoke.tempfile, "gettempdir", lambda: str(tmp_path))
+    lock_path = tmp_path / "samsara.lock"
+    lock_path.write_text("4242")
+
+    frozen_smoke.cleanup_stale_lock(4242)
+
+    assert not lock_path.exists()
+
+
+def test_cleanup_stale_lock_leaves_non_matching_pid(tmp_path, monkeypatch):
+    """Killed PID 4242, but the lock file names a different PID (e.g. a
+    fresh instance already started and grabbed it) -- must not delete
+    someone else's live lock."""
+    monkeypatch.setattr(frozen_smoke.tempfile, "gettempdir", lambda: str(tmp_path))
+    lock_path = tmp_path / "samsara.lock"
+    lock_path.write_text("9999")
+
+    frozen_smoke.cleanup_stale_lock(4242)
+
+    assert lock_path.exists()
+    assert lock_path.read_text() == "9999"
+
+
+def test_cleanup_stale_lock_missing_file_is_a_noop(tmp_path, monkeypatch):
+    monkeypatch.setattr(frozen_smoke.tempfile, "gettempdir", lambda: str(tmp_path))
+    frozen_smoke.cleanup_stale_lock(4242)  # must not raise
+
+
+def test_cleanup_stale_lock_corrupt_content_is_a_noop(tmp_path, monkeypatch):
+    monkeypatch.setattr(frozen_smoke.tempfile, "gettempdir", lambda: str(tmp_path))
+    lock_path = tmp_path / "samsara.lock"
+    lock_path.write_text("not-a-pid")
+
+    frozen_smoke.cleanup_stale_lock(4242)  # must not raise
+
+    assert lock_path.exists(), "unparseable content should be left alone, not guessed at"
