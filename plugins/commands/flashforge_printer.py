@@ -27,6 +27,7 @@ import subprocess
 import os
 
 from samsara.plugin_commands import command
+from samsara.runtime import thread_registry
 
 from samsara.log import get_logger
 
@@ -122,14 +123,13 @@ def handle_print_gun(app, remainder):
             os.startfile(model_file)
 
         # Wake the printer up — home axes so it moves visibly
-        import threading
         def _wake_printer():
             import time
             time.sleep(1)  # let Orca open first
             _send(app, "M601 S1")  # request control
             _send(app, "G28")      # home all axes — head moves, steppers whir
             print("[3DP] Printer homing...")
-        threading.Thread(target=_wake_printer, daemon=True).start()
+        thread_registry.spawn("flashforge_printer._wake_printer", _wake_printer, daemon=True)
 
         if hasattr(app, 'play_sound'):
             try:

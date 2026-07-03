@@ -26,6 +26,7 @@ from PySide6.QtWidgets import (
 )
 
 from samsara.ui import qt_runtime
+from samsara.runtime import thread_registry
 
 from samsara.log import get_logger
 
@@ -957,12 +958,12 @@ class _DebugWindow(QMainWindow):
                     self._speech_buffer = []
                     self._is_speaking   = False
                     self._silence_start = None
-                    threading.Thread(
-                        target=self._process_audio,
+                    thread_registry.spawn(
+                        "wake-debug-process",
+                        self._process_audio,
                         args=(buf,),
                         daemon=True,
-                        name="wake-debug-process",
-                    ).start()
+                    )
                 else:
                     self.log(f"Discarded: too short ({dur:.1f}s)")
                     self._speech_buffer = []

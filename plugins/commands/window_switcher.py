@@ -34,6 +34,7 @@ import time
 from samsara.plugin_commands import command
 
 from samsara.log import get_logger
+from samsara.runtime import thread_registry
 
 logger = get_logger(__name__)
 
@@ -397,9 +398,7 @@ def _reset_timer() -> None:
         except Exception as e:
             logger.debug(f"_fire: {e}")
 
-    t = threading.Timer(_AUTO_DISMISS_S, _fire)
-    t.daemon = True
-    t.start()
+    t = thread_registry.timer("window_switcher.auto_dismiss", _AUTO_DISMISS_S, _fire, daemon=True)
     _dismiss_timer = t
 
 # ---------------------------------------------------------------------------

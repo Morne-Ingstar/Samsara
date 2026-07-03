@@ -16,6 +16,8 @@ import time
 from pathlib import Path
 from typing import Callable, Optional
 
+from samsara.runtime import thread_registry
+
 logger = logging.getLogger(__name__)
 
 try:
@@ -90,9 +92,8 @@ class ConfigWatcher:
                 return
             if self._timer is not None:
                 self._timer.cancel()
-            self._timer = threading.Timer(self._debounce, self._fire)
-            self._timer.daemon = True
-            self._timer.start()
+            self._timer = thread_registry.timer(
+                "config_watch.debounce", self._debounce, self._fire, daemon=True)
 
     def _fire(self):
         with self._timer_lock:
@@ -159,8 +160,5 @@ class ConfigWatcher:
                 except OSError as e:
                     logger.debug(f"_poll: {e}")
 
-        self._poll_thread = threading.Thread(
-            target=_poll, daemon=True, name="config-watcher"
-        )
-        self._poll_thread.start()
+        self._poll_thread = thread_registry.spawn("config-watcher", _poll, daemon=True)
         logger.debug("[CONFIG] Watcher started (polling)")

@@ -19,6 +19,7 @@ from pathlib import Path
 from datetime import datetime
 
 from samsara.plugin_commands import command
+from samsara.runtime import thread_registry
 
 from samsara.log import get_logger
 
@@ -168,9 +169,8 @@ def _capture_loop(duration=None, window_only=False):
     print(f"[GIF] Recording {mode_str} at {_FPS}fps (scale: {_SCALE}x)...")
     
     # Start recording indicator on separate thread
-    indicator_thread = threading.Thread(
-        target=_show_recording_indicator, daemon=True, name="rec-indicator")
-    indicator_thread.start()
+    indicator_thread = thread_registry.spawn(
+        "rec-indicator", _show_recording_indicator, daemon=True)
     
     if engine == 'mss':
         import mss
@@ -303,12 +303,11 @@ def _start_recording(app, remainder, window_only=False):
         _frames.clear()
     _recording = True
     
-    _record_thread = threading.Thread(
-        target=_capture_loop,
+    _record_thread = thread_registry.spawn(
+        "gif-recorder", _capture_loop,
         args=(duration, window_only),
-        daemon=True, name="gif-recorder"
+        daemon=True,
     )
-    _record_thread.start()
     
     mode = "window" if window_only else "screen"
     dur_str = f" for {duration}s" if duration else ""

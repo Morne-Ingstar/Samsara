@@ -22,6 +22,7 @@ from PySide6.QtWidgets import (
 )
 
 from samsara.ui import qt_runtime
+from samsara.runtime import thread_registry
 
 log = logging.getLogger(__name__)
 
@@ -178,4 +179,4 @@ class SplashScreenQt:
             if w is not None:
                 w._close_sig.emit()
 
-        threading.Thread(target=_do_close, daemon=True, name="splash-close").start()
+        thread_registry.spawn("splash-close", _do_close, daemon=True)

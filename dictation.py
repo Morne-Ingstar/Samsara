@@ -329,6 +329,7 @@ from samsara.echo_cancel import EchoCanceller
 from samsara.clipboard import clipboard_lock as _clipboard_lock, save_clipboard as _save_clipboard_win32, restore_clipboard as _restore_clipboard_win32, paste_with_preservation
 from samsara.wake_detector import WakeWordDetector
 from samsara.handlers import _get_foreground_exe_lower
+from samsara.runtime import thread_registry
 from samsara.session_modes import (
     SessionMode, SessionModeManager, UtteranceSignals, CommandDispatchResult,
 )
@@ -1410,11 +1411,11 @@ class DictationApp:
                 from samsara.vision import VisionBridge
                 self._vision_bridge = VisionBridge(self)
                 if vision_cfg.get("warmup", True):
-                    threading.Thread(
-                        target=self._vision_bridge.warmup,
+                    thread_registry.spawn(
+                        "vision-warmup",
+                        self._vision_bridge.warmup,
                         daemon=True,
-                        name="vision-warmup",
-                    ).start()
+                    )
                     logger.info("[VISION] Warmup started in background.")
             except Exception as e:
                 logger.exception(f"[VISION] Init failed: {e}")
@@ -2535,7 +2536,7 @@ class DictationApp:
         def _do():
             self._run_calibration_if_auto()
             self.persist_config()
-        threading.Thread(target=_do, daemon=True).start()
+        thread_registry.spawn("dictation._do", _do, daemon=True)
 
     def get_available_microphones(self):
         """Get list of available microphone devices.
@@ -3086,8 +3087,7 @@ class DictationApp:
             self.update_splash(f"Startup error: {err_msg}")
             self._schedule_ui(self._show_startup_error, err_msg)
 
-        thread = threading.Thread(target=load, daemon=True)
-        thread.start()
+        thread = thread_registry.spawn("dictation.load", load, daemon=True)
     
     def parse_hotkey(self, hotkey_str):
         """Parse hotkey string into set of key names"""
@@ -3237,7 +3237,7 @@ class DictationApp:
         if self.check_hotkey_state(undo_hotkey) and not self.hotkey_pressed:
             logger.debug(f"[HOTKEY] Undo hotkey detected: {undo_hotkey}")
             self.hotkey_pressed = True
-            threading.Thread(target=self.undo_last_dictation, daemon=True).start()
+            thread_registry.spawn("dictation.undo_last_dictation", self.undo_last_dictation, daemon=True)
             return
 
         # Correction report hotkey (works in any mode, edge-triggered)
@@ -3253,8 +3253,8 @@ class DictationApp:
             logger.debug(f"[HOTKEY] Wake word hotkey detected: {wake_hotkey}")
             self.hotkey_pressed = True
             new_state = not self.config.get('wake_word_enabled', False)
-            threading.Thread(target=self.set_wake_word_enabled,
-                             args=(new_state,), daemon=True).start()
+            thread_registry.spawn("dictation.set_wake_word_enabled", self.set_wake_word_enabled,
+                                   args=(new_state,), daemon=True)
             return
         
         # Check for continuous mode toggle (works in any mode)
@@ -3370,14 +3370,12 @@ class DictationApp:
                 if self.command_mode_recording and self.recording:
                     logger.debug(f"[HOTKEY] Command hotkey released, stopping recording")
                     self._stop_in_flight = True
-                    threading.Thread(target=_deferred_stop, daemon=True,
-                                     name='stop-rec').start()
+                    thread_registry.spawn('stop-rec', _deferred_stop, daemon=True)
                     self.hotkey_pressed = False
                 elif mode == 'hold' and self.recording:
                     logger.debug(f"[HOTKEY] Main hotkey released, stopping recording")
                     self._stop_in_flight = True
-                    threading.Thread(target=_deferred_stop, daemon=True,
-                                     name='stop-rec').start()
+                    thread_registry.spawn('stop-rec', _deferred_stop, daemon=True)
                     self.hotkey_pressed = False
                 else:
                     self.hotkey_pressed = False
@@ -3453,16 +3451,14 @@ class DictationApp:
                 if self._capslock_held:
                     return  # ignore auto-repeat while held
                 self._capslock_held = True
-                threading.Thread(
-                    target=self._capslock_start_streaming,
-                    daemon=True, name="capslock-start").start()
+                thread_registry.spawn(
+                    "capslock-start", self._capslock_start_streaming, daemon=True)
             elif event.event_type == keyboard.KEY_UP:
                 if not self._capslock_held:
                     return
                 self._capslock_held = False
-                threading.Thread(
-                    target=self._capslock_stop_streaming,
-                    daemon=True, name="capslock-stop").start()
+                thread_registry.spawn(
+                    "capslock-stop", self._capslock_stop_streaming, daemon=True)
         except Exception as e:
             logger.exception(f"[CAPSLOCK] event handler crashed: {e}")
 
@@ -3807,8 +3803,7 @@ class DictationApp:
                 # config-controlled state in exit_command_mode().
                 self._schedule_ui(self.listening_indicator.show)
             self._update_mode_overlay(SessionMode.COMMAND)
-        threading.Thread(target=self._do_enter_command_mode, daemon=True,
-                         name='cmd-mode-enter').start()
+        thread_registry.spawn('cmd-mode-enter', self._do_enter_command_mode, daemon=True)
 
     def _do_enter_command_mode(self):
         """Worker thread: arms command mode and fires debounced earcon."""
@@ -3886,8 +3881,7 @@ class DictationApp:
         logger.info("[AVA MODE] Entering Ava mode")
         if hasattr(self, 'listening_indicator'):
             self._schedule_ui(self.listening_indicator.set_command_mode, True)
-        threading.Thread(target=self._do_enter_ava_mode, daemon=True,
-                         name='ava-mode-enter').start()
+        thread_registry.spawn('ava-mode-enter', self._do_enter_ava_mode, daemon=True)
 
     def _do_enter_ava_mode(self):
         """Worker thread: starts recording and fires debounced earcon."""
@@ -3936,8 +3930,7 @@ class DictationApp:
         logger.info("[AI-CMD] Entering AI command mode")
         if hasattr(self, 'listening_indicator'):
             self._schedule_ui(self.listening_indicator.set_command_mode, True)
-        threading.Thread(target=self._do_enter_ai_command_mode, daemon=True,
-                         name='ai-cmd-enter').start()
+        thread_registry.spawn('ai-cmd-enter', self._do_enter_ai_command_mode, daemon=True)
 
     def _do_enter_ai_command_mode(self):
         """Worker: play entry earcon, warm up model, play ready cue, then arm mic."""
@@ -4057,15 +4050,15 @@ class DictationApp:
                 _tut_ava = self._tutorial_hooks.pop('ava', None)
                 if _tut_ava:
                     self._schedule_ui(_tut_ava)
-        threading.Thread(target=_worker, daemon=True, name="Ava-worker").start()
+        thread_registry.spawn("Ava-worker", _worker, daemon=True)
 
     def _reset_command_mode_inactivity_timer(self, timeout_s):
         with self._command_mode_timer_lock:
             self._cancel_command_mode_inactivity_timer_locked()
-            t = threading.Timer(timeout_s, self._on_command_mode_inactivity)
-            t.daemon = True
+            t = thread_registry.timer(
+                "dictation.command_mode_inactivity", timeout_s,
+                self._on_command_mode_inactivity, daemon=True)
             self._command_mode_inactivity_timer = t
-            t.start()
 
     def _cancel_command_mode_inactivity_timer(self):
         with self._command_mode_timer_lock:
@@ -4753,9 +4746,9 @@ class DictationApp:
         )
         if existing is not None:
             existing.cancel()
-        t = threading.Timer(_WAKE_SESSION_TIMEOUT_S, self._end_wake_session)
-        t.daemon = True
-        t.start()
+        t = thread_registry.timer(
+            "dictation.wake_session_timeout", _WAKE_SESSION_TIMEOUT_S,
+            self._end_wake_session, daemon=True)
         self._wake_session_inactivity_timer = t
         logger.info(
             f"[WS-DIAG] restart_wake_session_timer ARMED: "
@@ -5533,11 +5526,10 @@ class DictationApp:
 
             if hasattr(self, '_dictation_hardcap_timer') and self._dictation_hardcap_timer:
                 self._dictation_hardcap_timer.cancel()
-            self._dictation_hardcap_timer = threading.Timer(
-                max_duration, self._finalize_dictation_hardcap
+            self._dictation_hardcap_timer = thread_registry.timer(
+                "dictation.hardcap", max_duration,
+                self._finalize_dictation_hardcap, daemon=True
             )
-            self._dictation_hardcap_timer.daemon = True
-            self._dictation_hardcap_timer.start()
 
             # Absolute failsafe — fires only if the soft hard-cap somehow
             # fails to drain the pipeline (e.g. stuck transcription worker).
@@ -5545,11 +5537,10 @@ class DictationApp:
             # never fire in healthy operation.
             if hasattr(self, '_dictation_failsafe_timer') and self._dictation_failsafe_timer:
                 self._dictation_failsafe_timer.cancel()
-            self._dictation_failsafe_timer = threading.Timer(
-                failsafe_duration, self._absolute_failsafe_reset
+            self._dictation_failsafe_timer = thread_registry.timer(
+                "dictation.failsafe", failsafe_duration,
+                self._absolute_failsafe_reset, daemon=True
             )
-            self._dictation_failsafe_timer.daemon = True
-            self._dictation_failsafe_timer.start()
 
         self.play_sound("start")
 
@@ -5575,7 +5566,7 @@ class DictationApp:
             import time
             time.sleep(0.8)
             self._indicator_reset()
-        threading.Thread(target=_delayed_reset, daemon=True).start()
+        thread_registry.spawn("dictation._delayed_reset", _delayed_reset, daemon=True)
 
     def _indicator_reset(self):
         """Return indicator to idle state."""
@@ -5644,8 +5635,8 @@ class DictationApp:
             self._dictation_finalize_timer.cancel()
 
         timeout = self._dictation_silence_timeout or 0.6
-        self._dictation_finalize_timer = threading.Timer(timeout, self._finalize_dictation_timeout)
-        self._dictation_finalize_timer.start()
+        self._dictation_finalize_timer = thread_registry.timer(
+            "dictation.finalize_timeout", timeout, self._finalize_dictation_timeout)
 
     def _finalize_dictation_timeout(self):
         """Called when the dictation finalization timer expires."""
@@ -5718,11 +5709,12 @@ class DictationApp:
         with self._dictation_finalize_lock:
             self._pending_transcriptions += 1
 
-        threading.Thread(
-            target=self._process_wake_word_buffer_tracked,
+        thread_registry.spawn(
+            "dictation._process_wake_word_buffer_tracked",
+            self._process_wake_word_buffer_tracked,
             args=(buffer_copy,),
             daemon=True,
-        ).start()
+        )
         return True
 
     def _process_wake_word_buffer_tracked(self, buffer, src_rate=None):
@@ -5854,9 +5846,9 @@ class DictationApp:
         """Start a fresh expiry timer; cancel any existing one."""
         if self._undo_timer is not None:
             self._undo_timer.cancel()
-        self._undo_timer = threading.Timer(self._UNDO_EXPIRY_SECONDS, self._clear_undo)
-        self._undo_timer.daemon = True
-        self._undo_timer.start()
+        self._undo_timer = thread_registry.timer(
+            "dictation.undo_expiry", self._UNDO_EXPIRY_SECONDS,
+            self._clear_undo, daemon=True)
 
     def _clear_undo(self):
         """Drop undo state (called on expiry or after a successful undo)."""
@@ -6016,8 +6008,8 @@ class DictationApp:
         # Use a separate, longer timeout for waiting for command after wake word
         ww_config = self.config.get('wake_word_config', {})
         timeout = ww_config.get('audio', {}).get('wake_command_timeout', WAKE_COMMAND_TIMEOUT)
-        self.wake_word_timer = threading.Timer(timeout, self.reset_wake_word)
-        self.wake_word_timer.start()
+        self.wake_word_timer = thread_registry.timer(
+            "dictation.wake_word_reset", timeout, self.reset_wake_word)
     
     def reset_wake_word(self):
         """Reset wake word trigger after timeout"""
@@ -6134,10 +6126,9 @@ class DictationApp:
         # Daemon thread that polls Windows for default output device changes
         # and restarts the output streams when the user switches devices.
         self._output_watcher_stop = threading.Event()
-        threading.Thread(
-            target=self._watch_output_device, daemon=True,
-            name='samsara-output-watcher',
-        ).start()
+        thread_registry.spawn(
+            'samsara-output-watcher', self._watch_output_device, daemon=True,
+        )
 
     def _load_sound_cache(self):
         """Pre-load all sound files into memory, normalized to common sample rate.
@@ -6693,9 +6684,9 @@ class DictationApp:
                                 if cm_cfg.get('mode', 'hold') == 'toggle':
                                     timeout_s = cm_cfg.get('inactivity_timeout_s', 30)
                                     self._reset_command_mode_inactivity_timer(timeout_s)
-                                    threading.Thread(
-                                        target=self._rearm_command_recording,
-                                        daemon=True).start()
+                                    thread_registry.spawn(
+                                        "dictation._rearm_command_recording",
+                                        self._rearm_command_recording, daemon=True)
                             return
 
                         # No command matched in command mode — don't output text
@@ -6709,9 +6700,9 @@ class DictationApp:
                                 logger.info(f"[CMD MODE] Miss limit ({miss_limit}) reached")
                                 self.exit_command_mode()
                             elif cm_cfg.get('mode', 'hold') == 'toggle':
-                                threading.Thread(
-                                    target=self._rearm_command_recording,
-                                    daemon=True).start()
+                                thread_registry.spawn(
+                                    "dictation._rearm_command_recording",
+                                    self._rearm_command_recording, daemon=True)
                         return
 
                     # --- Ava mode (Right Alt) ---
@@ -6812,8 +6803,7 @@ class DictationApp:
                 except Exception as _snd_err:
                     logger.debug(f"Failure earcon (winsound) unavailable: {_snd_err}")
 
-        thread = threading.Thread(target=transcribe, daemon=True)
-        thread.start()
+        thread = thread_registry.spawn("dictation.transcribe", transcribe, daemon=True)
 
     def cancel_recording(self):
         """Cancel recording without transcribing"""
@@ -7205,10 +7195,9 @@ class DictationApp:
                 # transient WinError during icon handle swap — skip this frame
                 logger.debug(f"Tray icon animation frame swap failed: {e}")
 
-        self._icon_chase_timer = threading.Timer(
-            tick_interval, self._icon_chase_tick)
-        self._icon_chase_timer.daemon = True
-        self._icon_chase_timer.start()
+        self._icon_chase_timer = thread_registry.timer(
+            "dictation.icon_chase", tick_interval,
+            self._icon_chase_tick, daemon=True)
     
     def open_settings(self):
         """Open settings window"""
@@ -7306,9 +7295,9 @@ class DictationApp:
             resume_str = self._snooze_resume_time.strftime("%H:%M")
             logger.info(f"[SNOOZE] Listening snoozed for {minutes} min (resumes at {resume_str})")
 
-            self._snooze_timer = threading.Timer(minutes * 60, self._on_snooze_expire)
-            self._snooze_timer.daemon = True
-            self._snooze_timer.start()
+            self._snooze_timer = thread_registry.timer(
+                "dictation.snooze_expire", minutes * 60,
+                self._on_snooze_expire, daemon=True)
         else:
             self._snooze_resume_time = None
             logger.info("[SNOOZE] Listening snoozed until manually resumed")
@@ -7401,7 +7390,7 @@ class DictationApp:
             else:
                 logger.debug(f"[AEC-CAL] Calibration not reliable: {result['message']}")
 
-        threading.Thread(target=_run, daemon=True, name="aec-calibrate").start()
+        thread_registry.spawn("aec-calibrate", _run, daemon=True)
 
     def _dispatch_command(self, _cmd):
         """Re-execute self._last_command_name via the normal dispatch path."""
@@ -7681,6 +7670,13 @@ class DictationApp:
                 self.hints.shutdown()
         except Exception as e:
             logger.debug(f"[EXIT] Hints shutdown failed: {e}")
+
+        # Join registered non-daemon threads (best-effort; logs stragglers,
+        # never blocks past its timeout, never force-kills).
+        try:
+            thread_registry.shutdown()
+        except Exception as e:
+            logger.debug(f"[EXIT] Thread registry shutdown failed: {e}")
 
         # Force exit — bypasses any remaining thread cleanup but guarantees
         # termination even if a background thread or Qt modal is blocking.

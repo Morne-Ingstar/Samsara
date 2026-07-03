@@ -50,6 +50,7 @@ except ImportError:
     _WMI = False
 
 from samsara.plugin_commands import command
+from samsara.runtime import thread_registry
 
 
 # ---------------------------------------------------------------------------
@@ -225,9 +226,8 @@ def _on_key_press(key) -> None:
     if _text_entry_timer:
         _text_entry_timer.cancel()
     _text_entry_target = _resolve_focused_field()
-    _text_entry_timer = threading.Timer(2.0, _flush_text_entry)
-    _text_entry_timer.daemon = True
-    _text_entry_timer.start()
+    _text_entry_timer = thread_registry.timer(
+        "workflow_capture.flush_text_entry", 2.0, _flush_text_entry, daemon=True)
 
 
 def _flush_text_entry() -> None:
@@ -443,18 +443,16 @@ def start_capture() -> str:
 
     if _WIN32:
         _focus_stop.clear()
-        _focus_thread = threading.Thread(
-            target=_focus_loop, args=(_focus_stop,),
-            daemon=True, name='wf-capture-focus'
+        _focus_thread = thread_registry.spawn(
+            'wf-capture-focus', _focus_loop, args=(_focus_stop,),
+            daemon=True,
         )
-        _focus_thread.start()
 
     _proc_stop.clear()
-    _proc_thread = threading.Thread(
-        target=_proc_loop, args=(_proc_stop,),
-        daemon=True, name='wf-capture-proc'
+    _proc_thread = thread_registry.spawn(
+        'wf-capture-proc', _proc_loop, args=(_proc_stop,),
+        daemon=True,
     )
-    _proc_thread.start()
 
     return "Capture started."
 

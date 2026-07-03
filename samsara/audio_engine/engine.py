@@ -41,6 +41,7 @@ from scipy.signal import resample_poly
 from .frame import FRAME_SIZE, PREBUFFER_FRAMES, SAMPLE_RATE
 from .ring import FrameBus, Reader
 from samsara.log import get_logger
+from samsara.runtime import thread_registry
 
 logger = get_logger(__name__)
 
@@ -230,9 +231,7 @@ class AudioCaptureEngine:
                 self._on_stream_death()
             except Exception:
                 logger.exception("[ACE] on_stream_death callback failed")
-        threading.Thread(
-            target=self._recovery_loop, daemon=True, name="ace-recovery",
-        ).start()
+        thread_registry.spawn("ace-recovery", self._recovery_loop, daemon=True)
 
     def _recovery_loop(self) -> None:
         """Poll for the configured device every 2s for up to 60s.

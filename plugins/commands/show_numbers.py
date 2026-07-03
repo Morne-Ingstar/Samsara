@@ -34,6 +34,7 @@ from PySide6.QtCore import QTimer
 from PySide6.QtWidgets import QApplication
 
 from samsara.plugin_commands import command
+from samsara.runtime import thread_registry
 from samsara.ui import qt_runtime
 from samsara.ui.numbers_overlay_qt import (
     NumbersOverlayWindow, phys_to_logical, _COORD_DEBUG,
@@ -553,9 +554,7 @@ def _schedule_dismiss_timer(app, seconds: int = _AUTO_DISMISS_S) -> None:
         print("[OVERLAY] Auto-dismissed after timeout")
         _destroy_overlay(app)
 
-    t = threading.Timer(seconds, _fire)
-    t.daemon = True
-    t.start()
+    t = thread_registry.timer("show_numbers.auto_dismiss", seconds, _fire, daemon=True)
     _dismiss_timer = t
 
 

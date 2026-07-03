@@ -30,6 +30,7 @@ from PySide6.QtWidgets import (
 )
 
 from samsara.ui import qt_runtime
+from samsara.runtime import thread_registry
 
 logger = logging.getLogger(__name__)
 
@@ -501,7 +502,7 @@ class _TrainingWindow(QMainWindow):
                     stream.stop()
                     stream.close()
 
-        threading.Thread(target=_run, daemon=True, name="vt-monitor").start()
+        thread_registry.spawn("vt-monitor", _run, daemon=True)
 
     def _stop_monitoring(self):
         self._tr._monitoring = False
@@ -555,7 +556,7 @@ class _TrainingWindow(QMainWindow):
                 logger.error(f"Test phrase error: {exc}", exc_info=True)
                 self._phrase_sig.emit(idx, "!", _WARNING)
 
-        threading.Thread(target=_run, daemon=True, name="vt-test").start()
+        thread_registry.spawn("vt-test", _run, daemon=True)
 
     def _on_phrase_result(self, idx: int, text: str, color: str):
         lbl = self._phrase_results[idx]

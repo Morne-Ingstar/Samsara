@@ -18,16 +18,17 @@ Usage:
 import asyncio
 import threading
 
+from samsara.runtime import thread_registry
+
 
 class WinRTHelper:
     """Bridges WinRT async calls into Samsara's synchronous architecture."""
 
     def __init__(self):
         self._loop = asyncio.new_event_loop()
-        self._thread = threading.Thread(
-            target=self._loop.run_forever, daemon=True, name="winrt-event-loop"
+        self._thread = thread_registry.spawn(
+            "winrt-event-loop", self._loop.run_forever, daemon=True
         )
-        self._thread.start()
 
     def run_sync(self, awaitable):
         """Run a WinRT awaitable on the background loop; block until done.

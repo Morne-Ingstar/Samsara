@@ -16,6 +16,7 @@ import subprocess
 import sys
 
 from samsara.plugin_commands import command
+from samsara.runtime import thread_registry
 
 from samsara.log import get_logger
 
@@ -134,13 +135,11 @@ def handle_timer(app, remainder):
     print(f"[TIMER] Started: {duration_str}")
     
     # Start background timer
-    t = threading.Thread(
-        target=_timer_thread,
+    t = thread_registry.spawn(
+        f"timer-{seconds}s", _timer_thread,
         args=(seconds, remainder.strip(), app),
         daemon=True,
-        name=f"timer-{seconds}s"
     )
-    t.start()
     
     with _timer_lock:
         _active_timers.append({

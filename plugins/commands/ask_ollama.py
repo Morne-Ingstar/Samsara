@@ -9,6 +9,7 @@ from samsara import cloud_llm
 from samsara.ava_memory import AvaMemory
 from samsara.languages import LANGUAGES
 from samsara.plugin_commands import command
+from samsara.runtime import thread_registry
 
 from samsara.log import get_logger
 
@@ -345,9 +346,7 @@ def _get_vision_bridge(app):
         bridge = VisionBridge(app)
         app._vision_bridge = bridge
         if getattr(app, "config", {}).get("vision", {}).get("warmup", True):
-            threading.Thread(
-                target=bridge.warmup, daemon=True, name="vision-warmup",
-            ).start()
+            thread_registry.spawn("vision-warmup", bridge.warmup, daemon=True)
     return app._vision_bridge
 
 
@@ -903,8 +902,7 @@ def _start_schedule(app, task):
                 print(f"[AVA SCHEDULER] Error during fire: {e}")
         print(f"[AVA SCHEDULER] Stopped: {task['confirm_text']}")
 
-    _scheduler_thread = threading.Thread(target=_loop, daemon=True, name="Ava-scheduler")
-    _scheduler_thread.start()
+    _scheduler_thread = thread_registry.spawn("Ava-scheduler", _loop, daemon=True)
 
 
 def _stop_schedule():
@@ -1090,7 +1088,7 @@ def handle_ask_ava(app, remainder="", on_done=None, **kwargs):
         finally:
             _done()
 
-    threading.Thread(target=_worker, daemon=True).start()
+    thread_registry.spawn("ask_ollama._worker", _worker, daemon=True)
 
 
 @command(
@@ -1121,7 +1119,7 @@ def handle_is_it_safe(app, remainder="", **kwargs):
             print(f"[OLLAMA] Error in worker: {e}")
             speak(app, "Sorry, something went wrong.")
 
-    threading.Thread(target=_worker, daemon=True).start()
+    thread_registry.spawn("ask_ollama._worker", _worker, daemon=True)
 
 
 @command(
@@ -1318,8 +1316,7 @@ def _health_monitor_loop():
 
 
 def _start_health_monitor(app=None):
-    t = threading.Thread(target=_health_monitor_loop, daemon=True, name="ollama-health")
-    t.start()
+    t = thread_registry.spawn("ollama-health", _health_monitor_loop, daemon=True)
     return t
 
 

@@ -22,6 +22,8 @@ import threading
 import uuid
 from typing import Callable, List, Optional
 
+from samsara.runtime import thread_registry
+
 from .engine_base import SpeechHandle, TTSEngine, VoiceInfo
 from .exceptions import EngineUnavailableError, RenderError
 
@@ -123,8 +125,7 @@ def _synthesize_mp3(voice_id: str, text: str, rate: str, volume: str) -> bytes:
                 finally:
                     asyncio.set_event_loop(None)
 
-        t = threading.Thread(target=_thread_target, name='edge-tts-synth', daemon=True)
-        t.start()
+        t = thread_registry.spawn('edge-tts-synth', _thread_target, daemon=True)
         t.join()
         if 'error' in result:
             raise result['error']
@@ -262,8 +263,7 @@ class EdgeTTSEngine(TTSEngine):
                     except Exception as e:
                         logger.debug(f"[EdgeTTS] on_done callback failed: {e}")
 
-        t = threading.Thread(target=_worker, daemon=True, name="EdgeTTS-worker")
-        t.start()
+        t = thread_registry.spawn("EdgeTTS-worker", _worker, daemon=True)
         return handle
 
     def cancel(self, handle: SpeechHandle) -> None:
