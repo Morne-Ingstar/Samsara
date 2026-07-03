@@ -51,6 +51,20 @@ def main() -> int:
     OUT_DIR.mkdir(parents=True, exist_ok=True)
     app = QApplication.instance() or QApplication(sys.argv)
 
+    # ---- Splash screen: brand-red segmented spinner (replaced the old
+    # QProgressBar) -- settle for 500ms so the spinner is mid-rotation with
+    # its opacity falloff visible, not caught on its very first frame. -----
+    try:
+        from samsara.ui.splash_qt import _SplashWidget
+
+        splash = _SplashWidget()
+        _settle_and_grab(app, splash, OUT_DIR / "splash_spinner.png")
+        splash.close()
+    except Exception:
+        import traceback
+        print("FAILED: splash window")
+        traceback.print_exc()
+
     # ---- Tutorial window: step 1 (welcome), step 2 (dictation), step 4
     # (done -- the checklist/guide-cards page whose fixed button geometry
     # used to clip against the theme's font metrics) -------------------------

@@ -14,19 +14,89 @@ import logging
 import threading
 import time
 
-from PySide6.QtCore import Qt, QTimer, Signal, Slot
-from PySide6.QtGui import QFont
+from PySide6.QtCore import QElapsedTimer, QRectF, Qt, QTimer, Signal, Slot
+from PySide6.QtGui import QColor, QFont, QPainter, QPen
 from PySide6.QtWidgets import (
     QApplication, QLabel,
-    QProgressBar, QVBoxLayout, QWidget,
+    QVBoxLayout, QWidget,
 )
 
-from samsara.ui import qt_runtime
+from samsara.ui import qt_runtime, theme
 from samsara.runtime import thread_registry
 
 log = logging.getLogger(__name__)
 
 _MIN_DISPLAY_S = 3.0
+
+
+# ---------------------------------------------------------------------------
+# Spinner widget -- indeterminate, segmented "wheel" progress indicator
+# ---------------------------------------------------------------------------
+
+class _SpinnerWidget(QWidget):
+    """8-segment ring spinner, brand-red, with a comet-tail opacity falloff.
+
+    Same "dharma wheel" arc-segment language as dictation.py's tray icon
+    (create_icon_image / _arc_polygon) -- one solid color here instead of
+    the tray's 3-color chase, since this is a single indeterminate spinner
+    rather than an activity-state indicator.
+
+    Rotation is driven by elapsed wall-clock time (QElapsedTimer), not a
+    per-tick angle increment, so the ~1.2s rotation period stays exact even
+    if the QTimer's ~60fps ticks land late or get coalesced.
+    """
+
+    _SEGMENTS = 8
+    _ARC_SPAN_DEG = 25.0     # each segment's sweep
+    _PERIOD_MS = 1200        # one full rotation
+    _TICK_MS = 16            # ~60fps
+
+    def __init__(self, parent=None, diameter: int = 56):
+        super().__init__(parent)
+        self._diameter = diameter
+        self.setFixedSize(diameter, diameter)
+
+        self._gap_deg = 360.0 / self._SEGMENTS - self._ARC_SPAN_DEG
+        self._elapsed = QElapsedTimer()
+        self._timer = QTimer(self)
+        self._timer.setInterval(self._TICK_MS)
+        self._timer.timeout.connect(self._on_tick)
+
+    def start(self):
+        self._elapsed.start()
+        self._timer.start()
+
+    def stop(self):
+        self._timer.stop()
+
+    def _on_tick(self):
+        self.update()
+
+    def paintEvent(self, event):
+        angle = 360.0 * (self._elapsed.elapsed() % self._PERIOD_MS) / self._PERIOD_MS
+
+        painter = QPainter(self)
+        painter.setRenderHint(QPainter.RenderHint.Antialiasing, True)
+        painter.translate(self._diameter / 2, self._diameter / 2)
+        painter.rotate(angle)
+
+        pen_width = max(3, self._diameter // 10)
+        radius = self._diameter / 2 - pen_width
+        rect = QRectF(-radius, -radius, radius * 2, radius * 2)
+
+        base = QColor(theme.BRAND_RED)
+        for i in range(self._SEGMENTS):
+            # Segment 0 leads (drawn first, brightest); opacity falls off
+            # to ~0.2 by the trailing segment so the spin direction reads.
+            frac = i / (self._SEGMENTS - 1)
+            color = QColor(base)
+            color.setAlphaF(1.0 - frac * 0.8)
+            pen = QPen(color, pen_width, Qt.PenStyle.SolidLine, Qt.PenCapStyle.RoundCap)
+            painter.setPen(pen)
+            start_angle = i * (self._ARC_SPAN_DEG + self._gap_deg)
+            painter.drawArc(rect, int(start_angle * 16), int(self._ARC_SPAN_DEG * 16))
+
+        painter.end()
 
 
 # ---------------------------------------------------------------------------
@@ -43,12 +113,14 @@ class _SplashWidget(QWidget):
             Qt.FramelessWindowHint | Qt.WindowStaysOnTopHint | Qt.SplashScreen,
         )
         self.setAttribute(Qt.WA_TranslucentBackground, False)
-        self.setFixedSize(350, 165)
+        # Height grew from 165 to fit the spinner (56px) plus its spacing --
+        # the old height was sized for a 6px progress bar.
+        self.setFixedSize(350, 190)
 
         screen = QApplication.primaryScreen().geometry()
         self.move(
             screen.center().x() - 175,
-            screen.center().y() - 82,
+            screen.center().y() - 95,
         )
 
         self._dot_count = 0
@@ -83,37 +155,26 @@ class _SplashWidget(QWidget):
         outer.addWidget(self._subtitle)
         outer.addSpacing(6)
 
+        self._spinner = _SpinnerWidget(self)
+        outer.addWidget(self._spinner, alignment=Qt.AlignmentFlag.AlignHCenter)
+        outer.addSpacing(4)
+
         self._status_lbl = QLabel("Starting...")
         self._status_lbl.setAlignment(Qt.AlignCenter)
         self._status_lbl.setStyleSheet(
-            "color: #aaaaaa; font-size: 10px; background: transparent;"
+            f"color: {theme.TEXT_SECONDARY}; font-size: {theme.FONT_SIZE_CAPTION}px;"
+            " background: transparent;"
         )
         outer.addWidget(self._status_lbl)
-        outer.addSpacing(4)
-
-        self._bar = QProgressBar()
-        self._bar.setRange(0, 0)
-        self._bar.setFixedHeight(6)
-        self._bar.setTextVisible(False)
-        self._bar.setStyleSheet("""
-            QProgressBar {
-                background: #1a1a1a;
-                border: none;
-                border-radius: 3px;
-            }
-            QProgressBar::chunk {
-                background: #00CED1;
-                border-radius: 3px;
-            }
-        """)
-        outer.addWidget(self._bar)
 
     def showEvent(self, e):
         super().showEvent(e)
         self._dot_timer.start()
+        self._spinner.start()
 
     def closeEvent(self, e):
         self._dot_timer.stop()
+        self._spinner.stop()
         e.accept()
 
     def _animate_dots(self):
