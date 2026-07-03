@@ -27,9 +27,10 @@ at import and whenever reload_corrections() is called from the UI.
 
 import json
 import re
-from pathlib import Path
 
-USER_CORRECTIONS_PATH = Path.home() / ".samsara" / "user_corrections.json"
+from samsara.paths import samsara_home_dir
+
+USER_CORRECTIONS_PATH = samsara_home_dir() / "user_corrections.json"
 
 # Multi-word phrase corrections. Key must appear as a contiguous substring
 # of the cleaned text. Applied before per-word corrections, so "fine tab"

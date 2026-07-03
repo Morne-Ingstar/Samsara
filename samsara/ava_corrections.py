@@ -10,12 +10,11 @@ import threading
 from datetime import datetime
 
 from samsara.log import get_logger
+from samsara.paths import samsara_home_dir
 
 logger = get_logger(__name__)
 
-_CORRECTIONS_PATH = os.path.join(
-    os.path.expanduser('~'), '.samsara', 'ava_corrections.json'
-)
+_CORRECTIONS_PATH = str(samsara_home_dir() / "ava_corrections.json")
 _aliases = {}
 _aliases_lock = threading.Lock()
 _dirty_count = False

@@ -17,7 +17,9 @@ import os
 import threading
 from datetime import datetime, timezone, timedelta
 
-_LOG_PATH = os.path.join(os.path.expanduser("~"), ".samsara", "health_log.json")
+from samsara.paths import samsara_home_dir
+
+_LOG_PATH = str(samsara_home_dir() / "health_log.json")
 _lock = threading.Lock()
 _data = {"entries": [], "next_id": 1}
 
@@ -133,7 +135,7 @@ def export_csv(filepath: str = None) -> str:
     """Export health log to CSV. Returns the file path."""
     import csv
     if filepath is None:
-        filepath = os.path.join(os.path.expanduser("~"), ".samsara", "health_log_export.csv")
+        filepath = str(samsara_home_dir() / "health_log_export.csv")
     entries = get_all()
     os.makedirs(os.path.dirname(filepath), exist_ok=True)
     with open(filepath, "w", newline="", encoding="utf-8") as f:

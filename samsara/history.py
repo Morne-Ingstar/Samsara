@@ -12,10 +12,11 @@ from datetime import datetime
 from pathlib import Path
 
 from samsara.log import get_logger
+from samsara.paths import samsara_home_dir
 
 logger = get_logger(__name__)
 
-DB_PATH = Path.home() / ".samsara" / "history.db"
+DB_PATH = samsara_home_dir() / "history.db"
 
 
 class HistoryManager:

@@ -20,6 +20,8 @@ from typing import Optional
 
 import numpy as np
 
+from samsara.paths import samsara_home_dir
+
 logger = logging.getLogger("Samsara")
 
 # Optional dependency — only available on Windows
@@ -31,7 +33,7 @@ except ImportError:
     HAS_PYAUDIO = False
 
 
-_AEC_CACHE_PATH = Path.home() / ".samsara" / "aec_latency_cache.json"
+_AEC_CACHE_PATH = samsara_home_dir() / "aec_latency_cache.json"
 
 
 def _load_latency_cache() -> dict:
