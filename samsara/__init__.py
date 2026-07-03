@@ -4,7 +4,7 @@ Samsara Voice Dictation & Control
 A modular speech-to-text and voice command application.
 """
 
-__version__ = "0.9.9"
+__version__ = "0.20.0"
 
 import logging as _logging
 _logger = _logging.getLogger(__name__)

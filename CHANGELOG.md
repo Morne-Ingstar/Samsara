@@ -2,6 +2,102 @@
 
 All notable changes to Samsara are documented here.
 
+## [0.20.0] - 2026-07-02
+
+A polish-and-hardening release. No single headline feature — this is weeks of
+fixing things that were quietly wrong: dictation hallucinating during silence,
+Samsara going deaf when a mic disconnected, onboarding screens with invisible
+buttons and clipped text, and a startup path that could lock you out with a
+stale lock file. The version jump from 0.12.x to 0.20.0 reflects the scope of
+this cleanup, not one single new headline feature.
+
+### Fixed
+
+- **Dictation hallucination during silence** — Whisper no longer fabricates
+  text during near-silent holds or short pauses. Replaced leaky heuristics
+  with causal fixes (native no-speech/confidence thresholds, per-press state
+  reset so one hallucination couldn't poison the next, a speech-presence
+  gate on short buffers, and a brief fade on the recording buffer to kill
+  mechanical hotkey-click artifacts), and locked the tuned parameters in
+  with a regression test suite.
+- **Microphone disconnect/reconnect no longer breaks dictation** — unplugging
+  a mic or a Bluetooth headset dropping out used to leave Samsara deaf until
+  restart. Audio input now survives a device disconnect and resumes
+  automatically on reconnect.
+- **Invisible onboarding buttons** — the first-run wizard's and tutorial's
+  primary buttons ("Next", "Let's go", "Start using Samsara") could render
+  as dark text on a dark background, effectively invisible, on a fresh
+  install.
+- **Clipped onboarding text and buttons** — several wizard/tutorial pages
+  had fixed-size boxes sized for an older, smaller font; labels and button
+  text could get cut off. Sizing now follows actual text metrics instead of
+  hardcoded pixel widths.
+- **Stray borders around plain text** — some onboarding and tutorial text
+  was rendering with a faint input-box-like outline around it, a Qt
+  stylesheet quirk fixed at the source.
+- **Startup could get stuck behind a stale lock file** — if Samsara was
+  force-killed (crash, Task Manager, a bad update), the next launch could
+  refuse to start and report "already running" even though nothing was.
+  Samsara now checks whether the process that actually owns the lock is
+  still alive and still Samsara before refusing to start, and cleans up
+  after a dead one automatically.
+- **Duplicate log lines on startup** — some boots logged every line twice
+  because of a root-logger setup race; logging now initializes exactly
+  once.
+- **First-run wizard could leave the app stuck** on a failed launch instead
+  of continuing with defaults, and could write its config somewhere that
+  vanished on the next update. Both fixed.
+- Windowed build no longer crashes on launch when Windows redirects
+  stdout/stderr to nothing.
+- Config migration no longer breaks on older configs missing the `modes`
+  key.
+
+### Changed
+
+- **History window overhaul** — right-click a row for Copy/Delete, or
+  double-click to copy instantly. Timestamps now show full date and time
+  instead of just time, and the window's look was brought in line with the
+  rest of the app.
+- **Onboarding redesigned** — the first-run wizard and tutorial now share
+  one consistent visual design across every screen. The tutorial's
+  interactive Ava step was removed to keep the walkthrough focused on the
+  core loop (Ava and "show numbers" are pointed to from the wrap-up
+  instead), and wake-word instructions only appear when wake word is
+  actually turned on.
+- **Splash screen** — the old progress bar is now a spinning, brand-red
+  segmented wheel matching Samsara's own icon.
+- **Ava and session modes reworked** — Command, Dictate, and Ava now run
+  through one unified state machine instead of scattered mode flags, with
+  a dedicated Ava lane and a "substance gate" that skips agent calls for
+  coughs and stray syllables that aren't real requests.
+- **BYOK cloud AI is free** — the license gate on bring-your-own-key cloud
+  AI has been removed.
+- **Settings reorganized** — mode activation (Command/Dictate/Ava) now
+  lives in one consolidated Modes tab instead of being spread across
+  several.
+- **Earbud-style media controls** — play/pause/next/mute now route through
+  Windows' native media transport controls, working reliably across
+  Spotify, browser tabs, and other media apps, with per-app Spotify muting.
+
+### Under the hood
+
+- **Thread registry** — every background thread and timer now spawns
+  through a single tracked registry instead of bare
+  `threading.Thread`/`Timer` calls, so shutdown can account for everything
+  instead of leaking daemon threads.
+- **Fail-loud pass** — swallowed exceptions across the codebase now log
+  instead of silently vanishing; stray debug `print()`s route through the
+  real logger.
+- **Centralized per-user data directory** — config, logs, and every
+  per-user file now resolve through one function, with an environment
+  override for isolated testing.
+- **Frozen-build smoke harness** — one command builds the release EXE and
+  runs it through boot, first-run-wizard, and clean-shutdown checks against
+  an isolated profile, catching the class of bug that only shows up in a
+  frozen build.
+
+---
+
 ## [0.12.0] - 2026-06-30
 
 Hands-free multi-wakeword dictation and microphone-agnostic wake detection.
