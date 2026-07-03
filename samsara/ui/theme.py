@@ -91,6 +91,13 @@ SUCCESS = "#6ee7a0"
 ERROR = "#f87171"
 WARNING = "#fbbf24"
 
+# Brand red -- sampled from the app's own icon, not invented here. It's the
+# red segment of the "Samsara wheel" (dictation.py's create_icon_image /
+# _WHEEL_COLORS = ['#185FA5', '#C0392B', '#1A1A1A'], the same PIL-rendered
+# image used for both the tray icon and every Qt window's setWindowIcon).
+# Distinct from ACCENT (cyan) -- used for the splash spinner, not buttons.
+BRAND_RED = "#c0392b"
+
 # ---------------------------------------------------------------------------
 # Type scale (4 sizes, mirroring the precedent's scale)
 # ---------------------------------------------------------------------------
