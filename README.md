@@ -14,12 +14,16 @@
 
 ---
 
-## What's New in v0.12.0
+## What's New in v0.20.0
 
-- **Hands-free multi-wakeword dictation** — say a named wake phrase ("Hey Claude", "Activate Hermes"), the target app focuses, and you dictate straight into it. End with "over" to submit. Fully hands-free, no hotkey.
-- **Adaptive microphone gate** — wake detection now measures speech against a rolling noise floor instead of a fixed threshold, so low-output mics (headsets, USB mics with AGC) just work without manual tuning.
-- **One-word media controls** — "play", "pause", "next", "mute" fire like the button on a Bluetooth earbud, acting on whatever's playing.
-- **31 plugins**, 410+ commands, single-stream audio engine, full PySide6 UI.
+A polish-and-hardening release — weeks of fixing things that were quietly wrong.
+
+- **Hallucination-free dictation** — Whisper no longer fabricates text during silence or short pauses; a rebuilt gate plus a regression test suite keep it that way.
+- **Mic survives disconnects** — unplug a mic or lose a Bluetooth connection mid-session and Samsara reconnects automatically instead of going deaf until restart.
+- **Onboarding redesigned** — the first-run wizard and tutorial share one consistent look now, with the invisible-button and clipped-text bugs fixed.
+- **History window overhaul** — right-click a row to copy/delete, double-click to copy instantly, full date + time on every entry.
+- **BYOK cloud AI is free** — no license gate on bring-your-own-key Ava / cloud features.
+- **Startup hardening** — stale lock files, duplicate log lines, and a wizard-launch failure mode are all fixed.
 
 ---
 
@@ -156,8 +160,8 @@ Ships with 31 plugins including health tracking, voice reminders, alarm manageme
 ### Download for Windows
 
 1. Go to the [latest release](https://github.com/Morne-Ingstar/Samsara/releases/latest)
-2. Download **Samsara.exe**
-3. Run it — a setup wizard walks you through microphone selection and model download
+2. Download **Samsara-Windows-\*.zip** (grab the CUDA pack too if you have an NVIDIA GPU — see the release notes)
+3. Extract and run **Samsara.exe** — a setup wizard walks you through microphone selection and model download
 
 **NVIDIA GPU recommended** for ~300ms transcription. Works on CPU too, just slower.
 
