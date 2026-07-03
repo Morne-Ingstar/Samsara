@@ -632,8 +632,10 @@ if sys.stdout is not None:
     sys.stdout.flush()
 # Set up logging — persistent file in ~/.samsara/logs/ + console
 from logging.handlers import RotatingFileHandler as _RotatingFileHandler
+from samsara.paths import samsara_home_dir
+from samsara.log import SAMSARA_LOG_HANDLER_TAG as _SAMSARA_LOG_HANDLER_TAG
 
-LOG_DIR = Path(os.path.expanduser("~")) / ".samsara" / "logs"
+LOG_DIR = samsara_home_dir() / "logs"
 LOG_DIR.mkdir(parents=True, exist_ok=True)
 LOG_FILE = LOG_DIR / "samsara.log"
 
@@ -665,8 +667,22 @@ else:
 console_handler.setLevel(logging.DEBUG)
 console_handler.setFormatter(logging.Formatter("%(asctime)s - %(message)s"))
 
-# Attach to root logger so all loggers (including exception hooks) feed here
+# Attach to root logger so all loggers (including exception hooks) feed here.
+# Some samsara.* modules imported above already called get_logger() at
+# import time (before this point), which makes samsara.log's fallback path
+# attach its own file+console handler pair to the root logger -- meant only
+# for standalone script/test usage that never reaches this bootstrap. Remove
+# exactly that pair (and any pair from a previous run of this same block,
+# e.g. a test re-importing this module) by tag rather than blanket-clearing
+# root.handlers, so anything unrelated already on root (pytest's own
+# log-capture handler, for instance) is left alone. This also makes the
+# block idempotent: re-running it always yields exactly one tagged pair.
 _root_logger = logging.getLogger()
+for _h in list(_root_logger.handlers):
+    if getattr(_h, _SAMSARA_LOG_HANDLER_TAG, False):
+        _root_logger.removeHandler(_h)
+setattr(file_handler, _SAMSARA_LOG_HANDLER_TAG, True)
+setattr(console_handler, _SAMSARA_LOG_HANDLER_TAG, True)
 _root_logger.setLevel(logging.DEBUG)
 _root_logger.addHandler(file_handler)
 _root_logger.addHandler(console_handler)

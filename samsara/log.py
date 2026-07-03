@@ -13,18 +13,30 @@ bootstrap has run -- without this, log calls would be silently dropped
 rather than reaching the same file. That fallback mirrors dictation.py's
 config exactly (same path, same rotation, same format) so the two paths are
 never distinguishable in the log itself.
+
+Handlers installed here are tagged with SAMSARA_LOG_HANDLER_TAG so
+dictation.py's own (later) setup can find and remove exactly this fallback
+pair before installing its real one, instead of either double-attaching
+(every line logged twice) or blanket-clearing the root logger (which would
+also rip out anything unrelated already attached there, e.g. pytest's own
+log-capture handler).
 """
 from __future__ import annotations
 
 import logging
-import os
 import sys
 import threading
 from logging.handlers import RotatingFileHandler
-from pathlib import Path
+
+from samsara.paths import samsara_home_dir
 
 _configure_lock = threading.Lock()
 _configured = False
+
+# Shared marker attribute set on every handler this module or dictation.py's
+# own setup attaches to the root logger -- lets either side identify and
+# remove exactly "our" handlers without touching anything else on root.
+SAMSARA_LOG_HANDLER_TAG = "_samsara_log_handler"
 
 
 def _fallback_configure() -> None:
@@ -44,7 +56,7 @@ def _fallback_configure() -> None:
             _configured = True
             return
 
-        log_dir = Path(os.path.expanduser("~")) / ".samsara" / "logs"
+        log_dir = samsara_home_dir() / "logs"
         log_dir.mkdir(parents=True, exist_ok=True)
         log_file = log_dir / "samsara.log"
 
@@ -55,6 +67,7 @@ def _fallback_configure() -> None:
         )
         file_handler.setLevel(logging.DEBUG)
         file_handler.setFormatter(fmt)
+        setattr(file_handler, SAMSARA_LOG_HANDLER_TAG, True)
         root.addHandler(file_handler)
 
         # Console handler only when a console actually exists (frozen
@@ -64,6 +77,7 @@ def _fallback_configure() -> None:
             console_handler = logging.StreamHandler(sys.stdout)
             console_handler.setLevel(logging.INFO)
             console_handler.setFormatter(logging.Formatter("%(asctime)s - %(message)s"))
+            setattr(console_handler, SAMSARA_LOG_HANDLER_TAG, True)
             root.addHandler(console_handler)
 
         root.setLevel(logging.DEBUG)
