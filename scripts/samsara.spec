@@ -226,6 +226,11 @@ hiddenimports = [
     'samsara.cloud_llm',
     'samsara.ava_corrections',
     'samsara.ava_profile',
+    # Only imported from plugins/commands/*.py, which are loaded dynamically
+    # at runtime (a directory scan + exec, not a static import) -- invisible
+    # to PyInstaller's own dependency analysis, so these must be listed
+    # explicitly or they silently go missing from the frozen build.
+    'samsara.audio_switch',
 
     # Samsara TTS subsystem
     'samsara.tts',
@@ -254,6 +259,10 @@ hiddenimports = [
     'samsara.ui.command_cheatsheet',
     'samsara.ui.tts_settings_tab',
     'samsara.ui.task_overlay',
+    # Same plugin-only dynamic-load blind spot as samsara.audio_switch above.
+    'samsara.ui.numbers_overlay_qt',
+    'samsara.ui.status_overlay',
+    'samsara.ui.workflow_capture_qt',
     'samsara.ui.tabs',
     'samsara.ui.tabs.general_tab',
     'samsara.ui.tabs.advanced_tab',
