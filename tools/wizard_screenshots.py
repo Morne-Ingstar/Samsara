@@ -85,12 +85,24 @@ def main() -> int:
         print("FAILED: tutorial window")
         traceback.print_exc()
 
-    # ---- First-run wizard: page 1 (welcome) --------------------------------
+    # ---- First-run wizard: page 1 (welcome), page 2 (use case -- radio
+    # cards whose title/desc labels used to show a nested rounded-rect
+    # border), page 3 (model -- same card pattern), page 6 (complete --
+    # the use-case tip frame had the same bug) --------------------------
     try:
         from samsara.ui.first_run_wizard_qt import _WizardWindow as _FRWindow
 
         frw = _FRWindow(Path(r"C:\Temp\samsara_ui_proof_fake_config.json"))
         _settle_and_grab(app, frw, OUT_DIR / "first_run_wizard_page1.png")
+        frw._step = 1  # welcome -> use case
+        frw._show_step()
+        _settle_and_grab(app, frw, OUT_DIR / "first_run_wizard_page2_usecase.png")
+        frw._step = 3  # -> model
+        frw._show_step()
+        _settle_and_grab(app, frw, OUT_DIR / "first_run_wizard_page4_model.png")
+        frw._step = 5  # -> complete
+        frw._show_step()
+        _settle_and_grab(app, frw, OUT_DIR / "first_run_wizard_page6_complete.png")
         frw.close()
     except Exception:
         import traceback

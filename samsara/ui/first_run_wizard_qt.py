@@ -814,10 +814,7 @@ class _WizardWindow(QMainWindow):
 
         # Use-case-specific tip — populated in _fill_summary()
         tip_frame = QFrame()
-        tip_frame.setStyleSheet(
-            f"QFrame{{background:rgba(92,196,212,0.08);border-radius:8px;"
-            f"border:1px solid rgba(92,196,212,0.25);}}"
-        )
+        theme.style_tip_frame(tip_frame)
         tf_lay = QVBoxLayout(tip_frame)
         tf_lay.setContentsMargins(16, 12, 16, 12)
         self._tip_lbl = QLabel("")

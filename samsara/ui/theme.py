@@ -196,9 +196,6 @@ def make_ghost(btn: QPushButton) -> None:
 
 
 _FOOTER_QSS = f"background:{BG1};border-top:1px solid {BORDER};"
-_CARD_QSS = (
-    f"QFrame{{background:{BG1};border:1px solid {BORDER};border-radius:8px;}}"
-)
 
 
 def style_footer(widget: QWidget) -> None:
@@ -207,9 +204,57 @@ def style_footer(widget: QWidget) -> None:
     widget.setStyleSheet(_FOOTER_QSS)
 
 
+# ---------------------------------------------------------------------------
+# Bordered-card helpers -- class property + global QSS[class="..."] selector,
+# same idiom as make_primary/make_secondary/make_ghost above, and NOT a
+# per-widget setStyleSheet("QFrame{border:...}") call.
+#
+# Why: QLabel IS-A QFrame. A per-widget local stylesheet that sets `border`
+# on a QFrame -- even with a bare-declaration selector-less string -- leaks
+# that border onto any descendant QLabel that has its own local styleSheet()
+# too (Qt's stylesheet engine resolves an unset `border` on such a label by
+# walking up to the nearest ANCESTOR's local stylesheet, not standard CSS
+# non-inheritance). This was the root cause of a real bug: plain text labels
+# nested in a card rendered with their own faint rounded-rect outline, as if
+# they were input fields. Routing the border through the shared top-level
+# stylesheet via a class-attribute selector (verified empirically) avoids
+# the leak, because there's no local per-widget declaration block for a
+# child's unset property to inherit from.
+# ---------------------------------------------------------------------------
+
 def style_card(widget: QWidget) -> None:
     """Apply the content-card treatment: BG1 fill + full BORDER outline."""
-    widget.setStyleSheet(_CARD_QSS)
+    widget.setProperty("class", "card")
+    widget.style().unpolish(widget)
+    widget.style().polish(widget)
+
+
+def style_instruction_box(widget: QWidget) -> None:
+    """Tinted instruction callout (interactive tutorial steps)."""
+    widget.setProperty("class", "instructionBox")
+    widget.style().unpolish(widget)
+    widget.style().polish(widget)
+
+
+def style_success_banner(widget: QWidget) -> None:
+    """Accent-tinted success confirmation banner."""
+    widget.setProperty("class", "successBanner")
+    widget.style().unpolish(widget)
+    widget.style().polish(widget)
+
+
+def style_guide_card(widget: QWidget) -> None:
+    """Hoverable "go deeper" link card (tutorial done page)."""
+    widget.setProperty("class", "guideCard")
+    widget.style().unpolish(widget)
+    widget.style().polish(widget)
+
+
+def style_tip_frame(widget: QWidget) -> None:
+    """Use-case tip callout (first-run wizard's complete page)."""
+    widget.setProperty("class", "tipFrame")
+    widget.style().unpolish(widget)
+    widget.style().polish(widget)
 
 
 # ---------------------------------------------------------------------------
@@ -270,6 +315,33 @@ QPushButton[class="danger"] {{
     padding: 4px 10px;
 }}
 QPushButton[class="danger"]:hover {{ color: {ERROR}; }}
+
+QFrame[class="card"] {{
+    background-color: {BG1};
+    border: 1px solid {BORDER};
+    border-radius: 8px;
+}}
+QFrame[class="instructionBox"] {{
+    background-color: {BG1};
+    border: 1px solid rgba(92,196,212,0.25);
+    border-radius: 8px;
+}}
+QFrame[class="successBanner"] {{
+    background-color: rgba(92,196,212,0.08);
+    border: 1px solid rgba(92,196,212,0.3);
+    border-radius: 8px;
+}}
+QFrame[class="guideCard"] {{
+    background-color: {BG1};
+    border: 1px solid {BORDER};
+    border-radius: 8px;
+}}
+QFrame[class="guideCard"]:hover {{ border-color: rgba(92,196,212,0.4); }}
+QFrame[class="tipFrame"] {{
+    background-color: rgba(92,196,212,0.08);
+    border: 1px solid rgba(92,196,212,0.25);
+    border-radius: 8px;
+}}
 
 QComboBox {{
     background-color: {BG2};
