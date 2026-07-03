@@ -10,17 +10,16 @@ Architecture mirrors first_run_wizard_qt.py exactly:
     Use app.show_tutorial() (calls _schedule_ui) — never construct directly
     from an audio/worker thread.
 
-Steps (Ava step is omitted when Ava is not configured):
+Steps:
   0  Welcome     — passive: "takes two minutes" + Let's go
   1  Dictation   — speak → text lands in box → green check
   2  Command     — say "scroll down" → area scrolls → green check
-  3  Ava         — hold Ava key, ask anything → Ava responds (optional)
-  4  Done        — checklist recap, all items ticked
+  3  Done        — checklist recap, all items ticked; points to Ava and
+                   "show numbers" as things to try once set up
 
 Interaction detection hooks (registered on app, removed on window close):
   app._tutorial_hooks['dictation']  one-shot cb(text) after dictation
   app._tutorial_hooks['command']    one-shot cb(cmd_name) after any command
-  app._tutorial_hooks['ava']        one-shot cb() after Ava responds
 """
 from __future__ import annotations
 
@@ -68,7 +67,7 @@ class TutorialWindow(QMainWindow):
     """Interactive post-wizard tutorial.
 
     Created on Qt thread. Registers lightweight one-shot hooks on `app`
-    for dictation, command, and Ava detection; removes them on close.
+    for dictation and command detection; removes them on close.
     """
 
     # Signal for cross-thread UI updates (audio/worker → Qt thread)
@@ -83,8 +82,6 @@ class TutorialWindow(QMainWindow):
 
         self._step_signal.connect(self._on_step_signal)
 
-        # Decide which steps to include (Ava is optional)
-        self._ava_enabled = self._check_ava_enabled()
         self._build_step_list()
 
         self.setWindowTitle("Samsara Tutorial")
@@ -193,27 +190,13 @@ class TutorialWindow(QMainWindow):
     # Step configuration
     # ------------------------------------------------------------------
 
-    def _check_ava_enabled(self) -> bool:
-        cfg = self._app.config if hasattr(self._app, 'config') else {}
-        ava = cfg.get('ava', {})
-        if isinstance(ava, dict) and ava.get('enabled'):
-            return True
-        # Also enabled if ollama/cloud LLM configured
-        cloud = cfg.get('cloud_llm', {})
-        if isinstance(cloud, dict) and cloud.get('enabled'):
-            return True
-        return False
-
     def _build_step_list(self):
-        base = [
+        self._steps: list[tuple[str, str]] = [
             ("welcome",   "Welcome to Samsara"),
             ("dictation", "Talk → It Types"),
             ("command",   "Say a Command"),
+            ("done",      "You're Ready"),
         ]
-        if self._ava_enabled:
-            base.append(("ava", "Ask Ava"))
-        base.append(("done", "You're Ready"))
-        self._steps: list[tuple[str, str]] = base
 
     # ------------------------------------------------------------------
     # Page builders
@@ -264,7 +247,6 @@ class TutorialWindow(QMainWindow):
             "welcome":   self._build_welcome,
             "dictation": self._build_dictation,
             "command":   self._build_command,
-            "ava":       self._build_ava,
             "done":      self._build_done,
         }
         return builders[key]()
@@ -296,7 +278,6 @@ class TutorialWindow(QMainWindow):
         for icon, label in [
             ("🎙", "Talk → text appears wherever you're typing"),
             ("⚡", "Say a command → it happens"),
-            ("✨", "Ask Ava → your on-device voice assistant"),
         ]:
             row = QHBoxLayout()
             i_lbl = QLabel(icon)
@@ -352,16 +333,17 @@ class TutorialWindow(QMainWindow):
     def _build_command(self) -> QWidget:
         w, lay = self._padded()
 
-        cmd_hotkey = self._app.config.get('command_hotkey', 'ctrl+alt+c') if hasattr(self._app, 'config') else 'ctrl+alt+c'
-        wake = (
-            self._app.config.get('wake_word_config', {}).get('phrase', 'jarvis')
-            if hasattr(self._app, 'config') else 'jarvis'
-        )
+        cfg = self._app.config if hasattr(self._app, 'config') else {}
+        cmd_hotkey = cfg.get('command_hotkey', 'ctrl+alt+c')
+        wake = cfg.get('wake_word_config', {}).get('phrase', 'jarvis')
+
+        bullets = [f"  • Hold  {cmd_hotkey.upper()}  and say  \"scroll down\""]
+        if cfg.get('wake_word_enabled', False):
+            bullets.append(f"  • Say  \"{wake}, scroll down\"  (wake word mode)")
+        bullets.append("  • Or any command you know — 'show numbers', 'what can I say', etc.")
+
         lay.addWidget(self._instruction_box(
-            f"Say a voice command. Try one of:\n"
-            f"  • Hold  {cmd_hotkey.upper()}  and say  \"scroll down\"\n"
-            f"  • Say  \"{wake}, scroll down\"  (wake word mode)\n"
-            f"  • Or any command you know — 'show numbers', 'what can I say', etc."
+            "Say a voice command. Try one of:\n" + "\n".join(bullets)
         ))
 
         # Scrollable demonstration area
@@ -401,39 +383,6 @@ class TutorialWindow(QMainWindow):
         lay.addStretch()
         return w
 
-    def _build_ava(self) -> QWidget:
-        w, lay = self._padded()
-
-        cfg = self._app.config if hasattr(self._app, 'config') else {}
-        ava_key = cfg.get('ava_mode_key', 'right_alt').replace('_', ' ')
-
-        lay.addWidget(self._instruction_box(
-            f"Hold  {ava_key.upper()}  and ask Ava anything.\n"
-            f"Try: \"Ava, what can you do?\" or \"Ava, summarize what I've been working on.\""
-        ))
-
-        self._ava_status = QLabel("Waiting for Ava to respond…")
-        self._ava_status.setStyleSheet("color:#8A8A92;font-size:13px;")
-        lay.addWidget(self._ava_status)
-
-        self._ava_success = self._success_banner(
-            "Ava is your on-device voice assistant. Ask questions, ask her to do "
-            "things, or just have a conversation."
-        )
-        self._ava_success.setVisible(False)
-        lay.addWidget(self._ava_success)
-
-        self._ava_hint = QLabel(
-            "💡 Ava needs Ollama running locally, or a cloud LLM configured in Settings."
-        )
-        self._ava_hint.setWordWrap(True)
-        self._ava_hint.setStyleSheet("color:#8A8A92;font-size:12px;")
-        self._ava_hint.setVisible(False)
-        lay.addWidget(self._ava_hint)
-
-        lay.addStretch()
-        return w
-
     def _build_done(self) -> QWidget:
         w, lay = self._padded()
 
@@ -442,13 +391,10 @@ class TutorialWindow(QMainWindow):
         lay.addWidget(done_lbl)
         lay.addSpacing(4)
 
-        # Build checklist based on which steps were in the tutorial
         checklist_items = [
             (1, "✓  Dictated text — talk, it types"),
             (2, "✓  Ran a command — voice controls your computer"),
         ]
-        if self._ava_enabled:
-            checklist_items.append((3, "✓  Talked to Ava — your on-device assistant"))
 
         card = QFrame()
         theme.style_card(card)
@@ -484,6 +430,14 @@ class TutorialWindow(QMainWindow):
         more_lbl.setWordWrap(True)
         more_lbl.setStyleSheet("color:#8A8A92;font-size:12px;")
         lay.addWidget(more_lbl)
+
+        pointer_lbl = QLabel(
+            'Ava (your on-device voice assistant) and "show numbers" '
+            '(click anything by saying its number) are also here once you set them up.'
+        )
+        pointer_lbl.setWordWrap(True)
+        pointer_lbl.setStyleSheet("color:#8A8A92;font-size:11px;")
+        lay.addWidget(pointer_lbl)
         lay.addSpacing(12)
 
         # --- Advanced guides ---
@@ -571,7 +525,7 @@ class TutorialWindow(QMainWindow):
         is_last    = self._step == len(self._steps) - 1
         is_welcome = key == "welcome"
         is_done    = key == "done"
-        is_interactive = key in ("dictation", "command", "ava")
+        is_interactive = key in ("dictation", "command")
 
         # Nav button states
         self._skip_step_btn.setVisible(is_interactive)
@@ -656,7 +610,6 @@ class TutorialWindow(QMainWindow):
         hints = {
             "dictation": getattr(self, '_dict_hint', None),
             "command":   getattr(self, '_cmd_hint',  None),
-            "ava":       getattr(self, '_ava_hint',  None),
         }
         hint_widget = hints.get(key)
         if hint_widget:
@@ -687,18 +640,13 @@ class TutorialWindow(QMainWindow):
                 self._step_signal.emit("command_done", cmd_name or "")
             self._app._tutorial_hooks['command'] = _cb
 
-        elif key == "ava":
-            def _cb():
-                self._step_signal.emit("ava_done", "")
-            self._app._tutorial_hooks['ava'] = _cb
-
     def _remove_hook(self, key: str):
         if hasattr(self._app, '_tutorial_hooks'):
             self._app._tutorial_hooks.pop(key, None)
 
     def _remove_all_hooks(self):
         if hasattr(self._app, '_tutorial_hooks'):
-            for key in ('dictation', 'command', 'ava'):
+            for key in ('dictation', 'command'):
                 self._app._tutorial_hooks.pop(key, None)
 
     # ------------------------------------------------------------------
@@ -711,8 +659,6 @@ class TutorialWindow(QMainWindow):
             self._complete_dictation(payload)
         elif event == "command_done":
             self._complete_command(payload)
-        elif event == "ava_done":
-            self._complete_ava()
 
     def _complete_dictation(self, text: str):
         if 1 in self._completed:
@@ -740,26 +686,6 @@ class TutorialWindow(QMainWindow):
             self._cmd_success.setVisible(True)
         if hasattr(self, '_cmd_hint'):
             self._cmd_hint.setVisible(False)
-        self._next_btn.setEnabled(True)
-
-    def _complete_ava(self):
-        # Find Ava step index
-        for i, (key, _) in enumerate(self._steps):
-            if key == "ava":
-                ava_step = i
-                break
-        else:
-            return
-        if ava_step in self._completed:
-            return
-        self._completed.add(ava_step)
-        self._cancel_hint_timer()
-        if hasattr(self, '_ava_status'):
-            self._ava_status.setVisible(False)
-        if hasattr(self, '_ava_success'):
-            self._ava_success.setVisible(True)
-        if hasattr(self, '_ava_hint'):
-            self._ava_hint.setVisible(False)
         self._next_btn.setEnabled(True)
 
     # ------------------------------------------------------------------

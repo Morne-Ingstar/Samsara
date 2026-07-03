@@ -4059,11 +4059,6 @@ class DictationApp:
                         "Sorry, I had an error processing that.",
                         category="error",
                     )
-            finally:
-                # Tutorial Ava hook — fires after Ava finishes (success or error)
-                _tut_ava = self._tutorial_hooks.pop('ava', None)
-                if _tut_ava:
-                    self._schedule_ui(_tut_ava)
         thread_registry.spawn("Ava-worker", _worker, daemon=True)
 
     def _reset_command_mode_inactivity_timer(self, timeout_s):

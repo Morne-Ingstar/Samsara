@@ -762,9 +762,10 @@ class _WizardWindow(QMainWindow):
         ww_left = QVBoxLayout()
         ww_left.setSpacing(2)
         ww_left.addWidget(QLabel("Wake Word Phrase"))
-        ww_desc = QLabel('Say "Jarvis" or "Hey Jarvis" to activate voice commands')
-        ww_desc.setStyleSheet("color:#8A8A92;font-size:11px;")
-        ww_left.addWidget(ww_desc)
+        self._ww_desc = QLabel('Say "Jarvis" or "Hey Jarvis" to activate voice commands')
+        self._ww_desc.setWordWrap(True)
+        self._ww_desc.setStyleSheet("color:#8A8A92;font-size:11px;")
+        ww_left.addWidget(self._ww_desc)
         ww_row.addLayout(ww_left, stretch=1)
 
         ww_lbl = QLabel("jarvis")
@@ -774,6 +775,14 @@ class _WizardWindow(QMainWindow):
         )
         ww_row.addWidget(ww_lbl, alignment=Qt.AlignmentFlag.AlignVCenter)
         lay.addLayout(ww_row)
+
+        self._ww_off_note = QLabel(
+            "Wake word is off for your setup — turn it on anytime in Settings."
+        )
+        self._ww_off_note.setWordWrap(True)
+        self._ww_off_note.setStyleSheet("color:#8A8A92;font-size:11px;font-style:italic;")
+        self._ww_off_note.setVisible(False)
+        lay.addWidget(self._ww_off_note)
 
         coming = QLabel("More wake word options coming soon.")
         coming.setStyleSheet("color:#8A8A92;font-size:11px;")
@@ -871,6 +880,10 @@ class _WizardWindow(QMainWindow):
         if is_last:
             self._fill_summary()
 
+        # Refresh the wake-word note against the use case picked earlier
+        if _STEPS[self._step][0] == "Shortcuts":
+            self._refresh_wake_word_note()
+
         # Start level meter on microphone step
         if _STEPS[self._step][0] == "Microphone":
             self._start_meter()
@@ -911,6 +924,20 @@ class _WizardWindow(QMainWindow):
         elif step_name == "Shortcuts":
             for key, btn in self._hotkey_btns.items():
                 self._config[key] = btn.combo
+
+    def _refresh_wake_word_note(self):
+        """Contextualize the wake-word phrase row against the use case's
+        wake_word_enabled default -- the phrase row itself always stays
+        visible, only the framing changes."""
+        enabled = self._config.get('wake_word_enabled', True)
+        if self._ww_desc is not None:
+            self._ww_desc.setText(
+                'Say "Jarvis" or "Hey Jarvis" to activate voice commands'
+                if enabled else
+                'The phrase you\'ll say once wake word is turned on'
+            )
+        if self._ww_off_note is not None:
+            self._ww_off_note.setVisible(not enabled)
 
     def _fill_summary(self):
         model_names = {
