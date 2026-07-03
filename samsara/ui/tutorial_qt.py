@@ -353,12 +353,15 @@ class TutorialWindow(QMainWindow):
         w, lay = self._padded()
 
         cmd_hotkey = self._app.config.get('command_hotkey', 'ctrl+alt+c') if hasattr(self._app, 'config') else 'ctrl+alt+c'
-        wake = self._app.config.get('wake_word', 'jarvis') if hasattr(self._app, 'config') else 'jarvis'
+        wake = (
+            self._app.config.get('wake_word_config', {}).get('phrase', 'jarvis')
+            if hasattr(self._app, 'config') else 'jarvis'
+        )
         lay.addWidget(self._instruction_box(
             f"Say a voice command. Try one of:\n"
             f"  • Hold  {cmd_hotkey.upper()}  and say  \"scroll down\"\n"
             f"  • Say  \"{wake}, scroll down\"  (wake word mode)\n"
-            f"  • Or any command you know — 'open settings', 'new tab', etc."
+            f"  • Or any command you know — 'show numbers', 'what can I say', etc."
         ))
 
         # Scrollable demonstration area
@@ -381,14 +384,14 @@ class TutorialWindow(QMainWindow):
         lay.addWidget(self._scroll_area)
 
         self._cmd_success = self._success_banner(
-            "Commands do things. There are 400+ of them — scroll, open apps, "
+            "Commands do things. There are 150+ of them — scroll, open apps, "
             "manage windows, type shortcuts, and more."
         )
         self._cmd_success.setVisible(False)
         lay.addWidget(self._cmd_success)
 
         self._cmd_hint = QLabel(
-            "💡 Try saying 'scroll down', 'open settings', or 'new tab'."
+            "💡 Try saying 'scroll down', 'show numbers', or 'what can I say'."
         )
         self._cmd_hint.setWordWrap(True)
         self._cmd_hint.setStyleSheet("color:#8A8A92;font-size:12px;")
@@ -402,7 +405,7 @@ class TutorialWindow(QMainWindow):
         w, lay = self._padded()
 
         cfg = self._app.config if hasattr(self._app, 'config') else {}
-        ava_key = cfg.get('ava_hotkey', 'right alt')
+        ava_key = cfg.get('ava_mode_key', 'right_alt').replace('_', ' ')
 
         lay.addWidget(self._instruction_box(
             f"Hold  {ava_key.upper()}  and ask Ava anything.\n"
