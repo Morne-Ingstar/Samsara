@@ -239,10 +239,7 @@ class TutorialWindow(QMainWindow):
     def _instruction_box(self, text: str) -> QFrame:
         """Tinted instruction card used on interactive steps."""
         frame = QFrame()
-        frame.setStyleSheet(
-            f"QFrame{{background:{theme.BG1};border-radius:8px;"
-            f"border:1px solid rgba(92,196,212,0.25);}}"
-        )
+        theme.style_instruction_box(frame)
         fl = QVBoxLayout(frame)
         fl.setContentsMargins(16, 12, 16, 12)
         lbl = QLabel(text)
@@ -253,10 +250,7 @@ class TutorialWindow(QMainWindow):
 
     def _success_banner(self, text: str) -> QFrame:
         frame = QFrame()
-        frame.setStyleSheet(
-            f"QFrame{{background:rgba(92,196,212,0.08);border-radius:8px;"
-            f"border:1px solid rgba(92,196,212,0.3);}}"
-        )
+        theme.style_success_banner(frame)
         fl = QHBoxLayout(frame)
         fl.setContentsMargins(14, 10, 14, 10)
         fl.setSpacing(10)
@@ -487,11 +481,7 @@ class TutorialWindow(QMainWindow):
 
         for title, desc, method in _GUIDES:
             guide_card = QFrame()
-            guide_card.setStyleSheet(
-                f"QFrame{{background:{theme.BG1};border-radius:8px;"
-                f"border:1px solid {theme.BORDER};}}"
-                f"QFrame:hover{{border-color:rgba(92,196,212,0.4);}}"
-            )
+            theme.style_guide_card(guide_card)
             gc_lay = QHBoxLayout(guide_card)
             gc_lay.setContentsMargins(14, 10, 12, 10)
             gc_lay.setSpacing(10)
