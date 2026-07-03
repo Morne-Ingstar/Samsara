@@ -945,7 +945,7 @@ class DictationApp:
             # so first-run fired (and the wizard hung, see first_run_wizard_qt.py)
             # on every fresh install/rebuild. Mirror LOG_DIR's stable per-user
             # directory instead, same as history.db and debug_audio already do.
-            self.config_path = Path(os.path.expanduser("~")) / ".samsara" / "config.json"
+            self.config_path = samsara_home_dir() / "config.json"
             self.config_path.parent.mkdir(parents=True, exist_ok=True)
         else:
             self.config_path = Path(__file__).parent / "config.json"
@@ -1742,9 +1742,7 @@ class DictationApp:
             return
         try:
             from samsara.audio_engine.debug_recorder import DebugRecorder
-            output_dir = os.path.join(
-                os.path.expanduser("~"), ".samsara", "debug_audio"
-            )
+            output_dir = str(samsara_home_dir() / "debug_audio")
             self._ace_debug_rec = DebugRecorder(
                 engine=self._ace_engine,
                 output_dir=output_dir,
@@ -5043,7 +5041,7 @@ class DictationApp:
             if self.config.get('debug_dump_wake_audio', False):
                 try:
                     import wave as _wave
-                    _dump_dir = Path(os.path.expanduser("~")) / ".samsara" / "debug_audio"
+                    _dump_dir = samsara_home_dir() / "debug_audio"
                     _dump_dir.mkdir(parents=True, exist_ok=True)
                     _ts = datetime.now().strftime("%H%M%S_%f")
                     _dump_path = _dump_dir / f"wake_{_ts}.wav"

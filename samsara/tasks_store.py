@@ -9,7 +9,9 @@ import os
 import threading
 from datetime import datetime, timezone
 
-_TASKS_PATH = os.path.join(os.path.expanduser("~"), ".samsara", "tasks.json")
+from samsara.paths import samsara_home_dir
+
+_TASKS_PATH = str(samsara_home_dir() / "tasks.json")
 _lock = threading.Lock()
 _data = {"tasks": [], "next_id": 1}
 

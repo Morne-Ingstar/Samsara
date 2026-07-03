@@ -21,9 +21,10 @@ dict; it gets rebuilt at import and whenever reload_corrections() is called.
 
 import json
 import re
-from pathlib import Path
 
-USER_CORRECTIONS_PATH = Path.home() / ".samsara" / "user_wake_corrections.json"
+from samsara.paths import samsara_home_dir
+
+USER_CORRECTIONS_PATH = samsara_home_dir() / "user_wake_corrections.json"
 
 
 # Known misrecognitions — add entries as you catch them in the debug console.
