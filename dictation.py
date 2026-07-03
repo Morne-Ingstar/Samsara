@@ -103,6 +103,106 @@ def _hide_console_now():
 # ============================================================================
 # Single Instance Check - Prevent multiple instances from running
 # ============================================================================
+
+def _is_samsara_process(pid: int) -> bool:
+    """True if `pid` is alive AND looks like a Samsara process.
+
+    Liveness alone isn't enough: PIDs get reused by Windows, so a lock file
+    naming a PID that's alive right now could belong to a completely
+    unrelated process that started after the real Samsara process (which
+    wrote that PID) died or was killed. Checks the process image name --
+    "Samsara.exe" for a frozen build, or a python*.exe running dictation.py
+    for a dev-mode instance.
+
+    Prefers psutil (already a project dependency); falls back to raw
+    ctypes OpenProcess + QueryFullProcessImageNameW if psutil isn't
+    importable for some reason.
+    """
+    try:
+        import psutil
+    except ImportError:
+        psutil = None
+
+    if psutil is not None:
+        try:
+            proc = psutil.Process(pid)
+            name = (proc.name() or "").lower()
+        except (psutil.NoSuchProcess, psutil.AccessDenied):
+            return False
+        except Exception:
+            return False
+        if name == "samsara.exe":
+            return True
+        if name.startswith("python"):
+            try:
+                cmdline = " ".join(proc.cmdline()).lower()
+            except Exception:
+                return False
+            return "dictation.py" in cmdline
+        return False
+
+    if sys.platform != 'win32':
+        # Can't verify identity without psutil off Windows -- assume it's
+        # real rather than risk stealing a live process's lock.
+        return True
+
+    import ctypes
+    import ctypes.wintypes as wt
+
+    PROCESS_QUERY_LIMITED_INFORMATION = 0x1000
+    kernel32 = ctypes.windll.kernel32
+    handle = kernel32.OpenProcess(PROCESS_QUERY_LIMITED_INFORMATION, False, pid)
+    if not handle:
+        # No handle -- process is gone (or inaccessible; treat the same,
+        # since we can't confirm it's Samsara either way).
+        return False
+    try:
+        buf_len = wt.DWORD(260)
+        buf = ctypes.create_unicode_buffer(260)
+        ok = kernel32.QueryFullProcessImageNameW(handle, 0, buf, ctypes.byref(buf_len))
+        if not ok:
+            return False
+        image_name = Path(buf.value).name.lower()
+        return image_name == "samsara.exe" or image_name.startswith("python")
+    finally:
+        kernel32.CloseHandle(handle)
+
+
+def _steal_stale_lock_if_any(lock_file_path) -> None:
+    """If lock_file_path exists and names a dead or non-Samsara PID, delete
+    it. If it names a live Samsara process, log and exit(0) -- never hang;
+    this whole check is non-blocking liveness/identity inspection, no wait.
+
+    Runs before the OS-level lock acquisition below, which still does the
+    actual atomic locking -- this only turns "some stale file is sitting
+    there from a hard kill" into a clean steal instead of a false
+    already-running refusal.
+    """
+    if not lock_file_path.exists():
+        return
+    try:
+        recorded_pid = int(lock_file_path.read_text().strip())
+    except (OSError, ValueError):
+        # Unreadable/empty/corrupt -- can't belong to a live instance we'd
+        # recognize; treat as stale.
+        logger.info("[LOCK] lock file unreadable, stealing")
+        try:
+            lock_file_path.unlink()
+        except OSError as e:
+            logger.debug(f"[LOCK] could not remove unreadable lock file: {e}")
+        return
+
+    if _is_samsara_process(recorded_pid):
+        logger.warning(f"[WARN] Samsara is already running (PID: {recorded_pid})")
+        sys.exit(0)
+
+    logger.info(f"[LOCK] stale lock from PID {recorded_pid}, stealing")
+    try:
+        lock_file_path.unlink()
+    except OSError as e:
+        logger.debug(f"[LOCK] could not remove stale lock file: {e}")
+
+
 def _check_single_instance():
     """
     Ensure only one instance of Samsara is running.
@@ -113,6 +213,7 @@ def _check_single_instance():
     import tempfile
 
     lock_file_path = Path(tempfile.gettempdir()) / "samsara.lock"
+    _steal_stale_lock_if_any(lock_file_path)
 
     try:
         # Open/create lock file
