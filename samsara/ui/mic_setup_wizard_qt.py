@@ -28,94 +28,31 @@ from PySide6.QtWidgets import (
 )
 
 from samsara.constants import DEFAULT_CAPTURE_RATE
-from samsara.ui import qt_runtime
+from samsara.runtime import thread_registry
+from samsara.ui import qt_runtime, theme
 
 from samsara.log import get_logger
 
 logger = get_logger(__name__)
 
 # ---------------------------------------------------------------------------
-# Colours
+# Colours -- sourced from samsara.ui.theme (the shared design system this
+# wizard is the accent reference for). Local aliases kept so the rest of
+# this file's ~90 usage sites don't need touching; only the source of truth
+# moved, not the call sites or the resulting look.
 # ---------------------------------------------------------------------------
 
-_BG       = "#0b0e14"
-_SURFACE  = "#131820"
-_ELEVATED = "#1a2030"
-_BORDER   = "#2a3345"
-_ACCENT   = "#5cc4d4"
-_TEXT_PRI = "#e4e8ef"
-_TEXT_SEC = "#7a8599"
-_SUCCESS  = "#6ee7a0"
-_ERROR    = "#f87171"
-_WARNING  = "#fbbf24"
-_MUTED    = "#4a5568"
-
-# Applied directly to primary buttons so Windows 11's native style engine
-# can't override the colours through stylesheet inheritance.
-_PRIMARY_SS = (
-    f"QPushButton{{background:{_ACCENT};color:{_BG};"
-    f"border:none;border-radius:4px;font-weight:bold;padding:6px 18px;}}"
-    f"QPushButton:hover{{background:#4ab8c8;color:{_BG};}}"
-    f"QPushButton:disabled{{background:{_ELEVATED};color:{_MUTED};"
-    f"border:1px solid {_BORDER};}}"
-)
-
-_SS = f"""
-QDialog, QWidget {{
-    background: {_BG};
-    color: {_TEXT_PRI};
-    font-family: 'Segoe UI', sans-serif;
-    font-size: 13px;
-}}
-QPushButton {{
-    background: {_ELEVATED};
-    color: {_TEXT_PRI};
-    border: 1px solid {_BORDER};
-    padding: 6px 18px;
-    border-radius: 4px;
-    min-width: 80px;
-}}
-QPushButton:hover {{
-    background: {_ACCENT};
-    color: {_BG};
-    border-color: {_ACCENT};
-}}
-QPushButton#primary {{
-    background: {_ACCENT};
-    color: {_BG};
-    border-color: {_ACCENT};
-    font-weight: bold;
-}}
-QPushButton#primary:hover {{ background: #4ab8c8; }}
-QPushButton#ghost {{
-    background: transparent;
-    color: {_TEXT_SEC};
-    border: none;
-}}
-QPushButton#ghost:hover {{ color: {_TEXT_PRI}; background: transparent; }}
-QComboBox {{
-    background: {_SURFACE};
-    border: 1px solid {_BORDER};
-    color: {_TEXT_PRI};
-    padding: 5px 10px;
-    border-radius: 4px;
-}}
-QComboBox::drop-down {{ border: none; width: 20px; }}
-QComboBox QAbstractItemView {{
-    background: {_SURFACE};
-    color: {_TEXT_PRI};
-    selection-background-color: {_ACCENT};
-    selection-color: {_BG};
-    border: 1px solid {_BORDER};
-}}
-QProgressBar {{
-    background: {_SURFACE};
-    border: 1px solid {_BORDER};
-    border-radius: 6px;
-    text-align: center;
-}}
-QProgressBar::chunk {{ background: {_SUCCESS}; border-radius: 5px; }}
-"""
+_BG       = theme.BG0
+_SURFACE  = theme.BG1
+_ELEVATED = theme.BG2
+_BORDER   = theme.BORDER
+_ACCENT   = theme.ACCENT
+_TEXT_PRI = theme.TEXT_PRIMARY
+_TEXT_SEC = theme.TEXT_SECONDARY
+_SUCCESS  = theme.SUCCESS
+_ERROR    = theme.ERROR
+_WARNING  = theme.WARNING
+_MUTED    = theme.TEXT_DISABLED
 
 # Level zones expressed as a fraction of the normalised bar (0.0-1.0).
 # Bar is normalised so that RMS 0.20 = full scale.
@@ -258,7 +195,7 @@ class _WizardWindow(QDialog):
 
         self.setWindowTitle("Microphone Setup")
         self.setFixedSize(560, 480)
-        self.setStyleSheet(_SS)
+        self.setStyleSheet(theme.build_stylesheet())
         self.setWindowFlags(
             Qt.WindowType.Dialog |
             Qt.WindowType.WindowCloseButtonHint |
@@ -347,27 +284,26 @@ class _WizardWindow(QDialog):
         # ---- Nav bar ----
         nav = QWidget()
         nav.setFixedHeight(64)
-        nav.setStyleSheet(
-            f"background:{_SURFACE};border-top:1px solid {_BORDER};"
-        )
+        theme.style_footer(nav)
         nav_lay = QHBoxLayout(nav)
         nav_lay.setContentsMargins(24, 0, 24, 0)
         nav_lay.setSpacing(10)
 
         self._back_btn = QPushButton("Back")
+        theme.make_secondary(self._back_btn)
         self._back_btn.setFixedWidth(88)
         self._back_btn.clicked.connect(self._go_back)
         nav_lay.addWidget(self._back_btn)
         nav_lay.addStretch()
 
         self._skip_btn = QPushButton("Skip")
-        self._skip_btn.setObjectName("ghost")
+        theme.make_ghost(self._skip_btn)
         self._skip_btn.setFixedWidth(72)
         self._skip_btn.clicked.connect(self._skip_step)
         nav_lay.addWidget(self._skip_btn)
 
         self._next_btn = QPushButton("Next")
-        self._next_btn.setStyleSheet(_PRIMARY_SS)
+        theme.make_primary(self._next_btn)
         self._next_btn.setFixedWidth(110)
         self._next_btn.clicked.connect(self._go_next)
         nav_lay.addWidget(self._next_btn)
@@ -498,7 +434,7 @@ class _WizardWindow(QDialog):
         lay.addWidget(self._done_summary)
         lay.addStretch()
         adv_btn = QPushButton("Open Wake Word Debug (advanced)")
-        adv_btn.setObjectName("ghost")
+        theme.make_ghost(adv_btn)
         adv_btn.clicked.connect(self._open_debug)
         adv_btn.setFixedWidth(280)
         adv_row = QHBoxLayout()
@@ -613,11 +549,11 @@ class _WizardWindow(QDialog):
             self._wizard_active = True
             self._selected_device = self._device_combo.currentData()
             self._capture_rate = _detect_capture_rate(self._selected_device)
-            threading.Thread(
-                target=self._audio_worker,
+            thread_registry.spawn(
+                "wizard-audio",
+                self._audio_worker,
                 daemon=True,
-                name="wizard-audio",
-            ).start()
+            )
 
     def _audio_worker(self):
         """Persistent audio loop. Runs until _wizard_active is False.
