@@ -85,7 +85,11 @@ class TutorialWindow(QMainWindow):
         self._build_step_list()
 
         self.setWindowTitle("Samsara Tutorial")
-        self.setFixedSize(620, 540)
+        # Tall enough for the done step's content (checklist + 3 guide cards),
+        # the tallest of the four pages -- see _button_min_width's docstring
+        # for why fixed per-widget geometry is avoided; the window itself
+        # still needs a fixed height sized to the tallest page's real content.
+        self.setFixedSize(620, 722)
         self.setStyleSheet(theme.build_stylesheet())
         # Stay on top so the user can still use the tutorial while interacting
         # with other windows; WindowStaysOnTopHint avoids stealing focus.
@@ -172,19 +176,42 @@ class TutorialWindow(QMainWindow):
 
         self._skip_step_btn = QPushButton("Skip this step")
         theme.make_secondary(self._skip_step_btn)
-        self._skip_step_btn.setFixedWidth(120)
         self._skip_step_btn.clicked.connect(self._skip_step)
         nl.addWidget(self._skip_step_btn)
+        # Measured after addWidget() parents the button into the styled
+        # tree -- fontMetrics() on an unparented widget doesn't reflect the
+        # cascaded stylesheet font size yet.
+        self._skip_step_btn.setMinimumWidth(
+            self._button_min_width(self._skip_step_btn, ["Skip this step"])
+        )
 
         self._next_btn = QPushButton("Next")
         theme.make_primary(self._next_btn)
-        self._next_btn.setFixedWidth(150)
         self._next_btn.clicked.connect(self._go_next)
         nl.addWidget(self._next_btn)
+        # Minimum, not fixed -- the label changes per step ("Let's go" /
+        # "Next" / "Start using Samsara") and must never clip the widest one.
+        self._next_btn.setMinimumWidth(
+            self._button_min_width(self._next_btn, ["Let's go", "Next", "Start using Samsara"])
+        )
 
         root.addWidget(nav)
 
         self._show_step()
+
+    # ------------------------------------------------------------------
+    # Sizing helpers
+    # ------------------------------------------------------------------
+
+    @staticmethod
+    def _button_min_width(btn: QPushButton, texts: list[str], h_padding: int = 48) -> int:
+        """Minimum width that fits the widest of `texts` in btn's actual
+        font, plus theme button padding (24px each side). Used instead of
+        setFixedWidth() so buttons never clip text the theme's font metrics
+        don't fit in an old, pre-theme pixel count."""
+        fm = btn.fontMetrics()
+        widest = max((fm.horizontalAdvance(t) for t in texts), default=0)
+        return widest + h_padding
 
     # ------------------------------------------------------------------
     # Step configuration
@@ -481,13 +508,14 @@ class TutorialWindow(QMainWindow):
 
             open_btn = QPushButton("Open →")
             theme.make_secondary(open_btn)
-            open_btn.setFixedWidth(76)
-            open_btn.setFixedHeight(34)
             _m = method  # capture for lambda
             open_btn.clicked.connect(
                 lambda checked=False, m=_m: getattr(self._app, m, lambda: None)()
             )
             gc_lay.addWidget(open_btn, alignment=Qt.AlignmentFlag.AlignVCenter)
+            # Measured after addWidget() parents the button -- see nav bar
+            # buttons above for why this ordering matters.
+            open_btn.setMinimumWidth(self._button_min_width(open_btn, ["Open →"]))
 
             lay.addWidget(guide_card)
 

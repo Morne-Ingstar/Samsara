@@ -304,9 +304,16 @@ class _WizardWindow(QDialog):
 
         self._next_btn = QPushButton("Next")
         theme.make_primary(self._next_btn)
-        self._next_btn.setFixedWidth(110)
         self._next_btn.clicked.connect(self._go_next)
         nav_lay.addWidget(self._next_btn)
+        # Minimum, not fixed -- text varies by step ("Next  ->" / "Calibrate
+        # ->" / "Continue  ->" / "Finish") and a fixed 110px clipped the two
+        # longest ones by 12-13px. Measured after addWidget() parents the
+        # button into the styled tree -- fontMetrics() on an unparented
+        # widget doesn't reflect the cascaded stylesheet font size yet.
+        self._next_btn.setMinimumWidth(_button_min_width(
+            self._next_btn, ["Next  ->", "Calibrate  ->", "Continue  ->", "Finish"]
+        ))
 
         root.addWidget(nav)
 
@@ -960,6 +967,16 @@ class _AttemptSlot(QWidget):
             self._apply_style("--", _ELEVATED, _ERROR, _ERROR)
             self._lbl.setText("missed")
             self._lbl.setStyleSheet(f"color:{_ERROR};font-size:10px;")
+
+
+def _button_min_width(btn: QPushButton, texts: list[str], h_padding: int = 48) -> int:
+    """Minimum width that fits the widest of `texts` in btn's actual font,
+    plus theme button padding (24px each side). Used instead of
+    setFixedWidth() so buttons never clip text the theme's font metrics
+    don't fit in an old, pre-theme pixel count."""
+    fm = btn.fontMetrics()
+    widest = max((fm.horizontalAdvance(t) for t in texts), default=0)
+    return widest + h_padding
 
 
 def _label(text: str) -> QLabel:

@@ -51,7 +51,9 @@ def main() -> int:
     OUT_DIR.mkdir(parents=True, exist_ok=True)
     app = QApplication.instance() or QApplication(sys.argv)
 
-    # ---- Tutorial window: step 1 (welcome) + step 2 (dictation) -----------
+    # ---- Tutorial window: step 1 (welcome), step 2 (dictation), step 4
+    # (done -- the checklist/guide-cards page whose fixed button geometry
+    # used to clip against the theme's font metrics) -------------------------
     try:
         from samsara.ui.tutorial_qt import TutorialWindow
 
@@ -60,6 +62,9 @@ def main() -> int:
         _settle_and_grab(app, tut, OUT_DIR / "tutorial_step1.png")
         tut._go_next()  # welcome -> dictation
         _settle_and_grab(app, tut, OUT_DIR / "tutorial_step2.png")
+        tut._go_next()  # dictation -> command
+        tut._go_next()  # command -> done
+        _settle_and_grab(app, tut, OUT_DIR / "tutorial_step4_done.png")
         tut.close()
     except Exception:
         import traceback
@@ -78,13 +83,19 @@ def main() -> int:
         print("FAILED: first-run wizard window")
         traceback.print_exc()
 
-    # ---- Mic setup wizard: page 1 (device selection) -----------------------
+    # ---- Mic setup wizard: page 1 (device selection), page 2 (level --
+    # "Calibrate ->" used to clip) and page 3 (wake word -- "Continue ->"
+    # used to clip) -----------------------------------------------------
     try:
         from samsara.ui.mic_setup_wizard_qt import _WizardWindow as _MicWindow
 
         fake_app2 = _FakeApp()
         micw = _MicWindow(fake_app2)
         _settle_and_grab(app, micw, OUT_DIR / "mic_wizard_page1.png")
+        micw._go_to(1)  # device -> level
+        _settle_and_grab(app, micw, OUT_DIR / "mic_wizard_page2_level.png")
+        micw._go_to(2)  # level -> wake word
+        _settle_and_grab(app, micw, OUT_DIR / "mic_wizard_page3_wake.png")
         micw.close()
     except Exception:
         import traceback
