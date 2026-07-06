@@ -1,0 +1,69 @@
+{
+  "$schema": "https://fundingjson.org/schema/v1.1.0.json",
+  "version": "v1.1.0",
+  "entity": {
+    "type": "individual",
+    "role": "owner",
+    "name": "Morne",
+    "email": "morne@samsara.dev",
+    "phone": "",
+    "description": "I'm a self-taught developer building open-source accessibility tooling for Windows. I have physical challenges with my hands, which is the reason Samsara exists: I needed a fast, reliable voice-control and dictation layer to keep working, and built one. I care about tools that give people back the ability to use their computers on their own terms, and I release my work as open source so others facing similar barriers can use and extend it freely.",
+    "webpageUrl": {
+      "url": "https://morneis.com"
+    }
+  },
+  "projects": [
+    {
+      "guid": "samsara",
+      "name": "Samsara",
+      "description": "Samsara is an open-source voice control and dictation application for Windows, built for people who cannot rely on a keyboard and mouse. It provides wake-word activation, hands-free dictation with pause/resume, and an extensible plugin system (window switching, web shortcuts, find-on-page, Discord integration, and more). It runs entirely on the user's own machine, uses a modular state-machine architecture, and ships with a CI pipeline and unit tests. It is actively developed and designed to be a daily-driver accessibility tool rather than a demo.",
+      "webpageUrl": {
+        "url": "https://github.com/Morne-Ingstar/Samsara"
+      },
+      "repositoryUrl": {
+        "url": "https://github.com/Morne-Ingstar/Samsara",
+        "wellKnown": "https://raw.githubusercontent.com/Morne-Ingstar/Samsara/master/.well-known/funding-manifest-urls"
+      },
+      "licenses": ["spdx:GPL-3.0-or-later"],
+      "tags": ["accessibility", "voice-control", "dictation", "speech-recognition", "windows", "assistive-technology", "python"]
+    }
+  ],
+  "funding": {
+    "channels": [
+      {
+        "guid": "github-sponsors",
+        "type": "payment-provider",
+        "address": "https://github.com/sponsors/Morne-Ingstar",
+        "description": "GitHub Sponsors"
+      },
+      {
+        "guid": "ko-fi",
+        "type": "payment-provider",
+        "address": "https://ko-fi.com/morneingstar",
+        "description": "Ko-fi"
+      }
+    ],
+    "plans": [
+      {
+        "guid": "developer-time",
+        "status": "active",
+        "name": "Part-time developer support",
+        "description": "Covers part-time development to expand Samsara's accessibility features, improve wake-word reliability, harden the plugin system, and support users who depend on it daily.",
+        "amount": 25000,
+        "currency": "USD",
+        "frequency": "yearly",
+        "channels": ["github-sponsors"]
+      },
+      {
+        "guid": "goodwill",
+        "status": "active",
+        "name": "Goodwill",
+        "description": "Contribute any amount to support ongoing development.",
+        "amount": 0,
+        "currency": "USD",
+        "frequency": "one-time",
+        "channels": ["github-sponsors", "ko-fi"]
+      }
+    ]
+  }
+}
