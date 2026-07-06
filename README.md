@@ -358,9 +358,12 @@ python -m pytest tests/ -v
 BSL-1.1 (Business Source License) — free for all non-commercial use.
 Converts to MIT on April 23, 2030. See [LICENSE](LICENSE) for details.
 
-If Samsara saves your wrists, consider
-[supporting the project](https://ko-fi.com/morneingstar) — built through
-chronic pain, kept free for accessibility.
+## Support
+
+Samsara is free forever — no paywalls, no feature gates, ever. If it's useful
+to you, [sponsoring on GitHub](https://github.com/sponsors/Morne-Ingstar) or
+[Ko-fi](https://ko-fi.com/morneingstar) helps fund the time spent building and
+maintaining it. Entirely optional.
 
 ## Acknowledgments
 
