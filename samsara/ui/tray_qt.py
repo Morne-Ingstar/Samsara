@@ -226,6 +226,8 @@ class SamsaraTrayQt(QObject):
             lambda: app.open_wake_word_debug())
         tools_sub.addAction("Dictation Diagnostics").triggered.connect(
             lambda: app.open_dictation_diagnostics())
+        tools_sub.addAction("View Live Log").triggered.connect(
+            lambda: app.open_log_viewer())
         tools_sub.addAction("Stress Test Wizard").triggered.connect(
             lambda: app.open_stress_test_wizard())
         tools_sub.addAction("Recalibrate Mic").triggered.connect(

@@ -7589,6 +7589,16 @@ class DictationApp:
         except Exception as e:
             logger.exception(f"[DIAG] Error opening dictation diagnostics: {e}")
 
+    def open_log_viewer(self):
+        """Open the live log viewer window"""
+        try:
+            if not hasattr(self, '_log_viewer_qt'):
+                from samsara.ui.log_viewer_qt import LogViewerQt
+                self._log_viewer_qt = LogViewerQt(self)
+            self._log_viewer_qt.show()
+        except Exception as e:
+            logger.exception(f"[LOGVIEW] Error opening log viewer: {e}")
+
     def open_stress_test_wizard(self):
         """Open the guided stress-test wizard"""
         try:
