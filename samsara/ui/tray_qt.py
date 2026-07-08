@@ -224,6 +224,8 @@ class SamsaraTrayQt(QObject):
             lambda: app.open_voice_training())
         tools_sub.addAction("Wake Word Debug").triggered.connect(
             lambda: app.open_wake_word_debug())
+        tools_sub.addAction("Dictation Diagnostics").triggered.connect(
+            lambda: app.open_dictation_diagnostics())
         tools_sub.addAction("Recalibrate Mic").triggered.connect(
             lambda: app.recalibrate_mic())
         tools_sub.addAction("Calibrate Echo Cancellation").triggered.connect(

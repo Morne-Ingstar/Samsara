@@ -42,6 +42,8 @@ except ImportError:
 from samsara.cleanup import clean_text
 from samsara.log import get_logger
 from samsara.runtime import thread_registry
+from samsara.smart_corrections import smart_correct
+from samsara import diagnostics
 
 logger = get_logger(__name__)
 
@@ -432,14 +434,23 @@ class StreamingWorker(threading.Thread):
                 params = self._final_params()
                 t0 = time.time()
                 segments, _ = app.model.transcribe(audio, **params)
-                text = "".join(seg.text for seg in segments).strip()
+                seg_list = list(segments)
+                text = "".join(seg.text for seg in seg_list).strip()
                 duration_s = len(audio) / app.model_rate
                 elapsed_ms = int((time.time() - t0) * 1000)
+
+            try:
+                diag_sig = diagnostics.segment_signals(seg_list)
+            except Exception as e:
+                logger.debug(f"[STREAM] segment signal extraction failed: {e}")
+                diag_sig = {}
 
             if not text:
                 self._session.on_final(None, duration_s=duration_s,
                                        elapsed_ms=elapsed_ms)
                 return
+
+            diag_corr_start = time.perf_counter()
 
             try:
                 text = app.voice_training_window.apply_corrections(text)
@@ -454,8 +465,47 @@ class StreamingWorker(threading.Thread):
             raw = text
             _cmode = 'verbatim' if getattr(app, '_skip_cleanup', False) else app.config.get('cleanup_mode', 'clean')
             cleaned = clean_text(text, mode=_cmode)
+            t_corrections_ms = int((time.perf_counter() - diag_corr_start) * 1000)
+
+            # Smart Corrections (optional LLM cleanup pass) -- streaming
+            # gate (off by default; latency-sensitive path). Never blocks
+            # output on failure (see smart_correct docs).
+            t_smart_ms = -1
+            smart_changed = False
+            if app.config.get('smart_corrections', {}).get('modes', {}).get('streaming', False):
+                diag_smart_start = time.perf_counter()
+                text_before_smart = cleaned
+                try:
+                    cleaned = smart_correct(cleaned, app)
+                except Exception as e:
+                    logger.debug(f"[STREAM] smart_correct failed: {e}")
+                t_smart_ms = int((time.perf_counter() - diag_smart_start) * 1000)
+                smart_changed = (cleaned != text_before_smart)
+
             if app.config.get('add_trailing_space', True):
                 cleaned = cleaned + " "
+
+            # Diagnostics record -- total measured from transcribe start to
+            # just before handoff to on_final (the streaming equivalent of
+            # "just before paste").
+            try:
+                diagnostics.record(diagnostics.DiagRecord(
+                    mode="streaming",
+                    audio_s=duration_s,
+                    model_name=app.config.get('model_size', ''),
+                    device=getattr(app, 'device_type', 'unknown'),
+                    compute_type=app.config.get('compute_type', ''),
+                    t_transcribe_ms=elapsed_ms,
+                    t_corrections_ms=t_corrections_ms,
+                    t_smart_ms=t_smart_ms,
+                    t_total_ms=int((time.time() - t0) * 1000),
+                    text=cleaned,
+                    smart_changed=smart_changed,
+                    **diag_sig,
+                ), app=app)
+            except Exception as e:
+                logger.debug(f"[STREAM] diagnostics record failed: {e}")
+
             self._session.on_final(cleaned, raw_text=raw,
                                    duration_s=duration_s,
                                    elapsed_ms=elapsed_ms)

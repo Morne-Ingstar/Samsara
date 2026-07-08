@@ -401,6 +401,8 @@ except Exception as _ag_err:
 from samsara.profiles import ProfileManager
 from samsara.ui.listening_indicator import ListeningIndicator
 from samsara.cleanup import clean_text
+from samsara.smart_corrections import smart_correct
+from samsara import diagnostics
 from samsara.history import HistoryManager
 from samsara.wake_word_matcher import match_wake_phrase
 from samsara.wake_corrections import apply_corrections as apply_wake_corrections, was_corrected
@@ -639,8 +641,8 @@ def _is_hallucinated_segments(seg_list, text):
 
     BACKSTOP ONLY. The primary hallucination defenses are causal and run
     before/during transcription: faster-whisper's native no_speech_threshold/
-    log_prob_threshold, the per-press condition_on_previous_text=False +
-    initial_prompt="" reset, the contiguous-confidence VAD gate on short
+    log_prob_threshold, the per-press condition_on_previous_text=False
+    conversation-context reset, the contiguous-confidence VAD gate on short
     buffers, and the click-fade (see module-level _NO_SPEECH_THRESHOLD /
     _GATE_* / _FADE_MS constants and _buffer_has_contiguous_speech). This
     output-text heuristic is a cheap last-resort net for whatever slips
@@ -2146,6 +2148,23 @@ class DictationApp:
                 "tier2_approvals": {},
                 "routing_verbs": ["ask", "plan", "summarize"],
             },
+            # Smart Corrections: optional LLM post-processing pass over
+            # dictation output (homophones/misrecognitions/punctuation).
+            # Off by default. See samsara/smart_corrections.py.
+            "smart_corrections": {
+                "enabled": False,
+                "backend": "auto",            # "auto" | "ollama" | "cloud"
+                "ollama_model": "qwen2.5:3b",  # already pulled on this machine
+                "timeout_s": 4.0,
+                "min_words": 3,
+                "modes": {"hotkey": True, "wake": True, "streaming": False},
+            },
+            # Dictation Diagnostics: per-utterance pipeline instrumentation
+            # (samsara/diagnostics.py). Ring buffer always active; this only
+            # gates the optional on-disk JSONL append.
+            "diagnostics": {
+                "write_jsonl": False,
+            },
             # TTS subsystem (WinRTEngine + AudioCoordinator)
             "tts": {
                 "enabled": False,   # opt-in; toggle in Settings → Text-to-Speech
@@ -2819,24 +2838,29 @@ class DictationApp:
         Starts from get_transcription_params() (mode-based defaults) and
         forces the hotkey-specific overrides: VAD disabled (the user
         explicitly pressed the hotkey -- don't strip their speech), and a
-        clean per-press state reset (no residual conditioning/prompt carried
-        over from a previous press -- see the "Gate and Reset"
+        clean per-press conversation-context reset (no residual conditioning
+        carried over from a previous press -- see the "Gate and Reset"
         hallucination-prevention architecture, module-level constants near
-        the top of this file). Used by both the normal (<30s) and [LONG]
-        branches of the hotkey transcribe() closure -- they share this same
-        dict, so this is the single place that guarantee is enforced.
+        the top of this file). The vocabulary/initial_prompt from voice
+        training is still applied -- the clean-slate guarantee is about
+        conversation context (condition_on_previous_text), not vocabulary
+        biasing. Used by both the normal (<30s) and [LONG] branches of the
+        hotkey transcribe() closure -- they share this same dict, so this is
+        the single place that guarantee is enforced.
         """
         transcribe_params = self.get_transcription_params()
         # DISABLE faster-whisper's VAD for hotkey-triggered dictation.
         # User explicitly pressed the hotkey — don't strip their speech.
         transcribe_params['vad_filter'] = False
         # Force a clean slate on EVERY hotkey press. Conditioning on
-        # tokens/prompt carried over from a previous press is what let
+        # tokens carried over from a previous press is what let
         # hallucinations escalate over a session -- each press must
-        # start with zero residual state, independent of the [LONG]
-        # path (which has its own reasons not to condition).
+        # start with zero residual conversational state, independent of the
+        # [LONG] path (which has its own reasons not to condition).
         transcribe_params['condition_on_previous_text'] = False
-        transcribe_params['initial_prompt'] = ""
+        # Vocabulary biasing is still wanted per-press -- only conversation
+        # context gets the clean-slate reset above, not the trained prompt.
+        transcribe_params['initial_prompt'] = self.voice_training_window.get_initial_prompt() or ""
         return transcribe_params
 
     def process_transcription(self, text):
@@ -5241,8 +5265,50 @@ class DictationApp:
             with self.model_lock:
                 segments, info = self.model.transcribe(audio, **transcribe_params)
 
-            text = "".join([segment.text for segment in segments]).strip()
+            _seg_list = list(segments)
+            text = "".join([segment.text for segment in _seg_list]).strip()
             transcribe_time = time.time() - transcribe_start
+
+            # Diagnostics: accumulate Whisper quality signals across every
+            # chunk feeding the same buffered wake utterance -- quick/long
+            # dictation may flush this buffer several times before
+            # _output_dictation delivers one final joined text. Reset by
+            # _output_dictation after it reads the accumulator. Never
+            # touches control flow; diagnostics-only, defensive.
+            try:
+                _t_ms = int(transcribe_time * 1000)
+                _sig = diagnostics.segment_signals(_seg_list)
+                _acc = getattr(self, '_wake_diag_acc', None) or {
+                    'audio_s': 0.0, 'avg_logprob': None, 'compression_ratio': None,
+                    'no_speech_prob': None, 'temperature': None, 'n_segments': 0,
+                    't_transcribe_ms': 0,
+                }
+                _acc['audio_s'] += audio_duration
+                _acc['t_transcribe_ms'] += _t_ms
+                _acc['n_segments'] += _sig['n_segments']
+                if _sig['avg_logprob'] is not None:
+                    _acc['avg_logprob'] = (
+                        _sig['avg_logprob'] if _acc['avg_logprob'] is None
+                        else min(_acc['avg_logprob'], _sig['avg_logprob'])
+                    )
+                if _sig['compression_ratio'] is not None:
+                    _acc['compression_ratio'] = (
+                        _sig['compression_ratio'] if _acc['compression_ratio'] is None
+                        else max(_acc['compression_ratio'], _sig['compression_ratio'])
+                    )
+                if _sig['no_speech_prob'] is not None:
+                    _acc['no_speech_prob'] = (
+                        _sig['no_speech_prob'] if _acc['no_speech_prob'] is None
+                        else max(_acc['no_speech_prob'], _sig['no_speech_prob'])
+                    )
+                if _sig['temperature'] is not None:
+                    _acc['temperature'] = (
+                        _sig['temperature'] if _acc['temperature'] is None
+                        else max(_acc['temperature'], _sig['temperature'])
+                    )
+                self._wake_diag_acc = _acc
+            except Exception as _diag_exc:
+                logger.debug(f"[DIAG] wake signal accumulation failed: {_diag_exc}")
 
             # Performance logging for wake word mode
             rtf = transcribe_time / audio_duration if audio_duration > 0 else 0
@@ -6040,13 +6106,35 @@ class DictationApp:
 
     def _output_dictation(self, text):
         """Output dictated text"""
+        _diag_entry = time.perf_counter()
+        # Whisper signals accumulated across every process_wake_word_buffer
+        # chunk feeding this utterance (quick/long dictation can flush the
+        # buffer several times before one final join-and-output). Consume
+        # and reset here so the next utterance starts from a clean slate.
+        _diag_acc = getattr(self, '_wake_diag_acc', None) or {}
+        self._wake_diag_acc = None
+
         # Apply text processing (auto-capitalize, number formatting)
+        _diag_corr_start = time.perf_counter()
         text = self.process_transcription(text)
 
         # Deterministic cleanup (filler removal, spacing).
         raw = text
         _cmode = 'verbatim' if getattr(self, '_skip_cleanup', False) else self.config.get('cleanup_mode', 'clean')
         text = clean_text(text, mode=_cmode)
+        t_corrections_ms = int((time.perf_counter() - _diag_corr_start) * 1000)
+
+        # Smart Corrections (optional LLM cleanup pass) -- wake-word
+        # dictation gate. Runs on this same worker thread; never blocks
+        # output on failure (see smart_correct docs).
+        t_smart_ms = -1
+        smart_changed = False
+        if self.config.get('smart_corrections', {}).get('modes', {}).get('wake', True):
+            _diag_smart_start = time.perf_counter()
+            _text_before_smart = text
+            text = smart_correct(text, self)
+            t_smart_ms = int((time.perf_counter() - _diag_smart_start) * 1000)
+            smart_changed = (text != _text_before_smart)
 
         if self.config['add_trailing_space']:
             text = text + " "
@@ -6066,6 +6154,34 @@ class DictationApp:
             entry_type="dictation",
         )
         self._notify_main_window(text.strip())
+
+        # Diagnostics record -- total combines the accumulated transcribe
+        # time (across every chunk feeding this utterance) with this
+        # method's own corrections/smart/overhead time.
+        try:
+            diagnostics.record(diagnostics.DiagRecord(
+                mode="wake",
+                audio_s=_diag_acc.get('audio_s', 0.0),
+                model_name=self.config.get('model_size', ''),
+                device=getattr(self, 'device_type', 'unknown'),
+                compute_type=self.config.get('compute_type', ''),
+                t_transcribe_ms=_diag_acc.get('t_transcribe_ms', -1),
+                t_corrections_ms=t_corrections_ms,
+                t_smart_ms=t_smart_ms,
+                t_total_ms=(
+                    max(_diag_acc.get('t_transcribe_ms', 0), 0)
+                    + int((time.perf_counter() - _diag_entry) * 1000)
+                ),
+                avg_logprob=_diag_acc.get('avg_logprob'),
+                compression_ratio=_diag_acc.get('compression_ratio'),
+                no_speech_prob=_diag_acc.get('no_speech_prob'),
+                temperature=_diag_acc.get('temperature'),
+                n_segments=_diag_acc.get('n_segments', 0),
+                text=text,
+                smart_changed=smart_changed,
+            ), app=self)
+        except Exception as _diag_exc:
+            logger.debug(f"[DIAG] wake record failed: {_diag_exc}")
 
         if self.config['auto_paste']:
             logger.info(
@@ -6681,6 +6797,7 @@ class DictationApp:
                     return
 
                 transcribe_start = time.time()
+                _diag_all_segs = []
 
                 if audio_duration > 30.0:
                     # Long audio: split at silence boundaries before transcription.
@@ -6703,6 +6820,7 @@ class DictationApp:
                         with self.model_lock:
                             segs, _ = self.model.transcribe(chunk, **transcribe_params)
                         _segs_list = list(segs)
+                        _diag_all_segs.extend(_segs_list)
                         chunk_text = "".join(s.text for s in _segs_list).strip()
                         if _is_hallucinated_segments(_segs_list, chunk_text):
                             logging.getLogger("Samsara").info(
@@ -6717,6 +6835,7 @@ class DictationApp:
                     with self.model_lock:
                         segments, info = self.model.transcribe(audio_faded, **transcribe_params)
                     _seg_list = list(segments)
+                    _diag_all_segs.extend(_seg_list)
                     text = "".join([s.text for s in _seg_list]).strip()
                     if _is_hallucinated_segments(_seg_list, text):
                         logging.getLogger("Samsara").info(
@@ -6724,6 +6843,12 @@ class DictationApp:
                         text = ""
 
                 transcribe_time = time.time() - transcribe_start
+                t_transcribe_ms = int(transcribe_time * 1000)
+                try:
+                    _diag_sig = diagnostics.segment_signals(_diag_all_segs)
+                except Exception as _diag_exc:
+                    logger.debug(f"[DIAG] segment signal extraction failed: {_diag_exc}")
+                    _diag_sig = {}
 
                 # Performance logging
                 rtf = transcribe_time / audio_duration if audio_duration > 0 else 0
@@ -6767,6 +6892,21 @@ class DictationApp:
                     # commands, so words like "bring", "copy", "cut" are transcribed
                     # as-is rather than firing the corresponding voice command.
                     if is_command_mode:
+                        try:
+                            diagnostics.record(diagnostics.DiagRecord(
+                                mode="command",
+                                audio_s=audio_duration,
+                                model_name=self.config.get('model_size', ''),
+                                device=getattr(self, 'device_type', 'unknown'),
+                                compute_type=self.config.get('compute_type', ''),
+                                t_transcribe_ms=t_transcribe_ms,
+                                t_total_ms=t_transcribe_ms,
+                                text=text,
+                                **_diag_sig,
+                            ), app=self)
+                        except Exception as _diag_exc:
+                            logger.debug(f"[DIAG] command-mode record failed: {_diag_exc}")
+
                         result, was_command = self.command_executor.process_text(text, self)
 
                         if was_command:
@@ -6822,12 +6962,26 @@ class DictationApp:
 
                     # Regular dictation mode - proceed with text output
                     # Apply text processing (auto-capitalize, number formatting)
+                    _diag_corr_start = time.perf_counter()
                     text = self.process_transcription(text)
 
                     # Deterministic cleanup (filler removal, spacing).
                     raw = text
                     _cmode = 'verbatim' if getattr(self, '_skip_cleanup', False) else self.config.get('cleanup_mode', 'clean')
                     text = clean_text(text, mode=_cmode)
+                    t_corrections_ms = int((time.perf_counter() - _diag_corr_start) * 1000)
+
+                    # Smart Corrections (optional LLM cleanup pass) -- hotkey
+                    # hold-to-dictate gate. Runs on this same worker thread;
+                    # never blocks output on failure (see smart_correct docs).
+                    t_smart_ms = -1
+                    smart_changed = False
+                    if self.config.get('smart_corrections', {}).get('modes', {}).get('hotkey', True):
+                        _diag_smart_start = time.perf_counter()
+                        _text_before_smart = text
+                        text = smart_correct(text, self)
+                        t_smart_ms = int((time.perf_counter() - _diag_smart_start) * 1000)
+                        smart_changed = (text != _text_before_smart)
 
                     if self.config['add_trailing_space']:
                         text = text + " "
@@ -6848,6 +7002,26 @@ class DictationApp:
                         entry_type="dictation",
                     )
                     self._notify_main_window(text.strip())
+
+                    # Diagnostics record -- total measured from transcribe start
+                    # to just before paste, matching the smart_correct call site.
+                    try:
+                        diagnostics.record(diagnostics.DiagRecord(
+                            mode="hotkey",
+                            audio_s=audio_duration,
+                            model_name=self.config.get('model_size', ''),
+                            device=getattr(self, 'device_type', 'unknown'),
+                            compute_type=self.config.get('compute_type', ''),
+                            t_transcribe_ms=t_transcribe_ms,
+                            t_corrections_ms=t_corrections_ms,
+                            t_smart_ms=t_smart_ms,
+                            t_total_ms=int((time.time() - transcribe_start) * 1000),
+                            text=text,
+                            smart_changed=smart_changed,
+                            **_diag_sig,
+                        ), app=self)
+                    except Exception as _diag_exc:
+                        logger.debug(f"[DIAG] hotkey record failed: {_diag_exc}")
 
                     if self.config['auto_paste']:
                         self._paste_preserving_clipboard(text)
@@ -7355,6 +7529,16 @@ class DictationApp:
             self._history_qt.show()
         except Exception as e:
             logger.exception(f"[HISTORY] Error opening history: {e}")
+
+    def open_dictation_diagnostics(self):
+        """Open dictation diagnostics window"""
+        try:
+            if not hasattr(self, '_diagnostics_qt'):
+                from samsara.ui.diagnostics_qt import DiagnosticsQt
+                self._diagnostics_qt = DiagnosticsQt(self)
+            self._diagnostics_qt.show()
+        except Exception as e:
+            logger.exception(f"[DIAG] Error opening dictation diagnostics: {e}")
 
     def open_wake_word_debug(self):
         """Open wake word debug/test window"""
