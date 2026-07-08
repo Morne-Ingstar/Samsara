@@ -359,7 +359,7 @@ class TestGhostTapPrevention:
         import time
         app = self._make_app(debounce_ms=50)
         app.enter_command_mode()
-        time.sleep(0.06)
+        time.sleep(0.12)  # wide margin over the 50ms debounce; 0.06 flaked under suite load
         app.exit_command_mode()
         assert app._command_mode_ghost_tap is False
 

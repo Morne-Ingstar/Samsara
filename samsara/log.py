@@ -38,6 +38,12 @@ _configured = False
 # remove exactly "our" handlers without touching anything else on root.
 SAMSARA_LOG_HANDLER_TAG = "_samsara_log_handler"
 
+# Same path dictation.py's own bootstrap resolves to (its LOG_DIR/LOG_FILE
+# module constants) -- exported here so other modules (e.g. the log viewer
+# window) can import one shared constant instead of recomputing or
+# hardcoding a second copy of "logs" / "samsara.log".
+SAMSARA_LOG_FILE = samsara_home_dir() / "logs" / "samsara.log"
+
 
 def _fallback_configure() -> None:
     """Attach the same rotating-file + console handlers dictation.py sets
@@ -56,9 +62,8 @@ def _fallback_configure() -> None:
             _configured = True
             return
 
-        log_dir = samsara_home_dir() / "logs"
-        log_dir.mkdir(parents=True, exist_ok=True)
-        log_file = log_dir / "samsara.log"
+        log_file = SAMSARA_LOG_FILE
+        log_file.parent.mkdir(parents=True, exist_ok=True)
 
         fmt = logging.Formatter("%(asctime)s - %(levelname)s - %(message)s")
 
