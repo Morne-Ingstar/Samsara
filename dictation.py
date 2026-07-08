@@ -2732,9 +2732,52 @@ class DictationApp:
                 'name': name,
                 'channels': device['max_input_channels']
             })
-        
+
         return microphones
-    
+
+    def refresh_audio_devices(self):
+        """Re-enumerate input microphones, picking up devices connected after boot.
+
+        sounddevice/PortAudio caches its host API device list at
+        initialization time -- a Bluetooth mic (or any device) plugged in
+        after launch never appears from a plain sd.query_devices() call.
+        Forcing PortAudio to re-scan requires sd._terminate() + sd._initialize()
+        (the documented re-enumeration pattern). That re-init is best-effort:
+        if it raises, we log a warning and fall back to a plain re-query
+        (get_available_microphones() always re-queries regardless, so the
+        fallback is implicit -- no separate code path needed).
+
+        MUST NOT run while any audio stream is open: PortAudio re-init while
+        a stream is live can stutter or kill it. Gated on
+        _is_audio_capture_active() -- the same flag tray_qt.py's menu rebuild
+        already uses to guard mic-list refreshes. If active, this is a no-op:
+        logs at INFO and returns the current (unchanged) list.
+
+        Thread-safety: call only from the Qt/UI thread. There is no
+        additional lock here -- every existing reader/writer of
+        self.available_mics (tray_qt.py's menu rebuild, settings_qt.py, the
+        setup wizards) already only touches it from the Qt thread, and
+        _is_audio_capture_active() is the same gate already relied on to
+        keep re-enumeration from racing an active recording/stream.
+
+        Returns the fresh list, in the same shape as
+        get_available_microphones() (this IS that same method -- there is
+        only one enumeration code path).
+        """
+        if self._is_audio_capture_active():
+            logger.info("[MIC] refresh skipped — audio active")
+            return self.available_mics
+
+        try:
+            sd._terminate()
+            sd._initialize()
+        except Exception as exc:
+            logger.warning(f"[MIC] PortAudio re-init failed, falling back to plain re-query: {exc}")
+
+        self.available_mics = self.get_available_microphones()
+        self._reconcile_microphone_selection()
+        return self.available_mics
+
     def get_current_microphone_name(self):
         """Get the name of the currently selected microphone"""
         mic_id = self.config.get('microphone')
@@ -7539,6 +7582,16 @@ class DictationApp:
             self._diagnostics_qt.show()
         except Exception as e:
             logger.exception(f"[DIAG] Error opening dictation diagnostics: {e}")
+
+    def open_stress_test_wizard(self):
+        """Open the guided stress-test wizard"""
+        try:
+            if not hasattr(self, '_stress_wizard_qt'):
+                from samsara.ui.stress_wizard_qt import StressWizardQt
+                self._stress_wizard_qt = StressWizardQt(self)
+            self._stress_wizard_qt.show()
+        except Exception as e:
+            logger.exception(f"[STRESS] Error opening stress test wizard: {e}")
 
     def open_wake_word_debug(self):
         """Open wake word debug/test window"""

@@ -24,6 +24,7 @@ from PySide6.QtWidgets import (
 
 from samsara.runtime import thread_registry
 from samsara.ui import qt_runtime, theme
+from samsara.audio_devices import pick_index_by_name
 
 from samsara.log import get_logger
 
@@ -643,11 +644,17 @@ class _WizardWindow(QMainWindow):
         lay.addWidget(sub)
         lay.addSpacing(4)
 
+        mic_row = QHBoxLayout()
         self._mic_combo = QComboBox()
         self._mic_combo.addItem("Scanning for microphones…")
         self._mic_combo.setEnabled(False)
         self._mic_combo.currentIndexChanged.connect(self._on_mic_device_changed)
-        lay.addWidget(self._mic_combo)
+        mic_row.addWidget(self._mic_combo, 1)
+        mic_refresh_btn = QPushButton("Refresh")
+        mic_refresh_btn.setFixedWidth(80)
+        mic_refresh_btn.clicked.connect(self._on_refresh_mics_clicked)
+        mic_row.addWidget(mic_refresh_btn)
+        lay.addLayout(mic_row)
 
         lay.addSpacing(8)
         meter_lbl = QLabel("Input Level")
@@ -998,39 +1005,82 @@ class _WizardWindow(QMainWindow):
     # Microphone helpers
     # ------------------------------------------------------------------
 
-    def _load_mics(self):
-        """Enumerate microphones in a background thread, update combo when done."""
+    def _enumerate_mics(self) -> list:
+        """Shared enumeration logic for both the initial load and a refresh.
+
+        Plain re-query only -- does NOT force PortAudio to re-scan (that
+        requires DictationApp.refresh_audio_devices(), only available when
+        self._samsara_app is set), so a device connected after this process
+        started may not appear via this path alone. See _refresh_mics().
+        """
         try:
             if self._samsara_app is not None:
                 mics = self._samsara_app.get_available_microphones()
-                self._mics = [{'id': m['id'], 'name': m['name']} for m in mics]
-            else:
-                import sounddevice as sd
-                devices = sd.query_devices()
-                hostapis = sd.query_hostapis()
-                preferred_api_idx = None
-                for idx, api in enumerate(hostapis):
-                    if 'WASAPI' in api['name']:
-                        preferred_api_idx = idx
-                        break
-                mics: list[dict] = []
-                seen: set[str] = set()
-                for i, dev in enumerate(devices):
-                    if dev['max_input_channels'] <= 0:
-                        continue
-                    if preferred_api_idx is not None and dev['hostapi'] != preferred_api_idx:
-                        continue
-                    name: str = dev['name']
-                    dedup_key = name.strip().lower()
-                    if not dedup_key or dedup_key in seen:
-                        continue
-                    seen.add(dedup_key)
-                    mics.append({'id': i, 'name': name})
-                self._mics = mics
+                return [{'id': m['id'], 'name': m['name']} for m in mics]
+
+            import sounddevice as sd
+            devices = sd.query_devices()
+            hostapis = sd.query_hostapis()
+            preferred_api_idx = None
+            for idx, api in enumerate(hostapis):
+                if 'WASAPI' in api['name']:
+                    preferred_api_idx = idx
+                    break
+            mics: list[dict] = []
+            seen: set[str] = set()
+            for i, dev in enumerate(devices):
+                if dev['max_input_channels'] <= 0:
+                    continue
+                if preferred_api_idx is not None and dev['hostapi'] != preferred_api_idx:
+                    continue
+                name: str = dev['name']
+                dedup_key = name.strip().lower()
+                if not dedup_key or dedup_key in seen:
+                    continue
+                seen.add(dedup_key)
+                mics.append({'id': i, 'name': name})
+            return mics
         except Exception:
-            self._mics = []
+            return []
+
+    def _load_mics(self):
+        """Enumerate microphones in a background thread, update combo when done."""
+        self._mics = self._enumerate_mics()
         # Update combo on Qt thread via signal
         self._mic_result.emit("_load_done_", "")
+
+    def _on_refresh_mics_clicked(self):
+        """Stop our own meter (it may hold a stream _is_audio_capture_active()
+        can't see), then re-enumerate on a background thread -- same
+        thread-marshalling convention as _load_mics()."""
+        self._stop_meter()
+        if self._mic_status:
+            self._mic_status.setText("Refreshing devices…")
+            self._mic_status.setStyleSheet("color:#8A8A92;font-size:12px;")
+        thread_registry.spawn(
+            "first_run_wizard_qt._refresh_mics", self._refresh_mics, daemon=True,
+        )
+
+    def _refresh_mics(self):
+        """Background-thread counterpart of _on_refresh_mics_clicked().
+
+        Uses DictationApp.refresh_audio_devices() when a live app instance
+        is available -- the one path that forces PortAudio to re-scan (via
+        sd._terminate()/_initialize()), so a just-connected device actually
+        shows up. Falls back to a plain re-query otherwise/on failure.
+        """
+        if self._samsara_app is not None:
+            if self._samsara_app._is_audio_capture_active():
+                self._mic_result.emit("__refresh_skipped__", "")
+                return
+            try:
+                mics = self._samsara_app.refresh_audio_devices()
+                self._mics = [{'id': m['id'], 'name': m['name']} for m in mics]
+            except Exception:
+                self._mics = self._enumerate_mics()
+        else:
+            self._mics = self._enumerate_mics()
+        self._mic_result.emit("_refresh_done_", "")
 
     # ------------------------------------------------------------------
     # Meter helpers
@@ -1186,18 +1236,35 @@ class _WizardWindow(QMainWindow):
         if msg == "_load_done_":
             self._populate_mic_combo()
             return
+        if msg == "_refresh_done_":
+            self._populate_mic_combo(preserve_selection=True)
+            return
+        if msg == "__refresh_skipped__":
+            if self._mic_status:
+                self._mic_status.setText("Stop dictation elsewhere to refresh devices.")
+                self._mic_status.setStyleSheet(f"color:{theme.WARNING};font-size:12px;")
+            # We stopped our own meter before attempting the refresh --
+            # restart it since the refresh didn't happen (nothing else will).
+            if _STEPS[self._step][0] == "Microphone":
+                self._start_meter()
+            return
         if self._mic_status:
             self._mic_status.setText(msg)
             self._mic_status.setStyleSheet(f"color:{color};font-size:12px;")
 
-    def _populate_mic_combo(self):
+    def _populate_mic_combo(self, preserve_selection: bool = False):
         if self._mic_combo is None:
             return
+        preserved_name = self._mic_combo.currentText() if preserve_selection else None
         self._mic_combo.blockSignals(True)
         self._mic_combo.clear()
         if self._mics:
             self._mic_combo.addItems([m['name'] for m in self._mics])
             self._mic_combo.setEnabled(True)
+            if preserve_selection:
+                idx = pick_index_by_name(self._mics, preserved_name)
+                if idx is not None:
+                    self._mic_combo.setCurrentIndex(idx)
         else:
             self._mic_combo.addItem("No microphones detected")
             self._mic_combo.setEnabled(False)
