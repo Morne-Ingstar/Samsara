@@ -30,6 +30,7 @@ from PySide6.QtWidgets import (
 from samsara.constants import DEFAULT_CAPTURE_RATE
 from samsara.runtime import thread_registry
 from samsara.ui import qt_runtime, theme
+from samsara.audio_devices import pick_index_by_name
 
 from samsara.log import get_logger
 
@@ -78,17 +79,6 @@ def _resample(audio, orig_sr, target_sr=16000):
         np.arange(len(audio)),
         audio,
     ).astype(np.float32)
-
-
-def _query_input_devices():
-    devices = []
-    try:
-        for i, dev in enumerate(sd.query_devices()):
-            if dev.get("max_input_channels", 0) > 0:
-                devices.append((i, dev["name"]))
-    except Exception as e:
-        logger.debug(f"_query_input_devices: {e}")
-    return devices
 
 
 def _detect_capture_rate(device_index):
@@ -337,6 +327,10 @@ class _WizardWindow(QDialog):
         self._populate_devices()
         self._device_combo.currentIndexChanged.connect(self._on_device_changed)
         row.addWidget(self._device_combo, stretch=1)
+        refresh_btn = QPushButton("Refresh")
+        refresh_btn.setFixedWidth(80)
+        refresh_btn.clicked.connect(self._on_refresh_devices)
+        row.addWidget(refresh_btn)
         lay.addLayout(row)
         lay.addWidget(_label("Signal:"))
         self._device_level_bar = _LevelBar()
@@ -640,21 +634,62 @@ class _WizardWindow(QDialog):
     # ----------------------------------------------------------------
 
     def _populate_devices(self):
+        """Populate the device combo from the app's single enumeration path
+        (DictationApp.get_available_microphones()) -- WASAPI-filtered,
+        de-duped, same source settings_qt.py's mic dropdown uses."""
         self._device_combo.blockSignals(True)
         self._device_combo.clear()
-        self._input_devices = _query_input_devices()
+        self._input_devices = self._app.get_available_microphones()
         current_cfg = self._app.config.get('microphone')
         default_idx = 0
         self._device_combo.addItem("System default", userData=None)
-        for i, (dev_idx, name) in enumerate(self._input_devices):
-            self._device_combo.addItem(name, userData=dev_idx)
-            if dev_idx == current_cfg:
+        for i, dev in enumerate(self._input_devices):
+            self._device_combo.addItem(dev['name'], userData=dev['id'])
+            if dev['id'] == current_cfg:
                 default_idx = i + 1
         if current_cfg is None:
             default_idx = 0
         self._device_combo.setCurrentIndex(default_idx)
         self._device_combo.blockSignals(False)
         self._selected_device = self._device_combo.currentData()
+
+    def _on_refresh_devices(self):
+        """Re-enumerate input devices, preserving the current selection by name.
+
+        This wizard keeps its OWN persistent meter InputStream open for the
+        whole device-selection page (see _audio_worker/_ensure_audio_running)
+        -- invisible to DictationApp._is_audio_capture_active(). Refreshing
+        safely means tearing that stream down first, THEN checking whether
+        anything else (a real dictation/recording elsewhere) is active,
+        THEN re-enumerating, and always restarting our own meter afterward
+        regardless of outcome.
+        """
+        self._stop_audio()
+        try:
+            if self._app._is_audio_capture_active():
+                self._device_status.setText("Stop dictation elsewhere to refresh devices.")
+                self._device_status.setStyleSheet(f"color:{_WARNING};font-size:12px;")
+                return
+            try:
+                fresh = self._app.refresh_audio_devices()
+            except Exception as exc:
+                logger.debug(f"_on_refresh_devices: {exc}")
+                return
+
+            preserved_name = self._device_combo.currentText()
+            self._device_combo.blockSignals(True)
+            self._device_combo.clear()
+            self._input_devices = fresh
+            self._device_combo.addItem("System default", userData=None)
+            for dev in fresh:
+                self._device_combo.addItem(dev['name'], userData=dev['id'])
+            # +1 to account for the "System default" item at index 0.
+            idx = pick_index_by_name(fresh, preserved_name)
+            self._device_combo.setCurrentIndex(idx + 1 if idx is not None else 0)
+            self._device_combo.blockSignals(False)
+            self._selected_device = self._device_combo.currentData()
+        finally:
+            self._ensure_audio_running()
 
     def _on_device_changed(self, _index: int):
         """When the user picks a new device, update the flag.

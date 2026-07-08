@@ -20,6 +20,7 @@ from PySide6.QtWidgets import (
 
 from samsara.ui import qt_runtime
 from samsara.runtime import thread_registry
+from samsara.audio_devices import pick_index_by_name
 
 from samsara.log import get_logger
 
@@ -650,11 +651,52 @@ class _SettingsWindow(QMainWindow):
             mic_combo.setCurrentText(current_mic_name)
         self._widgets['mic_combo'] = mic_combo
         self._widgets['mic_names_to_id'] = {m['name']: m['id'] for m in mics}
+
+        mic_row_widget = QWidget()
+        mic_row_layout = QHBoxLayout(mic_row_widget)
+        mic_row_layout.setContentsMargins(0, 0, 0, 0)
+        mic_row_layout.setSpacing(6)
+        mic_row_layout.addWidget(mic_combo, stretch=1)
+        mic_refresh_btn = QPushButton("Refresh")
+        mic_refresh_btn.setFixedWidth(80)
+        mic_row_layout.addWidget(mic_refresh_btn)
+
         layout.addLayout(self._setting_row(
             "Microphone",
             "Audio input device used for speech recognition",
-            mic_combo,
+            mic_row_widget,
         ))
+
+        mic_refresh_hint = QLabel("Stop dictation to refresh devices.")
+        mic_refresh_hint.setStyleSheet("color: #E0A030; font-size: 12px;")
+        mic_refresh_hint.setVisible(False)
+        layout.addWidget(mic_refresh_hint)
+
+        def _on_refresh_mics():
+            if self.app._is_audio_capture_active():
+                mic_refresh_hint.setVisible(True)
+                return
+            mic_refresh_hint.setVisible(False)
+            try:
+                fresh_mics = self.app.refresh_audio_devices()
+            except Exception as exc:
+                logger.debug(f"[MIC] refresh failed: {exc}")
+                return
+
+            preserved_name = mic_combo.currentText()
+            fresh_names = [m['name'] for m in fresh_mics]
+            mic_combo.blockSignals(True)
+            mic_combo.clear()
+            mic_combo.addItems(fresh_names if fresh_names else ["No microphones found"])
+            self._widgets['mic_names_to_id'] = {m['name']: m['id'] for m in fresh_mics}
+            idx = pick_index_by_name(fresh_mics, preserved_name)
+            if idx is not None:
+                mic_combo.setCurrentIndex(idx)
+            elif fresh_names:
+                mic_combo.setCurrentIndex(0)
+            mic_combo.blockSignals(False)
+
+        mic_refresh_btn.clicked.connect(_on_refresh_mics)
         layout.addSpacing(8)
 
         setup_btn = QPushButton("Run Mic Setup Guide...")
