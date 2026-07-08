@@ -48,7 +48,6 @@ DEFAULT_HEIGHT = 650
 MIN_WIDTH      = 700
 MIN_HEIGHT     = 500
 STATUS_POLL_MS = 2000
-PREVIEW_CHARS  = 40
 SIDEBAR_W      = 180
 HISTORY_LIMIT  = 500
 
@@ -208,6 +207,39 @@ def _label(text, color=_TEXT_SEC, size=11, bold=False):
         " background: transparent;"
     )
     return lbl
+
+
+def _status_segment(label_text: str, value_text: str = "..."):
+    """Muted small-caps label + primary-colored value, e.g. 'MODE  Hold'.
+
+    Returns (container_widget, value_label) so callers can update just the
+    value later without rebuilding the segment.
+    """
+    w = QWidget()
+    w.setStyleSheet("background: transparent;")
+    lay = QHBoxLayout(w)
+    lay.setContentsMargins(0, 0, 0, 0)
+    lay.setSpacing(6)
+    label = QLabel(label_text.upper())
+    label.setStyleSheet(
+        f"color: {_TEXT_SEC}; font-size: 11px; font-weight: 700;"
+        f" letter-spacing: 0.06em; background: transparent;"
+    )
+    value = QLabel(value_text)
+    value.setStyleSheet(
+        f"color: {_TEXT_PRI}; font-size: 14px; font-weight: 500; background: transparent;"
+    )
+    lay.addWidget(label)
+    lay.addWidget(value)
+    return w, value
+
+
+def _status_separator() -> QFrame:
+    line = QFrame()
+    line.setFrameShape(QFrame.Shape.VLine)
+    line.setFixedHeight(16)
+    line.setStyleSheet(f"color: {_BORDER}; background: {_BORDER}; max-width: 1px; border: none;")
+    return line
 
 
 # ---------------------------------------------------------------------------
@@ -502,35 +534,45 @@ class _MainWindow(QMainWindow):
         blay.addWidget(self._stack, stretch=1)
         outer.addWidget(body, stretch=1)
 
-        # Status bar
+        # Status bar -- separated segments (muted small-caps label + primary
+        # value), not one combined "mode: X" string. Real vertical padding
+        # (6-8px) instead of the old 0px-vertical/horizontal-only padding.
         sb = QStatusBar()
         sb.setSizeGripEnabled(False)
+        sb.setStyleSheet(f"padding: 6px 8px;")
         self.setStatusBar(sb)
-        self._lbl_mode  = QLabel("mode: ...")
-        self._lbl_wake  = QLabel("wake: ...")
-        self._lbl_mic   = QLabel("mic: ...")
-        self._lbl_prev  = QLabel("")
-        self._lbl_prev.setAlignment(Qt.AlignRight)
-        for lbl in (self._lbl_mode, self._lbl_wake, self._lbl_mic, self._lbl_prev):
-            lbl.setStyleSheet(f"color: {_TEXT_SEC}; font-size: 11px; padding: 0 6px;")
-        sb.addWidget(self._lbl_mode)
-        sb.addWidget(self._lbl_wake)
-        sb.addWidget(self._lbl_mic)
+
+        mode_w, self._lbl_mode = _status_segment("Mode")
+        wake_w, self._lbl_wake = _status_segment("Wake")
+        mic_w,  self._lbl_mic  = _status_segment("Mic")
+
+        sb.addWidget(mode_w)
+        sb.addWidget(_status_separator())
+        sb.addWidget(wake_w)
+        sb.addWidget(_status_separator())
+        sb.addWidget(mic_w)
+
+        self._lbl_prev = QLabel("")
+        self._lbl_prev.setAlignment(Qt.AlignmentFlag.AlignRight)
+        self._lbl_prev.setStyleSheet(
+            f"color: {_TEXT_SEC}; font-size: 14px; background: transparent;"
+        )
         sb.addPermanentWidget(self._lbl_prev)
 
     @staticmethod
     def _nav_style(active: bool) -> str:
         if active:
-            return (f"background: {_ACCENT_DIM}; color: {_ACCENT};"
+            return (f"QPushButton {{ background: {_ACCENT_DIM}; color: {_ACCENT};"
                     f" border: none; border-left: 3px solid {_ACCENT};"
-                    f" text-align: left; padding-left: 14px;"
+                    f" text-align: left; padding-left: 18px;"
                     f" font-size: 13px; font-weight: 600;"
-                    f" border-radius: 0;")
-        return (f"background: transparent; color: {_TEXT_SEC};"
+                    f" border-radius: 0; }}")
+        return (f"QPushButton {{ background: transparent; color: {_TEXT_SEC};"
                 f" border: none; border-left: 3px solid transparent;"
-                f" text-align: left; padding-left: 14px;"
+                f" text-align: left; padding-left: 18px;"
                 f" font-size: 13px; font-weight: 600;"
-                f" border-radius: 0;")
+                f" border-radius: 0; }}"
+                f"QPushButton:hover {{ background: {_ELEVATED}; color: {_TEXT_PRI}; }}")
 
     # ---- Navigation ---------------------------------------------------------
 
@@ -571,22 +613,21 @@ class _MainWindow(QMainWindow):
         cfg = getattr(self._app, 'config', {}) or {}
 
         mode = cfg.get('mode', 'hold').title()
-        self._lbl_mode.setText(f"mode: {mode}")
+        self._lbl_mode.setText(mode)
 
         wake_on = cfg.get('wake_word_enabled', False)
         phrase  = cfg.get('wake_word_config', {}).get('phrase', 'samsara')
-        self._lbl_wake.setText(
-            f"wake: {phrase} (on)" if wake_on else "wake: off")
+        self._lbl_wake.setText(f"{phrase} (on)" if wake_on else "Off")
 
         mic_id   = cfg.get('microphone')
-        mic_name = "default"
+        mic_name = "Default"
         for m in getattr(self._app, 'available_mics', []) or []:
             if m.get('id') == mic_id:
-                mic_name = m.get('name', 'default')
+                mic_name = m.get('name', 'Default')
                 break
         if len(mic_name) > 36:
             mic_name = mic_name[:35] + '...'
-        self._lbl_mic.setText(f"mic: {mic_name}")
+        self._lbl_mic.setText(mic_name)
 
         if getattr(self._app, 'snoozed', False):
             self._badge.setText("snoozed")
@@ -605,9 +646,17 @@ class _MainWindow(QMainWindow):
     @Slot(str)
     def _on_dictation(self, text: str):
         preview = text.replace('\n', ' ').strip()
-        if len(preview) > PREVIEW_CHARS:
-            preview = preview[:PREVIEW_CHARS - 1] + '...'
-        self._lbl_prev.setText(f"Last: {preview}" if preview else "")
+        if preview:
+            # Graceful font-metric elision (not a fixed char-count cutoff) --
+            # full text still available via tooltip on hover.
+            fm = self._lbl_prev.fontMetrics()
+            available = max(self._lbl_prev.width(), 220) - 40
+            elided = fm.elidedText(preview, Qt.TextElideMode.ElideRight, available)
+            self._lbl_prev.setText(f"Last: {elided}")
+            self._lbl_prev.setToolTip(preview)
+        else:
+            self._lbl_prev.setText("")
+            self._lbl_prev.setToolTip("")
 
         panel = self._panel_cache.get("History")
         if panel is not None and self._stack.currentWidget() is panel:

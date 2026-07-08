@@ -136,6 +136,36 @@ class HistoryManager:
                 LIMIT ? OFFSET ?
             """, (status, limit, offset)).fetchall()
 
+    def recent_windowed(self, search=None, entry_type=None, limit=200, before_id=None):
+        """Unified windowed query for the list-style history view: optional
+        substring search, optional entry_type filter (dictation/command/
+        wake_command/failed), and before_id-based "load older" pagination --
+        all pushed to SQL rather than filtered client-side.
+
+        Ordered by id DESC (not timestamp DESC like the older methods above)
+        because before_id IS the pagination cursor -- keeping the order key
+        and the cursor key the same column avoids skipped/duplicate rows
+        across pages if two entries ever share a timestamp.
+        """
+        clauses = []
+        params = []
+        if search:
+            clauses.append("(raw_text LIKE ? OR display_text LIKE ?)")
+            params.extend([f"%{search}%", f"%{search}%"])
+        if entry_type:
+            clauses.append("entry_type = ?")
+            params.append(entry_type)
+        if before_id is not None:
+            clauses.append("id < ?")
+            params.append(before_id)
+        where = f"WHERE {' AND '.join(clauses)}" if clauses else ""
+        params.append(limit)
+        with self._lock:
+            return self._conn.execute(
+                f"SELECT * FROM history {where} ORDER BY id DESC LIMIT ?",
+                params,
+            ).fetchall()
+
     def get_sessions(self, limit=20):
         """Return distinct sessions ordered newest first, with start time and entry count."""
         with self._lock:

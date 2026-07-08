@@ -404,6 +404,7 @@ from samsara.cleanup import clean_text
 from samsara.smart_corrections import smart_correct
 from samsara import diagnostics
 from samsara.history import HistoryManager
+from samsara.history_store import HistoryStore
 from samsara.wake_word_matcher import match_wake_phrase
 from samsara.wake_corrections import apply_corrections as apply_wake_corrections, was_corrected
 from samsara.command_parser import parse_wake_command, normalize_command_text, strip_wake_echoes
@@ -1463,6 +1464,11 @@ class DictationApp:
         except Exception as e:
             logger.exception(f"[HISTORY] Could not open persistent history: {e}")
             self.history_db = None
+        # Thin task-shaped façade (append/query/delete/clear) over the same
+        # HistoryManager instance above -- see samsara/history_store.py.
+        # Not a second database; the redesigned history list view reads
+        # through this instead of history_db's richer session-tracking API.
+        self.history_store = HistoryStore(self.history_db)
         _boot("history / SQLite init")
         _bdiag("history / SQLite init")
 

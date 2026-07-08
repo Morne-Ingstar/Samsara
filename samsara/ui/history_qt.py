@@ -1,21 +1,26 @@
 """
 PySide6 dictation history window for Samsara.
 
-Reads from app.history_db (HistoryManager / SQLite) with a fallback
-to the legacy app.history list.  Runs on its own daemon thread --
-same pattern as settings_qt.py.
+Wispr-Flow-style list, not a table: no gridlines, no per-cell boxes, rows
+grouped under day-section headers. Spacing and type hierarchy do the work,
+not cell borders.
+
+Reads through app.history_store (samsara/history_store.py, a thin façade
+over the SQLite-backed HistoryManager) with a fallback to the legacy
+app.history list only when history_store itself is unavailable (not merely
+when a query returns zero rows -- an empty-but-working history should show
+the empty state, not synthesize from a possibly-stale legacy list).
 """
 
-import threading
-from datetime import datetime
+from datetime import datetime, timedelta
 
-from PySide6.QtCore import Qt, QTimer, Signal
-from PySide6.QtGui import QBrush, QColor
+from PySide6.QtCore import Qt, Signal, QTimer, QSize
+from PySide6.QtGui import QFontMetrics
 from PySide6.QtWidgets import (
     QApplication, QMainWindow, QWidget, QVBoxLayout, QHBoxLayout,
-    QTableWidget, QTableWidgetItem, QHeaderView,
-    QLineEdit, QComboBox, QPushButton, QLabel, QPlainTextEdit,
-    QFrame, QMenu, QMessageBox,
+    QListWidget, QListWidgetItem, QAbstractItemView,
+    QLineEdit, QComboBox, QPushButton, QLabel,
+    QMenu, QMessageBox, QSizePolicy,
 )
 
 from samsara.ui import qt_runtime, theme
@@ -26,176 +31,250 @@ logger = get_logger(__name__)
 
 
 # ---------------------------------------------------------------------------
-# Colour palette -- sourced from samsara.ui.theme, the shared design system.
-# Local aliases kept so the ~30 usage sites in the stylesheet below don't
-# need touching; only the source of truth moved, not the resulting look.
-# _ACCENT_DIM has no theme.py equivalent yet -- it's a pre-theme constant
-# also duplicated as-is in main_window_qt.py, command_cheatsheet_qt.py, and
-# wake_word_debug_qt.py (none of which have migrated to theme.py either),
-# so it stays a local literal rather than a one-off token only this file
-# would use.
+# Layout constants
 # ---------------------------------------------------------------------------
 
-_BG         = theme.BG0
-_SURFACE    = theme.BG1
-_ELEVATED   = theme.BG2
-_BORDER     = theme.BORDER
-_ACCENT     = theme.ACCENT
-_ACCENT_DIM = "#1a3a42"
-_TEXT_PRI   = theme.TEXT_PRIMARY
-_TEXT_SEC   = theme.TEXT_SECONDARY
-_ERROR      = theme.ERROR
+_PAGE_SIZE = 200
+_ROW_HEIGHT = 44          # >= 40px accessibility minimum
+_HEADER_HEIGHT = 28
+_LOAD_OLDER_HEIGHT = 36
+_TIME_COL_WIDTH = 56
+_TOAST_MS = 1500          # transient "Copied" status duration
+
+_TYPE_PILL_LABELS = {
+    'command': 'Command',
+    'wake_command': 'Wake',
+    'failed': 'Failed',
+}
 
 
 # ---------------------------------------------------------------------------
-# Stylesheet
+# Pure helpers -- no Qt dependency, directly unit-testable
 # ---------------------------------------------------------------------------
 
-_STYLESHEET = f"""
+def day_label(dt: datetime, now: "datetime | None" = None) -> str:
+    """Section-header label for the day `dt` falls on, relative to `now`.
+
+    "Today" / "Yesterday" / "Mon, Jul 6" (this year) / "Jul 6, 2025"
+    (other years). Built from plain int day-of-month (dt.day) rather than
+    a platform-specific strftime no-leading-zero flag (%-d is glibc-only,
+    %#d is the MSVCRT equivalent -- neither is portable, so this avoids
+    the flag entirely).
+    """
+    if now is None:
+        now = datetime.now()
+    d, today = dt.date(), now.date()
+    if d == today:
+        return "Today"
+    if d == today - timedelta(days=1):
+        return "Yesterday"
+    month = dt.strftime("%b")
+    if d.year == today.year:
+        weekday = dt.strftime("%a")
+        return f"{weekday}, {month} {dt.day}"
+    return f"{month} {dt.day}, {d.year}"
+
+
+def _pill_for_row(entry_type: str, status: str):
+    """Return (label, color) for the row's type pill, or None to show no
+    pill at all (the common case -- plain successful dictation)."""
+    if entry_type in _TYPE_PILL_LABELS:
+        color = theme.ERROR if entry_type == 'failed' else theme.ACCENT
+        return _TYPE_PILL_LABELS[entry_type], color
+    if status == 'failed':
+        return 'Failed', theme.ERROR
+    return None
+
+
+def _parse_ts(raw_ts: str) -> "datetime | None":
+    try:
+        return datetime.fromisoformat(raw_ts)
+    except Exception:
+        return None
+
+
+# ---------------------------------------------------------------------------
+# Stylesheet -- zero visible cell borders/gridlines; hover/selected via QSS
+# on the QListWidget item itself (custom row widgets are transparent so this
+# shows through).
+# ---------------------------------------------------------------------------
+
+def _build_stylesheet() -> str:
+    return f"""
 QMainWindow, QWidget {{
-    background-color: {_BG};
-    color: {_TEXT_PRI};
+    background-color: {theme.BG0};
+    color: {theme.TEXT_PRIMARY};
     font-family: {theme.FONT_FAMILY};
     font-size: {theme.FONT_SIZE_BODY}px;
 }}
-QTableWidget {{
-    background-color: {_SURFACE};
-    alternate-background-color: rgba(255,255,255,0.022);
-    gridline-color: transparent;
-    color: {_TEXT_PRI};
+QListWidget {{
+    background-color: {theme.BG0};
     border: none;
     outline: none;
 }}
-QTableWidget::item {{
-    padding: 6px 10px;
+QListWidget::item {{
     border: none;
+    padding: 0px;
 }}
-QTableWidget::item:selected {{
-    background-color: {_ACCENT_DIM};
-    color: {_ACCENT};
+QListWidget::item:hover {{
+    background-color: {theme.BG2};
 }}
-QHeaderView::section {{
-    background-color: {_SURFACE};
-    color: {_TEXT_SEC};
-    padding: 5px 10px;
-    border: none;
-    border-bottom: 1px solid {_BORDER};
-    font-size: 11px;
-    font-weight: 600;
-    text-transform: uppercase;
-    letter-spacing: 0.04em;
+QListWidget::item:selected {{
+    background-color: rgba(92, 196, 212, 0.14);
 }}
 QLineEdit {{
-    background-color: {_SURFACE};
-    border: 1px solid {_BORDER};
-    border-radius: 4px;
-    padding: 6px 10px;
-    color: {_TEXT_PRI};
-    font-size: 12px;
+    background-color: {theme.BG1};
+    border: 1px solid {theme.BORDER};
+    border-radius: 8px;
+    padding: 8px 12px;
+    color: {theme.TEXT_PRIMARY};
+    font-size: {theme.FONT_SIZE_BODY}px;
 }}
-QLineEdit:focus {{
-    border-color: {_ACCENT};
-}}
+QLineEdit:focus {{ border-color: {theme.ACCENT}; }}
 QComboBox {{
-    background-color: {_SURFACE};
-    border: 1px solid {_BORDER};
-    border-radius: 4px;
-    padding: 6px 10px;
-    color: {_TEXT_PRI};
-    font-size: 12px;
+    background-color: {theme.BG1};
+    border: 1px solid {theme.BORDER};
+    border-radius: 8px;
+    padding: 8px 12px;
+    color: {theme.TEXT_PRIMARY};
+    font-size: {theme.FONT_SIZE_BODY}px;
     min-width: 110px;
 }}
 QComboBox::drop-down {{ border: none; width: 22px; }}
 QComboBox QAbstractItemView {{
-    background-color: {_ELEVATED};
-    color: {_TEXT_PRI};
-    selection-background-color: {_ACCENT_DIM};
-    border: 1px solid {_BORDER};
+    background-color: {theme.BG2};
+    color: {theme.TEXT_PRIMARY};
+    selection-background-color: rgba(92, 196, 212, 0.2);
+    border: 1px solid {theme.BORDER};
 }}
 QPushButton {{
-    background-color: {_SURFACE};
-    border: 1px solid {_BORDER};
-    border-radius: 4px;
-    color: {_TEXT_PRI};
-    padding: 5px 14px;
-    font-size: 12px;
+    background-color: {theme.BG1};
+    border: 1px solid {theme.BORDER};
+    border-radius: 8px;
+    color: {theme.TEXT_PRIMARY};
+    padding: 8px 16px;
+    font-size: {theme.FONT_SIZE_BODY}px;
 }}
 QPushButton:hover {{
-    background-color: {_ELEVATED};
-    border-color: {_ACCENT};
+    background-color: {theme.BG2};
+    border-color: {theme.ACCENT};
 }}
 QPushButton:pressed {{
-    background-color: {_ACCENT_DIM};
+    background-color: rgba(92, 196, 212, 0.18);
 }}
 QPushButton[class="danger"] {{
-    background-color: rgba(200,60,60,0.12);
-    color: {_ERROR};
-    border: 1px solid rgba(200,60,60,0.28);
+    color: {theme.ERROR};
+    border-color: rgba(248, 113, 113, 0.35);
 }}
 QPushButton[class="danger"]:hover {{
-    background-color: rgba(200,60,60,0.22);
-    border-color: {_ERROR};
-}}
-QPlainTextEdit {{
-    background-color: {_ELEVATED};
-    border: none;
-    color: {_TEXT_PRI};
-    font-family: 'Consolas', 'Courier New', monospace;
-    font-size: 12px;
-    padding: 8px 10px;
+    background-color: rgba(248, 113, 113, 0.12);
+    border-color: {theme.ERROR};
 }}
 QMenu {{
-    background-color: {_ELEVATED};
-    color: {_TEXT_PRI};
-    border: 1px solid {_BORDER};
+    background-color: {theme.BG2};
+    color: {theme.TEXT_PRIMARY};
+    border: 1px solid {theme.BORDER};
     padding: 4px 0;
-    font-size: 12px;
+    font-size: {theme.FONT_SIZE_CAPTION}px;
 }}
-QMenu::item {{
-    padding: 5px 24px 5px 16px;
-}}
+QMenu::item {{ padding: 6px 24px 6px 16px; }}
 QMenu::item:selected {{
-    background-color: {_ACCENT_DIM};
-    color: {_ACCENT};
-}}
-QMenu::separator {{
-    height: 1px;
-    background-color: {_BORDER};
-    margin: 2px 8px;
+    background-color: rgba(92, 196, 212, 0.16);
+    color: {theme.ACCENT};
 }}
 """
 
-# Row foreground colour by entry type / status
-_COLORS = {
-    'command':      QColor(_ACCENT),
-    'wake_command': QColor(_ACCENT),
-    'failed':       QColor(_ERROR),
-}
 
-
-def _fmt_ts(ts: str) -> str:
-    """ISO timestamp -> 'YYYY-MM-DD HH:MM:SS' for table; lexicographic == chronological."""
-    try:
-        return datetime.fromisoformat(ts).strftime("%Y-%m-%d %H:%M:%S")
-    except Exception:
-        return ts[:19] if ts else ""
-
-
-def _sec_btn(label: str, width: int = 0) -> QPushButton:
-    b = QPushButton(label)
-    if width:
-        b.setFixedWidth(width)
-    return b
-
-
-def _danger_btn(label: str, width: int = 0) -> QPushButton:
+def _danger_btn(label: str) -> QPushButton:
     b = QPushButton(label)
     b.setProperty("class", "danger")
     b.style().unpolish(b)
     b.style().polish(b)
-    if width:
-        b.setFixedWidth(width)
     return b
+
+
+# ---------------------------------------------------------------------------
+# Row widgets
+# ---------------------------------------------------------------------------
+
+def _build_day_header_widget(label: str) -> QWidget:
+    w = QWidget()
+    w.setStyleSheet("background: transparent;")
+    lay = QHBoxLayout(w)
+    lay.setContentsMargins(12, 8, 12, 4)
+    lbl = QLabel(label)
+    lbl.setStyleSheet(
+        f"color: {theme.TEXT_SECONDARY}; font-size: {theme.FONT_SIZE_CAPTION}px;"
+        f"font-weight: 700; text-transform: uppercase; letter-spacing: 0.06em;"
+    )
+    lay.addWidget(lbl)
+    lay.addStretch()
+    return w
+
+
+def _build_row_widget(display_text: str, raw_ts: str, entry_type: str, status: str) -> QWidget:
+    w = QWidget()
+    w.setStyleSheet("background: transparent;")
+    lay = QHBoxLayout(w)
+    lay.setContentsMargins(12, 0, 12, 0)
+    lay.setSpacing(10)
+
+    dt = _parse_ts(raw_ts)
+    time_lbl = QLabel(dt.strftime("%H:%M") if dt else "")
+    time_lbl.setFixedWidth(_TIME_COL_WIDTH)
+    time_lbl.setStyleSheet(
+        f"color: {theme.TEXT_SECONDARY}; font-size: {theme.FONT_SIZE_CAPTION}px;"
+    )
+    lay.addWidget(time_lbl)
+
+    text_lbl = QLabel(display_text)
+    text_lbl.setStyleSheet(f"color: {theme.TEXT_PRIMARY}; font-size: {theme.FONT_SIZE_BODY}px;")
+    text_lbl.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Preferred)
+    text_lbl.setToolTip(display_text)
+    text_lbl._full_text = display_text          # for re-elision on resize
+    lay.addWidget(text_lbl, stretch=1)
+
+    pill = _pill_for_row(entry_type, status)
+    if pill is not None:
+        pill_label, pill_color = pill
+        badge = QLabel(pill_label)
+        badge.setStyleSheet(
+            f"color: {pill_color}; font-size: {theme.FONT_SIZE_CAPTION}px; font-weight: 600;"
+            f"background: rgba(92, 196, 212, 0.12); border-radius: 8px; padding: 2px 8px;"
+        )
+        lay.addWidget(badge)
+
+    w._text_label = text_lbl
+    return w
+
+
+def _build_load_older_widget(on_click) -> QWidget:
+    w = QWidget()
+    w.setStyleSheet("background: transparent;")
+    lay = QHBoxLayout(w)
+    lay.setContentsMargins(12, 4, 12, 4)
+    lay.addStretch()
+    btn = QPushButton("Load older")
+    btn.setStyleSheet(
+        f"QPushButton {{ background: transparent; color: {theme.ACCENT};"
+        f" border: none; font-size: {theme.FONT_SIZE_CAPTION}px; }}"
+        f"QPushButton:hover {{ text-decoration: underline; }}"
+    )
+    btn.clicked.connect(on_click)
+    lay.addWidget(btn)
+    lay.addStretch()
+    return w
+
+
+def _build_empty_state_widget() -> QWidget:
+    w = QWidget()
+    lay = QVBoxLayout(w)
+    lay.setAlignment(Qt.AlignmentFlag.AlignCenter)
+    lbl = QLabel("Nothing yet — dictate something.")
+    lbl.setAlignment(Qt.AlignmentFlag.AlignCenter)
+    lbl.setStyleSheet(f"color: {theme.TEXT_SECONDARY}; font-size: {theme.FONT_SIZE_HEADING}px;")
+    lay.addWidget(lbl)
+    return w
 
 
 # ---------------------------------------------------------------------------
@@ -228,32 +307,41 @@ class HistoryQt:
 # ---------------------------------------------------------------------------
 
 class _HistoryWindow(QMainWindow):
-    # Emitted from clipboard threads to update the status label safely
+    # Kept for parity with prior status-update plumbing; all current call
+    # sites update the label directly from the Qt thread, but routing
+    # through a signal costs nothing and protects against a future
+    # off-thread caller.
     _status_signal = Signal(str)
 
     def __init__(self, app):
         super().__init__()
         self.app = app
-        self._db = getattr(app, 'history_db', None)
+        self._store = getattr(app, 'history_store', None)
         self._status_signal.connect(self._set_status)
 
+        self._rows_by_item_id = {}   # QListWidgetItem id() -> row dict
+        self._oldest_loaded_id = None
+        self._has_more = False
+        self._empty_item = None
+        self._load_older_item = None
+
         self.setWindowTitle("Dictation History")
-        self.resize(820, 580)
-        self.setMinimumSize(500, 380)
-        self.setStyleSheet(_STYLESHEET)
+        self.resize(860, 620)
+        self.setMinimumSize(520, 400)
+        self.setStyleSheet(_build_stylesheet())
 
         central = QWidget()
         self.setCentralWidget(central)
         root = QVBoxLayout(central)
-        root.setContentsMargins(12, 10, 12, 10)
-        root.setSpacing(8)
+        root.setContentsMargins(14, 12, 14, 12)
+        root.setSpacing(10)
 
-        # ---- Search + filter row ----------------------------------------
+        # ---- Search + filter + actions row -------------------------------
         top_row = QHBoxLayout()
-        top_row.setSpacing(6)
+        top_row.setSpacing(8)
 
         self._search = QLineEdit()
-        self._search.setPlaceholderText("Search history...")
+        self._search.setPlaceholderText("Search history…")
         self._search.textChanged.connect(lambda _: self._reload())
         top_row.addWidget(self._search, stretch=1)
 
@@ -262,88 +350,39 @@ class _HistoryWindow(QMainWindow):
         self._filter.currentTextChanged.connect(lambda _: self._reload())
         top_row.addWidget(self._filter)
 
-        refresh_btn = _sec_btn("Refresh", 80)
+        refresh_btn = QPushButton("Refresh")
         refresh_btn.clicked.connect(self._reload)
         top_row.addWidget(refresh_btn)
 
-        root.addLayout(top_row)
-
-        # ---- History table ----------------------------------------------
-        self._table = QTableWidget(0, 4)
-        self._table.setHorizontalHeaderLabels(["Date / Time", "Type", "Mode", "Text"])
-        hh = self._table.horizontalHeader()
-        hh.setSectionResizeMode(0, QHeaderView.ResizeMode.ResizeToContents)
-        hh.setSectionResizeMode(1, QHeaderView.ResizeMode.ResizeToContents)
-        hh.setSectionResizeMode(2, QHeaderView.ResizeMode.ResizeToContents)
-        hh.setSectionResizeMode(3, QHeaderView.ResizeMode.Stretch)
-        self._table.verticalHeader().setVisible(False)
-        self._table.verticalHeader().setDefaultSectionSize(30)
-        self._table.setEditTriggers(QTableWidget.EditTrigger.NoEditTriggers)
-        self._table.setSelectionBehavior(QTableWidget.SelectionBehavior.SelectRows)
-        self._table.setSelectionMode(QTableWidget.SelectionMode.SingleSelection)
-        self._table.setAlternatingRowColors(True)
-        self._table.setShowGrid(False)
-        self._table.currentCellChanged.connect(
-            lambda row, _col, _prev_row, _prev_col: self._on_row_changed(row)
-        )
-
-        # Right-click context menu
-        self._table.setContextMenuPolicy(Qt.ContextMenuPolicy.CustomContextMenu)
-        self._table.customContextMenuRequested.connect(self._on_context_menu)
-        # Double-click to copy
-        self._table.cellDoubleClicked.connect(self._on_cell_double_clicked)
-
-        root.addWidget(self._table, stretch=1)
-
-        # ---- Detail pane ------------------------------------------------
-        detail_frame = QFrame()
-        detail_frame.setObjectName("detail_frame")
-        detail_frame.setStyleSheet(
-            f"QFrame#detail_frame {{ background-color: {_ELEVATED};"
-            f" border-top: 1px solid {_BORDER}; }}"
-        )
-        detail_frame_layout = QVBoxLayout(detail_frame)
-        detail_frame_layout.setContentsMargins(0, 0, 0, 0)
-        detail_frame_layout.setSpacing(0)
-        self._detail = QPlainTextEdit()
-        self._detail.setReadOnly(True)
-        self._detail.setFixedHeight(76)
-        self._detail.setPlaceholderText("Select a row -- or double-click to copy.")
-        detail_frame_layout.addWidget(self._detail)
-        root.addWidget(detail_frame)
-
-        # ---- Button bar -------------------------------------------------
-        bar = QHBoxLayout()
-        bar.setSpacing(6)
-        bar.setContentsMargins(0, 2, 0, 0)
-
-        self._status_lbl = QLabel("")
-        self._status_lbl.setStyleSheet(f"color: {_TEXT_SEC}; font-size: 12px;")
-        bar.addWidget(self._status_lbl)
-        bar.addStretch()
-
-        copy_btn = _sec_btn("Copy")
+        copy_btn = QPushButton("Copy")
         copy_btn.clicked.connect(self._copy_selected)
-        bar.addWidget(copy_btn)
-
-        copy_all_btn = _sec_btn("Copy All")
-        copy_all_btn.clicked.connect(self._copy_all)
-        bar.addWidget(copy_all_btn)
+        top_row.addWidget(copy_btn)
 
         del_btn = _danger_btn("Delete")
         del_btn.clicked.connect(self._delete_selected)
-        bar.addWidget(del_btn)
+        top_row.addWidget(del_btn)
 
         clear_btn = _danger_btn("Clear All")
         clear_btn.clicked.connect(self._clear_all)
-        bar.addWidget(clear_btn)
+        top_row.addWidget(clear_btn)
 
-        close_btn = QPushButton("Close")
-        close_btn.setFixedWidth(70)
-        close_btn.clicked.connect(self.close)
-        bar.addWidget(close_btn)
+        root.addLayout(top_row)
 
-        root.addLayout(bar)
+        # ---- List ---------------------------------------------------------
+        self._list = QListWidget()
+        self._list.setSelectionMode(QAbstractItemView.SelectionMode.SingleSelection)
+        self._list.setVerticalScrollMode(QAbstractItemView.ScrollMode.ScrollPerPixel)
+        self._list.itemDoubleClicked.connect(self._on_item_double_clicked)
+        self._list.setContextMenuPolicy(Qt.ContextMenuPolicy.CustomContextMenu)
+        self._list.customContextMenuRequested.connect(self._on_context_menu)
+        root.addWidget(self._list, stretch=1)
+
+        # ---- Status bar -----------------------------------------------------
+        self._status_lbl = QLabel("")
+        self._status_lbl.setStyleSheet(
+            f"color: {theme.TEXT_SECONDARY}; font-size: {theme.FONT_SIZE_CAPTION}px;"
+        )
+        root.addWidget(self._status_lbl)
 
         self._reload()
 
@@ -352,43 +391,53 @@ class _HistoryWindow(QMainWindow):
         e.ignore()
         self.hide()
 
+    def resizeEvent(self, e):
+        super().resizeEvent(e)
+        self._re_elide_visible_rows()
+
+    def keyPressEvent(self, e):
+        if e.key() in (Qt.Key.Key_Return, Qt.Key.Key_Enter):
+            item = self._list.currentItem()
+            if item is not None and id(item) in self._rows_by_item_id:
+                self._copy_row_item(item)
+                return
+        super().keyPressEvent(e)
+
+    # ------------------------------------------------------------------
     # Data
     # ------------------------------------------------------------------
 
+    def _type_filter_value(self):
+        f = self._filter.currentText()
+        if f == "Commands":
+            return None  # client-side (two entry_types); handled in _reload
+        if f == "Dictation":
+            return "dictation"
+        if f == "Failed":
+            return "failed"
+        return None
+
     def _reload(self):
-        query   = self._search.text().strip()
+        """Fresh windowed load of the most recent page -- replaces the list."""
+        query = self._search.text().strip()
         filter_ = self._filter.currentText()
 
         rows = []
-        if self._db is not None:
-            try:
-                if query:
-                    rows = list(self._db.search(query, limit=200))
-                elif filter_ == "Failed":
-                    rows = list(self._db.recent_filtered("failed", limit=200))
-                else:
-                    rows = list(self._db.recent(limit=200))
-
-                if filter_ == "Commands":
-                    rows = [r for r in rows
-                            if r['entry_type'] in ('command', 'wake_command')]
-                elif filter_ == "Dictation":
-                    rows = [r for r in rows
-                            if r['entry_type'] not in ('command', 'wake_command')]
-            except Exception as exc:
-                print(f"[HISTORY] DB error: {exc}")
-
-        # Fallback to in-memory legacy list
-        if not rows:
+        if self._store is not None:
+            type_filter = None if filter_ == "Commands" else self._type_filter_value()
+            rows = self._store.query(
+                search=query or None, type_filter=type_filter, limit=_PAGE_SIZE,
+            )
+            if filter_ == "Commands":
+                rows = [r for r in rows if r['entry_type'] in ('command', 'wake_command')]
+        else:
+            # Legacy fallback -- only when history_store itself is
+            # unavailable, never merely because a query returned 0 rows.
             q_lower = query.lower()
             rows = [
                 {
-                    'id':         None,
-                    'timestamp':  ts,
-                    'entry_type': 'command' if is_cmd else 'dictation',
-                    'mode':       '',
-                    'display_text': text,
-                    'status':     'success',
+                    'id': None, 'timestamp': ts, 'entry_type': 'command' if is_cmd else 'dictation',
+                    'mode': '', 'display_text': text, 'raw_text': text, 'status': 'success',
                 }
                 for ts, text, is_cmd in reversed(getattr(self.app, 'history', []))
                 if not query or q_lower in text.lower()
@@ -398,163 +447,194 @@ class _HistoryWindow(QMainWindow):
             elif filter_ == "Dictation":
                 rows = [r for r in rows if r['entry_type'] == 'dictation']
 
-        self._table.setUpdatesEnabled(False)
-        self._table.setRowCount(0)
-        try:
-            for row in rows:
-                r = self._table.rowCount()
-                self._table.insertRow(r)
+        self._has_more = self._store is not None and len(rows) == _PAGE_SIZE
+        self._render_rows(rows, append=False)
 
-                # Col 0: timestamp -- UserRole = row_id, ToolTip = raw ISO for detail pane
-                raw_ts = str(row['timestamp'])
-                ts_item = QTableWidgetItem(_fmt_ts(raw_ts))
-                ts_item.setData(Qt.ItemDataRole.UserRole, row['id'])
-                ts_item.setToolTip(raw_ts)
-                self._table.setItem(r, 0, ts_item)
-
-                # Col 1: entry type
-                etype = str(row.get('entry_type', 'dictation'))
-                type_label = {
-                    'dictation':    'Dictation',
-                    'command':      'Command',
-                    'wake_command': 'Wake Cmd',
-                }.get(etype, etype.title())
-                self._table.setItem(r, 1, QTableWidgetItem(type_label))
-
-                # Col 2: mode
-                self._table.setItem(r, 2, QTableWidgetItem(
-                    str(row.get('mode', ''))
-                ))
-
-                # Col 3: text -- UserRole = full text for copy/detail operations
-                full = str(row.get('display_text', '') or row.get('raw_text', ''))
-                display = full if len(full) <= 90 else full[:87] + "..."
-                text_item = QTableWidgetItem(display)
-                text_item.setData(Qt.ItemDataRole.UserRole, full)
-                self._table.setItem(r, 3, text_item)
-
-                # Foreground colour by type / status
-                status = str(row.get('status', 'success'))
-                color = _COLORS.get(etype) or (_COLORS.get('failed') if status == 'failed' else None)
-                if color:
-                    brush = QBrush(color)
-                    for col in range(4):
-                        item = self._table.item(r, col)
-                        if item:
-                            item.setForeground(brush)
-        finally:
-            self._table.setUpdatesEnabled(True)
-
-        n = self._table.rowCount()
-        self._status_lbl.setText(f"{n} entr{'y' if n == 1 else 'ies'}")
-        self._detail.clear()
-
-    # ------------------------------------------------------------------
-    # Selection + full-text helpers
-    # ------------------------------------------------------------------
-
-    def _full_text_for_row(self, row: int) -> str:
-        """Return stored full text for table row index `row`."""
-        if row < 0:
-            return ""
-        item = self._table.item(row, 3)
-        return (item.data(Qt.ItemDataRole.UserRole) or item.text()) if item else ""
-
-    def _on_row_changed(self, row: int):
-        if row < 0:
-            self._detail.clear()
+    def _load_older(self):
+        if self._store is None or self._oldest_loaded_id is None:
             return
-        full_text = self._full_text_for_row(row)
-        ts_item = self._table.item(row, 0)
-        raw_ts = ts_item.toolTip() if ts_item else ""
-        if raw_ts:
-            self._detail.setPlainText(f"[{raw_ts}]\n{full_text}")
-        else:
-            self._detail.setPlainText(full_text)
+        query = self._search.text().strip()
+        filter_ = self._filter.currentText()
+        type_filter = None if filter_ == "Commands" else self._type_filter_value()
+        rows = self._store.query(
+            search=query or None, type_filter=type_filter, limit=_PAGE_SIZE,
+            before_id=self._oldest_loaded_id,
+        )
+        if filter_ == "Commands":
+            rows = [r for r in rows if r['entry_type'] in ('command', 'wake_command')]
+        self._has_more = len(rows) == _PAGE_SIZE
+        self._render_rows(rows, append=True)
 
-    def _current_row(self) -> int:
-        return self._table.currentRow()
+    def _render_rows(self, rows, append: bool):
+        # Normalize to plain dicts -- sqlite3.Row supports __getitem__ but
+        # NOT .get(), and the rest of this method relies on .get() for
+        # optional columns.
+        rows = [dict(r) for r in rows]
 
-    def _current_row_id(self):
-        row = self._current_row()
-        if row < 0:
+        self._list.setUpdatesEnabled(False)
+        try:
+            if not append:
+                self._list.clear()
+                self._rows_by_item_id = {}
+                self._last_day = None
+                self._empty_item = None
+                self._load_older_item = None
+            else:
+                # Remove the trailing "Load older" row -- it gets re-added
+                # (or omitted) at the new end after this batch is appended.
+                if self._load_older_item is not None:
+                    row_idx = self._list.row(self._load_older_item)
+                    if row_idx >= 0:
+                        self._list.takeItem(row_idx)
+                    self._load_older_item = None
+
+            last_day = getattr(self, '_last_day', None)
+            for row in rows:
+                raw_ts = str(row['timestamp'])
+                dt = _parse_ts(raw_ts)
+                if dt is not None:
+                    label = day_label(dt)
+                    if label != last_day:
+                        header_item = QListWidgetItem()
+                        header_item.setFlags(Qt.ItemFlag.NoItemFlags)
+                        header_item.setSizeHint(_size(_HEADER_HEIGHT))
+                        self._list.addItem(header_item)
+                        self._list.setItemWidget(header_item, _build_day_header_widget(label))
+                        last_day = label
+
+                entry_type = str(row.get('entry_type', 'dictation'))
+                status = str(row.get('status', 'success'))
+                full_text = str(row.get('display_text', '') or row.get('raw_text', ''))
+
+                item = QListWidgetItem()
+                item.setSizeHint(_size(_ROW_HEIGHT))
+                item.setData(Qt.ItemDataRole.UserRole, {
+                    'id': row['id'], 'text': full_text, 'timestamp': raw_ts,
+                    'entry_type': entry_type, 'status': status,
+                })
+                self._list.addItem(item)
+                row_widget = _build_row_widget(full_text, raw_ts, entry_type, status)
+                self._list.setItemWidget(item, row_widget)
+                self._rows_by_item_id[id(item)] = row['id']
+
+                if row.get('id') is not None:
+                    self._oldest_loaded_id = row['id']
+
+            self._last_day = last_day
+
+            if rows and self._has_more:
+                self._load_older_item = QListWidgetItem()
+                self._load_older_item.setFlags(Qt.ItemFlag.NoItemFlags)
+                self._load_older_item.setSizeHint(_size(_LOAD_OLDER_HEIGHT))
+                self._list.addItem(self._load_older_item)
+                self._list.setItemWidget(
+                    self._load_older_item, _build_load_older_widget(self._load_older)
+                )
+
+            if self._list.count() == 0:
+                self._empty_item = QListWidgetItem()
+                self._empty_item.setFlags(Qt.ItemFlag.NoItemFlags)
+                self._empty_item.setSizeHint(_size(120))
+                self._list.addItem(self._empty_item)
+                self._list.setItemWidget(self._empty_item, _build_empty_state_widget())
+        finally:
+            self._list.setUpdatesEnabled(True)
+
+        self._re_elide_visible_rows()
+        n = len([k for k in self._rows_by_item_id])
+        self._status_lbl.setText(f"{n} entr{'y' if n == 1 else 'ies'} loaded")
+
+    def _re_elide_visible_rows(self):
+        available = max(self._list.viewport().width() - _TIME_COL_WIDTH - 70, 40)
+        for i in range(self._list.count()):
+            item = self._list.item(i)
+            widget = self._list.itemWidget(item)
+            label = getattr(widget, '_text_label', None)
+            if label is None:
+                continue
+            full = getattr(label, '_full_text', None)
+            if full is None:
+                continue
+            fm = QFontMetrics(label.font())
+            elided = fm.elidedText(full, Qt.TextElideMode.ElideRight, available)
+            label.setText(elided)
+
+    # ------------------------------------------------------------------
+    # Row lookup helpers
+    # ------------------------------------------------------------------
+
+    def _row_data_for_item(self, item):
+        if item is None:
             return None
-        item = self._table.item(row, 0)
-        return item.data(Qt.ItemDataRole.UserRole) if item else None
+        return item.data(Qt.ItemDataRole.UserRole)
 
-    def _current_full_text(self) -> str:
-        return self._full_text_for_row(self._current_row())
+    def _current_row_data(self):
+        return self._row_data_for_item(self._list.currentItem())
 
     # ------------------------------------------------------------------
-    # Context menu + double-click affordances (Item A)
+    # Copy / actions
     # ------------------------------------------------------------------
 
-    def _on_cell_double_clicked(self, row: int, _col: int):
-        """Double-click on any cell copies that row's full text."""
-        text = self._full_text_for_row(row)
-        if text:
-            QApplication.clipboard().setText(text)
-            self._set_status("Copied to clipboard.")
+    def _copy_row_item(self, item):
+        data = self._row_data_for_item(item)
+        if not data or not data.get('text'):
+            return
+        QApplication.clipboard().setText(data['text'])
+        self._show_toast("Copied")
+
+    def _on_item_double_clicked(self, item):
+        self._copy_row_item(item)
 
     def _on_context_menu(self, pos):
-        """Right-click context menu: resolves row under cursor, not current selection."""
-        row = self._table.rowAt(pos.y())
-        if row < 0:
+        item = self._list.itemAt(pos)
+        if item is None or self._row_data_for_item(item) is None:
             return
-        self._table.selectRow(row)
+        self._list.setCurrentItem(item)
         menu = QMenu(self)
-        copy_act = menu.addAction("Copy")
+        copy_act = menu.addAction("Copy text")
         menu.addSeparator()
-        del_act = menu.addAction("Delete")
-        action = menu.exec(self._table.viewport().mapToGlobal(pos))
+        del_act = menu.addAction("Delete entry")
+        action = menu.exec(self._list.viewport().mapToGlobal(pos))
         if action == copy_act:
-            text = self._full_text_for_row(row)
-            if text:
-                QApplication.clipboard().setText(text)
-                self._set_status("Copied to clipboard.")
+            self._copy_row_item(item)
         elif action == del_act:
-            self._delete_selected()
-
-    # ------------------------------------------------------------------
-    # Actions
-    # ------------------------------------------------------------------
+            self._delete_item(item)
 
     def _copy_selected(self):
-        text = self._current_full_text()
-        if not text:
-            QMessageBox.information(self, "No Selection", "Select a row to copy.")
+        data = self._current_row_data()
+        if not data or not data.get('text'):
+            QMessageBox.information(self, "No Selection", "Select an entry to copy.")
             return
-        QApplication.clipboard().setText(text)
-        self._set_status("Copied to clipboard.")
+        QApplication.clipboard().setText(data['text'])
+        self._show_toast("Copied")
 
-    def _copy_all(self):
-        texts = []
-        for r in range(self._table.rowCount()):
-            item = self._table.item(r, 3)
-            if item:
-                texts.append(item.data(Qt.ItemDataRole.UserRole) or item.text())
-        if not texts:
-            QMessageBox.information(self, "Empty", "No history to copy.")
+    def _delete_item(self, item):
+        data = self._row_data_for_item(item)
+        if data is None:
             return
-        QApplication.clipboard().setText("\n".join(texts))
-        self._set_status(f"Copied {len(texts)} entries to clipboard.")
+        row_id = data.get('id')
+        if row_id is not None and self._store is not None:
+            self._store.delete([row_id])
+        row_idx = self._list.row(item)
+        if row_idx >= 0:
+            self._list.takeItem(row_idx)
+        self._rows_by_item_id.pop(id(item), None)
+        n = len(self._rows_by_item_id)
+        self._status_lbl.setText(f"{n} entr{'y' if n == 1 else 'ies'} loaded")
 
     def _delete_selected(self):
-        row_id = self._current_row_id()
-        row    = self._current_row()
-        if row < 0:
-            QMessageBox.information(self, "No Selection", "Select a row to delete.")
+        item = self._list.currentItem()
+        data = self._row_data_for_item(item)
+        if data is None:
+            QMessageBox.information(self, "No Selection", "Select an entry to delete.")
             return
-        if row_id is not None and self._db is not None:
-            try:
-                self._db.delete(row_id)
-            except Exception as exc:
-                QMessageBox.warning(self, "Error", f"Delete failed: {exc}")
-                return
-        self._table.removeRow(row)
-        self._detail.clear()
-        n = self._table.rowCount()
-        self._set_status(f"{n} entr{'y' if n == 1 else 'ies'}")
+        reply = QMessageBox.question(
+            self, "Delete Entry", "Delete this history entry?",
+            QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No,
+        )
+        if reply != QMessageBox.StandardButton.Yes:
+            return
+        self._delete_item(item)
 
     def _clear_all(self):
         reply = QMessageBox.question(
@@ -565,12 +645,8 @@ class _HistoryWindow(QMainWindow):
         if reply != QMessageBox.StandardButton.Yes:
             return
 
-        if self._db is not None:
-            try:
-                self._db.prune(max_entries=0)
-            except Exception as exc:
-                QMessageBox.warning(self, "Error", f"Clear failed: {exc}")
-                return
+        if self._store is not None:
+            self._store.clear()
 
         legacy = getattr(self.app, 'history', None)
         if legacy is not None:
@@ -583,5 +659,20 @@ class _HistoryWindow(QMainWindow):
 
         self._reload()
 
+    # ------------------------------------------------------------------
+    def _show_toast(self, msg: str):
+        """Transient status confirmation -- no popup. Reverts to the entry
+        count after _TOAST_MS."""
+        self._status_lbl.setText(msg)
+        QTimer.singleShot(_TOAST_MS, self._restore_status)
+
+    def _restore_status(self):
+        n = len(self._rows_by_item_id)
+        self._status_lbl.setText(f"{n} entr{'y' if n == 1 else 'ies'} loaded")
+
     def _set_status(self, msg: str):
         self._status_lbl.setText(msg)
+
+
+def _size(height: int) -> QSize:
+    return QSize(-1, height)
