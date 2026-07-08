@@ -3556,6 +3556,87 @@ class _SettingsWindow(QMainWindow):
         gesture_cb.setChecked(bool(self.app.config.get('gesture', {}).get('enabled', False)))
         self._widgets['adv_gesture_enabled'] = gesture_cb
         layout.addWidget(gesture_cb)
+        layout.addSpacing(20)
+
+        # ---- Section: Smart Corrections -------------------------------------
+        layout.addWidget(self._section_title("Smart Corrections"))
+        layout.addSpacing(4)
+
+        sc_cfg = cfg.get('smart_corrections', {}) or {}
+
+        sc_note = QLabel(
+            "Optional LLM cleanup pass over dictation output -- fixes homophones, "
+            "misrecognitions, and punctuation without paraphrasing. Off by default."
+        )
+        sc_note.setWordWrap(True)
+        sc_note.setStyleSheet("color: #8A8A92; font-size: 12px;")
+        layout.addWidget(sc_note)
+        layout.addSpacing(6)
+
+        sc_enabled_cb = QCheckBox("Enable Smart Corrections")
+        sc_enabled_cb.setChecked(bool(sc_cfg.get('enabled', False)))
+        self._widgets['sc_enabled'] = sc_enabled_cb
+        layout.addWidget(sc_enabled_cb)
+        layout.addSpacing(8)
+
+        sc_backend_options = ['auto', 'ollama', 'cloud']
+        sc_backend_combo = QComboBox()
+        sc_backend_combo.addItems(sc_backend_options)
+        current_sc_backend = sc_cfg.get('backend', 'auto')
+        if current_sc_backend in sc_backend_options:
+            sc_backend_combo.setCurrentText(current_sc_backend)
+        self._widgets['sc_backend'] = sc_backend_combo
+        layout.addLayout(self._setting_row(
+            "Backend",
+            "auto prefers local Ollama; falls back to Cloud AI if configured",
+            sc_backend_combo,
+        ))
+        layout.addSpacing(4)
+
+        sc_cloud_hint = QLabel(
+            "Cloud AI isn't enabled yet -- set it up on the Ava / Cloud tab, "
+            "or Smart Corrections will have no backend to use."
+        )
+        sc_cloud_hint.setWordWrap(True)
+        sc_cloud_hint.setStyleSheet("color: #E0A030; font-size: 12px; margin-left: 4px;")
+
+        def _update_sc_cloud_hint(_text=None):
+            cloud_enabled = bool(self.app.config.get('cloud_llm', {}).get('enabled', False))
+            sc_cloud_hint.setVisible(
+                sc_backend_combo.currentText() == 'cloud' and not cloud_enabled
+            )
+
+        sc_backend_combo.currentTextChanged.connect(_update_sc_cloud_hint)
+        _update_sc_cloud_hint()
+        layout.addWidget(sc_cloud_hint)
+        layout.addSpacing(8)
+
+        sc_model_edit = QLineEdit()
+        sc_model_edit.setText(sc_cfg.get('ollama_model', 'qwen2.5:3b'))
+        self._widgets['sc_model'] = sc_model_edit
+        layout.addLayout(self._setting_row(
+            "Ollama model",
+            "Local model used for the correction pass (must already be pulled)",
+            sc_model_edit,
+        ))
+        layout.addSpacing(8)
+
+        sc_modes_cfg = sc_cfg.get('modes', {}) or {}
+
+        sc_mode_hotkey_cb = QCheckBox("Hold-to-dictate")
+        sc_mode_hotkey_cb.setChecked(bool(sc_modes_cfg.get('hotkey', True)))
+        self._widgets['sc_mode_hotkey'] = sc_mode_hotkey_cb
+        layout.addWidget(sc_mode_hotkey_cb)
+
+        sc_mode_wake_cb = QCheckBox("Wake dictation")
+        sc_mode_wake_cb.setChecked(bool(sc_modes_cfg.get('wake', True)))
+        self._widgets['sc_mode_wake'] = sc_mode_wake_cb
+        layout.addWidget(sc_mode_wake_cb)
+
+        sc_mode_streaming_cb = QCheckBox("Streaming")
+        sc_mode_streaming_cb.setChecked(bool(sc_modes_cfg.get('streaming', False)))
+        self._widgets['sc_mode_streaming'] = sc_mode_streaming_cb
+        layout.addWidget(sc_mode_streaming_cb)
 
         def _save(acc):
             updates = {}
@@ -3583,6 +3664,19 @@ class _SettingsWindow(QMainWindow):
                     gesture_cfg = dict(self.app.config.get('gesture', {}) or {})
                     gesture_cfg['enabled'] = self._widgets['adv_gesture_enabled'].isChecked()
                     updates['gesture'] = gesture_cfg
+                if 'sc_enabled' in self._widgets:
+                    sc_cfg_out = dict(self.app.config.get('smart_corrections', {}) or {})
+                    sc_cfg_out['enabled'] = self._widgets['sc_enabled'].isChecked()
+                    sc_cfg_out['backend'] = self._widgets['sc_backend'].currentText()
+                    sc_cfg_out['ollama_model'] = (
+                        self._widgets['sc_model'].text().strip() or 'qwen2.5:3b'
+                    )
+                    sc_cfg_out['modes'] = {
+                        'hotkey':    self._widgets['sc_mode_hotkey'].isChecked(),
+                        'wake':      self._widgets['sc_mode_wake'].isChecked(),
+                        'streaming': self._widgets['sc_mode_streaming'].isChecked(),
+                    }
+                    updates['smart_corrections'] = sc_cfg_out
                 # Apply manual threshold to wake_word_config if in manual mode --
                 # merge onto whatever the Modes tab already wrote (read from
                 # acc), not self.app.config, so that write isn't clobbered.

@@ -102,6 +102,16 @@
   "model_size": "base",
   "performance_mode": "balanced",
   "silence_threshold": 2.0,
+  "smart_corrections": {
+    "backend": "auto",
+    "enabled": false,
+    "modes": {
+      "hotkey": true,
+      "streaming": false,
+      "wake": true
+    },
+    "ollama_model": "qwen2.5:3b"
+  },
   "sound_theme": "cute",
   "sound_volume": 0.5,
   "streaming_hotkey": "capslock",

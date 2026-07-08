@@ -9,11 +9,12 @@ this test suite (see test_dictation_app.py).
 
 _build_hotkey_transcribe_params() was extracted from the hotkey transcribe()
 closure specifically so this suite can call the REAL production code path
-(not a re-implementation that could silently drift from it) -- a pure
-refactor, no behavior change: the same three lines (vad_filter=False,
-condition_on_previous_text=False, initial_prompt="") that used to be inlined
-in transcribe() now live in this one method, which both the normal (<30s)
-and [LONG] branches consume identically (they share the same dict).
+(not a re-implementation that could silently drift from it): vad_filter=False
+and condition_on_previous_text=False are forced overrides (conversation-
+context reset), while initial_prompt is sourced from
+voice_training_window.get_initial_prompt() so vocabulary biasing still
+applies per hotkey press. Both the normal (<30s) and [LONG] branches of
+transcribe() consume the same dict from this one method.
 
 Verified against the installed faster-whisper (1.2.1) WhisperModel.transcribe
 signature: it accepts `no_speech_threshold` and `log_prob_threshold` exactly
@@ -66,13 +67,13 @@ def test_gate_max_buffer_s_is_8_seconds():
 
 def test_hotkey_params_force_clean_slate_overrides_mode_defaults():
     """The hotkey path's reset must win even when mode defaults would
-    otherwise set condition_on_previous_text=True (accurate mode) and the
-    voice training prompt is non-empty -- proves this is an override, not
-    just "happens to be false by default"."""
+    otherwise set condition_on_previous_text=True (accurate mode). The
+    voice training prompt (vocabulary biasing) is NOT reset -- only
+    conversation context (condition_on_previous_text) is."""
     app = _make_app(performance_mode='accurate', initial_prompt='some trained prompt')
     params = dictation.DictationApp._build_hotkey_transcribe_params(app)
     assert params['condition_on_previous_text'] is False
-    assert params['initial_prompt'] == ""
+    assert params['initial_prompt'] == 'some trained prompt'
     assert params['vad_filter'] is False
 
 
@@ -85,4 +86,4 @@ def test_hotkey_params_force_clean_slate_all_modes(mode):
     app = _make_app(performance_mode=mode, initial_prompt='some trained prompt')
     params = dictation.DictationApp._build_hotkey_transcribe_params(app)
     assert params['condition_on_previous_text'] is False
-    assert params['initial_prompt'] == ""
+    assert params['initial_prompt'] == 'some trained prompt'

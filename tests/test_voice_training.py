@@ -71,16 +71,49 @@ class TestCorrections:
         result = vt.apply_corrections("hello world")
         assert result == "hello world"
 
-    def test_apply_corrections_case_sensitive(self, tmp_path):
-        """Test that corrections are case-sensitive"""
-        corrections = {'Hello': 'Hi'}
+    def test_apply_corrections_case_insensitive(self, tmp_path):
+        """Corrections match regardless of the case Whisper returned."""
+        corrections = {'hello': 'hi'}
         vt = create_test_voice_training(tmp_path, corrections=corrections)
 
         result = vt.apply_corrections("Hello world")
         assert result == "Hi world"
 
-        result = vt.apply_corrections("hello world")
-        assert result == "hello world"  # lowercase not matched
+        result = vt.apply_corrections("HELLO world")
+        assert result == "HI world"
+
+    def test_apply_corrections_preserves_case(self, tmp_path):
+        """Replacement case is derived from the matched text, not the stored value."""
+        corrections = {'hello': 'hi'}
+        vt = create_test_voice_training(tmp_path, corrections=corrections)
+
+        assert vt.apply_corrections("hello world") == "hi world"
+        assert vt.apply_corrections("Hello world") == "Hi world"
+        assert vt.apply_corrections("HELLO world") == "HI world"
+
+    def test_apply_corrections_word_boundary(self, tmp_path):
+        """Corrections must not match inside a larger word."""
+        corrections = {'cat': 'Kat'}
+        vt = create_test_voice_training(tmp_path, corrections=corrections)
+
+        result = vt.apply_corrections("catalog")
+        assert result == "catalog"
+
+    def test_apply_corrections_no_chaining(self, tmp_path):
+        """A replacement's output must never be re-matched by another rule."""
+        corrections = {'foo': 'bar', 'bar': 'baz'}
+        vt = create_test_voice_training(tmp_path, corrections=corrections)
+
+        result = vt.apply_corrections("foo")
+        assert result == "bar"
+
+    def test_apply_corrections_longest_first(self, tmp_path):
+        """A longer overlapping key must win over a shorter prefix key."""
+        corrections = {'going': 'X', 'going to': 'gonna'}
+        vt = create_test_voice_training(tmp_path, corrections=corrections)
+
+        result = vt.apply_corrections("I'm going to leave")
+        assert result == "I'm gonna leave"
 
     def test_apply_corrections_phrase(self, tmp_path):
         """Test correcting phrases, not just words"""
@@ -176,6 +209,26 @@ class TestInitialPrompt:
         result = vt.get_initial_prompt()
 
         assert result is None
+
+    def test_get_prompt_respects_char_budget(self, tmp_path):
+        """With an oversized command vocabulary, the prompt must stay within
+        the ~800-char (~224 token) Whisper budget. Custom prompt and custom
+        vocabulary rank higher priority than command vocabulary, so they must
+        survive in full while command vocabulary is truncated item-by-item."""
+        vt = create_test_voice_training(tmp_path, custom_vocab=['AlphaTerm', 'BetaTerm'])
+        vt.app.command_executor = None
+        vt.app.config['initial_prompt'] = 'Custom context for this dictation session.'
+        vt.app.config['web_shortcuts'] = {
+            f'oversized vocabulary phrase number {i:03d}': 'https://example.com'
+            for i in range(60)
+        }
+
+        result = vt.get_initial_prompt()
+
+        assert result is not None
+        assert len(result) <= 800
+        assert result.startswith('Custom context for this dictation session.')
+        assert 'Common terms: AlphaTerm, BetaTerm' in result
 
 
 # ============================================================================

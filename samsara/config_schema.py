@@ -332,6 +332,46 @@ SETTINGS_SCHEMA = {
         "tab": "general",
     },
 
+    # Smart Corrections: optional LLM post-processing pass over dictation
+    # output (homophones/misrecognitions/punctuation). Off by default.
+    "smart_corrections.enabled": {"type": "bool", "default": False, "tab": "advanced"},
+    "smart_corrections.backend": {
+        "type": "enum",
+        "options": ["auto", "ollama", "cloud"],
+        "default": "auto",
+        "tab": "advanced",
+        "depends_on": "smart_corrections.enabled",
+    },
+    "smart_corrections.ollama_model": {
+        "type": "str",
+        "default": "qwen2.5:3b",
+        "tab": "advanced",
+        "depends_on": "smart_corrections.enabled",
+    },
+    "smart_corrections.timeout_s": {
+        "type": "float",
+        "min": 1.0,
+        "max": 30.0,
+        "step": 0.5,
+        "default": 4.0,
+        "tab": "advanced",
+        "depends_on": "smart_corrections.enabled",
+    },
+    "smart_corrections.min_words": {
+        "type": "int",
+        "min": 1,
+        "max": 20,
+        "default": 3,
+        "tab": "advanced",
+        "depends_on": "smart_corrections.enabled",
+    },
+    "smart_corrections.modes.hotkey":    {"type": "bool", "default": True,  "tab": "advanced", "depends_on": "smart_corrections.enabled"},
+    "smart_corrections.modes.wake":      {"type": "bool", "default": True,  "tab": "advanced", "depends_on": "smart_corrections.enabled"},
+    "smart_corrections.modes.streaming": {"type": "bool", "default": False, "tab": "advanced", "depends_on": "smart_corrections.enabled"},
+
+    # Dictation Diagnostics: per-utterance pipeline instrumentation viewer.
+    "diagnostics.write_jsonl": {"type": "bool", "default": False, "tab": "advanced"},
+
     # -------------------------------------------------------------------------
     # Ava / Cloud tab
     # -------------------------------------------------------------------------

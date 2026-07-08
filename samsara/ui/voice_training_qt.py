@@ -13,6 +13,7 @@ via Signal so Qt never touches audio buffers from a foreign thread.
 
 import json
 import logging
+import re
 import threading
 import time
 from pathlib import Path
@@ -194,6 +195,8 @@ class VoiceTrainingQt:
         self._init_posted = False
         self.custom_vocab: List[str] = []
         self.corrections_dict: dict = {}
+        self._corrections_pattern = None
+        self._corrections_lookup: dict = {}
         self.load_training_data()
 
     # ----------------------------------------------------------------
@@ -218,6 +221,7 @@ class VoiceTrainingQt:
                 self.corrections_dict = data.get('corrections', {})
             except Exception as exc:
                 logger.error(f"Could not load training data: {exc}", exc_info=True)
+        self._rebuild_corrections_pattern()
 
     def save_training_data(self) -> bool:
         training_file = Path(self.app.config_path).parent / 'training_data.json'
@@ -230,27 +234,90 @@ class VoiceTrainingQt:
             logger.error(f"Could not save training data: {exc}", exc_info=True)
             return False
 
+    # Whisper's initial_prompt budget is ~224 tokens; 800 chars is a safe
+    # character-based proxy that keeps well clear of that limit.
+    _PROMPT_CHAR_BUDGET = 800
+
     def get_initial_prompt(self) -> "str | None":
         try:
-            parts = []
+            parts: List[str] = []
+            remaining = self._PROMPT_CHAR_BUDGET
+
+            # Priority 1: custom prompt -- explicit user input, never
+            # truncated or dropped for size.
             custom_prompt = self.app.config.get('initial_prompt', '')
             if custom_prompt:
                 parts.append(custom_prompt)
-            if self.custom_vocab:
-                parts.append(f"Common terms: {', '.join(self.custom_vocab)}")
-            cmd_vocab = self._get_command_vocabulary()
-            if cmd_vocab:
-                parts.append(f"Voice commands: {cmd_vocab}")
+                remaining -= len(custom_prompt)
+
+            # Priority 2: custom vocabulary -- included whole or not at all
+            # (never truncate mid-phrase).
+            if self.custom_vocab and remaining > 0:
+                vocab_part = f"Common terms: {', '.join(self.custom_vocab)}"
+                needed = len(vocab_part) + (1 if parts else 0)
+                if needed <= remaining:
+                    parts.append(vocab_part)
+                    remaining -= needed
+
+            # Priority 3: command vocabulary -- lowest priority, so it's the
+            # one truncated (item-by-item, never mid-word) to fit what's left.
+            if remaining > 0:
+                cmd_words = self._get_command_vocabulary_words()
+                kept: List[str] = []
+                for word in cmd_words:
+                    candidate = f"Voice commands: {', '.join(kept + [word])}"
+                    needed = len(candidate) + (1 if parts else 0)
+                    if needed > remaining:
+                        break
+                    kept.append(word)
+                if kept:
+                    parts.append(f"Voice commands: {', '.join(kept)}")
+
             return " ".join(parts) if parts else None
         except Exception as exc:
             logger.error(f"Error building initial prompt: {exc}", exc_info=True)
             return None
 
+    def _rebuild_corrections_pattern(self):
+        """Recompile the single-pass corrections regex from corrections_dict.
+
+        Called whenever corrections_dict is mutated (add/remove/clear/import/
+        load) so apply_corrections() never sees a stale pattern.
+        """
+        keys = [k for k in self.corrections_dict if k]
+        if not keys:
+            self._corrections_pattern = None
+            self._corrections_lookup = {}
+            return
+
+        # Longest-first so "going to" wins over "going" on overlapping matches.
+        keys_sorted = sorted(keys, key=len, reverse=True)
+        lookup: dict = {}
+        parts = []
+        for key in keys_sorted:
+            lookup[key.lower()] = self.corrections_dict[key]
+            prefix = r'\b' if re.match(r'\w', key[0]) else ''
+            suffix = r'\b' if re.match(r'\w', key[-1]) else ''
+            parts.append(prefix + re.escape(key) + suffix)
+
+        self._corrections_lookup = lookup
+        self._corrections_pattern = re.compile('|'.join(parts), re.IGNORECASE)
+
     def apply_corrections(self, text: str) -> str:
         try:
-            for wrong, correct in self.corrections_dict.items():
-                text = text.replace(wrong, correct)
-            return text
+            if self._corrections_pattern is None:
+                return text
+
+            def _replace(match: "re.Match") -> str:
+                matched = match.group(0)
+                replacement = self._corrections_lookup.get(matched.lower(), matched)
+                if matched.isupper():
+                    return replacement.upper()
+                if matched[:1].isupper():
+                    return replacement[:1].upper() + replacement[1:]
+                return replacement
+
+            return self._corrections_pattern.sub(_replace, text)
         except Exception as exc:
             logger.error(f"Error applying corrections: {exc}", exc_info=True)
             return text
@@ -259,7 +326,7 @@ class VoiceTrainingQt:
         """Word-set Jaccard similarity as a percentage (0–100)."""
         return _word_similarity(s1, s2)
 
-    def _get_command_vocabulary(self) -> str:
+    def _get_command_vocabulary_words(self) -> List[str]:
         try:
             matcher = None
             cmd_exec = getattr(self.app, 'command_executor', None)
@@ -292,10 +359,10 @@ class VoiceTrainingQt:
                     elif tokens and tokens[0] not in _COMMON_ENGLISH:
                         vocab_words.add(tokens[0])
 
-            return ", ".join(sorted(vocab_words)[:36])
+            return sorted(vocab_words)[:36]
         except Exception as exc:
             logger.error(f"Error extracting command vocabulary: {exc}")
-            return ''
+            return []
 
     # ----------------------------------------------------------------
     # Window lifecycle — safe to call from any thread
@@ -530,27 +597,37 @@ class _TrainingWindow(QMainWindow):
 
         def _run():
             try:
+                # Recording cue — the 5s window starts now. Signal only;
+                # never mutate widgets directly from this worker thread.
+                self._phrase_sig.emit(idx, "REC", _WARNING)
                 audio = sd.rec(
                     int(5 * 16000), samplerate=16000, channels=1, dtype=np.float32,
                     device=self._tr.app.config.get('microphone'),
                 )
                 sd.wait()
+                self._phrase_sig.emit(idx, "...", _ACCENT)
                 audio = audio.flatten()
-                segments, _ = self._tr.app.model.transcribe(
-                    audio,
-                    language=self._tr.app.config['language'],
-                    beam_size=5,
-                    vad_filter=True,
-                )
-                result   = "".join(s.text for s in segments).strip().lower()
-                expected = phrase.lower()
-                if result == expected:
+
+                # Measure the SAME pipeline dictation uses, not a hardcoded
+                # stand-in — only vad_filter is forced off, matching the
+                # hotkey path's rationale (a deliberate, bounded recording,
+                # not a stream that needs silence-trimming).
+                params = self._tr.app.get_transcription_params()
+                params['vad_filter'] = False
+                lock = getattr(self._tr.app, 'model_lock', None) or threading.Lock()
+                with lock:
+                    segments, _ = self._tr.app.model.transcribe(audio, **params)
+
+                raw_result    = "".join(s.text for s in segments).strip()
+                norm_result   = _normalize_phrase(raw_result)
+                norm_expected = _normalize_phrase(phrase)
+                if norm_result == norm_expected:
                     self._phrase_sig.emit(idx, "OK", _SUCCESS)
                 else:
                     self._phrase_sig.emit(idx, "X", _ERROR)
-                    similarity = _word_similarity(expected, result)
+                    similarity = _word_similarity(norm_expected, norm_result)
                     self._phrase_detail_sig.emit(
-                        f"Expected:\n{expected}\n\nGot:\n{result}\n\nAccuracy: {similarity:.1f}%"
+                        f"Expected:\n{phrase}\n\nGot:\n{raw_result}\n\nAccuracy: {similarity:.1f}%"
                     )
             except Exception as exc:
                 logger.error(f"Test phrase error: {exc}", exc_info=True)
@@ -716,6 +793,7 @@ class _TrainingWindow(QMainWindow):
         correct = self._correct_input.text().strip()
         if wrong and correct:
             self._tr.corrections_dict[wrong] = correct
+            self._tr._rebuild_corrections_pattern()
             self._insert_correction_row(wrong, correct)
             self._wrong_input.clear()
             self._correct_input.clear()
@@ -728,6 +806,7 @@ class _TrainingWindow(QMainWindow):
             self._corr_table.removeRow(idx.row())
             self._tr.corrections_dict.pop(wrong, None)
         if rows:
+            self._tr._rebuild_corrections_pattern()
             self._tr.save_training_data()
 
     def _clear_corrections(self):
@@ -737,6 +816,7 @@ class _TrainingWindow(QMainWindow):
         )
         if reply == QMessageBox.StandardButton.Yes:
             self._tr.corrections_dict = {}
+            self._tr._rebuild_corrections_pattern()
             self._corr_table.setRowCount(0)
             self._tr.save_training_data()
 
@@ -894,25 +974,44 @@ class _TrainingWindow(QMainWindow):
                     self._vocab_list.addItem(w)
             if 'corrections' in data:
                 self._tr.corrections_dict = data['corrections']
+                self._tr._rebuild_corrections_pattern()
                 self._corr_table.setRowCount(0)
                 for wrong, correct in self._tr.corrections_dict.items():
                     self._insert_correction_row(wrong, correct)
+            config_updates = {}
             if 'initial_prompt' in data:
-                self._tr.app.config['initial_prompt'] = data['initial_prompt']
+                config_updates['initial_prompt'] = data['initial_prompt']
                 self._prompt_edit.setPlainText(data['initial_prompt'])
             if 'language' in data:
-                self._tr.app.config['language'] = data['language']
+                config_updates['language'] = data['language']
                 lang_items = [self._lang_combo.itemText(i)
                               for i in range(self._lang_combo.count())]
                 if data['language'] in lang_items:
                     self._lang_combo.setCurrentText(data['language'])
+
             self._tr.save_training_data()
-            try:
-                self._tr.app.persist_config()
-            except Exception as e:
-                logger.debug(f"_import_data: {e}")
-            QMessageBox.information(self, "Import Complete",
-                                    "Training data imported successfully.")
+
+            persisted = True
+            if config_updates:
+                # Same real persistence method _apply_language/_save_prompt use --
+                # not persist_config(), which only flushes already-applied
+                # in-memory changes and would silently no-op these updates.
+                try:
+                    self._tr.app.update_config_and_save(config_updates)
+                except Exception as e:
+                    persisted = False
+                    logger.warning(f"_import_data: failed to persist config updates: {e}")
+
+            if persisted:
+                QMessageBox.information(self, "Import Complete",
+                                        "Training data imported successfully.")
+            else:
+                QMessageBox.warning(
+                    self, "Import Partially Complete",
+                    "Training data was imported, but the language/prompt "
+                    "settings could not be saved to disk. They may be lost "
+                    "on restart."
+                )
         except Exception as exc:
             QMessageBox.critical(self, "Error", f"Failed to import:\n{exc}")
 
@@ -954,6 +1053,16 @@ class _TrainingWindow(QMainWindow):
 # ---------------------------------------------------------------------------
 # Utility
 # ---------------------------------------------------------------------------
+
+def _normalize_phrase(s: str) -> str:
+    """Lowercase, strip punctuation, and collapse whitespace for comparison.
+
+    Whisper output like "The quick brown fox jumps over the lazy dog." must
+    count as an exact match against the plain test phrase.
+    """
+    s = re.sub(r"[^\w\s']", '', s.lower())
+    return " ".join(s.split())
+
 
 def _word_similarity(s1: str, s2: str) -> float:
     w1, w2 = set(s1.split()), set(s2.split())
