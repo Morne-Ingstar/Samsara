@@ -1,10 +1,13 @@
-"""Visual-proof screenshot tool for the redesigned Dictation History window
-(list view, day-grouping, type pills -- see samsara/ui/history_qt.py).
+"""Visual-proof screenshot tool for the unified Dictation History view
+(list view, day-grouping, type pills -- see samsara/ui/history_view.py,
+embedded by BOTH samsara/ui/history_qt.py's standalone window and
+samsara/ui/main_window_qt.py's History tab).
 
-Constructs the window directly (bypassing qt_runtime's thread-marshaling,
+Constructs windows directly (bypassing qt_runtime's thread-marshaling,
 since this runs standalone outside the app), seeds a temp SQLite history DB
-with ~15 fake entries spanning 3 days, shows it, waits ~500ms for
-layout/paint to settle, and saves a PNG. Same pattern as
+with ~15 fake entries spanning 3 days (including a failed row), shows each
+window, waits ~500ms for layout/paint AND the background row-loading
+thread to settle, and saves a PNG. Same pattern as
 tools/wizard_screenshots.py.
 
 Usage:
@@ -32,14 +35,25 @@ OUT_DIR = Path(r"C:\Temp\samsara_ui_proof")
 SEED_DB_PATH = OUT_DIR / "history_screenshots_seed.db"
 
 
-def _settle_and_grab(app: QApplication, widget, out_path: Path, ms: int = 500) -> None:
-    widget.show()
-    widget.raise_()
-    widget.activateWindow()
+def _pump(app: QApplication, ms: int = 400) -> None:
+    """Process events without showing/grabbing -- lets an async row-load
+    (background thread + Signal) finish before the next interaction, e.g.
+    after changing the filter dropdown. Skipping this before selecting a
+    row is exactly the bug this tool caught: HistoryView's _render_rows()
+    clears and rebuilds the QListWidgetItems on every reload, so selecting
+    a row and then letting an in-flight reload land wipes the selection
+    out from under you."""
     end = time.monotonic() + (ms / 1000.0)
     while time.monotonic() < end:
         app.processEvents()
         time.sleep(0.01)
+
+
+def _settle_and_grab(app: QApplication, widget, out_path: Path, ms: int = 500) -> None:
+    widget.show()
+    widget.raise_()
+    widget.activateWindow()
+    _pump(app, ms)
     pixmap = widget.grab()
     ok = pixmap.save(str(out_path))
     print(f"{'saved' if ok else 'FAILED to save'}: {out_path}")
@@ -108,16 +122,28 @@ def main() -> int:
         )
 
         win = _HistoryWindow(fake_app)
+        # HistoryView's row loading runs on a background thread (results
+        # marshaled back via Signal) -- give it a beat before the first grab.
         _settle_and_grab(app, win, OUT_DIR / "history_list_default.png")
 
-        # Type filter applied -- shows the Commands-only view.
-        win._filter.setCurrentText("Commands")
+        # Type filter applied -- Commands-only view.
+        win._view._filter.setCurrentText("Commands")
         _settle_and_grab(app, win, OUT_DIR / "history_list_commands_filter.png")
-        win._filter.setCurrentText("All")
 
-        # A row selected -- shows the selected/ACCENT-tinted state.
-        if win._list.count() > 1:
-            win._list.setCurrentRow(1)
+        # Failed-only view -- the seeded failed row's red pill + red-tinted
+        # text (the capability restored from the old _HistoryPanel).
+        win._view._filter.setCurrentText("Failed")
+        _settle_and_grab(app, win, OUT_DIR / "history_list_failed_filter.png")
+        win._view._filter.setCurrentText("All")
+        _pump(app)   # let the "All" reload land BEFORE selecting a row --
+                      # _render_rows() clears/rebuilds items on every
+                      # reload, so selecting first and letting an in-flight
+                      # reload land afterward silently wipes the selection.
+
+        # A row selected -- shows the selected/ACCENT-tinted state AND the
+        # restored collapsible detail pane.
+        if win._view._list.count() > 1:
+            win._view._list.setCurrentRow(1)
         _settle_and_grab(app, win, OUT_DIR / "history_list_row_selected.png")
 
         win.close()
@@ -125,6 +151,41 @@ def main() -> int:
     except Exception:
         import traceback
         print("FAILED: history window")
+        traceback.print_exc()
+
+    # ---- Full main window, History tab active (sidebar + status bar +
+    # embedded HistoryView) -- the actual unification this tool proves. ----
+    try:
+        from samsara.history import HistoryManager
+        from samsara.history_store import HistoryStore
+        from samsara.ui.main_window_qt import _MainWindow
+
+        main_db_path = OUT_DIR / "history_screenshots_mainwindow.db"
+        if main_db_path.exists():
+            main_db_path.unlink()
+        main_manager = HistoryManager(db_path=str(main_db_path))
+        main_store = HistoryStore(main_manager)
+        _seed_history(main_manager, main_store)
+
+        fake_main_app = types.SimpleNamespace(
+            config={
+                'mode': 'hold', 'wake_word_enabled': True,
+                'wake_word_config': {'phrase': 'jarvis'}, 'microphone': None,
+            },
+            available_mics=[], recording=False, continuous_active=False,
+            wake_word_active=True, snoozed=False,
+            history=[], history_store=main_store, history_db=main_manager,
+        )
+
+        main_win = _MainWindow(fake_main_app)
+        main_win._activate("History")
+        _settle_and_grab(app, main_win, OUT_DIR / "main_window_history_tab.png")
+
+        main_win.close()
+        main_manager.close()
+    except Exception:
+        import traceback
+        print("FAILED: main window (History tab)")
         traceback.print_exc()
 
     # ---- Empty state -- a fresh, unseeded DB ------------------------------

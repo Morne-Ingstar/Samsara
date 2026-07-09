@@ -19,21 +19,15 @@ History and Dictionary are embedded QWidget panels.
 Close button hides to tray (closeEvent suppressed); app.close() force-closes.
 """
 
-from datetime import datetime
-
 from PySide6.QtCore import Qt, QTimer, Signal, Slot
-from PySide6.QtGui import QColor
 from PySide6.QtWidgets import (
-    QAbstractItemView, QApplication, QComboBox, QFrame,
-    QHBoxLayout, QHeaderView, QLabel, QLineEdit, QListWidget,
-    QListWidgetItem, QMainWindow, QPlainTextEdit, QPushButton,
-    QSizePolicy, QStackedWidget, QStatusBar, QTableWidget,
-    QTableWidgetItem, QTabWidget, QVBoxLayout, QWidget,
+    QApplication, QFrame, QHBoxLayout, QLabel, QMainWindow,
+    QPushButton, QStackedWidget, QStatusBar, QVBoxLayout, QWidget,
 )
 
-from samsara.runtime import thread_registry
 from samsara.ui import qt_runtime
 from samsara.ui.dictionary_panel_qt import DictionaryPanelQt
+from samsara.ui.history_view import HistoryView
 
 from samsara.log import get_logger
 
@@ -71,62 +65,6 @@ QMainWindow, QWidget {{
     font-family: 'Segoe UI', sans-serif;
     font-size: 13px;
 }}
-QTableWidget {{
-    background: {_SURFACE};
-    border: none;
-    gridline-color: {_BORDER};
-    outline: none;
-    color: {_TEXT_PRI};
-}}
-QTableWidget::item {{ padding: 3px 6px; }}
-QTableWidget::item:selected {{
-    background: {_ACCENT_DIM};
-    color: {_ACCENT};
-}}
-QHeaderView::section {{
-    background: {_SURFACE};
-    color: {_TEXT_SEC};
-    border: none;
-    border-bottom: 1px solid {_BORDER};
-    padding: 4px 6px;
-    font-size: 11px;
-    font-weight: 600;
-    text-transform: uppercase;
-}}
-QPlainTextEdit {{
-    background: {_SURFACE};
-    border: none;
-    border-top: 1px solid {_BORDER};
-    color: {_TEXT_PRI};
-    font-family: 'Consolas', monospace;
-    font-size: 12px;
-    padding: 6px 8px;
-}}
-QLineEdit {{
-    background: {_SURFACE};
-    border: 1px solid {_BORDER};
-    border-radius: 4px;
-    color: {_TEXT_PRI};
-    padding: 5px 8px;
-    font-size: 12px;
-}}
-QLineEdit:focus {{ border-color: {_ACCENT}; }}
-QComboBox {{
-    background: {_SURFACE};
-    border: 1px solid {_BORDER};
-    border-radius: 4px;
-    color: {_TEXT_PRI};
-    padding: 5px 8px;
-    font-size: 12px;
-    min-width: 110px;
-}}
-QComboBox::drop-down {{ border: none; }}
-QComboBox QAbstractItemView {{
-    background: {_ELEVATED};
-    border: 1px solid {_BORDER};
-    color: {_TEXT_PRI};
-    selection-background-color: {_ACCENT_DIM};
-}}
 QPushButton {{
     background: {_SURFACE};
     border: 1px solid {_BORDER};
@@ -137,33 +75,6 @@ QPushButton {{
 }}
 QPushButton:hover {{ background: {_ELEVATED}; border-color: {_ACCENT}; }}
 QPushButton:pressed {{ background: {_ACCENT_DIM}; }}
-QListWidget {{
-    background: {_SURFACE};
-    border: 1px solid {_BORDER};
-    border-radius: 4px;
-    outline: none;
-    color: {_TEXT_PRI};
-}}
-QListWidget::item {{ padding: 5px 8px; }}
-QListWidget::item:selected {{ background: {_ACCENT_DIM}; color: {_ACCENT}; }}
-QTabWidget::pane {{
-    border: none;
-    background: {_BG};
-}}
-QTabBar::tab {{
-    background: {_SURFACE};
-    color: {_TEXT_SEC};
-    padding: 6px 16px;
-    border: none;
-    border-bottom: 2px solid transparent;
-    margin-right: 2px;
-    font-size: 12px;
-}}
-QTabBar::tab:selected {{
-    color: {_ACCENT};
-    border-bottom-color: {_ACCENT};
-    background: {_BG};
-}}
 QScrollBar:vertical {{
     background: {_BG};
     width: 6px;
@@ -240,211 +151,6 @@ def _status_separator() -> QFrame:
     line.setFixedHeight(16)
     line.setStyleSheet(f"color: {_BORDER}; background: {_BORDER}; max-width: 1px; border: none;")
     return line
-
-
-# ---------------------------------------------------------------------------
-# History panel
-# ---------------------------------------------------------------------------
-
-class _HistoryPanel(QWidget):
-    """Embedded history viewer. Mirrors history_qt.py but as a panel widget."""
-
-    _COLORS = {
-        "command":      QColor("#5EEAD4"),
-        "wake_command": QColor("#5EEAD4"),
-        "failed":       QColor("#FF6666"),
-    }
-
-    # Signal to marshal DB results back onto the Qt thread before
-    # touching any widgets — background threads must not call _populate
-    # directly or Qt silently drops the updates.
-    _rows_ready = Signal(list)
-
-    def __init__(self, app, parent=None):
-        super().__init__(parent)
-        self._app = app
-        self._rows = []
-        self._setup_ui()
-        self._rows_ready.connect(self._on_rows_ready)
-        QTimer.singleShot(0, self._load)
-
-    # ---- UI -----------------------------------------------------------------
-
-    def _setup_ui(self):
-        root = QVBoxLayout(self)
-        root.setContentsMargins(0, 0, 0, 0)
-        root.setSpacing(0)
-
-        # Toolbar
-        bar = QWidget()
-        bar.setStyleSheet(f"background: {_BG};")
-        blay = QHBoxLayout(bar)
-        blay.setContentsMargins(0, 0, 0, 8)
-        blay.setSpacing(8)
-
-        self._search = QLineEdit()
-        self._search.setPlaceholderText("Search...")
-        self._search.textChanged.connect(self._apply_filter)
-
-        self._type_combo = QComboBox()
-        self._type_combo.addItems(["All types", "dictation", "command", "failed"])
-        self._type_combo.currentTextChanged.connect(self._apply_filter)
-
-        self._refresh_btn = _btn("Refresh")
-        self._copy_btn    = _btn("Copy")
-        self._delete_btn  = _btn("Delete")
-
-        self._refresh_btn.clicked.connect(self._load)
-        self._copy_btn.clicked.connect(self._copy)
-        self._delete_btn.clicked.connect(self._delete)
-
-        blay.addWidget(self._search, stretch=1)
-        blay.addWidget(self._type_combo)
-        blay.addWidget(self._refresh_btn)
-        blay.addWidget(self._copy_btn)
-        blay.addWidget(self._delete_btn)
-        root.addWidget(bar)
-
-        # Table
-        self._table = QTableWidget(0, 3)
-        self._table.setHorizontalHeaderLabels(["Time", "Type", "Text"])
-        self._table.horizontalHeader().setSectionResizeMode(0, QHeaderView.ResizeToContents)
-        self._table.horizontalHeader().setSectionResizeMode(1, QHeaderView.ResizeToContents)
-        self._table.horizontalHeader().setSectionResizeMode(2, QHeaderView.Stretch)
-        self._table.verticalHeader().setVisible(False)
-        self._table.setSelectionBehavior(QAbstractItemView.SelectRows)
-        self._table.setSelectionMode(QAbstractItemView.SingleSelection)
-        self._table.setEditTriggers(QAbstractItemView.NoEditTriggers)
-        self._table.setAlternatingRowColors(False)
-        self._table.itemSelectionChanged.connect(self._on_select)
-        root.addWidget(self._table, stretch=1)
-
-        # Detail pane
-        self._detail = QPlainTextEdit()
-        self._detail.setReadOnly(True)
-        self._detail.setFixedHeight(64)
-        root.addWidget(self._detail)
-
-    # ---- Data ---------------------------------------------------------------
-
-    def _load(self):
-        def _fetch():
-            db = getattr(self._app, 'history_db', None)
-            if db is None:
-                return []
-            try:
-                # Convert sqlite3.Row objects to dicts so .get() works
-                # and column names are stable regardless of row_factory.
-                return [dict(r) for r in db.recent(HISTORY_LIMIT)]
-            except Exception as e:
-                print(f"[HISTORY PANEL] fetch error: {e}")
-                return []
-
-        thread_registry.spawn(
-            "history-panel-load",
-            lambda: self._rows_ready.emit(_fetch()),
-            daemon=True,
-        )
-
-    @Slot(list)
-    def _on_rows_ready(self, rows: list):
-        self._rows = rows
-        self._apply_filter()
-
-    def _apply_filter(self):
-        q    = self._search.text().lower()
-        filt = self._type_combo.currentText()
-        rows = self._rows
-        if filt != "All types":
-            rows = [r for r in rows
-                    if r.get("entry_type", "dictation") == filt
-                    or (filt == "failed" and r.get("status") == "failed")]
-        if q:
-            text_col = lambda r: (r.get("display_text") or r.get("raw_text") or "")
-            rows = [r for r in rows
-                    if q in text_col(r).lower()
-                    or q in r.get("entry_type", "").lower()]
-        self._populate(rows)
-
-    def _populate(self, rows):
-        self._table.setRowCount(0)
-        for row in rows:
-            r = self._table.rowCount()
-            self._table.insertRow(r)
-
-            ts = row.get("timestamp", "")
-            try:
-                ts = datetime.fromisoformat(ts).strftime("%H:%M:%S")
-            except Exception as e:
-                logger.debug(f"_populate: {e}")
-
-            etype  = row.get("entry_type", "dictation")
-            status = row.get("status", "success")
-            # Show "failed" label when status is failed regardless of entry_type
-            label  = "failed" if status == "failed" else etype
-            text   = row.get("display_text") or row.get("raw_text") or ""
-
-            t_item = QTableWidgetItem(ts)
-            y_item = QTableWidgetItem(label)
-            x_item = QTableWidgetItem(text)
-
-            color = self._COLORS.get(label) or self._COLORS.get(etype)
-            if color:
-                for item in (t_item, y_item, x_item):
-                    item.setForeground(color)
-
-            t_item.setData(Qt.UserRole, row.get("id"))
-            x_item.setData(Qt.UserRole, text)
-
-            self._table.setItem(r, 0, t_item)
-            self._table.setItem(r, 1, y_item)
-            self._table.setItem(r, 2, x_item)
-
-        self._table.setRowHeight(0, 26) if self._table.rowCount() else None
-
-    def _on_select(self):
-        rows = self._table.selectedItems()
-        if not rows:
-            self._detail.setPlainText("")
-            return
-        row = self._table.currentRow()
-        item = self._table.item(row, 2)
-        if item:
-            self._detail.setPlainText(item.data(Qt.UserRole) or "")
-
-    def _copy(self):
-        row = self._table.currentRow()
-        if row < 0:
-            return
-        item = self._table.item(row, 2)
-        if item:
-            QApplication.clipboard().setText(item.data(Qt.UserRole) or "")
-
-    def _delete(self):
-        row = self._table.currentRow()
-        if row < 0:
-            return
-        id_item = self._table.item(row, 0)
-        if id_item is None:
-            return
-        row_id = id_item.data(Qt.UserRole)
-        db = getattr(self._app, 'history_db', None)
-        if db and row_id is not None:
-            try:
-                db.delete(row_id)
-            except Exception as e:
-                logger.debug(f"_delete: {e}")
-        self._table.removeRow(row)
-
-    # ---- Public -------------------------------------------------------------
-
-    def on_new_entry(self):
-        self._load()
-
-    def refresh(self):
-        self._load()
-
-
 
 
 # ---------------------------------------------------------------------------
@@ -597,10 +303,25 @@ class _MainWindow(QMainWindow):
 
     def _make_panel(self, name: str):
         if name == "History":
-            return _HistoryPanel(self._app)
+            store = getattr(self._app, 'history_store', None)
+            return HistoryView(
+                store,
+                legacy_history_fn=lambda: getattr(self._app, 'history', []),
+                legacy_clear_fn=self._clear_legacy_history,
+            )
         if name == "Dictionary":
             return DictionaryPanelQt(self._app)
         return None
+
+    def _clear_legacy_history(self):
+        legacy = getattr(self._app, 'history', None)
+        if legacy is not None:
+            legacy.clear()
+        if hasattr(self._app, 'save_history'):
+            try:
+                self._app.save_history()
+            except Exception as e:
+                logger.debug(f"_clear_legacy_history: {e}")
 
     def _highlight(self, active: str):
         for name, btn in self._nav_btns.items():
@@ -661,7 +382,7 @@ class _MainWindow(QMainWindow):
         panel = self._panel_cache.get("History")
         if panel is not None and self._stack.currentWidget() is panel:
             try:
-                panel.on_new_entry()
+                panel.refresh()
             except Exception as e:
                 logger.debug(f"_on_dictation: {e}")
 
