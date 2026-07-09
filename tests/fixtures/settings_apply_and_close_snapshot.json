@@ -1,5 +1,8 @@
 {
   "add_trailing_space": true,
+  "benchmark": {
+    "collect_samples": false
+  },
   "ai_command_mode": {
     "backend": "ollama",
     "enabled": true,

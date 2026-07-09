@@ -32,6 +32,7 @@ from PySide6.QtWidgets import (
 
 from samsara.ui import qt_runtime
 from samsara.runtime import thread_registry
+from samsara.languages import LANGUAGES, contains_boundaryless_script
 
 logger = logging.getLogger(__name__)
 
@@ -296,9 +297,17 @@ class VoiceTrainingQt:
         parts = []
         for key in keys_sorted:
             lookup[key.lower()] = self.corrections_dict[key]
-            prefix = r'\b' if re.match(r'\w', key[0]) else ''
-            suffix = r'\b' if re.match(r'\w', key[-1]) else ''
-            parts.append(prefix + re.escape(key) + suffix)
+            if contains_boundaryless_script(key):
+                # CJK/Thai/etc have no whitespace word boundaries -- a \b
+                # anchor between two \w characters with no separator (the
+                # normal case for these scripts) never matches, so a key
+                # embedded mid-sentence would silently never fire. Match the
+                # plain escaped substring instead.
+                parts.append(re.escape(key))
+            else:
+                prefix = r'\b' if re.match(r'\w', key[0]) else ''
+                suffix = r'\b' if re.match(r'\w', key[-1]) else ''
+                parts.append(prefix + re.escape(key) + suffix)
 
         self._corrections_lookup = lookup
         self._corrections_pattern = re.compile('|'.join(parts), re.IGNORECASE)
@@ -311,6 +320,11 @@ class VoiceTrainingQt:
             def _replace(match: "re.Match") -> str:
                 matched = match.group(0)
                 replacement = self._corrections_lookup.get(matched.lower(), matched)
+                # Case preservation only makes sense when the matched text
+                # actually has cased characters -- CJK/Thai/etc have none,
+                # so the replacement is used exactly as stored.
+                if not any(ch.isupper() or ch.islower() for ch in matched):
+                    return replacement
                 if matched.isupper():
                     return replacement.upper()
                 if matched[:1].isupper():
@@ -867,12 +881,18 @@ class _TrainingWindow(QMainWindow):
         ll.setSpacing(8)
         ll.addWidget(QLabel("Transcription language:"))
         self._lang_combo = QComboBox()
-        lang_codes = ['en', 'es', 'fr', 'de', 'it', 'pt', 'nl', 'pl', 'ru', 'zh', 'ja', 'ko']
-        self._lang_combo.addItems(lang_codes)
+        # Same source of truth as Settings -> General (samsara/languages.py)
+        # -- one config key, one language list, so a value picked in either
+        # place always displays correctly in the other.
+        self._lang_name_to_code = {name: code for name, code in LANGUAGES}
+        lang_code_to_name = {code: name for name, code in LANGUAGES}
+        lang_names = [name for name, _ in LANGUAGES]
+        self._lang_combo.addItems(lang_names)
         current_lang = self._tr.app.config.get('language', 'en')
-        if current_lang in lang_codes:
-            self._lang_combo.setCurrentText(current_lang)
-        self._lang_combo.setFixedWidth(100)
+        current_lang_display = lang_code_to_name.get(current_lang, 'English (en)')
+        if current_lang_display in lang_names:
+            self._lang_combo.setCurrentText(current_lang_display)
+        self._lang_combo.setFixedWidth(220)
         ll.addWidget(self._lang_combo)
         apply_btn = QPushButton("Apply")
         apply_btn.setFixedWidth(80)
@@ -918,12 +938,13 @@ class _TrainingWindow(QMainWindow):
         lay.addStretch()
 
     def _apply_language(self):
-        lang = self._lang_combo.currentText()
+        display = self._lang_combo.currentText()
+        lang = self._lang_name_to_code.get(display, 'en')
         try:
             self._tr.app.update_config_and_save({'language': lang})
             QMessageBox.information(
                 self, "Language Changed",
-                f"Language set to: {lang}\n\nChange takes effect immediately."
+                f"Language set to: {display}\n\nChange takes effect immediately."
             )
         except Exception as exc:
             QMessageBox.critical(self, "Error", f"Failed to change language:\n{exc}")
@@ -984,10 +1005,10 @@ class _TrainingWindow(QMainWindow):
                 self._prompt_edit.setPlainText(data['initial_prompt'])
             if 'language' in data:
                 config_updates['language'] = data['language']
-                lang_items = [self._lang_combo.itemText(i)
-                              for i in range(self._lang_combo.count())]
-                if data['language'] in lang_items:
-                    self._lang_combo.setCurrentText(data['language'])
+                lang_code_to_name = {code: name for name, code in LANGUAGES}
+                display = lang_code_to_name.get(data['language'])
+                if display is not None:
+                    self._lang_combo.setCurrentText(display)
 
             self._tr.save_training_data()
 

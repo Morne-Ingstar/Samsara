@@ -759,29 +759,45 @@ class _SettingsWindow(QMainWindow):
         layout.addWidget(self._section_title("AI Model"))
         layout.addSpacing(4)
 
-        model_options = [
+        from samsara.languages import LANGUAGES, is_english_only_model
+
+        model_sizes = [
             'tiny', 'tiny.en', 'base', 'base.en',
             'small', 'small.en', 'medium', 'medium.en', 'large-v3',
         ]
+        model_label_to_size = {
+            size: (f"{size} (English only)" if is_english_only_model(size) else f"{size} (multilingual)")
+            for size in model_sizes
+        }
+        model_label_to_actual_size = {v: k for k, v in model_label_to_size.items()}
+        model_labels = [model_label_to_size[s] for s in model_sizes]
         current_model = self.app.config.get('model_size', 'base')
         model_combo = QComboBox()
-        model_combo.addItems(model_options)
-        if current_model in model_options:
-            model_combo.setCurrentText(current_model)
+        model_combo.addItems(model_labels)
+        current_model_label = model_label_to_size.get(current_model)
+        if current_model_label in model_labels:
+            model_combo.setCurrentText(current_model_label)
         self._widgets['model_combo'] = model_combo
+        self._widgets['model_label_to_size'] = model_label_to_actual_size
         layout.addLayout(self._setting_row(
             "Model Size",
             "Larger models are more accurate but slower. Restart required to apply.",
             model_combo,
         ))
-        layout.addSpacing(12)
+        layout.addSpacing(4)
 
-        from samsara.languages import LANGUAGES
+        model_lang_hint = QLabel("")
+        model_lang_hint.setWordWrap(True)
+        model_lang_hint.setStyleSheet("color: #E0A030; font-size: 12px; margin-left: 4px;")
+        model_lang_hint.setVisible(False)
+        layout.addWidget(model_lang_hint)
+        layout.addSpacing(8)
+
         lang_name_to_code = {name: code for name, code in LANGUAGES}
         lang_code_to_name = {code: name for name, code in LANGUAGES}
         lang_names = [name for name, _ in LANGUAGES]
         current_lang_code = self.app.config.get('language', 'en')
-        current_lang_display = lang_code_to_name.get(current_lang_code, 'English')
+        current_lang_display = lang_code_to_name.get(current_lang_code, 'English (en)')
         lang_combo = QComboBox()
         lang_combo.addItems(lang_names)
         if current_lang_display in lang_names:
@@ -794,6 +810,22 @@ class _SettingsWindow(QMainWindow):
             lang_combo,
         ))
         layout.addSpacing(16)
+
+        def _update_model_lang_hint(_=None):
+            model_label = model_combo.currentText()
+            model_size = model_label_to_actual_size.get(model_label, model_label)
+            lang_display = lang_combo.currentText()
+            lang_code = lang_name_to_code.get(lang_display, 'en')
+            mismatch = lang_code != 'en' and is_english_only_model(model_size)
+            if mismatch:
+                model_lang_hint.setText(
+                    f"English-only model — switch to small / large-v3 for {lang_display}"
+                )
+            model_lang_hint.setVisible(mismatch)
+
+        model_combo.currentTextChanged.connect(_update_model_lang_hint)
+        lang_combo.currentTextChanged.connect(_update_model_lang_hint)
+        _update_model_lang_hint()
 
         # Section: Basic Options
         layout.addWidget(self._section_title("Basic Options"))
@@ -895,7 +927,9 @@ class _SettingsWindow(QMainWindow):
                 'auto_capitalize':    self._widgets['auto_capitalize'].isChecked(),
                 'format_numbers':     self._widgets['format_numbers'].isChecked(),
                 'cleanup_mode':       self._widgets['cleanup_mode'].currentText(),
-                'model_size':         self._widgets['model_combo'].currentText(),
+                'model_size':         self._widgets['model_label_to_size'].get(
+                                          self._widgets['model_combo'].currentText(),
+                                          self._widgets['model_combo'].currentText()),
                 'language':           self._widgets['lang_name_to_code'].get(
                                           self._widgets['lang_combo'].currentText(), 'en'),
                 'hints_enabled':      self._widgets['hints_enabled'].isChecked(),
@@ -3714,6 +3748,28 @@ class _SettingsWindow(QMainWindow):
         sc_mode_streaming_cb.setChecked(bool(sc_modes_cfg.get('streaming', False)))
         self._widgets['sc_mode_streaming'] = sc_mode_streaming_cb
         layout.addWidget(sc_mode_streaming_cb)
+        layout.addSpacing(20)
+
+        # ---- Section: Benchmark ---------------------------------------------
+        layout.addWidget(self._section_title("Benchmark"))
+        layout.addSpacing(4)
+
+        bench_cfg = cfg.get('benchmark', {}) or {}
+
+        bench_note = QLabel(
+            "Saves your dictation audio and transcript locally so you can "
+            "review it and build a personal accuracy benchmark. Nothing "
+            "ever leaves this machine. Off by default."
+        )
+        bench_note.setWordWrap(True)
+        bench_note.setStyleSheet("color: #8A8A92; font-size: 12px;")
+        layout.addWidget(bench_note)
+        layout.addSpacing(6)
+
+        bench_cb = QCheckBox("Collect benchmark samples (saves your dictation audio locally for accuracy testing)")
+        bench_cb.setChecked(bool(bench_cfg.get('collect_samples', False)))
+        self._widgets['adv_bench_collect'] = bench_cb
+        layout.addWidget(bench_cb)
 
         def _save(acc):
             updates = {}
@@ -3757,6 +3813,10 @@ class _SettingsWindow(QMainWindow):
                         'streaming': self._widgets['sc_mode_streaming'].isChecked(),
                     }
                     updates['smart_corrections'] = sc_cfg_out
+                if 'adv_bench_collect' in self._widgets:
+                    bench_cfg_out = dict(self.app.config.get('benchmark', {}) or {})
+                    bench_cfg_out['collect_samples'] = self._widgets['adv_bench_collect'].isChecked()
+                    updates['benchmark'] = bench_cfg_out
                 # Apply manual threshold to wake_word_config if in manual mode --
                 # merge onto whatever the Modes tab already wrote (read from
                 # acc), not self.app.config, so that write isn't clobbered.

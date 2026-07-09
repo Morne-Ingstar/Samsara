@@ -403,6 +403,8 @@ from samsara.ui.listening_indicator import ListeningIndicator
 from samsara.cleanup import clean_text
 from samsara.smart_corrections import smart_correct, warm_up as smart_corrections_warm_up
 from samsara import diagnostics
+from samsara import benchmark_store
+from samsara import languages as _languages
 from samsara.history import HistoryManager
 from samsara.history_store import HistoryStore
 from samsara.wake_word_matcher import match_wake_phrase
@@ -637,6 +639,24 @@ def resample_audio(audio, orig_sr, target_sr=MODEL_SAMPLE_RATE):
     return np.interp(new_indices, old_indices, audio).astype(np.float32)
 
 
+# Well-known Whisper hallucination strings that appear on near-silent audio,
+# across languages -- Signature E below. Language-independent by
+# construction (checked as a plain case-insensitive substring match, no
+# transcription-language dependency), so it extends _is_hallucinated_segments
+# rather than needing a separate per-language check. "amara.org" alone
+# catches variants not explicitly listed (Amara.org crowd-subtitles the
+# phrase on many different source videos/languages).
+_HALLUCINATION_STRING_BLACKLIST = (
+    "untertitel der amara.org-community",
+    "sous-titrage st' 501",
+    "ご視聴ありがとうございました",
+    "字幕由amara.org社区提供",
+    "дякую за перегляд",
+    "gracias por ver el video",
+    "amara.org",
+)
+
+
 def _is_hallucinated_segments(seg_list, text):
     """True if the transcription shows Whisper's degenerate-repetition signature.
 
@@ -647,14 +667,23 @@ def _is_hallucinated_segments(seg_list, text):
     buffers, and the click-fade (see module-level _NO_SPEECH_THRESHOLD /
     _GATE_* / _FADE_MS constants and _buffer_has_contiguous_speech). This
     output-text heuristic is a cheap last-resort net for whatever slips
-    through those, not the primary defense -- do not extend its signatures;
-    fix causes upstream instead.
+    through those, not the primary defense -- avoid extending the
+    repetition-based signatures (A/B/D); the fixed-string blacklist
+    (Signature E) is a deliberate, bounded exception since those exact
+    strings are never legitimate dictation regardless of language.
 
     Uses telemetry Whisper already computed; no re-inference. Conservative:
     only fires on clear signatures so real speech is never dropped."""
     t = (text or "").strip()
     if not t:
         return False
+    # Signature E: well-known multilingual Whisper hallucination strings
+    # (subtitle-crowdsourcing credits that leak out on near-silent audio).
+    # Language-independent -- checked regardless of the configured
+    # dictation language.
+    t_lower = t.lower()
+    if any(phrase in t_lower for phrase in _HALLUCINATION_STRING_BLACKLIST):
+        return True
     # Signature A: high compression ratio on any segment (repetition compresses hard).
     # Whisper's own reject threshold is 2.4; we use a slightly higher 3.0 to stay
     # conservative and avoid touching borderline-but-real speech.
@@ -1700,6 +1729,19 @@ class DictationApp:
 
         # Tell the user if the model needs to be downloaded vs just loaded
         _model_size = self.config.get('model_size', 'base')
+
+        # .en models cannot transcribe non-English audio at all -- never
+        # silently swap the model, just make the mismatch visible. Auto
+        # counts as "non-English" here too: auto-detect is pointless on an
+        # English-only model.
+        _configured_lang = self.config.get('language', 'en')
+        if _configured_lang != 'en' and _languages.is_english_only_model(_model_size):
+            logger.warning(
+                f"[LANG] Configured language={_configured_lang!r} but model_size="
+                f"{_model_size!r} is English-only -- switch to a multilingual "
+                f"model (no .en suffix) or transcription will stay in English."
+            )
+
         _model_folder = f"models--Systran--faster-whisper-{_model_size}"
         _model_cache = os.path.join(
             os.path.expanduser("~"), ".cache", "huggingface", "hub", _model_folder
@@ -2172,6 +2214,14 @@ class DictationApp:
             # gates the optional on-disk JSONL append.
             "diagnostics": {
                 "write_jsonl": False,
+            },
+            # Personal WER benchmark: opt-in local (user's real audio, gold
+            # transcript) sample collection for the offline accuracy harness.
+            # Off by default -- audio never leaves the machine either way.
+            # See samsara/benchmark_store.py and tools/benchmark_eval.py.
+            "benchmark": {
+                "collect_samples": False,
+                "max_samples": 200,
             },
             # TTS subsystem (WinRTEngine + AudioCoordinator)
             "tts": {
@@ -2830,7 +2880,10 @@ class DictationApp:
         mode = self.config.get('performance_mode', 'balanced')
 
         base_params = {
-            'language': self.config['language'],
+            # Single source of truth for the Whisper `language` kwarg --
+            # "auto" resolves to None (faster-whisper auto-detect); every
+            # other value passes through as-is. See samsara/languages.py.
+            'language': _languages.resolve_transcribe_language(self),
             'initial_prompt': self.voice_training_window.get_initial_prompt(),
             # Native faster-whisper silence suppression (primary hallucination
             # defense -- see "Gate and Reset" architecture, module-level
@@ -2912,6 +2965,15 @@ class DictationApp:
         # Vocabulary biasing is still wanted per-press -- only conversation
         # context gets the clean-slate reset above, not the trained prompt.
         transcribe_params['initial_prompt'] = self.voice_training_window.get_initial_prompt() or ""
+        # Command-mode hotkey (Right Ctrl / Mouse 4, self.command_mode_recording)
+        # is matched against the English command registry -- force English
+        # regardless of the configured dictation language so command
+        # recognition stays reliable. Commands are English-only by design;
+        # Ava-mode (Right Alt) recordings are NOT forced here since that
+        # content goes to the LLM as a natural-language query, not matched
+        # against a fixed phrase registry.
+        if getattr(self, 'command_mode_recording', False):
+            transcribe_params['language'] = 'en'
         return transcribe_params
 
     def process_transcription(self, text):
@@ -4194,6 +4256,11 @@ class DictationApp:
             if audio_duration < 0.3:
                 return
             logger.info(f'[AI-CMD-UTT] Transcribing {audio_duration:.1f}s')
+            # NOT forced to English: this content is a natural-language
+            # query routed to the AI/Ava queue, not matched against the
+            # command registry -- use the configured dictation language.
+            # The English _STOP_WORDS gate below is best-effort in
+            # non-English (commands/control-words remain English-only).
             transcribe_params = self.get_transcription_params()
             transcribe_params['vad_filter'] = False
             with self.model_lock:
@@ -4385,6 +4452,16 @@ class DictationApp:
 
             transcribe_params = self.get_transcription_params()
             transcribe_params['vad_filter'] = False
+            # Command-mode utterances (mode==COMMAND) are matched against the
+            # English command registry AND control words (switch/scratch/
+            # abort, checked by SessionModeManager on every utterance
+            # regardless of mode) -- force English there. DICTATE/AVA use
+            # the configured dictation language; control-word recognition
+            # during those sub-modes is best-effort in non-English (commands
+            # remain English-only by design).
+            manager = self._ensure_session_mode_manager()
+            if manager.mode is SessionMode.COMMAND:
+                transcribe_params['language'] = 'en'
 
             with self.model_lock:
                 segments, _ = self.model.transcribe(audio, **transcribe_params)
@@ -4406,7 +4483,6 @@ class DictationApp:
             signals = self._compute_switch_gate_signals(audio, seg_list)
             self._current_utterance_duration_s = audio_duration
 
-            manager = self._ensure_session_mode_manager()
             outcome = manager.dispatch_utterance(text, signals)
             logger.info(f'[SESSION] mode={manager.mode.value} outcome={outcome.kind} detail={outcome.detail}')
             self._handle_session_dispatch_outcome(outcome, text)
@@ -4528,7 +4604,12 @@ class DictationApp:
             audio = resample_audio(audio, src_rate, self.model_rate)
             audio_duration = len(audio) / self.model_rate
             
-            # Get transcription parameters based on performance mode
+            # Get transcription parameters based on performance mode. NOT
+            # forced to English: continuous mode always transcribes with the
+            # configured dictation language -- ambient command phrases below
+            # (command_executor.process_text) are matched best-effort against
+            # that same transcription and simply fall through to dictation
+            # output when they don't match (commands remain English-only).
             transcribe_params = self.get_transcription_params()
             # DISABLE faster-whisper's VAD for hold-to-dictate. The user
             # explicitly pressed the hotkey — all captured audio is intentional
@@ -5304,7 +5385,12 @@ class DictationApp:
             self._wake_transcription_in_progress = True
             _set_in_progress = True
 
-            # Get transcription parameters based on performance mode
+            # Get transcription parameters based on performance mode. NOT
+            # forced to English: this is the wake/_output_dictation lane --
+            # transcribes with the configured dictation language. The
+            # cancel/send/end/pause/resume control words checked below are
+            # small fixed English word lists, best-effort in non-English
+            # (commands/control-words remain English-only by design).
             transcribe_params = self.get_transcription_params()
             # When Silero is unavailable we relied on RMS to gate speech into
             # the buffer. Whisper's own vad_filter then strips quiet audio a
@@ -5340,11 +5426,12 @@ class DictationApp:
                 _acc = getattr(self, '_wake_diag_acc', None) or {
                     'audio_s': 0.0, 'avg_logprob': None, 'compression_ratio': None,
                     'no_speech_prob': None, 'temperature': None, 'n_segments': 0,
-                    't_transcribe_ms': 0,
+                    't_transcribe_ms': 0, 'detected_language': None,
                 }
                 _acc['audio_s'] += audio_duration
                 _acc['t_transcribe_ms'] += _t_ms
                 _acc['n_segments'] += _sig['n_segments']
+                _acc['detected_language'] = getattr(info, 'language', None) or _acc['detected_language']
                 if _sig['avg_logprob'] is not None:
                     _acc['avg_logprob'] = (
                         _sig['avg_logprob'] if _acc['avg_logprob'] is None
@@ -6238,6 +6325,9 @@ class DictationApp:
                 n_segments=_diag_acc.get('n_segments', 0),
                 text=text,
                 smart_changed=smart_changed,
+                language=_languages.describe_diagnostics_language(
+                    self.config.get('language', 'en'), _diag_acc.get('detected_language'),
+                ),
             ), app=self)
         except Exception as _diag_exc:
             logger.debug(f"[DIAG] wake record failed: {_diag_exc}")
@@ -6857,6 +6947,7 @@ class DictationApp:
 
                 transcribe_start = time.time()
                 _diag_all_segs = []
+                _detected_lang = None
 
                 if audio_duration > 30.0:
                     # Long audio: split at silence boundaries before transcription.
@@ -6877,7 +6968,8 @@ class DictationApp:
                         if chunk_dur < 0.2:
                             continue
                         with self.model_lock:
-                            segs, _ = self.model.transcribe(chunk, **transcribe_params)
+                            segs, _chunk_info = self.model.transcribe(chunk, **transcribe_params)
+                        _detected_lang = getattr(_chunk_info, 'language', None) or _detected_lang
                         _segs_list = list(segs)
                         _diag_all_segs.extend(_segs_list)
                         chunk_text = "".join(s.text for s in _segs_list).strip()
@@ -6893,6 +6985,7 @@ class DictationApp:
                 else:
                     with self.model_lock:
                         segments, info = self.model.transcribe(audio_faded, **transcribe_params)
+                    _detected_lang = getattr(info, 'language', None) or _detected_lang
                     _seg_list = list(segments)
                     _diag_all_segs.extend(_seg_list)
                     text = "".join([s.text for s in _seg_list]).strip()
@@ -6916,8 +7009,9 @@ class DictationApp:
                       f"RTF: {rtf:.2f}x | Mode: {perf_mode} | Device: {device_info}")
                 
                 # Apply corrections dictionary
+                _bench_raw_transcript = text
                 text = self.voice_training_window.apply_corrections(text)
-                
+
                 # Check which mode produced this recording
                 is_command_mode = self.command_mode_recording
                 is_ava_mode = self.ava_mode_recording
@@ -6961,6 +7055,10 @@ class DictationApp:
                                 t_transcribe_ms=t_transcribe_ms,
                                 t_total_ms=t_transcribe_ms,
                                 text=text,
+                                # Command-mode transcription is always forced
+                                # to English (see _build_hotkey_transcribe_params)
+                                # regardless of the general dictation language.
+                                language="en",
                                 **_diag_sig,
                             ), app=self)
                         except Exception as _diag_exc:
@@ -7077,10 +7175,26 @@ class DictationApp:
                             t_total_ms=int((time.time() - transcribe_start) * 1000),
                             text=text,
                             smart_changed=smart_changed,
+                            language=_languages.describe_diagnostics_language(
+                                self.config.get('language', 'en'), _detected_lang,
+                            ),
                             **_diag_sig,
                         ), app=self)
                     except Exception as _diag_exc:
                         logger.debug(f"[DIAG] hotkey record failed: {_diag_exc}")
+
+                    # Personal WER benchmark sample (opt-in, off by default --
+                    # see samsara/benchmark_store.py). Raw audio buffer at
+                    # model rate, pre-corrections transcript, and this fully
+                    # processed text. Never affects dictation output on failure.
+                    try:
+                        benchmark_store.append_sample(
+                            self, audio, self.model_rate,
+                            _bench_raw_transcript, text.strip(),
+                            self.config.get('model_size', ''),
+                        )
+                    except Exception as _bench_exc:
+                        logger.debug(f"[BENCH] append_sample failed: {_bench_exc}")
 
                     if self.config['auto_paste']:
                         self._paste_preserving_clipboard(text)
@@ -7598,6 +7712,16 @@ class DictationApp:
             self._diagnostics_qt.show()
         except Exception as e:
             logger.exception(f"[DIAG] Error opening dictation diagnostics: {e}")
+
+    def open_benchmark_review(self):
+        """Open the personal WER benchmark gold-standard review window"""
+        try:
+            if not hasattr(self, '_benchmark_review_qt'):
+                from samsara.ui.benchmark_review_qt import BenchmarkReviewQt
+                self._benchmark_review_qt = BenchmarkReviewQt(self)
+            self._benchmark_review_qt.show()
+        except Exception as e:
+            logger.exception(f"[BENCH] Error opening benchmark review: {e}")
 
     def open_log_viewer(self):
         """Open the live log viewer window"""

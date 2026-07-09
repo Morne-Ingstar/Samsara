@@ -49,6 +49,7 @@ class DiagRecord:
     n_segments: int = 0
     text: str = ""
     smart_changed: bool = False
+    language: str = ""              # configured code, or "auto->{detected}"
     verdicts: list = field(default_factory=list)
 
 
