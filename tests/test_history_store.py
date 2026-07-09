@@ -2,7 +2,9 @@
 - samsara.history_store.HistoryStore (the task-shaped façade)
 - samsara.history.HistoryManager.recent_windowed (the SQL-side windowing/
   search/type-filter method backing it)
-- samsara.ui.history_qt.day_label (the pure day-grouping label function)
+- samsara.ui.history_view.day_label (the pure day-grouping label function --
+  moved here from history_qt.py when the list/toolbar UI was extracted into
+  a reusable HistoryView shared with main_window_qt.py's History tab)
 
 All DB tests use a tmp_path-backed SQLite file -- never the real
 ~/.samsara/history.db. Includes a non-cp1252 unicode round-trip
@@ -20,7 +22,7 @@ sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
 from samsara.history import HistoryManager
 from samsara.history_store import HistoryStore
-from samsara.ui.history_qt import day_label
+from samsara.ui.history_view import day_label
 
 
 UNICODE_TEXT = "→ café 🎤"
