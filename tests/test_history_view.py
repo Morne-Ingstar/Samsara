@@ -30,6 +30,21 @@ def _pump(app, ms=400):
         time.sleep(0.01)
 
 
+def _pump_until(app, condition, timeout_ms=3000):
+    """Poll until `condition()` is true or timeout_ms elapses. Row loading
+    runs on a background thread (SQLite query + Signal marshal back to the
+    Qt thread) -- a fixed short sleep is flaky under full-suite CPU
+    contention, so wait for the actual result instead of guessing a
+    duration."""
+    end = time.monotonic() + timeout_ms / 1000.0
+    while time.monotonic() < end:
+        app.processEvents()
+        if condition():
+            return True
+        time.sleep(0.01)
+    return condition()
+
+
 def _make_store(tmp_path, name="history.db"):
     db_path = tmp_path / name
     manager = HistoryManager(db_path=str(db_path))
@@ -115,7 +130,7 @@ class TestConstruction:
 
         view1 = HistoryView(store1)
         view2 = HistoryView(store2)
-        _pump(qapp)
+        _pump_until(qapp, lambda: len(view1._rows_by_item_id) >= 1 and len(view2._rows_by_item_id) >= 2)
 
         assert len(view1._rows_by_item_id) == 1
         assert len(view2._rows_by_item_id) == 2
@@ -123,7 +138,7 @@ class TestConstruction:
         # Mutating/reloading one must not affect the other.
         store1.append("dictation", "a second entry in store one")
         view1.refresh()
-        _pump(qapp)
+        _pump_until(qapp, lambda: len(view1._rows_by_item_id) >= 2)
 
         assert len(view1._rows_by_item_id) == 2
         assert len(view2._rows_by_item_id) == 2   # unchanged
@@ -134,13 +149,13 @@ class TestConstruction:
     def test_construction_with_store_none_and_legacy_history_fn(self, qapp):
         legacy = [("2026-01-01T09:00:00", "legacy entry", False)]
         view = HistoryView(None, legacy_history_fn=lambda: legacy)
-        _pump(qapp)
+        _pump_until(qapp, lambda: len(view._rows_by_item_id) >= 1)
 
         assert len(view._rows_by_item_id) == 1
 
     def test_construction_with_no_store_and_no_legacy_shows_empty_state(self, qapp):
         view = HistoryView(None)
-        _pump(qapp)
+        _pump_until(qapp, lambda: view._list.count() >= 1)
 
         assert len(view._rows_by_item_id) == 0
         assert view._list.count() >= 1   # the empty-state placeholder item
@@ -153,11 +168,11 @@ class TestConstruction:
         mgr._conn.commit()
 
         view = HistoryView(store)
-        _pump(qapp)
+        _pump_until(qapp, lambda: len(view._rows_by_item_id) >= 2)
         assert len(view._rows_by_item_id) == 2
 
         view._filter.setCurrentText("Failed")
-        _pump(qapp)
+        _pump_until(qapp, lambda: len(view._rows_by_item_id) == 1)
         assert len(view._rows_by_item_id) == 1
 
         mgr.close()
@@ -169,7 +184,7 @@ class TestConstruction:
 
         view = HistoryView(store)
         view.show()
-        _pump(qapp)
+        _pump_until(qapp, lambda: len(view._rows_by_item_id) >= 2)
 
         assert view._detail.isVisible() is False
 
