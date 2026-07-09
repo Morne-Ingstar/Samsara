@@ -21,6 +21,7 @@ from PySide6.QtWidgets import (
 from samsara.ui import qt_runtime
 from samsara.runtime import thread_registry
 from samsara.audio_devices import pick_index_by_name
+from samsara import smart_corrections
 
 from samsara.log import get_logger
 
@@ -515,6 +516,7 @@ class _SettingsWindow(QMainWindow):
         # interspersed and unselectable) -- build an explicit row->stack-index
         # map instead of relying on row == index.
         name_to_stack_index = {name: i for i, name in enumerate(_TAB_NAMES)}
+        self._advanced_stack_index = name_to_stack_index.get('Advanced')
         self._sidebar_row_to_stack_index: dict = {}
         row = 0
         for group_label, tab_names in _SIDEBAR_GROUPS:
@@ -607,6 +609,22 @@ class _SettingsWindow(QMainWindow):
         stack_index = self._sidebar_row_to_stack_index.get(row)
         if stack_index is not None:
             self._stack.setCurrentIndex(stack_index)
+            if stack_index == self._advanced_stack_index:
+                self._refresh_sc_status()
+
+    def _refresh_sc_status(self) -> None:
+        """Refresh the Smart Corrections "Active backend" status line --
+        called on tab build and every time the Advanced tab is shown, since
+        Ollama reachability can change between settings-window visits."""
+        label = self._widgets.get('sc_status_label')
+        if label is None:
+            return
+        try:
+            status = smart_corrections.describe_backend_status(self.app)
+        except Exception as e:
+            logger.debug(f"[SETTINGS] Smart Corrections status refresh failed: {e}")
+            status = "unknown"
+        label.setText(f"Active backend: {status}")
 
     # ------------------------------------------------------------------
     # Tab builders
@@ -3619,7 +3637,15 @@ class _SettingsWindow(QMainWindow):
         sc_enabled_cb.setChecked(bool(sc_cfg.get('enabled', False)))
         self._widgets['sc_enabled'] = sc_enabled_cb
         layout.addWidget(sc_enabled_cb)
+        layout.addSpacing(6)
+
+        sc_status_label = QLabel("Active backend: --")
+        sc_status_label.setWordWrap(True)
+        sc_status_label.setStyleSheet("color: #8A8A92; font-size: 12px; margin-left: 4px;")
+        self._widgets['sc_status_label'] = sc_status_label
+        layout.addWidget(sc_status_label)
         layout.addSpacing(8)
+        self._refresh_sc_status()
 
         sc_backend_options = ['auto', 'ollama', 'cloud']
         sc_backend_combo = QComboBox()
@@ -3651,6 +3677,15 @@ class _SettingsWindow(QMainWindow):
         sc_backend_combo.currentTextChanged.connect(_update_sc_cloud_hint)
         _update_sc_cloud_hint()
         layout.addWidget(sc_cloud_hint)
+        layout.addSpacing(8)
+
+        sc_fallback_cb = QCheckBox(
+            "Allow cloud fallback when local AI is unavailable (sends "
+            "dictated text to your cloud provider)"
+        )
+        sc_fallback_cb.setChecked(bool(sc_cfg.get('allow_cloud_fallback', False)))
+        self._widgets['sc_allow_cloud_fallback'] = sc_fallback_cb
+        layout.addWidget(sc_fallback_cb)
         layout.addSpacing(8)
 
         sc_model_edit = QLineEdit()
@@ -3712,6 +3747,9 @@ class _SettingsWindow(QMainWindow):
                     sc_cfg_out['backend'] = self._widgets['sc_backend'].currentText()
                     sc_cfg_out['ollama_model'] = (
                         self._widgets['sc_model'].text().strip() or 'qwen2.5:3b'
+                    )
+                    sc_cfg_out['allow_cloud_fallback'] = (
+                        self._widgets['sc_allow_cloud_fallback'].isChecked()
                     )
                     sc_cfg_out['modes'] = {
                         'hotkey':    self._widgets['sc_mode_hotkey'].isChecked(),
@@ -4268,8 +4306,21 @@ class _SettingsWindow(QMainWindow):
         for save_fn in self._save_fns:
             updates.update(save_fn(updates))
 
+        was_sc_enabled = bool(
+            self.app.config.get('smart_corrections', {}).get('enabled', False)
+        )
+
         with self.app._config_lock:
             self.app.config.update(updates)
             self.app.save_config()
+
+        now_sc_enabled = bool(
+            self.app.config.get('smart_corrections', {}).get('enabled', False)
+        )
+        if now_sc_enabled and not was_sc_enabled:
+            try:
+                smart_corrections.warm_up(self.app)
+            except Exception as e:
+                logger.debug(f"[SETTINGS] Smart Corrections warm_up call failed: {e}")
 
         self.close()
