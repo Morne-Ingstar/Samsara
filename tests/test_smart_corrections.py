@@ -27,13 +27,15 @@ sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 import samsara.smart_corrections as sc
 
 
-def _make_app(smart_corrections=None, cloud_llm=None, vocab=None, corrections=None):
+def _make_app(smart_corrections=None, cloud_llm=None, vocab=None, corrections=None, language=None):
     app = types.SimpleNamespace()
     app.config = {
         'smart_corrections': smart_corrections or {},
         'cloud_llm': cloud_llm or {},
         'ollama': {},
     }
+    if language is not None:
+        app.config['language'] = language
     app.voice_training_window = types.SimpleNamespace(
         custom_vocab=vocab or [],
         corrections_dict=corrections or {},
@@ -601,3 +603,79 @@ class TestSystemPromptFewShot:
 
     def test_prompt_still_forbids_paraphrasing(self):
         assert "Do not paraphrase" in sc.SYSTEM_PROMPT
+
+
+# ============================================================================
+# Language-aware system prompt (multilingual dictation Task 4)
+# ============================================================================
+
+class TestLanguageAwarePrompt:
+    def test_english_uses_system_prompt_verbatim_including_fewshot(self):
+        app = _make_app(language='en')
+        assert sc._build_system_prompt(app) == sc.SYSTEM_PROMPT
+
+    def test_unset_language_defaults_to_english_prompt(self):
+        app = _make_app()  # no language key at all
+        assert sc._build_system_prompt(app) == sc.SYSTEM_PROMPT
+
+    def test_auto_drops_english_examples_and_forbids_translation(self):
+        app = _make_app(language='auto')
+        prompt = sc._build_system_prompt(app)
+        assert "angziolotic" not in prompt
+        assert "Send the draft to Sarah." not in prompt
+        assert "Preserve the language of the input exactly; never translate." in prompt
+
+    def test_specific_language_names_it_and_forbids_translation(self):
+        app = _make_app(language='de')
+        prompt = sc._build_system_prompt(app)
+        assert "angziolotic" not in prompt
+        assert "Deutsch" in prompt
+        assert "Never translate." in prompt
+
+    def test_non_english_prompt_keeps_base_instructions(self):
+        app = _make_app(language='ja')
+        prompt = sc._build_system_prompt(app)
+        assert "Do not paraphrase" in prompt
+        assert "quotation marks" in prompt
+
+
+# ============================================================================
+# Translation guardrail -- script-ratio check (multilingual dictation Task 4)
+# ============================================================================
+
+class TestTranslationGuardrail:
+    def test_cjk_original_translated_to_latin_output_is_rejected(self):
+        original = "今日は会議に遅れます"
+        translated = "I will be late for the meeting today"
+        result = sc._sanitize_output(translated, original)
+        assert result == original
+
+    def test_latin_original_translated_to_cjk_output_is_rejected(self):
+        original = "I will be late for the meeting today"
+        translated = "今日は会議に遅れます"
+        result = sc._sanitize_output(translated, original)
+        assert result == original
+
+    def test_same_script_correction_passes_through(self):
+        original = "今日わ会議に遅れます"
+        corrected = "今日は会議に遅れます"
+        result = sc._sanitize_output(corrected, original)
+        assert result == corrected
+
+    def test_fake_backend_returning_translation_is_rejected_end_to_end(self, monkeypatch):
+        app = _make_app(smart_corrections={
+            'enabled': True, 'min_words': 1, 'backend': 'ollama',
+        }, language='ja')
+        original_text = "今日は会議に遅れます"
+
+        monkeypatch.setattr(sc, '_resolve_backend_detailed', lambda app: ('ollama', False, None))
+        monkeypatch.setattr(
+            sc, '_call_ollama',
+            lambda text, app, system_prompt, timeout_s, model: (
+                "I will be late for the meeting today", False,
+            ),
+        )
+
+        result = sc.smart_correct(original_text, app)
+
+        assert result == original_text

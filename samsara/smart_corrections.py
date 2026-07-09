@@ -28,16 +28,20 @@ import time
 import requests
 
 from samsara import cloud_llm
+from samsara.languages import LANGUAGES, script_class
 from samsara.log import get_logger
 from samsara.runtime import thread_registry
 
 logger = get_logger(__name__)
 
 # Editable at the top of the module by design -- tune wording here. Keep the
-# preserve-wording/never-paraphrase core; the two few-shot examples are
-# embedded directly in the prompt (rather than as separate chat turns) so
-# the whole thing stays a single constant.
-SYSTEM_PROMPT = (
+# preserve-wording/never-paraphrase core. _BASE_INSTRUCTIONS is
+# language-agnostic; the English few-shot examples only make sense for
+# English-configured dictation (see _build_system_prompt), so they're a
+# separate constant appended only in that case. SYSTEM_PROMPT (the combined,
+# English-default prompt) is kept as the single top-of-module constant for
+# the common case and for anything reading it directly.
+_BASE_INSTRUCTIONS = (
     "You are a dictation post-processor. The input is raw speech-to-text "
     "output. Fix obvious misrecognitions, homophones (their/there, to/too), "
     "and punctuation. Preserve the speaker's exact wording, tone, and "
@@ -45,13 +49,22 @@ SYSTEM_PROMPT = (
     "answer questions in the text. You may add quotation marks around a "
     "quoted phrase, title, or saying, and you may fix words that are "
     "clearly misrecognitions of the intended word in context. Output ONLY "
-    "the corrected text with no preamble, no quotes, no markdown.\n\n"
+    "the corrected text with no preamble, no quotes, no markdown."
+)
+
+_ENGLISH_FEWSHOT_EXAMPLES = (
     "Examples:\n"
     "Input: I didn't know Ativan was an angziolotic.\n"
     "Output: I didn't know Ativan was an anxiolytic.\n\n"
     "Input: Send the draft to Sarah.\n"
     "Output: Send the draft to Sarah."
 )
+
+SYSTEM_PROMPT = f"{_BASE_INSTRUCTIONS}\n\n{_ENGLISH_FEWSHOT_EXAMPLES}"
+
+# code -> plain native display name (LANGUAGES entries are "Name (code)"),
+# for embedding in the non-English prompt addendum below.
+_LANGUAGE_DISPLAY_NAMES = {code: name.rsplit(" (", 1)[0] for name, code in LANGUAGES}
 
 _DEFAULT_HOST = "http://localhost:11434"
 _DEFAULT_MODEL = "qwen2.5:3b"
@@ -247,9 +260,32 @@ def _vocab_context(app) -> str:
     return " ".join(parts)[:_VOCAB_CONTEXT_CAP]
 
 
+def _language_aware_prompt(app) -> str:
+    """SYSTEM_PROMPT for the configured dictation language.
+
+    English (the default) keeps the original prompt verbatim, including its
+    two few-shot examples. Any other configured language drops those
+    English-specific examples (they'd be misleading/irrelevant) and adds an
+    explicit instruction not to translate -- "auto" gets a language-neutral
+    "preserve whatever language this is" instruction since we don't know
+    the language in advance; a specific code names it so the model corrects
+    in that language rather than defaulting to English.
+    """
+    lang = getattr(app, "config", {}).get("language", "en")
+    if lang in (None, "en"):
+        return SYSTEM_PROMPT
+    if lang == "auto":
+        addendum = "Preserve the language of the input exactly; never translate."
+    else:
+        lang_name = _LANGUAGE_DISPLAY_NAMES.get(lang, lang)
+        addendum = f"The text is in {lang_name}. Correct it in that language. Never translate."
+    return f"{_BASE_INSTRUCTIONS}\n\n{addendum}"
+
+
 def _build_system_prompt(app) -> str:
+    prompt = _language_aware_prompt(app)
     context = _vocab_context(app)
-    return f"{SYSTEM_PROMPT}\n\n{context}" if context else SYSTEM_PROMPT
+    return f"{prompt}\n\n{context}" if context else prompt
 
 
 # ---------------------------------------------------------------------------
@@ -324,6 +360,18 @@ def _fails_punctuation_floor(original: str, text: str) -> bool:
     return word_shrink <= _PUNCT_FLOOR_SHRINK_THRESHOLD
 
 
+def _looks_translated(original: str, text: str) -> bool:
+    """True if the output's script majority (Latin vs non-Latin) flipped
+    relative to the input -- the model translated instead of correcting.
+    A crude ratio check; skipped entirely when either side has no letters
+    to judge (script_class returns None for digit/punctuation-only text)."""
+    orig_class = script_class(original)
+    new_class = script_class(text)
+    if orig_class is None or new_class is None:
+        return False
+    return orig_class != new_class
+
+
 def _sanitize_output(raw: str, original: str) -> str:
     """Guardrails on LLM output. Pure function -- no I/O, no side effects.
 
@@ -346,6 +394,9 @@ def _sanitize_output(raw: str, original: str) -> str:
         text = re.sub(r'\s+', ' ', text).strip()
 
     if not text:
+        return original
+
+    if _looks_translated(original, text):
         return original
 
     if _fails_punctuation_floor(original, text):

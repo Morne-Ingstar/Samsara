@@ -27,6 +27,7 @@ from PySide6.QtWidgets import (
 
 from samsara.ui import qt_runtime
 from samsara.runtime import thread_registry
+from samsara.languages import resolve_transcribe_language
 
 from samsara.log import get_logger
 
@@ -987,7 +988,7 @@ class _DebugWindow(QMainWindow):
             initial_prompt = vt.get_initial_prompt() if vt else None
             segments, _ = self._app.model.transcribe(
                 audio,
-                language=self._app.config.get('language', 'en'),
+                language=resolve_transcribe_language(self._app),
                 beam_size=5,
                 vad_filter=True,
                 initial_prompt=initial_prompt,

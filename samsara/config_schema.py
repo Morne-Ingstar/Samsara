@@ -31,6 +31,11 @@ SETTINGS_SCHEMA = {
         "default": "base",
         "tab": "general",
     },
+    "language": {
+        "type": "str",
+        "default": "en",
+        "tab": "general",
+    },
     "auto_paste":           {"type": "bool", "default": True,  "tab": "general"},
     "add_trailing_space":   {"type": "bool", "default": True,  "tab": "general"},
     "auto_capitalize":      {"type": "bool", "default": True,  "tab": "general"},
@@ -383,6 +388,18 @@ SETTINGS_SCHEMA = {
 
     # Dictation Diagnostics: per-utterance pipeline instrumentation viewer.
     "diagnostics.write_jsonl": {"type": "bool", "default": False, "tab": "advanced"},
+
+    # Personal WER benchmark: opt-in local sample collection for the
+    # offline accuracy harness (samsara/benchmark_store.py, tools/benchmark_eval.py).
+    "benchmark.collect_samples": {"type": "bool", "default": False, "tab": "advanced"},
+    "benchmark.max_samples": {
+        "type": "int",
+        "min": 10,
+        "max": 2000,
+        "default": 200,
+        "tab": "advanced",
+        "depends_on": "benchmark.collect_samples",
+    },
 
     # -------------------------------------------------------------------------
     # Ava / Cloud tab

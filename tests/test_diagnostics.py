@@ -209,3 +209,29 @@ class TestTextTruncation:
     def test_short_text_untouched(self):
         record(_rec(text="short"))
         assert recent()[0].text == "short"
+
+
+# ============================================================================
+# Language field (multilingual dictation Task 6)
+# ============================================================================
+
+class TestLanguageField:
+    def test_defaults_to_empty_string(self):
+        assert _rec().language == ""
+
+    def test_populated_field_round_trips_through_record(self):
+        record(_rec(language="de"))
+        assert recent()[0].language == "de"
+
+    def test_describe_diagnostics_language_configured_code(self):
+        from samsara.languages import describe_diagnostics_language
+        assert describe_diagnostics_language("de") == "de"
+        assert describe_diagnostics_language("en") == "en"
+
+    def test_describe_diagnostics_language_auto_with_detection(self):
+        from samsara.languages import describe_diagnostics_language
+        assert describe_diagnostics_language("auto", "fr") == "auto->fr"
+
+    def test_describe_diagnostics_language_auto_without_detection(self):
+        from samsara.languages import describe_diagnostics_language
+        assert describe_diagnostics_language("auto", None) == "auto"

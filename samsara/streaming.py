@@ -44,6 +44,7 @@ from samsara.log import get_logger
 from samsara.runtime import thread_registry
 from samsara.smart_corrections import smart_correct
 from samsara import diagnostics
+from samsara import languages as _languages
 
 logger = get_logger(__name__)
 
@@ -433,7 +434,8 @@ class StreamingWorker(threading.Thread):
             with app.model_lock:
                 params = self._final_params()
                 t0 = time.time()
-                segments, _ = app.model.transcribe(audio, **params)
+                segments, info = app.model.transcribe(audio, **params)
+                detected_lang = getattr(info, 'language', None)
                 seg_list = list(segments)
                 text = "".join(seg.text for seg in seg_list).strip()
                 duration_s = len(audio) / app.model_rate
@@ -501,6 +503,9 @@ class StreamingWorker(threading.Thread):
                     t_total_ms=int((time.time() - t0) * 1000),
                     text=cleaned,
                     smart_changed=smart_changed,
+                    language=_languages.describe_diagnostics_language(
+                        app.config.get('language', 'en'), detected_lang,
+                    ),
                     **diag_sig,
                 ), app=app)
             except Exception as e:
@@ -535,7 +540,7 @@ class StreamingWorker(threading.Thread):
             logger.debug(f"[STREAM] get_initial_prompt failed: {e}")
             prompt = None
         return {
-            'language': app.config.get('language', 'en'),
+            'language': _languages.resolve_transcribe_language(app),
             'initial_prompt': prompt,
             'beam_size': PARTIAL_BEAM,
             'vad_filter': False,
@@ -554,7 +559,7 @@ class StreamingWorker(threading.Thread):
         except Exception as e:
             logger.debug(f"[STREAM] get_transcription_params failed: {e}")
             params = {
-                'language': app.config.get('language', 'en'),
+                'language': _languages.resolve_transcribe_language(app),
                 'initial_prompt': None,
             }
         params = dict(params)
