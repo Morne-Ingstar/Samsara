@@ -103,6 +103,7 @@
   "performance_mode": "balanced",
   "silence_threshold": 2.0,
   "smart_corrections": {
+    "allow_cloud_fallback": false,
     "backend": "auto",
     "enabled": false,
     "modes": {

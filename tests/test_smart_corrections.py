@@ -5,6 +5,15 @@ All backend calls are monkeypatched -- no network, no real Ollama/cloud_llm
 traffic. Fakes use a minimal duck-typed `app` (config dict + a
 voice_training_window stand-in), matching the pattern used elsewhere in this
 suite (see test_transcription_params.py).
+
+smart_correct() resolves its backend via _resolve_backend_detailed() (not
+the public resolve_backend() wrapper) so it can also see used_cloud_fallback
+and skip_reason for logging/notification purposes -- tests that drive
+smart_correct()'s gating/happy-path/failure behavior monkeypatch
+_resolve_backend_detailed directly. Tests of the routing matrix itself
+(auto/ollama/cloud x reachability x allow_cloud_fallback) exercise the real
+resolve_backend()/_resolve_backend_detailed() logic against a monkeypatched
+_ollama_reachable + cloud_llm.is_enabled.
 """
 
 import sys
@@ -39,7 +48,10 @@ def _make_app(smart_corrections=None, cloud_llm=None, vocab=None, corrections=No
 class TestGating:
     def test_disabled_is_passthrough_backend_never_called(self, monkeypatch):
         calls = []
-        monkeypatch.setattr(sc, 'resolve_backend', lambda app: calls.append(app) or 'ollama')
+        monkeypatch.setattr(
+            sc, '_resolve_backend_detailed',
+            lambda app: (calls.append(app) or 'ollama', False, None),
+        )
         app = _make_app(smart_corrections={'enabled': False})
 
         result = sc.smart_correct("this text has enough words", app)
@@ -49,7 +61,10 @@ class TestGating:
 
     def test_under_min_words_is_passthrough_backend_never_called(self, monkeypatch):
         calls = []
-        monkeypatch.setattr(sc, 'resolve_backend', lambda app: calls.append(app) or 'ollama')
+        monkeypatch.setattr(
+            sc, '_resolve_backend_detailed',
+            lambda app: (calls.append(app) or 'ollama', False, None),
+        )
         app = _make_app(smart_corrections={'enabled': True, 'min_words': 3})
 
         result = sc.smart_correct("two words", app)
@@ -58,7 +73,10 @@ class TestGating:
         assert calls == []
 
     def test_no_backend_resolved_is_passthrough(self, monkeypatch):
-        monkeypatch.setattr(sc, 'resolve_backend', lambda app: None)
+        monkeypatch.setattr(
+            sc, '_resolve_backend_detailed',
+            lambda app: (None, False, 'ollama_down_fallback_disabled'),
+        )
         app = _make_app(smart_corrections={'enabled': True, 'min_words': 1})
 
         result = sc.smart_correct("plenty of words here to pass the gate", app)
@@ -73,10 +91,10 @@ class TestGating:
 class TestHappyPath:
     def test_backend_correction_returned_verbatim_after_sanitize(self, monkeypatch):
         app = _make_app(smart_corrections={'enabled': True, 'min_words': 1, 'backend': 'ollama'})
-        monkeypatch.setattr(sc, 'resolve_backend', lambda app: 'ollama')
+        monkeypatch.setattr(sc, '_resolve_backend_detailed', lambda app: ('ollama', False, None))
         monkeypatch.setattr(
             sc, '_call_ollama',
-            lambda text, app, system_prompt, timeout_s: "Their going to the store.",
+            lambda text, app, system_prompt, timeout_s, model: ("Their going to the store.", False),
         )
 
         result = sc.smart_correct("there going too the store", app)
@@ -85,10 +103,10 @@ class TestHappyPath:
 
     def test_cloud_backend_is_used_when_resolved(self, monkeypatch):
         app = _make_app(smart_corrections={'enabled': True, 'min_words': 1, 'backend': 'cloud'})
-        monkeypatch.setattr(sc, 'resolve_backend', lambda app: 'cloud')
+        monkeypatch.setattr(sc, '_resolve_backend_detailed', lambda app: ('cloud', False, None))
         monkeypatch.setattr(
             sc, '_call_cloud',
-            lambda text, app, system_prompt, timeout_s: "Corrected sentence here.",
+            lambda text, app, system_prompt, timeout_s: ("Corrected sentence here.", False),
         )
 
         result = sc.smart_correct("original sentence here", app)
@@ -103,9 +121,9 @@ class TestHappyPath:
 class TestFailureHandling:
     def test_backend_raises_returns_original_no_exception(self, monkeypatch):
         app = _make_app(smart_corrections={'enabled': True, 'min_words': 1, 'backend': 'ollama'})
-        monkeypatch.setattr(sc, 'resolve_backend', lambda app: 'ollama')
+        monkeypatch.setattr(sc, '_resolve_backend_detailed', lambda app: ('ollama', False, None))
 
-        def _boom(text, app, system_prompt, timeout_s):
+        def _boom(text, app, system_prompt, timeout_s, model):
             raise TimeoutError("simulated timeout")
 
         monkeypatch.setattr(sc, '_call_ollama', _boom)
@@ -116,12 +134,337 @@ class TestFailureHandling:
 
     def test_backend_returns_none_returns_original(self, monkeypatch):
         app = _make_app(smart_corrections={'enabled': True, 'min_words': 1, 'backend': 'ollama'})
-        monkeypatch.setattr(sc, 'resolve_backend', lambda app: 'ollama')
-        monkeypatch.setattr(sc, '_call_ollama', lambda text, app, system_prompt, timeout_s: None)
+        monkeypatch.setattr(sc, '_resolve_backend_detailed', lambda app: ('ollama', False, None))
+        monkeypatch.setattr(
+            sc, '_call_ollama',
+            lambda text, app, system_prompt, timeout_s, model: (None, False),
+        )
 
         result = sc.smart_correct("connection failed but this must survive", app)
 
         assert result == "connection failed but this must survive"
+
+
+# ============================================================================
+# Routing matrix -- backend='auto' x ollama reachability x allow_cloud_fallback
+# (Task 2: auto-fallback must be opt-in, never a silent cloud-routing surprise)
+# ============================================================================
+
+class TestRoutingMatrix:
+    def test_auto_ollama_reachable_uses_ollama_regardless_of_fallback_setting(self, monkeypatch):
+        monkeypatch.setattr(sc, '_ollama_reachable', lambda app: True)
+        app = _make_app(smart_corrections={'backend': 'auto', 'allow_cloud_fallback': False})
+
+        assert sc.resolve_backend(app) == 'ollama'
+
+    def test_auto_ollama_down_fallback_disabled_skips_with_info_log(self, monkeypatch, caplog):
+        monkeypatch.setattr(sc, '_ollama_reachable', lambda app: False)
+        app = _make_app(smart_corrections={'backend': 'auto', 'allow_cloud_fallback': False})
+
+        with caplog.at_level('INFO'):
+            backend = sc.resolve_backend(app)
+
+        assert backend is None
+        assert any(
+            "local backend down, cloud fallback disabled -- skipping" in r.message
+            for r in caplog.records
+        )
+
+    def test_auto_ollama_down_fallback_enabled_cloud_configured_uses_cloud(self, monkeypatch):
+        monkeypatch.setattr(sc, '_ollama_reachable', lambda app: False)
+        monkeypatch.setattr(sc.cloud_llm, 'is_enabled', lambda app: True)
+        app = _make_app(
+            smart_corrections={'backend': 'auto', 'allow_cloud_fallback': True},
+            cloud_llm={'enabled': True},
+        )
+
+        backend, used_fallback, skip_reason = sc._resolve_backend_detailed(app)
+
+        assert backend == 'cloud'
+        assert used_fallback is True
+        assert skip_reason is None
+
+    def test_auto_ollama_down_fallback_enabled_no_cloud_configured_skips(self, monkeypatch, caplog):
+        monkeypatch.setattr(sc, '_ollama_reachable', lambda app: False)
+        monkeypatch.setattr(sc.cloud_llm, 'is_enabled', lambda app: False)
+        app = _make_app(smart_corrections={'backend': 'auto', 'allow_cloud_fallback': True})
+
+        with caplog.at_level('INFO'):
+            backend = sc.resolve_backend(app)
+
+        assert backend is None
+        assert any(
+            "no cloud provider configured -- skipping" in r.message
+            for r in caplog.records
+        )
+
+    def test_explicit_backend_ollama_down_resolves_none(self, monkeypatch):
+        monkeypatch.setattr(sc, '_ollama_reachable', lambda app: False)
+        app = _make_app(smart_corrections={'backend': 'ollama'})
+
+        assert sc.resolve_backend(app) is None
+
+    def test_explicit_backend_cloud_always_uses_cloud_when_enabled(self, monkeypatch):
+        monkeypatch.setattr(sc.cloud_llm, 'is_enabled', lambda app: True)
+        app = _make_app(smart_corrections={'backend': 'cloud', 'allow_cloud_fallback': False})
+
+        assert sc.resolve_backend(app) == 'cloud'
+
+
+# ============================================================================
+# Backend attribution in logs (Task 1) -- every completed call names its
+# backend (+ model + elapsed ms where applicable)
+# ============================================================================
+
+class TestBackendAttributionLogging:
+    def test_ollama_success_with_change_logs_backend_model_ms(self, monkeypatch, caplog):
+        app = _make_app(smart_corrections={
+            'enabled': True, 'min_words': 1, 'backend': 'ollama', 'ollama_model': 'qwen3:8b',
+        })
+        monkeypatch.setattr(sc, '_resolve_backend_detailed', lambda app: ('ollama', False, None))
+        monkeypatch.setattr(
+            sc, '_call_ollama',
+            lambda text, app, system_prompt, timeout_s, model: ("Their going to the store.", False),
+        )
+
+        with caplog.at_level('INFO'):
+            result = sc.smart_correct("there going too the store", app)
+
+        assert result == "Their going to the store."
+        msgs = [r.message for r in caplog.records]
+        assert any(
+            m.startswith('[SMART][ollama qwen3:8b')
+            and 'ms]' in m
+            and m.endswith('"there going too the store" -> "Their going to the store."')
+            for m in msgs
+        )
+
+    def test_cloud_no_change_logs_backend_and_ms_no_model(self, monkeypatch, caplog):
+        app = _make_app(smart_corrections={'enabled': True, 'min_words': 1, 'backend': 'cloud'})
+        monkeypatch.setattr(sc, '_resolve_backend_detailed', lambda app: ('cloud', False, None))
+        monkeypatch.setattr(
+            sc, '_call_cloud',
+            lambda text, app, system_prompt, timeout_s: ("same text here", False),
+        )
+
+        with caplog.at_level('INFO'):
+            result = sc.smart_correct("same text here", app)
+
+        assert result == "same text here"
+        msgs = [r.message for r in caplog.records]
+        assert any(
+            m.startswith('[SMART][cloud') and 'ms] no change' in m
+            for m in msgs
+        )
+
+    def test_ollama_timeout_logs_backend_only(self, monkeypatch, caplog):
+        app = _make_app(smart_corrections={'enabled': True, 'min_words': 1, 'backend': 'ollama'})
+        monkeypatch.setattr(sc, '_resolve_backend_detailed', lambda app: ('ollama', False, None))
+        monkeypatch.setattr(
+            sc, '_call_ollama',
+            lambda text, app, system_prompt, timeout_s, model: (None, True),
+        )
+
+        with caplog.at_level('INFO'):
+            result = sc.smart_correct("this call will time out here", app)
+
+        assert result == "this call will time out here"
+        msgs = [r.message for r in caplog.records]
+        assert '[SMART][ollama] timed out -- returning original' in msgs
+
+
+# ============================================================================
+# keep_alive / think=false in the Ollama request payload (Task 5 / Task 6)
+# ============================================================================
+
+class _FakeOllamaResponse:
+    def __init__(self, content="corrected text"):
+        self.status_code = 200
+        self._content = content
+
+    def raise_for_status(self):
+        pass
+
+    def json(self):
+        return {"message": {"content": self._content}}
+
+
+class TestOllamaPayload:
+    def test_keep_alive_default_in_payload(self, monkeypatch):
+        captured = {}
+
+        def fake_post(url, json=None, timeout=None):
+            captured['payload'] = json
+            return _FakeOllamaResponse()
+
+        monkeypatch.setattr(sc._session, 'post', fake_post)
+        app = _make_app()
+
+        raw, was_timeout = sc._call_ollama("some text", app, "system prompt", 6.0, "qwen2.5:3b")
+
+        assert was_timeout is False
+        assert captured['payload']['keep_alive'] == '30m'
+
+    def test_keep_alive_configured_value_used(self, monkeypatch):
+        captured = {}
+
+        def fake_post(url, json=None, timeout=None):
+            captured['payload'] = json
+            return _FakeOllamaResponse()
+
+        monkeypatch.setattr(sc._session, 'post', fake_post)
+        app = _make_app(smart_corrections={'keep_alive': '10m'})
+
+        sc._call_ollama("some text", app, "system prompt", 6.0, "qwen2.5:3b")
+
+        assert captured['payload']['keep_alive'] == '10m'
+
+    def test_think_false_in_payload(self, monkeypatch):
+        captured = {}
+
+        def fake_post(url, json=None, timeout=None):
+            captured['payload'] = json
+            return _FakeOllamaResponse()
+
+        monkeypatch.setattr(sc._session, 'post', fake_post)
+        app = _make_app()
+
+        sc._call_ollama("some text", app, "system prompt", 6.0, "qwen2.5:3b")
+
+        assert captured['payload']['think'] is False
+
+    def test_timeout_is_reported(self, monkeypatch):
+        def fake_post(url, json=None, timeout=None):
+            raise sc.requests.exceptions.Timeout("simulated")
+
+        monkeypatch.setattr(sc._session, 'post', fake_post)
+        app = _make_app()
+
+        raw, was_timeout = sc._call_ollama("some text", app, "system prompt", 6.0, "qwen2.5:3b")
+
+        assert raw is None
+        assert was_timeout is True
+
+
+# ============================================================================
+# warm_up() -- fire-and-forget, gated on backend=='ollama', never raises
+# ============================================================================
+
+class TestWarmUp:
+    def test_warm_up_never_raises_when_backend_resolution_fails(self, monkeypatch):
+        def _boom(app):
+            raise RuntimeError("resolution boom")
+
+        monkeypatch.setattr(sc, 'resolve_backend', _boom)
+        app = _make_app()
+
+        sc.warm_up(app)  # must not raise
+
+    def test_warm_up_noop_when_backend_not_ollama(self, monkeypatch):
+        spawned = []
+        monkeypatch.setattr(sc, 'resolve_backend', lambda app: 'cloud')
+        monkeypatch.setattr(
+            sc.thread_registry, 'spawn',
+            lambda name, target, daemon=True: spawned.append(name),
+        )
+        app = _make_app()
+
+        sc.warm_up(app)
+
+        assert spawned == []
+
+    def test_warm_up_spawns_daemon_thread_when_backend_is_ollama(self, monkeypatch):
+        spawned = []
+        monkeypatch.setattr(sc, 'resolve_backend', lambda app: 'ollama')
+        monkeypatch.setattr(
+            sc.thread_registry, 'spawn',
+            lambda name, target, daemon=True: spawned.append((name, target, daemon)),
+        )
+        app = _make_app()
+
+        sc.warm_up(app)
+
+        assert len(spawned) == 1
+        name, target, daemon = spawned[0]
+        assert name == "smart_corrections.warm_up"
+        assert daemon is True
+        assert callable(target)
+
+    def test_warm_up_request_failure_is_swallowed(self, monkeypatch):
+        monkeypatch.setattr(sc, 'resolve_backend', lambda app: 'ollama')
+
+        def fake_spawn(name, target, daemon=True):
+            target()  # run inline -- exercises _do_warm_up's own try/except
+
+        monkeypatch.setattr(sc.thread_registry, 'spawn', fake_spawn)
+
+        def fake_post(url, json=None, timeout=None):
+            raise ConnectionError("no server")
+
+        monkeypatch.setattr(sc._session, 'post', fake_post)
+        app = _make_app()
+
+        sc.warm_up(app)  # must not raise
+
+
+# ============================================================================
+# One-time-per-session fallback tray notice (Task 3)
+# ============================================================================
+
+class TestFallbackNotice:
+    @pytest.fixture(autouse=True)
+    def _reset_notice_flag(self, monkeypatch):
+        monkeypatch.setattr(sc, '_fallback_notice_shown', False)
+
+    def test_notifies_once_when_skipping(self, monkeypatch):
+        notified = []
+        nm = types.SimpleNamespace(
+            show_notification=lambda title, msg, duration=5: notified.append((title, msg))
+        )
+        app = _make_app(smart_corrections={
+            'enabled': True, 'min_words': 1, 'backend': 'auto', 'allow_cloud_fallback': False,
+        })
+        app.notification_manager = nm
+        monkeypatch.setattr(sc, '_ollama_reachable', lambda app: False)
+
+        sc.smart_correct("first call that should skip and notify", app)
+        sc.smart_correct("second call that should skip and not notify again", app)
+
+        assert len(notified) == 1
+        assert notified[0][0] == "Smart Corrections"
+        assert "skipping" in notified[0][1]
+
+    def test_notifies_once_when_routed_to_cloud_via_fallback(self, monkeypatch):
+        notified = []
+        nm = types.SimpleNamespace(
+            show_notification=lambda title, msg, duration=5: notified.append((title, msg))
+        )
+        app = _make_app(
+            smart_corrections={
+                'enabled': True, 'min_words': 1, 'backend': 'auto', 'allow_cloud_fallback': True,
+            },
+            cloud_llm={'enabled': True},
+        )
+        app.notification_manager = nm
+        monkeypatch.setattr(sc, '_ollama_reachable', lambda app: False)
+        monkeypatch.setattr(sc.cloud_llm, 'is_enabled', lambda app: True)
+        monkeypatch.setattr(
+            sc, '_call_cloud',
+            lambda text, app, system_prompt, timeout_s: (text, False),
+        )
+
+        sc.smart_correct("route this to cloud via fallback please", app)
+
+        assert len(notified) == 1
+        assert "using Cloud AI" in notified[0][1]
+
+    def test_no_notification_manager_does_not_raise(self, monkeypatch):
+        app = _make_app(smart_corrections={
+            'enabled': True, 'min_words': 1, 'backend': 'auto', 'allow_cloud_fallback': False,
+        })
+        monkeypatch.setattr(sc, '_ollama_reachable', lambda app: False)
+
+        sc.smart_correct("no notifier present, must not raise", app)
 
 
 # ============================================================================
@@ -173,3 +516,88 @@ class TestSanitizeOutput:
         raw = "Hello there,\nfriend."
         result = sc._sanitize_output(raw, original)
         assert result == "Hello there,\nfriend."
+
+
+# ============================================================================
+# <think>...</think> stripping (Task 6 -- qwen3-family reasoning models)
+# ============================================================================
+
+class TestThinkTagStripping:
+    def test_strips_closed_think_block(self):
+        raw = "<think>reasoning about the correction here</think>Corrected sentence."
+        result = sc._sanitize_output(raw, "corrected sentence")
+        assert result == "Corrected sentence."
+        assert "<think>" not in result
+
+    def test_strips_unclosed_think_block_falls_back_to_original(self):
+        raw = "<think>reasoning that got cut off mid-stream"
+        result = sc._sanitize_output(raw, "original text here")
+        assert result == "original text here"
+
+    def test_fake_backend_returning_think_wrapped_output(self, monkeypatch):
+        app = _make_app(smart_corrections={'enabled': True, 'min_words': 1, 'backend': 'ollama'})
+        monkeypatch.setattr(sc, '_resolve_backend_detailed', lambda app: ('ollama', False, None))
+        monkeypatch.setattr(
+            sc, '_call_ollama',
+            lambda text, app, system_prompt, timeout_s, model: (
+                "<think>let me consider homophones here</think>Their going to the store.",
+                False,
+            ),
+        )
+
+        result = sc.smart_correct("there going too the store", app)
+
+        assert result == "Their going to the store."
+        assert "<think>" not in result
+
+
+# ============================================================================
+# Anti-over-edit punctuation floor (Task 6)
+# ============================================================================
+
+class TestPunctuationFloor:
+    def test_llama_failure_signature_is_rejected(self):
+        """The observed llama3.2 failure: commas/apostrophes silently
+        stripped while the word count barely moves."""
+        original = "OK, I think it's fine."
+        bad_correction = "OK I think its fine."
+
+        result = sc._sanitize_output(bad_correction, original)
+
+        assert result == original
+
+    def test_legitimate_quote_adding_correction_passes(self):
+        original = "Did you read the article called Hidden Costs"
+        good_correction = 'Did you read the article called "Hidden Costs"?'
+
+        result = sc._sanitize_output(good_correction, original)
+
+        assert result == good_correction
+
+    def test_legitimate_comma_adding_correction_passes(self):
+        original = "I went to the store and bought milk"
+        good_correction = "I went to the store, and bought milk."
+
+        result = sc._sanitize_output(good_correction, original)
+
+        assert result == good_correction
+
+
+# ============================================================================
+# System prompt -- few-shot examples + new permissions (Task 6)
+# ============================================================================
+
+class TestSystemPromptFewShot:
+    def test_prompt_contains_homophone_misrecognition_example(self):
+        assert "angziolotic" in sc.SYSTEM_PROMPT
+        assert "anxiolytic" in sc.SYSTEM_PROMPT
+
+    def test_prompt_contains_noop_example(self):
+        assert "Send the draft to Sarah." in sc.SYSTEM_PROMPT
+
+    def test_prompt_grants_quote_and_misrecognition_permission(self):
+        assert "quotation marks" in sc.SYSTEM_PROMPT
+        assert "clearly misrecognitions of the intended word" in sc.SYSTEM_PROMPT
+
+    def test_prompt_still_forbids_paraphrasing(self):
+        assert "Do not paraphrase" in sc.SYSTEM_PROMPT

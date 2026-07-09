@@ -401,7 +401,7 @@ except Exception as _ag_err:
 from samsara.profiles import ProfileManager
 from samsara.ui.listening_indicator import ListeningIndicator
 from samsara.cleanup import clean_text
-from samsara.smart_corrections import smart_correct
+from samsara.smart_corrections import smart_correct, warm_up as smart_corrections_warm_up
 from samsara import diagnostics
 from samsara.history import HistoryManager
 from samsara.history_store import HistoryStore
@@ -2161,8 +2161,10 @@ class DictationApp:
                 "enabled": False,
                 "backend": "auto",            # "auto" | "ollama" | "cloud"
                 "ollama_model": "qwen2.5:3b",  # already pulled on this machine
-                "timeout_s": 4.0,
+                "timeout_s": 6.0,
                 "min_words": 3,
+                "allow_cloud_fallback": False,  # opt-in: auto may route to cloud when local AI is down
+                "keep_alive": "30m",            # Ollama model residency after each call
                 "modes": {"hotkey": True, "wake": True, "streaming": False},
             },
             # Dictation Diagnostics: per-utterance pipeline instrumentation
@@ -3255,6 +3257,14 @@ class DictationApp:
             # Auto-start gesture lane if enabled
             if self.config.get('gesture', {}).get('enabled', False):
                 self._start_gesture_lane()
+
+            # Warm the local Ollama model (if Smart Corrections resolves to
+            # it) so the first real correction call doesn't also pay a
+            # cold-start model-load penalty. Fire-and-forget, own thread.
+            try:
+                smart_corrections_warm_up(self)
+            except Exception as e:
+                logger.debug(f"[SMART] warm_up call failed: {e}")
 
             logger.info("[INIT] Startup complete.")
 
