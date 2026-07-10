@@ -136,6 +136,19 @@ class TestSwitchWordMatcher:
         # "dictate " with nothing meaningful after it -- no payload to deliver.
         assert match_switch_word("dictate    ") is None or match_switch_word("dictate    ").payload == ""
 
+    def test_prefix_form_preserves_internal_whitespace_runs(self):
+        # Payload reconstruction is a SLICE of the original text, not a
+        # token split/join -- a double space (or tab) inside the payload
+        # must survive verbatim per the preserve-formatting contract.
+        m = match_switch_word("dictate hello  world")
+        assert m is not None
+        assert m.payload == "hello  world"
+
+    def test_prefix_form_preserves_tabs_in_payload(self):
+        m = match_switch_word("dictate col1\tcol2")
+        assert m is not None
+        assert m.payload == "col1\tcol2"
+
 
 class TestScratchThat:
     @pytest.mark.parametrize("text", [
@@ -408,7 +421,7 @@ class TestIsSubstantiveUtterance:
     @pytest.mark.parametrize("text", [
         "uh",
         "you",
-        "um okay",
+        "um uh",         # 2 tokens, both still filler
         "hm",
         "cat",           # 3-char string
         "xyz",           # 3-char string
@@ -416,7 +429,6 @@ class TestIsSubstantiveUtterance:
         "   ",
         "um",
         "the a",         # 2 tokens, both filler
-        "okay yeah",     # 2 tokens, both filler
     ])
     def test_rejects_micro_utterances(self, text):
         assert is_substantive_utterance(text) is False
@@ -428,6 +440,12 @@ class TestIsSubstantiveUtterance:
         "continue",
         "why",
         "how",
+        "sure",
+        "wait",
+        "thanks",
+        "maybe",
+        "hello",
+        "hi",
         "what time is it",
         "submit that",
         "tell me a joke",
@@ -453,6 +471,18 @@ class TestIsSubstantiveUtterance:
         assert is_substantive_utterance("Submit That!") is True
         assert is_substantive_utterance("Uh...") is False
 
+    def test_yeah_okay_is_a_legitimate_assent_turn(self):
+        # "okay" was deliberately removed from _SUBSTANCE_FILLER_TOKENS --
+        # an assent/ack like "yeah okay" is a real AVA turn, not a stray
+        # syllable, even though "yeah" alone is still filler.
+        assert is_substantive_utterance("yeah okay") is True
+        assert is_substantive_utterance("okay yeah") is True
+
+    def test_um_uh_still_rejected(self):
+        # Both tokens remain in the filler set -- unlike "yeah okay", this
+        # has no assent content and must still be rejected.
+        assert is_substantive_utterance("um uh") is False
+
     def test_none_input_rejected(self):
         assert is_substantive_utterance(None) is False
 
@@ -467,9 +497,10 @@ GOOD_SIGNALS = UtteranceSignals(has_contiguous_speech=True, compression_ratios=(
 @pytest.fixture
 def manager_factory():
     """Returns a (manager, mocks) builder so each test can override callables."""
-    def _build(foreground="notepad.exe", abort_phrases=None, command_matches=None):
+    def _build(foreground="notepad.exe", foreground_hwnd=12345, abort_phrases=None, command_matches=None):
         mocks = {
             "foreground": Mock(return_value=foreground),
+            "foreground_hwnd": Mock(return_value=foreground_hwnd),
             "inject": Mock(),
             "remove_chars": Mock(),
             "command_dispatch": Mock(return_value=CommandDispatchResultFor(command_matches)),
@@ -478,10 +509,12 @@ def manager_factory():
             "on_focus_lock_revert": Mock(),
             "on_scratch_result": Mock(),
             "on_abort": Mock(),
+            "on_switch_dispatch_error": Mock(),
         }
         mgr = SessionModeManager(
             abort_phrases=abort_phrases if abort_phrases is not None else ["cancel", "abort"],
             foreground_exe_resolver=mocks["foreground"],
+            foreground_hwnd_resolver=mocks["foreground_hwnd"],
             inject_fn=mocks["inject"],
             remove_chars_fn=mocks["remove_chars"],
             command_dispatch_fn=mocks["command_dispatch"],
@@ -490,6 +523,7 @@ def manager_factory():
             on_focus_lock_revert=mocks["on_focus_lock_revert"],
             on_scratch_result=mocks["on_scratch_result"],
             on_abort=mocks["on_abort"],
+            on_switch_dispatch_error=mocks["on_switch_dispatch_error"],
             clock=lambda: 1000.0,
         )
         return mgr, mocks
@@ -521,6 +555,50 @@ class TestSessionModeManagerDispatch:
         mgr, mocks = manager_factory()
         bad_signals = UtteranceSignals(has_contiguous_speech=None, compression_ratios=())
         outcome = mgr.dispatch_utterance("abort", bad_signals)
+        assert outcome.kind == "abort"
+        mocks["on_abort"].assert_called_once()
+
+    def test_word_boundary_abort_matches_even_with_bad_gate_signals_from_all_lanes(self, manager_factory):
+        # Abort must be reachable, gate-free, from every lane -- a user with
+        # degraded audio can never be gated out of escaping a stuck session.
+        bad_signals = UtteranceSignals(has_contiguous_speech=None, compression_ratios=())
+        for mode in (SessionMode.COMMAND, SessionMode.DICTATE, SessionMode.AVA):
+            mgr, mocks = manager_factory()
+            mgr.force_mode(mode)
+            outcome = mgr.dispatch_utterance("abort", bad_signals)
+            assert outcome.kind == "abort", f"abort not reachable from {mode!r}"
+            mocks["on_abort"].assert_called_once()
+
+    def test_ordinary_dictation_word_is_not_mistaken_for_abort(self, manager_factory):
+        # "report" was flagged as a plausible substring false-positive during
+        # review; regardless of the exact mechanics it must never abort.
+        mgr, mocks = manager_factory(foreground="notepad.exe")
+        mgr.force_mode(SessionMode.DICTATE)
+        outcome = mgr.dispatch_utterance("report", GOOD_SIGNALS)
+        assert outcome.kind != "abort"
+        mocks["on_abort"].assert_not_called()
+        mocks["inject"].assert_called_once_with("report")
+
+    def test_word_that_contains_abort_phrase_as_substring_does_not_abort(self, manager_factory):
+        # Old behavior: phrase.lower() in text_lower -- "cancelation" (a
+        # real, if informal, misspelling) contains "cancel" as a literal
+        # substring and would incorrectly abort. Word-boundary matching
+        # must not fire here.
+        mgr, mocks = manager_factory(foreground="notepad.exe", abort_phrases=["cancel", "abort"])
+        mgr.force_mode(SessionMode.DICTATE)
+        outcome = mgr.dispatch_utterance("file a cancelation request", GOOD_SIGNALS)
+        assert outcome.kind != "abort"
+        mocks["on_abort"].assert_not_called()
+
+    def test_word_boundary_abort_still_matches_the_exact_word(self, manager_factory):
+        mgr, mocks = manager_factory(abort_phrases=["cancel", "abort"])
+        outcome = mgr.dispatch_utterance("please cancel", GOOD_SIGNALS)
+        assert outcome.kind == "abort"
+        mocks["on_abort"].assert_called_once()
+
+    def test_multi_word_abort_phrase_matches_at_word_boundaries(self, manager_factory):
+        mgr, mocks = manager_factory(abort_phrases=["cancel dictation"])
+        outcome = mgr.dispatch_utterance("please cancel dictation now", GOOD_SIGNALS)
         assert outcome.kind == "abort"
         mocks["on_abort"].assert_called_once()
 
@@ -566,6 +644,30 @@ class TestSessionModeManagerDispatch:
         assert mgr.mode is SessionMode.DICTATE
         assert outcome.kind == "dictate_injected"
         mocks["inject"].assert_called_once_with("hello there")  # first chunk: no leading space
+
+    def test_prefix_switch_payload_double_space_survives_verbatim(self, manager_factory):
+        # Payload delivery must preserve internal formatting exactly, same
+        # contract as match_switch_word's own payload extraction.
+        mgr, mocks = manager_factory(foreground="notepad.exe")
+        outcome = mgr.dispatch_utterance("dictate hello  there", GOOD_SIGNALS)
+        assert outcome.kind == "dictate_injected"
+        mocks["inject"].assert_called_once_with("hello  there")
+
+    def test_prefix_switch_dispatch_exception_reverts_mode_and_reports_failure(self, manager_factory):
+        mgr, mocks = manager_factory(foreground="notepad.exe")
+        mocks["inject"].side_effect = RuntimeError("paste failed")
+        outcome = mgr.dispatch_utterance("dictate hello there", GOOD_SIGNALS)
+        assert mgr.mode is SessionMode.COMMAND  # reverted to the mode active before the switch
+        assert outcome.kind == "prefix_switch_failed"
+        mocks["on_switch_dispatch_error"].assert_called_once()
+
+    def test_prefix_switch_dispatch_exception_reverts_to_prior_non_command_mode(self, manager_factory):
+        mgr, mocks = manager_factory(foreground="notepad.exe")
+        mgr.force_mode(SessionMode.AVA)
+        mocks["inject"].side_effect = RuntimeError("paste failed")
+        outcome = mgr.dispatch_utterance("dictate hello there", GOOD_SIGNALS)
+        assert mgr.mode is SessionMode.AVA  # reverted to whatever was active, not just COMMAND
+        assert outcome.kind == "prefix_switch_failed"
 
     def test_dictate_chunk_injected_when_focus_matches(self, manager_factory):
         mgr, mocks = manager_factory(foreground="notepad.exe")
@@ -620,6 +722,21 @@ class TestSessionModeManagerDispatch:
         outcome = mgr.dispatch_utterance("scratch that", GOOD_SIGNALS)
         assert outcome.kind == "scratch_refuse"
         mocks["remove_chars"].assert_not_called()
+
+    def test_scratch_that_refuses_on_hwnd_mismatch_even_with_same_exe(self, manager_factory):
+        # Same exe name (notepad.exe) on both sides -- the exe-name check
+        # alone would pass -- but a DIFFERENT window handle (e.g. a second
+        # Notepad window) must still refuse the destructive undo rather
+        # than delete text in the wrong window.
+        mgr, mocks = manager_factory(foreground="notepad.exe", foreground_hwnd=111)
+        mgr.force_mode(SessionMode.DICTATE)
+        mgr.dispatch_utterance("Hello world", GOOD_SIGNALS)
+        mgr.force_mode(SessionMode.COMMAND)
+        mocks["foreground_hwnd"].return_value = 222  # different window, same exe
+        outcome = mgr.dispatch_utterance("scratch that", GOOD_SIGNALS)
+        assert outcome.kind == "scratch_refuse"
+        mocks["remove_chars"].assert_not_called()
+        mocks["on_scratch_result"].assert_called_once_with(False)
 
     def test_scratch_that_on_command_entry_is_noop_refuse(self, manager_factory):
         mgr, mocks = manager_factory(command_matches="open chrome")

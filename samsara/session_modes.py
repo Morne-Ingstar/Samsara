@@ -38,6 +38,7 @@ through to step 4 instead (fail CLOSED for switches, not fail-open).
 from __future__ import annotations
 
 import logging
+import re
 import string
 import time
 from collections import deque
@@ -149,15 +150,22 @@ def match_switch_word(raw_text: str) -> Optional[SwitchMatch]:
 def _strip_leading_token_preserving_case(raw_text: str, prefix_word: str) -> str:
     """Remove leading filler tokens and then one prefix_word token from
     raw_text, returning the remainder with the ORIGINAL casing/punctuation
-    intact (normalize_utterance() is matching-only, never applied to
-    dictated content)."""
-    tokens = raw_text.strip().split()
+    AND original internal whitespace/tabs intact (normalize_utterance() is
+    matching-only, never applied to dictated content -- and neither is
+    plain str.split()/" ".join(), which would collapse whitespace runs
+    inside the payload and violate the preserve-formatting contract).
+    Achieved by SLICING the original string at the payload's start offset
+    rather than rejoining tokens."""
+    text = raw_text.strip()
+    tokens = list(re.finditer(r"\S+", text))
     idx = 0
-    while idx < len(tokens) and tokens[idx].strip(string.punctuation).lower() in _LEADING_FILLERS:
+    while idx < len(tokens) and tokens[idx].group().strip(string.punctuation).lower() in _LEADING_FILLERS:
         idx += 1
-    if idx < len(tokens) and tokens[idx].strip(string.punctuation).lower() == prefix_word:
+    if idx < len(tokens) and tokens[idx].group().strip(string.punctuation).lower() == prefix_word:
         idx += 1
-    return " ".join(tokens[idx:])
+    if idx >= len(tokens):
+        return ""
+    return text[tokens[idx].start():]
 
 
 # ---------------------------------------------------------------------------
@@ -219,13 +227,16 @@ def detect_stage_reference(text: str) -> bool:
 # two filler tokens, not one leading filler followed by real content).
 _SUBSTANCE_FILLER_TOKENS = frozenset({
     "uh", "um", "hmm", "mhm", "ah", "oh", "eh", "huh", "hm",
-    "you", "the", "a", "yeah", "okay", "ok",
+    "you", "the", "a", "yeah", "ok",
 })
 
 # Short but complete one-word turns that must never be rejected just for
-# being short -- overrides every other rule below.
+# being short -- overrides every other rule below. Includes natural
+# conversation-turn words for AVA's turn-taking (assent/ack/greeting/hedge),
+# not just command-shaped words.
 _SUBSTANTIVE_ONE_WORD_ALLOWLIST = frozenset({
     "yes", "no", "stop", "continue", "why", "how",
+    "sure", "wait", "thanks", "maybe", "hello", "hi",
 })
 
 _SUBSTANCE_MIN_LENGTH = 4  # characters, raw (pre-normalization) length
@@ -251,13 +262,19 @@ def is_substantive_utterance(text: str) -> bool:
       - fewer than 2 words after normalization (lowercase, strip punctuation)
       - total length < 4 characters
       - every token is in _SUBSTANCE_FILLER_TOKENS (whole-utterance filler
-        like "um okay" is rejected even though it's two words)
+        like "um uh" is rejected even though it's two words)
 
-    The one-word allowlist ("yes", "no", "stop", "continue", "why", "how")
-    is checked FIRST and overrides the length/word-count rules -- "no" (2
-    characters) and "why" (3 characters) are complete, meaningful turns
-    despite being short; the length rule exists to catch tiny NON-turns
-    (stray syllables, hallucination fragments), not these.
+    "okay" is deliberately NOT in _SUBSTANCE_FILLER_TOKENS -- an assent like
+    "okay" or "yeah okay" is a legitimate AVA turn (acknowledging the
+    agent's prior reply), not a stray syllable, so it must survive the
+    all-filler rule above even though "yeah" alone is still filler.
+
+    The one-word allowlist ("yes", "no", "stop", "continue", "why", "how",
+    "sure", "wait", "thanks", "maybe", "hello", "hi") is checked FIRST and
+    overrides the length/word-count rules -- "no" (2 characters) and "why"
+    (3 characters) are complete, meaningful turns despite being short; the
+    length rule exists to catch tiny NON-turns (stray syllables,
+    hallucination fragments), not these.
     """
     tokens = _substance_tokens(text)
 
@@ -451,13 +468,18 @@ class CommandDispatchResult:
 class DispatchOutcome:
     kind: str
     # one of: "empty" | "abort" | "scratch_success" | "scratch_refuse" |
-    # "mode_switch" | "command_executed" | "command_miss" |
-    # "dictate_injected" | "dictate_suppressed_focus_lock" | "ava_dispatched" |
-    # "ava_rejected_not_substantive"
+    # "mode_switch" | "prefix_switch_failed" | "command_executed" |
+    # "command_miss" | "dictate_injected" | "dictate_suppressed_focus_lock" |
+    # "ava_dispatched" | "ava_rejected_not_substantive"
     detail: dict = field(default_factory=dict)
 
 
 ForegroundResolver = Callable[[], Optional[str]]
+# Raw foreground-window handle (HWND), finer-grained than ForegroundResolver's
+# exe name -- two windows of the SAME exe are different windows. Used by the
+# scratch-that focus guard; None when unavailable (fails closed, see
+# _do_scratch_that).
+ForegroundHwndResolver = Callable[[], Optional[int]]
 InjectFn = Callable[[str], None]
 RemoveCharsFn = Callable[[int], None]
 CommandDispatchFn = Callable[[str], CommandDispatchResult]
@@ -487,14 +509,26 @@ class SessionModeManager:
         remove_chars_fn: RemoveCharsFn,
         command_dispatch_fn: CommandDispatchFn,
         agent_dispatch_fn: AgentDispatchFn,
+        foreground_hwnd_resolver: Optional[ForegroundHwndResolver] = None,
         on_mode_change: Optional[Callable[[SessionMode], None]] = None,
         on_focus_lock_revert: Optional[Callable[[], None]] = None,
         on_scratch_result: Optional[Callable[[bool], None]] = None,
         on_abort: Optional[Callable[[], None]] = None,
+        on_switch_dispatch_error: Optional[Callable[[Exception], None]] = None,
         clock: Callable[[], float] = time.time,
     ) -> None:
         self._abort_phrases = list(abort_phrases)
+        # Word-boundary, case-insensitive match per phrase -- a substring
+        # check here (phrase.lower() in text_lower) lets "cancel" false-fire
+        # on "cancelation" (typo-real-word) or any other word that merely
+        # CONTAINS an abort phrase. Precompiled once since this runs on
+        # every single utterance, not just switch/scratch candidates.
+        self._abort_patterns = [
+            re.compile(r"\b" + re.escape(p.strip()) + r"\b", re.IGNORECASE)
+            for p in self._abort_phrases if p.strip()
+        ]
         self._foreground_exe_resolver = foreground_exe_resolver
+        self._foreground_hwnd_resolver = foreground_hwnd_resolver or (lambda: None)
         self._inject_fn = inject_fn
         self._remove_chars_fn = remove_chars_fn
         self._command_dispatch_fn = command_dispatch_fn
@@ -503,6 +537,7 @@ class SessionModeManager:
         self._on_focus_lock_revert = on_focus_lock_revert
         self._on_scratch_result = on_scratch_result
         self._on_abort = on_abort
+        self._on_switch_dispatch_error = on_switch_dispatch_error
         self._clock = clock
 
         self.mode: SessionMode = SessionMode.COMMAND
@@ -540,7 +575,13 @@ class SessionModeManager:
         if not text:
             return DispatchOutcome(kind="empty")
 
-        # 1. Global abort phrase -- always wins, every mode.
+        # 1. Global abort phrase -- always wins, every mode, and deliberately
+        # checked BEFORE passes_switch_anti_hallucination_gate() below and
+        # never subject to it: gating the abort path would mean degraded
+        # audio (the exact condition the gate exists to distrust) could
+        # leave a user stuck unable to escape a latched session -- deaf but
+        # latched, the design's cardinal sin. Ordinary switches/scratch-that
+        # still go through the gate, just not this.
         if self._matches_abort_phrase(text):
             if self._on_abort:
                 self._on_abort()
@@ -567,13 +608,33 @@ class SessionModeManager:
         return self._dispatch_in_mode(text)
 
     def _matches_abort_phrase(self, text: str) -> bool:
-        text_lower = text.lower()
-        return any(phrase.lower() in text_lower for phrase in self._abort_phrases)
+        return any(pattern.search(text) for pattern in self._abort_patterns)
 
     def _do_switch(self, switch: SwitchMatch) -> DispatchOutcome:
+        """Transactional: a prefix switch ("dictate <payload>") only counts
+        as having happened if the payload actually got dispatched. If
+        dispatch raises (injection failure, a command handler blowing up,
+        an agent-dispatch error), the mode is reverted to whatever it was
+        before this switch and the failure is surfaced audibly -- otherwise
+        the user would be silently left in a new mode with nothing
+        delivered and no indication anything went wrong."""
+        prior_mode = self.mode
         self._switch_mode(switch.target_mode)
         if switch.is_prefix and switch.payload.strip():
-            return self._dispatch_in_mode(switch.payload)
+            try:
+                return self._dispatch_in_mode(switch.payload)
+            except Exception as exc:
+                log.exception(
+                    "[SESSION] prefix-switch payload dispatch failed; reverting %s -> %s",
+                    switch.target_mode.value, prior_mode.value,
+                )
+                self._switch_mode(prior_mode)
+                if self._on_switch_dispatch_error:
+                    self._on_switch_dispatch_error(exc)
+                return DispatchOutcome(
+                    kind="prefix_switch_failed",
+                    detail={"mode": switch.target_mode, "reverted_to": prior_mode, "error": str(exc)},
+                )
         return DispatchOutcome(kind="mode_switch", detail={"mode": switch.target_mode})
 
     def _switch_mode(self, new_mode: SessionMode) -> None:
@@ -620,7 +681,7 @@ class SessionModeManager:
                 kind="dictation_chunk", payload=chunk_raw.strip(),
                 mode=SessionMode.DICTATE, timestamp=self._clock(),
                 extra={"suppressed": True, "target_process": self._dictate_target_process,
-                       "foreground": foreground},
+                       "foreground": foreground, "hwnd": self._foreground_hwnd_resolver()},
             ))
             self.force_mode(SessionMode.COMMAND)
             if self._on_focus_lock_revert:
@@ -644,7 +705,14 @@ class SessionModeManager:
         self._stage_buffer += to_inject
         self._stack.push(StackItem(
             kind="dictation_chunk", payload=to_inject, mode=SessionMode.DICTATE,
-            timestamp=self._clock(), extra={"target_process": self._dictate_target_process},
+            timestamp=self._clock(),
+            # HWND recorded at push-time -- this is the window the text
+            # actually landed in. _do_scratch_that() re-checks it against
+            # the CURRENT foreground HWND before sending any destructive
+            # backspace/delete keystrokes, since focus can drift between
+            # dictation and the "scratch that" undo (see _do_scratch_that).
+            extra={"target_process": self._dictate_target_process,
+                   "hwnd": self._foreground_hwnd_resolver()},
         ))
         return DispatchOutcome(kind="dictate_injected", detail={"text": to_inject})
 
@@ -683,6 +751,19 @@ class SessionModeManager:
     # -- scratch that / retype that ------------------------------------------
 
     def _do_scratch_that(self) -> bool:
+        """Pops the most recent unit of work and, for a dictation chunk,
+        sends destructive backspace/select+delete keystrokes to undo it.
+        Guarded by TWO independent focus checks before any keystroke is
+        sent, both fail-closed:
+          1. exe-name check_focus_lock (existing) -- catches switching to a
+             different application entirely.
+          2. HWND equality (this method) -- catches switching to a
+             DIFFERENT WINDOW of the SAME exe (e.g. two Notepad windows),
+             which (1) alone cannot see. A mismatch here means the window
+             that received the original text is not the one in front of
+             the user right now, so undoing here would delete content in
+             the wrong window -- irreversible for a keyboard-unable user.
+             We refuse rather than guess or auto-refocus."""
         item = self._stack.pop()
         if item is None:
             return False
@@ -691,6 +772,15 @@ class SessionModeManager:
         foreground = self._foreground_exe_resolver()
         target = item.extra.get("target_process")
         if not check_focus_lock(target, foreground):
+            return False
+        current_hwnd = self._foreground_hwnd_resolver()
+        recorded_hwnd = item.extra.get("hwnd")
+        if recorded_hwnd is None or current_hwnd != recorded_hwnd:
+            log.warning(
+                "[SESSION] scratch-that refused: foreground window changed since this "
+                "chunk was dictated (recorded_hwnd=%r current_hwnd=%r)",
+                recorded_hwnd, current_hwnd,
+            )
             return False
         self._remove_chars_fn(len(item.payload))
         return True
