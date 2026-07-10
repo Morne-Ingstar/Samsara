@@ -45,6 +45,14 @@ class TestSendBodyScriptGeneration:
         script = sc._build_send_body_script("Send, {Right 6}")
         assert "Send, {Right 6}" in script
 
+    def test_embeds_win_shift_right_verbatim(self):
+        """#+{Right} (Win+Shift+Right, AHK v1 modifier syntax: # = Win,
+        + = Shift, prefixed directly onto the key name) must survive
+        untouched -- {#+Right} would be invalid AHK."""
+        script = sc._build_send_body_script("Send, #+{Right}")
+        assert "Send, #+{Right}" in script
+        assert "{#+Right}" not in script
+
 
 class TestPublicControlFunctions:
     """Each public function delegates to _run_ahk with the expected script
@@ -88,6 +96,30 @@ class TestPublicControlFunctions:
     def test_control_function_propagates_run_ahk_failure(self):
         with patch.object(sc, "_run_ahk", return_value=False):
             assert sc.pause_play() is False
+
+    def test_volume_up_sends_up(self):
+        """Verified against the current Stremio player 2026-07-10:
+        Up arrow = volume +10%."""
+        with patch.object(sc, "_run_ahk", return_value=True) as mock_run:
+            assert sc.volume_up() is True
+        script = mock_run.call_args.args[0]
+        assert "Send, {Up}" in script
+
+    def test_volume_down_sends_down(self):
+        """Verified against the current Stremio player 2026-07-10:
+        Down arrow = volume -10%."""
+        with patch.object(sc, "_run_ahk", return_value=True) as mock_run:
+            assert sc.volume_down() is True
+        script = mock_run.call_args.args[0]
+        assert "Send, {Down}" in script
+
+    def test_switch_monitor_sends_win_shift_right(self):
+        """Win+Shift+Right moves the focused window to the next monitor
+        (cycles). AHK v1 modifier syntax: #+{Right}, not {#+Right}."""
+        with patch.object(sc, "_run_ahk", return_value=True) as mock_run:
+            assert sc.switch_monitor() is True
+        script = mock_run.call_args.args[0]
+        assert "Send, #+{Right}" in script
 
 
 class TestIsStremioRunning:
