@@ -11,7 +11,10 @@ import pytest
 
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
-from samsara.diagnostics import DiagRecord, record, recent, clear, classify
+from samsara.diagnostics import (
+    DiagRecord, record, recent, clear, classify,
+    add_one_shot_hook, remove_one_shot_hook,
+)
 
 
 # ============================================================================
@@ -58,6 +61,14 @@ def _clear_ring():
     clear()
     yield
     clear()
+
+
+@pytest.fixture(autouse=True)
+def _clear_hooks():
+    import samsara.diagnostics as _diag
+    _diag._one_shot_hooks.clear()
+    yield
+    _diag._one_shot_hooks.clear()
 
 
 # ============================================================================
@@ -299,3 +310,71 @@ class TestLanguageField:
     def test_describe_diagnostics_language_auto_without_detection(self):
         from samsara.languages import describe_diagnostics_language
         assert describe_diagnostics_language("auto", None) == "auto"
+
+
+# ============================================================================
+# One-shot completion hooks -- the Stress Test Wizard's capture tap point
+# ============================================================================
+
+class TestOneShotHooks:
+    def test_hook_fires_on_next_record(self):
+        calls = []
+        add_one_shot_hook(calls.append)
+
+        record(_rec(text="hello"))
+
+        assert len(calls) == 1
+        assert calls[0].text == "hello"
+
+    def test_hook_fires_exactly_once_then_deregisters(self):
+        calls = []
+        add_one_shot_hook(calls.append)
+
+        record(_rec(text="first"))
+        record(_rec(text="second"))
+
+        assert len(calls) == 1
+        assert calls[0].text == "first"
+
+    def test_remove_before_fire_prevents_call(self):
+        calls = []
+        add_one_shot_hook(calls.append)
+        remove_one_shot_hook(calls.append)
+
+        record(_rec(text="ignored"))
+
+        assert calls == []
+
+    def test_remove_is_idempotent_no_error_if_never_registered(self):
+        remove_one_shot_hook(lambda rec: None)  # must not raise
+
+    def test_remove_is_idempotent_no_error_if_already_fired(self):
+        calls = []
+        add_one_shot_hook(calls.append)
+        record(_rec(text="fires"))
+        assert len(calls) == 1
+
+        remove_one_shot_hook(calls.append)  # already auto-deregistered -- must not raise
+
+    def test_multiple_hooks_all_fire_for_same_record(self):
+        calls_a, calls_b = [], []
+        add_one_shot_hook(calls_a.append)
+        add_one_shot_hook(calls_b.append)
+
+        record(_rec(text="broadcast"))
+
+        assert len(calls_a) == 1 and len(calls_b) == 1
+
+    def test_hook_exception_does_not_break_record_or_other_hooks(self):
+        calls = []
+
+        def _raises(rec):
+            raise RuntimeError("boom")
+
+        add_one_shot_hook(_raises)
+        add_one_shot_hook(calls.append)
+
+        record(_rec(text="survives"))  # must not raise into the caller
+
+        assert len(calls) == 1
+        assert len(recent()) == 1

@@ -46,6 +46,14 @@ class TestExactMatchSteps:
         passed, reason = STEP_SHORT_WORD.pass_criteria(_rec(), "Testing.")
         assert passed is True
 
+    def test_short_word_pass_when_word_embedded_in_longer_transcript(self):
+        # STEP_SHORT_WORD uses the looser "contains" criteria, not exact
+        # match -- Whisper prepending/appending stray words must not fail
+        # a step whose whole point is "did dictation capture the word".
+        passed, reason = STEP_SHORT_WORD.pass_criteria(_rec(), "testing please")
+        assert passed is True
+        assert "contains" in reason.lower()
+
     def test_short_word_fail_wrong_word(self):
         passed, reason = STEP_SHORT_WORD.pass_criteria(_rec(), "resting")
         assert passed is False
@@ -116,6 +124,28 @@ class TestNoOutputSteps:
     def test_silent_hold_shares_same_criteria_fail(self):
         passed, reason = STEP_SILENT_HOLD.pass_criteria(_rec(text="bloop"), "")
         assert passed is False
+
+    def test_silent_hold_gated_outcome_is_explicit_pass(self):
+        """The VAD presence gate correctly suppressing a near-silent buffer
+        is the CLEANEST possible pass for this step -- called out by name,
+        not just folded into the generic 'no output' message."""
+        rec = _rec(text="", outcome="gated")
+        passed, reason = STEP_SILENT_HOLD.pass_criteria(rec, None)
+        assert passed is True
+        assert "gate" in reason.lower()
+
+    def test_accidental_tap_empty_outcome_is_explicit_pass(self):
+        rec = _rec(text="", outcome="empty")
+        passed, reason = STEP_ACCIDENTAL_TAP.pass_criteria(rec, None)
+        assert passed is True
+        assert "no usable text" in reason.lower()
+
+    def test_no_output_pass_with_nothing_captured_at_all(self):
+        """rec=None -- the wizard's capture-timeout path (nothing fired at
+        all within the short window)."""
+        passed, reason = STEP_SILENT_HOLD.pass_criteria(None, None)
+        assert passed is True
+        assert "as expected" in reason
 
 
 # ============================================================================
@@ -290,6 +320,37 @@ class TestBuildBattery:
             "long_monologue", "homophones", "numbers_punct", "quiet_speech",
             "fast_speech",
         ]
+
+
+# ============================================================================
+# Hotkey instruction templating -- every instruction must be resolvable
+# with a live hotkey string, never a hardcoded key combo baked into the text.
+# ============================================================================
+
+class TestHotkeyInstructionTemplating:
+    def test_every_static_step_instruction_has_hotkey_placeholder(self):
+        for step in build_battery(None):
+            assert "{hotkey}" in step.instruction, (
+                f"{step.id} instruction has no {{hotkey}} placeholder: {step.instruction!r}"
+            )
+
+    def test_jargon_step_instruction_has_hotkey_placeholder(self):
+        vt = types.SimpleNamespace(custom_vocab=["Kubernetes"], corrections_dict={})
+        step = build_jargon_step(vt)
+        assert "{hotkey}" in step.instruction
+
+    def test_instruction_formats_cleanly_with_a_live_hotkey_value(self):
+        for step in build_battery(None):
+            resolved = step.instruction.format(hotkey="Ctrl+Shift")
+            assert "{hotkey}" not in resolved
+            assert "Ctrl+Shift" in resolved
+
+    def test_quiet_speech_instruction_still_contains_target_phrase(self):
+        # Built via concatenation (not an f-string) alongside the {hotkey}
+        # placeholder -- confirm both survived correctly.
+        resolved = STEP_QUIET_SPEECH.instruction.format(hotkey="Ctrl+Shift")
+        assert _SHORT_PHRASE in resolved
+        assert "Ctrl+Shift" in resolved
 
 
 # ============================================================================

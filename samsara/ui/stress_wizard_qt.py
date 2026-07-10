@@ -11,18 +11,37 @@ NOT the persistent hide-don't-destroy family used by history_qt.py/
 diagnostics_qt.py): closing the window resets wizard state so reopening it
 always starts a fresh run from step 1.
 
-Design note on the "target box": the wizard does NOT capture audio itself --
-the user dictates via their normal hotkey/wake flow, which pastes text into
-whatever has focus. The target box below therefore CANNOT be a literal
-Qt read-only widget (QLineEdit/QTextEdit.setReadOnly(True) blocks
-programmatic paste too, not just user keystrokes -- it would silently
-swallow the very dictation output this wizard needs to read back). It's an
-ordinary editable QTextEdit instead, with on-screen copy telling the user
-not to type into it manually -- "read-only" in intent, not in Qt's literal
-sense.
+CAPTURE MECHANISM (reworked -- see the original defect below): each step
+arms samsara.diagnostics' one-shot completion hook
+(add_one_shot_hook/remove_one_shot_hook) before showing its instructions.
+The user performs the step with their REAL dictation hotkey; the very same
+diagnostics.record() call that hotkey completion already makes (the
+canonical tap point -- the same call sites that write history) fires the
+hook with the resulting DiagRecord, which IS this step's result. No
+clipboard/paste watching, no polling a Qt widget for stray text. The hook
+fires on whatever thread dictation.py's transcription worker is on, so the
+callback here immediately marshals back to the Qt thread via
+qt_runtime.post() before touching any widget.
+
+ORIGINAL DEFECT (why this rework exists): the previous version watched an
+EDITABLE QTextEdit for whatever OS-level paste happened to land in it, on
+the theory that a real hotkey dictation would paste its output there.  That
+never actually confirms real dictation ran at all -- it's a passive side
+channel dependent on OS focus/paste timing, indistinguishable from stale
+clipboard content or an unrelated paste. It is what produced the reported
+"pasted clipboard contents" / "fail: no text captured" behavior. The target
+box below is now populated directly from the captured DiagRecord.text (or a
+status message) after the hook fires, and CAN be a literal
+setReadOnly(True) widget -- the old caveat about read-only blocking
+programmatic paste no longer applies since nothing pastes into it anymore.
+
+Every step is skippable and the wizard is cancellable at any point without
+leaving the hook armed: _disarm_capture() runs at the top of _show_step
+(before arming the next step), in closeEvent, and in _show_final_screen --
+diagnostics.remove_one_shot_hook() is idempotent, so calling it defensively
+in all of these is safe.
 """
 
-import time
 from datetime import datetime
 
 from PySide6.QtCore import Qt, QTimer
@@ -34,6 +53,7 @@ from PySide6.QtWidgets import (
 )
 
 from samsara.ui import qt_runtime, theme
+from samsara.ui.quick_reference_qt import _pretty_key_combo
 from samsara import diagnostics
 from samsara.stress_tests import build_battery, generate_report
 
@@ -41,9 +61,16 @@ from samsara.log import get_logger
 
 logger = get_logger(__name__)
 
-_POLL_INTERVAL_MS = 500
+# accidental_tap/silent_hold: how long to wait with nothing captured before
+# declaring a clean pass ("no output produced, as expected"). Short window --
+# these steps are ABOUT the immediate/near-silent case.
 _NO_OUTPUT_WINDOW_S = 5.0
 _NO_OUTPUT_STEP_IDS = ('accidental_tap', 'silent_hold')
+
+# All steps: outer safety net if NOTHING is captured at all (no DiagRecord of
+# any kind) -- most likely cause is the user didn't hold the right hotkey.
+# Never auto-fails; shows a message and leaves Retry/Skip available.
+_CAPTURE_TIMEOUT_S = 30.0
 
 
 # ---------------------------------------------------------------------------
@@ -100,11 +127,14 @@ class _StressWizardWindow(QMainWindow):
         self._step_idx = 0
         self._results = []             # [{'step','passed','reason','verdicts'}]
         self._step_start_ts = None
-        self._no_output_deadline = None
+        self._closed = False           # guards a hook callback racing closeEvent
 
-        self._poll_timer = QTimer(self)
-        self._poll_timer.setInterval(_POLL_INTERVAL_MS)
-        self._poll_timer.timeout.connect(self._poll)
+        # Single-shot deadline timer, re-armed per step: either the short
+        # _NO_OUTPUT_WINDOW_S ("did silence stay silent") or the long
+        # _CAPTURE_TIMEOUT_S ("did ANYTHING get captured") -- see _show_step.
+        self._capture_timer = QTimer(self)
+        self._capture_timer.setSingleShot(True)
+        self._timer_connected = False   # tracks whether .timeout is currently wired
 
         central = QWidget()
         self.setCentralWidget(central)
@@ -165,15 +195,17 @@ class _StressWizardWindow(QMainWindow):
         lay.addWidget(self._quote_frame)
 
         hint = QLabel(
-            "Click the box below to focus it, then use your normal "
-            "dictation hotkey. Don't type into it by hand."
+            "This wizard listens for your NEXT real dictation -- perform the "
+            "step above with your actual hotkey. Nothing needs focus; the "
+            "box below fills in on its own once captured."
         )
         hint.setWordWrap(True)
         hint.setStyleSheet(f"color:{theme.TEXT_SECONDARY};font-size:{theme.FONT_SIZE_CAPTION}px;")
         lay.addWidget(hint)
 
         self._target_box = QTextEdit()
-        self._target_box.setPlaceholderText("Dictated text will appear here…")
+        self._target_box.setReadOnly(True)
+        self._target_box.setPlaceholderText("Waiting for your dictation…")
         self._target_box.setFixedHeight(80)
         lay.addWidget(self._target_box)
 
@@ -295,6 +327,11 @@ class _StressWizardWindow(QMainWindow):
     # ------------------------------------------------------------------
 
     def _show_step(self, idx: int):
+        # Disarm FIRST, unconditionally -- covers the "advance past the last
+        # step into the final screen" transition below too, so no path out
+        # of a step can leave the previous step's hook armed.
+        self._disarm_capture()
+
         if idx >= len(self._battery):
             self._show_final_screen()
             return
@@ -302,7 +339,6 @@ class _StressWizardWindow(QMainWindow):
         self._step_idx = idx
         step = self._battery[idx]
 
-        self._poll_timer.stop()
         self._target_box.clear()
         self._result_panel.setVisible(False)
         self._next_btn.setEnabled(False)
@@ -310,7 +346,14 @@ class _StressWizardWindow(QMainWindow):
         self._progress_label.setText(
             f"Step {idx + 1} of {len(self._battery)} — {step.category}"
         )
-        self._instruction_label.setText(f"{step.title}: {step.instruction}")
+        # Live config, never hardcoded -- reopening after a hotkey change
+        # (or even mid-wizard via Settings) reflects the new value on the
+        # very next step shown.
+        hotkey_display = _pretty_key_combo(
+            (getattr(self.app, 'config', None) or {}).get('hotkey', 'ctrl+shift')
+        )
+        instruction_text = step.instruction.format(hotkey=hotkey_display)
+        self._instruction_label.setText(f"{step.title}: {instruction_text}")
 
         if step.expected_text:
             self._quote_label.setText(f'"{step.expected_text}"')
@@ -318,43 +361,84 @@ class _StressWizardWindow(QMainWindow):
         else:
             self._quote_frame.setVisible(False)
 
-        self._step_start_ts = datetime.now().isoformat()
-        self._no_output_deadline = (
-            time.monotonic() + _NO_OUTPUT_WINDOW_S
-            if step.id in _NO_OUTPUT_STEP_IDS else None
-        )
         self._status_label.setText("Waiting for you to dictate…")
-        self._poll_timer.start()
+        self._arm_capture()
 
-    def _poll(self):
-        if self._step_idx >= len(self._battery):
+        if step.id in _NO_OUTPUT_STEP_IDS:
+            self._capture_timer.timeout.connect(self._on_no_output_window_elapsed)
+            self._timer_connected = True
+            self._capture_timer.start(int(_NO_OUTPUT_WINDOW_S * 1000))
+        else:
+            self._capture_timer.timeout.connect(self._on_capture_timeout)
+            self._timer_connected = True
+            self._capture_timer.start(int(_CAPTURE_TIMEOUT_S * 1000))
+
+    # ------------------------------------------------------------------
+    # Capture hook -- samsara.diagnostics' one-shot completion hook, the
+    # canonical tap point (see module docstring). _on_diag_record fires on
+    # the dictation worker thread; it does nothing but marshal to the Qt
+    # thread, where all the actual logic (including thread-affinity-
+    # sensitive widget access) lives in _handle_captured.
+    # ------------------------------------------------------------------
+
+    def _arm_capture(self):
+        diagnostics.add_one_shot_hook(self._on_diag_record)
+
+    def _disarm_capture(self):
+        """Idempotent -- safe to call from _show_step, closeEvent, and
+        _show_final_screen without checking whether a hook is armed.
+
+        Qt's disconnect() with nothing connected doesn't raise -- it just
+        emits a noisy RuntimeWarning ("Failed to disconnect... signal
+        timeout()") -- so a plain try/except doesn't suppress it. Tracking
+        the connection explicitly avoids ever calling disconnect() with
+        nothing to disconnect.
+        """
+        self._capture_timer.stop()
+        if self._timer_connected:
+            self._capture_timer.timeout.disconnect()
+            self._timer_connected = False
+        diagnostics.remove_one_shot_hook(self._on_diag_record)
+
+    def _on_diag_record(self, rec):
+        qt_runtime.post(lambda: self._handle_captured(rec))
+
+    def _handle_captured(self, rec):
+        if self._closed or self._step_idx >= len(self._battery):
+            return  # window closed / wizard advanced past this step already
+        if rec.mode != "hotkey":
+            # Unrelated activity (a wake-word session, command mode, etc.
+            # firing coincidentally) -- not this step's result. Keep
+            # listening for the real one; re-registering is required since
+            # add_one_shot_hook() already consumed itself for THIS delivery.
+            diagnostics.add_one_shot_hook(self._on_diag_record)
             return
+        self._finish_step(rec)
 
-        got_text = self._target_box.toPlainText().strip()
+    def _on_no_output_window_elapsed(self):
+        """accidental_tap/silent_hold: nothing captured within the short
+        window -- a clean pass (see _pc_no_output)."""
+        self._finish_step(None)
 
-        new_rec = None
-        try:
-            records = diagnostics.recent(200)
-            if records and records[-1].ts > self._step_start_ts:
-                new_rec = records[-1]
-        except Exception as exc:
-            logger.debug(f"[STRESS] diagnostics.recent() failed: {exc}")
+    def _on_capture_timeout(self):
+        """All steps: NOTHING captured within _CAPTURE_TIMEOUT_S -- most
+        likely the user held the wrong key. Never a false FAIL: leaves
+        Retry/Skip available (already always enabled) and keeps the hook
+        armed in case the real dictation is just running late."""
+        hotkey_display = _pretty_key_combo(
+            (getattr(self.app, 'config', None) or {}).get('hotkey', 'ctrl+shift')
+        )
+        self._status_label.setText(
+            f"No dictation detected — did you hold {hotkey_display}? "
+            "Try again, or Skip this step."
+        )
 
-        if self._no_output_deadline is not None:
-            # accidental_tap/silent_hold: fail fast on any sign of output;
-            # otherwise wait out the full window before declaring a pass.
-            if got_text or (new_rec is not None and new_rec.text):
-                self._finish_step(new_rec, got_text)
-            elif time.monotonic() >= self._no_output_deadline:
-                self._finish_step(new_rec, got_text)
-            return
-
-        if new_rec is not None:
-            self._finish_step(new_rec, got_text)
-
-    def _finish_step(self, rec, got_text: str):
-        self._poll_timer.stop()
+    def _finish_step(self, rec):
+        self._disarm_capture()
         step = self._battery[self._step_idx]
+        got_text = rec.text if rec is not None else None
+        if got_text is not None:
+            self._target_box.setPlainText(got_text or "(no speech detected)")
         try:
             passed, reason = step.pass_criteria(rec, got_text or None)
         except Exception as exc:
@@ -387,7 +471,7 @@ class _StressWizardWindow(QMainWindow):
         self._show_step(self._step_idx)
 
     def _on_skip(self):
-        self._poll_timer.stop()
+        self._disarm_capture()
         step = self._battery[self._step_idx]
         if self._results and self._results[-1]['step'] is step:
             self._results.pop()
@@ -404,7 +488,7 @@ class _StressWizardWindow(QMainWindow):
     # ------------------------------------------------------------------
 
     def _show_final_screen(self):
-        self._poll_timer.stop()
+        self._disarm_capture()
         passed = sum(1 for r in self._results if r['passed'] is True)
         failed = sum(1 for r in self._results if r['passed'] is False)
         skipped = sum(1 for r in self._results if r['passed'] is None)
@@ -453,5 +537,6 @@ class _StressWizardWindow(QMainWindow):
 
     # ------------------------------------------------------------------
     def closeEvent(self, e):
-        self._poll_timer.stop()
+        self._closed = True
+        self._disarm_capture()
         e.accept()

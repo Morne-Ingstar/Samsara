@@ -2,9 +2,16 @@
 Stress-Test Wizard (samsara/ui/stress_wizard_qt.py).
 
 This module defines WHAT to test and HOW to judge the result. It does not
-capture audio or drive the UI -- the wizard runs each step through the
-user's NORMAL dictation hotkey/wake flow and reads the resulting
-samsara.diagnostics.DiagRecord + captured text back in.
+capture audio, drive the UI, or know about live config -- the wizard runs
+each step through the user's REAL dictation hotkey (samsara.diagnostics'
+one-shot completion hook, not a clipboard/paste side channel) and reads the
+resulting samsara.diagnostics.DiagRecord back in as (rec, rec.text).
+
+Every `instruction` string that tells the user to use their hotkey contains
+a literal "{hotkey}" placeholder -- the wizard resolves the ACTUAL
+configured hotkey from live config and calls instruction.format(hotkey=...)
+at step-show time. Never hardcode a key combo here; this module has no
+access to (and must not assume) any particular config value.
 
 Reuses, never duplicates:
   - samsara.diagnostics (DiagRecord, classify()) for signal capture.
@@ -68,13 +75,39 @@ def _make_exact_match_criteria(expected: str) -> PassCriteria:
     return _pc
 
 
+def _make_contains_word_criteria(word: str) -> PassCriteria:
+    """Nonempty transcript containing the target word -- looser than an
+    exact match (STEP_SHORT_WORD's audience is "did dictation capture
+    ANYTHING recognizable", not "did Whisper add trailing punctuation")."""
+    norm_word = _normalize_phrase(word)
+
+    def _pc(rec: "DiagRecord | None", got_text: "str | None"):
+        if not got_text:
+            return False, "No text captured"
+        norm_got = _normalize_phrase(got_text)
+        if norm_word in norm_got.split():
+            return True, f"Captured '{got_text}' -- contains '{word}'"
+        return False, f"Expected '{word}' somewhere in the transcript, got '{got_text}'"
+
+    return _pc
+
+
 def _pc_no_output(rec: "DiagRecord | None", got_text: "str | None"):
     """PASS = nothing was transcribed -- for accidental-tap/silent-hold
-    steps where speaking never happened."""
+    steps where speaking never happened. A "gated" DiagRecord (the VAD
+    presence gate correctly suppressed a near-silent buffer before it ever
+    reached the model) is the CLEANEST possible pass for these steps, not
+    just an absence of text -- called out explicitly in the reason string
+    so the wizard's report distinguishes "gate worked" from "nothing
+    happened to observe at all"."""
     if got_text:
         return False, f"Expected no output, got: '{got_text}'"
     if rec is not None and rec.text:
         return False, f"Expected no output, diagnostics recorded text: '{rec.text}'"
+    if rec is not None and rec.outcome == "gated":
+        return True, "Gate correctly suppressed the buffer -- no transcription attempted"
+    if rec is not None and rec.outcome == "empty":
+        return True, "Model ran but produced no usable text, as expected"
     return True, "No output produced, as expected"
 
 
@@ -163,16 +196,16 @@ def _pc_quiet_speech_report(rec: "DiagRecord | None", got_text: "str | None"):
 STEP_SHORT_WORD = StressTestStep(
     id="short_word",
     title="Single word",
-    instruction="Say the single word shown below.",
+    instruction="Hold your dictation hotkey ({hotkey}) and say the word shown below.",
     expected_text="testing",
     category="accuracy",
-    pass_criteria=_make_exact_match_criteria("testing"),
+    pass_criteria=_make_contains_word_criteria("testing"),
 )
 
 STEP_SHORT_PHRASE = StressTestStep(
     id="short_phrase",
     title="Short phrase",
-    instruction="Say the short phrase shown below.",
+    instruction="Hold your dictation hotkey ({hotkey}) and say the short phrase shown below.",
     expected_text=_SHORT_PHRASE,
     category="accuracy",
     pass_criteria=_make_exact_match_criteria(_SHORT_PHRASE),
@@ -182,7 +215,7 @@ STEP_ACCIDENTAL_TAP = StressTestStep(
     id="accidental_tap",
     title="Accidental tap",
     instruction=(
-        "Press and release your dictation hotkey immediately, "
+        "Press and release your dictation hotkey ({hotkey}) immediately, "
         "without saying anything (a quick accidental tap)."
     ),
     expected_text=None,
@@ -194,8 +227,8 @@ STEP_SILENT_HOLD = StressTestStep(
     id="silent_hold",
     title="Silent hold",
     instruction=(
-        "Hold your dictation hotkey for about 3 seconds without saying "
-        "anything, then release."
+        "Hold your dictation hotkey ({hotkey}) for about 3 seconds without "
+        "saying anything, then release."
     ),
     expected_text=None,
     category="hallucination",
@@ -205,7 +238,10 @@ STEP_SILENT_HOLD = StressTestStep(
 STEP_LONG_MONOLOGUE = StressTestStep(
     id="long_monologue",
     title="Long monologue",
-    instruction="Read the paragraph shown below aloud, at a natural pace.",
+    instruction=(
+        "Hold your dictation hotkey ({hotkey}) and read the paragraph "
+        "shown below aloud, at a natural pace."
+    ),
     expected_text=_LONG_MONOLOGUE,
     category="truncation",
     pass_criteria=_make_word_count_tolerance_criteria(_LONG_MONOLOGUE),
@@ -214,7 +250,7 @@ STEP_LONG_MONOLOGUE = StressTestStep(
 STEP_HOMOPHONES = StressTestStep(
     id="homophones",
     title="Homophones",
-    instruction="Say the sentence shown below exactly as written.",
+    instruction="Hold your dictation hotkey ({hotkey}) and say the sentence shown below exactly as written.",
     expected_text=_HOMOPHONE_SENTENCE,
     category="smart_corrections",
     pass_criteria=_make_homophone_criteria(_HOMOPHONE_SENTENCE),
@@ -223,7 +259,7 @@ STEP_HOMOPHONES = StressTestStep(
 STEP_NUMBERS_PUNCT = StressTestStep(
     id="numbers_punct",
     title="Numbers & punctuation",
-    instruction="Say the sentence shown below exactly as written.",
+    instruction="Hold your dictation hotkey ({hotkey}) and say the sentence shown below exactly as written.",
     expected_text=_NUMBERS_PUNCT_SENTENCE,
     category="formatting",
     pass_criteria=_make_exact_match_criteria(_NUMBERS_PUNCT_SENTENCE),
@@ -231,8 +267,14 @@ STEP_NUMBERS_PUNCT = StressTestStep(
 
 STEP_QUIET_SPEECH = StressTestStep(
     id="quiet_speech",
+    # NOTE: built by concatenation, not an f-string -- "{hotkey}" must
+    # survive as a literal placeholder for the wizard's later .format()
+    # call; an f-string would evaluate/consume it immediately.
     title="Quiet speech",
-    instruction=f'Say "{_SHORT_PHRASE}" as quietly as you comfortably can.',
+    instruction=(
+        'Hold your dictation hotkey ({hotkey}) and say "' + _SHORT_PHRASE
+        + '" as quietly as you comfortably can.'
+    ),
     expected_text=None,
     category="quality",
     pass_criteria=_pc_quiet_speech_report,
@@ -241,7 +283,7 @@ STEP_QUIET_SPEECH = StressTestStep(
 STEP_FAST_SPEECH = StressTestStep(
     id="fast_speech",
     title="Fast speech",
-    instruction="Say the phrase shown below as fast as you comfortably can.",
+    instruction="Hold your dictation hotkey ({hotkey}) and say the phrase below as fast as you comfortably can.",
     expected_text=_SHORT_PHRASE,
     category="accuracy",
     pass_criteria=_make_exact_match_criteria(_SHORT_PHRASE),
@@ -285,11 +327,14 @@ def build_jargon_step(voice_training_window) -> "StressTestStep | None":
         return None
 
     term_list = ", ".join(terms)
+    # Concatenation, not an f-string -- "{hotkey}" must survive as a literal
+    # placeholder for the wizard's later .format() call.
     return StressTestStep(
         id="jargon",
         title="Vocabulary & jargon",
         instruction=(
-            f"Speak a sentence naturally using these words: {term_list}"
+            "Hold your dictation hotkey ({hotkey}) and speak a sentence "
+            "naturally using these words: " + term_list
         ),
         expected_text=None,
         category="vocabulary",

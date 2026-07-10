@@ -29,6 +29,51 @@ _TEXT_CHAR_CAP = 200
 _lock = threading.Lock()
 _ring: deque = deque(maxlen=_MAX_RECORDS)
 
+# One-shot completion hooks -- the canonical, thread-safe tap point for
+# "tell me about the NEXT dictation completion" consumers (currently just
+# the Stress Test Wizard: samsara/ui/stress_wizard_qt.py). record() is the
+# single choke point every dictation path (hotkey/wake/streaming/command,
+# success/empty/gated) already funnels through -- the same call sites that
+# write history -- so hooking here means no separate capture mechanism
+# (clipboard/paste watching, polling a Qt widget) is needed at all.
+#
+# record() runs on whatever thread the caller is on (the hotkey/wake worker
+# thread, not the Qt thread) -- callbacks registered here fire on THAT
+# thread too. A Qt-based consumer MUST marshal back via qt_runtime.post()
+# inside its own callback; this module has no Qt dependency and does none
+# of that for you.
+_hooks_lock = threading.Lock()
+_one_shot_hooks: list = []
+
+
+def add_one_shot_hook(callback) -> None:
+    """Register callback(rec: DiagRecord) to fire on the NEXT record() call,
+    then automatically deregister. Never raises into record()'s caller if
+    callback itself raises -- see _fire_one_shot_hooks."""
+    with _hooks_lock:
+        _one_shot_hooks.append(callback)
+
+
+def remove_one_shot_hook(callback) -> None:
+    """Explicit unhook -- idempotent (no error if callback already fired or
+    was never registered). Callers MUST call this on cancel/skip/close so a
+    closed window never leaks a callback into a future record() call."""
+    with _hooks_lock:
+        try:
+            _one_shot_hooks.remove(callback)
+        except ValueError:
+            pass
+
+
+def _fire_one_shot_hooks(rec) -> None:
+    with _hooks_lock:
+        hooks, _one_shot_hooks[:] = list(_one_shot_hooks), []
+    for cb in hooks:
+        try:
+            cb(rec)
+        except Exception as exc:
+            logger.debug(f"[DIAG] one-shot hook failed: {exc}")
+
 
 @dataclass
 class DiagRecord:
@@ -178,6 +223,8 @@ def record(rec: DiagRecord, app=None) -> None:
     except Exception as exc:
         logger.debug(f"[DIAG] record() failed: {exc}")
         return
+
+    _fire_one_shot_hooks(rec)
 
     try:
         write_enabled = False
