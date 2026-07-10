@@ -324,6 +324,20 @@ SETTINGS_SCHEMA = {
         "tab": "advanced",
         "depends_on": "echo_cancellation.enabled",
     },
+    # Audio ducking (2026-07-10) -- attenuates OTHER apps' audio sessions
+    # while dictating instead of subtracting echo after capture (the
+    # echo_cancellation entries above). Off by default -- opt-in, like
+    # echo_cancellation. See samsara/audio_ducking.py.
+    "ducking.enabled": {"type": "bool", "default": False, "tab": "advanced"},
+    "ducking.level": {
+        "type": "float",
+        "min": 0.0,
+        "max": 1.0,
+        "step": 0.05,
+        "default": 0.2,
+        "tab": "advanced",
+        "depends_on": "ducking.enabled",
+    },
     "listening_indicator_enabled": {"type": "bool", "default": False, "tab": "advanced"},
     "listening_indicator_position": {
         "type": "enum",
