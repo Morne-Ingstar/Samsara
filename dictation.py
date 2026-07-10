@@ -470,10 +470,29 @@ _WAKE_SESSION_SEND_WORDS  = ['over', 'send'] # default send terminators that fin
 # Per ARC tribunal verdict, arc_20260701_143252.md.
 _NO_SPEECH_THRESHOLD = 0.6   # faster-whisper native: per-segment silence-probability cutoff
 _LOGPROB_THRESHOLD   = -1.0  # faster-whisper native: log_prob_threshold (avg log-prob floor)
+_COMPRESSION_RATIO_THRESHOLD = 2.4
+                             # faster-whisper's own built-in compression_ratio_threshold default
+                             # -- never explicitly passed as a transcribe() kwarg anywhere in this
+                             # file (see get_transcription_params), so there's no config value to
+                             # read back; this matches both faster-whisper's real internal default
+                             # and samsara/diagnostics.py's classify() heuristic. Used by
+                             # _is_quality_exhausted (2026-07-10): when faster-whisper's own
+                             # temperature fallback ladder exhausts every rung and still can't
+                             # meet log_prob_threshold/this compression ceiling, it returns the
+                             # final failed attempt anyway rather than nothing -- an 11.7s blank
+                             # hotkey hold on 2026-07-10 delivered "Thank you for watching!" this
+                             # exact way (every temp 0.0-1.0 failed log_prob_threshold, then
+                             # compression_ratio hit 7.125 at temp 0.8) because nothing downstream
+                             # checked these signals before delivering the text.
 _GATE_MAX_BUFFER_S   = 8.0   # only buffers this short or shorter are VAD-gated; longer
                              # real dictation bypasses the gate entirely (no added latency).
                              # Raised 3.0->8.0: 3-6s near-silent/whisper holds were bypassing
                              # the gate and producing phantom "Thank you for watching" text.
+                             # NOTE (2026-07-10): that fix only pushed the exposure window out,
+                             # it didn't close it -- an 11.7s hold reproduced the identical bug.
+                             # _is_quality_exhausted (below) is the durable, length-independent
+                             # fix; this constant is deliberately NOT raised again (see its own
+                             # comment on why the gate must stay latency-free for real dictation).
 _GATE_MIN_CONTIG_MS  = 150   # minimum CONTIGUOUS high-confidence speech run required to pass
 _GATE_VAD_PROB       = 0.45  # Silero speech-probability threshold for the contiguous-run gate
 _FADE_MS             = 50    # linear fade-in/out applied to hotkey buffers, kills the
@@ -695,7 +714,21 @@ def resample_audio(audio, orig_sr, target_sr=MODEL_SAMPLE_RATE):
 # rather than needing a separate per-language check. "amara.org" alone
 # catches variants not explicitly listed (Amara.org crowd-subtitles the
 # phrase on many different source videos/languages).
+#
+# 2026-07-10: added the ENGLISH "thank you for watching" family -- every
+# non-English variant of this exact staple (Japanese/Chinese/Ukrainian/
+# Spanish below) was already covered, but the English original was missing
+# entirely. An 11.7s blank hotkey hold delivered "Thank you for watching!"
+# verbatim because of that gap (see _is_quality_exhausted for the other half
+# of that fix -- the decode had ALSO exhausted every quality threshold).
+# Matching is via the existing lowercase-substring + dominance-ratio check
+# below (case/punctuation-insensitive by construction: text is lowercased
+# and only whitespace-normalized, so trailing "!"/"." on the transcript
+# doesn't prevent the bare phrase from still dominating the ratio). No other
+# hallucination staples added here -- stay scoped to this exact family.
 _HALLUCINATION_STRING_BLACKLIST = (
+    "thank you for watching",
+    "thanks for watching",
     "untertitel der amara.org-community",
     "sous-titrage st' 501",
     "ご視聴ありがとうございました",
@@ -796,6 +829,52 @@ def _is_hallucinated_segments(seg_list, text):
         if nsp and min(nsp) > 0.8 and len(words) <= 3:
             return True
     return False
+
+
+def _is_quality_exhausted(seg_list, transcribe_params):
+    """True if faster-whisper's OWN quality gate never actually passed for
+    this decode -- its temperature fallback ladder exhausted every rung
+    (0.0, 0.2, 0.4, ... up to 1.0 by default) still failing log_prob_
+    threshold or the compression-ratio ceiling, and it returned the final
+    failed attempt anyway rather than nothing. See module-level comment on
+    _COMPRESSION_RATIO_THRESHOLD for the production incident this fixes.
+
+    Distinct from _is_hallucinated_segments: that's a backstop against
+    KNOWN hallucination TEXT signatures (fixed phrases, repetition) --
+    this is a pure QUALITY-SIGNAL check, independent of what the text
+    actually says. A transcription can look perfectly plausible and still
+    be untrustworthy if Whisper itself never found a decode confident
+    enough to stop early on.
+
+    Reads log_prob_threshold from transcribe_params -- the SAME dict
+    actually passed to model.transcribe() for this call -- so this can
+    never drift from what was really configured. compression_ratio_
+    threshold is never explicitly passed as a kwarg anywhere in this file
+    (see get_transcription_params/_build_hotkey_transcribe_params), so
+    there is no config value to read for it; _COMPRESSION_RATIO_THRESHOLD
+    is faster-whisper's own real internal default for that check.
+
+    Real speech does not produce these signals (that's the entire premise
+    behind faster-whisper accepting a decode instead of escalating temp
+    in the first place) -- a normal dictation's segments pass both checks,
+    so this never fires on genuine speech, long or short. Empty seg_list
+    means nothing to judge -- never fires."""
+    if not seg_list:
+        return False
+    sig = diagnostics.segment_signals(seg_list)
+    if sig['n_segments'] == 0:
+        return False
+    logprob_threshold = transcribe_params.get('log_prob_threshold')
+    failing_logprob = (
+        logprob_threshold is not None
+        and sig['avg_logprob'] is not None
+        and sig['avg_logprob'] < logprob_threshold
+    )
+    failing_compression = (
+        sig['compression_ratio'] is not None
+        and sig['compression_ratio'] > _COMPRESSION_RATIO_THRESHOLD
+    )
+    return failing_logprob or failing_compression
 
 
 def hide_console():
@@ -7272,6 +7351,13 @@ class DictationApp:
                             logging.getLogger("Samsara").info(
                                 f"[GUARD] Suppressed hallucinated chunk {idx+1}: {chunk_text!r}")
                             chunk_text = ""
+                        elif _is_quality_exhausted(_segs_list, transcribe_params):
+                            _sig = diagnostics.segment_signals(_segs_list)
+                            logging.getLogger("Samsara").info(
+                                f"[QUALITY] decode ladder exhausted (logprob "
+                                f"{_sig['avg_logprob']}, compression {_sig['compression_ratio']}) "
+                                f"-- rejecting chunk {idx+1}: {chunk_text!r}")
+                            chunk_text = ""
                         if chunk_text:
                             texts.append(chunk_text)
                         logger.info(f"[LONG] Chunk {idx + 1}/{len(chunks)}: "
@@ -7287,6 +7373,13 @@ class DictationApp:
                     if _is_hallucinated_segments(_seg_list, text):
                         logging.getLogger("Samsara").info(
                             f"[GUARD] Suppressed hallucination: {text!r}")
+                        text = ""
+                    elif _is_quality_exhausted(_seg_list, transcribe_params):
+                        _sig = diagnostics.segment_signals(_seg_list)
+                        logging.getLogger("Samsara").info(
+                            f"[QUALITY] decode ladder exhausted (logprob "
+                            f"{_sig['avg_logprob']}, compression {_sig['compression_ratio']}) "
+                            f"-- rejecting: {text!r}")
                         text = ""
 
                 transcribe_time = time.time() - transcribe_start
