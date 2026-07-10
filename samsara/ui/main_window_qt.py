@@ -460,9 +460,7 @@ class MainWindowQt:
 
     def show(self):
         if self._window is not None:
-            qt_runtime.post(self._window.show)
-            qt_runtime.post(self._window.raise_)
-            qt_runtime.post(self._window.activateWindow)
+            qt_runtime.post(self._show_and_raise)
         elif not self._init_posted:
             self._init_posted = True
             qt_runtime.post(self._init_window)
@@ -482,11 +480,29 @@ class MainWindowQt:
 
     # ---- Qt-thread ----------------------------------------------------------
 
+    def _show_and_raise(self):
+        """Runs on the Qt thread. QWidget.show() alone does not restore a
+        minimized window -- showNormal() clears the minimized state first;
+        a non-minimized window just gets a plain show(). Either way,
+        raise_()/activateWindow() bring it to the foreground -- this is
+        what tray "Show Samsara" / tray-icon-click ultimately triggers."""
+        window = self._window
+        if window is None:
+            return
+        if window.isMinimized():
+            window.showNormal()
+        else:
+            window.show()
+        window.raise_()
+        window.activateWindow()
+
     def _init_window(self):
         """Runs on the Qt thread."""
         self._window = _MainWindow(self._app)
         self._window.destroyed.connect(self._on_destroyed)
         self._window.show()
+        self._window.raise_()
+        self._window.activateWindow()
 
     def _on_destroyed(self):
         self._window = None

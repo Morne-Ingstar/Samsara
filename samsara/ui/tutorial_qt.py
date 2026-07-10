@@ -185,6 +185,18 @@ class TutorialWindow(QMainWindow):
             self._button_min_width(self._skip_step_btn, ["Skip this step"])
         )
 
+        # Back sits between "Skip this step" and "Next" -- same secondary
+        # styling + repolish pattern as every other secondary button here
+        # (theme.make_secondary), and disabled (not hidden) on step 1,
+        # matching first_run_wizard_qt.py's _back_btn convention exactly.
+        self._back_btn = QPushButton("Back")
+        theme.make_secondary(self._back_btn)
+        self._back_btn.clicked.connect(self._go_back)
+        nl.addWidget(self._back_btn)
+        self._back_btn.setMinimumWidth(
+            self._button_min_width(self._back_btn, ["Back"])
+        )
+
         self._next_btn = QPushButton("Next")
         theme.make_primary(self._next_btn)
         self._next_btn.clicked.connect(self._go_next)
@@ -546,6 +558,7 @@ class TutorialWindow(QMainWindow):
         is_interactive = key in ("dictation", "command")
 
         # Nav button states
+        self._back_btn.setEnabled(self._step > 0)
         self._skip_step_btn.setVisible(is_interactive)
         self._next_btn.setVisible(True)
 
@@ -577,6 +590,22 @@ class TutorialWindow(QMainWindow):
             return
         self._step += 1
         self._show_step()
+
+    def _go_back(self):
+        # Reuses _show_step() -- the exact same page-setup/dots/title/nav-
+        # button routine forward navigation uses, so there is no separate
+        # "go backward" page-setup path to keep in sync. _show_step()'s
+        # one-time step-enter side effects (hook install, hint timer) are
+        # already idempotent on re-entry: hint timer is always cancelled
+        # before being restarted, hook installation is a dict overwrite
+        # (not an accumulating registration), and completion handlers
+        # (_complete_dictation/_complete_command) separately guard on
+        # membership in self._completed -- so stepping back to an
+        # already-completed interactive step and forward again cannot
+        # re-fire a one-time side effect.
+        if self._step > 0:
+            self._step -= 1
+            self._show_step()
 
     def _skip_step(self):
         """Skip the current interactive step without marking it complete."""

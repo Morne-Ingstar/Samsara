@@ -114,7 +114,8 @@
       "streaming": false,
       "wake": true
     },
-    "ollama_model": "qwen2.5:3b"
+    "ollama_model": "qwen2.5:3b",
+    "repair_disfluencies": false
   },
   "sound_theme": "cute",
   "sound_volume": 0.5,

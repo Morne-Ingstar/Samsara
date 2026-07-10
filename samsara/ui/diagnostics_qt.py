@@ -128,22 +128,37 @@ QMenu::separator {{
 }}
 """
 
-_COLUMNS = ["Time", "Mode", "Audio (s)", "Total (ms)", "Transcribe (ms)",
-            "Smart (ms)", "Verdict", "Text"]
+_COLUMNS = ["Time", "Mode", "Outcome", "Audio (s)", "Segs", "No-Speech", "LogProb",
+            "Total (ms)", "Transcribe (ms)", "Smart (ms)", "Verdict", "Text"]
 
 # Verdict-string keyword buckets for row severity colouring.
 _RED_KEYWORDS = ("hallucination", "no output")
 _AMBER_KEYWORDS = ("slow", "small model", "fallback", "low confidence",
                    "accidental hold")
 
+# FM3 (blank-transcription) outcome -> short, visually-distinct table label.
+_OUTCOME_LABELS = {"empty": "EMPTY", "gated": "GATED", "ok": ""}
 
-def _row_color(verdicts) -> "QColor | None":
-    joined = " ".join(verdicts).lower()
+
+def _row_color(rec) -> "QColor | None":
+    # outcome is the authoritative signal for FM3 rows -- checked before the
+    # generic verdict-keyword scan so an empty/gated row is never left
+    # uncoloured just because its verdict text doesn't happen to match one
+    # of the keyword buckets below.
+    if rec.outcome == "empty":
+        return QColor(_ERROR)
+    if rec.outcome == "gated":
+        return QColor(_WARNING)
+    joined = " ".join(rec.verdicts).lower()
     if any(kw in joined for kw in _RED_KEYWORDS):
         return QColor(_ERROR)
     if any(kw in joined for kw in _AMBER_KEYWORDS):
         return QColor(_WARNING)
     return None
+
+
+def _fmt_signal(v) -> str:
+    return f"{v:.2f}" if isinstance(v, float) else ""
 
 
 def _fmt_ts(ts: str) -> str:
@@ -347,16 +362,22 @@ class DiagnosticsWindow(QMainWindow):
                 ts_item.setToolTip(rec.ts)
                 self._table.setItem(r, 0, ts_item)
                 self._table.setItem(r, 1, QTableWidgetItem(rec.mode))
-                self._table.setItem(r, 2, QTableWidgetItem(f"{rec.audio_s:.2f}"))
-                self._table.setItem(r, 3, QTableWidgetItem(str(rec.t_total_ms)))
-                self._table.setItem(r, 4, QTableWidgetItem(str(rec.t_transcribe_ms)))
-                self._table.setItem(r, 5, QTableWidgetItem(str(rec.t_smart_ms)))
+                outcome_item = QTableWidgetItem(_OUTCOME_LABELS.get(rec.outcome, rec.outcome))
+                outcome_item.setToolTip(f"outcome={rec.outcome}  path={rec.path or 'n/a'}")
+                self._table.setItem(r, 2, outcome_item)
+                self._table.setItem(r, 3, QTableWidgetItem(f"{rec.audio_s:.2f}"))
+                self._table.setItem(r, 4, QTableWidgetItem(str(rec.n_segments)))
+                self._table.setItem(r, 5, QTableWidgetItem(_fmt_signal(rec.no_speech_prob)))
+                self._table.setItem(r, 6, QTableWidgetItem(_fmt_signal(rec.avg_logprob)))
+                self._table.setItem(r, 7, QTableWidgetItem(str(rec.t_total_ms)))
+                self._table.setItem(r, 8, QTableWidgetItem(str(rec.t_transcribe_ms)))
+                self._table.setItem(r, 9, QTableWidgetItem(str(rec.t_smart_ms)))
                 verdict_summary = rec.verdicts[0] if rec.verdicts else ""
-                self._table.setItem(r, 6, QTableWidgetItem(verdict_summary))
+                self._table.setItem(r, 10, QTableWidgetItem(verdict_summary))
                 text_preview = rec.text if len(rec.text) <= 90 else rec.text[:87] + "..."
-                self._table.setItem(r, 7, QTableWidgetItem(text_preview))
+                self._table.setItem(r, 11, QTableWidgetItem(text_preview))
 
-                color = _row_color(rec.verdicts)
+                color = _row_color(rec)
                 if color:
                     brush = QBrush(color)
                     for col in range(len(_COLUMNS)):

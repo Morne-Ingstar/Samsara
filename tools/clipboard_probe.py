@@ -84,6 +84,41 @@ def _make_test_dib() -> bytes:
     return bmp_bytes[14:]
 
 
+def _snapshot_real_clipboard() -> dict:
+    """Raw win32clipboard snapshot of whatever's really on the clipboard
+    before this probe overwrites it -- same courtesy as
+    tests/test_clipboard_preserve.py's preserve_real_clipboard fixture.
+    Independent of samsara.clipboard.save_clipboard() (what's being probed)."""
+    snapshot = {}
+    win32clipboard.OpenClipboard()
+    try:
+        for fmt in (CF_UNICODETEXT, CF_DIB):
+            try:
+                if not win32clipboard.IsClipboardFormatAvailable(fmt):
+                    continue
+                data = win32clipboard.GetClipboardData(fmt)
+                if fmt == CF_DIB:
+                    data = bytes(data)
+                snapshot[fmt] = data
+            except Exception:
+                continue
+    finally:
+        win32clipboard.CloseClipboard()
+    return snapshot
+
+
+def _restore_real_clipboard(snapshot: dict) -> None:
+    """Restore a snapshot taken by _snapshot_real_clipboard(), or just
+    empty the clipboard if it was empty."""
+    win32clipboard.OpenClipboard()
+    try:
+        win32clipboard.EmptyClipboard()
+        for fmt, data in snapshot.items():
+            win32clipboard.SetClipboardData(fmt, data)
+    finally:
+        win32clipboard.CloseClipboard()
+
+
 def _set_clipboard_dib(dib_bytes: bytes) -> None:
     win32clipboard.OpenClipboard()
     try:
@@ -135,7 +170,7 @@ def _probe_format_directly(fmt: int):
         _user32.CloseClipboard()
 
 
-def main() -> int:
+def _run_probe() -> int:
     print("=" * 70)
     print("Clipboard preservation probe")
     print("=" * 70)
@@ -205,6 +240,24 @@ def main() -> int:
         print(f"    {fmt:6d}  {_format_name(fmt)}")
 
     return 0
+
+
+def main() -> int:
+    """Bracket _run_probe() with a snapshot/restore of whatever was
+    actually on the clipboard before this manual tool started -- same
+    courtesy as the pytest suite's preserve_real_clipboard fixture. This
+    probe is destructive by design (it overwrites the clipboard repeatedly
+    to exercise save/restore); without this, running it would leave the
+    generated test image on the user's real clipboard."""
+    real_snapshot = _snapshot_real_clipboard()
+    try:
+        return _run_probe()
+    finally:
+        try:
+            _restore_real_clipboard(real_snapshot)
+            print("\n[9] Restored your original clipboard contents.")
+        except Exception as e:
+            print(f"\n!!! Failed to restore your original clipboard contents: {e}")
 
 
 if __name__ == "__main__":

@@ -62,6 +62,19 @@ _ENGLISH_FEWSHOT_EXAMPLES = (
 
 SYSTEM_PROMPT = f"{_BASE_INSTRUCTIONS}\n\n{_ENGLISH_FEWSHOT_EXAMPLES}"
 
+# Opt-in (smart_corrections.repair_disfluencies, default False) -- appended
+# to the system prompt by _build_system_prompt() when enabled. Widens
+# _sanitize_output's shrink allowance and suspends its punctuation floor to
+# match (removing fillers/fragments legitimately shrinks word count and
+# punctuation more than the default guardrails expect -- see both gates
+# below).
+_DISFLUENCY_INSTRUCTIONS = (
+    "Remove disfluencies: filler words (um, uh), immediate self-corrections "
+    "(keep only the corrected version: 'understand, misunderstood' means the "
+    "speaker corrected themselves to 'misunderstood'), and abandoned sentence "
+    "fragments. Never remove intentional repetition or content."
+)
+
 # code -> plain native display name (LANGUAGES entries are "Name (code)"),
 # for embedding in the non-English prompt addendum below.
 _LANGUAGE_DISPLAY_NAMES = {code: name.rsplit(" (", 1)[0] for name, code in LANGUAGES}
@@ -74,6 +87,15 @@ _DEFAULT_KEEP_ALIVE = "30m"
 _VOCAB_CONTEXT_CAP = 600
 _WORD_DEVIATION_LIMIT = 0.4
 _PUNCT_FLOOR_SHRINK_THRESHOLD = 0.10
+
+# repair_disfluencies gate state (see _sanitize_output): off keeps the
+# symmetric _WORD_DEVIATION_LIMIT unchanged in both directions. On widens
+# the SHRINK allowance only -- stripping fillers/self-corrections/fragments
+# legitimately removes more words than a homophone-style fix would -- while
+# the growth cap stays the same as the default (the model still must not
+# be adding content).
+_DISFLUENCY_SHRINK_LIMIT = 0.5
+_DISFLUENCY_GROWTH_LIMIT = _WORD_DEVIATION_LIMIT
 
 _PROBE_TTL_S = 60.0
 _probe_cache: dict = {}  # host -> (monotonic_timestamp, reachable: bool)
@@ -284,6 +306,8 @@ def _language_aware_prompt(app) -> str:
 
 def _build_system_prompt(app) -> str:
     prompt = _language_aware_prompt(app)
+    if bool(_sc_config(app).get("repair_disfluencies", False)):
+        prompt = f"{prompt}\n\n{_DISFLUENCY_INSTRUCTIONS}"
     context = _vocab_context(app)
     return f"{prompt}\n\n{context}" if context else prompt
 
@@ -372,12 +396,20 @@ def _looks_translated(original: str, text: str) -> bool:
     return orig_class != new_class
 
 
-def _sanitize_output(raw: str, original: str) -> str:
+def _sanitize_output(raw: str, original: str, repair_disfluencies: bool = False) -> str:
     """Guardrails on LLM output. Pure function -- no I/O, no side effects.
 
     Returns the sanitized correction, or `original` unchanged if the output
     is empty, deviates too much in word count, looks like an over-edit that
     silently stripped punctuation, or otherwise looks unsafe to trust.
+
+    repair_disfluencies (default False, unchanged behavior): when True, the
+    punctuation floor is suspended entirely (removing a filler like "um,"
+    legitimately drops punctuation without shrinking word count much) and
+    the word-count deviation check switches from a symmetric +/-40% to an
+    asymmetric shrink-up-to-50%/grow-up-to-40% check (fillers/self-
+    corrections/fragments legitimately shrink more than they should ever
+    grow).
     """
     if not raw:
         return original
@@ -399,7 +431,7 @@ def _sanitize_output(raw: str, original: str) -> str:
     if _looks_translated(original, text):
         return original
 
-    if _fails_punctuation_floor(original, text):
+    if not repair_disfluencies and _fails_punctuation_floor(original, text):
         return original
 
     orig_words = original.split()
@@ -407,9 +439,16 @@ def _sanitize_output(raw: str, original: str) -> str:
     if not orig_words:
         return text if not new_words else original
 
-    deviation = abs(len(new_words) - len(orig_words)) / len(orig_words)
-    if deviation > _WORD_DEVIATION_LIMIT:
-        return original
+    delta = len(new_words) - len(orig_words)
+    if repair_disfluencies:
+        if delta < 0 and (-delta) / len(orig_words) > _DISFLUENCY_SHRINK_LIMIT:
+            return original
+        if delta > 0 and delta / len(orig_words) > _DISFLUENCY_GROWTH_LIMIT:
+            return original
+    else:
+        deviation = abs(delta) / len(orig_words)
+        if deviation > _WORD_DEVIATION_LIMIT:
+            return original
 
     return text
 
@@ -565,7 +604,8 @@ def smart_correct(text: str, app) -> str:
                 )
             return text
 
-        corrected = _sanitize_output(raw, text)
+        repair_disfluencies = bool(cfg.get("repair_disfluencies", False))
+        corrected = _sanitize_output(raw, text, repair_disfluencies=repair_disfluencies)
         tag = _backend_tag(backend, model, elapsed_ms)
 
         if corrected != text:

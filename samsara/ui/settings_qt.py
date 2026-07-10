@@ -3748,6 +3748,15 @@ class _SettingsWindow(QMainWindow):
         sc_mode_streaming_cb.setChecked(bool(sc_modes_cfg.get('streaming', False)))
         self._widgets['sc_mode_streaming'] = sc_mode_streaming_cb
         layout.addWidget(sc_mode_streaming_cb)
+        layout.addSpacing(8)
+
+        sc_repair_disfluencies_cb = QCheckBox(
+            "Remove filler words and self-corrections "
+            "('I totally understand, misunderstood' -> 'I totally misunderstood')"
+        )
+        sc_repair_disfluencies_cb.setChecked(bool(sc_cfg.get('repair_disfluencies', False)))
+        self._widgets['sc_repair_disfluencies'] = sc_repair_disfluencies_cb
+        layout.addWidget(sc_repair_disfluencies_cb)
         layout.addSpacing(20)
 
         # ---- Section: Benchmark ---------------------------------------------
@@ -3812,6 +3821,9 @@ class _SettingsWindow(QMainWindow):
                         'wake':      self._widgets['sc_mode_wake'].isChecked(),
                         'streaming': self._widgets['sc_mode_streaming'].isChecked(),
                     }
+                    sc_cfg_out['repair_disfluencies'] = (
+                        self._widgets['sc_repair_disfluencies'].isChecked()
+                    )
                     updates['smart_corrections'] = sc_cfg_out
                 if 'adv_bench_collect' in self._widgets:
                     bench_cfg_out = dict(self.app.config.get('benchmark', {}) or {})

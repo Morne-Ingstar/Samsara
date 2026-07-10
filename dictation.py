@@ -702,12 +702,25 @@ def _is_hallucinated_segments(seg_list, text):
             return True
     # Signature D: the ENTIRE transcription is 2-3 identical tokens (e.g.
     # "click click", "beep beep beep"). Too short to trip Signature B's
-    # >=4-word check, but a bare whole-utterance 2-3 token repeat is
-    # essentially never real speech. An embedded mention inside real speech
-    # ("I heard a click click sound") is untouched -- this only fires when
-    # the repeat IS the whole transcription, not part of a longer one.
-    if 2 <= len(words) <= 3 and len(set(words)) == 1:
-        return True
+    # >=4-word check. An embedded mention inside real speech ("I heard a
+    # click click sound") is untouched -- this only fires when the repeat
+    # IS the whole transcription, not part of a longer one.
+    #
+    # CORROBORATION REQUIRED: a bare 2-3 token whole-utterance repeat is
+    # NOT on its own a reliable hallucination signal -- real emphatic
+    # speech ("no no", "stop stop", "yes yes yes") looks identical at the
+    # text level. This must only fire when acoustically corroborated: every
+    # segment's no_speech_prob > 0.5 (near-silence). A user actually saying
+    # "no no" into a live mic produces LOW no_speech_prob and now passes
+    # through untouched; a phantom "click click" from a near-silent buffer
+    # keeps HIGH no_speech_prob and is still caught. Empty seg_list or any
+    # segment missing no_speech_prob telemetry means there's nothing to
+    # corroborate with -- never fire in that case. Eating real speech is
+    # worse than letting a rare hallucination through.
+    if 2 <= len(words) <= 3 and len(set(words)) == 1 and seg_list:
+        nsp_values = [getattr(s, "no_speech_prob", None) for s in seg_list]
+        if all(v is not None and v > 0.5 for v in nsp_values):
+            return True
     # Signature C: very high no_speech_prob across all segments AND short output
     # (near-silent buffer that still emitted a token or two).
     if seg_list:
@@ -2043,6 +2056,15 @@ class DictationApp:
             "undo_hotkey": "ctrl+alt+z",
             "correction_hotkey": "ctrl+alt+r",
             "cancel_hotkey": "escape",
+            # Nested hotkey namespace (new features land here rather than as
+            # more top-level *_hotkey keys). capture_correction opens the
+            # correction-capture window (samsara/ui/correction_capture_qt.py)
+            # pre-filled with the last dictation. Verified against every
+            # other hotkey default above (ctrl+shift, ctrl+alt+d/w/c/z/r,
+            # escape, capslock, ctrl+space) -- ctrl+alt+x is free.
+            "hotkeys": {
+                "capture_correction": "ctrl+alt+x",
+            },
             "mode": "hold",  # Options: "hold", "toggle", "continuous"
             "model_size": "base",
             "language": "en",
@@ -2208,6 +2230,11 @@ class DictationApp:
                 "allow_cloud_fallback": False,  # opt-in: auto may route to cloud when local AI is down
                 "keep_alive": "30m",            # Ollama model residency after each call
                 "modes": {"hotkey": True, "wake": True, "streaming": False},
+                # Opt-in: strip filler words, immediate self-corrections, and
+                # abandoned fragments. Widens the sanitizer's shrink allowance
+                # and suspends its punctuation floor while on -- see
+                # samsara/smart_corrections.py.
+                "repair_disfluencies": False,
             },
             # Dictation Diagnostics: per-utterance pipeline instrumentation
             # (samsara/diagnostics.py). Ring buffer always active; this only
@@ -2222,6 +2249,14 @@ class DictationApp:
             "benchmark": {
                 "collect_samples": False,
                 "max_samples": 200,
+            },
+            # Correction capture (samsara/correction_capture.py +
+            # samsara/ui/correction_capture_qt.py): the hotkey-triggered
+            # "fix my last dictation" flow. max_edit_ratio gates the
+            # whole-text rewrite check -- if more than this fraction of the
+            # words changed, extraction offers zero learnable pairs.
+            "correction_capture": {
+                "max_edit_ratio": 0.5,
             },
             # TTS subsystem (WinRTEngine + AudioCoordinator)
             "tts": {
@@ -3506,6 +3541,18 @@ class DictationApp:
             logger.debug(f"[HOTKEY] Correction hotkey detected: {correction_hotkey}")
             self.hotkey_pressed = True
             self._schedule_ui(self._report_correction_dialog)
+            return
+
+        # Correction CAPTURE hotkey (works in any mode, edge-triggered) --
+        # opens samsara/ui/correction_capture_qt.py pre-filled with the last
+        # dictation. Distinct from correction_hotkey above (the older
+        # threshold-based "Report Correction" dialog).
+        capture_correction_hotkey = self.config.get('hotkeys', {}).get('capture_correction', 'ctrl+alt+x')
+        if self.check_hotkey_state(capture_correction_hotkey) and not self.hotkey_pressed:
+            logger.debug(f"[HOTKEY] Capture correction hotkey detected: {capture_correction_hotkey}")
+            self.hotkey_pressed = True
+            thread_registry.spawn(
+                "dictation.open_correction_capture", self.open_correction_capture, daemon=True)
             return
 
         # Check for wake word enable/disable toggle (works in any mode)
@@ -5106,6 +5153,15 @@ class DictationApp:
         if not self._vad_available or self._vad_model is None:
             return self._zcr_energy_contiguous_speech(audio, src_rate, min_ms=min_ms)
 
+        # Silero is recurrent -- hidden state carried over from whatever ran
+        # before this gate (wake-word listening, continuous mode, a prior
+        # gate call) contaminates the first frames' probabilities, producing
+        # both false PASSes (leaking hallucinations) and false SKIPs (eating
+        # real speech). Reset before this gate's own frame loop starts, so
+        # every gate run gets a clean-slate Silero state. Reuses the
+        # existing lock/exception-safe helper rather than duplicating it.
+        self._vad_reset()
+
         chunk_16k = resample_audio(audio, src_rate, 16000)
         if chunk_16k.ndim > 1:
             chunk_16k = chunk_16k.flatten()
@@ -5175,10 +5231,16 @@ class DictationApp:
             frames = trimmed.reshape(n_windows, window_samples)
 
             energy = np.sqrt(np.mean(frames ** 2, axis=1))
-            # Adaptive floor: a fixed multiple of the buffer's own median
-            # energy, so this works across mic gain/environment rather than
-            # a fixed absolute threshold.
-            noise_floor = np.median(energy)
+            # Adaptive floor: a fixed multiple of the buffer's own noise
+            # floor, so this works across mic gain/environment rather than
+            # a fixed absolute threshold. Uses the 10th percentile, NOT the
+            # median -- when the buffer is mostly speech (e.g. 3s of a 4s
+            # hold), the median IS speech-level energy, making the
+            # threshold ~2x the speech itself and rejecting the very frames
+            # it should pass. The 10th percentile tracks the quiet frames
+            # (the true noise floor) regardless of how much of the buffer
+            # is speech.
+            noise_floor = np.percentile(energy, 10)
             energy_thresh = max(noise_floor * 2.0, 1e-4)
 
             signs = np.sign(frames)
@@ -6943,11 +7005,32 @@ class DictationApp:
                 ):
                     logger.debug(f"[GATE] No contiguous speech in short buffer "
                           f"({audio_duration:.2f}s) — skipping")
+                    # FM3 diagnostics: this buffer never reached the model at
+                    # all -- distinct from outcome="empty" (model ran, text
+                    # came back blank). No transcription happened here, so no
+                    # segment signals exist (n_segments stays at its 0
+                    # default). Never raises/blocks the (already-decided)
+                    # early return.
+                    try:
+                        diagnostics.record(diagnostics.DiagRecord(
+                            mode="command" if self.command_mode_recording else "hotkey",
+                            audio_s=audio_duration,
+                            model_name=self.config.get('model_size', ''),
+                            device=getattr(self, 'device_type', 'unknown'),
+                            compute_type=self.config.get('compute_type', ''),
+                            outcome="gated",
+                            language=_languages.describe_diagnostics_language(
+                                self.config.get('language', 'en'),
+                            ),
+                        ), app=self)
+                    except Exception as _diag_exc:
+                        logger.debug(f"[DIAG] gated record failed: {_diag_exc}")
                     return
 
                 transcribe_start = time.time()
                 _diag_all_segs = []
                 _detected_lang = None
+                _diag_path = "long" if audio_duration > 30.0 else "short"
 
                 if audio_duration > 30.0:
                     # Long audio: split at silence boundaries before transcription.
@@ -6958,7 +7041,9 @@ class DictationApp:
                     # Do NOT set condition_on_previous_text=True here — conditioning
                     # over long stitched sequences triggers Whisper's repetition-loop
                     # hallucination bug (the model echos earlier text indefinitely).
-                    # initial_prompt is also cleared above, for consistency.
+                    # The clean-slate reset in _build_hotkey_transcribe_params is
+                    # condition_on_previous_text only -- initial_prompt is NOT cleared;
+                    # the voice-training vocabulary still biases every chunk here too.
                     chunks = _split_audio_at_silences(audio_faded, self.model_rate)
                     logger.info(f"[LONG] {audio_duration:.1f}s recording split into "
                           f"{len(chunks)} chunk(s) at silence boundaries")
@@ -7240,6 +7325,36 @@ class DictationApp:
                             status="empty",
                             entry_type="failed",
                         )
+
+                    # FM3 diagnostics: the model DID run (unlike outcome=
+                    # "gated" above) but produced no usable text -- record it
+                    # as a first-class event so this failure mode leaves a
+                    # trail. n_segments (from _diag_sig, already computed
+                    # above -- no duplicate signal extraction) is the
+                    # CRITICAL disambiguator: 0 means the model returned
+                    # nothing at all; >0 means segments came back but were
+                    # suppressed/blank (hallucination guard or the native
+                    # no_speech_threshold/log_prob_threshold gates). Never
+                    # raises/blocks the (already-decided) empty return.
+                    try:
+                        diagnostics.record(diagnostics.DiagRecord(
+                            mode="command" if is_command_mode else "hotkey",
+                            audio_s=audio_duration,
+                            model_name=self.config.get('model_size', ''),
+                            device=getattr(self, 'device_type', 'unknown'),
+                            compute_type=self.config.get('compute_type', ''),
+                            t_transcribe_ms=t_transcribe_ms,
+                            t_total_ms=int((time.time() - transcribe_start) * 1000),
+                            text="",
+                            outcome="empty",
+                            path=_diag_path,
+                            language=_languages.describe_diagnostics_language(
+                                self.config.get('language', 'en'), _detected_lang,
+                            ),
+                            **_diag_sig,
+                        ), app=self)
+                    except Exception as _diag_exc:
+                        logger.debug(f"[DIAG] empty-result record failed: {_diag_exc}")
 
             except Exception as e:
                 logger.exception(f"[ERROR] Transcription failed: {e}")
@@ -7712,6 +7827,19 @@ class DictationApp:
             self._diagnostics_qt.show()
         except Exception as e:
             logger.exception(f"[DIAG] Error opening dictation diagnostics: {e}")
+
+    def open_correction_capture(self):
+        """Open the correction-capture window, pre-filled with the most
+        recent dictation. Safe to call from any thread -- history lookup
+        happens here (on whatever thread called this), window construction
+        is posted to the Qt thread by CorrectionCaptureQt itself."""
+        try:
+            rows = self.history_store.query(type_filter='dictation', limit=1)
+            last_text = rows[0]['display_text'] if rows else ''
+            from samsara.ui.correction_capture_qt import CorrectionCaptureQt
+            CorrectionCaptureQt(self).open(last_text)
+        except Exception as e:
+            logger.exception(f"[CORRECT-CAP] Error opening correction capture: {e}")
 
     def open_benchmark_review(self):
         """Open the personal WER benchmark gold-standard review window"""
