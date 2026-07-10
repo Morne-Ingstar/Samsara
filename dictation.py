@@ -3067,22 +3067,47 @@ class DictationApp:
         """Build model.transcribe() kwargs for the hotkey dictation path.
 
         Starts from get_transcription_params() (mode-based defaults) and
-        forces the hotkey-specific overrides: VAD disabled (the user
-        explicitly pressed the hotkey -- don't strip their speech), and a
-        clean per-press conversation-context reset (no residual conditioning
-        carried over from a previous press -- see the "Gate and Reset"
-        hallucination-prevention architecture, module-level constants near
-        the top of this file). The vocabulary/initial_prompt from voice
-        training is still applied -- the clean-slate guarantee is about
-        conversation context (condition_on_previous_text), not vocabulary
-        biasing. Used by both the normal (<30s) and [LONG] branches of the
-        hotkey transcribe() closure -- they share this same dict, so this is
-        the single place that guarantee is enforced.
+        forces the hotkey-specific overrides: a clean per-press
+        conversation-context reset (no residual conditioning carried over
+        from a previous press -- see the "Gate and Reset" hallucination-
+        prevention architecture, module-level constants near the top of
+        this file). The vocabulary/initial_prompt from voice training is
+        still applied -- the clean-slate guarantee is about conversation
+        context (condition_on_previous_text), not vocabulary biasing. Used
+        by both the normal (<30s) and [LONG] branches of the hotkey
+        transcribe() closure -- they share this same dict, so this is the
+        single place that guarantee is enforced.
+
+        vad_filter is now LEFT AT the mode default (True for balanced/
+        accurate/fast) instead of force-disabled -- reversed 2026-07-10 by
+        an A/B decode-parameter experiment (tools/transcribe_ab.py) run
+        against user-verified "you know what I mean" hotkey dumps that
+        transcribed as "i know what i mean" / hallucinated garbage. The
+        buffer itself was already proven intact (commit 9442536's trace);
+        with vad_filter=False, faster-whisper decoded the whole buffer
+        INCLUDING the ~1.5-1.8s prebuffer+start-earcon noise region
+        adjacent to the user's soft leading words. Flipping vad_filter to
+        True was the ONLY one of 5 tested variants that fixed the defect
+        WITHOUT touching initial_prompt (which audit-1 restored
+        specifically for hallucination suppression -- removing or
+        replacing it also "worked" in the A/B test but would trade away
+        that protection, so it was rejected as non-minimal). vad_filter=
+        True also brings the hotkey path into parity with the wake path
+        (process_wake_word_buffer), which has used the mode-default
+        vad_filter=True all along and never exhibited this defect --
+        faster-whisper's own VAD trims the leading silence/noise before
+        decoding, which is exactly the region the earcon/click sit in
+        (see samsara/audio_engine's _log_seam_diagnostics for the same
+        span, and _GATE_HEAD_GRACE_CLICK_PAD_MS for the gate-side
+        tolerance). The old "don't strip their speech" concern this
+        override existed for is addressed by vad_parameters' conservative
+        settings (500ms min_silence_duration, 200ms speech_pad) -- the
+        same values the wake path has always used for real dictation
+        without reported clipping. tests/test_transcription_params.py's
+        vad_filter lock was updated to match -- see that file for the
+        test-level documentation of this reversal.
         """
         transcribe_params = self.get_transcription_params()
-        # DISABLE faster-whisper's VAD for hotkey-triggered dictation.
-        # User explicitly pressed the hotkey — don't strip their speech.
-        transcribe_params['vad_filter'] = False
         # Force a clean slate on EVERY hotkey press. Conditioning on
         # tokens carried over from a previous press is what let
         # hallucinations escalate over a session -- each press must
