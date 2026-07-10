@@ -2,6 +2,96 @@
 
 All notable changes to Samsara are documented here.
 
+## [0.21.0] - 2026-07-10
+
+The trust release. The theme is dictation you can rely on: an adversarial
+review series audited the transcription pipeline end to end (six audits,
+independent AI reviewers, findings verified against the code), and the fixes
+shipped here. Also: spoken formatting, a live Quick Reference, a plain-English
+health readout, and CI-built releases as the first step toward signed
+downloads.
+
+### Fixed
+
+- **"You know" no longer vanishes from dictation** — an overzealous filler
+  cleanup rule deleted the phrase "you know" from every dictation, anywhere
+  in the sentence, whether it was filler or not. It's now comma-anchored
+  like the other filler rules: "It's, you know, complicated" still cleans
+  up; "you know what I mean" survives intact.
+- **A voice-only escape that cannot be blocked** — abort words now use
+  word-boundary matching ("report" can no longer accidentally trigger
+  "abort"), work from every session lane, and are structurally guaranteed
+  to bypass all quality gates: a user with degraded audio can always end a
+  stuck session by voice.
+- **Wake listener goes fully deaf during hotkey dictation** — previously it
+  kept processing your speech in parallel (its suppression only applied
+  before speech began), corrupting the shared voice-detection state and
+  double-transcribing. One recording, one listener, always.
+- **Clipboard preservation hardened** — copied *files* (Explorer) and
+  transparent images (CF_DIBV5) now survive a dictation paste; restore is
+  atomic (a failure can no longer leave your clipboard empty); a copy you
+  make mid-paste is never clobbered (sequence-number guard); a hung
+  clipboard owner can't freeze Samsara.
+- **Scratch-that can't delete text in the wrong app** — destructive undo
+  keystrokes now refuse to fire if the focused window changed since the
+  text was dictated, instead of deleting content in whatever app happens
+  to be focused.
+- **Prefix lane switches are transactional** — "dictate: hello world"
+  reverts cleanly (audibly) if delivery fails instead of stranding you in
+  the new mode with nothing delivered, and payload spacing survives
+  verbatim.
+- **Audio-engine correctness pass** — COM handle leak in the output-device
+  watcher fixed (was leaking every 2 seconds for the app's lifetime); the
+  device-death sound no longer plays from inside the dying audio callback
+  (a deadlock risk exactly when a Bluetooth mic drops); shutdown gives every
+  thread a fair share of the timeout.
+- **Smart Corrections hardening (8 fixes)** — tighter change budget (a
+  correction can alter at most 15% of your words), structural artifacts
+  (think-tags, code fences) cause the correction to be rejected rather than
+  "cleaned," language handling no longer force-translates, cloud fallback
+  reports outages accurately, and timeouts are signaled structurally instead
+  of by string-matching.
+- **Multilingual correctness** — hallucination blacklist now fires only when
+  a junk phrase dominates the transcript (mentioning "amara.org" in a real
+  sentence no longer deletes your sentence), corrections handle mixed-script
+  vocabulary correctly, and Unicode normalization makes visually identical
+  text compare equal.
+- **Stress Test Wizard actually captures dictation** — it previously watched
+  the clipboard and failed every step; it now routes through the real
+  dictation pipeline, reads your actual hotkey from config for its
+  instructions, and scores long utterances on the complete result.
+
+### Added
+
+- **Spoken formatting tokens** — say "new line", "new paragraph", "tab", or
+  "bullet" while dictating and get real formatting, applied after
+  corrections so nothing mangles it. Collision-guarded ("open a new tab"
+  stays literal). Toggleable in config.
+- **Quick Reference window** — a tray-menu cheat sheet of your hotkeys, wake
+  phrases, send word, lane-switch phrases, and formatting tokens — every
+  value read live from your current settings, never hardcoded.
+- **Plain-English dictation health verdict** — the Diagnostics panel now
+  opens with a sentence a human can act on ("Audio is clear but the model is
+  struggling — try a larger model or add problem words to your vocabulary")
+  computed from your recent dictations, instead of only a wall of numbers.
+- **Tray menu reorganized** — daily actions stay one click away; occasional
+  tools grouped under Tools; debug surfaces under Developer. Nothing removed.
+- **CI-built releases** — every release is now built by a public GitHub
+  Actions workflow from tagged source. This is the prerequisite for signed
+  releases (SignPath), coming next.
+- **WER benchmark** — opt-in collection of your own dictation samples plus an
+  offline accuracy sweep across Whisper models, so "which model hears *me*
+  best" is a measurement, not a guess.
+
+### Changed
+
+- **Homegrown echo cancellation disabled by default** — it converged to only
+  3–8% cancellation and review concluded it likely added artifacts. It will
+  be replaced by an industry implementation (WebRTC AEC3 / OS-level) in a
+  future release; the code remains for opt-in.
+- **Relicensed to AGPL-3.0** (from BSL) — qualifies Samsara for free
+  open-source code signing and grant eligibility.
+
 ## [0.20.0] - 2026-07-02
 
 A polish-and-hardening release. No single headline feature — this is weeks of
