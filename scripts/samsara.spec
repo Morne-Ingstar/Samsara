@@ -7,7 +7,7 @@ Creates a standalone directory-based distribution
 import os
 import sys
 from pathlib import Path
-from PyInstaller.utils.hooks import collect_all
+from PyInstaller.utils.hooks import collect_all, collect_submodules
 
 block_cipher = None
 
@@ -317,53 +317,16 @@ hiddenimports = [
     # explicitly or they silently go missing from the frozen build.
     'samsara.audio_switch',
 
-    # Samsara TTS subsystem
-    'samsara.tts',
-    'samsara.tts.coordinator',
-    'samsara.tts.winrt_engine',
-    'samsara.tts.edge_engine',
-    'samsara.tts.exceptions',
-
     # Samsara Smart Actions
     'samsara.smart_actions_bridge',
     'samsara.smart_actions_session',
     'samsara.smart_actions_tools',
-
-    # Samsara UI
-    'samsara.ui',
-    'samsara.ui.settings_window',
-    'samsara.ui.first_run_wizard',
-    'samsara.ui.history_window',
-    'samsara.ui.splash',
-    'samsara.ui.profile_manager_ui',
-    'samsara.ui.wake_word_debug',
-    'samsara.ui.listening_indicator',
-    'samsara.ui.main_window',
-    'samsara.ui.history_frame',
-    'samsara.ui.dictionary_frame',
-    'samsara.ui.command_cheatsheet',
-    'samsara.ui.tts_settings_tab',
-    'samsara.ui.task_overlay',
-    # Same plugin-only dynamic-load blind spot as samsara.audio_switch above.
-    'samsara.ui.numbers_overlay_qt',
-    'samsara.ui.status_overlay',
-    'samsara.ui.workflow_capture_qt',
-    'samsara.ui.tabs',
-    'samsara.ui.tabs.general_tab',
-    'samsara.ui.tabs.advanced_tab',
-    'samsara.ui.tabs.cloud_llm_tab',
-    'samsara.ui.tabs.hotkeys_tab',
-    'samsara.ui.tabs.sounds_tab',
-    'samsara.ui.tabs.commands_tab',
-    'samsara.ui.tabs.alarms_tab',
 
     # Samsara CUDA detection
     'samsara.cuda_detect',
 
     # Samsara OWW pre-filter
     'samsara.wake_detector',
-
-    'voice_training',
 ]
 
 # Merge imports collected by collect_all('openwakeword')
@@ -371,6 +334,20 @@ hiddenimports += oww_hiddenimports
 
 # Merge imports collected by collect_all('PySide6' / 'shiboken6' / 'mediapipe')
 hiddenimports += pyside6_hiddenimports + shiboken6_hiddenimports + mediapipe_hiddenimports
+
+# samsara.ui / samsara.tts (2026-07-10): both packages are only reached via
+# qt_runtime.post()-scheduled lazy instantiation, invisible to PyInstaller's
+# static analysis -- same blind spot as samsara.audio_switch above, just at
+# package scale. Previously hand-listed here, but the real modules are all
+# _qt-suffixed (main_window_qt, settings_qt, history_qt, ...) while the list
+# named non-suffixed/renamed/removed names (samsara.ui.main_window, a phantom
+# samsara.ui.tabs.* subpackage, samsara.tts.edge_engine) that don't exist --
+# PyInstaller hard-errors on an unresolvable hiddenimport and never produces
+# Samsara.exe. collect_submodules() enumerates the package's ACTUAL contents
+# at build time instead of trusting a hand-typed list to stay in sync with
+# every future rename.
+hiddenimports += collect_submodules('samsara.ui')
+hiddenimports += collect_submodules('samsara.tts')
 
 # ============================================================================
 # ANALYSIS
