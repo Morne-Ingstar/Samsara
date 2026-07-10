@@ -53,6 +53,28 @@ if os.path.exists(faster_whisper_assets):
 oww_datas, oww_binaries, oww_hiddenimports = collect_all('openwakeword')
 datas    += oww_datas
 
+# 2c. PySide6 / shiboken6 — collect everything (2026-07-10 import audit).
+# ~48 samsara/ui/*_qt.py files depend on PySide6, and it was completely
+# uncollected here (no datas/binaries/hiddenimports at all) -- this is the
+# ModuleNotFoundError that first surfaced from CI's clean-env build.
+# Qt's plugin architecture (platforms/qwindows.dll, styles, imageformats,
+# translations) loads DLLs dynamically at runtime, not via Python import --
+# invisible to PyInstaller's static analysis regardless of hiddenimports,
+# so a blanket collect_all (not just hiddenimports) is required, same as
+# the openwakeword pattern above. shiboken6 is PySide6's binding-generator
+# runtime dependency (see requirements.txt) and needs the same treatment.
+pyside6_datas, pyside6_binaries, pyside6_hiddenimports = collect_all('PySide6')
+shiboken6_datas, shiboken6_binaries, shiboken6_hiddenimports = collect_all('shiboken6')
+datas += pyside6_datas + shiboken6_datas
+
+# 2d. mediapipe — collect everything. Ships model data files (hand-tracking
+# .tflite/.binarypb graphs) that PyInstaller's static analysis cannot see
+# (loaded by path at runtime, not imported), so hiddenimports alone would
+# leave the gesture lane silently broken in a frozen build even with the
+# package itself correctly bundled.
+mediapipe_datas, mediapipe_binaries, mediapipe_hiddenimports = collect_all('mediapipe')
+datas += mediapipe_datas
+
 # 3. customtkinter themes and assets
 customtkinter_path = os.path.join(site_packages, 'customtkinter')
 if os.path.exists(customtkinter_path):
@@ -79,6 +101,11 @@ binaries = []
 
 # OpenWakeWord binaries (collected earlier)
 binaries += oww_binaries
+
+# PySide6 / shiboken6 / mediapipe binaries (collected earlier) -- Qt platform
+# plugins, shiboken6's compiled binding runtime, mediapipe's compiled graph
+# runner .pyd/.dll files.
+binaries += pyside6_binaries + shiboken6_binaries + mediapipe_binaries
 
 # ctranslate2 DLLs
 for dll in ['ctranslate2.dll', 'cudnn64_9.dll', 'libiomp5md.dll']:
@@ -135,6 +162,40 @@ if os.path.exists(portaudio_path):
 # HIDDEN IMPORTS
 # ============================================================================
 hiddenimports = [
+    # Qt UI framework (2026-07-10 import audit) -- collect_all('PySide6')
+    # above already pulls in the bulk of it; these specific submodules are
+    # listed explicitly too as a defensive backstop, matching this file's
+    # existing style for faster_whisper's submodules below.
+    'PySide6',
+    'PySide6.QtCore',
+    'PySide6.QtGui',
+    'PySide6.QtWidgets',
+    'shiboken6',
+
+    # Screen/webcam frame handling (2026-07-10 import audit)
+    'cv2',
+
+    # Cloud-fallback TTS voice (2026-07-10 import audit)
+    'edge_tts',
+
+    # Gesture lane webcam hand-tracking (2026-07-10 import audit) --
+    # collect_all('mediapipe') above handles its model data files.
+    'mediapipe',
+
+    # Rhyme/phonetic lookup (2026-07-10 import audit)
+    'pronouncing',
+
+    # WASAPI loopback capture for echo cancellation (2026-07-10 import audit)
+    'pyaudiowpatch',
+
+    # Filesystem change notifications (2026-07-10 import audit)
+    'watchdog',
+    'watchdog.observers',
+    'watchdog.events',
+
+    # WebSocket client (2026-07-10 import audit)
+    'websockets',
+
     # Core ML/Audio
     'ctranslate2',
     'faster_whisper',
@@ -284,6 +345,9 @@ hiddenimports = [
 # Merge imports collected by collect_all('openwakeword')
 hiddenimports += oww_hiddenimports
 
+# Merge imports collected by collect_all('PySide6' / 'shiboken6' / 'mediapipe')
+hiddenimports += pyside6_hiddenimports + shiboken6_hiddenimports + mediapipe_hiddenimports
+
 # ============================================================================
 # ANALYSIS
 # ============================================================================
@@ -334,8 +398,12 @@ a = Analysis(
         'streamlit',
         'gradio',
         # More unused transitive deps
-        'cv2',
-        'opencv-python',
+        # NOTE (2026-07-10): 'cv2' / 'opencv-python' were WRONGLY excluded
+        # here -- cv2 is directly imported by the gesture lane and show-
+        # numbers overlay (3 files) and is a hard mediapipe dependency.
+        # This exclusion was actively breaking every frozen build that
+        # touched those features; removed, not just left uncommented, so
+        # it can't silently come back via a careless copy-paste.
         'numba',
         'llvmlite',
         'librosa',
