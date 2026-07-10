@@ -28,6 +28,22 @@ logger = logging.getLogger(__name__)
 # Per-app key-override resolution
 # ---------------------------------------------------------------------------
 
+def _get_foreground_hwnd() -> Optional[int]:
+    """Return the raw foreground-window handle, or None when unavailable
+    (no focused window, win32 APIs absent, etc.).
+
+    The single win32gui.GetForegroundWindow() call site -- other callers
+    needing window identity (not just the process name) should use this
+    rather than querying win32gui directly.
+    """
+    try:
+        import win32gui
+        hwnd = win32gui.GetForegroundWindow()
+        return hwnd or None
+    except Exception:
+        return None
+
+
 def _get_foreground_exe_lower() -> Optional[str]:
     """Return the lowercase exe name of the foreground window's process.
 
@@ -35,10 +51,9 @@ def _get_foreground_exe_lower() -> Optional[str]:
     win32 APIs absent, psutil error, etc.).
     """
     try:
-        import win32gui
         import win32process
         import psutil
-        hwnd = win32gui.GetForegroundWindow()
+        hwnd = _get_foreground_hwnd()
         if not hwnd:
             return None
         _, pid = win32process.GetWindowThreadProcessId(hwnd)

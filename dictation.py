@@ -446,7 +446,7 @@ from samsara.alarms import AlarmManager, get_default_alarm_config
 from samsara.echo_cancel import EchoCanceller
 from samsara.clipboard import clipboard_lock as _clipboard_lock, save_clipboard as _save_clipboard_win32, restore_clipboard as _restore_clipboard_win32, paste_with_preservation
 from samsara.wake_detector import WakeWordDetector
-from samsara.handlers import _get_foreground_exe_lower
+from samsara.handlers import _get_foreground_exe_lower, _get_foreground_hwnd
 from samsara.runtime import thread_registry
 from samsara.session_modes import (
     SessionMode, SessionModeManager, UtteranceSignals, CommandDispatchResult,
@@ -4033,12 +4033,17 @@ class DictationApp:
             logger.info('[SESSION] Global abort phrase -- exiting command mode')
             self.exit_command_mode()
 
+        def _on_switch_dispatch_error(exc: Exception) -> None:
+            logger.error(f'[SESSION] Prefix-switch payload dispatch failed, mode reverted: {exc}')
+            self.play_sound('error')
+
         ww_cfg = self.config.get('wake_word_config', {})
         abort_phrases = ww_cfg.get('cancel_words', ['cancel', 'cancel dictation', 'abort'])
 
         self._session_mode_manager = SessionModeManager(
             abort_phrases=abort_phrases,
             foreground_exe_resolver=_get_foreground_exe_lower,
+            foreground_hwnd_resolver=_get_foreground_hwnd,
             inject_fn=_inject_fn,
             remove_chars_fn=_remove_chars_fn,
             command_dispatch_fn=_command_dispatch_fn,
@@ -4047,6 +4052,7 @@ class DictationApp:
             on_focus_lock_revert=_on_focus_lock_revert,
             on_scratch_result=_on_scratch_result,
             on_abort=_on_abort,
+            on_switch_dispatch_error=_on_switch_dispatch_error,
         )
         return self._session_mode_manager
 
