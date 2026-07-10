@@ -488,6 +488,11 @@ CommandDispatchFn = Callable[[str], CommandDispatchResult]
 # agent's response. Threading/queueing/depth-limiting is the wired callable's
 # job (dictation.py), same division of labor as inject_fn/command_dispatch_fn.
 AgentDispatchFn = Callable[[str, Optional[str]], None]
+# Pure text transform applied to DICTATE-lane chunks immediately before
+# injection (see _dispatch_dictate) -- dictation.py wires this to its
+# formatting-tokens gate (config-aware; this module stays config-free).
+# Defaults to identity when not supplied.
+FormatDictateFn = Callable[[str], str]
 
 
 # ---------------------------------------------------------------------------
@@ -510,6 +515,7 @@ class SessionModeManager:
         command_dispatch_fn: CommandDispatchFn,
         agent_dispatch_fn: AgentDispatchFn,
         foreground_hwnd_resolver: Optional[ForegroundHwndResolver] = None,
+        format_dictate_fn: Optional[FormatDictateFn] = None,
         on_mode_change: Optional[Callable[[SessionMode], None]] = None,
         on_focus_lock_revert: Optional[Callable[[], None]] = None,
         on_scratch_result: Optional[Callable[[bool], None]] = None,
@@ -530,6 +536,7 @@ class SessionModeManager:
         self._foreground_exe_resolver = foreground_exe_resolver
         self._foreground_hwnd_resolver = foreground_hwnd_resolver or (lambda: None)
         self._inject_fn = inject_fn
+        self._format_dictate_fn = format_dictate_fn or (lambda t: t)
         self._remove_chars_fn = remove_chars_fn
         self._command_dispatch_fn = command_dispatch_fn
         self._agent_dispatch_fn = agent_dispatch_fn
@@ -677,8 +684,12 @@ class SessionModeManager:
     def _dispatch_dictate(self, chunk_raw: str) -> DispatchOutcome:
         foreground = self._foreground_exe_resolver()
         if not check_focus_lock(self._dictate_target_process, foreground):
+            # Formatted even though suppressed -- retype_last_suppressed()
+            # later re-injects this exact payload verbatim via inject_fn,
+            # so it must already be the post-formatting text, not the raw
+            # spoken words.
             self._stack.push(StackItem(
-                kind="dictation_chunk", payload=chunk_raw.strip(),
+                kind="dictation_chunk", payload=self._format_dictate_fn(chunk_raw.strip()),
                 mode=SessionMode.DICTATE, timestamp=self._clock(),
                 extra={"suppressed": True, "target_process": self._dictate_target_process,
                        "foreground": foreground, "hwnd": self._foreground_hwnd_resolver()},
@@ -695,8 +706,17 @@ class SessionModeManager:
             adjusted = seam_join(self._last_dictate_ended_terminal, chunk_raw)
             to_inject = " " + adjusted
 
+        # Inline formatting tokens ("new line" -> \n, etc.) -- applied AFTER
+        # seam-join (so its filler/capitalization heuristics see the
+        # original spoken words, not control characters) and as the LAST
+        # transform before injection, so everything downstream (stage
+        # buffer, scratch-that undo length, seam state for the NEXT chunk)
+        # reflects what was actually typed, matching the hotkey/wake lanes'
+        # "history stores post-substitution text" contract.
+        to_inject = self._format_dictate_fn(to_inject)
+
         self._inject_fn(to_inject)
-        self._last_dictate_ended_terminal = chunk_ends_terminal(adjusted)
+        self._last_dictate_ended_terminal = chunk_ends_terminal(to_inject)
         # Mirrors exactly what got injected (to_inject already carries the
         # seam-join leading space for non-first chunks) -- this IS "what I
         # dictated" for AVA's stage-reference contract. Suppressed chunks

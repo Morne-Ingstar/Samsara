@@ -487,6 +487,14 @@ class StreamingWorker(threading.Thread):
             if app.config.get('add_trailing_space', True):
                 cleaned = cleaned + " "
 
+            # Inline formatting tokens ("new line" -> \n, etc.) -- after
+            # smart_correct, before delivery/history. Applies to the FINAL
+            # streamed text only (see DictationApp._apply_formatting_tokens)
+            # -- partials (on_partial/_direct_paste_partial, above) never
+            # pass through this method and are deliberately left as raw
+            # transcription text.
+            cleaned = app._apply_formatting_tokens(cleaned)
+
             # Diagnostics record -- total measured from transcribe start to
             # just before handoff to on_final (the streaming equivalent of
             # "just before paste").

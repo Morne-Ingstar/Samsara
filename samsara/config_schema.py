@@ -41,6 +41,7 @@ SETTINGS_SCHEMA = {
     "auto_capitalize":      {"type": "bool", "default": True,  "tab": "general"},
     "format_numbers":       {"type": "bool", "default": True,  "tab": "general"},
     "hints_enabled":        {"type": "bool", "default": True,  "tab": "general"},
+    "formatting_tokens.enabled": {"type": "bool", "default": True, "tab": "general"},
     "cleanup_mode": {
         "type": "enum",
         "options": ["clean", "verbatim"],
