@@ -20,6 +20,8 @@ import logging
 import os
 import subprocess
 import tempfile
+import threading
+import time
 
 logger = logging.getLogger(__name__)
 
@@ -164,6 +166,75 @@ def switch_monitor() -> bool:
     syntax: # = Win, + = Shift, prefixed directly onto the key name (NOT
     inside the braces -- {#+Right} would be invalid, #+{Right} is correct)."""
     return _send_stremio_send_body("Send, #+{Right}")
+
+
+# ── Sleep timer ─────────────────────────────────────────────────────────────────
+
+_sleep_lock = threading.Lock()
+_sleep_timer: "threading.Timer | None" = None
+_sleep_deadline: "float | None" = None  # time.monotonic() when timer fires
+_sleep_total_minutes: int = 0
+
+
+def _cancel_timer_locked() -> None:
+    """Cancel the running timer if any. Must hold _sleep_lock."""
+    global _sleep_timer, _sleep_deadline, _sleep_total_minutes
+    if _sleep_timer is not None:
+        _sleep_timer.cancel()
+        _sleep_timer = None
+    _sleep_deadline = None
+    _sleep_total_minutes = 0
+
+
+def _on_sleep_fire() -> None:
+    """Called by the timer thread. Pauses Stremio and clears timer state."""
+    pause_play()
+    global _sleep_timer, _sleep_deadline, _sleep_total_minutes
+    with _sleep_lock:
+        _sleep_timer = None
+        _sleep_deadline = None
+        _sleep_total_minutes = 0
+
+
+def schedule_sleep(minutes: int) -> bool:
+    """Schedule a Stremio pause after `minutes`. Cancels any existing timer first.
+
+    Pass `minutes <= 0` to cancel without scheduling a new timer.
+    """
+    global _sleep_timer, _sleep_deadline, _sleep_total_minutes
+    with _sleep_lock:
+        _cancel_timer_locked()
+        if minutes <= 0:
+            return True
+        _sleep_total_minutes = minutes
+        interval = minutes * 60
+        _sleep_timer = threading.Timer(interval, _on_sleep_fire)
+        _sleep_deadline = time.monotonic() + interval
+        _sleep_timer.start()
+        logger.debug(f"[STREMIO] Sleep timer set for {minutes} min")
+    return True
+
+
+def cancel_sleep() -> bool:
+    """Cancel any running sleep timer."""
+    global _sleep_timer, _sleep_deadline, _sleep_total_minutes
+    with _sleep_lock:
+        _cancel_timer_locked()
+    logger.debug("[STREMIO] Sleep timer cancelled")
+    return True
+
+
+def get_sleep_status() -> dict:
+    """Return the current sleep timer state for the remote's /status endpoint."""
+    with _sleep_lock:
+        if _sleep_deadline is None:
+            return {"active": False, "remaining_seconds": None, "duration_seconds": 0}
+        remaining = max(0.0, _sleep_deadline - time.monotonic())
+        return {
+            "active": True,
+            "remaining_seconds": round(remaining, 1),
+            "duration_seconds": _sleep_total_minutes * 60,
+        }
 
 
 # ── Process helpers ────────────────────────────────────────────────────────────
