@@ -52,6 +52,11 @@ ACTIONS = {
     "volume_up":      stremio_control.volume_up,
     "volume_down":    stremio_control.volume_down,
     "switch_monitor": stremio_control.switch_monitor,
+    "sleep_15":       lambda: stremio_control.schedule_sleep(15),
+    "sleep_30":       lambda: stremio_control.schedule_sleep(30),
+    "sleep_45":       lambda: stremio_control.schedule_sleep(45),
+    "sleep_60":       lambda: stremio_control.schedule_sleep(60),
+    "sleep_cancel":   stremio_control.cancel_sleep,
 }
 
 
@@ -130,40 +135,40 @@ def render_page(token: str) -> bytes:
   }}
   .remote {{
     display: flex; flex-direction: column;
-    min-height: 100vh; padding: 2vh 4vw; gap: 2.5vh;
+    min-height: 100vh; padding: 1.5vh 3vw; gap: 1.5vh;
     box-sizing: border-box;
   }}
   button {{
-    flex: 1 1 18vh;
-    min-height: 18vh;
-    font-size: 8vh;
+    flex: 1 1 10vh;
+    min-height: 10vh;
+    font-size: 5vh;
     line-height: 1;
     border: none;
-    border-radius: 24px;
+    border-radius: 16px;
     background: #1e1e28;
     color: #f2f2f2;
-    box-shadow: 0 4px 0 #05050a;
+    box-shadow: 0 3px 0 #05050a;
     display: flex; align-items: center; justify-content: center;
     gap: 0.4em;
     touch-action: manipulation;
   }}
   button .label {{
-    font-size: 0.28em;
+    font-size: 0.32em;
     font-weight: 600;
     letter-spacing: 0.02em;
   }}
   button.pressed {{
     background: #33334a;
     box-shadow: 0 1px 0 #05050a;
-    transform: translateY(3px);
+    transform: translateY(2px);
   }}
   button.error {{
     background: #5a1a1a !important;
-    box-shadow: 0 4px 0 #300a0a !important;
+    box-shadow: 0 3px 0 #300a0a !important;
   }}
   .row {{
-    flex: 1 1 18vh;
-    min-height: 18vh;
+    flex: 1 1 10vh;
+    min-height: 10vh;
     display: flex; flex-direction: row;
     gap: 2.5vw;
   }}
@@ -173,9 +178,43 @@ def render_page(token: str) -> bytes:
   }}
   #status {{
     text-align: center;
-    min-height: 3vh;
+    min-height: 2.5vh;
     font-size: 2vh;
     color: #999;
+    padding-bottom: 1vh;
+  }}
+  /* Sleep timer */
+  #sleep-timer.active {{
+    background: #1e1e38;
+    border: 2px solid #5a5acc;
+  }}
+  #sleep-timer.warning {{
+    background: #3a1e1e;
+    border: 2px solid #cc8833;
+    animation: sleep-pulse 0.8s ease-in-out infinite;
+  }}
+  @keyframes sleep-pulse {{
+    0%, 100% {{ opacity: 1; }}
+    50% {{ opacity: 0.55; }}
+  }}
+  #sleep-warning {{
+    display: none;
+    gap: 2.5vw;
+  }}
+  #sleep-warning.show {{
+    display: flex;
+  }}
+  #sleep-warning button {{
+    min-height: 8vh;
+    font-size: 4.5vh;
+  }}
+  #sleep-warning .keep-awake {{
+    background: #1e3a1e;
+    box-shadow: 0 3px 0 #0a1a0a;
+  }}
+  #sleep-warning .sleep-now {{
+    background: #3a1e1e;
+    box-shadow: 0 3px 0 #1a0a0a;
   }}
 </style>
 </head>
@@ -191,6 +230,11 @@ def render_page(token: str) -> bytes:
     <button data-action="volume_up" class="hold-repeat">&#128266; <span class="label">Vol+</span></button>
   </div>
   <button data-action="switch_monitor">&#128421; <span class="label">Switch Monitor</span></button>
+  <button id="sleep-timer">&#128164; <span class="label">Sleep Timer</span></button>
+  <div id="sleep-warning" class="row">
+    <button class="keep-awake">&#128164; Keep Awake</button>
+    <button class="sleep-now">&#128564; Sleep Now</button>
+  </div>
 </div>
 <div id="status"></div>
 <script>
@@ -261,6 +305,167 @@ def render_page(token: str) -> bytes:
     btn.addEventListener('pointercancel', stop);
     btn.addEventListener('pointerleave', stop);
   }});
+
+  // ── Sleep timer ────────────────────────────────────────────────
+  const PRESETS = [0, 15, 30, 45, 60];  // minutes, 0 = off
+  const WARNING_SECS = 60;
+  const RESYNC_INTERVAL = 60_000;   // re-sync with server every 60s
+
+  let sleepState = {{ active: false, remaining_seconds: null, duration_seconds: 0 }};
+  let lastSetMinutes = 30;  // for Keep Awake reset
+  let endAt = null;         // Date.now() + remaining_seconds * 1000
+  let countdownTimer = null;
+  let resyncTimer = null;
+  let warned = false;
+
+  const sleepBtn = document.getElementById('sleep-timer');
+  const sleepLabel = sleepBtn.querySelector('.label');
+  const warningRow = document.getElementById('sleep-warning');
+  const keepAwakeBtn = warningRow.querySelector('.keep-awake');
+  const sleepNowBtn = warningRow.querySelector('.sleep-now');
+
+  function fmtRemaining(totalSecs) {{
+    if (totalSecs <= 0) return '0s';
+    const m = Math.floor(totalSecs / 60);
+    const s = Math.floor(totalSecs % 60);
+    if (m === 0) return s + 's left';
+    return m + 'm ' + s + 's left';
+  }}
+
+  async function resync() {{
+    try {{
+      const resp = await fetch(base + '/status');
+      const sv = await resp.json();
+      if (sv.active) {{
+        sleepState = sv;
+        endAt = Date.now() + sv.remaining_seconds * 1000;
+      }} else {{
+        clearTimers();
+        sleepState = {{ active: false, remaining_seconds: null, duration_seconds: 0 }};
+        endAt = null;
+      }}
+      updateSleepUI();
+    }} catch (e) {{ /* next cycle */ }}
+  }}
+
+  function clearTimers() {{
+    if (countdownTimer) {{ clearInterval(countdownTimer); countdownTimer = null; }}
+    if (resyncTimer) {{ clearInterval(resyncTimer); resyncTimer = null; }}
+  }}
+
+  function startTimers() {{
+    clearTimers();
+    if (sleepState.active && sleepState.duration_seconds > 0) {{
+      countdownTimer = setInterval(() => {{
+        if (!endAt) return;
+        sleepState.remaining_seconds = Math.max(0, (endAt - Date.now()) / 1000);
+        updateSleepUI();
+      }}, 1000);
+      resyncTimer = setInterval(resync, RESYNC_INTERVAL);
+    }}
+  }}
+
+  function updateSleepUI() {{
+    const active = sleepState.active && sleepState.duration_seconds > 0;
+
+    if (!active) {{
+      sleepBtn.classList.remove('active', 'warning');
+      sleepLabel.textContent = 'Sleep Timer';
+      warningRow.classList.remove('show');
+      warned = false;
+      clearTimers();
+      return;
+    }}
+
+    const s = sleepState.remaining_seconds;
+    if (s === null) return;
+
+    // Warning zone: <= WARNING_SECS remaining
+    if (s <= WARNING_SECS && !warned) {{
+      warned = true;
+      sleepBtn.classList.add('warning');
+      sleepBtn.classList.remove('active');
+      sleepLabel.textContent = 'Pausing soon...';
+      warningRow.classList.add('show');
+      try {{ navigator.vibrate([200, 100, 200, 100, 200]); }} catch(e) {{}}
+      setTimeout(() => {{
+        try {{ navigator.vibrate([200, 100, 200]); }} catch(e) {{}}
+      }}, 3000);
+    }} else if (!warned) {{
+      sleepBtn.classList.add('active');
+      sleepBtn.classList.remove('warning');
+      sleepLabel.textContent = fmtRemaining(s);
+      warningRow.classList.remove('show');
+    }}
+  }}
+
+  // Sleep timer button: cycle through presets
+  sleepBtn.addEventListener('click', async () => {{
+    if (warned) {{ keepAwake(); return; }}
+
+    let nextPreset;
+    if (!sleepState.active || sleepState.duration_seconds === 0) {{
+      nextPreset = 15;
+      lastSetMinutes = 15;
+    }} else {{
+      const currentMins = Math.round(sleepState.duration_seconds / 60);
+      const idx = PRESETS.indexOf(currentMins);
+      const nextIdx = (idx + 1) % PRESETS.length;
+      nextPreset = PRESETS[nextIdx];
+      if (nextPreset > 0) lastSetMinutes = nextPreset;
+    }}
+
+    try {{
+      if (nextPreset === 0) {{
+        await fetch(base + '/key/sleep_cancel', {{ method: 'POST' }});
+        sleepState = {{ active: false, remaining_seconds: null, duration_seconds: 0 }};
+        endAt = null;
+      }} else {{
+        await fetch(base + '/key/sleep_' + nextPreset, {{ method: 'POST' }});
+        const secs = nextPreset * 60;
+        sleepState = {{ active: true, remaining_seconds: secs, duration_seconds: secs }};
+        endAt = Date.now() + secs * 1000;
+      }}
+      warned = false;
+      updateSleepUI();
+      startTimers();
+    }} catch (e) {{
+      flashError(sleepBtn, 'connection lost');
+    }}
+  }});
+
+  async function keepAwake() {{
+    try {{
+      await fetch(base + '/key/sleep_' + lastSetMinutes, {{ method: 'POST' }});
+      const secs = lastSetMinutes * 60;
+      sleepState = {{ active: true, remaining_seconds: secs, duration_seconds: secs }};
+      endAt = Date.now() + secs * 1000;
+      warned = false;
+      updateSleepUI();
+      startTimers();
+    }} catch (e) {{
+      flashError(sleepBtn, 'connection lost');
+    }}
+  }}
+
+  async function sleepNow() {{
+    try {{
+      await fetch(base + '/key/sleep_cancel', {{ method: 'POST' }});
+      await fetch(base + '/key/play_pause', {{ method: 'POST' }});
+      sleepState = {{ active: false, remaining_seconds: null, duration_seconds: 0 }};
+      endAt = null;
+      warned = false;
+      updateSleepUI();
+    }} catch (e) {{
+      flashError(sleepBtn, 'connection lost');
+    }}
+  }}
+
+  keepAwakeBtn.addEventListener('click', keepAwake);
+  sleepNowBtn.addEventListener('click', sleepNow);
+
+  // Restore timer state on page load
+  resync();
 </script>
 </body>
 </html>
@@ -313,7 +518,14 @@ class RemoteHandler(BaseHTTPRequestHandler):
 
     def do_GET(self):
         token, rest = self._parse_path()
-        if not self._check_token(token) or rest not in ("/", ""):
+        if not self._check_token(token):
+            self._send_not_found()
+            return
+        if rest == "/status":
+            status = stremio_control.get_sleep_status()
+            self._send_json(200, status)
+            return
+        if rest not in ("/", ""):
             self._send_not_found()
             return
         body = render_page(self._token())
