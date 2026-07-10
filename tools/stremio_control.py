@@ -143,6 +143,29 @@ def mute() -> bool:
     return _send_stremio_key("m")
 
 
+def volume_up() -> bool:
+    """Volume +10% (Up arrow). Verified against the current Stremio player
+    2026-07-10."""
+    return _send_stremio_key("Up")
+
+
+def volume_down() -> bool:
+    """Volume -10% (Down arrow). Verified against the current Stremio
+    player 2026-07-10."""
+    return _send_stremio_key("Down")
+
+
+def switch_monitor() -> bool:
+    """Move the focused window to the next monitor (Win+Shift+Right,
+    cycles). Windows-native window-management shortcut, not a Stremio
+    player control -- reuses the same AHK focus-then-send path since
+    focusing Stremio first is exactly what's wanted (move the STREMIO
+    window, not whatever else happened to have focus). AHK v1 modifier
+    syntax: # = Win, + = Shift, prefixed directly onto the key name (NOT
+    inside the braces -- {#+Right} would be invalid, #+{Right} is correct)."""
+    return _send_stremio_send_body("Send, #+{Right}")
+
+
 # ── Process helpers ────────────────────────────────────────────────────────────
 
 def is_stremio_running() -> bool:

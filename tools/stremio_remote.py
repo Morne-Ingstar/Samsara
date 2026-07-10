@@ -44,11 +44,14 @@ PORT = 8377
 TOKEN_FILE = _HERE / "stremio_remote_token.txt"
 
 ACTIONS = {
-    "play_pause": stremio_control.pause_play,
-    "back":       stremio_control.skip_back,
-    "forward":    stremio_control.skip_forward,
-    "fullscreen": stremio_control.fullscreen,
-    "mute":       stremio_control.mute,
+    "play_pause":     stremio_control.pause_play,
+    "back":           stremio_control.skip_back,
+    "forward":        stremio_control.skip_forward,
+    "fullscreen":     stremio_control.fullscreen,
+    "mute":           stremio_control.mute,
+    "volume_up":      stremio_control.volume_up,
+    "volume_down":    stremio_control.volume_down,
+    "switch_monitor": stremio_control.switch_monitor,
 }
 
 
@@ -119,7 +122,7 @@ def render_page(token: str) -> bytes:
 <title>Stremio Remote</title>
 <style>
   html, body {{
-    margin: 0; padding: 0; height: 100%;
+    margin: 0; padding: 0; min-height: 100%;
     background: #0b0b0f; color: #f2f2f2;
     font-family: -apple-system, "Segoe UI", Roboto, sans-serif;
     -webkit-tap-highlight-color: transparent;
@@ -127,7 +130,7 @@ def render_page(token: str) -> bytes:
   }}
   .remote {{
     display: flex; flex-direction: column;
-    height: 100vh; padding: 2vh 4vw; gap: 2.5vh;
+    min-height: 100vh; padding: 2vh 4vw; gap: 2.5vh;
     box-sizing: border-box;
   }}
   button {{
@@ -142,6 +145,7 @@ def render_page(token: str) -> bytes:
     box-shadow: 0 4px 0 #05050a;
     display: flex; align-items: center; justify-content: center;
     gap: 0.4em;
+    touch-action: manipulation;
   }}
   button .label {{
     font-size: 0.28em;
@@ -156,6 +160,16 @@ def render_page(token: str) -> bytes:
   button.error {{
     background: #5a1a1a !important;
     box-shadow: 0 4px 0 #300a0a !important;
+  }}
+  .row {{
+    flex: 1 1 18vh;
+    min-height: 18vh;
+    display: flex; flex-direction: row;
+    gap: 2.5vw;
+  }}
+  .row button {{
+    flex: 1 1 0;
+    min-height: 100%;
   }}
   #status {{
     text-align: center;
@@ -172,27 +186,33 @@ def render_page(token: str) -> bytes:
   <button data-action="forward">&#9193; <span class="label">Forward 10s</span></button>
   <button data-action="fullscreen">&#9974; <span class="label">Fullscreen</span></button>
   <button data-action="mute">&#128263; <span class="label">Mute</span></button>
+  <div class="row">
+    <button data-action="volume_down" class="hold-repeat">&#128265; <span class="label">Vol&minus;</span></button>
+    <button data-action="volume_up" class="hold-repeat">&#128266; <span class="label">Vol+</span></button>
+  </div>
+  <button data-action="switch_monitor">&#128421; <span class="label">Switch Monitor</span></button>
 </div>
 <div id="status"></div>
 <script>
   const base = {json.dumps(base)};
   const statusEl = document.getElementById('status');
 
-  async function press(btn) {{
+  function press(btn) {{
     const action = btn.dataset.action;
     btn.classList.add('pressed');
     setTimeout(() => btn.classList.remove('pressed'), 150);
-    try {{
-      const resp = await fetch(base + '/key/' + action, {{ method: 'POST' }});
-      const data = await resp.json();
-      if (!data.ok) {{
-        flashError(btn, data.err || 'failed');
-      }} else {{
-        statusEl.textContent = '';
-      }}
-    }} catch (e) {{
-      flashError(btn, 'connection lost');
-    }}
+    return fetch(base + '/key/' + action, {{ method: 'POST' }})
+      .then(resp => resp.json())
+      .then(data => {{
+        if (!data.ok) {{
+          flashError(btn, data.err || 'failed');
+        }} else {{
+          statusEl.textContent = '';
+        }}
+      }})
+      .catch(() => {{
+        flashError(btn, 'connection lost');
+      }});
   }}
 
   function flashError(btn, msg) {{
@@ -201,8 +221,45 @@ def render_page(token: str) -> bytes:
     setTimeout(() => btn.classList.remove('error'), 600);
   }}
 
-  document.querySelectorAll('button[data-action]').forEach(btn => {{
+  // Ordinary single-shot buttons: one press() per click.
+  document.querySelectorAll('button[data-action]:not(.hold-repeat)').forEach(btn => {{
     btn.addEventListener('click', () => press(btn));
+  }});
+
+  // Volume buttons: press-and-hold repeat. pointerdown fires immediately
+  // and starts a ~180ms interval; pointerup/pointercancel/pointerleave
+  // (finger drags off the button, or the browser cancels the gesture)
+  // stops it. `inFlight` skips a scheduled fire if the previous request
+  // hasn't resolved yet, so a slow network/AHK response can't pile up a
+  // backlog of queued volume steps.
+  document.querySelectorAll('button.hold-repeat').forEach(btn => {{
+    let intervalId = null;
+    let inFlight = false;
+
+    const fire = () => {{
+      if (inFlight) return;
+      inFlight = true;
+      press(btn).finally(() => {{ inFlight = false; }});
+    }};
+
+    const start = (e) => {{
+      e.preventDefault();
+      fire();
+      if (intervalId === null) {{
+        intervalId = setInterval(fire, 180);
+      }}
+    }};
+    const stop = () => {{
+      if (intervalId !== null) {{
+        clearInterval(intervalId);
+        intervalId = null;
+      }}
+    }};
+
+    btn.addEventListener('pointerdown', start);
+    btn.addEventListener('pointerup', stop);
+    btn.addEventListener('pointercancel', stop);
+    btn.addEventListener('pointerleave', stop);
   }});
 </script>
 </body>
