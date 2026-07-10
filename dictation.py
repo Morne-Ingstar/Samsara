@@ -445,6 +445,7 @@ from samsara.learning import AdaptiveLearner
 from samsara.notifications import NotificationManager, get_default_notification_config
 from samsara.alarms import AlarmManager, get_default_alarm_config
 from samsara.echo_cancel import EchoCanceller
+from samsara import audio_ducking
 from samsara.clipboard import clipboard_lock as _clipboard_lock, save_clipboard as _save_clipboard_win32, restore_clipboard as _restore_clipboard_win32, paste_with_preservation
 from samsara.wake_detector import WakeWordDetector
 from samsara.handlers import _get_foreground_exe_lower, _get_foreground_hwnd
@@ -2319,6 +2320,14 @@ class DictationApp:
             "echo_cancellation": {
                 "enabled": False,
                 "latency_ms": 30.0,
+            },
+            # Audio ducking (2026-07-10) -- attenuates OTHER apps' audio
+            # sessions while dictating instead of subtracting echo after
+            # capture. Off by default, opt-in -- see samsara/audio_ducking.py
+            # and samsara/config_schema.py's ducking.enabled entry.
+            "ducking": {
+                "enabled": False,
+                "level": 0.2,
             },
             # Hub window geometry (size/position persist across sessions)
             "window_width": 900,
@@ -5227,6 +5236,12 @@ class DictationApp:
         send_policy: 'enter' — press Enter after send-word detection (claude targets).
                      'stage_only' — text staged, Enter suppressed (hermes/agentic targets).
         """
+        # Duck other apps' audio for this open-ended dictation window --
+        # only reached once a wake word has actually fired and an active
+        # session is opening (not during passive always-on wake listening).
+        # No-op unless ducking.enabled.
+        self._duck_audio()
+
         old_state = self.app_state
         self.app_state = 'wake_session'
         logger.info(f"[WS-DIAG] app_state set to {self.app_state!r}")
@@ -6204,6 +6219,14 @@ class DictationApp:
 
     def _reset_wake_dictation(self):
         """Return to asleep state, clearing all dictation state."""
+        # Restore audio ducked by _duck_audio() at _start_wake_session().
+        # This is the single common exit chokepoint for every wake-session
+        # end path (inactivity timeout, send-word, explicit cancel -- see
+        # this function's many call sites), unlike _end_wake_session()
+        # which only covers the timeout path. Always safe: a no-op if
+        # nothing was ducked.
+        self._restore_audio()
+
         old_state = self.app_state
         self.app_state = 'asleep'
         logger.info(f"[WS-DIAG] app_state set to {self.app_state!r} (was {old_state!r})")
@@ -7090,6 +7113,22 @@ class DictationApp:
             eng.restart_stream()
 
 
+    def _duck_audio(self):
+        """Lower other apps' audio for the dictation window about to open,
+        if ducking.enabled -- no-op otherwise. See samsara/audio_ducking.py;
+        this is the single place config is consulted so every call site
+        (hotkey start_recording, wake-session start) stays in sync."""
+        ducking_cfg = self.config.get('ducking', {}) or {}
+        if ducking_cfg.get('enabled', False):
+            audio_ducking.duck(ducking_cfg.get('level', 0.2))
+
+    def _restore_audio(self):
+        """Counterpart to _duck_audio -- always safe to call even if
+        ducking was never engaged (audio_ducking.restore() is a no-op when
+        not currently ducked), so call sites don't need their own
+        enabled-check on the way out."""
+        audio_ducking.restore()
+
     def start_recording(self, streaming=None, play_earcon=True):
         """Start recording audio.
 
@@ -7110,6 +7149,12 @@ class DictationApp:
         if self._stop_in_flight:
             logger.debug("[HOTKEY] start_recording ignored — stop still in flight")
             return
+
+        # Duck other apps' audio as early as possible in the start sequence
+        # -- before the earcon/capture activation below -- so the reduced
+        # bleed is in effect for as much of the actual recording as
+        # possible. No-op unless ducking.enabled (see _duck_audio).
+        self._duck_audio()
 
         # Suppress wake word processing during hotkey recording -- FIX 1
         # (2026-07-10 hotkey word-loss investigation): WakeConsumer now goes
@@ -7195,6 +7240,24 @@ class DictationApp:
             self._streaming_session.start()
 
     def stop_recording(self):
+        """Stop recording and transcribe.
+
+        Thin wrapper around _stop_recording_impl() whose only job is the
+        audio-ducking restore guarantee: _stop_recording_impl() is a large
+        function with many internal early returns and exception paths (see
+        its own docstring/body) -- wrapping it here, rather than editing
+        every one of those paths, guarantees _restore_audio() ALWAYS runs
+        when a dictation window that _duck_audio() may have ducked for
+        closes, regardless of how this call ends. audio_ducking.restore()
+        is itself a no-op when nothing was ducked, so this is always safe
+        to call unconditionally.
+        """
+        try:
+            self._stop_recording_impl()
+        finally:
+            self._restore_audio()
+
+    def _stop_recording_impl(self):
         """Stop recording and transcribe"""
         if not self.recording:
             return

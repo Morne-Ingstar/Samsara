@@ -87,6 +87,10 @@
   "compute_type": "float16",
   "continuous_hotkey": "ctrl+alt+d",
   "device": "cpu",
+  "ducking": {
+    "enabled": false,
+    "level": 0.2
+  },
   "echo_cancellation": {
     "enabled": false,
     "latency_ms": 30.0

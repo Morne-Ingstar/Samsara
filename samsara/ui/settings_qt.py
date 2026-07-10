@@ -3417,6 +3417,7 @@ class _SettingsWindow(QMainWindow):
 
         cfg = self.app.config
         aec_cfg = cfg.get('echo_cancellation', {}) or {}
+        ducking_cfg = cfg.get('ducking', {}) or {}
 
         # ---- Section: Hardware Acceleration --------------------------------
         layout.addWidget(self._section_title("Hardware Acceleration"))
@@ -3594,6 +3595,38 @@ class _SettingsWindow(QMainWindow):
             "Experimental — current default is likely wrong; changing this without measured "
             "loopback latency can make echo cancellation worse.",
             aec_latency_spin,
+        ))
+        layout.addSpacing(20)
+
+        # ---- Section: Audio Ducking ------------------------------------------
+        layout.addWidget(self._section_title("Audio Ducking"))
+        layout.addSpacing(4)
+
+        ducking_cb = QCheckBox("Lower other apps' volume while dictating")
+        ducking_cb.setChecked(bool(ducking_cfg.get('enabled', False)))
+        self._widgets['adv_ducking_enabled'] = ducking_cb
+        layout.addWidget(ducking_cb)
+
+        ducking_note = QLabel(
+            "Attacks echo at the source: while a dictation window is open, other "
+            "apps' audio (music, video) is turned down so the mic hears less of "
+            "it, then restored when dictation ends."
+        )
+        ducking_note.setWordWrap(True)
+        ducking_note.setStyleSheet("color: #8A8A92; font-size: 12px; margin-left: 26px;")
+        layout.addWidget(ducking_note)
+        layout.addSpacing(8)
+
+        ducking_level_spin = QDoubleSpinBox()
+        ducking_level_spin.setRange(0.0, 1.0)
+        ducking_level_spin.setSingleStep(0.05)
+        ducking_level_spin.setDecimals(2)
+        ducking_level_spin.setValue(float(ducking_cfg.get('level', 0.2)))
+        self._widgets['adv_ducking_level'] = ducking_level_spin
+        layout.addLayout(self._setting_row(
+            "Ducked volume",
+            "Fraction of other apps' current volume during dictation (0 = silent, 1 = unchanged).",
+            ducking_level_spin,
         ))
         layout.addSpacing(20)
 
@@ -3795,6 +3828,10 @@ class _SettingsWindow(QMainWindow):
                 updates['echo_cancellation'] = {
                     'enabled':    self._widgets['adv_aec_enabled'].isChecked(),
                     'latency_ms': self._widgets['adv_aec_latency'].value(),
+                }
+                updates['ducking'] = {
+                    'enabled': self._widgets['adv_ducking_enabled'].isChecked(),
+                    'level':   self._widgets['adv_ducking_level'].value(),
                 }
                 updates['listening_indicator_enabled']  = (
                     self._widgets['adv_indicator_enabled'].isChecked()
