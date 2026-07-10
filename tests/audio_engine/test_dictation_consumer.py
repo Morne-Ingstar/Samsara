@@ -1,0 +1,151 @@
+"""DictationSessionConsumer seam-contiguity test — 2026-07-10 hotkey
+word-loss investigation.
+
+Constructs a synthetic pre-buffer (frames written before activate()) and
+live buffer (frames written by a REAL concurrent writer thread while the
+real background drain thread is running, mirroring production: one
+PortAudio capture callback thread, one drain thread) with a known,
+frame-indexed tone crossing the prebuffer/live seam, then asserts the
+buffer drain() assembles is exactly sample-contiguous -- no missing or
+duplicated frames anywhere, including at the seam.
+
+This exercises REAL production code (FrameBus, Reader, DictationSession
+Consumer) with a REAL background thread — not a hand-rolled reimplementation
+of the ring. Per the investigation task: this test may legitimately FAIL;
+if so, xfail with a comment rather than silently "fixing" it.
+"""
+import time
+
+import numpy as np
+import pytest
+
+from samsara.audio_engine import (
+    FrameBus,
+    FRAME_SIZE,
+    FRAME_MS,
+    PREBUFFER_FRAMES,
+    DictationSessionConsumer,
+)
+
+
+def _pcm(value: int) -> np.ndarray:
+    """FRAME_SIZE int16 array filled with `value % 32767` (matches the
+    write-index convention used in tests/audio_engine/test_ring.py)."""
+    return np.full(FRAME_SIZE, value % 32767, dtype=np.int16)
+
+
+class _FakeApp:
+    """Minimal app stand-in: only the attributes DictationSessionConsumer
+    actually reads via getattr(..., default). No Mock() here deliberately
+    -- Mock() auto-creates truthy attributes (e.g. audio_coordinator.
+    is_speaking) that would silently change activate()'s TTS-guard branch."""
+    audio_coordinator = None
+    _tts_last_speaking = 0.0
+    echo_canceller = None
+
+
+class _FakeEngine:
+    """Wraps a real FrameBus with the register/unregister_consumer
+    interface DictationSessionConsumer expects from `engine` -- the real
+    AudioCaptureEngine adds thread-registry bookkeeping irrelevant here."""
+    def __init__(self, bus: FrameBus) -> None:
+        self._bus = bus
+
+    def register_consumer(self, name=None):
+        return self._bus.new_reader(name)
+
+    def unregister_consumer(self, reader) -> None:
+        reader.invalidate()
+
+
+class TestSeamContiguity:
+    def test_prebuffer_to_live_seam_is_sample_contiguous(self):
+        bus = FrameBus()
+        engine = _FakeEngine(bus)
+        app = _FakeApp()
+        consumer = DictationSessionConsumer(engine, app)
+
+        # Pre-hotkey ambient audio: frames 0..19, more than PREBUFFER_FRAMES
+        # (15 at the current 1.5s/100ms-frame config) so activate()'s
+        # rewind lands inside real history, not clamped to frame 0.
+        n_pre = PREBUFFER_FRAMES + 5
+        for i in range(n_pre):
+            bus.write(_pcm(i), float(i), device_epoch=0)
+
+        # Hotkey press: snap_to_head (cursor -> n_pre) + rewind(PREBUFFER_FRAMES)
+        # (cursor -> n_pre - PREBUFFER_FRAMES), spawns the real drain thread.
+        consumer.activate()
+
+        # Live hold audio: frames n_pre..n_pre+19, written by THIS thread
+        # (standing in for the PortAudio capture callback) while the real
+        # background drain thread is concurrently reading -- the realistic
+        # concurrency shape, not a single-threaded simulation.
+        n_live = 20
+        for i in range(n_pre, n_pre + n_live):
+            bus.write(_pcm(i), float(i), device_epoch=0)
+            time.sleep(0.001)  # encourage real thread interleaving
+
+        # Let the drain thread fully catch up before release.
+        time.sleep(0.2)
+
+        audio = consumer.drain()
+        assert audio is not None, "drain() returned None -- no audio captured"
+
+        expected_first_seq = n_pre - PREBUFFER_FRAMES
+        expected_last_seq  = n_pre + n_live - 1
+        expected_n_frames  = expected_last_seq - expected_first_seq + 1
+        expected = np.concatenate([
+            _pcm(i).astype(np.float32) / 32767.0
+            for i in range(expected_first_seq, expected_last_seq + 1)
+        ])
+
+        assert len(audio) == expected_n_frames * FRAME_SIZE, (
+            f"assembled buffer is {len(audio)} samples "
+            f"({len(audio) / FRAME_SIZE:.1f} frames), expected "
+            f"{expected_n_frames * FRAME_SIZE} samples "
+            f"({expected_n_frames} frames) -- frames were lost or "
+            f"duplicated somewhere in [{expected_first_seq}..{expected_last_seq}]"
+        )
+        # Per-frame comparison (not just np.array_equal on the whole thing)
+        # so a failure pinpoints exactly which frame index diverged --
+        # i.e. exactly where the seam broke, if it did.
+        n_frames = len(audio) // FRAME_SIZE
+        mismatches = []
+        for frame_idx in range(n_frames):
+            seq = expected_first_seq + frame_idx
+            got = audio[frame_idx * FRAME_SIZE:(frame_idx + 1) * FRAME_SIZE]
+            want = _pcm(seq).astype(np.float32) / 32767.0
+            if not np.array_equal(got, want):
+                mismatches.append((frame_idx, seq))
+        assert not mismatches, (
+            f"{len(mismatches)}/{n_frames} frames diverged from the known "
+            f"tone at (buffer_index, expected_seq): {mismatches[:10]}"
+            + (" ..." if len(mismatches) > 10 else "")
+        )
+
+    def test_seam_falls_exactly_at_prebuffer_frames_boundary(self):
+        """Sanity check on the test's own model of the seam position --
+        NOT a claim about DictationSessionConsumer's internal structure
+        (it has no discrete prebuffer/live split; see
+        _log_seam_diagnostics's docstring). Just confirms PREBUFFER_FRAMES
+        frames precede the live portion in the assembled buffer, matching
+        what _log_seam_diagnostics assumes when it logs the seam."""
+        bus = FrameBus()
+        engine = _FakeEngine(bus)
+        app = _FakeApp()
+        consumer = DictationSessionConsumer(engine, app)
+
+        n_pre = PREBUFFER_FRAMES + 3
+        for i in range(n_pre):
+            bus.write(_pcm(i), float(i), device_epoch=0)
+        consumer.activate()
+        bus.write(_pcm(n_pre), float(n_pre), device_epoch=0)
+        time.sleep(0.1)
+        audio = consumer.drain()
+        assert audio is not None
+
+        n_frames = len(audio) // FRAME_SIZE
+        assert n_frames == PREBUFFER_FRAMES + 1, (
+            f"expected PREBUFFER_FRAMES ({PREBUFFER_FRAMES}) + 1 live frame "
+            f"= {PREBUFFER_FRAMES + 1} frames, got {n_frames}"
+        )

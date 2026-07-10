@@ -42,7 +42,7 @@ import time
 
 import numpy as np
 
-from .frame import PREBUFFER_FRAMES
+from .frame import PREBUFFER_FRAMES, FRAME_MS
 from .ring import EMPTY
 from samsara.log import get_logger
 from samsara.runtime import thread_registry
@@ -121,7 +121,10 @@ class DictationSessionConsumer:
             if self._epoch_at_start is None:
                 self._epoch_at_start = frame.device_epoch
             with self._frames_lock:
-                self._frames.append((frame.device_epoch, frame.pcm.copy()))  # [MA-2]
+                # seq (monotonic ring write-cursor snapshot) is carried
+                # through so drain() can verify the assembled buffer is
+                # actually contiguous -- see _log_seam_diagnostics.
+                self._frames.append((frame.seq, frame.device_epoch, frame.pcm.copy()))  # [MA-2]
 
     def cancel(self) -> None:
         """Discard accumulated frames without assembling audio.
@@ -175,7 +178,7 @@ class DictationSessionConsumer:
             if self._epoch_at_start is None:
                 self._epoch_at_start = frame.device_epoch
             with self._frames_lock:
-                self._frames.append((frame.device_epoch, frame.pcm.copy()))  # [MA-2]
+                self._frames.append((frame.seq, frame.device_epoch, frame.pcm.copy()))  # [MA-2]
 
         with self._frames_lock:
             collected = list(self._frames)
@@ -184,11 +187,13 @@ class DictationSessionConsumer:
         if not collected:
             return None
 
+        self._log_seam_diagnostics(collected)
+
         echo_canceller = getattr(self._app, 'echo_canceller', None)
-        start_epoch = collected[0][0]
+        start_epoch = collected[0][1]
         out_frames = []
 
-        for epoch, pcm in collected:
+        for seq, epoch, pcm in collected:
             if epoch != start_epoch:
                 logger.warning("[ACE] Epoch change mid-utterance — aborting dictation")
                 return None
@@ -204,6 +209,70 @@ class DictationSessionConsumer:
 
         pcm_int16 = np.concatenate(out_frames)
         return pcm_int16.astype(np.float32) / 32767.0
+
+    def _log_seam_diagnostics(self, collected: list) -> None:
+        """Debug-level, cheap, permanent seam diagnostics (hotkey word-loss
+        investigation, 2026-07-10). `collected` is the list of
+        (seq, epoch, pcm) tuples assembled for this utterance.
+
+        seq is FrameBus's monotonic write-cursor snapshot -- the ONLY
+        counter available for detecting a real ring-position discontinuity.
+        Nothing previously stored or checked it here; a gap (frames
+        skipped, e.g. an overrun) or overlap (duplicate/backwards seq)
+        anywhere in the buffer, including at the nominal prebuffer/live
+        boundary established by activate()'s rewind(PREBUFFER_FRAMES),
+        would previously have been silently invisible.
+
+        The "prebuffer" and "live" portions are not structurally distinct
+        in this consumer (a single continuous read loop after one rewind,
+        unlike WakeConsumer's onset-triggered re-read) -- the boundary
+        logged below is the FIRST PREBUFFER_FRAMES frames vs the rest, an
+        approximation of the intended semantics rather than a code-level
+        split point.
+        """
+        n = len(collected)
+        total_ms = n * FRAME_MS
+
+        if n > PREBUFFER_FRAMES:
+            pre_first_seq = collected[0][0]
+            pre_last_seq  = collected[PREBUFFER_FRAMES - 1][0]
+            live_first_seq = collected[PREBUFFER_FRAMES][0]
+            live_last_seq  = collected[-1][0]
+            # Healthy contiguous audio: live_first_seq == pre_last_seq + 1,
+            # i.e. seam_delta_ms == 0. Positive = gap (frames missing at
+            # the seam); negative = overlap (duplicated/backwards seq).
+            seam_delta_ms = (live_first_seq - pre_last_seq - 1) * FRAME_MS
+            logger.debug(
+                "[SEAM] pre-buffer seq [%d..%d] (%dms) | live seq [%d..%d] "
+                "(%dms) | seam gap/overlap=%+dms",
+                pre_first_seq, pre_last_seq, PREBUFFER_FRAMES * FRAME_MS,
+                live_first_seq, live_last_seq, (n - PREBUFFER_FRAMES) * FRAME_MS,
+                seam_delta_ms,
+            )
+        else:
+            logger.debug(
+                "[SEAM] buffer shorter than nominal prebuffer (%d/%d frames, "
+                "%dms) -- no live portion to measure a seam against",
+                n, PREBUFFER_FRAMES, total_ms,
+            )
+
+        # Full-buffer scan: a real discontinuity can occur anywhere, not
+        # just at the nominal seam (e.g. a drain-thread scheduling stall
+        # causing an overrun mid-hold).
+        discontinuities = 0
+        for i in range(1, n):
+            prev_seq = collected[i - 1][0]
+            cur_seq  = collected[i][0]
+            delta = cur_seq - prev_seq
+            if delta != 1:
+                discontinuities += 1
+                gap_ms = (delta - 1) * FRAME_MS
+                logger.debug(
+                    "[SEAM] discontinuity at frame %d/%d: seq %d -> %d (%+dms vs expected)",
+                    i, n, prev_seq, cur_seq, gap_ms,
+                )
+        if discontinuities == 0:
+            logger.debug("[SEAM] no seq discontinuities across %d frames (%dms total)", n, total_ms)
 
     # ── CapsLock streaming accumulator (ACE-04B) ─────────────────────────────
     #
