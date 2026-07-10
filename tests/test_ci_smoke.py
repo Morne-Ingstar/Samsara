@@ -10,6 +10,13 @@ a genuine bug (plugins/commands/stremio.py's frozen import failure, fixed
 separately). Both cases are covered here: synthetic minimal reproductions
 of each pattern, plus a regression test against the real downloaded CI log
 that originally surfaced both issues in one run.
+
+2026-07-10 (later same day): a SEPARATE CPU-build release CI run on a
+driverless windows-latest runner hit a 4th benign pattern -- a handled,
+caught-and-continuing GPU-detection failure (dictation.py's CUDA probe
+raises, is caught, falls back to CPU) that still writes a "Traceback"
+block. Added as its own synthetic fixture below, same treatment as the
+mic-less case.
 """
 from pathlib import Path
 
@@ -47,11 +54,31 @@ Traceback (most recent call last):
 ModuleNotFoundError: No module named 'stremio_control'
 """)
 
+# Minimal reproduction of the CPU-build release CI pattern: a driverless
+# windows-latest runner's handled-and-continuing GPU-detect fallback.
+SYNTHETIC_CPU_GPU_FALLBACK_TRACEBACK = _lines("""
+2026-07-10 16:15:29,102 - ERROR - [CPU] Could not detect GPU: CUDA failed with error CUDA driver version is insufficient for CUDA runtime version
+Traceback (most recent call last):
+  File "dictation.py", line 3482, in load
+RuntimeError: CUDA failed with error CUDA driver version is insufficient for CUDA runtime version
+2026-07-10 16:15:29,989 - INFO - [INIT] Startup complete.
+""")
+
 
 class TestLogScannerSyntheticCases:
     def test_mic_less_portaudio_traceback_is_benign(self):
         scanner = ci_smoke.LogScanner()
         scanner.feed(SYNTHETIC_MIC_LESS_TRACEBACK)
+        assert scanner.unexplained_crash_line is None
+        assert len(scanner.benign_seen) == 1
+        assert scanner.outcome == "boot"  # scanning continued past the traceback
+
+    def test_cpu_build_gpu_detect_fallback_traceback_is_benign(self):
+        """CPU-build release CI, driverless windows-latest runner: the
+        handled CUDA-detect-failure-then-fallback-to-CPU traceback must
+        not fail the build."""
+        scanner = ci_smoke.LogScanner()
+        scanner.feed(SYNTHETIC_CPU_GPU_FALLBACK_TRACEBACK)
         assert scanner.unexplained_crash_line is None
         assert len(scanner.benign_seen) == 1
         assert scanner.outcome == "boot"  # scanning continued past the traceback
