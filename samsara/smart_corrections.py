@@ -28,6 +28,7 @@ import time
 import requests
 
 from samsara import cloud_llm
+from samsara import languages
 from samsara.languages import LANGUAGES, script_class
 from samsara.log import get_logger
 from samsara.runtime import thread_registry
@@ -85,8 +86,16 @@ _DEFAULT_TIMEOUT_S = 6.0
 _DEFAULT_MIN_WORDS = 3
 _DEFAULT_KEEP_ALIVE = "30m"
 _VOCAB_CONTEXT_CAP = 600
-_WORD_DEVIATION_LIMIT = 0.4
-_PUNCT_FLOOR_SHRINK_THRESHOLD = 0.10
+# A corrections pass fixes homophones and punctuation -- it has no business
+# changing 40% of the words. Tightened from 0.4 (tribunal Fix 1, CRITICAL).
+_WORD_DEVIATION_LIMIT = 0.15
+# INVARIANT: keep this equal to (never less than) _WORD_DEVIATION_LIMIT.
+# _fails_punctuation_floor REJECTS when word_shrink <= this threshold and
+# lets a shrink LARGER than this threshold through unrejected -- but any
+# shrink that large is, by the same arithmetic, also > _WORD_DEVIATION_LIMIT,
+# so the deviation gate below catches it instead. Equal thresholds mean
+# there is no shrink band that slips past both gates.
+_PUNCT_FLOOR_SHRINK_THRESHOLD = 0.15
 
 # repair_disfluencies gate state (see _sanitize_output): off keeps the
 # symmetric _WORD_DEVIATION_LIMIT unchanged in both directions. On widens
@@ -99,6 +108,11 @@ _DISFLUENCY_GROWTH_LIMIT = _WORD_DEVIATION_LIMIT
 
 _PROBE_TTL_S = 60.0
 _probe_cache: dict = {}  # host -> (monotonic_timestamp, reachable: bool)
+# Last observed reachability per host (independent of the TTL window --
+# updated only on a live probe, never on a cache hit), used solely to
+# detect a down->up recovery transition for the per-outage notice reset
+# below (tribunal Fix 7). None = never probed yet.
+_last_known_reachable: dict = {}
 
 # Reused across every Ollama call this module makes (reachability probe,
 # corrections, warm_up) so repeated local requests don't pay a fresh
@@ -107,8 +121,11 @@ _probe_cache: dict = {}  # host -> (monotonic_timestamp, reachable: bool)
 # this only benefits the Ollama path; see the verification report.
 _session = requests.Session()
 
-# Fires at most once per process -- "once per session" per the tray-notice
-# requirement, not once per DictationApp instance (there's only ever one).
+# Fires once per OUTAGE, not once per process (tribunal Fix 7): reset to
+# False whenever _ollama_reachable() observes a down->up recovery, so a
+# second, later outage still gets its own notice. Silence must never be
+# mistakable for "still local" once a prior outage has already been
+# through a recovery.
 _fallback_notice_shown = False
 
 
@@ -146,6 +163,19 @@ def _ollama_reachable(app) -> bool:
     except Exception:
         reachable = False
     _probe_cache[host] = (now, reachable)
+
+    # Per-outage notice reset (tribunal Fix 7): a fresh probe (not a cache
+    # hit -- only live probes update _last_known_reachable) that finds the
+    # host back up after it was previously observed down means this outage
+    # is over. Reset the notice flag so the NEXT outage -- however soon --
+    # gets its own tray notice instead of staying silent because the flag
+    # already fired once, potentially outage(s) ago.
+    was_reachable = _last_known_reachable.get(host)
+    if reachable and was_reachable is False:
+        global _fallback_notice_shown
+        _fallback_notice_shown = False
+    _last_known_reachable[host] = reachable
+
     return reachable
 
 
@@ -300,7 +330,10 @@ def _language_aware_prompt(app) -> str:
         addendum = "Preserve the language of the input exactly; never translate."
     else:
         lang_name = _LANGUAGE_DISPLAY_NAMES.get(lang, lang)
-        addendum = f"The text is in {lang_name}. Correct it in that language. Never translate."
+        addendum = (
+            f"The text is expected to be in {lang_name}. Correct it in "
+            "whatever language it is actually in. Never translate."
+        )
     return f"{_BASE_INSTRUCTIONS}\n\n{addendum}"
 
 
@@ -396,26 +429,49 @@ def _looks_translated(original: str, text: str) -> bool:
     return orig_class != new_class
 
 
-def _sanitize_output(raw: str, original: str, repair_disfluencies: bool = False) -> str:
+def _sanitize_output(
+    raw: str, original: str, repair_disfluencies: bool = False, lang: str = "en",
+) -> str:
     """Guardrails on LLM output. Pure function -- no I/O, no side effects.
 
     Returns the sanitized correction, or `original` unchanged if the output
-    is empty, deviates too much in word count, looks like an over-edit that
-    silently stripped punctuation, or otherwise looks unsafe to trust.
+    is empty, contains a structural artifact the original didn't have,
+    deviates too much in word count, looks like an over-edit that silently
+    stripped punctuation, looks translated (script flip OR, for a specific
+    Latin-script configured language, a same-script translation -- see
+    languages.looks_translated_to_english), or otherwise looks unsafe to
+    trust.
 
     repair_disfluencies (default False, unchanged behavior): when True, the
     punctuation floor is suspended entirely (removing a filler like "um,"
     legitimately drops punctuation without shrinking word count much) and
-    the word-count deviation check switches from a symmetric +/-40% to an
-    asymmetric shrink-up-to-50%/grow-up-to-40% check (fillers/self-
+    the word-count deviation check switches from a symmetric +/-15% to an
+    asymmetric shrink-up-to-50%/grow-up-to-15% check (fillers/self-
     corrections/fragments legitimately shrink more than they should ever
     grow).
+
+    lang (default "en"): the configured dictation language code, used only
+    by the same-script translation guard below.
     """
     if not raw:
         return original
 
-    text = _strip_think_blocks(raw)
-    text = _strip_fences(text)
+    # Structural-artifact reject gate (tribunal Fix 2): a <think> tag or
+    # code fence in the RAW output means the model went off-script.
+    # Stripping and continuing (the old behavior) risks deleting real user
+    # speech mixed in with the artifact -- a user who literally dictated
+    # backtick-adjacent content would get their words eaten. Reject
+    # outright instead, UNLESS the ORIGINAL already contained that same
+    # artifact (then its presence isn't a sign of the model going
+    # off-script -- it's just what the user said). _strip_think_blocks/
+    # _strip_fences stay defined below for other callers/tests; this path
+    # no longer calls them destructively.
+    if _THINK_OPEN_RE.search(raw) and not _THINK_OPEN_RE.search(original):
+        return original
+    if '```' in raw and '```' not in original:
+        return original
+
+    text = raw.strip()
     text = _PREAMBLE_RE.sub('', text, count=1).strip()
     text = _strip_quotes(text)
 
@@ -429,6 +485,9 @@ def _sanitize_output(raw: str, original: str, repair_disfluencies: bool = False)
         return original
 
     if _looks_translated(original, text):
+        return original
+
+    if languages.looks_translated_to_english(lang, original, text):
         return original
 
     if not repair_disfluencies and _fails_punctuation_floor(original, text):
@@ -490,23 +549,29 @@ def _call_ollama(text: str, app, system_prompt: str, timeout_s: float, model: st
         return response.json().get("message", {}).get("content", ""), False
     except requests.exceptions.Timeout:
         logger.debug("[SMART] Ollama call timed out")
+        # A successful reachability probe minutes ago doesn't mean the
+        # server is still healthy NOW -- invalidate so the next resolution
+        # re-probes instead of trusting a stale "up" for the rest of the
+        # TTL (tribunal Fix 6).
+        _probe_cache.pop(host, None)
         return None, True
     except Exception as exc:
         logger.debug(f"[SMART] Ollama call failed: {exc}")
+        _probe_cache.pop(host, None)
         return None, False
 
 
 def _call_cloud(text: str, app, system_prompt: str, timeout_s: float):
-    """Returns (raw_content_or_None, was_timeout). cloud_llm.send() catches
-    its own requests exceptions internally and returns an "Error: ..."
-    string rather than raising, so a cloud timeout is detected by matching
-    that string rather than an exception type."""
+    """Returns (raw_content_or_None, was_timeout). Uses cloud_llm.send_ex()
+    (tribunal Fix 8) for a structured (text, error_kind) result instead of
+    substring-matching "timed out" in an "Error: ..." string -- a real
+    dictated sentence that happened to contain that phrase could otherwise
+    misclassify a genuine failure as a timeout."""
     try:
-        result = cloud_llm.send(system_prompt, text, app, timeout=timeout_s)
-        if not result or result.startswith("Error:"):
-            was_timeout = bool(result) and "timed out" in result.lower()
-            logger.debug(f"[SMART] Cloud LLM call failed: {result}")
-            return None, was_timeout
+        result, error_kind = cloud_llm.send_ex(system_prompt, text, app, timeout=timeout_s)
+        if error_kind is not None:
+            logger.debug(f"[SMART] Cloud LLM call failed ({error_kind})")
+            return None, error_kind == "timeout"
         return result, False
     except Exception as exc:
         logger.debug(f"[SMART] Cloud LLM call failed: {exc}")
@@ -605,7 +670,10 @@ def smart_correct(text: str, app) -> str:
             return text
 
         repair_disfluencies = bool(cfg.get("repair_disfluencies", False))
-        corrected = _sanitize_output(raw, text, repair_disfluencies=repair_disfluencies)
+        lang = getattr(app, "config", {}).get("language", "en") or "en"
+        corrected = _sanitize_output(
+            raw, text, repair_disfluencies=repair_disfluencies, lang=lang,
+        )
         tag = _backend_tag(backend, model, elapsed_ms)
 
         if corrected != text:

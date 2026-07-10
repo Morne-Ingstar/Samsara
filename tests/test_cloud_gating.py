@@ -82,3 +82,92 @@ class TestPremiumModuleNoLongerGatesCapability:
 
     def test_has_supporter_key_alias_matches_is_premium(self):
         assert premium.has_supporter_key is premium.is_premium
+
+
+class TestSendExStructuredResult:
+    """Tribunal Fix 8: send_ex() returns a structured (text, error_kind)
+    result instead of encoding failure as an "Error: ..." string a caller
+    has to substring-match. Implemented from the same internals as send()
+    (_send_internal) -- send() itself must keep its exact existing
+    string-return contract for other callers (ask_ollama, etc.)."""
+
+    def _app(self):
+        return SimpleNamespace(config={
+            "cloud_llm": {"enabled": True, "api_key": "sk-test", "provider": "deepseek"},
+        })
+
+    def test_success_returns_text_and_none_error_kind(self, monkeypatch):
+        class _Resp:
+            def raise_for_status(self):
+                pass
+
+            def json(self):
+                return {"choices": [{"message": {"content": "corrected text"}}]}
+
+        monkeypatch.setattr(cloud_llm.requests, 'post', lambda *a, **k: _Resp())
+
+        text, error_kind = cloud_llm.send_ex("sys", "user", self._app())
+
+        assert text == "corrected text"
+        assert error_kind is None
+
+    def test_timeout_returns_none_text_and_timeout_error_kind(self, monkeypatch):
+        def _raise(*a, **k):
+            raise cloud_llm.requests.exceptions.Timeout("simulated")
+
+        monkeypatch.setattr(cloud_llm.requests, 'post', _raise)
+
+        text, error_kind = cloud_llm.send_ex("sys", "user", self._app(), timeout=5)
+
+        assert text is None
+        assert error_kind == "timeout"
+
+    def test_connection_error_returns_none_text_and_error_error_kind(self, monkeypatch):
+        def _raise(*a, **k):
+            raise cloud_llm.requests.exceptions.ConnectionError("simulated")
+
+        monkeypatch.setattr(cloud_llm.requests, 'post', _raise)
+
+        text, error_kind = cloud_llm.send_ex("sys", "user", self._app())
+
+        assert text is None
+        assert error_kind == "error"
+
+    def test_missing_api_key_returns_error_kind_not_timeout(self):
+        app = SimpleNamespace(config={"cloud_llm": {"enabled": True, "api_key": ""}})
+
+        text, error_kind = cloud_llm.send_ex("sys", "user", app)
+
+        assert text is None
+        assert error_kind == "error"
+
+    def test_generic_exception_returns_error_kind_not_timeout(self, monkeypatch):
+        def _raise(*a, **k):
+            raise ValueError("something else broke")
+
+        monkeypatch.setattr(cloud_llm.requests, 'post', _raise)
+
+        text, error_kind = cloud_llm.send_ex("sys", "user", self._app())
+
+        assert text is None
+        assert error_kind == "error"
+
+    def test_send_keeps_exact_string_contract_on_timeout(self, monkeypatch):
+        """send() itself must be untouched -- other callers (ask_ollama,
+        workflow_capture, ai_command_mode) keep receiving the exact
+        "Error: ..." string contract they already handle."""
+        def _raise(*a, **k):
+            raise cloud_llm.requests.exceptions.Timeout("simulated")
+
+        monkeypatch.setattr(cloud_llm.requests, 'post', _raise)
+
+        result = cloud_llm.send("sys", "user", self._app(), timeout=5)
+
+        assert result == "Error: Cloud LLM request timed out after 5s."
+
+    def test_send_keeps_exact_string_contract_on_missing_key(self):
+        app = SimpleNamespace(config={"cloud_llm": {"enabled": True, "api_key": ""}})
+
+        result = cloud_llm.send("sys", "user", app)
+
+        assert result == "Error: No API key configured for cloud LLM."

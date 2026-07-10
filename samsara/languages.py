@@ -8,6 +8,8 @@ it means "pass language=None to faster-whisper and let it auto-detect" --
 see resolve_transcribe_language().
 """
 
+import re
+
 # (display name, ISO 639-1 code). Display names are native/endonym names in
 # the form "Native (code)", e.g. "Deutsch (de)", except English and Auto.
 # Full list of the ~99 languages faster-whisper/openai-whisper support.
@@ -216,6 +218,82 @@ def script_class(s: str) -> "str | None":
         return None
     latin = sum(1 for ch in letters if is_latin_char(ch))
     return 'latin' if latin / len(letters) > 0.5 else 'non_latin'
+
+
+# ---------------------------------------------------------------------------
+# Same-script translation guard (Smart Corrections tribunal Fix 4) --
+# script_class()/is_latin_char() above only catch a SCRIPT flip (e.g.
+# Japanese -> English); they're blind to es/fr/de/pt/it/nl -> English,
+# since all of those are Latin script too. This is a second, narrower
+# heuristic for exactly that case: bounded to the handful of Latin-script
+# languages where a same-script mistranslation is realistic, using each
+# language's most common function words (articles/conjunctions/
+# prepositions/pronouns) rather than any model call or new dependency.
+#
+# Each set deliberately avoids words that are also common English function
+# words (cognates like Dutch "is" or Italian "in") -- a word that reads as
+# both "still <language>" and "now English" can't discriminate a real
+# translation from a legitimate correction, so it would either miss real
+# translations (false negative) or flag legitimate same-language corrections
+# (false positive). See looks_translated_to_english() for how these are used.
+# ---------------------------------------------------------------------------
+
+SAME_SCRIPT_FUNCTION_WORDS = {
+    "es": {"el", "la", "los", "las", "de", "que", "y", "en", "un", "una",
+           "es", "por", "con", "no", "se"},
+    "fr": {"le", "la", "les", "de", "que", "et", "en", "un", "une", "est",
+           "pour", "avec", "ne", "se", "du"},
+    "de": {"der", "die", "das", "und", "ist", "ich", "nicht", "zu", "den",
+           "mit", "ein", "eine", "auf", "für", "sich"},
+    "pt": {"o", "os", "as", "de", "que", "e", "em", "um", "uma", "é",
+           "para", "com", "não", "se", "isso"},
+    "it": {"il", "la", "gli", "le", "di", "che", "e", "sono", "un", "una",
+           "è", "per", "con", "non", "si"},
+    "nl": {"de", "het", "een", "en", "van", "niet", "te", "dat", "met",
+           "op", "voor", "zijn", "ik", "je", "wij"},
+}
+
+# Top ~15 English function words -- chosen to have zero overlap with any
+# set above (see the false-negative/false-positive note).
+ENGLISH_FUNCTION_WORDS = {
+    "the", "and", "is", "to", "of", "a", "in", "that", "it", "for",
+    "on", "with", "at", "this", "are",
+}
+
+_WORD_TOKEN_RE = re.compile(r"[^\w\s]", re.UNICODE)
+
+
+def _function_word_tokens(s: str) -> set:
+    return set(_WORD_TOKEN_RE.sub(' ', s.lower()).split())
+
+
+def looks_translated_to_english(lang_code: "str | None", original: str, text: str) -> bool:
+    """Same-script translation guard: True if `text` looks like `original`
+    got translated from `lang_code` into English instead of corrected.
+
+    Pure function, no I/O. Bounded and conservative -- only evaluates
+    codes in SAME_SCRIPT_FUNCTION_WORDS (skip entirely for en/auto/
+    non-Latin/unlisted codes, since the heuristic isn't meaningful there).
+    Fires only when `original` has >=2 hits from `lang_code`'s function-word
+    set, `text` has ZERO of them, AND `text` picks up >=2 English function
+    words it didn't already have (gained, not merely present -- a source
+    sentence that already borrowed an English word or two must not itself
+    count as evidence of translation).
+    """
+    word_set = SAME_SCRIPT_FUNCTION_WORDS.get(lang_code or "")
+    if not word_set:
+        return False
+
+    orig_tokens = _function_word_tokens(original)
+    if len(orig_tokens & word_set) < 2:
+        return False
+
+    text_tokens = _function_word_tokens(text)
+    if text_tokens & word_set:
+        return False
+
+    gained_english = (text_tokens & ENGLISH_FUNCTION_WORDS) - (orig_tokens & ENGLISH_FUNCTION_WORDS)
+    return len(gained_english) >= 2
 
 
 DEFAULT_TTS_VOICES = {
