@@ -56,10 +56,21 @@ EXE_NAME = "Samsara.exe"
 BOOT_MARKER = "[INIT] Startup complete."
 ALREADY_RUNNING_MARKER = "Samsara is already running"
 KNOWN_BENIGN_MARKERS = (
-    # Caught-and-logged, not a crash -- see module docstring.
+    # Caught-and-logged, not a crash -- see module docstring. Match ONLY
+    # this specific pattern -- do not broaden it, per the 2026-07-10
+    # tightening: a wider benign list is exactly how an import-crash could
+    # green-pass again.
     "[ACE] Engine failed to start",
 )
-CRASH_MARKERS = ("Traceback", "CRITICAL")
+# 2026-07-10 tightening: "Traceback"/"CRITICAL" alone were only ever
+# observable if the app got far enough to write its OWN log file.
+# PyInstaller's bootloader failure (the actual symptom of a missing frozen
+# dependency, e.g. ModuleNotFoundError for PySide6) fires BEFORE Python
+# logging is configured and prints "Failed to execute script '<name>' due
+# to unhandled exception: ..." to native STDERR, not the app log -- which
+# this script used to discard outright (stderr=subprocess.DEVNULL). See
+# launch()/_scan_stderr() below: stderr is now captured and scanned too.
+CRASH_MARKERS = ("Traceback", "CRITICAL", "ModuleNotFoundError", "Failed to execute script")
 DEFAULT_TIMEOUT_S = 180.0
 POLL_INTERVAL_S = 0.5
 SHUTDOWN_TIMEOUT_S = 15.0
@@ -81,16 +92,46 @@ def read_new_lines(log_path: Path, offset: int) -> tuple[list[str], int]:
     return data.splitlines(), new_offset
 
 
-def launch(exe_path: Path, home_dir: Path) -> subprocess.Popen:
+def launch(exe_path: Path, home_dir: Path, stderr_path: Path) -> subprocess.Popen:
     env = os.environ.copy()
     env["SAMSARA_HOME_DIR"] = str(home_dir)
+    # stderr goes to a real file, not DEVNULL: this is the ONLY channel a
+    # PyInstaller bootloader failure ("Failed to execute script ... due to
+    # unhandled exception: No module named 'X'") is written to -- it fires
+    # before the app's own log file exists. A file (not subprocess.PIPE)
+    # avoids any risk of pipe-buffer deadlock from an app that writes more
+    # to stderr than a pipe's buffer holds; we just read the file after the
+    # process exits/is terminated.
+    stderr_f = open(stderr_path, "wb")
     return subprocess.Popen(
         [str(exe_path)],
         cwd=str(exe_path.parent),
         env=env,
         stdout=subprocess.DEVNULL,
-        stderr=subprocess.DEVNULL,
+        stderr=stderr_f,
     )
+
+
+def scan_stderr(stderr_path: Path) -> "str | None":
+    """Return the first unexplained-crash line found in captured stderr, or
+    None. Same benign-marker carve-out as the log-file scanner (KNOWN_
+    BENIGN_MARKERS), applied to the whole captured blob since stderr for a
+    short-lived process is small and bounded (no need for the log file's
+    incremental/windowed scan)."""
+    if not stderr_path.exists():
+        return None
+    try:
+        text = stderr_path.read_text(encoding="utf-8", errors="replace")
+    except OSError:
+        return None
+    if not text.strip():
+        return None
+    if any(b in text for b in KNOWN_BENIGN_MARKERS):
+        return None
+    for line in text.splitlines():
+        if any(m in line for m in CRASH_MARKERS):
+            return line
+    return None
 
 
 def terminate(proc: subprocess.Popen) -> str:
@@ -133,10 +174,11 @@ def main(argv: list[str] | None = None) -> int:
         json.dumps(make_min_config(), indent=2), encoding="utf-8"
     )
     log_path = profile_dir / "logs" / "samsara.log"
+    stderr_path = work_root / "stderr.log"
     print(f"[INFO] isolated profile: {profile_dir}")
     print(f"[INFO] launching {exe_path}")
 
-    proc = launch(exe_path, profile_dir)
+    proc = launch(exe_path, profile_dir, stderr_path)
     print(f"[INFO] pid={proc.pid}")
 
     deadline = time.monotonic() + args.timeout
@@ -193,6 +235,15 @@ def main(argv: list[str] | None = None) -> int:
     still_alive = proc.poll() is None
     shutdown_detail = terminate(proc)
 
+    # Read stderr only AFTER the process has exited/been killed, so the
+    # file handle is fully flushed and closed -- catches PyInstaller
+    # bootloader failures (missing frozen dependency) that never reach the
+    # app's own log file at all. Overrides outcome/unexplained_crash_line
+    # below regardless of what the log-based scan concluded: a still-alive
+    # process that reached the boot marker but ALSO wrote a bootloader
+    # crash to stderr must still fail.
+    stderr_crash_line = scan_stderr(stderr_path)
+
     if args.log_copy_to:
         import shutil
         dest = Path(args.log_copy_to)
@@ -210,6 +261,13 @@ def main(argv: list[str] | None = None) -> int:
         for line in benign_seen[:5]:
             print(f"        {line}")
 
+    # Checked FIRST, ahead of every other branch: a bootloader/import crash
+    # on stderr fails the build no matter what the log-based outcome was
+    # (boot marker reached, timed out alive, or otherwise) -- see the
+    # comment above scan_stderr() call.
+    if stderr_crash_line:
+        print(f"[FAIL] unexplained crash marker in stderr: {stderr_crash_line!r}")
+        return 1
     if outcome == "already_running":
         print("[FAIL] another Samsara instance is already running system-wide on this runner")
         return 1

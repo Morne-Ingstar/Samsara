@@ -8,9 +8,18 @@ mss>=9.0
 faster-whisper>=1.0.0
 
 # Core - Speech Detection (Silero VAD)
-# torch is a transitive dep of faster-whisper; torchaudio is needed by Silero VAD
-# Version must match torch (e.g. torch 2.7.0 needs torchaudio 2.7.0)
-torchaudio
+# 2026-07-10 correction: torch is NOT a transitive dep of faster-whisper --
+# that package uses ctranslate2 as its inference backend specifically to
+# avoid a torch dependency. dictation.py imports torch directly (Silero VAD),
+# so it must be pinned explicitly, not assumed to arrive transitively. Pinned
+# to the plain PyPI CPU wheel (matching the dev env's torch version number,
+# 2.5.1) rather than the dev env's local "+cu121" CUDA build, which is only
+# available from PyTorch's own package index, not PyPI -- a clean
+# `pip install -r requirements.txt` on a CPU-only CI runner needs the plain
+# PyPI wheel. torchaudio must stay version-aligned with torch (e.g. torch
+# 2.7.0 needs torchaudio 2.7.0).
+torch==2.5.1
+torchaudio==2.5.1
 
 # Core - Audio
 sounddevice>=0.4.6
@@ -63,3 +72,49 @@ pywebview>=5.0
 
 # Wake word pre-filter (gates Whisper calls — reduces CPU on machines without GPU)
 openwakeword>=0.6.0
+
+# --- Import audit (2026-07-10): imported by the codebase but missing from
+# this file. Present in the dev environment (so local builds/tests worked),
+# absent from CI's clean `pip install -r requirements.txt`, which shipped a
+# broken frozen app -- PySide6 was the first ModuleNotFoundError to surface,
+# not the only one. Each pinned to the exact version installed in the dev
+# env (F:\envs\sami) at audit time; see tools/ci_smoke.py and the clean-venv
+# import check for how this is verified going forward. ---
+
+# Qt UI framework (samsara/ui/*_qt.py, ~48 files) -- PySide6-Addons and
+# PySide6-Essentials install as separate distributions pip pulls in
+# automatically as PySide6's own dependencies, but are pinned explicitly
+# here (and collected explicitly in scripts/samsara.spec) since PyInstaller
+# analysis has been known to miss companion Qt dists that aren't imported
+# by name anywhere in source.
+PySide6==6.11.1
+PySide6-Addons==6.11.1
+PySide6-Essentials==6.11.1
+shiboken6==6.11.1
+
+# faster-whisper's inference backend (imported directly for device/compute-type
+# detection in dictation.py, not just a transitive faster-whisper dependency)
+ctranslate2==4.7.1
+
+# Screen/webcam frame handling (gesture lane, show-numbers overlay, etc.)
+opencv-python==4.13.0.92
+
+# Cloud-fallback TTS voice
+edge-tts==7.2.8
+
+# Gesture lane (webcam hand-tracking)
+mediapipe==0.10.9
+
+# Rhyme/phonetic lookup (voice training / phonetic wash)
+pronouncing==0.3.0
+
+# WASAPI loopback capture for echo cancellation (samsara/echo_cancel.py) --
+# a PyAudio fork; do not confuse with plain PyAudio, which lacks loopback support.
+PyAudioWPatch==0.2.12.8
+
+# Filesystem change notifications (live config/log reload)
+watchdog==6.0.0
+
+# WebSocket client (tools/probe_stremio_cdp.py's CDP connection; also
+# available for any future in-app use)
+websockets==16.0
