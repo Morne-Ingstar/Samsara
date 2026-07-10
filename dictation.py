@@ -7932,6 +7932,16 @@ class DictationApp:
         except Exception as e:
             logger.exception(f"[DIAG] Error opening dictation diagnostics: {e}")
 
+    def open_quick_reference(self):
+        """Open the Quick Reference window (live hotkeys/phrases/modes)"""
+        try:
+            if not hasattr(self, '_quick_reference_qt'):
+                from samsara.ui.quick_reference_qt import QuickReferenceQt
+                self._quick_reference_qt = QuickReferenceQt(self)
+            self._quick_reference_qt.show()
+        except Exception as e:
+            logger.exception(f"[QUICKREF] Error opening quick reference: {e}")
+
     def open_correction_capture(self):
         """Open the correction-capture window, pre-filled with the most
         recent dictation. Safe to call from any thread -- history lookup

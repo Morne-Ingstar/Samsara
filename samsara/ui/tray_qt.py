@@ -226,6 +226,8 @@ class SamsaraTrayQt(QObject):
             lambda: app.open_wake_word_debug())
         tools_sub.addAction("Dictation Diagnostics").triggered.connect(
             lambda: app.open_dictation_diagnostics())
+        tools_sub.addAction("Quick Reference").triggered.connect(
+            lambda: app.open_quick_reference())
         tools_sub.addAction("Benchmark Review").triggered.connect(
             lambda: app.open_benchmark_review())
         tools_sub.addAction("Correct Last Dictation").triggered.connect(
