@@ -91,6 +91,30 @@ datas.append((str(app_dir / 'profiles'), 'profiles'))
 datas.append((str(app_dir / 'commands.json'), '.'))
 # Bundle the entire plugins directory so commands/*.py are available at runtime
 datas.append((str(app_dir / 'plugins'), 'plugins'))
+# tools/ (2026-07-10) -- plugins/commands/stremio.py does `import
+# stremio_control` after inserting Path(__file__).resolve().parents[2] /
+# "tools" onto sys.path. plugins/commands/*.py are loaded dynamically at
+# runtime (directory scan + exec, not a static import PyInstaller's own
+# analysis ever sees -- see the hiddenimports comment above for
+# samsara.audio_switch), so that import was never bundled at all: CI's
+# frozen smoke test failed with "ModuleNotFoundError: No module named
+# 'stremio_control'". parents[2] from a frozen plugin file (dist\Samsara\
+# _internal\plugins\commands\stremio.py) already correctly computes
+# _internal\tools -- the bootstrap code was right all along, tools/ was
+# just never actually placed there. Bundling it as data (same pattern as
+# plugins/ immediately above) fixes this with no plugin code changes
+# required; plugins/commands/stremio.py additionally hardens its import
+# with a sys._MEIPASS-aware fallback in case that ever changes.
+# Unlike plugins/ (a curated runtime directory), tools/ also accumulates
+# local dev-only artifacts -- notably tools/stremio_remote_token.txt, a
+# REAL local secret for the LAN phone remote generated during testing, and
+# __pycache__ -- that must never end up inside a distributed build. Bundle
+# only *.py files (every tools/ module, so a future plugin depending on a
+# different tools/ module doesn't silently break again the same way).
+_tools_dir = app_dir / 'tools'
+if _tools_dir.exists():
+    for _py_file in _tools_dir.glob('*.py'):
+        datas.append((str(_py_file), 'tools'))
 # NOTE: config.json is intentionally NOT bundled — it contains dev-machine
 # paths and credentials. A fresh config is generated on first run.
 

@@ -41,10 +41,10 @@ jobs:
 
     steps:
       - name: Checkout
-        uses: actions/checkout@v4
+        uses: actions/checkout@v5
 
       - name: Set up Python
-        uses: actions/setup-python@v5
+        uses: actions/setup-python@v6
         with:
           python-version: ${{ env.PYTHON_VERSION }}
           cache: 'pip'
@@ -126,7 +126,7 @@ jobs:
 
       - name: Upload smoke log (always, for inspection)
         if: always()
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v6
         with:
           name: ci-smoke-log-${{ steps.version.outputs.version }}
           path: ci_smoke_artifacts\samsara.log
@@ -147,7 +147,7 @@ jobs:
           echo "zip_name=$zipName" >> $env:GITHUB_OUTPUT
 
       - name: Upload build artifact
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v6
         with:
           name: ${{ steps.package.outputs.zip_name }}
           path: ${{ steps.package.outputs.zip_name }}
