@@ -7,6 +7,15 @@ the microphone signal before transcription.
 
 Windows-only. Degrades gracefully on other platforms or when
 loopback capture is unavailable.
+
+STATUS (2026-07-10): off by default (config_schema.py's
+echo_cancellation.enabled). In practice the adaptive filter converges to
+only 3-8% echo reduction -- its latency-alignment assumption doesn't hold
+-- and adversarial review concluded it likely adds artifacts/distortion to
+the capture path, net-negative. Retired pending evaluation of WebRTC AEC3
+/ Windows communications-mode capture as a replacement (separate,
+post-release item). This module is intentionally left intact and fully
+functional -- enabling the config flag still runs it exactly as before.
 """
 
 import json
@@ -422,7 +431,7 @@ class EchoCanceller:
     def __init__(
         self,
         sample_rate: int = 16000,
-        enabled: bool = True,
+        enabled: bool = False,
         block_size: int = 1024,
         filter_blocks: int = 4,
         step_size: float = 0.02,

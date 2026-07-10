@@ -2217,7 +2217,14 @@ class DictationApp:
                     "enabled": True,
                 },
             ],
-            # Echo cancellation (removes system audio from mic input)
+            # Echo cancellation (removes system audio from mic input).
+            # Default OFF (2026-07-10): the homegrown NLMS adaptive filter
+            # converges to only 3-8% echo reduction and adversarial review
+            # concluded it likely adds artifacts/distortion -- net-negative.
+            # Retired pending WebRTC AEC3 / Windows communications-mode
+            # evaluation (separate, post-release item). Code kept intact,
+            # just not on by default -- see samsara/echo_cancel.py and
+            # samsara/config_schema.py's echo_cancellation.enabled entry.
             "echo_cancellation": {
                 "enabled": False,
                 "latency_ms": 30.0,

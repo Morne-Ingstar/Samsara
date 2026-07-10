@@ -149,3 +149,55 @@ class TestSeamContiguity:
             f"expected PREBUFFER_FRAMES ({PREBUFFER_FRAMES}) + 1 live frame "
             f"= {PREBUFFER_FRAMES + 1} frames, got {n_frames}"
         )
+
+
+class _FakeEchoCanceller:
+    """Stand-in for samsara.echo_cancel.EchoCanceller -- matches the real
+    production shape (an object that always exists on app.echo_canceller,
+    with is_active reflecting the config flag) rather than the None case
+    _FakeApp uses elsewhere, since that's what a real disabled-by-default
+    AEC actually looks like at this call site."""
+    def __init__(self, is_active: bool) -> None:
+        self.is_active = is_active
+        self.process_calls = 0
+
+    def process(self, pcm_f32):
+        self.process_calls += 1
+        return pcm_f32
+
+
+class TestEchoCancellerBypassOnCapturePath:
+    """2026-07-10: echo_cancellation.enabled defaults to False. Proves the
+    disabled state is a true bypass AT THE CONSUMER'S OWN CAPTURE PATH
+    (drain()'s per-frame loop), not just inside EchoCanceller in isolation
+    (see tests/test_echo_cancel.py for that)."""
+
+    def test_inactive_echo_canceller_process_never_called(self):
+        bus = FrameBus()
+        engine = _FakeEngine(bus)
+        app = _FakeApp()
+        app.echo_canceller = _FakeEchoCanceller(is_active=False)
+        consumer = DictationSessionConsumer(engine, app)
+
+        consumer.activate()
+        bus.write(_pcm(0), 0.0, device_epoch=0)
+        time.sleep(0.1)
+        audio = consumer.drain()
+
+        assert audio is not None
+        assert app.echo_canceller.process_calls == 0
+
+    def test_active_echo_canceller_process_called_unchanged(self):
+        bus = FrameBus()
+        engine = _FakeEngine(bus)
+        app = _FakeApp()
+        app.echo_canceller = _FakeEchoCanceller(is_active=True)
+        consumer = DictationSessionConsumer(engine, app)
+
+        consumer.activate()
+        bus.write(_pcm(0), 0.0, device_epoch=0)
+        time.sleep(0.1)
+        audio = consumer.drain()
+
+        assert audio is not None
+        assert app.echo_canceller.process_calls > 0
