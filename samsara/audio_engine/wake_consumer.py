@@ -69,6 +69,11 @@ class WakeConsumer:
         self._buffer_rms_history: list = []
         self._last_epoch: int | None  = None
 
+        # FIX 1 (2026-07-10 hotkey word-loss investigation): tracks the
+        # hotkey-deafness suppression state so _process_frame logs only on
+        # the ENGAGE/RELEASE transitions, not every 100ms frame.
+        self._hotkey_suppressed_last: bool = False
+
     # ── Lifecycle ─────────────────────────────────────────────────────────────
 
     def start(self) -> None:
@@ -123,6 +128,27 @@ class WakeConsumer:
             app._vad_reset()
         except Exception as e:
             logger.debug(f"abort_utterance: vad reset failed: {e}")
+
+    def discard_stale_wake_utterance(self) -> None:
+        """FIX 1 (2026-07-10 hotkey word-loss investigation): discard any
+        in-progress WAKE-WORD-mode utterance -- never flush it -- the
+        moment a hotkey recording starts. Called proactively from
+        dictation.py's start_recording() at the same point _hotkey_
+        recording flips True, rather than waiting for the next poll frame,
+        so a frozen/stale wake-mode buffer never sits around to be
+        (incorrectly) flushed once hotkey recording ends.
+
+        No-ops when toggle-command-mode or AI-command-mode is servicing
+        the in-progress utterance instead -- those must keep running (see
+        _process_frame's hotkey-deafness guard) and must NOT be discarded;
+        e.g. a hotkey press mid-DICTATE-chunk must not eat the chunk."""
+        app = self._app
+        if self._is_toggle_cmd(app) or self._is_ai_cmd_mode(app):
+            return
+        if self._utterance_frames or app.is_speaking:
+            logger.debug("[SEAM] Discarding in-progress wake-mode utterance "
+                         "-- hotkey recording just started")
+        self.abort_utterance()
 
     # ── Poll loop ─────────────────────────────────────────────────────────────
 
@@ -198,6 +224,51 @@ class WakeConsumer:
                 logger.debug(f"_vad_reset failed after epoch change: {e}")
         self._last_epoch = frame.device_epoch
 
+        # ── FIX 1 (2026-07-10 hotkey word-loss investigation): full
+        # deafness during hotkey recording ─────────────────────────────────
+        # Supersedes the old pre-onset-only "Hotkey-recording suppression"
+        # guard (formerly here, inside the `if not app.is_speaking:` block
+        # below) -- that guard stopped applying the moment app.is_speaking
+        # went True, so once WakeConsumer detected its OWN speech onset
+        # mid-hotkey-hold it kept running a full, separate utterance
+        # (prebuffer prepend, VAD, buffering, eventual flush) concurrently
+        # with the hotkey capture -- confirmed via the [SEAM] diagnostic
+        # added in commit 0e837ba. That utterance shares app._vad_model /
+        # app._vad_lock with the hotkey path's own contiguous-speech gate;
+        # Silero is recurrent, so interleaved calls from the two threads
+        # corrupt its hidden state mid-scan.
+        #
+        # Toggle-command-mode and AI-command-mode are explicitly exempted:
+        # both are active, user-initiated listening sessions that must
+        # keep servicing regardless of a concurrent hotkey press (a hotkey
+        # press mid-DICTATE-chunk must not eat the chunk). The always-live
+        # global abort phrase lives entirely inside SessionModeManager.
+        # dispatch_utterance(), reached only via _flush() -> app._handle_
+        # command_mode_utterance(), which only ever fires from THIS same
+        # poll loop's toggle-command branch -- so exempting
+        # _is_toggle_cmd(app) here is what keeps global abort reachable
+        # while a hotkey is held. AI-command-mode gets the same exemption
+        # for consistency with the poll loop's own outer gate (top of
+        # _poll_loop), which already treats it as an equally "actively
+        # listening" state.
+        hotkey_suppress = (
+            app._hotkey_recording
+            and not self._is_toggle_cmd(app)
+            and not self._is_ai_cmd_mode(app)
+        )
+        if hotkey_suppress:
+            if not self._hotkey_suppressed_last:
+                logger.debug(
+                    "[SEAM] WakeConsumer suppression ENGAGED (hotkey recording "
+                    "active) -- wake-word speech detection fully skipped "
+                    "(no RMS/VAD/OWW/onset/buffering) until hotkey recording ends"
+                )
+                self._hotkey_suppressed_last = True
+            return   # cursor already advanced (frame already read in _poll_loop)
+        if self._hotkey_suppressed_last:
+            logger.debug("[SEAM] WakeConsumer suppression RELEASED (hotkey recording ended)")
+            self._hotkey_suppressed_last = False
+
         # Convert int16 ring frame -> float32 at SAMPLE_RATE
         # Ring stores raw (non-AEC) audio — correct for both VAD and Whisper.
         raw_chunk = frame.pcm.astype(np.float32) / 32767.0   # shape: (FRAME_SIZE,)
@@ -217,10 +288,6 @@ class WakeConsumer:
                             return
                 else:
                     app._command_executed_at = None
-
-            # ── Hotkey-recording suppression ──────────────────────────────────
-            if app._hotkey_recording:
-                return   # skip policy but cursor advances (frame already read)
 
             # ── TTS guard ─────────────────────────────────────────────────────
             _coordinator = getattr(app, 'audio_coordinator', None)
@@ -321,25 +388,26 @@ class WakeConsumer:
                     )
                 if self._utterance_frames:
                     logger.debug(f"[PRE] Prepended {len(self._utterance_frames) * FRAME_MS}ms pre-buffer to wake onset")
-                # Diagnostic (2026-07-10 hotkey word-loss investigation):
-                # this wake-onset path is NOT suppressed while a hotkey
-                # recording is active -- the _hotkey_recording guard above
-                # (see the "Hotkey-recording suppression" block) only
-                # applies BEFORE speech onset, per its own comment. Once
-                # speech is detected mid-hotkey-hold, this consumer keeps
-                # running a SEPARATE, CONCURRENT utterance that shares
-                # app._vad_model/_vad_lock with the hotkey path's own
-                # contiguous-speech gate (_buffer_has_contiguous_speech).
-                # Silero VAD is recurrent; interleaved calls from two
-                # unrelated audio sources contaminate its hidden state.
-                # This log line makes that overlap directly observable
-                # instead of inferred from correlated timestamps.
+                # Diagnostic (2026-07-10 hotkey word-loss investigation,
+                # updated by FIX 1): this branch is now UNREACHABLE while a
+                # plain hotkey recording is active -- _process_frame's
+                # top-level hotkey-deafness guard returns before speech
+                # onset is ever evaluated. The only way to reach this with
+                # _hotkey_recording=True is the intentional toggle-command-
+                # mode/AI-command-mode exemption (that servicing must keep
+                # running concurrently with a hotkey press). FIX 2 makes
+                # _buffer_has_contiguous_speech's scan atomic (lock held for
+                # the whole scan, state reset at scan start), so this
+                # remaining overlap can briefly BLOCK the gate's scan on
+                # this thread's VAD call (or vice versa) but can no longer
+                # CORRUPT it.
                 if getattr(app, '_hotkey_recording', False):
                     logger.debug(
                         "[SEAM] Wake-consumer speech onset occurred WHILE "
-                        "_hotkey_recording=True -- this utterance and the "
-                        "concurrent hotkey capture will share app._vad_model "
-                        "for VAD inference, interleaved across two threads."
+                        "_hotkey_recording=True -- reached only via the "
+                        "toggle-command-mode/AI-command-mode exemption "
+                        "(see FIX 1). VAD lock contention possible, "
+                        "corruption prevented by FIX 2's scan-long lock."
                     )
             else:
                 # Non-onset speech frame — append normally

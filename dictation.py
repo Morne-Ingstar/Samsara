@@ -478,6 +478,17 @@ _GATE_MIN_CONTIG_MS  = 150   # minimum CONTIGUOUS high-confidence speech run req
 _GATE_VAD_PROB       = 0.45  # Silero speech-probability threshold for the contiguous-run gate
 _FADE_MS             = 50    # linear fade-in/out applied to hotkey buffers, kills the
                              # press/release click transient before it can reach VAD or Whisper
+_GATE_HEAD_GRACE_CLICK_PAD_MS = 60
+                             # FIX (2026-07-10 hotkey word-loss investigation, "head grace"):
+                             # the start earcon (measured duration, see start_recording) plus
+                             # this fixed pad for the mechanical key-press click transient that
+                             # clusters right after it define a KNOWN, Samsara-generated noisy
+                             # span at the head of the hotkey buffer. _buffer_has_contiguous_
+                             # speech's head_grace_ms parameter tells the gate's scan not to let
+                             # a low reading inside that known span break a contiguous run of
+                             # real speech starting at or just past it. Does NOT touch/edit any
+                             # audio samples -- the earcon-span buffer-muting approach was
+                             # explicitly retracted; this only widens the gate's tolerance.
 
 
 def _get_pynput_command_key(button_name: str):
@@ -1525,6 +1536,7 @@ class DictationApp:
         self._command_executed_at = None
         
         self._hotkey_recording = False  # Suppress wake word transcription during hotkey recording
+        self._last_recording_earcon_ms = 0.0  # head-grace bookkeeping, see start_recording
         
         # Dictation mode tracking (for wake word dictation)
         self.dictation_mode = None  # None, 'dictate', 'short_dictate', 'long_dictate'
@@ -5222,7 +5234,8 @@ class DictationApp:
 
     def _buffer_has_contiguous_speech(self, audio, src_rate,
                                        min_ms=_GATE_MIN_CONTIG_MS,
-                                       prob_threshold=_GATE_VAD_PROB):
+                                       prob_threshold=_GATE_VAD_PROB,
+                                       head_grace_ms: float = 0.0):
         """True if `audio` contains a CONTIGUOUS run of >= min_ms high-confidence speech.
 
         Unlike _vad_is_speech (which early-exits on the first speech-probable
@@ -5236,18 +5249,37 @@ class DictationApp:
         model). Falls back to _zcr_energy_contiguous_speech (Fix 5) if Silero
         is unavailable. Fails OPEN (returns True) if neither can run --
         eating real speech is worse than letting a rare beep through.
+
+        FIX 2 (2026-07-10 hotkey word-loss investigation): the shared lock
+        is now held for the ENTIRE scan (reset + every window), not
+        per-window. A scan is a pure function of `audio` -- unaffected by
+        any concurrent caller (e.g. WakeConsumer's _vad_is_speech on
+        another thread) interleaving between windows. Previously the
+        per-window lock let a concurrent caller run BETWEEN two windows of
+        this loop and corrupt Silero's recurrent hidden state mid-scan --
+        the confirmed root cause of gate readings as low as 672ms max-
+        contiguous on a provably ~2.8s-continuous buffer (commit 0e837ba
+        investigation). Chose scan-long locking over a second dedicated
+        Silero instance: FIX 1 already eliminates the common-case
+        contention entirely (WakeConsumer is fully deaf during a plain
+        hotkey recording), so the only remaining contention is the rare
+        toggle-command-mode-held-during-a-hotkey-press edge case, where a
+        brief block (bounded by this scan's short duration, buffers this
+        short are capped at _GATE_MAX_BUFFER_S=8s) is an acceptable
+        trade-off against a second model's memory/load cost.
+
+        head_grace_ms ("head grace"): treats a low reading inside the
+        first head_grace_ms of the buffer as NEUTRAL rather than
+        contiguity-breaking -- it neither resets an accumulating run nor
+        fabricates one. This is for a KNOWN, Samsara-generated noisy span
+        (start earcon + key-click transient) at the head of hotkey
+        buffers; it never touches/edits any audio sample (the earcon-span
+        buffer-muting approach was explicitly retracted). A window that
+        DOES score above threshold inside the grace span still counts
+        normally toward the run.
         """
         if not self._vad_available or self._vad_model is None:
             return self._zcr_energy_contiguous_speech(audio, src_rate, min_ms=min_ms)
-
-        # Silero is recurrent -- hidden state carried over from whatever ran
-        # before this gate (wake-word listening, continuous mode, a prior
-        # gate call) contaminates the first frames' probabilities, producing
-        # both false PASSes (leaking hallucinations) and false SKIPs (eating
-        # real speech). Reset before this gate's own frame loop starts, so
-        # every gate run gets a clean-slate Silero state. Reuses the
-        # existing lock/exception-safe helper rather than duplicating it.
-        self._vad_reset()
 
         chunk_16k = resample_audio(audio, src_rate, 16000)
         if chunk_16k.ndim > 1:
@@ -5256,15 +5288,28 @@ class DictationApp:
         window_size = 512
         frame_ms = window_size / 16000 * 1000.0  # 32ms per Silero frame
         min_contig_frames = max(1, int(min_ms / frame_ms))
+        grace_frames = max(0, int(round(head_grace_ms / frame_ms)))
 
         contig = 0
         best_contig = 0
-        for start in range(0, len(chunk_16k) - window_size + 1, window_size):
-            window = chunk_16k[start:start + window_size]
-            tensor = torch.from_numpy(window).float().unsqueeze(0)
-            if tensor.shape != (1, 512):
-                continue
-            with self._vad_lock:
+        with self._vad_lock:
+            # Silero is recurrent -- hidden state carried over from
+            # whatever ran before this gate (wake-word listening,
+            # continuous mode, a prior gate call) contaminates the first
+            # frames' probabilities. Reset in the SAME critical section as
+            # the scan below -- not a separate lock acquire/release pair
+            # (the old _vad_reset() call) -- so no concurrent caller can
+            # run between the reset and the first window.
+            try:
+                self._vad_model.reset_states()
+            except Exception as e:
+                logger.exception(f"[VAD] reset_states failed at gate scan start: {e}")
+
+            for idx, start in enumerate(range(0, len(chunk_16k) - window_size + 1, window_size)):
+                window = chunk_16k[start:start + window_size]
+                tensor = torch.from_numpy(window).float().unsqueeze(0)
+                if tensor.shape != (1, 512):
+                    continue
                 with torch.no_grad():
                     try:
                         speech_prob = self._vad_model(tensor, 16000).item()
@@ -5273,11 +5318,13 @@ class DictationApp:
                         self._vad_model.reset_states()
                         contig = 0
                         continue
-            if speech_prob > prob_threshold:
-                contig += 1
-                best_contig = max(best_contig, contig)
-            else:
-                contig = 0
+                if speech_prob > prob_threshold:
+                    contig += 1
+                    best_contig = max(best_contig, contig)
+                elif idx < grace_frames:
+                    pass  # head grace: low reading in the known noisy span -- neutral, not a break
+                else:
+                    contig = 0
 
         passed = best_contig >= min_contig_frames
         if passed:
@@ -5285,8 +5332,9 @@ class DictationApp:
             # invisible (only SKIP is logged today), so there's no ground
             # truth for why a given buffer reached Whisper.
             logging.getLogger("Samsara").debug(
-                "[GATE] pass: max contiguous speech %dms (buffer %.1fs)",
+                "[GATE] pass: max contiguous speech %dms (buffer %.1fs)%s",
                 round(best_contig * frame_ms), len(audio) / src_rate,
+                f", head_grace={head_grace_ms:.0f}ms" if head_grace_ms > 0 else "",
             )
         return passed
 
@@ -6956,8 +7004,20 @@ class DictationApp:
             logger.debug("[HOTKEY] start_recording ignored — stop still in flight")
             return
 
-        # Suppress wake word processing during hotkey recording
+        # Suppress wake word processing during hotkey recording -- FIX 1
+        # (2026-07-10 hotkey word-loss investigation): WakeConsumer now goes
+        # fully deaf on the very next poll frame (see wake_consumer.py's
+        # _process_frame), but any utterance it was ALREADY mid-accumulating
+        # right up to this instant would otherwise sit frozen and stale
+        # until this flag clears -- discard it now rather than risk it
+        # being flushed later. No-ops harmlessly if toggle-command-mode/
+        # AI-command-mode owns the in-progress utterance instead.
         self._hotkey_recording = True
+        if self._wake_consumer is not None:
+            try:
+                self._wake_consumer.discard_stale_wake_utterance()
+            except Exception as e:
+                logger.debug(f"[HOTKEY] discard_stale_wake_utterance failed: {e}")
 
         # Caller-forced streaming mode wins; otherwise fall back to the
         # config + 'hold' check. Streaming-mode in toggle/continuous is
@@ -6968,8 +7028,19 @@ class DictationApp:
 
         # Play start sound before opening capture.
         # Skipped for command mode which manages its own debounced 200ms earcon.
+        # Head-grace bookkeeping (2026-07-10 hotkey word-loss investigation):
+        # record the earcon's measured duration when it actually plays, so
+        # the hotkey gate call in stop_recording() can grant a grace span
+        # covering it (see _GATE_HEAD_GRACE_CLICK_PAD_MS). Reset to 0 first
+        # so a recording with play_earcon=False (e.g. command mode) never
+        # inherits a stale value from a previous hotkey press.
+        self._last_recording_earcon_ms = 0.0
         if play_earcon:
             self.play_sound("start", use_winsound=True)
+            _start_earcon = self._sound_cache.get('start')
+            if (_start_earcon is not None and self.config.get('audio_feedback', True)
+                    and self.config.get('sound_volume', 0.5) > 0):
+                self._last_recording_earcon_ms = len(_start_earcon) / self._sound_stream_sr * 1000.0
             time.sleep(0.15)  # Brief pause for sound to start
 
         if not streaming:
@@ -7104,9 +7175,15 @@ class DictationApp:
                 # short, near-silent buffers. Buffers longer than
                 # _GATE_MAX_BUFFER_S bypass the gate entirely -- real
                 # dictation must never pay VAD latency or risk being gated.
+                # Head grace (2026-07-10): covers the start earcon (measured
+                # duration, 0 if none played this recording) plus a fixed
+                # pad for the mechanical key-click transient -- see
+                # _GATE_HEAD_GRACE_CLICK_PAD_MS.
+                _head_grace_ms = self._last_recording_earcon_ms + _GATE_HEAD_GRACE_CLICK_PAD_MS
                 if audio_duration <= _GATE_MAX_BUFFER_S and not self._buffer_has_contiguous_speech(
                     audio_faded, self.model_rate,
                     min_ms=_GATE_MIN_CONTIG_MS, prob_threshold=_GATE_VAD_PROB,
+                    head_grace_ms=_head_grace_ms,
                 ):
                     logger.debug(f"[GATE] No contiguous speech in short buffer "
                           f"({audio_duration:.2f}s) — skipping")
