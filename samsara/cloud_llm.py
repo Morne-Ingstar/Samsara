@@ -42,6 +42,44 @@ def _get_provider_config(app):
     return provider, base_url, model
 
 
+def _send_internal(system_prompt, user_message, app, timeout=30, messages=None):
+    """Shared implementation for send()/send_ex(). Returns
+    (text_or_None, error_kind, error_message): error_kind is None on
+    success (error_message is also None then), 'timeout' for a request
+    timeout, or 'error' for anything else (missing API key, connection
+    failure, HTTP error, ...). error_message is the human-readable detail
+    used to build send()'s "Error: ..." string -- never includes the
+    "Error: " prefix itself, so both send() and send_ex() derive their
+    return value from the exact same classification.
+    """
+    cfg = _get_config(app)
+    api_key = cfg.get("api_key", "")
+    if not api_key:
+        return None, "error", "No API key configured for cloud LLM."
+
+    provider, base_url, model = _get_provider_config(app)
+    timeout = cfg.get("timeout_seconds", timeout)
+    max_tokens = cfg.get("max_tokens", 300)
+
+    try:
+        if provider == "anthropic":
+            text = _send_anthropic(base_url, api_key, model, system_prompt,
+                                   user_message, timeout, max_tokens,
+                                   messages=messages)
+        else:
+            text = _send_openai_compatible(base_url, api_key, model,
+                                           system_prompt, user_message,
+                                           timeout, max_tokens,
+                                           messages=messages)
+        return text, None, None
+    except requests.exceptions.ConnectionError:
+        return None, "error", "Could not connect to the cloud LLM provider."
+    except requests.exceptions.Timeout:
+        return None, "timeout", f"Cloud LLM request timed out after {timeout}s."
+    except Exception as e:
+        return None, "error", f"Cloud LLM request failed: {e}"
+
+
 def send(system_prompt, user_message, app, timeout=30, messages=None):
     """
     Send a request to the configured cloud LLM.
@@ -56,31 +94,29 @@ def send(system_prompt, user_message, app, timeout=30, messages=None):
     - OpenAI-compatible (DeepSeek, OpenAI): POST /chat/completions
     - Anthropic: POST /messages (different request/response shape)
     """
-    cfg = _get_config(app)
-    api_key = cfg.get("api_key", "")
-    if not api_key:
-        return "Error: No API key configured for cloud LLM."
+    text, error_kind, error_message = _send_internal(
+        system_prompt, user_message, app, timeout=timeout, messages=messages,
+    )
+    if error_kind is not None:
+        return f"Error: {error_message}"
+    return text
 
-    provider, base_url, model = _get_provider_config(app)
-    timeout = cfg.get("timeout_seconds", timeout)
-    max_tokens = cfg.get("max_tokens", 300)
 
-    try:
-        if provider == "anthropic":
-            return _send_anthropic(base_url, api_key, model, system_prompt,
-                                   user_message, timeout, max_tokens,
-                                   messages=messages)
-        else:
-            return _send_openai_compatible(base_url, api_key, model,
-                                           system_prompt, user_message,
-                                           timeout, max_tokens,
-                                           messages=messages)
-    except requests.exceptions.ConnectionError:
-        return "Error: Could not connect to the cloud LLM provider."
-    except requests.exceptions.Timeout:
-        return f"Error: Cloud LLM request timed out after {timeout}s."
-    except Exception as e:
-        return f"Error: Cloud LLM request failed: {e}"
+def send_ex(system_prompt, user_message, app, timeout=30, messages=None):
+    """Structured variant of send(): returns (text_or_None, error_kind)
+    instead of encoding failure as an "Error: ..." string to substring-
+    match. error_kind is None on success, 'timeout' for a request timeout,
+    'error' for anything else. Same internals as send() (_send_internal)
+    -- callers that need to distinguish a timeout from other failures
+    without matching "timed out" in an error string should use this
+    instead (see samsara.smart_corrections._call_cloud). send() itself is
+    untouched -- other callers (ask_ollama, etc.) keep its exact existing
+    string-return contract.
+    """
+    text, error_kind, _error_message = _send_internal(
+        system_prompt, user_message, app, timeout=timeout, messages=messages,
+    )
+    return text, error_kind
 
 
 def _send_openai_compatible(base_url, api_key, model, system_prompt,

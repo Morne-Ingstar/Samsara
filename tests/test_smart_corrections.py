@@ -17,6 +17,7 @@ _ollama_reachable + cloud_llm.is_enabled.
 """
 
 import sys
+import time
 import types
 from pathlib import Path
 
@@ -349,6 +350,67 @@ class TestOllamaPayload:
 
 
 # ============================================================================
+# _call_cloud uses cloud_llm.send_ex's structured result (tribunal Fix 8) --
+# not a substring match on "timed out" in an "Error: ..." string.
+# ============================================================================
+
+class TestCallCloudUsesSendEx:
+    def test_success_passes_text_through_not_timeout(self, monkeypatch):
+        monkeypatch.setattr(
+            sc.cloud_llm, 'send_ex',
+            lambda system_prompt, text, app, timeout: ("corrected text", None),
+        )
+        app = _make_app()
+
+        raw, was_timeout = sc._call_cloud("some text", app, "system prompt", 6.0)
+
+        assert raw == "corrected text"
+        assert was_timeout is False
+
+    def test_timeout_error_kind_reports_was_timeout_true(self, monkeypatch):
+        monkeypatch.setattr(
+            sc.cloud_llm, 'send_ex',
+            lambda system_prompt, text, app, timeout: (None, "timeout"),
+        )
+        app = _make_app()
+
+        raw, was_timeout = sc._call_cloud("some text", app, "system prompt", 6.0)
+
+        assert raw is None
+        assert was_timeout is True
+
+    def test_generic_error_kind_reports_was_timeout_false(self, monkeypatch):
+        monkeypatch.setattr(
+            sc.cloud_llm, 'send_ex',
+            lambda system_prompt, text, app, timeout: (None, "error"),
+        )
+        app = _make_app()
+
+        raw, was_timeout = sc._call_cloud("some text", app, "system prompt", 6.0)
+
+        assert raw is None
+        assert was_timeout is False
+
+    def test_response_text_that_happens_to_contain_timed_out_is_not_misclassified(self, monkeypatch):
+        """Regression guard for the exact substring-match bug Fix 8
+        replaces: a real dictated/corrected sentence that happens to
+        contain the words "timed out" must never be misread as a timeout
+        just because send_ex reports success."""
+        monkeypatch.setattr(
+            sc.cloud_llm, 'send_ex',
+            lambda system_prompt, text, app, timeout: (
+                "The meeting timed out after an hour.", None,
+            ),
+        )
+        app = _make_app()
+
+        raw, was_timeout = sc._call_cloud("some text", app, "system prompt", 6.0)
+
+        assert raw == "The meeting timed out after an hour."
+        assert was_timeout is False
+
+
+# ============================================================================
 # warm_up() -- fire-and-forget, gated on backend=='ollama', never raises
 # ============================================================================
 
@@ -474,11 +536,6 @@ class TestFallbackNotice:
 # ============================================================================
 
 class TestSanitizeOutput:
-    def test_strips_markdown_fences(self):
-        raw = "```\nHello there, friend.\n```"
-        result = sc._sanitize_output(raw, "hello there friend")
-        assert result == "Hello there, friend."
-
     def test_strips_surrounding_quotes(self):
         raw = '"Hello there, friend."'
         result = sc._sanitize_output(raw, "hello there friend")
@@ -494,17 +551,25 @@ class TestSanitizeOutput:
         assert sc._sanitize_output("   ", "hello there friend") == "hello there friend"
         assert sc._sanitize_output(None, "hello there friend") == "hello there friend"
 
-    def test_word_count_deviation_over_40_percent_returns_original(self):
+    def test_word_count_deviation_over_15_percent_returns_original(self):
         original = "one two three four five"  # 5 words
         raw = "one two three four five six seven eight"  # 8 words -> 60% deviation
         result = sc._sanitize_output(raw, original)
         assert result == original
 
-    def test_word_count_deviation_within_40_percent_is_accepted(self):
-        original = "one two three four five"  # 5 words
-        raw = "one two three four five six seven"  # 7 words -> exactly 40%
+    def test_word_count_deviation_within_15_percent_is_accepted(self):
+        # 20 words -> +3 words is exactly 15%.
+        original = " ".join(f"w{i}" for i in range(20))
+        raw = original + " extra words here"  # 23 words -> exactly 15%
         result = sc._sanitize_output(raw, original)
         assert result == raw
+
+    def test_word_count_deviation_just_over_15_percent_is_rejected(self):
+        # 20 words -> +4 words is 20%, just over the boundary.
+        original = " ".join(f"w{i}" for i in range(20))
+        raw = original + " extra words here now"  # 24 words -> 20%
+        result = sc._sanitize_output(raw, original)
+        assert result == original
 
     def test_newline_collapse_when_original_has_none(self):
         original = "hello there friend"
@@ -525,18 +590,35 @@ class TestSanitizeOutput:
 # ============================================================================
 
 class TestThinkTagStripping:
-    def test_strips_closed_think_block(self):
+    """_strip_think_blocks/_strip_fences are kept as functions (tested
+    directly below, for other callers), but tribunal Fix 2 means
+    _sanitize_output no longer calls them destructively -- a <think> tag or
+    code fence present in the raw output but absent from the original is
+    now a REJECT signal (return original verbatim), not something to strip
+    and continue past. Stripping-and-continuing risked deleting real user
+    speech mixed in with the artifact."""
+
+    def test_closed_think_block_in_raw_not_in_original_rejects(self):
         raw = "<think>reasoning about the correction here</think>Corrected sentence."
         result = sc._sanitize_output(raw, "corrected sentence")
-        assert result == "Corrected sentence."
-        assert "<think>" not in result
+        assert result == "corrected sentence"
 
-    def test_strips_unclosed_think_block_falls_back_to_original(self):
+    def test_unclosed_think_block_rejects(self):
         raw = "<think>reasoning that got cut off mid-stream"
         result = sc._sanitize_output(raw, "original text here")
         assert result == "original text here"
 
-    def test_fake_backend_returning_think_wrapped_output(self, monkeypatch):
+    def test_think_tag_present_in_original_too_is_not_rejected_for_that_reason(self):
+        # The user's own dictation literally contained the substring
+        # "<think>" (e.g. reading code aloud) -- its presence in the output
+        # must not by itself trigger a reject. Same word count on both
+        # sides so only the artifact-gate behavior is under test here.
+        original = "say the tag <think> now"
+        raw = "Say the tag <think> now."
+        result = sc._sanitize_output(raw, original)
+        assert result == "Say the tag <think> now."
+
+    def test_fake_backend_returning_think_wrapped_output_rejects_end_to_end(self, monkeypatch):
         app = _make_app(smart_corrections={'enabled': True, 'min_words': 1, 'backend': 'ollama'})
         monkeypatch.setattr(sc, '_resolve_backend_detailed', lambda app: ('ollama', False, None))
         monkeypatch.setattr(
@@ -549,8 +631,34 @@ class TestThinkTagStripping:
 
         result = sc.smart_correct("there going too the store", app)
 
-        assert result == "Their going to the store."
-        assert "<think>" not in result
+        assert result == "there going too the store"
+
+    def test_strip_think_blocks_function_still_works_directly(self):
+        """Regression guard: the underlying helper itself is unchanged --
+        only _sanitize_output stopped calling it."""
+        raw = "<think>reasoning</think>Corrected sentence."
+        assert sc._strip_think_blocks(raw) == "Corrected sentence."
+
+
+class TestCodeFenceRejection:
+    def test_fence_in_raw_not_in_original_rejects(self):
+        raw = "```\nHello there, friend.\n```"
+        result = sc._sanitize_output(raw, "hello there friend")
+        assert result == "hello there friend"
+
+    def test_fence_present_in_original_too_is_not_rejected_for_that_reason(self):
+        # The user dictated something that literally included a code fence
+        # (e.g. reading a markdown snippet aloud) -- must not itself reject.
+        original = "wrap it in a fence like ``` for markdown"
+        raw = "Wrap it in a fence like ``` for markdown."
+        result = sc._sanitize_output(raw, original)
+        assert result == "Wrap it in a fence like ``` for markdown."
+
+    def test_strip_fences_function_still_works_directly(self):
+        """Regression guard: the underlying helper itself is unchanged --
+        only _sanitize_output stopped calling it."""
+        raw = "```\nHello there, friend.\n```"
+        assert sc._strip_fences(raw) == "Hello there, friend."
 
 
 # ============================================================================
@@ -583,6 +691,30 @@ class TestPunctuationFloor:
         result = sc._sanitize_output(good_correction, original)
 
         assert result == good_correction
+
+    def test_shrink_at_new_015_threshold_is_rejected_by_punct_floor(self):
+        # 20 words with a trailing period, corrected drops exactly 3 words
+        # (15% shrink, the new threshold) AND the period -- rejected by the
+        # punctuation floor itself (word_shrink <= threshold).
+        original = " ".join(f"w{i}" for i in range(19)) + " w19."
+        bad_correction = " ".join(f"w{i}" for i in range(17))  # 17 words, no period
+
+        result = sc._sanitize_output(bad_correction, original)
+
+        assert result == original
+
+    def test_shrink_just_over_015_threshold_still_rejected_by_deviation_gate(self):
+        # Fix 3 invariant: once shrink exceeds the punct-floor threshold
+        # (so the floor itself lets it through), the SAME shrink fraction
+        # is by construction also over _WORD_DEVIATION_LIMIT (equal
+        # thresholds) -- so the deviation gate catches it instead. Net
+        # result is unchanged (still rejected), just via the other gate.
+        original = " ".join(f"w{i}" for i in range(19)) + " w19."
+        bad_correction = " ".join(f"w{i}" for i in range(16))  # 16 words, no period (20% shrink)
+
+        result = sc._sanitize_output(bad_correction, original)
+
+        assert result == original
 
 
 # ============================================================================
@@ -627,8 +759,8 @@ class TestDisfluencyRepairPunctuationFloor:
 class TestDisfluencyRepairWordCountGates:
     _ORIGINAL = "one two three four five six seven eight nine ten"  # 10 words
 
-    def test_gate_off_shrink_over_40_percent_rejected(self):
-        # 50% shrink (5/10) -- over the default symmetric 40% limit.
+    def test_gate_off_shrink_over_15_percent_rejected(self):
+        # 50% shrink (5/10) -- over the default symmetric 15% limit.
         new_text = "one two three four five"
         result = sc._sanitize_output(new_text, self._ORIGINAL, repair_disfluencies=False)
         assert result == self._ORIGINAL
@@ -647,7 +779,7 @@ class TestDisfluencyRepairWordCountGates:
         assert result == self._ORIGINAL
 
     def test_growth_cap_unchanged_regardless_of_gate(self):
-        # 50% growth (15/10) exceeds the 40% growth cap whether the gate is
+        # 50% growth (15/10) exceeds the 15% growth cap whether the gate is
         # on or off -- disfluency repair only ever widens the SHRINK side.
         new_text = (
             "one two three four five six seven eight nine ten "
@@ -726,6 +858,19 @@ class TestLanguageAwarePrompt:
         assert "Deutsch" in prompt
         assert "Never translate." in prompt
 
+    def test_specific_language_wording_is_soft_not_forced(self):
+        """Tribunal Fix 5: the old wording ("The text is in {lang}. Correct
+        it in that language.") FORCES the configured language even when the
+        user actually spoke English -- softened to describe an expectation,
+        not an assertion, and to explicitly defer to whatever language the
+        text actually turns out to be."""
+        app = _make_app(language='es')
+        prompt = sc._build_system_prompt(app)
+        assert "The text is expected to be in Español. Correct it in " \
+               "whatever language it is actually in. Never translate." in prompt
+        # The old forcing wording must be gone.
+        assert "Correct it in that language." not in prompt
+
     def test_non_english_prompt_keeps_base_instructions(self):
         app = _make_app(language='ja')
         prompt = sc._build_system_prompt(app)
@@ -773,3 +918,231 @@ class TestTranslationGuardrail:
         result = sc.smart_correct(original_text, app)
 
         assert result == original_text
+
+
+# ============================================================================
+# Same-script translation guard (tribunal Fix 4) -- script_class() alone
+# only catches a script FLIP (e.g. CJK -> Latin, see TestTranslationGuardrail
+# above); es/fr/de/pt/it/nl -> English is invisible to it since both sides
+# are Latin script. looks_translated_to_english() closes that gap.
+# ============================================================================
+
+class TestSameScriptTranslationGuard:
+    _CASES = {
+        "es": ("el gato esta en la casa y no quiere salir",
+               "El gato está en la casa y no quiere salir.",
+               "The cat is in the house and does not want to leave."),
+        "fr": ("le chat est dans la maison et il ne veut pas sortir",
+               "Le chat est dans la maison et il ne veut pas sortir.",
+               "The cat is in the house and it does not want to go out."),
+        "de": ("die katze ist im haus und will nicht raus",
+               "Die Katze ist im Haus und will nicht raus.",
+               "The cat is in the house and does not want to go out."),
+        "pt": ("o gato esta na casa e nao quer sair",
+               "O gato está na casa e não quer sair.",
+               "The cat is in the house and does not want to leave."),
+        "it": ("il gatto e in casa e non vuole uscire",
+               "Il gatto è in casa e non vuole uscire.",
+               "The cat is in the house and does not want to go out."),
+        "nl": ("de kat is in het huis en wil niet naar buiten",
+               "De kat is in het huis en wil niet naar buiten.",
+               "The cat is in the house and does not want to go outside."),
+    }
+
+    @pytest.mark.parametrize("lang", ["es", "fr", "de", "pt", "it", "nl"])
+    def test_real_correction_in_configured_language_does_not_trip(self, lang):
+        """A real, legitimate homophone/punctuation correction that STAYS
+        in the configured language (e.g. real Spanish -> corrected
+        Spanish) must never be flagged as translated."""
+        original, correction, _translated = self._CASES[lang]
+        result = sc._sanitize_output(correction, original, lang=lang)
+        assert result == correction
+
+    @pytest.mark.parametrize("lang", ["es", "fr", "de", "pt", "it", "nl"])
+    def test_translation_to_english_is_rejected(self, lang):
+        original, _correction, translated = self._CASES[lang]
+        result = sc._sanitize_output(translated, original, lang=lang)
+        assert result == original
+
+    def test_default_lang_en_skips_the_guard_entirely(self):
+        # Default _sanitize_output(raw, original) call (no lang= passed)
+        # must not apply the guard -- confirms the "en" default is a
+        # genuine skip, not an accidental block on real corrections.
+        original, correction, _translated = self._CASES["es"]
+        result = sc._sanitize_output(correction, original)
+        assert result == correction
+
+    # Word-count-matched pair (0% deviation, no punctuation change) so a
+    # skip test isolates the language guard specifically -- not confounded
+    # by the unrelated word-count-deviation gate also rejecting the same
+    # translated text for its own reasons.
+    _MATCHED_ORIGINAL = "el gato esta en la casa"
+    _MATCHED_TRANSLATED = "The cat is in the house"
+
+    def test_auto_skips_the_guard(self):
+        # Even a full translation must pass through when lang="auto" --
+        # the guard is bounded to specific configured Latin-script codes.
+        result = sc._sanitize_output(self._MATCHED_TRANSLATED, self._MATCHED_ORIGINAL, lang="auto")
+        assert result == self._MATCHED_TRANSLATED
+
+    def test_non_latin_configured_language_skips_the_guard(self):
+        # "ja" isn't in SAME_SCRIPT_FUNCTION_WORDS -- must skip cleanly
+        # rather than raise, and the script-flip guard (TestTranslationGuardrail)
+        # is what actually catches CJK -> English, not this one.
+        result = sc._sanitize_output(self._MATCHED_TRANSLATED, self._MATCHED_ORIGINAL, lang="ja")
+        assert result == self._MATCHED_TRANSLATED
+
+    def test_smart_correct_threads_configured_language_through_end_to_end(self, monkeypatch):
+        original, _correction, translated = self._CASES["de"]
+        app = _make_app(
+            smart_corrections={'enabled': True, 'min_words': 1, 'backend': 'ollama'},
+            language='de',
+        )
+        monkeypatch.setattr(sc, '_resolve_backend_detailed', lambda app: ('ollama', False, None))
+        monkeypatch.setattr(
+            sc, '_call_ollama',
+            lambda text, app, system_prompt, timeout_s, model: (translated, False),
+        )
+
+        result = sc.smart_correct(original, app)
+
+        assert result == original
+
+
+# ============================================================================
+# Probe cache invalidation on call failure (tribunal Fix 6)
+# ============================================================================
+
+class TestProbeCacheInvalidation:
+    @pytest.fixture(autouse=True)
+    def _clean_caches(self):
+        sc._probe_cache.clear()
+        sc._last_known_reachable.clear()
+        yield
+        sc._probe_cache.clear()
+        sc._last_known_reachable.clear()
+
+    def test_timeout_invalidates_probe_cache_for_that_host(self, monkeypatch):
+        app = _make_app()
+        host = sc._ollama_host(app)
+        sc._probe_cache[host] = (time.monotonic(), True)  # stale "up"
+
+        def fake_post(url, json=None, timeout=None):
+            raise sc.requests.exceptions.Timeout("simulated")
+        monkeypatch.setattr(sc._session, 'post', fake_post)
+
+        sc._call_ollama("text", app, "system prompt", 6.0, "qwen2.5:3b")
+
+        assert host not in sc._probe_cache
+
+    def test_generic_failure_invalidates_probe_cache_for_that_host(self, monkeypatch):
+        app = _make_app()
+        host = sc._ollama_host(app)
+        sc._probe_cache[host] = (time.monotonic(), True)  # stale "up"
+
+        def fake_post(url, json=None, timeout=None):
+            raise ConnectionError("no server")
+        monkeypatch.setattr(sc._session, 'post', fake_post)
+
+        sc._call_ollama("text", app, "system prompt", 6.0, "qwen2.5:3b")
+
+        assert host not in sc._probe_cache
+
+    def test_successful_call_does_not_touch_probe_cache(self, monkeypatch):
+        app = _make_app()
+        host = sc._ollama_host(app)
+        sc._probe_cache[host] = (time.monotonic(), True)
+
+        monkeypatch.setattr(sc._session, 'post', lambda url, json=None, timeout=None: _FakeOllamaResponse())
+
+        sc._call_ollama("text", app, "system prompt", 6.0, "qwen2.5:3b")
+
+        assert host in sc._probe_cache  # untouched by success
+
+
+# ============================================================================
+# Per-outage privacy re-notify (tribunal Fix 7)
+# ============================================================================
+
+class _FakeProbeResponse:
+    def __init__(self, status_code):
+        self.status_code = status_code
+
+
+class TestPerOutageNotice:
+    @pytest.fixture(autouse=True)
+    def _clean_state(self, monkeypatch):
+        monkeypatch.setattr(sc, '_fallback_notice_shown', False)
+        sc._probe_cache.clear()
+        sc._last_known_reachable.clear()
+        yield
+        sc._probe_cache.clear()
+        sc._last_known_reachable.clear()
+
+    def test_recovery_probe_after_down_resets_notice_flag(self, monkeypatch):
+        app = _make_app()
+
+        monkeypatch.setattr(sc._session, 'get', lambda url, timeout=None: _FakeProbeResponse(500))
+        assert sc._ollama_reachable(app) is False
+        sc._fallback_notice_shown = True  # simulate the notice having fired during the outage
+
+        sc._probe_cache.pop(sc._ollama_host(app), None)  # force a fresh probe, not a TTL cache hit
+        monkeypatch.setattr(sc._session, 'get', lambda url, timeout=None: _FakeProbeResponse(200))
+        assert sc._ollama_reachable(app) is True
+
+        assert sc._fallback_notice_shown is False
+
+    def test_first_ever_probe_being_up_does_not_touch_the_flag(self, monkeypatch):
+        # No prior "down" observation for this host -- a first-ever "up"
+        # probe is not a recovery, so it must not reset anything.
+        app = _make_app()
+        sc._fallback_notice_shown = True
+        monkeypatch.setattr(sc._session, 'get', lambda url, timeout=None: _FakeProbeResponse(200))
+
+        sc._ollama_reachable(app)
+
+        assert sc._fallback_notice_shown is True
+
+    def test_staying_down_across_probes_does_not_reset(self, monkeypatch):
+        app = _make_app()
+        monkeypatch.setattr(sc._session, 'get', lambda url, timeout=None: _FakeProbeResponse(500))
+        assert sc._ollama_reachable(app) is False
+        sc._fallback_notice_shown = True
+
+        sc._probe_cache.pop(sc._ollama_host(app), None)  # force a second live probe
+        assert sc._ollama_reachable(app) is False
+
+        assert sc._fallback_notice_shown is True  # still down -- not a recovery
+
+    def test_end_to_end_down_notice_up_down_second_notice(self, monkeypatch):
+        """Full outage/recovery/outage cycle through smart_correct() itself
+        -- exactly the tribunal's stated net behavior: each distinct
+        local-AI outage produces exactly one notice."""
+        notified = []
+        nm = types.SimpleNamespace(
+            show_notification=lambda title, msg, duration=5: notified.append(msg)
+        )
+        app = _make_app(smart_corrections={
+            'enabled': True, 'min_words': 1, 'backend': 'auto', 'allow_cloud_fallback': False,
+        })
+        app.notification_manager = nm
+        host = sc._ollama_host(app)
+
+        # Phase 1: Ollama down -- smart_correct notifies once.
+        monkeypatch.setattr(sc._session, 'get', lambda url, timeout=None: _FakeProbeResponse(500))
+        sc.smart_correct("first outage call", app)
+        assert len(notified) == 1
+
+        # Phase 2: Ollama recovers (force a fresh probe past the TTL cache).
+        sc._probe_cache.pop(host, None)
+        monkeypatch.setattr(sc._session, 'get', lambda url, timeout=None: _FakeProbeResponse(200))
+        assert sc._ollama_reachable(app) is True
+        assert sc._fallback_notice_shown is False
+
+        # Phase 3: Ollama goes down again -- must notify a SECOND time,
+        # not stay silent because the flag already fired once before.
+        sc._probe_cache.pop(host, None)
+        monkeypatch.setattr(sc._session, 'get', lambda url, timeout=None: _FakeProbeResponse(500))
+        sc.smart_correct("second outage call", app)
+
+        assert len(notified) == 2
