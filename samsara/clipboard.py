@@ -360,6 +360,22 @@ def _restore_clipboard_impl(saved: Dict[int, bytes]) -> bool:
     return restored_count > 0 or len(saved) == 0
 
 
+def copy_text(text: str) -> bool:
+    """Copy `text` to the clipboard, replacing its current contents (no
+    save/restore -- this is for user-facing "copy result" actions, not a
+    paste-then-restore dictation flow). Never raises; returns False on
+    failure so callers can fall back to their own status messaging."""
+    if not HAS_PYPERCLIP:
+        _log_error("pyperclip not available")
+        return False
+    try:
+        pyperclip.copy(text)
+        return True
+    except Exception as e:
+        _log_error("copy_text failed", e)
+        return False
+
+
 def paste_with_preservation(text: str, paste_delay: float = CLIPBOARD_PASTE_DELAY, restore_delay: float = CLIPBOARD_RESTORE_DELAY) -> bool:
     """
     Paste text via clipboard while preserving original clipboard content.

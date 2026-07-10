@@ -80,6 +80,10 @@ def _make_fake_app(vad_model):
         dictation.DictationApp._buffer_has_contiguous_speech, fake)
     fake._zcr_energy_contiguous_speech = types.MethodType(
         dictation.DictationApp._zcr_energy_contiguous_speech, fake)
+    # Fix 2: _buffer_has_contiguous_speech now calls self._vad_reset() at
+    # the top of its Silero path -- bind the real method (not a no-op
+    # stub) so this fake actually exercises the reset-before-gate call.
+    fake._vad_reset = types.MethodType(dictation.DictationApp._vad_reset, fake)
     return fake
 
 
@@ -99,6 +103,32 @@ def _white_noise_buffer(duration_s=2.0, amplitude=0.03):
     n = int(duration_s * SAMPLE_RATE)
     rng = np.random.default_rng(1)
     return (rng.standard_normal(n).astype(np.float32) * amplitude)
+
+
+def _majority_speech_buffer(duration_s=1.0, speech_frac=0.75, tone_hz=300, tone_amp=0.3):
+    """`speech_frac` of the buffer (contiguous, at the start) is a tone whose
+    zero-crossing rate lands inside the ZCR fallback's speech band (~0.0375
+    for 300Hz @ 16kHz -- well inside (zcr_low=0.02, zcr_high=0.30)); the
+    rest is near-silent low-amplitude noise. A pure tone is fine here
+    (unlike the Silero cases above) -- the ZCR/energy fallback is plain
+    signal processing, not a neural model that would reject a tone's lack
+    of speech harmonics.
+
+    Deliberately majority-speech (>50%): this is the exact shape that
+    exposed the median-based noise-floor bug (Fix 3) -- when speech is
+    more than half the buffer, the median IS speech-level energy, so
+    threshold = median*2.0 becomes ~2x the speech itself and the speech
+    frames fail their own gate.
+    """
+    n = int(duration_s * SAMPLE_RATE)
+    t = np.arange(n, dtype=np.float32) / SAMPLE_RATE
+    tone = (tone_amp * np.sin(2 * np.pi * tone_hz * t)).astype(np.float32)
+    speech_n = int(n * speech_frac)
+    audio = np.zeros(n, dtype=np.float32)
+    audio[:speech_n] = tone[:speech_n]
+    rng = np.random.default_rng(2)
+    audio[speech_n:] = (rng.standard_normal(n - speech_n).astype(np.float32) * 0.001)
+    return audio
 
 
 def run_gate_cases(label, app):
@@ -126,6 +156,38 @@ def run_gate_cases(label, app):
     else:
         total += 1
         print(f"  [SKIP] real speech clip: {READY_CUE_WAV} not found")
+
+    return passed, total
+
+
+def run_zcr_percentile_fix_cases():
+    """Fix 3: the ZCR fallback's noise-floor estimate must be the 10th
+    percentile of frame energy, not the median -- exercises
+    _zcr_energy_contiguous_speech directly (not through the Silero-first
+    _buffer_has_contiguous_speech dispatcher, since this is specifically
+    about the fallback's own energy-threshold math)."""
+    print("\n--- Fix 3: ZCR fallback noise-floor percentile (majority-speech buffers) ---")
+    app = _make_fake_app(None)
+    passed = 0
+    total = 0
+
+    def check(name, expected, audio):
+        nonlocal passed, total
+        total += 1
+        actual = app._zcr_energy_contiguous_speech(audio, SAMPLE_RATE)
+        ok = actual == expected
+        passed += int(ok)
+        status = "PASS" if ok else "FAIL"
+        print(f"  [{status}] {name}: expected={expected} actual={actual}")
+
+    check(
+        "75% speech-energy + 25% quiet frames -- majority-speech buffer must PASS",
+        True, _majority_speech_buffer(speech_frac=0.75),
+    )
+    check(
+        "all-quiet buffer (1s zeros) -- must FAIL",
+        False, np.zeros(int(1.0 * SAMPLE_RATE), dtype=np.float32),
+    )
 
     return passed, total
 
@@ -182,6 +244,11 @@ def main():
     # own direct verification.
     p, t = run_gate_cases("_buffer_has_contiguous_speech via ZCR+energy fallback (forced)",
                            _make_fake_app(None))
+    total_passed += p
+    total_checks += t
+    all_passed &= (p == t)
+
+    p, t = run_zcr_percentile_fix_cases()
     total_passed += p
     total_checks += t
     all_passed &= (p == t)

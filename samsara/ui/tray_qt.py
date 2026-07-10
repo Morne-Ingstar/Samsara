@@ -228,6 +228,8 @@ class SamsaraTrayQt(QObject):
             lambda: app.open_dictation_diagnostics())
         tools_sub.addAction("Benchmark Review").triggered.connect(
             lambda: app.open_benchmark_review())
+        tools_sub.addAction("Correct Last Dictation").triggered.connect(
+            lambda: app.open_correction_capture())
         tools_sub.addAction("View Live Log").triggered.connect(
             lambda: app.open_log_viewer())
         tools_sub.addAction("Stress Test Wizard").triggered.connect(

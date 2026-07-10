@@ -586,6 +586,100 @@ class TestPunctuationFloor:
 
 
 # ============================================================================
+# Disfluency repair mode (repair_disfluencies) -- both gate states
+# ============================================================================
+
+class TestDisfluencyRepairSystemPrompt:
+    def test_disabled_by_default_prompt_unchanged(self):
+        app = _make_app(language='en')
+        assert sc._build_system_prompt(app) == sc.SYSTEM_PROMPT
+        assert sc._DISFLUENCY_INSTRUCTIONS not in sc._build_system_prompt(app)
+
+    def test_enabled_appends_disfluency_instructions(self):
+        app = _make_app(smart_corrections={'repair_disfluencies': True}, language='en')
+        prompt = sc._build_system_prompt(app)
+        assert sc._DISFLUENCY_INSTRUCTIONS in prompt
+        assert "filler words" in prompt
+        assert "self-corrections" in prompt
+
+
+class TestDisfluencyRepairPunctuationFloor:
+    """The llama failure signature (TestPunctuationFloor) must still be
+    rejected when the gate is off (default), and pass through when on."""
+
+    def test_gate_off_still_rejects_llama_failure_signature(self):
+        original = "OK, I think it's fine."
+        bad_correction = "OK I think its fine."
+
+        result = sc._sanitize_output(bad_correction, original, repair_disfluencies=False)
+
+        assert result == original
+
+    def test_gate_on_suspends_punctuation_floor(self):
+        original = "OK, I think it's fine."
+        bad_correction = "OK I think its fine."
+
+        result = sc._sanitize_output(bad_correction, original, repair_disfluencies=True)
+
+        assert result == bad_correction
+
+
+class TestDisfluencyRepairWordCountGates:
+    _ORIGINAL = "one two three four five six seven eight nine ten"  # 10 words
+
+    def test_gate_off_shrink_over_40_percent_rejected(self):
+        # 50% shrink (5/10) -- over the default symmetric 40% limit.
+        new_text = "one two three four five"
+        result = sc._sanitize_output(new_text, self._ORIGINAL, repair_disfluencies=False)
+        assert result == self._ORIGINAL
+
+    def test_gate_on_shrink_up_to_50_percent_accepted(self):
+        # Same 50% shrink -- accepted once the gate widens the shrink
+        # allowance (fillers/self-corrections/fragments legitimately drop
+        # this many words).
+        new_text = "one two three four five"
+        result = sc._sanitize_output(new_text, self._ORIGINAL, repair_disfluencies=True)
+        assert result == new_text
+
+    def test_gate_on_shrink_beyond_50_percent_still_rejected(self):
+        new_text = "one two three four"  # 60% shrink
+        result = sc._sanitize_output(new_text, self._ORIGINAL, repair_disfluencies=True)
+        assert result == self._ORIGINAL
+
+    def test_growth_cap_unchanged_regardless_of_gate(self):
+        # 50% growth (15/10) exceeds the 40% growth cap whether the gate is
+        # on or off -- disfluency repair only ever widens the SHRINK side.
+        new_text = (
+            "one two three four five six seven eight nine ten "
+            "eleven twelve thirteen fourteen fifteen"
+        )
+        assert sc._sanitize_output(new_text, self._ORIGINAL, repair_disfluencies=False) == self._ORIGINAL
+        assert sc._sanitize_output(new_text, self._ORIGINAL, repair_disfluencies=True) == self._ORIGINAL
+
+
+class TestDisfluencyRepairEndToEnd:
+    def test_smart_correct_passes_gate_through_to_sanitizer(self, monkeypatch):
+        """Functional check that smart_correct() reads repair_disfluencies
+        from config and threads it through to _sanitize_output, using the
+        same fake-backend pattern as TestThinkTagStripping."""
+        app = _make_app(smart_corrections={
+            'enabled': True, 'min_words': 1, 'backend': 'ollama',
+            'repair_disfluencies': True,
+        })
+        monkeypatch.setattr(sc, '_resolve_backend_detailed', lambda app: ('ollama', False, None))
+        monkeypatch.setattr(
+            sc, '_call_ollama',
+            lambda text, app, system_prompt, timeout_s, model: ("OK I think its fine.", False),
+        )
+
+        result = sc.smart_correct("OK, I think it's fine.", app)
+
+        # Would be reverted to the original under the default punctuation
+        # floor -- confirms the gate reached the sanitizer.
+        assert result == "OK I think its fine."
+
+
+# ============================================================================
 # System prompt -- few-shot examples + new permissions (Task 6)
 # ============================================================================
 

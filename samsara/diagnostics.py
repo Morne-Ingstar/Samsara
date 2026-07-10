@@ -51,6 +51,12 @@ class DiagRecord:
     smart_changed: bool = False
     language: str = ""              # configured code, or "auto->{detected}"
     verdicts: list = field(default_factory=list)
+    # outcome/path: FM3 (blank-transcription) diagnostics. Defaulted so
+    # every pre-existing call site (a normal, non-empty result) still
+    # validates unchanged -- only the new empty/gated call sites in
+    # dictation.py pass non-default values.
+    outcome: str = "ok"              # "ok" | "empty" | "gated"
+    path: str = ""                   # "long" | "short" | "" (n/a, e.g. gated)
 
 
 # ---------------------------------------------------------------------------
@@ -91,7 +97,20 @@ def classify(rec: DiagRecord) -> list:
     if rec.t_total_ms > 3000:
         verdicts.append("Slow end-to-end (>3s)")
 
-    if not rec.text and rec.audio_s > 2:
+    # FM3 (blank-transcription) outcomes are more specific than the
+    # generic "no output" rule below, and the CRITICAL disambiguator is
+    # segment_count (n_segments): zero segments means the model returned
+    # nothing at all, non-zero means segments came back but were
+    # suppressed/blank (hallucination guard, native no_speech/log_prob
+    # thresholds) -- never conflate the two.
+    if rec.outcome == "gated":
+        verdicts.append("Gated upstream — no contiguous speech detected before transcription")
+    elif rec.outcome == "empty" and rec.n_segments == 0:
+        verdicts.append("Empty result — model returned zero segments")
+    elif rec.outcome == "empty":
+        verdicts.append("Empty result — segments present but text suppressed/blank")
+
+    if not rec.text and rec.audio_s > 2 and rec.outcome == "ok":
         verdicts.append("Speech produced no output")
 
     return verdicts if verdicts else ["OK"]

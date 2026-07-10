@@ -8,7 +8,7 @@ layout/paint to settle, and saves a PNG.
 Usage:
     F:\\envs\\sami\\python.exe tools\\wizard_screenshots.py
 
-Output: C:\\Temp\\samsara_ui_proof\\*.png
+Output: C:\\Users\\Morne\\Documents\\Claude\\ui_proof\\*.png
 """
 from __future__ import annotations
 
@@ -21,7 +21,7 @@ if str(_REPO_ROOT) not in sys.path:
 
 from PySide6.QtWidgets import QApplication
 
-OUT_DIR = Path(r"C:\Temp\samsara_ui_proof")
+OUT_DIR = Path(r"C:\Users\Morne\Documents\Claude\ui_proof")
 
 
 class _FakeApp:
@@ -65,9 +65,12 @@ def main() -> int:
         print("FAILED: splash window")
         traceback.print_exc()
 
-    # ---- Tutorial window: step 1 (welcome), step 2 (dictation), step 4
-    # (done -- the checklist/guide-cards page whose fixed button geometry
-    # used to clip against the theme's font metrics) -------------------------
+    # ---- Tutorial window: step 1 (welcome -- Back disabled, no prior
+    # step), step 2 (dictation -- mid-tutorial, Back now enabled next to
+    # Next), step 3 (command -- also captured to show Back survives a
+    # second forward step), step 4 (done -- the checklist/guide-cards page
+    # whose fixed button geometry used to clip against the theme's font
+    # metrics) -----------------------------------------------------------
     try:
         from samsara.ui.tutorial_qt import TutorialWindow
 
@@ -77,6 +80,10 @@ def main() -> int:
         tut._go_next()  # welcome -> dictation
         _settle_and_grab(app, tut, OUT_DIR / "tutorial_step2.png")
         tut._go_next()  # dictation -> command
+        # Mid-tutorial step demonstrating the new Back button: enabled,
+        # placed next to Next (Back then Next), same secondary styling as
+        # "Skip this step" -- see samsara/ui/tutorial_qt.py's _go_back.
+        _settle_and_grab(app, tut, OUT_DIR / "tutorial_step3_back_button.png")
         tut._go_next()  # command -> done
         _settle_and_grab(app, tut, OUT_DIR / "tutorial_step4_done.png")
         tut.close()

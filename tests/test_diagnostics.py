@@ -126,6 +126,70 @@ class TestClassify:
 
 
 # ============================================================================
+# FM3 (blank-transcription) diagnostics: outcome / path / n_segments
+#
+# Prior behavior: an empty hotkey transcription emitted NO diagnostics
+# record at all -- the exact failure mode most needing a trail. These
+# fields make it a first-class, distinctly-classified event.
+# ============================================================================
+
+class TestEmptyAndGatedOutcomes:
+    def test_defaults_are_backward_compatible(self):
+        """A record built the old way (no outcome/path kwargs) must still
+        validate with safe defaults -- existing normal-result call sites
+        are untouched by this change."""
+        rec = _rec()
+        assert rec.outcome == "ok"
+        assert rec.path == ""
+
+    def test_empty_outcome_zero_segments_recorded_and_classified(self):
+        """Zero segments = the model returned nothing at all."""
+        record(_rec(outcome="empty", path="long", n_segments=0, text=""))
+
+        stored = recent()[0]
+        assert stored.outcome == "empty"
+        assert stored.path == "long"
+        assert stored.n_segments == 0
+        assert "Empty result — model returned zero segments" in stored.verdicts
+
+    def test_empty_outcome_nonzero_segments_recorded_and_classified(self):
+        """Non-zero segments with empty text = segments came back but were
+        suppressed/blank (hallucination guard or native no_speech/log_prob
+        thresholds) -- must be distinguishable from the zero-segments case."""
+        record(_rec(outcome="empty", path="short", n_segments=3, text=""))
+
+        stored = recent()[0]
+        assert stored.outcome == "empty"
+        assert stored.path == "short"
+        assert stored.n_segments == 3
+        assert "Empty result — segments present but text suppressed/blank" in stored.verdicts
+
+    def test_gated_outcome_recorded_and_classified_separately_from_empty(self):
+        """A buffer gated by _buffer_has_contiguous_speech never reached the
+        model -- outcome must be "gated", never conflated with "empty"."""
+        record(_rec(outcome="gated", path="", n_segments=0, text=""))
+
+        stored = recent()[0]
+        assert stored.outcome == "gated"
+        assert stored.outcome != "empty"
+        assert "Gated upstream — no contiguous speech detected before transcription" in stored.verdicts
+
+    def test_generic_no_output_verdict_does_not_double_fire_for_empty_outcome(self):
+        # The pre-existing generic rule would otherwise also fire here
+        # (text="" and audio_s>2) -- the more specific FM3 verdict must be
+        # the only one describing the empty result.
+        verdicts = classify(_rec(outcome="empty", n_segments=0, text="", audio_s=5.0))
+        assert "Speech produced no output" not in verdicts
+        assert "Empty result — model returned zero segments" in verdicts
+
+    def test_generic_no_output_verdict_unaffected_for_ok_outcome(self):
+        # Regression guard: an "ok"-outcome record (any other empty-text
+        # call site that isn't FM3-tagged) keeps the original behavior.
+        verdicts = classify(_rec(text="", audio_s=5.0))
+        assert "Speech produced no output" in verdicts
+
+
+# ============================================================================
 # Ring buffer
 # ============================================================================
 

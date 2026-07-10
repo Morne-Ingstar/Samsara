@@ -385,6 +385,12 @@ SETTINGS_SCHEMA = {
     "smart_corrections.modes.hotkey":    {"type": "bool", "default": True,  "tab": "advanced", "depends_on": "smart_corrections.enabled"},
     "smart_corrections.modes.wake":      {"type": "bool", "default": True,  "tab": "advanced", "depends_on": "smart_corrections.enabled"},
     "smart_corrections.modes.streaming": {"type": "bool", "default": False, "tab": "advanced", "depends_on": "smart_corrections.enabled"},
+    "smart_corrections.repair_disfluencies": {
+        "type": "bool",
+        "default": False,
+        "tab": "advanced",
+        "depends_on": "smart_corrections.enabled",
+    },
 
     # Dictation Diagnostics: per-utterance pipeline instrumentation viewer.
     "diagnostics.write_jsonl": {"type": "bool", "default": False, "tab": "advanced"},
@@ -399,6 +405,17 @@ SETTINGS_SCHEMA = {
         "default": 200,
         "tab": "advanced",
         "depends_on": "benchmark.collect_samples",
+    },
+
+    # Correction capture: hotkey-triggered "fix my last dictation" flow
+    # (samsara/correction_capture.py, samsara/ui/correction_capture_qt.py).
+    "correction_capture.max_edit_ratio": {
+        "type": "float",
+        "min": 0.1,
+        "max": 1.0,
+        "step": 0.05,
+        "default": 0.5,
+        "tab": "advanced",
     },
 
     # -------------------------------------------------------------------------
