@@ -29,6 +29,7 @@ import sys
 import tempfile
 import time
 import types
+import unicodedata
 import wave
 from pathlib import Path
 
@@ -107,9 +108,14 @@ def word_error_rate(reference: str, hypothesis: str) -> dict:
     wer is 0.0 when both are empty, 1.0 when the reference is empty but the
     hypothesis is not (the ratio is otherwise undefined for an empty
     reference).
+
+    Both strings are NFC-normalized before splitting so visually-identical
+    multilingual text encoded in different Unicode forms (e.g. a precomposed
+    "é" vs "e" + combining acute accent) compares equal instead of counting
+    as a spurious substitution.
     """
-    ref_words = reference.split()
-    hyp_words = hypothesis.split()
+    ref_words = unicodedata.normalize('NFC', reference).split()
+    hyp_words = unicodedata.normalize('NFC', hypothesis).split()
     sub, deletions, insertions = _levenshtein_ops(ref_words, hyp_words)
     n = len(ref_words)
     if n == 0:
