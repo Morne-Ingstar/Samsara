@@ -22,11 +22,20 @@ import re
 #   which is a meaningful comparison.
 # - `\bso\b(?=,\s)` etc.: comma-anchored so we don't disturb meaningful uses
 #   ("I'm so tired" stays; "so, anyway" becomes "anyway").
+# - `\byou know\b(?=,)`: comma-anchored 2026-07-10 -- was unanchored, which
+#   deleted the phrase from EVERY position in EVERY dictation regardless of
+#   filler-vs-meaningful use, including "you know what I mean" -> "What I
+#   mean." (root cause of a hotkey word-loss defect previously misattributed
+#   to audio/decode-parameter theories -- raw Whisper output was correct all
+#   along; this cleanup rule silently deleted it downstream). Now only
+#   "you know," with Whisper's own filler comma survives stripping, matching
+#   every other context-sensitive entry in this list and the module's own
+#   "err toward keeping a word" philosophy.
 FILLERS = [
     r'\bum\b',
     r'\buh\b',
     r'\blike\b(?=,)',
-    r'\byou know\b',
+    r'\byou know\b(?=,)',
     r'\bI mean\b(?=,)',
     r'\bbasically\b(?=,)',
     r'\bactually\b(?=,)',

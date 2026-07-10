@@ -3067,47 +3067,50 @@ class DictationApp:
         """Build model.transcribe() kwargs for the hotkey dictation path.
 
         Starts from get_transcription_params() (mode-based defaults) and
-        forces the hotkey-specific overrides: a clean per-press
-        conversation-context reset (no residual conditioning carried over
-        from a previous press -- see the "Gate and Reset" hallucination-
-        prevention architecture, module-level constants near the top of
-        this file). The vocabulary/initial_prompt from voice training is
-        still applied -- the clean-slate guarantee is about conversation
-        context (condition_on_previous_text), not vocabulary biasing. Used
-        by both the normal (<30s) and [LONG] branches of the hotkey
-        transcribe() closure -- they share this same dict, so this is the
-        single place that guarantee is enforced.
+        forces the hotkey-specific overrides: VAD disabled (the user
+        explicitly pressed the hotkey -- don't strip their speech), and a
+        clean per-press conversation-context reset (no residual conditioning
+        carried over from a previous press -- see the "Gate and Reset"
+        hallucination-prevention architecture, module-level constants near
+        the top of this file). The vocabulary/initial_prompt from voice
+        training is still applied -- the clean-slate guarantee is about
+        conversation context (condition_on_previous_text), not vocabulary
+        biasing. Used by both the normal (<30s) and [LONG] branches of the
+        hotkey transcribe() closure -- they share this same dict, so this is
+        the single place that guarantee is enforced.
 
-        vad_filter is now LEFT AT the mode default (True for balanced/
-        accurate/fast) instead of force-disabled -- reversed 2026-07-10 by
-        an A/B decode-parameter experiment (tools/transcribe_ab.py) run
-        against user-verified "you know what I mean" hotkey dumps that
-        transcribed as "i know what i mean" / hallucinated garbage. The
-        buffer itself was already proven intact (commit 9442536's trace);
-        with vad_filter=False, faster-whisper decoded the whole buffer
-        INCLUDING the ~1.5-1.8s prebuffer+start-earcon noise region
-        adjacent to the user's soft leading words. Flipping vad_filter to
-        True was the ONLY one of 5 tested variants that fixed the defect
-        WITHOUT touching initial_prompt (which audit-1 restored
-        specifically for hallucination suppression -- removing or
-        replacing it also "worked" in the A/B test but would trade away
-        that protection, so it was rejected as non-minimal). vad_filter=
-        True also brings the hotkey path into parity with the wake path
-        (process_wake_word_buffer), which has used the mode-default
-        vad_filter=True all along and never exhibited this defect --
-        faster-whisper's own VAD trims the leading silence/noise before
-        decoding, which is exactly the region the earcon/click sit in
-        (see samsara/audio_engine's _log_seam_diagnostics for the same
-        span, and _GATE_HEAD_GRACE_CLICK_PAD_MS for the gate-side
-        tolerance). The old "don't strip their speech" concern this
-        override existed for is addressed by vad_parameters' conservative
-        settings (500ms min_silence_duration, 200ms speech_pad) -- the
-        same values the wake path has always used for real dictation
-        without reported clipping. tests/test_transcription_params.py's
-        vad_filter lock was updated to match -- see that file for the
-        test-level documentation of this reversal.
+        vad_filter=False HISTORY (2026-07-10, flipped twice in one night --
+        read this before touching it again): originally force-disabled
+        (the setting you see now) from the click/bloop hallucination era,
+        on the theory that faster-whisper's own VAD could strip a user's
+        genuine speech right after the hotkey press. Commit 576f412
+        flipped it to True (mode default) based on an A/B decode-parameter
+        experiment (tools/transcribe_ab.py) against dumps of "you know
+        what I mean" transcribing as "i know what i mean"/garbage -- BUT
+        that experiment ran against Whisper "base" (transcribe_ab.py's
+        hardcoded model), not the production model, and the observed
+        defect turned out to be unrelated to decode parameters entirely:
+        samsara/cleanup.py's FILLERS list stripped r'\\byou know\\b'
+        UNANCHORED, deleting the phrase from every position in every
+        dictation regardless of vad_filter, downstream of Whisper. Fixed
+        there (comma-anchored, matching every other context-sensitive
+        filler in that list) instead. Re-running the same dumps confirms
+        the PRODUCTION model transcribes them correctly with vad_filter
+        True OR False -- the A/B result that justified the flip doesn't
+        replicate once the real (cleanup.py) cause is fixed, so this
+        reverts to the original force-False: smaller change surface, and
+        the theoretical clipping risk it guards against was never actually
+        disproven, only a different, unrelated bug was found and fixed.
+        tools/transcribe_ab.py now accepts --model/--device and defaults
+        to the live-config model rather than a hardcoded 'base', so this
+        specific model-mismatch confound can't recur silently.
+        tests/test_transcription_params.py's vad_filter lock was reverted
+        to match -- see that file for the test-level documentation.
         """
         transcribe_params = self.get_transcription_params()
+        # DISABLE faster-whisper's VAD for hotkey-triggered dictation.
+        # User explicitly pressed the hotkey — don't strip their speech.
+        transcribe_params['vad_filter'] = False
         # Force a clean slate on EVERY hotkey press. Conditioning on
         # tokens carried over from a previous press is what let
         # hallucinations escalate over a session -- each press must

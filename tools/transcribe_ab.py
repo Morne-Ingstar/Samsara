@@ -8,12 +8,31 @@ reconstruct the real, live initial_prompt (samsara.commands.CommandExecutor
 + samsara.ui.voice_training_qt.VoiceTrainingQt), so the experiment uses the
 EXACT prompt content the app actually sends, not an approximation.
 
+2026-07-10 POST-MORTEM: an earlier run of this tool against Whisper "base"
+(then hardcoded) found that flipping vad_filter=True "fixed" a word-loss
+defect on these dumps -- commit 576f412 applied that change to production.
+The A/B result was a confound: "base" is not the production model, and the
+REAL cause (samsara/cleanup.py stripping r'\byou know\b' unanchored,
+downstream of Whisper entirely) was unrelated to decode parameters. The
+production model transcribes the same audio correctly regardless of
+vad_filter. --model/--device were added specifically so this tool can no
+longer silently default to a non-production model -- it now reads the live
+config.json model_size unless overridden.
+
 Usage:
-    python tools/transcribe_ab.py <wav_path> [<wav_path> ...]
+    python tools/transcribe_ab.py [--model MODEL] [--device cpu|cuda] <wav_path> [<wav_path> ...]
+
+    --model   faster-whisper model size/name. Defaults to this repo's live
+              config.json "model_size" (the model actually running in
+              production) -- pass this explicitly to deliberately test a
+              different model, e.g. to reproduce an old "base"-only result.
+    --device  "cpu" or "cuda". Defaults to auto-detect (same logic
+              dictation.py uses: CUDA if ctranslate2 reports it supported,
+              else CPU).
 
 Loads each WAV (assumed 16kHz mono, matching DictationApp.model_rate and
-tools/stremio-unrelated debug dumps under ~/.samsara/debug/hotkey_*.wav),
-transcribes it 5 ways, and prints each variant's text.
+debug dumps under ~/.samsara/debug/hotkey_*.wav), transcribes it 5 ways,
+and prints each variant's text.
 
 Variants:
   1. exact hotkey params        (_build_hotkey_transcribe_params today)
@@ -22,6 +41,7 @@ Variants:
   4. exact wake-path params     (get_transcription_params today, balanced)
   5. hotkey params, condition_on_previous_text flipped
 """
+import argparse
 import json
 import sys
 import wave
@@ -148,37 +168,78 @@ def build_variants(initial_prompt: str) -> "list[tuple[str, dict]]":
     ]
 
 
-def _load_model():
-    from faster_whisper import WhisperModel
+def _live_config_model_size(default: str = "base") -> str:
+    """The model_size this repo's config.json actually runs in production
+    -- the tool's default so it can't silently drift from what users are
+    really hearing (see the 2026-07-10 post-mortem in the module
+    docstring: testing against a hardcoded 'base' produced a confound)."""
+    config_path = _REPO_ROOT / "config.json"
+    try:
+        with open(config_path, encoding='utf-8') as f:
+            cfg = json.load(f)
+        return cfg.get('model_size', default) or default
+    except Exception as e:
+        print(f"[transcribe_ab] WARNING: could not read {config_path} for "
+              f"model_size ({e}) -- falling back to {default!r}")
+        return default
+
+
+def _detect_device() -> str:
     try:
         import ctranslate2
-        device = "cuda" if 'cuda' in ctranslate2.get_supported_compute_types('cuda') else "cpu"
+        return "cuda" if 'cuda' in ctranslate2.get_supported_compute_types('cuda') else "cpu"
     except Exception:
-        device = "cpu"
+        return "cpu"
+
+
+def _load_model(model_size: str, device: "str | None" = None):
+    from faster_whisper import WhisperModel
+    if device is None:
+        device = _detect_device()
     compute_type = "float16" if device == "cuda" else "int8"
-    print(f"[transcribe_ab] Loading Whisper 'base' on {device} ({compute_type})...")
-    return WhisperModel("base", device=device, compute_type=compute_type,
+    print(f"[transcribe_ab] Loading Whisper {model_size!r} on {device} ({compute_type})...")
+    return WhisperModel(model_size, device=device, compute_type=compute_type,
                          cpu_threads=4, num_workers=2)
 
 
-def main() -> None:
-    if len(sys.argv) < 2:
-        print(f"Usage: {sys.argv[0]} <wav_path> [<wav_path> ...]")
-        sys.exit(1)
+def _parse_args(argv):
+    parser = argparse.ArgumentParser(
+        description="A/B decode-parameter experiment for hotkey word-loss defects.",
+    )
+    parser.add_argument(
+        "wav_paths", nargs="+", type=Path,
+        help="One or more WAV files to test (16kHz mono, e.g. ~/.samsara/debug/hotkey_*.wav)",
+    )
+    parser.add_argument(
+        "--model", dest="model_size", default=None,
+        help="faster-whisper model size/name. Defaults to this repo's live "
+             "config.json model_size (the production model) -- override to "
+             "deliberately test a different model.",
+    )
+    parser.add_argument(
+        "--device", dest="device", default=None, choices=["cpu", "cuda"],
+        help="Defaults to auto-detect (CUDA if available, else CPU).",
+    )
+    return parser.parse_args(argv)
 
-    wav_paths = [Path(p) for p in sys.argv[1:]]
-    for p in wav_paths:
+
+def main() -> None:
+    args = _parse_args(sys.argv[1:])
+
+    for p in args.wav_paths:
         if not p.exists():
             print(f"[transcribe_ab] ERROR: {p} does not exist")
             sys.exit(1)
+
+    model_size = args.model_size or _live_config_model_size()
 
     initial_prompt = _get_live_initial_prompt()
     print(f"\n[transcribe_ab] Live initial_prompt ({len(initial_prompt)} chars):")
     print(f"  {initial_prompt!r}\n")
 
-    model = _load_model()
+    model = _load_model(model_size, device=args.device)
 
-    for wav_path in wav_paths:
+    for wav_path in args.wav_paths:
         print(f"\n{'=' * 70}\n{wav_path}\n{'=' * 70}")
         audio = _load_wav_16k_mono_float32(wav_path)
         print(f"  duration: {len(audio) / 16000:.2f}s")
