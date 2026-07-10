@@ -16,6 +16,7 @@ import logging
 import re
 import threading
 import time
+import unicodedata
 from pathlib import Path
 from typing import List, Tuple
 
@@ -32,7 +33,7 @@ from PySide6.QtWidgets import (
 
 from samsara.ui import qt_runtime
 from samsara.runtime import thread_registry
-from samsara.languages import LANGUAGES, contains_boundaryless_script
+from samsara.languages import LANGUAGES, is_boundaryless_script_char
 
 logger = logging.getLogger(__name__)
 
@@ -296,18 +297,30 @@ class VoiceTrainingQt:
         lookup: dict = {}
         parts = []
         for key in keys_sorted:
-            lookup[key.lower()] = self.corrections_dict[key]
-            if contains_boundaryless_script(key):
-                # CJK/Thai/etc have no whitespace word boundaries -- a \b
-                # anchor between two \w characters with no separator (the
-                # normal case for these scripts) never matches, so a key
-                # embedded mid-sentence would silently never fire. Match the
-                # plain escaped substring instead.
-                parts.append(re.escape(key))
-            else:
-                prefix = r'\b' if re.match(r'\w', key[0]) else ''
-                suffix = r'\b' if re.match(r'\w', key[-1]) else ''
-                parts.append(prefix + re.escape(key) + suffix)
+            # NFC-normalize before lowering so visually-identical keys
+            # entered in different Unicode forms (e.g. a precomposed "é"
+            # vs "e" + combining acute accent) land on the same dict entry
+            # instead of silently missing each other.
+            lookup[unicodedata.normalize('NFC', key).lower()] = self.corrections_dict[key]
+            # Each end's \b anchor is decided independently by the
+            # character AT that end. CJK/Thai/etc have no whitespace word
+            # boundaries -- a \b anchor between two \w characters with no
+            # separator (the normal case for these scripts) never matches,
+            # so a key embedded mid-sentence would silently never fire on
+            # that end. A pure-Latin key keeps both anchors (unchanged), a
+            # pure-CJK key drops both (unchanged) -- but a MIXED-script key
+            # like "foo字" keeps the anchor only on its Latin end, so it
+            # still can't over-match inside "foobar" the way an all-or-
+            # nothing decision would.
+            prefix = (
+                r'\b' if re.match(r'\w', key[0]) and not is_boundaryless_script_char(key[0])
+                else ''
+            )
+            suffix = (
+                r'\b' if re.match(r'\w', key[-1]) and not is_boundaryless_script_char(key[-1])
+                else ''
+            )
+            parts.append(prefix + re.escape(key) + suffix)
 
         self._corrections_lookup = lookup
         self._corrections_pattern = re.compile('|'.join(parts), re.IGNORECASE)
@@ -319,7 +332,11 @@ class VoiceTrainingQt:
 
             def _replace(match: "re.Match") -> str:
                 matched = match.group(0)
-                replacement = self._corrections_lookup.get(matched.lower(), matched)
+                # Same NFC-before-lower normalization as the lookup build
+                # above, so both sides of the dict lookup agree regardless
+                # of which Unicode form the matched text came in as.
+                matched_key = unicodedata.normalize('NFC', matched).lower()
+                replacement = self._corrections_lookup.get(matched_key, matched)
                 # Case preservation only makes sense when the matched text
                 # actually has cased characters -- CJK/Thai/etc have none,
                 # so the replacement is used exactly as stored.

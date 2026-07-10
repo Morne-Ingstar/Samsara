@@ -681,9 +681,28 @@ def _is_hallucinated_segments(seg_list, text):
     # (subtitle-crowdsourcing credits that leak out on near-silent audio).
     # Language-independent -- checked regardless of the configured
     # dictation language.
+    #
+    # DOMINANCE, NOT PRESENCE: a legitimate utterance can simply MENTION one
+    # of these strings ("I was reading about the amara.org community") --
+    # discarding the whole transcription on bare substring presence would
+    # eat real speech (the bare "amara.org" entry is the worst case for
+    # this). Gate on the longest matching phrase covering >=80% of the
+    # (whitespace-normalized) transcript instead -- that's the phrase
+    # constituting substantially the whole output, not an incidental
+    # mention. Below that ratio it's incidental and falls through to the
+    # repetition signatures (A/B/D) below. Never scrub/mutate the text: a
+    # mid-string removal would corrupt legitimate surrounding speech --
+    # gate-or-pass is the only safe move, so this stays a pure boolean check.
     t_lower = t.lower()
-    if any(phrase in t_lower for phrase in _HALLUCINATION_STRING_BLACKLIST):
-        return True
+    t_norm = re.sub(r'\s+', ' ', t_lower).strip()
+    if t_norm:
+        best_len = 0
+        for phrase in _HALLUCINATION_STRING_BLACKLIST:
+            phrase_norm = re.sub(r'\s+', ' ', phrase).strip()
+            if phrase_norm and phrase_norm in t_norm:
+                best_len = max(best_len, len(phrase_norm))
+        if best_len and best_len / len(t_norm) >= 0.80:
+            return True
     # Signature A: high compression ratio on any segment (repetition compresses hard).
     # Whisper's own reject threshold is 2.4; we use a slightly higher 3.0 to stay
     # conservative and avoid touching borderline-but-real speech.

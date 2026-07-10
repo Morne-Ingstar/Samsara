@@ -40,16 +40,56 @@ class TestHallucinationStringBlacklist:
             [_seg()], "UNTERTITEL DER AMARA.ORG-COMMUNITY",
         ) is True
 
-    def test_generic_amara_org_substring_matches(self):
+    def test_bare_blacklist_phrase_dominates_and_fires(self):
+        """100% dominance -- the whole (stripped) transcript IS the
+        blacklisted phrase. The clearest possible case."""
         assert dictation._is_hallucinated_segments(
-            [_seg()], "Some other Amara.org credit line nobody listed explicitly",
+            [_seg()], "Untertitel der Amara.org-Community",
         ) is True
 
-    def test_phrase_embedded_in_longer_text_still_matches(self):
+    def test_bare_amara_org_fires(self):
+        """The bare 'amara.org' entry is the worst case for false-positive
+        risk (see test_generic_amara_org_mention_is_not_flagged below) --
+        but on its own, with nothing else in the transcript, it's 100%
+        dominant and must still fire."""
+        assert dictation._is_hallucinated_segments([_seg()], "amara.org") is True
+
+    def test_generic_amara_org_mention_is_not_flagged(self):
+        """DOMINANCE, NOT PRESENCE (regression lock): a legitimate
+        utterance that merely MENTIONS amara.org must not have its entire
+        transcription discarded -- the coverage ratio here is well under
+        the 0.80 threshold. This is the exact scenario the dominance-ratio
+        fix exists for; the old substring-presence check used to flag this
+        (see git history) -- that was the bug, not this expectation."""
+        assert dictation._is_hallucinated_segments(
+            [_seg()], "Some other Amara.org credit line nobody listed explicitly",
+        ) is False
+
+    def test_task_example_mention_is_not_flagged(self):
+        assert dictation._is_hallucinated_segments(
+            [_seg()], "I was reading about the amara.org community",
+        ) is False
+
+    def test_phrase_with_substantial_real_speech_prefix_falls_through(self):
         """Whisper sometimes prepends/appends the hallucination to a real
-        or partially-real utterance -- must still be caught."""
+        or partially-real utterance. Superseded expectation (dominance-
+        ratio fix): "hello there" is enough real speech ahead of the
+        phrase to drop coverage to ~74%, under the 0.80 threshold -- so
+        this must now fall through rather than discard the whole
+        (partially real) transcription. Mid-string scrubbing was
+        considered and rejected (would corrupt the legitimate "hello
+        there" prefix); gate-or-pass on dominance is the only safe move."""
         assert dictation._is_hallucinated_segments(
             [_seg()], "hello there Untertitel der Amara.org-Community",
+        ) is False
+
+    def test_phrase_with_thin_noise_still_dominant_still_fires(self):
+        """A couple of filler characters around the phrase keep coverage
+        at ~90%, still over the 0.80 threshold -- still fires. Contrast
+        with test_phrase_with_substantial_real_speech_prefix_falls_through
+        above, where a real 2-word prefix pushes coverage under 0.80."""
+        assert dictation._is_hallucinated_segments(
+            [_seg()], "um, Untertitel der Amara.org-Community",
         ) is True
 
     def test_real_speech_is_not_flagged(self):
