@@ -497,7 +497,8 @@ GOOD_SIGNALS = UtteranceSignals(has_contiguous_speech=True, compression_ratios=(
 @pytest.fixture
 def manager_factory():
     """Returns a (manager, mocks) builder so each test can override callables."""
-    def _build(foreground="notepad.exe", foreground_hwnd=12345, abort_phrases=None, command_matches=None):
+    def _build(foreground="notepad.exe", foreground_hwnd=12345, abort_phrases=None,
+               command_matches=None, format_dictate_fn=None):
         mocks = {
             "foreground": Mock(return_value=foreground),
             "foreground_hwnd": Mock(return_value=foreground_hwnd),
@@ -516,6 +517,7 @@ def manager_factory():
             foreground_exe_resolver=mocks["foreground"],
             foreground_hwnd_resolver=mocks["foreground_hwnd"],
             inject_fn=mocks["inject"],
+            format_dictate_fn=format_dictate_fn,
             remove_chars_fn=mocks["remove_chars"],
             command_dispatch_fn=mocks["command_dispatch"],
             agent_dispatch_fn=mocks["agent_dispatch"],
@@ -682,6 +684,54 @@ class TestSessionModeManagerDispatch:
         mgr.dispatch_utterance("Hello there", GOOD_SIGNALS)   # no terminal punctuation
         mgr.dispatch_utterance("How are you", GOOD_SIGNALS)
         assert mocks["inject"].call_args_list[1].args[0] == " how are you"
+
+    # -- format_dictate_fn wiring (formatting-tokens feature) -------------
+
+    def test_format_dictate_fn_applied_after_seam_join_before_injection(self, manager_factory):
+        upper = lambda t: t.upper()
+        mgr, mocks = manager_factory(foreground="notepad.exe", format_dictate_fn=upper)
+        mgr.force_mode(SessionMode.DICTATE)
+        outcome = mgr.dispatch_utterance("hello world", GOOD_SIGNALS)
+        assert outcome.kind == "dictate_injected"
+        mocks["inject"].assert_called_once_with("HELLO WORLD")
+
+    def test_format_dictate_fn_result_used_for_stage_buffer(self, manager_factory):
+        replace_with_marker = lambda t: "<<FORMATTED>>"
+        mgr, mocks = manager_factory(foreground="notepad.exe", format_dictate_fn=replace_with_marker)
+        mgr.force_mode(SessionMode.DICTATE)
+        mgr.dispatch_utterance("hello world", GOOD_SIGNALS)
+        assert mgr.stage_buffer == "<<FORMATTED>>"
+
+    def test_format_dictate_fn_result_used_for_scratch_that_undo_length(self, manager_factory):
+        # Scratch-that must backspace the length of what was ACTUALLY typed
+        # (post-formatting), not the raw spoken words.
+        shorten = lambda t: "X"
+        mgr, mocks = manager_factory(foreground="notepad.exe", format_dictate_fn=shorten)
+        mgr.force_mode(SessionMode.DICTATE)
+        mgr.dispatch_utterance("hello world", GOOD_SIGNALS)
+        mgr.force_mode(SessionMode.COMMAND)
+        outcome = mgr.dispatch_utterance("scratch that", GOOD_SIGNALS)
+        assert outcome.kind == "scratch_success"
+        mocks["remove_chars"].assert_called_once_with(1)  # len("X"), not len("hello world")
+
+    def test_format_dictate_fn_defaults_to_identity_when_not_supplied(self, manager_factory):
+        mgr, mocks = manager_factory(foreground="notepad.exe")  # no format_dictate_fn
+        mgr.force_mode(SessionMode.DICTATE)
+        mgr.dispatch_utterance("hello world", GOOD_SIGNALS)
+        mocks["inject"].assert_called_once_with("hello world")
+
+    def test_format_dictate_fn_applied_to_suppressed_payload_for_later_retype(self, manager_factory):
+        upper = lambda t: t.upper()
+        mgr, mocks = manager_factory(foreground="notepad.exe", format_dictate_fn=upper)
+        mgr.force_mode(SessionMode.DICTATE)
+        mocks["foreground"].return_value = "chrome.exe"  # focus drifted -- suppressed
+        mgr.dispatch_utterance("lost text", GOOD_SIGNALS)
+        mocks["inject"].assert_not_called()
+
+        mocks["foreground"].return_value = "notepad.exe"  # focus restored
+        result = mgr.retype_last_suppressed()
+        assert result is True
+        mocks["inject"].assert_called_once_with("LOST TEXT")  # formatted, not raw
 
     def test_seam_join_resets_after_terminal_punctuation(self, manager_factory):
         mgr, mocks = manager_factory(foreground="notepad.exe")

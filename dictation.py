@@ -414,6 +414,7 @@ from samsara.profiles import ProfileManager
 from samsara.ui.listening_indicator import ListeningIndicator
 from samsara.cleanup import clean_text
 from samsara.smart_corrections import smart_correct, warm_up as smart_corrections_warm_up
+from samsara.formatting_tokens import apply_formatting_tokens_if_enabled
 from samsara import diagnostics
 from samsara import benchmark_store
 from samsara import languages as _languages
@@ -2267,6 +2268,13 @@ class DictationApp:
                 # samsara/smart_corrections.py.
                 "repair_disfluencies": False,
             },
+            # Inline formatting tokens ("new line" -> \n, "new paragraph" ->
+            # \n\n, "tab" -> \t, "bullet"/"bullet point" -> \n• ) applied to
+            # DICTATE output only, after smart_correct, before delivery. See
+            # samsara/formatting_tokens.py.
+            "formatting_tokens": {
+                "enabled": True,
+            },
             # Dictation Diagnostics: per-utterance pipeline instrumentation
             # (samsara/diagnostics.py). Ring buffer always active; this only
             # gates the optional on-disk JSONL append.
@@ -4045,6 +4053,7 @@ class DictationApp:
             foreground_exe_resolver=_get_foreground_exe_lower,
             foreground_hwnd_resolver=_get_foreground_hwnd,
             inject_fn=_inject_fn,
+            format_dictate_fn=self._apply_formatting_tokens,
             remove_chars_fn=_remove_chars_fn,
             command_dispatch_fn=_command_dispatch_fn,
             agent_dispatch_fn=self._ava_session_agent_dispatch_fn,
@@ -6349,6 +6358,16 @@ class DictationApp:
                 logger.info(f"[LEARN] Promoted to dictionary: '{original}' -> '{corrected}'")
                 self.play_sound("success")
 
+    def _apply_formatting_tokens(self, text: str) -> str:
+        """Single chokepoint for samsara.formatting_tokens on DICTATE-lane
+        output -- reused by the hotkey path, wake-session dictation, and
+        (via the format_dictate_fn callable) the session DICTATE lane.
+        Never called for COMMAND-mode or AVA text. Must run AFTER
+        smart_correct and before the text is delivered/pasted or logged to
+        history, so history stores what was actually typed."""
+        return apply_formatting_tokens_if_enabled(
+            text, self.config.get('formatting_tokens', {}).get('enabled', True))
+
     def _output_dictation(self, text):
         """Output dictated text"""
         _diag_entry = time.perf_counter()
@@ -6383,6 +6402,11 @@ class DictationApp:
 
         if self.config['add_trailing_space']:
             text = text + " "
+
+        # Inline formatting tokens ("new line" -> \n, etc.) -- after
+        # smart_correct, before delivery/history, so history stores what
+        # was actually typed (see _apply_formatting_tokens).
+        text = self._apply_formatting_tokens(text)
 
         logger.info(f"[OK] {text}")
         self.play_sound("success")
@@ -7264,6 +7288,12 @@ class DictationApp:
 
                     if self.config['add_trailing_space']:
                         text = text + " "
+
+                    # Inline formatting tokens ("new line" -> \n, etc.) --
+                    # after smart_correct, before delivery/history, so
+                    # history stores what was actually typed (see
+                    # _apply_formatting_tokens).
+                    text = self._apply_formatting_tokens(text)
 
                     logger.info(f"[OK] {text}")
                     self.play_sound("success")
