@@ -396,6 +396,11 @@ SETTINGS_SCHEMA = {
     # Dictation Diagnostics: per-utterance pipeline instrumentation viewer.
     "diagnostics.write_jsonl": {"type": "bool", "default": False, "tab": "advanced"},
 
+    # Opt-in: dump the exact assembled hotkey buffer (post-prepend,
+    # pre-fade) to ~/.samsara/debug/hotkey_*.wav on every hotkey
+    # transcription. 2026-07-10 hotkey word-loss investigation.
+    "debug.dump_hotkey_buffers": {"type": "bool", "default": False, "tab": "advanced"},
+
     # Personal WER benchmark: opt-in local sample collection for the
     # offline accuracy harness (samsara/benchmark_store.py, tools/benchmark_eval.py).
     "benchmark.collect_samples": {"type": "bool", "default": False, "tab": "advanced"},

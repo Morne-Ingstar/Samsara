@@ -637,6 +637,31 @@ def _fade_edges(audio, sample_rate, fade_ms=_FADE_MS):
     return out
 
 
+def _dump_hotkey_buffer(audio, sample_rate) -> None:
+    """Opt-in diagnostic (config: debug.dump_hotkey_buffers, off by
+    default): write the exact assembled hotkey buffer -- post-prepend,
+    PRE-fade -- to ~/.samsara/debug/hotkey_<timestamp>.wav, so the raw
+    seam (unmasked by the 50ms edge fade) can be listened to directly.
+    2026-07-10 hotkey word-loss investigation. Never raises -- a dump
+    failure must not affect the transcription it's diagnosing."""
+    try:
+        out_dir = Path.home() / ".samsara" / "debug"
+        out_dir.mkdir(parents=True, exist_ok=True)
+        ts = datetime.now().strftime("%Y%m%dT%H%M%S_%f")
+        path = out_dir / f"hotkey_{ts}.wav"
+        pcm_int16 = np.clip(
+            np.asarray(audio, dtype=np.float32) * 32767.0, -32768, 32767
+        ).astype(np.int16)
+        with wave.open(str(path), 'wb') as wf:
+            wf.setnchannels(1)
+            wf.setsampwidth(2)
+            wf.setframerate(int(sample_rate))
+            wf.writeframes(pcm_int16.tobytes())
+        logger.debug(f"[SEAM] Dumped hotkey buffer -> {path}")
+    except Exception as e:
+        logger.debug(f"[SEAM] hotkey buffer dump failed (non-fatal): {e}")
+
+
 def resample_audio(audio, orig_sr, target_sr=MODEL_SAMPLE_RATE):
     """Resample audio from orig_sr to target_sr using linear interpolation.
 
@@ -2280,6 +2305,15 @@ class DictationApp:
             # gates the optional on-disk JSONL append.
             "diagnostics": {
                 "write_jsonl": False,
+            },
+            # Opt-in debug tooling. dump_hotkey_buffers: write the exact
+            # assembled hotkey buffer (post-prepend, pre-fade -- what
+            # Whisper actually receives) to ~/.samsara/debug/hotkey_*.wav
+            # on every hotkey transcription. Off by default -- 2026-07-10
+            # hotkey word-loss investigation; see
+            # DictationSessionConsumer._log_seam_diagnostics.
+            "debug": {
+                "dump_hotkey_buffers": False,
             },
             # Personal WER benchmark: opt-in local (user's real audio, gold
             # transcript) sample collection for the offline accuracy harness.
@@ -7051,6 +7085,9 @@ class DictationApp:
                 if audio_duration < 0.51:
                     logger.info(f"[SKIP] Audio too short ({audio_duration:.2f}s) — skipping")
                     return
+
+                if self.config.get('debug', {}).get('dump_hotkey_buffers', False):
+                    _dump_hotkey_buffer(audio, self.model_rate)
 
                 # Kill the mechanical hotkey press/release click transient
                 # before it can trigger the gate below or Whisper itself.

@@ -321,6 +321,26 @@ class WakeConsumer:
                     )
                 if self._utterance_frames:
                     logger.debug(f"[PRE] Prepended {len(self._utterance_frames) * FRAME_MS}ms pre-buffer to wake onset")
+                # Diagnostic (2026-07-10 hotkey word-loss investigation):
+                # this wake-onset path is NOT suppressed while a hotkey
+                # recording is active -- the _hotkey_recording guard above
+                # (see the "Hotkey-recording suppression" block) only
+                # applies BEFORE speech onset, per its own comment. Once
+                # speech is detected mid-hotkey-hold, this consumer keeps
+                # running a SEPARATE, CONCURRENT utterance that shares
+                # app._vad_model/_vad_lock with the hotkey path's own
+                # contiguous-speech gate (_buffer_has_contiguous_speech).
+                # Silero VAD is recurrent; interleaved calls from two
+                # unrelated audio sources contaminate its hidden state.
+                # This log line makes that overlap directly observable
+                # instead of inferred from correlated timestamps.
+                if getattr(app, '_hotkey_recording', False):
+                    logger.debug(
+                        "[SEAM] Wake-consumer speech onset occurred WHILE "
+                        "_hotkey_recording=True -- this utterance and the "
+                        "concurrent hotkey capture will share app._vad_model "
+                        "for VAD inference, interleaved across two threads."
+                    )
             else:
                 # Non-onset speech frame — append normally
                 self._utterance_frames.append(raw_chunk)
