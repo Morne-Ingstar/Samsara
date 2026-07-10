@@ -24,6 +24,7 @@ from PySide6.QtWidgets import (
 
 from samsara.ui import qt_runtime, theme
 from samsara import diagnostics
+from samsara import diagnostics_verdict
 
 from samsara.log import get_logger
 
@@ -232,6 +233,34 @@ class DiagnosticsWindow(QMainWindow):
         root.setContentsMargins(12, 10, 12, 10)
         root.setSpacing(8)
 
+        # ---- Health verdict header band ------------------------------------
+        # Plain-English interpretation of the last N records (see
+        # samsara/diagnostics_verdict.py) -- refreshed every _reload(), same
+        # cadence as the table below (manual Refresh button + the
+        # _AUTO_REFRESH_MS timer).
+        verdict_frame = QFrame()
+        verdict_frame.setObjectName("verdict_frame")
+        verdict_frame.setStyleSheet(
+            f"QFrame#verdict_frame {{ background-color: {_ELEVATED};"
+            f" border: 1px solid {_BORDER}; border-radius: 6px; }}"
+        )
+        verdict_layout = QVBoxLayout(verdict_frame)
+        verdict_layout.setContentsMargins(14, 10, 14, 10)
+        verdict_layout.setSpacing(2)
+        self._verdict_headline = QLabel("")
+        self._verdict_headline.setWordWrap(True)
+        self._verdict_headline.setStyleSheet(
+            f"color: {_TEXT_PRI}; font-size: {theme.FONT_SIZE_HEADING}px; font-weight: 600;"
+        )
+        verdict_layout.addWidget(self._verdict_headline)
+        self._verdict_detail = QLabel("")
+        self._verdict_detail.setWordWrap(True)
+        self._verdict_detail.setStyleSheet(
+            f"color: {_TEXT_SEC}; font-size: {theme.FONT_SIZE_CAPTION}px;"
+        )
+        verdict_layout.addWidget(self._verdict_detail)
+        root.addWidget(verdict_frame)
+
         # ---- Top bar ------------------------------------------------------
         top_row = QHBoxLayout()
         top_row.setSpacing(10)
@@ -345,7 +374,12 @@ class DiagnosticsWindow(QMainWindow):
         compute = cfg.get('compute_type', '?')
         self._model_lbl.setText(f"Model: {model}   Device: {device} ({compute})")
 
-        records = list(reversed(diagnostics.recent(200)))  # newest first
+        raw_records = diagnostics.recent(200)  # oldest-first, as recent() returns it
+        headline, detail = diagnostics_verdict.verdict(raw_records)
+        self._verdict_headline.setText(headline)
+        self._verdict_detail.setText(detail)
+
+        records = list(reversed(raw_records))  # newest first, for the table
         self._records = records
         self._count_lbl.setText(f"{len(records)} utterance{'s' if len(records) != 1 else ''}")
 
