@@ -204,9 +204,19 @@ def dump(logger) -> None:
 
 
 def shutdown(timeout: float = 5.0) -> None:
-    """Join every alive, non-daemon registered thread, up to `timeout`
-    seconds total. Anything still alive afterward is logged (name + current
-    stack) but never force-killed.
+    """Best-effort join of tracked NON-daemon threads within a shared
+    `timeout`-second deadline (not `timeout` seconds EACH -- one hung
+    thread eating the whole budget still leaves the rest a fair,
+    shrinking remainder to join in). Anything still alive when the
+    deadline passes is logged (name + current stack) as a straggler, but
+    never force-killed.
+
+    Daemon threads are intentionally NOT joined here at all -- nearly
+    every spawn() site in this app passes daemon=True, so in practice this
+    function joins very few threads; daemon threads are simply reaped by
+    the interpreter at process exit. This registry is observability/
+    diagnostics infrastructure, not a hard cleanup guarantee -- do not
+    rely on shutdown() returning to mean "every thread has exited."
 
     Registered threading.Timer instances are cancelled instead of joined,
     regardless of their daemon flag -- a pending non-daemon Timer would

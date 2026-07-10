@@ -61,27 +61,39 @@ def _get_default_render_id():
         _CLSID = _guid('{BCDE0395-E52F-467C-8E3D-C4579291692E}')
         _IID   = _guid('{A95664D2-9614-4F35-A746-DE8DB63617E6}')
         ole32  = ctypes.windll.ole32
-        ole32.CoInitializeEx(None, 0)
-
-        enum = c_void_p()
-        if ole32.CoCreateInstance(_CLSID, None, 23, _IID, byref(enum)) != 0:
-            return None
-        dev = c_void_p()
-        # vtable[4] = GetDefaultAudioEndpoint(eRender=0, eConsole=0)
-        hr = _vt(enum, 4, HRESULT, c_void_p, ctypes.c_uint, ctypes.c_uint,
-                 POINTER(c_void_p))(enum, 0, 0, byref(dev))
-        _vt(enum, 2, ctypes.c_ulong, c_void_p)(enum)   # Release enumerator
-        if hr != 0 or not dev:
-            return None
-        id_ptr = c_wchar_p()
-        # vtable[5] = GetId(ppstrId)
-        hr = _vt(dev, 5, HRESULT, c_void_p, POINTER(c_wchar_p))(dev, byref(id_ptr))
-        _vt(dev, 2, ctypes.c_ulong, c_void_p)(dev)     # Release device
-        if hr != 0:
-            return None
-        result = id_ptr.value
-        ole32.CoTaskMemFree(id_ptr)
-        return result
+        _co_hr = ole32.CoInitializeEx(None, 0)
+        try:
+            enum = c_void_p()
+            if ole32.CoCreateInstance(_CLSID, None, 23, _IID, byref(enum)) != 0:
+                return None
+            dev = c_void_p()
+            # vtable[4] = GetDefaultAudioEndpoint(eRender=0, eConsole=0)
+            hr = _vt(enum, 4, HRESULT, c_void_p, ctypes.c_uint, ctypes.c_uint,
+                     POINTER(c_void_p))(enum, 0, 0, byref(dev))
+            _vt(enum, 2, ctypes.c_ulong, c_void_p)(enum)   # Release enumerator
+            if hr != 0 or not dev:
+                return None
+            id_ptr = c_wchar_p()
+            # vtable[5] = GetId(ppstrId)
+            hr = _vt(dev, 5, HRESULT, c_void_p, POINTER(c_wchar_p))(dev, byref(id_ptr))
+            _vt(dev, 2, ctypes.c_ulong, c_void_p)(dev)     # Release device
+            if hr != 0:
+                return None
+            result = id_ptr.value
+            ole32.CoTaskMemFree(id_ptr)
+            return result
+        finally:
+            # S_OK (0) and S_FALSE (1) both mean THIS call initialized COM
+            # on this thread and owns a reference that must be balanced.
+            # RPC_E_CHANGED_MODE (0x80010106) means COM was already
+            # initialized here in an incompatible mode -- we don't own a
+            # reference and must not uninitialize it (comparing only
+            # against 0/1 already excludes it; as a raw ctypes int return
+            # value it won't equal either). Called every 2s from
+            # _watch_output_device for the app's whole lifetime, so leaving
+            # this unbalanced leaked one COM reference per call.
+            if _co_hr in (0, 1):
+                ole32.CoUninitialize()
     except Exception:
         return None
 

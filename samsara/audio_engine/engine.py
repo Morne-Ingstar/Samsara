@@ -226,11 +226,6 @@ class AudioCaptureEngine:
             return  # already handling a prior death; avoid a second thread
         logger.error("[ACE] Input stream died unexpectedly -- entering recovery")
         self._recovering = True
-        if self._on_stream_death:
-            try:
-                self._on_stream_death()
-            except Exception:
-                logger.exception("[ACE] on_stream_death callback failed")
         thread_registry.spawn("ace-recovery", self._recovery_loop, daemon=True)
 
     def _recovery_loop(self) -> None:
@@ -245,6 +240,17 @@ class AudioCaptureEngine:
         when no name was stored (older config, or "auto" device selection,
         where None always means "whatever the OS default is right now").
         """
+        # Moved here from _on_stream_finished (the PortAudio finished-
+        # callback thread) so play_sound('error') -- which opens an output
+        # stream -- never runs on the PortAudio thread during a device-death
+        # event (deadlock/hang risk). Still runs before any recovery
+        # attempt, just on this normal daemon thread instead.
+        if self._on_stream_death:
+            try:
+                self._on_stream_death()
+            except Exception:
+                logger.exception("[ACE] on_stream_death callback failed")
+
         device = self._device_name or self._config.get('microphone', None)
         deadline = time.monotonic() + 60.0
         try:
