@@ -197,9 +197,17 @@ class SamsaraTrayQt(QObject):
 
         menu.addSeparator()
 
-        # ---- Quick access ----
+        # ---- Daily-use quick access (2026-07-10 declutter pass) ----
+        # One click for a daily user with chronic finger-joint pain: the
+        # status/mode controls above stay here (operational toggles a user
+        # adjusts routinely), plus the reference/visibility windows below.
+        # Occasional tools and dev/debug surfaces are grouped into the
+        # Tools / Developer submenus further down -- see there for the
+        # full placement rationale.
         menu.addAction("Settings").triggered.connect(lambda: app.open_settings())
         menu.addAction("History").triggered.connect(lambda: app.open_history())
+        menu.addAction("Quick Reference").triggered.connect(
+            lambda: app.open_quick_reference())
 
         cr_act = menu.addAction("Command Reference")
         cr_act.setCheckable(True)
@@ -211,7 +219,9 @@ class SamsaraTrayQt(QObject):
         li_act.setChecked(bool(app.config.get('listening_indicator_enabled', False)))
         li_act.triggered.connect(lambda: app.toggle_listening_indicator())
 
-        # ---- Tools submenu ----
+        menu.addSeparator()
+
+        # ---- Tools submenu: occasionally-used setup/training/review tools ----
         tools_sub = QMenu("Tools")
         tools_sub.addAction("Interactive Tutorial").triggered.connect(
             lambda: app.show_tutorial())
@@ -222,24 +232,15 @@ class SamsaraTrayQt(QObject):
             lambda: app.open_ava_guide())
         tools_sub.addAction("Voice Training").triggered.connect(
             lambda: app.open_voice_training())
-        tools_sub.addAction("Wake Word Debug").triggered.connect(
-            lambda: app.open_wake_word_debug())
-        tools_sub.addAction("Dictation Diagnostics").triggered.connect(
-            lambda: app.open_dictation_diagnostics())
-        tools_sub.addAction("Quick Reference").triggered.connect(
-            lambda: app.open_quick_reference())
         tools_sub.addAction("Benchmark Review").triggered.connect(
             lambda: app.open_benchmark_review())
         tools_sub.addAction("Correct Last Dictation").triggered.connect(
             lambda: app.open_correction_capture())
-        tools_sub.addAction("View Live Log").triggered.connect(
-            lambda: app.open_log_viewer())
         tools_sub.addAction("Stress Test Wizard").triggered.connect(
             lambda: app.open_stress_test_wizard())
+        tools_sub.addSeparator()
         tools_sub.addAction("Recalibrate Mic").triggered.connect(
             lambda: app.recalibrate_mic())
-        tools_sub.addAction("Calibrate Echo Cancellation").triggered.connect(
-            lambda: app.calibrate_echo_cancellation())
         tools_sub.addSeparator()
 
         cleanup_sub = QMenu("Cleanup")
@@ -260,22 +261,35 @@ class SamsaraTrayQt(QObject):
         tools_sub.addMenu(cleanup_sub)
 
         tools_sub.addSeparator()
-        tools_sub.addAction("Open Config Folder").triggered.connect(
-            lambda: app.open_config_folder())
-        logs_sub = QMenu("View Logs")
-        logs_sub.addAction("Main Log").triggered.connect(
-            lambda: app.open_main_log())
-        logs_sub.addAction("Voice Training Log").triggered.connect(
-            lambda: app.open_voice_training_log())
-        tools_sub.addMenu(logs_sub)
-        tools_sub.addSeparator()
-
         info_hotkey = tools_sub.addAction(f"Hotkey:  {app.config.get('hotkey', '?')}")
         info_hotkey.setEnabled(False)
         info_model = tools_sub.addAction(f"Model:  {app.config.get('model_size', '?')}")
         info_model.setEnabled(False)
 
         menu.addMenu(tools_sub)
+
+        # ---- Developer submenu: debug/diagnostic surfaces ----
+        dev_sub = QMenu("Developer")
+        dev_sub.addAction("Dictation Diagnostics").triggered.connect(
+            lambda: app.open_dictation_diagnostics())
+        dev_sub.addAction("Wake Word Debug").triggered.connect(
+            lambda: app.open_wake_word_debug())
+        dev_sub.addAction("View Live Log").triggered.connect(
+            lambda: app.open_log_viewer())
+        dev_sub.addSeparator()
+        dev_sub.addAction("Calibrate Echo Cancellation").triggered.connect(
+            lambda: app.calibrate_echo_cancellation())
+        dev_sub.addSeparator()
+        dev_sub.addAction("Open Config Folder").triggered.connect(
+            lambda: app.open_config_folder())
+        logs_sub = QMenu("View Logs")
+        logs_sub.addAction("Main Log").triggered.connect(
+            lambda: app.open_main_log())
+        logs_sub.addAction("Voice Training Log").triggered.connect(
+            lambda: app.open_voice_training_log())
+        dev_sub.addMenu(logs_sub)
+
+        menu.addMenu(dev_sub)
         menu.addSeparator()
 
         menu.addAction("Exit").triggered.connect(lambda: app.quit_app())
