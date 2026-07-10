@@ -8,15 +8,11 @@
 >
 > Demo reel, screenshots, philosophy, accessibility framing, downloads, and roadmap — all over there. The README from here down is technical.
 
-> *"Hey Claude."* — your app focuses, you talk, you say *"over"*, it sends.
->
-> Local voice control via Whisper. ~300ms. No cloud, no internet, no typing.
-
 ---
 
 ## What's New in v0.20.0
 
-**The Voice Session.** The headline of this release: activate once, and the keyboard becomes optional. Inside a session you move between three modes by voice alone — **Command** ("open browser," "snap left"), **Dictate** (into any application), and **Ava** (a local AI assistant running on your own GPU). Switch mid-thought, carry content across the switch (*"dictate: hello world"* does both in one breath), say *"scratch that"* to undo, and hear a distinct audio cue on every transition so the whole thing works eyes-free. Built on a hardened session engine: per-utterance execution, misfire gates so a cough or a misheard word never triggers anything, and an always-live abort.
+**The Voice Session** — the headline of this release. Activate once and the keyboard becomes optional: **Command** the computer, **Dictate** into anything, or talk to **Ava**, a local AI assistant on your own GPU — switching between them by voice, mid-thought. *"Scratch that"* undoes, misfire gates keep a cough from triggering anything, and a distinct audio cue marks every transition, so it works eyes-free too.
 
 Plus a deep polish-and-hardening pass — weeks of fixing things that were quietly wrong:
 
@@ -33,9 +29,9 @@ Plus a deep polish-and-hardening pass — weeks of fixing things that were quiet
 
 > I'm Morne, and my hands fucking hurt.
 >
-> I've had HSD (Hypermobile Spectrum Disorder) for a decade. Using a mouse and keyboard hurts — all the time. I tried paid apps, but they were fragmented, expensive, and didn't fit. So I built Samsara.
+> I've had HSD for a decade — using a mouse and keyboard hurts, all the time. So I use these inflamed joints to build things that ease the load on someone else's. For the past year, that's been Samsara: an ongoing exploration of how accessible AI can actually make a computer, built by someone who needs the answer personally.
 >
-> This is early-stage software. It works for me daily, but expect rough edges. If you find it useful, I'd love to hear from you.
+> It works for me every day, and it's still early — expect rough edges. Whether your hands hurt or not, I sincerely hope it helps you. And if it does, I'd love to hear from you.
 >
 > — Morne
 >
