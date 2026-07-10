@@ -2,7 +2,7 @@
 
 ### Voice-Controlled Computing for Accessibility
 
-[![Python 3.10+](https://img.shields.io/badge/python-3.10+-blue.svg)](https://www.python.org/downloads/)[![License: BSL-1.1](https://img.shields.io/badge/License-BSL--1.1-orange.svg)](LICENSE)![Platform](https://img.shields.io/badge/platform-Windows-blue.svg)![Status: Beta](https://img.shields.io/badge/status-beta-yellow.svg)
+[![Python 3.10+](https://img.shields.io/badge/python-3.10+-blue.svg)](https://www.python.org/downloads/)[![License: AGPL-3.0](https://img.shields.io/badge/License-AGPL--3.0-green.svg)](LICENSE)![Platform](https://img.shields.io/badge/platform-Windows-blue.svg)![Status: Beta](https://img.shields.io/badge/status-beta-yellow.svg)
 
 > **The new Samsara site is live: [morneis.com/samsara](https://morneis.com/samsara)**
 >
@@ -16,7 +16,9 @@
 
 ## What's New in v0.20.0
 
-A polish-and-hardening release — weeks of fixing things that were quietly wrong.
+**The Voice Session.** The headline of this release: activate once, and the keyboard becomes optional. Inside a session you move between three modes by voice alone — **Command** ("open browser," "snap left"), **Dictate** (into any application), and **Ava** (a local AI assistant running on your own GPU). Switch mid-thought, carry content across the switch (*"dictate: hello world"* does both in one breath), say *"scratch that"* to undo, and hear a distinct audio cue on every transition so the whole thing works eyes-free. Built on a hardened session engine: per-utterance execution, misfire gates so a cough or a misheard word never triggers anything, and an always-live abort.
+
+Plus a deep polish-and-hardening pass — weeks of fixing things that were quietly wrong:
 
 - **Hallucination-free dictation** — Whisper no longer fabricates text during silence or short pauses; a rebuilt gate plus a regression test suite keep it that way.
 - **Mic survives disconnects** — unplug a mic or lose a Bluetooth connection mid-session and Samsara reconnects automatically instead of going deaf until restart.
@@ -355,8 +357,9 @@ python -m pytest tests/ -v
 
 ## License
 
-BSL-1.1 (Business Source License) — free for all non-commercial use.
-Converts to MIT on April 23, 2030. See [LICENSE](LICENSE) for details.
+AGPL-3.0 — genuinely open source, free for everyone, forever. The one rule:
+any fork or service built on Samsara must keep its source open too, so no one
+can ever take this away from the people it's built for. See [LICENSE](LICENSE).
 
 ## Support
 
