@@ -110,10 +110,9 @@ jobs:
           $sizeMB = [math]::Round((Get-ChildItem "dist\Samsara" -Recurse | Measure-Object -Property Length -Sum).Sum / 1MB, 1)
           Write-Host "dist\Samsara size: $sizeMB MB"
 
-      - name: Headless-safe smoke check (non-blocking)
+      - name: Headless-safe smoke check
         id: smoke
         shell: pwsh
-        continue-on-error: true
         run: |
           # See tools\ci_smoke.py's module docstring for why this is a
           # trimmed, non-blocking subset of tools\frozen_smoke.py's full
