@@ -2,11 +2,15 @@
 
 Uses AutoHotkey v1 UIA to control Stremio — the _UIA variant handles
 Electron window activation correctly.
+
+The actual AHK plumbing lives in tools/stremio_control.py, shared with the
+standalone LAN phone remote (tools/stremio_remote.py) so both surfaces stay
+in sync. This module is a thin voice-command wrapper around it.
 """
 
 import subprocess
-import tempfile
-import os
+import sys
+from pathlib import Path
 
 from samsara.plugin_commands import command
 
@@ -14,55 +18,15 @@ from samsara.log import get_logger
 
 logger = get_logger(__name__)
 
-AHK_EXE = r'C:\Program Files\AutoHotkey\v1.1.37.02\AutoHotkeyU64.exe'
+# tools/ is not a samsara package -- it's a standalone-tool directory shared
+# with the LAN phone remote, so it isn't importable as `samsara.tools.x`.
+# Add it to sys.path (idempotent) so `import stremio_control` resolves
+# regardless of how the app was launched (dev source run vs packaged exe).
+_TOOLS_DIR = Path(__file__).resolve().parents[2] / "tools"
+if str(_TOOLS_DIR) not in sys.path:
+    sys.path.insert(0, str(_TOOLS_DIR))
 
-
-def _run_ahk(script):
-    """Write and execute a one-shot AHK v1 script."""
-    tmp = tempfile.NamedTemporaryFile(
-        mode='w', suffix='.ahk', delete=False, encoding='utf-8'
-    )
-    tmp.write(script)
-    tmp.close()
-    try:
-        result = subprocess.run(
-            [AHK_EXE, tmp.name],
-            capture_output=True, timeout=5
-        )
-        if result.returncode != 0:
-            stderr = result.stderr.decode(errors='replace')
-            print(f"[STREMIO] AHK error (rc={result.returncode}): {stderr[:300]}")
-            return False
-        return True
-    except subprocess.TimeoutExpired:
-        print("[STREMIO] AHK script timed out")
-        return False
-    except Exception as e:
-        print(f"[STREMIO] AHK failed: {e}")
-        return False
-    finally:
-        try:
-            os.unlink(tmp.name)
-        except Exception as e:
-            logger.debug(f"_run_ahk: {e}")
-
-
-def _send_stremio_key(key):
-    """Activate Stremio via AHK UIA and send a key."""
-    # AHK v1 syntax
-    script = f"""#NoEnv
-#SingleInstance Force
-SetTitleMatchMode, 2
-WinActivate, Stremio
-WinWaitActive, Stremio,, 2
-if ErrorLevel
-    ExitApp, 1
-Sleep, 150
-Send, {{{key}}}
-ExitApp, 0
-"""
-    print(f"[STREMIO] AHK v1 UIA sending: {key}")
-    return _run_ahk(script)
+import stremio_control  # noqa: E402 -- must follow the sys.path bootstrap above
 
 
 @command("pause stremio", aliases=[
@@ -72,7 +36,7 @@ ExitApp, 0
 ], pack="stremio")
 def handle_pause(app, remainder):
     print("[STREMIO] Pausing")
-    return _send_stremio_key("Space")
+    return stremio_control.pause_play()
 
 
 @command("resume stremio", aliases=[
@@ -82,7 +46,7 @@ def handle_pause(app, remainder):
 ], pack="stremio")
 def handle_resume(app, remainder):
     print("[STREMIO] Resuming")
-    return _send_stremio_key("Space")
+    return stremio_control.pause_play()
 
 
 @command("skip forward", aliases=[
@@ -90,18 +54,7 @@ def handle_resume(app, remainder):
 ], pack="stremio")
 def handle_skip_forward(app, remainder):
     print("[STREMIO] Skipping forward")
-    script = """#NoEnv
-#SingleInstance Force
-SetTitleMatchMode, 2
-WinActivate, Stremio
-WinWaitActive, Stremio,, 2
-if ErrorLevel
-    ExitApp, 1
-Sleep, 150
-Send, {Right 6}
-ExitApp, 0
-"""
-    return _run_ahk(script)
+    return stremio_control.skip_forward()
 
 
 @command("skip back", aliases=[
@@ -109,18 +62,7 @@ ExitApp, 0
 ], pack="stremio")
 def handle_skip_back(app, remainder):
     print("[STREMIO] Skipping back")
-    script = """#NoEnv
-#SingleInstance Force
-SetTitleMatchMode, 2
-WinActivate, Stremio
-WinWaitActive, Stremio,, 2
-if ErrorLevel
-    ExitApp, 1
-Sleep, 150
-Send, {Left 2}
-ExitApp, 0
-"""
-    return _run_ahk(script)
+    return stremio_control.skip_back()
 
 
 @command("fullscreen", aliases=[
@@ -129,13 +71,13 @@ ExitApp, 0
 ], pack="stremio")
 def handle_fullscreen(app, remainder):
     print("[STREMIO] Toggling fullscreen")
-    return _send_stremio_key("f")
+    return stremio_control.fullscreen()
 
 
 @command("mute stremio", aliases=["unmute stremio", "silence stremio"], pack="stremio")
 def handle_mute_stremio(app, remainder):
     print("[STREMIO] Toggling mute")
-    return _send_stremio_key("m")
+    return stremio_control.mute()
 
 
 @command("open stremio", aliases=[
@@ -153,9 +95,8 @@ def handle_open_stremio(app, remainder):
 @command("close stremio", aliases=["quit stremio", "exit stremio"], pack="stremio")
 def handle_close_stremio(app, remainder):
     print("[STREMIO] Closing")
-    subprocess.run(
-        ['taskkill', '/IM', 'stremio.exe', '/F'],
-        creationflags=subprocess.CREATE_NO_WINDOW,
-        capture_output=True
-    )
+    # Was 'stremio.exe' -- stale process name, latent bug fixed 2026-07-10.
+    # Stremio's process is now stremio-shell-ng.exe (stremio-runtime.exe is
+    # a companion process some builds also spawn).
+    stremio_control.kill_stremio()
     return True

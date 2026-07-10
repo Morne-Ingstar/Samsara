@@ -28,6 +28,9 @@ release/
 # External tools (downloaded separately -- see tools/README.md)
 tools/*.exe
 
+# Stremio LAN remote auth token (machine-local, regenerated on first run)
+tools/stremio_remote_token.txt
+
 # IDE
 .idea/
 .vscode/
