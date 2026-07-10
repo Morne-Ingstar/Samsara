@@ -72,10 +72,19 @@ KNOWN_BENIGN_MARKERS = (
     # prefixes ("[WARN] Could not query device...", "[CAL] Calibration
     # failed...", "[AUDIO] Failed to start sound stream..."), none of
     # which matched "[ACE] Engine failed to start" -- so ci_smoke failed a
-    # build with no real bug (see tools/test_ci_smoke.py's real-log-based
+    # build with no real bug (see tests/test_ci_smoke.py's real-log-based
     # regression test for the exact fixture that caught this).
     "PortAudioError",
     "Error querying device",
+    # 2026-07-10: a CPU-build release CI run on a windows-latest runner
+    # (no NVIDIA driver) logs a handled, caught-and-continuing GPU-detect
+    # failure -- dictation.py's CUDA availability probe raises, is caught,
+    # and the app falls back to CPU -- but still writes a "Traceback"
+    # block for it. Allowlisting the app's own "[CPU] Could not detect
+    # GPU" fallback-log prefix (not the raw CUDA error text, which could
+    # theoretically appear in an unrelated context) keeps this specific to
+    # the handled path, same rationale as the audio markers above.
+    "[CPU] Could not detect GPU",
 )
 # 2026-07-10 tightening: "Traceback"/"CRITICAL" alone were only ever
 # observable if the app got far enough to write its OWN log file.
