@@ -1,0 +1,235 @@
+"""CI-only smoke check for the frozen Samsara build.
+
+Runs OUTSIDE the frozen app, on a GitHub Actions windows-latest runner.
+NOT a replacement for tools\\frozen_smoke.py -- that harness is the full
+11-check local pre-release gate (boot, wizard path, no-self-respawn, log
+stability, clean shutdown, no orphans) and should keep running locally via
+tools\\build_and_smoke.cmd before every tagged release.
+
+This script exists because most of frozen_smoke.py's checks assume things a
+stock CI runner does not reliably have:
+
+  - A real audio input device. dictation.py's __init__ unconditionally calls
+    _start_ace_engine(), which opens a PortAudio/WASAPI input stream. If no
+    device exists, the exception is caught and logged via
+    logger.exception(...) -- the app degrades gracefully and keeps booting,
+    but logger.exception() writes a "Traceback (most recent call last):"
+    line either way. frozen_smoke.py's wait_for_boot() treats ANY
+    "Traceback" substring in the log as a hard failure, so on a mic-less
+    runner it would report FAIL even though the app is fine. That is a
+    false negative, not a real regression -- see RELEASING.md.
+
+  - A cached Whisper model. WhisperModel(...) loads (and, on a fresh
+    machine, downloads from Hugging Face Hub) BEFORE "[INIT] Startup
+    complete." is logged. On a first CI run this is a real network call of
+    unknown duration -- not something a hard pass/fail gate should depend
+    on this early in CI adoption.
+
+So this script only asks the weaker, still-useful question: does the frozen
+EXE start, stay alive (or explicitly reach the boot marker) for a bounded
+window, and exit cleanly when asked -- with no *unexplained* crash. It never
+fails the build on its own; the workflow step that calls it is
+continue-on-error, and its full log is uploaded as a build artifact for a
+human to read. Tighten this once a few real CI runs show what "normal"
+looks like on the runner (see RELEASING.md).
+
+Usage:
+    python tools\\ci_smoke.py dist\\Samsara [--timeout 180]
+"""
+from __future__ import annotations
+
+import argparse
+import json
+import os
+import subprocess
+import sys
+import tempfile
+import time
+from pathlib import Path
+
+try:
+    import psutil
+except ImportError:
+    psutil = None
+
+EXE_NAME = "Samsara.exe"
+BOOT_MARKER = "[INIT] Startup complete."
+ALREADY_RUNNING_MARKER = "Samsara is already running"
+KNOWN_BENIGN_MARKERS = (
+    # Caught-and-logged, not a crash -- see module docstring.
+    "[ACE] Engine failed to start",
+)
+CRASH_MARKERS = ("Traceback", "CRITICAL")
+DEFAULT_TIMEOUT_S = 180.0
+POLL_INTERVAL_S = 0.5
+SHUTDOWN_TIMEOUT_S = 15.0
+
+
+def make_min_config() -> dict:
+    return {"first_run_complete": True, "microphone": 0}
+
+
+def read_new_lines(log_path: Path, offset: int) -> tuple[list[str], int]:
+    if not log_path.exists():
+        return [], offset
+    with open(log_path, "r", encoding="utf-8", errors="replace") as f:
+        f.seek(offset)
+        data = f.read()
+        new_offset = f.tell()
+    if not data:
+        return [], new_offset
+    return data.splitlines(), new_offset
+
+
+def launch(exe_path: Path, home_dir: Path) -> subprocess.Popen:
+    env = os.environ.copy()
+    env["SAMSARA_HOME_DIR"] = str(home_dir)
+    return subprocess.Popen(
+        [str(exe_path)],
+        cwd=str(exe_path.parent),
+        env=env,
+        stdout=subprocess.DEVNULL,
+        stderr=subprocess.DEVNULL,
+    )
+
+
+def terminate(proc: subprocess.Popen) -> str:
+    if proc.poll() is not None:
+        return "already exited"
+    proc.terminate()
+    try:
+        proc.wait(timeout=SHUTDOWN_TIMEOUT_S)
+        return f"terminated within {SHUTDOWN_TIMEOUT_S:.0f}s"
+    except subprocess.TimeoutExpired:
+        proc.kill()
+        try:
+            proc.wait(timeout=5.0)
+        except subprocess.TimeoutExpired:
+            pass
+        return "force-killed after terminate() timeout"
+
+
+def main(argv: list[str] | None = None) -> int:
+    parser = argparse.ArgumentParser(description=__doc__)
+    parser.add_argument("dist_path", help=r"Path to the PyInstaller onedir output, e.g. dist\Samsara")
+    parser.add_argument("--timeout", type=float, default=DEFAULT_TIMEOUT_S,
+                         help="Seconds to wait for boot marker / crash before giving up (default: %(default)s)")
+    parser.add_argument("--log-copy-to", default=None,
+                         help="After the run, copy samsara.log here (fixed, predictable path for CI artifact upload -- "
+                              "the isolated profile dir itself lives under a fresh tempfile.mkdtemp(), which is not a "
+                              "stable path to point an upload-artifact glob at).")
+    args = parser.parse_args(argv)
+
+    dist_path = Path(args.dist_path).resolve()
+    exe_path = dist_path / EXE_NAME
+    if not exe_path.exists():
+        print(f"[FAIL] locate {EXE_NAME} -- not found at {exe_path}")
+        return 1
+
+    work_root = Path(tempfile.mkdtemp(prefix="samsara_ci_smoke_"))
+    profile_dir = work_root / "profile"
+    profile_dir.mkdir(parents=True, exist_ok=True)
+    (profile_dir / "config.json").write_text(
+        json.dumps(make_min_config(), indent=2), encoding="utf-8"
+    )
+    log_path = profile_dir / "logs" / "samsara.log"
+    print(f"[INFO] isolated profile: {profile_dir}")
+    print(f"[INFO] launching {exe_path}")
+
+    proc = launch(exe_path, profile_dir)
+    print(f"[INFO] pid={proc.pid}")
+
+    deadline = time.monotonic() + args.timeout
+    offset = 0
+    outcome = "timeout"
+    benign_seen: list[str] = []
+    unexplained_crash_line = None
+    RECENT_WINDOW = 15
+    recent_lines: list[str] = []
+
+    def scan(lines: list[str]) -> None:
+        nonlocal outcome, unexplained_crash_line
+        for line in lines:
+            recent_lines.append(line)
+            if len(recent_lines) > RECENT_WINDOW:
+                recent_lines.pop(0)
+            if ALREADY_RUNNING_MARKER in line:
+                outcome = "already_running"
+                return
+            if BOOT_MARKER in line:
+                outcome = "boot"
+                return
+            if any(m in line for m in CRASH_MARKERS):
+                # logger.exception() writes the "<marker>: <exc>" line first,
+                # then the "Traceback (most recent call last):" block right
+                # after it -- both land in recent_lines by the time we see
+                # the crash-marker line itself.
+                if any(b in prev for prev in recent_lines for b in KNOWN_BENIGN_MARKERS):
+                    benign_seen.append(line)
+                else:
+                    unexplained_crash_line = line
+                    return
+
+    while time.monotonic() < deadline:
+        # Read the log BEFORE checking whether the process has exited -- a
+        # fast exit (e.g. the single-instance lock rejecting a second
+        # launch) can otherwise beat the log read, leaving outcome="exited"
+        # with the actual reason ("Samsara is already running") sitting
+        # unread in the log.
+        lines, offset = read_new_lines(log_path, offset)
+        scan(lines)
+        if outcome != "timeout" or unexplained_crash_line:
+            break
+        if proc.poll() is not None:
+            # One last read in case the final lines landed between the read
+            # above and the process actually exiting.
+            lines, offset = read_new_lines(log_path, offset)
+            scan(lines)
+            if outcome == "timeout" and not unexplained_crash_line:
+                outcome = "exited"
+            break
+        time.sleep(POLL_INTERVAL_S)
+
+    still_alive = proc.poll() is None
+    shutdown_detail = terminate(proc)
+
+    if args.log_copy_to:
+        import shutil
+        dest = Path(args.log_copy_to)
+        dest.parent.mkdir(parents=True, exist_ok=True)
+        if log_path.exists():
+            shutil.copyfile(log_path, dest)
+            print(f"[INFO] copied log to {dest}")
+        else:
+            print(f"[INFO] no log file to copy ({log_path} was never created)")
+
+    print(f"[INFO] outcome={outcome} still_alive_before_shutdown={still_alive}")
+    print(f"[INFO] shutdown: {shutdown_detail}")
+    if benign_seen:
+        print(f"[WARN] {len(benign_seen)} known-benign traceback line(s) logged (see module docstring):")
+        for line in benign_seen[:5]:
+            print(f"        {line}")
+
+    if outcome == "already_running":
+        print("[FAIL] another Samsara instance is already running system-wide on this runner")
+        return 1
+    if unexplained_crash_line:
+        print(f"[FAIL] unexplained crash marker in log: {unexplained_crash_line!r}")
+        return 1
+    if outcome == "exited":
+        print(f"[FAIL] process exited on its own with code {proc.returncode} before boot marker/timeout")
+        return 1
+    if outcome == "boot":
+        print(f"[PASS] reached {BOOT_MARKER!r}")
+        return 0
+    if outcome == "timeout" and still_alive:
+        print(f"[PASS] process stayed alive for {args.timeout:.0f}s without crashing "
+              f"(did not reach boot marker -- likely still downloading/loading the Whisper model)")
+        return 0
+
+    print("[FAIL] unhandled outcome")
+    return 1
+
+
+if __name__ == "__main__":
+    sys.exit(main())

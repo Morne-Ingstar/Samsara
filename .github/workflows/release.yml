@@ -1,0 +1,194 @@
+name: Release (CPU build)
+
+# CI-verifiable release build -- see RELEASING.md for the full picture,
+# including why this covers only the CPU package this pass.
+#
+# Triggers:
+#   - push of a version tag (v*)              -> build + upload artifact + attach to a GitHub Release
+#   - manual workflow_dispatch                 -> build + upload artifact only (no Release created)
+
+on:
+  push:
+    tags:
+      - 'v*'
+  workflow_dispatch:
+    inputs:
+      version:
+        description: 'Version string for artifact naming (e.g. v0.21.0-rc1). Leave blank to auto-generate from the commit SHA.'
+        required: false
+        default: ''
+
+permissions:
+  contents: write # required to attach the zip to a GitHub Release on tag push
+
+concurrency:
+  group: release-${{ github.ref }}
+  cancel-in-progress: true
+
+env:
+  # Matches the local dev environment (F:\envs\sami, Python 3.11.15) and
+  # scripts/samsara.spec's expectations. If the project's Python version
+  # ever moves, update this in one place.
+  PYTHON_VERSION: '3.11'
+  # Pinned to the version verified against scripts/samsara.spec locally
+  # (F:\envs\sami has 6.20.0). Bump deliberately, not via auto-latest.
+  PYINSTALLER_VERSION: '6.20.0'
+
+jobs:
+  build-cpu:
+    runs-on: windows-latest
+    timeout-minutes: 60
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: ${{ env.PYTHON_VERSION }}
+          cache: 'pip'
+          cache-dependency-path: requirements.txt
+
+      - name: Resolve version string
+        id: version
+        shell: pwsh
+        run: |
+          if ("${{ github.ref_type }}" -eq "tag") {
+            $version = "${{ github.ref_name }}"
+          } elseif ("${{ github.event.inputs.version }}" -ne "") {
+            $version = "${{ github.event.inputs.version }}"
+          } else {
+            $shortSha = "${{ github.sha }}".Substring(0, 7)
+            $version = "dev-$shortSha"
+          }
+          Write-Host "Resolved version: $version"
+          echo "version=$version" >> $env:GITHUB_OUTPUT
+
+      - name: Install build dependencies
+        shell: pwsh
+        run: |
+          python -m pip install --upgrade pip
+          # CPU-only torch/torchaudio FIRST, from the CPU wheel index. The
+          # default PyPI/download.pytorch.org index resolves to a
+          # CUDA-bundled wheel (multi-GB) on Windows; installing from the
+          # /cpu index here means the later `pip install -r requirements.txt`
+          # (which lists bare "torchaudio", no version pin) is already
+          # satisfied and won't pull CUDA in behind our back.
+          pip install torch torchaudio --index-url https://download.pytorch.org/whl/cpu
+          pip install -r requirements.txt
+          pip install "pyinstaller==$env:PYINSTALLER_VERSION"
+
+      - name: Build with PyInstaller (CPU configuration)
+        shell: cmd
+        run: |
+          rem INCLUDE_CUDA intentionally unset -- see scripts\samsara.spec,
+          rem which only bundles CUDA cuDNN/cuBLAS DLLs when INCLUDE_CUDA=1.
+          python -m PyInstaller --clean --noconfirm scripts\samsara.spec
+
+      - name: Verify build output
+        shell: pwsh
+        run: |
+          if (-not (Test-Path "dist\Samsara\Samsara.exe")) {
+            Write-Error "dist\Samsara\Samsara.exe was not produced -- see PyInstaller output above."
+            exit 1
+          }
+          Write-Host "Build OK: dist\Samsara\Samsara.exe"
+
+          # scripts\samsara.spec excludes 'torch'/'torchaudio' from the
+          # Analysis, but build_release.bat (the local packaging script)
+          # still defensively deletes _internal\torch(audio) post-build,
+          # implying the exclude isn't airtight against every transitive
+          # pull-in. Mirror that defensive cleanup here.
+          foreach ($leaked in @("dist\Samsara\_internal\torch", "dist\Samsara\_internal\torchaudio")) {
+            if (Test-Path $leaked) {
+              Write-Warning "Removing leaked $leaked (excluded in spec but PyInstaller bundled it anyway)"
+              Remove-Item -Recurse -Force $leaked
+            }
+          }
+
+          $sizeMB = [math]::Round((Get-ChildItem "dist\Samsara" -Recurse | Measure-Object -Property Length -Sum).Sum / 1MB, 1)
+          Write-Host "dist\Samsara size: $sizeMB MB"
+
+      - name: Headless-safe smoke check (non-blocking)
+        id: smoke
+        shell: pwsh
+        continue-on-error: true
+        run: |
+          # See tools\ci_smoke.py's module docstring for why this is a
+          # trimmed, non-blocking subset of tools\frozen_smoke.py's full
+          # 11-check local gate rather than that harness verbatim: a stock
+          # CI runner has no guaranteed audio input device and no warm
+          # Hugging Face model cache, and frozen_smoke.py's strict
+          # "any Traceback = FAIL" check produces false negatives on the
+          # former. tools\frozen_smoke.py keeps gating local releases via
+          # tools\build_and_smoke.cmd -- unchanged, not touched here.
+          python tools\ci_smoke.py dist\Samsara --timeout 180 --log-copy-to ci_smoke_artifacts\samsara.log
+
+      - name: Upload smoke log (always, for inspection)
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: ci-smoke-log-${{ steps.version.outputs.version }}
+          path: ci_smoke_artifacts\samsara.log
+          if-no-files-found: ignore
+          retention-days: 14
+
+      - name: Package CPU build
+        id: package
+        shell: pwsh
+        run: |
+          $version = "${{ steps.version.outputs.version }}"
+          $zipName = "Samsara-Windows-$version.zip"
+          # Matches the naming convention used for the v0.20.0 release
+          # (release\release_staging\Samsara-Windows-v0.20.0.zip).
+          Compress-Archive -Path "dist\Samsara\*" -DestinationPath $zipName -CompressionLevel Optimal
+          $sizeMB = [math]::Round((Get-Item $zipName).Length / 1MB, 1)
+          Write-Host "Packaged $zipName ($sizeMB MB)"
+          echo "zip_name=$zipName" >> $env:GITHUB_OUTPUT
+
+      - name: Upload build artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: ${{ steps.package.outputs.zip_name }}
+          path: ${{ steps.package.outputs.zip_name }}
+          retention-days: 30
+
+      - name: Attach to GitHub Release
+        if: github.ref_type == 'tag'
+        uses: softprops/action-gh-release@v2
+        with:
+          files: ${{ steps.package.outputs.zip_name }}
+          generate_release_notes: true
+
+      # ----------------------------------------------------------------------
+      # CUDA pack -- NOT built on CI this pass.
+      #
+      # v0.20.0's Samsara-CUDA-Pack.zip (~1.05GB) was built locally by copying
+      # cuDNN/cuBLAS/cuDART DLLs out of the LOCAL torch install at
+      # F:\envs\sami\...\torch\lib (see scripts\samsara.spec's INCLUDE_CUDA=1
+      # branch, which reads those DLLs from site-packages\torch\lib). A
+      # GitHub-hosted windows-latest runner has no GPU and no reason to carry
+      # a CUDA-enabled torch install, so that source directory does not exist
+      # on CI -- INCLUDE_CUDA=1 would either no-op (spec's `if os.path.exists`
+      # guards) or require pulling a multi-GB CUDA torch wheel just to
+      # harvest DLLs from it, then discarding torch itself. Two paths to
+      # eventually running this on CI, for whenever the CUDA pack needs to be
+      # CI-traceable too (not needed for the CPU-build SignPath conversation
+      # starter this pass targets):
+      #
+      #   1. `pip install torch --index-url https://download.pytorch.org/whl/cu121`
+      #      in a separate build-cuda job, set INCLUDE_CUDA=1, run PyInstaller
+      #      again, harvest the DLLs from that runner's torch install. Costs:
+      #      a multi-GB torch download + a second full PyInstaller pass, just
+      #      to get at ~150MB of DLLs.
+      #   2. Keep the CUDA pack a locally-built, manually-attached release
+      #      asset (today's process via build_release.bat), and have this
+      #      workflow only handle the CPU build + Release scaffolding. The
+      #      CUDA zip gets uploaded to the same tag's Release by hand after
+      #      this workflow creates it.
+      #
+      # Option 2 is the pragmatic default until there's a concrete reason
+      # (SignPath wanting the CUDA pack traceable too, or GPU runners becoming
+      # cheap/available) to pay for option 1.
+      # ----------------------------------------------------------------------
