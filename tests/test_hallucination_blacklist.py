@@ -31,9 +31,25 @@ class TestHallucinationStringBlacklist:
         "字幕由Amara.org社区提供",
         "Дякую за перегляд",
         "Gracias por ver el video",
+        "Thank you for watching!",
+        "Thanks for watching",
     ])
     def test_known_hallucination_strings_are_detected(self, text):
         assert dictation._is_hallucinated_segments([_seg()], text) is True
+
+    def test_english_thank_you_for_watching_regression(self):
+        """The exact production incident (2026-07-10): an 11.7s blank
+        hotkey hold delivered this verbatim. Every non-English variant of
+        this staple was already blacklisted -- the English original was
+        the gap."""
+        assert dictation._is_hallucinated_segments(
+            [_seg()], "Thank you for watching!",
+        ) is True
+
+    def test_english_thanks_for_watching_variant(self):
+        assert dictation._is_hallucinated_segments(
+            [_seg()], "Thanks for watching",
+        ) is True
 
     def test_case_insensitive_match(self):
         assert dictation._is_hallucinated_segments(
