@@ -14,11 +14,21 @@ IS a genuine GlobalAlloc memory block (a BITMAPINFOHEADER + pixel bytes) and
 was being excluded too by an allowlist that only covered text formats -- this
 was the actual bug: image data was silently dropped at the very first
 enumeration pass, before any handle-type or synthesis concern even applied.
-CF_DIBV5 and CF_METAFILEPICT are deliberately left OFF the snapshot list even
-though they're technically memory-safe: Windows auto-synthesizes CF_BITMAP/
-CF_DIBV5 from CF_DIB (and vice versa) on demand, so saving just CF_DIB and
-letting Windows resynthesize the others on restore avoids juggling multiple
-redundant image representations that could end up inconsistent.
+
+CF_DIBV5 (a GlobalAlloc BITMAPV5HEADER + pixel bytes -- same handle shape as
+CF_DIB) IS also snapshotted: unlike CF_BITMAP, which Windows freely
+resynthesizes from CF_DIB, DIBV5 carries per-pixel alpha that a plain CF_DIB
+cannot represent, so resynthesizing CF_DIBV5 from a saved CF_DIB on restore
+would silently drop that alpha channel. CF_METAFILEPICT is still deliberately
+left OFF the snapshot list (not memory-safe to GlobalLock the way CF_DIB/
+CF_DIBV5 are).
+
+CF_HDROP (a GlobalAlloc DROPFILES struct + a list of file paths -- what's on
+the clipboard after an Explorer "Copy" of one or more files) is snapshotted
+for the same reason CF_DIB originally should have been: it's a genuine
+memory block the old text-only allowlist never covered. Restoring it is what
+lets a paste-then-restore dictation flow hand the user back a still-pastable
+set of copied files afterward.
 """
 
 import ctypes
@@ -48,19 +58,23 @@ CF_TEXT = 1
 CF_BITMAP = 2
 CF_OEMTEXT = 7
 CF_DIB = 8
+CF_HDROP = 15
 CF_UNICODETEXT = 13
 CF_LOCALE = 16
 CF_DIBV5 = 17
 
 # Formats that are genuine GlobalAlloc memory blocks AND worth snapshotting.
-# CF_DIB is the one image format here -- see module docstring for why
-# CF_BITMAP/CF_DIBV5 are deliberately excluded despite being "image formats".
+# CF_DIB/CF_DIBV5 are the image formats, CF_HDROP is the file-drop format --
+# see module docstring for why CF_BITMAP is still excluded despite being an
+# "image format" too (GDI handle, not memory).
 SAFE_FORMATS = {
     CF_TEXT,
     CF_OEMTEXT,
     CF_UNICODETEXT,
     CF_LOCALE,
     CF_DIB,
+    CF_HDROP,
+    CF_DIBV5,
 }
 
 _MAX_FORMAT_BYTES = 100 * 1024 * 1024  # skip anything implausibly large
@@ -73,9 +87,10 @@ def is_snapshot_eligible_format(fmt: int) -> bool:
     """True if `fmt` is a format save_clipboard() will attempt to snapshot.
 
     Pure/no I/O -- directly unit-testable. A format is eligible when it's
-    in SAFE_FORMATS (known-safe memory-block formats, including CF_DIB but
-    NOT CF_BITMAP/CF_DIBV5 -- see module docstring) or is a registered
-    format (id >= 0xC000, conventionally GlobalAlloc memory too).
+    in SAFE_FORMATS (known-safe memory-block formats, including CF_DIB,
+    CF_DIBV5, and CF_HDROP but NOT CF_BITMAP/CF_METAFILEPICT -- see module
+    docstring) or is a registered format (id >= 0xC000, conventionally
+    GlobalAlloc memory too).
     """
     return fmt in SAFE_FORMATS or fmt >= 0xC000
 
@@ -158,6 +173,20 @@ def _setup_win32_api():
     kernel32.GlobalFree.argtypes = [HANDLE]
     kernel32.GlobalFree.restype = HANDLE
 
+    # GetClipboardSequenceNumber -- increments on every clipboard content
+    # change; used to detect a clipboard change during the paste window.
+    user32.GetClipboardSequenceNumber.argtypes = []
+    user32.GetClipboardSequenceNumber.restype = ctypes.c_uint32
+
+    # GetClipboardOwner / IsHungAppWindow -- used to skip snapshotting when
+    # a delayed-render provider is hung (would block GetClipboardData
+    # indefinitely).
+    user32.GetClipboardOwner.argtypes = []
+    user32.GetClipboardOwner.restype = HWND
+
+    user32.IsHungAppWindow.argtypes = [HWND]
+    user32.IsHungAppWindow.restype = BOOL
+
     return user32, kernel32
 
 
@@ -183,7 +212,35 @@ def _open_clipboard_with_retry(
     return False
 
 
-def save_clipboard() -> Dict[int, bytes]:
+def get_clipboard_sequence_number() -> "Optional[int]":
+    """Current Windows clipboard sequence number (increments on every
+    clipboard content change), or None on non-Windows / if unavailable.
+    Never raises -- callers treat None as "can't tell, skip the check"."""
+    if sys.platform != 'win32' or _user32 is None:
+        return None
+    try:
+        return _user32.GetClipboardSequenceNumber()
+    except Exception:
+        return None
+
+
+class ClipboardSnapshot(dict):
+    """What save_clipboard() returns: a format-id -> raw-bytes dict, exactly
+    like the plain dict this module has always returned, plus an optional
+    `seq` -- the clipboard sequence number captured right after Samsara's
+    own dictated-text copy (see paste_with_preservation). restore_clipboard()
+    uses `seq`, when set, to detect a clipboard change during the paste
+    window and abort rather than clobber whatever the user has now. A plain
+    dict (or a ClipboardSnapshot with `seq` left at its default None) skips
+    that check entirely -- restore behaves exactly as before this existed.
+    """
+
+    def __init__(self, *args, seq: "Optional[int]" = None, **kwargs):
+        super().__init__(*args, **kwargs)
+        self.seq = seq
+
+
+def save_clipboard() -> "ClipboardSnapshot":
     """
     Save all clipboard formats using Windows API.
 
@@ -196,10 +253,10 @@ def save_clipboard() -> Dict[int, bytes]:
         return _save_clipboard_impl()
     except Exception as e:
         _log_error("save_clipboard failed unexpectedly", e)
-        return {}
+        return ClipboardSnapshot()
 
 
-def _save_clipboard_impl() -> Dict[int, bytes]:
+def _save_clipboard_impl() -> "ClipboardSnapshot":
     if sys.platform != 'win32':
         # Fallback for non-Windows: just save text
         if HAS_PYPERCLIP:
@@ -219,6 +276,17 @@ def _save_clipboard_impl() -> Dict[int, bytes]:
         return saved
 
     try:
+        # A hung delayed-render provider (an app that registered a format
+        # but defers actually producing the data until GetClipboardData is
+        # called) would block GetClipboardData indefinitely below. Skip the
+        # snapshot entirely rather than risk hanging dictation on it -- an
+        # empty save just makes restore_clipboard() a no-op later; the
+        # dictated text still lands via the paste that follows.
+        owner = _user32.GetClipboardOwner()
+        if owner and _user32.IsHungAppWindow(owner):
+            logger.info("[CLIP] clipboard owner hung, skipping snapshot")
+            return saved
+
         fmt = 0
         while True:
             fmt = _user32.EnumClipboardFormats(fmt)
@@ -226,8 +294,8 @@ def _save_clipboard_impl() -> Dict[int, bytes]:
                 break
 
             # Skip formats that aren't memory handles, or that we
-            # deliberately don't snapshot (CF_BITMAP/CF_DIBV5/etc -- see
-            # module docstring).
+            # deliberately don't snapshot (CF_BITMAP/CF_METAFILEPICT/etc --
+            # see module docstring).
             if not is_snapshot_eligible_format(fmt):
                 skipped += 1
                 continue
@@ -269,10 +337,23 @@ def _save_clipboard_impl() -> Dict[int, bytes]:
     finally:
         _user32.CloseClipboard()
 
+    # Legacy text dedup: if CF_UNICODETEXT was captured non-empty, Windows
+    # synthesizes CF_TEXT/CF_OEMTEXT/CF_LOCALE from it automatically on
+    # restore (the mirror image of the CF_DIB -> CF_BITMAP synthesis this
+    # module already relies on -- see module docstring). Dropping the
+    # redundant legacy copies here shrinks the restore window (fewer
+    # formats for restore's atomic prepare phase to allocate) without
+    # losing anything actually restorable.
+    if is_nonempty_payload(saved.get(CF_UNICODETEXT)):
+        for legacy_fmt in (CF_TEXT, CF_OEMTEXT, CF_LOCALE):
+            if legacy_fmt in saved:
+                del saved[legacy_fmt]
+                skipped += 1
+
     if saved or skipped:
         print(f"[DEBUG] Clipboard saved: {len(saved)} format(s), skipped {skipped} format(s)")
 
-    return saved
+    return ClipboardSnapshot(saved)
 
 
 def restore_clipboard(saved: Dict[int, bytes]) -> bool:
@@ -308,49 +389,82 @@ def _restore_clipboard_impl(saved: Dict[int, bytes]) -> bool:
                 _log_error("Failed to restore clipboard text fallback", e)
         return False
 
+    # Sequence-number guard: `saved.seq` (when set -- see ClipboardSnapshot)
+    # is the clipboard sequence number captured right after Samsara's own
+    # dictated-text copy. If it's different now, someone/something changed
+    # the clipboard during the paste window -- restoring our stale snapshot
+    # over that would clobber a real user action, so abort before ever
+    # touching the clipboard. A plain dict (no `seq` attribute, e.g. from a
+    # caller other than paste_with_preservation) skips this check entirely.
+    expected_seq = getattr(saved, 'seq', None)
+    if expected_seq is not None:
+        current_seq = get_clipboard_sequence_number()
+        if current_seq is not None and current_seq != expected_seq:
+            logger.info("[CLIP] clipboard changed during paste window, skipping restore to preserve user copy")
+            return True
+
     GMEM_MOVEABLE = 0x0002
 
+    # Atomic restore, phase 1: allocate+lock+memcpy EVERY saved format
+    # before touching the live clipboard at all. If any one of them fails,
+    # free everything prepared so far and bail without ever calling
+    # OpenClipboard/EmptyClipboard -- leaving the clipboard's current
+    # (prior) content untouched beats an EmptyClipboard() followed by only
+    # a partial restore.
+    prepared = []
+    skipped = 0
+    for fmt, raw in saved.items():
+        # Never attempt to restore an empty payload -- a 0-byte "restored"
+        # format is a lie, and GlobalAlloc(0) is asking for trouble for no
+        # benefit.
+        if not is_nonempty_payload(raw):
+            skipped += 1
+            continue
+        try:
+            h = _kernel32.GlobalAlloc(GMEM_MOVEABLE, len(raw))
+            if not h:
+                raise OSError(f"GlobalAlloc({len(raw)} bytes) returned NULL")
+
+            ptr = _kernel32.GlobalLock(h)
+            if not ptr:
+                _kernel32.GlobalFree(h)
+                raise OSError("GlobalLock returned NULL")
+            try:
+                ctypes.memmove(ptr, raw, len(raw))
+            finally:
+                _kernel32.GlobalUnlock(h)
+
+            prepared.append((fmt, h))
+        except Exception as e:
+            _log_error(f"Failed to prepare clipboard format {fmt} for restore -- aborting restore atomically", e)
+            for _fmt, handle in prepared:
+                _kernel32.GlobalFree(handle)
+            return False
+
+    if not prepared:
+        return True  # everything saved was empty/unrestorable -- nothing to do, not a failure
+
+    # Atomic restore, phase 2: every handle exists now -- only past this
+    # point do we touch the live clipboard.
     if not _open_clipboard_with_retry():
         _log_error("Could not open clipboard for restore after retries")
+        for _fmt, handle in prepared:
+            _kernel32.GlobalFree(handle)
         return False
 
     restored_count = 0
-    skipped = 0
     try:
         _user32.EmptyClipboard()
 
-        for fmt, raw in saved.items():
-            # Never attempt to restore an empty payload -- a 0-byte
-            # "restored" format is a lie, and GlobalAlloc(0) is asking for
-            # trouble for no benefit.
-            if not is_nonempty_payload(raw):
+        for fmt, h in prepared:
+            if _user32.SetClipboardData(fmt, h):
+                restored_count += 1
+            else:
+                # SetClipboardData failed -- free that one handle and keep
+                # going with the rest (unlike phase 1, a single Set failure
+                # here doesn't invalidate the handles already handed off).
+                _kernel32.GlobalFree(h)
                 skipped += 1
-                continue
-            try:
-                h = _kernel32.GlobalAlloc(GMEM_MOVEABLE, len(raw))
-                if not h:
-                    skipped += 1
-                    continue
-
-                ptr = _kernel32.GlobalLock(h)
-                if ptr:
-                    try:
-                        ctypes.memmove(ptr, raw, len(raw))
-                    finally:
-                        _kernel32.GlobalUnlock(h)
-
-                    if _user32.SetClipboardData(fmt, h):
-                        restored_count += 1
-                    else:
-                        # SetClipboardData failed, we need to free the memory
-                        _kernel32.GlobalFree(h)
-                        skipped += 1
-                else:
-                    _kernel32.GlobalFree(h)
-                    skipped += 1
-            except Exception as e:
-                skipped += 1
-                _log_error(f"Failed to restore clipboard format {fmt}", e)
     finally:
         _user32.CloseClipboard()
 
@@ -413,6 +527,14 @@ def paste_with_preservation(text: str, paste_delay: float = CLIPBOARD_PASTE_DELA
         try:
             # Copy the text to paste
             pyperclip.copy(text)
+
+            # Capture the clipboard sequence number right after our own
+            # copy -- if it's different by the time restore_clipboard()
+            # runs, something else changed the clipboard during the paste
+            # window and blindly restoring would clobber that, not just
+            # put back the original content restore is meant to protect.
+            if isinstance(saved, ClipboardSnapshot):
+                saved.seq = get_clipboard_sequence_number()
 
             # Small delay to ensure clipboard is ready
             time.sleep(paste_delay)
