@@ -27,11 +27,12 @@ stock CI runner does not reliably have:
 
 So this script only asks the weaker, still-useful question: does the frozen
 EXE start, stay alive (or explicitly reach the boot marker) for a bounded
-window, and exit cleanly when asked -- with no *unexplained* crash. It never
-fails the build on its own; the workflow step that calls it is
-continue-on-error, and its full log is uploaded as a build artifact for a
-human to read. Tighten this once a few real CI runs show what "normal"
-looks like on the runner (see RELEASING.md).
+window, and exit cleanly when asked -- with no *unexplained* crash. Its full
+log is uploaded as a build artifact for a human to read regardless of
+outcome. 2026-07-10: the workflow step that calls this now gates the release
+(continue-on-error removed) -- a non-zero exit here stops the build before
+packaging/upload, per the 2026-07-10 CRASH_MARKERS tightening above that
+made this check trustworthy enough to trust with that.
 
 Usage:
     python tools\\ci_smoke.py dist\\Samsara [--timeout 180]
