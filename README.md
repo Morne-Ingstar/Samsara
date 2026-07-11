@@ -195,15 +195,15 @@ Download `Samsara-CUDA-Pack-vX.X.X.zip` from the [GitHub releases page](https://
 
 Once the DLLs are in place, restart Samsara, open Settings → Advanced, and select **CUDA (NVIDIA GPU)** in the device dropdown. The startup log should show `Device: cuda, Compute: float16`.
 
-### Configuring Wake Targets & Plugins
+### Configuring Wake Profiles & Plugins
 
-Hands-free wake targets and plugin settings live in `config.json`.
+Hands-free wake profiles and plugin settings live in `config.json`.
 
 ```json
 {
-  "wake_targets": [
-    { "phrase": "hey claude", "target_process": "claude.exe", "send_policy": "enter" },
-    { "phrase": "activate hermes", "target_process": "Hermes.exe", "send_policy": "stage_only" }
+  "wake_profiles": [
+    { "phrase": "hey claude", "target_process": "claude.exe", "mode": "focus_dictate", "send_word": "over" },
+    { "phrase": "activate hermes", "target_process": "Hermes.exe", "mode": "stage_send", "send_word": "send" }
   ],
   "hyperion_host": "your-hyperion-ip-or-hostname",
   "hyperion_port": 19444,
@@ -212,7 +212,7 @@ Hands-free wake targets and plugin settings live in `config.json`.
 }
 ```
 
-`send_policy: "enter"` submits on the send word; `"stage_only"` leaves text staged for agentic targets that shouldn't auto-fire.
+`mode: "focus_dictate"` submits on the send word; `"stage_send"` leaves text staged for agentic profiles that shouldn't auto-fire. Each profile should carry its own `send_word`, distinct from any other profile's, so an agentic (`stage_send`) profile never shares a terminator with a `focus_dictate` one.
 
 ---
 
