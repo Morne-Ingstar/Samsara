@@ -6,6 +6,7 @@ import requests
 from samsara import ava_corrections
 from samsara import ava_profile
 from samsara import cloud_llm
+from samsara import teach_patterns
 from samsara.ava_memory import AvaMemory
 from samsara.languages import LANGUAGES
 from samsara.plugin_commands import command
@@ -976,6 +977,94 @@ def _check_teaching_intent(app, text):
             speak(app, f"Your {query_field} is {value}.")
         else:
             speak(app, f"I don't have your {query_field} saved.")
+        return True
+
+    # Vocabulary/corrections voice-teaching (2026-07-11) -- siblings to the
+    # ava_corrections block below, but targeting samsara/ui/voice_training_qt.py's
+    # VoiceTrainingQt.custom_vocab / corrections_dict instead of
+    # ava_corrections.json. See samsara/teach_patterns.py for every
+    # supported phrasing and the full linguistic-split rationale.
+    #
+    # MUST run BEFORE ava_corrections' checks below: audit found that
+    # ava_corrections.FORGET_PATTERNS' generic "^forget (.+)$" pattern
+    # would otherwise swallow "forget the word X" / "forget the correction
+    # X" (ava_corrections.parse_forget('forget the word frobnicate')
+    # returns 'the word frobnicate', not None) before teach_patterns'
+    # own, more specific forget pattern ever got a chance to run. The
+    # vocab-add/correction-add/undo patterns have no such collision risk
+    # in either direction (verified non-overlapping trigger words against
+    # every ava_corrections/ava_profile pattern), so their position here
+    # is just as safe -- this block is placed as a single unit rather than
+    # interleaved with ava_corrections' checks below for readability.
+    vt = getattr(app, 'voice_training_window', None)
+
+    vocab_word = teach_patterns.parse_vocab_add(text)
+    if vocab_word is not None:
+        if vt is None:
+            speak(app, "Voice training is not available.")
+            return True
+        if vt.add_vocab_word(vocab_word):
+            teach_patterns.record_last_action('vocab', word=vocab_word)
+            if hasattr(app, "play_sound"):
+                app.play_sound("success")
+            speak(app, f"Added {vocab_word} to your vocabulary.")
+        else:
+            speak(app, f'"{vocab_word}" is already in your vocabulary.')
+        return True
+
+    correction_pair = teach_patterns.parse_correction_add(text)
+    if correction_pair is not None:
+        wrong, right = correction_pair
+        ok, reason = teach_patterns.validate_correction_pair(wrong, right)
+        if not ok:
+            speak(app, f"I can't save that correction — {reason}.")
+            return True
+        if vt is None:
+            speak(app, "Voice training is not available.")
+            return True
+        if vt.add_correction(wrong, right):
+            teach_patterns.record_last_action('correction', wrong=wrong, right=right)
+            if hasattr(app, "play_sound"):
+                app.play_sound("success")
+            speak(app, f"From now on I'll change '{wrong}' to '{right}'. "
+                       f"Say 'undo that' to cancel.")
+        else:
+            speak(app, "Could not save that correction.")
+        return True
+
+    if teach_patterns.parse_undo(text):
+        action = teach_patterns.pop_last_action()
+        if action is None:
+            speak(app, "Nothing to undo.")
+            return True
+        if vt is None:
+            speak(app, "Voice training is not available.")
+            return True
+        if action['kind'] == 'vocab':
+            vt.remove_vocab_word(action['word'])
+            speak(app, f"Undone. Removed {action['word']} from your vocabulary.")
+        else:
+            vt.remove_correction(action['wrong'])
+            speak(app, f"Undone. '{action['wrong']}' will no longer be "
+                       f"changed to '{action['right']}'.")
+        return True
+
+    forget_target = teach_patterns.parse_forget(text)
+    if forget_target is not None:
+        kind, phrase = forget_target
+        if vt is None:
+            speak(app, "Voice training is not available.")
+            return True
+        if kind == 'word':
+            if vt.remove_vocab_word(phrase):
+                speak(app, f"Forgotten. {phrase} removed from your vocabulary.")
+            else:
+                speak(app, f"I don't have {phrase} in your vocabulary.")
+        else:
+            if vt.remove_correction(phrase):
+                speak(app, f"Forgotten. '{phrase}' no longer has a saved correction.")
+            else:
+                speak(app, f"I don't have a correction saved for '{phrase}'.")
         return True
 
     parsed = ava_corrections.parse_teaching(text)
