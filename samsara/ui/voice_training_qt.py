@@ -225,6 +225,65 @@ class VoiceTrainingQt:
                 logger.error(f"Could not load training data: {exc}", exc_info=True)
         self._rebuild_corrections_pattern()
 
+    # ----------------------------------------------------------------
+    # Single-pair add/remove (2026-07-11) -- canonical entry points for
+    # samsara/teach_patterns.py's voice-teaching dispatch
+    # (plugins/commands/ask_ollama.py). Every existing UI call site
+    # (dictionary_panel_qt.py's _vocab_add, correction_capture_qt.py's
+    # _on_always_fix) mutates custom_vocab/corrections_dict + calls
+    # _rebuild_corrections_pattern()/save_training_data() inline rather
+    # than through a shared method -- these are new, not a refactor of
+    # those existing (working, low-risk-to-leave-alone) call sites.
+    # Case-insensitive membership/lookup (voice-transcribed casing won't
+    # reliably match whatever casing a word was originally added with),
+    # but the STORED casing is left exactly as passed -- vocabulary
+    # entries are often proper nouns where casing matters for the prompt.
+    # ----------------------------------------------------------------
+
+    def add_vocab_word(self, word: str) -> bool:
+        """Returns False (no-op) if already present case-insensitively, or
+        on save failure."""
+        word = word.strip()
+        if not word or any(w.lower() == word.lower() for w in self.custom_vocab):
+            return False
+        self.custom_vocab.append(word)
+        return self.save_training_data()
+
+    def remove_vocab_word(self, word: str) -> bool:
+        word = word.strip()
+        for existing in list(self.custom_vocab):
+            if existing.lower() == word.lower():
+                self.custom_vocab.remove(existing)
+                return self.save_training_data()
+        return False
+
+    def add_correction(self, wrong: str, right: str) -> bool:
+        """Exact same mutation sequence as correction_capture_qt.py's
+        _on_always_fix: corrections_dict[wrong] = right, then
+        _rebuild_corrections_pattern() (so apply_corrections() sees it on
+        the very next call -- see that method's own docstring for why this
+        step is required), then save_training_data(). An existing entry
+        for `wrong` is overwritten, not confirm-gated -- this path is only
+        reached after the caller's own atomic-substitution validation
+        (samsara/teach_patterns.validate_correction_pair), and the
+        "instant, permanent, name it + offer undo" confirmation happens at
+        the dispatch layer, not here."""
+        wrong, right = wrong.strip(), right.strip()
+        if not wrong or not right:
+            return False
+        self.corrections_dict[wrong] = right
+        self._rebuild_corrections_pattern()
+        return self.save_training_data()
+
+    def remove_correction(self, wrong: str) -> bool:
+        wrong = wrong.strip()
+        for existing in list(self.corrections_dict):
+            if existing.lower() == wrong.lower():
+                del self.corrections_dict[existing]
+                self._rebuild_corrections_pattern()
+                return self.save_training_data()
+        return False
+
     def save_training_data(self) -> bool:
         training_file = Path(self.app.config_path).parent / 'training_data.json'
         try:
