@@ -5229,6 +5229,7 @@ class DictationApp:
             focused = _ws._force_focus(hwnd)
             if focused:
                 logger.info("[WAKE-PROFILE] Focused %r", title)
+                self.play_sound("target_focused")
             else:
                 import ctypes as _ct
                 _fg = _ct.windll.user32.GetForegroundWindow()
@@ -5892,9 +5893,11 @@ class DictationApp:
                             time.sleep(0.05)
                             pyautogui.press('return')
                             self.play_sound("success")
+                            self.play_sound("text_sent")
                             logger.info(f"[WAKE-SESSION] sent — '{_matched_sw}' detected, Enter pressed")
                         else:
                             self.play_sound("action_complete")
+                            self.play_sound("text_sent")
                             logger.info(f"[WAKE-SESSION] staged — '{_matched_sw}' detected, Enter suppressed (stage_send)")
                         self._emit_wake_trace({"stage": "utterance_end", "result": "wake_session_sent",
                                                "send_word": _matched_sw, "mode": _mode})
