@@ -926,6 +926,217 @@ def _track_alias_uses(original_text):
             ava_corrections.increment_use(phrase)
 
 
+# ── Voice-taught vocabulary/corrections: confirmation flow (2026-07-11) ───────
+#
+# Reuses the SAME _pending_action / _pending_action_lock / 30s-TTL pattern
+# already established for "action"/"action2"/"schedule"/"alias_replace"
+# above -- four new types layered onto the same mechanism rather than a
+# parallel one:
+#   'vocab_spelling_wait' / 'correction_spelling_wait'
+#       -- Ava asked "spell that for me"; the NEXT utterance is expected to
+#          be a letters sequence (samsara.teach_patterns.parse_letters),
+#          not a fresh command.
+#   'vocab_confirm' / 'correction_confirm'
+#       -- Ava spoke a letters readback ("M, O, R, N, E -- Morne. Save
+#          it?"); "yes" (the existing global command, see
+#          handle_ava_confirm's new branches below) persists, "no"/a fresh
+#          letters utterance (handled in _check_teaching_intent's gate)
+#          rejects/re-spells.
+#
+# STEP 3F: no global TTS speak-gate exists on this branch yet (verified --
+# grep for a speak-gate/self-transcription mechanism found nothing). The
+# `speak_until` field below is a SCOPED, heuristic mitigation for THIS flow
+# only: an utterance arriving before the estimated end of Ava's own
+# just-spoken readback is discarded as probable self-transcription rather
+# than risking it being misread as "no" or a bogus re-spell. This does NOT
+# cover the separate "yes" global-command match path (a different,
+# earlier dispatch stage this task does not touch) -- see the report for
+# that residual gap. A real global speak-gate supersedes this entirely.
+_TTS_CHARS_PER_SECOND = 15.0   # conservative average TTS speaking rate estimate
+_TTS_MIN_SPEAK_WINDOW_S = 1.5
+_TTS_MAX_SPEAK_WINDOW_S = 8.0
+_TEACH_PENDING_TTL_S = 30       # matches every other _pending_action type
+
+
+def _estimate_speak_window_s(spoken_text: str) -> float:
+    est = len(spoken_text) / _TTS_CHARS_PER_SECOND
+    return max(_TTS_MIN_SPEAK_WINDOW_S, min(_TTS_MAX_SPEAK_WINDOW_S, est))
+
+
+def _set_teach_pending(app, pending: dict, spoken_text: str) -> None:
+    """Speak `spoken_text`, then install `pending` as the active
+    _pending_action with a fresh TTL and self-transcription speak-window.
+    Centralizes the "every readback refreshes both timers" rule so no call
+    site can forget one half of it."""
+    global _pending_action
+    now = time.time()
+    pending['expires'] = now + _TEACH_PENDING_TTL_S
+    pending['speak_until'] = now + _estimate_speak_window_s(spoken_text)
+    with _pending_action_lock:
+        _pending_action = pending
+    speak(app, spoken_text)
+
+
+def _clear_teach_pending() -> None:
+    global _pending_action
+    with _pending_action_lock:
+        _pending_action = None
+
+
+def _open_vocab_spelling_wait(app) -> None:
+    _set_teach_pending(app, {'type': 'vocab_spelling_wait'}, "Spell that for me.")
+
+
+def _open_correction_spelling_wait(app, wrong: str) -> None:
+    _set_teach_pending(
+        app, {'type': 'correction_spelling_wait', 'wrong': wrong},
+        "Spell that for me.",
+    )
+
+
+def _open_vocab_confirmation(app, word: str) -> None:
+    _set_teach_pending(
+        app, {'type': 'vocab_confirm', 'word': word},
+        teach_patterns.build_vocab_confirmation_prompt(word),
+    )
+
+
+def _open_correction_confirmation(app, wrong: str, right: str) -> None:
+    _set_teach_pending(
+        app, {'type': 'correction_confirm', 'wrong': wrong, 'right': right},
+        teach_patterns.build_correction_confirmation_prompt(wrong, right),
+    )
+
+
+def _persist_vocab_word(app, vt, word: str) -> None:
+    if vt.add_vocab_word(word):
+        teach_patterns.record_last_action('vocab', word=word)
+        if hasattr(app, "play_sound"):
+            app.play_sound("success")
+        speak(app, f"Added {word} to your vocabulary.")
+    else:
+        speak(app, f'"{word}" is already in your vocabulary.')
+
+
+def _persist_correction(app, vt, wrong: str, right: str) -> None:
+    if vt.add_correction(wrong, right):
+        teach_patterns.record_last_action('correction', wrong=wrong, right=right)
+        if hasattr(app, "play_sound"):
+            app.play_sound("success")
+        speak(app, f"From now on I'll change '{wrong}' to '{right}'. "
+                   f"Say 'undo that' to cancel.")
+    else:
+        speak(app, "Could not save that correction.")
+
+
+def _grab_source_text(source_kind: str) -> "str | None":
+    return (
+        teach_patterns.grab_selection_text() if source_kind == 'selection'
+        else teach_patterns.grab_clipboard_text()
+    )
+
+
+def _source_refusal_text(source_kind: str) -> str:
+    return "Nothing is selected." if source_kind == 'selection' else "The clipboard is empty or too long."
+
+
+def _strip_spelled_prefix(text: str) -> str:
+    """A re-spell/spelling-wait reply may optionally repeat the "spelled"
+    trigger word ("spelled M O R N E") or just say the letters bare
+    ("M O R N E") -- accept either."""
+    return re.sub(r'^spelled\s+', '', text.strip(), flags=re.IGNORECASE)
+
+
+def _check_teach_pending_gate(app, text: str) -> bool:
+    """Checked FIRST in _check_teaching_intent, before any fresh-command
+    parsing. Returns True if `text` was consumed as a reply to an open
+    vocab/correction confirmation or spelling-wait (including being
+    silently discarded as probable self-transcription noise) -- caller
+    must return True immediately without any further parsing. Returns
+    False if there is no relevant pending state (expired, wrong type, or
+    none at all) or the text didn't match anything pending-specific, in
+    which case normal parsing should proceed and the pending entry (if
+    any) is left untouched.
+    """
+    global _pending_action
+    pending = _pending_action
+    if pending is None or pending.get('type') not in (
+        'vocab_spelling_wait', 'correction_spelling_wait',
+        'vocab_confirm', 'correction_confirm',
+    ):
+        return False
+
+    if pending.get('expires', 0) < time.time():
+        with _pending_action_lock:
+            if _pending_action is pending:
+                _pending_action = None
+        return False
+
+    if time.time() < pending.get('speak_until', 0):
+        # Probable self-transcription of Ava's own readback -- see the
+        # module-level comment above _TTS_CHARS_PER_SECOND. Swallow
+        # silently; pending state is untouched so the real reply (once
+        # Ava has actually finished speaking) still resolves it.
+        return True
+
+    ptype = pending['type']
+
+    if ptype in ('vocab_spelling_wait', 'correction_spelling_wait'):
+        spelled = teach_patterns.parse_letters(_strip_spelled_prefix(text))
+        if spelled is None:
+            # One more shot, same pending state conceptually -- but
+            # _set_teach_pending always builds a fresh dict, so rebuild
+            # from what's already known rather than mutating in place
+            # (keeps every _pending_action write going through the same
+            # "always a fresh dict" convention used everywhere else in
+            # this file).
+            if ptype == 'vocab_spelling_wait':
+                _set_teach_pending(app, {'type': 'vocab_spelling_wait'},
+                                    "I didn't catch that spelling. Spell it again for me.")
+            else:
+                _set_teach_pending(
+                    app, {'type': 'correction_spelling_wait', 'wrong': pending['wrong']},
+                    "I didn't catch that spelling. Spell it again for me.",
+                )
+            return True
+        if ptype == 'vocab_spelling_wait':
+            _open_vocab_confirmation(app, spelled)
+        else:
+            ok, reason = teach_patterns.validate_correction_pair(pending['wrong'], spelled)
+            if not ok:
+                _clear_teach_pending()
+                speak(app, f"I can't save that correction — {reason}.")
+                return True
+            _open_correction_confirmation(app, pending['wrong'], spelled)
+        return True
+
+    # ptype in ('vocab_confirm', 'correction_confirm')
+    if teach_patterns.parse_reject(text):
+        _clear_teach_pending()
+        speak(app, "Okay, not saved.")
+        return True
+
+    respelled = teach_patterns.parse_letters(_strip_spelled_prefix(text))
+    if respelled is not None:
+        if ptype == 'vocab_confirm':
+            _open_vocab_confirmation(app, respelled)
+        else:
+            ok, reason = teach_patterns.validate_correction_pair(pending['wrong'], respelled)
+            if not ok:
+                _clear_teach_pending()
+                speak(app, f"I can't save that correction — {reason}.")
+                return True
+            _open_correction_confirmation(app, pending['wrong'], respelled)
+        return True
+
+    # Neither a rejection nor a parseable re-spell -- likely unrelated to
+    # this confirmation. Leave it open (matches this file's existing
+    # convention: nothing here auto-cancels a pending action except
+    # explicit "yes"/"ava cancel"/TTL expiry) and let normal parsing
+    # continue below.
+    return False
+
+
 def _check_teaching_intent(app, text):
     """Returns True if text was handled as a teaching/forget/query/list operation.
 
@@ -934,6 +1145,13 @@ def _check_teaching_intent(app, text):
     mistaken for an alias teaching sentence.
     """
     global _pending_action
+
+    # Vocab/correction confirmation or spelling-wait in progress -- checked
+    # FIRST, before any fresh-command parsing below, since this utterance
+    # may be a reply to something Ava just asked rather than a new
+    # command. See _check_teach_pending_gate's own docstring.
+    if _check_teach_pending_gate(app, text):
+        return True
 
     # Profile teaching
     parsed = ava_profile.parse_teaching(text)
@@ -998,38 +1216,110 @@ def _check_teaching_intent(app, text):
     # interleaved with ava_corrections' checks below for readability.
     vt = getattr(app, 'voice_training_window', None)
 
-    vocab_word = teach_patterns.parse_vocab_add(text)
-    if vocab_word is not None:
+    # VOCABULARY -- see samsara/teach_patterns.py's module docstring for
+    # the three spelling-truth channels this routes through. Every path
+    # below either (a) sources text that bypasses ASR entirely (selection/
+    # clipboard), (b) requires an explicit spelled-letters sequence, or
+    # (c) independently verifies a plain transcription against a real
+    # dictionary before trusting it -- never a raw pass-through of what
+    # this utterance transcribed the target word as.
+    vocab_parsed = teach_patterns.parse_vocab_add(text)
+    if vocab_parsed is not None:
         if vt is None:
             speak(app, "Voice training is not available.")
             return True
-        if vt.add_vocab_word(vocab_word):
-            teach_patterns.record_last_action('vocab', word=vocab_word)
-            if hasattr(app, "play_sound"):
-                app.play_sound("success")
-            speak(app, f"Added {vocab_word} to your vocabulary.")
-        else:
-            speak(app, f'"{vocab_word}" is already in your vocabulary.')
+
+        if vocab_parsed['kind'] == 'source':
+            source_word = _grab_source_text(vocab_parsed['source'])
+            if source_word is None:
+                speak(app, _source_refusal_text(vocab_parsed['source']))
+                return True
+            # Text sources are exact (not ASR output) -- skip the letter
+            # readback entirely, matches the dictionary-word fast path.
+            _persist_vocab_word(app, vt, source_word)
+            return True
+
+        raw_word = vocab_parsed['word']
+        letters_text = vocab_parsed['letters']
+
+        if letters_text:
+            spelled_word = teach_patterns.parse_letters(letters_text)
+            if spelled_word is None:
+                speak(app, "I didn't catch that spelling. Please spell it again.")
+                return True
+            _open_vocab_confirmation(app, spelled_word)
+            return True
+
+        if teach_patterns.is_known_dictionary_word(raw_word):
+            # Independently verified against the bundled CMU dictionary --
+            # trustworthy without a letters channel. Persists instantly
+            # with a short confirm + success earcon, no readback gate.
+            _persist_vocab_word(app, vt, raw_word)
+            return True
+
+        _open_vocab_spelling_wait(app)
         return True
 
-    correction_pair = teach_patterns.parse_correction_add(text)
-    if correction_pair is not None:
-        wrong, right = correction_pair
-        ok, reason = teach_patterns.validate_correction_pair(wrong, right)
+    # CORRECTIONS -- LHS is NEVER trusted from this utterance (STEP 3A):
+    # resolved against the session buffer first, unconditionally, before
+    # any RHS handling even begins. A resolution failure refuses outright
+    # regardless of what the RHS would have been.
+    correction_parsed = teach_patterns.parse_correction_add(text)
+    if correction_parsed is not None:
+        if vt is None:
+            speak(app, "Voice training is not available.")
+            return True
+
+        recent_segments = teach_patterns.get_recent_dictated_segments(app)
+        wrong = teach_patterns.resolve_correction_target(
+            correction_parsed['lhs_kind'], correction_parsed.get('lhs_raw'), recent_segments)
+        if wrong is None:
+            speak(app, "I can only correct something I recently wrote — dictate it first.")
+            return True
+
+        if correction_parsed['rhs_kind'] == 'source':
+            right = _grab_source_text(correction_parsed['rhs_source'])
+            if right is None:
+                speak(app, _source_refusal_text(correction_parsed['rhs_source']))
+                return True
+            ok, reason = teach_patterns.validate_correction_pair(wrong, right)
+            if not ok:
+                speak(app, f"I can't save that correction — {reason}.")
+                return True
+            _persist_correction(app, vt, wrong, right)
+            return True
+
+        raw_right = correction_parsed['rhs']
+        letters_text = correction_parsed['letters']
+
+        if letters_text:
+            spelled_right = teach_patterns.parse_letters(letters_text)
+            if spelled_right is None:
+                speak(app, "I didn't catch that spelling. Please spell it again.")
+                return True
+            ok, reason = teach_patterns.validate_correction_pair(wrong, spelled_right)
+            if not ok:
+                speak(app, f"I can't save that correction — {reason}.")
+                return True
+            _open_correction_confirmation(app, wrong, spelled_right)
+            return True
+
+        ok, reason = teach_patterns.validate_correction_pair(wrong, raw_right)
         if not ok:
             speak(app, f"I can't save that correction — {reason}.")
             return True
-        if vt is None:
-            speak(app, "Voice training is not available.")
+
+        if teach_patterns.is_known_dictionary_word(raw_right):
+            # Matches the PRE-EXISTING UX for this case: persist
+            # immediately, offer "undo that" as the safety net. STEP 3D
+            # scopes the MANDATORY pre-persist readback gate to "a spelled
+            # or non-dictionary-word form" -- a plain dictionary-word RHS
+            # doesn't require it, and correction pairs already have an
+            # undo path that vocabulary adds don't.
+            _persist_correction(app, vt, wrong, raw_right)
             return True
-        if vt.add_correction(wrong, right):
-            teach_patterns.record_last_action('correction', wrong=wrong, right=right)
-            if hasattr(app, "play_sound"):
-                app.play_sound("success")
-            speak(app, f"From now on I'll change '{wrong}' to '{right}'. "
-                       f"Say 'undo that' to cancel.")
-        else:
-            speak(app, "Could not save that correction.")
+
+        _open_correction_spelling_wait(app, wrong)
         return True
 
     if teach_patterns.parse_undo(text):
@@ -1268,6 +1558,31 @@ def handle_ava_confirm(app, remainder="", **kwargs):
             speak(app, f"Updated. {phrase} now means {new_expansion}.")
         else:
             speak(app, "Could not update that alias.")
+
+    elif action["type"] == "vocab_confirm":
+        with _pending_action_lock:
+            _pending_action = None
+        vt = getattr(app, 'voice_training_window', None)
+        if vt is None:
+            speak(app, "Voice training is not available.")
+        else:
+            _persist_vocab_word(app, vt, action["word"])
+
+    elif action["type"] == "correction_confirm":
+        with _pending_action_lock:
+            _pending_action = None
+        vt = getattr(app, 'voice_training_window', None)
+        if vt is None:
+            speak(app, "Voice training is not available.")
+        else:
+            _persist_correction(app, vt, action["wrong"], action["right"])
+
+    elif action["type"] in ("vocab_spelling_wait", "correction_spelling_wait"):
+        # "yes" doesn't mean anything while Ava is still waiting for a
+        # spelling -- pending state deliberately left open (same TTL
+        # still counting down) so the user can just answer the actual
+        # question instead of restarting the whole teaching command.
+        speak(app, "I'm still waiting for you to spell that.")
 
 
 @command(
