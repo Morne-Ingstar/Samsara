@@ -62,7 +62,7 @@ _WAKE_FALLBACKS = {
     "phrase": "jarvis",
     "phrase_options": ["jarvis", "hey jarvis", "computer", "hey computer", "samsa", "hey samsa"],
     "end_words": ["over", "done", "end dictation"],
-    "cancel_words": ["cancel", "cancel dictation", "abort"],
+    "wake_abort_phrase": ["cancel", "cancel dictation", "abort"],
 }
 
 
@@ -177,7 +177,7 @@ def _resolve_session_phrases(app) -> dict:
     alternates = [p for p in phrase_options if p != wake_phrase]
 
     end_words = ww_cfg.get("end_words", _WAKE_FALLBACKS["end_words"])
-    cancel_words = ww_cfg.get("cancel_words", _WAKE_FALLBACKS["cancel_words"])
+    abort_words = ww_cfg.get("wake_abort_phrase", _WAKE_FALLBACKS["wake_abort_phrase"])
 
     return {
         "wake": {
@@ -199,7 +199,7 @@ def _resolve_session_phrases(app) -> dict:
         },
         "abort": {
             "enabled": wake_enabled or cm_enabled,
-            "words": cancel_words,
+            "words": abort_words,
         },
         "scratch_that": {
             "enabled": cm_enabled,

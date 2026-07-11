@@ -114,7 +114,7 @@ class TestResolveSessionPhrases:
 
     def test_custom_cancel_words_reflected(self):
         app = _make_app({"wake_word_enabled": True,
-                          "wake_word_config": {"cancel_words": ["stop that", "nevermind"]}})
+                          "wake_word_config": {"wake_abort_phrase": ["stop that", "nevermind"]}})
         state = qr._resolve_session_phrases(app)
         assert state["abort"]["words"] == ["stop that", "nevermind"]
 

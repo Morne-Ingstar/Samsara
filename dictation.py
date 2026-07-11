@@ -1604,10 +1604,10 @@ class DictationApp:
         self._wake_detector = None
         self._oww_wake_detected = False  # Set by OWW; consumed by silence flush
 
-        # Phase 1 multi-wakeword: per-target OWW detectors (id -> WakeWordDetector|None).
-        # None means that target uses Whisper-transcript fallback.
-        # Loaded lazily in _load_wake_target_models() after the Whisper model loads.
-        self._wake_target_detectors: dict = {}
+        # Phase 1 multi-wakeword: per-profile OWW detectors (id -> WakeWordDetector|None).
+        # None means that profile uses Whisper-transcript fallback.
+        # Loaded lazily in _load_wake_profile_models() after the Whisper model loads.
+        self._wake_profile_detectors: dict = {}
 
         # Timestamp of the last successful command execution. While this is
         # within the 2-second post-command window, the audio callback
@@ -2275,7 +2275,7 @@ class DictationApp:
                 "phrase_options": ["jarvis", "hey jarvis", "computer", "hey computer", "samsa", "hey samsa"],
                 "quick_silence_timeout": 1.0,
                 "end_words": ["over", "done", "end dictation"],
-                "cancel_words": ["cancel", "cancel dictation", "abort"],
+                "wake_abort_phrase": ["cancel", "cancel dictation", "abort"],
                 "pause_words": ["pause", "hold on", "wait"],
                 "resume_words": ["resume", "continue", "go on"],
                 "audio": {
@@ -2289,17 +2289,27 @@ class DictationApp:
                     "play_sound_on_end": True
                 }
             },
-            # Phase 1 multi-wakeword: phrase -> target_process -> focus+dictate.
+            # Multi-wakeword: phrase -> target_process -> focus+dictate.
             # Each entry binds a spoken phrase to a target application by process name.
             # Missing oww_model -> Whisper-transcript fallback (match_wake_phrase).
             # Drop trained .onnx files into samsara/wake_models/ to enable OWW pre-filter.
-            "wake_targets": [
+            # mode: 'focus_dictate' types live and presses Enter on send_word;
+            #       'stage_send' buffers utterances (never types until send_word) and
+            #       never presses Enter -- for agentic targets (see samsara/wake_profiles.py).
+            # send_word: THIS profile's own terminator -- must be distinct across
+            #       profiles (agentic-safety requirement, see docs design review
+            #       arc_20260629_170545.md). Never shared with another profile.
+            # Phrases are validated at config load (samsara.wake_profiles.validate_wake_profiles):
+            # under 3 syllables or a duplicate of another enabled profile's phrase disables it.
+            "wake_profiles": [
                 {
                     "id": "claude",
-                    "phrase": "hey claude",
-                    "oww_model": "hey_claude.onnx",
+                    "phrase": "activate claude",
+                    "oww_model": "activate_claude.onnx",
                     "target_process": "claude.exe",
                     "enabled": True,
+                    "mode": "focus_dictate",
+                    "send_word": "over",
                 },
                 {
                     "id": "hermes",
@@ -2307,6 +2317,8 @@ class DictationApp:
                     "oww_model": "activate_hermes.onnx",
                     "target_process": "Hermes.exe",
                     "enabled": True,
+                    "mode": "stage_send",
+                    "send_word": "send",
                 },
             ],
             # Echo cancellation (removes system audio from mic input).
@@ -2562,6 +2574,7 @@ class DictationApp:
                     self.config[key] = default_config[key]
         else:
             self.config = default_config
+            wake_profiles.validate_wake_profiles(self.config['wake_profiles'])
             # save_config() requires _config_lock to be held; load_config is
             # always called under _config_lock so calling save_config() directly
             # (not re-acquiring the lock) is correct here.
@@ -2581,10 +2594,16 @@ class DictationApp:
             self.config['mode'] = 'hold'
             logger.info(f"[MIGRATE] mode='{old_mode}' -> mode='hold' + wake_word_enabled=True")
 
-        # Phase 1 multi-wakeword: inject wake_targets default when missing.
-        if 'wake_targets' not in self.config:
-            self.config['wake_targets'] = default_config.get('wake_targets', [])
-            logger.info("[MIGRATE] Injected default wake_targets (Phase 1 multi-wakeword)")
+        # Multi-wakeword: wake_targets -> wake_profiles rename (tribunal spec,
+        # design review arc_20260629_170545.md). Renames an existing on-disk
+        # list in place rather than discarding the user's own edits.
+        if 'wake_targets' in self.config and 'wake_profiles' not in self.config:
+            self.config['wake_profiles'] = self.config.pop('wake_targets')
+            logger.info("[MIGRATE] Renamed wake_targets -> wake_profiles")
+
+        if 'wake_profiles' not in self.config:
+            self.config['wake_profiles'] = copy.deepcopy(default_config.get('wake_profiles', []))
+            logger.info("[MIGRATE] Injected default wake_profiles")
 
         # Check if we have old flat config but no new nested config
         if 'wake_word_config' not in self.config:
@@ -2606,7 +2625,7 @@ class DictationApp:
                     _modes['dictate']['silence_timeout'] = self.config['wake_word_timeout']
             if 'min_speech_duration' in self.config:
                 self.config['wake_word_config']['audio']['min_speech_duration'] = self.config['min_speech_duration']
-            
+
             # Save migrated config — _config_lock is already held by the
             # load_config() caller, so do not re-acquire (threading.Lock is
             # not reentrant and would deadlock).
@@ -2615,6 +2634,30 @@ class DictationApp:
         else:
             # Ensure all nested keys exist (for configs created between versions)
             self._deep_update(self.config['wake_word_config'], default_config['wake_word_config'])
+
+        # cancel_words -> wake_abort_phrase rename, inside the now-guaranteed
+        # wake_word_config dict.
+        _wwc = self.config['wake_word_config']
+        if 'cancel_words' in _wwc and 'wake_abort_phrase' not in _wwc:
+            _wwc['wake_abort_phrase'] = _wwc.pop('cancel_words')
+            logger.info("[MIGRATE] Renamed wake_word_config.cancel_words -> wake_abort_phrase")
+
+        # Per-profile send_word (agentic-safety requirement): migrate the old
+        # GLOBAL send_words list (wake_word_config.send_words, first entry)
+        # into each profile that doesn't already carry its own send_word, and
+        # fold legacy send_policy ('enter'|'stage_only') into mode
+        # ('focus_dictate'|'stage_send'). A stage_send (agentic) target must
+        # end up with a send_word distinct from any focus_dictate target's --
+        # this only fills a default, it never clobbers an explicit value, so
+        # profiles can diverge from here on.
+        _legacy_send_words = _wwc.get('send_words') or ['over']
+        _legacy_default_send_word = _legacy_send_words[0]
+        for _profile in self.config['wake_profiles']:
+            if isinstance(_profile, dict):
+                wake_profiles.normalize_profile_mode_and_send_word(
+                    _profile, default_send_word=_legacy_default_send_word)
+
+        wake_profiles.validate_wake_profiles(self.config['wake_profiles'])
     
     def _migrate_command_matching_enabled_flag(self):
         """Migrate the legacy top-level 'command_mode_enabled' flag into
@@ -3538,7 +3581,7 @@ class DictationApp:
 
             logger.info("[INIT] Loading OpenWakeWord pre-filter...")
             self._load_oww_model()
-            self._load_wake_target_models()
+            self._load_wake_profile_models()
             _boot_log("async: OpenWakeWord model load")
 
             logger.info("Ready for dictation.")
@@ -4215,7 +4258,7 @@ class DictationApp:
             self.play_sound('error')
 
         ww_cfg = self.config.get('wake_word_config', {})
-        abort_phrases = ww_cfg.get('cancel_words', ['cancel', 'cancel dictation', 'abort'])
+        abort_phrases = ww_cfg.get('wake_abort_phrase', ['cancel', 'cancel dictation', 'abort'])
 
         self._session_mode_manager = SessionModeManager(
             abort_phrases=abort_phrases,
@@ -5103,89 +5146,89 @@ class DictationApp:
         else:
             logger.debug(f"[OWW] No pre-filter for '{wake_phrase}' — using Whisper detection")
 
-    def _load_wake_target_models(self):
-        """Load OWW models for all enabled wake_targets (Phase 1 multi-wakeword).
+    def _load_wake_profile_models(self):
+        """Load OWW models for all enabled wake_profiles (Phase 1 multi-wakeword).
 
         Looks for custom .onnx files under samsara/wake_models/. When a model
-        file is absent that target uses Whisper-transcript matching via
+        file is absent that profile uses Whisper-transcript matching via
         match_wake_phrase — adequate for long phrases like "hey claude" /
         "activate hermes". Drop trained .onnx files there and restart to activate
-        the OWW pre-filter for those targets.
+        the OWW pre-filter for those profiles.
         """
-        targets = self.config.get('wake_targets', [])
-        if not targets:
+        profiles = self.config.get('wake_profiles', [])
+        if not profiles:
             return
 
         models_dir = Path(__file__).parent / 'samsara' / 'wake_models'
         oww_threshold = float(self.config.get('wake_word_config', {}).get('oww_threshold', 0.2))
 
-        for target in targets:
-            if not target.get('enabled', True):
+        for profile in profiles:
+            if not profile.get('enabled', True):
                 continue
-            tid        = target.get('id', '')
-            phrase     = target.get('phrase', '')
-            model_file = target.get('oww_model', '')
+            tid        = profile.get('id', '')
+            phrase     = profile.get('phrase', '')
+            model_file = profile.get('oww_model', '')
             model_path = (models_dir / model_file) if model_file else None
 
             if model_path and model_path.exists():
                 detector = WakeWordDetector(phrase, threshold=oww_threshold,
                                             model_path=str(model_path))
-                self._wake_target_detectors[tid] = detector
+                self._wake_profile_detectors[tid] = detector
                 status = "OWW pre-filter active" if detector.is_available else "load failed — Whisper fallback"
-                logger.debug(f"[OWW] Wake target '{tid}' ({phrase}): {status}")
+                logger.debug(f"[OWW] Wake profile '{tid}' ({phrase}): {status}")
             else:
-                self._wake_target_detectors[tid] = None
+                self._wake_profile_detectors[tid] = None
                 missing = f" ('{model_file}' not in wake_models/)" if model_file else ""
-                logger.debug(f"[OWW] Wake target '{tid}' ({phrase}): no model{missing} — Whisper fallback")
+                logger.debug(f"[OWW] Wake profile '{tid}' ({phrase}): no model{missing} — Whisper fallback")
 
-    def _check_wake_targets(self, corrected_lower):
-        """Match corrected transcript against all enabled wake_targets.
+    def _check_wake_profiles(self, corrected_lower):
+        """Match corrected transcript against all enabled wake_profiles.
 
-        Returns the first matching target dict, or None if no target matched.
+        Returns the first matching profile dict, or None if no profile matched.
         Called from process_wake_word_buffer before the legacy single-phrase check.
         """
-        for target in self.config.get('wake_targets', []):
-            if not target.get('enabled', True):
+        for profile in self.config.get('wake_profiles', []):
+            if not profile.get('enabled', True):
                 continue
-            phrase = target.get('phrase', '').lower().strip()
+            phrase = profile.get('phrase', '').lower().strip()
             if not phrase:
                 continue
             matched, _, _ = match_wake_phrase(corrected_lower, phrase)
             if matched:
-                return target
+                return profile
         return None
 
-    def _dispatch_wake_target(self, target, corrected_lower=''):
+    def _dispatch_wake_profile(self, profile, corrected_lower=''):
         """Focus the target window and start a quick_dictation session.
 
-        Called from process_wake_word_buffer when a wake_target phrase is
+        Called from process_wake_word_buffer when a wake_profile phrase is
         detected. Focuses (and restores if minimized) the target window via
         window_switcher._force_focus, then enters quick_dictation mode so
         the user's next utterance is typed into that window. Session ends via
         the existing silence/timeout mechanism (Phase 2 will refine this).
         """
-        process_name = target.get('target_process', '')
-        phrase       = target.get('phrase', '').lower().strip()
-        tid          = target.get('id', phrase)
+        process_name = profile.get('target_process', '')
+        phrase       = profile.get('phrase', '').lower().strip()
+        tid          = profile.get('id', phrase)
 
-        logger.info(f"[WAKE-TARGET] '{phrase}' matched — targeting '{process_name}'")
+        logger.info(f"[WAKE-PROFILE] '{phrase}' matched — targeting '{process_name}'")
 
         own_pid = os.getpid()
         result  = _resolve_target_window(process_name, exclude_pids={own_pid})
 
         if result is None:
-            logger.info(f"[WAKE-TARGET] No window found for '{process_name}' — process not running?")
+            logger.info(f"[WAKE-PROFILE] No window found for '{process_name}' — process not running?")
             self.play_sound("error")
             return
 
         hwnd, title = result
-        logger.info(f"[WAKE-TARGET] Found window: '{title}' (hwnd={hwnd})")
+        logger.info(f"[WAKE-PROFILE] Found window: '{title}' (hwnd={hwnd})")
 
         try:
             from plugins.commands import window_switcher as _ws
             focused = _ws._force_focus(hwnd)
             if focused:
-                logger.info("[WAKE-TARGET] Focused %r", title)
+                logger.info("[WAKE-PROFILE] Focused %r", title)
             else:
                 import ctypes as _ct
                 _fg = _ct.windll.user32.GetForegroundWindow()
@@ -5193,11 +5236,11 @@ class DictationApp:
                 _fgb = _ct.create_unicode_buffer(_fgl + 1)
                 _ct.windll.user32.GetWindowTextW(_fg, _fgb, _fgl + 1)
                 logger.warning(
-                    "[WAKE-TARGET] FOCUS FAILED for %r (foreground still %r) — proceeding to dictate anyway",
+                    "[WAKE-PROFILE] FOCUS FAILED for %r (foreground still %r) — proceeding to dictate anyway",
                     title, _fgb.value or "<unknown>",
                 )
         except Exception as exc:
-            logger.exception(f"[WAKE-TARGET] Focus failed: {exc}")
+            logger.exception(f"[WAKE-PROFILE] Focus failed: {exc}")
             self.play_sound("error")
             return
 
@@ -5211,30 +5254,30 @@ class DictationApp:
                 remainder = re.sub(r'^[^\w]+', '', remainder).strip()
                 if remainder:
                     initial_content = remainder
-                    logger.info(f"[WAKE-TARGET] Pre-buffering trailing speech: '{initial_content}'")
+                    logger.info(f"[WAKE-PROFILE] Pre-buffering trailing speech: '{initial_content}'")
 
-        # Resolve per-target send policy.  Explicit key in config wins; otherwise
+        # Resolve per-profile mode.  Explicit key in config wins; otherwise
         # default by process/id name: hermes-targeted sessions stage only (never
-        # auto-submit), all other targets press Enter on send-word detection.
-        if 'send_policy' in target:
-            _send_policy = target['send_policy']
+        # auto-submit), all other profiles press Enter on send-word detection.
+        if 'mode' in profile:
+            _mode = profile['mode']
         elif 'hermes' in process_name.lower() or 'hermes' in tid.lower():
-            _send_policy = 'stage_only'
+            _mode = 'stage_send'
         else:
-            _send_policy = 'enter'
+            _mode = 'focus_dictate'
 
         # Start open-ended wake session: per-utterance delivery, ends on inactivity.
-        self._start_wake_session(initial_content=initial_content, send_policy=_send_policy)
+        self._start_wake_session(initial_content=initial_content, mode=_mode)
 
-    def _start_wake_session(self, initial_content=None, send_policy='enter'):
+    def _start_wake_session(self, initial_content=None, mode='focus_dictate'):
         """Enter open-ended wake session state.
 
         Each transcribed utterance is delivered immediately.  The session stays
         alive through silence and only ends after _WAKE_SESSION_TIMEOUT_S of
         inactivity or via the global cancel path.
 
-        send_policy: 'enter' — press Enter after send-word detection (claude targets).
-                     'stage_only' — text staged, Enter suppressed (hermes/agentic targets).
+        mode: 'focus_dictate' — press Enter after send-word detection (claude profiles).
+              'stage_send' — text staged, Enter suppressed (hermes/agentic profiles).
         """
         # Duck other apps' audio for this open-ended dictation window --
         # only reached once a wake word has actually fired and an active
@@ -5252,9 +5295,9 @@ class DictationApp:
         self._dictation_paused = False
         self._dictation_require_end = False
         self._dictation_silence_timeout = _WAKE_SESSION_CHUNK_GAP_S
-        self._wake_target_active = True
+        self._wake_profile_active = True
         self._wake_session_first_chunk = True
-        self._wake_session_send_policy = send_policy
+        self._wake_session_mode = mode
 
         if hasattr(self, 'wake_word_timer') and self.wake_word_timer:
             self.wake_word_timer.cancel()
@@ -5262,7 +5305,7 @@ class DictationApp:
         logger.debug(f"[STATE] {old_state} -> wake_session "
               f"(chunk gap: {_WAKE_SESSION_CHUNK_GAP_S}s, "
               f"inactivity timeout: {_WAKE_SESSION_TIMEOUT_S}s, "
-              f"send_policy: {send_policy})")
+              f"mode: {mode})")
 
         self._restart_wake_session_timer()
         logger.info(
@@ -5811,9 +5854,9 @@ class DictationApp:
 
             # In dictation state (quick_dictation, long_dictation, or wake_session)?
             if self.app_state in ('quick_dictation', 'long_dictation', 'wake_session'):
-                # Check cancel words
-                cancel_words = ww_config.get('cancel_words', ['cancel'])
-                for cw in cancel_words:
+                # Check abort words
+                abort_words = ww_config.get('wake_abort_phrase', ['cancel'])
+                for cw in abort_words:
                     if cw.lower() in text_lower:
                         logger.info(f"[CANCEL] Dictation cancelled ('{cw}')")
                         self._emit_wake_trace({"stage": "cancel_word_detected", "phrase": cw})
@@ -5844,17 +5887,17 @@ class DictationApp:
                         _pre = ' '.join(_tokens[:-1])
                         if _pre:
                             self._output_dictation(_pre)
-                        _policy = getattr(self, '_wake_session_send_policy', 'enter')
-                        if _policy == 'enter':
+                        _mode = getattr(self, '_wake_session_mode', 'focus_dictate')
+                        if _mode == 'focus_dictate':
                             time.sleep(0.05)
                             pyautogui.press('return')
                             self.play_sound("success")
                             logger.info(f"[WAKE-SESSION] sent — '{_matched_sw}' detected, Enter pressed")
                         else:
                             self.play_sound("action_complete")
-                            logger.info(f"[WAKE-SESSION] staged — '{_matched_sw}' detected, Enter suppressed (stage_only)")
+                            logger.info(f"[WAKE-SESSION] staged — '{_matched_sw}' detected, Enter suppressed (stage_send)")
                         self._emit_wake_trace({"stage": "utterance_end", "result": "wake_session_sent",
-                                               "send_word": _matched_sw, "policy": _policy})
+                                               "send_word": _matched_sw, "mode": _mode})
                         self._end_wake_session()
                         return
                     self._output_dictation(text.strip())
@@ -5943,17 +5986,17 @@ class DictationApp:
                 logger.info(f"[CORRECT] '{text_lower}' -> '{corrected_lower}'")
 
             logger.info(
-                "[WAKE-CHECK] transcript=%r targets=%r",
+                "[WAKE-CHECK] transcript=%r profiles=%r",
                 corrected_lower,
-                [t.get('phrase') for t in self.config.get('wake_targets', []) if t.get('enabled', True)],
+                [t.get('phrase') for t in self.config.get('wake_profiles', []) if t.get('enabled', True)],
             )
 
-            # Phase 1: check multi-wake targets BEFORE the legacy single-phrase check.
-            # Each enabled wake_target has a distinct phrase ("hey claude",
+            # Phase 1: check multi-wake profiles BEFORE the legacy single-phrase check.
+            # Each enabled wake_profile has a distinct phrase ("hey claude",
             # "activate hermes") that doesn't overlap with legacy jarvis phrases.
-            _wake_target = self._check_wake_targets(corrected_lower)
-            if _wake_target is not None:
-                self._dispatch_wake_target(_wake_target, corrected_lower=corrected_lower)
+            _wake_profile = self._check_wake_profiles(corrected_lower)
+            if _wake_profile is not None:
+                self._dispatch_wake_profile(_wake_profile, corrected_lower=corrected_lower)
                 return
 
             matched, match_type, match_index = match_wake_phrase(corrected_lower, wake_phrase)
@@ -6258,9 +6301,9 @@ class DictationApp:
         # be 0 in healthy operation; clamp defensively in case of timer races.
         self._dictation_finalize_requested = False
         self._pending_transcriptions = 0
-        self._wake_target_active = False
+        self._wake_profile_active = False
         self._wake_session_first_chunk = True
-        self._wake_session_send_policy = 'enter'
+        self._wake_session_mode = 'focus_dictate'
 
         existing = getattr(self, '_wake_session_inactivity_timer', None)
         if existing is not None:
@@ -6676,12 +6719,12 @@ class DictationApp:
 
         if self.config['auto_paste']:
             logger.info(
-                f"[WS-DIAG] _output_dictation: wake_target_active="
-                f"{getattr(self,'_wake_target_active',None)} "
+                f"[WS-DIAG] _output_dictation: wake_profile_active="
+                f"{getattr(self,'_wake_profile_active',None)} "
                 f"first_chunk={getattr(self,'_wake_session_first_chunk',None)} "
                 f"app_state={self.app_state!r}"
             )
-            if getattr(self, '_wake_target_active', False):
+            if getattr(self, '_wake_profile_active', False):
                 if getattr(self, '_wake_session_first_chunk', True):
                     self._deliver_text_to_focused_editor(text)
                     self._wake_session_first_chunk = False

@@ -1090,7 +1090,7 @@ class _SettingsWindow(QMainWindow):
         ))
         layout.addSpacing(4)
 
-        note = QLabel("Additional custom wake phrases can be added via wake_targets in "
+        note = QLabel("Additional custom wake phrases can be added via wake_profiles in "
                        "config, each with its own trained model.")
         note.setStyleSheet("color: #8A8A92; font-size: 12px; margin-left: 0px;")
         layout.addWidget(note)
@@ -1139,7 +1139,7 @@ class _SettingsWindow(QMainWindow):
         layout.addLayout(self._setting_row(
             "Wake word sensitivity",
             "0.05 = very sensitive, 0.50 = strict.  Applies to all OpenWakeWord models, "
-            "including custom phrases added via wake_targets.",
+            "including custom phrases added via wake_profiles.",
             oww_spin,
         ))
         layout.addSpacing(20)
