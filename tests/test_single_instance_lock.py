@@ -159,6 +159,11 @@ def test_empty_lock_file_is_treated_as_stale(tmp_path):
 
 @pytest.mark.skipif(sys.platform != "win32", reason="msvcrt locking is Windows-only")
 def test_check_single_instance_steals_dead_pid_lock_and_acquires(tmp_path, monkeypatch):
+    # conftest.py forces SAMSARA_HOME_DIR globally for test isolation, but
+    # this test exercises the DEFAULT "samsara.lock" filename -- with
+    # SAMSARA_HOME_DIR set, _check_single_instance() derives a hashed
+    # lock_name instead, so it must be removed here to test the true default.
+    monkeypatch.delenv("SAMSARA_HOME_DIR", raising=False)
     monkeypatch.setattr("tempfile.gettempdir", lambda: str(tmp_path))
     lock_path = tmp_path / "samsara.lock"
     lock_path.write_text("999999")  # a PID essentially guaranteed dead
@@ -178,6 +183,10 @@ def test_check_single_instance_steals_dead_pid_lock_and_acquires(tmp_path, monke
 def test_check_single_instance_exits_immediately_for_live_samsara_lock(tmp_path, monkeypatch):
     """Confirms the refusal path is an immediate exit, not a wait -- this is
     the "never hang" requirement: a live-Samsara lock must fail fast."""
+    # See test_check_single_instance_steals_dead_pid_lock_and_acquires above:
+    # must test the DEFAULT "samsara.lock" filename, not the SAMSARA_HOME_DIR
+    # -derived hashed name conftest.py's global override would otherwise cause.
+    monkeypatch.delenv("SAMSARA_HOME_DIR", raising=False)
     monkeypatch.setattr("tempfile.gettempdir", lambda: str(tmp_path))
     lock_path = tmp_path / "samsara.lock"
     lock_path.write_text("888")

@@ -26,7 +26,7 @@ sys.path.insert(0, str(Path(__file__).parent.parent))
 _DICTATION_PATCHES = [
     patch('dictation.pynput_keyboard.Listener'),
     patch('dictation.sd.query_devices', return_value=[]),
-    patch('dictation.WhisperModel'),
+    patch('dictation._create_whisper_model'),
     patch('dictation.winsound'),
 ]
 

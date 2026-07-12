@@ -365,7 +365,11 @@ if sys.platform == 'win32':
         )
         sys.exit(1)
 
-from faster_whisper import WhisperModel
+def _create_whisper_model(*args, **kwargs):
+    from faster_whisper import WhisperModel
+    return WhisperModel(*args, **kwargs)
+
+
 if sys.stdout is not None:
     sys.stdout.write(f"[PRE-LOG] +{(time.perf_counter()-_POST_SD_T)*1000:.0f}ms (after faster_whisper)\n")
     sys.stdout.flush()
@@ -3631,7 +3635,7 @@ class DictationApp:
             logger.info(f"[CONFIG] Model: {self.config['model_size']}, Device: {device}, Compute: {compute_type}")
             
             load_start = time.time()
-            self.model = WhisperModel(
+            self.model = _create_whisper_model(
                 self.config['model_size'],
                 device=device,
                 compute_type=compute_type,

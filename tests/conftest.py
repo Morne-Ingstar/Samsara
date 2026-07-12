@@ -2,13 +2,52 @@
 Shared fixtures and mocks for Samsara tests.
 """
 import pytest
+import atexit
 import json
+import os
+import shutil
 import sys
+import tempfile
 from pathlib import Path
 from unittest.mock import Mock, MagicMock, patch
 
 # Add parent directory to path for imports
 sys.path.insert(0, str(Path(__file__).parent.parent))
+
+# ============================================================================
+# Hermetic collection: force SAMSARA_HOME_DIR before any Samsara import
+# ============================================================================
+# This MUST be plain module-level code, not a fixture (even autouse) --
+# pytest fully imports conftest.py (and every test module's own module-level
+# imports, e.g. `import dictation`) during collection, before any fixture
+# ever runs. samsara/paths.py's samsara_home_dir() -- and samsara/log.py,
+# which binds SAMSARA_LOG_FILE from it at import time -- would otherwise
+# read/create the real ~/.samsara on the machine running the suite just from
+# `pytest --collect-only`. Force-assign (not setdefault) so a developer's
+# real SAMSARA_HOME_DIR, if set in their shell, can't leak into the suite.
+_SAMSARA_TEST_HOME = tempfile.mkdtemp(prefix="samsara_test_home_")
+os.environ["SAMSARA_HOME_DIR"] = _SAMSARA_TEST_HOME
+
+
+def _cleanup_samsara_test_home():
+    """Close tagged Samsara log handlers before removing the temp home dir --
+    Windows refuses to delete a file that still has an open handle, and the
+    RotatingFileHandler samsara/log.py's fallback config (or dictation.py's
+    own bootstrap) attaches to the root logger keeps samsara.log open for the
+    life of the process."""
+    import logging
+    from samsara.log import SAMSARA_LOG_HANDLER_TAG
+
+    root = logging.getLogger()
+    for handler in list(root.handlers):
+        if getattr(handler, SAMSARA_LOG_HANDLER_TAG, False):
+            handler.close()
+            root.removeHandler(handler)
+
+    shutil.rmtree(_SAMSARA_TEST_HOME, ignore_errors=True)
+
+
+atexit.register(_cleanup_samsara_test_home)
 
 
 @pytest.fixture(autouse=True)
