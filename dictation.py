@@ -1671,6 +1671,19 @@ class DictationApp:
         # Loaded lazily in _load_wake_profile_models() after the Whisper model loads.
         self._wake_profile_detectors: dict = {}
 
+        # Profile isolation: the send_word of whichever wake_profile is
+        # CURRENTLY driving an open wake_session, captured at dispatch time
+        # (_dispatch_wake_profile -> _start_wake_session) and consumed by the
+        # wake_session termination check. Each profile carries its own
+        # distinct send_word (agentic-safety requirement -- see
+        # wake_profiles.normalize_profile_mode_and_send_word), so this must
+        # be scoped to exactly the active profile's session, not read from
+        # the shared/global wake_word_config.send_words list -- otherwise
+        # profile A's terminator word can prematurely end profile B's
+        # session. Reset to None by _reset_wake_dictation() on every
+        # session-end path so it never survives into the next session.
+        self._wake_session_send_word: "str | None" = None
+
         # Timestamp of the last successful command execution. While this is
         # within the 2-second post-command window, the audio callback
         # suppresses buffering to avoid picking up speaker output (Chrome
@@ -5368,9 +5381,15 @@ class DictationApp:
             _mode = 'focus_dictate'
 
         # Start open-ended wake session: per-utterance delivery, ends on inactivity.
-        self._start_wake_session(initial_content=initial_content, mode=_mode)
+        # send_word is THIS profile's own terminator (never the shared/global
+        # default) -- passed through so the termination check later only
+        # recognizes this profile's word, not every profile's.
+        self._start_wake_session(
+            initial_content=initial_content, mode=_mode,
+            send_word=profile.get('send_word'),
+        )
 
-    def _start_wake_session(self, initial_content=None, mode='focus_dictate'):
+    def _start_wake_session(self, initial_content=None, mode='focus_dictate', send_word=None):
         """Enter open-ended wake session state.
 
         Each transcribed utterance is delivered immediately.  The session stays
@@ -5379,6 +5398,11 @@ class DictationApp:
 
         mode: 'focus_dictate' — press Enter after send-word detection (claude profiles).
               'stage_send' — text staged, Enter suppressed (hermes/agentic profiles).
+        send_word: the dispatching profile's own terminator word. Stored on
+              self for the duration of this session so the termination check
+              (see process_wake_word_buffer's wake_session branch) is scoped
+              to exactly this profile, not the shared/global send_words list
+              -- profile isolation for the agentic-safety send_word contract.
         """
         # Duck other apps' audio for this open-ended dictation window --
         # only reached once a wake word has actually fired and an active
@@ -5399,6 +5423,7 @@ class DictationApp:
         self._wake_profile_active = True
         self._wake_session_first_chunk = True
         self._wake_session_mode = mode
+        self._wake_session_send_word = send_word
 
         if hasattr(self, 'wake_word_timer') and self.wake_word_timer:
             self.wake_word_timer.cancel()
@@ -5975,7 +6000,23 @@ class DictationApp:
                 # exact match. Mid-utterance occurrences ("come over here") pass through
                 # as normal dictated text.
                 if self.app_state == 'wake_session':
-                    _send_words = ww_config.get('send_words', _WAKE_SESSION_SEND_WORDS)
+                    # Profile isolation: use ONLY the dispatching profile's own
+                    # send_word when this session was started via a wake_profile
+                    # (the normal path -- see _dispatch_wake_profile). Falling
+                    # back to the shared/global send_words list here would let
+                    # profile A's terminator word ("over") prematurely end
+                    # profile B's session (send_word "send") just because both
+                    # happen to appear in the same global default/config list --
+                    # exactly the agentic-safety hazard the per-profile
+                    # send_word field exists to prevent. The global list is
+                    # kept only as a defensive fallback for a session with no
+                    # recorded send_word (shouldn't happen via the normal
+                    # dispatch path, but fails safe rather than never matching).
+                    _profile_send_word = getattr(self, '_wake_session_send_word', None)
+                    _send_words = (
+                        [_profile_send_word] if _profile_send_word
+                        else ww_config.get('send_words', _WAKE_SESSION_SEND_WORDS)
+                    )
                     _tokens = text.strip().split()
                     _matched_sw = None
                     if _tokens:
@@ -6407,6 +6448,11 @@ class DictationApp:
         self._wake_profile_active = False
         self._wake_session_first_chunk = True
         self._wake_session_mode = 'focus_dictate'
+        # Profile isolation: clear the just-ended session's send_word so a
+        # future session that somehow starts without one (defensive-only --
+        # the normal dispatch path always supplies it) can't inherit a stale
+        # word from whichever profile ran previously.
+        self._wake_session_send_word = None
 
         existing = getattr(self, '_wake_session_inactivity_timer', None)
         if existing is not None:
