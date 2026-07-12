@@ -27,7 +27,7 @@ from PySide6.QtWidgets import (
     QWidget,
 )
 
-from samsara.constants import DEFAULT_CAPTURE_RATE
+from samsara.constants import DEFAULT_CAPTURE_RATE, DEFAULT_WAKE_PHRASE
 from samsara.runtime import thread_registry
 from samsara.ui import qt_runtime, theme
 from samsara.audio_devices import pick_index_by_name
@@ -385,7 +385,7 @@ class _WizardWindow(QDialog):
         lay = QVBoxLayout(page)
         lay.setContentsMargins(32, 28, 32, 20)
         lay.setSpacing(14)
-        wake_phrase = self._app.config.get('wake_word_config', {}).get('phrase', 'Jarvis')
+        wake_phrase = self._app.config.get('wake_word_config', {}).get('phrase', DEFAULT_WAKE_PHRASE)
         self._wake_intro = _body(
             f'Say <b>"{wake_phrase.title()}"</b> three times at your normal '
             f'speaking volume. Each circle lights up when Samsara hears it.'
@@ -767,7 +767,7 @@ class _WizardWindow(QDialog):
 
     def _setup_oww_test(self):
         """Initialise OWW detector and start the attempt timer."""
-        wake_phrase = self._app.config.get('wake_word_config', {}).get('phrase', 'jarvis')
+        wake_phrase = self._app.config.get('wake_word_config', {}).get('phrase', DEFAULT_WAKE_PHRASE)
         oww_threshold = float(
             self._app.config.get('wake_word_config', {}).get('oww_threshold', 0.2)
         )
@@ -828,7 +828,7 @@ class _WizardWindow(QDialog):
         else:
             wake_phrase = self._app.config.get(
                 'wake_word_config', {}
-            ).get('phrase', 'Jarvis')
+            ).get('phrase', DEFAULT_WAKE_PHRASE)
             self._oww_result_lbl.setText(
                 f'{self._oww_hits}/{self._oww_attempt_idx} heard -- '
                 f'say "{wake_phrase.title()}" again.'

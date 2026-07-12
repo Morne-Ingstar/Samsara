@@ -14,6 +14,7 @@ from PySide6.QtCore import Qt, QObject, Signal
 from PySide6.QtGui import QAction, QActionGroup, QIcon, QImage, QPixmap
 from PySide6.QtWidgets import QMenu, QSystemTrayIcon
 
+from samsara.constants import DEFAULT_WAKE_PHRASE
 from samsara.log import get_logger
 
 logger = get_logger(__name__)
@@ -150,7 +151,7 @@ class SamsaraTrayQt(QObject):
         menu.addMenu(mode_sub)
 
         # ---- Wake word ----
-        ww_phrase = app.config.get('wake_word_config', {}).get('phrase', 'samsara')
+        ww_phrase = app.config.get('wake_word_config', {}).get('phrase', DEFAULT_WAKE_PHRASE)
         ww_act = menu.addAction(f"Wake Word  ({ww_phrase})")
         ww_act.setCheckable(True)
         ww_act.setChecked(bool(app.config.get('wake_word_enabled', False)))
@@ -282,6 +283,9 @@ class SamsaraTrayQt(QObject):
         dev_sub.addSeparator()
         dev_sub.addAction("Open Config Folder").triggered.connect(
             lambda: app.open_config_folder())
+        dev_sub.addSeparator()
+        dev_sub.addAction("Preview First-Run (fresh profile)").triggered.connect(
+            lambda: app.preview_first_run())
         logs_sub = QMenu("View Logs")
         logs_sub.addAction("Main Log").triggered.connect(
             lambda: app.open_main_log())

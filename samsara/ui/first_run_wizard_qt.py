@@ -22,6 +22,7 @@ from PySide6.QtWidgets import (
     QFrame, QScrollArea,
 )
 
+from samsara.constants import DEFAULT_WAKE_PHRASE
 from samsara.runtime import thread_registry
 from samsara.ui import qt_runtime, theme
 from samsara.audio_devices import pick_index_by_name
@@ -775,7 +776,7 @@ class _WizardWindow(QMainWindow):
         ww_left.addWidget(self._ww_desc)
         ww_row.addLayout(ww_left, stretch=1)
 
-        ww_lbl = QLabel("jarvis")
+        ww_lbl = QLabel(DEFAULT_WAKE_PHRASE)
         ww_lbl.setStyleSheet(
             f"color:{theme.ACCENT};font-size:13px;font-weight:bold;"
             f"font-family:'Consolas','Courier New',monospace;"
@@ -958,7 +959,7 @@ class _WizardWindow(QMainWindow):
             f"Record:           {self._config.get('hotkey', 'ctrl+shift')}  (hold)",
             f"Continuous:       {self._config.get('continuous_hotkey', 'ctrl+alt+d')}",
             f"Wake Word Key:    {self._config.get('wake_word_hotkey', 'ctrl+alt+w')}",
-            f"Wake Phrase:      jarvis",
+            f"Wake Phrase:      {DEFAULT_WAKE_PHRASE}",
         ]
         for lbl, text in zip(self._summary_labels, lines):
             lbl.setText(text)

@@ -25,6 +25,13 @@ DEFAULT_CONTINUOUS_MAX_BUFFER_S = 60.0  # safety cap: auto-commit an un-committe
 # Wake word defaults (overridable via config)
 WAKE_DETECTION_SILENCE = 0.8        # seconds of silence during wake word listening
 WAKE_COMMAND_TIMEOUT = 5.0         # seconds to wait for command after wake word
+# Mirrors dictation.py's load_config() default_config['wake_word_config']
+# ['phrase']/['phrase_options'] exactly -- re-verify against load_config()
+# if the real default ever changes. Exists so every UI display fallback
+# (tutorial, wizards, tray menu, Ava guide, quick reference) reads one
+# canonical value instead of each hardcoding its own literal.
+DEFAULT_WAKE_PHRASE = 'jarvis'
+DEFAULT_WAKE_PHRASE_OPTIONS = ['jarvis', 'hey jarvis', 'computer', 'hey computer', 'samsa', 'hey samsa']
 
 # Tray icon animation speeds
 ICON_TICK_FAST = 0.08              # seconds per frame (recording)
