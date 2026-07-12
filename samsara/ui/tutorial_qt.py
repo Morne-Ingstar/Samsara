@@ -29,6 +29,7 @@ from PySide6.QtWidgets import (
     QPushButton, QScrollArea, QTextEdit, QVBoxLayout, QWidget,
 )
 
+from samsara.constants import DEFAULT_WAKE_PHRASE
 from samsara.log import get_logger
 from samsara.ui import theme
 
@@ -368,7 +369,7 @@ class TutorialWindow(QMainWindow):
 
         cfg = self._app.config if hasattr(self._app, 'config') else {}
         cmd_hotkey = cfg.get('command_hotkey', 'ctrl+alt+c')
-        wake = cfg.get('wake_word_config', {}).get('phrase', 'jarvis')
+        wake = cfg.get('wake_word_config', {}).get('phrase', DEFAULT_WAKE_PHRASE)
 
         bullets = [f"  • Hold  {cmd_hotkey.upper()}  and say  \"scroll down\""]
         if cfg.get('wake_word_enabled', False):

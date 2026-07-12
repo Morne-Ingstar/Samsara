@@ -24,6 +24,7 @@ from PySide6.QtWidgets import (
     QVBoxLayout, QWidget,
 )
 
+from samsara.constants import DEFAULT_WAKE_PHRASE
 from samsara.runtime import thread_registry
 from samsara.ui import qt_runtime
 
@@ -609,7 +610,7 @@ class _WizardWindow(QDialog):
 
         uf_lay.addWidget(_small_bold("How to use Ava", _ACCENT))
 
-        wake = self._app.config.get("wake_word_config", {}).get("phrase", "Jarvis")
+        wake = self._app.config.get("wake_word_config", {}).get("phrase", DEFAULT_WAKE_PHRASE)
         usage_lines = [
             f'"{wake.title()}, hey Ava" also works — no key needed, fully hands-free.',
             f'"{wake.title()}, Ava local" — same as above, but guaranteed to stay '

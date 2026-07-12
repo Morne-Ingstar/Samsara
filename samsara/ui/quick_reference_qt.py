@@ -30,6 +30,7 @@ from PySide6.QtWidgets import (
     QScrollArea, QVBoxLayout, QWidget,
 )
 
+from samsara.constants import DEFAULT_WAKE_PHRASE, DEFAULT_WAKE_PHRASE_OPTIONS
 from samsara.ui import qt_runtime
 from samsara.ui import theme
 from samsara import config_schema
@@ -59,8 +60,8 @@ _HOTKEY_FALLBACKS = {
 }
 
 _WAKE_FALLBACKS = {
-    "phrase": "jarvis",
-    "phrase_options": ["jarvis", "hey jarvis", "computer", "hey computer", "samsa", "hey samsa"],
+    "phrase": DEFAULT_WAKE_PHRASE,
+    "phrase_options": DEFAULT_WAKE_PHRASE_OPTIONS,
     "end_words": ["over", "done", "end dictation"],
     "wake_abort_phrase": ["cancel", "cancel dictation", "abort"],
 }
