@@ -4,6 +4,7 @@ PySide6 settings window for Samsara.
 All Qt operations are posted to the shared qt_runtime event loop.
 """
 
+import re
 import shutil
 import threading
 
@@ -18,7 +19,8 @@ from PySide6.QtWidgets import (
     QDialog, QMessageBox, QFormLayout, QGridLayout,
 )
 
-from samsara.ui import qt_runtime
+from samsara.constants import DEFAULT_WAKE_PHRASE, DEFAULT_WAKE_PHRASE_OPTIONS
+from samsara.ui import qt_runtime, theme
 from samsara.runtime import thread_registry
 from samsara.audio_devices import pick_index_by_name
 from samsara import smart_corrections
@@ -163,6 +165,25 @@ def _key_name(key: int) -> str | None:
 
 def _combo_str(held: set) -> str:
     return '+'.join(sorted(held, key=lambda k: (_MOD_ORDER.get(k, 99), k)))
+
+
+# ---------------------------------------------------------------------------
+# theme.py token helper
+# ---------------------------------------------------------------------------
+
+_RGBA_RE = re.compile(r'rgba?\(\s*(\d+)\s*,\s*(\d+)\s*,\s*(\d+)\s*(?:,\s*([\d.]+)\s*)?\)')
+
+
+def _css_color_to_qcolor(css: str) -> QColor:
+    """Parse a theme.py color token into a QColor. QColor's string
+    constructor understands hex/named colors but not CSS rgba(...) syntax,
+    and several theme.py tokens (e.g. TEXT_DISABLED) use that form."""
+    m = _RGBA_RE.match(css.strip())
+    if m:
+        r, g, b = int(m.group(1)), int(m.group(2)), int(m.group(3))
+        a = float(m.group(4)) if m.group(4) is not None else 1.0
+        return QColor(r, g, b, round(a * 255))
+    return QColor(css)
 
 
 # ---------------------------------------------------------------------------
@@ -501,6 +522,29 @@ class _SettingsWindow(QMainWindow):
         root.setContentsMargins(0, 0, 0, 0)
         root.setSpacing(0)
 
+        # ---- Search bar: accessibility-driven live filter across every tab.
+        # Pinned above the sidebar/content body (not inside any one tab) so
+        # one box always filters everything. textChanged fires per keystroke;
+        # a restarted single-shot QTimer debounces the actual filter pass by
+        # ~150ms so fast typing doesn't re-walk the registry on every char.
+        search_wrap = QWidget()
+        search_layout = QHBoxLayout(search_wrap)
+        search_layout.setContentsMargins(20, 14, 20, 6)
+        search_layout.setSpacing(0)
+
+        self._search_edit = QLineEdit()
+        self._search_edit.setPlaceholderText("Search settings…")
+        self._search_edit.setClearButtonEnabled(True)  # built-in × affordance
+        search_layout.addWidget(self._search_edit)
+        root.addWidget(search_wrap)
+
+        self._search_rows: list = []  # populated by _build_search_registry() below
+        self._search_debounce = QTimer(self)
+        self._search_debounce.setSingleShot(True)
+        self._search_debounce.setInterval(150)
+        self._search_debounce.timeout.connect(self._apply_search_filter)
+        self._search_edit.textChanged.connect(lambda _text: self._search_debounce.start())
+
         # Body: sidebar + stacked content
         body = QWidget()
         body_layout = QHBoxLayout(body)
@@ -549,6 +593,8 @@ class _SettingsWindow(QMainWindow):
         self._stack.addWidget(self._build_alarms_tab())     # 6  Alarms
         self._stack.addWidget(self._build_health_tab())     # 7  Health
         self._stack.addWidget(self._build_advanced_tab())      # 8  Advanced
+
+        self._build_search_registry()
 
         self._stack.setCurrentIndex(self._sidebar_row_to_stack_index[first_selectable_row])
         self._sidebar.currentRowChanged.connect(self._on_sidebar_row_changed)
@@ -625,6 +671,112 @@ class _SettingsWindow(QMainWindow):
             logger.debug(f"[SETTINGS] Smart Corrections status refresh failed: {e}")
             status = "unknown"
         label.setText(f"Active backend: {status}")
+
+    # ------------------------------------------------------------------
+    # Search: live filter across all tabs
+    # ------------------------------------------------------------------
+
+    def _build_search_registry(self) -> None:
+        """Discover every setting row across all tabs by walking the widget
+        tree the tab builders already constructed, instead of hand-listing
+        one registration call at each of the ~60 _setting_row(...) call
+        sites. Any future setting that uses _setting_row is covered
+        automatically.
+
+        Every _setting_row(...) call produces a distinctive shape: a
+        QHBoxLayout whose first item is a QVBoxLayout starting with a
+        QLabel (the row label, optionally followed by a description
+        QLabel) and whose second item is the control widget. That shape is
+        unique in this file (the only bare QVBoxLayout() with no parent
+        widget anywhere in settings_qt.py is the one inside _setting_row),
+        so walking for it can't pick up an unrelated QHBoxLayout (button
+        rows, header rows, etc.) by accident.
+
+        Two tabs -- Commands and Health -- build their content from
+        QTableWidget-based editors rather than _setting_row, so they
+        contribute zero rows here; _apply_search_filter() below leaves
+        those tabs untouched by the filter rather than falsely marking
+        them "no match".
+        """
+        self._search_rows = []
+        for tab_index in range(self._stack.count()):
+            tab_widget = self._stack.widget(tab_index)
+            content = tab_widget.widget() if isinstance(tab_widget, QScrollArea) else tab_widget
+            if content is None:
+                continue
+            for row in content.findChildren(QHBoxLayout):
+                if row.count() < 2:
+                    continue
+                left_item = row.itemAt(0)
+                left_layout = left_item.layout() if left_item is not None else None
+                if left_layout is None or left_layout.count() < 1:
+                    continue
+                label_item = left_layout.itemAt(0)
+                label_widget = label_item.widget() if label_item is not None else None
+                if not isinstance(label_widget, QLabel):
+                    continue
+                desc_item = left_layout.itemAt(1) if left_layout.count() > 1 else None
+                desc_widget = desc_item.widget() if desc_item is not None else None
+                if not isinstance(desc_widget, QLabel):
+                    desc_widget = None
+                control_item = row.itemAt(1)
+                control_widget = control_item.widget() if control_item is not None else None
+                if control_widget is None:
+                    continue
+                self._search_rows.append((
+                    label_widget.text(),
+                    desc_widget.text() if desc_widget is not None else "",
+                    tab_index,
+                    label_widget,
+                    desc_widget,
+                    control_widget,
+                ))
+
+    def _apply_search_filter(self) -> None:
+        """Show/hide each registered row by case-insensitive substring match
+        against its label (and description, since that's cheap to include
+        too) and dim the sidebar entry for any tab left with zero matches.
+        Empty query restores everything."""
+        query = self._search_edit.text().strip().lower()
+
+        if not query:
+            for _label, _desc, _tab, label_w, desc_w, control_w in self._search_rows:
+                label_w.setVisible(True)
+                if desc_w is not None:
+                    desc_w.setVisible(True)
+                control_w.setVisible(True)
+            self._set_sidebar_dimmed(set())
+            return
+
+        tabs_with_rows: set = set()
+        matched_tabs: set = set()
+        for label_text, desc_text, tab_index, label_w, desc_w, control_w in self._search_rows:
+            tabs_with_rows.add(tab_index)
+            match = query in label_text.lower() or query in desc_text.lower()
+            label_w.setVisible(match)
+            if desc_w is not None:
+                desc_w.setVisible(match)
+            control_w.setVisible(match)
+            if match:
+                matched_tabs.add(tab_index)
+
+        self._set_sidebar_dimmed(tabs_with_rows - matched_tabs)
+
+    def _set_sidebar_dimmed(self, no_match_stack_indices: set) -> None:
+        """Dim -- not disable -- the sidebar entry for each tab in
+        no_match_stack_indices. Chose dimming over QListWidgetItem
+        disabling so every tab stays reachable even while filtered out:
+        the label/description substring match is a hint, not ground
+        truth (it won't catch a setting whose on-screen wording differs
+        from what was typed), so locking navigation away from a tab could
+        strand the user looking for something that's actually there."""
+        dimmed = _css_color_to_qcolor(theme.TEXT_DISABLED)
+        normal = QColor("#E8E8EA")
+        for row, stack_index in self._sidebar_row_to_stack_index.items():
+            item = self._sidebar.item(row)
+            if item is None:
+                continue
+            item.setForeground(dimmed if stack_index in no_match_stack_indices else normal)
 
     # ------------------------------------------------------------------
     # Tab builders
@@ -1076,8 +1228,8 @@ class _SettingsWindow(QMainWindow):
         ))
         layout.addSpacing(6)
 
-        phrases = ww_cfg.get('phrase_options', ['jarvis'])
-        primary_phrase = phrases[0] if phrases else 'jarvis'
+        phrases = ww_cfg.get('phrase_options', DEFAULT_WAKE_PHRASE_OPTIONS)
+        primary_phrase = phrases[0] if phrases else DEFAULT_WAKE_PHRASE
         phrase_label = QLabel(f'"{primary_phrase}"')
         phrase_label.setStyleSheet(
             "color: #5EEAD4; font-size: 14px; font-weight: 600; "

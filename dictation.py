@@ -220,11 +220,31 @@ def _check_single_instance():
     Ensure only one instance of Samsara is running.
     Uses a lock file with platform-specific file locking.
     Returns the lock file handle (must be kept open) or exits if another instance exists.
+
+    Lock filename is normally the fixed "samsara.lock", so a second real
+    launch always collides with the running instance. When SAMSARA_HOME_DIR
+    is explicitly set (temp-profile tooling, the tray's "Preview First-Run"
+    dev action), the filename is derived from that path instead, so a
+    preview instance gets its own lock and never collides with -- or steals
+    from -- the primary instance's samsara.lock.
     """
     from pathlib import Path
     import tempfile
 
-    lock_file_path = Path(tempfile.gettempdir()) / "samsara.lock"
+    home_override = os.environ.get("SAMSARA_HOME_DIR")
+    if home_override:
+        import hashlib
+        # normcase + realpath so equivalent paths (different case, trailing
+        # slash, relative vs absolute, 8.3 vs long form) hash identically --
+        # otherwise two preview launches pointed at "the same" dir by a
+        # human typing it two different ways would get two different locks
+        # and could run concurrently against one profile.
+        normalized = os.path.normcase(os.path.realpath(home_override))
+        digest = hashlib.sha1(normalized.encode("utf-8")).hexdigest()[:12]
+        lock_name = f"samsara-{digest}.lock"
+    else:
+        lock_name = "samsara.lock"
+    lock_file_path = Path(tempfile.gettempdir()) / lock_name
     _steal_stale_lock_if_any(lock_file_path)
 
     try:
@@ -1246,6 +1266,39 @@ def _resolve_target_window(process_name, exclude_pids=None):
     return found[0] if found else None
 
 
+_PREVIEW_PROFILE_MAX_AGE_S = 3600  # 1 hour
+
+
+def _reap_old_preview_profiles() -> None:
+    """Delete samsara_firstrun_* temp profile dirs older than the threshold.
+
+    Each "Preview First-Run" tray action spawns a fully detached child that
+    ends its own life with os._exit(0) (see DictationApp.quit_app), which
+    bypasses atexit -- so nothing else ever cleans these up, and every click
+    would otherwise leak one temp directory forever. Swept here, right
+    before creating a new one (DictationApp.preview_first_run), rather than
+    on a timer or at the detached child's own (unreliable) exit. Anything
+    younger than the threshold is left alone in case that instance is still
+    running.
+    """
+    import glob
+    import tempfile as _tempfile
+
+    pattern = str(Path(_tempfile.gettempdir()) / "samsara_firstrun_*")
+    now = time.time()
+    for path_str in glob.glob(pattern):
+        try:
+            p = Path(path_str)
+            if not p.is_dir():
+                continue
+            if now - p.stat().st_mtime < _PREVIEW_PROFILE_MAX_AGE_S:
+                continue
+            shutil.rmtree(p, ignore_errors=True)
+            logger.info(f"[PREVIEW] Reaped stale preview profile: {p}")
+        except Exception as e:
+            logger.debug(f"[PREVIEW] Could not reap {path_str}: {e}")
+
+
 class DictationApp:
     def __init__(self, splash=None):
         self.splash = splash
@@ -1256,6 +1309,14 @@ class DictationApp:
             # so first-run fired (and the wizard hung, see first_run_wizard_qt.py)
             # on every fresh install/rebuild. Mirror LOG_DIR's stable per-user
             # directory instead, same as history.db and debug_audio already do.
+            self.config_path = samsara_home_dir() / "config.json"
+            self.config_path.parent.mkdir(parents=True, exist_ok=True)
+        elif os.environ.get("SAMSARA_HOME_DIR"):
+            # Explicit override (frozen_smoke.py-style isolation, or the
+            # tray's "Preview First-Run" dev action) also applies to
+            # source-mode runs -- without this branch SAMSARA_HOME_DIR has
+            # no effect here and config_path stays pinned to the checked-out
+            # repo root regardless of the env var.
             self.config_path = samsara_home_dir() / "config.json"
             self.config_path.parent.mkdir(parents=True, exist_ok=True)
         else:
@@ -1642,8 +1703,13 @@ class DictationApp:
         self._last_dictation_length = 0
         self._undo_timer = None
 
-        # Dictation history
-        self.history_path = Path(__file__).parent / 'history.json'
+        # Dictation history. self.config_path.parent (not Path(__file__).parent)
+        # so this per-user file follows config.json's own SAMSARA_HOME_DIR /
+        # frozen-build routing above -- otherwise a first-run preview instance
+        # (SAMSARA_HOME_DIR set to a temp dir) would still read/overwrite the
+        # REAL profile's history.json since it lives next to the code, not
+        # in the profile directory.
+        self.history_path = self.config_path.parent / 'history.json'
         self.max_history = 100  # Keep last 100 items
         self.history = self.load_history()  # List of (timestamp, text, is_command) tuples
 
@@ -1780,11 +1846,16 @@ class DictationApp:
         self.key_macro_manager = KeyMacroManager(self.config)
         self.key_macro_manager.start()
 
-        # Adaptive learning for transcription corrections
-        self.adaptive_learner = AdaptiveLearner(Path(__file__).parent)
+        # Adaptive learning for transcription corrections. self.config_path.parent
+        # (not Path(__file__).parent) -- see history_path above for why:
+        # correction_candidates.json is per-user accumulated data and must
+        # follow the same profile-isolation routing as config.json.
+        self.adaptive_learner = AdaptiveLearner(self.config_path.parent)
 
-        # Notification manager for reminders
-        config_dir = Path(__file__).parent
+        # Notification manager for reminders. config_dir here (reminders.json
+        # and, below, alarm_stats.json) is per-user data -- same reasoning
+        # and same self.config_path.parent routing as history_path above.
+        config_dir = self.config_path.parent
         self.notification_manager = NotificationManager(config_dir)
         if self.config.get('notifications', {}).get('enabled', True):
             self.notification_manager.start()
@@ -4596,7 +4667,35 @@ class DictationApp:
             self._vad_reset()
 
     def _route_to_ava(self, text: str):
-        """Send transcribed speech to Ollama via the ask_ollama plugin."""
+        """Send transcribed speech to Ava -- but try it as a literal voice
+        command first, through the SAME registry/dispatch wake word mode
+        uses (_process_wake_command), so an exact phrase like "show numbers"
+        executes its plugin handler instead of being swallowed whole into
+        an LLM prompt Ava has no way to resolve. force_commands=True mirrors
+        wake word mode: Ava mode is not the command_matching_enabled toggle
+        feature, so a recognized command always dispatches here regardless
+        of that setting. Only text that doesn't match anything registered
+        falls through to Ollama below, unchanged."""
+        result, was_command = self.command_executor.process_text(
+            text, self, force_commands=True)
+        if was_command:
+            _store_cmd = self.command_executor.commands.get(result) or {'type': 'plugin'}
+            if (result and not _is_repeat_blacklisted(result, _store_cmd)
+                    and self.command_executor.find_command(result) == result):
+                self._last_command = _store_cmd
+                self._last_command_name = result
+            if result:
+                increment_command_count(result)
+            self.add_to_history(text, is_command=True)
+            self._log_history(
+                raw_text=text,
+                mode="command",
+                status="success",
+                entry_type="command",
+                matched_command=str(result) if result else None,
+            )
+            return
+
         def _worker():
             try:
                 from plugins.commands.ask_ollama import handle_ask_ava
@@ -8509,6 +8608,67 @@ class DictationApp:
         """Open the config folder"""
         open_file_or_folder(self.config_path.parent)
 
+    def preview_first_run(self):
+        """Relaunch Samsara as a second, independent process pointed at a
+        fresh temp SAMSARA_HOME_DIR, so the first-run wizard fires without
+        touching the real profile in samsara_home_dir(). This instance is
+        left running -- it is NOT a restart (see restart_app in
+        plugins.commands.core_utils for that). The temp dir is left on disk
+        for inspection; _reap_old_preview_profiles() reclaims stale ones on
+        the NEXT preview launch (the detached child can't reliably clean up
+        after itself -- see that function's docstring).
+
+        Temp-dir creation, arg construction, and the actual spawn are ALL
+        inside the try below -- previously only the Popen call itself was
+        guarded, so a failure in mkdtemp()/_build_restart_args() would raise
+        uncaught, and a Popen failure was logged but otherwise invisible.
+        This is a manually-triggered dev action with no other feedback
+        path, so any failure here now also surfaces a visible toast instead
+        of silently no-op'ing.
+        """
+        import tempfile
+        # Reuses the same frozen-vs-source argv logic as the "restart" voice
+        # command instead of duplicating it here.
+        from plugins.commands.core_utils import _build_restart_args
+
+        try:
+            _reap_old_preview_profiles()
+
+            home_dir = tempfile.mkdtemp(prefix="samsara_firstrun_")
+            logger.info(f"[PREVIEW] Launching first-run preview, SAMSARA_HOME_DIR={home_dir}")
+
+            args, cwd = _build_restart_args()
+            env = os.environ.copy()
+            env["SAMSARA_HOME_DIR"] = home_dir
+
+            # DETACHED_PROCESS + CREATE_NEW_PROCESS_GROUP break the child out
+            # of the parent's Windows Job Object so it survives after the
+            # parent exits.
+            flags = 0
+            if sys.platform == 'win32':
+                flags = subprocess.DETACHED_PROCESS | subprocess.CREATE_NEW_PROCESS_GROUP
+
+            subprocess.Popen(
+                args,
+                cwd=cwd,
+                env=env,
+                creationflags=flags,
+                close_fds=True,
+                stdin=subprocess.DEVNULL,
+                stdout=subprocess.DEVNULL,
+                stderr=subprocess.DEVNULL,
+            )
+        except Exception as e:
+            logger.warning(f"[PREVIEW] Failed to launch first-run preview: {e}")
+            try:
+                from samsara.ui.reminder_toast import get_toast
+                get_toast().show(
+                    "Preview First-Run Failed",
+                    f"Could not launch the preview instance: {e}",
+                )
+            except Exception as toast_exc:
+                logger.debug(f"[PREVIEW] Could not show failure toast: {toast_exc}")
+
     def open_main_log(self):
         """Open the main log file in default text editor"""
         if LOG_FILE.exists():
@@ -8589,6 +8749,16 @@ class DictationApp:
                 self.notification_manager.stop()
         except Exception as e:
             logger.debug(f"[EXIT] Notification manager stop failed: {e}")
+
+        # Stop reminder toast's gate-poll timer and drop any pending queued
+        # reminders -- BEFORE the Show Numbers overlay it gates against is
+        # torn down below, so a gate tick landing mid-teardown can't flush
+        # queued reminders into a freshly (re)constructed toast window.
+        try:
+            from samsara.ui.reminder_toast import get_toast
+            get_toast().stop()
+        except Exception as e:
+            logger.debug(f"[EXIT] Reminder toast stop failed: {e}")
 
         # Stop alarm manager
         try:
