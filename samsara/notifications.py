@@ -25,6 +25,11 @@ from samsara.ui.reminder_toast import get_toast
 
 logger = get_logger(__name__)
 
+# Bounded retry for delivery failures (P1-B). A reminder that fails to
+# confirm delivery this many consecutive due-checks in a row is disabled
+# rather than retried forever -- see _fire_reminder/_mark_reminder_failed.
+_MAX_DELIVERY_ATTEMPTS = 3
+
 
 class NotificationManager:
     """Manages scheduled notifications and reminders."""
@@ -43,6 +48,11 @@ class NotificationManager:
         self.paused = False
         self.thread = None
         self.on_notification = None  # Callback for notification events
+        # In-memory consecutive-failure counter, keyed by reminder id. Not
+        # persisted -- a fresh process gets a clean slate rather than a
+        # reminder staying permanently disabled because of a transient issue
+        # (e.g. a Qt hiccup) that a restart may have already resolved.
+        self._delivery_attempts: dict = {}
         self.load_reminders()
 
     def load_reminders(self):
@@ -235,10 +245,25 @@ class NotificationManager:
         while never actually having been shown to the user. If show_notification
         itself fails synchronously, or on_shown simply never fires, the
         reminder is left exactly as it was, so the next 30s cycle retries it.
+
+        Bounded retry: a reminder that reaches this method _MAX_DELIVERY_ATTEMPTS
+        times in a row without ever confirming delivery (on_shown never firing)
+        is disabled instead of retried forever -- an overlay that's
+        permanently broken shouldn't spin the check loop indefinitely. The
+        counter is per-reminder-id, in-memory only, and is cleared the moment
+        delivery is actually confirmed.
         """
         reminder_id = reminder['id']
 
+        prior_attempts = self._delivery_attempts.get(reminder_id, 0)
+        if prior_attempts >= _MAX_DELIVERY_ATTEMPTS:
+            self._mark_reminder_failed(reminder_id, prior_attempts)
+            return
+        self._delivery_attempts[reminder_id] = prior_attempts + 1
+        attempt_n = prior_attempts + 1
+
         def _on_shown():
+            self._delivery_attempts.pop(reminder_id, None)
             self._mark_reminder_fired(reminder_id, now)
 
         ok = self.show_notification(
@@ -247,7 +272,10 @@ class NotificationManager:
             on_shown=_on_shown,
         )
         if not ok:
-            print(f"[NOTIFY] show_notification failed for reminder {reminder_id}; will retry next cycle")
+            print(
+                f"[NOTIFY] show_notification failed for reminder {reminder_id} "
+                f"(attempt {attempt_n}/{_MAX_DELIVERY_ATTEMPTS}); will retry next cycle"
+            )
 
     def _mark_reminder_fired(self, reminder_id, now):
         """Record last_fired and disable one-time reminders. Called from
@@ -263,6 +291,24 @@ class NotificationManager:
                     reminder['enabled'] = False
 
                 self.save_reminders()
+                break
+
+    def _mark_reminder_failed(self, reminder_id, attempts):
+        """Give up on a reminder that failed to confirm delivery
+        _MAX_DELIVERY_ATTEMPTS times in a row. Disables it (same mechanism
+        _mark_reminder_fired uses for one-time reminders) so the check loop
+        stops retrying, tags it so the UI/logs can show why, and clears the
+        attempt counter so re-enabling it later starts with a clean slate."""
+        self._delivery_attempts.pop(reminder_id, None)
+        for reminder in self.reminders:
+            if reminder['id'] == reminder_id:
+                reminder['enabled'] = False
+                reminder['delivery_failed'] = True
+                self.save_reminders()
+                logger.error(
+                    f"[NOTIFY] Reminder {reminder_id} ({reminder.get('name', 'Reminder')!r}) "
+                    f"failed to deliver after {attempts} attempt(s) -- disabling."
+                )
                 break
 
     def _is_due(self, reminder, now):
