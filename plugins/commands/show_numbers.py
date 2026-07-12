@@ -459,10 +459,13 @@ def _show_overlay_qt(labels: list, fg_hwnd: int, app) -> None:
             active_name, active_screen.geometry(), active_screen.devicePixelRatio(),
         )
 
-    # Same screen + already visible -> update labels in place (no HWND recreate)
+    # Same screen -> reuse the existing window (no HWND recreate), regardless
+    # of whether it's currently hidden. HIDE-not-destroy (see _hide_overlay_qt)
+    # means a previously-dismissed overlay on the same screen is still alive
+    # here, just hidden -- matching status_overlay/task_overlay/reminder_toast's
+    # reuse pattern instead of leaking a fresh HWND on every show/hide cycle.
     same_screen = (
         _overlay_window is not None
-        and not _overlay_window.isHidden()
         and active_name == _overlay_screen_name
     )
 
@@ -470,11 +473,20 @@ def _show_overlay_qt(labels: list, fg_hwnd: int, app) -> None:
         _overlay_window.update_labels(labels)
     else:
         if _overlay_window is not None:
-            _overlay_window.close()
+            _overlay_window.hide()
         _ensure_dpi_thread_context()
         _overlay_window = NumbersOverlayWindow(labels, active_screen)
         _overlay_screen_name = active_name
-        _overlay_window.show()
+
+    # Explicit show()+raise() every time (not just on first construction) --
+    # matching status_overlay.show()/task_overlay.show()'s re-show path.
+    # Without this, a same-screen re-show only updated label content and
+    # relied on whatever z-order the window already had, so if another
+    # always-on-top window (reminder toast, status/task overlay) had been
+    # created or re-shown since, the numbers overlay stayed rendered but
+    # invisible underneath it.
+    _overlay_window.show()
+    _overlay_window.raise_()
 
     # Capture the overlay's own HWND so _fg_poll_qt can exclude it.
     # winId() is only valid after show(); int() converts from shiboken.VoidPtr.
@@ -492,14 +504,18 @@ def _show_overlay_qt(labels: list, fg_hwnd: int, app) -> None:
 
 
 def _hide_overlay_qt() -> None:
-    """Close the overlay window and stop the fg timer. Qt main thread only."""
-    global _overlay_window, _overlay_screen_name, _overlay_hwnd
+    """Hide the overlay window and stop the fg timer. Qt main thread only.
+
+    HIDE-not-destroy -- same reusable-singleton pattern as status_overlay.py /
+    task_overlay.py / reminder_toast.py. The window (and its HWND/screen
+    identity) stays alive so the NEXT "show numbers" on the same screen can
+    reuse it via _show_overlay_qt's same_screen branch instead of
+    reconstructing (and leaking the previous, now-orphaned HWND) every
+    single show/hide cycle.
+    """
     _stop_fg_timer_qt()
     if _overlay_window is not None:
-        _overlay_window.close()
-        _overlay_window = None
-    _overlay_screen_name = ''
-    _overlay_hwnd = 0
+        _overlay_window.hide()
     with _state_lock:
         _elements.clear()
 
@@ -893,3 +909,16 @@ def handle_click(app, remainder):
 def enumerate_clickable_elements() -> list:
     """Public alias for _enumerate_foreground_clickables."""
     return _enumerate_foreground_clickables()
+
+
+def is_overlay_active() -> bool:
+    """True while the numbered-pill overlay is currently shown.
+
+    Safe to call from any thread: _elements is populated (any thread, under
+    _state_lock) in _draw_overlay before the Qt window is posted, and cleared
+    (Qt thread, under _state_lock) in _hide_overlay_qt -- so this never reads
+    Qt objects across threads, just the lock-guarded element list other
+    callers (e.g. reminder_toast) use to gate on overlay visibility.
+    """
+    with _state_lock:
+        return bool(_elements)
