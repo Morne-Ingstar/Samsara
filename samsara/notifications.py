@@ -21,22 +21,9 @@ import json
 
 from samsara.log import get_logger
 from samsara.runtime import thread_registry
+from samsara.ui.reminder_toast import get_toast
 
 logger = get_logger(__name__)
-
-# Windows toast notifications
-try:
-    from win10toast_click import ToastNotifier
-    HAS_TOAST = True
-    TOAST_TYPE = 'click'
-except ImportError:
-    try:
-        from win10toast import ToastNotifier
-        HAS_TOAST = True
-        TOAST_TYPE = 'basic'
-    except ImportError:
-        HAS_TOAST = False
-        TOAST_TYPE = None
 
 
 class NotificationManager:
@@ -52,7 +39,6 @@ class NotificationManager:
         self.config_dir = Path(config_dir)
         self.config_file = self.config_dir / 'reminders.json'
         self.reminders = []
-        self.toaster = ToastNotifier() if HAS_TOAST else None
         self.running = False
         self.paused = False
         self.thread = None
@@ -169,33 +155,27 @@ class NotificationManager:
         """Whether reminders are globally paused."""
         return self.paused
 
-    def show_notification(self, title, message, duration=5):
+    def show_notification(self, title, message, duration=5, on_shown=None):
         """
-        Show a Windows toast notification.
+        Show a themed reminder toast via the shared qt_runtime overlay.
 
         Args:
             title: Notification title
             message: Notification body text
-            duration: How long to show (seconds)
+            duration: Unused -- kept for signature compatibility. The toast's
+                hold time is fixed (~10s, see reminder_toast.py) rather than
+                caller-configurable, per the toast's quiet-auto-dismiss design.
+            on_shown: Optional zero-arg callback fired on the Qt thread once
+                the toast row has actually been drawn -- NOT once this method
+                returns. A True return here only means the request was
+                *posted* without raising; qt_runtime.post() can silently drop
+                it during shutdown, and widget construction can still raise
+                afterward. Callers that need to know a reminder was truly
+                delivered (e.g. before disabling a one-time reminder) must
+                use on_shown, not this method's return value.
         """
-        if not self.toaster:
-            print(f"[NOTIFY] {title}: {message}")
-            return False
-
         try:
-            # Run in thread to avoid blocking
-            def show():
-                try:
-                    self.toaster.show_toast(
-                        title,
-                        message,
-                        duration=duration,
-                        threaded=False  # We're already in a thread
-                    )
-                except Exception as e:
-                    print(f"[NOTIFY ERROR] {e}")
-
-            toast_thread = thread_registry.spawn("notifications.show", show, daemon=True)
+            get_toast().show(title, message, on_shown=on_shown)
 
             if self.on_notification:
                 self.on_notification(title, message)
@@ -209,9 +189,6 @@ class NotificationManager:
         """Start the reminder check loop."""
         if self.running:
             return
-
-        if not HAS_TOAST:
-            print("[NOTIFY] Toast notifications not available (install win10toast or win10toast-click)")
 
         self.running = True
         self.thread = thread_registry.spawn("notifications._check_loop", self._check_loop, daemon=True)
@@ -236,18 +213,7 @@ class NotificationManager:
                         continue
 
                     if self._is_due(reminder, now):
-                        self.show_notification(
-                            reminder.get('name', 'Reminder'),
-                            reminder['message']
-                        )
-                        reminder['last_fired'] = now.isoformat()
-
-                        # Remove one-time reminders after firing
-                        schedule = reminder.get('schedule', {})
-                        if schedule.get('type') == 'once':
-                            reminder['enabled'] = False
-
-                        self.save_reminders()
+                        self._fire_reminder(reminder, now)
 
             except Exception as e:
                 print(f"[NOTIFY] Check loop error: {e}")
@@ -257,6 +223,47 @@ class NotificationManager:
                 if not self.running:
                     break
                 time.sleep(1)
+
+    def _fire_reminder(self, reminder, now):
+        """Post one due reminder's toast and defer recording last_fired /
+        disabling a one-time reminder until the toast confirms it actually
+        displayed (on_shown), not merely that show_notification() returned
+        True. show_notification() posts an async Qt callback that can be
+        silently dropped during shutdown or fail during widget construction
+        -- treating "posted" as "delivered" there let a reminder (including
+        medical/health ones) get marked fired, and a one-shot disabled,
+        while never actually having been shown to the user. If show_notification
+        itself fails synchronously, or on_shown simply never fires, the
+        reminder is left exactly as it was, so the next 30s cycle retries it.
+        """
+        reminder_id = reminder['id']
+
+        def _on_shown():
+            self._mark_reminder_fired(reminder_id, now)
+
+        ok = self.show_notification(
+            reminder.get('name', 'Reminder'),
+            reminder['message'],
+            on_shown=_on_shown,
+        )
+        if not ok:
+            print(f"[NOTIFY] show_notification failed for reminder {reminder_id}; will retry next cycle")
+
+    def _mark_reminder_fired(self, reminder_id, now):
+        """Record last_fired and disable one-time reminders. Called from
+        _fire_reminder's on_shown callback, on the Qt thread, only once the
+        toast has actually been displayed."""
+        for reminder in self.reminders:
+            if reminder['id'] == reminder_id:
+                reminder['last_fired'] = now.isoformat()
+
+                # Remove one-time reminders after firing
+                schedule = reminder.get('schedule', {})
+                if schedule.get('type') == 'once':
+                    reminder['enabled'] = False
+
+                self.save_reminders()
+                break
 
     def _is_due(self, reminder, now):
         """
