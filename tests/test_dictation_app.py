@@ -36,7 +36,7 @@ def create_test_app(config, tmp_path):
         # "keyboard" module is a different library with no Listener.
         patch('dictation.pynput_keyboard.Listener'),
         patch('dictation.sd.query_devices', return_value=[]),
-        patch('dictation.WhisperModel'),
+        patch('dictation._create_whisper_model'),
         patch('dictation.winsound'),
     ]
 
