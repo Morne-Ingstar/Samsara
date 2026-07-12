@@ -135,6 +135,52 @@ class TestDoOpen:
             result = av.do_open("flurbotron")
         assert result is av.ActionResult.NOT_FOUND
 
+    def test_launch_override_wins_for_netflix(self):
+        """LAUNCH_OVERRIDES intercepts "netflix" BEFORE app_index is ever
+        consulted (case-insensitive) -- the actual bug this override fixes:
+        app_index would otherwise resolve the Windows UWP Netflix app."""
+        with patch.object(av, "resolve_window", return_value=None), \
+             patch.object(av, "_resolve_exe_path", return_value=r"C:\fake\brave.exe") as mock_resolve_exe, \
+             patch("subprocess.Popen") as mock_popen, \
+             patch.object(av, "get_app_index") as mock_get_idx:
+            result = av.do_open("NetFlix")
+        assert result is av.ActionResult.DONE
+        mock_resolve_exe.assert_called_once_with("brave.exe")
+        mock_popen.assert_called_once_with([
+            r"C:\fake\brave.exe",
+            "--app=https://www.netflix.com",
+            "--user-data-dir=C:\\Temp\\remote_profiles\\netflix",
+        ])
+        mock_get_idx.return_value.resolve.assert_not_called()
+
+    def test_launch_override_falls_back_when_exe_missing(self):
+        """brave.exe not resolvable -> do_open() falls back to the generic
+        app_index launcher instead of silently failing."""
+        app_entry = MagicMock()
+        with patch.object(av, "resolve_window", return_value=None), \
+             patch.object(av, "_resolve_exe_path", return_value=None), \
+             patch.object(av, "get_app_index") as mock_get_idx, \
+             patch.object(av, "launch_app") as mock_launch:
+            mock_get_idx.return_value.resolve.return_value = app_entry
+            result = av.do_open("netflix")
+        assert result is av.ActionResult.DONE
+        mock_launch.assert_called_once_with(app_entry)
+
+    def test_launch_override_does_not_shadow_other_targets(self):
+        """"launch notepad" (no override defined for it) must still resolve
+        generically via app_index -- LAUNCH_OVERRIDES is an exact-name dict
+        lookup, so it can never shadow an unrelated launch target."""
+        app_entry = MagicMock()
+        with patch.object(av, "resolve_window", return_value=None), \
+             patch("subprocess.Popen") as mock_popen, \
+             patch.object(av, "get_app_index") as mock_get_idx, \
+             patch.object(av, "launch_app") as mock_launch:
+            mock_get_idx.return_value.resolve.return_value = app_entry
+            result = av.do_open("notepad")
+        assert result is av.ActionResult.DONE
+        mock_launch.assert_called_once_with(app_entry)
+        mock_popen.assert_not_called()
+
 
 class TestDoClose:
     def test_closes_running_window_gracefully(self):

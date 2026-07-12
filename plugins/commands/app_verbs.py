@@ -21,19 +21,123 @@ Reuses existing infrastructure rather than rebuilding it:
     matching windows.py's own is_valid_app_window convention).
   - samsara.app_index for installed-app resolution + the shared
     score_name_match/rank_candidates scoring primitives.
+
+LAUNCH_OVERRIDES (below) is the one exception to "never guess beyond what
+those return": a small, exact-name-keyed dict letting do_open() launch a
+specific command (e.g. Netflix -> Brave app-mode with a dedicated profile)
+instead of whatever samsara.app_index would otherwise resolve to (e.g. the
+Windows UWP Netflix Store app). Checked after the live-window check and
+before app_index resolution -- see do_open().
 """
 
 import os
+import subprocess
+import winreg
 from enum import Enum
 
 import psutil
 import win32con
 import win32gui
 
-from samsara.app_index import get_app_index, launch_app, log_top3, rank_candidates
+from samsara.app_index import get_app_index, launch_app, log_top3, normalize_name, rank_candidates
 from samsara.plugin_commands import command
 
 from plugins.commands.window_switcher import _force_focus
+
+
+# ---------------------------------------------------------------------------
+# Launch overrides -- exact per-app-name launch commands that win BEFORE
+# app_index's generic installed-app resolution in do_open() below.
+#
+# Why this exists: "launch netflix" (Ava's ACTION2 grammar maps "launch" to
+# the "open" verb -- see ask_ollama.py's MODE 2) and "open netflix" both
+# resolve through do_open(), which falls back to samsara.app_index once no
+# live window matches. app_index has no notion of "the Brave app-mode
+# instance is the one Morne actually wants" -- it just resolves installed
+# apps by name, and Windows ships a UWP "Netflix" Store app that matches
+# "netflix" with a perfect score, so that's what launched instead.
+#
+# Keyed by normalize_name()'d app name (same normalization app_index.resolve
+# uses) so lookup is an exact, case-insensitive dict hit -- no fuzzy/prefix
+# matching, so this can never shadow an unrelated launch target. One entry
+# per streaming service to add the next one.
+# ---------------------------------------------------------------------------
+
+LAUNCH_OVERRIDES = {
+    "netflix": {
+        "exe_candidates": ["brave.exe"],
+        "args": [
+            "--app=https://www.netflix.com",
+            "--user-data-dir=C:\\Temp\\remote_profiles\\netflix",
+        ],
+    },
+}
+
+
+def _resolve_exe_path(exe_name: str) -> "str | None":
+    """Resolve an exe name robustly: registry App Paths first (survives
+    non-default install locations and per-user vs per-machine installs),
+    then a couple of standard install directories as a fallback."""
+    for hive in (winreg.HKEY_LOCAL_MACHINE, winreg.HKEY_CURRENT_USER):
+        try:
+            key_path = rf"SOFTWARE\Microsoft\Windows\CurrentVersion\App Paths\{exe_name}"
+            with winreg.OpenKey(hive, key_path) as key:
+                path, _ = winreg.QueryValueEx(key, "")
+                if path and os.path.isfile(path):
+                    return path
+        except OSError:
+            continue
+        except Exception as exc:
+            print(f"[APP-VERBS] Registry lookup for {exe_name!r} failed: {exc}")
+
+    if exe_name.lower() == "brave.exe":
+        for candidate in (
+            r"C:\Program Files\BraveSoftware\Brave-Browser\Application\brave.exe",
+            r"C:\Program Files (x86)\BraveSoftware\Brave-Browser\Application\brave.exe",
+            os.path.expandvars(r"%LOCALAPPDATA%\BraveSoftware\Brave-Browser\Application\brave.exe"),
+        ):
+            if os.path.isfile(candidate):
+                return candidate
+
+    return None
+
+
+def _launch_override(name: str) -> bool:
+    """Check LAUNCH_OVERRIDES for an exact (case-insensitive) match on name
+    and launch it. Returns True only if the override actually launched --
+    do_open() falls through to the generic app_index resolver otherwise, so
+    a missing exe or launch failure degrades to the old (if imperfect)
+    behavior rather than silently doing nothing."""
+    spec = LAUNCH_OVERRIDES.get(normalize_name(name))
+    if spec is None:
+        return False
+
+    exe_path = None
+    for exe_name in spec.get("exe_candidates", []):
+        exe_path = _resolve_exe_path(exe_name)
+        if exe_path:
+            break
+
+    if exe_path is None:
+        print(
+            f"[APP-VERBS] Launch override for {name!r}: could not resolve "
+            f"any of {spec.get('exe_candidates')!r} -- falling back to the "
+            f"generic app_index launcher."
+        )
+        return False
+
+    args = spec.get("args", [])
+    try:
+        subprocess.Popen([exe_path] + args)
+        print(f"[APP-VERBS] Launch override for {name!r}: {exe_path} {' '.join(args)}")
+        return True
+    except Exception as exc:
+        print(
+            f"[APP-VERBS] Launch override for {name!r} failed to start "
+            f"({exe_path} {' '.join(args)}): {exc} -- falling back to the "
+            f"generic app_index launcher."
+        )
+        return False
 
 
 def _speak(app, text):
@@ -125,11 +229,19 @@ def do_focus(name: str) -> "ActionResult":
 
 def do_open(name: str) -> "ActionResult":
     """Focus if a matching window is already running, else resolve against
-    the installed-app index and launch."""
+    the installed-app index and launch.
+
+    LAUNCH_OVERRIDES (see above) is checked BEFORE the generic app_index
+    resolution, but only after the live-window check above -- so if the
+    override's own window is already open (e.g. Brave-mode Netflix),
+    saying "launch netflix" again focuses that existing window instead of
+    launching a duplicate, same as any other app."""
     match = resolve_window(name)
     if match is not None:
         hwnd, _title, _proc = match
         _force_focus(hwnd)
+        return ActionResult.DONE
+    if _launch_override(name):
         return ActionResult.DONE
     app_match = get_app_index().resolve(name)
     if app_match is None:
