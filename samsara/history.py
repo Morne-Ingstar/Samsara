@@ -136,16 +136,24 @@ class HistoryManager:
                 LIMIT ? OFFSET ?
             """, (status, limit, offset)).fetchall()
 
-    def recent_windowed(self, search=None, entry_type=None, limit=200, before_id=None):
+    def recent_windowed(self, search=None, entry_type=None, limit=200, before_id=None,
+                         on_date=None):
         """Unified windowed query for the list-style history view: optional
         substring search, optional entry_type filter (dictation/command/
-        wake_command/failed), and before_id-based "load older" pagination --
-        all pushed to SQL rather than filtered client-side.
+        wake_command/failed), optional on_date ("YYYY-MM-DD", for the date
+        picker's "jump to day" navigation), and before_id-based "load
+        older" pagination -- all pushed to SQL rather than filtered
+        client-side. search in particular scans the WHOLE table, not just
+        whatever page happened to be loaded already -- the LIMIT is applied
+        AFTER the WHERE filter, so a match far outside the currently-loaded
+        page is still found.
 
         Ordered by id DESC (not timestamp DESC like the older methods above)
         because before_id IS the pagination cursor -- keeping the order key
         and the cursor key the same column avoids skipped/duplicate rows
-        across pages if two entries ever share a timestamp.
+        across pages if two entries ever share a timestamp. on_date composes
+        with before_id the same way (paging within a single day) since
+        `timestamp` is stored ISO8601 and SQLite's date() reads it directly.
         """
         clauses = []
         params = []
@@ -155,6 +163,9 @@ class HistoryManager:
         if entry_type:
             clauses.append("entry_type = ?")
             params.append(entry_type)
+        if on_date:
+            clauses.append("date(timestamp) = ?")
+            params.append(on_date)
         if before_id is not None:
             clauses.append("id < ?")
             params.append(before_id)
