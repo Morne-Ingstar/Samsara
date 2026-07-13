@@ -1,4 +1,4 @@
-"""Tasks plugin — local task list with voice management and optional Arcana sync.
+"""Tasks plugin — local task list with voice management.
 
 Voice commands:
   "Jarvis, add to list buy groceries"
@@ -8,17 +8,21 @@ Voice commands:
   "Jarvis, read tasks"
   "Jarvis, clear completed"
   "Jarvis, hide tasks"
+
+Tasks are stored locally only (samsara/tasks_store.py); this plugin makes no
+network requests of any kind. An earlier version POSTed added-task text to
+https://morneis.com/api/add under a "sync to Arcana" label, but that endpoint
+accepts no authentication or user/device identifier, so it could never have
+routed data to an individual user's account -- there is no "my Arcana
+account" for a checkbox to sync to. That code path has been removed rather
+than reworked; see CHANGELOG.md for v0.21.1.
 """
 
-import json
 import logging
 import re
-import urllib.error
-import urllib.request
 
 from samsara import tasks_store
 from samsara.plugin_commands import command
-from samsara.runtime import thread_registry
 
 logger = logging.getLogger(__name__)
 
@@ -47,41 +51,6 @@ def _speak(app, text):
         print(f"[TASKS] {text}")
 
 
-def _arcana_config(app):
-    return getattr(app, "config", {}).get("tasks", {})
-
-
-def _post_task_bg(app, text):
-    """POST to Arcana in a background thread. Non-blocking, best-effort."""
-    cfg = _arcana_config(app)
-    if not cfg.get("sync_to_arcana", True):
-        return
-
-    api_url = cfg.get("arcana_api", "https://morneis.com/api/add")
-
-    def _do_post():
-        payload = json.dumps({
-            "text": text.strip(),
-            "section": "capture",
-            "tags": ["voice", "samsara"],
-        }).encode("utf-8")
-        req = urllib.request.Request(
-            api_url,
-            data=payload,
-            headers={"Content-Type": "application/json"},
-            method="POST",
-        )
-        try:
-            with urllib.request.urlopen(req, timeout=5) as resp:
-                result = json.loads(resp.read().decode("utf-8"))
-                if not result.get("success"):
-                    logger.warning("[TASKS] Arcana sync: server returned %s", result)
-        except Exception as e:
-            logger.warning("[TASKS] Arcana sync failed (non-blocking): %s", e)
-
-    thread_registry.spawn("tasks-arcana-sync", _do_post, daemon=True)
-
-
 def _parse_position(remainder):
     """Extract a 1-based position number from a remainder string."""
     if not remainder:
@@ -101,7 +70,6 @@ def handle_add_to_list(app, remainder="", **kwargs):
         return True
     text = remainder.strip()
     tasks_store.add_task(text)
-    _post_task_bg(app, text)
     _refresh_overlay()
     _speak(app, f"Added: {text}.")
     return True

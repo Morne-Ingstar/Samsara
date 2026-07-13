@@ -2,6 +2,22 @@
 
 All notable changes to Samsara are documented here.
 
+## [0.21.1] - 2026-07-13
+
+### Fixed
+
+- **Removed: undisclosed "Arcana sync" network call from the Task List
+  plugin** — the Tasks plugin silently POSTed the text of every voice-added
+  task to `morneis.com` by default, with no Settings control ever exposed to
+  see or change this. On investigation, the destination endpoint accepts no
+  authentication and no user or device identifier, so this could never have
+  synced to an individual user's account in the first place — the "sync to
+  my Arcana account" premise was invalid regardless of the default. Rather
+  than ship a consent toggle for a feature that can't do what its label
+  claims, the network call has been removed outright. The Task List plugin
+  now makes no network requests under any configuration; local add / show /
+  complete / remove / clear / read task-list behavior is unchanged.
+
 ## [0.21.0] - 2026-07-10
 
 The trust release. The theme is dictation you can rely on: an adversarial
