@@ -151,6 +151,8 @@ def my_command(app, remainder):
 
 Ships with 31 plugins including health tracking, voice reminders, alarm management, voice AI / Ava (Ollama + cloud LLM), smart home control, music and media transport, 3D printer integration, macros, audio switching, tab finder, web shortcuts, timer, GIF search, screen recording, scroll (5-speed + horizontal + page nav), text marker (deferred range selection), volume/mute (Core Audio API), window switcher (letter-based targeting), show numbers (hands-free clicking), Stremio, and more.
 
+**Privacy note on the Task List plugin:** tasks you add by voice (`plugins/commands/tasks.py`) are stored locally only. As of v0.21.1 this plugin makes no network requests of any kind — an earlier undisclosed "sync to Arcana" network call has been removed entirely (see CHANGELOG.md).
+
 ---
 
 ## Getting Started
