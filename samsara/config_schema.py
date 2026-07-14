@@ -144,9 +144,17 @@ SETTINGS_SCHEMA = {
     "command_mode.inactivity_timeout_s": {
         "type": "int",
         "min": 5,
-        "max": 300,
+        "max": 1800,
         "step": 5,
         "default": 30,
+        "tab": "commands",
+    },
+    "command_mode.dictate_utterance_silence_s": {
+        "type": "float",
+        "min": 0.3,
+        "max": 3.0,
+        "step": 0.05,
+        "default": 0.65,
         "tab": "commands",
     },
     "command_mode.miss_limit": {

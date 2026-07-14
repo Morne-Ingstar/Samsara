@@ -1332,22 +1332,22 @@ class _SettingsWindow(QMainWindow):
         ))
         layout.addSpacing(20)
 
-        # ---- Section 3: Command Mode -----------------------------------------
-        layout.addWidget(self._section_title("Command Mode"))
+        # ---- Section 3: Voice Control ----------------------------------------
+        layout.addWidget(self._section_title("Voice Control"))
         layout.addSpacing(4)
 
         cmd_enabled_cb = QCheckBox()
         cmd_enabled_cb.setChecked(bool(cmd_cfg.get('enabled', False)))
         self._widgets['cmd_tab_enabled'] = cmd_enabled_cb
         layout.addLayout(self._setting_row(
-            "Enable command mode",
-            "Also hosts the unified session (dictate/Ava voice switching) when mode is toggle.",
+            "Enable voice control button",
+            "Hold runs command-only walkie-talkie; toggle runs the combined hands-free session.",
             cmd_enabled_cb,
         ))
         layout.addSpacing(8)
 
         desc0 = QLabel(
-            "Choose which button activates command mode (walkie-talkie hold-to-talk)."
+            "Choose which button activates hold-to-command or the latched hands-free session."
         )
         desc0.setStyleSheet("color: #8A8A92; font-size: 12px;")
         layout.addWidget(desc0)
@@ -1360,8 +1360,8 @@ class _SettingsWindow(QMainWindow):
         btn_combo.setCurrentText(current_btn_label)
         self._widgets['cmd_tab_button'] = btn_combo
         layout.addLayout(self._setting_row(
-            "Command Mode Button",
-            "Physical button or key that activates walkie-talkie command mode",
+            "Voice Control Button",
+            "Physical button or key that activates the selected voice-control behavior",
             btn_combo,
         ))
         btn_combo.currentIndexChanged.connect(lambda _idx: self._check_modes_collisions())
@@ -1387,7 +1387,7 @@ class _SettingsWindow(QMainWindow):
         self._widgets['cmd_mode'] = cmd_mode_combo
         layout.addLayout(self._setting_row(
             "Mode",
-            "hold: hold button to stay in command mode.  toggle: press once to enter/exit",
+            "hold: command-only while held.  toggle: commands and dictation together until stopped",
             cmd_mode_combo,
         ))
         layout.addSpacing(8)
@@ -1400,20 +1400,20 @@ class _SettingsWindow(QMainWindow):
         self._widgets['cmd_debounce'] = debounce_spin
         layout.addLayout(self._setting_row(
             "Enter debounce",
-            "Minimum hold time before the command mode earcon plays (prevents accidental activation)",
+            "Minimum hold time before the voice-control earcon plays (prevents accidental activation)",
             debounce_spin,
         ))
         layout.addSpacing(8)
 
         timeout_spin = QSpinBox()
-        timeout_spin.setRange(5, 300)
+        timeout_spin.setRange(5, 1800)
         timeout_spin.setSingleStep(5)
         timeout_spin.setSuffix(" s")
         timeout_spin.setValue(int(cmd_cfg.get('inactivity_timeout_s', 30)))
         self._widgets['cmd_timeout'] = timeout_spin
         layout.addLayout(self._setting_row(
             "Inactivity timeout",
-            "Toggle mode: exit command mode after this many seconds of no speech",
+            "Toggle hands-free: stop listening after this many seconds of no speech (max 1800 = 30 min)",
             timeout_spin,
         ))
         layout.addSpacing(8)
@@ -1424,7 +1424,7 @@ class _SettingsWindow(QMainWindow):
         self._widgets['cmd_miss_limit'] = miss_spin
         layout.addLayout(self._setting_row(
             "Miss limit",
-            "Toggle mode: exit command mode after this many unmatched recordings",
+            "Command-only lane: exit after this many unmatched command utterances",
             miss_spin,
         ))
         layout.addSpacing(8)

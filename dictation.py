@@ -477,6 +477,34 @@ from samsara.handlers import _get_foreground_exe_lower, _get_foreground_hwnd
 from samsara.runtime import thread_registry
 from samsara.session_modes import (
     SessionMode, SessionModeManager, UtteranceSignals, CommandDispatchResult,
+    HandsFreeCommandMatch, PendingTextPolicy, normalize_utterance,
+    GLOBAL_SESSION_EXIT_PHRASES,
+)
+
+# Exact sole-utterance commands available inside the combined hands-free lane.
+# This is deliberately curated: arbitrary macros remain COMMAND-only so normal
+# prose cannot accidentally launch apps, delete data, or trigger network work.
+_HANDS_FREE_PRESERVE_COMMANDS = frozenset({
+    "scroll up", "scroll down", "scroll up a little", "scroll down a little",
+    "scroll up medium", "scroll down medium", "scroll up high", "scroll down high",
+    "scroll up fast", "scroll down fast", "scroll left", "scroll right",
+    "scroll left a little", "scroll right a little", "page up", "page down",
+    "scroll page up", "scroll page down", "up one page", "down one page",
+    "scroll to top", "scroll to bottom", "go to top", "go to bottom",
+    "top of page", "bottom of page", "jump to top", "jump to bottom",
+    "show numbers", "show", "refresh numbers", "update numbers",
+    "show windows", "label windows", "window labels",
+    "read windows", "list windows", "what windows",
+    "maximize", "minimize",
+})
+_HANDS_FREE_COMMIT_COMMANDS = frozenset({
+    "submit", "enter", "escape", "tab", "next field", "previous field",
+    "back field", "back tab", "switch window", "switch app", "other window",
+    "next tab", "previous tab", "go back", "go forward",
+})
+_HANDS_FREE_COMMIT_PREFIXES = (
+    "focus ", "switch to ", "window switch ", "go to window ",
+    "click ", "tap ",
 )
 
 # Minimum gap (ms) between AEC loopback open and ACE mic open.
@@ -4261,6 +4289,55 @@ class DictationApp:
 
     # ── Unified session mode state machine (COMMAND <-> DICTATE) ────────────
 
+    def _probe_hands_free_command(self, text: str):
+        """Classify one utterance without executing it.
+
+        The SessionModeManager needs this side-effect-free probe so it can
+        commit staged text before focus-changing commands, then execute the
+        command only if the paste succeeded. None means ordinary dictation.
+        """
+        normalized = normalize_utterance(apply_phonetic_wash(text))
+        if not normalized:
+            return None
+
+        dispatch_text = normalized
+        policy = None
+        if normalized in _HANDS_FREE_PRESERVE_COMMANDS:
+            policy = PendingTextPolicy.PRESERVE
+        elif normalized in _HANDS_FREE_COMMIT_COMMANDS:
+            policy = PendingTextPolicy.COMMIT
+        elif any(normalized.startswith(prefix) for prefix in _HANDS_FREE_COMMIT_PREFIXES):
+            policy = PendingTextPolicy.COMMIT
+        else:
+            # While Show Numbers owns the screen, a sole spoken number is an
+            # implicit "click <number>" and then control returns here.
+            try:
+                from plugins.commands import show_numbers as _show_numbers
+                tokens = normalized.split()
+                number_only = bool(tokens) and all(
+                    token.isdigit() or token in _show_numbers._WORD_TO_NUM
+                    for token in tokens
+                )
+                if (_show_numbers.is_overlay_active() and number_only
+                        and _show_numbers._parse_spoken_number(normalized) is not None):
+                    dispatch_text = f"click {normalized}"
+                    policy = PendingTextPolicy.COMMIT
+            except Exception as exc:
+                logger.debug(f"[SESSION] Show Numbers command probe unavailable: {exc}")
+
+        if policy is None:
+            return None
+        canonical = self.command_executor.find_command(dispatch_text)
+        if canonical is None:
+            # Disabled command pack or stale/unavailable command: preserve the
+            # user's words as dictation instead of pretending an action exists.
+            return None
+        return HandsFreeCommandMatch(
+            dispatch_text=dispatch_text,
+            phrase=canonical,
+            pending_policy=policy,
+        )
+
     def _ensure_session_mode_manager(self) -> "SessionModeManager":
         """Lazily build the SessionModeManager with its wired callables.
 
@@ -4274,7 +4351,13 @@ class DictationApp:
 
         def _command_dispatch_fn(text: str) -> CommandDispatchResult:
             audio_duration = getattr(self, '_current_utterance_duration_s', 0.0)
-            result, was_command = self.command_executor.process_text(text, self)
+            # SessionModeManager calls this only after committing an utterance
+            # to either the legacy COMMAND lane or the curated exact-command
+            # branch of the combined hands-free lane. The preference governing
+            # opportunistic matching during ordinary dictation does not apply.
+            result, was_command = self.command_executor.process_text(
+                text, self, force_commands=True,
+            )
             if was_command:
                 _store_cmd = self.command_executor.commands.get(result) or {'type': 'plugin'}
                 if (result
@@ -4293,7 +4376,9 @@ class DictationApp:
                     entry_type='command',
                     matched_command=str(result) if result else None,
                 )
-                if self.command_mode_active:
+                if (self.command_mode_active
+                        and (self._session_mode_manager is None
+                             or self._session_mode_manager.mode is SessionMode.COMMAND)):
                     self._command_mode_miss_count = 0
                     # Inactivity timer reset happens once, uniformly, in
                     # _handle_session_dispatch_outcome (the single chokepoint)
@@ -4301,7 +4386,9 @@ class DictationApp:
                 return CommandDispatchResult(matched=True, phrase=result)
 
             logger.info(f'[CMD] No command matched: "{text}"')
-            if self.command_mode_active:
+            if (self.command_mode_active
+                    and (self._session_mode_manager is None
+                         or self._session_mode_manager.mode is SessionMode.COMMAND)):
                 self._command_mode_miss_count += 1
                 cm_cfg = self.config.get('command_mode', {})
                 miss_limit = cm_cfg.get('miss_limit', 5)
@@ -4310,8 +4397,64 @@ class DictationApp:
                     self.exit_command_mode()
             return CommandDispatchResult(matched=False, phrase=None)
 
-        def _inject_fn(text: str) -> None:
-            self._paste_preserving_clipboard(text)
+        def _inject_fn(text: str):
+            """Commit one complete unified-session DICTATE thought.
+
+            `text` is the complete, RAW, multi-chunk accumulated buffer --
+            natural-pause chunks were staged with no formatting applied
+            (see session_modes._stage_dictate_chunk). This runs the SAME
+            formatting pipeline normal wake-lane dictation uses
+            (_output_dictation), in the same order, exactly once, over the
+            complete text -- never duplicated, never per-chunk:
+
+                process_transcription (auto_capitalize, format_numbers)
+                -> clean_text (cleanup_mode, incl. verbatim -- unchanged)
+                -> smart_correct (gated on smart_corrections.modes.wake,
+                   the DICTATE/wake lane this session path belongs to)
+                -> add_trailing_space
+                -> _apply_formatting_tokens (must run last, immediately
+                   before delivery -- see formatting_tokens.py)
+
+            Returns the delivered (pasted) text on success, so
+            SessionModeManager's undo stack and stage_buffer record what was
+            ACTUALLY typed rather than the pre-formatting input. Returns
+            False on paste failure OR any unexpected exception during
+            formatting -- either way the caller retains the pending buffer,
+            stays in DICTATE, and plays the existing error earcon.
+            """
+            try:
+                raw = text  # pre-pipeline accumulated thought, for history's raw_text
+                formatted = self.process_transcription(text)
+                cleanup_mode = (
+                    'verbatim' if getattr(self, '_skip_cleanup', False)
+                    else self.config.get('cleanup_mode', 'clean')
+                )
+                formatted = clean_text(formatted, mode=cleanup_mode)
+                if self.config.get('smart_corrections', {}).get('modes', {}).get('wake', True):
+                    formatted = smart_correct(formatted, self)
+                if self.config['add_trailing_space']:
+                    formatted = formatted + " "
+                formatted = self._apply_formatting_tokens(formatted)
+            except Exception as e:
+                logger.exception(f'[SESSION] DICTATE commit formatting failed: {e}')
+                return False
+
+            paste_ok = self._paste_preserving_clipboard(formatted)
+            if not paste_ok:
+                return False
+
+            display = formatted.strip()
+            if display:
+                self.add_to_history(display, is_command=False)
+                self._log_history(
+                    raw_text=raw,
+                    display_text=display,
+                    mode="dictate",
+                    status="success",
+                    entry_type="dictation",
+                )
+                self._notify_main_window(display)
+            return formatted
 
         def _remove_chars_fn(n: int) -> None:
             # Same select-back + delete idiom as undo_last_dictation() --
@@ -4331,9 +4474,10 @@ class DictationApp:
             self._update_mode_overlay(mode)
 
         def _on_focus_lock_revert() -> None:
-            logger.info('[SESSION] Focus-lock revert -- foreground window changed, suppressing injection')
+            logger.info('[SESSION] Focus-lock mismatch -- foreground window changed; '
+                        'suppressing injection and retaining DICTATE mode')
             self.play_sound('focus_lock_revert')
-            self._update_mode_overlay(SessionMode.COMMAND)
+            self._update_mode_overlay(SessionMode.DICTATE)
 
         def _on_scratch_result(success: bool) -> None:
             self.play_sound('scratch_success' if success else 'scratch_refuse')
@@ -4347,7 +4491,15 @@ class DictationApp:
             self.play_sound('error')
 
         ww_cfg = self.config.get('wake_word_config', {})
-        abort_phrases = ww_cfg.get('wake_abort_phrase', ['cancel', 'cancel dictation', 'abort'])
+        configured_abort = ww_cfg.get(
+            'wake_abort_phrase', ['cancel', 'cancel dictation', 'abort'],
+        )
+        if isinstance(configured_abort, str):
+            configured_abort = [configured_abort]
+        abort_phrases = list(dict.fromkeys([
+            *configured_abort,
+            *GLOBAL_SESSION_EXIT_PHRASES,
+        ]))
 
         self._session_mode_manager = SessionModeManager(
             abort_phrases=abort_phrases,
@@ -4363,6 +4515,10 @@ class DictationApp:
             on_scratch_result=_on_scratch_result,
             on_abort=_on_abort,
             on_switch_dispatch_error=_on_switch_dispatch_error,
+            buffer_dictate_until_commit=True,
+            hands_free_command_probe_fn=getattr(
+                self, '_probe_hands_free_command', None,
+            ),
         )
         return self._session_mode_manager
 
@@ -4423,7 +4579,7 @@ class DictationApp:
     # window as a side effect.
     _MODE_OVERLAY = {
         SessionMode.COMMAND: ("COMMAND", "#5EEAD4"),
-        SessionMode.DICTATE: ("DICTATE", "#f59e0b"),
+        SessionMode.DICTATE: ("HANDS FREE", "#f59e0b"),
         SessionMode.AVA: ("AVA", "#A78BFA"),
     }
 
@@ -4448,15 +4604,16 @@ class DictationApp:
         if cfg.get('mode', 'hold') == 'toggle':
             timeout_s = cfg.get('inactivity_timeout_s', 30)
             self._reset_command_mode_inactivity_timer(timeout_s)
-            # Unified session: every toggle-mode entry starts fresh in
-            # COMMAND -- reset() discards any mode state from a prior session.
-            self._ensure_session_mode_manager().reset()
+            # The latched toggle is the combined hands-free session: exact
+            # navigation commands and buffered dictation coexist from entry.
+            # Hold-to-record command mode never enters this branch.
+            self._ensure_session_mode_manager().reset(initial_mode=SessionMode.DICTATE)
             if hasattr(self, 'listening_indicator'):
                 # Force-visible for the session's duration regardless of
                 # listening_indicator_enabled -- restored to the
                 # config-controlled state in exit_command_mode().
                 self._schedule_ui(self.listening_indicator.show)
-            self._update_mode_overlay(SessionMode.COMMAND)
+            self._update_mode_overlay(SessionMode.DICTATE)
         thread_registry.spawn('cmd-mode-enter', self._do_enter_command_mode, daemon=True)
 
     def _do_enter_command_mode(self):
@@ -4498,8 +4655,9 @@ class DictationApp:
             logger.info(f"[CMD MODE] Ghost tap ({hold_ms:.0f}ms < {debounce_ms}ms) — audio will be discarded")
         logger.info("[CMD MODE] Exiting command mode")
         self._cancel_command_mode_inactivity_timer()
-        # Unified session: session end always discards mode state --
-        # re-entry (enter_command_mode) always starts fresh in COMMAND.
+        # Session end discards all state. A future toggle entry chooses the
+        # combined hands-free lane; reset's COMMAND default remains for legacy
+        # direct callers and the optional command-only lane.
         if self._session_mode_manager is not None:
             self._session_mode_manager.reset()
         is_toggle_session = self.config.get('command_mode', {}).get('mode', 'hold') == 'toggle'
@@ -4840,8 +4998,13 @@ class DictationApp:
             self.command_mode_recording = True
             self.start_recording(streaming=False, play_earcon=False)
     def _handle_command_mode_utterance(self, buffer: list, src_rate: int) -> None:
-        """Transcribe and dispatch one VAD-gated utterance in the unified
-        toggle-command-mode session (COMMAND <-> DICTATE).
+        """Transcribe and dispatch one queued VAD-gated utterance in the
+        unified toggle-command-mode session (COMMAND <-> DICTATE).
+
+        WakeConsumer owns a single FIFO drain worker for these utterances, so
+        this method is never invoked concurrently and every silence-bounded
+        chunk is handled in capture order. The model lock remains the final
+        cross-pipeline serialization guard.
 
         Called from WakeConsumer._flush() for each silence-bounded utterance
         while command_mode_active and mode=='toggle'.  The WakeConsumer resets
@@ -4859,8 +5022,7 @@ class DictationApp:
         switch matcher needs, and hand the text off.
         """
         if self._wake_transcription_in_progress:
-            logger.info('[CMD-UTT] Transcription already in progress — skipping utterance')
-            return
+            logger.info('[CMD-UTT] Another transcription is active — waiting on model lock')
         self._wake_transcription_in_progress = True
         try:
             audio = np.concatenate(buffer)
@@ -4944,6 +5106,18 @@ class DictationApp:
             # queue-full-drop case in _ava_session_agent_dispatch_fn).
             logger.info(f'[AVA] Rejected non-substantive utterance: "{text}"')
             self.play_sound('scratch_refuse')
+        elif outcome.kind == "dictate_commit_refused":
+            logger.info('[SESSION] DICTATE commit word rejected by anti-hallucination gate; '
+                        'pending text retained')
+            self.play_sound('scratch_refuse')
+        elif outcome.kind == "hands_free_command_refused":
+            logger.info('[SESSION] Hands-free command rejected by anti-hallucination gate; '
+                        'pending text retained')
+            self.play_sound('scratch_refuse')
+        elif outcome.kind == "hands_free_command_failed":
+            logger.error('[SESSION] Reserved hands-free command failed to execute: %r',
+                         outcome.detail)
+            self.play_sound('error')
         if outcome.kind != "empty":
             self._touch_session_activity()
 
@@ -6672,6 +6846,13 @@ class DictationApp:
         if paste_ok:
             self._record_undoable_paste(text)
             self.adaptive_learner.record_transcription(text)
+            logger.info(
+                "[PASTE] Ctrl+V sent chars=%d hwnd=%r",
+                len(text), _get_foreground_hwnd(),
+            )
+        else:
+            logger.error("[PASTE] Ctrl+V delivery failed; text retained by caller when possible")
+        return paste_ok
 
     def _deliver_text_to_focused_editor(self, text):
         # backspace removes focus-primer char; assumes empty input box at session start

@@ -66,8 +66,8 @@ class TestResolveHotkeys:
         app = _make_app({"command_mode": {"enabled": True, "button": "mouse4", "mode": "toggle"}})
         rows = qr._resolve_hotkeys(app)
         by_label = {r["label"]: r for r in rows}
-        assert by_label["Command Mode (toggle)"]["enabled"] is True
-        assert by_label["Command Mode (toggle)"]["value"] == "Mouse 4"
+        assert by_label["Hands-free Session"]["enabled"] is True
+        assert by_label["Hands-free Session"]["value"] == "Mouse 4"
         assert by_label["Ava"]["enabled"] is True
 
     def test_streaming_enabled_reflected(self):
@@ -85,6 +85,7 @@ class TestResolveSessionPhrases:
         assert state["wake"]["enabled"] is False
         assert "over" in state["send_word"]["words"]
         assert state["lane_switches"]["enabled"] is False
+        assert state["dictate_commit"]["phrase"] == "end"
         assert state["scratch_that"]["phrase"] == "scratch that"
 
     def test_reflects_changed_wake_phrase_on_recall(self):
@@ -116,7 +117,10 @@ class TestResolveSessionPhrases:
         app = _make_app({"wake_word_enabled": True,
                           "wake_word_config": {"wake_abort_phrase": ["stop that", "nevermind"]}})
         state = qr._resolve_session_phrases(app)
-        assert state["abort"]["words"] == ["stop that", "nevermind"]
+        assert state["abort"]["words"] == [
+            "stop that", "nevermind",
+            "stop listening", "exit hands free", "exit command mode",
+        ]
 
 
 class TestResolveModesOverview:
@@ -124,7 +128,7 @@ class TestResolveModesOverview:
         state = qr._resolve_modes_overview(_make_app())
         assert state["enabled"] is False
         names = [m["name"] for m in state["modes"]]
-        assert names == ["COMMAND", "DICTATE", "AVA"]
+        assert names == ["COMMAND", "HANDS FREE", "AVA"]
 
     def test_enabled_when_command_mode_on(self):
         state = qr._resolve_modes_overview(_make_app({"command_mode": {"enabled": True}}))

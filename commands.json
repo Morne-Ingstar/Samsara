@@ -326,6 +326,54 @@
       "description": "Press Escape",
       "pack": "core"
     },
+    "tab": {
+      "type": "press",
+      "key": "tab",
+      "description": "Move focus to the next field",
+      "pack": "core"
+    },
+    "next field": {
+      "type": "press",
+      "key": "tab",
+      "description": "Move focus to the next field",
+      "pack": "core"
+    },
+    "previous field": {
+      "type": "hotkey",
+      "keys": [
+        "shift",
+        "tab"
+      ],
+      "description": "Move focus to the previous field",
+      "pack": "core"
+    },
+    "back field": {
+      "type": "hotkey",
+      "keys": [
+        "shift",
+        "tab"
+      ],
+      "description": "Move focus to the previous field",
+      "pack": "core"
+    },
+    "back tab": {
+      "type": "hotkey",
+      "keys": [
+        "shift",
+        "tab"
+      ],
+      "description": "Move focus to the previous field",
+      "pack": "core"
+    },
+    "other window": {
+      "type": "hotkey",
+      "keys": [
+        "alt",
+        "tab"
+      ],
+      "description": "Switch to the previously active window",
+      "pack": "core"
+    },
     "press e": {
       "type": "press",
       "key": "e",
