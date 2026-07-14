@@ -91,6 +91,10 @@ datas.append((str(app_dir / 'profiles'), 'profiles'))
 datas.append((str(app_dir / 'commands.json'), '.'))
 # Bundle the entire plugins directory so commands/*.py are available at runtime
 datas.append((str(app_dir / 'plugins'), 'plugins'))
+# Brave/Chromium DOM Show Numbers extension -- bundled wholesale (same
+# pattern as plugins/ above) so a frozen build still has a folder to point
+# Brave's "Load unpacked" at; see browser_extension/README.md.
+datas.append((str(app_dir / 'browser_extension'), 'browser_extension'))
 # tools/ (2026-07-10) -- plugins/commands/stremio.py does `import
 # stremio_control` after inserting Path(__file__).resolve().parents[2] /
 # "tools" onto sys.path. plugins/commands/*.py are loaded dynamically at
@@ -316,6 +320,7 @@ hiddenimports = [
     # to PyInstaller's own dependency analysis, so these must be listed
     # explicitly or they silently go missing from the frozen build.
     'samsara.audio_switch',
+    'samsara.browser_bridge',
 
     # Samsara Smart Actions
     'samsara.smart_actions_bridge',

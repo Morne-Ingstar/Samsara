@@ -100,6 +100,42 @@ _CMD_BUTTON_OPTIONS = {
 }
 _CMD_BUTTON_KEY_TO_LABEL = {v: k for k, v in _CMD_BUTTON_OPTIONS.items()}
 
+
+def _collect_command_rows(executor) -> list[dict]:
+    """Return builtin and plugin commands for the Settings command table."""
+    if executor is None:
+        return []
+
+    rows: dict[str, dict] = {}
+    for phrase, data in (getattr(executor, 'commands', {}) or {}).items():
+        rows[phrase] = {
+            'phrase': phrase,
+            'source': 'builtin',
+            'type': data.get('type', ''),
+            'pack': data.get('pack', 'core'),
+            'description': data.get('description', ''),
+            'aliases': [],
+            'data': data,
+        }
+
+    matcher = getattr(executor, '_matcher', None)
+    if matcher is not None and hasattr(matcher, 'list_commands'):
+        for entry in matcher.list_commands():
+            phrase = entry.get('phrase', '')
+            if not phrase or phrase in rows:
+                continue
+            rows[phrase] = {
+                'phrase': phrase,
+                'source': entry.get('source', 'plugin'),
+                'type': entry.get('type', 'plugin'),
+                'pack': entry.get('pack', 'core'),
+                'description': entry.get('description', ''),
+                'aliases': entry.get('aliases', []),
+                'data': entry,
+            }
+
+    return [rows[phrase] for phrase in sorted(rows)]
+
 # ---------------------------------------------------------------------------
 # AI Command Mode tab constants
 # ---------------------------------------------------------------------------
@@ -1951,26 +1987,29 @@ class _SettingsWindow(QMainWindow):
         table.setUpdatesEnabled(False)
         table.setRowCount(0)
         try:
-            commands = getattr(
-                getattr(self.app, 'command_executor', None), 'commands', {}
-            ) or {}
+            executor = getattr(self.app, 'command_executor', None)
             fl = filter_text.lower()
-            for phrase, data in sorted(commands.items()):
-                if fl and not any(
-                    fl in s.lower() for s in (
-                        phrase,
-                        data.get('type', ''),
-                        data.get('description', ''),
-                        data.get('pack', ''),
-                    )
-                ):
+            for command in _collect_command_rows(executor):
+                searchable = (
+                    command['phrase'], command['source'], command['type'],
+                    command['description'], command['pack'],
+                    ' '.join(command['aliases']),
+                )
+                if fl and not any(fl in str(value).lower() for value in searchable):
                     continue
                 row = table.rowCount()
                 table.insertRow(row)
-                table.setItem(row, 0, QTableWidgetItem(phrase))
-                table.setItem(row, 1, QTableWidgetItem(data.get('type', '')))
-                table.setItem(row, 2, QTableWidgetItem(self._cmd_action_text(data)))
-                table.setItem(row, 3, QTableWidgetItem(data.get('description', '')))
+                phrase_item = QTableWidgetItem(command['phrase'])
+                phrase_item.setData(Qt.ItemDataRole.UserRole, command['source'])
+                table.setItem(row, 0, phrase_item)
+                table.setItem(row, 1, QTableWidgetItem(command['type']))
+                action = (
+                    self._cmd_action_text(command['data'])
+                    if command['source'] == 'builtin'
+                    else f"{command['pack']} plugin"
+                )
+                table.setItem(row, 2, QTableWidgetItem(action))
+                table.setItem(row, 3, QTableWidgetItem(command['description']))
         finally:
             table.setUpdatesEnabled(True)
 
@@ -1996,6 +2035,8 @@ class _SettingsWindow(QMainWindow):
             data = {'commands': exe.commands}
             with open(path, 'w', encoding='utf-8') as f:
                 json.dump(data, f, indent=2)
+            if hasattr(exe, 'rebuild_matcher'):
+                exe.rebuild_matcher()
         except Exception as e:
             QMessageBox.critical(self, "Error", f"Failed to save commands:\n{e}")
 
@@ -2004,14 +2045,17 @@ class _SettingsWindow(QMainWindow):
         if exe is None:
             return
         try:
-            exe.load_commands()
+            if hasattr(exe, 'reload_commands'):
+                exe.reload_commands()
+            else:
+                exe.load_commands()
             search = self._widgets.get('cmd_search')
             self._populate_commands_table(
                 table, search.text() if search else ''
             )
             QMessageBox.information(
                 self, "Reloaded",
-                f"Loaded {len(exe.commands)} commands."
+                f"Loaded {len(_collect_command_rows(exe))} commands."
             )
         except Exception as e:
             QMessageBox.critical(self, "Error", f"Failed to reload:\n{e}")
@@ -2021,6 +2065,13 @@ class _SettingsWindow(QMainWindow):
         if not phrase:
             QMessageBox.warning(self, "No Selection", "Select a command to delete.")
             return
+        exe = getattr(self.app, 'command_executor', None)
+        if exe is None or phrase not in getattr(exe, 'commands', {}):
+            QMessageBox.information(
+                self, "Plugin Command",
+                "Plugin commands are defined in source and cannot be deleted here.",
+            )
+            return
         reply = QMessageBox.question(
             self, "Confirm Delete",
             f"Delete the command '{phrase}'?",
@@ -2028,8 +2079,7 @@ class _SettingsWindow(QMainWindow):
         )
         if reply != QMessageBox.StandardButton.Yes:
             return
-        exe = getattr(self.app, 'command_executor', None)
-        if exe and phrase in exe.commands:
+        if phrase in exe.commands:
             del exe.commands[phrase]
             self._save_commands_to_disk()
             search = self._widgets.get('cmd_search')
@@ -2050,7 +2100,9 @@ class _SettingsWindow(QMainWindow):
         def _run():
             time.sleep(0.4)
             try:
-                ok = exe.execute_command(phrase)
+                _result, ok = exe.process_text(
+                    phrase, self.app, force_commands=True,
+                )
                 msg = f"'{phrase}' executed OK." if ok else f"'{phrase}' not found or failed."
                 self._test_result.emit(msg, "#5EEAD4" if ok else "#FF6666")
             except Exception as exc:
@@ -2066,6 +2118,13 @@ class _SettingsWindow(QMainWindow):
         phrase = self._selected_phrase(table)
         if not phrase:
             QMessageBox.warning(self, "No Selection", "Select a command to edit.")
+            return
+        exe = getattr(self.app, 'command_executor', None)
+        if exe is None or phrase not in getattr(exe, 'commands', {}):
+            QMessageBox.information(
+                self, "Plugin Command",
+                "Plugin commands are defined in source and cannot be edited here.",
+            )
             return
         self._open_command_dialog(phrase, table)
 

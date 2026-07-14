@@ -6,6 +6,8 @@ Handles voice command loading, matching, and execution.
 
 import json
 import os
+import re
+import threading
 import time
 from pathlib import Path
 from typing import Any, Callable, Dict, Optional, Tuple
@@ -122,6 +124,7 @@ class CommandExecutor:
             commands_path = Path(__file__).parent.parent / "commands.json"
         self.commands_path = Path(commands_path)
         self._app = app
+        self._matcher_lock = threading.RLock()
         self.commands: Dict[str, Dict[str, Any]] = {}
         self.held_keys: Dict[str, Any] = {}
         self.keyboard_controller = KeyboardController()
@@ -137,15 +140,7 @@ class CommandExecutor:
         unique = len({id(entry) for entry in _plugin_commands._REGISTRY.values()})
         print(f"[PLUGINS] Loaded {unique} plugin commands")
 
-        self._matcher = CommandMatcher()
-        app_config = getattr(app, 'config', {}) if app is not None else {}
-        enabled_packs = get_enabled_packs(app_config)
-        self._matcher.set_enabled_packs(enabled_packs)
-        self._matcher.load_builtins(self.commands)
-        self._matcher.load_plugins(_plugin_commands._REGISTRY)
-        self._matcher.freeze()
-        self._matcher.detect_collisions()
-        _plugin_commands.set_shared_matcher(self._matcher)
+        self.rebuild_matcher()
 
     # ── Command file I/O ────────────────────────────────────────────────────────
 
@@ -158,6 +153,53 @@ class CommandExecutor:
         except Exception as e:
             print(f"[WARN] Could not load commands: {e}")
             self.commands = {}
+
+    def rebuild_matcher(self) -> CommandMatcher:
+        """Rebuild the authoritative builtin+plugin matcher atomically.
+
+        Plugin discovery and commands.json reloads can happen independently.
+        Replacing the frozen matcher as one unit prevents a successfully loaded
+        plugin from remaining invisible to runtime dispatch.
+        """
+        with self._matcher_lock:
+            matcher = CommandMatcher()
+            app_config = getattr(self._app, 'config', {}) if self._app is not None else {}
+            matcher.set_enabled_packs(get_enabled_packs(app_config))
+            matcher.load_builtins(self.commands)
+            matcher.load_plugins(_plugin_commands._REGISTRY)
+            matcher.freeze()
+            matcher.detect_collisions()
+            self._matcher = matcher
+            _plugin_commands.set_shared_matcher(matcher)
+            return matcher
+
+    def reload_commands(self) -> None:
+        """Reload editable commands and rebuild runtime dispatch immediately."""
+        self.load_commands()
+        self.rebuild_matcher()
+
+    def _repair_plugin_matcher_drift(self, text: str):
+        """Rebuild once when a loaded, enabled exact plugin phrase is absent."""
+        clean = re.sub(r'[^\w\s]', '', (text or '').lower().strip())
+        plugin_entry = _plugin_commands._REGISTRY.get(clean)
+        if plugin_entry is None:
+            return None, ''
+        app_config = getattr(self._app, 'config', {}) if self._app is not None else {}
+        if plugin_entry.get('pack', 'core') not in get_enabled_packs(app_config):
+            return None, ''
+
+        # Another thread may already have repaired the matcher. Retry before
+        # rebuilding, then publish one new immutable matcher under the lock.
+        with self._matcher_lock:
+            entry, remainder = self._matcher.match(text)
+            if entry is not None:
+                return entry, remainder
+            logger.warning(
+                "[REGISTRY] Loaded plugin phrase %r missing from matcher; rebuilding",
+                clean,
+            )
+            self.rebuild_matcher()
+            return self._matcher.match(text)
 
     def save_commands(self) -> None:
         # commands.json lives in the app root, which is monitored by the
@@ -241,6 +283,8 @@ class CommandExecutor:
     def find_command(self, text: str) -> Optional[str]:
         """Return the canonical phrase of the best matching command, or None."""
         entry, _remainder = self._matcher.match(text)
+        if entry is None:
+            entry, _remainder = self._repair_plugin_matcher_drift(text)
         return entry.phrase if entry is not None else None
 
     def process_text(
@@ -312,6 +356,8 @@ class CommandExecutor:
         # so free-form dictation output is never silently rewritten.
         match_text = apply_phonetic_wash(text)
         entry, remainder = self._matcher.match(match_text)
+        if entry is None:
+            entry, remainder = self._repair_plugin_matcher_drift(match_text)
         if entry is None:
             # Smart Actions routing-verb fallback (e.g. "ask Spotify for jazz").
             # Routing verbs are not @command entries — they live here so they
