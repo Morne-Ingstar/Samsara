@@ -17,7 +17,7 @@ for _mod in ('win32api', 'win32con', 'win32gui'):
         import types
         sys.modules[_mod] = types.ModuleType(_mod)
 
-from plugins.commands.show_numbers import _parse_spoken_number
+from plugins.commands.show_numbers import _get_foreground_control, _parse_spoken_number
 
 
 def test_digit_simple():
@@ -50,3 +50,20 @@ def test_no_number():
 
 def test_empty():
     assert _parse_spoken_number("") is None
+
+
+def test_foreground_control_uses_direct_api_when_available():
+    import types
+    expected = object()
+    auto = types.SimpleNamespace(GetForegroundControl=lambda: expected)
+    assert _get_foreground_control(auto) is expected
+
+
+def test_foreground_control_falls_back_to_handle_api():
+    import types
+    expected = object()
+    auto = types.SimpleNamespace(
+        GetForegroundWindow=lambda: 42,
+        ControlFromHandle=lambda hwnd: expected if hwnd == 42 else None,
+    )
+    assert _get_foreground_control(auto) is expected

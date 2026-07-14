@@ -81,85 +81,109 @@ _MONITORENUMPROC = ctypes.WINFUNCTYPE(
 )
 
 
+def _with_physical_dpi_context(fn):
+    """Run a Win32 geometry query in per-monitor-v2 physical coordinates.
+
+    UI Automation bounding rectangles are always physical pixels.  Win32
+    monitor APIs, however, can be virtualized according to the calling
+    thread's DPI context.  Temporarily forcing PMv2 makes both sides use the
+    same native coordinate system; the prior context is restored immediately.
+    """
+    if sys.platform != 'win32':
+        return fn()
+    setter = getattr(ctypes.windll.user32, 'SetThreadDpiAwarenessContext', None)
+    if setter is None:
+        return fn()
+
+    previous = None
+    try:
+        setter.argtypes = [ctypes.c_void_p]
+        setter.restype = ctypes.c_void_p
+        previous = setter(ctypes.c_void_p(-4))
+        return fn()
+    finally:
+        if previous:
+            setter(previous)
+
+
 def _win32_monitor_rects() -> list:
-    """Return Win32 monitor rects (physical or logical, same as Qt), sorted (left, top)."""
-    rects = []
+    """Return native physical monitor rectangles sorted by physical origin."""
+    def _query():
+        rects = []
 
-    def _cb(hmon, hdc, lprect, lparam):
-        info = _MONITORINFO()
-        info.cbSize = ctypes.sizeof(_MONITORINFO)
-        ctypes.windll.user32.GetMonitorInfoW(hmon, ctypes.byref(info))
-        r = info.rcMonitor
-        rects.append((r.left, r.top, r.right, r.bottom))
-        return True
+        def _cb(hmon, hdc, lprect, lparam):
+            info = _MONITORINFO()
+            info.cbSize = ctypes.sizeof(_MONITORINFO)
+            ctypes.windll.user32.GetMonitorInfoW(hmon, ctypes.byref(info))
+            r = info.rcMonitor
+            rects.append((r.left, r.top, r.right, r.bottom))
+            return True
 
-    ctypes.windll.user32.EnumDisplayMonitors(None, None, _MONITORENUMPROC(_cb), 0)
-    return sorted(rects, key=lambda r: (r[0], r[1]))
+        callback = _MONITORENUMPROC(_cb)
+        ctypes.windll.user32.EnumDisplayMonitors(None, None, callback, 0)
+        return sorted(rects, key=lambda r: (r[0], r[1]))
+
+    return _with_physical_dpi_context(_query)
+
+
+def _map_physical_to_qt(
+    px: int,
+    py: int,
+    mappings: list,
+) -> tuple:
+    """Pure physical-pixel -> Qt-DIP transform for one monitor mapping.
+
+    Mapping entries are (physical_rect, qt_rect, dpr), where rects are
+    (left, top, right, bottom). Windows keeps monitor origins in native
+    desktop coordinates while Qt scales each screen's size, so conversion is
+    relative to the matched monitor origin rather than global division.
+    """
+    for (pl, pt, pr, pb), (ql, qt, qr, qb), ratio in mappings:
+        if pl <= px < pr and pt <= py < pb:
+            scale = float(ratio) if ratio else 1.0
+            return (
+                round(ql + (px - pl) / scale),
+                round(qt + (py - pt) / scale),
+            )
+    return px, py
 
 
 def phys_to_logical(px: int, py: int) -> tuple:
-    """Convert screen coordinates to Qt logical coordinates.
+    """Convert UI Automation physical screen coordinates to Qt logical DIPs.
 
-    Handles two coordinate modes automatically:
-
-    * Physical mode (per-monitor DPI V2 active): Win32 rcMonitor width exceeds
-      Qt logical width by the scale factor. Divide offset by ratio to convert.
-
-    * Logical mode (DPI awareness not in effect for this API path): rcMonitor
-      width matches Qt logical width. Coordinates are already logical; return
-      unchanged.  Applying division here was the top-left-cluster bug.
-
-    Falls back to identity if conversion data is unavailable.
+    Microsoft specifies that UIA bounding rectangles use physical pixels.
+    Qt 6 widget/screen geometry uses device-independent pixels. Always map
+    through the containing monitor; never infer UIA's coordinate system from
+    a separately virtualized Win32 query.
     """
     try:
-        phys_rects = _win32_monitor_rects()
+        physical = _win32_monitor_rects()
         qt_screens = sorted(
             QApplication.screens(),
             key=lambda s: (s.geometry().x(), s.geometry().y()),
         )
-        if len(phys_rects) != len(qt_screens):
+        if len(physical) != len(qt_screens):
             return px, py
 
-        for (pl, pt, pr, pb), screen in zip(phys_rects, qt_screens):
-            if pl <= px < pr and pt <= py < pb:
-                ratio = screen.devicePixelRatio()
-                geo = screen.geometry()
-                win32_w = pr - pl
-                qt_w    = geo.width()
-                # Determine coordinate mode:
-                # Logical: Win32 origins AND dimensions match Qt logical values.
-                # Physical: at least the width or origin differs (DPI V2 active).
-                # Width alone is insufficient for 100% DPI secondaries whose
-                # physical width equals logical width but origin shifts left.
-                is_logical = (
-                    abs(win32_w - qt_w) <= 2
-                    and pl == geo.x()
-                    and pt == geo.y()
-                )
+        mappings = []
+        for physical_rect, screen in zip(physical, qt_screens):
+            geo = screen.geometry()
+            qt_rect = (
+                geo.x(), geo.y(),
+                geo.x() + geo.width(), geo.y() + geo.height(),
+            )
+            mappings.append((physical_rect, qt_rect, screen.devicePixelRatio()))
 
-                if is_logical:
-                    if _COORD_DEBUG:
-                        _logger.debug(
-                            "[DPI-COORD] phys_to_logical(%d,%d): logical mode "
-                            "(win32_w=%d == qt_w=%d, ratio=%.2f) -> (%d,%d)",
-                            px, py, win32_w, qt_w, ratio, px, py,
-                        )
-                    return px, py
-
-                # Origins or dimensions differ: Win32 returns physical pixels.
-                lx = geo.x() + (px - pl) / ratio
-                ly = geo.y() + (py - pt) / ratio
-                if _COORD_DEBUG:
-                    _logger.debug(
-                        "[DPI-COORD] phys_to_logical(%d,%d): physical mode "
-                        "(win32_w=%d, qt_w=%d, pl=%d, geo_x=%d, ratio=%.2f) -> (%d,%d)",
-                        px, py, win32_w, qt_w, pl, geo.x(), ratio,
-                        round(lx), round(ly),
-                    )
-                return round(lx), round(ly)
+        result = _map_physical_to_qt(px, py, mappings)
+        if _COORD_DEBUG:
+            _logger.debug(
+                "[DPI-COORD] UIA physical (%d,%d) -> Qt logical (%d,%d)",
+                px, py, result[0], result[1],
+            )
+        return result
     except Exception as e:
         logger.debug(f"phys_to_logical: {e}")
-    return px, py
+        return px, py
 
 
 # ---------------------------------------------------------------------------
@@ -181,12 +205,17 @@ def screen_for_hwnd(hwnd: int) -> "QScreen":
                 ctypes.c_ssize_t(hwnd), MONITOR_DEFAULTTONEAREST
             )
             if hmon:
-                info = _MONITORINFO()
-                info.cbSize = ctypes.sizeof(_MONITORINFO)
-                ctypes.windll.user32.GetMonitorInfoW(hmon, ctypes.byref(info))
-                r = info.rcMonitor
-                # +1 moves one pixel inside the monitor, avoiding boundary ambiguity
-                lx, ly = phys_to_logical(r.left + 1, r.top + 1)
+                def _monitor_origin():
+                    info = _MONITORINFO()
+                    info.cbSize = ctypes.sizeof(_MONITORINFO)
+                    ctypes.windll.user32.GetMonitorInfoW(hmon, ctypes.byref(info))
+                    r = info.rcMonitor
+                    return r.left + 1, r.top + 1
+
+                # Query the monitor origin in the same physical coordinate
+                # system UIA uses, then map it into Qt DIPs.
+                px, py = _with_physical_dpi_context(_monitor_origin)
+                lx, ly = phys_to_logical(px, py)
                 screen = QApplication.screenAt(QPoint(lx, ly))
                 if screen is not None:
                     return screen
@@ -220,6 +249,11 @@ class NumbersOverlayWindow(QWidget):
 
         super().__init__(None)
         self._labels = labels   # list of [screen_x, screen_y, pill_w, pill_h, text]
+        # Set only when this overlay is showing as a visible fallback from a
+        # failed DOM (browser-extension) Show Numbers attempt -- see
+        # plugins/commands/show_numbers.py's _try_show_dom_numbers. Empty
+        # string means "no caption" (the normal, non-fallback case).
+        self._caption = ""
 
         self.setWindowFlags(
             Qt.FramelessWindowHint
@@ -230,8 +264,16 @@ class NumbersOverlayWindow(QWidget):
         self.setAttribute(Qt.WA_TranslucentBackground, True)
         self.setAttribute(Qt.WA_ShowWithoutActivating, True)
 
-        geo = target_screen.geometry()   # logical rect of the target screen
-        self._virt = geo                 # origin used by paintEvent
+        # Materialize the native window and bind it to the intended QScreen
+        # before assigning geometry. This makes the window's DPR come from
+        # the target monitor rather than whichever screen Qt guessed first.
+        int(self.winId())
+        handle = self.windowHandle()
+        if handle is not None:
+            handle.setScreen(target_screen)
+
+        geo = target_screen.geometry()   # Qt device-independent pixels
+        self._virt = QRect(geo)          # stable origin used by paintEvent
         self.setGeometry(geo)
 
         if _COORD_DEBUG:
@@ -250,8 +292,9 @@ class NumbersOverlayWindow(QWidget):
                 self.screen().name() if self.screen() else 'None',
             )
 
-    def update_labels(self, labels: list) -> None:
+    def update_labels(self, labels: list, caption: str = "") -> None:
         self._labels = labels
+        self._caption = caption
         self.update()
 
     def paintEvent(self, event) -> None:
@@ -261,17 +304,13 @@ class NumbersOverlayWindow(QWidget):
         painter = QPainter(self)
         painter.setRenderHint(QPainter.Antialiasing, True)
 
-        # Detect and compensate for DPR mismatch.
-        # If the overlay HWND was created with incorrect thread DPI context,
-        # self.devicePixelRatio() < screen.devicePixelRatio().  In that case
-        # the painter operates in physical pixels while our pill coords are in
-        # screen logical pixels.  Scale painter so logical coords map correctly.
+        # QPainter on a QWidget already consumes Qt device-independent
+        # coordinates and applies the window DPR to the backing store. A
+        # second manual DPR scale is a double-transform on high-DPI screens.
         widget_dpr = self.devicePixelRatio()
-        screen     = self.screen()
+        screen = self.screen()
         screen_dpr = screen.devicePixelRatio() if screen else widget_dpr
-        # coord_scale > 1.0 when the widget DPR is lower than the screen DPR
-        # (e.g. widget=1.0, screen=1.5 -> scale=1.5 so logical 1000 -> physical 1500)
-        coord_scale = screen_dpr / widget_dpr if widget_dpr > 0 else 1.0
+        coord_scale = 1.0
 
         if _COORD_DEBUG:
             _logger.debug(
@@ -325,5 +364,12 @@ class NumbersOverlayWindow(QWidget):
 
             painter.setPen(_TEXT_CLR)
             painter.drawText(rect, Qt.AlignCenter, text)
+
+        if self._caption:
+            cap_font = QFont("Segoe UI", 9)
+            painter.setFont(cap_font)
+            cap_rect = QRectF(8, 8, 260, 18)
+            painter.setPen(_TEXT_CLR)
+            painter.drawText(cap_rect, Qt.AlignLeft | Qt.AlignVCenter, self._caption)
 
         painter.end()

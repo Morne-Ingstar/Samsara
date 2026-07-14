@@ -1,9 +1,13 @@
 """Show Numbers overlay — semantic voice clicking via numbered labels.
 
 Commands:
-    "show numbers"            -- draw numbered labels on clickable UI elements
-    "hide numbers"            -- dismiss the overlay
-    "refresh numbers"         -- re-enumerate and redraw without dismissing first
+    "show numbers" / "show"   -- draw numbered labels on clickable UI elements.
+                                 If the overlay is already showing, "show"/
+                                 "show numbers" re-enumerates and redraws
+                                 (folds refresh into the same word) rather
+                                 than reusing a stale cached list.
+    "hide numbers" / "hide"   -- dismiss the overlay
+    "refresh numbers" / "refresh" -- re-enumerate and redraw without dismissing first
     "click N"                 -- left-click element N
     "click N twice"           -- double-click element N
     "click N right"           -- right-click element N
@@ -23,6 +27,27 @@ Architecture:
       - Qt window create/update runs on the Qt main thread via QTimer.singleShot
       - Foreground-window poll is a QTimer on the Qt main thread
       - Auto-dismiss uses threading.Timer (any thread) -> QTimer.singleShot -> Qt
+
+DOM (browser-extension) path -- see samsara/browser_bridge.py and
+browser_extension/ -- used instead of UIA whenever Brave is foregrounded and
+the extension is connected: native UIA sees Brave's tabs/bookmarks and the
+actual webpage as the same kind of control, so on a real page the 99-result
+cap is consumed before webpage elements are ever reached. The DOM path
+renders numbered labels inside the webpage itself (a content script, no Qt
+window at all) and structurally cannot enumerate tabs/bookmarks, since a
+content script's `document` is only ever the page's own DOM. Falls back to
+the UIA path above -- visibly (a distinct log line and an overlay caption),
+never silently -- when the extension isn't installed, isn't connected, or
+the active tab is a restricted page.
+
+    Threading model (DOM path):
+      - browser_bridge's WS server thread and per-connection handler
+        threads never touch Qt at all
+      - DOM session state (_dom_active/_dom_hint_count) has its own lock
+        (_dom_lock), separate from UIA's _state_lock/_elements -- only one
+        of the two is ever populated at a time
+      - An unsolicited in-page Escape reaches Python via a browser_bridge
+        connection thread calling _on_dom_dismissed()
 """
 
 import logging
@@ -33,6 +58,7 @@ import time
 from PySide6.QtCore import QTimer
 from PySide6.QtWidgets import QApplication
 
+from samsara import browser_bridge
 from samsara.plugin_commands import command
 from samsara.runtime import thread_registry
 from samsara.ui import qt_runtime
@@ -63,6 +89,27 @@ _enum_cache: "dict | None" = None   # {'hwnd': int, 't': float, 'elements': list
 _CACHE_TTL      = 10.0   # seconds
 _AUTO_DISMISS_S = 30
 _FG_POLL_MS     = 2000
+
+# ---------------------------------------------------------------------------
+# DOM (browser-extension) session state -- deliberately a SEPARATE lock and
+# variable set from _state_lock/_elements above, not a repurposing of them.
+# A DOM "element" is a (requestId, number) pair to relay over the bridge, not
+# a UIA control object with .Click()/.BoundingRectangle -- mixing the two
+# into one list would require every UIA-only call site to branch anyway.
+# Only one of _elements / _dom_active is ever populated at a time: starting
+# one session clears the other (see _try_show_dom_numbers / _draw_overlay).
+# Reachable from three different thread identities: the plugin-command
+# worker thread (handle_show_numbers/handle_click), the Qt thread (never --
+# the DOM path renders entirely in-page, no Qt object touches this lock),
+# and a browser_bridge connection-handler thread (an unsolicited "dismissed"
+# from the content script's in-page Escape listener, via the on_dismissed
+# callback below).
+# ---------------------------------------------------------------------------
+_dom_lock       = threading.RLock()
+_dom_active     = False
+_dom_hint_count = 0
+_BRAVE_PROCESS_NAMES = frozenset({'brave.exe'})
+_bridge_started = False
 
 # ---------------------------------------------------------------------------
 # Pill geometry
@@ -140,6 +187,138 @@ def _is_useful_clickable(control, parent_rect_screen) -> bool:
     return True
 
 
+def _get_foreground_control(auto):
+    """Return the foreground UIA control across uiautomation API versions."""
+    getter = getattr(auto, 'GetForegroundControl', None)
+    if callable(getter):
+        return getter()
+
+    hwnd_getter = getattr(auto, 'GetForegroundWindow', None)
+    hwnd = hwnd_getter() if callable(hwnd_getter) else 0
+    if not hwnd:
+        try:
+            import win32gui
+            hwnd = win32gui.GetForegroundWindow()
+        except (ImportError, AttributeError):
+            hwnd = 0
+
+    from_handle = getattr(auto, 'ControlFromHandle', None)
+    if hwnd and callable(from_handle):
+        return from_handle(hwnd)
+    logger.warning(
+        "[OVERLAY] uiautomation has no foreground-control API; "
+        "falling back to Win32 enumeration"
+    )
+    return None
+
+
+# ---------------------------------------------------------------------------
+# DOM (browser-extension) Show Numbers path
+# ---------------------------------------------------------------------------
+
+def _is_brave_foreground(fg_hwnd: int) -> bool:
+    """True if the foreground window belongs to a Brave process."""
+    if not fg_hwnd:
+        return False
+    try:
+        import win32process
+        import psutil
+        _, pid = win32process.GetWindowThreadProcessId(fg_hwnd)
+        name = psutil.Process(pid).name().lower()
+        return name in _BRAVE_PROCESS_NAMES
+    except Exception as e:
+        logger.debug(f"_is_brave_foreground: {e}")
+        return False
+
+
+def _on_dom_dismissed() -> None:
+    """Called from a browser_bridge connection-handler thread when the
+    extension reports an unsolicited dismissal (in-page Escape). Clears
+    Python-side DOM session state so a stale 'click N' after Escape fails
+    gracefully instead of addressing a session that no longer exists in
+    the page."""
+    global _dom_active, _dom_hint_count
+    with _dom_lock:
+        _dom_active = False
+        _dom_hint_count = 0
+    print("[OVERLAY] DOM overlay dismissed (in-page Escape)")
+
+
+def _ensure_bridge_started() -> "browser_bridge.BrowserBridge | None":
+    """Lazily starts the local bridge server on first use (not at import
+    time) -- most Samsara sessions never touch Brave, so there's no reason
+    to bind a loopback port until "show numbers" is actually tried while
+    Brave is foregrounded. Idempotent; returns None if the bridge failed
+    to bind (port taken) so callers fall back to UIA for the session."""
+    global _bridge_started
+    bridge = browser_bridge.get_bridge()
+    if not _bridge_started:
+        bridge.set_on_dismissed(_on_dom_dismissed)
+        if not bridge.start():
+            return None
+        _bridge_started = True
+    return bridge
+
+
+def _try_show_dom_numbers(app):
+    """Attempts the DOM (browser-extension) Show Numbers path.
+
+    Returns (handled, fallback_reason):
+      - (True, None)   -- DOM overlay shown (or page legitimately has no
+                           candidates -- both are a fully-handled outcome,
+                           not a fallback).
+      - (False, None)  -- not applicable (Brave isn't foregrounded); caller
+                           should silently use UIA as always.
+      - (False, reason)-- Brave IS foregrounded but the DOM path failed
+                           (bridge down/timeout/no content script); caller
+                           should fall back to UIA AND surface this
+                           visibly (distinct log line + overlay caption),
+                           per the "never silently do nothing" requirement.
+    """
+    global _dom_active, _dom_hint_count
+    try:
+        import win32gui
+        fg_hwnd = win32gui.GetForegroundWindow()
+    except Exception:
+        fg_hwnd = 0
+
+    if not _is_brave_foreground(fg_hwnd):
+        return False, None
+
+    bridge = _ensure_bridge_started()
+    if bridge is None:
+        return False, "bridge_bind_failed"
+
+    if not bridge.is_connected():
+        return False, "extension_not_connected"
+
+    hints = bridge.request_hints(timeout=0.8)
+    if hints is None:
+        reason = bridge.last_hints_unavailable_reason or "unknown"
+        if reason == "no_candidates":
+            # A real, connected DOM response: the page genuinely has no
+            # actionable elements. This is a legitimate outcome, not a
+            # failure -- do NOT fall back to UIA (that would just show
+            # browser tabs/bookmarks again, the exact problem this feature
+            # exists to avoid).
+            _speak(app, "No clickable elements found on this page.")
+            return True, None
+        return False, reason
+
+    with _state_lock:
+        _elements.clear()
+    with _dom_lock:
+        _dom_active = True
+        _dom_hint_count = len(hints)
+
+    _cancel_dismiss_timer()
+    _schedule_dismiss_timer(app)
+    print(f"[OVERLAY] DOM overlay active -- {len(hints)} numbered clickables (webpage)")
+    if hasattr(app, 'hints'):
+        app.hints.increment('show_numbers_used')
+    return True, None
+
+
 def _enumerate_foreground_clickables() -> list:
     """Walk the foreground window's UIA subtree; return useful clickables.
 
@@ -159,9 +338,9 @@ def _enumerate_foreground_clickables() -> list:
         return _enumerate_win32_fallback()
 
     auto = _uia_mod
-    fg = auto.GetForegroundControl()
+    fg = _get_foreground_control(auto)
     if fg is None:
-        return []
+        return _enumerate_win32_fallback()
 
     fg_rect = fg.BoundingRectangle
     fg_screen = (fg_rect.left, fg_rect.top, fg_rect.right, fg_rect.bottom)
@@ -262,7 +441,11 @@ def _enumerate_win32_fallback() -> list:
         logger.error("[OVERLAY] Neither uiautomation nor win32gui available")
         return []
 
-    fg_hwnd = win32gui.GetForegroundWindow()
+    try:
+        fg_hwnd = win32gui.GetForegroundWindow()
+    except AttributeError:
+        logger.error("[OVERLAY] win32gui foreground-window API unavailable")
+        return []
     if not fg_hwnd:
         return []
 
@@ -440,7 +623,7 @@ def _perform_click(element, modifier: str, keys: frozenset = frozenset()) -> boo
 # unless otherwise noted
 # ---------------------------------------------------------------------------
 
-def _show_overlay_qt(labels: list, fg_hwnd: int, app) -> None:
+def _show_overlay_qt(labels: list, fg_hwnd: int, app, caption: str = "") -> None:
     """Create or update the overlay window. Qt main thread only."""
     global _overlay_window, _fg_timer, _fg_hwnd_at_show, _overlay_hwnd, _overlay_screen_name
 
@@ -453,11 +636,14 @@ def _show_overlay_qt(labels: list, fg_hwnd: int, app) -> None:
         return
     active_name = active_screen.name()
 
-    if _COORD_DEBUG:
-        logger.debug(
-            "[OVERLAY] active screen: %s geo=%s dpr=%.2f",
-            active_name, active_screen.geometry(), active_screen.devicePixelRatio(),
-        )
+    geo = active_screen.geometry()
+    logger.info(
+        "[OVERLAY] render labels=%d screen=%s geo=(%d,%d %dx%d) dpr=%.2f first=%r",
+        len(labels), active_name,
+        geo.x(), geo.y(), geo.width(), geo.height(),
+        active_screen.devicePixelRatio(),
+        labels[0] if labels else None,
+    )
 
     # Same screen -> reuse the existing window (no HWND recreate), regardless
     # of whether it's currently hidden. HIDE-not-destroy (see _hide_overlay_qt)
@@ -470,12 +656,13 @@ def _show_overlay_qt(labels: list, fg_hwnd: int, app) -> None:
     )
 
     if same_screen:
-        _overlay_window.update_labels(labels)
+        _overlay_window.update_labels(labels, caption)
     else:
         if _overlay_window is not None:
             _overlay_window.hide()
         _ensure_dpi_thread_context()
         _overlay_window = NumbersOverlayWindow(labels, active_screen)
+        _overlay_window._caption = caption
         _overlay_screen_name = active_name
 
     # Explicit show()+raise() every time (not just on first construction) --
@@ -574,8 +761,15 @@ def _schedule_dismiss_timer(app, seconds: int = _AUTO_DISMISS_S) -> None:
     _dismiss_timer = t
 
 
-def _draw_overlay(app, elements: list) -> None:
-    """Build label list and show the Qt overlay. Safe to call from any thread."""
+def _draw_overlay(app, elements: list, caption: str = "") -> None:
+    """Build label list and show the Qt overlay. Safe to call from any thread.
+
+    caption: non-empty only when this UIA overlay is being shown as a
+    visible fallback from a failed DOM (browser-extension) attempt -- see
+    _try_show_dom_numbers -- so the user can tell the two paths apart
+    instead of the fallback happening invisibly.
+    """
+    _clear_dom_session()  # mutual exclusion: starting a UIA session ends any DOM one
     try:
         import win32gui
         fg_hwnd = win32gui.GetForegroundWindow()
@@ -610,19 +804,54 @@ def _draw_overlay(app, elements: list) -> None:
         _elements[:] = [e['control'] for e in elements]
 
     _cancel_dismiss_timer()
-    qt_runtime.post(lambda: _show_overlay_qt(labels, fg_hwnd, app))
+    # Defensive start: mirrors ai_command_hud_qt.show_hud()/splash_qt.py's
+    # own pattern. qt_runtime.post() silently drops the callback (logging a
+    # warning only) whenever the runtime is not yet RUNNING -- if this is
+    # ever the first Qt work requested in the process (e.g. a voice command
+    # fires before/around the rest of boot, or the icon-setting block in
+    # dictation.py's __init__ swallowed an exception before reaching its own
+    # ensure_started() call), the overlay would silently never be built at
+    # all. ensure_started() is idempotent -- a no-op when already RUNNING.
+    qt_runtime.ensure_started()
+    qt_runtime.post(lambda: _show_overlay_qt(labels, fg_hwnd, app, caption))
     _schedule_dismiss_timer(app)
     print(f"[OVERLAY] Showing {len(elements)} numbered clickables (active monitor)")
 
 
+def _clear_dom_session() -> None:
+    """Clears Python-side DOM session state and asks the extension to
+    drop its in-page hints too. Safe to call even if no DOM session is
+    active (no-op bridge.send_dismiss() when nothing is connected)."""
+    global _dom_active, _dom_hint_count
+    with _dom_lock:
+        was_active = _dom_active
+        _dom_active = False
+        _dom_hint_count = 0
+    if was_active:
+        browser_bridge.get_bridge().send_dismiss()
+
+
 def _destroy_overlay(app=None) -> None:
-    """Thread-safe dismiss: cancel timers and schedule Qt cleanup."""
+    """Thread-safe dismiss: cancel timers, clear whichever session (UIA or
+    DOM) is active. Always safe to call both halves -- clearing an
+    inactive session is a no-op."""
     _cancel_dismiss_timer()
+    _clear_dom_session()
+    qt_runtime.ensure_started()
     qt_runtime.post(_hide_overlay_qt)
 
 
 def _destroy_overlay_completely() -> None:
-    """Full teardown -- call on app quit."""
+    """Full teardown -- call on app quit.
+
+    browser_bridge.stop() is genuinely blocking (bounded, ~1.5s) and is
+    called BEFORE the (fire-and-forget) Qt-post below: qt_runtime.post()
+    schedules _hide_overlay_qt on the Qt thread and returns immediately
+    without waiting for it, so placing the bridge shutdown after it would
+    add real, easy-to-miss latency to app quit for no benefit -- the Qt
+    hide is already going to happen asynchronously regardless of ordering.
+    """
+    browser_bridge.get_bridge().stop(timeout=1.5)
     _destroy_overlay()
 
 # ---------------------------------------------------------------------------
@@ -706,16 +935,24 @@ def handle_show_overlay_test(app, remainder):
     import threading
     from PySide6.QtCore import QThread
 
+    # Defensive start -- same reasoning as _draw_overlay(): this diagnostic
+    # exists specifically to confirm the renderer works independently of
+    # element enumeration, so it must not depend on some OTHER code path
+    # having already started qt_runtime first.
+    qt_runtime.ensure_started()
+
     qt_app = QApplication.instance()
     print(f"[OVERLAY-TEST] QApplication.instance() = {qt_app}")
     if qt_app is not None:
         qt_thread = qt_app.thread()
         cur_thread = QThread.currentThread()
         on_qt_thread = qt_thread is cur_thread
+        # QThread.currentThreadId() isn't exposed in this PySide6 build
+        # (QThread.currentThread()/isCurrentThread() are); use Python's own
+        # thread ident instead, which is always available.
         print(
-            f"[OVERLAY-TEST] Qt-app thread id={int(qt_thread.currentThreadId())}  "
-            f"current thread id={int(cur_thread.currentThreadId())}  "
-            f"on-Qt-thread={on_qt_thread}"
+            f"[OVERLAY-TEST] on-Qt-thread={on_qt_thread}  "
+            f"calling Python thread ident={threading.get_ident()}"
         )
         print(
             f"[OVERLAY-TEST] Python thread: {threading.current_thread().name!r}"
@@ -810,28 +1047,65 @@ def handle_overlay_grid(app, remainder):
     except Exception:
         fg_hwnd = 0
 
+    qt_runtime.ensure_started()
     qt_runtime.post(lambda: _show_grid_qt(fg_hwnd, app))
     print("[OVERLAY-GRID] Grid test queued — check log for pill coordinates")
     return True
 
 
 @command("show numbers",
-         aliases=["show clickable", "show labels", "label things"],
+         aliases=["show clickable", "show labels", "label things", "show"],
          pack="accessibility")
 def handle_show_numbers(app, remainder):
-    """Enumerate clickable elements then draw overlay."""
-    elements = _cached_enumerate()
-    if not elements:
-        print("[OVERLAY] No clickable elements found in foreground window")
+    """Enumerate clickable elements then draw overlay.
+
+    Tries the DOM (browser-extension) path first when Brave is the
+    foreground window -- native UI Automation sees Brave's own tabs/
+    bookmarks and the actual webpage as the same kind of thing, so on a
+    real page with many tabs/bookmarks the 99-result UIA cap is consumed
+    before webpage controls are ever reached. The DOM path structurally
+    cannot enumerate tabs/bookmarks at all (a content script's `document`
+    is only ever the webpage itself), so it's preferred whenever available.
+    Falls back to UIA -- visibly, not silently -- when the extension isn't
+    installed, isn't connected, or the active tab is a restricted page.
+
+    If the (UIA) overlay is already showing, re-enumerate fresh (bypass the
+    cache) instead of reusing whatever _cached_enumerate() last saw -- folds
+    show + refresh into one word, since saying "show"/"show numbers" again
+    while it's already up is almost always "the UI changed, refresh this,"
+    not "show me the exact same labels again." This is the primary
+    show -> observe -> click loop the short "show" alias is meant to serve.
+    """
+    handled, fallback_reason = _try_show_dom_numbers(app)
+    if handled:
         return True
-    _draw_overlay(app, elements)
+
+    caption = ""
+    if fallback_reason is not None:
+        logger.info(
+            "[SHOW_NUMBERS] DOM bridge unavailable/timeout -- falling back to "
+            "UIA (reason=%s)", fallback_reason,
+        )
+        caption = "Native fallback (browser extension unavailable)"
+
+    if is_overlay_active():
+        _invalidate_cache()
+        elements = _enumerate_foreground_clickables()
+    else:
+        elements = _cached_enumerate()
+    if not elements:
+        message = "No clickable elements found in the foreground window."
+        logger.warning("[OVERLAY] %s", message)
+        _speak(app, message)
+        return True
+    _draw_overlay(app, elements, caption)
     if hasattr(app, 'hints'):
         app.hints.increment('show_numbers_used')
     return True
 
 
 @command("hide numbers",
-         aliases=["dismiss numbers", "hide labels", "clear labels"],
+         aliases=["dismiss numbers", "hide labels", "clear labels", "hide"],
          pack="accessibility")
 def handle_hide_numbers(app, remainder):
     _destroy_overlay(app)
@@ -839,7 +1113,7 @@ def handle_hide_numbers(app, remainder):
 
 
 @command("refresh numbers",
-         aliases=["update numbers"],
+         aliases=["update numbers", "refresh"],
          pack="accessibility")
 def handle_refresh_numbers(app, remainder):
     """Re-enumerate the foreground window and redraw without dismissing first."""
@@ -885,6 +1159,36 @@ def handle_click(app, remainder):
         print(f"[OVERLAY] Couldn't parse number from: {remainder!r}")
         return True
 
+    with _dom_lock:
+        dom_active = _dom_active
+        dom_count = _dom_hint_count
+
+    if dom_active:
+        if number < 1 or number > dom_count:
+            msg = f"Element {number} is not available. There are {dom_count} elements."
+            print(f"[OVERLAY] {msg}")
+            _speak(app, msg)
+            return True
+        action = {'single': 'click', 'double': 'doubleclick', 'right': 'rightclick'}.get(
+            modifier, 'click'
+        )
+        dom_modifiers = {
+            'ctrlKey': 'ctrl' in keys_frozen,
+            'shiftKey': 'shift' in keys_frozen,
+            'altKey': 'alt' in keys_frozen,
+        }
+        ok = browser_bridge.get_bridge().send_selection(number, action, modifiers=dom_modifiers)
+        if not ok:
+            msg = f"Element {number} is no longer available."
+            print(f"[OVERLAY] {msg}")
+            _speak(app, msg)
+            return True
+        # content.js already clears its own hints on a successful selection;
+        # this only clears the Python-side flags (a redundant dismiss to an
+        # already-cleared content script is a harmless no-op there).
+        _clear_dom_session()
+        return True
+
     with _state_lock:
         if not _elements:
             print("[OVERLAY] No overlay active -- use 'show numbers' first")
@@ -912,13 +1216,20 @@ def enumerate_clickable_elements() -> list:
 
 
 def is_overlay_active() -> bool:
-    """True while the numbered-pill overlay is currently shown.
+    """True while a numbered overlay -- UIA/Qt OR DOM/in-page -- is
+    currently shown.
 
     Safe to call from any thread: _elements is populated (any thread, under
     _state_lock) in _draw_overlay before the Qt window is posted, and cleared
-    (Qt thread, under _state_lock) in _hide_overlay_qt -- so this never reads
-    Qt objects across threads, just the lock-guarded element list other
-    callers (e.g. reminder_toast) use to gate on overlay visibility.
+    (Qt thread, under _state_lock) in _hide_overlay_qt; _dom_active is set/
+    cleared (worker thread or a browser_bridge connection thread, under
+    _dom_lock) in _try_show_dom_numbers/_clear_dom_session -- so this never
+    reads Qt objects across threads, just the two lock-guarded flags other
+    callers (e.g. reminder_toast) use to gate on overlay visibility of
+    either kind.
     """
     with _state_lock:
-        return bool(_elements)
+        uia = bool(_elements)
+    with _dom_lock:
+        dom = _dom_active
+    return uia or dom

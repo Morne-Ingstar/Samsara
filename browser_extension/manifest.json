@@ -1,0 +1,20 @@
+{
+  "manifest_version": 3,
+  "name": "Samsara Show Numbers (DOM)",
+  "version": "0.1.0",
+  "description": "Labels visible interactive webpage elements with numbers for Samsara voice selection. Talks only to a Samsara process running on this same machine (loopback WebSocket).",
+  "key": "MIIBIjANBgkqhkiG9w0BAQEFAAOCAQ8AMIIBCgKCAQEAs9/xzyQkqMs5IBzYEAjZ+fpZlOZMPcebOq6bccr1SCGazOahft9WkqGz3agc8sqI3JvIjlwAcUtA5g+fH+pS32tzGQTBkmoJpqkt4Mvui2I1OvSNprz6EIAMbm6c47OqMDpfdy7pPEjiRZDPDG+cTLKPZLR0+h/m81LTrJ5RzS/biKRNNEuFXqs4+XthgtHBT9FZUE2igEreocHWk3rT8TtXgqmHnDC53cFZSuB+VSwK3mOq6/IJHDRKZ/nSKc2Xvfggg/89ybyb9fmiKdDuPo6Iv5grqhuHJImNW7HaQCPpnfs9BNuMDdf/NOT9Z+h1Jyf3AflHwVGPse1FxmHTwQIDAQAB",
+  "background": {
+    "service_worker": "background.js"
+  },
+  "content_scripts": [
+    {
+      "matches": ["http://*/*", "https://*/*"],
+      "js": ["content-core.js", "content.js"],
+      "run_at": "document_idle",
+      "all_frames": false
+    }
+  ],
+  "permissions": ["tabs", "alarms"],
+  "host_permissions": ["http://127.0.0.1/*"]
+}
