@@ -138,3 +138,9 @@ The file structure groups naturally into 7 parallel tracks.
 | G5 | `tests/test_smart_actions.py`, `tests/test_smart_actions_phase2.py`, `tests/test_audio_coordinator.py`, `tests/test_tts_winrt.py` | ~1264 |
 | G6 | `tests/test_integration.py`, `tests/test_dictation_app.py`, `tests/test_pipeline.py`, `tests/test_history.py` | ~889 |
 | G7 | `tests/test_earcons.py`, `tests/test_voice_training.py`, `tests/test_calibration.py`, `tests/test_settings.py`, `tests/test_phonetic_wash.py`, `tests/test_app_overrides.py`, `tests/test_show_numbers.py`, `tests/test_media_keys.py`, `tests/test_window_manager.py`, `tests/test_mouse_hook.py`, `tests/diagnostics/` | ~1100 |
+
+---
+
+## Back burner
+
+- Do a deliberate codebase pass to remove or replace legacy magic-number / invisible-signature markers. The project no longer needs covert provenance signals; prefer clear authorship, licensing, history, and a public reputation over obfuscation.

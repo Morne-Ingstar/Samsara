@@ -10,18 +10,38 @@
 
 ---
 
-## What's New in v0.20.0
+## What's New in v0.21.0
 
-**The Voice Session** — the headline of this release. Activate once and the keyboard becomes optional: **Command** the computer, **Dictate** into anything, or talk to **Ava**, a local AI assistant on your own GPU — switching between them by voice, mid-thought. *"Scratch that"* undoes, misfire gates keep a cough from triggering anything, and a distinct audio cue marks every transition, so it works eyes-free too.
+**The trust release.** v0.21.0 is Samsara's current shipped, stable release
+(development for the next version continues on `feature/v0.22`). The theme
+is dictation you can rely on: an adversarial review series audited the
+transcription pipeline end to end (six audits, independent AI reviewers,
+findings verified against the code), and the fixes shipped here. Also:
+spoken formatting, a live Quick Reference window, a plain-English health
+readout, and CI-built releases as the first step toward signed downloads.
 
-Plus a deep polish-and-hardening pass — weeks of fixing things that were quietly wrong:
+- **"You know" no longer vanishes from dictation** — filler-word cleanup is
+  now comma-anchored instead of deleting the phrase everywhere it appears.
+- **A voice-only escape that cannot be blocked** — abort words use
+  word-boundary matching and are structurally guaranteed to bypass all
+  quality gates, so a stuck session can always be ended by voice.
+- **Clipboard preservation hardened** — copied files and transparent images
+  now survive a dictation paste; restore is atomic; a hung clipboard owner
+  can't freeze Samsara.
+- **Spoken formatting tokens** — say "new line", "new paragraph", "tab", or
+  "bullet" while dictating and get real formatting.
+- **Quick Reference window** — a live, tray-menu cheat sheet of your
+  hotkeys, wake phrases, and formatting tokens, read from your current
+  settings.
+- **CI-built releases** — every release is now built by a public GitHub
+  Actions workflow from tagged source, the prerequisite for signed
+  releases (SignPath) — see [RELEASING.md](RELEASING.md) for what that
+  does and does not cover today.
+- **Relicensed to AGPL-3.0** (from BSL) — qualifies Samsara for free
+  open-source code signing and grant eligibility.
 
-- **Hallucination-free dictation** — Whisper no longer fabricates text during silence or short pauses; a rebuilt gate plus a regression test suite keep it that way.
-- **Mic survives disconnects** — unplug a mic or lose a Bluetooth connection mid-session and Samsara reconnects automatically instead of going deaf until restart.
-- **Onboarding redesigned** — the first-run wizard and tutorial share one consistent look now, with the invisible-button and clipped-text bugs fixed.
-- **History window overhaul** — right-click a row to copy/delete, double-click to copy instantly, full date + time on every entry.
-- **BYOK cloud AI is free** — no license gate on bring-your-own-key Ava / cloud features.
-- **Startup hardening** — stale lock files, duplicate log lines, and a wizard-launch failure mode are all fixed.
+See [CHANGELOG.md](CHANGELOG.md) for the full v0.21.0 entry and every
+release before it.
 
 ---
 
@@ -41,7 +61,7 @@ Plus a deep polish-and-hardening pass — weeks of fixing things that were quiet
 
 ## What Can It Do?
 
-Samsara is a **fully offline** voice control system powered by Whisper. It runs as a Windows app with a main hub window, system tray integration, and hands-free control over your entire computer.
+Samsara is a **local-by-default** voice control system powered by Whisper — transcription, commands, and wake-word detection run on your machine unless you explicitly opt into a network-backed feature (Ava's bring-your-own-key cloud mode, Smart Corrections' optional cloud fallback), each gated behind your own API key. It runs as a Windows app with a main hub window, system tray integration, and hands-free control over your entire computer.
 
 ### Hands-Free Wake (flagship)
 
@@ -65,7 +85,7 @@ Wake phrases, targets, and send behavior are all configurable. Built on custom O
 
 ### Voice AI — Ava
 
-Hold Right Alt and speak. Ava sends your question to a local Ollama LLM and reads the answer back to you via TTS — no cloud, no API key, no typing. Fully offline.
+Hold Right Alt and speak. By default, Ava sends your question to a local Ollama LLM and reads the answer back to you via TTS — no cloud, no API key, no typing, fully offline unless you turn on cloud mode below.
 
 - Ask anything: "Ava, what's the capital of Mongolia?"
 - Get coding help: "Ava, what does this error mean?"

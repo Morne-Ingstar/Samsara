@@ -16,7 +16,7 @@
     {
       "guid": "samsara",
       "name": "Samsara",
-      "description": "Samsara is an open-source voice control and dictation application for Windows, built for people who cannot rely on a keyboard and mouse. It provides wake-word activation, hands-free dictation with pause/resume, and an extensible plugin system (window switching, web shortcuts, find-on-page, Discord integration, and more). It runs entirely on the user's own machine, uses a modular state-machine architecture, and ships with a CI pipeline and unit tests. It is actively developed and designed to be a daily-driver accessibility tool rather than a demo.",
+      "description": "Samsara is an open-source voice control and dictation application for Windows, built for people who cannot rely on a keyboard and mouse. It provides wake-word activation, hands-free dictation with pause/resume, and an extensible plugin system (window switching, web shortcuts, find-on-page, Discord integration, and more). It runs locally by default, with optional bring-your-own-key cloud AI features you explicitly enable; it uses a modular state-machine architecture, and ships with a CI pipeline and unit tests. It is actively developed and designed to be a daily-driver accessibility tool rather than a demo.",
       "webpageUrl": {
         "url": "https://github.com/Morne-Ingstar/Samsara"
       },
@@ -24,7 +24,7 @@
         "url": "https://github.com/Morne-Ingstar/Samsara",
         "wellKnown": "https://raw.githubusercontent.com/Morne-Ingstar/Samsara/master/.well-known/funding-manifest-urls"
       },
-      "licenses": ["spdx:GPL-3.0-or-later"],
+      "licenses": ["spdx:AGPL-3.0-or-later"],
       "tags": ["accessibility", "voice-control", "dictation", "speech-recognition", "windows", "assistive-technology", "python"]
     }
   ],
