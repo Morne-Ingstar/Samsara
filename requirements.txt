@@ -110,7 +110,7 @@ pronouncing==0.3.0
 
 # WASAPI loopback capture for echo cancellation (samsara/echo_cancel.py) --
 # a PyAudio fork; do not confuse with plain PyAudio, which lacks loopback support.
-PyAudioWPatch==0.2.12.8
+PyAudioWPatch==0.2.12.8; sys_platform == "win32"
 
 # Filesystem change notifications (live config/log reload)
 watchdog==6.0.0
