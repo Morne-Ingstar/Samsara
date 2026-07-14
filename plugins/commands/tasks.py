@@ -1,4 +1,8 @@
-"""Local-only task list with voice management.
+"""Tasks plugin — local task list with voice management.
+
+Tasks are stored locally only in samsara/tasks_store.py. This plugin contains
+no network, account-sync, or background-delivery path; see CHANGELOG.md for
+the v0.21.1 removal of the obsolete Arcana forwarding code.
 
 Voice commands:
   "Jarvis, add to list buy groceries"
@@ -39,7 +43,6 @@ def _speak(app, text):
         app.tts_engine.speak(text)
     else:
         print(f"[TASKS] {text}")
-
 
 
 def _parse_position(remainder):
