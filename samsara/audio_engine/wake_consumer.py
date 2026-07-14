@@ -29,6 +29,7 @@ stream was interrupted. The consumer aborts the current utterance,
 resets speech state, and continues from the new epoch.
 """
 
+import collections
 import threading
 import time
 
@@ -73,6 +74,15 @@ class WakeConsumer:
         # hotkey-deafness suppression state so _process_frame logs only on
         # the ENGAGE/RELEASE transitions, not every 100ms frame.
         self._hotkey_suppressed_last: bool = False
+
+        # Toggle-session utterances are captured serially on this poll thread
+        # but transcribed asynchronously. A FIFO drain prevents a fast next
+        # utterance from being silently dropped while Whisper handles the
+        # previous one, and preserves capture/paste order.
+        self._toggle_queue = collections.deque()
+        self._toggle_queue_lock = threading.Lock()
+        self._toggle_worker_active = False
+        self._last_toggle_activity_touch = 0.0
 
     # ── Lifecycle ─────────────────────────────────────────────────────────────
 
@@ -164,6 +174,69 @@ class WakeConsumer:
     def _is_ai_cmd_mode(app) -> bool:
         """True when AI command mode is active."""
         return getattr(app, 'ai_command_mode_active', False)
+
+    @classmethod
+    def _is_toggle_dictate(cls, app) -> bool:
+        manager = getattr(app, '_session_mode_manager', None)
+        return (
+            cls._is_toggle_cmd(app)
+            and manager is not None
+            and manager.mode is SessionMode.DICTATE
+        )
+
+    @classmethod
+    def _hard_cap_applies(cls, app) -> bool:
+        """Whether the 7-second noise/echo discard applies to this lane."""
+        return (
+            app.app_state not in ('long_dictation', 'quick_dictation', 'wake_session')
+            and not cls._is_toggle_dictate(app)
+        )
+
+    def _enqueue_toggle_utterance(self, buffer_copy: list) -> None:
+        """Append one captured utterance and ensure one FIFO worker drains it."""
+        # Capture itself is session activity. Refresh before queueing so a
+        # slow CPU transcription cannot time the session out underneath
+        # speech that has already arrived.
+        touch_activity = getattr(self._app, '_touch_session_activity', None)
+        if touch_activity is not None:
+            touch_activity()
+
+        with self._toggle_queue_lock:
+            self._toggle_queue.append(buffer_copy)
+            if self._toggle_worker_active:
+                return
+            self._toggle_worker_active = True
+
+        thread_registry.spawn(
+            'cmd-utt-queue', self._drain_toggle_utterances, daemon=True,
+        )
+
+    def _touch_toggle_speech_activity(self, now: float) -> None:
+        """Keep inactivity tied to actual silence during sustained speech."""
+        if not self._is_toggle_cmd(self._app):
+            return
+        if now - self._last_toggle_activity_touch < 1.0:
+            return
+        self._last_toggle_activity_touch = now
+        touch_activity = getattr(self._app, '_touch_session_activity', None)
+        if touch_activity is not None:
+            touch_activity()
+
+    def _drain_toggle_utterances(self) -> None:
+        while True:
+            with self._toggle_queue_lock:
+                if not self._toggle_queue:
+                    self._toggle_worker_active = False
+                    return
+                buffer_copy = self._toggle_queue.popleft()
+
+            if not self._is_toggle_cmd(self._app):
+                logger.info('[CMD-UTT] Session ended -- discarding queued post-exit utterance')
+                continue
+            try:
+                self._app._handle_command_mode_utterance(buffer_copy, SAMPLE_RATE)
+            except Exception as exc:
+                logger.exception(f'[CMD-UTT] FIFO worker error: {exc}')
 
     def _poll_loop(self) -> None:
         app = self._app
@@ -316,7 +389,11 @@ class WakeConsumer:
             cm_cfg = app.config.get('command_mode', {})
             session_mgr = getattr(app, '_session_mode_manager', None)
             if session_mgr is not None and session_mgr.mode is SessionMode.DICTATE:
-                silence_threshold = cm_cfg.get('dictate_utterance_silence_s', 2.0)
+                # Manual-commit DICTATE uses silence only to produce internal
+                # transcript chunks; it no longer pastes on this boundary. A
+                # short gap therefore makes the sole-word "end" commit fast
+                # without forcing the speaker to race natural pauses.
+                silence_threshold = cm_cfg.get('dictate_utterance_silence_s', 0.65)
             else:
                 silence_threshold = cm_cfg.get('utterance_silence_s', 1.0)
         elif app.app_state == 'long_dictation':
@@ -365,6 +442,7 @@ class WakeConsumer:
 
         # ── Speech accumulation ───────────────────────────────────────────────
         if is_speech:
+            self._touch_toggle_speech_activity(time.monotonic())
             speech_onset   = not app.is_speaking
             app.is_speaking   = True
             app.silence_start = None
@@ -376,8 +454,18 @@ class WakeConsumer:
                 # cursor was at this position before the rewind. Do NOT append
                 # raw_chunk again after — that would double the onset frame.
                 # (ARC audit: double-appending of speech onset frame)
-                self._reader.rewind(PREBUFFER_FRAMES)
-                for _ in range(PREBUFFER_FRAMES):
+                prebuffer_frames = PREBUFFER_FRAMES
+                if self._is_toggle_dictate(app):
+                    # Never rewind farther than the silence boundary that
+                    # separated two staged chunks. Otherwise a short manual-
+                    # commit gap can re-include the previous chunk's tail and
+                    # create duplicated words.
+                    prebuffer_frames = min(
+                        PREBUFFER_FRAMES,
+                        max(2, int(silence_threshold * 1000 / FRAME_MS)),
+                    )
+                self._reader.rewind(prebuffer_frames)
+                for _ in range(prebuffer_frames):
                     pb_frame = self._reader.read_next()
                     if pb_frame is EMPTY:
                         break
@@ -437,7 +525,7 @@ class WakeConsumer:
 
             # Hard buffer cap (same as legacy callback)
             buffer_s = len(self._utterance_frames) * (FRAME_MS / 1000.0)
-            if buffer_s >= 7.0 and app.app_state not in ('long_dictation', 'quick_dictation', 'wake_session'):
+            if buffer_s >= 7.0 and self._hard_cap_applies(app):
                 logger.debug(f"[CAP] Buffer at {buffer_s:.1f}s cap — discarding (likely noise/echo)")
                 self._utterance_frames   = []
                 self._buffer_rms_history = []
@@ -490,12 +578,7 @@ class WakeConsumer:
         # utterance.  The WakeConsumer re-arms automatically for the next
         # utterance; no external re-arm call is needed.
         if self._is_toggle_cmd(app):
-            thread_registry.spawn(
-                'cmd-utt',
-                app._handle_command_mode_utterance,
-                args=(buffer_copy, SAMPLE_RATE),
-                daemon=True,
-            )
+            self._enqueue_toggle_utterance(buffer_copy)
             return
 
         _has_wake_profiles = any(

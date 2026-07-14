@@ -4,10 +4,11 @@ Generalizes the existing per-utterance toggle command mode (dictation.py
 _handle_command_mode_utterance, serviced by WakeConsumer) into a session with
 LATCHED MODES instead of always executing every utterance as a command.
 
-    SessionMode.COMMAND  -- the hub, and the default. Grammar match/execute,
-                            same as today.
-    SessionMode.DICTATE  -- utterances are typed into the locked focus
-                            target instead of matched against commands.
+    SessionMode.COMMAND  -- legacy command-only lane, retained for compatibility.
+    SessionMode.DICTATE  -- the normal latched HANDS FREE lane: ordinary speech
+                            stages across natural pauses; curated exact commands
+                            execute without mode switching; sole-word "end"
+                            pastes the complete thought and stays hands-free.
     SessionMode.AVA      -- Phase 2. Every utterance goes to the local agent
                             as natural language (see _dispatch_ava). The
                             agent NEVER auto-sends the DICTATE stage buffer;
@@ -44,7 +45,7 @@ import time
 from collections import deque
 from dataclasses import dataclass, field
 from enum import Enum
-from typing import Callable, Optional
+from typing import Callable, Optional, Union
 
 log = logging.getLogger("Samsara.session_modes")
 
@@ -54,8 +55,8 @@ log = logging.getLogger("Samsara.session_modes")
 # ---------------------------------------------------------------------------
 
 class SessionMode(Enum):
-    """COMMAND is the hub and the default entry mode. DICTATE and AVA are
-    lanes you switch into and back out of; any-to-any transitions work
+    """DICTATE is the combined hands-free entry lane for latched toggle
+    sessions; COMMAND remains the legacy command-only lane. Any-to-any transitions work
     identically regardless of current mode, since match_switch_word() is a
     pure function of the utterance text and _switch_mode() unconditionally
     sets the new mode -- the abort/scratch-that/switch-word plumbing does
@@ -91,6 +92,12 @@ _PREFIX_SWITCHES: dict[str, SessionMode] = {
 }
 
 SCRATCH_THAT_PHRASE = "scratch that"
+DICTATE_COMMIT_PHRASE = "end"
+GLOBAL_SESSION_EXIT_PHRASES = (
+    "stop listening",
+    "exit hands free",
+    "exit command mode",
+)
 
 
 def normalize_utterance(text: str) -> str:
@@ -116,6 +123,25 @@ class SwitchMatch:
 def is_scratch_that(raw_text: str) -> bool:
     """Whole-utterance only -- 'let's scratch that idea' must NOT match."""
     return normalize_utterance(raw_text) == SCRATCH_THAT_PHRASE
+
+
+def is_dictate_commit(raw_text: str) -> bool:
+    """Whole-utterance-only manual commit for buffered DICTATE mode."""
+    return normalize_utterance(raw_text) == DICTATE_COMMIT_PHRASE
+
+
+def match_literal_payload(raw_text: str) -> Optional[str]:
+    """Return payload for ``literal <reserved command>`` or None.
+
+    This is the explicit escape hatch for dictating a whole utterance that is
+    otherwise reserved by the hands-free command layer. Original payload case
+    and internal spacing are preserved.
+    """
+    normalized = normalize_utterance(raw_text)
+    if not normalized.startswith("literal "):
+        return None
+    payload = _strip_leading_token_preserving_case(raw_text, "literal")
+    return payload if payload.strip() else None
 
 
 def match_switch_word(raw_text: str) -> Optional[SwitchMatch]:
@@ -464,12 +490,33 @@ class CommandDispatchResult:
     phrase: Optional[str] = None
 
 
+class PendingTextPolicy(Enum):
+    """How a hands-free command interacts with staged dictation."""
+
+    PRESERVE = "preserve"  # scrolling/overlays: leave pending text untouched
+    COMMIT = "commit"      # focus/navigation: paste pending text before acting
+
+
+@dataclass(frozen=True)
+class HandsFreeCommandMatch:
+    """A side-effect-free command probe result for the combined lane."""
+
+    dispatch_text: str
+    phrase: str
+    pending_policy: PendingTextPolicy = PendingTextPolicy.PRESERVE
+
+
 @dataclass(frozen=True)
 class DispatchOutcome:
     kind: str
     # one of: "empty" | "abort" | "scratch_success" | "scratch_refuse" |
     # "mode_switch" | "prefix_switch_failed" | "command_executed" |
     # "command_miss" | "dictate_injected" | "dictate_suppressed_focus_lock" |
+    # "dictate_staged" | "dictate_committed" |
+    # "dictate_commit_refused" | "dictate_commit_blocked_focus_lock" |
+    # "dictate_commit_failed" | "hands_free_command_executed" |
+    # "hands_free_command_refused" | "hands_free_command_blocked" |
+    # "hands_free_command_failed" |
     # "ava_dispatched" | "ava_rejected_not_substantive"
     detail: dict = field(default_factory=dict)
 
@@ -480,9 +527,17 @@ ForegroundResolver = Callable[[], Optional[str]]
 # scratch-that focus guard; None when unavailable (fails closed, see
 # _do_scratch_that).
 ForegroundHwndResolver = Callable[[], Optional[int]]
-InjectFn = Callable[[str], None]
+# False means delivery was definitely refused/failed. None remains accepted
+# for backwards-compatible callables that predate delivery status reporting.
+# A returned str means success AND is the actual delivered/formatted text --
+# buffered-commit callers (_commit_dictate_buffer) use it, when given, as the
+# undo-stack/stage_buffer record of what was really typed, since the input
+# they pass in is the pre-formatting accumulated buffer, not what a
+# formatting-capable injector may have pasted.
+InjectFn = Callable[[str], Union[bool, str, None]]
 RemoveCharsFn = Callable[[int], None]
 CommandDispatchFn = Callable[[str], CommandDispatchResult]
+HandsFreeCommandProbeFn = Callable[[str], Optional[HandsFreeCommandMatch]]
 # (utterance_text, stage_buffer_context_or_None) -> None. Fire-and-forget from
 # this module's perspective -- the manager never blocks on or observes the
 # agent's response. Threading/queueing/depth-limiting is the wired callable's
@@ -501,9 +556,9 @@ FormatDictateFn = Callable[[str], str]
 
 class SessionModeManager:
     """Owns current mode, the unit-of-work stack, and per-mode config for
-    one toggle-command-mode session. Construct once per DictationApp; call
-    reset() on every session entry (session end always discards mode state
-    -- re-entry is always COMMAND)."""
+    one toggle voice-control session. Construct once per DictationApp; call
+    reset() on every session entry/end. The caller chooses the entry lane;
+    latched toggle chooses DICTATE/HANDS FREE."""
 
     def __init__(
         self,
@@ -521,6 +576,8 @@ class SessionModeManager:
         on_scratch_result: Optional[Callable[[bool], None]] = None,
         on_abort: Optional[Callable[[], None]] = None,
         on_switch_dispatch_error: Optional[Callable[[Exception], None]] = None,
+        buffer_dictate_until_commit: bool = False,
+        hands_free_command_probe_fn: Optional[HandsFreeCommandProbeFn] = None,
         clock: Callable[[], float] = time.time,
     ) -> None:
         self._abort_phrases = list(abort_phrases)
@@ -545,24 +602,34 @@ class SessionModeManager:
         self._on_scratch_result = on_scratch_result
         self._on_abort = on_abort
         self._on_switch_dispatch_error = on_switch_dispatch_error
+        self._buffer_dictate_until_commit = buffer_dictate_until_commit
+        self._hands_free_command_probe_fn = hands_free_command_probe_fn
         self._clock = clock
 
         self.mode: SessionMode = SessionMode.COMMAND
         self._stack = UnitOfWorkStack()
         self._dictate_target_process: Optional[str] = None
+        self._dictate_target_hwnd: Optional[int] = None
         self._last_dictate_ended_terminal: Optional[bool] = None
         self._stage_buffer: str = ""
+        self._dictate_pending_buffer: str = ""
 
     # -- session lifecycle -----------------------------------------------
 
-    def reset(self) -> None:
-        """Discard all mode state. Called on session entry AND session end
-        (30s inactivity_timeout_s) -- re-entry is always COMMAND."""
-        self.mode = SessionMode.COMMAND
+    def reset(self, initial_mode: SessionMode = SessionMode.COMMAND) -> None:
+        """Discard all mode state and choose the new session's initial lane.
+
+        The default remains COMMAND for legacy/direct callers. The latched
+        toggle workflow explicitly starts in DICTATE, which is now its combined
+        hands-free command+dictation lane.
+        """
+        self.mode = initial_mode
         self._stack = UnitOfWorkStack()
         self._dictate_target_process = None
+        self._dictate_target_hwnd = None
         self._last_dictate_ended_terminal = None
         self._stage_buffer = ""
+        self._dictate_pending_buffer = ""
 
     @property
     def stack_depth(self) -> int:
@@ -574,6 +641,15 @@ class SessionModeManager:
         available for explicit reference from AVA (or any mode) until it is
         sent or a fresh DICTATE entry / session reset clears it."""
         return self._stage_buffer
+
+    @property
+    def dictate_pending_buffer(self) -> str:
+        """Text transcribed in manual-commit DICTATE mode but not pasted yet."""
+        return self._dictate_pending_buffer
+
+    @property
+    def buffer_dictate_until_commit(self) -> bool:
+        return self._buffer_dictate_until_commit
 
     # -- dispatch -----------------------------------------------------------
 
@@ -595,22 +671,57 @@ class SessionModeManager:
             return DispatchOutcome(kind="abort")
 
         scratch = is_scratch_that(text)
-        switch = None if scratch else match_switch_word(text)
+        commit = (
+            self._buffer_dictate_until_commit
+            and self.mode is SessionMode.DICTATE
+            and is_dictate_commit(text)
+        )
+        switch = None if (scratch or commit) else match_switch_word(text)
 
-        if scratch or switch is not None:
+        if scratch or commit or switch is not None:
             if passes_switch_anti_hallucination_gate(signals):
                 if scratch:
                     ok = self._do_scratch_that()
                     if self._on_scratch_result:
                         self._on_scratch_result(ok)
                     return DispatchOutcome(kind="scratch_success" if ok else "scratch_refuse")
+                if commit:
+                    return self._commit_dictate_buffer(target_mode=None)
                 return self._do_switch(switch)
-            # Gate failed: fail CLOSED for the switch/scratch interpretation
-            # only -- fall through and let the current mode handle the text
-            # normally (existing gating for DICTATE text, if any, applies
-            # downstream of this module).
-            log.info("[SESSION] switch/scratch anti-hallucination gate failed for %r; "
+            # A sole-word DICTATE commit that fails the gate must never become
+            # dictated content. Retain the pending thought and let the user
+            # retry "end" after the refusal earcon.
+            if commit:
+                return DispatchOutcome(kind="dictate_commit_refused", detail={
+                    "pending_chars": len(self._dictate_pending_buffer),
+                })
+            # Gate failed: fail CLOSED for the control-word interpretation
+            # only -- fall through and let the current mode handle the text.
+            log.info("[SESSION] control-word anti-hallucination gate failed for %r; "
                       "treating as ordinary %s text", text, self.mode.value)
+
+        # Combined hands-free lane: exact reserved commands coexist with
+        # buffered dictation. The probe is side-effect-free, allowing us to
+        # commit text transactionally BEFORE commands that move focus or submit.
+        if (self._buffer_dictate_until_commit
+                and self.mode is SessionMode.DICTATE):
+            literal_payload = match_literal_payload(text)
+            if literal_payload is not None:
+                if not passes_switch_anti_hallucination_gate(signals):
+                    return DispatchOutcome(kind="hands_free_command_refused", detail={
+                        "phrase": "literal", "pending_chars": len(self._dictate_pending_buffer),
+                    })
+                return self._dispatch_dictate(literal_payload)
+
+            if self._hands_free_command_probe_fn is not None:
+                hands_free_match = self._hands_free_command_probe_fn(text)
+                if hands_free_match is not None:
+                    if not passes_switch_anti_hallucination_gate(signals):
+                        return DispatchOutcome(kind="hands_free_command_refused", detail={
+                            "phrase": hands_free_match.phrase,
+                            "pending_chars": len(self._dictate_pending_buffer),
+                        })
+                    return self._dispatch_hands_free_command(hands_free_match)
 
         return self._dispatch_in_mode(text)
 
@@ -626,6 +737,13 @@ class SessionModeManager:
         the user would be silently left in a new mode with nothing
         delivered and no indication anything went wrong."""
         prior_mode = self.mode
+        if (self._buffer_dictate_until_commit
+                and prior_mode is SessionMode.DICTATE
+                and switch.target_mode is not SessionMode.DICTATE
+                and self._dictate_pending_buffer):
+            committed = self._commit_dictate_buffer(target_mode=None)
+            if committed.kind != "dictate_committed":
+                return committed
         self._switch_mode(switch.target_mode)
         if switch.is_prefix and switch.payload.strip():
             try:
@@ -645,21 +763,34 @@ class SessionModeManager:
         return DispatchOutcome(kind="mode_switch", detail={"mode": switch.target_mode})
 
     def _switch_mode(self, new_mode: SessionMode) -> None:
+        prior_mode = self.mode
+        log.info("[SESSION] mode change %s -> %s", prior_mode.value, new_mode.value)
+
         if new_mode is SessionMode.DICTATE and self.mode is not SessionMode.DICTATE:
             # Lock onto whatever's focused right now -- injections later in
             # this DICTATE lane must stay within this process. A fresh
             # DICTATE entry also starts a fresh stage buffer -- "what I
             # dictated" from AVA should mean THIS excursion, not some stale
             # one from earlier in the session.
-            self._dictate_target_process = self._foreground_exe_resolver()
+            if self._buffer_dictate_until_commit:
+                # Persistent buffered DICTATE locks per thought, not for the
+                # entire lane. The first chunk captures the text box that
+                # should receive that thought; a successful "end" releases
+                # it so the next thought can target a different app/window.
+                self._dictate_target_process = None
+                self._dictate_target_hwnd = None
+            else:
+                self._dictate_target_process = self._foreground_exe_resolver()
+                self._dictate_target_hwnd = self._foreground_hwnd_resolver()
             self._last_dictate_ended_terminal = None
             self._stage_buffer = ""
+            self._dictate_pending_buffer = ""
         self.mode = new_mode
         if self._on_mode_change:
             self._on_mode_change(new_mode)
 
     def force_mode(self, new_mode: SessionMode) -> None:
-        """Non-utterance-driven mode change (e.g. focus-lock auto-revert)."""
+        """Apply a non-utterance-driven mode change."""
         self._switch_mode(new_mode)
 
     def _dispatch_in_mode(self, text: str) -> DispatchOutcome:
@@ -681,8 +812,46 @@ class SessionModeManager:
             return DispatchOutcome(kind="command_executed", detail={"phrase": result.phrase})
         return DispatchOutcome(kind="command_miss")
 
+    def _dispatch_hands_free_command(
+        self, match: HandsFreeCommandMatch,
+    ) -> DispatchOutcome:
+        """Execute one reserved command without leaving the DICTATE lane."""
+        commit_detail = None
+        if match.pending_policy is PendingTextPolicy.COMMIT:
+            committed = self._commit_dictate_buffer(target_mode=None)
+            if committed.kind != "dictate_committed":
+                return DispatchOutcome(kind="hands_free_command_blocked", detail={
+                    "phrase": match.phrase,
+                    "commit_outcome": committed.kind,
+                    **committed.detail,
+                })
+            commit_detail = committed.detail
+
+        result = self._command_dispatch_fn(match.dispatch_text)
+        if not result.matched:
+            return DispatchOutcome(kind="hands_free_command_failed", detail={
+                "phrase": match.phrase,
+                "dispatch_text": match.dispatch_text,
+                "committed": commit_detail,
+            })
+
+        self._stack.push(StackItem(
+            kind="command", payload=result.phrase or match.phrase,
+            mode=SessionMode.DICTATE, timestamp=self._clock(),
+        ))
+        return DispatchOutcome(kind="hands_free_command_executed", detail={
+            "phrase": result.phrase or match.phrase,
+            "dispatch_text": match.dispatch_text,
+            "committed": commit_detail,
+            "mode_retained": self.mode,
+        })
+
     def _dispatch_dictate(self, chunk_raw: str) -> DispatchOutcome:
+        if self._buffer_dictate_until_commit:
+            return self._stage_dictate_chunk(chunk_raw)
+
         foreground = self._foreground_exe_resolver()
+        target_process = self._dictate_target_process
         if not check_focus_lock(self._dictate_target_process, foreground):
             # Formatted even though suppressed -- retype_last_suppressed()
             # later re-injects this exact payload verbatim via inject_fn,
@@ -694,10 +863,15 @@ class SessionModeManager:
                 extra={"suppressed": True, "target_process": self._dictate_target_process,
                        "foreground": foreground, "hwnd": self._foreground_hwnd_resolver()},
             ))
-            self.force_mode(SessionMode.COMMAND)
+            # Keep DICTATE active while preserving the fail-closed focus lock.
+            # A transient focus drift must not silently end long-form dictation;
+            # later chunks resume once the original target is focused again.
             if self._on_focus_lock_revert:
                 self._on_focus_lock_revert()
-            return DispatchOutcome(kind="dictate_suppressed_focus_lock")
+            return DispatchOutcome(kind="dictate_suppressed_focus_lock", detail={
+                "target_process": target_process, "foreground": foreground,
+                "mode_retained": self.mode,
+            })
 
         if self._last_dictate_ended_terminal is None:
             adjusted = chunk_raw.strip()
@@ -735,6 +909,119 @@ class SessionModeManager:
                    "hwnd": self._foreground_hwnd_resolver()},
         ))
         return DispatchOutcome(kind="dictate_injected", detail={"text": to_inject})
+
+    def _stage_dictate_chunk(self, chunk_raw: str) -> DispatchOutcome:
+        """Append one silence-bounded transcript without touching the editor.
+
+        Deliberately does NOT call self._format_dictate_fn here. Formatting
+        tokens (like every other pipeline step -- process_transcription,
+        clean_text, smart_correct) must run exactly once, over the complete
+        joined thought, at commit -- never per staged fragment. Running
+        formatting_tokens.apply_formatting_tokens() here would both violate
+        that module's own documented contract ("must run AFTER any LLM
+        correction pass and immediately before delivery") and risk embedding
+        control characters (e.g. a "new line" token's literal \\n) into text
+        that clean_text/smart_correct haven't seen yet."""
+        if not self._dictate_pending_buffer:
+            self._dictate_target_process = self._foreground_exe_resolver()
+            self._dictate_target_hwnd = self._foreground_hwnd_resolver()
+
+        if self._last_dictate_ended_terminal is None:
+            to_stage = chunk_raw.strip()
+        else:
+            to_stage = " " + seam_join(self._last_dictate_ended_terminal, chunk_raw)
+        if not to_stage:
+            return DispatchOutcome(kind="empty")
+
+        self._dictate_pending_buffer += to_stage
+        self._last_dictate_ended_terminal = chunk_ends_terminal(to_stage)
+        self._stack.push(StackItem(
+            kind="dictation_staged_chunk", payload=to_stage,
+            mode=SessionMode.DICTATE, timestamp=self._clock(),
+        ))
+        return DispatchOutcome(kind="dictate_staged", detail={
+            "text": to_stage,
+            "pending_chars": len(self._dictate_pending_buffer),
+        })
+
+    def _commit_dictate_buffer(
+        self, *, target_mode: Optional[SessionMode],
+    ) -> DispatchOutcome:
+        """Paste the complete staged thought once, retaining it on failure."""
+        text = self._dictate_pending_buffer
+        if not text:
+            if target_mode is not None:
+                self._switch_mode(target_mode)
+            else:
+                self._dictate_target_process = None
+                self._dictate_target_hwnd = None
+            return DispatchOutcome(kind="dictate_committed", detail={
+                "text": "", "empty": True, "mode_retained": self.mode,
+            })
+
+        foreground = self._foreground_exe_resolver()
+        current_hwnd = self._foreground_hwnd_resolver()
+        process_matches = check_focus_lock(self._dictate_target_process, foreground)
+        hwnd_matches = (
+            self._dictate_target_hwnd is not None
+            and current_hwnd == self._dictate_target_hwnd
+        )
+        if not process_matches or not hwnd_matches:
+            log.warning(
+                "[SESSION] DICTATE commit retained: focus changed "
+                "(target_process=%r current_process=%r target_hwnd=%r current_hwnd=%r)",
+                self._dictate_target_process, foreground,
+                self._dictate_target_hwnd, current_hwnd,
+            )
+            if self._on_focus_lock_revert:
+                self._on_focus_lock_revert()
+            return DispatchOutcome(kind="dictate_commit_blocked_focus_lock", detail={
+                "pending_chars": len(text),
+                "target_process": self._dictate_target_process,
+                "foreground": foreground,
+                "target_hwnd": self._dictate_target_hwnd,
+                "foreground_hwnd": current_hwnd,
+            })
+
+        delivered = self._inject_fn(text)
+        if delivered is False:
+            error = RuntimeError("dictation paste was not delivered")
+            log.error("[SESSION] DICTATE commit retained: paste callback reported failure")
+            if self._on_switch_dispatch_error:
+                self._on_switch_dispatch_error(error)
+            return DispatchOutcome(kind="dictate_commit_failed", detail={
+                "pending_chars": len(text), "error": str(error),
+            })
+
+        # inject_fn runs the full formatting pipeline (process_transcription,
+        # clean_text, smart_correct, formatting tokens) over `text` and may
+        # return the ACTUAL delivered/formatted string -- use that (not the
+        # pre-formatting `text` passed in) for the undo record and
+        # stage_buffer, so scratch-that and any "the staged text" AVA
+        # reference reflect what was really typed. Legacy bool/None-returning
+        # injectors keep today's behavior (record the pre-formatting text).
+        final_text = delivered if isinstance(delivered, str) else text
+
+        self._dictate_pending_buffer = ""
+        self._stage_buffer = final_text
+        self._last_dictate_ended_terminal = None
+        self._stack.push(StackItem(
+            kind="dictation_chunk", payload=final_text, mode=SessionMode.DICTATE,
+            timestamp=self._clock(),
+            extra={"target_process": self._dictate_target_process,
+                   "hwnd": current_hwnd},
+        ))
+        # A completed thought must not end the persistent DICTATE lane. Drop
+        # only its focus lock; the next staged chunk captures whichever text
+        # box is focused then.
+        self._dictate_target_process = None
+        self._dictate_target_hwnd = None
+        if target_mode is not None:
+            self._switch_mode(target_mode)
+        return DispatchOutcome(kind="dictate_committed", detail={
+            "text": final_text, "chars": len(final_text),
+            "mode_retained": self.mode,
+        })
 
     def _dispatch_ava(self, text: str) -> DispatchOutcome:
         """Every AVA-mode utterance goes to the agent as natural language --
@@ -787,6 +1074,15 @@ class SessionModeManager:
         item = self._stack.pop()
         if item is None:
             return False
+        if item.kind == "dictation_staged_chunk":
+            if not self._dictate_pending_buffer.endswith(item.payload):
+                return False
+            self._dictate_pending_buffer = self._dictate_pending_buffer[:-len(item.payload)]
+            self._last_dictate_ended_terminal = (
+                chunk_ends_terminal(self._dictate_pending_buffer)
+                if self._dictate_pending_buffer else None
+            )
+            return True
         if item.kind != "dictation_chunk":
             return False  # command undo out of scope; consumed, refuse-style earcon
         foreground = self._foreground_exe_resolver()

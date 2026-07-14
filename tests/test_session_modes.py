@@ -6,7 +6,7 @@ All of session_modes.py is pure orchestration -- no audio/Whisper/pyautogui/
 Qt mocking needed. Side effects are plain Mock() callables.
 """
 import pytest
-from unittest.mock import Mock
+from unittest.mock import Mock, call
 
 from samsara.session_modes import (
     SessionMode,
@@ -17,6 +17,7 @@ from samsara.session_modes import (
     SessionModeManager,
     normalize_utterance,
     is_scratch_that,
+    is_dictate_commit,
     match_switch_word,
     passes_switch_anti_hallucination_gate,
     seam_join,
@@ -498,7 +499,8 @@ GOOD_SIGNALS = UtteranceSignals(has_contiguous_speech=True, compression_ratios=(
 def manager_factory():
     """Returns a (manager, mocks) builder so each test can override callables."""
     def _build(foreground="notepad.exe", foreground_hwnd=12345, abort_phrases=None,
-               command_matches=None, format_dictate_fn=None):
+               command_matches=None, format_dictate_fn=None,
+               buffer_dictate_until_commit=False):
         mocks = {
             "foreground": Mock(return_value=foreground),
             "foreground_hwnd": Mock(return_value=foreground_hwnd),
@@ -526,6 +528,7 @@ def manager_factory():
             on_scratch_result=mocks["on_scratch_result"],
             on_abort=mocks["on_abort"],
             on_switch_dispatch_error=mocks["on_switch_dispatch_error"],
+            buffer_dictate_until_commit=buffer_dictate_until_commit,
             clock=lambda: 1000.0,
         )
         return mgr, mocks
@@ -740,7 +743,7 @@ class TestSessionModeManagerDispatch:
         mgr.dispatch_utterance("How are you", GOOD_SIGNALS)
         assert mocks["inject"].call_args_list[1].args[0] == " How are you"
 
-    def test_focus_lock_suppresses_and_reverts_to_command(self, manager_factory):
+    def test_focus_lock_suppresses_and_retains_dictate(self, manager_factory):
         mgr, mocks = manager_factory(foreground="notepad.exe")
         mgr.force_mode(SessionMode.DICTATE)
         assert mgr.mode is SessionMode.DICTATE
@@ -750,7 +753,10 @@ class TestSessionModeManagerDispatch:
         assert outcome.kind == "dictate_suppressed_focus_lock"
         mocks["inject"].assert_not_called()
         mocks["on_focus_lock_revert"].assert_called_once()
-        assert mgr.mode is SessionMode.COMMAND
+        assert mgr.mode is SessionMode.DICTATE
+        assert outcome.detail["target_process"] == "notepad.exe"
+        assert outcome.detail["foreground"] == "chrome.exe"
+        assert outcome.detail["mode_retained"] is SessionMode.DICTATE
         assert mgr.stack_depth == 1
 
     def test_scratch_that_undoes_dictation_chunk(self, manager_factory):
@@ -1091,12 +1097,12 @@ class TestSessionReset:
         mgr.dispatch_utterance("Fresh Start", GOOD_SIGNALS)
         assert mocks["inject"].call_args_list[-1].args[0] == "Fresh Start"
 
-    def test_reset_after_focus_lock_revert_reverts_correctly_next_session(self, manager_factory):
+    def test_reset_after_focus_lock_mismatch_returns_next_session_to_command(self, manager_factory):
         mgr, mocks = manager_factory(foreground="notepad.exe")
         mgr.force_mode(SessionMode.DICTATE)
         mocks["foreground"].return_value = "chrome.exe"
         mgr.dispatch_utterance("lost", GOOD_SIGNALS)
-        assert mgr.mode is SessionMode.COMMAND  # auto-reverted
+        assert mgr.mode is SessionMode.DICTATE
 
         mgr.reset()  # simulates 30s inactivity_timeout_s session end
         assert mgr.mode is SessionMode.COMMAND
@@ -1116,3 +1122,135 @@ class TestSessionReset:
         assert mgr.mode is SessionMode.COMMAND
         assert mgr.stage_buffer == ""
         assert mgr.stack_depth == 0
+
+# ---------------------------------------------------------------------------
+# Buffered, explicit-commit DICTATE lane
+# ---------------------------------------------------------------------------
+
+class TestBufferedDictateCommit:
+    def test_end_is_whole_utterance_only(self):
+        assert is_dictate_commit("end") is True
+        assert is_dictate_commit("End!") is True
+        assert is_dictate_commit("the end is near") is False
+        assert is_dictate_commit("weekend") is False
+
+    def test_pauses_stage_chunks_without_pasting(self, manager_factory):
+        mgr, mocks = manager_factory(buffer_dictate_until_commit=True)
+        mgr.force_mode(SessionMode.DICTATE)
+
+        first = mgr.dispatch_utterance("This is one thought", GOOD_SIGNALS)
+        second = mgr.dispatch_utterance("And it continues.", GOOD_SIGNALS)
+
+        assert first.kind == "dictate_staged"
+        assert second.kind == "dictate_staged"
+        assert mgr.dictate_pending_buffer == "This is one thought and it continues."
+        mocks["inject"].assert_not_called()
+
+    def test_end_pastes_complete_thought_once_and_stays_in_dictate(self, manager_factory):
+        mgr, mocks = manager_factory(buffer_dictate_until_commit=True)
+        mgr.force_mode(SessionMode.DICTATE)
+        mgr.dispatch_utterance("First sentence.", GOOD_SIGNALS)
+        mgr.dispatch_utterance("Second sentence.", GOOD_SIGNALS)
+
+        outcome = mgr.dispatch_utterance("end", GOOD_SIGNALS)
+
+        assert outcome.kind == "dictate_committed"
+        assert outcome.detail["text"] == "First sentence. Second sentence."
+        mocks["inject"].assert_called_once_with("First sentence. Second sentence.")
+        assert mgr.mode is SessionMode.DICTATE
+        assert mgr.dictate_pending_buffer == ""
+        assert mgr.stage_buffer == "First sentence. Second sentence."
+
+    def test_next_thought_relocks_to_newly_focused_window(self, manager_factory):
+        mgr, mocks = manager_factory(buffer_dictate_until_commit=True)
+        mgr.force_mode(SessionMode.DICTATE)
+        mgr.dispatch_utterance("First box", GOOD_SIGNALS)
+        first = mgr.dispatch_utterance("end", GOOD_SIGNALS)
+
+        mocks["foreground"].return_value = "chrome.exe"
+        mocks["foreground_hwnd"].return_value = 99999
+        mgr.dispatch_utterance("Second box", GOOD_SIGNALS)
+        second = mgr.dispatch_utterance("end", GOOD_SIGNALS)
+
+        assert first.kind == "dictate_committed"
+        assert second.kind == "dictate_committed"
+        assert mgr.mode is SessionMode.DICTATE
+        assert mocks["inject"].call_args_list == [
+            call("First box"),
+            call("Second box"),
+        ]
+
+    def test_empty_end_keeps_persistent_dictate_active(self, manager_factory):
+        mgr, mocks = manager_factory(buffer_dictate_until_commit=True)
+        mgr.force_mode(SessionMode.DICTATE)
+
+        outcome = mgr.dispatch_utterance("end", GOOD_SIGNALS)
+
+        assert outcome.kind == "dictate_committed"
+        assert outcome.detail["empty"] is True
+        assert mgr.mode is SessionMode.DICTATE
+        mocks["inject"].assert_not_called()
+
+    def test_distrusted_end_is_not_added_to_pending_text(self, manager_factory):
+        mgr, mocks = manager_factory(buffer_dictate_until_commit=True)
+        mgr.force_mode(SessionMode.DICTATE)
+        mgr.dispatch_utterance("Keep this thought", GOOD_SIGNALS)
+        distrusted = UtteranceSignals(has_contiguous_speech=False, compression_ratios=(1.2,))
+
+        outcome = mgr.dispatch_utterance("end", distrusted)
+
+        assert outcome.kind == "dictate_commit_refused"
+        assert mgr.mode is SessionMode.DICTATE
+        assert mgr.dictate_pending_buffer == "Keep this thought"
+        mocks["inject"].assert_not_called()
+
+    def test_commit_focus_mismatch_retains_thought_and_stays_dictate(self, manager_factory):
+        mgr, mocks = manager_factory(buffer_dictate_until_commit=True)
+        mgr.force_mode(SessionMode.DICTATE)
+        mgr.dispatch_utterance("Do not lose this", GOOD_SIGNALS)
+        mocks["foreground_hwnd"].return_value = 99999
+
+        outcome = mgr.dispatch_utterance("end", GOOD_SIGNALS)
+
+        assert outcome.kind == "dictate_commit_blocked_focus_lock"
+        assert mgr.mode is SessionMode.DICTATE
+        assert mgr.dictate_pending_buffer == "Do not lose this"
+        mocks["inject"].assert_not_called()
+        mocks["on_focus_lock_revert"].assert_called_once()
+
+    def test_reported_paste_failure_retains_thought(self, manager_factory):
+        mgr, mocks = manager_factory(buffer_dictate_until_commit=True)
+        mocks["inject"].return_value = False
+        mgr.force_mode(SessionMode.DICTATE)
+        mgr.dispatch_utterance("Keep this safe", GOOD_SIGNALS)
+
+        outcome = mgr.dispatch_utterance("end", GOOD_SIGNALS)
+
+        assert outcome.kind == "dictate_commit_failed"
+        assert mgr.mode is SessionMode.DICTATE
+        assert mgr.dictate_pending_buffer == "Keep this safe"
+        mocks["on_switch_dispatch_error"].assert_called_once()
+
+    def test_scratch_removes_last_staged_chunk_without_editor_keystrokes(self, manager_factory):
+        mgr, mocks = manager_factory(buffer_dictate_until_commit=True)
+        mgr.force_mode(SessionMode.DICTATE)
+        mgr.dispatch_utterance("Keep this", GOOD_SIGNALS)
+        mgr.dispatch_utterance("Remove this", GOOD_SIGNALS)
+
+        outcome = mgr.dispatch_utterance("scratch that", GOOD_SIGNALS)
+
+        assert outcome.kind == "scratch_success"
+        assert mgr.dictate_pending_buffer == "Keep this"
+        mocks["remove_chars"].assert_not_called()
+        mocks["inject"].assert_not_called()
+
+    def test_command_switch_commits_pending_text_before_switching(self, manager_factory):
+        mgr, mocks = manager_factory(buffer_dictate_until_commit=True)
+        mgr.force_mode(SessionMode.DICTATE)
+        mgr.dispatch_utterance("Commit before switching", GOOD_SIGNALS)
+
+        outcome = mgr.dispatch_utterance("command mode", GOOD_SIGNALS)
+
+        assert outcome.kind == "mode_switch"
+        mocks["inject"].assert_called_once_with("Commit before switching")
+        assert mgr.mode is SessionMode.COMMAND

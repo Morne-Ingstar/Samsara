@@ -135,16 +135,15 @@ def _resolve_hotkeys(app) -> list[dict]:
             "enabled": True,
         },
         {
-            "label": f"Command Mode ({cm_mode})",
+            "label": ("Hands-free Session" if cm_mode == "toggle" else "Command Mode (hold)"),
             "value": _pretty_button(cm_button),
             "enabled": cm_enabled,
         },
         {
-            # Ava has no dedicated physical hotkey -- it's a voice lane
-            # switch reached FROM Command Mode (see session_modes.py). This
-            # row states that honestly instead of implying a separate key.
+            # Ava has no dedicated physical hotkey -- it remains a voice
+            # lane switch available from the latched session.
             "label": "Ava",
-            "value": f'Say "{ava_phrase}" while in Command Mode',
+            "value": f'Say "{ava_phrase}" during the voice session',
             "enabled": cm_enabled,
         },
         {
@@ -179,6 +178,12 @@ def _resolve_session_phrases(app) -> dict:
 
     end_words = ww_cfg.get("end_words", _WAKE_FALLBACKS["end_words"])
     abort_words = ww_cfg.get("wake_abort_phrase", _WAKE_FALLBACKS["wake_abort_phrase"])
+    if isinstance(abort_words, str):
+        abort_words = [abort_words]
+    abort_words = list(dict.fromkeys([
+        *abort_words,
+        *session_modes.GLOBAL_SESSION_EXIT_PHRASES,
+    ]))
 
     return {
         "wake": {
@@ -202,6 +207,10 @@ def _resolve_session_phrases(app) -> dict:
             "enabled": wake_enabled or cm_enabled,
             "words": abort_words,
         },
+        "dictate_commit": {
+            "enabled": cm_enabled,
+            "phrase": session_modes.DICTATE_COMMIT_PHRASE,
+        },
         "scratch_that": {
             "enabled": cm_enabled,
             "phrase": session_modes.SCRATCH_THAT_PHRASE,
@@ -210,8 +219,8 @@ def _resolve_session_phrases(app) -> dict:
 
 
 _MODE_DESCRIPTIONS = {
-    SessionMode.COMMAND: "Say a command phrase and it executes immediately (the hub / default lane).",
-    SessionMode.DICTATE: "Everything you say is typed into whatever app was focused when you entered this lane.",
+    SessionMode.COMMAND: "Legacy command-only lane retained for compatibility.",
+    SessionMode.DICTATE: 'HANDS FREE: ordinary speech is buffered dictation; exact navigation commands execute immediately. Say "end" to paste and continue.',
     SessionMode.AVA: 'Everything you say goes to the local AI agent as natural language. Say "submit that" / "the text" to attach anything you just dictated.',
 }
 
@@ -227,7 +236,7 @@ def _resolve_modes_overview(app) -> dict:
         "enabled": cm_enabled,
         "modes": [
             {"name": "COMMAND", "description": _MODE_DESCRIPTIONS[SessionMode.COMMAND]},
-            {"name": "DICTATE", "description": _MODE_DESCRIPTIONS[SessionMode.DICTATE]},
+            {"name": "HANDS FREE", "description": _MODE_DESCRIPTIONS[SessionMode.DICTATE]},
             {"name": "AVA", "description": _MODE_DESCRIPTIONS[SessionMode.AVA]},
         ],
     }
@@ -432,6 +441,9 @@ class _QuickReferenceWindow(QMainWindow):
             self._row(
                 lay, f"{lane_name} lane switch", ", ".join(phrases) or "(none)", lanes["enabled"]
             )
+
+        commit = state["dictate_commit"]
+        self._row(lay, "Commit DICTATE thought", commit["phrase"], commit["enabled"])
 
         abort = state["abort"]
         self._row(lay, "Abort phrase(s)", ", ".join(abort["words"]) or "(none)", abort["enabled"])

@@ -155,11 +155,11 @@ class TestModeOverlayDrivesThePill:
             "COMMAND", "#5EEAD4"
         )
 
-    def test_dictate_mode_badge(self):
+    def test_hands_free_lane_badge(self):
         stub = _make_stub()
         stub._update_mode_overlay(_session_mode_enum().DICTATE)
         stub.listening_indicator.set_session_mode.assert_called_once_with(
-            "DICTATE", "#f59e0b"
+            "HANDS FREE", "#f59e0b"
         )
 
     def test_ava_mode_badge(self):
@@ -183,6 +183,16 @@ class TestSessionStartEndForceVisible:
         stub = _make_stub(mode='toggle', listening_indicator_enabled=True)
         stub.enter_command_mode()
         stub.listening_indicator.show.assert_called_once()
+
+    def test_toggle_session_starts_in_combined_hands_free_lane(self):
+        stub = _make_stub(mode='toggle')
+        stub.enter_command_mode()
+        stub._session_mode_manager.reset.assert_called_once_with(
+            initial_mode=_session_mode_enum().DICTATE,
+        )
+        stub.listening_indicator.set_session_mode.assert_any_call(
+            "HANDS FREE", "#f59e0b",
+        )
 
     def test_session_end_hides_pill_when_indicator_disabled(self):
         stub = _make_stub(mode='toggle', listening_indicator_enabled=False)
