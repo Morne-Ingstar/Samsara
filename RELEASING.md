@@ -27,8 +27,8 @@ repo's source at this commit, not from a laptop.
 ### Triggering a release
 
 ```
-git tag v0.21.0
-git push origin v0.21.0
+git tag v0.22.0
+git push origin v0.22.0
 ```
 
 Or run the workflow manually (Actions tab -> Release (CPU build) -> Run
@@ -86,12 +86,10 @@ runner does not reliably have:
   creation is expected to work — but this is unverified on this specific
   app until a real CI run confirms it. See the risk list below.
 
-Given that, `release.yml`'s smoke step is `continue-on-error: true`: it
-reports what happened (and uploads the log) without blocking a release. Once
-a handful of real CI runs establish what "normal" looks like on
-`windows-latest`, tighten this — make it blocking, or move `frozen_smoke.py`
-itself (unchanged here, still the local gate) to run under a pre-seeded fake
-audio device.
+The `release.yml` smoke step is blocking. `tools/ci_smoke.py` allowlists only
+known, caught hardware-availability tracebacks; an unexplained traceback,
+critical error, or early process exit fails the release job. The smoke log is
+uploaded on every run for inspection.
 
 `tools\frozen_smoke.py` and `tools\build_and_smoke.cmd` are **unchanged** —
 they remain the full local gate to run before every tagged release.
@@ -127,13 +125,11 @@ they remain the full local gate to run before every tagged release.
   surprised the CI-built zip is much bigger than the old release notes
   imply — update `docs`/release notes size figures once a real CI zip size
   is known.
-- **No `__version__` string anywhere in the code.** Version identity is
-  entirely git-tag-driven; nothing cross-checks the tag against an in-app
-  version constant. Not a blocker, just means a wrong tag ships silently
-  version-mismatched app strings (there are none) — low risk, noted for
-  completeness.
+- **Version identity must agree in three places.** Keep the release tag,
+  `samsara.__version__`, and `samsara.smart_actions_bridge.SAMSARA_VERSION`
+  on the same value before tagging; the workflow names artifacts from the tag.
 - **`softprops/action-gh-release` and `actions/*` are pinned to major-version
-  tags** (`@v4`, `@v5`, `@v2`), not exact commit SHAs. Standard practice, but
+  tags** (`@v5`, `@v6`, `@v2`), not exact commit SHAs. Standard practice, but
   stricter supply-chain pinning (exact SHA) is a future hardening option,
   not done here.
 - **Concurrency group** (`release-${{ github.ref }}`) cancels an in-flight
