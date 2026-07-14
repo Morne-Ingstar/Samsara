@@ -471,7 +471,7 @@ from samsara.alarms import AlarmManager, get_default_alarm_config
 from samsara.echo_cancel import EchoCanceller
 from samsara import audio_ducking
 from samsara import wake_profiles
-from samsara.clipboard import clipboard_lock as _clipboard_lock, save_clipboard as _save_clipboard_win32, restore_clipboard as _restore_clipboard_win32, paste_with_preservation
+from samsara.clipboard import paste_with_preservation
 from samsara.wake_detector import WakeWordDetector
 from samsara.handlers import _get_foreground_exe_lower, _get_foreground_hwnd
 from samsara.runtime import thread_registry
@@ -6838,23 +6838,15 @@ class DictationApp:
     def _paste_preserving_clipboard(self, text):
         """Paste text via clipboard while preserving the user's original clipboard content."""
         delay = self.config.get('clipboard_delay', CLIPBOARD_RESTORE_DELAY)
-        paste_ok = False
-        with _clipboard_lock:
-            saved = _save_clipboard_win32()
-            try:
-                pyperclip.copy(text)
-                time.sleep(CLIPBOARD_PASTE_DELAY)
-                pyautogui.hotkey('ctrl', 'v')
-
-                # Wait for paste to complete before restoring
-                time.sleep(delay)
-                paste_ok = True
-            except Exception as e:
-                logger.exception(f"[ERROR] Paste failed: {e}")
-            finally:
-                # Always restore clipboard, even if paste failed
-                _restore_clipboard_win32(saved)
-
+        # Keep one clipboard implementation. The centralized path captures
+        # the clipboard sequence number immediately after Samsara's copy, so
+        # an unrelated copy made during the paste window is never overwritten
+        # by restoring our stale snapshot.
+        paste_ok = paste_with_preservation(
+            text,
+            paste_delay=CLIPBOARD_PASTE_DELAY,
+            restore_delay=delay,
+        )
         if paste_ok:
             self._record_undoable_paste(text)
             self.adaptive_learner.record_transcription(text)
