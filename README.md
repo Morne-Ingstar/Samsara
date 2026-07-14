@@ -151,6 +151,8 @@ def my_command(app, remainder):
 
 Ships with 31 plugins including health tracking, voice reminders, alarm management, voice AI / Ava (Ollama + cloud LLM), smart home control, music and media transport, 3D printer integration, macros, audio switching, tab finder, web shortcuts, timer, GIF search, screen recording, scroll (5-speed + horizontal + page nav), text marker (deferred range selection), volume/mute (Core Audio API), window switcher (letter-based targeting), show numbers (hands-free clicking), Stremio, and more.
 
+**Privacy note on the Task List plugin:** tasks you add by voice (`plugins/commands/tasks.py`) always stay on this computer. The plugin contains no task-sync or network-delivery path.
+
 ---
 
 ## Getting Started
