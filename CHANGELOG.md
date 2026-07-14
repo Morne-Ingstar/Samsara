@@ -4,6 +4,60 @@ All notable changes to Samsara are documented here.
 
 ## [Unreleased]
 
+## [0.22.0] - 2026-07-13
+
+The hands-free release. Toggle voice control is now one persistent lane where
+ordinary speech is buffered as dictation and a curated set of navigation
+commands remains available without changing modes. Show Numbers also gains a
+browser DOM path alongside its Windows UI Automation fallback.
+
+### Added
+
+- **Persistent HANDS FREE dictation and commands** — natural pauses no longer
+  paste partial fragments. Samsara buffers the complete thought until the sole
+  utterance "end", pastes it once, and stays hands-free for the next text box.
+  Exact navigation commands such as scrolling, Show Numbers, focus, click,
+  submit, and field/window movement coexist with dictation; `literal ...`
+  remains the escape for dictating a reserved command phrase.
+- **DOM-aware Show Numbers for Chromium browsers** — a bundled Manifest V3
+  extension and authenticated loopback bridge expose visible page controls,
+  including ARIA and contenteditable targets, while UI Automation remains the
+  fallback for browser chrome and non-browser applications. Overlay rendering
+  now accounts for Windows/Qt DPI conversion and multi-monitor coordinates.
+- **Voice-managed vocabulary and corrections** — add, list, remove, and teach
+  recognition vocabulary without opening Settings.
+- **Themed reminder toasts** — reminders use the shared Qt runtime, batch
+  same-tick notifications, avoid stealing focus, and wait until Show Numbers
+  closes before appearing.
+
+### Fixed
+
+- **Confirmed wake words are no longer rejected by the later RMS gate** — a
+  strong OpenWakeWord detection now reaches the wake action even when adaptive
+  energy gating would otherwise classify the same quiet phrase as too soft.
+- **Show Numbers is reachable from command mode** — "show numbers" is present
+  in the command path instead of transcribing as an unmatched utterance.
+- **Buffered dictation is retained on focus or paste failure** — delivery is
+  locked to both the original process and window handle; failures remain
+  visible and retryable rather than silently losing the thought.
+- **Clipboard changes made during paste are preserved** — DictationApp now
+  uses the central sequence-number guard instead of an unconditional stale
+  clipboard restore.
+- **Reminder delivery is recorded only after display** — failed or suppressed
+  notifications retry within a bounded window instead of being marked sent.
+- **Profile switching isolates profile-scoped state** — cached settings no
+  longer leak across profile changes.
+- **History date navigation** can query the selected day directly instead of
+  silently returning only the current window.
+
+### Changed
+
+- **Task List remains strictly local** — v0.22 includes the v0.21.1 privacy
+  hotfix and removes the residual Arcana configuration/settings scaffolding;
+  focused regressions forbid network imports and requests from the plugin.
+- **Pull-request CI runs on Windows** to match Samsara's supported platform and
+  Windows-only dependencies.
+
 ## [0.21.1] - 2026-07-13
 
 ### Fixed

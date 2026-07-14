@@ -18,7 +18,7 @@ from typing import Any, Dict, List, Optional
 logger = logging.getLogger(__name__)
 
 CONTRACT_VERSION = 1
-SAMSARA_VERSION = "0.20.0"
+SAMSARA_VERSION = "0.22.0"
 
 
 def _default_available_tools() -> List[str]:

@@ -10,38 +10,29 @@
 
 ---
 
-## What's New in v0.21.0
+## What's New in v0.22.0
 
-**The trust release.** v0.21.0 is Samsara's current shipped, stable release
-(development for the next version continues on `feature/v0.22`). The theme
-is dictation you can rely on: an adversarial review series audited the
-transcription pipeline end to end (six audits, independent AI reviewers,
-findings verified against the code), and the fixes shipped here. Also:
-spoken formatting, a live Quick Reference window, a plain-English health
-readout, and CI-built releases as the first step toward signed downloads.
+**The hands-free release.** Toggle voice control is now a persistent combined
+lane: talk naturally across pauses, say **"end"** when the thought is ready,
+and Samsara pastes it once without leaving HANDS FREE. Exact navigation
+commands remain available between thoughts, so scrolling, focusing another
+window, Show Numbers, clicking, and submitting do not require mode switching.
 
-- **"You know" no longer vanishes from dictation** — filler-word cleanup is
-  now comma-anchored instead of deleting the phrase everywhere it appears.
-- **A voice-only escape that cannot be blocked** — abort words use
-  word-boundary matching and are structurally guaranteed to bypass all
-  quality gates, so a stuck session can always be ended by voice.
-- **Clipboard preservation hardened** — copied files and transparent images
-  now survive a dictation paste; restore is atomic; a hung clipboard owner
-  can't freeze Samsara.
-- **Spoken formatting tokens** — say "new line", "new paragraph", "tab", or
-  "bullet" while dictating and get real formatting.
-- **Quick Reference window** — a live, tray-menu cheat sheet of your
-  hotkeys, wake phrases, and formatting tokens, read from your current
-  settings.
-- **CI-built releases** — every release is now built by a public GitHub
-  Actions workflow from tagged source, the prerequisite for signed
-  releases (SignPath) — see [RELEASING.md](RELEASING.md) for what that
-  does and does not cover today.
-- **Relicensed to AGPL-3.0** (from BSL) — qualifies Samsara for free
-  open-source code signing and grant eligibility.
+- **Buffered HANDS FREE dictation** — pauses no longer paste partial fragments
+  or force you to re-enter Dictate mode after every thought.
+- **Commands and dictation coexist** — curated exact commands navigate safely;
+  `literal ...` lets you dictate a reserved phrase intentionally.
+- **DOM-aware Show Numbers** — Chromium page controls can come from the bundled
+  extension/loopback bridge, with UI Automation fallback plus high-DPI and
+  multi-monitor coordinate handling.
+- **Quiet wake words work again** — confirmed OpenWakeWord hits are no longer
+  discarded by a second, contradictory volume gate.
+- **Tasks stay local** — the v0.21.1 privacy fix and v0.22 cleanup leave no Task
+  List network or account-sync path.
+- **Voice-managed vocabulary, safer reminder toasts, profile isolation, and
+  clipboard sequence protection** round out the release.
 
-See [CHANGELOG.md](CHANGELOG.md) for the full v0.21.0 entry and every
-release before it.
+See [CHANGELOG.md](CHANGELOG.md) for the complete v0.22.0 notes and history.
 
 ---
 
