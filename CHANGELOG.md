@@ -2,6 +2,14 @@
 
 All notable changes to Samsara are documented here.
 
+## [Unreleased]
+
+### Fixed
+
+- **Tasks are local-only** — removed the obsolete Arcana task-sync setting,
+  network delivery code, and config migration. Voice-added tasks remain on the
+  local machine with no task-sync pathway.
+
 ## [0.21.0] - 2026-07-10
 
 The trust release. The theme is dictation you can rely on: an adversarial
