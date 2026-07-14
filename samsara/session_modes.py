@@ -514,8 +514,7 @@ class DispatchOutcome:
     # "command_miss" | "dictate_injected" | "dictate_suppressed_focus_lock" |
     # "dictate_staged" | "dictate_committed" |
     # "dictate_commit_refused" | "dictate_commit_blocked_focus_lock" |
-    # "dictate_commit_failed" | "dictate_edit_refused" |
-    # "dictate_edit_stale" | "hands_free_command_executed" |
+    # "dictate_commit_failed" | "hands_free_command_executed" |
     # "hands_free_command_refused" | "hands_free_command_blocked" |
     # "hands_free_command_failed" |
     # "ava_dispatched" | "ava_rejected_not_substantive"
@@ -1023,44 +1022,6 @@ class SessionModeManager:
             "text": final_text, "chars": len(final_text),
             "mode_retained": self.mode,
         })
-
-    def apply_and_commit_pending_edit(
-        self, *, expected_source: str, replacement: str,
-    ) -> DispatchOutcome:
-        """Atomically replace the current unpasted thought, then commit it.
-
-        ``expected_source`` is the immutable snapshot used to create an edit
-        proposal. An exact compare-before-mutate prevents a late proposal from
-        overwriting speech that arrived while the rewrite worker was running.
-        The replacement is installed before commit so the existing focus lock
-        and paste-failure paths retain the accepted rewrite for a safe retry.
-
-        This method intentionally operates only on the pending HANDS FREE
-        buffer. It never selects or mutates text that is already in an editor.
-        """
-        current = self._dictate_pending_buffer
-        if not current:
-            return DispatchOutcome(kind="dictate_edit_refused", detail={
-                "reason": "no_pending_text",
-            })
-        if current != expected_source:
-            return DispatchOutcome(kind="dictate_edit_stale", detail={
-                "reason": "source_changed",
-                "expected_chars": len(expected_source),
-                "pending_chars": len(current),
-            })
-        if not replacement.strip():
-            return DispatchOutcome(kind="dictate_edit_refused", detail={
-                "reason": "empty_replacement",
-                "pending_chars": len(current),
-            })
-
-        self._dictate_pending_buffer = replacement
-        self._last_dictate_ended_terminal = chunk_ends_terminal(replacement)
-        outcome = self._commit_dictate_buffer(target_mode=None)
-        outcome.detail.setdefault("edited", True)
-        outcome.detail.setdefault("source_chars", len(expected_source))
-        return outcome
 
     def _dispatch_ava(self, text: str) -> DispatchOutcome:
         """Every AVA-mode utterance goes to the agent as natural language --
