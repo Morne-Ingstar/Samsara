@@ -597,6 +597,11 @@ class WakeConsumer:
                 app._wake_detector.reset()
             return
 
+        # Preserve the detector result across the async dispatch. An OWW hit
+        # has already supplied the cheap energy/shape prefilter, so the legacy
+        # RMS gate must not reject the same buffer before Whisper can confirm
+        # the phrase. Whisper confirmation remains mandatory.
+        oww_confirmed = bool(_oww_gated and app._oww_wake_detected)
         app._oww_wake_detected = False
 
         if app.app_state == 'long_dictation':
@@ -613,6 +618,7 @@ class WakeConsumer:
                 "wake_consumer.process_wake_word_buffer",
                 app.process_wake_word_buffer,
                 args=(buffer_copy, SAMPLE_RATE),
+                kwargs={"oww_confirmed": oww_confirmed},
                 daemon=True,
             )
 
