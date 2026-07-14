@@ -5962,7 +5962,53 @@ class DictationApp:
 
         return measured
 
-    def process_wake_word_buffer(self, buffer, src_rate=None):
+    def _wake_audio_is_below_gate(self, audio_rms, *, oww_confirmed=False):
+        """Return True when a wake buffer should be rejected before Whisper.
+
+        OpenWakeWord-positive buffers have already passed a purpose-built wake
+        detector. They still go through Whisper phrase confirmation, but must
+        not be rejected (or learned as ambient noise) by this secondary energy
+        gate. Other callers retain the existing adaptive/fixed RMS behavior.
+        """
+        if oww_confirmed:
+            logging.debug(
+                f"[WAKE] OWW-confirmed buffer bypassing RMS gate (rms {audio_rms:.4f}); "
+                "Whisper confirmation still required"
+            )
+            return False
+
+        ww_config = self.config.get('wake_word_config', {})
+        audio_config = ww_config.get('audio', {})
+        use_adaptive = audio_config.get('adaptive_gate', True)
+        if use_adaptive:
+            # Update rolling noise-floor estimate only from buffers that have
+            # not already been identified as wake speech by OpenWakeWord.
+            if self._wake_noise_floor is None:
+                self._wake_noise_floor = max(audio_rms, _NOISE_FLOOR_MIN)
+            elif audio_rms < self._wake_noise_floor * _NOISE_FLOOR_SPEECH_RATIO:
+                self._wake_noise_floor = max(
+                    (1.0 - _NOISE_FLOOR_ALPHA) * self._wake_noise_floor
+                    + _NOISE_FLOOR_ALPHA * audio_rms,
+                    _NOISE_FLOOR_MIN,
+                )
+
+            gate_level = max(self._wake_noise_floor * _SPEECH_FLOOR_RATIO, _ABS_FLOOR_MIN)
+            if audio_rms < gate_level:
+                logging.debug(
+                    f"[WAKE] gated (rms {audio_rms:.4f} < adaptive {gate_level:.4f}"
+                    f" [floor {self._wake_noise_floor:.4f} x{_SPEECH_FLOOR_RATIO}]) -- skipping"
+                )
+                return True
+        else:
+            speech_threshold = audio_config.get('speech_threshold', DEFAULT_SPEECH_THRESHOLD)
+            if audio_rms < speech_threshold:
+                logging.debug(
+                    f"[WAKE] Below speech threshold (RMS {audio_rms:.4f} < {speech_threshold:.4f}), skipping"
+                )
+                return True
+        return False
+
+    def process_wake_word_buffer(self, buffer, src_rate=None, *, oww_confirmed=False):
         """Process audio — check for wake word, commands, or dictation content.
 
         src_rate: sample rate of audio in buffer (default: self.capture_rate).
@@ -6001,43 +6047,9 @@ class DictationApp:
             # On CPU machines Whisper takes ~1s per call; calling it on every
             # chunk saturates the CPU. This gate rejects the buffer early when
             # the audio energy is not meaningfully above the ambient noise floor.
-            ww_config = self.config.get('wake_word_config', {})
-            audio_config = ww_config.get('audio', {})
             audio_rms = float(np.sqrt(np.mean(audio.astype(np.float32) ** 2)))
-
-            use_adaptive = audio_config.get('adaptive_gate', True)
-            if use_adaptive:
-                # Update rolling noise-floor estimate from ambient-only frames.
-                if self._wake_noise_floor is None:
-                    self._wake_noise_floor = max(audio_rms, _NOISE_FLOOR_MIN)
-                elif audio_rms < self._wake_noise_floor * _NOISE_FLOOR_SPEECH_RATIO:
-                    self._wake_noise_floor = max(
-                        (1.0 - _NOISE_FLOOR_ALPHA) * self._wake_noise_floor
-                        + _NOISE_FLOOR_ALPHA * audio_rms,
-                        _NOISE_FLOOR_MIN,
-                    )
-
-                # Absolute backstop only — the legacy speech_threshold is NOT
-                # used as a hard floor here, because a desktop-tuned value
-                # (e.g. 0.0200) would clamp the adaptive gate upward and defeat
-                # the whole point for low-gain mics. Adaptive mode trusts the
-                # measured floor; _ABS_FLOOR_MIN just blocks pure-DC buffers.
-                gate_level = max(self._wake_noise_floor * _SPEECH_FLOOR_RATIO, _ABS_FLOOR_MIN)
-
-                if audio_rms < gate_level:
-                    logging.debug(
-                        f"[WAKE] gated (rms {audio_rms:.4f} < adaptive {gate_level:.4f}"
-                        f" [floor {self._wake_noise_floor:.4f} x{_SPEECH_FLOOR_RATIO}]) -- skipping"
-                    )
-                    return
-            else:
-                # adaptive_gate=False: exact original fixed-threshold behaviour.
-                speech_threshold = audio_config.get('speech_threshold', DEFAULT_SPEECH_THRESHOLD)
-                if audio_rms < speech_threshold:
-                    logging.debug(
-                        f"[WAKE] Below speech threshold (RMS {audio_rms:.4f} < {speech_threshold:.4f}), skipping"
-                    )
-                    return
+            if self._wake_audio_is_below_gate(audio_rms, oww_confirmed=oww_confirmed):
+                return
 
             # FIX 2: In-progress flag — prevent concurrent Whisper calls.
             # On CPU a transcription can take longer than the next buffer window,
