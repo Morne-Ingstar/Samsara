@@ -57,7 +57,9 @@ logger = logging.getLogger(__name__)
 PORT = 47831
 EXTENSION_ID = "knjkiopjcnpieppomfegojdkndblkaai"
 EXPECTED_ORIGIN = f"chrome-extension://{EXTENSION_ID}"
-MAX_MESSAGE_SIZE = 8192
+# Up to 99 compact DOM hint records plus the authenticated envelope. The old
+# 8 KiB ceiling could reject a legitimate dense-page response near that cap.
+MAX_MESSAGE_SIZE = 16384
 HELLO_TIMEOUT_S = 5.0
 
 PAIRING_VERSION = 1

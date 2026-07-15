@@ -13,9 +13,10 @@ const test = require("node:test");
 const assert = require("node:assert/strict");
 const core = require("./content-core.js");
 
-test("prioritize: text-entry/button/link kinds rank before generic aria", () => {
+test("prioritize: text entry and navigation links beat repeated utility controls", () => {
   const candidates = [
     { kind: "aria", rect: { x: 10, y: 10, width: 20, height: 20 }, ref: "aria-1" },
+    { kind: "control", rect: { x: 10, y: 10, width: 20, height: 20 }, ref: "checkbox-1" },
     { kind: "link", rect: { x: 10, y: 10, width: 20, height: 20 }, ref: "link-1" },
     { kind: "button", rect: { x: 10, y: 10, width: 20, height: 20 }, ref: "button-1" },
     { kind: "input", rect: { x: 10, y: 10, width: 20, height: 20 }, ref: "input-1" },
@@ -23,8 +24,41 @@ test("prioritize: text-entry/button/link kinds rank before generic aria", () => 
   const out = core.prioritize(candidates, { x: 15, y: 15 }, 10);
   assert.deepEqual(
     out.map((c) => c.ref),
-    ["input-1", "button-1", "link-1", "aria-1"]
+    ["input-1", "link-1", "button-1", "checkbox-1", "aria-1"]
   );
+});
+
+test("classifyKind: checkbox/radio inputs are controls, not text entry", () => {
+  function fakeInput(type) {
+    return {
+      tagName: "INPUT",
+      type,
+      isContentEditable: false,
+      getAttribute(name) { return name === "type" ? type : null; },
+    };
+  }
+  assert.equal(core.classifyKind(fakeInput("checkbox")), "control");
+  assert.equal(core.classifyKind(fakeInput("radio")), "control");
+  assert.equal(core.classifyKind(fakeInput("search")), "input");
+});
+
+test("prioritize: dense repeated controls cannot crowd message links out of the cap", () => {
+  const candidates = [];
+  for (let i = 0; i < 40; i++) {
+    candidates.push({
+      kind: "control",
+      rect: { x: 10, y: i * 20, width: 16, height: 16 },
+      ref: "star-" + i,
+    });
+    candidates.push({
+      kind: "link",
+      rect: { x: 100, y: i * 20, width: 600, height: 18 },
+      ref: "message-" + i,
+    });
+  }
+  const out = core.prioritize(candidates, { x: 500, y: 400 }, 50);
+  const messageCount = out.filter((c) => c.ref.startsWith("message-")).length;
+  assert.equal(messageCount, 40);
 });
 
 test("prioritize: within the same kind, closer to viewport center wins", () => {
