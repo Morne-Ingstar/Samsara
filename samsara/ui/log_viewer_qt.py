@@ -116,7 +116,7 @@ class LogViewerQt:
 
     def show(self):
         if self._window is not None:
-            qt_runtime.post(self._window.show)
+            qt_runtime.post(self._window.showNormal)
             qt_runtime.post(self._window.raise_)
             qt_runtime.post(self._window.activateWindow)
         elif not self._init_posted:

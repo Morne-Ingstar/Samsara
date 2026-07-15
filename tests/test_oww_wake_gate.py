@@ -9,10 +9,10 @@ from samsara.audio_engine import wake_consumer as wake_consumer_module
 from samsara.audio_engine.wake_consumer import WakeConsumer
 
 
-def _sleeping_consumer(*, detected):
+def _sleeping_consumer(*, detected, wake_profiles=None):
     detector = SimpleNamespace(is_available=True, reset=Mock())
     app = SimpleNamespace(
-        config={"wake_profiles": []},
+        config={"wake_profiles": wake_profiles or []},
         _wake_detector=detector,
         app_state="asleep",
         wake_word_triggered=False,
@@ -51,6 +51,44 @@ def test_no_oww_hit_still_drops_buffer_before_whisper(monkeypatch):
 
     spawn.assert_not_called()
     detector.reset.assert_called_once_with()
+
+
+def test_oww_hit_stays_confirmed_when_whisper_profiles_are_enabled(monkeypatch):
+    consumer, app, _detector = _sleeping_consumer(
+        detected=True,
+        wake_profiles=[{"id": "hermes", "phrase": "activate hermes", "enabled": True}],
+    )
+    dispatched = {}
+
+    def fake_spawn(name, target, args=(), kwargs=None, daemon=True):
+        dispatched.update(name=name, target=target, args=args, kwargs=kwargs, daemon=daemon)
+
+    monkeypatch.setattr(wake_consumer_module.thread_registry, "spawn", fake_spawn)
+
+    consumer._flush([np.zeros(160, dtype=np.float32)])
+
+    assert dispatched["target"] is app.process_wake_word_buffer
+    assert dispatched["kwargs"] == {"oww_confirmed": True}
+    assert app._oww_wake_detected is False
+
+
+def test_profile_fallback_still_reaches_whisper_without_primary_oww_hit(monkeypatch):
+    consumer, app, detector = _sleeping_consumer(
+        detected=False,
+        wake_profiles=[{"id": "hermes", "phrase": "activate hermes", "enabled": True}],
+    )
+    dispatched = {}
+
+    def fake_spawn(name, target, args=(), kwargs=None, daemon=True):
+        dispatched.update(name=name, target=target, args=args, kwargs=kwargs, daemon=daemon)
+
+    monkeypatch.setattr(wake_consumer_module.thread_registry, "spawn", fake_spawn)
+
+    consumer._flush([np.zeros(160, dtype=np.float32)])
+
+    assert dispatched["target"] is app.process_wake_word_buffer
+    assert dispatched["kwargs"] == {"oww_confirmed": False}
+    detector.reset.assert_not_called()
 
 
 def _gate_app(*, adaptive=True, floor=None, threshold=0.02):

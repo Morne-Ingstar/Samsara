@@ -25,15 +25,28 @@ Public API (unchanged from Win32 version):
       dictation.py force-shows the pill for the session's duration and
       restores config-controlled visibility on session end.
   set_position(corner: str)
+  set_custom_position(screen_name: str, cx: float, cy: float)
+  enter_move_mode() / exit_move_mode(cancel: bool)
   flash_success() / flash_error() / flash_wake()
+
+Move mode (drag-to-reposition):
+  The tray's "Move listening indicator..." action calls enter_move_mode(),
+  which drops WindowTransparentForInput so the pill can be left-dragged,
+  without activating the window or stealing focus (WindowDoesNotAcceptFocus
+  stays set throughout). Releasing the mouse clamps the drop point to its
+  monitor's available geometry, stores it as a normalized center + screen
+  identity (not raw pixels -- see set_custom_position), restores click-
+  through, and emits placement_committed. A right-click while unlocked
+  offers the six presets plus "Cancel move". dictation.py owns persisting
+  the emitted placement to config.
 """
 
 import logging
 import math
 
-from PySide6.QtCore import Qt, QTimer, QRectF, QPointF
-from PySide6.QtGui import QColor, QFont, QFontMetrics, QPainter, QPainterPath
-from PySide6.QtWidgets import QApplication, QWidget
+from PySide6.QtCore import Qt, QTimer, QRectF, QPointF, Signal
+from PySide6.QtGui import QColor, QFont, QFontMetrics, QPainter, QPainterPath, QPen
+from PySide6.QtWidgets import QApplication, QMenu, QWidget
 
 logger = logging.getLogger(__name__)
 
@@ -101,12 +114,28 @@ def _lerp_color(c1: str, c2: str, t: float) -> str:
     return f"#{r:02x}{g:02x}{b:02x}"
 
 
+def _clamp_rect(x: int, y: int, w: int, h: int, geom) -> tuple:
+    """Clamp a w x h rect at (x, y) so it lies fully inside geom (a QRect)."""
+    max_x = geom.x() + max(geom.width() - w, 0)
+    max_y = geom.y() + max(geom.height() - h, 0)
+    x = min(max(x, geom.x()), max_x)
+    y = min(max(y, geom.y()), max_y)
+    return x, y
+
+
 # ---------------------------------------------------------------------------
 # ListeningIndicator
 # ---------------------------------------------------------------------------
 
 class ListeningIndicator(QWidget):
     """Always-on-top, click-through pill overlay — PySide6 implementation."""
+
+    # Emitted once a placement change is committed (drag release, or a
+    # preset chosen from the move-mode right-click menu). Payload is either
+    # {'type': 'custom', 'screen': str, 'cx': float, 'cy': float} or
+    # {'type': 'preset', 'position': str}. The widget does not persist this
+    # itself -- dictation.py owns config and the existing save path.
+    placement_committed = Signal(dict)
 
     def __init__(self):
         super().__init__(
@@ -127,6 +156,24 @@ class ListeningIndicator(QWidget):
         self._corner       = "bottom-center"
         self._command_mode = False
         self._thinking     = False
+
+        # Custom drag-to-position placement. None means "use self._corner".
+        # {'screen': QScreen.name(), 'cx': 0..1, 'cy': 0..1} -- a screen
+        # identity plus the pill's normalized center within that screen's
+        # available geometry, NOT absolute pixels. See _apply_static_position
+        # / _resolve_custom_screen for how this survives DPI, resolution,
+        # taskbar, and label-width changes.
+        self._custom_position = None
+
+        # Move-mode ("unlocked") state. Entered via the tray's "Move
+        # listening indicator..." action -- temporarily drops click-through
+        # so the pill can be left-dragged. See enter_move_mode/exit_move_mode.
+        self._unlocked              = False
+        self._dragging               = False
+        self._drag_offset            = None
+        self._was_hidden_before_move = False
+        self._pre_move_corner        = None
+        self._pre_move_custom        = None
 
         # Unified session mode badge (COMMAND/DICTATE/AVA) -- set by
         # samsara.session_modes via dictation.py._update_mode_overlay().
@@ -167,12 +214,14 @@ class ListeningIndicator(QWidget):
         self._thinking = False
         self._pulse_timer.stop()
         self._flash_timer.stop()
+        self._force_lock()
         super().hide()
 
     def destroy(self, destroyWindow=True, destroySubWindows=True):
         self._thinking = False
         self._pulse_timer.stop()
         self._flash_timer.stop()
+        self._force_lock()
         super().hide()
 
     def set_mode(self, mode_str):
@@ -231,8 +280,189 @@ class ListeningIndicator(QWidget):
         if corner not in VALID_POSITIONS:
             corner = "bottom-center"
         self._corner = corner
+        self._custom_position = None
         if self.isVisible():
             self._reposition()
+
+    def set_custom_position(self, screen_name, cx, cy):
+        """Restore a persisted custom placement (e.g. on app startup).
+
+        screen_name is a QScreen.name() identity; cx/cy are the pill's
+        normalized center within that screen's available geometry. If the
+        screen is missing when actually positioning, _resolve_custom_screen
+        falls back to the primary screen and clamps.
+
+        cx/cy come from on-disk config and may be malformed (missing, null,
+        non-numeric, NaN/inf) -- validate rather than let a bad file crash
+        indicator init; an invalid call is a no-op, leaving whatever
+        placement was already in effect.
+        """
+        try:
+            cx = float(cx)
+            cy = float(cy)
+        except (TypeError, ValueError):
+            logger.warning(
+                "Ignoring malformed custom listening-indicator position: cx=%r cy=%r",
+                cx, cy,
+            )
+            return
+        if not math.isfinite(cx) or not math.isfinite(cy):
+            logger.warning(
+                "Ignoring non-finite custom listening-indicator position: cx=%r cy=%r",
+                cx, cy,
+            )
+            return
+        self._custom_position = {
+            'screen': screen_name if isinstance(screen_name, str) else None,
+            'cx': min(max(cx, 0.0), 1.0),
+            'cy': min(max(cy, 0.0), 1.0),
+        }
+        if self.isVisible():
+            self._reposition()
+
+    # ------------------------------------------------------------------
+    # Move mode -- temporary drag-to-reposition
+    # ------------------------------------------------------------------
+
+    def enter_move_mode(self):
+        """Temporarily disable click-through so the pill can be dragged.
+
+        Does not activate the window or steal keyboard focus -- Qt.
+        WindowDoesNotAcceptFocus stays set throughout, and WA_ShowWithout
+        Activating (set in __init__) governs the re-show below.
+        """
+        if self._unlocked:
+            return
+        self._pre_move_corner = self._corner
+        self._pre_move_custom = dict(self._custom_position) if self._custom_position else None
+        self._was_hidden_before_move = not self.isVisible()
+        if not self.isVisible():
+            # Establish a sane on-screen position before it becomes visible
+            # and draggable, rather than whatever default the window
+            # manager last placed it at.
+            self._reposition()
+        self._unlocked = True
+        self.setWindowFlag(Qt.WindowType.WindowTransparentForInput, False)
+        self._reposition()  # resize for the "Drag to move" label; position untouched
+        self.update()
+        super().show()
+
+    def exit_move_mode(self, cancel=False):
+        """Leave move mode, restoring click-through.
+
+        cancel=True reverts to whatever placement was active before
+        enter_move_mode() (used by the right-click "Cancel move" action and
+        by hide()/destroy() safety paths). cancel=False keeps whatever
+        placement is currently set (used after a drag/preset commit).
+        """
+        if not self._unlocked:
+            return
+        self._dragging = False
+        if cancel:
+            self._corner = self._pre_move_corner
+            self._custom_position = self._pre_move_custom
+        self._unlocked = False
+        self.setWindowFlag(Qt.WindowType.WindowTransparentForInput, True)
+        if self._was_hidden_before_move:
+            super().hide()
+        else:
+            self._reposition()
+            super().show()
+        self.update()
+
+    def _force_lock(self):
+        """Immediately restore click-through with no visibility round-trip.
+
+        Used by hide()/destroy() so shutdown or a hidden indicator can never
+        be left in an interactive, non-click-through state.
+        """
+        if not self._unlocked:
+            return
+        self._dragging = False
+        self._unlocked = False
+        self.setWindowFlag(Qt.WindowType.WindowTransparentForInput, True)
+
+    def _commit_drag_position(self):
+        """Clamp the just-dragged position to its monitor, store it, and emit."""
+        screen = QApplication.screenAt(self.mapToGlobal(self.rect().center()))
+        if screen is None:
+            screen = QApplication.primaryScreen()
+        if screen is None:
+            self.exit_move_mode(cancel=True)
+            return
+        geom = screen.availableGeometry()
+        w, h = self.width(), self.height()
+        x, y = _clamp_rect(self.x(), self.y(), w, h, geom)
+        self.move(x, y)
+        cx = ((x + w / 2.0) - geom.x()) / max(geom.width(), 1)
+        cy = ((y + h / 2.0) - geom.y()) / max(geom.height(), 1)
+        cx = min(max(cx, 0.0), 1.0)
+        cy = min(max(cy, 0.0), 1.0)
+        self._custom_position = {'screen': screen.name(), 'cx': cx, 'cy': cy}
+        self._corner = None
+        payload = {'type': 'custom', 'screen': screen.name(), 'cx': cx, 'cy': cy}
+        self.exit_move_mode()
+        self.placement_committed.emit(payload)
+
+    def _choose_preset_from_menu(self, position):
+        self._custom_position = None
+        self._corner = position if position in VALID_POSITIONS else 'bottom-center'
+        payload = {'type': 'preset', 'position': self._corner}
+        self.exit_move_mode()
+        self.placement_committed.emit(payload)
+
+    def _resolve_custom_screen(self):
+        """Screen matching the stored custom-position identity, falling
+        back to the primary screen if it's no longer connected."""
+        name = self._custom_position.get('screen') if self._custom_position else None
+        if name:
+            for scr in QApplication.screens():
+                if scr.name() == name:
+                    return scr
+        return QApplication.primaryScreen()
+
+    # ------------------------------------------------------------------
+    # Mouse / context-menu handling -- only meaningful while unlocked;
+    # normal click-through operation never delivers these events.
+    # ------------------------------------------------------------------
+
+    def mousePressEvent(self, event):
+        if not self._unlocked or event.button() != Qt.MouseButton.LeftButton:
+            super().mousePressEvent(event)
+            return
+        self._dragging = True
+        self._drag_offset = event.globalPosition().toPoint() - self.pos()
+        event.accept()
+
+    def mouseMoveEvent(self, event):
+        if not self._unlocked or not self._dragging:
+            super().mouseMoveEvent(event)
+            return
+        self.move(event.globalPosition().toPoint() - self._drag_offset)
+        event.accept()
+
+    def mouseReleaseEvent(self, event):
+        if not self._unlocked or not self._dragging or event.button() != Qt.MouseButton.LeftButton:
+            super().mouseReleaseEvent(event)
+            return
+        self._dragging = False
+        self._commit_drag_position()
+        event.accept()
+
+    def contextMenuEvent(self, event):
+        if not self._unlocked:
+            super().contextMenuEvent(event)
+            return
+        menu = QMenu(self)
+        for position in VALID_POSITIONS:
+            act = menu.addAction(position)
+            act.triggered.connect(
+                lambda checked=False, p=position: self._choose_preset_from_menu(p)
+            )
+        menu.addSeparator()
+        cancel_act = menu.addAction("Cancel move")
+        cancel_act.triggered.connect(lambda: self.exit_move_mode(cancel=True))
+        menu.exec(event.globalPos())
 
     def set_thinking(self, active: bool):
         """Activate/deactivate the pulsing purple 'Vision' state."""
@@ -306,6 +536,11 @@ class ListeningIndicator(QWidget):
         """Return (bg_hex, fg_hex, label, show_dot) from current state."""
         t = self._pulse_step / _PULSE_STEPS
 
+        if self._unlocked:
+            # Move mode dominates every other display state -- the user is
+            # actively dragging the pill and needs an unambiguous cue.
+            return _IDLE_BG, _TEAL, "Drag to move", False
+
         if self._flash_bg is not None:
             if self._snoozed:
                 label = "Snoozed"
@@ -346,10 +581,36 @@ class ListeningIndicator(QWidget):
         return max(_PILL_MIN_W, text_w + 2 * _PILL_PAD_X + dot_reserve)
 
     def _reposition(self):
-        """Resize the widget to fit the current label and move it to the corner."""
+        """Resize the widget to fit the current label, then position it.
+
+        While unlocked (move mode) the position is left alone -- the user
+        is dragging it, or it's just been shown so it can be dragged.
+        """
+        self._resize_to_label()
+        if self._unlocked:
+            return
+        self._apply_static_position()
+
+    def _resize_to_label(self):
         _, _, label, show_dot = self._resolve_colors()
-        pill_w = self._pill_width(label, show_dot)
-        self.resize(pill_w, _PILL_H)
+        self.resize(self._pill_width(label, show_dot), _PILL_H)
+
+    def _apply_static_position(self):
+        """Position the pill per self._custom_position (if set) or the
+        preset self._corner. Called only when not unlocked."""
+        pill_w, pill_h = self.width(), _PILL_H
+
+        if self._custom_position is not None:
+            screen = self._resolve_custom_screen()
+            if screen is not None:
+                geom = screen.availableGeometry()
+                cx = geom.x() + self._custom_position['cx'] * geom.width()
+                cy = geom.y() + self._custom_position['cy'] * geom.height()
+                x = int(round(cx - pill_w / 2))
+                y = int(round(cy - pill_h / 2))
+                x, y = _clamp_rect(x, y, pill_w, pill_h, geom)
+                self.move(x, y)
+                return
 
         screen = QApplication.primaryScreen()
         if screen is None:
@@ -368,11 +629,11 @@ class ListeningIndicator(QWidget):
         elif corner == "top-right":
             x, y = wa_x + wa_w - pill_w - m, wa_y + m
         elif corner == "bottom-left":
-            x, y = wa_x + m, wa_y + wa_h - _PILL_H - m
+            x, y = wa_x + m, wa_y + wa_h - pill_h - m
         elif corner == "bottom-right":
-            x, y = wa_x + wa_w - pill_w - m, wa_y + wa_h - _PILL_H - m
+            x, y = wa_x + wa_w - pill_w - m, wa_y + wa_h - pill_h - m
         else:  # bottom-center default
-            x, y = cx, wa_y + wa_h - _PILL_H - m
+            x, y = cx, wa_y + wa_h - pill_h - m
 
         self.move(x, y)
 
@@ -406,6 +667,18 @@ class ListeningIndicator(QWidget):
         painter.setPen(fg)
         painter.setFont(self._font())
         painter.drawText(rect, Qt.AlignmentFlag.AlignCenter, label)
+
+        # Unlocked (move-mode) outline -- obvious but tasteful drag affordance
+        if self._unlocked:
+            pen = QPen(QColor(_TEAL))
+            pen.setWidth(2)
+            pen.setStyle(Qt.PenStyle.DashLine)
+            painter.setPen(pen)
+            painter.setBrush(Qt.BrushStyle.NoBrush)
+            outline_rect = rect.adjusted(1, 1, -1, -1)
+            outline_path = QPainterPath()
+            outline_path.addRoundedRect(outline_rect, _CORNER_R, _CORNER_R)
+            painter.drawPath(outline_path)
 
         painter.end()
 

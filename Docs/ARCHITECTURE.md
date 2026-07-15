@@ -145,12 +145,15 @@ All corrections use word boundaries to prevent substring corruption.
 
 ## Speech Detection
 
-Samsara uses Silero VAD (Voice Activity Detection) for real-time speech
-detection in wake word mode. Unlike RMS-based volume thresholds, VAD
-distinguishes human speech from fan noise, ambient hum, and other
-non-vocal sounds regardless of volume level.
+Samsara uses the Silero VAD (Voice Activity Detection) ONNX model bundled
+with faster-whisper for real-time speech detection in wake word mode. It is
+loaded locally through ONNX Runtime: startup never downloads VAD code or
+model files. Unlike RMS-based volume thresholds, VAD distinguishes human
+speech from fan noise, ambient hum, and other non-vocal sounds regardless of
+volume level.
 
-Falls back to RMS-based detection if torch is not available.
+A dedicated model instance is serialized across Samsara's audio threads.
+Loading or inference failure falls back to RMS-based detection.
 
 ## Threading Model
 

@@ -306,10 +306,11 @@ class WakeConsumer:
         # mid-hotkey-hold it kept running a full, separate utterance
         # (prebuffer prepend, VAD, buffering, eventual flush) concurrently
         # with the hotkey capture -- confirmed via the [SEAM] diagnostic
-        # added in commit 0e837ba. That utterance shares app._vad_model /
-        # app._vad_lock with the hotkey path's own contiguous-speech gate;
-        # Silero is recurrent, so interleaved calls from the two threads
-        # corrupt its hidden state mid-scan.
+        # added in commit 0e837ba. That utterance also contends for the
+        # dedicated app._vad_model / app._vad_lock used by the hotkey path's
+        # contiguous-speech gate. The current ONNX wrapper is stateless
+        # between calls and the shared lock serializes inference, but running
+        # a redundant wake utterance here still wastes work and delays gates.
         #
         # Toggle-command-mode and AI-command-mode are explicitly exempted:
         # both are active, user-initiated listening sessions that must
@@ -483,19 +484,18 @@ class WakeConsumer:
                 # onset is ever evaluated. The only way to reach this with
                 # _hotkey_recording=True is the intentional toggle-command-
                 # mode/AI-command-mode exemption (that servicing must keep
-                # running concurrently with a hotkey press). FIX 2 makes
-                # _buffer_has_contiguous_speech's scan atomic (lock held for
-                # the whole scan, state reset at scan start), so this
-                # remaining overlap can briefly BLOCK the gate's scan on
-                # this thread's VAD call (or vice versa) but can no longer
-                # CORRUPT it.
+                # running concurrently with a hotkey press). The stateless
+                # ONNX model's whole inference call is serialized by
+                # app._vad_lock, so this remaining overlap can briefly BLOCK
+                # the gate's scan (or vice versa) but cannot interleave two
+                # runs on the dedicated InferenceSession.
                 if getattr(app, '_hotkey_recording', False):
                     logger.debug(
                         "[SEAM] Wake-consumer speech onset occurred WHILE "
                         "_hotkey_recording=True -- reached only via the "
                         "toggle-command-mode/AI-command-mode exemption "
                         "(see FIX 1). VAD lock contention possible, "
-                        "corruption prevented by FIX 2's scan-long lock."
+                        "inference serialized by the shared VAD lock."
                     )
             else:
                 # Non-onset speech frame — append normally
@@ -585,14 +585,19 @@ class WakeConsumer:
             t.get('enabled', True)
             for t in getattr(app, 'config', {}).get('wake_profiles', [])
         )
-        _oww_gated = (
+        _primary_oww_eligible = (
             app._wake_detector is not None
             and app._wake_detector.is_available
             and app.app_state == 'asleep'
             and not app.wake_word_triggered
-            and not _has_wake_profiles
         )
-        if _oww_gated and not app._oww_wake_detected:
+        _primary_oww_hit = bool(
+            _primary_oww_eligible and app._oww_wake_detected
+        )
+        # With no profile fallbacks, the primary OWW model remains a strict
+        # pre-filter. Enabled profiles must still reach Whisper when Jarvis did
+        # not fire, because those profiles may have no OWW model of their own.
+        if _primary_oww_eligible and not _primary_oww_hit and not _has_wake_profiles:
             if app._wake_detector is not None:
                 app._wake_detector.reset()
             return
@@ -601,7 +606,11 @@ class WakeConsumer:
         # has already supplied the cheap energy/shape prefilter, so the legacy
         # RMS gate must not reject the same buffer before Whisper can confirm
         # the phrase. Whisper confirmation remains mandatory.
-        oww_confirmed = bool(_oww_gated and app._oww_wake_detected)
+        # A primary OWW hit remains authoritative even when wake profiles are
+        # enabled. Previously profile presence forced this False, so a 0.99
+        # Jarvis detection was subsequently discarded by the adaptive RMS
+        # gate. Profiles only relax the no-hit path; they must not erase a hit.
+        oww_confirmed = _primary_oww_hit
         app._oww_wake_detected = False
 
         if app.app_state == 'long_dictation':

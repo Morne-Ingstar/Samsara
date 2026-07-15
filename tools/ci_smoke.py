@@ -21,13 +21,12 @@ stock CI runner does not reliably have:
 
   - A cached Whisper model. WhisperModel(...) loads (and, on a fresh
     machine, downloads from Hugging Face Hub) BEFORE "[INIT] Startup
-    complete." is logged. On a first CI run this is a real network call of
-    unknown duration -- not something a hard pass/fail gate should depend
-    on this early in CI adoption.
+    complete." is logged. The timeout therefore includes download/model-load
+    time, but reaching that marker is required: staying alive without ever
+    completing startup is not a releasable build.
 
-So this script only asks the weaker, still-useful question: does the frozen
-EXE start, stay alive (or explicitly reach the boot marker) for a bounded
-window, and exit cleanly when asked -- with no *unexplained* crash. Its full
+So this script asks whether the frozen EXE reaches its explicit startup marker
+within a bounded window and has no *unexplained* crash. Its full
 log is uploaded as a build artifact for a human to read regardless of
 outcome. 2026-07-10: the workflow step that calls this now gates the release
 (continue-on-error removed) -- a non-zero exit here stops the build before
@@ -219,6 +218,31 @@ def terminate(proc: subprocess.Popen) -> str:
         return "force-killed after terminate() timeout"
 
 
+def evaluate_result(
+    *,
+    outcome: str,
+    still_alive: bool,
+    returncode: int | None,
+    stderr_crash_line: str | None,
+    unexplained_crash_line: str | None,
+) -> tuple[bool, str]:
+    """Return the release-gate decision after process/log collection."""
+
+    if stderr_crash_line:
+        return False, f"unexplained crash marker in stderr: {stderr_crash_line!r}"
+    if outcome == "already_running":
+        return False, "another Samsara instance is already running system-wide on this runner"
+    if unexplained_crash_line:
+        return False, f"unexplained crash marker in log: {unexplained_crash_line!r}"
+    if outcome == "exited":
+        return False, f"process exited on its own with code {returncode} before boot marker"
+    if outcome == "boot":
+        return True, f"reached {BOOT_MARKER!r}"
+    if outcome == "timeout" and still_alive:
+        return False, f"startup marker was not reached within the timeout: {BOOT_MARKER!r}"
+    return False, f"unhandled smoke outcome: {outcome!r}"
+
+
 def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("dist_path", help=r"Path to the PyInstaller onedir output, e.g. dist\Samsara")
@@ -309,32 +333,15 @@ def main(argv: list[str] | None = None) -> int:
         for line in benign_seen[:5]:
             print(f"        {line}")
 
-    # Checked FIRST, ahead of every other branch: a bootloader/import crash
-    # on stderr fails the build no matter what the log-based outcome was
-    # (boot marker reached, timed out alive, or otherwise) -- see the
-    # comment above scan_stderr() call.
-    if stderr_crash_line:
-        print(f"[FAIL] unexplained crash marker in stderr: {stderr_crash_line!r}")
-        return 1
-    if outcome == "already_running":
-        print("[FAIL] another Samsara instance is already running system-wide on this runner")
-        return 1
-    if unexplained_crash_line:
-        print(f"[FAIL] unexplained crash marker in log: {unexplained_crash_line!r}")
-        return 1
-    if outcome == "exited":
-        print(f"[FAIL] process exited on its own with code {proc.returncode} before boot marker/timeout")
-        return 1
-    if outcome == "boot":
-        print(f"[PASS] reached {BOOT_MARKER!r}")
-        return 0
-    if outcome == "timeout" and still_alive:
-        print(f"[PASS] process stayed alive for {args.timeout:.0f}s without crashing "
-              f"(did not reach boot marker -- likely still downloading/loading the Whisper model)")
-        return 0
-
-    print("[FAIL] unhandled outcome")
-    return 1
+    passed, detail = evaluate_result(
+        outcome=outcome,
+        still_alive=still_alive,
+        returncode=proc.returncode,
+        stderr_crash_line=stderr_crash_line,
+        unexplained_crash_line=unexplained_crash_line,
+    )
+    print(f"[{'PASS' if passed else 'FAIL'}] {detail}")
+    return 0 if passed else 1
 
 
 if __name__ == "__main__":

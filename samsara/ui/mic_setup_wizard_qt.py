@@ -68,6 +68,8 @@ _OWW_ATTEMPTS       = 3
 _OWW_ATTEMPT_TIMEOUT = 8.0
 _OWW_NOISE_FLOOR    = 0.005
 _OWW_TARGET_RMS     = 0.10
+_OWW_REARM_RMS      = 0.010
+_OWW_REARM_CHUNKS   = 3
 
 
 def _resample(audio, orig_sr, target_sr=16000):
@@ -143,6 +145,7 @@ class _WizardWindow(QDialog):
 
     _level_sig   = Signal(float)   # raw RMS from audio thread
     _oww_hit_sig = Signal()        # OWW detection from audio thread
+    _wake_cal_done_sig = Signal(int, object, str)  # generation, floor, error
 
     _STEP_DEVICE = 0
     _STEP_LEVEL  = 1
@@ -160,8 +163,8 @@ class _WizardWindow(QDialog):
         super().__init__()
         self._app = app
 
-        # Single persistent audio stream — opened on first step,
-        # closed only in closeEvent. Never reopened mid-navigation.
+        # One guide-owned preview stream at a time. It is paused while the
+        # production ACE stream is switched or performs quiet calibration.
         self._stream          = None
         self._stream_lock     = threading.Lock()
         self._wizard_active   = False   # master flag for the audio worker
@@ -182,6 +185,10 @@ class _WizardWindow(QDialog):
         self._attempt_started = None
         self._attempt_labels  = []
         self._oww_poll_timer  = None
+        self._oww_armed       = True
+        self._oww_quiet_chunks = 0
+        self._wake_cal_generation = 0
+        self._wake_cal_cancel = None
 
         self.setWindowTitle("Microphone Setup")
         self.setFixedSize(560, 480)
@@ -195,6 +202,7 @@ class _WizardWindow(QDialog):
         self._build_ui()
         self._level_sig.connect(self._on_level)
         self._oww_hit_sig.connect(self._on_oww_hit)
+        self._wake_cal_done_sig.connect(self._on_wake_calibration_result)
         self._go_to(self._STEP_DEVICE)
 
     # ----------------------------------------------------------------
@@ -455,6 +463,7 @@ class _WizardWindow(QDialog):
 
         # Stop OWW poll timer whenever we leave the wake word step
         if prev_step == self._STEP_WAKE:
+            self._cancel_wake_calibration()
             self._oww_running = False
             if self._oww_poll_timer is not None:
                 self._oww_poll_timer.stop()
@@ -511,14 +520,17 @@ class _WizardWindow(QDialog):
             self._oww_tip.setText("")
             self._next_btn.setEnabled(False)
             self._next_btn.setText("Continue  ->")
-            self._setup_oww_test()
+            self._begin_wake_calibration()
 
         elif step == self._STEP_DONE:
             self._build_done_summary()
 
     def _go_next(self):
         step = self._current_step
-        if step == self._STEP_LEVEL:
+        if step == self._STEP_DEVICE:
+            if not self._apply_selected_microphone():
+                return
+        elif step == self._STEP_LEVEL:
             self._do_calibrate()
         elif step == self._STEP_DONE:
             self._finish()
@@ -537,11 +549,11 @@ class _WizardWindow(QDialog):
     # ----------------------------------------------------------------
     # Single persistent audio worker
     #
-    # One thread runs for the lifetime of the wizard.  It reads chunks
-    # from the selected device and emits _level_sig on every chunk.
+    # A guide-owned worker reads chunks from the selected device and emits
+    # _level_sig on every chunk. The worker is paused around the production
+    # runtime switch and quiet wake calibration so those paths own the mic.
     # When _current_step == _STEP_WAKE and _oww_running is True it also
-    # runs OWW detection.  No stream is ever opened or closed mid-
-    # navigation -- this eliminates the WASAPI device-conflict crash.
+    # runs OWW detection.
     # ----------------------------------------------------------------
 
     def _ensure_audio_running(self):
@@ -595,10 +607,21 @@ class _WizardWindow(QDialog):
                             if rms > _OWW_NOISE_FLOOR:
                                 gain = min(_OWW_TARGET_RMS / rms, 20.0)
                                 oww_chunk = np.clip(oww_chunk * gain, -1.0, 1.0)
-                            if self._oww_detector.detected(oww_chunk):
+                            if not self._oww_armed:
+                                if rms <= _OWW_REARM_RMS:
+                                    self._oww_quiet_chunks += 1
+                                    if self._oww_quiet_chunks >= _OWW_REARM_CHUNKS:
+                                        self._oww_detector.reset()
+                                        self._oww_armed = True
+                                        self._oww_quiet_chunks = 0
+                                        logger.debug("[WIZARD] Wake detector re-armed after silence")
+                                else:
+                                    self._oww_quiet_chunks = 0
+                            elif self._oww_detector.detected(oww_chunk):
+                                self._oww_armed = False
+                                self._oww_quiet_chunks = 0
                                 self._oww_hit_sig.emit()
 
-                        time.sleep(0.08)
                     except Exception:
                         break
 
@@ -701,6 +724,41 @@ class _WizardWindow(QDialog):
         self._selected_device = self._device_combo.currentData()
         self._capture_rate = _detect_capture_rate(self._selected_device)
 
+    def _apply_selected_microphone(self) -> bool:
+        """Apply the selected device through the production runtime switch."""
+        mic_id = self._device_combo.currentData()
+        mic_name = self._device_combo.currentText()
+        current_id = self._app.config.get('microphone')
+
+        # Do not write config first: switch_microphone() has a same-ID guard,
+        # and would leave ACE on its old stream if config were pre-updated.
+        self._stop_audio()
+        try:
+            if mic_id != current_id:
+                self._app.switch_microphone(mic_id)
+                # Concrete devices are persisted by switch_microphone(). The
+                # System-default row has no available_mics entry, so persist
+                # its display name explicitly after the runtime switch.
+                if mic_id is None:
+                    self._app.update_config_and_save({
+                        'microphone': None,
+                        'microphone_name': mic_name,
+                    })
+            else:
+                self._app.update_config_and_save({
+                    'microphone': mic_id,
+                    'microphone_name': mic_name,
+                })
+            return True
+        except Exception as exc:
+            logger.exception(f"[WIZARD] Could not switch microphone: {exc}")
+            self._device_status.setText(
+                "Could not switch microphones. Check the log and try again."
+            )
+            self._device_status.setStyleSheet(f"color:{_ERROR};font-size:12px;")
+            self._ensure_audio_running()
+            return False
+
     def _on_level(self, rms: float):
         level = min(rms / 0.20, 1.0)
         step = self._current_step
@@ -765,6 +823,71 @@ class _WizardWindow(QDialog):
     # Wake word test
     # ----------------------------------------------------------------
 
+    def _cancel_wake_calibration(self):
+        """Cancel the current quiet calibration and invalidate late results."""
+        self._wake_cal_generation += 1
+        cancel = self._wake_cal_cancel
+        self._wake_cal_cancel = None
+        if cancel is not None:
+            cancel.set()
+
+    def _begin_wake_calibration(self):
+        """Measure the production wake floor without blocking Qt."""
+        self._cancel_wake_calibration()
+        self._stop_audio()
+        self._wake_cal_generation += 1
+        generation = self._wake_cal_generation
+        cancel = threading.Event()
+        self._wake_cal_cancel = cancel
+
+        self._wake_intro.setText(
+            "Please stay quiet for <b>3 seconds</b> while Samsara measures "
+            "the background sound around your microphone."
+        )
+        self._oww_result_lbl.setText("Calibrating background level...")
+        self._oww_tip.setText("You can close this guide safely to cancel.")
+
+        def _run():
+            floor = None
+            error = ""
+            try:
+                floor = self._app.calibrate_wake_mic(
+                    seconds=3.0, cancel_event=cancel,
+                )
+            except Exception as exc:
+                error = str(exc)
+                logger.exception(f"[WIZARD] Wake calibration failed: {exc}")
+            if not cancel.is_set():
+                self._wake_cal_done_sig.emit(generation, floor, error)
+
+        thread_registry.spawn("wizard-wake-calibration", _run, daemon=True)
+
+    def _on_wake_calibration_result(self, generation: int, floor, error: str):
+        """Qt-thread completion handler for the quiet calibration."""
+        if generation != self._wake_cal_generation or self._current_step != self._STEP_WAKE:
+            return
+        self._wake_cal_cancel = None
+        wake_phrase = self._app.config.get(
+            'wake_word_config', {}
+        ).get('phrase', DEFAULT_WAKE_PHRASE)
+        self._wake_intro.setText(
+            f'Now say <b>"{wake_phrase.title()}"</b> three times at your normal '
+            f'speaking volume. Each circle lights up when Samsara hears it.'
+        )
+        if floor is None:
+            self._oww_result_lbl.setText(
+                "Background calibration was unavailable; continuing with the existing setting."
+            )
+            if error:
+                logger.warning(f"[WIZARD] Wake calibration unavailable: {error}")
+        else:
+            self._oww_result_lbl.setText(
+                "Background level calibrated. Listening for the wake word..."
+            )
+            logger.info(f"[WIZARD] Production wake floor calibrated: {float(floor):.5f}")
+        self._oww_tip.setText("")
+        self._setup_oww_test()
+
     def _setup_oww_test(self):
         """Initialise OWW detector and start the attempt timer."""
         wake_phrase = self._app.config.get('wake_word_config', {}).get('phrase', DEFAULT_WAKE_PHRASE)
@@ -789,6 +912,9 @@ class _WizardWindow(QDialog):
             self._next_btn.setEnabled(True)
             return
 
+        self._oww_detector.reset()
+        self._oww_armed = True
+        self._oww_quiet_chunks = 0
         self._oww_running = True
         self._attempt_started = time.monotonic()
         self._ensure_audio_running()
@@ -820,6 +946,17 @@ class _WizardWindow(QDialog):
         self._attempt_labels[idx].set_result(hit)
         if hit:
             self._oww_hits += 1
+            logger.info(
+                f"[WIZARD] Wake attempt {idx + 1}/{_OWW_ATTEMPTS}: detected"
+            )
+        else:
+            logger.info(
+                f"[WIZARD] Wake attempt {idx + 1}/{_OWW_ATTEMPTS}: missed"
+            )
+            if self._oww_detector is not None:
+                self._oww_detector.reset()
+            self._oww_armed = True
+            self._oww_quiet_chunks = 0
         self._oww_attempt_idx += 1
         self._attempt_started = time.monotonic()
 
@@ -891,12 +1028,7 @@ class _WizardWindow(QDialog):
         self._done_summary.setText("\n".join(parts))
 
     def _finish(self):
-        dev_idx = self._device_combo.currentData()
-        if dev_idx is not None:
-            try:
-                self._app.update_config_and_save({'microphone': dev_idx})
-            except Exception as e:
-                logger.debug(f"_finish: {e}")
+        # Device selection is applied when leaving the device page.
         self.close()
 
     def _open_debug(self):
@@ -910,6 +1042,7 @@ class _WizardWindow(QDialog):
     # ----------------------------------------------------------------
 
     def closeEvent(self, e):
+        self._cancel_wake_calibration()
         self._stop_audio()
         if self._oww_poll_timer is not None:
             self._oww_poll_timer.stop()

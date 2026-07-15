@@ -35,7 +35,7 @@ import ctypes
 import sys
 import threading
 import time
-from typing import Dict, Optional
+from typing import Callable, Dict, Optional
 
 from samsara.constants import CLIPBOARD_PASTE_DELAY, CLIPBOARD_RESTORE_DELAY
 from samsara.log import get_logger
@@ -490,7 +490,12 @@ def copy_text(text: str) -> bool:
         return False
 
 
-def paste_with_preservation(text: str, paste_delay: float = CLIPBOARD_PASTE_DELAY, restore_delay: float = CLIPBOARD_RESTORE_DELAY) -> bool:
+def paste_with_preservation(
+    text: str,
+    paste_delay: float = CLIPBOARD_PASTE_DELAY,
+    restore_delay: float = CLIPBOARD_RESTORE_DELAY,
+    before_paste: Optional[Callable[[], bool]] = None,
+) -> bool:
     """
     Paste text via clipboard while preserving original clipboard content.
 
@@ -500,6 +505,8 @@ def paste_with_preservation(text: str, paste_delay: float = CLIPBOARD_PASTE_DELA
         text: Text to paste
         paste_delay: Delay after copying before pasting (seconds)
         restore_delay: Delay after pasting before restoring clipboard (seconds)
+        before_paste: Optional fail-closed focus guard, evaluated immediately
+            before Ctrl+V after clipboard preparation and paste delay.
 
     Returns:
         True if paste was successful
@@ -538,6 +545,12 @@ def paste_with_preservation(text: str, paste_delay: float = CLIPBOARD_PASTE_DELA
 
             # Small delay to ensure clipboard is ready
             time.sleep(paste_delay)
+
+            if before_paste is not None and not before_paste():
+                logger.warning(
+                    "[CLIP] Paste cancelled because the foreground target changed"
+                )
+                return False
 
             # Simulate Ctrl+V
             pyautogui.hotkey('ctrl', 'v')

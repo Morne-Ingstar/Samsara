@@ -16,9 +16,17 @@ import pytest
 PROJECT_ROOT = Path(__file__).parent.parent
 sys.path.insert(0, str(PROJECT_ROOT))
 
-for _mod in ("uiautomation", "win32api", "win32con", "win32gui", "win32process", "psutil"):
+for _mod in ("uiautomation", "win32api", "win32con", "win32gui", "win32process"):
     if _mod not in sys.modules:
         sys.modules[_mod] = types.ModuleType(_mod)
+
+# psutil is a real dependency used by the frozen-smoke tests.  Import it when
+# available instead of leaving a skeletal collection-time stub in sys.modules
+# for every test that runs after this module.
+try:
+    import psutil  # noqa: F401
+except ImportError:
+    sys.modules["psutil"] = types.ModuleType("psutil")
 
 import plugins.commands.show_numbers as sn
 

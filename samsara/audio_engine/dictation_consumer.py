@@ -126,6 +126,83 @@ class DictationSessionConsumer:
                 # actually contiguous -- see _log_seam_diagnostics.
                 self._frames.append((frame.seq, frame.device_epoch, frame.pcm.copy()))  # [MA-2]
 
+    def drain_after_release(
+        self,
+        *,
+        silence_ms: int = 300,
+        max_tail_ms: int = 1200,
+        speech_threshold: float = 0.008,
+    ) -> 'np.ndarray | None':
+        """Capture a bounded, speech-aware tail after the hotkey is released.
+
+        The old fixed 250 ms tail could end inside the user's final one or
+        two words. This watches only frames arriving after release, resets the
+        quiet run whenever speech continues, and then delegates to ``drain``
+        for the authoritative contiguous buffer. The hard cap guarantees
+        bounded latency under constant noise or a stalled input stream.
+        """
+        if max_tail_ms <= 0:
+            return self.drain()
+
+        silence_ms = max(0, int(silence_ms))
+        max_tail_ms = max(silence_ms, int(max_tail_ms))
+        speech_threshold = max(0.0, float(speech_threshold))
+        started = time.monotonic()
+        deadline = started + (max_tail_ms / 1000.0)
+        quiet_ms = 0
+        tail_frames = 0
+        reason = "max"
+        with self._frames_lock:
+            next_index = len(self._frames)
+            # The first PREBUFFER_FRAMES precede the hotkey press, so they
+            # describe this microphone's current ambient level without using
+            # the utterance itself.  A fixed 0.008 threshold classifies a
+            # noisier mic's ordinary room tone as speech forever, making every
+            # release wait for the hard cap.  Adapt upward from genuine
+            # pre-press audio while preserving the configured value as a floor.
+            prebuffer = [
+                pcm for _seq, _epoch, pcm in self._frames[:PREBUFFER_FRAMES]
+            ]
+
+        noise_floor = 0.0
+        if len(prebuffer) == PREBUFFER_FRAMES:
+            prebuffer_rms = [
+                float(np.sqrt(np.mean(
+                    (pcm.astype(np.float32) / 32767.0) ** 2
+                )))
+                for pcm in prebuffer
+            ]
+            # A low percentile ignores incidental pre-hotkey speech or bumps;
+            # 1.5x matches the app's existing adaptive wake-gate margin.
+            noise_floor = float(np.percentile(prebuffer_rms, 20))
+            speech_threshold = max(speech_threshold, noise_floor * 1.5)
+
+        while time.monotonic() < deadline:
+            with self._frames_lock:
+                new_frames = list(self._frames[next_index:])
+                next_index = len(self._frames)
+
+            for _seq, _epoch, pcm in new_frames:
+                tail_frames += 1
+                pcm_f32 = pcm.astype(np.float32) / 32767.0
+                rms = float(np.sqrt(np.mean(pcm_f32 * pcm_f32)))
+                quiet_ms = quiet_ms + FRAME_MS if rms < speech_threshold else 0
+                if quiet_ms >= silence_ms:
+                    reason = "silence"
+                    break
+            if reason == "silence":
+                break
+            time.sleep(0.01)
+
+        audio = self.drain()
+        elapsed_ms = int((time.monotonic() - started) * 1000)
+        logger.debug(
+            "[TAIL] release tail reason=%s elapsed=%dms frames=%d "
+            "threshold=%.4f noise_floor=%.4f",
+            reason, elapsed_ms, tail_frames, speech_threshold, noise_floor,
+        )
+        return audio
+
     def cancel(self) -> None:
         """Discard accumulated frames without assembling audio.
 

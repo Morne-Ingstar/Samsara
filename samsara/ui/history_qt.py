@@ -28,12 +28,22 @@ class HistoryQt:
 
     def show(self):
         if self._window is not None:
-            qt_runtime.post(self._window.show)
-            qt_runtime.post(self._window.raise_)
-            qt_runtime.post(self._window.activateWindow)
+            qt_runtime.post(self._show_and_refresh)
         elif not self._init_posted:
             self._init_posted = True
             qt_runtime.post(self._init_window)
+
+    def refresh(self):
+        """Refresh an existing history view on its owning Qt thread."""
+        if self._window is not None:
+            qt_runtime.post(self._window._view.refresh)
+
+    def _show_and_refresh(self):
+        """Runs on the Qt thread; prevents a reopened window looking stale."""
+        self._window._view.refresh()
+        self._window.show()
+        self._window.raise_()
+        self._window.activateWindow()
 
     def _init_window(self):
         """Runs on the Qt thread."""

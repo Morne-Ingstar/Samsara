@@ -5,7 +5,7 @@ formatting characters in the delivered text:
 
     "new line"                -> "\n"
     "new paragraph"           -> "\n\n"
-    "tab"                     -> "\t"
+    "insert tab"              -> "\t"
     "bullet" / "bullet point" -> "\n• " (own line, trailing space)
 
 Scope is DICTATE output only (hotkey dictation, the session DICTATE lane,
@@ -37,6 +37,7 @@ import re
 _SIMPLE_TOKENS = (
     ("new paragraph", "\n\n"),
     ("new line", "\n"),
+    ("insert tab", "\t"),
     ("bullet point", "\n• "),
     ("bullet", "\n• "),
 )
@@ -48,30 +49,14 @@ _START_OF_UTTERANCE_OVERRIDES = {
     "bullet": "• ",
 }
 
-_TAB_REPLACEMENT = "\t"
-
-# "tab" collides with common non-formatting phrases far more than the other
-# tokens do ("open a new tab", "press the tab key") -- guarded by hardcoded
-# preceding/following-word lists rather than substituting unconditionally.
-# Add more guard words here as new collisions are found.
-_TAB_PRECEDING_GUARDS = ("new", "browser", "next", "previous", "the", "a")
-_TAB_FOLLOWING_GUARDS = ("key",)
-
 _REPLACEMENTS = {phrase: repl for phrase, repl in _SIMPLE_TOKENS}
-_REPLACEMENTS["tab"] = _TAB_REPLACEMENT
 
 
 def _build_master_pattern() -> "re.Pattern[str]":
-    simple_alts = "|".join(rf"\b{re.escape(phrase)}\b" for phrase, _ in _SIMPLE_TOKENS)
-    # Each guard word gets its OWN negative lookbehind rather than one
-    # combined alternation -- Python's re requires fixed-width lookbehind,
-    # and the guard words have different lengths ("a" vs "previous").
-    precede_lookbehinds = "".join(
-        rf"(?<!\b{re.escape(w)}\s)" for w in _TAB_PRECEDING_GUARDS
+    alternatives = "|".join(
+        rf"\b{re.escape(phrase)}\b" for phrase, _ in _SIMPLE_TOKENS
     )
-    follow_alt = "|".join(re.escape(w) for w in _TAB_FOLLOWING_GUARDS)
-    tab_pattern = rf"{precede_lookbehinds}\btab\b(?!\s+(?:{follow_alt})\b)"
-    return re.compile(rf"{simple_alts}|{tab_pattern}", re.IGNORECASE)
+    return re.compile(alternatives, re.IGNORECASE)
 
 
 _MASTER_PATTERN = _build_master_pattern()

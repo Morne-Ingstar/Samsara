@@ -342,6 +342,11 @@ class UtteranceSignals:
     """
     has_contiguous_speech: Optional[bool]
     compression_ratios: tuple = ()
+    # True only when Whisper itself accepted every returned segment against
+    # its normal log-probability and no-speech thresholds. This is separate
+    # from VAD because a short, genuine control word may not form the general
+    # gate's required contiguous run.
+    transcript_confident: Optional[bool] = None
 
 
 # Stricter than dictation.py's general hallucination backstop (3.0, a notch
@@ -367,6 +372,25 @@ def passes_switch_anti_hallucination_gate(signals: UtteranceSignals) -> bool:
         if cr is None or cr > SWITCH_WORD_MAX_COMPRESSION_RATIO:
             return False
     return True
+
+
+def passes_dictate_commit_gate(signals: UtteranceSignals, *, has_pending_text: bool) -> bool:
+    """Accept a genuine sole ``end`` without weakening other control words.
+
+    The normal switch gate remains preferred. For an already-buffered thought
+    only, its short-word false-negative may use Whisper's accepted segment as
+    corroboration, provided VAD actually ran and compression remains sane.
+    """
+    if passes_switch_anti_hallucination_gate(signals):
+        return True
+    if not has_pending_text or signals.has_contiguous_speech is not False:
+        return False
+    if signals.transcript_confident is not True or not signals.compression_ratios:
+        return False
+    return all(
+        ratio is not None and ratio <= SWITCH_WORD_MAX_COMPRESSION_RATIO
+        for ratio in signals.compression_ratios
+    )
 
 
 # ---------------------------------------------------------------------------
@@ -534,7 +558,10 @@ ForegroundHwndResolver = Callable[[], Optional[int]]
 # undo-stack/stage_buffer record of what was really typed, since the input
 # they pass in is the pre-formatting accumulated buffer, not what a
 # formatting-capable injector may have pasted.
-InjectFn = Callable[[str], Union[bool, str, None]]
+# Buffered commits pass a second callable that must be checked immediately
+# before the injector emits its paste keystroke. Legacy/unbuffered paths still
+# call the injector with text only.
+InjectFn = Callable[..., Union[bool, str, None]]
 RemoveCharsFn = Callable[[int], None]
 CommandDispatchFn = Callable[[str], CommandDispatchResult]
 HandsFreeCommandProbeFn = Callable[[str], Optional[HandsFreeCommandMatch]]
@@ -679,7 +706,15 @@ class SessionModeManager:
         switch = None if (scratch or commit) else match_switch_word(text)
 
         if scratch or commit or switch is not None:
-            if passes_switch_anti_hallucination_gate(signals):
+            control_gate_passed = (
+                passes_dictate_commit_gate(
+                    signals,
+                    has_pending_text=bool(self._dictate_pending_buffer),
+                )
+                if commit
+                else passes_switch_anti_hallucination_gate(signals)
+            )
+            if control_gate_passed:
                 if scratch:
                     ok = self._do_scratch_that()
                     if self._on_scratch_result:
@@ -728,6 +763,19 @@ class SessionModeManager:
     def _matches_abort_phrase(self, text: str) -> bool:
         return any(pattern.search(text) for pattern in self._abort_patterns)
 
+    def commit_pending_dictation(self) -> DispatchOutcome:
+        """Commit buffered DICTATE immediately for a trusted local trigger.
+
+        Keyboard/UI callers do not need speech hallucination gating, but they
+        must reuse the same transactional focus/paste path as spoken ``end``.
+        """
+        if not self._buffer_dictate_until_commit or self.mode is not SessionMode.DICTATE:
+            return DispatchOutcome(kind="dictate_commit_unavailable", detail={
+                "mode": self.mode,
+                "buffered": self._buffer_dictate_until_commit,
+            })
+        return self._commit_dictate_buffer(target_mode=None)
+
     def _do_switch(self, switch: SwitchMatch) -> DispatchOutcome:
         """Transactional: a prefix switch ("dictate <payload>") only counts
         as having happened if the payload actually got dispatched. If
@@ -773,10 +821,9 @@ class SessionModeManager:
             # dictated" from AVA should mean THIS excursion, not some stale
             # one from earlier in the session.
             if self._buffer_dictate_until_commit:
-                # Persistent buffered DICTATE locks per thought, not for the
-                # entire lane. The first chunk captures the text box that
-                # should receive that thought; a successful "end" releases
-                # it so the next thought can target a different app/window.
+                # Persistent buffered DICTATE selects the destination only at
+                # explicit commit, so staging may span deliberate app/window
+                # changes. A successful "end" releases that commit target.
                 self._dictate_target_process = None
                 self._dictate_target_hwnd = None
             else:
@@ -922,10 +969,6 @@ class SessionModeManager:
         correction pass and immediately before delivery") and risk embedding
         control characters (e.g. a "new line" token's literal \\n) into text
         that clean_text/smart_correct haven't seen yet."""
-        if not self._dictate_pending_buffer:
-            self._dictate_target_process = self._foreground_exe_resolver()
-            self._dictate_target_hwnd = self._foreground_hwnd_resolver()
-
         if self._last_dictate_ended_terminal is None:
             to_stage = chunk_raw.strip()
         else:
@@ -959,19 +1002,28 @@ class SessionModeManager:
                 "text": "", "empty": True, "mode_retained": self.mode,
             })
 
+        # A persistent hands-free session is intentionally allowed to span
+        # applications and text boxes. The foreground at the explicit commit
+        # word ("end") is therefore the destination for this thought; staging
+        # speech must not pin the session to whichever window happened to be
+        # focused minutes earlier.
         foreground = self._foreground_exe_resolver()
         current_hwnd = self._foreground_hwnd_resolver()
-        process_matches = check_focus_lock(self._dictate_target_process, foreground)
-        hwnd_matches = (
-            self._dictate_target_hwnd is not None
-            and current_hwnd == self._dictate_target_hwnd
-        )
-        if not process_matches or not hwnd_matches:
+        self._dictate_target_process = foreground
+        self._dictate_target_hwnd = current_hwnd
+
+        def commit_target_still_focused() -> bool:
+            return (
+                check_focus_lock(foreground, self._foreground_exe_resolver())
+                and current_hwnd is not None
+                and self._foreground_hwnd_resolver() == current_hwnd
+            )
+
+        if not foreground or current_hwnd is None:
             log.warning(
-                "[SESSION] DICTATE commit retained: focus changed "
-                "(target_process=%r current_process=%r target_hwnd=%r current_hwnd=%r)",
-                self._dictate_target_process, foreground,
-                self._dictate_target_hwnd, current_hwnd,
+                "[SESSION] DICTATE commit retained: current paste target unavailable "
+                "(current_process=%r current_hwnd=%r)",
+                foreground, current_hwnd,
             )
             if self._on_focus_lock_revert:
                 self._on_focus_lock_revert()
@@ -983,8 +1035,29 @@ class SessionModeManager:
                 "foreground_hwnd": current_hwnd,
             })
 
-        delivered = self._inject_fn(text)
+        delivered = self._inject_fn(text, commit_target_still_focused)
         if delivered is False:
+            after_process = self._foreground_exe_resolver()
+            after_hwnd = self._foreground_hwnd_resolver()
+            focus_changed = (
+                not check_focus_lock(foreground, after_process)
+                or after_hwnd != current_hwnd
+            )
+            if focus_changed:
+                log.warning(
+                    "[SESSION] DICTATE commit retained: focus changed during injection "
+                    "(target_process=%r current_process=%r target_hwnd=%r current_hwnd=%r)",
+                    foreground, after_process, current_hwnd, after_hwnd,
+                )
+                if self._on_focus_lock_revert:
+                    self._on_focus_lock_revert()
+                return DispatchOutcome(kind="dictate_commit_blocked_focus_lock", detail={
+                    "pending_chars": len(text),
+                    "target_process": foreground,
+                    "foreground": after_process,
+                    "target_hwnd": current_hwnd,
+                    "foreground_hwnd": after_hwnd,
+                })
             error = RuntimeError("dictation paste was not delivered")
             log.error("[SESSION] DICTATE commit retained: paste callback reported failure")
             if self._on_switch_dispatch_error:

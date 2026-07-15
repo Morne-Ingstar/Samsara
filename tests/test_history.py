@@ -67,6 +67,17 @@ def test_migration_adds_new_columns(tmp_db):
     hm.close()
 
 
+def test_migration_does_not_repeat_alter_table_for_existing_columns(tmp_db):
+    hm = HistoryManager(db_path=tmp_db)
+    statements = []
+    hm._conn.set_trace_callback(statements.append)
+
+    hm._migrate()
+
+    assert not any("ALTER TABLE" in statement.upper() for statement in statements)
+    hm.close()
+
+
 # ---------------------------------------------------------------------------
 # Persistence
 # ---------------------------------------------------------------------------

@@ -57,6 +57,7 @@ _HOTKEY_FALLBACKS = {
     "hotkey": "ctrl+shift",
     "undo_hotkey": "ctrl+alt+z",
     "streaming_hotkey": "capslock",
+    "dictate_commit_hotkey": "ctrl+space",
 }
 
 _WAKE_FALLBACKS = {
@@ -138,6 +139,11 @@ def _resolve_hotkeys(app) -> list[dict]:
             "label": ("Hands-free Session" if cm_mode == "toggle" else "Command Mode (hold)"),
             "value": _pretty_button(cm_button),
             "enabled": cm_enabled,
+        },
+        {
+            "label": "Paste staged thought",
+            "value": _pretty_key_combo(cfg.get("dictate_commit_hotkey", _HOTKEY_FALLBACKS["dictate_commit_hotkey"])),
+            "enabled": cm_enabled and cm_mode == "toggle",
         },
         {
             # Ava has no dedicated physical hotkey -- it remains a voice
@@ -269,8 +275,6 @@ def _resolve_formatting_tokens(app) -> dict:
         {"phrase": " / ".join(f'"{p}"' for p in phrases), "inserts": _describe(repl)}
         for repl, phrases in grouped.items()
     ]
-    rows.append({"phrase": '"tab"', "inserts": _describe(ft._TAB_REPLACEMENT)})
-
     return {"enabled": enabled, "tokens": rows}
 
 

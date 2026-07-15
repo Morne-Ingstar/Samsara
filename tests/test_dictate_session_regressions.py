@@ -10,7 +10,7 @@ text at commit -- never per natural-pause chunk.
 """
 
 from types import SimpleNamespace
-from unittest.mock import Mock, call, patch
+from unittest.mock import ANY, Mock, call, patch
 
 from samsara.audio_engine.wake_consumer import WakeConsumer
 from samsara.session_modes import SessionMode, UtteranceSignals
@@ -142,10 +142,28 @@ def test_buffered_session_commit_records_legacy_and_sqlite_history():
 
     assert outcome.kind == "dictate_committed"
     assert manager.mode is SessionMode.DICTATE
-    app._paste_preserving_clipboard.assert_called_once_with("1 complete thought.")
+    app._paste_preserving_clipboard.assert_called_once_with("1 complete thought.", before_paste=ANY)
     app.add_to_history.assert_called_once_with("1 complete thought.", is_command=False)
     assert app._log_history.call_args.kwargs["mode"] == "dictate"
     app._notify_main_window.assert_called_once_with("1 complete thought.")
+
+
+def test_staged_chunks_create_no_history_until_one_successful_paste():
+    app = _buffered_dictation_app()
+    signals = UtteranceSignals(has_contiguous_speech=True, compression_ratios=(1.2,))
+    with patch("dictation._get_foreground_exe_lower", return_value="codex.exe"), \
+         patch("dictation._get_foreground_hwnd", return_value=4242):
+        manager = app._ensure_session_mode_manager()
+        manager.force_mode(SessionMode.DICTATE)
+        manager.dispatch_utterance("first part", signals)
+        manager.dispatch_utterance("second part", signals)
+        app.add_to_history.assert_not_called()
+        app._log_history.assert_not_called()
+        outcome = manager.dispatch_utterance("end", signals)
+
+    assert outcome.kind == "dictate_committed"
+    app.add_to_history.assert_called_once()
+    app._log_history.assert_called_once()
 
 
 # ---------------------------------------------------------------------------
@@ -159,7 +177,7 @@ def test_lowercase_chunk_gets_capitalized_and_punctuated_on_end():
     app = _buffered_dictation_app()
     manager, outcome = _dictate_and_end(app, ["this is a test"])
     assert outcome.kind == "dictate_committed"
-    app._paste_preserving_clipboard.assert_called_once_with("This is a test.")
+    app._paste_preserving_clipboard.assert_called_once_with("This is a test.", before_paste=ANY)
 
 
 def test_two_chunks_join_into_one_thought_not_two_forced_sentences():
@@ -170,7 +188,8 @@ def test_two_chunks_join_into_one_thought_not_two_forced_sentences():
     manager, outcome = _dictate_and_end(app, ["Hello there", "How are you today"])
     assert outcome.kind == "dictate_committed"
     app._paste_preserving_clipboard.assert_called_once_with(
-        "Hello there how are you today."
+        "Hello there how are you today.",
+        before_paste=ANY,
     )
 
 
@@ -180,7 +199,8 @@ def test_existing_commas_and_apostrophes_survive():
     manager, outcome = _dictate_and_end(app, ["it's raining, and cold"])
     assert outcome.kind == "dictate_committed"
     app._paste_preserving_clipboard.assert_called_once_with(
-        "It's raining, and cold."
+        "It's raining, and cold.",
+        before_paste=ANY,
     )
 
 
@@ -189,7 +209,7 @@ def test_verbatim_mode_adds_no_capitalization_or_terminal_punctuation():
     app = _buffered_dictation_app({"cleanup_mode": "verbatim", "auto_capitalize": False})
     manager, outcome = _dictate_and_end(app, ["print the value"])
     assert outcome.kind == "dictate_committed"
-    app._paste_preserving_clipboard.assert_called_once_with("print the value")
+    app._paste_preserving_clipboard.assert_called_once_with("print the value", before_paste=ANY)
 
 
 def test_formatting_tokens_applied_exactly_once():
@@ -199,7 +219,7 @@ def test_formatting_tokens_applied_exactly_once():
     app = _buffered_dictation_app()
     manager, outcome = _dictate_and_end(app, ["hello new line world"])
     assert outcome.kind == "dictate_committed"
-    app._paste_preserving_clipboard.assert_called_once_with("Hello\nworld.")
+    app._paste_preserving_clipboard.assert_called_once_with("Hello\nworld.", before_paste=ANY)
 
 
 def test_enabled_smart_corrections_receives_complete_thought_once():
@@ -215,7 +235,7 @@ def test_enabled_smart_corrections_receives_complete_thought_once():
     mock_sc.assert_called_once()
     called_text = mock_sc.call_args[0][0].lower()
     assert "first part" in called_text and "second part" in called_text
-    app._paste_preserving_clipboard.assert_called_once_with("mocked result.")
+    app._paste_preserving_clipboard.assert_called_once_with("mocked result.", before_paste=ANY)
 
 
 def test_disabled_smart_corrections_never_called():

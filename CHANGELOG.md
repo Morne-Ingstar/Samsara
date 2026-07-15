@@ -4,11 +4,11 @@ All notable changes to Samsara are documented here.
 
 ## [Unreleased]
 
-## [0.22.0] - 2026-07-13
+## [0.22.0] - 2026-07-15
 
 The hands-free release. Toggle voice control is now one persistent lane where
-ordinary speech is buffered as dictation and a curated set of navigation
-commands remains available without changing modes. Show Numbers also gains a
+ordinary speech is buffered as dictation and exact whole-utterance commands
+remain available without changing modes. Show Numbers also gains a
 browser DOM path alongside its Windows UI Automation fallback.
 
 ### Added
@@ -16,11 +16,15 @@ browser DOM path alongside its Windows UI Automation fallback.
 - **Persistent HANDS FREE dictation and commands** — natural pauses no longer
   paste partial fragments. Samsara buffers the complete thought until the sole
   utterance "end", pastes it once, and stays hands-free for the next text box.
-  Exact navigation commands such as scrolling, Show Numbers, focus, click,
-  submit, and field/window movement coexist with dictation; `literal ...`
-  remains the escape for dictating a reserved command phrase.
+  Any enabled command or user macro can execute as an exact whole utterance;
+  scrolling, Show Numbers, focus, click, submit, field/window movement, and
+  app launches coexist with dictation. `literal ...` remains the escape for
+  dictating a reserved command phrase.
+- **Speech-aware hold-to-record release tail** — capture continues only until
+  the user's final speech ends (with a bounded fail-safe), preventing the last
+  one or two words from being stranded in the next recording's pre-buffer.
 - **DOM-aware Show Numbers for Chromium browsers** — a bundled Manifest V3
-  extension and authenticated loopback bridge expose visible page controls,
+  extension and mutually authenticated loopback bridge expose visible page controls,
   including ARIA and contenteditable targets, while UI Automation remains the
   fallback for browser chrome and non-browser applications. Overlay rendering
   now accounts for Windows/Qt DPI conversion and multi-monitor coordinates.
@@ -29,6 +33,11 @@ browser DOM path alongside its Windows UI Automation fallback.
 - **Themed reminder toasts** — reminders use the shared Qt runtime, batch
   same-tick notifications, avoid stealing focus, and wait until Show Numbers
   closes before appearing.
+- **OpenRouter cloud provider** — Ava's bring-your-own-key cloud mode now offers
+  OpenRouter alongside DeepSeek, OpenAI, and Anthropic.
+- **Configuration backup and restore** — Settings can export and import a
+  complete configuration snapshot. Because backups include private values such
+  as API keys and webhook URLs, Samsara warns before writing or importing one.
 
 ### Fixed
 
@@ -49,6 +58,9 @@ browser DOM path alongside its Windows UI Automation fallback.
   longer leak across profile changes.
 - **History date navigation** can query the selected day directly instead of
   silently returning only the current window.
+- **Cloud configuration imports cannot redirect built-in providers** through
+  hidden endpoint overrides or silently carry an existing API key to a newly
+  selected provider.
 
 ### Changed
 
@@ -57,6 +69,8 @@ browser DOM path alongside its Windows UI Automation fallback.
   focused regressions forbid network imports and requests from the plugin.
 - **Pull-request CI runs on Windows** to match Samsara's supported platform and
   Windows-only dependencies.
+- **v0.22 publishes the verified CPU package only** — CUDA remains a
+  source/developer path until it has an equivalent automated release gate.
 
 ## [0.21.1] - 2026-07-13
 
@@ -135,10 +149,11 @@ downloads.
 
 ### Added
 
-- **Spoken formatting tokens** — say "new line", "new paragraph", "tab", or
+- **Spoken formatting tokens** — say "new line", "new paragraph", "insert tab", or
   "bullet" while dictating and get real formatting, applied after
-  corrections so nothing mangles it. Collision-guarded ("open a new tab"
-  stays literal). Toggleable in config.
+  corrections so nothing mangles it. The ordinary word "tab" stays literal;
+  say "press tab" or "next field" as a standalone utterance for the key
+  action. Toggleable in config.
 - **Quick Reference window** — a tray-menu cheat sheet of your hotkeys, wake
   phrases, send word, lane-switch phrases, and formatting tokens — every
   value read live from your current settings, never hardcoded.

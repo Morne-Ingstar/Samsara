@@ -20,8 +20,8 @@ window, Show Numbers, clicking, and submitting do not require mode switching.
 
 - **Buffered HANDS FREE dictation** — pauses no longer paste partial fragments
   or force you to re-enter Dictate mode after every thought.
-- **Commands and dictation coexist** — curated exact commands navigate safely;
-  `literal ...` lets you dictate a reserved phrase intentionally.
+- **Commands and dictation coexist** — any enabled command or macro can run as
+  an exact whole utterance; `literal ...` dictates the phrase intentionally.
 - **DOM-aware Show Numbers** — Chromium page controls can come from the bundled
   extension/loopback bridge, with UI Automation fallback plus high-DPI and
   multi-monitor coordinate handling.
@@ -52,7 +52,7 @@ See [CHANGELOG.md](CHANGELOG.md) for the complete v0.22.0 notes and history.
 
 ## What Can It Do?
 
-Samsara is a **local-by-default** voice control system powered by Whisper — transcription, commands, and wake-word detection run on your machine unless you explicitly opt into a network-backed feature (Ava's bring-your-own-key cloud mode, Smart Corrections' optional cloud fallback), each gated behind your own API key. It runs as a Windows app with a main hub window, system tray integration, and hands-free control over your entire computer.
+Samsara is a **local-by-default** voice control system powered by Whisper — transcription, commands, and wake-word detection run on your machine unless you explicitly opt into a network-backed feature: Ava's bring-your-own-key cloud mode, Smart Corrections' optional cloud fallback, or Edge TTS's Azure Neural voices. Cloud LLM features require your own API key; Edge TTS requires internet but no API key. Samsara runs as a Windows app with a main hub window, system tray integration, and hands-free control over your entire computer.
 
 ### Hands-Free Wake (flagship)
 
@@ -76,14 +76,14 @@ Wake phrases, targets, and send behavior are all configurable. Built on custom O
 
 ### Voice AI — Ava
 
-Hold Right Alt and speak. By default, Ava sends your question to a local Ollama LLM and reads the answer back to you via TTS — no cloud, no API key, no typing, fully offline unless you turn on cloud mode below.
+Hold Right Alt and speak. By default, Ava sends your question to a local Ollama LLM and reads the answer back to you via TTS — no cloud LLM, no API key, and no typing. It remains fully offline with Windows TTS; selecting Edge TTS sends the response text to Microsoft's online speech service.
 
 - Ask anything: "Ava, what's the capital of Mongolia?"
 - Get coding help: "Ava, what does this error mean?"
 - **Conversational memory** — Ava remembers the conversation. Follow up with "what about Germany?" and she knows you were asking about capitals.
 - Responses are spoken aloud and also displayed in the history panel
 - Uses whatever Ollama model you have installed locally
-- Optional cloud mode (DeepSeek, OpenAI, Anthropic) with your own API key
+- Optional cloud mode (DeepSeek, OpenAI, Anthropic, OpenRouter) with your own API key
 - TTS is interruptible — start talking and Ava stops
 - Say "ava forget" to clear the conversation and start fresh
 
@@ -91,7 +91,7 @@ Also reachable by voice in command mode: hold Right Ctrl and say "Hey Ava, [ques
 
 ### Text-to-Speech
 
-Samsara can speak. Uses EdgeTTS or Windows Natural voices — not the robotic pyttsx3 voices. The smart AudioCoordinator manages the audio: music ducks while Samsara speaks, the mic stays clean, and if you start talking mid-response, TTS stops immediately.
+Samsara can speak. Windows Natural voices run locally; Edge TTS uses Microsoft's Azure Neural service and sends the text selected for speech to Microsoft. The smart AudioCoordinator manages the audio: music ducks while Samsara speaks, the mic stays clean, and if you start talking mid-response, TTS stops immediately.
 
 Enabled and configured in Settings → TTS tab. Off by default.
 
@@ -162,7 +162,7 @@ def my_command(app, remainder):
 
 Ships with 31 plugins including health tracking, voice reminders, alarm management, voice AI / Ava (Ollama + cloud LLM), smart home control, music and media transport, 3D printer integration, macros, audio switching, tab finder, web shortcuts, timer, GIF search, screen recording, scroll (5-speed + horizontal + page nav), text marker (deferred range selection), volume/mute (Core Audio API), window switcher (letter-based targeting), show numbers (hands-free clicking), Stremio, and more.
 
-**Privacy note on the Task List plugin:** tasks you add by voice (`plugins/commands/tasks.py`) are stored locally only. As of v0.21.1 this plugin makes no network requests of any kind — an earlier undisclosed "sync to Arcana" network call has been removed entirely (see CHANGELOG.md).
+**Privacy note on the Task List plugin:** tasks you add by voice (`plugins/commands/tasks.py`) are stored locally only. As of v0.21.1 this plugin makes no network requests of any kind — an earlier undisclosed "sync to Arcana" network call has been removed entirely (see CHANGELOG.md). If you explicitly select Edge TTS, spoken task confirmations use Microsoft's online speech service like any other text Samsara reads aloud.
 
 ---
 
@@ -171,10 +171,12 @@ Ships with 31 plugins including health tracking, voice reminders, alarm manageme
 ### Download for Windows
 
 1. Go to the [latest release](https://github.com/Morne-Ingstar/Samsara/releases/latest)
-2. Download **Samsara-Windows-\*.zip** (grab the CUDA pack too if you have an NVIDIA GPU — see the release notes)
+2. Download **Samsara-Windows-\*.zip**
 3. Extract and run **Samsara.exe** — a setup wizard walks you through microphone selection and model download
 
-**NVIDIA GPU recommended** for ~300ms transcription. Works on CPU too, just slower.
+The official v0.22 package is the verified CPU build. It works without an
+NVIDIA GPU, though transcription is slower than a correctly configured CUDA
+source installation.
 
 ### Run from Source
 
@@ -191,9 +193,8 @@ If you have an NVIDIA GPU, Samsara will run dramatically faster on CUDA (~10x). 
 
 **The dropdown only offers CUDA if Samsara can find the CUDA runtime DLLs at startup.** When installing from source with a fresh environment, those DLLs (`cublas64_12.dll`, `cublasLt64_12.dll`) are not bundled with `ctranslate2` and Samsara will silently fall back to CPU.
 
-Two ways to fix this:
-
-**Option A — Copy from torch (if torch is installed):**
+For a source installation, copy the matching runtime DLLs from torch if it is
+already installed:
 
 Torch bundles its own copy of cuBLAS. Copy the two DLLs into ctranslate2's folder:
 
@@ -202,11 +203,11 @@ copy "<env>\Lib\site-packages\torch\lib\cublas64_12.dll" "<env>\Lib\site-package
 copy "<env>\Lib\site-packages\torch\lib\cublasLt64_12.dll" "<env>\Lib\site-packages\ctranslate2\"
 ```
 
-**Option B — Install the CUDA Pack:**
-
-Download `Samsara-CUDA-Pack-vX.X.X.zip` from the [GitHub releases page](https://github.com/Morne-Ingstar/Samsara/releases) and extract the DLLs into your `ctranslate2` site-packages folder.
-
 Once the DLLs are in place, restart Samsara, open Settings → Advanced, and select **CUDA (NVIDIA GPU)** in the device dropdown. The startup log should show `Device: cuda, Compute: float16`.
+
+v0.22 does not advertise or publish a separate CUDA pack. Packaged-release
+users should assume CPU operation unless a future release explicitly includes
+a separately verified GPU artifact.
 
 ### Configuring Wake Profiles & Plugins
 
@@ -326,7 +327,7 @@ python -m pytest tests/ -v
 - [x] **Voice reminders & alarms** — "remind me to stretch every 30 min", streaks, gamification
 - [x] **Expanded scrolling** — scroll to top/bottom, page up/down, horizontal scroll
 - [x] 410+ voice commands with 31-plugin system
-- [x] Voice AI / Ava — local Ollama + optional cloud (DeepSeek/OpenAI/Anthropic)
+- [x] Voice AI / Ava — local Ollama + optional cloud (DeepSeek/OpenAI/Anthropic/OpenRouter)
 - [x] Text-to-Speech with EdgeTTS / Windows Natural voices and smart audio ducking
 - [x] Keyboard command mode (hold-to-talk walkie-talkie)
 - [x] Earbud-style media transport ("play"/"pause"/"next"/"mute")

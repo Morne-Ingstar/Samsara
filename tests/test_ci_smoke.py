@@ -110,6 +110,30 @@ class TestLogScannerSyntheticCases:
         assert scanner.outcome == "already_running"
 
 
+class TestReleaseGateOutcome:
+    def test_boot_marker_is_required_for_success(self):
+        passed, detail = ci_smoke.evaluate_result(
+            outcome="timeout",
+            still_alive=True,
+            returncode=None,
+            stderr_crash_line=None,
+            unexplained_crash_line=None,
+        )
+        assert passed is False
+        assert "startup marker was not reached" in detail
+
+    def test_clean_boot_succeeds(self):
+        passed, detail = ci_smoke.evaluate_result(
+            outcome="boot",
+            still_alive=True,
+            returncode=None,
+            stderr_crash_line=None,
+            unexplained_crash_line=None,
+        )
+        assert passed is True
+        assert ci_smoke.BOOT_MARKER in detail
+
+
 class TestLogScannerRealCiLog:
     """Regression fixture: the actual downloaded CI log that surfaced both
     the real ModuleNotFoundError bug (Fix 1) and the false-positive

@@ -5,21 +5,12 @@
 mss>=9.0
 
 # Core - Speech Recognition
-faster-whisper>=1.0.0
+# Pin with the bundled silero_vad_v6.onnx/API used by dictation.py.
+faster-whisper==1.2.1
 
-# Core - Speech Detection (Silero VAD)
-# 2026-07-10 correction: torch is NOT a transitive dep of faster-whisper --
-# that package uses ctranslate2 as its inference backend specifically to
-# avoid a torch dependency. dictation.py imports torch directly (Silero VAD),
-# so it must be pinned explicitly, not assumed to arrive transitively. Pinned
-# to the plain PyPI CPU wheel (matching the dev env's torch version number,
-# 2.5.1) rather than the dev env's local "+cu121" CUDA build, which is only
-# available from PyTorch's own package index, not PyPI -- a clean
-# `pip install -r requirements.txt` on a CPU-only CI runner needs the plain
-# PyPI wheel. torchaudio must stay version-aligned with torch (e.g. torch
-# 2.7.0 needs torchaudio 2.7.0).
-torch==2.5.1
-torchaudio==2.5.1
+# Core - Speech Detection (bundled faster-whisper Silero ONNX model)
+# Direct runtime dependency: used by dictation.py, not merely transitively.
+onnxruntime==1.24.4
 
 # Core - Audio
 sounddevice>=0.4.6
@@ -96,14 +87,19 @@ shiboken6==6.11.1
 # detection in dictation.py, not just a transitive faster-whisper dependency)
 ctranslate2==4.7.1
 
-# Screen/webcam frame handling (gesture lane, show-numbers overlay, etc.)
-opencv-python==4.13.0.92
+# Screen/webcam frame handling (gesture lane, show-numbers overlay, etc.).
+# MediaPipe declares the contrib distribution; installing both opencv-python
+# and opencv-contrib-python makes them overwrite the same ``cv2`` package in
+# an order-dependent way on a clean build runner.
+opencv-contrib-python==4.13.0.92
 
 # Cloud-fallback TTS voice
 edge-tts==7.2.8
 
 # Gesture lane (webcam hand-tracking)
 mediapipe==0.10.9
+# MediaPipe 0.10.9's generated message classes require protobuf 3.x.
+protobuf>=3.20.3,<4
 
 # Rhyme/phonetic lookup (voice training / phonetic wash)
 pronouncing==0.3.0

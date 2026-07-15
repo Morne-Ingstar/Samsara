@@ -20,7 +20,9 @@ def _build(*, probe=None, command_matches=True):
     state = {"exe": "editor.exe", "hwnd": 101}
     events = []
 
-    def inject(text):
+    def inject(text, focus_guard=None):
+        if focus_guard is not None and not focus_guard():
+            return False
         events.append(("paste", text))
         return text
 
@@ -108,7 +110,7 @@ def test_focus_changing_command_commits_before_it_executes():
     ]
 
 
-def test_focus_mismatch_blocks_navigation_and_retains_pending_text():
+def test_intentional_focus_change_before_command_commits_to_current_target():
     def probe(text):
         if text.lower() == "other window":
             return _match("other window", policy=PendingTextPolicy.COMMIT)
@@ -120,10 +122,9 @@ def test_focus_mismatch_blocks_navigation_and_retains_pending_text():
 
     outcome = manager.dispatch_utterance("other window", GOOD)
 
-    assert outcome.kind == "hands_free_command_blocked"
-    assert outcome.detail["commit_outcome"] == "dictate_commit_blocked_focus_lock"
-    assert manager.dictate_pending_buffer == "do not lose this"
-    assert events == []
+    assert outcome.kind == "hands_free_command_executed"
+    assert manager.dictate_pending_buffer == ""
+    assert events == [("paste", "do not lose this"), ("command", "other window")]
 
 
 def test_distrusted_reserved_command_is_neither_executed_nor_dictated():
@@ -174,6 +175,7 @@ def _probe_app(canonical_by_text):
     app = DictationApp.__new__(DictationApp)
     app.command_executor = Mock()
     app.command_executor.find_command.side_effect = canonical_by_text.get
+    app.command_executor.find_exact_command.side_effect = canonical_by_text.get
     return app
 
 
@@ -207,6 +209,44 @@ def test_runtime_probe_accepts_bare_number_only_while_overlay_active():
 
     assert match.dispatch_text == "click twenty six"
     assert match.pending_policy is PendingTextPolicy.COMMIT
+
+
+def test_runtime_probe_runs_any_enabled_exact_command_and_commits_first():
+    app = _probe_app({"open chrome": "open chrome"})
+
+    match = app._probe_hands_free_command("open Chrome")
+
+    assert match.dispatch_text == "open chrome"
+    assert match.phrase == "open chrome"
+    assert match.pending_policy is PendingTextPolicy.COMMIT
+
+
+def test_runtime_probe_leaves_command_prefix_with_remainder_as_dictation():
+    app = _probe_app({"open chrome": "open chrome"})
+    app.command_executor.find_exact_command.side_effect = lambda text: (
+        "open chrome" if text == "open chrome" else None
+    )
+
+    assert app._probe_hands_free_command("open chrome please") is None
+
+
+def test_runtime_probe_leaves_bare_tab_as_dictation():
+    app = _probe_app({})
+
+    assert app._probe_hands_free_command("tab") is None
+
+
+def test_runtime_probe_accepts_standalone_press_tab_command_only():
+    app = _probe_app({"press tab": "press tab"})
+
+    exact = app._probe_hands_free_command("press tab")
+    sentence = app._probe_hands_free_command(
+        "I want you to press tab after this sentence",
+    )
+
+    assert exact.dispatch_text == "press tab"
+    assert exact.pending_policy is PendingTextPolicy.COMMIT
+    assert sentence is None
 
 
 def test_global_abort_still_exits_before_any_hands_free_probe():

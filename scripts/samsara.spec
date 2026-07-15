@@ -8,6 +8,7 @@ import os
 import sys
 from pathlib import Path
 from PyInstaller.utils.hooks import collect_all, collect_submodules
+from tools.release_manifest import tracked_tree_datas
 
 block_cipher = None
 
@@ -85,40 +86,24 @@ sounddevice_data = os.path.join(site_packages, '_sounddevice_data')
 if os.path.exists(sounddevice_data):
     datas.append((sounddevice_data, '_sounddevice_data'))
 
-# 5. App-specific data files
-datas.append((str(app_dir / 'sounds'), 'sounds'))
-datas.append((str(app_dir / 'profiles'), 'profiles'))
+# 5. App-specific data files. Use Git's tracked-file manifest when building
+# from a checkout so ignored/untracked workstation assets and __pycache__
+# files cannot make a local build differ from the clean CI artifact.
+datas += tracked_tree_datas(app_dir, 'sounds', 'sounds')
+datas += tracked_tree_datas(app_dir, 'profiles', 'profiles')
 datas.append((str(app_dir / 'commands.json'), '.'))
-# Bundle the entire plugins directory so commands/*.py are available at runtime
-datas.append((str(app_dir / 'plugins'), 'plugins'))
+# Plugins are runtime-loaded Python/data files, so preserve their relative
+# paths while applying the same tracked-file release manifest.
+datas += tracked_tree_datas(app_dir, 'plugins', 'plugins')
 # Brave/Chromium DOM Show Numbers extension -- bundled wholesale (same
-# pattern as plugins/ above) so a frozen build still has a folder to point
+# tracked-file rule as plugins/ above) so a frozen build still has a folder to point
 # Brave's "Load unpacked" at; see browser_extension/README.md.
-datas.append((str(app_dir / 'browser_extension'), 'browser_extension'))
-# tools/ (2026-07-10) -- plugins/commands/stremio.py does `import
-# stremio_control` after inserting Path(__file__).resolve().parents[2] /
-# "tools" onto sys.path. plugins/commands/*.py are loaded dynamically at
-# runtime (directory scan + exec, not a static import PyInstaller's own
-# analysis ever sees -- see the hiddenimports comment above for
-# samsara.audio_switch), so that import was never bundled at all: CI's
-# frozen smoke test failed with "ModuleNotFoundError: No module named
-# 'stremio_control'". parents[2] from a frozen plugin file (dist\Samsara\
-# _internal\plugins\commands\stremio.py) already correctly computes
-# _internal\tools -- the bootstrap code was right all along, tools/ was
-# just never actually placed there. Bundling it as data (same pattern as
-# plugins/ immediately above) fixes this with no plugin code changes
-# required; plugins/commands/stremio.py additionally hardens its import
-# with a sys._MEIPASS-aware fallback in case that ever changes.
-# Unlike plugins/ (a curated runtime directory), tools/ also accumulates
-# local dev-only artifacts -- notably tools/stremio_remote_token.txt, a
-# REAL local secret for the LAN phone remote generated during testing, and
-# __pycache__ -- that must never end up inside a distributed build. Bundle
-# only *.py files (every tools/ module, so a future plugin depending on a
-# different tools/ module doesn't silently break again the same way).
-_tools_dir = app_dir / 'tools'
-if _tools_dir.exists():
-    for _py_file in _tools_dir.glob('*.py'):
-        datas.append((str(_py_file), 'tools'))
+datas += tracked_tree_datas(app_dir, 'browser_extension', 'browser_extension')
+# plugins/commands/stremio.py imports this runtime helper dynamically after
+# adding the bundled tools directory to sys.path. Keep this an explicit
+# whitelist: tools/ also contains diagnostics, build helpers, and local
+# artifacts that must never be shipped merely because they use a .py suffix.
+datas.append((str(app_dir / 'tools' / 'stremio_control.py'), 'tools'))
 # NOTE: config.json is intentionally NOT bundled — it contains dev-machine
 # paths and credentials. A fresh config is generated on first run.
 
@@ -370,6 +355,10 @@ a = Analysis(
         # Exclude problematic modules
         'charset_normalizer',
         # Exclude unnecessary large packages
+        # Exclude heavy ML frameworks. Runtime VAD is provided by
+        # faster_whisper's bundled ONNX model; torch/torchaudio are not needed.
+        # INCLUDE_CUDA above may still harvest selected CUDA DLLs from an
+        # installed torch package without bundling the Python framework.
         'matplotlib',
         'pandas',
         'IPython',
@@ -397,7 +386,6 @@ a = Analysis(
         'fairscale',
         'timm',
         'torchvision',  # Not needed for audio
-        # torchaudio is needed by Silero VAD — do NOT exclude
         'xformers',
         'triton',
         'altair',

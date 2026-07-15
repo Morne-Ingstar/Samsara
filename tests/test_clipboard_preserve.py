@@ -333,6 +333,29 @@ class TestHungOwnerGuard:
         assert result is True
         assert restore_calls == [], "an empty save must not trigger a restore call"
 
+    def test_focus_guard_blocks_ctrl_v_after_clipboard_preparation(self, monkeypatch):
+        """A target change during formatting/copy must fail before Ctrl+V."""
+        monkeypatch.setattr(
+            clipboard_module, "save_clipboard", lambda: ClipboardSnapshot()
+        )
+        monkeypatch.setattr(clipboard_module.pyperclip, "copy", lambda _text: None)
+        hotkeys = []
+        monkeypatch.setattr(
+            "pyautogui.hotkey",
+            lambda *args, **kwargs: hotkeys.append((args, kwargs)),
+            raising=False,
+        )
+
+        result = clipboard_module.paste_with_preservation(
+            "retained text",
+            paste_delay=0,
+            restore_delay=0,
+            before_paste=lambda: False,
+        )
+
+        assert result is False
+        assert hotkeys == []
+
 
 # ============================================================================
 # Real clipboard round-trip -- skipped if clipboard access is unavailable

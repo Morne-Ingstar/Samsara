@@ -7,6 +7,9 @@
   "background": {
     "service_worker": "background.js"
   },
+  "action": {
+    "default_title": "Samsara Show Numbers"
+  },
   "content_scripts": [
     {
       "matches": ["http://*/*", "https://*/*"],

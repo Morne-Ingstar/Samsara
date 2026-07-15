@@ -23,6 +23,7 @@ from typing import Optional, Callable, Dict, List, Any
 import sys
 
 from samsara.log import get_logger
+from samsara.output_devices import output_sample_rate
 from samsara.runtime import thread_registry
 
 logger = get_logger(__name__)
@@ -74,7 +75,14 @@ class AlarmManager:
         'success': 'success.wav',  # For completion feedback
     }
     
-    def __init__(self, config_dir: Path, sounds_dir: Path, get_config: Callable, save_config: Callable):
+    def __init__(
+        self,
+        config_dir: Path,
+        sounds_dir: Path,
+        get_config: Callable,
+        save_config: Callable,
+        output_device: Optional[int] = None,
+    ):
         """
         Initialize the alarm manager.
         
@@ -88,11 +96,13 @@ class AlarmManager:
         self.sounds_dir = Path(sounds_dir)
         self.get_config = get_config
         self.save_config = save_config
+        self.output_device = output_device
         
         self.running = False
         self.thread = None
+        self._started_at: Optional[float] = None
         
-        # Track active alarms (id -> last_triggered timestamp)
+        # Timer anchors (id -> epoch seconds at start/enable/last trigger).
         self.last_triggered: Dict[str, float] = {}
         
         # Currently nagging alarm (only one at a time)
@@ -102,7 +112,10 @@ class AlarmManager:
         
         # Sound cache for low-latency playback
         self._sound_cache: Dict[str, np.ndarray] = {}
-        self._sound_sample_rate = 44100
+        self._sound_sample_rate = (
+            output_sample_rate(sd, output_device, fallback=44100)
+            if HAS_SOUNDDEVICE else 44100
+        )
         
         # Callbacks
         self.on_alarm_triggered: Optional[Callable[[dict], None]] = None
@@ -364,6 +377,18 @@ class AlarmManager:
         
         # Fallback to default alarm
         return self._sound_cache.get('alarm')
+
+    def set_output_device(self, device_id: Optional[int]):
+        """Route future alarm and preview playback to this output."""
+        self.output_device = device_id
+        if not HAS_SOUNDDEVICE:
+            return
+        new_rate = output_sample_rate(
+            sd, self.output_device, fallback=self._sound_sample_rate,
+        )
+        if new_rate != self._sound_sample_rate:
+            self._sound_sample_rate = new_rate
+            self._load_sound_cache()
     
     def play_sound(self, alarm: dict, volume: float = 0.7):
         """Play the sound for an alarm."""
@@ -372,10 +397,22 @@ class AlarmManager:
         if audio is not None and HAS_SOUNDDEVICE:
             try:
                 scaled = (audio * volume).flatten()
-                sd.play(scaled, self._sound_sample_rate)
+                sd.play(scaled, self._sound_sample_rate, device=self.output_device)
                 sd.wait()
             except Exception as e:
-                print(f"[ALARM] Sound playback error: {e}")
+                if self.output_device is not None:
+                    logger.warning(
+                        "[ALARM] Output device %s failed (%s); falling back to system default",
+                        self.output_device, e,
+                    )
+                    # Re-resolve the default endpoint rate and reload cached
+                    # audio before retrying; reusing the selected device's PCM
+                    # rate can fail on a different default mix format.
+                    self.set_output_device(None)
+                    self.play_sound(alarm, volume)
+                    return
+                else:
+                    logger.error("[ALARM] Sound playback error: %s", e)
                 self._fallback_play(alarm)
         else:
             self._fallback_play(alarm)
@@ -419,10 +456,20 @@ class AlarmManager:
             audio = self._load_wav(path)
             if audio is not None:
                 try:
-                    sd.play((audio * volume).flatten(), self._sound_sample_rate)
+                    scaled = (audio * volume).flatten()
+                    sd.play(scaled, self._sound_sample_rate, device=self.output_device)
                     sd.wait()
                 except Exception as e:
-                    print(f"[ALARM] Preview playback error: {e}")
+                    if self.output_device is not None:
+                        logger.warning(
+                            "[ALARM] Preview output device %s failed (%s); using system default",
+                            self.output_device, e,
+                        )
+                        self.set_output_device(None)
+                        self.play_sound_file(sound_path, volume)
+                        return
+                    else:
+                        logger.error("[ALARM] Preview playback error: %s", e)
         elif HAS_WINSOUND and path.exists():
             try:
                 winsound.PlaySound(str(path), winsound.SND_FILENAME)
@@ -433,7 +480,15 @@ class AlarmManager:
         """Start the alarm check loop."""
         if self.running:
             return
-        
+
+        # An interval starts when alarm service starts; a fresh process must
+        # not treat an empty anchor as Unix epoch and fire every alarm now.
+        now = time.time()
+        self._started_at = now
+        for alarm in self.items:
+            if alarm.get('enabled', False):
+                alarm_id = alarm.get('id', alarm.get('name', 'unknown'))
+                self.last_triggered[alarm_id] = now
         self.running = True
         self.thread = thread_registry.spawn("alarms._check_loop", self._check_loop, daemon=True)
         print("[ALARM] Alarm manager started")
@@ -446,6 +501,7 @@ class AlarmManager:
         if self.thread:
             self.thread.join(timeout=2)
             self.thread = None
+        self._started_at = None
         
         print("[ALARM] Alarm manager stopped")
     
@@ -466,6 +522,9 @@ class AlarmManager:
     
     def _check_alarms(self):
         """Check if any alarms are due."""
+        if self.is_nagging():
+            return
+
         now = time.time()
         
         for alarm in self.items:
@@ -482,6 +541,9 @@ class AlarmManager:
             if now - last_trigger >= interval_seconds:
                 self._trigger_alarm(alarm)
                 self.last_triggered[alarm_id] = now
+                # Keep exactly one actionable alarm. Other overdue alarms
+                # remain due and fire on a later check after dismissal.
+                break
     
     def _trigger_alarm(self, alarm: dict):
         """Trigger an alarm - start playing and nagging."""
@@ -497,7 +559,11 @@ class AlarmManager:
         self.nag_thread = thread_registry.spawn("alarms._nag_loop", self._nag_loop, args=(alarm,), daemon=True)
         
         if self.on_alarm_triggered:
-            self.on_alarm_triggered(alarm)
+            try:
+                self.on_alarm_triggered(alarm)
+            except Exception as e:
+                # Visual notification failure must never silence the nag loop.
+                logger.exception(f"[ALARM] Trigger callback failed: {e}")
     
     def _nag_loop(self, alarm: dict):
         """Continuously nag until dismissed."""
@@ -626,6 +692,8 @@ class AlarmManager:
             config['alarms'] = get_default_alarm_config()
         config['alarms']['items'].append(alarm)
         self.save_config()
+        if enabled and self.running:
+            self.last_triggered[alarm_id] = time.time()
         
         print(f"[ALARM] Added alarm: {name}")
         return alarm
@@ -637,9 +705,21 @@ class AlarmManager:
         
         for alarm in alarms:
             if alarm.get('id') == alarm_id or alarm.get('name') == alarm_id:
+                resolved_id = alarm.get('id', alarm.get('name', alarm_id))
+                was_enabled = alarm.get('enabled', False)
+                old_interval = alarm.get('interval_minutes', 60)
                 for key, value in kwargs.items():
                     alarm[key] = value
                 self.save_config()
+                is_enabled = alarm.get('enabled', False)
+                timer_changed = (
+                    (is_enabled and not was_enabled)
+                    or (is_enabled and alarm.get('interval_minutes', 60) != old_interval)
+                )
+                if timer_changed and self.running:
+                    self.last_triggered[resolved_id] = time.time()
+                elif not is_enabled:
+                    self.last_triggered.pop(resolved_id, None)
                 return True
         return False
     
@@ -670,8 +750,13 @@ class AlarmManager:
         
         for alarm in alarms:
             if alarm.get('id') == alarm_id or alarm.get('name') == alarm_id:
+                resolved_id = alarm.get('id', alarm.get('name', alarm_id))
                 alarm['enabled'] = not alarm.get('enabled', False)
                 self.save_config()
+                if alarm['enabled'] and self.running:
+                    self.last_triggered[resolved_id] = time.time()
+                else:
+                    self.last_triggered.pop(resolved_id, None)
                 return alarm['enabled']
         return None
     
@@ -680,8 +765,18 @@ class AlarmManager:
         config = self.get_config()
         if 'alarms' not in config:
             config['alarms'] = get_default_alarm_config()
+        was_enabled = config['alarms'].get('enabled', True)
         config['alarms']['enabled'] = enabled
         self.save_config()
+        if enabled and not was_enabled and self.running:
+            now = time.time()
+            for alarm in config['alarms'].get('items', []):
+                if alarm.get('enabled', False):
+                    resolved_id = alarm.get('id', alarm.get('name', 'unknown'))
+                    self.last_triggered[resolved_id] = now
+        elif not enabled:
+            self.stop_nagging()
+
     
     def set_complete_hotkey(self, hotkey: str):
         """Set the complete hotkey."""
@@ -733,5 +828,28 @@ class AlarmManager:
     
     def reset_alarm_timer(self, alarm_id: str):
         """Reset an alarm's timer (e.g., after manual trigger or edit)."""
-        if alarm_id in self.last_triggered:
-            del self.last_triggered[alarm_id]
+        alarm = self.get_alarm(alarm_id)
+        if alarm is not None:
+            resolved_id = alarm.get('id', alarm.get('name', alarm_id))
+            self.last_triggered[resolved_id] = time.time()
+
+    def get_next_trigger_at(self, alarm_id: str) -> Optional[float]:
+        """Return the alarm's next trigger as epoch seconds, or None.
+
+        None means disabled or the manager is paused/stopped. An overdue
+        timestamp is intentionally returned unchanged so UI callers can show
+        "Due" while another alarm is active.
+        """
+        alarm = self.get_alarm(alarm_id)
+        if alarm is None or not alarm.get('enabled', False):
+            return None
+        if not self.running or not self.enabled:
+            return None
+        if self.nagging_alarm_id == alarm.get('id', alarm.get('name', alarm_id)):
+            return time.time()
+
+        resolved_id = alarm.get('id', alarm.get('name', alarm_id))
+        anchor = self.last_triggered.get(resolved_id, self._started_at)
+        if anchor is None:
+            return None
+        return anchor + max(0, alarm.get('interval_minutes', 60)) * 60

@@ -4,9 +4,11 @@ PySide6 settings window for Samsara.
 All Qt operations are posted to the shared qt_runtime event loop.
 """
 
+import copy
 import re
 import shutil
 import threading
+from datetime import datetime
 
 from PySide6.QtCore import Qt, QTimer, Signal
 from PySide6.QtGui import QColor, QFont
@@ -16,10 +18,21 @@ from PySide6.QtWidgets import (
     QLabel, QComboBox, QCheckBox, QPushButton, QFrame,
     QDoubleSpinBox, QSpinBox, QLineEdit, QSlider,
     QTableWidget, QTableWidgetItem, QHeaderView,
-    QDialog, QMessageBox, QFormLayout, QGridLayout,
+    QDialog, QMessageBox, QFileDialog, QFormLayout, QGridLayout, QSizePolicy,
 )
 
-from samsara.constants import DEFAULT_WAKE_PHRASE, DEFAULT_WAKE_PHRASE_OPTIONS
+from samsara.config_transfer import (
+    ConfigTransferError,
+    export_config,
+    load_config_export,
+    merge_import,
+)
+from samsara.constants import (
+    DEFAULT_CONTINUOUS_COMMIT_HOTKEY,
+    DEFAULT_WAKE_PHRASE,
+    DEFAULT_WAKE_PHRASE_OPTIONS,
+)
+from samsara.ui_scale import UI_SCALE_OPTIONS, ui_scale_label
 from samsara.ui import qt_runtime, theme
 from samsara.runtime import thread_registry
 from samsara.audio_devices import pick_index_by_name
@@ -28,6 +41,26 @@ from samsara import smart_corrections
 from samsara.log import get_logger
 
 logger = get_logger(__name__)
+
+
+def _format_alarm_next(next_at, *, enabled=True, active=False, now=None) -> str:
+    """Format an AlarmManager next-trigger timestamp for the settings table."""
+    if not enabled:
+        return "—"
+    if active:
+        return "Active"
+    if next_at is None:
+        return "Paused"
+    if now is None:
+        now = datetime.now().timestamp()
+    if next_at <= now:
+        return "Due"
+
+    trigger = datetime.fromtimestamp(next_at)
+    current = datetime.fromtimestamp(now)
+    if trigger.date() == current.date():
+        return trigger.strftime("%I:%M %p").lstrip("0")
+    return trigger.strftime("%b %d, %I:%M %p").replace(" 0", " ")
 
 
 # ---------------------------------------------------------------------------
@@ -169,6 +202,7 @@ _PROVIDERS = [
     ("DeepSeek (default)", "deepseek"),
     ("OpenAI",             "openai"),
     ("Anthropic",          "anthropic"),
+    ("OpenRouter",         "openrouter"),
 ]
 _PROVIDER_DISPLAY  = [p[0] for p in _PROVIDERS]
 _DISPLAY_TO_CODE   = {p[0]: p[1] for p in _PROVIDERS}
@@ -178,12 +212,14 @@ _DEFAULT_MODELS = {
     "deepseek":  "deepseek-chat",
     "openai":    "gpt-4o-mini",
     "anthropic": "claude-sonnet-4-20250514",
+    "openrouter": "openrouter/auto",
 }
 
 _PROVIDER_INFO = {
     "deepseek":  "deepseek-chat — Best value. Cheapest per token, strong reasoning. Recommended for most users.",
     "openai":    "gpt-4o-mini — Fast and widely supported. Good for general tasks and tool use.",
     "anthropic": "claude-sonnet-4 — Best reasoning and instruction following. Higher cost per token.",
+    "openrouter": "openrouter/auto — One key for many model providers. Auto Router chooses a model for each request; enter a model slug below to choose one yourself.",
 }
 
 
@@ -310,6 +346,47 @@ class _HotkeyButton(QPushButton):
         super().focusOutEvent(event)
 
 
+def _readable_hotkey(combo: str) -> str:
+    """Human-facing hotkey spelling while keeping stored bindings stable."""
+    names = {
+        'ctrl': 'Ctrl', 'shift': 'Shift', 'alt': 'Alt',
+        'left_ctrl': 'Left Ctrl', 'right_ctrl': 'Right Ctrl',
+        'left_shift': 'Left Shift', 'right_shift': 'Right Shift',
+        'left_alt': 'Left Alt', 'right_alt': 'Right Alt',
+    }
+    return '+'.join(
+        names.get(part, part.upper() if part.startswith('f') and part[1:].isdigit()
+                  else part.title())
+        for part in (combo or '').split('+') if part
+    )
+
+
+class _AlarmHotkeyButton(_HotkeyButton):
+    """Alarm shortcut capture with a readable action-labelled idle state."""
+
+    _ALARM_IDLE = _HotkeyButton._IDLE.replace(
+        "font-size: 12px;", "font-size: 14px; font-weight: 600;"
+    ).replace("'Consolas', 'Courier New', monospace", "'Segoe UI', sans-serif")
+
+    def __init__(self, combo: str, action: str):
+        self._alarm_action = action
+        super().__init__(combo)
+        self.setMinimumHeight(38)
+        self.setStyleSheet(self._ALARM_IDLE)
+        self._show_idle_text()
+
+    def _show_idle_text(self) -> None:
+        readable = _readable_hotkey(self._combo) or "Not set"
+        self.setText(f"{readable} — {self._alarm_action}")
+        self.setAccessibleName(f"{self._alarm_action} shortcut: {readable}")
+        self.setToolTip(f"Click to change the {self._alarm_action.lower()} shortcut")
+
+    def _finish_capture(self):
+        super()._finish_capture()
+        self.setStyleSheet(self._ALARM_IDLE)
+        self._show_idle_text()
+
+
 # ---------------------------------------------------------------------------
 # Stylesheet
 # ---------------------------------------------------------------------------
@@ -324,7 +401,7 @@ QMainWindow, QWidget {
 QListWidget {
     background-color: #111114;
     border-right: 1px solid rgba(255,255,255,0.08);
-    color: #8A8A92;
+    color: #AEB4C0;
     font-size: 14px;
     padding: 8px 0;
     outline: none;
@@ -345,8 +422,8 @@ QLabel {
     color: #E8E8EA;
 }
 QLabel[class="description"] {
-    color: #8A8A92;
-    font-size: 12px;
+    color: #AEB4C0;
+    font-size: 13px;
 }
 QLabel[class="section-title"] {
     color: #5EEAD4;
@@ -400,7 +477,7 @@ QPushButton:hover {
 }
 QPushButton[class="secondary"] {
     background-color: transparent;
-    color: #8A8A92;
+    color: #AEB4C0;
     border: 1px solid rgba(255,255,255,0.14);
 }
 QPushButton[class="secondary"]:hover {
@@ -463,12 +540,12 @@ QTableWidget::item:selected {
 }
 QHeaderView::section {
     background-color: #16161A;
-    color: #8A8A92;
+    color: #AEB4C0;
     padding: 6px 8px;
     border: none;
     border-bottom: 1px solid rgba(255,255,255,0.08);
     border-right: 1px solid rgba(255,255,255,0.04);
-    font-size: 12px;
+    font-size: 13px;
     font-weight: 600;
 }
 QDialog {
@@ -547,8 +624,16 @@ class _SettingsWindow(QMainWindow):
         self._test_result.connect(self._on_test_result)
 
         self.setWindowTitle("Samsara Settings")
-        self.resize(920, 700)
-        self.setMinimumSize(860, 600)
+        # UI scale composes with Windows display scaling. A hard 860x600
+        # logical minimum becomes taller than a 1080p work area at 150% DPI
+        # plus the 130% accessibility scale, so size against the logical work
+        # area and let scrollable pages handle the remaining content.
+        self.setMinimumSize(720, 480)
+        available = self.screen().availableGeometry()
+        self.resize(
+            min(920, max(720, available.width() - 40)),
+            min(700, max(480, available.height() - 40)),
+        )
         self.setStyleSheet(STYLESHEET)
 
         central = QWidget()
@@ -838,6 +923,28 @@ class _SettingsWindow(QMainWindow):
         layout.setContentsMargins(28, 24, 28, 24)
         layout.setSpacing(8)
 
+        # ---- Section: Accessibility ----------------------------------------
+        layout.addWidget(self._section_title("Accessibility"))
+        layout.addSpacing(4)
+
+        ui_scale_combo = QComboBox()
+        ui_scale_combo.addItems(list(UI_SCALE_OPTIONS))
+        ui_scale_combo.setCurrentText(ui_scale_label(
+            self.app.config.get('ui_scale', 1.0)
+        ))
+        self._widgets['ui_scale_combo'] = ui_scale_combo
+        layout.addLayout(self._setting_row(
+            "Interface size",
+            "Scales text, menus, and controls throughout Samsara after restart",
+            ui_scale_combo,
+        ))
+
+        restart_hint = QLabel("Interface-size changes take effect after restarting Samsara.")
+        restart_hint.setObjectName("uiScaleRestartHint")
+        restart_hint.setStyleSheet("color: #AEB4C0; font-size: 13px;")
+        layout.addWidget(restart_hint)
+        layout.addSpacing(20)
+
         # Section: Microphone
         layout.addWidget(self._section_title("Microphone"))
         layout.addSpacing(4)
@@ -864,7 +971,9 @@ class _SettingsWindow(QMainWindow):
         mic_row_layout.setSpacing(6)
         mic_row_layout.addWidget(mic_combo, stretch=1)
         mic_refresh_btn = QPushButton("Refresh")
-        mic_refresh_btn.setFixedWidth(80)
+        mic_refresh_btn.setObjectName("microphoneRefreshButton")
+        mic_refresh_btn.setSizePolicy(QSizePolicy.Policy.Minimum, QSizePolicy.Policy.Fixed)
+        mic_refresh_btn.setMinimumWidth(104)  # Includes inherited 24px side padding.
         mic_row_layout.addWidget(mic_refresh_btn)
 
         layout.addLayout(self._setting_row(
@@ -904,6 +1013,43 @@ class _SettingsWindow(QMainWindow):
 
         mic_refresh_btn.clicked.connect(_on_refresh_mics)
         layout.addSpacing(8)
+
+        # Samsara-only output routing. This never changes the Windows default.
+        layout.addWidget(self._section_title("Sound output"))
+        outputs = list(getattr(self.app, 'available_outputs', None) or [])
+        output_map = {"System default": (None, None)}
+        for output in outputs:
+            output_map[output['name']] = (output['id'], output['name'])
+        output_combo = QComboBox()
+        stored_output_id = self.app.config.get('output_device')
+        stored_output_name = self.app.config.get('output_device_name')
+        from samsara.output_devices import reconcile_output_device
+        _resolved_output_id, resolved_output_name, output_missing = (
+            reconcile_output_device(
+                outputs, stored_output_id, stored_output_name,
+            )
+        )
+        selected_label = "System default"
+        if not output_missing and resolved_output_name in output_map:
+            selected_label = resolved_output_name
+        elif output_missing:
+            saved_identity = stored_output_name or f"device {stored_output_id}"
+            selected_label = (
+                f"System default (saved output unavailable: {saved_identity})"
+            )
+            # Preserve the unavailable preference if Apply is clicked without
+            # changing this control. Selecting the plain System default entry
+            # still clears it explicitly.
+            output_map[selected_label] = (stored_output_id, stored_output_name)
+        output_combo.addItems(list(output_map))
+        output_combo.setCurrentText(selected_label)
+        self._widgets['output_combo'] = output_combo
+        self._widgets['output_label_map'] = output_map
+        layout.addLayout(self._setting_row(
+            "Samsara sounds",
+            "Speaker used for earcons, speech, and alarms; does not affect other apps",
+            output_combo,
+        ))
 
         setup_btn = QPushButton("Run Mic Setup Guide...")
         setup_btn.setFixedWidth(190)
@@ -1099,7 +1245,7 @@ class _SettingsWindow(QMainWindow):
         prof_desc = QLabel(
             "Save and load vocabulary, correction, and command profiles."
         )
-        prof_desc.setStyleSheet("color: #8A8A92; font-size: 12px;")
+        prof_desc.setStyleSheet("color: #AEB4C0; font-size: 13px;")
         layout.addWidget(prof_desc)
         layout.addSpacing(6)
 
@@ -1108,8 +1254,43 @@ class _SettingsWindow(QMainWindow):
         manage_btn.clicked.connect(self._open_profile_manager)
         layout.addWidget(manage_btn)
 
+        layout.addSpacing(20)
+
+        # ---- Section: Configuration backup ---------------------------------
+        layout.addWidget(self._section_title("Configuration backup"))
+        layout.addSpacing(4)
+
+        backup_desc = QLabel(
+            "Export or restore all Samsara settings. Backups include private "
+            "values such as API keys, supporter keys, and webhook details. "
+            "Keep backup files private."
+        )
+        backup_desc.setObjectName("configBackupPrivacyWarning")
+        backup_desc.setStyleSheet("color: #D9B86C; font-size: 13px;")
+        backup_desc.setWordWrap(True)
+        layout.addWidget(backup_desc)
+        layout.addSpacing(8)
+
+        backup_buttons = QHBoxLayout()
+        backup_buttons.setSpacing(10)
+
+        export_btn = QPushButton("Export configuration…")
+        export_btn.setObjectName("exportConfigurationButton")
+        export_btn.setFixedWidth(190)
+        export_btn.clicked.connect(self._export_configuration)
+        backup_buttons.addWidget(export_btn)
+
+        import_btn = QPushButton("Import configuration…")
+        import_btn.setObjectName("importConfigurationButton")
+        import_btn.setFixedWidth(190)
+        import_btn.clicked.connect(self._import_configuration)
+        backup_buttons.addWidget(import_btn)
+        backup_buttons.addStretch()
+        layout.addLayout(backup_buttons)
+
         def _save(_acc):
             updates = {
+                'ui_scale':          UI_SCALE_OPTIONS[self._widgets['ui_scale_combo'].currentText()],
                 'auto_paste':         self._widgets['auto_paste'].isChecked(),
                 'add_trailing_space': self._widgets['trailing_space'].isChecked(),
                 'auto_capitalize':    self._widgets['auto_capitalize'].isChecked(),
@@ -1134,6 +1315,18 @@ class _SettingsWindow(QMainWindow):
             if mic_id is not None:
                 updates['microphone'] = mic_id
                 updates['microphone_name'] = mic_name
+
+            output_label = self._widgets['output_combo'].currentText()
+            output_id, output_name = self._widgets['output_label_map'].get(
+                output_label, (None, None)
+            )
+            saved_output = (
+                self.app.config.get('output_device'),
+                self.app.config.get('output_device_name'),
+            )
+            if (output_id, output_name) != saved_output:
+                updates['output_device'] = output_id
+                updates['output_device_name'] = output_name
             return updates
         self._save_fns.append(_save)
 
@@ -1146,6 +1339,112 @@ class _SettingsWindow(QMainWindow):
         if hints is not None:
             hints.reset()
         print("[HINTS] History reset — all hints will fire again on next trigger")
+
+    def _export_configuration(self):
+        """Export a complete, private configuration snapshot."""
+        reply = QMessageBox.question(
+            self,
+            "Export full configuration?",
+            "This backup contains all settings, including private values such "
+            "as API keys, supporter keys, and webhook details. Keep it private.\n\n"
+            "Continue?",
+            QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No,
+            QMessageBox.StandardButton.No,
+        )
+        if reply != QMessageBox.StandardButton.Yes:
+            return
+
+        default_name = f"samsara-config-backup-{datetime.now():%Y-%m-%d}.json"
+        path, _ = QFileDialog.getSaveFileName(
+            self,
+            "Export Samsara configuration",
+            default_name,
+            "JSON files (*.json)",
+        )
+        if not path:
+            return
+        if not path.lower().endswith('.json'):
+            path += '.json'
+
+        try:
+            with self.app._config_lock:
+                snapshot = copy.deepcopy(self.app.config)
+            export_config(path, snapshot)
+        except (ConfigTransferError, OSError) as exc:
+            logger.exception("[CONFIG] Configuration export failed")
+            QMessageBox.critical(self, "Export failed", str(exc))
+            return
+
+        QMessageBox.information(
+            self,
+            "Configuration exported",
+            "Your full Samsara configuration was exported. Keep the backup private.",
+        )
+
+    def _import_configuration(self):
+        """Validate, merge, and persist a configuration backup."""
+        path, _ = QFileDialog.getOpenFileName(
+            self,
+            "Import Samsara configuration",
+            "",
+            "JSON files (*.json);;All files (*)",
+        )
+        if not path:
+            return
+
+        try:
+            imported = load_config_export(path)
+        except ConfigTransferError as exc:
+            QMessageBox.critical(self, "Import failed", str(exc))
+            return
+
+        reply = QMessageBox.question(
+            self,
+            "Import configuration?",
+            "Imported values will replace matching settings. Settings that are "
+            "not present in the backup will be kept. Samsara will also preserve "
+            "your current config.json as config.json.bak.\n\n"
+            "Backups can contain private values such as API keys and webhooks. "
+            "Only import a file you trust. Continue?",
+            QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No,
+            QMessageBox.StandardButton.No,
+        )
+        if reply != QMessageBox.StandardButton.Yes:
+            return
+
+        try:
+            with self.app._config_lock:
+                original = copy.deepcopy(self.app.config)
+                merged = merge_import(original, imported)
+                try:
+                    self.app.config.clear()
+                    self.app.config.update(merged)
+                    self.app.save_config()
+                except Exception:
+                    self.app.config.clear()
+                    self.app.config.update(original)
+                    raise
+        except (ConfigTransferError, OSError, TypeError, ValueError) as exc:
+            logger.exception("[CONFIG] Configuration import failed")
+            QMessageBox.critical(self, "Import failed", str(exc))
+            return
+        except Exception as exc:
+            logger.exception("[CONFIG] Configuration import failed")
+            QMessageBox.critical(self, "Import failed", str(exc))
+            return
+
+        restart = QMessageBox.question(
+            self,
+            "Configuration imported",
+            "The configuration was imported successfully. Restart Samsara now "
+            "to apply every setting?",
+            QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No,
+            QMessageBox.StandardButton.Yes,
+        )
+        self.close()  # Do not leave stale pre-import controls able to overwrite the import.
+        if restart == QMessageBox.StandardButton.Yes:
+            from plugins.commands.core_utils import restart_app
+            restart_app(self.app)
 
     def _open_profile_manager(self):
         from pathlib import Path
@@ -1230,6 +1529,8 @@ class _SettingsWindow(QMainWindow):
              "Cancel recording",   "Abort the current recording without transcribing"),
             ('undo_hotkey',       cfg.get('undo_hotkey', 'ctrl+alt+z'),
              "Undo",               "Remove the last transcription from the focused app"),
+            ('dictate_commit_hotkey', cfg.get('dictate_commit_hotkey', DEFAULT_CONTINUOUS_COMMIT_HOTKEY),
+             "Paste staged thought", "Paste the buffered thought now while staying in hands-free mode"),
         ]
         for config_key, default, label, desc in _dictation_hotkeys:
             btn = _HotkeyButton(cfg.get(config_key, default), on_change=self._check_modes_collisions)
@@ -1583,7 +1884,8 @@ class _SettingsWindow(QMainWindow):
             updates = {}
             for key in ('hotkey', 'continuous_hotkey', 'wake_word_hotkey',
                         'command_hotkey', 'streaming_hotkey', 'cancel_hotkey',
-                        'undo_hotkey', 'ava_mode_key'):
+                        'undo_hotkey', 'dictate_commit_hotkey',
+                        'ava_mode_key'):
                 btn = self._widgets.get(key)
                 if isinstance(btn, _HotkeyButton):
                     updates[key] = btn.combo
@@ -1663,6 +1965,7 @@ class _SettingsWindow(QMainWindow):
             'streaming_hotkey':  'Streaming',
             'cancel_hotkey':     'Cancel recording',
             'undo_hotkey':       'Undo',
+            'dictate_commit_hotkey': 'Paste staged thought',
             'ava_mode_key':      'Ava mode',
         }
 
@@ -1726,7 +2029,14 @@ class _SettingsWindow(QMainWindow):
         from pathlib import Path
         from samsara.command_packs import PACKS
 
+        page = QScrollArea()
+        page.setObjectName("commandsPageScroll")
+        page.setWidgetResizable(True)
+        page.setHorizontalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAlwaysOff)
+        page.setVerticalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAsNeeded)
+
         outer = QWidget()
+        outer.setObjectName("commandsPageContent")
         layout = QVBoxLayout(outer)
         layout.setContentsMargins(28, 20, 28, 12)
         layout.setSpacing(8)
@@ -1745,8 +2055,10 @@ class _SettingsWindow(QMainWindow):
         layout.addSpacing(4)
 
         pack_scroll = QScrollArea()
+        pack_scroll.setObjectName("commandPacksScroll")
         pack_scroll.setWidgetResizable(True)
-        pack_scroll.setFixedHeight(210)
+        pack_scroll.setMinimumHeight(210)
+        pack_scroll.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Preferred)
         pack_scroll.setHorizontalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAlwaysOff)
         pack_scroll.setStyleSheet(
             "QScrollArea { background-color: #111114; border-radius: 6px; "
@@ -1809,7 +2121,11 @@ class _SettingsWindow(QMainWindow):
             cb.setEnabled(not always_on)
             cb.toggled.connect(lambda _, lbl=restart_lbl: lbl.setVisible(True))
             pack_checkboxes[pack_id] = cb
-            row_h.addWidget(cb)
+            row_h.addWidget(cb, alignment=Qt.AlignmentFlag.AlignTop)
+
+            text_col = QVBoxLayout()
+            text_col.setContentsMargins(0, 0, 0, 0)
+            text_col.setSpacing(1)
 
             name_lbl = QLabel(
                 meta.get('label', pack_id)
@@ -1821,11 +2137,20 @@ class _SettingsWindow(QMainWindow):
                 f"font-size: 13px; font-weight: {'normal' if always_on else '600'};"
                 "background: transparent;"
             )
-            row_h.addWidget(name_lbl)
+            text_col.addWidget(name_lbl)
 
             desc_lbl = QLabel(meta.get('description', ''))
-            desc_lbl.setStyleSheet("color: #8A8A92; font-size: 11px; background: transparent;")
-            row_h.addWidget(desc_lbl, stretch=1)
+            desc_lbl.setObjectName(f"commandPackDescription_{pack_id}")
+            desc_lbl.setStyleSheet(
+                "color: #AEB4C0; font-size: 13px; background: transparent;"
+            )
+            desc_lbl.setWordWrap(True)
+            desc_lbl.setMinimumWidth(0)
+            desc_lbl.setSizePolicy(
+                QSizePolicy.Policy.Ignored, QSizePolicy.Policy.Preferred
+            )
+            text_col.addWidget(desc_lbl)
+            row_h.addLayout(text_col, stretch=1)
 
             pack_vlayout.addWidget(row_w)
 
@@ -1848,7 +2173,11 @@ class _SettingsWindow(QMainWindow):
         cmd_header.addStretch()
         search_box = QLineEdit()
         search_box.setPlaceholderText("Search commands...")
-        search_box.setFixedWidth(200)
+        search_box.setMinimumWidth(140)
+        search_box.setMaximumWidth(280)
+        search_box.setSizePolicy(
+            QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Fixed
+        )
         self._widgets['cmd_search'] = search_box
         cmd_header.addWidget(search_box)
         layout.addLayout(cmd_header)
@@ -1885,12 +2214,12 @@ class _SettingsWindow(QMainWindow):
         btn_row.setSpacing(8)
 
         add_btn = QPushButton("Add Command")
-        add_btn.setFixedWidth(120)
+        add_btn.setObjectName("addCommandButton")
         add_btn.clicked.connect(lambda: self._open_command_dialog(None, table))
         btn_row.addWidget(add_btn)
 
         edit_btn = QPushButton("Edit")
-        edit_btn.setFixedWidth(80)
+        edit_btn.setObjectName("editCommandButton")
         edit_btn.setStyleSheet(
             "QPushButton { background-color: transparent; color: #8A8A92; "
             "border: 1px solid rgba(255,255,255,0.14); border-radius: 6px; "
@@ -1901,7 +2230,7 @@ class _SettingsWindow(QMainWindow):
         btn_row.addWidget(edit_btn)
 
         del_btn = QPushButton("Delete")
-        del_btn.setFixedWidth(80)
+        del_btn.setObjectName("deleteCommandButton")
         del_btn.setStyleSheet(
             "QPushButton { background-color: rgba(200,60,60,0.15); color: #FF8888; "
             "border: 1px solid rgba(200,60,60,0.3); border-radius: 6px; padding: 8px 16px; }"
@@ -1911,7 +2240,7 @@ class _SettingsWindow(QMainWindow):
         btn_row.addWidget(del_btn)
 
         test_btn = QPushButton("Test")
-        test_btn.setFixedWidth(70)
+        test_btn.setObjectName("testCommandButton")
         test_btn.setStyleSheet(
             "QPushButton { background-color: transparent; color: #8A8A92; "
             "border: 1px solid rgba(255,255,255,0.14); border-radius: 6px; "
@@ -1924,7 +2253,7 @@ class _SettingsWindow(QMainWindow):
         btn_row.addStretch()
 
         reload_btn = QPushButton("Reload")
-        reload_btn.setFixedWidth(80)
+        reload_btn.setObjectName("reloadCommandsButton")
         reload_btn.setStyleSheet(
             "QPushButton { background-color: transparent; color: #8A8A92; "
             "border: 1px solid rgba(255,255,255,0.14); border-radius: 6px; "
@@ -1953,7 +2282,8 @@ class _SettingsWindow(QMainWindow):
             return updates
         self._save_fns.append(_save)
 
-        return outer
+        page.setWidget(outer)
+        return page
 
     # ------------------------------------------------------------------
     # Commands tab helpers
@@ -2935,20 +3265,24 @@ class _SettingsWindow(QMainWindow):
         layout.addWidget(alarms_enabled)
         layout.addSpacing(8)
 
-        complete_key = _HotkeyButton(alarm_cfg.get('complete_hotkey', 'f7'))
+        complete_key = _AlarmHotkeyButton(
+            alarm_cfg.get('complete_hotkey', 'f7'), "Complete alarm"
+        )
         self._widgets['alarms_complete_key'] = complete_key
         layout.addLayout(self._setting_row(
-            "Complete hotkey",
-            "Press to mark the alarm complete — counts toward your streak",
+            "Complete alarm shortcut",
+            "Stops the sound and records that you completed the task",
             complete_key,
         ))
         layout.addSpacing(6)
 
-        dismiss_key = _HotkeyButton(alarm_cfg.get('dismiss_hotkey', 'f8'))
+        dismiss_key = _AlarmHotkeyButton(
+            alarm_cfg.get('dismiss_hotkey', 'f8'), "Dismiss alarm"
+        )
         self._widgets['alarms_dismiss_key'] = dismiss_key
         layout.addLayout(self._setting_row(
-            "Dismiss hotkey",
-            "Press to silence without streak credit",
+            "Dismiss alarm shortcut",
+            "Stops the sound without recording a completed task",
             dismiss_key,
         ))
         layout.addSpacing(6)
@@ -2979,12 +3313,13 @@ class _SettingsWindow(QMainWindow):
         layout.addWidget(instant_note)
         layout.addSpacing(4)
 
-        table = QTableWidget(0, 4)
-        table.setHorizontalHeaderLabels(['On', 'Name', 'Interval', 'Streak'])
+        table = QTableWidget(0, 5)
+        table.setHorizontalHeaderLabels(['On', 'Name', 'Interval', 'Next', 'Streak'])
         table.horizontalHeader().setSectionResizeMode(0, QHeaderView.ResizeMode.ResizeToContents)
         table.horizontalHeader().setSectionResizeMode(1, QHeaderView.ResizeMode.Stretch)
         table.horizontalHeader().setSectionResizeMode(2, QHeaderView.ResizeMode.ResizeToContents)
         table.horizontalHeader().setSectionResizeMode(3, QHeaderView.ResizeMode.ResizeToContents)
+        table.horizontalHeader().setSectionResizeMode(4, QHeaderView.ResizeMode.ResizeToContents)
         table.verticalHeader().setVisible(False)
         table.setEditTriggers(QTableWidget.EditTrigger.NoEditTriggers)
         table.setSelectionBehavior(QTableWidget.SelectionBehavior.SelectRows)
@@ -3070,8 +3405,15 @@ class _SettingsWindow(QMainWindow):
 
     # Alarms tab helpers
 
-    def _populate_alarms_table(self, table: QTableWidget) -> None:
+    def _populate_alarms_table(
+        self, table: QTableWidget, select_alarm_id=None, fallback_row=None
+    ) -> None:
         from samsara.alarms import get_default_alarm_config
+        if select_alarm_id is None:
+            select_alarm_id = self._selected_alarm_id(table)
+        if fallback_row is None:
+            fallback_row = table.currentRow()
+        selected_row = None
         table.setUpdatesEnabled(False)
         table.setRowCount(0)
         try:
@@ -3081,16 +3423,32 @@ class _SettingsWindow(QMainWindow):
                 alarm_id = alarm.get('id', alarm.get('name', 'unknown'))
                 row = table.rowCount()
                 table.insertRow(row)
+                enabled = alarm.get('enabled', False)
                 enabled_item = QTableWidgetItem(
                     "✓" if alarm.get('enabled', False) else "—"
                 )
                 enabled_item.setTextAlignment(Qt.AlignmentFlag.AlignCenter)
                 enabled_item.setData(Qt.ItemDataRole.UserRole, alarm_id)
                 table.setItem(row, 0, enabled_item)
+                if select_alarm_id is not None and alarm_id == select_alarm_id:
+                    selected_row = row
                 table.setItem(row, 1, QTableWidgetItem(alarm.get('name', 'Unnamed')))
                 table.setItem(row, 2, QTableWidgetItem(
                     f"{alarm.get('interval_minutes', 60)} min"
                 ))
+                next_at = None
+                active = False
+                if am:
+                    try:
+                        next_at = am.get_next_trigger_at(alarm_id)
+                        active = am.nagging_alarm_id == alarm_id
+                    except Exception as e:
+                        logger.debug(f"_populate_alarms_table next trigger: {e}")
+                table.setItem(row, 3, QTableWidgetItem(_format_alarm_next(
+                    next_at,
+                    enabled=enabled,
+                    active=active,
+                )))
                 if am:
                     stats   = am.get_stats(alarm_id)
                     cur     = stats.get('current_streak', 0)
@@ -3098,9 +3456,14 @@ class _SettingsWindow(QMainWindow):
                     streak  = f"{cur} / {best}" if (cur or best) else "—"
                 else:
                     streak = "—"
-                table.setItem(row, 3, QTableWidgetItem(streak))
+                table.setItem(row, 4, QTableWidgetItem(streak))
         finally:
             table.setUpdatesEnabled(True)
+        if selected_row is None and fallback_row is not None and fallback_row >= 0:
+            if table.rowCount():
+                selected_row = min(fallback_row, table.rowCount() - 1)
+        if selected_row is not None:
+            table.selectRow(selected_row)
 
     def _selected_alarm_id(self, table: QTableWidget):
         row = table.currentRow()
@@ -3139,8 +3502,11 @@ class _SettingsWindow(QMainWindow):
             return
         am = getattr(self.app, 'alarm_manager', None)
         if am:
+            selected_row = table.currentRow()
             am.toggle_alarm(alarm_id)
-            self._populate_alarms_table(table)
+            self._populate_alarms_table(
+                table, select_alarm_id=alarm_id, fallback_row=selected_row
+            )
 
     def _test_selected_alarm(self, table: QTableWidget) -> None:
         alarm_id = self._selected_alarm_id(table)
@@ -3252,13 +3618,15 @@ class _SettingsWindow(QMainWindow):
         sound    = sound_combo.currentText()
         enabled  = enabled_cb.isChecked()
 
+        selected_id = edit_id
         if am:
             if edit_id:
                 am.update_alarm(edit_id, name=name, interval_minutes=interval,
                                 sound=sound, enabled=enabled)
             else:
-                am.add_alarm(name=name, interval_minutes=interval,
-                             sound=sound, enabled=enabled)
+                added = am.add_alarm(name=name, interval_minutes=interval,
+                                     sound=sound, enabled=enabled)
+                selected_id = added.get('id', added.get('name'))
         else:
             # Fallback: write directly to config when alarm_manager not running
             alarms_cfg = self.app.config.setdefault(
@@ -3270,6 +3638,7 @@ class _SettingsWindow(QMainWindow):
                     if item.get('id') == edit_id or item.get('name') == edit_id:
                         item.update({'name': name, 'interval_minutes': interval,
                                      'sound': sound, 'enabled': enabled})
+                        selected_id = item.get('id', item.get('name'))
                         break
             else:
                 items.append({
@@ -3279,8 +3648,11 @@ class _SettingsWindow(QMainWindow):
                     'sound':            sound,
                     'enabled':          enabled,
                 })
+                selected_id = name.lower().replace(' ', '_')
 
-        self._populate_alarms_table(table)
+        self._populate_alarms_table(
+            table, select_alarm_id=selected_id, fallback_row=table.currentRow()
+        )
         dlg.accept()
         QMessageBox.information(self, "Saved", f"Alarm '{name}' saved.")
 
@@ -3776,17 +4148,18 @@ class _SettingsWindow(QMainWindow):
         layout.addSpacing(20)
 
         # ---- Section: Echo Cancellation ------------------------------------
-        layout.addWidget(self._section_title("Echo Cancellation"))
+        layout.addWidget(self._section_title("Experimental Echo Cancellation"))
         layout.addSpacing(4)
 
-        aec_cb = QCheckBox("Enable echo cancellation (removes system audio from mic)")
+        aec_cb = QCheckBox("Enable experimental echo cancellation (not recommended)")
         aec_cb.setChecked(bool(aec_cfg.get('enabled', False)))
         self._widgets['adv_aec_enabled'] = aec_cb
         layout.addWidget(aec_cb)
 
         aec_note = QLabel(
-            "Filters out music/video audio so only your voice is transcribed. "
-            "Requires restart. Windows only (WASAPI loopback)."
+            "Testing measured only 3–8% echo reduction, and the filter may add "
+            "distortion or reduce transcription quality. Leave this off unless "
+            "you are evaluating it. Requires restart; Windows only (WASAPI loopback)."
         )
         aec_note.setWordWrap(True)
         aec_note.setStyleSheet("color: #8A8A92; font-size: 12px; margin-left: 26px;")
@@ -3810,7 +4183,7 @@ class _SettingsWindow(QMainWindow):
         layout.addSpacing(20)
 
         # ---- Section: Audio Ducking ------------------------------------------
-        layout.addWidget(self._section_title("Audio Ducking"))
+        layout.addWidget(self._section_title("Playback Reduction While Dictating"))
         layout.addSpacing(4)
 
         ducking_cb = QCheckBox("Lower other apps' volume while dictating")
@@ -3836,7 +4209,7 @@ class _SettingsWindow(QMainWindow):
         self._widgets['adv_ducking_level'] = ducking_level_spin
         layout.addLayout(self._setting_row(
             "Ducked volume",
-            "Fraction of other apps' current volume during dictation (0 = silent, 1 = unchanged).",
+            "Absolute volume level for other apps during dictation (0 = silent, 1 = full volume).",
             ducking_level_spin,
         ))
         layout.addSpacing(20)
@@ -3863,9 +4236,17 @@ class _SettingsWindow(QMainWindow):
             'bottom-left', 'bottom-center', 'bottom-right',
         ]
         current_pos = cfg.get('listening_indicator_position', 'bottom-center')
+        # "custom" (set by dragging the indicator via the tray's "Move
+        # listening indicator..." action) is only offered as a combo item
+        # when it's the active value -- it isn't a preset a user can pick
+        # here since there are no coordinates to assign to it. Choosing any
+        # preset below discards/supersedes the custom placement (see _save).
+        combo_items = list(pos_options)
+        if current_pos == 'custom':
+            combo_items.append('custom')
         pos_combo = QComboBox()
-        pos_combo.addItems(pos_options)
-        if current_pos in pos_options:
+        pos_combo.addItems(combo_items)
+        if current_pos in combo_items:
             pos_combo.setCurrentText(current_pos)
         self._widgets['adv_indicator_pos'] = pos_combo
         layout.addLayout(self._setting_row(
@@ -3873,6 +4254,14 @@ class _SettingsWindow(QMainWindow):
             "Screen edge where the indicator pill is anchored",
             pos_combo,
         ))
+
+        if current_pos == 'custom':
+            custom_note = QLabel(
+                "Position set by dragging the indicator. Pick a preset "
+                "above to replace it."
+            )
+            custom_note.setStyleSheet("color: #8A8A92; font-size: 12px; margin-left: 26px;")
+            layout.addWidget(custom_note)
 
         layout.addSpacing(20)
 
@@ -4047,9 +4436,14 @@ class _SettingsWindow(QMainWindow):
                 updates['listening_indicator_enabled']  = (
                     self._widgets['adv_indicator_enabled'].isChecked()
                 )
-                updates['listening_indicator_position'] = (
-                    self._widgets['adv_indicator_pos'].currentText()
-                )
+                selected_pos = self._widgets['adv_indicator_pos'].currentText()
+                updates['listening_indicator_position'] = selected_pos
+                if selected_pos != 'custom' and self.app.config.get(
+                        'listening_indicator_custom_position'):
+                    # A preset was chosen over the previously dragged
+                    # placement -- discard it so it can't resurrect on a
+                    # future switch back to "custom".
+                    updates['listening_indicator_custom_position'] = None
                 if 'adv_gesture_enabled' in self._widgets:
                     gesture_cfg = dict(self.app.config.get('gesture', {}) or {})
                     gesture_cfg['enabled'] = self._widgets['adv_gesture_enabled'].isChecked()
@@ -4211,7 +4605,7 @@ class _SettingsWindow(QMainWindow):
         info_card_layout.setContentsMargins(12, 10, 12, 10)
         info_label = QLabel(_PROVIDER_INFO.get(current_provider, ""))
         info_label.setWordWrap(True)
-        info_label.setStyleSheet("color: #8A8A92; font-size: 12px; background: transparent;")
+        info_label.setStyleSheet("color: #AEB4C0; font-size: 13px; background: transparent;")
         info_card_layout.addWidget(info_label)
         self._widgets['cloud_info_label'] = info_label
         layout.addWidget(info_card)
@@ -4225,10 +4619,10 @@ class _SettingsWindow(QMainWindow):
             "no Samsara account, no payment to us."
         )
         explainer.setWordWrap(True)
-        explainer.setStyleSheet("color: #8A8A92; font-size: 12px;")
+        explainer.setStyleSheet("color: #AEB4C0; font-size: 13px;")
         layout.addWidget(explainer)
         setup_link = QLabel("Setup guide: morneis.com/samsara")
-        setup_link.setStyleSheet("color: #5EEAD4; font-size: 12px;")
+        setup_link.setStyleSheet("color: #5EEAD4; font-size: 13px;")
         layout.addWidget(setup_link)
         layout.addSpacing(4)
 
@@ -4247,9 +4641,9 @@ class _SettingsWindow(QMainWindow):
         show_btn.setCheckable(True)
         show_btn.setFixedWidth(60)
         show_btn.setStyleSheet(
-            "QPushButton { background-color: transparent; color: #8A8A92; "
+            "QPushButton { background-color: transparent; color: #AEB4C0; "
             "border: 1px solid rgba(255,255,255,0.14); border-radius: 6px; "
-            "padding: 6px 10px; font-size: 12px; }"
+            "padding: 6px 10px; font-size: 13px; }"
             "QPushButton:hover { color: #E8E8EA; }"
             "QPushButton:checked { border-color: rgba(94,234,212,0.4); color: #5EEAD4; }"
         )
@@ -4597,7 +4991,7 @@ class _SettingsWindow(QMainWindow):
         left.addWidget(lbl)
 
         desc = QLabel(description)
-        desc.setStyleSheet("color: #8A8A92; font-size: 12px;")
+        desc.setStyleSheet("color: #AEB4C0; font-size: 13px;")
         desc.setWordWrap(True)
         left.addWidget(desc)
 
@@ -4626,6 +5020,27 @@ class _SettingsWindow(QMainWindow):
         for save_fn in self._save_fns:
             updates.update(save_fn(updates))
 
+        # Switch the live stream before the bulk config write. If the new ID
+        # were written first, switch_microphone() would hit its same-ID guard
+        # and ACE would continue recording from the old device.
+        requested_mic = updates.get('microphone')
+        current_mic = self.app.config.get('microphone')
+        if 'microphone' in updates and requested_mic != current_mic:
+            updates.pop('microphone', None)
+            updates.pop('microphone_name', None)
+            self.app.switch_microphone(requested_mic)
+
+
+        requested_output = updates.get('output_device')
+        requested_output_name = updates.get('output_device_name')
+        current_output = (
+            self.app.config.get('output_device'),
+            self.app.config.get('output_device_name'),
+        )
+        if 'output_device' in updates and (
+            requested_output, requested_output_name
+        ) != current_output:
+            self.app.switch_output_device(requested_output, requested_output_name)
         was_sc_enabled = bool(
             self.app.config.get('smart_corrections', {}).get('enabled', False)
         )

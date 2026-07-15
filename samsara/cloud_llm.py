@@ -1,12 +1,38 @@
 """
 Cloud LLM provider for Ava. Sends requests to external API endpoints
-(DeepSeek, OpenAI, Anthropic) as an alternative to local Ollama.
+(DeepSeek, OpenAI, Anthropic, OpenRouter) as an alternative to local Ollama.
 
 User provides their own API key. Data leaves the machine when enabled.
 Samsara does not store conversation content beyond the local session.
 """
 
 import requests
+from urllib.parse import urlparse
+
+
+BUILTIN_PROVIDERS = {
+    "deepseek": {
+        "base_url": "https://api.deepseek.com/v1",
+        "host": "api.deepseek.com",
+        "model": "deepseek-chat",
+    },
+    "openai": {
+        "base_url": "https://api.openai.com/v1",
+        "host": "api.openai.com",
+        "model": "gpt-4o-mini",
+    },
+    "anthropic": {
+        "base_url": "https://api.anthropic.com/v1",
+        "host": "api.anthropic.com",
+        "model": "claude-sonnet-4-20250514",
+    },
+    "openrouter": {
+        "base_url": "https://openrouter.ai/api/v1",
+        "host": "openrouter.ai",
+        "model": "openrouter/auto",
+    },
+}
+SUPPORTED_PROVIDERS = frozenset(BUILTIN_PROVIDERS)
 
 
 def is_enabled(app):
@@ -21,24 +47,20 @@ def _get_config(app):
 def _get_provider_config(app):
     cfg = _get_config(app)
     provider = cfg.get("provider", "deepseek")
-    providers = cfg.get("providers", {})
-    default_providers = {
-        "deepseek": {
-            "base_url": "https://api.deepseek.com/v1",
-            "model": "deepseek-chat",
-        },
-        "openai": {
-            "base_url": "https://api.openai.com/v1",
-            "model": "gpt-4o-mini",
-        },
-        "anthropic": {
-            "base_url": "https://api.anthropic.com/v1",
-            "model": cfg.get("anthropic_model", "claude-sonnet-4-20250514"),
-        },
-    }
-    provider_cfg = providers.get(provider, default_providers.get(provider, {}))
-    model = cfg.get("model") or provider_cfg.get("model", "deepseek-chat")
-    base_url = provider_cfg.get("base_url", "https://api.deepseek.com/v1")
+    provider_cfg = BUILTIN_PROVIDERS.get(provider)
+    if provider_cfg is None:
+        raise ValueError(f"Unsupported cloud LLM provider: {provider!r}")
+
+    # Built-in providers are a closed, UI-selected set. Never honor the old
+    # hidden ``cloud_llm.providers`` map: an imported config could otherwise
+    # redirect an existing API key and dictated text to an attacker endpoint.
+    base_url = provider_cfg["base_url"]
+    parsed = urlparse(base_url)
+    if parsed.scheme != "https" or parsed.hostname != provider_cfg["host"]:
+        raise ValueError(f"Unsafe endpoint configured for provider {provider!r}")
+
+    legacy_model = cfg.get("anthropic_model") if provider == "anthropic" else None
+    model = cfg.get("model") or legacy_model or provider_cfg["model"]
     return provider, base_url, model
 
 
@@ -57,11 +79,11 @@ def _send_internal(system_prompt, user_message, app, timeout=30, messages=None):
     if not api_key:
         return None, "error", "No API key configured for cloud LLM."
 
-    provider, base_url, model = _get_provider_config(app)
     timeout = cfg.get("timeout_seconds", timeout)
     max_tokens = cfg.get("max_tokens", 300)
 
     try:
+        provider, base_url, model = _get_provider_config(app)
         if provider == "anthropic":
             text = _send_anthropic(base_url, api_key, model, system_prompt,
                                    user_message, timeout, max_tokens,
@@ -91,7 +113,7 @@ def send(system_prompt, user_message, app, timeout=30, messages=None):
     system + user turn (backward-compatible with callers that don't use memory).
 
     Handles two API formats:
-    - OpenAI-compatible (DeepSeek, OpenAI): POST /chat/completions
+    - OpenAI-compatible (DeepSeek, OpenAI, OpenRouter): POST /chat/completions
     - Anthropic: POST /messages (different request/response shape)
     """
     text, error_kind, error_message = _send_internal(
@@ -186,11 +208,11 @@ def send_json(system_prompt, user_message, app):
     if not api_key:
         return "Error: No API key configured for cloud LLM."
 
-    provider, base_url, model = _get_provider_config(app)
     timeout = cfg.get("timeout_seconds", 30)
     max_tokens = cfg.get("max_tokens", 300)
 
     try:
+        provider, base_url, model = _get_provider_config(app)
         if provider == "anthropic":
             return _send_anthropic(base_url, api_key, model, system_prompt,
                                    user_message, timeout, max_tokens)
@@ -235,8 +257,8 @@ def check_available(app):
         return False, "Cloud LLM not enabled"
     cfg = _get_config(app)
     api_key = cfg.get("api_key", "")
-    provider, base_url, model = _get_provider_config(app)
     try:
+        provider, base_url, model = _get_provider_config(app)
         if provider == "anthropic":
             r = requests.get(base_url.rstrip('/'), timeout=3)
         else:

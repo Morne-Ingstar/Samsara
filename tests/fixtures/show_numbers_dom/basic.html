@@ -1,0 +1,24 @@
+<!DOCTYPE html>
+<html>
+<head><meta charset="utf-8"><title>basic</title></head>
+<body style="margin:0;padding:20px;">
+  <a id="visible-link" href="https://example.com">A visible link</a>
+  <button id="visible-button">A visible button</button>
+  <input id="visible-input" type="text" placeholder="type here">
+  <textarea id="visible-textarea">hello</textarea>
+  <select id="visible-select"><option>one</option><option>two</option></select>
+  <div id="visible-contenteditable" contenteditable="true">editable text</div>
+  <div id="visible-aria-button" role="button" tabindex="0">custom button</div>
+
+  <button id="hidden-display-none" style="display:none;">hidden via display none</button>
+  <button id="hidden-visibility" style="visibility:hidden;">hidden via visibility</button>
+  <button id="hidden-opacity" style="opacity:0;">hidden via opacity</button>
+  <button id="disabled-button" disabled>disabled button</button>
+  <div id="aria-disabled" role="button" aria-disabled="true" tabindex="0">aria-disabled</div>
+  <button id="zero-size" style="width:0;height:0;padding:0;border:0;overflow:hidden;">zero size</button>
+
+  <div style="position:absolute; top:5000px; left:5000px;">
+    <button id="off-viewport-button">off viewport far away</button>
+  </div>
+</body>
+</html>

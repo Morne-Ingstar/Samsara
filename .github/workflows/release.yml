@@ -50,6 +50,26 @@ jobs:
           cache: 'pip'
           cache-dependency-path: requirements.txt
 
+      - name: Verify embedded version identity
+        shell: pwsh
+        env:
+          RELEASE_TAG: ${{ github.ref_type == 'tag' && github.ref_name || '' }}
+        run: |
+          if ($env:RELEASE_TAG) {
+            python tools\check_release_version.py --expected $env:RELEASE_TAG
+          } else {
+            python tools\check_release_version.py
+          }
+
+      - name: Set up Node.js for browser-extension tests
+        uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+
+      - name: Test Show Numbers browser extension
+        shell: pwsh
+        run: node --test browser_extension/content-core.test.js
+
       - name: Resolve version string
         id: version
         shell: pwsh
@@ -69,13 +89,6 @@ jobs:
         shell: pwsh
         run: |
           python -m pip install --upgrade pip
-          # CPU-only torch/torchaudio FIRST, from the CPU wheel index. The
-          # default PyPI/download.pytorch.org index resolves to a
-          # CUDA-bundled wheel (multi-GB) on Windows; installing from the
-          # /cpu index here means the later `pip install -r requirements.txt`
-          # (which lists bare "torchaudio", no version pin) is already
-          # satisfied and won't pull CUDA in behind our back.
-          pip install torch torchaudio --index-url https://download.pytorch.org/whl/cpu
           pip install -r requirements.txt
           pip install "pyinstaller==$env:PYINSTALLER_VERSION"
 
@@ -95,11 +108,10 @@ jobs:
           }
           Write-Host "Build OK: dist\Samsara\Samsara.exe"
 
-          # scripts\samsara.spec excludes 'torch'/'torchaudio' from the
-          # Analysis, but build_release.bat (the local packaging script)
-          # still defensively deletes _internal\torch(audio) post-build,
-          # implying the exclude isn't airtight against every transitive
-          # pull-in. Mirror that defensive cleanup here.
+          # Torch/torchaudio are no longer runtime dependencies and the spec
+          # excludes them. Keep this CI-only defensive cleanup in case a
+          # future transitive/build-environment dependency bypasses the
+          # Analysis excludes.
           foreach ($leaked in @("dist\Samsara\_internal\torch", "dist\Samsara\_internal\torchaudio")) {
             if (Test-Path $leaked) {
               Write-Warning "Removing leaked $leaked (excluded in spec but PyInstaller bundled it anyway)"
@@ -115,7 +127,7 @@ jobs:
         shell: pwsh
         run: |
           # See tools\ci_smoke.py's module docstring for why this is a
-          # trimmed, non-blocking subset of tools\frozen_smoke.py's full
+          # trimmed subset of tools\frozen_smoke.py's full
           # 11-check local gate rather than that harness verbatim: a stock
           # CI runner has no guaranteed audio input device and no warm
           # Hugging Face model cache, and frozen_smoke.py's strict
@@ -181,13 +193,9 @@ jobs:
       #      again, harvest the DLLs from that runner's torch install. Costs:
       #      a multi-GB torch download + a second full PyInstaller pass, just
       #      to get at ~150MB of DLLs.
-      #   2. Keep the CUDA pack a locally-built, manually-attached release
-      #      asset (today's process via build_release.bat), and have this
-      #      workflow only handle the CPU build + Release scaffolding. The
-      #      CUDA zip gets uploaded to the same tag's Release by hand after
-      #      this workflow creates it.
+      #   2. Add a separate clean-checkout local/CI CUDA release pipeline with
+      #      its own smoke and artifact checks. The existing build_cuda.bat is
+      #      a developer helper, not a releasable-artifact producer.
       #
-      # Option 2 is the pragmatic default until there's a concrete reason
-      # (SignPath wanting the CUDA pack traceable too, or GPU runners becoming
-      # cheap/available) to pay for option 1.
+      # Until one path exists, releases advertise and attach the CPU zip only.
       # ----------------------------------------------------------------------
