@@ -1,0 +1,8 @@
+blank_issues_enabled: false
+contact_links:
+  - name: Samsara documentation
+    url: https://morneis.com/samsara/docs/
+    about: Read the current quick start, CUDA guidance, and troubleshooting links.
+  - name: Support and beta-testing guide
+    url: https://morneis.com/samsara/support/
+    about: Learn what evidence to collect and how to protect private log content.
