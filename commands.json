@@ -1559,6 +1559,18 @@
       "description": "Open Samsara landing page",
       "pack": "ai"
     },
+    "report a bug": {
+      "type": "launch",
+      "target": "https://github.com/Morne-Ingstar/Samsara/issues/new?template=bug_report.yml",
+      "description": "Open the structured Samsara problem report form",
+      "pack": "core"
+    },
+    "send feedback": {
+      "type": "launch",
+      "target": "https://github.com/Morne-Ingstar/Samsara/issues/new?template=beta_feedback.yml",
+      "description": "Open the Samsara beta feedback form",
+      "pack": "core"
+    },
     "open github": {
       "type": "launch",
       "target": "https://github.com",
