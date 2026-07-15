@@ -211,6 +211,10 @@ def shutdown(timeout: float = 5.0) -> None:
     deadline passes is logged (name + current stack) as a straggler, but
     never force-killed.
 
+    The thread calling shutdown() is also never joined: a registered worker
+    may be responsible for initiating shutdown, and Python cannot join the
+    current thread.
+
     Daemon threads are intentionally NOT joined here at all -- nearly
     every spawn() site in this app passes daemon=True, so in practice this
     function joins very few threads; daemon threads are simply reaped by
@@ -229,10 +233,12 @@ def shutdown(timeout: float = 5.0) -> None:
         if isinstance(entry.thread, threading.Timer) and entry.thread.is_alive():
             entry.thread.cancel()
 
+    current = threading.current_thread()
     with _lock:
         entries = [
             e for e in _threads.values()
             if not isinstance(e.thread, threading.Timer)
+            and e.thread is not current
             and not e.thread.daemon and e.thread.is_alive()
         ]
 

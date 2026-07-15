@@ -220,6 +220,9 @@ class SamsaraTrayQt(QObject):
         li_act.setChecked(bool(app.config.get('listening_indicator_enabled', False)))
         li_act.triggered.connect(lambda: app.toggle_listening_indicator())
 
+        move_act = menu.addAction("Move listening indicator...")
+        move_act.triggered.connect(lambda: app.enter_indicator_move_mode())
+
         menu.addSeparator()
 
         # ---- Tools submenu: occasionally-used setup/training/review tools ----

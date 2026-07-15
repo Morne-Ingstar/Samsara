@@ -57,9 +57,10 @@ def _ensure_dpi_thread_context() -> None:
         return
     try:
         # DPI_AWARENESS_CONTEXT_PER_MONITOR_AWARE_V2 == (HANDLE)(LONG_PTR)-4
-        ctypes.windll.user32.SetThreadDpiAwarenessContext(
-            ctypes.c_ssize_t(-4)
-        )
+        setter = ctypes.windll.user32.SetThreadDpiAwarenessContext
+        setter.argtypes = [ctypes.c_void_p]
+        setter.restype = ctypes.c_void_p
+        setter(ctypes.c_void_p(-4))
     except Exception as e:
         logger.debug(f"_ensure_dpi_thread_context: {e}")
 
@@ -138,14 +139,42 @@ def _map_physical_to_qt(
     desktop coordinates while Qt scales each screen's size, so conversion is
     relative to the matched monitor origin rather than global division.
     """
-    for (pl, pt, pr, pb), (ql, qt, qr, qb), ratio in mappings:
+    matched = None
+    for mapping in mappings:
+        (pl, pt, pr, pb), _qt_rect, _ratio = mapping
         if pl <= px < pr and pt <= py < pb:
-            scale = float(ratio) if ratio else 1.0
-            return (
-                round(ql + (px - pl) / scale),
-                round(qt + (py - pt) / scale),
-            )
-    return px, py
+            matched = mapping
+            break
+
+    if matched is None:
+        # UIA rectangles can include a browser/window border a few physical
+        # pixels outside the monitor.  A strict point-containment check then
+        # leaves that corner unscaled even though the rest of the rectangle
+        # is on a high-DPI screen (for example y=3 against a screen at y=5).
+        # Accept only a small edge overflow; genuinely off-desktop points
+        # still retain the safe identity fallback.
+        nearest = None
+        nearest_distance = None
+        for mapping in mappings:
+            (pl, pt, pr, pb), _qt_rect, _ratio = mapping
+            dx = max(pl - px, 0, px - pr)
+            dy = max(pt - py, 0, py - pb)
+            distance = max(dx, dy)
+            if nearest_distance is None or distance < nearest_distance:
+                nearest = mapping
+                nearest_distance = distance
+        if nearest_distance is not None and nearest_distance <= 16:
+            matched = nearest
+
+    if matched is None:
+        return px, py
+
+    (pl, pt, _pr, _pb), (ql, qt, _qr, _qb), ratio = matched
+    scale = float(ratio) if ratio else 1.0
+    return (
+        round(ql + (px - pl) / scale),
+        round(qt + (py - pt) / scale),
+    )
 
 
 def phys_to_logical(px: int, py: int) -> tuple:

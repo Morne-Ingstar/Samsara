@@ -326,7 +326,7 @@
       "description": "Press Escape",
       "pack": "core"
     },
-    "tab": {
+    "press tab": {
       "type": "press",
       "key": "tab",
       "description": "Move focus to the next field",

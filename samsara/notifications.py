@@ -185,7 +185,9 @@ class NotificationManager:
                 use on_shown, not this method's return value.
         """
         try:
-            get_toast().show(title, message, on_shown=on_shown)
+            posted = get_toast().show(title, message, on_shown=on_shown)
+            if not posted:
+                return False
 
             if self.on_notification:
                 self.on_notification(title, message)

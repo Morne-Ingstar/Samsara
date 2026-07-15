@@ -287,6 +287,15 @@ class CommandExecutor:
             entry, _remainder = self._repair_plugin_matcher_drift(text)
         return entry.phrase if entry is not None else None
 
+    def find_exact_command(self, text: str) -> Optional[str]:
+        """Return a command only when it consumes the complete utterance."""
+        entry, remainder = self._matcher.match(text)
+        if entry is None:
+            entry, remainder = self._repair_plugin_matcher_drift(text)
+        if entry is None or remainder:
+            return None
+        return entry.phrase
+
     def process_text(
         self,
         text: str,

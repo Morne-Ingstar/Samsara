@@ -47,6 +47,8 @@ class TestResolveHotkeys:
         by_label = {r["label"]: r for r in rows}
         assert by_label["Dictate (hold to talk)"]["value"] == "Ctrl+Shift"
         assert by_label["Undo last dictation"]["value"] == "Ctrl+Alt+Z"
+        assert by_label["Paste staged thought"]["value"] == "Ctrl+Space"
+        assert by_label["Paste staged thought"]["enabled"] is False
         # command_mode.enabled defaults False -- Command Mode/Ava rows dim
         assert by_label["Command Mode (hold)"]["enabled"] is False
         assert by_label["Ava"]["enabled"] is False
@@ -68,6 +70,8 @@ class TestResolveHotkeys:
         by_label = {r["label"]: r for r in rows}
         assert by_label["Hands-free Session"]["enabled"] is True
         assert by_label["Hands-free Session"]["value"] == "Mouse 4"
+        assert by_label["Paste staged thought"]["enabled"] is True
+        assert by_label["Paste staged thought"]["value"] == "Ctrl+Space"
         assert by_label["Ava"]["enabled"] is True
 
     def test_streaming_enabled_reflected(self):
@@ -143,7 +147,7 @@ class TestResolveFormattingTokens:
         assert "new line" in phrases
         assert "new paragraph" in phrases
         assert "bullet" in phrases
-        assert "tab" in phrases
+        assert "insert tab" in phrases
         assert len(state["tokens"]) == 4
 
     def test_disabled_reflected(self):
@@ -263,7 +267,7 @@ class TestDisabledStateRendering:
 
     def test_all_disabled_states_clear_when_features_enabled(self, qapp):
         app = _make_app({
-            "command_mode": {"enabled": True, "button": "rctrl", "mode": "hold"},
+            "command_mode": {"enabled": True, "button": "rctrl", "mode": "toggle"},
             "wake_word_enabled": True,
             "streaming_mode": True,
         })

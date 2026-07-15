@@ -6,7 +6,7 @@ All of session_modes.py is pure orchestration -- no audio/Whisper/pyautogui/
 Qt mocking needed. Side effects are plain Mock() callables.
 """
 import pytest
-from unittest.mock import Mock, call
+from unittest.mock import ANY, Mock, call
 
 from samsara.session_modes import (
     SessionMode,
@@ -1156,7 +1156,7 @@ class TestBufferedDictateCommit:
 
         assert outcome.kind == "dictate_committed"
         assert outcome.detail["text"] == "First sentence. Second sentence."
-        mocks["inject"].assert_called_once_with("First sentence. Second sentence.")
+        mocks["inject"].assert_called_once_with("First sentence. Second sentence.", ANY)
         assert mgr.mode is SessionMode.DICTATE
         assert mgr.dictate_pending_buffer == ""
         assert mgr.stage_buffer == "First sentence. Second sentence."
@@ -1176,8 +1176,8 @@ class TestBufferedDictateCommit:
         assert second.kind == "dictate_committed"
         assert mgr.mode is SessionMode.DICTATE
         assert mocks["inject"].call_args_list == [
-            call("First box"),
-            call("Second box"),
+            call("First box", ANY),
+            call("Second box", ANY),
         ]
 
     def test_empty_end_keeps_persistent_dictate_active(self, manager_factory):
@@ -1204,18 +1204,85 @@ class TestBufferedDictateCommit:
         assert mgr.dictate_pending_buffer == "Keep this thought"
         mocks["inject"].assert_not_called()
 
-    def test_commit_focus_mismatch_retains_thought_and_stays_dictate(self, manager_factory):
+    def test_short_confident_end_commits_existing_pending_thought(self, manager_factory):
         mgr, mocks = manager_factory(buffer_dictate_until_commit=True)
         mgr.force_mode(SessionMode.DICTATE)
-        mgr.dispatch_utterance("Do not lose this", GOOD_SIGNALS)
+        mgr.dispatch_utterance("Keep this thought", GOOD_SIGNALS)
+        short_but_confident = UtteranceSignals(
+            has_contiguous_speech=False, compression_ratios=(1.2,),
+            transcript_confident=True,
+        )
+        outcome = mgr.dispatch_utterance("end", short_but_confident)
+        assert outcome.kind == "dictate_committed"
+        assert mgr.dictate_pending_buffer == ""
+        mocks["inject"].assert_called_once()
+
+    @pytest.mark.parametrize("signals", [
+        UtteranceSignals(False, (1.2,), transcript_confident=None),
+        UtteranceSignals(False, (2.5,), transcript_confident=True),
+        UtteranceSignals(None, (1.2,), transcript_confident=True),
+    ])
+    def test_short_end_exception_fails_closed_without_all_evidence(
+        self, manager_factory, signals,
+    ):
+        mgr, mocks = manager_factory(buffer_dictate_until_commit=True)
+        mgr.force_mode(SessionMode.DICTATE)
+        mgr.dispatch_utterance("Keep this thought", GOOD_SIGNALS)
+        outcome = mgr.dispatch_utterance("end", signals)
+        assert outcome.kind == "dictate_commit_refused"
+        assert mgr.dictate_pending_buffer == "Keep this thought"
+        mocks["inject"].assert_not_called()
+
+    def test_trusted_local_commit_reuses_buffered_commit_path(self, manager_factory):
+        mgr, mocks = manager_factory(buffer_dictate_until_commit=True)
+        mgr.force_mode(SessionMode.DICTATE)
+        mgr.dispatch_utterance("Paste now", GOOD_SIGNALS)
+        outcome = mgr.commit_pending_dictation()
+        assert outcome.kind == "dictate_committed"
+        assert mgr.dictate_pending_buffer == ""
+        mocks["inject"].assert_called_once()
+
+    def test_trusted_local_commit_refuses_outside_buffered_dictate(self, manager_factory):
+        mgr, mocks = manager_factory(buffer_dictate_until_commit=True)
+        outcome = mgr.commit_pending_dictation()
+        assert outcome.kind == "dictate_commit_unavailable"
+        mocks["inject"].assert_not_called()
+
+    def test_intentional_app_switch_before_commit_targets_current_foreground(self, manager_factory):
+        mgr, mocks = manager_factory(buffer_dictate_until_commit=True)
+        mgr.force_mode(SessionMode.DICTATE)
+        mgr.dispatch_utterance("Send this to the next app", GOOD_SIGNALS)
+        mocks["foreground"].return_value = "chatgpt.exe"
         mocks["foreground_hwnd"].return_value = 99999
+
+        outcome = mgr.dispatch_utterance("end", GOOD_SIGNALS)
+
+        assert outcome.kind == "dictate_committed"
+        assert mgr.mode is SessionMode.DICTATE
+        assert mgr.dictate_pending_buffer == ""
+        text, focus_guard = mocks["inject"].call_args.args
+        assert text == "Send this to the next app"
+        assert focus_guard() is True
+        mocks["on_focus_lock_revert"].assert_not_called()
+
+    def test_focus_change_during_commit_retains_thought(self, manager_factory):
+        mgr, mocks = manager_factory(buffer_dictate_until_commit=True)
+
+        def race_during_injection(text, focus_guard):
+            mocks["foreground"].return_value = "other.exe"
+            mocks["foreground_hwnd"].return_value = 88888
+            assert focus_guard() is False
+            return False
+
+        mocks["inject"].side_effect = race_during_injection
+        mgr.force_mode(SessionMode.DICTATE)
+        mgr.dispatch_utterance("Do not paste this into the wrong app", GOOD_SIGNALS)
 
         outcome = mgr.dispatch_utterance("end", GOOD_SIGNALS)
 
         assert outcome.kind == "dictate_commit_blocked_focus_lock"
         assert mgr.mode is SessionMode.DICTATE
-        assert mgr.dictate_pending_buffer == "Do not lose this"
-        mocks["inject"].assert_not_called()
+        assert mgr.dictate_pending_buffer == "Do not paste this into the wrong app"
         mocks["on_focus_lock_revert"].assert_called_once()
 
     def test_reported_paste_failure_retains_thought(self, manager_factory):
@@ -1252,5 +1319,5 @@ class TestBufferedDictateCommit:
         outcome = mgr.dispatch_utterance("command mode", GOOD_SIGNALS)
 
         assert outcome.kind == "mode_switch"
-        mocks["inject"].assert_called_once_with("Commit before switching")
+        mocks["inject"].assert_called_once_with("Commit before switching", ANY)
         assert mgr.mode is SessionMode.COMMAND

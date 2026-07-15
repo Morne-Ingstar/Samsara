@@ -146,7 +146,7 @@ SETTINGS_SCHEMA = {
         "min": 5,
         "max": 1800,
         "step": 5,
-        "default": 30,
+        "default": 300,
         "tab": "commands",
     },
     "command_mode.dictate_utterance_silence_s": {
@@ -350,11 +350,16 @@ SETTINGS_SCHEMA = {
     "listening_indicator_position": {
         "type": "enum",
         "options": ["top-left", "top-center", "top-right",
-                    "bottom-left", "bottom-center", "bottom-right"],
+                    "bottom-left", "bottom-center", "bottom-right", "custom"],
         "default": "bottom-center",
         "tab": "advanced",
         "depends_on": "listening_indicator_enabled",
     },
+    # listening_indicator_custom_position (not itemized here -- a free-form
+    # dict like gesture/command_mode/smart_corrections, only meaningful when
+    # listening_indicator_position == "custom"): {'screen': QScreen.name(),
+    # 'cx': 0..1, 'cy': 0..1}. Written by dictation.py when
+    # ListeningIndicator.placement_committed fires from a drag.
     "audio.input_sensitivity": {
         "type": "float",
         "min": 0.05,
@@ -465,7 +470,7 @@ SETTINGS_SCHEMA = {
     },
     "cloud_llm.provider": {
         "type": "enum",
-        "options": ["deepseek", "openai", "anthropic"],
+        "options": ["deepseek", "openai", "anthropic", "openrouter"],
         "default": "deepseek",
         "tab": "ava",
         "depends_on": "cloud_llm.enabled",

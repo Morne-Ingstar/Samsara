@@ -218,16 +218,34 @@ def _steal_stale_lock_if_any(lock_file_path) -> None:
 def _check_single_instance():
     """
     Ensure only one instance of Samsara is running.
-    Uses a lock file with platform-specific file locking.
-    Returns the lock file handle (must be kept open) or exits if another instance exists.
+    Windows uses a process-lifetime named mutex; Unix-like systems retain the
+    existing file lock. Returns the retained handle or exits if another
+    instance owns the same profile identity.
 
-    Lock filename is normally the fixed "samsara.lock", so a second real
-    launch always collides with the running instance. When SAMSARA_HOME_DIR
-    is explicitly set (temp-profile tooling, the tray's "Preview First-Run"
-    dev action), the filename is derived from that path instead, so a
-    preview instance gets its own lock and never collides with -- or steals
-    from -- the primary instance's samsara.lock.
+    The normal profile uses a fixed identity. When SAMSARA_HOME_DIR is
+    explicitly set (temp-profile tooling, the tray's "Preview First-Run"
+    dev action), the identity is derived from that path, so a preview
+    instance never collides with the primary instance.
     """
+    if sys.platform == 'win32':
+        from samsara.single_instance import (
+            AlreadyRunningError,
+            acquire_single_instance_mutex,
+        )
+        try:
+            return acquire_single_instance_mutex()
+        except AlreadyRunningError:
+            # Keep this exact marker: frozen smoke tooling recognizes it as
+            # the expected fast refusal when a real instance is already up.
+            logger.warning("[WARN] Samsara is already running")
+            sys.exit(0)
+        except Exception as e:
+            # Preserve the existing fail-open startup policy. A broken
+            # single-instance check must not make an accessibility app
+            # impossible to launch.
+            logger.warning(f"[WARN] Could not check for existing instance: {e}")
+            return None
+
     from pathlib import Path
     import tempfile
 
@@ -324,6 +342,11 @@ import queue
 import time
 import collections
 import subprocess
+
+_RecordingOwnership = collections.namedtuple(
+    '_RecordingOwnership',
+    'is_command is_ava command_ghost ava_ghost',
+)
 import logging
 from datetime import datetime
 import numpy as np
@@ -374,15 +397,6 @@ if sys.stdout is not None:
     sys.stdout.write(f"[PRE-LOG] +{(time.perf_counter()-_POST_SD_T)*1000:.0f}ms (after faster_whisper)\n")
     sys.stdout.flush()
 
-# torch powers Silero VAD for real-time speech gating in the wake-word audio
-# callback. It's already a transitive dependency of faster-whisper, but we
-# guard the import so the app still starts if a user has a stripped install.
-try:
-    import torch
-    _TORCH_AVAILABLE = True
-except ImportError:
-    torch = None
-    _TORCH_AVAILABLE = False
 from PIL import Image, ImageDraw
 try:
     from samsara.ui.tray_qt import SamsaraTrayQt as _SamsaraTrayQt
@@ -391,24 +405,11 @@ except Exception as _tray_err:
     print(f"[INIT] SamsaraTrayQt unavailable: {_tray_err}")
 import json
 from pathlib import Path
-# Per-monitor DPI awareness must be declared before win32api does
-# anything coordinate-related.  Without it, UIA BoundingRectangle (logical
-# coords on a 150% display) and win32api.SetCursorPos (physical pixels)
-# disagree — overlay labels appear in the right place but fallback clicks
-# miss by a scaling-factor offset.
-if sys.platform == 'win32':
-    import ctypes as _dpi_ctypes
-    try:
-        _dpi_ctypes.windll.shcore.SetProcessDpiAwareness(2)  # PER_MONITOR_DPI_AWARE_V2
-    except (AttributeError, OSError):
-        try:
-            _dpi_ctypes.windll.user32.SetProcessDPIAware()   # Win7 fallback
-        except Exception as _dpi_err:
-            # Pre-logging-setup: logger isn't configured yet at this point in
-            # module import, so this stays print()-only (matches the
-            # neighboring [INIT] fallback prints just below).
-            print(f"[INIT] DPI awareness unavailable: {_dpi_err}")
-    del _dpi_ctypes
+# Qt 6 declares PER_MONITOR_AWARE_V2 when QApplication is constructed. A
+# second process-wide SetProcessDpiAwareness call here caused Qt's later call
+# to fail with ERROR_ACCESS_DENIED on every healthy startup. Show Numbers uses
+# explicit thread-level PMv2 contexts for its native geometry/click work, so
+# process awareness has one owner and mixed-DPI coordinates stay deterministic.
 
 # Silence chatty third-party loggers that flood the console on import.
 for _name in ("torio", "torio._extension", "torchaudio",
@@ -481,9 +482,12 @@ from samsara.session_modes import (
     GLOBAL_SESSION_EXIT_PHRASES,
 )
 
-# Exact sole-utterance commands available inside the combined hands-free lane.
-# This is deliberately curated: arbitrary macros remain COMMAND-only so normal
-# prose cannot accidentally launch apps, delete data, or trigger network work.
+# Commands with special pending-text behavior inside the combined hands-free
+# lane. These are checked first; any other enabled command or user macro may
+# still execute when it consumes the COMPLETE silence-bounded utterance (see
+# CommandExecutor.find_exact_command). That exact-only fallback makes short
+# hands-free commands useful without stealing command phrases embedded in
+# ordinary prose. ``literal ...`` remains the explicit dictation escape.
 _HANDS_FREE_PRESERVE_COMMANDS = frozenset({
     "scroll up", "scroll down", "scroll up a little", "scroll down a little",
     "scroll up medium", "scroll down medium", "scroll up high", "scroll down high",
@@ -498,7 +502,7 @@ _HANDS_FREE_PRESERVE_COMMANDS = frozenset({
     "maximize", "minimize",
 })
 _HANDS_FREE_COMMIT_COMMANDS = frozenset({
-    "submit", "enter", "escape", "tab", "next field", "previous field",
+    "submit", "enter", "escape", "press tab", "next field", "previous field",
     "back field", "back tab", "switch window", "switch app", "other window",
     "next tab", "previous tab", "go back", "go forward",
 })
@@ -506,6 +510,17 @@ _HANDS_FREE_COMMIT_PREFIXES = (
     "focus ", "switch to ", "window switch ", "go to window ",
     "click ", "tap ",
 )
+
+_PENDING_CANCEL_UTTERANCES = frozenset({"nevermind", "never mind"})
+_UNDO_TARGET_UNSET = object()
+
+
+def _is_pending_cancel_utterance(text: str) -> bool:
+    """True only when the complete utterance is a pending-state cancel."""
+    normalized = " ".join((text or "").strip().lower().split())
+    normalized = normalized.strip(string.punctuation + " ")
+    return normalized in _PENDING_CANCEL_UTTERANCES
+
 
 # Minimum gap (ms) between AEC loopback open and ACE mic open.
 # The Arctis Nova Pro Wireless WASAPI driver stalls 10-18 s when a second
@@ -979,7 +994,11 @@ if sys.stdout is not None:
     sys.stdout.flush()
 # Set up logging — persistent file in ~/.samsara/logs/ + console
 from logging.handlers import RotatingFileHandler as _RotatingFileHandler
-from samsara.paths import samsara_home_dir
+from samsara.paths import (
+    migrate_legacy_source_config,
+    samsara_config_path,
+    samsara_home_dir,
+)
 from samsara.log import SAMSARA_LOG_HANDLER_TAG as _SAMSARA_LOG_HANDLER_TAG
 
 LOG_DIR = samsara_home_dir() / "logs"
@@ -1299,6 +1318,69 @@ def _resolve_target_window(process_name, exclude_pids=None):
 
 
 _PREVIEW_PROFILE_MAX_AGE_S = 3600  # 1 hour
+_PREVIEW_STARTUP_MONITOR_S = 60.0
+_PREVIEW_DIAGNOSTIC_NAME = "preview-startup.log"
+
+
+def _read_preview_diagnostics(path: Path, max_chars: int = 16000) -> str:
+    """Read a bounded tail of detached-child output without raising."""
+    try:
+        text = path.read_text(encoding="utf-8", errors="replace")
+    except OSError as exc:
+        return f"<could not read {path}: {exc}>"
+    return text[-max_chars:] if text else "<no child output was captured>"
+
+
+def _show_preview_failure(message: str, diagnostic_path: "Path | None" = None) -> None:
+    """Log full preview failure details and post a concise visible toast."""
+    if diagnostic_path is not None:
+        diagnostics = _read_preview_diagnostics(diagnostic_path)
+        logger.error(
+            "[PREVIEW] %s\nChild diagnostics (%s):\n%s",
+            message, diagnostic_path, diagnostics,
+        )
+        last_line = next(
+            (line.strip() for line in reversed(diagnostics.splitlines()) if line.strip()),
+            "No child output was captured.",
+        )
+        visible = f"{message}\n\n{last_line}\n\nDetails: {diagnostic_path}"
+    else:
+        logger.error("[PREVIEW] %s", message)
+        visible = message
+
+    try:
+        from samsara.ui.reminder_toast import get_toast
+        get_toast().show("Preview First-Run Failed", visible)
+    except Exception as toast_exc:
+        logger.debug(f"[PREVIEW] Could not show failure toast: {toast_exc}")
+
+
+def _monitor_preview_startup(
+    process,
+    diagnostic_path: Path,
+    timeout: float = _PREVIEW_STARTUP_MONITOR_S,
+) -> None:
+    """Surface a detached preview that exits unsuccessfully during startup."""
+    try:
+        return_code = process.wait(timeout=timeout)
+    except subprocess.TimeoutExpired:
+        logger.info(
+            "[PREVIEW] Child remained alive through %.1fs startup monitor; "
+            "diagnostics=%s",
+            timeout, diagnostic_path,
+        )
+        return
+    except Exception as exc:
+        logger.warning(f"[PREVIEW] Could not monitor child startup: {exc}")
+        return
+
+    if return_code:
+        _show_preview_failure(
+            f"Preview exited during startup with code {return_code}.",
+            diagnostic_path,
+        )
+    else:
+        logger.info("[PREVIEW] Child exited normally during startup monitor")
 
 
 def _reap_old_preview_profiles() -> None:
@@ -1334,25 +1416,11 @@ def _reap_old_preview_profiles() -> None:
 class DictationApp:
     def __init__(self, splash=None):
         self.splash = splash
-        if getattr(sys, 'frozen', False):
-            # Frozen (PyInstaller onedir) builds: __file__ resolves inside
-            # the bundle (sys._MEIPASS / "_internal\"), which gets wiped by
-            # a clean rebuild -- config could never persist across builds,
-            # so first-run fired (and the wizard hung, see first_run_wizard_qt.py)
-            # on every fresh install/rebuild. Mirror LOG_DIR's stable per-user
-            # directory instead, same as history.db and debug_audio already do.
-            self.config_path = samsara_home_dir() / "config.json"
-            self.config_path.parent.mkdir(parents=True, exist_ok=True)
-        elif os.environ.get("SAMSARA_HOME_DIR"):
-            # Explicit override (frozen_smoke.py-style isolation, or the
-            # tray's "Preview First-Run" dev action) also applies to
-            # source-mode runs -- without this branch SAMSARA_HOME_DIR has
-            # no effect here and config_path stays pinned to the checked-out
-            # repo root regardless of the env var.
-            self.config_path = samsara_home_dir() / "config.json"
-            self.config_path.parent.mkdir(parents=True, exist_ok=True)
-        else:
-            self.config_path = Path(__file__).parent / "config.json"
+        # Source and frozen launches share one per-user profile. Tests,
+        # first-run previews, and other isolated launches use the explicit
+        # SAMSARA_HOME_DIR override instead of a second implicit config.
+        self.config_path = samsara_config_path()
+        self.config_path.parent.mkdir(parents=True, exist_ok=True)
 
         # Boot-phase timing -- measure first, fix later.
         _bt0 = time.monotonic()
@@ -1488,7 +1556,27 @@ class DictationApp:
             logger.exception(f"[ICON] Could not prepare window icon: {_e}")
 
         logger.info("[INIT] Enumerating audio devices...")
+        from samsara.output_devices import (
+            enumerate_output_devices,
+            reconcile_output_device,
+        )
         self.available_mics = self.get_available_microphones()
+        self.available_outputs = enumerate_output_devices(
+            sd,
+            show_all=self.config.get('show_all_audio_devices', False),
+        )
+        self.output_device, self.output_device_name, output_missing = (
+            reconcile_output_device(
+                self.available_outputs,
+                self.config.get('output_device'),
+                self.config.get('output_device_name'),
+            )
+        )
+        if output_missing:
+            logger.warning(
+                "[AUDIO] Selected output '%s' is unavailable; using system default",
+                self.config.get('output_device_name') or self.config.get('output_device'),
+            )
         _boot("audio device enumeration")
         _bdiag("get_available_microphones (sd.query_devices+hostapis)")
 
@@ -1671,9 +1759,13 @@ class DictationApp:
         self.buffer_lock = threading.Lock()
         # Silero VAD -- real-time speech gate for the wake-word audio callback.
         # When available, it replaces the old RMS debounce entirely. When it's
-        # not (torch missing or download blocked), we fall back to RMS.
+        # not (local ONNX load or inference failure), we fall back to RMS.
         self._vad_model = None
         self._vad_available = False
+        # Constructed before the asynchronously loaded model is published.
+        # ONNX inference is serialized through this lock; the model instance
+        # is deliberately separate from faster-whisper's cached VAD instance.
+        self._vad_lock = threading.Lock()
         self.wake_word_listening = False  # Currently listening for wake word
         self.wake_word_triggered = False  # Wake word detected, ready for command
         self._wake_trace_callback = None  # Optional: debug window registers here
@@ -1741,11 +1833,13 @@ class DictationApp:
         self._dictation_finalize_lock = threading.Lock()
         self._dictation_paused = False
 
-        # Single-level undo for the last pasted dictation. Shift+Left+Delete
-        # only works if the caret hasn't moved since the paste, so the state
-        # expires after _UNDO_EXPIRY_SECONDS or on the next paste.
+        # Single-level undo for the last pasted dictation. Native Ctrl+Z is
+        # only sent while the exact top-level window that received the paste
+        # is still foreground; otherwise undo fails closed and remains
+        # available until expiry so the user can refocus and retry.
         self._last_dictation_text = None
         self._last_dictation_length = 0
+        self._last_dictation_hwnd = None
         self._undo_timer = None
 
         # Dictation history. self.config_path.parent (not Path(__file__).parent)
@@ -1821,8 +1915,17 @@ class DictationApp:
         def _init_indicator():
             self.listening_indicator = ListeningIndicator()
             self.listening_indicator.set_mode(self._get_mode_display())
-            self.listening_indicator.set_position(
-                self.config.get('listening_indicator_position', 'bottom-center'))
+            position = self.config.get('listening_indicator_position', 'bottom-center')
+            custom = self.config.get('listening_indicator_custom_position')
+            if position == 'custom' and isinstance(custom, dict) and custom:
+                self.listening_indicator.set_custom_position(
+                    custom.get('screen'),
+                    custom.get('cx') if custom.get('cx') is not None else 0.5,
+                    custom.get('cy') if custom.get('cy') is not None else 0.5)
+            else:
+                self.listening_indicator.set_position(position)
+            self.listening_indicator.placement_committed.connect(
+                self._on_indicator_placement_committed)
             if self.config.get('listening_indicator_enabled', False):
                 self.listening_indicator.show()
 
@@ -1911,8 +2014,10 @@ class DictationApp:
             config_dir=config_dir,
             sounds_dir=sounds_dir,
             get_config=lambda: self.config,
-            save_config=self.persist_config
+            save_config=self.persist_config,
+            output_device=self.output_device,
         )
+        self.alarm_manager.on_alarm_triggered = self._show_alarm_notification
         if self.config.get('alarms', {}).get('enabled', True):
             self.alarm_manager.start()
 
@@ -1935,10 +2040,10 @@ class DictationApp:
                 from samsara.tts.exceptions import EngineUnavailableError
                 tts_engine_name = self.config.get('tts', {}).get('engine', 'winrt').lower()
                 if tts_engine_name == 'edge':
-                    self.tts_engine = EdgeTTSEngine()
+                    self.tts_engine = EdgeTTSEngine(output_device=self.output_device)
                     logger.info("[TTS] Initialized EdgeTTS engine (Azure Neural voices)")
                 else:
-                    self.tts_engine = WinRTEngine()
+                    self.tts_engine = WinRTEngine(output_device=self.output_device)
                     logger.info("[TTS] Initialized WinRT engine")
                 self.audio_coordinator = AudioCoordinator(
                     self,
@@ -2003,6 +2108,8 @@ class DictationApp:
         # library's hook gets every press/release before any other
         # listener. The callback is a no-op when streaming_mode is off.
         self._capslock_held = False
+        self._capslock_lifecycle_lock = threading.Lock()
+        self._capslock_streaming_session = None
         self._capslock_hook = None
         self._install_capslock_hook()
 
@@ -2045,6 +2152,7 @@ class DictationApp:
         self._wake_consumer        = None    # ACE-04C
         self._ace_dictation_active  = False   # True while hold-mode uses ACE consumer path
         self._ace_streaming_active  = False   # True while CapsLock streaming uses ACE consumer
+        self._streaming_session     = None    # Sole owner until final/cancel cleanup completes
         _t = time.perf_counter()
         self._start_ace_engine()
         _dt = (time.perf_counter() - _t) * 1000
@@ -2320,6 +2428,7 @@ class DictationApp:
             "wake_word_hotkey": "ctrl+alt+w",
             "command_hotkey": "ctrl+alt+c",
             "undo_hotkey": "ctrl+alt+z",
+            "dictate_commit_hotkey": DEFAULT_CONTINUOUS_COMMIT_HOTKEY,
             "correction_hotkey": "ctrl+alt+r",
             "cancel_hotkey": "escape",
             # Nested hotkey namespace (new features land here rather than as
@@ -2344,6 +2453,8 @@ class DictationApp:
             "streaming_hotkey": "capslock",  # hotkey for streaming mode (suppressed; no caps toggle)
             "device": "auto",
             "microphone": None,
+            "output_device": None,
+            "output_device_name": None,
             "silence_threshold": DEFAULT_SILENCE_TIMEOUT,
             "min_speech_duration": DEFAULT_MIN_SPEECH_DURATION,
             # Continuous mode commit trigger: "silence" is today's fixed
@@ -2383,6 +2494,7 @@ class DictationApp:
             "audio_feedback": True,
             "sound_volume": 0.5,
             "sound_theme": "cute",
+            "ui_scale": 1.0,
             "first_run_complete": True,
             "premium_license": "",
             # New nested wake word config
@@ -2530,7 +2642,7 @@ class DictationApp:
                 "repair_disfluencies": False,
             },
             # Inline formatting tokens ("new line" -> \n, "new paragraph" ->
-            # \n\n, "tab" -> \t, "bullet"/"bullet point" -> \n• ) applied to
+            # \n\n, "insert tab" -> \t, "bullet"/"bullet point" -> \n• ) applied to
             # DICTATE output only, after smart_correct, before delivery. See
             # samsara/formatting_tokens.py.
             "formatting_tokens": {
@@ -2606,7 +2718,7 @@ class DictationApp:
                 "enter_debounce_ms": 200,   # delay before playing enter earcon
                 "exit_earcon": True,        # play stop earcon on release/exit
                 "miss_limit": 5,            # toggle: exit after N unmatched recordings
-                "inactivity_timeout_s": 30, # toggle: exit after N seconds silence
+                "inactivity_timeout_s": 300, # toggle: exit after N seconds silence
                 "tts_char_limit": 50,       # suppress TTS responses longer than this
                 "suppress_button": True,    # consume mouse4/5 click so browsers don't navigate back
                 "utterance_silence_s": 1.0,         # toggle, COMMAND sub-mode: per-utterance VAD silence gap
@@ -3211,6 +3323,49 @@ class DictationApp:
         self._reconcile_microphone_selection()
         return self.available_mics
 
+    def get_available_output_devices(self):
+        """Return deduplicated output endpoints for Settings."""
+        from samsara.output_devices import enumerate_output_devices
+        self.available_outputs = enumerate_output_devices(
+            sd,
+            show_all=self.config.get('show_all_audio_devices', False),
+        )
+        return self.available_outputs
+
+    def switch_output_device(self, device_id, device_name=None):
+        """Route Samsara feedback only; never changes the Windows default."""
+        from samsara.output_devices import reconcile_output_device
+
+        if device_id is None:
+            resolved_id, resolved_name, missing = None, None, False
+        else:
+            self.available_outputs = enumerate = self.get_available_output_devices()
+            resolved_id, resolved_name, missing = reconcile_output_device(
+                enumerate, device_id, device_name
+            )
+        if missing:
+            logger.warning(
+                "[AUDIO] Selected output '%s' disconnected; using system default",
+                device_name or device_id,
+            )
+
+        self.output_device = resolved_id
+        self.output_device_name = resolved_name
+        self.stop_sound_stream()
+        self._start_sound_stream()
+        # _start_sound_stream may itself fall back after an open failure.
+        effective = self.output_device
+        engine = getattr(self, 'tts_engine', None)
+        if engine is not None and hasattr(engine, 'set_output_device'):
+            engine.set_output_device(effective)
+        alarms = getattr(self, 'alarm_manager', None)
+        if alarms is not None and hasattr(alarms, 'set_output_device'):
+            alarms.set_output_device(effective)
+        logger.info(
+            "[AUDIO] Samsara output set to %s",
+            resolved_name if effective is not None else "System default",
+        )
+
     def get_current_microphone_name(self):
         """Get the name of the currently selected microphone"""
         mic_id = self.config.get('microphone')
@@ -3519,12 +3674,17 @@ class DictationApp:
         the hub is optional, so any failure here is swallowed.
         """
         win = getattr(self, 'main_window', None)
-        if win is None:
-            return
-        try:
-            win.on_dictation_complete(text)
-        except Exception as e:
-            logger.exception(f"[UI] main window notify failed: {e}")
+        if win is not None:
+            try:
+                win.on_dictation_complete(text)
+            except Exception as e:
+                logger.exception(f"[UI] main window notify failed: {e}")
+        history_window = getattr(self, '_history_qt', None)
+        if history_window is not None:
+            try:
+                history_window.refresh()
+            except Exception as e:
+                logger.exception(f"[UI] standalone history refresh failed: {e}")
 
     def _is_audio_capture_active(self) -> bool:
         """True if ANY audio input stream is currently open.
@@ -3846,6 +4006,46 @@ class DictationApp:
                 logger.debug(f"is_pressed check failed for {key!r}: {e}")
         return '+'.join(pressed) if pressed else 'none'
 
+    def _hands_free_dictation_commit_available(self) -> bool:
+        """Whether the local commit key may paste a buffered thought now.
+
+        This deliberately does not construct a session manager: outside an
+        already-active latched hands-free session the key is inert.
+        """
+        manager = self._session_mode_manager
+        return bool(
+            self.command_mode_active
+            and self.config.get('command_mode', {}).get('mode', 'hold') == 'toggle'
+            and manager is not None
+            and manager.mode is SessionMode.DICTATE
+            and manager.buffer_dictate_until_commit
+            and manager.dictate_pending_buffer
+        )
+
+    def _commit_pending_hands_free_dictation(self):
+        """Commit through SessionModeManager's transactional paste path."""
+        if not self._hands_free_dictation_commit_available():
+            logger.debug('[HOTKEY] Paste staged thought ignored: no active buffered thought')
+            return None
+
+        manager = self._session_mode_manager
+        try:
+            outcome = manager.commit_pending_dictation()
+            logger.info(
+                '[SESSION] local dictate commit outcome=%s detail=%s',
+                outcome.kind,
+                outcome.detail,
+            )
+            self._handle_session_dispatch_outcome(outcome, "")
+            return outcome
+        except Exception as exc:
+            logger.exception('[SESSION] Local dictate commit failed unexpectedly: %s', exc)
+            try:
+                self.play_sound('error')
+            except Exception as sound_exc:
+                logger.debug('[SESSION] Local commit error earcon failed: %s', sound_exc)
+            return None
+
     def on_key_press(self, key):
         """Handle key press - uses state-based checking for reliable simultaneous key detection"""
         key_name = self.get_key_name(key)
@@ -3931,6 +4131,24 @@ class DictationApp:
             thread_registry.spawn("dictation.set_wake_word_enabled", self.set_wake_word_enabled,
                                    args=(new_state,), daemon=True)
             return
+
+        # Trusted local equivalent of saying the sole commit word in the
+        # buffered hands-free DICTATE lane. It never starts/stops audio and is
+        # inert in hold/toggle recording, COMMAND/AVA, and continuous mode.
+        dictate_commit_hotkey = self.config.get(
+            'dictate_commit_hotkey', DEFAULT_CONTINUOUS_COMMIT_HOTKEY,
+        )
+        if (self._hands_free_dictation_commit_available()
+                and self.check_hotkey_state(dictate_commit_hotkey)
+                and not self.hotkey_pressed):
+            logger.debug('[HOTKEY] Paste staged thought detected: %s', dictate_commit_hotkey)
+            self.hotkey_pressed = True
+            thread_registry.spawn(
+                'dictation.commit_pending_hands_free',
+                self._commit_pending_hands_free_dictation,
+                daemon=True,
+            )
+            return
         
         # Check for continuous mode toggle (works in any mode)
         if self.check_hotkey_state(cont_hotkey) and not self.hotkey_pressed:
@@ -3989,6 +4207,9 @@ class DictationApp:
         if (self.check_hotkey_state(main_hotkey)
                 and main_event_held
                 and not self.hotkey_pressed):
+            if self.recording or getattr(self, '_streaming_session', None) is not None:
+                logger.info("[HOTKEY] Main hotkey ignored -- another recording owns capture")
+                return
             if self._stop_in_flight:
                 logger.debug("[HOTKEY] Ignored re-trigger while stop in flight")
                 return
@@ -4141,20 +4362,32 @@ class DictationApp:
         """Worker: start a streaming-mode recording. Wrapped so we can
         guard against re-entry if the user hammers CapsLock."""
         try:
-            if self.recording:
-                return
-            logger.info("[CAPSLOCK] press -> streaming start")
-            self.start_recording(streaming=True)
+            with self._capslock_lifecycle_lock:
+                if not self.config.get('streaming_mode', False):
+                    return
+                if self.recording or getattr(self, '_streaming_session', None) is not None:
+                    logger.info("[CAPSLOCK] streaming start ignored -- another recording owns capture")
+                    return
+                logger.info("[CAPSLOCK] press -> streaming start")
+                self.start_recording(streaming=True)
+                self._capslock_streaming_session = getattr(
+                    self, '_streaming_session', None,
+                )
         except Exception as e:
             logger.exception(f"[CAPSLOCK] start failed: {e}")
 
     def _capslock_stop_streaming(self):
         """Worker: stop the streaming recording on CapsLock release."""
         try:
-            if not self.recording:
-                return
-            logger.info("[CAPSLOCK] release -> streaming stop")
-            self.stop_recording()
+            with self._capslock_lifecycle_lock:
+                owned = getattr(self, '_capslock_streaming_session', None)
+                if (owned is None
+                        or getattr(self, '_streaming_session', None) is not owned
+                        or not self.recording):
+                    return
+                self._capslock_streaming_session = None
+                logger.info("[CAPSLOCK] release -> streaming stop")
+                self.stop_recording()
         except Exception as e:
             logger.exception(f"[CAPSLOCK] stop failed: {e}")
 
@@ -4302,6 +4535,7 @@ class DictationApp:
 
         dispatch_text = normalized
         policy = None
+        canonical = None
         if normalized in _HANDS_FREE_PRESERVE_COMMANDS:
             policy = PendingTextPolicy.PRESERVE
         elif normalized in _HANDS_FREE_COMMIT_COMMANDS:
@@ -4325,9 +4559,23 @@ class DictationApp:
             except Exception as exc:
                 logger.debug(f"[SESSION] Show Numbers command probe unavailable: {exc}")
 
+        # Every enabled command and user macro is available when (and only
+        # when) it consumes the entire utterance. Unknown command types commit
+        # pending text first because they may move focus, submit, launch a
+        # process, or invalidate the current target. Curated navigation above
+        # retains its more precise PRESERVE/COMMIT policy.
+        if policy is None:
+            command_executor = getattr(self, 'command_executor', None)
+            find_exact = getattr(command_executor, 'find_exact_command', None)
+            if find_exact is not None:
+                canonical = find_exact(dispatch_text)
+                if canonical is not None:
+                    policy = PendingTextPolicy.COMMIT
+
         if policy is None:
             return None
-        canonical = self.command_executor.find_command(dispatch_text)
+        if canonical is None:
+            canonical = self.command_executor.find_command(dispatch_text)
         if canonical is None:
             # Disabled command pack or stale/unavailable command: preserve the
             # user's words as dictation instead of pretending an action exists.
@@ -4397,7 +4645,7 @@ class DictationApp:
                     self.exit_command_mode()
             return CommandDispatchResult(matched=False, phrase=None)
 
-        def _inject_fn(text: str):
+        def _inject_fn(text: str, commit_focus_guard=None):
             """Commit one complete unified-session DICTATE thought.
 
             `text` is the complete, RAW, multi-chunk accumulated buffer --
@@ -4439,7 +4687,10 @@ class DictationApp:
                 logger.exception(f'[SESSION] DICTATE commit formatting failed: {e}')
                 return False
 
-            paste_ok = self._paste_preserving_clipboard(formatted)
+            paste_ok = self._paste_preserving_clipboard(
+                formatted,
+                before_paste=commit_focus_guard,
+            )
             if not paste_ok:
                 return False
 
@@ -4533,6 +4784,8 @@ class DictationApp:
         so at most one request is ever in flight; this function itself never
         blocks the caller (the utterance-processing thread).
         """
+        if self._try_cancel_pending_ava_utterance(text):
+            return
         payload_text = f"STAGED TEXT:\n{context}\n\n{text}" if context else text
 
         with self._ava_session_dispatch_lock:
@@ -4602,7 +4855,7 @@ class DictationApp:
             self._schedule_ui(self.listening_indicator.set_command_mode, True)
         cfg = self.config.get('command_mode', {})
         if cfg.get('mode', 'hold') == 'toggle':
-            timeout_s = cfg.get('inactivity_timeout_s', 30)
+            timeout_s = cfg.get('inactivity_timeout_s', 300)
             self._reset_command_mode_inactivity_timer(timeout_s)
             # The latched toggle is the combined hands-free session: exact
             # navigation commands and buffered dictation coexist from entry.
@@ -4631,10 +4884,11 @@ class DictationApp:
                 self.play_sound('start', use_winsound=True)
             return
         # Hold mode: accumulate audio via dictation consumer until key release.
-        if self.recording:
-            return
-        self.command_mode_recording = True
-        self.start_recording(streaming=False, play_earcon=False)
+        with self._command_mode_lock:
+            if not self.command_mode_active or self.recording:
+                return
+            self.command_mode_recording = True
+            self.start_recording(streaming=False, play_earcon=False)
         # 200ms debounce: skip earcon for accidental quick taps
         time.sleep(debounce_ms / 1000.0)
         if self.command_mode_active:
@@ -4697,10 +4951,11 @@ class DictationApp:
 
     def _do_enter_ava_mode(self):
         """Worker thread: starts recording and fires debounced earcon."""
-        if self.recording:
-            return
-        self.ava_mode_recording = True
-        self.start_recording(streaming=False, play_earcon=False)
+        with self._ava_mode_lock:
+            if not self.ava_mode_active or self.recording:
+                return
+            self.ava_mode_recording = True
+            self.start_recording(streaming=False, play_earcon=False)
         debounce_ms = self.config.get('command_mode', {}).get('enter_debounce_ms', 200)
         time.sleep(debounce_ms / 1000.0)
         if self.ava_mode_active:
@@ -4841,6 +5096,40 @@ class DictationApp:
             self._wake_transcription_in_progress = False
             self._vad_reset()
 
+    def _try_cancel_pending_ava_utterance(self, text: str) -> bool:
+        """Cancel Ava state only for an exact cancel utterance while pending."""
+        if not _is_pending_cancel_utterance(text):
+            return False
+        try:
+            from plugins.commands import ask_ollama
+            if ask_ollama.get_pending_action() is None:
+                return False
+            ask_ollama.handle_ava_cancel(self)
+            return True
+        except Exception as exc:
+            logger.exception(f"[AVA] Pending-action cancellation failed: {exc}")
+            self.play_sound('error')
+            return True
+
+    def _try_cancel_pending_wake_command(self, text: str) -> bool:
+        """Cancel the Jarvis command-wait state on an exact cancel utterance."""
+        if not _is_pending_cancel_utterance(text):
+            return False
+        self._try_cancel_pending_ava_utterance(text)
+        timer = getattr(self, 'wake_word_timer', None)
+        if timer is not None:
+            timer.cancel()
+            self.wake_word_timer = None
+        self.wake_word_triggered = False
+        self.app_state = 'asleep'
+        logger.info('[WAKE] Pending command cancelled by exact nevermind utterance')
+        self._indicator_reset()
+        self._emit_wake_trace({
+            "stage": "utterance_end",
+            "result": "pending_command_cancelled",
+        })
+        return True
+
     def _route_to_ava(self, text: str):
         """Send transcribed speech to Ava -- but try it as a literal voice
         command first, through the SAME registry/dispatch wake word mode
@@ -4851,6 +5140,8 @@ class DictationApp:
         feature, so a recognized command always dispatches here regardless
         of that setting. Only text that doesn't match anything registered
         falls through to Ollama below, unchanged."""
+        if self._try_cancel_pending_ava_utterance(text):
+            return
         result, was_command = self.command_executor.process_text(
             text, self, force_commands=True)
         if was_command:
@@ -4938,7 +5229,7 @@ class DictationApp:
         cm_cfg = self.config.get('command_mode', {})
         if cm_cfg.get('mode', 'hold') != 'toggle':
             return
-        timeout_s = cm_cfg.get('inactivity_timeout_s', 30)
+        timeout_s = cm_cfg.get('inactivity_timeout_s', 300)
         self._reset_command_mode_inactivity_timer(timeout_s)
 
     def _pause_session_inactivity_for_device_recovery(self) -> None:
@@ -5014,7 +5305,7 @@ class DictationApp:
         Two timeouts are in play (do not conflate):
           utterance_silence_s / dictate_utterance_silence_s (WakeConsumer,
               picked by current SessionMode) -- ends THIS utterance
-          inactivity_timeout_s (30 s, threading.Timer) -- ends the whole session
+          inactivity_timeout_s (300 s by default, threading.Timer) -- ends the whole session
 
         Dispatch itself (abort phrase, "scratch that", switch words, and
         per-mode handling) lives in SessionModeManager -- this method's job
@@ -5136,9 +5427,25 @@ class DictationApp:
             has_contiguous_speech = None
 
         compression_ratios = tuple(getattr(s, 'compression_ratio', None) for s in seg_list)
+        # These are faster-whisper's own accepted-segment signals. Preserve
+        # unavailable metadata as None so the short-commit exception fails
+        # closed on older backends or incomplete test doubles.
+        transcript_confident = None
+        if seg_list:
+            confidence_pairs = [
+                (getattr(s, 'avg_logprob', None), getattr(s, 'no_speech_prob', None))
+                for s in seg_list
+            ]
+            if all(avg is not None and no_speech is not None
+                   for avg, no_speech in confidence_pairs):
+                transcript_confident = all(
+                    avg >= _LOGPROB_THRESHOLD and no_speech <= _NO_SPEECH_THRESHOLD
+                    for avg, no_speech in confidence_pairs
+                )
         return UtteranceSignals(
             has_contiguous_speech=has_contiguous_speech,
             compression_ratios=compression_ratios,
+            transcript_confident=transcript_confident,
         )
 
     # -----------------------------------------------------------------------
@@ -5387,36 +5694,44 @@ class DictationApp:
     def _load_vad_model(self):
         """Load Silero VAD for real-time speech detection in the wake callback.
 
-        Runs once after Whisper loads. Any failure (no torch, offline, hub
-        cache miss) sets _vad_available=False and the callback falls back to
-        RMS. Safe to call multiple times -- a successful prior load short-
-        circuits.
+        Runs once after Whisper loads. The ONNX model is shipped inside
+        faster-whisper, so this never contacts the network or depends on a
+        torch hub cache. Any failure sets _vad_available=False and the
+        callback falls back to RMS. Safe to call multiple times -- a
+        successful prior load short-circuits.
         """
         if self._vad_available and self._vad_model is not None:
             return
-        if not _TORCH_AVAILABLE:
-            logger.debug("[VAD] torch unavailable, falling back to RMS speech detection")
-            return
         try:
-            logger.info("[BOOT-DIAG] torch.hub.load (Silero VAD) called — may contact GitHub if cache stale")
+            # Keep this lazy: importing dictation.py alone must not import the
+            # heavy faster_whisper/onnxruntime stack (hermetic collection).
+            from faster_whisper.utils import get_assets_path
+            from faster_whisper.vad import SileroVADModel
+
+            asset_path = Path(get_assets_path()) / "silero_vad_v6.onnx"
+            if not asset_path.is_file():
+                raise FileNotFoundError(f"bundled VAD asset missing: {asset_path}")
+
+            logger.info("[BOOT-DIAG] Loading bundled Silero VAD ONNX model (local only)")
             _t = time.perf_counter()
-            model, _ = torch.hub.load(
-                'snakers4/silero-vad', 'silero_vad',
-                force_reload=False, trust_repo=True,
-            )
+            # Do not use faster_whisper.vad.get_vad_model(): that returns a
+            # process-global singleton which Whisper may invoke concurrently
+            # via vad_filter outside Samsara's lock.
+            model = SileroVADModel(str(asset_path))
             _dt = (time.perf_counter() - _t) * 1000
-            logger.info(f"[BOOT-DIAG] torch.hub.load (Silero VAD) returned: {_dt:.0f}ms")
+            logger.info(f"[BOOT-DIAG] Bundled Silero VAD ONNX load returned: {_dt:.0f}ms")
             if _dt > 5000:
-                logger.info(f"[BOOT-DIAG] SLOW STEP: torch.hub.load (Silero VAD) {_dt:.0f}ms")
-            model.eval()
-            self._vad_model = model
-            self._vad_available = True
-            self._vad_lock = threading.Lock()
-            logger.debug("[VAD] Silero VAD loaded for real-time speech detection")
+                logger.info(f"[BOOT-DIAG] SLOW STEP: bundled Silero VAD ONNX load {_dt:.0f}ms")
+            with self._vad_lock:
+                self._vad_model = model
+                # Publish availability last, after both lock and model exist.
+                self._vad_available = True
+            logger.debug("[VAD] Bundled Silero VAD ONNX loaded for real-time speech detection")
         except Exception as e:
-            self._vad_model = None
-            self._vad_available = False
-            logger.debug(f"[VAD] Silero VAD not available, falling back to RMS: {e}")
+            with self._vad_lock:
+                self._vad_model = None
+                self._vad_available = False
+            logger.warning(f"[VAD] Silero VAD ONNX unavailable, falling back to RMS: {e}")
 
     def _load_oww_model(self):
         """Load the OpenWakeWord model for the configured wake phrase.
@@ -5658,6 +5973,21 @@ class DictationApp:
         logger.info("[WAKE-SESSION] ended (inactivity timeout)")
         self._reset_wake_dictation()
 
+    def _vad_probabilities(self, audio_16k):
+        """Return one ONNX speech probability per complete 512-sample frame.
+
+        Caller must hold ``_vad_lock``. The bundled faster-whisper wrapper is
+        stateless between calls and accepts a flat float32 buffer whose length
+        is a multiple of 512. Discarding a sub-frame tail preserves the prior
+        torch path's behavior.
+        """
+        audio_16k = np.ascontiguousarray(audio_16k, dtype=np.float32).reshape(-1)
+        usable = (audio_16k.size // 512) * 512
+        if usable == 0:
+            return np.empty(0, dtype=np.float32)
+        probabilities = self._vad_model(audio_16k[:usable])
+        return np.asarray(probabilities, dtype=np.float32).reshape(-1)
+
     def _vad_is_speech(self, chunk_float32, src_rate=None):
         """Return True if the chunk contains human speech.
 
@@ -5673,33 +6003,18 @@ class DictationApp:
         # Guarantee 1D — sounddevice returns (N, 1) for mono in some configs
         if chunk_16k.ndim > 1:
             chunk_16k = chunk_16k.flatten()
-        window_size = 512
-        for start in range(0, len(chunk_16k) - window_size + 1, window_size):
-            window = chunk_16k[start:start + window_size]
-            # Force float32 and correct shape before model call
-            tensor = torch.from_numpy(window).float().unsqueeze(0)
-            if tensor.shape != (1, 512):
-                continue
-            with self._vad_lock:
-                with torch.no_grad():
-                    try:
-                        speech_prob = self._vad_model(tensor, 16000).item()
-                    except RuntimeError as e:
-                        logger.exception(f"[VAD] State corruption caught, auto-resetting: {e}")
-                        self._vad_model.reset_states()
-                        continue
-            if speech_prob > 0.5:
-                return True
-        return False
+        with self._vad_lock:
+            probabilities = self._vad_probabilities(chunk_16k)
+        return bool(np.any(probabilities > 0.5))
 
     def _vad_reset(self):
-        """Clear Silero VAD internal state between utterances."""
-        if self._vad_available and self._vad_model is not None:
-            with self._vad_lock:
-                try:
-                    self._vad_model.reset_states()
-                except Exception as e:
-                    logger.exception(f"[VAD] reset_states failed: {e}")
+        """Compatibility hook for utterance-boundary VAD cleanup.
+
+        faster-whisper's bundled ONNX wrapper initializes its h/c/context
+        arrays inside every call, so there is no recurrent state to clear.
+        Existing callers retain this hook to keep their cleanup paths stable.
+        """
+        return None
 
     def _buffer_has_contiguous_speech(self, audio, src_rate,
                                        min_ms=_GATE_MIN_CONTIG_MS,
@@ -5714,28 +6029,15 @@ class DictationApp:
         (speech-probable in total, but never contiguous) while still passing
         a short whispered word.
 
-        Reuses the same Silero model/lock as _vad_is_speech (no second VAD
-        model). Falls back to _zcr_energy_contiguous_speech (Fix 5) if Silero
+        Reuses the same dedicated Silero ONNX model/lock as _vad_is_speech.
+        Falls back to _zcr_energy_contiguous_speech (Fix 5) if Silero
         is unavailable. Fails OPEN (returns True) if neither can run --
         eating real speech is worse than letting a rare beep through.
 
-        FIX 2 (2026-07-10 hotkey word-loss investigation): the shared lock
-        is now held for the ENTIRE scan (reset + every window), not
-        per-window. A scan is a pure function of `audio` -- unaffected by
-        any concurrent caller (e.g. WakeConsumer's _vad_is_speech on
-        another thread) interleaving between windows. Previously the
-        per-window lock let a concurrent caller run BETWEEN two windows of
-        this loop and corrupt Silero's recurrent hidden state mid-scan --
-        the confirmed root cause of gate readings as low as 672ms max-
-        contiguous on a provably ~2.8s-continuous buffer (commit 0e837ba
-        investigation). Chose scan-long locking over a second dedicated
-        Silero instance: FIX 1 already eliminates the common-case
-        contention entirely (WakeConsumer is fully deaf during a plain
-        hotkey recording), so the only remaining contention is the rare
-        toggle-command-mode-held-during-a-hotkey-press edge case, where a
-        brief block (bounded by this scan's short duration, buffers this
-        short are capped at _GATE_MAX_BUFFER_S=8s) is an acceptable
-        trade-off against a second model's memory/load cost.
+        The lock covers the whole ONNX inference call. Although this wrapper
+        carries no recurrent state between calls, serializing its dedicated
+        InferenceSession keeps scans deterministic and avoids relying on
+        provider-specific concurrent-run behavior.
 
         head_grace_ms ("head grace"): treats a low reading inside the
         first head_grace_ms of the buffer as NEUTRAL rather than
@@ -5759,41 +6061,23 @@ class DictationApp:
         min_contig_frames = max(1, int(min_ms / frame_ms))
         grace_frames = max(0, int(round(head_grace_ms / frame_ms)))
 
+        try:
+            with self._vad_lock:
+                probabilities = self._vad_probabilities(chunk_16k)
+        except Exception as e:
+            logger.exception(f"[VAD] ONNX gate inference failed, using ZCR fallback: {e}")
+            return self._zcr_energy_contiguous_speech(audio, src_rate, min_ms=min_ms)
+
         contig = 0
         best_contig = 0
-        with self._vad_lock:
-            # Silero is recurrent -- hidden state carried over from
-            # whatever ran before this gate (wake-word listening,
-            # continuous mode, a prior gate call) contaminates the first
-            # frames' probabilities. Reset in the SAME critical section as
-            # the scan below -- not a separate lock acquire/release pair
-            # (the old _vad_reset() call) -- so no concurrent caller can
-            # run between the reset and the first window.
-            try:
-                self._vad_model.reset_states()
-            except Exception as e:
-                logger.exception(f"[VAD] reset_states failed at gate scan start: {e}")
-
-            for idx, start in enumerate(range(0, len(chunk_16k) - window_size + 1, window_size)):
-                window = chunk_16k[start:start + window_size]
-                tensor = torch.from_numpy(window).float().unsqueeze(0)
-                if tensor.shape != (1, 512):
-                    continue
-                with torch.no_grad():
-                    try:
-                        speech_prob = self._vad_model(tensor, 16000).item()
-                    except RuntimeError as e:
-                        logger.exception(f"[VAD] State corruption caught, auto-resetting: {e}")
-                        self._vad_model.reset_states()
-                        contig = 0
-                        continue
-                if speech_prob > prob_threshold:
-                    contig += 1
-                    best_contig = max(best_contig, contig)
-                elif idx < grace_frames:
-                    pass  # head grace: low reading in the known noisy span -- neutral, not a break
-                else:
-                    contig = 0
+        for idx, speech_prob in enumerate(probabilities):
+            if speech_prob > prob_threshold:
+                contig += 1
+                best_contig = max(best_contig, contig)
+            elif idx < grace_frames:
+                pass  # head grace: low reading in the known noisy span -- neutral, not a break
+            else:
+                contig = 0
 
         passed = best_contig >= min_contig_frames
         if passed:
@@ -5903,47 +6187,50 @@ class DictationApp:
             # Never let a debug UI bug break the main pipeline
             logger.exception(f"[WARN] wake trace callback failed: {e}")
 
-    def calibrate_wake_mic(self, seconds: float = 3.0) -> float | None:
+    def calibrate_wake_mic(self, seconds: float = 3.0,
+                           cancel_event=None) -> float | None:
         """Sample ambient audio for *seconds* and seed the adaptive noise floor.
 
         Uses the ACE engine ring (via a temporary registered consumer) so no
-        second InputStream is opened.  If the ACE engine is not running (legacy
-        path), falls back to the most recent frames already buffered in the ring
-        (rewind) and averages whatever is available.
+        second InputStream is opened.  The temporary reader starts at the live
+        write head so calibration measures a fresh, full quiet interval.
 
         Returns the measured floor RMS, or None if no frames were available.
         Persists the result to wake_word_config.audio.measured_noise_floor so
         the floor survives a restart and seeds the EMA on next boot.
+        When cancel_event is supplied, cancellation returns None without
+        changing or persisting the current floor.
         """
         import logging as _log
-        from samsara.audio_engine.frame import FRAME_MS as _FMS
 
         engine = getattr(self, '_ace_engine', None)
         if engine is None or not engine._running:
             _log.getLogger().warning("[CAL] ACE engine not running — calibrate_wake_mic has no audio source")
             return None
 
-        frames_needed = int(seconds * 1000 / _FMS)
         reader = engine.register_consumer("wake-calibration")
-        # Rewind into existing ring history for an instant sample if enough
-        # history exists; otherwise we read forward in real time.
         from samsara.audio_engine.ring import EMPTY as _EMPTY
-        from samsara.audio_engine.frame import PREBUFFER_FRAMES as _PF
-        rewind_n = min(frames_needed, _PF)
-        reader.rewind(rewind_n)
 
         rms_values = []
         deadline = time.monotonic() + seconds
+        cancelled = False
+        try:
+            while time.monotonic() < deadline:
+                if cancel_event is not None and cancel_event.is_set():
+                    cancelled = True
+                    break
+                frame = reader.read_next()
+                if frame is _EMPTY:
+                    time.sleep(0.005)
+                    continue
+                chunk = frame.pcm.astype(np.float32) / 32767.0
+                rms_values.append(float(np.sqrt(np.mean(chunk ** 2))))
+        finally:
+            engine.unregister_consumer(reader)
 
-        while time.monotonic() < deadline:
-            frame = reader.read_next()
-            if frame is _EMPTY:
-                time.sleep(0.005)
-                continue
-            chunk = frame.pcm.astype(np.float32) / 32767.0
-            rms_values.append(float(np.sqrt(np.mean(chunk ** 2))))
-
-        engine.unregister_consumer(reader)
+        if cancelled:
+            _log.getLogger().info("[CAL] Wake mic calibration cancelled")
+            return None
 
         if not rms_values:
             _log.getLogger().warning("[CAL] calibrate_wake_mic: no frames collected")
@@ -6394,6 +6681,8 @@ class DictationApp:
                 self._emit_wake_trace({"stage": "utterance_end", "result": "substring_rejected"})
 
             elif self.wake_word_triggered:
+                if self._try_cancel_pending_wake_command(text):
+                    return
                 logger.info(f"[TEXT] Command: {text}")
                 self._emit_wake_trace({"stage": "command_extract",
                                        "from_index": -1, "command": text, "remainder": ""})
@@ -6421,8 +6710,8 @@ class DictationApp:
         finally:
             if _set_in_progress:
                 self._wake_transcription_in_progress = False
-            # Clear Silero VAD internal state so the next utterance starts
-            # fresh. Without this, its rolling context bleeds between commands.
+            # Retain the utterance-boundary cleanup hook. The bundled ONNX VAD
+            # is stateless between calls, so this is currently a no-op.
             self._vad_reset()
 
     def _process_wake_command(self, text):
@@ -6835,9 +7124,24 @@ class DictationApp:
 
     _UNDO_EXPIRY_SECONDS = 60.0
 
-    def _paste_preserving_clipboard(self, text):
+    def _paste_preserving_clipboard(self, text, before_paste=None):
         """Paste text via clipboard while preserving the user's original clipboard content."""
         delay = self.config.get('clipboard_delay', CLIPBOARD_RESTORE_DELAY)
+        paste_target = {'hwnd': None}
+
+        def _capture_target_before_paste():
+            """Compose the caller's focus guard with undo-target capture.
+
+            paste_with_preservation invokes this immediately before Ctrl+V,
+            after its clipboard preparation delay. Capturing here avoids
+            remembering whichever window happened to be foreground earlier
+            when the transcription worker began.
+            """
+            if before_paste is not None and not before_paste():
+                return False
+            paste_target['hwnd'] = _get_foreground_hwnd()
+            return True
+
         # Keep one clipboard implementation. The centralized path captures
         # the clipboard sequence number immediately after Samsara's copy, so
         # an unrelated copy made during the paste window is never overwritten
@@ -6846,9 +7150,12 @@ class DictationApp:
             text,
             paste_delay=CLIPBOARD_PASTE_DELAY,
             restore_delay=delay,
+            before_paste=_capture_target_before_paste,
         )
         if paste_ok:
-            self._record_undoable_paste(text)
+            self._record_undoable_paste(
+                text, target_hwnd=paste_target['hwnd'],
+            )
             self.adaptive_learner.record_transcription(text)
             logger.info(
                 "[PASTE] Ctrl+V sent chars=%d hwnd=%r",
@@ -6866,10 +7173,14 @@ class DictationApp:
         time.sleep(_WAKE_PRIMER_DELAY)
         self._paste_preserving_clipboard(text)
 
-    def _record_undoable_paste(self, text):
-        """Remember the last pasted text so it can be undone via voice/hotkey."""
+    def _record_undoable_paste(self, text, target_hwnd=_UNDO_TARGET_UNSET):
+        """Remember a paste and the exact window eligible for native undo."""
         self._last_dictation_text = text
         self._last_dictation_length = len(text)
+        self._last_dictation_hwnd = (
+            _get_foreground_hwnd()
+            if target_hwnd is _UNDO_TARGET_UNSET else target_hwnd
+        )
         self._arm_undo_timer()
 
     def _arm_undo_timer(self):
@@ -6884,31 +7195,44 @@ class DictationApp:
         """Drop undo state (called on expiry or after a successful undo)."""
         self._last_dictation_text = None
         self._last_dictation_length = 0
+        self._last_dictation_hwnd = None
         if self._undo_timer is not None:
             self._undo_timer.cancel()
             self._undo_timer = None
 
     def undo_last_dictation(self):
-        """Undo the last dictated text by selecting and deleting it.
+        """Undo the last paste through the target application's undo stack.
 
-        Caveat: this drives Shift+Left + Delete via pyautogui, so it only works
-        if the caret is still at the end of the last pasted run. If the user
-        clicked away or typed since the paste, the selection will grab the
-        wrong characters -- we intentionally do not try to detect that.
+        The exact foreground HWND must still match the window recorded
+        immediately before Ctrl+V. A mismatch fails closed without consuming
+        the saved undo, allowing the user to refocus that window and retry.
         """
         if not self._last_dictation_text:
             logger.info("[UNDO] Nothing to undo")
             self.play_sound("error")
             return False
 
+        target_hwnd = getattr(self, '_last_dictation_hwnd', None)
+        current_hwnd = _get_foreground_hwnd()
+        if target_hwnd is None or current_hwnd != target_hwnd:
+            logger.warning(
+                "[UNDO] Refused: paste window is not foreground "
+                "(target_hwnd=%r current_hwnd=%r)",
+                target_hwnd, current_hwnd,
+            )
+            self.play_sound("error")
+            return False
+
         text = self._last_dictation_text
-        length = self._last_dictation_length
-        for _ in range(length):
-            pyautogui.hotkey('shift', 'left')
-        pyautogui.press('delete')
+        try:
+            pyautogui.hotkey('ctrl', 'z')
+        except Exception as exc:
+            logger.exception("[UNDO] Ctrl+Z injection failed: %s", exc)
+            self.play_sound("error")
+            return False
 
         preview = text[:50] + ("..." if len(text) > 50 else "")
-        logger.info(f"[UNDO] Removed: {preview}")
+        logger.info(f"[UNDO] Native Ctrl+Z sent for: {preview}")
         self.play_sound("success")
         self._clear_undo()
         return True
@@ -7210,7 +7534,10 @@ class DictationApp:
 
         # Pre-load sounds into memory cache for low-latency playback
         self._sound_cache = {}
-        self._sound_stream_sr = 44100  # Standard sample rate for output stream
+        from samsara.output_devices import output_sample_rate
+        self._sound_stream_sr = output_sample_rate(
+            sd, getattr(self, 'output_device', None), fallback=44100,
+        )
         self._load_sound_cache()
 
         # Persistent output stream for low-latency sound playback.
@@ -7380,16 +7707,44 @@ class DictationApp:
         OutputStream coexists safely with the InputStream used for recording.
         """
         try:
+            # WASAPI endpoints often accept only their mix-format rate (the
+            # Arctis Nova endpoint, for example, rejects 44.1 kHz and requires
+            # 48 kHz). Rebuild the cache whenever routing changes so callback
+            # frames always match the stream's native/default rate.
+            from samsara.output_devices import output_sample_rate
+            stream_rate = output_sample_rate(
+                sd, getattr(self, 'output_device', None),
+                fallback=getattr(self, '_sound_stream_sr', 44100),
+            )
+            if stream_rate != self._sound_stream_sr:
+                self._sound_stream_sr = stream_rate
+                self._load_sound_cache()
+                with self._buffer_lock:
+                    self._playback_buffer = np.zeros((0, 1), dtype=np.float32)
             self._sound_stream = sd.OutputStream(
                 samplerate=self._sound_stream_sr,
                 channels=1,
                 dtype='float32',
                 callback=self._sound_stream_callback,
-                blocksize=1024,  # ~23ms at 44100Hz — good balance of latency vs efficiency
+                blocksize=1024,  # ~21-23 ms at common 44.1/48 kHz rates
+                device=getattr(self, 'output_device', None),
             )
             self._sound_stream.start()
-            logger.info("[AUDIO] Persistent sound stream started")
+            logger.info(
+                "[AUDIO] Persistent sound stream started (device=%s, rate=%d Hz)",
+                getattr(self, 'output_device', None), self._sound_stream_sr,
+            )
         except Exception as e:
+            requested = getattr(self, 'output_device', None)
+            if requested is not None:
+                logger.warning(
+                    "[AUDIO] Output device %s failed (%s); falling back to system default",
+                    requested, e,
+                )
+                self.output_device = None
+                self.output_device_name = None
+                self._start_sound_stream()
+                return
             logger.exception(f"[AUDIO] Failed to start sound stream: {e}")
             self._sound_stream = None
 
@@ -7476,6 +7831,9 @@ class DictationApp:
         if stop is None:
             return
         while not stop.wait(2.0):
+            # An explicit Samsara device is independent of the Windows default.
+            if getattr(self, 'output_device', None) is not None:
+                continue
             new_id = _get_default_render_id()
             if new_id and new_id != current_id:
                 current_id = new_id
@@ -7525,6 +7883,13 @@ class DictationApp:
                 logger.info("Model still loading, please wait...")
             else:
                 logger.info("Model not loaded!")
+            return
+
+        # Every recording source shares one DictationSessionConsumer. Starting
+        # a second source used to overwrite its flags/session reference and
+        # orphan a streaming worker plus overlay until the 120-second cap.
+        if self.recording or getattr(self, '_streaming_session', None) is not None:
+            logger.info("[RECORDING] start ignored -- capture already has an owner")
             return
 
         if self._stop_in_flight:
@@ -7638,21 +8003,43 @@ class DictationApp:
         finally:
             self._restore_audio()
 
+    def _take_recording_ownership(self):
+        """Return and synchronously clear ownership for the recording being stopped.
+
+        The returned tuple is immutable so background transcription cannot
+        observe mode/ghost flags belonging to a later recording.
+        """
+        ownership = _RecordingOwnership(
+            is_command=bool(getattr(self, 'command_mode_recording', False)),
+            is_ava=bool(getattr(self, 'ava_mode_recording', False)),
+            command_ghost=bool(getattr(self, '_command_mode_ghost_tap', False)),
+            ava_ghost=bool(getattr(self, '_ava_mode_ghost_tap', False)),
+        )
+        self.command_mode_recording = False
+        self.ava_mode_recording = False
+        self._command_mode_ghost_tap = False
+        self._ava_mode_ghost_tap = False
+        return ownership
+
     def _stop_recording_impl(self):
         """Stop recording and transcribe"""
         if not self.recording:
             return
 
+        ownership = self._take_recording_ownership()
+        adaptive_release_tail = bool(
+            getattr(self, '_ace_dictation_active', False)
+            and self.config.get('mode', 'hold') == 'hold'
+            and not ownership.is_command
+        )
         self.set_app_state(recording=False)
-        # Only re-enable wake word if a new recording hasn't already started.
-        # The deferred stop (trailing buffer) can fire AFTER the user has
-        # pressed the hotkey again and started a new recording. In that case
-        # hotkey_pressed is True and clearing _hotkey_recording here would
-        # open the wake path mid-recording, letting it inject audio into the
-        # active hold-mode session (observed: "loop loop loop" artifact).
-        if not self.hotkey_pressed:
-            self._hotkey_recording = False
-        self.play_sound("stop")
+        if not adaptive_release_tail:
+            # Preserve existing command/streaming timing. Normal ACE hold
+            # dictation keeps WakeConsumer suppressed through its adaptive
+            # tail so final words cannot seed a second wake utterance.
+            if not self.hotkey_pressed:
+                self._hotkey_recording = False
+            self.play_sound("stop")
 
         # Restore tray icon — release recording reason (wake_word may keep it spinning)
         self._release_icon_chase('recording')
@@ -7662,16 +8049,30 @@ class DictationApp:
         if hasattr(self, 'listening_indicator'):
             self._schedule_ui(self.listening_indicator.set_listening, False)
         
-        # Trailing buffer: keep capturing briefly after the button is released
-        # so the last word isn't clipped. 250 ms covers ~1 syllable at normal pace.
-        tail_ms = self.config.get('recording_tail_ms', 250)
-        if tail_ms > 0:
-            time.sleep(tail_ms / 1000)
+        if not adaptive_release_tail:
+            # Legacy fixed tail remains for command and streaming paths.
+            tail_ms = self.config.get('recording_tail_ms', 250)
+            if tail_ms > 0:
+                time.sleep(tail_ms / 1000)
 
         if getattr(self, '_ace_dictation_active', False):
             # ACE path (ACE-03): drain consumer frames; no stream to close.
             self._ace_dictation_active = False
-            audio = self._dictation_consumer.drain()
+            if adaptive_release_tail:
+                try:
+                    audio = self._dictation_consumer.drain_after_release(
+                        silence_ms=int(self.config.get('recording_tail_silence_ms', 300)),
+                        max_tail_ms=int(self.config.get('recording_tail_max_ms', 1200)),
+                        speech_threshold=float(self.config.get(
+                            'recording_tail_speech_threshold', 0.008,
+                        )),
+                    )
+                finally:
+                    if not self.hotkey_pressed:
+                        self._hotkey_recording = False
+                    self.play_sound("stop")
+            else:
+                audio = self._dictation_consumer.drain()
             if audio is None:
                 logger.debug("[ACE] No audio captured or epoch abort")
                 self.play_sound("error")
@@ -7690,7 +8091,6 @@ class DictationApp:
             # reads them, causing a silent loss of the recording.
             sess = getattr(self, '_streaming_session', None)
             if sess is not None:
-                self._streaming_session = None
                 try:
                     sess.finalize()
                 except Exception as e:
@@ -7698,6 +8098,16 @@ class DictationApp:
                 return
 
         logger.info("[...] Transcribing...")
+
+        # Discard sub-debounce mode taps before gate/model work. Ownership
+        # was already cleared synchronously, so even this early return cannot
+        # contaminate the next ordinary recording.
+        if ownership.is_command and ownership.command_ghost:
+            logger.info("[CMD] Ghost tap — discarding recording")
+            return
+        if ownership.is_ava and ownership.ava_ghost:
+            logger.info("[AVA] Ghost tap — discarding recording")
+            return
 
         # Transcribe in background to not block hotkey listener
         def transcribe():
@@ -7746,7 +8156,7 @@ class DictationApp:
                     # early return.
                     try:
                         diagnostics.record(diagnostics.DiagRecord(
-                            mode="command" if self.command_mode_recording else "hotkey",
+                            mode="command" if ownership.is_command else "hotkey",
                             audio_s=audio_duration,
                             model_name=self.config.get('model_size', ''),
                             device=getattr(self, 'device_type', 'unknown'),
@@ -7844,22 +8254,8 @@ class DictationApp:
                 _bench_raw_transcript = text
                 text = self.voice_training_window.apply_corrections(text)
 
-                # Check which mode produced this recording
-                is_command_mode = self.command_mode_recording
-                is_ava_mode = self.ava_mode_recording
-                self.command_mode_recording = False
-                self.ava_mode_recording = False
-
-                # Ghost-tap prevention — discard accidental sub-debounce taps
-                if is_command_mode and self._command_mode_ghost_tap:
-                    self._command_mode_ghost_tap = False
-                    logger.info("[CMD] Ghost tap — discarding transcription")
-                    return
-
-                if is_ava_mode and self._ava_mode_ghost_tap:
-                    self._ava_mode_ghost_tap = False
-                    logger.info("[AVA] Ghost tap — discarding transcription")
-                    return
+                is_command_mode = ownership.is_command
+                is_ava_mode = ownership.is_ava
 
                 if text:
                     text_lower = text.lower().strip()
@@ -7921,7 +8317,7 @@ class DictationApp:
                                 self._command_mode_miss_count = 0
                                 cm_cfg = self.config.get('command_mode', {})
                                 if cm_cfg.get('mode', 'hold') == 'toggle':
-                                    timeout_s = cm_cfg.get('inactivity_timeout_s', 30)
+                                    timeout_s = cm_cfg.get('inactivity_timeout_s', 300)
                                     self._reset_command_mode_inactivity_timer(timeout_s)
                                     thread_registry.spawn(
                                         "dictation._rearm_command_recording",
@@ -8066,7 +8462,6 @@ class DictationApp:
                             )
                 else:
                     logger.info("No speech detected")
-                    self.command_mode_recording = False  # Reset flag on no speech too
                     # Only log "empty" when there was actually audio to transcribe.
                     # Whisper hallucination guard above already filtered <0.5s.
                     if audio_duration > 0.5:
@@ -8132,7 +8527,8 @@ class DictationApp:
 
     def cancel_recording(self):
         """Cancel recording without transcribing"""
-        if not self.recording:
+        streaming_session = getattr(self, '_streaming_session', None)
+        if not self.recording and streaming_session is None:
             return
 
         self.set_app_state(recording=False)
@@ -8140,7 +8536,13 @@ class DictationApp:
             self._hotkey_recording = False  # Re-enable wake word processing
         logger.info("[X] Recording cancelled")
 
-        if getattr(self, '_ace_dictation_active', False):
+        if streaming_session is not None:
+            self._ace_streaming_active = False
+            try:
+                streaming_session.cancel()
+            except Exception as e:
+                logger.exception(f"[STREAM] cancel failed: {e}")
+        elif getattr(self, '_ace_dictation_active', False):
             # ACE path: discard accumulated frames, no stream to close.
             self._ace_dictation_active = False
             if self._dictation_consumer is not None:
@@ -8152,6 +8554,17 @@ class DictationApp:
         if hasattr(self, 'listening_indicator'):
             self._schedule_ui(self.listening_indicator.set_listening, False)
             self._schedule_ui(self.listening_indicator.flash_error)
+
+    def _on_streaming_session_finished(self, session):
+        """Release app ownership only if ``session`` is still the owner."""
+        if getattr(self, '_streaming_session', None) is not session:
+            return
+        self._streaming_session = None
+        if getattr(self, '_capslock_streaming_session', None) is session:
+            self._capslock_streaming_session = None
+        self._ace_streaming_active = False
+        if not self.recording:
+            self._hotkey_recording = False
 
     def apply_mode(self, new_mode):
         """Apply a capture-mode change at runtime.
@@ -8317,20 +8730,24 @@ class DictationApp:
     def set_streaming_mode(self, enabled):
         """Tray-menu entry point: flip the streaming-mode flag."""
         enabled = bool(enabled)
-        if self.config.get('streaming_mode', False) == enabled:
-            return
-        with self._config_lock:
-            self.config['streaming_mode'] = enabled
-            self.save_config()
-        logger.info(f"[STREAM] streaming_mode -> {enabled}")
+        with self._capslock_lifecycle_lock:
+            if not enabled and getattr(self, '_streaming_session', None) is not None:
+                logger.info("[STREAM] Mode disabled during active session -- cancelling")
+                self.cancel_recording()
+            if self.config.get('streaming_mode', False) == enabled:
+                return
+            with self._config_lock:
+                self.config['streaming_mode'] = enabled
+                self.save_config()
+            logger.info(f"[STREAM] streaming_mode -> {enabled}")
 
-        # Install or release the CapsLock hook to match. When streaming is
-        # off we don't grab CapsLock at all, so it works as normal Windows
-        # caps toggle.
-        if enabled:
-            self._install_capslock_hook()
-        else:
-            self._uninstall_capslock_hook()
+            # Install or release the CapsLock hook to match. When streaming is
+            # off we don't grab CapsLock at all, so it works as normal Windows
+            # caps toggle.
+            if enabled:
+                self._install_capslock_hook()
+            else:
+                self._uninstall_capslock_hook()
 
 
     def set_cleanup_mode(self, mode):
@@ -8803,6 +9220,34 @@ class DictationApp:
         else:
             self._schedule_ui(self.listening_indicator.hide)
 
+    def enter_indicator_move_mode(self):
+        """Tray action: temporarily unlock the listening indicator so it can
+        be left-dragged to a custom on-screen position."""
+        if not hasattr(self, 'listening_indicator') or self.listening_indicator is None:
+            return
+        self._schedule_ui(self.listening_indicator.enter_move_mode)
+
+    def _on_indicator_placement_committed(self, payload):
+        """ListeningIndicator.placement_committed handler -- persists a
+        drag-to-position commit or a preset chosen from its move-mode
+        right-click menu. The widget owns drag/geometry math only; this is
+        the single place that writes it to config, via the existing
+        update_config_and_save() persistence path."""
+        if payload.get('type') == 'custom':
+            updates = {
+                'listening_indicator_position': 'custom',
+                'listening_indicator_custom_position': {
+                    'screen': payload.get('screen'),
+                    'cx': payload.get('cx'),
+                    'cy': payload.get('cy'),
+                },
+            }
+        else:
+            updates = {
+                'listening_indicator_position': payload.get('position', 'bottom-center'),
+            }
+        self.update_config_and_save(updates)
+
     def show_cheat_sheet(self):
         """Show the command reference overlay."""
         self._schedule_ui(self.cheat_sheet.show)
@@ -8866,6 +9311,8 @@ class DictationApp:
         # command instead of duplicating it here.
         from plugins.commands.core_utils import _build_restart_args
 
+        home_dir = None
+        diagnostic_handle = None
         try:
             _reap_old_preview_profiles()
 
@@ -8883,26 +9330,67 @@ class DictationApp:
             if sys.platform == 'win32':
                 flags = subprocess.DETACHED_PROCESS | subprocess.CREATE_NEW_PROCESS_GROUP
 
-            subprocess.Popen(
+            diagnostic_path = Path(home_dir) / _PREVIEW_DIAGNOSTIC_NAME
+            diagnostic_handle = open(
+                diagnostic_path, "w", encoding="utf-8", buffering=1,
+            )
+            process = subprocess.Popen(
                 args,
                 cwd=cwd,
                 env=env,
                 creationflags=flags,
                 close_fds=True,
                 stdin=subprocess.DEVNULL,
-                stdout=subprocess.DEVNULL,
-                stderr=subprocess.DEVNULL,
+                stdout=diagnostic_handle,
+                stderr=diagnostic_handle,
             )
-        except Exception as e:
-            logger.warning(f"[PREVIEW] Failed to launch first-run preview: {e}")
+            # Popen duplicated/inherited the explicit stdio handle. The parent
+            # must close its copy immediately; the detached child keeps its
+            # own handle for diagnostics without tying lifetime to this app.
+            diagnostic_handle.close()
+            diagnostic_handle = None
             try:
-                from samsara.ui.reminder_toast import get_toast
-                get_toast().show(
-                    "Preview First-Run Failed",
-                    f"Could not launch the preview instance: {e}",
+                thread_registry.spawn(
+                    "preview-startup-monitor",
+                    _monitor_preview_startup,
+                    args=(process, diagnostic_path),
+                    daemon=True,
                 )
-            except Exception as toast_exc:
-                logger.debug(f"[PREVIEW] Could not show failure toast: {toast_exc}")
+            except Exception as monitor_exc:
+                # The child did launch; don't delete its isolated profile or
+                # claim otherwise. Make the lost failure-monitoring path loud.
+                _show_preview_failure(
+                    f"Preview launched, but startup monitoring failed: {monitor_exc}",
+                    diagnostic_path,
+                )
+        except Exception as e:
+            if diagnostic_handle is not None:
+                try:
+                    diagnostic_handle.close()
+                except Exception:
+                    pass
+            # No child owns this profile if spawn itself failed, so clean it
+            # now rather than waiting an hour for the next preview sweep.
+            if home_dir:
+                shutil.rmtree(home_dir, ignore_errors=True)
+            _show_preview_failure(f"Could not launch the preview instance: {e}")
+
+    def _show_alarm_notification(self, alarm: dict) -> None:
+        """Show the visual companion to an alarm's persistent sound."""
+        from samsara.ui.reminder_toast import get_toast
+
+        name = str(alarm.get('name') or 'Unnamed')
+        posted = get_toast().show(
+            f"Alarm: {name}",
+            (
+                'Choose Complete or Dismiss below, say "complete alarm" or '
+                '"dismiss alarm", or use your configured alarm shortcuts.'
+            ),
+            on_dismiss=self.alarm_manager.dismiss,
+            on_complete=self.alarm_manager.complete,
+        )
+        if not posted:
+            logger.warning(f"[ALARM] Visual notification rejected for {name!r}")
 
     def open_main_log(self):
         """Open the main log file in default text editor"""
@@ -8985,22 +9473,20 @@ class DictationApp:
         except Exception as e:
             logger.debug(f"[EXIT] Notification manager stop failed: {e}")
 
-        # Stop reminder toast's gate-poll timer and drop any pending queued
-        # reminders -- BEFORE the Show Numbers overlay it gates against is
-        # torn down below, so a gate tick landing mid-teardown can't flush
-        # queued reminders into a freshly (re)constructed toast window.
-        try:
-            from samsara.ui.reminder_toast import get_toast
-            get_toast().stop()
-        except Exception as e:
-            logger.debug(f"[EXIT] Reminder toast stop failed: {e}")
-
-        # Stop alarm manager
+        # Alarm callbacks can post a reminder toast, so stop their producer
+        # before terminally stopping the toast itself.
         try:
             if hasattr(self, 'alarm_manager') and self.alarm_manager:
                 self.alarm_manager.stop()
         except Exception as e:
             logger.debug(f"[EXIT] Alarm manager stop failed: {e}")
+
+        # Terminally stop the toast before Show Numbers is torn down below.
+        try:
+            from samsara.ui.reminder_toast import get_toast
+            get_toast().stop()
+        except Exception as e:
+            logger.debug(f"[EXIT] Reminder toast stop failed: {e}")
 
         # Stop ACE engine (deactivates consumer, flushes debug WAV if any)
         try:
@@ -9155,6 +9641,29 @@ if __name__ == "__main__":
     logger.debug(f"[BOOT-DIAG] instance lock (_check_single_instance): {_dt:.0f}ms")
     if _dt > 5000:
         logger.debug(f"[BOOT-DIAG] SLOW STEP: instance lock {_dt:.0f}ms")
+
+    # Source builds historically kept a second config beside dictation.py.
+    # Carry the newer legacy profile across exactly once, after acquiring the
+    # instance lock and before any settings (including Qt scale) are read.
+    if not getattr(sys, "frozen", False):
+        try:
+            if migrate_legacy_source_config(Path(__file__).parent / "config.json"):
+                logger.info("[CONFIG] Migrated legacy source profile to the per-user profile")
+        except Exception as _config_migration_exc:
+            logger.warning(
+                "[CONFIG] Could not migrate legacy source profile: %s",
+                _config_migration_exc,
+            )
+
+    # QApplication reads QT_SCALE_FACTOR only during construction. Apply the
+    # user's restart-required accessibility scale before the splash starts Qt.
+    try:
+        from samsara.ui_scale import apply_early_ui_scale
+        _early_config_path = samsara_config_path()
+        _early_scale = apply_early_ui_scale(_early_config_path)
+        logger.info(f"[UI] Early interface scale: {_early_scale:g}x")
+    except Exception as _scale_exc:
+        logger.warning(f"[UI] Could not apply interface scale: {_scale_exc}")
 
     # Show splash screen during startup
     _t = time.perf_counter()

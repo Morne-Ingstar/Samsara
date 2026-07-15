@@ -23,6 +23,7 @@ from typing import Callable, Deque, List, Optional, Tuple
 
 import numpy as np
 
+from samsara.output_devices import output_sample_rate
 from samsara.runtime import thread_registry
 
 from .audio_utils import parse_wav, resample_pcm
@@ -32,7 +33,7 @@ from .winrt_helper import get_helper
 
 logger = logging.getLogger(__name__)
 
-_TARGET_SR = 44100  # matches dictation.py _sound_stream_sr
+_TARGET_SR = 44100  # safe fallback when PortAudio exposes no device rate
 _CHUNK_FRAMES = 4096  # ~93ms at 44100 Hz
 
 
@@ -63,7 +64,13 @@ async def _read_stream_bytes(stream) -> bytes:
 class _Utterance:
     """Per-speak() state including volume fade tracking."""
 
-    def __init__(self, handle: SpeechHandle, on_done: Optional[Callable], initial_volume: float = 1.0):
+    def __init__(
+        self,
+        handle: SpeechHandle,
+        on_done: Optional[Callable],
+        initial_volume: float = 1.0,
+        sample_rate: int = _TARGET_SR,
+    ):
         self.handle = handle
         self.on_done = on_done
         self.cancelled = threading.Event()
@@ -80,6 +87,7 @@ class _Utterance:
         # target_volume: volume we're fading toward
         # volume_step: per-sample delta (positive = fade up, negative = fade down; 0 = at target)
         self._vol_lock = threading.Lock()
+        self.sample_rate = sample_rate
         self.current_volume = float(initial_volume)
         self.target_volume = float(initial_volume)
         self.volume_step = 0.0
@@ -96,7 +104,7 @@ class _Utterance:
     def set_volume_fade(self, target: float, fade_ms: int) -> None:
         """Set a new fade target. Thread-safe; callable from any thread."""
         target = max(0.0, min(1.0, target))
-        fade_samples = int(fade_ms * _TARGET_SR / 1000)
+        fade_samples = int(fade_ms * self.sample_rate / 1000)
         with self._vol_lock:
             self.target_volume = target
             if fade_samples <= 0:
@@ -143,7 +151,7 @@ class WinRTEngine(TTSEngine):
     Raises EngineUnavailableError at construction if winsdk is not installed.
     """
 
-    def __init__(self):
+    def __init__(self, output_device: Optional[int] = None):
         SpeechSynthesizer, VoiceGender, _, _ = _import_winsdk()
         self._SpeechSynthesizer = SpeechSynthesizer
         self._VoiceGender = VoiceGender
@@ -163,6 +171,8 @@ class WinRTEngine(TTSEngine):
         self._tts_buffer_lock = threading.Lock()
         self._tts_stream = None
         self._using_persistent_stream = False
+        self._output_device = output_device
+        self._output_sample_rate = _TARGET_SR
         self._open_persistent_stream()
 
     # ------------------------------------------------------------------
@@ -173,17 +183,32 @@ class WinRTEngine(TTSEngine):
         """Open the persistent TTS OutputStream. Falls back gracefully."""
         import sounddevice as sd
         try:
+            self._output_sample_rate = output_sample_rate(
+                sd, self._output_device, fallback=_TARGET_SR,
+            )
             self._tts_stream = sd.OutputStream(
-                samplerate=_TARGET_SR,
+                samplerate=self._output_sample_rate,
                 channels=1,
                 dtype='float32',
                 callback=self._tts_callback,
                 blocksize=_CHUNK_FRAMES,
+                device=self._output_device,
             )
             self._tts_stream.start()
             self._using_persistent_stream = True
-            logger.info("TTS persistent stream opened at %d Hz", _TARGET_SR)
+            logger.info(
+                "TTS persistent stream opened at %d Hz",
+                self._output_sample_rate,
+            )
         except Exception as exc:
+            if self._output_device is not None:
+                logger.warning(
+                    "TTS output device %s unavailable (%s); falling back to system default",
+                    self._output_device, exc,
+                )
+                self._output_device = None
+                self._open_persistent_stream()
+                return
             logger.warning(
                 "TTS persistent stream failed to open (%s). "
                 "Falling back to per-utterance ephemeral streams.", exc
@@ -231,7 +256,12 @@ class WinRTEngine(TTSEngine):
 
         uid = str(uuid.uuid4())
         handle = SpeechHandle(utterance_id=uid, _state="pending")
-        utterance = _Utterance(handle, on_done, initial_volume=volume)
+        utterance = _Utterance(
+            handle,
+            on_done,
+            initial_volume=volume,
+            sample_rate=self._output_sample_rate,
+        )
 
         with self._active_lock:
             self._active[uid] = utterance
@@ -298,6 +328,13 @@ class WinRTEngine(TTSEngine):
 
     def list_voices(self) -> List[VoiceInfo]:
         return list(self._voices)
+
+    def set_output_device(self, device_id: Optional[int]) -> None:
+        """Route subsequent speech to a Samsara-specific output device."""
+        if self._output_device == device_id:
+            return
+        self._output_device = device_id
+        self.restart_stream()
 
     def restart_stream(self) -> None:
         """Close and reopen the persistent TTS OutputStream on the current default device.
@@ -533,7 +570,8 @@ class WinRTEngine(TTSEngine):
                 return
 
             pcm, sr, _ = parse_wav(raw_bytes)
-            pcm = resample_pcm(pcm, sr, _TARGET_SR)
+            utterance.sample_rate = self._output_sample_rate
+            pcm = resample_pcm(pcm, sr, self._output_sample_rate)
 
             if utterance.cancelled.is_set():
                 return
@@ -595,12 +633,29 @@ class WinRTEngine(TTSEngine):
         import sounddevice as sd
         try:
             stream = sd.OutputStream(
-                samplerate=_TARGET_SR,
+                samplerate=self._output_sample_rate,
                 channels=1,
                 dtype='float32',
                 blocksize=_CHUNK_FRAMES,
+                device=self._output_device,
             )
-        except sd.PortAudioError as exc:
+        except Exception as exc:
+            if self._output_device is not None:
+                logger.warning(
+                    "TTS output device %s unavailable (%s); falling back to system default",
+                    self._output_device, exc,
+                )
+                previous_rate = self._output_sample_rate
+                self._output_device = None
+                self._output_sample_rate = output_sample_rate(
+                    sd, None, fallback=_TARGET_SR,
+                )
+                fallback_pcm = resample_pcm(
+                    pcm, previous_rate, self._output_sample_rate,
+                )
+                utterance.sample_rate = self._output_sample_rate
+                self._stream_pcm_ephemeral(fallback_pcm, utterance)
+                return
             logger.error(
                 "TTS stream unavailable (exclusive audio access?): %s", exc
             )

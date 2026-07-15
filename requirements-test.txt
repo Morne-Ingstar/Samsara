@@ -2,3 +2,8 @@
 pytest>=7.0.0
 pytest-cov>=4.0.0
 pytest-mock>=3.10.0
+
+# Drives real Chromium for Show Numbers DOM-fidelity tests (visibility,
+# viewport, contenteditable/ARIA, scroll/resize repositioning) against
+# tests/fixtures/show_numbers_dom/*.html. Not a runtime/shipped dependency.
+playwright>=1.45.0

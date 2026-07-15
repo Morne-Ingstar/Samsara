@@ -22,8 +22,10 @@ import threading
 import uuid
 from typing import Callable, List, Optional
 
+from samsara.output_devices import output_sample_rate
 from samsara.runtime import thread_registry
 
+from .audio_utils import resample_pcm
 from .engine_base import SpeechHandle, TTSEngine, VoiceInfo
 from .exceptions import EngineUnavailableError, RenderError
 
@@ -185,14 +187,19 @@ class EdgeTTSEngine(TTSEngine):
     Drop-in replacement for WinRTEngine.
     """
 
-    def __init__(self):
+    def __init__(self, output_device: Optional[int] = None):
         _import_edge_tts()
         self._voices = list(_BUILTIN_VOICES)
         self._lock = threading.Lock()
         self._active_handle: Optional[SpeechHandle] = None
         self._state = "idle"
         self._cancelled = False
+        self._output_device = output_device
         logger.info("[TTS] EdgeTTSEngine initialized (Azure Neural voices via edge-tts)")
+
+    def set_output_device(self, device_id: Optional[int]) -> None:
+        """Route subsequent speech to a Samsara-specific output device."""
+        self._output_device = device_id
 
     # ------------------------------------------------------------------
     # TTSEngine interface
@@ -311,19 +318,47 @@ class EdgeTTSEngine(TTSEngine):
             import sounddevice as sd
             import time
 
-            audio = np.frombuffer(pcm_bytes, dtype=np.int16).astype(np.float32) / 32768.0
-            total_frames = len(audio)
-            expected_s = total_frames / float(sample_rate)
-            blocksize = 2048  # ~46ms per block at 44.1kHz
+            source_audio = (
+                np.frombuffer(pcm_bytes, dtype=np.int16).astype(np.float32)
+                / 32768.0
+            )
+            expected_s = len(source_audio) / float(sample_rate)
+            blocksize = 2048
 
             t0 = time.time()
             frames_written = 0
-            with sd.OutputStream(
-                samplerate=sample_rate,
-                channels=1,
-                dtype='float32',
-                blocksize=blocksize,
-            ) as stream:
+            def _prepare(device):
+                device_rate = output_sample_rate(
+                    sd, device, fallback=sample_rate,
+                )
+                device_audio = resample_pcm(
+                    source_audio, sample_rate, device_rate,
+                )
+                stream = sd.OutputStream(
+                    samplerate=device_rate,
+                    channels=1,
+                    dtype='float32',
+                    blocksize=blocksize,
+                    device=device,
+                )
+                return stream, device_audio, device_rate
+
+            try:
+                stream_context, audio, playback_rate = _prepare(
+                    self._output_device
+                )
+            except Exception as exc:
+                if self._output_device is None:
+                    raise
+                logger.warning(
+                    "[EdgeTTS] output device %s unavailable (%s); falling back to system default",
+                    self._output_device, exc,
+                )
+                self._output_device = None
+                stream_context, audio, playback_rate = _prepare(None)
+
+            total_frames = len(audio)
+            with stream_context as stream:
                 idx = 0
                 while idx < total_frames:
                     with self._lock:
@@ -334,7 +369,7 @@ class EdgeTTSEngine(TTSEngine):
                     frames_written += len(block)
                     idx += blocksize
 
-            played_s = frames_written / float(sample_rate)
+            played_s = frames_written / float(playback_rate)
             logger.debug(
                 "[EdgeTTS] playback done: %.1fs of %.1fs (%.0f%%) in %.1fs wall",
                 played_s, expected_s,

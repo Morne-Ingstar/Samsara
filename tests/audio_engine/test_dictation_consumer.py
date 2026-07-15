@@ -14,6 +14,7 @@ Consumer) with a REAL background thread — not a hand-rolled reimplementation
 of the ring. Per the investigation task: this test may legitimately FAIL;
 if so, xfail with a comment rather than silently "fixing" it.
 """
+import threading
 import time
 
 import numpy as np
@@ -201,3 +202,98 @@ class TestEchoCancellerBypassOnCapturePath:
 
         assert audio is not None
         assert app.echo_canceller.process_calls > 0
+
+
+class TestReleaseTail:
+    def test_adapts_to_room_tone_above_fixed_threshold(self):
+        bus = FrameBus()
+        # Simulate the reported microphone: ambient RMS (~0.027) is well
+        # above the fixed 0.008 fallback, but remains below actual speech.
+        for index in range(PREBUFFER_FRAMES):
+            bus.write(_pcm(900), float(index), device_epoch=0)
+
+        consumer = DictationSessionConsumer(_FakeEngine(bus), _FakeApp())
+        consumer.activate()
+        time.sleep(0.1)  # let the real drain thread collect the prebuffer
+
+        def writer():
+            # Preserve two final speech frames, then stop after 300 ms of the
+            # same above-threshold room tone instead of waiting for max_tail.
+            for value in (2200, 2200, 900, 900, 900):
+                bus.write(_pcm(value), time.monotonic(), device_epoch=0)
+                time.sleep(0.1)
+
+        thread = threading.Thread(target=writer)
+        thread.start()
+        started = time.monotonic()
+        audio = consumer.drain_after_release(
+            silence_ms=300,
+            max_tail_ms=1200,
+            speech_threshold=0.008,
+        )
+        elapsed = time.monotonic() - started
+        thread.join(timeout=1.0)
+
+        assert audio is not None
+        assert elapsed < 0.9
+        tail = audio[-5 * FRAME_SIZE:]
+        expected = np.concatenate([
+            _pcm(value).astype(np.float32) / 32767.0
+            for value in (2200, 2200, 900, 900, 900)
+        ])
+        assert np.array_equal(tail, expected)
+
+    def test_continued_speech_is_kept_until_consecutive_quiet_frames(self):
+        bus = FrameBus()
+        consumer = DictationSessionConsumer(_FakeEngine(bus), _FakeApp())
+        consumer.activate()
+        first_seq = bus.write_cursor
+
+        def writer():
+            time.sleep(0.02)
+            for value in (12000, 12000, 0, 0):
+                bus.write(_pcm(value), time.monotonic(), device_epoch=0)
+                time.sleep(0.01)
+
+        thread = threading.Thread(target=writer)
+        thread.start()
+        audio = consumer.drain_after_release(
+            silence_ms=200,
+            max_tail_ms=1000,
+            speech_threshold=0.01,
+        )
+        thread.join(timeout=1.0)
+
+        assert audio is not None
+        assert len(audio) >= 4 * FRAME_SIZE
+        tail = audio[-4 * FRAME_SIZE:]
+        expected = np.concatenate([
+            _pcm(value).astype(np.float32) / 32767.0
+            for value in (12000, 12000, 0, 0)
+        ])
+        assert np.array_equal(tail, expected)
+        assert bus.write_cursor >= first_seq + 4
+
+    def test_continuous_speech_still_stops_at_hard_cap(self):
+        bus = FrameBus()
+        consumer = DictationSessionConsumer(_FakeEngine(bus), _FakeApp())
+        consumer.activate()
+
+        def writer():
+            for index in range(20):
+                bus.write(_pcm(12000 + index), time.monotonic(), device_epoch=0)
+                time.sleep(0.01)
+
+        thread = threading.Thread(target=writer)
+        thread.start()
+        started = time.monotonic()
+        audio = consumer.drain_after_release(
+            silence_ms=20,
+            max_tail_ms=50,
+            speech_threshold=0.01,
+        )
+        elapsed = time.monotonic() - started
+        thread.join(timeout=1.0)
+
+        assert audio is not None
+        assert elapsed < 0.5

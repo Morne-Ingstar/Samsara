@@ -53,6 +53,29 @@ QScrollBar::handle:vertical {{
 QScrollBar::add-line:vertical, QScrollBar::sub-line:vertical {{ height: 0; }}
 """
 
+
+def _format_alarm_remaining(next_at, *, enabled=True, active=False, now=None) -> str:
+    """Format a next-trigger timestamp for the auto-refreshing overlay."""
+    if not enabled:
+        return "disabled"
+    if active:
+        return "active now"
+    if next_at is None:
+        return "paused"
+    if now is None:
+        now = datetime.now().timestamp()
+    remaining = next_at - now
+    if remaining <= 0:
+        return "due"
+
+    minutes = max(1, int((remaining + 59) // 60))
+    if minutes < 60:
+        return f"in {minutes} min"
+    hours, minutes = divmod(minutes, 60)
+    if minutes:
+        return f"in {hours} hr {minutes} min"
+    return f"in {hours} hr"
+
 # ── Schedule formatting helpers ───────────────────────────────────────────────
 
 def _display_time(hhmm: str) -> str:
@@ -241,6 +264,17 @@ class _StatusWindow(QMainWindow):
                 interval = alarm.get("interval_minutes", 0)
                 enabled = alarm.get("enabled", False)
 
+                next_at = None
+                active = False
+                if self._am is not None:
+                    try:
+                        next_at = self._am.get_next_trigger_at(alarm_id)
+                        active = self._am.nagging_alarm_id == alarm_id
+                    except Exception as e:
+                        logger.debug(f"_render next trigger: {e}")
+                next_label = _format_alarm_remaining(
+                    next_at, enabled=enabled, active=active,
+                )
                 streak = 0
                 if self._am is not None:
                     try:
@@ -249,8 +283,7 @@ class _StatusWindow(QMainWindow):
                     except Exception as e:
                         logger.debug(f"_render: {e}")
 
-                state = f"streak {streak}" if enabled else "disabled"
-                detail = f"{interval} min  |  {state}"
+                detail = f"{interval} min  |  {next_label}  |  streak {streak}"
                 self._item_row(
                     layout, name=name, detail=detail,
                     dim=not enabled,

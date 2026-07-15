@@ -24,11 +24,14 @@ from websockets.exceptions import InvalidStatus, ConnectionClosed
 
 TEST_PORT = 47899
 TEST_ORIGIN = "chrome-extension://testtesttesttesttesttesttesttest"
+TEST_SECRET = "test-pairing-secret-0123456789-abcdefghijklmnopqrstuvwxyz"
 
 
 @pytest.fixture
 def bridge():
-    b = bb.BrowserBridge(port=TEST_PORT, origin=TEST_ORIGIN)
+    b = bb.BrowserBridge(
+        port=TEST_PORT, origin=TEST_ORIGIN, pairing_secret=TEST_SECRET
+    )
     started = b.start()
     assert started, "test bridge failed to bind -- port may be in use"
     yield b
@@ -39,10 +42,29 @@ def _client(origin=TEST_ORIGIN):
     return ws_connect(f"ws://127.0.0.1:{TEST_PORT}", additional_headers={"Origin": origin})
 
 
-def _handshake(ws):
-    ws.send(json.dumps({"type": "hello"}))
+def _challenge(ws):
+    challenge = json.loads(ws.recv(timeout=3))
+    assert challenge["type"] == "challenge"
+    return challenge["serverNonce"]
+
+
+def _handshake(ws, secret=TEST_SECRET):
+    server_nonce = _challenge(ws)
+    client_nonce = "client-nonce-0123456789-abcdefghijklmnopqrstuvwxyz"
+    ws.send(json.dumps({
+        "type": "hello",
+        "serverNonce": server_nonce,
+        "clientNonce": client_nonce,
+        "proof": bb._proof(secret, "client-v1", server_nonce, client_nonce),
+    }))
     ack = json.loads(ws.recv(timeout=3))
     assert ack["type"] == "hello_ack"
+    assert ack["serverNonce"] == server_nonce
+    assert ack["proof"] == bb._proof(
+        secret, "server-v1", server_nonce, client_nonce
+    )
+    ws.send(json.dumps({"type": "ready", "token": ack["token"]}))
+    assert json.loads(ws.recv(timeout=3)) == {"type": "ready_ack"}
     return ack["token"]
 
 
@@ -74,13 +96,78 @@ def test_matching_origin_accepted(bridge):
 
 def test_first_message_other_than_hello_is_fatal(bridge):
     with _client() as ws:
+        _challenge(ws)
         ws.send(json.dumps({"type": "dismissed"}))  # valid shape, wrong-for-first
         with pytest.raises(ConnectionClosed):
             ws.recv(timeout=2)
 
 
+def test_legacy_unauthenticated_hello_is_fatal(bridge):
+    with _client() as ws:
+        _challenge(ws)
+        ws.send(json.dumps({"type": "hello"}))
+        with pytest.raises(ConnectionClosed):
+            ws.recv(timeout=2)
+
+
+def test_wrong_pairing_proof_is_fatal(bridge):
+    with _client() as ws:
+        server_nonce = _challenge(ws)
+        client_nonce = "client-nonce-0123456789-abcdefghijklmnopqrstuvwxyz"
+        ws.send(json.dumps({
+            "type": "hello",
+            "serverNonce": server_nonce,
+            "clientNonce": client_nonce,
+            "proof": bb._proof(
+                "wrong-secret-0123456789-abcdefghijklmnopqrstuvwxyz",
+                "client-v1",
+                server_nonce,
+                client_nonce,
+            ),
+        }))
+        with pytest.raises(ConnectionClosed):
+            ws.recv(timeout=2)
+    assert not bridge.is_connected()
+
+
+def test_wrong_ready_token_never_marks_connection_ready(bridge):
+    with _client() as ws:
+        server_nonce = _challenge(ws)
+        client_nonce = "client-nonce-0123456789-abcdefghijklmnopqrstuvwxyz"
+        ws.send(json.dumps({
+            "type": "hello",
+            "serverNonce": server_nonce,
+            "clientNonce": client_nonce,
+            "proof": bb._proof(
+                TEST_SECRET, "client-v1", server_nonce, client_nonce
+            ),
+        }))
+        ack = json.loads(ws.recv(timeout=2))
+        ws.send(json.dumps({"type": "ready", "token": "wrong-token"}))
+        with pytest.raises(ConnectionClosed):
+            ws.recv(timeout=2)
+    assert not bridge.is_connected()
+
+
+def test_unauthenticated_connection_cannot_replace_active_extension(bridge):
+    with _client() as legitimate:
+        _handshake(legitimate)
+        with _client() as attacker:
+            server_nonce = _challenge(attacker)
+            attacker.send(json.dumps({
+                "type": "hello",
+                "serverNonce": server_nonce,
+                "clientNonce": "attacker-nonce-0123456789-abcdefghijklmnopqrstuvwxyz",
+                "proof": "0" * 64,
+            }))
+            with pytest.raises(ConnectionClosed):
+                attacker.recv(timeout=2)
+        assert bridge.is_connected()
+
+
 def test_message_before_hello_never_marks_connected(bridge):
     with _client() as ws:
+        _challenge(ws)
         ws.send(json.dumps({"type": "hints", "requestId": 1, "hints": []}))
         with pytest.raises(ConnectionClosed):
             ws.recv(timeout=2)
@@ -289,7 +376,9 @@ def test_on_dismissed_callback_fires(bridge):
 # ---------------------------------------------------------------------------
 
 def test_stop_joins_server_thread_and_frees_port():
-    b = bb.BrowserBridge(port=TEST_PORT + 1, origin=TEST_ORIGIN)
+    b = bb.BrowserBridge(
+        port=TEST_PORT + 1, origin=TEST_ORIGIN, pairing_secret=TEST_SECRET
+    )
     assert b.start()
     thread_name = b._thread.name
     b.stop(timeout=2.0)
@@ -302,13 +391,17 @@ def test_stop_joins_server_thread_and_frees_port():
     )
 
     # Port must be free again -- a second bridge can bind the same port.
-    b2 = bb.BrowserBridge(port=TEST_PORT + 1, origin=TEST_ORIGIN)
+    b2 = bb.BrowserBridge(
+        port=TEST_PORT + 1, origin=TEST_ORIGIN, pairing_secret=TEST_SECRET
+    )
     assert b2.start()
     b2.stop(timeout=2.0)
 
 
 def test_stop_before_start_is_safe():
-    b = bb.BrowserBridge(port=TEST_PORT + 2, origin=TEST_ORIGIN)
+    b = bb.BrowserBridge(
+        port=TEST_PORT + 2, origin=TEST_ORIGIN, pairing_secret=TEST_SECRET
+    )
     b.stop(timeout=1.0)  # must not raise
 
 
@@ -320,3 +413,83 @@ def test_stop_disconnects_active_client(bridge):
         with pytest.raises(ConnectionClosed):
             ws.recv(timeout=2)
     bridge.start()  # re-start so the fixture's own teardown stop() is a no-op-safe call
+
+
+# ---------------------------------------------------------------------------
+# Persistent pairing state / source-frozen-independent extension install
+# ---------------------------------------------------------------------------
+
+def test_legacy_diagnostics_pairing_file_migrates_fail_closed(
+    tmp_path, monkeypatch
+):
+    monkeypatch.setenv("SAMSARA_HOME_DIR", str(tmp_path))
+    path = tmp_path / "browser_bridge" / "pairing.json"
+    path.parent.mkdir(parents=True)
+    path.write_text('{"port":47831,"started_at":1}', encoding="utf-8")
+
+    secret = bb._load_or_create_pairing_secret()
+    payload = json.loads(path.read_text(encoding="utf-8"))
+
+    assert bb._valid_secret(secret)
+    assert payload["version"] == bb.PAIRING_VERSION
+    assert payload["secret"] == secret
+    assert "port" not in payload
+
+
+def test_paired_extension_is_installed_inside_isolated_profile(
+    tmp_path, monkeypatch
+):
+    monkeypatch.setenv("SAMSARA_HOME_DIR", str(tmp_path))
+    secret = bb._load_or_create_pairing_secret()
+
+    assert bb._install_paired_extension(secret)
+    installed = tmp_path / "browser_bridge" / "extension"
+    auth = json.loads((installed / "pairing-auth.json").read_text(encoding="utf-8"))
+    assert auth == {"version": bb.PAIRING_VERSION, "secret": secret}
+    assert (installed / "bridge-auth-core.js").is_file()
+    assert (installed / "manifest.json").is_file()
+
+
+def test_pairing_secret_is_not_logged_or_page_web_accessible(
+    tmp_path, monkeypatch, caplog
+):
+    monkeypatch.setenv("SAMSARA_HOME_DIR", str(tmp_path))
+    caplog.set_level("INFO")
+    secret = bb._load_or_create_pairing_secret()
+    assert bb._install_paired_extension(secret)
+
+    manifest = json.loads(
+        (tmp_path / "browser_bridge" / "extension" / "manifest.json").read_text(
+            encoding="utf-8"
+        )
+    )
+    exposed = json.dumps(manifest.get("web_accessible_resources", []))
+    assert "pairing-auth.json" not in exposed
+    assert secret not in caplog.text
+
+
+def test_bundled_extension_dir_resolves_pyinstaller_extraction_root(
+    tmp_path, monkeypatch
+):
+    frozen_module = tmp_path / "_internal" / "samsara" / "browser_bridge.py"
+    monkeypatch.setattr(bb, "__file__", str(frozen_module))
+    assert bb._bundled_extension_dir() == (
+        tmp_path / "_internal" / "browser_extension"
+    )
+
+
+def test_samsara_home_profiles_do_not_share_pairing_secret(tmp_path, monkeypatch):
+    first_home = tmp_path / "one"
+    second_home = tmp_path / "two"
+    monkeypatch.setenv("SAMSARA_HOME_DIR", str(first_home))
+    first = bb._load_or_create_pairing_secret()
+    monkeypatch.setenv("SAMSARA_HOME_DIR", str(second_home))
+    second = bb._load_or_create_pairing_secret()
+
+    assert first != second
+    assert json.loads(
+        (first_home / "browser_bridge" / "pairing.json").read_text("utf-8")
+    )["secret"] == first
+    assert json.loads(
+        (second_home / "browser_bridge" / "pairing.json").read_text("utf-8")
+    )["secret"] == second

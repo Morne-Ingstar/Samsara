@@ -1,6 +1,6 @@
 """Tests for samsara.formatting_tokens: inline spoken-formatting substitution
 applied to DICTATE output ("new line" -> \\n, "new paragraph" -> \\n\\n,
-"tab" -> \\t, "bullet"/"bullet point" -> "\\n• ").
+"insert tab" -> \\t, "bullet"/"bullet point" -> "\\n• ").
 """
 import pytest
 
@@ -18,7 +18,7 @@ class TestEachTokenSubstitutes:
         assert apply_formatting_tokens("hello new paragraph world") == "hello\n\nworld"
 
     def test_tab(self):
-        assert apply_formatting_tokens("hello tab world") == "hello\tworld"
+        assert apply_formatting_tokens("hello insert tab world") == "hello\tworld"
 
     def test_bullet(self):
         assert apply_formatting_tokens("hello bullet world") == "hello\n• world"
@@ -32,7 +32,7 @@ class TestCaseInsensitivity:
         ("NEW LINE", "\n"),
         ("New Line", "\n"),
         ("hello NEW PARAGRAPH world", "hello\n\nworld"),
-        ("hello TAB world", "hello\tworld"),
+        ("hello INSERT TAB world", "hello\tworld"),
         ("hello Bullet Point world", "hello\n• world"),
     ])
     def test_case_insensitive_match(self, text, expected):
@@ -53,8 +53,11 @@ class TestLongestMatchFirst:
         assert apply_formatting_tokens("notes bullet one") == "notes\n• one"
 
 
-class TestTabCollisionGuards:
+class TestLiteralTabPreservation:
     @pytest.mark.parametrize("text", [
+        "tab",
+        "the word tab should remain visible",
+        "hello tab world",
         "open a new tab",
         "switch to the next tab",
         "go back to the previous tab",
@@ -64,16 +67,22 @@ class TestTabCollisionGuards:
         "press the tab key",       # followed by "key"
         "hit tab key to switch",   # followed by "key"
     ])
-    def test_guarded_phrase_stays_literal(self, text):
+    def test_ordinary_tab_stays_literal(self, text):
         assert apply_formatting_tokens(text) == text
 
-    def test_tab_still_substitutes_outside_guarded_context(self):
-        assert apply_formatting_tokens("hello tab world") == "hello\tworld"
+    def test_explicit_insert_tab_substitutes(self):
+        assert apply_formatting_tokens("hello insert tab world") == "hello\tworld"
 
-    def test_tab_substitutes_when_preceding_word_only_ends_in_a_guard_word(self):
-        # "renew" ends in "new" but is not the standalone guard word "new"
-        # -- must not falsely trigger the guard.
-        assert apply_formatting_tokens("please renew tab") == "please renew\t"
+    @pytest.mark.parametrize("text", [
+        "enter", "return", "space", "escape", "backspace", "delete",
+        "home", "page up", "page down", "shift", "control", "alt",
+    ])
+    def test_other_keyboard_words_are_not_formatting_tokens(self, text):
+        assert apply_formatting_tokens(text) == text
+
+    @pytest.mark.parametrize("text", ["tablet", "tabbed", "tabs"])
+    def test_words_containing_tab_are_unchanged(self, text):
+        assert apply_formatting_tokens(text) == text
 
 
 class TestSpaceCleanup:
@@ -81,7 +90,7 @@ class TestSpaceCleanup:
         assert apply_formatting_tokens("hello new line world") == "hello\nworld"
 
     def test_no_double_space_left_around_tab(self):
-        assert apply_formatting_tokens("col1 tab col2") == "col1\tcol2"
+        assert apply_formatting_tokens("col1 insert tab col2") == "col1\tcol2"
 
     def test_no_double_space_left_around_bullet_mid_utterance(self):
         assert apply_formatting_tokens("notes bullet first item") == "notes\n• first item"
@@ -118,7 +127,7 @@ class TestMultiTokenUtterance:
                 == "first point\nsecond point")
 
     def test_multiple_different_tokens(self):
-        assert (apply_formatting_tokens("intro new paragraph body tab indented new line end")
+        assert (apply_formatting_tokens("intro new paragraph body insert tab indented new line end")
                 == "intro\n\nbody\tindented\nend")
 
 
@@ -131,6 +140,6 @@ class TestIdentityFastPath:
         text = ""
         assert apply_formatting_tokens(text) is text
 
-    def test_guarded_tab_only_utterance_returns_identical_object(self):
-        text = "open a new tab"
+    def test_literal_tab_utterance_returns_identical_object(self):
+        text = "tab"
         assert apply_formatting_tokens(text) is text

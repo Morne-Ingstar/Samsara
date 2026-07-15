@@ -7,18 +7,28 @@ isn't installed, isn't connected, or the page is restricted (e.g. `brave://`
 pages, the extension gallery).
 
 This extension only ever talks to a Samsara process running on the same
-machine, over a loopback WebSocket (`ws://127.0.0.1:47831`). It makes no other
-network requests.
+machine, over a loopback WebSocket (`ws://127.0.0.1:47831`). Both sides prove
+knowledge of a per-install pairing secret before the extension accepts any
+click, focus, or selection request. It makes no other network requests.
 
 ## Install (one-time)
 
-1. Open `brave://extensions`.
-2. Enable **Developer mode** (top-right toggle).
-3. Click **Load unpacked** and select this `browser_extension` folder.
+1. Start Samsara once. Its log prints the exact **Authenticated extension
+   ready at ...** directory. Normally this is
+   `C:\Users\<you>\.samsara\browser_bridge\extension`.
+2. Open `brave://extensions`.
+3. Enable **Developer mode** (top-right toggle).
+4. Click **Load unpacked** and select the authenticated extension directory
+   printed by Samsara, not the source repository's template directory.
+
+Existing pre-pairing installations must be removed/reloaded from that
+profile-specific directory. They intentionally fail closed and show a red
+`!` badge; there is no insecure compatibility fallback.
 
 ## After editing `manifest.json`, `background.js`, or `content*.js`
 
-Click the reload icon for this extension on `brave://extensions`.
+Restart Samsara so it refreshes the profile-specific installed copy, then
+click the reload icon for that copy on `brave://extensions`.
 
 ## Limitations (first milestone)
 

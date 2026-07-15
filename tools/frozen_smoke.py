@@ -39,6 +39,8 @@ EXE_NAME = "Samsara.exe"
 # Exact strings emitted by dictation.py -- see samsara.log format
 # "%(asctime)s - %(levelname)s - %(message)s".
 BOOT_MARKER = "[INIT] Startup complete."
+VAD_READY_MARKER = "Bundled Silero VAD ONNX load returned:"
+VAD_FALLBACK_MARKER = "Silero VAD ONNX unavailable"
 ALREADY_RUNNING_MARKER = "Samsara is already running"
 WIZARD_START_MARKER = "First run detected - launching setup wizard..."
 # NOTE: "[WIZ-DIAG]" is NOT a reliable "the wizard fired" signal on its own --
@@ -140,6 +142,18 @@ class Check:
         return f"[{status}] {self.name}{suffix}"
 
 
+def check_bundled_vad(log_text: str) -> Check:
+    """Require the frozen app's local ONNX VAD, not its RMS fallback."""
+    check = Check("bundled Silero ONNX VAD loaded")
+    if VAD_READY_MARKER in log_text:
+        return check.ok("local faster-whisper asset + ONNX Runtime")
+    if VAD_FALLBACK_MARKER in log_text:
+        return check.fail("app reported ONNX VAD failure and fell back to RMS")
+    return check.fail(
+        "no VAD load marker before startup completed -- asset/runtime may be missing"
+    )
+
+
 # ---------------------------------------------------------------------------
 # Log watching
 # ---------------------------------------------------------------------------
@@ -150,7 +164,7 @@ def wait_for_boot(log_path: Path, timeout_s: float, wizard_expected: bool = Fals
     Returns (outcome, detail, offset) where outcome is one of:
       "boot"            -- BOOT_MARKER seen (only when wizard_expected is False)
       "wizard"          -- WIZARD_START_MARKER seen (only when wizard_expected is True)
-      "already_running" -- another instance holds the global single-instance lock
+      "already_running" -- another instance holds this profile's single-instance mutex
       "fail"            -- a failure marker appeared
       "timeout"         -- none of the above within timeout_s
     """
@@ -222,32 +236,6 @@ def check_no_self_respawn(pid: int) -> Check:
     return check.ok("no child Samsara.exe processes")
 
 
-def cleanup_stale_lock(pid: int) -> None:
-    """Delete %TEMP%\\samsara.lock if it names the PID we just terminated.
-
-    terminate()/kill() (TerminateProcess) release the OS-level msvcrt lock
-    on the file immediately, but nothing unlinks the file itself, so its
-    stale PID sits there until something removes it. dictation.py's own
-    _steal_stale_lock_if_any() would catch this on the *next* launch too,
-    but back-to-back harness runs (this scenario, then the wizard scenario,
-    in the same smoke-test invocation) start their next launch fast enough
-    that cleaning it up here immediately is worth doing rather than relying
-    on that later.
-    """
-    lock_path = Path(tempfile.gettempdir()) / "samsara.lock"
-    if not lock_path.exists():
-        return
-    try:
-        recorded_pid = int(lock_path.read_text().strip())
-    except (OSError, ValueError):
-        return
-    if recorded_pid == pid:
-        try:
-            lock_path.unlink()
-        except OSError:
-            pass
-
-
 def graceful_shutdown(proc: subprocess.Popen, timeout_s: float = SHUTDOWN_TIMEOUT_S) -> Check:
     """No scriptable graceful-exit mechanism exists: quit_app() (dictation.py)
     is only reachable via the tray "Exit" menu item (a GUI click) or a fatal
@@ -266,12 +254,10 @@ def graceful_shutdown(proc: subprocess.Popen, timeout_s: float = SHUTDOWN_TIMEOU
             proc.wait(timeout=5.0)
         except subprocess.TimeoutExpired:
             return check.fail(f"process survived terminate() + kill() past {timeout_s + 5:.0f}s")
-        cleanup_stale_lock(proc.pid)
         return check.fail(
             f"did not exit within {timeout_s:.0f}s of terminate() "
             f"(no scriptable graceful-exit mechanism exists); force-killed"
         )
-    cleanup_stale_lock(proc.pid)
     return check.ok(
         "terminate() -- no scriptable graceful-exit mechanism exists "
         f"(tray-menu Exit is GUI-only); exited within {timeout_s:.0f}s"
@@ -321,9 +307,8 @@ def run_boot_and_liveness(exe_path: Path, work_root: Path) -> list[Check]:
 
         if outcome == "already_running":
             checks.append(Check("boot").fail(
-                f"another Samsara instance is already running system-wide "
-                f"(the single-instance lock at %TEMP%\\samsara.lock is not "
-                f"profile-scoped) -- close it and re-run: {detail!r}"
+                f"another Samsara instance is already using smoke-test "
+                f"profile {profile_dir} -- close it and re-run: {detail!r}"
             ))
             return checks
         if outcome == "fail":
@@ -375,6 +360,7 @@ def run_boot_and_liveness(exe_path: Path, work_root: Path) -> list[Check]:
         else:
             dup_check.fail(f"appeared {count} times -- possible duplicate log handler")
         checks.append(dup_check)
+        checks.append(check_bundled_vad(full_text))
 
     finally:
         if proc.poll() is None:
@@ -405,8 +391,8 @@ def run_wizard_path(exe_path: Path, work_root: Path) -> list[Check]:
 
         if outcome == "already_running":
             checks.append(Check("wizard path").fail(
-                f"another Samsara instance is already running system-wide -- "
-                f"close it and re-run: {detail!r}"
+                f"another Samsara instance is already using smoke-test "
+                f"profile {profile_dir} -- close it and re-run: {detail!r}"
             ))
             return checks
         if outcome == "fail":

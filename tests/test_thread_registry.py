@@ -192,6 +192,22 @@ def test_shutdown_joins_nondaemon_threads():
     assert finished.is_set()
 
 
+def test_shutdown_called_from_registered_thread_does_not_join_itself():
+    returned = threading.Event()
+
+    def _shutdown_from_worker():
+        thread_registry.shutdown(timeout=0.2)
+        returned.set()
+
+    worker = thread_registry.spawn(
+        "shutdown-caller", _shutdown_from_worker, daemon=False
+    )
+    worker.join(2.0)
+
+    assert returned.is_set()
+    assert not worker.is_alive()
+
+
 def test_shutdown_logs_stragglers(caplog):
     caplog.set_level(logging.ERROR, logger="Samsara.samsara.runtime.thread_registry")
     stuck_release = threading.Event()

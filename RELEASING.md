@@ -5,13 +5,12 @@
 Pushing a version tag (`v*`) triggers `.github/workflows/release.yml` on a
 `windows-latest` GitHub-hosted runner:
 
-1. Checkout, Python 3.11, CPU-only `torch`/`torchaudio` (from
-   `download.pytorch.org/whl/cpu` — never the CUDA index), `requirements.txt`,
-   pinned PyInstaller.
+1. Checkout, Python 3.11, `requirements.txt` (including the pinned CPU ONNX
+   Runtime used by Silero VAD), and pinned PyInstaller.
 2. `python -m PyInstaller --clean --noconfirm scripts\samsara.spec` with
    `INCLUDE_CUDA` unset — CPU-only configuration.
-3. A trimmed, non-blocking smoke check (`tools\ci_smoke.py`) launches the
-   frozen EXE and watches for a clean boot or an unexplained crash. See
+3. A trimmed, blocking smoke check (`tools\ci_smoke.py`) launches the frozen
+   EXE and requires the explicit startup-complete marker with no unexplained crash. See
    "Why the smoke check is trimmed" below.
 4. `dist\Samsara\*` is zipped as `Samsara-Windows-<version>.zip` (same
    naming convention v0.20.0 shipped:
@@ -44,19 +43,14 @@ the artifact but does not create a GitHub Release.
 - Tag pushes only: the zip is also attached to the GitHub Release for that
   tag.
 
-## CUDA pack: still a local, manual step
+## CUDA packaging
 
-`Samsara-CUDA-Pack-<version>.zip` is **not** built on CI this pass. It's
-built locally via `build_release.bat`, which sets `INCLUDE_CUDA=1` so
-`scripts\samsara.spec` copies cuDNN/cuBLAS/cuDART DLLs out of the local CUDA
-torch install (`F:\envs\sami\...\torch\lib`). A GitHub-hosted runner has no
-GPU and no reason to carry a CUDA torch install, so there's nothing to
-harvest those DLLs from without a second, much heavier job. See the
-commented-out section at the bottom of `release.yml` for the two options
-when this becomes worth doing (pull a CUDA torch wheel on a dedicated CI job
-vs. keep it a manual local step forever). For now: build the CUDA pack
-locally as usual and attach it to the tag's GitHub Release by hand after CI
-creates it.
+v0.22 publishes only the verified CPU zip. `build_release.bat` is also a CPU
+build-and-smoke helper; it creates a local `.7z`, not a CUDA pack and not the
+canonical GitHub artifact. `scripts\build_cuda.bat` remains a developer helper
+for experimenting with `INCLUDE_CUDA=1`, but it is not a release pipeline and
+its output must not be advertised or attached until it has an equivalent
+clean-checkout build, smoke, archive, and artifact-verification path.
 
 ## Why the smoke check is trimmed
 
@@ -79,8 +73,9 @@ runner does not reliably have:
   fresh machine, downloads from Hugging Face Hub — the default `model_size`
   is `base`) *before* `"[INIT] Startup complete."` is logged. On a fresh CI
   runner this is a real network call of unknown duration on the very first
-  runs; `ci_smoke.py` treats "still alive, no crash, just hasn't reached the
-  boot marker yet within the timeout" as a pass rather than a failure.
+  runs. The release gate still requires the startup marker; a timeout is a
+  failure. Increase the bounded workflow timeout if model-host latency proves
+  consistently insufficient rather than accepting a build that never boots.
 - **A GUI session.** Windows Actions runners do run with an interactive
   session (unlike Linux runners needing Xvfb), so `customtkinter`/Qt window
   creation is expected to work — but this is unverified on this specific
@@ -91,8 +86,20 @@ known, caught hardware-availability tracebacks; an unexplained traceback,
 critical error, or early process exit fails the release job. The smoke log is
 uploaded on every run for inspection.
 
-`tools\frozen_smoke.py` and `tools\build_and_smoke.cmd` are **unchanged** —
-they remain the full local gate to run before every tagged release.
+`tools\frozen_smoke.py` and `tools\build_and_smoke.cmd` remain the full local
+gate to run before every tagged release. `build_release.bat` first refuses to
+run if either a frozen `Samsara.exe` or this checkout's source `dictation.py`
+is active, if tracked/staged source differs from the commit, or if a required
+runtime/release-tool file is still untracked; it never force-kills the user's
+running app. Unrelated untracked user artifacts are preserved and tolerated.
+The PyInstaller spec derives project data from Git's tracked-file manifest so
+ignored or untracked demo assets, downloads, and bytecode cannot leak into the
+package.
+
+The local wrapper uses `SAMSARA_PYTHON` when set, otherwise the known
+development environment when present, then a `python`/`py -3.11` executable
+from `PATH`. Every candidate is executed and validated before any cleanup or
+build begins.
 
 ## Assumptions a first real CI run should confirm
 
@@ -102,20 +109,17 @@ they remain the full local gate to run before every tagged release.
   cleanly on a `windows-latest` runner's session. If not, `ci_smoke.py`
   will report a genuine (not benign-pattern) crash — check the uploaded
   `ci-smoke-log-*` artifact first.
-- **`torch`/`torchaudio` CPU-index resolution.** The workflow force-installs
-  from `download.pytorch.org/whl/cpu` before `requirements.txt`, relying on
-  `requirements.txt`'s bare (unpinned) `torchaudio` line to accept the
-  already-installed CPU build rather than pip re-resolving a different
-  version. If a future `requirements.txt` edit adds a version pin to
-  `torch`/`torchaudio`, confirm a matching CPU wheel exists at that pin.
-- **PyInstaller torch/torchaudio exclude isn't airtight.** `scripts\samsara.spec`
-  excludes `torch`/`torchaudio` from `Analysis`, but `build_release.bat`
-  (the existing local packaging script) still defensively deletes
-  `_internal\torch(audio)` post-build — implying PyInstaller has, at least
-  once, bundled them anyway despite the exclude. `release.yml`'s "Verify
-  build output" step mirrors that same defensive cleanup and logs a warning
-  if it actually had to remove anything; if that warning fires on a real
-  run, the exclude list in the spec deserves a closer look.
+- **The bundled VAD asset and ONNX Runtime both reach the frozen app.** A
+  successful boot must log the local Silero ONNX load rather than the RMS
+  fallback. The spec explicitly collects `faster_whisper/assets`; its
+  `onnxruntime` hidden import activates PyInstaller's runtime hook.
+- **The defensive torch/torchaudio exclude remains useful.** They are no
+  longer runtime dependencies, but a local CUDA-pack build may have torch
+  installed as a DLL source. `build_release.bat` now relies on the spec's
+  excludes and no longer performs post-build deletion. `release.yml` keeps
+  an additional CI-only cleanup and logs a warning if it removes anything;
+  if that warning fires on a real run, the spec's exclude list deserves a
+  closer look.
 - **Build size has grown well past the v0.20.0 baseline.** The
   `Samsara-Windows`/`~292MB` figure from v0.20.0 no longer reflects the
   current tree — a local build of the current `master` produces a
@@ -125,9 +129,9 @@ they remain the full local gate to run before every tagged release.
   surprised the CI-built zip is much bigger than the old release notes
   imply — update `docs`/release notes size figures once a real CI zip size
   is known.
-- **Version identity must agree in three places.** Keep the release tag,
+- **Version identity is enforced before build.** The release tag,
   `samsara.__version__`, and `samsara.smart_actions_bridge.SAMSARA_VERSION`
-  on the same value before tagging; the workflow names artifacts from the tag.
+  must agree or `tools/check_release_version.py` fails the workflow.
 - **`softprops/action-gh-release` and `actions/*` are pinned to major-version
   tags** (`@v5`, `@v6`, `@v2`), not exact commit SHAs. Standard practice, but
   stricter supply-chain pinning (exact SHA) is a future hardening option,

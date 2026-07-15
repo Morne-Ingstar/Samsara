@@ -26,7 +26,6 @@ import gc
 import inspect
 import json
 import sys
-import tempfile
 import time
 import types
 import unicodedata
@@ -37,7 +36,7 @@ import numpy as np
 
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
-from samsara import benchmark_store
+from samsara import benchmark_store, single_instance
 from samsara.paths import samsara_home_dir
 
 # ---------------------------------------------------------------------------
@@ -192,8 +191,15 @@ def _build_base_params(config: dict) -> dict:
     return params
 
 
-def _lock_file_present() -> bool:
-    return (Path(tempfile.gettempdir()) / "samsara.lock").exists()
+def _main_samsara_running() -> bool:
+    """Return whether the normal-profile Samsara instance owns its mutex."""
+    try:
+        mutex = single_instance.acquire_single_instance_mutex(profile_dir=None)
+    except single_instance.AlreadyRunningError:
+        return True
+    if mutex is not None:
+        mutex.close()
+    return False
 
 
 # ---------------------------------------------------------------------------
@@ -335,10 +341,9 @@ def main(argv=None) -> int:
                          help=f"skip the confirmation gate for >{_MAX_CELLS_WITHOUT_CONFIRM} sweep cells")
     args = parser.parse_args(argv)
 
-    if _lock_file_present():
-        print("WARNING: Samsara's lock file was found -- the app may still be "
-              "running. Close it first: a single GPU can't hold two models "
-              "resident at once.")
+    if _main_samsara_running():
+        print("WARNING: Samsara is running. Close it first: a single GPU "
+              "can't hold two models resident at once.")
 
     samples = [r for r in benchmark_store.list_samples() if r.get('gold')]
     print(f"{len(samples)} gold-confirmed sample(s) found.")

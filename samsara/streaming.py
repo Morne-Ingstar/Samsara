@@ -391,6 +391,11 @@ class StreamingWorker(threading.Thread):
                 self._session.on_timeout()
                 return
             text = self._transcribe_partial()
+            # Cancellation can arrive while Whisper owns model_lock. Never
+            # publish that stale partial after cancel() has hidden the overlay
+            # and released the accumulator for another recording.
+            if self._stop_event.is_set() or self._cancel_event.is_set():
+                return
             if text:
                 logger.debug(f"[STREAM] Partial: {text}")
                 self._session.on_partial(text)
@@ -423,7 +428,7 @@ class StreamingWorker(threading.Thread):
             # Done OUTSIDE model_lock: join can take up to 2s on slow threads.
             consumer = getattr(app, '_dictation_consumer', None)
             if consumer is not None and hasattr(consumer, 'stop_streaming'):
-                audio = consumer.stop_streaming()
+                audio = self._session._stop_capture()
             else:
                 audio = self._snapshot_audio()   # non-ACE fallback
 
@@ -633,6 +638,9 @@ class StreamingSession:
         self._overlay = StreamingOverlayQt(dim=self._direct_paste)
         self._worker = StreamingWorker(self)
         self._last_partial = ""
+        self._capture_cleanup_lock = threading.Lock()
+        self._capture_cleaned = False
+        self._finished_notified = False
 
     # ---- Public lifecycle (call from main thread) -----------------------
 
@@ -662,10 +670,14 @@ class StreamingSession:
             self._state = self.STATE_DONE
         self.cancel_event.set()
         self.stop_event.set()
+        # A cancelled worker skips its final pass, so it would otherwise
+        # never stop DictationSessionConsumer's streaming accumulator.
+        self._discard_capture()
         if self._direct_paste and self._last_pasted:
             thread_registry.spawn("streaming-cancel-undo", self._undo_direct_paste,
                              daemon=True)
         self._overlay.close()
+        self._notify_finished()
 
     # ---- Worker -> session callbacks (called from worker thread) --------
 
@@ -682,10 +694,15 @@ class StreamingSession:
         self.app._schedule_ui(self._on_timeout_main)
 
     def on_cancelled(self):
+        self._discard_capture()
         self._overlay.close()
+        self._notify_finished()
 
     def on_final(self, final_text, raw_text=None, duration_s=0.0,
                  elapsed_ms=0):
+        if self.cancel_event.is_set():
+            self.on_cancelled()
+            return
         self.app._schedule_ui(self._deliver_final, final_text, raw_text,
                               duration_s, elapsed_ms)
 
@@ -788,6 +805,35 @@ class StreamingSession:
     def _mark_done(self):
         with self._state_lock:
             self._state = self.STATE_DONE
+        self._notify_finished()
+
+    def _discard_capture(self):
+        """Stop and discard the shared streaming accumulator exactly once."""
+        self._stop_capture()
+
+    def _stop_capture(self):
+        """Stop the accumulator once and return its audio to the final pass."""
+        with self._capture_cleanup_lock:
+            if self._capture_cleaned:
+                return None
+            self._capture_cleaned = True
+        consumer = getattr(self.app, '_dictation_consumer', None)
+        if consumer is not None and hasattr(consumer, 'stop_streaming'):
+            try:
+                return consumer.stop_streaming()
+            except Exception as e:
+                logger.exception(f"[STREAM] Capture cleanup failed: {e}")
+        return None
+
+    def _notify_finished(self):
+        """Release app-level ownership once across repeated close paths."""
+        with self._capture_cleanup_lock:
+            if self._finished_notified:
+                return
+            self._finished_notified = True
+        callback = getattr(self.app, '_on_streaming_session_finished', None)
+        if callback is not None:
+            callback(self)
 
     # ---- Direct-paste helpers (off the Tk main thread) ------------------
 

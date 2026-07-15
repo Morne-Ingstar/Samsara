@@ -11,10 +11,7 @@ import uuid
 from datetime import datetime
 from pathlib import Path
 
-from samsara.log import get_logger
 from samsara.paths import samsara_home_dir
-
-logger = get_logger(__name__)
 
 DB_PATH = samsara_home_dir() / "history.db"
 
@@ -67,13 +64,15 @@ class HistoryManager:
             ("matched_command",  "TEXT DEFAULT NULL"),
         ]
         with self._lock:
+            existing = {
+                row[1]
+                for row in self._conn.execute("PRAGMA table_info(history)").fetchall()
+            }
             for col, definition in new_cols:
-                try:
+                if col not in existing:
                     self._conn.execute(
                         f"ALTER TABLE history ADD COLUMN {col} {definition}")
-                    self._conn.commit()
-                except sqlite3.OperationalError as e:
-                    logger.debug(f"_migrate: {e}")
+            self._conn.commit()
 
     def add(self, raw_text, display_text="", app_context="",
             duration_ms=0, mode="hold", status="success",

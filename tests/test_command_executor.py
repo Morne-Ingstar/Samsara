@@ -89,6 +89,30 @@ class TestCommandMatching:
         result = executor.find_command("close window")
         assert result == "close window"
 
+    def test_find_exact_command_rejects_prefix_remainder(self, temp_commands_file):
+        executor = CommandExecutor(temp_commands_file)
+
+        assert executor.find_exact_command("open chrome") == "open chrome"
+        assert executor.find_exact_command("OPEN CHROME!") == "open chrome"
+        assert executor.find_exact_command("open chrome please") is None
+
+    def test_find_exact_command_accepts_alias_only_without_remainder(
+        self, temp_commands_file,
+    ):
+        executor = CommandExecutor(temp_commands_file)
+
+        assert executor.find_exact_command("copy") == "copy"
+        assert executor.find_exact_command("copy that") is None
+
+    def test_builtin_tab_navigation_uses_only_unambiguous_phrase(self):
+        commands_path = Path(__file__).parent.parent / "commands.json"
+        executor = CommandExecutor(commands_path)
+
+        assert executor.find_exact_command("tab") is None
+        assert executor.find_exact_command("press tab") == "press tab"
+        assert executor.find_exact_command("please press tab now") is None
+        assert executor.find_exact_command("next field") == "next field"
+
 
 class TestCommandExecution:
     """Tests for command execution"""

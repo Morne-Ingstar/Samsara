@@ -232,6 +232,12 @@ _USE_CASE_CONFIGS = {
         "tts": {"enabled": True},
         "mode": "hold",
         "audio_feedback": True,
+        "command_mode": {
+            "enabled": True,
+            "mode": "toggle",
+            "command_matching_enabled": True,
+            "inactivity_timeout_s": 900,
+        },
     },
     "privacy": {
         "cloud_llm": {"enabled": False},
@@ -250,9 +256,10 @@ _USE_CASE_CONFIGS = {
 
 _USE_CASE_TIPS = {
     "chronic_pain": (
-        "Try saying: 'Jarvis, pain level 6' to log your pain level, or "
-        "'Jarvis, took ibuprofen 400mg' to track medication. "
-        "Say 'Jarvis, health summary' for a spoken overview of your day."
+        "Tap Right Ctrl once to start a 15-minute hands-free session. "
+        "Say 'command', 'dictate', or 'Ava' to switch lanes. In Dictate, "
+        "say 'end' by itself to paste your thought and keep dictating. "
+        "Say 'stop listening' at any time to leave hands-free mode."
     ),
     "privacy": (
         "All your data stays on this machine. Voice recognition runs locally "
@@ -581,7 +588,7 @@ class _WizardWindow(QMainWindow):
         lay.addWidget(steps_frame)
         lay.addSpacing(8)
 
-        note = QLabel("Setup takes about one minute. You can change everything later in Settings.")
+        note = QLabel("Setup is quick. You can change everything later in Settings.")
         note.setWordWrap(True)
         note.setStyleSheet("color:#8A8A92;font-size:12px;")
         lay.addWidget(note)

@@ -72,6 +72,55 @@ class TestSettingsWindowConstruction:
         assert 'adv_threshold_mode' in win._widgets
         assert 'adv_cal_multiplier' in win._widgets
 
+    def test_output_selector_recovers_truncated_legacy_name(self, qapp):
+        """An MME-truncated saved name resolves to its unique WASAPI output."""
+        from samsara.ui.settings_qt import _SettingsWindow
+        stub = _StubApp()
+        stub.available_outputs = [{
+            'id': 23,
+            'name': 'Headphones (Arctis Nova Pro Wireless)',
+            'hostapi': 'Windows WASAPI',
+        }]
+        stub.config = {
+            'output_device': 7,
+            'output_device_name': 'Headphones (Arctis Nova Pro Wir',
+        }
+
+        win = _SettingsWindow(stub)
+
+        assert win._widgets['output_combo'].currentText() == (
+            'Headphones (Arctis Nova Pro Wireless)'
+        )
+        general_updates = win._save_fns[0]({})
+        assert general_updates['output_device'] == 23
+        assert general_updates['output_device_name'] == (
+            'Headphones (Arctis Nova Pro Wireless)'
+        )
+
+    def test_output_selector_exposes_but_preserves_missing_preference(self, qapp):
+        """Fallback is visible and an untouched Apply keeps reconnect intent."""
+        from samsara.ui.settings_qt import _SettingsWindow
+        stub = _StubApp()
+        stub.available_outputs = []
+        stub.config = {
+            'output_device': 7,
+            'output_device_name': 'Disconnected headset',
+        }
+
+        win = _SettingsWindow(stub)
+
+        assert win._widgets['output_combo'].currentText() == (
+            'System default (saved output unavailable: Disconnected headset)'
+        )
+        general_updates = win._save_fns[0]({})
+        assert 'output_device' not in general_updates
+        assert 'output_device_name' not in general_updates
+
+        win._widgets['output_combo'].setCurrentText('System default')
+        general_updates = win._save_fns[0]({})
+        assert general_updates['output_device'] is None
+        assert general_updates['output_device_name'] is None
+
     def test_modes_tab_replaces_hotkeys_and_ai_commands(self, qapp):
         """Modes tab consolidates Hotkeys + AI Commands + the Commands tab's
         button picker -- those source tabs are gone."""
@@ -102,7 +151,7 @@ class TestSettingsWindowConstruction:
 
         expected_keys = {
             'hotkey', 'continuous_hotkey', 'wake_word_hotkey', 'command_hotkey',
-            'streaming_hotkey', 'cancel_hotkey', 'undo_hotkey', 'ava_mode_key',
+            'streaming_hotkey', 'cancel_hotkey', 'undo_hotkey', 'dictate_commit_hotkey', 'ava_mode_key',
             'mode', 'wake_word_enabled', 'wake_word_config', 'command_mode',
             'ai_command_mode',
         }
@@ -241,6 +290,21 @@ class TestModesCollisionDetection:
         assert 'Ava mode' in warn.text()
         assert 'AI Command Mode key' in warn.text()
 
+    def test_staged_thought_binding_participates_in_collision_warning(self, qapp):
+        from samsara.ui.settings_qt import _SettingsWindow, _TAB_NAMES
+        win = _SettingsWindow(_StubApp())
+        win._stack.setCurrentIndex(_TAB_NAMES.index('Modes'))
+
+        win._widgets['dictate_commit_hotkey']._combo = (
+            win._widgets['undo_hotkey'].combo
+        )
+        win._check_modes_collisions()
+
+        warn = win._widgets['modes_collision_warn']
+        assert warn.isVisibleTo(win)
+        assert 'Paste staged thought' in warn.text()
+        assert 'Undo' in warn.text()
+
     def test_no_collision_hides_banner(self, qapp):
         from samsara.ui.settings_qt import _SettingsWindow
         win = _SettingsWindow(_StubApp())
@@ -348,6 +412,36 @@ class TestApplyAndCloseSnapshot:
         win._apply_and_close()
 
         assert stub.config == expected
+
+    def test_microphone_switch_happens_before_bulk_config_update(self, qapp):
+        from samsara.ui.settings_qt import _SettingsWindow
+
+        class _MicStub(_StubApp):
+            def __init__(self):
+                super().__init__()
+                self.config = {"microphone": 1, "microphone_name": "Old mic"}
+                self.available_mics = [
+                    {"id": 1, "name": "Old mic"},
+                    {"id": 2, "name": "New mic"},
+                ]
+                self.switch_observations = []
+
+            def switch_microphone(self, mic_id):
+                self.switch_observations.append(
+                    (mic_id, self.config.get("microphone"))
+                )
+                self.config["microphone"] = mic_id
+                self.config["microphone_name"] = "New mic"
+
+        stub = _MicStub()
+        win = _SettingsWindow(stub)
+        win._widgets["mic_combo"].setCurrentText("New mic")
+
+        win._apply_and_close()
+
+        assert stub.switch_observations == [(2, 1)]
+        assert stub.config["microphone"] == 2
+        assert stub.config["microphone_name"] == "New mic"
 
 
 class TestSettingsConfiguration:

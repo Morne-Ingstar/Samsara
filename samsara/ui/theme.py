@@ -68,7 +68,11 @@ BORDER_FAINT = "rgba(255,255,255,0.08)"   # separators (hr-style, not outlines)
 # ---------------------------------------------------------------------------
 
 TEXT_PRIMARY = "#e4e8ef"                  # near-white
-TEXT_SECONDARY = "rgba(255,255,255,0.65)"
+# Secondary copy still needs to read as secondary, but 65% white was too
+# subdued against all three dark surface tiers for explanatory text. Keep
+# this centralized so every shared-theme consumer gets the accessibility
+# improvement without one-off window overrides.
+TEXT_SECONDARY = "rgba(255,255,255,0.75)"
 TEXT_DISABLED = "rgba(255,255,255,0.40)"
 
 # ---------------------------------------------------------------------------
@@ -106,7 +110,9 @@ FONT_FAMILY = "'Segoe UI', system-ui, sans-serif"
 FONT_SIZE_TITLE = 20
 FONT_SIZE_HEADING = 15
 FONT_SIZE_BODY = 13
-FONT_SIZE_CAPTION = 11
+# 12 px is the smallest supported shared-theme text. Legacy windows with
+# private stylesheets are intentionally outside this token's scope.
+FONT_SIZE_CAPTION = 12
 
 # ---------------------------------------------------------------------------
 # Combo-box dropdown arrow. QComboBox::down-arrow's CSS border-triangle trick
@@ -120,7 +126,7 @@ FONT_SIZE_CAPTION = 11
 # ---------------------------------------------------------------------------
 
 def _write_arrow_svg() -> str:
-    fill = _mix(BG2, "#ffffff", 0.65)   # approximates TEXT_SECONDARY over BG2
+    fill = _mix(BG2, "#ffffff", 0.75)   # approximates TEXT_SECONDARY over BG2
     svg = (
         '<svg xmlns="http://www.w3.org/2000/svg" width="10" height="6" viewBox="0 0 10 6">'
         f'<path d="M0 0 L5 6 L10 0 Z" fill="{fill}"/></svg>'

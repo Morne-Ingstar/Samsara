@@ -1,4 +1,5 @@
 {
+  "ui_scale": 1.0,
   "add_trailing_space": true,
   "benchmark": {
     "collect_samples": false
@@ -87,6 +88,7 @@
   "compute_type": "float16",
   "continuous_hotkey": "ctrl+alt+d",
   "device": "cpu",
+  "dictate_commit_hotkey": "ctrl+space",
   "ducking": {
     "enabled": false,
     "level": 0.2
