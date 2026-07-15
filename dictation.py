@@ -946,6 +946,33 @@ def _is_quality_exhausted(seg_list, transcribe_params):
     return failing_logprob or failing_compression
 
 
+def _keep_low_confidence_long_chunk(seg_list, text, duration_s):
+    """Allow a narrowly safe long-dictation fallback after quality exhaustion.
+
+    Faster-whisper may exhaust its temperature ladder on a real, continuous
+    sentence and still return a coherent final decode.  Silently throwing away
+    that entire chunk is worse than preserving a possible transcription error.
+    This is intentionally *not* a general quality bypass: callers must first
+    reject known hallucination signatures, and this fallback additionally
+    requires sustained content, low final compression, and audible speech.
+    """
+    if duration_s < 5.0:
+        return False
+    words = [word for word in re.findall(r"\b\w+\b", text or "") if word]
+    if len(words) < 5:
+        return False
+    sig = diagnostics.segment_signals(seg_list)
+    if sig["n_segments"] == 0:
+        return False
+    compression = sig["compression_ratio"]
+    if compression is None or compression > _COMPRESSION_RATIO_THRESHOLD:
+        return False
+    # segment_signals returns the highest no-speech probability across the
+    # chunk. A single near-silent segment is enough to keep the hard reject.
+    no_speech = sig["no_speech_prob"]
+    return no_speech is not None and no_speech <= 0.5
+
+
 def hide_console():
     """Hide the console window (Windows only, no-op on other platforms)"""
     if sys.platform != 'win32':
@@ -8214,11 +8241,20 @@ class DictationApp:
                             chunk_text = ""
                         elif _is_quality_exhausted(_segs_list, transcribe_params):
                             _sig = diagnostics.segment_signals(_segs_list)
-                            logging.getLogger("Samsara").info(
-                                f"[QUALITY] decode ladder exhausted (logprob "
-                                f"{_sig['avg_logprob']}, compression {_sig['compression_ratio']}) "
-                                f"-- rejecting chunk {idx+1}: {chunk_text!r}")
-                            chunk_text = ""
+                            if _keep_low_confidence_long_chunk(
+                                _segs_list, chunk_text, chunk_dur,
+                            ):
+                                logging.getLogger("Samsara").warning(
+                                    f"[QUALITY] decode ladder exhausted (logprob "
+                                    f"{_sig['avg_logprob']}, compression {_sig['compression_ratio']}, "
+                                    f"no_speech {_sig['no_speech_prob']}) -- delivering "
+                                    f"low-confidence long chunk {idx+1}: {chunk_text!r}")
+                            else:
+                                logging.getLogger("Samsara").info(
+                                    f"[QUALITY] decode ladder exhausted (logprob "
+                                    f"{_sig['avg_logprob']}, compression {_sig['compression_ratio']}) "
+                                    f"-- rejecting chunk {idx+1}: {chunk_text!r}")
+                                chunk_text = ""
                         if chunk_text:
                             texts.append(chunk_text)
                         logger.info(f"[LONG] Chunk {idx + 1}/{len(chunks)}: "
