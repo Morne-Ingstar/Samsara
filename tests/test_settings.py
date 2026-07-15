@@ -443,6 +443,19 @@ class TestApplyAndCloseSnapshot:
         assert stub.config["microphone"] == 2
         assert stub.config["microphone_name"] == "New mic"
 
+    def test_listening_indicator_setting_applies_live(self, qapp):
+        from samsara.ui.settings_qt import _SettingsWindow
+
+        stub = _StubApp()
+        stub.apply_listening_indicator_settings = Mock()
+        win = _SettingsWindow(stub)
+        win._widgets["adv_indicator_enabled"].setChecked(True)
+
+        win._apply_and_close()
+
+        assert stub.config["listening_indicator_enabled"] is True
+        stub.apply_listening_indicator_settings.assert_called_once_with()
+
 
 class TestSettingsConfiguration:
     """Tests for settings configuration values"""

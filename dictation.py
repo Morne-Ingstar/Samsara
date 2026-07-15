@@ -9215,10 +9215,39 @@ class DictationApp:
         with self._config_lock:
             self.config['listening_indicator_enabled'] = enabled
             self.save_config()
-        if enabled:
-            self._schedule_ui(self.listening_indicator.show)
-        else:
-            self._schedule_ui(self.listening_indicator.hide)
+        self.apply_listening_indicator_settings()
+
+    def apply_listening_indicator_settings(self):
+        """Apply the persisted indicator visibility and placement live.
+
+        Settings already run on Qt's UI thread, but this method is also used
+        by tray actions and may therefore be called from another thread.  Keep
+        the widget work behind the application's normal UI scheduler.
+        """
+        indicator = getattr(self, 'listening_indicator', None)
+        if indicator is None:
+            return
+
+        enabled = bool(self.config.get('listening_indicator_enabled', False))
+        position = self.config.get('listening_indicator_position', 'bottom-center')
+        custom = self.config.get('listening_indicator_custom_position')
+
+        def _apply():
+            if position == 'custom' and isinstance(custom, dict):
+                indicator.set_custom_position(
+                    custom.get('screen'),
+                    custom.get('cx') if custom.get('cx') is not None else 0.5,
+                    custom.get('cy') if custom.get('cy') is not None else 0.5,
+                )
+            else:
+                indicator.set_position(position)
+
+            if enabled:
+                indicator.show()
+            else:
+                indicator.hide()
+
+        self._schedule_ui(_apply)
 
     def enter_indicator_move_mode(self):
         """Tray action: temporarily unlock the listening indicator so it can

@@ -352,6 +352,58 @@ class TestTrayEntersMoveMode:
         stub.enter_indicator_move_mode()  # must not raise
 
 
+class TestLiveIndicatorSettings:
+    def test_applies_visibility_and_preset_position_without_restart(self):
+        import dictation as _d
+
+        stub = _make_app_stub({
+            "listening_indicator_enabled": True,
+            "listening_indicator_position": "top-right",
+        })
+        stub.apply_listening_indicator_settings = (
+            _d.DictationApp.apply_listening_indicator_settings.__get__(stub)
+        )
+
+        stub.apply_listening_indicator_settings()
+
+        stub.listening_indicator.set_position.assert_called_once_with("top-right")
+        stub.listening_indicator.show.assert_called_once_with()
+        stub.listening_indicator.hide.assert_not_called()
+
+    def test_applies_custom_position_and_hides_without_restart(self):
+        import dictation as _d
+
+        stub = _make_app_stub({
+            "listening_indicator_enabled": False,
+            "listening_indicator_position": "custom",
+            "listening_indicator_custom_position": {
+                "screen": "DISPLAY2", "cx": 0.2, "cy": 0.8,
+            },
+        })
+        stub.apply_listening_indicator_settings = (
+            _d.DictationApp.apply_listening_indicator_settings.__get__(stub)
+        )
+
+        stub.apply_listening_indicator_settings()
+
+        stub.listening_indicator.set_custom_position.assert_called_once_with(
+            "DISPLAY2", 0.2, 0.8
+        )
+        stub.listening_indicator.hide.assert_called_once_with()
+        stub.listening_indicator.show.assert_not_called()
+
+    def test_safe_before_indicator_initialization(self):
+        import dictation as _d
+
+        stub = _make_app_stub({"listening_indicator_enabled": True})
+        stub.listening_indicator = None
+        stub.apply_listening_indicator_settings = (
+            _d.DictationApp.apply_listening_indicator_settings.__get__(stub)
+        )
+
+        stub.apply_listening_indicator_settings()  # must not raise
+
+
 class TestPlacementPersistence:
     def test_custom_placement_persists_position_and_coordinates(self):
         stub = _make_app_stub()
