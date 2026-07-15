@@ -1,0 +1,356 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Samsara vs Alternatives — Voice Control Comparison</title>
+<style>
+:root {
+    --bg: #0A0A0B;
+    --bg-elev: #111114;
+    --bg-elev2: #16161A;
+    --text: #E8E8EA;
+    --text-dim: #8A8A92;
+    --text-muted: #55555C;
+    --accent: #5EEAD4;
+    --border: rgba(255,255,255,0.08);
+    --radius: 12px;
+}
+* { margin: 0; padding: 0; box-sizing: border-box; }
+body {
+    background: var(--bg);
+    color: var(--text);
+    font-family: 'Segoe UI', system-ui, sans-serif;
+    line-height: 1.6;
+    padding: 0;
+}
+a { color: var(--accent); text-decoration: none; }
+a:hover { text-decoration: underline; }
+
+.header {
+    text-align: center;
+    padding: 60px 24px 40px;
+    border-bottom: 1px solid var(--border);
+}
+.header h1 {
+    font-size: 36px;
+    font-weight: 700;
+    margin-bottom: 12px;
+}
+.header p {
+    color: var(--text-dim);
+    font-size: 17px;
+    max-width: 600px;
+    margin: 0 auto;
+}
+.back-link {
+    display: inline-block;
+    margin-bottom: 20px;
+    color: var(--text-dim);
+    font-size: 14px;
+}
+.back-link:hover { color: var(--accent); }
+
+.container {
+    max-width: 1200px;
+    margin: 0 auto;
+    padding: 40px 24px;
+}
+
+/* Table styles */
+.table-wrapper {
+    overflow-x: auto;
+    border-radius: var(--radius);
+    border: 1px solid var(--border);
+    margin: 40px 0;
+}
+table {
+    width: 100%;
+    border-collapse: collapse;
+    font-size: 14px;
+    min-width: 900px;
+}
+thead th {
+    background: var(--bg-elev);
+    padding: 16px 14px;
+    text-align: left;
+    font-weight: 600;
+    font-size: 15px;
+    border-bottom: 2px solid var(--border);
+    position: sticky;
+    top: 0;
+    white-space: nowrap;
+}
+thead th:first-child {
+    position: sticky;
+    left: 0;
+    z-index: 2;
+    background: var(--bg-elev);
+}
+thead th.samsara {
+    color: var(--accent);
+    background: rgba(94, 234, 212, 0.06);
+}
+tbody td {
+    padding: 12px 14px;
+    border-bottom: 1px solid var(--border);
+    vertical-align: top;
+}
+tbody td:first-child {
+    font-weight: 600;
+    color: var(--text);
+    background: var(--bg);
+    position: sticky;
+    left: 0;
+    white-space: nowrap;
+}
+tbody tr:hover td {
+    background: rgba(255,255,255,0.02);
+}
+tbody tr:hover td:first-child {
+    background: var(--bg-elev);
+}
+td.samsara-col {
+    background: rgba(94, 234, 212, 0.03);
+}
+tbody tr:hover td.samsara-col {
+    background: rgba(94, 234, 212, 0.06);
+}
+.check { color: #5EEAD4; }
+.cross { color: #8A8A92; }
+.highlight { color: #5EEAD4; font-weight: 600; }
+
+/* Engine section */
+.engine-section {
+    margin: 48px 0;
+    padding: 32px;
+    background: var(--bg-elev);
+    border-radius: var(--radius);
+    border: 1px solid var(--border);
+}
+.engine-section h2 {
+    font-size: 22px;
+    margin-bottom: 16px;
+    color: var(--accent);
+}
+.engine-section p {
+    color: var(--text-dim);
+    font-size: 15px;
+    line-height: 1.7;
+    margin-bottom: 12px;
+}
+.engine-section code {
+    background: var(--bg-elev2);
+    padding: 2px 6px;
+    border-radius: 4px;
+    font-family: 'Consolas', monospace;
+    font-size: 13px;
+    color: var(--text);
+}
+
+footer {
+    text-align: center;
+    padding: 40px 24px;
+    border-top: 1px solid var(--border);
+    color: var(--text-muted);
+    font-size: 14px;
+}
+</style>
+</head>
+<body>
+
+<div class="header">
+    <a href="/samsara/" class="back-link">&larr; Back to Samsara</a>
+    <h1>How Samsara Compares</h1>
+    <p>An honest comparison with existing voice control and dictation tools.</p>
+</div>
+
+<div class="container">
+
+<div class="table-wrapper">
+<table>
+<thead>
+<tr>
+    <th></th>
+    <th class="samsara">Samsara</th>
+    <th>Dragon Professional</th>
+    <th>Talon Voice</th>
+    <th>Windows Voice Access</th>
+    <th>OpenWhispr</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+    <td>Price</td>
+    <td class="samsara-col"><span class="highlight">Free &amp; open source</span></td>
+    <td>Contact sales / reseller pricing</td>
+    <td>Free; optional $25/mo Patreon beta</td>
+    <td>Included with Windows 11 22H2+</td>
+    <td>Free local; cloud plans from $6.67/user/mo annually</td>
+</tr>
+<tr>
+    <td>Platform</td>
+    <td class="samsara-col">Windows</td>
+    <td>Windows 10/11</td>
+    <td>Windows 8+, macOS 10.13+, Linux/X11</td>
+    <td>Windows 11 22H2+</td>
+    <td>Windows, macOS, Linux</td>
+</tr>
+<tr>
+    <td>Works offline</td>
+    <td class="samsara-col"><span class="check">&#10003; Core local; network features optional</span></td>
+    <td>Local recognition; internet for download and activation</td>
+    <td><span class="check">&#10003; Local recognition available</span></td>
+    <td><span class="check">&#10003; On-device after speech-model setup</span></td>
+    <td>Local models; optional cloud/BYOK</td>
+</tr>
+<tr>
+    <td>Speech engine</td>
+    <td class="samsara-col">Whisper (faster-whisper / CTranslate2)</td>
+    <td>Nuance Deep Learning; adapts to speaker</td>
+    <td>Conformer; beta offers additional hybrid engines</td>
+    <td>Microsoft on-device speech recognition</td>
+    <td>Whisper/whisper.cpp + NVIDIA Parakeet; optional cloud STT</td>
+</tr>
+<tr>
+    <td>Voice commands</td>
+    <td class="samsara-col"><span class="highlight">Extensive, built-in</span></td>
+    <td>Built-in control + custom multi-step macros</td>
+    <td>Extensive through user/community scripts</td>
+    <td>Windows, app, mouse, keyboard, browser and text control</td>
+    <td>Dictation + AI agent/actions; not general desktop control</td>
+</tr>
+<tr>
+    <td>Custom commands</td>
+    <td class="samsara-col"><span class="highlight">Python plugins</span></td>
+    <td>Voice macros</td>
+    <td>.talon files + Python</td>
+    <td>Voice shortcuts with up to 8 supported actions</td>
+    <td>Custom AI actions/prompts; no desktop macros documented</td>
+</tr>
+<tr>
+    <td>Dictation</td>
+    <td class="samsara-col">Hold, streaming, and buffered HANDS FREE</td>
+    <td>Real-time; adapts while dictating</td>
+    <td>Script-driven dictation/mixed mode; beta Whisper hybrid</td>
+    <td>Real-time</td>
+    <td>AI-cleaned dictation</td>
+</tr>
+<tr>
+    <td>Training required</td>
+    <td class="samsara-col"><span class="highlight">None</span></td>
+    <td>No initial profile training; adapts while dictating</td>
+    <td>No profile training documented; script setup required</td>
+    <td>None</td>
+    <td>None</td>
+</tr>
+<tr>
+    <td>Wake word</td>
+    <td class="samsara-col"><span class="check">&#10003; Configurable (OpenWakeWord or transcript fallback)</span></td>
+    <td>"Wake Up" / "Listen to Me" from sleep mode</td>
+    <td>Not documented</td>
+    <td>"Voice access wake up" / "Unmute"</td>
+    <td>No always-listening wake word documented; uses hotkeys</td>
+</tr>
+<tr>
+    <td>AI assistant</td>
+    <td class="samsara-col"><span class="check">&#10003; Ava (local or cloud LLM)</span></td>
+    <td><span class="cross">No general-purpose assistant built in</span></td>
+    <td><span class="cross">No general-purpose assistant built in</span></td>
+    <td><span class="cross">No general-purpose assistant built into Voice Access</span></td>
+    <td><span class="check">&#10003; Named local or cloud AI agent</span></td>
+</tr>
+<tr>
+    <td>Text selection</td>
+    <td class="samsara-col"><span class="highlight">Voice markers</span></td>
+    <td>Voice editing</td>
+    <td>Cursor/selection commands</td>
+    <td>Direct editing commands + number/grid overlays</td>
+    <td><span class="cross">&#10007;</span></td>
+</tr>
+<tr>
+    <td>Eye tracking</td>
+    <td class="samsara-col"><span class="cross">&#10007;</span></td>
+    <td><span class="cross">&#10007;</span></td>
+    <td><span class="check">&#10003; Supported Tobii devices</span></td>
+    <td><span class="cross">&#10007;</span></td>
+    <td><span class="cross">&#10007;</span></td>
+</tr>
+<tr>
+    <td>GPU acceleration</td>
+    <td class="samsara-col"><span class="check">&#10003; CUDA optional</span></td>
+    <td>Not documented</td>
+    <td>N/A</td>
+    <td>N/A</td>
+    <td>CUDA; local LLM may use Vulkan/Metal</td>
+</tr>
+<tr>
+    <td>Privacy</td>
+    <td class="samsara-col"><span class="highlight">No telemetry; optional network paths disclosed</span></td>
+    <td>Local recognition; online activation; optional enterprise management</td>
+    <td>Not clearly documented by vendor</td>
+    <td>On-device recognition; voice data not sent to Microsoft</td>
+    <td>Local audio stays local; diagnostics opt-in; cloud/sync optional</td>
+</tr>
+<tr>
+    <td>Open source</td>
+    <td class="samsara-col"><span class="check">&#10003; AGPL-3.0</span></td>
+    <td><span class="cross">&#10007; Proprietary</span></td>
+    <td>Core app not published; community/user scripts are open</td>
+    <td><span class="cross">&#10007; Proprietary</span></td>
+    <td><span class="check">&#10003;</span></td>
+</tr>
+<tr>
+    <td>Best for</td>
+    <td class="samsara-col">Accessibility + desktop control</td>
+    <td>Professional dictation</td>
+    <td>Developers / power users</td>
+    <td>General Windows users</td>
+    <td>Fast dictation</td>
+</tr>
+</tbody>
+</table>
+</div>
+
+<div class="engine-section">
+    <h2>Sources and scope</h2>
+    <p>Checked against vendor documentation in July 2026. Products change; follow the vendor links before making a purchase or deployment decision. "Not documented" means the vendor sources reviewed did not establish the claim—it does not prove a feature is impossible.</p>
+    <p>
+        <a href="https://dragon.nuance.com/en-us/dragon-professional">Dragon Professional</a> &middot;
+        <a href="https://talonvoice.com/docs/">Talon Voice</a> &middot;
+        <a href="https://support.microsoft.com/en-us/accessibility/windows/voice-access/use-voice-access-to-control-your-pc-author-text-with-your-voice">Windows Voice Access</a> &middot;
+        <a href="https://openwhispr.com/">OpenWhispr</a>
+    </p>
+</div>
+
+<div class="engine-section">
+    <h2>Under the Hood</h2>
+    <p>
+        Samsara uses OpenAI's <code>Whisper</code> speech recognition model, running locally through
+        <code>faster-whisper</code> &mdash; a <code>CTranslate2</code>-optimized build. CTranslate2 is a C++
+        inference engine. The standard release runs on CPU; the optional, separately downloaded CUDA runtime
+        can substantially reduce transcription latency on a compatible NVIDIA GPU. Actual speed depends on the
+        model, processor or GPU, audio length, and settings.
+    </p>
+    <p>
+        Wake-word profiles can use <code>OpenWakeWord</code> ONNX models. Profiles without a compatible model
+        can use the Whisper transcript fallback, so resource use depends on the configured profile and mode.
+    </p>
+    <p>
+        Voice activity detection uses <code>Silero VAD</code>, a lightweight neural network that classifies
+        audio as speech or silence before Whisper runs. This prevents wasted cycles on background noise.
+    </p>
+    <p>
+        The AI assistant (Ava) runs on local <code>Ollama</code> models or optionally routes to cloud providers
+        (DeepSeek, OpenAI, Anthropic, OpenRouter) when the user explicitly enables cloud mode and supplies a key.
+    </p>
+</div>
+
+</div>
+
+<footer>
+    Part of <a href="/">The Arcana</a> &middot; built by Morne &middot; <a href="/samsara/">Back to Samsara</a>
+</footer>
+
+</body>
+</html>

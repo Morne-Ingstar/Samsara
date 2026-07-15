@@ -1,90 +1,108 @@
 # Troubleshoot Samsara Issues
 
-Use this prompt to get AI help diagnosing and fixing Samsara problems.
+Use this prompt to get AI help diagnosing Samsara without exposing your full
+configuration or destroying a working profile.
 
 ---
 
 ## Prompt Template
 
-Copy everything below the line and paste it into your AI chat:
+Copy the block below and fill in the brackets:
 
 ---
 
-I need help troubleshooting an issue with Samsara, a voice dictation app for Windows. Here's the context:
+I need help troubleshooting Samsara, a Windows voice-control and dictation
+application.
 
-### About Samsara
-- Python-based voice-to-text using faster-whisper (Whisper AI)
-- Supports GPU (CUDA) and CPU inference
-- Has hotkey dictation, wake word mode, and voice commands
-- Config stored in `config.json`, commands in `commands.json`
+### Relevant facts
 
-### Common Issue Categories
+- Transcription uses faster-whisper and supports CPU or optional NVIDIA CUDA.
+- Samsara has hold-to-dictate, Continuous, persistent HANDS FREE, wake-word,
+  command, and Ava entry points.
+- Per-user settings and logs are normally under
+  `%USERPROFILE%\.samsara\` for both source and packaged execution.
+- The live log is `%USERPROFILE%\.samsara\logs\samsara.log`.
 
-1. **App won't start** - crashes on launch, missing DLLs
-2. **No transcription** - records but doesn't produce text
-3. **Wrong transcription** - text is garbled or inaccurate
-4. **Commands not working** - voice commands don't trigger
-5. **Audio issues** - wrong mic, no recording, feedback sounds missing
-6. **Performance** - slow transcription, high CPU/GPU usage
-7. **Hotkeys not working** - key combinations don't trigger recording
+### Problem
 
-### My Issue
+**What happened:**
+[Describe the visible behavior.]
 
-**What's happening:**
-[Describe the problem]
+**What should have happened:**
+[Describe the expected behavior.]
 
-**What I expected:**
-[What should happen]
+**When it began:**
+[After an update, setting change, device change, or always?]
 
-**When it started:**
-[After update? After changing settings? Always?]
-
-**Error messages (if any):**
-```
-[Paste any error messages here]
+**Relevant live-log tail:**
+```text
+[Paste only the lines around the failure. Remove private dictated text if needed.]
 ```
 
-**My config.json:**
+**Relevant settings:**
 ```json
-[Paste relevant parts of your config]
+[Paste only the necessary keys. Remove API keys, tokens, webhooks, and private paths.]
 ```
 
-**My system:**
+**System:**
 - Windows version:
-- GPU (if applicable):
-- Running as EXE or Python:
+- CPU and NVIDIA GPU, if any:
+- Samsara version:
+- Packaged EXE or source checkout:
+- Selected microphone:
+- Selected device setting (auto/cpu/cuda):
+
+Please diagnose the evidence first. Do not delete or overwrite my config, do
+not install software, and do not change code unless I explicitly approve a
+specific fix. Prefer one batched diagnostic and targeted tests.
 
 ---
 
-## Common Fixes Reference
+## Safe First Checks
 
-### App Crashes on Start
-- Missing CUDA DLLs → Install CUDA Toolkit or use CPU mode
-- Corrupted config → Delete `config.json` and restart
-- Port conflict → Another Samsara instance running
+### App does not start
 
-### No Transcription Output
-- Check microphone in Settings → Audio
-- Run Voice Training calibration
-- Try a different Whisper model size
+- Read the tail of `%USERPROFILE%\.samsara\logs\samsara.log`.
+- Confirm another Samsara process is not already running.
+- If the error names CUDA DLLs, use the official CPU build or reinstall the
+  **complete** optional Samsara CUDA pack. Do not copy only cuBLAS, and do not
+  install an arbitrary CUDA Toolkit as a generic fix. The packaged layout and
+  exact ten-file requirement are documented in [../CUDA.md](../CUDA.md).
+- Do **not** delete `config.json`. Samsara maintains `config.json.bak`; preserve
+  both files while diagnosing.
 
-### Commands Not Triggering
-- Enable command mode in Settings
-- Check exact phrase in Commands tab
-- Commands are case-insensitive but must match exactly
+### No transcription
 
-### Slow Performance
-- Use smaller model (tiny/base) for faster response
-- Enable GPU acceleration if you have NVIDIA
-- Close other GPU-intensive applications
+- Confirm the selected microphone under **Settings → General**.
+- Run **Run Mic Setup Guide** after changing devices or mic position.
+- Check whether the live log shows speech reaching Whisper and whether an
+  anti-hallucination or empty-output gate rejected it.
 
----
+### Commands do not trigger
 
-## How to Get Your Config
+- Search for the phrase under **Settings → Commands**.
+- Confirm its command pack is enabled.
+- In HANDS FREE, commands must be exact complete utterances. Prefix ordinary
+  dictation with `literal` when intentionally dictating a reserved command.
+- Use **Reload** in the Commands page after an external `commands.json` edit.
 
+### Slow transcription
+
+- Check the startup log for the actual device and compute type. CUDA should
+  report `Device: cuda, Compute: float16`.
+- Try a smaller Whisper model or the Fast performance preset.
+- Close other GPU-intensive applications before changing dependencies.
+
+## Configuration Location
+
+Source and packaged builds use the same default profile:
+
+```text
+%USERPROFILE%\.samsara\config.json
+%USERPROFILE%\.samsara\config.json.bak
+%USERPROFILE%\.samsara\logs\samsara.log
 ```
-Location: C:\Users\[You]\Projects\Samsara\config.json
-Or in the EXE folder: Samsara\config.json
-```
 
-Only share relevant sections - remove any sensitive paths or API keys.
+`SAMSARA_HOME_DIR` can deliberately point an isolated test or preview process
+at another profile. A repository-root or EXE-folder `config.json` is not the
+normal v0.22 settings location.

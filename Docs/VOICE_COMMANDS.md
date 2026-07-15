@@ -1,6 +1,6 @@
 # Voice Commands Reference
 
-Samsara has 100+ built-in commands and a plugin system for custom commands.
+Samsara ships with 410+ built-in commands plus a plugin system for custom commands.
 Say your wake word (default: "Jarvis") followed by any command below.
 
 ## Plugins (Dynamic Commands)

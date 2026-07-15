@@ -1,0 +1,58 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="description" content="Support and beta testing for Samsara voice control on Windows.">
+  <title>Samsara Support</title>
+  <style>
+    :root { color-scheme: dark; --bg:#090a0c; --panel:#121419; --text:#f4f4f5; --muted:#a1a1aa; --accent:#5eead4; --border:#2a2e36; }
+    * { box-sizing:border-box; }
+    body { margin:0; background:var(--bg); color:var(--text); font:17px/1.65 system-ui,-apple-system,"Segoe UI",sans-serif; }
+    nav { border-bottom:1px solid var(--border); padding:18px 24px; display:flex; gap:24px; align-items:center; }
+    nav strong { color:var(--accent); margin-right:auto; }
+    nav a, a { color:var(--accent); }
+    main { width:min(840px,calc(100% - 32px)); margin:64px auto; }
+    h1 { font-size:clamp(36px,7vw,64px); line-height:1.05; margin:0 0 20px; }
+    h2 { margin-top:42px; }
+    .lead { color:var(--muted); font-size:20px; }
+    .card { background:var(--panel); border:1px solid var(--border); border-radius:16px; padding:24px; margin:18px 0; }
+    .button { display:inline-block; padding:12px 18px; border-radius:10px; background:var(--accent); color:#07110f; font-weight:700; text-decoration:none; }
+    code { background:#090b0e; border:1px solid var(--border); border-radius:5px; padding:2px 6px; }
+    li { margin:8px 0; }
+  </style>
+</head>
+<body>
+<nav>
+  <strong>SAMSARA</strong>
+  <a href="/samsara/">Home</a>
+  <a href="/samsara/docs/">Docs</a>
+  <a href="https://github.com/Morne-Ingstar/Samsara">GitHub</a>
+</nav>
+<main>
+  <h1>Support and beta testing</h1>
+  <p class="lead">Samsara is free, open source, and still in beta. A clear bug report from the machine where something failed is the most useful contribution you can make.</p>
+
+  <section class="card">
+    <h2>Report a problem</h2>
+    <p>Use the public GitHub issue tracker. Include what you expected, what happened, the Samsara version, and the smallest set of steps that reproduces it.</p>
+    <p><a class="button" href="https://github.com/Morne-Ingstar/Samsara/issues/new">Open a GitHub issue</a></p>
+  </section>
+
+  <h2>Attach the useful evidence</h2>
+  <ul>
+    <li>Open the tray menu and choose <strong>Live Log</strong>.</li>
+    <li>Reproduce the problem once.</li>
+    <li>Copy the relevant final lines from <code>%USERPROFILE%\.samsara\logs\samsara.log</code>.</li>
+    <li>For a visual problem, include a screenshot and your display scaling percentage.</li>
+  </ul>
+  <p>Review logs before posting: dictated text, app names, file paths, or provider errors may contain information you do not want to publish.</p>
+
+  <h2>Before reporting</h2>
+  <p>Check the <a href="/samsara/docs/">current documentation</a> and the existing <a href="https://github.com/Morne-Ingstar/Samsara/issues">issue list</a>. For CUDA problems, confirm that all ten files from the <a href="https://github.com/Morne-Ingstar/Samsara/blob/master/Docs/CUDA.md">verified runtime pack</a> were extracted and that Samsara was restarted.</p>
+
+  <h2>Want to beta test?</h2>
+  <p>Install the newest release, use it in a real workflow, and report friction—not only crashes. Hands-free navigation, long dictation, different microphones, multi-monitor Show Numbers, and high-DPI displays are especially valuable test areas.</p>
+</main>
+</body>
+</html>

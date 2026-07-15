@@ -49,30 +49,24 @@ Microphone (sounddevice, capture at device native rate)
 
 ## State Machine (4 States)
 
-```
-         wake word          "dictate"/"type"
-ASLEEP ──────────► COMMAND ──────────────────► LONG DICTATION
-                   WINDOW ──────────────────► QUICK DICTATION
-                     │         hotkey
-                     │
-                     └─► command executed → ASLEEP
-                     └─► 3s timeout → ASLEEP
-```
+The current entry paths share one audio engine but have distinct ownership and
+delivery rules:
 
-| State | Trigger | Behavior |
+| Entry path | Trigger | Behavior |
 |-------|---------|----------|
-| Asleep | Default | VAD + wake word listener active |
-| Command Window | Wake word | 3s window for commands |
-| Quick Dictation | Hotkey or "type" | 0.8s silence auto-finishes |
-| Long Dictation | "dictate" | No timeout, say "over" to finish |
+| Hold-to-dictate | Hold configured dictation hotkey | Captures until release plus a bounded speech-aware tail, then transcribes and pastes |
+| Continuous | Toggle configured Continuous hotkey | Transcribes speech segments until toggled off |
+| HANDS FREE | Toggle configured voice-control button | Buffers ordinary speech across pauses; exact commands run in place; sole-utterance "end" pastes the complete thought and remains active |
+| Wake command | "Jarvis" while the listener is enabled | Opens a bounded command window without changing the active recording mode |
+| Target wake profile | Configured phrase such as "activate Claude" | Focuses the target and starts that profile's staged or send-on-word workflow |
 
 ## Key Modules
 
 ### Core
 | File | Purpose |
 |------|---------|
-| `dictation.py` (~3,800 lines) | DictationApp engine + in-app CommandExecutor |
-| `commands.json` | 104 built-in voice command definitions |
+| `dictation.py` | DictationApp orchestration and entry-point coordination |
+| `commands.json` | Built-in JSON voice command definitions |
 | `voice_training.py` | Mic calibration, vocabulary, corrections |
 
 ### Command System
