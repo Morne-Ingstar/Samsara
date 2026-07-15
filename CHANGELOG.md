@@ -46,6 +46,10 @@ browser DOM path alongside its Windows UI Automation fallback.
   energy gating would otherwise classify the same quiet phrase as too soft.
 - **Show Numbers is reachable from command mode** — "show numbers" is present
   in the command path instead of transcribing as an unmatched utterance.
+- **Dense web apps keep their primary targets reachable** — DOM Show Numbers
+  ranks navigation links ahead of repeated utility controls, distinguishes
+  checkbox/radio inputs from text fields, and supports up to 99 visible hints;
+  Gmail message rows no longer disappear behind a screenful of star buttons.
 - **Buffered dictation is retained on focus or paste failure** — delivery is
   locked to both the original process and window handle; failures remain
   visible and retryable rather than silently losing the thought.

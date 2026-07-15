@@ -14,7 +14,10 @@
 (function () {
   "use strict";
 
-  var MAX_HINTS = 50;
+  // The spoken-number path supports 1..99. Fifty was too low on dense apps:
+  // Gmail's repeated checkbox/star controls left only a handful of message
+  // rows reachable even after semantic ranking.
+  var MAX_HINTS = 99;
 
   var _hints = []; // [{number, el, rect}], populated once per show_hints call
   var _shadowHost = null;

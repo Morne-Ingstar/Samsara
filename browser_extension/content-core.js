@@ -46,16 +46,26 @@
   var KIND_PRIORITY = {
     input: 0,
     textbox: 0,
-    button: 1,
-    link: 2,
-    select: 3,
     contenteditable: 0,
+    // Primary navigation targets must beat the repeated utility controls
+    // surrounding them. Gmail, for example, renders every visible message
+    // beside a checkbox and star button; ranking all inputs/buttons first
+    // exhausted the hint cap before most message-opening links were reached.
+    link: 1,
+    button: 2,
+    select: 2,
+    control: 3,
     aria: 4,
   };
 
   function classifyKind(el) {
     var tag = el.tagName ? el.tagName.toLowerCase() : "";
-    if (tag === "input" || tag === "textarea") return "input";
+    if (tag === "input") {
+      var inputType = String(el.type || (el.getAttribute && el.getAttribute("type")) || "text").toLowerCase();
+      if (inputType === "checkbox" || inputType === "radio") return "control";
+      return "input";
+    }
+    if (tag === "textarea") return "input";
     if (el.isContentEditable) return "contenteditable";
     if (tag === "button") return "button";
     if (tag === "a") return "link";
@@ -64,6 +74,8 @@
     if (role === "textbox") return "textbox";
     if (role === "button") return "button";
     if (role === "link") return "link";
+    if (role === "checkbox" || role === "radio" || role === "switch" ||
+        role === "menuitemcheckbox" || role === "menuitemradio") return "control";
     return "aria";
   }
 
