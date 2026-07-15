@@ -18,6 +18,8 @@ import sys
 import types
 from pathlib import Path
 
+import pytest
+
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
 import dictation
@@ -116,3 +118,36 @@ class TestQualityExhaustedEdgeCases:
         seg = _seg(avg_logprob=-1.5, compression_ratio=1.0)
         assert dictation._is_quality_exhausted([seg], {'log_prob_threshold': -1.0}) is True
         assert dictation._is_quality_exhausted([seg], {'log_prob_threshold': -2.0}) is False
+
+
+class TestLongChunkQualityFallback:
+    def test_preserves_realistic_low_confidence_second_chunk(self):
+        """Regression: a 10.8s second chunk was silently dropped at -1.82.
+
+        The final decode was non-repetitive speech with compression 1.1. Once
+        the hallucination guard has passed it, preserving this text is safer
+        than deleting roughly 40% of the user's held dictation.
+        """
+        seg = _seg(avg_logprob=-1.82, compression_ratio=1.1, no_speech_prob=0.12)
+        text = (
+            "paper bringing to make the page I guess and I just wanted you "
+            "to look it over make sure"
+        )
+        assert dictation._is_quality_exhausted([seg], _REAL_TRANSCRIBE_PARAMS) is True
+        assert dictation._keep_low_confidence_long_chunk([seg], text, 10.8) is True
+
+    @pytest.mark.parametrize(
+        ("segment", "text", "duration_s"),
+        [
+            (_seg(compression_ratio=2.5, no_speech_prob=0.1), "this is real enough text", 10.0),
+            (_seg(compression_ratio=1.1, no_speech_prob=0.7), "this is real enough text", 10.0),
+            (_seg(compression_ratio=1.1, no_speech_prob=0.1), "this is real enough text", 4.9),
+            (_seg(compression_ratio=1.1, no_speech_prob=0.1), "one two three four", 10.0),
+        ],
+    )
+    def test_never_bypasses_hard_low_confidence_safety_limits(
+        self, segment, text, duration_s,
+    ):
+        assert dictation._keep_low_confidence_long_chunk(
+            [segment], text, duration_s,
+        ) is False
