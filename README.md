@@ -191,17 +191,33 @@ python dictation.py
 
 If you have an NVIDIA GPU, Samsara will run dramatically faster on CUDA (~10x). The Settings → Advanced tab has a device dropdown for CUDA / CPU.
 
-**The dropdown only offers CUDA if Samsara can find the CUDA runtime DLLs at startup.** When installing from source with a fresh environment, those DLLs (`cublas64_12.dll`, `cublasLt64_12.dll`) are not bundled with `ctranslate2` and Samsara will silently fall back to CPU.
+**The dropdown only offers CUDA if Samsara can find the complete CUDA runtime
+set at startup.** A partial installation is rejected with a warning listing
+the missing files, then Samsara safely falls back to CPU.
 
 For a source installation, copy the matching runtime DLLs from torch if it is
 already installed:
 
-Torch bundles its own copy of cuBLAS. Copy the two DLLs into ctranslate2's folder:
+Torch bundles the compatible CUDA libraries. Copy all ten required DLLs into
+ctranslate2's folder (not only the two cuBLAS files):
 
-```bash
-copy "<env>\Lib\site-packages\torch\lib\cublas64_12.dll" "<env>\Lib\site-packages\ctranslate2\"
-copy "<env>\Lib\site-packages\torch\lib\cublasLt64_12.dll" "<env>\Lib\site-packages\ctranslate2\"
+```powershell
+$torch = "<env>\Lib\site-packages\torch\lib"
+$ctranslate2 = "<env>\Lib\site-packages\ctranslate2"
+$required = @(
+  "cublas64_12.dll", "cublasLt64_12.dll", "cudart64_12.dll",
+  "cudnn_adv64_9.dll", "cudnn_cnn64_9.dll",
+  "cudnn_engines_precompiled64_9.dll",
+  "cudnn_engines_runtime_compiled64_9.dll", "cudnn_graph64_9.dll",
+  "cudnn_heuristic64_9.dll", "cudnn_ops64_9.dll"
+)
+$required | ForEach-Object {
+  Copy-Item -LiteralPath (Join-Path $torch $_) -Destination $ctranslate2
+}
 ```
+
+For a local frozen-build test, extract the complete developer pack—all ten
+DLLs—into `Samsara\_internal\ctranslate2\` beside the packaged executable.
 
 Once the DLLs are in place, restart Samsara, open Settings → Advanced, and select **CUDA (NVIDIA GPU)** in the device dropdown. The startup log should show `Device: cuda, Compute: float16`.
 
