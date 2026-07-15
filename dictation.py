@@ -900,6 +900,60 @@ def _is_hallucinated_segments(seg_list, text):
     return False
 
 
+# Trailing run of a repeated non-speech punctuation character (underscore,
+# dash, period) -- 6 or more in a row. Confirmed in production
+# (~/.samsara/logs/samsara.log, 2026-07-14/15) as Whisper's degenerate
+# output on the near-silent tail of a toggle command-mode utterance, e.g.
+# '"the __________"' and '"ready for ______...______"' (hundreds of chars).
+# INVISIBLE to _is_hallucinated_segments' Signature B: that check strips
+# surrounding punctuation before comparing words (string.punctuation
+# includes '_'/'-'/'.'), so a run of underscores collapses to an empty
+# "word" and is filtered out of the word list entirely rather than
+# registering as repetition. Used only by _handle_command_mode_utterance
+# (see there for why trim-not-reject is the right call for that path) --
+# the hotkey path's _apply_segment_quality_gates is untouched.
+_TRAILING_GARBAGE_RUN_RE = re.compile(r'([_\-.])\1{5,}\s*$')
+
+
+def _trim_trailing_garbage_run(text):
+    """Strip a trailing run of 6+ repeated underscore/dash/period characters
+    from text. Real words consistently precede the run in every observed
+    case, so this trims rather than discarding the whole string -- callers
+    that need whole-utterance rejection (e.g. no real words at all) should
+    check whether the result is empty."""
+    match = _TRAILING_GARBAGE_RUN_RE.search(text)
+    if not match:
+        return text
+    return text[:match.start()].rstrip()
+
+
+def _drop_trailing_garbage_segments(seg_list):
+    """Drop trailing segments whose own text is changed by
+    _trim_trailing_garbage_run (fully consumed as pure garbage, or a real
+    prefix with a garbage tail), stopping at the first trailing segment
+    trimming leaves untouched.
+
+    Whisper sets a segment's compression_ratio/no_speech_prob telemetry
+    against its UNTRIMMED text -- a long repeated-character run compresses
+    at 6-17x in testing (comfortably past _is_hallucinated_segments'
+    Signature A threshold of 3.0), so leaving that segment's object in the
+    list handed to _is_hallucinated_segments would reject the WHOLE
+    utterance -- including real speech in segments before it -- off that
+    one segment's inflated ratio, even after the delivered text itself has
+    been trimmed clean. This only excludes the segment OBJECT (its
+    telemetry) from that check; the real words it contained still reach
+    the delivered text via the separate string-level
+    _trim_trailing_garbage_run call on the joined text."""
+    segs = list(seg_list)
+    while segs:
+        seg_text = (getattr(segs[-1], "text", "") or "").strip()
+        if seg_text and _trim_trailing_garbage_run(seg_text) != seg_text:
+            segs.pop()
+            continue
+        break
+    return segs
+
+
 def _is_quality_exhausted(seg_list, transcribe_params):
     """True if faster-whisper's OWN quality gate never actually passed for
     this decode -- its temperature fallback ladder exhausted every rung
@@ -5380,6 +5434,52 @@ class DictationApp:
 
             if not text:
                 logger.debug('[CMD-UTT] Empty transcription')
+                return
+
+            # Hallucination screening -- this toggle-session path runs its
+            # own transcribe() call above, entirely separate from the
+            # hotkey path's decode (process_wake_word_buffer), so it never
+            # inherited that path's gating. Mirrors
+            # _apply_segment_quality_gates' whole-decode check (step 1,
+            # dictation.py ~1047) but deliberately WITHOUT the
+            # quality-exhaustion gate or never-silently-empty floor: those
+            # exist because losing a whole long hotkey recording is
+            # catastrophic for an accessibility user with nothing to fall
+            # back on. This is a continuous multi-utterance session --
+            # rejecting one bad utterance costs the user a few words to
+            # repeat, not a lost thought (rejection happens BEFORE
+            # dispatch_utterance/DICTATE staging below, so any text already
+            # staged from earlier utterances in this session is untouched).
+            #
+            # Trailing-garbage trim runs FIRST, not after the whole-decode
+            # check: Whisper hallucinates a run of underscores/dashes/
+            # periods on the near-silent tail after real speech at a
+            # toggle utterance's silence boundary -- confirmed in
+            # production logs (e.g. '"the __________"',
+            # '"ready for <hundreds of underscores>"'). That run compresses
+            # hard enough (6-17x in testing) to trip Signature A on its
+            # own -- if the untrimmed seg_list were checked first, one
+            # garbage segment would reject the WHOLE utterance, including
+            # real speech before it, and this trim would never run. So the
+            # garbage segment's telemetry is excluded from the check (see
+            # _drop_trailing_garbage_segments) before _is_hallucinated_segments
+            # ever runs, letting real preceding words survive on their own
+            # merits while the garbage segment's inflated compression ratio
+            # is never consulted. The signature-B repetition check
+            # independently can't see this pattern at all: punctuation
+            # stripping removes an underscore run from its word list
+            # entirely rather than registering it as repetition.
+            _kept_segs = _drop_trailing_garbage_segments(seg_list)
+            _trimmed = _trim_trailing_garbage_run(text)
+            if _trimmed != text:
+                if not _trimmed:
+                    logger.info(f'[GUARD] Suppressed hallucination: {text!r}')
+                    return
+                logger.info(f'[GUARD] Trimmed trailing garbage: {text!r} -> {_trimmed!r}')
+                text = _trimmed
+
+            if _is_hallucinated_segments(_kept_segs, text):
+                logger.info(f'[GUARD] Suppressed hallucination: {text!r}')
                 return
 
             logger.debug(f'[CMD-UTT] "{text}"')
