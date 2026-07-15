@@ -3,11 +3,13 @@
 ## Download & Run (Windows)
 
 1. Go to the [latest release](https://github.com/Morne-Ingstar/Samsara/releases/latest)
-2. Download **Samsara-Windows-v0.9.4.7z**
+2. Download **Samsara-Windows-v0.22.0.zip**
 3. Extract anywhere, double-click **Samsara.exe**
 4. The setup wizard picks your mic and downloads the AI model
 
-NVIDIA GPU recommended (~300ms transcription). Works on CPU too, just slower.
+The standard download is the verified CPU build. It works without an NVIDIA
+GPU. For faster transcription on a compatible NVIDIA GPU, follow the
+[verified CUDA add-on instructions](CUDA.md).
 
 ## From Source
 
@@ -24,7 +26,13 @@ Once running, Samsara sits in your system tray (bottom-right, near the clock).
 
 **Hold-to-dictate:** Hold Ctrl+Shift, speak, release. Text appears at your cursor.
 
-**Voice commands:** Say "Jarvis" followed by a command:
+**Hands Free:** Enable it in Settings, then speak normally. Samsara buffers a
+complete thought across pauses. Say **"end"** as a sole utterance to paste the
+thought; HANDS FREE stays active for the next one. Exact enabled commands such
+as "scroll down" or "show numbers" work without leaving the session.
+
+**Wake-word commands:** Enable wake words, then say "Jarvis" followed by a
+command:
 
 | Try saying | What happens |
 |------------|-------------|
@@ -35,7 +43,6 @@ Once running, Samsara sits in your system tray (bottom-right, near the clock).
 | "Jarvis, go to YouTube" | Opens YouTube in your browser |
 | "Jarvis, going dark" | Mutes + minimizes all + locks screen |
 | "Jarvis, volume up" | Raises system volume |
-| "Jarvis, dictate" | Starts hands-free dictation (say "over" to finish) |
 | "Jarvis, scratch that" | Undoes the last dictation |
 
 ## Default Hotkeys
@@ -43,15 +50,16 @@ Once running, Samsara sits in your system tray (bottom-right, near the clock).
 | Hotkey | Action |
 |--------|--------|
 | Ctrl+Shift | Hold to dictate |
-| Ctrl+Alt+D | Toggle long dictation |
-| Ctrl+Alt+W | Toggle wake word mode |
-| Escape | Cancel current recording |
+| Configurable | Toggle HANDS FREE |
+| Configurable | Toggle wake-word listening |
+| Configurable | Commit the current HANDS FREE thought |
 
-All hotkeys are configurable in Settings.
+The setup wizard and Settings show the actual bindings in use; defaults can
+vary by input device and first-run choices.
 
 ## Next Steps
 
 - Right-click the tray icon to explore settings
-- Edit `config.json` to add web shortcuts and audio device aliases
+- Use Settings to configure devices, modes, wake words, and command packs
 - Drop Python files in `plugins/commands/` to create custom voice commands
-- See [VOICE_COMMANDS.md](VOICE_COMMANDS.md) for the full command reference
+- Open Quick Reference from the tray for the commands enabled on your machine

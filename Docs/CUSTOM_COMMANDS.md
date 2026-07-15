@@ -1,267 +1,115 @@
-# Adding Your Own Voice Commands
+# Adding Custom Voice Commands
 
-## Simple Command Examples
+## Use the Commands Page
 
-### Open Your Favorite Programs
+For ordinary shortcuts, use **Settings → Commands → Add Command**. This avoids
+JSON syntax mistakes and makes the change available immediately.
 
-Add to `commands.json`:
+The editor supports these common command types:
+
+- **Hotkey** — send a combination such as `Ctrl+Shift+S`.
+- **Launch** — open an application or file.
+- **Press / Hold / Release** — operate one key.
+- **Text** — insert fixed text.
+- **Macro** — run several supported keyboard or typing steps in order.
+
+Use the **Test** button on the selected row. **Reload** rereads externally
+edited built-in commands and rebuilds the command matcher without restarting
+Samsara. Command-pack changes still require a restart.
+
+## JSON Examples
+
+Advanced users can edit the `commands.json` shipped beside the application
+code. Back it up first; application upgrades can replace this file. Close
+Samsara while editing it, or use **Reload** on the Commands page afterward.
+
+The file has one top-level `commands` object:
 
 ```json
-"open discord": {
-  "type": "launch",
-  "target": "C:\\Users\\YourName\\AppData\\Local\\Discord\\Update.exe --processStart Discord.exe",
-  "description": "Open Discord"
-},
-
-"open spotify": {
-  "type": "launch",
-  "target": "spotify.exe",
-  "description": "Open Spotify"
-},
-
-"open visual studio code": {
-  "type": "launch",
-  "target": "code",
-  "description": "Open VS Code"
-},
-
-"open arcana": {
-  "type": "launch",
-  "target": "chrome.exe http://your-arcana-url",
-  "description": "Open The Arcana"
+{
+  "commands": {
+    "open discord": {
+      "type": "launch",
+      "target": "C:\\Users\\YourName\\AppData\\Local\\Discord\\Update.exe",
+      "description": "Open Discord",
+      "pack": "core"
+    },
+    "emoji picker": {
+      "type": "hotkey",
+      "keys": ["win", "."],
+      "description": "Open the Windows emoji picker",
+      "pack": "core"
+    },
+    "press escape": {
+      "type": "press",
+      "key": "esc",
+      "description": "Press Escape",
+      "pack": "core"
+    }
+  }
 }
 ```
 
-### Custom Hotkeys
+Supported JSON command types are `hotkey`, `launch`, `press`, `key_down`,
+`key_up`, `release_all`, `mouse`, `text`, `macro`, and trusted app `method`
+commands. Prefer the UI or a plugin over adding a `method` command; it calls an
+existing `DictationApp` method and is not a general scripting interface.
 
-```json
-"screenshot": {
-  "type": "hotkey",
-  "keys": ["win", "shift", "s"],
-  "description": "Take screenshot"
-},
+### Macro Example
 
-"emoji picker": {
-  "type": "hotkey",
-  "keys": ["win", "."],
-  "description": "Open emoji picker"
-},
-
-"lock screen": {
-  "type": "hotkey",
-  "keys": ["win", "l"],
-  "description": "Lock computer"
-}
-```
-
-### Gaming - More Arc Raiders Commands
-
-```json
-"hold run": {
-  "type": "key_down",
-  "key": "shift",
-  "description": "Hold shift to run"
-},
-
-"stop running": {
-  "type": "key_up",
-  "key": "shift",
-  "description": "Release shift"
-},
-
-"crouch": {
-  "type": "key_down",
-  "key": "ctrl",
-  "description": "Hold crouch"
-},
-
-"stand up": {
-  "type": "key_up",
-  "key": "ctrl",
-  "description": "Release crouch"
-},
-
-"reload": {
-  "type": "press",
-  "key": "r",
-  "description": "Reload weapon"
-},
-
-"inventory": {
-  "type": "press",
-  "key": "i",
-  "description": "Open inventory"
-}
-```
-
-### Text Shortcuts
-
-```json
-"new line": {
-  "type": "press",
-  "key": "enter",
-  "description": "Press Enter"
-},
-
-"delete line": {
-  "type": "hotkey",
-  "keys": ["ctrl", "shift", "k"],
-  "description": "Delete current line (VS Code)"
-},
-
-"comment out": {
-  "type": "hotkey",
-  "keys": ["ctrl", "/"],
-  "description": "Toggle comment"
-}
-```
-
-## Advanced: Command Sequences
-
-Want "save and close"? You'll need to add a new command type.
-
-Here's how (advanced users):
-
-### In dictation.py, add to CommandExecutor:
-
-```python
-elif cmd_type == 'sequence':
-    # Execute multiple commands in order
-    steps = cmd.get('steps', [])
-    for step in steps:
-        step_type = step.get('action')
-        if step_type == 'hotkey':
-            keys = [self.get_key(k) for k in step['keys']]
-            for key in keys[:-1]:
-                self.keyboard_controller.press(key)
-            self.keyboard_controller.press(keys[-1])
-            self.keyboard_controller.release(keys[-1])
-            for key in reversed(keys[:-1]):
-                self.keyboard_controller.release(key)
-        elif step_type == 'wait':
-            time.sleep(step.get('ms', 100) / 1000)
-    print(f"✓ Executed sequence: {command_name}")
-    return True
-```
-
-### Then in commands.json:
+Macros use `type: "macro"`. Their supported step actions are `hotkey`, `press`,
+and `type`, with an optional `delay_after` in milliseconds:
 
 ```json
 "save and close": {
-  "type": "sequence",
+  "type": "macro",
   "steps": [
-    {
-      "action": "hotkey",
-      "keys": ["ctrl", "s"]
-    },
-    {
-      "action": "wait",
-      "ms": 100
-    },
-    {
-      "action": "hotkey",
-      "keys": ["alt", "f4"]
-    }
+    {"action": "hotkey", "keys": ["ctrl", "s"], "delay_after": 150},
+    {"action": "hotkey", "keys": ["alt", "f4"]}
   ],
-  "description": "Save then close window"
+  "description": "Save, then close the active window",
+  "pack": "core"
 }
 ```
 
-## Tips for Great Commands
+There is no `sequence` command type. Do not modify `dictation.py` to add one;
+the command dispatcher lives in `samsara/commands.py` and
+`samsara/handlers.py`, and Python extensions belong in the plugin system.
 
-### 1. Keep Names Natural
-✅ Good: "new tab", "close window", "scroll down"
-❌ Bad: "nt", "cw", "sd"
+## Python Command Plugins
 
-You'll remember natural language better!
+For dynamic behavior, create a focused plugin under `plugins/commands/`:
 
-### 2. Avoid Similar Sounding Commands
-❌ Avoid: "new tab" and "new tape" (sound the same)
-✅ Better: "new tab" and "open tab"
-
-### 3. Test Each Command
-After adding a command:
-1. Save commands.json
-2. Restart dictation app
-3. Test the new command
-4. Check console for errors
-
-### 4. Use Descriptions
-Always add good descriptions - helps you remember what each command does!
-
-### 5. Group Similar Commands
-Keep gaming commands together, browser commands together, etc.
-Makes the JSON easier to navigate.
-
-## Common Keys Reference
-
-### Modifier Keys
-- `ctrl` - Control
-- `shift` - Shift  
-- `alt` - Alt
-- `win` - Windows key
-
-### Special Keys
-- `enter` - Enter
-- `esc` - Escape
-- `space` - Spacebar
-- `tab` - Tab
-- `backspace` - Backspace
-- `delete` - Delete
-
-### Navigation
-- `up`, `down`, `left`, `right` - Arrow keys
-- `home`, `end` - Home/End
-- `pageup`, `pagedown` - Page Up/Down
-
-### Function Keys
-- `f1` through `f12` - Function keys
-
-### Regular Keys
-- Single letters: `a`, `b`, `c`, etc.
-- Numbers: `1`, `2`, `3`, etc.
-
-## Reload Commands Without Restart
-
-Currently you need to restart the app to reload commands.json.
-
-**Want hot reload?** (Advanced)
-
-Add this to DictationApp class:
 ```python
-def reload_commands(self):
-    """Reload commands without restart"""
-    self.command_executor.load_commands()
-    print("✓ Commands reloaded")
+from samsara.plugin_commands import command
+
+
+@command(
+    "my command",
+    aliases=["do the thing"],
+    description="Describe the effect",
+    pack="core",
+)
+def my_command(app, remainder="", **kwargs):
+    # Use remainder for words spoken after the registered phrase.
+    return True
 ```
 
-Then add to system tray menu:
-```python
-pystray.MenuItem("🔄 Reload Commands", lambda: self.reload_commands())
-```
+Plugins are Python code with the same permissions as Samsara. Only install or
+write plugins you trust. Restart Samsara after adding or changing a plugin so
+plugin discovery runs cleanly.
 
-## Need Help?
+## Command Design Tips
 
-**Common Issues:**
+- Use natural, distinct phrases that Whisper recognizes reliably.
+- Avoid phrases that overlap common dictation. In HANDS FREE, an enabled exact
+  command utterance runs as a command; say `literal <phrase>` to dictate it.
+- Put optional commands in an appropriate pack and enable only the packs you
+  use.
+- Use full executable paths for Launch commands when Windows cannot resolve a
+  program name.
+- Test destructive shortcuts in a disposable window first.
 
-1. **Command not executing**
-   - Check spelling in commands.json
-   - Verify JSON syntax (use jsonlint.com)
-   - Check console for errors
-
-2. **Program not launching**
-   - Use full path to .exe
-   - Check if program name is correct
-   - Try running from command line first
-
-3. **Keys not working**
-   - Verify key names (see Common Keys Reference)
-   - Test with `press` type first
-   - Check if app accepts that hotkey
-
-**Still stuck?** 
-- Check BUILD_SUMMARY.md for architecture
-- See README.md for more examples
-- Test with pre-configured commands first
-
-Happy commanding! 🎤✨
+Common key names include `ctrl`, `shift`, `alt`, `win`, `enter`, `esc`,
+`space`, `tab`, `backspace`, `delete`, arrow keys, `home`, `end`, `pageup`,
+`pagedown`, and `f1` through `f12`.

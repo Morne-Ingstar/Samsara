@@ -43,14 +43,20 @@ the artifact but does not create a GitHub Release.
 - Tag pushes only: the zip is also attached to the GitHub Release for that
   tag.
 
-## CUDA packaging
+## CUDA add-on
 
-v0.22 publishes only the verified CPU zip. `build_release.bat` is also a CPU
-build-and-smoke helper; it creates a local `.7z`, not a CUDA pack and not the
-canonical GitHub artifact. `scripts\build_cuda.bat` remains a developer helper
-for experimenting with `INCLUDE_CUDA=1`, but it is not a release pipeline and
-its output must not be advertised or attached until it has an equivalent
-clean-checkout build, smoke, archive, and artifact-verification path.
+The application release remains the reproducible CI-built CPU zip. v0.22 reuses
+the existing `Samsara-CUDA-Pack-v0.20.0.zip` because its ten DLLs are
+byte-for-byte identical to the current tested CUDA environment. Its published
+SHA-256 is
+`5dc752c89ca4e6ad777b545907a7e654471ce3dfe10a3d96bbfc705386db335d`.
+Installation and verification steps live in `Docs/CUDA.md`.
+
+Do not copy or package an installed Samsara directory: a user's extracted CUDA
+archive or other local files may be nested inside it. `build_release.bat` is a
+CPU build-and-smoke helper; `scripts\build_cuda.bat` remains a developer helper,
+not a release artifact producer. Any future CUDA runtime change needs a new
+archive, hashes, clean extraction test, and frozen-app smoke before publication.
 
 ## Why the smoke check is trimmed
 

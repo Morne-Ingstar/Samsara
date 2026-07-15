@@ -58,7 +58,7 @@ Samsara is a **local-by-default** voice control system powered by Whisper — tr
 
 No hotkey, no hands. Bind a spoken phrase to an app and Samsara does the rest.
 
-- **"Hey Claude"** → the Claude window focuses (restored if minimized) and a dictation session opens targeting it. Talk, pause to think, keep talking — the session survives silence and appends each utterance.
+- **"Activate Claude"** → the Claude window focuses (restored if minimized) and a dictation session opens targeting it. Talk, pause to think, keep talking — the session survives silence and appends each utterance.
 - **"over"** → submits. Only the *last* word you speak is checked, so "tell them to come over here" types normally and just "...and that's the plan. over." sends.
 - **Per-target send policy** — Claude submits on "over"; agentic targets like Hermes leave the text staged so nothing fires without you.
 - **Earcons** — audio cues for session-start and sent, so you know the state without looking.
@@ -174,9 +174,9 @@ Ships with 31 plugins including health tracking, voice reminders, alarm manageme
 2. Download **Samsara-Windows-\*.zip**
 3. Extract and run **Samsara.exe** — a setup wizard walks you through microphone selection and model download
 
-The official v0.22 package is the verified CPU build. It works without an
-NVIDIA GPU, though transcription is slower than a correctly configured CUDA
-source installation.
+The official v0.22 application archive is the verified CPU build. It works
+without an NVIDIA GPU. Packaged users with a compatible NVIDIA GPU can add the
+[hash-verified CUDA runtime pack](Docs/CUDA.md) for faster transcription.
 
 ### Run from Source
 
@@ -216,14 +216,15 @@ $required | ForEach-Object {
 }
 ```
 
-For a local frozen-build test, extract the complete developer pack—all ten
-DLLs—into `Samsara\_internal\ctranslate2\` beside the packaged executable.
+For a packaged build, extract the complete pack—all ten DLLs—into
+`Samsara\_internal\ctranslate2\` beside the packaged executable. See
+[Docs/CUDA.md](Docs/CUDA.md) for the verified download, checksum, and steps.
 
 Once the DLLs are in place, restart Samsara, open Settings → Advanced, and select **CUDA (NVIDIA GPU)** in the device dropdown. The startup log should show `Device: cuda, Compute: float16`.
 
-v0.22 does not advertise or publish a separate CUDA pack. Packaged-release
-users should assume CPU operation unless a future release explicitly includes
-a separately verified GPU artifact.
+The CUDA runtime binaries used by v0.22 are byte-for-byte identical to the
+existing v0.20 pack, so they were verified and reused rather than rebuilt or
+uploaded a second time.
 
 ### Configuring Wake Profiles & Plugins
 
@@ -232,7 +233,7 @@ Hands-free wake profiles and plugin settings live in `config.json`.
 ```json
 {
   "wake_profiles": [
-    { "phrase": "hey claude", "target_process": "claude.exe", "mode": "focus_dictate", "send_word": "over" },
+    { "phrase": "activate claude", "target_process": "claude.exe", "mode": "focus_dictate", "send_word": "over" },
     { "phrase": "activate hermes", "target_process": "Hermes.exe", "mode": "stage_send", "send_word": "send" }
   ],
   "hyperion_host": "your-hyperion-ip-or-hostname",
@@ -254,7 +255,10 @@ Hands-free wake profiles and plugin settings live in `config.json`.
 - **Adaptive wake gate** — wake detection passes audio to Whisper when its energy rises above a rolling ambient noise floor (floor × ratio), not a fixed absolute threshold. This makes wake words fire reliably across mics of wildly different sensitivity — a quiet headset and a hot desktop condenser both work without tuning.
 - **Silero VAD** — neural speech detection, ignores fan noise and background hum. Runs on raw mic signal, not AEC output.
 - **Pre-buffer** — 1.5s rolling window is built into the ring. "Drain prebuffer on speech onset" is a cursor rewind, not a copy — structurally impossible to forget.
-- **Echo cancellation** — frequency-domain AEC subtracts system audio from mic input. Dictate over music and Whisper still hears you.
+- **Experimental echo reduction** — an opt-in frequency-domain filter attempts
+  to reduce system-audio bleed from the microphone. Results depend heavily on
+  the audio device and room, so it is off by default and is not a guarantee
+  that music or speech playback will be removed.
 - **Auto-calibration** — measures ambient noise on startup using IQR-based outlier rejection.
 - **Auto-reconnect** — if audio dies after sleep/wake, Samsara detects it and reconnects automatically. No restart needed.
 
@@ -330,7 +334,7 @@ python -m pytest tests/ -v
 ## Roadmap
 
 ### Completed
-- [x] **Hands-free multi-wakeword dictation** — "Hey Claude"/"Activate Hermes" → focus + dictate, "over" to send, per-target send policy, earcons
+- [x] **Hands-free multi-wakeword dictation** — "Activate Claude"/"Activate Hermes" → focus + dictate, "over" to send, per-target send policy, earcons
 - [x] **Adaptive microphone gate** — noise-floor-relative wake detection that works across any mic
 - [x] **AudioCaptureEngine** — single-stream lock-free ring buffer replacing 3 separate PortAudio streams
 - [x] **Full PySide6 migration** — zero Tkinter/CustomTkinter in the codebase

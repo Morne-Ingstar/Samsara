@@ -76,8 +76,10 @@ browser DOM path alongside its Windows UI Automation fallback.
   focused regressions forbid network imports and requests from the plugin.
 - **Pull-request CI runs on Windows** to match Samsara's supported platform and
   Windows-only dependencies.
-- **v0.22 publishes the verified CPU package only** — CUDA remains a
-  source/developer path until it has an equivalent automated release gate.
+- **The v0.22 application archive remains a reproducible CPU build** — the
+  existing optional CUDA runtime pack was hash-verified against the v0.22 test
+  environment and documented for packaged users instead of duplicating 1.13 GB
+  of identical binaries.
 
 ## [0.21.1] - 2026-07-13
 

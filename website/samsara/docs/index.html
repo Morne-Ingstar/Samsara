@@ -1,0 +1,116 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Samsara Documentation</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&family=JetBrains+Mono:wght@400;500;600&display=swap" rel="stylesheet">
+<style>
+:root {
+    --bg: #0A0A0B;
+    --bg-elev: #111114;
+    --border: rgba(255,255,255,0.08);
+    --text: #E8E8EA;
+    --text-muted: #8A8A92;
+    --text-dim: #5A5A62;
+    --accent: #5EEAD4;
+    --accent-dim: rgba(94, 234, 212, 0.12);
+    --sans: 'Inter', -apple-system, sans-serif;
+}
+* { box-sizing: border-box; margin: 0; padding: 0; }
+html, body {
+    background: var(--bg);
+    color: var(--text);
+    font-family: var(--sans);
+    font-size: 16px;
+    line-height: 1.7;
+    -webkit-font-smoothing: antialiased;
+}
+a { color: var(--accent); text-decoration: none; }
+a:hover { text-decoration: underline; }
+
+.nav {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    padding: 20px 40px;
+    border-bottom: 1px solid var(--border);
+}
+.nav-brand { font-size: 18px; font-weight: 600; color: var(--text); }
+.nav-links { display: flex; gap: 24px; }
+.nav-links a { font-size: 15px; color: var(--text-muted); transition: color 0.2s; }
+.nav-links a:hover { color: var(--text); text-decoration: none; }
+.nav-links a.active { color: var(--accent); }
+
+.page { max-width: 640px; margin: 0 auto; padding: 80px 24px 120px; }
+
+h1 {
+    font-size: 34px;
+    font-weight: 700;
+    letter-spacing: -0.02em;
+    margin-bottom: 20px;
+}
+p { color: var(--text-muted); font-size: 17px; margin-bottom: 16px; }
+
+.callout {
+    background: var(--accent-dim);
+    border-left: 3px solid var(--accent);
+    border-radius: 0 8px 8px 0;
+    padding: 16px 20px;
+    margin: 28px 0;
+    font-size: 15px;
+    color: var(--text);
+}
+
+.links { margin-top: 32px; display: flex; flex-direction: column; gap: 12px; }
+.links a {
+    display: inline-block;
+    font-size: 15px;
+}
+
+@media (max-width: 600px) {
+    .nav { padding: 16px 20px; }
+    .nav-links { gap: 16px; }
+    .page { padding: 48px 16px 80px; }
+    h1 { font-size: 26px; }
+}
+</style>
+</head>
+<body>
+
+<nav class="nav">
+    <a href="/samsara" class="nav-brand">Samsara</a>
+    <div class="nav-links">
+        <a href="/samsara">Home</a>
+        <a href="/samsara/docs/" class="active">Docs</a>
+        <a href="https://github.com/Morne-Ingstar/Samsara">GitHub</a>
+        <a href="/samsara/business/">Business</a>
+    </div>
+</nav>
+
+<div class="page">
+
+<h1>Documentation</h1>
+
+<p>Current stable release: <strong>v0.22.0</strong>.</p>
+
+<p>The complete technical documentation is maintained with the source so it is reviewed and versioned with each release.</p>
+
+<div class="callout">
+    v0.22 introduces persistent HANDS FREE dictation and commands, DOM-aware Show Numbers, configuration backup and restore, and an optional verified CUDA acceleration pack.
+</div>
+
+<div class="links">
+    <a href="https://github.com/Morne-Ingstar/Samsara#readme">Read the current documentation (GitHub README) →</a>
+    <a href="https://github.com/Morne-Ingstar/Samsara/blob/master/Docs/QUICKSTART.md">Quick start →</a>
+    <a href="https://github.com/Morne-Ingstar/Samsara/blob/master/Docs/CUDA.md">CUDA acceleration guide →</a>
+    <a href="https://github.com/Morne-Ingstar/Samsara/releases/latest">Download the latest release →</a>
+    <a href="/samsara">← Back to the Samsara page</a>
+</div>
+
+</div>
+
+</body>
+</html>
