@@ -5,10 +5,9 @@ Single source of truth for "can we actually use CUDA right now?". Used by:
   - Settings UI to gate the "CUDA (NVIDIA GPU)" dropdown option
   - Model loader to fall back gracefully if config says CUDA but DLLs are gone
 
-Detection strategy: look for the CUDA runtime DLLs that ctranslate2 needs.
-Specifically `cublas64_12.dll`. If it's not on the search path next to where
-ctranslate2 lives (or in a sibling folder PyInstaller bundles into), CUDA
-will fail to load — so we treat that as "not available".
+Detection strategy: look for the complete set of CUDA runtime DLLs that
+ctranslate2 needs. If any are absent from the probable DLL search paths, CUDA
+will fail to load — so we treat an incomplete pack as "not available".
 
 We do NOT trust ctranslate2.get_supported_compute_types("cuda") for this
 because (a) it raises in some envs, (b) it can lie when libraries are
@@ -19,17 +18,24 @@ from __future__ import annotations
 import os
 import sys
 from pathlib import Path
-from typing import Optional
-
 from samsara.log import get_logger
 
 logger = get_logger(__name__)
 
 
-# The DLL whose presence we use as the marker. cublas64_12.dll is the
-# largest of the bundled CUDA libs and is the one whose absence causes the
-# "Library cublas64_12.dll is not found or cannot be loaded" runtime error.
-_MARKER_DLL = "cublas64_12.dll"
+# Keep this aligned with the CUDA pack assembled in scripts/samsara.spec.
+_REQUIRED_CUDA_DLLS = (
+    "cudnn_adv64_9.dll",
+    "cudnn_cnn64_9.dll",
+    "cudnn_engines_precompiled64_9.dll",
+    "cudnn_engines_runtime_compiled64_9.dll",
+    "cudnn_graph64_9.dll",
+    "cudnn_heuristic64_9.dll",
+    "cudnn_ops64_9.dll",
+    "cublas64_12.dll",
+    "cublasLt64_12.dll",
+    "cudart64_12.dll",
+)
 
 
 def _probable_search_paths() -> list[Path]:
@@ -60,8 +66,23 @@ def _probable_search_paths() -> list[Path]:
     return paths
 
 
+def _missing_cuda_dlls() -> tuple[str, ...]:
+    """Return required CUDA DLLs not found on any probable search path."""
+    remaining = set(_REQUIRED_CUDA_DLLS)
+    for path in _probable_search_paths():
+        for dll in tuple(remaining):
+            try:
+                if (path / dll).exists():
+                    remaining.remove(dll)
+            except OSError:
+                continue
+        if not remaining:
+            break
+    return tuple(dll for dll in _REQUIRED_CUDA_DLLS if dll in remaining)
+
+
 def is_cuda_available() -> bool:
-    """Return True iff the CUDA marker DLL is findable on a probable path.
+    """Return True iff every required CUDA DLL is findable.
 
     Cheap to call (just stat checks). Cached on first call to avoid hitting
     the filesystem on every dropdown rebuild.
@@ -70,26 +91,22 @@ def is_cuda_available() -> bool:
     if cached is not None:
         return cached
 
-    found = False
-    for p in _probable_search_paths():
-        try:
-            if (p / _MARKER_DLL).exists():
-                found = True
-                break
-        except OSError:
-            continue
-
-    is_cuda_available._cache = found  # type: ignore[attr-defined]
-    return found
+    missing = _missing_cuda_dlls()
+    available = not missing
+    is_cuda_available._missing_dlls = missing  # type: ignore[attr-defined]
+    is_cuda_available._cache = available  # type: ignore[attr-defined]
+    return available
 
 
 def cuda_status_message() -> str:
     """Human-readable single-line status. For settings UI hint text."""
     if is_cuda_available():
         return "CUDA detected — NVIDIA GPU acceleration available."
-    return ("CUDA pack not installed. Download Samsara-CUDA-Pack from the "
-            "Releases page and extract it next to Samsara.exe to enable "
-            "GPU acceleration.")
+    missing = getattr(is_cuda_available, "_missing_dlls", ())
+    return (
+        f"CUDA pack incomplete. Missing DLLs: {', '.join(missing)}. "
+        "Extract the complete Samsara-CUDA-Pack into the ctranslate2 folder."
+    )
 
 
 def resolve_device(configured: str) -> str:
@@ -106,5 +123,6 @@ def resolve_device(configured: str) -> str:
 
 def _reset_cache_for_test() -> None:
     """Clear the is_cuda_available cache. Test-only."""
-    if hasattr(is_cuda_available, "_cache"):
-        del is_cuda_available._cache  # type: ignore[attr-defined]
+    for attribute in ("_cache", "_missing_dlls"):
+        if hasattr(is_cuda_available, attribute):
+            delattr(is_cuda_available, attribute)
