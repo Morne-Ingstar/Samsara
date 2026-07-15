@@ -1,7 +1,8 @@
 [CmdletBinding()]
 param(
     [string]$SshHost = "the-arcana",
-    [string]$RemoteRoot = "/home/morne/projects/arcana"
+    [string]$RemoteRoot = "/home/morne/projects/arcana",
+    [string]$RemoteOwner = "morne:morne"
 )
 
 $ErrorActionPreference = "Stop"
@@ -33,6 +34,11 @@ if ($LASTEXITCODE -ne 0) {
 scp -r $source "${SshHost}:$RemoteRoot/"
 if ($LASTEXITCODE -ne 0) {
     throw "Website upload failed. Restore from $backup if any files changed."
+}
+
+ssh $SshHost "set -e; chown -R '$RemoteOwner' '$remote'; find '$remote' -type d -exec chmod 755 {} +; find '$remote' -type f -exec chmod 644 {} +"
+if ($LASTEXITCODE -ne 0) {
+    throw "Upload completed, but web-readable ownership or permissions could not be restored."
 }
 
 Write-Host "Deployed Samsara website. Backup: $backup"
