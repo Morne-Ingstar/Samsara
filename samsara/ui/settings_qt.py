@@ -10,10 +10,10 @@ import shutil
 import threading
 from datetime import datetime
 
-from PySide6.QtCore import Qt, QTimer, Signal
-from PySide6.QtGui import QColor, QFont
+from PySide6.QtCore import Qt, QTimer, Signal, QUrl
+from PySide6.QtGui import QColor, QDesktopServices, QFont
 from PySide6.QtWidgets import (
-    QMainWindow, QWidget, QHBoxLayout, QVBoxLayout,
+    QApplication, QMainWindow, QWidget, QHBoxLayout, QVBoxLayout,
     QListWidget, QListWidgetItem, QStackedWidget, QScrollArea,
     QLabel, QComboBox, QCheckBox, QPushButton, QFrame,
     QDoubleSpinBox, QSpinBox, QLineEdit, QSlider,
@@ -37,6 +37,11 @@ from samsara.ui import qt_runtime, theme
 from samsara.runtime import thread_registry
 from samsara.audio_devices import pick_index_by_name
 from samsara import smart_corrections
+from samsara.support_feedback import (
+    BETA_FEEDBACK_URL,
+    BUG_REPORT_URL,
+    build_safe_diagnostic_summary,
+)
 
 from samsara.log import get_logger
 
@@ -903,6 +908,42 @@ class _SettingsWindow(QMainWindow):
     # Tab builders
     # ------------------------------------------------------------------
 
+    def _open_feedback_url(self, url: str, status_label: QLabel) -> None:
+        """Open a support destination and keep failure visible in Settings."""
+        try:
+            opened = bool(QDesktopServices.openUrl(QUrl(url)))
+        except Exception as exc:
+            logger.exception("[SUPPORT] Could not open feedback URL: %s", exc)
+            opened = False
+        status_label.setText(
+            "Opened in your browser."
+            if opened else
+            "Could not open the browser. Visit morneis.com/samsara/support."
+        )
+
+    def _open_live_log_for_support(self, status_label: QLabel) -> None:
+        opener = getattr(self.app, "open_log_viewer", None)
+        if not callable(opener):
+            status_label.setText("Live Log is unavailable in this session.")
+            return
+        try:
+            opener()
+        except Exception as exc:
+            logger.exception("[SUPPORT] Could not open Live Log: %s", exc)
+            status_label.setText("Could not open Live Log. See the Samsara log folder.")
+            return
+        status_label.setText("Live Log opened. Review and redact before sharing.")
+
+    def _copy_safe_diagnostics(self, status_label: QLabel) -> None:
+        try:
+            summary = build_safe_diagnostic_summary(self.app.config)
+            QApplication.clipboard().setText(summary)
+        except Exception as exc:
+            logger.exception("[SUPPORT] Could not copy diagnostics: %s", exc)
+            status_label.setText("Could not copy the diagnostic summary.")
+            return
+        status_label.setText("Safe diagnostic summary copied — no logs or secrets included.")
+
     def _build_placeholder(self):
         w = QWidget()
         layout = QVBoxLayout(w)
@@ -1087,7 +1128,72 @@ class _SettingsWindow(QMainWindow):
             lambda: getattr(self.app, 'open_voice_training', lambda: None)()
         )
         layout.addWidget(vt_btn)
-        layout.addSpacing(16)
+        layout.addSpacing(20)
+
+        # Section: Help & Feedback
+        layout.addWidget(self._section_title("Help & Feedback"))
+        feedback_explainer = QLabel(
+            "Report a reproducible problem or tell us where Samsara still made "
+            "you reach for the keyboard or mouse. GitHub sign-in is required to "
+            "submit either form."
+        )
+        feedback_explainer.setWordWrap(True)
+        feedback_explainer.setStyleSheet("color: #AEB4C0; font-size: 13px;")
+        layout.addWidget(feedback_explainer)
+
+        feedback_status = QLabel("")
+        feedback_status.setObjectName("feedbackStatusLabel")
+        feedback_status.setWordWrap(True)
+        feedback_status.setStyleSheet("color: #AEB4C0; font-size: 12px;")
+
+        feedback_grid = QGridLayout()
+        feedback_grid.setContentsMargins(0, 4, 0, 0)
+        feedback_grid.setHorizontalSpacing(8)
+        feedback_grid.setVerticalSpacing(8)
+
+        report_btn = QPushButton("Report a Problem")
+        report_btn.setObjectName("reportBugButton")
+        report_btn.setAccessibleName("Report a Problem")
+        report_btn.setToolTip("Open the structured Samsara bug-report form")
+        report_btn.clicked.connect(
+            lambda: self._open_feedback_url(BUG_REPORT_URL, feedback_status)
+        )
+
+        beta_btn = QPushButton("Send Beta Feedback")
+        beta_btn.setObjectName("betaFeedbackButton")
+        beta_btn.setAccessibleName("Send Beta Feedback")
+        beta_btn.setToolTip("Open the hands-free workflow feedback form")
+        beta_btn.clicked.connect(
+            lambda: self._open_feedback_url(BETA_FEEDBACK_URL, feedback_status)
+        )
+
+        live_log_btn = QPushButton("Open Live Log")
+        live_log_btn.setObjectName("openLiveLogButton")
+        live_log_btn.setAccessibleName("Open Live Log")
+        live_log_btn.setToolTip("Open the current log; review and redact it before sharing")
+        live_log_btn.clicked.connect(
+            lambda: self._open_live_log_for_support(feedback_status)
+        )
+
+        diagnostics_btn = QPushButton("Copy Safe Diagnostic Summary")
+        diagnostics_btn.setObjectName("copyDiagnosticButton")
+        diagnostics_btn.setAccessibleName("Copy Safe Diagnostic Summary")
+        diagnostics_btn.setToolTip(
+            "Copy version and runtime facts without logs, paths, dictated text, or keys"
+        )
+        diagnostics_btn.clicked.connect(
+            lambda: self._copy_safe_diagnostics(feedback_status)
+        )
+
+        for button in (report_btn, beta_btn, live_log_btn, diagnostics_btn):
+            button.setMinimumHeight(44)
+        feedback_grid.addWidget(report_btn, 0, 0)
+        feedback_grid.addWidget(beta_btn, 0, 1)
+        feedback_grid.addWidget(live_log_btn, 1, 0)
+        feedback_grid.addWidget(diagnostics_btn, 1, 1)
+        layout.addLayout(feedback_grid)
+        layout.addWidget(feedback_status)
+        layout.addSpacing(20)
 
         # Section: AI Model
         layout.addWidget(self._section_title("AI Model"))
@@ -4726,8 +4832,9 @@ class _SettingsWindow(QMainWindow):
 
         support_text = QLabel(
             "Samsara is free — every feature, forever. If it's useful to you and you "
-            "want to support development, supporters get early builds and a managed "
-            "cloud key (no API setup) is coming. morneis.com/samsara/support"
+            "want to support development, support is optional and never unlocks "
+            "functional features. Any future supporter extras will be cosmetic. "
+            "morneis.com/samsara/support"
         )
         support_text.setWordWrap(True)
         support_text.setStyleSheet("color: #8A8A92; font-size: 12px;")
