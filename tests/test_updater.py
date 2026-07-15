@@ -601,10 +601,37 @@ def test_startup_reconciliation_confirms_update_without_blocking_on_backup_clean
     assert prepared.helper_path.exists()
     stored = json.loads((home / "updates" / "last_update.json").read_text())
     assert stored["state"] == "installed"
-    assert updater.reconcile_update_on_startup() is None
+
+    # A later call (e.g. a subsequent app launch) still finds the rollback
+    # and workspace directories on disk -- indistinguishable, from the
+    # status string alone, from a helper that died before cleaning up.
+    # Reconciliation must not silently trust this forever: it retries
+    # cleanup off-thread (a cheap stat check plus a detached relaunch, never
+    # a synchronous delete here) instead of just marking it "reported".
+    cleanup_calls = []
+    status = updater.reconcile_update_on_startup(
+        process_runner=lambda *a, **kw: cleanup_calls.append((a, kw))
+    )
+    assert status.state == "cleanup_pending"
+    assert len(cleanup_calls) == 1
+    assert prepared.rollback_dir.exists()
+    assert prepared.workspace_dir.exists()
+    stored = json.loads((home / "updates" / "last_update.json").read_text())
+    assert stored["state"] == "cleanup_pending"
+    assert stored["rollback_dir"] == str(prepared.rollback_dir)
+    assert stored["workspace_dir"] == str(prepared.workspace_dir)
+
+    # Once the (simulated) retry actually removes the leftovers, reconcile
+    # consumes the result exactly once, same as the pre-existing
+    # cleanup_pending -> cleanup_complete -> reported -> gone path.
+    updater.shutil.rmtree(prepared.rollback_dir)
+    updater.shutil.rmtree(prepared.workspace_dir)
+    status = updater.reconcile_update_on_startup()
+    assert status.state == "cleanup_complete"
     stored = json.loads((home / "updates" / "last_update.json").read_text())
     assert stored["state"] == "reported"
     assert updater.reconcile_update_on_startup() is None
+    assert not (home / "updates" / "last_update.json").exists()
 
 
 def test_startup_reconciliation_surfaces_helper_failure(tmp_path, monkeypatch):
