@@ -3799,10 +3799,17 @@ class DictationApp:
             # present (e.g. user installed CPU-only build, or moved CUDA pack
             # away), fall back to CPU silently rather than crashing at model
             # load time with "cublas64_12.dll not found".
-            from samsara.cuda_detect import resolve_device, is_cuda_available
+            from samsara.cuda_detect import (
+                cuda_status_message,
+                is_cuda_available,
+                resolve_device,
+            )
             if device == "cuda" and not is_cuda_available():
-                logger.debug("[GPU] Config requested CUDA but CUDA pack not detected — "
-                      "falling back to CPU. Install Samsara-CUDA-Pack to enable GPU.")
+                logger.warning(
+                    "[GPU] Config requested CUDA but it is unavailable — %s "
+                    "Falling back to CPU.",
+                    cuda_status_message(),
+                )
                 device = "cpu"
 
             if device == "auto":
