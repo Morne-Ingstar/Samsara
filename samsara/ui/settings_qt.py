@@ -5049,6 +5049,17 @@ class _SettingsWindow(QMainWindow):
             self.app.config.update(updates)
             self.app.save_config()
 
+        if {
+            'listening_indicator_enabled',
+            'listening_indicator_position',
+            'listening_indicator_custom_position',
+        }.intersection(updates):
+            apply_indicator = getattr(
+                self.app, 'apply_listening_indicator_settings', None
+            )
+            if callable(apply_indicator):
+                apply_indicator()
+
         now_sc_enabled = bool(
             self.app.config.get('smart_corrections', {}).get('enabled', False)
         )
