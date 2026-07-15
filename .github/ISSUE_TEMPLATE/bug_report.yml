@@ -1,0 +1,97 @@
+name: Bug report
+description: Report a reproducible Samsara failure or regression
+title: "[Bug]: "
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Thank you. Please remove private dictated text, API keys, webhook URLs, and personal paths before posting logs.
+
+  - type: input
+    id: version
+    attributes:
+      label: Samsara version
+      description: Find this in About or the release/archive name.
+      placeholder: v0.22.0
+    validations:
+      required: true
+
+  - type: dropdown
+    id: installation
+    attributes:
+      label: Installation
+      options:
+        - Packaged Windows release (CPU)
+        - Packaged Windows release with CUDA pack
+        - Running from source
+    validations:
+      required: true
+
+  - type: dropdown
+    id: area
+    attributes:
+      label: Affected area
+      options:
+        - HANDS FREE dictation or commands
+        - Hold-to-dictate
+        - Continuous or streaming dictation
+        - Wake words or wake profiles
+        - Show Numbers or browser extension
+        - Ava, TTS, or audio ducking
+        - Settings, onboarding, or interface
+        - Alarms, reminders, or notifications
+        - History, clipboard, or text delivery
+        - Startup, shutdown, update, or CUDA
+        - Other
+    validations:
+      required: true
+
+  - type: textarea
+    id: happened
+    attributes:
+      label: What happened?
+      description: Describe the visible result, including whether text was retained, pasted, duplicated, or lost.
+    validations:
+      required: true
+
+  - type: textarea
+    id: expected
+    attributes:
+      label: What should have happened?
+    validations:
+      required: true
+
+  - type: textarea
+    id: reproduce
+    attributes:
+      label: Smallest reproduction
+      description: Give the shortest sequence that triggers the problem consistently.
+      placeholder: |
+        1. Start Samsara
+        2. Enable HANDS FREE
+        3. Say ...
+    validations:
+      required: true
+
+  - type: textarea
+    id: log
+    attributes:
+      label: Relevant live-log lines
+      description: Open tray menu → Live Log, reproduce once, then paste only the relevant redacted lines.
+      render: text
+
+  - type: input
+    id: system
+    attributes:
+      label: Windows, audio, and display details
+      description: Include Windows version, microphone, CPU/GPU, monitor resolution/scaling, or browser when relevant.
+      placeholder: Windows 11; Focusrite mic; RTX 3080; Brave; 4K at 150%
+
+  - type: checkboxes
+    id: safety
+    attributes:
+      label: Privacy check
+      options:
+        - label: I reviewed the report and removed private dictation, credentials, tokens, webhook URLs, and sensitive paths.
+          required: true
+

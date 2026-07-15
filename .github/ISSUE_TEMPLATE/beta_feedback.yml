@@ -1,0 +1,74 @@
+name: Beta workflow feedback
+description: Tell us where v0.22 reduced—or failed to reduce—hands-on work
+title: "[Beta feedback]: "
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Real workflow friction is valuable even when nothing technically crashed. You do not need to disclose a diagnosis or disability.
+
+  - type: input
+    id: version
+    attributes:
+      label: Samsara version
+      placeholder: v0.22.0
+    validations:
+      required: true
+
+  - type: dropdown
+    id: workflow
+    attributes:
+      label: Workflow tested
+      options:
+        - Long-form HANDS FREE dictation
+        - Moving between apps or text boxes
+        - Browser navigation with Show Numbers
+        - Email or chat composition
+        - Hold-to-dictate
+        - Wake words or app-specific wake profiles
+        - Commands or custom macros
+        - Ava or TTS
+        - Other
+    validations:
+      required: true
+
+  - type: textarea
+    id: goal
+    attributes:
+      label: What were you trying to complete without your hands?
+    validations:
+      required: true
+
+  - type: textarea
+    id: worked
+    attributes:
+      label: What worked well?
+
+  - type: textarea
+    id: friction
+    attributes:
+      label: Where did you still reach for the keyboard or mouse?
+      description: Include extra words, waits, mode changes, focus failures, or confusing feedback.
+    validations:
+      required: true
+
+  - type: textarea
+    id: improvement
+    attributes:
+      label: What single change would save the most effort?
+    validations:
+      required: true
+
+  - type: input
+    id: setup
+    attributes:
+      label: Relevant setup
+      description: Optional microphone, browser, display scaling, input device, or CPU/GPU details.
+
+  - type: checkboxes
+    id: followup
+    attributes:
+      label: Follow-up
+      options:
+        - label: I am willing to answer follow-up questions or test a focused fix.
+
