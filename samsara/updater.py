@@ -791,6 +791,20 @@ function Show-UpdateFailure([string]$message) {{
     }} catch {{}}
 }}
 
+function Assert-NotReparsePoint([string]$path) {{
+    # Assert-SafeUpdatePaths only runs once, up front. The waits below can
+    # each take minutes, so anything destructive that follows a wait must
+    # re-check its target immediately before touching it -- a reparse point
+    # planted during the wait must never be recursed into or moved through.
+    $full = [IO.Path]::GetFullPath($path)
+    if (Test-Path -LiteralPath $full) {{
+        $item = Get-Item -LiteralPath $full -Force
+        if (($item.Attributes -band [IO.FileAttributes]::ReparsePoint) -ne 0) {{
+            throw "Refusing to modify a reparse point: $full"
+        }}
+    }}
+}}
+
 function Assert-SafeUpdatePaths {{
     $installFull = [IO.Path]::GetFullPath($install)
     $installParent = [IO.Path]::GetDirectoryName($installFull)
@@ -831,7 +845,10 @@ function Assert-SafeUpdatePaths {{
 function Complete-PreSwapFailure([string]$message) {{
     if ($pathsValidated) {{
         try {{
-            if (Test-Path -LiteralPath $workspace) {{ Remove-Item -LiteralPath $workspace -Recurse -Force -ErrorAction Stop }}
+            if (Test-Path -LiteralPath $workspace) {{
+                Assert-NotReparsePoint $workspace
+                Remove-Item -LiteralPath $workspace -Recurse -Force -ErrorAction Stop
+            }}
             Write-UpdateStatus 'failed' $message
             return
         }} catch {{
@@ -864,6 +881,7 @@ if (Get-Process -Id {int(current_pid)} -ErrorAction SilentlyContinue) {{
 $oldMoved = $false
 $newProcess = $null
 try {{
+    Assert-NotReparsePoint $install
     Move-Item -LiteralPath $install -Destination $rollback
     $oldMoved = $true
     Move-Item -LiteralPath $staged -Destination $install
@@ -875,8 +893,8 @@ try {{
             $currentStatus = Get-Content -LiteralPath $status -Raw | ConvertFrom-Json
             if (($currentStatus.state -eq 'installed') -or ($currentStatus.state -eq 'reported')) {{
                 $cleanupErrors = @()
-                try {{ Remove-Item -LiteralPath $rollback -Recurse -Force -ErrorAction Stop }} catch {{ $cleanupErrors += $_.Exception.Message }}
-                try {{ Remove-Item -LiteralPath $workspace -Recurse -Force -ErrorAction Stop }} catch {{ $cleanupErrors += $_.Exception.Message }}
+                try {{ Assert-NotReparsePoint $rollback; Remove-Item -LiteralPath $rollback -Recurse -Force -ErrorAction Stop }} catch {{ $cleanupErrors += $_.Exception.Message }}
+                try {{ Assert-NotReparsePoint $workspace; Remove-Item -LiteralPath $workspace -Recurse -Force -ErrorAction Stop }} catch {{ $cleanupErrors += $_.Exception.Message }}
                 if ($cleanupErrors.Count -gt 0) {{
                     Write-UpdateStatus 'cleanup_pending' "The update succeeded, but old update files still need cleanup: $($cleanupErrors -join '; ')"
                 }}
@@ -901,11 +919,18 @@ try {{
                     Start-Sleep -Milliseconds 100
                 }}
             }}
-            if (Test-Path -LiteralPath $install) {{ Remove-Item -LiteralPath $install -Recurse -Force }}
+            if (Test-Path -LiteralPath $install) {{
+                Assert-NotReparsePoint $install
+                Remove-Item -LiteralPath $install -Recurse -Force
+            }}
+            Assert-NotReparsePoint $rollback
             Move-Item -LiteralPath $rollback -Destination $install
             Start-Process -FilePath (Join-Path $install $executable) -WorkingDirectory $install
             try {{
-                if (Test-Path -LiteralPath $workspace) {{ Remove-Item -LiteralPath $workspace -Recurse -Force -ErrorAction Stop }}
+                if (Test-Path -LiteralPath $workspace) {{
+                    Assert-NotReparsePoint $workspace
+                    Remove-Item -LiteralPath $workspace -Recurse -Force -ErrorAction Stop
+                }}
                 Write-UpdateStatus 'rolled_back' "The update failed and the previous version was restored: $problem"
             }} catch {{
                 Write-UpdateStatus 'cleanup_pending' "The update failed and the previous version was restored. Leftover update files still need cleanup: $($_.Exception.Message)"
@@ -934,6 +959,7 @@ def _write_status(
     message: str,
     tag: str,
     prepared: PreparedUpdate | None = None,
+    extra_fields: dict[str, str] | None = None,
 ) -> None:
     path.parent.mkdir(parents=True, exist_ok=True)
     temporary = path.with_suffix(path.suffix + ".tmp")
@@ -953,6 +979,8 @@ def _write_status(
                 "helper_path": str(prepared.helper_path),
             }
         )
+    if extra_fields is not None:
+        payload.update(extra_fields)
     temporary.write_text(json.dumps(payload, sort_keys=True), encoding="utf-8")
     os.replace(temporary, path)
 
@@ -1030,6 +1058,32 @@ def _validated_recorded_path(
     if candidate.parent != parent or not candidate.name.startswith(required_prefix):
         raise UpdateError("The previous update status contains an unsafe cleanup path.")
     return candidate
+
+
+def _leftover_update_dirs(payload: dict) -> tuple[Path, Path, Path] | None:
+    """Best-effort, non-raising extraction of a validated (workspace,
+    rollback, install) triple from a status payload.
+
+    Returns ``None`` when the payload predates path persistence or the paths
+    fail validation -- callers must treat that as "nothing to check", not as
+    an error.
+    """
+    try:
+        install = _frozen_install_dir()
+        recorded_install = Path(str(payload.get("install_dir", ""))).resolve()
+        if recorded_install != install:
+            return None
+        workspace = _validated_recorded_path(
+            payload.get("workspace_dir"), install.parent, f".{install.name}-update-"
+        )
+        rollback = _validated_recorded_path(
+            payload.get("rollback_dir"), install.parent, f".{install.name}-rollback-"
+        )
+        if workspace.is_symlink() or rollback.is_symlink():
+            return None
+        return workspace, rollback, install
+    except Exception:
+        return None
 
 
 def _quarantine_status(path: Path, reason: str) -> UpdateStatus:
@@ -1261,6 +1315,38 @@ def reconcile_update_on_startup(
             )
         return status
     if state == "installed":
+        # The status string alone cannot tell "the detached helper already
+        # cleaned up" apart from "the helper died before it got the chance"
+        # -- both leave state == "installed" forever, since the helper only
+        # writes a further status on cleanup *failure*. Check the recorded
+        # directories' actual existence (cheap stat calls; never a
+        # synchronous multi-gigabyte delete on this Qt-thread call) before
+        # trusting that nothing was orphaned.
+        leftover = _leftover_update_dirs(payload)
+        if leftover is not None:
+            workspace, rollback, install = leftover
+            if workspace.exists() or rollback.exists():
+                pending_message = (
+                    f"{message} Leftover update files from a previous "
+                    "session still need cleanup."
+                )
+                extra = {
+                    "install_dir": str(install),
+                    "rollback_dir": str(rollback),
+                    "workspace_dir": str(workspace),
+                }
+                try:
+                    _launch_cleanup_retry(
+                        workspace, rollback, install, status_path, tag,
+                        process_runner=process_runner,
+                    )
+                except Exception as exc:
+                    pending_message = f"Leftover update cleanup is still pending: {exc}"
+                _write_status(
+                    status_path, "cleanup_pending", pending_message, tag,
+                    extra_fields=extra,
+                )
+                return UpdateStatus("cleanup_pending", pending_message, tag)
         _write_status(status_path, "reported", message, tag)
         return None
     if state in {"failed", "rolled_back"}:
@@ -1286,8 +1372,18 @@ def reconcile_update_on_startup(
         # This is the health handshake consumed by the waiting helper. Never
         # remove the potentially multi-gigabyte rollback on the Qt startup
         # thread; the detached helper performs that cleanup after observing
-        # this atomic status transition.
-        _write_status(status_path, installed.state, installed.message, installed.tag)
+        # this atomic status transition. The path fields are carried forward
+        # (not dropped) so that if the helper dies before finishing that
+        # cleanup, a later reconcile call (see the "installed" branch above)
+        # can still find and retry it instead of leaking the directories.
+        _write_status(
+            status_path, installed.state, installed.message, installed.tag,
+            extra_fields={
+                "install_dir": str(install),
+                "rollback_dir": str(rollback),
+                "workspace_dir": str(workspace),
+            },
+        )
         return installed
     except Exception as exc:
         return _quarantine_status(
