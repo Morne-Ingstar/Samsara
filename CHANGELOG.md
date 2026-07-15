@@ -4,6 +4,25 @@ All notable changes to Samsara are documented here.
 
 ## [Unreleased]
 
+### Added
+
+- **Privacy-explicit one-click updates for packaged Windows builds** — users
+  can check GitHub Releases manually or explicitly enable a once-daily check;
+  automatic checks are off by default and source launches never check. The
+  request goes directly to GitHub and contains no audio, dictation, history,
+  configuration, keys, or device names, although GitHub receives ordinary
+  connection metadata such as the IP address, time, and user agent.
+- **Verified portable update swap** — Samsara verifies the release ZIP against
+  its published SHA-256 before replacing application files. Profile data and
+  configuration remain outside the application folder, and the ten allowlisted
+  CUDA runtime DLLs are carried into the new CPU build. Custom commands and
+  drop-in command plugins are backed up and migrated. This is an integrity
+  check, not a claim that the application is code-signed.
+
+v0.22.1 is the first build containing the updater, so users on v0.22.0 must
+download and extract v0.22.1 manually. Subsequent compatible releases can be
+installed from inside the packaged app.
+
 ## [0.22.0] - 2026-07-15
 
 The hands-free release. Toggle voice control is now one persistent lane where

@@ -15,9 +15,9 @@ Pushing a version tag (`v*`) triggers `.github/workflows/release.yml` on a
 4. `dist\Samsara\*` is zipped as `Samsara-Windows-<version>.zip` (same
    naming convention v0.20.0 shipped:
    `release\release_staging\Samsara-Windows-v0.20.0.zip`).
-5. The zip is uploaded as a workflow artifact (every run, including manual
-   `workflow_dispatch` runs) and, on a tag push, attached to a GitHub
-   Release for that tag via `softprops/action-gh-release`.
+5. A matching `Samsara-Windows-<version>.zip.sha256` sidecar is generated from
+   the final archive. The ZIP and sidecar are uploaded as workflow artifacts
+   and, on a tag push, attached to the GitHub Release.
 
 This is the CI-traceability piece SignPath Foundation's code-signing program
 asks for: a build a third party can point at and confirm came from this
@@ -36,12 +36,43 @@ the artifact but does not create a GitHub Release.
 
 ### Where artifacts land
 
-- Every run: a `Samsara-Windows-<version>.zip` workflow artifact (Actions
-  run page -> Artifacts), retained 30 days.
+- Every run: a `Samsara-Windows-<version>.zip` workflow artifact and matching
+  `.zip.sha256` sidecar (Actions run page -> Artifacts), retained 30 days.
 - Every run: a `ci-smoke-log-<version>` artifact with the smoke check's
   `samsara.log`, retained 14 days — read this first if a run looks off.
-- Tag pushes only: the zip is also attached to the GitHub Release for that
-  tag.
+- Tag pushes only: the ZIP and mandatory SHA-256 sidecar are also attached to
+  the GitHub Release for that tag.
+
+## Updater release gate
+
+v0.22.1 is the updater bootstrap release. Because v0.22.0 has no updater,
+v0.22.1 remains a manual download and extraction. Packaged Windows builds from
+v0.22.1 onward may install a later release in-app; source launches and explicit
+`SAMSARA_HOME_DIR` isolation profiles do not update the application.
+
+Before publishing every updater-compatible release:
+
+1. Produce the exact `Samsara-Windows-<tag>.zip` name and its mandatory
+   `.zip.sha256` sidecar from the final CI archive. Verify a fresh download
+   against that sidecar before publishing.
+2. Prove the release is **in-place compatible** with the current portable-folder
+   updater. The exact ZIP plus sidecar names are the updater's compatibility
+   signal. If a release requires a clean install, change the update protocol
+   and asset naming before publishing it; never expose an incompatible archive
+   under the names the existing updater accepts.
+3. Exercise the update from the oldest supported updater build, including
+   clean shutdown, replacement at the same installation path, relaunch, and
+   rollback after a forced startup failure.
+4. Confirm the per-user profile/configuration is unchanged, custom commands and
+   drop-in command plugins were backed up/migrated, and only the ten allowlisted
+   CUDA DLLs were preserved from the old runtime tree.
+5. Confirm an opted-out packaged app and every source launch make no update
+   request. When enabled, checks go directly to GitHub Releases and disclose
+   only ordinary request metadata; no Samsara profile content is uploaded.
+
+The SHA-256 sidecar detects a damaged or mismatched archive. It is not code
+signing and does not protect against compromise of the release-publishing
+account. Do not describe it as providing either guarantee.
 
 ## CUDA add-on
 

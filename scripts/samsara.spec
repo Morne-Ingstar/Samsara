@@ -315,6 +315,11 @@ hiddenimports = [
     # Samsara CUDA detection
     'samsara.cuda_detect',
 
+    # Privacy-explicit, verified frozen-build updater. The Settings/tray UI
+    # reaches this module lazily, so keep it explicit in packaged builds.
+    'samsara.updater',
+    'samsara.update_customizations',
+
     # Samsara OWW pre-filter
     'samsara.wake_detector',
 ]

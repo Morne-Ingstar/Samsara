@@ -944,6 +944,12 @@ class _SettingsWindow(QMainWindow):
             return
         status_label.setText("Safe diagnostic summary copied — no logs or secrets included.")
 
+    def _open_update_dialog(self) -> None:
+        """Open the packaged-app updater after an explicit user action."""
+        from samsara.ui.update_qt import show_update_dialog
+
+        show_update_dialog(self.app, check_immediately=True)
+
     def _build_placeholder(self):
         w = QWidget()
         layout = QVBoxLayout(w)
@@ -1128,6 +1134,46 @@ class _SettingsWindow(QMainWindow):
             lambda: getattr(self.app, 'open_voice_training', lambda: None)()
         )
         layout.addWidget(vt_btn)
+        layout.addSpacing(20)
+
+        # Section: Updates
+        layout.addWidget(self._section_title("Updates"))
+        update_explainer = QLabel(
+            "Samsara has no update server or push channel. It downloads packaged "
+            "releases directly from GitHub. Manual checks only connect when you "
+            "press the button below."
+        )
+        update_explainer.setWordWrap(True)
+        update_explainer.setStyleSheet("color: #AEB4C0; font-size: 13px;")
+        layout.addWidget(update_explainer)
+
+        check_updates_btn = QPushButton("Check for Updates…")
+        check_updates_btn.setObjectName("checkForUpdatesButton")
+        check_updates_btn.setAccessibleName("Check for Samsara Updates")
+        check_updates_btn.setToolTip(
+            "Contact GitHub Releases now and check for a newer packaged version"
+        )
+        check_updates_btn.setMinimumHeight(44)
+        check_updates_btn.clicked.connect(self._open_update_dialog)
+        layout.addWidget(check_updates_btn)
+
+        automatic_updates = QCheckBox()
+        automatic_updates.setObjectName("automaticUpdateChecksCheckbox")
+        current_update_settings = self.app.config.get("updates", {})
+        if not isinstance(current_update_settings, dict):
+            current_update_settings = {}
+        automatic_updates.setChecked(bool(
+            current_update_settings.get("automatic_checks", False)
+        ))
+        self._widgets["automatic_update_checks"] = automatic_updates
+        layout.addLayout(self._setting_row(
+            "Automatically check GitHub once a day",
+            "Off by default. When enabled, Samsara contacts GitHub Releases no "
+            "more than once every 24 hours. Samsara sends no audio, dictated text, "
+            "settings, logs, or device identifier; GitHub still receives the IP "
+            "address and request headers required for a web connection.",
+            automatic_updates,
+        ))
         layout.addSpacing(20)
 
         # Section: Help & Feedback
@@ -1395,6 +1441,9 @@ class _SettingsWindow(QMainWindow):
         layout.addLayout(backup_buttons)
 
         def _save(_acc):
+            stored_updates = self.app.config.get('updates', {})
+            if not isinstance(stored_updates, dict):
+                stored_updates = {}
             updates = {
                 'ui_scale':          UI_SCALE_OPTIONS[self._widgets['ui_scale_combo'].currentText()],
                 'auto_paste':         self._widgets['auto_paste'].isChecked(),
@@ -1408,6 +1457,12 @@ class _SettingsWindow(QMainWindow):
                 'language':           self._widgets['lang_name_to_code'].get(
                                           self._widgets['lang_combo'].currentText(), 'en'),
                 'hints_enabled':      self._widgets['hints_enabled'].isChecked(),
+                'updates': {
+                    **stored_updates,
+                    'automatic_checks': self._widgets[
+                        'automatic_update_checks'
+                    ].isChecked(),
+                },
             }
             # Sync hints enabled/disabled state on the live HintManager.
             # hints_enabled is already persisted to config above (this call

@@ -10,7 +10,7 @@ Must be created on the Qt thread (via QTimer.singleShot or similar).
 All Signal-based methods are safe to call from any thread.
 """
 
-from PySide6.QtCore import Qt, QObject, Signal
+from PySide6.QtCore import Qt, QObject, QTimer, Signal
 from PySide6.QtGui import QAction, QActionGroup, QIcon, QImage, QPixmap
 from PySide6.QtWidgets import QMenu, QSystemTrayIcon
 
@@ -30,11 +30,13 @@ class SamsaraTrayQt(QObject):
     def __init__(self, app):
         super().__init__()
         self._app  = app
+        self._available_update = None
         self._tray = QSystemTrayIcon()
         self._menu = QMenu()
         self._menu.aboutToShow.connect(self._rebuild_menu)
         self._tray.setContextMenu(self._menu)
         self._tray.activated.connect(self._on_activated)
+        self._tray.messageClicked.connect(self._on_message_clicked)
 
         # Wire thread-safe signals
         self._icon_sig.connect(self._apply_icon)
@@ -48,6 +50,16 @@ class SamsaraTrayQt(QObject):
             logger.debug(f"__init__: {e}")
         self._tray.setToolTip("Samsara")
         self._tray.show()
+
+        # A visible tray is not proof that startup succeeded: Whisper, CUDA,
+        # VAD, and the listening services are still loading at this point.
+        # Confirm an update only after DictationApp publishes 100% startup.
+        # Until then the detached updater retains the rollback installation.
+        self._startup_health_done = False
+        self._startup_health_timer = QTimer(self)
+        self._startup_health_timer.setInterval(250)
+        self._startup_health_timer.timeout.connect(self._poll_startup_health)
+        self._startup_health_timer.start()
 
     # ------------------------------------------------------------------
     # pystray-compatible property interface (all thread-safe)
@@ -70,11 +82,65 @@ class SamsaraTrayQt(QObject):
         self._tooltip_sig.emit(str(text))
 
     def stop(self):
+        try:
+            self._startup_health_timer.stop()
+        except Exception:
+            pass
         self._hide_sig.emit()
 
     # ------------------------------------------------------------------
     # Qt thread methods
     # ------------------------------------------------------------------
+
+    def _poll_startup_health(self):
+        """Confirm a replacement only after the whole app is operational."""
+        if self._startup_health_done:
+            return
+        if bool(vars(self._app).get("_startup_failed", False)):
+            # Do not acknowledge the new build. The detached helper observes
+            # the missing health handshake and restores the previous version.
+            self._startup_health_timer.stop()
+            return
+
+        progress = vars(self._app).get("_splash_progress", 0)
+        if not isinstance(progress, (int, float)) or progress < 100:
+            return
+
+        self._startup_health_done = True
+        self._startup_health_timer.stop()
+        try:
+            from samsara.updater import reconcile_update_on_startup
+
+            update_status = reconcile_update_on_startup()
+            if update_status is not None:
+                if update_status.state == "installed":
+                    self._tray.showMessage(
+                        "Samsara updated",
+                        update_status.message,
+                        QSystemTrayIcon.MessageIcon.Information,
+                        8000,
+                    )
+                elif update_status.state in {"failed", "rolled_back"}:
+                    self._tray.showMessage(
+                        "Samsara update problem",
+                        update_status.message,
+                        QSystemTrayIcon.MessageIcon.Warning,
+                        12000,
+                    )
+        except Exception as exc:
+            logger.warning("[UPDATE] Could not reconcile previous update: %s", exc)
+
+        # The coordinator is a no-op unless the user explicitly enabled
+        # once-daily GitHub checks. Waiting for healthy startup means a broken
+        # build neither confirms itself nor makes an update-network request.
+        try:
+            from samsara.ui.update_qt import maybe_start_automatic_update_check
+
+            maybe_start_automatic_update_check(
+                self._app, self._show_update_available,
+            )
+        except Exception as exc:
+            logger.warning("[UPDATE] Could not schedule automatic check: %s", exc)
 
     def _apply_icon(self, pil_image):
         try:
@@ -95,6 +161,30 @@ class SamsaraTrayQt(QObject):
                 self._app.show_main_window()
             except Exception as e:
                 logger.debug(f"_on_activated: {e}")
+
+    def _open_update_dialog(self):
+        from samsara.ui.update_qt import show_update_dialog
+
+        show_update_dialog(
+            self._app,
+            check_immediately=self._available_update is None,
+            initial_release=self._available_update,
+        )
+
+    def _show_update_available(self, release):
+        """Runs on the Qt thread after an opted-in background check."""
+        self._available_update = release
+        self._tray.showMessage(
+            "Samsara update available",
+            f"Version {release.version} is ready. Click this notification or "
+            "open the tray menu to install it.",
+            QSystemTrayIcon.MessageIcon.Information,
+            12000,
+        )
+
+    def _on_message_clicked(self):
+        if self._available_update is not None:
+            self._open_update_dialog()
 
     def _rebuild_menu(self):
         """Rebuild the full context menu from live app state.
@@ -206,6 +296,12 @@ class SamsaraTrayQt(QObject):
         # Tools / Developer submenus further down -- see there for the
         # full placement rationale.
         menu.addAction("Settings").triggered.connect(lambda: app.open_settings())
+        update_label = (
+            f"Install Samsara v{self._available_update.version}…"
+            if self._available_update is not None else
+            "Check for Updates…"
+        )
+        menu.addAction(update_label).triggered.connect(self._open_update_dialog)
         menu.addAction("History").triggered.connect(lambda: app.open_history())
         menu.addAction("Quick Reference").triggered.connect(
             lambda: app.open_quick_reference())

@@ -154,22 +154,31 @@ jobs:
           # Matches the naming convention used for the v0.20.0 release
           # (release\release_staging\Samsara-Windows-v0.20.0.zip).
           Compress-Archive -Path "dist\Samsara\*" -DestinationPath $zipName -CompressionLevel Optimal
+          $checksumName = "$zipName.sha256"
+          $checksum = (Get-FileHash -LiteralPath $zipName -Algorithm SHA256).Hash.ToLowerInvariant()
+          Set-Content -LiteralPath $checksumName -Value "$checksum  $zipName" -Encoding ascii
           $sizeMB = [math]::Round((Get-Item $zipName).Length / 1MB, 1)
           Write-Host "Packaged $zipName ($sizeMB MB)"
+          Write-Host "SHA-256: $checksum"
           echo "zip_name=$zipName" >> $env:GITHUB_OUTPUT
+          echo "checksum_name=$checksumName" >> $env:GITHUB_OUTPUT
 
       - name: Upload build artifact
         uses: actions/upload-artifact@v6
         with:
           name: ${{ steps.package.outputs.zip_name }}
-          path: ${{ steps.package.outputs.zip_name }}
+          path: |
+            ${{ steps.package.outputs.zip_name }}
+            ${{ steps.package.outputs.checksum_name }}
           retention-days: 30
 
       - name: Attach to GitHub Release
         if: github.ref_type == 'tag'
         uses: softprops/action-gh-release@v2
         with:
-          files: ${{ steps.package.outputs.zip_name }}
+          files: |
+            ${{ steps.package.outputs.zip_name }}
+            ${{ steps.package.outputs.checksum_name }}
           generate_release_notes: true
 
       # ----------------------------------------------------------------------
