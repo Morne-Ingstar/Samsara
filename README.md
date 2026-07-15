@@ -52,7 +52,7 @@ See [CHANGELOG.md](CHANGELOG.md) for the complete v0.22.0 notes and history.
 
 ## What Can It Do?
 
-Samsara is a **local-by-default** voice control system powered by Whisper — transcription, commands, and wake-word detection run on your machine unless you explicitly opt into a network-backed feature: Ava's bring-your-own-key cloud mode, Smart Corrections' optional cloud fallback, or Edge TTS's Azure Neural voices. Cloud LLM features require your own API key; Edge TTS requires internet but no API key. Samsara runs as a Windows app with a main hub window, system tray integration, and hands-free control over your entire computer.
+Samsara is a **local-by-default** voice control system powered by Whisper — transcription, commands, and wake-word detection run on your machine unless you explicitly opt into a network-backed feature: Ava's bring-your-own-key cloud mode, Smart Corrections' optional cloud fallback, Edge TTS's Azure Neural voices, or the packaged app's GitHub update checks. Cloud LLM features require your own API key; Edge TTS and update checks require internet but no API key. Samsara runs as a Windows app with a main hub window, system tray integration, and hands-free control over your entire computer.
 
 ### Hands-Free Wake (flagship)
 
@@ -177,6 +177,28 @@ Ships with 31 plugins including health tracking, voice reminders, alarm manageme
 The official v0.22 application archive is the verified CPU build. It works
 without an NVIDIA GPU. Packaged users with a compatible NVIDIA GPU can add the
 [hash-verified CUDA runtime pack](Docs/CUDA.md) for faster transcription.
+
+### Updates
+
+Automatic update checks are **off by default**. In the packaged Windows app,
+you can press **Check for Updates**, say **"check for updates"**, or explicitly
+enable one check per day. This is an
+outbound request directly to GitHub Releases, not a push from a Samsara server.
+Samsara has no always-connected update service or update push channel.
+Samsara sends no audio, dictation, history, configuration, keys, or device
+names; GitHub still receives ordinary connection metadata such as your IP
+address, request time, and user agent. Source launches never check for or
+install updates.
+
+One-click installation verifies the downloaded release ZIP against its
+published SHA-256, closes Samsara, and swaps the portable application files.
+Your profile and configuration remain outside the application folder, and the
+ten allowlisted optional CUDA DLLs are preserved. Installation-local custom
+commands and drop-in command plugins are backed up and migrated into the new
+build. SHA-256 verifies download integrity; it is not code signing.
+
+v0.22.1 is the first release with the updater, so v0.22.0 users must download
+and extract v0.22.1 manually. Later compatible releases can update in-app.
 
 ### Run from Source
 

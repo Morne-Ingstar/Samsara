@@ -96,6 +96,23 @@ def restart_app(app, remainder="", **kwargs):
 
 
 @command(
+    "check for updates",
+    aliases=["check for update", "update samsara"],
+    pack="core",
+    ai_visible=False,
+)
+def check_for_updates(app, remainder="", **kwargs):
+    """Open the explicit, privacy-labeled GitHub update check."""
+    from samsara.ui import qt_runtime
+    from samsara.ui.update_qt import show_update_dialog
+
+    qt_runtime.post(
+        lambda: show_update_dialog(app, check_immediately=True)
+    )
+    return True
+
+
+@command(
     "reload config",
     aliases=["refresh config", "reread config", "reload configuration"],
     pack="core",
