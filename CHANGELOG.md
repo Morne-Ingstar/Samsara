@@ -65,6 +65,9 @@ browser DOM path alongside its Windows UI Automation fallback.
 - **Cloud configuration imports cannot redirect built-in providers** through
   hidden endpoint overrides or silently carry an existing API key to a newly
   selected provider.
+- **Incomplete local CUDA packs fail safely** — Samsara now verifies all ten
+  required runtime DLLs before selecting GPU inference, reports the precise
+  missing files, and falls back to CPU instead of crashing during model load.
 
 ### Changed
 
