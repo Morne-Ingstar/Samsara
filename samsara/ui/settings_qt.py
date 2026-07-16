@@ -38,8 +38,10 @@ from samsara.runtime import thread_registry
 from samsara.audio_devices import pick_index_by_name
 from samsara import smart_corrections
 from samsara.support_feedback import (
-    BETA_FEEDBACK_URL,
+    BETA_SUPPORT_EMAIL,
+    BETA_SUPPORT_MAILTO,
     BUG_REPORT_URL,
+    DOCUMENTATION_URL,
     build_safe_diagnostic_summary,
 )
 
@@ -558,6 +560,19 @@ QDialog {
 }
 """
 
+# _SettingsWindow applies its own stylesheet, which overrides the shared
+# theme's QComboBox subcontrols.  Keep the real, high-contrast chevron here
+# as well: reserving a drop-down area without an arrow made every selector
+# look like a read-only text field.
+STYLESHEET += f"""
+QComboBox::down-arrow {{
+    image: url({theme.ARROW_PATH});
+    width: 10px;
+    height: 6px;
+    margin-right: 10px;
+}}
+"""
+
 _TAB_NAMES = [
     "General",
     "Modes",
@@ -568,6 +583,7 @@ _TAB_NAMES = [
     "Alarms",
     "Health",
     "Advanced",
+    "Help & Support",
 ]  # order matches self._stack.addWidget(...) calls in __init__ -- tab
    # INDICES must not change; _SIDEBAR_GROUPS below only changes their
    # VISUAL order/grouping in the sidebar.
@@ -578,6 +594,7 @@ _TAB_NAMES = [
 _SIDEBAR_GROUPS = [
     ("Settings", ["General", "Modes", "Sounds", "TTS", "Ava / Cloud", "Advanced"]),
     ("Tools",    ["Commands", "Alarms", "Health"]),
+    ("Support", ["Help & Support"]),
 ]
 
 
@@ -719,6 +736,7 @@ class _SettingsWindow(QMainWindow):
         self._stack.addWidget(self._build_alarms_tab())     # 6  Alarms
         self._stack.addWidget(self._build_health_tab())     # 7  Health
         self._stack.addWidget(self._build_advanced_tab())      # 8  Advanced
+        self._stack.addWidget(self._build_support_tab())       # 9  Help & Support
 
         self._build_search_registry()
 
@@ -812,7 +830,7 @@ class _SettingsWindow(QMainWindow):
         Every _setting_row(...) call produces a distinctive shape: a
         QHBoxLayout whose first item is a QVBoxLayout starting with a
         QLabel (the row label, optionally followed by a description
-        QLabel) and whose second item is the control widget. That shape is
+        QLabel) and whose remaining items include the control widget. That shape is
         unique in this file (the only bare QVBoxLayout() with no parent
         widget anywhere in settings_qt.py is the one inside _setting_row),
         so walking for it can't pick up an unrelated QHBoxLayout (button
@@ -845,8 +863,18 @@ class _SettingsWindow(QMainWindow):
                 desc_widget = desc_item.widget() if desc_item is not None else None
                 if not isinstance(desc_widget, QLabel):
                     desc_widget = None
-                control_item = row.itemAt(1)
-                control_widget = control_item.widget() if control_item is not None else None
+                # Responsive rows may place a stretch between the descriptive
+                # column and the control. Find the first actual widget instead
+                # of assuming the control is item 1.
+                control_widget = None
+                for item_index in range(1, row.count()):
+                    control_item = row.itemAt(item_index)
+                    candidate = (
+                        control_item.widget() if control_item is not None else None
+                    )
+                    if candidate is not None:
+                        control_widget = candidate
+                        break
                 if control_widget is None:
                     continue
                 self._search_rows.append((
@@ -908,8 +936,8 @@ class _SettingsWindow(QMainWindow):
     # Tab builders
     # ------------------------------------------------------------------
 
-    def _open_feedback_url(self, url: str, status_label: QLabel) -> None:
-        """Open a support destination and keep failure visible in Settings."""
+    def _open_support_url(self, url: str, status_label: QLabel) -> None:
+        """Open a user-requested support destination and show any failure."""
         try:
             opened = bool(QDesktopServices.openUrl(QUrl(url)))
         except Exception as exc:
@@ -918,7 +946,7 @@ class _SettingsWindow(QMainWindow):
         status_label.setText(
             "Opened in your browser."
             if opened else
-            "Could not open the browser. Visit morneis.com/samsara/support."
+            "Could not open the link. Visit morneis.com/samsara/support."
         )
 
     def _open_live_log_for_support(self, status_label: QLabel) -> None:
@@ -964,15 +992,32 @@ class _SettingsWindow(QMainWindow):
         scroll = QScrollArea()
         scroll.setWidgetResizable(True)
         scroll.setHorizontalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAlwaysOff)
+        scroll.setAlignment(
+            Qt.AlignmentFlag.AlignTop | Qt.AlignmentFlag.AlignHCenter
+        )
 
         container = QWidget()
+        container.setMaximumWidth(1120)
         layout = QVBoxLayout(container)
         layout.setContentsMargins(28, 24, 28, 24)
-        layout.setSpacing(8)
+        layout.setSpacing(16)
 
-        # ---- Section: Accessibility ----------------------------------------
-        layout.addWidget(self._section_title("Accessibility"))
-        layout.addSpacing(4)
+        def _add_row(card_layout, label, description, widget, width=320):
+            card_layout.addLayout(
+                self._setting_row(
+                    label,
+                    description,
+                    widget,
+                    control_width=width,
+                )
+            )
+
+        # ---- Card: Accessibility ------------------------------------------
+        accessibility_card, accessibility_layout = self._section_card(
+            "Accessibility",
+            "Sizing and readability options for easier interaction.",
+        )
+        layout.addWidget(accessibility_card)
 
         ui_scale_combo = QComboBox()
         ui_scale_combo.addItems(list(UI_SCALE_OPTIONS))
@@ -980,21 +1025,25 @@ class _SettingsWindow(QMainWindow):
             self.app.config.get('ui_scale', 1.0)
         ))
         self._widgets['ui_scale_combo'] = ui_scale_combo
-        layout.addLayout(self._setting_row(
+        _add_row(
+            accessibility_layout,
             "Interface size",
             "Scales text, menus, and controls throughout Samsara after restart",
             ui_scale_combo,
-        ))
+            width=260,
+        )
 
         restart_hint = QLabel("Interface-size changes take effect after restarting Samsara.")
         restart_hint.setObjectName("uiScaleRestartHint")
         restart_hint.setStyleSheet("color: #AEB4C0; font-size: 13px;")
-        layout.addWidget(restart_hint)
-        layout.addSpacing(20)
+        accessibility_layout.addWidget(restart_hint)
 
-        # Section: Microphone
-        layout.addWidget(self._section_title("Microphone"))
-        layout.addSpacing(4)
+        # ---- Card: Audio -------------------------------------------------
+        audio_card, audio_layout = self._section_card(
+            "Audio",
+            "Select input/output devices and quick setup actions.",
+        )
+        layout.addWidget(audio_card)
 
         mics = list(getattr(self.app, 'available_mics', None) or [])
         mic_names = [m['name'] for m in mics]
@@ -1023,16 +1072,9 @@ class _SettingsWindow(QMainWindow):
         mic_refresh_btn.setMinimumWidth(104)  # Includes inherited 24px side padding.
         mic_row_layout.addWidget(mic_refresh_btn)
 
-        layout.addLayout(self._setting_row(
-            "Microphone",
-            "Audio input device used for speech recognition",
-            mic_row_widget,
-        ))
-
         mic_refresh_hint = QLabel("Stop dictation to refresh devices.")
         mic_refresh_hint.setStyleSheet("color: #E0A030; font-size: 12px;")
         mic_refresh_hint.setVisible(False)
-        layout.addWidget(mic_refresh_hint)
 
         def _on_refresh_mics():
             if self.app._is_audio_capture_active():
@@ -1059,10 +1101,16 @@ class _SettingsWindow(QMainWindow):
             mic_combo.blockSignals(False)
 
         mic_refresh_btn.clicked.connect(_on_refresh_mics)
-        layout.addSpacing(8)
+        _add_row(
+            audio_layout,
+            "Microphone",
+            "Audio input device used for speech recognition",
+            mic_row_widget,
+            width=420,
+        )
+        audio_layout.addWidget(mic_refresh_hint)
 
         # Samsara-only output routing. This never changes the Windows default.
-        layout.addWidget(self._section_title("Sound output"))
         outputs = list(getattr(self.app, 'available_outputs', None) or [])
         output_map = {"System default": (None, None)}
         for output in outputs:
@@ -1092,19 +1140,26 @@ class _SettingsWindow(QMainWindow):
         output_combo.setCurrentText(selected_label)
         self._widgets['output_combo'] = output_combo
         self._widgets['output_label_map'] = output_map
-        layout.addLayout(self._setting_row(
+        _add_row(
+            audio_layout,
             "Samsara sounds",
             "Speaker used for earcons, speech, and alarms; does not affect other apps",
             output_combo,
-        ))
+            width=420,
+        )
 
         setup_btn = QPushButton("Run Mic Setup Guide...")
         setup_btn.setFixedWidth(190)
         setup_btn.clicked.connect(
             lambda: getattr(self.app, 'open_mic_setup_guide', lambda: None)()
         )
-        layout.addWidget(setup_btn)
-        layout.addSpacing(8)
+        _add_row(
+            audio_layout,
+            "Microphone setup guide",
+            "Walk through microphone selection and basic voice quality checks.",
+            setup_btn,
+            width=210,
+        )
 
         tutorial_btn = QPushButton("Replay Tutorial")
         tutorial_btn.setFixedWidth(190)
@@ -1115,8 +1170,13 @@ class _SettingsWindow(QMainWindow):
         tutorial_btn.clicked.connect(
             lambda: getattr(self.app, 'show_tutorial', lambda: None)()
         )
-        layout.addWidget(tutorial_btn)
-        layout.addSpacing(8)
+        _add_row(
+            audio_layout,
+            "Interactive tutorial",
+            "Practice dictation, command mode, show-numbers, and Ava.",
+            tutorial_btn,
+            width=210,
+        )
 
         ava_guide_btn = QPushButton("Ava Setup Guide...")
         ava_guide_btn.setFixedWidth(190)
@@ -1124,8 +1184,13 @@ class _SettingsWindow(QMainWindow):
         ava_guide_btn.clicked.connect(
             lambda: getattr(self.app, 'open_ava_guide', lambda: None)()
         )
-        layout.addWidget(ava_guide_btn)
-        layout.addSpacing(8)
+        _add_row(
+            audio_layout,
+            "Ava setup guide",
+            "Install and configure Ollama or cloud assistant integrations.",
+            ava_guide_btn,
+            width=210,
+        )
 
         vt_btn = QPushButton("Voice Training...")
         vt_btn.setFixedWidth(190)
@@ -1133,117 +1198,20 @@ class _SettingsWindow(QMainWindow):
         vt_btn.clicked.connect(
             lambda: getattr(self.app, 'open_voice_training', lambda: None)()
         )
-        layout.addWidget(vt_btn)
-        layout.addSpacing(20)
-
-        # Section: Updates
-        layout.addWidget(self._section_title("Updates"))
-        update_explainer = QLabel(
-            "Samsara has no update server or push channel. It downloads packaged "
-            "releases directly from GitHub. Manual checks only connect when you "
-            "press the button below."
-        )
-        update_explainer.setWordWrap(True)
-        update_explainer.setStyleSheet("color: #AEB4C0; font-size: 13px;")
-        layout.addWidget(update_explainer)
-
-        check_updates_btn = QPushButton("Check for Updates…")
-        check_updates_btn.setObjectName("checkForUpdatesButton")
-        check_updates_btn.setAccessibleName("Check for Samsara Updates")
-        check_updates_btn.setToolTip(
-            "Contact GitHub Releases now and check for a newer packaged version"
-        )
-        check_updates_btn.setMinimumHeight(44)
-        check_updates_btn.clicked.connect(self._open_update_dialog)
-        layout.addWidget(check_updates_btn)
-
-        automatic_updates = QCheckBox()
-        automatic_updates.setObjectName("automaticUpdateChecksCheckbox")
-        current_update_settings = self.app.config.get("updates", {})
-        if not isinstance(current_update_settings, dict):
-            current_update_settings = {}
-        automatic_updates.setChecked(bool(
-            current_update_settings.get("automatic_checks", False)
-        ))
-        self._widgets["automatic_update_checks"] = automatic_updates
-        layout.addLayout(self._setting_row(
-            "Automatically check GitHub once a day",
-            "Off by default. When enabled, Samsara contacts GitHub Releases no "
-            "more than once every 24 hours. Samsara sends no audio, dictated text, "
-            "settings, logs, or device identifier; GitHub still receives the IP "
-            "address and request headers required for a web connection.",
-            automatic_updates,
-        ))
-        layout.addSpacing(20)
-
-        # Section: Help & Feedback
-        layout.addWidget(self._section_title("Help & Feedback"))
-        feedback_explainer = QLabel(
-            "Report a reproducible problem or tell us where Samsara still made "
-            "you reach for the keyboard or mouse. GitHub sign-in is required to "
-            "submit either form."
-        )
-        feedback_explainer.setWordWrap(True)
-        feedback_explainer.setStyleSheet("color: #AEB4C0; font-size: 13px;")
-        layout.addWidget(feedback_explainer)
-
-        feedback_status = QLabel("")
-        feedback_status.setObjectName("feedbackStatusLabel")
-        feedback_status.setWordWrap(True)
-        feedback_status.setStyleSheet("color: #AEB4C0; font-size: 12px;")
-
-        feedback_grid = QGridLayout()
-        feedback_grid.setContentsMargins(0, 4, 0, 0)
-        feedback_grid.setHorizontalSpacing(8)
-        feedback_grid.setVerticalSpacing(8)
-
-        report_btn = QPushButton("Report a Problem")
-        report_btn.setObjectName("reportBugButton")
-        report_btn.setAccessibleName("Report a Problem")
-        report_btn.setToolTip("Open the structured Samsara bug-report form")
-        report_btn.clicked.connect(
-            lambda: self._open_feedback_url(BUG_REPORT_URL, feedback_status)
+        _add_row(
+            audio_layout,
+            "Voice training",
+            "Improve recognition of custom names, places, and phrasing.",
+            vt_btn,
+            width=210,
         )
 
-        beta_btn = QPushButton("Send Beta Feedback")
-        beta_btn.setObjectName("betaFeedbackButton")
-        beta_btn.setAccessibleName("Send Beta Feedback")
-        beta_btn.setToolTip("Open the hands-free workflow feedback form")
-        beta_btn.clicked.connect(
-            lambda: self._open_feedback_url(BETA_FEEDBACK_URL, feedback_status)
+        # ---- Card: Speech model -------------------------------------------
+        model_card, model_layout = self._section_card(
+            "Speech model",
+            "Select recognition model size and language.",
         )
-
-        live_log_btn = QPushButton("Open Live Log")
-        live_log_btn.setObjectName("openLiveLogButton")
-        live_log_btn.setAccessibleName("Open Live Log")
-        live_log_btn.setToolTip("Open the current log; review and redact it before sharing")
-        live_log_btn.clicked.connect(
-            lambda: self._open_live_log_for_support(feedback_status)
-        )
-
-        diagnostics_btn = QPushButton("Copy Safe Diagnostic Summary")
-        diagnostics_btn.setObjectName("copyDiagnosticButton")
-        diagnostics_btn.setAccessibleName("Copy Safe Diagnostic Summary")
-        diagnostics_btn.setToolTip(
-            "Copy version and runtime facts without logs, paths, dictated text, or keys"
-        )
-        diagnostics_btn.clicked.connect(
-            lambda: self._copy_safe_diagnostics(feedback_status)
-        )
-
-        for button in (report_btn, beta_btn, live_log_btn, diagnostics_btn):
-            button.setMinimumHeight(44)
-        feedback_grid.addWidget(report_btn, 0, 0)
-        feedback_grid.addWidget(beta_btn, 0, 1)
-        feedback_grid.addWidget(live_log_btn, 1, 0)
-        feedback_grid.addWidget(diagnostics_btn, 1, 1)
-        layout.addLayout(feedback_grid)
-        layout.addWidget(feedback_status)
-        layout.addSpacing(20)
-
-        # Section: AI Model
-        layout.addWidget(self._section_title("AI Model"))
-        layout.addSpacing(4)
+        layout.addWidget(model_card)
 
         from samsara.languages import LANGUAGES, is_english_only_model
 
@@ -1265,19 +1233,19 @@ class _SettingsWindow(QMainWindow):
             model_combo.setCurrentText(current_model_label)
         self._widgets['model_combo'] = model_combo
         self._widgets['model_label_to_size'] = model_label_to_actual_size
-        layout.addLayout(self._setting_row(
+        _add_row(
+            model_layout,
             "Model Size",
             "Larger models are more accurate but slower. Restart required to apply.",
             model_combo,
-        ))
-        layout.addSpacing(4)
+            width=260,
+        )
 
         model_lang_hint = QLabel("")
         model_lang_hint.setWordWrap(True)
         model_lang_hint.setStyleSheet("color: #E0A030; font-size: 12px; margin-left: 4px;")
         model_lang_hint.setVisible(False)
-        layout.addWidget(model_lang_hint)
-        layout.addSpacing(8)
+        model_layout.addWidget(model_lang_hint)
 
         lang_name_to_code = {name: code for name, code in LANGUAGES}
         lang_code_to_name = {code: name for name, code in LANGUAGES}
@@ -1290,12 +1258,13 @@ class _SettingsWindow(QMainWindow):
             lang_combo.setCurrentText(current_lang_display)
         self._widgets['lang_combo'] = lang_combo
         self._widgets['lang_name_to_code'] = lang_name_to_code
-        layout.addLayout(self._setting_row(
+        _add_row(
+            model_layout,
             "Language",
             "Transcription language. Use multilingual models (no .en suffix) for non-English.",
             lang_combo,
-        ))
-        layout.addSpacing(16)
+            width=260,
+        )
 
         def _update_model_lang_hint(_=None):
             model_label = model_combo.currentText()
@@ -1313,104 +1282,124 @@ class _SettingsWindow(QMainWindow):
         lang_combo.currentTextChanged.connect(_update_model_lang_hint)
         _update_model_lang_hint()
 
-        # Section: Basic Options
-        layout.addWidget(self._section_title("Basic Options"))
-        layout.addSpacing(4)
+        # ---- Card: Text behavior -----------------------------------------
+        text_card, text_layout = self._section_card(
+            "Text behavior",
+            "Control how transcribed text and commands look after capture.",
+        )
+        layout.addWidget(text_card)
 
         auto_paste = QCheckBox()
         auto_paste.setChecked(bool(self.app.config.get('auto_paste', True)))
         self._widgets['auto_paste'] = auto_paste
-        layout.addLayout(self._setting_row(
+        _add_row(
+            text_layout,
             "Auto-paste",
             "Automatically paste transcribed text into the focused application",
             auto_paste,
-        ))
-        layout.addSpacing(8)
+        )
 
         trailing_space = QCheckBox()
         trailing_space.setChecked(bool(self.app.config.get('add_trailing_space', True)))
         self._widgets['trailing_space'] = trailing_space
-        layout.addLayout(self._setting_row(
+        _add_row(
+            text_layout,
             "Add trailing space",
             "Append a space after each transcription so the next word joins cleanly",
             trailing_space,
-        ))
-        layout.addSpacing(8)
+        )
 
         auto_capitalize = QCheckBox()
         auto_capitalize.setChecked(bool(self.app.config.get('auto_capitalize', True)))
         self._widgets['auto_capitalize'] = auto_capitalize
-        layout.addLayout(self._setting_row(
+        _add_row(
+            text_layout,
             "Auto-capitalize",
             "Capitalize the first letter of each transcription",
             auto_capitalize,
-        ))
-        layout.addSpacing(8)
+        )
 
         format_numbers = QCheckBox()
         format_numbers.setChecked(bool(self.app.config.get('format_numbers', True)))
         self._widgets['format_numbers'] = format_numbers
-        layout.addLayout(self._setting_row(
+        _add_row(
+            text_layout,
             "Format numbers",
             "Convert spoken numbers to digits (e.g. 'three' to '3')",
             format_numbers,
-        ))
-        layout.addSpacing(12)
+        )
 
         cleanup_combo = QComboBox()
         cleanup_combo.addItems(['clean', 'verbatim'])
         current_cleanup = self.app.config.get('cleanup_mode', 'clean')
         cleanup_combo.setCurrentText(current_cleanup)
         self._widgets['cleanup_mode'] = cleanup_combo
-        layout.addLayout(self._setting_row(
+        _add_row(
+            text_layout,
             "Cleanup mode",
             "clean: remove filler words and fix spacing.  verbatim: transcribe exactly as spoken.",
             cleanup_combo,
-        ))
+            width=240,
+        )
 
-        layout.addSpacing(16)
-
-        # ---- Section: Hints ------------------------------------------------
-        layout.addWidget(self._section_title("Hints"))
-        layout.addSpacing(4)
+        # ---- Card: Hints -------------------------------------------------
+        hint_card, hint_layout = self._section_card(
+            "Hints and reminders",
+            "How often Samsara shows non-intrusive guidance.",
+        )
+        layout.addWidget(hint_card)
 
         hints_enabled = QCheckBox()
         hints_enabled.setChecked(bool(self.app.config.get('hints_enabled', True)))
         self._widgets['hints_enabled'] = hints_enabled
-        layout.addLayout(self._setting_row(
+        _add_row(
+            hint_layout,
             "Show contextual hints",
             "One-time tips that appear after key actions (first dictation, wake word, etc.)",
             hints_enabled,
-        ))
-        layout.addSpacing(8)
+        )
 
         reset_hints_btn = QPushButton("Reset hints")
         reset_hints_btn.setFixedWidth(130)
         reset_hints_btn.clicked.connect(self._reset_hints)
-        layout.addWidget(reset_hints_btn)
-        layout.addSpacing(16)
+        _add_row(
+            hint_layout,
+            "Reset tip history",
+            "Clear already shown contextual hints so they can appear again.",
+            reset_hints_btn,
+            width=180,
+        )
 
-        # ---- Section: Profiles ---------------------------------------------
-        layout.addWidget(self._section_title("Profiles"))
-        layout.addSpacing(4)
+        # ---- Card: Profiles and backup -----------------------------------
+        profile_card, profile_layout = self._section_card(
+            "Profiles and backup",
+            "Import, export, and profile management settings.",
+        )
+        layout.addWidget(profile_card)
 
         prof_desc = QLabel(
             "Save and load vocabulary, correction, and command profiles."
         )
         prof_desc.setStyleSheet("color: #AEB4C0; font-size: 13px;")
-        layout.addWidget(prof_desc)
-        layout.addSpacing(6)
+        profile_layout.addWidget(prof_desc)
 
         manage_btn = QPushButton("Manage Profiles…")
         manage_btn.setFixedWidth(170)
         manage_btn.clicked.connect(self._open_profile_manager)
-        layout.addWidget(manage_btn)
+        _add_row(
+            profile_layout,
+            "Profiles",
+            "Open profile management for vocabulary and corrections.",
+            manage_btn,
+            width=190,
+        )
 
-        layout.addSpacing(20)
-
-        # ---- Section: Configuration backup ---------------------------------
-        layout.addWidget(self._section_title("Configuration backup"))
-        layout.addSpacing(4)
+        # ---- Card: Configuration backup ----------------------------------
+        backup_card, backup_layout = self._section_card(
+            "Configuration backup",
+            "Save, restore, or share your settings securely.",
+        )
+        layout.addWidget(backup_card)
 
         backup_desc = QLabel(
             "Export or restore all Samsara settings. Backups include private "
@@ -1420,11 +1409,10 @@ class _SettingsWindow(QMainWindow):
         backup_desc.setObjectName("configBackupPrivacyWarning")
         backup_desc.setStyleSheet("color: #D9B86C; font-size: 13px;")
         backup_desc.setWordWrap(True)
-        layout.addWidget(backup_desc)
-        layout.addSpacing(8)
+        backup_layout.addWidget(backup_desc)
 
         backup_buttons = QHBoxLayout()
-        backup_buttons.setSpacing(10)
+        backup_buttons.setSpacing(8)
 
         export_btn = QPushButton("Export configuration…")
         export_btn.setObjectName("exportConfigurationButton")
@@ -1438,7 +1426,7 @@ class _SettingsWindow(QMainWindow):
         import_btn.clicked.connect(self._import_configuration)
         backup_buttons.addWidget(import_btn)
         backup_buttons.addStretch()
-        layout.addLayout(backup_buttons)
+        backup_layout.addLayout(backup_buttons)
 
         def _save(_acc):
             stored_updates = self.app.config.get('updates', {})
@@ -1490,6 +1478,192 @@ class _SettingsWindow(QMainWindow):
                 updates['output_device_name'] = output_name
             return updates
         self._save_fns.append(_save)
+
+        layout.addStretch()
+        scroll.setWidget(container)
+        return scroll
+
+    def _build_support_tab(self):
+        """Build a discoverable, honest support surface for beta users.
+
+        This deliberately collects learning, direct beta contact, diagnostics,
+        feedback, and update controls in one sidebar destination rather than
+        interrupting configuration work on the General page.
+        """
+        scroll = QScrollArea()
+        scroll.setWidgetResizable(True)
+        scroll.setHorizontalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAlwaysOff)
+        scroll.setAlignment(
+            Qt.AlignmentFlag.AlignTop | Qt.AlignmentFlag.AlignHCenter
+        )
+
+        container = QWidget()
+        container.setMaximumWidth(1040)
+        layout = QVBoxLayout(container)
+        layout.setContentsMargins(28, 24, 28, 24)
+        layout.setSpacing(8)
+
+        layout.addWidget(self._section_title("Help & learning"))
+        intro = QLabel(
+            "Start with the documentation or replay the interactive tutorial. "
+            "Samsara is maintained by one independent developer, so direct beta "
+            "email is available but replies are not instant."
+        )
+        intro.setObjectName("supportIntroLabel")
+        intro.setWordWrap(True)
+        intro.setStyleSheet("color: #AEB4C0; font-size: 13px;")
+        layout.addWidget(intro)
+
+        docs_btn = QPushButton("Open documentation")
+        docs_btn.setObjectName("openDocumentationButton")
+        docs_btn.setAccessibleName("Open Samsara documentation")
+        docs_btn.clicked.connect(
+            lambda: self._open_support_url(DOCUMENTATION_URL, support_status)
+        )
+        layout.addLayout(self._setting_row(
+            "Documentation",
+            "Quick start, voice-command reference, wake-word guide, and custom commands.",
+            docs_btn,
+        ))
+
+        tutorial_btn = QPushButton("Replay tutorial")
+        tutorial_btn.setObjectName("replayTutorialButton")
+        tutorial_btn.setAccessibleName("Replay interactive Samsara tutorial")
+        tutorial_btn.clicked.connect(
+            lambda: getattr(self.app, 'show_tutorial', lambda: None)()
+        )
+        layout.addLayout(self._setting_row(
+            "Interactive tutorial",
+            "Practice dictation, commands, Show Numbers, and Ava inside Samsara.",
+            tutorial_btn,
+        ))
+
+        mic_guide_btn = QPushButton("Open mic setup")
+        mic_guide_btn.setObjectName("openMicSetupGuideButton")
+        mic_guide_btn.clicked.connect(
+            lambda: getattr(self.app, 'open_mic_setup_guide', lambda: None)()
+        )
+        layout.addLayout(self._setting_row(
+            "Microphone setup guide",
+            "Choose and test a microphone, then tune wake-word detection for it.",
+            mic_guide_btn,
+        ))
+
+        ava_guide_btn = QPushButton("Open Ava setup")
+        ava_guide_btn.setObjectName("openAvaSetupGuideButton")
+        ava_guide_btn.clicked.connect(
+            lambda: getattr(self.app, 'open_ava_guide', lambda: None)()
+        )
+        layout.addLayout(self._setting_row(
+            "Ava setup guide",
+            "Set up Samsara's optional local assistant.",
+            ava_guide_btn,
+        ))
+        layout.addSpacing(20)
+
+        layout.addWidget(self._section_title("Beta support & feedback"))
+        contact = QLabel(
+            f"For help while beta testing, email {BETA_SUPPORT_EMAIL}. "
+            "I will respond as soon as I can. For a reproducible defect, a "
+            "GitHub report plus safe diagnostics is still the most useful evidence."
+        )
+        contact.setWordWrap(True)
+        contact.setStyleSheet("color: #AEB4C0; font-size: 13px;")
+        layout.addWidget(contact)
+
+        support_status = QLabel("")
+        support_status.setObjectName("feedbackStatusLabel")
+        support_status.setWordWrap(True)
+        support_status.setStyleSheet("color: #AEB4C0; font-size: 12px;")
+
+        beta_btn = QPushButton("Email beta support")
+        beta_btn.setObjectName("betaFeedbackButton")
+        beta_btn.setAccessibleName("Email the Samsara developer for beta support")
+        beta_btn.setToolTip("Open your email app with a Samsara beta-support subject")
+        beta_btn.clicked.connect(
+            lambda: self._open_support_url(BETA_SUPPORT_MAILTO, support_status)
+        )
+        layout.addLayout(self._setting_row(
+            "Contact the developer",
+            "Direct beta email; replies are personal and may take time.",
+            beta_btn,
+        ))
+
+        report_btn = QPushButton("Report a problem")
+        report_btn.setObjectName("reportBugButton")
+        report_btn.setAccessibleName("Report a Samsara problem on GitHub")
+        report_btn.setToolTip("Open the structured Samsara bug-report form")
+        report_btn.clicked.connect(
+            lambda: self._open_support_url(BUG_REPORT_URL, support_status)
+        )
+        layout.addLayout(self._setting_row(
+            "Report a reproducible problem",
+            "Open a public GitHub report. Include expected behavior, what happened, and steps.",
+            report_btn,
+        ))
+
+        live_log_btn = QPushButton("Open live log")
+        live_log_btn.setObjectName("openLiveLogButton")
+        live_log_btn.setAccessibleName("Open Samsara live log")
+        live_log_btn.setToolTip("Open the current log; review and redact it before sharing")
+        live_log_btn.clicked.connect(
+            lambda: self._open_live_log_for_support(support_status)
+        )
+        layout.addLayout(self._setting_row(
+            "Live log",
+            "Open the current log to inspect or share only the relevant, redacted lines.",
+            live_log_btn,
+        ))
+
+        diagnostics_btn = QPushButton("Copy safe diagnostics")
+        diagnostics_btn.setObjectName("copyDiagnosticButton")
+        diagnostics_btn.setAccessibleName("Copy safe Samsara diagnostic summary")
+        diagnostics_btn.setToolTip(
+            "Copy version and runtime facts without logs, paths, dictated text, or keys"
+        )
+        diagnostics_btn.clicked.connect(
+            lambda: self._copy_safe_diagnostics(support_status)
+        )
+        layout.addLayout(self._setting_row(
+            "Safe diagnostic summary",
+            "Copy useful runtime facts without logs, dictated text, file paths, or keys.",
+            diagnostics_btn,
+        ))
+        layout.addWidget(support_status)
+        layout.addSpacing(20)
+
+        layout.addWidget(self._section_title("Updates"))
+        check_updates_btn = QPushButton("Check for updates")
+        check_updates_btn.setObjectName("checkForUpdatesButton")
+        check_updates_btn.setAccessibleName("Check for Samsara updates")
+        check_updates_btn.setToolTip(
+            "Contact GitHub Releases now and check for a newer packaged version"
+        )
+        check_updates_btn.clicked.connect(self._open_update_dialog)
+        layout.addLayout(self._setting_row(
+            "Check for updates",
+            "Samsara has no update server or push channel. A manual check contacts GitHub "
+            "Releases only when you press this button. GitHub receives your IP address and "
+            "normal request headers.",
+            check_updates_btn,
+        ))
+
+        automatic_updates = QCheckBox()
+        automatic_updates.setObjectName("automaticUpdateChecksCheckbox")
+        current_update_settings = self.app.config.get("updates", {})
+        if not isinstance(current_update_settings, dict):
+            current_update_settings = {}
+        automatic_updates.setChecked(bool(
+            current_update_settings.get("automatic_checks", False)
+        ))
+        self._widgets["automatic_update_checks"] = automatic_updates
+        layout.addLayout(self._setting_row(
+            "Automatically check GitHub once a day",
+            "Off by default. When enabled, Samsara contacts GitHub no more than once every 24 hours. "
+            "GitHub receives your IP address and normal request headers, but Samsara sends no audio, "
+            "dictated text, settings, logs, or device identifier.",
+            automatic_updates,
+        ))
 
         layout.addStretch()
         scroll.setWidget(container)
@@ -1642,17 +1816,52 @@ class _SettingsWindow(QMainWindow):
         scroll = QScrollArea()
         scroll.setWidgetResizable(True)
         scroll.setHorizontalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAlwaysOff)
+        scroll.setAlignment(
+            Qt.AlignmentFlag.AlignTop | Qt.AlignmentFlag.AlignHCenter
+        )
 
         container = QWidget()
+        container.setMaximumWidth(1120)
         layout = QVBoxLayout(container)
         layout.setContentsMargins(28, 24, 28, 24)
-        layout.setSpacing(8)
+        layout.setSpacing(18)
 
         cfg = self.app.config
         ww_cfg = cfg.get('wake_word_config', {}) or {}
         ww_audio = ww_cfg.get('audio', {}) or {}
         cmd_cfg = cfg.get('command_mode', {}) or {}
         ai_cfg = cfg.get('ai_command_mode', {}) or {}
+
+        def _add_row(card_layout, label, description, widget, width=280):
+            card_layout.addLayout(
+                self._setting_row(
+                    label,
+                    description,
+                    widget,
+                    control_width=width,
+                )
+            )
+
+        def _disclosure_button(label: str) -> QPushButton:
+            button = QPushButton(label)
+            button.setCheckable(True)
+            button.setProperty("class", "secondary")
+            button.setFixedWidth(230)
+            button.setStyleSheet(
+                "QPushButton {"
+                " background-color: transparent;"
+                " color: #AEB4C0;"
+                " border: 1px solid rgba(255,255,255,0.16);"
+                " border-radius: 6px;"
+                " padding: 8px 12px;"
+                " font-size: 13px;"
+                "}"
+                "QPushButton:hover {"
+                " color: #E8E8EA;"
+                " border-color: rgba(255,255,255,0.28);"
+                "}"
+            )
+            return button
 
         # One tab-wide collision banner, shown above every section.
         collision_warn = QLabel("")
@@ -1663,94 +1872,132 @@ class _SettingsWindow(QMainWindow):
         layout.addWidget(collision_warn)
         layout.addSpacing(8)
 
-        # ---- Section 1: Dictation ------------------------------------------
-        layout.addWidget(self._section_title("Dictation"))
-        layout.addSpacing(4)
+        modes_intro = QLabel(
+            "Choose how voice control starts. Hold for a temporary command-only "
+            "session, or toggle it for persistent Hands-Free commands and dictation."
+        )
+        modes_intro.setWordWrap(True)
+        modes_intro.setStyleSheet("color: #AEB4C0; font-size: 13px;")
+        layout.addWidget(modes_intro)
 
-        mode_combo = QComboBox()
-        mode_combo.addItems(['hold', 'toggle', 'continuous'])
-        mode_combo.setCurrentText(cfg.get('mode', 'hold'))
-        self._widgets['mode'] = mode_combo
-        layout.addLayout(self._setting_row(
-            "Record mode",
-            "hold: hold key to record, release to transcribe.  "
-            "toggle: press to start/stop.  continuous: auto-transcribe on silence.",
-            mode_combo,
-        ))
-        layout.addSpacing(8)
+        # ---- Card 1: Hands-Free / Voice Control -------------------------
+        hands_free_card, hands_free_layout = self._section_card(
+            "Hands-Free / Voice Control",
+            "One activation system for temporary commands and persistent "
+            "commands plus dictation."
+        )
+        layout.addWidget(hands_free_card, alignment=Qt.AlignmentFlag.AlignHCenter)
 
-        _dictation_hotkeys = [
-            ('hotkey',            cfg.get('hotkey', 'ctrl+shift'),
-             "Record",             "Hold key to record (or toggle, depending on mode)"),
-            ('continuous_hotkey', cfg.get('continuous_hotkey', 'ctrl+alt+d'),
-             "Toggle continuous",  "Switch into continuous auto-transcribe mode"),
-            ('streaming_hotkey',  cfg.get('streaming_hotkey', 'capslock'),
-             "Streaming",          "Toggle live streaming mode (partials shown in overlay)"),
-            ('cancel_hotkey',     cfg.get('cancel_hotkey', 'escape'),
-             "Cancel recording",   "Abort the current recording without transcribing"),
-            ('undo_hotkey',       cfg.get('undo_hotkey', 'ctrl+alt+z'),
-             "Undo",               "Remove the last transcription from the focused app"),
-            ('dictate_commit_hotkey', cfg.get('dictate_commit_hotkey', DEFAULT_CONTINUOUS_COMMIT_HOTKEY),
-             "Paste staged thought", "Paste the buffered thought now while staying in hands-free mode"),
-        ]
-        for config_key, default, label, desc in _dictation_hotkeys:
-            btn = _HotkeyButton(cfg.get(config_key, default), on_change=self._check_modes_collisions)
-            self._widgets[config_key] = btn
-            layout.addLayout(self._setting_row(label, desc, btn))
-            layout.addSpacing(6)
+        cmd_enabled_cb = QCheckBox()
+        cmd_enabled_cb.setChecked(bool(cmd_cfg.get('enabled', False)))
+        self._widgets['cmd_tab_enabled'] = cmd_enabled_cb
+        _add_row(
+            hands_free_layout,
+            "Enable voice control",
+            "Allow the button and command-only shortcut below to start voice control.",
+            cmd_enabled_cb,
+            width=220,
+        )
 
-        layout.addSpacing(14)
+        current_btn_key = cmd_cfg.get('button', 'rctrl')
+        current_btn_label = _CMD_BUTTON_KEY_TO_LABEL.get(current_btn_key, 'Right Ctrl (default)')
+        cmd_button_combo = QComboBox()
+        cmd_button_combo.addItems(list(_CMD_BUTTON_OPTIONS.keys()))
+        cmd_button_combo.setCurrentText(current_btn_label)
+        self._widgets['cmd_tab_button'] = cmd_button_combo
+        _add_row(
+            hands_free_layout,
+            "Voice control button",
+            "Use one button for temporary commands or persistent Hands-Free.",
+            cmd_button_combo,
+            width=260,
+        )
+        cmd_button_combo.currentIndexChanged.connect(lambda _idx: self._check_modes_collisions())
 
-        # ---- Section 2: Wake Words -----------------------------------------
-        layout.addWidget(self._section_title("Wake Words"))
-        layout.addSpacing(4)
+        cmd_mode_combo = QComboBox()
+        cmd_mode_combo.addItems(['hold', 'toggle'])
+        cmd_mode_combo.setCurrentText(cmd_cfg.get('mode', 'hold'))
+        self._widgets['cmd_mode'] = cmd_mode_combo
+        _add_row(
+            hands_free_layout,
+            "Button behavior",
+            "Hold: commands only while held. Toggle: persistent Hands-Free commands and dictation.",
+            cmd_mode_combo,
+            width=220,
+        )
+
+        hold_heading = QLabel("Command-only activation")
+        hold_heading.setStyleSheet(
+            "color: #D7D9DE; font-size: 13px; font-weight: 600; margin-top: 4px;"
+        )
+        hands_free_layout.addWidget(hold_heading)
+
+        command_hotkey_btn = _HotkeyButton(
+            cfg.get('command_hotkey', 'ctrl+alt+c'), on_change=self._check_modes_collisions
+        )
+        self._widgets['command_hotkey'] = command_hotkey_btn
+        _add_row(
+            hands_free_layout,
+            "Command-only key",
+            "Optional shortcut for one command capture without dictation output.",
+            command_hotkey_btn,
+            width=260,
+        )
+
+        suppress_cb = QCheckBox("Suppress browser-back when using Mouse 4/5")
+        suppress_cb.setChecked(bool(cmd_cfg.get('suppress_button', True)))
+        self._widgets['cmd_tab_suppress'] = suppress_cb
+        _add_row(
+            hands_free_layout,
+            "Mouse button suppression",
+            "Prevent accidental browser-back actions while command bindings are active.",
+            suppress_cb,
+            width=260,
+        )
+
+        wake_heading = QLabel("Wake activation")
+        wake_heading.setStyleSheet(
+            "color: #D7D9DE; font-size: 13px; font-weight: 600; margin-top: 4px;"
+        )
+        hands_free_layout.addWidget(wake_heading)
 
         wake_enabled = QCheckBox()
         wake_enabled.setChecked(bool(cfg.get('wake_word_enabled', False)))
         self._widgets['wake_word_enabled'] = wake_enabled
-        layout.addLayout(self._setting_row(
-            "Wake word listener",
-            "Enable 'Jarvis' detection — works alongside any recording mode above",
+        _add_row(
+            hands_free_layout,
+            "Enable wake activation",
+            "Listen for the configured wake phrase.",
             wake_enabled,
-        ))
-        layout.addSpacing(8)
+            width=220,
+        )
 
         wake_word_btn = _HotkeyButton(
             cfg.get('wake_word_hotkey', 'ctrl+alt+w'), on_change=self._check_modes_collisions
         )
         self._widgets['wake_word_hotkey'] = wake_word_btn
-        layout.addLayout(self._setting_row(
-            "Toggle wake word",
-            "Enable or disable the wake word listener at runtime",
+        _add_row(
+            hands_free_layout,
+            "Wake activation key",
+            "Tap to start or stop wake-phrase listening.",
             wake_word_btn,
-        ))
-        layout.addSpacing(6)
+            width=240,
+        )
 
         phrases = ww_cfg.get('phrase_options', DEFAULT_WAKE_PHRASE_OPTIONS)
         primary_phrase = phrases[0] if phrases else DEFAULT_WAKE_PHRASE
-        phrase_label = QLabel(f'"{primary_phrase}"')
-        phrase_label.setStyleSheet(
-            "color: #5EEAD4; font-size: 14px; font-weight: 600; "
-            "font-family: 'Consolas', 'Courier New', monospace;"
-        )
-        layout.addLayout(self._setting_row(
+        wake_phrase_display = QLineEdit(primary_phrase)
+        wake_phrase_display.setReadOnly(True)
+        wake_phrase_display.setObjectName("wakePhraseDisplay")
+        wake_phrase_display.setPlaceholderText("wake phrase")
+        self._widgets['wake_word_phrase_display'] = wake_phrase_display
+        _add_row(
+            hands_free_layout,
             "Wake phrase",
-            "The word or phrase Samsara listens for to activate recording",
-            phrase_label,
-        ))
-        layout.addSpacing(4)
-
-        note = QLabel("Additional custom wake phrases can be added via wake_profiles in "
-                       "config, each with its own trained model.")
-        note.setStyleSheet("color: #8A8A92; font-size: 12px; margin-left: 0px;")
-        layout.addWidget(note)
-        layout.addSpacing(8)
-
-        # Speech threshold mode + calibration multiplier live on the
-        # Advanced tab only ('adv_threshold_mode' / 'adv_cal_multiplier') --
-        # it also has the manual-threshold row, so it's the natural single
-        # home. Advanced tab widgets are built after this tab and always
-        # won when both existed.
+            "The word or phrase that activates voice control.",
+            wake_phrase_display,
+            width=340,
+        )
 
         wake_timeout_spin = QDoubleSpinBox()
         wake_timeout_spin.setRange(1.0, 30.0)
@@ -1759,171 +2006,90 @@ class _SettingsWindow(QMainWindow):
         wake_timeout_spin.setSuffix(" s")
         wake_timeout_spin.setValue(float(ww_audio.get('wake_command_timeout', 5.0)))
         self._widgets['wake_cmd_timeout'] = wake_timeout_spin
-        layout.addLayout(self._setting_row(
-            "Wake command timeout",
-            "Seconds to wait for a voice command after the wake phrase is heard",
+        _add_row(
+            hands_free_layout,
+            "Timeout after wake",
+            "Seconds to wait for speech after wake activation.",
             wake_timeout_spin,
-        ))
-        layout.addSpacing(8)
-
-        quick_silence_spin = QDoubleSpinBox()
-        quick_silence_spin.setRange(0.2, 5.0)
-        quick_silence_spin.setSingleStep(0.1)
-        quick_silence_spin.setDecimals(1)
-        quick_silence_spin.setSuffix(" s")
-        quick_silence_spin.setValue(float(ww_cfg.get('quick_silence_timeout', 1.0)))
-        self._widgets['quick_silence'] = quick_silence_spin
-        layout.addLayout(self._setting_row(
-            "Quick silence timeout",
-            "Seconds of silence that ends a wake-word listening session early",
-            quick_silence_spin,
-        ))
-        layout.addSpacing(8)
-
-        oww_spin = QDoubleSpinBox()
-        oww_spin.setRange(0.05, 1.0)
-        oww_spin.setSingleStep(0.05)
-        oww_spin.setDecimals(2)
-        oww_spin.setValue(float(ww_cfg.get('oww_threshold', 0.20)))
-        self._widgets['oww_threshold'] = oww_spin
-        layout.addLayout(self._setting_row(
-            "Wake word sensitivity",
-            "0.05 = very sensitive, 0.50 = strict.  Applies to all OpenWakeWord models, "
-            "including custom phrases added via wake_profiles.",
-            oww_spin,
-        ))
-        layout.addSpacing(20)
-
-        # ---- Section 3: Voice Control ----------------------------------------
-        layout.addWidget(self._section_title("Voice Control"))
-        layout.addSpacing(4)
-
-        cmd_enabled_cb = QCheckBox()
-        cmd_enabled_cb.setChecked(bool(cmd_cfg.get('enabled', False)))
-        self._widgets['cmd_tab_enabled'] = cmd_enabled_cb
-        layout.addLayout(self._setting_row(
-            "Enable voice control button",
-            "Hold runs command-only walkie-talkie; toggle runs the combined hands-free session.",
-            cmd_enabled_cb,
-        ))
-        layout.addSpacing(8)
-
-        desc0 = QLabel(
-            "Choose which button activates hold-to-command or the latched hands-free session."
+            width=170,
         )
-        desc0.setStyleSheet("color: #8A8A92; font-size: 12px;")
-        layout.addWidget(desc0)
-        layout.addSpacing(4)
 
-        current_btn_key   = cmd_cfg.get('button', 'rctrl')
-        current_btn_label = _CMD_BUTTON_KEY_TO_LABEL.get(current_btn_key, 'Right Ctrl (default)')
-        btn_combo = QComboBox()
-        btn_combo.addItems(list(_CMD_BUTTON_OPTIONS.keys()))
-        btn_combo.setCurrentText(current_btn_label)
-        self._widgets['cmd_tab_button'] = btn_combo
-        layout.addLayout(self._setting_row(
-            "Voice Control Button",
-            "Physical button or key that activates the selected voice-control behavior",
-            btn_combo,
-        ))
-        btn_combo.currentIndexChanged.connect(lambda _idx: self._check_modes_collisions())
-        layout.addSpacing(4)
+        wake_note = QLabel("More wake phrases can be added via wake_profiles in config.")
+        wake_note.setWordWrap(True)
+        wake_note.setStyleSheet("color: #8A8A92; font-size: 12px;")
+        hands_free_layout.addWidget(wake_note)
 
-        suppress_cb = QCheckBox(
-            "Suppress browser-back when using Mouse 4/5 for commands"
+        # ---- Card 2: Dictation bindings ---------------------------------
+        dictation_card, dictation_layout = self._section_card(
+            "Dictation bindings",
+            "Recording behavior and keys for normal text dictation.",
         )
-        suppress_cb.setChecked(bool(cmd_cfg.get('suppress_button', True)))
-        self._widgets['cmd_tab_suppress'] = suppress_cb
-        layout.addWidget(suppress_cb)
+        layout.addWidget(dictation_card, alignment=Qt.AlignmentFlag.AlignHCenter)
 
-        suppress_note = QLabel(
-            "    When enabled, Mouse 4/5 only triggers command mode and never navigates back."
+        mode_combo = QComboBox()
+        mode_combo.addItems(['hold', 'toggle', 'continuous'])
+        mode_combo.setCurrentText(cfg.get('mode', 'hold'))
+        self._widgets['mode'] = mode_combo
+        _add_row(
+            dictation_layout,
+            "Primary dictation key behavior",
+            "Hold: record while held. Toggle: press to start/stop. Continuous: finish on silence.",
+            mode_combo,
+            width=240,
         )
-        suppress_note.setStyleSheet("color: #8A8A92; font-size: 12px;")
-        layout.addWidget(suppress_note)
-        layout.addSpacing(8)
 
-        cmd_mode_combo = QComboBox()
-        cmd_mode_combo.addItems(['hold', 'toggle'])
-        cmd_mode_combo.setCurrentText(cmd_cfg.get('mode', 'hold'))
-        self._widgets['cmd_mode'] = cmd_mode_combo
-        layout.addLayout(self._setting_row(
-            "Mode",
-            "hold: command-only while held.  toggle: commands and dictation together until stopped",
-            cmd_mode_combo,
-        ))
-        layout.addSpacing(8)
+        _dictation_hotkeys = [
+            ('hotkey', cfg.get('hotkey', 'ctrl+shift'),
+             "Primary dictation key", "Hold or toggle recording for text output."),
+            ('continuous_hotkey', cfg.get('continuous_hotkey', 'ctrl+alt+d'),
+             "Continuous mode key", "Enter/exit continuous dictation mode."),
+            ('streaming_hotkey', cfg.get('streaming_hotkey', 'capslock'),
+             "Streaming key", "Show partials in the overlay while you speak."),
+            ('cancel_hotkey', cfg.get('cancel_hotkey', 'escape'),
+             "Cancel", "Abort the current recording without transcribing."),
+            ('undo_hotkey', cfg.get('undo_hotkey', 'ctrl+alt+z'),
+             "Undo", "Undo the last transcription in the focused application."),
+            ('dictate_commit_hotkey',
+             cfg.get('dictate_commit_hotkey', DEFAULT_CONTINUOUS_COMMIT_HOTKEY),
+             "Paste staged thought", "Insert buffered transcription while staying in hands-free mode."),
+        ]
+        for config_key, default, label, desc in _dictation_hotkeys:
+            btn = _HotkeyButton(cfg.get(config_key, default), on_change=self._check_modes_collisions)
+            self._widgets[config_key] = btn
+            dictation_layout.addLayout(
+                self._setting_row(
+                    label,
+                    desc,
+                    btn,
+                    control_width=260,
+                )
+            )
 
-        debounce_spin = QSpinBox()
-        debounce_spin.setRange(0, 2000)
-        debounce_spin.setSingleStep(50)
-        debounce_spin.setSuffix(" ms")
-        debounce_spin.setValue(int(cmd_cfg.get('enter_debounce_ms', 200)))
-        self._widgets['cmd_debounce'] = debounce_spin
-        layout.addLayout(self._setting_row(
-            "Enter debounce",
-            "Minimum hold time before the voice-control earcon plays (prevents accidental activation)",
-            debounce_spin,
-        ))
-        layout.addSpacing(8)
-
-        timeout_spin = QSpinBox()
-        timeout_spin.setRange(5, 1800)
-        timeout_spin.setSingleStep(5)
-        timeout_spin.setSuffix(" s")
-        timeout_spin.setValue(int(cmd_cfg.get('inactivity_timeout_s', 30)))
-        self._widgets['cmd_timeout'] = timeout_spin
-        layout.addLayout(self._setting_row(
-            "Inactivity timeout",
-            "Toggle hands-free: stop listening after this many seconds of no speech (max 1800 = 30 min)",
-            timeout_spin,
-        ))
-        layout.addSpacing(8)
-
-        miss_spin = QSpinBox()
-        miss_spin.setRange(1, 20)
-        miss_spin.setValue(int(cmd_cfg.get('miss_limit', 5)))
-        self._widgets['cmd_miss_limit'] = miss_spin
-        layout.addLayout(self._setting_row(
-            "Miss limit",
-            "Command-only lane: exit after this many unmatched command utterances",
-            miss_spin,
-        ))
-        layout.addSpacing(8)
-
-        command_hotkey_btn = _HotkeyButton(
-            cfg.get('command_hotkey', 'ctrl+alt+c'), on_change=self._check_modes_collisions
+        # ---- Card 4: AI Command Mode -------------------------------------
+        ai_card, ai_layout = self._section_card(
+            "AI Command Mode (Experimental)",
+            "Optional experimental flow for free-form speech to command plans.",
         )
-        self._widgets['command_hotkey'] = command_hotkey_btn
-        layout.addLayout(self._setting_row(
-            "Command only",
-            "Record but only match voice commands, no text output",
-            command_hotkey_btn,
-        ))
-        layout.addSpacing(20)
+        layout.addWidget(ai_card, alignment=Qt.AlignmentFlag.AlignHCenter)
 
-        # ---- Section 4: AI Command Mode --------------------------------------
-        layout.addWidget(self._section_title("AI Command Mode"))
-        layout.addSpacing(4)
-
-        intro = QLabel(
-            "Translates free-form voice speech into sequences of voice commands "
-            "using a local Ollama LLM or the cloud provider configured in the Ava Cloud tab."
+        ai_intro = QLabel(
+            "Enable this when you want LLM interpretation before command execution. "
+            "Use local Ollama or the Cloud provider from Ava / Cloud."
         )
-        intro.setWordWrap(True)
-        intro.setStyleSheet("color: #8A8A92; font-size: 12px;")
-        layout.addWidget(intro)
-        layout.addSpacing(12)
+        ai_intro.setWordWrap(True)
+        ai_intro.setStyleSheet("color: #8A8A92; font-size: 12px;")
+        ai_layout.addWidget(ai_intro)
 
         ai_enabled = QCheckBox()
         ai_enabled.setChecked(bool(ai_cfg.get('enabled', _AIMD['enabled'])))
         self._widgets['ai_cmd_enabled'] = ai_enabled
-        layout.addLayout(self._setting_row(
-            "Enabled",
-            "Activate the LLM-backed voice-to-command translator",
+        _add_row(
+            ai_layout,
+            "Enable AI command mode",
+            "Master switch for AI-driven command interpretation.",
             ai_enabled,
-        ))
-        layout.addSpacing(8)
+            width=220,
+        )
 
         key_val = ai_cfg.get('key', _AIMD['key'])
         key_label = _AI_CMD_KEY_TO_LABEL.get(key_val, list(_AI_CMD_KEY_OPTIONS.keys())[0])
@@ -1932,84 +2098,109 @@ class _SettingsWindow(QMainWindow):
         if key_label in _AI_CMD_KEY_OPTIONS:
             ai_key_combo.setCurrentText(key_label)
         self._widgets['ai_cmd_key'] = ai_key_combo
-        layout.addLayout(self._setting_row(
-            "Activation key",
-            "Key that toggles AI Command Mode on/off. Must differ from every other activation binding on this tab.",
+        _add_row(
+            ai_layout,
+            "AI activation key",
+            "Key that toggles AI command mode.",
             ai_key_combo,
-        ))
+            width=260,
+        )
         ai_key_combo.currentIndexChanged.connect(lambda _idx: self._check_modes_collisions())
-        layout.addSpacing(8)
 
         wake_phrase_edit = QLineEdit()
         wake_phrase_edit.setText(ai_cfg.get('wake_phrase', _AIMD['wake_phrase']))
         wake_phrase_edit.setPlaceholderText("e.g. command mode")
         self._widgets['ai_cmd_wake_phrase'] = wake_phrase_edit
-        layout.addLayout(self._setting_row(
-            "Wake phrase",
-            "Spoken phrase that enters this mode (when used in wake-phrase mode)",
+        _add_row(
+            ai_layout,
+            "AI wake phrase",
+            "Phrase used to switch into AI command interpretation mode.",
             wake_phrase_edit,
-        ))
-        layout.addSpacing(12)
+            width=260,
+        )
+
+        ai_adv_button = _disclosure_button("Show AI backend options")
+        ai_adv = QWidget()
+        ai_adv_layout = QVBoxLayout(ai_adv)
+        ai_adv_layout.setContentsMargins(0, 0, 0, 0)
+        ai_adv_layout.setSpacing(8)
+        ai_adv.setVisible(False)
+
+        def _toggle_ai_adv(checked: bool) -> None:
+            ai_adv.setVisible(checked)
+            ai_adv_button.setText(
+                "Hide AI backend options" if checked else "Show AI backend options"
+            )
+        ai_adv_button.toggled.connect(_toggle_ai_adv)
 
         backend_val = ai_cfg.get('backend', _AIMD['backend'])
         backend_combo = QComboBox()
         backend_combo.addItems(['Local (Ollama)', 'Cloud'])
         backend_combo.setCurrentText('Cloud' if backend_val == 'cloud' else 'Local (Ollama)')
         self._widgets['ai_cmd_backend'] = backend_combo
-        layout.addLayout(self._setting_row(
+        ai_adv_layout.addLayout(
+            self._setting_row(
             "Backend",
-            "Local: resolves commands via Ollama. Cloud: uses the provider in the Ava Cloud tab.",
+            "Local uses Ollama; Cloud uses your configured Ava / Cloud provider.",
             backend_combo,
-        ))
-        layout.addSpacing(8)
+            control_width=260,
+            )
+        )
 
         model_edit = QLineEdit()
         model_edit.setText(ai_cfg.get('model', _AIMD['model']))
         model_edit.setPlaceholderText("e.g. llama3.2:3b")
         model_edit.setEnabled(backend_val != 'cloud')
         self._widgets['ai_cmd_model'] = model_edit
-        layout.addLayout(self._setting_row(
-            "Ollama model",
-            "Model used when backend is Local. Ignored for Cloud (configure in Ava Cloud tab).",
+        ai_adv_layout.addLayout(
+            self._setting_row(
+            "Model",
+            "Only used for Local backend.",
             model_edit,
-        ))
+            control_width=340,
+            )
+        )
 
         def _update_model_enabled():
             model_edit.setEnabled(backend_combo.currentText() == 'Local (Ollama)')
         backend_combo.currentIndexChanged.connect(lambda _: _update_model_enabled())
-        layout.addSpacing(8)
 
         show_hud = QCheckBox()
         show_hud.setChecked(bool(ai_cfg.get('show_plan_hud', _AIMD['show_plan_hud'])))
         self._widgets['ai_cmd_show_hud'] = show_hud
-        layout.addLayout(self._setting_row(
+        ai_adv_layout.addLayout(
+            self._setting_row(
             "Show plan HUD",
-            "Display the resolved command plan on-screen while it executes",
+            "Show resolved command sequence while running it.",
             show_hud,
-        ))
-        layout.addSpacing(8)
+            control_width=220,
+            )
+        )
 
         keep_warm = QCheckBox()
         keep_warm.setChecked(bool(ai_cfg.get('keep_warm', _AIMD['keep_warm'])))
         self._widgets['ai_cmd_keep_warm'] = keep_warm
-        layout.addLayout(self._setting_row(
+        ai_adv_layout.addLayout(
+            self._setting_row(
             "Keep model warm",
-            "Fire a dummy request when entering the mode to pre-load the model, "
-            "reducing first-utterance latency",
+            "Pre-load local model when mode activates to reduce first-utterance latency.",
             keep_warm,
-        ))
-        layout.addSpacing(8)
+            control_width=220,
+            )
+        )
 
         queue_spin = QSpinBox()
         queue_spin.setRange(1, 10)
         queue_spin.setValue(int(ai_cfg.get('queue_depth_cap', _AIMD['queue_depth_cap'])))
         self._widgets['ai_cmd_queue_depth'] = queue_spin
-        layout.addLayout(self._setting_row(
-            "Queue depth cap",
-            "Maximum utterances queued before the oldest is dropped with a spoken warning",
+        ai_adv_layout.addLayout(
+            self._setting_row(
+            "Queue depth",
+            "Max queued utterances before dropping oldest entries.",
             queue_spin,
-        ))
-        layout.addSpacing(8)
+            control_width=180,
+            )
+        )
 
         settle_spin = QDoubleSpinBox()
         settle_spin.setRange(0.0, 5.0)
@@ -2018,26 +2209,135 @@ class _SettingsWindow(QMainWindow):
         settle_spin.setSuffix(" s")
         settle_spin.setValue(float(ai_cfg.get('step_settle_seconds', _AIMD['step_settle_seconds'])))
         self._widgets['ai_cmd_step_settle'] = settle_spin
-        layout.addLayout(self._setting_row(
+        ai_adv_layout.addLayout(
+            self._setting_row(
             "Step settle delay",
-            "Pause between consecutive command steps in a multi-step plan",
+            "Pause between command steps in a multi-step plan.",
             settle_spin,
-        ))
-        layout.addSpacing(20)
+            control_width=180,
+            )
+        )
 
-        # ---- Section 5: Ava --------------------------------------------------
-        layout.addWidget(self._section_title("Ava"))
-        layout.addSpacing(4)
+        ai_layout.addWidget(ai_adv_button)
+        ai_layout.addWidget(ai_adv)
+
+        # ---- Card 5: Ava shortcut ---------------------------------------
+        ava_card, ava_layout = self._section_card(
+            "Ava Assistant",
+            "Direct access to the conversational assistant path."
+        )
+        layout.addWidget(ava_card, alignment=Qt.AlignmentFlag.AlignHCenter)
 
         ava_btn = _HotkeyButton(
             cfg.get('ava_mode_key', 'right_alt'), on_change=self._check_modes_collisions
         )
         self._widgets['ava_mode_key'] = ava_btn
-        layout.addLayout(self._setting_row(
+        ava_layout.addLayout(
+            self._setting_row(
             "Ava mode",
-            "Hold to talk to Ava (LLM assistant mode)",
+            "Hold to talk to Ava (conversation assistant mode).",
             ava_btn,
-        ))
+            control_width=280,
+            )
+        )
+
+        # ---- Card 6: Advanced tuning ------------------------------------
+        advanced_card, advanced_layout = self._section_card(
+            "Advanced tuning",
+            "Fine-grained timing and threshold controls for users who need behavior tuning."
+        )
+        layout.addWidget(advanced_card, alignment=Qt.AlignmentFlag.AlignHCenter)
+
+        adv_button = _disclosure_button("Show advanced tuning")
+        adv_area = QWidget()
+        adv_area_layout = QVBoxLayout(adv_area)
+        adv_area_layout.setContentsMargins(0, 0, 0, 0)
+        adv_area_layout.setSpacing(8)
+        adv_area.setVisible(False)
+
+        def _toggle_adv(checked: bool) -> None:
+            adv_area.setVisible(checked)
+            adv_button.setText(
+                "Hide advanced tuning" if checked else "Show advanced tuning"
+            )
+        adv_button.toggled.connect(_toggle_adv)
+
+        cmd_debounce_spin = QSpinBox()
+        cmd_debounce_spin.setRange(0, 2000)
+        cmd_debounce_spin.setSingleStep(50)
+        cmd_debounce_spin.setSuffix(" ms")
+        cmd_debounce_spin.setValue(int(cmd_cfg.get('enter_debounce_ms', 200)))
+        self._widgets['cmd_debounce'] = cmd_debounce_spin
+        adv_area_layout.addLayout(
+            self._setting_row(
+            "Command debounce",
+            "Minimum press-time before command mode activates.",
+            cmd_debounce_spin,
+            control_width=180,
+            )
+        )
+
+        cmd_timeout_spin = QSpinBox()
+        cmd_timeout_spin.setRange(5, 1800)
+        cmd_timeout_spin.setSingleStep(5)
+        cmd_timeout_spin.setSuffix(" s")
+        cmd_timeout_spin.setValue(int(cmd_cfg.get('inactivity_timeout_s', 30)))
+        self._widgets['cmd_timeout'] = cmd_timeout_spin
+        adv_area_layout.addLayout(
+            self._setting_row(
+            "Command timeout",
+            "Exit command mode after this much inactivity (max 30 min).",
+            cmd_timeout_spin,
+            control_width=180,
+            )
+        )
+
+        cmd_miss_spin = QSpinBox()
+        cmd_miss_spin.setRange(1, 20)
+        cmd_miss_spin.setValue(int(cmd_cfg.get('miss_limit', 5)))
+        self._widgets['cmd_miss_limit'] = cmd_miss_spin
+        adv_area_layout.addLayout(
+            self._setting_row(
+            "Miss limit",
+            "Exit after this many unmatched command utterances.",
+            cmd_miss_spin,
+            control_width=180,
+            )
+        )
+
+        quick_silence_spin = QDoubleSpinBox()
+        quick_silence_spin.setRange(0.2, 5.0)
+        quick_silence_spin.setSingleStep(0.1)
+        quick_silence_spin.setDecimals(1)
+        quick_silence_spin.setSuffix(" s")
+        quick_silence_spin.setValue(float(ww_cfg.get('quick_silence_timeout', 1.0)))
+        self._widgets['quick_silence'] = quick_silence_spin
+        adv_area_layout.addLayout(
+            self._setting_row(
+            "Quick silence timeout",
+            "How soon silence ends wake-word listening.",
+            quick_silence_spin,
+            control_width=180,
+            )
+        )
+
+        oww_spin = QDoubleSpinBox()
+        oww_spin.setRange(0.05, 1.0)
+        oww_spin.setSingleStep(0.05)
+        oww_spin.setDecimals(2)
+        oww_spin.setValue(float(ww_cfg.get('oww_threshold', 0.20)))
+        self._widgets['oww_threshold'] = oww_spin
+        adv_area_layout.addLayout(
+            self._setting_row(
+            "Wake-word threshold",
+            "0.05 = more sensitive, 0.50 = stricter detection.",
+            oww_spin,
+            control_width=180,
+            )
+        )
+
+        advanced_layout.addWidget(adv_button)
+        advanced_layout.addWidget(adv_area)
 
         self._check_modes_collisions()
 
@@ -2057,7 +2357,7 @@ class _SettingsWindow(QMainWindow):
                 updates['wake_word_enabled'] = self._widgets['wake_word_enabled'].isChecked()
 
             # Wake word nested config (threshold_mode/cal_multiplier are set
-            # by the Advanced tab -- the single home for those two)
+            # by the Advanced tab -- the natural single home).
             if 'wake_cmd_timeout' in self._widgets:
                 ww_cfg = dict(self.app.config.get('wake_word_config', {}) or {})
                 ww_audio = dict(ww_cfg.get('audio', {}) or {})
@@ -2101,7 +2401,6 @@ class _SettingsWindow(QMainWindow):
         layout.addStretch()
         scroll.setWidget(container)
         return scroll
-
     def _check_modes_collisions(self) -> None:
         """Tab-wide activation-binding collision checker for the Modes tab.
 
@@ -2194,9 +2493,13 @@ class _SettingsWindow(QMainWindow):
         page.setObjectName("commandsPageScroll")
         page.setWidgetResizable(True)
         page.setHorizontalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAlwaysOff)
+        page.setAlignment(
+            Qt.AlignmentFlag.AlignTop | Qt.AlignmentFlag.AlignHCenter
+        )
         page.setVerticalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAsNeeded)
 
         outer = QWidget()
+        outer.setMaximumWidth(1040)
         outer.setObjectName("commandsPageContent")
         layout = QVBoxLayout(outer)
         layout.setContentsMargins(28, 20, 28, 12)
@@ -2827,8 +3130,12 @@ class _SettingsWindow(QMainWindow):
         scroll = QScrollArea()
         scroll.setWidgetResizable(True)
         scroll.setHorizontalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAlwaysOff)
+        scroll.setAlignment(
+            Qt.AlignmentFlag.AlignTop | Qt.AlignmentFlag.AlignHCenter
+        )
 
         container = QWidget()
+        container.setMaximumWidth(1040)
         layout = QVBoxLayout(container)
         layout.setContentsMargins(28, 24, 28, 24)
         layout.setSpacing(8)
@@ -3109,8 +3416,12 @@ class _SettingsWindow(QMainWindow):
         scroll = QScrollArea()
         scroll.setWidgetResizable(True)
         scroll.setHorizontalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAlwaysOff)
+        scroll.setAlignment(
+            Qt.AlignmentFlag.AlignTop | Qt.AlignmentFlag.AlignHCenter
+        )
 
         container = QWidget()
+        container.setMaximumWidth(1040)
         layout = QVBoxLayout(container)
         layout.setContentsMargins(28, 24, 28, 24)
         layout.setSpacing(8)
@@ -3410,6 +3721,7 @@ class _SettingsWindow(QMainWindow):
         from samsara.alarms import get_default_alarm_config
 
         outer = QWidget()
+        outer.setMaximumWidth(1040)
         layout = QVBoxLayout(outer)
         layout.setContentsMargins(28, 20, 28, 12)
         layout.setSpacing(8)
@@ -3821,8 +4133,12 @@ class _SettingsWindow(QMainWindow):
         scroll = QScrollArea()
         scroll.setWidgetResizable(True)
         scroll.setHorizontalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAlwaysOff)
+        scroll.setAlignment(
+            Qt.AlignmentFlag.AlignTop | Qt.AlignmentFlag.AlignHCenter
+        )
 
         container = QWidget()
+        container.setMaximumWidth(1040)
         layout = QVBoxLayout(container)
         layout.setContentsMargins(28, 24, 28, 24)
         layout.setSpacing(8)
@@ -4153,8 +4469,12 @@ class _SettingsWindow(QMainWindow):
         scroll = QScrollArea()
         scroll.setWidgetResizable(True)
         scroll.setHorizontalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAlwaysOff)
+        scroll.setAlignment(
+            Qt.AlignmentFlag.AlignTop | Qt.AlignmentFlag.AlignHCenter
+        )
 
         container = QWidget()
+        container.setMaximumWidth(1040)
         layout = QVBoxLayout(container)
         layout.setContentsMargins(28, 24, 28, 24)
         layout.setSpacing(8)
@@ -4660,8 +4980,12 @@ class _SettingsWindow(QMainWindow):
         scroll = QScrollArea()
         scroll.setWidgetResizable(True)
         scroll.setHorizontalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAlwaysOff)
+        scroll.setAlignment(
+            Qt.AlignmentFlag.AlignTop | Qt.AlignmentFlag.AlignHCenter
+        )
 
         container = QWidget()
+        container.setMaximumWidth(1040)
         layout = QVBoxLayout(container)
         layout.setContentsMargins(28, 24, 28, 24)
         layout.setSpacing(12)
@@ -5140,13 +5464,43 @@ class _SettingsWindow(QMainWindow):
         label.setStyleSheet("color: #5EEAD4; font-size: 16px; font-weight: bold;")
         return label
 
-    def _setting_row(self, label, description, widget):
+    def _section_card(self, title: str, subtitle: str | None = None):
+        card = QFrame()
+        card.setObjectName("settingsSectionCard")
+        card.setMaximumWidth(1040)
+        card.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Minimum)
+        card.setStyleSheet(
+            "QFrame#settingsSectionCard {"
+            " background-color: #161b24;"
+            " border: 1px solid rgba(255,255,255,0.12);"
+            " border-radius: 12px;"
+            "}"
+        )
+
+        v = QVBoxLayout(card)
+        v.setContentsMargins(18, 14, 18, 14)
+        v.setSpacing(12)
+
+        title_label = QLabel(title)
+        title_label.setStyleSheet(
+            "color: #5EEAD4; font-size: 17px; font-weight: 700;"
+        )
+        v.addWidget(title_label)
+
+        if subtitle:
+            subtitle_label = QLabel(subtitle)
+            subtitle_label.setWordWrap(True)
+            subtitle_label.setStyleSheet("color: #AEB4C0; font-size: 12px;")
+            v.addWidget(subtitle_label)
+        return card, v
+
+    def _setting_row(self, label, description, widget, control_width: int | None = 260):
         row = QHBoxLayout()
-        row.setContentsMargins(0, 4, 0, 4)
-        row.setSpacing(16)
+        row.setContentsMargins(0, 10, 0, 10)
+        row.setSpacing(20)
 
         left = QVBoxLayout()
-        left.setSpacing(2)
+        left.setSpacing(4)
 
         lbl = QLabel(label)
         lbl.setStyleSheet("font-weight: 600; font-size: 14px; color: #E8E8EA;")
@@ -5157,8 +5511,25 @@ class _SettingsWindow(QMainWindow):
         desc.setWordWrap(True)
         left.addWidget(desc)
 
-        row.addLayout(left, stretch=1)
-        row.addWidget(widget, alignment=Qt.AlignmentFlag.AlignVCenter)
+        row.addLayout(left, 1)
+        row.addStretch()
+
+        interactive_height = 36
+        if isinstance(widget, QCheckBox):
+            widget.setMinimumHeight(28)
+            interactive_height = 28
+        elif isinstance(widget, (QPushButton, QLineEdit, QComboBox, QSpinBox, QDoubleSpinBox, QSlider)):
+            widget.setMinimumHeight(interactive_height)
+        else:
+            widget.setMinimumHeight(interactive_height)
+
+        if control_width is not None:
+            width = max(170, control_width)
+            widget.setMinimumWidth(width)
+            widget.setMaximumWidth(width)
+
+        widget.setSizePolicy(QSizePolicy.Policy.Fixed, QSizePolicy.Policy.Fixed)
+        row.addWidget(widget, 0, Qt.AlignmentFlag.AlignRight | Qt.AlignmentFlag.AlignVCenter)
         return row
 
     # ------------------------------------------------------------------
