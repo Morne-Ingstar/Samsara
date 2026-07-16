@@ -104,6 +104,10 @@ datas += tracked_tree_datas(app_dir, 'browser_extension', 'browser_extension')
 # whitelist: tools/ also contains diagnostics, build helpers, and local
 # artifacts that must never be shipped merely because they use a .py suffix.
 datas.append((str(app_dir / 'tools' / 'stremio_control.py'), 'tools'))
+# Only the packed .ico is needed at runtime (setWindowIcon loads it, and it
+# embeds every size) -- not the whole assets/icon/ tree, which also holds
+# the source PNGs and one-off generation scripts used to build it.
+datas.append((str(app_dir / 'assets' / 'icon' / 'samsara.ico'), 'assets/icon'))
 # NOTE: config.json is intentionally NOT bundled — it contains dev-machine
 # paths and credentials. A fresh config is generated on first run.
 
@@ -434,7 +438,7 @@ exe = EXE(
     target_arch=None,
     codesign_identity=None,
     entitlements_file=None,
-    icon=None,
+    icon=str(app_dir / 'assets' / 'icon' / 'samsara.ico'),
 )
 
 coll = COLLECT(

@@ -33,6 +33,22 @@ if sys.platform == 'win32':
         HAS_WINSOUND = True
     except ImportError:
         HAS_WINSOUND = False
+
+    # Taskbar identity (AUMID): must be set before any window/taskbar icon
+    # is created, so this runs at module import time -- the earliest
+    # possible point, well before DictationApp exists. Without this,
+    # Windows groups/identifies the taskbar entry by the interpreter
+    # (python.exe/pythonw.exe) rather than by Samsara, showing the
+    # generic Python icon and pinning under the wrong name. A stable,
+    # unique ID lets Windows show our own icon and group our windows
+    # under one taskbar entry once the app is pinned or run frozen.
+    try:
+        import ctypes as _ctypes_aumid
+        _ctypes_aumid.windll.shell32.SetCurrentProcessExplicitAppUserModelID(
+            "MorneIngstar.Samsara"
+        )
+    except Exception:
+        pass
 else:
     HAS_WINSOUND = False
 
@@ -1730,30 +1746,34 @@ class DictationApp:
             "Opening the configured microphone and audio pipeline",
         )
 
-        # Set the Samsara wheel as the default icon for all Qt windows.
+        # Set the Samsara lotus-wheel artwork as the default icon for all
+        # Qt windows (assets/icon/samsara.ico -- a multi-resolution .ico,
+        # Qt/Windows picks whichever embedded size fits).
         #
-        # QImage/QPixmap/QIcon are GUI objects that must be constructed on
-        # the Qt thread; this __init__ runs on a different thread. Building
-        # them here used to intermittently deadlock boot (observed ~67% of
-        # cold boots hanging at exactly this point, before audio device
-        # enumeration). The PIL rendering (create_icon_image) isn't Qt and
-        # stays here; only the QImage/QPixmap/QIcon/setWindowIcon calls move
-        # onto the Qt thread via qt_runtime.post(), fire-and-forget so boot
-        # never blocks on it.
+        # QIcon is a GUI object that must be constructed on the Qt thread;
+        # this __init__ runs on a different thread. Building Qt image
+        # objects here used to intermittently deadlock boot (observed ~67%
+        # of cold boots hanging at exactly this point, before audio device
+        # enumeration) -- the fix, preserved here, is that only the (non-Qt)
+        # file path is resolved on this thread, and QIcon construction plus
+        # setWindowIcon move onto the Qt thread via qt_runtime.post(),
+        # fire-and-forget so boot never blocks on it.
         try:
-            _icon_pil = self.create_icon_image(active=True).convert("RGBA")
-            _icon_bytes = _icon_pil.tobytes()
-            _icon_w, _icon_h = _icon_pil.width, _icon_pil.height
+            _icon_base = (
+                sys._MEIPASS
+                if getattr(sys, 'frozen', False) and hasattr(sys, '_MEIPASS')
+                else os.path.dirname(os.path.abspath(__file__))
+            )
+            _icon_ico_path = os.path.join(_icon_base, 'assets', 'icon', 'samsara.ico')
 
             def _apply_window_icon():
                 try:
-                    from PySide6.QtGui import QIcon, QImage, QPixmap
+                    from PySide6.QtGui import QIcon
                     from PySide6.QtWidgets import QApplication
-                    icon_qi = QImage(
-                        _icon_bytes, _icon_w, _icon_h,
-                        QImage.Format.Format_RGBA8888,
-                    )
-                    QApplication.instance().setWindowIcon(QIcon(QPixmap.fromImage(icon_qi)))
+                    if os.path.exists(_icon_ico_path):
+                        QApplication.instance().setWindowIcon(QIcon(_icon_ico_path))
+                    else:
+                        logger.warning(f"[ICON] Icon file not found: {_icon_ico_path}")
                 except Exception as _e:
                     logger.exception(f"[ICON] Could not set Qt window icon: {_e}")
 
