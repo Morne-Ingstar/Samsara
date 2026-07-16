@@ -6,7 +6,13 @@ from unittest.mock import Mock
 
 import pytest
 from PIL import Image
-from PySide6.QtWidgets import QCheckBox, QLabel, QMessageBox, QPushButton
+from PySide6.QtWidgets import (
+    QCheckBox,
+    QLabel,
+    QMessageBox,
+    QPushButton,
+    QSystemTrayIcon,
+)
 
 from samsara.config_schema import SETTINGS_SCHEMA
 from samsara.ui import settings_qt, update_qt
@@ -92,8 +98,10 @@ def test_settings_updates_are_opt_in_and_explain_network_privacy(qapp, monkeypat
         assert checkbox.isChecked() is False
         assert SETTINGS_SCHEMA["updates.automatic_checks"]["default"] is False
 
-        general_page = window._stack.widget(settings_qt._TAB_NAMES.index("General"))
-        copy = " ".join(label.text() for label in general_page.findChildren(QLabel))
+        support_page = window._stack.widget(
+            settings_qt._TAB_NAMES.index("Help & Support")
+        )
+        copy = " ".join(label.text() for label in support_page.findChildren(QLabel))
         lowered = copy.lower()
         for phrase in (
             "no update server or push channel",
@@ -112,8 +120,8 @@ def test_settings_updates_are_opt_in_and_explain_network_privacy(qapp, monkeypat
         assert opened == [(app, {"check_immediately": True})]
 
         checkbox.setChecked(True)
-        general_updates = window._save_fns[0]({})
-        assert general_updates["updates"] == {
+        saved_updates = window._save_fns[0]({})
+        assert saved_updates["updates"] == {
             "channel": "stable",
             "automatic_checks": True,
         }
@@ -320,6 +328,43 @@ def test_tray_confirms_update_only_after_full_startup(qapp, monkeypatch):
 
         tray._poll_startup_health()
         reconcile.assert_called_once_with()
+    finally:
+        tray.stop()
+
+
+def test_tray_warns_on_cleanup_pending_after_full_startup(qapp, monkeypatch):
+    """cleanup_pending must not be a silent state: it means the detached
+    helper's own cleanup didn't happen (yet), and the user should know
+    leftover update files remain and a retry is in flight."""
+    from samsara import updater
+
+    status = updater.UpdateStatus(
+        "cleanup_pending",
+        "Leftover update files from a previous session still need cleanup.",
+        "v0.22.1",
+    )
+    reconcile = Mock(return_value=status)
+    automatic = Mock(return_value=False)
+    monkeypatch.setattr(updater, "reconcile_update_on_startup", reconcile)
+    monkeypatch.setattr(
+        update_qt, "maybe_start_automatic_update_check", automatic,
+    )
+    app = _tray_app()
+    tray = SamsaraTrayQt(app)
+    message = Mock()
+    monkeypatch.setattr(tray._tray, "showMessage", message)
+    try:
+        app._splash_progress = 100
+        tray._poll_startup_health()
+
+        reconcile.assert_called_once_with()
+        message.assert_called_once()
+        title, body = message.call_args.args[:2]
+        assert title == "Samsara update cleanup pending"
+        assert "leftover update files remain" in body.lower()
+        assert "retry" in body.lower()
+        icon = message.call_args.args[2]
+        assert icon == QSystemTrayIcon.MessageIcon.Warning
     finally:
         tray.stop()
 

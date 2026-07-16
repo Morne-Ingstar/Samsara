@@ -39,7 +39,7 @@ that window under **Settings → Modes → Wake command timeout**. Say
 **"nevermind"** as a complete utterance to cancel a pending Jarvis command.
 
 Wake-word commands use the same enabled command packs as other command entry
-points. Samsara currently ships with 410+ built-in commands plus plugin
+points. Samsara currently ships with hundreds of built-in commands plus plugin
 commands; the searchable list in **Settings → Commands** is authoritative for
 your installation and enabled packs.
 

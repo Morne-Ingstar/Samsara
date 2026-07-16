@@ -44,7 +44,8 @@ Open from system tray: **🎓 Voice Training**
 
 ## Data Storage
 
-All training data saved to: `training_data.json` in the app directory
+All training data is saved beside the active profile configuration. For the
+default profile, that is `%USERPROFILE%\.samsara\training_data.json`.
 
 Contains:
 - `vocabulary`: Array of custom words/phrases

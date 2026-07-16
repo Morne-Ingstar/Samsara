@@ -18,6 +18,14 @@ BETA_FEEDBACK_URL = (
     "?template=beta_feedback.yml"
 )
 SUPPORT_URL = "https://morneis.com/samsara/support/"
+DOCUMENTATION_URL = "https://morneis.com/samsara/docs/"
+# This is intentionally a public beta-support address, not a hidden service
+# endpoint.  It opens the user's own mail client only after an explicit click.
+BETA_SUPPORT_EMAIL = "morneingstarproductions@gmail.com"
+BETA_SUPPORT_MAILTO = (
+    "mailto:morneingstarproductions@gmail.com"
+    "?subject=Samsara%20beta%20support"
+)
 
 
 def build_safe_diagnostic_summary(
@@ -69,7 +77,10 @@ def build_safe_diagnostic_summary(
 
 __all__ = [
     "BETA_FEEDBACK_URL",
+    "BETA_SUPPORT_EMAIL",
+    "BETA_SUPPORT_MAILTO",
     "BUG_REPORT_URL",
+    "DOCUMENTATION_URL",
     "SUPPORT_URL",
     "build_safe_diagnostic_summary",
 ]

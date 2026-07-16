@@ -42,9 +42,9 @@ Microphone (sounddevice, capture at device native rate)
                                     ▼
                               CommandMatcher (token-based, longest-match)
                                     │
-                                    ├─ Built-in → hotkey/launch/macro/text/method
+                                    ├─ Built-in → registered JSON command handler
                                     ├─ Plugin → handler(app, remainder)
-                                    └─ No match → paste as dictated text
+                                    └─ No match → return to sleep without pasting
 ```
 
 ## State Machine (4 States)
@@ -94,17 +94,18 @@ delivery rules:
 ### UI (all in samsara/ui/)
 | File | Purpose |
 |------|---------|
-| `settings_window.py` | Settings UI (lazy tabs, staged building) |
-| `listening_indicator.py` | Always-on-top overlay (pulses teal when active) |
-| `wake_word_debug.py` | Debug window with trace pipeline |
-| `first_run_wizard.py` | Setup wizard |
-| `history_window.py` | Dictation history viewer |
-| `splash.py` | Splash screen |
+| `main_window_qt.py` | Main hub for History, Dictionary, and Settings |
+| `settings_qt.py` | Settings window and command-library UI |
+| `listening_indicator.py` | Always-on-top listening-state overlay |
+| `wake_word_debug_qt.py` | Wake detection trace and diagnostics |
+| `first_run_wizard_qt.py` | Setup wizard |
+| `history_qt.py` | Dictation history viewer |
+| `splash_qt.py` | Startup splash screen |
 
 ### Plugins (plugins/commands/)
 | File | Purpose |
 |------|---------|
-| `audio_switch.py` | "switch to speakers" — NirCmd device switching |
+| `audio_switch.py` | "switch to speakers" — device switching (requires NirCmd in `tools/` or on `PATH`) |
 | `web_shortcuts.py` | "go to youtube" — config-driven URL bookmarks |
 | `tab_finder.py` | "where is github" — browser tab search |
 | `macros.py` | "going dark" — multi-step workflows |
@@ -151,8 +152,13 @@ Loading or inference failure falls back to RMS-based detection.
 
 ## Threading Model
 
-- Audio callback: sounddevice callback thread
-- Transcription: new daemon thread per utterance
-- Command dispatch: inline on transcription thread
-- UI updates: marshalled via root.after(0, ...)
-- Whisper calls serialized by model_lock
+- Audio capture: PortAudio's callback writes frames to the shared ring and
+  does no transcription or command work.
+- Audio consumers: dedicated daemon poll threads read independent ring cursors;
+  completed utterances are handed to tracked worker threads for transcription.
+- Command dispatch: runs inline on the utterance-processing worker so spoken
+  actions retain their order.
+- UI: one persistent `samsara-qt` thread owns `QApplication` and every Qt
+  widget. Other threads marshal UI work through `qt_runtime.post()` and
+  `QTimer.singleShot`.
+- Whisper calls are serialized by `model_lock`.

@@ -744,6 +744,42 @@ def _ps_literal(value: str | Path) -> str:
     return "'" + str(value).replace("'", "''") + "'"
 
 
+# Shared by both generated PowerShell templates (_helper_script and
+# _cleanup_retry_script). Inserted verbatim into an f-string as a plain
+# string value (not re-parsed as an f-string), so it uses single braces.
+#
+# Checks every existing path component from the expected installation
+# parent down to -- and including -- the target itself, not just the leaf.
+# A one-shot up-front validation (Assert-SafeUpdatePaths) is not enough:
+# the waits between it and the eventual Remove-Item/Move-Item can run
+# minutes, long enough for a reparse point to be planted at any level
+# under the parent, not only at the final path.
+_ASSERT_NOT_REPARSE_POINT_PS = """function Assert-NotReparsePoint([string]$path, [string]$expectedParent) {
+    $parentFull = [IO.Path]::GetFullPath($expectedParent)
+    $targetFull = [IO.Path]::GetFullPath($path)
+    $components = @($parentFull)
+    $cursor = $targetFull
+    $chain = @()
+    while ($cursor -and -not [string]::Equals($cursor, $parentFull, [StringComparison]::OrdinalIgnoreCase)) {
+        $chain = ,$cursor + $chain
+        $next = [IO.Path]::GetDirectoryName($cursor)
+        if ([string]::IsNullOrEmpty($next) -or [string]::Equals($next, $cursor, [StringComparison]::OrdinalIgnoreCase)) {
+            break
+        }
+        $cursor = $next
+    }
+    $components += $chain
+    foreach ($component in $components) {
+        if (Test-Path -LiteralPath $component) {
+            $item = Get-Item -LiteralPath $component -Force
+            if (($item.Attributes -band [IO.FileAttributes]::ReparsePoint) -ne 0) {
+                throw "Refusing to modify a reparse point: $component"
+            }
+        }
+    }
+}"""
+
+
 def _helper_script(prepared: PreparedUpdate, current_pid: int) -> str:
     install = _ps_literal(prepared.install_dir)
     staged = _ps_literal(prepared.staged_dir)
@@ -764,6 +800,7 @@ $executable = {executable}
 $tag = {tag}
 $workspacePrefix = {workspace_prefix}
 $rollbackPrefix = {rollback_prefix}
+$installParent = [IO.Path]::GetDirectoryName([IO.Path]::GetFullPath($install))
 $pathsValidated = $false
 
 function Write-UpdateStatus([string]$state, [string]$message) {{
@@ -791,19 +828,7 @@ function Show-UpdateFailure([string]$message) {{
     }} catch {{}}
 }}
 
-function Assert-NotReparsePoint([string]$path) {{
-    # Assert-SafeUpdatePaths only runs once, up front. The waits below can
-    # each take minutes, so anything destructive that follows a wait must
-    # re-check its target immediately before touching it -- a reparse point
-    # planted during the wait must never be recursed into or moved through.
-    $full = [IO.Path]::GetFullPath($path)
-    if (Test-Path -LiteralPath $full) {{
-        $item = Get-Item -LiteralPath $full -Force
-        if (($item.Attributes -band [IO.FileAttributes]::ReparsePoint) -ne 0) {{
-            throw "Refusing to modify a reparse point: $full"
-        }}
-    }}
-}}
+{_ASSERT_NOT_REPARSE_POINT_PS}
 
 function Assert-SafeUpdatePaths {{
     $installFull = [IO.Path]::GetFullPath($install)
@@ -846,7 +871,7 @@ function Complete-PreSwapFailure([string]$message) {{
     if ($pathsValidated) {{
         try {{
             if (Test-Path -LiteralPath $workspace) {{
-                Assert-NotReparsePoint $workspace
+                Assert-NotReparsePoint $workspace $installParent
                 Remove-Item -LiteralPath $workspace -Recurse -Force -ErrorAction Stop
             }}
             Write-UpdateStatus 'failed' $message
@@ -881,7 +906,7 @@ if (Get-Process -Id {int(current_pid)} -ErrorAction SilentlyContinue) {{
 $oldMoved = $false
 $newProcess = $null
 try {{
-    Assert-NotReparsePoint $install
+    Assert-NotReparsePoint $install $installParent
     Move-Item -LiteralPath $install -Destination $rollback
     $oldMoved = $true
     Move-Item -LiteralPath $staged -Destination $install
@@ -893,8 +918,8 @@ try {{
             $currentStatus = Get-Content -LiteralPath $status -Raw | ConvertFrom-Json
             if (($currentStatus.state -eq 'installed') -or ($currentStatus.state -eq 'reported')) {{
                 $cleanupErrors = @()
-                try {{ Assert-NotReparsePoint $rollback; Remove-Item -LiteralPath $rollback -Recurse -Force -ErrorAction Stop }} catch {{ $cleanupErrors += $_.Exception.Message }}
-                try {{ Assert-NotReparsePoint $workspace; Remove-Item -LiteralPath $workspace -Recurse -Force -ErrorAction Stop }} catch {{ $cleanupErrors += $_.Exception.Message }}
+                try {{ Assert-NotReparsePoint $rollback $installParent; Remove-Item -LiteralPath $rollback -Recurse -Force -ErrorAction Stop }} catch {{ $cleanupErrors += $_.Exception.Message }}
+                try {{ Assert-NotReparsePoint $workspace $installParent; Remove-Item -LiteralPath $workspace -Recurse -Force -ErrorAction Stop }} catch {{ $cleanupErrors += $_.Exception.Message }}
                 if ($cleanupErrors.Count -gt 0) {{
                     Write-UpdateStatus 'cleanup_pending' "The update succeeded, but old update files still need cleanup: $($cleanupErrors -join '; ')"
                 }}
@@ -920,15 +945,15 @@ try {{
                 }}
             }}
             if (Test-Path -LiteralPath $install) {{
-                Assert-NotReparsePoint $install
+                Assert-NotReparsePoint $install $installParent
                 Remove-Item -LiteralPath $install -Recurse -Force
             }}
-            Assert-NotReparsePoint $rollback
+            Assert-NotReparsePoint $rollback $installParent
             Move-Item -LiteralPath $rollback -Destination $install
             Start-Process -FilePath (Join-Path $install $executable) -WorkingDirectory $install
             try {{
                 if (Test-Path -LiteralPath $workspace) {{
-                    Assert-NotReparsePoint $workspace
+                    Assert-NotReparsePoint $workspace $installParent
                     Remove-Item -LiteralPath $workspace -Recurse -Force -ErrorAction Stop
                 }}
                 Write-UpdateStatus 'rolled_back' "The update failed and the previous version was restored: $problem"
@@ -1060,30 +1085,47 @@ def _validated_recorded_path(
     return candidate
 
 
-def _leftover_update_dirs(payload: dict) -> tuple[Path, Path, Path] | None:
-    """Best-effort, non-raising extraction of a validated (workspace,
-    rollback, install) triple from a status payload.
+_LEFTOVER_PATH_KEYS = ("install_dir", "rollback_dir", "workspace_dir")
 
-    Returns ``None`` when the payload predates path persistence or the paths
-    fail validation -- callers must treat that as "nothing to check", not as
-    an error.
+
+def _leftover_update_dirs(payload: dict) -> tuple[Path, Path, Path] | None:
+    """Extract a validated (workspace, rollback, install) triple from an
+    ``installed``-state status payload, if the payload carries one.
+
+    Returns ``None`` only when the payload predates path persistence --
+    i.e. *none* of install_dir/rollback_dir/workspace_dir are present.
+    Callers must treat that, and only that, as "nothing to check, this is a
+    legacy status" rather than an error.
+
+    If *any* of those fields are present, all three are required and must
+    resolve to safe, validated paths beside this installation; this raises
+    :class:`UpdateError` on a malformed, incomplete, tampered, or unsafe
+    subset instead of silently swallowing it -- callers must not treat that
+    case the same as "nothing to check", or a corrupted status could hide
+    orphaned update directories forever.
     """
-    try:
-        install = _frozen_install_dir()
-        recorded_install = Path(str(payload.get("install_dir", ""))).resolve()
-        if recorded_install != install:
-            return None
-        workspace = _validated_recorded_path(
-            payload.get("workspace_dir"), install.parent, f".{install.name}-update-"
-        )
-        rollback = _validated_recorded_path(
-            payload.get("rollback_dir"), install.parent, f".{install.name}-rollback-"
-        )
-        if workspace.is_symlink() or rollback.is_symlink():
-            return None
-        return workspace, rollback, install
-    except Exception:
+    present = [key for key in _LEFTOVER_PATH_KEYS if payload.get(key)]
+    if not present:
         return None
+    missing = [key for key in _LEFTOVER_PATH_KEYS if key not in present]
+    if missing:
+        raise UpdateError(
+            "The update status has some but not all required cleanup path "
+            f"fields (missing: {', '.join(missing)})."
+        )
+    install = _frozen_install_dir()
+    recorded_install = Path(str(payload.get("install_dir", ""))).resolve()
+    if recorded_install != install:
+        raise UpdateError("The update status belongs to a different installation.")
+    workspace = _validated_recorded_path(
+        payload.get("workspace_dir"), install.parent, f".{install.name}-update-"
+    )
+    rollback = _validated_recorded_path(
+        payload.get("rollback_dir"), install.parent, f".{install.name}-rollback-"
+    )
+    if workspace.is_symlink() or rollback.is_symlink():
+        raise UpdateError("An update cleanup path became a symbolic link.")
+    return workspace, rollback, install
 
 
 def _quarantine_status(path: Path, reason: str) -> UpdateStatus:
@@ -1139,6 +1181,7 @@ function Write-CleanupStatus([string]$state, [string]$message) {{
     $data | ConvertTo-Json -Compress | Set-Content -LiteralPath $temporary -Encoding UTF8
     Move-Item -LiteralPath $temporary -Destination $status -Force
 }}
+{_ASSERT_NOT_REPARSE_POINT_PS}
 try {{
     $workspaceFull = [IO.Path]::GetFullPath($workspace)
     $rollbackFull = [IO.Path]::GetFullPath($rollback)
@@ -1160,8 +1203,7 @@ try {{
     }}
     foreach ($candidate in @($rollbackFull, $workspaceFull)) {{
         if (Test-Path -LiteralPath $candidate) {{
-            $item = Get-Item -LiteralPath $candidate -Force
-            if (($item.Attributes -band [IO.FileAttributes]::ReparsePoint) -ne 0) {{ throw 'An update cleanup directory became a reparse point.' }}
+            Assert-NotReparsePoint $candidate $expectedParent
             Remove-Item -LiteralPath $candidate -Recurse -Force -ErrorAction Stop
         }}
     }}
@@ -1321,8 +1363,19 @@ def reconcile_update_on_startup(
         # writes a further status on cleanup *failure*. Check the recorded
         # directories' actual existence (cheap stat calls; never a
         # synchronous multi-gigabyte delete on this Qt-thread call) before
-        # trusting that nothing was orphaned.
-        leftover = _leftover_update_dirs(payload)
+        # trusting that nothing was orphaned. A malformed/tampered *subset*
+        # of the path fields (as opposed to none of them, which is just a
+        # legacy status predating this check) must never be silently
+        # treated as "nothing to check" -- that would hide a corrupted
+        # status and let its update directories leak unnoticed.
+        try:
+            leftover = _leftover_update_dirs(payload)
+        except Exception as exc:
+            return _quarantine_status(
+                status_path,
+                f"The previous update's status had unsafe or malformed "
+                f"cleanup path fields: {exc}",
+            )
         if leftover is not None:
             workspace, rollback, install = leftover
             if workspace.exists() or rollback.exists():

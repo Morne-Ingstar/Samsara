@@ -97,7 +97,7 @@ Enabled and configured in Settings → TTS tab. Off by default.
 
 ### Voice Commands
 
-410+ built-in commands plus a plugin system. Say a command after your wake word (default: "Jarvis").
+Hundreds of built-in commands plus a plugin system. Say a command after your wake word (default: "Jarvis").
 
 | Category | Examples |
 |----------|----------|
@@ -105,8 +105,8 @@ Enabled and configured in Settings → TTS tab. Off by default.
 | **Health** | "pain level 6", "took ibuprofen 400mg", "health summary", "how was my week" |
 | **Reminders** | "remind me to stretch every 30 minutes", "list reminders", "cancel reminder" |
 | **Alarms** | "complete alarm", "dismiss alarm", "read alarms" |
-| **Macros** | "going dark" (mute + minimize + lock), "good morning" (mail + GitHub + music) |
-| **Audio** | "switch to speakers", "use my headset" |
+| **Macros** | "going dark" (mute + minimize + lock), "good morning" (mail + GitHub + music) — enable the Custom Macros pack first; volume actions require NirCmd |
+| **Audio** | "switch to speakers", "use my headset" — requires NirCmd in `tools/` or on `PATH` |
 | **Browser** | "find tab GitHub", "search for ergonomic keyboards" |
 | **Screen** | "record my screen", "record this window", "stop recording" |
 | **Smart Home** | "lights red", "lights off", "light effect rainbow" |
@@ -368,7 +368,7 @@ python -m pytest tests/ -v
 - [x] **Medication dictionary** — 100+ medication names for speech recognition accuracy
 - [x] **Voice reminders & alarms** — "remind me to stretch every 30 min", streaks, gamification
 - [x] **Expanded scrolling** — scroll to top/bottom, page up/down, horizontal scroll
-- [x] 410+ voice commands with 31-plugin system
+- [x] Hundreds of built-in voice commands with a 31-plugin system
 - [x] Voice AI / Ava — local Ollama + optional cloud (DeepSeek/OpenAI/Anthropic/OpenRouter)
 - [x] Text-to-Speech with EdgeTTS / Windows Natural voices and smart audio ducking
 - [x] Keyboard command mode (hold-to-talk walkie-talkie)
