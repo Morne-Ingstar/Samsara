@@ -217,6 +217,22 @@ class TestEmptyAndGatedOutcomes:
         # Must not be conflated with a normal delivery's silence on outcome.
         assert stored.outcome != "ok"
 
+    def test_suspected_loss_outcome_recorded_and_classified_distinctly(self):
+        """dictation._suspected_silent_data_loss's fail-loud sanity check
+        (2026-07-16 incident: 35.3s recording delivered 80 chars) must be
+        distinguishable from every other outcome."""
+        record(_rec(
+            outcome="suspected_loss", path="short", n_segments=2,
+            audio_s=35.3, text="streaming dictate, hands free what you're saying",
+        ))
+
+        stored = recent()[0]
+        assert stored.outcome == "suspected_loss"
+        assert any(
+            "Suspected silent data loss" in v for v in stored.verdicts
+        )
+        assert stored.outcome not in ("ok", "low_confidence", "empty", "gated")
+
 
 # ============================================================================
 # Ring buffer

@@ -384,3 +384,107 @@ class TestLongDecodeCeilingAndSplitterPreserved:
         chunks = dictation._split_audio_at_silences(audio, 16000)
         assert len(chunks) >= 2
         assert sum(len(c) for c in chunks) == len(audio)
+
+
+# ============================================================================
+# Fail-loud silent-data-loss sanity check (2026-07-16 incident: a 35.3s
+# hotkey dictation delivered only 80 chars -- the start of the utterance
+# stitched directly onto its end, ~25s of real continuous speech gone from
+# Whisper's own first-window decode, invisible to every gate above since
+# the surviving segments' own signals looked individually unremarkable).
+# ============================================================================
+
+class TestSpeechRmsCoverage:
+    def test_silence_has_zero_coverage(self):
+        audio = np.zeros(16000 * 10, dtype=np.float32)
+        assert dictation._speech_rms_coverage(audio, 16000) == 0.0
+
+    def test_full_scale_tone_has_full_coverage(self):
+        t = np.linspace(0, 10, 16000 * 10, endpoint=False)
+        audio = (0.5 * np.sin(2 * np.pi * 220 * t)).astype(np.float32)
+        assert dictation._speech_rms_coverage(audio, 16000) == 1.0
+
+    def test_half_loud_half_silent_is_roughly_half_coverage(self):
+        t = np.linspace(0, 5, 16000 * 5, endpoint=False)
+        loud = (0.5 * np.sin(2 * np.pi * 220 * t)).astype(np.float32)
+        quiet = np.zeros(16000 * 5, dtype=np.float32)
+        audio = np.concatenate([loud, quiet])
+        coverage = dictation._speech_rms_coverage(audio, 16000)
+        assert 0.4 <= coverage <= 0.6
+
+    def test_empty_audio_returns_zero(self):
+        assert dictation._speech_rms_coverage(np.array([], dtype=np.float32), 16000) == 0.0
+
+    @pytest.mark.skipif(not FIXTURES_DIR.exists(), reason="audio fixtures not present")
+    def test_incident_wav_has_sustained_speech_coverage(self):
+        """Ground truth from the incident's manual RMS audit: this WAV has
+        continuous speech (varying -18 to -35 dBFS) through the ENTIRE
+        35.3s, confirming the loss downstream was a decode/gating bug, not
+        mic dropout -- see docs/wake-word-implementation-handoff.md-style
+        investigation notes. This fixture's coverage must stay high so the
+        sanity check below has real corroboration to work from."""
+        audio, rate = _load_wav_float32(FIXTURES_DIR / "hotkey_incident_35s_first_window_loss.wav")
+        coverage = dictation._speech_rms_coverage(audio, rate)
+        # Measured 0.76 (natural pauses between phrases dip below the -40dBFS
+        # floor) -- comfortably above _SANITY_MIN_SPEECH_COVERAGE (0.5), the
+        # actual threshold the sanity check uses.
+        assert coverage >= 0.7
+
+
+class TestSuspectedSilentDataLoss:
+    def test_short_recording_never_flagged_regardless_of_cps(self):
+        """Below _SANITY_MIN_DURATION_S, chars/sec is too noisy a signal on
+        its own -- a short, legitimately terse utterance must never trip
+        this."""
+        audio = 0.5 * np.ones(16000 * 5, dtype=np.float32)
+        assert dictation._suspected_silent_data_loss("hi", audio, 16000, 5.0) is False
+
+    def test_quiet_long_recording_with_little_text_not_flagged(self):
+        """A long hold that's genuinely mostly silent producing little text
+        is CORRECTLY quiet, not a decode failure -- the RMS-coverage
+        corroboration must prevent this from being flagged."""
+        audio = np.zeros(16000 * 30, dtype=np.float32)
+        assert dictation._suspected_silent_data_loss("ok", audio, 16000, 30.0) is False
+
+    def test_loud_long_recording_with_complete_text_not_flagged(self):
+        """The common case: real sustained dictation with proportionate
+        chars/sec must never be flagged."""
+        t = np.linspace(0, 30, 16000 * 30, endpoint=False)
+        audio = (0.3 * np.sin(2 * np.pi * 220 * t)).astype(np.float32)
+        text = "this is a normal long dictation with plenty of words in it " * 6
+        assert dictation._suspected_silent_data_loss(text, audio, 16000, 30.0) is False
+
+    def test_loud_long_recording_with_implausibly_little_text_is_flagged(self):
+        """The incident's exact shape: sustained speech-RMS coverage, but
+        far too little delivered text for the duration."""
+        t = np.linspace(0, 35.3, 16000 * 35, endpoint=False)
+        audio = (0.3 * np.sin(2 * np.pi * 220 * t)).astype(np.float32)
+        text = "streaming dictate, hands free what you're saying before you decide to paste it."
+        assert dictation._suspected_silent_data_loss(text, audio, 16000, 35.3) is True
+
+    @pytest.mark.skipif(not FIXTURES_DIR.exists(), reason="audio fixtures not present")
+    def test_incident_wav_with_incident_text_is_flagged(self):
+        """The actual delivered text from the 2026-07-16 incident, paired
+        with the actual incident WAV (confirmed above to have sustained
+        speech coverage) -- the sanity check must catch this exact case."""
+        audio, rate = _load_wav_float32(FIXTURES_DIR / "hotkey_incident_35s_first_window_loss.wav")
+        duration = len(audio) / rate
+        incident_text = "streaming dictate, hands free what you're saying before you decide to paste it."
+        assert dictation._suspected_silent_data_loss(incident_text, audio, rate, duration) is True
+
+    @pytest.mark.skipif(not FIXTURES_DIR.exists(), reason="audio fixtures not present")
+    def test_incident_wav_with_complete_text_not_flagged(self):
+        """Sanity-check the sanity check: if this same WAV had decoded
+        completely (as it does under some decode-param/session states --
+        see the module-level incident comment on _SANITY_MIN_DURATION_S
+        about run-to-run nondeterminism), the full recovered text must NOT
+        be flagged."""
+        audio, rate = _load_wav_float32(FIXTURES_DIR / "hotkey_incident_35s_first_window_loss.wav")
+        duration = len(audio) / rate
+        complete_text = (
+            "Also, I would like to combine streaming dictate with hands-free. "
+            "Not combine necessarily, but I would like hands-free to have that "
+            "as an option like just a sort of semi-translucent box where you "
+            "can see what you're saying before you decide to paste it."
+        )
+        assert dictation._suspected_silent_data_loss(complete_text, audio, rate, duration) is False
