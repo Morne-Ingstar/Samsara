@@ -1612,6 +1612,12 @@ def _reap_old_preview_profiles() -> None:
 class DictationApp:
     def __init__(self, splash=None):
         self.splash = splash
+        # Startup work is split between this thread and the asynchronous model
+        # loader.  Keep splash progress monotonic when those two lanes report
+        # at nearly the same time.
+        self._splash_progress = 0
+        self._splash_progress_lock = threading.Lock()
+        self._startup_shell_ready = threading.Event()
         # Source and frozen launches share one per-user profile. Tests,
         # first-run previews, and other isolated launches use the explicit
         # SAMSARA_HOME_DIR override instead of a second implicit config.
@@ -1710,13 +1716,19 @@ class DictationApp:
             self._launch_tutorial_after_wizard = True
 
         logger.info("[INIT] Loading config...")
-        self.update_splash("Loading configuration...")
+        self.update_splash(
+            "Loading configuration...", 8,
+            "Reading preferences and accessibility settings",
+        )
         with self._config_lock:
             self.load_config()
         _boot("config load")
         _bdiag("config load")
 
-        self.update_splash("Setting up audio...")
+        self.update_splash(
+            "Setting up audio...", 18,
+            "Opening the configured microphone and audio pipeline",
+        )
 
         # Set the Samsara wheel as the default icon for all Qt windows.
         #
@@ -2284,7 +2296,10 @@ class DictationApp:
             if self.echo_canceller.start():
                 self._aec_open_t = time.perf_counter()
 
-        self.update_splash("Setting up keyboard...")
+        self.update_splash(
+            "Setting up keyboard...", 35,
+            "Installing hotkeys and listening controls",
+        )
 
         # Start keyboard listener
         self.keyboard_listener = pynput_keyboard.Listener(
@@ -2329,9 +2344,15 @@ class DictationApp:
             os.path.expanduser("~"), ".cache", "huggingface", "hub", _model_folder
         )
         if os.path.exists(_model_cache):
-            self.update_splash("Loading speech model...")
+            self.update_splash(
+                "Loading speech model...", 50,
+                "Preparing local speech recognition",
+            )
         else:
-            self.update_splash("Downloading speech model (first run only, may take a few minutes)...")
+            self.update_splash(
+                "Downloading speech model...", 50,
+                "First download only; this may take a few minutes",
+            )
 
         # Load model in background
         self.load_model_async()
@@ -2359,6 +2380,11 @@ class DictationApp:
         if _dt > 5000:
             logger.info(f"[BOOT-DIAG] SLOW STEP: _start_ace_engine {_dt:.0f}ms")
 
+        self.update_splash(
+            "Audio capture ready...", 60,
+            "Preparing the interface while speech recognition loads",
+        )
+
         mode = self.config.get('mode', 'hold')
         logger.info(f"Dictation app starting...")
         logger.info(f"Mode: {mode}")
@@ -2376,12 +2402,13 @@ class DictationApp:
             self.main_window = MainWindowQt(self)
         self._schedule_ui(_init_main_window)
 
-        # NOTE: Splash is intentionally NOT closed here. load_model_async runs
-        # the heavy Whisper/CUDA load on a background thread; closing the splash
-        # before that finishes leaves the user with no indicator that the app
-        # is still warming up. The model-load worker now closes the splash on
-        # completion via _schedule_ui(self._on_model_loaded_close_splash).
-        self.update_splash("Starting...")
+        # NOTE: Splash is intentionally NOT closed here.  The model worker also
+        # waits for create_tray_icon() to schedule the tray and main window, so
+        # neither startup lane can report completion before the other is ready.
+        self.update_splash(
+            "Preparing the interface...", 65,
+            "Building the Samsara controls and tray menu",
+        )
 
         # Start config file watcher — detects external edits and reloads.
         try:
@@ -2397,16 +2424,45 @@ class DictationApp:
 
         self.create_tray_icon()
 
-    def update_splash(self, status):
-        """Update splash screen status"""
-        if self.splash:
+    def update_splash(self, status, progress=None, detail=None, *, error=False):
+        """Update startup state without allowing concurrent phases to regress.
+
+        ``set_status`` remains the only required splash API.  Progress, detail,
+        and error setters are used when the richer splash implementation
+        provides them, keeping lightweight test/legacy splash objects working.
+        """
+        splash = getattr(self, "splash", None)
+        if splash is None:
+            return
+
+        lock = getattr(self, "_splash_progress_lock", None)
+        if lock is None:
+            lock = threading.Lock()
+            self._splash_progress_lock = lock
+
+        with lock:
+            current = getattr(self, "_splash_progress", 0)
+            if progress is not None:
+                progress = max(0, min(100, int(progress)))
+                # A slower startup lane may report after a faster one.  Ignore
+                # its entire stale phase so the visible status stays truthful.
+                if progress < current and not error:
+                    return
+                self._splash_progress = max(current, progress)
+
             try:
-                self.splash.set_status(status)
+                splash.set_status(status)
+                if progress is not None and hasattr(splash, "set_progress"):
+                    splash.set_progress(self._splash_progress)
+                if detail is not None and hasattr(splash, "set_detail"):
+                    splash.set_detail(detail)
+                if error and hasattr(splash, "set_error"):
+                    splash.set_error(status, detail)
             except Exception as e:
                 logger.debug(f"Splash status update failed: {e}")
 
     def _close_splash_post_load(self):
-        """Close the splash screen after the model has finished loading.
+        """Close the splash screen after every startup lane has finished.
         Runs on the UI thread via _schedule_ui."""
         if self.splash:
             try:
@@ -4042,24 +4098,27 @@ class DictationApp:
             self.model_loaded = True
             self.loading_model = False
             logger.info(f"[OK] Model loaded in {load_time:.1f}s ({device}, {compute_type})")
-
-            # Marshal to UI thread: close the splash now that the app is
-            # truly ready to dictate. Until this point, the splash has been
-            # showing "Loading speech model..." which is accurate.
-            try:
-                if self.splash:
-                    self._schedule_ui(self._close_splash_post_load)
-            except Exception as e:
-                logger.exception(f"[SPLASH] Could not close splash: {e}")
+            self.update_splash(
+                "Speech model ready...", 70,
+                f"Loaded on {device.upper()} in {load_time:.1f} seconds",
+            )
 
             _boot_log = getattr(self, '_boot_log', lambda s: None)
             logger.info("[INIT] Loading Silero VAD...")
+            self.update_splash(
+                "Calibrating speech detection...", 76,
+                "Loading the local voice activity detector",
+            )
             # Load Silero VAD for real-time speech gating (async-safe: if this
             # fails, the wake callback falls back to RMS).
             self._load_vad_model()
             _boot_log("async: Silero VAD load")
 
             logger.info("[INIT] Loading OpenWakeWord pre-filter...")
+            self.update_splash(
+                "Preparing wake words...", 82,
+                "Loading wake detection and voice profiles",
+            )
             self._load_oww_model()
             self._load_wake_profile_models()
             _boot_log("async: OpenWakeWord model load")
@@ -4068,6 +4127,10 @@ class DictationApp:
 
             # Auto-start modes that require always-on listening
             mode = self.config.get('mode', 'hold')
+            self.update_splash(
+                "Starting listening services...", 90,
+                "Activating the configured audio modes",
+            )
             if mode == 'continuous':
                 logger.info("[AUTO] Starting continuous mode...")
                 self.start_continuous_mode()
@@ -4084,7 +4147,22 @@ class DictationApp:
 
             # Auto-start gesture lane if enabled
             if self.config.get('gesture', {}).get('enabled', False):
+                self.update_splash(
+                    "Starting gesture control...", 94,
+                    "Activating hands-free gesture recognition",
+                )
                 self._start_gesture_lane()
+
+            # The main thread opens ACE and builds the rest of the interface
+            # while this worker loads the models.  Do not announce completion
+            # until create_tray_icon() has scheduled the tray and main window.
+            self.update_splash(
+                "Finalizing Samsara...", 96,
+                "Waiting for all startup systems to report ready",
+            )
+            shell_ready = getattr(self, "_startup_shell_ready", None)
+            if shell_ready is not None:
+                shell_ready.wait()
 
             # Warm the local Ollama model (if Smart Corrections resolves to
             # it) so the first real correction call doesn't also pay a
@@ -4094,8 +4172,6 @@ class DictationApp:
             except Exception as e:
                 logger.debug(f"[SMART] warm_up call failed: {e}")
 
-            logger.info("[INIT] Startup complete.")
-
             # Ensure clean state — reset any recording flags that may have
             # been tripped by keyboard events during startup
             self.recording = False
@@ -4104,13 +4180,32 @@ class DictationApp:
             self._hotkey_recording = False
             if hasattr(self, 'listening_indicator'):
                 self._schedule_ui(self.listening_indicator.set_listening, False)
+
+            self.update_splash(
+                "Samsara ready", 100,
+                "All configured systems are ready",
+            )
+            logger.info("[INIT] Startup complete.")
+
+            # Completion animation and minimum display timing belong to the
+            # splash.  Only request dismissal after Startup complete is true.
+            try:
+                splash = getattr(self, "splash", None)
+                if splash is not None:
+                    if hasattr(splash, "complete"):
+                        splash.complete("Samsara ready", "All configured systems are ready")
+                    self._schedule_ui(self._close_splash_post_load)
+            except Exception as e:
+                logger.exception(f"[SPLASH] Could not complete splash: {e}")
           except Exception as _exc:
             import traceback
             traceback.print_exc()
             self.loading_model = False
             self._startup_failed = True
             err_msg = str(_exc)
-            self.update_splash(f"Startup error: {err_msg}")
+            self.update_splash(
+                "Startup could not finish", None, err_msg, error=True,
+            )
             self._schedule_ui(self._show_startup_error, err_msg)
 
         thread = thread_registry.spawn("dictation.load", load, daemon=True)
@@ -9541,6 +9636,13 @@ class DictationApp:
 
         QTimer.singleShot(0, qt_app, _create)
         QTimer.singleShot(0, qt_app, self.show_main_window)
+        # This method intentionally blocks below for the application's
+        # lifetime.  Signal the model-loading lane only after the UI work has
+        # been queued; otherwise a fast model load can close the splash while
+        # synchronous audio/interface initialization is still underway.
+        shell_ready = getattr(self, "_startup_shell_ready", None)
+        if shell_ready is not None:
+            shell_ready.set()
 
         while self._running:
             import time as _t
@@ -9945,7 +10047,18 @@ if __name__ == "__main__":
     try:
         app = DictationApp(splash)
     except Exception as e:
-        splash.close()
+        # Keep the shared Qt runtime and splash alive so a synchronous startup
+        # failure is visible instead of flashing away before the traceback can
+        # be read.  Rich splashes render a dedicated error state; the original
+        # status-only API still gets a useful message.
+        try:
+            splash.set_status("Startup could not finish")
+            if hasattr(splash, "set_detail"):
+                splash.set_detail(str(e))
+            if hasattr(splash, "set_error"):
+                splash.set_error("Startup could not finish", str(e))
+        except Exception as _splash_error:
+            logger.debug(f"Could not show synchronous startup error: {_splash_error}")
         raise e
     finally:
         # os._exit(0) in quit_app bypasses this block, which is correct —
