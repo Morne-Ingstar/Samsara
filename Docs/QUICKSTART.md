@@ -3,7 +3,8 @@
 ## Download & Run (Windows)
 
 1. Go to the [latest release](https://github.com/Morne-Ingstar/Samsara/releases/latest)
-2. Download **Samsara-Windows-v0.22.0.zip**
+2. Download the **Samsara-Windows-vX.Y.Z.zip** asset for that release (not
+   either of GitHub's automatically generated source-code archives)
 3. Extract anywhere, double-click **Samsara.exe**
 4. The setup wizard picks your mic and downloads the AI model
 
@@ -41,7 +42,7 @@ command:
 | "Jarvis, snap left" | Snaps window to left half |
 | "Jarvis, where is GitHub" | Finds and switches to your GitHub tab |
 | "Jarvis, go to YouTube" | Opens YouTube in your browser |
-| "Jarvis, going dark" | Mutes + minimizes all + locks screen |
+| "Jarvis, new tab" | Opens a new browser tab |
 | "Jarvis, volume up" | Raises system volume |
 | "Jarvis, scratch that" | Undoes the last dictation |
 

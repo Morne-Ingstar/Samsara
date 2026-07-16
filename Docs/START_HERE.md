@@ -2,7 +2,7 @@
 
 ## For Users
 - **[QUICKSTART.md](QUICKSTART.md)** — Install, run, try your first commands
-- **[VOICE_COMMANDS.md](VOICE_COMMANDS.md)** — Command reference (410+ built-in commands plus plugins)
+- **[VOICE_COMMANDS.md](VOICE_COMMANDS.md)** — Command reference (hundreds of built-in commands plus plugins)
 - **[WAKE_WORD_GUIDE.md](WAKE_WORD_GUIDE.md)** — Wake word configuration and tuning
 - **[CUSTOM_COMMANDS.md](CUSTOM_COMMANDS.md)** — Adding your own voice commands
 

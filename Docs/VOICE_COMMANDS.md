@@ -1,6 +1,6 @@
 # Voice Commands Reference
 
-Samsara ships with 410+ built-in commands plus a plugin system for custom commands.
+Samsara ships with hundreds of built-in commands plus a plugin system for custom commands.
 Say your wake word (default: "Jarvis") followed by any command below.
 
 ## Plugins (Dynamic Commands)
@@ -15,6 +15,11 @@ These commands accept variable input after the trigger phrase.
 | **Audio Switch** | "switch to [X]" | "switch to speakers" | Changes default audio output device |
 | **Quick Ask** | "ask [model] [X]" | "ask Claude what is a decorator" | Sends question to AI via ARC |
 | **Macros** | see below | "going dark" | Multi-step workflows |
+
+The **Audio Devices** and **Custom Macros** packs are disabled by default.
+Enable them under **Settings → Commands** before using their phrases. Audio
+device switching, plus the volume and mute steps in the bundled macros,
+requires `nircmd.exe` in Samsara's `tools/` directory or on `PATH`.
 
 ### Macros
 
@@ -48,7 +53,7 @@ These commands accept variable input after the trigger phrase.
 | "show desktop" | Win+D |
 | "task manager" | Ctrl+Shift+Esc |
 | "open settings" | Win+I |
-| "open terminal" | Win+X (power user menu) |
+| "open terminal" | Launches Windows Terminal (`wt.exe`) |
 | "notifications" | Win+N |
 | "clipboard history" | Win+V |
 | "emoji" | Win+. (emoji picker) |
@@ -88,7 +93,7 @@ These commands accept variable input after the trigger phrase.
 | "refresh page" | F5 |
 | "go back" | Alt+Left |
 | "go forward" | Alt+Right |
-| "scroll down" / "scroll up" | Page Down / Page Up |
+| "scroll down" / "scroll up" | Scroll wheel down/up by the configured amount |
 | "scroll to top" / "scroll to bottom" | Home / End |
 | "zoom in" / "zoom out" / "reset zoom" | Ctrl+/- / Ctrl+0 |
 
@@ -98,7 +103,7 @@ These commands accept variable input after the trigger phrase.
 |---------|--------|
 | "volume up" / "volume down" | System volume |
 | "mute" | Toggle mute |
-| "play pause" / "pause music" | Media play/pause |
+| "play pause" / "pause music" | Pauses the focused media session |
 | "next song" / "next track" | Next track |
 | "previous track" | Previous track |
 
@@ -168,4 +173,6 @@ def handler(app, remainder):
     return True
 ```
 
-Command types: `hotkey`, `launch`, `press`, `text`, `macro`, `method`, `plugin`.
+Built-in JSON command types are `hotkey`, `launch`, `press`, `key_down`,
+`key_up`, `release_all`, `mouse`, `text`, `macro`, and trusted app `method`.
+Python plugins are registered separately; `plugin` is not a JSON command type.

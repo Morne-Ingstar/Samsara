@@ -455,6 +455,74 @@ def test_launch_writes_detached_rollback_helper_and_visible_status(tmp_path, mon
     assert status["tag"] == "v0.22.1"
 
 
+def test_reparse_point_checks_walk_every_component_not_just_the_leaf():
+    """Assert-NotReparsePoint must check every existing path component from
+    the expected installation parent through the target, not just the
+    final leaf -- a reparse point planted at any intermediate level during
+    the multi-minute waits between validation and use must still be caught.
+
+    Static script inspection only: live junction/reparse-point creation is
+    unreliable in CI (needs elevated privileges on some Windows runners),
+    so this does not attempt to create one.
+    """
+    prepared = updater.PreparedUpdate(
+        version="0.22.1",
+        tag="v0.22.1",
+        install_dir=Path("C:/Samsara"),
+        staged_dir=Path("C:/.Samsara-update-test/payload"),
+        rollback_dir=Path("C:/.Samsara-rollback-test"),
+        workspace_dir=Path("C:/.Samsara-update-test"),
+        status_path=Path("C:/updates/last_update.json"),
+        helper_path=Path("C:/updates/install-test.ps1"),
+    )
+    script = updater._helper_script(prepared, current_pid=4242)
+
+    # One shared, two-parameter, component-walking function -- not a
+    # leaf-only check duplicated ad hoc at each call site.
+    assert (
+        "function Assert-NotReparsePoint([string]$path, [string]$expectedParent)"
+        in script
+    )
+    assert script.count("function Assert-NotReparsePoint(") == 1
+    assert "$components" in script
+    assert "while (" in script
+    assert "$installParent = [IO.Path]::GetDirectoryName([IO.Path]::GetFullPath($install))" in script
+
+    # Every destructive Remove-Item/Move-Item call site revalidates
+    # immediately before use, passing the installation parent -- not just
+    # the bare leaf path.
+    for call in (
+        "Assert-NotReparsePoint $install $installParent",
+        "Assert-NotReparsePoint $rollback $installParent",
+        "Assert-NotReparsePoint $workspace $installParent",
+    ):
+        assert call in script, call
+    # The one-shot up-front validation (Assert-SafeUpdatePaths) must be
+    # unchanged -- this hardening only affects the immediate-before-use
+    # checks, never weakens the existing canonical-parent/name checks.
+    assert "The staging directory is no longer beside the installation." in script
+    assert "The rollback directory is no longer beside the installation." in script
+    assert "The staging directory name is invalid." in script
+    assert "The rollback directory name is invalid." in script
+
+    cleanup_script = updater._cleanup_retry_script(
+        Path("C:/.Samsara-update-test"),
+        Path("C:/.Samsara-rollback-test"),
+        Path("C:/Samsara"),
+        Path("C:/updates/last_update.json"),
+        "v0.22.1",
+    )
+    assert (
+        "function Assert-NotReparsePoint([string]$path, [string]$expectedParent)"
+        in cleanup_script
+    )
+    assert "Assert-NotReparsePoint $candidate $expectedParent" in cleanup_script
+    # The existing canonical-parent/name checks in the cleanup retry helper
+    # are untouched too.
+    assert "The cleanup directory is no longer beside the installation." in cleanup_script
+    assert "The cleanup directory name changed." in cleanup_script
+
+
 def test_launch_failure_is_written_to_status(tmp_path, monkeypatch):
     release, install, home, opener = _prepare_inputs(tmp_path, monkeypatch)
     prepared = updater.prepare_update(release, install, opener=opener)
@@ -632,6 +700,143 @@ def test_startup_reconciliation_confirms_update_without_blocking_on_backup_clean
     assert stored["state"] == "reported"
     assert updater.reconcile_update_on_startup() is None
     assert not (home / "updates" / "last_update.json").exists()
+
+
+def test_legacy_installed_status_without_path_fields_is_accepted(tmp_path, monkeypatch):
+    """A status file written before path persistence existed has none of
+    install_dir/rollback_dir/workspace_dir. That must still be accepted
+    exactly as before -- there is nothing to check, not a malformed status."""
+    home = tmp_path / "profile"
+    updates = home / "updates"
+    updates.mkdir(parents=True)
+    status_path = updates / "last_update.json"
+    monkeypatch.setattr(updater, "samsara_home_dir", lambda: home)
+    monkeypatch.setattr(updater, "update_unavailable_reason", lambda: None)
+    updater._write_status(status_path, "installed", "Updated to v0.22.1.", "v0.22.1")
+
+    status = updater.reconcile_update_on_startup()
+
+    assert status is None
+    stored = json.loads(status_path.read_text())
+    assert stored["state"] == "reported"
+    assert "install_dir" not in stored
+    assert updater.reconcile_update_on_startup() is None
+    assert not status_path.exists()
+
+
+def test_installed_status_missing_some_path_fields_is_quarantined(tmp_path, monkeypatch):
+    """A status with SOME but not all of install_dir/rollback_dir/
+    workspace_dir is a malformed new-format status, not a legacy one -- it
+    must be quarantined and surfaced as a visible failure, never silently
+    marked reported (that would hide a corrupted status and could leak the
+    directories it half-describes)."""
+    home = tmp_path / "profile"
+    updates = home / "updates"
+    updates.mkdir(parents=True)
+    status_path = updates / "last_update.json"
+    install = tmp_path / "Samsara"
+    install.mkdir()
+    monkeypatch.setattr(updater, "samsara_home_dir", lambda: home)
+    monkeypatch.setattr(updater, "update_unavailable_reason", lambda: None)
+    monkeypatch.setattr(updater, "_frozen_install_dir", lambda: install)
+    status_path.write_text(
+        json.dumps(
+            {
+                "state": "installed",
+                "message": "Updated to v0.22.1.",
+                "tag": "v0.22.1",
+                "install_dir": str(install),
+                # rollback_dir / workspace_dir deliberately omitted.
+            }
+        ),
+        encoding="utf-8",
+    )
+
+    status = updater.reconcile_update_on_startup()
+
+    assert status.state == "failed"
+    assert "unsafe or malformed" in status.message
+    assert not status_path.exists()
+    assert len(list(updates.glob("last_update.invalid-*.json"))) == 1
+    assert updater.reconcile_update_on_startup() is None
+
+
+def test_installed_status_with_unsafe_path_fields_is_quarantined(tmp_path, monkeypatch):
+    """All three fields present, but rollback_dir doesn't match the required
+    sibling-of-install naming convention -- tampered or corrupted, and must
+    be rejected rather than silently trusted or silently ignored."""
+    home = tmp_path / "profile"
+    updates = home / "updates"
+    updates.mkdir(parents=True)
+    status_path = updates / "last_update.json"
+    install = tmp_path / "Samsara"
+    install.mkdir()
+    elsewhere = tmp_path / "not-a-sibling"
+    elsewhere.mkdir()
+    monkeypatch.setattr(updater, "samsara_home_dir", lambda: home)
+    monkeypatch.setattr(updater, "update_unavailable_reason", lambda: None)
+    monkeypatch.setattr(updater, "_frozen_install_dir", lambda: install)
+    status_path.write_text(
+        json.dumps(
+            {
+                "state": "installed",
+                "message": "Updated to v0.22.1.",
+                "tag": "v0.22.1",
+                "install_dir": str(install),
+                "rollback_dir": str(elsewhere),
+                "workspace_dir": str(install.parent / f".{install.name}-update-fake"),
+            }
+        ),
+        encoding="utf-8",
+    )
+
+    status = updater.reconcile_update_on_startup()
+
+    assert status.state == "failed"
+    assert "unsafe or malformed" in status.message
+    assert not status_path.exists()
+    assert len(list(updates.glob("last_update.invalid-*.json"))) == 1
+
+
+def test_installed_status_with_mismatched_install_dir_is_quarantined(tmp_path, monkeypatch):
+    """All three fields present and internally consistent with each other,
+    but install_dir doesn't match this process's actual installation --
+    belongs to a different install and must be rejected, not trusted."""
+    home = tmp_path / "profile"
+    updates = home / "updates"
+    updates.mkdir(parents=True)
+    status_path = updates / "last_update.json"
+    install = tmp_path / "Samsara"
+    install.mkdir()
+    other_install = tmp_path / "OtherSamsara"
+    other_install.mkdir()
+    monkeypatch.setattr(updater, "samsara_home_dir", lambda: home)
+    monkeypatch.setattr(updater, "update_unavailable_reason", lambda: None)
+    monkeypatch.setattr(updater, "_frozen_install_dir", lambda: install)
+    status_path.write_text(
+        json.dumps(
+            {
+                "state": "installed",
+                "message": "Updated to v0.22.1.",
+                "tag": "v0.22.1",
+                "install_dir": str(other_install),
+                "rollback_dir": str(
+                    other_install.parent / f".{other_install.name}-rollback-fake"
+                ),
+                "workspace_dir": str(
+                    other_install.parent / f".{other_install.name}-update-fake"
+                ),
+            }
+        ),
+        encoding="utf-8",
+    )
+
+    status = updater.reconcile_update_on_startup()
+
+    assert status.state == "failed"
+    assert "unsafe or malformed" in status.message
+    assert not status_path.exists()
+    assert len(list(updates.glob("last_update.invalid-*.json"))) == 1
 
 
 def test_startup_reconciliation_surfaces_helper_failure(tmp_path, monkeypatch):
