@@ -396,27 +396,41 @@ class _AlarmHotkeyButton(_HotkeyButton):
 
 class _HeightForWidthWidget(QWidget):
     """A QWidget that keeps its minimum height in sync with its layout's
-    heightForWidth() result for the widget's current width.
+    heightForWidth() result for the widget's current width, AND forces its
+    own internal layout to redistribute using that corrected height.
 
     Qt's built-in sizePolicy-based height-for-width propagation does not
     reliably reach through multiple levels of addLayout()-in-addLayout()
     nesting (e.g. a setting row's layout, inside a card's layout, inside a
     scroll area's content layout) -- setting hasHeightForWidth(True) at
     every level still leaves the outermost setGeometry() pass using a
-    pre-wrap sizeHint. Recomputing minimumHeight directly on resize
-    sidesteps that propagation gap entirely: whatever finally decides this
-    widget's width, the widget corrects its own requested height in
-    response, so any layout parent -- height-for-width aware or not -- sees
-    an accurate minimumSizeHint.
+    pre-wrap sizeHint. Recomputing minimumHeight directly on resize fixes
+    this widget's OWN outer size as seen by its parent layout.
+
+    That alone is not sufficient at live (non-default) window widths,
+    though: raising minimumHeight here only takes effect on this widget's
+    *next* resize (driven by its parent, once the parent notices the new
+    constraint) -- Qt does not synchronously re-run this widget's *own*
+    internal layout for the corrected size. Confirmed by direct inspection:
+    even after the parent grows this widget to the corrected height, this
+    widget's own layout().geometry() stays cached at the pre-growth rect,
+    so a child like a wrapped description QLabel is still confined to its
+    old single-line slot and its second line renders past the widget's
+    padding into whatever sits below/beside it. Explicitly calling
+    layout().setGeometry() with this widget's current rect forces that
+    redistribution every time, regardless of which resize pass we're in.
     """
 
     def resizeEvent(self, event):
         super().resizeEvent(event)
         layout = self.layout()
-        if layout is not None and layout.hasHeightForWidth():
+        if layout is None:
+            return
+        if layout.hasHeightForWidth():
             needed = layout.heightForWidth(self.width())
             if needed > 0 and needed != self.minimumHeight():
                 self.setMinimumHeight(needed)
+        layout.setGeometry(self.rect())
 
 
 # ---------------------------------------------------------------------------
@@ -611,6 +625,13 @@ QComboBox::down-arrow {{
 }}
 """
 
+_CONTENT_MAX_WIDTH = 1000  # each tab's scrollable content column caps here;
+                           # cards expand to fill it below the cap and stop
+                           # growing above it (see each _build_*_tab's
+                           # container/outer widget). Lives once per tab at
+                           # this shared container level, not per card --
+                           # _section_card itself carries no width cap.
+
 _TAB_NAMES = [
     "General",
     "Modes",
@@ -708,15 +729,44 @@ class _SettingsWindow(QMainWindow):
         # one box always filters everything. textChanged fires per keystroke;
         # a restarted single-shot QTimer debounces the actual filter pass by
         # ~150ms so fast typing doesn't re-walk the registry on every char.
+        # Each tab's content column is centered within (window width minus
+        # sidebar width) and capped at _CONTENT_MAX_WIDTH via
+        # scroll.setAlignment(AlignHCenter) + container.setMaximumWidth(...)
+        # -- that is QScrollArea's own resize-to-fit-then-center behavior,
+        # not something a plain QHBoxLayout's stretch items reproduce (a
+        # stretch-based attempt here left the search box's left edge
+        # nowhere near the real, QScrollArea-centered content column's, see
+        # commit history). Reuse the identical QScrollArea recipe instead
+        # of hand-rolling the same centering-with-a-cap math a second time.
         search_wrap = QWidget()
-        search_layout = QHBoxLayout(search_wrap)
-        search_layout.setContentsMargins(20, 14, 20, 6)
-        search_layout.setSpacing(0)
+        search_outer = QHBoxLayout(search_wrap)
+        search_outer.setContentsMargins(0, 14, 0, 6)
+        search_outer.setSpacing(0)
+        search_outer.addSpacing(176)  # sidebar width, set on self._sidebar below
+
+        search_scroll = QScrollArea()
+        search_scroll.setWidgetResizable(True)
+        search_scroll.setHorizontalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAlwaysOff)
+        search_scroll.setVerticalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAlwaysOff)
+        search_scroll.setAlignment(Qt.AlignmentFlag.AlignHCenter)
+        search_scroll.setFixedHeight(46)
+
+        search_center = QWidget()
+        search_center.setMaximumWidth(_CONTENT_MAX_WIDTH)
+        search_center_layout = QHBoxLayout(search_center)
+        search_center_layout.setContentsMargins(28, 0, 20, 0)  # 28 matches
+            # every _build_*_tab container's own left inset
+        search_center_layout.setSpacing(0)
 
         self._search_edit = QLineEdit()
         self._search_edit.setPlaceholderText("Search settings…")
         self._search_edit.setClearButtonEnabled(True)  # built-in × affordance
-        search_layout.addWidget(self._search_edit)
+        self._search_edit.setMaximumWidth(420)
+        search_center_layout.addWidget(self._search_edit)
+        search_center_layout.addStretch()
+
+        search_scroll.setWidget(search_center)
+        search_outer.addWidget(search_scroll, 1)
         root.addWidget(search_wrap)
 
         self._search_rows: list = []  # populated by _build_search_registry() below
@@ -1038,7 +1088,7 @@ class _SettingsWindow(QMainWindow):
         )
 
         container = QWidget()
-        container.setMaximumWidth(1120)
+        container.setMaximumWidth(_CONTENT_MAX_WIDTH)
         layout = QVBoxLayout(container)
         layout.setContentsMargins(28, 24, 28, 24)
         layout.setSpacing(16)
@@ -1200,7 +1250,9 @@ class _SettingsWindow(QMainWindow):
         )
 
         setup_btn = QPushButton("Run Mic Setup Guide...")
-        setup_btn.setFixedWidth(190)
+        # No own width: this button goes through _add_row(width=210) below,
+        # which unconditionally sets its own minimum width -- a fixed width
+        # set here would just be overridden.
         setup_btn.clicked.connect(
             lambda: getattr(self.app, 'open_mic_setup_guide', lambda: None)()
         )
@@ -1213,7 +1265,7 @@ class _SettingsWindow(QMainWindow):
         )
 
         tutorial_btn = QPushButton("Replay Tutorial")
-        tutorial_btn.setFixedWidth(190)
+        # No own width: goes through _add_row(width=210) below, see setup_btn.
         tutorial_btn.setToolTip(
             "Re-open the interactive tutorial to practice dictation, "
             "commands, show-numbers, and Ava."
@@ -1230,7 +1282,7 @@ class _SettingsWindow(QMainWindow):
         )
 
         ava_guide_btn = QPushButton("Ava Setup Guide...")
-        ava_guide_btn.setFixedWidth(190)
+        # No own width: goes through _add_row(width=210) below, see setup_btn.
         ava_guide_btn.setToolTip("Step-by-step guide to installing Ollama and setting up Ava.")
         ava_guide_btn.clicked.connect(
             lambda: getattr(self.app, 'open_ava_guide', lambda: None)()
@@ -1244,7 +1296,7 @@ class _SettingsWindow(QMainWindow):
         )
 
         vt_btn = QPushButton("Voice Training...")
-        vt_btn.setFixedWidth(190)
+        # No own width: goes through _add_row(width=210) below, see setup_btn.
         vt_btn.setToolTip("Train Samsara to recognise your specific pronunciations and corrections.")
         vt_btn.clicked.connect(
             lambda: getattr(self.app, 'open_voice_training', lambda: None)()
@@ -1411,7 +1463,7 @@ class _SettingsWindow(QMainWindow):
         )
 
         reset_hints_btn = QPushButton("Reset hints")
-        reset_hints_btn.setFixedWidth(130)
+        # No own width: goes through _add_row(width=180) below, see setup_btn.
         reset_hints_btn.clicked.connect(self._reset_hints)
         _add_row(
             hint_layout,
@@ -1435,7 +1487,7 @@ class _SettingsWindow(QMainWindow):
         profile_layout.addWidget(prof_desc)
 
         manage_btn = QPushButton("Manage Profiles…")
-        manage_btn.setFixedWidth(170)
+        # No own width: goes through _add_row(width=190) below, see setup_btn.
         manage_btn.clicked.connect(self._open_profile_manager)
         _add_row(
             profile_layout,
@@ -1467,13 +1519,15 @@ class _SettingsWindow(QMainWindow):
 
         export_btn = QPushButton("Export configuration…")
         export_btn.setObjectName("exportConfigurationButton")
-        export_btn.setFixedWidth(200)  # 190 clipped the label by a few px (sizeHint 191)
+        export_btn.setMinimumWidth(200)  # sizeHint is 191; a few px of margin
+        export_btn.setSizePolicy(QSizePolicy.Policy.Minimum, QSizePolicy.Policy.Fixed)
         export_btn.clicked.connect(self._export_configuration)
         backup_buttons.addWidget(export_btn)
 
         import_btn = QPushButton("Import configuration…")
         import_btn.setObjectName("importConfigurationButton")
-        import_btn.setFixedWidth(200)  # 190 clipped the label by a few px (sizeHint 193)
+        import_btn.setMinimumWidth(200)  # sizeHint is 193; a few px of margin
+        import_btn.setSizePolicy(QSizePolicy.Policy.Minimum, QSizePolicy.Policy.Fixed)
         import_btn.clicked.connect(self._import_configuration)
         backup_buttons.addWidget(import_btn)
         backup_buttons.addStretch()
@@ -1549,7 +1603,7 @@ class _SettingsWindow(QMainWindow):
         )
 
         container = QWidget()
-        container.setMaximumWidth(1040)
+        container.setMaximumWidth(_CONTENT_MAX_WIDTH)
         layout = QVBoxLayout(container)
         layout.setContentsMargins(28, 24, 28, 24)
         layout.setSpacing(8)
@@ -1872,7 +1926,7 @@ class _SettingsWindow(QMainWindow):
         )
 
         container = QWidget()
-        container.setMaximumWidth(1120)
+        container.setMaximumWidth(_CONTENT_MAX_WIDTH)
         layout = QVBoxLayout(container)
         layout.setContentsMargins(28, 24, 28, 24)
         layout.setSpacing(18)
@@ -1937,7 +1991,7 @@ class _SettingsWindow(QMainWindow):
             "One activation system for temporary commands and persistent "
             "commands plus dictation."
         )
-        layout.addWidget(hands_free_card, alignment=Qt.AlignmentFlag.AlignHCenter)
+        layout.addWidget(hands_free_card)
 
         cmd_enabled_cb = QCheckBox()
         cmd_enabled_cb.setChecked(bool(cmd_cfg.get('enabled', False)))
@@ -2075,7 +2129,7 @@ class _SettingsWindow(QMainWindow):
             "Dictation bindings",
             "Recording behavior and keys for normal text dictation.",
         )
-        layout.addWidget(dictation_card, alignment=Qt.AlignmentFlag.AlignHCenter)
+        layout.addWidget(dictation_card)
 
         mode_combo = QComboBox()
         mode_combo.addItems(['hold', 'toggle', 'continuous'])
@@ -2121,7 +2175,7 @@ class _SettingsWindow(QMainWindow):
             "AI Command Mode (Experimental)",
             "Optional experimental flow for free-form speech to command plans.",
         )
-        layout.addWidget(ai_card, alignment=Qt.AlignmentFlag.AlignHCenter)
+        layout.addWidget(ai_card)
 
         ai_intro = QLabel(
             "Enable this when you want LLM interpretation before command execution. "
@@ -2289,7 +2343,7 @@ class _SettingsWindow(QMainWindow):
             "Ava Assistant",
             "Direct access to the conversational assistant path."
         )
-        layout.addWidget(ava_card, alignment=Qt.AlignmentFlag.AlignHCenter)
+        layout.addWidget(ava_card)
 
         ava_btn = _HotkeyButton(
             cfg.get('ava_mode_key', 'right_alt'), on_change=self._check_modes_collisions
@@ -2309,7 +2363,7 @@ class _SettingsWindow(QMainWindow):
             "Advanced tuning",
             "Fine-grained timing and threshold controls for users who need behavior tuning."
         )
-        layout.addWidget(advanced_card, alignment=Qt.AlignmentFlag.AlignHCenter)
+        layout.addWidget(advanced_card)
 
         adv_button = _disclosure_button("Show advanced tuning")
         adv_area = QWidget()
@@ -2565,7 +2619,7 @@ class _SettingsWindow(QMainWindow):
         page.setVerticalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAsNeeded)
 
         outer = QWidget()
-        outer.setMaximumWidth(1040)
+        outer.setMaximumWidth(_CONTENT_MAX_WIDTH)
         outer.setObjectName("commandsPageContent")
         layout = QVBoxLayout(outer)
         layout.setContentsMargins(28, 20, 28, 12)
@@ -3201,7 +3255,7 @@ class _SettingsWindow(QMainWindow):
         )
 
         container = QWidget()
-        container.setMaximumWidth(1040)
+        container.setMaximumWidth(_CONTENT_MAX_WIDTH)
         layout = QVBoxLayout(container)
         layout.setContentsMargins(28, 24, 28, 24)
         layout.setSpacing(8)
@@ -3253,7 +3307,8 @@ class _SettingsWindow(QMainWindow):
         vol_slider.valueChanged.connect(lambda v: vol_pct.setText(f"{v}%"))
 
         test_btn = QPushButton("Test")
-        test_btn.setFixedWidth(80)  # 60 clipped the label (sizeHint 73)
+        test_btn.setMinimumWidth(80)  # sizeHint is 73; a few px of margin
+        test_btn.setSizePolicy(QSizePolicy.Policy.Minimum, QSizePolicy.Policy.Fixed)
         test_btn.clicked.connect(lambda: self._play(sounds_dir, 'success'))
 
         vol_row.addWidget(vol_lbl)
@@ -3285,7 +3340,8 @@ class _SettingsWindow(QMainWindow):
         self._widgets['sound_theme_combo'] = theme_combo
 
         apply_theme_btn = QPushButton("Apply Theme")
-        apply_theme_btn.setFixedWidth(140)  # 110 clipped the label (sizeHint 132)
+        apply_theme_btn.setMinimumWidth(140)  # sizeHint is 132; a few px of margin
+        apply_theme_btn.setSizePolicy(QSizePolicy.Policy.Minimum, QSizePolicy.Policy.Fixed)
         apply_theme_btn.clicked.connect(
             lambda: self._apply_sound_theme(
                 theme_combo.currentText(), sounds_dir, themes_dir
@@ -3487,7 +3543,7 @@ class _SettingsWindow(QMainWindow):
         )
 
         container = QWidget()
-        container.setMaximumWidth(1040)
+        container.setMaximumWidth(_CONTENT_MAX_WIDTH)
         layout = QVBoxLayout(container)
         layout.setContentsMargins(28, 24, 28, 24)
         layout.setSpacing(8)
@@ -3668,7 +3724,8 @@ class _SettingsWindow(QMainWindow):
         test_row = QHBoxLayout()
         test_row.setSpacing(12)
         test_btn = QPushButton("Test Voice")
-        test_btn.setFixedWidth(120)
+        test_btn.setMinimumWidth(120)
+        test_btn.setSizePolicy(QSizePolicy.Policy.Minimum, QSizePolicy.Policy.Fixed)
         test_btn.clicked.connect(self._test_tts)
         test_status = QLabel("")
         test_status.setStyleSheet("color: #8A8A92; font-size: 12px;")
@@ -3787,7 +3844,7 @@ class _SettingsWindow(QMainWindow):
         from samsara.alarms import get_default_alarm_config
 
         outer = QWidget()
-        outer.setMaximumWidth(1040)
+        outer.setMaximumWidth(_CONTENT_MAX_WIDTH)
         layout = QVBoxLayout(outer)
         layout.setContentsMargins(28, 20, 28, 12)
         layout.setSpacing(8)
@@ -3879,23 +3936,26 @@ class _SettingsWindow(QMainWindow):
         )
 
         add_btn = QPushButton("Add Alarm")
-        add_btn.setFixedWidth(130)  # 100 clipped the label (sizeHint 116)
+        add_btn.setMinimumWidth(130)  # sizeHint is 116; a few px of margin
+        add_btn.setSizePolicy(QSizePolicy.Policy.Minimum, QSizePolicy.Policy.Fixed)
         add_btn.clicked.connect(lambda: self._open_alarm_dialog(None, table))
         btn_row.addWidget(add_btn)
 
         for label, width, handler in [
             ("Edit",      65, lambda: self._edit_selected_alarm(table)),
-            ("Toggle",    80, lambda: self._toggle_selected_alarm(table)),  # 65 clipped (sizeHint 69)
+            ("Toggle",    80, lambda: self._toggle_selected_alarm(table)),  # sizeHint 69; a few px of margin
             ("Test",      55, lambda: self._test_selected_alarm(table)),
         ]:
             b = QPushButton(label)
-            b.setFixedWidth(width)
+            b.setMinimumWidth(width)
+            b.setSizePolicy(QSizePolicy.Policy.Minimum, QSizePolicy.Policy.Fixed)
             b.setStyleSheet(_SEC)
             b.clicked.connect(handler)
             btn_row.addWidget(b)
 
         del_btn = QPushButton("Delete")
-        del_btn.setFixedWidth(80)  # 65 clipped the label (sizeHint 67)
+        del_btn.setMinimumWidth(80)  # sizeHint is 67; a few px of margin
+        del_btn.setSizePolicy(QSizePolicy.Policy.Minimum, QSizePolicy.Policy.Fixed)
         del_btn.setStyleSheet(
             "QPushButton{background-color:rgba(200,60,60,0.15);color:#FF8888;"
             "border:1px solid rgba(200,60,60,0.3);border-radius:6px;padding:7px 12px;}"
@@ -3907,7 +3967,8 @@ class _SettingsWindow(QMainWindow):
         btn_row.addStretch()
 
         reset_btn = QPushButton("Reset Stats")
-        reset_btn.setFixedWidth(105)  # 90 clipped the label (sizeHint 95)
+        reset_btn.setMinimumWidth(105)  # sizeHint is 95; a few px of margin
+        reset_btn.setSizePolicy(QSizePolicy.Policy.Minimum, QSizePolicy.Policy.Fixed)
         reset_btn.setStyleSheet(_SEC)
         reset_btn.clicked.connect(lambda: self._reset_alarm_stats(table))
         btn_row.addWidget(reset_btn)
@@ -4204,7 +4265,7 @@ class _SettingsWindow(QMainWindow):
         )
 
         container = QWidget()
-        container.setMaximumWidth(1040)
+        container.setMaximumWidth(_CONTENT_MAX_WIDTH)
         layout = QVBoxLayout(container)
         layout.setContentsMargins(28, 24, 28, 24)
         layout.setSpacing(8)
@@ -4300,9 +4361,15 @@ class _SettingsWindow(QMainWindow):
         layout.addWidget(self._health_log_table)
 
         refresh_btn = QPushButton("Refresh")
-        refresh_btn.setFixedWidth(100)
+        refresh_btn.setMinimumWidth(100)
+        refresh_btn.setSizePolicy(QSizePolicy.Policy.Minimum, QSizePolicy.Policy.Fixed)
         refresh_btn.clicked.connect(self._refresh_health_log)
-        layout.addWidget(refresh_btn)
+        # Added directly to the tab's own QVBoxLayout with no sibling
+        # sharing the row -- without an explicit alignment, a Minimum
+        # (rather than Fixed) horizontal sizePolicy lets a QVBoxLayout
+        # stretch this button to the row's full width instead of just its
+        # own content width.
+        layout.addWidget(refresh_btn, alignment=Qt.AlignmentFlag.AlignLeft)
         layout.addSpacing(20)
 
         # ---- Section: Summary ----
@@ -4323,12 +4390,14 @@ class _SettingsWindow(QMainWindow):
 
         export_row = QHBoxLayout()
         export_btn = QPushButton("Export to CSV")
-        export_btn.setFixedWidth(140)
+        export_btn.setMinimumWidth(140)
+        export_btn.setSizePolicy(QSizePolicy.Policy.Minimum, QSizePolicy.Policy.Fixed)
         export_btn.clicked.connect(self._export_health_csv)
         export_row.addWidget(export_btn)
 
         open_folder_btn = QPushButton("Open folder")
-        open_folder_btn.setFixedWidth(135)  # 120 clipped the label (sizeHint 125)
+        open_folder_btn.setMinimumWidth(135)  # sizeHint is 125; a few px of margin
+        open_folder_btn.setSizePolicy(QSizePolicy.Policy.Minimum, QSizePolicy.Policy.Fixed)
         open_folder_btn.clicked.connect(self._open_health_folder)
         export_row.addWidget(open_folder_btn)
         export_row.addStretch()
@@ -4355,7 +4424,8 @@ class _SettingsWindow(QMainWindow):
 
         dict_row = QHBoxLayout()
         load_dict_btn = QPushButton("Load Medication Dictionary")
-        load_dict_btn.setFixedWidth(235)  # 220 clipped the label (sizeHint 224)
+        load_dict_btn.setMinimumWidth(235)  # sizeHint is 224; a few px of margin
+        load_dict_btn.setSizePolicy(QSizePolicy.Policy.Minimum, QSizePolicy.Policy.Fixed)
         load_dict_btn.clicked.connect(self._load_medication_dictionary)
         dict_row.addWidget(load_dict_btn)
         dict_row.addStretch()
@@ -4540,7 +4610,7 @@ class _SettingsWindow(QMainWindow):
         )
 
         container = QWidget()
-        container.setMaximumWidth(1040)
+        container.setMaximumWidth(_CONTENT_MAX_WIDTH)
         layout = QVBoxLayout(container)
         layout.setContentsMargins(28, 24, 28, 24)
         layout.setSpacing(8)
@@ -5051,7 +5121,7 @@ class _SettingsWindow(QMainWindow):
         )
 
         container = QWidget()
-        container.setMaximumWidth(1040)
+        container.setMaximumWidth(_CONTENT_MAX_WIDTH)
         layout = QVBoxLayout(container)
         layout.setContentsMargins(28, 24, 28, 24)
         layout.setSpacing(12)
@@ -5146,20 +5216,14 @@ class _SettingsWindow(QMainWindow):
             provider_combo,
         ))
 
-        # Info card
-        info_card = QFrame()
-        info_card.setStyleSheet(
-            "QFrame { background-color: #111114; border-radius: 6px; "
-            "border: 1px solid rgba(255,255,255,0.06); }"
-        )
-        info_card_layout = QVBoxLayout(info_card)
-        info_card_layout.setContentsMargins(12, 10, 12, 10)
+        # Provider blurb: plain read-only text, not a framed/bordered box --
+        # a QFrame styled like an input field here made static text read as
+        # a disabled QLineEdit.
         info_label = QLabel(_PROVIDER_INFO.get(current_provider, ""))
         info_label.setWordWrap(True)
         info_label.setStyleSheet("color: #AEB4C0; font-size: 13px; background: transparent;")
-        info_card_layout.addWidget(info_label)
         self._widgets['cloud_info_label'] = info_label
-        layout.addWidget(info_card)
+        layout.addWidget(info_label)
 
         provider_combo.currentTextChanged.connect(self._on_cloud_provider_changed)
         layout.addSpacing(8)
@@ -5250,7 +5314,8 @@ class _SettingsWindow(QMainWindow):
         test_row = QHBoxLayout()
         test_row.setSpacing(12)
         test_btn = QPushButton("Test Connection")
-        test_btn.setFixedWidth(150)
+        test_btn.setMinimumWidth(150)
+        test_btn.setSizePolicy(QSizePolicy.Policy.Minimum, QSizePolicy.Policy.Fixed)
         test_btn.clicked.connect(self._run_test_connection)
         test_status = QLabel("")
         test_status.setStyleSheet("color: #8A8A92; font-size: 12px;")
@@ -5295,24 +5360,38 @@ class _SettingsWindow(QMainWindow):
         key = premium.get_license_key(self.app)
         has_key = premium.validate_key(key)
 
-        supporter_frame = QFrame()
-        supporter_frame.setStyleSheet(
-            "QFrame { background-color: #111114; border-radius: 8px; "
-            "border: 1px solid rgba(255,255,255,0.06); }"
-        )
+        # Plain QWidget, not a bordered/filled QFrame: the "supporter key
+        # active" state is read-only text (heading + masked key), and the
+        # "no key" state already has its own real QLineEdit with its own
+        # input-field chrome -- an outer field-styled box around either
+        # made static text read as a disabled input and doubled up the
+        # chrome around the real one.
+        supporter_frame = QWidget()
         supporter_frame_layout = QVBoxLayout(supporter_frame)
         supporter_frame_layout.setContentsMargins(16, 16, 16, 16)
         supporter_frame_layout.setSpacing(0)
 
         # QStackedWidget: index 0 = no key, index 1 = key stored. This never
         # gates anything -- it only decides which of these two rows to show.
+        # Bare, unqualified "background: transparent" (no type/ID selector)
+        # can leak into the ancestor cascade and strip a descendant's own
+        # app-level type-selector styling -- this previously stripped
+        # activate_btn's QPushButton background/color rule, leaving it
+        # rendering near-invisible (same class of bug fixed for QLabel/
+        # QCheckBox in 9b7f00f/addaa88). Scoped ID selectors avoid that.
         supporter_stack = QStackedWidget()
-        supporter_stack.setStyleSheet("background: transparent;")
+        supporter_stack.setObjectName("supporterKeyStack")
+        supporter_stack.setStyleSheet(
+            "QStackedWidget#supporterKeyStack { background-color: transparent; }"
+        )
         self._widgets['cloud_license_stack'] = supporter_stack
 
         # -- Page 0: no supporter key ---
         no_key_page = QWidget()
-        no_key_page.setStyleSheet("background: transparent;")
+        no_key_page.setObjectName("supporterKeyNoKeyPage")
+        no_key_page.setStyleSheet(
+            "QWidget#supporterKeyNoKeyPage { background-color: transparent; }"
+        )
         nk_layout = QVBoxLayout(no_key_page)
         nk_layout.setContentsMargins(0, 0, 0, 0)
         nk_layout.setSpacing(10)
@@ -5326,7 +5405,8 @@ class _SettingsWindow(QMainWindow):
         license_entry.setPlaceholderText("SAMSARA-XXXX-XXXX-XXXX")
         self._widgets['cloud_license_entry'] = license_entry
         activate_btn = QPushButton("Activate")
-        activate_btn.setFixedWidth(110)  # 90 clipped the label (sizeHint 100)
+        activate_btn.setMinimumWidth(110)  # sizeHint is 100; a few px of margin
+        activate_btn.setSizePolicy(QSizePolicy.Policy.Minimum, QSizePolicy.Policy.Fixed)
         activate_btn.clicked.connect(self._activate_license)
         key_row.addWidget(key_row_lbl)
         key_row.addWidget(license_entry, stretch=1)
@@ -5342,7 +5422,10 @@ class _SettingsWindow(QMainWindow):
 
         # -- Page 1: supporter key stored ---
         has_key_page = QWidget()
-        has_key_page.setStyleSheet("background: transparent;")
+        has_key_page.setObjectName("supporterKeyHasKeyPage")
+        has_key_page.setStyleSheet(
+            "QWidget#supporterKeyHasKeyPage { background-color: transparent; }"
+        )
         hk_layout = QVBoxLayout(has_key_page)
         hk_layout.setContentsMargins(0, 0, 0, 0)
         hk_layout.setSpacing(6)
@@ -5537,9 +5620,13 @@ class _SettingsWindow(QMainWindow):
         return label
 
     def _section_card(self, title: str, subtitle: str | None = None):
+        # No per-card max-width: the cap lives once at each tab's shared
+        # scroll-content container (_CONTENT_MAX_WIDTH). Expanding here lets
+        # the card fill whatever width that container gives it, so every
+        # card in a tab shares the same left/right edges regardless of its
+        # own content's natural size.
         card = QFrame()
         card.setObjectName("settingsSectionCard")
-        card.setMaximumWidth(1040)
         card.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Minimum)
         card.setStyleSheet(
             "QFrame#settingsSectionCard {"
@@ -5567,6 +5654,18 @@ class _SettingsWindow(QMainWindow):
         return card, v
 
     def _setting_row(self, label, description, widget, control_width: int | None = 260):
+        """Build a label+description row with a right-aligned control.
+
+        control_width is a MINIMUM, not an exact width: widget gets
+        setMinimumWidth(control_width) only (no maximum), with a
+        Minimum/Fixed sizePolicy, so a control whose own content needs more
+        room than the minimum (a QComboBox with long option text, a
+        checkbox with a long trailing label) can grow to fit it instead of
+        clipping. Every row still right-aligns its control within the row's
+        own full width, so all controls in the same card share one right
+        edge regardless of how wide any individual control's content makes
+        it -- that alignment does not depend on the widths matching.
+        """
         row = QHBoxLayout()
         row.setContentsMargins(0, 10, 0, 10)
         row.setSpacing(20)
@@ -5616,9 +5715,8 @@ class _SettingsWindow(QMainWindow):
         if control_width is not None:
             width = max(170, control_width)
             widget.setMinimumWidth(width)
-            widget.setMaximumWidth(width)
 
-        widget.setSizePolicy(QSizePolicy.Policy.Fixed, QSizePolicy.Policy.Fixed)
+        widget.setSizePolicy(QSizePolicy.Policy.Minimum, QSizePolicy.Policy.Fixed)
         row.addWidget(widget, 0, Qt.AlignmentFlag.AlignRight | Qt.AlignmentFlag.AlignVCenter)
         return row
 
