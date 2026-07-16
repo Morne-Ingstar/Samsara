@@ -104,7 +104,12 @@ class DiagRecord:
     # never-silently-empty floor (_keep_low_confidence_long_chunk) delivered
     # the text anyway rather than discarding it -- see
     # dictation._apply_segment_quality_gates.
-    outcome: str = "ok"              # "ok" | "empty" | "gated" | "low_confidence"
+    # "suspected_loss": a long recording with sustained speech-RMS coverage
+    # delivered implausibly little text (chars/sec sanity check) -- Whisper
+    # itself likely dropped mid-decode content rather than any post-decode
+    # gate rejecting it. See dictation._suspected_silent_data_loss and the
+    # 2026-07-16 incident it was added for.
+    outcome: str = "ok"              # "ok" | "empty" | "gated" | "low_confidence" | "suspected_loss"
     path: str = ""                   # "long" | "short" | "" (n/a, e.g. gated)
 
 
@@ -162,6 +167,11 @@ def classify(rec: DiagRecord) -> list:
         verdicts.append(
             "Low-confidence delivery — every segment failed quality gates "
             "but text was kept instead of discarded"
+        )
+    elif rec.outcome == "suspected_loss":
+        verdicts.append(
+            "Suspected silent data loss — long recording with speech "
+            "present delivered implausibly little text"
         )
 
     if not rec.text and rec.audio_s > 2 and rec.outcome == "ok":

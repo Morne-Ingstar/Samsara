@@ -138,7 +138,7 @@ _AMBER_KEYWORDS = ("slow", "small model", "fallback", "low confidence",
                    "accidental hold")
 
 # FM3 (blank-transcription) outcome -> short, visually-distinct table label.
-_OUTCOME_LABELS = {"empty": "EMPTY", "gated": "GATED", "ok": ""}
+_OUTCOME_LABELS = {"empty": "EMPTY", "gated": "GATED", "suspected_loss": "PARTIAL?", "ok": ""}
 
 
 def _row_color(rec) -> "QColor | None":
@@ -150,6 +150,8 @@ def _row_color(rec) -> "QColor | None":
         return QColor(_ERROR)
     if rec.outcome == "gated":
         return QColor(_WARNING)
+    if rec.outcome == "suspected_loss":
+        return QColor(_ERROR)
     joined = " ".join(rec.verdicts).lower()
     if any(kw in joined for kw in _RED_KEYWORDS):
         return QColor(_ERROR)

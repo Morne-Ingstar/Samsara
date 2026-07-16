@@ -625,6 +625,103 @@ _LONG_DECODE_CEILING_S = 180.0
                              # _apply_segment_quality_gates for how segments
                              # from either decode path are gated identically.
 
+# --- Silent data-loss sanity check (2026-07-16 incident) ---
+# A 35.3s hold-to-record hotkey dictation delivered only 80 chars -- the
+# START of the utterance stitched directly onto its END, ~25s of genuine
+# continuous mid-recording speech gone. Root-caused to faster-whisper
+# itself: on the FIRST 30s decode window (the only window that receives
+# initial_prompt as decoder context under condition_on_previous_text=
+# False -- see _build_hotkey_transcribe_params), the model can terminate
+# generation far short of the window's actual content while still
+# reporting a segment nominally spanning the whole window, with signals
+# (avg_logprob, compression_ratio) that look individually unremarkable --
+# invisible to _is_quality_exhausted, which only sees the few tokens that
+# WERE generated. Reproduced deterministically against the live 540-char
+# command-vocabulary initial_prompt on the incident WAV, and found in ~37%
+# of recent >30s hotkey captures (~/.samsara/debug) when re-decoded with
+# the same prompt -- but decode-parameter sweeps (chunk_length, beam_size,
+# no_speech_threshold, vad_filter -- vad_filter=True does avoid it here,
+# but that param is locked False, see tests/test_transcription_params.py)
+# showed the failure itself is NOT reliably deterministic run-to-run
+# (almost certainly CUDA/float16 numeric nondeterminism tipping a
+# borderline decode), so no single decode-param change can be proven to
+# eliminate it. This is therefore a fail-loud backstop, not a cure: catch
+# "long recording, implausibly little text" after the fact and surface it
+# loudly instead of silently delivering truncated text as if it were the
+# whole utterance.
+_SANITY_MIN_DURATION_S = 15.0
+                             # Below this, natural pauses/short utterances
+                             # make chars/sec too noisy a signal on its own
+                             # (a genuinely short, unhurried sentence can
+                             # legitimately read low) -- only worth checking
+                             # once there's enough audio for the ratio to
+                             # mean something.
+_SANITY_MIN_CPS = 3.0
+                             # Chars/sec floor below which a long decode looks
+                             # suspicious. Calibrated against real captures
+                             # (~/.samsara/debug, 2026-07-15/16): genuine slow/
+                             # deliberate dictation with COMPLETE sentences
+                             # measured 3.4-9.8 cps; confirmed truncated
+                             # decodes (this incident and others found via the
+                             # same audit) measured 0.16-2.96 cps. Set below
+                             # the observed complete-speech floor so normal
+                             # unhurried dictation never trips this.
+_SANITY_MIN_SPEECH_COVERAGE = 0.5
+                             # Corroboration required before flagging: at least
+                             # half the buffer must read as vocal-energy-
+                             # present. A genuinely quiet/mostly-silent long
+                             # hold producing little text is correctly quiet,
+                             # not a decode failure -- this is what tells the
+                             # two cases apart.
+_SANITY_RMS_WINDOW_S = 0.5
+_SANITY_RMS_FLOOR_DB = -40.0
+                             # dBFS noise-floor cutoff for "this window has
+                             # vocal energy". Coarse and VAD-free by design --
+                             # this only corroborates a WARNING-level heuristic,
+                             # not a hard gate, so a cheap RMS scan is
+                             # preferable to taking the VAD model's lock on
+                             # every long hotkey decode.
+
+
+def _speech_rms_coverage(audio, sample_rate,
+                          window_s=_SANITY_RMS_WINDOW_S,
+                          floor_db=_SANITY_RMS_FLOOR_DB):
+    """Fraction (0.0-1.0) of `audio`'s windows whose RMS exceeds floor_db.
+
+    A coarse, VAD-free "does this sound like it has speech in it" signal --
+    not phoneme-accurate, only used to corroborate the delivered-chars-vs-
+    duration sanity check (_apply_segment_quality_gates callers), never as
+    a hard gate. Empty/silent audio returns 0.0.
+    """
+    win = max(1, int(window_s * sample_rate))
+    n_windows = len(audio) // win
+    if n_windows == 0:
+        return 0.0
+    audio64 = np.asarray(audio, dtype=np.float64)
+    above = 0
+    for i in range(n_windows):
+        chunk = audio64[i * win:(i + 1) * win]
+        rms = math.sqrt(float(np.mean(chunk ** 2))) + 1e-12
+        if 20 * math.log10(rms) > floor_db:
+            above += 1
+    return above / n_windows
+
+
+def _suspected_silent_data_loss(text, audio, sample_rate, audio_duration):
+    """True if a long decode delivered implausibly little text despite the
+    buffer actually sounding like it has sustained speech in it -- see the
+    module comment above _SANITY_MIN_DURATION_S for the incident this
+    guards against. Corroborates chars/sec against RMS coverage so a
+    genuinely quiet/short recording is never flagged, only a long one that
+    sounds like it should have produced far more text than it did.
+    """
+    if audio_duration < _SANITY_MIN_DURATION_S:
+        return False
+    cps = len(text) / audio_duration if audio_duration else 0.0
+    if cps >= _SANITY_MIN_CPS:
+        return False
+    return _speech_rms_coverage(audio, sample_rate) >= _SANITY_MIN_SPEECH_COVERAGE
+
 
 def _get_pynput_command_key(button_name: str):
     """Resolve a command_mode.button string to a pynput Key or KeyCode.
@@ -8584,6 +8681,24 @@ class DictationApp:
                     _seg_list, transcribe_params, audio_duration,
                 )
 
+                # Fail-loud backstop for silent mid-decode data loss (see
+                # module comment above _SANITY_MIN_DURATION_S) -- a long
+                # recording that sounds like continuous speech throughout
+                # but delivered implausibly little text. Checked against
+                # the gated decode text (not the final post-cleanup text)
+                # so this reflects what Whisper actually returned, not
+                # downstream filler-stripping/smart-correct trimming.
+                _suspected_data_loss = _suspected_silent_data_loss(
+                    text, audio_faded, self.model_rate, audio_duration,
+                )
+                if _suspected_data_loss:
+                    logger.warning(
+                        f"[SANITY] {audio_duration:.1f}s recording delivered "
+                        f"only {len(text)} chars ({len(text) / audio_duration:.2f} "
+                        f"chars/sec) despite sustained speech-RMS coverage -- "
+                        f"suspected silent decode loss: {text!r}"
+                    )
+
                 transcribe_time = time.time() - transcribe_start
                 t_transcribe_ms = int(transcribe_time * 1000)
                 try:
@@ -8631,7 +8746,9 @@ class DictationApp:
                                 t_transcribe_ms=t_transcribe_ms,
                                 t_total_ms=t_transcribe_ms,
                                 text=text,
-                                outcome="low_confidence" if _low_confidence else "ok",
+                                outcome=("suspected_loss" if _suspected_data_loss
+                                          else "low_confidence" if _low_confidence
+                                          else "ok"),
                                 path=_diag_path,
                                 # Command-mode transcription is always forced
                                 # to English (see _build_hotkey_transcribe_params)
@@ -8759,7 +8876,9 @@ class DictationApp:
                             t_total_ms=int((time.time() - transcribe_start) * 1000),
                             text=text,
                             smart_changed=smart_changed,
-                            outcome="low_confidence" if _low_confidence else "ok",
+                            outcome=("suspected_loss" if _suspected_data_loss
+                                      else "low_confidence" if _low_confidence
+                                      else "ok"),
                             path=_diag_path,
                             language=_languages.describe_diagnostics_language(
                                 self.config.get('language', 'en'), _detected_lang,
