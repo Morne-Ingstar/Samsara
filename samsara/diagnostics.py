@@ -98,9 +98,13 @@ class DiagRecord:
     verdicts: list = field(default_factory=list)
     # outcome/path: FM3 (blank-transcription) diagnostics. Defaulted so
     # every pre-existing call site (a normal, non-empty result) still
-    # validates unchanged -- only the new empty/gated call sites in
-    # dictation.py pass non-default values.
-    outcome: str = "ok"              # "ok" | "empty" | "gated"
+    # validates unchanged -- only the new empty/gated/low_confidence call
+    # sites in dictation.py pass non-default values.
+    # "low_confidence": every segment failed the quality gate but the
+    # never-silently-empty floor (_keep_low_confidence_long_chunk) delivered
+    # the text anyway rather than discarding it -- see
+    # dictation._apply_segment_quality_gates.
+    outcome: str = "ok"              # "ok" | "empty" | "gated" | "low_confidence"
     path: str = ""                   # "long" | "short" | "" (n/a, e.g. gated)
 
 
@@ -154,6 +158,11 @@ def classify(rec: DiagRecord) -> list:
         verdicts.append("Empty result — model returned zero segments")
     elif rec.outcome == "empty":
         verdicts.append("Empty result — segments present but text suppressed/blank")
+    elif rec.outcome == "low_confidence":
+        verdicts.append(
+            "Low-confidence delivery — every segment failed quality gates "
+            "but text was kept instead of discarded"
+        )
 
     if not rec.text and rec.audio_s > 2 and rec.outcome == "ok":
         verdicts.append("Speech produced no output")

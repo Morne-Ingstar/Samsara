@@ -578,6 +578,37 @@ _GATE_HEAD_GRACE_CLICK_PAD_MS = 60
                              # audio samples -- the earcon-span buffer-muting approach was
                              # explicitly retracted; this only widens the gate's tolerance.
 
+_LONG_DECODE_CEILING_S = 180.0
+                             # Resource guard, NOT a quality boundary. Whisper
+                             # decodes real dictation cleanly well past 30s in
+                             # a single model.transcribe() call -- the
+                             # silence-splitter that used to run above 30s
+                             # (_split_audio_at_silences, commit 21ee3f0) was
+                             # stripping acoustic/semantic context from each
+                             # chunk, degrading avg_logprob/compression_ratio
+                             # versus the same audio decoded whole, and the
+                             # quality gates below then rejected the degraded
+                             # fragments -- verified empirically on 2026-07-15
+                             # saved hotkey buffers: a 55s capture split into
+                             # 24.9s+24.9s+5.2s chunks produced only 198 chars,
+                             # while the SAME saved audio decoded whole in one
+                             # call returned the complete transcript (a 96s
+                             # capture likewise decoded completely in one
+                             # call). The splitter's original justification
+                             # is also gone: it existed to avoid setting
+                             # condition_on_previous_text=True over long
+                             # stitched sequences (Whisper's repetition-loop
+                             # bug), but _build_hotkey_transcribe_params now
+                             # forces condition_on_previous_text=False
+                             # unconditionally on every hotkey decode, long or
+                             # short -- that flag, not splitting, is what
+                             # prevents the loop today. Only a recording past
+                             # THIS ceiling still uses
+                             # _split_audio_at_silences, purely to bound
+                             # memory/latency on an outlier-length buffer; see
+                             # _apply_segment_quality_gates for how segments
+                             # from either decode path are gated identically.
+
 
 def _get_pynput_command_key(button_name: str):
     """Resolve a command_mode.button string to a pynput Key or KeyCode.
@@ -1025,6 +1056,90 @@ def _keep_low_confidence_long_chunk(seg_list, text, duration_s):
     # chunk. A single near-silent segment is enough to keep the hard reject.
     no_speech = sig["no_speech_prob"]
     return no_speech is not None and no_speech <= 0.5
+
+
+def _apply_segment_quality_gates(seg_list, transcribe_params, audio_duration):
+    """Segment-level hallucination/quality gating for one full decode.
+
+    Replaces the old per-chunk aggregate gating: on a single long decode,
+    rejecting the AGGREGATE means total data loss for an accessibility tool
+    whose user cannot retype what was lost. This evaluates hallucination and
+    quality per segment instead, so one bad segment among many good ones
+    only costs that segment, not the whole recording.
+
+    Returns (text, low_confidence):
+      text: the text to deliver (possibly "").
+      low_confidence: True only when every segment that survived
+        hallucination screening still failed the quality gate, and the
+        never-silently-empty floor below delivered the raw text anyway.
+
+    Order of operations:
+    1. Whole-decode hallucination check, over every segment and the full
+       joined text -- catches CROSS-segment patterns (the model echoing the
+       same phrase across many segments), which is invisible to any
+       single-segment check. If this fires the entire decode is discarded;
+       a decode that IS entirely hallucination legitimately returns "" and
+       the floor in step 3 does not apply to it.
+    2. Otherwise, walk segments in order. A segment is dropped, and only
+       that segment, when it is itself a hallucination in isolation
+       (single-segment garbage -- e.g. one "click click click" segment
+       embedded in an otherwise-real long recording, which whole-decode
+       diversity/dominance checks could miss once diluted by the
+       surrounding real speech) or when it individually fails
+       _is_quality_exhausted. Surviving segments are joined in order.
+    3. If every non-hallucinated segment was dropped for QUALITY and the
+       unfiltered text is non-empty, never silently return empty on
+       quality grounds alone: apply the SAME "plausible long dictation"
+       judgment _keep_low_confidence_long_chunk already encodes (commit
+       d5d6b2d's fix for a real 25s chunk), now over the whole decode
+       instead of a 25s chunk. For a hands-free user, imperfect text is
+       far easier to fix by voice than a lost thought is to re-dictate.
+    """
+    log = logging.getLogger("Samsara")
+    raw_text = "".join(getattr(seg, "text", "") or "" for seg in seg_list).strip()
+
+    if _is_hallucinated_segments(seg_list, raw_text):
+        log.info(f"[GUARD] Suppressed hallucination: {raw_text!r}")
+        return "", False
+
+    kept = []
+    dropped_for_quality = False
+    for seg in seg_list:
+        seg_text = (getattr(seg, "text", "") or "").strip()
+        if not seg_text:
+            continue
+        if _is_hallucinated_segments([seg], seg_text):
+            log.info(f"[GUARD] Suppressed hallucinated segment: {seg_text!r}")
+            continue
+        if _is_quality_exhausted([seg], transcribe_params):
+            dropped_for_quality = True
+            sig = diagnostics.segment_signals([seg])
+            log.info(
+                f"[QUALITY] dropped low-confidence segment (logprob "
+                f"{sig['avg_logprob']}, compression {sig['compression_ratio']}, "
+                f"no_speech {sig['no_speech_prob']}): {seg_text!r}"
+            )
+            continue
+        kept.append(seg)
+
+    text = "".join(getattr(seg, "text", "") or "" for seg in kept).strip()
+    if text or not dropped_for_quality:
+        return text, False
+
+    # Every segment that survived hallucination screening still failed
+    # quality. Never silently return empty on quality grounds alone.
+    if raw_text and _keep_low_confidence_long_chunk(seg_list, raw_text, audio_duration):
+        log.warning(
+            f"[QUALITY] every segment failed quality gates -- delivering "
+            f"low-confidence decode ({audio_duration:.1f}s): {raw_text!r}"
+        )
+        return raw_text, True
+
+    log.info(
+        f"[QUALITY] every segment failed quality gates and floor criteria "
+        f"not met -- rejecting ({audio_duration:.1f}s): {raw_text!r}"
+    )
+    return "", False
 
 
 def hide_console():
@@ -8307,13 +8422,15 @@ class DictationApp:
                 transcribe_start = time.time()
                 _diag_all_segs = []
                 _detected_lang = None
-                _diag_path = "long" if audio_duration > 30.0 else "short"
+                _diag_path = "short"
+                _low_confidence = False
 
-                if audio_duration > 30.0:
-                    # Long audio: split at silence boundaries before transcription.
-                    # Whisper's internal 30s chunking splits at arbitrary positions
-                    # that can land mid-word.  Splitting at silence boundaries first
-                    # keeps each chunk acoustically clean.
+                if audio_duration > _LONG_DECODE_CEILING_S:
+                    # Resource-guard fallback ONLY -- see _LONG_DECODE_CEILING_S
+                    # for why this is not a quality boundary. Reachable solely
+                    # for a runaway recording far beyond any normal dictation
+                    # length; splitting here trades some accuracy for bounded
+                    # memory/latency on that outlier-length buffer.
                     #
                     # Do NOT set condition_on_previous_text=True here — conditioning
                     # over long stitched sequences triggers Whisper's repetition-loop
@@ -8321,10 +8438,12 @@ class DictationApp:
                     # The clean-slate reset in _build_hotkey_transcribe_params is
                     # condition_on_previous_text only -- initial_prompt is NOT cleared;
                     # the voice-training vocabulary still biases every chunk here too.
+                    _diag_path = "long"
                     chunks = _split_audio_at_silences(audio_faded, self.model_rate)
-                    logger.info(f"[LONG] {audio_duration:.1f}s recording split into "
-                          f"{len(chunks)} chunk(s) at silence boundaries")
-                    texts = []
+                    logger.info(f"[LONG] {audio_duration:.1f}s recording exceeds the "
+                          f"{_LONG_DECODE_CEILING_S:.0f}s single-decode ceiling -- split "
+                          f"into {len(chunks)} chunk(s) at silence boundaries")
+                    _seg_list = []
                     for idx, chunk in enumerate(chunks):
                         chunk_dur = len(chunk) / self.model_rate
                         if chunk_dur < 0.2:
@@ -8332,52 +8451,23 @@ class DictationApp:
                         with self.model_lock:
                             segs, _chunk_info = self.model.transcribe(chunk, **transcribe_params)
                         _detected_lang = getattr(_chunk_info, 'language', None) or _detected_lang
-                        _segs_list = list(segs)
-                        _diag_all_segs.extend(_segs_list)
-                        chunk_text = "".join(s.text for s in _segs_list).strip()
-                        if _is_hallucinated_segments(_segs_list, chunk_text):
-                            logging.getLogger("Samsara").info(
-                                f"[GUARD] Suppressed hallucinated chunk {idx+1}: {chunk_text!r}")
-                            chunk_text = ""
-                        elif _is_quality_exhausted(_segs_list, transcribe_params):
-                            _sig = diagnostics.segment_signals(_segs_list)
-                            if _keep_low_confidence_long_chunk(
-                                _segs_list, chunk_text, chunk_dur,
-                            ):
-                                logging.getLogger("Samsara").warning(
-                                    f"[QUALITY] decode ladder exhausted (logprob "
-                                    f"{_sig['avg_logprob']}, compression {_sig['compression_ratio']}, "
-                                    f"no_speech {_sig['no_speech_prob']}) -- delivering "
-                                    f"low-confidence long chunk {idx+1}: {chunk_text!r}")
-                            else:
-                                logging.getLogger("Samsara").info(
-                                    f"[QUALITY] decode ladder exhausted (logprob "
-                                    f"{_sig['avg_logprob']}, compression {_sig['compression_ratio']}) "
-                                    f"-- rejecting chunk {idx+1}: {chunk_text!r}")
-                                chunk_text = ""
-                        if chunk_text:
-                            texts.append(chunk_text)
+                        _chunk_segs = list(segs)
+                        _seg_list.extend(_chunk_segs)
                         logger.info(f"[LONG] Chunk {idx + 1}/{len(chunks)}: "
-                              f"{chunk_dur:.1f}s → {len(chunk_text)} chars")
-                    text = " ".join(texts).strip()
+                              f"{chunk_dur:.1f}s → {len(_chunk_segs)} segment(s)")
                 else:
                     with self.model_lock:
                         segments, info = self.model.transcribe(audio_faded, **transcribe_params)
                     _detected_lang = getattr(info, 'language', None) or _detected_lang
                     _seg_list = list(segments)
-                    _diag_all_segs.extend(_seg_list)
-                    text = "".join([s.text for s in _seg_list]).strip()
-                    if _is_hallucinated_segments(_seg_list, text):
-                        logging.getLogger("Samsara").info(
-                            f"[GUARD] Suppressed hallucination: {text!r}")
-                        text = ""
-                    elif _is_quality_exhausted(_seg_list, transcribe_params):
-                        _sig = diagnostics.segment_signals(_seg_list)
-                        logging.getLogger("Samsara").info(
-                            f"[QUALITY] decode ladder exhausted (logprob "
-                            f"{_sig['avg_logprob']}, compression {_sig['compression_ratio']}) "
-                            f"-- rejecting: {text!r}")
-                        text = ""
+
+                # Segment-level gating (hallucination + quality), identical
+                # for either decode path above -- see
+                # _apply_segment_quality_gates for the full rationale.
+                _diag_all_segs.extend(_seg_list)
+                text, _low_confidence = _apply_segment_quality_gates(
+                    _seg_list, transcribe_params, audio_duration,
+                )
 
                 transcribe_time = time.time() - transcribe_start
                 t_transcribe_ms = int(transcribe_time * 1000)
@@ -8426,6 +8516,8 @@ class DictationApp:
                                 t_transcribe_ms=t_transcribe_ms,
                                 t_total_ms=t_transcribe_ms,
                                 text=text,
+                                outcome="low_confidence" if _low_confidence else "ok",
+                                path=_diag_path,
                                 # Command-mode transcription is always forced
                                 # to English (see _build_hotkey_transcribe_params)
                                 # regardless of the general dictation language.
@@ -8552,6 +8644,8 @@ class DictationApp:
                             t_total_ms=int((time.time() - transcribe_start) * 1000),
                             text=text,
                             smart_changed=smart_changed,
+                            outcome="low_confidence" if _low_confidence else "ok",
+                            path=_diag_path,
                             language=_languages.describe_diagnostics_language(
                                 self.config.get('language', 'en'), _detected_lang,
                             ),
