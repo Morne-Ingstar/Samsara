@@ -394,6 +394,31 @@ class _AlarmHotkeyButton(_HotkeyButton):
         self._show_idle_text()
 
 
+class _HeightForWidthWidget(QWidget):
+    """A QWidget that keeps its minimum height in sync with its layout's
+    heightForWidth() result for the widget's current width.
+
+    Qt's built-in sizePolicy-based height-for-width propagation does not
+    reliably reach through multiple levels of addLayout()-in-addLayout()
+    nesting (e.g. a setting row's layout, inside a card's layout, inside a
+    scroll area's content layout) -- setting hasHeightForWidth(True) at
+    every level still leaves the outermost setGeometry() pass using a
+    pre-wrap sizeHint. Recomputing minimumHeight directly on resize
+    sidesteps that propagation gap entirely: whatever finally decides this
+    widget's width, the widget corrects its own requested height in
+    response, so any layout parent -- height-for-width aware or not -- sees
+    an accurate minimumSizeHint.
+    """
+
+    def resizeEvent(self, event):
+        super().resizeEvent(event)
+        layout = self.layout()
+        if layout is not None and layout.hasHeightForWidth():
+            needed = layout.heightForWidth(self.width())
+            if needed > 0 and needed != self.minimumHeight():
+                self.setMinimumHeight(needed)
+
+
 # ---------------------------------------------------------------------------
 # Stylesheet
 # ---------------------------------------------------------------------------
@@ -841,13 +866,15 @@ class _SettingsWindow(QMainWindow):
         automatically.
 
         Every _setting_row(...) call produces a distinctive shape: a
-        QHBoxLayout whose first item is a QVBoxLayout starting with a
-        QLabel (the row label, optionally followed by a description
-        QLabel) and whose remaining items include the control widget. That shape is
-        unique in this file (the only bare QVBoxLayout() with no parent
-        widget anywhere in settings_qt.py is the one inside _setting_row),
-        so walking for it can't pick up an unrelated QHBoxLayout (button
-        rows, header rows, etc.) by accident.
+        QHBoxLayout whose first item is a QWidget (objectName
+        "settingRowLabelColumn" -- hosting the label column in a real
+        widget, not a bare addLayout(), is what gives its word-wrapped
+        description a working height-for-width layout pass) whose OWN
+        layout starts with a QLabel (the row label, optionally followed by
+        a description QLabel), and whose remaining row items include the
+        control widget. That shape is unique in this file, so walking for
+        it can't pick up an unrelated QHBoxLayout (button rows, header
+        rows, etc.) by accident.
 
         Two tabs -- Commands and Health -- build their content from
         QTableWidget-based editors rather than _setting_row, so they
@@ -865,7 +892,8 @@ class _SettingsWindow(QMainWindow):
                 if row.count() < 2:
                     continue
                 left_item = row.itemAt(0)
-                left_layout = left_item.layout() if left_item is not None else None
+                left_widget = left_item.widget() if left_item is not None else None
+                left_layout = left_widget.layout() if left_widget is not None else None
                 if left_layout is None or left_layout.count() < 1:
                     continue
                 label_item = left_layout.itemAt(0)
@@ -1439,13 +1467,13 @@ class _SettingsWindow(QMainWindow):
 
         export_btn = QPushButton("Export configuration…")
         export_btn.setObjectName("exportConfigurationButton")
-        export_btn.setFixedWidth(190)
+        export_btn.setFixedWidth(200)  # 190 clipped the label by a few px (sizeHint 191)
         export_btn.clicked.connect(self._export_configuration)
         backup_buttons.addWidget(export_btn)
 
         import_btn = QPushButton("Import configuration…")
         import_btn.setObjectName("importConfigurationButton")
-        import_btn.setFixedWidth(190)
+        import_btn.setFixedWidth(200)  # 190 clipped the label by a few px (sizeHint 193)
         import_btn.clicked.connect(self._import_configuration)
         backup_buttons.addWidget(import_btn)
         backup_buttons.addStretch()
@@ -3225,7 +3253,7 @@ class _SettingsWindow(QMainWindow):
         vol_slider.valueChanged.connect(lambda v: vol_pct.setText(f"{v}%"))
 
         test_btn = QPushButton("Test")
-        test_btn.setFixedWidth(60)
+        test_btn.setFixedWidth(80)  # 60 clipped the label (sizeHint 73)
         test_btn.clicked.connect(lambda: self._play(sounds_dir, 'success'))
 
         vol_row.addWidget(vol_lbl)
@@ -3257,7 +3285,7 @@ class _SettingsWindow(QMainWindow):
         self._widgets['sound_theme_combo'] = theme_combo
 
         apply_theme_btn = QPushButton("Apply Theme")
-        apply_theme_btn.setFixedWidth(110)
+        apply_theme_btn.setFixedWidth(140)  # 110 clipped the label (sizeHint 132)
         apply_theme_btn.clicked.connect(
             lambda: self._apply_sound_theme(
                 theme_combo.currentText(), sounds_dir, themes_dir
@@ -3851,13 +3879,13 @@ class _SettingsWindow(QMainWindow):
         )
 
         add_btn = QPushButton("Add Alarm")
-        add_btn.setFixedWidth(100)
+        add_btn.setFixedWidth(130)  # 100 clipped the label (sizeHint 116)
         add_btn.clicked.connect(lambda: self._open_alarm_dialog(None, table))
         btn_row.addWidget(add_btn)
 
         for label, width, handler in [
             ("Edit",      65, lambda: self._edit_selected_alarm(table)),
-            ("Toggle",    65, lambda: self._toggle_selected_alarm(table)),
+            ("Toggle",    80, lambda: self._toggle_selected_alarm(table)),  # 65 clipped (sizeHint 69)
             ("Test",      55, lambda: self._test_selected_alarm(table)),
         ]:
             b = QPushButton(label)
@@ -3867,7 +3895,7 @@ class _SettingsWindow(QMainWindow):
             btn_row.addWidget(b)
 
         del_btn = QPushButton("Delete")
-        del_btn.setFixedWidth(65)
+        del_btn.setFixedWidth(80)  # 65 clipped the label (sizeHint 67)
         del_btn.setStyleSheet(
             "QPushButton{background-color:rgba(200,60,60,0.15);color:#FF8888;"
             "border:1px solid rgba(200,60,60,0.3);border-radius:6px;padding:7px 12px;}"
@@ -3879,7 +3907,7 @@ class _SettingsWindow(QMainWindow):
         btn_row.addStretch()
 
         reset_btn = QPushButton("Reset Stats")
-        reset_btn.setFixedWidth(90)
+        reset_btn.setFixedWidth(105)  # 90 clipped the label (sizeHint 95)
         reset_btn.setStyleSheet(_SEC)
         reset_btn.clicked.connect(lambda: self._reset_alarm_stats(table))
         btn_row.addWidget(reset_btn)
@@ -4300,7 +4328,7 @@ class _SettingsWindow(QMainWindow):
         export_row.addWidget(export_btn)
 
         open_folder_btn = QPushButton("Open folder")
-        open_folder_btn.setFixedWidth(120)
+        open_folder_btn.setFixedWidth(135)  # 120 clipped the label (sizeHint 125)
         open_folder_btn.clicked.connect(self._open_health_folder)
         export_row.addWidget(open_folder_btn)
         export_row.addStretch()
@@ -4327,7 +4355,7 @@ class _SettingsWindow(QMainWindow):
 
         dict_row = QHBoxLayout()
         load_dict_btn = QPushButton("Load Medication Dictionary")
-        load_dict_btn.setFixedWidth(220)
+        load_dict_btn.setFixedWidth(235)  # 220 clipped the label (sizeHint 224)
         load_dict_btn.clicked.connect(self._load_medication_dictionary)
         dict_row.addWidget(load_dict_btn)
         dict_row.addStretch()
@@ -5179,6 +5207,12 @@ class _SettingsWindow(QMainWindow):
             "API Key",
             "Stored locally in config.json only — never transmitted to Samsara servers.",
             api_key_container,
+            # api_key_container needs its entry's own 260 minimum + 6px
+            # spacing + the 60px Show button (326 total) -- _setting_row's
+            # 260 default clamped the container narrower than its own
+            # children's combined minimum, so the Show button ended up
+            # drawn over the entry's last ~60px instead of beside it.
+            control_width=330,
         ))
         layout.addSpacing(8)
 
@@ -5292,7 +5326,7 @@ class _SettingsWindow(QMainWindow):
         license_entry.setPlaceholderText("SAMSARA-XXXX-XXXX-XXXX")
         self._widgets['cloud_license_entry'] = license_entry
         activate_btn = QPushButton("Activate")
-        activate_btn.setFixedWidth(90)
+        activate_btn.setFixedWidth(110)  # 90 clipped the label (sizeHint 100)
         activate_btn.clicked.connect(self._activate_license)
         key_row.addWidget(key_row_lbl)
         key_row.addWidget(license_entry, stretch=1)
@@ -5537,7 +5571,22 @@ class _SettingsWindow(QMainWindow):
         row.setContentsMargins(0, 10, 0, 10)
         row.setSpacing(20)
 
-        left = QVBoxLayout()
+        # The label column is hosted in a _HeightForWidthWidget rather than a
+        # bare QVBoxLayout added via addLayout(). A word-wrapped QLabel's
+        # height depends on its resolved width, and Qt's height-for-width
+        # sizePolicy propagation does not reliably reach through this row's
+        # full nesting depth (row -> card -> scroll content) even when every
+        # level advertises hasHeightForWidth(True) -- see
+        # _HeightForWidthWidget's docstring. It self-corrects its own
+        # minimum height on resize instead, which works regardless of how
+        # much nesting surrounds it.
+        left_widget = _HeightForWidthWidget()
+        left_widget.setObjectName("settingRowLabelColumn")
+        left_widget.setStyleSheet(
+            "QWidget#settingRowLabelColumn { background-color: transparent; }"
+        )
+        left = QVBoxLayout(left_widget)
+        left.setContentsMargins(0, 0, 0, 0)
         left.setSpacing(4)
 
         lbl = QLabel(label)
@@ -5549,8 +5598,11 @@ class _SettingsWindow(QMainWindow):
         desc.setWordWrap(True)
         left.addWidget(desc)
 
-        row.addLayout(left, 1)
-        row.addStretch()
+        # No addStretch() here: left_widget already carries the row's only
+        # stretch factor (1), and the control widget below is fixed-width,
+        # so an extra stretch item only competed with the label column for
+        # the same leftover space without adding anything.
+        row.addWidget(left_widget, 1)
 
         interactive_height = 36
         if isinstance(widget, QCheckBox):
