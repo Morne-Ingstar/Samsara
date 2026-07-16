@@ -465,6 +465,12 @@ QComboBox QAbstractItemView {
 QCheckBox {
     color: #E8E8EA;
     spacing: 8px;
+    /* Same cascade cause as the QLabel fix above (9b7f00f): QCheckBox is a
+       QWidget with no background-color of its own, so it otherwise picks
+       up the QMainWindow, QWidget rule's #0A0A0B as an opaque bar across
+       the row -- the ::indicator sub-control below already paints its own
+       background correctly and is untouched. */
+    background-color: transparent;
 }
 QCheckBox::indicator {
     width: 18px;
@@ -1069,6 +1075,16 @@ class _SettingsWindow(QMainWindow):
         self._widgets['mic_names_to_id'] = {m['name']: m['id'] for m in mics}
 
         mic_row_widget = QWidget()
+        # Same cascade cause as the QCheckBox/QLabel fixes: a bare QWidget
+        # used purely as a row layout container has no background-color of
+        # its own, so it otherwise paints the QMainWindow, QWidget rule's
+        # #0A0A0B behind the combo/button gap inside this card. Scoped by
+        # objectName rather than a bare/unqualified "background:
+        # transparent;" -- the unqualified form leaks into the ancestor
+        # stylesheet cascade and strips mic_refresh_btn's app-level
+        # QPushButton background-color, rendering it unstyled/grey.
+        mic_row_widget.setObjectName("micRowWidget")
+        mic_row_widget.setStyleSheet("QWidget#micRowWidget { background-color: transparent; }")
         mic_row_layout = QHBoxLayout(mic_row_widget)
         mic_row_layout.setContentsMargins(0, 0, 0, 0)
         mic_row_layout.setSpacing(6)
@@ -2128,6 +2144,18 @@ class _SettingsWindow(QMainWindow):
 
         ai_adv_button = _disclosure_button("Show AI backend options")
         ai_adv = QWidget()
+        # Same cascade cause as the QCheckBox/QLabel fixes: a bare QWidget
+        # used purely as a disclosure-panel container has no background-
+        # color of its own, so it otherwise paints the QMainWindow, QWidget
+        # rule's #0A0A0B across every row inside it when expanded, on top
+        # of this card. Scoped by objectName rather than a bare/unqualified
+        # "background: transparent;" -- confirmed (see mic_row_widget above)
+        # that the unqualified form leaks into the ancestor stylesheet
+        # cascade and strips a child QPushButton's app-level background-
+        # color, leaving it rendered unstyled/grey; scoping by objectName
+        # avoids that regardless of which control types end up in here.
+        ai_adv.setObjectName("aiAdvancedPanel")
+        ai_adv.setStyleSheet("QWidget#aiAdvancedPanel { background-color: transparent; }")
         ai_adv_layout = QVBoxLayout(ai_adv)
         ai_adv_layout.setContentsMargins(0, 0, 0, 0)
         ai_adv_layout.setSpacing(8)
@@ -2257,6 +2285,9 @@ class _SettingsWindow(QMainWindow):
 
         adv_button = _disclosure_button("Show advanced tuning")
         adv_area = QWidget()
+        # Same cascade cause as ai_adv above, same objectName-scoped fix.
+        adv_area.setObjectName("advancedTuningPanel")
+        adv_area.setStyleSheet("QWidget#advancedTuningPanel { background-color: transparent; }")
         adv_area_layout = QVBoxLayout(adv_area)
         adv_area_layout.setContentsMargins(0, 0, 0, 0)
         adv_area_layout.setSpacing(8)
