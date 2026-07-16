@@ -78,3 +78,14 @@ tools/make_shortcut.vbs
 
 # Build output
 release_staging/
+
+# Transient test artifacts and generated runtime files
+.pytest_tmp*/
+.release_tmp/
+alarm_stats.json
+Samsara_Gemini_Adversarial_Review_*.zip
+docs/SAMSARA_CONVERSATION_EXPORT_*.md
+
+# Real voice recordings used as long-dictation regression fixtures -- must
+# never enter git history (public repo). See tests/test_long_dictation_quality.py.
+tests/fixtures/audio/

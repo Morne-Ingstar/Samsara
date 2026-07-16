@@ -199,6 +199,24 @@ class TestEmptyAndGatedOutcomes:
         verdicts = classify(_rec(text="", audio_s=5.0))
         assert "Speech produced no output" in verdicts
 
+    def test_low_confidence_outcome_recorded_and_classified_distinctly(self):
+        """dictation._apply_segment_quality_gates's never-empty floor
+        (every segment failed quality but the decode was delivered
+        anyway) must be distinguishable from a normal "ok" delivery --
+        see the long-dictation quality rework."""
+        record(_rec(
+            outcome="low_confidence", path="short", n_segments=2,
+            text="paper bringing to make the page I guess",
+        ))
+
+        stored = recent()[0]
+        assert stored.outcome == "low_confidence"
+        assert any(
+            "Low-confidence delivery" in v for v in stored.verdicts
+        )
+        # Must not be conflated with a normal delivery's silence on outcome.
+        assert stored.outcome != "ok"
+
 
 # ============================================================================
 # Ring buffer
