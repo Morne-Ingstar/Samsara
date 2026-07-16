@@ -10,6 +10,7 @@ from unittest.mock import Mock
 
 import pytest
 
+from samsara.ui import tray_qt
 from samsara.ui.tray_qt import SamsaraTrayQt
 
 
@@ -212,3 +213,90 @@ class TestAllPreviousActionsStillReachable:
         texts = {a.text() for a in cleanup.actions()}
         assert any("Clean" in txt for txt in texts)
         assert any("Verbatim" in txt for txt in texts)
+
+
+class TestIconGeometryRefresh:
+    """Windows can leave the tray icon's shell-registered screen geometry
+    stale after a sleep/resume cycle or a monitor topology change, which
+    makes the right-click context menu occasionally pop up at a wrong
+    (sometimes primary-screen-center) position instead of anchored to the
+    icon. _refresh_icon_registration() (hide+show) forces Windows to
+    re-register it -- see _ICON_REFRESH_INTERVAL_MS."""
+
+    def test_refresh_timer_is_running_at_the_documented_interval(self, tray):
+        t, app = tray
+        assert t._icon_refresh_timer.isActive()
+        assert t._icon_refresh_timer.interval() == tray_qt._ICON_REFRESH_INTERVAL_MS
+
+    def test_refresh_hides_and_reshows_the_icon_when_menu_closed(self, tray):
+        t, app = tray
+        hide = Mock()
+        show = Mock()
+        t._tray.hide = hide
+        t._tray.show = show
+        t._refresh_icon_registration()
+        hide.assert_called_once()
+        show.assert_called_once()
+
+    def test_refresh_skipped_while_menu_is_open(self, tray, monkeypatch):
+        """Must never yank an in-progress click/menu out from under the
+        user -- if the menu is open, skip silently and let the next timer
+        tick or topology-change event try again."""
+        t, app = tray
+        monkeypatch.setattr(t._menu, "isVisible", lambda: True)
+        hide = Mock()
+        show = Mock()
+        t._tray.hide = hide
+        t._tray.show = show
+        t._refresh_icon_registration()
+        hide.assert_not_called()
+        show.assert_not_called()
+
+    def test_refresh_failure_never_raises(self, tray):
+        t, app = tray
+        t._tray.hide = Mock(side_effect=RuntimeError("boom"))
+        t._refresh_icon_registration()  # must not raise
+
+    def test_screen_topology_change_schedules_a_debounced_refresh(self, tray, monkeypatch):
+        t, app = tray
+        scheduled = []
+        monkeypatch.setattr(
+            tray_qt.QTimer, "singleShot",
+            staticmethod(lambda ms, cb: scheduled.append((ms, cb))),
+        )
+        t._on_screen_topology_changed()
+        assert len(scheduled) == 1
+        delay_ms, callback = scheduled[0]
+        assert delay_ms == 2000
+        assert callback == t._refresh_icon_registration
+
+    def test_screen_added_removed_and_primary_changed_are_all_connected(self, tray, monkeypatch):
+        """Confirms the handler actually fires via the real Qt signals, not
+        just that it exists as a method. Other SamsaraTrayQt instances from
+        other tests may still be connected to this same (session-scoped)
+        QGuiApplication -- filter scheduled calls down to THIS instance's
+        by identity rather than assuming an exact total count."""
+        from PySide6.QtGui import QGuiApplication
+
+        t, app = tray
+        scheduled = []
+        monkeypatch.setattr(
+            tray_qt.QTimer, "singleShot",
+            staticmethod(lambda ms, cb: scheduled.append((ms, cb))),
+        )
+        gui_app = QGuiApplication.instance()
+        screen = gui_app.primaryScreen()
+        gui_app.screenAdded.emit(screen)
+        gui_app.screenRemoved.emit(screen)
+        gui_app.primaryScreenChanged.emit(screen)
+
+        this_instance_calls = [
+            (delay, cb) for delay, cb in scheduled if cb == t._refresh_icon_registration
+        ]
+        assert len(this_instance_calls) == 3
+        assert all(delay == 2000 for delay, _cb in this_instance_calls)
+
+    def test_stop_stops_the_refresh_timer(self, tray):
+        t, app = tray
+        t.stop()
+        assert not t._icon_refresh_timer.isActive()

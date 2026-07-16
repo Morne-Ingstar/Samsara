@@ -11,13 +11,24 @@ All Signal-based methods are safe to call from any thread.
 """
 
 from PySide6.QtCore import Qt, QObject, QTimer, Signal
-from PySide6.QtGui import QAction, QActionGroup, QIcon, QImage, QPixmap
+from PySide6.QtGui import QAction, QActionGroup, QGuiApplication, QIcon, QImage, QPixmap
 from PySide6.QtWidgets import QMenu, QSystemTrayIcon
 
 from samsara.constants import DEFAULT_WAKE_PHRASE
 from samsara.log import get_logger
 
 logger = get_logger(__name__)
+
+# Windows can leave a QSystemTrayIcon's shell-registered screen geometry
+# stale after a sleep/resume cycle (no monitor topology change, so
+# screenAdded/screenRemoved never fire) -- the next right-click's context
+# menu then anchors to whatever stale/zeroed rect Windows reports, which
+# can land near the primary screen's center instead of at the icon.
+# _refresh_icon_registration() (hide+show) forces Windows to re-register
+# it; this periodic timer is the catch-all for that no-topology-change
+# case, on top of the immediate, event-driven refresh on actual screen
+# add/remove/primary-change below.
+_ICON_REFRESH_INTERVAL_MS = 20 * 60 * 1000  # 20 minutes
 
 
 class SamsaraTrayQt(QObject):
@@ -61,6 +72,22 @@ class SamsaraTrayQt(QObject):
         self._startup_health_timer.timeout.connect(self._poll_startup_health)
         self._startup_health_timer.start()
 
+        # See _ICON_REFRESH_INTERVAL_MS: periodic catch-all for the
+        # sleep/resume case, plus an immediate refresh on any actual
+        # monitor topology change (connect/disconnect, primary-screen
+        # swap) -- both guard against the tray context menu popping up at
+        # a stale, wrong position instead of anchored to the icon.
+        self._icon_refresh_timer = QTimer(self)
+        self._icon_refresh_timer.setInterval(_ICON_REFRESH_INTERVAL_MS)
+        self._icon_refresh_timer.timeout.connect(self._refresh_icon_registration)
+        self._icon_refresh_timer.start()
+
+        gui_app = QGuiApplication.instance()
+        if gui_app is not None:
+            gui_app.screenAdded.connect(self._on_screen_topology_changed)
+            gui_app.screenRemoved.connect(self._on_screen_topology_changed)
+            gui_app.primaryScreenChanged.connect(self._on_screen_topology_changed)
+
     # ------------------------------------------------------------------
     # pystray-compatible property interface (all thread-safe)
     # ------------------------------------------------------------------
@@ -86,11 +113,38 @@ class SamsaraTrayQt(QObject):
             self._startup_health_timer.stop()
         except Exception:
             pass
+        try:
+            self._icon_refresh_timer.stop()
+        except Exception:
+            pass
         self._hide_sig.emit()
 
     # ------------------------------------------------------------------
     # Qt thread methods
     # ------------------------------------------------------------------
+
+    def _refresh_icon_registration(self):
+        """Re-register the tray icon with Windows so its context menu
+        stops anchoring to a stale screen position.
+
+        See _ICON_REFRESH_INTERVAL_MS. Skips silently while the menu is
+        currently open so this can never yank an in-progress click/menu
+        out from under the user; the next timer tick or topology-change
+        event will simply try again.
+        """
+        if self._menu.isVisible():
+            return
+        try:
+            self._tray.hide()
+            self._tray.show()
+        except Exception as exc:
+            logger.debug(f"_refresh_icon_registration: {exc}")
+
+    def _on_screen_topology_changed(self, *_args):
+        """A monitor was connected/disconnected or the primary screen
+        changed -- Qt/Windows are still settling screen geometry right as
+        this fires, so refresh shortly after rather than immediately."""
+        QTimer.singleShot(2000, self._refresh_icon_registration)
 
     def _poll_startup_health(self):
         """Confirm a replacement only after the whole app is operational."""
