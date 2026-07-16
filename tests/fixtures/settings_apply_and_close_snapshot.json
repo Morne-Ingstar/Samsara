@@ -140,6 +140,9 @@
     "use_for_warnings": true,
     "volume": 0.8
   },
+  "updates": {
+    "automatic_checks": false
+  },
   "undo_hotkey": "ctrl+alt+z",
   "wake_word_config": {
     "audio": {

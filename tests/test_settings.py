@@ -129,7 +129,7 @@ class TestSettingsWindowConstruction:
         assert 'Modes' in _TAB_NAMES
         assert 'Hotkeys' not in _TAB_NAMES
         assert 'AI Commands' not in _TAB_NAMES
-        assert len(_TAB_NAMES) == 9
+        assert len(_TAB_NAMES) == 10
 
         sidebar_labels = {win._sidebar.item(i).text() for i in range(win._sidebar.count())}
         assert 'Modes' in sidebar_labels
@@ -208,9 +208,63 @@ class TestSettingsWindowConstruction:
         assert produced['command_mode']['button'] == 'rctrl'
         assert _CMD_BUTTON_OPTIONS['Mouse 4'] == 'mouse4'  # still selectable, just not default
 
+    def test_modes_tab_has_one_voice_control_card_with_subordinate_hold_behavior(self, qapp):
+        """Ordinary Command Mode and Hands-Free are one activation system,
+        while AI Command Mode remains a separate card."""
+        from PySide6.QtWidgets import QFrame
+        from samsara.ui.settings_qt import _SettingsWindow, _TAB_NAMES
+
+        win = _SettingsWindow(_StubApp())
+        page = win._stack.widget(_TAB_NAMES.index('Modes'))
+        cards = [
+            frame for frame in page.findChildren(QFrame)
+            if frame.objectName() == 'settingsSectionCard'
+        ]
+        titles = [card.layout().itemAt(0).widget().text() for card in cards]
+
+        assert titles == [
+            'Hands-Free / Voice Control',
+            'Dictation bindings',
+            'AI Command Mode (Experimental)',
+            'Ava Assistant',
+            'Advanced tuning',
+        ]
+        assert 'Voice Commands' not in titles
+
+        def containing_card(widget):
+            parent = widget.parentWidget()
+            while parent is not None and parent.objectName() != 'settingsSectionCard':
+                parent = parent.parentWidget()
+            return parent
+
+        voice_card = cards[0]
+        assert containing_card(win._widgets['cmd_mode']) is voice_card
+        assert containing_card(win._widgets['command_hotkey']) is voice_card
+        assert containing_card(win._widgets['wake_word_hotkey']) is voice_card
+        assert containing_card(win._widgets['mode']) is cards[1]
+
+    def test_modes_voice_control_rows_remain_search_registered(self, qapp):
+        from samsara.ui.settings_qt import _SettingsWindow, _TAB_NAMES
+
+        win = _SettingsWindow(_StubApp())
+        modes_index = _TAB_NAMES.index('Modes')
+        labels = {
+            label for label, _desc, tab, *_widgets in win._search_rows
+            if tab == modes_index
+        }
+
+        assert {
+            'Enable voice control',
+            'Button behavior',
+            'Command-only key',
+            'Wake activation key',
+            'Primary dictation key behavior',
+            'Enable AI command mode',
+        } <= labels
+
 
 class TestSidebarGrouping:
-    """Sidebar has 2 non-selectable group headers (Settings / Tools) + 9
+    """Sidebar has 3 non-selectable group headers (Settings / Tools / Support) + 10
     selectable tabs, and each Tools tab shows an instant-apply caption."""
 
     def test_header_and_selectable_row_counts(self, qapp):
@@ -227,9 +281,9 @@ class TestSidebarGrouping:
             else:
                 headers.append(item.text())
 
-        assert len(headers) == 2
-        assert len(selectable) == 9
-        assert set(headers) == {'SETTINGS', 'TOOLS'}
+        assert len(headers) == 3
+        assert len(selectable) == 10
+        assert set(headers) == {'SETTINGS', 'TOOLS', 'SUPPORT'}
 
     def test_tab_indices_unchanged(self, qapp):
         """Stack widget order/indices must be untouched by the regrouping --
@@ -240,6 +294,7 @@ class TestSidebarGrouping:
         expected = {
             'General': 0, 'Modes': 1, 'Commands': 2, 'Sounds': 3, 'TTS': 4,
             'Ava / Cloud': 5, 'Alarms': 6, 'Health': 7, 'Advanced': 8,
+            'Help & Support': 9,
         }
         for row, stack_index in win._sidebar_row_to_stack_index.items():
             name = win._sidebar.item(row).text()

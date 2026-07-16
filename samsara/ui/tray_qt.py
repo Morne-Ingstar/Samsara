@@ -127,6 +127,14 @@ class SamsaraTrayQt(QObject):
                         QSystemTrayIcon.MessageIcon.Warning,
                         12000,
                     )
+                elif update_status.state == "cleanup_pending":
+                    self._tray.showMessage(
+                        "Samsara update cleanup pending",
+                        "Leftover update files remain from a previous update "
+                        f"and cleanup will retry automatically. {update_status.message}",
+                        QSystemTrayIcon.MessageIcon.Warning,
+                        10000,
+                    )
         except Exception as exc:
             logger.warning("[UPDATE] Could not reconcile previous update: %s", exc)
 
