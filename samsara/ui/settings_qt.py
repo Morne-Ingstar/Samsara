@@ -427,6 +427,13 @@ QListWidget::item:hover {
 }
 QLabel {
     color: #E8E8EA;
+    /* QLabel inherits from QWidget, so without this it picks up the
+       QMainWindow, QWidget rule's background-color (#0A0A0B) above as an
+       opaque bar behind every label -- most visible against the lighter
+       #161b24 section-card background (see _section_card). Transparent
+       lets each label show whatever surface (card, panel, window) it
+       actually sits on instead of painting its own opaque rectangle. */
+    background-color: transparent;
 }
 QLabel[class="description"] {
     color: #AEB4C0;
