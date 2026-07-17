@@ -681,15 +681,16 @@ class _WizardWindow(QDialog):
 
         This wizard keeps its OWN persistent meter InputStream open for the
         whole device-selection page (see _audio_worker/_ensure_audio_running)
-        -- invisible to DictationApp._is_audio_capture_active(). Refreshing
+        -- invisible to DictationApp._mic_refresh_blocked(). Refreshing
         safely means tearing that stream down first, THEN checking whether
-        anything else (a real dictation/recording elsewhere) is active,
-        THEN re-enumerating, and always restarting our own meter afterward
-        regardless of outcome.
+        a real dictation hold is active elsewhere (the one thing
+        refresh_audio_devices() itself still can't work around -- see its
+        docstring), THEN re-enumerating, and always restarting our own
+        meter afterward regardless of outcome.
         """
         self._stop_audio()
         try:
-            if self._app._is_audio_capture_active():
+            if self._app._mic_refresh_blocked():
                 self._device_status.setText("Stop dictation elsewhere to refresh devices.")
                 self._device_status.setStyleSheet(f"color:{_WARNING};font-size:12px;")
                 return

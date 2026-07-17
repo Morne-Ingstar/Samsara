@@ -4,6 +4,18 @@ and the pure samsara.audio_devices.pick_index_by_name() selection helper.
 sounddevice is fully monkeypatched -- no real PortAudio calls, no real audio
 devices touched. Exercises the real production methods (DictationApp.method(app, ...)
 pattern), not a re-implementation, matching test_transcription_params.py's convention.
+
+2026-07-17: refresh_audio_devices() used to gate on _is_audio_capture_active(),
+which is true almost the entire life of the process (the ACE engine starts at
+boot and runs permanently) -- so the guard was a constant True and the
+function never actually re-enumerated in production. Fixed by splitting the
+guard: refresh_audio_devices() now uses the new, narrower
+_mic_refresh_blocked() (true only for an actual in-progress recording hold)
+and cycles the ACE engine's stop()/start() around the PortAudio re-init
+instead of treating "the engine exists" as a block.
+_is_audio_capture_active() itself is UNCHANGED and still correct for its one
+remaining caller, calibrate_echo_cancellation() -- see
+TestIsAudioCaptureActiveUnchangedForCalibrationCaller.
 """
 
 import sys
@@ -56,9 +68,36 @@ class _FakeSd:
         self.initialize_calls += 1
 
 
+class _FakeAceEngine:
+    """Stand-in for AudioCaptureEngine -- tracks stop()/start() calls and
+    toggles _running the same way the real engine does (see
+    samsara/audio_engine/engine.py's stop()/start()), so
+    refresh_audio_devices()'s cycle-around-reinit logic can be verified
+    without a real PortAudio stream."""
+
+    def __init__(self, running=False):
+        self._running = running
+        self.stop_calls = 0
+        self.start_calls = 0
+        self.stop_should_raise = False
+        self.start_should_raise = False
+
+    def stop(self):
+        self.stop_calls += 1
+        if self.stop_should_raise:
+            raise RuntimeError("simulated ACE stop failure")
+        self._running = False
+
+    def start(self):
+        self.start_calls += 1
+        if self.start_should_raise:
+            raise RuntimeError("simulated ACE start failure")
+        self._running = True
+
+
 def _make_app(fake_sd, recording=False, continuous_active=False,
               wake_word_active=False, ace_running=False, microphone=None,
-              microphone_name=None):
+              microphone_name=None, ace_engine=None):
     app = types.SimpleNamespace()
     app.config = {
         'show_all_audio_devices': False,
@@ -69,7 +108,12 @@ def _make_app(fake_sd, recording=False, continuous_active=False,
     app.recording = recording
     app.continuous_active = continuous_active
     app.wake_word_active = wake_word_active
-    app._ace_engine = types.SimpleNamespace(_running=ace_running) if ace_running else None
+    if ace_engine is not None:
+        app._ace_engine = ace_engine
+    elif ace_running:
+        app._ace_engine = _FakeAceEngine(running=True)
+    else:
+        app._ace_engine = None
 
     app.get_available_microphones = types.MethodType(
         dictation.DictationApp.get_available_microphones, app)
@@ -77,9 +121,34 @@ def _make_app(fake_sd, recording=False, continuous_active=False,
         dictation.DictationApp.refresh_audio_devices, app)
     app._is_audio_capture_active = types.MethodType(
         dictation.DictationApp._is_audio_capture_active, app)
+    app._mic_refresh_blocked = types.MethodType(
+        dictation.DictationApp._mic_refresh_blocked, app)
     app._reconcile_microphone_selection = types.MethodType(
         dictation.DictationApp._reconcile_microphone_selection, app)
     return app
+
+
+# ============================================================================
+# _is_audio_capture_active() itself -- must NOT be touched by this fix.
+# Still the correct (unchanged) gate for calibrate_echo_cancellation(),
+# which does its own blocking sd.play()/sd.rec() and genuinely conflicts
+# with a concurrently-open ACE stream on the same device.
+# ============================================================================
+
+class TestIsAudioCaptureActiveUnchangedForCalibrationCaller:
+    @pytest.mark.parametrize("kwargs", [
+        {'recording': True},
+        {'continuous_active': True},
+        {'wake_word_active': True},
+        {'ace_running': True},
+    ])
+    def test_still_true_for_every_original_condition(self, fake_sd, kwargs):
+        app = _make_app(fake_sd, **kwargs)
+        assert app._is_audio_capture_active() is True
+
+    def test_false_when_nothing_active(self, fake_sd):
+        app = _make_app(fake_sd)
+        assert app._is_audio_capture_active() is False
 
 
 @pytest.fixture
@@ -127,18 +196,19 @@ class TestRefreshPicksUpNewDevice:
 
 
 # ============================================================================
-# Skip path -- audio active
+# Hard block -- self.recording ONLY. 2026-07-17 fix: refresh_audio_devices()
+# used to gate on _is_audio_capture_active(), which OR's in the ACE engine's
+# always-on _running flag -- true almost the entire life of the process, so
+# this guard was a constant True and refresh_audio_devices() never actually
+# ran in production. continuous_active/wake_word_active/ace_running must
+# now all let the refresh PROCEED (see TestRefreshReachableWithOnlyAceActive
+# and TestAceEngineCycledAroundReinit below) -- only an actual dictation
+# hold (self.recording) still refuses outright.
 # ============================================================================
 
-class TestSkipWhenAudioActive:
-    @pytest.mark.parametrize("kwargs", [
-        {'recording': True},
-        {'continuous_active': True},
-        {'wake_word_active': True},
-        {'ace_running': True},
-    ])
-    def test_enumeration_not_rerun_when_active(self, fake_sd, kwargs):
-        app = _make_app(fake_sd, **kwargs)
+class TestHardBlockOnRecordingOnly:
+    def test_recording_still_hard_blocks(self, fake_sd):
+        app = _make_app(fake_sd, recording=True)
         app.available_mics = [{'id': 0, 'name': 'Stale Cached Mic', 'channels': 1}]
         calls_before = fake_sd.query_devices_calls
 
@@ -150,13 +220,127 @@ class TestSkipWhenAudioActive:
         assert result == [{'id': 0, 'name': 'Stale Cached Mic', 'channels': 1}]
         assert result is app.available_mics
 
-    def test_skip_logged_at_info(self, fake_sd, caplog):
+    def test_recording_skip_logged_at_info_distinctly(self, fake_sd, caplog):
         import logging
         app = _make_app(fake_sd, recording=True)
         with caplog.at_level(logging.INFO):
             app.refresh_audio_devices()
-        assert any("refresh skipped" in r.message and "audio active" in r.message
-                   for r in caplog.records)
+        assert any(
+            "refresh skipped" in r.message and "dictation hold" in r.message
+            for r in caplog.records
+        )
+
+    @pytest.mark.parametrize("kwargs", [
+        {'continuous_active': True},
+        {'wake_word_active': True},
+        {'ace_running': True},
+    ])
+    def test_none_of_these_alone_hard_block(self, fake_sd, kwargs):
+        """The exact production bug: with ONLY these states active (no
+        actual recording), refresh must reach real re-enumeration -- this
+        would have failed against the old _is_audio_capture_active() gate."""
+        app = _make_app(fake_sd, **kwargs)
+        assert app._mic_refresh_blocked() is False
+
+
+# ============================================================================
+# THE production bug, reproduced directly: ACE running, nothing else --
+# the exact state a normal idle Samsara session is in almost all the time.
+# ============================================================================
+
+class TestRefreshReachableWithOnlyAceActive:
+    def test_reenumeration_actually_runs(self, fake_sd):
+        ace = _FakeAceEngine(running=True)
+        app = _make_app(fake_sd, ace_engine=ace)
+        app.available_mics = app.get_available_microphones()
+        fake_sd.devices = [_device("Built-in Mic"), _device("Newly Plugged Mic")]
+
+        result = app.refresh_audio_devices()
+
+        assert fake_sd.terminate_calls == 1
+        assert fake_sd.initialize_calls == 1
+        names = [m['name'] for m in result]
+        assert "Newly Plugged Mic" in names
+
+    def test_ace_stopped_before_and_restarted_after(self, fake_sd):
+        ace = _FakeAceEngine(running=True)
+        app = _make_app(fake_sd, ace_engine=ace)
+
+        app.refresh_audio_devices()
+
+        assert ace.stop_calls == 1
+        assert ace.start_calls == 1
+        assert ace._running is True   # restored to its prior state
+
+
+# ============================================================================
+# finally-block guarantee: capture must be restarted even if the re-init
+# (or anything between stop() and start()) raises.
+# ============================================================================
+
+class TestAceRestartedAfterRaisingReinit:
+    def test_restarted_after_portaudio_reinit_raises(self, fake_sd):
+        fake_sd.terminate_should_raise = True
+        ace = _FakeAceEngine(running=True)
+        app = _make_app(fake_sd, ace_engine=ace)
+
+        # sd._terminate() raising is already caught+logged inside
+        # refresh_audio_devices() (falls back to plain re-query) -- must
+        # not prevent restart either.
+        app.refresh_audio_devices()
+
+        assert ace.stop_calls == 1
+        assert ace.start_calls == 1
+        assert ace._running is True
+
+    def test_restarted_even_if_reconcile_raises(self, fake_sd, monkeypatch):
+        ace = _FakeAceEngine(running=True)
+        app = _make_app(fake_sd, ace_engine=ace)
+
+        def _boom():
+            raise RuntimeError("simulated reconcile failure")
+        app._reconcile_microphone_selection = _boom
+
+        with pytest.raises(RuntimeError):
+            app.refresh_audio_devices()
+
+        assert ace.start_calls == 1
+        assert ace._running is True
+
+    def test_not_left_running_false_if_start_itself_fails(self, fake_sd, caplog):
+        """start() failing is logged, not swallowed silently or re-raised
+        past refresh_audio_devices() -- the caller still gets back
+        whatever device list it managed to get."""
+        import logging
+        ace = _FakeAceEngine(running=True)
+        ace.start_should_raise = True
+        app = _make_app(fake_sd, ace_engine=ace)
+
+        with caplog.at_level(logging.ERROR):
+            result = app.refresh_audio_devices()
+
+        assert ace.start_calls == 1
+        assert result is app.available_mics
+
+
+class TestAceNotTouchedWhenNotRunning:
+    def test_stop_and_start_not_called_when_ace_was_never_running(self, fake_sd):
+        ace = _FakeAceEngine(running=False)
+        app = _make_app(fake_sd, ace_engine=ace)
+
+        app.refresh_audio_devices()
+
+        assert ace.stop_calls == 0
+        assert ace.start_calls == 0
+
+    def test_no_ace_engine_at_all_still_refreshes(self, fake_sd):
+        app = _make_app(fake_sd)  # ace_engine=None, ace_running=False
+        assert app._ace_engine is None
+
+        result = app.refresh_audio_devices()
+
+        assert fake_sd.terminate_calls == 1
+        assert [m['name'] for m in result] == ["Built-in Mic"]
 
 
 # ============================================================================

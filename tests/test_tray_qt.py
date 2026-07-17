@@ -34,7 +34,7 @@ def _make_app():
         'model_size': 'base',
     }
     app.available_mics = [{'id': 'mic-1', 'name': 'Test Microphone'}]
-    app._is_audio_capture_active = Mock(return_value=True)  # skip the mic re-enumeration branch
+    app._mic_refresh_blocked = Mock(return_value=True)  # skip the mic re-enumeration branch
     app.get_current_microphone_name = Mock(return_value='Test Microphone')
     app.snoozed = False
     app.cheat_sheet = None
