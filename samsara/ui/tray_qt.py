@@ -115,7 +115,7 @@ class SamsaraTrayQt(QObject):
         # ---- Microphone submenu ----
         mic_label = f"[MIC]  {app.get_current_microphone_name()}"
         mic_sub = QMenu(mic_label)
-        if not app._is_audio_capture_active():
+        if not app._mic_refresh_blocked():
             try:
                 app.available_mics = app.get_available_microphones()
                 app._reconcile_microphone_selection()

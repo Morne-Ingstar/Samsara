@@ -1029,7 +1029,7 @@ class _SettingsWindow(QMainWindow):
         layout.addWidget(mic_refresh_hint)
 
         def _on_refresh_mics():
-            if self.app._is_audio_capture_active():
+            if self.app._mic_refresh_blocked():
                 mic_refresh_hint.setVisible(True)
                 return
             mic_refresh_hint.setVisible(False)
