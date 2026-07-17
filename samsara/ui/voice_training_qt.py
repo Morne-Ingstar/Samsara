@@ -299,7 +299,23 @@ class VoiceTrainingQt:
     # character-based proxy that keeps well clear of that limit.
     _PROMPT_CHAR_BUDGET = 800
 
-    def get_initial_prompt(self) -> "str | None":
+    def get_initial_prompt(self, include_commands: bool = True) -> "str | None":
+        """Build the Whisper initial_prompt from up to three layered parts.
+
+        include_commands=False omits Priority 3 (the auto-derived command
+        vocabulary) entirely -- for decode paths that are pure prose
+        dictation and never matched against the command registry (the
+        hotkey hold-to-record path; see dictation._build_hotkey_transcribe_
+        params). That ~280-phrase, comma-separated list is an unusual,
+        non-conversational decoder context that was found to measurably
+        destabilize long (>~15-20s) continuous-speech decodes -- see
+        dictation.py's module comment above _SANITY_MIN_DURATION_S for the
+        2026-07-16 incident this was diagnosed from. Priority 1 (explicit
+        custom prompt) and Priority 2 (genuine user vocabulary -- names,
+        jargon, technical terms added via add_vocab_word) still apply
+        regardless of include_commands: those aren't command phrases and
+        dictation benefits from them the same as any other path.
+        """
         try:
             parts: List[str] = []
             remaining = self._PROMPT_CHAR_BUDGET
@@ -322,7 +338,7 @@ class VoiceTrainingQt:
 
             # Priority 3: command vocabulary -- lowest priority, so it's the
             # one truncated (item-by-item, never mid-word) to fit what's left.
-            if remaining > 0:
+            if include_commands and remaining > 0:
                 cmd_words = self._get_command_vocabulary_words()
                 kept: List[str] = []
                 for word in cmd_words:
