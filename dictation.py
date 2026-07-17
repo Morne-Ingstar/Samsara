@@ -3853,6 +3853,31 @@ class DictationApp:
 
         return microphones
 
+    def _mic_refresh_blocked(self) -> bool:
+        """True only for the one case refresh_audio_devices() genuinely
+        cannot proceed: an actual hold-to-dictate press is open right now
+        (self.recording). Deliberately narrower than
+        _is_audio_capture_active() -- see that method's docstring for why
+        the two questions ("is a stream open that re-enumeration would
+        disturb, and can it be cycled?" vs "does the always-on ACE engine
+        exist?") are not the same question, and 2026-07-17's fix comment on
+        refresh_audio_devices() for the bug this predicate exists to avoid
+        reintroducing.
+
+        continuous_active/wake_word_active are NOT included: as of the ACE
+        ring-consumer migration (_start_ace_engine), neither owns a
+        separate PortAudio stream -- both read the same FrameBus the ACE
+        engine writes, so refresh_audio_devices() cycling that ONE engine
+        around the PortAudio re-init is sufficient; there is nothing left
+        for those two flags to protect here. self.recording is excluded
+        from that cycling on UX/data-integrity grounds, not stream
+        ownership: interrupting a live user-held utterance mid-word to
+        cycle capture would risk losing or corrupting what they're saying,
+        unlike an idle continuous/wake listener which only misses a brief
+        (sub-second) window of ambient audio.
+        """
+        return self.recording
+
     def refresh_audio_devices(self):
         """Re-enumerate input microphones, picking up devices connected after boot.
 
@@ -3865,35 +3890,79 @@ class DictationApp:
         (get_available_microphones() always re-queries regardless, so the
         fallback is implicit -- no separate code path needed).
 
-        MUST NOT run while any audio stream is open: PortAudio re-init while
-        a stream is live can stutter or kill it. Gated on
-        _is_audio_capture_active() -- the same flag tray_qt.py's menu rebuild
-        already uses to guard mic-list refreshes. If active, this is a no-op:
-        logs at INFO and returns the current (unchanged) list.
+        2026-07-17 FIX -- this function was UNREACHABLE in production before
+        this change. It used to gate on _is_audio_capture_active(), which
+        OR's in `self._ace_engine is not None and self._ace_engine._running`
+        -- and the ACE engine is started unconditionally in __init__ and
+        runs for the whole process lifetime (_start_ace_engine's own
+        docstring: "runs permanently"), so that term is true from shortly
+        after boot until shutdown. The guard was therefore a constant True
+        for the entire life of a running app: every refresh call hit
+        "[MIC] refresh skipped -- audio active" and returned the stale
+        list, and _reconcile_microphone_selection() below it never ran
+        either. Confirmed empirically 2026-07-16 -- not a hypothesis.
 
-        Thread-safety: call only from the Qt/UI thread. There is no
-        additional lock here -- every existing reader/writer of
-        self.available_mics (tray_qt.py's menu rebuild, settings_qt.py, the
-        setup wizards) already only touches it from the Qt thread, and
-        _is_audio_capture_active() is the same gate already relied on to
-        keep re-enumeration from racing an active recording/stream.
+        Fixed by splitting what the guard was conflating: whether a stream
+        is open that re-enumeration would disturb, and separately, whether
+        that stream can just be cycled around the re-init instead of
+        treated as an unconditional block. The ACE engine -- the sole
+        remaining stream owner post ring-consumer-migration (see
+        _mic_refresh_blocked's docstring) -- gets stopped before
+        sd._terminate()/_initialize() and restarted after, in a finally
+        block so a raising re-init can never leave the user with no
+        capture at all. The one genuine hard block
+        (_mic_refresh_blocked(): self.recording) still refuses outright,
+        same as the old behavior for that one case -- "Stop dictation to
+        refresh devices" is honest there, just not for every other state
+        the old guard also blocked on.
+
+        Thread-safety: call only from the Qt/UI thread, same contract as
+        before -- switch_microphone() (existing precedent) already cycles
+        this same ACE engine's stop()/start() synchronously from the Qt
+        thread with no additional marshalling, and every existing reader/
+        writer of self.available_mics (tray_qt.py's menu rebuild,
+        settings_qt.py, the setup wizards) already only touches it from
+        the Qt thread too. Callers that need to invoke this off the Qt
+        thread must marshal onto it themselves (e.g. via
+        samsara.ui.qt_runtime.post()) rather than this method inventing
+        its own thread-hop -- see first_run_wizard_qt.py's refresh handler
+        for the pattern.
 
         Returns the fresh list, in the same shape as
         get_available_microphones() (this IS that same method -- there is
         only one enumeration code path).
         """
-        if self._is_audio_capture_active():
-            logger.info("[MIC] refresh skipped — audio active")
+        if self._mic_refresh_blocked():
+            logger.info("[MIC] refresh skipped — dictation hold in progress")
             return self.available_mics
 
-        try:
-            sd._terminate()
-            sd._initialize()
-        except Exception as exc:
-            logger.warning(f"[MIC] PortAudio re-init failed, falling back to plain re-query: {exc}")
+        ace = self._ace_engine
+        ace_was_running = ace is not None and ace._running
+        if ace_was_running:
+            try:
+                ace.stop()
+            except Exception as exc:
+                logger.exception(f"[MIC] ACE engine stop before refresh failed: {exc}")
 
-        self.available_mics = self.get_available_microphones()
-        self._reconcile_microphone_selection()
+        try:
+            try:
+                sd._terminate()
+                sd._initialize()
+            except Exception as exc:
+                logger.warning(f"[MIC] PortAudio re-init failed, falling back to plain re-query: {exc}")
+
+            self.available_mics = self.get_available_microphones()
+            self._reconcile_microphone_selection()
+        finally:
+            # Restart unconditionally if it was running -- this must happen
+            # even if the re-init or re-enumeration above raised, or the
+            # user is left with no audio capture at all until next restart.
+            if ace_was_running:
+                try:
+                    ace.start()
+                except Exception as exc:
+                    logger.exception(f"[MIC] ACE engine restart after refresh failed: {exc}")
+
         return self.available_mics
 
     def get_available_output_devices(self):
@@ -4344,10 +4413,23 @@ class DictationApp:
                 logger.exception(f"[UI] standalone history refresh failed: {e}")
 
     def _is_audio_capture_active(self) -> bool:
-        """True if ANY audio input stream is currently open.
+        """True if ANY audio input stream is conceptually "in use" --
+        recording, continuous mode, wake word mode, or the ACE engine.
 
-        Used to guard mic-list refreshes — sd.query_devices() can stutter
-        active PortAudio streams on some drivers.
+        2026-07-17: NOT used by refresh_audio_devices() anymore -- see
+        _mic_refresh_blocked() for that. Since the ACE engine starts
+        unconditionally at boot and runs for the process lifetime, the
+        last term here is true almost from launch to shutdown, which made
+        this predicate a de facto constant True whenever used as a "safe
+        to re-enumerate" gate (confirmed empirically 2026-07-16). It
+        remains correct and UNCHANGED for its one remaining caller,
+        calibrate_echo_cancellation(): that path does its own blocking
+        sd.play()/sd.rec() directly against the configured device, which
+        DOES genuinely conflict with a concurrently-open ACE stream on the
+        same device (unlike refresh_audio_devices(), calibration has no
+        stop/restart-around-it option -- it needs the device fully quiet
+        for the duration of the lag measurement), so "the always-on ACE
+        engine exists" is the right question there, not the wrong one.
         """
         return (
             self.recording
