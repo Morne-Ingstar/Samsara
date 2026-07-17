@@ -14,6 +14,7 @@ via Signal so Qt never touches audio buffers from a foreign thread.
 import json
 import logging
 import re
+import shutil
 import threading
 import time
 import unicodedata
@@ -34,6 +35,7 @@ from PySide6.QtWidgets import (
 from samsara.ui import qt_runtime
 from samsara.runtime import thread_registry
 from samsara.languages import LANGUAGES, is_boundaryless_script_char
+from samsara.paths import quarantine_corrupt_file
 
 logger = logging.getLogger(__name__)
 
@@ -199,6 +201,12 @@ class VoiceTrainingQt:
         self.corrections_dict: dict = {}
         self._corrections_pattern = None
         self._corrections_lookup: dict = {}
+        # Set by load_training_data() on a parse failure (2026-07-16
+        # correction-store hardening) -- save_training_data() logs a
+        # one-time WARNING on the next successful write so a previous
+        # quarantine doesn't pass silently.
+        self._load_failed = False
+        self._quarantine_path = None
         self.load_training_data()
 
     # ----------------------------------------------------------------
@@ -223,6 +231,12 @@ class VoiceTrainingQt:
                 self.corrections_dict = data.get('corrections', {})
             except Exception as exc:
                 logger.error(f"Could not load training data: {exc}", exc_info=True)
+                # Quarantine (rename aside) rather than fall through to
+                # empty in-memory state that a later save could silently
+                # write back over the original file -- the exact
+                # 2026-07-09 correction-store loss pattern.
+                self._quarantine_path = quarantine_corrupt_file(training_file, logger, exc)
+                self._load_failed = True
         self._rebuild_corrections_pattern()
 
     # ----------------------------------------------------------------
@@ -286,14 +300,31 @@ class VoiceTrainingQt:
 
     def save_training_data(self) -> bool:
         training_file = Path(self.app.config_path).parent / 'training_data.json'
+        if training_file.exists():
+            try:
+                shutil.copy2(training_file, training_file.with_name(training_file.name + '.bak'))
+            except OSError as exc:
+                logger.debug(f"[STORE] backup copy failed (non-fatal): {exc}")
         try:
             data = {'vocabulary': self.custom_vocab, 'corrections': self.corrections_dict}
             with open(training_file, 'w', encoding='utf-8') as f:
                 json.dump(data, f, indent=2)
-            return True
         except Exception as exc:
             logger.error(f"Could not save training data: {exc}", exc_info=True)
             return False
+
+        if self._load_failed:
+            logger.warning(
+                f"[STORE] training_data.json: writing after a previous load "
+                f"failure -- previous file quarantined to {self._quarantine_path}"
+            )
+            self._load_failed = False
+        else:
+            logger.info(
+                f"[STORE] training_data.json saved: {len(self.custom_vocab)} "
+                f"vocab, {len(self.corrections_dict)} corrections"
+            )
+        return True
 
     # Whisper's initial_prompt budget is ~224 tokens; 800 chars is a safe
     # character-based proxy that keeps well clear of that limit.

@@ -11,6 +11,7 @@ from __future__ import annotations
 
 import os
 import shutil
+from datetime import datetime
 from pathlib import Path
 
 
@@ -61,3 +62,39 @@ def migrate_legacy_source_config(legacy_path: str | Path) -> bool:
 
     marker.write_text("source config migration checked\n", encoding="utf-8")
     return copied
+
+
+def quarantine_corrupt_file(path: Path, logger, error) -> Path:
+    """Rename an unparseable store file out of the way, preserving its
+    bytes for manual recovery instead of letting the next save silently
+    bury them (2026-07-09 correction-store loss: a JSON parse failure fell
+    back to empty in-memory state, and the next save wrote that empty
+    state straight over the original file -- the corrupt bytes were never
+    recoverable). Callers proceed with empty defaults after this.
+
+    Shared by every store's load function (samsara/phonetic_wash.py,
+    samsara/wake_corrections.py, samsara/ava_corrections.py, samsara/ui/
+    voice_training_qt.py) so the rename+log pattern can't drift between
+    them. `logger` is the CALLER's own logger (not this module's) so the
+    ERROR line is attributed to the store that actually failed.
+
+    Returns the quarantine path on success, or the original `path`
+    unchanged if the rename itself fails (e.g. permissions) -- callers
+    still proceed with empty defaults either way; this never raises.
+    """
+    timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+    quarantine_path = path.with_name(f"{path.name}.corrupt-{timestamp}")
+    try:
+        path.rename(quarantine_path)
+    except OSError as rename_exc:
+        logger.error(
+            f"[STORE] {path.name} failed to parse ({error}) -- quarantine "
+            f"rename also failed ({rename_exc}), corrupt file left in place "
+            f"at {path}"
+        )
+        return path
+    logger.error(
+        f"[STORE] {path.name} failed to parse ({error}) -- quarantined to "
+        f"{quarantine_path}"
+    )
+    return quarantine_path

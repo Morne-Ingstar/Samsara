@@ -448,15 +448,22 @@ class DictionaryPanelQt(QWidget):
                 mod = self._kv_module(mode)
                 cur = mod.get_user_corrections() or {}
                 cur[heard] = right
-                mod.set_user_corrections(cur)
-                if hasattr(mod, 'reload_corrections'):
+                # Adding always grows the dict, so this can never trip the
+                # empty-overwrite guard -- default allow_empty=False is
+                # correct here; checked anyway so a write failure for any
+                # OTHER reason still surfaces instead of reloading stale state.
+                saved = mod.set_user_corrections(cur)
+                if saved and hasattr(mod, 'reload_corrections'):
                     mod.reload_corrections()
                 if self._alive:
                     from PySide6.QtCore import QTimer
                     from PySide6.QtWidgets import QApplication
                     qt = QApplication.instance()
                     if qt:
-                        QTimer.singleShot(0, qt, lambda: self._kv_reload(table, mode, status_lbl))
+                        if saved:
+                            QTimer.singleShot(0, qt, lambda: self._kv_reload(table, mode, status_lbl))
+                        else:
+                            QTimer.singleShot(0, qt, lambda: status_lbl.setText("Save refused -- see log"))
             except Exception as exc:
                 logger.error(f"[DICT] {mode} add failed: {exc}", exc_info=True)
                 if self._alive:
@@ -497,15 +504,22 @@ class DictionaryPanelQt(QWidget):
                 cur = mod.get_user_corrections() or {}
                 for k in keys:
                     cur.pop(k, None)
-                mod.set_user_corrections(cur)
-                if hasattr(mod, 'reload_corrections'):
+                # This IS the panel's clear-all-user-entries path: the user
+                # explicitly selected and removed every row, which can
+                # legitimately drive cur to {} -- allow_empty=True so the
+                # empty-overwrite guard doesn't refuse a deliberate delete.
+                saved = mod.set_user_corrections(cur, allow_empty=True)
+                if saved and hasattr(mod, 'reload_corrections'):
                     mod.reload_corrections()
                 if self._alive:
                     from PySide6.QtCore import QTimer
                     from PySide6.QtWidgets import QApplication
                     qt = QApplication.instance()
                     if qt:
-                        QTimer.singleShot(0, qt, lambda: self._kv_reload(table, mode, status_lbl))
+                        if saved:
+                            QTimer.singleShot(0, qt, lambda: self._kv_reload(table, mode, status_lbl))
+                        else:
+                            QTimer.singleShot(0, qt, lambda: status_lbl.setText("Save refused -- see log"))
             except Exception as exc:
                 logger.error(f"[DICT] {mode} remove failed: {exc}", exc_info=True)
 

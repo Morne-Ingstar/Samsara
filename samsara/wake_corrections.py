@@ -20,11 +20,20 @@ dict; it gets rebuilt at import and whenever reload_corrections() is called.
 """
 
 import json
+import logging
 import re
+import shutil
 
-from samsara.paths import samsara_home_dir
+from samsara.paths import quarantine_corrupt_file, samsara_home_dir
 
-USER_CORRECTIONS_PATH = samsara_home_dir() / "user_wake_corrections.json"
+logger = logging.getLogger(__name__)
+
+
+def _user_corrections_path():
+    """Resolved lazily (not a module-level constant) so SAMSARA_HOME_DIR
+    set after import (e.g. by a test fixture) is still honored -- see
+    2026-07-16 test-isolation audit."""
+    return samsara_home_dir() / "user_wake_corrections.json"
 
 
 # Known misrecognitions — add entries as you catch them in the debug console.
@@ -78,27 +87,67 @@ CORRECTIONS = {
 
 
 def _load_user_corrections():
-    """Read the user JSON file. Returns a flat {heard: should_be} dict."""
-    if not USER_CORRECTIONS_PATH.exists():
+    """Read the user JSON file. Returns a flat {heard: should_be} dict.
+
+    A file that exists but fails to parse is quarantined (renamed aside,
+    preserving the bytes) rather than silently treated as empty -- see
+    2026-07-16 correction-store hardening.
+    """
+    path = _user_corrections_path()
+    if not path.exists():
         return {}
     try:
-        with open(USER_CORRECTIONS_PATH, encoding='utf-8') as f:
+        with open(path, encoding='utf-8') as f:
             data = json.load(f)
         if not isinstance(data, dict):
             return {}
         return {str(k).lower(): str(v).lower() for k, v in data.items() if k and v}
     except Exception as e:
-        print(f"[WAKE] Could not load user wake corrections: {e}")
+        quarantine_corrupt_file(path, logger, e)
         return {}
 
 
-def _save_user_corrections(corrections):
-    """Persist the user wake corrections dict atomically."""
-    USER_CORRECTIONS_PATH.parent.mkdir(parents=True, exist_ok=True)
-    tmp = USER_CORRECTIONS_PATH.with_suffix('.tmp')
+def _save_user_corrections(corrections, allow_empty: bool = False) -> bool:
+    """Persist the user wake corrections dict atomically. Returns True on
+    success, False if refused or on write failure.
+
+    Reads the previous on-disk state once (via _load_user_corrections,
+    which also quarantines it if corrupt) and reuses that single read for
+    both the empty-overwrite guard below and the success-log delta.
+
+    allow_empty=False refuses to overwrite a non-empty on-disk store with
+    an empty one (2026-07-09 loss pattern). A genuinely intentional
+    clear-to-empty must pass allow_empty=True.
+    """
+    path = _user_corrections_path()
+    previous = _load_user_corrections()
+
+    if not corrections and previous and not allow_empty:
+        logger.error(
+            f"[STORE] refused to overwrite {len(previous)} entries with "
+            f"empty dict -- pass allow_empty=True if intentional"
+        )
+        return False
+
+    path.parent.mkdir(parents=True, exist_ok=True)
+    if path.exists():
+        try:
+            shutil.copy2(path, path.with_name(path.name + '.bak'))
+        except OSError as e:
+            logger.debug(f"[STORE] backup copy failed (non-fatal): {e}")
+
+    tmp = path.with_suffix('.tmp')
     with open(tmp, 'w', encoding='utf-8') as f:
         json.dump(corrections, f, indent=2, ensure_ascii=False, sort_keys=True)
-    tmp.replace(USER_CORRECTIONS_PATH)
+    tmp.replace(path)
+
+    added = len(corrections.keys() - previous.keys())
+    removed = len(previous.keys() - corrections.keys())
+    logger.info(
+        f"[STORE] user_wake_corrections.json saved: {len(corrections)} "
+        f"entries (+{added} added, -{removed} removed)"
+    )
+    return True
 
 
 # Active dict: defaults merged with user overrides. apply_corrections reads here.
@@ -193,10 +242,16 @@ def get_user_corrections():
     return _load_user_corrections()
 
 
-def set_user_corrections(corrections):
-    """Persist new user wake corrections and hot-reload FULL_CORRECTIONS."""
-    _save_user_corrections(corrections)
+def set_user_corrections(corrections, allow_empty: bool = False) -> bool:
+    """Persist new user wake corrections and hot-reload FULL_CORRECTIONS.
+
+    Returns False without touching FULL_CORRECTIONS if the write was
+    refused (see _save_user_corrections' allow_empty guard) or failed.
+    """
+    if not _save_user_corrections(corrections, allow_empty=allow_empty):
+        return False
     reload_corrections()
+    return True
 
 
 # Populate FULL_CORRECTIONS and derived sub-dicts at import
