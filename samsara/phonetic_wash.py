@@ -26,11 +26,21 @@ at import and whenever reload_corrections() is called from the UI.
 """
 
 import json
+import logging
 import re
+import shutil
 
-from samsara.paths import samsara_home_dir
+from samsara.paths import quarantine_corrupt_file, samsara_home_dir
 
-USER_CORRECTIONS_PATH = samsara_home_dir() / "user_corrections.json"
+logger = logging.getLogger(__name__)
+
+
+def _user_corrections_path():
+    """Resolved lazily (not a module-level constant) so SAMSARA_HOME_DIR
+    set after import (e.g. by a test fixture) is still honored -- see
+    2026-07-16 test-isolation audit."""
+    return samsara_home_dir() / "user_corrections.json"
+
 
 # Multi-word phrase corrections. Key must appear as a contiguous substring
 # of the cleaned text. Applied before per-word corrections, so "fine tab"
@@ -151,29 +161,71 @@ _WORD_CORRECTIONS = dict(_DEFAULT_WORD_CORRECTIONS)
 def _load_user_corrections():
     """Read the user JSON file. Returns a flat {heard: should_be} dict.
 
-    Missing file or unreadable JSON returns an empty dict -- the user can
-    edit the file by hand without breaking startup.
+    Missing file returns an empty dict -- the user can edit the file by
+    hand without breaking startup. A file that exists but fails to parse
+    is quarantined (renamed aside, preserving the bytes) rather than
+    silently treated as empty -- see 2026-07-16 correction-store hardening:
+    the old silent-empty behavior let the next save bury unrecoverable
+    data over a corrupt file.
     """
-    if not USER_CORRECTIONS_PATH.exists():
+    path = _user_corrections_path()
+    if not path.exists():
         return {}
     try:
-        with open(USER_CORRECTIONS_PATH, encoding='utf-8') as f:
+        with open(path, encoding='utf-8') as f:
             data = json.load(f)
         if not isinstance(data, dict):
             return {}
         return {str(k).lower(): str(v) for k, v in data.items() if k and v}
     except Exception as e:
-        print(f"[WASH] Could not load user corrections: {e}")
+        quarantine_corrupt_file(path, logger, e)
         return {}
 
 
-def _save_user_corrections(corrections):
-    """Persist the user corrections dict atomically."""
-    USER_CORRECTIONS_PATH.parent.mkdir(parents=True, exist_ok=True)
-    tmp = USER_CORRECTIONS_PATH.with_suffix('.tmp')
+def _save_user_corrections(corrections, allow_empty: bool = False) -> bool:
+    """Persist the user corrections dict atomically. Returns True on
+    success, False if refused or on write failure.
+
+    Reads the previous on-disk state once (via _load_user_corrections,
+    which also quarantines it if corrupt) and reuses that single read for
+    both the empty-overwrite guard below and the success-log delta --
+    no second read.
+
+    allow_empty=False refuses to overwrite a non-empty on-disk store with
+    an empty one -- the exact 2026-07-09 loss pattern (a read failure
+    silently produced {} in memory, then the next save wrote {} over the
+    real file). A genuinely intentional clear-to-empty (e.g. removing the
+    last user entries via the Dictionary panel) must pass allow_empty=True.
+    """
+    path = _user_corrections_path()
+    previous = _load_user_corrections()
+
+    if not corrections and previous and not allow_empty:
+        logger.error(
+            f"[STORE] refused to overwrite {len(previous)} entries with "
+            f"empty dict -- pass allow_empty=True if intentional"
+        )
+        return False
+
+    path.parent.mkdir(parents=True, exist_ok=True)
+    if path.exists():
+        try:
+            shutil.copy2(path, path.with_name(path.name + '.bak'))
+        except OSError as e:
+            logger.debug(f"[STORE] backup copy failed (non-fatal): {e}")
+
+    tmp = path.with_suffix('.tmp')
     with open(tmp, 'w', encoding='utf-8') as f:
         json.dump(corrections, f, indent=2, ensure_ascii=False, sort_keys=True)
-    tmp.replace(USER_CORRECTIONS_PATH)
+    tmp.replace(path)
+
+    added = len(corrections.keys() - previous.keys())
+    removed = len(previous.keys() - corrections.keys())
+    logger.info(
+        f"[STORE] user_corrections.json saved: {len(corrections)} entries "
+        f"(+{added} added, -{removed} removed)"
+    )
+    return True
 
 
 def reload_corrections():
@@ -212,10 +264,16 @@ def get_user_corrections():
     return _load_user_corrections()
 
 
-def set_user_corrections(corrections):
-    """Persist new user corrections and hot-reload the active dicts."""
-    _save_user_corrections(corrections)
+def set_user_corrections(corrections, allow_empty: bool = False) -> bool:
+    """Persist new user corrections and hot-reload the active dicts.
+
+    Returns False without touching the active dicts if the write was
+    refused (see _save_user_corrections' allow_empty guard) or failed.
+    """
+    if not _save_user_corrections(corrections, allow_empty=allow_empty):
+        return False
     reload_corrections()
+    return True
 
 
 # Populate active dicts at import time
