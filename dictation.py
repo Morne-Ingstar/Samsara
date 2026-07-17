@@ -3844,12 +3844,23 @@ class DictationApp:
         clean per-press conversation-context reset (no residual conditioning
         carried over from a previous press -- see the "Gate and Reset"
         hallucination-prevention architecture, module-level constants near
-        the top of this file). The vocabulary/initial_prompt from voice
-        training is still applied -- the clean-slate guarantee is about
-        conversation context (condition_on_previous_text), not vocabulary
-        biasing. Used by both the normal (<30s) and [LONG] branches of the
-        hotkey transcribe() closure -- they share this same dict, so this is
-        the single place that guarantee is enforced.
+        the top of this file). Used by both the normal (<30s) and [LONG]
+        branches of the hotkey transcribe() closure -- they share this same
+        dict, so this is the single place that guarantee is enforced.
+
+        initial_prompt's command-vocabulary component (2026-07-16, see the
+        module comment above _SANITY_MIN_DURATION_S): this method is shared
+        by two different hotkey presses distinguished only by
+        command_mode_recording at call time -- ordinary hold-to-dictate
+        (free prose, never matched against the command registry) and the
+        command-only hotkey / Mouse 4 (self.command_mode_recording=True,
+        matched against the command registry a few lines below). Only the
+        latter actually needs the auto-derived command-phrase vocabulary;
+        feeding it to the former was found to measurably destabilize long
+        continuous-speech decodes for zero benefit. get_initial_prompt's
+        include_commands therefore mirrors command_mode_recording exactly --
+        the genuine user vocabulary (explicit custom prompt + trained
+        "Common terms") still applies to both regardless.
 
         vad_filter=False HISTORY (2026-07-10, flipped twice in one night --
         read this before touching it again): originally force-disabled
@@ -3891,7 +3902,15 @@ class DictationApp:
         transcribe_params['condition_on_previous_text'] = False
         # Vocabulary biasing is still wanted per-press -- only conversation
         # context gets the clean-slate reset above, not the trained prompt.
-        transcribe_params['initial_prompt'] = self.voice_training_window.get_initial_prompt() or ""
+        # include_commands mirrors command_mode_recording (True only for the
+        # command-only hotkey / Mouse 4, matched below): that press benefits
+        # from the auto-derived command-phrase vocabulary, but ordinary
+        # hold-to-dictate never matches the command registry, so it drops
+        # that component -- see the docstring above.
+        _is_command_hotkey = getattr(self, 'command_mode_recording', False)
+        transcribe_params['initial_prompt'] = self.voice_training_window.get_initial_prompt(
+            include_commands=_is_command_hotkey,
+        ) or ""
         # Command-mode hotkey (Right Ctrl / Mouse 4, self.command_mode_recording)
         # is matched against the English command registry -- force English
         # regardless of the configured dictation language so command
@@ -3899,7 +3918,7 @@ class DictationApp:
         # Ava-mode (Right Alt) recordings are NOT forced here since that
         # content goes to the LLM as a natural-language query, not matched
         # against a fixed phrase registry.
-        if getattr(self, 'command_mode_recording', False):
+        if _is_command_hotkey:
             transcribe_params['language'] = 'en'
         return transcribe_params
 

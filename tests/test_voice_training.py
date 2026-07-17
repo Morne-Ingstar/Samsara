@@ -230,6 +230,40 @@ class TestInitialPrompt:
         assert result.startswith('Custom context for this dictation session.')
         assert 'Common terms: AlphaTerm, BetaTerm' in result
 
+    def test_include_commands_false_omits_command_vocabulary(self, tmp_path):
+        """2026-07-16: hotkey hold-to-dictate must not receive the
+        auto-derived command-phrase vocabulary (see dictation._build_
+        hotkey_transcribe_params) -- it measurably destabilized long
+        continuous-speech decodes for a path that never matches the
+        command registry anyway. Genuine user vocabulary (custom prompt +
+        trained "Common terms") is unaffected -- only Priority 3 is gated."""
+        vt = create_test_voice_training(tmp_path, custom_vocab=['AlphaTerm', 'BetaTerm'])
+        vt.app.command_executor = None
+        vt.app.config['initial_prompt'] = 'Custom context for this dictation session.'
+        vt.app.config['web_shortcuts'] = {
+            f'oversized vocabulary phrase number {i:03d}': 'https://example.com'
+            for i in range(60)
+        }
+
+        with_commands = vt.get_initial_prompt(include_commands=True)
+        without_commands = vt.get_initial_prompt(include_commands=False)
+
+        assert 'Voice commands:' in with_commands
+        assert 'Voice commands:' not in without_commands
+        # Genuine user vocabulary and explicit custom prompt survive either way.
+        assert 'Custom context for this dictation session.' in without_commands
+        assert 'Common terms: AlphaTerm, BetaTerm' in without_commands
+
+    def test_include_commands_defaults_to_true(self, tmp_path):
+        """Every OTHER decode path (wake/command/continuous/AI-command) calls
+        get_initial_prompt() with no argument and must keep getting the full
+        vocabulary -- only the hotkey dictation path opts out explicitly."""
+        vt = create_test_voice_training(tmp_path)
+        vt.app.command_executor = None
+        vt.app.config['web_shortcuts'] = {'oversized vocabulary phrase': 'https://example.com'}
+
+        assert vt.get_initial_prompt() == vt.get_initial_prompt(include_commands=True)
+
 
 # ============================================================================
 # Similarity Calculation Tests

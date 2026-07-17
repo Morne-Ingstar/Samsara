@@ -57,17 +57,34 @@ sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 import dictation
 
 
-def _make_app(performance_mode='balanced', initial_prompt=''):
+_COMMAND_VOCAB_MARKER = 'Voice commands: test_command_a, test_command_b'
+
+
+def _make_app(performance_mode='balanced', initial_prompt='', command_mode_recording=False):
     """Minimal duck-typed stand-in for DictationApp's `self`.
 
     _build_hotkey_transcribe_params() calls self.get_transcription_params()
     internally, so that real method must be bound onto the fake app too
     (not just invoked as DictationApp.get_transcription_params(app) directly).
+
+    The fake get_initial_prompt mirrors the REAL method's include_commands
+    contract (samsara/ui/voice_training_qt.py): include_commands=False
+    (the default here, matching command_mode_recording=False) returns
+    `initial_prompt` unchanged; include_commands=True appends a command-
+    vocabulary marker, so tests can assert on its presence/absence without
+    depending on the real command registry.
     """
     app = types.SimpleNamespace()
     app.config = {'language': 'en', 'performance_mode': performance_mode}
+    app.command_mode_recording = command_mode_recording
+
+    def _fake_get_initial_prompt(include_commands=True):
+        if include_commands:
+            return (initial_prompt + ' ' + _COMMAND_VOCAB_MARKER).strip()
+        return initial_prompt
+
     app.voice_training_window = types.SimpleNamespace(
-        get_initial_prompt=lambda: initial_prompt
+        get_initial_prompt=_fake_get_initial_prompt
     )
     app.get_transcription_params = types.MethodType(
         dictation.DictationApp.get_transcription_params, app)
@@ -127,3 +144,56 @@ def test_hotkey_params_force_clean_slate_all_modes(mode):
     params = dictation.DictationApp._build_hotkey_transcribe_params(app)
     assert params['condition_on_previous_text'] is False
     assert params['initial_prompt'] == 'some trained prompt'
+
+
+# ============================================================================
+# initial_prompt / command-vocabulary contract (2026-07-16, following the
+# fail-loud sanity check in 5048bc6): the command-only hotkey (Right Ctrl /
+# Mouse 4, command_mode_recording=True) IS matched against the command
+# registry and keeps the auto-derived command-phrase vocabulary. Ordinary
+# hold-to-dictate (command_mode_recording=False, the overwhelmingly common
+# case) is pure prose, never command-matched, and must NOT receive it --
+# that vocabulary measurably destabilized long continuous-speech decodes
+# (19 of 51 recent >30s captures showed the signature) for zero benefit on
+# this path. Genuine user vocabulary (explicit custom prompt + trained
+# "Common terms") is unaffected either way -- see samsara/ui/voice_training_
+# qt.py's get_initial_prompt(include_commands=...).
+# ============================================================================
+
+@pytest.mark.parametrize('mode', ['fast', 'balanced', 'accurate'])
+def test_hold_to_dictate_omits_command_vocabulary(mode):
+    """command_mode_recording defaults to False (ordinary hold-to-dictate)
+    -- the command-vocabulary marker must never appear in its initial_prompt."""
+    app = _make_app(performance_mode=mode, initial_prompt='some trained prompt',
+                     command_mode_recording=False)
+    params = dictation.DictationApp._build_hotkey_transcribe_params(app)
+    assert _COMMAND_VOCAB_MARKER not in params['initial_prompt']
+    # Genuine user vocabulary/custom prompt still survives.
+    assert params['initial_prompt'] == 'some trained prompt'
+
+
+@pytest.mark.parametrize('mode', ['fast', 'balanced', 'accurate'])
+def test_command_hotkey_keeps_command_vocabulary(mode):
+    """command_mode_recording=True (Right Ctrl / Mouse 4 command-only
+    hotkey) IS matched against the command registry -- it must keep
+    receiving the command vocabulary, unlike ordinary hold-to-dictate."""
+    app = _make_app(performance_mode=mode, initial_prompt='some trained prompt',
+                     command_mode_recording=True)
+    params = dictation.DictationApp._build_hotkey_transcribe_params(app)
+    assert _COMMAND_VOCAB_MARKER in params['initial_prompt']
+    # Genuine user vocabulary/custom prompt is still present alongside it.
+    assert 'some trained prompt' in params['initial_prompt']
+
+
+def test_command_hotkey_still_forces_english_and_clean_slate():
+    """The include_commands wiring must not disturb the pre-existing
+    command-hotkey overrides (English language, clean-slate reset) -- this
+    guards against a careless refactor of the include_commands branch
+    accidentally short-circuiting the language/condition_on_previous_text
+    forcing below it."""
+    app = _make_app(performance_mode='accurate', initial_prompt='p',
+                     command_mode_recording=True)
+    params = dictation.DictationApp._build_hotkey_transcribe_params(app)
+    assert params['language'] == 'en'
+    assert params['condition_on_previous_text'] is False
+    assert params['vad_filter'] is False
