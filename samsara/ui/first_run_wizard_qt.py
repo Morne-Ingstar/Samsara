@@ -1058,36 +1058,59 @@ class _WizardWindow(QMainWindow):
         self._mic_result.emit("_load_done_", "")
 
     def _on_refresh_mics_clicked(self):
-        """Stop our own meter (it may hold a stream _is_audio_capture_active()
-        can't see), then re-enumerate on a background thread -- same
-        thread-marshalling convention as _load_mics()."""
+        """Stop our own meter (it may hold a stream _mic_refresh_blocked()
+        can't see), then re-enumerate.
+
+        2026-07-17: when a live DictationApp is available, the refresh now
+        goes through DictationApp.refresh_audio_devices() DIRECTLY here on
+        the Qt thread (this is a .clicked signal handler, so it already IS
+        the Qt thread) instead of being handed to a background thread the
+        way it used to be. That used to be harmless because the old guard
+        always blocked before doing any real work; now that
+        refresh_audio_devices() actually stops/restarts the ACE engine
+        around a PortAudio re-init, it needs the Qt-thread-only contract
+        its docstring documents (see there) honored by every caller, not
+        just internally correct. The no-app fallback path
+        (_enumerate_mics(), a plain sd.query_devices() read with no engine
+        involved) still runs on a background thread -- unaffected by any
+        of this."""
         self._stop_meter()
         if self._mic_status:
             self._mic_status.setText("Refreshing devices…")
             self._mic_status.setStyleSheet("color:#8A8A92;font-size:12px;")
-        thread_registry.spawn(
-            "first_run_wizard_qt._refresh_mics", self._refresh_mics, daemon=True,
-        )
+        if self._samsara_app is not None:
+            self._refresh_mics_via_app()
+        else:
+            thread_registry.spawn(
+                "first_run_wizard_qt._refresh_mics", self._refresh_mics, daemon=True,
+            )
+
+    def _refresh_mics_via_app(self):
+        """Qt-thread counterpart of _on_refresh_mics_clicked() when a live
+        DictationApp is available -- see that method's docstring for why
+        this must run here rather than on a background thread.
+
+        Uses DictationApp.refresh_audio_devices() -- the one path that
+        forces PortAudio to re-scan (via sd._terminate()/_initialize()),
+        so a just-connected device actually shows up. Falls back to a
+        plain re-query on failure.
+        """
+        if self._samsara_app._mic_refresh_blocked():
+            self._mic_result.emit("__refresh_skipped__", "")
+            return
+        try:
+            mics = self._samsara_app.refresh_audio_devices()
+            self._mics = [{'id': m['id'], 'name': m['name']} for m in mics]
+        except Exception:
+            self._mics = self._enumerate_mics()
+        self._mic_result.emit("_refresh_done_", "")
 
     def _refresh_mics(self):
-        """Background-thread counterpart of _on_refresh_mics_clicked().
-
-        Uses DictationApp.refresh_audio_devices() when a live app instance
-        is available -- the one path that forces PortAudio to re-scan (via
-        sd._terminate()/_initialize()), so a just-connected device actually
-        shows up. Falls back to a plain re-query otherwise/on failure.
-        """
-        if self._samsara_app is not None:
-            if self._samsara_app._is_audio_capture_active():
-                self._mic_result.emit("__refresh_skipped__", "")
-                return
-            try:
-                mics = self._samsara_app.refresh_audio_devices()
-                self._mics = [{'id': m['id'], 'name': m['name']} for m in mics]
-            except Exception:
-                self._mics = self._enumerate_mics()
-        else:
-            self._mics = self._enumerate_mics()
+        """Background-thread fallback for _on_refresh_mics_clicked() when
+        no live DictationApp instance is available -- plain re-query only
+        (_enumerate_mics() never touches the ACE engine or PortAudio
+        re-init), safe off the Qt thread."""
+        self._mics = self._enumerate_mics()
         self._mic_result.emit("_refresh_done_", "")
 
     # ------------------------------------------------------------------
