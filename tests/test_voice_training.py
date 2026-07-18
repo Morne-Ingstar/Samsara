@@ -230,13 +230,19 @@ class TestInitialPrompt:
         assert result.startswith('Custom context for this dictation session.')
         assert 'Common terms: AlphaTerm, BetaTerm' in result
 
-    def test_include_commands_false_omits_command_vocabulary(self, tmp_path):
-        """2026-07-16: hotkey hold-to-dictate must not receive the
-        auto-derived command-phrase vocabulary (see dictation._build_
-        hotkey_transcribe_params) -- it measurably destabilized long
-        continuous-speech decodes for a path that never matches the
-        command registry anyway. Genuine user vocabulary (custom prompt +
-        trained "Common terms") is unaffected -- only Priority 3 is gated."""
+    def test_include_vocabulary_false_omits_command_and_common_terms(self, tmp_path):
+        """SPARK P0 fix (2026-07-18, decode matrix N=10/cell against both
+        incident WAVs): free-form dictation paths must not receive EITHER
+        the auto-derived command-phrase vocabulary (Priority 3) OR the
+        trained "Common terms" vocabulary (Priority 2) -- the matrix proved
+        the short 9-term Common-terms list alone reproduces the identical
+        destabilization signature as the full command list. Only Priority 1
+        (explicit config['initial_prompt']) survives include_vocabulary=False.
+
+        Supersedes the narrower 2026-07-16 contract (commit 02e00b9), which
+        gated only Priority 3 under the name include_commands -- that
+        parameter is renamed to include_vocabulary and now gates Priority 2
+        as well; see samsara/ui/voice_training_qt.get_initial_prompt."""
         vt = create_test_voice_training(tmp_path, custom_vocab=['AlphaTerm', 'BetaTerm'])
         vt.app.command_executor = None
         vt.app.config['initial_prompt'] = 'Custom context for this dictation session.'
@@ -245,24 +251,38 @@ class TestInitialPrompt:
             for i in range(60)
         }
 
-        with_commands = vt.get_initial_prompt(include_commands=True)
-        without_commands = vt.get_initial_prompt(include_commands=False)
+        with_vocabulary = vt.get_initial_prompt(include_vocabulary=True)
+        without_vocabulary = vt.get_initial_prompt(include_vocabulary=False)
 
-        assert 'Voice commands:' in with_commands
-        assert 'Voice commands:' not in without_commands
-        # Genuine user vocabulary and explicit custom prompt survive either way.
-        assert 'Custom context for this dictation session.' in without_commands
-        assert 'Common terms: AlphaTerm, BetaTerm' in without_commands
+        assert 'Voice commands:' in with_vocabulary
+        assert 'Common terms: AlphaTerm, BetaTerm' in with_vocabulary
+        assert 'Voice commands:' not in without_vocabulary
+        assert 'Common terms:' not in without_vocabulary
+        # Priority 1 (explicit, user-set override) survives regardless --
+        # it's not auto-derived vocabulary.
+        assert without_vocabulary == 'Custom context for this dictation session.'
 
-    def test_include_commands_defaults_to_true(self, tmp_path):
-        """Every OTHER decode path (wake/command/continuous/AI-command) calls
+    def test_include_vocabulary_false_with_no_explicit_prompt_is_empty(self, tmp_path):
+        """The common case: no explicit config['initial_prompt'] override
+        set. A free-form path must get a genuinely empty/None prompt, not
+        just "vocabulary-free but still something" -- this is what "empty
+        for free-form dictation" cashes out to when Priority 1 is unset."""
+        vt = create_test_voice_training(tmp_path, custom_vocab=['AlphaTerm', 'BetaTerm'])
+        vt.app.command_executor = None
+        vt.app.config['initial_prompt'] = ''
+
+        result = vt.get_initial_prompt(include_vocabulary=False)
+        assert not result  # '' or None, both mean "no prompt sent to Whisper"
+
+    def test_include_vocabulary_defaults_to_true(self, tmp_path):
+        """Every OTHER decode path (command-lane utterances) calls
         get_initial_prompt() with no argument and must keep getting the full
-        vocabulary -- only the hotkey dictation path opts out explicitly."""
+        vocabulary -- only free-form paths opt out explicitly."""
         vt = create_test_voice_training(tmp_path)
         vt.app.command_executor = None
         vt.app.config['web_shortcuts'] = {'oversized vocabulary phrase': 'https://example.com'}
 
-        assert vt.get_initial_prompt() == vt.get_initial_prompt(include_commands=True)
+        assert vt.get_initial_prompt() == vt.get_initial_prompt(include_vocabulary=True)
 
 
 # ============================================================================

@@ -185,11 +185,20 @@ class ProfileManager:
         try:
             with open(self.training_data_path, 'w', encoding='utf-8') as f:
                 json.dump(new_data, f, indent=2, ensure_ascii=False)
-            
-            # Also update initial_prompt in config if present in profile
-            if profile.get('initial_prompt'):
-                self._update_config_initial_prompt(profile['initial_prompt'])
-            
+            # Deliberately NOT applying profile['initial_prompt'] to
+            # config here (see SPARK P0 fix, 2026-07-18, and the decode-
+            # matrix module comment in dictation.py above
+            # _SANITY_MIN_DURATION_S): a dictionary profile carrying
+            # vocabulary content in initial_prompt would silently flow
+            # into config['initial_prompt'] -- Priority 1 in
+            # voice_training_qt.get_initial_prompt(), which every decode
+            # path preserves even for free-form dictation. That's exactly
+            # the destabilizing content #1 removes from every free-form
+            # path elsewhere; auto-applying it here on a routine dictionary
+            # load/merge would silently reopen it AND overwrite whatever
+            # explicit prompt the user had set themselves. Profiles still
+            # RECORD initial_prompt on save (see save_dictionary_profile)
+            # as portable metadata -- they just no longer auto-apply it.
             return True, message
         except Exception as e:
             return False, f"Failed to apply profile: {e}"
@@ -404,18 +413,7 @@ class ProfileManager:
     # =========================================================================
     # Helper Methods
     # =========================================================================
-    
-    def _update_config_initial_prompt(self, prompt: str):
-        """Update the initial_prompt in config.json."""
-        try:
-            with open(self.config_path, 'r', encoding='utf-8') as f:
-                config = json.load(f)
-            config['initial_prompt'] = prompt
-            with open(self.config_path, 'w', encoding='utf-8') as f:
-                json.dump(config, f, indent=2, ensure_ascii=False)
-        except Exception as e:
-            logger.debug(f"_update_config_initial_prompt: {e}")
-    
+
     def get_active_profile_names(self) -> Dict[str, Optional[str]]:
         """
         Get the names of currently active profiles from config.
