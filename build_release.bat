@@ -1,9 +1,9 @@
 @echo off
 setlocal
-title Building Samsara v0.22.0
+title Building Samsara v0.22.1
 cd /d "%~dp0"
 
-set VERSION=0.22.0
+set VERSION=0.22.1
 set INCLUDE_CUDA=0
 set ARCHIVE=dist\Samsara-Windows-v%VERSION%.7z
 set "PYTHON_ARGS="
