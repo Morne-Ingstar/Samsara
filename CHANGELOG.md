@@ -4,6 +4,8 @@ All notable changes to Samsara are documented here.
 
 ## [Unreleased]
 
+## [0.22.1] - 2026-07-18
+
 ### Added
 
 - **Privacy-explicit one-click updates for packaged Windows builds** — users
@@ -18,6 +20,47 @@ All notable changes to Samsara are documented here.
   CUDA runtime DLLs are carried into the new CPU build. Custom commands and
   drop-in command plugins are backed up and migrated. This is an integrity
   check, not a claim that the application is code-signed.
+- **Lotus-wheel app icon** on the window, taskbar, and EXE, plus a taskbar
+  AUMID for correct taskbar grouping. The tray icon keeps its animated status
+  wheel by design — it is a live status indicator, not the static app icon.
+- **App lifecycle voice commands** — 9 new commands to start, stop, and
+  restart Strata, Ariadne, and the Sigil server by voice.
+- **In-app feedback workflow** — structured bug and beta-feedback reporting
+  from Settings and always-on voice commands, with user-triggered safe
+  diagnostics and Live Log access; logs, secrets, paths, devices, and
+  dictated text are kept out of the copied summary. Paired with more focused
+  beta issue/feedback forms on GitHub.
+
+### Fixed
+
+- **Long free-form dictations no longer lose middle content** — the
+  vocabulary prompt was removed from all free-form decode paths, a
+  sanity-triggered auto-retry now acts as a safety net, and new
+  param-contract tests lock the decode call shape in place. Long recordings
+  also now decode as a single whole with per-segment quality gating, and a
+  plausible result is preserved instead of being discarded outright after a
+  quality fallback.
+- **Hands-free toggle command-mode utterances are now gated against
+  hallucination** — a spuriously recognized command can no longer hijack a
+  hands-free session.
+- **Audio ducking now affects all output devices, not just the default one.**
+- **Settings window layout overhaul** — card/row redesign, wordwrap clipping
+  at live widths, opaque background bars painting over checkboxes and labels,
+  button truncation, and the settings search bar.
+- **Tray context menu no longer anchors to a stale screen position.**
+- **Silent mid-decode data loss on long hotkey dictations now fails loud**
+  instead of quietly returning a truncated result, via new suspected_loss
+  diagnostics.
+- **Correction-store hardening** — empty-overwrite guards and corrupt-file
+  quarantine protect the correction store from silent data loss.
+
+### Improved
+
+- **Splash screen overhaul** — richer progress and status detail with
+  coordinated startup completion.
+- **Updater hardening** — reparse-point checks across the full path chain and
+  a closed rollback-directory leak path, with accompanying README/RELEASING
+  doc updates for the manual-download bootstrap this release requires.
 
 v0.22.1 is the first build containing the updater, so users on v0.22.0 must
 download and extract v0.22.1 manually. Subsequent compatible releases can be
