@@ -723,6 +723,69 @@ def _suspected_silent_data_loss(text, audio, sample_rate, audio_duration):
     return _speech_rms_coverage(audio, sample_rate) >= _SANITY_MIN_SPEECH_COVERAGE
 
 
+# One hotkey decode pass's full result -- what DictationApp._decode_hotkey_
+# audio() returns and what _apply_retry_on_suspected_loss() compares between
+# the original decode and its retry.
+_HotkeyDecodeResult = collections.namedtuple(
+    '_HotkeyDecodeResult', ['text', 'low_confidence', 'seg_list', 'detected_lang', 'diag_path'],
+)
+
+
+def _apply_retry_on_suspected_loss(original, retry_fn, audio, sample_rate, audio_duration,
+                                    is_command_lane):
+    """Auto-retry recovery for _suspected_silent_data_loss (SPARK P0 fix,
+    2026-07-18; see the decode-matrix module comment above
+    _SANITY_MIN_DURATION_S).
+
+    Free-form hotkey decodes already drop vocabulary from initial_prompt
+    (see _build_hotkey_transcribe_params) -- the decode matrix showed that
+    alone recovers both incident WAVs 10/10. This retry is the safety net
+    for whatever the matrix didn't catch: faster-whisper is not perfectly
+    deterministic run-to-run against identical params (the matrix's own
+    baseline non-determinism section), so a second attempt at the SAME
+    audio can independently succeed where the first didn't, and if the user
+    has an explicit Priority-1 config['initial_prompt'] override set, this
+    retry drops even that as a maximal last-resort attempt (retry_fn is
+    expected to decode with initial_prompt="" specifically, not just
+    whatever the original params already had).
+
+    retry_fn is called AT MOST ONCE, and never at all for a command-lane
+    decode (matcher-side recognition on short 1-3s utterances -- this
+    mechanism exists for long free-form prose, and firing it there would
+    just double the latency of every command miss for no benefit).
+
+    Returns (result: _HotkeyDecodeResult, suspected_loss: bool, retried: bool).
+    When both the original and the retry fail the sanity check, delivers
+    whichever has more characters (never silently drops the longer one) and
+    suspected_loss is still True so the caller's diagnostics outcome stays
+    suspected_loss and the debug WAV dump (already unconditional, upstream
+    of any decode attempt) is the only recovery record needed.
+    """
+    suspected_loss = _suspected_silent_data_loss(original.text, audio, sample_rate, audio_duration)
+    if not suspected_loss or is_command_lane:
+        return original, suspected_loss, False
+
+    logger.warning(
+        "[RETRY] Suspected silent data loss on free-form decode -- "
+        "retrying once with initial_prompt=''"
+    )
+    retry = retry_fn()
+    retry_suspected = _suspected_silent_data_loss(retry.text, audio, sample_rate, audio_duration)
+    if not retry_suspected:
+        logger.info(
+            f"[RETRY] Recovered: {len(retry.text)} chars (was {len(original.text)})"
+        )
+        return retry, False, True
+
+    winner = retry if len(retry.text) > len(original.text) else original
+    logger.warning(
+        f"[RETRY] Retry also failed the sanity check ({len(retry.text)} chars vs "
+        f"original {len(original.text)}) -- delivering the longer of the two "
+        f"({len(winner.text)} chars), outcome=suspected_loss"
+    )
+    return winner, True, True
+
+
 def _get_pynput_command_key(button_name: str):
     """Resolve a command_mode.button string to a pynput Key or KeyCode.
 
@@ -3767,9 +3830,20 @@ class DictationApp:
         except Exception as e:
             logger.exception(f"Failed to save history: {e}")
 
-    def get_transcription_params(self):
+    def get_transcription_params(self, include_vocabulary: bool = True):
         """Get transcription parameters based on performance mode setting.
-        
+
+        include_vocabulary=False builds initial_prompt from ONLY the
+        explicit user-set config['initial_prompt'] override (Priority 1),
+        omitting genuine trained vocabulary and auto-derived command
+        phrases (Priorities 2/3) -- see voice_training_qt.get_initial_prompt
+        for the full history. Free-form dictation paths (hold-to-dictate,
+        toggle-session DICTATE/AVA, transcribe_continuous_buffer,
+        process_wake_word_buffer) pass False; command-matched paths keep
+        the default True. Defaults to True so every OTHER existing caller
+        (streaming.py's final-pass params, the voice-training phrase
+        self-test) is unaffected by this parameter's addition.
+
         Returns dict of parameters for model.transcribe()
         Performance modes:
         - fast: Lowest latency, may sacrifice some accuracy
@@ -3783,7 +3857,9 @@ class DictationApp:
             # "auto" resolves to None (faster-whisper auto-detect); every
             # other value passes through as-is. See samsara/languages.py.
             'language': _languages.resolve_transcribe_language(self),
-            'initial_prompt': self.voice_training_window.get_initial_prompt(),
+            'initial_prompt': self.voice_training_window.get_initial_prompt(
+                include_vocabulary=include_vocabulary,
+            ),
             # Native faster-whisper silence suppression (primary hallucination
             # defense -- see "Gate and Reset" architecture, module-level
             # constants above). More causal than any post-hoc text check:
@@ -3848,19 +3924,28 @@ class DictationApp:
         branches of the hotkey transcribe() closure -- they share this same
         dict, so this is the single place that guarantee is enforced.
 
-        initial_prompt's command-vocabulary component (2026-07-16, see the
-        module comment above _SANITY_MIN_DURATION_S): this method is shared
-        by two different hotkey presses distinguished only by
+        initial_prompt's vocabulary component: this method is shared by two
+        different hotkey presses distinguished only by
         command_mode_recording at call time -- ordinary hold-to-dictate
         (free prose, never matched against the command registry) and the
         command-only hotkey / Mouse 4 (self.command_mode_recording=True,
         matched against the command registry a few lines below). Only the
-        latter actually needs the auto-derived command-phrase vocabulary;
-        feeding it to the former was found to measurably destabilize long
-        continuous-speech decodes for zero benefit. get_initial_prompt's
-        include_commands therefore mirrors command_mode_recording exactly --
-        the genuine user vocabulary (explicit custom prompt + trained
-        "Common terms") still applies to both regardless.
+        latter actually needs vocabulary biasing at all;
+        get_transcription_params's include_vocabulary therefore mirrors
+        command_mode_recording exactly. Explicit custom prompt (Priority 1,
+        config['initial_prompt']) still applies to both regardless -- it's
+        a user-set override, not auto-derived vocabulary.
+
+        HISTORY: 2026-07-16 (commit 02e00b9) first gated only the
+        auto-derived command-phrase list (Priority 3) off this path, having
+        proved it destabilized long continuous-speech decodes. 2026-07-17/18
+        (SPARK decode matrix, N=10/cell against both incident WAVs) found
+        the SAME failure mode from Priority 2 alone (the short "Common
+        terms:" trained-vocabulary list) -- ANY non-conversational
+        vocabulary content in initial_prompt is the actual destabilizer,
+        not command phrases specifically. Widened accordingly: hold-to-
+        dictate now drops Priorities 2 AND 3 both, keeping only the
+        explicit Priority-1 override if the user set one.
 
         vad_filter=False HISTORY (2026-07-10, flipped twice in one night --
         read this before touching it again): originally force-disabled
@@ -3890,7 +3975,15 @@ class DictationApp:
         tests/test_transcription_params.py's vad_filter lock was reverted
         to match -- see that file for the test-level documentation.
         """
-        transcribe_params = self.get_transcription_params()
+        # include_vocabulary mirrors command_mode_recording (True only for
+        # the command-only hotkey / Mouse 4, matched below): that press
+        # benefits from vocabulary biasing (trained "Common terms" + the
+        # auto-derived command-phrase list), but ordinary hold-to-dictate
+        # never matches the command registry, so it drops both -- see the
+        # docstring above.
+        _is_command_hotkey = getattr(self, 'command_mode_recording', False)
+        transcribe_params = self.get_transcription_params(include_vocabulary=_is_command_hotkey)
+        transcribe_params['initial_prompt'] = transcribe_params['initial_prompt'] or ""
         # DISABLE faster-whisper's VAD for hotkey-triggered dictation.
         # User explicitly pressed the hotkey — don't strip their speech.
         transcribe_params['vad_filter'] = False
@@ -3900,17 +3993,6 @@ class DictationApp:
         # start with zero residual conversational state, independent of the
         # [LONG] path (which has its own reasons not to condition).
         transcribe_params['condition_on_previous_text'] = False
-        # Vocabulary biasing is still wanted per-press -- only conversation
-        # context gets the clean-slate reset above, not the trained prompt.
-        # include_commands mirrors command_mode_recording (True only for the
-        # command-only hotkey / Mouse 4, matched below): that press benefits
-        # from the auto-derived command-phrase vocabulary, but ordinary
-        # hold-to-dictate never matches the command registry, so it drops
-        # that component -- see the docstring above.
-        _is_command_hotkey = getattr(self, 'command_mode_recording', False)
-        transcribe_params['initial_prompt'] = self.voice_training_window.get_initial_prompt(
-            include_commands=_is_command_hotkey,
-        ) or ""
         # Command-mode hotkey (Right Ctrl / Mouse 4, self.command_mode_recording)
         # is matched against the English command registry -- force English
         # regardless of the configured dictation language so command
@@ -3921,6 +4003,52 @@ class DictationApp:
         if _is_command_hotkey:
             transcribe_params['language'] = 'en'
         return transcribe_params
+
+    def _decode_hotkey_audio(self, audio_faded, transcribe_params, audio_duration):
+        """One full hotkey decode pass: single-shot or [LONG]-split
+        (mirrors the >_LONG_DECODE_CEILING_S resource-guard fallback),
+        followed by the same segment-level quality gating either way.
+
+        Extracted from the hotkey transcribe() closure so both the primary
+        decode and the SPARK P0 auto-retry (_apply_retry_on_suspected_loss)
+        call the REAL production branching logic instead of two independent
+        copies that could silently drift apart -- same rationale as
+        _build_hotkey_transcribe_params's own extraction (see
+        tests/test_transcription_params.py's module docstring).
+
+        Returns a _HotkeyDecodeResult(text, low_confidence, seg_list,
+        detected_lang, diag_path).
+        """
+        if audio_duration > _LONG_DECODE_CEILING_S:
+            diag_path = "long"
+            chunks = _split_audio_at_silences(audio_faded, self.model_rate)
+            logger.info(f"[LONG] {audio_duration:.1f}s recording exceeds the "
+                  f"{_LONG_DECODE_CEILING_S:.0f}s single-decode ceiling -- split "
+                  f"into {len(chunks)} chunk(s) at silence boundaries")
+            seg_list = []
+            detected_lang = None
+            for idx, chunk in enumerate(chunks):
+                chunk_dur = len(chunk) / self.model_rate
+                if chunk_dur < 0.2:
+                    continue
+                with self.model_lock:
+                    segs, chunk_info = self.model.transcribe(chunk, **transcribe_params)
+                detected_lang = getattr(chunk_info, 'language', None) or detected_lang
+                chunk_segs = list(segs)
+                seg_list.extend(chunk_segs)
+                logger.info(f"[LONG] Chunk {idx + 1}/{len(chunks)}: "
+                      f"{chunk_dur:.1f}s → {len(chunk_segs)} segment(s)")
+        else:
+            diag_path = "short"
+            with self.model_lock:
+                segments, info = self.model.transcribe(audio_faded, **transcribe_params)
+            detected_lang = getattr(info, 'language', None)
+            seg_list = list(segments)
+
+        text, low_confidence = _apply_segment_quality_gates(
+            seg_list, transcribe_params, audio_duration,
+        )
+        return _HotkeyDecodeResult(text, low_confidence, seg_list, detected_lang, diag_path)
 
     def process_transcription(self, text):
         """Process transcribed text with auto-capitalize and number formatting"""
@@ -5759,17 +5887,22 @@ class DictationApp:
 
             logger.debug(f'[CMD-UTT] Transcribing {audio_duration:.1f}s utterance')
 
-            transcribe_params = self.get_transcription_params()
-            transcribe_params['vad_filter'] = False
             # Command-mode utterances (mode==COMMAND) are matched against the
             # English command registry AND control words (switch/scratch/
             # abort, checked by SessionModeManager on every utterance
-            # regardless of mode) -- force English there. DICTATE/AVA use
-            # the configured dictation language; control-word recognition
-            # during those sub-modes is best-effort in non-English (commands
-            # remain English-only by design).
+            # regardless of mode) -- force English there AND keep vocabulary
+            # biasing (it's short, matcher-side recognition, not free-form
+            # prose). DICTATE/AVA use the configured dictation language and
+            # drop vocabulary biasing entirely -- free-form prose,
+            # decode-matrix-established to be destabilized by it (SPARK
+            # 2026-07-17/18, N=10/cell) -- control-word recognition during
+            # those sub-modes is best-effort in non-English regardless
+            # (commands remain English-only by design).
             manager = self._ensure_session_mode_manager()
-            if manager.mode is SessionMode.COMMAND:
+            _is_command_lane = manager.mode is SessionMode.COMMAND
+            transcribe_params = self.get_transcription_params(include_vocabulary=_is_command_lane)
+            transcribe_params['vad_filter'] = False
+            if _is_command_lane:
                 transcribe_params['language'] = 'en'
 
             with self.model_lock:
@@ -5993,7 +6126,11 @@ class DictationApp:
             # (command_executor.process_text) are matched best-effort against
             # that same transcription and simply fall through to dictation
             # output when they don't match (commands remain English-only).
-            transcribe_params = self.get_transcription_params()
+            # include_vocabulary=False: free-form dictation, decode-matrix-
+            # established (SPARK 2026-07-17/18, N=10/cell) to be destabilized
+            # by vocabulary content in initial_prompt -- see
+            # voice_training_qt.get_initial_prompt.
+            transcribe_params = self.get_transcription_params(include_vocabulary=False)
             # DISABLE faster-whisper's VAD for hold-to-dictate. The user
             # explicitly pressed the hotkey — all captured audio is intentional
             # speech. VAD was stripping 80% of audio, causing garbled output.
@@ -6836,7 +6973,11 @@ class DictationApp:
             # cancel/send/end/pause/resume control words checked below are
             # small fixed English word lists, best-effort in non-English
             # (commands/control-words remain English-only by design).
-            transcribe_params = self.get_transcription_params()
+            # include_vocabulary=False: free-form dictation, decode-matrix-
+            # established (SPARK 2026-07-17/18, N=10/cell) to be destabilized
+            # by vocabulary content in initial_prompt -- see
+            # voice_training_qt.get_initial_prompt.
+            transcribe_params = self.get_transcription_params(include_vocabulary=False)
             # When Silero is unavailable we relied on RMS to gate speech into
             # the buffer. Whisper's own vad_filter then strips quiet audio a
             # second time — on low-gain mics this removes everything, producing
@@ -8651,72 +8792,49 @@ class DictationApp:
                     return
 
                 transcribe_start = time.time()
-                _diag_all_segs = []
-                _detected_lang = None
-                _diag_path = "short"
-                _low_confidence = False
 
-                if audio_duration > _LONG_DECODE_CEILING_S:
-                    # Resource-guard fallback ONLY -- see _LONG_DECODE_CEILING_S
-                    # for why this is not a quality boundary. Reachable solely
-                    # for a runaway recording far beyond any normal dictation
-                    # length; splitting here trades some accuracy for bounded
-                    # memory/latency on that outlier-length buffer.
-                    #
-                    # Do NOT set condition_on_previous_text=True here — conditioning
-                    # over long stitched sequences triggers Whisper's repetition-loop
-                    # hallucination bug (the model echos earlier text indefinitely).
-                    # The clean-slate reset in _build_hotkey_transcribe_params is
-                    # condition_on_previous_text only -- initial_prompt is NOT cleared;
-                    # the voice-training vocabulary still biases every chunk here too.
-                    _diag_path = "long"
-                    chunks = _split_audio_at_silences(audio_faded, self.model_rate)
-                    logger.info(f"[LONG] {audio_duration:.1f}s recording exceeds the "
-                          f"{_LONG_DECODE_CEILING_S:.0f}s single-decode ceiling -- split "
-                          f"into {len(chunks)} chunk(s) at silence boundaries")
-                    _seg_list = []
-                    for idx, chunk in enumerate(chunks):
-                        chunk_dur = len(chunk) / self.model_rate
-                        if chunk_dur < 0.2:
-                            continue
-                        with self.model_lock:
-                            segs, _chunk_info = self.model.transcribe(chunk, **transcribe_params)
-                        _detected_lang = getattr(_chunk_info, 'language', None) or _detected_lang
-                        _chunk_segs = list(segs)
-                        _seg_list.extend(_chunk_segs)
-                        logger.info(f"[LONG] Chunk {idx + 1}/{len(chunks)}: "
-                              f"{chunk_dur:.1f}s → {len(_chunk_segs)} segment(s)")
-                else:
-                    with self.model_lock:
-                        segments, info = self.model.transcribe(audio_faded, **transcribe_params)
-                    _detected_lang = getattr(info, 'language', None) or _detected_lang
-                    _seg_list = list(segments)
-
-                # Segment-level gating (hallucination + quality), identical
-                # for either decode path above -- see
-                # _apply_segment_quality_gates for the full rationale.
-                _diag_all_segs.extend(_seg_list)
-                text, _low_confidence = _apply_segment_quality_gates(
-                    _seg_list, transcribe_params, audio_duration,
-                )
+                # Resource-guard fallback ONLY -- see _LONG_DECODE_CEILING_S
+                # for why the [LONG]-split branch inside _decode_hotkey_audio
+                # is not a quality boundary. Reachable solely for a runaway
+                # recording far beyond any normal dictation length; splitting
+                # trades some accuracy for bounded memory/latency on that
+                # outlier-length buffer.
+                #
+                # Do NOT set condition_on_previous_text=True on that branch --
+                # conditioning over long stitched sequences triggers Whisper's
+                # repetition-loop hallucination bug (the model echos earlier
+                # text indefinitely). The clean-slate reset in
+                # _build_hotkey_transcribe_params is condition_on_previous_text
+                # only -- initial_prompt is NOT cleared there; command-hotkey
+                # vocabulary still biases every chunk (free-form hold-to-
+                # dictate already has none to bias with, per #1 above).
+                _decode_result = self._decode_hotkey_audio(audio_faded, transcribe_params, audio_duration)
 
                 # Fail-loud backstop for silent mid-decode data loss (see
-                # module comment above _SANITY_MIN_DURATION_S) -- a long
-                # recording that sounds like continuous speech throughout
-                # but delivered implausibly little text. Checked against
-                # the gated decode text (not the final post-cleanup text)
-                # so this reflects what Whisper actually returned, not
-                # downstream filler-stripping/smart-correct trimming.
-                _suspected_data_loss = _suspected_silent_data_loss(
-                    text, audio_faded, self.model_rate, audio_duration,
+                # module comment above _SANITY_MIN_DURATION_S), with the
+                # SPARK P0 auto-retry: a free-form decode (never command-
+                # lane -- matcher-side, short utterances, see
+                # _apply_retry_on_suspected_loss) that trips the sanity
+                # check gets ONE re-decode of the SAME audio with
+                # initial_prompt="", delivered if it passes, otherwise the
+                # longer of the two. Checked against the gated decode text
+                # (not the final post-cleanup text) so this reflects what
+                # Whisper actually returned, not downstream filler-
+                # stripping/smart-correct trimming.
+                def _retry_decode():
+                    _retry_params = dict(transcribe_params)
+                    _retry_params['initial_prompt'] = ""
+                    return self._decode_hotkey_audio(audio_faded, _retry_params, audio_duration)
+
+                _decode_result, _suspected_data_loss, _retried = _apply_retry_on_suspected_loss(
+                    _decode_result, _retry_decode, audio_faded, self.model_rate, audio_duration,
+                    ownership.is_command,
                 )
-                if _suspected_data_loss:
-                    logger.warning(
-                        f"[SANITY] {audio_duration:.1f}s recording delivered "
-                        f"only {len(text)} chars ({len(text) / audio_duration:.2f} "
-                        f"chars/sec) despite sustained speech-RMS coverage -- "
-                        f"suspected silent decode loss: {text!r}"
-                    )
+                text = _decode_result.text
+                _low_confidence = _decode_result.low_confidence
+                _diag_all_segs = list(_decode_result.seg_list)
+                _detected_lang = _decode_result.detected_lang
+                _diag_path = _decode_result.diag_path
 
                 transcribe_time = time.time() - transcribe_start
                 t_transcribe_ms = int(transcribe_time * 1000)

@@ -330,29 +330,46 @@ class VoiceTrainingQt:
     # character-based proxy that keeps well clear of that limit.
     _PROMPT_CHAR_BUDGET = 800
 
-    def get_initial_prompt(self, include_commands: bool = True) -> "str | None":
+    def get_initial_prompt(self, include_vocabulary: bool = True) -> "str | None":
         """Build the Whisper initial_prompt from up to three layered parts.
 
-        include_commands=False omits Priority 3 (the auto-derived command
-        vocabulary) entirely -- for decode paths that are pure prose
-        dictation and never matched against the command registry (the
-        hotkey hold-to-record path; see dictation._build_hotkey_transcribe_
-        params). That ~280-phrase, comma-separated list is an unusual,
-        non-conversational decoder context that was found to measurably
-        destabilize long (>~15-20s) continuous-speech decodes -- see
-        dictation.py's module comment above _SANITY_MIN_DURATION_S for the
-        2026-07-16 incident this was diagnosed from. Priority 1 (explicit
-        custom prompt) and Priority 2 (genuine user vocabulary -- names,
-        jargon, technical terms added via add_vocab_word) still apply
-        regardless of include_commands: those aren't command phrases and
-        dictation benefits from them the same as any other path.
+        include_vocabulary=False omits Priority 2 (genuine user vocabulary
+        -- names, jargon, technical terms added via add_vocab_word, the
+        "Common terms:" layer) AND Priority 3 (the auto-derived command
+        vocabulary) entirely, returning Priority 1 (explicit custom prompt)
+        alone or None. This is for decode paths that are pure free-form
+        prose and never matched against the command registry -- the hotkey
+        hold-to-record path (non-command press), the toggle-session DICTATE/
+        AVA lanes, transcribe_continuous_buffer, and the wake-word dictation
+        lane; see dictation.py's per-path wiring.
+
+        2026-07-16 (commit 02e00b9): first found that Priority 3 alone (the
+        ~280-phrase, comma-separated auto-derived command list) measurably
+        destabilized long (>~15-20s) continuous-speech decodes -- an
+        unusual, non-conversational decoder context -- and started gating
+        it off the hotkey path via what was then called include_commands.
+        2026-07-17/18 (SPARK decode matrix, N=10/cell against both incident
+        WAVs): the SAME destabilization is caused by ANY non-conversational
+        vocabulary content in initial_prompt, not command phrases
+        specifically -- Priority 2's short 9-term "Common terms:" list
+        reproduced the identical truncation signature on its own. This
+        parameter was widened accordingly (and renamed to describe what it
+        actually gates now) to omit Priority 2 as well for every free-form
+        path, not just Priority 3. See dictation.py's module comment above
+        _SANITY_MIN_DURATION_S for the full incident history.
+
+        Command-lane decodes (matcher-side recognition, 1-3s utterances)
+        are unaffected either way -- see dictation.py's per-path table.
         """
         try:
             parts: List[str] = []
             remaining = self._PROMPT_CHAR_BUDGET
 
             # Priority 1: custom prompt -- explicit user input, never
-            # truncated or dropped for size.
+            # truncated or dropped for size, and never gated by
+            # include_vocabulary: this is the user's own explicit override,
+            # not auto-derived vocabulary, so it carries whatever residual
+            # destabilization risk the user has knowingly opted into.
             custom_prompt = self.app.config.get('initial_prompt', '')
             if custom_prompt:
                 parts.append(custom_prompt)
@@ -360,7 +377,7 @@ class VoiceTrainingQt:
 
             # Priority 2: custom vocabulary -- included whole or not at all
             # (never truncate mid-phrase).
-            if self.custom_vocab and remaining > 0:
+            if include_vocabulary and self.custom_vocab and remaining > 0:
                 vocab_part = f"Common terms: {', '.join(self.custom_vocab)}"
                 needed = len(vocab_part) + (1 if parts else 0)
                 if needed <= remaining:
@@ -369,7 +386,7 @@ class VoiceTrainingQt:
 
             # Priority 3: command vocabulary -- lowest priority, so it's the
             # one truncated (item-by-item, never mid-word) to fit what's left.
-            if include_commands and remaining > 0:
+            if include_vocabulary and remaining > 0:
                 cmd_words = self._get_command_vocabulary_words()
                 kept: List[str] = []
                 for word in cmd_words:
