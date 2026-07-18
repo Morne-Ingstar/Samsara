@@ -1,7 +1,7 @@
 """Tests for samsara.audio_ducking's duck/restore state machine, with the
 entire Core Audio COM layer mocked -- no audio hardware, no live COM calls,
 no real ctypes vtable dispatch. Every test patches _ensure_com_init,
-_get_session_enumerator, _iter_sessions, _get_session_volume,
+_iter_session_enumerators, _iter_sessions, _get_session_volume,
 _set_session_volume, and _release at the module level, so only the pure
 Python duck()/restore() state-machine logic is under test.
 
@@ -48,7 +48,9 @@ def reset_module_state():
 def mocked_com(monkeypatch):
     """Patches the entire COM boundary. `sessions` is a mutable list of
     FakeSession the test can populate/mutate between duck() and restore()
-    calls (e.g. to simulate a session vanishing)."""
+    calls (e.g. to simulate a session vanishing). Single fake device/
+    enumerator -- these tests exercise the duck()/restore() state machine,
+    not the multi-device fan-out itself (see TestMultiDevice for that)."""
     sessions = []
 
     def fake_get_volume(iface):
@@ -63,7 +65,7 @@ def mocked_com(monkeypatch):
             iface.released = True
 
     monkeypatch.setattr(ad, '_ensure_com_init', lambda: True)
-    monkeypatch.setattr(ad, '_get_session_enumerator', lambda: object())
+    monkeypatch.setattr(ad, '_iter_session_enumerators', lambda: iter([object()]))
     monkeypatch.setattr(ad, '_iter_sessions', lambda _enum: iter([s.as_tuple() for s in sessions]))
     monkeypatch.setattr(ad, '_get_session_volume', fake_get_volume)
     monkeypatch.setattr(ad, '_set_session_volume', fake_set_volume)
@@ -138,8 +140,11 @@ class TestDuck:
         assert ad.is_ducked() is False
 
     def test_enumerator_failure_is_a_no_op(self, monkeypatch):
+        """No devices/enumerators at all -- e.g. CoCreateInstance or
+        EnumAudioEndpoints itself failed. _iter_session_enumerators yields
+        nothing on that path (see its own docstring)."""
         monkeypatch.setattr(ad, '_ensure_com_init', lambda: True)
-        monkeypatch.setattr(ad, '_get_session_enumerator', lambda: None)
+        monkeypatch.setattr(ad, '_iter_session_enumerators', lambda: iter([]))
         ad.duck(0.2)
         assert ad.is_ducked() is False
 
@@ -149,7 +154,7 @@ class TestDuck:
         def boom():
             raise OSError("simulated COM failure")
 
-        monkeypatch.setattr(ad, '_get_session_enumerator', boom)
+        monkeypatch.setattr(ad, '_iter_session_enumerators', boom)
         ad.duck(0.2)  # must not raise
         assert ad.is_ducked() is False
 
@@ -260,6 +265,94 @@ class TestFadeAll:
         with patch.object(ad, '_set_session_volume') as mock_set:
             ad._fade_all([])
         mock_set.assert_not_called()
+
+
+class TestMultiDevice:
+    """The actual bug this module's ALL-DEVICES fix addresses: sessions
+    rendering on a non-default active endpoint were never enumerated at
+    all (_get_session_enumerator only ever walked GetDefaultAudioEndpoint).
+    Two distinct fake "devices" (session enumerators), each carrying its
+    own session -- duck()/restore() must touch and correctly restore
+    both, not just whichever one happens to be default."""
+
+    def _install(self, monkeypatch, enumerators, sessions_by_enum):
+        def fake_iter_sessions(enum):
+            return iter([s.as_tuple() for s in sessions_by_enum[id(enum)]])
+
+        monkeypatch.setattr(ad, '_ensure_com_init', lambda: True)
+        monkeypatch.setattr(ad, '_iter_session_enumerators', lambda: iter(enumerators))
+        monkeypatch.setattr(ad, '_iter_sessions', fake_iter_sessions)
+        monkeypatch.setattr(ad, '_get_session_volume', lambda iface: iface.level)
+
+        def fake_set_volume(iface, level):
+            iface.level = level
+            return True
+        monkeypatch.setattr(ad, '_set_session_volume', fake_set_volume)
+
+        def fake_release(iface):
+            if hasattr(iface, 'released'):
+                iface.released = True
+        monkeypatch.setattr(ad, '_release', fake_release)
+
+    def test_ducks_and_restores_sessions_on_all_devices(self, monkeypatch):
+        device_a, device_b = object(), object()
+        session_a = FakeSession('inst-a', pid=999, level=0.8)
+        session_b = FakeSession('inst-b', pid=888, level=0.6)
+        self._install(monkeypatch, [device_a, device_b],
+                       {id(device_a): [session_a], id(device_b): [session_b]})
+
+        with patch.object(ad.os, 'getpid', return_value=1234):
+            ad.duck(0.2)
+
+        # Both devices' sessions ducked -- the actual bug (only the
+        # default device's sessions ever moving) would leave session_b
+        # untouched at 0.6 here.
+        assert session_a.level == pytest.approx(0.2)
+        assert session_b.level == pytest.approx(0.2)
+        assert ad._saved_volumes == {'inst-a': pytest.approx(0.8), 'inst-b': pytest.approx(0.6)}
+        assert ad.is_ducked() is True
+
+        ad.restore()
+
+        assert session_a.level == pytest.approx(0.8)
+        assert session_b.level == pytest.approx(0.6)
+        assert ad.is_ducked() is False
+        assert ad._saved_volumes == {}
+
+    def test_every_enumerator_is_released_across_devices(self, monkeypatch):
+        device_a, device_b = object(), object()
+        session_a = FakeSession('inst-a', pid=999, level=0.8)
+        session_b = FakeSession('inst-b', pid=888, level=0.6)
+        self._install(monkeypatch, [device_a, device_b],
+                       {id(device_a): [session_a], id(device_b): [session_b]})
+
+        released = []
+        monkeypatch.setattr(ad, '_release', lambda iface: released.append(iface))
+
+        with patch.object(ad.os, 'getpid', return_value=1234):
+            ad.duck(0.2)
+
+        # Both fake enumerator tokens (the devices themselves) must have
+        # been passed to _release -- one per device, matching the existing
+        # try/finally discipline extended across the new per-device loop.
+        assert device_a in released
+        assert device_b in released
+
+    def test_one_missing_enumerator_does_not_block_the_others_session(self, monkeypatch):
+        """_iter_session_enumerators already skips a device whose Activate/
+        GetSessionEnumerator failed (see its own docstring) -- so duck()
+        only ever sees the survivors. Simulate that here: only ONE
+        enumerator is yielded even though a second device conceptually
+        exists. The surviving device's session must still be ducked."""
+        working = object()
+        session = FakeSession('inst-ok', pid=999, level=0.8)
+        self._install(monkeypatch, [working], {id(working): [session]})
+
+        with patch.object(ad.os, 'getpid', return_value=1234):
+            ad.duck(0.2)
+
+        assert session.level == pytest.approx(0.2)
+        assert ad.is_ducked() is True
 
 
 class TestIsDucked:
