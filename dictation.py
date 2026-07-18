@@ -2547,6 +2547,16 @@ class DictationApp:
         self._dictation_consumer   = None
         self._continuous_consumer  = None
         self._wake_consumer        = None    # ACE-04C
+        # WakeConsumer serves two independent masters -- wake-phrase
+        # DETECTION (start_wake_word_mode/stop_wake_word_mode) and
+        # toggle-session utterance dispatch (enter_command_mode/
+        # exit_command_mode's toggle branch) -- see _ensure_wake_consumer/
+        # _release_wake_consumer just above start_wake_word_mode. Reason-
+        # counted like _icon_anim_reasons/_request_icon_chase: a boolean
+        # would let one master's stop() kill the pipeline out from under
+        # the other still using it.
+        self._wake_consumer_reasons = set()
+        self._wake_consumer_lock    = threading.Lock()
         self._ace_dictation_active  = False   # True while hold-mode uses ACE consumer path
         self._ace_streaming_active  = False   # True while CapsLock streaming uses ACE consumer
         self._streaming_session     = None    # Sole owner until final/cancel cleanup completes
@@ -5423,6 +5433,19 @@ class DictationApp:
             # navigation commands and buffered dictation coexist from entry.
             # Hold-to-record command mode never enters this branch.
             self._ensure_session_mode_manager().reset(initial_mode=SessionMode.DICTATE)
+            # BUG FIX (2026-07-18): the WakeConsumer pipeline was previously
+            # assumed already running (see the now-corrected comment in
+            # _do_enter_command_mode) -- true only when wake_word_enabled,
+            # since it's the only thing that otherwise starts the consumer
+            # (dictation.py boot, ~4407). With wake word off, entering a
+            # toggle session armed command_mode_active but nothing was
+            # polling the ring, so the session was silently deaf. Ensuring
+            # here (synchronously, before the worker thread's debounce
+            # sleep -- not deferred to _do_enter_command_mode) guarantees
+            # the pipeline is running the instant this call returns, and
+            # does NOT enable wake-phrase detection itself (wake_word_active
+            # stays whatever it already was) -- see _ensure_wake_consumer.
+            self._ensure_wake_consumer('toggle_session')
             if hasattr(self, 'listening_indicator'):
                 # Force-visible for the session's duration regardless of
                 # listening_indicator_enabled -- restored to the
@@ -5439,8 +5462,13 @@ class DictationApp:
             # Toggle (sustained) mode: per-utterance dispatch via WakeConsumer VAD.
             # Do NOT call start_recording() — that activates the dictation consumer
             # (accumulate-until-release) and sets _hotkey_recording=True, which
-            # suppresses the WakeConsumer.  The WakeConsumer is already running;
-            # _is_toggle_cmd() makes it service frames while command_mode_active.
+            # suppresses the WakeConsumer. The WakeConsumer pipeline is ENSURED
+            # running by enter_command_mode() (_ensure_wake_consumer), synchronously,
+            # before this worker thread was even spawned -- not merely assumed
+            # to already be running from wake_word_enabled (that assumption was
+            # the 2026-07-18 toggle-deaf-with-wake-off bug). _is_toggle_cmd()
+            # makes the (now-guaranteed-running) consumer service frames while
+            # command_mode_active.
             time.sleep(debounce_ms / 1000.0)
             if self.command_mode_active:
                 self.play_sound('start', use_winsound=True)
@@ -5477,6 +5505,14 @@ class DictationApp:
         if self._session_mode_manager is not None:
             self._session_mode_manager.reset()
         is_toggle_session = self.config.get('command_mode', {}).get('mode', 'hold') == 'toggle'
+        if is_toggle_session:
+            # Release this session's hold on the WakeConsumer pipeline
+            # (see enter_command_mode's _ensure_wake_consumer). If
+            # wake_word_enabled is separately holding it open, the
+            # pipeline correctly keeps running for wake detection --
+            # reason-counted, not a boolean, so this can't stop it out
+            # from under wake mode.
+            self._release_wake_consumer('toggle_session')
         if hasattr(self, 'listening_indicator'):
             if is_toggle_session:
                 # Clear the session badge and restore whatever visibility
@@ -6256,7 +6292,48 @@ class DictationApp:
             self.stop_wake_word_mode()
         else:
             self.start_wake_word_mode()
-    
+
+    def _ensure_wake_consumer(self, reason: str) -> None:
+        """Ensure the WakeConsumer PIPELINE (poll thread) is running for
+        `reason`, WITHOUT touching wake-phrase DETECTION state or any of
+        start_wake_word_mode's user-facing side effects (earcon,
+        wake_word_active flag, listening-indicator, hints). Reason-counted
+        (see _wake_consumer_reasons, initialized alongside _wake_consumer)
+        so wake-detection and a toggle session can each hold the pipeline
+        open independently -- one releasing its reason must never stop the
+        consumer while the other still needs it.
+
+        Idempotent: adding an already-held reason, or calling this while
+        the consumer is already running, is a no-op (WakeConsumer.start()
+        itself no-ops when already running).
+        """
+        with self._wake_consumer_lock:
+            self._wake_consumer_reasons.add(reason)
+            if self._wake_consumer is not None and not self._wake_consumer._running:
+                self._wake_consumer.start()
+
+    def _release_wake_consumer(self, reason: str) -> None:
+        """Release `reason`'s hold on the WakeConsumer pipeline. Stops the
+        consumer ONLY when no reason still needs it running -- see
+        _ensure_wake_consumer. Discarding a reason that was never held (or
+        calling this when the consumer is already stopped) is a safe
+        no-op, so double-exit / rapid toggle sequences can't corrupt state.
+
+        When this call is the one that actually stops the consumer (the
+        last reason releasing), mirrors stop_wake_word_mode's original
+        handling of a still-triggered wake-word utterance in flight: any
+        remaining buffered audio is flushed through process_wake_word_buffer.
+        """
+        with self._wake_consumer_lock:
+            self._wake_consumer_reasons.discard(reason)
+            if (self._wake_consumer_reasons
+                    or self._wake_consumer is None
+                    or not self._wake_consumer._running):
+                return
+            remaining = self._wake_consumer.stop()
+        if remaining and self.wake_word_triggered:
+            self.process_wake_word_buffer(remaining, src_rate=16000)
+
     def start_wake_word_mode(self):
         """Start wake word listening — always listening for wake word."""
         if not self.model_loaded:
@@ -6275,7 +6352,11 @@ class DictationApp:
 
         # ACE path: WakeConsumer polls the ring — no separate PortAudio stream.
         # Engine and wake consumer share the same device, no stream conflict.
-        self._wake_consumer.start()
+        # Reason-counted: a toggle session may already hold the pipeline
+        # open (see _ensure_wake_consumer) -- this must not double-start it,
+        # and must not let a later toggle-session exit stop it out from
+        # under wake detection.
+        self._ensure_wake_consumer('wake_word')
 
         self.set_app_state(wake_word_active=True)
         self._request_icon_chase('wake_word')
@@ -6296,11 +6377,9 @@ class DictationApp:
         self.wake_word_triggered = False
         self._reset_wake_dictation()
 
-        if self._wake_consumer is not None and self._wake_consumer._running:
-            # ACE path: stop consumer, transcribe remaining frames if triggered
-            remaining = self._wake_consumer.stop()
-            if remaining and self.wake_word_triggered:
-                self.process_wake_word_buffer(remaining, src_rate=16000)
+        # Reason-counted release: only actually stops the consumer if no
+        # toggle session is also holding it open (see _release_wake_consumer).
+        self._release_wake_consumer('wake_word')
 
         logger.info("[OFF] Wake word mode STOPPED")
         self.play_sound("stop")
