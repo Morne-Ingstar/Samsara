@@ -14,12 +14,26 @@ style of plugins/commands/volume.py (manual vtable dispatch, no pycaw, no
 new dependencies) -- extended from single-endpoint master volume to
 per-session enumeration:
 
-    IMMDeviceEnumerator -> GetDefaultAudioEndpoint(eRender, eMultimedia)
-    -> IMMDevice::Activate(IAudioSessionManager2)
+    IMMDeviceEnumerator -> EnumAudioEndpoints(eRender, DEVICE_STATE_ACTIVE)
+    -> IMMDeviceCollection (every active render/playback device, not just
+       the default one -- see ALL-DEVICES history below)
+    -> per device: IMMDevice::Activate(IAudioSessionManager2)
     -> GetSessionEnumerator -> per-session IAudioSessionControl2
        (owning PID, system-sounds check, session instance id)
        + ISimpleAudioVolume (get/set volume), both obtained via
        QueryInterface on the same session control object.
+
+    ALL-DEVICES HISTORY (2026-07-18): originally walked only
+    GetDefaultAudioEndpoint(eRender, eMultimedia) -- ducking then only ever
+    touched sessions rendering on whichever device Windows currently
+    treats as default. A session playing on any OTHER active endpoint (a
+    second monitor's HDMI audio, a USB headset that isn't the OS default,
+    etc.) was never enumerated, so duck() silently never touched it --
+    audio kept bleeding into the mic with no visible error. Switched to
+    EnumAudioEndpoints so every active render device is walked and unioned
+    per duck()/restore() call; _saved_volumes stays keyed by session
+    instance_id, which is already unique across devices, so no save/
+    restore semantics changed.
 
 Vtable layouts and IIDs cross-checked against pycaw's comtypes interface
 definitions (F:\\envs\\sami\\Lib\\site-packages\\pycaw\\api\\{audiopolicy,
@@ -50,8 +64,8 @@ logger = logging.getLogger("Samsara")
 # ── Core Audio COM definitions (mirrors plugins/commands/volume.py) ──────────
 
 CLSCTX_ALL = 23
-E_RENDER = 0        # eRender
-E_MULTIMEDIA = 1    # eMultimedia
+E_RENDER = 0                # eRender (EDataFlow)
+_DEVICE_STATE_ACTIVE = 0x1  # DEVICE_STATE_ACTIVE (EnumAudioEndpoints dwStateMask)
 
 _FADE_DURATION_S = 0.15
 _FADE_STEPS = 6
@@ -140,53 +154,99 @@ def _warn_once(msg):
 
 # ── Session enumeration ─────────────────────────────────────────────────────
 
-def _get_session_enumerator():
-    """Full pipeline: device enumerator -> default render device ->
-    IAudioSessionManager2 -> IAudioSessionEnumerator. Returns None (and
-    releases anything already obtained) on any failure. Caller owns
-    releasing the returned enumerator."""
+def _session_enumerator_for_device(device):
+    """IMMDevice::Activate(IAudioSessionManager2) -> GetSessionEnumerator
+    for ONE device. Returns None (releasing anything already obtained for
+    the manager) on failure. Caller retains ownership of `device` either
+    way -- this never releases it. Extracted so
+    _iter_session_enumerators() can skip a single failing device without
+    aborting enumeration of the rest."""
+    activate = _get_vtable_func(
+        device, 3, HRESULT,
+        c_void_p, c_void_p, ctypes.c_ulong, c_void_p, POINTER(c_void_p),
+    )
+    session_mgr = c_void_p()
+    hr = activate(device, _IID_IAudioSessionManager2, CLSCTX_ALL, None,
+                   byref(session_mgr))
+    if hr != 0:
+        return None
+    try:
+        # IAudioSessionManager2::GetSessionEnumerator -- vtable index 5
+        # (IAudioSessionManager base has 3=GetAudioSessionControl,
+        # 4=GetSimpleAudioVolume; Manager2 adds this at 5).
+        get_enum = _get_vtable_func(
+            session_mgr, 5, HRESULT, c_void_p, POINTER(c_void_p),
+        )
+        session_enum = c_void_p()
+        hr = get_enum(session_mgr, byref(session_enum))
+        if hr != 0:
+            return None
+        return session_enum
+    finally:
+        _release(session_mgr)
+
+
+def _iter_session_enumerators():
+    """Enumerate every ACTIVE render (playback) endpoint and yield a fresh
+    IAudioSessionEnumerator for each -- see the module docstring's
+    ALL-DEVICES history for why this replaced the old single
+    (GetDefaultAudioEndpoint) device pipeline. A device whose Activate/
+    GetSessionEnumerator step fails is skipped, not fatal to the others;
+    same for the top-level enumerator/collection creation, which simply
+    yields nothing on failure (callers already treat "no enumerators"
+    as "ducking unavailable this call", matching the old return-None
+    contract).
+
+    Caller must _release() each yielded session_enum when done with it.
+    Fresh CoCreateInstance/EnumAudioEndpoints call every time (never
+    cached) so a device hot-plugged or switched default between
+    dictations is always picked up -- same freshness guarantee the old
+    single-device pipeline had.
+    """
     enumerator = c_void_p()
     hr = _ole32.CoCreateInstance(
         _CLSID_MMDeviceEnumerator, None, CLSCTX_ALL,
         _IID_IMMDeviceEnumerator, byref(enumerator),
     )
     if hr != 0:
-        return None
+        return
     try:
-        get_default = _get_vtable_func(
-            enumerator, 4, HRESULT,
-            c_void_p, ctypes.c_uint, ctypes.c_uint, POINTER(c_void_p),
+        # IMMDeviceEnumerator::EnumAudioEndpoints -- vtable index 3.
+        enum_endpoints = _get_vtable_func(
+            enumerator, 3, HRESULT,
+            c_void_p, ctypes.c_uint, ctypes.c_ulong, POINTER(c_void_p),
         )
-        device = c_void_p()
-        hr = get_default(enumerator, E_RENDER, E_MULTIMEDIA, byref(device))
+        collection = c_void_p()
+        hr = enum_endpoints(enumerator, E_RENDER, _DEVICE_STATE_ACTIVE, byref(collection))
         if hr != 0:
-            return None
+            return
         try:
-            activate = _get_vtable_func(
-                device, 3, HRESULT,
-                c_void_p, c_void_p, ctypes.c_ulong, c_void_p, POINTER(c_void_p),
+            # IMMDeviceCollection::GetCount -- vtable index 3.
+            get_count = _get_vtable_func(
+                collection, 3, HRESULT, c_void_p, POINTER(ctypes.c_uint),
             )
-            session_mgr = c_void_p()
-            hr = activate(device, _IID_IAudioSessionManager2, CLSCTX_ALL, None,
-                           byref(session_mgr))
-            if hr != 0:
-                return None
-            try:
-                # IAudioSessionManager2::GetSessionEnumerator -- vtable index 5
-                # (IAudioSessionManager base has 3=GetAudioSessionControl,
-                # 4=GetSimpleAudioVolume; Manager2 adds this at 5).
-                get_enum = _get_vtable_func(
-                    session_mgr, 5, HRESULT, c_void_p, POINTER(c_void_p),
-                )
-                session_enum = c_void_p()
-                hr = get_enum(session_mgr, byref(session_enum))
-                if hr != 0:
-                    return None
-                return session_enum
-            finally:
-                _release(session_mgr)
+            count = ctypes.c_uint()
+            if get_count(collection, byref(count)) != 0:
+                return
+            # IMMDeviceCollection::Item -- vtable index 4.
+            get_item = _get_vtable_func(
+                collection, 4, HRESULT, c_void_p, ctypes.c_uint, POINTER(c_void_p),
+            )
+            for i in range(count.value):
+                device = c_void_p()
+                if get_item(collection, i, byref(device)) != 0 or not device:
+                    continue
+                try:
+                    try:
+                        session_enum = _session_enumerator_for_device(device)
+                    except Exception:
+                        session_enum = None
+                    if session_enum is not None:
+                        yield session_enum
+                finally:
+                    _release(device)
         finally:
-            _release(device)
+            _release(collection)
     finally:
         _release(enumerator)
 
@@ -288,38 +348,40 @@ def duck(level: float = 0.2) -> None:
             _warn_once("CoInitialize failed")
             return
         try:
-            session_enum = _get_session_enumerator()
-            if session_enum is None:
+            own_pid = os.getpid()
+            targets = []  # (simple_volume, from_level, to_level)
+            saved = {}
+            any_device = False
+            for session_enum in _iter_session_enumerators():
+                any_device = True
+                try:
+                    for instance_id, pid, is_system_sounds, simple_volume in _iter_sessions(session_enum):
+                        try:
+                            if pid == own_pid or is_system_sounds:
+                                _release(simple_volume)
+                                continue
+                            current = _get_session_volume(simple_volume)
+                            if current is None:
+                                _release(simple_volume)
+                                continue
+                            saved[instance_id] = current
+                            targets.append((simple_volume, current, level))
+                        except Exception:
+                            _release(simple_volume)
+                            continue
+                finally:
+                    _release(session_enum)
+            if not any_device:
                 _warn_once("could not enumerate audio sessions")
                 return
             try:
-                own_pid = os.getpid()
-                targets = []  # (simple_volume, from_level, to_level)
-                saved = {}
-                for instance_id, pid, is_system_sounds, simple_volume in _iter_sessions(session_enum):
-                    try:
-                        if pid == own_pid or is_system_sounds:
-                            _release(simple_volume)
-                            continue
-                        current = _get_session_volume(simple_volume)
-                        if current is None:
-                            _release(simple_volume)
-                            continue
-                        saved[instance_id] = current
-                        targets.append((simple_volume, current, level))
-                    except Exception:
-                        _release(simple_volume)
-                        continue
-                try:
-                    _fade_all(targets)
-                finally:
-                    for simple_volume, _from, _to in targets:
-                        _release(simple_volume)
-                _saved_volumes.clear()
-                _saved_volumes.update(saved)
-                _ducked = True
+                _fade_all(targets)
             finally:
-                _release(session_enum)
+                for simple_volume, _from, _to in targets:
+                    _release(simple_volume)
+            _saved_volumes.clear()
+            _saved_volumes.update(saved)
+            _ducked = True
         except Exception as e:
             _warn_once(f"duck() failed ({e})")
 
@@ -338,10 +400,9 @@ def restore() -> None:
             return
         try:
             if _ensure_com_init():
-                session_enum = _get_session_enumerator()
-                if session_enum is not None:
+                targets = []
+                for session_enum in _iter_session_enumerators():
                     try:
-                        targets = []
                         for instance_id, _pid, _is_system, simple_volume in _iter_sessions(session_enum):
                             saved_level = _saved_volumes.get(instance_id)
                             if saved_level is None:
@@ -355,13 +416,13 @@ def restore() -> None:
                                 targets.append((simple_volume, current, saved_level))
                             except Exception:
                                 _release(simple_volume)
-                        try:
-                            _fade_all(targets)
-                        finally:
-                            for simple_volume, _from, _to in targets:
-                                _release(simple_volume)
                     finally:
                         _release(session_enum)
+                try:
+                    _fade_all(targets)
+                finally:
+                    for simple_volume, _from, _to in targets:
+                        _release(simple_volume)
         except Exception as e:
             logger.warning(f"[DUCKING] restore() failed ({e}) -- some sessions may stay quiet "
                             f"until their app is restarted or volume adjusted manually")
