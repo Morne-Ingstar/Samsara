@@ -55,6 +55,9 @@ class _FakeApp:
     def _log_history(self, **kwargs):
         self.log_calls.append(kwargs)
 
+    def _try_cancel_pending_ava_utterance(self, text):
+        return False
+
 
 def _build_real_command_executor():
     """Real CommandExecutor with the real "show numbers" plugin registered.
