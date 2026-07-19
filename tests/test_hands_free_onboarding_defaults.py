@@ -35,7 +35,7 @@ def test_chronic_pain_completion_tip_teaches_complete_hands_free_flow():
     for instruction in (
         "tap right ctrl once",
         "15-minute hands-free session",
-        "'command', 'dictate', or 'ava'",
+        "'command', 'dictate', or 'hey ava'",
         "'end' by itself",
         "keep dictating",
         "'stop listening'",

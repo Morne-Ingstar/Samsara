@@ -5,15 +5,22 @@ Extracted from samsara/ui/settings_qt.py widget parameters. Importable without
 instantiating the Qt UI -- no Qt imports here.
 
 Format per entry:
-    type:       'int' | 'float' | 'bool' | 'str' | 'enum'
+    type:       'int' | 'float' | 'bool' | 'str' | 'enum' | 'list'
     min, max:   numeric bounds (int/float only)
     step:       increment step (numeric, optional)
     options:    allowed values list (enum only)
+    item_type:  element type for 'list' entries (currently always 'str')
     default:    app default when key absent from config
     tab:        settings tab where this appears
     depends_on: string condition for cross-field dependency (optional)
                 e.g. "echo_cancellation.enabled" means the setting is
                 only active when that key is True.
+
+'list' entries (e.g. ava_invocations) have no settings-UI widget yet --
+config-file-editable only. Most other list-valued config (wake_abort_phrase)
+is intentionally NOT represented here at all; it lives as an inline default
+at its point of use instead, which remains the pattern for anything that
+doesn't need this schema's cross-field/AI-capability introspection.
 
 Cross-field dependencies use one of two forms:
     "some.key"            -- active when some.key is truthy
@@ -493,6 +500,18 @@ SETTINGS_SCHEMA = {
         "type": "enum",
         "options": ["relaxed", "strict"],
         "default": "relaxed",
+        "tab": "ava",
+    },
+    "ava_invocations": {
+        # Exact whole-utterance phrases that switch into Ava mode -- see
+        # samsara/session_modes.py's match_ava_invocation(). No settings-UI
+        # widget yet (config-file-editable only this pass); the Ava/Cloud
+        # tab near ava_personality above is the obvious future home if this
+        # gets exposed -- likely a small comma-separated/list editor, since
+        # this schema has no other 'list'-typed entry precedent to follow.
+        "type": "list",
+        "item_type": "str",
+        "default": ["hey ava", "so ava", "oracle"],
         "tab": "ava",
     },
     "ava_memory.mode": {

@@ -108,7 +108,22 @@ class TestResolveSessionPhrases:
         state = qr._resolve_session_phrases(_make_app())
         assert "command mode" in state["lane_switches"]["phrases"]["Command"]
         assert "dictate mode" in state["lane_switches"]["phrases"]["Dictate"]
-        assert "ava" in state["lane_switches"]["phrases"]["Ava"]
+        # Ava moved OUT of the static registry (2026-07-18, match_ava_invocation)
+        # -- default invocations, NOT bare "ava" (deliberately excluded, see
+        # session_modes.py). Config-empty app -> module default list.
+        assert state["lane_switches"]["phrases"]["Ava"] == sorted(["hey ava", "so ava", "oracle"])
+        assert "ava" not in state["lane_switches"]["phrases"]["Ava"]
+
+    def test_ava_invocation_phrases_reflect_custom_config_on_recall(self):
+        """HARD RULE (module docstring): must read live config, not the
+        module default, once the user has configured their own list."""
+        app = _make_app({"ava_invocations": ["computer"]})
+        state = qr._resolve_session_phrases(app)
+        assert state["lane_switches"]["phrases"]["Ava"] == ["computer"]
+
+        app.config["ava_invocations"] = ["jarvis", "hey ava"]
+        state2 = qr._resolve_session_phrases(app)
+        assert state2["lane_switches"]["phrases"]["Ava"] == sorted(["jarvis", "hey ava"])
 
     def test_abort_enabled_if_either_wake_or_command_mode_on(self):
         assert qr._resolve_session_phrases(

@@ -63,7 +63,8 @@ _COMMAND_VOCAB_MARKER = 'Voice commands: test_command_a, test_command_b'
 _COMMON_TERMS_MARKER = 'Common terms: test_vocab_a, test_vocab_b'
 
 
-def _make_app(performance_mode='balanced', initial_prompt='', command_mode_recording=False):
+def _make_app(performance_mode='balanced', initial_prompt='', command_mode_recording=False,
+               language='en'):
     """Minimal duck-typed stand-in for DictationApp's `self`.
 
     _build_hotkey_transcribe_params() calls self.get_transcription_params()
@@ -79,9 +80,14 @@ def _make_app(performance_mode='balanced', initial_prompt='', command_mode_recor
     vocabulary marker (Priority 3), so tests can assert on either's
     presence/absence without depending on real custom_vocab or the real
     command registry.
+
+    language defaults to 'en' (the overwhelmingly common case, and matches
+    every pre-existing test's implicit assumption); tests that need to prove
+    a path does NOT force English pass a non-English value (e.g. 'auto') so
+    forced-English and configured-English are actually distinguishable.
     """
     app = types.SimpleNamespace()
-    app.config = {'language': 'en', 'performance_mode': performance_mode}
+    app.config = {'language': language, 'performance_mode': performance_mode}
     app.command_mode_recording = command_mode_recording
 
     def _fake_get_initial_prompt(include_vocabulary=True):
@@ -230,6 +236,18 @@ def test_command_hotkey_still_forces_english_and_clean_slate():
     assert params['vad_filter'] is False
 
 
+def test_hold_to_dictate_hotkey_does_not_force_language():
+    """CHANGE 2 (2026-07-18, force English on the session/[CMD-UTT] lane)
+    explicitly does NOT touch the free-form hold-to-dictate HOTKEY path --
+    only the toggle-session utterance lane (see
+    test_handle_command_mode_utterance_forces_english_on_every_mode below).
+    A non-English config value ('auto', i.e. faster-whisper auto-detect ->
+    None) must survive untouched for ordinary hold-to-dictate."""
+    app = _make_app(command_mode_recording=False, language='auto')
+    params = dictation.DictationApp._build_hotkey_transcribe_params(app)
+    assert params['language'] is None  # 'auto' -> None, never forced to 'en'
+
+
 # ============================================================================
 # get_transcription_params(include_vocabulary=...) base contract -- the
 # shared method _handle_command_mode_utterance, transcribe_continuous_buffer,
@@ -293,7 +311,15 @@ def _base_fake_app(**extra):
     def _capture_get_transcription_params(self, **kwargs):
         captured['include_vocabulary'] = kwargs.get('include_vocabulary', True)
         return {
-            'language': 'en', 'initial_prompt': '', 'no_speech_threshold': 0.6,
+            # 'fr' (never a real config value in these tests) is a
+            # deliberate sentinel: it stands in for "whatever
+            # get_transcription_params's mode-language base_params
+            # resolved," so a test asserting the FINAL call to
+            # model.transcribe() shows 'en' actually proves a per-call-site
+            # override happened, rather than coincidentally matching an
+            # already-English baseline -- see
+            # test_handle_command_mode_utterance_forces_english_on_every_mode.
+            'language': 'fr', 'initial_prompt': '', 'no_speech_threshold': 0.6,
             'log_prob_threshold': -1.0, 'beam_size': 3, 'vad_filter': True,
             'vad_parameters': {'min_silence_duration_ms': 500, 'speech_pad_ms': 200},
             'condition_on_previous_text': False, 'without_timestamps': True,
@@ -354,6 +380,40 @@ def test_handle_command_mode_utterance_gates_on_session_mode(mode, expected):
     buffer = [np.zeros(16000, dtype=np.float32)]
     dictation.DictationApp._handle_command_mode_utterance(app, buffer, 16000)
     assert captured.get('include_vocabulary') is expected
+
+
+@pytest.mark.parametrize('mode', [
+    dictation.SessionMode.COMMAND,
+    dictation.SessionMode.DICTATE,
+    dictation.SessionMode.AVA,
+])
+def test_handle_command_mode_utterance_forces_english_on_every_mode(mode):
+    """CHANGE 2 (2026-07-18 incident: a 'dictate mode' recovery attempt
+    spoken in AVA decoded as Vietnamese and got dispatched to Ava as a query
+    instead of switching mode). Language is now forced to 'en' for the WHOLE
+    [CMD-UTT] session lane, every mode -- not just COMMAND as before -- so
+    mode-switch phrases and short commands stay recognizable regardless of
+    which mode they're spoken from. Threaded as a per-call-site override
+    (transcribe_params['language'] = 'en' after calling
+    get_transcription_params()), matching the command hotkey's own
+    _build_hotkey_transcribe_params pattern -- NOT a change to
+    get_transcription_params's shared base_params, which must stay
+    mode-language-driven for every other caller (see
+    test_hold_to_dictate_hotkey_does_not_force_language above).
+
+    DELIBERATE TRADE: this also means genuine non-English free-form
+    DICTATE/AVA prose spoken in THIS lane is now English-biased too --
+    accepted because reliable recovery/control-word recognition matters
+    more here than non-English free-form accuracy in this specific lane.
+    The 'fr' sentinel in _capture_get_transcription_params proves this is a
+    real override, not a coincidence of an already-English base."""
+    app, captured = _base_fake_app(
+        _wake_transcription_in_progress=False,
+        _ensure_session_mode_manager=lambda: types.SimpleNamespace(mode=mode),
+    )
+    buffer = [np.zeros(16000, dtype=np.float32)]
+    dictation.DictationApp._handle_command_mode_utterance(app, buffer, 16000)
+    assert app.model.transcribe.call_args.kwargs['language'] == 'en'
 
 
 # ============================================================================

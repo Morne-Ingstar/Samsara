@@ -257,7 +257,7 @@ _USE_CASE_CONFIGS = {
 _USE_CASE_TIPS = {
     "chronic_pain": (
         "Tap Right Ctrl once to start a 15-minute hands-free session. "
-        "Say 'command', 'dictate', or 'Ava' to switch lanes. In Dictate, "
+        "Say 'command', 'dictate', or 'hey ava' to switch lanes. In Dictate, "
         "say 'end' by itself to paste your thought and keep dictating. "
         "Say 'stop listening' at any time to leave hands-free mode."
     ),

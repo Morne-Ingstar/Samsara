@@ -16,7 +16,10 @@ LATCHED MODES instead of always executing every utterance as a command.
                             only way it gets attached to a request, and
                             agent exchanges are never pushed onto the
                             scratch-that stack -- an agent turn can't be
-                            unsent.
+                            unsent. Entry is EXACT-PHRASE-ONLY from a
+                            configurable invocation list (see
+                            match_ava_invocation / DEFAULT_AVA_INVOCATIONS)
+                            -- there is no prefix form, unlike COMMAND/DICTATE.
 
 This module is pure orchestration: it never touches audio, Whisper, pyautogui,
 or Qt directly. All side effects (injecting text, removing characters,
@@ -80,15 +83,19 @@ _WHOLE_UTTERANCE_SWITCHES: dict[str, SessionMode] = {
     "dictate mode": SessionMode.DICTATE,
     "dictation mode": SessionMode.DICTATE,
     "dictate": SessionMode.DICTATE,
-    "ava": SessionMode.AVA,
-    "ava mode": SessionMode.AVA,
 }
 
-# Prefix forms: "dictate <payload>" / "ava <payload>" switch mode AND deliver
-# the payload as the first chunk/utterance of the new mode.
+# Prefix form: "dictate <payload>" switches mode AND delivers the payload as
+# the first chunk/utterance of the new mode. Ava has NO prefix form -- see
+# match_ava_invocation below and the 2026-07-18 incident it fixes: "Ava
+# Omniscience Mode" spoken as ordinary DICTATE content, isolated into its own
+# utterance by a natural pause, used to hijack mid-dictation into a
+# mode-switch+dispatch. Whole-word "ava"/"ava mode" were ALSO removed from
+# _WHOLE_UTTERANCE_SWITCHES above for the same reason (a bare content word is
+# too easy to say by accident); Ava entry now lives entirely in the
+# configurable, exact-phrase-only match_ava_invocation() mechanism instead.
 _PREFIX_SWITCHES: dict[str, SessionMode] = {
     "dictate": SessionMode.DICTATE,
-    "ava": SessionMode.AVA,
 }
 
 SCRATCH_THAT_PHRASE = "scratch that"
@@ -192,6 +199,64 @@ def _strip_leading_token_preserving_case(raw_text: str, prefix_word: str) -> str
     if idx >= len(tokens):
         return ""
     return text[tokens[idx].start():]
+
+
+# ---------------------------------------------------------------------------
+# Ava invocation matching: EXACT WHOLE-UTTERANCE ONLY, configurable list
+# ---------------------------------------------------------------------------
+#
+# 2026-07-18 incident: "Ava Omniscience Mode" spoken as DICTATE content, split
+# into its own utterance by a natural pause, hijacked mid-dictation via the
+# old prefix-or-bare-word grammar (see _PREFIX_SWITCHES comment above).
+# Recovery made it worse -- Ava mode utterances aren't forced to English (see
+# dictation.py's _handle_command_mode_utterance / CHANGE 2), so the first
+# "dictate mode" recovery attempt decoded as Vietnamese and was dispatched to
+# Ava as a query instead of switching mode. Fix has two independent halves:
+# this section (exact-phrase-only entry, no prefix trap) and the language fix
+# in dictation.py (recovery phrases stay recognizable regardless of dictation
+# language).
+
+DEFAULT_AVA_INVOCATIONS: tuple[str, ...] = ("hey ava", "so ava", "oracle")
+
+
+def _normalize_exact_phrase(text: str) -> str:
+    """Case/punctuation-insensitive normalization for Ava invocation matching
+    ONLY -- trailing period tolerated (full punctuation stripping handles it,
+    same technique normalize_utterance() uses).
+
+    Deliberately NOT normalize_utterance(): that function also strips LEADING
+    FILLER WORDS, and "so" is one of them (_LEADING_FILLERS). If invocation
+    matching reused normalize_utterance() wholesale, the configured phrase
+    "so ava" would normalize down to bare "ava" -- identical to normalizing
+    bare "ava" itself -- and accidentally let bare "ava" match via a phrase
+    that's supposed to be a DISTINCT, more-deliberate invocation. Bare "ava"
+    is intentionally excluded from DEFAULT_AVA_INVOCATIONS (see match_switch_
+    word's _PREFIX_SWITCHES comment); this narrower normalizer keeps that
+    exclusion real instead of it being silently reopened by "so ava"'s filler
+    word. Matching phrases still get case/punctuation-folded exactly like
+    every other exact control ("dictate mode", "scratch that") via the same
+    lowercase + strip-all-punctuation technique -- just without the filler
+    step.
+    """
+    t = (text or "").strip().lower()
+    t = t.translate(str.maketrans("", "", string.punctuation))
+    return " ".join(t.split())
+
+
+def match_ava_invocation(raw_text: str, invocations) -> bool:
+    """Exact whole-utterance match ONLY against a configurable invocation set
+    (pre-normalized via _normalize_exact_phrase -- see SessionModeManager's
+    ava_invocations constructor parameter). No prefix form: an utterance that
+    merely STARTS with an invocation but contains more content is ordinary
+    text for the current mode, not a switch -- this is the direct fix for
+    the 2026-07-18 "Ava Omniscience Mode" incident (see module comment
+    above). Bare "ava" does not match unless explicitly added to the
+    configured list; it is deliberately absent from DEFAULT_AVA_INVOCATIONS.
+    """
+    normalized = _normalize_exact_phrase(raw_text)
+    if not normalized:
+        return False
+    return normalized in invocations
 
 
 # ---------------------------------------------------------------------------
@@ -605,6 +670,7 @@ class SessionModeManager:
         on_switch_dispatch_error: Optional[Callable[[Exception], None]] = None,
         buffer_dictate_until_commit: bool = False,
         hands_free_command_probe_fn: Optional[HandsFreeCommandProbeFn] = None,
+        ava_invocations: Optional[list[str]] = None,
         clock: Callable[[], float] = time.time,
     ) -> None:
         self._abort_phrases = list(abort_phrases)
@@ -631,6 +697,12 @@ class SessionModeManager:
         self._on_switch_dispatch_error = on_switch_dispatch_error
         self._buffer_dictate_until_commit = buffer_dictate_until_commit
         self._hands_free_command_probe_fn = hands_free_command_probe_fn
+        # Pre-normalized once at construction, not per-utterance -- see
+        # match_ava_invocation / _normalize_exact_phrase above.
+        self._ava_invocations = frozenset(
+            _normalize_exact_phrase(p)
+            for p in (ava_invocations if ava_invocations is not None else DEFAULT_AVA_INVOCATIONS)
+        )
         self._clock = clock
 
         self.mode: SessionMode = SessionMode.COMMAND
@@ -704,6 +776,9 @@ class SessionModeManager:
             and is_dictate_commit(text)
         )
         switch = None if (scratch or commit) else match_switch_word(text)
+        if (switch is None and not (scratch or commit)
+                and match_ava_invocation(text, self._ava_invocations)):
+            switch = SwitchMatch(target_mode=SessionMode.AVA)
 
         if scratch or commit or switch is not None:
             control_gate_passed = (
