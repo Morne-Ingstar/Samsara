@@ -2109,6 +2109,7 @@ class DictationApp:
         self._ai_cmd_ready = threading.Event()
         self._ai_cmd_ready.set()  # starts set; cleared during entry until cue finishes
         self._ai_cmd_miss_count = 0              # consecutive unresolved utterances (see ai_command_mode._process_utterance)
+        self._ai_cmd_generation = 0               # bumped on every enter AND exit; staleness guard for async work in flight across an exit (see enter/exit_ai_command_mode)
 
         self._mouse_hook = None
 
@@ -3484,6 +3485,8 @@ class DictationApp:
             changes: dict of key-value pairs to update
             save: whether to persist to disk (default True)
         """
+        old_ai_cmd_cfg = self.config.get('ai_command_mode') if 'ai_command_mode' in changes else None
+
         with self._config_lock:
             self.config.update(changes)
             if save:
@@ -3509,6 +3512,39 @@ class DictationApp:
                     changes['wake_word_config'].get('oww_threshold', 0.2)
                 )
                 self._wake_detector = WakeWordDetector(new_phrase, threshold=oww_threshold)
+        if 'ai_command_mode' in changes:
+            self._maybe_exit_ai_command_mode_on_config_change(
+                old_ai_cmd_cfg or {}, changes['ai_command_mode'],
+            )
+
+    def _maybe_exit_ai_command_mode_on_config_change(self, old_ai_cfg: dict, new_ai_cfg) -> None:
+        """Force-exit AI-command mode if a config change made while it's
+        active would disable the feature or change its activation key out
+        from under the user.
+
+        2026-07-19 incident report item 3: previously no runtime side
+        effect existed for ai_command_mode changes at all -- disabling the
+        feature or changing its key while the mode was active removed the
+        user's only exit binding while ai_command_mode_active stayed True.
+        Shared by update_config() and _apply_disk_config() (external file
+        edits) -- both funnel here so the check and its logging exist in
+        exactly one place.
+        """
+        if not self.ai_command_mode_active:
+            return
+        if not isinstance(new_ai_cfg, dict):
+            return
+        old_ai_cfg = old_ai_cfg or {}
+        was_enabled = old_ai_cfg.get('enabled', True)
+        now_enabled = new_ai_cfg.get('enabled', True)
+        old_key = old_ai_cfg.get('key', 'right_ctrl')
+        new_key = new_ai_cfg.get('key', 'right_ctrl')
+        if (was_enabled and not now_enabled) or (old_key != new_key):
+            logger.info(
+                f"[AI-CMD] Config change while active (enabled {was_enabled}->{now_enabled}, "
+                f"key {old_key!r}->{new_key!r}) -- force-exiting"
+            )
+            self.exit_ai_command_mode()
 
     def reload_config_from_disk(self) -> int:
         """Re-read config.json from disk and apply any changes to the running app.
@@ -3595,6 +3631,14 @@ class DictationApp:
                         )
             except Exception as e:
                 logger.exception(f"[CONFIG] wake_word_config update error: {e}")
+        if 'ai_command_mode' in changed:
+            try:
+                old_v, new_v = changed['ai_command_mode']
+                self._maybe_exit_ai_command_mode_on_config_change(
+                    old_v if isinstance(old_v, dict) else {}, new_v,
+                )
+            except Exception as e:
+                logger.exception(f"[CONFIG] ai_command_mode update error: {e}")
 
         return len(changed)
 
@@ -5630,15 +5674,38 @@ class DictationApp:
     # ------------------------------------------------------------------
 
     def enter_ai_command_mode(self):
-        """Enter AI command mode (idempotent, toggle). Safe from any thread."""
+        """Enter AI command mode (idempotent, toggle). Safe from any thread.
+
+        Authoritative-exit plumbing (2026-07-19 incident, report items
+        3/5/7/8, Fix 2 / P0b):
+          - Bumps _ai_cmd_generation. Async work in flight from a PRIOR
+            session (ready-wait, transcription, resolution, plan
+            steps/TTS) checks this and drops silently once it's stale --
+            see _handle_ai_command_utterance and ai_command_mode.py's
+            _process_utterance/_execute_plan/_speak.
+          - reset_cancel() clears the cancel flag exit_ai_command_mode()
+            now leaves SET (see that method) -- a fresh entry is the only
+            thing that re-arms the worker.
+          - _ensure_wake_consumer('ai_command_mode') takes a reason-counted
+            lease on the WakeConsumer pipeline (same mechanism as the
+            toggle hands-free session), so entering while wake-word is off
+            doesn't leave the mode latched but deaf.
+        """
         with self._ai_cmd_mode_lock:
             if self.ai_command_mode_active:
                 return
             if self.command_mode_active or self.ava_mode_active:
                 return
             self.ai_command_mode_active = True
+            self._ai_cmd_generation += 1
         self._ai_cmd_miss_count = 0
         self._ai_cmd_ready.clear()  # Mic gate: unblocks only after cue finishes
+        try:
+            from samsara.ai_command_mode import reset_cancel  # noqa: PLC0415
+            reset_cancel()
+        except Exception as e:
+            logger.debug(f"[AI-CMD] reset_cancel on enter failed: {e}")
+        self._ensure_wake_consumer('ai_command_mode')
         logger.info("[AI-CMD] Entering AI command mode")
         if hasattr(self, 'listening_indicator'):
             self._schedule_ui(self.listening_indicator.set_command_mode, True)
@@ -5669,22 +5736,36 @@ class DictationApp:
             _on_ready()
 
     def exit_ai_command_mode(self):
-        """Exit AI command mode (idempotent). Drains queue. Safe from any thread."""
+        """Exit AI command mode (idempotent). Drains queue. Safe from any thread.
+
+        cancel_queue() leaves the module's _cancel event SET -- deliberately
+        NOT immediately reset here (2026-07-19 incident report item 8: the
+        old immediate reset_cancel() left only a brief window where the
+        worker's dequeue-time check could actually catch a stale item, so
+        an in-flight resolver call or plan step could keep running after a
+        legitimate exit). The cancel flag now stays set for the entire time
+        the mode is inactive; only enter_ai_command_mode()'s reset_cancel()
+        re-arms the worker for a fresh session. _ai_cmd_generation is
+        bumped here too, so async work outside the queue (already past
+        dequeue, already resolving/executing) also observes the exit -- see
+        enter_ai_command_mode's docstring for the full mechanism.
+        """
         with self._ai_cmd_mode_lock:
             if not self.ai_command_mode_active:
                 return
             self.ai_command_mode_active = False
+            self._ai_cmd_generation += 1
         self._ai_cmd_miss_count = 0
         self._ai_cmd_ready.set()  # Unblock utterance gate if cue is still playing
         logger.info("[AI-CMD] Exiting AI command mode")
         if hasattr(self, 'listening_indicator'):
             self._schedule_ui(self.listening_indicator.set_command_mode, False)
         try:
-            from samsara.ai_command_mode import cancel_queue, reset_cancel  # noqa: PLC0415
+            from samsara.ai_command_mode import cancel_queue  # noqa: PLC0415
             cancel_queue()
-            reset_cancel()
         except Exception as e:
-            logger.debug(f"[AI-CMD] Queue cancel/reset on exit failed: {e}")
+            logger.debug(f"[AI-CMD] Queue cancel on exit failed: {e}")
+        self._release_wake_consumer('ai_command_mode')
         self.play_sound('stop')
 
     def _handle_ai_command_utterance(self, buffer: list, src_rate: int) -> None:
@@ -5694,9 +5775,27 @@ class DictationApp:
         Shares _wake_transcription_in_progress with _handle_command_mode_utterance
         to prevent concurrent transcriptions.
         Stop-words are checked before enqueue so cancel is always responsive.
+
+        Session-generation guard (2026-07-19 incident report items 7-8):
+        captures the generation active when this utterance was flushed, and
+        rechecks it after the ready wait and again after transcription --
+        both are places a legitimate exit_ai_command_mode() (or exit +
+        re-entry) could happen while this coroutine was blocked or
+        working, and nothing previously rechecked ai_command_mode_active
+        before enqueueing or speaking. A stale generation drops the
+        utterance silently (debug log only). The captured generation is
+        threaded through enqueue_utterance so the same check can continue
+        at resolution and execution time -- see ai_command_mode.py.
         """
+        entry_generation = self._ai_cmd_generation
         if not self._ai_cmd_ready.wait(timeout=60):
             logger.info('[AI-CMD-UTT] Ready timeout -- dropping utterance')
+            return
+        if self._ai_cmd_generation != entry_generation:
+            logger.debug(
+                f'[AI-CMD-UTT] Stale generation after ready wait '
+                f'({entry_generation} != {self._ai_cmd_generation}) -- dropping'
+            )
             return
         if self._wake_transcription_in_progress:
             logger.info('[AI-CMD-UTT] Transcription in progress -- skipping')
@@ -5723,6 +5822,12 @@ class DictationApp:
             if not text:
                 return
             logger.info(f'[AI-CMD-UTT] "{text}"')
+            if self._ai_cmd_generation != entry_generation:
+                logger.debug(
+                    f'[AI-CMD-UTT] Stale generation after transcription '
+                    f'({entry_generation} != {self._ai_cmd_generation}) -- dropping'
+                )
+                return
             text_lower = text.lower().strip()
             # Stop-word gate: cancel before touching the queue
             from samsara.ai_command_mode import (  # noqa: PLC0415
@@ -5733,7 +5838,7 @@ class DictationApp:
                 reset_cancel()
                 return
             from samsara.ai_command_mode import enqueue_utterance  # noqa: PLC0415
-            enqueue_utterance(self, text)
+            enqueue_utterance(self, entry_generation, text)
         except Exception as exc:
             logger.exception(f'[AI-CMD-UTT] Error: {exc}')
             import traceback  # noqa: PLC0415

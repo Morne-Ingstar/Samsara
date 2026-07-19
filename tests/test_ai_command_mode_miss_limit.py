@@ -44,6 +44,7 @@ def _make_app(miss_limit=3, backend='ollama', commands=None):
         },
     }
     app._ai_cmd_miss_count = 0
+    app._ai_cmd_generation = 0
     app.ai_command_mode_active = True
     app.command_executor = SimpleNamespace(
         commands=commands or {'screenshot': {'ai_visible': True}},
@@ -68,7 +69,7 @@ class TestRegisterMiss:
     def test_first_miss_speaks_notice_only(self):
         app = _make_app(miss_limit=3)
         cfg = app.config['ai_command_mode']
-        ai_command_mode._register_miss(app, cfg)
+        ai_command_mode._register_miss(app, cfg, 0)
         assert app._ai_cmd_miss_count == 1
         assert _spoken_texts(app) == ["I didn't catch a command in that."]
         app.play_sound.assert_not_called()
@@ -76,9 +77,9 @@ class TestRegisterMiss:
     def test_second_miss_chimes_not_speaks(self):
         app = _make_app(miss_limit=3)
         cfg = app.config['ai_command_mode']
-        ai_command_mode._register_miss(app, cfg)
+        ai_command_mode._register_miss(app, cfg, 0)
         app.audio_coordinator.speak.reset_mock()
-        ai_command_mode._register_miss(app, cfg)
+        ai_command_mode._register_miss(app, cfg, 0)
         assert app._ai_cmd_miss_count == 2
         assert _spoken_texts(app) == []
         app.play_sound.assert_called_once_with('scratch_refuse')
@@ -86,11 +87,11 @@ class TestRegisterMiss:
     def test_miss_limit_reached_speaks_off_and_exits(self):
         app = _make_app(miss_limit=3)
         cfg = app.config['ai_command_mode']
-        ai_command_mode._register_miss(app, cfg)
-        ai_command_mode._register_miss(app, cfg)
+        ai_command_mode._register_miss(app, cfg, 0)
+        ai_command_mode._register_miss(app, cfg, 0)
         app.audio_coordinator.speak.reset_mock()
         app.play_sound.reset_mock()
-        ai_command_mode._register_miss(app, cfg)
+        ai_command_mode._register_miss(app, cfg, 0)
         assert app._ai_cmd_miss_count == 3
         assert _spoken_texts(app) == ["AI command mode off."]
         app.play_sound.assert_not_called()
@@ -100,7 +101,7 @@ class TestRegisterMiss:
     def test_miss_limit_is_configurable(self):
         app = _make_app(miss_limit=1)
         cfg = app.config['ai_command_mode']
-        ai_command_mode._register_miss(app, cfg)
+        ai_command_mode._register_miss(app, cfg, 0)
         assert app.exit_ai_command_mode.call_count == 1
         assert app.ai_command_mode_active is False
 
@@ -120,7 +121,7 @@ class TestProcessUtteranceIntegration:
     def test_unresolved_utterance_counts_as_miss(self, monkeypatch):
         app = _make_app(miss_limit=3)
         monkeypatch.setattr(ai_command_mode, 'resolve_utterance', Mock(return_value=[]))
-        ai_command_mode._process_utterance(app, "complete gibberish")
+        ai_command_mode._process_utterance(app, 0, "complete gibberish")
         assert app._ai_cmd_miss_count == 1
         assert _spoken_texts(app) == ["I didn't catch a command in that."]
 
@@ -128,7 +129,7 @@ class TestProcessUtteranceIntegration:
         app = _make_app(miss_limit=3)
         monkeypatch.setattr(ai_command_mode, 'resolve_utterance', Mock(return_value=[]))
         for _ in range(3):
-            ai_command_mode._process_utterance(app, "still gibberish")
+            ai_command_mode._process_utterance(app, 0, "still gibberish")
         assert app.ai_command_mode_active is False
         assert _spoken_texts(app)[-1] == "AI command mode off."
 
@@ -136,22 +137,22 @@ class TestProcessUtteranceIntegration:
         app = _make_app(miss_limit=3)
         resolver = Mock(side_effect=[[], ['screenshot']])
         monkeypatch.setattr(ai_command_mode, 'resolve_utterance', resolver)
-        ai_command_mode._process_utterance(app, "gibberish")
+        ai_command_mode._process_utterance(app, 0, "gibberish")
         assert app._ai_cmd_miss_count == 1
-        ai_command_mode._process_utterance(app, "take a screenshot")
+        ai_command_mode._process_utterance(app, 0, "take a screenshot")
         assert app._ai_cmd_miss_count == 0
         # Miss counting starts over -- next miss speaks the notice again,
         # not the chime, proving the escalation state actually reset.
         app.audio_coordinator.speak.reset_mock()
         monkeypatch.setattr(ai_command_mode, 'resolve_utterance', Mock(return_value=[]))
-        ai_command_mode._process_utterance(app, "gibberish again")
+        ai_command_mode._process_utterance(app, 0, "gibberish again")
         assert _spoken_texts(app) == ["I didn't catch a command in that."]
 
     def test_pending_plan_confirm_counts_as_hit_not_miss(self):
         app = _make_app(miss_limit=3)
         app._ai_cmd_miss_count = 2
         ai_command_mode._pending_plan = ['screenshot']
-        ai_command_mode._process_utterance(app, "yes")
+        ai_command_mode._process_utterance(app, 0, "yes")
         assert app._ai_cmd_miss_count == 0
         app.exit_ai_command_mode.assert_not_called()
 
@@ -159,6 +160,6 @@ class TestProcessUtteranceIntegration:
         app = _make_app(miss_limit=3)
         app._ai_cmd_miss_count = 2
         ai_command_mode._pending_plan = ['screenshot']
-        ai_command_mode._process_utterance(app, "no thanks")
+        ai_command_mode._process_utterance(app, 0, "no thanks")
         assert app._ai_cmd_miss_count == 0
         app.exit_ai_command_mode.assert_not_called()

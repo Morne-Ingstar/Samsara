@@ -42,6 +42,7 @@ def _make_app(menu_limit=0, num_commands=288, backend='ollama'):
         },
     }
     app._ai_cmd_miss_count = 0
+    app._ai_cmd_generation = 0
     app.ai_command_mode_active = True
     commands = {f'command {i:03d}': {'ai_visible': True} for i in range(num_commands)}
     app.command_executor = SimpleNamespace(commands=commands, execute_command=Mock())
@@ -112,7 +113,7 @@ class TestProcessUtteranceMenuPassthrough:
             return []
 
         monkeypatch.setattr(ai_command_mode, 'resolve_utterance', _fake_resolve)
-        ai_command_mode._process_utterance(app, "do something")
+        ai_command_mode._process_utterance(app, 0, "do something")
         assert len(captured['menu']) == 288
 
     def test_low_menu_limit_truncates_menu_passed_to_resolver(self, monkeypatch, caplog):
@@ -125,7 +126,7 @@ class TestProcessUtteranceMenuPassthrough:
 
         monkeypatch.setattr(ai_command_mode, 'resolve_utterance', _fake_resolve)
         with caplog.at_level(logging.WARNING, logger="Samsara.samsara.ai_command_mode"):
-            ai_command_mode._process_utterance(app, "do something")
+            ai_command_mode._process_utterance(app, 0, "do something")
         assert len(captured['menu']) == 50
         warnings = [r for r in caplog.records if r.levelno == logging.WARNING]
         assert len(warnings) == 1
@@ -136,10 +137,10 @@ class TestProcessUtteranceMenuPassthrough:
         app = _make_app(menu_limit=50, num_commands=288, backend='cloud')
         captured = {}
 
-        def _fake_resolve_cloud(utterance, menu, app_):
+        def _fake_resolve_cloud(utterance, menu, app_, generation):
             captured['menu'] = menu
             return []
 
         monkeypatch.setattr(ai_command_mode, '_resolve_via_cloud', _fake_resolve_cloud)
-        ai_command_mode._process_utterance(app, "do something")
+        ai_command_mode._process_utterance(app, 0, "do something")
         assert len(captured['menu']) == 50

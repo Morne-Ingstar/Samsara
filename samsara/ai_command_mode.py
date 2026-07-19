@@ -38,6 +38,20 @@ default (menu_limit=0). Set ai_command_mode.menu_limit to a positive int
 to cap it (e.g. for a small/slow local model's context window) -- any
 truncation that then actually occurs is logged as a WARNING with exact
 counts, never silent. See _capped_menu.
+
+Session-generation staleness guard (2026-07-19 incident report items
+7-8): dictation.py's app._ai_cmd_generation is an int bumped on every
+enter_ai_command_mode() AND exit_ai_command_mode(). The generation active
+when an utterance was captured is threaded through enqueue_utterance ->
+_process_utterance -> _execute_plan/_speak/_resolve_via_cloud/
+_register_miss, and rechecked after every async gap (ready-wait,
+transcription, resolution, before each plan step, before every TTS call).
+A mismatch means a legitimate exit (and possibly re-entry) happened while
+this utterance's work was in flight -- it is dropped silently (debug log
+only), never acted on or spoken for. cancel_queue()'s _cancel event is
+the complementary, coarser guard: exit leaves it SET until the next
+entry's reset_cancel(), so anything still sitting in the queue at dequeue
+time is also caught even before generation is checked.
 """
 from __future__ import annotations
 
@@ -207,7 +221,7 @@ def _capped_menu(menu: list[str], cfg: dict) -> list[str]:
     return menu[:limit]
 
 
-def _resolve_via_cloud(utterance: str, menu: list[str], app) -> list[str]:
+def _resolve_via_cloud(utterance: str, menu: list[str], app, generation: int) -> list[str]:
     """Resolve utterance via the configured cloud LLM provider.
 
     Reuses the existing cloud_llm plumbing (send_json) — no new HTTP client.
@@ -215,18 +229,21 @@ def _resolve_via_cloud(utterance: str, menu: list[str], app) -> list[str]:
 
     `menu` is joined as-is -- callers that need it capped (see
     ai_command_mode.menu_limit) must pass an already-capped list via
-    _capped_menu(); this function never truncates on its own."""
+    _capped_menu(); this function never truncates on its own.
+
+    `generation` is threaded into any _speak() calls -- see _speak's
+    docstring for the staleness-guard mechanism."""
     from samsara import cloud_llm  # noqa: PLC0415
     cloud_cfg = app.config.get("cloud_llm", {})
     if not cloud_cfg.get("api_key", ""):
-        _speak(app, "No cloud API key is configured. Add one in Settings under Ava Cloud.")
+        _speak(app, "No cloud API key is configured. Add one in Settings under Ava Cloud.", generation)
         return []
     cmd_list = ", ".join(menu)
     system = _SYSTEM_PROMPT.replace("{COMMAND_LIST}", cmd_list)
     raw = cloud_llm.send_json(system, utterance, app)
     if raw.startswith("Error:"):
         print(f"[AI-CMD] Cloud resolver error: {raw}")
-        _speak(app, "Cloud resolver failed. Check your API key and network, then try again.")
+        _speak(app, "Cloud resolver failed. Check your API key and network, then try again.", generation)
         return []
     try:
         parsed = json.loads(raw)
@@ -247,7 +264,20 @@ def _resolve_via_cloud(utterance: str, menu: list[str], app) -> list[str]:
 # Speaker and mic-duck helpers
 # ---------------------------------------------------------------------------
 
-def _speak(app, text: str) -> None:
+def _speak(app, text: str, generation: int) -> None:
+    """Speak `text`, unless the mode has moved on to a different generation
+    (an exit, or exit + re-entry) since the caller captured `generation` --
+    2026-07-19 incident report item 7: exit set the ready event but
+    nothing rechecked ai_command_mode_active before speaking, so feedback
+    for an utterance that started resolving before a legitimate exit could
+    still land after it. Every caller in this module threads through the
+    generation it captured at (or before) its own async work started."""
+    if getattr(app, "_ai_cmd_generation", generation) != generation:
+        logger.debug(
+            f"[AI-CMD] Stale generation ({generation} != {app._ai_cmd_generation}) "
+            f"-- dropping TTS: {text!r}"
+        )
+        return
     ac = getattr(app, "audio_coordinator", None)
     if ac is not None:
         ac.speak(text, category="ai_command")
@@ -282,27 +312,41 @@ def _chime(app) -> None:
         logger.debug(f"_chime: {exc}")
 
 
-def _register_miss(app, cfg: dict) -> None:
+def _register_miss(app, cfg: dict, generation: int) -> None:
     """Bump the consecutive-miss counter; nag once, chime after, auto-exit
     at the configured limit. See module docstring for the exact sequence.
 
     Mirrors dictation.py's command_mode miss_limit auto-exit, but adds the
     graduated spoken-notice -> chime-only escalation this mode was missing
-    (see the 2026-07-19 AI-command-mode nag incident)."""
+    (see the 2026-07-19 AI-command-mode nag incident).
+
+    Gated on `generation` FIRST, before touching any state: if the mode
+    already exited (and possibly re-entered) since this utterance started
+    resolving, incrementing the counter or -- worse -- calling
+    exit_ai_command_mode() here would corrupt or force-exit a DIFFERENT,
+    possibly freshly-re-entered session (2026-07-19 incident report
+    items 7-8)."""
+    if getattr(app, "_ai_cmd_generation", generation) != generation:
+        logger.debug(
+            f"[AI-CMD] Stale generation at miss-registration "
+            f"({generation} != {app._ai_cmd_generation}) -- dropping"
+        )
+        return
+
     miss_count = getattr(app, "_ai_cmd_miss_count", 0) + 1
     app._ai_cmd_miss_count = miss_count
     miss_limit = int(cfg.get("miss_limit", _DEFAULTS["miss_limit"]))
 
     if miss_limit > 0 and miss_count >= miss_limit:
         logger.info(f"[AI-CMD] Miss limit ({miss_limit}) reached -- exiting")
-        _speak(app, "AI command mode off.")
+        _speak(app, "AI command mode off.", generation)
         exit_fn = getattr(app, "exit_ai_command_mode", None)
         if exit_fn is not None:
             exit_fn()
         return
 
     if miss_count <= 1:
-        _speak(app, "I didn't catch a command in that.")
+        _speak(app, "I didn't catch a command in that.", generation)
     else:
         _chime(app)
 
@@ -323,8 +367,11 @@ def _execute_step(app, command_name: str) -> None:
         app.command_executor.execute_command(command_name)
 
 
-def _execute_plan(app, actions: list[str], cfg: dict) -> None:
-    """Execute each step with settle delay; check cancel between steps."""
+def _execute_plan(app, generation: int, actions: list[str], cfg: dict) -> None:
+    """Execute each step with settle delay; check cancel and generation
+    between steps -- a stale generation (exit, or exit + re-entry, since
+    this plan was resolved) drops the remaining steps silently, same as
+    _cancel.is_set() (2026-07-19 incident report item 8)."""
     settle = float(cfg.get("step_settle_seconds", _DEFAULTS["step_settle_seconds"]))
     show_hud = bool(cfg.get("show_plan_hud", _DEFAULTS["show_plan_hud"]))
 
@@ -334,6 +381,12 @@ def _execute_plan(app, actions: list[str], cfg: dict) -> None:
     for i, cmd in enumerate(actions):
         if _cancel.is_set():
             print("[AI-CMD] Plan cancelled mid-execution")
+            break
+        if getattr(app, "_ai_cmd_generation", generation) != generation:
+            logger.debug(
+                f"[AI-CMD] Stale generation before step {i + 1}/{len(actions)} "
+                f"({generation} != {app._ai_cmd_generation}) -- dropping remaining plan"
+            )
             break
         print(f"[AI-CMD] Step {i + 1}/{len(actions)}: {cmd!r}")
         if show_hud:
@@ -386,8 +439,16 @@ def _hud_hide() -> None:
 # Worker
 # ---------------------------------------------------------------------------
 
-def _process_utterance(app, utterance: str) -> None:  # noqa: C901
-    """Resolve one utterance: confirm-gate check, then Ollama resolve, then execute."""
+def _process_utterance(app, generation: int, utterance: str) -> None:  # noqa: C901
+    """Resolve one utterance: confirm-gate check, then Ollama resolve, then execute.
+
+    `generation` is the AI-command-mode generation active when this
+    utterance was captured (see dictation.py's _handle_ai_command_utterance
+    and enqueue_utterance below). Rechecked after resolution -- checkpoint
+    (c) of the 2026-07-19 incident report's staleness-guard sequence --
+    and threaded into every _speak()/_execute_plan() call so mid-flight
+    work never acts, or gives feedback, for a session that has already
+    ended."""
     global _pending_plan
     cfg = _cfg(app)
     text_lower = utterance.lower().strip()
@@ -402,11 +463,11 @@ def _process_utterance(app, utterance: str) -> None:  # noqa: C901
             with _pending_plan_lock:
                 _pending_plan = None
             print(f"[AI-CMD] Plan confirmed: {pending}")
-            _execute_plan(app, pending, cfg)
+            _execute_plan(app, generation, pending, cfg)
         else:
             with _pending_plan_lock:
                 _pending_plan = None
-            _speak(app, "Plan cancelled.")
+            _speak(app, "Plan cancelled.", generation)
         return
 
     # --- Resolve utterance --------------------------------------------------
@@ -417,7 +478,7 @@ def _process_utterance(app, utterance: str) -> None:  # noqa: C901
     _duck(app, True)
     try:
         if backend == "cloud":
-            actions = _resolve_via_cloud(utterance, menu, app)
+            actions = _resolve_via_cloud(utterance, menu, app, generation)
         else:
             model = cfg.get("model", _DEFAULTS["model"])
             host = _host(app)
@@ -425,8 +486,18 @@ def _process_utterance(app, utterance: str) -> None:  # noqa: C901
     finally:
         _duck(app, False)
 
+    # Checkpoint (c): after resolution, before acting on it at all -- the
+    # resolver call (network round-trip, up to 20s) is the single longest
+    # async gap in this whole pipeline.
+    if getattr(app, "_ai_cmd_generation", generation) != generation:
+        logger.debug(
+            f"[AI-CMD] Stale generation after resolution "
+            f"({generation} != {app._ai_cmd_generation}) -- dropping"
+        )
+        return
+
     if not actions:
-        _register_miss(app, cfg)
+        _register_miss(app, cfg, generation)
         return
 
     _register_hit(app)
@@ -446,23 +517,27 @@ def _process_utterance(app, utterance: str) -> None:  # noqa: C901
         _speak(
             app,
             f"This plan includes {unsafe_str}. Say yes to confirm or scratch that to cancel.",
+            generation,
         )
         return
 
-    _execute_plan(app, actions, cfg)
+    _execute_plan(app, generation, actions, cfg)
 
 
 def _worker_loop(app) -> None:
     while True:
         try:
-            utterance = _task_queue.get(timeout=0.5)
+            item = _task_queue.get(timeout=0.5)
         except queue.Empty:
             continue
         if _cancel.is_set():
-            # Mode exited while item was queued -- drain silently
+            # Mode exited (and stays SET until the next fresh entry's
+            # reset_cancel() -- see dictation.py's enter/exit_ai_command_mode)
+            # -- drain silently.
             continue
+        generation, utterance = item
         try:
-            _process_utterance(app, utterance)
+            _process_utterance(app, generation, utterance)
         except Exception as exc:
             print(f"[AI-CMD] Worker error: {exc}")
             import traceback  # noqa: PLC0415
@@ -482,18 +557,22 @@ def _ensure_worker(app) -> None:
 # Public API
 # ---------------------------------------------------------------------------
 
-def enqueue_utterance(app, utterance: str) -> None:
-    """Enqueue a finalized utterance. Drops oldest item (with a spoken warning) if full."""
+def enqueue_utterance(app, generation: int, utterance: str) -> None:
+    """Enqueue a finalized utterance tagged with the AI-command-mode
+    generation active when it was captured (see dictation.py's
+    _handle_ai_command_utterance and the module docstring's
+    session-generation section). Drops oldest item (with a spoken
+    warning) if full."""
     cfg = _cfg(app)
     cap = int(cfg.get("queue_depth_cap", _DEFAULTS["queue_depth_cap"]))
     _ensure_worker(app)
     if _task_queue.qsize() >= cap:
-        _speak(app, "I'm a bit behind -- hold on.")
+        _speak(app, "I'm a bit behind -- hold on.", generation)
         try:
             _task_queue.get_nowait()
         except queue.Empty as e:
             logger.debug(f"enqueue_utterance: {e}")
-    _task_queue.put_nowait(utterance)
+    _task_queue.put_nowait((generation, utterance))
 
 
 def cancel_queue() -> None:

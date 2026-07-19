@@ -309,9 +309,16 @@ class WakeConsumer:
             # This poll loop is the session's ONLY audio consumer. If
             # something escapes the per-frame guard above and kills this
             # thread, the session would otherwise go deaf while staying
-            # latched (command_mode_active still True) -- silently. Fail
-            # LOUD instead: log, earcon, and force the toggle-mode session
-            # to end rather than leave a zombie session nobody can hear.
+            # latched (command_mode_active/ai_command_mode_active still
+            # True) -- silently. Fail LOUD instead: log, earcon, and force
+            # any latched session to end rather than leave a zombie
+            # session nobody can hear.
+            #
+            # AI-command-mode force-exit (2026-07-19 incident report item
+            # 6): this handler used to force-exit toggle-command-mode only.
+            # A consumer crash while AI-command-mode was active left it
+            # exactly as latched-but-deaf as the original incident's
+            # missing-exit bug -- just via a different trigger.
             print(f"[ERROR] Wake consumer loop died: {exc}")
             import traceback
             traceback.print_exc()
@@ -324,6 +331,11 @@ class WakeConsumer:
             try:
                 if self._is_toggle_cmd(app):
                     app.exit_command_mode()
+            except Exception:
+                pass
+            try:
+                if self._is_ai_cmd_mode(app):
+                    app.exit_ai_command_mode()
             except Exception:
                 pass
 

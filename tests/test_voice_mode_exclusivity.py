@@ -56,6 +56,7 @@ def _make_app(monkeypatch, command_mode='hold'):
     app._ai_cmd_ready = threading.Event()
     app._ai_cmd_ready.set()
     app._ai_cmd_key_held = False
+    app._ai_cmd_generation = 0
 
     app.config = {
         'command_mode': {
