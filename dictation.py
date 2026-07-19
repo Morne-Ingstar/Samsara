@@ -5426,7 +5426,18 @@ class DictationApp:
             self._schedule_ui(self.listening_indicator.set_session_mode, name, color)
 
     def enter_command_mode(self):
-        """Enter command mode (idempotent). Safe to call from any thread."""
+        """Enter command mode (idempotent). Safe to call from any thread.
+
+        Exclusive voice-mode ownership (2026-07-19 incident, report §
+        "Asymmetric overlap"): if AI-command-mode is active, exit it first
+        -- with its own normal exit feedback -- before proceeding. A
+        different mode's activation being pressed is unambiguous user
+        intent; rejecting it would have left the incident's AI-command
+        latch in place instead of resolving it. Called unlocked, before
+        acquiring _command_mode_lock, so exit_ai_command_mode's own
+        locking/async work never nests under this lock."""
+        if self.ai_command_mode_active:
+            self.exit_ai_command_mode()
         with self._command_mode_lock:
             if self.command_mode_active or self.ava_mode_active:
                 return
@@ -5558,7 +5569,19 @@ class DictationApp:
     # ── Ava mode (Right Alt hold-to-talk → Ollama) ───────────────────────────
 
     def enter_ava_mode(self):
-        """Enter Ava mode (idempotent). Safe to call from any thread."""
+        """Enter Ava mode (idempotent). Safe to call from any thread.
+
+        Exclusive voice-mode ownership (2026-07-19 incident root cause):
+        this guard previously omitted ai_command_mode_active, so Ava could
+        enter ON TOP of a latched AI-command session (the incident's exact
+        path -- Right-Alt's clean 157ms ghost-tap exit then cleaned up
+        only Ava, leaving AI-command mode latched and nagging). If
+        AI-command-mode is active, exit it first -- with its own normal
+        exit feedback -- before proceeding with Ava entry. Called
+        unlocked, before acquiring _ava_mode_lock, so exit_ai_command_mode's
+        own locking/async work never nests under this lock."""
+        if self.ai_command_mode_active:
+            self.exit_ai_command_mode()
         with self._ava_mode_lock:
             if self.ava_mode_active or self.command_mode_active:
                 return
