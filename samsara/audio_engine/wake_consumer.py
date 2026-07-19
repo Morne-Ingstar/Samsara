@@ -155,12 +155,19 @@ class WakeConsumer:
         so a frozen/stale wake-mode buffer never sits around to be
         (incorrectly) flushed once hotkey recording ends.
 
-        No-ops when toggle-command-mode or AI-command-mode is servicing
-        the in-progress utterance instead -- those must keep running (see
+        No-ops when toggle-command-mode is servicing the in-progress
+        utterance instead -- that session must keep running (see
         _process_frame's hotkey-deafness guard) and must NOT be discarded;
-        e.g. a hotkey press mid-DICTATE-chunk must not eat the chunk."""
+        e.g. a hotkey press mid-DICTATE-chunk must not eat the chunk.
+
+        AI-command-mode is NOT exempted here (2026-07-19 nag incident fix,
+        matching its removal from the hotkey_suppress gate): any utterance
+        it was mid-capturing gets discarded like plain wake-word mode's
+        would, rather than sitting frozen through the hotkey hold and then
+        resuming with stale + fresh audio mixed together once the hold
+        ends."""
         app = self._app
-        if self._is_toggle_cmd(app) or self._is_ai_cmd_mode(app):
+        if self._is_toggle_cmd(app):
             return
         if self._utterance_frames or app.is_speaking:
             logger.debug("[SEAM] Discarding in-progress wake-mode utterance "
@@ -351,23 +358,30 @@ class WakeConsumer:
         # between calls and the shared lock serializes inference, but running
         # a redundant wake utterance here still wastes work and delays gates.
         #
-        # Toggle-command-mode and AI-command-mode are explicitly exempted:
-        # both are active, user-initiated listening sessions that must
-        # keep servicing regardless of a concurrent hotkey press (a hotkey
-        # press mid-DICTATE-chunk must not eat the chunk). The always-live
+        # Toggle-command-mode is explicitly exempted: it is an active,
+        # user-initiated listening session that must keep servicing
+        # regardless of a concurrent hotkey press (a hotkey press
+        # mid-DICTATE-chunk must not eat the chunk). The always-live
         # global abort phrase lives entirely inside SessionModeManager.
         # dispatch_utterance(), reached only via _flush() -> app._handle_
         # command_mode_utterance(), which only ever fires from THIS same
         # poll loop's toggle-command branch -- so exempting
         # _is_toggle_cmd(app) here is what keeps global abort reachable
-        # while a hotkey is held. AI-command-mode gets the same exemption
-        # for consistency with the poll loop's own outer gate (top of
-        # _poll_loop), which already treats it as an equally "actively
-        # listening" state.
+        # while a hotkey is held.
+        #
+        # AI-command-mode is DELIBERATELY NOT exempted (2026-07-19 nag
+        # incident): letting it keep servicing during a hotkey hold meant
+        # its utterance loop kept transcribing and speaking "I didn't catch
+        # a command in that" WHILE a hold-to-dictate recording was in
+        # progress (log-confirmed: [OK] dictation and the AI-CMD nag firing
+        # in the same second). AI-command-mode has no global-abort-style
+        # reachability requirement the way toggle-command-mode does, so it
+        # now goes fully deaf for the duration of the hotkey hold, same as
+        # plain wake-word mode. See discard_stale_wake_utterance() below,
+        # which drops the same exemption for the same reason.
         hotkey_suppress = (
             app._hotkey_recording
             and not self._is_toggle_cmd(app)
-            and not self._is_ai_cmd_mode(app)
         )
         if hotkey_suppress:
             if not self._hotkey_suppressed_last:
@@ -517,22 +531,24 @@ class WakeConsumer:
                 if self._utterance_frames:
                     logger.debug(f"[PRE] Prepended {len(self._utterance_frames) * FRAME_MS}ms pre-buffer to wake onset")
                 # Diagnostic (2026-07-10 hotkey word-loss investigation,
-                # updated by FIX 1): this branch is now UNREACHABLE while a
-                # plain hotkey recording is active -- _process_frame's
-                # top-level hotkey-deafness guard returns before speech
-                # onset is ever evaluated. The only way to reach this with
-                # _hotkey_recording=True is the intentional toggle-command-
-                # mode/AI-command-mode exemption (that servicing must keep
-                # running concurrently with a hotkey press). The stateless
-                # ONNX model's whole inference call is serialized by
-                # app._vad_lock, so this remaining overlap can briefly BLOCK
-                # the gate's scan (or vice versa) but cannot interleave two
-                # runs on the dedicated InferenceSession.
+                # updated by FIX 1, narrowed 2026-07-19 nag incident): this
+                # branch is now UNREACHABLE while a plain hotkey recording
+                # is active -- _process_frame's top-level hotkey-deafness
+                # guard returns before speech onset is ever evaluated. The
+                # only way to reach this with _hotkey_recording=True is the
+                # intentional toggle-command-mode exemption (that servicing
+                # must keep running concurrently with a hotkey press).
+                # AI-command-mode no longer has this exemption (see the
+                # hotkey_suppress comment above), so it can't reach here
+                # either. The stateless ONNX model's whole inference call is
+                # serialized by app._vad_lock, so this remaining overlap can
+                # briefly BLOCK the gate's scan (or vice versa) but cannot
+                # interleave two runs on the dedicated InferenceSession.
                 if getattr(app, '_hotkey_recording', False):
                     logger.debug(
                         "[SEAM] Wake-consumer speech onset occurred WHILE "
                         "_hotkey_recording=True -- reached only via the "
-                        "toggle-command-mode/AI-command-mode exemption "
+                        "toggle-command-mode exemption "
                         "(see FIX 1). VAD lock contention possible, "
                         "inference serialized by the shared VAD lock."
                     )
