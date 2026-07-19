@@ -6063,14 +6063,20 @@ class DictationApp:
             logger.info(f'[SESSION] mode={manager.mode.value} outcome={outcome.kind} detail={outcome.detail}')
             self._handle_session_dispatch_outcome(outcome, text)
             if _was_dictate_lane and self._dictate_preview is not None:
-                # This utterance's authoritative final just landed -- append
-                # it to the preview's rolling transcript, independent of
-                # outcome.kind (even a rejected/refused utterance ends the
-                # in-progress buffer this preview was showing). `text` is
-                # the same authoritative final string dispatch_utterance
-                # above just used -- not a re-decode.
+                # This utterance's authoritative final just landed. `text`
+                # is the same string dispatch_utterance above just used --
+                # not a re-decode. on_utterance_final itself suppresses
+                # control phrases (scratch that / end / and / switch words /
+                # Ava invocations / exit phrases) from the visible
+                # transcript; outcome.kind == "scratch_success" is passed
+                # through as the REAL (not text-guessed) signal that the
+                # scratch-that undo actually happened, so the preview can
+                # correctly mirror it by popping the just-finalized line --
+                # see DictatePreviewSession.on_utterance_final's docstring.
                 try:
-                    self._dictate_preview.on_utterance_final(text)
+                    self._dictate_preview.on_utterance_final(
+                        text, scratch_success=(outcome.kind == 'scratch_success'),
+                    )
                 except Exception as e:
                     logger.debug(f'[DICTATE-PREVIEW] on_utterance_final failed: {e}')
         except Exception as exc:

@@ -26,7 +26,12 @@ from unittest.mock import Mock
 import dictation
 from samsara.audio_engine.frame import FRAME_MS, SAMPLE_RATE
 from samsara.audio_engine.wake_consumer import WakeConsumer, _PREVIEW_TAIL_S
-from samsara.session_modes import DispatchOutcome, SessionMode
+from samsara.session_modes import (
+    DispatchOutcome,
+    GLOBAL_SESSION_EXIT_PHRASES,
+    SessionMode,
+    SessionModeManager,
+)
 from samsara.streaming import (
     DictatePreviewSession,
     DICTATE_PREVIEW_TRANSCRIPT_MAX_UTTERANCES,
@@ -239,6 +244,134 @@ class TestPartialParamsContract:
         assert params['language'] == 'en'
 
 
+# ============================================================================
+# _is_control_phrase -- reuses the SAME authoritative matchers
+# dispatch_utterance() itself checks. A real SessionModeManager is
+# constructed (its own docstring: "unit-testable without mocking hardware")
+# rather than duck-typing is_scratch_that/is_dictate_commit/match_switch_word/
+# match_ava_invocation/_matches_abort_phrase by hand -- that would just
+# reimplement the exact logic this predicate exists to REUSE, and could
+# silently drift from the real matchers exactly like a hand-rolled dispatch
+# stub would (same "call the real production code" philosophy as
+# test_wake_consumer_lifecycle.py / test_transcription_params.py).
+# ============================================================================
+
+def _real_session_manager(ava_invocations=None):
+    abort_phrases = list(dict.fromkeys([
+        'cancel', 'cancel dictation', 'abort', *GLOBAL_SESSION_EXIT_PHRASES,
+    ]))
+    return SessionModeManager(
+        abort_phrases=abort_phrases,
+        foreground_exe_resolver=lambda: 'test.exe',
+        inject_fn=lambda *a, **k: True,
+        remove_chars_fn=lambda n: None,
+        command_dispatch_fn=lambda text: None,
+        agent_dispatch_fn=lambda text, ctx: None,
+        ava_invocations=ava_invocations,
+    )
+
+
+def _bare_preview_with_real_manager(ava_invocations=None):
+    manager = _real_session_manager(ava_invocations=ava_invocations)
+    app = types.SimpleNamespace(_ensure_session_mode_manager=lambda: manager)
+    return _bare_preview(app)
+
+
+class TestIsControlPhrase:
+    def test_scratch_that_is_a_control_phrase(self):
+        session = _bare_preview_with_real_manager()
+        assert session._is_control_phrase("scratch that") is True
+
+    def test_literal_scratch_that_is_dictation_not_control(self):
+        """match_literal_payload's escape hatch -- no special-case code
+        needed, falls out of every matcher requiring whole-utterance
+        equality (see _is_control_phrase's own docstring)."""
+        session = _bare_preview_with_real_manager()
+        assert session._is_control_phrase("literal scratch that") is False
+
+    @pytest.mark.parametrize("text", ["end", "and", "End.", "AND"])
+    def test_dictate_commit_word_and_homophone_are_control_phrases(self, text):
+        session = _bare_preview_with_real_manager()
+        assert session._is_control_phrase(text) is True
+
+    @pytest.mark.parametrize("text", ["command mode", "dictate mode", "dictate"])
+    def test_switch_words_are_control_phrases(self, text):
+        session = _bare_preview_with_real_manager()
+        assert session._is_control_phrase(text) is True
+
+    def test_ava_invocation_is_a_control_phrase(self):
+        session = _bare_preview_with_real_manager(ava_invocations=['hey ava'])
+        assert session._is_control_phrase("hey ava") is True
+
+    def test_bare_ava_is_not_a_control_phrase_when_not_configured(self):
+        """Bare "ava" is deliberately excluded from DEFAULT_AVA_INVOCATIONS
+        (2026-07-18 "Ava Omniscience Mode" incident) -- the preview must
+        not suppress it either, matching dispatch_utterance's own
+        behavior."""
+        session = _bare_preview_with_real_manager(ava_invocations=['hey ava'])
+        assert session._is_control_phrase("ava") is False
+
+    @pytest.mark.parametrize("text", GLOBAL_SESSION_EXIT_PHRASES)
+    def test_exit_phrases_are_control_phrases(self, text):
+        session = _bare_preview_with_real_manager()
+        assert session._is_control_phrase(text) is True
+
+    def test_configured_abort_word_is_also_a_control_phrase(self):
+        """_matches_abort_phrase covers the user's configured cancel/abort
+        words too, not just the bare GLOBAL_SESSION_EXIT_PHRASES tuple --
+        reusing the manager's real matcher (word-boundary regex, substring
+        anywhere) rather than a whole-utterance-only reimplementation."""
+        session = _bare_preview_with_real_manager()
+        assert session._is_control_phrase("please cancel dictation now") is True
+
+    def test_ordinary_prose_is_not_a_control_phrase(self):
+        session = _bare_preview_with_real_manager()
+        assert session._is_control_phrase("the quick brown fox jumps") is False
+
+    def test_empty_text_is_not_a_control_phrase(self):
+        session = _bare_preview_with_real_manager()
+        assert session._is_control_phrase("") is False
+
+    def test_missing_session_manager_fails_open_to_not_control(self):
+        """Best-effort: if the control-phrase check itself can't run, this
+        preview-only display path fails open (shows the text) rather than
+        raising or silently going blank -- matches the file's existing
+        best-effort philosophy (e.g. _partial_params' own failure
+        fallback)."""
+        app = types.SimpleNamespace()  # no _ensure_session_mode_manager at all
+        session = _bare_preview(app)
+        assert session._is_control_phrase("scratch that") is False
+
+
+class TestLoopSuppressesControlPhrasePartials:
+    def _run_one_tick(self, session, partial_text):
+        session._transcribe_partial = lambda: partial_text
+        stop_event = Mock()
+        stop_event.wait.return_value = False
+        # is_set() consulted twice per real tick (outer while guard, then
+        # the post-transcribe cancel check) before the NEXT outer while
+        # check ends the loop -- see DictatePreviewSession._loop.
+        stop_event.is_set.side_effect = [False, False, True]
+        session._stop_event = stop_event
+        session._loop()
+
+    def test_control_phrase_partial_is_not_rendered(self):
+        session = _bare_preview_with_real_manager()
+        calls = []
+        session._overlay = types.SimpleNamespace(
+            set_transcript=lambda *a, **k: calls.append(a))
+        self._run_one_tick(session, "scratch that")
+        assert calls == []
+
+    def test_ordinary_partial_is_still_rendered(self):
+        session = _bare_preview_with_real_manager()
+        calls = []
+        session._overlay = types.SimpleNamespace(
+            set_transcript=lambda *a, **k: calls.append(a))
+        self._run_one_tick(session, "the weather today")
+        assert calls == [([], "the weather today")]
+
+
 class TestOnUtteranceFinal:
     """Persistent rolling transcript, no hard clear (2026-07-18 follow-up:
     the original flash+clear-to-"" model punished the user for a natural
@@ -287,6 +420,60 @@ class TestOnUtteranceFinal:
         session.on_utterance_final("   ")
         assert session._finalized == []
 
+    def test_control_phrase_final_does_not_grow_the_transcript(self):
+        """The bug this task fixes: "scratch that" spoken in DICTATE must
+        never become a persisted transcript line -- against a REAL
+        SessionModeManager (see TestIsControlPhrase's own rationale for why
+        a real one, not a duck-typed stub)."""
+        session = _bare_preview_with_real_manager()
+        session.on_utterance_final("scratch that")  # scratch_success=False (default)
+        assert session._finalized == []
+
+    @pytest.mark.parametrize("text", ["end", "and", "command mode", "hey ava"])
+    def test_other_control_phrases_final_do_not_grow_the_transcript(self, text):
+        session = _bare_preview_with_real_manager(ava_invocations=['hey ava'])
+        session.on_utterance_final(text)
+        assert session._finalized == []
+
+    def test_ordinary_prose_final_does_grow_the_transcript(self):
+        """Same real-manager setup as the control-phrase tests above --
+        confirms suppression is specific to control phrases, not a
+        blanket regression."""
+        session = _bare_preview_with_real_manager()
+        session.on_utterance_final("the weather today")
+        assert session._finalized == ["the weather today"]
+
+    def test_literal_scratch_that_final_is_dictation_and_grows_the_transcript(self):
+        session = _bare_preview_with_real_manager()
+        session.on_utterance_final("literal scratch that")
+        assert session._finalized == ["literal scratch that"]
+
+    def test_scratch_success_pops_the_last_finalized_line(self):
+        """scratch_success=True is the REAL dispatch_utterance outcome, not
+        re-derived from text -- mirrors the actual undo by popping rather
+        than merely suppressing."""
+        session = _bare_preview_with_real_manager()
+        session.on_utterance_final("first thought")
+        session.on_utterance_final("second thought")
+        session.on_utterance_final("scratch that", scratch_success=True)
+        assert session._finalized == ["first thought"]
+
+    def test_scratch_success_with_nothing_to_pop_is_a_safe_no_op(self):
+        session = _bare_preview_with_real_manager()
+        session.on_utterance_final("scratch that", scratch_success=True)
+        assert session._finalized == []
+
+    def test_refused_scratch_that_neither_pops_nor_appends(self):
+        """scratch_success=False (the default) for a scratch-that utterance
+        means the real undo did NOT happen (e.g. a stale focus lock, see
+        SessionModeManager._do_scratch_that) -- the preview must not pop
+        content that's still actually there, and must not append "scratch
+        that" itself as if it were dictated."""
+        session = _bare_preview_with_real_manager()
+        session.on_utterance_final("first thought")
+        session.on_utterance_final("scratch that", scratch_success=False)
+        assert session._finalized == ["first thought"]
+
     def test_rolling_cap_drops_oldest_from_the_top(self):
         app, _ = _base_preview_app()
         session = _bare_preview(app)
@@ -311,10 +498,19 @@ class TestOnUtteranceFinal:
 
 
 class TestStartResetsTranscript:
-    def test_re_entering_dictate_resets_the_transcript_to_empty(self):
+    def test_re_entering_dictate_resets_the_transcript_to_empty(self, monkeypatch):
         """start() is called on every DICTATE re-entry (a fresh
         DictatePreviewSession per dictation.py's _ensure_streaming_preview,
-        but start() also resets explicitly -- see its own comment)."""
+        but start() also resets explicitly -- see its own comment).
+
+        thread_registry.spawn is no-op'd -- start() spawns a REAL daemon
+        thread running _loop() at ~1s cadence against this test's
+        duck-typed app; left un-mocked it leaks a live background thread
+        for the rest of the test process (only surfaced as a visible
+        logging error once _is_control_phrase gave that thread a new,
+        frequently-hit failure path to log from -- the leak itself predates
+        this task)."""
+        monkeypatch.setattr('samsara.streaming.thread_registry.spawn', lambda *a, **k: None)
         app, _ = _base_preview_app()
         session = _bare_preview(app)
         session._finalized = ["stale", "from a previous DICTATE entry"]
@@ -605,7 +801,7 @@ def _buffer_for(duration_s=1.0, rate=16000):
     return [np.zeros(int(duration_s * rate), dtype=np.float32)]
 
 
-def _make_utterance_app(mode, dictate_preview=None):
+def _make_utterance_app(mode, dictate_preview=None, outcome_kind="dictate_staged"):
     app = dictation.DictationApp.__new__(dictation.DictationApp)
     app._wake_transcription_in_progress = False
     app.model_rate = 16000
@@ -627,7 +823,7 @@ def _make_utterance_app(mode, dictate_preview=None):
     manager = Mock()
     manager.mode = mode
     manager.dispatch_utterance = Mock(
-        return_value=DispatchOutcome(kind="dictate_staged", detail={}))
+        return_value=DispatchOutcome(kind=outcome_kind, detail={}))
     app._ensure_session_mode_manager = Mock(return_value=manager)
     return app, manager
 
@@ -640,7 +836,20 @@ class TestHandleCommandModeUtteranceOnFinalHook:
         preview = Mock()
         app, _manager = _make_utterance_app(SessionMode.DICTATE, dictate_preview=preview)
         dictation.DictationApp._handle_command_mode_utterance(app, _buffer_for(), 16000)
-        preview.on_utterance_final.assert_called_once_with("hello world")
+        preview.on_utterance_final.assert_called_once_with(
+            "hello world", scratch_success=False)
+
+    def test_scratch_success_outcome_is_threaded_through_as_the_real_signal(self):
+        """dispatch_utterance's own outcome.kind == "scratch_success" -- not
+        re-derived by text-matching "hello world" (the fixture's fake
+        decode) -- proves this is threaded from the real outcome, not
+        guessed from the utterance text."""
+        preview = Mock()
+        app, _manager = _make_utterance_app(
+            SessionMode.DICTATE, dictate_preview=preview, outcome_kind="scratch_success")
+        dictation.DictationApp._handle_command_mode_utterance(app, _buffer_for(), 16000)
+        preview.on_utterance_final.assert_called_once_with(
+            "hello world", scratch_success=True)
 
     def test_command_lane_final_does_not_touch_the_preview(self):
         """COMMAND-lane utterances never showed a preview in the first
