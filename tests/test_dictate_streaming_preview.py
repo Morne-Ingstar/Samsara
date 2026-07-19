@@ -27,7 +27,12 @@ import dictation
 from samsara.audio_engine.frame import FRAME_MS, SAMPLE_RATE
 from samsara.audio_engine.wake_consumer import WakeConsumer, _PREVIEW_TAIL_S
 from samsara.session_modes import DispatchOutcome, SessionMode
-from samsara.streaming import DictatePreviewSession, PARTIAL_BEAM
+from samsara.streaming import (
+    DictatePreviewSession,
+    DICTATE_PREVIEW_TRANSCRIPT_MAX_UTTERANCES,
+    PARTIAL_BEAM,
+    StreamingOverlayQt,
+)
 
 
 # ============================================================================
@@ -126,9 +131,11 @@ def _bare_preview(app):
     session._overlay = types.SimpleNamespace(
         show=lambda: None, close=lambda: None,
         update_text=lambda *a, **k: None,
+        set_transcript=lambda *a, **k: None,
         flash_done_and_fade=lambda cb: cb() if cb else None,
     )
     session._closed = False
+    session._finalized = []
     return session
 
 
@@ -233,20 +240,62 @@ class TestPartialParamsContract:
 
 
 class TestOnUtteranceFinal:
-    def test_clears_and_flashes_then_reopens_for_next_utterance(self):
+    """Persistent rolling transcript, no hard clear (2026-07-18 follow-up:
+    the original flash+clear-to-"" model punished the user for a natural
+    mid-thought pause by erasing the words just spoken)."""
+
+    def test_appends_final_text_and_does_not_clear(self):
+        app, _ = _base_preview_app()
+        session = _bare_preview(app)
+        session.on_utterance_final("hello world")
+        assert session._finalized == ["hello world"]
+
+    def test_second_final_appends_rather_than_replacing(self):
+        app, _ = _base_preview_app()
+        session = _bare_preview(app)
+        session.on_utterance_final("first thought")
+        session.on_utterance_final("second thought")
+        assert session._finalized == ["first thought", "second thought"]
+
+    def test_renders_via_set_transcript_with_cleared_partial(self):
         app, _ = _base_preview_app()
         session = _bare_preview(app)
         events = []
         session._overlay = types.SimpleNamespace(
-            update_text=lambda text, state: events.append(('update', text, state)),
-            show=lambda: events.append(('show',)),
-            flash_done_and_fade=lambda cb: (events.append(('flash',)), cb()),
-            close=lambda: None,
+            set_transcript=lambda lines, partial: events.append((list(lines), partial)),
         )
-        session.on_utterance_final()
-        assert events[0] == ('flash',)
-        assert ('update', '', 'listening') in events
-        assert ('show',) in events
+        session.on_utterance_final("hello world")
+        assert events == [(["hello world"], "")]
+
+    def test_flash_done_and_fade_is_not_called_on_the_per_utterance_path(self):
+        """flash_done_and_fade stays intact on StreamingOverlayQt for
+        StreamingSession's own use -- it must simply never be reached from
+        this path anymore."""
+        app, _ = _base_preview_app()
+        session = _bare_preview(app)
+        flash_calls = []
+        session._overlay = types.SimpleNamespace(
+            set_transcript=lambda *a, **k: None,
+            flash_done_and_fade=lambda cb: flash_calls.append(cb),
+        )
+        session.on_utterance_final("hello world")
+        assert flash_calls == []
+
+    def test_blank_or_whitespace_final_text_is_not_appended(self):
+        app, _ = _base_preview_app()
+        session = _bare_preview(app)
+        session.on_utterance_final("   ")
+        assert session._finalized == []
+
+    def test_rolling_cap_drops_oldest_from_the_top(self):
+        app, _ = _base_preview_app()
+        session = _bare_preview(app)
+        cap = DICTATE_PREVIEW_TRANSCRIPT_MAX_UTTERANCES
+        for i in range(cap + 2):
+            session.on_utterance_final(f"utterance {i}")
+        assert len(session._finalized) == cap
+        expected = [f"utterance {i}" for i in range(2, cap + 2)]
+        assert session._finalized == expected
 
     def test_no_op_after_closed(self):
         app, _ = _base_preview_app()
@@ -254,10 +303,77 @@ class TestOnUtteranceFinal:
         session._closed = True
         calls = []
         session._overlay = types.SimpleNamespace(
-            flash_done_and_fade=lambda cb: calls.append(1),
+            set_transcript=lambda *a, **k: calls.append(1),
         )
-        session.on_utterance_final()
+        session.on_utterance_final("hello world")
         assert calls == []
+        assert session._finalized == []
+
+
+class TestStartResetsTranscript:
+    def test_re_entering_dictate_resets_the_transcript_to_empty(self):
+        """start() is called on every DICTATE re-entry (a fresh
+        DictatePreviewSession per dictation.py's _ensure_streaming_preview,
+        but start() also resets explicitly -- see its own comment)."""
+        app, _ = _base_preview_app()
+        session = _bare_preview(app)
+        session._finalized = ["stale", "from a previous DICTATE entry"]
+        session.start()
+        assert session._finalized == []
+
+
+class TestSetTranscriptRendering:
+    """StreamingOverlayQt.set_transcript -- the minimal addition this
+    feature made on top of the existing update_text() plumbing."""
+
+    def test_plain_text_when_only_one_finalized_line_and_no_partial(self):
+        overlay = StreamingOverlayQt.__new__(StreamingOverlayQt)
+        calls = []
+        overlay.update_text = lambda text, state: calls.append((text, state))
+        overlay.set_transcript(["hello world"], "")
+        assert calls == [("hello world", StreamingOverlayQt.STATE_LISTENING)]
+
+    def test_multiple_finalized_lines_joined_with_br(self):
+        overlay = StreamingOverlayQt.__new__(StreamingOverlayQt)
+        calls = []
+        overlay.update_text = lambda text, state: calls.append((text, state))
+        overlay.set_transcript(["first", "second"], "")
+        assert calls[0][0] == "first<br>second"
+
+    def test_partial_appended_in_a_distinct_span(self):
+        overlay = StreamingOverlayQt.__new__(StreamingOverlayQt)
+        calls = []
+        overlay.update_text = lambda text, state: calls.append((text, state))
+        overlay.set_transcript(["settled"], "live words")
+        text, state = calls[0]
+        assert text.startswith("settled<br>")
+        assert "live words" in text
+        assert "<span" in text  # visually distinct from settled text
+
+    def test_partial_only_when_no_finalized_lines_yet(self):
+        overlay = StreamingOverlayQt.__new__(StreamingOverlayQt)
+        calls = []
+        overlay.update_text = lambda text, state: calls.append((text, state))
+        overlay.set_transcript([], "just started talking")
+        text, _state = calls[0]
+        assert "just started talking" in text
+        assert not text.startswith("<br>")
+
+    def test_html_is_escaped(self):
+        overlay = StreamingOverlayQt.__new__(StreamingOverlayQt)
+        calls = []
+        overlay.update_text = lambda text, state: calls.append((text, state))
+        overlay.set_transcript(["less <than> five & six"], "")
+        text, _state = calls[0]
+        assert "<than>" not in text
+        assert "&lt;than&gt;" in text
+
+    def test_falls_back_to_listening_placeholder_when_empty(self):
+        overlay = StreamingOverlayQt.__new__(StreamingOverlayQt)
+        calls = []
+        overlay.update_text = lambda text, state: calls.append((text, state))
+        overlay.set_transcript([], "")
+        assert calls == [("Listening...", StreamingOverlayQt.STATE_LISTENING)]
 
 
 # ============================================================================
@@ -517,11 +633,14 @@ def _make_utterance_app(mode, dictate_preview=None):
 
 
 class TestHandleCommandModeUtteranceOnFinalHook:
-    def test_dictate_lane_final_notifies_the_preview(self):
+    def test_dictate_lane_final_notifies_the_preview_with_the_final_text(self):
+        """The authoritative final string dispatch_utterance itself used
+        (`text` in _handle_command_mode_utterance) is threaded through, not
+        re-derived -- the fake model decode below returns "hello world"."""
         preview = Mock()
         app, _manager = _make_utterance_app(SessionMode.DICTATE, dictate_preview=preview)
         dictation.DictationApp._handle_command_mode_utterance(app, _buffer_for(), 16000)
-        preview.on_utterance_final.assert_called_once_with()
+        preview.on_utterance_final.assert_called_once_with("hello world")
 
     def test_command_lane_final_does_not_touch_the_preview(self):
         """COMMAND-lane utterances never showed a preview in the first

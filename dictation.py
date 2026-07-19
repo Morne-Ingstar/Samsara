@@ -6063,12 +6063,14 @@ class DictationApp:
             logger.info(f'[SESSION] mode={manager.mode.value} outcome={outcome.kind} detail={outcome.detail}')
             self._handle_session_dispatch_outcome(outcome, text)
             if _was_dictate_lane and self._dictate_preview is not None:
-                # This utterance's authoritative final just landed -- clear
-                # the preview's stale partial and flash, independent of
+                # This utterance's authoritative final just landed -- append
+                # it to the preview's rolling transcript, independent of
                 # outcome.kind (even a rejected/refused utterance ends the
-                # in-progress buffer this preview was showing).
+                # in-progress buffer this preview was showing). `text` is
+                # the same authoritative final string dispatch_utterance
+                # above just used -- not a re-decode.
                 try:
-                    self._dictate_preview.on_utterance_final()
+                    self._dictate_preview.on_utterance_final(text)
                 except Exception as e:
                     logger.debug(f'[DICTATE-PREVIEW] on_utterance_final failed: {e}')
         except Exception as exc:
