@@ -19,7 +19,8 @@ Config block (add to config.json -- all keys optional, defaults apply if absent)
     "step_settle_seconds": 0.4,
     "show_plan_hud":      true,
     "keep_warm":          true,
-    "miss_limit":         3
+    "miss_limit":         3,
+    "menu_limit":         0
   }
 
 Miss handling (unresolved utterances -- resolver returned no actions):
@@ -31,6 +32,12 @@ Miss handling (unresolved utterances -- resolver returned no actions):
                             "AI command mode off"
   Any resolved utterance (actions found, or a pending-plan confirm/deny)
   resets the counter. See _process_utterance / _register_miss / _register_hit.
+
+Menu cap: the command menu handed to the resolver is UNTRUNCATED by
+default (menu_limit=0). Set ai_command_mode.menu_limit to a positive int
+to cap it (e.g. for a small/slow local model's context window) -- any
+truncation that then actually occurs is logged as a WARNING with exact
+counts, never silent. See _capped_menu.
 """
 from __future__ import annotations
 
@@ -63,6 +70,7 @@ _DEFAULTS: dict[str, Any] = {
     "ready_cue_enabled": True,
     "ready_cue_dir": "assets/sounds/ava_cues",
     "miss_limit": 3,
+    "menu_limit": 0,
 }
 
 # Words that trigger immediate queue-cancel (checked inline before enqueue)
@@ -123,8 +131,12 @@ def resolve_utterance(
     model: str,
     host: str,
 ) -> list[str]:
-    """Call Ollama with format:json, return validated in-menu command names in order."""
-    cmd_list = ", ".join(menu[:200])
+    """Call Ollama with format:json, return validated in-menu command names in order.
+
+    `menu` is joined as-is -- callers that need it capped (see
+    ai_command_mode.menu_limit) must pass an already-capped list via
+    _capped_menu(); this function never truncates on its own."""
+    cmd_list = ", ".join(menu)
     system = _SYSTEM_PROMPT.replace("{COMMAND_LIST}", cmd_list)
     payload = json.dumps({
         "model": model,
@@ -172,18 +184,44 @@ def _build_menu(app) -> list[str]:
     return []
 
 
+def _capped_menu(menu: list[str], cfg: dict) -> list[str]:
+    """Cap the command menu passed to the resolver, per ai_command_mode.menu_limit.
+
+    Replaces the old unconditional `menu[:200]` slice, which silently
+    dropped commands once the registry (288+ phrases plus runtime plugin
+    registrations) grew past 200 -- no config, no warning, commands past
+    the cut just silently stopped being resolvable.
+
+    menu_limit=0 (default) means no cap: the full menu is returned as-is.
+    Any truncation that DOES occur (menu_limit > 0 and menu longer than
+    it) is logged as a WARNING with exact counts -- never silent."""
+    limit = int(cfg.get("menu_limit", _DEFAULTS["menu_limit"]))
+    if limit <= 0 or len(menu) <= limit:
+        return menu
+    dropped = len(menu) - limit
+    logger.warning(
+        f"[AI-CMD] Menu truncated: {len(menu)} commands -> {limit} "
+        f"(ai_command_mode.menu_limit={limit}), {dropped} command(s) dropped "
+        "from this resolve call"
+    )
+    return menu[:limit]
+
+
 def _resolve_via_cloud(utterance: str, menu: list[str], app) -> list[str]:
     """Resolve utterance via the configured cloud LLM provider.
 
     Reuses the existing cloud_llm plumbing (send_json) — no new HTTP client.
     Returns a validated in-menu command list, same contract as resolve_utterance().
-    """
+
+    `menu` is joined as-is -- callers that need it capped (see
+    ai_command_mode.menu_limit) must pass an already-capped list via
+    _capped_menu(); this function never truncates on its own."""
     from samsara import cloud_llm  # noqa: PLC0415
     cloud_cfg = app.config.get("cloud_llm", {})
     if not cloud_cfg.get("api_key", ""):
         _speak(app, "No cloud API key is configured. Add one in Settings under Ava Cloud.")
         return []
-    cmd_list = ", ".join(menu[:200])
+    cmd_list = ", ".join(menu)
     system = _SYSTEM_PROMPT.replace("{COMMAND_LIST}", cmd_list)
     raw = cloud_llm.send_json(system, utterance, app)
     if raw.startswith("Error:"):
@@ -372,7 +410,7 @@ def _process_utterance(app, utterance: str) -> None:  # noqa: C901
         return
 
     # --- Resolve utterance --------------------------------------------------
-    menu = _build_menu(app)
+    menu = _capped_menu(_build_menu(app), cfg)
     backend = cfg.get("backend", _DEFAULTS["backend"])
 
     print(f"[AI-CMD] Resolving via {backend!r}: {utterance!r}")
