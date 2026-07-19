@@ -177,6 +177,16 @@ SETTINGS_SCHEMA = {
         "default": 5,
         "tab": "commands",
     },
+    # Live streaming-partials overlay preview for the toggle-DICTATE lane
+    # (hands-free session). Preview only -- injection stays per-utterance
+    # finals on the silence boundary; see samsara/streaming.py's
+    # DictatePreviewSession and dictation.py's _ensure_streaming_preview.
+    "command_mode.session_streaming_preview": {
+        "type": "bool",
+        "default": True,
+        "tab": "commands",
+        "depends_on": "command_mode.enabled",
+    },
     "click.type": {
         "type": "enum",
         "options": ["click", "double_click"],

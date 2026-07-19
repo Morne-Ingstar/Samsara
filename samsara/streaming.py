@@ -202,7 +202,15 @@ class _StreamingWidget:
                     parent,
                     Qt.WindowType.FramelessWindowHint |
                     Qt.WindowType.WindowStaysOnTopHint |
-                    Qt.WindowType.Tool,
+                    Qt.WindowType.Tool |
+                    # WS_EX_NOACTIVATE on Windows. Tool alone still lets the
+                    # widget take focus/activation on show() -- required so
+                    # this overlay never steals foreground from whatever the
+                    # user is dictating into (both the hold-to-stream feature
+                    # and DictatePreviewSession's session-lane preview depend
+                    # on this; the latter's session focus lock assumes the
+                    # target window stays foreground for the whole session).
+                    Qt.WindowType.WindowDoesNotAcceptFocus,
                 )
                 self._dim = dim
                 self._fade_alpha = DIM_ALPHA if dim else ALPHA
@@ -927,3 +935,152 @@ class StreamingSession:
         except Exception as e:
             logger.debug(f"[STREAM] GetForegroundWindow check failed: {e}")
             return True
+
+
+# ---------------------------------------------------------------------------
+# Toggle-DICTATE streaming preview (session_streaming_preview)
+# ---------------------------------------------------------------------------
+#
+# A PREVIEW-ONLY layer for the hands-free toggle session's DICTATE lane --
+# distinct from StreamingSession above (hold-to-stream hotkey feature, its
+# own audio source via DictationSessionConsumer.snapshot_streaming_audio()).
+# This reuses StreamingOverlayQt for display and the same tail-window /
+# non-blocking-model-lock partial-decode shape as StreamingWorker, but:
+#
+#   - Audio source is WakeConsumer.snapshot_dictate_preview_audio() (the
+#     toggle session's own in-progress utterance buffer), not the streaming
+#     accumulator.
+#   - Injection is COMPLETELY separate and unchanged: dictation.py's
+#     _handle_command_mode_utterance still does the one authoritative decode
+#     per utterance and pastes on the silence boundary through the existing
+#     FIFO worker. Partials computed here are NEVER injected, pasted, or
+#     touch the scratch-that stack -- overlay text only.
+#   - Params force include_vocabulary=False + language='en', mirroring
+#     _handle_command_mode_utterance's own DICTATE/AVA override (c98c677 /
+#     the 2026-07-18 AVA-language-forcing follow-up) -- free-form prose,
+#     never matched against the command registry.
+
+class DictatePreviewSession:
+    """Owns one toggle-session DICTATE-lane preview: overlay + tick thread.
+
+    Constructed fresh each time the session enters DICTATE, torn down on
+    lane switch-away or session end -- see dictation.py's
+    _ensure_streaming_preview/_release_streaming_preview. Best-effort and
+    fully skippable: any failure here must never affect the authoritative
+    per-utterance final decode/paste path.
+    """
+
+    def __init__(self, app):
+        self.app = app
+        self._stop_event = threading.Event()
+        self._overlay = StreamingOverlayQt(dim=False)
+        self._closed = False
+
+    # ---- Public lifecycle (call from the session/mode-change thread) ----
+
+    def start(self):
+        self._overlay.show()
+        # spawn() registers AND starts -- do not call register() again
+        # (that would double-enter this thread under a second, -2-suffixed
+        # name; see thread_registry.spawn's docstring).
+        thread_registry.spawn("dictate-preview", self._loop, daemon=True)
+
+    def stop(self):
+        """Idempotent. Stops the tick thread and closes the overlay."""
+        self._closed = True
+        self._stop_event.set()
+        self._overlay.close()
+
+    def on_utterance_final(self):
+        """Called from dictation.py after a DICTATE-lane utterance's
+        authoritative final decode/dispatch completes. Clears the preview
+        and briefly flashes the overlay's existing done-state fade, then
+        reopens it (cleared) for the next utterance -- the session
+        continues, so unlike StreamingSession's flash the overlay must not
+        stay closed."""
+        if self._closed:
+            return
+
+        def _resume():
+            if self._closed:
+                return
+            self._overlay.update_text("", StreamingOverlayQt.STATE_LISTENING)
+            self._overlay.show()
+
+        self._overlay.flash_done_and_fade(_resume)
+
+    # ---- Tick loop (own daemon thread) -----------------------------------
+
+    def _loop(self):
+        first = True
+        while not self._stop_event.is_set():
+            wait_s = FIRST_CHUNK_S if first else CHUNK_INTERVAL_S
+            first = False
+            if self._stop_event.wait(timeout=wait_s):
+                return
+            text = self._transcribe_partial()
+            if self._stop_event.is_set() or self._closed:
+                return
+            if text:
+                self._overlay.update_text(text, StreamingOverlayQt.STATE_PROCESSING)
+
+    def _transcribe_partial(self):
+        app = self.app
+        lock = app.model_lock
+        # Never queue behind a final decode or a hotkey decode -- skip this
+        # tick entirely rather than block the model lock.
+        if not lock.acquire(blocking=False):
+            return None
+        try:
+            audio = self._snapshot_audio()
+            if audio is None:
+                return None
+            params = self._partial_params()
+            segments, _ = app.model.transcribe(audio, **params)
+            return "".join(seg.text for seg in segments).strip()
+        except Exception as e:
+            logger.exception(f"[DICTATE-PREVIEW] Partial transcribe failed: {e}")
+            return None
+        finally:
+            lock.release()
+
+    def _snapshot_audio(self):
+        app = self.app
+        consumer = getattr(app, "_wake_consumer", None)
+        if consumer is None or not hasattr(consumer, "snapshot_dictate_preview_audio"):
+            return None
+        audio = consumer.snapshot_dictate_preview_audio()
+        if audio is None or audio.size == 0:
+            return None
+        # WakeConsumer's ring rate (samsara.audio_engine.frame.SAMPLE_RATE)
+        # and app.model_rate (samsara.constants.MODEL_SAMPLE_RATE) are both
+        # [LOCKED] at 16000 -- no resample step needed here, unlike
+        # _handle_command_mode_utterance's generic src_rate parameter
+        # (shared across callers that are NOT always at the ring rate).
+        if audio.size / app.model_rate < MIN_PARTIAL_AUDIO_S:
+            return None
+        return audio
+
+    def _partial_params(self):
+        app = self.app
+        try:
+            # include_vocabulary=False: same free-form-prose rule
+            # _handle_command_mode_utterance applies to this lane (see
+            # module docstring above). Per-call-site override, NOT a change
+            # to get_transcription_params' shared base_params.
+            params = dict(app.get_transcription_params(include_vocabulary=False))
+        except Exception as e:
+            logger.debug(f"[DICTATE-PREVIEW] get_transcription_params failed: {e}")
+            params = {"language": "en", "initial_prompt": None}
+        params.update({
+            "language": "en",
+            "beam_size": PARTIAL_BEAM,
+            "vad_filter": False,
+            "no_speech_threshold": NO_SPEECH_THRESHOLD,
+            "log_prob_threshold": LOG_PROB_THRESHOLD,
+            "condition_on_previous_text": False,
+            "without_timestamps": True,
+            "word_timestamps": False,
+            "temperature": 0.0,
+        })
+        return params

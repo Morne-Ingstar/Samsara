@@ -205,6 +205,12 @@ def _make_toggle_session_app(monkeypatch, wake_consumer_running=False, existing_
     app._cancel_command_mode_inactivity_timer = lambda: None
     app._ensure_session_mode_manager = lambda: types.SimpleNamespace(reset=lambda **kw: None)
     app._update_mode_overlay = lambda mode: None
+    # SPARK streaming-preview feature (2026-07-18): enter/exit_command_mode's
+    # toggle branch now also drives the DICTATE-lane preview overlay
+    # lifecycle -- irrelevant to this file's WakeConsumer-wiring assertions,
+    # no-op it the same way _update_mode_overlay already is.
+    app._update_streaming_preview = lambda mode: None
+    app._release_streaming_preview = lambda: None
     app.play_sound = lambda *a, **k: None
     app.stop_recording = lambda: None
     # Real enter_command_mode spawns _do_enter_command_mode on a worker
