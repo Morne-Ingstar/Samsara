@@ -179,6 +179,28 @@ class TestAiCommandModeSuppressedDuringHotkeyRecording:
         wc._process_frame(_loud_frame())
         app._vad_is_speech.assert_called_once()
 
+    def test_suppression_engaged_logged_for_ai_command_mode(self, caplog):
+        import logging
+        wc, reader, app = _make_wc(
+            hotkey_recording=True, ai_command_mode_active=True,
+        )
+        with caplog.at_level(logging.DEBUG, logger="Samsara.samsara.audio_engine.wake_consumer"):
+            wc._process_frame(_loud_frame())
+        engaged = [r for r in caplog.records if "suppression ENGAGED" in r.message]
+        assert len(engaged) == 1
+
+    def test_suppression_released_logged_once_hotkey_recording_ends(self, caplog):
+        import logging
+        wc, reader, app = _make_wc(
+            hotkey_recording=True, ai_command_mode_active=True,
+        )
+        wc._process_frame(_loud_frame())  # engage (not captured)
+        app._hotkey_recording = False
+        with caplog.at_level(logging.DEBUG, logger="Samsara.samsara.audio_engine.wake_consumer"):
+            wc._process_frame(_loud_frame())
+        released = [r for r in caplog.records if "suppression RELEASED" in r.message]
+        assert len(released) == 1
+
 
 class TestDiscardStaleWakeUtterance:
     def test_discards_in_progress_wake_mode_utterance(self):
