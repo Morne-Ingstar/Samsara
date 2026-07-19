@@ -1,0 +1,50 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!--
+Samsara small-size mark (16/32/48px). Purpose-drawn, not derived from
+master.png; see assets/icon/_make_small_mark.py and bd93504's postmortem
+for why a posterize/dilate derivation of the master painting loses its
+identity (dark round blob, no petals, no wheel) at 16px.
+
+Contrast is INVERTED from the master painting on purpose: here the outer
+petal ring is the LIGHT element (warm ember) and the wheel hub/spokes are
+the DARK element (near-black maroon). This is the scheme that held a
+readable silhouette on both dark app chrome and red Windows title-bar
+chrome during testing; the master's dark-petals/light-hub scheme did not.
+
+Eight petals, four-spoke hub (eight spokes will not resolve at 16px). The
+hub and spokes are kept deliberately small relative to the petal field:
+an earlier draft let the spokes reach almost to the petal tips, and the
+whole mark rendered as a near-solid dark disc at 32/48px once actually
+rasterized. Spokes sit in the gaps BETWEEN petals (offset 22.5 degrees
+from the petal axes), not on top of a petal's own centerline.
+
+Flat fills only, no gradients, so nothing collapses to mud at small sizes.
+All shapes are held clear of the viewBox edge and the spoke half-width
+(6 units in a 96-unit viewBox) stays >=1px at a 16px render.
+-->
+<svg xmlns="http://www.w3.org/2000/svg" xmlns:xlink="http://www.w3.org/1999/xlink" viewBox="0 0 96 96">
+  <defs>
+    <path id="petal" d="M 48,46 C 59,37 59,18 52,7 C 50,4 46,4 44,7 C 37,18 37,37 48,46 Z"/>
+    <rect id="spoke" x="42" y="20" width="12" height="13" rx="6"/>
+  </defs>
+
+  <g id="petals" fill="#FF7A45">
+    <use xlink:href="#petal" transform="rotate(0 48 48)"/>
+    <use xlink:href="#petal" transform="rotate(45 48 48)"/>
+    <use xlink:href="#petal" transform="rotate(90 48 48)"/>
+    <use xlink:href="#petal" transform="rotate(135 48 48)"/>
+    <use xlink:href="#petal" transform="rotate(180 48 48)"/>
+    <use xlink:href="#petal" transform="rotate(225 48 48)"/>
+    <use xlink:href="#petal" transform="rotate(270 48 48)"/>
+    <use xlink:href="#petal" transform="rotate(315 48 48)"/>
+  </g>
+
+  <g id="spokes" fill="#330D12">
+    <use xlink:href="#spoke" transform="rotate(22.5 48 48)"/>
+    <use xlink:href="#spoke" transform="rotate(112.5 48 48)"/>
+    <use xlink:href="#spoke" transform="rotate(202.5 48 48)"/>
+    <use xlink:href="#spoke" transform="rotate(292.5 48 48)"/>
+  </g>
+
+  <circle id="hub" cx="48" cy="48" r="15" fill="#330D12"/>
+</svg>
