@@ -166,7 +166,9 @@ def match_literal_payload(raw_text: str) -> Optional[str]:
     return payload if payload.strip() else None
 
 
-def match_switch_word(raw_text: str) -> Optional[SwitchMatch]:
+def match_switch_word(
+    raw_text: str, current_mode: Optional[SessionMode] = None,
+) -> Optional[SwitchMatch]:
     """PREFIX-OR-WHOLE switch matching.
 
     - Whole-utterance match (normalized) wins outright, e.g. "dictate mode",
@@ -178,16 +180,33 @@ def match_switch_word(raw_text: str) -> Optional[SwitchMatch]:
     - A switch word appearing mid-utterance (not utterance-initial, not the
       whole utterance) NEVER matches: "we should dictate mode later" is
       plain text/miss for the current mode, not a switch.
+
+    current_mode: when given, a switch entry whose TARGET mode equals
+    current_mode is not a match -- switching to where the session already
+    is is never real intent. Applies to both the whole-utterance and prefix
+    maps. Fixes the 2026-07-19 incident where bare "dictate" spoken mid-
+    DICTATE (an ordinary word to say while dictating) was consumed as a
+    no-op self-switch instead of dictated -- same acoustic-isolation class
+    as the "Ava Omniscience" incident (see match_ava_invocation), just
+    triggered by a real word instead of a hallucination. None (the
+    default) preserves the original mode-agnostic matching for callers
+    without session context (e.g. streaming.py's display-only control-
+    phrase check, and this module's own pure-function test suite).
     """
     normalized = normalize_utterance(raw_text)
     if not normalized:
         return None
 
     if normalized in _WHOLE_UTTERANCE_SWITCHES:
-        return SwitchMatch(target_mode=_WHOLE_UTTERANCE_SWITCHES[normalized])
+        target = _WHOLE_UTTERANCE_SWITCHES[normalized]
+        if current_mode is not None and target is current_mode:
+            return None
+        return SwitchMatch(target_mode=target)
 
     for prefix_word, mode in _PREFIX_SWITCHES.items():
         if normalized.startswith(prefix_word + " "):
+            if current_mode is not None and mode is current_mode:
+                continue
             payload = _strip_leading_token_preserving_case(raw_text, prefix_word)
             if payload.strip():
                 return SwitchMatch(target_mode=mode, payload=payload, is_prefix=True)
@@ -790,7 +809,7 @@ class SessionModeManager:
             and self.mode is SessionMode.DICTATE
             and is_dictate_commit(text)
         )
-        switch = None if (scratch or commit) else match_switch_word(text)
+        switch = None if (scratch or commit) else match_switch_word(text, current_mode=self.mode)
         if (switch is None and not (scratch or commit)
                 and match_ava_invocation(text, self._ava_invocations)):
             switch = SwitchMatch(target_mode=SessionMode.AVA)
