@@ -27,6 +27,7 @@ Locks:
 """
 
 import ctypes
+import html
 import sys
 import threading
 import time
@@ -165,6 +166,10 @@ FONT_SIZE = 14
 DIM_FONT_SIZE = 11
 ALPHA = 0.92
 DIM_ALPHA = 0.65
+# DictatePreviewSession.set_transcript: muted color for the still-live
+# partial line, so it reads as visually distinct from settled/finalized
+# text without needing a second widget or a border-color swap per tick.
+PARTIAL_TEXT_COLOR = "#9ca3af"
 
 PARTIAL_BEAM = 1
 FINAL_BEAM = 5
@@ -353,6 +358,33 @@ class StreamingOverlayQt:
     def update_text(self, text, state=None):
         if self._widget is not None:
             self._widget.update(text or "", state or "")
+
+    def set_transcript(self, finalized_lines, partial):
+        """DictatePreviewSession's rolling-transcript renderer: settled
+        finalized utterances (plain text, one per line) with the current
+        live partial appended in a visually distinct (dimmer, italic)
+        style. Minimal addition on top of the existing update() plumbing --
+        no new Qt signal/slot pair, just the HTML this builds; QLabel's
+        default AutoText format renders it as rich text as soon as it sees
+        the <br>/<span> tags (plain text, e.g. a single finalized line with
+        no live partial, renders exactly as before).
+
+        Text is HTML-escaped since it originates from Whisper transcription
+        (untrusted-ish free text) -- a spoken "less than 5" or similar must
+        never be interpreted as a tag.
+        """
+        finalized_html = "<br>".join(
+            html.escape(t) for t in finalized_lines if t
+        )
+        if partial:
+            partial_html = (
+                f'<span style="color:{PARTIAL_TEXT_COLOR};font-style:italic;">'
+                f'{html.escape(partial)}</span>'
+            )
+            combined = f"{finalized_html}<br>{partial_html}" if finalized_html else partial_html
+        else:
+            combined = finalized_html
+        self.update_text(combined or "Listening...", self.STATE_LISTENING)
 
     def flash_done_and_fade(self, on_complete):
         if self._widget is not None:
@@ -959,6 +991,22 @@ class StreamingSession:
 #     _handle_command_mode_utterance's own DICTATE/AVA override (c98c677 /
 #     the 2026-07-18 AVA-language-forcing follow-up) -- free-form prose,
 #     never matched against the command registry.
+#   - Display is a PERSISTENT ROLLING TRANSCRIPT, not a per-utterance flash.
+#     Unlike StreamingSession (ends on hotkey release -- clear-on-done is
+#     correct there), this session CONTINUES across utterances. Clearing on
+#     every silence boundary made a natural mid-thought pause erase the
+#     words just spoken -- punishing the user for pausing, actively bad for
+#     the accessibility case this whole session mode exists for. See
+#     on_utterance_final below.
+
+# Rolling-transcript cap: how many recent FINALIZED utterances stay visible
+# before the oldest ages out (dropped from the top, never a full wipe).
+# Utterance-COUNT, not wall-clock/audio-duration -- deterministic and
+# trivial to test, and a toggle-DICTATE utterance is naturally one
+# spoken thought (silence-bounded), so "last few thoughts" reads more
+# naturally here than "last N seconds" would.
+DICTATE_PREVIEW_TRANSCRIPT_MAX_UTTERANCES = 4
+
 
 class DictatePreviewSession:
     """Owns one toggle-session DICTATE-lane preview: overlay + tick thread.
@@ -975,10 +1023,20 @@ class DictatePreviewSession:
         self._stop_event = threading.Event()
         self._overlay = StreamingOverlayQt(dim=False)
         self._closed = False
+        # Session-scoped rolling transcript -- see module comment above and
+        # on_utterance_final below. A fresh DictatePreviewSession is
+        # constructed on every DICTATE re-entry (dictation.py's
+        # _ensure_streaming_preview never reuses one across entries), so
+        # this is empty for every new session by construction; also
+        # reset explicitly in start() so "re-entering DICTATE starts a
+        # fresh empty transcript" holds even if that construction contract
+        # ever changes.
+        self._finalized: list = []
 
     # ---- Public lifecycle (call from the session/mode-change thread) ----
 
     def start(self):
+        self._finalized = []
         self._overlay.show()
         # spawn() registers AND starts -- do not call register() again
         # (that would double-enter this thread under a second, -2-suffixed
@@ -991,23 +1049,27 @@ class DictatePreviewSession:
         self._stop_event.set()
         self._overlay.close()
 
-    def on_utterance_final(self):
+    def on_utterance_final(self, final_text: str = "") -> None:
         """Called from dictation.py after a DICTATE-lane utterance's
-        authoritative final decode/dispatch completes. Clears the preview
-        and briefly flashes the overlay's existing done-state fade, then
-        reopens it (cleared) for the next utterance -- the session
-        continues, so unlike StreamingSession's flash the overlay must not
-        stay closed."""
+        authoritative final decode/dispatch completes, with that utterance's
+        actual final text (the same string dispatch_utterance/injection
+        used -- NOT a re-decode). Appends to the rolling transcript rather
+        than clearing: the session continues past this utterance, so wiping
+        the overlay here would erase the words just spoken every time the
+        user pauses. The overlay stays open and visible for the whole
+        DICTATE lane -- no flash/fade/close on this path (flash_done_and_fade
+        remains intact for StreamingSession's own per-recording use)."""
         if self._closed:
             return
-
-        def _resume():
-            if self._closed:
-                return
-            self._overlay.update_text("", StreamingOverlayQt.STATE_LISTENING)
-            self._overlay.show()
-
-        self._overlay.flash_done_and_fade(_resume)
+        final_text = (final_text or "").strip()
+        if final_text:
+            self._finalized.append(final_text)
+            overflow = len(self._finalized) - DICTATE_PREVIEW_TRANSCRIPT_MAX_UTTERANCES
+            if overflow > 0:
+                del self._finalized[:overflow]
+        # Partial cleared to "": this utterance's partial is now stale --
+        # the next tick will produce a fresh one for the NEXT utterance.
+        self._overlay.set_transcript(self._finalized, "")
 
     # ---- Tick loop (own daemon thread) -----------------------------------
 
@@ -1022,7 +1084,7 @@ class DictatePreviewSession:
             if self._stop_event.is_set() or self._closed:
                 return
             if text:
-                self._overlay.update_text(text, StreamingOverlayQt.STATE_PROCESSING)
+                self._overlay.set_transcript(self._finalized, text)
 
     def _transcribe_partial(self):
         app = self.app
