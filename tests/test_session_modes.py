@@ -154,6 +154,53 @@ class TestSwitchWordMatcher:
 
 
 # ---------------------------------------------------------------------------
+# match_switch_word current_mode filtering: same-mode switch never matches
+# (2026-07-19 dogfooding fix -- bare "dictate" spoken mid-DICTATE)
+# ---------------------------------------------------------------------------
+
+class TestSwitchWordMatcherCurrentModeFilter:
+    def test_no_current_mode_arg_preserves_original_mode_agnostic_behavior(self):
+        # Default (current_mode=None) must match exactly like the plain
+        # single-arg calls above -- callers with no session context (e.g.
+        # streaming.py's display-only control-phrase check) are unaffected.
+        m = match_switch_word("dictate")
+        assert m is not None
+        assert m.target_mode is SessionMode.DICTATE
+
+    def test_bare_dictate_does_not_match_when_current_mode_is_dictate(self):
+        assert match_switch_word("dictate", current_mode=SessionMode.DICTATE) is None
+
+    def test_dictate_mode_does_not_match_when_current_mode_is_dictate(self):
+        assert match_switch_word("dictate mode", current_mode=SessionMode.DICTATE) is None
+
+    def test_dictation_mode_does_not_match_when_current_mode_is_dictate(self):
+        assert match_switch_word("dictation mode", current_mode=SessionMode.DICTATE) is None
+
+    def test_prefix_form_does_not_match_when_current_mode_is_dictate(self):
+        assert match_switch_word("dictate hello world", current_mode=SessionMode.DICTATE) is None
+
+    def test_command_mode_does_not_match_when_current_mode_is_command(self):
+        assert match_switch_word("command mode", current_mode=SessionMode.COMMAND) is None
+
+    def test_bare_dictate_still_matches_from_command_mode(self):
+        m = match_switch_word("dictate", current_mode=SessionMode.COMMAND)
+        assert m is not None
+        assert m.target_mode is SessionMode.DICTATE
+
+    def test_prefix_form_still_matches_from_command_mode(self):
+        m = match_switch_word("dictate hello world", current_mode=SessionMode.COMMAND)
+        assert m is not None
+        assert m.target_mode is SessionMode.DICTATE
+        assert m.payload == "hello world"
+
+    def test_dictate_switch_still_matches_from_ava_mode(self):
+        # target != current_mode (AVA) -- ordinary cross-mode switch, unaffected.
+        m = match_switch_word("dictate", current_mode=SessionMode.AVA)
+        assert m is not None
+        assert m.target_mode is SessionMode.DICTATE
+
+
+# ---------------------------------------------------------------------------
 # match_ava_invocation: exact whole-utterance ONLY, no prefix form
 # ---------------------------------------------------------------------------
 
@@ -935,6 +982,81 @@ class TestSessionModeManagerDispatch:
         outcome = mgr.dispatch_utterance("   ", GOOD_SIGNALS)
         assert outcome.kind == "empty"
         mocks["command_dispatch"].assert_not_called()
+
+
+# ---------------------------------------------------------------------------
+# Same-mode switch never matches (2026-07-19 dogfooding fix): "dictate"
+# spoken mid-DICTATE is ordinary content, not a no-op self-switch. "dictate"
+# spoken from COMMAND must keep switching normally, and Ava exact-phrase
+# entry is untouched regardless of current mode.
+# ---------------------------------------------------------------------------
+
+class TestSessionModeManagerSameModeSwitchSuppressed:
+    def test_bare_dictate_while_in_dictate_is_dictated_not_switched(self, manager_factory):
+        mgr, mocks = manager_factory(foreground="notepad.exe")
+        mgr.force_mode(SessionMode.DICTATE)
+        outcome = mgr.dispatch_utterance("dictate", GOOD_SIGNALS)
+        assert mgr.mode is SessionMode.DICTATE
+        assert outcome.kind == "dictate_injected"
+        mocks["inject"].assert_called_once_with("dictate")
+
+    def test_dictate_mode_phrase_while_in_dictate_is_dictated_not_switched(self, manager_factory):
+        mgr, mocks = manager_factory(foreground="notepad.exe")
+        mgr.force_mode(SessionMode.DICTATE)
+        outcome = mgr.dispatch_utterance("dictate mode", GOOD_SIGNALS)
+        assert mgr.mode is SessionMode.DICTATE
+        assert outcome.kind == "dictate_injected"
+        mocks["inject"].assert_called_once_with("dictate mode")
+
+    def test_dictate_prefix_with_payload_while_in_dictate_delivers_whole_utterance(self, manager_factory):
+        # The prefix-switch reading (mode-switch + "hello world" payload) is
+        # suppressed entirely -- the WHOLE utterance, including the leading
+        # "dictate", is delivered as one ordinary dictated chunk.
+        mgr, mocks = manager_factory(foreground="notepad.exe")
+        mgr.force_mode(SessionMode.DICTATE)
+        outcome = mgr.dispatch_utterance("dictate hello world", GOOD_SIGNALS)
+        assert mgr.mode is SessionMode.DICTATE
+        assert outcome.kind == "dictate_injected"
+        mocks["inject"].assert_called_once_with("dictate hello world")
+
+    def test_command_mode_phrase_while_in_command_falls_through_to_command_dispatch(self, manager_factory):
+        mgr, mocks = manager_factory(command_matches=None)
+        outcome = mgr.dispatch_utterance("command mode", GOOD_SIGNALS)
+        assert mgr.mode is SessionMode.COMMAND  # never re-"switched"
+        assert outcome.kind == "command_miss"
+        mocks["command_dispatch"].assert_called_once_with("command mode")
+
+    def test_bare_dictate_from_command_still_switches(self, manager_factory):
+        mgr, mocks = manager_factory()
+        outcome = mgr.dispatch_utterance("dictate", GOOD_SIGNALS)
+        assert outcome.kind == "mode_switch"
+        assert mgr.mode is SessionMode.DICTATE
+
+    def test_dictate_prefix_with_payload_from_command_still_switches_and_delivers(self, manager_factory):
+        mgr, mocks = manager_factory(foreground="notepad.exe")
+        outcome = mgr.dispatch_utterance("dictate hello world", GOOD_SIGNALS)
+        assert mgr.mode is SessionMode.DICTATE
+        assert outcome.kind == "dictate_injected"
+        mocks["inject"].assert_called_once_with("hello world")
+
+    def test_ava_invocation_while_in_dictate_still_switches(self, manager_factory):
+        # Ava exact-phrase entry (c4a76b9) is untouched by the same-mode
+        # filter -- it lives entirely outside _WHOLE_UTTERANCE_SWITCHES /
+        # _PREFIX_SWITCHES, which is the only place the filter applies.
+        mgr, mocks = manager_factory()
+        mgr.force_mode(SessionMode.DICTATE)
+        outcome = mgr.dispatch_utterance("oracle", GOOD_SIGNALS)
+        assert outcome.kind == "mode_switch"
+        assert mgr.mode is SessionMode.AVA
+
+    def test_ava_invocation_while_already_in_ava_still_reports_mode_switch(self, manager_factory):
+        # Pre-existing behavior, deliberately preserved: re-invoking Ava
+        # while already in AVA is not filtered (unlike DICTATE/COMMAND).
+        mgr, mocks = manager_factory()
+        mgr.force_mode(SessionMode.AVA)
+        outcome = mgr.dispatch_utterance("oracle", GOOD_SIGNALS)
+        assert outcome.kind == "mode_switch"
+        assert mgr.mode is SessionMode.AVA
 
 
 # ---------------------------------------------------------------------------
