@@ -6,8 +6,14 @@ bug: the guard only applied before app.is_speaking went True).
 Preserves: toggle-command-mode servicing (where the always-live global
 abort phrase lives, via SessionModeManager.dispatch_utterance reached
 through _flush() -> _handle_command_mode_utterance, gated only on
-_is_toggle_cmd(app), independent of _hotkey_recording) and AI-command-mode
-servicing.
+_is_toggle_cmd(app), independent of _hotkey_recording).
+
+AI-command-mode is deliberately NOT preserved (2026-07-19 nag incident):
+it used to share toggle-command-mode's exemption, which let it keep
+transcribing and nagging "I didn't catch a command in that" WHILE a
+hold-to-dictate recording was in progress. It now goes fully deaf during
+a hotkey hold, same as plain wake-word mode -- see
+TestAiCommandModeSuppressedDuringHotkeyRecording below.
 
 Real WakeConsumer methods are exercised directly (not reimplemented),
 matching the pattern in tests/test_inactivity_chokepoint.py.
@@ -143,11 +149,33 @@ class TestToggleCommandModeStillServicesDuringHotkeyRecording:
         assert engaged == []
 
 
-class TestAiCommandModeStillServicesDuringHotkeyRecording:
-    def test_vad_still_called_in_ai_command_mode_even_while_hotkey_recording(self):
+class TestAiCommandModeSuppressedDuringHotkeyRecording:
+    """2026-07-19 nag incident: AI-command-mode used to be exempted from
+    the hotkey-deafness gate, so its utterance loop kept running (and
+    nagging) concurrently with a hold-to-dictate recording. It now gets
+    the same full deafness as plain wake-word mode."""
+
+    def test_no_vad_call_in_ai_command_mode_while_hotkey_recording(self):
         wc, reader, app = _make_wc(
             hotkey_recording=True, ai_command_mode_active=True,
         )
+        wc._process_frame(_loud_frame())
+        app._vad_is_speech.assert_not_called()
+
+    def test_no_utterance_buffering_in_ai_command_mode_while_hotkey_recording(self):
+        wc, reader, app = _make_wc(
+            hotkey_recording=True, ai_command_mode_active=True,
+        )
+        wc._process_frame(_loud_frame())
+        assert wc._utterance_frames == []
+        assert wc._buffer_rms_history == []
+
+    def test_ai_command_mode_still_serviced_once_hotkey_recording_ends(self):
+        wc, reader, app = _make_wc(
+            hotkey_recording=True, ai_command_mode_active=True,
+        )
+        wc._process_frame(_loud_frame())
+        app._hotkey_recording = False
         wc._process_frame(_loud_frame())
         app._vad_is_speech.assert_called_once()
 
@@ -179,13 +207,17 @@ class TestDiscardStaleWakeUtterance:
         assert len(wc._utterance_frames) == 1  # untouched
         assert app.is_speaking is True  # untouched
 
-    def test_noop_when_ai_command_mode_owns_the_utterance(self):
+    def test_discards_ai_command_mode_utterance_too(self):
+        """2026-07-19 nag incident fix: AI-command-mode no longer gets the
+        toggle-command-mode exemption -- its in-progress utterance is
+        discarded like plain wake-word mode's would be, rather than left
+        to go stale through the hotkey hold."""
         wc, reader, app = _make_wc(ai_command_mode_active=True)
         wc._utterance_frames = [np.zeros(10, dtype=np.float32)]
         app.is_speaking = True
         wc.discard_stale_wake_utterance()
-        assert len(wc._utterance_frames) == 1
-        assert app.is_speaking is True
+        assert wc._utterance_frames == []
+        assert app.is_speaking is False
 
     def test_safe_to_call_with_nothing_in_progress(self):
         wc, reader, app = _make_wc()
