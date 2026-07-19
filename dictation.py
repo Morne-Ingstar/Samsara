@@ -2106,6 +2106,7 @@ class DictationApp:
         self.ai_command_mode_active = False
         self._ai_cmd_mode_lock = threading.Lock()
         self._ai_cmd_key_held = False            # edge-trigger guard vs OS key auto-repeat
+        self._ai_cmd_key_press_time = 0.0        # set on press; toggle-on-release ghost-tap check reads this
         self._ai_cmd_ready = threading.Event()
         self._ai_cmd_ready.set()  # starts set; cleared during entry until cue finishes
         self._ai_cmd_miss_count = 0              # consecutive unresolved utterances (see ai_command_mode._process_utterance)
@@ -5118,7 +5119,21 @@ class DictationApp:
                 self.exit_ava_mode()
             return
 
-        # AI command mode (toggle; mutual exclusion with command mode and ava mode)
+        # AI command mode (toggle-on-RELEASE with a minimum hold; mutual
+        # exclusion with command mode and ava mode)
+        #
+        # Ghost-tap guard (2026-07-19 incident, Fix 3 / P1): the old
+        # toggle-on-PRESS behavior had no hold-duration check at all, so a
+        # single accidental tap of the configured key was a successful,
+        # silent mode activation -- Right-Alt Ava has always required a
+        # >=200ms hold (checked on release) for exactly this reason.
+        # AI-command-mode now gets the same protection and the same
+        # debounce constant: a press only arms and timestamps the key; the
+        # toggle itself fires on release, and only if held for at least
+        # command_mode.enter_debounce_ms. A sub-debounce tap is a silent
+        # no-op (debug log only) -- symmetric for BOTH activation and
+        # deactivation presses, so an accidental tap can never change mode
+        # state either way.
         ai_cfg = self.config.get('ai_command_mode', {})
         if ai_cfg.get('enabled', True):
             ai_key_name = ai_cfg.get('key', 'right_ctrl')
@@ -5126,17 +5141,23 @@ class DictationApp:
             if ai_target is not None and _matches_pynput_key(key, ai_target):
                 if pressed:
                     if self._ai_cmd_key_held:
-                        return  # auto-repeat
+                        return  # auto-repeat -- already armed by the real press
                     self._ai_cmd_key_held = True
+                    self._ai_cmd_key_press_time = time.monotonic()
+                    return
+                # Release
+                if not self._ai_cmd_key_held:
+                    return  # phantom release with no matching real press
+                self._ai_cmd_key_held = False
+                debounce_ms = self.config.get('command_mode', {}).get('enter_debounce_ms', 200)
+                hold_ms = (time.monotonic() - self._ai_cmd_key_press_time) * 1000
+                if hold_ms < debounce_ms:
+                    logger.debug(f"[AI-CMD] Ghost tap ({hold_ms:.0f}ms) — ignored")
+                    return
+                if self.ai_command_mode_active:
+                    self.exit_ai_command_mode()
                 else:
-                    if not self._ai_cmd_key_held:
-                        return  # phantom release
-                    self._ai_cmd_key_held = False
-                if pressed:
-                    if self.ai_command_mode_active:
-                        self.exit_ai_command_mode()
-                    else:
-                        self.enter_ai_command_mode()
+                    self.enter_ai_command_mode()
 
     # ── Unified session mode state machine (COMMAND <-> DICTATE) ────────────
 
