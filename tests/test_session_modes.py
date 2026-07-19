@@ -1257,6 +1257,15 @@ class TestBufferedDictateCommit:
         assert is_dictate_commit("the end is near") is False
         assert is_dictate_commit("weekend") is False
 
+    def test_and_is_accepted_as_an_end_homophone_whole_utterance_only(self):
+        """"and"/"end" acoustic collision fix -- see
+        _DICTATE_COMMIT_HOMOPHONES in session_modes.py. Isolated "and"
+        commits exactly like "end"; "and" inside ordinary prose never
+        reaches this whole-utterance-only check."""
+        assert is_dictate_commit("and") is True
+        assert is_dictate_commit("And.") is True
+        assert is_dictate_commit("you and me") is False
+
     def test_pauses_stage_chunks_without_pasting(self, manager_factory):
         mgr, mocks = manager_factory(buffer_dictate_until_commit=True)
         mgr.force_mode(SessionMode.DICTATE)

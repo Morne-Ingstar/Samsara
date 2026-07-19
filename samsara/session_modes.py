@@ -100,6 +100,18 @@ _PREFIX_SWITCHES: dict[str, SessionMode] = {
 
 SCRATCH_THAT_PHRASE = "scratch that"
 DICTATE_COMMIT_PHRASE = "end"
+# "and"/"end" acoustic collision: a lone sentence-final "and", isolated into
+# its own utterance by a pause, is decoded by Whisper as "end" (or the
+# reverse) often enough to matter. is_dictate_commit() ONLY ever sees a
+# whole isolated utterance (see its docstring/normalize_utterance's
+# whole-equality check below), so treating "and" as a homophone here carries
+# no risk to "and" used inside dictated prose -- mid-sentence "and" never
+# reaches this check. DICTATE_COMMIT_PHRASE stays "end": it's the
+# canonical/displayed word (quick_reference_qt.py shows it as-is, correct).
+# ACCEPTED TRADE: a genuine isolated sentence-final "and" now commits too.
+# Deliberate -- the false paste is immediate and visible (recoverable via
+# scratch-that), preferred over the silent commit-miss this fixes.
+_DICTATE_COMMIT_HOMOPHONES = frozenset({"end", "and"})
 GLOBAL_SESSION_EXIT_PHRASES = (
     "stop listening",
     "exit hands free",
@@ -133,8 +145,11 @@ def is_scratch_that(raw_text: str) -> bool:
 
 
 def is_dictate_commit(raw_text: str) -> bool:
-    """Whole-utterance-only manual commit for buffered DICTATE mode."""
-    return normalize_utterance(raw_text) == DICTATE_COMMIT_PHRASE
+    """Whole-utterance-only manual commit for buffered DICTATE mode.
+
+    Matches DICTATE_COMMIT_PHRASE ("end") OR its acoustic homophone "and"
+    -- see _DICTATE_COMMIT_HOMOPHONES above for why that's safe here."""
+    return normalize_utterance(raw_text) in _DICTATE_COMMIT_HOMOPHONES
 
 
 def match_literal_payload(raw_text: str) -> Optional[str]:
