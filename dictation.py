@@ -2108,6 +2108,7 @@ class DictationApp:
         self._ai_cmd_key_held = False            # edge-trigger guard vs OS key auto-repeat
         self._ai_cmd_ready = threading.Event()
         self._ai_cmd_ready.set()  # starts set; cleared during entry until cue finishes
+        self._ai_cmd_miss_count = 0              # consecutive unresolved utterances (see ai_command_mode._process_utterance)
 
         self._mouse_hook = None
 
@@ -5613,6 +5614,7 @@ class DictationApp:
             if self.command_mode_active or self.ava_mode_active:
                 return
             self.ai_command_mode_active = True
+        self._ai_cmd_miss_count = 0
         self._ai_cmd_ready.clear()  # Mic gate: unblocks only after cue finishes
         logger.info("[AI-CMD] Entering AI command mode")
         if hasattr(self, 'listening_indicator'):
@@ -5649,6 +5651,7 @@ class DictationApp:
             if not self.ai_command_mode_active:
                 return
             self.ai_command_mode_active = False
+        self._ai_cmd_miss_count = 0
         self._ai_cmd_ready.set()  # Unblock utterance gate if cue is still playing
         logger.info("[AI-CMD] Exiting AI command mode")
         if hasattr(self, 'listening_indicator'):
