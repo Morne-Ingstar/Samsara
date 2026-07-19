@@ -103,11 +103,28 @@ def _pretty_button(raw: str) -> str:
 def _lane_switch_phrases(mode: SessionMode) -> list[str]:
     """Read session_modes' OWN registry of whole-utterance switch phrases --
     never a phrase list copied into this file, so a change to
-    session_modes._WHOLE_UTTERANCE_SWITCHES is reflected here automatically."""
+    session_modes._WHOLE_UTTERANCE_SWITCHES is reflected here automatically.
+
+    COMMAND/DICTATE only -- Ava entry moved OUT of this static registry
+    (2026-07-18, match_ava_invocation) into a configurable list read from
+    live config; use _ava_invocation_phrases(app) for AVA, never this."""
     return sorted(
         phrase for phrase, m in session_modes._WHOLE_UTTERANCE_SWITCHES.items()
         if m is mode
     )
+
+
+def _ava_invocation_phrases(app) -> list[str]:
+    """Ava's counterpart to _lane_switch_phrases -- reads the user's ACTUAL
+    configured ava_invocations (config-file-editable, see config_schema.py),
+    falling back to session_modes.DEFAULT_AVA_INVOCATIONS exactly like
+    dictation.py's own resolution of the same key. Honors this file's HARD
+    RULE (module docstring): never a hardcoded phrase, always live config."""
+    cfg = getattr(app, "config", None) or {}
+    invocations = cfg.get("ava_invocations", list(session_modes.DEFAULT_AVA_INVOCATIONS))
+    if isinstance(invocations, str):
+        invocations = [invocations]
+    return sorted(invocations)
 
 
 # ---------------------------------------------------------------------------
@@ -126,8 +143,8 @@ def _resolve_hotkeys(app) -> list[dict]:
     streaming_enabled = bool(cfg.get("streaming_mode", False))
     streaming_key = cfg.get("streaming_hotkey", _HOTKEY_FALLBACKS["streaming_hotkey"])
 
-    ava_phrases = _lane_switch_phrases(SessionMode.AVA)
-    ava_phrase = ava_phrases[0] if ava_phrases else "ava"
+    ava_phrases = _ava_invocation_phrases(app)
+    ava_phrase = ava_phrases[0] if ava_phrases else "(none configured)"
 
     return [
         {
@@ -206,7 +223,7 @@ def _resolve_session_phrases(app) -> dict:
             "phrases": {
                 "Command": _lane_switch_phrases(SessionMode.COMMAND),
                 "Dictate": _lane_switch_phrases(SessionMode.DICTATE),
-                "Ava": _lane_switch_phrases(SessionMode.AVA),
+                "Ava": _ava_invocation_phrases(app),
             },
         },
         "abort": {

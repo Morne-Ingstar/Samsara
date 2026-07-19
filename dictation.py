@@ -495,7 +495,7 @@ from samsara.runtime import thread_registry
 from samsara.session_modes import (
     SessionMode, SessionModeManager, UtteranceSignals, CommandDispatchResult,
     HandsFreeCommandMatch, PendingTextPolicy, normalize_utterance,
-    GLOBAL_SESSION_EXIT_PHRASES,
+    GLOBAL_SESSION_EXIT_PHRASES, DEFAULT_AVA_INVOCATIONS,
 )
 
 # Commands with special pending-text behavior inside the combined hands-free
@@ -5324,8 +5324,17 @@ class DictationApp:
             *GLOBAL_SESSION_EXIT_PHRASES,
         ]))
 
+        # Exact-phrase Ava entry list -- config-file-editable only this pass
+        # (no settings UI; see config_schema.py's "ava_invocations" entry).
+        configured_ava_invocations = self.config.get(
+            'ava_invocations', list(DEFAULT_AVA_INVOCATIONS),
+        )
+        if isinstance(configured_ava_invocations, str):
+            configured_ava_invocations = [configured_ava_invocations]
+
         self._session_mode_manager = SessionModeManager(
             abort_phrases=abort_phrases,
+            ava_invocations=configured_ava_invocations,
             foreground_exe_resolver=_get_foreground_exe_lower,
             foreground_hwnd_resolver=_get_foreground_hwnd,
             inject_fn=_inject_fn,
@@ -5926,20 +5935,43 @@ class DictationApp:
             # Command-mode utterances (mode==COMMAND) are matched against the
             # English command registry AND control words (switch/scratch/
             # abort, checked by SessionModeManager on every utterance
-            # regardless of mode) -- force English there AND keep vocabulary
-            # biasing (it's short, matcher-side recognition, not free-form
-            # prose). DICTATE/AVA use the configured dictation language and
-            # drop vocabulary biasing entirely -- free-form prose,
-            # decode-matrix-established to be destabilized by it (SPARK
-            # 2026-07-17/18, N=10/cell) -- control-word recognition during
-            # those sub-modes is best-effort in non-English regardless
-            # (commands remain English-only by design).
+            # regardless of mode) -- keep vocabulary biasing there (it's
+            # short, matcher-side recognition, not free-form prose).
+            # DICTATE/AVA drop vocabulary biasing entirely -- free-form
+            # prose, decode-matrix-established to be destabilized by it
+            # (SPARK 2026-07-17/18, N=10/cell).
+            #
+            # Language is forced to English for the WHOLE lane, every mode --
+            # NOT threaded through get_transcription_params()'s shared
+            # base_params (that stays mode-language-driven for every other
+            # caller: hold-to-dictate, transcribe_continuous_buffer,
+            # process_wake_word_buffer), overridden here per-call-site
+            # exactly like the command hotkey already does in
+            # _build_hotkey_transcribe_params (02e00b9's per-path contract).
+            # HISTORY (2026-07-18 17:03-17:04 incident): this lane used to
+            # force English ONLY while mode==COMMAND. Recovering from an
+            # errant Ava-mode entry (see match_ava_invocation in
+            # session_modes.py / CHANGE 1), Morne's first "dictate mode"
+            # attempt was spoken while mode==AVA, decoded as Vietnamese
+            # ("Duoc thay mot", lang 'vi' @0.51 confidence) with auto-
+            # language on, and got dispatched to Ava as a query instead of
+            # switching mode -- two tries needed to recover. Mode-switch
+            # phrases and short commands can be spoken from ANY mode
+            # (that's the whole point of an any-to-any switch grammar), and
+            # this is exactly where language auto-detect is weakest (short
+            # utterances, little context). DELIBERATE TRADE: genuine
+            # non-English free-form DICTATE/AVA prose spoken in this lane is
+            # now also English-biased -- accepted because reliably escaping
+            # a latched session via a recognizable control word matters more
+            # here than non-English free-form accuracy in this specific
+            # lane. The free-form hold-to-dictate HOTKEY path is untouched --
+            # it keeps the user's configured language, forced or auto,
+            # unconditionally.
             manager = self._ensure_session_mode_manager()
             _is_command_lane = manager.mode is SessionMode.COMMAND
             transcribe_params = self.get_transcription_params(include_vocabulary=_is_command_lane)
             transcribe_params['vad_filter'] = False
-            if _is_command_lane:
-                transcribe_params['language'] = 'en'
+            transcribe_params['language'] = 'en'
 
             with self.model_lock:
                 segments, _ = self.model.transcribe(audio, **transcribe_params)

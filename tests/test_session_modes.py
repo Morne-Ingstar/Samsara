@@ -19,6 +19,8 @@ from samsara.session_modes import (
     is_scratch_that,
     is_dictate_commit,
     match_switch_word,
+    match_ava_invocation,
+    DEFAULT_AVA_INVOCATIONS,
     passes_switch_anti_hallucination_gate,
     seam_join,
     chunk_ends_terminal,
@@ -66,10 +68,6 @@ class TestSwitchWordMatcher:
         ("dictation mode", SessionMode.DICTATE),
         ("dictate", SessionMode.DICTATE),
         ("Dictate!", SessionMode.DICTATE),
-        ("ava", SessionMode.AVA),
-        ("Ava", SessionMode.AVA),
-        ("ava mode", SessionMode.AVA),
-        ("Ava Mode!", SessionMode.AVA),
     ])
     def test_whole_utterance_match(self, text, expected_mode):
         m = match_switch_word(text)
@@ -90,17 +88,21 @@ class TestSwitchWordMatcher:
         assert m.is_prefix is True
         assert m.payload == "hello world"
 
-    def test_ava_prefix_form_with_payload(self):
-        m = match_switch_word("ava what time is it")
-        assert m is not None
-        assert m.target_mode is SessionMode.AVA
-        assert m.is_prefix is True
-        assert m.payload == "what time is it"
+    def test_ava_is_no_longer_a_prefix_switch(self):
+        """2026-07-18 incident fix: Ava has NO prefix form any more -- "ava
+        <anything>" must not match_switch_word() at all. Entry now lives
+        entirely in match_ava_invocation() (see TestAvaInvocationMatcher),
+        exact-phrase-only, no prefix trap."""
+        assert match_switch_word("ava what time is it") is None
 
-    def test_ava_prefix_form_preserves_original_casing_and_punctuation(self):
-        m = match_switch_word("ava What's the weather?")
-        assert m is not None
-        assert m.payload == "What's the weather?"
+    def test_bare_ava_and_ava_mode_no_longer_whole_match(self):
+        """Deliberately removed from _WHOLE_UTTERANCE_SWITCHES -- a bare
+        content word is too easy to say by accident mid-dictation (the
+        incident: "Ava Omniscience Mode" spoken as ordinary content)."""
+        assert match_switch_word("ava") is None
+        assert match_switch_word("Ava") is None
+        assert match_switch_word("ava mode") is None
+        assert match_switch_word("Ava Mode!") is None
 
     def test_prefix_form_preserves_original_casing_and_punctuation(self):
         m = match_switch_word("dictate Hello, World!")
@@ -149,6 +151,69 @@ class TestSwitchWordMatcher:
         m = match_switch_word("dictate col1\tcol2")
         assert m is not None
         assert m.payload == "col1\tcol2"
+
+
+# ---------------------------------------------------------------------------
+# match_ava_invocation: exact whole-utterance ONLY, no prefix form
+# ---------------------------------------------------------------------------
+
+class TestAvaInvocationMatcher:
+    def test_default_invocations_constant(self):
+        assert DEFAULT_AVA_INVOCATIONS == ("hey ava", "so ava", "oracle")
+
+    @pytest.mark.parametrize("text", ["hey ava", "so ava", "oracle"])
+    def test_each_default_invocation_matches_exactly(self, text):
+        assert match_ava_invocation(text, DEFAULT_AVA_INVOCATIONS) is True
+
+    @pytest.mark.parametrize("text", [
+        "Hey Ava", "HEY AVA", "hey, ava!", "hey ava.", "  hey ava  ",
+        "Oracle.", "ORACLE", "So Ava,",
+    ])
+    def test_case_punctuation_and_trailing_period_insensitive(self, text):
+        assert match_ava_invocation(text, DEFAULT_AVA_INVOCATIONS) is True
+
+    def test_bare_ava_does_not_match_default_list(self):
+        """The core deliberate exclusion: bare "ava" is not in
+        DEFAULT_AVA_INVOCATIONS, so it must not match -- this is the whole
+        point of the fix (see the 2026-07-18 incident note above)."""
+        assert match_ava_invocation("ava", DEFAULT_AVA_INVOCATIONS) is False
+        assert match_ava_invocation("Ava", DEFAULT_AVA_INVOCATIONS) is False
+        assert match_ava_invocation("ava mode", DEFAULT_AVA_INVOCATIONS) is False
+
+    def test_so_ava_does_not_collapse_into_bare_ava(self):
+        """The exact collision _normalize_exact_phrase() exists to avoid:
+        normalize_utterance() would strip "so" as a leading filler and
+        collapse "so ava" down to "ava", reopening the bare-"ava" exclusion
+        through the back door. match_ava_invocation must treat "so ava" as
+        its own distinct two-word phrase."""
+        invocations_without_so_ava = frozenset({"hey ava", "oracle"})
+        assert match_ava_invocation("so ava", invocations_without_so_ava) is False
+        assert match_ava_invocation("ava", DEFAULT_AVA_INVOCATIONS) is False
+        assert match_ava_invocation("so ava", DEFAULT_AVA_INVOCATIONS) is True
+
+    @pytest.mark.parametrize("text", [
+        "so ava let me think about this",
+        "hey ava what's the weather",
+        "oracle tell me a joke",
+        "ava omniscience mode",
+        "hey avatar",  # must not fuzzy/substring match "hey ava"
+    ])
+    def test_starts_with_invocation_but_has_more_is_not_a_match(self, text):
+        """No prefix form -- this IS the incident fix. An utterance that
+        merely STARTS WITH an invocation but contains more content is not a
+        switch; the caller (DICTATE mode) must treat it as ordinary text."""
+        assert match_ava_invocation(text, DEFAULT_AVA_INVOCATIONS) is False
+
+    def test_custom_configured_invocation_matches(self):
+        custom = frozenset({"computer"})
+        assert match_ava_invocation("computer", custom) is True
+        assert match_ava_invocation("Computer.", custom) is True
+        assert match_ava_invocation("oracle", custom) is False  # not in THIS list
+
+    def test_empty_and_unrelated_text(self):
+        assert match_ava_invocation("", DEFAULT_AVA_INVOCATIONS) is False
+        assert match_ava_invocation("   ", DEFAULT_AVA_INVOCATIONS) is False
+        assert match_ava_invocation("open chrome", DEFAULT_AVA_INVOCATIONS) is False
 
 
 class TestScratchThat:
@@ -274,6 +339,13 @@ KNOWN_HALLUCINATION_SHAPES = [
     ("dictate mode", False, (45.0,)),                      # hallucinated transcript that HAPPENS to read as a switch phrase
     ("scratch that", True, (30.0,)),                       # speech gate ok but compression ratio exploded
     ("command mode", None, ()),                            # both signals unavailable
+    # 2026-07-18: bare "ava"/"ava ava ava"/"ava mode" are no longer switch
+    # candidates at all (removed from both _PREFIX_SWITCHES and the default
+    # Ava invocation list -- see match_ava_invocation), so these three rows
+    # now exercise "never a candidate" rather than "gate-rejected candidate"
+    # -- kept here because the outward contract (never switches, never
+    # leaves COMMAND, on this exact transcript+signal combination) still
+    # matters and must not silently regress if either mechanism changes again.
     ("ava ava ava", False, (36.0,)),                       # repeated-word hallucination shape, sub-floor energy
     ("ava", False, (2.1,)),                                 # sub-floor energy, plausible-looking short word
     ("ava mode", None, (60.0,)),                            # gate unavailable AND exploded ratio
@@ -500,7 +572,7 @@ def manager_factory():
     """Returns a (manager, mocks) builder so each test can override callables."""
     def _build(foreground="notepad.exe", foreground_hwnd=12345, abort_phrases=None,
                command_matches=None, format_dictate_fn=None,
-               buffer_dictate_until_commit=False):
+               buffer_dictate_until_commit=False, ava_invocations=None):
         mocks = {
             "foreground": Mock(return_value=foreground),
             "foreground_hwnd": Mock(return_value=foreground_hwnd),
@@ -529,6 +601,7 @@ def manager_factory():
             on_abort=mocks["on_abort"],
             on_switch_dispatch_error=mocks["on_switch_dispatch_error"],
             buffer_dictate_until_commit=buffer_dictate_until_commit,
+            ava_invocations=ava_invocations,
             clock=lambda: 1000.0,
         )
         return mgr, mocks
@@ -870,18 +943,26 @@ class TestSessionModeManagerDispatch:
 
 class TestSessionModeManagerAvaDispatch:
     def test_whole_utterance_switch_to_ava(self, manager_factory):
+        """Bare "ava" is gone from the default invocation list -- use a
+        real default invocation ("hey ava") instead."""
         mgr, mocks = manager_factory()
-        outcome = mgr.dispatch_utterance("ava", GOOD_SIGNALS)
+        outcome = mgr.dispatch_utterance("hey ava", GOOD_SIGNALS)
         assert outcome.kind == "mode_switch"
         assert mgr.mode is SessionMode.AVA
         mocks["on_mode_change"].assert_called_once_with(SessionMode.AVA)
 
-    def test_ava_prefix_switch_delivers_payload_to_agent(self, manager_factory):
-        mgr, mocks = manager_factory()
+    def test_ava_prefix_no_longer_switches_from_command_mode(self, manager_factory):
+        """2026-07-18 incident fix: the one-shot "ava <question>" prefix
+        dispatch is REMOVED. From COMMAND mode (the default entry lane),
+        "ava what time is it" is no longer recognized as anything special --
+        it falls through to ordinary command matching (a miss, since it's
+        not a registered command) exactly like any other unmatched phrase."""
+        mgr, mocks = manager_factory(command_matches=None)
         outcome = mgr.dispatch_utterance("ava what time is it", GOOD_SIGNALS)
-        assert mgr.mode is SessionMode.AVA
-        assert outcome.kind == "ava_dispatched"
-        mocks["agent_dispatch"].assert_called_once_with("what time is it", None)
+        assert mgr.mode is SessionMode.COMMAND  # never switched
+        assert outcome.kind == "command_miss"
+        mocks["agent_dispatch"].assert_not_called()
+        mocks["command_dispatch"].assert_called_once_with("ava what time is it")
 
     def test_plain_ava_utterance_routes_to_agent_dispatch(self, manager_factory):
         mgr, mocks = manager_factory()
@@ -960,12 +1041,15 @@ class TestSessionModeManagerAvaDispatch:
         assert outcome.kind == "scratch_refuse"
 
     def test_ava_switch_gated_by_hallucination_check_falls_through(self, manager_factory):
+        """"oracle" (a real default invocation, unlike bare "ava" which
+        isn't a switch candidate at all any more) must still be gated by
+        the anti-hallucination check like any other switch word."""
         mgr, mocks = manager_factory(command_matches=None)
         bad_signals = UtteranceSignals(has_contiguous_speech=False, compression_ratios=(50.0,))
-        outcome = mgr.dispatch_utterance("ava", bad_signals)
+        outcome = mgr.dispatch_utterance("oracle", bad_signals)
         assert mgr.mode is SessionMode.COMMAND  # never switched
         assert outcome.kind == "command_miss"   # fell through to COMMAND dispatch instead
-        mocks["command_dispatch"].assert_called_once_with("ava")
+        mocks["command_dispatch"].assert_called_once_with("oracle")
 
     # -- substance gate (Phase 2.5) --------------------------------------
 
@@ -1041,20 +1125,59 @@ class TestSessionModeManagerAvaTransitions:
         assert outcome.kind == "mode_switch"
         assert mgr.mode is SessionMode.COMMAND
 
-    def test_dictate_to_ava_prefix_with_payload(self, manager_factory):
+    def test_dictate_content_starting_with_ava_prefix_stays_dictate_content(self, manager_factory):
+        """THE 2026-07-18 incident, reproduced directly: "Ava Omniscience
+        Mode" spoken as ordinary DICTATE content (isolated into its own
+        utterance by a natural pause) must NOT hijack the session into Ava
+        mode any more. It is delivered verbatim as dictated text, mode stays
+        DICTATE -- exactly the manual checklist's item 1/4 scenario."""
         mgr, mocks = manager_factory(foreground="notepad.exe")
         mgr.force_mode(SessionMode.DICTATE)
-        outcome = mgr.dispatch_utterance("ava what time is it", GOOD_SIGNALS)
-        assert mgr.mode is SessionMode.AVA
-        assert outcome.kind == "ava_dispatched"
-        mocks["agent_dispatch"].assert_called_once_with("what time is it", None)
+        outcome = mgr.dispatch_utterance("Ava Omniscience Mode", GOOD_SIGNALS)
+        assert mgr.mode is SessionMode.DICTATE  # never switched
+        assert outcome.kind == "dictate_injected"
+        mocks["inject"].assert_called_once_with("Ava Omniscience Mode")
+        mocks["agent_dispatch"].assert_not_called()
+
+    def test_dictate_content_starting_with_so_ava_stays_dictate_content(self, manager_factory):
+        """Manual checklist item 4: "so ava let me think about this" while
+        dictating -- "so ava" IS a configured invocation, but only as an
+        EXACT whole utterance; trailing content means no switch."""
+        mgr, mocks = manager_factory(foreground="notepad.exe")
+        mgr.force_mode(SessionMode.DICTATE)
+        outcome = mgr.dispatch_utterance("so ava let me think about this", GOOD_SIGNALS)
+        assert mgr.mode is SessionMode.DICTATE
+        assert outcome.kind == "dictate_injected"
+        mocks["inject"].assert_called_once_with("so ava let me think about this")
+
+    def test_bare_ava_while_dictating_stays_dictate_content(self, manager_factory):
+        mgr, mocks = manager_factory(foreground="notepad.exe")
+        mgr.force_mode(SessionMode.DICTATE)
+        outcome = mgr.dispatch_utterance("ava", GOOD_SIGNALS)
+        assert mgr.mode is SessionMode.DICTATE
+        assert outcome.kind == "dictate_injected"
+        mocks["inject"].assert_called_once_with("ava")
 
     def test_command_to_ava_and_back(self, manager_factory):
         mgr, mocks = manager_factory()
-        mgr.dispatch_utterance("ava", GOOD_SIGNALS)
+        mgr.dispatch_utterance("oracle", GOOD_SIGNALS)
         assert mgr.mode is SessionMode.AVA
         mgr.dispatch_utterance("command mode", GOOD_SIGNALS)
         assert mgr.mode is SessionMode.COMMAND
+
+    def test_custom_configured_ava_invocation_switches_mode(self, manager_factory):
+        """A custom alias added via config (manager_factory's ava_invocations
+        override stands in for the config-file value dictation.py resolves)
+        works exactly like a default one."""
+        mgr, mocks = manager_factory(ava_invocations=["computer"])
+        outcome = mgr.dispatch_utterance("Computer.", GOOD_SIGNALS)
+        assert outcome.kind == "mode_switch"
+        assert mgr.mode is SessionMode.AVA
+        # and a DEFAULT invocation no longer works once the list is overridden
+        mgr2, mocks2 = manager_factory(ava_invocations=["computer"])
+        outcome2 = mgr2.dispatch_utterance("oracle", GOOD_SIGNALS)
+        assert outcome2.kind != "mode_switch"
+        assert mgr2.mode is SessionMode.COMMAND
 
     def test_fresh_dictate_entry_from_ava_starts_a_new_stage_buffer(self, manager_factory):
         mgr, mocks = manager_factory(foreground="notepad.exe")
