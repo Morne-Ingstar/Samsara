@@ -1,0 +1,553 @@
+"""Tests for the toggle-DICTATE-lane streaming preview overlay (SPARK
+2026-07-18: "hands-free streaming preview: live partials overlay for
+toggle-DICTATE").
+
+Preview-only layer: dictation.py's _handle_command_mode_utterance remains the
+SOLE authoritative decode/paste path (see test_transcription_params.py's
+test_handle_command_mode_utterance_gates_on_session_mode /
+test_handle_command_mode_utterance_forces_english_on_every_mode, both still
+passing unmodified -- that IS the "session final path params unchanged"
+assertion for this feature). Everything here exercises the NEW preview code:
+samsara.streaming.DictatePreviewSession's partial-decode loop and
+WakeConsumer.snapshot_dictate_preview_audio's tail-window snapshot, plus
+dictation.py's lifecycle wiring (_ensure_streaming_preview/
+_release_streaming_preview/_update_streaming_preview), against minimal
+duck-typed doubles -- same philosophy as test_wake_consumer_lifecycle.py and
+test_transcription_params.py's _base_fake_app.
+"""
+import threading
+import types
+
+import numpy as np
+import pytest
+
+from unittest.mock import Mock
+
+import dictation
+from samsara.audio_engine.frame import FRAME_MS, SAMPLE_RATE
+from samsara.audio_engine.wake_consumer import WakeConsumer, _PREVIEW_TAIL_S
+from samsara.session_modes import DispatchOutcome, SessionMode
+from samsara.streaming import DictatePreviewSession, PARTIAL_BEAM
+
+
+# ============================================================================
+# WakeConsumer.snapshot_dictate_preview_audio -- tail-window snapshot.
+# ============================================================================
+
+class _FakeApp:
+    def __init__(self, mode=SessionMode.DICTATE, command_mode_active=True):
+        self.command_mode_active = command_mode_active
+        self.config = {'command_mode': {'mode': 'toggle'}}
+        self._session_mode_manager = types.SimpleNamespace(mode=mode)
+
+
+def _bare_consumer():
+    consumer = WakeConsumer.__new__(WakeConsumer)
+    consumer._utterance_frames = []
+    return consumer
+
+
+class TestSnapshotDictatePreviewAudio:
+    def test_none_outside_dictate_lane(self):
+        consumer = _bare_consumer()
+        consumer._app = _FakeApp(mode=SessionMode.COMMAND)
+        consumer._utterance_frames = [np.ones(1600, dtype=np.float32)]
+        assert consumer.snapshot_dictate_preview_audio() is None
+
+    def test_none_when_not_in_toggle_command_mode(self):
+        consumer = _bare_consumer()
+        consumer._app = _FakeApp(mode=SessionMode.DICTATE, command_mode_active=False)
+        consumer._utterance_frames = [np.ones(1600, dtype=np.float32)]
+        assert consumer.snapshot_dictate_preview_audio() is None
+
+    def test_none_when_buffer_empty(self):
+        consumer = _bare_consumer()
+        consumer._app = _FakeApp()
+        consumer._utterance_frames = []
+        assert consumer.snapshot_dictate_preview_audio() is None
+
+    def test_returns_concatenated_buffer_when_short(self):
+        consumer = _bare_consumer()
+        consumer._app = _FakeApp()
+        frames = [np.full(1600, i, dtype=np.float32) for i in range(3)]
+        consumer._utterance_frames = frames
+        out = consumer.snapshot_dictate_preview_audio()
+        assert out is not None
+        assert out.shape == (1600 * 3,)
+
+    def test_truncates_to_tail_window_when_buffer_exceeds_it(self):
+        """DICTATE is exempt from the 7s hard cap (_hard_cap_applies), so the
+        buffer can grow past _PREVIEW_TAIL_S -- only the most recent slice
+        must be decoded, not the whole growing buffer."""
+        consumer = _bare_consumer()
+        consumer._app = _FakeApp()
+        tail_frame_count = int(_PREVIEW_TAIL_S * 1000 / FRAME_MS)
+        total_frames = tail_frame_count + 20
+        # Each frame tagged with its index so we can verify only the TAIL survived.
+        frames = [np.full(1600, i, dtype=np.float32) for i in range(total_frames)]
+        consumer._utterance_frames = frames
+        out = consumer.snapshot_dictate_preview_audio()
+        assert out.shape == (1600 * tail_frame_count,)
+        # First sample of the returned tail must match the first surviving
+        # (not-dropped) frame's tag, i.e. frame index `total_frames - tail_frame_count`.
+        assert out[0] == total_frames - tail_frame_count
+
+    def test_does_not_mutate_the_live_buffer(self):
+        """Read-only: the poll thread's own buffer must be untouched (a
+        snapshot that trims/clears it would corrupt the in-progress
+        utterance the FIFO worker will eventually transcribe for real)."""
+        consumer = _bare_consumer()
+        consumer._app = _FakeApp()
+        frames = [np.ones(1600, dtype=np.float32) for _ in range(5)]
+        consumer._utterance_frames = frames
+        consumer.snapshot_dictate_preview_audio()
+        assert len(consumer._utterance_frames) == 5
+        assert consumer._utterance_frames is frames
+
+
+# ============================================================================
+# DictatePreviewSession -- partial-decode loop.
+# ============================================================================
+
+class _FakeModel:
+    def __init__(self):
+        self.calls = []
+
+    def transcribe(self, audio, **kwargs):
+        self.calls.append(kwargs)
+        seg = types.SimpleNamespace(text=" hello world")
+        return [seg], types.SimpleNamespace(language='en')
+
+
+def _bare_preview(app):
+    session = DictatePreviewSession.__new__(DictatePreviewSession)
+    session.app = app
+    session._stop_event = threading.Event()
+    session._overlay = types.SimpleNamespace(
+        show=lambda: None, close=lambda: None,
+        update_text=lambda *a, **k: None,
+        flash_done_and_fade=lambda cb: cb() if cb else None,
+    )
+    session._closed = False
+    return session
+
+
+def _base_preview_app(get_transcription_params=None):
+    captured = {}
+
+    def _default_get_transcription_params(include_vocabulary=True):
+        captured['include_vocabulary'] = include_vocabulary
+        return {
+            'language': 'fr', 'initial_prompt': '', 'no_speech_threshold': 0.6,
+            'log_prob_threshold': -1.0, 'beam_size': 3, 'vad_filter': True,
+            'condition_on_previous_text': False, 'without_timestamps': True,
+            'word_timestamps': False,
+        }
+
+    consumer = types.SimpleNamespace(
+        snapshot_dictate_preview_audio=lambda: np.ones(16000, dtype=np.float32),
+    )
+    app = types.SimpleNamespace(
+        model=_FakeModel(),
+        model_lock=threading.Lock(),
+        model_rate=16000,
+        _wake_consumer=consumer,
+        get_transcription_params=get_transcription_params or _default_get_transcription_params,
+    )
+    return app, captured
+
+
+class TestTranscribePartialSkipsWhenModelBusy:
+    def test_returns_none_and_never_touches_wake_consumer_when_lock_held(self):
+        app, _captured = _base_preview_app()
+        touched = []
+        app._wake_consumer = types.SimpleNamespace(
+            snapshot_dictate_preview_audio=lambda: touched.append(1) or None,
+        )
+        session = _bare_preview(app)
+
+        app.model_lock.acquire()  # simulate a final/hotkey decode in flight
+        try:
+            result = session._transcribe_partial()
+        finally:
+            app.model_lock.release()
+
+        assert result is None
+        assert touched == [], "must skip the tick entirely, never queue behind the holder"
+        assert app.model.calls == []
+
+    def test_decodes_when_lock_free(self):
+        app, _captured = _base_preview_app()
+        session = _bare_preview(app)
+        result = session._transcribe_partial()
+        assert result == "hello world"  # raw join+strip -- no capitalize pass, overlay-only text
+        assert len(app.model.calls) == 1
+
+
+class TestSnapshotAudio:
+    def test_none_when_wake_consumer_missing(self):
+        app, _ = _base_preview_app()
+        app._wake_consumer = None
+        session = _bare_preview(app)
+        assert session._snapshot_audio() is None
+
+    def test_none_when_consumer_returns_none(self):
+        app, _ = _base_preview_app()
+        app._wake_consumer = types.SimpleNamespace(
+            snapshot_dictate_preview_audio=lambda: None,
+        )
+        session = _bare_preview(app)
+        assert session._snapshot_audio() is None
+
+    def test_none_when_below_minimum_duration(self):
+        app, _ = _base_preview_app()
+        app._wake_consumer = types.SimpleNamespace(
+            snapshot_dictate_preview_audio=lambda: np.ones(100, dtype=np.float32),
+        )
+        session = _bare_preview(app)
+        assert session._snapshot_audio() is None
+
+
+class TestPartialParamsContract:
+    def test_omits_vocabulary_and_forces_english(self):
+        """Mirrors _handle_command_mode_utterance's own DICTATE/AVA override
+        (c98c677 / the AVA-language-forcing follow-up): free-form prose,
+        never matched against the command registry."""
+        app, captured = _base_preview_app()
+        session = _bare_preview(app)
+        params = session._partial_params()
+        assert captured['include_vocabulary'] is False
+        assert params['language'] == 'en'
+        assert params['vad_filter'] is False
+        assert params['beam_size'] == PARTIAL_BEAM
+        assert params['condition_on_previous_text'] is False
+
+    def test_get_transcription_params_failure_falls_back_safely(self):
+        def _raising(include_vocabulary=True):
+            raise RuntimeError("boom")
+
+        app, _ = _base_preview_app(get_transcription_params=_raising)
+        session = _bare_preview(app)
+        params = session._partial_params()  # must not raise
+        assert params['language'] == 'en'
+
+
+class TestOnUtteranceFinal:
+    def test_clears_and_flashes_then_reopens_for_next_utterance(self):
+        app, _ = _base_preview_app()
+        session = _bare_preview(app)
+        events = []
+        session._overlay = types.SimpleNamespace(
+            update_text=lambda text, state: events.append(('update', text, state)),
+            show=lambda: events.append(('show',)),
+            flash_done_and_fade=lambda cb: (events.append(('flash',)), cb()),
+            close=lambda: None,
+        )
+        session.on_utterance_final()
+        assert events[0] == ('flash',)
+        assert ('update', '', 'listening') in events
+        assert ('show',) in events
+
+    def test_no_op_after_closed(self):
+        app, _ = _base_preview_app()
+        session = _bare_preview(app)
+        session._closed = True
+        calls = []
+        session._overlay = types.SimpleNamespace(
+            flash_done_and_fade=lambda cb: calls.append(1),
+        )
+        session.on_utterance_final()
+        assert calls == []
+
+
+# ============================================================================
+# dictation.py wiring: config gating, ensure/release, lane transitions.
+# ============================================================================
+
+class _FakePreview:
+    """Stand-in for DictatePreviewSession -- records lifecycle calls without
+    touching Qt or spawning a real thread."""
+    instances = []
+
+    def __init__(self, app):
+        self.app = app
+        self.started = False
+        self.stopped = False
+        _FakePreview.instances.append(self)
+
+    def start(self):
+        self.started = True
+
+    def stop(self):
+        self.stopped = True
+
+
+@pytest.fixture(autouse=True)
+def _reset_fake_preview_instances():
+    _FakePreview.instances = []
+    yield
+    _FakePreview.instances = []
+
+
+def _make_dictation_app(session_streaming_preview=True, monkeypatch=None):
+    app = types.SimpleNamespace()
+    app.config = {'command_mode': {'session_streaming_preview': session_streaming_preview}}
+    app._dictate_preview = None
+    app._ensure_streaming_preview = types.MethodType(
+        dictation.DictationApp._ensure_streaming_preview, app)
+    app._release_streaming_preview = types.MethodType(
+        dictation.DictationApp._release_streaming_preview, app)
+    app._update_streaming_preview = types.MethodType(
+        dictation.DictationApp._update_streaming_preview, app)
+    return app
+
+
+class TestConfigGating:
+    def test_config_off_constructs_nothing(self, monkeypatch):
+        monkeypatch.setattr('samsara.streaming.DictatePreviewSession', _FakePreview)
+        app = _make_dictation_app(session_streaming_preview=False)
+        app._update_streaming_preview(SessionMode.DICTATE)
+        assert app._dictate_preview is None
+        assert _FakePreview.instances == []
+
+    def test_config_on_dictate_lane_constructs_and_starts(self, monkeypatch):
+        monkeypatch.setattr('samsara.streaming.DictatePreviewSession', _FakePreview)
+        app = _make_dictation_app(session_streaming_preview=True)
+        app._update_streaming_preview(SessionMode.DICTATE)
+        assert app._dictate_preview is not None
+        assert app._dictate_preview.started is True
+
+
+class TestLaneTransitions:
+    def test_dictate_to_command_stops_and_clears(self, monkeypatch):
+        monkeypatch.setattr('samsara.streaming.DictatePreviewSession', _FakePreview)
+        app = _make_dictation_app()
+        app._update_streaming_preview(SessionMode.DICTATE)
+        preview = app._dictate_preview
+        app._update_streaming_preview(SessionMode.COMMAND)
+        assert preview.stopped is True
+        assert app._dictate_preview is None
+
+    def test_command_to_dictate_resumes(self, monkeypatch):
+        monkeypatch.setattr('samsara.streaming.DictatePreviewSession', _FakePreview)
+        app = _make_dictation_app()
+        app._update_streaming_preview(SessionMode.COMMAND)
+        assert app._dictate_preview is None
+        app._update_streaming_preview(SessionMode.DICTATE)
+        assert app._dictate_preview is not None
+        assert app._dictate_preview.started is True
+
+    def test_ava_lane_never_shows_preview(self, monkeypatch):
+        monkeypatch.setattr('samsara.streaming.DictatePreviewSession', _FakePreview)
+        app = _make_dictation_app()
+        app._update_streaming_preview(SessionMode.AVA)
+        assert app._dictate_preview is None
+
+    def test_ensure_is_idempotent(self, monkeypatch):
+        monkeypatch.setattr('samsara.streaming.DictatePreviewSession', _FakePreview)
+        app = _make_dictation_app()
+        app._update_streaming_preview(SessionMode.DICTATE)
+        first = app._dictate_preview
+        app._update_streaming_preview(SessionMode.DICTATE)
+        assert app._dictate_preview is first
+        assert len(_FakePreview.instances) == 1
+
+    def test_session_end_closes(self, monkeypatch):
+        """exit_command_mode's toggle branch calls _release_streaming_preview
+        unconditionally (reset() bypasses on_mode_change) -- simulated here
+        directly against the lifecycle methods."""
+        monkeypatch.setattr('samsara.streaming.DictatePreviewSession', _FakePreview)
+        app = _make_dictation_app()
+        app._update_streaming_preview(SessionMode.DICTATE)
+        preview = app._dictate_preview
+        app._release_streaming_preview()
+        assert preview.stopped is True
+        assert app._dictate_preview is None
+
+    def test_release_when_nothing_running_is_a_safe_no_op(self):
+        app = _make_dictation_app()
+        app._release_streaming_preview()  # must not raise
+        assert app._dictate_preview is None
+
+
+# ============================================================================
+# End-to-end: enter_command_mode/exit_command_mode's toggle branch, through
+# the REAL bound methods (reset() bypasses on_mode_change entirely, so these
+# two call sites carry their own explicit _update_streaming_preview /
+# _release_streaming_preview calls -- see dictation.py's comments there).
+# Mirrors test_wake_consumer_lifecycle.py's _make_toggle_session_app, but
+# here the preview lifecycle methods are the REAL bound ones under test
+# instead of being no-op'd.
+# ============================================================================
+
+class _FakeWakeConsumer:
+    """Stand-in for WakeConsumer -- only the surface _ensure_wake_consumer/
+    _release_wake_consumer touch (._running, .start(), .stop())."""
+
+    def __init__(self):
+        self._running = False
+
+    def start(self):
+        self._running = True
+
+    def stop(self):
+        self._running = False
+        return []
+
+
+def _make_toggle_session_app(monkeypatch, session_streaming_preview=True):
+    monkeypatch.setattr('samsara.streaming.DictatePreviewSession', _FakePreview)
+    app = types.SimpleNamespace()
+    app._wake_consumer = _FakeWakeConsumer()
+    app._wake_consumer_reasons = set()
+    app._wake_consumer_lock = threading.Lock()
+    app.wake_word_triggered = False
+    app.process_wake_word_buffer = lambda *a, **k: None
+    app._ensure_wake_consumer = types.MethodType(dictation.DictationApp._ensure_wake_consumer, app)
+    app._release_wake_consumer = types.MethodType(dictation.DictationApp._release_wake_consumer, app)
+
+    app.command_mode_active = False
+    app.ava_mode_active = False
+    app._command_mode_lock = threading.Lock()
+    app._command_mode_miss_count = 0
+    app._command_mode_session_start = 0.0
+    app._command_mode_ghost_tap = False
+    app.recording = False
+    app._session_mode_manager = None
+    app._dictate_preview = None
+    app.config = {
+        'command_mode': {
+            'mode': 'toggle',
+            'inactivity_timeout_s': 300,
+            'enter_debounce_ms': 0,
+            'exit_earcon': False,
+            'session_streaming_preview': session_streaming_preview,
+        },
+    }
+    app._reset_command_mode_inactivity_timer = lambda timeout_s: None
+    app._cancel_command_mode_inactivity_timer = lambda: None
+    app._ensure_session_mode_manager = lambda: types.SimpleNamespace(reset=lambda **kw: None)
+    app._update_mode_overlay = lambda mode: None
+    app.play_sound = lambda *a, **k: None
+    app.stop_recording = lambda: None
+    app._do_enter_command_mode = lambda: None
+    monkeypatch.setattr(dictation.thread_registry, 'spawn', lambda *a, **k: None)
+
+    app._ensure_streaming_preview = types.MethodType(
+        dictation.DictationApp._ensure_streaming_preview, app)
+    app._release_streaming_preview = types.MethodType(
+        dictation.DictationApp._release_streaming_preview, app)
+    app._update_streaming_preview = types.MethodType(
+        dictation.DictationApp._update_streaming_preview, app)
+    app.enter_command_mode = types.MethodType(dictation.DictationApp.enter_command_mode, app)
+    app.exit_command_mode = types.MethodType(dictation.DictationApp.exit_command_mode, app)
+    return app
+
+
+class TestToggleSessionStreamingPreviewWiring:
+    def test_entering_toggle_session_starts_the_preview(self, monkeypatch):
+        app = _make_toggle_session_app(monkeypatch)
+        app.enter_command_mode()
+        assert app._dictate_preview is not None
+        assert app._dictate_preview.started is True
+
+    def test_exiting_toggle_session_stops_the_preview(self, monkeypatch):
+        app = _make_toggle_session_app(monkeypatch)
+        app.enter_command_mode()
+        preview = app._dictate_preview
+        app.exit_command_mode()
+        assert preview.stopped is True
+        assert app._dictate_preview is None
+
+    def test_config_off_never_starts_the_preview(self, monkeypatch):
+        app = _make_toggle_session_app(monkeypatch, session_streaming_preview=False)
+        app.enter_command_mode()
+        assert app._dictate_preview is None
+        assert _FakePreview.instances == []
+
+    def test_double_enter_does_not_double_start(self, monkeypatch):
+        app = _make_toggle_session_app(monkeypatch)
+        app.enter_command_mode()
+        app.enter_command_mode()  # command_mode_active guard makes this a no-op
+        assert len(_FakePreview.instances) == 1
+
+
+# ============================================================================
+# _handle_command_mode_utterance -- the on_utterance_final() hook. Reuses
+# test_command_mode_utterance_hallucination.py's _make_app/_seg/_buffer_for
+# integration-test shape (fake Whisper decode, real method under test).
+# ============================================================================
+
+def _seg(text, compression_ratio=1.0, no_speech_prob=0.0):
+    return types.SimpleNamespace(
+        text=text, compression_ratio=compression_ratio,
+        no_speech_prob=no_speech_prob, avg_logprob=-0.1,
+    )
+
+
+def _buffer_for(duration_s=1.0, rate=16000):
+    return [np.zeros(int(duration_s * rate), dtype=np.float32)]
+
+
+def _make_utterance_app(mode, dictate_preview=None):
+    app = dictation.DictationApp.__new__(dictation.DictationApp)
+    app._wake_transcription_in_progress = False
+    app.model_rate = 16000
+    app.model_lock = Mock()
+    app.model_lock.__enter__ = Mock(return_value=None)
+    app.model_lock.__exit__ = Mock(return_value=False)
+    app.model = Mock()
+    app.model.transcribe = Mock(return_value=([_seg("hello world")], types.SimpleNamespace()))
+    app.get_transcription_params = Mock(return_value={})
+    app.voice_training_window = Mock()
+    app.voice_training_window.apply_corrections = Mock(side_effect=lambda t: t)
+    app._command_mode_ghost_tap = False
+    app._compute_switch_gate_signals = Mock(return_value=Mock())
+    app._handle_session_dispatch_outcome = Mock()
+    app.play_sound = Mock()
+    app._vad_reset = Mock()
+    app._dictate_preview = dictate_preview
+
+    manager = Mock()
+    manager.mode = mode
+    manager.dispatch_utterance = Mock(
+        return_value=DispatchOutcome(kind="dictate_staged", detail={}))
+    app._ensure_session_mode_manager = Mock(return_value=manager)
+    return app, manager
+
+
+class TestHandleCommandModeUtteranceOnFinalHook:
+    def test_dictate_lane_final_notifies_the_preview(self):
+        preview = Mock()
+        app, _manager = _make_utterance_app(SessionMode.DICTATE, dictate_preview=preview)
+        dictation.DictationApp._handle_command_mode_utterance(app, _buffer_for(), 16000)
+        preview.on_utterance_final.assert_called_once_with()
+
+    def test_command_lane_final_does_not_touch_the_preview(self):
+        """COMMAND-lane utterances never showed a preview in the first
+        place (see _update_streaming_preview's DICTATE-only gate) -- a
+        preview object could still be set here in principle (a mode switch
+        landing back in COMMAND while a stale reference lingered), so this
+        locks in that the hook is gated on the utterance's OWN captured
+        lane, not merely "is a preview object present."""
+        preview = Mock()
+        app, _manager = _make_utterance_app(SessionMode.COMMAND, dictate_preview=preview)
+        dictation.DictationApp._handle_command_mode_utterance(app, _buffer_for(), 16000)
+        preview.on_utterance_final.assert_not_called()
+
+    def test_dictate_lane_final_with_no_preview_running_is_safe(self):
+        app, _manager = _make_utterance_app(SessionMode.DICTATE, dictate_preview=None)
+        dictation.DictationApp._handle_command_mode_utterance(app, _buffer_for(), 16000)  # must not raise
+
+    def test_preview_hook_failure_does_not_break_dispatch(self):
+        """Best-effort per the task's own invariant: if the preview fails,
+        dictation must be byte-identical to today -- a raising
+        on_utterance_final must not prevent _handle_session_dispatch_outcome
+        (already called earlier in the try block) from having taken effect,
+        nor propagate out of the method."""
+        preview = Mock()
+        preview.on_utterance_final.side_effect = RuntimeError("boom")
+        app, manager = _make_utterance_app(SessionMode.DICTATE, dictate_preview=preview)
+        dictation.DictationApp._handle_command_mode_utterance(app, _buffer_for(), 16000)  # must not raise
+        manager.dispatch_utterance.assert_called_once()
+        app._handle_session_dispatch_outcome.assert_called_once()

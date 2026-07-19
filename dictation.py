@@ -2560,6 +2560,7 @@ class DictationApp:
         self._ace_dictation_active  = False   # True while hold-mode uses ACE consumer path
         self._ace_streaming_active  = False   # True while CapsLock streaming uses ACE consumer
         self._streaming_session     = None    # Sole owner until final/cancel cleanup completes
+        self._dictate_preview       = None    # DictatePreviewSession, DICTATE-lane only -- see _ensure_streaming_preview
         _t = time.perf_counter()
         self._start_ace_engine()
         _dt = (time.perf_counter() - _t) * 1000
@@ -5295,6 +5296,7 @@ class DictationApp:
         def _on_mode_change(mode: "SessionMode") -> None:
             self.play_sound(_MODE_EARCONS.get(mode, 'mode_command'))
             self._update_mode_overlay(mode)
+            self._update_streaming_preview(mode)
 
         def _on_focus_lock_revert() -> None:
             logger.info('[SESSION] Focus-lock mismatch -- foreground window changed; '
@@ -5461,6 +5463,11 @@ class DictationApp:
                 # config-controlled state in exit_command_mode().
                 self._schedule_ui(self.listening_indicator.show)
             self._update_mode_overlay(SessionMode.DICTATE)
+            # reset(initial_mode=DICTATE) above sets .mode directly, bypassing
+            # _switch_mode -- on_mode_change (which _update_streaming_preview
+            # is wired into) never fires for this initial lane. Same reason
+            # _update_mode_overlay needs its own explicit call just above.
+            self._update_streaming_preview(SessionMode.DICTATE)
         thread_registry.spawn('cmd-mode-enter', self._do_enter_command_mode, daemon=True)
 
     def _do_enter_command_mode(self):
@@ -5522,6 +5529,12 @@ class DictationApp:
             # reason-counted, not a boolean, so this can't stop it out
             # from under wake mode.
             self._release_wake_consumer('toggle_session')
+        # reset() above bypasses on_mode_change (see enter_command_mode's own
+        # explicit call), so a session ending while still in DICTATE would
+        # otherwise leak a running preview overlay/thread. Unconditional --
+        # a no-op when nothing was ever started (config off, or session
+        # ended from COMMAND/AVA).
+        self._release_streaming_preview()
         if hasattr(self, 'listening_indicator'):
             if is_toggle_session:
                 # Clear the session badge and restore whatever visibility
@@ -5969,6 +5982,13 @@ class DictationApp:
             # unconditionally.
             manager = self._ensure_session_mode_manager()
             _is_command_lane = manager.mode is SessionMode.COMMAND
+            # Captured now (this utterance's actual capture-time lane) for
+            # the streaming-preview clear/flash below -- dispatch_utterance
+            # can itself switch manager.mode (e.g. a mode-switch phrase), so
+            # checking manager.mode again AFTER dispatch would tell us the
+            # lane this utterance switched TO, not the one its audio (and
+            # any preview partials) were captured in.
+            _was_dictate_lane = manager.mode is SessionMode.DICTATE
             transcribe_params = self.get_transcription_params(include_vocabulary=_is_command_lane)
             transcribe_params['vad_filter'] = False
             transcribe_params['language'] = 'en'
@@ -6042,6 +6062,15 @@ class DictationApp:
             outcome = manager.dispatch_utterance(text, signals)
             logger.info(f'[SESSION] mode={manager.mode.value} outcome={outcome.kind} detail={outcome.detail}')
             self._handle_session_dispatch_outcome(outcome, text)
+            if _was_dictate_lane and self._dictate_preview is not None:
+                # This utterance's authoritative final just landed -- clear
+                # the preview's stale partial and flash, independent of
+                # outcome.kind (even a rejected/refused utterance ends the
+                # in-progress buffer this preview was showing).
+                try:
+                    self._dictate_preview.on_utterance_final()
+                except Exception as e:
+                    logger.debug(f'[DICTATE-PREVIEW] on_utterance_final failed: {e}')
         except Exception as exc:
             # Any exception here (transcription error, injection failure,
             # a lane's dispatch blowing up) must earcon and leave the
@@ -6365,6 +6394,52 @@ class DictationApp:
             remaining = self._wake_consumer.stop()
         if remaining and self.wake_word_triggered:
             self.process_wake_word_buffer(remaining, src_rate=16000)
+
+    def _update_streaming_preview(self, mode: "SessionMode") -> None:
+        """Show/hide the toggle-session DICTATE-lane streaming preview on
+        every mode transition (wired into SessionModeManager's
+        on_mode_change alongside _update_mode_overlay). COMMAND/AVA lanes
+        never show it -- those utterances are ~1s and partials would be
+        noise. Config-gated: when session_streaming_preview is off, this
+        never constructs a DictatePreviewSession, so zero new code runs in
+        the hot path.
+
+        reset()-driven entry (the toggle session's initial DICTATE lane,
+        and session end) does NOT go through on_mode_change -- see
+        enter_command_mode/exit_command_mode's own explicit calls to this
+        method alongside their existing _update_mode_overlay calls.
+        """
+        if not self.config.get('command_mode', {}).get('session_streaming_preview', True):
+            return
+        if mode is SessionMode.DICTATE:
+            self._ensure_streaming_preview()
+        else:
+            self._release_streaming_preview()
+
+    def _ensure_streaming_preview(self) -> None:
+        """Start the DICTATE-lane preview overlay if not already running.
+        Idempotent. Failure here is best-effort -- never allowed to affect
+        the authoritative per-utterance transcription/dispatch path."""
+        if self._dictate_preview is not None:
+            return
+        try:
+            from samsara.streaming import DictatePreviewSession
+            self._dictate_preview = DictatePreviewSession(self)
+            self._dictate_preview.start()
+        except Exception as e:
+            logger.exception(f'[DICTATE-PREVIEW] Failed to start: {e}')
+            self._dictate_preview = None
+
+    def _release_streaming_preview(self) -> None:
+        """Stop and clear the DICTATE-lane preview overlay. Idempotent
+        no-op when nothing is running."""
+        preview, self._dictate_preview = self._dictate_preview, None
+        if preview is None:
+            return
+        try:
+            preview.stop()
+        except Exception as e:
+            logger.debug(f'[DICTATE-PREVIEW] Stop failed: {e}')
 
     def start_wake_word_mode(self):
         """Start wake word listening — always listening for wake word."""

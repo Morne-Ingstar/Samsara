@@ -49,6 +49,13 @@ from samsara.runtime import thread_registry
 
 logger = get_logger(__name__)
 
+# Streaming-preview tail window (dictation.py's DictatePreviewSession): the
+# toggle-DICTATE lane is exempted from the 7s hard cap (_hard_cap_applies),
+# so an in-progress buffer can grow arbitrarily long while the user keeps
+# talking. Decoding only the most recent slice keeps each preview tick's
+# Whisper cost bounded regardless of utterance length.
+_PREVIEW_TAIL_S = 8.0
+
 
 class WakeConsumer:
     """Polls the ACE ring and runs the full wake word policy loop.
@@ -159,6 +166,38 @@ class WakeConsumer:
             logger.debug("[SEAM] Discarding in-progress wake-mode utterance "
                          "-- hotkey recording just started")
         self.abort_utterance()
+
+    def snapshot_dictate_preview_audio(self) -> "np.ndarray | None":
+        """Thread-safe, read-only snapshot of the in-progress toggle-DICTATE
+        utterance for the streaming-preview overlay (dictation.py's
+        DictatePreviewSession, called from its own preview-tick thread --
+        NEVER from this poll thread).
+
+        Returns None outside the DICTATE lane (see _is_toggle_dictate) or
+        when nothing has been buffered yet. Only the most recent
+        _PREVIEW_TAIL_S seconds are returned -- the DICTATE lane is exempt
+        from the 7s hard cap, so the buffer can otherwise grow unbounded.
+
+        `self._utterance_frames` is a plain list, appended to (or reset via
+        rebinding, never in-place mutation) ONLY by this consumer's own poll
+        thread in _process_frame -- never locked, by design (adding a lock
+        here would risk stalling the audio hot path). `list(...)` copies
+        just the reference slots and is atomic under the GIL, so this read
+        can only ever observe a fully-old or fully-new list, never a torn
+        one. Elements themselves are float32 arrays produced fresh per
+        frame via `.astype()` (a copy, not a ring view), so holding them
+        past this call is safe.
+        """
+        app = self._app
+        if not self._is_toggle_dictate(app):
+            return None
+        frames = list(self._utterance_frames)
+        if not frames:
+            return None
+        tail_frame_count = max(1, int(_PREVIEW_TAIL_S * 1000 / FRAME_MS))
+        if len(frames) > tail_frame_count:
+            frames = frames[-tail_frame_count:]
+        return np.concatenate(frames)
 
     # ── Poll loop ─────────────────────────────────────────────────────────────
 
