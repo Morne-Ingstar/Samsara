@@ -187,6 +187,10 @@ def _make_toggle_session_app(monkeypatch, wake_consumer_running=False, existing_
 
     app.command_mode_active = False
     app.ava_mode_active = False
+    # enter_command_mode() now exits an active AI-command session first
+    # (2026-07-19 incident fix) -- always False here, so that branch is a
+    # no-op, but the attribute must exist for the check itself.
+    app.ai_command_mode_active = False
     app._command_mode_lock = threading.Lock()
     app._command_mode_miss_count = 0
     app._command_mode_session_start = 0.0
