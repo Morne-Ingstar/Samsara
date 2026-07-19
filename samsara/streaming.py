@@ -43,6 +43,12 @@ except ImportError:
 from samsara.cleanup import clean_text
 from samsara.log import get_logger
 from samsara.runtime import thread_registry
+from samsara.session_modes import (
+    is_dictate_commit,
+    is_scratch_that,
+    match_ava_invocation,
+    match_switch_word,
+)
 from samsara.smart_corrections import smart_correct
 from samsara import diagnostics
 from samsara import languages as _languages
@@ -1049,27 +1055,101 @@ class DictatePreviewSession:
         self._stop_event.set()
         self._overlay.close()
 
-    def on_utterance_final(self, final_text: str = "") -> None:
+    def on_utterance_final(self, final_text: str = "", scratch_success: bool = False) -> None:
         """Called from dictation.py after a DICTATE-lane utterance's
         authoritative final decode/dispatch completes, with that utterance's
         actual final text (the same string dispatch_utterance/injection
-        used -- NOT a re-decode). Appends to the rolling transcript rather
+        used -- NOT a re-decode) and whether dispatch_utterance's OWN
+        outcome was a successful scratch-that (outcome.kind ==
+        "scratch_success" -- the real undo, not re-derived from text; see
+        _is_control_phrase's docstring for why text alone can't tell us
+        this). Appends dictation content to the rolling transcript rather
         than clearing: the session continues past this utterance, so wiping
         the overlay here would erase the words just spoken every time the
         user pauses. The overlay stays open and visible for the whole
         DICTATE lane -- no flash/fade/close on this path (flash_done_and_fade
-        remains intact for StreamingSession's own per-recording use)."""
+        remains intact for StreamingSession's own per-recording use).
+
+        Control phrases (scratch that / end / and / a switch word / an Ava
+        invocation / an exit phrase) are NOT dictation -- they must never
+        show up as transcript lines. Handled here rather than by the caller
+        filtering `final_text` before calling, so a refused control word
+        (e.g. scratch-that with a stale focus lock -- see
+        SessionModeManager._do_scratch_that) is still correctly suppressed
+        from the transcript even though nothing was actually undone.
+        """
         if self._closed:
             return
         final_text = (final_text or "").strip()
-        if final_text:
+        if scratch_success:
+            # dispatch_utterance's own outcome, not re-derived from text --
+            # the real undo already happened, so mirror it by popping the
+            # just-finalized line (scratch-that undoes the PREVIOUS
+            # utterance, not itself) rather than merely suppressing this
+            # one. Nothing to pop is a safe no-op, same as the real
+            # _do_scratch_that's own empty-stack case.
+            if self._finalized:
+                self._finalized.pop()
+        elif final_text and not self._is_control_phrase(final_text):
             self._finalized.append(final_text)
             overflow = len(self._finalized) - DICTATE_PREVIEW_TRANSCRIPT_MAX_UTTERANCES
             if overflow > 0:
                 del self._finalized[:overflow]
+        # Any other control phrase (scratch-that that was REFUSED, commit,
+        # switch, Ava invocation, exit phrase) falls through here: not
+        # appended, not popped -- correctly a no-op on the transcript,
+        # since the real dispatch either did nothing dictation-shaped or
+        # (for a refused scratch) genuinely left the prior content in place.
+        #
         # Partial cleared to "": this utterance's partial is now stale --
         # the next tick will produce a fresh one for the NEXT utterance.
         self._overlay.set_transcript(self._finalized, "")
+
+    def _is_control_phrase(self, text: str) -> bool:
+        """True when `text` is a recognized session CONTROL phrase rather
+        than dictation content -- reuses the SAME authoritative matchers
+        dispatch_utterance() itself checks (session_modes.is_scratch_that /
+        is_dictate_commit / match_switch_word / match_ava_invocation, plus
+        the session's own configured abort/exit-phrase matcher), so this
+        predicate can never drift from what the final path actually treats
+        as control. Display-only: never used for dispatch, injection, or
+        the scratch-that stack -- see module docstring above.
+
+        "literal <phrase>" needs no special-case exclusion: every one of
+        these matchers requires exact/whole-utterance equality (post
+        normalize_utterance's filler-word stripping, which does not strip
+        "literal"), so "literal scratch that" normalizes to "literal
+        scratch that" and never equals "scratch that" -- match_literal_
+        payload's own escape hatch falls out of this for free.
+
+        Does NOT re-run passes_switch_anti_hallucination_gate/passes_
+        dictate_commit_gate (those need segment-level signals this
+        lightweight partial decode doesn't have) -- a control phrase
+        spoken on low-confidence audio that the real gate would have
+        rejected (and treated as ordinary text) could still be suppressed
+        here. Display-only edge case, not the bug this predicate exists
+        to fix (confidently-spoken control phrases showing up as
+        dictation), and self-correcting: the REAL dispatch outcome always
+        wins for what actually happens to the injected text.
+        """
+        if not text:
+            return False
+        try:
+            manager = self.app._ensure_session_mode_manager()
+        except Exception as e:
+            logger.debug(f"[DICTATE-PREVIEW] control-phrase check unavailable: {e}")
+            return False
+        try:
+            return bool(
+                is_scratch_that(text)
+                or is_dictate_commit(text)
+                or match_switch_word(text) is not None
+                or match_ava_invocation(text, manager._ava_invocations)
+                or manager._matches_abort_phrase(text)
+            )
+        except Exception as e:
+            logger.debug(f"[DICTATE-PREVIEW] control-phrase check failed: {e}")
+            return False
 
     # ---- Tick loop (own daemon thread) -----------------------------------
 
@@ -1083,7 +1163,12 @@ class DictatePreviewSession:
             text = self._transcribe_partial()
             if self._stop_event.is_set() or self._closed:
                 return
-            if text:
+            # A partial that IS a recognized control phrase is never shown
+            # as transcript text -- hold the prior transcript (no new
+            # set_transcript call this tick) rather than flashing "Scratch
+            # that." as if it were dictated content, same reasoning as
+            # on_utterance_final's suppression below.
+            if text and not self._is_control_phrase(text):
                 self._overlay.set_transcript(self._finalized, text)
 
     def _transcribe_partial(self):
