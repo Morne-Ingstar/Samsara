@@ -18,8 +18,19 @@ Config block (add to config.json -- all keys optional, defaults apply if absent)
     "queue_depth_cap":    3,
     "step_settle_seconds": 0.4,
     "show_plan_hud":      true,
-    "keep_warm":          true
+    "keep_warm":          true,
+    "miss_limit":         3
   }
+
+Miss handling (unresolved utterances -- resolver returned no actions):
+  - 1st consecutive miss:  spoken "I didn't catch a command in that."
+  - subsequent misses:     soft chime only (reuses the 'scratch_refuse'
+                            earcon -- the established "didn't go through"
+                            sound elsewhere in the app)
+  - miss_limit reached:    mode auto-exits with a single spoken
+                            "AI command mode off"
+  Any resolved utterance (actions found, or a pending-plan confirm/deny)
+  resets the counter. See _process_utterance / _register_miss / _register_hit.
 """
 from __future__ import annotations
 
@@ -51,6 +62,7 @@ _DEFAULTS: dict[str, Any] = {
     "keep_warm": True,
     "ready_cue_enabled": True,
     "ready_cue_dir": "assets/sounds/ava_cues",
+    "miss_limit": 3,
 }
 
 # Words that trigger immediate queue-cancel (checked inline before enqueue)
@@ -219,6 +231,50 @@ def _duck(app, duck: bool) -> None:
         logger.debug(f"_duck: {e}")
 
 
+def _chime(app) -> None:
+    """Soft non-spoken miss earcon. Reuses 'scratch_refuse' -- the app's
+    existing "this didn't go through" sound (see dictation.py's hands-free
+    session dispatch) -- rather than adding a new asset."""
+    play_sound = getattr(app, "play_sound", None)
+    if play_sound is None:
+        return
+    try:
+        play_sound("scratch_refuse")
+    except Exception as exc:
+        logger.debug(f"_chime: {exc}")
+
+
+def _register_miss(app, cfg: dict) -> None:
+    """Bump the consecutive-miss counter; nag once, chime after, auto-exit
+    at the configured limit. See module docstring for the exact sequence.
+
+    Mirrors dictation.py's command_mode miss_limit auto-exit, but adds the
+    graduated spoken-notice -> chime-only escalation this mode was missing
+    (see the 2026-07-19 AI-command-mode nag incident)."""
+    miss_count = getattr(app, "_ai_cmd_miss_count", 0) + 1
+    app._ai_cmd_miss_count = miss_count
+    miss_limit = int(cfg.get("miss_limit", _DEFAULTS["miss_limit"]))
+
+    if miss_limit > 0 and miss_count >= miss_limit:
+        logger.info(f"[AI-CMD] Miss limit ({miss_limit}) reached -- exiting")
+        _speak(app, "AI command mode off.")
+        exit_fn = getattr(app, "exit_ai_command_mode", None)
+        if exit_fn is not None:
+            exit_fn()
+        return
+
+    if miss_count <= 1:
+        _speak(app, "I didn't catch a command in that.")
+    else:
+        _chime(app)
+
+
+def _register_hit(app) -> None:
+    """Reset the consecutive-miss counter after any resolved utterance
+    (a matched plan, or a pending-plan confirm/deny)."""
+    app._ai_cmd_miss_count = 0
+
+
 # ---------------------------------------------------------------------------
 # Execution helpers
 # ---------------------------------------------------------------------------
@@ -303,6 +359,7 @@ def _process_utterance(app, utterance: str) -> None:  # noqa: C901
         pending = _pending_plan
 
     if pending is not None:
+        _register_hit(app)  # confirm or deny -- either way the utterance was understood
         if text_lower in _CONFIRM_WORDS:
             with _pending_plan_lock:
                 _pending_plan = None
@@ -331,9 +388,10 @@ def _process_utterance(app, utterance: str) -> None:  # noqa: C901
         _duck(app, False)
 
     if not actions:
-        _speak(app, "I didn't catch a command in that.")
+        _register_miss(app, cfg)
         return
 
+    _register_hit(app)
     print(f"[AI-CMD] Plan: {actions}")
 
     # --- Unsafe-command gate ------------------------------------------------
