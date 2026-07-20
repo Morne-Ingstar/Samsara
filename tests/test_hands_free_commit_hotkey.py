@@ -36,7 +36,7 @@ def _stage(manager, text="complete thought"):
     assert outcome.kind == "dictate_staged"
 
 
-def _app(manager):
+def _app(manager, dictate_preview=None):
     app = DictationApp.__new__(DictationApp)
     app.config = {
         "command_mode": {"mode": "toggle"},
@@ -46,6 +46,7 @@ def _app(manager):
     app._session_mode_manager = manager
     app._handle_session_dispatch_outcome = Mock()
     app.play_sound = Mock()
+    app._dictate_preview = dictate_preview
     return app
 
 
@@ -143,4 +144,63 @@ def test_worker_retains_buffer_and_routes_focus_failure_without_paste():
     assert outcome.kind == "dictate_commit_blocked_focus_lock"
     assert manager.dictate_pending_buffer
     inject.assert_not_called()
+    app._handle_session_dispatch_outcome.assert_called_once_with(outcome, "")
+
+
+# ---------------------------------------------------------------------------
+# Preview overlay notification (5666457/2072374 gap): the keyboard commit
+# path never called on_utterance_final at all, so a keyboard-committed
+# buffer left stale lines in the DICTATE preview overlay -- the voice path
+# (dictation.py's _handle_command_mode_utterance) got this signal via
+# 2072374, this path did not. Reuses the SAME on_utterance_final signal
+# shape (dictate_committed=True/False), never a second clearing mechanism.
+# ---------------------------------------------------------------------------
+
+def test_successful_keyboard_commit_notifies_preview_and_clears():
+    manager, _inject = _manager()
+    _stage(manager)
+    preview = Mock()
+    app = _app(manager, dictate_preview=preview)
+
+    outcome = app._commit_pending_hands_free_dictation()
+
+    assert outcome.kind == "dictate_committed"
+    preview.on_utterance_final.assert_called_once_with("", dictate_committed=True)
+
+
+def test_failed_keyboard_commit_notifies_preview_without_clearing():
+    manager, _inject = _manager(process=None, hwnd=None)
+    _stage(manager)
+    preview = Mock()
+    app = _app(manager, dictate_preview=preview)
+
+    outcome = app._commit_pending_hands_free_dictation()
+
+    assert outcome.kind == "dictate_commit_blocked_focus_lock"
+    preview.on_utterance_final.assert_called_once_with("", dictate_committed=False)
+
+
+def test_no_preview_running_is_safe():
+    manager, _inject = _manager()
+    _stage(manager)
+    app = _app(manager, dictate_preview=None)
+
+    outcome = app._commit_pending_hands_free_dictation()  # must not raise
+
+    assert outcome.kind == "dictate_committed"
+
+
+def test_preview_notification_failure_does_not_break_the_commit():
+    """Best-effort, same as the voice path's own on_utterance_final guard --
+    a raising preview must never be mistaken for the commit itself having
+    failed (which would incorrectly play the error earcon)."""
+    manager, _inject = _manager()
+    _stage(manager)
+    preview = Mock()
+    preview.on_utterance_final.side_effect = RuntimeError("boom")
+    app = _app(manager, dictate_preview=preview)
+
+    outcome = app._commit_pending_hands_free_dictation()  # must not raise
+
+    assert outcome.kind == "dictate_committed"
     app._handle_session_dispatch_outcome.assert_called_once_with(outcome, "")

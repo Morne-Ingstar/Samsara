@@ -4656,6 +4656,31 @@ class DictationApp:
                 outcome.detail,
             )
             self._handle_session_dispatch_outcome(outcome, "")
+            if self._dictate_preview is not None:
+                # Same signal shape the voice path uses (see
+                # _handle_command_mode_utterance's own on_utterance_final
+                # call) -- this trusted local (keyboard) trigger has no
+                # spoken utterance text of its own, so final_text is "".
+                # commit_pending_dictation() only ever returns a
+                # control-style outcome (dictate_committed /
+                # dictate_commit_unavailable / dictate_commit_blocked_focus_lock
+                # / dictate_commit_failed), never ordinary dictated content,
+                # so an empty final_text can never wrongly append or
+                # suppress a real transcript line -- only the
+                # dictate_committed flag matters here. A successful commit
+                # (outcome.kind == "dictate_committed") clears the overlay's
+                # already-delivered lines, same as the voice path; any
+                # other outcome (nothing pending, blocked focus lock, paste
+                # failure) leaves the transcript untouched. Own try/except,
+                # separate from the outer one below -- a failure notifying
+                # the preview must never be mistaken for the commit itself
+                # having failed (which plays the error earcon).
+                try:
+                    self._dictate_preview.on_utterance_final(
+                        "", dictate_committed=(outcome.kind == 'dictate_committed'),
+                    )
+                except Exception as e:
+                    logger.debug(f'[DICTATE-PREVIEW] on_utterance_final failed: {e}')
             return outcome
         except Exception as exc:
             logger.exception('[SESSION] Local dictate commit failed unexpectedly: %s', exc)
