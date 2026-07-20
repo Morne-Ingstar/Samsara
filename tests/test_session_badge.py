@@ -92,6 +92,11 @@ def _make_stub(mode='toggle', enabled=True, listening_indicator_enabled=False):
         def __init__(self):
             self.command_mode_active = False
             self.ava_mode_active = False
+            # enter_command_mode() now exits an active AI-command session
+            # first (01a8de8, 2026-07-19 exclusive-voice-mode-ownership fix)
+            # -- always False here so that branch is a no-op, but the
+            # attribute must exist for the check itself.
+            self.ai_command_mode_active = False
             self._command_mode_lock = threading.Lock()
             self._command_mode_miss_count = 0
             self._command_mode_session_start = 0.0
@@ -141,6 +146,24 @@ def _make_stub(mode='toggle', enabled=True, listening_indicator_enabled=False):
             if self._session_mode_manager is None:
                 self._session_mode_manager = Mock()
             return self._session_mode_manager
+
+        # Inert collaborators for lifecycle surfaces this file doesn't
+        # exercise -- reason-counted WakeConsumer ownership (4f61f6e) and
+        # the DICTATE-lane streaming preview (5666457, 2072374). Matches
+        # the same focused-fixture boundary test_wake_consumer_lifecycle.py
+        # draws for _update_streaming_preview/_release_streaming_preview;
+        # this file's own concern is the badge, not those subsystems.
+        def _ensure_wake_consumer(self, reason):
+            pass
+
+        def _release_wake_consumer(self, reason):
+            pass
+
+        def _update_streaming_preview(self, mode):
+            pass
+
+        def _release_streaming_preview(self):
+            pass
 
     return _Stub()
 
