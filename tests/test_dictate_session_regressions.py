@@ -90,6 +90,7 @@ def _buffered_dictation_app(config_overrides=None):
 
     app = DictationApp.__new__(DictationApp)
     app._session_mode_manager = None
+    app._dictate_preview = None
     app.config = {
         "wake_word_config": {"wake_abort_phrase": ["cancel", "abort"]},
         "formatting_tokens": {"enabled": True},

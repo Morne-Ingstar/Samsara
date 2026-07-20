@@ -111,6 +111,7 @@ def _make_stub(mode='toggle', enabled=True, listening_indicator_enabled=False):
             }
             self.listening_indicator = Mock()
             self._session_mode_manager = None
+            self._dictate_preview = None
             self._sounds = []
 
         def _schedule_ui(self, func, *args):

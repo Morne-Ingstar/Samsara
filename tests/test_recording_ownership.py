@@ -114,6 +114,7 @@ def _mode_race_app(mode):
     app._command_mode_session_start = time.monotonic()
     app._ava_mode_session_start = time.monotonic()
     app._session_mode_manager = None
+    app._dictate_preview = None
     app.config = {
         "command_mode": {
             "mode": "hold",
