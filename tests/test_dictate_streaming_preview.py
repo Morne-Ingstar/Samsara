@@ -484,6 +484,63 @@ class TestOnUtteranceFinal:
         expected = [f"utterance {i}" for i in range(2, cap + 2)]
         assert session._finalized == expected
 
+    def test_dictate_committed_clears_the_finalized_transcript(self):
+        """2026-07-19 dogfooding fix: a successful "end" commit just pasted
+        every staged line into the target -- the overlay must not keep
+        showing already-delivered content."""
+        app, _ = _base_preview_app()
+        session = _bare_preview(app)
+        session.on_utterance_final("first thought")
+        session.on_utterance_final("second thought")
+        # "end" itself is a control phrase (is_dictate_commit) so it is
+        # never appended -- only the dictate_committed flag matters here.
+        session.on_utterance_final("end", dictate_committed=True)
+        assert session._finalized == []
+
+    def test_overlay_stays_open_after_a_committed_clear(self):
+        """The overlay object itself is untouched -- only its transcript
+        resets. The session continues for the next staged buffer."""
+        app, _ = _base_preview_app()
+        session = _bare_preview(app)
+        session.on_utterance_final("first thought")
+        session.on_utterance_final("end", dictate_committed=True)
+        assert session._closed is False
+
+    def test_dictate_committed_renders_empty_transcript_via_set_transcript(self):
+        app, _ = _base_preview_app()
+        session = _bare_preview(app)
+        events = []
+        session._overlay = types.SimpleNamespace(
+            set_transcript=lambda lines, partial: events.append((list(lines), partial)),
+        )
+        session.on_utterance_final("first thought")
+        events.clear()
+        session.on_utterance_final("end", dictate_committed=True)
+        assert events == [([], "")]
+
+    def test_failed_or_refused_commit_retains_lines(self):
+        """dictate_committed=False (the default -- what the real call site
+        passes for dictate_commit_refused / dictate_commit_blocked_focus_lock
+        / dictate_commit_failed) must retain the already-staged transcript;
+        nothing was actually delivered. Uses the real SessionModeManager so
+        "end" is correctly recognized as a control phrase and not itself
+        appended -- isolating the assertion to the dictate_committed flag."""
+        session = _bare_preview_with_real_manager()
+        session.on_utterance_final("first thought")
+        session.on_utterance_final("end", dictate_committed=False)
+        assert session._finalized == ["first thought"]
+
+    def test_pause_between_staged_chunks_retains_lines(self):
+        """Ordinary silence-boundary pauses within manual-commit DICTATE
+        staging (outcome "dictate_staged") never pass dictate_committed --
+        the transcript must keep growing across a pause, unchanged from the
+        pre-existing 2026-07-18 persistent-transcript behavior."""
+        app, _ = _base_preview_app()
+        session = _bare_preview(app)
+        session.on_utterance_final("first chunk")
+        session.on_utterance_final("second chunk")  # a later chunk after a pause
+        assert session._finalized == ["first chunk", "second chunk"]
+
     def test_no_op_after_closed(self):
         app, _ = _base_preview_app()
         session = _bare_preview(app)
@@ -788,6 +845,56 @@ class TestToggleSessionStreamingPreviewWiring:
         assert len(_FakePreview.instances) == 1
 
 
+class TestSessionExitReleasesPreviewEvenOnCleanupFailure:
+    """2026-07-19 dogfooding fix: exit_command_mode() is the single funnel
+    every session-exit path (toggle-off key, inactivity timeout, global
+    abort phrase, WakeConsumer poll-loop crash -- see wake_consumer.py's
+    _poll_loop crash handler) goes through. Previously, if
+    _session_mode_manager.reset() or _release_wake_consumer() raised, the
+    _release_streaming_preview() call below them in exit_command_mode was
+    skipped entirely -- the DICTATE overlay kept running after the session
+    had already ended, and none of those callers made up for it
+    (wake_consumer.py's crash handler swallows the exception with a bare
+    `except: pass`; _on_command_mode_inactivity's own except-fallback
+    force-clears command_mode_active without its own release call). The
+    fix wraps the risky cleanup in try/finally so the release is
+    unconditional regardless of what else in the method raises."""
+
+    def test_release_wake_consumer_raising_still_releases_the_preview(self, monkeypatch):
+        app = _make_toggle_session_app(monkeypatch)
+        app.enter_command_mode()
+        preview = app._dictate_preview
+        assert preview is not None
+
+        def _raise(reason):
+            raise RuntimeError("wake consumer release failed")
+        app._release_wake_consumer = _raise
+
+        with pytest.raises(RuntimeError):
+            app.exit_command_mode()
+
+        assert preview.stopped is True
+        assert app._dictate_preview is None
+
+    def test_session_mode_manager_reset_raising_still_releases_the_preview(self, monkeypatch):
+        app = _make_toggle_session_app(monkeypatch)
+        app.enter_command_mode()
+        preview = app._dictate_preview
+        assert preview is not None
+
+        class _RaisingManager:
+            def reset(self, **kw):
+                raise RuntimeError("reset failed")
+
+        app._session_mode_manager = _RaisingManager()
+
+        with pytest.raises(RuntimeError):
+            app.exit_command_mode()
+
+        assert preview.stopped is True
+        assert app._dictate_preview is None
+
+
 # ============================================================================
 # _handle_command_mode_utterance -- the on_utterance_final() hook. Reuses
 # test_command_mode_utterance_hallucination.py's _make_app/_seg/_buffer_for
@@ -841,7 +948,7 @@ class TestHandleCommandModeUtteranceOnFinalHook:
         app, _manager = _make_utterance_app(SessionMode.DICTATE, dictate_preview=preview)
         dictation.DictationApp._handle_command_mode_utterance(app, _buffer_for(), 16000)
         preview.on_utterance_final.assert_called_once_with(
-            "hello world", scratch_success=False)
+            "hello world", scratch_success=False, dictate_committed=False)
 
     def test_scratch_success_outcome_is_threaded_through_as_the_real_signal(self):
         """dispatch_utterance's own outcome.kind == "scratch_success" -- not
@@ -853,7 +960,35 @@ class TestHandleCommandModeUtteranceOnFinalHook:
             SessionMode.DICTATE, dictate_preview=preview, outcome_kind="scratch_success")
         dictation.DictationApp._handle_command_mode_utterance(app, _buffer_for(), 16000)
         preview.on_utterance_final.assert_called_once_with(
-            "hello world", scratch_success=True)
+            "hello world", scratch_success=True, dictate_committed=False)
+
+    def test_dictate_committed_outcome_is_threaded_through_as_the_real_signal(self):
+        """2026-07-19 dogfooding fix: outcome.kind == "dictate_committed" is
+        threaded through the same way scratch_success is -- not re-derived
+        from text (the fake decode's "hello world" is not itself a control
+        phrase)."""
+        preview = Mock()
+        app, _manager = _make_utterance_app(
+            SessionMode.DICTATE, dictate_preview=preview, outcome_kind="dictate_committed")
+        dictation.DictationApp._handle_command_mode_utterance(app, _buffer_for(), 16000)
+        preview.on_utterance_final.assert_called_once_with(
+            "hello world", scratch_success=False, dictate_committed=True)
+
+    @pytest.mark.parametrize("outcome_kind", [
+        "dictate_commit_refused",
+        "dictate_commit_blocked_focus_lock",
+        "dictate_commit_failed",
+    ])
+    def test_refused_or_failed_commit_does_not_set_dictate_committed(self, outcome_kind):
+        """A commit that did NOT actually deliver anything must not clear
+        the overlay's transcript -- see the parallel
+        TestOnUtteranceFinal::test_failed_or_refused_commit_retains_lines."""
+        preview = Mock()
+        app, _manager = _make_utterance_app(
+            SessionMode.DICTATE, dictate_preview=preview, outcome_kind=outcome_kind)
+        dictation.DictationApp._handle_command_mode_utterance(app, _buffer_for(), 16000)
+        preview.on_utterance_final.assert_called_once_with(
+            "hello world", scratch_success=False, dictate_committed=False)
 
     def test_command_lane_final_does_not_touch_the_preview(self):
         """COMMAND-lane utterances never showed a preview in the first
