@@ -1055,19 +1055,24 @@ class DictatePreviewSession:
         self._stop_event.set()
         self._overlay.close()
 
-    def on_utterance_final(self, final_text: str = "", scratch_success: bool = False) -> None:
+    def on_utterance_final(
+        self, final_text: str = "", scratch_success: bool = False,
+        dictate_committed: bool = False,
+    ) -> None:
         """Called from dictation.py after a DICTATE-lane utterance's
         authoritative final decode/dispatch completes, with that utterance's
         actual final text (the same string dispatch_utterance/injection
-        used -- NOT a re-decode) and whether dispatch_utterance's OWN
-        outcome was a successful scratch-that (outcome.kind ==
-        "scratch_success" -- the real undo, not re-derived from text; see
-        _is_control_phrase's docstring for why text alone can't tell us
-        this). Appends dictation content to the rolling transcript rather
-        than clearing: the session continues past this utterance, so wiping
-        the overlay here would erase the words just spoken every time the
-        user pauses. The overlay stays open and visible for the whole
-        DICTATE lane -- no flash/fade/close on this path (flash_done_and_fade
+        used -- NOT a re-decode), whether dispatch_utterance's OWN outcome
+        was a successful scratch-that (outcome.kind == "scratch_success"),
+        and whether it was a successful buffered-DICTATE commit
+        (outcome.kind == "dictate_committed") -- both the real dispatch
+        outcome, not re-derived from text; see _is_control_phrase's
+        docstring for why text alone can't tell us this. Appends dictation
+        content to the rolling transcript rather than clearing on every
+        utterance: the session continues past a pause, so wiping the
+        overlay there would erase the words just spoken every time the user
+        pauses. The overlay stays open and visible for the whole DICTATE
+        lane -- no flash/fade/close on this path (flash_done_and_fade
         remains intact for StreamingSession's own per-recording use).
 
         Control phrases (scratch that / end / and / a switch word / an Ava
@@ -1077,6 +1082,19 @@ class DictatePreviewSession:
         (e.g. scratch-that with a stale focus lock -- see
         SessionModeManager._do_scratch_that) is still correctly suppressed
         from the transcript even though nothing was actually undone.
+
+        dictate_committed=True (2026-07-19 dogfooding fix): a successful
+        "end"/"and" commit has just pasted the ENTIRE staged thought into
+        the target -- every line currently in self._finalized was staged
+        text belonging to that now-delivered thought. Leaving them visible
+        after a successful commit made the overlay look like the paste
+        never happened. Clear here, once, after the (already-suppressed,
+        since "end"/"and" are control phrases) append/pop above -- the
+        overlay itself stays open for the next buffer, only its finalized
+        transcript resets. A REFUSED or FAILED commit (dictate_commit_
+        refused / dictate_commit_blocked_focus_lock / dictate_commit_failed)
+        must retain the lines -- nothing was actually delivered, so the
+        caller passes dictate_committed=False for those outcomes.
         """
         if self._closed:
             return
@@ -1100,6 +1118,8 @@ class DictatePreviewSession:
         # appended, not popped -- correctly a no-op on the transcript,
         # since the real dispatch either did nothing dictation-shaped or
         # (for a refused scratch) genuinely left the prior content in place.
+        if dictate_committed:
+            self._finalized = []
         #
         # Partial cleared to "": this utterance's partial is now stale --
         # the next tick will produce a fresh one for the NEXT utterance.

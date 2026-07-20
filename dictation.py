@@ -5592,26 +5592,39 @@ class DictationApp:
             logger.info(f"[CMD MODE] Ghost tap ({hold_ms:.0f}ms < {debounce_ms}ms) — audio will be discarded")
         logger.info("[CMD MODE] Exiting command mode")
         self._cancel_command_mode_inactivity_timer()
-        # Session end discards all state. A future toggle entry chooses the
-        # combined hands-free lane; reset's COMMAND default remains for legacy
-        # direct callers and the optional command-only lane.
-        if self._session_mode_manager is not None:
-            self._session_mode_manager.reset()
         is_toggle_session = self.config.get('command_mode', {}).get('mode', 'hold') == 'toggle'
-        if is_toggle_session:
-            # Release this session's hold on the WakeConsumer pipeline
-            # (see enter_command_mode's _ensure_wake_consumer). If
-            # wake_word_enabled is separately holding it open, the
-            # pipeline correctly keeps running for wake detection --
-            # reason-counted, not a boolean, so this can't stop it out
-            # from under wake mode.
-            self._release_wake_consumer('toggle_session')
-        # reset() above bypasses on_mode_change (see enter_command_mode's own
-        # explicit call), so a session ending while still in DICTATE would
-        # otherwise leak a running preview overlay/thread. Unconditional --
-        # a no-op when nothing was ever started (config off, or session
-        # ended from COMMAND/AVA).
-        self._release_streaming_preview()
+        try:
+            # Session end discards all state. A future toggle entry chooses
+            # the combined hands-free lane; reset's COMMAND default remains
+            # for legacy direct callers and the optional command-only lane.
+            if self._session_mode_manager is not None:
+                self._session_mode_manager.reset()
+            if is_toggle_session:
+                # Release this session's hold on the WakeConsumer pipeline
+                # (see enter_command_mode's _ensure_wake_consumer). If
+                # wake_word_enabled is separately holding it open, the
+                # pipeline correctly keeps running for wake detection --
+                # reason-counted, not a boolean, so this can't stop it out
+                # from under wake mode.
+                self._release_wake_consumer('toggle_session')
+        finally:
+            # reset() above bypasses on_mode_change (see enter_command_mode's
+            # own explicit call), so a session ending while still in DICTATE
+            # would otherwise leak a running preview overlay/thread.
+            # Unconditional AND in `finally` (2026-07-19 dogfooding fix): every
+            # session-exit path -- toggle-off key, inactivity timeout, global
+            # abort phrase, WakeConsumer poll-loop crash -- funnels through
+            # this one method, and each of THOSE callers either swallows an
+            # exception from here (wake_consumer.py's crash handler: bare
+            # `except: pass`) or, on inactivity timeout, force-clears
+            # command_mode_active in its own except-fallback WITHOUT its own
+            # release call (_on_command_mode_inactivity). Previously, if
+            # reset() or _release_wake_consumer() above raised, the overlay
+            # release below was skipped entirely and none of those callers
+            # made it up for it -- the DICTATE-lane overlay would keep running
+            # after the session had already ended. A no-op when nothing was
+            # ever started (config off, or session ended from COMMAND/AVA).
+            self._release_streaming_preview()
         if hasattr(self, 'listening_indicator'):
             if is_toggle_session:
                 # Clear the session badge and restore whatever visibility
@@ -6227,7 +6240,9 @@ class DictationApp:
                 # see DictatePreviewSession.on_utterance_final's docstring.
                 try:
                     self._dictate_preview.on_utterance_final(
-                        text, scratch_success=(outcome.kind == 'scratch_success'),
+                        text,
+                        scratch_success=(outcome.kind == 'scratch_success'),
+                        dictate_committed=(outcome.kind == 'dictate_committed'),
                     )
                 except Exception as e:
                     logger.debug(f'[DICTATE-PREVIEW] on_utterance_final failed: {e}')
