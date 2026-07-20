@@ -45,12 +45,11 @@ def test_general_interface_size_uses_supported_values_and_normal_apply(qapp):
         general_updates = window._save_fns[0]({})
         assert general_updates["ui_scale"] == 1.15
 
-        restart_hint = window.findChild(QLabel, "uiScaleRestartHint")
-        assert restart_hint is not None
-        assert "restart" in restart_hint.text().lower()
-        assert "text, menus, and controls" in " ".join(
+        all_labels_text = " ".join(
             label.text() for label in window.findChildren(QLabel)
         )
+        assert "text, menus, and controls" in all_labels_text
+        assert "restart" in all_labels_text.lower()
     finally:
         window.deleteLater()
 

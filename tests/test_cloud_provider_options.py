@@ -102,7 +102,7 @@ def test_openrouter_is_selectable_in_ava_cloud_ui(qapp):
     assert win._widgets["cloud_model"].placeholderText() == (
         "Default: openrouter/auto"
     )
-    assert "many model providers" in win._widgets["cloud_info_label"].text()
+    assert "many models" in win._widgets["cloud_info_label"].text()
 
     save_ava = win._save_fns[_TAB_NAMES.index("Ava / Cloud")]
     assert save_ava({})["cloud_llm"]["provider"] == "openrouter"
