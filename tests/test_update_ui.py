@@ -104,15 +104,14 @@ def test_settings_updates_are_opt_in_and_explain_network_privacy(qapp, monkeypat
         copy = " ".join(label.text() for label in support_page.findChildren(QLabel))
         lowered = copy.lower()
         for phrase in (
-            "no update server or push channel",
+            "no update server",
             "off by default",
             "github releases",
-            "no more than once every 24 hours",
+            "at most once a day",
             "sends no audio",
             "dictated text",
-            "device identifier",
-            "ip address",
-            "request headers",
+            "or identifiers",
+            "sees your ip",
         ):
             assert phrase in lowered
 

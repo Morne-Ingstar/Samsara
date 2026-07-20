@@ -88,7 +88,7 @@ def test_advanced_audio_copy_is_honest_and_distinguishes_both_ducking_features(q
     assert "Experimental Echo Cancellation" in text
     assert "not recommended" in text
     assert "3–8% echo reduction" in text
-    assert "may add distortion" in text
+    assert "may distort audio" in text
     assert "Playback Reduction While Dictating" in text
     assert "Absolute volume level for other apps" in text
     assert "Fraction of other apps' current volume" not in text

@@ -226,7 +226,7 @@ _PROVIDER_INFO = {
     "deepseek":  "deepseek-chat — Best value. Cheapest per token, strong reasoning. Recommended for most users.",
     "openai":    "gpt-4o-mini — Fast and widely supported. Good for general tasks and tool use.",
     "anthropic": "claude-sonnet-4 — Best reasoning and instruction following. Higher cost per token.",
-    "openrouter": "openrouter/auto — One key for many model providers. Auto Router chooses a model for each request; enter a model slug below to choose one yourself.",
+    "openrouter": "One key, many models. Auto-picks per request, or enter a model slug below.",
 }
 
 
@@ -1124,11 +1124,6 @@ class _SettingsWindow(QMainWindow):
             width=260,
         )
 
-        restart_hint = QLabel("Interface-size changes take effect after restarting Samsara.")
-        restart_hint.setObjectName("uiScaleRestartHint")
-        restart_hint.setStyleSheet("color: #AEB4C0; font-size: 13px;")
-        accessibility_layout.addWidget(restart_hint)
-
         # ---- Card: Audio -------------------------------------------------
         audio_card, audio_layout = self._section_card(
             "Audio",
@@ -1244,7 +1239,7 @@ class _SettingsWindow(QMainWindow):
         _add_row(
             audio_layout,
             "Samsara sounds",
-            "Speaker used for earcons, speech, and alarms; does not affect other apps",
+            "Speaker used for Samsara's sounds, speech, and alarms; other apps are unaffected.",
             output_combo,
             width=420,
         )
@@ -1266,10 +1261,6 @@ class _SettingsWindow(QMainWindow):
 
         tutorial_btn = QPushButton("Replay Tutorial")
         # No own width: goes through _add_row(width=210) below, see setup_btn.
-        tutorial_btn.setToolTip(
-            "Re-open the interactive tutorial to practice dictation, "
-            "commands, show-numbers, and Ava."
-        )
         tutorial_btn.clicked.connect(
             lambda: getattr(self.app, 'show_tutorial', lambda: None)()
         )
@@ -1283,21 +1274,19 @@ class _SettingsWindow(QMainWindow):
 
         ava_guide_btn = QPushButton("Ava Setup Guide...")
         # No own width: goes through _add_row(width=210) below, see setup_btn.
-        ava_guide_btn.setToolTip("Step-by-step guide to installing Ollama and setting up Ava.")
         ava_guide_btn.clicked.connect(
             lambda: getattr(self.app, 'open_ava_guide', lambda: None)()
         )
         _add_row(
             audio_layout,
             "Ava setup guide",
-            "Install and configure Ollama or cloud assistant integrations.",
+            "Set up Ava — the optional local or cloud AI assistant.",
             ava_guide_btn,
             width=210,
         )
 
         vt_btn = QPushButton("Voice Training...")
         # No own width: goes through _add_row(width=210) below, see setup_btn.
-        vt_btn.setToolTip("Train Samsara to recognise your specific pronunciations and corrections.")
         vt_btn.clicked.connect(
             lambda: getattr(self.app, 'open_voice_training', lambda: None)()
         )
@@ -1364,7 +1353,7 @@ class _SettingsWindow(QMainWindow):
         _add_row(
             model_layout,
             "Language",
-            "Transcription language. Use multilingual models (no .en suffix) for non-English.",
+            "Transcription language. Non-English needs a multilingual model (one without '.en').",
             lang_combo,
             width=260,
         )
@@ -1505,9 +1494,7 @@ class _SettingsWindow(QMainWindow):
         layout.addWidget(backup_card)
 
         backup_desc = QLabel(
-            "Export or restore all Samsara settings. Backups include private "
-            "values such as API keys, supporter keys, and webhook details. "
-            "Keep backup files private."
+            "Backups include private values like API keys — keep the files private."
         )
         backup_desc.setObjectName("configBackupPrivacyWarning")
         backup_desc.setStyleSheet("color: #D9B86C; font-size: 13px;")
@@ -1610,9 +1597,8 @@ class _SettingsWindow(QMainWindow):
 
         layout.addWidget(self._section_title("Help & learning"))
         intro = QLabel(
-            "Start with the documentation or replay the interactive tutorial. "
-            "Samsara is maintained by one independent developer, so direct beta "
-            "email is available but replies are not instant."
+            "Start with the documentation or the tutorial. Samsara is one developer "
+            "— beta email works, replies aren't instant."
         )
         intro.setObjectName("supportIntroLabel")
         intro.setWordWrap(True)
@@ -1668,9 +1654,8 @@ class _SettingsWindow(QMainWindow):
 
         layout.addWidget(self._section_title("Beta support & feedback"))
         contact = QLabel(
-            f"For help while beta testing, email {BETA_SUPPORT_EMAIL}. "
-            "I will respond as soon as I can. For a reproducible defect, a "
-            "GitHub report plus safe diagnostics is still the most useful evidence."
+            f"Beta help: email {BETA_SUPPORT_EMAIL}. For reproducible bugs, a "
+            "GitHub report plus safe diagnostics helps most."
         )
         contact.setWordWrap(True)
         contact.setStyleSheet("color: #AEB4C0; font-size: 13px;")
@@ -1684,7 +1669,6 @@ class _SettingsWindow(QMainWindow):
         beta_btn = QPushButton("Email beta support")
         beta_btn.setObjectName("betaFeedbackButton")
         beta_btn.setAccessibleName("Email the Samsara developer for beta support")
-        beta_btn.setToolTip("Open your email app with a Samsara beta-support subject")
         beta_btn.clicked.connect(
             lambda: self._open_support_url(BETA_SUPPORT_MAILTO, support_status)
         )
@@ -1697,7 +1681,6 @@ class _SettingsWindow(QMainWindow):
         report_btn = QPushButton("Report a problem")
         report_btn.setObjectName("reportBugButton")
         report_btn.setAccessibleName("Report a Samsara problem on GitHub")
-        report_btn.setToolTip("Open the structured Samsara bug-report form")
         report_btn.clicked.connect(
             lambda: self._open_support_url(BUG_REPORT_URL, support_status)
         )
@@ -1710,7 +1693,6 @@ class _SettingsWindow(QMainWindow):
         live_log_btn = QPushButton("Open live log")
         live_log_btn.setObjectName("openLiveLogButton")
         live_log_btn.setAccessibleName("Open Samsara live log")
-        live_log_btn.setToolTip("Open the current log; review and redact it before sharing")
         live_log_btn.clicked.connect(
             lambda: self._open_live_log_for_support(support_status)
         )
@@ -1723,9 +1705,6 @@ class _SettingsWindow(QMainWindow):
         diagnostics_btn = QPushButton("Copy safe diagnostics")
         diagnostics_btn.setObjectName("copyDiagnosticButton")
         diagnostics_btn.setAccessibleName("Copy safe Samsara diagnostic summary")
-        diagnostics_btn.setToolTip(
-            "Copy version and runtime facts without logs, paths, dictated text, or keys"
-        )
         diagnostics_btn.clicked.connect(
             lambda: self._copy_safe_diagnostics(support_status)
         )
@@ -1741,15 +1720,11 @@ class _SettingsWindow(QMainWindow):
         check_updates_btn = QPushButton("Check for updates")
         check_updates_btn.setObjectName("checkForUpdatesButton")
         check_updates_btn.setAccessibleName("Check for Samsara updates")
-        check_updates_btn.setToolTip(
-            "Contact GitHub Releases now and check for a newer packaged version"
-        )
         check_updates_btn.clicked.connect(self._open_update_dialog)
         layout.addLayout(self._setting_row(
             "Check for updates",
-            "Samsara has no update server or push channel. A manual check contacts GitHub "
-            "Releases only when you press this button. GitHub receives your IP address and "
-            "normal request headers.",
+            "No update server. Checking contacts GitHub Releases only when you press this; "
+            "GitHub sees your IP.",
             check_updates_btn,
         ))
 
@@ -1764,9 +1739,8 @@ class _SettingsWindow(QMainWindow):
         self._widgets["automatic_update_checks"] = automatic_updates
         layout.addLayout(self._setting_row(
             "Automatically check GitHub once a day",
-            "Off by default. When enabled, Samsara contacts GitHub no more than once every 24 hours. "
-            "GitHub receives your IP address and normal request headers, but Samsara sends no audio, "
-            "dictated text, settings, logs, or device identifier.",
+            "Off by default. Checks GitHub at most once a day. GitHub sees your IP — Samsara "
+            "sends no audio, text, settings, or identifiers.",
             automatic_updates,
         ))
 
@@ -1988,8 +1962,6 @@ class _SettingsWindow(QMainWindow):
         # ---- Card 1: Hands-Free / Voice Control -------------------------
         hands_free_card, hands_free_layout = self._section_card(
             "Hands-Free / Voice Control",
-            "One activation system for temporary commands and persistent "
-            "commands plus dictation."
         )
         layout.addWidget(hands_free_card)
 
@@ -2055,7 +2027,7 @@ class _SettingsWindow(QMainWindow):
         _add_row(
             hands_free_layout,
             "Mouse button suppression",
-            "Prevent accidental browser-back actions while command bindings are active.",
+            "",
             suppress_cb,
             width=260,
         )
@@ -2119,7 +2091,7 @@ class _SettingsWindow(QMainWindow):
             width=170,
         )
 
-        wake_note = QLabel("More wake phrases can be added via wake_profiles in config.")
+        wake_note = QLabel("More wake phrases can be added in the config file.")
         wake_note.setWordWrap(True)
         wake_note.setStyleSheet("color: #8A8A92; font-size: 12px;")
         hands_free_layout.addWidget(wake_note)
@@ -2178,8 +2150,7 @@ class _SettingsWindow(QMainWindow):
         layout.addWidget(ai_card)
 
         ai_intro = QLabel(
-            "Enable this when you want LLM interpretation before command execution. "
-            "Use local Ollama or the Cloud provider from Ava / Cloud."
+            "Lets an AI interpret free-form speech into commands. Uses local AI or your cloud provider."
         )
         ai_intro.setWordWrap(True)
         ai_intro.setStyleSheet("color: #8A8A92; font-size: 12px;")
@@ -3575,7 +3546,7 @@ class _SettingsWindow(QMainWindow):
         self._widgets['tts_engine'] = engine_combo
         layout.addLayout(self._setting_row(
             "Engine",
-            "winrt: Windows built-in voices.  edge: Azure Neural (requires internet). Restart required.",
+            "winrt: built-in Windows voices.  edge: higher-quality online voices (internet required). Restart required.",
             engine_combo,
         ))
         layout.addSpacing(8)
@@ -3752,8 +3723,7 @@ class _SettingsWindow(QMainWindow):
         when_layout.setSpacing(6)
 
         phase_note = QLabel(
-            "These settings are saved to config but Phase 2 category-driven "
-            "behavior is required for them to take full effect."
+            "Some of these categories aren't wired up yet — saved now, applied when they are."
         )
         phase_note.setWordWrap(True)
         phase_note.setStyleSheet("color: #8A8A92; font-size: 12px;")
@@ -4301,7 +4271,7 @@ class _SettingsWindow(QMainWindow):
             ]),
             ("Summaries",        [
                 ('"health summary"', "Last 24h pain avg, meds, symptoms"),
-                ('"how was my week"', "7-day summary via TTS"),
+                ('"how was my week"', "Spoken 7-day summary."),
                 ('"read health log"', "Read today's entries aloud"),
             ]),
             ("Management",       [
@@ -4413,9 +4383,8 @@ class _SettingsWindow(QMainWindow):
         layout.addSpacing(4)
 
         dict_desc = QLabel(
-            "Import common medication names into Whisper's vocabulary so it "
-            "recognizes them when you say \"took ibuprofen\" or \"took pregabalin\". "
-            "This adds ~100 medication names to the speech recognition prompt."
+            "Adds ~100 common medication names to speech recognition so 'took pregabalin' "
+            "is heard correctly."
         )
         dict_desc.setWordWrap(True)
         dict_desc.setStyleSheet("color: #8A8A92; font-size: 12px;")
@@ -4774,9 +4743,8 @@ class _SettingsWindow(QMainWindow):
         layout.addWidget(aec_cb)
 
         aec_note = QLabel(
-            "Testing measured only 3–8% echo reduction, and the filter may add "
-            "distortion or reduce transcription quality. Leave this off unless "
-            "you are evaluating it. Requires restart; Windows only (WASAPI loopback)."
+            "Measured only 3–8% echo reduction and may distort audio. Leave off unless "
+            "evaluating. Restart required; Windows only."
         )
         aec_note.setWordWrap(True)
         aec_note.setStyleSheet("color: #8A8A92; font-size: 12px; margin-left: 26px;")
@@ -4792,9 +4760,8 @@ class _SettingsWindow(QMainWindow):
         self._widgets['adv_aec_latency'] = aec_latency_spin
         layout.addLayout(self._setting_row(
             "Latency compensation",
-            "How far back to look for the system audio that matches what the mic captured. "
-            "Experimental — current default is likely wrong; changing this without measured "
-            "loopback latency can make echo cancellation worse.",
+            "How far back to search system audio for the mic's echo. Default is likely wrong "
+            "— don't change without measuring.",
             aec_latency_spin,
         ))
         layout.addSpacing(20)
@@ -4809,9 +4776,8 @@ class _SettingsWindow(QMainWindow):
         layout.addWidget(ducking_cb)
 
         ducking_note = QLabel(
-            "Attacks echo at the source: while a dictation window is open, other "
-            "apps' audio (music, video) is turned down so the mic hears less of "
-            "it, then restored when dictation ends."
+            "Turns down other apps' audio while you dictate so the mic hears less of it; "
+            "restores it after."
         )
         ducking_note.setWordWrap(True)
         ducking_note.setStyleSheet("color: #8A8A92; font-size: 12px; margin-left: 26px;")
@@ -4887,9 +4853,8 @@ class _SettingsWindow(QMainWindow):
         layout.addSpacing(4)
 
         gesture_note = QLabel(
-            "Recognizes deliberate hand poses via your webcam and maps each one to "
-            "an existing command.  The camera runs at low resolution (640x480) and "
-            "is released completely when this is off.  Requires mediapipe."
+            "Maps deliberate webcam hand poses to commands. Camera runs at low resolution "
+            "and is fully released when off."
         )
         gesture_note.setWordWrap(True)
         gesture_note.setStyleSheet("color: #8A8A92; font-size: 12px;")
@@ -4909,8 +4874,8 @@ class _SettingsWindow(QMainWindow):
         sc_cfg = cfg.get('smart_corrections', {}) or {}
 
         sc_note = QLabel(
-            "Optional LLM cleanup pass over dictation output -- fixes homophones, "
-            "misrecognitions, and punctuation without paraphrasing. Off by default."
+            "Optional AI cleanup pass — fixes homophones and misheard words without "
+            "rephrasing you. Off by default."
         )
         sc_note.setWordWrap(True)
         sc_note.setStyleSheet("color: #8A8A92; font-size: 12px;")
@@ -4946,8 +4911,8 @@ class _SettingsWindow(QMainWindow):
         layout.addSpacing(4)
 
         sc_cloud_hint = QLabel(
-            "Cloud AI isn't enabled yet -- set it up on the Ava / Cloud tab, "
-            "or Smart Corrections will have no backend to use."
+            "Cloud AI isn't set up — enable it on the Ava / Cloud tab or Smart Corrections "
+            "will have no backend."
         )
         sc_cloud_hint.setWordWrap(True)
         sc_cloud_hint.setStyleSheet("color: #E0A030; font-size: 12px; margin-left: 4px;")
@@ -5016,16 +4981,15 @@ class _SettingsWindow(QMainWindow):
         bench_cfg = cfg.get('benchmark', {}) or {}
 
         bench_note = QLabel(
-            "Saves your dictation audio and transcript locally so you can "
-            "review it and build a personal accuracy benchmark. Nothing "
-            "ever leaves this machine. Off by default."
+            "Saves your dictation audio and transcripts locally so you can review accuracy. "
+            "Nothing leaves this machine."
         )
         bench_note.setWordWrap(True)
         bench_note.setStyleSheet("color: #8A8A92; font-size: 12px;")
         layout.addWidget(bench_note)
         layout.addSpacing(6)
 
-        bench_cb = QCheckBox("Collect benchmark samples (saves your dictation audio locally for accuracy testing)")
+        bench_cb = QCheckBox("Collect benchmark samples")
         bench_cb.setChecked(bool(bench_cfg.get('collect_samples', False)))
         self._widgets['adv_bench_collect'] = bench_cb
         layout.addWidget(bench_cb)
@@ -5132,14 +5096,14 @@ class _SettingsWindow(QMainWindow):
         layout.addWidget(self._section_title("Cloud AI (bring your own key)"))
         layout.addSpacing(4)
 
-        cloud_enabled = QCheckBox("Enable Cloud LLM (Ava routes requests to the cloud provider)")
+        cloud_enabled = QCheckBox("Enable Cloud AI (Ava sends requests to your chosen provider)")
         cloud_enabled.setChecked(bool(cfg.get('enabled', False)))
         self._widgets['cloud_enabled'] = cloud_enabled
         layout.addWidget(cloud_enabled)
 
         enable_note = QLabel(
-            "When enabled, voice requests are sent to the selected provider. "
-            "Falls back to local Ollama on error. Free — just needs your own API key below."
+            "Sends voice requests to your chosen provider; falls back to local on error. "
+            "Free with your own API key."
         )
         enable_note.setWordWrap(True)
         enable_note.setStyleSheet("color: #8A8A92; font-size: 12px; margin-left: 26px;")
@@ -5269,7 +5233,7 @@ class _SettingsWindow(QMainWindow):
         ak_layout.addWidget(show_btn)
         layout.addLayout(self._setting_row(
             "API Key",
-            "Stored locally in config.json only — never transmitted to Samsara servers.",
+            "Stored locally, never sent to us — only to the provider you chose.",
             api_key_container,
             # api_key_container needs its entry's own 260 minimum + 6px
             # spacing + the 60px Show button (326 total) -- _setting_row's
@@ -5324,22 +5288,6 @@ class _SettingsWindow(QMainWindow):
         test_row.addWidget(test_status)
         test_row.addStretch()
         layout.addLayout(test_row)
-        layout.addSpacing(8)
-
-        # Privacy notice
-        privacy = QLabel(
-            "Your API key is stored locally in config.json and is never logged, "
-            "printed, or transmitted to Samsara servers. It is only sent directly "
-            "to your chosen cloud provider when you make a request."
-        )
-        privacy.setWordWrap(True)
-        privacy.setStyleSheet(
-            "color: #E89020; font-size: 12px; "
-            "background-color: rgba(232,144,32,0.07); "
-            "border: 1px solid rgba(232,144,32,0.2); "
-            "border-radius: 6px; padding: 10px 12px;"
-        )
-        layout.addWidget(privacy)
         layout.addSpacing(20)
 
         # ---- Section: Support Samsara ---------------------------------------
@@ -5347,10 +5295,8 @@ class _SettingsWindow(QMainWindow):
         layout.addSpacing(4)
 
         support_text = QLabel(
-            "Samsara is free — every feature, forever. If it's useful to you and you "
-            "want to support development, support is optional and never unlocks "
-            "functional features. Any future supporter extras will be cosmetic. "
-            "morneis.com/samsara/support"
+            "Samsara is free — every feature, forever. Supporting is optional and never "
+            "unlocks features. morneis.com/samsara/support"
         )
         support_text.setWordWrap(True)
         support_text.setStyleSheet("color: #8A8A92; font-size: 12px;")
@@ -5692,10 +5638,11 @@ class _SettingsWindow(QMainWindow):
         lbl.setStyleSheet("font-weight: 600; font-size: 14px; color: #E8E8EA;")
         left.addWidget(lbl)
 
-        desc = QLabel(description)
-        desc.setStyleSheet("color: #AEB4C0; font-size: 13px;")
-        desc.setWordWrap(True)
-        left.addWidget(desc)
+        if description:
+            desc = QLabel(description)
+            desc.setStyleSheet("color: #AEB4C0; font-size: 13px;")
+            desc.setWordWrap(True)
+            left.addWidget(desc)
 
         # No addStretch() here: left_widget already carries the row's only
         # stretch factor (1), and the control widget below is fixed-width,
