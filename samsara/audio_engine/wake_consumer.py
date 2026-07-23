@@ -218,8 +218,12 @@ class WakeConsumer:
 
     @staticmethod
     def _is_ai_cmd_mode(app) -> bool:
-        """True when AI command mode is active."""
-        return getattr(app, 'ai_command_mode_active', False)
+        """True when the Ava command session (D3, Ava Front Door spec v2 --
+        replaces the old "AI command mode") is active. Name kept as-is
+        (not renamed to _is_ava_cmd_session) -- purely internal, and
+        renaming would touch every call site below for no behavior
+        change."""
+        return getattr(app, 'ava_command_session_active', False)
 
     @classmethod
     def _is_toggle_dictate(cls, app) -> bool:
@@ -309,16 +313,16 @@ class WakeConsumer:
             # This poll loop is the session's ONLY audio consumer. If
             # something escapes the per-frame guard above and kills this
             # thread, the session would otherwise go deaf while staying
-            # latched (command_mode_active/ai_command_mode_active still
+            # latched (command_mode_active/ava_command_session_active still
             # True) -- silently. Fail LOUD instead: log, earcon, and force
             # any latched session to end rather than leave a zombie
             # session nobody can hear.
             #
-            # AI-command-mode force-exit (2026-07-19 incident report item
-            # 6): this handler used to force-exit toggle-command-mode only.
-            # A consumer crash while AI-command-mode was active left it
-            # exactly as latched-but-deaf as the original incident's
-            # missing-exit bug -- just via a different trigger.
+            # Ava command session force-exit (2026-07-19 incident report
+            # item 6): this handler used to force-exit toggle-command-mode
+            # only. A consumer crash while the Ava command session was
+            # active left it exactly as latched-but-deaf as the original
+            # incident's missing-exit bug -- just via a different trigger.
             print(f"[ERROR] Wake consumer loop died: {exc}")
             import traceback
             traceback.print_exc()
@@ -335,7 +339,7 @@ class WakeConsumer:
                 pass
             try:
                 if self._is_ai_cmd_mode(app):
-                    app.exit_ai_command_mode()
+                    app.exit_ava_command_session()
             except Exception:
                 pass
 
@@ -631,11 +635,11 @@ class WakeConsumer:
         """Dispatch utterance to process_wake_word_buffer, respecting OWW gate."""
         app = self._app
 
-        # AI command mode: route utterance to the AI resolver queue.
+        # Ava command session (D3): route utterance to the waterfall queue.
         if self._is_ai_cmd_mode(app):
             thread_registry.spawn(
-                'ai-cmd-utt',
-                app._handle_ai_command_utterance,
+                'ava-cmd-utt',
+                app._handle_ava_command_utterance,
                 args=(buffer_copy, SAMPLE_RATE),
                 daemon=True,
             )

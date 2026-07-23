@@ -8,12 +8,13 @@ abort phrase lives, via SessionModeManager.dispatch_utterance reached
 through _flush() -> _handle_command_mode_utterance, gated only on
 _is_toggle_cmd(app), independent of _hotkey_recording).
 
-AI-command-mode is deliberately NOT preserved (2026-07-19 nag incident):
-it used to share toggle-command-mode's exemption, which let it keep
-transcribing and nagging "I didn't catch a command in that" WHILE a
-hold-to-dictate recording was in progress. It now goes fully deaf during
-a hotkey hold, same as plain wake-word mode -- see
-TestAiCommandModeSuppressedDuringHotkeyRecording below.
+The Ava command session is deliberately NOT preserved (2026-07-19 nag
+incident, carried over verbatim through the Ava Front Door P1
+consolidation): it used to share toggle-command-mode's exemption, which
+let it keep transcribing and nagging "I didn't catch a command in that"
+WHILE a hold-to-dictate recording was in progress. It now goes fully deaf
+during a hotkey hold, same as plain wake-word mode -- see
+TestAvaCommandSessionSuppressedDuringHotkeyRecording below.
 
 Real WakeConsumer methods are exercised directly (not reimplemented),
 matching the pattern in tests/test_inactivity_chokepoint.py.
@@ -28,7 +29,7 @@ from samsara.audio_engine.frame import FRAME_SIZE
 
 
 def _make_wc(hotkey_recording=False, command_mode_active=False, cm_mode='hold',
-             ai_command_mode_active=False, wake_word_active=True):
+             ava_command_session_active=False, wake_word_active=True):
     """Real WakeConsumer wired to a Mock() engine/reader and an app double
     with EXPLICIT bool attributes -- deliberately not a bare Mock() for
     `app` itself, since Mock() auto-creates truthy attributes (e.g.
@@ -48,7 +49,7 @@ def _make_wc(hotkey_recording=False, command_mode_active=False, cm_mode='hold',
     app.wake_word_active = wake_word_active
     app._hotkey_recording = hotkey_recording
     app.command_mode_active = command_mode_active
-    app.ai_command_mode_active = ai_command_mode_active
+    app.ava_command_session_active = ava_command_session_active
     app.config = {'command_mode': {'mode': cm_mode}}
     app.is_speaking = False
     app.silence_start = None
@@ -149,40 +150,40 @@ class TestToggleCommandModeStillServicesDuringHotkeyRecording:
         assert engaged == []
 
 
-class TestAiCommandModeSuppressedDuringHotkeyRecording:
-    """2026-07-19 nag incident: AI-command-mode used to be exempted from
-    the hotkey-deafness gate, so its utterance loop kept running (and
+class TestAvaCommandSessionSuppressedDuringHotkeyRecording:
+    """2026-07-19 nag incident: the Ava command session used to be exempted
+    from the hotkey-deafness gate, so its utterance loop kept running (and
     nagging) concurrently with a hold-to-dictate recording. It now gets
     the same full deafness as plain wake-word mode."""
 
-    def test_no_vad_call_in_ai_command_mode_while_hotkey_recording(self):
+    def test_no_vad_call_in_ava_command_session_while_hotkey_recording(self):
         wc, reader, app = _make_wc(
-            hotkey_recording=True, ai_command_mode_active=True,
+            hotkey_recording=True, ava_command_session_active=True,
         )
         wc._process_frame(_loud_frame())
         app._vad_is_speech.assert_not_called()
 
-    def test_no_utterance_buffering_in_ai_command_mode_while_hotkey_recording(self):
+    def test_no_utterance_buffering_in_ava_command_session_while_hotkey_recording(self):
         wc, reader, app = _make_wc(
-            hotkey_recording=True, ai_command_mode_active=True,
+            hotkey_recording=True, ava_command_session_active=True,
         )
         wc._process_frame(_loud_frame())
         assert wc._utterance_frames == []
         assert wc._buffer_rms_history == []
 
-    def test_ai_command_mode_still_serviced_once_hotkey_recording_ends(self):
+    def test_ava_command_session_still_serviced_once_hotkey_recording_ends(self):
         wc, reader, app = _make_wc(
-            hotkey_recording=True, ai_command_mode_active=True,
+            hotkey_recording=True, ava_command_session_active=True,
         )
         wc._process_frame(_loud_frame())
         app._hotkey_recording = False
         wc._process_frame(_loud_frame())
         app._vad_is_speech.assert_called_once()
 
-    def test_suppression_engaged_logged_for_ai_command_mode(self, caplog):
+    def test_suppression_engaged_logged_for_ava_command_session(self, caplog):
         import logging
         wc, reader, app = _make_wc(
-            hotkey_recording=True, ai_command_mode_active=True,
+            hotkey_recording=True, ava_command_session_active=True,
         )
         with caplog.at_level(logging.DEBUG, logger="Samsara.samsara.audio_engine.wake_consumer"):
             wc._process_frame(_loud_frame())
@@ -192,7 +193,7 @@ class TestAiCommandModeSuppressedDuringHotkeyRecording:
     def test_suppression_released_logged_once_hotkey_recording_ends(self, caplog):
         import logging
         wc, reader, app = _make_wc(
-            hotkey_recording=True, ai_command_mode_active=True,
+            hotkey_recording=True, ava_command_session_active=True,
         )
         wc._process_frame(_loud_frame())  # engage (not captured)
         app._hotkey_recording = False
@@ -229,12 +230,12 @@ class TestDiscardStaleWakeUtterance:
         assert len(wc._utterance_frames) == 1  # untouched
         assert app.is_speaking is True  # untouched
 
-    def test_discards_ai_command_mode_utterance_too(self):
-        """2026-07-19 nag incident fix: AI-command-mode no longer gets the
-        toggle-command-mode exemption -- its in-progress utterance is
-        discarded like plain wake-word mode's would be, rather than left
+    def test_discards_ava_command_session_utterance_too(self):
+        """2026-07-19 nag incident fix: the Ava command session no longer
+        gets the toggle-command-mode exemption -- its in-progress utterance
+        is discarded like plain wake-word mode's would be, rather than left
         to go stale through the hotkey hold."""
-        wc, reader, app = _make_wc(ai_command_mode_active=True)
+        wc, reader, app = _make_wc(ava_command_session_active=True)
         wc._utterance_frames = [np.zeros(10, dtype=np.float32)]
         app.is_speaking = True
         wc.discard_stale_wake_utterance()

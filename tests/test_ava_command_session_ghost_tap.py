@@ -1,21 +1,32 @@
-"""Tests for AI-command-mode's ghost-tap guard on its toggle key
-(2026-07-19 incident report §4, Fix 3 / P1).
+"""Tests for the Ava command session's ghost-tap guard on its toggle key
+(2026-07-19 incident report Section4, Fix 3 / P1 -- carried over verbatim
+into D3 per the Ava Front Door spec's PRESERVE list).
 
 Right-Alt Ava has always required a hold of at least
 command_mode.enter_debounce_ms (checked on release) before a tap counts
-as a real activation. AI-command-mode's toggle key had no such check at
-all -- toggling fired unconditionally on the PRESS edge, so a single
-accidental tap (report's working theory: the user reaching for Ava's
-right_alt and catching an adjacent key) was a successful, silent mode
-activation.
+as a real activation. The old ai_command_mode's toggle key had no such
+check at all -- toggling fired unconditionally on the PRESS edge, so a
+single accidental tap (report's working theory: the user reaching for
+Ava's right_alt and catching an adjacent key) was a successful, silent
+mode activation.
 
 The key now toggles on RELEASE, and only if held >= the debounce window
 -- symmetric for both activation and deactivation presses, matching
 Ava's existing protection and reusing the exact same config constant
 (command_mode.enter_debounce_ms).
 
-Exercises the REAL bound _check_command_mode_key/enter_ai_command_mode/
-exit_ai_command_mode via types.MethodType against a minimal duck-typed
+Ava Front Door P1: migrated from tests/test_ai_command_mode_ghost_tap.py
+(deleted) -- ai_command_mode.py was replaced by
+samsara/ava_command_session.py + DictationApp.enter_ava_command_session/
+exit_ava_command_session, but this exact guard lives in the SAME method
+(_check_command_mode_key) it always did, now with the D3 "surgical Alt
+guard" (spec-new) checked first. That new guard only force-exits an
+ALREADY-active session on a NON-session key, so it does not interfere
+with any assertion below (every event here uses the session's own
+configured key).
+
+Exercises the REAL bound _check_command_mode_key/enter_ava_command_session/
+exit_ava_command_session via types.MethodType against a minimal duck-typed
 `self`, with dictation.time.monotonic() replaced by a controllable fake
 clock for deterministic hold-duration timing (no real sleeps).
 """
@@ -61,19 +72,23 @@ def _make_app(monkeypatch, debounce_ms=200):
 
     app.config = {
         'command_mode': {'enabled': False, 'enter_debounce_ms': debounce_ms},
-        'ai_command_mode': {'enabled': True, 'key': 'right_ctrl'},
+        'ava_command_session': {'enabled': True, 'key': 'right_ctrl'},
     }
 
     app.command_mode_active = False
     app.ava_mode_active = False
-    app.ai_command_mode_active = False
-    app._ai_cmd_mode_lock = threading.Lock()
-    app._ai_cmd_key_held = False
-    app._ai_cmd_key_press_time = 0.0
-    app._ai_cmd_miss_count = 0
-    app._ai_cmd_generation = 0
-    app._ai_cmd_ready = threading.Event()
-    app._ai_cmd_ready.set()
+    app.ava_command_session_active = False
+    app._ava_cmd_mode_lock = threading.Lock()
+    app._ava_cmd_key_held = False
+    app._ava_cmd_key_press_time = 0.0
+    app._ava_cmd_miss_count = 0
+    app._ava_cmd_generation = 0
+    app._ava_cmd_ready = threading.Event()
+    app._ava_cmd_ready.set()
+    # Inactivity timer plumbing is stubbed rather than bound -- this file
+    # asserts on ghost-tap hold-duration timing only, not timer wiring.
+    app._reset_ava_cmd_inactivity_timer = lambda timeout_s: None
+    app._cancel_ava_cmd_inactivity_timer = lambda: None
 
     app._wake_consumer = FakeWakeConsumer()
     app._wake_consumer_reasons = set()
@@ -85,16 +100,16 @@ def _make_app(monkeypatch, debounce_ms=200):
 
     # No-op the async worker spawn -- irrelevant to this file's timing
     # assertions, and actually running it would trigger a real Ollama
-    # warm-up call. _do_enter_ai_command_mode must still exist as an
+    # warm-up call. _do_enter_ava_command_session must still exist as an
     # attribute -- evaluated as spawn()'s argument even though unused.
     monkeypatch.setattr(dictation.thread_registry, 'spawn', lambda *a, **k: None)
-    app._do_enter_ai_command_mode = lambda: None
+    app._do_enter_ava_command_session = lambda: None
 
     clock = _FakeClock()
     monkeypatch.setattr(dictation.time, 'monotonic', clock)
 
-    app.enter_ai_command_mode = types.MethodType(dictation.DictationApp.enter_ai_command_mode, app)
-    app.exit_ai_command_mode = types.MethodType(dictation.DictationApp.exit_ai_command_mode, app)
+    app.enter_ava_command_session = types.MethodType(dictation.DictationApp.enter_ava_command_session, app)
+    app.exit_ava_command_session = types.MethodType(dictation.DictationApp.exit_ava_command_session, app)
     app._check_command_mode_key = types.MethodType(dictation.DictationApp._check_command_mode_key, app)
 
     return app, clock
@@ -108,7 +123,7 @@ class TestGhostTapIgnoredOnActivation:
         clock.advance(0.157)  # incident's exact Ava ghost-tap duration
         with caplog.at_level(logging.DEBUG, logger="Samsara.dictation"):
             app._check_command_mode_key(Key.ctrl_r, pressed=False)
-        assert app.ai_command_mode_active is False
+        assert app.ava_command_session_active is False
         assert any('Ghost tap' in r.message for r in caplog.records)
 
     def test_at_or_above_debounce_hold_activates(self, monkeypatch):
@@ -116,21 +131,21 @@ class TestGhostTapIgnoredOnActivation:
         app._check_command_mode_key(Key.ctrl_r, pressed=True)
         clock.advance(0.2)
         app._check_command_mode_key(Key.ctrl_r, pressed=False)
-        assert app.ai_command_mode_active is True
+        assert app.ava_command_session_active is True
 
     def test_well_above_debounce_hold_activates(self, monkeypatch):
         app, clock = _make_app(monkeypatch, debounce_ms=200)
         app._check_command_mode_key(Key.ctrl_r, pressed=True)
         clock.advance(1.0)
         app._check_command_mode_key(Key.ctrl_r, pressed=False)
-        assert app.ai_command_mode_active is True
+        assert app.ava_command_session_active is True
 
     def test_press_alone_never_activates(self, monkeypatch):
         """The old bug's exact shape: toggling used to fire on press.
         A press with no release yet must never change mode state."""
         app, clock = _make_app(monkeypatch, debounce_ms=200)
         app._check_command_mode_key(Key.ctrl_r, pressed=True)
-        assert app.ai_command_mode_active is False
+        assert app.ava_command_session_active is False
 
 
 class TestGhostTapIgnoredOnDeactivation:
@@ -141,7 +156,7 @@ class TestGhostTapIgnoredOnDeactivation:
         app._check_command_mode_key(Key.ctrl_r, pressed=True)
         clock.advance(hold_s)
         app._check_command_mode_key(Key.ctrl_r, pressed=False)
-        assert app.ai_command_mode_active is True
+        assert app.ava_command_session_active is True
 
     def test_sub_debounce_tap_does_not_deactivate(self, monkeypatch, caplog):
         import logging
@@ -152,7 +167,7 @@ class TestGhostTapIgnoredOnDeactivation:
         clock.advance(0.05)
         with caplog.at_level(logging.DEBUG, logger="Samsara.dictation"):
             app._check_command_mode_key(Key.ctrl_r, pressed=False)
-        assert app.ai_command_mode_active is True, \
+        assert app.ava_command_session_active is True, \
             "an accidental tap while active must not exit the session"
         assert any('Ghost tap' in r.message for r in caplog.records)
 
@@ -163,7 +178,7 @@ class TestGhostTapIgnoredOnDeactivation:
         app._check_command_mode_key(Key.ctrl_r, pressed=True)
         clock.advance(0.25)
         app._check_command_mode_key(Key.ctrl_r, pressed=False)
-        assert app.ai_command_mode_active is False
+        assert app.ava_command_session_active is False
 
 
 class TestAutoRepeatGuard:
@@ -173,16 +188,16 @@ class TestAutoRepeatGuard:
     def test_repeat_press_events_while_held_are_ignored(self, monkeypatch):
         app, clock = _make_app(monkeypatch, debounce_ms=200)
         app._check_command_mode_key(Key.ctrl_r, pressed=True)  # real press, arms
-        press_time = app._ai_cmd_key_press_time
+        press_time = app._ava_cmd_key_press_time
 
         clock.advance(0.05)
         app._check_command_mode_key(Key.ctrl_r, pressed=True)  # OS repeat #1
         clock.advance(0.05)
         app._check_command_mode_key(Key.ctrl_r, pressed=True)  # OS repeat #2
 
-        assert app._ai_cmd_key_press_time == press_time, \
+        assert app._ava_cmd_key_press_time == press_time, \
             "repeat presses must not reset the original press timestamp"
-        assert app.ai_command_mode_active is False, \
+        assert app.ava_command_session_active is False, \
             "repeats must never toggle mode state on their own"
 
     def test_hold_duration_measured_from_first_press_despite_repeats(self, monkeypatch):
@@ -194,17 +209,17 @@ class TestAutoRepeatGuard:
         app._check_command_mode_key(Key.ctrl_r, pressed=True)  # repeat at 150ms
         clock.advance(0.15)  # total: 300ms since the real press
         app._check_command_mode_key(Key.ctrl_r, pressed=False)
-        assert app.ai_command_mode_active is True, \
+        assert app.ava_command_session_active is True, \
             "300ms total hold (from the real press) must clear the 200ms debounce"
 
     def test_phantom_release_with_no_prior_press_is_ignored(self, monkeypatch):
         app, clock = _make_app(monkeypatch, debounce_ms=200)
         app._check_command_mode_key(Key.ctrl_r, pressed=False)  # no matching press
-        assert app.ai_command_mode_active is False
+        assert app.ava_command_session_active is False
 
     def test_lost_release_leaves_key_stuck_held_next_press_is_a_noop(self, monkeypatch):
         """Report item 2 (pre-existing, not fixed by this task): if the
-        release event is lost, _ai_cmd_key_held stays True and the NEXT
+        release event is lost, _ava_cmd_key_held stays True and the NEXT
         press is swallowed as auto-repeat -- mode state cannot change
         again until a real release finally arrives. Documented here so a
         future fix has a test to update, not to assert this is desired
@@ -213,10 +228,10 @@ class TestAutoRepeatGuard:
         app._check_command_mode_key(Key.ctrl_r, pressed=True)
         clock.advance(1.0)
         # Release is lost -- never delivered.
-        assert app.ai_command_mode_active is False  # toggle never fired
+        assert app.ava_command_session_active is False  # toggle never fired
 
         clock.advance(5.0)
         app._check_command_mode_key(Key.ctrl_r, pressed=True)  # user's next real press
-        assert app._ai_cmd_key_held is True  # still stuck from before
-        assert app.ai_command_mode_active is False, \
+        assert app._ava_cmd_key_held is True  # still stuck from before
+        assert app.ava_command_session_active is False, \
             "swallowed as auto-repeat -- known limitation, not this task's fix"

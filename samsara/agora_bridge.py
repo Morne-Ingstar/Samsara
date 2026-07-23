@@ -502,6 +502,12 @@ def _cli(argv: list[str] | None = None) -> int:
     parser.add_argument("--base-url", default=DEFAULT_BASE_URL)
     parser.add_argument("--timeout", type=float, default=5.0)
     parser.add_argument(
+        "--request-id", default=None,
+        help="Reuse this UUID as the request_id instead of minting a fresh one "
+        "(contract retry semantics: same request_id + same utterance = idempotent; "
+        "same request_id + a different utterance = 409 request_id_collision).",
+    )
+    parser.add_argument(
         "--resend-collision", action="store_true",
         help="If the send collides (409 request_id_collision), automatically resend once with a fresh UUID.",
     )
@@ -509,7 +515,10 @@ def _cli(argv: list[str] | None = None) -> int:
 
     try:
         try:
-            result = send_intent(args.utterance, base_url=args.base_url, timeout=args.timeout)
+            result = send_intent(
+                args.utterance, base_url=args.base_url, timeout=args.timeout,
+                request_id=args.request_id,
+            )
         except AgoraCollisionError as exc:
             if not args.resend_collision:
                 raise

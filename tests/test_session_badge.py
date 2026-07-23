@@ -92,11 +92,11 @@ def _make_stub(mode='toggle', enabled=True, listening_indicator_enabled=False):
         def __init__(self):
             self.command_mode_active = False
             self.ava_mode_active = False
-            # enter_command_mode() now exits an active AI-command session
+            # enter_command_mode() now exits an active Ava command session
             # first (01a8de8, 2026-07-19 exclusive-voice-mode-ownership fix)
             # -- always False here so that branch is a no-op, but the
             # attribute must exist for the check itself.
-            self.ai_command_mode_active = False
+            self.ava_command_session_active = False
             self._command_mode_lock = threading.Lock()
             self._command_mode_miss_count = 0
             self._command_mode_session_start = 0.0
