@@ -705,6 +705,7 @@ class SessionModeManager:
         buffer_dictate_until_commit: bool = False,
         hands_free_command_probe_fn: Optional[HandsFreeCommandProbeFn] = None,
         ava_invocations: Optional[list[str]] = None,
+        pending_action_scratch_fn: Optional[Callable[[], Optional[bool]]] = None,
         clock: Callable[[], float] = time.time,
     ) -> None:
         self._abort_phrases = list(abort_phrases)
@@ -737,6 +738,7 @@ class SessionModeManager:
             _normalize_exact_phrase(p)
             for p in (ava_invocations if ava_invocations is not None else DEFAULT_AVA_INVOCATIONS)
         )
+        self._pending_action_scratch_fn = pending_action_scratch_fn
         self._clock = clock
 
         self.mode: SessionMode = SessionMode.COMMAND
@@ -825,7 +827,21 @@ class SessionModeManager:
             )
             if control_gate_passed:
                 if scratch:
-                    ok = self._do_scratch_that()
+                    # Unified "scratch that" (Ava Front Door spec v2,
+                    # "Confirmation binding"): a pending staged action
+                    # (ask_ollama._pending_action, shared with D1/D3) is
+                    # cancelled FIRST if one exists; only when nothing is
+                    # pending does this fall through to the ordinary
+                    # dictation-commit stack pop below. Wired in via
+                    # pending_action_scratch_fn so this module -- pure
+                    # orchestration, no ask_ollama/audio/Qt imports --
+                    # never needs to know what a "pending action" is.
+                    pending_result = (
+                        self._pending_action_scratch_fn()
+                        if self._pending_action_scratch_fn is not None
+                        else None
+                    )
+                    ok = pending_result if pending_result is not None else self._do_scratch_that()
                     if self._on_scratch_result:
                         self._on_scratch_result(ok)
                     return DispatchOutcome(kind="scratch_success" if ok else "scratch_refuse")

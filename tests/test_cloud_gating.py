@@ -154,7 +154,7 @@ class TestSendExStructuredResult:
 
     def test_send_keeps_exact_string_contract_on_timeout(self, monkeypatch):
         """send() itself must be untouched -- other callers (ask_ollama,
-        workflow_capture, ai_command_mode) keep receiving the exact
+        workflow_capture, ava_command_session) keep receiving the exact
         "Error: ..." string contract they already handle."""
         def _raise(*a, **k):
             raise cloud_llm.requests.exceptions.Timeout("simulated")

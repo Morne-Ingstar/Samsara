@@ -177,7 +177,7 @@ def _collect_command_rows(executor) -> list[dict]:
     return [rows[phrase] for phrase in sorted(rows)]
 
 # ---------------------------------------------------------------------------
-# AI Command Mode tab constants
+# Ava Command Session tab constants
 # ---------------------------------------------------------------------------
 
 _AI_CMD_KEY_OPTIONS: dict = {
@@ -1890,7 +1890,7 @@ class _SettingsWindow(QMainWindow):
     )
 
     def _build_modes_tab(self):
-        from samsara.ai_command_mode import _DEFAULTS as _AIMD  # noqa: PLC0415
+        from samsara.ava_command_session import _DEFAULTS as _AIMD  # noqa: PLC0415
 
         scroll = QScrollArea()
         scroll.setWidgetResizable(True)
@@ -1909,7 +1909,7 @@ class _SettingsWindow(QMainWindow):
         ww_cfg = cfg.get('wake_word_config', {}) or {}
         ww_audio = ww_cfg.get('audio', {}) or {}
         cmd_cfg = cfg.get('command_mode', {}) or {}
-        ai_cfg = cfg.get('ai_command_mode', {}) or {}
+        ai_cfg = cfg.get('ava_command_session', {}) or {}
 
         def _add_row(card_layout, label, description, widget, width=280):
             card_layout.addLayout(
@@ -2142,15 +2142,16 @@ class _SettingsWindow(QMainWindow):
                 )
             )
 
-        # ---- Card 4: AI Command Mode -------------------------------------
+        # ---- Card 4: Ava Command Session ---------------------------------
         ai_card, ai_layout = self._section_card(
-            "AI Command Mode (Experimental)",
-            "Optional experimental flow for free-form speech to command plans.",
+            "Ava Command Session",
+            "Command-first latched voice session: speak short commands, Ava resolves and confirms.",
         )
         layout.addWidget(ai_card)
 
         ai_intro = QLabel(
-            "Lets an AI interpret free-form speech into commands. Uses local AI or your cloud provider."
+            "Latch into a hands-free session and speak commands directly. Falls back to "
+            "AI resolution (local or cloud) only when no exact command matches."
         )
         ai_intro.setWordWrap(True)
         ai_intro.setStyleSheet("color: #8A8A92; font-size: 12px;")
@@ -2158,11 +2159,11 @@ class _SettingsWindow(QMainWindow):
 
         ai_enabled = QCheckBox()
         ai_enabled.setChecked(bool(ai_cfg.get('enabled', _AIMD['enabled'])))
-        self._widgets['ai_cmd_enabled'] = ai_enabled
+        self._widgets['ava_cmd_enabled'] = ai_enabled
         _add_row(
             ai_layout,
-            "Enable AI command mode",
-            "Master switch for AI-driven command interpretation.",
+            "Enable Ava command session",
+            "Master switch for the command-first latched session.",
             ai_enabled,
             width=220,
         )
@@ -2173,27 +2174,15 @@ class _SettingsWindow(QMainWindow):
         ai_key_combo.addItems(list(_AI_CMD_KEY_OPTIONS.keys()))
         if key_label in _AI_CMD_KEY_OPTIONS:
             ai_key_combo.setCurrentText(key_label)
-        self._widgets['ai_cmd_key'] = ai_key_combo
+        self._widgets['ava_cmd_key'] = ai_key_combo
         _add_row(
             ai_layout,
-            "AI activation key",
-            "Key that toggles AI command mode.",
+            "Activation key",
+            "Key that latches the Ava command session (default Left Alt).",
             ai_key_combo,
             width=260,
         )
         ai_key_combo.currentIndexChanged.connect(lambda _idx: self._check_modes_collisions())
-
-        wake_phrase_edit = QLineEdit()
-        wake_phrase_edit.setText(ai_cfg.get('wake_phrase', _AIMD['wake_phrase']))
-        wake_phrase_edit.setPlaceholderText("e.g. command mode")
-        self._widgets['ai_cmd_wake_phrase'] = wake_phrase_edit
-        _add_row(
-            ai_layout,
-            "AI wake phrase",
-            "Phrase used to switch into AI command interpretation mode.",
-            wake_phrase_edit,
-            width=260,
-        )
 
         ai_adv_button = _disclosure_button("Show AI backend options")
         ai_adv = QWidget()
@@ -2225,7 +2214,7 @@ class _SettingsWindow(QMainWindow):
         backend_combo = QComboBox()
         backend_combo.addItems(['Local (Ollama)', 'Cloud'])
         backend_combo.setCurrentText('Cloud' if backend_val == 'cloud' else 'Local (Ollama)')
-        self._widgets['ai_cmd_backend'] = backend_combo
+        self._widgets['ava_cmd_backend'] = backend_combo
         ai_adv_layout.addLayout(
             self._setting_row(
             "Backend",
@@ -2239,7 +2228,7 @@ class _SettingsWindow(QMainWindow):
         model_edit.setText(ai_cfg.get('model', _AIMD['model']))
         model_edit.setPlaceholderText("e.g. llama3.2:3b")
         model_edit.setEnabled(backend_val != 'cloud')
-        self._widgets['ai_cmd_model'] = model_edit
+        self._widgets['ava_cmd_model'] = model_edit
         ai_adv_layout.addLayout(
             self._setting_row(
             "Model",
@@ -2253,25 +2242,13 @@ class _SettingsWindow(QMainWindow):
             model_edit.setEnabled(backend_combo.currentText() == 'Local (Ollama)')
         backend_combo.currentIndexChanged.connect(lambda _: _update_model_enabled())
 
-        show_hud = QCheckBox()
-        show_hud.setChecked(bool(ai_cfg.get('show_plan_hud', _AIMD['show_plan_hud'])))
-        self._widgets['ai_cmd_show_hud'] = show_hud
-        ai_adv_layout.addLayout(
-            self._setting_row(
-            "Show plan HUD",
-            "Show resolved command sequence while running it.",
-            show_hud,
-            control_width=220,
-            )
-        )
-
         keep_warm = QCheckBox()
         keep_warm.setChecked(bool(ai_cfg.get('keep_warm', _AIMD['keep_warm'])))
-        self._widgets['ai_cmd_keep_warm'] = keep_warm
+        self._widgets['ava_cmd_keep_warm'] = keep_warm
         ai_adv_layout.addLayout(
             self._setting_row(
             "Keep model warm",
-            "Pre-load local model when mode activates to reduce first-utterance latency.",
+            "Pre-load local model when the session latches to reduce first-utterance latency.",
             keep_warm,
             control_width=220,
             )
@@ -2280,7 +2257,7 @@ class _SettingsWindow(QMainWindow):
         queue_spin = QSpinBox()
         queue_spin.setRange(1, 10)
         queue_spin.setValue(int(ai_cfg.get('queue_depth_cap', _AIMD['queue_depth_cap'])))
-        self._widgets['ai_cmd_queue_depth'] = queue_spin
+        self._widgets['ava_cmd_queue_depth'] = queue_spin
         ai_adv_layout.addLayout(
             self._setting_row(
             "Queue depth",
@@ -2290,18 +2267,15 @@ class _SettingsWindow(QMainWindow):
             )
         )
 
-        settle_spin = QDoubleSpinBox()
-        settle_spin.setRange(0.0, 5.0)
-        settle_spin.setSingleStep(0.1)
-        settle_spin.setDecimals(1)
-        settle_spin.setSuffix(" s")
-        settle_spin.setValue(float(ai_cfg.get('step_settle_seconds', _AIMD['step_settle_seconds'])))
-        self._widgets['ai_cmd_step_settle'] = settle_spin
+        miss_limit_spin = QSpinBox()
+        miss_limit_spin.setRange(1, 20)
+        miss_limit_spin.setValue(int(ai_cfg.get('miss_limit', _AIMD['miss_limit'])))
+        self._widgets['ava_cmd_miss_limit'] = miss_limit_spin
         ai_adv_layout.addLayout(
             self._setting_row(
-            "Step settle delay",
-            "Pause between command steps in a multi-step plan.",
-            settle_spin,
+            "Miss limit",
+            "Consecutive unresolved utterances before the session exits with feedback.",
+            miss_limit_spin,
             control_width=180,
             )
         )
@@ -2472,19 +2446,17 @@ class _SettingsWindow(QMainWindow):
                 cmd_cfg['suppress_button'] = self._widgets['cmd_tab_suppress'].isChecked()
                 updates['command_mode'] = cmd_cfg
 
-            if 'ai_cmd_enabled' in self._widgets:
-                ai_cfg_out = dict(self.app.config.get('ai_command_mode', {}) or {})
-                key_label = self._widgets['ai_cmd_key'].currentText()
-                ai_cfg_out['enabled']             = self._widgets['ai_cmd_enabled'].isChecked()
-                ai_cfg_out['key']                 = _AI_CMD_KEY_OPTIONS.get(key_label, ai_cfg_out.get('key', 'right_ctrl'))
-                ai_cfg_out['wake_phrase']         = self._widgets['ai_cmd_wake_phrase'].text().strip()
-                ai_cfg_out['backend']             = 'cloud' if self._widgets['ai_cmd_backend'].currentText() == 'Cloud' else 'ollama'
-                ai_cfg_out['model']               = self._widgets['ai_cmd_model'].text().strip()
-                ai_cfg_out['show_plan_hud']       = self._widgets['ai_cmd_show_hud'].isChecked()
-                ai_cfg_out['keep_warm']           = self._widgets['ai_cmd_keep_warm'].isChecked()
-                ai_cfg_out['queue_depth_cap']     = self._widgets['ai_cmd_queue_depth'].value()
-                ai_cfg_out['step_settle_seconds'] = self._widgets['ai_cmd_step_settle'].value()
-                updates['ai_command_mode'] = ai_cfg_out
+            if 'ava_cmd_enabled' in self._widgets:
+                ai_cfg_out = dict(self.app.config.get('ava_command_session', {}) or {})
+                key_label = self._widgets['ava_cmd_key'].currentText()
+                ai_cfg_out['enabled']         = self._widgets['ava_cmd_enabled'].isChecked()
+                ai_cfg_out['key']             = _AI_CMD_KEY_OPTIONS.get(key_label, ai_cfg_out.get('key', 'left_alt'))
+                ai_cfg_out['backend']         = 'cloud' if self._widgets['ava_cmd_backend'].currentText() == 'Cloud' else 'ollama'
+                ai_cfg_out['model']           = self._widgets['ava_cmd_model'].text().strip()
+                ai_cfg_out['keep_warm']       = self._widgets['ava_cmd_keep_warm'].isChecked()
+                ai_cfg_out['queue_depth_cap'] = self._widgets['ava_cmd_queue_depth'].value()
+                ai_cfg_out['miss_limit']      = self._widgets['ava_cmd_miss_limit'].value()
+                updates['ava_command_session'] = ai_cfg_out
 
             return updates
         self._save_fns.append(_save)
@@ -2531,10 +2503,10 @@ class _SettingsWindow(QMainWindow):
             raw = _CMD_BUTTON_OPTIONS.get(cmd_btn_widget.currentText(), cmd_btn_widget.currentText())
             bindings.append(("Command Mode button", raw))
 
-        ai_key_widget = self._widgets.get('ai_cmd_key')
+        ai_key_widget = self._widgets.get('ava_cmd_key')
         if ai_key_widget is not None:
             raw = _AI_CMD_KEY_OPTIONS.get(ai_key_widget.currentText(), ai_key_widget.currentText())
-            bindings.append(("AI Command Mode key", raw))
+            bindings.append(("Ava Command Session key", raw))
 
         def _normalize(combo: str) -> frozenset:
             tokens = [t for t in combo.split('+') if t]
@@ -5679,7 +5651,7 @@ class _SettingsWindow(QMainWindow):
         Registration order preserves the merge semantics tabs depend on:
         Modes (command_mode mode/debounce/timeout/miss_limit/button/suppress_button,
         wake_word_config wake_command_timeout/quick_silence/oww_threshold,
-        ai_command_mode) is registered before Advanced (wake_word_config
+        ava_command_session) is registered before Advanced (wake_word_config
         manual speech_threshold) -- Advanced's fn reads the accumulated
         `updates` dict to merge onto the Modes tab's partial write instead
         of clobbering it.

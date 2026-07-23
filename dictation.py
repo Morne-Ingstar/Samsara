@@ -495,7 +495,7 @@ from samsara.runtime import thread_registry
 from samsara.session_modes import (
     SessionMode, SessionModeManager, UtteranceSignals, CommandDispatchResult,
     HandsFreeCommandMatch, PendingTextPolicy, normalize_utterance,
-    GLOBAL_SESSION_EXIT_PHRASES, DEFAULT_AVA_INVOCATIONS,
+    GLOBAL_SESSION_EXIT_PHRASES, DEFAULT_AVA_INVOCATIONS, is_scratch_that,
 )
 
 # Commands with special pending-text behavior inside the combined hands-free
@@ -2102,15 +2102,19 @@ class DictationApp:
         self._ava_mode_lock = threading.Lock()
         self._ava_mode_key_held = False          # edge-trigger guard vs OS key auto-repeat
 
-        # AI command mode -- LLM-backed voice-to-command translator (toggle)
-        self.ai_command_mode_active = False
-        self._ai_cmd_mode_lock = threading.Lock()
-        self._ai_cmd_key_held = False            # edge-trigger guard vs OS key auto-repeat
-        self._ai_cmd_key_press_time = 0.0        # set on press; toggle-on-release ghost-tap check reads this
-        self._ai_cmd_ready = threading.Event()
-        self._ai_cmd_ready.set()  # starts set; cleared during entry until cue finishes
-        self._ai_cmd_miss_count = 0              # consecutive unresolved utterances (see ai_command_mode._process_utterance)
-        self._ai_cmd_generation = 0               # bumped on every enter AND exit; staleness guard for async work in flight across an exit (see enter/exit_ai_command_mode)
+        # Ava command session (D3, Ava Front Door spec v2) -- Left-Alt
+        # latched, command-first waterfall session. Replaces the old
+        # ai_command_mode.py/"AI command mode" (deleted).
+        self.ava_command_session_active = False
+        self._ava_cmd_mode_lock = threading.Lock()
+        self._ava_cmd_key_held = False            # edge-trigger guard vs OS key auto-repeat
+        self._ava_cmd_key_press_time = 0.0        # set on press; toggle-on-release ghost-tap check reads this
+        self._ava_cmd_ready = threading.Event()
+        self._ava_cmd_ready.set()  # starts set; cleared during entry until cue finishes
+        self._ava_cmd_miss_count = 0              # consecutive unresolved utterances (see ava_command_session._process_utterance)
+        self._ava_cmd_generation = 0              # bumped on every enter AND exit; staleness guard for async work in flight across an exit (see enter/exit_ava_command_session)
+        self._ava_cmd_inactivity_timer = None     # spec D3: 60s inactivity exit (config ava_command_session.inactivity_timeout_s)
+        self._ava_cmd_timer_lock = threading.Lock()
 
         self._mouse_hook = None
 
@@ -2448,6 +2452,14 @@ class DictationApp:
                 self.audio_coordinator = None
         _boot("TTS engine init")
         _bdiag("TTS engine init")
+
+        # Ava Front Door spec v2 "Migration": one-time first-run-after-update
+        # notice for the ai_command_mode -> ava_command_session consolidation
+        # (toast + one spoken line). Deliberately no legacy-module compatibility
+        # switch (spec ruling: "keeping the deleted brain alive defeats the
+        # consolidation and doubles the test surface") -- this notice is the
+        # entire migration UX.
+        self._maybe_announce_ava_command_session_migration()
 
         # Smart Actions Phase 2: webhook bridge, session manager, tool dispatcher
         try:
@@ -3242,6 +3254,7 @@ class DictationApp:
             logger.debug("[CONFIG] load_config: _migrate_wake_word_config done")
 
             self._migrate_command_matching_enabled_flag()
+            self._migrate_ai_command_mode_config()
 
             # Fill in any missing top-level keys
             for key in default_config:
@@ -3356,6 +3369,75 @@ class DictationApp:
             f"[MIGRATE] command_mode_enabled={legacy_value!r} -> "
             f"command_mode.command_matching_enabled={legacy_value!r}"
         )
+
+    def _migrate_ai_command_mode_config(self):
+        """Migrate the deleted 'ai_command_mode' config block to
+        'ava_command_session' (Ava Front Door spec v2 "Migration" section
+        -- D3 replaces samsara/ai_command_mode.py, which no longer
+        exists). Runs once per legacy config; a config that never had the
+        top-level key (fresh installs, already-migrated configs) is a
+        no-op.
+
+        Key mapping -- meaningful keys carried over as-is:
+          enabled, key, backend, model, queue_depth_cap, keep_warm,
+          miss_limit, ready_cue_enabled, ready_cue_dir.
+        Dead keys dropped (not straight-renamed -- each was tied to
+        machinery this pass deletes, per spec's DROP list):
+          wake_phrase       -- D2's exact-phrase Ava entry covers voice
+                               entry now; D3 is key-only.
+          step_settle_seconds, show_plan_hud
+                            -- the old multi-step "plan" HUD/executor is
+                               gone; the new waterfall resolves to at
+                               most one dispatched action per utterance
+                               via the app's ordinary command dispatch.
+          menu_limit        -- replaced by shortlist_size (a per-utterance
+                               fuzzy top-N, not a flat truncation of the
+                               whole menu) -- not a value-preserving
+                               rename, so not migrated.
+        """
+        if 'ai_command_mode' not in self.config:
+            return
+        old = self.config.pop('ai_command_mode') or {}
+        carried = {
+            k: old[k] for k in (
+                'enabled', 'key', 'backend', 'model', 'queue_depth_cap',
+                'keep_warm', 'miss_limit', 'ready_cue_enabled', 'ready_cue_dir',
+            ) if k in old
+        }
+        dropped = sorted(set(old) - set(carried))
+        existing = self.config.setdefault('ava_command_session', {})
+        merged = {**carried, **existing}  # a fresh ava_command_session block (unlikely but possible) wins
+        self.config['ava_command_session'] = merged
+        self.save_config()
+        logger.info(
+            f"[MIGRATE] ai_command_mode -> ava_command_session: carried {sorted(carried)}, "
+            f"dropped {dropped}"
+        )
+
+    def _maybe_announce_ava_command_session_migration(self) -> None:
+        """One-time first-run-after-update notice (Ava Front Door spec v2
+        "Migration"): toast + one spoken line, exactly once ever (per
+        install), using HintManager's existing one-shot-per-hint_id
+        primitive (samsara/hints.py) -- there is no version-gated "what's
+        new" mechanism in this codebase to hook into instead, and building
+        one is out of scope for this pass (a single fixed message doesn't
+        need it). Silently a no-op if hints are disabled or this has
+        already fired."""
+        hints_mgr = getattr(self, 'hints', None)
+        if hints_mgr is None:
+            return
+        hint_id = "ava_command_session_migration_v1"
+        message = "Left-Alt is now an Ava command session."
+        already_shown = hint_id in getattr(hints_mgr, '_shown', set())
+        hints_mgr.maybe_show(hint_id, message)
+        if already_shown:
+            return
+        ac = getattr(self, 'audio_coordinator', None)
+        if ac is not None:
+            try:
+                ac.speak(message, category="system_notice")
+            except Exception as e:
+                logger.debug(f"[MIGRATE] Migration notice TTS failed: {e}")
 
     def _deep_update(self, target, source):
         """Recursively update target dict with missing keys from source"""
@@ -3486,7 +3568,7 @@ class DictationApp:
             changes: dict of key-value pairs to update
             save: whether to persist to disk (default True)
         """
-        old_ai_cmd_cfg = self.config.get('ai_command_mode') if 'ai_command_mode' in changes else None
+        old_ava_cmd_cfg = self.config.get('ava_command_session') if 'ava_command_session' in changes else None
 
         with self._config_lock:
             self.config.update(changes)
@@ -3513,39 +3595,41 @@ class DictationApp:
                     changes['wake_word_config'].get('oww_threshold', 0.2)
                 )
                 self._wake_detector = WakeWordDetector(new_phrase, threshold=oww_threshold)
-        if 'ai_command_mode' in changes:
-            self._maybe_exit_ai_command_mode_on_config_change(
-                old_ai_cmd_cfg or {}, changes['ai_command_mode'],
+        if 'ava_command_session' in changes:
+            self._maybe_exit_ava_command_session_on_config_change(
+                old_ava_cmd_cfg or {}, changes['ava_command_session'],
             )
 
-    def _maybe_exit_ai_command_mode_on_config_change(self, old_ai_cfg: dict, new_ai_cfg) -> None:
-        """Force-exit AI-command mode if a config change made while it's
-        active would disable the feature or change its activation key out
-        from under the user.
+    def _maybe_exit_ava_command_session_on_config_change(self, old_cfg: dict, new_cfg) -> None:
+        """Force-exit the Ava command session if a config change made
+        while it's active would disable the feature or change its
+        activation key out from under the user.
 
-        2026-07-19 incident report item 3: previously no runtime side
-        effect existed for ai_command_mode changes at all -- disabling the
-        feature or changing its key while the mode was active removed the
-        user's only exit binding while ai_command_mode_active stayed True.
+        2026-07-19 incident report item 3 (carried over per Ava Front
+        Door spec v2's "2026-07-19 exclusive-ownership + generation
+        guards carry over"): previously no runtime side effect existed
+        for these config changes at all -- disabling the feature or
+        changing its key while the session was active removed the user's
+        only exit binding while ava_command_session_active stayed True.
         Shared by update_config() and _apply_disk_config() (external file
         edits) -- both funnel here so the check and its logging exist in
         exactly one place.
         """
-        if not self.ai_command_mode_active:
+        if not self.ava_command_session_active:
             return
-        if not isinstance(new_ai_cfg, dict):
+        if not isinstance(new_cfg, dict):
             return
-        old_ai_cfg = old_ai_cfg or {}
-        was_enabled = old_ai_cfg.get('enabled', True)
-        now_enabled = new_ai_cfg.get('enabled', True)
-        old_key = old_ai_cfg.get('key', 'right_ctrl')
-        new_key = new_ai_cfg.get('key', 'right_ctrl')
+        old_cfg = old_cfg or {}
+        was_enabled = old_cfg.get('enabled', True)
+        now_enabled = new_cfg.get('enabled', True)
+        old_key = old_cfg.get('key', 'left_alt')
+        new_key = new_cfg.get('key', 'left_alt')
         if (was_enabled and not now_enabled) or (old_key != new_key):
             logger.info(
-                f"[AI-CMD] Config change while active (enabled {was_enabled}->{now_enabled}, "
+                f"[AVA-CMD] Config change while active (enabled {was_enabled}->{now_enabled}, "
                 f"key {old_key!r}->{new_key!r}) -- force-exiting"
             )
-            self.exit_ai_command_mode()
+            self.exit_ava_command_session()
 
     def reload_config_from_disk(self) -> int:
         """Re-read config.json from disk and apply any changes to the running app.
@@ -3632,14 +3716,14 @@ class DictationApp:
                         )
             except Exception as e:
                 logger.exception(f"[CONFIG] wake_word_config update error: {e}")
-        if 'ai_command_mode' in changed:
+        if 'ava_command_session' in changed:
             try:
-                old_v, new_v = changed['ai_command_mode']
-                self._maybe_exit_ai_command_mode_on_config_change(
+                old_v, new_v = changed['ava_command_session']
+                self._maybe_exit_ava_command_session_on_config_change(
                     old_v if isinstance(old_v, dict) else {}, new_v,
                 )
             except Exception as e:
-                logger.exception(f"[CONFIG] ai_command_mode update error: {e}")
+                logger.exception(f"[CONFIG] ava_command_session update error: {e}")
 
         return len(changed)
 
@@ -5089,6 +5173,35 @@ class DictationApp:
         Called from on_key_press / on_key_release for every key event.
         No-ops unless command_mode.button is a keyboard source.
         """
+        # SURGICAL ALT GUARD (Ava Front Door spec v2, D3 "Windows Alt-key
+        # guard" -- Auditor catch): Left-Alt is the OS menu key. Any
+        # keypress that is NOT the Ava command session's own toggle key,
+        # while that session is latched, drops the latch IMMEDIATELY.
+        # This keyboard listener has never suppressed OS-level key
+        # delivery (pynput_keyboard.Listener is constructed without
+        # suppress=True -- see its construction site), so Alt+<key>
+        # navigation (Alt+Tab, Alt+F4, menu access) was never literally
+        # blocked; the real risk this guard closes is SOFTWARE state --
+        # without it, an unrelated Alt-combo (or ANY other key) left the
+        # session latched and listening in the background indefinitely,
+        # exactly the kind of latch a motor-impaired user mid alt-tabbing
+        # must not be stuck fighting. Checked first, before any other
+        # per-feature branch below, and deliberately does not `return` --
+        # the key event still falls through to every other handler this
+        # method and on_key_press/on_key_release already run for it.
+        if self.ava_command_session_active:
+            ava_cmd_cfg = self.config.get('ava_command_session', {})
+            ava_cmd_key_name = ava_cmd_cfg.get('key', 'left_alt')
+            ava_cmd_target = _get_pynput_command_key(ava_cmd_key_name)
+            is_own_key = (
+                ava_cmd_target is not None and _matches_pynput_key(key, ava_cmd_target)
+            )
+            if not is_own_key:
+                logger.info(
+                    "[AVA-CMD] Surgical latch-drop: non-session key pressed while latched"
+                )
+                self.exit_ava_command_session()
+
         cfg = self.config.get('command_mode', {})
         cmd_enabled = cfg.get('enabled', False)
         btn_name = cfg.get('button', 'rctrl')
@@ -5144,45 +5257,44 @@ class DictationApp:
                 self.exit_ava_mode()
             return
 
-        # AI command mode (toggle-on-RELEASE with a minimum hold; mutual
-        # exclusion with command mode and ava mode)
+        # Ava command session (D3, toggle-on-RELEASE with a minimum hold;
+        # mutual exclusion with command mode and ava mode)
         #
-        # Ghost-tap guard (2026-07-19 incident, Fix 3 / P1): the old
-        # toggle-on-PRESS behavior had no hold-duration check at all, so a
-        # single accidental tap of the configured key was a successful,
-        # silent mode activation -- Right-Alt Ava has always required a
-        # >=200ms hold (checked on release) for exactly this reason.
-        # AI-command-mode now gets the same protection and the same
+        # Ghost-tap guard (2026-07-19 incident, Fix 3 / P1 -- carried over
+        # into D3 per spec): toggle-on-PRESS with no hold-duration check
+        # was a single-accidental-tap latch. Right-Alt Ava has always
+        # required a >=200ms hold (checked on release) for exactly this
+        # reason; this session gets the same protection and the same
         # debounce constant: a press only arms and timestamps the key; the
         # toggle itself fires on release, and only if held for at least
         # command_mode.enter_debounce_ms. A sub-debounce tap is a silent
         # no-op (debug log only) -- symmetric for BOTH activation and
-        # deactivation presses, so an accidental tap can never change mode
-        # state either way.
-        ai_cfg = self.config.get('ai_command_mode', {})
-        if ai_cfg.get('enabled', True):
-            ai_key_name = ai_cfg.get('key', 'right_ctrl')
-            ai_target = _get_pynput_command_key(ai_key_name)
-            if ai_target is not None and _matches_pynput_key(key, ai_target):
+        # deactivation presses, so an accidental tap can never change
+        # session state either way.
+        ava_cmd_cfg = self.config.get('ava_command_session', {})
+        if ava_cmd_cfg.get('enabled', True):
+            ava_cmd_key_name = ava_cmd_cfg.get('key', 'left_alt')
+            ava_cmd_target = _get_pynput_command_key(ava_cmd_key_name)
+            if ava_cmd_target is not None and _matches_pynput_key(key, ava_cmd_target):
                 if pressed:
-                    if self._ai_cmd_key_held:
+                    if self._ava_cmd_key_held:
                         return  # auto-repeat -- already armed by the real press
-                    self._ai_cmd_key_held = True
-                    self._ai_cmd_key_press_time = time.monotonic()
+                    self._ava_cmd_key_held = True
+                    self._ava_cmd_key_press_time = time.monotonic()
                     return
                 # Release
-                if not self._ai_cmd_key_held:
+                if not self._ava_cmd_key_held:
                     return  # phantom release with no matching real press
-                self._ai_cmd_key_held = False
+                self._ava_cmd_key_held = False
                 debounce_ms = self.config.get('command_mode', {}).get('enter_debounce_ms', 200)
-                hold_ms = (time.monotonic() - self._ai_cmd_key_press_time) * 1000
+                hold_ms = (time.monotonic() - self._ava_cmd_key_press_time) * 1000
                 if hold_ms < debounce_ms:
-                    logger.debug(f"[AI-CMD] Ghost tap ({hold_ms:.0f}ms) — ignored")
+                    logger.debug(f"[AVA-CMD] Ghost tap ({hold_ms:.0f}ms) — ignored")
                     return
-                if self.ai_command_mode_active:
-                    self.exit_ai_command_mode()
+                if self.ava_command_session_active:
+                    self.exit_ava_command_session()
                 else:
-                    self.enter_ai_command_mode()
+                    self.enter_ava_command_session()
 
     # ── Unified session mode state machine (COMMAND <-> DICTATE) ────────────
 
@@ -5444,8 +5556,28 @@ class DictationApp:
             hands_free_command_probe_fn=getattr(
                 self, '_probe_hands_free_command', None,
             ),
+            pending_action_scratch_fn=self._pop_pending_action_for_scratch,
         )
         return self._session_mode_manager
+
+    def _pop_pending_action_for_scratch(self) -> "bool | None":
+        """Unified 'scratch that' stage 1 (Ava Front Door spec v2,
+        "Confirmation binding"): if a staged action is pending
+        (ask_ollama._pending_action, shared by D1's model-derived actions
+        and D3's waterfall-staged ones), clear it and report success.
+        Returns None when nothing is pending, signaling the caller
+        (SessionModeManager.dispatch_utterance, or D3's own
+        _handle_unified_scratch_that) to fall through to the per-session
+        dictation-commit stack instead. Pure state mutation, no
+        sound/speech here -- both callers already play the SAME
+        scratch_success/scratch_refuse earcon from their own outcome
+        handling, so this stays a single source of truth without
+        duplicating feedback."""
+        from plugins.commands import ask_ollama  # noqa: PLC0415
+        if ask_ollama.get_pending_action() is None:
+            return None
+        ask_ollama.clear_pending_action()
+        return True
 
     def _ava_session_agent_dispatch_fn(self, text: str, context: "str | None") -> None:
         """Wired into SessionModeManager as agent_dispatch_fn (SessionMode.AVA).
@@ -5519,15 +5651,17 @@ class DictationApp:
         """Enter command mode (idempotent). Safe to call from any thread.
 
         Exclusive voice-mode ownership (2026-07-19 incident, report §
-        "Asymmetric overlap"): if AI-command-mode is active, exit it first
+        "Asymmetric overlap"; carried over into D3 per Ava Front Door spec
+        v2's "2026-07-19 exclusive-ownership + generation guards carry
+        over"): if the Ava command session (D3) is active, exit it first
         -- with its own normal exit feedback -- before proceeding. A
         different mode's activation being pressed is unambiguous user
         intent; rejecting it would have left the incident's AI-command
         latch in place instead of resolving it. Called unlocked, before
-        acquiring _command_mode_lock, so exit_ai_command_mode's own
+        acquiring _command_mode_lock, so exit_ava_command_session's own
         locking/async work never nests under this lock."""
-        if self.ai_command_mode_active:
-            self.exit_ai_command_mode()
+        if self.ava_command_session_active:
+            self.exit_ava_command_session()
         with self._command_mode_lock:
             if self.command_mode_active or self.ava_mode_active:
                 return
@@ -5674,17 +5808,19 @@ class DictationApp:
     def enter_ava_mode(self):
         """Enter Ava mode (idempotent). Safe to call from any thread.
 
-        Exclusive voice-mode ownership (2026-07-19 incident root cause):
-        this guard previously omitted ai_command_mode_active, so Ava could
-        enter ON TOP of a latched AI-command session (the incident's exact
-        path -- Right-Alt's clean 157ms ghost-tap exit then cleaned up
-        only Ava, leaving AI-command mode latched and nagging). If
-        AI-command-mode is active, exit it first -- with its own normal
-        exit feedback -- before proceeding with Ava entry. Called
-        unlocked, before acquiring _ava_mode_lock, so exit_ai_command_mode's
-        own locking/async work never nests under this lock."""
-        if self.ai_command_mode_active:
-            self.exit_ai_command_mode()
+        Exclusive voice-mode ownership (2026-07-19 incident root cause;
+        carried over into D3 per Ava Front Door spec v2): this guard
+        previously omitted the AI-command boolean, so Ava could enter ON
+        TOP of a latched AI-command session (the incident's exact path --
+        Right-Alt's clean 157ms ghost-tap exit then cleaned up only Ava,
+        leaving the other session latched and nagging). If the Ava
+        command session (D3) is active, exit it first -- with its own
+        normal exit feedback -- before proceeding with Ava entry. Called
+        unlocked, before acquiring _ava_mode_lock, so
+        exit_ava_command_session's own locking/async work never nests
+        under this lock."""
+        if self.ava_command_session_active:
+            self.exit_ava_command_session()
         with self._ava_mode_lock:
             if self.ava_mode_active or self.command_mode_active:
                 return
@@ -5729,135 +5865,218 @@ class DictationApp:
             self.play_sound('stop')
 
     # ------------------------------------------------------------------
-    # AI command mode
+    # Ava command session (D3, Ava Front Door spec v2) -- replaces the
+    # old "AI command mode" (samsara/ai_command_mode.py, deleted).
     # ------------------------------------------------------------------
 
-    def enter_ai_command_mode(self):
-        """Enter AI command mode (idempotent, toggle). Safe from any thread.
+    def enter_ava_command_session(self):
+        """Enter the Ava command session (idempotent, toggle). Safe from any thread.
 
         Authoritative-exit plumbing (2026-07-19 incident, report items
-        3/5/7/8, Fix 2 / P0b):
-          - Bumps _ai_cmd_generation. Async work in flight from a PRIOR
-            session (ready-wait, transcription, resolution, plan
-            steps/TTS) checks this and drops silently once it's stale --
-            see _handle_ai_command_utterance and ai_command_mode.py's
-            _process_utterance/_execute_plan/_speak.
-          - reset_cancel() clears the cancel flag exit_ai_command_mode()
+        3/5/7/8, Fix 2 / P0b -- carried over verbatim per spec):
+          - Bumps _ava_cmd_generation. Async work in flight from a PRIOR
+            session (ready-wait, transcription, resolution, waterfall
+            stages, TTS) checks this and drops silently once it's stale --
+            see _handle_ava_command_utterance and
+            ava_command_session.py's _process_utterance/_speak.
+          - reset_cancel() clears the cancel flag exit_ava_command_session()
             now leaves SET (see that method) -- a fresh entry is the only
             thing that re-arms the worker.
-          - _ensure_wake_consumer('ai_command_mode') takes a reason-counted
-            lease on the WakeConsumer pipeline (same mechanism as the
-            toggle hands-free session), so entering while wake-word is off
-            doesn't leave the mode latched but deaf.
+          - _ensure_wake_consumer('ava_command_session') takes a
+            reason-counted lease on the WakeConsumer pipeline (same
+            mechanism as the toggle hands-free session), so entering
+            while wake-word is off doesn't leave the session latched but
+            deaf.
+          - Arms the spec-new 60s inactivity timer (config
+            ava_command_session.inactivity_timeout_s).
         """
-        with self._ai_cmd_mode_lock:
-            if self.ai_command_mode_active:
+        with self._ava_cmd_mode_lock:
+            if self.ava_command_session_active:
                 return
             if self.command_mode_active or self.ava_mode_active:
                 return
-            self.ai_command_mode_active = True
-            self._ai_cmd_generation += 1
-        self._ai_cmd_miss_count = 0
-        self._ai_cmd_ready.clear()  # Mic gate: unblocks only after cue finishes
+            self.ava_command_session_active = True
+            self._ava_cmd_generation += 1
+        self._ava_cmd_miss_count = 0
+        self._ava_cmd_ready.clear()  # Mic gate: unblocks only after cue finishes
         try:
-            from samsara.ai_command_mode import reset_cancel  # noqa: PLC0415
+            from samsara.ava_command_session import reset_cancel  # noqa: PLC0415
             reset_cancel()
         except Exception as e:
-            logger.debug(f"[AI-CMD] reset_cancel on enter failed: {e}")
-        self._ensure_wake_consumer('ai_command_mode')
-        logger.info("[AI-CMD] Entering AI command mode")
+            logger.debug(f"[AVA-CMD] reset_cancel on enter failed: {e}")
+        self._ensure_wake_consumer('ava_command_session')
+        cfg = self.config.get('ava_command_session', {})
+        timeout_s = cfg.get('inactivity_timeout_s', 60)
+        self._reset_ava_cmd_inactivity_timer(timeout_s)
+        logger.info("[AVA-CMD] Entering Ava command session")
         if hasattr(self, 'listening_indicator'):
             self._schedule_ui(self.listening_indicator.set_command_mode, True)
-        thread_registry.spawn('ai-cmd-enter', self._do_enter_ai_command_mode, daemon=True)
+            # Distinct visible badge (spec D3 "LATCH FEEDBACK"): the same
+            # generic set_command_mode(True) pill also lights up for
+            # command_mode/ava_mode -- set_session_mode gives this
+            # session its OWN label/color so it is not confusable with
+            # either, reusing the existing COMMAND/DICTATE/AVA badge
+            # mechanism (session_modes.py's hands-free lane already uses
+            # it the same way).
+            self._schedule_ui(self.listening_indicator.set_session_mode, "AVA CMD", "#89ddff")
+        thread_registry.spawn('ava-cmd-enter', self._do_enter_ava_command_session, daemon=True)
 
-    def _do_enter_ai_command_mode(self):
+    def _do_enter_ava_command_session(self):
         """Worker: play entry earcon, warm up model, play ready cue, then arm mic."""
         debounce_ms = self.config.get('command_mode', {}).get('enter_debounce_ms', 200)
         time.sleep(debounce_ms / 1000.0)
-        if not self.ai_command_mode_active:
-            self._ai_cmd_ready.set()
+        if not self.ava_command_session_active:
+            self._ava_cmd_ready.set()
             return
-        self.play_sound('start', use_winsound=True)
-        ai_cfg = self.config.get('ai_command_mode', {})
+        # Distinct earcon from ava_mode/command_mode's shared 'start' sound
+        # (spec D3 "LATCH FEEDBACK"; falls back to 'start' harmlessly via
+        # play_sound's own missing-asset handling if the theme lacks it).
+        self.play_sound('mode_command', use_winsound=True)
+        ava_cfg = self.config.get('ava_command_session', {})
 
         def _on_ready():
-            from samsara.ai_command_mode import _play_ready_cue  # noqa: PLC0415
+            from samsara.ava_command_session import _play_ready_cue  # noqa: PLC0415
             _play_ready_cue(self)
-            self._ai_cmd_ready.set()
+            self._ava_cmd_ready.set()
 
-        if ai_cfg.get('keep_warm', True):
+        if ava_cfg.get('keep_warm', True):
             try:
-                from samsara.ai_command_mode import warm_up  # noqa: PLC0415
+                from samsara.ava_command_session import warm_up  # noqa: PLC0415
                 warm_up(self, on_done=_on_ready)
             except Exception:
-                self._ai_cmd_ready.set()
+                self._ava_cmd_ready.set()
         else:
             _on_ready()
 
-    def exit_ai_command_mode(self):
-        """Exit AI command mode (idempotent). Drains queue. Safe from any thread.
+    def exit_ava_command_session(self):
+        """Exit the Ava command session (idempotent). Drains queue. Safe from any thread.
 
         cancel_queue() leaves the module's _cancel event SET -- deliberately
         NOT immediately reset here (2026-07-19 incident report item 8: the
         old immediate reset_cancel() left only a brief window where the
         worker's dequeue-time check could actually catch a stale item, so
-        an in-flight resolver call or plan step could keep running after a
-        legitimate exit). The cancel flag now stays set for the entire time
-        the mode is inactive; only enter_ai_command_mode()'s reset_cancel()
-        re-arms the worker for a fresh session. _ai_cmd_generation is
-        bumped here too, so async work outside the queue (already past
-        dequeue, already resolving/executing) also observes the exit -- see
-        enter_ai_command_mode's docstring for the full mechanism.
+        an in-flight resolver call or waterfall stage could keep running
+        after a legitimate exit). The cancel flag now stays set for the
+        entire time the session is inactive; only
+        enter_ava_command_session()'s reset_cancel() re-arms the worker
+        for a fresh session. _ava_cmd_generation is bumped here too, so
+        async work outside the queue (already past dequeue, already
+        resolving/executing) also observes the exit -- see
+        enter_ava_command_session's docstring for the full mechanism.
         """
-        with self._ai_cmd_mode_lock:
-            if not self.ai_command_mode_active:
+        with self._ava_cmd_mode_lock:
+            if not self.ava_command_session_active:
                 return
-            self.ai_command_mode_active = False
-            self._ai_cmd_generation += 1
-        self._ai_cmd_miss_count = 0
-        self._ai_cmd_ready.set()  # Unblock utterance gate if cue is still playing
-        logger.info("[AI-CMD] Exiting AI command mode")
+            self.ava_command_session_active = False
+            self._ava_cmd_generation += 1
+        self._ava_cmd_miss_count = 0
+        self._ava_cmd_ready.set()  # Unblock utterance gate if cue is still playing
+        self._cancel_ava_cmd_inactivity_timer()
+        logger.info("[AVA-CMD] Exiting Ava command session")
         if hasattr(self, 'listening_indicator'):
             self._schedule_ui(self.listening_indicator.set_command_mode, False)
+            self._schedule_ui(self.listening_indicator.set_session_mode, None, None)
         try:
-            from samsara.ai_command_mode import cancel_queue  # noqa: PLC0415
+            from samsara.ava_command_session import cancel_queue  # noqa: PLC0415
             cancel_queue()
         except Exception as e:
-            logger.debug(f"[AI-CMD] Queue cancel on exit failed: {e}")
-        self._release_wake_consumer('ai_command_mode')
+            logger.debug(f"[AVA-CMD] Queue cancel on exit failed: {e}")
+        self._release_wake_consumer('ava_command_session')
         self.play_sound('stop')
 
-    def _handle_ai_command_utterance(self, buffer: list, src_rate: int) -> None:
-        """Transcribe one VAD-gated utterance and push to the AI command queue.
+    def _reset_ava_cmd_inactivity_timer(self, timeout_s):
+        """Spec D3 "Timeouts": inactivity exit after timeout_s of silence
+        (config ava_command_session.inactivity_timeout_s, default 60).
+        Re-armed on entry and on every flushed utterance (see
+        _handle_ava_command_utterance) -- mirrors the existing hands-free
+        session's _reset_command_mode_inactivity_timer pattern."""
+        with self._ava_cmd_timer_lock:
+            self._cancel_ava_cmd_inactivity_timer_locked()
+            t = thread_registry.timer(
+                "dictation.ava_cmd_inactivity", timeout_s,
+                self._on_ava_cmd_inactivity, daemon=True)
+            self._ava_cmd_inactivity_timer = t
 
-        Called from WakeConsumer._flush() while ai_command_mode_active.
-        Shares _wake_transcription_in_progress with _handle_command_mode_utterance
-        to prevent concurrent transcriptions.
-        Stop-words are checked before enqueue so cancel is always responsive.
+    def _cancel_ava_cmd_inactivity_timer(self):
+        with self._ava_cmd_timer_lock:
+            self._cancel_ava_cmd_inactivity_timer_locked()
 
-        Session-generation guard (2026-07-19 incident report items 7-8):
-        captures the generation active when this utterance was flushed, and
-        rechecks it after the ready wait and again after transcription --
-        both are places a legitimate exit_ai_command_mode() (or exit +
-        re-entry) could happen while this coroutine was blocked or
-        working, and nothing previously rechecked ai_command_mode_active
-        before enqueueing or speaking. A stale generation drops the
-        utterance silently (debug log only). The captured generation is
-        threaded through enqueue_utterance so the same check can continue
-        at resolution and execution time -- see ai_command_mode.py.
-        """
-        entry_generation = self._ai_cmd_generation
-        if not self._ai_cmd_ready.wait(timeout=60):
-            logger.info('[AI-CMD-UTT] Ready timeout -- dropping utterance')
+    def _cancel_ava_cmd_inactivity_timer_locked(self):
+        t = self._ava_cmd_inactivity_timer
+        if t is not None:
+            t.cancel()
+            self._ava_cmd_inactivity_timer = None
+
+    def _on_ava_cmd_inactivity(self):
+        """threading.Timer callback -- runs on its own thread. Must never
+        raise uncaught: a raise here would leave the session latched but
+        with its only path back to normal listening broken -- deaf but
+        latched, a zombie session (same failure mode the hands-free
+        session's own inactivity callback guards against)."""
+        try:
+            logger.info("[AVA-CMD] Inactivity timeout -- exiting")
+            self.exit_ava_command_session()
+        except Exception as e:
+            logger.exception(f"[AVA-CMD] Inactivity exit failed, forcing end-state: {e}")
+            self.ava_command_session_active = False
+            self._cancel_ava_cmd_inactivity_timer()
+
+    def _handle_unified_scratch_that(self) -> None:
+        """Single 'scratch that' definition across every door (Ava Front
+        Door spec v2's "Confirmation binding" section): pops the UNIFIED
+        stack top -- the most recently staged action if one is pending
+        (ask_ollama._pending_action, shared by D1's model-derived actions
+        and D3's waterfall-staged ones via ava_command_session._dispatch_
+        action2/handle_response), else the last dictation commit
+        (session_modes.py's existing per-hands-free-session
+        UnitOfWorkStack). Exactly one of the two fires per call; never
+        both. Reuses the SAME scratch_success/scratch_refuse earcon
+        convention _ensure_session_mode_manager's own on_scratch_result
+        callback already uses, so both paths give identical feedback."""
+        if self._pop_pending_action_for_scratch() is not None:
+            self.play_sound('scratch_success')
             return
-        if self._ai_cmd_generation != entry_generation:
+        manager = getattr(self, '_session_mode_manager', None)
+        if manager is not None:
+            ok = manager._do_scratch_that()
+            self.play_sound('scratch_success' if ok else 'scratch_refuse')
+            return
+        self.play_sound('scratch_refuse')
+
+    def _handle_ava_command_utterance(self, buffer: list, src_rate: int) -> None:
+        """Transcribe one VAD-gated utterance and push to the Ava command
+        session's waterfall queue.
+
+        Called from WakeConsumer._flush() while ava_command_session_active.
+        Shares _wake_transcription_in_progress with _handle_command_mode_utterance
+        to prevent concurrent transcriptions. Abort phrases, and "scratch
+        that", are both checked before enqueue so they're always
+        responsive even while the waterfall queue is backed up.
+
+        Session-generation guard (2026-07-19 incident report items 7-8,
+        carried over verbatim per spec): captures the generation active
+        when this utterance was flushed, and rechecks it after the ready
+        wait and again after transcription -- both are places a
+        legitimate exit_ava_command_session() (or exit + re-entry) could
+        happen while this coroutine was blocked or working, and nothing
+        previously rechecked ava_command_session_active before enqueueing
+        or speaking. A stale generation drops the utterance silently
+        (debug log only). The captured generation is threaded through
+        enqueue_utterance so the same check can continue at resolution
+        and execution time -- see ava_command_session.py.
+        """
+        entry_generation = self._ava_cmd_generation
+        if not self._ava_cmd_ready.wait(timeout=60):
+            logger.info('[AVA-CMD-UTT] Ready timeout -- dropping utterance')
+            return
+        if self._ava_cmd_generation != entry_generation:
             logger.debug(
-                f'[AI-CMD-UTT] Stale generation after ready wait '
-                f'({entry_generation} != {self._ai_cmd_generation}) -- dropping'
+                f'[AVA-CMD-UTT] Stale generation after ready wait '
+                f'({entry_generation} != {self._ava_cmd_generation}) -- dropping'
             )
             return
         if self._wake_transcription_in_progress:
-            logger.info('[AI-CMD-UTT] Transcription in progress -- skipping')
+            logger.info('[AVA-CMD-UTT] Transcription in progress -- skipping')
             return
         self._wake_transcription_in_progress = True
         try:
@@ -5866,12 +6085,13 @@ class DictationApp:
             audio_duration = len(audio) / self.model_rate
             if audio_duration < 0.3:
                 return
-            logger.info(f'[AI-CMD-UTT] Transcribing {audio_duration:.1f}s')
+            logger.info(f'[AVA-CMD-UTT] Transcribing {audio_duration:.1f}s')
             # NOT forced to English: this content is a natural-language
-            # query routed to the AI/Ava queue, not matched against the
-            # command registry -- use the configured dictation language.
-            # The English _STOP_WORDS gate below is best-effort in
-            # non-English (commands/control-words remain English-only).
+            # query routed to the waterfall's stage (c), not matched
+            # against the command registry directly -- use the configured
+            # dictation language. Stage (a)/(b) and the control-word gates
+            # below are best-effort in non-English (commands/control-words
+            # remain English-only).
             transcribe_params = self.get_transcription_params()
             transcribe_params['vad_filter'] = False
             with self.model_lock:
@@ -5880,26 +6100,36 @@ class DictationApp:
             text = self.voice_training_window.apply_corrections(text)
             if not text:
                 return
-            logger.info(f'[AI-CMD-UTT] "{text}"')
-            if self._ai_cmd_generation != entry_generation:
+            logger.info(f'[AVA-CMD-UTT] "{text}"')
+            if self._ava_cmd_generation != entry_generation:
                 logger.debug(
-                    f'[AI-CMD-UTT] Stale generation after transcription '
-                    f'({entry_generation} != {self._ai_cmd_generation}) -- dropping'
+                    f'[AVA-CMD-UTT] Stale generation after transcription '
+                    f'({entry_generation} != {self._ava_cmd_generation}) -- dropping'
                 )
                 return
-            text_lower = text.lower().strip()
-            # Stop-word gate: cancel before touching the queue
-            from samsara.ai_command_mode import (  # noqa: PLC0415
-                _STOP_WORDS, cancel_queue, reset_cancel,
-            )
-            if text_lower in _STOP_WORDS:
-                cancel_queue()
-                reset_cancel()
+
+            # Any activity (including a miss, checked later downstream)
+            # re-arms the 60s inactivity timer -- spec D3 "Timeouts".
+            cfg = self.config.get('ava_command_session', {})
+            self._reset_ava_cmd_inactivity_timer(cfg.get('inactivity_timeout_s', 60))
+
+            # Global abort phrases (spec: "Abort phrases honored") -- exact
+            # whole-utterance match, same normalization discipline as
+            # scratch-that/dictate-commit elsewhere in this app.
+            if normalize_utterance(text) in {normalize_utterance(p) for p in GLOBAL_SESSION_EXIT_PHRASES}:
+                self.exit_ava_command_session()
                 return
-            from samsara.ai_command_mode import enqueue_utterance  # noqa: PLC0415
+
+            # "scratch that": unified stack, checked before enqueue so it's
+            # always responsive even while the waterfall queue is backed up.
+            if is_scratch_that(text):
+                self._handle_unified_scratch_that()
+                return
+
+            from samsara.ava_command_session import enqueue_utterance  # noqa: PLC0415
             enqueue_utterance(self, entry_generation, text)
         except Exception as exc:
-            logger.exception(f'[AI-CMD-UTT] Error: {exc}')
+            logger.exception(f'[AVA-CMD-UTT] Error: {exc}')
             import traceback  # noqa: PLC0415
             traceback.print_exc()
         finally:

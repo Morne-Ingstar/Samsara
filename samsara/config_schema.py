@@ -187,6 +187,63 @@ SETTINGS_SCHEMA = {
         "tab": "commands",
         "depends_on": "command_mode.enabled",
     },
+    # Ava Front Door P1: D3 command-first latched session (waterfall
+    # resolver -- exact/alias match, then ACTION2 grammar, then one LLM
+    # fallback pass). Replaces the deleted ai_command_mode.* block; see
+    # dictation.py's _migrate_ai_command_mode_config for the one-time
+    # key-carryover migration from the old block.
+    "ava_command_session.enabled": {"type": "bool", "default": True, "tab": "commands"},
+    "ava_command_session.backend": {
+        "type": "enum",
+        "options": ["ollama", "cloud"],
+        "default": "ollama",
+        "tab": "commands",
+    },
+    "ava_command_session.model": {
+        "type": "str",
+        "default": "llama3.2:3b",
+        "tab": "commands",
+    },
+    "ava_command_session.queue_depth_cap": {
+        "type": "int",
+        "min": 1,
+        "max": 10,
+        "step": 1,
+        "default": 3,
+        "tab": "commands",
+    },
+    "ava_command_session.miss_limit": {
+        "type": "int",
+        "min": 1,
+        "max": 20,
+        "step": 1,
+        "default": 3,
+        "tab": "commands",
+    },
+    "ava_command_session.inactivity_timeout_s": {
+        "type": "int",
+        "min": 5,
+        "max": 1800,
+        "step": 5,
+        "default": 60,
+        "tab": "commands",
+    },
+    "ava_command_session.shortlist_size": {
+        "type": "int",
+        "min": 1,
+        "max": 50,
+        "step": 1,
+        "default": 12,
+        "tab": "commands",
+    },
+    "ava_command_session.keep_warm": {"type": "bool", "default": True, "tab": "commands"},
+    "ava_command_session.ready_cue_enabled": {"type": "bool", "default": True, "tab": "commands"},
+    "ava_command_session.ready_cue_dir": {
+        "type": "str",
+        "default": "assets/sounds/ava_cues",
+        "tab": "commands",
+    },
+
     "click.type": {
         "type": "enum",
         "options": ["click", "double_click"],

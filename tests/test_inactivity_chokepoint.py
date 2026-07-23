@@ -249,7 +249,7 @@ class TestUtteranceLoopZombieProofing:
 # WakeConsumer._poll_loop fail-loud on a dead consumer thread
 # ---------------------------------------------------------------------------
 
-def _make_consumer(command_mode_active=False, mode='hold', ai_command_mode_active=False):
+def _make_consumer(command_mode_active=False, mode='hold', ava_command_session_active=False):
     from samsara.audio_engine.wake_consumer import WakeConsumer
 
     engine = Mock()
@@ -258,7 +258,7 @@ def _make_consumer(command_mode_active=False, mode='hold', ai_command_mode_activ
     app = Mock()
     app.wake_word_active = True
     app.command_mode_active = command_mode_active
-    app.ai_command_mode_active = ai_command_mode_active
+    app.ava_command_session_active = ava_command_session_active
     app.config = {'command_mode': {'mode': mode}}
     wc = WakeConsumer(engine, app)
     return wc, reader, app
@@ -280,23 +280,23 @@ class TestWakeConsumerPollLoopFailsLoud:
         wc._poll_loop()
         app.exit_command_mode.assert_called_once()
 
-    def test_loop_death_during_ai_command_mode_force_exits_it(self):
+    def test_loop_death_during_ava_command_session_force_exits_it(self):
         """2026-07-19 incident report item 6: this handler used to force-
-        exit toggle-command-mode only -- a consumer crash while
-        AI-command-mode was active left it exactly as latched-but-deaf as
+        exit toggle-command-mode only -- a consumer crash while the Ava
+        command session was active left it exactly as latched-but-deaf as
         the original incident, just via a different trigger."""
-        wc, reader, app = _make_consumer(ai_command_mode_active=True)
+        wc, reader, app = _make_consumer(ava_command_session_active=True)
         reader.read_next = Mock(side_effect=RuntimeError("ring exploded"))
         wc._running = True
         wc._poll_loop()
-        app.exit_ai_command_mode.assert_called_once()
+        app.exit_ava_command_session.assert_called_once()
 
-    def test_loop_death_without_ai_command_mode_does_not_call_its_exit(self):
-        wc, reader, app = _make_consumer(ai_command_mode_active=False)
+    def test_loop_death_without_ava_command_session_does_not_call_its_exit(self):
+        wc, reader, app = _make_consumer(ava_command_session_active=False)
         reader.read_next = Mock(side_effect=RuntimeError("ring exploded"))
         wc._running = True
         wc._poll_loop()
-        app.exit_ai_command_mode.assert_not_called()
+        app.exit_ava_command_session.assert_not_called()
 
     def test_per_frame_exception_does_not_kill_the_loop(self):
         """The pre-existing inner guard: a single bad frame logs and the

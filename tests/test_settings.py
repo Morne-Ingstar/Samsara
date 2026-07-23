@@ -153,7 +153,7 @@ class TestSettingsWindowConstruction:
             'hotkey', 'continuous_hotkey', 'wake_word_hotkey', 'command_hotkey',
             'streaming_hotkey', 'cancel_hotkey', 'undo_hotkey', 'dictate_commit_hotkey', 'ava_mode_key',
             'mode', 'wake_word_enabled', 'wake_word_config', 'command_mode',
-            'ai_command_mode',
+            'ava_command_session',
         }
         assert set(produced.keys()) == expected_keys
 
@@ -210,7 +210,7 @@ class TestSettingsWindowConstruction:
 
     def test_modes_tab_has_one_voice_control_card_with_subordinate_hold_behavior(self, qapp):
         """Ordinary Command Mode and Hands-Free are one activation system,
-        while AI Command Mode remains a separate card."""
+        while the Ava Command Session remains a separate card."""
         from PySide6.QtWidgets import QFrame
         from samsara.ui.settings_qt import _SettingsWindow, _TAB_NAMES
 
@@ -225,7 +225,7 @@ class TestSettingsWindowConstruction:
         assert titles == [
             'Hands-Free / Voice Control',
             'Dictation bindings',
-            'AI Command Mode (Experimental)',
+            'Ava Command Session',
             'Ava Assistant',
             'Advanced tuning',
         ]
@@ -259,7 +259,7 @@ class TestSettingsWindowConstruction:
             'Command-only key',
             'Wake activation key',
             'Primary dictation key behavior',
-            'Enable AI command mode',
+            'Enable Ava command session',
         } <= labels
 
 
@@ -337,13 +337,13 @@ class TestModesCollisionDetection:
         win._stack.setCurrentIndex(_TAB_NAMES.index('Modes'))  # non-current stack pages report not-visible
 
         win._widgets['ava_mode_key']._combo = 'right_ctrl'
-        win._widgets['ai_cmd_key'].setCurrentText('Right Ctrl')
+        win._widgets['ava_cmd_key'].setCurrentText('Right Ctrl')
         win._check_modes_collisions()
 
         warn = win._widgets['modes_collision_warn']
         assert warn.isVisibleTo(win)
         assert 'Ava mode' in warn.text()
-        assert 'AI Command Mode key' in warn.text()
+        assert 'Ava Command Session key' in warn.text()
 
     def test_staged_thought_binding_participates_in_collision_warning(self, qapp):
         from samsara.ui.settings_qt import _SettingsWindow, _TAB_NAMES
@@ -390,7 +390,7 @@ class TestModesCollisionDetection:
         win._stack.setCurrentIndex(_TAB_NAMES.index('Modes'))
 
         ava_btn = win._widgets['ava_mode_key']
-        ai_key_combo = win._widgets['ai_cmd_key']
+        ai_key_combo = win._widgets['ava_cmd_key']
         ai_key_combo.setCurrentText('Right Ctrl')
 
         ava_btn._held = {'right_ctrl'}

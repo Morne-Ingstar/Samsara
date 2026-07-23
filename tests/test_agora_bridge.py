@@ -530,6 +530,36 @@ class TestCli:
         assert code == 0
         assert "AG-12" in out
 
+    def test_cli_request_id_flag_reused_instead_of_minted(self, token_file, capsys):
+        """B4: --request-id lets a caller (e.g. a retry script) supply its
+        own UUID instead of send_intent() minting a fresh one each call --
+        the request body's request_id must be exactly the one passed."""
+        fixed_id = "11111111-1111-4111-8111-111111111111"
+        seen = {}
+
+        def fake_post(url, body, headers, timeout):
+            seen["request_id"] = json.loads(body)["request_id"]
+            return _FakeResponse({"accepted": True, "duplicate": False, "task_id": "AG-13", "state": "draft"})
+
+        with patch.object(ab, "_post", side_effect=fake_post):
+            code = ab._cli(["hello there", "--request-id", fixed_id])
+        out = capsys.readouterr().out
+        assert code == 0
+        assert seen["request_id"] == fixed_id
+        assert f"request_id={fixed_id}" in out
+
+    def test_cli_without_request_id_still_mints_a_fresh_uuid(self, token_file, capsys):
+        """No regression: omitting --request-id must keep send_intent()'s
+        existing mint-a-fresh-UUID-when-omitted behavior."""
+        def fake_post(url, body, headers, timeout):
+            return _FakeResponse({"accepted": True, "duplicate": False, "task_id": "AG-14", "state": "draft"})
+
+        with patch.object(ab, "_post", side_effect=fake_post):
+            code = ab._cli(["hello there"])
+        out = capsys.readouterr().out
+        assert code == 0
+        assert "AG-14" in out
+
 
 # =============================================================================
 # Optional live check -- only if the Agora repo exists and cooperates.

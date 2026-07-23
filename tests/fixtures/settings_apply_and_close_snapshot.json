@@ -4,16 +4,14 @@
   "benchmark": {
     "collect_samples": false
   },
-  "ai_command_mode": {
+  "ava_command_session": {
     "backend": "ollama",
     "enabled": true,
     "keep_warm": true,
-    "key": "right_ctrl",
+    "key": "left_alt",
+    "miss_limit": 3,
     "model": "llama3.2:3b",
-    "queue_depth_cap": 3,
-    "show_plan_hud": true,
-    "step_settle_seconds": 0.4,
-    "wake_phrase": "command mode"
+    "queue_depth_cap": 3
   },
   "alarms": {
     "complete_hotkey": "f7",
