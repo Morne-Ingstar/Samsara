@@ -251,3 +251,82 @@ class TestVoiceCommandHandlers:
         with patch.object(av, "do_close", return_value=av.ActionResult.NOT_FOUND):
             av.handle_close(app, "flurbotron")
         app.play_sound.assert_called_once_with("scratch_refuse")
+
+
+class TestMissFeedbackDoesNotParrot:
+    """2026-07-23 G3 live-test finding (Ava command session): a garbled,
+    non-command utterance that happens to start with a bare "open"/
+    "focus"/"close" still matches stage (a)'s command dispatch, with the
+    ENTIRE rest of the utterance as `remainder` -- log-confirmed spoken
+    feedback: "No app called up im listening open up tab". A genuine
+    app-name attempt is always short; anything longer than
+    _MISS_ECHO_MAX_WORDS words is noise, not a name to echo.
+    """
+
+    def _app(self):
+        app = MagicMock()
+        app.play_sound = MagicMock()
+        app.audio_coordinator = MagicMock()
+        return app
+
+    LONG_GARBLED_REMAINDER = "up im listening open up tab and some more words"
+
+    def test_handle_open_long_remainder_uses_fixed_phrase(self):
+        app = self._app()
+        with patch.object(av, "do_open", return_value=av.ActionResult.NOT_FOUND):
+            av.handle_open(app, self.LONG_GARBLED_REMAINDER)
+        spoken = app.audio_coordinator.speak.call_args.args[0]
+        assert spoken == av._MISS_PHRASE
+        assert self.LONG_GARBLED_REMAINDER not in spoken
+
+    def test_handle_focus_long_remainder_not_found_uses_fixed_phrase(self):
+        app = self._app()
+        with patch.object(av, "do_focus", return_value=av.ActionResult.NOT_FOUND):
+            av.handle_focus(app, self.LONG_GARBLED_REMAINDER)
+        spoken = app.audio_coordinator.speak.call_args.args[0]
+        assert spoken == av._MISS_PHRASE
+        assert self.LONG_GARBLED_REMAINDER not in spoken
+
+    def test_handle_focus_long_remainder_not_running_uses_fixed_phrase(self):
+        app = self._app()
+        with patch.object(av, "do_focus", return_value=av.ActionResult.NOT_RUNNING):
+            av.handle_focus(app, self.LONG_GARBLED_REMAINDER)
+        spoken = app.audio_coordinator.speak.call_args.args[0]
+        assert spoken == av._MISS_PHRASE
+        assert self.LONG_GARBLED_REMAINDER not in spoken
+
+    def test_handle_close_long_remainder_uses_fixed_phrase(self):
+        app = self._app()
+        with patch.object(av, "do_close", return_value=av.ActionResult.NOT_FOUND):
+            av.handle_close(app, self.LONG_GARBLED_REMAINDER)
+        spoken = app.audio_coordinator.speak.call_args.args[0]
+        assert spoken == av._MISS_PHRASE
+        assert self.LONG_GARBLED_REMAINDER not in spoken
+
+    def test_short_genuine_name_still_echoed(self):
+        """A real, short app-name attempt is still useful feedback --
+        only implausibly long remainders get suppressed."""
+        app = self._app()
+        with patch.object(av, "do_open", return_value=av.ActionResult.NOT_FOUND):
+            av.handle_open(app, "flurbotron")
+        spoken = app.audio_coordinator.speak.call_args.args[0]
+        assert "flurbotron" in spoken
+        assert spoken != av._MISS_PHRASE
+
+    def test_exactly_at_word_cap_still_echoed(self):
+        four_words = "the flurbotron pro max"
+        assert len(four_words.split()) == av._MISS_ECHO_MAX_WORDS
+        app = self._app()
+        with patch.object(av, "do_open", return_value=av.ActionResult.NOT_FOUND):
+            av.handle_open(app, four_words)
+        spoken = app.audio_coordinator.speak.call_args.args[0]
+        assert four_words in spoken
+
+    def test_one_word_past_cap_uses_fixed_phrase(self):
+        five_words = "the flurbotron pro max edition"
+        assert len(five_words.split()) == av._MISS_ECHO_MAX_WORDS + 1
+        app = self._app()
+        with patch.object(av, "do_open", return_value=av.ActionResult.NOT_FOUND):
+            av.handle_open(app, five_words)
+        spoken = app.audio_coordinator.speak.call_args.args[0]
+        assert spoken == av._MISS_PHRASE

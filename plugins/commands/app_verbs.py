@@ -149,6 +149,26 @@ def _speak(app, text):
         print(f"[APP-VERBS] {text}")
 
 
+# 2026-07-23 G3 live-test finding (Ava command session): a garbled,
+# non-command utterance that happens to start with a bare "open"/"focus"/
+# "close" (single-token registered commands, remainder-tolerant -- see
+# handle_open/handle_focus/handle_close below) still matches stage (a)'s
+# command dispatch, with the ENTIRE rest of the utterance as `remainder`.
+# Echoing that verbatim in the resolution-failure message (log-confirmed:
+# "No app called up im listening open up tab") wastes TTS time on
+# nonsense and parrots audio the app itself likely mis-transcribed. A
+# genuine app-name attempt is always short (1-4 words); anything longer
+# is not a name to echo, it's noise -- fall back to a fixed miss phrase
+# instead of the per-name message.
+_MISS_ECHO_MAX_WORDS = 4
+_MISS_PHRASE = "No command matched."
+
+
+def _name_for_speech(name: str) -> "str | None":
+    """None signals "too long to be a real name -- don't echo it"."""
+    return name if len(name.split()) <= _MISS_ECHO_MAX_WORDS else None
+
+
 def _miss_earcon(app):
     if hasattr(app, "play_sound"):
         # No dedicated "miss" earcon in this codebase -- reuse scratch_refuse
@@ -283,10 +303,13 @@ def handle_focus(app, remainder):
     if result is ActionResult.DONE:
         return True
     _miss_earcon(app)
-    if result is ActionResult.NOT_RUNNING:
-        _speak(app, f"{name} is not running.")
+    speakable = _name_for_speech(name)
+    if speakable is None:
+        _speak(app, _MISS_PHRASE)
+    elif result is ActionResult.NOT_RUNNING:
+        _speak(app, f"{speakable} is not running.")
     else:
-        _speak(app, f"No app called {name}.")
+        _speak(app, f"No app called {speakable}.")
     return True
 
 
@@ -305,7 +328,8 @@ def handle_open(app, remainder):
     if result is ActionResult.DONE:
         return True
     _miss_earcon(app)
-    _speak(app, f"No app called {name}.")
+    speakable = _name_for_speech(name)
+    _speak(app, _MISS_PHRASE if speakable is None else f"No app called {speakable}.")
     return True
 
 
@@ -323,5 +347,6 @@ def handle_close(app, remainder):
     if result is ActionResult.DONE:
         return True
     _miss_earcon(app)
-    _speak(app, f"No app called {name}.")
+    speakable = _name_for_speech(name)
+    _speak(app, _MISS_PHRASE if speakable is None else f"No app called {speakable}.")
     return True
