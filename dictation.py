@@ -529,7 +529,7 @@ from samsara import audio_ducking
 from samsara.audio_devices import force_rescan, list_microphones
 from samsara import wake_profiles
 from samsara import voice_memo
-from samsara.clipboard import paste_with_preservation
+from samsara.clipboard import paste_with_preservation, type_text_unicode
 from samsara.wake_detector import WakeWordDetector
 from samsara.handlers import _get_foreground_exe_lower, _get_foreground_hwnd
 from samsara.runtime import thread_registry
@@ -9361,6 +9361,32 @@ class DictationApp:
         """Paste text via clipboard while preserving the user's original clipboard content."""
         delay = self.config.get('clipboard_delay', CLIPBOARD_RESTORE_DELAY)
         paste_target = {'hwnd': None}
+
+        # 2026-07-24: typed Unicode injection for ordinary dictation lengths.
+        # Synthetic Ctrl+V into rich web editors is a documented
+        # double-execution hazard (editor keydown handler + native paste both
+        # fire) and forces the clipboard-preservation dance. Typing the text
+        # as KEYEVENTF_UNICODE events sidesteps both: no clipboard touch,
+        # nothing for the target to double. Clipboard-paste remains for long
+        # texts where atomic delivery matters.
+        threshold = self.config.get('paste_min_chars', 300)
+        if len(text) < threshold:
+            if before_paste is not None and not before_paste():
+                logger.warning(
+                    "[TYPE] Injection cancelled because the foreground target changed"
+                )
+                return False
+            typed_hwnd = _get_foreground_hwnd()
+            if type_text_unicode(text):
+                self._record_undoable_paste(text, target_hwnd=typed_hwnd)
+                self.adaptive_learner.record_transcription(text)
+                logger.info(
+                    "[TYPE] Unicode-typed chars=%d hwnd=%r", len(text), typed_hwnd,
+                )
+                return True
+            logger.warning(
+                "[TYPE] Typed injection failed; falling back to clipboard paste"
+            )
 
         def _capture_target_before_paste():
             """Compose the caller's focus guard with undo-target capture.
