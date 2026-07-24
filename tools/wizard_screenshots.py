@@ -30,6 +30,11 @@ class _FakeApp:
     without booting the real app."""
     config: dict = {}
 
+    def get_available_microphones(self) -> list:
+        # mic_setup_wizard_qt calls this on its app handle; the harness
+        # renders windows only, so an empty device list is correct here.
+        return []
+
 
 def _settle_and_grab(app: QApplication, widget, out_path: Path, ms: int = 500) -> None:
     import time
