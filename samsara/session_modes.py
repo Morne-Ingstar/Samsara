@@ -48,7 +48,7 @@ import time
 from collections import deque
 from dataclasses import dataclass, field
 from enum import Enum
-from typing import Callable, Optional, Union
+from typing import Any, Callable, Optional, Union
 
 log = logging.getLogger("Samsara.session_modes")
 
@@ -446,6 +446,9 @@ class UtteranceSignals:
     # from VAD because a short, genuine control word may not form the general
     # gate's required contiguous run.
     transcript_confident: Optional[bool] = None
+    # Optional opaque payload for call-site extras (e.g., per-utterance
+    # audio for commit-time re-decoding in dictation.py).
+    audio_ref: Any = None
 
 
 # Stricter than dictation.py's general hallucination backstop (3.0, a notch
@@ -725,6 +728,7 @@ class SessionModeManager:
         on_scratch_result: Optional[Callable[[bool], None]] = None,
         on_abort: Optional[Callable[[], None]] = None,
         on_switch_dispatch_error: Optional[Callable[[Exception], None]] = None,
+        commit_redecode_fn: Optional[Callable[[str, list], Optional[str]]] = None,
         buffer_dictate_until_commit: bool = False,
         hands_free_command_probe_fn: Optional[HandsFreeCommandProbeFn] = None,
         ava_invocations: Optional[list[str]] = None,
@@ -753,6 +757,7 @@ class SessionModeManager:
         self._on_scratch_result = on_scratch_result
         self._on_abort = on_abort
         self._on_switch_dispatch_error = on_switch_dispatch_error
+        self._commit_redecode_fn = commit_redecode_fn
         self._buffer_dictate_until_commit = buffer_dictate_until_commit
         self._hands_free_command_probe_fn = hands_free_command_probe_fn
         # Pre-normalized once at construction, not per-utterance -- see
@@ -771,6 +776,7 @@ class SessionModeManager:
         self._last_dictate_ended_terminal: Optional[bool] = None
         self._stage_buffer: str = ""
         self._dictate_pending_buffer: str = ""
+        self._dictate_pending_audio: list = []
 
     # -- session lifecycle -----------------------------------------------
 
@@ -788,6 +794,7 @@ class SessionModeManager:
         self._last_dictate_ended_terminal = None
         self._stage_buffer = ""
         self._dictate_pending_buffer = ""
+        self._dictate_pending_audio = []
 
     @property
     def stack_depth(self) -> int:
@@ -927,7 +934,7 @@ class SessionModeManager:
                         })
                     return self._dispatch_hands_free_command(hands_free_match)
 
-        return self._dispatch_in_mode(text)
+        return self._dispatch_in_mode(text, signals=signals)
 
     def _matches_abort_phrase(self, text: str) -> bool:
         return any(pattern.search(text) for pattern in self._abort_patterns)
@@ -1001,6 +1008,7 @@ class SessionModeManager:
             self._last_dictate_ended_terminal = None
             self._stage_buffer = ""
             self._dictate_pending_buffer = ""
+            self._dictate_pending_audio = []
         self.mode = new_mode
         if self._on_mode_change:
             self._on_mode_change(new_mode)
@@ -1009,11 +1017,14 @@ class SessionModeManager:
         """Apply a non-utterance-driven mode change."""
         self._switch_mode(new_mode)
 
-    def _dispatch_in_mode(self, text: str) -> DispatchOutcome:
+    def _dispatch_in_mode(
+        self, text: str, signals: Optional[UtteranceSignals] = None,
+    ) -> DispatchOutcome:
         if self.mode is SessionMode.COMMAND:
             return self._dispatch_command(text)
         if self.mode is SessionMode.DICTATE:
-            return self._dispatch_dictate(text)
+            audio_ref = signals.audio_ref if signals is not None else None
+            return self._dispatch_dictate(text, audio_ref=audio_ref)
         if self.mode is SessionMode.AVA:
             return self._dispatch_ava(text)
         raise AssertionError(f"unhandled SessionMode {self.mode!r}")  # pragma: no cover
@@ -1062,9 +1073,11 @@ class SessionModeManager:
             "mode_retained": self.mode,
         })
 
-    def _dispatch_dictate(self, chunk_raw: str) -> DispatchOutcome:
+    def _dispatch_dictate(
+        self, chunk_raw: str, audio_ref: Any = None,
+    ) -> DispatchOutcome:
         if self._buffer_dictate_until_commit:
-            return self._stage_dictate_chunk(chunk_raw)
+            return self._stage_dictate_chunk(chunk_raw, audio_ref=audio_ref)
 
         foreground = self._foreground_exe_resolver()
         target_process = self._dictate_target_process
@@ -1133,7 +1146,9 @@ class SessionModeManager:
         ))
         return DispatchOutcome(kind="dictate_injected", detail={"text": to_inject})
 
-    def _stage_dictate_chunk(self, chunk_raw: str) -> DispatchOutcome:
+    def _stage_dictate_chunk(
+        self, chunk_raw: str, audio_ref: Any = None,
+    ) -> DispatchOutcome:
         """Append one silence-bounded transcript without touching the editor.
 
         Deliberately does NOT call self._format_dictate_fn here. Formatting
@@ -1165,6 +1180,7 @@ class SessionModeManager:
         if not to_stage:
             return DispatchOutcome(kind="empty")
 
+        self._dictate_pending_audio.append(audio_ref)
         self._dictate_pending_buffer += to_stage
         self._last_dictate_ended_terminal = chunk_ends_terminal(to_stage)
         self._stack.push(StackItem(
@@ -1183,6 +1199,7 @@ class SessionModeManager:
         """Paste the complete staged thought once, retaining it on failure."""
         text = self._dictate_pending_buffer
         if not text:
+            self._dictate_pending_audio = []
             if target_mode is not None:
                 self._switch_mode(target_mode)
             else:
@@ -1229,6 +1246,21 @@ class SessionModeManager:
         if "  " in final_text:
             final_text = re.sub(r" {2,}", " ", final_text)
 
+        if self._commit_redecode_fn is not None:
+            try:
+                redecode_text = self._commit_redecode_fn(
+                    final_text, list(self._dictate_pending_audio),
+                )
+                if redecode_text:
+                    final_text = redecode_text
+            except Exception as exc:
+                log.warning(
+                    "[SESSION] DICTATE commit re-decode failed; using staged text "
+                    "(error=%r)",
+                    exc,
+                    exc_info=True,
+                )
+
         delivered = self._inject_fn(final_text, commit_target_still_focused)
         if delivered is False:
             after_process = self._foreground_exe_resolver()
@@ -1270,6 +1302,7 @@ class SessionModeManager:
         final_text = delivered if isinstance(delivered, str) else final_text
 
         self._dictate_pending_buffer = ""
+        self._dictate_pending_audio = []
         self._stage_buffer = final_text
         self._last_dictate_ended_terminal = None
         self._stack.push(StackItem(
@@ -1345,6 +1378,8 @@ class SessionModeManager:
             if not self._dictate_pending_buffer.endswith(item.payload):
                 return False
             self._dictate_pending_buffer = self._dictate_pending_buffer[:-len(item.payload)]
+            if self._dictate_pending_audio:
+                self._dictate_pending_audio.pop()
             if item.extra.get("stripped_terminal_period"):
                 if not self._dictate_pending_buffer.endswith("."):
                     self._dictate_pending_buffer += "."
