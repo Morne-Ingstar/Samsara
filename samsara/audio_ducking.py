@@ -142,6 +142,10 @@ class SessionDucker:
         self._atexit_registered = False
         self._work_inflight = 0
         self._work_inflight_cv = threading.Condition(self._lock)
+        self.sessions_seen = 0
+        self.sessions_ducked = 0
+        self.sessions_failed = 0
+        self.last_error: str | None = None
 
     def __enter__(self) -> "SessionDucker":
         self.start()
@@ -170,6 +174,26 @@ class SessionDucker:
                 self._work_inflight -= 1
             if self._work_inflight <= 0:
                 self._work_inflight_cv.notify_all()
+
+    def _set_last_error(self, message: str | Exception | None) -> None:
+        self.last_error = None if message is None else str(message)
+
+    def _increment_counter(self, *, seen: bool = False, ducked: bool = False, failed: bool = False) -> None:
+        if not (seen or ducked or failed):
+            return
+        with self._lock:
+            if seen:
+                self.sessions_seen += 1
+            if ducked:
+                self.sessions_ducked += 1
+            if failed:
+                self.sessions_failed += 1
+
+    def _reset_start_counters(self) -> None:
+        self.sessions_seen = 0
+        self.sessions_ducked = 0
+        self.sessions_failed = 0
+        self.last_error = None
 
     def _is_generation_active(self, generation: int) -> bool:
         return self._active and self._sweep_generation == generation
@@ -305,6 +329,8 @@ class SessionDucker:
             try:
                 original_volume = float(session.get_master_volume())
             except Exception:
+                self._increment_counter(failed=True)
+                self._set_last_error("ISimpleAudioVolume.GetMasterVolume failed")
                 self._close_session(session)
                 return None
 
@@ -351,6 +377,8 @@ class SessionDucker:
         try:
             state.handle.set_master_volume(target_volume)
         except Exception:
+            self._increment_counter(failed=True)
+            self._set_last_error("set_master_volume failed")
             self._release_session(session_id, rollback_volume=previous_volume)
             return None
 
@@ -367,12 +395,15 @@ class SessionDucker:
                 tracked_now = True
 
         if not tracked_now:
+            self._increment_counter(failed=True)
             self._release_session(session_id, rollback_volume=previous_volume)
             # If this was a freshly-created state, the handle belongs to us;
             # ensure any duplicate COM reference used for enumeration is closed.
             if not created_new_state:
                 self._close_session(session)
             return None
+
+        self._increment_counter(ducked=True)
 
         return session_id, previous_volume
 
@@ -389,6 +420,7 @@ class SessionDucker:
         with self._lock:
             if self._active:
                 return
+            self._reset_start_counters()
             self._active = True
             self._sweep_generation += 1
             generation = self._sweep_generation
@@ -399,6 +431,7 @@ class SessionDucker:
         try:
             discovered = list(_iter_audio_sessions())
             for session in discovered:
+                self._increment_counter(seen=True)
                 if session.pid in self._base_excludes:
                     self._close_session(session)
                     continue
@@ -421,6 +454,8 @@ class SessionDucker:
                     session_id,
                     rollback_volume=previous_volume,
                 )
+            self._increment_counter(failed=True)
+            self._set_last_error(exc)
             stale_start = True
             logger.warning("SessionDucker.start(): ducking disabled: %s", exc)
         finally:
@@ -486,6 +521,7 @@ class SessionDucker:
                 if session.session_id in tracked_ids:
                     self._close_session(session)
                     continue
+                self._increment_counter(seen=True)
                 added = self._add_session_if_needed(session, generation)
                 if added is not None:
                     applied.append(added)
@@ -494,6 +530,8 @@ class SessionDucker:
             logger.warning(
                 "SessionDucker.sweep(): ducking sweep failed, unchanged: %s", exc
             )
+            self._increment_counter(failed=True)
+            self._set_last_error(exc)
             for session_id, previous_volume in reversed(applied):
                 self._release_session(session_id, rollback_volume=previous_volume)
         finally:
@@ -537,7 +575,7 @@ class _CtypesSessionHandle:
         self._volume_iface = volume_iface
 
     def get_master_volume(self) -> float:
-        func = _vtbl(self._volume_iface, 4, c_float, c_void_p, POINTER(c_float))
+        func = _vtbl(self._volume_iface, 4, ctypes.c_long, POINTER(c_float))
         value = c_float()
         hr = func(self._volume_iface, byref(value))
         if hr < 0:
@@ -547,7 +585,7 @@ class _CtypesSessionHandle:
         return float(value.value)
 
     def set_master_volume(self, level: float) -> None:
-        func = _vtbl(self._volume_iface, 3, ctypes.c_int, c_void_p, c_float, c_void_p)
+        func = _vtbl(self._volume_iface, 3, ctypes.c_long, c_float, POINTER(GUID))
         level = max(0.0, min(1.0, float(level)))
         hr = func(self._volume_iface, c_float(level), None)
         if hr < 0:
@@ -899,6 +937,54 @@ class IAudioSessionManager2Vtbl(Structure):
 IAudioSessionManager2._fields_ = [("lpVtbl", POINTER(IAudioSessionManager2Vtbl))]
 
 
+class ISimpleAudioVolume(Structure):
+    pass
+
+
+class ISimpleAudioVolumeVtbl(Structure):
+    # Documented ISimpleAudioVolume vtable order (after IUnknown 0-2):
+    # SetMasterVolume=3, GetMasterVolume=4, SetMute=5, GetMute=6.
+    _fields_ = [
+        (
+            "QueryInterface",
+            WINFUNCTYPE(
+                ctypes.c_long, POINTER(ISimpleAudioVolume), POINTER(GUID), POINTER(c_void_p)
+            ),
+        ),
+        ("AddRef", WINFUNCTYPE(ctypes.c_ulong, POINTER(ISimpleAudioVolume))),
+        ("Release", WINFUNCTYPE(ctypes.c_ulong, POINTER(ISimpleAudioVolume))),
+        (
+            "SetMasterVolume",
+            WINFUNCTYPE(
+                ctypes.c_long,
+                POINTER(ISimpleAudioVolume),
+                c_float,
+                POINTER(GUID),
+            ),
+        ),
+        (
+            "GetMasterVolume",
+            WINFUNCTYPE(ctypes.c_long, POINTER(ISimpleAudioVolume), POINTER(c_float)),
+        ),
+        (
+            "SetMute",
+            WINFUNCTYPE(
+                ctypes.c_long,
+                POINTER(ISimpleAudioVolume),
+                ctypes.c_int,
+                POINTER(GUID),
+            ),
+        ),
+        (
+            "GetMute",
+            WINFUNCTYPE(ctypes.c_long, POINTER(ISimpleAudioVolume), ctypes.POINTER(ctypes.c_int)),
+        ),
+    ]
+
+
+ISimpleAudioVolume._fields_ = [("lpVtbl", POINTER(ISimpleAudioVolumeVtbl))]
+
+
 def _vtbl(iface: c_void_p, index: int, restype: Any, *argtypes: Any):
     table = cast(iface, POINTER(POINTER(c_void_p))).contents
     func_ptr = table[index]
@@ -908,12 +994,12 @@ def _vtbl(iface: c_void_p, index: int, restype: Any, *argtypes: Any):
 def _release(iface: c_void_p) -> None:
     if not iface:
         return
-    _vtbl(iface, 2, ctypes.c_ulong, c_void_p)(iface)
+    _vtbl(iface, 2, ctypes.c_ulong)(iface)
 
 
 def _query_interface(interface: c_void_p, iid: GUID) -> c_void_p:
     out = c_void_p()
-    hr = _vtbl(interface, 0, ctypes.c_long, c_void_p, POINTER(GUID), POINTER(c_void_p))(
+    hr = _vtbl(interface, 0, ctypes.c_long, POINTER(GUID), POINTER(c_void_p))(
         interface,
         byref(iid),
         byref(out),
@@ -944,7 +1030,6 @@ def _get_session_enumerator() -> c_void_p:
         enumerator,
         4,
         ctypes.c_long,
-        c_void_p,
         ctypes.c_int,
         ctypes.c_int,
         POINTER(c_void_p),
@@ -958,7 +1043,6 @@ def _get_session_enumerator() -> c_void_p:
         device,
         3,
         ctypes.c_long,
-        c_void_p,
         POINTER(GUID),
         wintypes.DWORD,
         c_void_p,
@@ -982,8 +1066,7 @@ def _get_session_enumerator() -> c_void_p:
         session_mgr,
         5,
         ctypes.c_long,
-        c_void_p,
-        POINTER(POINTER(IAudioSessionEnumerator)),
+        POINTER(c_void_p),
     )(session_mgr, byref(session_enum))
 
     _release(session_mgr)
@@ -999,7 +1082,7 @@ def _iter_audio_sessions() -> Iterable[_SessionHandle]:
     session_enum = _get_session_enumerator()
     try:
         count = c_int()
-        hr = _vtbl(session_enum, 3, ctypes.c_long, c_void_p, POINTER(c_int))(
+        hr = _vtbl(session_enum, 3, ctypes.c_long, POINTER(c_int))(
             session_enum, byref(count)
         )
         if hr < 0:
@@ -1010,7 +1093,11 @@ def _iter_audio_sessions() -> Iterable[_SessionHandle]:
         for i in range(count.value):
             session_ctl = c_void_p()
             hr = _vtbl(
-                session_enum, 4, ctypes.c_long, c_void_p, c_int, POINTER(c_void_p)
+                session_enum,
+                4,
+                ctypes.c_long,
+                c_int,
+                POINTER(c_void_p),
             )(
                 session_enum,
                 i,
@@ -1029,7 +1116,6 @@ def _iter_audio_sessions() -> Iterable[_SessionHandle]:
                         session_ctl2,
                         14,
                         ctypes.c_long,
-                        c_void_p,
                         POINTER(wintypes.DWORD),
                     )(
                         session_ctl2,
@@ -1040,7 +1126,7 @@ def _iter_audio_sessions() -> Iterable[_SessionHandle]:
 
                     session_ptr = c_wchar_p()
                     hr = _vtbl(
-                        session_ctl2, 13, ctypes.c_long, c_void_p, POINTER(c_wchar_p)
+                        session_ctl2, 13, ctypes.c_long, POINTER(c_wchar_p)
                     )(
                         session_ctl2,
                         byref(session_ptr),
@@ -1055,7 +1141,6 @@ def _iter_audio_sessions() -> Iterable[_SessionHandle]:
                         session_ctl2,
                         0,
                         ctypes.c_long,
-                        c_void_p,
                         POINTER(GUID),
                         POINTER(c_void_p),
                     )(

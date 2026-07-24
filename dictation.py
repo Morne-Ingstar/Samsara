@@ -2704,6 +2704,12 @@ class DictationApp:
         self._hands_free_capture_ducker = None
         self._hands_free_duck_lock = threading.Lock()
         self._hands_free_duck_restore_timer = None
+        self._hands_free_capture_duck_restore_generation = 0
+        self._hands_free_capture_duck_restore_token = object()
+        self._hands_free_capture_duck_owners: set[int] = set()
+        self._hands_free_capture_duck_owner_seq = 0
+        self._hands_free_capture_duck_start_generation = 0
+        self._hands_free_capture_duck_starting = False
         # Adaptive wake-gate freeze (2026-07-24): monotonic deadline until
         # which _wake_audio_is_below_gate must NOT let a sample update
         # self._wake_noise_floor -- bumped by every duck transition (idle
@@ -7570,13 +7576,21 @@ class DictationApp:
             with self._hands_free_duck_lock:
                 if self._hands_free_idle_ducker is not None:
                     return  # already engaged
-                ducker = audio_ducking.SessionDucker(
-                    duck_level=level, exclude_pids=self._hands_free_duck_excludes(),
-                )
-                ducker.start()
-                self._hands_free_idle_ducker = ducker
-            self._bump_wake_gate_freeze()
-            self._log_duck_result(ducker, "idle duck engaged")
+                excludes = self._hands_free_duck_excludes()
+            ducker = audio_ducking.SessionDucker(
+                duck_level=level, exclude_pids=excludes,
+            )
+            ducker.start()
+            published = False
+            with self._hands_free_duck_lock:
+                if self._hands_free_idle_ducker is None:
+                    self._hands_free_idle_ducker = ducker
+                    published = True
+            if published:
+                self._bump_wake_gate_freeze()
+                self._log_duck_result(ducker, "idle duck engaged")
+            else:
+                ducker.stop()
         except Exception as exc:
             logger.warning(f"[DUCK] Failed to engage idle duck: {exc}")
 
@@ -7593,6 +7607,10 @@ class DictationApp:
                 self._hands_free_duck_restore_timer = None
                 capture_ducker = self._hands_free_capture_ducker
                 self._hands_free_capture_ducker = None
+                self._hands_free_capture_duck_start_generation += 1
+                self._hands_free_capture_duck_owners.clear()
+                self._hands_free_capture_duck_starting = False
+                self._hands_free_capture_duck_restore_generation += 1
                 idle_ducker = self._hands_free_idle_ducker
                 self._hands_free_idle_ducker = None
             if timer is not None:
@@ -7607,7 +7625,7 @@ class DictationApp:
         except Exception as exc:
             logger.warning(f"[DUCK] Failed to release idle duck: {exc}")
 
-    def _open_hands_free_capture_duck(self) -> None:
+    def _open_hands_free_capture_duck(self, owner_token: int | None = None) -> int | None:
         """Engage the deep duck for an active capture window (speech
         onset accepted). Reuses the already-active instance if one exists
         (rapid consecutive utterances) and cancels any pending debounced
@@ -7615,8 +7633,21 @@ class DictationApp:
         and is never called by, any session-end/exit path."""
         cfg = self.config.get('ducking', {}) or {}
         if not cfg.get('hands_free_enabled', True):
-            return
+            return owner_token
         level = float(cfg.get('hands_free_level', 0.15))
+        if level >= 1.0:
+            return owner_token
+
+        if owner_token is None:
+            with self._hands_free_duck_lock:
+                self._hands_free_capture_duck_owner_seq += 1
+                owner_token = self._hands_free_capture_duck_owner_seq
+        owner_token = int(owner_token)
+
+        ducker: audio_ducking.SessionDucker | None = None
+        started_here = False
+        start_generation = 0
+        ducker_to_stop: audio_ducking.SessionDucker | None = None
         try:
             with self._hands_free_duck_lock:
                 timer = self._hands_free_duck_restore_timer
@@ -7624,60 +7655,140 @@ class DictationApp:
                 if timer is not None:
                     timer.cancel()
 
-                if self._hands_free_capture_ducker is not None:
-                    reused = True
-                    ducker = None
-                else:
-                    reused = False
-                    ducker = audio_ducking.SessionDucker(
-                        duck_level=level, exclude_pids=self._hands_free_duck_excludes(),
-                    )
-                    ducker.start()
-                    self._hands_free_capture_ducker = ducker
-            self._bump_wake_gate_freeze()
-            if not reused:
-                self._log_duck_result(ducker, "capture duck engaged")
-        except Exception as exc:
-            logger.warning(f"[DUCK] Failed to engage capture duck: {exc}")
+                self._hands_free_capture_duck_owners.add(owner_token)
 
-    def _close_hands_free_capture_duck(self) -> None:
-        """Schedule the deep duck's release after _HANDS_FREE_CAPTURE_
-        DUCK_RESTORE_DELAY_S -- NOT immediate, so rapid consecutive
-        utterances reuse the still-active duck (the pending timer is
-        cancelled by the next _open_hands_free_capture_duck) instead of a
+                if self._hands_free_capture_ducker is not None:
+                    return owner_token
+                elif self._hands_free_capture_duck_starting:
+                    return owner_token
+                else:
+                    self._hands_free_capture_duck_starting = True
+                    started_here = True
+                    self._hands_free_capture_duck_start_generation += 1
+                    start_generation = self._hands_free_capture_duck_start_generation
+
+            if started_here:
+                ducker = audio_ducking.SessionDucker(
+                    duck_level=level, exclude_pids=self._hands_free_duck_excludes(),
+                )
+                ducker.start()
+                published = False
+                should_publish = False
+                with self._hands_free_duck_lock:
+                    self._hands_free_capture_duck_starting = False
+                    current_generation = self._hands_free_capture_duck_start_generation
+                    if start_generation == current_generation and self._hands_free_capture_duck_owners:
+                        should_publish = True
+                        if self._hands_free_capture_ducker is None:
+                            self._hands_free_capture_ducker = ducker
+
+                if should_publish:
+                    if self._hands_free_capture_ducker is ducker:
+                        self._bump_wake_gate_freeze()
+                        self._log_duck_result(ducker, "capture duck engaged")
+                        published = True
+                    else:
+                        ducker.stop()
+                else:
+                    ducker.stop()
+                if not published:
+                    return owner_token
+            self._bump_wake_gate_freeze()
+            return owner_token
+        except Exception as exc:
+            with self._hands_free_duck_lock:
+                ducker_to_stop = ducker if started_here else None
+                self._hands_free_capture_duck_starting = False
+                self._hands_free_capture_duck_owners.discard(owner_token)
+            logger.warning(f"[DUCK] Failed to engage capture duck: {exc}")
+            if ducker_to_stop is not None:
+                try:
+                    ducker_to_stop.stop()
+                except Exception:
+                    pass
+            return owner_token
+
+    def _close_hands_free_capture_duck(self, owner_token: int | None = None) -> None:
+        """Schedule the deep duck's release after
+        _HANDS_FREE_CAPTURE_DUCK_RESTORE_DELAY_S -- NOT immediate, so rapid
+        consecutive utterances reuse the still-active duck (the pending timer
+        is cancelled by the next _open_hands_free_capture_duck) instead of a
         stop-then-immediately-restart flicker. Call in a finally-shape at
-        every call site (see wake_consumer.py) so this always fires, even
-        if transcription raised."""
+        every close-capable path (see wake_consumer.py) so this always fires,
+        even if processing raised."""
         cfg = self.config.get('ducking', {}) or {}
         if not cfg.get('hands_free_enabled', True):
+            with self._hands_free_duck_lock:
+                self._hands_free_capture_duck_owners.clear()
+                timer = self._hands_free_duck_restore_timer
+                self._hands_free_duck_restore_timer = None
+                if timer is not None:
+                    timer.cancel()
+                self._hands_free_capture_duck_restore_generation += 1
             return
         try:
             with self._hands_free_duck_lock:
-                if self._hands_free_capture_ducker is None:
+                if owner_token is None:
+                    self._hands_free_capture_duck_owners.clear()
+                else:
+                    self._hands_free_capture_duck_owners.discard(owner_token)
+
+                if (
+                    self._hands_free_capture_ducker is None
+                    and not self._hands_free_capture_duck_starting
+                ):
+                    timer = self._hands_free_duck_restore_timer
+                    self._hands_free_duck_restore_timer = None
+                    if timer is not None:
+                        timer.cancel()
                     return
+
+                if self._hands_free_capture_duck_owners:
+                    timer = self._hands_free_duck_restore_timer
+                    self._hands_free_duck_restore_timer = None
+                    if timer is not None:
+                        timer.cancel()
+                    return
+
                 existing = self._hands_free_duck_restore_timer
                 if existing is not None:
                     existing.cancel()
-                t = threading.Timer(
+
+                self._hands_free_capture_duck_restore_generation += 1
+                restore_generation = self._hands_free_capture_duck_restore_generation
+                self._hands_free_capture_duck_restore_token = object()
+                restore_token = self._hands_free_capture_duck_restore_token
+                self._hands_free_duck_restore_timer = thread_registry.timer(
+                    "hands_free_capture_duck.restore",
                     _HANDS_FREE_CAPTURE_DUCK_RESTORE_DELAY_S,
                     self._restore_hands_free_capture_duck_now,
+                    args=(restore_generation, restore_token),
                 )
-                t.daemon = True
-                self._hands_free_duck_restore_timer = t
-                t.start()
         except Exception as exc:
             logger.warning(f"[DUCK] Failed to schedule capture duck restore: {exc}")
 
-    def _restore_hands_free_capture_duck_now(self) -> None:
-        """Timer callback: actually stop() the capture ducker, restoring
-        its tracked sessions back to whatever was playing when it started
-        (idle level, if the wake-word toggle is still on; true full
-        volume otherwise)."""
+    def _restore_hands_free_capture_duck_now(
+        self,
+        restore_generation: int,
+        restore_token: object,
+    ) -> None:
+        """Timer callback: actually stop() the capture ducker, restoring its
+        tracked sessions back to whatever was playing when it started (idle
+        level, if the wake-word toggle is still on; true full volume
+        otherwise)."""
         try:
             with self._hands_free_duck_lock:
+                if (
+                    restore_generation != self._hands_free_capture_duck_restore_generation
+                    or restore_token is not self._hands_free_capture_duck_restore_token
+                ):
+                    return
                 self._hands_free_duck_restore_timer = None
+                if self._hands_free_capture_duck_owners:
+                    return
                 ducker = self._hands_free_capture_ducker
                 self._hands_free_capture_ducker = None
+
             if ducker is None:
                 return
             self._log_duck_result(ducker, "capture duck restored")

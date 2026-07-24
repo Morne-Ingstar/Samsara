@@ -24,12 +24,19 @@ from unittest.mock import Mock
 import numpy as np
 import pytest
 
+from samsara.audio_engine import wake_consumer as wake_consumer_module
 from samsara.audio_engine.wake_consumer import WakeConsumer
 from samsara.audio_engine.frame import FRAME_SIZE
 
 
-def _make_wc(hotkey_recording=False, command_mode_active=False, cm_mode='hold',
-             ava_command_session_active=False, wake_word_active=True):
+def _make_wc(
+    hotkey_recording=False,
+    command_mode_active=False,
+    cm_mode='hold',
+    ava_command_session_active=False,
+    wake_word_active=True,
+    hands_free_token=None,
+):
     """Real WakeConsumer wired to a Mock() engine/reader and an app double
     with EXPLICIT bool attributes -- deliberately not a bare Mock() for
     `app` itself, since Mock() auto-creates truthy attributes (e.g.
@@ -51,6 +58,9 @@ def _make_wc(hotkey_recording=False, command_mode_active=False, cm_mode='hold',
     app.command_mode_active = command_mode_active
     app.ava_command_session_active = ava_command_session_active
     app.config = {'command_mode': {'mode': cm_mode}}
+    app._close_hands_free_capture_duck = Mock()
+    app._open_hands_free_capture_duck = Mock(return_value=hands_free_token)
+    app._hands_free_capture_duck_token = hands_free_token
     app.is_speaking = False
     app.silence_start = None
     app._command_executed_at = None
@@ -63,6 +73,7 @@ def _make_wc(hotkey_recording=False, command_mode_active=False, cm_mode='hold',
     app.audio_coordinator = None
 
     wc = WakeConsumer(engine, app)
+    wc._hands_free_capture_duck_token = hands_free_token
     return wc, reader, app
 
 
@@ -246,3 +257,59 @@ class TestDiscardStaleWakeUtterance:
         wc, reader, app = _make_wc()
         wc.discard_stale_wake_utterance()  # must not raise
         assert wc._utterance_frames == []
+
+
+class TestCaptureDuckDiscardPaths:
+    @staticmethod
+    def _flush_to_quiet(wc, *, calls=1):
+        # 100ms frame cadence means one frame per loop at FRAME_SIZE.
+        # Keep this helper small and explicit for predictable timing.
+        for _ in range(calls):
+            wc._process_frame(_loud_frame())
+
+    def test_too_short_utterance_discard_closes_capture_duck(self, monkeypatch):
+        wc, reader, app = _make_wc(hands_free_token=11)
+        monkeypatch.setattr(wake_consumer_module, "PREBUFFER_FRAMES", 1)
+        app._vad_is_speech.side_effect = [True, True, False, False]
+        app.config["wake_word_config"] = {
+            "audio": {
+                "speech_threshold": 0.01,
+                "wake_detection_silence": 0.0,
+                "min_speech_duration": 1.0,
+            }
+        }
+
+        # One speech onset + one short frame of speech + two silence frames to
+        # reach the silence gate and force the short-buffer branch.
+        self._flush_to_quiet(wc, calls=4)
+
+        app._close_hands_free_capture_duck.assert_called_once_with(11)
+
+    def test_stuck_buffer_discard_closes_capture_duck(self, monkeypatch):
+        wc, reader, app = _make_wc(hands_free_token=12)
+        app._vad_is_speech = Mock(return_value=True)
+        self._flush_to_quiet(wc, calls=35)
+
+        app._close_hands_free_capture_duck.assert_called_once_with(12)
+
+    def test_hard_cap_discard_closes_capture_duck(self, monkeypatch):
+        wc, reader, app = _make_wc(hands_free_token=13, command_mode_active=True)
+        app._vad_is_speech = Mock(return_value=True)
+        self._flush_to_quiet(wc, calls=75)
+
+        app._close_hands_free_capture_duck.assert_called_once_with(13)
+
+
+class TestCaptureDuckOwnershipCleanup:
+    def test_abort_utterance_closes_capture_duck(self):
+        wc, reader, app = _make_wc(hands_free_token=14)
+        wc._utterance_frames = [np.zeros(10, dtype=np.float32)]
+        app.is_speaking = True
+        wc.abort_utterance()
+        app._close_hands_free_capture_duck.assert_called_once_with(14)
+
+    def test_stop_closes_capture_duck(self):
+        wc, reader, app = _make_wc(hands_free_token=15)
+        wc._hands_free_capture_duck_token = 15
+        wc.stop()
+        app._close_hands_free_capture_duck.assert_called_once_with(15)
