@@ -62,6 +62,8 @@ def test_configured_voice_phrases_are_registered():
         "start sigil server",
         "stop sigil server",
         "restart sigil server",
+        "what can i say",
+        "show quick reference",
     ):
         assert phrase in plugin_commands._REGISTRY
 
@@ -82,6 +84,8 @@ def test_loader_discovers_app_lifecycle_phrases(tmp_path):
         "start sigil server",
         "stop sigil server",
         "restart sigil server",
+        "what can i say",
+        "show quick reference",
     ):
         assert phrase in plugin_commands._REGISTRY
 
@@ -109,6 +113,18 @@ def test_dispatch_requires_the_command_to_be_the_whole_utterance(monkeypatch):
 
     assert lifecycle.start_strata(None, remainder="please now") is False
     assert spawn.call_count == 1
+
+
+def test_quick_reference_command_is_registered():
+    importlib.reload(lifecycle)
+    assert "what can i say" in plugin_commands._REGISTRY
+    assert "show quick reference" in plugin_commands._REGISTRY
+
+
+def test_quick_reference_command_opens_window(monkeypatch):
+    app = SimpleNamespace(open_quick_reference=Mock())
+    assert lifecycle.open_quick_reference(app, remainder="") is True
+    app.open_quick_reference.assert_called_once_with()
 
 
 def test_match_absolute_script_path(tmp_path):

@@ -141,6 +141,16 @@ class TestResolveSessionPhrases:
             "stop listening", "exit hands free", "exit command mode",
         ]
 
+    def test_hands_free_toggle_data_reads_from_config(self):
+        app = _make_app({
+            "command_mode": {"enabled": True, "button": "rctrl", "mode": "toggle"},
+        })
+        state = qr._resolve_session_phrases(app)
+        hf = state["hands_free_toggle"]
+        assert hf["enabled"] is True
+        assert "Right Ctrl" in hf["button"]
+        assert hf["mode"] == "toggle"
+
 
 class TestResolveModesOverview:
     def test_disabled_by_default(self):
@@ -339,5 +349,32 @@ class TestRefreshUpdatesLabelText:
 
             texts2 = _all_label_texts(win)
             assert any("(disabled)" in t and "Right Ctrl" in t for t in texts2)
+        finally:
+            win.close()
+
+    def test_hands_free_section_reflects_live_config_in_rendered_text(self, qapp):
+        app = _make_app({
+            "command_mode": {"enabled": True, "button": "rctrl", "mode": "toggle"},
+            "ava_invocations": ["hey ava"],
+            "wake_word_enabled": True,
+            "wake_word_config": {"end_words": ["over", "send"]},
+        })
+        win = qr._QuickReferenceWindow(app)
+        try:
+            texts = _all_label_texts(win)
+            assert any("Right Ctrl" in t and "latches a session" in t for t in texts)
+            assert any("send" in t and "over" in t for t in texts)
+            assert any("hey ava" in t for t in texts)
+
+            app.config["command_mode"]["button"] = "mouse4"
+            app.config["ava_invocations"] = ["echo"]
+            app.config["wake_word_config"]["end_words"] = ["done"]
+            win.refresh()
+
+            texts2 = _all_label_texts(win)
+            assert any("Mouse 4" in t and "latches a session" in t for t in texts2)
+            assert not any("over, send" in t for t in texts2)
+            assert any("done" in t for t in texts2)
+            assert any("echo" in t for t in texts2)
         finally:
             win.close()

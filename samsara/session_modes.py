@@ -253,6 +253,22 @@ def _strip_leading_token_preserving_case(raw_text: str, prefix_word: str) -> str
 DEFAULT_AVA_INVOCATIONS: tuple[str, ...] = ("hey ava", "so ava", "oracle")
 
 
+def resolve_ava_invocations(config: dict | None) -> list[str]:
+    """Resolve Ava invocation phrases from config in one canonical place.
+
+    Both the hands-free command-mode path and the Quick Reference window use
+    this helper so the configured fallback behavior cannot drift.
+    """
+    value = (
+        config.get("ava_invocations", list(DEFAULT_AVA_INVOCATIONS))
+        if isinstance(config, dict)
+        else list(DEFAULT_AVA_INVOCATIONS)
+    )
+    if isinstance(value, str):
+        return [value]
+    return list(value)
+
+
 def _normalize_exact_phrase(text: str) -> str:
     """Case/punctuation-insensitive normalization for Ava invocation matching
     ONLY -- trailing period tolerated (full punctuation stripping handles it,
