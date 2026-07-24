@@ -32,16 +32,22 @@ WATERFALL RESOLVER (spec-mandated, replaces v1 "retrieval"):
       window/app-index resolution, which carries real ambiguity risk
       unlike stage (a)'s zero-ambiguity literal phrase match.
   (c) ONLY on a miss from both (a) and (b): one LLM fallback pass, reusing
-      ask_ollama.ask_ollama()/handle_response() verbatim (same backend,
-      same memory, same CONFIRM/ACTION/ACTION2/SCHEDULE grammar, same
-      confirmation binding) -- the only D3-specific difference is the
-      system prompt's {COMMAND_LIST} is replaced with a small fuzzy
-      SHORTLIST from the full registry (dependency-free string scorer;
-      rapidfuzz was not available in this environment, see
-      _fuzzy_score's docstring) instead of the generic first-100
-      alphabetical list, and a "conversation"-classified reply (no
-      ACTION/ACTION2/SCHEDULE tag) is treated as a MISS -- spoken miss
-      feedback, never spoken as free-form chat.
+      ask_ollama.ask_ollama() for the model call (same backend, same
+      memory) -- the D3-specific differences are (i) the system prompt's
+      {COMMAND_LIST} is replaced with a small fuzzy SHORTLIST from the
+      full registry (dependency-free string scorer; rapidfuzz was not
+      available in this environment, see _fuzzy_score's docstring)
+      instead of the generic first-100 alphabetical list, and (ii) a
+      CLOSED-WORLD gate (_closed_world_selection_ok, added 2026-07-23
+      after a G1 replay rerun found stage (c) fabricating novel commands
+      from nonsense input): the model's response is only ever handed to
+      ask_ollama.handle_response() -- which is what actually reaches
+      execute_command()/do_open()/do_focus()/do_close() -- if it is
+      EITHER (1) an ACTION whose command name matches a shortlist entry
+      VERBATIM, or (2) an ACTION2 whose verb is a real ACTION2 verb.
+      Anything else (conversation, schedule, or a fabricated/altered
+      command name) is rejected in code and treated as a MISS -- spoken
+      miss feedback, never spoken as free-form chat, and never executed.
 
 This does NOT generalize the fixed-phrase matcher (separately
 tribunal-gated): (a) and (b) stay deterministic; (c) is a bounded
@@ -244,17 +250,84 @@ def _build_shortlist(app, utterance: str, cfg: dict) -> list[str]:
     return out
 
 
+# Reinforces the CLOSED-WORLD constraint enforced in CODE below (see
+# _closed_world_selection_ok) -- this text is defense-in-depth only, never
+# the actual gate: models don't reliably follow instructions, so the code
+# check is what stops a fabricated command from executing, not this
+# paragraph. Added 2026-07-23 after a G1 replay rerun found stage (c)
+# synthesizing novel commands from nonsense input (e.g. "purple thinking
+# clouds today" -> a fabricated "set wallpaper to..." ACTION, "asdkfj
+# random gibberish text" -> a fabricated "insert..." ACTION) -- zero
+# misses on the 5-utterance nonsense corpus.
+_CLOSED_WORLD_REMINDER = """
+
+D3 COMMAND-SESSION CONSTRAINT (this adds one rule on top of everything above):
+For ACTION, the command name must be copied EXACTLY, character-for-character,
+from the comma-separated list above -- never invent, combine, extend, or
+paraphrase a command name, and never append extra words to it. If nothing in
+that list matches, and this is not a focus/open/close of a specific app or
+window (ACTION2), respond conversationally instead -- never guess or make
+something up just because the user said something."""
+
+
+def _normalize_command_name(name: "str | None") -> str:
+    """Mirrors ask_ollama.handle_response's own 'action' normalization
+    (duplicated rather than imported -- this file's edits stay isolated to
+    the D3-specific stage-(c) gate, see module docstring) so the shortlist
+    comparison below lines up with what would actually reach
+    execute_command() if this response were allowed through."""
+    text = (name or "").strip().strip('"\'')
+    text = text.rstrip('.!?,;: ').strip()
+    text = re.sub(r'\bopen the\b', 'open', text)
+    text = re.sub(r'\bclose the\b', 'close', text)
+    text = re.sub(r'\s+', ' ', text).strip()
+    return text
+
+
+def _closed_world_selection_ok(parsed: dict, shortlist: list[str]) -> bool:
+    """Spec RULE CHANGE (defect found in a G1 replay rerun, 2026-07-23):
+    stage (c) may ONLY (1) select one shortlist candidate VERBATIM, or
+    (2) emit a valid ACTION2 phrase whose verb is a real ACTION2 verb.
+    Everything else -- conversation, schedule, or a fabricated/altered
+    command name -- is rejected HERE, in code, before
+    ask_ollama.handle_response ever sees the response, so a hallucinated
+    "action" can never reach execute_command(). This is the actual gate;
+    _CLOSED_WORLD_REMINDER above is prompt-level reinforcement only.
+
+    Free-text argument slots are legal ONLY for ACTION2 (2), whose
+    argument was already a deterministically-resolved app/window name in
+    the user's own words, not typed/inserted text -- never for ACTION,
+    which per the shared system prompt's own MODE 2 has no argument slot
+    at all: a well-formed ACTION line IS the complete command name, so
+    anything beyond an exact shortlist entry is by definition either a
+    fabricated command or free text smuggled in as part of the "name"."""
+    if parsed["type"] == "action":
+        command_name = _normalize_command_name(parsed.get("command"))
+        if not command_name:
+            return False
+        normalized_shortlist = {_normalize_command_name(c) for c in shortlist}
+        return command_name in normalized_shortlist
+    if parsed["type"] == "action2":
+        from plugins.commands import ask_ollama  # noqa: PLC0415
+        return parsed.get("verb") in ask_ollama.ACTION2_VERBS
+    return False  # conversation, schedule, or any other type -> MISS
+
+
 def _stage_c_llm_fallback(app, utterance: str, shortlist: list[str], generation: int, cfg: dict) -> bool:
     """One LLM fallback pass via the shared Ava backend. Returns True on a
-    confident command proposal (staged or executed), False on a
-    conversational (non-command) reply -- the caller registers that as a
-    miss. Never speaks the raw conversational reply itself (that would be
-    "become freeform chat", explicitly out of scope for D3)."""
+    confident command proposal that passed the closed-world gate (staged
+    or executed), False on anything else (conversational reply, schedule,
+    or a rejected fabrication) -- the caller registers that as a miss.
+    Never speaks the raw conversational reply itself (that would be
+    "become freeform chat", explicitly out of scope for D3), and never
+    executes a command the model invented outside the shortlist/ACTION2
+    grammar it was given (see _closed_world_selection_ok)."""
     from plugins.commands import ask_ollama  # noqa: PLC0415
 
     system = ask_ollama.get_system_prompt(app)
     if "{COMMAND_LIST}" in system:
         system = system.replace("{COMMAND_LIST}", ", ".join(shortlist))
+    system += _CLOSED_WORLD_REMINDER
     model = cfg.get("model", _DEFAULTS["model"]) if cfg.get("backend") != "cloud" else None
     response = ask_ollama.ask_ollama(utterance, app, model=model, system=system)
 
@@ -269,7 +342,10 @@ def _stage_c_llm_fallback(app, utterance: str, shortlist: list[str], generation:
         return False
 
     parsed = ask_ollama._parse_structured_response(response)
-    if parsed["type"] == "conversation":
+    if not _closed_world_selection_ok(parsed, shortlist):
+        logger.debug(
+            f"[AVA-CMD] Stage (c) rejected -- not a closed-world selection: {parsed!r}"
+        )
         return False
 
     ask_ollama.handle_response(app, response, original_text=utterance)

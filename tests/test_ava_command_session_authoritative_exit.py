@@ -417,11 +417,20 @@ class TestGenerationCheckpointC_AfterLLMFallback:
     def test_fresh_generation_after_llm_call_dispatches_normally(self, monkeypatch):
         app = _make_ai_cmd_app(generation=0)
         monkeypatch.setattr(ava_command_session, '_match_action2_grammar', lambda u: None)
-        monkeypatch.setattr(ava_command_session, '_build_shortlist', lambda app, u, cfg: [])
+        # 'screenshot' must be a real shortlist member: the stage (c)
+        # closed-world gate (2026-07-23, samsara.ava_command_session.
+        # _closed_world_selection_ok) only forwards an ACTION whose command
+        # name matches the shortlist it was given verbatim -- see
+        # tests/test_ava_command_session_closed_world.py for that gate's
+        # own dedicated coverage. This test is about generation freshness,
+        # not command validation, so the mocked parse must be a realistic
+        # (shortlist-matching, real 'command' key) response for the hit
+        # path below to actually exercise "dispatches normally".
+        monkeypatch.setattr(ava_command_session, '_build_shortlist', lambda app, u, cfg: ['screenshot'])
         monkeypatch.setattr(ask_ollama, 'ask_ollama', lambda *a, **k: 'ACTION: screenshot')
         monkeypatch.setattr(
             ask_ollama, '_parse_structured_response',
-            lambda resp: {'type': 'action', 'value': 'screenshot'},
+            lambda resp: {'type': 'action', 'command': 'screenshot'},
         )
         handle_response_mock = Mock()
         monkeypatch.setattr(ask_ollama, 'handle_response', handle_response_mock)
