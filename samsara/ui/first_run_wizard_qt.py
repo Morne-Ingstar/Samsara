@@ -14,11 +14,11 @@ import math
 import threading
 from pathlib import Path
 
-from PySide6.QtCore import Qt, QTimer, Signal
-from PySide6.QtGui import QColor, QPainter
+from PySide6.QtCore import Qt, QTimer, QRectF, QSize, Signal
+from PySide6.QtGui import QColor, QPainter, QPen
 from PySide6.QtWidgets import (
-    QApplication, QCheckBox, QMainWindow, QWidget, QVBoxLayout, QHBoxLayout,
-    QLabel, QComboBox, QPushButton, QButtonGroup, QRadioButton,
+    QApplication, QAbstractButton, QCheckBox, QMainWindow, QWidget, QVBoxLayout,
+    QHBoxLayout, QLabel, QComboBox, QPushButton, QButtonGroup,
     QFrame, QScrollArea,
 )
 
@@ -209,6 +209,81 @@ class _MicLevelMeter(QWidget):
         p.setPen(QColor(255, 255, 255, 25))
         p.drawRect(0, 0, w - 1, h - 1)
         p.end()
+
+
+class _WizardChoiceIndicator(QAbstractButton):
+    """Painter-based circular indicator with smooth antialiased checked state."""
+
+    _SIZE = 18
+
+    def __init__(self, parent=None):
+        super().__init__(parent)
+        self.setCheckable(True)
+        self.setCursor(Qt.CursorShape.PointingHandCursor)
+        self.setFocusPolicy(Qt.FocusPolicy.StrongFocus)
+        self.setFixedSize(self._SIZE, self._SIZE)
+        self.setStyleSheet("margin:0;")
+
+    def sizeHint(self) -> QSize:
+        return QSize(self._SIZE, self._SIZE)
+
+    def paintEvent(self, _event) -> None:
+        p = QPainter(self)
+        p.setRenderHint(QPainter.RenderHint.Antialiasing, True)
+        bounds = QRectF(0.5, 0.5, self.width() - 1.0, self.height() - 1.0)
+        center = bounds.center()
+
+        if self.isEnabled():
+            base = QColor(theme.BG2)
+            stroke = QColor(theme.BORDER)
+            mark = QColor(theme.BG0)
+            if self.isChecked():
+                stroke = QColor(theme.ACCENT)
+                base = QColor(theme.ACCENT)
+                mark = QColor(theme.BG0)
+            elif self.isDown() or self.underMouse():
+                stroke = QColor(theme.ACCENT)
+        else:
+            base = QColor(theme.BG2)
+            base.setAlpha(120)
+            stroke = QColor(theme.BORDER)
+            stroke.setAlpha(90)
+
+        p.setBrush(base)
+        p.setPen(QPen(stroke, 1.5))
+        p.drawEllipse(bounds.adjusted(2.0, 2.0, -2.0, -2.0))
+
+        if self.isChecked():
+            inner = QRectF(
+                center.x() - bounds.width() * 0.16,
+                center.y() - bounds.height() * 0.16,
+                bounds.width() * 0.32,
+                bounds.height() * 0.32,
+            )
+            p.setBrush(QColor(theme.BG0))
+            p.setPen(QPen(QColor(theme.BG0), 1.0))
+            p.drawEllipse(inner)
+
+            check_pen = QPen(mark, 2.2, Qt.PenStyle.SolidLine, Qt.PenCapStyle.RoundCap)
+            p.setPen(check_pen)
+            p.drawLine(
+                center.x() - 3.0,
+                center.y(),
+                center.x() - 0.6,
+                center.y() + 3.5,
+            )
+            p.drawLine(
+                center.x() - 0.6,
+                center.y() + 3.5,
+                center.x() + 3.5,
+                center.y() - 3.5,
+            )
+
+        if self.hasFocus():
+            focus = bounds.adjusted(-2.0, -2.0, 2.0, 2.0)
+            p.setBrush(Qt.BrushStyle.NoBrush)
+            p.setPen(QPen(QColor(theme.ACCENT), 1.2))
+            p.drawEllipse(focus)
 
 
 # ---------------------------------------------------------------------------
@@ -622,7 +697,7 @@ class _WizardWindow(QMainWindow):
             cl.setContentsMargins(14, 12, 14, 12)
             cl.setSpacing(10)
 
-            rb = QRadioButton()
+            rb = _WizardChoiceIndicator()
             rb.setProperty("_value", value)
             if value == "just_dictation":
                 rb.setChecked(True)
@@ -702,7 +777,7 @@ class _WizardWindow(QMainWindow):
             cl = QHBoxLayout(card)
             cl.setContentsMargins(14, 12, 14, 12)
 
-            rb = QRadioButton()
+            rb = _WizardChoiceIndicator()
             rb.setProperty("_value", value)
             if value == "base":
                 rb.setChecked(True)
