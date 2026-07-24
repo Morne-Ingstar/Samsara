@@ -6221,12 +6221,74 @@ class DictationApp:
             on_abort=_on_abort,
             on_switch_dispatch_error=_on_switch_dispatch_error,
             buffer_dictate_until_commit=True,
+            commit_redecode_fn=self._dictate_commit_redecode,
             hands_free_command_probe_fn=getattr(
                 self, '_probe_hands_free_command', None,
             ),
             pending_action_scratch_fn=self._pop_pending_action_for_scratch,
         )
         return self._session_mode_manager
+
+    def _dictate_commit_redecode(self, joined_text: str, audio_refs: list):
+        """Re-decode a complete DICTATE thought from collected per-utterance audio."""
+        cm_cfg = self.config.get("command_mode", {})
+        if not isinstance(cm_cfg, dict):
+            cm_cfg = {}
+
+        if not cm_cfg.get("dictate_commit_redecode", True):
+            logger.info(
+                "[SESSION] Skipping commit re-decode because command_mode.dictate_commit_redecode is False",
+            )
+            return None
+
+        refs = [np.asarray(ref, dtype=np.float32) for ref in audio_refs if ref is not None]
+        if not refs:
+            return None
+
+        # Each float32 mono stream is model-rate (16 kHz), so one second is
+        # about 64 KB — this 120 s default cap keeps a worst-case staged
+        # thought under ~7.7 MB for a single re-decode.
+        total_s = (sum(len(r) for r in refs) / float(self.model_rate)) if self.model_rate else 0.0
+        try:
+            max_s = float(cm_cfg.get("dictate_commit_redecode_max_s", 120.0))
+        except (TypeError, ValueError):
+            max_s = 120.0
+
+        if max_s and max_s > 0 and total_s > max_s:
+            logger.info(
+                "[SESSION] Skipping commit re-decode because stitched duration %.2fs exceeds "
+                "configured cap %.2fs",
+                total_s,
+                max_s,
+            )
+            return None
+
+        concatenated_audio = np.concatenate(refs) if len(refs) > 1 else refs[0]
+        params = self.get_transcription_params(include_vocabulary=False)
+        params["language"] = "en"
+        params["vad_filter"] = False
+        # 02e00b9: long-lived DICTATE commits must not carry a prompt.
+        params["initial_prompt"] = None
+
+        with self.model_lock:
+            segments, _ = self.model.transcribe(concatenated_audio, **params)
+        segments = list(segments)
+        text = ''.join(getattr(seg, 'text', '') for seg in segments).strip()
+        text = self.voice_training_window.apply_corrections(text)
+        if not text:
+            return None
+
+        kept_segments = _drop_trailing_garbage_segments(segments)
+        text = _trim_trailing_garbage_run(text)
+        if not text:
+            logger.info(f'[GUARD] Suppressed commit re-decode: {text!r}')
+            return None
+
+        if _is_hallucinated_segments(kept_segments, text):
+            logger.info(f'[GUARD] Suppressed commit re-decode hallucination: {text!r}')
+            return None
+
+        return text
 
     def _pop_pending_action_for_scratch(self) -> "bool | None":
         """Unified 'scratch that' stage 1 (Ava Front Door spec v2,
@@ -7155,7 +7217,11 @@ class DictationApp:
                 logger.debug('[CMD-UTT] Ghost tap — discarding')
                 return
 
-            signals = self._compute_switch_gate_signals(audio, seg_list)
+            signals = self._compute_switch_gate_signals(
+                audio,
+                seg_list,
+                audio_ref=audio if _was_dictate_lane else None,
+            )
             self._current_utterance_duration_s = audio_duration
 
             outcome = manager.dispatch_utterance(text, signals)
@@ -7231,7 +7297,7 @@ class DictationApp:
         if outcome.kind != "empty":
             self._touch_session_activity()
 
-    def _compute_switch_gate_signals(self, audio, seg_list) -> "UtteranceSignals":
+    def _compute_switch_gate_signals(self, audio, seg_list, audio_ref=None) -> "UtteranceSignals":
         """Compute the switch/scratch-that anti-hallucination gate signals
         from the SAME existing detectors dictation.py already uses
         (_buffer_has_contiguous_speech, per-segment compression_ratio) --
@@ -7265,6 +7331,7 @@ class DictationApp:
             has_contiguous_speech=has_contiguous_speech,
             compression_ratios=compression_ratios,
             transcript_confident=transcript_confident,
+            audio_ref=audio_ref,
         )
 
     # -----------------------------------------------------------------------

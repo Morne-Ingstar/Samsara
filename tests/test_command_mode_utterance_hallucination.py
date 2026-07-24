@@ -361,3 +361,84 @@ class TestCommandModeUtteranceDictateContextPrompt:
 
         params = app.model.transcribe.call_args[1]
         assert params["initial_prompt"] == "keep"
+
+
+def _make_commit_redecode_app(command_mode=None):
+    app = dictation.DictationApp.__new__(dictation.DictationApp)
+    app.model_rate = 16000
+    app.model_lock = Mock()
+    app.model_lock.__enter__ = Mock(return_value=None)
+    app.model_lock.__exit__ = Mock(return_value=False)
+    app.model = Mock()
+    app.model.transcribe = Mock()
+    app.get_transcription_params = Mock(return_value={
+        "language": "en",
+        "initial_prompt": "base",
+        "condition_on_previous_text": True,
+        "vad_filter": True,
+    })
+    app.voice_training_window = Mock()
+    app.voice_training_window.apply_corrections = Mock(side_effect=lambda t: t)
+    app.config = {
+        "command_mode": {
+            "dictate_commit_redecode": True,
+            "dictate_commit_redecode_max_s": 120.0,
+        },
+    }
+    if command_mode is not None:
+        app.config["command_mode"] = dict(app.config["command_mode"])
+        app.config["command_mode"].update(command_mode)
+    return app
+
+
+class TestCommandModeUtteranceCommitRedecode:
+
+    def test_commit_redecode_gate_off_returns_none(self):
+        app = _make_commit_redecode_app({"dictate_commit_redecode": False})
+        app.model.transcribe = Mock()
+        out = dictation.DictationApp._dictate_commit_redecode(
+            app, "I went to the store", [np.zeros(16000, dtype=np.float32)],
+        )
+        assert out is None
+        app.model.transcribe.assert_not_called()
+
+    def test_commit_redecode_over_duration_ceiling_returns_none(self):
+        app = _make_commit_redecode_app({"dictate_commit_redecode_max_s": 0.5})
+        out = dictation.DictationApp._dictate_commit_redecode(
+            app, "I went to the store", [np.zeros(16000, dtype=np.float32)],
+        )
+        assert out is None
+        app.model.transcribe.assert_not_called()
+
+    def test_commit_redecode_contract_enforces_expected_transcribe_overrides(self):
+        app = _make_commit_redecode_app()
+        app.model.transcribe.return_value = ([ _seg("hello there") ], Mock())
+
+        out = dictation.DictationApp._dictate_commit_redecode(
+            app, "I went to the store", [np.zeros(32000, dtype=np.float32)],
+        )
+        assert out == "hello there"
+        app.get_transcription_params.assert_called_once_with(include_vocabulary=False)
+        transcribe_args = app.model.transcribe.call_args
+        assert transcribe_args[1]["language"] == "en"
+        assert transcribe_args[1]["vad_filter"] is False
+        assert transcribe_args[1]["initial_prompt"] is None
+        assert transcribe_args[1]["condition_on_previous_text"] is True
+
+    def test_commit_redecode_hallucinated_decode_rejected(self):
+        app = _make_commit_redecode_app()
+        app.model.transcribe.return_value = ([ _seg("Thank you for watching!") ], Mock())
+
+        out = dictation.DictationApp._dictate_commit_redecode(
+            app, "I went to the store", [np.zeros(16000, dtype=np.float32)],
+        )
+        assert out is None
+
+    def test_commit_redecode_returns_screened_text(self):
+        app = _make_commit_redecode_app()
+        app.model.transcribe.return_value = ([ _seg("ready for " + "_" * 30) ], Mock())
+
+        out = dictation.DictationApp._dictate_commit_redecode(
+            app, "I went to the store", [np.zeros(16000, dtype=np.float32)],
+        )
+        assert out == "ready for"

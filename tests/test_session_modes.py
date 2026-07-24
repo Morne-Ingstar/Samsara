@@ -6,6 +6,7 @@ All of session_modes.py is pure orchestration -- no audio/Whisper/pyautogui/
 Qt mocking needed. Side effects are plain Mock() callables.
 """
 import pytest
+import numpy as np
 from unittest.mock import ANY, Mock, call
 
 from samsara.session_modes import (
@@ -637,7 +638,7 @@ GOOD_SIGNALS = UtteranceSignals(has_contiguous_speech=True, compression_ratios=(
 def manager_factory():
     """Returns a (manager, mocks) builder so each test can override callables."""
     def _build(foreground="notepad.exe", foreground_hwnd=12345, abort_phrases=None,
-               command_matches=None, format_dictate_fn=None,
+               command_matches=None, format_dictate_fn=None, commit_redecode_fn=None,
                buffer_dictate_until_commit=False, ava_invocations=None):
         mocks = {
             "foreground": Mock(return_value=foreground),
@@ -666,6 +667,7 @@ def manager_factory():
             on_scratch_result=mocks["on_scratch_result"],
             on_abort=mocks["on_abort"],
             on_switch_dispatch_error=mocks["on_switch_dispatch_error"],
+            commit_redecode_fn=commit_redecode_fn,
             buffer_dictate_until_commit=buffer_dictate_until_commit,
             ava_invocations=ava_invocations,
             clock=lambda: 1000.0,
@@ -1457,6 +1459,123 @@ class TestBufferedDictateCommit:
         mgr.dispatch_utterance("scratch that", GOOD_SIGNALS)
 
         assert mgr.dictate_pending_buffer == "I went to the."
+
+    def test_staged_audio_refs_appended_and_cleared_on_commit(self, manager_factory):
+        mgr, mocks = manager_factory(buffer_dictate_until_commit=True)
+        mgr.force_mode(SessionMode.DICTATE)
+
+        audio_a = np.array([0.0], dtype=np.float32)
+        audio_b = np.array([1.0], dtype=np.float32)
+        mgr.dispatch_utterance("First chunk", UtteranceSignals(
+            has_contiguous_speech=True,
+            compression_ratios=(1.2,),
+            audio_ref=audio_a,
+        ))
+        mgr.dispatch_utterance("second chunk", UtteranceSignals(
+            has_contiguous_speech=True,
+            compression_ratios=(1.2,),
+            audio_ref=audio_b,
+        ))
+        assert mgr._dictate_pending_audio == [audio_a, audio_b]
+
+        outcome = mgr.dispatch_utterance("end", GOOD_SIGNALS)
+        assert outcome.kind == "dictate_committed"
+        assert mgr._dictate_pending_audio == []
+
+    def test_staged_audio_refs_restore_on_fresh_dictate_entry(self, manager_factory):
+        mgr, mocks = manager_factory(buffer_dictate_until_commit=True)
+        mgr.force_mode(SessionMode.DICTATE)
+        mgr.dispatch_utterance("One", UtteranceSignals(
+            has_contiguous_speech=True,
+            compression_ratios=(1.2,),
+            audio_ref=1,
+        ))
+        assert mgr._dictate_pending_audio == [1]
+
+        mgr.force_mode(SessionMode.COMMAND)
+        mgr.force_mode(SessionMode.DICTATE)
+        assert mgr._dictate_pending_audio == []
+
+    def test_staged_audio_ref_pops_with_scratch_that(self, manager_factory):
+        mgr, _ = manager_factory(buffer_dictate_until_commit=True)
+        mgr.force_mode(SessionMode.DICTATE)
+        mgr.dispatch_utterance("First", UtteranceSignals(
+            has_contiguous_speech=True,
+            compression_ratios=(1.2,),
+            audio_ref=1,
+        ))
+        mgr.dispatch_utterance("second", UtteranceSignals(
+            has_contiguous_speech=True,
+            compression_ratios=(1.2,),
+            audio_ref=2,
+        ))
+        assert mgr._dictate_pending_audio == [1, 2]
+
+        mgr.dispatch_utterance("scratch that", GOOD_SIGNALS)
+        assert mgr._dictate_pending_audio == [1]
+
+    def test_staged_audio_refs_passed_to_commit_resolver_and_replaced(self, manager_factory):
+        resolver = Mock(return_value="REDECODED THOUGHT")
+        mgr, _ = manager_factory(
+            buffer_dictate_until_commit=True, commit_redecode_fn=resolver,
+        )
+        mgr.force_mode(SessionMode.DICTATE)
+
+        mgr.dispatch_utterance("First", UtteranceSignals(
+            has_contiguous_speech=True, compression_ratios=(1.2,), audio_ref=1,
+        ))
+        mgr.dispatch_utterance("Second", UtteranceSignals(
+            has_contiguous_speech=True, compression_ratios=(1.2,), audio_ref=2,
+        ))
+        outcome = mgr.dispatch_utterance("end", GOOD_SIGNALS)
+
+        resolver.assert_called_once()
+        resolved_text, resolved_refs = resolver.call_args.args
+        assert resolved_text == "First second"
+        assert resolved_refs == [1, 2]
+        assert outcome.kind == "dictate_committed"
+        assert outcome.detail["text"] == "REDECODED THOUGHT"
+
+    def test_resolver_none_falls_back_to_staged_text(self, manager_factory):
+        resolver = Mock(return_value=None)
+        mgr, mocks = manager_factory(
+            buffer_dictate_until_commit=True, commit_redecode_fn=resolver,
+        )
+        mgr.force_mode(SessionMode.DICTATE)
+        mgr.dispatch_utterance("first", UtteranceSignals(
+            has_contiguous_speech=True, compression_ratios=(1.2,), audio_ref=1,
+        ))
+
+        outcome = mgr.dispatch_utterance("end", GOOD_SIGNALS)
+        mocks["inject"].assert_called_once_with("first", ANY)
+        assert outcome.detail["text"] == "first"
+
+    def test_resolver_exception_falls_back_to_staged_text(self, manager_factory):
+        resolver = Mock(side_effect=RuntimeError("decode failed"))
+        mgr, mocks = manager_factory(
+            buffer_dictate_until_commit=True, commit_redecode_fn=resolver,
+        )
+        mgr.force_mode(SessionMode.DICTATE)
+        mgr.dispatch_utterance("first", UtteranceSignals(
+            has_contiguous_speech=True, compression_ratios=(1.2,), audio_ref=1,
+        ))
+
+        outcome = mgr.dispatch_utterance("end", GOOD_SIGNALS)
+        resolver.assert_called_once()
+        mocks["inject"].assert_called_once_with("first", ANY)
+        assert outcome.detail["text"] == "first"
+
+    def test_resolver_not_called_when_nothing_is_staged(self, manager_factory):
+        resolver = Mock(return_value="ignored")
+        mgr, mocks = manager_factory(
+            buffer_dictate_until_commit=True, commit_redecode_fn=resolver,
+        )
+        mgr.force_mode(SessionMode.DICTATE)
+        outcome = mgr.commit_pending_dictation()
+
+        resolver.assert_not_called()
+        assert outcome.kind == "dictate_committed"
+        assert outcome.detail.get("empty") is True
 
     def test_end_pastes_complete_thought_once_and_stays_in_dictate(self, manager_factory):
         mgr, mocks = manager_factory(buffer_dictate_until_commit=True)
