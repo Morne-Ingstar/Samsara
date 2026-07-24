@@ -526,6 +526,7 @@ from samsara.notifications import NotificationManager, get_default_notification_
 from samsara.alarms import AlarmManager, get_default_alarm_config
 from samsara.echo_cancel import EchoCanceller
 from samsara import audio_ducking
+from samsara.audio_devices import force_rescan, list_microphones
 from samsara import wake_profiles
 from samsara import voice_memo
 from samsara.clipboard import paste_with_preservation
@@ -4367,67 +4368,10 @@ class DictationApp:
         thread_registry.spawn("dictation._do", _do, daemon=True)
 
     def get_available_microphones(self):
-        """Get list of available microphone devices.
-
-        Filters to WASAPI devices only (Windows) to avoid duplicates — the same
-        physical mic appears once per host API (MME, DirectSound, WASAPI, WDM-KS)
-        with different names and truncation rules. WASAPI is the preferred API
-        and gives full-length, consistent device names.
-        """
-        devices = sd.query_devices()
-        hostapis = sd.query_hostapis()
-        microphones = []
-        seen_names = set()
-        show_all = self.config.get('show_all_audio_devices', False)
-
-        # Filter to WASAPI devices (preferred for full-length names and low latency).
-        # Streams now open at the device's native rate and resample to 16kHz for Whisper.
-        preferred_api_idx = None
-        for idx, api in enumerate(hostapis):
-            if 'WASAPI' in api['name']:
-                preferred_api_idx = idx
-                break
-
-        for i, device in enumerate(devices):
-            if device['max_input_channels'] <= 0:
-                continue
-
-            # Filter to preferred API only (unless show_all is enabled or API not found)
-            if preferred_api_idx is not None and not show_all:
-                if device['hostapi'] != preferred_api_idx:
-                    continue
-
-            name = device['name']
-
-            # Deduplicate by normalized name (strip + lowercase)
-            dedup_key = name.strip().lower()
-            if dedup_key in seen_names:
-                continue
-            
-            if not show_all:
-                skip_keywords = [
-                    'Stereo Mix', 'Wave Out Mix', 'What U Hear', 'Loopback', 
-                    'CABLE', 'Virtual Audio', 'VB-Audio', 'Voicemeeter',
-                    'Sound Mapper', 'Primary Sound', 'Wave Speaker', 'Wave Microphone',
-                    'Stream Wave', 'Chat Capture', 'Hands-Free', 'HF Audio', 'Input ()',
-                    'Line In (', 'VDVAD', 'SteelSeries Sonar', 'OCULUSVAD',
-                    'VAD Wave', 'wc4400_8200'
-                ]
-                if any(kw.lower() in name.lower() for kw in skip_keywords):
-                    continue
-                if name.strip() == "Microphone ()":
-                    continue
-                if '@System32\\drivers\\' in name:
-                    continue
-                
-            seen_names.add(dedup_key)
-            microphones.append({
-                'id': i,
-                'name': name,
-                'channels': device['max_input_channels']
-            })
-
-        return microphones
+        """Get list of available microphone devices."""
+        return list_microphones(
+            show_all=self.config.get('show_all_audio_devices', False),
+        )
 
     def _mic_refresh_blocked(self) -> bool:
         """True only for the one case refresh_audio_devices() genuinely
@@ -4522,10 +4466,11 @@ class DictationApp:
 
         try:
             try:
-                sd._terminate()
-                sd._initialize()
+                force_rescan()
             except Exception as exc:
-                logger.warning(f"[MIC] PortAudio re-init failed, falling back to plain re-query: {exc}")
+                logger.warning(
+                    "[MIC] PortAudio re-scan failed, continuing with re-query: %s", exc,
+                )
 
             self.available_mics = self.get_available_microphones()
             self._reconcile_microphone_selection()

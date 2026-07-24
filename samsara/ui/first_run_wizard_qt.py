@@ -25,7 +25,7 @@ from PySide6.QtWidgets import (
 from samsara.constants import DEFAULT_WAKE_PHRASE
 from samsara.runtime import thread_registry
 from samsara.ui import qt_runtime, theme
-from samsara.audio_devices import pick_index_by_name
+from samsara.audio_devices import force_rescan, list_microphones, pick_index_by_name
 
 from samsara.log import get_logger
 
@@ -495,6 +495,7 @@ class _WizardWindow(QMainWindow):
         self._no_hints_cb: QCheckBox | None = None
         self._meter: _MicLevelMeter | None = None
         self._meter_timer: QTimer | None = None
+        self._mic_scan_error: str | None = None
         self._meter_ace_reader = None
         self._meter_stream = None
         self._meter_rms_holder: list = [0.0]
@@ -1021,40 +1022,25 @@ class _WizardWindow(QMainWindow):
         self._samsara_app is set), so a device connected after this process
         started may not appear via this path alone. See _refresh_mics().
         """
-        try:
-            if self._samsara_app is not None:
-                mics = self._samsara_app.get_available_microphones()
-                return [{'id': m['id'], 'name': m['name']} for m in mics]
-
-            import sounddevice as sd
-            devices = sd.query_devices()
-            hostapis = sd.query_hostapis()
-            preferred_api_idx = None
-            for idx, api in enumerate(hostapis):
-                if 'WASAPI' in api['name']:
-                    preferred_api_idx = idx
-                    break
-            mics: list[dict] = []
-            seen: set[str] = set()
-            for i, dev in enumerate(devices):
-                if dev['max_input_channels'] <= 0:
-                    continue
-                if preferred_api_idx is not None and dev['hostapi'] != preferred_api_idx:
-                    continue
-                name: str = dev['name']
-                dedup_key = name.strip().lower()
-                if not dedup_key or dedup_key in seen:
-                    continue
-                seen.add(dedup_key)
-                mics.append({'id': i, 'name': name})
-            return mics
-        except Exception:
-            return []
+        if self._samsara_app is not None:
+            mics = self._samsara_app.get_available_microphones()
+            return [{'id': m['id'], 'name': m['name']} for m in mics]
+        return list_microphones()
 
     def _load_mics(self):
         """Enumerate microphones in a background thread, update combo when done."""
-        self._mics = self._enumerate_mics()
-        # Update combo on Qt thread via signal
+        try:
+            self._mics = self._enumerate_mics()
+            self._mic_scan_error = None
+        except Exception as exc:
+            logger.warning(
+                "Microphone enumeration failed while loading first-run wizard",
+                exc_info=True,
+            )
+            self._mics = []
+            self._mic_scan_error = type(exc).__name__
+            self._mic_result.emit("_load_error_", "")
+            return
         self._mic_result.emit("_load_done_", "")
 
     def _on_refresh_mics_clicked(self):
@@ -1101,8 +1087,19 @@ class _WizardWindow(QMainWindow):
         try:
             mics = self._samsara_app.refresh_audio_devices()
             self._mics = [{'id': m['id'], 'name': m['name']} for m in mics]
-        except Exception:
-            self._mics = self._enumerate_mics()
+            self._mic_scan_error = None
+        except Exception as exc:
+            logger.warning(
+                "Microphone refresh failed in first-run wizard (app path)",
+                exc_info=True,
+            )
+            try:
+                self._mics = self._enumerate_mics()
+            except Exception:
+                self._mics = []
+                self._mic_scan_error = type(exc).__name__
+            else:
+                self._mic_scan_error = type(exc).__name__
         self._mic_result.emit("_refresh_done_", "")
 
     def _refresh_mics(self):
@@ -1110,7 +1107,17 @@ class _WizardWindow(QMainWindow):
         no live DictationApp instance is available -- plain re-query only
         (_enumerate_mics() never touches the ACE engine or PortAudio
         re-init), safe off the Qt thread."""
-        self._mics = self._enumerate_mics()
+        try:
+            force_rescan()
+            self._mics = list_microphones()
+            self._mic_scan_error = None
+        except Exception as exc:
+            logger.warning(
+                "Microphone refresh failed in first-run wizard (no app path)",
+                exc_info=True,
+            )
+            self._mics = []
+            self._mic_scan_error = type(exc).__name__
         self._mic_result.emit("_refresh_done_", "")
 
     # ------------------------------------------------------------------
@@ -1267,6 +1274,9 @@ class _WizardWindow(QMainWindow):
         if msg == "_load_done_":
             self._populate_mic_combo()
             return
+        if msg == "_load_error_":
+            self._populate_mic_combo()
+            return
         if msg == "_refresh_done_":
             self._populate_mic_combo(preserve_selection=True)
             return
@@ -1296,8 +1306,23 @@ class _WizardWindow(QMainWindow):
                 idx = pick_index_by_name(self._mics, preserved_name)
                 if idx is not None:
                     self._mic_combo.setCurrentIndex(idx)
+            if self._mic_status:
+                self._mic_status.setText("Speak to test your microphone")
+                self._mic_status.setStyleSheet("color:#8A8A92;font-size:12px;")
         else:
-            self._mic_combo.addItem("No microphones detected")
+            if self._mic_scan_error is not None:
+                self._mic_combo.addItem("Couldn't scan audio devices — press Refresh")
+                if self._mic_status:
+                    self._mic_status.setText(
+                        f"Mic scan failed ({self._mic_scan_error})",
+                    )
+                    self._mic_status.setStyleSheet(
+                        f"color:{theme.WARNING};font-size:12px;",
+                    )
+            else:
+                self._mic_combo.addItem("No microphones detected")
+                if self._mic_status:
+                    self._mic_status.setText("")
             self._mic_combo.setEnabled(False)
         self._mic_combo.blockSignals(False)
         # Restart meter now that device list is ready
