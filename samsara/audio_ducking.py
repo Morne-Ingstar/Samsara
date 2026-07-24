@@ -25,7 +25,24 @@ from ctypes import wintypes
 logger = logging.getLogger("Samsara")
 
 
-SWEEP_INTERVAL_SECONDS = 2.0
+# 2026-07-24 amendment: cut from 2.0s so a session that appears mid-duck
+# (e.g. a newly launched Electron media player) gets caught with less
+# audible delay. If 500ms still proves insufficient for slow-to-register
+# Electron-based players, the real fix is switching from this poll sweep
+# to event-driven session discovery (IAudioSessionNotification /
+# IAudioSessionManager2::RegisterSessionNotification) -- tracked as a
+# follow-up, not attempted here.
+SWEEP_INTERVAL_SECONDS = 0.5
+
+# Float tolerance for "is the current volume still what we last set it
+# to" comparisons (relative-attenuation conditional restore, see stop()).
+# WASAPI volumes are float32 under the hood; a few ULPs of round-trip
+# drift through get/set is normal and must not look like a user change.
+_VOLUME_EPSILON = 1e-3
+
+
+def _floats_close(a: float, b: float, epsilon: float = _VOLUME_EPSILON) -> bool:
+    return abs(a - b) <= epsilon
 
 
 class _SessionHandle(Protocol):
@@ -45,6 +62,7 @@ class _TrackedSession:
     pid: int
     handle: Any
     original_volume: float
+    applied_volume: float
 
 
 class SessionDucker:
@@ -53,6 +71,24 @@ class SessionDucker:
     `current_duck(pid)` returns the currently applied duck level for a PID, so
     callers can compose levels with `min(self.current_duck(pid), own_level)` and
     restore in reverse order when nested behavior is needed.
+
+    RELATIVE ATTENUATION (2026-07-24 amendment): `duck_level` is a
+    multiplicative FACTOR applied to each session's CURRENT volume at
+    start() time (`applied = current * duck_level`), not an absolute
+    level to jam every session to. This is what makes LIFO-layering two
+    independent SessionDucker instances behave as a true nest (e.g. an
+    "idle" ducker at 0.8 followed by a "capture" ducker at 0.15 while the
+    idle one is still active correctly compounds to 0.12 of the true
+    original, and releasing the capture ducker lands back at the idle
+    ducker's own level, not full volume) -- see dictation.py's hands-free
+    ducking for the concrete two-stage caller.
+
+    RESTORE IS CONDITIONAL: stop() only restores a session to its
+    pre-duck volume if that session's CURRENT volume still equals the
+    value THIS instance applied. If the user (or the app itself) changed
+    that session's volume while ducked, their change wins -- we leave it
+    alone rather than clobbering it with a stale snapshot. See stop() and
+    _floats_close().
     """
 
     def __init__(
@@ -90,10 +126,14 @@ class SessionDucker:
             return self.duck_level if self._pid_counts.get(int(pid), 0) else None
 
     def start(self) -> None:
-        """Enumerate sessions and duck every non-excluded PID to `duck_level`.
+        """Enumerate sessions and duck every non-excluded PID by `duck_level`
+        (a multiplicative factor against each session's OWN current volume
+        -- see the class docstring's "RELATIVE ATTENUATION").
 
-        A lightweight re-sweep is scheduled every ~2 seconds to catch sessions
-        that appear while active.
+        A lightweight re-sweep is scheduled every SWEEP_INTERVAL_SECONDS to
+        catch sessions that appear while active. A no-op while already
+        active (idempotent -- safe to call repeatedly, e.g. from a debounce
+        path that reuses an already-ducking instance).
         """
         with self._lock:
             if self._active:
@@ -109,10 +149,10 @@ class SessionDucker:
                 level = float(session.get_master_volume())
                 tracked.append((session, level))
 
-            self._set_sessions_to_duck(tracked)
+            applied = self._set_sessions_to_duck(tracked)
 
             with self._lock:
-                self._record_tracks_locked(tracked)
+                self._record_tracks_locked(applied)
                 self._active = True
                 self._schedule_sweep_locked()
                 self._register_atexit_locked()
@@ -123,7 +163,13 @@ class SessionDucker:
             return
 
     def stop(self) -> None:
-        """Restore all stored volumes in reverse acquisition order."""
+        """Restore stored volumes in reverse acquisition order -- CONDITIONALLY:
+        a session is only restored if its CURRENT volume still equals the
+        value THIS instance applied (see class docstring). If the user or
+        the app itself changed that session's volume while ducked, their
+        change wins; we leave it alone instead of overwriting it with a
+        stale pre-duck snapshot.
+        """
         with self._lock:
             if not self._active:
                 return
@@ -142,7 +188,15 @@ class SessionDucker:
         try:
             for entry in reversed(tracked_entries):
                 try:
-                    entry.handle.set_master_volume(entry.original_volume)
+                    current = float(entry.handle.get_master_volume())
+                    if _floats_close(current, entry.applied_volume):
+                        entry.handle.set_master_volume(entry.original_volume)
+                    else:
+                        logger.debug(
+                            "SessionDucker.stop(): session %s volume changed "
+                            "mid-duck (applied=%.4f now=%.4f) -- leaving as-is",
+                            entry.session_id, entry.applied_volume, current,
+                        )
                 except Exception as exc:
                     logger.warning(
                         "SessionDucker.stop(): session restore failed: %s", exc
@@ -154,20 +208,28 @@ class SessionDucker:
                 "SessionDucker.stop(): failed to restore all sessions: %s", exc
             )
 
-    def _set_sessions_to_duck(self, items: list[tuple[_SessionHandle, float]]) -> None:
-        """Apply ducking to every discovered session. Roll back on partial failures."""
-        changed: list[tuple[_SessionHandle, float]] = []
+    def _set_sessions_to_duck(
+        self, items: list[tuple[_SessionHandle, float]]
+    ) -> list[tuple[_SessionHandle, float, float]]:
+        """Apply RELATIVE ducking (each session's OWN current volume times
+        `duck_level`) to every discovered session. Roll back on partial
+        failures. Returns (session, original_volume, applied_volume)
+        triples for tracking -- applied_volume is what stop() later checks
+        the live volume against before restoring."""
+        changed: list[tuple[_SessionHandle, float, float]] = []
         try:
             for session, original in items:
-                session.set_master_volume(self.duck_level)
-                changed.append((session, original))
+                applied = max(0.0, min(1.0, original * self.duck_level))
+                session.set_master_volume(applied)
+                changed.append((session, original, applied))
         except Exception:
-            for session, original in reversed(changed):
+            for session, original, _applied in reversed(changed):
                 try:
                     session.set_master_volume(original)
                 except Exception:
                     logger.debug("SessionDucker: restore failed during duck rollout")
             raise
+        return changed
 
     def _run_sweep(self) -> None:
         new_sessions: list[tuple[_SessionHandle, float]] = []
@@ -187,22 +249,11 @@ class SessionDucker:
                     continue
                 new_sessions.append((session, float(session.get_master_volume())))
 
-            self._set_sessions_to_duck(new_sessions)
+            applied = self._set_sessions_to_duck(new_sessions)
 
-            if new_sessions:
+            if applied:
                 with self._lock:
-                    for session, original in new_sessions:
-                        tracked = _TrackedSession(
-                            session_id=session.session_id,
-                            pid=session.pid,
-                            handle=session,
-                            original_volume=original,
-                        )
-                        self._tracked_by_id[session.session_id] = tracked
-                        self._tracking_order.append(session.session_id)
-                        self._pid_counts[session.pid] = (
-                            self._pid_counts.get(session.pid, 0) + 1
-                        )
+                    self._record_tracks_locked(applied)
 
         except Exception as exc:
             logger.warning(
@@ -216,14 +267,17 @@ class SessionDucker:
                     return
                 self._schedule_sweep_locked()
 
-    def _record_tracks_locked(self, items: list[tuple[_SessionHandle, float]]) -> None:
+    def _record_tracks_locked(
+        self, items: list[tuple[_SessionHandle, float, float]]
+    ) -> None:
         """Store mutable tracks to restore later. Call with `_lock` held."""
-        for session, original in items:
+        for session, original, applied in items:
             tracked = _TrackedSession(
                 session_id=session.session_id,
                 pid=session.pid,
                 handle=session,
                 original_volume=original,
+                applied_volume=applied,
             )
             self._tracked_by_id[session.session_id] = tracked
             self._tracking_order.append(session.session_id)

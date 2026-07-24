@@ -595,6 +595,22 @@ _AEC_TO_MIC_MIN_GAP_MS = 600
 # speed, so it stays far below normal reaction time.
 _AVA_CMD_TAP_DEBOUNCE_MS = 40
 
+# Hands-free capture-window ducking (2026-07-24): delay between a capture
+# window closing (transcription complete or buffer discarded) and the
+# deep duck actually restoring back to idle level. Serves two purposes
+# with one timer -- a minimum settle "tail" after capture ends, AND the
+# debounce: a new capture window opening before this fires cancels the
+# pending restore outright, so rapid consecutive utterances reuse the
+# still-active duck instead of a stop-then-immediately-restart flicker.
+_HANDS_FREE_CAPTURE_DUCK_RESTORE_DELAY_S = 0.5
+
+# Adaptive wake-gate freeze settle window (2026-07-24): how long AFTER a
+# duck transition ends (or TTS stops speaking) the noise-floor EMA stays
+# frozen before resuming normal adaptation. Matches the capture-duck
+# restore delay so the floor doesn't start chasing again until the audio
+# has actually settled at its new (post-restore) level.
+_WAKE_GATE_FREEZE_SETTLE_S = 0.5
+
 _WAKE_PRIMER_DELAY = 0.12
 _WAKE_SESSION_TIMEOUT_S   = 10.0            # inactivity ends the open-ended wake session
 _WAKE_SESSION_CHUNK_GAP_S = 1.0             # per-utterance VAD silence gap within a session
@@ -2675,6 +2691,26 @@ class DictationApp:
             if self.echo_canceller.start():
                 self._aec_open_t = time.perf_counter()
 
+        # Hands-free audio ducking (2026-07-24) -- see the "ducking"
+        # default_config block's own comment for the two-stage design.
+        # Two INDEPENDENT SessionDucker instances, layered LIFO (idle
+        # starts first / stops last): _hands_free_idle_ducker lives for
+        # the wake-word toggle's whole duration; _hands_free_capture_
+        # ducker lives per capture-window (speech onset through
+        # transcription-complete/discard + a short debounced tail).
+        # Neither is ever driven by, or drives, any session-end/exit path.
+        self._hands_free_idle_ducker = None
+        self._hands_free_capture_ducker = None
+        self._hands_free_duck_lock = threading.Lock()
+        self._hands_free_duck_restore_timer = None
+        # Adaptive wake-gate freeze (2026-07-24): monotonic deadline until
+        # which _wake_audio_is_below_gate must NOT let a sample update
+        # self._wake_noise_floor -- bumped by every duck transition (idle
+        # or capture, start or stop) so the EMA floor doesn't chase a
+        # duck-induced volume step and then misread the restore step back
+        # up as speech onset. See _bump_wake_gate_freeze/_wake_gate_frozen.
+        self._wake_gate_freeze_until = 0.0
+
         self.update_splash(
             "Setting up keyboard...", 35,
             "Installing hotkeys and listening controls",
@@ -3217,9 +3253,43 @@ class DictationApp:
             # sessions while dictating instead of subtracting echo after
             # capture. Off by default, opt-in -- see samsara/audio_ducking.py
             # and samsara/config_schema.py's ducking.enabled entry.
+            #
+            # hands_free_* (2026-07-24) -- SEPARATE from the hotkey-path
+            # enabled/level above: wires the SessionDucker engine
+            # (samsara/audio_ducking.py, previously unwired) to hands-free
+            # listening instead. Two-stage, both keyed to ACTIVE CAPTURE
+            # windows and the wake-word toggle, never to any session-end
+            # event (see _open_hands_free_capture_duck/_close_hands_free_
+            # capture_duck and start_wake_word_mode/stop_wake_word_mode):
+            #   hands_free_level: applied only DURING a capture window
+            #     (speech onset through transcription complete/discard +
+            #     a short debounced tail) -- the deep duck.
+            #   hands_free_idle_level: applied for the WHOLE DURATION the
+            #     wake-word toggle is on -- a PERSISTENT MILD DUCK, not an
+            #     opt-in extra (2026-07-24 amendment; default 0.8, set to
+            #     1.0 to disable). WHY this exists even though it's not
+            #     tied to active capture: the echo canceller does not
+            #     converge reliably (see samsara/echo_cancel.py), so the
+            #     1500ms rolling pre-buffer (samsara.constants.
+            #     PREBUFFER_SECONDS, captured BEFORE a capture-duck can
+            #     possibly engage -- ducking starts only once speech onset
+            #     is already detected) and the wake-word detector itself
+            #     both hear media at whatever level was playing BEFORE
+            #     onset. This idle duck is what actually gives the wake
+            #     word and pre-buffer their SNR; lowering it trades idle
+            #     media volume for wake-word/onset recognition accuracy
+            #     until AEC is fixed. Composes via the engine's documented
+            #     RELATIVE/MIN-style layering: a capture duck started
+            #     while an idle duck is active restores back to
+            #     idle_level (not full) when the capture window closes;
+            #     only the idle duck's own stop (wake-word toggle OFF)
+            #     restores to true full volume.
             "ducking": {
                 "enabled": False,
                 "level": 0.2,
+                "hands_free_enabled": True,
+                "hands_free_level": 0.15,
+                "hands_free_idle_level": 0.8,
             },
             # Hub window geometry (size/position persist across sessions)
             "window_width": 900,
@@ -7413,6 +7483,196 @@ class DictationApp:
         except Exception as e:
             logger.debug(f'[DICTATE-PREVIEW] Stop failed: {e}')
 
+    # ── Hands-free audio ducking (2026-07-24) ──────────────────────────────
+    #
+    # Two-stage, layered LIFO via two INDEPENDENT SessionDucker instances
+    # (samsara/audio_ducking.py): idle duck engages/releases with the
+    # wake-word toggle (start_wake_word_mode/stop_wake_word_mode -- the
+    # ONLY thing that ends it); capture duck engages/releases per capture
+    # window (WakeConsumer speech onset through transcription-complete/
+    # discard + a debounced tail -- see wake_consumer.py). Neither path
+    # calls, or is called by, anything that ends a session/mode -- this
+    # is pure volume side effect, introducing zero new exit semantics.
+    # See the "ducking" default_config block's own comment for the full
+    # design rationale (AEC not converging, pre-buffer SNR, etc).
+
+    def _hands_free_duck_excludes(self) -> set:
+        """PIDs to exclude from hands-free ducking, beyond SessionDucker's
+        own automatic own-pid exclusion. No separate TTS/ffmpeg child-
+        process PID tracking exists anywhere in this codebase (verified:
+        nothing under samsara/tts/ spawns a subprocess), so there is
+        nothing else to exclude today. A dedicated method -- rather than
+        an inline literal at each call site -- so a future PID-tracking
+        addition has exactly one place to plug in."""
+        return set()
+
+    def _bump_wake_gate_freeze(self) -> None:
+        """Called on every duck transition (idle or capture, start or
+        stop) -- freezes the adaptive wake-gate's noise-floor EMA
+        (_wake_audio_is_below_gate) for _WAKE_GATE_FREEZE_SETTLE_S so it
+        doesn't chase a duck-induced volume step and then misread the
+        eventual restore as speech onset. See _wake_gate_frozen()."""
+        self._wake_gate_freeze_until = time.monotonic() + _WAKE_GATE_FREEZE_SETTLE_S
+
+    def _wake_gate_frozen(self) -> bool:
+        """True while the adaptive wake-gate must not update its noise-
+        floor EMA: TTS is actively speaking (a continuous state, checked
+        directly -- not just a transition) OR a duck transition happened
+        within the settle window. Read from _wake_audio_is_below_gate.
+        Never raises -- a broken read here must never crash wake
+        processing, just fail toward "not frozen" (normal adaptation)."""
+        try:
+            coordinator = getattr(self, 'audio_coordinator', None)
+            if coordinator is not None and getattr(coordinator, 'is_speaking', False):
+                return True
+            return time.monotonic() < self._wake_gate_freeze_until
+        except Exception:
+            return False
+
+    @staticmethod
+    def _log_duck_result(ducker, label: str) -> None:
+        """One log line per duck engage/restore, with the ducked-session
+        count. SessionDucker has no public count accessor; reads the
+        tracking dict directly (same package, acceptable internal use --
+        see samsara/audio_ducking.py)."""
+        try:
+            count = len(ducker._tracked_by_id)
+        except Exception:
+            count = 0
+        logger.info(f"[DUCK] {label}: {count} session(s)")
+
+    def _start_hands_free_idle_duck(self) -> None:
+        """Engage the persistent mild duck for the wake-word toggle's
+        WHOLE duration (2026-07-24 amendment: the mechanism, not an
+        option) -- NOT tied to active capture. Called ONLY from
+        start_wake_word_mode(); the only thing that ever ends this is
+        stop_wake_word_mode()'s matching _stop_hands_free_idle_duck()."""
+        cfg = self.config.get('ducking', {}) or {}
+        if not cfg.get('hands_free_enabled', True):
+            return
+        level = float(cfg.get('hands_free_idle_level', 0.8))
+        if level >= 1.0:
+            return  # 1.0 == disabled by design, not a failure
+        try:
+            with self._hands_free_duck_lock:
+                if self._hands_free_idle_ducker is not None:
+                    return  # already engaged
+                ducker = audio_ducking.SessionDucker(
+                    duck_level=level, exclude_pids=self._hands_free_duck_excludes(),
+                )
+                ducker.start()
+                self._hands_free_idle_ducker = ducker
+            self._bump_wake_gate_freeze()
+            self._log_duck_result(ducker, "idle duck engaged")
+        except Exception as exc:
+            logger.warning(f"[DUCK] Failed to engage idle duck: {exc}")
+
+    def _stop_hands_free_idle_duck(self) -> None:
+        """Release the idle duck -- called ONLY from stop_wake_word_mode().
+        Also tears down any still-active capture duck and its pending
+        debounce timer: belt-and-suspenders cleanup (not a new exit path
+        -- it only ever runs as part of the ALREADY-existing toggle-off
+        call) so the wake-word toggle turning off can never leave
+        anything ducked, even mid capture-window."""
+        try:
+            with self._hands_free_duck_lock:
+                timer = self._hands_free_duck_restore_timer
+                self._hands_free_duck_restore_timer = None
+                capture_ducker = self._hands_free_capture_ducker
+                self._hands_free_capture_ducker = None
+                idle_ducker = self._hands_free_idle_ducker
+                self._hands_free_idle_ducker = None
+            if timer is not None:
+                timer.cancel()
+            if capture_ducker is not None:
+                self._log_duck_result(capture_ducker, "capture duck restored (toggle off)")
+                capture_ducker.stop()
+            if idle_ducker is not None:
+                self._log_duck_result(idle_ducker, "idle duck restored")
+                idle_ducker.stop()
+            self._bump_wake_gate_freeze()
+        except Exception as exc:
+            logger.warning(f"[DUCK] Failed to release idle duck: {exc}")
+
+    def _open_hands_free_capture_duck(self) -> None:
+        """Engage the deep duck for an active capture window (speech
+        onset accepted). Reuses the already-active instance if one exists
+        (rapid consecutive utterances) and cancels any pending debounced
+        restore. Called from WakeConsumer at speech onset; never calls,
+        and is never called by, any session-end/exit path."""
+        cfg = self.config.get('ducking', {}) or {}
+        if not cfg.get('hands_free_enabled', True):
+            return
+        level = float(cfg.get('hands_free_level', 0.15))
+        try:
+            with self._hands_free_duck_lock:
+                timer = self._hands_free_duck_restore_timer
+                self._hands_free_duck_restore_timer = None
+                if timer is not None:
+                    timer.cancel()
+
+                if self._hands_free_capture_ducker is not None:
+                    reused = True
+                    ducker = None
+                else:
+                    reused = False
+                    ducker = audio_ducking.SessionDucker(
+                        duck_level=level, exclude_pids=self._hands_free_duck_excludes(),
+                    )
+                    ducker.start()
+                    self._hands_free_capture_ducker = ducker
+            self._bump_wake_gate_freeze()
+            if not reused:
+                self._log_duck_result(ducker, "capture duck engaged")
+        except Exception as exc:
+            logger.warning(f"[DUCK] Failed to engage capture duck: {exc}")
+
+    def _close_hands_free_capture_duck(self) -> None:
+        """Schedule the deep duck's release after _HANDS_FREE_CAPTURE_
+        DUCK_RESTORE_DELAY_S -- NOT immediate, so rapid consecutive
+        utterances reuse the still-active duck (the pending timer is
+        cancelled by the next _open_hands_free_capture_duck) instead of a
+        stop-then-immediately-restart flicker. Call in a finally-shape at
+        every call site (see wake_consumer.py) so this always fires, even
+        if transcription raised."""
+        cfg = self.config.get('ducking', {}) or {}
+        if not cfg.get('hands_free_enabled', True):
+            return
+        try:
+            with self._hands_free_duck_lock:
+                if self._hands_free_capture_ducker is None:
+                    return
+                existing = self._hands_free_duck_restore_timer
+                if existing is not None:
+                    existing.cancel()
+                t = threading.Timer(
+                    _HANDS_FREE_CAPTURE_DUCK_RESTORE_DELAY_S,
+                    self._restore_hands_free_capture_duck_now,
+                )
+                t.daemon = True
+                self._hands_free_duck_restore_timer = t
+                t.start()
+        except Exception as exc:
+            logger.warning(f"[DUCK] Failed to schedule capture duck restore: {exc}")
+
+    def _restore_hands_free_capture_duck_now(self) -> None:
+        """Timer callback: actually stop() the capture ducker, restoring
+        its tracked sessions back to whatever was playing when it started
+        (idle level, if the wake-word toggle is still on; true full
+        volume otherwise)."""
+        try:
+            with self._hands_free_duck_lock:
+                self._hands_free_duck_restore_timer = None
+                ducker = self._hands_free_capture_ducker
+                self._hands_free_capture_ducker = None
+            if ducker is None:
+                return
+            self._log_duck_result(ducker, "capture duck restored")
+            ducker.stop()
+            self._bump_wake_gate_freeze()
+        except Exception as exc:
+            logger.warning(f"[DUCK] Failed to restore capture duck: {exc}")
+
     def start_wake_word_mode(self):
         """Start wake word listening — always listening for wake word."""
         if not self.model_loaded:
@@ -7420,6 +7680,7 @@ class DictationApp:
                 logger.info("Model still loading, please wait...")
             return
 
+        self._start_hands_free_idle_duck()
         self.play_sound("start", use_winsound=True)
         time.sleep(0.15)
         phrase = self.config.get('wake_word_config', {}).get('phrase', 'hey samsara')
@@ -7454,6 +7715,7 @@ class DictationApp:
         """Stop wake word listening mode."""
         self.set_app_state(wake_word_active=False)
         self.wake_word_triggered = False
+        self._stop_hands_free_idle_duck()
         self._reset_wake_dictation()
 
         # Reason-counted release: only actually stops the consumer if no
@@ -8044,10 +8306,22 @@ class DictationApp:
         use_adaptive = audio_config.get('adaptive_gate', True)
         if use_adaptive:
             # Update rolling noise-floor estimate only from buffers that have
-            # not already been identified as wake speech by OpenWakeWord.
+            # not already been identified as wake speech by OpenWakeWord --
+            # and (2026-07-24) only while the gate is NOT frozen: a duck
+            # transition (idle or capture engaging/releasing) or active TTS
+            # steps the ambient media volume abruptly, and letting the EMA
+            # chase that step means the eventual restore back up reads as a
+            # fresh speech onset (see _wake_gate_frozen/_bump_wake_gate_
+            # freeze). The very first-ever seed still happens regardless of
+            # freeze state -- there is no "chase" risk with no prior floor
+            # to protect, and the gate needs SOME floor to make any
+            # decision at all.
             if self._wake_noise_floor is None:
                 self._wake_noise_floor = max(audio_rms, _NOISE_FLOOR_MIN)
-            elif audio_rms < self._wake_noise_floor * _NOISE_FLOOR_SPEECH_RATIO:
+            elif (
+                not self._wake_gate_frozen()
+                and audio_rms < self._wake_noise_floor * _NOISE_FLOOR_SPEECH_RATIO
+            ):
                 self._wake_noise_floor = max(
                     (1.0 - _NOISE_FLOOR_ALPHA) * self._wake_noise_floor
                     + _NOISE_FLOOR_ALPHA * audio_rms,

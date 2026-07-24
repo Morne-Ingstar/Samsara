@@ -37,7 +37,11 @@ def test_oww_hit_is_forwarded_across_async_dispatch(monkeypatch):
 
     consumer._flush([np.zeros(160, dtype=np.float32)])
 
-    assert dispatched["target"] is app.process_wake_word_buffer
+    # _flush wraps the dispatched target in _wrap_with_duck_close (2026-07-24
+    # capture-window ducking) -- it's no longer the bare method, but it must
+    # still forward to it with the same args/kwargs once invoked.
+    dispatched["target"](*dispatched["args"], **dispatched["kwargs"])
+    app.process_wake_word_buffer.assert_called_once_with(*dispatched["args"], **dispatched["kwargs"])
     assert dispatched["kwargs"] == {"oww_confirmed": True}
     assert app._oww_wake_detected is False
 
@@ -67,7 +71,8 @@ def test_oww_hit_stays_confirmed_when_whisper_profiles_are_enabled(monkeypatch):
 
     consumer._flush([np.zeros(160, dtype=np.float32)])
 
-    assert dispatched["target"] is app.process_wake_word_buffer
+    dispatched["target"](*dispatched["args"], **dispatched["kwargs"])
+    app.process_wake_word_buffer.assert_called_once_with(*dispatched["args"], **dispatched["kwargs"])
     assert dispatched["kwargs"] == {"oww_confirmed": True}
     assert app._oww_wake_detected is False
 
@@ -86,7 +91,8 @@ def test_profile_fallback_still_reaches_whisper_without_primary_oww_hit(monkeypa
 
     consumer._flush([np.zeros(160, dtype=np.float32)])
 
-    assert dispatched["target"] is app.process_wake_word_buffer
+    dispatched["target"](*dispatched["args"], **dispatched["kwargs"])
+    app.process_wake_word_buffer.assert_called_once_with(*dispatched["args"], **dispatched["kwargs"])
     assert dispatched["kwargs"] == {"oww_confirmed": False}
     detector.reset.assert_not_called()
 

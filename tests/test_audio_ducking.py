@@ -1,4 +1,12 @@
-"""Tests for the session ducking engine API."""
+"""Tests for the session ducking engine API.
+
+2026-07-24 amendment: RELATIVE (multiplicative) attenuation, not absolute
+level-setting -- duck_level is a factor applied to each session's OWN
+current volume (applied = current * duck_level), and stop() only restores
+a session if its live volume still equals what THIS instance applied (a
+user/app change mid-duck wins over a stale snapshot). See
+samsara/audio_ducking.py's SessionDucker docstring.
+"""
 
 from __future__ import annotations
 
@@ -53,9 +61,9 @@ def test_start_excludes_own_pid_and_excludes_set(monkeypatch):
     ducker = ad.SessionDucker(exclude_pids={222})
     ducker.start()
 
-    assert sessions[0].volume == pytest.approx(0.8)
-    assert sessions[1].volume == pytest.approx(0.6)
-    assert sessions[2].volume == pytest.approx(0.15)
+    assert sessions[0].volume == pytest.approx(0.8)   # excluded (own pid) -- untouched
+    assert sessions[1].volume == pytest.approx(0.6)   # excluded (explicit) -- untouched
+    assert sessions[2].volume == pytest.approx(0.9 * 0.15)  # relative: 0.9 * default duck_level
     assert ducker.current_duck(333) == pytest.approx(0.15)
 
 
@@ -67,15 +75,16 @@ def test_restore_is_exact_and_idempotent(monkeypatch):
 
     ducker = ad.SessionDucker(duck_level=0.2)
     ducker.start()
-    assert session.volume == pytest.approx(0.2)
+    applied = pytest.approx(0.9 * 0.2)
+    assert session.volume == applied
 
     ducker.stop()
     assert session.volume == pytest.approx(0.9)
-    assert session.volume_calls == [0.2, 0.9]
+    assert session.volume_calls == [pytest.approx(0.9 * 0.2), pytest.approx(0.9)]
 
     ducker.stop()
     assert session.volume == pytest.approx(0.9)
-    assert session.volume_calls == [0.2, 0.9]
+    assert len(session.volume_calls) == 2
 
 
 def test_restore_occurs_in_reverse_order(monkeypatch):
@@ -105,10 +114,10 @@ def test_restore_occurs_in_reverse_order(monkeypatch):
     ducker.stop()
 
     assert all_calls == [
-        ("first", 0.1),
-        ("second", 0.1),
-        ("second", 0.8),
-        ("first", 0.7),
+        ("first", pytest.approx(0.7 * 0.1)),
+        ("second", pytest.approx(0.8 * 0.1)),
+        ("second", pytest.approx(0.8)),
+        ("first", pytest.approx(0.7)),
     ]
 
 
@@ -132,11 +141,11 @@ def test_sweep_catches_new_session(monkeypatch):
 
     ducker = ad.SessionDucker(duck_level=0.2)
     ducker.start()
-    assert sessions[0].volume == pytest.approx(0.2)
+    assert sessions[0].volume == pytest.approx(0.9 * 0.2)
 
     sessions.append(FakeSession("new", 333, 0.3))
     ducker._run_sweep()
-    assert sessions[1].volume == pytest.approx(0.2)
+    assert sessions[1].volume == pytest.approx(0.3 * 0.2)
 
     ducker.stop()
     assert sessions[0].volume == pytest.approx(0.9)
@@ -173,3 +182,88 @@ def test_current_duck_min_composition(monkeypatch):
 
 def test_stop_without_start_is_noop() -> None:
     ad.SessionDucker().stop()
+
+
+class TestConditionalRestore:
+    """2026-07-24 amendment: a user/app volume change mid-duck must win
+    over stop()'s stale pre-duck snapshot."""
+
+    def test_restores_when_volume_unchanged_since_duck(self, monkeypatch):
+        session = FakeSession("unchanged", 333, 0.9)
+        monkeypatch.setattr(ad.os, "getpid", lambda: 111)
+        monkeypatch.setattr(ad, "_iter_audio_sessions", lambda: [session])
+
+        ducker = ad.SessionDucker(duck_level=0.2)
+        ducker.start()
+        ducker.stop()
+
+        assert session.volume == pytest.approx(0.9)
+
+    def test_skips_restore_when_user_changed_volume_mid_duck(self, monkeypatch):
+        session = FakeSession("user-changed", 333, 0.9)
+        monkeypatch.setattr(ad.os, "getpid", lambda: 111)
+        monkeypatch.setattr(ad, "_iter_audio_sessions", lambda: [session])
+
+        ducker = ad.SessionDucker(duck_level=0.2)
+        ducker.start()
+        assert session.volume == pytest.approx(0.9 * 0.2)
+
+        # User (or the app itself) changes the volume WHILE ducked --
+        # not through the ducker, e.g. the user dragged Spotify's volume
+        # slider.
+        session.set_master_volume(0.5)
+
+        ducker.stop()
+
+        # Must NOT be clobbered back to 0.9 -- the user's 0.5 wins.
+        assert session.volume == pytest.approx(0.5)
+
+    def test_skips_restore_within_float_epsilon_still_counts_as_unchanged(self, monkeypatch):
+        """A few ULPs of get/set round-trip drift must not look like a
+        user change."""
+        session = FakeSession("epsilon", 333, 0.9)
+        monkeypatch.setattr(ad.os, "getpid", lambda: 111)
+        monkeypatch.setattr(ad, "_iter_audio_sessions", lambda: [session])
+
+        ducker = ad.SessionDucker(duck_level=0.2)
+        ducker.start()
+        applied = session.volume
+        # Simulate negligible float round-trip drift, not a real change.
+        session.volume = applied + 1e-5
+
+        ducker.stop()
+
+        assert session.volume == pytest.approx(0.9)
+
+
+class TestStartIdempotent:
+    """Spark's recommended engine test: start() while already active is a
+    no-op -- callers (e.g. a debounced capture-window reuse path) must be
+    able to call start() repeatedly without re-ducking or losing the
+    original pre-duck snapshot."""
+
+    def test_start_while_active_does_not_reapply_duck(self, monkeypatch):
+        session = FakeSession("idempotent", 333, 0.9)
+        monkeypatch.setattr(ad.os, "getpid", lambda: 111)
+        monkeypatch.setattr(ad, "_iter_audio_sessions", lambda: [session])
+
+        ducker = ad.SessionDucker(duck_level=0.2)
+        ducker.start()
+        calls_after_first_start = list(session.volume_calls)
+
+        ducker.start()  # must be a no-op
+
+        assert session.volume_calls == calls_after_first_start
+
+    def test_start_while_active_preserves_original_snapshot_for_stop(self, monkeypatch):
+        session = FakeSession("idempotent-restore", 333, 0.9)
+        monkeypatch.setattr(ad.os, "getpid", lambda: 111)
+        monkeypatch.setattr(ad, "_iter_audio_sessions", lambda: [session])
+
+        ducker = ad.SessionDucker(duck_level=0.2)
+        ducker.start()
+        ducker.start()  # no-op, must not overwrite the original-volume snapshot
+
+        ducker.stop()
+
+        assert session.volume == pytest.approx(0.9)
