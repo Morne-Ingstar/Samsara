@@ -583,6 +583,18 @@ def _is_pending_cancel_utterance(text: str) -> bool:
 # 600 ms is a conservative safe value measured empirically.
 _AEC_TO_MIC_MIN_GAP_MS = 600
 
+# Ava command session (D3) tap-toggle debounce floor. Left-Alt is a
+# TAP-to-toggle control (one clean press-release latches the session on;
+# another latches it off) -- NOT a hold control like Right-Alt Ava, whose
+# 200ms command_mode.enter_debounce_ms guard exists to reject an
+# ACCIDENTAL brief tap on a control that's supposed to be HELD. Applying
+# that same 200ms floor here (2026-07-23 G3 live-test finding) silently
+# ate legitimate fast taps -- an 80ms or 150ms press-release never
+# toggled the session at all. This floor exists only to reject genuine
+# keyboard-hardware contact bounce / phantom double-fire, not human tap
+# speed, so it stays far below normal reaction time.
+_AVA_CMD_TAP_DEBOUNCE_MS = 40
+
 _WAKE_PRIMER_DELAY = 0.12
 _WAKE_SESSION_TIMEOUT_S   = 10.0            # inactivity ends the open-ended wake session
 _WAKE_SESSION_CHUNK_GAP_S = 1.0             # per-utterance VAD silence gap within a session
@@ -5784,20 +5796,24 @@ class DictationApp:
                 self.exit_ava_mode()
             return
 
-        # Ava command session (D3, toggle-on-RELEASE with a minimum hold;
-        # mutual exclusion with command mode and ava mode)
+        # Ava command session (D3, TAP-to-toggle-on-RELEASE; mutual
+        # exclusion with command mode and ava mode)
         #
-        # Ghost-tap guard (2026-07-19 incident, Fix 3 / P1 -- carried over
-        # into D3 per spec): toggle-on-PRESS with no hold-duration check
-        # was a single-accidental-tap latch. Right-Alt Ava has always
-        # required a >=200ms hold (checked on release) for exactly this
-        # reason; this session gets the same protection and the same
-        # debounce constant: a press only arms and timestamps the key; the
-        # toggle itself fires on release, and only if held for at least
-        # command_mode.enter_debounce_ms. A sub-debounce tap is a silent
-        # no-op (debug log only) -- symmetric for BOTH activation and
-        # deactivation presses, so an accidental tap can never change
-        # session state either way.
+        # Tap-toggle debounce (2026-07-23 G3 live-test finding; supersedes
+        # the 2026-07-19 incident's Fix 3 / P1 guard for THIS control
+        # only): D3 is a tap-toggle, not a hold control like Right-Alt
+        # Ava -- a clean, fast press-release IS the intended gesture, not
+        # an accidental one. Reusing Right-Alt's 200ms
+        # command_mode.enter_debounce_ms (designed to reject an
+        # accidental brief tap on a control meant to be HELD) silently
+        # ate legitimate taps here instead: an 80ms or 150ms press-release
+        # never toggled the session at all. Uses _AVA_CMD_TAP_DEBOUNCE_MS
+        # (~40ms) instead -- just enough to reject genuine keyboard-
+        # hardware contact bounce / phantom double-fire, not human tap
+        # speed. Right-Alt Ava's own >=200ms hold guard (just above) is
+        # UNCHANGED. A press only arms and timestamps the key; the toggle
+        # itself fires on release, and only if held for at least the tap
+        # floor -- symmetric for BOTH activation and deactivation presses.
         ava_cmd_cfg = self.config.get('ava_command_session', {})
         if ava_cmd_cfg.get('enabled', True):
             ava_cmd_key_name = ava_cmd_cfg.get('key', 'left_alt')
@@ -5813,9 +5829,8 @@ class DictationApp:
                 if not self._ava_cmd_key_held:
                     return  # phantom release with no matching real press
                 self._ava_cmd_key_held = False
-                debounce_ms = self.config.get('command_mode', {}).get('enter_debounce_ms', 200)
                 hold_ms = (time.monotonic() - self._ava_cmd_key_press_time) * 1000
-                if hold_ms < debounce_ms:
+                if hold_ms < _AVA_CMD_TAP_DEBOUNCE_MS:
                     logger.debug(f"[AVA-CMD] Ghost tap ({hold_ms:.0f}ms) — ignored")
                     return
                 if self.ava_command_session_active:

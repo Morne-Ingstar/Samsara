@@ -56,6 +56,13 @@ logger = get_logger(__name__)
 # Whisper cost bounded regardless of utterance length.
 _PREVIEW_TAIL_S = 8.0
 
+# Ava command session half-duplex guard (2026-07-23 G3 live-test finding):
+# how long after AudioCoordinator leaves SPEAKING to keep the session fully
+# deaf. Covers playback-engine tail latency (buffered audio still audible
+# briefly after the coordinator's own state transition) so the mic doesn't
+# pick up the last of Ava's own voice as the start of the next utterance.
+_AVA_CMD_TTS_TAIL_S = 0.3
+
 
 class WakeConsumer:
     """Polls the ACE ring and runs the full wake word policy loop.
@@ -81,6 +88,12 @@ class WakeConsumer:
         # hotkey-deafness suppression state so _process_frame logs only on
         # the ENGAGE/RELEASE transitions, not every 100ms frame.
         self._hotkey_suppressed_last: bool = False
+
+        # Ava command session half-duplex guard (2026-07-23 G3 live-test
+        # finding) -- see _AVA_CMD_TTS_TAIL_S and _process_frame.
+        self._ava_cmd_tts_suppressed_last: bool = False
+        self._ava_cmd_tts_was_speaking: bool = False
+        self._ava_cmd_tts_speaking_end: "float | None" = None
 
         # Toggle-session utterances are captured serially on this poll thread
         # but transcribed asynchronously. A FIFO drain prevents a fast next
@@ -411,6 +424,53 @@ class WakeConsumer:
         if self._hotkey_suppressed_last:
             logger.debug("[SEAM] WakeConsumer suppression RELEASED (hotkey recording ended)")
             self._hotkey_suppressed_last = False
+
+        # ── Ava command session half-duplex guard (2026-07-23 G3 live-test
+        # finding): full deafness while the session's own TTS is playing,
+        # plus a short tail after playback completes, so the mic never
+        # captures Ava's own voice as if it were the next user utterance
+        # (log-confirmed: an utterance transcribed as ", open up, I'm
+        # listening, open up tab" -- "I'm listening" is the session's own
+        # TTS, captured into the SAME buffer as the surrounding real
+        # speech). Mirrors FIX 1's hotkey_suppress pattern above: full
+        # deafness (no RMS/VAD/OWW/onset/buffering), not just a downstream
+        # discard, so a mid-utterance TTS onset can't silently extend or
+        # corrupt an in-progress buffer either. Gates on AudioCoordinator's
+        # SPEAKING state (ac.is_speaking), not app.is_speaking -- that flag
+        # means something unrelated here (VAD-detected USER speech onset,
+        # set just below in the speech-accumulation block).
+        if self._is_ai_cmd_mode(app):
+            coordinator = getattr(app, 'audio_coordinator', None)
+            tts_speaking = bool(coordinator is not None and coordinator.is_speaking)
+            if tts_speaking:
+                self._ava_cmd_tts_speaking_end = None  # still speaking -- no tail yet
+            elif self._ava_cmd_tts_speaking_end is None and self._ava_cmd_tts_was_speaking:
+                self._ava_cmd_tts_speaking_end = time.monotonic()  # tail window starts now
+            self._ava_cmd_tts_was_speaking = tts_speaking
+
+            in_tail = (
+                self._ava_cmd_tts_speaking_end is not None
+                and (time.monotonic() - self._ava_cmd_tts_speaking_end) < _AVA_CMD_TTS_TAIL_S
+            )
+            if tts_speaking or in_tail:
+                if not self._ava_cmd_tts_suppressed_last:
+                    logger.debug(
+                        "[SEAM] Ava command session suppression ENGAGED (session "
+                        "TTS speaking or in its tail) -- speech detection fully "
+                        "skipped until playback + tail complete"
+                    )
+                    self._ava_cmd_tts_suppressed_last = True
+                return   # cursor already advanced (frame already read in _poll_loop)
+            if self._ava_cmd_tts_suppressed_last:
+                logger.debug("[SEAM] Ava command session suppression RELEASED (TTS + tail complete)")
+                self._ava_cmd_tts_suppressed_last = False
+        elif self._ava_cmd_tts_was_speaking or self._ava_cmd_tts_speaking_end is not None:
+            # Left the session without a clean SPEAKING->tail->RELEASE
+            # cycle (e.g. exit mid-TTS) -- don't let stale state leak into
+            # a future re-entry.
+            self._ava_cmd_tts_was_speaking = False
+            self._ava_cmd_tts_speaking_end = None
+            self._ava_cmd_tts_suppressed_last = False
 
         # Convert int16 ring frame -> float32 at SAMPLE_RATE
         # Ring stores raw (non-AEC) audio — correct for both VAD and Whisper.
