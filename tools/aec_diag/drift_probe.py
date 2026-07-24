@@ -1,6 +1,7 @@
 """run: long-horizon delay drift probe (10 s windows over 20 min)."""
 
 from __future__ import annotations
+from samsara.runtime import thread_registry
 
 import argparse
 import sys
@@ -101,14 +102,13 @@ def run_probe(args: argparse.Namespace) -> int:
         return 1
 
     start = time.perf_counter()
-    import threading
 
-    player = threading.Thread(
-        target=run_repeating_playback,
+    player = thread_registry.spawn(
+        "aec_diag.drift_playback",
+        run_repeating_playback,
         args=(sd, wave, rate, default_out, args.volume),
         daemon=True,
     )
-    player.start()
 
     window_ms: list[float] = []
     timestamps_min: list[float] = []

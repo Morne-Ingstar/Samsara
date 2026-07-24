@@ -23,6 +23,8 @@ import tempfile
 import threading
 import time
 
+from samsara.runtime import thread_registry
+
 logger = logging.getLogger(__name__)
 
 AHK_EXE = r'C:\Program Files\AutoHotkey\v1.1.37.02\AutoHotkeyU64.exe'
@@ -208,9 +210,13 @@ def schedule_sleep(minutes: int) -> bool:
             return True
         _sleep_total_minutes = minutes
         interval = minutes * 60
-        _sleep_timer = threading.Timer(interval, _on_sleep_fire)
+        _sleep_timer = thread_registry.timer(
+            "stremio_control.sleep",
+            interval,
+            _on_sleep_fire,
+            daemon=True,
+        )
         _sleep_deadline = time.monotonic() + interval
-        _sleep_timer.start()
         logger.debug(f"[STREMIO] Sleep timer set for {minutes} min")
     return True
 

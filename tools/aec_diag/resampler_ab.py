@@ -1,6 +1,7 @@
 """run: phase/phase-POISON check with alternate offline resamplers."""
 
 from __future__ import annotations
+from samsara.runtime import thread_registry
 
 import argparse
 import sys
@@ -103,14 +104,12 @@ def run_probe(args: argparse.Namespace) -> int:
         mic.stop()
         return 1
 
-    import threading
-
-    player = threading.Thread(
-        target=run_repeating_playback,
+    player = thread_registry.spawn(
+        "aec_diag.resampler_playback",
+        run_repeating_playback,
         args=(sd, wave, target, default_out, args.volume),
         daemon=True,
     )
-    player.start()
 
     target_t = time.perf_counter() + args.duration
     wait_for = target_t - time.perf_counter()
