@@ -496,6 +496,29 @@ def passes_dictate_commit_gate(signals: UtteranceSignals, *, has_pending_text: b
 # DICTATE chunk seam-join heuristic
 # ---------------------------------------------------------------------------
 
+
+def _is_continuation_chunk(new_chunk_raw: str) -> bool:
+    """Return True when the chunk looks like a continuation of prior prose.
+
+    The same leading-filler skip used by ``seam_join`` is applied first;
+    after that, a lower-case alphabetic first character means continuation,
+    while uppercase or non-alpha start means new sentence.
+    """
+    stripped = (new_chunk_raw or "").strip()
+    if not stripped:
+        return False
+
+    tokens = stripped.split()
+    idx = 0
+    while idx < len(tokens) and tokens[idx].strip(string.punctuation).lower() in _LEADING_FILLERS:
+        idx += 1
+    if idx >= len(tokens):
+        return False
+
+    seam_word = tokens[idx]
+    return bool(seam_word) and seam_word[0].isalpha() and seam_word[0].islower()
+
+
 def seam_join(previous_chunk_ended_terminal: bool, new_chunk_raw: str) -> str:
     """Case-adjust a new DICTATE chunk for joining onto the previous one.
 
@@ -786,6 +809,27 @@ class SessionModeManager:
     def buffer_dictate_until_commit(self) -> bool:
         return self._buffer_dictate_until_commit
 
+    def dictate_context_tail(self, max_chars: int = 200) -> str:
+        """Return the tail of the active dictate context for session continuity.
+
+        Buffered mode uses the staging buffer (which belongs to the current
+        unsent thought); immediate mode uses the immediate stage buffer (which
+        reflects committed DICTATE text). Other modes intentionally return
+        empty context.
+        """
+        if self._buffer_dictate_until_commit:
+            source = self._dictate_pending_buffer
+        elif self.mode is SessionMode.DICTATE:
+            source = self._stage_buffer
+        else:
+            return ""
+
+        if not source:
+            return ""
+        if max_chars <= 0:
+            return ""
+        return source[-max_chars:]
+
     # -- dispatch -----------------------------------------------------------
 
     def dispatch_utterance(self, raw_text: str, signals: UtteranceSignals) -> DispatchOutcome:
@@ -1049,8 +1093,15 @@ class SessionModeManager:
             adjusted = chunk_raw.strip()
             to_inject = adjusted
         else:
-            adjusted = seam_join(self._last_dictate_ended_terminal, chunk_raw)
-            to_inject = " " + adjusted
+            if _is_continuation_chunk(chunk_raw):
+                # Continuations from pause-bounded DICTATE are lower-case-start
+                # and must not mutate already-typed punctuation or force any
+                # retro-editing in immediate-inject mode.
+                adjusted = chunk_raw.strip()
+                to_inject = " " + adjusted
+            else:
+                adjusted = seam_join(self._last_dictate_ended_terminal, chunk_raw)
+                to_inject = " " + adjusted
 
         # Inline formatting tokens ("new line" -> \n, etc.) -- applied AFTER
         # seam-join (so its filler/capitalization heuristics see the
@@ -1096,8 +1147,21 @@ class SessionModeManager:
         that clean_text/smart_correct haven't seen yet."""
         if self._last_dictate_ended_terminal is None:
             to_stage = chunk_raw.strip()
+            stripped_terminal_period = False
         else:
-            to_stage = " " + seam_join(self._last_dictate_ended_terminal, chunk_raw)
+            if _is_continuation_chunk(chunk_raw):
+                # Continuation path strips only one prior full stop and any
+                # trailing whitespace, preserving !/? and keeping insertion
+                # one-way and forward-only.
+                stripped_terminal_period = False
+                if self._dictate_pending_buffer.rstrip().endswith("."):
+                    self._dictate_pending_buffer = self._dictate_pending_buffer.rstrip()[:-1]
+                    stripped_terminal_period = True
+                to_stage = " " + chunk_raw.strip()
+            else:
+                stripped_terminal_period = False
+                to_stage = " " + seam_join(self._last_dictate_ended_terminal, chunk_raw)
+
         if not to_stage:
             return DispatchOutcome(kind="empty")
 
@@ -1106,6 +1170,7 @@ class SessionModeManager:
         self._stack.push(StackItem(
             kind="dictation_staged_chunk", payload=to_stage,
             mode=SessionMode.DICTATE, timestamp=self._clock(),
+            extra={"stripped_terminal_period": stripped_terminal_period},
         ))
         return DispatchOutcome(kind="dictate_staged", detail={
             "text": to_stage,
@@ -1160,7 +1225,11 @@ class SessionModeManager:
                 "foreground_hwnd": current_hwnd,
             })
 
-        delivered = self._inject_fn(text, commit_target_still_focused)
+        final_text = text
+        if "  " in final_text:
+            final_text = re.sub(r" {2,}", " ", final_text)
+
+        delivered = self._inject_fn(final_text, commit_target_still_focused)
         if delivered is False:
             after_process = self._foreground_exe_resolver()
             after_hwnd = self._foreground_hwnd_resolver()
@@ -1198,7 +1267,7 @@ class SessionModeManager:
         # stage_buffer, so scratch-that and any "the staged text" AVA
         # reference reflect what was really typed. Legacy bool/None-returning
         # injectors keep today's behavior (record the pre-formatting text).
-        final_text = delivered if isinstance(delivered, str) else text
+        final_text = delivered if isinstance(delivered, str) else final_text
 
         self._dictate_pending_buffer = ""
         self._stage_buffer = final_text
@@ -1276,6 +1345,9 @@ class SessionModeManager:
             if not self._dictate_pending_buffer.endswith(item.payload):
                 return False
             self._dictate_pending_buffer = self._dictate_pending_buffer[:-len(item.payload)]
+            if item.extra.get("stripped_terminal_period"):
+                if not self._dictate_pending_buffer.endswith("."):
+                    self._dictate_pending_buffer += "."
             self._last_dictate_ended_terminal = (
                 chunk_ends_terminal(self._dictate_pending_buffer)
                 if self._dictate_pending_buffer else None

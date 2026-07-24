@@ -158,6 +158,7 @@ def _make_app(seg_list, *, mode=SessionMode.DICTATE, dispatch_outcome=None):
 
     manager = Mock()
     manager.mode = mode
+    manager.dictate_context_tail = Mock(return_value="")
     manager.dispatch_utterance = Mock(
         return_value=dispatch_outcome or DispatchOutcome(kind="dictate_staged", detail={}),
     )
@@ -272,7 +273,7 @@ class TestCommandModeUtteranceHallucinationGating:
         dictation.DictationApp._handle_command_mode_utterance(app, _buffer_for(), 16000)
 
         manager.dispatch_utterance.assert_not_called()
-        assert manager.method_calls == []
+        manager.dictate_context_tail.assert_called_once()
 
     def test_ghost_tap_still_discards_after_gating_passes(self):
         """Existing ghost-tap handling must survive unchanged, downstream
@@ -299,3 +300,64 @@ class TestCommandModeUtteranceHallucinationGating:
         app.play_sound.assert_called_once_with("error")
         assert app._wake_transcription_in_progress is False
         app._vad_reset.assert_called_once()
+
+
+class TestCommandModeUtteranceDictateContextPrompt:
+
+    def test_dictate_lane_short_utterance_uses_tail_as_initial_prompt(self):
+        seg_list = [_seg("hello there")]
+        app, manager = _make_app(seg_list, mode=SessionMode.DICTATE)
+        manager.dictate_context_tail.return_value = "I went to the"
+
+        dictation.DictationApp._handle_command_mode_utterance(app, _buffer_for(1.0), 16000)
+
+        params = app.model.transcribe.call_args[1]
+        assert params["initial_prompt"] == "I went to the"
+
+    def test_dictate_lane_without_tail_keeps_base_prompt(self):
+        seg_list = [_seg("hello there")]
+        app, manager = _make_app(seg_list, mode=SessionMode.DICTATE)
+        app.get_transcription_params = Mock(return_value={
+            "language": "en",
+            "initial_prompt": "keep",
+            "condition_on_previous_text": True,
+            "vad_filter": True,
+        })
+        manager.dictate_context_tail.return_value = ""
+
+        dictation.DictationApp._handle_command_mode_utterance(app, _buffer_for(1.0), 16000)
+
+        params = app.model.transcribe.call_args[1]
+        assert params["initial_prompt"] == "keep"
+
+    def test_dictate_lane_long_utterance_skips_tail_context(self):
+        seg_list = [_seg("hello there")]
+        app, manager = _make_app(seg_list, mode=SessionMode.DICTATE)
+        app.get_transcription_params = Mock(return_value={
+            "language": "en",
+            "initial_prompt": "keep",
+            "condition_on_previous_text": True,
+            "vad_filter": True,
+        })
+        manager.dictate_context_tail.return_value = "I went to the"
+
+        dictation.DictationApp._handle_command_mode_utterance(app, _buffer_for(30.0), 16000)
+
+        params = app.model.transcribe.call_args[1]
+        assert params["initial_prompt"] == "keep"
+
+    def test_command_lane_does_not_use_dictate_tail(self):
+        seg_list = [_seg("hello there")]
+        app, manager = _make_app(seg_list, mode=SessionMode.COMMAND)
+        app.get_transcription_params = Mock(return_value={
+            "language": "en",
+            "initial_prompt": "keep",
+            "condition_on_previous_text": True,
+            "vad_filter": True,
+        })
+        manager.dictate_context_tail.return_value = "I went to the"
+
+        dictation.DictationApp._handle_command_mode_utterance(app, _buffer_for(1.0), 16000)
+
+        params = app.model.transcribe.call_args[1]
+        assert params["initial_prompt"] == "keep"

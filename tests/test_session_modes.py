@@ -23,6 +23,7 @@ from samsara.session_modes import (
     DEFAULT_AVA_INVOCATIONS,
     passes_switch_anti_hallucination_gate,
     seam_join,
+    _is_continuation_chunk,
     chunk_ends_terminal,
     check_focus_lock,
     detect_stage_reference,
@@ -311,6 +312,24 @@ class TestSeamJoin:
     def test_only_first_character_of_seam_word_is_touched(self):
         # Rest of a mixed-case word (e.g. an abbreviation) is left intact.
         assert seam_join(False, "USA is large") == "uSA is large"
+
+
+class TestContinuationDetection:
+    def test_lowercase_first_content_word_treated_as_continuation(self):
+        assert _is_continuation_chunk("store again") is True
+
+    def test_uppercase_first_content_word_treated_as_new_sentence(self):
+        assert _is_continuation_chunk("Store again") is False
+
+    def test_filler_leading_lowercase_word_treated_as_continuation(self):
+        assert _is_continuation_chunk("um store again") is True
+        assert _is_continuation_chunk("so um store again") is True
+        assert _is_continuation_chunk("so Um store again") is True
+        assert _is_continuation_chunk("so Store again") is False
+
+    def test_non_alpha_first_word_is_new_sentence(self):
+        assert _is_continuation_chunk("123 apples") is False
+        assert _is_continuation_chunk("(store) again") is False
 
 
 class TestChunkEndsTerminal:
@@ -807,6 +826,15 @@ class TestSessionModeManagerDispatch:
         mgr.dispatch_utterance("Hello there", GOOD_SIGNALS)   # no terminal punctuation
         mgr.dispatch_utterance("How are you", GOOD_SIGNALS)
         assert mocks["inject"].call_args_list[1].args[0] == " how are you"
+
+    def test_immediate_continuation_joins_lowercase_after_spurious_terminal(self, manager_factory):
+        mgr, mocks = manager_factory(foreground="notepad.exe")
+        mgr.force_mode(SessionMode.DICTATE)
+        mgr.dispatch_utterance("I went to the.", GOOD_SIGNALS)
+        mgr.dispatch_utterance("store yesterday", GOOD_SIGNALS)
+
+        assert mocks["inject"].call_args_list[0].args[0] == "I went to the."
+        assert mocks["inject"].call_args_list[1].args[0] == " store yesterday"
 
     # -- format_dictate_fn wiring (formatting-tokens feature) -------------
 
@@ -1400,6 +1428,36 @@ class TestBufferedDictateCommit:
         assert mgr.dictate_pending_buffer == "This is one thought and it continues."
         mocks["inject"].assert_not_called()
 
+    def test_staged_continuation_strips_spurious_period_and_keeps_lowercase(self, manager_factory):
+        mgr, mocks = manager_factory(buffer_dictate_until_commit=True)
+        mgr.force_mode(SessionMode.DICTATE)
+
+        mgr.dispatch_utterance("I went to the.", GOOD_SIGNALS)
+        mgr.dispatch_utterance("store yesterday", GOOD_SIGNALS)
+
+        assert mgr.dictate_pending_buffer == "I went to the store yesterday"
+
+    @pytest.mark.parametrize("punctuated", ["I am sure?", "I am sure!"])
+    def test_staged_does_not_strip_exclamation_or_question_mark(self, manager_factory, punctuated):
+        mgr, mocks = manager_factory(buffer_dictate_until_commit=True)
+        mgr.force_mode(SessionMode.DICTATE)
+
+        mgr.dispatch_utterance(punctuated, GOOD_SIGNALS)
+        mgr.dispatch_utterance("store yesterday", GOOD_SIGNALS)
+
+        assert punctuated in mgr.dictate_pending_buffer
+        assert mgr.dictate_pending_buffer.endswith("store yesterday")
+
+    def test_scratch_that_restores_stripped_terminal_period(self, manager_factory):
+        mgr, mocks = manager_factory(buffer_dictate_until_commit=True)
+        mgr.force_mode(SessionMode.DICTATE)
+
+        mgr.dispatch_utterance("I went to the.", GOOD_SIGNALS)
+        mgr.dispatch_utterance("store yesterday", GOOD_SIGNALS)
+        mgr.dispatch_utterance("scratch that", GOOD_SIGNALS)
+
+        assert mgr.dictate_pending_buffer == "I went to the."
+
     def test_end_pastes_complete_thought_once_and_stays_in_dictate(self, manager_factory):
         mgr, mocks = manager_factory(buffer_dictate_until_commit=True)
         mgr.force_mode(SessionMode.DICTATE)
@@ -1414,6 +1472,16 @@ class TestBufferedDictateCommit:
         assert mgr.mode is SessionMode.DICTATE
         assert mgr.dictate_pending_buffer == ""
         assert mgr.stage_buffer == "First sentence. Second sentence."
+
+    def test_commit_collapses_double_spaces_before_injecting(self, manager_factory):
+        mgr, mocks = manager_factory(buffer_dictate_until_commit=True)
+        mgr.force_mode(SessionMode.DICTATE)
+        mgr._dictate_pending_buffer = "This  has    double  spaces."
+        outcome = mgr.commit_pending_dictation()
+
+        assert outcome.kind == "dictate_committed"
+        mocks["inject"].assert_called_once()
+        assert "  " not in mocks["inject"].call_args.args[0]
 
     def test_next_thought_relocks_to_newly_focused_window(self, manager_factory):
         mgr, mocks = manager_factory(buffer_dictate_until_commit=True)
@@ -1575,3 +1643,25 @@ class TestBufferedDictateCommit:
         assert outcome.kind == "mode_switch"
         mocks["inject"].assert_called_once_with("Commit before switching", ANY)
         assert mgr.mode is SessionMode.COMMAND
+
+
+class TestDictateContextTail:
+    def test_buffered_mode_returns_staged_tail(self, manager_factory):
+        mgr, mocks = manager_factory(buffer_dictate_until_commit=True)
+        mgr.force_mode(SessionMode.DICTATE)
+        mgr.dispatch_utterance("I went to the store", GOOD_SIGNALS)
+        assert mgr.dictate_context_tail() == "I went to the store"
+
+    def test_immediate_mode_returns_stage_tail(self, manager_factory):
+        mgr, mocks = manager_factory()
+        mgr.force_mode(SessionMode.DICTATE)
+        mgr.dispatch_utterance("I went to the store", GOOD_SIGNALS)
+        assert mgr.dictate_context_tail() == "I went to the store"
+
+    def test_committed_buffered_pending_tail_resets_to_empty(self, manager_factory):
+        mgr, mocks = manager_factory(buffer_dictate_until_commit=True)
+        mgr.force_mode(SessionMode.DICTATE)
+        mgr.dispatch_utterance("I went to the store", GOOD_SIGNALS)
+        mgr.dispatch_utterance("end", GOOD_SIGNALS)
+
+        assert mgr.dictate_context_tail() == ""
