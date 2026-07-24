@@ -7,7 +7,11 @@ Creates a standalone directory-based distribution
 import os
 import sys
 from pathlib import Path
-from PyInstaller.utils.hooks import collect_all, collect_submodules
+from PyInstaller.utils.hooks import (
+    collect_all,
+    collect_data_files,
+    collect_submodules,
+)
 from tools.release_manifest import tracked_tree_datas
 
 block_cipher = None
@@ -50,9 +54,22 @@ faster_whisper_assets = os.path.join(site_packages, 'faster_whisper', 'assets')
 if os.path.exists(faster_whisper_assets):
     datas.append((faster_whisper_assets, 'faster_whisper/assets'))
 
-# 2b. OpenWakeWord — collect everything (Python files, ONNX models, resources)
+# 2b. OpenWakeWord — keep runtime code imports and binaries from collect_all, then
+# explicitly pin OWW ONNX artifacts needed for bundled inference.
+oww_model_filenames = [
+    'alexa_v0.1.onnx',
+    'embedding_model.onnx',
+    'hey_jarvis_v0.1.onnx',
+    'hey_mycroft_v0.1.onnx',
+    'hey_rhasspy_v0.1.onnx',
+    'melspectrogram.onnx',
+    'silero_vad.onnx',
+    'timer_v0.1.onnx',
+    'weather_v0.1.onnx',
+]
 oww_datas, oww_binaries, oww_hiddenimports = collect_all('openwakeword')
-datas    += oww_datas
+datas += oww_datas
+datas += collect_data_files('openwakeword', subdir='resources/models', includes=oww_model_filenames)
 
 # 2c. PySide6 / shiboken6 — collect everything (2026-07-10 import audit).
 # ~48 samsara/ui/*_qt.py files depend on PySide6, and it was completely
