@@ -115,6 +115,14 @@ class TestConfigManagement:
         app = Mock()
         app.config_path = config_file
         app.config = sample_config
+        # save_config()'s config-backup-safeguard latch check
+        # (getattr(self, '_config_load_failed', False)) reads this
+        # attribute; a bare Mock() auto-generates a truthy value for any
+        # unset attribute instead of falling through to the getattr
+        # default, so it must be set explicitly here -- same convention
+        # already used for other branched-on Mock attributes elsewhere in
+        # this test suite (see e.g. tests/test_tray_qt.py's _make_app).
+        app._config_load_failed = False
 
         DictationApp.save_config(app)
 
