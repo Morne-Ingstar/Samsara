@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import atexit
 import ctypes
+import itertools
 import logging
 import os
 import threading
@@ -21,6 +22,8 @@ from ctypes import (
     cast,
 )
 from ctypes import wintypes
+
+from samsara.runtime import thread_registry
 
 logger = logging.getLogger("Samsara")
 
@@ -65,6 +68,34 @@ class _TrackedSession:
     applied_volume: float
 
 
+@dataclass
+class _SharedSessionState:
+    """Shared per-session ducking authority used by all SessionDucker instances."""
+
+    session_id: str
+    pid: int
+    handle: _SessionHandle
+    original_volume: float
+    lease_factors: dict[int, float]
+    applied_volume: float
+
+
+_DUCKER_LOCK = threading.Lock()
+_LEASE_ID_SOURCE = itertools.count(1)
+_SHARED_SESSIONS: dict[str, _SharedSessionState] = {}
+
+
+def _multiply_factors(factors: Iterable[float]) -> float:
+    factor = 1.0
+    for value in factors:
+        factor *= value
+    return factor
+
+
+def _clamp_volume(level: float) -> float:
+    return max(0.0, min(1.0, float(level)))
+
+
 class SessionDucker:
     """Duck and restore non-excluded WASAPI sessions with a context manager.
 
@@ -100,13 +131,17 @@ class SessionDucker:
         self._base_excludes = set(exclude_pids or [])
         self._base_excludes.add(os.getpid())
 
-        self._lock = threading.Lock()
+        self._lock = _DUCKER_LOCK
+        self._lease_id = next(_LEASE_ID_SOURCE)
         self._active = False
+        self._sweep_generation = 0
         self._tracked_by_id: dict[str, _TrackedSession] = {}
         self._tracking_order: list[str] = []
         self._pid_counts: dict[int, int] = {}
         self._sweep_timer: threading.Timer | None = None
         self._atexit_registered = False
+        self._work_inflight = 0
+        self._work_inflight_cv = threading.Condition(self._lock)
 
     def __enter__(self) -> "SessionDucker":
         self.start()
@@ -125,6 +160,222 @@ class SessionDucker:
         with self._lock:
             return self.duck_level if self._pid_counts.get(int(pid), 0) else None
 
+    def _begin_work(self) -> None:
+        with self._lock:
+            self._work_inflight += 1
+
+    def _end_work(self) -> None:
+        with self._lock:
+            if self._work_inflight > 0:
+                self._work_inflight -= 1
+            if self._work_inflight <= 0:
+                self._work_inflight_cv.notify_all()
+
+    def _is_generation_active(self, generation: int) -> bool:
+        return self._active and self._sweep_generation == generation
+
+    def _target_for_factors(self, state: _SharedSessionState) -> float:
+        return _clamp_volume(state.original_volume * _multiply_factors(state.lease_factors.values()))
+
+    def _clear_tracking_locked(self) -> None:
+        self._tracking_order = []
+        self._tracked_by_id = {}
+        self._pid_counts = {}
+
+    def _track_session_locked(self, state: _SharedSessionState) -> None:
+        self._tracked_by_id[state.session_id] = _TrackedSession(
+            session_id=state.session_id,
+            pid=state.pid,
+            handle=state.handle,
+            original_volume=state.original_volume,
+            applied_volume=state.applied_volume,
+        )
+        self._tracking_order.append(state.session_id)
+        self._pid_counts[state.pid] = self._pid_counts.get(state.pid, 0) + 1
+
+    def _untrack_session_locked(self, session_id: str) -> bool:
+        entry = self._tracked_by_id.pop(session_id, None)
+        if entry is None:
+            return False
+        try:
+            self._tracking_order.remove(session_id)
+        except ValueError:
+            pass
+        pid = entry.pid
+        count = self._pid_counts.get(pid, 0) - 1
+        if count <= 0:
+            self._pid_counts.pop(pid, None)
+        else:
+            self._pid_counts[pid] = count
+        return True
+
+    def _release_session(
+        self,
+        session_id: str,
+        *,
+        rollback_volume: float | None = None,
+        conditional_restore: bool = False,
+    ) -> None:
+        with self._lock:
+            self._untrack_session_locked(session_id)
+            state = _SHARED_SESSIONS.get(session_id)
+            if state is None or self._lease_id not in state.lease_factors:
+                return
+
+            expected_volume = state.applied_volume
+            state.lease_factors.pop(self._lease_id, None)
+            handle = state.handle
+            close_handle = False
+            restore_volume = None
+
+            if state.lease_factors:
+                state.applied_volume = self._target_for_factors(state)
+                restore_volume = state.applied_volume
+            else:
+                _SHARED_SESSIONS.pop(session_id, None)
+                restore_volume = (
+                    rollback_volume if rollback_volume is not None else state.original_volume
+                )
+                close_handle = True
+
+        if conditional_restore:
+            try:
+                current = float(handle.get_master_volume())
+            except Exception as exc:
+                logger.warning(
+                    "SessionDucker.release(): failed to read current volume "
+                    "for session %s: %s",
+                    session_id,
+                    exc,
+                )
+                current = None
+            if current is not None and not _floats_close(current, expected_volume):
+                if close_handle:
+                    self._close_session(handle)
+                return
+
+        if restore_volume is None:
+            return
+        try:
+            handle.set_master_volume(restore_volume)
+        except Exception as exc:
+            logger.warning(
+                "SessionDucker.release(): failed to restore session %s: %s",
+                session_id,
+                exc,
+            )
+        if close_handle:
+            self._close_session(handle)
+
+    def _add_session_if_needed(
+        self,
+        session: _SessionHandle,
+        generation: int,
+    ) -> tuple[str, float] | None:
+        session_id = session.session_id
+        state: _SharedSessionState | None = None
+        previous_volume: float | None = None
+        target_volume: float | None = None
+        should_add_lease = False
+        needs_master_volume = False
+        created_new_state = False
+        close_now = False
+
+        with self._lock:
+            if not self._is_generation_active(generation) or session_id in self._tracked_by_id:
+                close_now = True
+            else:
+                state = _SHARED_SESSIONS.get(session_id)
+                if state is None:
+                    needs_master_volume = True
+                elif self._lease_id in state.lease_factors:
+                    close_now = True
+                else:
+                    previous_volume = state.applied_volume
+                    state.lease_factors[self._lease_id] = self.duck_level
+                    state.applied_volume = self._target_for_factors(state)
+                    target_volume = state.applied_volume
+                    should_add_lease = True
+
+        if close_now:
+            self._close_session(session)
+            return None
+
+        if needs_master_volume:
+            try:
+                original_volume = float(session.get_master_volume())
+            except Exception:
+                self._close_session(session)
+                return None
+
+            with self._lock:
+                if not self._is_generation_active(generation) or session_id in self._tracked_by_id:
+                    close_now = True
+                else:
+                    state = _SHARED_SESSIONS.get(session_id)
+                    if state is None:
+                        state = _SharedSessionState(
+                            session_id=session_id,
+                            pid=session.pid,
+                            handle=session,
+                            original_volume=original_volume,
+                            lease_factors={self._lease_id: self.duck_level},
+                            applied_volume=_clamp_volume(original_volume * self.duck_level),
+                        )
+                        _SHARED_SESSIONS[session_id] = state
+                        previous_volume = original_volume
+                        target_volume = state.applied_volume
+                        created_new_state = True
+                        should_add_lease = True
+                    elif self._lease_id in state.lease_factors:
+                        close_now = True
+                    else:
+                        previous_volume = state.applied_volume
+                        state.lease_factors[self._lease_id] = self.duck_level
+                        state.applied_volume = self._target_for_factors(state)
+                        target_volume = state.applied_volume
+                        should_add_lease = True
+            if close_now:
+                self._close_session(session)
+                return None
+
+        if (
+            state is None
+            or target_volume is None
+            or previous_volume is None
+            or not should_add_lease
+        ):
+            self._close_session(session)
+            return None
+
+        try:
+            state.handle.set_master_volume(target_volume)
+        except Exception:
+            self._release_session(session_id, rollback_volume=previous_volume)
+            return None
+
+        tracked_now = False
+        with self._lock:
+            state = _SHARED_SESSIONS.get(session_id)
+            if (
+                state is not None
+                and self._is_generation_active(generation)
+                and self._lease_id in state.lease_factors
+                and session_id not in self._tracked_by_id
+            ):
+                self._track_session_locked(state)
+                tracked_now = True
+
+        if not tracked_now:
+            self._release_session(session_id, rollback_volume=previous_volume)
+            # If this was a freshly-created state, the handle belongs to us;
+            # ensure any duplicate COM reference used for enumeration is closed.
+            if not created_new_state:
+                self._close_session(session)
+            return None
+
+        return session_id, previous_volume
+
     def start(self) -> None:
         """Enumerate sessions and duck every non-excluded PID by `duck_level`
         (a multiplicative factor against each session's OWN current volume
@@ -138,29 +389,53 @@ class SessionDucker:
         with self._lock:
             if self._active:
                 return
+            self._active = True
+            self._sweep_generation += 1
+            generation = self._sweep_generation
 
-        tracked: list[tuple[_SessionHandle, float]] = []
+        self._begin_work()
+        applied: list[tuple[str, float]] = []
+        stale_start = False
         try:
             discovered = list(_iter_audio_sessions())
             for session in discovered:
                 if session.pid in self._base_excludes:
                     self._close_session(session)
                     continue
-                level = float(session.get_master_volume())
-                tracked.append((session, level))
 
-            applied = self._set_sessions_to_duck(tracked)
+                added = self._add_session_if_needed(session, generation)
+                if added is not None:
+                    applied.append(added)
 
             with self._lock:
-                self._record_tracks_locked(applied)
-                self._active = True
-                self._schedule_sweep_locked()
-                self._register_atexit_locked()
+                if self._is_generation_active(generation):
+                    self._schedule_sweep_locked()
+                    self._register_atexit_locked()
+                else:
+                    stale_start = True
+            if stale_start:
+                return
         except Exception as exc:
-            for session, _ in tracked:
-                self._close_session(session)
+            for session_id, previous_volume in reversed(applied):
+                self._release_session(
+                    session_id,
+                    rollback_volume=previous_volume,
+                )
+            stale_start = True
             logger.warning("SessionDucker.start(): ducking disabled: %s", exc)
-            return
+        finally:
+            self._end_work()
+
+        if stale_start:
+            for session_id, previous_volume in reversed(applied):
+                self._release_session(
+                    session_id,
+                    rollback_volume=previous_volume,
+                )
+            with self._lock:
+                if self._sweep_generation == generation:
+                    self._active = False
+                    self._clear_tracking_locked()
 
     def stop(self) -> None:
         """Restore stored volumes in reverse acquisition order -- CONDITIONALLY:
@@ -175,71 +450,35 @@ class SessionDucker:
                 return
 
             self._active = False
-            tracked_entries = list(self._tracked_by_id.values())
-            self._tracking_order = []
-            self._tracked_by_id = {}
-            self._pid_counts = {}
+            self._sweep_generation += 1
+            tracked_order = list(self._tracking_order)
 
             timer = self._sweep_timer
             self._sweep_timer = None
-            if timer is not None:
-                timer.cancel()
+            self._clear_tracking_locked()
+            while self._work_inflight > 0:
+                self._work_inflight_cv.wait()
 
-        try:
-            for entry in reversed(tracked_entries):
-                try:
-                    current = float(entry.handle.get_master_volume())
-                    if _floats_close(current, entry.applied_volume):
-                        entry.handle.set_master_volume(entry.original_volume)
-                    else:
-                        logger.debug(
-                            "SessionDucker.stop(): session %s volume changed "
-                            "mid-duck (applied=%.4f now=%.4f) -- leaving as-is",
-                            entry.session_id, entry.applied_volume, current,
-                        )
-                except Exception as exc:
-                    logger.warning(
-                        "SessionDucker.stop(): session restore failed: %s", exc
-                    )
-                finally:
-                    self._close_session(entry.handle)
-        except Exception as exc:
-            logger.warning(
-                "SessionDucker.stop(): failed to restore all sessions: %s", exc
-            )
+        if timer is not None:
+            timer.cancel()
 
-    def _set_sessions_to_duck(
-        self, items: list[tuple[_SessionHandle, float]]
-    ) -> list[tuple[_SessionHandle, float, float]]:
-        """Apply RELATIVE ducking (each session's OWN current volume times
-        `duck_level`) to every discovered session. Roll back on partial
-        failures. Returns (session, original_volume, applied_volume)
-        triples for tracking -- applied_volume is what stop() later checks
-        the live volume against before restoring."""
-        changed: list[tuple[_SessionHandle, float, float]] = []
-        try:
-            for session, original in items:
-                applied = max(0.0, min(1.0, original * self.duck_level))
-                session.set_master_volume(applied)
-                changed.append((session, original, applied))
-        except Exception:
-            for session, original, _applied in reversed(changed):
-                try:
-                    session.set_master_volume(original)
-                except Exception:
-                    logger.debug("SessionDucker: restore failed during duck rollout")
-            raise
-        return changed
+        for session_id in reversed(tracked_order):
+            self._release_session(session_id, conditional_restore=True)
 
     def _run_sweep(self) -> None:
-        new_sessions: list[tuple[_SessionHandle, float]] = []
+        applied: list[tuple[str, float]] = []
+        generation = -1
+        sessions: list[_SessionHandle] = []
+        tracked_ids: set[str] = set()
+        self._begin_work()
         try:
             with self._lock:
                 if not self._active:
                     return
-                sessions = list(_iter_audio_sessions())
+                generation = self._sweep_generation
                 tracked_ids = set(self._tracked_by_id)
 
+            sessions = list(_iter_audio_sessions())
             for session in sessions:
                 if session.pid in self._base_excludes:
                     self._close_session(session)
@@ -247,49 +486,33 @@ class SessionDucker:
                 if session.session_id in tracked_ids:
                     self._close_session(session)
                     continue
-                new_sessions.append((session, float(session.get_master_volume())))
-
-            applied = self._set_sessions_to_duck(new_sessions)
-
-            if applied:
-                with self._lock:
-                    self._record_tracks_locked(applied)
+                added = self._add_session_if_needed(session, generation)
+                if added is not None:
+                    applied.append(added)
 
         except Exception as exc:
             logger.warning(
                 "SessionDucker.sweep(): ducking sweep failed, unchanged: %s", exc
             )
-            for session, _ in new_sessions:
-                self._close_session(session)
+            for session_id, previous_volume in reversed(applied):
+                self._release_session(session_id, rollback_volume=previous_volume)
         finally:
+            self._end_work()
             with self._lock:
-                if not self._active:
+                if not self._is_generation_active(generation):
                     return
                 self._schedule_sweep_locked()
-
-    def _record_tracks_locked(
-        self, items: list[tuple[_SessionHandle, float, float]]
-    ) -> None:
-        """Store mutable tracks to restore later. Call with `_lock` held."""
-        for session, original, applied in items:
-            tracked = _TrackedSession(
-                session_id=session.session_id,
-                pid=session.pid,
-                handle=session,
-                original_volume=original,
-                applied_volume=applied,
-            )
-            self._tracked_by_id[session.session_id] = tracked
-            self._tracking_order.append(session.session_id)
-            self._pid_counts[session.pid] = self._pid_counts.get(session.pid, 0) + 1
 
     def _schedule_sweep_locked(self) -> None:
         if self._sweep_timer is not None:
             self._sweep_timer.cancel()
-        timer = threading.Timer(SWEEP_INTERVAL_SECONDS, self._run_sweep)
-        timer.daemon = True
+        timer = thread_registry.timer(
+            f"session-ducker.{self._lease_id}.sweep",
+            SWEEP_INTERVAL_SECONDS,
+            self._run_sweep,
+            daemon=True,
+        )
         self._sweep_timer = timer
-        timer.start()
 
     def _register_atexit_locked(self) -> None:
         if self._atexit_registered:
@@ -850,3 +1073,29 @@ def _iter_audio_sessions() -> Iterable[_SessionHandle]:
                 _release(session_ctl)
     finally:
         _release(session_enum)
+
+
+# --- Module-level compatibility shims (hotfix 2026-07-24) -------------------
+# dictation.py's TTS/recording duck path calls audio_ducking.duck(level) /
+# audio_ducking.restore() (module functions), but this engine only exposed
+# SessionDucker. Every hotkey press died in on_key_press with
+# AttributeError, killing dictation entirely. These shims back the old
+# call surface with a module singleton. Idempotent; COM-failure-safe via
+# SessionDucker's own guards.
+_shim_ducker: "SessionDucker | None" = None
+
+
+def duck(level: float = 0.2) -> None:
+    global _shim_ducker
+    if _shim_ducker is not None:
+        return  # already active; keep first duck, restore() releases it
+    d = SessionDucker(duck_level=level)
+    d.start()
+    _shim_ducker = d
+
+
+def restore() -> None:
+    global _shim_ducker
+    d, _shim_ducker = _shim_ducker, None
+    if d is not None:
+        d.stop()
