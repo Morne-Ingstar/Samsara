@@ -104,6 +104,8 @@
   "language": "en",
   "listening_indicator_enabled": false,
   "listening_indicator_position": "bottom-center",
+  "microphone": null,
+  "microphone_name": "System default",
   "min_speech_duration": 0.3,
   "mode": "hold",
   "model_size": "base",
