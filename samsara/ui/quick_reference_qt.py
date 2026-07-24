@@ -36,7 +36,7 @@ from samsara.ui import theme
 from samsara import config_schema
 from samsara import formatting_tokens as ft
 from samsara import session_modes
-from samsara.session_modes import SessionMode
+from samsara.session_modes import SessionMode, resolve_ava_invocations
 
 from samsara.log import get_logger
 
@@ -115,16 +115,13 @@ def _lane_switch_phrases(mode: SessionMode) -> list[str]:
 
 
 def _ava_invocation_phrases(app) -> list[str]:
-    """Ava's counterpart to _lane_switch_phrases -- reads the user's ACTUAL
-    configured ava_invocations (config-file-editable, see config_schema.py),
-    falling back to session_modes.DEFAULT_AVA_INVOCATIONS exactly like
-    dictation.py's own resolution of the same key. Honors this file's HARD
-    RULE (module docstring): never a hardcoded phrase, always live config."""
+    """Ava's counterpart to _lane_switch_phrases.
+
+    Uses the shared resolve helper from session_modes.py so Quick Reference and
+    the hands-free session path share fallback behavior.
+    """
     cfg = getattr(app, "config", None) or {}
-    invocations = cfg.get("ava_invocations", list(session_modes.DEFAULT_AVA_INVOCATIONS))
-    if isinstance(invocations, str):
-        invocations = [invocations]
-    return sorted(invocations)
+    return sorted(resolve_ava_invocations(cfg))
 
 
 # ---------------------------------------------------------------------------
@@ -194,6 +191,7 @@ def _resolve_session_phrases(app) -> dict:
 
     wake_enabled = bool(cfg.get("wake_word_enabled", False))
     cm_enabled = bool(cm_cfg.get("enabled", _schema_default("command_mode.enabled", False)))
+    cm_mode = cm_cfg.get("mode", _schema_default("command_mode.mode", "hold"))
 
     wake_phrase = ww_cfg.get("phrase", _WAKE_FALLBACKS["phrase"])
     phrase_options = ww_cfg.get("phrase_options", _WAKE_FALLBACKS["phrase_options"])
@@ -209,6 +207,12 @@ def _resolve_session_phrases(app) -> dict:
     ]))
 
     return {
+        "hands_free_toggle": {
+            "enabled": cm_enabled,
+            "latches": cm_enabled and cm_mode == "toggle",
+            "button": _pretty_button(cm_cfg.get("button", _schema_default("command_mode.button", "rctrl"))),
+            "mode": cm_mode,
+        },
         "wake": {
             "enabled": wake_enabled,
             "phrase": wake_phrase,
@@ -396,6 +400,7 @@ class _QuickReferenceWindow(QMainWindow):
         self._body_layout.addWidget(title)
 
         self._body_layout.addWidget(self._build_hotkeys_section())
+        self._body_layout.addWidget(self._build_hands_free_session_section())
         self._body_layout.addWidget(self._build_session_section())
         self._body_layout.addWidget(self._build_modes_section())
         ft_state = _resolve_formatting_tokens(self.app)
@@ -442,6 +447,47 @@ class _QuickReferenceWindow(QMainWindow):
         card, lay = self._section_card("Dictation Hotkeys")
         for row in _resolve_hotkeys(self.app):
             self._row(lay, row["label"], row["value"], row["enabled"])
+        return card
+
+    def _build_hands_free_session_section(self) -> QFrame:
+        state = _resolve_session_phrases(self.app)
+        card, lay = self._section_card("Hands-Free Session")
+
+        hands_free = state["hands_free_toggle"]
+        hf_hint = (
+            "latches a session" if hands_free.get("latches")
+            else "requires command_mode.enabled and mode=toggle"
+        )
+        self._row(
+            lay,
+            "Hands-free toggle hotkey",
+            f'{hands_free["button"]}  ({hf_hint})',
+            hands_free["enabled"],
+        )
+
+        send = state["send_word"]
+        self._row(
+            lay, "Wake send word", ", ".join(send["words"]) or "(none)", send["enabled"]
+        )
+
+        lanes = state["lane_switches"]
+        for lane_name, phrases in lanes["phrases"].items():
+            self._row(
+                lay,
+                f"{lane_name} lane switch",
+                ", ".join(phrases) or "(none)",
+                lanes["enabled"],
+            )
+
+        commit = state["dictate_commit"]
+        self._row(lay, "DICTATE commit", commit["phrase"], commit["enabled"])
+
+        scratch = state["scratch_that"]
+        self._row(lay, "Undo phrase", scratch["phrase"], scratch["enabled"])
+
+        abort = state["abort"]
+        self._row(lay, "Exit session phrase(s)", ", ".join(abort["words"]) or "(none)", abort["enabled"])
+
         return card
 
     def _build_session_section(self) -> QFrame:

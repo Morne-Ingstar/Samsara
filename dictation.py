@@ -535,7 +535,7 @@ from samsara.runtime import thread_registry
 from samsara.session_modes import (
     SessionMode, SessionModeManager, UtteranceSignals, CommandDispatchResult,
     HandsFreeCommandMatch, PendingTextPolicy, normalize_utterance,
-    GLOBAL_SESSION_EXIT_PHRASES, DEFAULT_AVA_INVOCATIONS, is_scratch_that,
+    GLOBAL_SESSION_EXIT_PHRASES, resolve_ava_invocations, is_scratch_that,
 )
 
 # Commands with special pending-text behavior inside the combined hands-free
@@ -6199,11 +6199,7 @@ class DictationApp:
 
         # Exact-phrase Ava entry list -- config-file-editable only this pass
         # (no settings UI; see config_schema.py's "ava_invocations" entry).
-        configured_ava_invocations = self.config.get(
-            'ava_invocations', list(DEFAULT_AVA_INVOCATIONS),
-        )
-        if isinstance(configured_ava_invocations, str):
-            configured_ava_invocations = [configured_ava_invocations]
+        configured_ava_invocations = resolve_ava_invocations(self.config)
 
         self._session_mode_manager = SessionModeManager(
             abort_phrases=abort_phrases,
