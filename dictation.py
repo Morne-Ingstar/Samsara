@@ -375,6 +375,45 @@ sys.stdout.flush()
 if _sd_import_ms > 5000:
     sys.stdout.write(f"[BOOT-DIAG] SLOW STEP: sounddevice import {_sd_import_ms:.0f}ms\n")
     sys.stdout.flush()
+
+# ACE audio stack import -- moved here from _start_ace_engine (was a lazy
+# in-function import). Measured 2026-07-22: this cold import (first touch
+# of samsara.audio_engine -> engine.py -> scipy.signal) accounted for
+# ~11.4s of a 52s boot, ALL of it spent before AudioCaptureEngine.start()
+# (which itself only takes ~22ms). Importing eagerly here pays that cost
+# during module load instead of blocking _start_ace_engine() later in
+# __init__. Wrapped in try/except (matching the optional-UI-import pattern
+# used below for tray/voice-training/etc.) so a broken install still boots
+# in a degraded state instead of crashing before the splash screen shows --
+# _start_ace_engine() checks for None and falls back exactly as it did
+# when the import lived inside its own try/except.
+_PRE_ACE_T = time.perf_counter()
+try:
+    from samsara.audio_engine import FrameBus, AudioCaptureEngine
+    _ace_t1 = time.perf_counter()
+    sys.stdout.write(f"[BOOT-DIAG] audio_engine package import (incl. scipy.signal): {(_ace_t1 - _PRE_ACE_T)*1000:.0f}ms\n")
+    from samsara.audio_engine.dictation_consumer import DictationSessionConsumer
+    _ace_t2 = time.perf_counter()
+    sys.stdout.write(f"[BOOT-DIAG] audio_engine.dictation_consumer import: {(_ace_t2 - _ace_t1)*1000:.0f}ms\n")
+    from samsara.audio_engine.continuous_consumer import ContinuousConsumer
+    _ace_t3 = time.perf_counter()
+    sys.stdout.write(f"[BOOT-DIAG] audio_engine.continuous_consumer import: {(_ace_t3 - _ace_t2)*1000:.0f}ms\n")
+    from samsara.audio_engine.wake_consumer import WakeConsumer
+    _ace_t4 = time.perf_counter()
+    sys.stdout.write(f"[BOOT-DIAG] audio_engine.wake_consumer import: {(_ace_t4 - _ace_t3)*1000:.0f}ms\n")
+    sys.stdout.flush()
+except Exception as _ace_import_err:
+    FrameBus = AudioCaptureEngine = None
+    DictationSessionConsumer = ContinuousConsumer = WakeConsumer = None
+    sys.stdout.write(f"[BOOT-DIAG] samsara.audio_engine import FAILED: {_ace_import_err}\n")
+    sys.stdout.flush()
+_ace_import_ms = (time.perf_counter() - _PRE_ACE_T) * 1000
+sys.stdout.write(f"[BOOT-DIAG] samsara.audio_engine import (total): {_ace_import_ms:.0f}ms\n")
+sys.stdout.flush()
+if _ace_import_ms > 5000:
+    sys.stdout.write(f"[BOOT-DIAG] SLOW STEP: samsara.audio_engine import {_ace_import_ms:.0f}ms\n")
+    sys.stdout.flush()
+
 from pynput import keyboard as pynput_keyboard
 from pynput.keyboard import Key, Controller as KeyboardController
 import keyboard  # For reliable simultaneous key state detection
@@ -2686,8 +2725,16 @@ class DictationApp:
         prebuffer rewind and frame accumulation for each utterance.
         """
         try:
-            from samsara.audio_engine import FrameBus, AudioCaptureEngine
-            from samsara.audio_engine.dictation_consumer import DictationSessionConsumer
+            # FrameBus/AudioCaptureEngine/*Consumer classes are imported at
+            # module top-level now (see [BOOT-DIAG] audio_engine import block
+            # near the sounddevice import) instead of lazily here -- None
+            # means that import failed, so degrade the same way the old
+            # in-function try/except did.
+            if AudioCaptureEngine is None or FrameBus is None:
+                raise RuntimeError(
+                    "samsara.audio_engine failed to import at module load "
+                    "(see earlier [BOOT-DIAG] samsara.audio_engine import FAILED line)"
+                )
 
             ring = FrameBus()
             # Pass the app's detected capture rate so the ACE engine opens at
@@ -2696,12 +2743,15 @@ class DictationApp:
             # stream to stop receiving callbacks (WASAPI dual-client starvation).
             engine_config = dict(self.config)
             engine_config['_capture_rate'] = self.capture_rate
+            _t_ctor = time.perf_counter()
             self._ace_engine = AudioCaptureEngine(
                 ring, config=engine_config,
                 on_stream_death=self._on_ace_stream_death,
                 on_recovery_success=self._on_ace_recovery_success,
                 on_give_up=self._on_ace_recovery_give_up,
             )
+            _dt_ctor = (time.perf_counter() - _t_ctor) * 1000
+            logger.info(f"[BOOT-DIAG] AudioCaptureEngine() construction: {_dt_ctor:.0f}ms")
             logger.info("[BOOT-DIAG] ACE engine.start() called (sd.query_devices + sd.InputStream open)")
             _aec_open_t = getattr(self, '_aec_open_t', None)
             if _aec_open_t is not None:
@@ -2725,13 +2775,11 @@ class DictationApp:
                 app=self,
             )
 
-            from samsara.audio_engine.continuous_consumer import ContinuousConsumer
             self._continuous_consumer = ContinuousConsumer(
                 engine=self._ace_engine,
                 app=self,
             )
 
-            from samsara.audio_engine.wake_consumer import WakeConsumer
             self._wake_consumer = WakeConsumer(
                 engine=self._ace_engine,
                 app=self,
@@ -3275,6 +3323,19 @@ class DictationApp:
     
     def _migrate_wake_word_config(self, default_config):
         """Migrate old flat wake word settings to new nested structure"""
+        if self._wake_word_config_already_migrated():
+            wake_profiles.validate_wake_profiles(self.config['wake_profiles'])
+            logger.debug("wake config migration: no-op")
+            return
+
+        # wake_word_config already existing on entry means the branch below
+        # that creates it (and saves) won't run -- if the only change this
+        # pass makes is dropping a stale wake_targets block, nothing else
+        # persists it, so save explicitly at the end. See the wake_targets
+        # branch just below.
+        _wwc_present_at_entry = isinstance(self.config.get('wake_word_config'), dict)
+        _removed_stale_wake_targets = False
+
         # Migrate old wake_word/combined modes to wake_word_enabled + hold
         old_mode = self.config.get('mode')
         if old_mode in ('wake_word', 'combined'):
@@ -3284,10 +3345,18 @@ class DictationApp:
 
         # Multi-wakeword: wake_targets -> wake_profiles rename (tribunal spec,
         # design review arc_20260629_170545.md). Renames an existing on-disk
-        # list in place rather than discarding the user's own edits.
-        if 'wake_targets' in self.config and 'wake_profiles' not in self.config:
-            self.config['wake_profiles'] = self.config.pop('wake_targets')
-            logger.info("[MIGRATE] Renamed wake_targets -> wake_profiles")
+        # list in place rather than discarding the user's own edits. If both
+        # keys are present, wake_profiles is authoritative -- wake_targets is
+        # an orphaned leftover from a rename that ran before wake_profiles
+        # existed; drop it rather than merge its (stale) contents.
+        if 'wake_targets' in self.config:
+            if 'wake_profiles' not in self.config:
+                self.config['wake_profiles'] = self.config.pop('wake_targets')
+                logger.info("[MIGRATE] Renamed wake_targets -> wake_profiles")
+            else:
+                del self.config['wake_targets']
+                logger.info("[MIGRATE] Removed stale wake_targets (wake_profiles is authoritative)")
+                _removed_stale_wake_targets = True
 
         if 'wake_profiles' not in self.config:
             self.config['wake_profiles'] = copy.deepcopy(default_config.get('wake_profiles', []))
@@ -3346,7 +3415,44 @@ class DictationApp:
                     _profile, default_send_word=_legacy_default_send_word)
 
         wake_profiles.validate_wake_profiles(self.config['wake_profiles'])
-    
+
+        # Persist the stale wake_targets removal so it doesn't reappear next
+        # boot. When wake_word_config didn't exist at entry, the branch above
+        # already called save_config() and this same removal rode along with
+        # it -- only save again here for the steady-state case where nothing
+        # else in this pass triggered a save.
+        if _removed_stale_wake_targets and _wwc_present_at_entry:
+            self.save_config()
+
+    def _wake_word_config_already_migrated(self) -> bool:
+        """True when every migration this function performs would be a
+        no-op against the current in-memory config: all target keys are
+        already in place and no legacy source key survives. Lets
+        _migrate_wake_word_config() skip the (redundant, every-boot) rename
+        checks and wake_word_config deep-merge once a config has settled.
+        """
+        wwc = self.config.get('wake_word_config')
+        if not isinstance(wwc, dict):
+            return False
+        if self.config.get('mode') in ('wake_word', 'combined'):
+            return False
+        if 'wake_targets' in self.config or 'wake_profiles' not in self.config:
+            return False
+        if 'wake_word' in self.config or 'wake_word_timeout' in self.config \
+                or 'min_speech_duration' in self.config:
+            return False
+        if 'cancel_words' in wwc:
+            return False
+        profiles = self.config.get('wake_profiles')
+        if not isinstance(profiles, list):
+            return False
+        for profile in profiles:
+            if not isinstance(profile, dict):
+                continue
+            if 'send_policy' in profile or 'mode' not in profile or 'send_word' not in profile:
+                return False
+        return True
+
     def _migrate_command_matching_enabled_flag(self):
         """Migrate the legacy top-level 'command_mode_enabled' flag into
         'command_mode.command_matching_enabled'.
