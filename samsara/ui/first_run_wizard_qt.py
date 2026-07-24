@@ -1097,7 +1097,7 @@ class _WizardWindow(QMainWindow):
         self._samsara_app is set), so a device connected after this process
         started may not appear via this path alone. See _refresh_mics().
         """
-        if self._samsara_app is not None:
+        if self._app_ready():
             mics = self._samsara_app.get_available_microphones()
             return [{'id': m['id'], 'name': m['name']} for m in mics]
         return list_microphones()
@@ -1117,6 +1117,21 @@ class _WizardWindow(QMainWindow):
             self._mic_result.emit("_load_error_", "")
             return
         self._mic_result.emit("_load_done_", "")
+
+    def _app_ready(self) -> bool:
+        """True only when the DictationApp handle is fully constructed.
+
+        At FIRST RUN the wizard is launched from DictationApp.__init__
+        BEFORE self.config / self.recording exist, so calling the app's
+        enumeration/refresh methods raises AttributeError on the
+        half-built instance (the original root cause of the shipped
+        "No microphones detected" -- 2026-07-24 Stranger Test). A handle
+        without .config must be treated exactly like no handle at all.
+        """
+        return (
+            self._samsara_app is not None
+            and getattr(self._samsara_app, 'config', None) is not None
+        )
 
     def _on_refresh_mics_clicked(self):
         """Stop our own meter (it may hold a stream _mic_refresh_blocked()
@@ -1139,7 +1154,7 @@ class _WizardWindow(QMainWindow):
         if self._mic_status:
             self._mic_status.setText("Refreshing devices…")
             self._mic_status.setStyleSheet("color:#8A8A92;font-size:12px;")
-        if self._samsara_app is not None:
+        if self._app_ready():
             self._refresh_mics_via_app()
         else:
             thread_registry.spawn(

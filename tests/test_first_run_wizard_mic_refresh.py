@@ -33,6 +33,13 @@ from samsara.ui.first_run_wizard_qt import _WizardWindow
 
 
 class _FakeWizard(QObject):
+    def _app_ready(self):
+        # mirrors _WizardWindow._app_ready: a handle without .config is not ready
+        return (
+            self._samsara_app is not None
+            and getattr(self._samsara_app, 'config', None) is not None
+        )
+
     """Minimal stand-in carrying the real _mic_result Signal, with every
     method under test bound from the real _WizardWindow class."""
 
@@ -96,6 +103,13 @@ class _FakeLabel:
 
 
 class _LoadWizard:
+    def _app_ready(self):
+        # mirrors _WizardWindow._app_ready: a handle without .config is not ready
+        return (
+            self._samsara_app is not None
+            and getattr(self._samsara_app, 'config', None) is not None
+        )
+
     def __init__(self):
         self._mics = []
         self._mic_scan_error = None
@@ -111,6 +125,7 @@ class _LoadWizard:
 
 def _make_app(blocked=False, mics=None, raises=False):
     app = types.SimpleNamespace()
+    app.config = {}
     app._mic_refresh_blocked = Mock(return_value=blocked)
     if raises:
         app.refresh_audio_devices = Mock(side_effect=RuntimeError("boom"))
