@@ -103,6 +103,7 @@ class WakeConsumer:
         self._toggle_queue_lock = threading.Lock()
         self._toggle_worker_active = False
         self._last_toggle_activity_touch = 0.0
+        self._hands_free_capture_duck_token: int | None = None
 
     # ── Lifecycle ─────────────────────────────────────────────────────────────
 
@@ -122,10 +123,16 @@ class WakeConsumer:
 
     def stop(self) -> list:
         """Stop the policy loop and return remaining utterance frames."""
+        app = self._app
         self._running = False
         if self._thread is not None:
             self._thread.join(timeout=2.0)
             self._thread = None
+        # Explicitly close any in-flight capture-duck ownership when the
+        # listener stops (wake-word/command mode exit). This prevents a
+        # stale token from restoring the capture duck after shutdown.
+        self._close_hands_free_duck_safe(app, self._hands_free_capture_duck_token)
+        self._hands_free_capture_duck_token = None
         remaining = list(self._utterance_frames)
         self._utterance_frames   = []
         self._buffer_rms_history = []
@@ -162,22 +169,25 @@ class WakeConsumer:
         # discard, same as a too-short buffer -- close the window here
         # (also covers discard_stale_wake_utterance() below, which
         # delegates to this method).
-        self._close_hands_free_duck_safe(app)
+        close_token = self._hands_free_capture_duck_token
+        self._close_hands_free_duck_safe(app, close_token)
+        self._hands_free_capture_duck_token = None
 
     @staticmethod
-    def _open_hands_free_duck_safe(app) -> None:
+    def _open_hands_free_duck_safe(app) -> int | None:
         """Best-effort call to dictation.py's _open_hands_free_capture_
         duck -- see _close_hands_free_duck_safe's docstring for why this
         is a safe/no-op-tolerant accessor rather than a direct call."""
         open_duck = getattr(app, '_open_hands_free_capture_duck', None)
         if open_duck is not None:
             try:
-                open_duck()
+                return open_duck()
             except Exception as exc:
                 logger.debug(f"_open_hands_free_duck_safe: {exc}")
+        return None
 
     @staticmethod
-    def _close_hands_free_duck_safe(app) -> None:
+    def _close_hands_free_duck_safe(app, owner_token: int | None = None) -> None:
         """Best-effort call to dictation.py's _close_hands_free_capture_
         duck -- a no-op if hands-free ducking isn't wired (e.g. a minimal
         test double for `app`) or disabled in config. Centralized here so
@@ -188,7 +198,7 @@ class WakeConsumer:
         close_duck = getattr(app, '_close_hands_free_capture_duck', None)
         if close_duck is not None:
             try:
-                close_duck()
+                close_duck(owner_token)
             except Exception as exc:
                 logger.debug(f"_close_hands_free_duck_safe: {exc}")
 
@@ -288,7 +298,7 @@ class WakeConsumer:
             and not cls._is_toggle_dictate(app)
         )
 
-    def _enqueue_toggle_utterance(self, buffer_copy: list) -> None:
+    def _enqueue_toggle_utterance(self, buffer_copy: list, owner_token: int | None) -> None:
         """Append one captured utterance and ensure one FIFO worker drains it."""
         # Capture itself is session activity. Refresh before queueing so a
         # slow CPU transcription cannot time the session out underneath
@@ -298,7 +308,7 @@ class WakeConsumer:
             touch_activity()
 
         with self._toggle_queue_lock:
-            self._toggle_queue.append(buffer_copy)
+            self._toggle_queue.append((buffer_copy, owner_token))
             if self._toggle_worker_active:
                 return
             self._toggle_worker_active = True
@@ -324,18 +334,18 @@ class WakeConsumer:
                 if not self._toggle_queue:
                     self._toggle_worker_active = False
                     return
-                buffer_copy = self._toggle_queue.popleft()
+                buffer_copy, owner_token = self._toggle_queue.popleft()
 
             if not self._is_toggle_cmd(self._app):
                 logger.info('[CMD-UTT] Session ended -- discarding queued post-exit utterance')
-                self._close_hands_free_duck_safe(self._app)
+                self._close_hands_free_duck_safe(self._app, owner_token)
                 continue
             try:
                 self._app._handle_command_mode_utterance(buffer_copy, SAMPLE_RATE)
             except Exception as exc:
                 logger.exception(f'[CMD-UTT] FIFO worker error: {exc}')
             finally:
-                self._close_hands_free_duck_safe(self._app)
+                self._close_hands_free_duck_safe(self._app, owner_token)
 
     def _poll_loop(self) -> None:
         app = self._app
@@ -358,6 +368,9 @@ class WakeConsumer:
                     self._process_frame(frame)
                 except Exception as exc:
                     logger.exception(f"[ERROR] Wake consumer frame error: {exc}")
+                    app = self._app
+                    self._close_hands_free_duck_safe(app, self._hands_free_capture_duck_token)
+                    self._hands_free_capture_duck_token = None
         except Exception as exc:
             # This poll loop is the session's ONLY audio consumer. If
             # something escapes the per-frame guard above and kills this
@@ -402,6 +415,8 @@ class WakeConsumer:
             self._buffer_rms_history = []
             app.is_speaking   = False
             app.silence_start = None
+            self._close_hands_free_duck_safe(app, self._hands_free_capture_duck_token)
+            self._hands_free_capture_duck_token = None
             try:
                 app._vad_reset()
             except Exception as e:
@@ -618,7 +633,7 @@ class WakeConsumer:
                 # the earliest possible signal that an utterance is being
                 # captured -- wake onset accepted. See dictation.py's
                 # _open_hands_free_capture_duck.
-                self._open_hands_free_duck_safe(app)
+                self._hands_free_capture_duck_token = self._open_hands_free_duck_safe(app)
                 # Ring prebuffer rewind: replaces the legacy _prebuffer deque drain.
                 # Rewind PREBUFFER_FRAMES and re-read them into the utterance buffer.
                 # The current frame (raw_chunk) is included in the re-read since the
@@ -693,6 +708,8 @@ class WakeConsumer:
                         app._vad_reset()
                     except Exception as e:
                         logger.debug(f"_vad_reset failed after stuck-buffer discard: {e}")
+                    self._close_hands_free_duck_safe(app, self._hands_free_capture_duck_token)
+                    self._hands_free_capture_duck_token = None
                     return
 
             # Hard buffer cap (same as legacy callback)
@@ -707,6 +724,8 @@ class WakeConsumer:
                     app._vad_reset()
                 except Exception as e:
                     logger.debug(f"_vad_reset failed after hard buffer cap: {e}")
+                self._close_hands_free_duck_safe(app, self._hands_free_capture_duck_token)
+                self._hands_free_capture_duck_token = None
                 return
 
         else:
@@ -730,15 +749,16 @@ class WakeConsumer:
                     app.silence_start = None
 
                     if buffer_copy is not None:
-                        self._flush(buffer_copy)
+                        self._flush(buffer_copy, self._hands_free_capture_duck_token)
                     else:
                         # Too short to count as a real utterance -- the
                         # capture window this onset opened closes here
                         # (buffer discarded, never reaches _flush at all).
-                        self._close_hands_free_duck_safe(app)
+                        self._close_hands_free_duck_safe(app, self._hands_free_capture_duck_token)
+                        self._hands_free_capture_duck_token = None
 
     @staticmethod
-    def _wrap_with_duck_close(app, fn):
+    def _wrap_with_duck_close(app, fn, owner_token: int | None = None):
         """Wrap a dispatched utterance-processing function so the capture-
         window duck always closes once it returns -- success, an internal
         early return, or an exception (finally-shape: the ducking design
@@ -749,10 +769,10 @@ class WakeConsumer:
             try:
                 fn(*args, **kwargs)
             finally:
-                WakeConsumer._close_hands_free_duck_safe(app)
+                WakeConsumer._close_hands_free_duck_safe(app, owner_token)
         return _wrapped
 
-    def _flush(self, buffer_copy: list) -> None:
+    def _flush(self, buffer_copy: list, owner_token: int | None = None) -> None:
         """Dispatch utterance to process_wake_word_buffer, respecting OWW gate."""
         app = self._app
 
@@ -760,7 +780,7 @@ class WakeConsumer:
         if self._is_ai_cmd_mode(app):
             thread_registry.spawn(
                 'ava-cmd-utt',
-                self._wrap_with_duck_close(app, app._handle_ava_command_utterance),
+                self._wrap_with_duck_close(app, app._handle_ava_command_utterance, owner_token),
                 args=(buffer_copy, SAMPLE_RATE),
                 daemon=True,
             )
@@ -772,7 +792,7 @@ class WakeConsumer:
         # happens inside _drain_toggle_utterances (the actual processing
         # point), not here (enqueueing is not processing).
         if self._is_toggle_cmd(app):
-            self._enqueue_toggle_utterance(buffer_copy)
+            self._enqueue_toggle_utterance(buffer_copy, owner_token)
             return
 
         _has_wake_profiles = any(
@@ -796,7 +816,9 @@ class WakeConsumer:
                 app._wake_detector.reset()
             # Rejected before any dispatch -- this IS the capture window's
             # close (nothing else will ever process this buffer).
-            self._close_hands_free_duck_safe(app)
+            self._close_hands_free_duck_safe(app, owner_token)
+            if owner_token is not None and self._hands_free_capture_duck_token == owner_token:
+                self._hands_free_capture_duck_token = None
             return
 
         # Preserve the detector result across the async dispatch. An OWW hit
@@ -815,14 +837,22 @@ class WakeConsumer:
                 app._pending_transcriptions += 1
             thread_registry.spawn(
                 "wake_consumer._process_wake_word_buffer_tracked",
-                self._wrap_with_duck_close(app, app._process_wake_word_buffer_tracked),
+                self._wrap_with_duck_close(
+                    app,
+                    app._process_wake_word_buffer_tracked,
+                    owner_token,
+                ),
                 args=(buffer_copy, SAMPLE_RATE),
                 daemon=True,
             )
         else:
             thread_registry.spawn(
                 "wake_consumer.process_wake_word_buffer",
-                self._wrap_with_duck_close(app, app.process_wake_word_buffer),
+                self._wrap_with_duck_close(
+                    app,
+                    app.process_wake_word_buffer,
+                    owner_token,
+                ),
                 args=(buffer_copy, SAMPLE_RATE),
                 kwargs={"oww_confirmed": oww_confirmed},
                 daemon=True,
