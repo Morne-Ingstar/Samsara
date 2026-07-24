@@ -44,6 +44,7 @@ class _FakeWizard(QObject):
         self._mic_status = None
         self._step = 0
         self._stop_meter = Mock()
+        self._mic_scan_error = None
         self._enumerate_mics = Mock(return_value=[{'id': 0, 'name': 'Fallback Mic'}])
 
         self._on_refresh_mics_clicked = types.MethodType(
@@ -51,6 +52,61 @@ class _FakeWizard(QObject):
         self._refresh_mics_via_app = types.MethodType(
             _WizardWindow._refresh_mics_via_app, self)
         self._refresh_mics = types.MethodType(_WizardWindow._refresh_mics, self)
+
+
+class _FakeCombo:
+    def __init__(self):
+        self.items: list[str] = []
+        self.enabled = False
+        self._current_index = 0
+        self.current_text = ""
+
+    def blockSignals(self, *_args):
+        return None
+
+    def clear(self):
+        self.items.clear()
+
+    def addItems(self, items):
+        self.items.extend(items)
+
+    def setEnabled(self, enabled):
+        self.enabled = enabled
+
+    def addItem(self, item):
+        self.items.append(item)
+
+    def currentText(self):
+        return self.current_text
+
+    def setCurrentIndex(self, index):
+        self._current_index = index
+
+
+class _FakeLabel:
+    def __init__(self):
+        self.text = ""
+        self.style = ""
+
+    def setText(self, text):
+        self.text = text
+
+    def setStyleSheet(self, style):
+        self.style = style
+
+
+class _LoadWizard:
+    def __init__(self):
+        self._mics = []
+        self._mic_scan_error = None
+        self._samsara_app = None
+        self._step = 2
+        self._mic_combo = _FakeCombo()
+        self._mic_status = _FakeLabel()
+        self._mic_result = Mock()
+        self._stop_meter = Mock()
+        self._start_meter = Mock()
+        self._enumerate_mics = Mock(return_value=[])
 
 
 def _make_app(blocked=False, mics=None, raises=False):
@@ -128,14 +184,79 @@ class TestBackgroundThreadFallbackWhenNoApp:
         # No app -- must never touch _mic_refresh_blocked/refresh_audio_devices.
         assert spawn.call_args.args[1] == wizard._refresh_mics
 
-    def test_refresh_mics_fallback_uses_plain_enumeration(self, qapp):
+    def test_refresh_mics_fallback_uses_realtime_rescan_path(self, qapp, monkeypatch):
         wizard = _FakeWizard()
         wizard._samsara_app = None
+        force_rescan = Mock()
+        list_microphones = Mock(return_value=[{'id': 3, 'name': 'Refreshed Mic'}])
         results = []
         wizard._mic_result.connect(lambda msg, color: results.append(msg))
 
+        monkeypatch.setattr("samsara.ui.first_run_wizard_qt.force_rescan", force_rescan)
+        monkeypatch.setattr("samsara.ui.first_run_wizard_qt.list_microphones", list_microphones)
+
         wizard._refresh_mics()
 
-        wizard._enumerate_mics.assert_called_once()
-        assert wizard._mics == [{'id': 0, 'name': 'Fallback Mic'}]
+        force_rescan.assert_called_once()
+        list_microphones.assert_called_once_with()
+        assert wizard._mics == [{'id': 3, 'name': 'Refreshed Mic'}]
         assert results == ["_refresh_done_"]
+
+
+class TestMicEnumerationErrorHandlingInUi:
+    def test_scanner_exception_shows_retry_message(self, monkeypatch):
+        wizard = _LoadWizard()
+        wizard._load_mics = types.MethodType(_WizardWindow._load_mics, wizard)
+        wizard._enumerate_mics = types.MethodType(_WizardWindow._enumerate_mics, wizard)
+        wizard._populate_mic_combo = types.MethodType(
+            _WizardWindow._populate_mic_combo, wizard,
+        )
+
+        monkeypatch.setattr(
+            "samsara.ui.first_run_wizard_qt.list_microphones",
+            Mock(side_effect=RuntimeError("no api")),
+        )
+        wizard._load_mics()
+        wizard._populate_mic_combo()
+
+        assert wizard._mics == []
+        assert wizard._mic_combo.items == ["Couldn't scan audio devices — press Refresh"]
+        assert wizard._mic_status.text == "Mic scan failed (RuntimeError)"
+        assert wizard._mic_status.style
+
+    def test_empty_scan_results_show_no_microphones_detected(self, monkeypatch):
+        wizard = _LoadWizard()
+        wizard._load_mics = types.MethodType(_WizardWindow._load_mics, wizard)
+        wizard._enumerate_mics = types.MethodType(_WizardWindow._enumerate_mics, wizard)
+        wizard._populate_mic_combo = types.MethodType(
+            _WizardWindow._populate_mic_combo, wizard,
+        )
+
+        monkeypatch.setattr(
+            "samsara.ui.first_run_wizard_qt.list_microphones",
+            Mock(return_value=[]),
+        )
+        wizard._load_mics()
+        wizard._populate_mic_combo()
+
+        assert wizard._mics == []
+        assert wizard._mic_combo.items == ["No microphones detected"]
+        assert wizard._mic_status.text == ""
+
+    def test_devices_populate_into_combo_when_available(self, monkeypatch):
+        wizard = _LoadWizard()
+        wizard._load_mics = types.MethodType(_WizardWindow._load_mics, wizard)
+        wizard._enumerate_mics = types.MethodType(_WizardWindow._enumerate_mics, wizard)
+        wizard._populate_mic_combo = types.MethodType(
+            _WizardWindow._populate_mic_combo, wizard,
+        )
+
+        monkeypatch.setattr(
+            "samsara.ui.first_run_wizard_qt.list_microphones",
+            Mock(return_value=[{'id': 5, 'name': 'Focusrite'}, {'id': 7, 'name': 'Desk Mic'}]),
+        )
+        wizard._load_mics()
+        wizard._populate_mic_combo()
+
+        assert wizard._mics == [{'id': 5, 'name': 'Focusrite'}, {'id': 7, 'name': 'Desk Mic'}]
+        assert wizard._mic_combo.items == ["Focusrite", "Desk Mic"]

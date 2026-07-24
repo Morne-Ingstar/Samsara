@@ -28,6 +28,7 @@ from PySide6.QtWidgets import (
 )
 
 from samsara.constants import DEFAULT_CAPTURE_RATE, DEFAULT_WAKE_PHRASE
+from samsara.audio_devices import get_device_info
 from samsara.runtime import thread_registry
 from samsara.ui import qt_runtime, theme
 from samsara.audio_devices import pick_index_by_name
@@ -85,7 +86,7 @@ def _resample(audio, orig_sr, target_sr=16000):
 
 def _detect_capture_rate(device_index):
     try:
-        info = sd.query_devices(device_index)
+        info = get_device_info(device_index, kind='input')
         rate = int(info.get("default_samplerate", DEFAULT_CAPTURE_RATE))
         return rate if rate > 0 else DEFAULT_CAPTURE_RATE
     except Exception:

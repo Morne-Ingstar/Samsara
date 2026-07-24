@@ -28,6 +28,7 @@ sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
 import dictation
 from samsara.audio_devices import pick_index_by_name
+from samsara import audio_devices as shared_audio_devices
 
 
 # ============================================================================
@@ -155,6 +156,7 @@ class TestIsAudioCaptureActiveUnchangedForCalibrationCaller:
 def fake_sd(monkeypatch):
     fake = _FakeSd([_device("Built-in Mic")])
     monkeypatch.setattr(dictation, "sd", fake)
+    monkeypatch.setattr(shared_audio_devices, "sd", fake)
     return fake
 
 
@@ -367,6 +369,34 @@ class TestPickIndexByName:
 
     def test_empty_devices_list_returns_none(self):
         assert pick_index_by_name([], 'Mic A') is None
+
+
+class TestGetAvailableMicrophonesWrapper:
+    def test_get_available_microphones_delegates_to_shared_list_microphones(self, fake_sd, monkeypatch):
+        app = _make_app(fake_sd)
+        monkeypatch.setattr(
+            "dictation.list_microphones",
+            lambda show_all=False: [{'id': 4, 'name': 'Delegated', 'channels': 2}],
+        )
+
+        result = app.get_available_microphones()
+
+        assert result == [{'id': 4, 'name': 'Delegated', 'channels': 2}]
+
+    def test_show_all_setting_passed_to_shared_helper(self, fake_sd, monkeypatch):
+        app = _make_app(fake_sd)
+        app.config['show_all_audio_devices'] = True
+        calls = []
+
+        def _fake_list_microphones(show_all=False):
+            calls.append(show_all)
+            return [{'id': 5, 'name': 'WithShowAll', 'channels': 1}]
+
+        monkeypatch.setattr("dictation.list_microphones", _fake_list_microphones)
+
+        app.get_available_microphones()
+
+        assert calls == [True]
 
 
 # ============================================================================
