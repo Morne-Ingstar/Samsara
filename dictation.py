@@ -7080,6 +7080,17 @@ class DictationApp:
             transcribe_params = self.get_transcription_params(include_vocabulary=_is_command_lane)
             transcribe_params['vad_filter'] = False
             transcribe_params['language'] = 'en'
+            if (
+                manager.mode is SessionMode.DICTATE
+                and audio_duration <= 25.0
+            ):
+                context_tail = manager.dictate_context_tail()
+                # 02e00b9: 25 s guard keeps short-turn DICTATE chunks
+                # continuity-biased, but skips long-tail decodes where
+                # Whisper can become unstable when initial_prompt carries
+                # conversational context.
+                if context_tail:
+                    transcribe_params['initial_prompt'] = context_tail
 
             with self.model_lock:
                 segments, _ = self.model.transcribe(audio, **transcribe_params)
