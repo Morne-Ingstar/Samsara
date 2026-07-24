@@ -16,13 +16,49 @@ atomicity argument.
 
 == Resampling ==
 
-Native device rate → 16kHz int16 via scipy.signal.resample_poly with a
-pre-computed up/down ratio initialized in start(). For 44100Hz input:
+Native device rate → 16kHz int16 via a numpy-only polyphase resample with
+a pre-computed up/down ratio AND pre-designed filter, both initialized in
+_open_stream() (non-RT). For 44100Hz input:
   up=160, down=441  →  4410 samples → exactly 1600 samples = FRAME_SIZE.
 For 48000Hz input:
   up=1, down=3      →  4800 samples → exactly 1600 samples = FRAME_SIZE.
 The output is guaranteed to be FRAME_SIZE via pad/truncate with a warning
 flag if the resampler produces an unexpected count.
+
+_polyphase_resample() below is a from-scratch, numpy-only implementation
+that is numerically equivalent (see tests/audio_engine/
+test_resample_equivalence.py, float32-noise-level tolerance) to
+scipy.signal.resample_poly(x, up, down) with its default filter design
+and padtype='constant' boundary -- it does NOT call resample_poly itself.
+
+WHY: 2026-07-2x P0 incident. resample_poly calls scipy's array-API-compat
+layer (array_namespace(x)) on EVERY invocation, which does an
+unconditional getattr(torch, 'Tensor') whenever 'torch' is present in
+sys.modules at all -- including while torch is still mid-import in
+another thread (sys.modules['torch'] exists from the moment import
+*starts*, well before the module body finishes executing and binds
+`Tensor`). This crashed the PortAudio realtime callback
+(_on_audio_block, below) on EVERY block while the async model loader's
+background thread was importing torch, with AttributeError: "partially
+initialized module 'torch' has no attribute 'Tensor'".
+
+UNDOCUMENTED ORDERING DEPENDENCY (now documented, was implicit): before
+boot-fix commit 7faf4e2, this module's `from scipy.signal import
+resample_poly` was a LAZY import inside dictation.py's
+_start_ace_engine(), taking ~11.4s (cold scipy.signal import). That
+accidentally serialized engine start behind the async model loader's own
+torch import in most real boots -- by the time the slow scipy import
+finished, torch had usually already finished importing too, so the race
+never fired. 7faf4e2 hoisted that import to module load (correctly, for
+boot-time reasons unrelated to this), which starts the engine much
+earlier and reliably exposed the always-latent race: the engine can now
+easily start (and produce its first callback) WHILE torch is still
+mid-import in the background thread. Do not "fix" this by re-introducing
+a lazy/delayed import anywhere in the ACE startup path -- fix the actual
+hazard, which is calling anything array-API-probing from the RT callback
+thread at all. firwin (used below, at stream-open only, never per block)
+does NOT trigger this probing -- verified empirically; see
+_design_polyphase_filter's docstring.
 
 == Consumer lifecycle ==
 
@@ -37,7 +73,6 @@ from typing import Any
 
 import numpy as np
 
-from scipy.signal import resample_poly
 from .frame import FRAME_SIZE, PREBUFFER_FRAMES, SAMPLE_RATE
 from .ring import FrameBus, Reader
 from samsara.log import get_logger
@@ -53,6 +88,93 @@ def _gcd(a: int, b: int) -> int:
     while b:
         a, b = b, a % b
     return a
+
+
+def _design_polyphase_filter(up: int, down: int) -> tuple[np.ndarray, int, int]:
+    """Precompute (h_padded, taps_per_phase, n_pre_remove) for a given
+    up/down ratio (already GCD-reduced, coprime). Replicates scipy.signal.
+    resample_poly's own default filter design exactly (firwin, window=
+    ('kaiser', 5.0), padtype='constant'/cval=0 boundary) -- see
+    _polyphase_resample for how these three values are used, and
+    tests/audio_engine/test_resample_equivalence.py for the numerical
+    verification against the real resample_poly.
+
+    Safe to call while another thread has torch mid-import: firwin does
+    NOT go through scipy's array-API-compat probing the way resample_poly
+    does (verified empirically -- calling firwin with a broken/partially-
+    initialized torch module already present in sys.modules does not
+    raise, where calling resample_poly the same way does). Still, this is
+    only ever called from _open_stream(), once per stream open -- never
+    from the RT callback.
+    """
+    from scipy.signal import firwin  # noqa: PLC0415 -- stream-open only, see docstring
+
+    max_rate = max(up, down)
+    f_c = 1.0 / max_rate
+    half_len = 10 * max_rate
+    h = firwin(2 * half_len + 1, f_c, window=('kaiser', 5.0)).astype(np.float64)
+    h = h * up
+
+    n_pre_pad = down - (half_len % down)
+    h = np.concatenate([np.zeros(n_pre_pad), h])
+    n_pre_remove = (half_len + n_pre_pad) // down
+
+    # Pad h's length up to a multiple of `up` so every polyphase "phase"
+    # (h[phase::up]) has exactly the same number of taps -- the trailing
+    # zeros contribute nothing, they just keep _polyphase_resample's loop
+    # below rectangular instead of ragged.
+    taps_per_phase = -(-len(h) // up)  # ceil division
+    h_padded = np.concatenate([h, np.zeros(taps_per_phase * up - len(h))])
+
+    return h_padded, taps_per_phase, n_pre_remove
+
+
+def _polyphase_resample(
+    x: np.ndarray,
+    up: int,
+    down: int,
+    h_padded: np.ndarray,
+    taps_per_phase: int,
+    n_pre_remove: int,
+    n_out: int,
+) -> np.ndarray:
+    """Numpy-only polyphase resample -- upfirdn-equivalent to
+    scipy.signal.resample_poly(x, up, down) with its default filter
+    design and zero (padtype='constant') boundary. Verified within
+    float32-noise tolerance of the real resample_poly -- see
+    tests/audio_engine/test_resample_equivalence.py.
+
+    Deliberately does NOT call scipy.signal.resample_poly or import scipy
+    at all: see this module's docstring ("Resampling" / "WHY") for the
+    2026-07-2x incident this exists to fix -- resample_poly is not safe
+    to call from the RT callback thread while torch may be mid-import
+    elsewhere. h_padded/taps_per_phase/n_pre_remove come from
+    _design_polyphase_filter(up, down), computed once at stream open.
+
+    Derivation: for output index m (0-indexed into the unsliced,
+    conceptual upsample-then-filter-then-downsample result), position
+    pos = m * down lands in the upsampled-filter domain; phase = pos % up
+    selects which "polyphase branch" of h applies, and x_index = pos //
+    up is the input sample the branch is centered on. The real output is
+    the slice starting at n_pre_remove (scipy's own centering offset).
+    """
+    pad = taps_per_phase
+    x64 = np.concatenate([
+        np.zeros(pad, dtype=np.float64),
+        x.astype(np.float64),
+        np.zeros(pad, dtype=np.float64),
+    ])
+
+    m = np.arange(n_pre_remove, n_pre_remove + n_out)
+    pos = m * down
+    phase = pos % up
+    x_index = pos // up
+
+    y = np.zeros(n_out, dtype=np.float64)
+    for j in range(taps_per_phase):
+        y += h_padded[phase + j * up] * x64[x_index - j + pad]
+
+    return y.astype(np.float32)
 
 
 class AudioCaptureEngine:
@@ -81,7 +203,8 @@ class AudioCaptureEngine:
         self._down: int       = 1
         self._blocksize:int   = 0
         self._size_warned     = False   # flag set in callback, logged on metrics()
-        self._resample_poly   = None    # bound in start(); None = no resampling needed
+        self._resample_state  = None    # (h_padded, taps_per_phase, n_pre_remove, n_out);
+                                         # bound in _open_stream(); None = no resampling needed
 
         # Overflow counter — plain int, GIL-atomic (ACE-00)
         self._overflow_count: int = 0
@@ -128,10 +251,14 @@ class AudioCaptureEngine:
         that just died, so the ratio is always recomputed here, never
         cached from a prior open.
 
-        Computes the polyphase resample ratio (native_rate → SAMPLE_RATE)
-        once here so the callback never recomputes it. The resampler
-        (scipy.signal.resample_poly) is stateless per-call, so no persistent
-        filter state needs to be carried across callbacks.
+        Computes the polyphase resample ratio AND filter (native_rate →
+        SAMPLE_RATE) once here so the callback never recomputes them or
+        touches scipy at all -- see _polyphase_resample's docstring and
+        this module's docstring ("Resampling" / "WHY") for why the
+        callback must not call scipy.signal.resample_poly. The resampler
+        is stateless per-call (no persistent filter state carried across
+        callbacks -- each block is treated as its own zero-padded-at-the-
+        edges signal, matching resample_poly's own default behavior).
         """
         import sounddevice as sd
 
@@ -162,11 +289,16 @@ class AudioCaptureEngine:
         from .frame import FRAME_MS
         self._blocksize = int(self._native_rate * FRAME_MS // 1000)
 
-        # The function reference is stored on self; the callback uses it directly.
+        # Precompute the polyphase filter once; the callback only does
+        # array arithmetic against these precomputed values (see
+        # _polyphase_resample), never filter design, never scipy.
         if self._up != 1 or self._down != 1:
-            self._resample_poly = resample_poly
+            h_padded, taps_per_phase, n_pre_remove = _design_polyphase_filter(self._up, self._down)
+            n_out = self._blocksize * self._up
+            n_out = n_out // self._down + bool(n_out % self._down)
+            self._resample_state = (h_padded, taps_per_phase, n_pre_remove, n_out)
         else:
-            self._resample_poly = None
+            self._resample_state = None
 
         logger.info(
             f"[ACE] Opening stream: device={device!r}  "
@@ -298,8 +430,12 @@ class AudioCaptureEngine:
         Rules (ACE-00 discipline):
           - No locks.
           - No logging / print.
-          - No dynamic allocation beyond what numpy/scipy internally does
-            (these release the GIL; GC pressure is acceptable per ACE-00).
+          - No dynamic allocation beyond what numpy internally does (numpy
+            releases the GIL; GC pressure is acceptable per ACE-00).
+          - No scipy calls of any kind -- see this module's docstring
+            ("Resampling" / "WHY") for the 2026-07-2x incident where
+            scipy.signal.resample_poly's array-API-compat probing crashed
+            this exact callback while torch was mid-import elsewhere.
           - write_cursor increment is the commit fence (see ring.py).
         """
         t = time.perf_counter()
@@ -309,10 +445,14 @@ class AudioCaptureEngine:
 
         flat = indata[:, 0]   # mono float32, length = blocksize
 
-        # Resample native rate → 16kHz int16.
-        # _resample_poly is bound in start() — no import cost in the callback.
-        if self._resample_poly is not None:
-            resampled = self._resample_poly(flat, self._up, self._down)
+        # Resample native rate → 16kHz int16. _resample_state is bound in
+        # _open_stream() — no filter design, no scipy, no import cost here.
+        if self._resample_state is not None:
+            h_padded, taps_per_phase, n_pre_remove, n_out = self._resample_state
+            resampled = _polyphase_resample(
+                flat, self._up, self._down,
+                h_padded, taps_per_phase, n_pre_remove, n_out,
+            )
         else:
             resampled = flat
 
