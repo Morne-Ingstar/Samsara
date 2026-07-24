@@ -527,6 +527,7 @@ from samsara.alarms import AlarmManager, get_default_alarm_config
 from samsara.echo_cancel import EchoCanceller
 from samsara import audio_ducking
 from samsara import wake_profiles
+from samsara import voice_memo
 from samsara.clipboard import paste_with_preservation
 from samsara.wake_detector import WakeWordDetector
 from samsara.handlers import _get_foreground_exe_lower, _get_foreground_hwnd
@@ -3290,6 +3291,18 @@ class DictationApp:
                 "hands_free_enabled": True,
                 "hands_free_level": 0.15,
                 "hands_free_idle_level": 0.8,
+            },
+            # Voice memo capture (2026-07-24): "voice memo" arms a one-shot
+            # divert of the NEXT hold-to-dictate recording -- instead of
+            # injecting text, the audio + transcript are saved into an
+            # Obsidian vault (see samsara/voice_memo.py). vault_dir/
+            # note_relpath/attachments_relpath are all relative-to-vault
+            # except vault_dir itself, which is an absolute path.
+            "voice_memo": {
+                "vault_dir": "C:\\Users\\Morne\\Documents\\Obsidian Vault",
+                "note_relpath": "Voice Memos.md",
+                "attachments_relpath": "Attachments/Memos",
+                "arm_timeout_s": 120,
             },
             # Hub window geometry (size/position persist across sessions)
             "window_width": 900,
@@ -10412,6 +10425,31 @@ class DictationApp:
                     # history stores what was actually typed (see
                     # _apply_formatting_tokens).
                     text = self._apply_formatting_tokens(text)
+
+                    # Voice memo divert (2026-07-24): "voice memo" arms a
+                    # one-shot capture of the NEXT hold-to-dictate
+                    # recording -- hotkey path only, checked here (after
+                    # the text is fully finalized, before any injection or
+                    # undo-stack bookkeeping) so a captured memo never
+                    # reaches _paste_preserving_clipboard/_record_undoable_
+                    # paste. capture() itself disarms and plays its own
+                    # confirmation; a False return (any failure) falls
+                    # through to normal injection below so a memo failure
+                    # never loses the user's dictation. See
+                    # samsara/voice_memo.py.
+                    if voice_memo.is_armed(self.config) and voice_memo.capture(
+                        self, audio, self.model_rate, text
+                    ):
+                        self.add_to_history("[memo] " + text.strip(), is_command=False)
+                        self._log_history(
+                            raw_text=raw,
+                            display_text="[memo] " + text.strip(),
+                            duration_ms=int(audio_duration * 1000),
+                            mode="hold",
+                            status="success",
+                            entry_type="dictation",
+                        )
+                        return
 
                     logger.info(f"[OK] {text}")
                     self.play_sound("success")
