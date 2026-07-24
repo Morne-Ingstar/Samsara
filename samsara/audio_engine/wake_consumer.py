@@ -158,6 +158,39 @@ class WakeConsumer:
             app._vad_reset()
         except Exception as e:
             logger.debug(f"abort_utterance: vad reset failed: {e}")
+        # Hands-free capture-window ducking: device death mid-capture is a
+        # discard, same as a too-short buffer -- close the window here
+        # (also covers discard_stale_wake_utterance() below, which
+        # delegates to this method).
+        self._close_hands_free_duck_safe(app)
+
+    @staticmethod
+    def _open_hands_free_duck_safe(app) -> None:
+        """Best-effort call to dictation.py's _open_hands_free_capture_
+        duck -- see _close_hands_free_duck_safe's docstring for why this
+        is a safe/no-op-tolerant accessor rather than a direct call."""
+        open_duck = getattr(app, '_open_hands_free_capture_duck', None)
+        if open_duck is not None:
+            try:
+                open_duck()
+            except Exception as exc:
+                logger.debug(f"_open_hands_free_duck_safe: {exc}")
+
+    @staticmethod
+    def _close_hands_free_duck_safe(app) -> None:
+        """Best-effort call to dictation.py's _close_hands_free_capture_
+        duck -- a no-op if hands-free ducking isn't wired (e.g. a minimal
+        test double for `app`) or disabled in config. Centralized here so
+        every capture-window-close call site (silence-timeout discard,
+        abort_utterance, _flush's dispatch wrapper, the toggle-mode FIFO
+        worker) shares one safe accessor instead of repeating the
+        getattr(...) dance."""
+        close_duck = getattr(app, '_close_hands_free_capture_duck', None)
+        if close_duck is not None:
+            try:
+                close_duck()
+            except Exception as exc:
+                logger.debug(f"_close_hands_free_duck_safe: {exc}")
 
     def discard_stale_wake_utterance(self) -> None:
         """FIX 1 (2026-07-10 hotkey word-loss investigation): discard any
@@ -295,11 +328,14 @@ class WakeConsumer:
 
             if not self._is_toggle_cmd(self._app):
                 logger.info('[CMD-UTT] Session ended -- discarding queued post-exit utterance')
+                self._close_hands_free_duck_safe(self._app)
                 continue
             try:
                 self._app._handle_command_mode_utterance(buffer_copy, SAMPLE_RATE)
             except Exception as exc:
                 logger.exception(f'[CMD-UTT] FIFO worker error: {exc}')
+            finally:
+                self._close_hands_free_duck_safe(self._app)
 
     def _poll_loop(self) -> None:
         app = self._app
@@ -578,6 +614,11 @@ class WakeConsumer:
             app.silence_start = None
 
             if speech_onset:
+                # Hands-free capture-window ducking (2026-07-24): OPEN at
+                # the earliest possible signal that an utterance is being
+                # captured -- wake onset accepted. See dictation.py's
+                # _open_hands_free_capture_duck.
+                self._open_hands_free_duck_safe(app)
                 # Ring prebuffer rewind: replaces the legacy _prebuffer deque drain.
                 # Rewind PREBUFFER_FRAMES and re-read them into the utterance buffer.
                 # The current frame (raw_chunk) is included in the re-read since the
@@ -690,6 +731,26 @@ class WakeConsumer:
 
                     if buffer_copy is not None:
                         self._flush(buffer_copy)
+                    else:
+                        # Too short to count as a real utterance -- the
+                        # capture window this onset opened closes here
+                        # (buffer discarded, never reaches _flush at all).
+                        self._close_hands_free_duck_safe(app)
+
+    @staticmethod
+    def _wrap_with_duck_close(app, fn):
+        """Wrap a dispatched utterance-processing function so the capture-
+        window duck always closes once it returns -- success, an internal
+        early return, or an exception (finally-shape: the ducking design
+        explicitly requires errors to still restore). Runs on whatever
+        thread the wrapped function itself runs on (a freshly spawned
+        daemon thread for every call site below), not this poll thread."""
+        def _wrapped(*args, **kwargs):
+            try:
+                fn(*args, **kwargs)
+            finally:
+                WakeConsumer._close_hands_free_duck_safe(app)
+        return _wrapped
 
     def _flush(self, buffer_copy: list) -> None:
         """Dispatch utterance to process_wake_word_buffer, respecting OWW gate."""
@@ -699,7 +760,7 @@ class WakeConsumer:
         if self._is_ai_cmd_mode(app):
             thread_registry.spawn(
                 'ava-cmd-utt',
-                app._handle_ava_command_utterance,
+                self._wrap_with_duck_close(app, app._handle_ava_command_utterance),
                 args=(buffer_copy, SAMPLE_RATE),
                 daemon=True,
             )
@@ -707,7 +768,9 @@ class WakeConsumer:
 
         # Toggle command mode: bypass OWW gate and execute as a single command
         # utterance.  The WakeConsumer re-arms automatically for the next
-        # utterance; no external re-arm call is needed.
+        # utterance; no external re-arm call is needed. Capture-window close
+        # happens inside _drain_toggle_utterances (the actual processing
+        # point), not here (enqueueing is not processing).
         if self._is_toggle_cmd(app):
             self._enqueue_toggle_utterance(buffer_copy)
             return
@@ -731,6 +794,9 @@ class WakeConsumer:
         if _primary_oww_eligible and not _primary_oww_hit and not _has_wake_profiles:
             if app._wake_detector is not None:
                 app._wake_detector.reset()
+            # Rejected before any dispatch -- this IS the capture window's
+            # close (nothing else will ever process this buffer).
+            self._close_hands_free_duck_safe(app)
             return
 
         # Preserve the detector result across the async dispatch. An OWW hit
@@ -749,14 +815,14 @@ class WakeConsumer:
                 app._pending_transcriptions += 1
             thread_registry.spawn(
                 "wake_consumer._process_wake_word_buffer_tracked",
-                app._process_wake_word_buffer_tracked,
+                self._wrap_with_duck_close(app, app._process_wake_word_buffer_tracked),
                 args=(buffer_copy, SAMPLE_RATE),
                 daemon=True,
             )
         else:
             thread_registry.spawn(
                 "wake_consumer.process_wake_word_buffer",
-                app.process_wake_word_buffer,
+                self._wrap_with_duck_close(app, app.process_wake_word_buffer),
                 args=(buffer_copy, SAMPLE_RATE),
                 kwargs={"oww_confirmed": oww_confirmed},
                 daemon=True,
