@@ -169,7 +169,11 @@ def run_old(app: Any, utterance: str, model: str, host: str) -> dict:
 # ---------------------------------------------------------------------------
 
 def run_new(app: Any, utterance: str, model: str, host: str, shortlist_size: int) -> dict:
-    from samsara.ava_command_session import _match_action2_grammar, _build_shortlist
+    from samsara.ava_command_session import (
+        _build_shortlist,
+        _closed_world_selection_ok,
+        _match_action2_grammar,
+    )
     from plugins.commands import ask_ollama
 
     t0 = time.perf_counter()
@@ -207,18 +211,22 @@ def run_new(app: Any, utterance: str, model: str, host: str, shortlist_size: int
             "error": "ollama_down",
         }
     parsed = ask_ollama._parse_structured_response(response)
+    # hit == whether this response would actually reach
+    # ask_ollama.handle_response() in the real _stage_c_llm_fallback --
+    # i.e. the SAME closed-world gate the shipped code enforces (spec RULE
+    # CHANGE, defect found in a G1 replay rerun: an ungated stage (c) was
+    # fabricating novel commands from nonsense input). "resolved" below is
+    # always the model's ATTEMPTED response, hit or not, so a rejected
+    # fabrication is still visible in the report/misfire-detail table.
+    hit = _closed_world_selection_ok(parsed, shortlist)
     if parsed["type"] == "conversation":
         resolved = None
-        hit = False
     elif parsed["type"] == "action":
         resolved = parsed["command"]
-        hit = True
     elif parsed["type"] == "action2":
         resolved = f"ACTION2 {parsed['verb']}|{parsed['argument']}"
-        hit = True
     else:
         resolved = f"SCHEDULE {parsed.get('command') or parsed.get('key')}"
-        hit = True
     return {
         "stage": "c", "hit": hit, "resolved": resolved,
         "stage_a_ms": stage_a_ms, "stage_b_ms": stage_b_ms, "stage_c_ms": stage_c_ms,
@@ -286,9 +294,14 @@ def main() -> int:
     _report("NEW (samsara.ava_command_session waterfall)", new_rows, old=False)
     print("=" * 78)
     if old_unavailable:
-        print("Bars check skipped: no OLD-side data (module deleted).")
+        print("OLD-vs-NEW comparison bars skipped: no OLD-side data (module deleted).")
     else:
         _bars_check(old_rows, new_rows)
+    # False-accept bar is NEW-only (no OLD-side data needed) so it always
+    # runs, even after ai_command_mode.py is gone -- this is the gate for
+    # the 2026-07-23 stage-(c) closed-world fix, a later pass than the
+    # original deletion these OLD-comparison bars above were gating.
+    _false_accept_bar(new_rows)
     return 0
 
 
@@ -301,6 +314,14 @@ def _report(title: str, rows: list[dict], *, old: bool) -> None:
     print(f"  n={total}  success={n_success} ({100*n_success/total:.0f}%)  "
           f"ambiguous={n_ambiguous} ({100*n_ambiguous/total:.0f}%)  "
           f"miss={n_miss} ({100*n_miss/total:.0f}%)")
+
+    nonsense_rows = [r for r in rows if r["category"] == "nonsense"]
+    n_false_accept = sum(
+        1 for r in nonsense_rows if (bool(r.get("actions")) if old else bool(r.get("hit")))
+    )
+    if nonsense_rows:
+        print(f"  false-accept rate (nonsense utterances resolver claimed a command for): "
+              f"{n_false_accept}/{len(nonsense_rows)} ({100*n_false_accept/len(nonsense_rows):.0f}%)")
 
     if old:
         multi = sum(1 for r in rows if r.get("multi_action"))
@@ -349,6 +370,30 @@ def _bars_check(old_rows: list[dict], new_rows: list[dict]) -> None:
         print("  ALL BARS PASSED -- safe to proceed with deletion.")
     else:
         print("  BARS FAILED -- STOP. Do not delete ai_command_mode.py.")
+
+
+def _false_accept_bar(new_rows: list[dict]) -> None:
+    """2026-07-23 stage-(c) closed-world-fix gate: a G1 replay rerun found
+    stage (c) fabricating novel commands from nonsense input (zero misses
+    on the 5-utterance nonsense corpus) -- ANY resolved command for a
+    nonsense-category utterance is a false accept, and the bar is 0,
+    not "close to 0". See samsara.ava_command_session._closed_world_
+    selection_ok, the code gate this metric verifies is actually holding."""
+    nonsense_rows = [r for r in new_rows if r["category"] == "nonsense"]
+    n_false_accept = sum(1 for r in nonsense_rows if r["hit"])
+    rate = n_false_accept / len(nonsense_rows) if nonsense_rows else 0.0
+
+    print("STAGE (c) CLOSED-WORLD GATE:")
+    ok = n_false_accept == 0
+    print(f"  [{'PASS' if ok else 'FAIL'}] NEW nonsense false-accept rate "
+          f"({n_false_accept}/{len(nonsense_rows)} = {rate:.0%}) == 0")
+    if ok:
+        print("  Closed-world gate holding -- no fabricated command reached execution.")
+    else:
+        print("  FALSE ACCEPTS -- STOP. Stage (c)'s closed-world gate is not holding.")
+        for r in nonsense_rows:
+            if r["hit"]:
+                print(f"    {r['utterance']!r} -> {r.get('resolved')!r}")
 
 
 if __name__ == "__main__":
