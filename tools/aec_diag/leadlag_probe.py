@@ -1,9 +1,9 @@
 """run: causality check on captured loopback vs mic delay."""
 
 from __future__ import annotations
+from samsara.runtime import thread_registry
 
 import argparse
-import threading
 import sys
 import time
 from pathlib import Path
@@ -85,12 +85,12 @@ def run_probe(args: argparse.Namespace) -> int:
 
     start = time.perf_counter()
     playback = np.asarray(waveform, dtype=np.float32)
-    playback_thread = threading.Thread(
-        target=run_repeating_playback,
+    playback_thread = thread_registry.spawn(
+        "aec_diag.leadlag_playback",
+        run_repeating_playback,
         args=(sd, playback, rate, default_out, args.volume),
         daemon=True,
     )
-    playback_thread.start()
 
     window_count = max(1, int(args.duration / max(args.window, 0.1)))
     per_window = []

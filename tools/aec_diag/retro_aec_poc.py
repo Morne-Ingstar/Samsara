@@ -1,6 +1,7 @@
 """run: quick offline AEC proof-of-concept with operator key marker."""
 
 from __future__ import annotations
+from samsara.runtime import thread_registry
 
 import argparse
 import sys
@@ -98,13 +99,12 @@ def run_probe(args: argparse.Namespace) -> int:
         return 1
 
     probe = build_probe_waveform(rate, max(args.timeout, args.duration + 2.0), symbol_seconds=0.25)
-    import threading
-    player = threading.Thread(
-        target=run_repeating_playback,
+    player = thread_registry.spawn(
+        "aec_diag.retro_poc_playback",
+        run_repeating_playback,
         args=(sd, probe, rate, default_out, args.volume),
         daemon=True,
     )
-    player.start()
 
     print("[AEC-DIAG] Capturing audio continuously. Press a key to run offline AEC on the latest 3 seconds.")
     if not _wait_for_keypress(args.timeout):
