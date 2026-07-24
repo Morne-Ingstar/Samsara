@@ -1418,8 +1418,82 @@ LOG_FILE = LOG_DIR / "samsara.log"
 
 _log_fmt = logging.Formatter("%(asctime)s - %(levelname)s - %(message)s")
 
+
+class _SafeRotatingFileHandler(_RotatingFileHandler):
+    """RotatingFileHandler hardened against a Windows rollover failure that
+    silently freezes logging forever (2026-07-20 incident: samsara.log
+    stuck at exactly 5,242,880 bytes -- maxBytes -- for days with zero
+    output; samsara.log.3 existed but .1/.2 did not, meaning a rollover
+    got partway through its rename chain and then died).
+
+    Root cause: stock doRollover() closes self.stream FIRST, then renames
+    .2->.3, .1->.2, and finally current->.1 in that order, only reopening
+    self.stream (`self.stream = self._open()`) after ALL renames succeed.
+    If any rename in that chain raises -- e.g. PermissionError because a
+    second process (another Samsara instance, a diagnostic tool, AV
+    scanning a backup file) holds an open handle on one of the backup
+    files without FILE_SHARE_DELETE, which plain Python open() does not
+    request on Windows -- the exception propagates out of doRollover().
+    RotatingFileHandler.emit() catches it via handleError(), which is a
+    silent no-op whenever sys.stderr is None (true for this app's
+    windowless packaged EXE, see the console_handler fallback just
+    below). self.stream is left None; the CURRENT oversized log file was
+    NEVER renamed away (that step -- self.rotate(baseFilename, dfn) --
+    never runs, since the exception hits earlier in the chain) or
+    reopened. Every subsequent emit() reopens that SAME still-oversized
+    file (shouldRollover's own `if self.stream is None: self.stream =
+    self._open()`), sees it is still >= maxBytes, retries the identical
+    doomed rollover, and fails again -- forever, in total silence.
+
+    Fix: never let a rollover failure leave the handler unable to write.
+    If the normal rename chain raises, give up on preserving this
+    rotation's history and truncate the current file in place instead --
+    logging keeps working, which is what actually matters; losing one
+    rotation cycle's backups is an acceptable trade for never silently
+    losing ALL future logging.
+    """
+
+    def doRollover(self):
+        try:
+            super().doRollover()
+        except Exception as exc:
+            self._truncate_and_continue(exc)
+
+    def _truncate_and_continue(self, exc: Exception) -> None:
+        try:
+            print(f"[LOG] Rollover failed ({exc!r}) -- truncating "
+                  f"{self.baseFilename} and continuing rather than freezing.",
+                  file=sys.stderr)
+        except Exception:
+            pass
+        try:
+            if self.stream:
+                self.stream.close()
+                self.stream = None
+        except Exception:
+            pass
+        try:
+            # 'w' (truncate), not 'a': the file is at/over maxBytes and the
+            # normal rename chain couldn't move it out of the way, so
+            # truncating in place is the only way left to guarantee writes
+            # keep landing on disk instead of piling onto an oversized file
+            # or, worse, going nowhere.
+            self.stream = open(self.baseFilename, mode='w', encoding=self.encoding)
+        except Exception as reopen_exc:
+            # Truly cannot open the log file (e.g. directory gone, disk
+            # full) -- nothing more this handler can do. self.stream stays
+            # None; shouldRollover's own reopen-on-None will keep retrying
+            # on the next emit(), same as stock behavior for a hard
+            # filesystem failure this class was never meant to paper over.
+            try:
+                print(f"[LOG] Could not reopen {self.baseFilename} after "
+                      f"rollover failure: {reopen_exc!r}", file=sys.stderr)
+            except Exception:
+                pass
+
+
 # File handler — DEBUG level, rotating 5 MB × 3 backups, UTF-8
-file_handler = _RotatingFileHandler(
+file_handler = _SafeRotatingFileHandler(
     LOG_FILE,
     maxBytes=5 * 1024 * 1024,
     backupCount=3,
@@ -1466,6 +1540,44 @@ _root_logger.addHandler(console_handler)
 
 # Keep a named logger for Samsara's own print-override path
 logger = logging.getLogger("Samsara")
+
+
+def _verify_logging_self_check() -> bool:
+    """Boot-time self-check (2026-07-20 incident): write a marker line
+    right after logging init and confirm samsara.log's size/mtime
+    actually moved. The failure mode that froze logging for days (see
+    _SafeRotatingFileHandler's docstring) left every write silently
+    dropped -- this catches that class of failure at boot, in seconds,
+    instead of discovering it days later when the log is needed and
+    empty. Best-effort: any exception here is itself reported (never
+    raised) and treated as a failed check rather than crashing startup
+    over a diagnostic.
+    """
+    try:
+        before = LOG_FILE.stat() if LOG_FILE.exists() else None
+        before_size = before.st_size if before else -1
+        before_mtime = before.st_mtime if before else -1
+        logger.info(f"[BOOT-DIAG] logging self-check marker {time.time()}")
+        file_handler.flush()
+        after = LOG_FILE.stat()
+        moved = after.st_size != before_size or after.st_mtime != before_mtime
+        if not moved:
+            print(f"[LOG] WARNING: logging self-check found no size/mtime "
+                  f"change on {LOG_FILE} after a marker write -- logging "
+                  f"may be silently stuck.", file=sys.stderr)
+        return moved
+    except Exception as exc:
+        try:
+            print(f"[LOG] Logging self-check failed: {exc!r}", file=sys.stderr)
+        except Exception:
+            pass
+        return False
+
+
+# Read by DictationApp.__init__ (self._logging_self_check_failed) and
+# surfaced as a visible tray warning once the app is fully up -- see
+# samsara/ui/tray_qt.py's _poll_startup_health.
+LOGGING_SELF_CHECK_OK = _verify_logging_self_check()
 
 # Suppress noisy third-party debug output
 logging.getLogger("PIL").setLevel(logging.WARNING)
@@ -1827,6 +1939,11 @@ def _reap_old_preview_profiles() -> None:
 class DictationApp:
     def __init__(self, splash=None):
         self.splash = splash
+        # See _verify_logging_self_check() / _SafeRotatingFileHandler above:
+        # surfaced as a tray warning once startup finishes (tray_qt.py's
+        # _poll_startup_health), not blocked on here -- a logging problem
+        # must never prevent the app from starting.
+        self._logging_self_check_failed = not LOGGING_SELF_CHECK_OK
         # Startup work is split between this thread and the asynchronous model
         # loader.  Keep splash progress monotonic when those two lanes report
         # at nearly the same time.

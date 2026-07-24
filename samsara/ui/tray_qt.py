@@ -162,6 +162,21 @@ class SamsaraTrayQt(QObject):
 
         self._startup_health_done = True
         self._startup_health_timer.stop()
+
+        # 2026-07-20 incident: logging can silently freeze forever (see
+        # dictation.py's _SafeRotatingFileHandler / _verify_logging_self_
+        # check). Surface it here, once, after the app is confirmed fully
+        # operational -- never blocks or delays startup itself.
+        if bool(vars(self._app).get("_logging_self_check_failed", False)):
+            self._tray.showMessage(
+                "Samsara logging warning",
+                "Logging may not be writing to disk correctly. If you need "
+                "to report a bug, check that ~/.samsara/logs/samsara.log "
+                "is updating.",
+                QSystemTrayIcon.MessageIcon.Warning,
+                10000,
+            )
+
         try:
             from samsara.updater import reconcile_update_on_startup
 

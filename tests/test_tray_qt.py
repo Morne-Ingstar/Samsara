@@ -300,3 +300,72 @@ class TestIconGeometryRefresh:
         t, app = tray
         t.stop()
         assert not t._icon_refresh_timer.isActive()
+
+
+class TestLoggingSelfCheckWarning:
+    """2026-07-20 incident: logging can silently freeze forever (see
+    dictation.py's _SafeRotatingFileHandler / _verify_logging_self_check).
+    _poll_startup_health surfaces that as a one-time tray warning once the
+    app is confirmed fully operational (_splash_progress == 100)."""
+
+    def _ready_app(self):
+        app = _make_app()
+        app._splash_progress = 100
+        return app
+
+    def _quiet_update_check(self, monkeypatch):
+        # Not under test here -- keep _poll_startup_health's unrelated
+        # update-reconciliation branch inert so these tests only exercise
+        # the new logging-warning branch.
+        monkeypatch.setattr("samsara.updater.reconcile_update_on_startup", Mock(return_value=None))
+        monkeypatch.setattr("samsara.ui.update_qt.maybe_start_automatic_update_check", Mock())
+
+    def test_shows_tray_warning_when_self_check_failed(self, qapp, monkeypatch):
+        self._quiet_update_check(monkeypatch)
+        app = self._ready_app()
+        app._logging_self_check_failed = True
+        t = SamsaraTrayQt(app)
+        t._tray.showMessage = Mock()
+
+        t._poll_startup_health()
+
+        titles = [c.args[0] for c in t._tray.showMessage.call_args_list]
+        assert "Samsara logging warning" in titles
+
+    def test_no_tray_warning_when_self_check_passed(self, qapp, monkeypatch):
+        self._quiet_update_check(monkeypatch)
+        app = self._ready_app()
+        app._logging_self_check_failed = False
+        t = SamsaraTrayQt(app)
+        t._tray.showMessage = Mock()
+
+        t._poll_startup_health()
+
+        titles = [c.args[0] for c in t._tray.showMessage.call_args_list]
+        assert "Samsara logging warning" not in titles
+
+    def test_no_tray_warning_when_flag_absent(self, qapp, monkeypatch):
+        # Every other Mock()-based app double in this file never sets this
+        # attribute -- vars(...).get(..., False) must default safely, not
+        # raise, so the rest of this test file stays unaffected.
+        self._quiet_update_check(monkeypatch)
+        app = self._ready_app()
+        t = SamsaraTrayQt(app)
+        t._tray.showMessage = Mock()
+
+        t._poll_startup_health()
+
+        titles = [c.args[0] for c in t._tray.showMessage.call_args_list]
+        assert "Samsara logging warning" not in titles
+
+    def test_warning_not_shown_before_startup_reaches_100_percent(self, qapp, monkeypatch):
+        self._quiet_update_check(monkeypatch)
+        app = _make_app()
+        app._splash_progress = 60
+        app._logging_self_check_failed = True
+        t = SamsaraTrayQt(app)
+        t._tray.showMessage = Mock()
+
+        t._poll_startup_health()
+
+        t._tray.showMessage.assert_not_called()
