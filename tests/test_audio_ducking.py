@@ -1,15 +1,6 @@
-"""Tests for samsara.audio_ducking's duck/restore state machine, with the
-entire Core Audio COM layer mocked -- no audio hardware, no live COM calls,
-no real ctypes vtable dispatch. Every test patches _ensure_com_init,
-_iter_session_enumerators, _iter_sessions, _get_session_volume,
-_set_session_volume, and _release at the module level, so only the pure
-Python duck()/restore() state-machine logic is under test.
+"""Tests for the session ducking engine API."""
 
-Live COM-layer verification (real GUIDs/vtable indices against a running
-Windows Core Audio session set) was done manually during development, not
-here -- see samsara/audio_ducking.py's module docstring.
-"""
-from unittest.mock import patch
+from __future__ import annotations
 
 import pytest
 
@@ -17,349 +8,168 @@ from samsara import audio_ducking as ad
 
 
 class FakeSession:
-    """Stand-in for a (instance_id, pid, is_system_sounds, simple_volume)
-    tuple's simple_volume slot -- get/set operate on .level directly, no
-    ctypes involved."""
-
-    def __init__(self, instance_id, pid, level, is_system_sounds=False):
-        self.instance_id = instance_id
+    def __init__(self, session_id: str, pid: int, volume: float = 1.0):
+        self.session_id = session_id
         self.pid = pid
-        self.is_system_sounds = is_system_sounds
-        self.level = level
-        self.released = False
+        self.volume = volume
+        self.closed = False
+        self.volume_calls: list[float] = []
 
-    def as_tuple(self):
-        return (self.instance_id, self.pid, self.is_system_sounds, self)
+    def get_master_volume(self) -> float:
+        return self.volume
+
+    def set_master_volume(self, level: float) -> None:
+        self.volume = float(level)
+        self.volume_calls.append(float(level))
+
+    def close(self) -> None:
+        self.closed = True
 
 
 @pytest.fixture(autouse=True)
-def reset_module_state():
-    """audio_ducking keeps module-level mutable state (_ducked,
-    _saved_volumes) -- reset before and after every test so tests can't
-    leak state into each other regardless of pass/fail."""
-    ad._ducked = False
-    ad._saved_volumes = {}
-    yield
-    ad._ducked = False
-    ad._saved_volumes = {}
-
-
-@pytest.fixture
-def mocked_com(monkeypatch):
-    """Patches the entire COM boundary. `sessions` is a mutable list of
-    FakeSession the test can populate/mutate between duck() and restore()
-    calls (e.g. to simulate a session vanishing). Single fake device/
-    enumerator -- these tests exercise the duck()/restore() state machine,
-    not the multi-device fan-out itself (see TestMultiDevice for that)."""
-    sessions = []
-
-    def fake_get_volume(iface):
-        return iface.level
-
-    def fake_set_volume(iface, level):
-        iface.level = level
-        return True
-
-    def fake_release(iface):
-        if hasattr(iface, 'released'):
-            iface.released = True
-
-    monkeypatch.setattr(ad, '_ensure_com_init', lambda: True)
-    monkeypatch.setattr(ad, '_iter_session_enumerators', lambda: iter([object()]))
-    monkeypatch.setattr(ad, '_iter_sessions', lambda _enum: iter([s.as_tuple() for s in sessions]))
-    monkeypatch.setattr(ad, '_get_session_volume', fake_get_volume)
-    monkeypatch.setattr(ad, '_set_session_volume', fake_set_volume)
-    monkeypatch.setattr(ad, '_release', fake_release)
-    return sessions
-
-
-class TestDuck:
-    def test_ducks_non_self_non_system_sessions(self, mocked_com):
-        other = FakeSession('inst-a', pid=999, level=0.8)
-        mocked_com.append(other)
-
-        with patch.object(ad.os, 'getpid', return_value=1234):
-            ad.duck(0.2)
-
-        assert other.level == pytest.approx(0.2)
-        assert ad.is_ducked() is True
-
-    def test_skips_own_process_session(self, mocked_com):
-        own = FakeSession('inst-self', pid=1234, level=0.9)
-        other = FakeSession('inst-other', pid=999, level=0.8)
-        mocked_com.extend([own, other])
-
-        with patch.object(ad.os, 'getpid', return_value=1234):
-            ad.duck(0.1)
-
-        assert own.level == pytest.approx(0.9)  # untouched
-        assert other.level == pytest.approx(0.1)  # ducked
-
-    def test_skips_system_sounds_session(self, mocked_com):
-        system = FakeSession('inst-sys', pid=999, level=1.0, is_system_sounds=True)
-        other = FakeSession('inst-other', pid=888, level=1.0)
-        mocked_com.extend([system, other])
-
-        with patch.object(ad.os, 'getpid', return_value=1234):
-            ad.duck(0.1)
-
-        assert system.level == pytest.approx(1.0)  # untouched
-        assert other.level == pytest.approx(0.1)
-
-    def test_records_pre_duck_volume(self, mocked_com):
-        other = FakeSession('inst-a', pid=999, level=0.73)
-        mocked_com.append(other)
-
-        with patch.object(ad.os, 'getpid', return_value=1234):
-            ad.duck(0.2)
-
-        assert ad._saved_volumes['inst-a'] == pytest.approx(0.73)
-
-    def test_is_idempotent_when_already_ducked(self, mocked_com):
-        other = FakeSession('inst-a', pid=999, level=0.8)
-        mocked_com.append(other)
-
-        with patch.object(ad.os, 'getpid', return_value=1234):
-            ad.duck(0.2)
-            other.level = 0.2  # simulate the duck having taken effect
-            ad.duck(0.05)  # second call must be a no-op
-
-        # Saved volume is still the ORIGINAL 0.8, not re-captured at 0.2 --
-        # proves the second duck() call did nothing.
-        assert ad._saved_volumes['inst-a'] == pytest.approx(0.8)
-
-    def test_no_sessions_playing_is_safe(self, mocked_com):
-        with patch.object(ad.os, 'getpid', return_value=1234):
-            ad.duck(0.2)
-        assert ad.is_ducked() is True
-        assert ad._saved_volumes == {}
-
-    def test_com_init_failure_is_a_no_op(self, monkeypatch):
-        monkeypatch.setattr(ad, '_ensure_com_init', lambda: False)
-        ad.duck(0.2)
-        assert ad.is_ducked() is False
-
-    def test_enumerator_failure_is_a_no_op(self, monkeypatch):
-        """No devices/enumerators at all -- e.g. CoCreateInstance or
-        EnumAudioEndpoints itself failed. _iter_session_enumerators yields
-        nothing on that path (see its own docstring)."""
-        monkeypatch.setattr(ad, '_ensure_com_init', lambda: True)
-        monkeypatch.setattr(ad, '_iter_session_enumerators', lambda: iter([]))
-        ad.duck(0.2)
-        assert ad.is_ducked() is False
+def no_threads(monkeypatch):
+    class NoopTimer:
+        def __init__(self, *_args, **_kwargs):
+            self.cancelled = False
 
-    def test_never_raises_on_unexpected_exception(self, monkeypatch):
-        monkeypatch.setattr(ad, '_ensure_com_init', lambda: True)
+        def start(self):
+            return None
 
-        def boom():
-            raise OSError("simulated COM failure")
+        def cancel(self):
+            self.cancelled = True
 
-        monkeypatch.setattr(ad, '_iter_session_enumerators', boom)
-        ad.duck(0.2)  # must not raise
-        assert ad.is_ducked() is False
-
-
-class TestRestore:
-    def test_restores_saved_volume(self, mocked_com):
-        other = FakeSession('inst-a', pid=999, level=0.8)
-        mocked_com.append(other)
-
-        with patch.object(ad.os, 'getpid', return_value=1234):
-            ad.duck(0.2)
-        assert other.level == pytest.approx(0.2)
-
-        ad.restore()
-        assert other.level == pytest.approx(0.8)
-
-    def test_clears_ducked_state(self, mocked_com):
-        other = FakeSession('inst-a', pid=999, level=0.8)
-        mocked_com.append(other)
-
-        with patch.object(ad.os, 'getpid', return_value=1234):
-            ad.duck(0.2)
-        ad.restore()
-
-        assert ad.is_ducked() is False
-        assert ad._saved_volumes == {}
-
-    def test_is_a_no_op_when_not_ducked(self, mocked_com):
-        # No duck() call first -- restore() must do nothing and not raise,
-        # even with sessions present that it could (wrongly) touch.
-        other = FakeSession('inst-a', pid=999, level=0.8)
-        mocked_com.append(other)
-
-        ad.restore()
-
-        assert other.level == pytest.approx(0.8)
-        assert ad.is_ducked() is False
-
-    def test_vanished_session_is_skipped_silently(self, mocked_com):
-        """The session ducked in duck() is no longer present when
-        restore() re-enumerates -- e.g. the owning app exited mid-hold.
-        Must not raise, and ducked state must still clear cleanly."""
-        vanishing = FakeSession('inst-vanish', pid=999, level=0.8)
-        staying = FakeSession('inst-stay', pid=888, level=0.6)
-        mocked_com.extend([vanishing, staying])
-
-        with patch.object(ad.os, 'getpid', return_value=1234):
-            ad.duck(0.2)
-
-        # Simulate the vanishing session's process having exited: it's no
-        # longer in the live enumeration restore() will see.
-        mocked_com.remove(vanishing)
-
-        ad.restore()
-
-        assert staying.level == pytest.approx(0.6)  # still correctly restored
-        assert ad.is_ducked() is False
-        assert ad._saved_volumes == {}
-
-    def test_session_started_mid_duck_is_left_alone(self, mocked_com):
-        """A session with no entry in _saved_volumes (wasn't present at
-        duck() time) must not be touched by restore() -- out of scope for
-        v1, per the module's own docstring."""
-        other = FakeSession('inst-a', pid=999, level=0.8)
-        mocked_com.append(other)
-        with patch.object(ad.os, 'getpid', return_value=1234):
-            ad.duck(0.2)
-
-        new_session = FakeSession('inst-new', pid=777, level=0.55)
-        mocked_com.append(new_session)
-
-        ad.restore()
-
-        assert new_session.level == pytest.approx(0.55)  # untouched
-
-    def test_never_raises_on_unexpected_exception(self, mocked_com, monkeypatch):
-        other = FakeSession('inst-a', pid=999, level=0.8)
-        mocked_com.append(other)
-        with patch.object(ad.os, 'getpid', return_value=1234):
-            ad.duck(0.2)
-
-        def boom(_enum):
-            raise OSError("simulated COM failure")
-
-        monkeypatch.setattr(ad, '_iter_sessions', boom)
-        ad.restore()  # must not raise
-
-        # Ducked state still clears even though the COM call blew up --
-        # never leaves the module stuck thinking it's ducked when it
-        # already tried and gave up.
-        assert ad.is_ducked() is False
-
-
-class TestFadeAll:
-    def test_steps_from_source_to_target_over_fixed_steps(self):
-        iface = FakeSession('x', pid=1, level=0.9)
-        seen_levels = []
-        with patch.object(ad, '_set_session_volume',
-                           side_effect=lambda i, lvl: seen_levels.append(lvl) or True), \
-                patch.object(ad, 'time') as mock_time:
-            ad._fade_all([(iface, 0.9, 0.2)])
-        assert len(seen_levels) == ad._FADE_STEPS
-        assert seen_levels[0] > seen_levels[-1]  # ramping down
-        assert seen_levels[-1] == pytest.approx(0.2)  # final step lands exactly on target
-        assert mock_time.sleep.call_count == ad._FADE_STEPS - 1
-
-    def test_empty_targets_does_nothing(self):
-        with patch.object(ad, '_set_session_volume') as mock_set:
-            ad._fade_all([])
-        mock_set.assert_not_called()
-
-
-class TestMultiDevice:
-    """The actual bug this module's ALL-DEVICES fix addresses: sessions
-    rendering on a non-default active endpoint were never enumerated at
-    all (_get_session_enumerator only ever walked GetDefaultAudioEndpoint).
-    Two distinct fake "devices" (session enumerators), each carrying its
-    own session -- duck()/restore() must touch and correctly restore
-    both, not just whichever one happens to be default."""
-
-    def _install(self, monkeypatch, enumerators, sessions_by_enum):
-        def fake_iter_sessions(enum):
-            return iter([s.as_tuple() for s in sessions_by_enum[id(enum)]])
-
-        monkeypatch.setattr(ad, '_ensure_com_init', lambda: True)
-        monkeypatch.setattr(ad, '_iter_session_enumerators', lambda: iter(enumerators))
-        monkeypatch.setattr(ad, '_iter_sessions', fake_iter_sessions)
-        monkeypatch.setattr(ad, '_get_session_volume', lambda iface: iface.level)
-
-        def fake_set_volume(iface, level):
-            iface.level = level
-            return True
-        monkeypatch.setattr(ad, '_set_session_volume', fake_set_volume)
-
-        def fake_release(iface):
-            if hasattr(iface, 'released'):
-                iface.released = True
-        monkeypatch.setattr(ad, '_release', fake_release)
-
-    def test_ducks_and_restores_sessions_on_all_devices(self, monkeypatch):
-        device_a, device_b = object(), object()
-        session_a = FakeSession('inst-a', pid=999, level=0.8)
-        session_b = FakeSession('inst-b', pid=888, level=0.6)
-        self._install(monkeypatch, [device_a, device_b],
-                       {id(device_a): [session_a], id(device_b): [session_b]})
-
-        with patch.object(ad.os, 'getpid', return_value=1234):
-            ad.duck(0.2)
-
-        # Both devices' sessions ducked -- the actual bug (only the
-        # default device's sessions ever moving) would leave session_b
-        # untouched at 0.6 here.
-        assert session_a.level == pytest.approx(0.2)
-        assert session_b.level == pytest.approx(0.2)
-        assert ad._saved_volumes == {'inst-a': pytest.approx(0.8), 'inst-b': pytest.approx(0.6)}
-        assert ad.is_ducked() is True
-
-        ad.restore()
-
-        assert session_a.level == pytest.approx(0.8)
-        assert session_b.level == pytest.approx(0.6)
-        assert ad.is_ducked() is False
-        assert ad._saved_volumes == {}
-
-    def test_every_enumerator_is_released_across_devices(self, monkeypatch):
-        device_a, device_b = object(), object()
-        session_a = FakeSession('inst-a', pid=999, level=0.8)
-        session_b = FakeSession('inst-b', pid=888, level=0.6)
-        self._install(monkeypatch, [device_a, device_b],
-                       {id(device_a): [session_a], id(device_b): [session_b]})
-
-        released = []
-        monkeypatch.setattr(ad, '_release', lambda iface: released.append(iface))
-
-        with patch.object(ad.os, 'getpid', return_value=1234):
-            ad.duck(0.2)
-
-        # Both fake enumerator tokens (the devices themselves) must have
-        # been passed to _release -- one per device, matching the existing
-        # try/finally discipline extended across the new per-device loop.
-        assert device_a in released
-        assert device_b in released
-
-    def test_one_missing_enumerator_does_not_block_the_others_session(self, monkeypatch):
-        """_iter_session_enumerators already skips a device whose Activate/
-        GetSessionEnumerator failed (see its own docstring) -- so duck()
-        only ever sees the survivors. Simulate that here: only ONE
-        enumerator is yielded even though a second device conceptually
-        exists. The surviving device's session must still be ducked."""
-        working = object()
-        session = FakeSession('inst-ok', pid=999, level=0.8)
-        self._install(monkeypatch, [working], {id(working): [session]})
-
-        with patch.object(ad.os, 'getpid', return_value=1234):
-            ad.duck(0.2)
-
-        assert session.level == pytest.approx(0.2)
-        assert ad.is_ducked() is True
-
-
-class TestIsDucked:
-    def test_reflects_state(self, mocked_com):
-        assert ad.is_ducked() is False
-        with patch.object(ad.os, 'getpid', return_value=1234):
-            ad.duck(0.2)
-        assert ad.is_ducked() is True
-        ad.restore()
-        assert ad.is_ducked() is False
+    monkeypatch.setattr(ad.threading, "Timer", NoopTimer)
+
+
+def test_start_excludes_own_pid_and_excludes_set(monkeypatch):
+    sessions = [
+        FakeSession("own", 111, 0.8),
+        FakeSession("excluded", 222, 0.6),
+        FakeSession("other", 333, 0.9),
+    ]
+    monkeypatch.setattr(ad.os, "getpid", lambda: 111)
+    monkeypatch.setattr(ad, "_iter_audio_sessions", lambda: sessions)
+
+    ducker = ad.SessionDucker(exclude_pids={222})
+    ducker.start()
+
+    assert sessions[0].volume == pytest.approx(0.8)
+    assert sessions[1].volume == pytest.approx(0.6)
+    assert sessions[2].volume == pytest.approx(0.15)
+    assert ducker.current_duck(333) == pytest.approx(0.15)
+
+
+def test_restore_is_exact_and_idempotent(monkeypatch):
+    session = FakeSession("restore", 333, 0.9)
+    sessions = [session]
+    monkeypatch.setattr(ad.os, "getpid", lambda: 111)
+    monkeypatch.setattr(ad, "_iter_audio_sessions", lambda: sessions)
+
+    ducker = ad.SessionDucker(duck_level=0.2)
+    ducker.start()
+    assert session.volume == pytest.approx(0.2)
+
+    ducker.stop()
+    assert session.volume == pytest.approx(0.9)
+    assert session.volume_calls == [0.2, 0.9]
+
+    ducker.stop()
+    assert session.volume == pytest.approx(0.9)
+    assert session.volume_calls == [0.2, 0.9]
+
+
+def test_restore_occurs_in_reverse_order(monkeypatch):
+    first = FakeSession("first", 333, 0.7)
+    second = FakeSession("second", 444, 0.8)
+    all_calls: list[tuple[str, float]] = []
+
+    old_first = first.set_master_volume
+    old_second = second.set_master_volume
+
+    def first_set(level: float) -> None:
+        all_calls.append(("first", level))
+        old_first(level)
+
+    def second_set(level: float) -> None:
+        all_calls.append(("second", level))
+        old_second(level)
+
+    first.set_master_volume = first_set  # type: ignore[method-assign]
+    second.set_master_volume = second_set  # type: ignore[method-assign]
+
+    monkeypatch.setattr(ad.os, "getpid", lambda: 111)
+    monkeypatch.setattr(ad, "_iter_audio_sessions", lambda: [first, second])
+    ducker = ad.SessionDucker(duck_level=0.1)
+
+    ducker.start()
+    ducker.stop()
+
+    assert all_calls == [
+        ("first", 0.1),
+        ("second", 0.1),
+        ("second", 0.8),
+        ("first", 0.7),
+    ]
+
+
+def test_context_manager_restores_on_exception(monkeypatch):
+    session = FakeSession("ctx", 333, 0.9)
+    monkeypatch.setattr(ad.os, "getpid", lambda: 111)
+    monkeypatch.setattr(ad, "_iter_audio_sessions", lambda: [session])
+
+    with pytest.raises(RuntimeError, match="boom"):
+        with ad.SessionDucker() as ducker:
+            ducker.start()
+            raise RuntimeError("boom")
+
+    assert session.volume == pytest.approx(0.9)
+
+
+def test_sweep_catches_new_session(monkeypatch):
+    sessions = [FakeSession("first", 333, 0.9)]
+    monkeypatch.setattr(ad.os, "getpid", lambda: 111)
+    monkeypatch.setattr(ad, "_iter_audio_sessions", lambda: sessions)
+
+    ducker = ad.SessionDucker(duck_level=0.2)
+    ducker.start()
+    assert sessions[0].volume == pytest.approx(0.2)
+
+    sessions.append(FakeSession("new", 333, 0.3))
+    ducker._run_sweep()
+    assert sessions[1].volume == pytest.approx(0.2)
+
+    ducker.stop()
+    assert sessions[0].volume == pytest.approx(0.9)
+    assert sessions[1].volume == pytest.approx(0.3)
+
+
+def test_com_error_is_noop(monkeypatch):
+    def boom():
+        raise OSError("simulated enumeration failure")
+
+    monkeypatch.setattr(ad, "_iter_audio_sessions", boom)
+    ducker = ad.SessionDucker()
+    ducker.start()
+
+    assert ducker.current_duck(123) is None
+    ducker.stop()
+
+
+def test_current_duck_min_composition(monkeypatch):
+    session = FakeSession("compose", 333, 1.0)
+    monkeypatch.setattr(ad.os, "getpid", lambda: 111)
+    monkeypatch.setattr(ad, "_iter_audio_sessions", lambda: [session])
+
+    ducker = ad.SessionDucker(duck_level=0.2)
+    assert ducker.current_duck(333) is None
+
+    ducker.start()
+    assert ducker.current_duck(333) == pytest.approx(0.2)
+    assert min(ducker.current_duck(333) or 1.0, 0.07) == pytest.approx(0.07)
+
+    ducker.stop()
+    assert ducker.current_duck(333) is None
+
+
+def test_stop_without_start_is_noop() -> None:
+    ad.SessionDucker().stop()
