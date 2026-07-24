@@ -400,8 +400,26 @@ def _restore_clipboard_impl(saved: Dict[int, bytes]) -> bool:
     if expected_seq is not None:
         current_seq = get_clipboard_sequence_number()
         if current_seq is not None and current_seq != expected_seq:
-            logger.info("[CLIP] clipboard changed during paste window, skipping restore to preserve user copy")
-            return True
+            # Sequence changed -- but rich web editors (Chromium contenteditable)
+            # routinely bump the sequence while INGESTING our paste, which is
+            # not a user action. If the clipboard still holds exactly the text
+            # WE placed, restoring the user's original is safe. Only a payload
+            # we did not write means a genuine third-party change.
+            pasted_text = getattr(saved, 'pasted_text', None)
+            current_text = None
+            if pasted_text is not None and HAS_PYPERCLIP:
+                try:
+                    current_text = pyperclip.paste()
+                except Exception:
+                    current_text = None
+            if pasted_text is not None and current_text == pasted_text:
+                logger.info(
+                    "[CLIP] sequence changed but clipboard still holds our own"
+                    " text (target echo) -- restoring user's original"
+                )
+            else:
+                logger.info("[CLIP] clipboard changed during paste window, skipping restore to preserve user copy")
+                return True
 
     GMEM_MOVEABLE = 0x0002
 
@@ -542,6 +560,7 @@ def paste_with_preservation(
             # put back the original content restore is meant to protect.
             if isinstance(saved, ClipboardSnapshot):
                 saved.seq = get_clipboard_sequence_number()
+                saved.pasted_text = text
 
             # Small delay to ensure clipboard is ready
             time.sleep(paste_delay)
@@ -570,6 +589,96 @@ def paste_with_preservation(
             if saved:
                 restore_clipboard(saved)
 
+
+
+# ---------------------------------------------------------------------------
+# Typed Unicode injection (2026-07-24)
+#
+# Synthetic Ctrl+V into rich web editors is a documented double-execution
+# hazard (the editor's keydown handler AND the native paste event can both
+# fire: JupyterLab #11639, apache/hop #6438, WKWebView) and it forces the
+# clipboard-preservation dance above. For ordinary dictation lengths, typing
+# the text as KEYEVENTF_UNICODE key events sidesteps both problems entirely:
+# no clipboard touch, no paste shortcut, nothing for the target to double.
+# ---------------------------------------------------------------------------
+
+def build_unicode_key_events(text: str) -> list:
+    """Return the (wVk=0, wScan=codeunit, flags) tuples for typing `text`.
+
+    Pure helper (testable without Windows): one down+up pair per UTF-16 code
+    unit, so astral characters (emoji etc.) become surrogate pairs -- exactly
+    what KEYEVENTF_UNICODE expects. Newlines become VK_RETURN presses so
+    multi-line dictation keeps its line breaks in targets that treat \n and
+    Enter differently.
+    """
+    KEYEVENTF_UNICODE = 0x0004
+    KEYEVENTF_KEYUP = 0x0002
+    VK_RETURN = 0x0D
+    events = []
+    for ch in text.replace('\r\n', '\n'):
+        if ch == '\n':
+            events.append((VK_RETURN, 0, 0))
+            events.append((VK_RETURN, 0, KEYEVENTF_KEYUP))
+            continue
+        units = ch.encode('utf-16-le')
+        for i in range(0, len(units), 2):
+            code = units[i] | (units[i + 1] << 8)
+            events.append((0, code, KEYEVENTF_UNICODE))
+            events.append((0, code, KEYEVENTF_UNICODE | KEYEVENTF_KEYUP))
+    return events
+
+
+def type_text_unicode(text: str, chunk: int = 64) -> bool:
+    """Type `text` into the focused window via SendInput KEYEVENTF_UNICODE.
+
+    Returns True when every event batch was accepted. Never raises.
+    """
+    if sys.platform != 'win32':
+        return False
+    try:
+        import ctypes
+        from ctypes import wintypes
+
+        ULONG_PTR = ctypes.c_size_t
+
+        class KEYBDINPUT(ctypes.Structure):
+            _fields_ = [("wVk", wintypes.WORD), ("wScan", wintypes.WORD),
+                        ("dwFlags", wintypes.DWORD), ("time", wintypes.DWORD),
+                        ("dwExtraInfo", ULONG_PTR)]
+
+        class _INPUTUNION(ctypes.Union):
+            _fields_ = [("ki", KEYBDINPUT)]
+
+        class INPUT(ctypes.Structure):
+            _fields_ = [("type", wintypes.DWORD), ("union", _INPUTUNION)]
+
+        INPUT_KEYBOARD = 1
+        events = build_unicode_key_events(text)
+        arr_all = []
+        for vk, scan, flags in events:
+            inp = INPUT()
+            inp.type = INPUT_KEYBOARD
+            inp.union.ki = KEYBDINPUT(vk, scan, flags, 0, 0)
+            arr_all.append(inp)
+
+        user32 = ctypes.windll.user32
+        i = 0
+        while i < len(arr_all):
+            batch = arr_all[i:i + chunk]
+            ArrType = INPUT * len(batch)
+            sent = user32.SendInput(len(batch), ArrType(*batch), ctypes.sizeof(INPUT))
+            if sent != len(batch):
+                logger.warning(
+                    "[TYPE] SendInput accepted %d/%d events; aborting typed injection",
+                    sent, len(batch),
+                )
+                return False
+            i += chunk
+            time.sleep(0.001)
+        return True
+    except Exception as e:
+        _log_error("type_text_unicode failed", e)
+        return False
 
 # Convenience function for testing
 def test_clipboard_preservation() -> bool:
