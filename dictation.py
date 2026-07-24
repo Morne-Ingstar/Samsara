@@ -3116,6 +3116,30 @@ class DictationApp:
     def load_config(self):
         """Load configuration from JSON file"""
         logger.debug("[CONFIG] load_config: entry")
+
+        def _structural_error(config_obj):
+            if not isinstance(config_obj, dict):
+                return (
+                    "top-level config must be a JSON object (dict), got "
+                    f"{type(config_obj).__name__}"
+                )
+            required_containers = {
+                "wake_word_config": dict,
+                "wake_profiles": list,
+                "command_mode": dict,
+                "ducking": dict,
+                "smart_corrections": dict,
+                "wake_targets": list,
+                "ai_command_mode": dict,
+            }
+            for key, expected_type in required_containers.items():
+                if key in config_obj and not isinstance(config_obj[key], expected_type):
+                    return (
+                        f"top-level '{key}' must be {expected_type.__name__} "
+                        f"when present, got {type(config_obj[key]).__name__}"
+                    )
+            return None
+
         default_config = {
             "hotkey": "ctrl+shift",
             "continuous_hotkey": "ctrl+alt+d",
@@ -3515,6 +3539,11 @@ class DictationApp:
                     self.config = json.load(f)
                     logger.debug("[CONFIG] load_config: JSON loaded ok")
                 _loaded_from_disk = True
+                _error = _structural_error(self.config)
+                if _error:
+                    logger.error(f"[CONFIG] config.json has invalid structure: {_error}")
+                    _loaded_from_disk = False
+                    _existing_file_unreadable = True
             except json.JSONDecodeError as _je:
                 bak_path = self.config_path.with_suffix('.json.bak')
                 logger.exception(f"[CONFIG] config.json has invalid JSON: {_je}")
@@ -3524,6 +3553,14 @@ class DictationApp:
                             self.config = json.load(f)
                         _loaded_from_disk = True
                         logger.info("[CONFIG] Loaded from config.json.bak (backup)")
+                        _error = _structural_error(self.config)
+                        if _error:
+                            logger.error(
+                                "[CONFIG] config.json.bak has invalid structure: "
+                                f"{_error}"
+                            )
+                            _loaded_from_disk = False
+                            _existing_file_unreadable = True
                     except Exception as _bak_err:
                         logger.error(f"[CONFIG] Backup also invalid — using defaults: {_bak_err}")
                         _existing_file_unreadable = True

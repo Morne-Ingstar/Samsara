@@ -16,6 +16,7 @@ import sys
 import threading
 import types
 from pathlib import Path
+import pytest
 
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
@@ -180,6 +181,90 @@ class TestCorruptConfigQuarantined:
         assert app._config_load_failed is True
         quarantined = list(tmp_path.glob("config.corrupt-*.json"))
         assert app._config_corrupt_backup_name == quarantined[0].name
+
+
+class TestStructuralConfigValidation:
+    @pytest.mark.parametrize("payload", [[], None, "not-a-dict"])
+    def test_non_dict_root_is_quarantined(self, payload, tmp_path, monkeypatch):
+        app = _make_app(tmp_path, monkeypatch)
+        app.config_path.write_text(json.dumps(payload), encoding="utf-8")
+
+        with app._config_lock:
+            app.load_config()
+
+        assert app._config_load_failed is True
+        assert app.config.get("mode") == "hold"
+        assert not app.config_path.exists()
+        quarantined = list(tmp_path.glob("config.corrupt-*.json"))
+        assert len(quarantined) == 1
+        assert app._config_corrupt_backup_name == quarantined[0].name
+
+    def test_mis_typed_wake_word_config_is_quarantined(self, tmp_path, monkeypatch):
+        app = _make_app(tmp_path, monkeypatch)
+        app.config_path.write_text(json.dumps({
+            "wake_word_config": [],
+            "wake_profiles": [],
+            "mode": "hold",
+        }), encoding="utf-8")
+
+        with app._config_lock:
+            app.load_config()
+
+        assert app._config_load_failed is True
+        assert app.config.get("mode") == "hold"
+        assert not app.config_path.exists()
+        assert list(tmp_path.glob("config.corrupt-*.json"))
+
+    def test_mis_typed_wake_profiles_is_quarantined(self, tmp_path, monkeypatch):
+        app = _make_app(tmp_path, monkeypatch)
+        app.config_path.write_text(json.dumps({
+            "wake_profiles": {},
+            "wake_word_config": {
+                "enabled": True,
+                "phrase": "jarvis",
+                "phrase_options": ["jarvis"],
+                "quick_silence_timeout": 1.0,
+                "end_words": ["over"],
+                "wake_abort_phrase": ["cancel"],
+                "pause_words": ["pause"],
+                "resume_words": ["resume"],
+                "audio": {"speech_threshold": 0.5, "min_speech_duration": 0.2},
+            },
+        }), encoding="utf-8")
+
+        with app._config_lock:
+            app.load_config()
+
+        assert app._config_load_failed is True
+        assert app.config.get("mode") == "hold"
+        assert app.config.get("wake_word_config", {}).get("phrase") == "jarvis"
+        assert not app.config_path.exists()
+        assert list(tmp_path.glob("config.corrupt-*.json"))
+
+    def test_unknown_valid_keys_are_preserved(self, tmp_path, monkeypatch):
+        app = _make_app(tmp_path, monkeypatch)
+        app.config_path.write_text(json.dumps({
+            "unknown_root_key": {"keep": True},
+            "wake_profiles": [],
+            "wake_word_config": {
+                "enabled": True,
+                "phrase": "jarvis",
+                "phrase_options": ["jarvis"],
+                "quick_silence_timeout": 1.0,
+                "end_words": ["over"],
+                "wake_abort_phrase": ["cancel"],
+                "pause_words": ["pause"],
+                "resume_words": ["resume"],
+                "audio": {"speech_threshold": 0.5, "min_speech_duration": 0.2},
+            },
+        }), encoding="utf-8")
+
+        with app._config_lock:
+            app.load_config()
+
+        assert app._config_load_failed is False
+        assert app.config["unknown_root_key"] == {"keep": True}
+        assert app.config.get("mode") == "hold"
 
 
 class TestSaveLatchAfterFailedLoad:
