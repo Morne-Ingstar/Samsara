@@ -1132,20 +1132,25 @@ class _SettingsWindow(QMainWindow):
         layout.addWidget(audio_card)
 
         mics = list(getattr(self.app, 'available_mics', None) or [])
-        mic_names = [m['name'] for m in mics]
         current_mic_id = self.app.config.get('microphone')
-        current_mic_name = mic_names[0] if mic_names else ""
-        for m in mics:
-            if m['id'] == current_mic_id:
-                current_mic_name = m['name']
-                break
 
         mic_combo = QComboBox()
-        mic_combo.addItems(mic_names if mic_names else ["No microphones found"])
-        if current_mic_name and current_mic_name in mic_names:
-            mic_combo.setCurrentText(current_mic_name)
+        # "System default" mirrors output_combo's pattern (~line 1211):
+        # index 0, userData=None, so config['microphone']=None round-trips
+        # through currentData() at save time instead of being unselectable
+        # (see the save-fn below). Fixes the incident where a stale
+        # PortAudio index (29, a Focusrite line input) silently
+        # transcribed system audio for days -- there was previously no way
+        # to say "just use whatever Windows considers default" instead of
+        # pinning a specific numbered device.
+        mic_combo.addItem("System default", userData=None)
+        default_idx = 0
+        for i, dev in enumerate(mics):
+            mic_combo.addItem(dev['name'], userData=dev['id'])
+            if current_mic_id is not None and dev['id'] == current_mic_id:
+                default_idx = i + 1
+        mic_combo.setCurrentIndex(default_idx)
         self._widgets['mic_combo'] = mic_combo
-        self._widgets['mic_names_to_id'] = {m['name']: m['id'] for m in mics}
 
         mic_row_widget = QWidget()
         # Same cascade cause as the QCheckBox/QLabel fixes: a bare QWidget
@@ -1184,16 +1189,19 @@ class _SettingsWindow(QMainWindow):
                 return
 
             preserved_name = mic_combo.currentText()
-            fresh_names = [m['name'] for m in fresh_mics]
             mic_combo.blockSignals(True)
             mic_combo.clear()
-            mic_combo.addItems(fresh_names if fresh_names else ["No microphones found"])
-            self._widgets['mic_names_to_id'] = {m['name']: m['id'] for m in fresh_mics}
+            mic_combo.addItem("System default", userData=None)
+            for dev in fresh_mics:
+                mic_combo.addItem(dev['name'], userData=dev['id'])
+            # +1 to account for the "System default" item at index 0
+            # (mirrors mic_setup_wizard_qt.py's _on_refresh_devices). A
+            # preserved_name of "System default" itself never matches a
+            # real device (pick_index_by_name only searches fresh_mics),
+            # so idx is None and the fallback 0 correctly reselects the
+            # System-default row -- no special case needed for that name.
             idx = pick_index_by_name(fresh_mics, preserved_name)
-            if idx is not None:
-                mic_combo.setCurrentIndex(idx)
-            elif fresh_names:
-                mic_combo.setCurrentIndex(0)
+            mic_combo.setCurrentIndex(idx + 1 if idx is not None else 0)
             mic_combo.blockSignals(False)
 
         mic_refresh_btn.clicked.connect(_on_refresh_mics)
@@ -1551,11 +1559,17 @@ class _SettingsWindow(QMainWindow):
             if hints is not None:
                 hints.set_enabled(self._widgets['hints_enabled'].isChecked())
 
-            mic_name = self._widgets['mic_combo'].currentText()
-            mic_id = self._widgets['mic_names_to_id'].get(mic_name)
-            if mic_id is not None:
-                updates['microphone'] = mic_id
-                updates['microphone_name'] = mic_name
+            # currentData() (userData set at addItem() time -- see
+            # _populate_devices-equivalent block above) rather than the
+            # old name->id dict: always write both keys, including
+            # microphone=None for "System default", so selecting it is
+            # actually persistable. The old `if mic_id is not None:` guard
+            # made None unsavable -- root cause of a stale-device incident
+            # (no way to fall back to "whatever Windows considers
+            # default" once a pinned device id went stale).
+            mic_combo = self._widgets['mic_combo']
+            updates['microphone'] = mic_combo.currentData()
+            updates['microphone_name'] = mic_combo.currentText()
 
             output_label = self._widgets['output_combo'].currentText()
             output_id, output_name = self._widgets['output_label_map'].get(
