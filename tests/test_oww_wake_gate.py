@@ -9,16 +9,25 @@ from samsara.audio_engine import wake_consumer as wake_consumer_module
 from samsara.audio_engine.wake_consumer import WakeConsumer
 
 
-def _sleeping_consumer(*, detected, wake_profiles=None):
+def _sleeping_consumer(
+    *, detected, wake_profiles=None, open_return=777, app_state="asleep"
+):
     detector = SimpleNamespace(is_available=True, reset=Mock())
+    dictation_finalize_lock = Mock()
+    dictation_finalize_lock.__enter__ = Mock(return_value=None)
+    dictation_finalize_lock.__exit__ = Mock(return_value=None)
     app = SimpleNamespace(
         config={"wake_profiles": wake_profiles or []},
         _wake_detector=detector,
-        app_state="asleep",
+        app_state=app_state,
         wake_word_triggered=False,
         _oww_wake_detected=detected,
         process_wake_word_buffer=Mock(),
+        _process_wake_word_buffer_tracked=Mock(),
+        _dictation_finalize_lock=dictation_finalize_lock,
+        _pending_transcriptions=0,
         _close_hands_free_capture_duck=Mock(),
+        _open_hands_free_capture_duck=Mock(return_value=open_return),
     )
     consumer = WakeConsumer.__new__(WakeConsumer)
     consumer._app = app
@@ -29,29 +38,30 @@ def _sleeping_consumer(*, detected, wake_profiles=None):
 
 
 def test_oww_hit_is_forwarded_across_async_dispatch(monkeypatch):
-    consumer, app, _detector = _sleeping_consumer(detected=True)
+    owner_token = 777
+    consumer, app, _detector = _sleeping_consumer(detected=True, open_return=owner_token)
     dispatched = {}
-    owner_token = 101
 
     def fake_spawn(name, target, args=(), kwargs=None, daemon=True):
         dispatched.update(name=name, target=target, args=args, kwargs=kwargs, daemon=daemon)
 
     monkeypatch.setattr(wake_consumer_module.thread_registry, "spawn", fake_spawn)
 
-    consumer._flush([np.zeros(160, dtype=np.float32)], owner_token=owner_token)
+    consumer._flush([np.zeros(160, dtype=np.float32)], owner_token=None)
 
     # _flush wraps the dispatched target in _wrap_with_duck_close (2026-07-24
     # capture-window ducking) -- it's no longer the bare method, but it must
     # still forward to it with the same args/kwargs once invoked.
-    dispatched["target"](*dispatched["args"], **dispatched["kwargs"])
+    dispatched["target"](*dispatched["args"], **(dispatched["kwargs"] or {}))
     app.process_wake_word_buffer.assert_called_once_with(*dispatched["args"], **dispatched["kwargs"])
     assert dispatched["kwargs"] == {"oww_confirmed": True}
     assert app._oww_wake_detected is False
+    app._open_hands_free_capture_duck.assert_called_once()
     app._close_hands_free_capture_duck.assert_called_once_with(owner_token)
 
 
 def test_no_oww_hit_still_drops_buffer_before_whisper(monkeypatch):
-    consumer, _app, detector = _sleeping_consumer(detected=False)
+    consumer, app, detector = _sleeping_consumer(detected=False)
     spawn = Mock()
     owner_token = 102
     monkeypatch.setattr(wake_consumer_module.thread_registry, "spawn", spawn)
@@ -60,6 +70,30 @@ def test_no_oww_hit_still_drops_buffer_before_whisper(monkeypatch):
 
     spawn.assert_not_called()
     detector.reset.assert_called_once_with()
+    app._open_hands_free_capture_duck.assert_not_called()
+
+
+def test_oww_hit_dispatches_to_long_dictation_tracked_path_with_capture_duck(monkeypatch):
+    owner_token = 203
+    consumer, app, _detector = _sleeping_consumer(
+        detected=True,
+        open_return=owner_token,
+        app_state="long_dictation",
+    )
+    dispatched = {}
+
+    def fake_spawn(name, target, args=(), kwargs=None, daemon=True):
+        dispatched.update(name=name, target=target, args=args, kwargs=kwargs, daemon=daemon)
+
+    monkeypatch.setattr(wake_consumer_module.thread_registry, "spawn", fake_spawn)
+
+    consumer._flush([np.zeros(160, dtype=np.float32)], owner_token=None)
+
+    assert dispatched["name"] == "wake_consumer._process_wake_word_buffer_tracked"
+    dispatched["target"](*dispatched["args"], **(dispatched["kwargs"] or {}))
+    app._process_wake_word_buffer_tracked.assert_called_once_with(*dispatched["args"], **(dispatched["kwargs"] or {}))
+    app._open_hands_free_capture_duck.assert_called_once()
+    app._close_hands_free_capture_duck.assert_called_once_with(owner_token)
 
 
 def test_oww_rejection_closes_capture_duck_with_owner():
@@ -68,49 +102,54 @@ def test_oww_rejection_closes_capture_duck_with_owner():
     consumer._flush([np.zeros(160, dtype=np.float32)], owner_token=owner_token)
 
     app._close_hands_free_capture_duck.assert_called_once_with(owner_token)
+    app._open_hands_free_capture_duck.assert_not_called()
 
 
 def test_oww_hit_stays_confirmed_when_whisper_profiles_are_enabled(monkeypatch):
+    owner_token = 103
     consumer, app, _detector = _sleeping_consumer(
         detected=True,
+        open_return=owner_token,
         wake_profiles=[{"id": "hermes", "phrase": "activate hermes", "enabled": True}],
     )
     dispatched = {}
-    owner_token = 103
 
     def fake_spawn(name, target, args=(), kwargs=None, daemon=True):
         dispatched.update(name=name, target=target, args=args, kwargs=kwargs, daemon=daemon)
 
     monkeypatch.setattr(wake_consumer_module.thread_registry, "spawn", fake_spawn)
 
-    consumer._flush([np.zeros(160, dtype=np.float32)], owner_token=owner_token)
+    consumer._flush([np.zeros(160, dtype=np.float32)], owner_token=None)
 
     dispatched["target"](*dispatched["args"], **dispatched["kwargs"])
     app.process_wake_word_buffer.assert_called_once_with(*dispatched["args"], **dispatched["kwargs"])
     assert dispatched["kwargs"] == {"oww_confirmed": True}
     assert app._oww_wake_detected is False
+    app._open_hands_free_capture_duck.assert_called_once()
     app._close_hands_free_capture_duck.assert_called_once_with(owner_token)
 
 
 def test_profile_fallback_still_reaches_whisper_without_primary_oww_hit(monkeypatch):
+    owner_token = 105
     consumer, app, detector = _sleeping_consumer(
         detected=False,
+        open_return=owner_token,
         wake_profiles=[{"id": "hermes", "phrase": "activate hermes", "enabled": True}],
     )
     dispatched = {}
-    owner_token = 105
 
     def fake_spawn(name, target, args=(), kwargs=None, daemon=True):
         dispatched.update(name=name, target=target, args=args, kwargs=kwargs, daemon=daemon)
 
     monkeypatch.setattr(wake_consumer_module.thread_registry, "spawn", fake_spawn)
 
-    consumer._flush([np.zeros(160, dtype=np.float32)], owner_token=owner_token)
+    consumer._flush([np.zeros(160, dtype=np.float32)], owner_token=None)
 
     dispatched["target"](*dispatched["args"], **dispatched["kwargs"])
     app.process_wake_word_buffer.assert_called_once_with(*dispatched["args"], **dispatched["kwargs"])
     assert dispatched["kwargs"] == {"oww_confirmed": False}
     detector.reset.assert_not_called()
+    app._open_hands_free_capture_duck.assert_called_once()
     app._close_hands_free_capture_duck.assert_called_once_with(owner_token)
 
 

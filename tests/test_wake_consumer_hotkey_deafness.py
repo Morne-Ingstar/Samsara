@@ -133,6 +133,15 @@ class TestNoHotkeyRecordingIsUnaffected:
         wc, reader, app = _make_wc(hotkey_recording=False)
         wc._process_frame(_loud_frame())
         assert app.is_speaking is True
+        app._open_hands_free_capture_duck.assert_not_called()
+
+    def test_speech_onset_opens_capture_duck_in_toggle_mode(self, monkeypatch):
+        wc, reader, app = _make_wc(
+            hotkey_recording=False, command_mode_active=True, cm_mode='toggle', hands_free_token=99
+        )
+        wc._process_frame(_loud_frame())
+        app._open_hands_free_capture_duck.assert_called_once_with()
+        assert wc._hands_free_capture_duck_token == 99
 
 
 class TestToggleCommandModeStillServicesDuringHotkeyRecording:

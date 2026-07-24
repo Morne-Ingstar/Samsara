@@ -629,11 +629,14 @@ class WakeConsumer:
             app.silence_start = None
 
             if speech_onset:
-                # Hands-free capture-window ducking (2026-07-24): OPEN at
-                # the earliest possible signal that an utterance is being
-                # captured -- wake onset accepted. See dictation.py's
-                # _open_hands_free_capture_duck.
-                self._hands_free_capture_duck_token = self._open_hands_free_duck_safe(app)
+                # Hands-free capture-window ducking (2026-07-24): OPEN at the
+                # earliest possible signal that an utterance is being captured
+                # only when a deliberately latched session owns the turn
+                # (toggle / AI-command mode). In passive wake-word mode, the
+                # wake phrase itself must remain at idle-duck (0.8) audibility,
+                # and deep ducking is deferred until wake confirmation.
+                if self._is_toggle_cmd(app) or self._is_ai_cmd_mode(app):
+                    self._hands_free_capture_duck_token = self._open_hands_free_duck_safe(app)
                 # Ring prebuffer rewind: replaces the legacy _prebuffer deque drain.
                 # Rewind PREBUFFER_FRAMES and re-read them into the utterance buffer.
                 # The current frame (raw_chunk) is included in the re-read since the
@@ -831,6 +834,14 @@ class WakeConsumer:
         # gate. Profiles only relax the no-hit path; they must not erase a hit.
         oww_confirmed = _primary_oww_hit
         app._oww_wake_detected = False
+        # Passive wake-mode deep ducking is now moved to OWW dispatch (command
+        # utterance protection) so wake-phrase audibility stays at idle-duck.
+        owner_token = (
+            self._open_hands_free_duck_safe(app)
+            if owner_token is None
+            else owner_token
+        )
+        self._hands_free_capture_duck_token = owner_token
 
         if app.app_state == 'long_dictation':
             with app._dictation_finalize_lock:
