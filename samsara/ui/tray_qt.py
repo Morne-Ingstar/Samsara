@@ -177,6 +177,23 @@ class SamsaraTrayQt(QObject):
                 10000,
             )
 
+        # 2026-07-2x config-backup safeguard: config.json existed but
+        # couldn't be read, so load_config() quarantined it and latched
+        # save_config() off for this session (see dictation.py's
+        # _quarantine_corrupt_config / save_config's latch check) rather
+        # than silently overwriting it with defaults. Surface that once,
+        # here, same pattern as the logging warning above.
+        if bool(vars(self._app).get("_config_load_failed", False)):
+            corrupt_name = vars(self._app).get("_config_corrupt_backup_name", None) or "a backup file"
+            self._tray.showMessage(
+                "Samsara settings warning",
+                f"Settings failed to load — running on defaults; your saved "
+                f"settings were preserved at {corrupt_name}. Restore via "
+                f"Settings > Import.",
+                QSystemTrayIcon.MessageIcon.Warning,
+                15000,
+            )
+
         try:
             from samsara.updater import reconcile_update_on_startup
 

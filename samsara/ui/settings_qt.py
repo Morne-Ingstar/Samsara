@@ -19,6 +19,7 @@ from PySide6.QtWidgets import (
     QDoubleSpinBox, QSpinBox, QLineEdit, QSlider,
     QTableWidget, QTableWidgetItem, QHeaderView,
     QDialog, QMessageBox, QFileDialog, QFormLayout, QGridLayout, QSizePolicy,
+    QInputDialog,
 )
 
 from samsara.config_transfer import (
@@ -1525,6 +1526,18 @@ class _SettingsWindow(QMainWindow):
         import_btn.setSizePolicy(QSizePolicy.Policy.Minimum, QSizePolicy.Policy.Fixed)
         import_btn.clicked.connect(self._import_configuration)
         backup_buttons.addWidget(import_btn)
+
+        # 2026-07-2x config-backup safeguard: restores from the automatic
+        # rolling backups (samsara.config_backups -- see dictation.py's
+        # save_config()/_rotate_config_backup()/_write_last_known_good()),
+        # not a user-picked file like Import above.
+        restore_btn = QPushButton("Restore from backup…")
+        restore_btn.setObjectName("restoreConfigBackupButton")
+        restore_btn.setMinimumWidth(200)
+        restore_btn.setSizePolicy(QSizePolicy.Policy.Minimum, QSizePolicy.Policy.Fixed)
+        restore_btn.clicked.connect(self._restore_from_backup)
+        backup_buttons.addWidget(restore_btn)
+
         backup_buttons.addStretch()
         backup_layout.addLayout(backup_buttons)
 
@@ -1870,6 +1883,84 @@ class _SettingsWindow(QMainWindow):
             QMessageBox.StandardButton.Yes,
         )
         self.close()  # Do not leave stale pre-import controls able to overwrite the import.
+        if restart == QMessageBox.StandardButton.Yes:
+            from plugins.commands.core_utils import restart_app
+            restart_app(self.app)
+
+    def _restore_from_backup(self):
+        """Restore config.json from one of the automatic rolling backups
+        (samsara.paths.samsara_home_dir()/config_backups -- see
+        dictation.py's list_config_backups()/_rotate_config_backup()/
+        _write_last_known_good()). Unlike Import above, this is a plain
+        file copy into place, not a merge -- the whole point is recovering
+        a known-good snapshot exactly as it was, including from a session
+        where saving is currently latched off (see DictationApp.
+        _config_load_failed) -- restoring is exactly how that latch gets
+        cleared.
+        """
+        list_backups = getattr(self.app, 'list_config_backups', None)
+        entries = list_backups() if list_backups is not None else []
+        if not entries:
+            QMessageBox.information(
+                self,
+                "No backups found",
+                "No configuration backups are available yet.",
+            )
+            return
+
+        labels = [label for label, _path in entries]
+        label, ok = QInputDialog.getItem(
+            self,
+            "Restore from backup",
+            "Choose a backup to restore. Newest first:",
+            labels,
+            0,
+            False,
+        )
+        if not ok or not label:
+            return
+        chosen_path = dict(entries)[label]
+
+        reply = QMessageBox.question(
+            self,
+            "Restore this backup?",
+            f"This will replace your current settings with the backup from "
+            f"\"{label}\". Your current config.json will itself be backed "
+            f"up first.\n\nContinue?",
+            QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No,
+            QMessageBox.StandardButton.No,
+        )
+        if reply != QMessageBox.StandardButton.Yes:
+            return
+
+        try:
+            with self.app._config_lock:
+                if self.app.config_path.exists():
+                    shutil.copy2(
+                        self.app.config_path,
+                        self.app.config_path.with_suffix('.json.bak'),
+                    )
+                shutil.copy2(chosen_path, self.app.config_path)
+                # The user just fixed the problem the latch exists for --
+                # clear it so the restored config can be saved again after
+                # restart (load_config() re-reads from disk on the next
+                # boot regardless, but clearing here means this session's
+                # in-memory flag doesn't linger stale until then).
+                self.app._config_load_failed = False
+                self.app._config_corrupt_backup_name = None
+        except OSError as exc:
+            logger.exception("[CONFIG] Restore from backup failed")
+            QMessageBox.critical(self, "Restore failed", str(exc))
+            return
+
+        restart = QMessageBox.question(
+            self,
+            "Backup restored",
+            "The backup was restored. Restart Samsara now to apply it?",
+            QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No,
+            QMessageBox.StandardButton.Yes,
+        )
+        self.close()
         if restart == QMessageBox.StandardButton.Yes:
             from plugins.commands.core_utils import restart_app
             restart_app(self.app)

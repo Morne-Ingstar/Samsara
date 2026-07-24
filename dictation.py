@@ -1937,6 +1937,13 @@ def _reap_old_preview_profiles() -> None:
 
 
 class DictationApp:
+    # Config-backup safeguard (2026-07-2x "config wiped to defaults"
+    # incident). See save_config()'s rolling-backup step,
+    # _write_last_known_good(), and _quarantine_corrupt_config().
+    _CONFIG_BACKUP_DIRNAME = "config_backups"
+    _CONFIG_BACKUP_KEEP = 15
+    _LAST_KNOWN_GOOD_FILENAME = "last_known_good.json"
+
     def __init__(self, splash=None):
         self.splash = splash
         # See _verify_logging_self_check() / _SafeRotatingFileHandler above:
@@ -1944,6 +1951,15 @@ class DictationApp:
         # _poll_startup_health), not blocked on here -- a logging problem
         # must never prevent the app from starting.
         self._logging_self_check_failed = not LOGGING_SELF_CHECK_OK
+        # Config-backup safeguard: set True only when load_config() could
+        # not read an existing config file this session (see
+        # _quarantine_corrupt_config()) -- latches save_config() off for
+        # the rest of the session so in-memory defaults can never
+        # overwrite the preserved original. Also surfaced as a tray
+        # warning (tray_qt.py's _poll_startup_health), same pattern as
+        # _logging_self_check_failed above.
+        self._config_load_failed = False
+        self._config_corrupt_backup_name = None
         # Startup work is split between this thread and the asynchronous model
         # loader.  Keep splash progress monotonic when those two lanes report
         # at nearly the same time.
@@ -3383,6 +3399,12 @@ class DictationApp:
         }
 
         _loaded_from_disk = False
+        # Config-backup safeguard: True only when a config file EXISTED but
+        # neither it nor config.json.bak could be parsed -- distinct from
+        # "no file at all" (true first run), which must still write
+        # defaults. See _quarantine_corrupt_config() / save_config()'s
+        # latch check just below where this drives the failure branch.
+        _existing_file_unreadable = False
         logger.debug("[CONFIG] load_config: checking config_path existence")
         if self.config_path.exists():
             logger.debug("[CONFIG] load_config: opening config.json")
@@ -3403,14 +3425,17 @@ class DictationApp:
                         logger.info("[CONFIG] Loaded from config.json.bak (backup)")
                     except Exception as _bak_err:
                         logger.error(f"[CONFIG] Backup also invalid — using defaults: {_bak_err}")
+                        _existing_file_unreadable = True
                 else:
                     logger.warning("[CONFIG] No backup found — using defaults")
+                    _existing_file_unreadable = True
             except Exception as _cfg_err:
                 # config IO failure the user should be able to find in the log
                 # even though load_config() itself must still fall through to
                 # defaults here -- a broken/unreadable config.json must never
                 # prevent the app from starting.
                 logger.exception(f"[CONFIG] config.json read failed — using defaults: {_cfg_err}")
+                _existing_file_unreadable = True
 
         if _loaded_from_disk:
             # Migrate old flat wake word config to new nested structure
@@ -3425,7 +3450,26 @@ class DictationApp:
             for key in default_config:
                 if key not in self.config:
                     self.config[key] = default_config[key]
+        elif _existing_file_unreadable:
+            # 2026-07-2x incident: a config file EXISTED but couldn't be
+            # parsed, and this branch used to fall straight through to
+            # `self.config = default_config; self.save_config()` --
+            # silently overwriting the user's real (if corrupted) file
+            # with fresh defaults. Never again: quarantine the original
+            # (preserved, never deleted), run this session in memory on
+            # defaults, and latch save_config() off so those defaults can
+            # never reach disk over it. See _quarantine_corrupt_config()
+            # and save_config()'s latch check.
+            quarantine_path = self._quarantine_corrupt_config()
+            self.config = default_config
+            wake_profiles.validate_wake_profiles(self.config['wake_profiles'])
+            self._config_load_failed = True
+            self._config_corrupt_backup_name = (
+                quarantine_path.name if quarantine_path is not None else None
+            )
         else:
+            # True first run: no config file existed at all -- the ONLY
+            # case where writing defaults to disk is correct.
             self.config = default_config
             wake_profiles.validate_wake_profiles(self.config['wake_profiles'])
             # save_config() requires _config_lock to be held; load_config is
@@ -3437,7 +3481,130 @@ class DictationApp:
         logger.debug("[CONFIG] load_config: starting deepcopy snapshot")
         self._config_last_disk_snapshot = copy.deepcopy(self.config)
         logger.debug("[CONFIG] load_config: done")
-    
+
+    def _quarantine_corrupt_config(self) -> "Path | None":
+        """Rename an unreadable config.json aside as evidence, timestamped,
+        NEVER deleted. Called only from load_config()'s failure branch, when
+        a config file existed on disk but neither it nor config.json.bak
+        could be parsed.
+
+        Every OTHER per-user store in this app already has this exact
+        safety net (samsara/paths.py's quarantine_corrupt_file(), used by
+        phonetic_wash/wake_corrections/ava_corrections/voice_training since
+        a 2026-07-09 correction-store loss: a parse failure fell back to
+        empty in-memory state, and the next save wrote that empty state
+        straight over the original file). config.json itself never had
+        it -- the direct root-cause candidate for the 2026-07-2x "config
+        wiped to defaults" incident this method exists to close. Uses its
+        own naming (config.corrupt-YYYYMMDD-HHMMSS.json, not that helper's
+        name.corrupt-timestamp scheme) to keep the .json extension intact
+        for casual double-click inspection.
+
+        Returns the quarantine path (used to build the UI warning message
+        -- see save_config()'s latch and tray_qt.py's _poll_startup_health),
+        or None if there was nothing to quarantine (config_path didn't
+        actually exist) or the rename itself failed. Never raises.
+        """
+        if not self.config_path.exists():
+            return None
+        ts = datetime.now().strftime('%Y%m%d-%H%M%S')
+        quarantine_path = self.config_path.with_name(f"config.corrupt-{ts}.json")
+        try:
+            self.config_path.rename(quarantine_path)
+            logger.error(
+                f"[CONFIG] config.json could not be read -- quarantined to "
+                f"{quarantine_path.name} (original bytes preserved, never "
+                f"overwritten). Running this session on in-memory defaults; "
+                f"saving is disabled until restart."
+            )
+            return quarantine_path
+        except OSError as exc:
+            logger.exception(f"[CONFIG] Could not quarantine unreadable config: {exc}")
+            return None
+
+    def _config_backups_dir(self) -> Path:
+        """~/.samsara/config_backups/, created on first use."""
+        d = samsara_home_dir() / self._CONFIG_BACKUP_DIRNAME
+        d.mkdir(parents=True, exist_ok=True)
+        return d
+
+    def _rotate_config_backup(self) -> None:
+        """Copy the CURRENT on-disk config.json into a timestamped, rolling
+        backup under _config_backups_dir() before save_config()'s write
+        replaces it, then prune to the newest _CONFIG_BACKUP_KEEP. Never
+        raises -- a backup failure must not block the actual save (the
+        3-way-merged write is still the more important thing to land).
+        """
+        try:
+            backups_dir = self._config_backups_dir()
+            ts = datetime.now().strftime('%Y%m%d-%H%M%S')
+            dest = backups_dir / f"config-{ts}.json"
+            # Rapid successive saves within the same second: don't clobber
+            # the earlier snapshot, disambiguate instead.
+            n = 1
+            while dest.exists():
+                dest = backups_dir / f"config-{ts}-{n}.json"
+                n += 1
+            shutil.copy2(self.config_path, dest)
+            self._prune_config_backups()
+        except OSError as exc:
+            logger.warning(f"[CONFIG] Rolling backup failed (continuing save): {exc}")
+
+    def _prune_config_backups(self) -> None:
+        """Keep only the newest _CONFIG_BACKUP_KEEP rolling backups, oldest
+        deleted first. Sorted by mtime, NOT filename -- the same-second
+        collision disambiguator (config-<ts>-1.json, see
+        _rotate_config_backup) sorts lexically BEFORE its own
+        undisambiguated sibling (config-<ts>.json: "-" < "." in ASCII),
+        which would silently invert chronological order for same-second
+        rapid saves if sorted by name. last_known_good.json doesn't match
+        the config-*.json glob and is never touched here."""
+        backups_dir = self._config_backups_dir()
+        files = sorted(backups_dir.glob("config-*.json"), key=lambda p: p.stat().st_mtime)
+        excess = len(files) - self._CONFIG_BACKUP_KEEP
+        for f in files[:max(0, excess)]:
+            try:
+                f.unlink()
+            except OSError as exc:
+                logger.debug(f"[CONFIG] Could not prune old backup {f.name}: {exc}")
+
+    def _write_last_known_good(self) -> None:
+        """Copy the current on-disk config.json to config_backups/
+        last_known_good.json. Called ONLY once boot reaches "startup
+        complete" (see load_model_async's load() closure, after every
+        step that could raise has already run) -- a config that crashed
+        the boot never becomes LKG, by construction: this is never on an
+        exception path. Never raises -- LKG is a safety net, not
+        something that should itself take down a successful boot.
+        """
+        try:
+            if not self.config_path.exists():
+                return
+            backups_dir = self._config_backups_dir()
+            shutil.copy2(self.config_path, backups_dir / self._LAST_KNOWN_GOOD_FILENAME)
+            logger.debug("[CONFIG] last_known_good.json updated")
+        except OSError as exc:
+            logger.warning(f"[CONFIG] Could not write last_known_good.json: {exc}")
+
+    def list_config_backups(self) -> list[tuple[str, Path]]:
+        """(label, path) pairs for every restorable backup -- the rolling
+        config-*.json snapshots plus last_known_good.json if present --
+        newest first by mtime. Pure/no Qt dependency so this is unit-
+        testable without a UI; samsara/ui/settings_qt.py's "Restore from
+        backup" control is the only caller in the app itself.
+        """
+        backups_dir = self._config_backups_dir()
+        entries: list[tuple[str, Path]] = []
+        lkg_path = backups_dir / self._LAST_KNOWN_GOOD_FILENAME
+        if lkg_path.exists():
+            ts = datetime.fromtimestamp(lkg_path.stat().st_mtime).strftime('%Y-%m-%d %H:%M:%S')
+            entries.append((f"Last known good ({ts})", lkg_path))
+        for f in backups_dir.glob("config-*.json"):
+            ts = datetime.fromtimestamp(f.stat().st_mtime).strftime('%Y-%m-%d %H:%M:%S')
+            entries.append((ts, f))
+        entries.sort(key=lambda pair: pair[1].stat().st_mtime, reverse=True)
+        return entries
+
     def _migrate_wake_word_config(self, default_config):
         """Migrate old flat wake word settings to new nested structure"""
         if self._wake_word_config_already_migrated():
@@ -3671,15 +3838,32 @@ class DictationApp:
                 self._deep_update(target[key], value)
     
     def save_config(self):
-        """Save configuration to JSON file atomically.
+        """Save configuration to JSON file, then rotate a timestamped backup.
 
-        Writes to a temp file first, then os.replace() — which is atomic on
-        Windows + POSIX — swaps it into place. If serialization throws
-        partway through (as happened with the MenuItem-in-config bug),
-        config.json is left untouched instead of being truncated.
+        Prefers a true atomic os.replace() for the final swap into place,
+        with a short retry + fallback (see step 3) -- a concurrent
+        config-watcher read can transiently hold config.json open without
+        FILE_SHARE_DELETE on Windows. If serialization throws partway
+        through (as happened with the MenuItem-in-config bug), config.json
+        is left untouched instead of being truncated.
 
-        Also keeps the previous good copy at config.json.bak so a future
-        corruption (or a bad manual edit) can be recovered in one step.
+        Also keeps the previous good copy at config.json.bak, AND
+        (2026-07-2x config-backup safeguard) a rolling, timestamped copy of
+        the PRE-write on-disk state under _config_backups_dir() (newest
+        _CONFIG_BACKUP_KEEP kept -- see _rotate_config_backup()) so a bad
+        write is never the only surviving copy of a user's settings.
+
+        SAVE LATCH: a no-op if self._config_load_failed is set -- meaning
+        load_config() could not read an existing config file THIS session
+        (see its failure branch and _quarantine_corrupt_config()). This is
+        the fix for the actual incident this whole safeguard exists for:
+        load_config() used to fall through to `self.config = default_config
+        ...; self.save_config()` on any read failure, silently overwriting
+        a real (if corrupted) file with fresh defaults. Every write path in
+        this app funnels through save_config() (persist_config,
+        update_config_and_save, update_config), so gating it here is a
+        single choke point -- defaults from a failed load can never reach
+        disk over the quarantined original.
 
         Caller MUST hold self._config_lock.  Use persist_config() for
         external or fire-and-forget saves where you don't already hold it.
@@ -3688,6 +3872,15 @@ class DictationApp:
             "save_config() called without holding _config_lock! "
             "Acquire _config_lock before mutating config and calling save_config()."
         )
+        if getattr(self, '_config_load_failed', False):
+            logger.warning(
+                "[CONFIG] save_config() blocked -- config failed to load "
+                "this session (see _quarantine_corrupt_config); refusing "
+                "to write defaults over the preserved original. Restore a "
+                "backup and restart to re-enable saving."
+            )
+            return
+
         tmp_path = self.config_path.with_suffix('.json.tmp')
         bak_path = self.config_path.with_suffix('.json.bak')
 
@@ -3712,30 +3905,52 @@ class DictationApp:
             with open(tmp_path, 'w') as f:
                 json.dump(merged, f, indent=2)
 
-            # 2. Back up current config.  Use shutil.copy2 (read → write to a
-            #    different path) rather than os.replace/rename.  On Windows,
-            #    MoveFileExW fails with access denied when any open handle on
-            #    the source file lacks FILE_SHARE_DELETE — Python's default
-            #    open() never sets that flag, so the config watcher's
-            #    background read would block the rename.
+            # 2a. Rolling, timestamped backup of the CURRENT on-disk state,
+            #     taken before this write replaces it (2026-07-2x
+            #     config-backup safeguard).
+            if self.config_path.exists():
+                self._rotate_config_backup()
+
+            # 2b. Back up current config to the single .bak slot too (kept
+            #     for existing recovery callers -- load_config()'s
+            #     JSONDecodeError fallback, Import's own note to the user).
+            #     Use shutil.copy2 (read -> write to a different path)
+            #     rather than os.replace/rename for THIS copy specifically:
+            #     on Windows, MoveFileExW fails with access denied when any
+            #     open handle on the source file lacks FILE_SHARE_DELETE --
+            #     Python's default open() never sets that flag, so the
+            #     config watcher's background read would block the rename.
             if self.config_path.exists():
                 try:
                     shutil.copy2(self.config_path, bak_path)
                 except OSError as e:
                     logger.warning(f"[WARN] Could not backup config to .bak: {e}")
 
-            # 3. Write serialised config directly to config.json.  open() in
-            #    'w' mode succeeds even while other handles have the file open
-            #    for reading (Python opens with FILE_SHARE_READ|FILE_SHARE_WRITE
-            #    by default), unlike os.replace() which requires FILE_SHARE_DELETE
-            #    on every existing handle.
-            tmp_text = tmp_path.read_text(encoding='utf-8')
-            with open(self.config_path, 'w', encoding='utf-8') as f:
-                f.write(tmp_text)
-            try:
-                tmp_path.unlink()
-            except OSError as e:
-                logger.debug(f"Temp config file cleanup failed: {e}")
+            # 3. Swap the new content into place. Prefer a true atomic
+            #    os.replace() (same guarantee the module docstring always
+            #    claimed but the code didn't actually deliver); retry
+            #    briefly since a concurrent config-watcher read can
+            #    transiently hold config.json open without FILE_SHARE_DELETE
+            #    on Windows, then fall back to the historical direct
+            #    overwrite (open('w') succeeds even under a shared read
+            #    handle) so a save can never simply fail outright.
+            swapped = False
+            for _attempt in range(3):
+                try:
+                    os.replace(tmp_path, self.config_path)
+                    swapped = True
+                    break
+                except OSError as exc:
+                    logger.debug(f"[CONFIG] os.replace attempt {_attempt + 1} failed: {exc}")
+                    time.sleep(0.02)
+            if not swapped:
+                tmp_text = tmp_path.read_text(encoding='utf-8')
+                with open(self.config_path, 'w', encoding='utf-8') as f:
+                    f.write(tmp_text)
+                try:
+                    tmp_path.unlink()
+                except OSError as e:
+                    logger.debug(f"Temp config file cleanup failed: {e}")
 
             # 4. Sync in-memory config and snapshot to what was written.
             self.config = merged
@@ -4896,6 +5111,13 @@ class DictationApp:
                 "All configured systems are ready",
             )
             logger.info("[INIT] Startup complete.")
+
+            # Config-backup safeguard: only NOW, having reached "startup
+            # complete" without raising anywhere above in this closure, is
+            # the on-disk config worth trusting as "last known good" -- a
+            # config that crashed the boot never reaches this line, so it
+            # can never become LKG. See _write_last_known_good().
+            self._write_last_known_good()
 
             # Completion animation and minimum display timing belong to the
             # splash.  Only request dismissal after Startup complete is true.
