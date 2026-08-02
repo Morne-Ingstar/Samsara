@@ -646,11 +646,33 @@ def type_text_unicode(text: str, chunk: int = 64) -> bool:
                         ("dwFlags", wintypes.DWORD), ("time", wintypes.DWORD),
                         ("dwExtraInfo", ULONG_PTR)]
 
+        class MOUSEINPUT(ctypes.Structure):
+            # Required in the union even though we never send mouse events:
+            # SendInput validates cbSize against the FULL union (largest
+            # member). With only KEYBDINPUT the struct is 32 bytes on x64
+            # instead of 40 and Windows rejects every batch ("accepted 0/N"
+            # -- the 2026-08-02 live failure).
+            _fields_ = [("dx", wintypes.LONG), ("dy", wintypes.LONG),
+                        ("mouseData", wintypes.DWORD), ("dwFlags", wintypes.DWORD),
+                        ("time", wintypes.DWORD), ("dwExtraInfo", ULONG_PTR)]
+
+        class HARDWAREINPUT(ctypes.Structure):
+            _fields_ = [("uMsg", wintypes.DWORD), ("wParamL", wintypes.WORD),
+                        ("wParamH", wintypes.WORD)]
+
         class _INPUTUNION(ctypes.Union):
-            _fields_ = [("ki", KEYBDINPUT)]
+            _fields_ = [("mi", MOUSEINPUT), ("ki", KEYBDINPUT), ("hi", HARDWAREINPUT)]
 
         class INPUT(ctypes.Structure):
             _fields_ = [("type", wintypes.DWORD), ("union", _INPUTUNION)]
+
+        expected = 40 if ctypes.sizeof(ctypes.c_void_p) == 8 else 28
+        if ctypes.sizeof(INPUT) != expected:
+            logger.warning(
+                "[TYPE] INPUT struct sizeof=%d (expected %d); aborting typed injection",
+                ctypes.sizeof(INPUT), expected,
+            )
+            return False
 
         INPUT_KEYBOARD = 1
         events = build_unicode_key_events(text)
