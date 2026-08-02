@@ -683,6 +683,10 @@ def type_text_unicode(text: str, chunk: int = 64) -> bool:
             inp.union.ki = KEYBDINPUT(vk, scan, flags, 0, 0)
             arr_all.append(inp)
 
+        # 30ms settle before the first batch: Chromium occasionally delivers
+        # the opening keystroke twice when injection begins mid focus
+        # transition (live artifact 2026-08-02: single-N decode typed as NN).
+        time.sleep(0.03)
         user32 = ctypes.windll.user32
         i = 0
         while i < len(arr_all):
