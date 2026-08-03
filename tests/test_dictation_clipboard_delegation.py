@@ -23,6 +23,9 @@ def _app():
         config={"clipboard_delay": 0.23},
         adaptive_learner=SimpleNamespace(record_transcription=Mock()),
         _record_undoable_paste=Mock(),
+        # per-target routing (2026-08-02): these tests exercise the
+        # clipboard path, so the stub app reports a non-browser target
+        _foreground_wants_typed_injection=lambda: False,
     )
     app._paste_preserving_clipboard = (
         dictation.DictationApp._paste_preserving_clipboard.__get__(app)
