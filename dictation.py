@@ -9388,6 +9388,38 @@ class DictationApp:
 
     _UNDO_EXPIRY_SECONDS = 60.0
 
+    # Processes where synthetic Ctrl+V double-executes (Chromium keydown
+    # handler + native paste both fire) -- typed Unicode injection is the
+    # fix THERE. Everywhere else (terminals, editors, games) typed unicode
+    # events (VK=0) are unreliable -- Warp discarded 9 of 11 chars live on
+    # 2026-08-02 ("CCCT") -- and clipboard paste has always worked, so it
+    # stays the default. Overridable via config 'typed_injection_processes'.
+    _TYPED_INJECTION_PROCESSES = {
+        'brave.exe', 'chrome.exe', 'msedge.exe', 'opera.exe', 'vivaldi.exe',
+    }
+
+    def _foreground_wants_typed_injection(self) -> bool:
+        """True only when the focused window belongs to a process where
+        typed Unicode injection is both needed (paste doubles) and known
+        to work. Fail toward clipboard paste on any doubt."""
+        try:
+            import ctypes
+            import psutil
+            hwnd = ctypes.windll.user32.GetForegroundWindow()
+            if not hwnd:
+                return False
+            pid = ctypes.c_ulong()
+            ctypes.windll.user32.GetWindowThreadProcessId(hwnd, ctypes.byref(pid))
+            if not pid.value:
+                return False
+            name = psutil.Process(pid.value).name().lower()
+            allowed = self.config.get('typed_injection_processes')
+            if allowed:
+                return name in {str(a).lower() for a in allowed}
+            return name in self._TYPED_INJECTION_PROCESSES
+        except Exception:
+            return False
+
     def _paste_preserving_clipboard(self, text, before_paste=None):
         """Paste text via clipboard while preserving the user's original clipboard content."""
         delay = self.config.get('clipboard_delay', CLIPBOARD_RESTORE_DELAY)
@@ -9401,7 +9433,7 @@ class DictationApp:
         # nothing for the target to double. Clipboard-paste remains for long
         # texts where atomic delivery matters.
         threshold = self.config.get('paste_min_chars', 300)
-        if len(text) < threshold:
+        if len(text) < threshold and self._foreground_wants_typed_injection():
             if before_paste is not None and not before_paste():
                 logger.warning(
                     "[TYPE] Injection cancelled because the foreground target changed"
