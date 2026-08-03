@@ -5836,15 +5836,15 @@ class DictationApp:
                     self._command_mode_key_held = False
                 if mode == 'hold':
                     if pressed:
-                        self.enter_command_mode()
+                        self._dispatch_session_transition(self.enter_command_mode)
                     else:
-                        self.exit_command_mode()
+                        self._dispatch_session_transition(self.exit_command_mode)
                 else:  # toggle
                     if pressed:
                         if self.command_mode_active:
-                            self.exit_command_mode()
+                            self._dispatch_session_transition(self.exit_command_mode)
                         else:
-                            self.enter_command_mode()
+                            self._dispatch_session_transition(self.enter_command_mode)
                 return
 
         # Right Alt → Ava mode (mutual exclusion with command mode)
@@ -6406,6 +6406,37 @@ class DictationApp:
         time.sleep(debounce_ms / 1000.0)
         if self.command_mode_active:
             self.play_sound('start', use_winsound=True)
+
+    def _dispatch_session_transition(self, action) -> None:
+        """Run enter/exit_command_mode on a worker, never inline in the
+        low-level keyboard hook callback.
+
+        The 2026-07-28 and 2026-08-02 freezes (watchdog stack dumps,
+        proof_home/freeze_stacks.txt) both show the pynput WH_KEYBOARD_LL
+        hook thread wedged for minutes inside exit_command_mode -- the
+        hook must return fast, and the teardown does Qt signal emits,
+        locking, and audio work. Worse, typed injection (25bc7ee) sends
+        synthetic input whose delivery synchronizes with the very hook
+        chain this callback is blocking: a commit's SendInput in flight
+        plus an exit hotkey is an AB-BA deadlock. One transition may be
+        in flight at a time; extra presses during a transition are
+        dropped (idempotent -- the user is mashing the same intent).
+        """
+        if getattr(self, '_session_transition_inflight', False):
+            logger.debug('[SESSION] transition already in flight; drop')
+            return
+        self._session_transition_inflight = True
+
+        def _run():
+            try:
+                action()
+            except Exception:
+                logger.exception('[SESSION] transition failed')
+            finally:
+                self._session_transition_inflight = False
+
+        from samsara.runtime import thread_registry
+        thread_registry.spawn('session.transition', _run, daemon=True)
 
     def exit_command_mode(self):
         """Exit command mode (idempotent). Safe to call from any thread."""
