@@ -416,7 +416,56 @@ if _ace_import_ms > 5000:
 
 from pynput import keyboard as pynput_keyboard
 from pynput.keyboard import Key, Controller as KeyboardController
-import keyboard  # For reliable simultaneous key state detection
+import keyboard  # CapsLock streaming hook ONLY (config-gated; see _install_capslock_hook)
+
+
+# ---------------------------------------------------------------------------
+# Raw key-state polling (2026-08-03, tribunal arc_20260803_163412)
+#
+# keyboard.is_pressed() lazily installs the `keyboard` library's OWN
+# WH_KEYBOARD_LL hook on first call and keeps it forever -- giving this
+# process TWO serialized low-level hooks (pynput + keyboard), which the
+# freeze tribunal flagged as a first-tier hazard (Windows serializes the
+# chain; a stall in either wedges input). GetAsyncKeyState reads key state
+# with NO hook and no library machinery.
+# ---------------------------------------------------------------------------
+_VK_BY_NAME = {
+    'ctrl': (0x11, 0xA2, 0xA3), 'shift': (0x10, 0xA0, 0xA1),
+    'alt': (0x12, 0xA4, 0xA5), 'win': (0x5B, 0x5C),
+    'escape': (0x1B,), 'esc': (0x1B,), 'space': (0x20,), 'tab': (0x09,),
+    'enter': (0x0D,), 'backspace': (0x08,), 'caps lock': (0x14,),
+    'capslock': (0x14,), 'delete': (0x2E,), 'insert': (0x2D,),
+    'home': (0x24,), 'end': (0x23,), 'page up': (0x21,), 'page down': (0x22,),
+    'up': (0x26,), 'down': (0x28,), 'left': (0x25,), 'right': (0x27,),
+}
+for _i in range(1, 25):
+    _VK_BY_NAME[f'f{_i}'] = (0x6F + _i,)
+for _c in 'abcdefghijklmnopqrstuvwxyz':
+    _VK_BY_NAME[_c] = (ord(_c.upper()),)
+for _d in '0123456789':
+    _VK_BY_NAME[_d] = (ord(_d),)
+
+
+def _raw_key_pressed(name: str) -> bool:
+    """Hook-free key-state check via GetAsyncKeyState (high bit = down).
+
+    Unknown names return False with a one-time warning rather than falling
+    back to keyboard.is_pressed -- the fallback would silently reinstall
+    the second LL hook this exists to eliminate.
+    """
+    vks = _VK_BY_NAME.get(name.lower().strip())
+    if not vks:
+        if name not in _raw_key_pressed._warned:  # type: ignore[attr-defined]
+            logger.warning('[KEYS] no VK mapping for %r; treating as not pressed', name)
+            _raw_key_pressed._warned.add(name)  # type: ignore[attr-defined]
+        return False
+    import ctypes
+    ga = ctypes.windll.user32.GetAsyncKeyState
+    return any(ga(vk) & 0x8000 for vk in vks)
+
+
+_raw_key_pressed._warned = set()  # type: ignore[attr-defined]
+
 from pynput.mouse import Button, Controller as MouseController
 import pyperclip
 import pyautogui
@@ -5285,26 +5334,9 @@ class DictationApp:
         required_keys = self.parse_hotkey(hotkey_str)
         
         for key in required_keys:
-            # Map our key names to keyboard library names
-            if key == 'ctrl':
-                if not (keyboard.is_pressed('ctrl') or keyboard.is_pressed('left ctrl') or keyboard.is_pressed('right ctrl')):
-                    return False
-            elif key == 'shift':
-                if not (keyboard.is_pressed('shift') or keyboard.is_pressed('left shift') or keyboard.is_pressed('right shift')):
-                    return False
-            elif key == 'alt':
-                if not (keyboard.is_pressed('alt') or keyboard.is_pressed('left alt') or keyboard.is_pressed('right alt')):
-                    return False
-            elif key == 'win':
-                if not (keyboard.is_pressed('left windows') or keyboard.is_pressed('right windows')):
-                    return False
-            elif key == 'escape':
-                if not keyboard.is_pressed('esc'):
-                    return False
-            else:
-                # Regular key (letter, number, etc.)
-                if not keyboard.is_pressed(key):
-                    return False
+            # Hook-free state check -- see _raw_key_pressed (tribunal fix)
+            if not _raw_key_pressed(key):
+                return False
         
         return True
     
@@ -5313,7 +5345,7 @@ class DictationApp:
         pressed = []
         for key in ['ctrl', 'shift', 'alt', 'a', 'b', 'c', 'd', 'e', 'f', 'g', 'h', 'i', 'j', 'k', 'l', 'm', 'n', 'o', 'p', 'q', 'r', 's', 't', 'u', 'v', 'w', 'x', 'y', 'z', 'esc']:
             try:
-                if keyboard.is_pressed(key):
+                if _raw_key_pressed(key):
                     pressed.append(key)
             except Exception as e:
                 logger.debug(f"is_pressed check failed for {key!r}: {e}")
