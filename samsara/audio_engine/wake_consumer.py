@@ -46,6 +46,7 @@ from samsara.constants import (
 from samsara.session_modes import SessionMode
 from samsara.log import get_logger
 from samsara.runtime import thread_registry
+from samsara import flight_recorder
 
 logger = get_logger(__name__)
 
@@ -338,12 +339,17 @@ class WakeConsumer:
 
             if not self._is_toggle_cmd(self._app):
                 logger.info('[CMD-UTT] Session ended -- discarding queued post-exit utterance')
+                flight_recorder.record('session.dispatch', op='dropped', kind='toggle_command', reason='session_ended')
                 self._close_hands_free_duck_safe(self._app, owner_token)
                 continue
+            flight_recorder.record('session.dispatch', op='started', kind='toggle_command', thread='cmd-utt-queue')
             try:
                 self._app._handle_command_mode_utterance(buffer_copy, SAMPLE_RATE)
             except Exception as exc:
                 logger.exception(f'[CMD-UTT] FIFO worker error: {exc}')
+                flight_recorder.record('session.dispatch', op='completed', kind='toggle_command', exc=True)
+            else:
+                flight_recorder.record('session.dispatch', op='completed', kind='toggle_command', exc=False)
             finally:
                 self._close_hands_free_duck_safe(self._app, owner_token)
 
@@ -620,6 +626,7 @@ class WakeConsumer:
             if app._wake_detector.detected(_oww_chunk):
                 app._oww_wake_detected = True
                 app._wake_detector.reset()
+                flight_recorder.record('wake.oww_confirm', app_state=app.app_state)
 
         # ── Speech accumulation ───────────────────────────────────────────────
         if is_speech:
@@ -629,6 +636,10 @@ class WakeConsumer:
             app.silence_start = None
 
             if speech_onset:
+                flight_recorder.record(
+                    'wake.session_open', app_state=app.app_state,
+                    wake_word_triggered=bool(app.wake_word_triggered),
+                )
                 # Hands-free capture-window ducking (2026-07-24): OPEN at the
                 # earliest possible signal that an utterance is being captured
                 # only when a deliberately latched session owns the turn
@@ -703,6 +714,10 @@ class WakeConsumer:
                 if variance < 0.0001:
                     buf_s = len(self._buffer_rms_history) * (FRAME_MS / 1000.0)
                     logger.debug(f"[CAP] Stuck buffer ({buf_s:.1f}s, var={variance:.6f}) — discarding")
+                    flight_recorder.record(
+                        'wake.session_close', reason='stuck_buffer',
+                        buffer_s=buf_s, variance=variance,
+                    )
                     self._utterance_frames   = []
                     self._buffer_rms_history = []
                     app.is_speaking   = False
@@ -719,6 +734,9 @@ class WakeConsumer:
             buffer_s = len(self._utterance_frames) * (FRAME_MS / 1000.0)
             if buffer_s >= 7.0 and self._hard_cap_applies(app):
                 logger.debug(f"[CAP] Buffer at {buffer_s:.1f}s cap — discarding (likely noise/echo)")
+                flight_recorder.record(
+                    'wake.session_close', reason='hard_buffer_cap', buffer_s=buffer_s,
+                )
                 self._utterance_frames   = []
                 self._buffer_rms_history = []
                 app.is_speaking   = False
@@ -752,16 +770,24 @@ class WakeConsumer:
                     app.silence_start = None
 
                     if buffer_copy is not None:
+                        flight_recorder.record(
+                            'wake.session_close', reason='silence_flush',
+                            speech_s=speech_s,
+                        )
                         self._flush(buffer_copy, self._hands_free_capture_duck_token)
                     else:
                         # Too short to count as a real utterance -- the
                         # capture window this onset opened closes here
                         # (buffer discarded, never reaches _flush at all).
+                        flight_recorder.record(
+                            'wake.session_close', reason='too_short',
+                            speech_s=speech_s,
+                        )
                         self._close_hands_free_duck_safe(app, self._hands_free_capture_duck_token)
                         self._hands_free_capture_duck_token = None
 
     @staticmethod
-    def _wrap_with_duck_close(app, fn, owner_token: int | None = None):
+    def _wrap_with_duck_close(app, fn, owner_token: int | None = None, kind: str = "unknown"):
         """Wrap a dispatched utterance-processing function so the capture-
         window duck always closes once it returns -- success, an internal
         early return, or an exception (finally-shape: the ducking design
@@ -769,8 +795,14 @@ class WakeConsumer:
         thread the wrapped function itself runs on (a freshly spawned
         daemon thread for every call site below), not this poll thread."""
         def _wrapped(*args, **kwargs):
+            flight_recorder.record('session.dispatch', op='started', kind=kind)
             try:
                 fn(*args, **kwargs)
+            except Exception:
+                flight_recorder.record('session.dispatch', op='completed', kind=kind, exc=True)
+                raise
+            else:
+                flight_recorder.record('session.dispatch', op='completed', kind=kind, exc=False)
             finally:
                 WakeConsumer._close_hands_free_duck_safe(app, owner_token)
         return _wrapped
@@ -781,9 +813,10 @@ class WakeConsumer:
 
         # Ava command session (D3): route utterance to the waterfall queue.
         if self._is_ai_cmd_mode(app):
+            flight_recorder.record('session.dispatch', op='enqueued', kind='ava_command', thread='ava-cmd-utt')
             thread_registry.spawn(
                 'ava-cmd-utt',
-                self._wrap_with_duck_close(app, app._handle_ava_command_utterance, owner_token),
+                self._wrap_with_duck_close(app, app._handle_ava_command_utterance, owner_token, kind='ava_command'),
                 args=(buffer_copy, SAMPLE_RATE),
                 daemon=True,
             )
@@ -795,6 +828,7 @@ class WakeConsumer:
         # happens inside _drain_toggle_utterances (the actual processing
         # point), not here (enqueueing is not processing).
         if self._is_toggle_cmd(app):
+            flight_recorder.record('session.dispatch', op='enqueued', kind='toggle_command')
             self._enqueue_toggle_utterance(buffer_copy, owner_token)
             return
 
@@ -817,6 +851,7 @@ class WakeConsumer:
         if _primary_oww_eligible and not _primary_oww_hit and not _has_wake_profiles:
             if app._wake_detector is not None:
                 app._wake_detector.reset()
+            flight_recorder.record('session.dispatch', op='dropped', kind='oww_gate_no_hit')
             # Rejected before any dispatch -- this IS the capture window's
             # close (nothing else will ever process this buffer).
             self._close_hands_free_duck_safe(app, owner_token)
@@ -846,23 +881,33 @@ class WakeConsumer:
         if app.app_state == 'long_dictation':
             with app._dictation_finalize_lock:
                 app._pending_transcriptions += 1
+            flight_recorder.record(
+                'session.dispatch', op='enqueued', kind='wake_buffer_tracked',
+                thread='wake_consumer._process_wake_word_buffer_tracked',
+            )
             thread_registry.spawn(
                 "wake_consumer._process_wake_word_buffer_tracked",
                 self._wrap_with_duck_close(
                     app,
                     app._process_wake_word_buffer_tracked,
                     owner_token,
+                    kind='wake_buffer_tracked',
                 ),
                 args=(buffer_copy, SAMPLE_RATE),
                 daemon=True,
             )
         else:
+            flight_recorder.record(
+                'session.dispatch', op='enqueued', kind='wake_buffer',
+                thread='wake_consumer.process_wake_word_buffer', oww_confirmed=oww_confirmed,
+            )
             thread_registry.spawn(
                 "wake_consumer.process_wake_word_buffer",
                 self._wrap_with_duck_close(
                     app,
                     app.process_wake_word_buffer,
                     owner_token,
+                    kind='wake_buffer',
                 ),
                 args=(buffer_copy, SAMPLE_RATE),
                 kwargs={"oww_confirmed": oww_confirmed},

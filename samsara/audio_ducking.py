@@ -8,6 +8,7 @@ import itertools
 import logging
 import os
 import threading
+import time
 from dataclasses import dataclass
 from typing import Any, Iterable, Protocol
 from ctypes import (
@@ -24,6 +25,7 @@ from ctypes import (
 from ctypes import wintypes
 
 from samsara.runtime import thread_registry
+from samsara import flight_recorder
 
 logger = logging.getLogger("Samsara")
 
@@ -1174,13 +1176,27 @@ def duck(level: float = 0.2) -> None:
     global _shim_ducker
     if _shim_ducker is not None:
         return  # already active; keep first duck, restore() releases it
+    _t0 = time.monotonic()
     d = SessionDucker(duck_level=level)
     d.start()
     _shim_ducker = d
+    flight_recorder.record(
+        'ducker.op', op='start', duck_level=level,
+        sessions_seen=d.sessions_seen, sessions_ducked=d.sessions_ducked,
+        sessions_failed=d.sessions_failed, last_error=d.last_error,
+        elapsed_ms=int((time.monotonic() - _t0) * 1000),
+    )
 
 
 def restore() -> None:
     global _shim_ducker
     d, _shim_ducker = _shim_ducker, None
     if d is not None:
+        _t0 = time.monotonic()
         d.stop()
+        flight_recorder.record(
+            'ducker.op', op='stop',
+            sessions_seen=d.sessions_seen, sessions_ducked=d.sessions_ducked,
+            sessions_failed=d.sessions_failed, last_error=d.last_error,
+            elapsed_ms=int((time.monotonic() - _t0) * 1000),
+        )

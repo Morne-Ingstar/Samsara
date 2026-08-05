@@ -26,6 +26,8 @@ def _app():
         # per-target routing (2026-08-02): these tests exercise the
         # clipboard path, so the stub app reports a non-browser target
         _foreground_wants_typed_injection=lambda: False,
+        # flight-recorder seam (P1): recording-only helper the stub must carry
+        _flight_foreground_process_name=lambda: None,
     )
     app._paste_preserving_clipboard = (
         dictation.DictationApp._paste_preserving_clipboard.__get__(app)

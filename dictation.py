@@ -461,7 +461,18 @@ def _raw_key_pressed(name: str) -> bool:
         return False
     import ctypes
     ga = ctypes.windll.user32.GetAsyncKeyState
-    return any(ga(vk) & 0x8000 for vk in vks)
+    pressed = any(ga(vk) & 0x8000 for vk in vks)
+    if not pressed:
+        # FLIGHT RECORDER: this is the release-verification suspect from
+        # cdc39ea -- a spurious not-pressed reading here would stop
+        # recording instantly. Re-read (recording-only, key already
+        # resolved not-pressed above) so an incident bundle has the raw
+        # bits behind every "not pressed" verdict, not just the boolean.
+        flight_recorder.record(
+            'key_state.not_pressed', key=name,
+            raw_bits={hex(vk): ga(vk) for vk in vks},
+        )
+    return pressed
 
 
 _raw_key_pressed._warned = set()  # type: ignore[attr-defined]
@@ -545,6 +556,7 @@ from samsara.cleanup import clean_text
 from samsara.smart_corrections import smart_correct, warm_up as smart_corrections_warm_up
 from samsara.formatting_tokens import apply_formatting_tokens_if_enabled
 from samsara import diagnostics
+from samsara import flight_recorder
 from samsara import benchmark_store
 from samsara import languages as _languages
 from samsara.history import HistoryManager
@@ -5635,11 +5647,21 @@ class DictationApp:
 
                 if self.command_mode_recording and self.recording:
                     logger.debug(f"[HOTKEY] Command hotkey released, stopping recording")
+                    flight_recorder.record(
+                        'hold_recording.stop_triggered',
+                        reason='command_hotkey_release', key=key_name,
+                        main_hotkey=main_hotkey, command_hotkey=command_hotkey,
+                    )
                     self._stop_in_flight = True
                     thread_registry.spawn('stop-rec', _deferred_stop, daemon=True)
                     self.hotkey_pressed = False
                 elif mode == 'hold' and self.recording:
                     logger.debug(f"[HOTKEY] Main hotkey released, stopping recording")
+                    flight_recorder.record(
+                        'hold_recording.stop_triggered',
+                        reason='main_hotkey_release', key=key_name,
+                        main_hotkey=main_hotkey,
+                    )
                     self._stop_in_flight = True
                     thread_registry.spawn('stop-rec', _deferred_stop, daemon=True)
                     self.hotkey_pressed = False
@@ -9452,6 +9474,25 @@ class DictationApp:
         except Exception:
             return False
 
+    @staticmethod
+    def _flight_foreground_process_name() -> str | None:
+        """Foreground process name for flight-recorder injection events only
+        -- never consulted for the typed-vs-clipboard decision itself (see
+        _foreground_wants_typed_injection)."""
+        try:
+            import ctypes
+            import psutil
+            hwnd = ctypes.windll.user32.GetForegroundWindow()
+            if not hwnd:
+                return None
+            pid = ctypes.c_ulong()
+            ctypes.windll.user32.GetWindowThreadProcessId(hwnd, ctypes.byref(pid))
+            if not pid.value:
+                return None
+            return psutil.Process(pid.value).name()
+        except Exception:
+            return None
+
     def _paste_preserving_clipboard(self, text, before_paste=None):
         """Paste text via clipboard while preserving the user's original clipboard content."""
         delay = self.config.get('clipboard_delay', CLIPBOARD_RESTORE_DELAY)
@@ -9465,10 +9506,17 @@ class DictationApp:
         # nothing for the target to double. Clipboard-paste remains for long
         # texts where atomic delivery matters.
         threshold = self.config.get('paste_min_chars', 300)
-        if len(text) < threshold and self._foreground_wants_typed_injection():
+        _typed_wanted = len(text) < threshold and self._foreground_wants_typed_injection()
+        _typed_failed = False
+        if _typed_wanted:
             if before_paste is not None and not before_paste():
                 logger.warning(
                     "[TYPE] Injection cancelled because the foreground target changed"
+                )
+                flight_recorder.record(
+                    'inject', path='typed', why='under_paste_min_chars',
+                    target_process=self._flight_foreground_process_name(),
+                    chars=len(text), result='cancelled_target_changed',
                 )
                 return False
             typed_hwnd = _get_foreground_hwnd()
@@ -9478,9 +9526,20 @@ class DictationApp:
                 logger.info(
                     "[TYPE] Unicode-typed chars=%d hwnd=%r", len(text), typed_hwnd,
                 )
+                flight_recorder.record(
+                    'inject', path='typed', why='under_paste_min_chars',
+                    target_process=self._flight_foreground_process_name(),
+                    chars=len(text), result='ok',
+                )
                 return True
             logger.warning(
                 "[TYPE] Typed injection failed; falling back to clipboard paste"
+            )
+            _typed_failed = True
+            flight_recorder.record(
+                'inject', path='typed', why='under_paste_min_chars',
+                target_process=self._flight_foreground_process_name(),
+                chars=len(text), result='failed_falling_back_to_clipboard',
             )
 
         def _capture_target_before_paste():
@@ -9517,6 +9576,14 @@ class DictationApp:
             )
         else:
             logger.error("[PASTE] Ctrl+V delivery failed; text retained by caller when possible")
+        flight_recorder.record(
+            'inject', path='clipboard',
+            why=('typed_failed' if _typed_failed
+                 else 'over_paste_min_chars' if len(text) >= threshold
+                 else 'target_not_typed_capable'),
+            target_process=self._flight_foreground_process_name(),
+            chars=len(text), result='ok' if paste_ok else 'failed',
+        )
         return paste_ok
 
     def _deliver_text_to_focused_editor(self, text):
@@ -10214,6 +10281,8 @@ class DictationApp:
         ducking_cfg = self.config.get('ducking', {}) or {}
         if ducking_cfg.get('enabled', False):
             audio_ducking.duck(ducking_cfg.get('level', 0.2))
+        else:
+            flight_recorder.record('ducker.op', op='start', noop=True, reason='disabled_in_config')
 
     def _restore_audio(self):
         """Counterpart to _duck_audio -- always safe to call even if
@@ -10277,6 +10346,13 @@ class DictationApp:
         if streaming is None:
             streaming = (self.config.get('streaming_mode', False)
                          and self.config.get('mode', 'hold') == 'hold')
+
+        flight_recorder.record(
+            'hold_recording.start',
+            trigger='capslock_stream' if streaming else 'hotkey_batch',
+            key_combo=self.config.get('hotkey'),
+            mode=self.config.get('mode', 'hold'),
+        )
 
         # Play start sound before opening capture.
         # Skipped for command mode which manages its own debounced 200ms earcon.
@@ -10380,6 +10456,13 @@ class DictationApp:
         if not self.recording:
             return
 
+        flight_recorder.record(
+            'hold_recording.stop',
+            command_mode_recording=bool(getattr(self, 'command_mode_recording', False)),
+            ava_mode_recording=bool(getattr(self, 'ava_mode_recording', False)),
+            streaming=bool(getattr(self, '_streaming_session', None) is not None),
+        )
+
         ownership = self._take_recording_ownership()
         adaptive_release_tail = bool(
             getattr(self, '_ace_dictation_active', False)
@@ -10429,6 +10512,7 @@ class DictationApp:
                 audio = self._dictation_consumer.drain()
             if audio is None:
                 logger.debug("[ACE] No audio captured or epoch abort")
+                flight_recorder.record('hold_recording.stop_reason', reason='empty_buffer_or_epoch_abort')
                 self.play_sound("error")
                 if hasattr(self, 'listening_indicator'):
                     self._schedule_ui(self.listening_indicator.flash_error)
@@ -10477,6 +10561,10 @@ class DictationApp:
                 # Guard: Whisper hallucinates on very short audio (<0.5s)
                 if audio_duration < 0.51:
                     logger.info(f"[SKIP] Audio too short ({audio_duration:.2f}s) — skipping")
+                    flight_recorder.record(
+                        'hold_recording.stop_reason', reason='audio_too_short',
+                        audio_duration_ms=int(audio_duration * 1000),
+                    )
                     return
 
                 if self.config.get('debug', {}).get('dump_hotkey_buffers', False):
@@ -10568,6 +10656,16 @@ class DictationApp:
                 _diag_all_segs = list(_decode_result.seg_list)
                 _detected_lang = _decode_result.detected_lang
                 _diag_path = _decode_result.diag_path
+
+                flight_recorder.record(
+                    'hold_recording.decoded',
+                    audio_duration_ms=int(audio_duration * 1000),
+                    text_len=len(text) if text else 0,
+                    text_preview=(text or '')[:12],
+                    low_confidence=bool(_low_confidence),
+                    suspected_data_loss=bool(_suspected_data_loss),
+                    retried=bool(_retried),
+                )
 
                 transcribe_time = time.time() - transcribe_start
                 t_transcribe_ms = int(transcribe_time * 1000)
