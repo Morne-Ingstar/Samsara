@@ -9442,20 +9442,32 @@ class DictationApp:
 
     _UNDO_EXPIRY_SECONDS = 60.0
 
-    # Processes where synthetic Ctrl+V double-executes (Chromium keydown
-    # handler + native paste both fire) -- typed Unicode injection is the
-    # fix THERE. Everywhere else (terminals, editors, games) typed unicode
-    # events (VK=0) are unreliable -- Warp discarded 9 of 11 chars live on
-    # 2026-08-02 ("CCCT") -- and clipboard paste has always worked, so it
-    # stays the default. Overridable via config 'typed_injection_processes'.
-    _TYPED_INJECTION_PROCESSES = {
-        'brave.exe', 'chrome.exe', 'msedge.exe', 'opera.exe', 'vivaldi.exe',
-    }
+    # Typed Unicode injection is OFF by default (empty allowlist) as of
+    # 2026-09-05. It was introduced (5b0ae81) for Chromium, where synthetic
+    # Ctrl+V was believed to double-execute in rich web editors, and routed
+    # per-process in a569cf8. Live evidence retired it: with SendInput
+    # accepting every KEYEVENTF_UNICODE event, Brave's omnibox and <textarea>
+    # received 2-3 of 47 chars (owner: "4 letters" for a 48-char dictation,
+    # samsara.log 2026-09-05 15:09:57); survivors are periodic, ~1 char per
+    # ~100ms of injection, and slowing to 15ms/char still lost 80%.
+    # contenteditable landed intact in one probe run and 0/47 in the next.
+    # Clipboard Ctrl+V landed 47/47 in every target in every run
+    # (Documents\Claude\probe_inject_matrix.py + *.json). Warp's "CCCT"
+    # (2026-08-02) is the same class, not "terminals discard VK=0".
+    # Mechanism unconfirmed (Samsara's own LL hook sits in the injection
+    # path; a Samsara-closed control run was not performed). Typed injection
+    # stays available as an explicit opt-in via config
+    # 'typed_injection_processes' (list of lowercase exe names).
+    _TYPED_INJECTION_PROCESSES: frozenset = frozenset()
 
     def _foreground_wants_typed_injection(self) -> bool:
-        """True only when the focused window belongs to a process where
-        typed Unicode injection is both needed (paste doubles) and known
-        to work. Fail toward clipboard paste on any doubt."""
+        """True only when the focused window belongs to a process the user
+        explicitly opted into typed Unicode injection. Empty allowlist (the
+        default) short-circuits to False without touching Win32. Fail toward
+        clipboard paste on any doubt."""
+        allowed = self.config.get('typed_injection_processes') or self._TYPED_INJECTION_PROCESSES
+        if not allowed:
+            return False
         try:
             import ctypes
             import psutil
@@ -9467,10 +9479,7 @@ class DictationApp:
             if not pid.value:
                 return False
             name = psutil.Process(pid.value).name().lower()
-            allowed = self.config.get('typed_injection_processes')
-            if allowed:
-                return name in {str(a).lower() for a in allowed}
-            return name in self._TYPED_INJECTION_PROCESSES
+            return name in {str(a).lower() for a in allowed}
         except Exception:
             return False
 
@@ -9580,7 +9589,7 @@ class DictationApp:
             'inject', path='clipboard',
             why=('typed_failed' if _typed_failed
                  else 'over_paste_min_chars' if len(text) >= threshold
-                 else 'target_not_typed_capable'),
+                 else 'typed_injection_not_enabled_for_target'),
             target_process=self._flight_foreground_process_name(),
             chars=len(text), result='ok' if paste_ok else 'failed',
         )
