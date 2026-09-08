@@ -1,28 +1,34 @@
-"""Session audio ducking engine for WASAPI session control."""
+"""Session audio ducking engine for WASAPI session control.
+
+ARCHITECTURE (tribunal arc_20260803_163412, tier-2): the ducking ALGORITHM
+lives here -- lease composition, generations, owner tokens, conditional
+restore -- but not one line of COM. Every Core Audio call happens in a
+child process (samsara/ducking_host.py) reached through
+DuckingHostTransport below, so a wedged COM call is killable instead of
+poisoning the process that owns the user's hotkeys and UI.
+
+The seam is deliberately narrow: `_iter_audio_sessions()` and the
+get/set_master_volume methods of the handles it returns. Everything
+SessionDucker does with those handles is unchanged from the in-process
+implementation, which is why the engine's test suite exercises the same
+assertions against a fake child.
+"""
 
 from __future__ import annotations
 
 import atexit
-import ctypes
 import itertools
+import json
 import logging
 import os
+import queue
+import subprocess
+import sys
 import threading
 import time
 from dataclasses import dataclass
+from pathlib import Path
 from typing import Any, Iterable, Protocol
-from ctypes import (
-    POINTER,
-    Structure,
-    WINFUNCTYPE,
-    byref,
-    c_float,
-    c_int,
-    c_void_p,
-    c_wchar_p,
-    cast,
-)
-from ctypes import wintypes
 
 from samsara.runtime import thread_registry
 from samsara import flight_recorder
@@ -268,14 +274,30 @@ class SessionDucker:
             try:
                 current = float(handle.get_master_volume())
             except Exception as exc:
+                # CANNOT VERIFY -> DO NOT RESTORE (child-process amendment).
+                # Previously a failed read fell through to restoring the
+                # pre-duck snapshot anyway. With COM in a child that is
+                # killed and respawned, a read failure most often means the
+                # sid belonged to a dead child or the session vanished --
+                # in neither case is the snapshot known to still be the
+                # right answer, and writing it would clobber whatever the
+                # user or the app has since set. Recorded so an incident
+                # bundle shows exactly which sessions were skipped.
                 logger.warning(
                     "SessionDucker.release(): failed to read current volume "
-                    "for session %s: %s",
+                    "for session %s: %s -- skipping restore (cannot verify)",
                     session_id,
                     exc,
                 )
-                current = None
-            if current is not None and not _floats_close(current, expected_volume):
+                flight_recorder.record(
+                    "ducker_restore_skipped",
+                    session_id=session_id,
+                    reason=str(exc),
+                )
+                if close_handle:
+                    self._close_session(handle)
+                return
+            if not _floats_close(current, expected_volume):
                 if close_handle:
                     self._close_session(handle)
                 return
@@ -568,598 +590,328 @@ class SessionDucker:
             logger.debug("SessionDucker: failed to close a session handle")
 
 
-class _CtypesSessionHandle:
-    """Adapter around an ISimpleAudioVolume pointer."""
+# --- Child-process transport (tribunal arc_20260803_163412, tier-2) --------
+#
+# Every Core Audio COM call now happens in samsara/ducking_host.py, a
+# separate process. The tribunal rejected in-process COM timeouts as fake
+# isolation: a wedged COM call cannot be abandoned from inside the process
+# -- the thread stays stuck in the RPC runtime still holding its locks, so
+# "timing out" only stops the caller waiting while the damage is already
+# done and permanent. A wedged CHILD, by contrast, is killed and respawned
+# and the parent never notices.
+#
+# NOTE that this module no longer imports ctypes/ole32 at all: the parent
+# process does not so much as load the COM machinery any more. Everything
+# below is pipes and bookkeeping.
 
-    def __init__(self, session_id: str, pid: int, volume_iface: c_void_p) -> None:
-        self.session_id = session_id
+# Per-command deadline. Generous relative to a healthy call (sub-millisecond
+# round trip locally) and short relative to a human noticing.
+_CHILD_DEADLINE_S = 2.0
+
+# Shutdown is best-effort by design: app exit must never wait on the child
+# longer than this before killing it outright.
+_CHILD_SHUTDOWN_DEADLINE_S = 1.0
+
+# Mirrors samsara/ducking_host.py's HOST_ENV_SENTINEL. Deliberately a
+# literal rather than an import: importing ducking_host here would pull
+# ole32 and the whole COM surface back into the parent process, which is
+# precisely what this design exists to prevent.
+_HOST_ENV_SENTINEL = "SAMSARA_DUCKING_HOST"
+
+
+class _EOF:
+    """Sentinel the reader thread pushes when the child's stdout closes."""
+
+
+def _kill_process_tree(proc) -> None:
+    """Kill the child and anything it spawned. Never raises.
+
+    Tree-kill rather than a plain kill(): a wedged COM call can be blocked
+    inside an RPC to another process, and leaving descendants behind is how
+    "restarted cleanly" quietly becomes "two hosts fighting over volumes".
+    """
+    pid = getattr(proc, "pid", None)
+    if pid is not None and sys.platform == "win32":
+        try:
+            subprocess.run(
+                ["taskkill", "/F", "/T", "/PID", str(pid)],
+                capture_output=True,
+                timeout=5,
+                creationflags=getattr(subprocess, "CREATE_NO_WINDOW", 0),
+            )
+        except Exception:
+            pass
+    try:
+        proc.kill()
+    except Exception:
+        pass
+    try:
+        proc.wait(timeout=1)
+    except Exception:
+        pass
+
+
+class DuckingHostTransport:
+    """Owns the ducking child process and its request/reply pipe.
+
+    One command is in flight at a time (the child is sequential), so replies
+    match requests by construction; the `id` echo is checked anyway so a
+    late reply from a killed generation can never be mistaken for the
+    current one.
+
+    FAILURE MODEL -- every path returns a dict, none raise:
+      * deadline exceeded, or the pipe is dead  -> tree-kill the child,
+        record `ducker_child_restart` with the pending op, return
+        {"ok": False, ...}. The next request lazily respawns.
+      * lock held past the deadline (another thread is already inside a
+        hanging op) -> return failure immediately rather than stacking a
+        second full deadline on top of the first. This is what keeps a
+        caller's worst case at ~one deadline instead of N.
+
+    GENERATION: bumped on every spawn. Session ids issued by a dead child
+    are meaningless to its replacement, so handles carry the generation
+    they were minted in and refuse to act once it moves (see
+    _ProxySessionHandle).
+    """
+
+    def __init__(self, spawn_fn=None) -> None:
+        self._lock = threading.Lock()
+        self._proc = None
+        self._replies: "queue.Queue" = queue.Queue()
+        self._ids = itertools.count(1)
+        self._generation = 0
+        self._spawn_fn = spawn_fn  # tests inject a fake child here
+
+    @property
+    def generation(self) -> int:
+        return self._generation
+
+    def _default_spawn(self):
+        env = dict(os.environ)
+        env[_HOST_ENV_SENTINEL] = "1"
+        if getattr(sys, "frozen", False):
+            # A frozen build has no separate interpreter to hand `-m` to, so
+            # it re-executes its own exe; the entry point checks the
+            # sentinel and diverts into ducking_host.main().
+            argv = [sys.executable]
+        else:
+            argv = [sys.executable, "-u", "-m", "samsara.ducking_host"]
+        return subprocess.Popen(
+            argv,
+            stdin=subprocess.PIPE,
+            stdout=subprocess.PIPE,
+            stderr=subprocess.DEVNULL,
+            env=env,
+            cwd=str(Path(__file__).resolve().parents[1]),
+            creationflags=getattr(subprocess, "CREATE_NO_WINDOW", 0),
+            text=True,
+            encoding="utf-8",
+            bufsize=1,
+        )
+
+    def _spawn_locked(self) -> None:
+        spawn = self._spawn_fn or self._default_spawn
+        proc = spawn()
+        self._proc = proc
+        self._generation += 1
+        self._replies = queue.Queue()
+        replies = self._replies
+
+        def _reader_loop() -> None:
+            try:
+                for raw in proc.stdout:
+                    replies.put(raw)
+            except Exception:
+                pass
+            finally:
+                replies.put(_EOF)
+
+        thread_registry.spawn(
+            f"ducking-host.reader.{self._generation}", _reader_loop, daemon=True,
+        )
+
+    def _restart_locked(self, pending_op: str, reason: str) -> None:
+        proc = self._proc
+        self._proc = None
+        if proc is not None:
+            _kill_process_tree(proc)
+        flight_recorder.record(
+            "ducker_child_restart",
+            pending_op=pending_op,
+            reason=reason,
+            generation=self._generation,
+        )
+
+    def request(self, op: str, deadline: float = _CHILD_DEADLINE_S, **fields) -> dict:
+        """Send one command and await its reply. Never raises."""
+        if not self._lock.acquire(timeout=deadline):
+            # Someone else is inside a hanging op and owns the restart.
+            flight_recorder.record("ducker_child_busy", pending_op=op)
+            return {"ok": False, "err": "ducking host busy"}
+        try:
+            return self._request_locked(op, deadline, fields)
+        finally:
+            self._lock.release()
+
+    def _request_locked(self, op: str, deadline: float, fields: dict) -> dict:
+        if self._proc is None:
+            try:
+                self._spawn_locked()
+            except Exception as exc:
+                flight_recorder.record(
+                    "ducker_child_restart", pending_op=op, reason=f"spawn failed: {exc}",
+                )
+                return {"ok": False, "err": f"ducking host spawn failed: {exc}"}
+
+        request_id = next(self._ids)
+        payload = {"id": request_id, "op": op, **fields}
+        try:
+            self._proc.stdin.write(json.dumps(payload) + "\n")
+            self._proc.stdin.flush()
+        except Exception as exc:
+            self._restart_locked(op, reason=f"write failed: {exc}")
+            return {"ok": False, "err": f"ducking host write failed: {exc}"}
+
+        expires_at = time.monotonic() + deadline
+        while True:
+            remaining = expires_at - time.monotonic()
+            if remaining <= 0:
+                self._restart_locked(op, reason="deadline")
+                return {"ok": False, "err": f"ducking host timeout after {deadline}s"}
+            try:
+                raw = self._replies.get(timeout=remaining)
+            except queue.Empty:
+                continue  # loop re-checks the deadline
+            if raw is _EOF:
+                self._restart_locked(op, reason="pipe closed")
+                return {"ok": False, "err": "ducking host died"}
+            try:
+                reply = json.loads(raw)
+            except Exception:
+                continue  # garbage line; keep waiting within the deadline
+            if not isinstance(reply, dict) or reply.get("id") != request_id:
+                continue  # stale reply from an earlier op
+            return reply
+
+    def shutdown(self) -> None:
+        """Ask the child to exit, then kill it. Never waits past
+        _CHILD_SHUTDOWN_DEADLINE_S -- app exit must not hang on audio."""
+        if not self._lock.acquire(timeout=_CHILD_SHUTDOWN_DEADLINE_S):
+            proc, self._proc = self._proc, None
+            if proc is not None:
+                _kill_process_tree(proc)
+            return
+        try:
+            if self._proc is None:
+                return
+            try:
+                self._request_locked(
+                    "shutdown", _CHILD_SHUTDOWN_DEADLINE_S, {},
+                )
+            except Exception:
+                pass
+            proc, self._proc = self._proc, None
+            if proc is not None:
+                _kill_process_tree(proc)
+        finally:
+            self._lock.release()
+
+
+_transport: "DuckingHostTransport | None" = None
+_transport_lock = threading.Lock()
+
+
+def _get_transport() -> DuckingHostTransport:
+    """Lazily create the transport. NOTE the child is not spawned here --
+    only on the first actual command -- which is what makes
+    `ducking.enabled=false` (nothing ever calls a duck op) mean the child
+    process is never created at all."""
+    global _transport
+    with _transport_lock:
+        if _transport is None:
+            _transport = DuckingHostTransport()
+            atexit.register(shutdown_host)
+        return _transport
+
+
+def shutdown_host() -> None:
+    """Stop the ducking child if one is running. Safe to call repeatedly."""
+    global _transport
+    with _transport_lock:
+        transport, _transport = _transport, None
+    if transport is not None:
+        transport.shutdown()
+
+
+class _ProxySessionHandle:
+    """A `_SessionHandle` whose volume calls cross the process boundary.
+
+    Deliberately mirrors the old _CtypesSessionHandle surface exactly, so
+    SessionDucker's algorithm above is untouched by the move to a child
+    process: it still holds "session handles" and calls
+    get_master_volume/set_master_volume/close on them.
+    """
+
+    def __init__(self, sid: str, pid: int, generation: int, process_name=None) -> None:
+        self.session_id = sid
         self.pid = pid
-        self._volume_iface = volume_iface
+        self.process_name = process_name
+        self._generation = generation
+
+    def _transport_checked(self) -> DuckingHostTransport:
+        transport = _get_transport()
+        if transport.generation != self._generation:
+            # The child that issued this sid is gone; its ids mean nothing
+            # to the replacement. Fail rather than address a random session.
+            raise OSError("ducking host restarted; session id is stale")
+        return transport
 
     def get_master_volume(self) -> float:
-        func = _vtbl(self._volume_iface, 4, ctypes.c_long, POINTER(c_float))
-        value = c_float()
-        hr = func(self._volume_iface, byref(value))
-        if hr < 0:
-            raise OSError(
-                f"ISimpleAudioVolume.GetMasterVolume failed (0x{hr & 0xFFFFFFFF:08x})"
-            )
-        return float(value.value)
+        reply = self._transport_checked().request("get_volume", sid=self.session_id)
+        if not reply.get("ok"):
+            raise OSError(f"get_volume failed: {reply.get('err')}")
+        return float(reply["level"])
 
     def set_master_volume(self, level: float) -> None:
-        func = _vtbl(self._volume_iface, 3, ctypes.c_long, c_float, POINTER(GUID))
-        level = max(0.0, min(1.0, float(level)))
-        hr = func(self._volume_iface, c_float(level), None)
-        if hr < 0:
-            raise OSError(
-                f"ISimpleAudioVolume.SetMasterVolume failed (0x{hr & 0xFFFFFFFF:08x})"
-            )
+        reply = self._transport_checked().request(
+            "set_volume", sid=self.session_id, level=_clamp_volume(level),
+        )
+        if not reply.get("ok"):
+            raise OSError(f"set_volume failed: {reply.get('err')}")
 
     def close(self) -> None:
-        _release(self._volume_iface)
-
-
-ole32 = ctypes.windll.ole32
-
-ole32.CoInitializeEx.restype = ctypes.c_long
-ole32.CoCreateInstance.argtypes = [
-    c_void_p,
-    c_void_p,
-    wintypes.DWORD,
-    c_void_p,
-    POINTER(c_void_p),
-]
-ole32.CoCreateInstance.restype = ctypes.c_long
-ole32.CLSIDFromString.argtypes = [c_wchar_p, c_void_p]
-ole32.CLSIDFromString.restype = ctypes.c_long
-ole32.CoTaskMemFree.argtypes = [c_void_p]
-ole32.CoTaskMemFree.restype = None
-
-CLSCTX_ALL = 0x17
-COINIT_MULTITHREADED = 0
-E_RENDER = 0
-E_CONSOLE = 0
-
-
-class GUID(Structure):
-    _fields_ = [
-        ("Data1", wintypes.DWORD),
-        ("Data2", wintypes.WORD),
-        ("Data3", wintypes.WORD),
-        ("Data4", wintypes.BYTE * 8),
-    ]
-
-
-def _guid(raw: str) -> GUID:
-    value = GUID()
-    hr = ole32.CLSIDFromString(c_wchar_p(raw), byref(value))
-    if hr < 0:
-        raise OSError(f"CLSIDFromString({raw!r}) failed: 0x{hr & 0xFFFFFFFF:08x}")
-    return value
-
-
-CLSID_MMDeviceEnumerator = _guid("{BCDE0395-E52F-467C-8E3D-C4579291692E}")
-IID_IMMDeviceEnumerator = _guid("{A95664D2-9614-4F35-A746-DE8DB63617E6}")
-IID_IAudioSessionManager2 = _guid("{77AA99A0-1BD6-484F-8BC7-2C654C9A9B6F}")
-IID_IAudioSessionControl2 = _guid("{BFB7FF88-7239-4FC9-8FA2-07C950BE9C6D}")
-IID_ISimpleAudioVolume = _guid("{87CE5498-68D6-44E5-9215-6DA47EF883D8}")
-
-
-class IUnknownVtbl(Structure):
-    pass
-
-
-class IUnknown(Structure):
-    _fields_ = [("lpVtbl", POINTER(IUnknownVtbl))]
-
-
-IUnknownVtbl._fields_ = [
-    (
-        "QueryInterface",
-        WINFUNCTYPE(ctypes.c_long, POINTER(IUnknown), POINTER(GUID), POINTER(c_void_p)),
-    ),
-    ("AddRef", WINFUNCTYPE(ctypes.c_ulong, POINTER(IUnknown))),
-    ("Release", WINFUNCTYPE(ctypes.c_ulong, POINTER(IUnknown))),
-]
-
-
-class IMMDevice(Structure):
-    pass
-
-
-class IMMDeviceVtbl(Structure):
-    _fields_ = [
-        (
-            "QueryInterface",
-            WINFUNCTYPE(
-                ctypes.c_long, POINTER(IMMDevice), POINTER(GUID), POINTER(c_void_p)
-            ),
-        ),
-        ("AddRef", WINFUNCTYPE(ctypes.c_ulong, POINTER(IMMDevice))),
-        ("Release", WINFUNCTYPE(ctypes.c_ulong, POINTER(IMMDevice))),
-        (
-            "Activate",
-            WINFUNCTYPE(
-                ctypes.c_long,
-                POINTER(IMMDevice),
-                POINTER(GUID),
-                wintypes.DWORD,
-                c_void_p,
-                POINTER(c_void_p),
-            ),
-        ),
-    ]
-
-
-IMMDevice._fields_ = [("lpVtbl", POINTER(IMMDeviceVtbl))]
-
-
-class IMMDeviceEnumerator(Structure):
-    pass
-
-
-class IMMDeviceEnumeratorVtbl(Structure):
-    _fields_ = [
-        (
-            "QueryInterface",
-            WINFUNCTYPE(
-                ctypes.c_long,
-                POINTER(IMMDeviceEnumerator),
-                POINTER(GUID),
-                POINTER(c_void_p),
-            ),
-        ),
-        ("AddRef", WINFUNCTYPE(ctypes.c_ulong, POINTER(IMMDeviceEnumerator))),
-        ("Release", WINFUNCTYPE(ctypes.c_ulong, POINTER(IMMDeviceEnumerator))),
-        (
-            "EnumAudioEndpoints",
-            WINFUNCTYPE(
-                ctypes.c_long,
-                POINTER(IMMDeviceEnumerator),
-                c_int,
-                wintypes.DWORD,
-                POINTER(c_void_p),
-            ),
-        ),
-        (
-            "GetDefaultAudioEndpoint",
-            WINFUNCTYPE(
-                ctypes.c_long,
-                POINTER(IMMDeviceEnumerator),
-                c_int,
-                c_int,
-                POINTER(POINTER(IMMDevice)),
-            ),
-        ),
-    ]
-
-
-IMMDeviceEnumerator._fields_ = [("lpVtbl", POINTER(IMMDeviceEnumeratorVtbl))]
-
-
-class IAudioSessionControl(Structure):
-    pass
-
-
-class IAudioSessionControlVtbl(Structure):
-    _fields_ = [
-        (
-            "QueryInterface",
-            WINFUNCTYPE(
-                ctypes.c_long,
-                POINTER(IAudioSessionControl),
-                POINTER(GUID),
-                POINTER(c_void_p),
-            ),
-        ),
-        ("AddRef", WINFUNCTYPE(ctypes.c_ulong, POINTER(IAudioSessionControl))),
-        ("Release", WINFUNCTYPE(ctypes.c_ulong, POINTER(IAudioSessionControl))),
-    ]
-
-
-IAudioSessionControl._fields_ = [("lpVtbl", POINTER(IAudioSessionControlVtbl))]
-
-
-class IAudioSessionControl2(Structure):
-    pass
-
-
-class IAudioSessionControl2Vtbl(Structure):
-    _fields_ = [
-        (
-            "QueryInterface",
-            WINFUNCTYPE(
-                ctypes.c_long,
-                POINTER(IAudioSessionControl2),
-                POINTER(GUID),
-                POINTER(c_void_p),
-            ),
-        ),
-        ("AddRef", WINFUNCTYPE(ctypes.c_ulong, POINTER(IAudioSessionControl2))),
-        ("Release", WINFUNCTYPE(ctypes.c_ulong, POINTER(IAudioSessionControl2))),
-        (
-            "GetState",
-            WINFUNCTYPE(ctypes.c_long, POINTER(IAudioSessionControl2), POINTER(c_int)),
-        ),
-        (
-            "GetDisplayName",
-            WINFUNCTYPE(
-                ctypes.c_long, POINTER(IAudioSessionControl2), POINTER(c_wchar_p)
-            ),
-        ),
-        (
-            "SetDisplayName",
-            WINFUNCTYPE(
-                ctypes.c_long, POINTER(IAudioSessionControl2), c_wchar_p, POINTER(GUID)
-            ),
-        ),
-        (
-            "GetIconPath",
-            WINFUNCTYPE(
-                ctypes.c_long, POINTER(IAudioSessionControl2), POINTER(c_wchar_p)
-            ),
-        ),
-        (
-            "SetIconPath",
-            WINFUNCTYPE(
-                ctypes.c_long, POINTER(IAudioSessionControl2), c_wchar_p, POINTER(GUID)
-            ),
-        ),
-        (
-            "GetGroupingParam",
-            WINFUNCTYPE(ctypes.c_long, POINTER(IAudioSessionControl2), POINTER(GUID)),
-        ),
-        (
-            "SetGroupingParam",
-            WINFUNCTYPE(
-                ctypes.c_long,
-                POINTER(IAudioSessionControl2),
-                POINTER(GUID),
-                POINTER(GUID),
-            ),
-        ),
-        (
-            "RegisterAudioSessionNotification",
-            WINFUNCTYPE(ctypes.c_long, POINTER(IAudioSessionControl2), c_void_p),
-        ),
-        (
-            "UnregisterAudioSessionNotification",
-            WINFUNCTYPE(ctypes.c_long, POINTER(IAudioSessionControl2), c_void_p),
-        ),
-        (
-            "GetSessionIdentifier",
-            WINFUNCTYPE(
-                ctypes.c_long, POINTER(IAudioSessionControl2), POINTER(c_wchar_p)
-            ),
-        ),
-        (
-            "GetSessionInstanceIdentifier",
-            WINFUNCTYPE(
-                ctypes.c_long, POINTER(IAudioSessionControl2), POINTER(c_wchar_p)
-            ),
-        ),
-        (
-            "GetProcessId",
-            WINFUNCTYPE(
-                ctypes.c_long, POINTER(IAudioSessionControl2), POINTER(wintypes.DWORD)
-            ),
-        ),
-    ]
-
-
-IAudioSessionControl2._fields_ = [("lpVtbl", POINTER(IAudioSessionControl2Vtbl))]
-
-
-class IAudioSessionEnumerator(Structure):
-    pass
-
-
-class IAudioSessionEnumeratorVtbl(Structure):
-    _fields_ = [
-        (
-            "QueryInterface",
-            WINFUNCTYPE(
-                ctypes.c_long,
-                POINTER(IAudioSessionEnumerator),
-                POINTER(GUID),
-                POINTER(c_void_p),
-            ),
-        ),
-        ("AddRef", WINFUNCTYPE(ctypes.c_ulong, POINTER(IAudioSessionEnumerator))),
-        ("Release", WINFUNCTYPE(ctypes.c_ulong, POINTER(IAudioSessionEnumerator))),
-        (
-            "GetCount",
-            WINFUNCTYPE(
-                ctypes.c_long, POINTER(IAudioSessionEnumerator), POINTER(c_int)
-            ),
-        ),
-        (
-            "GetSession",
-            WINFUNCTYPE(
-                ctypes.c_long,
-                POINTER(IAudioSessionEnumerator),
-                c_int,
-                POINTER(POINTER(IAudioSessionControl)),
-            ),
-        ),
-    ]
-
-
-IAudioSessionEnumerator._fields_ = [("lpVtbl", POINTER(IAudioSessionEnumeratorVtbl))]
-
-
-class IAudioSessionManager2(Structure):
-    pass
-
-
-class IAudioSessionManager2Vtbl(Structure):
-    _fields_ = [
-        (
-            "QueryInterface",
-            WINFUNCTYPE(
-                ctypes.c_long,
-                POINTER(IAudioSessionManager2),
-                POINTER(GUID),
-                POINTER(c_void_p),
-            ),
-        ),
-        ("AddRef", WINFUNCTYPE(ctypes.c_ulong, POINTER(IAudioSessionManager2))),
-        ("Release", WINFUNCTYPE(ctypes.c_ulong, POINTER(IAudioSessionManager2))),
-        (
-            "GetAudioSessionControl",
-            WINFUNCTYPE(
-                ctypes.c_long,
-                POINTER(IAudioSessionManager2),
-                POINTER(GUID),
-                wintypes.DWORD,
-                POINTER(c_void_p),
-            ),
-        ),
-        (
-            "GetSimpleAudioVolume",
-            WINFUNCTYPE(
-                ctypes.c_long,
-                POINTER(IAudioSessionManager2),
-                POINTER(GUID),
-                wintypes.DWORD,
-                POINTER(c_void_p),
-            ),
-        ),
-        (
-            "GetSessionEnumerator",
-            WINFUNCTYPE(
-                ctypes.c_long,
-                POINTER(IAudioSessionManager2),
-                POINTER(POINTER(IAudioSessionEnumerator)),
-            ),
-        ),
-    ]
-
-
-IAudioSessionManager2._fields_ = [("lpVtbl", POINTER(IAudioSessionManager2Vtbl))]
-
-
-class ISimpleAudioVolume(Structure):
-    pass
-
-
-class ISimpleAudioVolumeVtbl(Structure):
-    # Documented ISimpleAudioVolume vtable order (after IUnknown 0-2):
-    # SetMasterVolume=3, GetMasterVolume=4, SetMute=5, GetMute=6.
-    _fields_ = [
-        (
-            "QueryInterface",
-            WINFUNCTYPE(
-                ctypes.c_long, POINTER(ISimpleAudioVolume), POINTER(GUID), POINTER(c_void_p)
-            ),
-        ),
-        ("AddRef", WINFUNCTYPE(ctypes.c_ulong, POINTER(ISimpleAudioVolume))),
-        ("Release", WINFUNCTYPE(ctypes.c_ulong, POINTER(ISimpleAudioVolume))),
-        (
-            "SetMasterVolume",
-            WINFUNCTYPE(
-                ctypes.c_long,
-                POINTER(ISimpleAudioVolume),
-                c_float,
-                POINTER(GUID),
-            ),
-        ),
-        (
-            "GetMasterVolume",
-            WINFUNCTYPE(ctypes.c_long, POINTER(ISimpleAudioVolume), POINTER(c_float)),
-        ),
-        (
-            "SetMute",
-            WINFUNCTYPE(
-                ctypes.c_long,
-                POINTER(ISimpleAudioVolume),
-                ctypes.c_int,
-                POINTER(GUID),
-            ),
-        ),
-        (
-            "GetMute",
-            WINFUNCTYPE(ctypes.c_long, POINTER(ISimpleAudioVolume), ctypes.POINTER(ctypes.c_int)),
-        ),
-    ]
-
-
-ISimpleAudioVolume._fields_ = [("lpVtbl", POINTER(ISimpleAudioVolumeVtbl))]
-
-
-def _vtbl(iface: c_void_p, index: int, restype: Any, *argtypes: Any):
-    table = cast(iface, POINTER(POINTER(c_void_p))).contents
-    func_ptr = table[index]
-    return WINFUNCTYPE(restype, c_void_p, *argtypes)(func_ptr)
-
-
-def _release(iface: c_void_p) -> None:
-    if not iface:
-        return
-    _vtbl(iface, 2, ctypes.c_ulong)(iface)
-
-
-def _query_interface(interface: c_void_p, iid: GUID) -> c_void_p:
-    out = c_void_p()
-    hr = _vtbl(interface, 0, ctypes.c_long, POINTER(GUID), POINTER(c_void_p))(
-        interface,
-        byref(iid),
-        byref(out),
-    )
-    if hr < 0 or not out:
-        raise OSError(f"QueryInterface failed: 0x{hr & 0xFFFFFFFF:08x}")
-    return out
-
-
-def _get_session_enumerator() -> c_void_p:
-    ole32.CoInitializeEx(None, COINIT_MULTITHREADED)
-
-    enumerator = c_void_p()
-    hr = ole32.CoCreateInstance(
-        byref(CLSID_MMDeviceEnumerator),
-        None,
-        CLSCTX_ALL,
-        byref(IID_IMMDeviceEnumerator),
-        byref(enumerator),
-    )
-    if hr < 0:
-        raise OSError(
-            f"CoCreateInstance(MMDeviceEnumerator) failed: 0x{hr & 0xFFFFFFFF:08x}"
-        )
-
-    device = c_void_p()
-    hr = _vtbl(
-        enumerator,
-        4,
-        ctypes.c_long,
-        ctypes.c_int,
-        ctypes.c_int,
-        POINTER(c_void_p),
-    )(enumerator, E_RENDER, E_CONSOLE, byref(device))
-    if hr < 0:
-        _release(enumerator)
-        raise OSError(f"GetDefaultAudioEndpoint failed: 0x{hr & 0xFFFFFFFF:08x}")
-
-    session_mgr = c_void_p()
-    hr = _vtbl(
-        device,
-        3,
-        ctypes.c_long,
-        POINTER(GUID),
-        wintypes.DWORD,
-        c_void_p,
-        POINTER(c_void_p),
-    )(
-        device,
-        byref(IID_IAudioSessionManager2),
-        CLSCTX_ALL,
-        None,
-        byref(session_mgr),
-    )
-    if hr < 0:
-        _release(device)
-        _release(enumerator)
-        raise OSError(
-            f"IMMDevice.Activate(IAudioSessionManager2) failed: 0x{hr & 0xFFFFFFFF:08x}"
-        )
-
-    session_enum = c_void_p()
-    hr = _vtbl(
-        session_mgr,
-        5,
-        ctypes.c_long,
-        POINTER(c_void_p),
-    )(session_mgr, byref(session_enum))
-
-    _release(session_mgr)
-    _release(device)
-    _release(enumerator)
-    if hr < 0:
-        raise OSError(f"GetSessionEnumerator failed: 0x{hr & 0xFFFFFFFF:08x}")
-
-    return session_enum
+        """No-op: the child owns COM lifetime.
+
+        There is deliberately no `release` command in the protocol. The
+        child releases a session's interface when it disappears from an
+        enumeration or at shutdown, on the one thread that created it --
+        which is what satisfies COM's same-apartment-release rule. A
+        per-handle release command would add chatter and a second way for
+        the parent to be wrong about child state.
+        """
 
 
 def _iter_audio_sessions() -> Iterable[_SessionHandle]:
-    session_enum = _get_session_enumerator()
-    try:
-        count = c_int()
-        hr = _vtbl(session_enum, 3, ctypes.c_long, POINTER(c_int))(
-            session_enum, byref(count)
+    """Enumerate live audio sessions via the child process.
+
+    Returns a list (not a generator) because the underlying COM enumeration
+    now completes entirely inside one child command; there is no enumerator
+    to hold open across iteration any more.
+    """
+    transport = _get_transport()
+    reply = transport.request("list_sessions")
+    if not reply.get("ok"):
+        raise OSError(f"list_sessions failed: {reply.get('err')}")
+    generation = transport.generation
+    return [
+        _ProxySessionHandle(
+            entry["sid"],
+            int(entry.get("pid", 0)),
+            generation,
+            entry.get("process_name"),
         )
-        if hr < 0:
-            raise OSError(
-                f"IAudioSessionEnumerator.GetCount failed: 0x{hr & 0xFFFFFFFF:08x}"
-            )
-
-        for i in range(count.value):
-            session_ctl = c_void_p()
-            hr = _vtbl(
-                session_enum,
-                4,
-                ctypes.c_long,
-                c_int,
-                POINTER(c_void_p),
-            )(
-                session_enum,
-                i,
-                byref(session_ctl),
-            )
-            if hr < 0:
-                continue
-            try:
-                session_ctl2 = c_void_p()
-                try:
-                    session_ctl2 = _query_interface(
-                        session_ctl, IID_IAudioSessionControl2
-                    )
-                    pid = wintypes.DWORD()
-                    hr = _vtbl(
-                        session_ctl2,
-                        14,
-                        ctypes.c_long,
-                        POINTER(wintypes.DWORD),
-                    )(
-                        session_ctl2,
-                        byref(pid),
-                    )
-                    if hr < 0:
-                        continue
-
-                    session_ptr = c_wchar_p()
-                    hr = _vtbl(
-                        session_ctl2, 13, ctypes.c_long, POINTER(c_wchar_p)
-                    )(
-                        session_ctl2,
-                        byref(session_ptr),
-                    )
-                    if hr < 0 or not session_ptr.value:
-                        continue
-                    session_id = session_ptr.value
-                    ole32.CoTaskMemFree(cast(session_ptr, c_void_p))
-
-                    volume_ptr = c_void_p()
-                    hr = _vtbl(
-                        session_ctl2,
-                        0,
-                        ctypes.c_long,
-                        POINTER(GUID),
-                        POINTER(c_void_p),
-                    )(
-                        session_ctl2,
-                        byref(IID_ISimpleAudioVolume),
-                        byref(volume_ptr),
-                    )
-                    if hr < 0 or not volume_ptr:
-                        continue
-
-                    yield _CtypesSessionHandle(session_id, int(pid.value), volume_ptr)
-                finally:
-                    _release(session_ctl2)
-            finally:
-                _release(session_ctl)
-    finally:
-        _release(session_enum)
+        for entry in reply.get("sessions", [])
+    ]
 
 
 # --- Module-level compatibility shims (hotfix 2026-07-24) -------------------

@@ -25,6 +25,22 @@ if sys.stdout is None:
 if sys.stderr is None:
     sys.stderr = _NullStream()
 
+# Ducking-host divert (tribunal arc_20260803_163412, tier-2). A frozen build
+# has no separate interpreter to hand `-m samsara.ducking_host` to, so
+# audio_ducking's transport re-executes THIS executable with the sentinel
+# set. This check MUST stay above every heavy import below: the child owns
+# COM and two pipes and nothing else -- it must never build a second app
+# (audio engine, Qt, hotkey hooks, instance lock). Harmless from source,
+# where the sentinel is never set on this process (the transport puts it
+# only in the child's own environment copy).
+if os.environ.get("SAMSARA_DUCKING_HOST") == "1":
+    from samsara.ducking_host import main as _ducking_host_main
+    if hasattr(sys.stdin, "reconfigure"):
+        sys.stdin.reconfigure(encoding="utf-8")
+    if hasattr(sys.stdout, "reconfigure"):
+        sys.stdout.reconfigure(encoding="utf-8")
+    sys.exit(_ducking_host_main())
+
 # Platform-specific imports
 if sys.platform == 'win32':
     try:
