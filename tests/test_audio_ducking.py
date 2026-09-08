@@ -18,6 +18,7 @@ import ast
 import pytest
 
 from samsara import audio_ducking as ad
+from samsara import ducking_host as dh
 
 
 class FakeSession:
@@ -39,9 +40,114 @@ class FakeSession:
         self.closed = True
 
 
+# --- Fake ducking child ----------------------------------------------------
+# Every COM call now crosses a process boundary (samsara/ducking_host.py).
+# These tests exercise the PARENT algorithm, so they speak the real wire
+# protocol to an in-process stand-in instead of a real child. The assertions
+# below are unchanged from the in-process implementation -- the whole point
+# is that moving COM out of the process did not change ducking behavior.
+
+class FakeHostTransport:
+    """In-process DuckingHostTransport stand-in speaking the ducking_host
+    protocol (ping/list_sessions/get_volume/set_volume/set_many/shutdown),
+    backed by FakeSession objects.
+
+    Serializes requests under a lock with the same timeout-acquire
+    semantics as the real transport, so tests see production's concurrency
+    behavior (one child, one command at a time) rather than a more
+    permissive fiction.
+    """
+
+    def __init__(self) -> None:
+        self.sessions_source = []
+        self.fail_list_with = None
+        self.generation = 1
+        self.ops: list[str] = []
+        self._by_sid: dict[str, FakeSession] = {}
+        self._lock = threading.Lock()
+
+    def _current(self) -> list:
+        source = self.sessions_source
+        return list(source() if callable(source) else source)
+
+    def request(self, op: str, deadline: float = 2.0, **fields) -> dict:
+        if not self._lock.acquire(timeout=deadline):
+            return {"ok": False, "err": "ducking host busy", "elapsed_ms": 0}
+        try:
+            self.ops.append(op)
+            return self._handle(op, fields)
+        finally:
+            self._lock.release()
+
+    def _handle(self, op: str, fields: dict) -> dict:
+        if op == "ping":
+            return {"ok": True, "elapsed_ms": 0}
+
+        if op == "list_sessions":
+            if self.fail_list_with is not None:
+                return {"ok": False, "err": self.fail_list_with, "elapsed_ms": 0}
+            listed = []
+            for session in self._current():
+                self._by_sid[session.session_id] = session
+                listed.append(
+                    {
+                        "sid": session.session_id,
+                        "pid": session.pid,
+                        "process_name": None,
+                    }
+                )
+            return {"ok": True, "sessions": listed, "elapsed_ms": 0}
+
+        if op in ("get_volume", "set_volume"):
+            session = self._by_sid.get(fields.get("sid"))
+            if session is None:
+                return {"ok": False, "err": "unknown sid", "elapsed_ms": 0}
+            try:
+                previous = session.get_master_volume()
+                if op == "get_volume":
+                    return {"ok": True, "level": previous, "elapsed_ms": 0}
+                session.set_master_volume(fields["level"])
+                return {"ok": True, "prev_level": previous, "elapsed_ms": 0}
+            except Exception as exc:
+                return {"ok": False, "err": str(exc), "elapsed_ms": 0}
+
+        if op == "set_many":
+            results = []
+            for item in fields.get("items") or []:
+                results.append(self._handle("set_volume", item) | {"sid": item["sid"]})
+            return {"ok": True, "results": results, "elapsed_ms": 0}
+
+        if op == "shutdown":
+            return {"ok": True, "elapsed_ms": 0}
+
+        return {"ok": False, "err": f"unknown op {op!r}", "elapsed_ms": 0}
+
+
+_FAKE_HOST: FakeHostTransport | None = None
+
+
+def _fake() -> FakeHostTransport:
+    assert _FAKE_HOST is not None, "fake ducking host not installed"
+    return _FAKE_HOST
+
+
+def use_sessions(sessions) -> None:
+    """Point the fake child at `sessions` (a list, or a callable returning
+    one). Replaces the old `monkeypatch.setattr(ad, "_iter_audio_sessions",
+    ...)`: enumeration is now a child command, not a local function."""
+    _fake().sessions_source = sessions
+
+
 @pytest.fixture(autouse=True)
 def no_threads(monkeypatch):
+    global _FAKE_HOST
     ad._SHARED_SESSIONS.clear()
+
+    # One fake child per test, shared by every enumeration in that test --
+    # session ids must stay stable across sweeps exactly as a real child's
+    # do, so re-pointing use_sessions() must NOT mint a new transport.
+    _FAKE_HOST = FakeHostTransport()
+    monkeypatch.setattr(ad, "_get_transport", _fake)
 
     class NoopTimer:
         def __init__(self, *_args, **_kwargs):
@@ -59,12 +165,13 @@ def no_threads(monkeypatch):
         lambda *_args, **_kwargs: NoopTimer(),
     )
     yield
+    _FAKE_HOST = None
     ad._SHARED_SESSIONS.clear()
 
 
 def test_capture_first_idle_second_discovery_restores_full_volume(monkeypatch):
     session = FakeSession("shared", 333, 1.0)
-    monkeypatch.setattr(ad, "_iter_audio_sessions", lambda: [session])
+    use_sessions([session])
 
     capture_ducker = ad.SessionDucker(duck_level=0.15)
     idle_ducker = ad.SessionDucker(duck_level=0.8)
@@ -83,7 +190,7 @@ def test_capture_first_idle_second_discovery_restores_full_volume(monkeypatch):
 
 def test_idle_first_capture_second_discovery_restores_full_volume(monkeypatch):
     session = FakeSession("shared", 333, 1.0)
-    monkeypatch.setattr(ad, "_iter_audio_sessions", lambda: [session])
+    use_sessions([session])
 
     idle_ducker = ad.SessionDucker(duck_level=0.8)
     capture_ducker = ad.SessionDucker(duck_level=0.15)
@@ -114,14 +221,14 @@ def test_stop_interleaved_with_blocked_sweep_restores_nothing(monkeypatch):
         original_set(level)
 
     blocked_session.set_master_volume = blocking_set  # type: ignore[method-assign]
-    monkeypatch.setattr(ad, "_iter_audio_sessions", lambda: [first_session])
+    use_sessions([first_session])
 
     ducker = ad.SessionDucker(duck_level=0.2)
     ducker.start()
     assert first_session.volume == pytest.approx(0.2)
 
     blocked_session.set_master_volume = blocking_set  # type: ignore[method-assign]
-    monkeypatch.setattr(ad, "_iter_audio_sessions", lambda: [blocked_session])
+    use_sessions([blocked_session])
 
     sweep_thread = threading.Thread(target=ducker._run_sweep)
     sweep_thread.start()
@@ -141,7 +248,7 @@ def test_stop_interleaved_with_blocked_sweep_restores_nothing(monkeypatch):
 
 def test_repeated_start_stop_is_idempotent(monkeypatch):
     session = FakeSession("idempotent", 333, 0.9)
-    monkeypatch.setattr(ad, "_iter_audio_sessions", lambda: [session])
+    use_sessions([session])
 
     ducker = ad.SessionDucker(duck_level=0.2)
     ducker.start()
@@ -160,7 +267,7 @@ def test_start_excludes_own_pid_and_excludes_set(monkeypatch):
         FakeSession("other", 333, 0.9),
     ]
     monkeypatch.setattr(ad.os, "getpid", lambda: 111)
-    monkeypatch.setattr(ad, "_iter_audio_sessions", lambda: sessions)
+    use_sessions(sessions)
 
     ducker = ad.SessionDucker(exclude_pids={222})
     ducker.start()
@@ -175,7 +282,7 @@ def test_restore_is_exact_and_idempotent(monkeypatch):
     session = FakeSession("restore", 333, 0.9)
     sessions = [session]
     monkeypatch.setattr(ad.os, "getpid", lambda: 111)
-    monkeypatch.setattr(ad, "_iter_audio_sessions", lambda: sessions)
+    use_sessions(sessions)
 
     ducker = ad.SessionDucker(duck_level=0.2)
     ducker.start()
@@ -211,7 +318,7 @@ def test_restore_occurs_in_reverse_order(monkeypatch):
     second.set_master_volume = second_set  # type: ignore[method-assign]
 
     monkeypatch.setattr(ad.os, "getpid", lambda: 111)
-    monkeypatch.setattr(ad, "_iter_audio_sessions", lambda: [first, second])
+    use_sessions([first, second])
     ducker = ad.SessionDucker(duck_level=0.1)
 
     ducker.start()
@@ -228,7 +335,7 @@ def test_restore_occurs_in_reverse_order(monkeypatch):
 def test_context_manager_restores_on_exception(monkeypatch):
     session = FakeSession("ctx", 333, 0.9)
     monkeypatch.setattr(ad.os, "getpid", lambda: 111)
-    monkeypatch.setattr(ad, "_iter_audio_sessions", lambda: [session])
+    use_sessions([session])
 
     with pytest.raises(RuntimeError, match="boom"):
         with ad.SessionDucker() as ducker:
@@ -241,7 +348,7 @@ def test_context_manager_restores_on_exception(monkeypatch):
 def test_sweep_catches_new_session(monkeypatch):
     sessions = [FakeSession("first", 333, 0.9)]
     monkeypatch.setattr(ad.os, "getpid", lambda: 111)
-    monkeypatch.setattr(ad, "_iter_audio_sessions", lambda: sessions)
+    use_sessions(sessions)
 
     ducker = ad.SessionDucker(duck_level=0.2)
     ducker.start()
@@ -257,10 +364,11 @@ def test_sweep_catches_new_session(monkeypatch):
 
 
 def test_com_error_is_noop(monkeypatch):
-    def boom():
-        raise OSError("simulated enumeration failure")
-
-    monkeypatch.setattr(ad, "_iter_audio_sessions", boom)
+    # The child reports enumeration failure as {"ok": false, "err": ...};
+    # _iter_audio_sessions turns that into the OSError the engine already
+    # handled, so this stays the same test it always was.
+    use_sessions([])
+    _fake().fail_list_with = "simulated enumeration failure"
     ducker = ad.SessionDucker()
     ducker.start()
 
@@ -271,7 +379,7 @@ def test_com_error_is_noop(monkeypatch):
 def test_current_duck_min_composition(monkeypatch):
     session = FakeSession("compose", 333, 1.0)
     monkeypatch.setattr(ad.os, "getpid", lambda: 111)
-    monkeypatch.setattr(ad, "_iter_audio_sessions", lambda: [session])
+    use_sessions([session])
 
     ducker = ad.SessionDucker(duck_level=0.2)
     assert ducker.current_duck(333) is None
@@ -295,7 +403,7 @@ class TestConditionalRestore:
     def test_restores_when_volume_unchanged_since_duck(self, monkeypatch):
         session = FakeSession("unchanged", 333, 0.9)
         monkeypatch.setattr(ad.os, "getpid", lambda: 111)
-        monkeypatch.setattr(ad, "_iter_audio_sessions", lambda: [session])
+        use_sessions([session])
 
         ducker = ad.SessionDucker(duck_level=0.2)
         ducker.start()
@@ -306,7 +414,7 @@ class TestConditionalRestore:
     def test_skips_restore_when_user_changed_volume_mid_duck(self, monkeypatch):
         session = FakeSession("user-changed", 333, 0.9)
         monkeypatch.setattr(ad.os, "getpid", lambda: 111)
-        monkeypatch.setattr(ad, "_iter_audio_sessions", lambda: [session])
+        use_sessions([session])
 
         ducker = ad.SessionDucker(duck_level=0.2)
         ducker.start()
@@ -327,7 +435,7 @@ class TestConditionalRestore:
         user change."""
         session = FakeSession("epsilon", 333, 0.9)
         monkeypatch.setattr(ad.os, "getpid", lambda: 111)
-        monkeypatch.setattr(ad, "_iter_audio_sessions", lambda: [session])
+        use_sessions([session])
 
         ducker = ad.SessionDucker(duck_level=0.2)
         ducker.start()
@@ -349,7 +457,7 @@ class TestStartIdempotent:
     def test_start_while_active_does_not_reapply_duck(self, monkeypatch):
         session = FakeSession("idempotent", 333, 0.9)
         monkeypatch.setattr(ad.os, "getpid", lambda: 111)
-        monkeypatch.setattr(ad, "_iter_audio_sessions", lambda: [session])
+        use_sessions([session])
 
         ducker = ad.SessionDucker(duck_level=0.2)
         ducker.start()
@@ -362,7 +470,7 @@ class TestStartIdempotent:
     def test_start_while_active_preserves_original_snapshot_for_stop(self, monkeypatch):
         session = FakeSession("idempotent-restore", 333, 0.9)
         monkeypatch.setattr(ad.os, "getpid", lambda: 111)
-        monkeypatch.setattr(ad, "_iter_audio_sessions", lambda: [session])
+        use_sessions([session])
 
         ducker = ad.SessionDucker(duck_level=0.2)
         ducker.start()
@@ -390,7 +498,7 @@ def test_start_interleaved_with_stop_waits_for_inflight_and_no_stale_write(monke
     blocked.set_master_volume = blocking_set  # type: ignore[method-assign]
 
     monkeypatch.setattr(ad.os, "getpid", lambda: 111)
-    monkeypatch.setattr(ad, "_iter_audio_sessions", lambda: [session, blocked])
+    use_sessions([session, blocked])
 
     ducker = ad.SessionDucker(duck_level=0.2)
 
@@ -422,7 +530,7 @@ def test_start_interleaved_with_stop_waits_for_inflight_and_no_stale_write(monke
 def test_original_volume_07_is_preserved_for_composed_ducking(monkeypatch):
     session = FakeSession("compose", 333, 0.7)
     monkeypatch.setattr(ad.os, "getpid", lambda: 111)
-    monkeypatch.setattr(ad, "_iter_audio_sessions", lambda: [session])
+    use_sessions([session])
 
     capture = ad.SessionDucker(duck_level=0.15)
     capture.start()
@@ -440,7 +548,7 @@ def test_original_volume_07_is_preserved_for_composed_ducking(monkeypatch):
 
 
 def _collect_vtbl_calls() -> dict[tuple[str, int], ast.Call]:
-    source = inspect.getsource(ad)
+    source = inspect.getsource(dh)
     tree = ast.parse(source)
     calls: dict[tuple[str, int], ast.Call] = {}
 
@@ -488,16 +596,16 @@ def _index_and_arity(vtbl: type, method: str) -> tuple[int, int]:
 def test_vtbl_arity_matches_documented_interface_signatures() -> None:
     call_sites = _collect_vtbl_calls()
     required_calls = (
-        ("_CtypesSessionHandle.get_master_volume", ad.ISimpleAudioVolumeVtbl, "GetMasterVolume"),
-        ("_CtypesSessionHandle.set_master_volume", ad.ISimpleAudioVolumeVtbl, "SetMasterVolume"),
-        ("_query_interface", ad.IUnknownVtbl, "QueryInterface"),
-        ("_release", ad.IUnknownVtbl, "Release"),
-        ("_get_session_enumerator", ad.IMMDeviceEnumeratorVtbl, "GetDefaultAudioEndpoint"),
-        ("_get_session_enumerator", ad.IMMDeviceVtbl, "Activate"),
-        ("_get_session_enumerator", ad.IAudioSessionManager2Vtbl, "GetSessionEnumerator"),
-        ("_iter_audio_sessions", ad.IAudioSessionEnumeratorVtbl, "GetCount"),
-        ("_iter_audio_sessions", ad.IAudioSessionEnumeratorVtbl, "GetSession"),
-        ("_iter_audio_sessions", ad.IAudioSessionControl2Vtbl, "GetProcessId"),
+        ("_CtypesSessionHandle.get_master_volume", dh.ISimpleAudioVolumeVtbl, "GetMasterVolume"),
+        ("_CtypesSessionHandle.set_master_volume", dh.ISimpleAudioVolumeVtbl, "SetMasterVolume"),
+        ("_query_interface", dh.IUnknownVtbl, "QueryInterface"),
+        ("_release", dh.IUnknownVtbl, "Release"),
+        ("_get_session_enumerator", dh.IMMDeviceEnumeratorVtbl, "GetDefaultAudioEndpoint"),
+        ("_get_session_enumerator", dh.IMMDeviceVtbl, "Activate"),
+        ("_get_session_enumerator", dh.IAudioSessionManager2Vtbl, "GetSessionEnumerator"),
+        ("_iter_audio_sessions", dh.IAudioSessionEnumeratorVtbl, "GetCount"),
+        ("_iter_audio_sessions", dh.IAudioSessionEnumeratorVtbl, "GetSession"),
+        ("_iter_audio_sessions", dh.IAudioSessionControl2Vtbl, "GetProcessId"),
     )
 
     for qualname, vtbl, method in required_calls:
@@ -508,12 +616,12 @@ def test_vtbl_arity_matches_documented_interface_signatures() -> None:
 
         restype = eval(
             compile(ast.Expression(call.args[2]), "<audio-ducking-call>", "eval"),
-            vars(ad),
+            vars(dh),
         )
         argtypes = tuple(
             eval(
                 compile(ast.Expression(argtype), "<audio-ducking-call>", "eval"),
-                vars(ad),
+                vars(dh),
             )
             for argtype in call.args[3:]
         )
@@ -523,7 +631,7 @@ def test_vtbl_arity_matches_documented_interface_signatures() -> None:
 
 def test_counters_reflect_zero_ducked_sessions(monkeypatch):
     monkeypatch.setattr(ad.os, "getpid", lambda: 111)
-    monkeypatch.setattr(ad, "_iter_audio_sessions", lambda: [])
+    use_sessions([])
 
     ducker = ad.SessionDucker()
     ducker.start()
@@ -545,7 +653,7 @@ def test_counters_increment_on_sweep(monkeypatch):
 
     sequence.calls = []  # type: ignore[attr-defined]
 
-    monkeypatch.setattr(ad, "_iter_audio_sessions", sequence)
+    use_sessions(sequence)
     ducker = ad.SessionDucker()
     ducker.start()
 
