@@ -20,12 +20,12 @@ two independent implementations of it.
 
 from datetime import datetime, timedelta
 
-from PySide6.QtCore import Qt, Signal, Slot, QTimer, QSize
+from PySide6.QtCore import Qt, Signal, Slot, QTimer, QSize, QSettings
 from PySide6.QtGui import QFontMetrics
 from PySide6.QtWidgets import (
     QApplication, QWidget, QVBoxLayout, QHBoxLayout,
     QListWidget, QListWidgetItem, QAbstractItemView,
-    QLineEdit, QComboBox, QPushButton, QLabel, QPlainTextEdit,
+    QLineEdit, QComboBox, QPushButton, QLabel, QPlainTextEdit, QCheckBox,
     QMenu, QMessageBox, QSizePolicy,
 )
 
@@ -48,6 +48,11 @@ _LOAD_OLDER_HEIGHT = 36
 _TIME_COL_WIDTH = 56
 _TOAST_MS = 1500          # transient "Copied" status duration
 _DETAIL_HEIGHT = 64
+_SCOPE_LAST_7_DAYS = "Last 7 days"
+_SCOPE_ALL = "All"
+_SCOPE_SETTING = "history/date_scope"
+_EMPTY_WAKE_SETTING = "history/show_empty_wake_attempts"
+_NO_SPEECH_MARKERS = {"(no speech detected)", "no speech detected"}
 
 _TYPE_PILL_LABELS = {
     'command': 'Command',
@@ -122,6 +127,20 @@ def _parse_ts(raw_ts: str) -> "datetime | None":
         return datetime.fromisoformat(raw_ts)
     except Exception:
         return None
+
+
+def _is_empty_wake_attempt(row: dict) -> bool:
+    """Identify wake-word attempts with no usable speech."""
+    if row.get('mode') != 'wake' and row.get('entry_type') not in ('wake', 'wake_command'):
+        return False
+    text = str(row.get('display_text') or row.get('raw_text') or '').strip().casefold()
+    return not text or text in _NO_SPEECH_MARKERS
+
+
+def _scope_start(scope: str, now: "datetime | None" = None):
+    if scope != _SCOPE_LAST_7_DAYS:
+        return None
+    return (now or datetime.now()) - timedelta(days=7)
 
 
 # ---------------------------------------------------------------------------
@@ -364,6 +383,7 @@ class HistoryView(QWidget):
         self._load_older_item = None
         self._last_day = None
         self._request_generation = 0
+        self._settings = QSettings("Samsara", "Samsara")
 
         self.setStyleSheet(build_stylesheet())
         self._rows_ready.connect(self._on_rows_ready)
@@ -385,6 +405,22 @@ class HistoryView(QWidget):
         self._filter.addItems(["All", "Dictation", "Commands", "Failed"])
         self._filter.currentTextChanged.connect(lambda _: self._reload())
         top_row.addWidget(self._filter)
+
+        self._scope = QComboBox()
+        self._scope.addItems([_SCOPE_LAST_7_DAYS, _SCOPE_ALL])
+        saved_scope = self._settings.value(_SCOPE_SETTING, _SCOPE_LAST_7_DAYS, type=str)
+        if saved_scope in (_SCOPE_LAST_7_DAYS, _SCOPE_ALL):
+            self._scope.setCurrentText(saved_scope)
+        self._scope.setToolTip("History date range")
+        self._scope.currentTextChanged.connect(self._scope_changed)
+        top_row.addWidget(self._scope)
+
+        self._show_empty_wake = QCheckBox("Show empty wake attempts")
+        self._show_empty_wake.setChecked(
+            self._settings.value(_EMPTY_WAKE_SETTING, False, type=bool)
+        )
+        self._show_empty_wake.stateChanged.connect(self._empty_wake_changed)
+        top_row.addWidget(self._show_empty_wake)
 
         refresh_btn = QPushButton("Refresh")
         refresh_btn.clicked.connect(self._reload)
@@ -464,9 +500,11 @@ class HistoryView(QWidget):
         gen = self._request_generation
         query = self._search.text().strip()
         filter_ = self._filter.currentText()
+        scope = self._scope.currentText()
+        show_empty_wake = self._show_empty_wake.isChecked()
         thread_registry.spawn(
             "history-view-reload",
-            lambda: self._fetch_and_emit(query, filter_, None, False, gen),
+            lambda: self._fetch_and_emit(query, filter_, scope, show_empty_wake, None, False, gen),
             daemon=True,
         )
 
@@ -476,22 +514,25 @@ class HistoryView(QWidget):
         gen = self._request_generation   # continuing the current view, not a new search
         query = self._search.text().strip()
         filter_ = self._filter.currentText()
+        scope = self._scope.currentText()
+        show_empty_wake = self._show_empty_wake.isChecked()
         before_id = self._oldest_loaded_id
         thread_registry.spawn(
             "history-view-load-older",
-            lambda: self._fetch_and_emit(query, filter_, before_id, True, gen),
+            lambda: self._fetch_and_emit(query, filter_, scope, show_empty_wake, before_id, True, gen),
             daemon=True,
         )
 
-    def _fetch_and_emit(self, query, filter_, before_id, append, gen):
+    def _fetch_and_emit(self, query, filter_, scope, show_empty_wake, before_id, append, gen):
         try:
-            rows = self._fetch_rows(query, filter_, before_id)
+            rows = self._fetch_rows(query, filter_, before_id, scope, show_empty_wake)
         except Exception as exc:
             logger.debug(f"[HISTORY] fetch failed: {exc}")
             rows = []
         self._rows_ready.emit(rows, append, gen)
 
-    def _fetch_rows(self, query, filter_, before_id):
+    def _fetch_rows(self, query, filter_, before_id, scope=_SCOPE_LAST_7_DAYS,
+                    show_empty_wake=False):
         if self._store is not None:
             # "Commands"/"Failed" need OR-across-columns logic recent_windowed()
             # doesn't support server-side -- fetch untyped, filter client-side
@@ -503,10 +544,13 @@ class HistoryView(QWidget):
             rows = self._store.query(
                 search=query or None, type_filter=type_filter, limit=_PAGE_SIZE,
                 before_id=before_id,
+                since=(start.isoformat() if (start := _scope_start(scope)) else None),
             )
             rows = [dict(r) for r in rows]
             if filter_ != "All":
                 rows = [r for r in rows if _matches_type_filter(r, filter_)]
+            if not show_empty_wake:
+                rows = [r for r in rows if not _is_empty_wake_attempt(r)]
             return rows
 
         if before_id is not None:
@@ -528,7 +572,17 @@ class HistoryView(QWidget):
         ]
         if filter_ != "All":
             rows = [r for r in rows if _matches_type_filter(r, filter_)]
+        if not show_empty_wake:
+            rows = [r for r in rows if not _is_empty_wake_attempt(r)]
         return rows
+
+    def _scope_changed(self, scope):
+        self._settings.setValue(_SCOPE_SETTING, scope)
+        self._reload()
+
+    def _empty_wake_changed(self, state):
+        self._settings.setValue(_EMPTY_WAKE_SETTING, bool(state))
+        self._reload()
 
     @Slot(list, bool, int)
     def _on_rows_ready(self, rows, append, gen):

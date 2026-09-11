@@ -22,6 +22,7 @@ from __future__ import annotations
 import sys
 import time
 import types
+import argparse
 from datetime import datetime, timedelta
 from pathlib import Path
 
@@ -103,9 +104,15 @@ def _seed_history(manager, store) -> None:
 
 
 def main() -> int:
-    OUT_DIR.mkdir(parents=True, exist_ok=True)
-    if SEED_DB_PATH.exists():
-        SEED_DB_PATH.unlink()
+    parser = argparse.ArgumentParser(description=__doc__)
+    parser.add_argument("--db", type=Path, help="Use an existing SQLite history copy.")
+    parser.add_argument("--output-dir", type=Path, default=OUT_DIR)
+    args = parser.parse_args()
+    out_dir = args.output_dir
+    out_dir.mkdir(parents=True, exist_ok=True)
+    source_db = args.db or (out_dir / "history_screenshots_seed.db")
+    if args.db is None and source_db.exists():
+        source_db.unlink()
     app = QApplication.instance() or QApplication(sys.argv)
 
     try:
@@ -113,9 +120,10 @@ def main() -> int:
         from samsara.history_store import HistoryStore
         from samsara.ui.history_qt import _HistoryWindow
 
-        manager = HistoryManager(db_path=str(SEED_DB_PATH))
+        manager = HistoryManager(db_path=str(source_db))
         store = HistoryStore(manager)
-        _seed_history(manager, store)
+        if args.db is None:
+            _seed_history(manager, store)
 
         fake_app = types.SimpleNamespace(
             config={}, history=[], history_store=store, history_db=manager,
@@ -124,16 +132,16 @@ def main() -> int:
         win = _HistoryWindow(fake_app)
         # HistoryView's row loading runs on a background thread (results
         # marshaled back via Signal) -- give it a beat before the first grab.
-        _settle_and_grab(app, win, OUT_DIR / "history_list_default.png")
+        _settle_and_grab(app, win, out_dir / "history_list_default.png")
 
         # Type filter applied -- Commands-only view.
         win._view._filter.setCurrentText("Commands")
-        _settle_and_grab(app, win, OUT_DIR / "history_list_commands_filter.png")
+        _settle_and_grab(app, win, out_dir / "history_list_commands_filter.png")
 
         # Failed-only view -- the seeded failed row's red pill + red-tinted
         # text (the capability restored from the old _HistoryPanel).
         win._view._filter.setCurrentText("Failed")
-        _settle_and_grab(app, win, OUT_DIR / "history_list_failed_filter.png")
+        _settle_and_grab(app, win, out_dir / "history_list_failed_filter.png")
         win._view._filter.setCurrentText("All")
         _pump(app)   # let the "All" reload land BEFORE selecting a row --
                       # _render_rows() clears/rebuilds items on every
@@ -144,7 +152,7 @@ def main() -> int:
         # restored collapsible detail pane.
         if win._view._list.count() > 1:
             win._view._list.setCurrentRow(1)
-        _settle_and_grab(app, win, OUT_DIR / "history_list_row_selected.png")
+        _settle_and_grab(app, win, out_dir / "history_list_row_selected.png")
 
         win.close()
         manager.close()
@@ -160,12 +168,13 @@ def main() -> int:
         from samsara.history_store import HistoryStore
         from samsara.ui.main_window_qt import _MainWindow
 
-        main_db_path = OUT_DIR / "history_screenshots_mainwindow.db"
-        if main_db_path.exists():
+        main_db_path = source_db if args.db is not None else out_dir / "history_screenshots_mainwindow.db"
+        if args.db is None and main_db_path.exists():
             main_db_path.unlink()
         main_manager = HistoryManager(db_path=str(main_db_path))
         main_store = HistoryStore(main_manager)
-        _seed_history(main_manager, main_store)
+        if args.db is None:
+            _seed_history(main_manager, main_store)
 
         fake_main_app = types.SimpleNamespace(
             config={
@@ -179,7 +188,7 @@ def main() -> int:
 
         main_win = _MainWindow(fake_main_app)
         main_win._activate("History")
-        _settle_and_grab(app, main_win, OUT_DIR / "main_window_history_tab.png")
+        _settle_and_grab(app, main_win, out_dir / "main_window_history_tab.png")
 
         main_win.close()
         main_manager.close()
@@ -194,7 +203,7 @@ def main() -> int:
         from samsara.history_store import HistoryStore
         from samsara.ui.history_qt import _HistoryWindow
 
-        empty_db_path = OUT_DIR / "history_screenshots_empty.db"
+        empty_db_path = out_dir / "history_screenshots_empty.db"
         if empty_db_path.exists():
             empty_db_path.unlink()
         empty_manager = HistoryManager(db_path=str(empty_db_path))
@@ -203,7 +212,7 @@ def main() -> int:
             config={}, history=[], history_store=empty_store, history_db=empty_manager,
         )
         win_empty = _HistoryWindow(fake_app_empty)
-        _settle_and_grab(app, win_empty, OUT_DIR / "history_list_empty_state.png")
+        _settle_and_grab(app, win_empty, out_dir / "history_list_empty_state.png")
         win_empty.close()
         empty_manager.close()
     except Exception:

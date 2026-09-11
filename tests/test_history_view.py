@@ -20,7 +20,10 @@ sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 from samsara.history import HistoryManager
 from samsara.history_store import HistoryStore
 from samsara.ui import theme
-from samsara.ui.history_view import HistoryView, _pill_for_row, _matches_type_filter
+from samsara.ui.history_view import (
+    HistoryView, _pill_for_row, _matches_type_filter, _is_empty_wake_attempt,
+    _SCOPE_LAST_7_DAYS, _SCOPE_ALL,
+)
 
 
 def _pump(app, ms=400):
@@ -111,11 +114,84 @@ class TestMatchesTypeFilter:
         assert not _matches_type_filter({"entry_type": "dictation", "status": "success"}, "Failed")
 
 
+class TestEmptyWakeAttempts:
+    def test_only_empty_wake_rows_are_hidden(self):
+        assert _is_empty_wake_attempt({
+            "mode": "wake", "entry_type": "failed", "display_text": "(no speech detected)",
+        })
+        assert _is_empty_wake_attempt({
+            "mode": "wake", "entry_type": "failed", "display_text": "  ",
+        })
+        assert not _is_empty_wake_attempt({
+            "mode": "wake", "entry_type": "failed", "display_text": "real command",
+        })
+        assert not _is_empty_wake_attempt({
+            "mode": "dictate", "entry_type": "dictation", "display_text": "",
+        })
+
+
 # ============================================================================
 # Construction -- no singleton/global assumptions
 # ============================================================================
 
 class TestConstruction:
+    def test_default_scope_and_empty_wake_toggle(self, qapp, tmp_path, monkeypatch):
+        class FakeSettings:
+            values = {}
+
+            def __init__(self, *_args):
+                pass
+
+            def value(self, key, default=None, type=None):
+                return self.values.get(key, default)
+
+            def setValue(self, key, value):
+                self.values[key] = value
+
+        monkeypatch.setattr("samsara.ui.history_view.QSettings", FakeSettings)
+        mgr, store = _make_store(tmp_path)
+        recent_id = mgr.add("spoken", display_text="spoken", mode="wake", entry_type="dictation")
+        empty_id = mgr.add(
+            "", display_text="(no speech detected)", mode="wake",
+            status="empty", entry_type="failed",
+        )
+        old_id = mgr.add("old", display_text="old", entry_type="dictation")
+        mgr._conn.execute(
+            "UPDATE history SET timestamp=? WHERE id=?",
+            ("2000-01-01T00:00:00", old_id),
+        )
+        mgr._conn.commit()
+
+        view = HistoryView(store)
+
+        assert view._scope.currentText() == _SCOPE_LAST_7_DAYS
+        assert view._show_empty_wake.isChecked() is False
+        default_rows = view._fetch_rows("", "All", None)
+        assert {row["id"] for row in default_rows} == {recent_id}
+        all_rows = view._fetch_rows("", "All", None, _SCOPE_ALL, True)
+        assert {row["id"] for row in all_rows} == {recent_id, empty_id, old_id}
+        mgr.close()
+
+    def test_saved_scope_and_toggle_are_restored(self, qapp, monkeypatch):
+        class FakeSettings:
+            values = {
+                "history/date_scope": _SCOPE_ALL,
+                "history/show_empty_wake_attempts": True,
+            }
+
+            def __init__(self, *_args):
+                pass
+
+            def value(self, key, default=None, type=None):
+                return self.values.get(key, default)
+
+            def setValue(self, key, value):
+                self.values[key] = value
+
+        monkeypatch.setattr("samsara.ui.history_view.QSettings", FakeSettings)
+        view = HistoryView(None)
+        assert view._scope.currentText() == _SCOPE_ALL
+        assert view._show_empty_wake.isChecked() is True
     def test_two_independent_instances_do_not_cross_contaminate(self, qapp, tmp_path):
         """The exact scenario HistoryView must support: the standalone
         window and the main-window tab each construct their own instance

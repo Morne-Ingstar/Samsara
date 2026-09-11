@@ -136,7 +136,7 @@ class HistoryManager:
             """, (status, limit, offset)).fetchall()
 
     def recent_windowed(self, search=None, entry_type=None, limit=200, before_id=None,
-                         on_date=None):
+                         on_date=None, since=None):
         """Unified windowed query for the list-style history view: optional
         substring search, optional entry_type filter (dictation/command/
         wake_command/failed), optional on_date ("YYYY-MM-DD", for the date
@@ -165,6 +165,9 @@ class HistoryManager:
         if on_date:
             clauses.append("date(timestamp) = ?")
             params.append(on_date)
+        if since:
+            clauses.append("timestamp >= ?")
+            params.append(since)
         if before_id is not None:
             clauses.append("id < ?")
             params.append(before_id)
