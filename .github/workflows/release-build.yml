@@ -1,0 +1,274 @@
+name: Release Build (CPU, SignPath-ready)
+
+# Draft companion to the existing .github/workflows/release.yml -- see
+# docs/RELEASE_CI.md for why this file exists alongside it, what it adds
+# (full-commit-SHA action pinning, a disabled SignPath signing stub, and a
+# few extra headless-safe smoke assertions), and exactly how to first-run
+# it. This workflow never publishes a release: tag pushes produce a DRAFT
+# GitHub Release only, and workflow_dispatch produces build artifacts with
+# no Release at all.
+#
+# Triggers:
+#   - push of a version tag (v*.*.*)  -> build, verify, package, draft-release
+#   - manual workflow_dispatch        -> build, verify, package only
+
+on:
+  push:
+    tags:
+      - 'v*.*.*'
+  workflow_dispatch:
+    inputs:
+      version:
+        description: 'Version string for artifact naming (e.g. v0.22.1-rc1). Leave blank to auto-generate from the commit SHA.'
+        required: false
+        default: ''
+
+permissions:
+  contents: write # required to create the draft GitHub Release on a tag push
+
+concurrency:
+  group: release-build-${{ github.ref }}
+  cancel-in-progress: true
+
+env:
+  # Matches scripts/samsara.spec's expectations and tools/check_release_version.py's
+  # Python-3.11 requirement. If the project's Python version ever moves, update
+  # this in one place.
+  PYTHON_VERSION: '3.11'
+  # Pinned deliberately, not via auto-latest -- matches the version this repo's
+  # other release workflow (release.yml) already verified against samsara.spec.
+  PYINSTALLER_VERSION: '6.20.0'
+
+jobs:
+  build-cpu:
+    runs-on: windows-latest
+    timeout-minutes: 60
+
+    steps:
+      # actions/checkout v5.0.1
+      - name: Checkout
+        uses: actions/checkout@93cb6efe18208431cddfb8368fd83d5badbf9bfd
+
+      # actions/setup-python v6.1.0
+      - name: Set up Python
+        uses: actions/setup-python@83679a892e2d95755f2dac6acb0bfd1e9ac5d548
+        with:
+          python-version: ${{ env.PYTHON_VERSION }}
+          cache: 'pip'
+          cache-dependency-path: requirements.txt
+
+      - name: Verify embedded version identity
+        shell: pwsh
+        env:
+          RELEASE_TAG: ${{ github.ref_type == 'tag' && github.ref_name || '' }}
+        run: |
+          if ($env:RELEASE_TAG) {
+            python tools\check_release_version.py --expected $env:RELEASE_TAG
+          } else {
+            python tools\check_release_version.py
+          }
+
+      - name: Resolve version string
+        id: version
+        shell: pwsh
+        run: |
+          if ("${{ github.ref_type }}" -eq "tag") {
+            $version = "${{ github.ref_name }}"
+          } elseif ("${{ github.event.inputs.version }}" -ne "") {
+            $version = "${{ github.event.inputs.version }}"
+          } else {
+            $shortSha = "${{ github.sha }}".Substring(0, 7)
+            $version = "dev-$shortSha"
+          }
+          Write-Host "Resolved version: $version"
+          echo "version=$version" >> $env:GITHUB_OUTPUT
+
+      - name: Install build dependencies
+        shell: pwsh
+        run: |
+          python -m pip install --upgrade pip
+          pip install -r requirements.txt
+          pip install "pyinstaller==$env:PYINSTALLER_VERSION"
+
+      - name: Build with PyInstaller (CPU configuration)
+        shell: cmd
+        run: |
+          rem INCLUDE_CUDA intentionally unset -- scripts\samsara.spec only
+          rem bundles CUDA cuDNN/cuBLAS DLLs when INCLUDE_CUDA=1. This is the
+          rem same CPU-only build build_and_smoke.cmd produces locally.
+          python -m PyInstaller --clean --noconfirm scripts\samsara.spec
+
+      - name: Verify build output
+        shell: pwsh
+        run: |
+          if (-not (Test-Path "dist\Samsara\Samsara.exe")) {
+            Write-Error "dist\Samsara\Samsara.exe was not produced -- see PyInstaller output above."
+            exit 1
+          }
+          Write-Host "Build OK: dist\Samsara\Samsara.exe"
+
+          # torch/torchaudio are excluded in the spec and are not runtime
+          # dependencies; this is a defensive CI-only backstop in case a
+          # future dependency bypasses the Analysis excludes (mirrors
+          # release.yml's existing check).
+          foreach ($leaked in @("dist\Samsara\_internal\torch", "dist\Samsara\_internal\torchaudio")) {
+            if (Test-Path $leaked) {
+              Write-Warning "Removing leaked $leaked (excluded in spec but PyInstaller bundled it anyway)"
+              Remove-Item -Recurse -Force $leaked
+            }
+          }
+
+      # ------------------------------------------------------------------
+      # Headless-safe smoke checks.
+      #
+      # tools\frozen_smoke.py is the full local pre-release gate
+      # (build_and_smoke.cmd calls it) but is NOT run verbatim here: its
+      # wait_for_boot()/log-stability checks treat ANY "Traceback" line as a
+      # hard failure, with no allowance for the caught-and-logged
+      # PortAudioError / GPU-detect tracebacks a mic-less, GPU-less
+      # windows-latest runner produces on every boot (see RELEASING.md,
+      # "Why the smoke check is trimmed"). Running it as-is here would fail
+      # CI on a fine build. tools\ci_smoke.py exists specifically to be the
+      # CI-safe subset with that allowlist, so it is the blocking gate;
+      # the extra steps below add a few more of frozen_smoke.py's/
+      # build_and_smoke.cmd's checks that ARE safe to assert headlessly by
+      # reading the same log ci_smoke.py already captures, without
+      # reimplementing its process-lifecycle logic. See
+      # docs/RELEASE_CI.md for the full 13-check breakdown of what does and
+      # does not run here, and why.
+      # ------------------------------------------------------------------
+
+      - name: Headless smoke check (boot + no unexplained crash)
+        id: smoke
+        shell: pwsh
+        run: |
+          python tools\ci_smoke.py dist\Samsara --timeout 180 --log-copy-to smoke_artifacts\samsara.log
+
+      - name: Additional log-based smoke assertions
+        if: steps.smoke.outcome == 'success'
+        shell: pwsh
+        run: |
+          $log = "smoke_artifacts\samsara.log"
+          if (-not (Test-Path $log)) {
+            Write-Error "smoke log was not captured -- cannot run the additional log-based checks."
+            exit 1
+          }
+          $text = Get-Content -LiteralPath $log -Raw
+
+          # build_and_smoke.cmd check [12]: bundled OWW wake-word model files
+          # reached the frozen dist output. Pure file-existence check, no
+          # process launch required -- safe on any runner.
+          $owwModels = @(
+            'alexa_v0.1.onnx', 'embedding_model.onnx', 'hey_jarvis_v0.1.onnx',
+            'hey_mycroft_v0.1.onnx', 'hey_rhasspy_v0.1.onnx', 'melspectrogram.onnx',
+            'silero_vad.onnx', 'timer_v0.1.onnx', 'weather_v0.1.onnx'
+          )
+          $owwDir = 'dist\Samsara\_internal\openwakeword\resources\models'
+          $missing = $owwModels | Where-Object { -not (Test-Path (Join-Path $owwDir $_)) }
+          if ($missing) {
+            Write-Error "missing bundled OWW model file(s): $($missing -join ', ')"
+            exit 1
+          }
+          Write-Host "[PASS] all bundled OWW wake-word model files present"
+
+          # build_and_smoke.cmd check [13]: no OWW model-load failure logged.
+          if ($text -match [regex]::Escape('[OWW] Failed to load model')) {
+            Write-Error "OWW model-load failure found in smoke log"
+            exit 1
+          }
+          Write-Host "[PASS] no OWW model-load failure in smoke log"
+
+          # frozen_smoke.py check: bundled Silero ONNX VAD loaded, not the
+          # RMS fallback.
+          if ($text -match [regex]::Escape('Bundled Silero VAD ONNX load returned:')) {
+            Write-Host "[PASS] bundled Silero ONNX VAD loaded"
+          } elseif ($text -match [regex]::Escape('Silero VAD ONNX unavailable')) {
+            Write-Error "app reported ONNX VAD failure and fell back to RMS"
+            exit 1
+          } else {
+            Write-Error "no VAD load marker found before startup completed"
+            exit 1
+          }
+
+          # frozen_smoke.py check: startup-complete marker logged exactly
+          # once (duplicate-log-handler regression gate).
+          $count = ([regex]::Matches($text, [regex]::Escape('[INIT] Startup complete.'))).Count
+          if ($count -ne 1) {
+            Write-Error "'[INIT] Startup complete.' appeared $count times -- possible duplicate log handler"
+            exit 1
+          }
+          Write-Host "[PASS] '[INIT] Startup complete.' appears exactly once"
+
+      - name: Upload smoke log (always, for inspection)
+        if: always()
+        uses: actions/upload-artifact@b7c566a772e6b6bfb58ed0dc250532a479d7789f
+        with:
+          name: smoke-log-${{ steps.version.outputs.version }}
+          path: smoke_artifacts\samsara.log
+          if-no-files-found: ignore
+          retention-days: 14
+
+      - name: Package CPU build
+        id: package
+        shell: pwsh
+        run: |
+          $version = "${{ steps.version.outputs.version }}"
+          $zipName = "Samsara-Windows-$version.zip"
+          Compress-Archive -Path "dist\Samsara\*" -DestinationPath $zipName -CompressionLevel Optimal
+          # NOTE: tools\release_manifest.py provides only the PyInstaller
+          # datas manifest (tracked_tree_datas) used at build time by
+          # scripts\samsara.spec -- it has no SHA-256/hashing helper. The
+          # sidecar below is produced the same way release.yml already does
+          # it, with PowerShell's own Get-FileHash.
+          $checksumName = "$zipName.sha256"
+          $checksum = (Get-FileHash -LiteralPath $zipName -Algorithm SHA256).Hash.ToLowerInvariant()
+          Set-Content -LiteralPath $checksumName -Value "$checksum  $zipName" -Encoding ascii
+          $sizeMB = [math]::Round((Get-Item $zipName).Length / 1MB, 1)
+          Write-Host "Packaged $zipName ($sizeMB MB)"
+          Write-Host "SHA-256: $checksum"
+          echo "zip_name=$zipName" >> $env:GITHUB_OUTPUT
+          echo "checksum_name=$checksumName" >> $env:GITHUB_OUTPUT
+
+      - name: Upload build artifact
+        uses: actions/upload-artifact@b7c566a772e6b6bfb58ed0dc250532a479d7789f
+        with:
+          name: ${{ steps.package.outputs.zip_name }}
+          path: |
+            ${{ steps.package.outputs.zip_name }}
+            ${{ steps.package.outputs.checksum_name }}
+          retention-days: 30
+
+      # ----------------------------------------------------------------------
+      # SignPath signing stub -- DISABLED until a SignPath Foundation account
+      # exists (see docs/RELEASE_CI.md for the application process). Once
+      # approved, this step would run between packaging and the draft-release
+      # step below: submit the unsigned Samsara.exe (or the whole dist tree)
+      # to SignPath's signing API, wait for the signed artifact, and have the
+      # packaging step above zip *that* output instead of the unsigned one.
+      # `if: false` keeps it visible in the workflow graph as a placeholder
+      # without ever executing.
+      # ----------------------------------------------------------------------
+      - name: Sign build with SignPath (disabled -- no account yet)
+        if: false
+        # uses: signpath/github-action-submit-signing-request@<pin-exact-sha-when-adopted>
+        # with:
+        #   api-token: '${{ secrets.SIGNPATH_API_TOKEN }}'
+        #   organization-id: '<signpath-org-id>'
+        #   project-slug: 'samsara'
+        #   signing-policy-slug: 'release-signing'
+        #   artifact-configuration-slug: 'samsara-exe'
+        #   github-artifact-id: '${{ steps.package-unsigned.outputs.artifact-id }}'
+        #   wait-for-completion: true
+        #   output-artifact-directory: 'signed'
+        run: echo "SignPath signing not yet configured -- see docs/RELEASE_CI.md"
+
+      - name: Create draft GitHub Release
+        if: github.ref_type == 'tag'
+        # softprops/action-gh-release v2.6.2
+        uses: softprops/action-gh-release@3bb12739c298aeb8a4eeaf626c5b8d85266b0e65
+        with:
+          draft: true
+          generate_release_notes: true
+          files: |
+            ${{ steps.package.outputs.zip_name }}
+            ${{ steps.package.outputs.checksum_name }}
