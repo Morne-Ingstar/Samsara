@@ -154,6 +154,23 @@ class TestWindowing:
         assert len(second_page) == 1
         assert second_page[0]["display_text"] == "matching entry"
 
+    def test_since_timestamp_scopes_without_modifying_rows(self, store):
+        import datetime as _datetime
+
+        old_id = store.append("dictation", "older")
+        recent_id = store.append("dictation", "recent")
+        store._manager._conn.execute(
+            "UPDATE history SET timestamp=? WHERE id=?",
+            ((_datetime.datetime.now() - _datetime.timedelta(days=8)).isoformat(), old_id),
+        )
+        store._manager._conn.commit()
+        cutoff = (_datetime.datetime.now() - _datetime.timedelta(days=7)).isoformat()
+
+        rows = store.query(since=cutoff)
+
+        assert [row["id"] for row in rows] == [recent_id]
+        assert store.query(limit=10)[-1]["id"] == old_id
+
 
 class TestDeleteAndClear:
     def test_delete_single_id(self, store):

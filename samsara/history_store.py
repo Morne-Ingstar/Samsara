@@ -43,7 +43,7 @@ class HistoryStore:
 
     def query(self, search: "str | None" = None, type_filter: "str | None" = None,
               limit: int = 200, before_id: "int | None" = None,
-              on_date: "str | None" = None):
+              on_date: "str | None" = None, since: "str | None" = None):
         """Windowed read: optional substring search (scans the entire
         store, not just a loaded page -- see HistoryManager.recent_windowed),
         optional entry_type filter, optional on_date ("YYYY-MM-DD") to
@@ -55,7 +55,7 @@ class HistoryStore:
         try:
             return list(self._manager.recent_windowed(
                 search=search, entry_type=type_filter, limit=limit, before_id=before_id,
-                on_date=on_date,
+                on_date=on_date, since=since,
             ))
         except Exception as exc:
             logger.debug(f"[HISTORY] query failed: {exc}")
