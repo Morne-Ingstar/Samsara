@@ -45,6 +45,7 @@ from samsara.constants import (
 )
 
 logger = get_logger(__name__)
+_THREAD_JOIN_TIMEOUT_S = 2.0
 
 
 class ContinuousConsumer:
@@ -54,14 +55,22 @@ class ContinuousConsumer:
         engine: AudioCaptureEngine — the sole ring writer.
         app:    DictationApp — provides config, echo_canceller, and
                 transcribe_continuous_buffer().
+        on_fatal: Optional callback(exc) after fatal cleanup on the poll thread;
+                  defaults to app.play_sound('error').
     """
 
-    def __init__(self, engine, app) -> None:
+    def __init__(self, engine, app, *, on_fatal=None) -> None:
         self._engine = engine
         self._app    = app
         self._reader = engine.register_consumer("continuous")
         self._running = False
         self._thread: threading.Thread | None = None
+        self._lifecycle_lock = threading.RLock()
+        self._stop_event = threading.Event()
+        self.on_fatal = on_fatal  # Optional callback(exc); otherwise use app.play_sound('error').
+        self._fatal_reported = False
+        self._hands_free_capture_duck_token = None
+        self._last_frame_log = float('-inf')
 
         # Per-utterance state — local, not shared with WakeConsumer
         self._speech_frames: list = []   # float32 arrays at SAMPLE_RATE
@@ -74,36 +83,48 @@ class ContinuousConsumer:
 
     # ── Lifecycle ─────────────────────────────────────────────────────────────
 
-    def start(self) -> None:
-        """Begin consuming ring frames. Idempotent."""
-        if self._running:
-            return
-        self._speech_frames = []
-        self._is_speaking   = False
-        self._silence_start = None
-        self._running = True
-        # Snap to current write head — skip stale ring history
-        self._reader.snap_to_head()
-        self._thread = thread_registry.spawn(
-            "continuous-consumer", self._poll_loop, daemon=True
-        )
+    def start(self) -> bool:
+        """Begin consuming only after the previous poll generation has exited."""
+        with self._lifecycle_lock:
+            if self._thread is not None and self._thread.is_alive():
+                logger.error("[ACE] Continuous start refused: thread %s is still alive", self._thread.name)
+                return False
+            self.abort()
+            self._fatal_reported = False
+            self._stop_event = threading.Event()
+            self._reader.snap_to_head()
+            self._running = True
+            self._thread = thread_registry.spawn(
+                "continuous-consumer", self._poll_loop, args=(self._stop_event,), daemon=True
+            )
+            return True
 
     def stop(self) -> list:
         """Stop polling and return any accumulated speech frames for final flush."""
-        self._running = False
-        if self._thread is not None:
-            self._thread.join(timeout=2.0)
-            self._thread = None
-        with self._frames_lock:
-            remaining = list(self._speech_frames)
-            self._speech_frames = []
-            self._is_speaking   = False
-            self._silence_start = None
-        return remaining
+        with self._lifecycle_lock:
+            self._running = False
+            self._stop_event.set()
+            if self._thread is not None:
+                if self._thread is threading.current_thread():
+                    return []
+                self._thread.join(timeout=_THREAD_JOIN_TIMEOUT_S)
+                if self._thread.is_alive():
+                    logger.error("[ACE] Continuous stop incomplete: thread %s is still alive", self._thread.name)
+                    return []
+                self._thread = None
+            self._close_capture_duck()
+            with self._frames_lock:
+                remaining = list(self._speech_frames)
+                self._speech_frames = []
+                self._is_speaking = False
+                self._silence_start = None
+            return remaining
 
     def deactivate(self) -> None:
         """Stop and unregister from the engine at app shutdown."""
         self.stop()
+        if self._thread is not None and self._thread.is_alive():
+            return
         try:
             self._engine.unregister_consumer(self._reader)
         except Exception as e:
@@ -136,19 +157,65 @@ class ContinuousConsumer:
 
     # ── Poll loop ─────────────────────────────────────────────────────────────
 
-    def _poll_loop(self) -> None:
+    def _close_capture_duck(self) -> None:
+        token, self._hands_free_capture_duck_token = self._hands_free_capture_duck_token, None
+        close_duck = getattr(self._app, '_close_hands_free_capture_duck', None)
+        if token is not None and callable(close_duck):
+            try:
+                close_duck(token)
+            except Exception as exc:
+                logger.warning("[ACE] Continuous duck cleanup failed: %s", exc)
+
+    def _handle_fatal(self, exc: Exception) -> None:
+        if self._fatal_reported:
+            return
+        self._fatal_reported = True
+        self._running = False
+        self._stop_event.set()
+        logger.error("[ACE] Continuous consumer stopped after fatal error: %s", exc,
+                     exc_info=(type(exc), exc, exc.__traceback__))
+        self.abort()
+        self._close_capture_duck()
         app = self._app
-        while self._running:
-            if not app.continuous_active:
-                time.sleep(0.005)
-                continue
+        app.continuous_active = False
+        update = getattr(app, 'set_app_state', None)
+        if callable(update):
+            try:
+                update(continuous_active=False)
+            except Exception as cleanup_exc:
+                logger.warning("[ACE] Continuous state notification failed: %s", cleanup_exc)
+            finally:
+                app.continuous_active = False
+        try:
+            if self.on_fatal is not None:
+                self.on_fatal(exc)
+            elif callable(getattr(app, 'play_sound', None)):
+                app.play_sound('error')
+        except Exception as callback_exc:
+            logger.warning("[ACE] Continuous on_fatal callback failed: %s", callback_exc)
 
-            frame = self._reader.read_next()
-            if frame is EMPTY:
-                time.sleep(0.005)
-                continue
+    def _poll_loop(self, stop_event=None) -> None:
+        app = self._app
+        stop_event = self._stop_event if stop_event is None else stop_event
+        try:
+            while self._running and not stop_event.is_set():
+                if not app.continuous_active:
+                    time.sleep(0.005)
+                    continue
 
-            self._process_frame(frame)
+                frame = self._reader.read_next()
+                if stop_event.is_set():
+                    break
+                if frame is EMPTY:
+                    time.sleep(0.005)
+                    continue
+
+                self._process_frame(frame)
+        except Exception as exc:
+            self._handle_fatal(exc)
+        finally:
+            self._running = False
+            self._close_capture_duck()
 
     def _process_frame(self, frame) -> None:
         app = self._app
@@ -188,7 +255,10 @@ class ContinuousConsumer:
                 max_buffer_s = app.config.get('continuous_max_buffer_s', DEFAULT_CONTINUOUS_MAX_BUFFER_S)
                 speech_duration = len(self._speech_frames) * (FRAME_MS / 1000.0)
                 if speech_duration >= max_buffer_s:
-                    logger.debug("[CONTINUOUS] Max buffer reached — auto-committing")
+                    now = time.monotonic()
+                    if now - self._last_frame_log >= 5.0:
+                        self._last_frame_log = now
+                        logger.debug("[CONTINUOUS] Max buffer reached — auto-committing")
                     self._flush()
             else:
                 # trigger == "silence" (default): EXACTLY today's behavior,

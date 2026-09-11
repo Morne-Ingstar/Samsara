@@ -48,6 +48,7 @@ from samsara.log import get_logger
 from samsara.runtime import thread_registry
 
 logger = get_logger(__name__)
+_THREAD_JOIN_TIMEOUT_S = 2.0
 
 
 class DictationSessionConsumer:
@@ -60,10 +61,46 @@ class DictationSessionConsumer:
         self._frames: list = []
         self._active         = False
         self._epoch_at_start = None
+        self._lifecycle_lock = threading.RLock()
+        self._frames_lock = threading.Lock()
+        self._drain_stop = threading.Event()
+        self._drain_thread = None
+        self._streaming_frames = []
+        self._streaming_stop = threading.Event()
+        self._streaming_lock = threading.Lock()
+        self._streaming_thread = None
 
     # ── Utterance lifecycle ───────────────────────────────────────────────────
 
-    def activate(self) -> None:
+    def _activation_allowed(self) -> bool:
+        for thread in (self._drain_thread, self._streaming_thread):
+            if thread is not None and thread.is_alive():
+                logger.error("[ACE] Dictation activation refused: thread %s is still alive", thread.name)
+                return False
+        return self._reader is not None
+
+    def _stop_hold_thread(self) -> bool:
+        """Called under the lifecycle lock; preserve timed-out generations."""
+        self._drain_stop.set()
+        thread = self._drain_thread
+        if thread is not None:
+            if thread is not threading.current_thread():
+                thread.join(timeout=_THREAD_JOIN_TIMEOUT_S)
+            if thread.is_alive():
+                logger.error("[ACE] Dictation drain stop incomplete: thread %s is still alive", thread.name)
+                return False
+            self._drain_thread = None
+        return True
+
+    def activate(self) -> bool:
+        """Start a hold only when no previous hold/streaming drain is alive."""
+        with self._lifecycle_lock:
+            if not self._activation_allowed():
+                return False
+            self._activate_hold()
+            return True
+
+    def _activate_hold(self) -> None:
         """Call at hotkey press (speech onset).
 
         Rewinds to include prebuffer history unless TTS was speaking
@@ -81,7 +118,6 @@ class DictationSessionConsumer:
         self._active         = True
         self._epoch_at_start = None
         self._drain_stop     = threading.Event()
-        self._frames_lock    = threading.Lock()
 
         # Snap cursor to the current write head BEFORE rewinding.
         # Between the previous drain() and this activate(), the writer
@@ -101,10 +137,10 @@ class DictationSessionConsumer:
             self._reader.rewind(PREBUFFER_FRAMES)
 
         self._drain_thread = thread_registry.spawn(
-            "dictation-hold-consumer", self._hold_drain_loop, daemon=True
+            "dictation-hold-consumer", self._hold_drain_loop, args=(self._drain_stop,), daemon=True
         )
 
-    def _hold_drain_loop(self) -> None:
+    def _hold_drain_loop(self, stop_event) -> None:
         """Background thread: drain ring → _frames continuously during a hold.
 
         Mirrors _streaming_drain_loop. Copies each frame (MA-2: frame.pcm is
@@ -113,7 +149,7 @@ class DictationSessionConsumer:
         cancellation are deferred to drain(), which assembles the final
         audio — keeping per-frame work in this hot loop minimal.
         """
-        while not self._drain_stop.is_set():
+        while not stop_event.is_set():
             frame = self._reader.read_next()
             if frame is EMPTY:
                 time.sleep(0.005)
@@ -203,22 +239,25 @@ class DictationSessionConsumer:
         )
         return audio
 
-    def cancel(self) -> None:
+    def cancel(self) -> bool:
         """Discard accumulated frames without assembling audio.
 
         Safe to call even if activate() was never called.
         """
-        stop = getattr(self, '_drain_stop', None)
-        if stop is not None:
-            stop.set()
-        thread = getattr(self, '_drain_thread', None)
-        if thread is not None:
-            thread.join(timeout=2.0)
-            self._drain_thread = None
-        self._frames.clear()
-        self._active = False
+        with self._lifecycle_lock:
+            self._active = False
+            if not self._stop_hold_thread():
+                return False
+            with self._frames_lock:
+                self._frames.clear()
+            return True
 
     def drain(self) -> 'np.ndarray | None':
+        """Stop and assemble audio; return None if the drain thread times out."""
+        with self._lifecycle_lock:
+            return self._drain_hold()
+
+    def _drain_hold(self) -> 'np.ndarray | None':
         """Stop the drain thread and return assembled float32 audio.
 
         The background _hold_drain_loop has been accumulating (epoch, pcm)
@@ -236,13 +275,10 @@ class DictationSessionConsumer:
         self._active = False
 
         # Stop the background drain thread and flush any final frames.
-        stop = getattr(self, '_drain_stop', None)
-        if stop is not None:
-            stop.set()
-        thread = getattr(self, '_drain_thread', None)
-        if thread is not None:
-            thread.join(timeout=2.0)
-            self._drain_thread = None
+        if not self._stop_hold_thread():
+            # The old reader may still be inside read_next(). Never race it
+            # with the final synchronous drain or expose a changing buffer.
+            return None
 
         if self._reader is None:
             return None
@@ -358,7 +394,15 @@ class DictationSessionConsumer:
     # stop_streaming() for the final pass. Frames accumulate in
     # _streaming_frames; snapshots are non-destructive reads.
 
-    def activate_streaming(self) -> None:
+    def activate_streaming(self) -> bool:
+        """Start streaming only when this Reader has no surviving drain thread."""
+        with self._lifecycle_lock:
+            if not self._activation_allowed():
+                return False
+            self._activate_streaming()
+            return True
+
+    def _activate_streaming(self) -> None:
         """Start accumulating for a CapsLock streaming session.
 
         Snaps to current write head and rewinds to prebuffer window (same
@@ -367,7 +411,6 @@ class DictationSessionConsumer:
         """
         self._streaming_frames: list = []
         self._streaming_stop  = threading.Event()
-        self._streaming_lock  = threading.Lock()
 
         # Snap + rewind (same logic as activate())
         self._reader.snap_to_head()
@@ -380,12 +423,12 @@ class DictationSessionConsumer:
             self._reader.rewind(PREBUFFER_FRAMES)
 
         self._streaming_thread = thread_registry.spawn(
-            "streaming-consumer", self._streaming_drain_loop, daemon=True
+            "streaming-consumer", self._streaming_drain_loop, args=(self._streaming_stop,), daemon=True
         )
 
-    def _streaming_drain_loop(self) -> None:
+    def _streaming_drain_loop(self, stop_event) -> None:
         """Background thread: drain ring → _streaming_frames while session runs."""
-        while not self._streaming_stop.is_set():
+        while not stop_event.is_set():
             frame = self._reader.read_next()
             if frame is EMPTY:
                 time.sleep(0.005)
@@ -411,10 +454,20 @@ class DictationSessionConsumer:
         return audio
 
     def stop_streaming(self) -> 'np.ndarray | None':
+        """Stop streaming without losing ownership of a timed-out drain."""
+        with self._lifecycle_lock:
+            return self._stop_streaming()
+
+    def _stop_streaming(self) -> 'np.ndarray | None':
         """Stop accumulating and return all audio for the final pass."""
         self._streaming_stop.set()
         if hasattr(self, '_streaming_thread') and self._streaming_thread is not None:
-            self._streaming_thread.join(timeout=2.0)
+            if self._streaming_thread is not threading.current_thread():
+                self._streaming_thread.join(timeout=_THREAD_JOIN_TIMEOUT_S)
+            if self._streaming_thread.is_alive():
+                logger.error("[ACE] Streaming drain stop incomplete: thread %s is still alive",
+                             self._streaming_thread.name)
+                return None
             self._streaming_thread = None
         with self._streaming_lock:
             frames = list(self._streaming_frames)
@@ -427,13 +480,18 @@ class DictationSessionConsumer:
 
     def deactivate(self) -> None:
         """Unregister from the engine. Call once at app shutdown."""
-        self._active = False
-        if self._reader is not None:
-            try:
-                self._engine.unregister_consumer(self._reader)
-            except Exception as e:
-                logger.debug(f"unregister_consumer failed during deactivate: {e}")
-            self._reader = None
+        with self._lifecycle_lock:
+            self.cancel()
+            self.stop_streaming()
+            if any(thread is not None and thread.is_alive()
+                   for thread in (self._drain_thread, self._streaming_thread)):
+                return
+            if self._reader is not None:
+                try:
+                    self._engine.unregister_consumer(self._reader)
+                except Exception as e:
+                    logger.debug(f"unregister_consumer failed during deactivate: {e}")
+                self._reader = None
 
     def __repr__(self) -> str:
         return (

@@ -173,15 +173,30 @@ class TestThemeSwitching:
                     f"theme {theme} cache missing {earcon}")
 
     def test_themes_produce_different_audio(self):
-        # Different themes must actually produce different samples for the
-        # same earcon -- otherwise the per-theme tuning is a no-op.
-        cute = _FakeApp(theme='cute')
-        warm = _FakeApp(theme='warm')
-        a = cute._sound_cache['capture_saved']
-        b = warm._sound_cache['capture_saved']
-        # Could share length but not bit-identical samples.
-        if a.shape == b.shape:
-            assert not (a == b).all(), "themes produced identical audio"
+        from types import SimpleNamespace
+
+        import numpy as np
+        from dictation import DictationApp
+
+        centroids = []
+        for theme in ('cute', 'warm'):
+            app = SimpleNamespace(
+                config={'sound_theme': theme}, sound_files={},
+                sounds_dir=REPO_ROOT / 'sounds', _sound_stream_sr=44100,
+            )
+            DictationApp._load_sound_cache.__get__(app)()
+            samples = app._sound_cache['capture_saved'].ravel().astype(np.float64)
+            assert samples.size > 0, f'{theme} capture_saved is empty'
+            rms = np.sqrt(np.mean(samples ** 2))
+            assert rms > 0.001, f'{theme} capture_saved is silent: RMS={rms}'
+            spectrum = np.abs(np.fft.rfft(samples))
+            frequencies = np.fft.rfftfreq(samples.size, d=1 / app._sound_stream_sr)
+            centroids.append(float(np.sum(frequencies * spectrum) / np.sum(spectrum)))
+
+        # Frequency comparisons work even when theme durations differ. A
+        # duplicate sound with extra trailing silence must not satisfy this.
+        assert not np.isclose(centroids[0], centroids[1], rtol=0.01, atol=1.0), (
+            f'themes have indistinguishable spectral centroids: {centroids}')
 
 
 # ---------------------------------------------------------------------------

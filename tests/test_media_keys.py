@@ -324,39 +324,42 @@ class TestRunAsync:
 
 
 # ---------------------------------------------------------------------------
-# Command handlers (smoke tests via mocked _run_async)
+# Command handlers: exact dispatch and handled status
 # ---------------------------------------------------------------------------
 
 class TestCommandHandlers:
 
-    def _call(self, handler, *, result=(True, "ok")):
+    def _call(self, handler, expected_action, *, result=(True, "ok")):
         # Use new= with a plain MagicMock for _send_action so patch.object
         # does not auto-create an AsyncMock (which would leak an unawaited
         # coroutine into garbage collection and trigger a RuntimeWarning).
-        with patch.object(mk, '_run_async', return_value=result), \
+        with patch.object(mk, '_run_async', return_value=result) as run_async, \
              patch.object(mk, '_send_action',
-                          new=MagicMock(return_value=(True, "mocked"))):
-            return handler(None, '')
+                          new=MagicMock()) as send_action:
+            handled = handler(None, '')
+            send_action.assert_called_once_with(expected_action)
+            run_async.assert_called_once_with(send_action.return_value)
+            return handled
 
     def test_pause_handler_returns_true(self):
-        assert self._call(mk.handle_pause_this) is True
+        assert self._call(mk.handle_pause_this, 'pause') is True
 
     def test_play_handler_returns_true(self):
-        assert self._call(mk.handle_play_this) is True
+        assert self._call(mk.handle_play_this, 'play') is True
 
     def test_toggle_handler_returns_true(self):
-        assert self._call(mk.handle_toggle_this) is True
+        assert self._call(mk.handle_toggle_this, 'toggle') is True
 
     def test_next_handler_returns_true(self):
-        assert self._call(mk.handle_next_this) is True
+        assert self._call(mk.handle_next_this, 'next') is True
 
     def test_prev_handler_returns_true(self):
-        assert self._call(mk.handle_prev_this) is True
+        assert self._call(mk.handle_prev_this, 'previous') is True
 
     def test_handler_returns_true_even_when_action_fails(self):
         # Commands always return True (handled=True) even on failure,
         # so they don't fall through to dictation output.
-        assert self._call(mk.handle_pause_this, result=None) is True
+        assert self._call(mk.handle_pause_this, 'pause', result=None) is True
 
     def test_pause_debounce_is_1_5(self):
         import importlib

@@ -381,6 +381,7 @@ _RecordingOwnership = collections.namedtuple(
 )
 import logging
 from datetime import datetime
+import samsara.torch_guard; samsara.torch_guard.install()
 import numpy as np
 _PRE_SD_T = time.perf_counter()
 import sounddevice as sd
@@ -478,12 +479,14 @@ def _raw_key_pressed(name: str) -> bool:
     import ctypes
     ga = ctypes.windll.user32.GetAsyncKeyState
     pressed = any(ga(vk) & 0x8000 for vk in vks)
-    if not pressed:
-        # FLIGHT RECORDER: this is the release-verification suspect from
-        # cdc39ea -- a spurious not-pressed reading here would stop
-        # recording instantly. Re-read (recording-only, key already
-        # resolved not-pressed above) so an incident bundle has the raw
-        # bits behind every "not pressed" verdict, not just the boolean.
+    if pressed:
+        _raw_key_pressed._pressed_vks[vks] = True  # type: ignore[attr-defined]
+    elif _raw_key_pressed._pressed_vks.pop(vks, False):  # type: ignore[attr-defined]
+        # Record only an observed pressed -> released edge. VK tuples
+        # share state across aliases (e.g. esc/escape); an initially idle
+        # key is silent. Pop consumes the edge before recorder work.
+        # Keep the diagnostic re-read from the cdc39ea release-verification
+        # seam, but avoid both it and the recorder write lock on steady polls.
         flight_recorder.record(
             'key_state.not_pressed', key=name,
             raw_bits={hex(vk): ga(vk) for vk in vks},
@@ -492,6 +495,7 @@ def _raw_key_pressed(name: str) -> bool:
 
 
 _raw_key_pressed._warned = set()  # type: ignore[attr-defined]
+_raw_key_pressed._pressed_vks = {}  # type: ignore[attr-defined]
 
 from pynput.mouse import Button, Controller as MouseController
 import pyperclip
@@ -606,10 +610,12 @@ from samsara import audio_ducking
 from samsara.audio_devices import force_rescan, list_microphones
 from samsara import wake_profiles
 from samsara import voice_memo
+from samsara import quick_memo
 from samsara.clipboard import paste_with_preservation, type_text_unicode
 from samsara.wake_detector import WakeWordDetector
 from samsara.handlers import _get_foreground_exe_lower, _get_foreground_hwnd
 from samsara.runtime import thread_registry
+from samsara.audio_engine.wake_dispatch import TranscriptionOwners, WakeDispatchQueue
 from samsara.session_modes import (
     SessionMode, SessionModeManager, UtteranceSignals, CommandDispatchResult,
     HandsFreeCommandMatch, PendingTextPolicy, normalize_utterance,
@@ -2409,6 +2415,7 @@ class DictationApp:
         
         # Hotkey settings
         self.hotkey_pressed = False
+        self._memo_recording = False
         self.current_keys = set()
         self.key_press_times = {}  # Track when each key was pressed
         self.hotkey_window = 0.3  # 300ms window for hotkey detection
@@ -2443,7 +2450,15 @@ class DictationApp:
         self.wake_word_listening = False  # Currently listening for wake word
         self.wake_word_triggered = False  # Wake word detected, ready for command
         self._wake_trace_callback = None  # Optional: debug window registers here
-        self._wake_transcription_in_progress = False  # Prevents concurrent Whisper calls on CPU
+        self._transcription_owners = TranscriptionOwners()
+        self._wake_dispatch_queue = WakeDispatchQueue(self.config)
+        self._wake_session_lock = threading.RLock()
+        self._wake_session_inactivity_timer = None
+        self._wake_session_expires_at = None
+        self._wake_session_timer_token = None
+        self._wake_word_settings_lock = threading.Lock()
+        self._wake_word_settings_guard = threading.Lock()
+        self._wake_word_settings_generation = 0
 
         # Rolling noise-floor estimate for adaptive wake energy gate.
         # Seeded from measured_noise_floor config key when available so the
@@ -3227,6 +3242,9 @@ class DictationApp:
             "dictate_commit_hotkey": DEFAULT_CONTINUOUS_COMMIT_HOTKEY,
             "correction_hotkey": "ctrl+alt+r",
             "cancel_hotkey": "escape",
+            "memo_hotkey": "ctrl+alt+m",
+            "memo_retain_audio": False,
+            "memo_file": None,
             # Nested hotkey namespace (new features land here rather than as
             # more top-level *_hotkey keys). capture_correction opens the
             # correction-capture window (samsara/ui/correction_capture_qt.py)
@@ -5478,6 +5496,19 @@ class DictationApp:
         wake_hotkey = self.config.get('wake_word_hotkey', 'ctrl+alt+w')
         command_hotkey = self.config.get('command_hotkey', 'ctrl+alt+c')
         cancel_hotkey = self.config.get('cancel_hotkey', 'escape')
+        memo_hotkey = self.config.get('memo_hotkey', 'ctrl+alt+m')
+
+        if (self.check_hotkey_state(memo_hotkey)
+                and not self.hotkey_pressed and not self.recording):
+            logger.debug(f"[MEMO] Hotkey detected: {memo_hotkey}")
+            self._memo_recording = True
+            self.hotkey_pressed = True
+            self.play_sound('capture_started', use_winsound=True)
+            self.start_recording(streaming=False, play_earcon=False)
+            if not self.recording:
+                self._memo_recording = False
+                self.hotkey_pressed = False
+            return
 
         # Use state-based detection - checks if keys are CURRENTLY held, regardless of press order
         # This is more reliable than event-based tracking for simultaneous key combos
@@ -5645,6 +5676,7 @@ class DictationApp:
         cont_hotkey = self.config.get('continuous_hotkey', 'ctrl+alt+d')
         wake_hotkey = self.config.get('wake_word_hotkey', 'ctrl+alt+w')
         command_hotkey = self.config.get('command_hotkey', 'ctrl+alt+c')
+        memo_hotkey = self.config.get('memo_hotkey', 'ctrl+alt+m')
         
         # Reset hotkey flag when no hotkey combo is currently pressed
         # Use state-based checking for reliable detection
@@ -5652,8 +5684,9 @@ class DictationApp:
         cont_pressed = self.check_hotkey_state(cont_hotkey)
         wake_pressed = self.check_hotkey_state(wake_hotkey)
         command_pressed = self.check_hotkey_state(command_hotkey)
+        memo_pressed = self.check_hotkey_state(memo_hotkey)
         
-        if not main_pressed and not cont_pressed and not wake_pressed and not command_pressed:
+        if not main_pressed and not cont_pressed and not wake_pressed and not command_pressed and not memo_pressed:
             if self.hotkey_pressed:
                 def _deferred_stop():
                     try:
@@ -5661,7 +5694,12 @@ class DictationApp:
                     finally:
                         self._stop_in_flight = False
 
-                if self.command_mode_recording and self.recording:
+                if self._memo_recording and self.recording:
+                    logger.debug("[MEMO] Hotkey released, stopping recording")
+                    self._stop_in_flight = True
+                    thread_registry.spawn('stop-memo', _deferred_stop, daemon=True)
+                    self.hotkey_pressed = False
+                elif self.command_mode_recording and self.recording:
                     logger.debug(f"[HOTKEY] Command hotkey released, stopping recording")
                     flight_recorder.record(
                         'hold_recording.stop_triggered',
@@ -6820,8 +6858,8 @@ class DictationApp:
         session's waterfall queue.
 
         Called from WakeConsumer._flush() while ava_command_session_active.
-        Shares _wake_transcription_in_progress with _handle_command_mode_utterance
-        to prevent concurrent transcriptions. Abort phrases, and "scratch
+        Owns an Ava-lane token; model_lock serializes cross-lane decodes.
+        Abort phrases, and "scratch
         that", are both checked before enqueue so they're always
         responsive even while the waterfall queue is backed up.
 
@@ -6847,10 +6885,10 @@ class DictationApp:
                 f'({entry_generation} != {self._ava_cmd_generation}) -- dropping'
             )
             return
-        if self._wake_transcription_in_progress:
+        token = self._transcription_owners.claim('ava', only_if_idle=True)
+        if token is None:
             logger.info('[AVA-CMD-UTT] Transcription in progress -- skipping')
             return
-        self._wake_transcription_in_progress = True
         try:
             audio = np.concatenate(buffer)
             audio = resample_audio(audio, src_rate, self.model_rate)
@@ -6868,7 +6906,7 @@ class DictationApp:
             transcribe_params['vad_filter'] = False
             with self.model_lock:
                 segments, _ = self.model.transcribe(audio, **transcribe_params)
-            text = ''.join(s.text for s in segments).strip()
+                text = ''.join(s.text for s in segments).strip()
             text = self.voice_training_window.apply_corrections(text)
             if not text:
                 return
@@ -6905,7 +6943,7 @@ class DictationApp:
             import traceback  # noqa: PLC0415
             traceback.print_exc()
         finally:
-            self._wake_transcription_in_progress = False
+            self._transcription_owners.release('ava', token)
             self._vad_reset()
 
     def _try_cancel_pending_ava_utterance(self, text: str) -> bool:
@@ -7020,21 +7058,16 @@ class DictationApp:
             t.cancel()
             self._command_mode_inactivity_timer = None
 
-    def _touch_session_activity(self) -> None:
-        """Single chokepoint for the unified toggle-command-mode session's
-        inactivity timer. Every activity signal -- a matched or missed
-        command, a DICTATE chunk, an AVA utterance dispatch (substantive or
-        not), any mode transition, scratch-that, abort, and AVA
-        agent-response completion (_on_ava_session_request_done) -- resets
-        the SAME timer here instead of each lane rolling its own reset.
-        A discarded near-silence buffer never reaches this method at all:
-        WakeConsumer drops those before _handle_command_mode_utterance is
-        ever invoked, so genuinely idle silence still times out normally.
+    def _touch_session_activity(self, *, speech_onset=False) -> None:
+        """Only a fresh Silero onset extends toggle-session inactivity.
+
+        Queueing, decode/delivery, and agent completion may still signal this
+        chokepoint, but cannot extend a session without a new speech edge.
 
         No-ops while _session_recovery_pause is set -- an announced device
         outage must not have some other in-flight signal quietly re-arm the
         timer out from under the deliberate pause below."""
-        if not self.command_mode_active:
+        if not speech_onset or not self.command_mode_active:
             return
         if self._session_recovery_pause:
             return
@@ -7060,7 +7093,11 @@ class DictationApp:
         way the outage is now "announced and over" from the session's
         perspective."""
         self._session_recovery_pause = False
-        self._touch_session_activity()
+        # Re-establish the idle deadline after a device outage; subsequent
+        # speech-driven extensions still require a new Silero onset.
+        cm_cfg = self.config.get('command_mode', {})
+        if self.command_mode_active and cm_cfg.get('mode', 'hold') == 'toggle':
+            self._reset_command_mode_inactivity_timer(cm_cfg.get('inactivity_timeout_s', 300))
 
     def _on_command_mode_inactivity(self):
         """threading.Timer callback -- runs on its own thread. Must never
@@ -7124,9 +7161,7 @@ class DictationApp:
         is just: transcribe, compute the hallucination-gate signals the
         switch matcher needs, and hand the text off.
         """
-        if self._wake_transcription_in_progress:
-            logger.info('[CMD-UTT] Another transcription is active — waiting on model lock')
-        self._wake_transcription_in_progress = True
+        token = self._transcription_owners.claim('toggle')
         try:
             audio = np.concatenate(buffer)
             audio = resample_audio(audio, src_rate, self.model_rate)
@@ -7198,7 +7233,7 @@ class DictationApp:
 
             with self.model_lock:
                 segments, _ = self.model.transcribe(audio, **transcribe_params)
-            seg_list = list(segments)
+                seg_list = list(segments)
             text = ''.join(s.text for s in seg_list).strip()
             text = self.voice_training_window.apply_corrections(text)
 
@@ -7300,7 +7335,7 @@ class DictationApp:
             except Exception as e:
                 logger.debug(f'[CMD-UTT] Error earcon failed: {e}')
         finally:
-            self._wake_transcription_in_progress = False
+            self._transcription_owners.release('toggle', token)
             self._vad_reset()
 
     def _handle_session_dispatch_outcome(self, outcome: "DispatchOutcome", text: str) -> None:
@@ -7612,6 +7647,9 @@ class DictationApp:
             remaining = self._wake_consumer.stop()
         if remaining and self.wake_word_triggered:
             self.process_wake_word_buffer(remaining, src_rate=16000)
+        elif remaining:
+            logger.info('[WAKE] Listener stopped -- discarding buffered utterance')
+            flight_recorder.record('wake.dispatch_dropped', reason='listener_stopped')
 
     def _update_streaming_preview(self, mode: "SessionMode") -> None:
         """Show/hide the toggle-session DICTATE-lane streaming preview on
@@ -7832,8 +7870,9 @@ class DictationApp:
                 published = False
                 should_publish = False
                 with self._hands_free_duck_lock:
-                    self._hands_free_capture_duck_starting = False
                     current_generation = self._hands_free_capture_duck_start_generation
+                    if start_generation == current_generation:
+                        self._hands_free_capture_duck_starting = False
                     if start_generation == current_generation and self._hands_free_capture_duck_owners:
                         should_publish = True
                         if self._hands_free_capture_ducker is None:
@@ -7849,13 +7888,17 @@ class DictationApp:
                 else:
                     ducker.stop()
                 if not published:
-                    return owner_token
+                    with self._hands_free_duck_lock:
+                        self._hands_free_capture_duck_owners.discard(owner_token)
+                    logger.debug('[DUCK] Capture duck start lost ownership: %s', owner_token)
+                    return None
             self._bump_wake_gate_freeze()
             return owner_token
         except Exception as exc:
             with self._hands_free_duck_lock:
                 ducker_to_stop = ducker if started_here else None
-                self._hands_free_capture_duck_starting = False
+                if start_generation == self._hands_free_capture_duck_start_generation:
+                    self._hands_free_capture_duck_starting = False
                 self._hands_free_capture_duck_owners.discard(owner_token)
             logger.warning(f"[DUCK] Failed to engage capture duck: {exc}")
             if ducker_to_stop is not None:
@@ -7863,7 +7906,7 @@ class DictationApp:
                     ducker_to_stop.stop()
                 except Exception:
                     pass
-            return owner_token
+            return None
 
     def _close_hands_free_capture_duck(self, owner_token: int | None = None) -> None:
         """Schedule the deep duck's release after
@@ -7873,22 +7916,12 @@ class DictationApp:
         stop-then-immediately-restart flicker. Call in a finally-shape at
         every close-capable path (see wake_consumer.py) so this always fires,
         even if processing raised."""
-        cfg = self.config.get('ducking', {}) or {}
-        if not cfg.get('hands_free_enabled', True):
-            with self._hands_free_duck_lock:
-                self._hands_free_capture_duck_owners.clear()
-                timer = self._hands_free_duck_restore_timer
-                self._hands_free_duck_restore_timer = None
-                if timer is not None:
-                    timer.cancel()
-                self._hands_free_capture_duck_restore_generation += 1
-            return
         try:
             with self._hands_free_duck_lock:
-                if owner_token is None:
-                    self._hands_free_capture_duck_owners.clear()
-                else:
-                    self._hands_free_capture_duck_owners.discard(owner_token)
+                if owner_token is None or owner_token not in self._hands_free_capture_duck_owners:
+                    logger.debug('[DUCK] Ignoring stale capture duck close: %s', owner_token)
+                    return
+                self._hands_free_capture_duck_owners.remove(owner_token)
 
                 if (
                     self._hands_free_capture_ducker is None
@@ -7966,6 +7999,7 @@ class DictationApp:
         time.sleep(0.15)
         phrase = self.config.get('wake_word_config', {}).get('phrase', 'hey samsara')
         logger.info(f"[LISTEN] Wake word mode ACTIVE - say '{phrase}' to give commands")
+        self._warn_wake_fallback_once()
 
         self.silence_start       = None
         self.is_speaking         = False
@@ -8069,6 +8103,21 @@ class DictationApp:
             logger.debug(f"[OWW] Wake word pre-filter active for '{wake_phrase}'")
         else:
             logger.debug(f"[OWW] No pre-filter for '{wake_phrase}' — using Whisper detection")
+            if getattr(self, 'wake_word_active', False):
+                self._warn_wake_fallback_once()
+
+    def _warn_wake_fallback_once(self):
+        """One loud notice per app instance when hands-free lacks its OWW filter."""
+        detector = getattr(self, '_wake_detector', None)
+        if detector is not None and detector.is_available:
+            return
+        if getattr(self, '_wake_fallback_warned', False):
+            return
+        self._wake_fallback_warned = True
+        phrase = self.config.get('wake_word_config', {}).get('phrase', 'jarvis')
+        logger.warning("[OWW] No pre-filter for '%s' -- Whisper wake fallback decodes all room audio",
+                       phrase)
+        flight_recorder.record('wake.fallback_active', phrase=phrase, detector='whisper')
 
     def _load_wake_profile_models(self):
         """Load OWW models for all enabled wake_profiles (Phase 1 multi-wakeword).
@@ -8200,12 +8249,20 @@ class DictationApp:
             send_word=profile.get('send_word'),
         )
 
+    def _confirm_wake_capture(self):
+        """Publish the confirmed-wake boundary for the ring consumer."""
+        from samsara.audio_engine.wake_consumer import wake_session_policy
+        policy = wake_session_policy(self.config)
+        self._wake_capture_admission = (
+            time.perf_counter(), policy['prebuffer_policy'], policy['post_wake_guard_ms'],
+        )
+
     def _start_wake_session(self, initial_content=None, mode='focus_dictate', send_word=None):
-        """Enter open-ended wake session state.
+        """Enter a wake session bounded by inactivity and an absolute duration.
 
         Each transcribed utterance is delivered immediately.  The session stays
-        alive through silence and only ends after _WAKE_SESSION_TIMEOUT_S of
-        inactivity or via the global cancel path.
+        alive until the shorter of the inactivity timeout and max_session_s,
+        or until the user sends/cancels. Only new Silero onsets extend inactivity.
 
         mode: 'focus_dictate' — press Enter after send-word detection (claude profiles).
               'stage_send' — text staged, Enter suppressed (hermes/agentic profiles).
@@ -8215,81 +8272,115 @@ class DictationApp:
               to exactly this profile, not the shared/global send_words list
               -- profile isolation for the agentic-safety send_word contract.
         """
-        # Duck other apps' audio for this open-ended dictation window --
-        # only reached once a wake word has actually fired and an active
-        # session is opening (not during passive always-on wake listening).
-        # No-op unless ducking.enabled.
-        self._duck_audio()
+        with self._wake_session_lock:
+            self._confirm_wake_capture()
+            from samsara.audio_engine.wake_consumer import wake_session_policy
+            policy = wake_session_policy(self.config)
+            self._wake_session_started_at = time.monotonic()
+            self._wake_session_deadline = self._wake_session_started_at + policy['max_session_s']
 
-        old_state = self.app_state
-        self.app_state = 'wake_session'
-        logger.info(f"[WS-DIAG] app_state set to {self.app_state!r}")
-        self.wake_dictation_mode = 'wake_session'
-        self.wake_dictation_buffer = []
-        self.wake_dictation_start_time = time.time()
-        self.wake_word_triggered = False
-        self._dictation_paused = False
-        self._dictation_require_end = False
-        self._dictation_silence_timeout = _WAKE_SESSION_CHUNK_GAP_S
-        self._wake_profile_active = True
-        self._wake_session_first_chunk = True
-        self._wake_session_mode = mode
-        self._wake_session_send_word = send_word
+            # Duck other apps' audio for this open-ended dictation window --
+            # only reached once a wake word has actually fired and an active
+            # session is opening (not during passive always-on wake listening).
+            # No-op unless ducking.enabled.
+            self._duck_audio()
 
-        if hasattr(self, 'wake_word_timer') and self.wake_word_timer:
-            self.wake_word_timer.cancel()
+            old_state = self.app_state
+            self.app_state = 'wake_session'
+            logger.info(f"[WS-DIAG] app_state set to {self.app_state!r}")
+            self.wake_dictation_mode = 'wake_session'
+            self.wake_dictation_buffer = []
+            self.wake_dictation_start_time = time.time()
+            self.wake_word_triggered = False
+            self._dictation_paused = False
+            self._dictation_require_end = False
+            self._dictation_silence_timeout = _WAKE_SESSION_CHUNK_GAP_S
+            self._wake_profile_active = True
+            self._wake_session_first_chunk = True
+            self._wake_session_mode = mode
+            self._wake_session_send_word = send_word
 
-        logger.debug(f"[STATE] {old_state} -> wake_session "
-              f"(chunk gap: {_WAKE_SESSION_CHUNK_GAP_S}s, "
-              f"inactivity timeout: {_WAKE_SESSION_TIMEOUT_S}s, "
-              f"mode: {mode})")
+            if hasattr(self, 'wake_word_timer') and self.wake_word_timer:
+                self.wake_word_timer.cancel()
 
-        self._restart_wake_session_timer()
-        logger.info(
-            f"[WS-DIAG] start_wake_session: app_state={self.app_state!r} "
-            f"timer_id={id(getattr(self,'_wake_session_inactivity_timer',None))}"
-        )
-        self.play_sound("start")
+            logger.debug(f"[STATE] {old_state} -> wake_session "
+                  f"(chunk gap: {_WAKE_SESSION_CHUNK_GAP_S}s, "
+                  f"inactivity timeout: {policy['inactivity_timeout_s']}s, "
+                  f"maximum session: {policy['max_session_s']}s, "
+                  f"mode: {mode})")
 
-        if hasattr(self, 'listening_indicator'):
-            self._schedule_ui(self.listening_indicator.set_mode, "Wake Session")
-            self._schedule_ui(self.listening_indicator.set_listening, True)
+            self._restart_wake_session_timer(initial=True)
+            logger.info(
+                f"[WS-DIAG] start_wake_session: app_state={self.app_state!r} "
+                f"timer_id={id(getattr(self,'_wake_session_inactivity_timer',None))}"
+            )
+            self.play_sound("start")
 
-        if initial_content:
-            self._output_dictation(initial_content)
+            if hasattr(self, 'listening_indicator'):
+                self._schedule_ui(self.listening_indicator.set_mode, "Wake Session")
+                self._schedule_ui(self.listening_indicator.set_listening, True)
 
-    def _restart_wake_session_timer(self):
-        """Reset the inactivity countdown; called after each delivered utterance."""
-        existing = getattr(self, '_wake_session_inactivity_timer', None)
-        logger.info(
-            f"[WS-DIAG] restart_wake_session_timer CALLED: "
-            f"app_state={self.app_state!r} had_existing={existing is not None} "
-            f"existing_id={id(existing)}"
-        )
-        if existing is not None:
-            existing.cancel()
-        t = thread_registry.timer(
-            "dictation.wake_session_timeout", _WAKE_SESSION_TIMEOUT_S,
-            self._end_wake_session, daemon=True)
-        self._wake_session_inactivity_timer = t
-        logger.info(
-            f"[WS-DIAG] restart_wake_session_timer ARMED: "
-            f"new timer_id={id(t)} for {_WAKE_SESSION_TIMEOUT_S}s"
-        )
+            if initial_content:
+                self._output_dictation(initial_content)
 
-    def _end_wake_session(self):
-        """End the wake session and re-arm wake detection (called by inactivity timer)."""
-        import traceback as _tb
-        logger.info(
-            f"[WS-DIAG] end_wake_session ENTERED: app_state={self.app_state!r} "
-            f"caller={_tb.extract_stack()[-2].name}"
-        )
-        existing = getattr(self, '_wake_session_inactivity_timer', None)
-        if existing is not None:
-            existing.cancel()
-            self._wake_session_inactivity_timer = None
-        logger.info("[WAKE-SESSION] ended (inactivity timeout)")
-        self._reset_wake_dictation()
+    def _restart_wake_session_timer(self, *, initial=False, speech_onset=False):
+        """Arm on confirmation/onset, never beyond the fixed session deadline."""
+        with self._wake_session_lock:
+            if self.app_state != 'wake_session' or not (initial or speech_onset):
+                return
+            if not initial and self._expire_wake_session():
+                return
+            from samsara.audio_engine.wake_consumer import wake_session_policy
+            now = time.monotonic()
+            policy = wake_session_policy(self.config)
+            expires_at = min(self._wake_session_deadline, now + policy['inactivity_timeout_s'])
+            existing = getattr(self, '_wake_session_inactivity_timer', None)
+            if existing is not None:
+                existing.cancel()
+            self._wake_session_expires_at = expires_at
+            timer_token = object()
+            self._wake_session_timer_token = timer_token
+            t = thread_registry.timer(
+                "dictation.wake_session_timeout", max(0.0, expires_at - now),
+                lambda started_at=self._wake_session_started_at: self._expire_wake_session(
+                    expected_started_at=started_at, expected_timer_token=timer_token), daemon=True)
+            self._wake_session_inactivity_timer = t
+
+    def _expire_wake_session(self, expected_started_at=None, expected_timer_token=None):
+        """Check from both the timer and live frames, even during continuous speech."""
+        with self._wake_session_lock:
+            if self.app_state != 'wake_session':
+                return False
+            if (expected_timer_token is not None
+                    and expected_timer_token is not self._wake_session_timer_token):
+                return False
+            if (expected_started_at is not None
+                    and expected_started_at != self._wake_session_started_at):
+                return False
+            expires_at = getattr(self, '_wake_session_expires_at', None)
+            deadline = getattr(self, '_wake_session_deadline', None)
+            now = time.monotonic()
+            if expires_at is None or deadline is None or now < expires_at:
+                return False
+            reason = ('max_session_s' if now >= deadline else 'inactivity_timeout_s')
+            self._end_wake_session(reason=reason)
+            return True
+
+    def _end_wake_session(self, reason='ended'):
+        """Close admission; wake detection requires a new Silero onset."""
+        with self._wake_session_lock:
+            import traceback as _tb
+            logger.info(
+                f"[WS-DIAG] end_wake_session ENTERED: app_state={self.app_state!r} "
+                f"caller={_tb.extract_stack()[-2].name}"
+            )
+            existing = getattr(self, '_wake_session_inactivity_timer', None)
+            if existing is not None:
+                existing.cancel()
+                self._wake_session_inactivity_timer = None
+            logger.info("[WAKE-SESSION] ended (%s)", reason)
+            flight_recorder.record('wake.session_close', reason=reason)
+            self._reset_wake_dictation()
 
     def _vad_probabilities(self, audio_16k):
         """Return one ONNX speech probability per complete 512-sample frame.
@@ -8625,7 +8716,53 @@ class DictationApp:
                 return True
         return False
 
-    def process_wake_word_buffer(self, buffer, src_rate=None, *, oww_confirmed=False):
+    def process_wake_word_buffer(self, buffer, src_rate=None, *, oww_confirmed=False,
+                                 owner_token=None, tracked=False):
+        """Transfer one utterance and its duck owner to the bounded wake FIFO."""
+        src_rate = self.capture_rate if src_rate is None else src_rate
+        with self._wake_session_lock:
+            session_started_at = (
+                getattr(self, '_wake_session_started_at', None)
+                if self.app_state == 'wake_session' else None
+            )
+        if tracked:
+            with self._dictation_finalize_lock:
+                self._pending_transcriptions += 1
+
+        def finish():
+            try:
+                if owner_token is not None:
+                    self._close_hands_free_capture_duck(owner_token)
+            finally:
+                if tracked:
+                    with self._dictation_finalize_lock:
+                        self._pending_transcriptions = max(0, self._pending_transcriptions - 1)
+                    self._maybe_finalize_dictation()
+
+        def decode():
+            if not self.wake_word_active:
+                logger.info('[WAKE] Listener stopped -- discarding queued utterance')
+                flight_recorder.record('wake.dispatch_dropped', reason='listener_stopped')
+                return
+            if session_started_at is not None:
+                with self._wake_session_lock:
+                    self._expire_wake_session()
+                    if (self.app_state != 'wake_session'
+                            or self._wake_session_started_at != session_started_at):
+                        logger.info('[WAKE] Session ended -- discarding queued utterance')
+                        flight_recorder.record('wake.dispatch_dropped', reason='session_ended')
+                        return
+            flight_recorder.record('session.dispatch', op='started', kind='wake_buffer')
+            try:
+                self._decode_wake_word_buffer(buffer, src_rate, oww_confirmed=oww_confirmed)
+            finally:
+                flight_recorder.record('session.dispatch', op='completed', kind='wake_buffer')
+
+        flight_recorder.record('session.dispatch', op='enqueued', kind='wake_buffer',
+                               thread='wake-utt-queue', oww_confirmed=oww_confirmed)
+        self._wake_dispatch_queue.enqueue(decode, finish)
+
+    def _decode_wake_word_buffer(self, buffer, src_rate=None, *, oww_confirmed=False):
         """Process audio — check for wake word, commands, or dictation content.
 
         src_rate: sample rate of audio in buffer (default: self.capture_rate).
@@ -8633,7 +8770,11 @@ class DictationApp:
         """
         if src_rate is None:
             src_rate = self.capture_rate
-        _set_in_progress = False
+        session_started_at = (
+            getattr(self, '_wake_session_started_at', None)
+            if self.app_state == 'wake_session' else None
+        )
+        token = self._transcription_owners.claim('wake')
         try:
             audio = np.concatenate(buffer)
             audio = resample_audio(audio, src_rate, self.model_rate)
@@ -8668,17 +8809,8 @@ class DictationApp:
             if self._wake_audio_is_below_gate(audio_rms, oww_confirmed=oww_confirmed):
                 return
 
-            # FIX 2: In-progress flag — prevent concurrent Whisper calls.
-            # On CPU a transcription can take longer than the next buffer window,
-            # causing a queue of overlapping calls. Drop the new buffer if a
-            # transcription is already running; on CPU the stale audio is useless
-            # anyway. _set_in_progress tracks whether THIS call set the flag so
-            # the outer finally only clears it when we own it.
-            if self._wake_transcription_in_progress:
-                logging.debug("[WAKE] Transcription already in progress, skipping")
-                return
-            self._wake_transcription_in_progress = True
-            _set_in_progress = True
+            # The wake FIFO preserves capture order; model_lock serializes
+            # Whisper against the independent toggle, Ava and hold lanes.
 
             # Get transcription parameters based on performance mode. NOT
             # forced to English: this is the wake/_output_dictation lane --
@@ -8699,19 +8831,22 @@ class DictationApp:
                 transcribe_params['vad_filter'] = False
             perf_mode = self.config.get('performance_mode', 'balanced')
 
-            # Restart wake-session inactivity timer at flush time so transcription
-            # latency never races the 10s window.  _output_dictation also restarts
-            # it on delivery; the double-reset per utterance is harmless.
-            if self.app_state == 'wake_session':
-                self._restart_wake_session_timer()
-
             transcribe_start = time.time()
             with self.model_lock:
                 segments, info = self.model.transcribe(audio, **transcribe_params)
-
-            _seg_list = list(segments)
+                # Whisper returns a lazy iterator: decoding runs while it is
+                # consumed, so the cross-lane lock must cover iteration too.
+                _seg_list = list(segments)
             text = "".join([segment.text for segment in _seg_list]).strip()
             transcribe_time = time.time() - transcribe_start
+
+            if session_started_at is not None:
+                self._expire_wake_session()
+                if (self.app_state != 'wake_session'
+                        or getattr(self, '_wake_session_started_at', None) != session_started_at):
+                    flight_recorder.record('session.dispatch', op='dropped',
+                                           kind='wake_buffer', reason='session_ended')
+                    return
 
             # Diagnostics: accumulate Whisper quality signals across every
             # chunk feeding the same buffered wake utterance -- quick/long
@@ -8965,6 +9100,7 @@ class DictationApp:
 
             if matched:
                 logger.debug(f"[MIC] Wake word detected: '{wake_phrase}' ({match_type} @ {match_index})")
+                self._confirm_wake_capture()
                 self.wake_word_triggered = True
                 self.play_sound("start")
 
@@ -9042,8 +9178,7 @@ class DictationApp:
             except Exception as _snd_err:
                 logger.debug(f"Failure earcon (winsound) unavailable: {_snd_err}")
         finally:
-            if _set_in_progress:
-                self._wake_transcription_in_progress = False
+            self._transcription_owners.release('wake', token)
             # Retain the utterance-boundary cleanup hook. The bundled ONNX VAD
             # is stateless between calls, so this is currently a no-op.
             self._vad_reset()
@@ -9219,64 +9354,72 @@ class DictationApp:
 
     def _reset_wake_dictation(self):
         """Return to asleep state, clearing all dictation state."""
-        # Restore audio ducked by _duck_audio() at _start_wake_session().
-        # This is the single common exit chokepoint for every wake-session
-        # end path (inactivity timeout, send-word, explicit cancel -- see
-        # this function's many call sites), unlike _end_wake_session()
-        # which only covers the timeout path. Always safe: a no-op if
-        # nothing was ducked.
-        self._restore_audio()
+        with self._wake_session_lock:
+            # Restore audio ducked by _duck_audio() at _start_wake_session().
+            # This is the single common exit chokepoint for every wake-session
+            # end path (inactivity timeout, send-word, explicit cancel -- see
+            # this function's many call sites), unlike _end_wake_session()
+            # which only covers the timeout path. Always safe: a no-op if
+            # nothing was ducked.
+            self._restore_audio()
 
-        old_state = self.app_state
-        self.app_state = 'asleep'
-        logger.info(f"[WS-DIAG] app_state set to {self.app_state!r} (was {old_state!r})")
-        self.wake_dictation_mode = None
-        self.wake_dictation_buffer = []
-        self.wake_dictation_start_time = None
-        self.wake_word_triggered = False
-        self._dictation_silence_timeout = None
-        self._dictation_require_end = False
-        self._dictation_paused = False
+            old_state = self.app_state
+            if old_state == 'wake_session':
+                self._wake_rearm_needs_onset = True
+            self._wake_capture_admission = None
+            self._wake_session_started_at = None
+            self._wake_session_deadline = None
+            self._wake_session_expires_at = None
+            self._wake_session_timer_token = None
+            self.app_state = 'asleep'
+            logger.info(f"[WS-DIAG] app_state set to {self.app_state!r} (was {old_state!r})")
+            self.wake_dictation_mode = None
+            self.wake_dictation_buffer = []
+            self.wake_dictation_start_time = None
+            self.wake_word_triggered = False
+            self._dictation_silence_timeout = None
+            self._dictation_require_end = False
+            self._dictation_paused = False
 
-        if hasattr(self, 'wake_word_timer') and self.wake_word_timer:
-            self.wake_word_timer.cancel()
-            self.wake_word_timer = None
+            if hasattr(self, 'wake_word_timer') and self.wake_word_timer:
+                self.wake_word_timer.cancel()
+                self.wake_word_timer = None
 
-        if hasattr(self, '_dictation_finalize_timer') and self._dictation_finalize_timer:
-            self._dictation_finalize_timer.cancel()
-            self._dictation_finalize_timer = None
+            if hasattr(self, '_dictation_finalize_timer') and self._dictation_finalize_timer:
+                self._dictation_finalize_timer.cancel()
+                self._dictation_finalize_timer = None
 
-        if hasattr(self, '_dictation_hardcap_timer') and self._dictation_hardcap_timer:
-            self._dictation_hardcap_timer.cancel()
-            self._dictation_hardcap_timer = None
+            if hasattr(self, '_dictation_hardcap_timer') and self._dictation_hardcap_timer:
+                self._dictation_hardcap_timer.cancel()
+                self._dictation_hardcap_timer = None
 
-        if hasattr(self, '_dictation_failsafe_timer') and self._dictation_failsafe_timer:
-            self._dictation_failsafe_timer.cancel()
-            self._dictation_failsafe_timer = None
+            if hasattr(self, '_dictation_failsafe_timer') and self._dictation_failsafe_timer:
+                self._dictation_failsafe_timer.cancel()
+                self._dictation_failsafe_timer = None
 
-        # Reset state-driven finalize tracking. Pending count should already
-        # be 0 in healthy operation; clamp defensively in case of timer races.
-        self._dictation_finalize_requested = False
-        self._pending_transcriptions = 0
-        self._wake_profile_active = False
-        self._wake_session_first_chunk = True
-        self._wake_session_mode = 'focus_dictate'
-        # Profile isolation: clear the just-ended session's send_word so a
-        # future session that somehow starts without one (defensive-only --
-        # the normal dispatch path always supplies it) can't inherit a stale
-        # word from whichever profile ran previously.
-        self._wake_session_send_word = None
+            # Reset state-driven finalize tracking. Pending count should already
+            # be 0 in healthy operation; clamp defensively in case of timer races.
+            self._dictation_finalize_requested = False
+            self._pending_transcriptions = 0
+            self._wake_profile_active = False
+            self._wake_session_first_chunk = True
+            self._wake_session_mode = 'focus_dictate'
+            # Profile isolation: clear the just-ended session's send_word so a
+            # future session that somehow starts without one (defensive-only --
+            # the normal dispatch path always supplies it) can't inherit a stale
+            # word from whichever profile ran previously.
+            self._wake_session_send_word = None
 
-        existing = getattr(self, '_wake_session_inactivity_timer', None)
-        if existing is not None:
-            existing.cancel()
-            self._wake_session_inactivity_timer = None
+            existing = getattr(self, '_wake_session_inactivity_timer', None)
+            if existing is not None:
+                existing.cancel()
+                self._wake_session_inactivity_timer = None
 
-        if old_state != 'asleep':
-            logger.debug(f"[STATE] {old_state} -> asleep")
+            if old_state != 'asleep':
+                logger.debug(f"[STATE] {old_state} -> asleep")
 
-        # Reset listening indicator back to idle
-        self._indicator_reset()
+            # Reset listening indicator back to idle
+            self._indicator_reset()
 
     def _restart_dictation_timer(self):
         """Restart the finalization timer for non-end-word dictation modes.
@@ -9360,29 +9503,12 @@ class DictationApp:
         self.is_speaking = False
         self.silence_start = None
 
-        with self._dictation_finalize_lock:
-            self._pending_transcriptions += 1
-
-        thread_registry.spawn(
-            "dictation._process_wake_word_buffer_tracked",
-            self._process_wake_word_buffer_tracked,
-            args=(buffer_copy,),
-            daemon=True,
-        )
+        self._process_wake_word_buffer_tracked(buffer_copy)
         return True
 
     def _process_wake_word_buffer_tracked(self, buffer, src_rate=None):
-        """Wrapper around process_wake_word_buffer that decrements the
-        pending-transcriptions counter on completion (in finally), then
-        triggers a finalize check.
-        """
-        try:
-            self.process_wake_word_buffer(buffer, src_rate=src_rate)
-        finally:
-            with self._dictation_finalize_lock:
-                self._pending_transcriptions = max(0, self._pending_transcriptions - 1)
-            # Outside the lock: maybe_finalize takes its own
-            self._maybe_finalize_dictation()
+        """Queue a counted utterance; completion or overflow releases its count."""
+        self.process_wake_word_buffer(buffer, src_rate=src_rate, tracked=True)
 
     def _maybe_finalize_dictation(self):
         """Centralized finalize check. Called from multiple completion points;
@@ -9838,12 +9964,6 @@ class DictationApp:
                     self._wake_session_first_chunk = False
                 else:
                     self._paste_preserving_clipboard(' ' + text)
-                logger.info(
-                    f"[WS-DIAG] about to check restart: app_state={self.app_state!r} "
-                    f"(will restart={self.app_state == 'wake_session'})"
-                )
-                if self.app_state == 'wake_session':
-                    self._restart_wake_session_timer()
             else:
                 self._paste_preserving_clipboard(text)
 
@@ -10440,6 +10560,15 @@ class DictationApp:
             self._streaming_session = StreamingSession(self)
             self._streaming_session.start()
 
+    def start_memo_capture(self):
+        """Start the batch capture path for the quick-memo voice command."""
+        if self.recording or getattr(self, '_streaming_session', None) is not None:
+            return False
+        self._memo_recording = True
+        self.play_sound('capture_started', use_winsound=True)
+        self.start_recording(streaming=False, play_earcon=False)
+        return bool(self.recording)
+
     def stop_recording(self):
         """Stop recording and transcribe.
 
@@ -10480,6 +10609,9 @@ class DictationApp:
         """Stop recording and transcribe"""
         if not self.recording:
             return
+
+        memo_recording = bool(getattr(self, '_memo_recording', False))
+        self._memo_recording = False
 
         flight_recorder.record(
             'hold_recording.stop',
@@ -10837,6 +10969,24 @@ class DictationApp:
                     # _apply_formatting_tokens).
                     text = self._apply_formatting_tokens(text)
 
+                    if memo_recording:
+                        try:
+                            memo_home = self.config.get('memo_file') or None
+                            audio_path = None
+                            if self.config.get('memo_retain_audio', False):
+                                audio_path = quick_memo.retain_audio(
+                                    audio, self.model_rate, home=memo_home)
+                            quick_memo.append_memo(
+                                text.strip(), source='voice',
+                                audio_path=audio_path, home=memo_home)
+                        except Exception as exc:
+                            logger.exception(f"[MEMO] Save failed: {exc}")
+                            self.play_sound('error')
+                            return
+                        self.play_sound('capture_saved')
+                        self.add_to_history("[memo] " + text.strip(), is_command=False)
+                        return
+
                     # Voice memo divert (2026-07-24): "voice memo" arms a
                     # one-shot capture of the NEXT hold-to-dictate
                     # recording -- hotkey path only, checked here (after
@@ -11175,7 +11325,22 @@ class DictationApp:
             logger.info("[GESTURE] Lane DISABLED")
 
     def set_wake_word_enabled(self, enabled):
-        """Start or stop the wake word listener independently of capture mode."""
+        """Keep tray callbacks responsive, including config I/O and the stop join."""
+        with self._wake_word_settings_guard:
+            self._wake_word_settings_generation += 1
+            generation = self._wake_word_settings_generation
+
+        def apply():
+            with self._wake_word_settings_lock:
+                with self._wake_word_settings_guard:
+                    if generation != self._wake_word_settings_generation:
+                        return
+                self._apply_wake_word_enabled(bool(enabled))
+
+        thread_registry.spawn('dictation.wake_word_settings', apply, daemon=True)
+
+    def _apply_wake_word_enabled(self, enabled):
+        """Apply the latest listener setting on the serialized settings worker."""
         with self._config_lock:
             self.config['wake_word_enabled'] = enabled
             self.save_config()

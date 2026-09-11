@@ -139,7 +139,8 @@ def check_dependencies(python_exe):
     """Check if required packages are installed."""
     try:
         result = subprocess.run(
-            [str(python_exe), "-c", "import faster_whisper; import pystray; import sounddevice"],
+            [str(python_exe), "-c", "import samsara.torch_guard; import faster_whisper; import pystray; import sounddevice"],
+            cwd=str(Path(__file__).resolve().parent),
             capture_output=True,
             text=True,
             timeout=10

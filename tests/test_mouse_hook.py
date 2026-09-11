@@ -238,6 +238,9 @@ class TestOnCommandButton:
 
     class _App:
         def __init__(self, button='mouse4', enabled=True, mode='hold'):
+            from dictation import DictationApp
+
+            self._on_command_button = DictationApp._on_command_button.__get__(self)
             self.config = {'command_mode': {
                 'button': button, 'enabled': enabled, 'mode': mode,
             }}
@@ -253,56 +256,43 @@ class TestOnCommandButton:
             self.command_mode_active = False
             self._exit_count += 1
 
-        def _on_command_button(self, button_name, pressed):
-            cfg = self.config.get('command_mode', {})
-            if not cfg.get('enabled', False):
-                return
-            if button_name != cfg.get('button', 'mouse4'):
-                return
-            mode = cfg.get('mode', 'hold')
-            if mode == 'hold':
-                if pressed:
-                    self.enter_command_mode()
-                else:
-                    self.exit_command_mode()
-            else:
-                if pressed:
-                    if self.command_mode_active:
-                        self.exit_command_mode()
-                    else:
-                        self.enter_command_mode()
-
     def test_mouse4_press_enters_hold_mode(self):
         app = self._App(button='mouse4', mode='hold')
         app._on_command_button('mouse4', True)
         assert app.command_mode_active is True
+        assert (app._enter_count, app._exit_count) == (1, 0)
 
     def test_mouse4_release_exits_hold_mode(self):
         app = self._App(button='mouse4', mode='hold')
         app._on_command_button('mouse4', True)
         app._on_command_button('mouse4', False)
         assert app.command_mode_active is False
+        assert (app._enter_count, app._exit_count) == (1, 1)
 
     def test_wrong_button_ignored(self):
         app = self._App(button='mouse4', mode='hold')
         app._on_command_button('mouse5', True)
         assert app.command_mode_active is False
+        assert (app._enter_count, app._exit_count) == (0, 0)
 
     def test_disabled_config_ignored(self):
         app = self._App(button='mouse4', enabled=False, mode='hold')
         app._on_command_button('mouse4', True)
         assert app.command_mode_active is False
+        assert (app._enter_count, app._exit_count) == (0, 0)
 
     def test_toggle_first_press_enters(self):
         app = self._App(button='mouse4', mode='toggle')
         app._on_command_button('mouse4', True)
         assert app.command_mode_active is True
+        assert (app._enter_count, app._exit_count) == (1, 0)
 
     def test_toggle_second_press_exits(self):
         app = self._App(button='mouse4', mode='toggle')
         app._on_command_button('mouse4', True)
         app._on_command_button('mouse4', True)
         assert app.command_mode_active is False
+        assert (app._enter_count, app._exit_count) == (1, 1)
 
     def test_mouse5_configured(self):
         app = self._App(button='mouse5', mode='hold')
@@ -310,3 +300,25 @@ class TestOnCommandButton:
         assert app.command_mode_active is True
         app._on_command_button('mouse4', False)  # wrong button — no effect
         assert app.command_mode_active is True
+        assert (app._enter_count, app._exit_count) == (1, 0)
+
+    def test_missing_button_defaults_to_rctrl(self):
+        app = self._App()
+        del app.config['command_mode']['button']
+        # The old inline copy defaulted to mouse4; production defaults to rctrl.
+        app._on_command_button('mouse4', True)
+        assert (app._enter_count, app._exit_count) == (0, 0)
+        assert app.command_mode_active is False
+        app._on_command_button('rctrl', True)
+        assert app.command_mode_active is True
+        assert (app._enter_count, app._exit_count) == (1, 0)
+        app._on_command_button('rctrl', False)
+        assert app.command_mode_active is False
+        assert (app._enter_count, app._exit_count) == (1, 1)
+
+    def test_toggle_release_does_not_exit(self):
+        app = self._App(mode='toggle')
+        app._on_command_button('mouse4', True)
+        app._on_command_button('mouse4', False)
+        assert app.command_mode_active is True
+        assert (app._enter_count, app._exit_count) == (1, 0)

@@ -10,6 +10,7 @@ from unittest.mock import Mock
 sys.path.insert(0, str(Path(__file__).parent.parent))
 
 from samsara.commands import CommandExecutor
+from samsara.command_parser import strip_fillers
 
 
 class TestFindCommandBoundaries:
@@ -138,54 +139,42 @@ class TestDictationCommandParsing:
 
 
 class TestFillerWordStripping:
-    """Test _strip_fillers and its effect on dictation command parsing."""
-
-    # Import the static method for direct testing
-    @staticmethod
-    def _strip(text, fillers=frozenset({'please', 'uh', 'um', 'like'})):
-        words = text.split()
-        while words and words[0].lower() in fillers:
-            words.pop(0)
-        while words and words[-1].lower() in fillers:
-            words.pop()
-        return ' '.join(words)
-
-    # --- _strip_fillers unit tests ---
+    """Test production strip_fillers and its effect on dictation command parsing."""
 
     def test_strip_leading_please(self):
-        assert self._strip("please dictate hello world") == "dictate hello world"
+        assert strip_fillers("please dictate hello world") == "dictate hello world"
 
     def test_strip_trailing_please(self):
-        assert self._strip("dictate hello world please") == "dictate hello world"
+        assert strip_fillers("dictate hello world please") == "dictate hello world"
 
     def test_strip_leading_uh(self):
-        assert self._strip("uh dictate hello world") == "dictate hello world"
+        assert strip_fillers("uh dictate hello world") == "dictate hello world"
 
     def test_strip_leading_um(self):
-        assert self._strip("um dictate hello world") == "dictate hello world"
+        assert strip_fillers("um dictate hello world") == "dictate hello world"
 
     def test_strip_both_ends(self):
-        assert self._strip("um dictate hello world please") == "dictate hello world"
+        assert strip_fillers("um dictate hello world please") == "dictate hello world"
 
     def test_multiple_leading_fillers(self):
-        assert self._strip("uh um please dictate") == "dictate"
+        assert strip_fillers("uh um please dictate") == "dictate"
 
     def test_interior_filler_preserved(self):
         """'like' inside payload must NOT be stripped."""
-        assert self._strip("dictate I like cats") == "dictate I like cats"
+        assert strip_fillers("dictate I like cats") == "dictate I like cats"
 
     def test_interior_please_preserved(self):
         """'please' inside payload must NOT be stripped."""
-        assert self._strip("dictate please call me back") == "dictate please call me back"
+        assert strip_fillers("dictate please call me back") == "dictate please call me back"
 
     def test_no_fillers(self):
-        assert self._strip("dictate hello") == "dictate hello"
+        assert strip_fillers("dictate hello") == "dictate hello"
 
     def test_only_fillers(self):
-        assert self._strip("uh um please like") == ""
+        assert strip_fillers("uh um please like") == ""
 
     def test_empty_string(self):
-        assert self._strip("") == ""
+        assert strip_fillers("") == ""
 
     # --- Integration: filler variants all parse the same dictation command ---
 
@@ -199,24 +188,24 @@ class TestFillerWordStripping:
             "um dictate hello world please",
         ]
         for raw in variants:
-            stripped = self._strip(raw)
+            stripped = strip_fillers(raw)
             cmd = "dictate"
             assert stripped.startswith(cmd), f"'{raw}' -> stripped='{stripped}' doesn't start with '{cmd}'"
             content = stripped[len(cmd):].strip()
-            content = self._strip(content)
+            content = strip_fillers(content)
             assert content == "hello world", f"'{raw}' -> content='{content}'"
 
     def test_bare_dictate_with_fillers(self):
         """'please dictate please' should resolve to bare 'dictate'."""
-        stripped = self._strip("please dictate please")
+        stripped = strip_fillers("please dictate please")
         assert stripped == "dictate"
 
     def test_long_dictate_with_fillers(self):
-        stripped = self._strip("um long dictate please")
+        stripped = strip_fillers("um long dictate please")
         assert stripped == "long dictate"
 
     def test_short_dictate_with_fillers(self):
-        stripped = self._strip("uh short dictate")
+        stripped = strip_fillers("uh short dictate")
         assert stripped == "short dictate"
 
 

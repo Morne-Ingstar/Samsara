@@ -1,0 +1,129 @@
+{
+  "config": {
+    "model_size": "medium",
+    "language": "en",
+    "performance_mode": "accurate",
+    "temperature": 0.0,
+    "vad_prob_threshold": 0.5,
+    "vad_min_contig_ms": 150,
+    "apply_post_gates": true,
+    "wake_word": "jarvis",
+    "wake_targets": [
+      {
+        "id": "claude",
+        "phrase": "hey claude",
+        "oww_model": "hey_claude.onnx",
+        "target_process": "claude.exe",
+        "enabled": true
+      },
+      {
+        "id": "hermes",
+        "phrase": "activate hermes",
+        "oww_model": "activate_hermes.onnx",
+        "target_process": "Hermes.exe",
+        "enabled": true
+      }
+    ],
+    "compute_type": "float16",
+    "device": "cuda"
+  },
+  "gain": 0.15,
+  "label": "speech_owner_over_media",
+  "rows": [
+    {
+      "file": "speech_owner_over_media_01.wav",
+      "label": "speech_owner_over_media",
+      "text": "The television is background noise while I dictate this sentence.",
+      "lead_in_s": 0.0,
+      "press_offset_s": 0.0,
+      "voiced_ms": 3424.0,
+      "wall_ms": 316.19,
+      "segments": [
+        {
+          "no_speech_prob": 0.0570068359375,
+          "avg_logprob": -0.2601841411420277,
+          "compression_ratio": 0.9558823529411765
+        }
+      ],
+      "wer": 0.0,
+      "distance": 0,
+      "substitutions": 0,
+      "deletions": 0,
+      "insertions": 0,
+      "leading_insertions": 0,
+      "trailing_insertions": 0,
+      "false_reject": false,
+      "pre_roll_contamination_words": 0,
+      "gain": 0.15,
+      "rms_dbfs": -46.27
+    },
+    {
+      "file": "speech_owner_over_media_02.wav",
+      "label": "speech_owner_over_media",
+      "text": "The television is background noise while I dictate this sentence.",
+      "lead_in_s": 0.0,
+      "press_offset_s": 0.0,
+      "voiced_ms": 3456.0,
+      "wall_ms": 215.63,
+      "segments": [
+        {
+          "no_speech_prob": 0.086181640625,
+          "avg_logprob": -0.37667410501411985,
+          "compression_ratio": 0.9558823529411765
+        }
+      ],
+      "wer": 0.0,
+      "distance": 0,
+      "substitutions": 0,
+      "deletions": 0,
+      "insertions": 0,
+      "leading_insertions": 0,
+      "trailing_insertions": 0,
+      "false_reject": false,
+      "pre_roll_contamination_words": 0,
+      "gain": 0.15,
+      "rms_dbfs": -44.38
+    },
+    {
+      "file": "speech_owner_over_media_03.wav",
+      "label": "speech_owner_over_media",
+      "text": "The television is background noise while I dictate this sentence.",
+      "lead_in_s": 0.0,
+      "press_offset_s": 0.0,
+      "voiced_ms": 3680.0,
+      "wall_ms": 211.18,
+      "segments": [
+        {
+          "no_speech_prob": 0.09637451171875,
+          "avg_logprob": -0.26464844388621195,
+          "compression_ratio": 0.9558823529411765
+        }
+      ],
+      "wer": 0.0,
+      "distance": 0,
+      "substitutions": 0,
+      "deletions": 0,
+      "insertions": 0,
+      "leading_insertions": 0,
+      "trailing_insertions": 0,
+      "false_reject": false,
+      "pre_roll_contamination_words": 0,
+      "gain": 0.15,
+      "rms_dbfs": -45.44
+    }
+  ],
+  "summary": {
+    "speech_owner_over_media": {
+      "count": 3,
+      "wer": 0.0,
+      "false_reject_rate": 0.0,
+      "leading_insertions": 0,
+      "trailing_insertions": 0,
+      "pre_buffer_comparison_count": 0,
+      "pre_buffer_leading_insertions_delta_per_utterance": null,
+      "contamination_words_per_utterance": 0.0,
+      "contaminated_rate": 0.0,
+      "pre_roll_contamination_words_per_utterance": 0.0
+    }
+  }
+}
