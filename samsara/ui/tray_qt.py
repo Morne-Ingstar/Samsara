@@ -16,6 +16,9 @@ from PySide6.QtWidgets import QMenu, QSystemTrayIcon
 
 from samsara.constants import DEFAULT_WAKE_PHRASE
 from samsara.log import get_logger
+from samsara.quick_memo import memo_file
+
+import os
 
 logger = get_logger(__name__)
 
@@ -397,6 +400,8 @@ class SamsaraTrayQt(QObject):
         )
         menu.addAction(update_label).triggered.connect(self._open_update_dialog)
         menu.addAction("History").triggered.connect(lambda: app.open_history())
+        menu.addAction("Open memos").triggered.connect(
+            lambda: os.startfile(str(memo_file(app.config.get('memo_file') or None))))
         menu.addAction("Quick Reference").triggered.connect(
             lambda: app.open_quick_reference())
 
