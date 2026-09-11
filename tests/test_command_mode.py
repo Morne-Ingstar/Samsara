@@ -13,6 +13,7 @@ Covers:
 import sys
 import time
 import threading
+from types import SimpleNamespace
 from pathlib import Path
 from unittest.mock import MagicMock, patch, call
 
@@ -260,14 +261,38 @@ class TestAudioCoordinatorCommandModeSuppression:
 # Command mode state machine helpers (minimal mock DictationApp)
 # =============================================================================
 
+@pytest.fixture
+def command_runtime(monkeypatch):
+    """Capture scheduling at the thread boundary; callbacks run in the test."""
+    from samsara.runtime import thread_registry
+
+    spawn = MagicMock()
+    timer = MagicMock(side_effect=lambda *args, **kwargs: MagicMock(spec=threading.Timer))
+    monkeypatch.setattr(thread_registry, 'spawn', spawn)
+    monkeypatch.setattr(thread_registry, 'timer', timer)
+    return SimpleNamespace(spawn=spawn, timer=timer)
+
+
 class _MockApp:
-    """Minimal mock for command mode state machine tests."""
+    """Only state and external collaborators; mode logic comes from production."""
 
     def __init__(self, mode='hold', enabled=True):
         self.command_mode_active = False
+        self.ava_command_session_active = False
+        self.ava_mode_active = False
         self._command_mode_lock = threading.Lock()
+        self._command_mode_timer_lock = threading.Lock()
         self._command_mode_miss_count = 0
         self._command_mode_inactivity_timer = None
+        self._command_mode_session_start = 0.0
+        self._command_mode_ghost_tap = False
+        self._session_mode_manager = MagicMock()
+        self._ensure_session_mode_manager = MagicMock(return_value=self._session_mode_manager)
+        self._ensure_wake_consumer = MagicMock()
+        self._release_wake_consumer = MagicMock()
+        self._update_mode_overlay = MagicMock()
+        self._update_streaming_preview = MagicMock()
+        self._release_streaming_preview = MagicMock()
         self.recording = False
         self.config = {
             'command_mode': {
@@ -282,104 +307,71 @@ class _MockApp:
             }
         }
         self._sounds = []
-        self._ui_calls = []
+        self.play_sound = MagicMock(side_effect=lambda name, **kwargs: self._sounds.append(name))
+        self.stop_recording = MagicMock(side_effect=self._stop_recording)
 
-    def play_sound(self, name, **_kwargs):
-        self._sounds.append(name)
+        # Lazy import after conftest has isolated SAMSARA_HOME_DIR. Never
+        # construct DictationApp: Samsara is already running on this machine.
+        from dictation import DictationApp
 
-    def start_recording(self, **_kwargs):
-        self.recording = True
+        for name in (
+            'enter_command_mode', 'exit_command_mode', '_do_enter_command_mode',
+            '_reset_command_mode_inactivity_timer',
+            '_cancel_command_mode_inactivity_timer',
+            '_cancel_command_mode_inactivity_timer_locked',
+            '_on_command_mode_inactivity', '_take_recording_ownership',
+        ):
+            setattr(self, name, getattr(DictationApp, name).__get__(self))
 
-    def stop_recording(self):
+    def _stop_recording(self):
+        """Recording boundary: acknowledge the stop without touching audio."""
         self.recording = False
+        self.play_sound('stop')
 
-    # Inline copies of command mode methods under test
-    def enter_command_mode(self):
-        with self._command_mode_lock:
-            if self.command_mode_active:
-                return
-            self.command_mode_active = True
-        self._command_mode_miss_count = 0
-
-    def exit_command_mode(self):
-        with self._command_mode_lock:
-            if not self.command_mode_active:
-                return
-            self.command_mode_active = False
-        self._cancel_command_mode_inactivity_timer()
-        if self.recording:
-            self.stop_recording()
-        if self.config['command_mode'].get('exit_earcon', True):
-            self.play_sound('stop')
-
-    def _reset_command_mode_inactivity_timer(self, timeout_s):
-        self._cancel_command_mode_inactivity_timer()
-        t = threading.Timer(timeout_s, self._on_command_mode_inactivity)
-        t.daemon = True
-        self._command_mode_inactivity_timer = t
-        t.start()
-
-    def _cancel_command_mode_inactivity_timer(self):
-        t = self._command_mode_inactivity_timer
-        if t is not None:
-            t.cancel()
-            self._command_mode_inactivity_timer = None
-
-    def _on_command_mode_inactivity(self):
-        self.exit_command_mode()
-
-
+@pytest.mark.usefixtures('command_runtime')
 class TestGhostTapPrevention:
-    """exit_command_mode() marks ghost taps; transcription must check the flag."""
+    """Real entry/exit mark ghost taps; taking recording ownership consumes them."""
 
-    def _make_app(self, debounce_ms=200):
+    def _make_app(self, monkeypatch, debounce_ms=200):
+        import dictation
+
+        clock = MagicMock(return_value=100.0)
+        monkeypatch.setattr(dictation, 'time', SimpleNamespace(monotonic=clock))
         app = _MockApp()
         app.config['command_mode']['enter_debounce_ms'] = debounce_ms
-        app._command_mode_session_start = 0.0
-        app._command_mode_ghost_tap = False
-        # Wire monotonic tracking same as DictationApp
-        import time
-        _orig_enter = app.enter_command_mode
-        def _enter():
-            _orig_enter()
-            app._command_mode_session_start = time.monotonic()
-            app._command_mode_ghost_tap = False
-        app.enter_command_mode = _enter
+        return app, clock
 
-        _orig_exit = app.exit_command_mode
-        def _exit():
-            import time as t2
-            hold_ms = (t2.monotonic() - app._command_mode_session_start) * 1000
-            app._command_mode_ghost_tap = hold_ms < debounce_ms
-            _orig_exit()
-        app.exit_command_mode = _exit
-        return app
-
-    def test_long_hold_clears_ghost_flag(self):
-        import time
-        app = self._make_app(debounce_ms=50)
+    def test_long_hold_clears_ghost_flag(self, monkeypatch):
+        app, clock = self._make_app(monkeypatch, debounce_ms=50)
         app.enter_command_mode()
-        time.sleep(0.12)  # wide margin over the 50ms debounce; 0.06 flaked under suite load
+        assert app._command_mode_session_start == 100.0
+        clock.return_value = 100.12
+        app._command_mode_ghost_tap = True
         app.exit_command_mode()
         assert app._command_mode_ghost_tap is False
 
-    def test_short_hold_sets_ghost_flag(self):
-        app = self._make_app(debounce_ms=500)
+    def test_short_hold_sets_ghost_flag(self, monkeypatch):
+        app, clock = self._make_app(monkeypatch, debounce_ms=500)
         app.enter_command_mode()
-        # exit immediately (0ms hold)
+        clock.return_value = 100.01
         app.exit_command_mode()
         assert app._command_mode_ghost_tap is True
 
-    def test_ghost_flag_cleared_after_discard(self):
-        app = self._make_app(debounce_ms=500)
+    def test_ghost_flag_cleared_when_ownership_is_taken(self, monkeypatch):
+        app, clock = self._make_app(monkeypatch, debounce_ms=500)
         app.enter_command_mode()
+        app.command_mode_recording = True
         app.exit_command_mode()
         assert app._command_mode_ghost_tap is True
-        # Simulates what transcribe() does
-        app._command_mode_ghost_tap = False
+        ownership = app._take_recording_ownership()
+        assert ownership.is_command is True
+        assert ownership.command_ghost is True
         assert app._command_mode_ghost_tap is False
+        assert app.command_mode_recording is False
+        assert app._take_recording_ownership().command_ghost is False
 
 
+@pytest.mark.usefixtures('command_runtime')
 class TestExitEarconNoDuplication:
     """exit_command_mode must not double-play 'stop' when stop_recording already played it."""
 
@@ -388,46 +380,45 @@ class TestExitEarconNoDuplication:
         app.config['command_mode']['exit_earcon'] = True
         app.enter_command_mode()
         app.recording = True
-        # stop_recording() would already play 'stop' — exit should NOT add another
-        # Simulate the corrected exit_command_mode logic:
-        was_recording = app.recording
-        if was_recording:
-            app.stop_recording()  # plays 'stop' inside (mocked here)
-            app._sounds.append('stop')  # simulate stop_recording's earcon
-        if app.config['command_mode'].get('exit_earcon', True) and not was_recording:
-            app._sounds.append('stop')
-
-        stop_count = app._sounds.count('stop')
-        assert stop_count == 1, f"Expected 1 stop earcon, got {stop_count}"
+        app.exit_command_mode()
+        app.stop_recording.assert_called_once_with()
+        app.play_sound.assert_called_once_with('stop')
 
     def test_exit_earcon_plays_when_not_recording(self):
         app = _MockApp()
         app.config['command_mode']['exit_earcon'] = True
         app.enter_command_mode()
         app.recording = False
-        was_recording = app.recording
-        if was_recording:
-            app.stop_recording()
-            app._sounds.append('stop')
-        if app.config['command_mode'].get('exit_earcon', True) and not was_recording:
-            app._sounds.append('stop')
-
-        assert app._sounds.count('stop') == 1
+        app.exit_command_mode()
+        app.stop_recording.assert_not_called()
+        app.play_sound.assert_called_once_with('stop')
 
 
+@pytest.mark.usefixtures('command_runtime')
 class TestCommandModeStateMachine:
 
-    def test_enter_sets_active(self):
+    def test_enter_sets_active(self, command_runtime):
         app = _MockApp()
-        app.enter_command_mode()
-        assert app.command_mode_active is True
-
-    def test_enter_idempotent(self):
-        app = _MockApp()
-        app.enter_command_mode()
+        app._command_mode_miss_count = 3
+        app._command_mode_ghost_tap = True
         app.enter_command_mode()
         assert app.command_mode_active is True
         assert app._command_mode_miss_count == 0
+        assert app._command_mode_ghost_tap is False
+        command_runtime.spawn.assert_called_once_with(
+            'cmd-mode-enter', app._do_enter_command_mode, daemon=True)
+
+    def test_enter_idempotent(self, command_runtime):
+        app = _MockApp()
+        app.enter_command_mode()
+        app._command_mode_miss_count = 2
+        session_start = app._command_mode_session_start
+        app.enter_command_mode()
+        assert app.command_mode_active is True
+        assert app._command_mode_miss_count == 2
+        assert app._command_mode_session_start == session_start
+        command_runtime.spawn.assert_called_once_with(
+            'cmd-mode-enter', app._do_enter_command_mode, daemon=True)
 
     def test_exit_clears_active(self):
         app = _MockApp()
@@ -439,6 +430,10 @@ class TestCommandModeStateMachine:
         app = _MockApp()
         app.exit_command_mode()  # already inactive — no crash
         assert app.command_mode_active is False
+        app._session_mode_manager.reset.assert_not_called()
+        app._release_streaming_preview.assert_not_called()
+        app.stop_recording.assert_not_called()
+        app.play_sound.assert_not_called()
 
     def test_exit_stops_recording(self):
         app = _MockApp()
@@ -446,46 +441,66 @@ class TestCommandModeStateMachine:
         app.recording = True
         app.exit_command_mode()
         assert app.recording is False
+        app.stop_recording.assert_called_once_with()
 
     def test_exit_earcon_disabled_no_sound(self):
         app = _MockApp()
         app.config['command_mode']['exit_earcon'] = False
         app.enter_command_mode()
         app.exit_command_mode()
-        assert 'stop' not in app._sounds
+        app.play_sound.assert_not_called()
 
-    def test_inactivity_timer_exits_toggle_mode(self):
+    def test_inactivity_timer_exits_toggle_mode(self, command_runtime):
         app = _MockApp(mode='toggle')
         app.enter_command_mode()
+        original_timer = app._command_mode_inactivity_timer
         app._reset_command_mode_inactivity_timer(0.05)
-        time.sleep(0.1)
+        original_timer.cancel.assert_called_once_with()
+        command_runtime.timer.assert_called_with(
+            'dictation.command_mode_inactivity', 0.05,
+            app._on_command_mode_inactivity, daemon=True)
+        timer = app._command_mode_inactivity_timer
+        command_runtime.timer.call_args.args[2]()
         assert app.command_mode_active is False
+        assert app._command_mode_inactivity_timer is None
+        timer.cancel.assert_called_once_with()
+        app._release_wake_consumer.assert_called_once_with('toggle_session')
+        app._release_streaming_preview.assert_called_once_with()
+        app.play_sound.assert_not_called()  # no forced-error fallback
 
-    def test_cancel_inactivity_timer(self):
+    def test_cancel_inactivity_timer(self, command_runtime):
         app = _MockApp(mode='toggle')
         app.enter_command_mode()
         app._reset_command_mode_inactivity_timer(0.05)
+        timer = app._command_mode_inactivity_timer
         app._cancel_command_mode_inactivity_timer()
-        time.sleep(0.1)
-        # Timer was cancelled so mode is still active
+        timer.cancel.assert_called_once_with()
+        assert app._command_mode_inactivity_timer is None
         assert app.command_mode_active is True
         app.exit_command_mode()
 
-    def test_concurrent_enter_only_activates_once(self):
+    def test_concurrent_enter_only_activates_once(self, command_runtime):
         app = _MockApp()
-        activated = []
+        errors = []
+        barrier = threading.Barrier(10)
 
         def _enter():
-            if not app.command_mode_active:
+            try:
+                barrier.wait(timeout=5)
                 app.enter_command_mode()
-                activated.append(1)
+            except BaseException as exc:
+                errors.append(exc)
 
-        threads = [threading.Thread(target=_enter) for _ in range(10)]
+        threads = [threading.Thread(target=_enter, daemon=True) for _ in range(10)]
         for t in threads:
             t.start()
         for t in threads:
-            t.join()
+            t.join(timeout=5)
+        assert not any(t.is_alive() for t in threads)
+        assert errors == []
         assert app.command_mode_active is True
+        command_runtime.spawn.assert_called_once_with(
+            'cmd-mode-enter', app._do_enter_command_mode, daemon=True)
 
 
 # =============================================================================
@@ -576,6 +591,7 @@ class TestGetPynputCommandKey:
         assert self.matches(raw, Key.ctrl_r) is True
 
 
+@pytest.mark.usefixtures('command_runtime')
 class TestCheckCommandModeKey:
     """Integration tests: _check_command_mode_key routes to enter/exit."""
 

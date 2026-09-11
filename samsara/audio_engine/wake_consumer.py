@@ -30,6 +30,8 @@ resets speech state, and continues from the new epoch.
 """
 
 import collections
+import logging
+import math
 import threading
 import time
 
@@ -63,6 +65,37 @@ _PREVIEW_TAIL_S = 8.0
 # briefly after the coordinator's own state transition) so the mic doesn't
 # pick up the last of Ava's own voice as the start of the next utterance.
 _AVA_CMD_TTS_TAIL_S = 0.3
+_THREAD_JOIN_TIMEOUT_S = 2.0
+
+
+def wake_session_policy(config):
+    """Read session policy without changing legacy phrase-string configs."""
+    legacy = config.get('wake_word_config', {})
+    settings = dict(legacy.get('session', {}))
+    wake_word = config.get('wake_word', {})
+    if isinstance(wake_word, dict):
+        settings.update(wake_word.get('session', {}))
+    policy = settings.get('prebuffer_policy', 'discard')
+    if policy not in ('discard', 'keep'):
+        policy = 'discard'
+    result = {'prebuffer_policy': policy}
+    for key, default in (('post_wake_guard_ms', 150.0), ('max_session_s', 20.0),
+                         ('inactivity_timeout_s', 10.0)):
+        try:
+            value = float(settings.get(key, default))
+        except (TypeError, ValueError):
+            value = default
+        if not math.isfinite(value) or value < 0 or (key != 'post_wake_guard_ms' and value == 0):
+            value = default
+        result[key] = value
+    return result
+
+
+class WakeStopResult(list):
+    """Buffered frames plus explicit join status; compatible with existing flush callers."""
+    def __init__(self, frames=(), *, stopped: bool):
+        super().__init__(frames)
+        self.stopped = stopped
 
 
 class WakeConsumer:
@@ -71,14 +104,21 @@ class WakeConsumer:
     Args:
         engine: AudioCaptureEngine.
         app:    DictationApp — policy state lives here.
+        on_fatal: Optional callback(exc) after fatal cleanup on the poll thread;
+                  without it, app.play_sound('error') provides the notification.
     """
 
-    def __init__(self, engine, app) -> None:
+    def __init__(self, engine, app, *, on_fatal=None) -> None:
         self._engine  = engine
         self._app     = app
         self._reader  = engine.register_consumer("wake")
         self._running = False
         self._thread: threading.Thread | None = None
+        self._lifecycle_lock = threading.RLock()
+        self._stop_event = threading.Event()
+        self.on_fatal = on_fatal  # Optional callback(exc); defaults to the app error earcon.
+        self._fatal_reported = False
+        self._frame_log_times = {}
 
         # Local utterance buffer (replaces app.speech_buffer for wake path)
         self._utterance_frames: list = []   # float32 arrays at SAMPLE_RATE
@@ -103,45 +143,76 @@ class WakeConsumer:
         self._toggle_queue = collections.deque()
         self._toggle_queue_lock = threading.Lock()
         self._toggle_worker_active = False
-        self._last_toggle_activity_touch = 0.0
+        self._silero_was_speech = False
+        self._rms_was_speech = None
+        self._rms_fallback_warned = False
+        self._await_wake_onset = False
+        self._wake_admission = None
+        self._guard_discarded_samples = 0
         self._hands_free_capture_duck_token: int | None = None
 
     # ── Lifecycle ─────────────────────────────────────────────────────────────
 
-    def start(self) -> None:
-        """Begin the wake policy loop. Idempotent."""
-        if self._running:
-            return
-        self._utterance_frames   = []
-        self._buffer_rms_history = []
-        self._last_epoch         = None
-        self._running = True
-        # Snap to current write head — skip pre-wake-mode ring history
-        self._reader.snap_to_head()
-        self._thread = thread_registry.spawn(
-            "wake-consumer", self._poll_loop, daemon=True
-        )
+    def start(self) -> bool:
+        """Start a fresh listener; refuse while any previous poller is alive."""
+        with self._lifecycle_lock:
+            if self._thread is not None and self._thread.is_alive():
+                logger.error("[ACE] Wake start refused: thread %s is still alive", self._thread.name)
+                return False
+            self._utterance_frames = []
+            self._buffer_rms_history = []
+            self._last_epoch = None
+            self._await_wake_onset = False
+            self._silero_was_speech = False
+            self._rms_was_speech = None
+            self._wake_admission = None
+            self._guard_discarded_samples = 0
+            self._app._wake_rearm_needs_onset = False
+            self._app.is_speaking = False
+            self._app.silence_start = None
+            self._fatal_reported = False
+            self._stop_event = threading.Event()
+            self._reader.snap_to_head()
+            self._running = True
+            self._thread = thread_registry.spawn(
+                "wake-consumer", self._poll_loop, args=(self._stop_event,), daemon=True
+            )
+            return True
 
-    def stop(self) -> list:
-        """Stop the policy loop and return remaining utterance frames."""
-        app = self._app
-        self._running = False
-        if self._thread is not None:
-            self._thread.join(timeout=2.0)
-            self._thread = None
-        # Explicitly close any in-flight capture-duck ownership when the
-        # listener stops (wake-word/command mode exit). This prevents a
-        # stale token from restoring the capture duck after shutdown.
-        self._close_hands_free_duck_safe(app, self._hands_free_capture_duck_token)
-        self._hands_free_capture_duck_token = None
-        remaining = list(self._utterance_frames)
-        self._utterance_frames   = []
-        self._buffer_rms_history = []
-        return remaining
+    def stop(self) -> WakeStopResult:
+        """Return buffered frames and .stopped; a timeout exposes no partial audio.
+
+        The result remains a list for the app's existing final-flush caller.
+        Inspect .stopped for join status, independently of whether audio exists.
+        """
+        with self._lifecycle_lock:
+            self._running = False
+            self._stop_event.set()
+            thread = self._thread
+            if thread is not None:
+                if thread is threading.current_thread():
+                    return WakeStopResult(stopped=False)
+                thread.join(timeout=_THREAD_JOIN_TIMEOUT_S)
+                if thread.is_alive():
+                    logger.error("[ACE] Wake stop incomplete: thread %s is still alive", thread.name)
+                    return WakeStopResult(stopped=False)
+                self._thread = None
+            self._close_capture_duck()
+            self._app.is_speaking = False
+            self._app.silence_start = None
+            remaining, self._utterance_frames = self._utterance_frames, []
+            self._buffer_rms_history = []
+            return WakeStopResult(remaining, stopped=True)
+
+    def _close_capture_duck(self) -> None:
+        token, self._hands_free_capture_duck_token = self._hands_free_capture_duck_token, None
+        if token is not None:
+            self._close_hands_free_duck_safe(self._app, token)
 
     def deactivate(self) -> None:
         """Stop and unregister from engine on app shutdown."""
-        self.stop()
+        if not self.stop().stopped:
+            return
         try:
             self._engine.unregister_consumer(self._reader)
         except Exception as e:
@@ -165,7 +236,7 @@ class WakeConsumer:
         try:
             app._vad_reset()
         except Exception as e:
-            logger.debug(f"abort_utterance: vad reset failed: {e}")
+            self._log_frame(logging.DEBUG, 'abort_vad_reset', "abort_utterance: vad reset failed: %s", e)
         # Hands-free capture-window ducking: device death mid-capture is a
         # discard, same as a too-short buffer -- close the window here
         # (also covers discard_stale_wake_utterance() below, which
@@ -184,7 +255,7 @@ class WakeConsumer:
             try:
                 return open_duck()
             except Exception as exc:
-                logger.debug(f"_open_hands_free_duck_safe: {exc}")
+                WakeConsumer._log_duck_failure(app, 'open', exc)
         return None
 
     @staticmethod
@@ -196,12 +267,23 @@ class WakeConsumer:
         abort_utterance, _flush's dispatch wrapper, the toggle-mode FIFO
         worker) shares one safe accessor instead of repeating the
         getattr(...) dance."""
+        if owner_token is None:
+            logger.debug('[DUCK] Ignoring capture duck close without an owner')
+            return
         close_duck = getattr(app, '_close_hands_free_capture_duck', None)
         if close_duck is not None:
             try:
                 close_duck(owner_token)
             except Exception as exc:
-                logger.debug(f"_close_hands_free_duck_safe: {exc}")
+                WakeConsumer._log_duck_failure(app, 'close', exc)
+
+    @staticmethod
+    def _log_duck_failure(app, operation, exc):
+        key = f'_wake_duck_{operation}_last_error_log'
+        now = time.monotonic()
+        if now - getattr(app, key, float('-inf')) >= 5.0:
+            setattr(app, key, now)
+            logger.debug("[WAKE] Capture duck %s failed: %s", operation, exc)
 
     def discard_stale_wake_utterance(self) -> None:
         """FIX 1 (2026-07-10 hotkey word-loss investigation): discard any
@@ -301,13 +383,6 @@ class WakeConsumer:
 
     def _enqueue_toggle_utterance(self, buffer_copy: list, owner_token: int | None) -> None:
         """Append one captured utterance and ensure one FIFO worker drains it."""
-        # Capture itself is session activity. Refresh before queueing so a
-        # slow CPU transcription cannot time the session out underneath
-        # speech that has already arrived.
-        touch_activity = getattr(self._app, '_touch_session_activity', None)
-        if touch_activity is not None:
-            touch_activity()
-
         with self._toggle_queue_lock:
             self._toggle_queue.append((buffer_copy, owner_token))
             if self._toggle_worker_active:
@@ -318,16 +393,45 @@ class WakeConsumer:
             'cmd-utt-queue', self._drain_toggle_utterances, daemon=True,
         )
 
-    def _touch_toggle_speech_activity(self, now: float) -> None:
-        """Keep inactivity tied to actual silence during sustained speech."""
+    def _touch_toggle_speech_activity(self) -> None:
+        """Extend inactivity only on a fresh Silero non-speech -> speech edge."""
         if not self._is_toggle_cmd(self._app):
             return
-        if now - self._last_toggle_activity_touch < 1.0:
-            return
-        self._last_toggle_activity_touch = now
         touch_activity = getattr(self._app, '_touch_session_activity', None)
         if touch_activity is not None:
-            touch_activity()
+            touch_activity(speech_onset=True)
+
+    def _post_wake_admission(self):
+        app = self._app
+        if self._is_toggle_cmd(app) or self._is_ai_cmd_mode(app) or app._hotkey_recording:
+            return None
+        if app.app_state not in ('wake_session', 'quick_dictation', 'long_dictation') and not app.wake_word_triggered:
+            return None
+        return getattr(app, '_wake_capture_admission', None)
+
+    def _trim_post_wake_frame(self, frame, chunk, admission):
+        """The callback timestamp is the end of a captured 100 ms block."""
+        confirmed_at, policy, guard_ms = admission
+        if policy == 'keep':
+            return chunk
+        not_before = confirmed_at + guard_ms / 1000.0
+        frame_start = frame.t_capture - len(chunk) / SAMPLE_RATE
+        skip = min(len(chunk), max(0, math.ceil((not_before - frame_start) * SAMPLE_RATE)))
+        self._guard_discarded_samples += skip
+        return chunk[skip:]
+
+    def _record_post_wake_capture(self, admission):
+        _, policy, guard_ms = admission
+        discarded_ms = (
+            PREBUFFER_FRAMES * FRAME_MS + self._guard_discarded_samples * 1000 / SAMPLE_RATE
+            if policy == 'discard' else 0.0
+        )
+        self._guard_discarded_samples = 0
+        self._log_frame(logging.DEBUG, 'capture_policy',
+                        '[WAKE-POLICY] policy=%s discarded_ms=%.3f post_wake_guard_ms=%.3f',
+                        policy, discarded_ms, guard_ms)
+        flight_recorder.record('wake.capture_policy', policy=policy,
+                               discarded_ms=discarded_ms, post_wake_guard_ms=guard_ms)
 
     def _drain_toggle_utterances(self) -> None:
         while True:
@@ -353,10 +457,111 @@ class WakeConsumer:
             finally:
                 self._close_hands_free_duck_safe(self._app, owner_token)
 
-    def _poll_loop(self) -> None:
+    def _log_frame(self, level, key, message, *args) -> None:
+        """Bound recurring frame diagnostics, independently for each condition."""
+        now = time.monotonic()
+        if now - self._frame_log_times.get(key, float('-inf')) >= 5.0:
+            self._frame_log_times[key] = now
+            logger.log(level, message, *args)
+
+    def _handle_fatal(self, exc: Exception) -> None:
+        if self._fatal_reported:
+            return
+        self._fatal_reported = True
+        self._running = False
+        self._stop_event.set()
+        logger.error("[ACE] Wake consumer stopped after fatal error: %s", exc,
+                     exc_info=(type(exc), exc, exc.__traceback__))
         app = self._app
+        self._close_capture_duck()
+        with self._toggle_queue_lock:
+            queued = list(self._toggle_queue)
+            self._toggle_queue.clear()
+        for _frames, token in queued:
+            if token is not None:
+                self._close_hands_free_duck_safe(app, token)
+
+        def cleanup(name):
+            action = getattr(app, name, None)
+            if callable(action):
+                try:
+                    action()
+                    return True
+                except Exception as cleanup_exc:
+                    logger.warning("[ACE] Wake fatal cleanup %s failed: %s", name, cleanup_exc)
+            return False
+
+        # Do not consult config during failure cleanup: malformed config may
+        # be the very exception that killed the poll loop.
+        was_toggle = bool(getattr(app, 'command_mode_active', False))
+        was_ava = bool(getattr(app, 'ava_command_session_active', False))
+        if was_toggle:
+            if not cleanup('exit_command_mode'):
+                cleanup('_cancel_command_mode_inactivity_timer')
+                cleanup('_release_streaming_preview')
+        if was_ava:
+            if not cleanup('exit_ava_command_session'):
+                cleanup('_cancel_ava_cmd_inactivity_timer')
+        if (getattr(app, 'app_state', 'asleep') in ('wake_session', 'quick_dictation', 'long_dictation')
+                or getattr(app, 'wake_word_triggered', False)):
+            if not cleanup('_end_wake_session'):
+                cleanup('_restore_audio')
+                cleanup('_indicator_reset')
+            # A failing app hook must not leave a session latched.
+            app.app_state = 'asleep'
+        with getattr(app, '_wake_session_lock', self._lifecycle_lock):
+            for name in ('_wake_session_inactivity_timer', 'wake_word_timer', '_dictation_finalize_timer',
+                         '_dictation_hardcap_timer', '_dictation_failsafe_timer'):
+                timer = getattr(app, name, None)
+                if timer is not None:
+                    try:
+                        timer.cancel()
+                    except Exception as cleanup_exc:
+                        logger.warning("[ACE] Wake fatal timer cleanup failed: %s", cleanup_exc)
+                    setattr(app, name, None)
+        if was_toggle:
+            app.command_mode_active = False
+        if was_ava:
+            app.ava_command_session_active = False
+        app.wake_word_active = False
+        app.wake_word_triggered = False
+        app._oww_wake_detected = False
+        app._wake_rearm_needs_onset = False
+        app._wake_capture_admission = None
+        app._wake_session_started_at = None
+        app._wake_session_deadline = None
+        app._wake_session_expires_at = None
+        app.wake_dictation_mode = None
+        app.wake_dictation_buffer = []
+        app.wake_dictation_start_time = None
+        app._dictation_silence_timeout = None
+        app._dictation_require_end = False
+        app._dictation_paused = False
+        app.is_speaking = False
+        app.silence_start = None
+        reasons = getattr(app, '_wake_consumer_reasons', None)
+        if reasons is not None:
+            reasons.clear()
+        self._utterance_frames = []
+        self._buffer_rms_history = []
+        self._await_wake_onset = False
+        self._silero_was_speech = False
+        self._rms_was_speech = None
+        self._wake_admission = None
+        self._guard_discarded_samples = 0
         try:
-            while self._running:
+            if self.on_fatal is not None:
+                self.on_fatal(exc)
+            elif callable(getattr(app, 'play_sound', None)):
+                app.play_sound('error')
+        except Exception as callback_exc:
+            logger.warning("[ACE] Wake on_fatal callback failed: %s", callback_exc)
+
+    def _poll_loop(self, stop_event=None) -> None:
+        app = self._app
+        stop_event = self._stop_event if stop_event is None else stop_event
+        try:
+            while self._running and not stop_event.is_set():
                 if not (
                     app.wake_word_active
                     or self._is_toggle_cmd(app)
@@ -366,57 +571,32 @@ class WakeConsumer:
                     continue
 
                 frame = self._reader.read_next()
+                if stop_event.is_set():
+                    break
                 if frame is EMPTY:
                     time.sleep(0.005)
                     continue
 
-                try:
-                    self._process_frame(frame)
-                except Exception as exc:
-                    logger.exception(f"[ERROR] Wake consumer frame error: {exc}")
-                    app = self._app
-                    self._close_hands_free_duck_safe(app, self._hands_free_capture_duck_token)
-                    self._hands_free_capture_duck_token = None
+                self._process_frame(frame)
         except Exception as exc:
-            # This poll loop is the session's ONLY audio consumer. If
-            # something escapes the per-frame guard above and kills this
-            # thread, the session would otherwise go deaf while staying
-            # latched (command_mode_active/ava_command_session_active still
-            # True) -- silently. Fail LOUD instead: log, earcon, and force
-            # any latched session to end rather than leave a zombie
-            # session nobody can hear.
-            #
-            # Ava command session force-exit (2026-07-19 incident report
-            # item 6): this handler used to force-exit toggle-command-mode
-            # only. A consumer crash while the Ava command session was
-            # active left it exactly as latched-but-deaf as the original
-            # incident's missing-exit bug -- just via a different trigger.
-            print(f"[ERROR] Wake consumer loop died: {exc}")
-            import traceback
-            traceback.print_exc()
+            self._handle_fatal(exc)
+        finally:
             self._running = False
-            try:
-                if getattr(app, "play_sound", None):
-                    app.play_sound("error")
-            except Exception:
-                pass
-            try:
-                if self._is_toggle_cmd(app):
-                    app.exit_command_mode()
-            except Exception:
-                pass
-            try:
-                if self._is_ai_cmd_mode(app):
-                    app.exit_ava_command_session()
-            except Exception:
-                pass
+            self._close_capture_duck()
 
     def _process_frame(self, frame) -> None:  # noqa: C901 (complexity mirrors legacy callback)
         app = self._app
 
+        if app.app_state == 'wake_session':
+            app._expire_wake_session()
+        if getattr(app, '_wake_rearm_needs_onset', False) is True:
+            self.abort_utterance()
+            self._await_wake_onset = True
+            app._wake_rearm_needs_onset = False
+
         # Epoch-change detection: abort utterance and reset state
         if self._last_epoch is not None and frame.device_epoch != self._last_epoch:
-            logger.warning("[ACE] Wake path: epoch change — aborting utterance, resetting state")
+            self._log_frame(logging.WARNING, 'frame_562', "[ACE] Wake path: epoch change — aborting utterance, resetting state")
             self._utterance_frames   = []
             self._buffer_rms_history = []
             app.is_speaking   = False
@@ -426,7 +606,7 @@ class WakeConsumer:
             try:
                 app._vad_reset()
             except Exception as e:
-                logger.debug(f"_vad_reset failed after epoch change: {e}")
+                self._log_frame(logging.DEBUG, 'frame_572', f"_vad_reset failed after epoch change: {e}")
         self._last_epoch = frame.device_epoch
 
         # ── FIX 1 (2026-07-10 hotkey word-loss investigation): full
@@ -471,7 +651,7 @@ class WakeConsumer:
         )
         if hotkey_suppress:
             if not self._hotkey_suppressed_last:
-                logger.debug(
+                self._log_frame(logging.DEBUG, 'hotkey_suppressed',
                     "[SEAM] WakeConsumer suppression ENGAGED (hotkey recording "
                     "active) -- wake-word speech detection fully skipped "
                     "(no RMS/VAD/OWW/onset/buffering) until hotkey recording ends"
@@ -479,7 +659,7 @@ class WakeConsumer:
                 self._hotkey_suppressed_last = True
             return   # cursor already advanced (frame already read in _poll_loop)
         if self._hotkey_suppressed_last:
-            logger.debug("[SEAM] WakeConsumer suppression RELEASED (hotkey recording ended)")
+            self._log_frame(logging.DEBUG, 'frame_625', "[SEAM] WakeConsumer suppression RELEASED (hotkey recording ended)")
             self._hotkey_suppressed_last = False
 
         # ── Ava command session half-duplex guard (2026-07-23 G3 live-test
@@ -511,7 +691,7 @@ class WakeConsumer:
             )
             if tts_speaking or in_tail:
                 if not self._ava_cmd_tts_suppressed_last:
-                    logger.debug(
+                    self._log_frame(logging.DEBUG, 'ava_tts_suppressed',
                         "[SEAM] Ava command session suppression ENGAGED (session "
                         "TTS speaking or in its tail) -- speech detection fully "
                         "skipped until playback + tail complete"
@@ -519,7 +699,7 @@ class WakeConsumer:
                     self._ava_cmd_tts_suppressed_last = True
                 return   # cursor already advanced (frame already read in _poll_loop)
             if self._ava_cmd_tts_suppressed_last:
-                logger.debug("[SEAM] Ava command session suppression RELEASED (TTS + tail complete)")
+                self._log_frame(logging.DEBUG, 'frame_665', "[SEAM] Ava command session suppression RELEASED (TTS + tail complete)")
                 self._ava_cmd_tts_suppressed_last = False
         elif self._ava_cmd_tts_was_speaking or self._ava_cmd_tts_speaking_end is not None:
             # Left the session without a clean SPEAKING->tail->RELEASE
@@ -532,6 +712,18 @@ class WakeConsumer:
         # Convert int16 ring frame -> float32 at SAMPLE_RATE
         # Ring stores raw (non-AEC) audio — correct for both VAD and Whisper.
         raw_chunk = frame.pcm.astype(np.float32) / 32767.0   # shape: (FRAME_SIZE,)
+
+        admission = self._post_wake_admission()
+        if admission != self._wake_admission:
+            self._wake_admission = admission
+            self._guard_discarded_samples = 0
+            if admission is not None:
+                # A confirmation starts a new capture, including when Whisper
+                # confirmed on its worker while this poller was buffering TV.
+                self._utterance_frames = []
+                self._buffer_rms_history = []
+                app.is_speaking = False
+                app.silence_start = None
 
         # ── Post-command echo suppression (same guard as legacy callback) ─────
         # Guards only apply BEFORE speech onset. Once app.is_speaking is True,
@@ -592,9 +784,12 @@ class WakeConsumer:
 
         # ── VAD / OWW ─────────────────────────────────────────────────────────
         # Data is already at SAMPLE_RATE (16kHz) — pass src_rate explicitly
+        silero_onset = False
         if app._vad_available:
             try:
                 is_speech = app._vad_is_speech(raw_chunk, src_rate=SAMPLE_RATE)
+                silero_onset = bool(is_speech and not self._silero_was_speech)
+                self._silero_was_speech = bool(is_speech)
                 app._vad_consec_errors = 0
             except Exception as exc:
                 now  = time.time()
@@ -606,13 +801,35 @@ class WakeConsumer:
                 try:
                     app._vad_reset()
                 except Exception as e:
-                    logger.debug(f"_vad_reset failed after VAD inference error: {e}")
+                    self._log_frame(logging.DEBUG, 'frame_767', f"_vad_reset failed after VAD inference error: {e}")
                 if app._vad_consec_errors >= 50:
-                    logger.warning("[VAD] 50 consecutive errors — disabling VAD for session, RMS only")
+                    self._log_frame(logging.WARNING, 'frame_769', "[VAD] 50 consecutive errors — disabling VAD for session, RMS only")
                     app._vad_available = False
                 is_speech = rms > speech_threshold
         else:
             is_speech = rms > speech_threshold
+
+        rms_positive = rms > speech_threshold
+        rms_onset = bool(rms_positive and self._rms_was_speech is False)
+        self._rms_was_speech = rms_positive
+        if self._await_wake_onset:
+            fallback_onset = not app._vad_available and rms_onset
+            if not (silero_onset or fallback_onset):
+                return
+            self._await_wake_onset = False
+            if fallback_onset and not self._rms_fallback_warned:
+                self._rms_fallback_warned = True
+                logger.warning("[VAD] Wake rearmed on RMS onset after quiet; Silero unavailable")
+        if silero_onset:
+            self._touch_toggle_speech_activity()
+            if app.app_state == 'wake_session':
+                app._restart_wake_session_timer(speech_onset=True)
+
+        if admission is not None:
+            raw_chunk = self._trim_post_wake_frame(frame, raw_chunk, admission)
+            if not len(raw_chunk):
+                return
+            rms = float(np.sqrt(np.mean(raw_chunk ** 2)))
 
         # OWW pre-filter (data already at 16kHz — no resample needed)
         if (app.app_state == 'asleep'
@@ -630,7 +847,6 @@ class WakeConsumer:
 
         # ── Speech accumulation ───────────────────────────────────────────────
         if is_speech:
-            self._touch_toggle_speech_activity(time.monotonic())
             speech_onset   = not app.is_speaking
             app.is_speaking   = True
             app.silence_start = None
@@ -655,6 +871,12 @@ class WakeConsumer:
                 # raw_chunk again after — that would double the onset frame.
                 # (ARC audit: double-appending of speech onset frame)
                 prebuffer_frames = PREBUFFER_FRAMES
+                if admission is not None:
+                    self._record_post_wake_capture(admission)
+                    if admission[1] == 'discard':
+                        prebuffer_frames = 0
+                        self._utterance_frames.append(raw_chunk)
+                        self._buffer_rms_history.append(rms)
                 if self._is_toggle_dictate(app):
                     # Never rewind farther than the silence boundary that
                     # separated two staged chunks. Otherwise a short manual-
@@ -664,7 +886,8 @@ class WakeConsumer:
                         PREBUFFER_FRAMES,
                         max(2, int(silence_threshold * 1000 / FRAME_MS)),
                     )
-                self._reader.rewind(prebuffer_frames)
+                if prebuffer_frames:
+                    self._reader.rewind(prebuffer_frames)
                 for _ in range(prebuffer_frames):
                     pb_frame = self._reader.read_next()
                     if pb_frame is EMPTY:
@@ -674,8 +897,8 @@ class WakeConsumer:
                     self._buffer_rms_history.append(
                         float(np.sqrt(np.mean(pb_pcm ** 2)))
                     )
-                if self._utterance_frames:
-                    logger.debug(f"[PRE] Prepended {len(self._utterance_frames) * FRAME_MS}ms pre-buffer to wake onset")
+                if prebuffer_frames and self._utterance_frames:
+                    self._log_frame(logging.DEBUG, 'frame_864', f"[PRE] Prepended {len(self._utterance_frames) * FRAME_MS}ms pre-buffer to wake onset")
                 # Diagnostic (2026-07-10 hotkey word-loss investigation,
                 # updated by FIX 1, narrowed 2026-07-19 nag incident): this
                 # branch is now UNREACHABLE while a plain hotkey recording
@@ -691,7 +914,7 @@ class WakeConsumer:
                 # briefly BLOCK the gate's scan (or vice versa) but cannot
                 # interleave two runs on the dedicated InferenceSession.
                 if getattr(app, '_hotkey_recording', False):
-                    logger.debug(
+                    self._log_frame(logging.DEBUG, 'toggle_hotkey_onset',
                         "[SEAM] Wake-consumer speech onset occurred WHILE "
                         "_hotkey_recording=True -- reached only via the "
                         "toggle-command-mode exemption "
@@ -713,7 +936,7 @@ class WakeConsumer:
                 variance = float(np.var(recent))
                 if variance < 0.0001:
                     buf_s = len(self._buffer_rms_history) * (FRAME_MS / 1000.0)
-                    logger.debug(f"[CAP] Stuck buffer ({buf_s:.1f}s, var={variance:.6f}) — discarding")
+                    self._log_frame(logging.DEBUG, 'frame_902', f"[CAP] Stuck buffer ({buf_s:.1f}s, var={variance:.6f}) — discarding")
                     flight_recorder.record(
                         'wake.session_close', reason='stuck_buffer',
                         buffer_s=buf_s, variance=variance,
@@ -725,7 +948,7 @@ class WakeConsumer:
                     try:
                         app._vad_reset()
                     except Exception as e:
-                        logger.debug(f"_vad_reset failed after stuck-buffer discard: {e}")
+                        self._log_frame(logging.DEBUG, 'frame_914', f"_vad_reset failed after stuck-buffer discard: {e}")
                     self._close_hands_free_duck_safe(app, self._hands_free_capture_duck_token)
                     self._hands_free_capture_duck_token = None
                     return
@@ -733,7 +956,7 @@ class WakeConsumer:
             # Hard buffer cap (same as legacy callback)
             buffer_s = len(self._utterance_frames) * (FRAME_MS / 1000.0)
             if buffer_s >= 7.0 and self._hard_cap_applies(app):
-                logger.debug(f"[CAP] Buffer at {buffer_s:.1f}s cap — discarding (likely noise/echo)")
+                self._log_frame(logging.DEBUG, 'frame_922', f"[CAP] Buffer at {buffer_s:.1f}s cap — discarding (likely noise/echo)")
                 flight_recorder.record(
                     'wake.session_close', reason='hard_buffer_cap', buffer_s=buffer_s,
                 )
@@ -744,7 +967,7 @@ class WakeConsumer:
                 try:
                     app._vad_reset()
                 except Exception as e:
-                    logger.debug(f"_vad_reset failed after hard buffer cap: {e}")
+                    self._log_frame(logging.DEBUG, 'frame_933', f"_vad_reset failed after hard buffer cap: {e}")
                 self._close_hands_free_duck_safe(app, self._hands_free_capture_duck_token)
                 self._hands_free_capture_duck_token = None
                 return
@@ -794,9 +1017,21 @@ class WakeConsumer:
         explicitly requires errors to still restore). Runs on whatever
         thread the wrapped function itself runs on (a freshly spawned
         daemon thread for every call site below), not this poll thread."""
+        session_started_at = (
+            getattr(app, '_wake_session_started_at', None)
+            if kind == 'wake_buffer' and app.app_state == 'wake_session' else None
+        )
+
         def _wrapped(*args, **kwargs):
             flight_recorder.record('session.dispatch', op='started', kind=kind)
             try:
+                if session_started_at is not None:
+                    app._expire_wake_session()
+                    if (app.app_state != 'wake_session'
+                            or app._wake_session_started_at != session_started_at):
+                        flight_recorder.record('session.dispatch', op='dropped',
+                                               kind=kind, reason='session_ended')
+                        return
                 fn(*args, **kwargs)
             except Exception:
                 flight_recorder.record('session.dispatch', op='completed', kind=kind, exc=True)
@@ -810,6 +1045,10 @@ class WakeConsumer:
     def _flush(self, buffer_copy: list, owner_token: int | None = None) -> None:
         """Dispatch utterance to process_wake_word_buffer, respecting OWW gate."""
         app = self._app
+        # Dispatch now owns this token. A later short capture/abort must not
+        # close the owner of an utterance still waiting for Whisper.
+        if owner_token is not None and self._hands_free_capture_duck_token == owner_token:
+            self._hands_free_capture_duck_token = None
 
         # Ava command session (D3): route utterance to the waterfall queue.
         if self._is_ai_cmd_mode(app):
@@ -830,6 +1069,12 @@ class WakeConsumer:
         if self._is_toggle_cmd(app):
             flight_recorder.record('session.dispatch', op='enqueued', kind='toggle_command')
             self._enqueue_toggle_utterance(buffer_copy, owner_token)
+            return
+
+        if getattr(app, '_wake_rearm_needs_onset', False) is True:
+            flight_recorder.record('session.dispatch', op='dropped',
+                                   kind='wake_buffer', reason='session_ended')
+            self._close_hands_free_duck_safe(app, owner_token)
             return
 
         _has_wake_profiles = any(
@@ -855,8 +1100,6 @@ class WakeConsumer:
             # Rejected before any dispatch -- this IS the capture window's
             # close (nothing else will ever process this buffer).
             self._close_hands_free_duck_safe(app, owner_token)
-            if owner_token is not None and self._hands_free_capture_duck_token == owner_token:
-                self._hands_free_capture_duck_token = None
             return
 
         # Preserve the detector result across the async dispatch. An OWW hit
@@ -876,43 +1119,12 @@ class WakeConsumer:
             if owner_token is None
             else owner_token
         )
-        self._hands_free_capture_duck_token = owner_token
-
-        if app.app_state == 'long_dictation':
-            with app._dictation_finalize_lock:
-                app._pending_transcriptions += 1
-            flight_recorder.record(
-                'session.dispatch', op='enqueued', kind='wake_buffer_tracked',
-                thread='wake_consumer._process_wake_word_buffer_tracked',
-            )
-            thread_registry.spawn(
-                "wake_consumer._process_wake_word_buffer_tracked",
-                self._wrap_with_duck_close(
-                    app,
-                    app._process_wake_word_buffer_tracked,
-                    owner_token,
-                    kind='wake_buffer_tracked',
-                ),
-                args=(buffer_copy, SAMPLE_RATE),
-                daemon=True,
-            )
-        else:
-            flight_recorder.record(
-                'session.dispatch', op='enqueued', kind='wake_buffer',
-                thread='wake_consumer.process_wake_word_buffer', oww_confirmed=oww_confirmed,
-            )
-            thread_registry.spawn(
-                "wake_consumer.process_wake_word_buffer",
-                self._wrap_with_duck_close(
-                    app,
-                    app.process_wake_word_buffer,
-                    owner_token,
-                    kind='wake_buffer',
-                ),
-                args=(buffer_copy, SAMPLE_RATE),
-                kwargs={"oww_confirmed": oww_confirmed},
-                daemon=True,
-            )
+        # The app queue owns passive dispatch tokens too; never publish them
+        # back into the consumer's next capture window.
+        app.process_wake_word_buffer(
+            buffer_copy, SAMPLE_RATE, oww_confirmed=oww_confirmed,
+            owner_token=owner_token, tracked=app.app_state == 'long_dictation',
+        )
 
     def __repr__(self) -> str:
         return (

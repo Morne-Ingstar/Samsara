@@ -1,0 +1,1198 @@
+{
+  "config": {
+    "model_size": "medium",
+    "language": "en",
+    "performance_mode": "accurate",
+    "temperature": 0.0,
+    "vad_prob_threshold": 0.5,
+    "vad_min_contig_ms": 150,
+    "apply_post_gates": true,
+    "wake_word": "jarvis",
+    "wake_targets": [
+      {
+        "id": "claude",
+        "phrase": "hey claude",
+        "oww_model": "hey_claude.onnx",
+        "target_process": "claude.exe",
+        "enabled": true
+      },
+      {
+        "id": "hermes",
+        "phrase": "activate hermes",
+        "oww_model": "activate_hermes.onnx",
+        "target_process": "Hermes.exe",
+        "enabled": true
+      }
+    ],
+    "compute_type": "float16",
+    "device": "cuda"
+  },
+  "rows": [
+    {
+      "file": "speech_owner_01.wav",
+      "label": "speech_owner",
+      "text": "The quick brown fox crossed the quiet bridge before sunrise.",
+      "lead_in_s": 0.0,
+      "press_offset_s": 0.0,
+      "voiced_ms": 3648.0,
+      "wall_ms": 346.13,
+      "segments": [
+        {
+          "no_speech_prob": 0.00807952880859375,
+          "avg_logprob": -0.26297433035714285,
+          "compression_ratio": 0.967741935483871
+        }
+      ],
+      "wer": 0.0,
+      "distance": 0,
+      "substitutions": 0,
+      "deletions": 0,
+      "insertions": 0,
+      "leading_insertions": 0,
+      "trailing_insertions": 0,
+      "false_reject": false
+    },
+    {
+      "file": "speech_owner_02.wav",
+      "label": "speech_owner",
+      "text": "Please remember that clear speech includes short pauses between ideas.",
+      "lead_in_s": 0.0,
+      "press_offset_s": 0.0,
+      "voiced_ms": 3744.0,
+      "wall_ms": 214.7,
+      "segments": [
+        {
+          "no_speech_prob": 0.03369140625,
+          "avg_logprob": -0.20807292262713115,
+          "compression_ratio": 1.0144927536231885
+        }
+      ],
+      "wer": 0.0,
+      "distance": 0,
+      "substitutions": 0,
+      "deletions": 0,
+      "insertions": 0,
+      "leading_insertions": 0,
+      "trailing_insertions": 0,
+      "false_reject": false
+    },
+    {
+      "file": "speech_owner_03.wav",
+      "label": "speech_owner",
+      "text": "On Tuesday, July 14th, 2026, the package weighed 2.75 kg.",
+      "lead_in_s": 0.0,
+      "press_offset_s": 0.0,
+      "voiced_ms": 5664.0,
+      "wall_ms": 274.57,
+      "segments": [
+        {
+          "no_speech_prob": 0.0157928466796875,
+          "avg_logprob": -0.37053570860908147,
+          "compression_ratio": 0.8769230769230769
+        }
+      ],
+      "wer": 0.18181818181818182,
+      "distance": 2,
+      "substitutions": 2,
+      "deletions": 0,
+      "insertions": 0,
+      "leading_insertions": 0,
+      "trailing_insertions": 1,
+      "false_reject": false
+    },
+    {
+      "file": "speech_owner_04.wav",
+      "label": "speech_owner",
+      "text": "Samsara should open the notes window and type this sentence exactly.",
+      "lead_in_s": 0.0,
+      "press_offset_s": 0.0,
+      "voiced_ms": 3616.0,
+      "wall_ms": 216.22,
+      "segments": [
+        {
+          "no_speech_prob": 0.019866943359375,
+          "avg_logprob": -0.2199706993997097,
+          "compression_ratio": 0.9855072463768116
+        }
+      ],
+      "wer": 0.0,
+      "distance": 0,
+      "substitutions": 0,
+      "deletions": 0,
+      "insertions": 0,
+      "leading_insertions": 0,
+      "trailing_insertions": 0,
+      "false_reject": false
+    },
+    {
+      "file": "speech_owner_05.wav",
+      "label": "speech_owner",
+      "text": "I can speak naturally while the television is playing in the background.",
+      "lead_in_s": 0.0,
+      "press_offset_s": 0.0,
+      "voiced_ms": 2976.0,
+      "wall_ms": 214.4,
+      "segments": [
+        {
+          "no_speech_prob": 0.029449462890625,
+          "avg_logprob": -0.23144531529396772,
+          "compression_ratio": 1.0
+        }
+      ],
+      "wer": 0.0,
+      "distance": 0,
+      "substitutions": 0,
+      "deletions": 0,
+      "insertions": 0,
+      "leading_insertions": 0,
+      "trailing_insertions": 0,
+      "false_reject": false
+    },
+    {
+      "file": "speech_owner_06.wav",
+      "label": "speech_owner",
+      "text": "When the recording is complete, say send to commit the dictated text.",
+      "lead_in_s": 0.0,
+      "press_offset_s": 0.0,
+      "voiced_ms": 3456.0,
+      "wall_ms": 244.58,
+      "segments": [
+        {
+          "no_speech_prob": 0.035400390625,
+          "avg_logprob": -0.1809895800219642,
+          "compression_ratio": 1.0
+        }
+      ],
+      "wer": 0.0,
+      "distance": 0,
+      "substitutions": 0,
+      "deletions": 0,
+      "insertions": 0,
+      "leading_insertions": 0,
+      "trailing_insertions": 0,
+      "false_reject": false
+    },
+    {
+      "file": "nonspeech_body_01.wav",
+      "label": "nonspeech_body",
+      "text": "",
+      "lead_in_s": 0.0,
+      "press_offset_s": 0.0,
+      "voiced_ms": 0.0,
+      "wall_ms": 15.75,
+      "segments": [],
+      "false_accept": false
+    },
+    {
+      "file": "nonspeech_body_02.wav",
+      "label": "nonspeech_body",
+      "text": "",
+      "lead_in_s": 0.0,
+      "press_offset_s": 0.0,
+      "voiced_ms": 0.0,
+      "wall_ms": 7.61,
+      "segments": [],
+      "false_accept": false
+    },
+    {
+      "file": "nonspeech_body_03.wav",
+      "label": "nonspeech_body",
+      "text": "",
+      "lead_in_s": 0.0,
+      "press_offset_s": 0.0,
+      "voiced_ms": 0.0,
+      "wall_ms": 7.4,
+      "segments": [],
+      "false_accept": false
+    },
+    {
+      "file": "nonspeech_body_04.wav",
+      "label": "nonspeech_body",
+      "text": "",
+      "lead_in_s": 0.0,
+      "press_offset_s": 0.0,
+      "voiced_ms": 1088.0,
+      "wall_ms": 157.89,
+      "segments": [
+        {
+          "no_speech_prob": 0.43505859375,
+          "avg_logprob": -0.8422851637005806,
+          "compression_ratio": 1.0769230769230769
+        }
+      ],
+      "false_accept": false
+    },
+    {
+      "file": "nonspeech_body_05.wav",
+      "label": "nonspeech_body",
+      "text": "",
+      "lead_in_s": 0.0,
+      "press_offset_s": 0.0,
+      "voiced_ms": 0.0,
+      "wall_ms": 8.25,
+      "segments": [],
+      "false_accept": false
+    },
+    {
+      "file": "nonspeech_room_01.wav",
+      "label": "nonspeech_room",
+      "text": "",
+      "lead_in_s": 0.0,
+      "press_offset_s": 0.0,
+      "voiced_ms": 0.0,
+      "wall_ms": 8.33,
+      "segments": [],
+      "false_accept": false
+    },
+    {
+      "file": "nonspeech_room_02.wav",
+      "label": "nonspeech_room",
+      "text": "",
+      "lead_in_s": 0.0,
+      "press_offset_s": 0.0,
+      "voiced_ms": 0.0,
+      "wall_ms": 8.18,
+      "segments": [],
+      "false_accept": false
+    },
+    {
+      "file": "nonspeech_room_03.wav",
+      "label": "nonspeech_room",
+      "text": "",
+      "lead_in_s": 0.0,
+      "press_offset_s": 0.0,
+      "voiced_ms": 0.0,
+      "wall_ms": 8.28,
+      "segments": [],
+      "false_accept": false
+    },
+    {
+      "file": "nonspeech_room_04.wav",
+      "label": "nonspeech_room",
+      "text": "",
+      "lead_in_s": 0.0,
+      "press_offset_s": 0.0,
+      "voiced_ms": 0.0,
+      "wall_ms": 7.87,
+      "segments": [],
+      "false_accept": false
+    },
+    {
+      "file": "silence_01.wav",
+      "label": "silence",
+      "text": "",
+      "lead_in_s": 0.0,
+      "press_offset_s": 0.0,
+      "voiced_ms": 0.0,
+      "wall_ms": 26.92,
+      "segments": [],
+      "false_accept": false
+    },
+    {
+      "file": "silence_02.wav",
+      "label": "silence",
+      "text": "",
+      "lead_in_s": 0.0,
+      "press_offset_s": 0.0,
+      "voiced_ms": 0.0,
+      "wall_ms": 26.88,
+      "segments": [],
+      "false_accept": false
+    },
+    {
+      "file": "silence_03.wav",
+      "label": "silence",
+      "text": "",
+      "lead_in_s": 0.0,
+      "press_offset_s": 0.0,
+      "voiced_ms": 0.0,
+      "wall_ms": 25.52,
+      "segments": [],
+      "false_accept": false
+    },
+    {
+      "file": "media_only_01.wav",
+      "label": "media_only@1.0",
+      "text": "Okay, do you know anybody? Yeah, but no. I'm intrigued. Oh, well, I played with this Stryker jammer who would be great great, but she quit a couple years ago to study law I object she'd never played for regiment. How about you give her a shout anyway? See what's what you know? It's worth a shot fine Yeah, but would have better luck getting plays off the street",
+      "lead_in_s": 0.0,
+      "press_offset_s": 0.0,
+      "voiced_ms": 13824.0,
+      "wall_ms": 922.57,
+      "segments": [
+        {
+          "no_speech_prob": 0.66162109375,
+          "avg_logprob": -0.5199742268041238,
+          "compression_ratio": 1.5338983050847457
+        },
+        {
+          "no_speech_prob": 0.66162109375,
+          "avg_logprob": -0.5199742268041238,
+          "compression_ratio": 1.5338983050847457
+        },
+        {
+          "no_speech_prob": 0.66162109375,
+          "avg_logprob": -0.5199742268041238,
+          "compression_ratio": 1.5338983050847457
+        },
+        {
+          "no_speech_prob": 0.66162109375,
+          "avg_logprob": -0.5199742268041238,
+          "compression_ratio": 1.5338983050847457
+        }
+      ],
+      "false_accept": true,
+      "media_gain": 1.0,
+      "rms_dbfs": -37.51
+    },
+    {
+      "file": "media_only_01.wav",
+      "label": "media_only@0.3",
+      "text": "Well, I played with this striker, Gemma, who would be great, but she quit a couple years ago to study law. I object! Plus, she'd never... You're a shout anyways.",
+      "lead_in_s": 0.0,
+      "press_offset_s": 0.0,
+      "voiced_ms": 4800.0,
+      "wall_ms": 560.0,
+      "segments": [
+        {
+          "no_speech_prob": 0.79443359375,
+          "avg_logprob": -0.3762019116144914,
+          "compression_ratio": 1.2196969696969697
+        },
+        {
+          "no_speech_prob": 0.79443359375,
+          "avg_logprob": -0.3762019116144914,
+          "compression_ratio": 1.2196969696969697
+        },
+        {
+          "no_speech_prob": 0.79443359375,
+          "avg_logprob": -0.3762019116144914,
+          "compression_ratio": 1.2196969696969697
+        },
+        {
+          "no_speech_prob": 0.79443359375,
+          "avg_logprob": -0.3762019116144914,
+          "compression_ratio": 1.2196969696969697
+        }
+      ],
+      "false_accept": true,
+      "media_gain": 0.3,
+      "rms_dbfs": -47.96
+    },
+    {
+      "file": "media_only_01.wav",
+      "label": "media_only@0.15",
+      "text": "",
+      "lead_in_s": 0.0,
+      "press_offset_s": 0.0,
+      "voiced_ms": 0.0,
+      "wall_ms": 37.41,
+      "segments": [],
+      "false_accept": false,
+      "media_gain": 0.15,
+      "rms_dbfs": -53.98
+    },
+    {
+      "file": "media_only_01.wav",
+      "label": "media_only@0.08",
+      "text": "",
+      "lead_in_s": 0.0,
+      "press_offset_s": 0.0,
+      "voiced_ms": 0.0,
+      "wall_ms": 37.65,
+      "segments": [],
+      "false_accept": false,
+      "media_gain": 0.08,
+      "rms_dbfs": -59.44
+    },
+    {
+      "file": "media_only_01.wav",
+      "label": "media_only@0.04",
+      "text": "",
+      "lead_in_s": 0.0,
+      "press_offset_s": 0.0,
+      "voiced_ms": 0.0,
+      "wall_ms": 37.18,
+      "segments": [],
+      "false_accept": false,
+      "media_gain": 0.04,
+      "rms_dbfs": -65.46
+    },
+    {
+      "file": "media_only_01.wav",
+      "label": "media_only@0.0",
+      "text": "",
+      "lead_in_s": 0.0,
+      "press_offset_s": 0.0,
+      "voiced_ms": 0.0,
+      "wall_ms": 38.38,
+      "segments": [],
+      "false_accept": false,
+      "media_gain": 0.0,
+      "rms_dbfs": -Infinity
+    },
+    {
+      "file": "media_only_02.wav",
+      "label": "media_only@1.0",
+      "text": "Philstone professor of sports psychology at the Loughborough University and she's here to talk about her new book, Unlocking the Eye in Team. The psychology behind team building, Dr. Philstone. Mr. Crimm. Sharon, it's good to have you here. I'd like to start with the phrase that you returned to several times in your book, lose the dressing room, lose the team. I actually invoke that same phrase in my book, The Richmond Way, out now in the paperback. I have a major book. Okay, I'll send you over the signed copy.",
+      "lead_in_s": 0.0,
+      "press_offset_s": 0.0,
+      "voiced_ms": 23392.0,
+      "wall_ms": 1379.07,
+      "segments": [
+        {
+          "no_speech_prob": 0.82666015625,
+          "avg_logprob": -0.22950000286102296,
+          "compression_ratio": 1.6326530612244898
+        },
+        {
+          "no_speech_prob": 0.82666015625,
+          "avg_logprob": -0.22950000286102296,
+          "compression_ratio": 1.6326530612244898
+        },
+        {
+          "no_speech_prob": 0.82666015625,
+          "avg_logprob": -0.22950000286102296,
+          "compression_ratio": 1.6326530612244898
+        },
+        {
+          "no_speech_prob": 0.82666015625,
+          "avg_logprob": -0.22950000286102296,
+          "compression_ratio": 1.6326530612244898
+        },
+        {
+          "no_speech_prob": 0.82666015625,
+          "avg_logprob": -0.22950000286102296,
+          "compression_ratio": 1.6326530612244898
+        },
+        {
+          "no_speech_prob": 0.207275390625,
+          "avg_logprob": -0.4798177083333333,
+          "compression_ratio": 0.813953488372093
+        }
+      ],
+      "false_accept": true,
+      "media_gain": 1.0,
+      "rms_dbfs": -37.31
+    },
+    {
+      "file": "media_only_02.wav",
+      "label": "media_only@0.3",
+      "text": "Dr. Philstone, professor of sports psychology at the Loughborough University, and she's here to talk about her new book, Unlocking the Eye in Team, the psychology behind team building. Dr. Philstone. Mr. Crewe. Sharon, it's good to have you here. I'd like to start with the phrase that you return to several times in your book, lose the dressing room, lose the team. I actually invoke that same phrase in my book, The Richmond Way, out now with paperback. I have a major book. Okay. I'll send you home with a signed copy. out now in paperback. I have the magic book. Okay, I'll send you over the signed copy.",
+      "lead_in_s": 0.0,
+      "press_offset_s": 0.0,
+      "voiced_ms": 19296.0,
+      "wall_ms": 1710.15,
+      "segments": [
+        {
+          "no_speech_prob": 0.77978515625,
+          "avg_logprob": -0.2976973725384788,
+          "compression_ratio": 1.669871794871795
+        },
+        {
+          "no_speech_prob": 0.77978515625,
+          "avg_logprob": -0.2976973725384788,
+          "compression_ratio": 1.669871794871795
+        },
+        {
+          "no_speech_prob": 0.77978515625,
+          "avg_logprob": -0.2976973725384788,
+          "compression_ratio": 1.669871794871795
+        },
+        {
+          "no_speech_prob": 0.77978515625,
+          "avg_logprob": -0.2976973725384788,
+          "compression_ratio": 1.669871794871795
+        },
+        {
+          "no_speech_prob": 0.77978515625,
+          "avg_logprob": -0.2976973725384788,
+          "compression_ratio": 1.669871794871795
+        },
+        {
+          "no_speech_prob": 0.77978515625,
+          "avg_logprob": -0.2976973725384788,
+          "compression_ratio": 1.669871794871795
+        },
+        {
+          "no_speech_prob": 0.77978515625,
+          "avg_logprob": -0.2976973725384788,
+          "compression_ratio": 1.669871794871795
+        },
+        {
+          "no_speech_prob": 0.77978515625,
+          "avg_logprob": -0.2976973725384788,
+          "compression_ratio": 1.669871794871795
+        },
+        {
+          "no_speech_prob": 0.77978515625,
+          "avg_logprob": -0.2976973725384788,
+          "compression_ratio": 1.669871794871795
+        },
+        {
+          "no_speech_prob": 0.77978515625,
+          "avg_logprob": -0.2976973725384788,
+          "compression_ratio": 1.669871794871795
+        },
+        {
+          "no_speech_prob": 0.77978515625,
+          "avg_logprob": -0.2976973725384788,
+          "compression_ratio": 1.669871794871795
+        },
+        {
+          "no_speech_prob": 0.77978515625,
+          "avg_logprob": -0.2976973725384788,
+          "compression_ratio": 1.669871794871795
+        },
+        {
+          "no_speech_prob": 0.67822265625,
+          "avg_logprob": -0.5561899107236129,
+          "compression_ratio": 1.036144578313253
+        }
+      ],
+      "false_accept": true,
+      "media_gain": 0.3,
+      "rms_dbfs": -47.77
+    },
+    {
+      "file": "media_only_02.wav",
+      "label": "media_only@0.15",
+      "text": "University, and she's here to talk about her new book, Unlocking the Eye in Team. The psychology behind team building, Dr. Filster. Sharon, it's good to have you here. I'd like to start with a phrase that you return to several times in your book, lose the dressing room, lose the team. I actually invoke that same phrase in my book, The Richmond Way, out now in paperback. I have a major book. Okay, I'll send you home with a signed copy.",
+      "lead_in_s": 0.0,
+      "press_offset_s": 0.0,
+      "voiced_ms": 17760.0,
+      "wall_ms": 1266.76,
+      "segments": [
+        {
+          "no_speech_prob": 0.8818359375,
+          "avg_logprob": -0.2998188291338907,
+          "compression_ratio": 1.5865724381625441
+        },
+        {
+          "no_speech_prob": 0.8818359375,
+          "avg_logprob": -0.2998188291338907,
+          "compression_ratio": 1.5865724381625441
+        },
+        {
+          "no_speech_prob": 0.8818359375,
+          "avg_logprob": -0.2998188291338907,
+          "compression_ratio": 1.5865724381625441
+        },
+        {
+          "no_speech_prob": 0.8818359375,
+          "avg_logprob": -0.2998188291338907,
+          "compression_ratio": 1.5865724381625441
+        },
+        {
+          "no_speech_prob": 0.8818359375,
+          "avg_logprob": -0.2998188291338907,
+          "compression_ratio": 1.5865724381625441
+        },
+        {
+          "no_speech_prob": 0.8818359375,
+          "avg_logprob": -0.2998188291338907,
+          "compression_ratio": 1.5865724381625441
+        },
+        {
+          "no_speech_prob": 0.8818359375,
+          "avg_logprob": -0.2998188291338907,
+          "compression_ratio": 1.5865724381625441
+        },
+        {
+          "no_speech_prob": 0.8818359375,
+          "avg_logprob": -0.2998188291338907,
+          "compression_ratio": 1.5865724381625441
+        },
+        {
+          "no_speech_prob": 0.8818359375,
+          "avg_logprob": -0.2998188291338907,
+          "compression_ratio": 1.5865724381625441
+        },
+        {
+          "no_speech_prob": 0.8818359375,
+          "avg_logprob": -0.2998188291338907,
+          "compression_ratio": 1.5865724381625441
+        },
+        {
+          "no_speech_prob": 0.8818359375,
+          "avg_logprob": -0.2998188291338907,
+          "compression_ratio": 1.5865724381625441
+        },
+        {
+          "no_speech_prob": 0.8818359375,
+          "avg_logprob": -0.2998188291338907,
+          "compression_ratio": 1.5865724381625441
+        }
+      ],
+      "false_accept": true,
+      "media_gain": 0.15,
+      "rms_dbfs": -53.79
+    },
+    {
+      "file": "media_only_02.wav",
+      "label": "media_only@0.08",
+      "text": "...talk about her new book, Unlocking the Eye in Team, the psychology behind team building, Dr. Filster, Mr. Crimm, Sharon, it's good to have you here. I'd like to start with the phrase that you return to several times in your book, lose the dressing room, lose the team. I actually invoke that same phrase in my book, The Richmond Way, out now in paperback. I have a magic book. Okay, I'll send you home with a signed copy.",
+      "lead_in_s": 0.0,
+      "press_offset_s": 0.0,
+      "voiced_ms": 13728.0,
+      "wall_ms": 1059.36,
+      "segments": [
+        {
+          "no_speech_prob": 0.77734375,
+          "avg_logprob": -0.2991452971075335,
+          "compression_ratio": 1.5880149812734083
+        },
+        {
+          "no_speech_prob": 0.77734375,
+          "avg_logprob": -0.2991452971075335,
+          "compression_ratio": 1.5880149812734083
+        },
+        {
+          "no_speech_prob": 0.77734375,
+          "avg_logprob": -0.2991452971075335,
+          "compression_ratio": 1.5880149812734083
+        },
+        {
+          "no_speech_prob": 0.77734375,
+          "avg_logprob": -0.2991452971075335,
+          "compression_ratio": 1.5880149812734083
+        },
+        {
+          "no_speech_prob": 0.77734375,
+          "avg_logprob": -0.2991452971075335,
+          "compression_ratio": 1.5880149812734083
+        }
+      ],
+      "false_accept": true,
+      "media_gain": 0.08,
+      "rms_dbfs": -59.25
+    },
+    {
+      "file": "media_only_02.wav",
+      "label": "media_only@0.04",
+      "text": "",
+      "lead_in_s": 0.0,
+      "press_offset_s": 0.0,
+      "voiced_ms": 0.0,
+      "wall_ms": 39.29,
+      "segments": [],
+      "false_accept": false,
+      "media_gain": 0.04,
+      "rms_dbfs": -65.27
+    },
+    {
+      "file": "media_only_02.wav",
+      "label": "media_only@0.0",
+      "text": "",
+      "lead_in_s": 0.0,
+      "press_offset_s": 0.0,
+      "voiced_ms": 0.0,
+      "wall_ms": 37.82,
+      "segments": [],
+      "false_accept": false,
+      "media_gain": 0.0,
+      "rms_dbfs": -Infinity
+    },
+    {
+      "file": "media_only_03.wav",
+      "label": "media_only@1.0",
+      "text": "after i heard the word ladies come spitting out of my mouth i guess that's not worse than the last one yeah man yeah i just mean i used to be able to walk into any part of this building and i don't love me and make you feel like i'm now violating the lady parts what the heck is going on with me you okay coach i don't know well thank god sorry uh boots wanted to shower right away to wash the blood off her hands and then she took forever to air dry",
+      "lead_in_s": 0.0,
+      "press_offset_s": 0.0,
+      "voiced_ms": 16960.0,
+      "wall_ms": 988.47,
+      "segments": [
+        {
+          "no_speech_prob": 0.6396484375,
+          "avg_logprob": -0.1728515573112028,
+          "compression_ratio": 1.744186046511628
+        },
+        {
+          "no_speech_prob": 0.6396484375,
+          "avg_logprob": -0.1728515573112028,
+          "compression_ratio": 1.744186046511628
+        },
+        {
+          "no_speech_prob": 0.6396484375,
+          "avg_logprob": -0.1728515573112028,
+          "compression_ratio": 1.744186046511628
+        },
+        {
+          "no_speech_prob": 0.6396484375,
+          "avg_logprob": -0.1728515573112028,
+          "compression_ratio": 1.744186046511628
+        },
+        {
+          "no_speech_prob": 0.6396484375,
+          "avg_logprob": -0.1728515573112028,
+          "compression_ratio": 1.744186046511628
+        }
+      ],
+      "false_accept": true,
+      "media_gain": 1.0,
+      "rms_dbfs": -34.73
+    },
+    {
+      "file": "media_only_03.wav",
+      "label": "media_only@0.3",
+      "text": "Yeah, man. I mean, I used to be able to walk into any part of this building, and I don't love me and make me feel like I'm now violating the lady parts. What the heck is going on with me? You okay, Coach? I don't know. Well, thank God. Sorry, Boots wanted to shower right away to wash the blood off her hands, and then she took forever to air dry. Hmm. You okay, Coach? I don't know. Oh, thank God. Sorry. Boots wanted to shower right away to wash the blood off her hands, and then she took forever to air dry.",
+      "lead_in_s": 0.0,
+      "press_offset_s": 0.0,
+      "voiced_ms": 13984.0,
+      "wall_ms": 1551.96,
+      "segments": [
+        {
+          "no_speech_prob": 0.77880859375,
+          "avg_logprob": -0.2469846432407697,
+          "compression_ratio": 1.5042735042735043
+        },
+        {
+          "no_speech_prob": 0.77880859375,
+          "avg_logprob": -0.2469846432407697,
+          "compression_ratio": 1.5042735042735043
+        },
+        {
+          "no_speech_prob": 0.77880859375,
+          "avg_logprob": -0.2469846432407697,
+          "compression_ratio": 1.5042735042735043
+        },
+        {
+          "no_speech_prob": 0.77880859375,
+          "avg_logprob": -0.2469846432407697,
+          "compression_ratio": 1.5042735042735043
+        },
+        {
+          "no_speech_prob": 0.77880859375,
+          "avg_logprob": -0.2469846432407697,
+          "compression_ratio": 1.5042735042735043
+        },
+        {
+          "no_speech_prob": 0.77880859375,
+          "avg_logprob": -0.2469846432407697,
+          "compression_ratio": 1.5042735042735043
+        },
+        {
+          "no_speech_prob": 0.77880859375,
+          "avg_logprob": -0.2469846432407697,
+          "compression_ratio": 1.5042735042735043
+        },
+        {
+          "no_speech_prob": 0.77880859375,
+          "avg_logprob": -0.2469846432407697,
+          "compression_ratio": 1.5042735042735043
+        },
+        {
+          "no_speech_prob": 0.77880859375,
+          "avg_logprob": -0.2469846432407697,
+          "compression_ratio": 1.5042735042735043
+        },
+        {
+          "no_speech_prob": 0.77880859375,
+          "avg_logprob": -0.2469846432407697,
+          "compression_ratio": 1.5042735042735043
+        },
+        {
+          "no_speech_prob": 0.1630859375,
+          "avg_logprob": -0.32779947109520435,
+          "compression_ratio": 1.2265625
+        },
+        {
+          "no_speech_prob": 0.1630859375,
+          "avg_logprob": -0.32779947109520435,
+          "compression_ratio": 1.2265625
+        },
+        {
+          "no_speech_prob": 0.1630859375,
+          "avg_logprob": -0.32779947109520435,
+          "compression_ratio": 1.2265625
+        }
+      ],
+      "false_accept": true,
+      "media_gain": 0.3,
+      "rms_dbfs": -45.19
+    },
+    {
+      "file": "media_only_03.wav",
+      "label": "media_only@0.15",
+      "text": "the last one yeah man i just mean i used to be able to walk into any part of this building and i don't love me it made me feel like i'm not violating the lady parts what the heck is going on with me you okay coach i don't know thank god sorry uh boots wanted to shower right away to wash the blood off her hands and then she took forever to air dry",
+      "lead_in_s": 0.0,
+      "press_offset_s": 0.0,
+      "voiced_ms": 13760.0,
+      "wall_ms": 818.52,
+      "segments": [
+        {
+          "no_speech_prob": 0.81005859375,
+          "avg_logprob": -0.20490057190710848,
+          "compression_ratio": 1.6571428571428573
+        },
+        {
+          "no_speech_prob": 0.81005859375,
+          "avg_logprob": -0.20490057190710848,
+          "compression_ratio": 1.6571428571428573
+        },
+        {
+          "no_speech_prob": 0.81005859375,
+          "avg_logprob": -0.20490057190710848,
+          "compression_ratio": 1.6571428571428573
+        },
+        {
+          "no_speech_prob": 0.81005859375,
+          "avg_logprob": -0.20490057190710848,
+          "compression_ratio": 1.6571428571428573
+        }
+      ],
+      "false_accept": true,
+      "media_gain": 0.15,
+      "rms_dbfs": -51.21
+    },
+    {
+      "file": "media_only_03.wav",
+      "label": "media_only@0.08",
+      "text": "And I don't love me, it made me feel like I'm now violating the lady parts. What the heck is going on with me? You okay, Coach? I don't know. Thank God. Sorry, Boots wanted to shower right away to wash the blood off her hands, and then she took forever to air dry.",
+      "lead_in_s": 0.0,
+      "press_offset_s": 0.0,
+      "voiced_ms": 11232.0,
+      "wall_ms": 832.35,
+      "segments": [
+        {
+          "no_speech_prob": 0.65478515625,
+          "avg_logprob": -0.275602411792939,
+          "compression_ratio": 1.3894736842105264
+        },
+        {
+          "no_speech_prob": 0.65478515625,
+          "avg_logprob": -0.275602411792939,
+          "compression_ratio": 1.3894736842105264
+        },
+        {
+          "no_speech_prob": 0.65478515625,
+          "avg_logprob": -0.275602411792939,
+          "compression_ratio": 1.3894736842105264
+        },
+        {
+          "no_speech_prob": 0.65478515625,
+          "avg_logprob": -0.275602411792939,
+          "compression_ratio": 1.3894736842105264
+        },
+        {
+          "no_speech_prob": 0.65478515625,
+          "avg_logprob": -0.275602411792939,
+          "compression_ratio": 1.3894736842105264
+        },
+        {
+          "no_speech_prob": 0.65478515625,
+          "avg_logprob": -0.275602411792939,
+          "compression_ratio": 1.3894736842105264
+        },
+        {
+          "no_speech_prob": 0.65478515625,
+          "avg_logprob": -0.275602411792939,
+          "compression_ratio": 1.3894736842105264
+        }
+      ],
+      "false_accept": true,
+      "media_gain": 0.08,
+      "rms_dbfs": -56.67
+    },
+    {
+      "file": "media_only_03.wav",
+      "label": "media_only@0.04",
+      "text": "me and make me feel like I'm out. What the fuck is going on with me? You okay, Coach? I don't know. Well, thank God. Sorry. Boots wanted to shower right away to wash the blood off her hands, and then she took a bath to air dry. Hey! Congrats on the-",
+      "lead_in_s": 0.0,
+      "press_offset_s": 0.0,
+      "voiced_ms": 7840.0,
+      "wall_ms": 841.54,
+      "segments": [
+        {
+          "no_speech_prob": 0.68994140625,
+          "avg_logprob": -0.34996448762037535,
+          "compression_ratio": 1.3681318681318682
+        },
+        {
+          "no_speech_prob": 0.68994140625,
+          "avg_logprob": -0.34996448762037535,
+          "compression_ratio": 1.3681318681318682
+        },
+        {
+          "no_speech_prob": 0.68994140625,
+          "avg_logprob": -0.34996448762037535,
+          "compression_ratio": 1.3681318681318682
+        },
+        {
+          "no_speech_prob": 0.68994140625,
+          "avg_logprob": -0.34996448762037535,
+          "compression_ratio": 1.3681318681318682
+        },
+        {
+          "no_speech_prob": 0.68994140625,
+          "avg_logprob": -0.34996448762037535,
+          "compression_ratio": 1.3681318681318682
+        },
+        {
+          "no_speech_prob": 0.68994140625,
+          "avg_logprob": -0.34996448762037535,
+          "compression_ratio": 1.3681318681318682
+        },
+        {
+          "no_speech_prob": 0.68994140625,
+          "avg_logprob": -0.34996448762037535,
+          "compression_ratio": 1.3681318681318682
+        },
+        {
+          "no_speech_prob": 0.68994140625,
+          "avg_logprob": -0.34996448762037535,
+          "compression_ratio": 1.3681318681318682
+        },
+        {
+          "no_speech_prob": 0.68994140625,
+          "avg_logprob": -0.34996448762037535,
+          "compression_ratio": 1.3681318681318682
+        },
+        {
+          "no_speech_prob": 0.68994140625,
+          "avg_logprob": -0.34996448762037535,
+          "compression_ratio": 1.3681318681318682
+        }
+      ],
+      "false_accept": true,
+      "media_gain": 0.04,
+      "rms_dbfs": -62.69
+    },
+    {
+      "file": "media_only_03.wav",
+      "label": "media_only@0.0",
+      "text": "",
+      "lead_in_s": 0.0,
+      "press_offset_s": 0.0,
+      "voiced_ms": 0.0,
+      "wall_ms": 37.19,
+      "segments": [],
+      "false_accept": false,
+      "media_gain": 0.0,
+      "rms_dbfs": -Infinity
+    },
+    {
+      "file": "speech_owner_over_media_01.wav",
+      "label": "speech_owner_over_media",
+      "text": "The television is background noise while I dictate this sentence.",
+      "lead_in_s": 0.0,
+      "press_offset_s": 0.0,
+      "voiced_ms": 3424.0,
+      "wall_ms": 210.23,
+      "segments": [
+        {
+          "no_speech_prob": 0.03515625,
+          "avg_logprob": -0.2585100552865437,
+          "compression_ratio": 0.9558823529411765
+        }
+      ],
+      "wer": 0.0,
+      "distance": 0,
+      "substitutions": 0,
+      "deletions": 0,
+      "insertions": 0,
+      "leading_insertions": 0,
+      "trailing_insertions": 0,
+      "false_reject": false,
+      "pre_roll_contamination_words": 0
+    },
+    {
+      "file": "speech_owner_over_media_02.wav",
+      "label": "speech_owner_over_media",
+      "text": "The television is background noise while I dictate this sentence.",
+      "lead_in_s": 0.0,
+      "press_offset_s": 0.0,
+      "voiced_ms": 3488.0,
+      "wall_ms": 200.12,
+      "segments": [
+        {
+          "no_speech_prob": 0.0218353271484375,
+          "avg_logprob": -0.43750000851494925,
+          "compression_ratio": 0.9558823529411765
+        }
+      ],
+      "wer": 0.0,
+      "distance": 0,
+      "substitutions": 0,
+      "deletions": 0,
+      "insertions": 0,
+      "leading_insertions": 0,
+      "trailing_insertions": 0,
+      "false_reject": false,
+      "pre_roll_contamination_words": 0
+    },
+    {
+      "file": "speech_owner_over_media_03.wav",
+      "label": "speech_owner_over_media",
+      "text": "The television is background noise while I dictate this sentence.",
+      "lead_in_s": 0.0,
+      "press_offset_s": 0.0,
+      "voiced_ms": 3648.0,
+      "wall_ms": 206.91,
+      "segments": [
+        {
+          "no_speech_prob": 0.046112060546875,
+          "avg_logprob": -0.2593470982142857,
+          "compression_ratio": 0.9558823529411765
+        }
+      ],
+      "wer": 0.0,
+      "distance": 0,
+      "substitutions": 0,
+      "deletions": 0,
+      "insertions": 0,
+      "leading_insertions": 0,
+      "trailing_insertions": 0,
+      "false_reject": false,
+      "pre_roll_contamination_words": 0
+    },
+    {
+      "file": "wake_over_media_01.wav",
+      "label": "wake_over_media",
+      "text": "Jarvis shift Chrome to left monitor",
+      "lead_in_s": 0.0,
+      "press_offset_s": 0.0,
+      "voiced_ms": 2944.0,
+      "wall_ms": 205.87,
+      "segments": [
+        {
+          "no_speech_prob": 0.17529296875,
+          "avg_logprob": -0.2763671800494194,
+          "compression_ratio": 0.8536585365853658
+        },
+        {
+          "no_speech_prob": 0.17529296875,
+          "avg_logprob": -0.2763671800494194,
+          "compression_ratio": 0.8536585365853658
+        }
+      ],
+      "wake_phrases": [
+        "jarvis",
+        "hey claude",
+        "activate hermes"
+      ],
+      "wake_detected": true,
+      "command_text": "shift chrome to left monitor"
+    },
+    {
+      "file": "wake_over_media_02.wav",
+      "label": "wake_over_media",
+      "text": "Jarvis open-clawed",
+      "lead_in_s": 0.0,
+      "press_offset_s": 0.0,
+      "voiced_ms": 1600.0,
+      "wall_ms": 177.71,
+      "segments": [
+        {
+          "no_speech_prob": 0.12408447265625,
+          "avg_logprob": -0.37050780057907107,
+          "compression_ratio": 0.6923076923076923
+        }
+      ],
+      "wake_phrases": [
+        "jarvis",
+        "hey claude",
+        "activate hermes"
+      ],
+      "wake_detected": true,
+      "command_text": "open clawed"
+    }
+  ],
+  "summary": {
+    "media_only@0.0": {
+      "count": 3,
+      "false_accept_rate": 0.0,
+      "phrases": []
+    },
+    "media_only@0.04": {
+      "count": 3,
+      "false_accept_rate": 0.3333333333333333,
+      "phrases": [
+        "me and make me feel like I'm out. What the fuck is going on with me? You okay, Coach? I don't know. Well, thank God. Sorry. Boots wanted to shower right away to wash the blood off her hands, and then she took a bath to air dry. Hey! Congrats on the-"
+      ]
+    },
+    "media_only@0.08": {
+      "count": 3,
+      "false_accept_rate": 0.6666666666666666,
+      "phrases": [
+        "...talk about her new book, Unlocking the Eye in Team, the psychology behind team building, Dr. Filster, Mr. Crimm, Sharon, it's good to have you here. I'd like to start with the phrase that you return to several times in your book, lose the dressing room, lose the team. I actually invoke that same phrase in my book, The Richmond Way, out now in paperback. I have a magic book. Okay, I'll send you home with a signed copy.",
+        "And I don't love me, it made me feel like I'm now violating the lady parts. What the heck is going on with me? You okay, Coach? I don't know. Thank God. Sorry, Boots wanted to shower right away to wash the blood off her hands, and then she took forever to air dry."
+      ]
+    },
+    "media_only@0.15": {
+      "count": 3,
+      "false_accept_rate": 0.6666666666666666,
+      "phrases": [
+        "University, and she's here to talk about her new book, Unlocking the Eye in Team. The psychology behind team building, Dr. Filster. Sharon, it's good to have you here. I'd like to start with a phrase that you return to several times in your book, lose the dressing room, lose the team. I actually invoke that same phrase in my book, The Richmond Way, out now in paperback. I have a major book. Okay, I'll send you home with a signed copy.",
+        "the last one yeah man i just mean i used to be able to walk into any part of this building and i don't love me it made me feel like i'm not violating the lady parts what the heck is going on with me you okay coach i don't know thank god sorry uh boots wanted to shower right away to wash the blood off her hands and then she took forever to air dry"
+      ]
+    },
+    "media_only@0.3": {
+      "count": 3,
+      "false_accept_rate": 1.0,
+      "phrases": [
+        "Dr. Philstone, professor of sports psychology at the Loughborough University, and she's here to talk about her new book, Unlocking the Eye in Team, the psychology behind team building. Dr. Philstone. Mr. Crewe. Sharon, it's good to have you here. I'd like to start with the phrase that you return to several times in your book, lose the dressing room, lose the team. I actually invoke that same phrase in my book, The Richmond Way, out now with paperback. I have a major book. Okay. I'll send you home with a signed copy. out now in paperback. I have the magic book. Okay, I'll send you over the signed copy.",
+        "Well, I played with this striker, Gemma, who would be great, but she quit a couple years ago to study law. I object! Plus, she'd never... You're a shout anyways.",
+        "Yeah, man. I mean, I used to be able to walk into any part of this building, and I don't love me and make me feel like I'm now violating the lady parts. What the heck is going on with me? You okay, Coach? I don't know. Well, thank God. Sorry, Boots wanted to shower right away to wash the blood off her hands, and then she took forever to air dry. Hmm. You okay, Coach? I don't know. Oh, thank God. Sorry. Boots wanted to shower right away to wash the blood off her hands, and then she took forever to air dry."
+      ]
+    },
+    "media_only@1.0": {
+      "count": 3,
+      "false_accept_rate": 1.0,
+      "phrases": [
+        "Okay, do you know anybody? Yeah, but no. I'm intrigued. Oh, well, I played with this Stryker jammer who would be great great, but she quit a couple years ago to study law I object she'd never played for regiment. How about you give her a shout anyway? See what's what you know? It's worth a shot fine Yeah, but would have better luck getting plays off the street",
+        "Philstone professor of sports psychology at the Loughborough University and she's here to talk about her new book, Unlocking the Eye in Team. The psychology behind team building, Dr. Philstone. Mr. Crimm. Sharon, it's good to have you here. I'd like to start with the phrase that you returned to several times in your book, lose the dressing room, lose the team. I actually invoke that same phrase in my book, The Richmond Way, out now in the paperback. I have a major book. Okay, I'll send you over the signed copy.",
+        "after i heard the word ladies come spitting out of my mouth i guess that's not worse than the last one yeah man yeah i just mean i used to be able to walk into any part of this building and i don't love me and make you feel like i'm now violating the lady parts what the heck is going on with me you okay coach i don't know well thank god sorry uh boots wanted to shower right away to wash the blood off her hands and then she took forever to air dry"
+      ]
+    },
+    "nonspeech_body": {
+      "count": 5,
+      "false_accept_rate": 0.0,
+      "phrases": []
+    },
+    "nonspeech_room": {
+      "count": 4,
+      "false_accept_rate": 0.0,
+      "phrases": []
+    },
+    "silence": {
+      "count": 3,
+      "false_accept_rate": 0.0,
+      "phrases": []
+    },
+    "speech_owner": {
+      "count": 6,
+      "wer": 0.030303030303030304,
+      "false_reject_rate": 0.0,
+      "leading_insertions": 0,
+      "trailing_insertions": 1,
+      "pre_buffer_comparison_count": 0,
+      "pre_buffer_leading_insertions_delta_per_utterance": null
+    },
+    "speech_owner_over_media": {
+      "count": 3,
+      "wer": 0.0,
+      "false_reject_rate": 0.0,
+      "leading_insertions": 0,
+      "trailing_insertions": 0,
+      "pre_buffer_comparison_count": 0,
+      "pre_buffer_leading_insertions_delta_per_utterance": null,
+      "contamination_words_per_utterance": 0.0,
+      "contaminated_rate": 0.0,
+      "pre_roll_contamination_words_per_utterance": 0.0
+    },
+    "wake_over_media": {
+      "count": 2,
+      "wake_detected": 2,
+      "command_text": [
+        "shift chrome to left monitor",
+        "open clawed"
+      ],
+      "wake_phrases": [
+        "activate hermes",
+        "hey claude",
+        "jarvis"
+      ],
+      "notes": "This matches the wake phrase in the TRANSCRIPT and is not an OpenWakeWord detection."
+    }
+  }
+}

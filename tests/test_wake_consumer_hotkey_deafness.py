@@ -26,7 +26,7 @@ import pytest
 
 from samsara.audio_engine import wake_consumer as wake_consumer_module
 from samsara.audio_engine.wake_consumer import WakeConsumer
-from samsara.audio_engine.frame import FRAME_SIZE
+from samsara.audio_engine.frame import FRAME_SIZE, SAMPLE_RATE
 
 
 def _make_wc(
@@ -87,6 +87,32 @@ def _loud_frame(epoch=0):
     return frame
 
 
+def _process_complete_wake_utterance(wc, reader, app):
+    """Feed speech followed by enough silence to exercise the real _flush."""
+    from samsara.audio_engine.ring import EMPTY
+
+    app.config['wake_word_config'] = {'audio': {
+        'speech_threshold': 0.01,
+        'min_speech_duration': 0.2,
+        'wake_detection_silence': 0.0,
+    }}
+    # Install dispatch observers BEFORE the first frame. Both hotkey states
+    # receive the identical input, including the silence needed to dispatch.
+    app.process_wake_word_buffer = Mock()
+    app._handle_command_mode_utterance = Mock()
+    app._vad_is_speech.side_effect = [True] * 5 + [False] * 2
+    speech = [_loud_frame() for _ in range(5)]
+    # On onset the ring replay includes the current frame, not an empty ring.
+    reader.read_next.side_effect = [speech[0], EMPTY]
+    silence = [_loud_frame() for _ in range(2)]
+    for frame in silence:
+        frame.pcm = np.zeros(FRAME_SIZE, dtype=np.int16)
+    frames = speech + silence
+    for frame in frames:
+        wc._process_frame(frame)
+    return frames
+
+
 class TestFullDeafnessDuringHotkeyRecording:
     def test_no_vad_call_while_hotkey_recording(self):
         wc, reader, app = _make_wc(hotkey_recording=True)
@@ -106,12 +132,11 @@ class TestFullDeafnessDuringHotkeyRecording:
 
     def test_no_wake_transcription_dispatched_while_hotkey_recording(self):
         wc, reader, app = _make_wc(hotkey_recording=True)
-        for _ in range(5):
-            wc._process_frame(_loud_frame())
-        app.process_wake_word_buffer = Mock()
-        app._handle_command_mode_utterance = Mock()
+        _process_complete_wake_utterance(wc, reader, app)
         app.process_wake_word_buffer.assert_not_called()
         app._handle_command_mode_utterance.assert_not_called()
+        app._vad_is_speech.assert_not_called()
+        assert wc._utterance_frames == []
 
     def test_suppression_engaged_log_fires_once_not_per_frame(self, caplog):
         import logging
@@ -124,6 +149,22 @@ class TestFullDeafnessDuringHotkeyRecording:
 
 
 class TestNoHotkeyRecordingIsUnaffected:
+    def test_wake_transcription_dispatched_when_not_hotkey_recording(self):
+        wc, reader, app = _make_wc(hotkey_recording=False)
+        frames = _process_complete_wake_utterance(wc, reader, app)
+        app.process_wake_word_buffer.assert_called_once()
+        args, kwargs = app.process_wake_word_buffer.call_args
+        buffer, sample_rate = args
+        assert sample_rate == SAMPLE_RATE
+        assert kwargs == {'oww_confirmed': False, 'owner_token': None, 'tracked': False}
+        assert len(buffer) == len(frames)
+        for actual, frame in zip(buffer, frames):
+            np.testing.assert_array_equal(actual, frame.pcm.astype(np.float32) / 32767.0)
+        assert app._vad_is_speech.call_count == len(frames)
+        app._handle_command_mode_utterance.assert_not_called()
+        assert wc._utterance_frames == []
+        assert app.is_speaking is False
+
     def test_vad_still_called_when_not_hotkey_recording(self):
         wc, reader, app = _make_wc(hotkey_recording=False)
         wc._process_frame(_loud_frame())

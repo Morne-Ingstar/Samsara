@@ -81,6 +81,7 @@ def test_hold_stop_records_reason_field(monkeypatch):
     app.hotkey_pressed = True
     app.recording = True
     app.command_mode_recording = False
+    app._memo_recording = False
     app._stop_in_flight = False
 
     recorded = []

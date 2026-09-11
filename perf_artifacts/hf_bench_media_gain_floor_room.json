@@ -1,0 +1,982 @@
+{
+  "config": {
+    "model_size": "medium",
+    "language": "en",
+    "performance_mode": "accurate",
+    "temperature": 0.0,
+    "vad_prob_threshold": 0.5,
+    "vad_min_contig_ms": 150,
+    "apply_post_gates": true,
+    "wake_word": "jarvis",
+    "wake_targets": [
+      {
+        "id": "claude",
+        "phrase": "hey claude",
+        "oww_model": "hey_claude.onnx",
+        "target_process": "claude.exe",
+        "enabled": true
+      },
+      {
+        "id": "hermes",
+        "phrase": "activate hermes",
+        "oww_model": "activate_hermes.onnx",
+        "target_process": "Hermes.exe",
+        "enabled": true
+      }
+    ],
+    "compute_type": "float16",
+    "device": "cuda",
+    "ducking": {
+      "enabled": true,
+      "hands_free_enabled": true,
+      "hands_free_idle_level": 0.8,
+      "level": 0.1,
+      "hands_free_level": 0.15
+    }
+  },
+  "rows": [
+    {
+      "file": "speech_owner_01.wav",
+      "label": "speech_owner",
+      "text": "The quick brown fox crossed the quiet bridge before sunrise.",
+      "lead_in_s": 0.0,
+      "press_offset_s": 0.0,
+      "voiced_ms": 3648.0,
+      "wall_ms": 732.13,
+      "segments": [
+        {
+          "no_speech_prob": 0.00807952880859375,
+          "avg_logprob": -0.26297433035714285,
+          "compression_ratio": 0.967741935483871
+        }
+      ],
+      "wer": 0.0,
+      "distance": 0,
+      "substitutions": 0,
+      "deletions": 0,
+      "insertions": 0,
+      "leading_insertions": 0,
+      "trailing_insertions": 0,
+      "false_reject": false
+    },
+    {
+      "file": "speech_owner_02.wav",
+      "label": "speech_owner",
+      "text": "Please remember that clear speech includes short pauses between ideas.",
+      "lead_in_s": 0.0,
+      "press_offset_s": 0.0,
+      "voiced_ms": 3744.0,
+      "wall_ms": 480.85,
+      "segments": [
+        {
+          "no_speech_prob": 0.03369140625,
+          "avg_logprob": -0.20807292262713115,
+          "compression_ratio": 1.0144927536231885
+        }
+      ],
+      "wer": 0.0,
+      "distance": 0,
+      "substitutions": 0,
+      "deletions": 0,
+      "insertions": 0,
+      "leading_insertions": 0,
+      "trailing_insertions": 0,
+      "false_reject": false
+    },
+    {
+      "file": "speech_owner_03.wav",
+      "label": "speech_owner",
+      "text": "On Tuesday, July 14th, 2026, the package weighed 2.75 kg.",
+      "lead_in_s": 0.0,
+      "press_offset_s": 0.0,
+      "voiced_ms": 5664.0,
+      "wall_ms": 713.6,
+      "segments": [
+        {
+          "no_speech_prob": 0.0157928466796875,
+          "avg_logprob": -0.37053570860908147,
+          "compression_ratio": 0.8769230769230769
+        }
+      ],
+      "wer": 0.18181818181818182,
+      "distance": 2,
+      "substitutions": 2,
+      "deletions": 0,
+      "insertions": 0,
+      "leading_insertions": 0,
+      "trailing_insertions": 1,
+      "false_reject": false
+    },
+    {
+      "file": "speech_owner_04.wav",
+      "label": "speech_owner",
+      "text": "Samsara should open the notes window and type this sentence exactly.",
+      "lead_in_s": 0.0,
+      "press_offset_s": 0.0,
+      "voiced_ms": 3616.0,
+      "wall_ms": 492.84,
+      "segments": [
+        {
+          "no_speech_prob": 0.019866943359375,
+          "avg_logprob": -0.2199706993997097,
+          "compression_ratio": 0.9855072463768116
+        }
+      ],
+      "wer": 0.0,
+      "distance": 0,
+      "substitutions": 0,
+      "deletions": 0,
+      "insertions": 0,
+      "leading_insertions": 0,
+      "trailing_insertions": 0,
+      "false_reject": false
+    },
+    {
+      "file": "speech_owner_05.wav",
+      "label": "speech_owner",
+      "text": "I can speak naturally while the television is playing in the background.",
+      "lead_in_s": 0.0,
+      "press_offset_s": 0.0,
+      "voiced_ms": 2976.0,
+      "wall_ms": 869.41,
+      "segments": [
+        {
+          "no_speech_prob": 0.029449462890625,
+          "avg_logprob": -0.23144531529396772,
+          "compression_ratio": 1.0
+        }
+      ],
+      "wer": 0.0,
+      "distance": 0,
+      "substitutions": 0,
+      "deletions": 0,
+      "insertions": 0,
+      "leading_insertions": 0,
+      "trailing_insertions": 0,
+      "false_reject": false
+    },
+    {
+      "file": "speech_owner_06.wav",
+      "label": "speech_owner",
+      "text": "When the recording is complete, say send to commit the dictated text.",
+      "lead_in_s": 0.0,
+      "press_offset_s": 0.0,
+      "voiced_ms": 3456.0,
+      "wall_ms": 742.76,
+      "segments": [
+        {
+          "no_speech_prob": 0.035400390625,
+          "avg_logprob": -0.1809895800219642,
+          "compression_ratio": 1.0
+        }
+      ],
+      "wer": 0.0,
+      "distance": 0,
+      "substitutions": 0,
+      "deletions": 0,
+      "insertions": 0,
+      "leading_insertions": 0,
+      "trailing_insertions": 0,
+      "false_reject": false
+    },
+    {
+      "file": "nonspeech_body_01.wav",
+      "label": "nonspeech_body",
+      "text": "",
+      "lead_in_s": 0.0,
+      "press_offset_s": 0.0,
+      "voiced_ms": 0.0,
+      "wall_ms": 17.0,
+      "segments": [],
+      "false_accept": false
+    },
+    {
+      "file": "nonspeech_body_02.wav",
+      "label": "nonspeech_body",
+      "text": "",
+      "lead_in_s": 0.0,
+      "press_offset_s": 0.0,
+      "voiced_ms": 0.0,
+      "wall_ms": 16.44,
+      "segments": [],
+      "false_accept": false
+    },
+    {
+      "file": "nonspeech_body_03.wav",
+      "label": "nonspeech_body",
+      "text": "",
+      "lead_in_s": 0.0,
+      "press_offset_s": 0.0,
+      "voiced_ms": 0.0,
+      "wall_ms": 17.73,
+      "segments": [],
+      "false_accept": false
+    },
+    {
+      "file": "nonspeech_body_04.wav",
+      "label": "nonspeech_body",
+      "text": "",
+      "lead_in_s": 0.0,
+      "press_offset_s": 0.0,
+      "voiced_ms": 1088.0,
+      "wall_ms": 317.65,
+      "segments": [
+        {
+          "no_speech_prob": 0.43505859375,
+          "avg_logprob": -0.8422851637005806,
+          "compression_ratio": 1.0769230769230769
+        }
+      ],
+      "false_accept": false
+    },
+    {
+      "file": "nonspeech_body_05.wav",
+      "label": "nonspeech_body",
+      "text": "",
+      "lead_in_s": 0.0,
+      "press_offset_s": 0.0,
+      "voiced_ms": 0.0,
+      "wall_ms": 31.65,
+      "segments": [],
+      "false_accept": false
+    },
+    {
+      "file": "nonspeech_room_01.wav",
+      "label": "nonspeech_room",
+      "text": "",
+      "lead_in_s": 0.0,
+      "press_offset_s": 0.0,
+      "voiced_ms": 0.0,
+      "wall_ms": 17.9,
+      "segments": [],
+      "false_accept": false
+    },
+    {
+      "file": "nonspeech_room_02.wav",
+      "label": "nonspeech_room",
+      "text": "",
+      "lead_in_s": 0.0,
+      "press_offset_s": 0.0,
+      "voiced_ms": 0.0,
+      "wall_ms": 16.97,
+      "segments": [],
+      "false_accept": false
+    },
+    {
+      "file": "nonspeech_room_03.wav",
+      "label": "nonspeech_room",
+      "text": "",
+      "lead_in_s": 0.0,
+      "press_offset_s": 0.0,
+      "voiced_ms": 0.0,
+      "wall_ms": 23.57,
+      "segments": [],
+      "false_accept": false
+    },
+    {
+      "file": "nonspeech_room_04.wav",
+      "label": "nonspeech_room",
+      "text": "",
+      "lead_in_s": 0.0,
+      "press_offset_s": 0.0,
+      "voiced_ms": 0.0,
+      "wall_ms": 18.01,
+      "segments": [],
+      "false_accept": false
+    },
+    {
+      "file": "silence_01.wav",
+      "label": "silence",
+      "text": "",
+      "lead_in_s": 0.0,
+      "press_offset_s": 0.0,
+      "voiced_ms": 0.0,
+      "wall_ms": 56.06,
+      "segments": [],
+      "false_accept": false
+    },
+    {
+      "file": "silence_02.wav",
+      "label": "silence",
+      "text": "",
+      "lead_in_s": 0.0,
+      "press_offset_s": 0.0,
+      "voiced_ms": 0.0,
+      "wall_ms": 78.83,
+      "segments": [],
+      "false_accept": false
+    },
+    {
+      "file": "silence_03.wav",
+      "label": "silence",
+      "text": "",
+      "lead_in_s": 0.0,
+      "press_offset_s": 0.0,
+      "voiced_ms": 0.0,
+      "wall_ms": 72.95,
+      "segments": [],
+      "false_accept": false
+    },
+    {
+      "file": "media_only_01.wav",
+      "label": "media_only@1.0",
+      "text": "Okay",
+      "lead_in_s": 0.0,
+      "press_offset_s": 0.0,
+      "voiced_ms": 512.0,
+      "wall_ms": 659.23,
+      "segments": [
+        {
+          "no_speech_prob": 0.430908203125,
+          "avg_logprob": -0.3310546875,
+          "compression_ratio": 0.3333333333333333
+        }
+      ],
+      "false_accept": true,
+      "media_gain": 1.0,
+      "rms_dbfs": -33.44,
+      "floor_label": "nonspeech_room",
+      "floor_file": "nonspeech_room_01.wav",
+      "floor_rms_dbfs": -35.28
+    },
+    {
+      "file": "media_only_01.wav",
+      "label": "media_only@0.3",
+      "text": "",
+      "lead_in_s": 0.0,
+      "press_offset_s": 0.0,
+      "voiced_ms": 0.0,
+      "wall_ms": 96.75,
+      "segments": [],
+      "false_accept": false,
+      "media_gain": 0.3,
+      "rms_dbfs": -35.14,
+      "floor_label": "nonspeech_room",
+      "floor_file": "nonspeech_room_01.wav",
+      "floor_rms_dbfs": -35.28
+    },
+    {
+      "file": "media_only_01.wav",
+      "label": "media_only@0.15",
+      "text": "",
+      "lead_in_s": 0.0,
+      "press_offset_s": 0.0,
+      "voiced_ms": 0.0,
+      "wall_ms": 86.37,
+      "segments": [],
+      "false_accept": false,
+      "media_gain": 0.15,
+      "rms_dbfs": -35.27,
+      "floor_label": "nonspeech_room",
+      "floor_file": "nonspeech_room_01.wav",
+      "floor_rms_dbfs": -35.28
+    },
+    {
+      "file": "media_only_01.wav",
+      "label": "media_only@0.08",
+      "text": "",
+      "lead_in_s": 0.0,
+      "press_offset_s": 0.0,
+      "voiced_ms": 0.0,
+      "wall_ms": 80.9,
+      "segments": [],
+      "false_accept": false,
+      "media_gain": 0.08,
+      "rms_dbfs": -35.29,
+      "floor_label": "nonspeech_room",
+      "floor_file": "nonspeech_room_01.wav",
+      "floor_rms_dbfs": -35.28
+    },
+    {
+      "file": "media_only_01.wav",
+      "label": "media_only@0.04",
+      "text": "",
+      "lead_in_s": 0.0,
+      "press_offset_s": 0.0,
+      "voiced_ms": 0.0,
+      "wall_ms": 102.27,
+      "segments": [],
+      "false_accept": false,
+      "media_gain": 0.04,
+      "rms_dbfs": -35.29,
+      "floor_label": "nonspeech_room",
+      "floor_file": "nonspeech_room_01.wav",
+      "floor_rms_dbfs": -35.28
+    },
+    {
+      "file": "media_only_01.wav",
+      "label": "media_only@0.02",
+      "text": "",
+      "lead_in_s": 0.0,
+      "press_offset_s": 0.0,
+      "voiced_ms": 0.0,
+      "wall_ms": 79.13,
+      "segments": [],
+      "false_accept": false,
+      "media_gain": 0.02,
+      "rms_dbfs": -35.29,
+      "floor_label": "nonspeech_room",
+      "floor_file": "nonspeech_room_01.wav",
+      "floor_rms_dbfs": -35.28
+    },
+    {
+      "file": "media_only_01.wav",
+      "label": "media_only@0.0",
+      "text": "",
+      "lead_in_s": 0.0,
+      "press_offset_s": 0.0,
+      "voiced_ms": 0.0,
+      "wall_ms": 81.41,
+      "segments": [],
+      "false_accept": false,
+      "media_gain": 0.0,
+      "rms_dbfs": -35.28,
+      "floor_label": "nonspeech_room",
+      "floor_file": "nonspeech_room_01.wav",
+      "floor_rms_dbfs": -35.28
+    },
+    {
+      "file": "media_only_02.wav",
+      "label": "media_only@1.0",
+      "text": "Dr. Fieldstone, professor of sports psychology at the Loughborough University, and she's here to talk about her new book, Unlocking the I in Team, the psychology behind team building. It's good to have you here. I'd like to start with the phrase that you return to several times in your book, lose the dressing room, lose the team. I actually invoke that same phrase in my book, The Richmond Way, out now. I made your book. Yeah.",
+      "lead_in_s": 0.0,
+      "press_offset_s": 0.0,
+      "voiced_ms": 19616.0,
+      "wall_ms": 4554.21,
+      "segments": [
+        {
+          "no_speech_prob": 0.81103515625,
+          "avg_logprob": -0.2702636760659516,
+          "compression_ratio": 1.6594202898550725
+        },
+        {
+          "no_speech_prob": 0.81103515625,
+          "avg_logprob": -0.2702636760659516,
+          "compression_ratio": 1.6594202898550725
+        },
+        {
+          "no_speech_prob": 0.81103515625,
+          "avg_logprob": -0.2702636760659516,
+          "compression_ratio": 1.6594202898550725
+        },
+        {
+          "no_speech_prob": 0.81103515625,
+          "avg_logprob": -0.2702636760659516,
+          "compression_ratio": 1.6594202898550725
+        },
+        {
+          "no_speech_prob": 0.81103515625,
+          "avg_logprob": -0.2702636760659516,
+          "compression_ratio": 1.6594202898550725
+        },
+        {
+          "no_speech_prob": 0.81103515625,
+          "avg_logprob": -0.2702636760659516,
+          "compression_ratio": 1.6594202898550725
+        },
+        {
+          "no_speech_prob": 0.81103515625,
+          "avg_logprob": -0.2702636760659516,
+          "compression_ratio": 1.6594202898550725
+        },
+        {
+          "no_speech_prob": 0.81103515625,
+          "avg_logprob": -0.2702636760659516,
+          "compression_ratio": 1.6594202898550725
+        },
+        {
+          "no_speech_prob": 0.63134765625,
+          "avg_logprob": -0.99765625,
+          "compression_ratio": 0.38461538461538464
+        }
+      ],
+      "false_accept": true,
+      "media_gain": 1.0,
+      "rms_dbfs": -34.8,
+      "floor_label": "nonspeech_room",
+      "floor_file": "nonspeech_room_02.wav",
+      "floor_rms_dbfs": -39.53
+    },
+    {
+      "file": "media_only_02.wav",
+      "label": "media_only@0.3",
+      "text": "",
+      "lead_in_s": 0.0,
+      "press_offset_s": 0.0,
+      "voiced_ms": 0.0,
+      "wall_ms": 94.69,
+      "segments": [],
+      "false_accept": false,
+      "media_gain": 0.3,
+      "rms_dbfs": -38.59,
+      "floor_label": "nonspeech_room",
+      "floor_file": "nonspeech_room_02.wav",
+      "floor_rms_dbfs": -39.53
+    },
+    {
+      "file": "media_only_02.wav",
+      "label": "media_only@0.15",
+      "text": "",
+      "lead_in_s": 0.0,
+      "press_offset_s": 0.0,
+      "voiced_ms": 0.0,
+      "wall_ms": 128.39,
+      "segments": [],
+      "false_accept": false,
+      "media_gain": 0.15,
+      "rms_dbfs": -39.19,
+      "floor_label": "nonspeech_room",
+      "floor_file": "nonspeech_room_02.wav",
+      "floor_rms_dbfs": -39.53
+    },
+    {
+      "file": "media_only_02.wav",
+      "label": "media_only@0.08",
+      "text": "",
+      "lead_in_s": 0.0,
+      "press_offset_s": 0.0,
+      "voiced_ms": 0.0,
+      "wall_ms": 184.85,
+      "segments": [],
+      "false_accept": false,
+      "media_gain": 0.08,
+      "rms_dbfs": -39.38,
+      "floor_label": "nonspeech_room",
+      "floor_file": "nonspeech_room_02.wav",
+      "floor_rms_dbfs": -39.53
+    },
+    {
+      "file": "media_only_02.wav",
+      "label": "media_only@0.04",
+      "text": "",
+      "lead_in_s": 0.0,
+      "press_offset_s": 0.0,
+      "voiced_ms": 0.0,
+      "wall_ms": 208.51,
+      "segments": [],
+      "false_accept": false,
+      "media_gain": 0.04,
+      "rms_dbfs": -39.47,
+      "floor_label": "nonspeech_room",
+      "floor_file": "nonspeech_room_02.wav",
+      "floor_rms_dbfs": -39.53
+    },
+    {
+      "file": "media_only_02.wav",
+      "label": "media_only@0.02",
+      "text": "",
+      "lead_in_s": 0.0,
+      "press_offset_s": 0.0,
+      "voiced_ms": 0.0,
+      "wall_ms": 314.04,
+      "segments": [],
+      "false_accept": false,
+      "media_gain": 0.02,
+      "rms_dbfs": -39.5,
+      "floor_label": "nonspeech_room",
+      "floor_file": "nonspeech_room_02.wav",
+      "floor_rms_dbfs": -39.53
+    },
+    {
+      "file": "media_only_02.wav",
+      "label": "media_only@0.0",
+      "text": "",
+      "lead_in_s": 0.0,
+      "press_offset_s": 0.0,
+      "voiced_ms": 0.0,
+      "wall_ms": 84.22,
+      "segments": [],
+      "false_accept": false,
+      "media_gain": 0.0,
+      "rms_dbfs": -39.53,
+      "floor_label": "nonspeech_room",
+      "floor_file": "nonspeech_room_02.wav",
+      "floor_rms_dbfs": -39.53
+    },
+    {
+      "file": "media_only_03.wav",
+      "label": "media_only@1.0",
+      "text": "instead of after I heard the word ladies come spit out of my mouth today because that's not worse than the last one. Yeah, man. I just mean, I used to be able to walk into any part of this building and I don't love me, it made me feel like I'm now violating the ladies' parts. What the heck is going on with me? You okay, Coach? I don't know. Well, thank God. Sorry, Ruth just wanted to shower right away to wash the blood off her hands and then she took a bit of the air dryer.",
+      "lead_in_s": 0.0,
+      "press_offset_s": 0.0,
+      "voiced_ms": 15968.0,
+      "wall_ms": 4822.7,
+      "segments": [
+        {
+          "no_speech_prob": 0.71044921875,
+          "avg_logprob": -0.3308953883800101,
+          "compression_ratio": 1.6203389830508474
+        },
+        {
+          "no_speech_prob": 0.71044921875,
+          "avg_logprob": -0.3308953883800101,
+          "compression_ratio": 1.6203389830508474
+        },
+        {
+          "no_speech_prob": 0.71044921875,
+          "avg_logprob": -0.3308953883800101,
+          "compression_ratio": 1.6203389830508474
+        },
+        {
+          "no_speech_prob": 0.71044921875,
+          "avg_logprob": -0.3308953883800101,
+          "compression_ratio": 1.6203389830508474
+        },
+        {
+          "no_speech_prob": 0.71044921875,
+          "avg_logprob": -0.3308953883800101,
+          "compression_ratio": 1.6203389830508474
+        },
+        {
+          "no_speech_prob": 0.71044921875,
+          "avg_logprob": -0.3308953883800101,
+          "compression_ratio": 1.6203389830508474
+        },
+        {
+          "no_speech_prob": 0.71044921875,
+          "avg_logprob": -0.3308953883800101,
+          "compression_ratio": 1.6203389830508474
+        },
+        {
+          "no_speech_prob": 0.71044921875,
+          "avg_logprob": -0.3308953883800101,
+          "compression_ratio": 1.6203389830508474
+        },
+        {
+          "no_speech_prob": 0.71044921875,
+          "avg_logprob": -0.3308953883800101,
+          "compression_ratio": 1.6203389830508474
+        },
+        {
+          "no_speech_prob": 0.71044921875,
+          "avg_logprob": -0.3308953883800101,
+          "compression_ratio": 1.6203389830508474
+        },
+        {
+          "no_speech_prob": 0.71044921875,
+          "avg_logprob": -0.3308953883800101,
+          "compression_ratio": 1.6203389830508474
+        }
+      ],
+      "false_accept": true,
+      "media_gain": 1.0,
+      "rms_dbfs": -32.12,
+      "floor_label": "nonspeech_room",
+      "floor_file": "nonspeech_room_03.wav",
+      "floor_rms_dbfs": -35.62
+    },
+    {
+      "file": "media_only_03.wav",
+      "label": "media_only@0.3",
+      "text": "",
+      "lead_in_s": 0.0,
+      "press_offset_s": 0.0,
+      "voiced_ms": 0.0,
+      "wall_ms": 79.32,
+      "segments": [],
+      "false_accept": false,
+      "media_gain": 0.3,
+      "rms_dbfs": -35.15,
+      "floor_label": "nonspeech_room",
+      "floor_file": "nonspeech_room_03.wav",
+      "floor_rms_dbfs": -35.62
+    },
+    {
+      "file": "media_only_03.wav",
+      "label": "media_only@0.15",
+      "text": "",
+      "lead_in_s": 0.0,
+      "press_offset_s": 0.0,
+      "voiced_ms": 0.0,
+      "wall_ms": 177.12,
+      "segments": [],
+      "false_accept": false,
+      "media_gain": 0.15,
+      "rms_dbfs": -35.49,
+      "floor_label": "nonspeech_room",
+      "floor_file": "nonspeech_room_03.wav",
+      "floor_rms_dbfs": -35.62
+    },
+    {
+      "file": "media_only_03.wav",
+      "label": "media_only@0.08",
+      "text": "",
+      "lead_in_s": 0.0,
+      "press_offset_s": 0.0,
+      "voiced_ms": 0.0,
+      "wall_ms": 114.19,
+      "segments": [],
+      "false_accept": false,
+      "media_gain": 0.08,
+      "rms_dbfs": -35.58,
+      "floor_label": "nonspeech_room",
+      "floor_file": "nonspeech_room_03.wav",
+      "floor_rms_dbfs": -35.62
+    },
+    {
+      "file": "media_only_03.wav",
+      "label": "media_only@0.04",
+      "text": "",
+      "lead_in_s": 0.0,
+      "press_offset_s": 0.0,
+      "voiced_ms": 0.0,
+      "wall_ms": 90.65,
+      "segments": [],
+      "false_accept": false,
+      "media_gain": 0.04,
+      "rms_dbfs": -35.61,
+      "floor_label": "nonspeech_room",
+      "floor_file": "nonspeech_room_03.wav",
+      "floor_rms_dbfs": -35.62
+    },
+    {
+      "file": "media_only_03.wav",
+      "label": "media_only@0.02",
+      "text": "",
+      "lead_in_s": 0.0,
+      "press_offset_s": 0.0,
+      "voiced_ms": 0.0,
+      "wall_ms": 250.41,
+      "segments": [],
+      "false_accept": false,
+      "media_gain": 0.02,
+      "rms_dbfs": -35.62,
+      "floor_label": "nonspeech_room",
+      "floor_file": "nonspeech_room_03.wav",
+      "floor_rms_dbfs": -35.62
+    },
+    {
+      "file": "media_only_03.wav",
+      "label": "media_only@0.0",
+      "text": "",
+      "lead_in_s": 0.0,
+      "press_offset_s": 0.0,
+      "voiced_ms": 0.0,
+      "wall_ms": 81.01,
+      "segments": [],
+      "false_accept": false,
+      "media_gain": 0.0,
+      "rms_dbfs": -35.62,
+      "floor_label": "nonspeech_room",
+      "floor_file": "nonspeech_room_03.wav",
+      "floor_rms_dbfs": -35.62
+    },
+    {
+      "file": "speech_owner_over_media_01.wav",
+      "label": "speech_owner_over_media",
+      "text": "The television is background noise while I dictate this sentence.",
+      "lead_in_s": 0.0,
+      "press_offset_s": 0.0,
+      "voiced_ms": 3424.0,
+      "wall_ms": 787.58,
+      "segments": [
+        {
+          "no_speech_prob": 0.03515625,
+          "avg_logprob": -0.2585100552865437,
+          "compression_ratio": 0.9558823529411765
+        }
+      ],
+      "wer": 0.0,
+      "distance": 0,
+      "substitutions": 0,
+      "deletions": 0,
+      "insertions": 0,
+      "leading_insertions": 0,
+      "trailing_insertions": 0,
+      "false_reject": false,
+      "pre_roll_contamination_words": 0
+    },
+    {
+      "file": "speech_owner_over_media_02.wav",
+      "label": "speech_owner_over_media",
+      "text": "The television is background noise while I dictate this sentence.",
+      "lead_in_s": 0.0,
+      "press_offset_s": 0.0,
+      "voiced_ms": 3488.0,
+      "wall_ms": 690.99,
+      "segments": [
+        {
+          "no_speech_prob": 0.0218353271484375,
+          "avg_logprob": -0.43750000851494925,
+          "compression_ratio": 0.9558823529411765
+        }
+      ],
+      "wer": 0.0,
+      "distance": 0,
+      "substitutions": 0,
+      "deletions": 0,
+      "insertions": 0,
+      "leading_insertions": 0,
+      "trailing_insertions": 0,
+      "false_reject": false,
+      "pre_roll_contamination_words": 0
+    },
+    {
+      "file": "speech_owner_over_media_03.wav",
+      "label": "speech_owner_over_media",
+      "text": "The television is background noise while I dictate this sentence.",
+      "lead_in_s": 0.0,
+      "press_offset_s": 0.0,
+      "voiced_ms": 3648.0,
+      "wall_ms": 933.25,
+      "segments": [
+        {
+          "no_speech_prob": 0.046112060546875,
+          "avg_logprob": -0.2593470982142857,
+          "compression_ratio": 0.9558823529411765
+        }
+      ],
+      "wer": 0.0,
+      "distance": 0,
+      "substitutions": 0,
+      "deletions": 0,
+      "insertions": 0,
+      "leading_insertions": 0,
+      "trailing_insertions": 0,
+      "false_reject": false,
+      "pre_roll_contamination_words": 0
+    },
+    {
+      "file": "wake_over_media_01.wav",
+      "label": "wake_over_media",
+      "text": "Jarvis shift Chrome to left monitor",
+      "lead_in_s": 0.0,
+      "press_offset_s": 0.0,
+      "voiced_ms": 2944.0,
+      "wall_ms": 664.14,
+      "segments": [
+        {
+          "no_speech_prob": 0.17529296875,
+          "avg_logprob": -0.2763671800494194,
+          "compression_ratio": 0.8536585365853658
+        },
+        {
+          "no_speech_prob": 0.17529296875,
+          "avg_logprob": -0.2763671800494194,
+          "compression_ratio": 0.8536585365853658
+        }
+      ],
+      "wake_phrases": [
+        "jarvis",
+        "hey claude",
+        "activate hermes"
+      ],
+      "wake_detected": true,
+      "command_text": "shift chrome to left monitor"
+    },
+    {
+      "file": "wake_over_media_02.wav",
+      "label": "wake_over_media",
+      "text": "Jarvis open-clawed",
+      "lead_in_s": 0.0,
+      "press_offset_s": 0.0,
+      "voiced_ms": 1600.0,
+      "wall_ms": 785.67,
+      "segments": [
+        {
+          "no_speech_prob": 0.12408447265625,
+          "avg_logprob": -0.37050780057907107,
+          "compression_ratio": 0.6923076923076923
+        }
+      ],
+      "wake_phrases": [
+        "jarvis",
+        "hey claude",
+        "activate hermes"
+      ],
+      "wake_detected": true,
+      "command_text": "open clawed"
+    }
+  ],
+  "summary": {
+    "media_only@0.0": {
+      "count": 3,
+      "false_accept_rate": 0.0,
+      "phrases": []
+    },
+    "media_only@0.02": {
+      "count": 3,
+      "false_accept_rate": 0.0,
+      "phrases": []
+    },
+    "media_only@0.04": {
+      "count": 3,
+      "false_accept_rate": 0.0,
+      "phrases": []
+    },
+    "media_only@0.08": {
+      "count": 3,
+      "false_accept_rate": 0.0,
+      "phrases": []
+    },
+    "media_only@0.15": {
+      "count": 3,
+      "false_accept_rate": 0.0,
+      "phrases": []
+    },
+    "media_only@0.3": {
+      "count": 3,
+      "false_accept_rate": 0.0,
+      "phrases": []
+    },
+    "media_only@1.0": {
+      "count": 3,
+      "false_accept_rate": 1.0,
+      "phrases": [
+        "Dr. Fieldstone, professor of sports psychology at the Loughborough University, and she's here to talk about her new book, Unlocking the I in Team, the psychology behind team building. It's good to have you here. I'd like to start with the phrase that you return to several times in your book, lose the dressing room, lose the team. I actually invoke that same phrase in my book, The Richmond Way, out now. I made your book. Yeah.",
+        "Okay",
+        "instead of after I heard the word ladies come spit out of my mouth today because that's not worse than the last one. Yeah, man. I just mean, I used to be able to walk into any part of this building and I don't love me, it made me feel like I'm now violating the ladies' parts. What the heck is going on with me? You okay, Coach? I don't know. Well, thank God. Sorry, Ruth just wanted to shower right away to wash the blood off her hands and then she took a bit of the air dryer."
+      ]
+    },
+    "nonspeech_body": {
+      "count": 5,
+      "false_accept_rate": 0.0,
+      "phrases": []
+    },
+    "nonspeech_room": {
+      "count": 4,
+      "false_accept_rate": 0.0,
+      "phrases": []
+    },
+    "silence": {
+      "count": 3,
+      "false_accept_rate": 0.0,
+      "phrases": []
+    },
+    "speech_owner": {
+      "count": 6,
+      "wer": 0.030303030303030304,
+      "false_reject_rate": 0.0,
+      "leading_insertions": 0,
+      "trailing_insertions": 1,
+      "pre_buffer_comparison_count": 0,
+      "pre_buffer_leading_insertions_delta_per_utterance": null
+    },
+    "speech_owner_over_media": {
+      "count": 3,
+      "wer": 0.0,
+      "false_reject_rate": 0.0,
+      "leading_insertions": 0,
+      "trailing_insertions": 0,
+      "pre_buffer_comparison_count": 0,
+      "pre_buffer_leading_insertions_delta_per_utterance": null,
+      "contamination_words_per_utterance": 0.0,
+      "contaminated_rate": 0.0,
+      "pre_roll_contamination_words_per_utterance": 0.0
+    },
+    "wake_over_media": {
+      "count": 2,
+      "wake_detected": 2,
+      "command_text": [
+        "shift chrome to left monitor",
+        "open clawed"
+      ],
+      "wake_phrases": [
+        "activate hermes",
+        "hey claude",
+        "jarvis"
+      ],
+      "notes": "This matches the wake phrase in the TRANSCRIPT and is not an OpenWakeWord detection."
+    }
+  }
+}
