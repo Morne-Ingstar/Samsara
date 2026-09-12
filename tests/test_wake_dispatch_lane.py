@@ -11,6 +11,7 @@ from unittest.mock import Mock
 import numpy as np
 import pytest
 
+from samsara import languages as _languages
 from samsara.audio_engine import wake_dispatch
 from samsara.audio_engine.ring import FrameBus
 from samsara.audio_engine.wake_consumer import WakeConsumer
@@ -22,11 +23,12 @@ from samsara.runtime import thread_registry
 
 METHODS = {
     'process_wake_word_buffer', '_decode_wake_word_buffer', '_handle_command_mode_utterance',
-    '_process_wake_word_buffer_tracked', '_release_wake_consumer', 'set_wake_word_enabled',
+    '_release_wake_consumer', 'set_wake_word_enabled',
     '_apply_wake_word_enabled', 'stop_wake_word_mode', '_start_wake_session',
     '_confirm_wake_capture', '_restart_wake_session_timer', '_expire_wake_session',
     '_end_wake_session', '_reset_wake_dictation', '_open_hands_free_capture_duck',
     '_close_hands_free_capture_duck', '_restore_hands_free_capture_duck_now',
+    '_filter_dictation_language',
 }
 
 
@@ -69,6 +71,7 @@ def rig(monkeypatch):
         flight_recorder=wake_dispatch.flight_recorder,
         audio_ducking=SimpleNamespace(SessionDucker=Mock()),
         resample_audio=lambda audio, *_: audio,
+        _languages=_languages,
         _WAKE_SESSION_CHUNK_GAP_S=1.0, _WAKE_SESSION_SEND_WORDS=('send',),
         _HANDS_FREE_CAPTURE_DUCK_RESTORE_DELAY_S=.5,
     )
@@ -105,6 +108,7 @@ def rig(monkeypatch):
             model=SimpleNamespace(transcribe=Mock(return_value=([], SimpleNamespace(language='en')))),
             voice_training_window=SimpleNamespace(apply_corrections=lambda text: text),
             _log_history=Mock(), play_sound=Mock(), _maybe_finalize_dictation=Mock(),
+            _language_confidence_gate=_languages.LanguageConfidenceGate(),
         )
         app.set_app_state = lambda **fields: app.__dict__.update(fields)
         for name in METHODS:
