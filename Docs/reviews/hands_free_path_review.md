@@ -410,3 +410,67 @@ at `tools/probes/hf_corpus_record.py:168`; it was left unchanged. No new raw
 thread constructors were introduced. The running app, `config.json`, the
 existing P2/memo edits and branch `feature/v0.22` were preserved; no commit
 was created. The other findings above remain outside this implementation.
+
+## Fixed 2026-09-10 (gate-unification follow-up)
+
+- **Medium — `dictation.py:8403` (duplicated hold/hands-free gate
+  constants):** the five VAD/RMS thresholds that were separately declared on
+  the hold path and the hands-free path now have exactly one declaration
+  each, in `samsara/constants.py:31-35`
+  (`LIVE_VAD_PROB_THRESHOLD`, `CONTIGUOUS_VAD_PROB_THRESHOLD`,
+  `ADAPTIVE_SPEECH_FLOOR_RATIO`, `HOLD_RELEASE_TAIL_SPEECH_THRESHOLD`,
+  `WAKE_SPEECH_THRESHOLD_CAP`). `dictation.py:602-603`,
+  `samsara/audio_engine/dictation_consumer.py:47-49` and
+  `samsara/audio_engine/wake_consumer.py:47` import from there instead of
+  redeclaring their own literal. Values are unchanged -- this closes the
+  silent-drift risk, not the (intentional) hold/hands-free gap itself. Test:
+  `tests/test_hf_review_mediums.py::test_gate_constants_share_one_declaration`.
+- **Medium — `samsara/streaming.py:1199` (now `:1205`):**
+  `DictatePreviewSession._transcribe_partial` used a blocking `model_lock`
+  acquire, so an up-to-8s partial decode could queue ahead of the
+  authoritative utterance decode. It now does `lock.acquire(blocking=False)`
+  and skips the tick entirely when the lock is held. Test:
+  `tests/test_hf_review_mediums.py::test_preview_partial_skips_tick_instead_of_blocking_model_lock`.
+- **Low — `samsara/audio_engine/wake_consumer.py:272` (now `:352`):** the
+  `_utterance_frames` docstring claimed "never in-place mutation", which
+  lines 746/794/846 (as numbered in the original trace) contradicted. The
+  docstring now states plainly that `_process_frame` mutates the list via
+  `.append()` and that safety comes from that append plus the `list(...)`
+  snapshot each being atomic under the GIL, not from avoiding mutation.
+  Documentation-only; no behavior changed, so no new test.
+- **Low — `samsara/streaming.py:1110`:** `on_utterance_final` and the
+  partial-tick path now hand the overlay `list(self._finalized)` instead of
+  the live list, so a render mid-mutation cannot observe a torn list. Test:
+  `tests/test_hf_review_mediums.py::test_finalized_transcript_snapshot_is_independent_copy`.
+- **Low — `samsara/audio_engine/dictation_consumer.py:155`:**
+  `drain_after_release()` / `stop_streaming()` called before any
+  `activate*()` used to raise `AttributeError` on `_frames_lock` /
+  `_streaming_stop`. Both are now assigned in `__init__`
+  (`dictation_consumer.py:69`, `:73`), so a pre-activate call is a no-op
+  instead of a crash. Test:
+  `tests/test_hf_review_mediums.py::test_release_and_stop_streaming_survive_before_any_activate`.
+
+All other Medium findings from the table above (`wake_consumer.py:663`,
+`:960`, `:877`, `:988`; `dictation.py:9429`, `:8996`, `:6524`;
+`dictation_consumer.py:163`; `continuous_consumer.py:179`) were already
+closed by the two "Fixed 2026-09-10" passes above this section, each with
+its own regression test in `tests/test_hf_review_mediums.py`.
+
+### Deferred
+
+- **Low — `dictation.py:7879` (duck-open generation race leaving a stale
+  owner token):** covered narratively by the "Medium/low -- duck ownership"
+  bullet in the first Fixed pass above (a ducker that loses the
+  start-generation race now removes its own owner and returns `None`), but
+  has no dedicated regression test of its own in
+  `tests/test_hf_review_mediums.py`. Deferred rather than added here because
+  reproducing the generation-race window needs the existing
+  `tests/test_hands_free_capture_ducking.py` harness, not the lightweight
+  fakes this file uses, and that harness's fixtures currently pre-date
+  unrelated app attributes added since (see "not done" in the session
+  report) -- fixing it properly means updating that harness, which is
+  outside this pass's scope.
+- **Everything under "Not reviewed" above:** unchanged; still out of scope
+  for this pass (no new code in `session_modes.py`, the Ava waterfall,
+  `_output_dictation`, `audio_ducking.py` internals, `WakeWordDetector`, or
+  `AudioCaptureEngine` was reviewed here).
