@@ -148,11 +148,15 @@ class TestHangMidOp:
         import threading
 
         transport = _transport("hang")
+        hang_errors = []
         try:
             transport.request("ping", deadline=TEST_DEADLINE)
 
             def hang():
-                transport.request("get_volume", sid="fake-1", deadline=TEST_DEADLINE)
+                try:
+                    transport.request("get_volume", sid="fake-1", deadline=TEST_DEADLINE)
+                except BaseException as exc:
+                    hang_errors.append(exc)
 
             hanger = threading.Thread(target=hang)
             hanger.start()
@@ -165,6 +169,8 @@ class TestHangMidOp:
             assert reply["ok"] is False
             assert elapsed < TEST_DEADLINE * 2
             hanger.join(timeout=5)
+            assert not hanger.is_alive(), "hanger thread did not stop within the join timeout"
+            assert hang_errors == [], hang_errors
         finally:
             transport.shutdown()
 

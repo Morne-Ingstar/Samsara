@@ -1,6 +1,7 @@
 """Focused coverage for truthful, monotonic splash startup wiring."""
 
 import threading
+from pathlib import Path
 from unittest.mock import Mock
 
 import dictation
@@ -46,6 +47,10 @@ def _startup_app(splash):
     app._splash_progress = 0
     app._splash_progress_lock = threading.Lock()
     app._startup_shell_ready = threading.Event()
+    # load()'s post-boot _write_last_known_good() step reads config_path;
+    # a path that doesn't exist makes it a no-op (see its own docstring:
+    # "Never raises -- LKG is a safety net").
+    app.config_path = Path("nonexistent-config-for-test.json")
     app.config = {
         "device": "cpu",
         "model_size": "tiny",
@@ -90,8 +95,15 @@ def test_model_worker_waits_for_shell_before_completion(monkeypatch):
     monkeypatch.setattr(dictation, "_create_whisper_model", Mock(return_value=object()))
     monkeypatch.setattr(dictation, "smart_corrections_warm_up", Mock())
     worker = _capture_model_worker(monkeypatch, app)
+    worker_errors = []
 
-    thread = threading.Thread(target=worker)
+    def run_worker():
+        try:
+            worker()
+        except BaseException as exc:
+            worker_errors.append(exc)
+
+    thread = threading.Thread(target=run_worker)
     thread.start()
     assert splash.reached_finalizing.wait(timeout=2.0)
 
@@ -103,6 +115,7 @@ def test_model_worker_waits_for_shell_before_completion(monkeypatch):
     app._startup_shell_ready.set()
     thread.join(timeout=2.0)
     assert not thread.is_alive()
+    assert worker_errors == [], worker_errors
 
     kinds = [event[0] for event in splash.events]
     progress = [event[1] for event in splash.events if event[0] == "progress"]

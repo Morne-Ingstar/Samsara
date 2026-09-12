@@ -116,14 +116,22 @@ def test_check_bundled_vad_rejects_missing_marker():
 def test_wait_for_boot_detects_marker(tmp_path):
     log_path = tmp_path / "samsara.log"
     log_path.write_text("", encoding="utf-8")
+    writer_errors = []
 
     def _writer():
-        time.sleep(0.2)
-        with open(log_path, "a", encoding="utf-8") as f:
-            f.write("2026-01-01 00:00:00,000 - INFO - [INIT] Startup complete.\n")
+        try:
+            time.sleep(0.2)
+            with open(log_path, "a", encoding="utf-8") as f:
+                f.write("2026-01-01 00:00:00,000 - INFO - [INIT] Startup complete.\n")
+        except BaseException as exc:
+            writer_errors.append(exc)
 
-    threading.Thread(target=_writer, daemon=True).start()
+    writer = threading.Thread(target=_writer, daemon=True)
+    writer.start()
     outcome, detail, offset = frozen_smoke.wait_for_boot(log_path, timeout_s=3.0)
+    writer.join(timeout=2.0)
+    assert not writer.is_alive(), "log writer thread did not finish within the join timeout"
+    assert writer_errors == [], writer_errors
     assert outcome == "boot"
     assert "[INIT] Startup complete." in detail
     assert offset > 0

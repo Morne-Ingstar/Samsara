@@ -1,0 +1,42 @@
+2026-07-10 16:15:28,700 - INFO - [BOOT-DIAG] +0ms (process start)
+2026-07-10 16:15:28,750 - INFO - [BOOT-DIAG] +50ms (after faster_whisper)
+2026-07-10 16:15:28,800 - INFO - [INIT] Loading config...
+2026-07-10 16:15:28,859 - ERROR - [WARN] Could not query device 0 rate: Error querying device 0
+Traceback (most recent call last):
+  File "dictation.py", line 2816, in _detect_capture_rate
+  File "sounddevice.py", line 577, in query_devices
+sounddevice.PortAudioError: Error querying device 0
+2026-07-10 16:15:28,900 - INFO - [BOOT-DIAG] mic device query complete
+2026-07-10 16:15:29,010 - ERROR - [CAL] Calibration failed (Error opening InputStream), using default 0.0180
+Traceback (most recent call last):
+  File "dictation.py", line 4456, in _run_calibration_if_auto
+  File "samsara\calibration.py", line 45, in measure_ambient_rms
+  File "sounddevice.py", line 892, in __init__
+sounddevice.PortAudioError: Error opening InputStream: Invalid device [PaErrorCode -9996]
+2026-07-10 16:15:29,020 - INFO - [BOOT-DIAG] mic calibration (sd.InputStream open+1.5s record): 12ms
+2026-07-10 16:15:29,150 - ERROR - [AUDIO] Failed to start sound stream: Error opening OutputStream
+Traceback (most recent call last):
+  File "dictation.py", line 10375, in _start_sound_stream
+  File "sounddevice.py", line 892, in __init__
+sounddevice.PortAudioError: Error opening OutputStream: Invalid device [PaErrorCode -9996]
+2026-07-10 16:15:29,200 - INFO - [INIT] Sound stream unavailable, continuing without audio feedback.
+2026-07-10 16:15:29,210 - INFO - [BOOT-DIAG] +510ms (sound stream)
+2026-07-10 16:15:29,220 - INFO - [BOOT-DIAG] +520ms (tray icon)
+2026-07-10 16:15:29,230 - INFO - [BOOT-DIAG] +530ms (hotkey listener)
+2026-07-10 16:15:29,240 - INFO - [BOOT-DIAG] +540ms (wake consumer)
+2026-07-10 16:15:29,250 - INFO - [BOOT-DIAG] +550ms (history store)
+2026-07-10 16:15:29,260 - INFO - [BOOT-DIAG] +560ms (settings window)
+2026-07-10 16:15:29,270 - INFO - [BOOT-DIAG] +570ms (first-run wizard check)
+2026-07-10 16:15:29,280 - INFO - [BOOT-DIAG] +580ms (plugin discovery start)
+2026-07-10 16:15:29,290 - INFO - [PLUGINS] Scanning plugins/commands/ ...
+2026-07-10 16:15:29,300 - INFO - [PLUGINS] Loaded flashforge_printer.py
+2026-07-10 16:15:29,310 - INFO - [PLUGINS] Loaded media_keys.py
+2026-07-10 16:15:29,320 - INFO - [PLUGINS] Loaded window_manager.py
+2026-07-10 16:15:29,330 - INFO - [PLUGINS] Loaded workflow_capture.py
+2026-07-10 16:15:29,340 - INFO - [PLUGINS] Loading stremio.py ...
+2026-07-10 16:15:28,938 - ERROR - Failed to load plugin stremio.py: No module named 'stremio_control'
+Traceback (most recent call last):
+  File "samsara\plugin_commands.py", line 213, in load_plugins
+  File "plugins\commands\stremio.py", line 29, in <module>
+    import stremio_control
+ModuleNotFoundError: No module named 'stremio_control'

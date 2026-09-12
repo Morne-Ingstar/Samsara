@@ -144,18 +144,18 @@ One of those copies has already drifted out of sync with production and nothing 
 | test_smart_actions_phase2.py::TestTier2ApprovalScope::test_tier2_approved_skips_confirmation | MOCKED-THROUGH | same shape |
 | test_alarm_scheduler.py::test_visual_callback_failure_does_not_cancel_sound_nag | MOCKED-THROUGH | `thread_registry.spawn` stubbed to return `_DummyThread`, so `nag_thread is not None` is guaranteed by the stub |
 
-### 3. SILENT THREAD (8)
+### 3. SILENT THREAD (8) -- ALL FIXED
 
 | file::test_name | category | reason |
 |---|---|---|
-| test_command_mode.py::TestCommandModeStateMachine::test_concurrent_enter_only_activates_once | SILENT THREAD | 10 threads, no exception collection; the `activated` list is built and discarded |
-| test_gate_determinism.py::test_scan_result_unchanged_while_a_foreign_thread_hammers_the_lock | SILENT THREAD | `_foreign_hammer` exceptions never collected; only a counter guards worker death |
-| test_ducking_transport.py::test_second_caller_is_not_made_to_wait_a_second_full_deadline | SILENT THREAD | the `hanger` thread's exceptions are never collected or joined-with-check |
-| test_recording_ownership.py::test_hold_enter_worker_claim_is_atomic_with_exit | SILENT THREAD | two threads joined; exceptions uncollected (counters give partial cover) |
-| test_splash_startup_wiring.py::test_model_worker_waits_for_shell_before_completion | SILENT THREAD | worker-thread exceptions never collected; only an Event wait guards early death |
-| test_hands_free_capture_ducking.py::test_blocked_capture_start_is_invalidated_by_toggle_off | SILENT THREAD | `open_thread` exceptions never collected |
-| test_hands_free_capture_ducking.py::test_owner_a_releases_while_starting_and_owner_b_keeps_ducker | SILENT THREAD | same |
-| test_frozen_smoke_unit.py::test_wait_for_boot_detects_marker | SILENT THREAD | daemon writer thread's exceptions uncollected (outcome assert gives partial cover) |
+| test_command_mode.py::TestCommandModeStateMachine::test_concurrent_enter_only_activates_once | [FIXED -- already satisfied] | re-verified: this test already collects `errors` from every one of the 10 threads and asserts `errors == []`; no `activated` list exists in the current file. The audit's original finding was stale for this test. Re-proved failure (temporarily asserted `len(errors) == 1`, captured `assert 0 == 1`, reverted) to confirm it is a real, live assertion. |
+| test_gate_determinism.py::test_scan_result_unchanged_while_a_foreign_thread_hammers_the_lock | [FIXED] | `_foreign_hammer` now catches `BaseException` into `foreign_errors`, asserted `== []`, plus `not t.is_alive()`. Proved by injecting a `raise RuntimeError(...)` in the hammer loop -- captured `AssertionError: ... contains one more item`, reverted. |
+| test_ducking_transport.py::test_second_caller_is_not_made_to_wait_a_second_full_deadline | [FIXED] | `hang()` now catches into `hang_errors`, asserted `== []`, plus `not hanger.is_alive()`. Proved via injected fault, reverted. |
+| test_recording_ownership.py::test_hold_enter_worker_claim_is_atomic_with_exit | [FIXED] | both the enter-worker and exit-worker threads now catch into `worker_errors`/`exit_errors`, both asserted `== []`. Proved via injected fault (both `mode` parametrizations), reverted. |
+| test_splash_startup_wiring.py::test_model_worker_waits_for_shell_before_completion | [FIXED] | worker thread now catches into `worker_errors`, asserted `== []`. This surfaced a real pre-existing bug the silent thread was hiding: the fixture's fake app was missing `config_path`, so `load()`'s post-boot `_write_last_known_good()` step raised `AttributeError` on every run and died silently. Added `app.config_path` (a nonexistent path, so the real never-raises LKG no-op path is taken) to fix the fixture. Proved the exception-collection assertion via injected fault, reverted. |
+| test_hands_free_capture_ducking.py::test_blocked_capture_start_is_invalidated_by_toggle_off | [FIXED] | `_open()` now catches into `open_errors`, asserted `== []`. This also surfaced a second real pre-existing bug: the test asserted `owner["token"] == 1`, but `_open_hands_free_capture_duck`'s real "lost ownership" path (exactly what this test's name says it exercises) returns `None`, not the provisional token -- fixed the assertion to `is None`. Proved via injected fault, reverted. |
+| test_hands_free_capture_ducking.py::test_owner_a_releases_while_starting_and_owner_b_keeps_ducker | [FIXED] | same treatment: `_open_a()` catches into `open_errors`, asserted `== []`. Proved via injected fault, reverted. |
+| test_frozen_smoke_unit.py::test_wait_for_boot_detects_marker | [FIXED] | writer thread now catches into `writer_errors`, asserted `== []`, plus `not writer.is_alive()` (joined with a timeout instead of left daemon-orphaned). Proved via injected fault, reverted. |
 
 ### 4. WEAK ORACLE (72)
 
@@ -260,13 +260,15 @@ None found. No `updated to match` / `regenerated` / `--snapshot-update` markers 
 (`test_hf_bench.py`, `test_flight_digest.py`, `test_hf_corpus_record.py`) build their
 expected values from first principles or `pytest.approx` with explicit tolerances.
 
-### 6. NEVER RUNS (3)
+### 6. NEVER RUNS (3) -- 1 FIXED, 2 DELETED
 
 | file::test_name | category | reason |
 |---|---|---|
-| test_ci_smoke.py::TestLogScannerRealCiLog::test_classifies_mic_less_tracebacks_as_benign_but_still_catches_real_crash | NEVER RUNS | `skipif` on a hardcoded absolute path `C:\Users\Morne\Documents\Claude\ci_smoke_dl\ci-smoke-log-dev-f3dd59a\samsara.log` -- **verified absent on this machine** and unreachable on any other; the fixture is not in the repo |
-| test_ava_command_session_g2_matrix.py::TestOrchestrationSemanticsOutOfScopeForP1::test_no_token_zero_orchestration_surface | NEVER RUNS | body is an unconditional `pytest.skip()` (declared P2 placeholder) |
-| test_ava_command_session_g2_matrix.py::TestOrchestrationSemanticsOutOfScopeForP1::test_token_present_listener_dead_hidden_verbs_no_error_ui | NEVER RUNS | body is an unconditional `pytest.skip()` |
+| test_ci_smoke.py::TestLogScannerRealCiLog::test_classifies_mic_less_tracebacks_as_benign_but_still_catches_real_crash | [FIXED -- now runs everywhere] | `skipif` on a hardcoded absolute path `C:\Users\Morne\Documents\Claude\ci_smoke_dl\ci-smoke-log-dev-f3dd59a\samsara.log` -- **verified absent on this machine** and unreachable on any other; the fixture is not in the repo. The real log cannot be recovered, so replaced with a checked-in, explicitly-labelled SYNTHETIC reconstruction (`tests/fixtures/ci_smoke_synthetic_regression.txt` -- `.log` would be
+   silently gitignored by this repo's `*.log` rule, so `.txt` is used to
+   ensure the fixture is actually committed) reproducing the same shape (3 distinct benign PortAudioError tracebacks -- device-rate query, calibration, sound-stream start -- followed, after enough lines to clear LogScanner's 15-line lookback, by the genuine ModuleNotFoundError crash). `skipif` removed entirely; test now runs on every machine. Proved it can still fail (temporarily asserted `len(scanner.benign_seen) == 4`, captured `AssertionError: assert 3 == 4`, reverted). |
+| test_ava_command_session_g2_matrix.py::TestOrchestrationSemanticsOutOfScopeForP1::test_no_token_zero_orchestration_surface | [DELETED] | body is an unconditional `pytest.skip()` (declared P2 placeholder). D3 has no Agora token/orchestration surface at all in P1 -- there is no production code for this test to ever exercise, and building that surface is a production change out of scope for a tests-only fix. Deleted rather than left as a permanent no-op. |
+| test_ava_command_session_g2_matrix.py::TestOrchestrationSemanticsOutOfScopeForP1::test_token_present_listener_dead_hidden_verbs_no_error_ui | [DELETED] | same reason -- unconditional `pytest.skip()`, no P1 production surface to test. |
 
 Checked and *not* flagged: `test_agora_bridge.py`, `test_long_dictation_quality.py`,
 `test_update_customizations.py` symlink tests, `test_tts_winrt.py`,
@@ -371,20 +373,39 @@ falsely claim to protect.
 6. **test_media_keys.py::TestCommandHandlers (6 tests)** -- `_send_action` is mocked and
    the action string is never asserted, so `handle_pause_this` could dispatch `next` and
    every handler test still passes. These are the only tests of the media-key routing.
-7. **test_integration.py::TestRecordingModes + TestAudioProcessing (6 tests)** -- six
+7. **[FIXED] test_integration.py::TestRecordingModes + TestAudioProcessing (6 tests)** -- six
    tests in the file named "integration tests for the full transcription pipeline" that
    set local variables and assert on them. Nothing about the pipeline is covered here.
-8. **test_echo_cancel.py::test_process_invokes_the_adaptive_filter_when_active** --
+   TestRecordingModes now binds the real `DictationApp.on_key_press`/`on_key_release`
+   (via `DictationApp.__new__` + a minimal fake-app fixture, no module-level `import
+   dictation`) so hold/toggle mode dispatch, `start_recording`/`stop_recording` call
+   args, and the `thread_registry.spawn`-deferred hold-release stop all run for real.
+   TestAudioProcessing now drives the real `DictationSessionConsumer.snapshot_streaming_audio()`
+   (samsara/audio_engine/dictation_consumer.py) and the real `samsara.audio_engine.frame`
+   constants (SAMPLE_RATE/FRAME_SIZE) instead of calling `np.concatenate` on literals.
+   All 6 proved capable of failing (each assertion flipped once, failure captured, reverted).
+8. **[FIXED] test_echo_cancel.py::test_process_invokes_the_adaptive_filter_when_active** --
    combined with the MISSING list, the real `AdaptiveEchoCanceller.process` and the whole
    `LoopbackCapture` are never executed. The module's enabled path has no real coverage
-   at all, only mock wiring.
-9. **test_ci_smoke.py::TestLogScannerRealCiLog** -- the regression fixture for a real CI
-   false-positive is gated on an absolute path outside the repo that does not exist. The
-   release-gate log classifier's only real-world test never runs, on any machine.
-10. **test_window_manager.py::test_restore_multiple_windows_each_matched** -- asserts
+   at all, only mock wiring. Removed the `patch.object(AdaptiveEchoCanceller, "process")`
+   mock -- only the hardware boundary (`LoopbackCapture.is_running`/`get_recent`) stays
+   mocked. Asserts the real NLMS filter ran (`ec._aec._diag_count == 1`), that the output
+   is the correct shape/dtype, and that it is not bit-identical to the input. Proved
+   capable of failing (flipped the diag-count assertion, captured `assert 1 == 2`, reverted).
+9. **[FIXED] test_ci_smoke.py::TestLogScannerRealCiLog** -- the regression fixture for a
+   real CI false-positive is gated on an absolute path outside the repo that does not
+   exist. The release-gate log classifier's only real-world test never runs, on any
+   machine. Same fix as NEVER RUNS #1 below: replaced with a checked-in synthetic
+   reconstruction, `skipif` removed, test now runs everywhere.
+10. **[FIXED] test_window_manager.py::test_restore_multiple_windows_each_matched** -- asserts
     `SetWindowPos.call_count >= 2` against a `sys.modules`-level MagicMock that is never
     reset between tests, so earlier tests' calls already satisfy it. Layout restore can
-    stop calling `SetWindowPos` entirely and this stays green.
+    stop calling `SetWindowPos` entirely and this stays green. Added `win32gui.reset_mock()`
+    before the call under test and replaced the loose count check with an exact
+    `call_args_list` match (one `SetWindowPos` call per window, in order, with the real
+    per-monitor restore rect) plus an exact `ShowWindow` maximize-call assertion. Proved
+    capable of failing (swapped the expected call order, captured the `call(...)` diff,
+    reverted).
 
 Common thread across 1, 2, 4 and 7: a test file that imports nothing from the module it
 claims to test. That is mechanically detectable and worth a CI check.

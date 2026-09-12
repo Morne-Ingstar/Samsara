@@ -17,15 +17,29 @@ caught-and-continuing GPU-detection failure (dictation.py's CUDA probe
 raises, is caught, falls back to CPU) that still writes a "Traceback"
 block. Added as its own synthetic fixture below, same treatment as the
 mic-less case.
+
+docs/reviews/test_suite_audit.md NEVER RUNS #1 / fix-first #9: the
+regression test below used to `skipif` on the actual downloaded CI log at
+an absolute path under one developer's `Documents\Claude` folder, which
+was never present on this machine (nor could be, on any other) --
+zero-coverage-forever. The real log is gone; this repo cannot recover it.
+Replaced with a checked-in, clearly-labelled SYNTHETIC reconstruction
+(tests/fixtures/ci_smoke_synthetic_regression.txt) that reproduces the
+same shape the original run had -- the three distinct benign
+sounddevice.PortAudioError tracebacks (device-rate query, calibration,
+sound-stream start) immediately followed, after enough intervening log
+lines to clear LogScanner's 15-line lookback window, by the genuine
+ModuleNotFoundError crash -- so the regression this fixture exists to
+guard (a benign list broad enough to hide the audio noise but still
+narrow enough to catch a real crash later in the same log) is exercised
+on every machine, every run.
 """
 from pathlib import Path
 
-import pytest
-
 from tools import ci_smoke
 
-REAL_CI_LOG = Path(
-    r"C:\Users\Morne\Documents\Claude\ci_smoke_dl\ci-smoke-log-dev-f3dd59a\samsara.log"
+SYNTHETIC_REGRESSION_LOG = (
+    Path(__file__).parent / "fixtures" / "ci_smoke_synthetic_regression.txt"
 )
 
 
@@ -135,13 +149,15 @@ class TestReleaseGateOutcome:
 
 
 class TestLogScannerRealCiLog:
-    """Regression fixture: the actual downloaded CI log that surfaced both
-    the real ModuleNotFoundError bug (Fix 1) and the false-positive
-    mic-less PortAudio tracebacks (Fix 2) in the same run."""
+    """Regression fixture for the combined pattern the real, now-lost CI
+    log surfaced: the real ModuleNotFoundError bug (Fix 1) alongside the
+    false-positive mic-less PortAudio tracebacks (Fix 2) in the same run.
+    Uses a checked-in synthetic reconstruction -- see module docstring --
+    so it runs on every machine instead of only the one that once had the
+    original download."""
 
-    @pytest.mark.skipif(not REAL_CI_LOG.exists(), reason="real CI log fixture not present on this machine")
     def test_classifies_mic_less_tracebacks_as_benign_but_still_catches_real_crash(self):
-        text = REAL_CI_LOG.read_text(encoding="utf-8", errors="replace")
+        text = SYNTHETIC_REGRESSION_LOG.read_text(encoding="utf-8", errors="replace")
         scanner = ci_smoke.LogScanner()
         scanner.feed(text.splitlines())
 
