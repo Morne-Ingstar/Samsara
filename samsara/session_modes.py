@@ -83,6 +83,14 @@ _WHOLE_UTTERANCE_SWITCHES: dict[str, SessionMode] = {
     "dictate mode": SessionMode.DICTATE,
     "dictation mode": SessionMode.DICTATE,
     "dictate": SessionMode.DICTATE,
+    # 2026-09-11: "ava mode" is a first-class switch word, symmetric with
+    # "command mode"/"dictate mode". It is WHOLE-UTTERANCE ONLY (this table
+    # is only consulted for whole-utterance equality below), so the prefix
+    # trap the 2026-07-18 incident exploited stays shut -- see the comment
+    # on _PREFIX_SWITCHES. Bare "ava" is deliberately NOT here: it is an
+    # ordinary content word, and that is the half of the incident worth
+    # keeping out.
+    "ava mode": SessionMode.AVA,
 }
 
 # Prefix form: "dictate <payload>" switches mode AND delivers the payload as
@@ -90,10 +98,17 @@ _WHOLE_UTTERANCE_SWITCHES: dict[str, SessionMode] = {
 # match_ava_invocation below and the 2026-07-18 incident it fixes: "Ava
 # Omniscience Mode" spoken as ordinary DICTATE content, isolated into its own
 # utterance by a natural pause, used to hijack mid-dictation into a
-# mode-switch+dispatch. Whole-word "ava"/"ava mode" were ALSO removed from
-# _WHOLE_UTTERANCE_SWITCHES above for the same reason (a bare content word is
-# too easy to say by accident); Ava entry now lives entirely in the
-# configurable, exact-phrase-only match_ava_invocation() mechanism instead.
+# mode-switch+dispatch. That prefix grammar stays removed: "we should use ava
+# mode later" is dictation, never a switch.
+#
+# Whole-utterance "ava mode" WAS also excluded for the same incident, but the
+# exclusion cost more than it bought (2026-09-11): with no "ava mode" switch
+# word, the phrase fell through to the command registry, where ask_ollama's
+# "hey ava" command claims the alias "ava" -- so "ava mode" prefix-matched it
+# with remainder "mode" and was sent to the LLM as a question, and in DICTATE
+# it was simply typed. Bare "ava" remains excluded from this table; Ava is
+# now reachable by BOTH this switch word and the configurable, exact-phrase
+# match_ava_invocation() mechanism, and both land on SessionMode.AVA.
 _PREFIX_SWITCHES: dict[str, SessionMode] = {
     "dictate": SessionMode.DICTATE,
 }
@@ -197,11 +212,22 @@ def match_switch_word(
     if not normalized:
         return None
 
-    if normalized in _WHOLE_UTTERANCE_SWITCHES:
-        target = _WHOLE_UTTERANCE_SWITCHES[normalized]
-        if current_mode is not None and target is current_mode:
-            return None
-        return SwitchMatch(target_mode=target)
+    # normalize_utterance() DELETES punctuation rather than replacing it with
+    # a space, so a hyphenated two-word switch ("ava-mode", and equally
+    # "command-mode") would collapse into a single unmatchable token. Retry
+    # the whole-utterance lookup with separator punctuation treated as a
+    # space. Whole-utterance only -- this never widens the prefix grammar.
+    candidates = [normalized]
+    separated = normalize_utterance(re.sub(r"[-_/]+", " ", raw_text or ""))
+    if separated and separated != normalized:
+        candidates.append(separated)
+
+    for candidate in candidates:
+        if candidate in _WHOLE_UTTERANCE_SWITCHES:
+            target = _WHOLE_UTTERANCE_SWITCHES[candidate]
+            if current_mode is not None and target is current_mode:
+                return None
+            return SwitchMatch(target_mode=target)
 
     for prefix_word, mode in _PREFIX_SWITCHES.items():
         if normalized.startswith(prefix_word + " "):
@@ -682,7 +708,8 @@ class DispatchOutcome:
     # "dictate_commit_failed" | "hands_free_command_executed" |
     # "hands_free_command_refused" | "hands_free_command_blocked" |
     # "hands_free_command_failed" |
-    # "ava_dispatched" | "ava_rejected_not_substantive"
+    # "ava_dispatched" | "ava_rejected_not_substantive" |
+    # "ava_entry_failed"
     detail: dict = field(default_factory=dict)
 
 
@@ -748,6 +775,7 @@ class SessionModeManager:
         buffer_dictate_until_commit: bool = False,
         hands_free_command_probe_fn: Optional[HandsFreeCommandProbeFn] = None,
         ava_invocations: Optional[list[str]] = None,
+        ava_ready_probe_fn: Optional[Callable[[], object]] = None,
         pending_action_scratch_fn: Optional[Callable[[], Optional[bool]]] = None,
         clock: Callable[[], float] = time.time,
     ) -> None:
@@ -776,6 +804,11 @@ class SessionModeManager:
         self._commit_redecode_fn = commit_redecode_fn
         self._buffer_dictate_until_commit = buffer_dictate_until_commit
         self._hands_free_command_probe_fn = hands_free_command_probe_fn
+        # Optional cheap "can Ava answer right now?" check, consulted
+        # before any switch into AVA -- see _ava_entry_blocked_reason.
+        # None means "assume ready" (preserves pre-2026-09-11 behavior
+        # for callers that do not wire one, e.g. this module's tests).
+        self._ava_ready_probe_fn = ava_ready_probe_fn
         # Pre-normalized once at construction, not per-utterance -- see
         # match_ava_invocation / _normalize_exact_phrase above.
         self._ava_invocations = frozenset(
@@ -948,6 +981,19 @@ class SessionModeManager:
                             "phrase": hands_free_match.phrase,
                             "pending_chars": len(self._dictate_pending_buffer),
                         })
+                    # 2026-09-11: the registry resolved this utterance to the
+                    # Ava front door (ask_ollama registers "hey ava" with the
+                    # alias "ava", so bare "Ava." lands here). That is a MODE
+                    # SWITCH, not a command to dispatch: dispatching it ran
+                    # handle_ask_ava with an empty remainder, which spoke
+                    # "Yes? How can I help?" and returned None -- reported
+                    # back as hands_free_command_failed -- while the COMMIT
+                    # pending-text policy had already pasted the staged
+                    # thought as a side effect of the failure. Routing to the
+                    # same _do_switch() every other switch word uses makes
+                    # both Ava routes land identically.
+                    if match_ava_invocation(hands_free_match.phrase, self._ava_invocations):
+                        return self._do_switch(SwitchMatch(target_mode=SessionMode.AVA))
                     return self._dispatch_hands_free_command(hands_free_match)
 
         return self._dispatch_in_mode(text, signals=signals)
@@ -968,6 +1014,29 @@ class SessionModeManager:
             })
         return self._commit_dictate_buffer(target_mode=None)
 
+    def _ava_entry_blocked_reason(self) -> Optional[str]:
+        """Why AVA entry cannot complete right now, or None if it can.
+
+        2026-09-11: entering AVA used to be unconditional, so a session whose
+        agent could not answer (plugin disabled, Ollama down, dispatch fn
+        never wired) switched anyway and then failed per-utterance with
+        nothing but an earcon -- the user had no way to tell "Ava is off"
+        from "Ava didn't hear me". Checked BEFORE the mode changes so a
+        refusal leaves the user where they were."""
+        if self._agent_dispatch_fn is None:
+            return "no agent dispatch function is wired"
+        if self._ava_ready_probe_fn is None:
+            return None
+        try:
+            ready = self._ava_ready_probe_fn()
+        except Exception as exc:
+            return f"readiness probe raised {type(exc).__name__}: {exc}"
+        if ready is None or ready is True:
+            return None
+        if isinstance(ready, str):
+            return ready
+        return "the agent backend reported it is not ready"
+
     def _do_switch(self, switch: SwitchMatch) -> DispatchOutcome:
         """Transactional: a prefix switch ("dictate <payload>") only counts
         as having happened if the payload actually got dispatched. If
@@ -977,6 +1046,16 @@ class SessionModeManager:
         the user would be silently left in a new mode with nothing
         delivered and no indication anything went wrong."""
         prior_mode = self.mode
+        if switch.target_mode is SessionMode.AVA:
+            blocked = self._ava_entry_blocked_reason()
+            if blocked is not None:
+                log.warning(
+                    "[SESSION] AVA entry refused: %s -- staying in %s mode",
+                    blocked, prior_mode.value,
+                )
+                return DispatchOutcome(kind="ava_entry_failed", detail={
+                    "reason": blocked, "mode_retained": prior_mode,
+                })
         if (self._buffer_dictate_until_commit
                 and prior_mode is SessionMode.DICTATE
                 and switch.target_mode is not SessionMode.DICTATE

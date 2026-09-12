@@ -575,6 +575,7 @@ from samsara.ui.listening_indicator import ListeningIndicator
 from samsara.cleanup import clean_text
 from samsara.smart_corrections import smart_correct, warm_up as smart_corrections_warm_up
 from samsara.formatting_tokens import apply_formatting_tokens_if_enabled
+from samsara import config_defaults
 from samsara import diagnostics
 from samsara import flight_recorder
 from samsara import benchmark_store
@@ -599,6 +600,8 @@ from samsara.constants import (
     ICON_SPIN_FAST, ICON_SPIN_MEDIUM, ICON_SPIN_SLOW,
     ICON_CHASE_FAST, ICON_CHASE_MEDIUM, ICON_CHASE_SLOW,
     CLIPBOARD_PASTE_DELAY, CLIPBOARD_RESTORE_DELAY,
+    LIVE_VAD_PROB_THRESHOLD, CONTIGUOUS_VAD_PROB_THRESHOLD,
+    ADAPTIVE_SPEECH_FLOOR_RATIO, HOLD_RELEASE_TAIL_SPEECH_THRESHOLD,
 )
 from samsara.calibration import measure_ambient_rms, calibrate_threshold
 from samsara.key_macros import KeyMacroManager, get_default_macro_config
@@ -721,17 +724,17 @@ _COMPRESSION_RATIO_THRESHOLD = 2.4
                              # exact way (every temp 0.0-1.0 failed log_prob_threshold, then
                              # compression_ratio hit 7.125 at temp 0.8) because nothing downstream
                              # checked these signals before delivering the text.
-_GATE_MAX_BUFFER_S   = 8.0   # only buffers this short or shorter are VAD-gated; longer
-                             # real dictation bypasses the gate entirely (no added latency).
+_GATE_MAX_BUFFER_S   = 8.0   # maximum audio window scanned by the hold presence gate.
+                             # Longer buffers scan this prefix only if overall RMS is
+                             # below _SANITY_RMS_FLOOR_DB; audible dictation skips VAD.
                              # Raised 3.0->8.0: 3-6s near-silent/whisper holds were bypassing
                              # the gate and producing phantom "Thank you for watching" text.
                              # NOTE (2026-07-10): that fix only pushed the exposure window out,
                              # it didn't close it -- an 11.7s hold reproduced the identical bug.
-                             # _is_quality_exhausted (below) is the durable, length-independent
-                             # fix; this constant is deliberately NOT raised again (see its own
-                             # comment on why the gate must stay latency-free for real dictation).
+                             # Both the quiet-prefix check and the language-confidence
+                             # gate now cover the long silent-hold exposure window.
 _GATE_MIN_CONTIG_MS  = 150   # minimum CONTIGUOUS high-confidence speech run required to pass
-_GATE_VAD_PROB       = 0.45  # Silero speech-probability threshold for the contiguous-run gate
+_GATE_VAD_PROB       = CONTIGUOUS_VAD_PROB_THRESHOLD  # Silero speech-probability threshold for the contiguous-run gate
 _FADE_MS             = 50    # linear fade-in/out applied to hotkey buffers, kills the
                              # press/release click transient before it can reach VAD or Whisper
 _GATE_HEAD_GRACE_CLICK_PAD_MS = 60
@@ -879,7 +882,8 @@ def _suspected_silent_data_loss(text, audio, sample_rate, audio_duration):
 # audio() returns and what _apply_retry_on_suspected_loss() compares between
 # the original decode and its retry.
 _HotkeyDecodeResult = collections.namedtuple(
-    '_HotkeyDecodeResult', ['text', 'low_confidence', 'seg_list', 'detected_lang', 'diag_path'],
+    '_HotkeyDecodeResult', ['text', 'low_confidence', 'seg_list', 'detected_lang', 'diag_path',
+                           'language_rejected'], defaults=[False],
 )
 
 
@@ -913,6 +917,9 @@ def _apply_retry_on_suspected_loss(original, retry_fn, audio, sample_rate, audio
     suspected_loss and the debug WAV dump (already unconditional, upstream
     of any decode attempt) is the only recovery record needed.
     """
+    if original.language_rejected:
+        # An intentional rejection is empty speech, not missing dictation.
+        return original, False, False
     suspected_loss = _suspected_silent_data_loss(original.text, audio, sample_rate, audio_duration)
     if not suspected_loss or is_command_lane:
         return original, suspected_loss, False
@@ -922,6 +929,9 @@ def _apply_retry_on_suspected_loss(original, retry_fn, audio, sample_rate, audio
         "retrying once with initial_prompt=''"
     )
     retry = retry_fn()
+    if retry.language_rejected:
+        # The original passed the language gate; preserve that accepted text.
+        return original, suspected_loss, True
     retry_suspected = _suspected_silent_data_loss(retry.text, audio, sample_rate, audio_duration)
     if not retry_suspected:
         logger.info(
@@ -1779,7 +1789,7 @@ _NOISE_FLOOR_MIN = 0.0005
 # 1.5x the ambient floor distinguishes speech from background noise.
 # Low-gain mics (headsets, USB w/ AGC) have a narrow speech-to-ambient
 # margin (~1.5-1.6x), so an aggressive ratio gates real speech out.
-_SPEECH_FLOOR_RATIO = 1.5
+_SPEECH_FLOOR_RATIO = ADAPTIVE_SPEECH_FLOOR_RATIO
 
 # Hard absolute minimum so pure DC / zeroed buffers cannot pass even on a
 # completely silent mic.
@@ -2306,6 +2316,10 @@ class DictationApp:
         self.recording = False
         self.command_mode_recording = False  # True when using command-only hotkey
         self._stop_in_flight = False         # True while stop_recording + trailing sleep is pending
+        self._hold_capture_lifecycle_lock = threading.RLock()
+        self._hold_capture_duck_seq = 0
+        self._hold_capture_duck_token = None
+        self._hold_capture_duck_confirmed_at = None
 
         self._running = True
 
@@ -2319,6 +2333,7 @@ class DictationApp:
         self.model_loaded = False
         self.loading_model = False
         self.model_lock = threading.Lock()  # Thread lock for model.transcribe() calls
+        self._language_confidence_gate = _languages.LanguageConfidenceGate()
         
         logger.info("[INIT] Loading plugins...")
         commands_path = Path(__file__).parent / "commands.json"
@@ -2349,9 +2364,22 @@ class DictationApp:
         # Mouse 4 command mode (walkie-talkie hold-to-talk)
         self.command_mode_active = False
         self._command_mode_lock = threading.Lock()
+        self._session_transition_lock = threading.Lock()
         self._command_mode_miss_count = 0
         self._command_mode_inactivity_timer = None
         self._command_mode_timer_lock = threading.Lock()
+        # Monotonic deadline the current inactivity timer will fire at --
+        # threading.Timer has no query-remaining-time API, so this is
+        # tracked alongside it (set/cleared in lockstep, see
+        # _reset_command_mode_inactivity_timer / _cancel_command_mode_
+        # inactivity_timer_locked) purely so a hold-suspend pause can
+        # compute how much time was actually left. None whenever no timer
+        # is running.
+        self._command_mode_inactivity_deadline = None
+        # Remaining seconds captured by _pause_command_mode_inactivity_for_
+        # hold, consumed by _resume_command_mode_inactivity_after_hold.
+        # None when not currently paused for a hold.
+        self._command_mode_inactivity_remaining_on_hold = None
         self._command_mode_session_start = 0.0  # monotonic time of last enter
         self._command_mode_ghost_tap = False    # set when hold < enter_debounce_ms
         self._command_mode_key_held = False      # edge-trigger guard vs OS key auto-repeat
@@ -2436,8 +2464,6 @@ class DictationApp:
         self._icon_anim_reasons = set()  # tracks who wants animation (e.g. 'recording', 'wake_word')
         self.silence_start = None
         self.is_speaking = False
-        self.speech_buffer = []
-        self.buffer_lock = threading.Lock()
         # Silero VAD -- real-time speech gate for the wake-word audio callback.
         # When available, it replaces the old RMS debounce entirely. When it's
         # not (local ONNX load or inference failure), we fall back to RMS.
@@ -2483,6 +2509,7 @@ class DictationApp:
         # None means that profile uses Whisper-transcript fallback.
         # Loaded lazily in _load_wake_profile_models() after the Whisper model loads.
         self._wake_profile_detectors: dict = {}
+        self._wake_profile_fallback_warned: set = set()
 
         # Profile isolation: the send_word of whichever wake_profile is
         # CURRENTLY driving an open wake_session, captured at dispatch time
@@ -4830,7 +4857,30 @@ class DictationApp:
             transcribe_params['language'] = 'en'
         return transcribe_params
 
-    def _decode_hotkey_audio(self, audio_faded, transcribe_params, audio_duration):
+    def _filter_dictation_language(self, text, info, *, remember=True, feedback=True):
+        """Return empty on unexpected low-confidence language or script mismatch."""
+        if not text.strip():
+            return text
+        gate = self._language_confidence_gate
+        language = getattr(info, 'language', None)
+        probability = getattr(info, 'language_probability', None)
+        reason, expected = gate.evaluate(
+            text, language, probability, _languages.resolve_transcribe_language(self),
+            self.config.get('language_confidence_floor', _languages.LANGUAGE_CONFIDENCE_FLOOR),
+            remember=remember,
+        )
+        if reason is None:
+            return text
+        logger.info('[LANGUAGE] Rejected language=%s probability=%s text=%r',
+                    language, probability, text[:40])
+        flight_recorder.record('decode.language_rejected', language=language,
+                               language_probability=probability, reason=reason,
+                               expected_languages=sorted(expected))
+        if feedback:
+            self.play_sound('scratch_refuse')
+        return ''
+
+    def _decode_hotkey_audio(self, audio_faded, transcribe_params, audio_duration, *, free_form=None):
         """One full hotkey decode pass: single-shot or [LONG]-split
         (mirrors the >_LONG_DECODE_CEILING_S resource-guard fallback),
         followed by the same segment-level quality gating either way.
@@ -4843,8 +4893,11 @@ class DictationApp:
         tests/test_transcription_params.py's module docstring).
 
         Returns a _HotkeyDecodeResult(text, low_confidence, seg_list,
-        detected_lang, diag_path).
+        detected_lang, diag_path, language_rejected).
         """
+        if free_form is None:
+            free_form = not getattr(self, 'command_mode_recording', False)
+        decode_infos = []
         if audio_duration > _LONG_DECODE_CEILING_S:
             diag_path = "long"
             chunks = _split_audio_at_silences(audio_faded, self.model_rate)
@@ -4860,6 +4913,7 @@ class DictationApp:
                 with self.model_lock:
                     segs, chunk_info = self.model.transcribe(chunk, **transcribe_params)
                 detected_lang = getattr(chunk_info, 'language', None) or detected_lang
+                decode_infos.append(chunk_info)
                 chunk_segs = list(segs)
                 seg_list.extend(chunk_segs)
                 logger.info(f"[LONG] Chunk {idx + 1}/{len(chunks)}: "
@@ -4869,11 +4923,16 @@ class DictationApp:
             with self.model_lock:
                 segments, info = self.model.transcribe(audio_faded, **transcribe_params)
             detected_lang = getattr(info, 'language', None)
+            decode_infos.append(info)
             seg_list = list(segments)
 
         text, low_confidence = _apply_segment_quality_gates(
             seg_list, transcribe_params, audio_duration,
         )
+        if free_form and text:
+            for info in decode_infos:
+                if not self._filter_dictation_language(text, info):
+                    return _HotkeyDecodeResult('', False, seg_list, detected_lang, diag_path, True)
         return _HotkeyDecodeResult(text, low_confidence, seg_list, detected_lang, diag_path)
 
     def process_transcription(self, text):
@@ -6254,9 +6313,30 @@ class DictationApp:
         # (no settings UI; see config_schema.py's "ava_invocations" entry).
         configured_ava_invocations = resolve_ava_invocations(self.config)
 
+        def _ava_ready_probe():
+            """Cheap "can Ava answer right now?" check, consulted before any
+            switch into AVA (2026-09-11). Returns None when ready, or a
+            human-readable reason string that the session logs at WARNING and
+            earcons -- so "Ava is switched off" never again looks identical to
+            "Ava didn't hear me". Deliberately does NOT probe the network:
+            this runs on the switch utterance, and a dead Ollama host would
+            otherwise stall the mode change behind a socket timeout. The
+            per-utterance dispatch path already reports an unreachable host."""
+            try:
+                from plugins.commands.ask_ollama import is_enabled
+            except Exception as exc:
+                return f"the Ava plugin could not be imported ({exc})"
+            try:
+                if not is_enabled(self):
+                    return "the Ava plugin is disabled in settings"
+            except Exception as exc:
+                return f"the Ava plugin readiness check failed ({exc})"
+            return None
+
         self._session_mode_manager = SessionModeManager(
             abort_phrases=abort_phrases,
             ava_invocations=configured_ava_invocations,
+            ava_ready_probe_fn=_ava_ready_probe,
             foreground_exe_resolver=_get_foreground_exe_lower,
             foreground_hwnd_resolver=_get_foreground_hwnd,
             inject_fn=_inject_fn,
@@ -6320,7 +6400,7 @@ class DictationApp:
         params["initial_prompt"] = None
 
         with self.model_lock:
-            segments, _ = self.model.transcribe(concatenated_audio, **params)
+            segments, info = self.model.transcribe(concatenated_audio, **params)
         segments = list(segments)
         text = ''.join(getattr(seg, 'text', '') for seg in segments).strip()
         text = self.voice_training_window.apply_corrections(text)
@@ -6337,6 +6417,8 @@ class DictationApp:
             logger.info(f'[GUARD] Suppressed commit re-decode hallucination: {text!r}')
             return None
 
+        if not self._filter_dictation_language(text, info):
+            return None
         return text
 
     def _pop_pending_action_for_scratch(self) -> "bool | None":
@@ -6530,10 +6612,13 @@ class DictationApp:
         in flight at a time; extra presses during a transition are
         dropped (idempotent -- the user is mashing the same intent).
         """
-        if getattr(self, '_session_transition_inflight', False):
+        lock = self._session_transition_lock
+        # acquire(blocking=False) test-and-set is atomic; the previous
+        # getattr-then-assign pair let two near-simultaneous hotkey presses
+        # both observe "not in flight" and both spawn a worker.
+        if not lock.acquire(blocking=False):
             logger.debug('[SESSION] transition already in flight; drop')
             return
-        self._session_transition_inflight = True
 
         def _run():
             try:
@@ -6541,7 +6626,7 @@ class DictationApp:
             except Exception:
                 logger.exception('[SESSION] transition failed')
             finally:
-                self._session_transition_inflight = False
+                lock.release()
 
         from samsara.runtime import thread_registry
         thread_registry.spawn('session.transition', _run, daemon=True)
@@ -7040,6 +7125,7 @@ class DictationApp:
                 "dictation.command_mode_inactivity", timeout_s,
                 self._on_command_mode_inactivity, daemon=True)
             self._command_mode_inactivity_timer = t
+            self._command_mode_inactivity_deadline = time.monotonic() + timeout_s
 
     def _cancel_command_mode_inactivity_timer(self):
         with self._command_mode_timer_lock:
@@ -7057,6 +7143,36 @@ class DictationApp:
         if t is not None:
             t.cancel()
             self._command_mode_inactivity_timer = None
+        self._command_mode_inactivity_deadline = None
+
+    def _pause_command_mode_inactivity_for_hold(self) -> None:
+        """hands_free.suspend_on_hold (default true): a hotkey hold must
+        not let the toggle-session inactivity timer expire out from under
+        the user just because the hold itself is long. Unlike
+        _pause_session_inactivity_for_device_recovery (which re-arms with
+        a FRESH full window on resume -- appropriate for an outage of
+        unknown length), this remembers the exact REMAINING time so a
+        30-second hold against a 300-second timeout resumes with ~270
+        seconds left, not a fresh 300. Safe to call when no timer is
+        running (e.g. hands-free not active, or already idle) -- it just
+        records nothing to resume."""
+        with self._command_mode_timer_lock:
+            deadline = self._command_mode_inactivity_deadline
+            self._cancel_command_mode_inactivity_timer_locked()
+            self._command_mode_inactivity_remaining_on_hold = (
+                max(0.0, deadline - time.monotonic()) if deadline is not None else None
+            )
+
+    def _resume_command_mode_inactivity_after_hold(self) -> None:
+        """Counterpart to _pause_command_mode_inactivity_for_hold -- re-arms
+        the timer with whatever time was actually left when the hold
+        started, or does nothing if no timer was running then (or the
+        session has since ended)."""
+        remaining, self._command_mode_inactivity_remaining_on_hold = (
+            self._command_mode_inactivity_remaining_on_hold, None,
+        )
+        if remaining is not None and self.command_mode_active:
+            self._reset_command_mode_inactivity_timer(remaining)
 
     def _touch_session_activity(self, *, speech_onset=False) -> None:
         """Only a fresh Silero onset extends toggle-session inactivity.
@@ -7232,7 +7348,7 @@ class DictationApp:
                     transcribe_params['initial_prompt'] = context_tail
 
             with self.model_lock:
-                segments, _ = self.model.transcribe(audio, **transcribe_params)
+                segments, info = self.model.transcribe(audio, **transcribe_params)
                 seg_list = list(segments)
             text = ''.join(s.text for s in seg_list).strip()
             text = self.voice_training_window.apply_corrections(text)
@@ -7293,6 +7409,12 @@ class DictationApp:
                 self._command_mode_ghost_tap = False
                 logger.debug('[CMD-UTT] Ghost tap — discarding')
                 return
+
+            if not _is_command_lane:
+                text = self._filter_dictation_language(text, info)
+                if not text:
+                    logger.debug('[CMD-UTT] Empty transcription')
+                    return
 
             signals = self._compute_switch_gate_signals(
                 audio,
@@ -7370,6 +7492,17 @@ class DictationApp:
         elif outcome.kind == "hands_free_command_failed":
             logger.error('[SESSION] Reserved hands-free command failed to execute: %r',
                          outcome.detail)
+            self.play_sound('error')
+        elif outcome.kind == "ava_entry_failed":
+            # 2026-09-11: AVA entry must never fail silently. The session
+            # already logged the reason at WARNING and stayed in the previous
+            # mode (session_modes._do_switch); this is the audible half.
+            retained = outcome.detail.get('mode_retained')
+            logger.warning(
+                '[SESSION] Could not switch to Ava: %s -- still in %s mode',
+                outcome.detail.get('reason', 'unknown reason'),
+                getattr(retained, 'value', retained),
+            )
             self.play_sound('error')
         if outcome.kind != "empty":
             self._touch_session_activity()
@@ -7498,6 +7631,7 @@ class DictationApp:
                 segments, info = self.model.transcribe(audio, **transcribe_params)
             
             text = "".join([segment.text for segment in segments]).strip()
+            text = self._filter_dictation_language(text, info)
             transcribe_time = time.time() - transcribe_start
             
             # Performance logging
@@ -7997,7 +8131,8 @@ class DictationApp:
         self._start_hands_free_idle_duck()
         self.play_sound("start", use_winsound=True)
         time.sleep(0.15)
-        phrase = self.config.get('wake_word_config', {}).get('phrase', 'hey samsara')
+        phrase = self.config.get('wake_word_config', {}).get(
+            'phrase', config_defaults.DEFAULTS['wake_word_config.phrase'])
         logger.info(f"[LISTEN] Wake word mode ACTIVE - say '{phrase}' to give commands")
         self._warn_wake_fallback_once()
 
@@ -8119,6 +8254,17 @@ class DictationApp:
                        phrase)
         flight_recorder.record('wake.fallback_active', phrase=phrase, detector='whisper')
 
+    def _warn_wake_profile_fallback_once(self, tid, phrase):
+        """One loud notice per profile lacking a usable OWW pre-filter model."""
+        if tid in self._wake_profile_fallback_warned:
+            return
+        self._wake_profile_fallback_warned.add(tid)
+        logger.warning(
+            "[OWW] Wake profile '%s' (%s) has no pre-filter model -- Whisper "
+            "wake fallback decodes all room audio for it", tid, phrase,
+        )
+        flight_recorder.record('wake.fallback_active', phrase=phrase, detector='whisper', profile=tid)
+
     def _load_wake_profile_models(self):
         """Load OWW models for all enabled wake_profiles (Phase 1 multi-wakeword).
 
@@ -8149,10 +8295,14 @@ class DictationApp:
                 self._wake_profile_detectors[tid] = detector
                 status = "OWW pre-filter active" if detector.is_available else "load failed — Whisper fallback"
                 logger.debug(f"[OWW] Wake profile '{tid}' ({phrase}): {status}")
+                if not detector.is_available and getattr(self, 'wake_word_active', False):
+                    self._warn_wake_profile_fallback_once(tid, phrase)
             else:
                 self._wake_profile_detectors[tid] = None
                 missing = f" ('{model_file}' not in wake_models/)" if model_file else ""
                 logger.debug(f"[OWW] Wake profile '{tid}' ({phrase}): no model{missing} — Whisper fallback")
+                if getattr(self, 'wake_word_active', False):
+                    self._warn_wake_profile_fallback_once(tid, phrase)
 
     def _check_wake_profiles(self, corrected_lower):
         """Match corrected transcript against all enabled wake_profiles.
@@ -8414,7 +8564,7 @@ class DictationApp:
             chunk_16k = chunk_16k.flatten()
         with self._vad_lock:
             probabilities = self._vad_probabilities(chunk_16k)
-        return bool(np.any(probabilities > 0.5))
+        return bool(np.any(probabilities > LIVE_VAD_PROB_THRESHOLD))
 
     def _vad_reset(self):
         """Compatibility hook for utterance-boundary VAD cleanup.
@@ -8424,6 +8574,20 @@ class DictationApp:
         Existing callers retain this hook to keep their cleanup paths stable.
         """
         return None
+
+    def _buffer_should_skip_decode(self, audio, src_rate, *, head_grace_ms=0.0):
+        """Bound long-hold VAD work to eight seconds, only below the existing floor."""
+        if len(audio) / src_rate > _GATE_MAX_BUFFER_S:
+            # Keep real dictation off the VAD lock, including speech starting
+            # after the inspected prefix. The full-buffer RMS scan is cheap.
+            rms = float(np.sqrt(np.mean(np.asarray(audio, dtype=np.float32) ** 2)))
+            if not rms < 10 ** (_SANITY_RMS_FLOOR_DB / 20.0):
+                return False
+            audio = audio[:int(_GATE_MAX_BUFFER_S * src_rate)]
+        return not self._buffer_has_contiguous_speech(
+            audio, src_rate, min_ms=_GATE_MIN_CONTIG_MS, prob_threshold=_GATE_VAD_PROB,
+            head_grace_ms=head_grace_ms,
+        )
 
     def _buffer_has_contiguous_speech(self, audio, src_rate,
                                        min_ms=_GATE_MIN_CONTIG_MS,
@@ -8897,6 +9061,7 @@ class DictationApp:
                   f"RTF: {rtf:.2f}x | Mode: {perf_mode} | Device: {device_info}")
             
             # Apply corrections dictionary
+            text = self._filter_dictation_language(text, info)
             text = self.voice_training_window.apply_corrections(text)
             text_lower = text.lower()
             
@@ -8920,14 +9085,16 @@ class DictationApp:
             
             # Get wake word config
             ww_config = self.config.get('wake_word_config', {})
-            wake_phrase = ww_config.get('phrase', 'samsara').lower()
+            wake_phrase = ww_config.get(
+                'phrase', config_defaults.DEFAULTS['wake_word_config.phrase']).lower()
 
             self._emit_wake_trace({"stage": "utterance_start", "raw": text, "normalized": text_lower})
 
             # In dictation state (quick_dictation, long_dictation, or wake_session)?
             if self.app_state in ('quick_dictation', 'long_dictation', 'wake_session'):
                 # Check abort words
-                abort_words = ww_config.get('wake_abort_phrase', ['cancel'])
+                abort_words = ww_config.get(
+                    'wake_abort_phrase', config_defaults.DEFAULTS['wake_word_config.wake_abort_phrase'])
                 for cw in abort_words:
                     if cw.lower() in text_lower:
                         logger.info(f"[CANCEL] Dictation cancelled ('{cw}')")
@@ -9045,7 +9212,18 @@ class DictationApp:
                                 self.wake_dictation_buffer.append(cleaned)
                                 logger.info(f"[DICTATE] Buffered (pre-pause): {cleaned}")
                             self._dictation_paused = True
-                            self.silence_start = None
+                            # self.silence_start is otherwise owned by
+                            # WakeConsumer's poll thread (see wake_consumer.py
+                            # module docstring); this decode-completion thread
+                            # must not stomp on it while the poll thread is
+                            # mid-utterance -- that races a concurrent
+                            # `time.time() - self.silence_start` read (a
+                            # TypeError on a None it just wrote) and restarts
+                            # the new utterance's silence window. Only the
+                            # already-idle case (no active speech) is ours to
+                            # clear, and it's already None there.
+                            if not getattr(self, 'is_speaking', False):
+                                self.silence_start = None
                             self.play_sound("stop")
                             if hasattr(self, 'listening_indicator'):
                                 self._schedule_ui(self.listening_indicator.set_mode, "Paused")
@@ -9478,37 +9656,19 @@ class DictationApp:
 
         # Force any in-buffer audio to dispatch NOW so the pending counter
         # captures it. Without this, audio currently being captured but not
-        # yet flushed by VAD silence would be lost.
-        self._flush_speech_buffer_to_transcription()
+        # yet flushed by VAD silence would be lost. Routed through the
+        # consumer that actually owns the buffer (WakeConsumer._utterance_
+        # frames since the ACE migration) -- self.speech_buffer/buffer_lock
+        # were the pre-ACE accumulator and nothing has appended to them
+        # since; flushing them was a guaranteed no-op.
+        consumer = getattr(self, '_wake_consumer', None)
+        if consumer is not None:
+            consumer.flush_utterance()
 
         # Try to finalize immediately. If transcriptions are still in flight,
         # this is a no-op and finalize will happen via the completion-side
         # call to _maybe_finalize_dictation in process_wake_word_buffer.
         self._maybe_finalize_dictation()
-
-    def _flush_speech_buffer_to_transcription(self):
-        """Force whatever audio is currently in self.speech_buffer to dispatch
-        to transcription, bypassing the VAD silence threshold. Used by the
-        hard-cap to ensure no in-flight audio is lost.
-
-        Returns True if a buffer was dispatched, False if nothing to flush.
-        Increments _pending_transcriptions if dispatched.
-        """
-        with self.buffer_lock:
-            if not self.speech_buffer:
-                return False
-            buffer_copy = self.speech_buffer.copy()
-            self.speech_buffer = []
-
-        self.is_speaking = False
-        self.silence_start = None
-
-        self._process_wake_word_buffer_tracked(buffer_copy)
-        return True
-
-    def _process_wake_word_buffer_tracked(self, buffer, src_rate=None):
-        """Queue a counted utterance; completion or overflow releases its count."""
-        self.process_wake_word_buffer(buffer, src_rate=src_rate, tracked=True)
 
     def _maybe_finalize_dictation(self):
         """Centralized finalize check. Called from multiple completion points;
@@ -9927,9 +10087,9 @@ class DictationApp:
             diagnostics.record(diagnostics.DiagRecord(
                 mode="wake",
                 audio_s=_diag_acc.get('audio_s', 0.0),
-                model_name=self.config.get('model_size', ''),
+                model_name=self.config.get('model_size', config_defaults.DEFAULTS['model_size']),
                 device=getattr(self, 'device_type', 'unknown'),
-                compute_type=self.config.get('compute_type', ''),
+                compute_type=self.config.get('compute_type', config_defaults.DEFAULTS['compute_type']),
                 t_transcribe_ms=_diag_acc.get('t_transcribe_ms', -1),
                 t_corrections_ms=t_corrections_ms,
                 t_smart_ms=t_smart_ms,
@@ -10437,6 +10597,96 @@ class DictationApp:
         audio_ducking.restore()
 
     def start_recording(self, streaming=None, play_earcon=True):
+        """Serialize capture startup with release, cancellation and shutdown."""
+        with self._hold_capture_lifecycle_lock:
+            if (not self._running or self.recording
+                    or getattr(self, '_streaming_session', None) is not None
+                    or self._stop_in_flight or not self.model_loaded):
+                return
+            started = False
+            try:
+                started = self._start_recording_impl(streaming, play_earcon)
+            finally:
+                if not started:
+                    try:
+                        self.cancel_recording()
+                    finally:
+                        try:
+                            if self._dictation_consumer is not None:
+                                try:
+                                    self._dictation_consumer.cancel()
+                                finally:
+                                    self._dictation_consumer.stop_streaming()
+                        finally:
+                            self._ace_dictation_active = False
+                            self._ace_streaming_active = False
+                            self._hotkey_recording = False
+                            self._close_hold_capture_duck()
+
+    def _open_hold_capture_duck(self):
+        """Reuse capture ownership; wait for synchronous volume acknowledgements."""
+        self._hold_capture_duck_confirmed_at = None
+        cfg = self.config.get('ducking', {}) or {}
+        if (not self.config.get('capture_duck_hold_enabled', True)
+                or not cfg.get('hands_free_enabled', True)
+                or float(cfg.get('hands_free_level', 0.15)) >= 1.0):
+            return
+        # Hands-free owners are positive. A fresh negative token prevents a
+        # delayed close from an earlier hold from releasing a later one.
+        self._hold_capture_duck_seq += 1
+        token = -self._hold_capture_duck_seq
+        self._hold_capture_duck_token = token
+        started = time.perf_counter()
+        confirmed = False
+        try:
+            if self._open_hands_free_capture_duck(token) != token:
+                raise RuntimeError('Hold capture duck could not engage')
+            # The shared helper returns early if another owner is still
+            # starting. Do not mistake that token reservation for completion.
+            deadline = time.perf_counter() + 2.0
+            while True:
+                with self._hands_free_duck_lock:
+                    ducker = self._hands_free_capture_ducker
+                    starting = self._hands_free_capture_duck_starting
+                    owned = token in self._hands_free_capture_duck_owners
+                if not owned or not self._running:
+                    raise RuntimeError('Hold capture duck lost ownership')
+                if ducker is not None:
+                    if ducker.sessions_failed or ducker.last_error:
+                        raise RuntimeError('Hold capture duck volume update failed')
+                    break
+                if not starting or time.perf_counter() >= deadline:
+                    raise RuntimeError('Hold capture duck did not confirm')
+                time.sleep(0.005)
+            self._hold_capture_duck_confirmed_at = time.perf_counter()
+            confirmed = True
+        finally:
+            elapsed_ms = (time.perf_counter() - started) * 1000.0
+            flight_recorder.record('hold_capture_duck.engage', owner_token=token,
+                                   confirmed=confirmed, elapsed_ms=elapsed_ms)
+            logger.info('[DUCK] Hold capture confirmed=%s in %.2f ms', confirmed, elapsed_ms)
+            if not confirmed:
+                self._close_hold_capture_duck()
+
+    def _close_hold_capture_duck(self, *, immediate=False):
+        """Release only this hold; shutdown also flushes an unowned debounce."""
+        token, self._hold_capture_duck_token = self._hold_capture_duck_token, None
+        self._hold_capture_duck_confirmed_at = None
+        try:
+            if token is not None:
+                try:
+                    if self._dictation_consumer is not None:
+                        self._dictation_consumer.finish_capture()
+                finally:
+                    self._close_hands_free_capture_duck(token)
+        finally:
+            if immediate:
+                with self._hands_free_duck_lock:
+                    generation = self._hands_free_capture_duck_restore_generation
+                    restore_token = self._hands_free_capture_duck_restore_token
+                self._restore_hands_free_capture_duck_now(generation, restore_token)
+
+    def _start_recording_impl(self, streaming=None, play_earcon=True):
         """Start recording audio.
 
         streaming overrides:
@@ -10464,11 +10714,15 @@ class DictationApp:
             logger.debug("[HOTKEY] start_recording ignored — stop still in flight")
             return
 
-        # Duck other apps' audio as early as possible in the start sequence
-        # -- before the earcon/capture activation below -- so the reduced
-        # bleed is in effect for as much of the actual recording as
-        # possible. No-op unless ducking.enabled (see _duck_audio).
-        self._duck_audio()
+        # Ordinary holds share the confirmed capture duck and exclude older
+        # ring frames. Other recording lanes retain their legacy duck policy.
+        if (self.config.get('mode', 'hold') == 'hold'
+                and not getattr(self, 'command_mode_recording', False)
+                and not getattr(self, 'ava_mode_recording', False)
+                and not getattr(self, '_memo_recording', False)):
+            self._open_hold_capture_duck()
+        else:
+            self._duck_audio()
 
         # Suppress wake word processing during hotkey recording -- FIX 1
         # (2026-07-10 hotkey word-loss investigation): WakeConsumer now goes
@@ -10527,13 +10781,15 @@ class DictationApp:
                 if hasattr(self, 'listening_indicator'):
                     self._schedule_ui(self.listening_indicator.flash_error)
                 return
-            self._dictation_consumer.activate()
+            if self._dictation_consumer.activate() is False:
+                return False
             self._ace_dictation_active = True
         else:
             # CapsLock streaming path (ACE-04B).
             self._ace_dictation_active = False
             # ACE path: streaming accumulator in consumer, no separate stream.
-            self._dictation_consumer.activate_streaming()
+            if self._dictation_consumer.activate_streaming() is False:
+                return False
             self._ace_streaming_active = True
             if hasattr(self, 'hints'):
                 self.hints.maybe_show(
@@ -10559,6 +10815,7 @@ class DictationApp:
             from samsara.streaming import StreamingSession
             self._streaming_session = StreamingSession(self)
             self._streaming_session.start()
+        return True
 
     def start_memo_capture(self):
         """Start the batch capture path for the quick-memo voice command."""
@@ -10582,10 +10839,14 @@ class DictationApp:
         is itself a no-op when nothing was ducked, so this is always safe
         to call unconditionally.
         """
-        try:
-            self._stop_recording_impl()
-        finally:
-            self._restore_audio()
+        with self._hold_capture_lifecycle_lock:
+            try:
+                self._stop_recording_impl()
+            finally:
+                try:
+                    self._restore_audio()
+                finally:
+                    self._close_hold_capture_duck()
 
     def _take_recording_ownership(self):
         """Return and synchronously clear ownership for the recording being stopped.
@@ -10658,7 +10919,7 @@ class DictationApp:
                         silence_ms=int(self.config.get('recording_tail_silence_ms', 300)),
                         max_tail_ms=int(self.config.get('recording_tail_max_ms', 1200)),
                         speech_threshold=float(self.config.get(
-                            'recording_tail_speech_threshold', 0.008,
+                            'recording_tail_speech_threshold', HOLD_RELEASE_TAIL_SPEECH_THRESHOLD,
                         )),
                     )
                 finally:
@@ -10731,21 +10992,18 @@ class DictationApp:
                 # before it can trigger the gate below or Whisper itself.
                 audio_faded = _fade_edges(audio, self.model_rate, _FADE_MS)
 
-                # Short-buffer presence gate: hallucinations concentrate in
-                # short, near-silent buffers. Buffers longer than
-                # _GATE_MAX_BUFFER_S bypass the gate entirely -- real
-                # dictation must never pay VAD latency or risk being gated.
+                # Presence gate: scan short buffers, or only the first eight
+                # seconds of long buffers below the existing near-silence floor.
                 # Head grace (2026-07-10): covers the start earcon (measured
                 # duration, 0 if none played this recording) plus a fixed
                 # pad for the mechanical key-click transient -- see
                 # _GATE_HEAD_GRACE_CLICK_PAD_MS.
                 _head_grace_ms = self._last_recording_earcon_ms + _GATE_HEAD_GRACE_CLICK_PAD_MS
-                if audio_duration <= _GATE_MAX_BUFFER_S and not self._buffer_has_contiguous_speech(
+                if self._buffer_should_skip_decode(
                     audio_faded, self.model_rate,
-                    min_ms=_GATE_MIN_CONTIG_MS, prob_threshold=_GATE_VAD_PROB,
                     head_grace_ms=_head_grace_ms,
                 ):
-                    logger.debug(f"[GATE] No contiguous speech in short buffer "
+                    logger.debug(f"[GATE] No contiguous speech in quiet buffer window "
                           f"({audio_duration:.2f}s) — skipping")
                     # FM3 diagnostics: this buffer never reached the model at
                     # all -- distinct from outcome="empty" (model ran, text
@@ -10757,9 +11015,9 @@ class DictationApp:
                         diagnostics.record(diagnostics.DiagRecord(
                             mode="command" if ownership.is_command else "hotkey",
                             audio_s=audio_duration,
-                            model_name=self.config.get('model_size', ''),
+                            model_name=self.config.get('model_size', config_defaults.DEFAULTS['model_size']),
                             device=getattr(self, 'device_type', 'unknown'),
-                            compute_type=self.config.get('compute_type', ''),
+                            compute_type=self.config.get('compute_type', config_defaults.DEFAULTS['compute_type']),
                             outcome="gated",
                             language=_languages.describe_diagnostics_language(
                                 self.config.get('language', 'en'),
@@ -10786,7 +11044,8 @@ class DictationApp:
                 # only -- initial_prompt is NOT cleared there; command-hotkey
                 # vocabulary still biases every chunk (free-form hold-to-
                 # dictate already has none to bias with, per #1 above).
-                _decode_result = self._decode_hotkey_audio(audio_faded, transcribe_params, audio_duration)
+                _decode_result = self._decode_hotkey_audio(
+                    audio_faded, transcribe_params, audio_duration, free_form=not ownership.is_command)
 
                 # Fail-loud backstop for silent mid-decode data loss (see
                 # module comment above _SANITY_MIN_DURATION_S), with the
@@ -10802,7 +11061,8 @@ class DictationApp:
                 def _retry_decode():
                     _retry_params = dict(transcribe_params)
                     _retry_params['initial_prompt'] = ""
-                    return self._decode_hotkey_audio(audio_faded, _retry_params, audio_duration)
+                    return self._decode_hotkey_audio(
+                        audio_faded, _retry_params, audio_duration, free_form=not ownership.is_command)
 
                 _decode_result, _suspected_data_loss, _retried = _apply_retry_on_suspected_loss(
                     _decode_result, _retry_decode, audio_faded, self.model_rate, audio_duration,
@@ -10865,9 +11125,9 @@ class DictationApp:
                             diagnostics.record(diagnostics.DiagRecord(
                                 mode="command",
                                 audio_s=audio_duration,
-                                model_name=self.config.get('model_size', ''),
+                                model_name=self.config.get('model_size', config_defaults.DEFAULTS['model_size']),
                                 device=getattr(self, 'device_type', 'unknown'),
-                                compute_type=self.config.get('compute_type', ''),
+                                compute_type=self.config.get('compute_type', config_defaults.DEFAULTS['compute_type']),
                                 t_transcribe_ms=t_transcribe_ms,
                                 t_total_ms=t_transcribe_ms,
                                 text=text,
@@ -11035,9 +11295,9 @@ class DictationApp:
                         diagnostics.record(diagnostics.DiagRecord(
                             mode="hotkey",
                             audio_s=audio_duration,
-                            model_name=self.config.get('model_size', ''),
+                            model_name=self.config.get('model_size', config_defaults.DEFAULTS['model_size']),
                             device=getattr(self, 'device_type', 'unknown'),
-                            compute_type=self.config.get('compute_type', ''),
+                            compute_type=self.config.get('compute_type', config_defaults.DEFAULTS['compute_type']),
                             t_transcribe_ms=t_transcribe_ms,
                             t_corrections_ms=t_corrections_ms,
                             t_smart_ms=t_smart_ms,
@@ -11064,7 +11324,7 @@ class DictationApp:
                         benchmark_store.append_sample(
                             self, audio, self.model_rate,
                             _bench_raw_transcript, text.strip(),
-                            self.config.get('model_size', ''),
+                            self.config.get('model_size', config_defaults.DEFAULTS['model_size']),
                         )
                     except Exception as _bench_exc:
                         logger.debug(f"[BENCH] append_sample failed: {_bench_exc}")
@@ -11127,9 +11387,9 @@ class DictationApp:
                         diagnostics.record(diagnostics.DiagRecord(
                             mode="command" if is_command_mode else "hotkey",
                             audio_s=audio_duration,
-                            model_name=self.config.get('model_size', ''),
+                            model_name=self.config.get('model_size', config_defaults.DEFAULTS['model_size']),
                             device=getattr(self, 'device_type', 'unknown'),
-                            compute_type=self.config.get('compute_type', ''),
+                            compute_type=self.config.get('compute_type', config_defaults.DEFAULTS['compute_type']),
                             t_transcribe_ms=t_transcribe_ms,
                             t_total_ms=int((time.time() - transcribe_start) * 1000),
                             text="",
@@ -11165,6 +11425,14 @@ class DictationApp:
         thread = thread_registry.spawn("dictation.transcribe", transcribe, daemon=True)
 
     def cancel_recording(self):
+        """Escape and failed startup must release the hold even if cancel raises."""
+        with self._hold_capture_lifecycle_lock:
+            try:
+                self._cancel_recording_impl()
+            finally:
+                self._close_hold_capture_duck()
+
+    def _cancel_recording_impl(self):
         """Cancel recording without transcribing"""
         streaming_session = getattr(self, '_streaming_session', None)
         if not self.recording and streaming_session is None:
@@ -12112,6 +12380,15 @@ class DictationApp:
 
         # Signal background threads (e.g. stream-health monitor) to stop
         self._running = False
+
+        try:
+            with self._hold_capture_lifecycle_lock:
+                try:
+                    self.cancel_recording()
+                finally:
+                    self._close_hold_capture_duck(immediate=True)
+        except Exception as e:
+            logger.debug(f"[EXIT] Hold capture cleanup failed: {e}")
 
         # Every step below is independent, best-effort teardown: one
         # subsystem failing to stop cleanly must never block the rest of
