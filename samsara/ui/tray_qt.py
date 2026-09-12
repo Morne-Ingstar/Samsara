@@ -14,6 +14,7 @@ from PySide6.QtCore import Qt, QObject, QTimer, Signal
 from PySide6.QtGui import QAction, QActionGroup, QGuiApplication, QIcon, QImage, QPixmap
 from PySide6.QtWidgets import QMenu, QSystemTrayIcon
 
+from samsara import config_defaults
 from samsara.constants import DEFAULT_WAKE_PHRASE
 from samsara.log import get_logger
 from samsara.quick_memo import memo_file
@@ -460,9 +461,11 @@ class SamsaraTrayQt(QObject):
         tools_sub.addMenu(cleanup_sub)
 
         tools_sub.addSeparator()
-        info_hotkey = tools_sub.addAction(f"Hotkey:  {app.config.get('hotkey', '?')}")
+        info_hotkey = tools_sub.addAction(
+            f"Hotkey:  {app.config.get('hotkey', config_defaults.DEFAULTS['hotkey'])}")
         info_hotkey.setEnabled(False)
-        info_model = tools_sub.addAction(f"Model:  {app.config.get('model_size', '?')}")
+        info_model = tools_sub.addAction(
+            f"Model:  {app.config.get('model_size', config_defaults.DEFAULTS['model_size'])}")
         info_model.setEnabled(False)
 
         menu.addMenu(tools_sub)

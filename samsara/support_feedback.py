@@ -6,7 +6,7 @@ import platform
 import sys
 from collections.abc import Mapping
 
-from samsara import __version__
+from samsara import __version__, config_defaults
 
 
 BUG_REPORT_URL = (
@@ -59,12 +59,12 @@ def build_safe_diagnostic_summary(
         ("Execution", "packaged" if frozen else "source"),
         ("Windows", platform_text),
         ("Python", python_version),
-        ("Model", cfg.get("model_size", "default")),
-        ("Language", cfg.get("language", "default")),
-        ("Requested device", cfg.get("device", "auto")),
-        ("Compute type", cfg.get("compute_type", "default")),
-        ("Performance mode", cfg.get("performance_mode", "default")),
-        ("Recording mode", cfg.get("mode", "default")),
+        ("Model", cfg.get("model_size", config_defaults.DEFAULTS["model_size"])),
+        ("Language", cfg.get("language", config_defaults.DEFAULTS["language"])),
+        ("Requested device", cfg.get("device", config_defaults.DEFAULTS["device"])),
+        ("Compute type", cfg.get("compute_type", config_defaults.DEFAULTS["compute_type"])),
+        ("Performance mode", cfg.get("performance_mode", config_defaults.DEFAULTS["performance_mode"])),
+        ("Recording mode", cfg.get("mode", config_defaults.DEFAULTS["mode"])),
         ("HANDS FREE enabled", bool(command_mode.get("enabled", False))),
         ("Wake listener enabled", bool(cfg.get("wake_word_enabled", False))),
         ("Interface scale", cfg.get("ui_scale", 1.0)),

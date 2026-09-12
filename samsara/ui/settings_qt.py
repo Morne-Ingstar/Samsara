@@ -22,6 +22,7 @@ from PySide6.QtWidgets import (
     QInputDialog,
 )
 
+from samsara import config_defaults
 from samsara.config_transfer import (
     ConfigTransferError,
     export_config,
@@ -2451,7 +2452,9 @@ class _SettingsWindow(QMainWindow):
         cmd_timeout_spin.setRange(5, 1800)
         cmd_timeout_spin.setSingleStep(5)
         cmd_timeout_spin.setSuffix(" s")
-        cmd_timeout_spin.setValue(int(cmd_cfg.get('inactivity_timeout_s', 30)))
+        cmd_timeout_spin.setValue(int(cmd_cfg.get(
+            'inactivity_timeout_s',
+            config_defaults.DEFAULTS['command_mode.inactivity_timeout_s'])))
         self._widgets['cmd_timeout'] = cmd_timeout_spin
         adv_area_layout.addLayout(
             self._setting_row(

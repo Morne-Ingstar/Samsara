@@ -25,6 +25,7 @@ from PySide6.QtWidgets import (
     QVBoxLayout, QWidget,
 )
 
+from samsara import config_defaults
 from samsara.ui import qt_runtime
 from samsara.runtime import thread_registry
 from samsara.languages import resolve_transcribe_language
@@ -273,7 +274,7 @@ class _DebugWindow(QMainWindow):
         lay.setSpacing(6)
 
         ww   = self._app.config.get('wake_word_config', {})
-        phrase  = ww.get('phrase', 'samsara')
+        phrase  = ww.get('phrase', config_defaults.DEFAULTS['wake_word_config.phrase'])
         end_cfg = ww.get('end_word', {})
         end_txt = f'"{end_cfg.get("phrase", "over")}"' if end_cfg.get('enabled') else "(disabled)"
         end_col = _CYAN if end_cfg.get('enabled') else _TEXT_SEC
@@ -1004,7 +1005,8 @@ class _DebugWindow(QMainWindow):
 
             text_lower = text.lower()
             ww_cfg     = self._app.config.get('wake_word_config', {})
-            wake_phrase = ww_cfg.get('phrase', 'samsara').lower()
+            wake_phrase = ww_cfg.get(
+                'phrase', config_defaults.DEFAULTS['wake_word_config.phrase']).lower()
             self._heard_sig.emit(text)
 
             from samsara.wake_corrections import (
