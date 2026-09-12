@@ -14,6 +14,57 @@ from unittest.mock import Mock, MagicMock, patch
 # Add parent directory to path for imports
 sys.path.insert(0, str(Path(__file__).parent.parent))
 
+
+# ============================================================================
+# Shared fake-app baseline (docs/reviews/test_suite_audit.md "bring the
+# suite to green" pass)
+# ============================================================================
+#
+# Dozens of test files build their own lightweight `app` stand-in (a
+# SimpleNamespace, a `DictationApp.__new__(DictationApp)`, or a small stub
+# class) and bind real dictation.py/wake_consumer.py methods onto it. Every
+# time production adds a new cross-cutting attribute those methods read off
+# `self` -- a lock, a per-lane token owner, a confidence gate -- every one of
+# those ad-hoc fakes goes stale at once. apply_fake_app_defaults() is the
+# single place to add the next one.
+#
+# Call it right after constructing the fake object and BEFORE layering your
+# test's own specific attributes on top, e.g.:
+#
+#     app = DictationApp.__new__(DictationApp)
+#     apply_fake_app_defaults(app)
+#     app.config = {...}          # your test's own overrides follow
+#
+# It works on any object that allows attribute assignment (SimpleNamespace,
+# a real DictationApp.__new__() instance, or a plain custom class) and never
+# overwrites an attribute the object already has, so it's safe to call
+# before OR after your own setup.
+def apply_fake_app_defaults(app):
+    import threading
+
+    from samsara.audio_engine.wake_dispatch import TranscriptionOwners
+    from samsara.languages import LanguageConfidenceGate
+
+    defaults = {
+        # Per-lane (wake/toggle/ava) exactly-once completion token --
+        # dictation.py's _handle_command_mode_utterance/_handle_ava_command_
+        # utterance/process_wake_word_buffer all claim/release one.
+        '_transcription_owners': TranscriptionOwners,
+        # Guards wake-session start/expire/restart bookkeeping --
+        # process_wake_word_buffer and the _*_wake_session methods.
+        '_wake_session_lock': threading.RLock,
+        # Serializes start_recording/stop_recording/cancel_recording against
+        # concurrent release/cancel/shutdown.
+        '_hold_capture_lifecycle_lock': threading.RLock,
+        # Per-app rolling language-confidence expectations used by
+        # _filter_dictation_language.
+        '_language_confidence_gate': LanguageConfidenceGate,
+    }
+    for name, factory in defaults.items():
+        if not hasattr(app, name):
+            setattr(app, name, factory())
+    return app
+
 # ============================================================================
 # Hermetic collection: force SAMSARA_HOME_DIR before any Samsara import
 # ============================================================================

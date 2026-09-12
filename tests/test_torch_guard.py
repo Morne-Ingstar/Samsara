@@ -20,6 +20,17 @@ def load_guard(monkeypatch, caplog):
     caplog.set_level(logging.INFO, logger="Samsara.samsara.torch_guard")
     guards = []
 
+    # Full-suite hygiene: if an earlier, unrelated test in this same process
+    # imported the real `dictation` module, its module-level `samsara.
+    # torch_guard.install()` call (dictation.py's own startup line) already
+    # put the REAL shared module's `_finder` singleton in sys.meta_path --
+    # a different object from every fixture-local copy this file loads via
+    # importlib.util below, so nothing here would otherwise ever remove it.
+    # Start every test on a clean slate regardless of what ran before it.
+    _real_guard_before = sys.modules.get("samsara.torch_guard")
+    if _real_guard_before is not None:
+        _real_guard_before.uninstall()
+
     def load():
         path = Path(__file__).resolve().parents[1] / "samsara" / "torch_guard.py"
         spec = importlib.util.spec_from_file_location("samsara.torch_guard", path)
@@ -31,6 +42,17 @@ def load_guard(monkeypatch, caplog):
     yield load
     for guard in guards:
         guard.uninstall()
+    # Full-suite hygiene: if some other test in this process imported the
+    # real `dictation` module, its module-level `samsara.torch_guard.
+    # install()` (dictation.py's own startup line) put the REAL shared
+    # module's `_finder` singleton in sys.meta_path -- a different object
+    # from any of this fixture's own importlib.util-loaded copies above, so
+    # the loop right above never touches it. Uninstall it too, so a test
+    # here that proves "torch imports normally again" isn't defeated by an
+    # unrelated file's earlier import of the real module.
+    real_guard = sys.modules.get("samsara.torch_guard")
+    if real_guard is not None:
+        real_guard.uninstall()
 
 
 def test_import_has_no_guard_side_effects(load_guard, caplog):

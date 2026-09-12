@@ -16,6 +16,7 @@ machinery this fix doesn't touch, so a full instance isn't needed to
 exercise _dispatch_wake_profile / _start_wake_session / _reset_wake_dictation.
 """
 import sys
+import threading
 from pathlib import Path
 from unittest.mock import Mock, patch
 
@@ -26,6 +27,11 @@ from dictation import DictationApp
 
 def test_profile_isolation():
     app = Mock()
+    # _start_wake_session now serializes under _wake_session_lock -- a bare
+    # Mock() auto-vivifies that attribute as another Mock, which doesn't
+    # support the `with` protocol a real lock does.
+    app._wake_session_lock = threading.RLock()
+    app.config = {}
     app._wake_session_send_word = None
     app._start_wake_session = Mock(wraps=lambda **kw: DictationApp._start_wake_session(app, **kw))
 

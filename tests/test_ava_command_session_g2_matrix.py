@@ -391,22 +391,8 @@ class TestWaterfallMissSingleFallbackThenMissFeedback:
         assert spoken == ["I didn't catch a command in that."]
         assert app._ava_cmd_miss_count == 1
 
-
-# =============================================================================
-# P2 scope: Agora orchestration verbs/callback. Explicit skips, not silent
-# omissions -- see spec's Phasing section.
-# =============================================================================
-
-class TestOrchestrationSemanticsOutOfScopeForP1:
-    def test_no_token_zero_orchestration_surface(self):
-        pytest.skip(
-            "P2 scope (Agora verbs/callback) per spec Phasing section -- "
-            "D3 has no Agora token/orchestration surface at all in P1, so "
-            "there is nothing here to exercise yet."
-        )
-
-    def test_token_present_listener_dead_hidden_verbs_no_error_ui(self):
-        pytest.skip(
-            "P2 scope (Agora verbs/callback) per spec Phasing section -- "
-            "no Agora listener/token plumbing exists in D3 in P1."
-        )
+# P2 scope (Agora orchestration verbs/callback) placeholder tests removed
+# here -- see docs/reviews/test_suite_audit.md NEVER RUNS for the reason:
+# D3 has no Agora token/orchestration surface at all in P1, so there was no
+# production code for them to ever exercise, and building that surface to
+# give them something to test is out of scope for a test-only fix.

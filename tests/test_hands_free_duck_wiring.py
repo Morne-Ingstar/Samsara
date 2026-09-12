@@ -30,16 +30,31 @@ class TestOpenHandsFreeDuckSafe:
         WakeConsumer._open_hands_free_duck_safe(Bare())  # must not raise
 
     def test_swallows_exception_from_app_method(self):
-        app = Mock()
-        app._open_hands_free_capture_duck.side_effect = RuntimeError("boom")
+        # A bare Mock() auto-vivifies ANY attribute (including the
+        # per-operation `_wake_duck_open_last_error_log` throttle timestamp
+        # _log_duck_failure now reads via getattr(app, key, default)), so it
+        # can no longer stand in for `app` on the exception path -- the
+        # subtraction against that auto-vivified Mock raises TypeError
+        # instead of exercising the real "missing timestamp" default a
+        # genuine object gives. A plain object (real getattr/setattr
+        # semantics) plus a Mock'd duck method is the faithful double.
+        class App:
+            pass
+
+        app = App()
+        app._open_hands_free_capture_duck = Mock(side_effect=RuntimeError("boom"))
         WakeConsumer._open_hands_free_duck_safe(app)  # must not raise
 
 
 class TestCloseHandsFreeDuckSafe:
-    def test_calls_app_method_when_present(self):
+    def test_no_op_when_owner_token_is_none_even_if_method_present(self):
+        """2026-07-24 amendment (docs/reviews/hands_free_path_review.md,
+        'Medium/low -- duck ownership'): closing without an owner token is
+        an intentional no-op with a diagnostic log, not a forwarded call
+        with None -- there is nothing to close."""
         app = Mock()
         WakeConsumer._close_hands_free_duck_safe(app)
-        app._close_hands_free_capture_duck.assert_called_once_with(None)
+        app._close_hands_free_capture_duck.assert_not_called()
 
     def test_calls_app_method_with_owner_token(self):
         app = Mock()
