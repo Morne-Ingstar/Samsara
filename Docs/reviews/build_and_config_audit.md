@@ -470,20 +470,25 @@ Observations:
 
 **12 keys.** `<expr>` (non-literal) defaults excluded; `tools/` sites excluded from the count.
 
+**FIXED (see this task's report below):** all 12 keys now route through
+`samsara/config_defaults.py`'s `DEFAULTS` table, and `tools/config_defaults_check.py`
+(wired into `tests/test_config_defaults.py`) fails the gate if a literal default
+for any of them (or any future key) ever diverges again.
+
 | Key | Default A | Default B | Further |
 |---|---|---|---|
-| `wake_word_config.phrase` | `'jarvis'` - `dictation.py:8094` | `'samsara'` - `dictation.py:8871`, `samsara/ui/wake_word_debug_qt.py:276`, `:1007` | - |
-| `wake_word_config.wake_abort_phrase` | `['cancel', 'cancel dictation', 'abort']` - `dictation.py:6234` | `['cancel']` - `dictation.py:8878` | - |
-| `wake_word_enabled` | `False` - `dictation.py:5237`, `:5550`, `:11370`, `:11678`, `samsara/support_feedback.py:69`, `samsara/ui/main_window_qt.py:339`, `quick_reference_qt.py:192`, `settings_qt.py:2147`, `tray_qt.py:344`, `tutorial_qt.py:375` | `True` - `samsara/ui/first_run_wizard_qt.py:1020` | - |
-| `command_mode.inactivity_timeout_s` | `300` - `dictation.py:6447`, `:7068`, `:7091`, `:10876` | `30` - `samsara/ui/settings_qt.py:2454` | - |
-| `model_size` | `'base'` - `dictation.py:2834`, `first_run_wizard_qt.py:1037`, `:1038`, `settings_qt.py:1329`, `voice_training_qt.py:1005` | `''` - `dictation.py:9894`, `:10724`, `:10832`, `:11002`, `:11031`, `:11094`, `samsara/streaming.py:556` | `'default'` - `support_feedback.py:62`; `'?'` - `diagnostics_qt.py:374`, `tray_qt.py:465` |
-| `compute_type` | `''` - `dictation.py:9896`, `:10726`, `:10834`, `:11004`, `:11096`, `samsara/streaming.py:558` | `'float16'` - `samsara/ui/settings_qt.py:4695` | `'default'` - `support_feedback.py:65`; `'?'` - `diagnostics_qt.py:376` |
-| `device` | `'auto'` - `samsara/support_feedback.py:64` | `'cpu'` - `samsara/ui/settings_qt.py:4677` | `'?'` - `diagnostics_qt.py:375` |
-| `language` | `'en'` - `dictation.py:2840`, `:9912`, `:10729`, `:11016`, `:11103`, `samsara/streaming.py:566`, `settings_qt.py:1354`, `voice_training_qt.py:1031`, `:1112` | `'default'` - `samsara/support_feedback.py:63` | - |
-| `mode` | `'hold'` - `dictation.py:2905` + 13 more, `main_window_qt.py:336`, `settings_qt.py:2213`, `tray_qt.py:322` | `'default'` - `samsara/support_feedback.py:67` | - |
-| `performance_mode` | `'balanced'` - `dictation.py:4670`, `:7481`, `:8781`, `:10680`, `settings_qt.py:4713` | `'default'` - `samsara/support_feedback.py:66` | - |
-| `hotkey` | `'ctrl+shift'` - `first_run_wizard_qt.py:1042`, `settings_qt.py:2224`, `tutorial_qt.py:333` | `'?'` - `samsara/ui/tray_qt.py:463` | - |
-| `hyperion_host` | `'192.168.50.247'` - `plugins/commands/demo_commands.py:68` | `'discoball.local'` - `plugins/commands/demo_commands.py:291` | `''` - `plugins/commands/hyperion_lights.py:20` |
+| `wake_word_config.phrase` [FIXED -> `'jarvis'`] | `'jarvis'` - `dictation.py:8094` | `'samsara'` - `dictation.py:8871`, `samsara/ui/wake_word_debug_qt.py:276`, `:1007` | - |
+| `wake_word_config.wake_abort_phrase` [FIXED -> `['cancel', 'cancel dictation', 'abort']`] | `['cancel', 'cancel dictation', 'abort']` - `dictation.py:6234` | `['cancel']` - `dictation.py:8878` | - |
+| `wake_word_enabled` [FIXED -> `False`] | `False` - `dictation.py:5237`, `:5550`, `:11370`, `:11678`, `samsara/support_feedback.py:69`, `samsara/ui/main_window_qt.py:339`, `quick_reference_qt.py:192`, `settings_qt.py:2147`, `tray_qt.py:344`, `tutorial_qt.py:375` | `True` - `samsara/ui/first_run_wizard_qt.py:1020` | - |
+| `command_mode.inactivity_timeout_s` [FIXED -> `300`] | `300` - `dictation.py:6447`, `:7068`, `:7091`, `:10876` | `30` - `samsara/ui/settings_qt.py:2454` | - |
+| `model_size` [FIXED -> `'base'`] | `'base'` - `dictation.py:2834`, `first_run_wizard_qt.py:1037`, `:1038`, `settings_qt.py:1329`, `voice_training_qt.py:1005` | `''` - `dictation.py:9894`, `:10724`, `:10832`, `:11002`, `:11031`, `:11094`, `samsara/streaming.py:556` | `'default'` - `support_feedback.py:62`; `'?'` - `diagnostics_qt.py:374`, `tray_qt.py:465` |
+| `compute_type` [FIXED -> `'float16'`] | `''` - `dictation.py:9896`, `:10726`, `:10834`, `:11004`, `:11096`, `samsara/streaming.py:558` | `'float16'` - `samsara/ui/settings_qt.py:4695` | `'default'` - `support_feedback.py:65`; `'?'` - `diagnostics_qt.py:376` |
+| `device` [FIXED -> `'cpu'`] | `'auto'` - `samsara/support_feedback.py:64` | `'cpu'` - `samsara/ui/settings_qt.py:4677` | `'?'` - `diagnostics_qt.py:375` |
+| `language` [FIXED -> `'en'`] | `'en'` - `dictation.py:2840`, `:9912`, `:10729`, `:11016`, `:11103`, `samsara/streaming.py:566`, `settings_qt.py:1354`, `voice_training_qt.py:1031`, `:1112` | `'default'` - `samsara/support_feedback.py:63` | - |
+| `mode` [FIXED -> `'hold'`] | `'hold'` - `dictation.py:2905` + 13 more, `main_window_qt.py:336`, `settings_qt.py:2213`, `tray_qt.py:322` | `'default'` - `samsara/support_feedback.py:67` | - |
+| `performance_mode` [FIXED -> `'balanced'`] | `'balanced'` - `dictation.py:4670`, `:7481`, `:8781`, `:10680`, `settings_qt.py:4713` | `'default'` - `samsara/support_feedback.py:66` | - |
+| `hotkey` [FIXED -> `'ctrl+shift'`] | `'ctrl+shift'` - `first_run_wizard_qt.py:1042`, `settings_qt.py:2224`, `tutorial_qt.py:333` | `'?'` - `samsara/ui/tray_qt.py:463` | - |
+| `hyperion_host` [FIXED -> `''`] | `'192.168.50.247'` - `plugins/commands/demo_commands.py:68` | `'discoball.local'` - `plugins/commands/demo_commands.py:291` | `''` - `plugins/commands/hyperion_lights.py:20` |
 
 ### Which of these actually matter
 

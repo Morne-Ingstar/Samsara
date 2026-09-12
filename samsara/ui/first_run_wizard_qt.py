@@ -22,6 +22,7 @@ from PySide6.QtWidgets import (
     QFrame, QScrollArea,
 )
 
+from samsara import config_defaults
 from samsara.constants import DEFAULT_WAKE_PHRASE
 from samsara.runtime import thread_registry
 from samsara.ui import qt_runtime, theme
@@ -1017,7 +1018,7 @@ class _WizardWindow(QMainWindow):
         """Contextualize the wake-word phrase row against the use case's
         wake_word_enabled default -- the phrase row itself always stays
         visible, only the framing changes."""
-        enabled = self._config.get('wake_word_enabled', True)
+        enabled = self._config.get('wake_word_enabled', config_defaults.DEFAULTS['wake_word_enabled'])
         if self._ww_desc is not None:
             self._ww_desc.setText(
                 'Say "Jarvis" or "Hey Jarvis" to activate voice commands'

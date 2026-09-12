@@ -23,6 +23,7 @@ from PySide6.QtWidgets import (
 )
 
 from samsara.ui import qt_runtime, theme
+from samsara import config_defaults
 from samsara import diagnostics
 from samsara import diagnostics_verdict
 
@@ -371,9 +372,9 @@ class DiagnosticsWindow(QMainWindow):
 
     def _reload(self):
         cfg = self.app.config
-        model = cfg.get('model_size', '?')
-        device = cfg.get('device', '?')
-        compute = cfg.get('compute_type', '?')
+        model = cfg.get('model_size', config_defaults.DEFAULTS['model_size'])
+        device = cfg.get('device', config_defaults.DEFAULTS['device'])
+        compute = cfg.get('compute_type', config_defaults.DEFAULTS['compute_type'])
         self._model_lbl.setText(f"Model: {model}   Device: {device} ({compute})")
 
         raw_records = diagnostics.recent(200)  # oldest-first, as recent() returns it

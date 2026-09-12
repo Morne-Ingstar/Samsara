@@ -25,6 +25,7 @@ from PySide6.QtWidgets import (
     QPushButton, QStackedWidget, QStatusBar, QVBoxLayout, QWidget,
 )
 
+from samsara import config_defaults
 from samsara.ui import qt_runtime
 from samsara.ui.dictionary_panel_qt import DictionaryPanelQt
 from samsara.ui.history_view import HistoryView
@@ -337,7 +338,8 @@ class _MainWindow(QMainWindow):
         self._lbl_mode.setText(mode)
 
         wake_on = cfg.get('wake_word_enabled', False)
-        phrase  = cfg.get('wake_word_config', {}).get('phrase', 'samsara')
+        phrase  = cfg.get('wake_word_config', {}).get(
+            'phrase', config_defaults.DEFAULTS['wake_word_config.phrase'])
         self._lbl_wake.setText(f"{phrase} (on)" if wake_on else "Off")
 
         mic_id   = cfg.get('microphone')
