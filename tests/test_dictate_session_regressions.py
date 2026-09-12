@@ -34,17 +34,23 @@ def test_hard_cap_still_protects_toggle_command():
     assert WakeConsumer._hard_cap_applies(_app(mode=SessionMode.COMMAND)) is True
 
 
-def test_sustained_speech_refreshes_inactivity_timer_at_throttled_intervals():
+def test_each_toggle_speech_onset_touches_the_inactivity_timer():
+    """2026-09-10 session policy (docs/HANDS_FREE_GATES_FINDINGS.md
+    "Session policy" #2): _touch_toggle_speech_activity no longer takes a
+    timestamp or throttles by elapsed time -- the caller (wake_consumer's
+    _process_frame) already gates this to a genuine Silero non-speech ->
+    speech edge, so every call it makes is itself already a fresh onset
+    and touches the chokepoint with speech_onset=True."""
     app = _app()
     consumer = WakeConsumer.__new__(WakeConsumer)
     consumer._app = app
-    consumer._last_toggle_activity_touch = 0.0
 
-    consumer._touch_toggle_speech_activity(10.0)
-    consumer._touch_toggle_speech_activity(10.5)
-    consumer._touch_toggle_speech_activity(11.1)
+    consumer._touch_toggle_speech_activity()
+    consumer._touch_toggle_speech_activity()
+    consumer._touch_toggle_speech_activity()
 
-    assert app._touch_session_activity.call_count == 2
+    assert app._touch_session_activity.call_count == 3
+    app._touch_session_activity.assert_called_with(speech_onset=True)
 
 
 def test_toggle_utterance_fifo_drains_every_chunk_in_capture_order():
@@ -61,8 +67,8 @@ def test_toggle_utterance_fifo_drains_every_chunk_in_capture_order():
         "samsara.audio_engine.wake_consumer.thread_registry.spawn",
         side_effect=lambda _name, target, **_kwargs: spawned.append(target),
     ):
-        consumer._enqueue_toggle_utterance(["first"])
-        consumer._enqueue_toggle_utterance(["second"])
+        consumer._enqueue_toggle_utterance(["first"], owner_token=None)
+        consumer._enqueue_toggle_utterance(["second"], owner_token=None)
 
     assert len(spawned) == 1
     spawned[0]()
@@ -70,7 +76,11 @@ def test_toggle_utterance_fifo_drains_every_chunk_in_capture_order():
         call(["first"], 16000),
         call(["second"], 16000),
     ]
-    assert app._touch_session_activity.call_count == 2
+    # 2026-09-10 session policy: queueing/draining a toggle utterance is
+    # not a fresh speech onset, so draining the FIFO must NOT touch the
+    # inactivity chokepoint itself -- see test_each_toggle_speech_onset_
+    # touches_the_inactivity_timer above for what actually does.
+    assert app._touch_session_activity.call_count == 0
 
 
 def _buffered_dictation_app(config_overrides=None):

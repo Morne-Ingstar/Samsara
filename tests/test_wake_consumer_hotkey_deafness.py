@@ -36,12 +36,20 @@ def _make_wc(
     ava_command_session_active=False,
     wake_word_active=True,
     hands_free_token=None,
+    suspend_on_hold=True,
 ):
     """Real WakeConsumer wired to a Mock() engine/reader and an app double
     with EXPLICIT bool attributes -- deliberately not a bare Mock() for
     `app` itself, since Mock() auto-creates truthy attributes (e.g.
     app._hotkey_recording would be a truthy MagicMock, not a real bool),
-    which would silently defeat these exact guards."""
+    which would silently defeat these exact guards.
+
+    suspend_on_hold mirrors hands_free.suspend_on_hold (2026-09-11,
+    production default True): while on, a hotkey hold suppresses
+    toggle-command-mode the SAME as plain wake-word/AI-command-mode (see
+    _process_frame's hotkey-deafness guard and discard_stale_wake_
+    utterance) -- the old unconditional toggle-command-mode exemption only
+    reproduces with it explicitly off."""
     from samsara.audio_engine.ring import EMPTY
 
     engine = Mock()
@@ -57,7 +65,10 @@ def _make_wc(
     app._hotkey_recording = hotkey_recording
     app.command_mode_active = command_mode_active
     app.ava_command_session_active = ava_command_session_active
-    app.config = {'command_mode': {'mode': cm_mode}}
+    app.config = {
+        'command_mode': {'mode': cm_mode},
+        'hands_free': {'suspend_on_hold': suspend_on_hold},
+    }
     app._close_hands_free_capture_duck = Mock()
     app._open_hands_free_capture_duck = Mock(return_value=hands_free_token)
     app._hands_free_capture_duck_token = hands_free_token
@@ -185,10 +196,48 @@ class TestNoHotkeyRecordingIsUnaffected:
         assert wc._hands_free_capture_duck_token == 99
 
 
+class TestToggleCommandModeSuppressedByDefaultDuringHotkeyRecording:
+    """hands_free.suspend_on_hold (2026-09-11, default True): the old
+    unconditional toggle-command-mode exemption below WAS the reported
+    double-capture bug -- a hold-to-record utterance and the toggle lane's
+    own in-progress buffer both captured the same words. With the setting
+    on (the production default), toggle-command-mode goes fully deaf
+    during a hotkey hold, same as plain wake-word mode."""
+
+    def test_no_vad_call_in_toggle_mode_while_hotkey_recording(self):
+        wc, reader, app = _make_wc(
+            hotkey_recording=True, command_mode_active=True, cm_mode='toggle',
+        )
+        wc._process_frame(_loud_frame())
+        app._vad_is_speech.assert_not_called()
+
+    def test_toggle_mode_does_not_buffer_speech_while_hotkey_recording(self):
+        wc, reader, app = _make_wc(
+            hotkey_recording=True, command_mode_active=True, cm_mode='toggle',
+        )
+        wc._process_frame(_loud_frame())
+        assert app.is_speaking is False
+
+    def test_engaged_log_fires_when_toggle_mode_is_also_suppressed(self, caplog):
+        import logging
+        wc, reader, app = _make_wc(
+            hotkey_recording=True, command_mode_active=True, cm_mode='toggle',
+        )
+        with caplog.at_level(logging.DEBUG, logger="Samsara.samsara.audio_engine.wake_consumer"):
+            wc._process_frame(_loud_frame())
+        engaged = [r for r in caplog.records if "suppression ENGAGED" in r.message]
+        assert len(engaged) == 1
+
+
 class TestToggleCommandModeStillServicesDuringHotkeyRecording:
+    """suspend_on_hold=False reproduces the old, always-exempt behaviour
+    exactly -- see hands_free.suspend_on_hold's docstring in wake_consumer.
+    py's _suspend_on_hold_enabled."""
+
     def test_vad_still_called_in_toggle_mode_even_while_hotkey_recording(self):
         wc, reader, app = _make_wc(
             hotkey_recording=True, command_mode_active=True, cm_mode='toggle',
+            suspend_on_hold=False,
         )
         wc._process_frame(_loud_frame())
         app._vad_is_speech.assert_called_once()
@@ -196,6 +245,7 @@ class TestToggleCommandModeStillServicesDuringHotkeyRecording:
     def test_toggle_mode_buffers_speech_even_while_hotkey_recording(self):
         wc, reader, app = _make_wc(
             hotkey_recording=True, command_mode_active=True, cm_mode='toggle',
+            suspend_on_hold=False,
         )
         wc._process_frame(_loud_frame())
         assert app.is_speaking is True
@@ -204,6 +254,7 @@ class TestToggleCommandModeStillServicesDuringHotkeyRecording:
         import logging
         wc, reader, app = _make_wc(
             hotkey_recording=True, command_mode_active=True, cm_mode='toggle',
+            suspend_on_hold=False,
         )
         with caplog.at_level(logging.DEBUG, logger="Samsara.samsara.audio_engine.wake_consumer"):
             wc._process_frame(_loud_frame())
@@ -284,12 +335,26 @@ class TestDiscardStaleWakeUtterance:
         wc._flush.assert_not_called()
 
     def test_noop_when_toggle_command_mode_owns_the_utterance(self):
-        wc, reader, app = _make_wc(command_mode_active=True, cm_mode='toggle')
+        """suspend_on_hold=False reproduces the old, always-exempt
+        behaviour -- with the production default (True) toggle-command-mode
+        is discarded here too, same as AI-command-mode below (see
+        discard_stale_wake_utterance's docstring)."""
+        wc, reader, app = _make_wc(
+            command_mode_active=True, cm_mode='toggle', suspend_on_hold=False,
+        )
         wc._utterance_frames = [np.zeros(10, dtype=np.float32)]
         app.is_speaking = True
         wc.discard_stale_wake_utterance()
         assert len(wc._utterance_frames) == 1  # untouched
         assert app.is_speaking is True  # untouched
+
+    def test_discards_toggle_command_mode_utterance_by_default(self):
+        wc, reader, app = _make_wc(command_mode_active=True, cm_mode='toggle')
+        wc._utterance_frames = [np.zeros(10, dtype=np.float32)]
+        app.is_speaking = True
+        wc.discard_stale_wake_utterance()
+        assert wc._utterance_frames == []
+        assert app.is_speaking is False
 
     def test_discards_ava_command_session_utterance_too(self):
         """2026-07-19 nag incident fix: the Ava command session no longer

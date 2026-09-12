@@ -35,12 +35,30 @@ def run_isolated(script_path: Path, success_marker: str, timeout: float = 60.0):
     signal -- see module docstring for why a clean 0 isn't achievable here.
     A non-zero code with the marker present and no traceback is logged,
     not failed.
+
+    One retry when the subprocess produced NEITHER stdout NOR stderr on a
+    non-zero exit: that signature means the interpreter never got far
+    enough to run any of our own code (print statements included), which
+    is a different failure shape from the known-benign post-marker Qt
+    teardown crash above and has reproduced as pure environmental
+    flakiness (antivirus/driver interference) in practice -- a fresh
+    invocation of the SAME script has run clean immediately after. Retrying
+    does not loosen the actual pass/fail check below.
     """
-    result = subprocess.run(
-        [sys.executable, str(script_path.resolve())],
-        cwd=str(REPO_ROOT),
-        capture_output=True, text=True, timeout=timeout,
-    )
+    def _run():
+        return subprocess.run(
+            [sys.executable, str(script_path.resolve())],
+            cwd=str(REPO_ROOT),
+            capture_output=True, text=True, timeout=timeout,
+        )
+
+    result = _run()
+    if result.returncode != 0 and not result.stdout and not result.stderr:
+        print(
+            f"[qt_subprocess_helper] {script_path.name} produced no output at all "
+            f"(exit {result.returncode}) -- retrying once before failing"
+        )
+        result = _run()
     has_marker    = success_marker in result.stdout
     has_traceback = "Traceback (most recent call last)" in result.stderr
     if result.returncode != 0:

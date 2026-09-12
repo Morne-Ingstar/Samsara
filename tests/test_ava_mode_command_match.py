@@ -98,7 +98,20 @@ def test_ava_mode_dispatches_show_numbers_command_not_llm():
     assert entry.phrase == "show numbers"
     assert entry.handler is show_numbers.handle_show_numbers
 
-    with patch.object(dictation.thread_registry, 'spawn') as mock_spawn:
+    # handle_show_numbers is the REAL production handler (asserted above),
+    # so calling it for real would enumerate the actual foreground window
+    # and reach qt_runtime.ensure_started() -- which fatally conflicts with
+    # the separate bare QApplication tests/conftest.py's session-scoped
+    # `qapp` fixture creates directly for Qt widget tests elsewhere in this
+    # suite (PySide6 allows exactly one QApplication per process; whichever
+    # of the two comes second raises "Please destroy the QApplication
+    # singleton"). This test's own scope is dispatch ROUTING -- does "show
+    # numbers" reach the real handler instead of Ava/Ollama -- not the Qt
+    # overlay actually rendering, so only the Qt entry points are stubbed;
+    # the real handler still runs everything before them.
+    with patch.object(dictation.thread_registry, 'spawn') as mock_spawn, \
+         patch('plugins.commands.show_numbers.qt_runtime.ensure_started'), \
+         patch('plugins.commands.show_numbers.qt_runtime.post'):
         dictation.DictationApp._route_to_ava(fake_app, "show numbers")
 
     # The Ava/Ollama worker must NOT have been spawned -- the command
