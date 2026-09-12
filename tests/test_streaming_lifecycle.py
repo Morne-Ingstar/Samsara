@@ -4,6 +4,7 @@ from unittest.mock import MagicMock
 
 from dictation import DictationApp
 from samsara.streaming import StreamingSession
+from tests.conftest import apply_fake_app_defaults
 
 
 def _bare_streaming_session():
@@ -53,8 +54,10 @@ def test_cancelled_final_result_is_never_delivered_or_pasted():
 
 def test_start_recording_refuses_to_overwrite_active_streaming_owner():
     app = DictationApp.__new__(DictationApp)
+    apply_fake_app_defaults(app)
     app.model_loaded = True
     app.loading_model = False
+    app._running = True
     app.recording = False
     app._streaming_session = object()
     app._stop_in_flight = False
@@ -67,12 +70,14 @@ def test_start_recording_refuses_to_overwrite_active_streaming_owner():
 
 def test_escape_cancel_handles_streaming_even_if_recording_flag_was_lost():
     app = DictationApp.__new__(DictationApp)
+    apply_fake_app_defaults(app)
     session = MagicMock()
     app._streaming_session = session
     app.recording = False  # reproduces detached shared-state condition
     app.hotkey_pressed = False
     app._hotkey_recording = True
     app._ace_streaming_active = True
+    app._hold_capture_duck_token = None
     app.set_app_state = MagicMock()
     app.play_sound = MagicMock()
 

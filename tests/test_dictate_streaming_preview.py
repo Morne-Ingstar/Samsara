@@ -141,6 +141,7 @@ def _bare_preview(app):
     )
     session._closed = False
     session._finalized = []
+    session._generation = 0
     return session
 
 
@@ -165,6 +166,7 @@ def _base_preview_app(get_transcription_params=None):
         model_rate=16000,
         _wake_consumer=consumer,
         get_transcription_params=get_transcription_params or _default_get_transcription_params,
+        _filter_dictation_language=lambda text, info, **kwargs: text,
     )
     return app, captured
 
@@ -586,12 +588,18 @@ class TestSetTranscriptRendering:
         overlay.set_transcript(["hello world"], "")
         assert calls == [("hello world", StreamingOverlayQt.STATE_LISTENING)]
 
-    def test_multiple_finalized_lines_joined_with_br(self):
+    def test_multiple_finalized_fragments_joined_with_a_space(self):
+        """DEFECT 2 fix (2026-09-11 live-use report, docs/reviews/): same-
+        thought finalized fragments (sub-second-pause segments of one
+        not-yet-committed dictation) join with a single space, not <br> --
+        joining every one with a line break rendered ordinary slow speech
+        as a column of single words. See
+        tests/test_streaming_preview_box.py for the full fix coverage."""
         overlay = StreamingOverlayQt.__new__(StreamingOverlayQt)
         calls = []
         overlay.update_text = lambda text, state: calls.append((text, state))
         overlay.set_transcript(["first", "second"], "")
-        assert calls[0][0] == "first<br>second"
+        assert calls[0][0] == "first second"
 
     def test_partial_appended_in_a_distinct_span(self):
         overlay = StreamingOverlayQt.__new__(StreamingOverlayQt)
@@ -913,8 +921,12 @@ def _buffer_for(duration_s=1.0, rate=16000):
 
 
 def _make_utterance_app(mode, dictate_preview=None, outcome_kind="dictate_staged"):
+    from tests.conftest import apply_fake_app_defaults
+
     app = dictation.DictationApp.__new__(dictation.DictationApp)
+    apply_fake_app_defaults(app)
     app._wake_transcription_in_progress = False
+    app.config = {}
     app.model_rate = 16000
     app.model_lock = Mock()
     app.model_lock.__enter__ = Mock(return_value=None)
