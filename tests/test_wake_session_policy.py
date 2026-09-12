@@ -18,6 +18,7 @@ from samsara.audio_engine.ring import FrameBus
 from samsara.audio_engine.wake_consumer import WakeConsumer, wake_session_policy
 from samsara.audio_engine.wake_dispatch import TranscriptionOwners, WakeDispatchQueue
 from samsara.session_modes import SessionMode
+from samsara import config_defaults
 
 
 def load_app_policy_methods():
@@ -41,6 +42,12 @@ def load_app_policy_methods():
         thread_registry=SimpleNamespace(timer=Mock()),
         flight_recorder=wake_module.flight_recorder,
         WakeWordDetector=Mock(), resample_audio=lambda audio, *args: audio,
+        # start_wake_word_mode reads config_defaults.DEFAULTS -- this AST
+        # extraction only pulls function bodies and a couple of module
+        # constants (see `constants` below), never the real module's
+        # top-level `from samsara import config_defaults`, so any
+        # extracted method's globals must be supplied here by hand.
+        config_defaults=config_defaults,
     )
     constants = [node for node in tree.body if isinstance(node, ast.Assign)
                  and any(isinstance(target, ast.Name) and target.id in {
@@ -70,8 +77,14 @@ def rig(monkeypatch):
         return thread
 
     def drain():
+        # 10s, not 3s: under a full-suite run these FIFO worker threads
+        # compete with many other tests' still-unreaped daemon threads for
+        # CPU, and a tight bound has been observed to trip on a loaded
+        # machine even though the thread finishes soon after -- this only
+        # gives real work more wall-clock headroom, it does not change
+        # what's asserted.
         for thread in threads:
-            thread.join(timeout=3)
+            thread.join(timeout=10)
             assert not thread.is_alive(), thread.name
 
     def timer(name, delay, callback, **kwargs):

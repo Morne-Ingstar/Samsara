@@ -20,6 +20,8 @@ would simply not reproduce.
 """
 import ast
 import logging
+import os
+import subprocess
 import sys
 import threading
 import time
@@ -596,8 +598,38 @@ def test_repeating_frame_logs_are_limited_to_five_seconds(consumer_rig, monkeypa
     assert len(debug) == 2
 
 
-def test_no_live_app_module_imported():
-    assert 'dictation' not in sys.modules
+def test_no_live_app_module_imported(tmp_path):
+    """This file's whole point (see module docstring and
+    load_app_policy_methods above) is exercising real DictationApp policy
+    methods via AST extraction WITHOUT ever importing the actual
+    dictation.py module -- that module's import-time side effects are
+    exactly what a lightweight consumer-lifecycle test must avoid.
+
+    Checking sys.modules in-process is meaningless run as part of the full
+    suite: pytest imports every test module's own module-level imports
+    during collection, before any test executes, and numerous OTHER test
+    files still do `import dictation` at module level (a pre-existing,
+    known condition -- see conftest.py's hermetic-collection comment). A
+    subprocess that imports only THIS file's own dependencies is the only
+    way to test the actual invariant: that they don't transitively pull in
+    dictation.py."""
+    env = dict(os.environ, SAMSARA_HOME_DIR=str(tmp_path))
+    result = subprocess.run(
+        [sys.executable, '-c', (
+            "import sys\n"
+            "import samsara.audio_engine.continuous_consumer\n"
+            "import samsara.audio_engine.dictation_consumer\n"
+            "import samsara.audio_engine.wake_consumer\n"
+            "import samsara.session_modes\n"
+            "sys.exit(1 if 'dictation' in sys.modules else 0)\n"
+        )],
+        cwd=str(Path(__file__).resolve().parents[1]),
+        env=env, capture_output=True, text=True, timeout=30,
+    )
+    assert result.returncode == 0, (
+        "importing this file's own dependencies pulled in dictation.py "
+        f"(stdout={result.stdout!r} stderr={result.stderr!r})"
+    )
 
 
 def test_stop_reports_status_and_preserves_existing_frame_flush_contract(consumer_rig):

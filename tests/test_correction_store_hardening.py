@@ -24,6 +24,33 @@ from pathlib import Path
 import pytest
 
 
+@pytest.fixture(autouse=True)
+def _restore_correction_module_globals(monkeypatch):
+    """set_user_corrections()/reload_corrections() below rebind process-wide
+    module globals (FULL_CORRECTIONS and its derived lookup structures in
+    wake_corrections/phonetic_wash) that outlive this file's own
+    monkeypatched SAMSARA_HOME_DIR -- monkeypatch reverts the env var after
+    each test, but nothing previously reverted the in-memory dicts those
+    functions rebuilt from it. The last test in this file used to leave
+    wake_corrections.FULL_CORRECTIONS (and its derived _TOKEN_CORRECTIONS)
+    permanently containing {"a": "1"} for the rest of the pytest session,
+    silently corrupting any later test's apply_corrections() call on text
+    containing the standalone word "a" (e.g.
+    tests/test_pipeline.py::test_long_dictate_with_content turning "once
+    upon a time" into "once upon 1 time"). Snapshot every rebound global via
+    monkeypatch.setattr so it is restored regardless of which test runs
+    last."""
+    import samsara.wake_corrections as wc
+    import samsara.phonetic_wash as pw
+
+    for name in ("FULL_CORRECTIONS", "_PHRASE_CORRECTIONS", "_TOKEN_CORRECTIONS",
+                 "_CANONICAL_VALUES", "_PHRASE_NORM_MAP", "_PHRASE_PATTERN"):
+        monkeypatch.setattr(wc, name, getattr(wc, name))
+    for name in ("_PHRASE_CORRECTIONS", "_WORD_CORRECTIONS"):
+        monkeypatch.setattr(pw, name, getattr(pw, name))
+    yield
+
+
 # ============================================================================
 # Lazy path resolution -- the test-isolation hole itself. phonetic_wash,
 # wake_corrections, and ava_corrections all import cleanly at module-

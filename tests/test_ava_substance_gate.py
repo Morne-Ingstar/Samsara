@@ -46,23 +46,31 @@ class TestHandleSessionDispatchOutcome:
         stub._handle_session_dispatch_outcome(outcome, "uh")
         assert "scratch_refuse" in stub._sounds
 
-    def test_rejected_utterance_touches_inactivity_timer(self):
+    def test_rejected_utterance_does_not_touch_inactivity_timer(self):
+        """2026-09-10 session policy (docs/HANDS_FREE_GATES_FINDINGS.md
+        "Session policy" #2): _touch_session_activity only extends the
+        timer on a fresh Silero speech onset. _handle_session_dispatch_
+        outcome calls it bare (no speech_onset=True) for every outcome, so
+        a rejected utterance still reaches the chokepoint but cannot
+        extend the session by itself -- decode/delivery is explicitly
+        excluded from extending inactivity."""
         stub, DispatchOutcome = _make_stub()
         outcome = DispatchOutcome(kind="ava_rejected_not_substantive", detail={"text": "uh"})
         stub._handle_session_dispatch_outcome(outcome, "uh")
-        assert stub.reset_calls == [30]
+        assert stub.reset_calls == []
 
-    def test_accepted_ava_dispatch_touches_inactivity_timer_no_earcon(self):
+    def test_accepted_ava_dispatch_does_not_touch_inactivity_timer_no_earcon(self):
         stub, DispatchOutcome = _make_stub()
         outcome = DispatchOutcome(kind="ava_dispatched", detail={"text": "what time is it"})
         stub._handle_session_dispatch_outcome(outcome, "what time is it")
-        assert stub.reset_calls == [30]
+        assert stub.reset_calls == []
         assert "scratch_refuse" not in stub._sounds
 
-    def test_every_non_empty_outcome_touches_the_single_chokepoint(self):
-        """Fixed behavior (was the bug this file's sibling task closed):
-        every lane's non-empty outcome resets the SAME inactivity timer via
-        _touch_session_activity, not just the AVA lane."""
+    def test_every_non_empty_outcome_calls_the_single_chokepoint_without_extending(self):
+        """Every lane's non-empty outcome reaches the SAME chokepoint
+        (_touch_session_activity), not just the AVA lane -- but per the
+        2026-09-10 session policy none of them extend the timer, since
+        none of them is a fresh speech onset (see the two tests above)."""
         stub, DispatchOutcome = _make_stub()
         for kind in ("command_executed", "command_miss", "dictate_injected",
                      "dictate_suppressed_focus_lock", "mode_switch",
@@ -70,7 +78,7 @@ class TestHandleSessionDispatchOutcome:
             stub.reset_calls = []
             outcome = DispatchOutcome(kind=kind, detail={})
             stub._handle_session_dispatch_outcome(outcome, "text")
-            assert stub.reset_calls == [30], f"kind={kind} did not touch the timer"
+            assert stub.reset_calls == [], f"kind={kind} unexpectedly touched the timer"
 
     def test_empty_outcome_does_not_touch_timer(self):
         """A discarded near-silence/blank transcription is never activity."""
