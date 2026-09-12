@@ -19,8 +19,8 @@ only the audio source changes from PortAudio indata to ring frames.
 == Thread safety ==
 
 All app state (is_speaking, silence_start, app_state, _oww_wake_detected,
-speech_buffer, buffer_lock, etc.) is read/written on this thread, same as
-the old PortAudio callback thread. The policy invariants are unchanged.
+etc.) is read/written on this thread, same as the old PortAudio callback
+thread. The policy invariants are unchanged.
 
 == Epoch change ==
 
@@ -44,6 +44,7 @@ from samsara.constants import (
     DEFAULT_MIN_SPEECH_DURATION,
     DEFAULT_SPEECH_THRESHOLD,
     WAKE_DETECTION_SILENCE,
+    WAKE_SPEECH_THRESHOLD_CAP,
 )
 from samsara.session_modes import SessionMode
 from samsara.log import get_logger
@@ -245,6 +246,29 @@ class WakeConsumer:
         self._close_hands_free_duck_safe(app, close_token)
         self._hands_free_capture_duck_token = None
 
+    def flush_utterance(self) -> bool:
+        """Force whatever audio is currently buffered to dispatch now,
+        bypassing the VAD silence threshold -- called by long_dictation's
+        hard-cap timer so audio that's mid-capture when the cap fires isn't
+        silently dropped (see dictation.py:_finalize_dictation_hardcap).
+
+        Unlike abort_utterance(), this does not touch app.is_speaking or
+        app.silence_start: capture continues seamlessly if the user is
+        still talking, only the audio accumulated so far is flushed. Safe
+        to call from any thread -- the tuple-assignment swap of
+        _utterance_frames is the same atomic-under-the-GIL pattern stop()
+        already relies on, rather than a lock on this consumer's hot path.
+
+        Returns True if a buffer was dispatched, False if nothing to flush.
+        """
+        buffer_copy, self._utterance_frames = self._utterance_frames, []
+        self._buffer_rms_history = []
+        if not buffer_copy:
+            return False
+        token, self._hands_free_capture_duck_token = self._hands_free_capture_duck_token, None
+        self._flush(buffer_copy, token)
+        return True
+
     @staticmethod
     def _open_hands_free_duck_safe(app) -> int | None:
         """Best-effort call to dictation.py's _open_hands_free_capture_
@@ -295,18 +319,36 @@ class WakeConsumer:
         (incorrectly) flushed once hotkey recording ends.
 
         No-ops when toggle-command-mode is servicing the in-progress
-        utterance instead -- that session must keep running (see
-        _process_frame's hotkey-deafness guard) and must NOT be discarded;
-        e.g. a hotkey press mid-DICTATE-chunk must not eat the chunk.
+        utterance instead AND hands_free.suspend_on_hold is disabled --
+        that reproduces the original exemption exactly (see
+        _process_frame's hotkey-deafness guard) for the "off" comparison
+        setting.
 
-        AI-command-mode is NOT exempted here (2026-07-19 nag incident fix,
-        matching its removal from the hotkey_suppress gate): any utterance
-        it was mid-capturing gets discarded like plain wake-word mode's
-        would, rather than sitting frozen through the hotkey hold and then
-        resuming with stale + fresh audio mixed together once the hold
-        ends."""
+        hands_free.suspend_on_hold (2026-09-11, default true): the
+        exemption above used to be unconditional, which is exactly the
+        double-capture bug this fixes -- a hold-to-record utterance and
+        the toggle lane's own in-progress buffer both captured the same
+        words, one going out via the hotkey path's paste and the other via
+        the toggle session's own eventual flush/dispatch. With the setting
+        on (default), toggle-command-mode is treated the SAME as AI-
+        command-mode below: any utterance it was mid-capturing is
+        discarded now, immediately, rather than sitting frozen through the
+        hold and resuming with stale + fresh audio mixed together
+        (matching AI-command-mode's own 2026-07-19 nag-incident fix and
+        rationale, extended here to toggle mode). The suspended lane
+        resumes cleanly from the CURRENT ring position once the hold ends
+        -- _process_frame never rewinds the reader, it simply stops
+        reading the accumulated-frames list while _hotkey_recording holds
+        (see the hotkey_suppress block there).
+
+        AI-command-mode is NOT exempted here at all (2026-07-19 nag
+        incident fix, matching its removal from the hotkey_suppress gate):
+        any utterance it was mid-capturing gets discarded like plain
+        wake-word mode's would, rather than sitting frozen through the
+        hotkey hold and then resuming with stale + fresh audio mixed
+        together once the hold ends."""
         app = self._app
-        if self._is_toggle_cmd(app):
+        if self._is_toggle_cmd(app) and not self._suspend_on_hold_enabled(app):
             return
         if self._utterance_frames or app.is_speaking:
             logger.debug("[SEAM] Discarding in-progress wake-mode utterance "
@@ -324,15 +366,17 @@ class WakeConsumer:
         _PREVIEW_TAIL_S seconds are returned -- the DICTATE lane is exempt
         from the 7s hard cap, so the buffer can otherwise grow unbounded.
 
-        `self._utterance_frames` is a plain list, appended to (or reset via
-        rebinding, never in-place mutation) ONLY by this consumer's own poll
-        thread in _process_frame -- never locked, by design (adding a lock
-        here would risk stalling the audio hot path). `list(...)` copies
-        just the reference slots and is atomic under the GIL, so this read
-        can only ever observe a fully-old or fully-new list, never a torn
-        one. Elements themselves are float32 arrays produced fresh per
-        frame via `.astype()` (a copy, not a ring view), so holding them
-        past this call is safe.
+        `self._utterance_frames` is a plain list. This poll thread's own
+        _process_frame mutates it in place via `.append()`; stop() and
+        flush_utterance() may instead rebind it to a fresh list from another
+        thread. Never locked, by design (adding a lock here would risk
+        stalling the audio hot path) -- safety comes from `.append()` and
+        `list(...)` each being individually atomic under the GIL, NOT from
+        avoiding in-place mutation (it happens every frame). So this read
+        can only ever observe the list fully-before or fully-after one such
+        mutation, never a torn one. Elements themselves are float32 arrays
+        produced fresh per frame via `.astype()` (a copy, not a ring view),
+        so holding them past this call is safe.
         """
         app = self._app
         if not self._is_toggle_dictate(app):
@@ -354,6 +398,15 @@ class WakeConsumer:
             getattr(app, 'command_mode_active', False)
             and app.config.get('command_mode', {}).get('mode', 'hold') == 'toggle'
         )
+
+    @staticmethod
+    def _suspend_on_hold_enabled(app) -> bool:
+        """hands_free.suspend_on_hold (default true): whether a hotkey hold
+        suspends the toggle-command-mode lane (see the hotkey_suppress
+        block below and discard_stale_wake_utterance) instead of the old
+        always-exempt behaviour. False reproduces today's/pre-fix
+        behaviour exactly, for comparison."""
+        return bool(app.config.get('hands_free', {}).get('suspend_on_hold', True))
 
     @staticmethod
     def _is_ai_cmd_mode(app) -> bool:
@@ -624,16 +677,32 @@ class WakeConsumer:
         # between calls and the shared lock serializes inference, but running
         # a redundant wake utterance here still wastes work and delays gates.
         #
-        # Toggle-command-mode is explicitly exempted: it is an active,
-        # user-initiated listening session that must keep servicing
-        # regardless of a concurrent hotkey press (a hotkey press
-        # mid-DICTATE-chunk must not eat the chunk). The always-live
-        # global abort phrase lives entirely inside SessionModeManager.
-        # dispatch_utterance(), reached only via _flush() -> app._handle_
-        # command_mode_utterance(), which only ever fires from THIS same
-        # poll loop's toggle-command branch -- so exempting
-        # _is_toggle_cmd(app) here is what keeps global abort reachable
-        # while a hotkey is held.
+        # Toggle-command-mode used to be UNCONDITIONALLY exempted here: an
+        # active, user-initiated listening session that must keep
+        # servicing regardless of a concurrent hotkey press (a hotkey
+        # press mid-DICTATE-chunk must not eat the chunk), and the
+        # always-live global abort phrase lives entirely inside
+        # SessionModeManager.dispatch_utterance(), reached only via
+        # _flush() -> app._handle_command_mode_utterance(), which only
+        # ever fires from THIS same poll loop's toggle-command branch --
+        # so exempting _is_toggle_cmd(app) here is what kept global abort
+        # reachable while a hotkey was held.
+        #
+        # hands_free.suspend_on_hold (2026-09-11, default true): that
+        # unconditional exemption is exactly the reported double-capture
+        # bug -- the SAME words landed both in the hold-to-record path's
+        # paste and in the toggle lane's own in-progress buffer. The
+        # exemption is now conditional on the setting being OFF (an
+        # explicit "reproduce the old behaviour" comparison mode); with it
+        # on (default), toggle-command-mode goes fully deaf for the
+        # duration of the hold, same as AI-command-mode below, and global
+        # abort is correspondingly unreachable while held (the trade the
+        # task accepted: a hold means the user is using the keyboard/hold
+        # path right now, not trying to voice-command the session
+        # simultaneously). discard_stale_wake_utterance() drops the same
+        # exemption the same way, so any in-progress toggle utterance is
+        # discarded the INSTANT the hold starts rather than waiting for
+        # this poll loop's next frame.
         #
         # AI-command-mode is DELIBERATELY NOT exempted (2026-07-19 nag
         # incident): letting it keep servicing during a hotkey hold meant
@@ -643,11 +712,11 @@ class WakeConsumer:
         # in the same second). AI-command-mode has no global-abort-style
         # reachability requirement the way toggle-command-mode does, so it
         # now goes fully deaf for the duration of the hotkey hold, same as
-        # plain wake-word mode. See discard_stale_wake_utterance() below,
-        # which drops the same exemption for the same reason.
+        # plain wake-word mode.
+        toggle_cmd_exempt = self._is_toggle_cmd(app) and not self._suspend_on_hold_enabled(app)
         hotkey_suppress = (
             app._hotkey_recording
-            and not self._is_toggle_cmd(app)
+            and not toggle_cmd_exempt
         )
         if hotkey_suppress:
             if not self._hotkey_suppressed_last:
@@ -657,10 +726,36 @@ class WakeConsumer:
                     "(no RMS/VAD/OWW/onset/buffering) until hotkey recording ends"
                 )
                 self._hotkey_suppressed_last = True
+                # hands_free.suspend_on_hold: pause the toggle session's own
+                # inactivity timer for the hold's duration so a long hold
+                # cannot silently time the session out. No-op (nothing to
+                # pause) for plain wake-word/AI-command-mode, or when no
+                # timer is currently running.
+                if self._is_toggle_cmd(app):
+                    pause = getattr(app, '_pause_command_mode_inactivity_for_hold', None)
+                    if pause is not None:
+                        try:
+                            pause()
+                        except Exception as e:
+                            self._log_frame(logging.DEBUG, 'hold_timer_pause_failed',
+                                            "inactivity timer pause failed: %s", e)
             return   # cursor already advanced (frame already read in _poll_loop)
         if self._hotkey_suppressed_last:
             self._log_frame(logging.DEBUG, 'frame_625', "[SEAM] WakeConsumer suppression RELEASED (hotkey recording ended)")
             self._hotkey_suppressed_last = False
+            # hands_free.suspend_on_hold: resume from HERE (the current ring
+            # position -- nothing above rewinds the reader; suppression
+            # only ever skipped this method's OWN accumulation, never the
+            # poll loop's read_next() calls, see _poll_loop) with whatever
+            # inactivity time was actually left when the hold started.
+            if self._is_toggle_cmd(app):
+                resume = getattr(app, '_resume_command_mode_inactivity_after_hold', None)
+                if resume is not None:
+                    try:
+                        resume()
+                    except Exception as e:
+                        self._log_frame(logging.DEBUG, 'hold_timer_resume_failed',
+                                        "inactivity timer resume failed: %s", e)
 
         # ── Ava command session half-duplex guard (2026-07-23 G3 live-test
         # finding): full deafness while the session's own TTS is playing,
@@ -757,7 +852,7 @@ class WakeConsumer:
         audio_config = ww_config.get('audio', {})
         speech_threshold = audio_config.get('speech_threshold', DEFAULT_SPEECH_THRESHOLD)
         if not app._vad_available:
-            speech_threshold = min(speech_threshold, 0.01)
+            speech_threshold = min(speech_threshold, WAKE_SPEECH_THRESHOLD_CAP)
         min_speech = audio_config.get('min_speech_duration', DEFAULT_MIN_SPEECH_DURATION)
 
         if self._is_toggle_cmd(app):
@@ -812,8 +907,19 @@ class WakeConsumer:
         rms_positive = rms > speech_threshold
         rms_onset = bool(rms_positive and self._rms_was_speech is False)
         self._rms_was_speech = rms_positive
+        # When Silero is down (missing model or 50 consecutive inference
+        # errors), silero_onset is structurally always False, so an RMS onset
+        # is the only signal that can clear the wake-onset latch -- without it
+        # hands-free goes deaf until restart (review: critical, :687).
+        # It must NOT renew the session timer: an RMS edge cannot tell the
+        # owner from a TV, and the 2026-09-10 session policy re-arms only on
+        # a Silero speech onset so a media monologue cannot keep the mic open.
+        # With VAD unavailable a session therefore runs to its inactivity
+        # deadline and the user re-wakes. Degraded, loud (warning below), and
+        # bounded -- by design. See test_rms_fallback_does_not_count_as_silero_onset.
+        vad_unavailable_onset = not app._vad_available and rms_onset
         if self._await_wake_onset:
-            fallback_onset = not app._vad_available and rms_onset
+            fallback_onset = vad_unavailable_onset
             if not (silero_onset or fallback_onset):
                 return
             self._await_wake_onset = False
@@ -844,6 +950,26 @@ class WakeConsumer:
                 app._oww_wake_detected = True
                 app._wake_detector.reset()
                 flight_recorder.record('wake.oww_confirm', app_state=app.app_state)
+
+        # Wake-profile OWW pre-filters: a profile with a loaded model
+        # participates as a real pre-filter too, same as the primary
+        # detector above, instead of merely disabling the primary gate for
+        # every phrase whenever any profile is enabled (see _flush's gate).
+        if (app.app_state == 'asleep'
+                and not app.wake_word_triggered
+                and not app._oww_wake_detected):
+            for _profile_detector in getattr(app, '_wake_profile_detectors', {}).values():
+                if _profile_detector is None or not _profile_detector.is_available:
+                    continue
+                _oww_chunk = raw_chunk.copy()
+                if rms > 0.005:
+                    _oww_gain = min(0.10 / rms, 20.0)
+                    _oww_chunk = np.clip(_oww_chunk * _oww_gain, -1.0, 1.0)
+                if _profile_detector.detected(_oww_chunk):
+                    app._oww_wake_detected = True
+                    _profile_detector.reset()
+                    flight_recorder.record('wake.oww_confirm', app_state=app.app_state, profile=True)
+                    break
 
         # ── Speech accumulation ───────────────────────────────────────────────
         if is_speech:
@@ -1077,8 +1203,15 @@ class WakeConsumer:
             self._close_hands_free_duck_safe(app, owner_token)
             return
 
-        _has_wake_profiles = any(
+        # Only a profile with NO loaded detector still needs the Whisper
+        # fallback exemption below -- one with a real model was already
+        # consulted as a pre-filter in _process_frame above, so a hit there
+        # already set app._oww_wake_detected. Previously any enabled profile
+        # (model-backed or not) disabled the strict gate for every phrase.
+        _profile_detectors = getattr(app, '_wake_profile_detectors', {})
+        _has_modelless_wake_profiles = any(
             t.get('enabled', True)
+            and not getattr(_profile_detectors.get(t.get('id', '')), 'is_available', False)
             for t in getattr(app, 'config', {}).get('wake_profiles', [])
         )
         _primary_oww_eligible = (
@@ -1087,13 +1220,13 @@ class WakeConsumer:
             and app.app_state == 'asleep'
             and not app.wake_word_triggered
         )
-        _primary_oww_hit = bool(
+        _oww_hit = bool(
             _primary_oww_eligible and app._oww_wake_detected
         )
-        # With no profile fallbacks, the primary OWW model remains a strict
-        # pre-filter. Enabled profiles must still reach Whisper when Jarvis did
-        # not fire, because those profiles may have no OWW model of their own.
-        if _primary_oww_eligible and not _primary_oww_hit and not _has_wake_profiles:
+        # With no model-less profile fallbacks, the OWW pre-filters (primary
+        # plus any profile detector) remain a strict gate. Enabled profiles
+        # without their own model must still reach Whisper when nothing fired.
+        if _primary_oww_eligible and not _oww_hit and not _has_modelless_wake_profiles:
             if app._wake_detector is not None:
                 app._wake_detector.reset()
             flight_recorder.record('session.dispatch', op='dropped', kind='oww_gate_no_hit')
@@ -1110,7 +1243,7 @@ class WakeConsumer:
         # enabled. Previously profile presence forced this False, so a 0.99
         # Jarvis detection was subsequently discarded by the adaptive RMS
         # gate. Profiles only relax the no-hit path; they must not erase a hit.
-        oww_confirmed = _primary_oww_hit
+        oww_confirmed = _oww_hit
         app._oww_wake_detected = False
         # Passive wake-mode deep ducking is now moved to OWW dispatch (command
         # utterance protection) so wake-phrase audibility stays at idle-duck.

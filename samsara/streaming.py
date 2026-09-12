@@ -44,12 +44,15 @@ from samsara.cleanup import clean_text
 from samsara.log import get_logger
 from samsara.runtime import thread_registry
 from samsara.session_modes import (
+    SessionMode,
     is_dictate_commit,
     is_scratch_that,
     match_ava_invocation,
+    match_literal_payload,
     match_switch_word,
 )
 from samsara.smart_corrections import smart_correct
+from samsara import config_defaults
 from samsara import diagnostics
 from samsara import languages as _languages
 
@@ -323,6 +326,44 @@ class _StreamingWidget:
     def close(self):             self._w._close_sig.emit()
 
 
+def _safe_str(value) -> str:
+    """Defensive UTF-8 boundary for preview text (DEFECT 3, 2026-09-11
+    live-use report: a curly apostrophe rendered as several garbage
+    characters in the preview while the final injected text -- which goes
+    through a completely separate paste/clipboard path, never this one --
+    was correct). Nothing upstream of set_transcript/on_utterance_final
+    contractually promises `str`; if a `bytes` value ever reached here
+    (Whisper segment text, a corrections-lookup replacement, anything),
+    Python's default str(bytes) repr renders literal "\\xe2\\x80\\x99"-
+    style escapes as visible garbage instead of the character they encode
+    -- exactly this symptom. Decoding explicitly as UTF-8 here closes that
+    class of bug at the render boundary regardless of which upstream step
+    it came from."""
+    if isinstance(value, bytes):
+        return value.decode("utf-8", errors="replace")
+    return value
+
+
+def _join_dictate_fragments(finalized_lines) -> str:
+    """Join DictatePreviewSession's finalized fragments into one HTML
+    string for StreamingOverlayQt.set_transcript -- see that method's
+    DEFECT 2 note. Same-thought fragments join with a single space; an
+    explicit embedded newline (a "new line"/"new paragraph" formatting
+    token already substituted into a fragment's text) becomes a <br> and
+    never gets an extra leading space glued onto whatever follows it.
+    """
+    joined = ""
+    for t in finalized_lines:
+        if not t:
+            continue
+        escaped = html.escape(_safe_str(t)).replace("\r\n", "<br>").replace("\n", "<br>")
+        if not joined or joined.endswith("<br>"):
+            joined += escaped
+        else:
+            joined += " " + escaped
+    return joined
+
+
 class StreamingOverlayQt:
     """Thread-safe Qt drop-in for StreamingOverlay.
 
@@ -367,30 +408,53 @@ class StreamingOverlayQt:
 
     def set_transcript(self, finalized_lines, partial):
         """DictatePreviewSession's rolling-transcript renderer: settled
-        finalized utterances (plain text, one per line) with the current
-        live partial appended in a visually distinct (dimmer, italic)
-        style. Minimal addition on top of the existing update() plumbing --
-        no new Qt signal/slot pair, just the HTML this builds; QLabel's
-        default AutoText format renders it as rich text as soon as it sees
-        the <br>/<span> tags (plain text, e.g. a single finalized line with
-        no live partial, renders exactly as before).
+        finalized utterances (plain text) with the current live partial
+        appended in a visually distinct (dimmer, italic) style. Minimal
+        addition on top of the existing update() plumbing -- no new Qt
+        signal/slot pair, just the HTML this builds; QLabel's default
+        AutoText format renders it as rich text as soon as it sees the
+        <br>/<span> tags (plain text, e.g. a single finalized line with no
+        live partial, renders exactly as before).
 
         Text is HTML-escaped since it originates from Whisper transcription
         (untrusted-ish free text) -- a spoken "less than 5" or similar must
         never be interpreted as a tag.
+
+        DEFECT 2 (2026-09-11 live-use report): finalized_lines are
+        sub-second-pause SEGMENTS of one not-yet-committed dictation (see
+        DictatePreviewSession.on_utterance_final), not separate paragraphs
+        -- joining every one with <br> rendered ordinary slow speech as a
+        column of single words. Joined with a single space instead; a line
+        break now appears only where a fragment's own text carries an
+        explicit newline/paragraph formatting token (see
+        samsara/formatting_tokens.py's "new line"/"new paragraph" -> \\n),
+        never merely because it's a separate accumulated fragment.
         """
-        finalized_html = "<br>".join(
-            html.escape(t) for t in finalized_lines if t
-        )
+        finalized_html = _join_dictate_fragments(finalized_lines)
         if partial:
             partial_html = (
                 f'<span style="color:{PARTIAL_TEXT_COLOR};font-style:italic;">'
-                f'{html.escape(partial)}</span>'
+                f'{html.escape(_safe_str(partial))}</span>'
             )
             combined = f"{finalized_html}<br>{partial_html}" if finalized_html else partial_html
         else:
             combined = finalized_html
         self.update_text(combined or "Listening...", self.STATE_LISTENING)
+
+    def set_paused(self, finalized_lines):
+        """hands_free.suspend_on_hold (2026-09-11): the toggle-DICTATE
+        preview while a hotkey hold suspends it -- same settled transcript
+        as set_transcript, but the trailing status reads "Paused (hold)"
+        instead of a live partial, since nothing is being read or decoded
+        for the hold's duration. Returns to set_transcript's normal
+        "Listening..." once the hold releases."""
+        finalized_html = _join_dictate_fragments(finalized_lines)
+        paused_html = (
+            f'<span style="color:{PARTIAL_TEXT_COLOR};font-style:italic;">'
+            f'Paused (hold)</span>'
+        )
+        combined = f"{finalized_html}<br>{paused_html}" if finalized_html else paused_html
+        self.update_text(combined, self.STATE_LISTENING)
 
     def flash_done_and_fade(self, on_complete):
         if self._widget is not None:
@@ -553,9 +617,9 @@ class StreamingWorker(threading.Thread):
                 diagnostics.record(diagnostics.DiagRecord(
                     mode="streaming",
                     audio_s=duration_s,
-                    model_name=app.config.get('model_size', ''),
+                    model_name=app.config.get('model_size', config_defaults.DEFAULTS['model_size']),
                     device=getattr(app, 'device_type', 'unknown'),
-                    compute_type=app.config.get('compute_type', ''),
+                    compute_type=app.config.get('compute_type', config_defaults.DEFAULTS['compute_type']),
                     t_transcribe_ms=elapsed_ms,
                     t_corrections_ms=t_corrections_ms,
                     t_smart_ms=t_smart_ms,
@@ -1038,11 +1102,19 @@ class DictatePreviewSession:
         # fresh empty transcript" holds even if that construction contract
         # ever changes.
         self._finalized: list = []
+        # Bumped on every on_utterance_final call (a real utterance/commit
+        # boundary). _loop captures this before its own slow decode and
+        # skips rendering if it's gone stale by the time decode finishes --
+        # see _loop's comment below (DEFECT 2026-09-11: a partial that was
+        # still mid-decode when a commit landed used to render its
+        # now-stale text over the just-cleared transcript).
+        self._generation = 0
 
     # ---- Public lifecycle (call from the session/mode-change thread) ----
 
     def start(self):
         self._finalized = []
+        self._generation = 0
         self._overlay.show()
         # spawn() registers AND starts -- do not call register() again
         # (that would double-enter this thread under a second, -2-suffixed
@@ -1095,9 +1167,28 @@ class DictatePreviewSession:
         refused / dictate_commit_blocked_focus_lock / dictate_commit_failed)
         must retain the lines -- nothing was actually delivered, so the
         caller passes dictate_committed=False for those outcomes.
+
+        DEFECT 1 (2026-09-11 live-use report): dictate_committed only ever
+        reflected outcome.kind == "dictate_committed" -- the explicit
+        spoken "end"/"and" or the local commit-key path. But
+        SessionModeManager._do_switch also auto-commits a pending DICTATE
+        buffer when the user's utterance switches AWAY from DICTATE (e.g.
+        "command mode", an Ava invocation) WHILE a thought is staged
+        (session_modes.py's _do_switch, ~line 980) -- that commit
+        genuinely pastes the thought, but the outcome bubbling back up is
+        "mode_switch" (or whatever the switch's own dispatch produced),
+        never "dictate_committed", so this caller-supplied flag alone
+        cannot see it and the just-delivered lines used to stay stuck in
+        the box. Fixed below by ALSO checking the session manager's own
+        source of truth (dictate_pending_buffer) after the append/pop
+        above: whenever it comes up empty, every line in self._finalized
+        has necessarily already been delivered (committed) or never
+        existed, so clearing is always correct regardless of which outcome
+        kind got us there.
         """
         if self._closed:
             return
+        self._generation += 1
         final_text = (final_text or "").strip()
         if scratch_success:
             # dispatch_utterance's own outcome, not re-derived from text --
@@ -1118,12 +1209,44 @@ class DictatePreviewSession:
         # appended, not popped -- correctly a no-op on the transcript,
         # since the real dispatch either did nothing dictation-shaped or
         # (for a refused scratch) genuinely left the prior content in place.
-        if dictate_committed:
+        if dictate_committed or self._dictate_buffer_is_empty():
             self._finalized = []
         #
         # Partial cleared to "": this utterance's partial is now stale --
         # the next tick will produce a fresh one for the NEXT utterance.
-        self._overlay.set_transcript(self._finalized, "")
+        # A copy, not the live list: on_utterance_final runs on the cmd-utt
+        # thread while the tick thread (_loop) may be mid-render of a
+        # previous snapshot -- handing out the same list object risks the
+        # overlay observing an in-place mutation (append/pop/clear below)
+        # partway through, making a transcript line appear to vanish.
+        self._overlay.set_transcript(list(self._finalized), "")
+
+    def _dictate_buffer_is_empty(self) -> bool:
+        """Robust, caller-independent commit signal: true whenever the
+        session's OWN staged-DICTATE buffer is currently empty. Used
+        alongside (not instead of) the dictate_committed flag above -- see
+        on_utterance_final's DEFECT 1 note -- so a commit that happens as a
+        SIDE EFFECT of some other outcome (a mode switch, an Ava
+        invocation) still clears the transcript, without on_utterance_final
+        having to enumerate every outcome.kind that can trigger one.
+
+        Gated on buffer_dictate_until_commit: this session (dictation.py's
+        _ensure_session_mode_manager) always runs buffered, but the
+        "pending buffer" concept simply does not exist for a manager built
+        without it (e.g. a non-buffered duck-typed manager in a focused
+        unit test) -- an always-empty buffer there must NOT be
+        misread as "everything was just committed".
+
+        Fails closed (False -- do not clear) on any error, matching this
+        module's best-effort/never-affects-the-real-path philosophy."""
+        try:
+            manager = self.app._ensure_session_mode_manager()
+            if not manager.buffer_dictate_until_commit:
+                return False
+            return not manager.dictate_pending_buffer
+        except Exception as e:
+            logger.debug(f"[DICTATE-PREVIEW] pending-buffer check unavailable: {e}")
+            return False
 
     def _is_control_phrase(self, text: str) -> bool:
         """True when `text` is a recognized session CONTROL phrase rather
@@ -1166,30 +1289,125 @@ class DictatePreviewSession:
                 or match_switch_word(text) is not None
                 or match_ava_invocation(text, manager._ava_invocations)
                 or manager._matches_abort_phrase(text)
+                or self._is_reserved_hands_free_command(manager, text)
             )
         except Exception as e:
             logger.debug(f"[DICTATE-PREVIEW] control-phrase check failed: {e}")
             return False
 
+    @staticmethod
+    def _is_reserved_hands_free_command(manager, text: str) -> bool:
+        """True when `text` is one of the combined hands-free lane's reserved
+        commands ("scroll down", "submit", "click 3", ...).
+
+        DEFECT 1 residue (2026-09-11): these are commands, not dictation, but
+        they were the one control route this predicate did not cover, so
+        _dispatch_hands_free_command's phrase was appended to the visible
+        transcript as if the user had dictated it. For a COMMIT-policy
+        command ("submit") that was invisible -- the commit empties the
+        pending buffer, so on_utterance_final's clear wiped the bogus line on
+        the same call. For a PRESERVE-policy one ("scroll down", "show
+        numbers", "page up") nothing clears, so the command's own words sat
+        in the box indefinitely, above dictation the user really had spoken.
+        A COMMIT command whose commit is BLOCKED (hands_free_command_blocked)
+        leaves the same residue for the same reason.
+
+        Mirrors dispatch_utterance's own guard exactly (session_modes.py's
+        combined-lane block): the probe only applies in buffered DICTATE, and
+        an explicit "literal <phrase>" escape hatch is dictation, not a
+        command -- checked first there and here, so "literal scroll down"
+        stays visible text. The probe is documented side-effect-free
+        (dictation.py's _probe_hands_free_command: "Classify one utterance
+        without executing it"), so calling it from this display-only
+        predicate cannot execute anything."""
+        if not (getattr(manager, 'buffer_dictate_until_commit', False)
+                and manager.mode is SessionMode.DICTATE):
+            return False
+        if match_literal_payload(text) is not None:
+            return False
+        probe = getattr(manager, '_hands_free_command_probe_fn', None)
+        if probe is None:
+            return False
+        return probe(text) is not None
+
     # ---- Tick loop (own daemon thread) -----------------------------------
+
+    def _suspended_for_hold(self) -> bool:
+        """hands_free.suspend_on_hold (default true, 2026-09-11): true
+        while a hotkey hold is in progress -- the tick loop must stop
+        reading/decoding entirely for the duration (WakeConsumer's own
+        _process_frame independently stops accumulating into
+        _utterance_frames; this is this session's OWN read of the ring via
+        snapshot_dictate_preview_audio, which has no such gate on its
+        own). Fails open (False -- keep ticking) on any error, matching
+        this module's best-effort philosophy; the setting defaults on, so
+        a lookup failure should not silently disable suspension, but
+        neither should it ever crash the tick loop."""
+        try:
+            if not getattr(self.app, '_hotkey_recording', False):
+                return False
+            return bool(self.app.config.get('hands_free', {}).get('suspend_on_hold', True))
+        except Exception as e:
+            logger.debug(f"[DICTATE-PREVIEW] suspend-on-hold check failed: {e}")
+            return False
 
     def _loop(self):
         first = True
+        was_suspended = False
         while not self._stop_event.is_set():
             wait_s = FIRST_CHUNK_S if first else CHUNK_INTERVAL_S
             first = False
             if self._stop_event.wait(timeout=wait_s):
                 return
+            if self._suspended_for_hold():
+                was_suspended = self._enter_hold_pause(was_suspended)
+                continue   # no reading/decoding at all while suspended
+            if was_suspended:
+                was_suspended = False
+                self._overlay.set_transcript(list(self._finalized), "")
+            # DEFECT 1 (2026-09-11): captured BEFORE the (slow, model-lock-
+            # bound) decode below. If a commit lands on the cmd-utt thread
+            # while this tick is mid-decode, on_utterance_final bumps
+            # _generation; the partial this tick just produced belongs to
+            # audio from BEFORE that commit, so rendering it now would
+            # paint stale text right back over the transcript
+            # on_utterance_final just correctly cleared/updated.
+            generation = self._generation
             text = self._transcribe_partial()
             if self._stop_event.is_set() or self._closed:
                 return
+            # A hold can start WHILE the decode above is running -- and this
+            # loop is single-threaded, so it cannot notice the suspension (or
+            # bump _generation) until that decode returns. `text` was decoded
+            # from audio captured BEFORE the hold, which WakeConsumer has by
+            # now already discarded (discard_stale_wake_utterance, called at
+            # the instant _hotkey_recording flips True), so emitting it here
+            # would paint pre-hold words over a box that must read "Paused
+            # (hold)" -- the exact half-utterance the suspension contract
+            # says to drop. Re-check after the decode and discard it.
+            if self._suspended_for_hold():
+                was_suspended = self._enter_hold_pause(was_suspended)
+                continue
+            if generation != self._generation:
+                continue
             # A partial that IS a recognized control phrase is never shown
             # as transcript text -- hold the prior transcript (no new
             # set_transcript call this tick) rather than flashing "Scratch
             # that." as if it were dictated content, same reasoning as
             # on_utterance_final's suppression below.
             if text and not self._is_control_phrase(text):
-                self._overlay.set_transcript(self._finalized, text)
+                # Copy for the same reason as on_utterance_final's call above.
+                self._overlay.set_transcript(list(self._finalized), text)
+
+    def _enter_hold_pause(self, was_suspended: bool) -> bool:
+        """Render the "Paused (hold)" state once per hold; returns the new
+        was_suspended flag. Bumping _generation here is what stops any
+        partial still in flight from painting over the paused box once its
+        decode finally returns."""
+        if not was_suspended:
+            self._generation += 1
+            self._overlay.set_paused(list(self._finalized))
+        return True
 
     def _transcribe_partial(self):
         app = self.app
@@ -1203,8 +1421,11 @@ class DictatePreviewSession:
             if audio is None:
                 return None
             params = self._partial_params()
-            segments, _ = app.model.transcribe(audio, **params)
-            return "".join(seg.text for seg in segments).strip()
+            segments, info = app.model.transcribe(audio, **params)
+            text = "".join(seg.text for seg in segments).strip()
+            # Partials are provisional: validate before display, but only the
+            # final accepted decode learns languages or plays refusal feedback.
+            return app._filter_dictation_language(text, info, remember=False, feedback=False)
         except Exception as e:
             logger.exception(f"[DICTATE-PREVIEW] Partial transcribe failed: {e}")
             return None
