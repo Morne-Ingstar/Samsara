@@ -281,9 +281,20 @@ class TestRestoreLayout:
         with patch.object(wm, 'find_windows_by_app', side_effect=_fwa), \
              patch.object(wm, 'get_monitors', return_value=[MONITOR_1, MONITOR_2]):
             win32gui = sys.modules['win32gui']
+            # win32gui is a session-wide shared MagicMock (see the module
+            # stub above) -- earlier tests in this class already called
+            # SetWindowPos, so a loose call_count check passes even if
+            # THIS call restores nothing at all. Reset it and assert the
+            # exact per-window calls instead.
+            win32gui.reset_mock()
             win32gui.IsIconic.return_value = False
             wm._restore_layout('work')
-            assert win32gui.SetWindowPos.call_count >= 2
+            assert win32gui.SetWindowPos.call_args_list == [
+                call(hwnd_chrome, wm.HWND_TOP, 0, 0, 800, 600, wm.SWP_SHOWWINDOW),
+                call(hwnd_code, wm.HWND_TOP, 1920, 0, 1920, 1080, wm.SWP_SHOWWINDOW),
+            ]
+            win32gui.ShowWindow.assert_called_once_with(
+                hwnd_code, sys.modules['win32con'].SW_MAXIMIZE)
 
 
 # ---------------------------------------------------------------------------

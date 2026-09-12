@@ -78,19 +78,33 @@ class TestEnabledBehaviorUnchanged:
         assert result is True
 
     def test_process_invokes_the_adaptive_filter_when_active(self):
+        """Only the loopback (hardware) boundary is mocked here --
+        LoopbackCapture.is_running/get_recent. AdaptiveEchoCanceller.process
+        (the actual NLMS filter under review, see module docstring) is left
+        real: this proves the filter genuinely runs, not just that it's
+        wired to something the test controls."""
         ec = EchoCanceller(enabled=True)
         mic_audio = np.random.default_rng(1).uniform(-1, 1, 1024).astype(np.float32)
         reference = np.random.default_rng(2).uniform(-1, 1, 4096).astype(np.float32)
 
         with patch.object(LoopbackCapture, "is_running", new_callable=PropertyMock) as mock_running, \
-             patch.object(LoopbackCapture, "get_recent", return_value=reference) as mock_get_recent, \
-             patch.object(AdaptiveEchoCanceller, "process", return_value=mic_audio.copy()) as mock_filter_process:
+             patch.object(LoopbackCapture, "get_recent", return_value=reference) as mock_get_recent:
             mock_running.return_value = True
             ec._started = True  # simulate a prior successful start()
-            ec.process(mic_audio)
+            result = ec.process(mic_audio)
 
         mock_get_recent.assert_called_once()
-        mock_filter_process.assert_called_once()
+        # The real _process_block() only increments _diag_count on a run
+        # through the FFT/NLMS path -- proof the actual filter executed,
+        # not a mock standing in for it.
+        assert ec._aec._diag_count == 1
+        assert result.shape == mic_audio.shape
+        assert result.dtype == mic_audio.dtype
+        assert result is not mic_audio
+        assert not np.array_equal(result, mic_audio), (
+            "filtered output is bit-identical to the input -- the NLMS "
+            "filter did not actually modify anything"
+        )
 
     def test_process_skips_filter_on_silent_reference(self):
         """Existing behavior, unchanged: even when active, a silent

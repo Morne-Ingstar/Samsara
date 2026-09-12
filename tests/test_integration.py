@@ -5,6 +5,7 @@ Tests the flow from audio input to text output.
 import pytest
 import json
 import sys
+import threading
 import numpy as np
 from pathlib import Path
 from unittest.mock import Mock, patch, MagicMock
@@ -129,104 +130,188 @@ class TestCommandModeToggle:
         assert mock_app.command_matching_enabled is False
 
 
+def _hotkey_app(mode, *, wake_word_enabled=False):
+    """A minimal DictationApp carrying only what on_key_press/on_key_release
+    read, so the real bound methods -- not a copy of their branching --
+    decide hold/toggle behaviour. get_key_name and check_hotkey_state are
+    stubbed (they poll real OS key state / pynput key objects, out of
+    scope for this unit); everything downstream of "which mode branch
+    fires" is the genuine dictation.py code path."""
+    from dictation import DictationApp
+
+    app = DictationApp.__new__(DictationApp)
+    app.config = {
+        'mode': mode,
+        'hotkey': 'ctrl+shift',
+        'continuous_hotkey': 'ctrl+alt+d',
+        'wake_word_hotkey': 'ctrl+alt+w',
+        'command_hotkey': 'ctrl+alt+c',
+        'cancel_hotkey': 'escape',
+        'memo_hotkey': 'ctrl+alt+m',
+        'wake_word_enabled': wake_word_enabled,
+    }
+    app.current_keys = {'ctrl', 'shift'}
+    app.key_press_times = {}
+    app.hotkey_pressed = False
+    app.recording = False
+    app.snoozed = False
+    app._stop_in_flight = False
+    app._streaming_session = None
+    app._memo_recording = False
+    app.command_mode_recording = False
+    app.toggle_active = False
+    app.command_mode_active = False
+    app._session_mode_manager = None
+    app.get_key_name = Mock(return_value='ctrl')
+    app._check_command_mode_key = Mock()
+    return app
+
+
 @pytest.mark.integration
 class TestRecordingModes:
-    """Tests for different recording modes"""
+    """Tests for different recording modes, driven through dictation.py's
+    real DictationApp.on_key_press/on_key_release -- not a local
+    reimplementation of the hold/toggle branching (see
+    docs/reviews/test_suite_audit.md fix-first #7)."""
 
     def test_hold_mode_flow(self, sample_config):
-        """Test hold mode: press -> record -> release -> transcribe"""
-        sample_config['mode'] = 'hold'
+        """Hold mode: press -> record starts, release -> stop is scheduled."""
+        app = _hotkey_app('hold')
+        app.check_hotkey_state = Mock(side_effect=lambda combo: combo == 'ctrl+shift')
+        app.start_recording = Mock()
 
-        # Simulate the flow
-        recording = False
+        app.on_key_press('ctrl')
 
-        # Key press starts recording
-        recording = True
-        assert recording is True
+        app.start_recording.assert_called_once_with(streaming=False)
+        assert app.hotkey_pressed is True
 
-        # Key release stops and transcribes
-        recording = False
-        assert recording is False
+        # Capture completed (start_recording is mocked away, so simulate
+        # its real effect) and the hotkey is now physically released.
+        app.recording = True
+        app.check_hotkey_state = Mock(return_value=False)
+        spawned = {}
+        with patch(
+            'dictation.thread_registry.spawn',
+            side_effect=lambda name, target, **kw: spawned.setdefault(name, target),
+        ):
+            app.on_key_release('ctrl')
+
+        assert 'stop-rec' in spawned, 'main hotkey release did not schedule a stop'
+        app.stop_recording = Mock(side_effect=lambda: setattr(app, 'recording', False))
+        spawned['stop-rec']()  # run the deferred stop closure for real
+
+        app.stop_recording.assert_called_once_with()
+        assert app.recording is False
+        assert app._stop_in_flight is False
 
     def test_toggle_mode_flow(self, sample_config):
-        """Test toggle mode: press -> start, press again -> stop"""
-        sample_config['mode'] = 'toggle'
+        """Toggle mode: press -> start (toggle on); a later press while
+        toggle is active -> stop (toggle off)."""
+        app = _hotkey_app('toggle')
+        app.check_hotkey_state = Mock(side_effect=lambda combo: combo == 'ctrl+shift')
+        app.start_recording = Mock()
+        app.stop_recording = Mock()
 
-        recording = False
-        toggle_active = False
+        app.on_key_press('ctrl')
 
-        # First press starts
-        toggle_active = not toggle_active
-        recording = toggle_active
-        assert recording is True
+        app.start_recording.assert_called_once_with(streaming=False)
+        app.stop_recording.assert_not_called()
+        assert app.toggle_active is True
+        assert app.hotkey_pressed is True
 
-        # Second press stops
-        toggle_active = not toggle_active
-        recording = toggle_active
-        assert recording is False
+        # A later press-release cycle resets the edge-trigger latch; the
+        # next press with toggle already active must stop, not start.
+        app.hotkey_pressed = False
+        app.on_key_press('ctrl')
+
+        app.stop_recording.assert_called_once_with()
+        app.start_recording.assert_called_once_with(streaming=False)  # still just the once
+        assert app.toggle_active is False
 
     def test_hold_with_wake_word_flow(self, sample_config):
-        """Test hold mode + wake_word_enabled: wake word active AND hotkey works"""
-        sample_config['mode'] = 'hold'
-        sample_config['wake_word_enabled'] = True
+        """Hold mode's hotkey behaves identically whether wake_word_enabled
+        is on or off, and pressing/releasing the main hotkey never touches
+        that config key."""
+        app = _hotkey_app('hold', wake_word_enabled=True)
+        app.check_hotkey_state = Mock(side_effect=lambda combo: combo == 'ctrl+shift')
+        app.start_recording = Mock()
 
-        wake_word_active = False
-        recording = False
+        app.on_key_press('ctrl')
 
-        # Wake word listener starts because wake_word_enabled=True
-        wake_word_active = True
-        assert wake_word_active is True
+        app.start_recording.assert_called_once_with(streaming=False)
+        assert app.config['wake_word_enabled'] is True
 
-        # Hotkey still works like hold mode (independently of wake word)
-        recording = True
-        assert recording is True
-        assert wake_word_active is True  # Wake word stays active
+        app.recording = True
+        app.check_hotkey_state = Mock(return_value=False)
+        spawned = {}
+        with patch(
+            'dictation.thread_registry.spawn',
+            side_effect=lambda name, target, **kw: spawned.setdefault(name, target),
+        ):
+            app.on_key_release('ctrl')
+        app.stop_recording = Mock(side_effect=lambda: setattr(app, 'recording', False))
+        spawned['stop-rec']()
 
-        # Release stops recording
-        recording = False
-        assert recording is False
-        assert wake_word_active is True  # Wake word still active after hotkey release
+        assert app.recording is False
+        assert app.config['wake_word_enabled'] is True  # untouched by the hold flow
+
+
+def _streaming_consumer(frames):
+    """A DictationSessionConsumer with only the streaming-accumulator
+    state _snapshot_streaming_audio needs -- bypasses __init__ (which
+    wants a live ACE engine) to unit-test the real concatenation method."""
+    from samsara.audio_engine.dictation_consumer import DictationSessionConsumer
+
+    consumer = DictationSessionConsumer.__new__(DictationSessionConsumer)
+    consumer._streaming_lock = threading.Lock()
+    consumer._streaming_frames = list(frames)
+    return consumer
 
 
 @pytest.mark.integration
 class TestAudioProcessing:
-    """Tests for audio buffer processing"""
+    """Tests for audio buffer processing, against the real ACE streaming
+    accumulator (samsara/audio_engine/dictation_consumer.py) instead of a
+    reimplementation of np.concatenate (see fix-first #7)."""
 
     def test_audio_buffer_concatenation(self):
-        """Test audio chunks are properly concatenated"""
+        """Chunks fed into the real streaming accumulator come back
+        concatenated in order by the real snapshot method."""
         chunks = [
-            np.array([0.1, 0.2, 0.3]),
-            np.array([0.4, 0.5, 0.6]),
-            np.array([0.7, 0.8, 0.9])
+            np.array([0.1, 0.2, 0.3], dtype=np.float32),
+            np.array([0.4, 0.5, 0.6], dtype=np.float32),
+            np.array([0.7, 0.8, 0.9], dtype=np.float32),
         ]
+        consumer = _streaming_consumer(chunks)
 
-        # Concatenate like the app does
-        audio = np.concatenate(chunks, axis=0).flatten()
+        audio = consumer.snapshot_streaming_audio()
 
         assert len(audio) == 9
-        assert audio[0] == 0.1
-        assert audio[-1] == 0.9
+        assert audio[0] == pytest.approx(0.1)
+        assert audio[-1] == pytest.approx(0.9)
 
     def test_empty_audio_buffer(self):
-        """Test handling of empty audio buffer"""
-        audio_data = []
+        """The real accumulator's own empty-buffer guard returns None,
+        not a locally reimplemented one."""
+        consumer = _streaming_consumer([])
 
-        # Should not crash
-        if not audio_data:
-            result = None
-        else:
-            result = np.concatenate(audio_data)
-
-        assert result is None
+        assert consumer.snapshot_streaming_audio() is None
 
     def test_audio_sample_rate(self):
-        """Test audio is recorded at correct sample rate"""
-        sample_rate = 16000  # Whisper expects 16kHz
-        duration = 1.0  # 1 second
+        """One second of real 100ms frames (FRAME_SIZE samples each, the
+        production frame-sizing constant) concatenates through the real
+        accumulator to exactly SAMPLE_RATE samples."""
+        from samsara.audio_engine.frame import FRAME_SIZE, SAMPLE_RATE
 
-        # Expected samples for 1 second
-        expected_samples = int(sample_rate * duration)
-        assert expected_samples == 16000
+        assert SAMPLE_RATE == 16000
+        one_second_of_frames = [
+            np.zeros(FRAME_SIZE, dtype=np.float32) for _ in range(1000 // 100)
+        ]
+        consumer = _streaming_consumer(one_second_of_frames)
+
+        audio = consumer.snapshot_streaming_audio()
+
+        assert len(audio) == SAMPLE_RATE
 
 
 @pytest.mark.integration

@@ -290,8 +290,12 @@ class TestCaptureDuckOpenClose:
         instance = mock_cls.return_value
         instance._tracked_by_id = {}
         app = _make_app(monkeypatch, mock_ducker_cls=mock_cls)
-        app._open_hands_free_capture_duck()
-        app._close_hands_free_capture_duck()
+        owner = app._open_hands_free_capture_duck()
+        # 2026-07-24 amendment (docs/reviews/hands_free_path_review.md,
+        # "Medium/low -- duck ownership"): close with no owner_token is now
+        # an intentional no-op, not a forwarded close -- pass the real
+        # owner this open returned.
+        app._close_hands_free_capture_duck(owner)
 
         _FakeTimer.instances[0].fire()
 
@@ -306,9 +310,9 @@ class TestCaptureDuckOpenClose:
         instance = mock_cls.return_value
         instance._tracked_by_id = {}
         app = _make_app(monkeypatch, mock_ducker_cls=mock_cls)
-        app._open_hands_free_capture_duck()
+        owner = app._open_hands_free_capture_duck()
 
-        app._close_hands_free_capture_duck()  # simulates either close reason
+        app._close_hands_free_capture_duck(owner)  # simulates either close reason
 
         _FakeTimer.instances[0].fire()
         instance.stop.assert_called_once()
@@ -318,8 +322,8 @@ class TestCaptureDuckOpenClose:
         instance = mock_cls.return_value
         instance._tracked_by_id = {}
         app = _make_app(monkeypatch, mock_ducker_cls=mock_cls)
-        app._open_hands_free_capture_duck()
-        app._close_hands_free_capture_duck()
+        owner = app._open_hands_free_capture_duck()
+        app._close_hands_free_capture_duck(owner)
         pending = _FakeTimer.instances[0]
 
         app._open_hands_free_capture_duck()  # a new utterance starts before the tail fires
@@ -352,10 +356,15 @@ class TestCaptureDuckOpenClose:
         app = _make_app(monkeypatch, mock_ducker_cls=mock_cls)
 
         owner = {}
+        open_errors = []
 
-        open_thread = threading.Thread(
-            target=lambda: owner.setdefault("token", app._open_hands_free_capture_duck()),
-        )
+        def _open():
+            try:
+                owner["token"] = app._open_hands_free_capture_duck()
+            except BaseException as exc:
+                open_errors.append(exc)
+
+        open_thread = threading.Thread(target=_open)
         open_thread.start()
 
         assert start_started.wait(timeout=1.0)
@@ -365,8 +374,13 @@ class TestCaptureDuckOpenClose:
         open_thread.join(timeout=1.0)
 
         assert not open_thread.is_alive()
+        assert open_errors == [], open_errors
         assert app._hands_free_capture_ducker is None
-        assert owner["token"] == 1
+        # Invalidated (start_generation moved under it while blocked in
+        # ducker.start()) -- _open_hands_free_capture_duck's own
+        # "lost ownership" path returns None, not the provisional token;
+        # this is the case this test's name describes.
+        assert owner["token"] is None
         assert mock_cls.instances
         assert mock_cls.instances[0].stop_calls == 1
 
@@ -380,16 +394,17 @@ class TestCaptureDuckOpenClose:
         owner_a: dict[str, int] = {}
         owner_b: dict[str, int] = {}
         owner_a_token = 111
+        open_errors = []
 
-        open_thread = threading.Thread(
-            target=lambda: owner_a.update(
-                {
-                    "token": app._open_hands_free_capture_duck(
-                        owner_token=owner_a_token
-                    )
-                }
-            ),
-        )
+        def _open_a():
+            try:
+                owner_a["token"] = app._open_hands_free_capture_duck(
+                    owner_token=owner_a_token
+                )
+            except BaseException as exc:
+                open_errors.append(exc)
+
+        open_thread = threading.Thread(target=_open_a)
         open_thread.start()
 
         try:
@@ -403,6 +418,7 @@ class TestCaptureDuckOpenClose:
             start_release.set()
             open_thread.join(timeout=1.0)
             assert not open_thread.is_alive()
+            assert open_errors == [], open_errors
 
             assert app._hands_free_capture_ducker is mock_cls.instances[0]
             assert mock_cls.instances[0].stop_calls == 0
@@ -428,8 +444,8 @@ class TestNoSessionEndSemanticsIntroduced:
         app = _make_app(monkeypatch, mock_ducker_cls=mock_cls)
 
         app._start_hands_free_idle_duck()
-        app._open_hands_free_capture_duck()
-        app._close_hands_free_capture_duck()
+        owner = app._open_hands_free_capture_duck()
+        app._close_hands_free_capture_duck(owner)
         _FakeTimer.instances[0].fire()
         app._stop_hands_free_idle_duck()
 

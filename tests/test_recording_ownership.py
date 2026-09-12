@@ -180,13 +180,25 @@ def test_hold_enter_worker_claim_is_atomic_with_exit(monkeypatch, mode):
         app.recording = True
 
     app.start_recording = blocked_start
-    worker = threading.Thread(target=_enter_worker, args=(app, mode))
+    worker_errors = []
+    exit_errors = []
+
+    def enter_worker():
+        try:
+            _enter_worker(app, mode)
+        except BaseException as exc:
+            worker_errors.append(exc)
+
+    worker = threading.Thread(target=enter_worker)
     worker.start()
     assert start_entered.wait(1.0)
 
     def exit_worker():
         exit_attempted.set()
-        _exit_mode(app, mode)
+        try:
+            _exit_mode(app, mode)
+        except BaseException as exc:
+            exit_errors.append(exc)
         exit_done.set()
 
     exiting = threading.Thread(target=exit_worker)
@@ -200,6 +212,8 @@ def test_hold_enter_worker_claim_is_atomic_with_exit(monkeypatch, mode):
 
     assert not worker.is_alive()
     assert not exiting.is_alive()
+    assert worker_errors == [], worker_errors
+    assert exit_errors == [], exit_errors
     assert app._started == 1
     assert app._stopped == 1
     assert app.recording is False

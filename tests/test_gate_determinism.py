@@ -70,13 +70,17 @@ class TestGateDeterminismUnderInterleavedForeignCalls:
 
         stop = threading.Event()
         foreign_calls = {"n": 0}
+        foreign_errors = []
 
         def _foreign_hammer():
             dummy = np.zeros(512, dtype=np.float32)
-            while not stop.is_set():
-                with stub._vad_lock:
-                    stub._vad_model(dummy)
-                    foreign_calls["n"] += 1
+            try:
+                while not stop.is_set():
+                    with stub._vad_lock:
+                        stub._vad_model(dummy)
+                        foreign_calls["n"] += 1
+            except BaseException as exc:
+                foreign_errors.append(exc)
 
         t = threading.Thread(target=_foreign_hammer, daemon=True)
         t.start()
@@ -90,6 +94,8 @@ class TestGateDeterminismUnderInterleavedForeignCalls:
         finally:
             stop.set()
             t.join(timeout=2.0)
+        assert not t.is_alive(), "foreign hammer thread did not stop within the join timeout"
+        assert foreign_errors == [], foreign_errors
         assert foreign_calls["n"] > 0, "test didn't actually exercise contention"
 
     def test_head_grace_low_reading_in_grace_span_does_not_reset_contig(self):
