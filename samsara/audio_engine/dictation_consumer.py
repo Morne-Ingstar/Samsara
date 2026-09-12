@@ -44,6 +44,10 @@ import numpy as np
 
 from .frame import PREBUFFER_FRAMES, FRAME_MS
 from .ring import EMPTY
+from samsara.constants import (
+    ADAPTIVE_SPEECH_FLOOR_RATIO,
+    HOLD_RELEASE_TAIL_SPEECH_THRESHOLD,
+)
 from samsara.log import get_logger
 from samsara.runtime import thread_registry
 
@@ -69,6 +73,9 @@ class DictationSessionConsumer:
         self._streaming_stop = threading.Event()
         self._streaming_lock = threading.Lock()
         self._streaming_thread = None
+        self._capture_not_before = None
+        self._capture_not_after = None
+        self._prebuffer_rewound = False
 
     # ── Utterance lifecycle ───────────────────────────────────────────────────
 
@@ -118,6 +125,9 @@ class DictationSessionConsumer:
         self._active         = True
         self._epoch_at_start = None
         self._drain_stop     = threading.Event()
+        self._capture_not_before = getattr(self._app, '_hold_capture_duck_confirmed_at', None)
+        self._capture_not_after = None
+        self._prebuffer_rewound = False
 
         # Snap cursor to the current write head BEFORE rewinding.
         # Between the previous drain() and this activate(), the writer
@@ -135,10 +145,32 @@ class DictationSessionConsumer:
             logger.debug("[PRE] Pre-buffer skipped — TTS ended too recently")
         else:
             self._reader.rewind(PREBUFFER_FRAMES)
+            self._prebuffer_rewound = True
 
         self._drain_thread = thread_registry.spawn(
             "dictation-hold-consumer", self._hold_drain_loop, args=(self._drain_stop,), daemon=True
         )
+
+    def finish_capture(self) -> None:
+        """Exclude later frames before the hold owner releases its duck.
+
+        Streaming finalization drains asynchronously; its worker may finish
+        after the duck debounce expires. Preserve only the ducked interval.
+        """
+        if self._capture_not_before is not None:
+            self._capture_not_after = time.perf_counter()
+
+    def _frame_inside_capture_duck(self, frame) -> bool:
+        """Drop pre-confirmation/straddling frames BEFORE either accumulator.
+
+        ACE timestamps a block at its end. Rewinding remains unchanged, but
+        an entire block must start after the volume acknowledgements. A
+        whole boundary block is discarded instead of admitting older samples.
+        """
+        before = self._capture_not_before
+        after = self._capture_not_after
+        return ((before is None or frame.t_capture - FRAME_MS / 1000.0 >= before)
+                and (after is None or frame.t_capture <= after))
 
     def _hold_drain_loop(self, stop_event) -> None:
         """Background thread: drain ring → _frames continuously during a hold.
@@ -154,6 +186,8 @@ class DictationSessionConsumer:
             if frame is EMPTY:
                 time.sleep(0.005)
                 continue
+            if not self._frame_inside_capture_duck(frame):
+                continue
             if self._epoch_at_start is None:
                 self._epoch_at_start = frame.device_epoch
             with self._frames_lock:
@@ -167,7 +201,7 @@ class DictationSessionConsumer:
         *,
         silence_ms: int = 300,
         max_tail_ms: int = 1200,
-        speech_threshold: float = 0.008,
+        speech_threshold: float = HOLD_RELEASE_TAIL_SPEECH_THRESHOLD,
     ) -> 'np.ndarray | None':
         """Capture a bounded, speech-aware tail after the hotkey is released.
 
@@ -196,9 +230,17 @@ class DictationSessionConsumer:
             # noisier mic's ordinary room tone as speech forever, making every
             # release wait for the hard cap.  Adapt upward from genuine
             # pre-press audio while preserving the configured value as a floor.
+            # Only valid when _activate_hold actually rewound the reader --
+            # when TTS was speaking (or ended too recently) that rewind is
+            # skipped, so these "first" frames are live captured speech, not
+            # ambient pre-press audio; treating them as ambient would inflate
+            # the threshold and truncate the release tail mid-word.
             prebuffer = [
                 pcm for _seq, _epoch, pcm in self._frames[:PREBUFFER_FRAMES]
-            ]
+            ] if self._capture_not_before is None and self._prebuffer_rewound else []
+            # With capture ducking these first frames are post-confirmation
+            # speech, not ambient pre-press audio. Keep the configured floor
+            # rather than estimating room noise from the user's own voice.
 
         noise_floor = 0.0
         if len(prebuffer) == PREBUFFER_FRAMES:
@@ -209,9 +251,10 @@ class DictationSessionConsumer:
                 for pcm in prebuffer
             ]
             # A low percentile ignores incidental pre-hotkey speech or bumps;
-            # 1.5x matches the app's existing adaptive wake-gate margin.
+            # ADAPTIVE_SPEECH_FLOOR_RATIO matches the app's existing adaptive
+            # wake-gate margin.
             noise_floor = float(np.percentile(prebuffer_rms, 20))
-            speech_threshold = max(speech_threshold, noise_floor * 1.5)
+            speech_threshold = max(speech_threshold, noise_floor * ADAPTIVE_SPEECH_FLOOR_RATIO)
 
         while time.monotonic() < deadline:
             with self._frames_lock:
@@ -288,6 +331,8 @@ class DictationSessionConsumer:
             frame = self._reader.read_next()
             if frame is EMPTY:
                 break
+            if not self._frame_inside_capture_duck(frame):
+                continue
             if self._epoch_at_start is None:
                 self._epoch_at_start = frame.device_epoch
             with self._frames_lock:
@@ -411,6 +456,8 @@ class DictationSessionConsumer:
         """
         self._streaming_frames: list = []
         self._streaming_stop  = threading.Event()
+        self._capture_not_before = getattr(self._app, '_hold_capture_duck_confirmed_at', None)
+        self._capture_not_after = None
 
         # Snap + rewind (same logic as activate())
         self._reader.snap_to_head()
@@ -432,6 +479,8 @@ class DictationSessionConsumer:
             frame = self._reader.read_next()
             if frame is EMPTY:
                 time.sleep(0.005)
+                continue
+            if not self._frame_inside_capture_duck(frame):
                 continue
             pcm = frame.pcm.copy()   # [MA-2]
             pcm_f32 = pcm.astype(np.float32) / 32767.0

@@ -262,13 +262,21 @@ class ContinuousConsumer:
                     self._flush()
             else:
                 # trigger == "silence" (default): EXACTLY today's behavior,
-                # unchanged.
+                # unchanged. The append and the silence_start read/write are
+                # grouped under one lock acquisition -- commit_now() (on the
+                # keyboard thread) takes the same lock in _flush() to reset
+                # both, so checking silence_start outside the lock could
+                # observe it mid-reset and re-arm a stale timer, or append a
+                # dead-air frame that lands in the wrong (already-committed)
+                # buffer.
                 with self._frames_lock:
                     self._speech_frames.append(audio_chunk)
-
-                if self._silence_start is None:
-                    self._silence_start = time.time()
-                elif time.time() - self._silence_start >= silence_threshold:
+                    if self._silence_start is None:
+                        self._silence_start = time.time()
+                        should_flush = False
+                    else:
+                        should_flush = time.time() - self._silence_start >= silence_threshold
+                if should_flush:
                     self._flush()
 
     def _flush(self) -> bool:
