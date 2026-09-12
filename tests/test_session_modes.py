@@ -97,14 +97,29 @@ class TestSwitchWordMatcher:
         exact-phrase-only, no prefix trap."""
         assert match_switch_word("ava what time is it") is None
 
-    def test_bare_ava_and_ava_mode_no_longer_whole_match(self):
-        """Deliberately removed from _WHOLE_UTTERANCE_SWITCHES -- a bare
-        content word is too easy to say by accident mid-dictation (the
-        incident: "Ava Omniscience Mode" spoken as ordinary content)."""
+    def test_bare_ava_is_not_a_whole_match(self):
+        """Bare "ava" stays out of _WHOLE_UTTERANCE_SWITCHES -- a bare content
+        word is too easy to say by accident mid-dictation (the incident:
+        "Ava Omniscience Mode" spoken as ordinary content)."""
         assert match_switch_word("ava") is None
         assert match_switch_word("Ava") is None
-        assert match_switch_word("ava mode") is None
-        assert match_switch_word("Ava Mode!") is None
+
+    def test_ava_mode_is_a_whole_utterance_switch(self):
+        """2026-09-11: "ava mode" IS a switch word now, symmetric with
+        "command mode"/"dictate mode". Excluding it sent the phrase to the
+        command registry instead, where ask_ollama's "ava" alias prefix-
+        matched it and asked the LLM "mode"; in DICTATE it was simply typed.
+        The prefix trap the original exclusion guarded against is still shut
+        -- see test_ava_prefix_form_is_not_a_switch below."""
+        for spoken in ("ava mode", "Ava Mode!", "ava-mode"):
+            match = match_switch_word(spoken)
+            assert match is not None, f"{spoken!r} did not match"
+            assert match.target_mode is SessionMode.AVA
+            assert match.is_prefix is False
+
+    def test_ava_prefix_form_is_not_a_switch(self):
+        assert match_switch_word("we should use ava mode later") is None
+        assert match_switch_word("ava mode is what I want") is None
 
     def test_prefix_form_preserves_original_casing_and_punctuation(self):
         m = match_switch_word("dictate Hello, World!")

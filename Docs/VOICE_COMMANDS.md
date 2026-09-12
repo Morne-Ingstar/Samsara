@@ -3,6 +3,9 @@
 Samsara ships with hundreds of built-in commands plus a plugin system for custom commands.
 Say your wake word (default: "Jarvis") followed by any command below.
 
+> Switching lanes in a hands-free session — **"command mode"**, **"dictate mode"**,
+> **"ava mode"** — is documented once in [HANDS_FREE_MODES.md](HANDS_FREE_MODES.md).
+
 ## Plugins (Dynamic Commands)
 
 These commands accept variable input after the trigger phrase.

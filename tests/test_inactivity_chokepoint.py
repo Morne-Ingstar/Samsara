@@ -29,6 +29,46 @@ sys.path.insert(0, str(Path(__file__).parent.parent))
 
 
 # ---------------------------------------------------------------------------
+# Live-log isolation guard
+# ---------------------------------------------------------------------------
+# 2026-09-11: the owner's live log picked up
+#   [ACE] Wake consumer stopped after fatal error: bad frame
+#     File "<string>", line 22, in _raise
+# from this file's fail-loud _poll_loop fault injection. "<string>" is the
+# giveaway: that traceback came from code run via `python -c`, NOT from this
+# file under pytest -- an ad-hoc verification command that bypassed
+# conftest.py and so resolved samsara.log to the REAL ~/.samsara.
+#
+# Under pytest this file is already isolated (conftest.py force-assigns
+# SAMSARA_HOME_DIR to a temp dir as plain module-level code, before any
+# samsara import can bind a log path). These tests assert that invariant
+# instead of trusting it, so a conftest regression fails here loudly rather
+# than silently appending to the owner's log again.
+
+def _real_samsara_home() -> Path:
+    return Path.home() / ".samsara"
+
+
+class TestLiveLogIsolation:
+    def test_samsara_home_is_redirected_away_from_the_real_home(self):
+        import os
+
+        home = os.environ.get("SAMSARA_HOME_DIR")
+        assert home, "SAMSARA_HOME_DIR is unset -- logging would hit ~/.samsara"
+        assert _real_samsara_home() not in Path(home).resolve().parents
+        assert Path(home).resolve() != _real_samsara_home().resolve()
+
+    def test_resolved_log_path_is_not_the_owners(self):
+        from samsara.paths import samsara_home_dir
+
+        resolved = samsara_home_dir().resolve()
+        assert resolved != _real_samsara_home().resolve(), (
+            "samsara_home_dir() resolves to the owner's live home -- a fault "
+            "injected by these tests would be written into their real log"
+        )
+
+
+# ---------------------------------------------------------------------------
 # _touch_session_activity -- the single chokepoint
 # ---------------------------------------------------------------------------
 
@@ -51,19 +91,34 @@ def _make_touch_stub(mode='toggle', active=True):
 
 
 class TestTouchSessionActivity:
-    def test_resets_timer_when_active_and_toggle(self):
+    def test_resets_timer_on_fresh_speech_onset_when_active_and_toggle(self):
+        """2026-09-10 session policy (docs/HANDS_FREE_GATES_FINDINGS.md
+        "Session policy" #2): only a fresh Silero speech onset extends
+        toggle-session inactivity -- callers signal that explicitly via the
+        speech_onset kwarg."""
+        stub = _make_touch_stub(mode='toggle', active=True)
+        stub._touch_session_activity(speech_onset=True)
+        assert stub.reset_calls == [30]
+
+    def test_noop_without_speech_onset_even_when_active_and_toggle(self):
+        """Same policy note: queueing, decode/delivery, and agent
+        completion may still call this chokepoint (the bare, no-kwarg
+        call every non-onset caller makes -- see dictation.py's
+        _handle_session_dispatch_outcome/_on_ava_session_request_done),
+        but none of them can extend the session without a new speech
+        edge."""
         stub = _make_touch_stub(mode='toggle', active=True)
         stub._touch_session_activity()
-        assert stub.reset_calls == [30]
+        assert stub.reset_calls == []
 
     def test_noop_when_command_mode_inactive(self):
         stub = _make_touch_stub(mode='toggle', active=False)
-        stub._touch_session_activity()
+        stub._touch_session_activity(speech_onset=True)
         assert stub.reset_calls == []
 
     def test_noop_when_hold_mode(self):
         stub = _make_touch_stub(mode='hold', active=True)
-        stub._touch_session_activity()
+        stub._touch_session_activity(speech_onset=True)
         assert stub.reset_calls == []
 
 
@@ -214,6 +269,7 @@ class TestTimeoutCallbackZombieProofing:
 
 def _make_utterance_stub():
     import dictation as _d
+    from samsara.audio_engine.wake_dispatch import TranscriptionOwners
 
     class _Stub:
         _handle_command_mode_utterance = _d.DictationApp._handle_command_mode_utterance
@@ -223,6 +279,7 @@ def _make_utterance_stub():
             self.command_mode_active = True
             self._sounds = []
             self.vad_reset_calls = 0
+            self._transcription_owners = TranscriptionOwners()
 
         def play_sound(self, name, **_kwargs):
             self._sounds.append(name)
@@ -260,6 +317,11 @@ def _make_consumer(command_mode_active=False, mode='hold', ava_command_session_a
     app.command_mode_active = command_mode_active
     app.ava_command_session_active = ava_command_session_active
     app.config = {'command_mode': {'mode': mode}}
+    # _handle_fatal falls back to the consumer's own lock via
+    # getattr(app, '_wake_session_lock', ...) -- a bare Mock() auto-
+    # vivifies that attribute as another Mock rather than triggering the
+    # fallback, and a Mock doesn't support the `with` protocol.
+    app._wake_session_lock = threading.RLock()
     wc = WakeConsumer(engine, app)
     return wc, reader, app
 
@@ -298,22 +360,26 @@ class TestWakeConsumerPollLoopFailsLoud:
         wc._poll_loop()
         app.exit_ava_command_session.assert_not_called()
 
-    def test_per_frame_exception_does_not_kill_the_loop(self):
-        """The pre-existing inner guard: a single bad frame logs and the
-        loop keeps polling -- only an exception escaping THAT guard should
-        ever stop the loop (covered above)."""
+    def test_process_frame_exception_stops_the_loop_and_earcons(self):
+        """2026-09-10 fail-loud redesign (see this file's module docstring):
+        _poll_loop no longer wraps each frame in its own recoverable
+        try/except -- there is exactly one guard, around the whole loop
+        body, and ANY exception escaping _process_frame is fatal like every
+        other case in this class, not silently swallowed per-frame. A bad
+        frame therefore stops the loop and earcons on the very first
+        occurrence, same as a dead reader (test_loop_death_earcons_and_
+        stops_running above)."""
         wc, reader, app = _make_consumer()
         reader.read_next = Mock(return_value=Mock(device_epoch=1))
         count = {"n": 0}
 
-        def _stop_after_a_few(frame):
+        def _raise(frame):
             count["n"] += 1
-            if count["n"] >= 3:
-                wc._running = False
             raise RuntimeError("bad frame")
 
-        wc._process_frame = _stop_after_a_few
+        wc._process_frame = _raise
         wc._running = True
-        wc._poll_loop()  # must not propagate -- inner per-frame guard eats it
-        assert count["n"] == 3
-        app.play_sound.assert_not_called()
+        wc._poll_loop()  # must not propagate -- the outer fatal guard catches it
+        assert count["n"] == 1
+        assert wc._running is False
+        app.play_sound.assert_called_once_with('error')
