@@ -94,11 +94,9 @@ def test_print_delta(capsys):
     assert "speech_owner | wer | 0.5 | 0.25 | -0.2500" in lines
 
 
-def _pipeline_for_gate_test(apply_post_gates):
-    import dictation
-
+def _pipeline_for_gate_test(apply_post_gates, production=None):
     pipeline = hf_bench.RealPipeline.__new__(hf_bench.RealPipeline)
-    pipeline.production = dictation
+    pipeline.production = production or hf_bench.load_production_adapter()
     pipeline.config = {"apply_post_gates": apply_post_gates}
     pipeline.model_rate = 16000
     pipeline.model = SimpleNamespace(
@@ -109,17 +107,16 @@ def _pipeline_for_gate_test(apply_post_gates):
 
 
 def test_apply_post_gates_routes_through_quality_gates(monkeypatch):
-    import dictation
-
+    production = hf_bench.load_production_adapter()
     calls = []
 
     def fake_quality_gates(segments, params, duration):
         calls.append((segments, params, duration))
         return "gated transcript", False
 
-    monkeypatch.setattr(dictation, "_apply_segment_quality_gates", fake_quality_gates)
-    gated = _pipeline_for_gate_test(True)
-    ungated = _pipeline_for_gate_test(False)
+    monkeypatch.setattr(production, "_apply_segment_quality_gates", fake_quality_gates)
+    gated = _pipeline_for_gate_test(True, production)
+    ungated = _pipeline_for_gate_test(False, production)
 
     gated_text, _, _ = gated.run(np.zeros(16000), 16000)
     ungated_text, _, _ = ungated.run(np.zeros(16000), 16000)
@@ -130,7 +127,7 @@ def test_apply_post_gates_routes_through_quality_gates(monkeypatch):
 
 
 def test_gate_overrides_restores_dictation_attributes():
-    import dictation
+    production = hf_bench.load_production_adapter()
 
     names = {
         "_GATE_VAD_PROB": "vad_prob_threshold",
@@ -139,7 +136,7 @@ def test_gate_overrides_restores_dictation_attributes():
         "_LOGPROB_THRESHOLD": "log_prob_threshold",
         "_COMPRESSION_RATIO_THRESHOLD": "compression_ratio_threshold",
     }
-    original = {name: getattr(dictation, name) for name in names}
+    original = {name: getattr(production, name) for name in names}
     overrides = {
         "vad_prob_threshold": 0.91,
         "vad_min_contig_ms": 321,
@@ -148,14 +145,89 @@ def test_gate_overrides_restores_dictation_attributes():
         "compression_ratio_threshold": 7.7,
     }
     pipeline = hf_bench.RealPipeline.__new__(hf_bench.RealPipeline)
-    pipeline.production = dictation
+    pipeline.production = production
     pipeline.config = overrides
 
     with pipeline.gate_overrides():
         for name, key in names.items():
-            assert getattr(dictation, name) == overrides[key]
+            assert getattr(production, name) == overrides[key]
 
-    assert {name: getattr(dictation, name) for name in names} == original
+    assert {name: getattr(production, name) for name in names} == original
+
+
+@pytest.mark.parametrize("language,expected", [("auto", None), ("en", "en"), ("af", "af")])
+def test_live_language_reaches_production_resolution(tmp_path, monkeypatch, language, expected):
+    config_path = tmp_path / "config.json"
+    config_path.write_text(json.dumps({"language": language, "model_size": "medium",
+                                       "cloud_llm": {"api_key": "do-not-copy"}}))
+    monkeypatch.setattr(hf_bench, "LIVE_CONFIG_PATH", config_path)
+    pipe = _pipeline_for_gate_test(True)
+    pipe.config = hf_bench.load_config(None)
+    del pipe.params
+    assert pipe.params()["language"] == expected
+    assert "cloud_llm" not in pipe.config
+
+
+def test_decode_info_survives_empty_post_gate_result():
+    pipe = _pipeline_for_gate_test(True)
+    info = SimpleNamespace(language="nn", language_probability=0.45)
+    pipe.model.transcribe = lambda audio, **params: ([Segment("thanks for watching")], info)
+    text, segs, wall = pipe.run(np.zeros(16000), 16000)
+    pipe.voiced_ms = lambda audio, rate: 0.0
+    result = hf_bench.bench_result(pipe, {"file": "noise.wav", "label": "silence"},
+                                   text, segs, np.zeros(16000), 16000, wall)
+    score = hf_bench.score_row(result)
+    assert score["text"] == ""
+    assert score["detected_language"] == "nn"
+    assert score["language_probability"] == 0.45
+
+
+@pytest.mark.parametrize("noise_probability,separate", [(0.45, True), (0.94, False), (1.0, False)])
+def test_language_separation_includes_empty_noise_and_media_owner(noise_probability, separate):
+    rows = [
+        {"label": "speech_owner", "text": "hello", "detected_language": "en", "language_probability": 0.99},
+        {"label": "speech_owner_over_media", "text": "hello", "detected_language": "en", "language_probability": 0.94},
+        {"label": "silence", "text": "", "detected_language": "en", "language_probability": noise_probability},
+        {"label": "media_only", "text": "tv", "detected_language": "en", "language_probability": 1.0},
+    ]
+    result = hf_bench.summarize_language_confidence(rows)
+    assert result["owner_minimum"] == 0.94
+    assert result["noise_maximum"] == noise_probability
+    assert result["separate"] is separate
+    assert result["labels"]["silence"]["text_produced_count"] == 0
+
+
+def test_force_language_cli_overrides_live_config(tmp_path, monkeypatch):
+    row = {"file": "speech.wav", "label": "speech_owner", "expected_text": "hello"}
+    write_wav(tmp_path / row["file"], np.zeros(16000))
+    (tmp_path / "manifest.json").write_text(json.dumps([row]))
+    monkeypatch.setattr(hf_bench, "live_config", lambda: {"language": "auto"})
+    monkeypatch.setattr(hf_bench, "RealPipeline", lambda config: FakePipeline([("hello", [])]))
+    out = tmp_path / "nested" / "result"
+    assert hf_bench.main(["--corpus", str(tmp_path), "--out", str(out),
+                          "--force-language", "af"]) == 0
+    result = json.loads(out.with_suffix(".json").read_text())
+    assert result["config"]["language"] == "af"
+    assert result["language_confidence"]["separate"] is None
+
+
+def test_offline_adapter_does_not_import_app_or_open_log(monkeypatch):
+    import builtins
+    import logging
+    import sys
+    before = dict(sys.modules)
+    handlers = list(logging.getLogger().handlers)
+    real_import = builtins.__import__
+
+    def checked_import(name, *args, **kwargs):
+        assert name != "dictation" and not name.startswith("samsara"), name
+        return real_import(name, *args, **kwargs)
+
+    monkeypatch.setattr(builtins, "__import__", checked_import)
+    adapter = hf_bench.load_production_adapter()
+    assert sys.modules.get("dictation") is before.get("dictation")
+    assert logging.getLogger().handlers == handlers
+    assert adapter._apply_segment_quality_gates([Segment("hello world")], {}, 1.0) == ("hello world", False)
 
 
 def test_leadin_scoring_and_contamination_averages():
