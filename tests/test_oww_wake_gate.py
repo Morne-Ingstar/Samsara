@@ -7,6 +7,7 @@ import numpy as np
 from dictation import DictationApp
 from samsara.audio_engine import wake_consumer as wake_consumer_module
 from samsara.audio_engine.wake_consumer import WakeConsumer
+from samsara.audio_engine.wake_dispatch import TranscriptionOwners
 
 
 def _sleeping_consumer(
@@ -37,27 +38,30 @@ def _sleeping_consumer(
     return consumer, app, detector
 
 
-def test_oww_hit_is_forwarded_across_async_dispatch(monkeypatch):
+def test_oww_hit_dispatches_directly_to_process_wake_word_buffer(monkeypatch):
+    """docs/reviews/hands_free_path_review.md 'High -- wake dispatch / shared
+    transcription flag': process_wake_word_buffer now owns the async FIFO
+    hand-off itself (samsara/audio_engine/wake_dispatch.py), so _flush calls
+    it directly and synchronously instead of spawning a thread around it --
+    and duck-token ownership transfers into that call rather than being
+    closed back here (see test_wake_dispatch_lane.py's
+    test_capture_token_transfers_to_dispatch_and_exception_closes_once)."""
     owner_token = 777
     consumer, app, _detector = _sleeping_consumer(detected=True, open_return=owner_token)
-    dispatched = {}
+    spawn = Mock()
+    monkeypatch.setattr(wake_consumer_module.thread_registry, "spawn", spawn)
+    buffer_copy = [np.zeros(160, dtype=np.float32)]
 
-    def fake_spawn(name, target, args=(), kwargs=None, daemon=True):
-        dispatched.update(name=name, target=target, args=args, kwargs=kwargs, daemon=daemon)
+    consumer._flush(buffer_copy, owner_token=None)
 
-    monkeypatch.setattr(wake_consumer_module.thread_registry, "spawn", fake_spawn)
-
-    consumer._flush([np.zeros(160, dtype=np.float32)], owner_token=None)
-
-    # _flush wraps the dispatched target in _wrap_with_duck_close (2026-07-24
-    # capture-window ducking) -- it's no longer the bare method, but it must
-    # still forward to it with the same args/kwargs once invoked.
-    dispatched["target"](*dispatched["args"], **(dispatched["kwargs"] or {}))
-    app.process_wake_word_buffer.assert_called_once_with(*dispatched["args"], **dispatched["kwargs"])
-    assert dispatched["kwargs"] == {"oww_confirmed": True}
+    spawn.assert_not_called()
+    app.process_wake_word_buffer.assert_called_once_with(
+        buffer_copy, wake_consumer_module.SAMPLE_RATE,
+        oww_confirmed=True, owner_token=owner_token, tracked=False,
+    )
     assert app._oww_wake_detected is False
     app._open_hands_free_capture_duck.assert_called_once()
-    app._close_hands_free_capture_duck.assert_called_once_with(owner_token)
+    app._close_hands_free_capture_duck.assert_not_called()
 
 
 def test_no_oww_hit_still_drops_buffer_before_whisper(monkeypatch):
@@ -74,26 +78,33 @@ def test_no_oww_hit_still_drops_buffer_before_whisper(monkeypatch):
 
 
 def test_oww_hit_dispatches_to_long_dictation_tracked_path_with_capture_duck(monkeypatch):
+    """The separate `_process_wake_word_buffer_tracked` method/dispatch name
+    is retired (no longer referenced anywhere in production); long_dictation
+    now just sets `tracked=True` on the same process_wake_word_buffer call,
+    which routes it through the wake dispatch queue's tracked handling
+    internally. See docs/reviews/hands_free_path_review.md as above."""
     owner_token = 203
     consumer, app, _detector = _sleeping_consumer(
         detected=True,
         open_return=owner_token,
         app_state="long_dictation",
     )
-    dispatched = {}
+    spawn = Mock()
+    monkeypatch.setattr(wake_consumer_module.thread_registry, "spawn", spawn)
+    buffer_copy = [np.zeros(160, dtype=np.float32)]
 
-    def fake_spawn(name, target, args=(), kwargs=None, daemon=True):
-        dispatched.update(name=name, target=target, args=args, kwargs=kwargs, daemon=daemon)
+    consumer._flush(buffer_copy, owner_token=None)
 
-    monkeypatch.setattr(wake_consumer_module.thread_registry, "spawn", fake_spawn)
-
-    consumer._flush([np.zeros(160, dtype=np.float32)], owner_token=None)
-
-    assert dispatched["name"] == "wake_consumer._process_wake_word_buffer_tracked"
-    dispatched["target"](*dispatched["args"], **(dispatched["kwargs"] or {}))
-    app._process_wake_word_buffer_tracked.assert_called_once_with(*dispatched["args"], **(dispatched["kwargs"] or {}))
+    spawn.assert_not_called()
+    # _primary_oww_eligible in _flush requires app_state == 'asleep', so a
+    # long_dictation utterance is never OWW-confirmed regardless of
+    # `detected` -- only the tracked=True routing is under test here.
+    app.process_wake_word_buffer.assert_called_once_with(
+        buffer_copy, wake_consumer_module.SAMPLE_RATE,
+        oww_confirmed=False, owner_token=owner_token, tracked=True,
+    )
     app._open_hands_free_capture_duck.assert_called_once()
-    app._close_hands_free_capture_duck.assert_called_once_with(owner_token)
+    app._close_hands_free_capture_duck.assert_not_called()
 
 
 def test_oww_rejection_closes_capture_duck_with_owner():
@@ -112,21 +123,20 @@ def test_oww_hit_stays_confirmed_when_whisper_profiles_are_enabled(monkeypatch):
         open_return=owner_token,
         wake_profiles=[{"id": "hermes", "phrase": "activate hermes", "enabled": True}],
     )
-    dispatched = {}
+    spawn = Mock()
+    monkeypatch.setattr(wake_consumer_module.thread_registry, "spawn", spawn)
+    buffer_copy = [np.zeros(160, dtype=np.float32)]
 
-    def fake_spawn(name, target, args=(), kwargs=None, daemon=True):
-        dispatched.update(name=name, target=target, args=args, kwargs=kwargs, daemon=daemon)
+    consumer._flush(buffer_copy, owner_token=None)
 
-    monkeypatch.setattr(wake_consumer_module.thread_registry, "spawn", fake_spawn)
-
-    consumer._flush([np.zeros(160, dtype=np.float32)], owner_token=None)
-
-    dispatched["target"](*dispatched["args"], **dispatched["kwargs"])
-    app.process_wake_word_buffer.assert_called_once_with(*dispatched["args"], **dispatched["kwargs"])
-    assert dispatched["kwargs"] == {"oww_confirmed": True}
+    spawn.assert_not_called()
+    app.process_wake_word_buffer.assert_called_once_with(
+        buffer_copy, wake_consumer_module.SAMPLE_RATE,
+        oww_confirmed=True, owner_token=owner_token, tracked=False,
+    )
     assert app._oww_wake_detected is False
     app._open_hands_free_capture_duck.assert_called_once()
-    app._close_hands_free_capture_duck.assert_called_once_with(owner_token)
+    app._close_hands_free_capture_duck.assert_not_called()
 
 
 def test_profile_fallback_still_reaches_whisper_without_primary_oww_hit(monkeypatch):
@@ -136,21 +146,20 @@ def test_profile_fallback_still_reaches_whisper_without_primary_oww_hit(monkeypa
         open_return=owner_token,
         wake_profiles=[{"id": "hermes", "phrase": "activate hermes", "enabled": True}],
     )
-    dispatched = {}
+    spawn = Mock()
+    monkeypatch.setattr(wake_consumer_module.thread_registry, "spawn", spawn)
+    buffer_copy = [np.zeros(160, dtype=np.float32)]
 
-    def fake_spawn(name, target, args=(), kwargs=None, daemon=True):
-        dispatched.update(name=name, target=target, args=args, kwargs=kwargs, daemon=daemon)
+    consumer._flush(buffer_copy, owner_token=None)
 
-    monkeypatch.setattr(wake_consumer_module.thread_registry, "spawn", fake_spawn)
-
-    consumer._flush([np.zeros(160, dtype=np.float32)], owner_token=None)
-
-    dispatched["target"](*dispatched["args"], **dispatched["kwargs"])
-    app.process_wake_word_buffer.assert_called_once_with(*dispatched["args"], **dispatched["kwargs"])
-    assert dispatched["kwargs"] == {"oww_confirmed": False}
+    spawn.assert_not_called()
+    app.process_wake_word_buffer.assert_called_once_with(
+        buffer_copy, wake_consumer_module.SAMPLE_RATE,
+        oww_confirmed=False, owner_token=owner_token, tracked=False,
+    )
     detector.reset.assert_not_called()
     app._open_hands_free_capture_duck.assert_called_once()
-    app._close_hands_free_capture_duck.assert_called_once_with(owner_token)
+    app._close_hands_free_capture_duck.assert_not_called()
 
 
 def _gate_app(*, adaptive=True, floor=None, threshold=0.02):
@@ -193,11 +202,20 @@ def test_unconfirmed_buffer_retains_existing_fixed_gate_behavior():
 
 
 def test_process_method_passes_oww_confirmation_to_gate():
+    """docs/reviews/hands_free_path_review.md 'High -- wake dispatch / shared
+    transcription flag': process_wake_word_buffer is now a thin enqueue onto
+    the async wake FIFO (samsara/audio_engine/wake_dispatch.py) -- the gate
+    call this test cares about moved into _decode_wake_word_buffer, which is
+    what the queue's worker thread actually runs. Exercise that method
+    directly rather than draining a real background worker thread just to
+    prove a parameter reaches a gate call."""
     app = DictationApp.__new__(DictationApp)
     app.capture_rate = 16000
     app.model_rate = 16000
     app.config = {}
+    app.app_state = 'asleep'
     app._vad_reset = Mock()
+    app._transcription_owners = TranscriptionOwners()
     seen = []
 
     def reject_at_gate(audio_rms, *, oww_confirmed=False):
@@ -206,7 +224,7 @@ def test_process_method_passes_oww_confirmation_to_gate():
 
     app._wake_audio_is_below_gate = reject_at_gate
 
-    app.process_wake_word_buffer(
+    app._decode_wake_word_buffer(
         [np.full(160, 0.01, dtype=np.float32)],
         src_rate=16000,
         oww_confirmed=True,

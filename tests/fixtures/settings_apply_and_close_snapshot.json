@@ -55,7 +55,7 @@
     "button": "rctrl",
     "enabled": false,
     "enter_debounce_ms": 200,
-    "inactivity_timeout_s": 30,
+    "inactivity_timeout_s": 300,
     "miss_limit": 5,
     "mode": "hold",
     "suppress_button": true

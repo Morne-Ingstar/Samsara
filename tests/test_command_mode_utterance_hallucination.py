@@ -138,9 +138,12 @@ def _make_app(seg_list, *, mode=SessionMode.DICTATE, dispatch_outcome=None):
     """Minimal DictationApp stand-in wired just enough to drive
     _handle_command_mode_utterance end to end with a fake Whisper decode."""
     from dictation import DictationApp
+    from tests.conftest import apply_fake_app_defaults
 
     app = DictationApp.__new__(DictationApp)
+    apply_fake_app_defaults(app)
     app._wake_transcription_in_progress = False
+    app.config = {}
     app.model_rate = 16000
     app.model_lock = Mock()
     app.model_lock.__enter__ = Mock(return_value=None)
@@ -364,7 +367,10 @@ class TestCommandModeUtteranceDictateContextPrompt:
 
 
 def _make_commit_redecode_app(command_mode=None):
+    from tests.conftest import apply_fake_app_defaults
+
     app = dictation.DictationApp.__new__(dictation.DictationApp)
+    apply_fake_app_defaults(app)
     app.model_rate = 16000
     app.model_lock = Mock()
     app.model_lock.__enter__ = Mock(return_value=None)
@@ -412,7 +418,11 @@ class TestCommandModeUtteranceCommitRedecode:
 
     def test_commit_redecode_contract_enforces_expected_transcribe_overrides(self):
         app = _make_commit_redecode_app()
-        app.model.transcribe.return_value = ([ _seg("hello there") ], Mock())
+        # A bare Mock() for `info` auto-vivifies language_probability as a
+        # Mock, which _filter_dictation_language's confidence gate then
+        # tries to compare against a float -- SimpleNamespace() gives the
+        # real "no language metadata" shape (getattr(..., None)) instead.
+        app.model.transcribe.return_value = ([ _seg("hello there") ], types.SimpleNamespace())
 
         out = dictation.DictationApp._dictate_commit_redecode(
             app, "I went to the store", [np.zeros(32000, dtype=np.float32)],
@@ -436,7 +446,7 @@ class TestCommandModeUtteranceCommitRedecode:
 
     def test_commit_redecode_returns_screened_text(self):
         app = _make_commit_redecode_app()
-        app.model.transcribe.return_value = ([ _seg("ready for " + "_" * 30) ], Mock())
+        app.model.transcribe.return_value = ([ _seg("ready for " + "_" * 30) ], types.SimpleNamespace())
 
         out = dictation.DictationApp._dictate_commit_redecode(
             app, "I went to the store", [np.zeros(16000, dtype=np.float32)],

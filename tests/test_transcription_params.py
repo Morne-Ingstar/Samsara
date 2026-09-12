@@ -336,6 +336,8 @@ def _base_fake_app(**extra):
         _vad_reset=lambda: None, _vad_available=True, _log_history=lambda **k: None,
         **extra,
     )
+    from tests.conftest import apply_fake_app_defaults
+    apply_fake_app_defaults(app)
     app.model.transcribe.return_value = ([], types.SimpleNamespace(language='en'))
     app.get_transcription_params = types.MethodType(_capture_get_transcription_params, app)
     return app, captured
@@ -358,7 +360,17 @@ def test_process_wake_word_buffer_dictation_lane_omits_vocabulary():
         app_state='wake_session',
         _restart_wake_session_timer=lambda: None,
         _wake_diag_acc=None,
+        wake_word_active=True,
+        # process_wake_word_buffer now just enqueues onto the wake FIFO
+        # (samsara/audio_engine/wake_dispatch.py) instead of decoding
+        # inline -- run the job synchronously so this test can still
+        # observe get_transcription_params's include_vocabulary flag
+        # without spinning up a real background drain thread.
+        _wake_dispatch_queue=types.SimpleNamespace(
+            enqueue=lambda run, finish: (run(), finish())),
     )
+    app._decode_wake_word_buffer = types.MethodType(
+        dictation.DictationApp._decode_wake_word_buffer, app)
     buffer = [np.zeros(16000, dtype=np.float32)]
     dictation.DictationApp.process_wake_word_buffer(app, buffer)
     assert captured.get('include_vocabulary') is False
@@ -375,7 +387,7 @@ def test_handle_command_mode_utterance_gates_on_session_mode(mode, expected):
     command-matched) drop it, same rule as every other free-form path."""
     app, captured = _base_fake_app(
         _wake_transcription_in_progress=False,
-        _ensure_session_mode_manager=lambda: types.SimpleNamespace(mode=mode),
+        _ensure_session_mode_manager=lambda: types.SimpleNamespace(mode=mode, dictate_context_tail=lambda: ''),
     )
     buffer = [np.zeros(16000, dtype=np.float32)]
     dictation.DictationApp._handle_command_mode_utterance(app, buffer, 16000)
@@ -409,7 +421,7 @@ def test_handle_command_mode_utterance_forces_english_on_every_mode(mode):
     real override, not a coincidence of an already-English base."""
     app, captured = _base_fake_app(
         _wake_transcription_in_progress=False,
-        _ensure_session_mode_manager=lambda: types.SimpleNamespace(mode=mode),
+        _ensure_session_mode_manager=lambda: types.SimpleNamespace(mode=mode, dictate_context_tail=lambda: ''),
     )
     buffer = [np.zeros(16000, dtype=np.float32)]
     dictation.DictationApp._handle_command_mode_utterance(app, buffer, 16000)

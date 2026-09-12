@@ -140,6 +140,12 @@ def test_explicit_command_lane_bypasses_regular_dictation_command_gate(monkeypat
         play_sound=lambda name: None,
         _update_mode_overlay=lambda mode: None,
         exit_command_mode=lambda: None,
+        # _ensure_session_mode_manager now wires these in as the session
+        # manager's commit_redecode_fn / pending_action_scratch_fn -- unused
+        # by this test's COMMAND-lane dispatch path, but must exist to be
+        # read off self.
+        _dictate_commit_redecode=lambda *args, **kwargs: None,
+        _pop_pending_action_for_scratch=lambda *args, **kwargs: None,
     )
     monkeypatch.setattr(dictation, "increment_command_count", lambda name: None)
 

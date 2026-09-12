@@ -302,7 +302,10 @@ class _GenerationBumpingEvent:
 
 
 def _make_handler_app(entry_generation=0, transcript="take a screenshot"):
+    from tests.conftest import apply_fake_app_defaults
+
     app = types.SimpleNamespace()
+    apply_fake_app_defaults(app)
     app._ava_cmd_generation = entry_generation
     app._ava_cmd_ready = threading.Event()
     app._ava_cmd_ready.set()
