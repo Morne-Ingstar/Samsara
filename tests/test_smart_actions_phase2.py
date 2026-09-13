@@ -191,6 +191,28 @@ class TestSession:
 # =============================================================================
 
 class TestToolDispatch:
+    @pytest.fixture(autouse=True)
+    def _reviewed_schemas(self, monkeypatch):
+        """Smart Actions tools have no reviewed argument schema in production,
+        so the execution policy makes them unavailable (Denied "unvalidated").
+        These tier tests exercise dispatch as if schemas had been reviewed."""
+        from samsara import execution_policy
+        monkeypatch.setattr(execution_policy, "SMART_ACTION_SCHEMAS", {
+            "paste_text": {"text": {"type": "str", "required": True}},
+            "send_email": {"to": {"type": "str"}},
+        })
+
+    def test_tool_without_a_reviewed_schema_is_unavailable(self, monkeypatch):
+        from samsara import execution_policy
+        monkeypatch.setattr(execution_policy, "SMART_ACTION_SCHEMAS", {})
+        d = _make_dispatcher()
+        with patch.object(d, '_request_confirmation') as mock_confirm, \
+             patch.object(d, '_execute') as mock_exec:
+            result = d.dispatch({'tool': 'paste_text', 'args': {'text': 'hello'}})
+        mock_confirm.assert_not_called()
+        mock_exec.assert_not_called()
+        assert result == {'success': False, 'result': 'Policy denied: unvalidated'}
+
     def test_tool_dispatch_tier1_auto(self):
         """paste_text is Tier 1 — no confirmation should be requested."""
         d = _make_dispatcher()

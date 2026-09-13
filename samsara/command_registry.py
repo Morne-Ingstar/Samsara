@@ -75,10 +75,10 @@ class DispatchResult(tuple):
 
     @property
     def succeeded(self) -> bool:
-        """True for COMPLETED and QUEUED (accepted) -- the chip/repeat/history
-        notion of "the command went through", as opposed to merely claimed."""
-        return self.state in (DispatchState.COMPLETED, DispatchState.QUEUED,
-                              DispatchState.MATCHED)
+        """True ONLY for COMPLETED. MATCHED (recognised, not attempted) and
+        QUEUED (accepted, outcome unknown) are not success: "queued" is not
+        completion, and nothing may report a receipt it does not have."""
+        return self.state is DispatchState.COMPLETED
 
     @classmethod
     def miss(cls, text, detail=None):

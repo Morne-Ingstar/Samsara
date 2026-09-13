@@ -299,7 +299,9 @@ class TestPluginCommands:
         """process_text routes a plugin phrase to the plugin handler."""
         calls = []
 
-        @_plugin_commands.command("plugin only")
+        # Declared safe: this test is about routing, and an undeclared plugin is
+        # unknown-risk, which the execution policy holds for a confirmation.
+        @_plugin_commands.command("plugin only", risk_class="safe")
         def _plugin(app, text, **kwargs):
             calls.append((app, text))
             return True
