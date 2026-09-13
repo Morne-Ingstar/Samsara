@@ -32,7 +32,9 @@ from PySide6.QtWidgets import (
     QTableWidgetItem, QTabWidget, QTextEdit, QVBoxLayout, QWidget,
 )
 
-from samsara.ui import qt_runtime
+from samsara.audio_devices import detect_capture_rate
+from samsara.audio_engine import guide_capture
+from samsara.ui import qt_runtime, theme
 from samsara.runtime import thread_registry
 from samsara.languages import LANGUAGES, is_boundaryless_script_char
 from samsara.paths import quarantine_corrupt_file
@@ -557,6 +559,8 @@ class _TrainingWindow(QMainWindow):
     _level_sig         = Signal(float)
     _phrase_sig        = Signal(int, str, str)   # (idx, text, colour)
     _phrase_detail_sig = Signal(str)             # mismatch detail for popup
+    _monitor_error_sig = Signal(str)             # level monitor could not read the mic
+    _phrase_error_sig  = Signal(int, str)        # (idx, message) test recording failed
 
     def __init__(self, training: VoiceTrainingQt):
         super().__init__()
@@ -598,6 +602,8 @@ class _TrainingWindow(QMainWindow):
         self._level_sig.connect(self._on_level)
         self._phrase_sig.connect(self._on_phrase_result)
         self._phrase_detail_sig.connect(self._on_phrase_detail)
+        self._monitor_error_sig.connect(self._on_monitor_error)
+        self._phrase_error_sig.connect(self._on_phrase_error)
 
     # ----------------------------------------------------------------
     # Calibration
@@ -629,11 +635,18 @@ class _TrainingWindow(QMainWindow):
 
         btn_row = QHBoxLayout()
         self._monitor_btn = QPushButton("Start Monitoring")
-        self._monitor_btn.setFixedWidth(150)
+        # A real button: _section()'s body carries an unqualified
+        # "background:transparent;border:none;" that cascades onto child
+        # buttons and renders them as bare text. make_secondary's per-widget
+        # stylesheet wins over that ancestor rule.
+        theme.make_secondary(self._monitor_btn)
         self._monitor_btn.clicked.connect(self._toggle_monitoring)
         btn_row.addWidget(self._monitor_btn)
         btn_row.addStretch()
         ml.addLayout(btn_row)
+        self._monitor_btn.setMinimumWidth(
+            _button_min_width(self._monitor_btn, ["Start Monitoring", "Stop Monitoring"])
+        )
 
         hint = QLabel(
             "Speak at your normal volume.  "
@@ -653,6 +666,12 @@ class _TrainingWindow(QMainWindow):
         sub = QLabel("Speak each phrase when prompted (5-second recording per phrase):")
         sub.setStyleSheet(f"color:{_TEXT_SEC};font-size:11px;")
         pl.addWidget(sub)
+
+        # Recording failures are shown here, never swallowed into a log line.
+        self._phrase_status = QLabel("")
+        self._phrase_status.setStyleSheet(f"color:{_TEXT_SEC};font-size:11px;")
+        self._phrase_status.setWordWrap(True)
+        pl.addWidget(self._phrase_status)
 
         self._phrase_results: List[QLabel] = []
         _test_phrases = [
@@ -677,11 +696,12 @@ class _TrainingWindow(QMainWindow):
             row.addWidget(status)
 
             btn = QPushButton("Test")
-            btn.setFixedWidth(64)
+            theme.make_secondary(btn)   # same cascade as the monitor button
             btn.clicked.connect(
                 lambda _c=False, p=phrase, idx=i: self._test_phrase(p, idx)
             )
             row.addWidget(btn)
+            btn.setMinimumWidth(_button_min_width(btn, ["Test"]))
             pl.addLayout(row)
 
         pl.addStretch()
@@ -695,41 +715,71 @@ class _TrainingWindow(QMainWindow):
     def _start_monitoring(self):
         self._tr._monitoring = True
         self._monitor_btn.setText("Stop Monitoring")
+        self._level_label.setStyleSheet(f"color:{_TEXT_SEC};font-size:11px;")
+        thread_registry.spawn("vt-monitor", self._monitor_worker, daemon=True)
 
-        def _run():
-            stream = None
+    def _monitor_worker(self):
+        """Emit the mic level until monitoring stops.
+
+        While the AudioCaptureEngine runs it owns the device: read its ring
+        (samsara.audio_engine.guide_capture). Only without ACE open a
+        transient stream, at the device's own rate. Any failure is reported
+        to the window (_monitor_error_sig), never left as a silent 0%.
+        """
+        app = self._tr.app
+        engine = guide_capture.running_engine(app)
+        if engine is not None:
+            meter = None
             try:
-                stream = sd.InputStream(
-                    samplerate=16000, channels=1, dtype=np.float32,
-                    device=self._tr.app.config.get('microphone'),
-                    blocksize=1024,
-                )
-                stream.start()
+                meter = guide_capture.RingLevelMeter(engine, "voice-training-monitor")
                 while self._tr._monitoring:
-                    try:
-                        data, _ = stream.read(1024)
-                        rms   = float(np.sqrt(np.mean(data ** 2)))
-                        db    = 20.0 * np.log10(rms + 1e-10)
-                        level = max(0.0, min(100.0, (db + 60.0) * 2.0))
-                        self._level_sig.emit(level)
-                        time.sleep(0.05)
-                    except Exception as exc:
-                        logger.debug(f"Monitoring loop: {exc}")
-                        break
+                    self._level_sig.emit(_level_from_rms(meter.read_rms()))
+                    time.sleep(0.05)
             except Exception as exc:
-                logger.error(f"Monitoring stream error: {exc}", exc_info=True)
+                logger.error(f"Monitoring (ACE ring) error: {exc}", exc_info=True)
+                self._monitor_error_sig.emit(str(exc) or type(exc).__name__)
             finally:
-                if stream:
+                if meter is not None:
+                    meter.close()
+            return
+
+        device = app.config.get('microphone')
+        rate = detect_capture_rate(device)
+        blocksize = max(256, int(rate * 0.05))
+        stream = None
+        try:
+            stream = sd.InputStream(
+                samplerate=rate, channels=1, dtype=np.float32,
+                device=device, blocksize=blocksize,
+            )
+            stream.start()
+            while self._tr._monitoring:
+                data, _ = stream.read(blocksize)
+                self._level_sig.emit(_level_from_rms(guide_capture.block_rms(data.reshape(-1))))
+        except Exception as exc:
+            logger.error(f"Monitoring stream error: {exc}", exc_info=True)
+            self._monitor_error_sig.emit(str(exc) or type(exc).__name__)
+        finally:
+            if stream is not None:
+                try:
                     stream.stop()
                     stream.close()
+                except Exception as exc:
+                    logger.debug(f"Monitoring stream close: {exc}")
 
-        thread_registry.spawn("vt-monitor", _run, daemon=True)
+    def _on_monitor_error(self, message: str):
+        self._tr._monitoring = False
+        self._monitor_btn.setText("Start Monitoring")
+        self._level_bar.setValue(0)
+        self._level_label.setText(f"Microphone error: {message}")
+        self._level_label.setStyleSheet(f"color:{_ERROR};font-size:11px;font-weight:bold;")
 
     def _stop_monitoring(self):
         self._tr._monitoring = False
         self._monitor_btn.setText("Start Monitoring")
         self._level_bar.setValue(0)
         self._level_label.setText("Volume: 0%")
+        self._level_label.setStyleSheet(f"color:{_TEXT_SEC};font-size:11px;")
 
     def _on_level(self, level: float):
         self._level_bar.setValue(int(level))
@@ -749,18 +799,23 @@ class _TrainingWindow(QMainWindow):
         self._phrase_results[idx].setText("...")
         self._phrase_results[idx].setStyleSheet(f"color:{_ACCENT};font-weight:bold;")
 
+        self._phrase_status.setText("")
+
         def _run():
             try:
                 # Recording cue — the 5s window starts now. Signal only;
                 # never mutate widgets directly from this worker thread.
                 self._phrase_sig.emit(idx, "REC", _WARNING)
-                audio = sd.rec(
-                    int(5 * 16000), samplerate=16000, channels=1, dtype=np.float32,
-                    device=self._tr.app.config.get('microphone'),
-                )
-                sd.wait()
+                try:
+                    audio = self._record_test_audio(5.0)
+                except Exception as exc:
+                    logger.error(f"Test phrase recording error: {exc}", exc_info=True)
+                    self._phrase_error_sig.emit(idx, str(exc) or type(exc).__name__)
+                    return
+                if audio.size == 0:
+                    self._phrase_error_sig.emit(idx, "no audio was recorded")
+                    return
                 self._phrase_sig.emit(idx, "...", _ACCENT)
-                audio = audio.flatten()
 
                 # Measure the SAME pipeline dictation uses, not a hardcoded
                 # stand-in — only vad_filter is forced off, matching the
@@ -788,6 +843,26 @@ class _TrainingWindow(QMainWindow):
                 self._phrase_sig.emit(idx, "!", _WARNING)
 
         thread_registry.spawn("vt-test", _run, daemon=True)
+
+    def _record_test_audio(self, seconds: float) -> "np.ndarray":
+        """``seconds`` of 16 kHz float32 audio for a test phrase: from the
+        ACE ring while the engine owns the mic, else a transient recording at
+        the device's own rate resampled to 16 kHz. Raises on failure."""
+        app = self._tr.app
+        engine = guide_capture.running_engine(app)
+        if engine is not None:
+            return guide_capture.record_from_ring(engine, seconds, "voice-training-test")
+        device = app.config.get('microphone')
+        rate = detect_capture_rate(device)
+        audio = sd.rec(int(seconds * rate), samplerate=rate, channels=1,
+                       dtype=np.float32, device=device)
+        sd.wait()
+        return guide_capture.to_model_rate(audio, rate)
+
+    def _on_phrase_error(self, idx: int, message: str):
+        self._on_phrase_result(idx, "!", _ERROR)
+        self._phrase_status.setText(f"Recording failed: {message}")
+        self._phrase_status.setStyleSheet(f"color:{_ERROR};font-size:11px;font-weight:bold;")
 
     def _on_phrase_result(self, idx: int, text: str, color: str):
         lbl = self._phrase_results[idx]
@@ -1214,6 +1289,18 @@ class _TrainingWindow(QMainWindow):
 # ---------------------------------------------------------------------------
 # Utility
 # ---------------------------------------------------------------------------
+
+def _level_from_rms(rms: float) -> float:
+    """Map an RMS level to the 0-100 meter scale (-60 dBFS .. -10 dBFS)."""
+    db = 20.0 * np.log10(rms + 1e-10)
+    return max(0.0, min(100.0, (db + 60.0) * 2.0))
+
+
+def _button_min_width(btn: QPushButton, texts: list, h_padding: int = 48) -> int:
+    """Widest label plus make_secondary's horizontal padding (24 px each side)."""
+    metrics = btn.fontMetrics()
+    return max(metrics.horizontalAdvance(t) for t in texts) + h_padding
+
 
 def _normalize_phrase(s: str) -> str:
     """Lowercase, strip punctuation, and collapse whitespace for comparison.

@@ -28,7 +28,7 @@ from PySide6.QtWidgets import (
 )
 
 from samsara.constants import DEFAULT_CAPTURE_RATE, DEFAULT_WAKE_PHRASE
-from samsara.audio_devices import get_device_info
+from samsara.audio_devices import detect_capture_rate as _detect_capture_rate
 from samsara.runtime import thread_registry
 from samsara.ui import qt_runtime, theme
 from samsara.audio_devices import pick_index_by_name
@@ -84,13 +84,13 @@ def _resample(audio, orig_sr, target_sr=16000):
     ).astype(np.float32)
 
 
-def _detect_capture_rate(device_index):
-    try:
-        info = get_device_info(device_index, kind='input')
-        rate = int(info.get("default_samplerate", DEFAULT_CAPTURE_RATE))
-        return rate if rate > 0 else DEFAULT_CAPTURE_RATE
-    except Exception:
-        return DEFAULT_CAPTURE_RATE
+# _detect_capture_rate is samsara.audio_devices.detect_capture_rate (shared
+# with voice training's transient-stream fallback).
+
+#: How long the Qt thread waits for the wizard's own audio worker to close
+#: its stream before a production microphone switch. Bounded by one 100 ms
+#: read once the stream is closed.
+_AUDIO_JOIN_TIMEOUT_S = 3.0
 
 
 # ---------------------------------------------------------------------------
@@ -147,6 +147,7 @@ class _WizardWindow(QDialog):
     _level_sig   = Signal(float)   # raw RMS from audio thread
     _oww_hit_sig = Signal()        # OWW detection from audio thread
     _wake_cal_done_sig = Signal(int, object, str)  # generation, floor, error
+    _mic_switch_done_sig = Signal(bool, str)       # ok, error message
 
     _STEP_DEVICE = 0
     _STEP_LEVEL  = 1
@@ -168,6 +169,9 @@ class _WizardWindow(QDialog):
         # production ACE stream is switched or performs quiet calibration.
         self._stream          = None
         self._stream_lock     = threading.Lock()
+        self._audio_thread    = None    # the running _audio_worker thread
+        self._switch_in_flight = False  # production mic switch running off the UI thread
+        self._closed          = False   # set by closeEvent, cleared by showEvent
         self._wizard_active   = False   # master flag for the audio worker
         self._selected_device = None    # sounddevice index (None = default)
         self._capture_rate    = DEFAULT_CAPTURE_RATE
@@ -204,6 +208,7 @@ class _WizardWindow(QDialog):
         self._level_sig.connect(self._on_level)
         self._oww_hit_sig.connect(self._on_oww_hit)
         self._wake_cal_done_sig.connect(self._on_wake_calibration_result)
+        self._mic_switch_done_sig.connect(self._on_microphone_switch_done)
         self._go_to(self._STEP_DEVICE)
 
     # ----------------------------------------------------------------
@@ -527,10 +532,13 @@ class _WizardWindow(QDialog):
             self._build_done_summary()
 
     def _go_next(self):
+        if self._switch_in_flight:
+            return
         step = self._current_step
         if step == self._STEP_DEVICE:
-            if not self._apply_selected_microphone():
-                return
+            # Asynchronous: advances from _on_microphone_switch_done.
+            self._begin_microphone_switch()
+            return
         elif step == self._STEP_LEVEL:
             self._do_calibrate()
         elif step == self._STEP_DONE:
@@ -540,12 +548,20 @@ class _WizardWindow(QDialog):
             self._go_to(step + 1)
 
     def _go_back(self):
+        if self._switch_in_flight:
+            return
         if self._current_step > 0:
             self._go_to(self._current_step - 1)
 
     def _skip_step(self):
+        if self._switch_in_flight:
+            return
         if self._current_step < self._STEP_DONE:
             self._go_to(self._current_step + 1)
+
+    def _set_nav_enabled(self, enabled: bool):
+        for btn in (self._next_btn, self._back_btn, self._skip_btn):
+            btn.setEnabled(enabled)
 
     # ----------------------------------------------------------------
     # Single persistent audio worker
@@ -558,12 +574,16 @@ class _WizardWindow(QDialog):
     # ----------------------------------------------------------------
 
     def _ensure_audio_running(self):
-        """Start the audio worker if it isn't already running."""
+        """Start the audio worker if it isn't already running. Never while a
+        production microphone switch is in flight: the wizard stream and the
+        ACE stream must not cycle on the same device at the same time."""
+        if self._switch_in_flight:
+            return
         if not self._wizard_active:
             self._wizard_active = True
             self._selected_device = self._device_combo.currentData()
             self._capture_rate = _detect_capture_rate(self._selected_device)
-            thread_registry.spawn(
+            self._audio_thread = thread_registry.spawn(
                 "wizard-audio",
                 self._audio_worker,
                 daemon=True,
@@ -640,8 +660,13 @@ class _WizardWindow(QDialog):
                     except Exception as e:
                         logger.debug(f"_audio_worker: {e}")
 
-    def _stop_audio(self):
-        """Signal the worker to exit and close the current stream."""
+    def _stop_audio(self, join: bool = False) -> bool:
+        """Signal the worker to exit and close the current stream.
+
+        join=True also waits for the worker thread to finish (its stream is
+        then fully closed). Returns False only when a join was requested and
+        the worker did not exit within _AUDIO_JOIN_TIMEOUT_S.
+        """
         self._wizard_active = False
         self._oww_running = False
         with self._stream_lock:
@@ -652,6 +677,16 @@ class _WizardWindow(QDialog):
                 stream.close()
             except Exception as e:
                 logger.debug(f"_stop_audio: {e}")
+        thread = self._audio_thread
+        if not join or thread is None:
+            return True
+        if thread is not threading.current_thread():
+            thread.join(_AUDIO_JOIN_TIMEOUT_S)
+        if thread.is_alive():
+            logger.warning("[WIZARD] Audio worker did not exit within %.1fs", _AUDIO_JOIN_TIMEOUT_S)
+            return False
+        self._audio_thread = None
+        return True
 
     # ----------------------------------------------------------------
     # Level monitoring
@@ -726,15 +761,72 @@ class _WizardWindow(QDialog):
         self._selected_device = self._device_combo.currentData()
         self._capture_rate = _detect_capture_rate(self._selected_device)
 
-    def _apply_selected_microphone(self) -> bool:
-        """Apply the selected device through the production runtime switch."""
+    def _begin_microphone_switch(self):
+        """Next on the Device step, without blocking the Qt thread.
+
+        1. disable Next/Back/Skip,
+        2. stop the wizard's own audio worker and JOIN it (its stream is
+           fully closed before the production engine touches the device),
+        3. run switch_microphone on a worker thread,
+        4. _on_microphone_switch_done re-enables navigation and only then
+           restarts the wizard's audio.
+        """
+        if self._switch_in_flight:
+            return
         mic_id = self._device_combo.currentData()
         mic_name = self._device_combo.currentText()
+        self._switch_in_flight = True
+        self._set_nav_enabled(False)
+        self._device_status.setText("Switching microphone...")
+        self._device_status.setStyleSheet(f"color:{_TEXT_SEC};font-size:12px;")
+
+        if not self._stop_audio(join=True):
+            self._mic_switch_done_sig.emit(
+                False, "The microphone preview did not stop. Try again.")
+            return
+
+        def _run():
+            try:
+                ok = self._apply_selected_microphone(mic_id=mic_id, mic_name=mic_name)
+            except Exception as exc:   # _apply_selected_microphone already logs
+                ok = False
+                logger.debug(f"_begin_microphone_switch: {exc}")
+            self._mic_switch_done_sig.emit(
+                ok, "" if ok else "Could not switch microphones. Check the log and try again.")
+
+        thread_registry.spawn("wizard-mic-switch", _run, daemon=True)
+
+    def _on_microphone_switch_done(self, ok: bool, error: str):
+        self._switch_in_flight = False
+        self._set_nav_enabled(True)
+        if self._closed:
+            return
+        if ok:
+            self._device_status.setText("")
+            if self._current_step == self._STEP_DEVICE:
+                self._go_to(self._STEP_DEVICE + 1)   # starts audio on the new device
+            else:
+                self._ensure_audio_running()
+            return
+        self._device_status.setText(error)
+        self._device_status.setStyleSheet(f"color:{_ERROR};font-size:12px;")
+        self._ensure_audio_running()
+
+    def _apply_selected_microphone(self, mic_id=..., mic_name=None) -> bool:
+        """Apply the selected device through the production runtime switch.
+
+        Runs on the wizard-mic-switch worker (the caller has already stopped
+        and joined the wizard's own audio worker); mic_id/mic_name are read
+        from the combo on the Qt thread and passed in. Called without them
+        (tests, legacy callers) it reads the combo itself.
+        """
+        if mic_id is ...:
+            mic_id = self._device_combo.currentData()
+            mic_name = self._device_combo.currentText()
         current_id = self._app.config.get('microphone')
 
         # Do not write config first: switch_microphone() has a same-ID guard,
         # and would leave ACE on its old stream if config were pre-updated.
-        self._stop_audio()
         try:
             if mic_id != current_id:
                 self._app.switch_microphone(mic_id)
@@ -753,12 +845,8 @@ class _WizardWindow(QDialog):
                 })
             return True
         except Exception as exc:
+            # Worker thread: no widget access here; the caller signals the UI.
             logger.exception(f"[WIZARD] Could not switch microphone: {exc}")
-            self._device_status.setText(
-                "Could not switch microphones. Check the log and try again."
-            )
-            self._device_status.setStyleSheet(f"color:{_ERROR};font-size:12px;")
-            self._ensure_audio_running()
             return False
 
     def _on_level(self, rms: float):
@@ -1043,7 +1131,13 @@ class _WizardWindow(QDialog):
     # Cleanup
     # ----------------------------------------------------------------
 
+    def showEvent(self, e):
+        self._closed = False
+        super().showEvent(e)
+
     def closeEvent(self, e):
+        # A switch finishing after close must not restart the preview stream.
+        self._closed = True
         self._cancel_wake_calibration()
         self._stop_audio()
         if self._oww_poll_timer is not None:

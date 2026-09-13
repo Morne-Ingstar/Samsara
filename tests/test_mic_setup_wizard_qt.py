@@ -72,6 +72,105 @@ def test_guide_same_device_refreshes_persisted_id_and_name(qapp, monkeypatch):
     }
 
 
+class _JoinableThread:
+    def __init__(self, order, alive_after_join=False):
+        self._order = order
+        self._alive = True
+        self._alive_after_join = alive_after_join
+
+    def join(self, timeout=None):
+        self._order.append(("join", timeout))
+        self._alive = self._alive_after_join
+
+    def is_alive(self):
+        return self._alive
+
+
+def test_device_next_joins_the_preview_worker_before_switching_off_the_ui_thread(qapp, monkeypatch):
+    wizard, app, window = _window(monkeypatch)
+    order = []
+    window._audio_thread = _JoinableThread(order)
+    real_switch = app.switch_microphone
+    app.switch_microphone = lambda mic_id: (order.append(("switch", mic_id)), real_switch(mic_id))
+    spawned = {}
+    monkeypatch.setattr(wizard.thread_registry, "spawn",
+                        lambda name, target, daemon=True: spawned.update(name=name, target=target))
+    window._device_combo.setCurrentIndex(window._device_combo.findData(2))
+
+    window._go_next()
+
+    # Worker joined on the Qt thread; the switch itself has NOT run yet.
+    assert [o[0] for o in order] == ["join"]
+    assert spawned["name"] == "wizard-mic-switch"
+    assert window._switch_in_flight is True
+    assert not window._next_btn.isEnabled()
+    assert not window._back_btn.isEnabled()
+    assert not window._skip_btn.isEnabled()
+    window._go_next()                                      # a second click is ignored
+    assert [o[0] for o in order] == ["join"]
+
+    spawned["target"]()                                    # the worker thread
+
+    assert order == [order[0], ("switch", 2)]
+    assert window._switch_in_flight is False
+    assert window._current_step == window._STEP_LEVEL
+    assert window._back_btn.isEnabled() and window._skip_btn.isEnabled()
+    assert app.config["microphone"] == 2
+
+
+def test_audio_is_not_restarted_while_the_switch_is_in_flight(qapp, monkeypatch):
+    from samsara.ui import mic_setup_wizard_qt as wizard
+
+    started = []
+    monkeypatch.setattr(wizard.thread_registry, "spawn",
+                        lambda name, target, daemon=True: started.append(name))
+    app = _WizardApp()
+    window = wizard._WizardWindow(app)                     # real _ensure_audio_running
+    started.clear()
+    window._wizard_active = False
+    window._switch_in_flight = True
+    window._ensure_audio_running()
+    assert started == []
+
+
+def test_preview_worker_that_will_not_exit_blocks_the_switch(qapp, monkeypatch):
+    wizard, app, window = _window(monkeypatch)
+    order = []
+    window._audio_thread = _JoinableThread(order, alive_after_join=True)
+    spawned = []
+    monkeypatch.setattr(wizard.thread_registry, "spawn",
+                        lambda name, target, daemon=True: spawned.append(name))
+    window._device_combo.setCurrentIndex(window._device_combo.findData(2))
+
+    window._go_next()
+
+    assert spawned == [], "never switch while the preview stream may still be open"
+    assert app.switch_observations == []
+    assert window._switch_in_flight is False
+    assert window._next_btn.isEnabled()
+    assert window._current_step == window._STEP_DEVICE
+    assert "did not stop" in window._device_status.text()
+
+
+def test_failed_switch_reports_and_stays_on_the_device_step(qapp, monkeypatch):
+    wizard, app, window = _window(monkeypatch)
+    spawned = {}
+    monkeypatch.setattr(wizard.thread_registry, "spawn",
+                        lambda name, target, daemon=True: spawned.update(target=target))
+
+    def boom(mic_id):
+        raise RuntimeError("device vanished")
+
+    app.switch_microphone = boom
+    window._device_combo.setCurrentIndex(window._device_combo.findData(2))
+    window._go_next()
+    spawned["target"]()
+
+    assert window._current_step == window._STEP_DEVICE
+    assert window._next_btn.isEnabled()
+    assert "Could not switch microphones" in window._device_status.text()
+
+
 def test_wake_step_uses_production_three_second_quiet_calibration(qapp, monkeypatch):
     wizard, app, window = _window(monkeypatch)
     spawned = {}

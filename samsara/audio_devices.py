@@ -161,3 +161,18 @@ def get_device_info(device_index, kind: str | None = None) -> dict:
     if kind is None:
         return sd.query_devices(device_index)
     return sd.query_devices(device_index, kind)
+
+
+def detect_capture_rate(device_index) -> int:
+    """The input device's own default sample rate (fallback
+    DEFAULT_CAPTURE_RATE). A guide that must open its own transient stream
+    uses this instead of a fixed rate: a fixed 16 kHz fails with
+    PortAudioError -9997 on interfaces that only offer 44.1/48 kHz."""
+    from samsara.constants import DEFAULT_CAPTURE_RATE  # noqa: PLC0415
+
+    try:
+        info = get_device_info(device_index, kind='input')
+        rate = int(info.get("default_samplerate", DEFAULT_CAPTURE_RATE))
+        return rate if rate > 0 else DEFAULT_CAPTURE_RATE
+    except Exception:
+        return DEFAULT_CAPTURE_RATE
