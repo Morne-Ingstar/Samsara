@@ -91,19 +91,37 @@ TEXT_ON_ACCENT = BG0                              # dark text on accent fill
 
 # Status colors (kept from the mic wizard's existing palette -- not part of
 # the button/border system, but shared here so all three windows agree).
-SUCCESS = "#6ee7a0"
-ERROR = "#f87171"
-WARNING = "#fbbf24"
+SUCCESS = "#6ee7a0"   # success / ready
+ERROR = "#f87171"     # failure text and badges (red: never decorative)
+WARNING = "#fbbf24"   # warning / caution
 
-# Brand red -- sampled from the app's own icon, not invented here. It's the
-# red segment of the "Samsara wheel" (dictation.py's create_icon_image /
-# _WHEEL_COLORS = ['#185FA5', '#C0392B', '#1A1A1A']), the tray icon's
-# animated status indicator (idle/active/snoozed + chase rotation). Every
-# Qt window's setWindowIcon instead loads the static assets/icon/samsara.ico
-# lotus-wheel artwork as of the icon replacement -- only the tray kept the
-# procedural render, since its color/rotation states carry real meaning.
-# Distinct from ACCENT (cyan) -- used for the splash spinner, not buttons.
-BRAND_RED = "#c0392b"
+# ---------------------------------------------------------------------------
+# Visual identity (owner decision 2026-09-13): ONE accent, ONE semantic.
+#
+#   ACCENT (cyan) is the only brand colour. Surfaces are the BG0/BG1/BG2
+#   ladder above. Red is never decorative: it means live/recording
+#   (RECORDING) or failure (ERROR). SUCCESS green and WARNING amber keep
+#   their roles. No gold, no second accent.
+#
+# The icon system draws only from these tokens: assets/icon/samsara.svg is
+# the single source and tools/gen_icons.py renders every size and state.
+#   Wheel segments = capture state: ICON_IDLE grey (idle), ACCENT (listening
+#     / wake armed), RECORDING (recording), AVA (Ava owns capture).
+#     Motion and shape carry the state too, never colour alone: hollow
+#     segments = not recording, filled = recording; pulse = listening;
+#     spin = thinking/transcribing.
+#   Hub = hands-free state, drawn as an eye on an ICON_HUB disc: closed line
+#     = asleep/off, open eye with a pupil dot = wake listener armed, large
+#     filled pupil = wake phrase heard, listening for the command.
+# ---------------------------------------------------------------------------
+
+RECORDING = "#c0392b"   # live capture: recording wheel segments, "live" state
+# Retired as a brand colour. The token name is kept for existing importers;
+# its only role is now RECORDING (live/recording).
+BRAND_RED = RECORDING
+AVA = "#a78bfa"         # Ava, the on-device assistant, owns the capture
+ICON_IDLE = "#8b929c"   # idle wheel segments and the closed eye; mid grey that reads on light and dark taskbars
+ICON_HUB = BG1          # hub disc behind the eye, so the eye reads on any taskbar colour
 
 # ---------------------------------------------------------------------------
 # Type scale (4 sizes, mirroring the precedent's scale)
