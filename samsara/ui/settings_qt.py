@@ -23,6 +23,7 @@ from PySide6.QtWidgets import (
 )
 
 from samsara import config_defaults
+from samsara import session_modes
 from samsara.config_transfer import (
     ConfigTransferError,
     export_config,
@@ -31,6 +32,7 @@ from samsara.config_transfer import (
 )
 from samsara.constants import (
     DEFAULT_CONTINUOUS_COMMIT_HOTKEY,
+    DEFAULT_CONTINUOUS_COMMIT_TRIGGER,
     DEFAULT_WAKE_PHRASE,
     DEFAULT_WAKE_PHRASE_OPTIONS,
 )
@@ -270,6 +272,75 @@ def _css_color_to_qcolor(css: str) -> QColor:
 # ---------------------------------------------------------------------------
 # Hotkey capture button
 # ---------------------------------------------------------------------------
+
+# ---------------------------------------------------------------------------
+# Modes tab claims (08d, 2026-09-13 manual review). Every description that
+# asserts runtime behaviour lives here so tests can pin it to its source.
+# ---------------------------------------------------------------------------
+
+# dictation.py on_key_press: command_hotkey fires whenever pressed; only the
+# button/session listener (_check_command_mode_key) reads command_mode.enabled.
+_ENABLE_VOICE_CONTROL_DESC = (
+    "Enables the voice-control button below. The command-only shortcut always "
+    "works, even with this off."
+)
+# dictation.py _install_capslock_hook: keyboard.hook_key('caps lock'), installed
+# only while streaming_mode is on; the tray's Streaming Mode toggle and the
+# checkbox below share set_streaming_mode(). streaming_hotkey is read by nothing.
+_STREAMING_KEY_LABEL = "CapsLock (fixed)"
+_STREAMING_KEY_DESC = (
+    "The streaming key is fixed in code and only works while Streaming preview is on."
+)
+_STREAMING_PREVIEW_DESC = (
+    "Show live partials in the overlay while you hold CapsLock -- the same switch as "
+    "the tray's Streaming Mode."
+)
+_PASTE_STAGED_DESC = "Toggle hands-free only; same as saying '{commit}'."
+_CMD_DEBOUNCE_DESC = "Taps shorter than this are ignored (audio discarded)."
+_CMD_TIMEOUT_DESC = "Exit after this much inactivity (max 30 min) (toggle mode only)."
+_CMD_MISS_LIMIT_DESC = "Exit after this many unmatched command utterances (toggle mode only)."
+_AVA_MODE_ENABLED_DESC = "Hold the key below to talk to Ava (conversation assistant mode)."
+_AVA_MODE_KEY_DESC = (
+    "A single named key -- the runtime cannot bind a combination "
+    "(dictation.py _get_pynput_command_key)."
+)
+_AVA_KEY_UNSUPPORTED = "(unsupported: {combo}) -- pick a key"
+# command_mode keys the app reads that have no control on this tab yet.
+_MODES_CONFIG_ONLY_KEYS = (
+    "command_matching_enabled", "exit_earcon", "tts_char_limit",
+    "utterance_silence_s", "dictate_utterance_silence_s", "abort_phrases",
+)
+_MODES_CONFIG_ONLY_NOTE = (
+    "Config-file only for now (command_mode in config.json): " + ", ".join(_MODES_CONFIG_ONLY_KEYS) + "."
+)
+# Keys that share a default on purpose: each is live in a different mode
+# (hands-free toggle vs continuous mode), so the same combo is not a collision.
+_MODES_COLLISION_EXEMPT_PAIRS = frozenset({
+    frozenset({'dictate_commit_hotkey', 'continuous_commit_hotkey'}),
+})
+
+
+def _button_behavior_note() -> str:
+    """What the button actually does, read from samsara.session_modes."""
+    from samsara import session_modes  # noqa: PLC0415
+    switches = session_modes._WHOLE_UTTERANCE_SWITCHES
+    by_mode = {}
+    for phrase, mode in switches.items():
+        by_mode.setdefault(mode.value, []).append(phrase)
+    lanes = "; ".join(
+        f"{mode.upper()}: " + " / ".join(f'"{p}"' for p in sorted(by_mode[mode]))
+        for mode in ("command", "dictate", "ava") if mode in by_mode
+    )
+    stop = " / ".join(f'"{p}"' for p in session_modes.SESSION_STOP_PHRASES)
+    sleep = " / ".join(f'"{p}"' for p in session_modes.SESSION_SLEEP_PHRASES)
+    return (
+        f"Toggle opens in the {session_modes.SessionMode.DICTATE.value.upper()} lane. "
+        f"Switch lanes with {lanes}. "
+        f'Dictation is buffered until you say "{session_modes.DICTATE_COMMIT_PHRASE}" '
+        f"or press the Paste staged thought key. {stop} cancels what is running "
+        f"(your draft is kept); {sleep} exits and keeps the draft."
+    )
+
 
 class _HotkeyButton(QPushButton):
     """Shows the current hotkey combo; captures a new one when clicked."""
@@ -2208,7 +2279,7 @@ class _SettingsWindow(QMainWindow):
         _add_row(
             hands_free_layout,
             "Enable voice control",
-            "Allow the button and command-only shortcut below to start voice control.",
+            _ENABLE_VOICE_CONTROL_DESC,
             cmd_enabled_cb,
             width=220,
         )
@@ -2239,6 +2310,11 @@ class _SettingsWindow(QMainWindow):
             cmd_mode_combo,
             width=220,
         )
+        behavior_note = QLabel(_button_behavior_note())
+        behavior_note.setWordWrap(True)
+        behavior_note.setStyleSheet("color: #8A8A92; font-size: 12px;")
+        self._widgets['button_behavior_note'] = behavior_note
+        hands_free_layout.addWidget(behavior_note)
 
         hold_heading = QLabel("Command-only activation")
         hold_heading.setStyleSheet(
@@ -2333,6 +2409,12 @@ class _SettingsWindow(QMainWindow):
         wake_note.setStyleSheet("color: #8A8A92; font-size: 12px;")
         hands_free_layout.addWidget(wake_note)
 
+        config_only_note = QLabel(_MODES_CONFIG_ONLY_NOTE)
+        config_only_note.setWordWrap(True)
+        config_only_note.setStyleSheet("color: #8A8A92; font-size: 12px;")
+        self._widgets['modes_config_only_note'] = config_only_note
+        hands_free_layout.addWidget(config_only_note)
+
         # ---- Card 2: Dictation bindings ---------------------------------
         dictation_card, dictation_layout = self._section_card(
             "Dictation bindings",
@@ -2357,19 +2439,29 @@ class _SettingsWindow(QMainWindow):
              "Primary dictation key", "Hold or toggle recording for text output."),
             ('continuous_hotkey', cfg.get('continuous_hotkey', 'ctrl+alt+d'),
              "Continuous mode key", "Enter/exit continuous dictation mode."),
-            ('streaming_hotkey', cfg.get('streaming_hotkey', 'capslock'),
-             "Streaming key", "Show partials in the overlay while you speak."),
             ('cancel_hotkey', cfg.get('cancel_hotkey', 'escape'),
              "Cancel", "Abort the current recording without transcribing."),
             ('undo_hotkey', cfg.get('undo_hotkey', 'ctrl+alt+z'),
              "Undo", "Undo the last transcription in the focused application."),
             ('dictate_commit_hotkey',
              cfg.get('dictate_commit_hotkey', DEFAULT_CONTINUOUS_COMMIT_HOTKEY),
-             "Paste staged thought", "Insert buffered transcription while staying in hands-free mode."),
+             "Paste staged thought",
+             _PASTE_STAGED_DESC.format(commit=session_modes.DICTATE_COMMIT_PHRASE)),
+            # 08d: keys the app has always read but never exposed.
+            ('memo_hotkey', cfg.get('memo_hotkey', 'ctrl+alt+m'),
+             "Voice memo", "Divert the next recording to your memo note instead of typing it."),
+            ('correction_hotkey', cfg.get('correction_hotkey', 'ctrl+alt+r'),
+             "Correction report", "Report the last transcription as wrong (voice training)."),
+            ('capture_correction_hotkey',
+             (cfg.get('hotkeys', {}) or {}).get('capture_correction', 'ctrl+alt+x'),
+             "Correction capture", "Open the fix-my-last-dictation window pre-filled with the last text."),
+            ('continuous_commit_hotkey',
+             cfg.get('continuous_commit_hotkey', DEFAULT_CONTINUOUS_COMMIT_HOTKEY),
+             "Continuous commit", "Commits accumulated speech in continuous mode -- only when the trigger below is 'key'."),
         ]
         for config_key, default, label, desc in _dictation_hotkeys:
             btn = _HotkeyButton(
-                cfg.get(config_key, default), on_change=self._check_modes_collisions,
+                default, on_change=self._check_modes_collisions,
                 # Only the primary dictation key may be a side mouse button.
                 allow_mouse=(config_key == 'hotkey'),
             )
@@ -2382,6 +2474,35 @@ class _SettingsWindow(QMainWindow):
                     control_width=260,
                 )
             )
+
+        commit_trigger_combo = QComboBox()
+        commit_trigger_combo.addItems(['silence', 'key'])
+        commit_trigger_combo.setCurrentText(
+            str(cfg.get('continuous_commit_trigger', DEFAULT_CONTINUOUS_COMMIT_TRIGGER)))
+        self._widgets['continuous_commit_trigger'] = commit_trigger_combo
+        dictation_layout.addLayout(
+            self._setting_row(
+                "Continuous commit trigger",
+                "silence: commit automatically after a pause. key: keep talking and tap the Continuous commit key.",
+                commit_trigger_combo,
+                control_width=200,
+            )
+        )
+
+        # Streaming (08d): the key is not a setting -- the hook hardcodes CapsLock.
+        streaming_key_display = QLineEdit(_STREAMING_KEY_LABEL)
+        streaming_key_display.setReadOnly(True)
+        streaming_key_display.setObjectName("streamingKeyDisplay")
+        self._widgets['streaming_key_display'] = streaming_key_display
+        dictation_layout.addLayout(
+            self._setting_row("Streaming key", _STREAMING_KEY_DESC, streaming_key_display, control_width=260)
+        )
+        streaming_cb = QCheckBox()
+        streaming_cb.setChecked(bool(cfg.get('streaming_mode', False)))
+        self._widgets['streaming_mode'] = streaming_cb
+        dictation_layout.addLayout(
+            self._setting_row("Streaming preview", _STREAMING_PREVIEW_DESC, streaming_cb, control_width=220)
+        )
 
         # ---- Card 4: Ava Command Session ---------------------------------
         ai_card, ai_layout = self._section_card(
@@ -2531,18 +2652,30 @@ class _SettingsWindow(QMainWindow):
         )
         layout.addWidget(ava_card)
 
-        ava_btn = _HotkeyButton(
-            cfg.get('ava_mode_key', 'right_alt'), on_change=self._check_modes_collisions
-        )
-        self._widgets['ava_mode_key'] = ava_btn
+        ava_enabled_cb = QCheckBox()
+        ava_enabled_cb.setChecked(bool(cfg.get('ava_mode_enabled', True)))
+        self._widgets['ava_mode_enabled'] = ava_enabled_cb
         ava_layout.addLayout(
-            self._setting_row(
-            "Ava mode",
-            "Hold to talk to Ava (conversation assistant mode).",
-            ava_btn,
-            control_width=280,
-            )
+            self._setting_row("Enable Ava mode", _AVA_MODE_ENABLED_DESC, ava_enabled_cb, control_width=220)
         )
+
+        # 08d: the runtime resolves ava_mode_key with _get_pynput_command_key
+        # (single named keys only) -- a captured combo used to disable Ava
+        # silently. Same option list as the Ava Command Session key.
+        ava_key_combo = QComboBox()
+        ava_key_combo.addItems(list(_AI_CMD_KEY_OPTIONS.keys()))
+        stored_ava_key = str(cfg.get('ava_mode_key', 'right_alt'))
+        if stored_ava_key in _AI_CMD_KEY_TO_LABEL:
+            ava_key_combo.setCurrentText(_AI_CMD_KEY_TO_LABEL[stored_ava_key])
+        else:
+            # Unsupported (a combo, or an unknown name): show it, keep it until a real key is picked.
+            ava_key_combo.insertItem(0, _AVA_KEY_UNSUPPORTED.format(combo=stored_ava_key), userData=stored_ava_key)
+            ava_key_combo.setCurrentIndex(0)
+        self._widgets['ava_mode_key'] = ava_key_combo
+        ava_layout.addLayout(
+            self._setting_row("Ava mode key", _AVA_MODE_KEY_DESC, ava_key_combo, control_width=280)
+        )
+        ava_key_combo.currentIndexChanged.connect(lambda _idx: self._check_modes_collisions())
 
         # ---- Card 6: Advanced tuning ------------------------------------
         advanced_card, advanced_layout = self._section_card(
@@ -2577,7 +2710,7 @@ class _SettingsWindow(QMainWindow):
         adv_area_layout.addLayout(
             self._setting_row(
             "Command debounce",
-            "Minimum press-time before command mode activates.",
+            _CMD_DEBOUNCE_DESC,
             cmd_debounce_spin,
             control_width=180,
             )
@@ -2594,7 +2727,7 @@ class _SettingsWindow(QMainWindow):
         adv_area_layout.addLayout(
             self._setting_row(
             "Command timeout",
-            "Exit command mode after this much inactivity (max 30 min).",
+            _CMD_TIMEOUT_DESC,
             cmd_timeout_spin,
             control_width=180,
             )
@@ -2607,7 +2740,7 @@ class _SettingsWindow(QMainWindow):
         adv_area_layout.addLayout(
             self._setting_row(
             "Miss limit",
-            "Exit after this many unmatched command utterances.",
+            _CMD_MISS_LIMIT_DESC,
             cmd_miss_spin,
             control_width=180,
             )
@@ -2652,12 +2785,44 @@ class _SettingsWindow(QMainWindow):
         def _save(_acc):
             updates = {}
             for key in ('hotkey', 'continuous_hotkey', 'wake_word_hotkey',
-                        'command_hotkey', 'streaming_hotkey', 'cancel_hotkey',
+                        'command_hotkey', 'cancel_hotkey',
                         'undo_hotkey', 'dictate_commit_hotkey',
-                        'ava_mode_key'):
+                        'memo_hotkey', 'correction_hotkey', 'continuous_commit_hotkey'):
                 btn = self._widgets.get(key)
                 if isinstance(btn, _HotkeyButton):
                     updates[key] = btn.combo
+
+            # hotkeys.capture_correction is nested: read-merge-write the dict.
+            capture_btn = self._widgets.get('capture_correction_hotkey')
+            if isinstance(capture_btn, _HotkeyButton):
+                hotkeys_cfg = dict(self.app.config.get('hotkeys', {}) or {})
+                hotkeys_cfg['capture_correction'] = capture_btn.combo
+                updates['hotkeys'] = hotkeys_cfg
+
+            if 'continuous_commit_trigger' in self._widgets:
+                updates['continuous_commit_trigger'] = self._widgets['continuous_commit_trigger'].currentText()
+
+            # Ava mode: named key from the shared list; an unsupported stored
+            # value is kept verbatim until the user picks a real key.
+            ava_combo = self._widgets.get('ava_mode_key')
+            if isinstance(ava_combo, QComboBox):
+                label = ava_combo.currentText()
+                if label in _AI_CMD_KEY_OPTIONS:
+                    updates['ava_mode_key'] = _AI_CMD_KEY_OPTIONS[label]
+                else:
+                    updates['ava_mode_key'] = ava_combo.currentData() or self.app.config.get('ava_mode_key', 'right_alt')
+            if 'ava_mode_enabled' in self._widgets:
+                updates['ava_mode_enabled'] = self._widgets['ava_mode_enabled'].isChecked()
+
+            # Streaming preview goes through the SAME path as the tray toggle
+            # (set_streaming_mode installs/uninstalls the CapsLock hook and
+            # saves the flag itself), never through the bulk config write.
+            streaming_cb = self._widgets.get('streaming_mode')
+            if streaming_cb is not None:
+                wanted = bool(streaming_cb.isChecked())
+                setter = getattr(self.app, 'set_streaming_mode', None)
+                if wanted != bool(self.app.config.get('streaming_mode', False)) and callable(setter):
+                    setter(wanted)
 
             if 'mode' in self._widgets:
                 updates['mode'] = self._widgets['mode'].currentText()
@@ -2728,18 +2893,27 @@ class _SettingsWindow(QMainWindow):
             'continuous_hotkey': 'Toggle continuous',
             'wake_word_hotkey':  'Toggle wake word',
             'command_hotkey':    'Command only',
-            'streaming_hotkey':  'Streaming',
             'cancel_hotkey':     'Cancel recording',
             'undo_hotkey':       'Undo',
             'dictate_commit_hotkey': 'Paste staged thought',
-            'ava_mode_key':      'Ava mode',
+            'memo_hotkey':       'Voice memo',
+            'correction_hotkey': 'Correction report',
+            'capture_correction_hotkey': 'Correction capture',
+            'continuous_commit_hotkey': 'Continuous commit',
         }
+        label_to_key = {v: k for k, v in hotkey_labels.items()}
 
         bindings: list = []  # (label, raw_combo)
         for config_key, label in hotkey_labels.items():
             widget = self._widgets.get(config_key)
             if isinstance(widget, _HotkeyButton) and widget.combo:
                 bindings.append((label, widget.combo))
+
+        ava_combo = self._widgets.get('ava_mode_key')
+        if isinstance(ava_combo, QComboBox):
+            raw = _AI_CMD_KEY_OPTIONS.get(ava_combo.currentText()) or ava_combo.currentData()
+            if raw:
+                bindings.append(("Ava mode", str(raw)))
 
         cmd_btn_widget = self._widgets.get('cmd_tab_button')
         if cmd_btn_widget is not None:
@@ -2762,8 +2936,14 @@ class _SettingsWindow(QMainWindow):
         for label, combo, norm in normed:
             by_norm.setdefault(norm, []).append(label)
 
+        def _exempt(label_a: str, label_b: str) -> bool:
+            keys = frozenset({label_to_key.get(label_a, label_a), label_to_key.get(label_b, label_b)})
+            return keys in _MODES_COLLISION_EXEMPT_PAIRS
+
         messages: list = []
         for norm, labels in by_norm.items():
+            if len(labels) == 2 and _exempt(*labels):
+                continue   # live in different modes, never both armed
             if len(labels) > 1:
                 messages.append(
                     f"{', '.join(labels)} all use the same key ({'+'.join(sorted(norm))}) "
@@ -2773,7 +2953,7 @@ class _SettingsWindow(QMainWindow):
         # Strict-subset relationships ("may shadow"), skipping exact matches.
         for i, (label_a, combo_a, norm_a) in enumerate(normed):
             for label_b, combo_b, norm_b in normed[i + 1:]:
-                if norm_a == norm_b:
+                if norm_a == norm_b or _exempt(label_a, label_b):
                     continue
                 if norm_a < norm_b:
                     messages.append(
