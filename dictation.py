@@ -2736,6 +2736,8 @@ class DictationApp:
                 self.listening_indicator.set_position(position)
             self.listening_indicator.placement_committed.connect(
                 self._on_indicator_placement_committed)
+            self.listening_indicator.set_idle_animation(self._idle_animation_enabled())
+            self.listening_indicator.set_wake_armed(bool(self.wake_word_active))
             if self.config.get('listening_indicator_enabled', False):
                 self.listening_indicator.show()
 
@@ -4427,6 +4429,9 @@ class DictationApp:
             self.set_gesture_enabled(changes['gesture'].get('enabled', False))
         if 'hotkey' in changes or 'command_mode' in changes:
             self.refresh_mouse_hook()
+        if 'ui' in changes and getattr(self, 'listening_indicator', None) is not None:
+            self._schedule_ui(self.listening_indicator.set_idle_animation,
+                              self._idle_animation_enabled())
         # Only rebuild a detector that has been loaded: before the lazy wake
         # load (or while it runs) the loader picks the new phrase up itself.
         if 'wake_word_config' in changes and self.wake_ready_state() == 'ready':
@@ -4550,6 +4555,9 @@ class DictationApp:
                 self.refresh_mouse_hook()
             except Exception as e:
                 logger.exception(f"[CONFIG] mouse hook refresh error: {e}")
+        if 'ui' in changed and getattr(self, 'listening_indicator', None) is not None:
+            self._schedule_ui(self.listening_indicator.set_idle_animation,
+                              self._idle_animation_enabled())
         if 'wake_word_config' in changed and self.wake_ready_state() == 'ready':
             try:
                 new_ww = changed['wake_word_config'][1]
@@ -8848,8 +8856,9 @@ class DictationApp:
 
         self.set_app_state(wake_word_active=True)
         self._request_icon_chase('wake_word')
-        if hasattr(self, 'listening_indicator'):
+        if getattr(self, 'listening_indicator', None) is not None:
             self._schedule_ui(self.listening_indicator.set_listening, True)
+            self._schedule_ui(self.listening_indicator.set_wake_armed, True)
 
         if hasattr(self, 'hints'):
             self.hints.maybe_show(
@@ -8874,8 +8883,9 @@ class DictationApp:
         logger.info("[OFF] Wake word mode STOPPED")
         self.play_sound("stop")
         self._release_icon_chase('wake_word')
-        if hasattr(self, 'listening_indicator'):
+        if getattr(self, 'listening_indicator', None) is not None:
             self._schedule_ui(self.listening_indicator.set_listening, False)
+            self._schedule_ui(self.listening_indicator.set_wake_armed, False)
 
     def _load_vad_model(self):
         """Load Silero VAD for real-time speech detection in the wake callback.
@@ -12646,6 +12656,14 @@ class DictationApp:
             except Exception:
                 logger.exception("_schedule_ui direct-call fallback failed")
 
+    def _idle_animation_enabled(self) -> bool:
+        """config ui.idle_animation (default True): the indicator's idle blink
+        and glance only -- never state animation, never the tray."""
+        ui_cfg = self.config.get('ui', {})
+        if not isinstance(ui_cfg, dict):
+            return True
+        return bool(ui_cfg.get('idle_animation', True))
+
     def _tray_mark(self):
         """(capture, eye) the tray shows for the live app state.
 
@@ -12736,7 +12754,8 @@ class DictationApp:
         self._icon_animating = True
         self._icon_chase_offset = 0
         self._icon_chase_counter = 0
-        self._icon_rotation = 0.0
+        # _icon_rotation is NOT reset: the head keeps chasing the tail from
+        # wherever it stopped, never snapping to an aligned rest pose.
         self._icon_chase_tick()
 
     def _stop_icon_chase(self):
@@ -12746,44 +12765,48 @@ class DictationApp:
             self._icon_chase_timer.cancel()
             self._icon_chase_timer = None
         self._icon_chase_offset = 0
-        self._icon_rotation = 0.0
-        self._push_tray_icon()
+        self._push_tray_icon()   # keeps the current rotation (no aligned rest)
 
     def _icon_chase_tick(self):
         """Advance the tray animation and schedule the next tick.
 
         The mark (tray_qt.render_mark) carries state by shape, and motion
-        on the same drawing adds the rest:
-        - recording:     filled wheel, still (fill is the signal)
-        - transcribing:  the 'recording' reason outlives capture -> fast spin
+        on the same drawing adds the rest (spin = the ouroboros head chasing
+        its tail; speed is a state channel):
+        - recording:     filled wheel, stopped (fill is the signal)
+        - transcribing:  the 'recording' reason outlives capture ->
+                         tray_qt.SPIN_SECONDS_PER_TURN['transcribing'] per turn
         - continuous:    listening pulse, medium period
         - wake_word:     listening pulse, slow period
-        Tick speed and period come from the existing ICON_* constants
-        (chase_every = ticks per half pulse).
+        Thinking (2.4 s/turn) is signalled only to the listening indicator
+        (set_thinking from ask_ollama / the Ava command session), so the tray
+        has no thinking reason. Tick speed and pulse period come from the
+        existing ICON_* constants (chase_every = ticks per half pulse).
         """
         if not self._icon_animating:
             return
 
+        from samsara.ui.tray_qt import SPIN_SECONDS_PER_TURN
+
         # Determine speed from highest-priority active reason
         if 'recording' in self._icon_anim_reasons:
             tick_interval = ICON_TICK_FAST
-            spin_step = ICON_SPIN_FAST
             chase_every = ICON_CHASE_FAST
         elif 'continuous' in self._icon_anim_reasons:
             tick_interval = ICON_TICK_MEDIUM
-            spin_step = ICON_SPIN_MEDIUM
             chase_every = ICON_CHASE_MEDIUM
         else:  # wake_word or anything else
             tick_interval = ICON_TICK_SLOW
-            spin_step = ICON_SPIN_SLOW
             chase_every = ICON_CHASE_SLOW
 
         self._icon_chase_counter = (self._icon_chase_counter + 1) % (2 * chase_every)
         opacity = 1.0
         if getattr(self, 'recording', False):
-            pass   # filled and still
+            pass   # filled and stopped
         elif 'recording' in self._icon_anim_reasons:
-            self._icon_rotation += spin_step   # transcribing: spin
+            # Transcribing: one full turn per SPIN_SECONDS_PER_TURN['transcribing'].
+            self._icon_rotation += (2 * math.pi * tick_interval
+                                    / SPIN_SECONDS_PER_TURN['transcribing'])
         else:
             # Listening: pulse between 55% and 100% over 2 * chase_every ticks.
             phase = self._icon_chase_counter / (2 * chase_every)

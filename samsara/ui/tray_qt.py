@@ -18,6 +18,7 @@ see dictation.py's window-icon comment). Worker threads describe a frame
 with MarkFrame and let _apply_icon render it on the Qt thread.
 """
 
+import math
 import sys
 import threading
 import xml.etree.ElementTree as ET
@@ -83,10 +84,16 @@ HEARD_KEYFRAMES = (
     (0, "heard"), (250, "armed"), (500, "heard"), (750, "armed"),
     (1000, "asleep"), (1300, None),
 )
+#: Spin speed is a state channel: seconds per full turn of the ring (head
+#: chasing tail). Recording never spins -- fill is its signal.
+SPIN_SECONDS_PER_TURN = {"thinking": 2.4, "transcribing": 0.9}
 #: Tray frame from any thread: rendered on the Qt thread by _apply_icon.
 MarkFrame = namedtuple("MarkFrame", "capture eye rotation opacity", defaults=(0.0, 1.0))
 
-_SMALL_MAX = 16          # sizes at or below this use the simplified drawing
+_SMALL_MAX = 16          # sizes at or below this use the simplified drawing (no head/tail)
+_FRAME_MAX = 24          # sizes at or below this draw from 24 pre-rendered 15-degree frames
+_FRAME_STEPS = 24
+_FRAME_CACHE_LIMIT = 2048
 _HEARD_RING_LIFT = 0.45  # heard: ring colour mixed this far toward TEXT_PRIMARY
 _TRAY_SIZES = (16, 24, 32)
 _SVG_NS = "http://www.w3.org/2000/svg"
@@ -94,7 +101,100 @@ ET.register_namespace("", _SVG_NS)
 _RING_IDS = ("ring-hollow", "ring-filled")
 _EYE_IDS = ("eye-closed", "eye-open")
 _renderer_cache: dict = {}
+_frame_cache: dict = {}
 _renderer_lock = threading.Lock()
+
+# ---------------------------------------------------------------------------
+# Ouroboros ring geometry (the #regular drawing, 24 px and up)
+# ---------------------------------------------------------------------------
+# The ring keeps its three segments, angles and radius (centre line 24.5,
+# full width 11 in the 64-unit viewBox: outer 30 / inner 19). At the gap at
+# 12 o'clock, the segment that ENDS there (HEAD_SEGMENT) swells into a blunt
+# snout that runs 13 degrees past its end, into the gap; the segment that
+# STARTS there (TAIL_SEGMENT) grows from a point. Head chases tail when the
+# ring spins clockwise. A stroked arc cannot taper, so every segment is a
+# FILLED outline sampled along its arc with a per-sample width (ring_width).
+# gen_icons.py writes these outlines into assets/icon/samsara.svg; --check
+# fails if the SVG drifts from this function.
+
+RING_CENTRE = 32.0
+RING_RADIUS = 24.5
+RING_WIDTH = 11.0
+RING_OUTER_CAP = 30.5        # head grows inward past this, so a 3-unit outline stays in the viewBox
+SEGMENT_START_DEG = -84.0    # segment 0 starts just right of 12 o'clock (y down = clockwise)
+SEGMENT_SPAN_DEG = 108.0
+SEGMENT_STEP_DEG = 120.0     # 12-degree gaps at 12, 4 and 8 o'clock
+TAIL_SEGMENT = 0
+HEAD_SEGMENT = 2
+TAIL_FRACTION = 0.30         # tail ramps 0 -> full width over the first 30% of its arc
+HEAD_FRACTION = 0.20         # head grows to HEAD_SCALE over the last 20% of its arc
+HEAD_SCALE = 1.55
+HEAD_OVERSHOOT_DEG = 13.0    # blunt nose closes this far past the head segment's end
+_SEGMENT_SAMPLES = 48
+_NOSE_SAMPLES = 12
+
+
+def _smoothstep(t: float) -> float:
+    t = max(0.0, min(1.0, t))
+    return t * t * (3.0 - 2.0 * t)
+
+
+def ring_width(segment: int, u: float) -> float:
+    """Ring width at arc fraction u of a segment (viewBox units).
+
+    u in [0, 1] runs from the segment's start angle to its end angle; the head
+    segment also accepts u > 1, up to the nose tip HEAD_OVERSHOOT_DEG past its
+    end:
+      tail  (segment TAIL_SEGMENT, u < TAIL_FRACTION):  W * smoothstep(u / TAIL_FRACTION)
+      head  (segment HEAD_SEGMENT, u > 1 - HEAD_FRACTION):
+            W * (1 + (HEAD_SCALE - 1) * smoothstep((u - (1 - HEAD_FRACTION)) / HEAD_FRACTION))
+      nose  (segment HEAD_SEGMENT, u > 1, v = (u - 1) / (overshoot / span)):
+            W * HEAD_SCALE * sqrt(1 - v^2)      -- an elliptical, blunt point
+      else  W
+    """
+    w = RING_WIDTH
+    if segment == TAIL_SEGMENT and u < TAIL_FRACTION:
+        return w * _smoothstep(u / TAIL_FRACTION)
+    if segment == HEAD_SEGMENT:
+        if u > 1.0:
+            v = (u - 1.0) / (HEAD_OVERSHOOT_DEG / SEGMENT_SPAN_DEG)
+            return w * HEAD_SCALE * (max(0.0, 1.0 - v * v) ** 0.5)
+        if u > 1.0 - HEAD_FRACTION:
+            t = (u - (1.0 - HEAD_FRACTION)) / HEAD_FRACTION
+            return w * (1.0 + (HEAD_SCALE - 1.0) * _smoothstep(t))
+    return w
+
+
+def ring_segment_outline(segment: int) -> list[tuple[float, float]]:
+    """Closed outline of one segment: outer edge forwards, inner edge back."""
+    start = SEGMENT_START_DEG + segment * SEGMENT_STEP_DEG
+    fractions = [i / _SEGMENT_SAMPLES for i in range(_SEGMENT_SAMPLES + 1)]
+    if segment == HEAD_SEGMENT:
+        over = HEAD_OVERSHOOT_DEG / SEGMENT_SPAN_DEG
+        fractions += [1.0 + over * i / _NOSE_SAMPLES for i in range(1, _NOSE_SAMPLES + 1)]
+    outer, inner = [], []
+    for u in fractions:
+        angle = math.radians(start + u * SEGMENT_SPAN_DEG)
+        w = ring_width(segment, u)
+        # The swollen head would cross RING_OUTER_CAP, so its centre line
+        # moves inward just enough; the nose then closes on that centre line
+        # (symmetric edges, blunt tip) rather than collapsing sideways.
+        envelope = RING_WIDTH * HEAD_SCALE if u > 1.0 else w
+        centre = min(RING_RADIUS, RING_OUTER_CAP - envelope / 2.0)
+        r_out = centre + w / 2.0
+        r_in = centre - w / 2.0
+        c, s = math.cos(angle), math.sin(angle)
+        outer.append((RING_CENTRE + r_out * c, RING_CENTRE + r_out * s))
+        inner.append((RING_CENTRE + r_in * c, RING_CENTRE + r_in * s))
+    return outer + inner[::-1]
+
+
+def ring_segment_path_data(segment: int) -> str:
+    """SVG path data for one ouroboros segment (what samsara.svg holds)."""
+    points = ring_segment_outline(segment)
+    head = f"M {points[0][0]:.2f},{points[0][1]:.2f}"
+    body = " ".join(f"L {x:.2f},{y:.2f}" for x, y in points[1:])
+    return f"{head} {body} Z"
 
 
 def mark_svg_path() -> Path:
@@ -141,6 +241,13 @@ def mark_svg(capture: str, eye: str, small: bool, layer: str, source: bytes | No
     return ET.tostring(root, encoding="utf-8")
 
 
+def clear_mark_caches() -> None:
+    """Drop cached renderers and frames (after samsara.svg is rewritten)."""
+    with _renderer_lock:
+        _renderer_cache.clear()
+        _frame_cache.clear()
+
+
 def _renderer(capture: str, eye: str, small: bool, layer: str) -> QSvgRenderer | None:
     key = (capture, eye if layer == "eye" or eye == "heard" else "", small, layer)
     renderer = _renderer_cache.get(key)
@@ -157,34 +264,77 @@ def _renderer(capture: str, eye: str, small: bool, layer: str) -> QSvgRenderer |
     return renderer
 
 
+def _paint_vector(painter: QPainter, rect: QRectF, capture: str, eye: str,
+                  rotation: float, opacity: float) -> None:
+    """Live vector render: ring rotated, eye upright (caller holds the lock)."""
+    small = min(rect.width(), rect.height()) <= _SMALL_MAX
+    ring = _renderer(capture, eye, small, "ring")
+    eye_renderer = _renderer(capture, eye, small, "eye") if MARK_EYE[eye] else None
+    if ring is None:
+        return
+    painter.save()
+    painter.setRenderHint(QPainter.RenderHint.Antialiasing, True)
+    painter.setOpacity(painter.opacity() * max(0.0, min(1.0, opacity)))
+    centre = rect.center()
+    painter.translate(centre)
+    painter.rotate(rotation)
+    painter.translate(-centre)
+    ring.render(painter, rect)
+    painter.restore()
+    if eye_renderer is not None:
+        painter.save()
+        painter.setRenderHint(QPainter.RenderHint.Antialiasing, True)
+        painter.setOpacity(painter.opacity() * max(0.0, min(1.0, opacity)))
+        eye_renderer.render(painter, rect)
+        painter.restore()
+
+
+def frame_step(rotation: float) -> int:
+    """Which of the _FRAME_STEPS 15-degree frames shows a rotation (degrees)."""
+    return int(round(rotation / (360.0 / _FRAME_STEPS))) % _FRAME_STEPS
+
+
+def _frame(capture: str, eye: str, size: int, rotation: float) -> QImage:
+    """A pre-rendered frame for small sizes (caller holds the lock).
+
+    At 16-24 px a live-rotated ring aliases badly, so spin cycles 24 frames
+    in 15-degree steps, each rendered once from the vector and cached.
+    """
+    key = (capture, eye, size, frame_step(rotation))
+    image = _frame_cache.get(key)
+    if image is None:
+        if len(_frame_cache) >= _FRAME_CACHE_LIMIT:
+            _frame_cache.clear()
+        image = QImage(size, size, QImage.Format.Format_ARGB32_Premultiplied)
+        image.fill(Qt.GlobalColor.transparent)
+        frame_painter = QPainter(image)
+        _paint_vector(frame_painter, QRectF(0, 0, size, size), capture, eye,
+                      key[3] * (360.0 / _FRAME_STEPS), 1.0)
+        frame_painter.end()
+        _frame_cache[key] = image
+    return image
+
+
 def paint_mark(painter: QPainter, rect: QRectF, capture: str, eye: str,
                rotation: float = 0.0, opacity: float = 1.0) -> None:
     """Draw the mark into rect on an existing painter (Qt thread only).
 
-    rotation (degrees) spins the ring only -- the eye never turns; opacity
-    fades the whole mark (the listening pulse).
+    THE one drawing of the mark: tray, listening indicator, splash and
+    gen_icons all come through here. rotation (degrees) spins the ring only
+    -- the eye never turns; opacity fades the whole mark (the listening
+    pulse). 16-24 px draws a cached 15-degree frame; 32 px and up rotates
+    the vector live.
     """
-    small = min(rect.width(), rect.height()) <= _SMALL_MAX
+    size = min(rect.width(), rect.height())
     with _renderer_lock:
-        ring = _renderer(capture, eye, small, "ring")
-        eye_renderer = _renderer(capture, eye, small, "eye") if MARK_EYE[eye] else None
-        if ring is None:
-            return
-        painter.save()
-        painter.setRenderHint(QPainter.RenderHint.Antialiasing, True)
-        painter.setOpacity(painter.opacity() * max(0.0, min(1.0, opacity)))
-        centre = rect.center()
-        painter.translate(centre)
-        painter.rotate(rotation)
-        painter.translate(-centre)
-        ring.render(painter, rect)
-        painter.restore()
-        if eye_renderer is not None:
+        if size <= _FRAME_MAX:
+            image = _frame(capture, eye, max(1, int(round(size))), rotation)
             painter.save()
-            painter.setRenderHint(QPainter.RenderHint.Antialiasing, True)
             painter.setOpacity(painter.opacity() * max(0.0, min(1.0, opacity)))
-            eye_renderer.render(painter, rect)
+            painter.drawImage(rect, image)
             painter.restore()
+            return
+        _paint_vector(painter, rect, capture, eye, rotation, opacity)
 
 
 def render_mark(capture: str, eye: str, size: int,
