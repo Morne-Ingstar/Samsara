@@ -1,0 +1,82 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!--
+Samsara mark: SINGLE SOURCE for every icon size and state.
+tools/gen_icons.py renders it; do not hand-edit the generated PNG/ICO files.
+
+Owner decision 2026-09-13: one accent (cyan), one semantic (red = recording).
+Colours come from samsara/ui/theme.py tokens; gen_icons.py substitutes them
+per state, so the literals below are only the idle defaults.
+
+Structure
+  The three-segment wheel carries CAPTURE state:
+    #ring-hollow  segments outlined  -> idle (ICON_IDLE), listening/armed (ACCENT), Ava (AVA)
+    #ring-filled  segments filled    -> recording (RECORDING)
+    Fill vs outline carries recording without relying on colour.
+    Spin (thinking) and pulse (listening) are applied by the painter at runtime.
+  The hub carries HANDS-FREE state as an eye on a dark disc:
+    #eye-closed   horizontal line          -> hands-free asleep / off
+    #eye-open     two lids + pupil dot     -> wake listener armed
+    #eye-heard    two lids + large pupil   -> wake phrase heard, listening for the command
+
+Two drawings, the second with "-small" ids:
+  #regular (24 px and up) and #small (the simplified 16 px variant: thin
+  centre-line arcs with wider gaps, a larger hub, and the eye reduced to a line vs a
+  dot-in-ellipse). 1 px strokes are the floor at 16 px: in this 64-unit
+  viewBox, 4 units = 1 px at 16 px.
+
+data-role attributes tell gen_icons.py what to recolour:
+  segment -> state colour (fill or stroke), hub -> ICON_HUB,
+  eye -> eye stroke colour, pupil -> eye fill colour.
+-->
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64" width="64" height="64">
+  <g id="regular">
+    <g id="ring-hollow" fill="none" stroke="#8b929c" stroke-width="3" stroke-linejoin="round">
+      <path data-role="segment" d="M 35.14,2.16 A 30 30 0 0 1 59.41,44.20 L 49.36,39.73 A 19 19 0 0 0 33.99,13.10 Z"/>
+      <path data-role="segment" d="M 56.27,49.63 A 30 30 0 0 1 7.73,49.63 L 16.63,43.17 A 19 19 0 0 0 47.37,43.17 Z"/>
+      <path data-role="segment" d="M 4.59,44.20 A 30 30 0 0 1 28.86,2.16 L 30.01,13.10 A 19 19 0 0 0 14.64,39.73 Z"/>
+    </g>
+    <g id="ring-filled" fill="#c0392b" stroke="none" display="none">
+      <path data-role="segment" d="M 35.14,2.16 A 30 30 0 0 1 59.41,44.20 L 49.36,39.73 A 19 19 0 0 0 33.99,13.10 Z"/>
+      <path data-role="segment" d="M 56.27,49.63 A 30 30 0 0 1 7.73,49.63 L 16.63,43.17 A 19 19 0 0 0 47.37,43.17 Z"/>
+      <path data-role="segment" d="M 4.59,44.20 A 30 30 0 0 1 28.86,2.16 L 30.01,13.10 A 19 19 0 0 0 14.64,39.73 Z"/>
+    </g>
+    <circle id="hub" data-role="hub" cx="32" cy="32" r="15.5" fill="#131820"/>
+    <g id="eye-closed" fill="none" stroke-linecap="round">
+      <line data-role="eye" x1="21" y1="32" x2="43" y2="32" stroke="#8b929c" stroke-width="3.5"/>
+    </g>
+    <g id="eye-open" fill="none" stroke-linecap="round" display="none">
+      <path data-role="eye" d="M 20,32 Q 32,21 44,32" stroke="#5cc4d4" stroke-width="3"/>
+      <path data-role="eye" d="M 20,32 Q 32,43 44,32" stroke="#5cc4d4" stroke-width="3"/>
+      <circle data-role="pupil" cx="32" cy="32" r="2.5" fill="#5cc4d4" stroke="none"/>
+    </g>
+    <g id="eye-heard" fill="none" stroke-linecap="round" display="none">
+      <path data-role="eye" d="M 20,32 Q 32,21 44,32" stroke="#5cc4d4" stroke-width="3"/>
+      <path data-role="eye" d="M 20,32 Q 32,43 44,32" stroke="#5cc4d4" stroke-width="3"/>
+      <circle data-role="pupil" cx="32" cy="32" r="6.5" fill="#5cc4d4" stroke="none"/>
+    </g>
+  </g>
+
+  <g id="small" display="none">
+    <g id="ring-hollow-small" fill="none" stroke="#8b929c" stroke-width="5" stroke-linecap="butt">
+      <path data-role="segment" d="M 38.07,5.69 A 27 27 0 0 1 57.82,39.89"/>
+      <path data-role="segment" d="M 51.75,50.41 A 27 27 0 0 1 12.25,50.41"/>
+      <path data-role="segment" d="M 6.18,39.89 A 27 27 0 0 1 25.93,5.69"/>
+    </g>
+    <g id="ring-filled-small" fill="none" stroke="#c0392b" stroke-width="9" stroke-linecap="butt" display="none">
+      <path data-role="segment" d="M 38.07,5.69 A 27 27 0 0 1 57.82,39.89"/>
+      <path data-role="segment" d="M 51.75,50.41 A 27 27 0 0 1 12.25,50.41"/>
+      <path data-role="segment" d="M 6.18,39.89 A 27 27 0 0 1 25.93,5.69"/>
+    </g>
+    <circle id="hub-small" data-role="hub" cx="32" cy="32" r="21" fill="#131820"/>
+    <g id="eye-closed-small" fill="none" stroke-linecap="butt">
+      <line data-role="eye" x1="18" y1="32" x2="46" y2="32" stroke="#8b929c" stroke-width="4.5"/>
+    </g>
+    <g id="eye-open-small" display="none">
+      <ellipse data-role="eye" cx="32" cy="32" rx="13" ry="8.5" fill="none" stroke="#5cc4d4" stroke-width="4"/>
+      <circle data-role="pupil" cx="32" cy="32" r="3.5" fill="#5cc4d4" stroke="none"/>
+    </g>
+    <g id="eye-heard-small" display="none">
+      <ellipse data-role="pupil" cx="32" cy="32" rx="15" ry="10.5" fill="#5cc4d4" stroke="none"/>
+    </g>
+  </g>
+</svg>
