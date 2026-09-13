@@ -406,6 +406,21 @@ class StreamingOverlayQt:
         if self._widget is not None:
             self._widget.update(text or "", state or "")
 
+    def set_literal_badge(self, on: bool) -> None:
+        """Show/hide the "literal" badge while the VERBATIM profile is forced
+        by the spoken toggle (see dictation.py's set_verbatim_forced). Stored
+        here rather than passed through every call so an in-flight tick
+        renders the same badge state as the commit that set it."""
+        self._literal_badge = bool(on)
+
+    def _badge_html(self) -> str:
+        if not getattr(self, "_literal_badge", False):
+            return ""
+        return (
+            f'<span style="color:{PARTIAL_TEXT_COLOR};font-style:normal;">'
+            f'[literal]</span> '
+        )
+
     def set_transcript(self, finalized_lines, partial):
         """DictatePreviewSession's rolling-transcript renderer: settled
         finalized utterances (plain text) with the current live partial
@@ -439,7 +454,8 @@ class StreamingOverlayQt:
             combined = f"{finalized_html}<br>{partial_html}" if finalized_html else partial_html
         else:
             combined = finalized_html
-        self.update_text(combined or "Listening...", self.STATE_LISTENING)
+        badge = self._badge_html()
+        self.update_text(badge + (combined or "Listening..."), self.STATE_LISTENING)
 
     def set_paused(self, finalized_lines):
         """hands_free.suspend_on_hold (2026-09-11): the toggle-DICTATE
@@ -1120,6 +1136,16 @@ class DictatePreviewSession:
         # (that would double-enter this thread under a second, -2-suffixed
         # name; see thread_registry.spawn's docstring).
         thread_registry.spawn("dictate-preview", self._loop, daemon=True)
+
+    def set_literal_badge(self, on: bool) -> None:
+        """Forwarded from dictation.py's set_verbatim_forced so the preview
+        box shows a "[literal]" badge while the VERBATIM profile is forced by
+        the spoken toggle. Best-effort like everything else in this class."""
+        try:
+            self._overlay.set_literal_badge(on)
+            self._overlay.set_transcript(list(self._finalized), "")
+        except Exception as exc:
+            logger.debug(f"[DICTATE-PREVIEW] literal badge failed: {exc}")
 
     def stop(self):
         """Idempotent. Stops the tick thread and closes the overlay."""
