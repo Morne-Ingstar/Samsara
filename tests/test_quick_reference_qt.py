@@ -464,3 +464,25 @@ class TestGuidanceAuditFixes:
             assert "Voice memo" in texts and "Correction capture" in texts
         finally:
             win.close()
+
+
+class TestModesTabRoundTripIntoQuickReference:
+    def test_modes_tab_save_output_renders_in_quick_reference(self, qapp):
+        """08d: the keys the Modes tab writes are the keys the Quick Reference
+        reads -- one config path, no second mapping."""
+        from samsara.ui.settings_qt import _SettingsWindow
+        from tests.test_settings import _StubApp
+        stub = _StubApp()
+        stub.config = {"hotkeys": {"capture_correction": "ctrl+alt+x"}}
+        win = _SettingsWindow(stub)
+        win._widgets['memo_hotkey']._combo = 'ctrl+alt+q'
+        win._widgets['capture_correction_hotkey']._combo = 'ctrl+alt+y'
+        win._widgets['continuous_commit_hotkey']._combo = 'ctrl+alt+k'
+        win._widgets['continuous_commit_trigger'].setCurrentText('key')
+        win._widgets['ava_mode_key'].setCurrentText('F13')
+        updates = win._save_fns[1]({})
+        rows = {r["label"]: r for r in qr._resolve_hotkeys(_make_app(updates))}
+        assert rows["Voice memo"]["value"] == "Ctrl+Alt+Q"
+        assert rows["Correction capture"]["value"] == "Ctrl+Alt+Y"
+        assert rows["Continuous commit"]["value"].startswith("Ctrl+Alt+K") and rows["Continuous commit"]["enabled"]
+        assert rows["Streaming (live partials)"]["value"].startswith(qr.STREAMING_KEY_LABEL)

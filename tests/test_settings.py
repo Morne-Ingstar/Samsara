@@ -149,9 +149,15 @@ class TestSettingsWindowConstruction:
         modes_save_fn = win._save_fns[1]
         produced = modes_save_fn({})
 
+        # 08d: streaming_hotkey is gone (dead key -- the hook hardcodes CapsLock
+        # and streaming_mode is set through set_streaming_mode, not the bulk
+        # write); memo / correction / capture (nested `hotkeys`) / continuous
+        # commit + trigger and ava_mode_enabled are new.
         expected_keys = {
             'hotkey', 'continuous_hotkey', 'wake_word_hotkey', 'command_hotkey',
-            'streaming_hotkey', 'cancel_hotkey', 'undo_hotkey', 'dictate_commit_hotkey', 'ava_mode_key',
+            'cancel_hotkey', 'undo_hotkey', 'dictate_commit_hotkey', 'ava_mode_key',
+            'memo_hotkey', 'correction_hotkey', 'hotkeys', 'continuous_commit_hotkey',
+            'continuous_commit_trigger', 'ava_mode_enabled',
             'mode', 'wake_word_enabled', 'wake_word_config', 'command_mode',
             'ava_command_session',
         }
@@ -336,7 +342,7 @@ class TestModesCollisionDetection:
         win = _SettingsWindow(_StubApp())
         win._stack.setCurrentIndex(_TAB_NAMES.index('Modes'))  # non-current stack pages report not-visible
 
-        win._widgets['ava_mode_key']._combo = 'right_ctrl'
+        win._widgets['ava_mode_key'].setCurrentText('Right Ctrl')     # 08d: named-key combo
         win._widgets['ava_cmd_key'].setCurrentText('Right Ctrl')
         win._check_modes_collisions()
 
@@ -389,15 +395,16 @@ class TestModesCollisionDetection:
         win = _SettingsWindow(_StubApp())
         win._stack.setCurrentIndex(_TAB_NAMES.index('Modes'))
 
-        ava_btn = win._widgets['ava_mode_key']
+        undo_btn = win._widgets['undo_hotkey']          # a real _HotkeyButton (Ava's is a combo since 08d)
         ai_key_combo = win._widgets['ava_cmd_key']
         ai_key_combo.setCurrentText('Right Ctrl')
 
-        ava_btn._held = {'right_ctrl'}
-        ava_btn._finish_capture()
+        undo_btn._held = {'right_ctrl'}
+        undo_btn._finish_capture()
 
         warn = win._widgets['modes_collision_warn']
         assert warn.isVisibleTo(win)
+        assert 'Undo' in warn.text() and 'Ava Command Session key' in warn.text()
 
 
 class TestMouseMainHotkeyCapture:
@@ -556,6 +563,17 @@ class TestApplyAndCloseSnapshot:
 
         snapshot_path = Path(__file__).parent / "fixtures" / "settings_apply_and_close_snapshot.json"
         expected = json.loads(snapshot_path.read_text())
+        # 08d (2026-09-13) delta, applied here because the fixture predates it
+        # and is outside 08d's allowed files: the dead streaming_hotkey is no
+        # longer written; the keys the app always read are now written with
+        # their dictation.py defaults. Regenerate the fixture to fold this in.
+        expected.pop('streaming_hotkey', None)
+        expected.update({
+            'memo_hotkey': 'ctrl+alt+m', 'correction_hotkey': 'ctrl+alt+r',
+            'hotkeys': {'capture_correction': 'ctrl+alt+x'},
+            'continuous_commit_hotkey': 'ctrl+space', 'continuous_commit_trigger': 'silence',
+            'ava_mode_enabled': True,
+        })
 
         stub = _StubApp()
         win = _SettingsWindow(stub)
@@ -808,3 +826,156 @@ class TestCommandSettings:
         """Test wake word timeout configuration"""
         sample_config['wake_word_timeout'] = 10.0
         assert sample_config['wake_word_timeout'] == 10.0
+
+
+class TestModesTabClaims:
+    """08d (2026-09-13 manual review): every claim on the Modes tab matches
+    the runtime and every control is live. Descriptions are pinned to the
+    module constants that name their ground-truth source."""
+
+    def _win(self, config=None, app=None):
+        from samsara.ui.settings_qt import _SettingsWindow
+        stub = app or _StubApp()
+        if config is not None:
+            stub.config = config
+        return stub, _SettingsWindow(stub)
+
+    def _labels(self, win):
+        from PySide6.QtWidgets import QLabel
+        return [lbl.text() for lbl in win.findChildren(QLabel)]
+
+    # 1. streaming --------------------------------------------------------
+    def test_streaming_key_is_a_fixed_label_and_the_config_key_is_gone(self, qapp):
+        from samsara.ui import settings_qt as sq
+        _stub, win = self._win({"streaming_hotkey": "f9"})
+        assert 'streaming_hotkey' not in win._widgets
+        assert win._widgets['streaming_key_display'].text() == sq._STREAMING_KEY_LABEL == "CapsLock (fixed)"
+        assert win._widgets['streaming_key_display'].isReadOnly()
+        assert 'streaming_hotkey' not in win._save_fns[1]({})
+        assert sq._STREAMING_KEY_DESC in self._labels(win)
+
+    def test_streaming_checkbox_calls_set_streaming_mode_like_the_tray(self, qapp):
+        stub = _StubApp()
+        stub.set_streaming_mode = Mock()
+        _stub, win = self._win({"streaming_mode": False}, app=stub)
+        cb = win._widgets['streaming_mode']
+        assert cb.isChecked() is False
+        cb.setChecked(True)
+        produced = win._save_fns[1]({})
+        stub.set_streaming_mode.assert_called_once_with(True)
+        assert 'streaming_mode' not in produced          # the setter saves the flag itself
+        # unchanged state -> no call
+        stub.set_streaming_mode.reset_mock()
+        stub.config['streaming_mode'] = True
+        win._save_fns[1]({})
+        stub.set_streaming_mode.assert_not_called()
+
+    # 2. enable voice control ---------------------------------------------
+    def test_enable_voice_control_says_the_command_only_key_always_works(self, qapp):
+        from samsara.ui import settings_qt as sq
+        _stub, win = self._win()
+        assert "always works" in sq._ENABLE_VOICE_CONTROL_DESC
+        assert "command-only shortcut below to start" not in sq._ENABLE_VOICE_CONTROL_DESC
+        assert sq._ENABLE_VOICE_CONTROL_DESC in self._labels(win)
+
+    # 3. Ava mode key -----------------------------------------------------
+    def test_ava_key_is_a_named_key_combo_sharing_the_session_key_list(self, qapp):
+        from PySide6.QtWidgets import QComboBox
+        from samsara.ui import settings_qt as sq
+        _stub, win = self._win({"ava_mode_key": "right_alt"})
+        combo = win._widgets['ava_mode_key']
+        assert isinstance(combo, QComboBox)
+        assert [combo.itemText(i) for i in range(combo.count())] == list(sq._AI_CMD_KEY_OPTIONS)
+        assert combo.currentText() == 'Right Alt'
+        combo.setCurrentText('F13')
+        assert win._save_fns[1]({})['ava_mode_key'] == 'f13'
+
+    def test_ava_key_combo_migration_keeps_unsupported_value_until_picked(self, qapp):
+        from samsara.ui import settings_qt as sq
+        _stub, win = self._win({"ava_mode_key": "ctrl+alt+a"})
+        combo = win._widgets['ava_mode_key']
+        assert combo.currentText() == sq._AVA_KEY_UNSUPPORTED.format(combo="ctrl+alt+a")
+        assert win._save_fns[1]({})['ava_mode_key'] == 'ctrl+alt+a'      # kept, not silently replaced
+        combo.setCurrentText('Right Ctrl')
+        assert win._save_fns[1]({})['ava_mode_key'] == 'right_ctrl'
+
+    def test_ava_mode_enabled_checkbox_round_trips(self, qapp):
+        _stub, win = self._win({})
+        cb = win._widgets['ava_mode_enabled']
+        assert cb.isChecked() is True                    # dictation.py default True
+        cb.setChecked(False)
+        assert win._save_fns[1]({})['ava_mode_enabled'] is False
+        _stub2, win2 = self._win({"ava_mode_enabled": False})
+        assert win2._widgets['ava_mode_enabled'].isChecked() is False
+
+    # 4. button behaviour note --------------------------------------------
+    def test_button_behavior_note_is_built_from_session_modes_constants(self, qapp):
+        from samsara import session_modes
+        from samsara.ui import settings_qt as sq
+        _stub, win = self._win()
+        note = win._widgets['button_behavior_note'].text()
+        assert note == sq._button_behavior_note()
+        for phrase in session_modes._WHOLE_UTTERANCE_SWITCHES:
+            assert f'"{phrase}"' in note
+        assert f'"{session_modes.DICTATE_COMMIT_PHRASE}"' in note
+        assert all(f'"{p}"' in note for p in session_modes.SESSION_STOP_PHRASES)
+        assert all(f'"{p}"' in note for p in session_modes.SESSION_SLEEP_PHRASES)
+        assert "DICTATE lane" in note and "keeps the draft" in note
+
+    # 5 + 6. descriptions -------------------------------------------------
+    def test_paste_staged_and_advanced_descriptions(self, qapp):
+        from samsara import session_modes
+        from samsara.ui import settings_qt as sq
+        _stub, win = self._win()
+        labels = self._labels(win)
+        assert sq._PASTE_STAGED_DESC.format(commit=session_modes.DICTATE_COMMIT_PHRASE) in labels
+        assert "same as saying 'end'" in sq._PASTE_STAGED_DESC.format(commit=session_modes.DICTATE_COMMIT_PHRASE)
+        assert sq._CMD_DEBOUNCE_DESC == "Taps shorter than this are ignored (audio discarded)."
+        assert sq._CMD_TIMEOUT_DESC.endswith("(toggle mode only).") and sq._CMD_MISS_LIMIT_DESC.endswith("(toggle mode only).")
+        assert sq._CMD_DEBOUNCE_DESC in labels and sq._CMD_TIMEOUT_DESC in labels and sq._CMD_MISS_LIMIT_DESC in labels
+
+    # 7. the missing hotkeys ----------------------------------------------
+    def test_new_hotkeys_round_trip_through_save(self, qapp):
+        _stub, win = self._win({"hotkeys": {"capture_correction": "ctrl+alt+x", "other": "keep-me"},
+                                "memo_hotkey": "ctrl+alt+m"})
+        assert win._widgets['memo_hotkey'].combo == 'ctrl+alt+m'
+        assert win._widgets['correction_hotkey'].combo == 'ctrl+alt+r'
+        assert win._widgets['capture_correction_hotkey'].combo == 'ctrl+alt+x'
+        assert win._widgets['continuous_commit_hotkey'].combo == 'ctrl+space'
+        win._widgets['memo_hotkey']._combo = 'ctrl+alt+q'
+        win._widgets['correction_hotkey']._combo = 'ctrl+alt+e'
+        win._widgets['capture_correction_hotkey']._combo = 'ctrl+alt+y'
+        win._widgets['continuous_commit_hotkey']._combo = 'ctrl+alt+k'
+        win._widgets['continuous_commit_trigger'].setCurrentText('key')
+        produced = win._save_fns[1]({})
+        assert produced['memo_hotkey'] == 'ctrl+alt+q'
+        assert produced['correction_hotkey'] == 'ctrl+alt+e'
+        assert produced['hotkeys'] == {"capture_correction": "ctrl+alt+y", "other": "keep-me"}   # read-merge-write
+        assert produced['continuous_commit_hotkey'] == 'ctrl+alt+k'
+        assert produced['continuous_commit_trigger'] == 'key'
+
+    def test_collision_checker_sees_the_new_keys(self, qapp):
+        from samsara.ui.settings_qt import _TAB_NAMES
+        _stub, win = self._win()
+        win._stack.setCurrentIndex(_TAB_NAMES.index('Modes'))
+        win._widgets['memo_hotkey']._combo = win._widgets['undo_hotkey'].combo
+        win._check_modes_collisions()
+        warn = win._widgets['modes_collision_warn']
+        assert warn.isVisibleTo(win) and 'Voice memo' in warn.text() and 'Undo' in warn.text()
+
+    def test_default_commit_keys_do_not_false_alarm(self, qapp):
+        """dictate_commit_hotkey and continuous_commit_hotkey share ctrl+space by
+        design (hands-free toggle vs continuous mode) -- never both armed."""
+        _stub, win = self._win()
+        assert win._widgets['dictate_commit_hotkey'].combo == win._widgets['continuous_commit_hotkey'].combo
+        win._check_modes_collisions()
+        assert not win._widgets['modes_collision_warn'].isVisible()
+
+    # 8. config-only note -------------------------------------------------
+    def test_config_only_note_lists_the_unexposed_keys(self, qapp):
+        from samsara.ui import settings_qt as sq
+        _stub, win = self._win()
+        note = win._widgets['modes_config_only_note'].text()
+        for key in sq._MODES_CONFIG_ONLY_KEYS:
+            assert key in note
+            assert key not in win._widgets, f"{key} now has a control -- drop it from the note"
