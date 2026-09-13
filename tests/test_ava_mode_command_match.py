@@ -58,6 +58,9 @@ class _FakeApp:
     def _try_cancel_pending_ava_utterance(self, text):
         return False
 
+    def _try_stop_utterance(self, text, lane):
+        return False   # execution policy stop path: not a stop word here
+
 
 def _build_real_command_executor():
     """Real CommandExecutor with the real "show numbers" plugin registered.

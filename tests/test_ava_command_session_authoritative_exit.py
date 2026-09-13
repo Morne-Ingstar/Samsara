@@ -322,6 +322,7 @@ def _make_handler_app(entry_generation=0, transcript="take a screenshot"):
     app._handle_ava_command_utterance = types.MethodType(
         dictation.DictationApp._handle_ava_command_utterance, app,
     )
+    app._try_stop_utterance = types.MethodType(dictation.DictationApp._try_stop_utterance, app)
     return app
 
 

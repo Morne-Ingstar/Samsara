@@ -32,6 +32,7 @@ def load_app_policy_methods():
         '_expire_wake_session', '_end_wake_session', '_reset_wake_dictation',
         '_touch_session_activity', '_warn_wake_fallback_once', '_load_oww_model',
         'start_wake_word_mode', 'process_wake_word_buffer', '_decode_wake_word_buffer',
+        '_request_wake_models',
     }
     methods = [node for node in app.body if isinstance(node, ast.FunctionDef)
                and node.name in names]
@@ -131,7 +132,7 @@ def rig(monkeypatch):
             '_confirm_wake_capture', '_start_wake_session', '_restart_wake_session_timer',
             '_expire_wake_session', '_end_wake_session', '_reset_wake_dictation',
             '_touch_session_activity', '_warn_wake_fallback_once', '_load_oww_model',
-            'start_wake_word_mode', '_decode_wake_word_buffer',
+            'start_wake_word_mode', '_decode_wake_word_buffer', '_request_wake_models',
         ):
             setattr(app, name, MethodType(getattr(dictation.DictationApp, name), app))
         bus = FrameBus()

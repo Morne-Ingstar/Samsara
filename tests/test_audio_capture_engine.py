@@ -163,6 +163,84 @@ class TestStreamLifecycle:
         assert engine._epochs.n == before + 1
 
 
+class TestPolyphaseFilterCache:
+    """Boot fix 2 (perf_artifacts/boot_profile.md): the (160, 441) filter is
+    deterministic, so it is designed once and then served from a module dict
+    and an .npz under <home>/cache/ -- never redesigned on every boot."""
+
+    @pytest.fixture
+    def mod(self, tmp_path, monkeypatch):
+        import samsara.audio_engine.engine as engine_mod
+
+        monkeypatch.setenv("SAMSARA_HOME_DIR", str(tmp_path))
+        monkeypatch.setattr(engine_mod, "_FILTER_CACHE", {})
+        return engine_mod
+
+    def test_first_call_designs_and_persists_keyed_on_up_down(self, mod, tmp_path):
+        import numpy as np
+
+        h, taps, pre = mod._get_polyphase_filter(160, 441)
+
+        path = mod._filter_cache_path(160, 441)
+        assert path.parent == tmp_path / "cache"
+        assert "160" in path.name and "441" in path.name
+        assert path.is_file()
+        ref_h, ref_taps, ref_pre = mod._design_polyphase_filter(160, 441)
+        assert (taps, pre) == (ref_taps, ref_pre)
+        assert np.array_equal(h, ref_h)
+
+    def test_disk_cache_is_used_without_redesigning(self, mod, monkeypatch):
+        import numpy as np
+
+        first = mod._get_polyphase_filter(160, 441)
+        monkeypatch.setattr(mod, "_FILTER_CACHE", {})      # new process
+        monkeypatch.setattr(mod, "_design_polyphase_filter",
+                            lambda up, down: pytest.fail("redesigned despite disk cache"))
+
+        second = mod._get_polyphase_filter(160, 441)
+
+        assert second[1:] == first[1:]
+        assert np.array_equal(second[0], first[0])
+
+    def test_module_cache_serves_repeat_opens_in_process(self, mod, monkeypatch):
+        first = mod._get_polyphase_filter(1, 3)
+        monkeypatch.setattr(mod, "_load_cached_filter",
+                            lambda up, down: pytest.fail("hit disk for an in-process repeat"))
+        assert mod._get_polyphase_filter(1, 3) is first
+
+    def test_other_ratio_is_not_served_from_a_different_key(self, mod):
+        a = mod._get_polyphase_filter(160, 441)
+        b = mod._get_polyphase_filter(1, 3)
+        assert len(a[0]) != len(b[0])
+        assert mod._filter_cache_path(1, 3) != mod._filter_cache_path(160, 441)
+
+    def test_corrupt_cache_file_falls_back_to_design(self, mod):
+        import numpy as np
+
+        path = mod._filter_cache_path(160, 441)
+        path.parent.mkdir(parents=True, exist_ok=True)
+        path.write_bytes(b"not an npz")
+
+        h, taps, pre = mod._get_polyphase_filter(160, 441)
+
+        ref = mod._design_polyphase_filter(160, 441)
+        assert np.array_equal(h, ref[0]) and (taps, pre) == ref[1:]
+
+    def test_unwritable_cache_dir_still_opens(self, mod, monkeypatch, tmp_path):
+        blocker = tmp_path / "cache"
+        blocker.write_text("a file where the cache dir should be")
+
+        h, taps, _pre = mod._get_polyphase_filter(160, 441)
+
+        assert len(h) == taps * 160
+
+    def test_open_stream_uses_the_cache(self, mod, monkeypatch):
+        sd = _OpenableSD([_dev(FOCUSRITE, 2, rate=44100)])
+        engine = _engine(sd, monkeypatch)
+        engine._open_stream(0)
+        assert mod._filter_cache_path(160, 441).is_file()
+
+
 class TestDeviceLostFlag:
     def test_starts_clear(self, monkeypatch):
         assert _engine(_three_hostapis(), monkeypatch).device_lost is False
