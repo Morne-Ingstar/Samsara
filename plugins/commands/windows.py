@@ -6,6 +6,9 @@ Move windows between monitors by voice.
 "Jarvis, bring everything here"          - move all valid windows to cursor's monitor
 "Jarvis, send Stremio to TV"             - move Stremio to TV monitor
 "Jarvis, send Chrome to monitor 2"       - move Chrome to specific monitor
+"Jarvis, put Warp on the left screen"    - left/right/middle/top/bottom by physical position
+"Jarvis, put Warp on the left screen and Claude on the right"
+                                         - two placements in one sentence, in order
 "Jarvis, movie mode"                     - Stremio to TV fullscreen, optional Hyperion dim
 "Jarvis, move mouse to TV"               - teleport cursor to TV monitor center
 "Jarvis, save layout as work"            - save current window arrangement
@@ -32,6 +35,7 @@ import win32con
 import win32gui
 import win32process
 
+from samsara.command_registry import DispatchResult, DispatchState
 from samsara.plugin_commands import command
 
 logger = logging.getLogger(__name__)
@@ -319,35 +323,167 @@ def _strip_leading_the(s):
     return s[4:] if s.startswith('the ') else s
 
 
-def _parse_destination(dest_text, app):
-    monitors = get_monitors()
-    t = _strip_leading_the(dest_text.lower().strip())
+class UnresolvedDestination:
+    """Explicit "I could not resolve this screen" marker returned by
+    _parse_destination -- falsy, carries the reason, never mistaken for a
+    monitor dict. The handlers turn it into a REJECTED result with
+    'refused: unknown screen ...' so a bad destination is never a silent
+    no-op."""
 
-    if 'tv' in t:
-        return get_tv_monitor(app, monitors)
-    if 'here' in t:
-        return get_monitor_under_cursor(monitors)
-    for word in t.split():
+    __slots__ = ('text', 'reason')
+
+    def __init__(self, text, reason):
+        self.text = text
+        self.reason = reason
+
+    def __bool__(self):
+        return False
+
+    def __repr__(self):
+        return f"UnresolvedDestination({self.text!r}: {self.reason})"
+
+
+_SCREEN_NOUNS = ('screen', 'monitor', 'display')
+_POSITION_WORDS = {
+    'left': 'left', 'right': 'right',
+    'middle': 'middle', 'center': 'middle', 'centre': 'middle', 'central': 'middle',
+    'top': 'top', 'upper': 'top', 'bottom': 'bottom', 'lower': 'bottom',
+}
+_ORDINALS = {'first': 1, 'second': 2, 'third': 3, 'fourth': 4, 'fifth': 5, 'sixth': 6}
+_DESTINATION_WORDS = frozenset(_POSITION_WORDS) | frozenset(_ORDINALS) | {'tv', 'here', 'other', 'main', 'primary'}
+
+
+def _center(m):
+    l, t, r, b = m['rect']
+    return (l + r) / 2.0, (t + b) / 2.0
+
+
+def _monitor_by_position(position, monitors, text=''):
+    """left = smallest x, right = largest x, top/bottom likewise on y,
+    middle = the one between on x -- by physical work-area geometry, never
+    by index or device name."""
+    if not monitors:
+        return UnresolvedDestination(text, 'no monitors')
+    if len(monitors) == 1:
+        return UnresolvedDestination(text, 'only one screen')
+    xs = sorted(monitors, key=lambda m: (_center(m)[0], _center(m)[1]))
+    ys = sorted(monitors, key=lambda m: (_center(m)[1], _center(m)[0]))
+    if position in ('left', 'right'):
+        # Left/right only mean something when the extremes do not share a
+        # column: two stacked screens overlap in x and have no left or right.
+        if xs[0]['rect'][2] > xs[-1]['rect'][0]:
+            return UnresolvedDestination(text, 'screens are stacked, none is left or right')
+        return xs[0] if position == 'left' else xs[-1]
+    if position in ('top', 'bottom'):
+        # Side-by-side screens (even of different heights) overlap in y.
+        if ys[0]['rect'][3] > ys[-1]['rect'][1]:
+            return UnresolvedDestination(text, 'screens are side by side, none is top or bottom')
+        return ys[0] if position == 'top' else ys[-1]
+    if position == 'middle':
+        if len(monitors) < 3:
+            return UnresolvedDestination(text, f'no middle screen with {len(monitors)} monitors')
+        if len(monitors) % 2 == 0:
+            return UnresolvedDestination(text, f'no single middle screen with {len(monitors)} monitors')
+        return xs[len(xs) // 2]
+    return UnresolvedDestination(text, f'unknown position {position!r}')
+
+
+def _parse_destination(dest_text, app, monitors=None):
+    """Resolve spoken destination text to a monitor dict, or an
+    UnresolvedDestination (falsy) saying why.
+
+        tv                       -> configured tv_device, else rightmost
+        here                     -> the monitor under the cursor
+        monitor N / screen N / N -> index N (monitors sorted by x)
+        second screen, third...  -> ordinal index
+        left/right/middle/centre/top/bottom [screen|monitor|display]
+                                 -> by physical position (_monitor_by_position)
+        the other screen         -> the monitor the cursor is NOT on (2 monitors)
+        main / primary [screen]  -> the primary monitor
+    """
+    if monitors is None:
+        monitors = get_monitors()
+    t = _strip_leading_the((dest_text or '').lower().strip())
+    words = t.split()
+    if not words:
+        return UnresolvedDestination(dest_text, 'no destination given')
+
+    if 'tv' in words:
+        m = get_tv_monitor(app, monitors)
+        return m if m else UnresolvedDestination(dest_text, 'no tv monitor')
+    if 'here' in words:
+        m = get_monitor_under_cursor(monitors)
+        return m if m else UnresolvedDestination(dest_text, 'no monitor under the cursor')
+    for word in words:
         if word.isdigit():
             m = get_monitor_by_index(int(word), monitors)
-            if m:
-                return m
-    return None
+            return m if m else UnresolvedDestination(dest_text, f'no monitor {word} (have {len(monitors)})')
+        if word in _ORDINALS:
+            m = get_monitor_by_index(_ORDINALS[word], monitors)
+            return m if m else UnresolvedDestination(dest_text, f'no {word} monitor (have {len(monitors)})')
+    if 'other' in words:
+        if len(monitors) != 2:
+            return UnresolvedDestination(dest_text, f"'other' is ambiguous with {len(monitors)} monitors")
+        here = get_monitor_under_cursor(monitors)
+        return next((m for m in monitors if m is not here), monitors[0])
+    if 'main' in words or 'primary' in words:
+        m = next((m for m in monitors if m.get('primary')), None)
+        return m if m else UnresolvedDestination(dest_text, 'no primary monitor')
+    for word in words:
+        if word in _POSITION_WORDS:
+            return _monitor_by_position(_POSITION_WORDS[word], monitors, dest_text)
+    return UnresolvedDestination(dest_text, 'unknown screen')
+
+
+def _is_destination_text(text):
+    """Does this fragment read as a destination on its own ('left', 'the
+    right screen', 'monitor 2', 'tv')? Pure grammar, no monitor lookup."""
+    words = _strip_leading_the((text or '').lower().strip()).split()
+    if not words:
+        return False
+    return all(w in _DESTINATION_WORDS or w in _SCREEN_NOUNS or w.isdigit() or w == 'the' for w in words) \
+        and any(w in _DESTINATION_WORDS or w.isdigit() for w in words)
 
 
 def _parse_send_remainder(remainder):
-    """Split 'chrome to tv' -> ('chrome', 'tv'), 'this to monitor 2' -> (None, 'monitor 2')."""
+    """Split 'chrome to tv' -> ('chrome', 'tv'), 'this to monitor 2' -> (None, 'monitor 2'),
+    'claude right' / 'warp left screen' -> ('claude', 'right') / ('warp', 'left screen')."""
     r = remainder.lower().strip()
     r = _strip_leading_the(r)
 
-    for sep in (' to the ', ' to ', ' on the ', ' on '):
+    for sep in (' to the ', ' to ', ' on the ', ' on ', ' onto the ', ' onto '):
         if sep in r:
             app_part, dest_part = r.split(sep, 1)
             app_part = app_part.strip()
             app_name = None if app_part in ('', 'this') else app_part
             return app_name, dest_part.strip()
 
+    # "X left" / "X right screen": a trailing destination with no preposition.
+    words = r.split()
+    for cut in range(1, len(words)):
+        tail = ' '.join(words[cut:])
+        if _is_destination_text(tail) and not _is_destination_text(' '.join(words[:cut])):
+            return ' '.join(words[:cut]), tail
     return None, r
+
+
+def _parse_placements(remainder):
+    """Split a compound 'X on the left and Y on the right' / 'X left, Y right'
+    into [(app, destination), ...] in spoken order. A separator only splits
+    when BOTH sides parse to a destination, so an app name containing
+    'and' stays whole."""
+    r = (remainder or '').strip()
+    if not r:
+        return []
+    for sep in (', and ', ' and ', ', ', '; '):
+        if sep not in r.lower():
+            continue
+        idx = r.lower().index(sep)
+        left, right = r[:idx], r[idx + len(sep):]
+        first, second = _parse_send_remainder(left), _parse_send_remainder(right)
+        if first[1] and second[1] and _is_destination_text(first[1]) and _is_destination_text(second[1]):
+            return [first] + _parse_placements(right)
+    return [_parse_send_remainder(r)]
 
 
 # ---------------------------------------------------------------------------
@@ -383,36 +519,97 @@ def handle_bring(app, remainder):
     return True
 
 
+def _windows_for(app_name, extra_ignore):
+    """The window(s) a spoken app name refers to: the alias/process/title
+    match this plugin has always used, then app_verbs' fuzzy live-window
+    resolver (the same one 'focus warp' uses) as a fallback. EnumWindows
+    hands windows back in z-order, top first, so [0] is the most recently
+    active one."""
+    hwnds = find_windows_by_app(app_name, extra_ignore)
+    if hwnds:
+        return hwnds, 'alias'
+    try:
+        from plugins.commands.app_verbs import resolve_window  # noqa: PLC0415
+        match = resolve_window(app_name)
+    except Exception as e:
+        logger.debug("resolve_window(%r) unavailable: %s", app_name, e)
+        match = None
+    if match is not None:
+        return [match[0]], 'resolved'
+    return [], 'none'
+
+
+def _place_one(app_name, dest_text, app, monitors, extra_ignore):
+    """One placement through the single-window path. Returns a detail dict
+    with 'ok' and either what moved or why not."""
+    target = _parse_destination(dest_text, app, monitors)
+    if not target:
+        return {'ok': False, 'app': app_name, 'destination': dest_text,
+                'reason': f"refused: unknown screen '{dest_text}' ({target.reason})"}
+    detail = {'ok': True, 'app': app_name or 'foreground', 'destination': dest_text,
+              'monitor': target['index']}
+    if app_name is None:
+        hwnd = win32gui.GetForegroundWindow()
+        if not hwnd:
+            return {'ok': False, 'app': 'foreground', 'destination': dest_text, 'reason': 'no foreground window'}
+        move_window_to_monitor(hwnd, target)
+        return detail
+    hwnds, how = _windows_for(app_name, extra_ignore)
+    if not hwnds:
+        return {'ok': False, 'app': app_name, 'destination': dest_text,
+                'reason': f"no window found for '{app_name}'"}
+    hwnd = hwnds[0]
+    move_window_to_monitor(hwnd, target)
+    detail['hwnd'] = hwnd
+    detail['resolved_by'] = how
+    if len(hwnds) > 1:
+        detail['note'] = f"{len(hwnds)} {app_name} windows; moved the most recently active one"
+    return detail
+
+
 @command("send", aliases=["move", "put", "throw"], pack="window-management")
 def handle_send(app, remainder):
+    """'send X to <screen>' -- and 'put X on the left screen and Y on the
+    right' (two placements, executed in order). A second placement that
+    fails after the first succeeded is reported as FAILED with the detail
+    naming it: partial completion is never called success and the first
+    move is never undone."""
     logger.info("send: remainder='%s'", remainder)
     extra_ignore = _get_extra_ignore(app)
 
-    app_name, dest_text = _parse_send_remainder(remainder)
-    if not dest_text:
+    placements = _parse_placements(remainder)
+    if not placements or not any(dest for _app, dest in placements):
         logger.warning("send: could not parse destination from '%s'", remainder)
-        return False
+        return DispatchResult(DispatchState.REJECTED, 'send', 'send',
+                              {'reason': f"refused: no destination in '{remainder}'"})
 
-    target = _parse_destination(dest_text, app)
-    if target is None:
-        logger.warning("send: unknown destination '%s'", dest_text)
-        return False
+    monitors = get_monitors()
+    done, outcome = [], None
+    for app_name, dest_text in placements:
+        outcome = _place_one(app_name, dest_text, app, monitors, extra_ignore)
+        if not outcome['ok']:
+            break
+        logger.info("Placed %s on monitor %s", outcome['app'], outcome['monitor'])
+        if outcome.get('note'):
+            print(f"[WINDOWS] {outcome['note']}")
+        done.append(outcome)
 
-    logger.info("Destination: monitor %s", target['index'])
+    if outcome is not None and outcome['ok']:
+        return DispatchResult(DispatchState.COMPLETED, 'send', 'send', {'placements': done})
 
-    if app_name is None:
-        hwnd = win32gui.GetForegroundWindow()
-        if hwnd:
-            move_window_to_monitor(hwnd, target)
-        return True
+    if done:
+        # Partial completion: say exactly what happened.
+        msg = (f"partial: placed {', '.join(d['app'] for d in done)}; "
+               f"could not place {outcome['app']} -- {outcome['reason']}")
+        print(f"[WINDOWS] {msg}")
+        logger.warning("send: %s", msg)
+        return DispatchResult(DispatchState.FAILED, 'send', 'send',
+                              {'partial': True, 'placements': done, 'failed': outcome, 'reason': msg})
 
-    windows = find_windows_by_app(app_name, extra_ignore)
-    if not windows:
-        print(f"[WINDOWS] No windows found for: {app_name}")
-        return True
-    for hwnd in windows:
-        move_window_to_monitor(hwnd, target)
-    return True
+    print(f"[WINDOWS] {outcome['reason']}")
+    logger.warning("send: %s", outcome['reason'])
+    state = DispatchState.REJECTED if outcome['reason'].startswith('refused') else DispatchState.FAILED
+    return DispatchResult(state, 'send', 'send', {'placements': [], 'failed': outcome, 'reason': outcome['reason']})
 
 
 @command("movie mode", aliases=["movie time", "couch mode", "tv mode"], pack="window-management")
@@ -792,41 +989,29 @@ def handle_find_specific(app, remainder):
 def handle_cursor(app, remainder):
     logger.info("cursor: remainder='%s'", remainder)
     monitors = get_monitors()
+    target = _parse_destination(remainder, app, monitors)
+    if target:
+        teleport_cursor(target)
+        return True
 
+    # Not a screen: an app window ("cursor to chrome") -- its centre.
     r = _strip_leading_the(remainder.lower().strip())
-
-    if 'tv' in r:
-        target = get_tv_monitor(app, monitors)
-        if target:
-            teleport_cursor(target)
-        return True
-
-    if 'here' in r:
-        target = get_monitor_under_cursor(monitors)
-        if target:
-            teleport_cursor(target)
-        return True
-
-    for word in r.split():
-        if word.isdigit():
-            target = get_monitor_by_index(int(word), monitors)
-            if target:
-                teleport_cursor(target)
+    windows = find_windows_by_app(r) if r else []
+    if windows:
+        try:
+            rect = win32gui.GetWindowRect(windows[0])
+            cx = (rect[0] + rect[2]) // 2
+            cy = (rect[1] + rect[3]) // 2
+            win32api.SetCursorPos((cx, cy))
+            logger.info("Cursor -> '%s' window center (%d,%d)", r, cx, cy)
             return True
+        except Exception as e:
+            logger.warning("Cursor teleport to app failed: %s", e)
+            return DispatchResult(DispatchState.FAILED, 'cursor to', 'cursor to', {'reason': str(e)})
 
-    if r:
-        windows = find_windows_by_app(r)
-        if windows:
-            try:
-                rect = win32gui.GetWindowRect(windows[0])
-                cx = (rect[0] + rect[2]) // 2
-                cy = (rect[1] + rect[3]) // 2
-                win32api.SetCursorPos((cx, cy))
-                logger.info("Cursor -> '%s' window center (%d,%d)", r, cx, cy)
-            except Exception as e:
-                logger.warning("Cursor teleport to app failed: %s", e)
-
-    return True
+    reason = f"refused: unknown screen or window '{remainder}' ({target.reason})"
+    print(f"[WINDOWS] {reason}")
+    return DispatchResult(DispatchState.REJECTED, 'cursor to', 'cursor to', {'reason': reason})
 
 
 # ---------------------------------------------------------------------------
