@@ -124,8 +124,10 @@ def test_model_worker_waits_for_shell_before_completion(monkeypatch):
     assert kinds.index("complete") < kinds.index("close")
     assert app._startup_failed is False
     app._load_vad_model.assert_called_once_with()
-    app._load_oww_model.assert_called_once_with()
-    app._load_wake_profile_models.assert_called_once_with()
+    # Wake word off: OpenWakeWord is never loaded at boot (boot fix 1; see
+    # tests/test_boot_sequence.py for the lazy wake-load contract).
+    app._load_oww_model.assert_not_called()
+    app._load_wake_profile_models.assert_not_called()
 
 
 def test_startup_failure_keeps_splash_visible_in_error_state(monkeypatch):

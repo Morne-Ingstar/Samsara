@@ -2059,6 +2059,39 @@ def _reap_old_preview_profiles() -> None:
             logger.debug(f"[PREVIEW] Could not reap {path_str}: {e}")
 
 
+class _BootStageTimer:
+    """[BOOT] stage timer with one "last mark" per thread.
+
+    The old closure shared a single last-timestamp between the boot thread
+    and the model thread, so each lane's step durations absorbed the other
+    lane's work (perf_artifacts/boot_profile.md section 4: "ACE audio engine
+    start: 828ms" was really 13,371 ms, "Silero VAD load: 12547ms" was 212 ms).
+    Each thread's first mark measures from begin_thread() if that thread
+    called it, else from timer creation. "total" is always since creation.
+    """
+
+    def __init__(self, log=None):
+        self._t0 = time.monotonic()
+        self._last: dict[int, float] = {}
+        self._lock = threading.Lock()
+        self._log = log or logger.info
+
+    def begin_thread(self) -> None:
+        with self._lock:
+            self._last[threading.get_ident()] = time.monotonic()
+
+    def __call__(self, label: str) -> None:
+        now = time.monotonic()
+        tid = threading.get_ident()
+        with self._lock:
+            last = self._last.get(tid, self._t0)
+            self._last[tid] = now
+        self._log(
+            f"[BOOT] {label}: {(now - last) * 1000:.0f}ms  "
+            f"(total {(now - self._t0) * 1000:.0f}ms, thread={threading.current_thread().name})"
+        )
+
+
 class DictationApp:
     # Config-backup safeguard (2026-07-2x "config wiped to defaults"
     # incident). See save_config()'s rolling-backup step,
@@ -2095,13 +2128,8 @@ class DictationApp:
         self.config_path = samsara_config_path()
         self.config_path.parent.mkdir(parents=True, exist_ok=True)
 
-        # Boot-phase timing -- measure first, fix later.
-        _bt0 = time.monotonic()
-        _btp = [_bt0]  # mutable cell so the closure can write it
-        def _boot(label: str) -> None:
-            now = time.monotonic()
-            logger.info(f"[BOOT] {label}: {(now - _btp[0]) * 1000:.0f}ms  (total {(now - _bt0) * 1000:.0f}ms)")
-            _btp[0] = now
+        # Boot-phase timing, one "last mark" per thread (see _BootStageTimer).
+        _boot = _BootStageTimer()
         self._boot_log = _boot  # expose so load_model_async can use it
 
         # [BOOT-DIAG] perf_counter-based timing for slow-boot diagnosis.
@@ -2304,12 +2332,16 @@ class DictationApp:
         if _dt > 5000:
             logger.info(f"[BOOT-DIAG] SLOW STEP: detect_capture_rate {_dt:.0f}ms")
 
-        # Auto-calibrate speech threshold on startup
+        # Auto-calibrate speech threshold on startup. A calibration of the
+        # same device from the last 24 h is reused instead of recording 1.5 s
+        # on the boot thread; it is then refreshed in the background once
+        # startup completes (see load_model_async).
         _t = time.perf_counter()
-        self._run_calibration_if_auto()
+        _cal_result = self._run_calibration_if_auto(use_cache=True)
+        self._calibration_refresh_due = (_cal_result == 'cached')
         _dt = (time.perf_counter() - _t) * 1000
         _boot("mic calibration")
-        logger.info(f"[BOOT-DIAG] mic calibration (sd.InputStream open+1.5s record): {_dt:.0f}ms")
+        logger.info(f"[BOOT-DIAG] mic calibration ({_cal_result}): {_dt:.0f}ms")
         if _dt > 5000:
             logger.info(f"[BOOT-DIAG] SLOW STEP: mic calibration {_dt:.0f}ms")
 
@@ -2510,6 +2542,17 @@ class DictationApp:
         # Loaded lazily in _load_wake_profile_models() after the Whisper model loads.
         self._wake_profile_detectors: dict = {}
         self._wake_profile_fallback_warned: set = set()
+
+        # Lazy wake-model load (boot fix 1): OpenWakeWord (+ the sklearn import
+        # it drags in) is loaded only when wake listening is first requested,
+        # on its own thread. _wake_models_state is 'off' -> 'loading' ->
+        # 'ready'; wake_ready is set once the detectors exist. A start request
+        # made while loading is remembered in _wake_start_pending and carried
+        # out by the loader. See _request_wake_models / wake_ready_state.
+        self._wake_models_lock = threading.Lock()
+        self._wake_models_state = 'off'
+        self._wake_start_pending = False
+        self.wake_ready = threading.Event()
 
         # Profile isolation: the send_word of whichever wake_profile is
         # CURRENTLY driving an open wake_session, captured at dispatch time
@@ -2748,39 +2791,22 @@ class DictationApp:
 
         # TTS engine + AudioCoordinator (optional; off by default)
         # engine selection: config tts.engine = "winrt" (default) or "edge"
+        # Constructed on a worker once the tray/main window are scheduled
+        # (boot fix 3: `import edge_tts` + engine ctor cost 1.6 s cold on this
+        # thread). Until then both stay None -- every speaker already guards
+        # on that -- and tts_ready is clear.
         self.tts_engine = None
         self.audio_coordinator = None
+        self.tts_ready = threading.Event()
         if self.config.get('tts', {}).get('enabled', False):
-            try:
-                from samsara.tts import WinRTEngine, EdgeTTSEngine, AudioCoordinator
-                from samsara.tts.exceptions import EngineUnavailableError
-                tts_engine_name = self.config.get('tts', {}).get('engine', 'winrt').lower()
-                if tts_engine_name == 'edge':
-                    self.tts_engine = EdgeTTSEngine(output_device=self.output_device)
-                    logger.info("[TTS] Initialized EdgeTTS engine (Azure Neural voices)")
-                else:
-                    self.tts_engine = WinRTEngine(output_device=self.output_device)
-                    logger.info("[TTS] Initialized WinRT engine")
-                self.audio_coordinator = AudioCoordinator(
-                    self,
-                    engine=self.tts_engine,
-                    config=self.config.get('audio_coordinator', {}),
-                )
-                logger.info("[TTS] AudioCoordinator ready")
-            except Exception as e:
-                logger.exception(f"[TTS] Failed to initialize: {e}")
-                self.tts_engine = None
-                self.audio_coordinator = None
-        _boot("TTS engine init")
-        _bdiag("TTS engine init")
-
-        # Ava Front Door spec v2 "Migration": one-time first-run-after-update
-        # notice for the ai_command_mode -> ava_command_session consolidation
-        # (toast + one spoken line). Deliberately no legacy-module compatibility
-        # switch (spec ruling: "keeping the deleted brain alive defeats the
-        # consolidation and doubles the test surface") -- this notice is the
-        # entire migration UX.
-        self._maybe_announce_ava_command_session_migration()
+            thread_registry.spawn("dictation.tts_init", self._tts_init_worker, daemon=True)
+        else:
+            self.tts_ready.set()
+            # Ava Front Door spec v2 "Migration" notice (toast only: no TTS).
+            # With TTS enabled the worker announces once the engine exists.
+            self._maybe_announce_ava_command_session_migration()
+        _boot("TTS engine init (deferred)")
+        _bdiag("TTS engine init (deferred)")
 
         # Smart Actions Phase 2: webhook bridge, session manager, tool dispatcher
         try:
@@ -2881,27 +2907,12 @@ class DictationApp:
                 f"model (no .en suffix) or transcription will stay in English."
             )
 
-        _model_folder = f"models--Systran--faster-whisper-{_model_size}"
-        _model_cache = os.path.join(
-            os.path.expanduser("~"), ".cache", "huggingface", "hub", _model_folder
-        )
-        if os.path.exists(_model_cache):
-            self.update_splash(
-                "Loading speech model...", 50,
-                "Preparing local speech recognition",
-            )
-        else:
-            self.update_splash(
-                "Downloading speech model...", 50,
-                "First download only; this may take a few minutes",
-            )
-
-        # Load model in background
-        self.load_model_async()
-        _boot("model load kicked off (async)")
-        _bdiag("model load kicked off (async)")
-
         # ACE engine — always started for hold-mode dictation (ACE-03).
+        # Started BEFORE load_model_async() (boot fix 2): the model thread's
+        # cold CUDA/ctranslate2 DLL loads starved this thread's resample-filter
+        # design for 12-13 s on cold boots, holding back the tray and main
+        # window (perf_artifacts/boot_profile.md section 3). The filter itself
+        # is now cached on disk too (audio_engine.engine._get_polyphase_filter).
         # DictationSessionConsumer replaces the bespoke prebuffer + audio_callback path.
         # DebugRecorder is optional: set config["ace_debug_capture"] = true to enable.
         self._ace_engine           = None
@@ -2929,9 +2940,30 @@ class DictationApp:
         if self.config.get('ace_debug_capture', False) and self._ace_engine is not None:
             self._start_ace_debug_rec()
         _boot("ACE audio engine start")
+        _bdiag("ACE audio engine start")
         logger.info(f"[BOOT-DIAG] _start_ace_engine (total): {_dt:.0f}ms")
         if _dt > 5000:
             logger.info(f"[BOOT-DIAG] SLOW STEP: _start_ace_engine {_dt:.0f}ms")
+
+        _model_folder = f"models--Systran--faster-whisper-{_model_size}"
+        _model_cache = os.path.join(
+            os.path.expanduser("~"), ".cache", "huggingface", "hub", _model_folder
+        )
+        if os.path.exists(_model_cache):
+            self.update_splash(
+                "Loading speech model...", 50,
+                "Preparing local speech recognition",
+            )
+        else:
+            self.update_splash(
+                "Downloading speech model...", 50,
+                "First download only; this may take a few minutes",
+            )
+
+        # Load model in background
+        self.load_model_async()
+        _boot("model load kicked off (async)")
+        _bdiag("model load kicked off (async)")
 
         self.update_splash(
             "Audio capture ready...", 60,
@@ -2976,6 +3008,50 @@ class DictationApp:
             logger.warning(f"[CONFIG] File watcher unavailable: {_cw_err}")
 
         self.create_tray_icon()
+
+    def _tts_init_worker(self) -> None:
+        """Build the TTS engine + AudioCoordinator off the boot thread, after
+        create_tray_icon() has scheduled the tray and main window. Publishes
+        the coordinator last so a speaker never sees a coordinator without
+        its engine, then runs the startup announcements that need a voice."""
+        shell_ready = getattr(self, "_startup_shell_ready", None)
+        if shell_ready is not None:
+            shell_ready.wait()
+        _t = time.perf_counter()
+        try:
+            from samsara.tts import WinRTEngine, EdgeTTSEngine, AudioCoordinator
+            tts_engine_name = self.config.get('tts', {}).get('engine', 'winrt').lower()
+            if tts_engine_name == 'edge':
+                engine = EdgeTTSEngine(output_device=self.output_device)
+                logger.info("[TTS] Initialized EdgeTTS engine (Azure Neural voices)")
+            else:
+                engine = WinRTEngine(output_device=self.output_device)
+                logger.info("[TTS] Initialized WinRT engine")
+            coordinator = AudioCoordinator(
+                self,
+                engine=engine,
+                config=self.config.get('audio_coordinator', {}),
+            )
+            self.tts_engine = engine
+            self.audio_coordinator = coordinator
+            logger.info(f"[TTS] AudioCoordinator ready (tts_ready in "
+                        f"{(time.perf_counter() - _t) * 1000:.0f}ms, off the boot thread)")
+        except Exception as e:
+            logger.exception(f"[TTS] Failed to initialize: {e}")
+            self.tts_engine = None
+            self.audio_coordinator = None
+        finally:
+            self.tts_ready.set()
+        # Ava Front Door spec v2 "Migration": one-time first-run-after-update
+        # notice for the ai_command_mode -> ava_command_session consolidation
+        # (toast + one spoken line). Deliberately no legacy-module compatibility
+        # switch (spec ruling: "keeping the deleted brain alive defeats the
+        # consolidation and doubles the test surface") -- this notice is the
+        # entire migration UX.
+        try:
+            self._maybe_announce_ava_command_session_migration()
+        except Exception as e:
+            logger.debug(f"[TTS] Startup announcement failed: {e}")
 
     def update_splash(self, status, progress=None, detail=None, *, error=False):
         """Update startup state without allowing concurrent phases to regress.
@@ -3699,13 +3775,26 @@ class DictationApp:
                 _existing_file_unreadable = True
 
         if _loaded_from_disk:
-            # Migrate old flat wake word config to new nested structure
-            logger.debug("[CONFIG] load_config: starting _migrate_wake_word_config")
-            self._migrate_wake_word_config(default_config)
-            logger.debug("[CONFIG] load_config: _migrate_wake_word_config done")
+            # Migration saves write self.config as-is, bypassing save_config's
+            # three-way merge. The merge has no notion of "deleted in memory":
+            # a key absent from memory but present on disk is taken from disk,
+            # so every migration that pops a legacy key (wake_targets,
+            # command_mode_enabled, ai_command_mode) had it restored by its own
+            # save and re-ran on every boot (perf_artifacts/boot_profile.md
+            # section 4). Safe here: self.config was read from that file a
+            # moment ago under _config_lock, so there is no external edit to
+            # preserve.
+            self._config_migration_save = True
+            try:
+                # Migrate old flat wake word config to new nested structure
+                logger.debug("[CONFIG] load_config: starting _migrate_wake_word_config")
+                self._migrate_wake_word_config(default_config)
+                logger.debug("[CONFIG] load_config: _migrate_wake_word_config done")
 
-            self._migrate_command_matching_enabled_flag()
-            self._migrate_ai_command_mode_config()
+                self._migrate_command_matching_enabled_flag()
+                self._migrate_ai_command_mode_config()
+            finally:
+                self._config_migration_save = False
 
             # Fill in any missing top-level keys
             for key in default_config:
@@ -4150,8 +4239,10 @@ class DictationApp:
             #    External edits (keys changed on disk since our last read/write)
             #    are preserved unless the app also changed the same key at
             #    runtime (in which case the runtime value wins).
+            #    Skipped for load_config's migration saves -- see
+            #    _config_migration_save there.
             merged = self.config
-            if self.config_path.exists():
+            if self.config_path.exists() and not getattr(self, '_config_migration_save', False):
                 try:
                     with open(self.config_path, 'r') as f:
                         on_disk = json.load(f)
@@ -4283,7 +4374,9 @@ class DictationApp:
             self.capture_rate = self._detect_capture_rate(changes['microphone'])
         if 'gesture' in changes:
             self.set_gesture_enabled(changes['gesture'].get('enabled', False))
-        if 'wake_word_config' in changes:
+        # Only rebuild a detector that has been loaded: before the lazy wake
+        # load (or while it runs) the loader picks the new phrase up itself.
+        if 'wake_word_config' in changes and self.wake_ready_state() == 'ready':
             new_phrase = changes['wake_word_config'].get('phrase', '')
             old_phrase = (
                 (self._wake_detector._wake_phrase if self._wake_detector else '')
@@ -4399,7 +4492,7 @@ class DictationApp:
                 self.capture_rate = self._detect_capture_rate(changed['microphone'][1])
             except Exception as e:
                 logger.exception(f"[CONFIG] capture_rate update error: {e}")
-        if 'wake_word_config' in changed:
+        if 'wake_word_config' in changed and self.wake_ready_state() == 'ready':
             try:
                 new_ww = changed['wake_word_config'][1]
                 if isinstance(new_ww, dict):
@@ -4453,15 +4546,77 @@ class DictationApp:
             logger.exception(f"[WARN] Could not query device {device_id} rate: {e}")
         return DEFAULT_CAPTURE_RATE
 
-    def _run_calibration_if_auto(self):
-        """Run mic calibration if threshold_mode is 'auto'. Updates config in place."""
-        mode = self.config.get('threshold_mode', 'auto')
-        if mode != 'auto':
-            thresh = self.config.get('wake_word_config', {}).get('audio', {}).get(
-                'speech_threshold', DEFAULT_SPEECH_THRESHOLD)
-            logger.debug(f"[CAL] Threshold mode: manual ({thresh:.4f})")
-            return
+    # Persisted auto-calibration (boot fix 4, perf_artifacts/boot_profile.md):
+    # a separate file, not config.json, so a boot that reuses or refreshes a
+    # calibration never rotates a config backup.
+    _CALIBRATION_CACHE_FILENAME = "mic_calibration.json"
+    _CALIBRATION_MAX_AGE_S = 24 * 3600
 
+    def _calibration_identity(self) -> dict:
+        """What a stored calibration must match to be reused: same device
+        (by name when known -- PortAudio indices shift -- else by index),
+        same capture rate, same multiplier."""
+        return {
+            'device_id': self.config.get('microphone'),
+            'device_name': self.config.get('microphone_name'),
+            'capture_rate': int(getattr(self, 'capture_rate', 0) or 0),
+            'multiplier': float(self.config.get('cal_multiplier', 3.0)),
+        }
+
+    def _calibration_cache_path(self) -> Path:
+        return self.config_path.parent / self._CALIBRATION_CACHE_FILENAME
+
+    def _load_fresh_calibration(self, now: "float | None" = None) -> "float | None":
+        """Threshold from the calibration cache if it belongs to the current
+        device and is younger than _CALIBRATION_MAX_AGE_S, else None."""
+        path = self._calibration_cache_path()
+        try:
+            with open(path, 'r', encoding='utf-8') as f:
+                stored = json.load(f)
+        except FileNotFoundError:
+            return None
+        except (OSError, ValueError) as e:
+            logger.warning(f"[CAL] Ignoring unreadable calibration cache: {e}")
+            return None
+        if not isinstance(stored, dict):
+            return None
+        ident = self._calibration_identity()
+        if ident['device_name'] and stored.get('device_name'):
+            same_device = stored.get('device_name') == ident['device_name']
+        else:
+            same_device = stored.get('device_id') == ident['device_id']
+        if not same_device:
+            return None
+        if stored.get('capture_rate') != ident['capture_rate']:
+            return None
+        if stored.get('multiplier') != ident['multiplier']:
+            return None
+        try:
+            age = (time.time() if now is None else now) - float(stored['calibrated_at'])
+            threshold = float(stored['threshold'])
+        except (KeyError, TypeError, ValueError):
+            return None
+        if not (0 <= age < self._CALIBRATION_MAX_AGE_S) or not math.isfinite(threshold):
+            return None
+        return threshold
+
+    def _save_calibration(self, threshold: float) -> None:
+        """Persist a measured threshold with its device identity. Never raises."""
+        path = self._calibration_cache_path()
+        record = dict(self._calibration_identity(),
+                      threshold=float(threshold), calibrated_at=time.time())
+        tmp = path.with_suffix('.json.tmp')
+        try:
+            with open(tmp, 'w', encoding='utf-8') as f:
+                json.dump(record, f, indent=2)
+            os.replace(tmp, path)
+        except OSError as e:
+            logger.warning(f"[CAL] Could not persist calibration: {e}")
+
+    def _measure_speech_threshold(self) -> "tuple[float, bool]":
+        """Record ambient noise and derive a threshold. Returns (threshold,
+        measured_ok); a failed or empty recording yields the default and
+        False so it is never persisted as a real calibration."""
         mic_id = self.config.get('microphone')
         multiplier = self.config.get('cal_multiplier', 3.0)
         try:
@@ -4470,17 +4625,69 @@ class DictationApp:
             ambient = float(np.median(rms_samples)) if rms_samples else 0.0
             logger.debug(f"[CAL] Ambient RMS: {ambient:.4f} | "
                   f"Multiplier: {multiplier}x | Threshold: {threshold:.4f}")
+            return threshold, len(rms_samples) >= 3
         except Exception as e:
             threshold = DEFAULT_SPEECH_THRESHOLD
             logger.exception(f"[CAL] Calibration failed ({e}), using default {threshold:.4f}")
+            return threshold, False
 
-        # Apply to wake word audio config
+    def _apply_speech_threshold(self, threshold: float) -> None:
+        """Apply to wake word audio config (in memory; persisted by the next save)."""
         with self._config_lock:
             ww_config = self.config.get('wake_word_config', {})
             if 'audio' not in ww_config:
                 ww_config['audio'] = {}
             ww_config['audio']['speech_threshold'] = threshold
             self.config['wake_word_config'] = ww_config
+
+    def _run_calibration_if_auto(self, use_cache=False):
+        """Run mic calibration if threshold_mode is 'auto'. Updates config in place.
+
+        use_cache=True (boot only) reuses a fresh calibration of the same
+        device instead of recording. Every other caller (manual recalibrate,
+        microphone switch) always records. Returns 'manual', 'cached',
+        'measured' or 'failed'.
+        """
+        mode = self.config.get('threshold_mode', 'auto')
+        if mode != 'auto':
+            thresh = self.config.get('wake_word_config', {}).get('audio', {}).get(
+                'speech_threshold', DEFAULT_SPEECH_THRESHOLD)
+            logger.debug(f"[CAL] Threshold mode: manual ({thresh:.4f})")
+            return 'manual'
+
+        if use_cache:
+            cached = self._load_fresh_calibration()
+            if cached is not None:
+                logger.info(f"[CAL] Reusing calibration from the last 24 h "
+                            f"(threshold {cached:.4f}); refreshing after startup")
+                self._apply_speech_threshold(cached)
+                return 'cached'
+
+        threshold, ok = self._measure_speech_threshold()
+        if ok:
+            self._save_calibration(threshold)
+        self._apply_speech_threshold(threshold)
+        return 'measured' if ok else 'failed'
+
+    def _refresh_calibration_in_background(self) -> None:
+        """Re-measure after startup when boot reused a stored calibration, so
+        a changed room still gets picked up. Skipped (and the stored value
+        kept) if a hold-to-dictate recording is live at either end of the
+        1.5 s window -- the user's own speech must not become "ambient"."""
+        def _do():
+            if self.config.get('threshold_mode', 'auto') != 'auto':
+                return
+            if getattr(self, 'recording', False):
+                logger.info("[CAL] Background recalibration skipped: recording in progress")
+                return
+            threshold, ok = self._measure_speech_threshold()
+            if not ok or getattr(self, 'recording', False):
+                logger.info("[CAL] Background recalibration discarded")
+                return
+            self._save_calibration(threshold)
+            self._apply_speech_threshold(threshold)
+            logger.info(f"[CAL] Background recalibration: threshold {threshold:.4f}")
+        thread_registry.spawn("dictation.calibration_refresh", _do, daemon=True)
 
     def recalibrate_mic(self):
         """Re-run calibration in background and update config."""
@@ -5217,6 +5424,9 @@ class DictationApp:
 
         def load():
           try:
+            _boot_log = getattr(self, '_boot_log', lambda s: None)
+            if hasattr(_boot_log, 'begin_thread'):
+                _boot_log.begin_thread()
             self.loading_model = True
             logger.info("[INIT] Loading Whisper model...")
             
@@ -5274,12 +5484,12 @@ class DictationApp:
             self.model_loaded = True
             self.loading_model = False
             logger.info(f"[OK] Model loaded in {load_time:.1f}s ({device}, {compute_type})")
+            _boot_log("async: Whisper model load (hotkey dictation ready)")
             self.update_splash(
                 "Speech model ready...", 70,
                 f"Loaded on {device.upper()} in {load_time:.1f} seconds",
             )
 
-            _boot_log = getattr(self, '_boot_log', lambda s: None)
             logger.info("[INIT] Loading Silero VAD...")
             self.update_splash(
                 "Calibrating speech detection...", 76,
@@ -5290,14 +5500,14 @@ class DictationApp:
             self._load_vad_model()
             _boot_log("async: Silero VAD load")
 
-            logger.info("[INIT] Loading OpenWakeWord pre-filter...")
-            self.update_splash(
-                "Preparing wake words...", 82,
-                "Loading wake detection and voice profiles",
-            )
-            self._load_oww_model()
-            self._load_wake_profile_models()
-            _boot_log("async: OpenWakeWord model load")
+            # OpenWakeWord is NOT loaded here any more (boot fix 1): with wake
+            # listening off it is never needed, and with it on the
+            # start_wake_word_mode() call below hands the load to its own
+            # thread, so "Ready" never waits on it.
+            if self.config.get('wake_word_enabled', False):
+                logger.info("[INIT] OpenWakeWord deferred to its own thread (wake word on)")
+            else:
+                logger.info("[INIT] OpenWakeWord not loaded (wake word off; loads on first enable)")
 
             logger.info("Ready for dictation.")
 
@@ -5357,11 +5567,13 @@ class DictationApp:
             if hasattr(self, 'listening_indicator'):
                 self._schedule_ui(self.listening_indicator.set_listening, False)
 
-            self.update_splash(
-                "Samsara ready", 100,
-                "All configured systems are ready",
-            )
-            logger.info("[INIT] Startup complete.")
+            _ready_detail = "All configured systems are ready"
+            if self.config.get('wake_word_enabled', False) and \
+                    self.wake_ready_state() != 'ready':
+                _ready_detail = "Dictation ready; wake word still loading"
+            self.update_splash("Samsara ready", 100, _ready_detail)
+            logger.info(f"[INIT] Startup complete. (wake: {self.wake_ready_state()})")
+            _boot_log("async: startup complete")
 
             # Config-backup safeguard: only NOW, having reached "startup
             # complete" without raising anywhere above in this closure, is
@@ -5370,13 +5582,18 @@ class DictationApp:
             # can never become LKG. See _write_last_known_good().
             self._write_last_known_good()
 
+            # Boot reused a stored calibration: refresh it now, off the boot path.
+            if getattr(self, '_calibration_refresh_due', False):
+                self._calibration_refresh_due = False
+                self._refresh_calibration_in_background()
+
             # Completion animation and minimum display timing belong to the
             # splash.  Only request dismissal after Startup complete is true.
             try:
                 splash = getattr(self, "splash", None)
                 if splash is not None:
                     if hasattr(splash, "complete"):
-                        splash.complete("Samsara ready", "All configured systems are ready")
+                        splash.complete("Samsara ready", _ready_detail)
                     self._schedule_ui(self._close_splash_post_load)
             except Exception as e:
                 logger.exception(f"[SPLASH] Could not complete splash: {e}")
@@ -6173,24 +6390,32 @@ class DictationApp:
             # to either the legacy COMMAND lane or the curated exact-command
             # branch of the combined hands-free lane. The preference governing
             # opportunistic matching during ordinary dictation does not apply.
-            result, was_command = self.command_executor.process_text(
+            dispatch = self.command_executor.process_text(
                 text, self, force_commands=True,
             )
+            result, was_command = dispatch
+            # DispatchResult.state; a plain (result, bool) tuple from an
+            # older/stub executor only knows claimed-or-not.
+            state = getattr(getattr(dispatch, 'state', None), 'value', None) or (
+                'completed' if was_command else 'miss')
             if was_command:
+                # Claimed, whatever the state: a failed or refused command is
+                # still a command -- not a miss, never dictation.
+                carried_out = state in ('completed', 'queued', 'matched')
                 _store_cmd = self.command_executor.commands.get(result) or {'type': 'plugin'}
-                if (result
+                if (carried_out and result
                         and not _is_repeat_blacklisted(result, _store_cmd)
                         and self.command_executor.find_command(result) == result):
                     self._last_command = _store_cmd
                     self._last_command_name = result
-                if result:
+                if carried_out and result:
                     increment_command_count(result)
                 self.add_to_history(text, is_command=True)
                 self._log_history(
                     raw_text=text,
                     duration_ms=int(audio_duration * 1000),
                     mode='command',
-                    status='success',
+                    status='success' if carried_out else state,
                     entry_type='command',
                     matched_command=str(result) if result else None,
                 )
@@ -6201,7 +6426,7 @@ class DictationApp:
                     # Inactivity timer reset happens once, uniformly, in
                     # _handle_session_dispatch_outcome (the single chokepoint)
                     # after dispatch_utterance returns -- not duplicated here.
-                return CommandDispatchResult(matched=True, phrase=result)
+                return CommandDispatchResult(matched=True, phrase=result, state=state)
 
             logger.info(f'[CMD] No command matched: "{text}"')
             if (self.command_mode_active
@@ -6472,7 +6697,16 @@ class DictationApp:
         """
         if self._try_cancel_pending_ava_utterance(text):
             return
+        # Stop path independent of understanding (execution_policy.stop_all):
+        # an exact stop/cancel utterance never queues behind the model.
+        if self._try_stop_utterance(text, 'ava session'):
+            return
         payload_text = f"STAGED TEXT:\n{context}\n\n{text}" if context else text
+        # Request identity: captured at the moment the user spoke. Queue
+        # items are (generation, text), never bare strings -- see
+        # _on_ava_session_request_done, which skips stale ones.
+        from samsara import execution_policy  # noqa: PLC0415
+        request = (execution_policy.current_generation(self), payload_text)
 
         with self._ava_session_dispatch_lock:
             if self._ava_session_request_in_flight:
@@ -6482,15 +6716,33 @@ class DictationApp:
                     # reuse scratch_refuse (Phase 1's "this didn't go
                     # through" sound) rather than adding a new asset.
                     self.play_sound('scratch_refuse')
-                self._ava_session_dispatch_queue.append(payload_text)
+                self._ava_session_dispatch_queue.append(request)
                 return
             self._ava_session_request_in_flight = True
 
-        self._start_ava_session_worker(payload_text)
+        self._start_ava_session_worker(request)
 
-    def _start_ava_session_worker(self, payload_text: str) -> None:
+    def _start_ava_session_worker(self, request) -> None:
         from plugins.commands.ask_ollama import handle_ask_ava
-        handle_ask_ava(self, remainder=payload_text, on_done=self._on_ava_session_request_done)
+        generation, payload_text = request if isinstance(request, tuple) else (None, request)
+        handle_ask_ava(self, remainder=payload_text, on_done=self._on_ava_session_request_done,
+                       generation=generation)
+
+    def _try_stop_utterance(self, text: str, lane: str) -> bool:
+        """Exact "stop"/"cancel"/"never mind"/"go to sleep" spoken into an
+        Ava lane: invalidate every earlier request right now (generation
+        bump + queues + pending + schedule), keep drafts, say so. Runs
+        BEFORE anything is queued behind the inference worker."""
+        from samsara import execution_policy  # noqa: PLC0415
+        if not execution_policy.is_stop_utterance(text):
+            return False
+        cleared = execution_policy.stop_all(self, f'voice stop ({lane})')
+        try:
+            if cleared["pending"] or cleared["schedule"] or cleared["queued"] or cleared["in_flight"]:
+                self.play_sound('stop')
+        except Exception as exc:
+            logger.debug(f"[POLICY] stop earcon failed: {exc}")
+        return True
 
     def _on_ava_session_request_done(self) -> None:
         """handle_ask_ava's on_done hook -- fires exactly once per request
@@ -6513,13 +6765,20 @@ class DictationApp:
         if _chip is not None:
             from samsara.session_modes import CHIP_CHECK
             _chip(f"Ava {CHIP_CHECK}", "success")
+        from samsara import execution_policy  # noqa: PLC0415
         with self._ava_session_dispatch_lock:
-            if self._ava_session_dispatch_queue:
-                next_text = self._ava_session_dispatch_queue.popleft()
-            else:
+            next_request = None
+            while self._ava_session_dispatch_queue:
+                candidate = self._ava_session_dispatch_queue.popleft()
+                gen = candidate[0] if isinstance(candidate, tuple) else None
+                if execution_policy.is_current(self, gen):
+                    next_request = candidate
+                    break
+                logger.info('[AVA-SESSION] Dropping stale queued request (gen %s)', gen)
+            if next_request is None:
                 self._ava_session_request_in_flight = False
                 return
-        self._start_ava_session_worker(next_text)
+        self._start_ava_session_worker(next_request)
 
     # Session mode badge (COMMAND/DICTATE/AVA) accent colors. Lives on the
     # listening indicator pill -- NEVER on samsara.ui.status_overlay (the
@@ -6676,6 +6935,14 @@ class DictationApp:
             logger.info(f"[CMD MODE] Ghost tap ({hold_ms:.0f}ms < {debounce_ms}ms) — audio will be discarded")
         logger.info("[CMD MODE] Exiting command mode")
         self._cancel_command_mode_inactivity_timer()
+        # Session exit is a cancellation: every Ava request captured during
+        # this session (queued, in flight, or staged for "yes") is now stale
+        # and Denied at the execution-policy choke point. Drafts untouched.
+        try:
+            from samsara import execution_policy  # noqa: PLC0415
+            execution_policy.stop_all(self, 'session exit', chip=False)
+        except Exception as exc:
+            logger.debug(f"[POLICY] stop_all on session exit failed: {exc}")
         is_toggle_session = self.config.get('command_mode', {}).get('mode', 'hold') == 'toggle'
         try:
             # Session end discards all state. A future toggle entry chooses
@@ -6898,6 +7165,15 @@ class DictationApp:
         self._ava_cmd_ready.set()  # Unblock utterance gate if cue is still playing
         self._cancel_ava_cmd_inactivity_timer()
         logger.info("[AVA-CMD] Exiting Ava command session")
+        # Exit is a cancellation for everything staged/queued/in flight
+        # under the old generation (pending confirmation, scheduler, AVA
+        # queue). The generation was bumped above under the lock, so only
+        # the clearing half runs here. Drafts are untouched.
+        try:
+            from samsara import execution_policy  # noqa: PLC0415
+            execution_policy.stop_all(self, 'ava command session exit', chip=False, bump=False)
+        except Exception as e:
+            logger.debug(f"[AVA-CMD] stop_all on exit failed: {e}")
         if hasattr(self, 'listening_indicator'):
             self._schedule_ui(self.listening_indicator.set_command_mode, False)
             self._schedule_ui(self.listening_indicator.set_session_mode, None, None)
@@ -7051,6 +7327,12 @@ class DictationApp:
                 self._handle_unified_scratch_that()
                 return
 
+            # Stop path (execution_policy.stop_all): "stop"/"cancel"/"ava
+            # cancel" bump the generation and empty the backlog HERE, on the
+            # utterance thread, never behind the waterfall/inference queue.
+            if self._try_stop_utterance(text, 'ava command session'):
+                return
+
             from samsara.ava_command_session import enqueue_utterance  # noqa: PLC0415
             enqueue_utterance(self, entry_generation, text)
         except Exception as exc:
@@ -7081,6 +7363,11 @@ class DictationApp:
         if not _is_pending_cancel_utterance(text):
             return False
         self._try_cancel_pending_ava_utterance(text)
+        try:
+            from samsara import execution_policy  # noqa: PLC0415
+            execution_policy.bump_generation(self, 'wake sleep')
+        except Exception as exc:
+            logger.debug(f"[POLICY] generation bump on wake sleep failed: {exc}")
         timer = getattr(self, 'wake_word_timer', None)
         if timer is not None:
             timer.cancel()
@@ -7106,6 +7393,8 @@ class DictationApp:
         of that setting. Only text that doesn't match anything registered
         falls through to Ollama below, unchanged."""
         if self._try_cancel_pending_ava_utterance(text):
+            return
+        if self._try_stop_utterance(text, 'hold ava'):
             return
         result, was_command = self.command_executor.process_text(
             text, self, force_commands=True)
@@ -7529,10 +7818,17 @@ class DictationApp:
             logger.info('[SESSION] Hands-free command rejected by anti-hallucination gate; '
                         'pending text retained')
             self.play_sound('scratch_refuse')
-        elif outcome.kind == "hands_free_command_failed":
-            logger.error('[SESSION] Reserved hands-free command failed to execute: %r',
-                         outcome.detail)
-            self.play_sound('error')
+        elif outcome.kind in ("hands_free_command_failed", "command_failed"):
+            # Recognised command that did not carry out (failed, refused by
+            # debounce/policy, or cancelled). Refusals get the "didn't go
+            # through" sound; genuine failures the error earcon.
+            state = outcome.detail.get('state')
+            if state in ('rejected', 'cancelled'):
+                logger.info('[SESSION] Command %s: %r', state, outcome.detail)
+                self.play_sound('scratch_refuse')
+            else:
+                logger.error('[SESSION] Command failed to execute: %r', outcome.detail)
+                self.play_sound('error')
         elif outcome.kind == "ava_entry_failed":
             # 2026-09-11: AVA entry must never fail silently. The session
             # already logged the reason at WARNING and stayed in the previous
@@ -7854,7 +8150,7 @@ class DictationApp:
 
     def toggle_wake_word_mode(self):
         """Toggle wake word listening mode"""
-        if self.wake_word_active:
+        if self.wake_word_active or getattr(self, '_wake_start_pending', False):
             self.stop_wake_word_mode()
         else:
             self.start_wake_word_mode()
@@ -8239,11 +8535,87 @@ class DictationApp:
         except Exception as exc:
             logger.warning(f"[DUCK] Failed to restore capture duck: {exc}")
 
+    def wake_ready_state(self) -> str:
+        """'off' (wake models never requested), 'loading' or 'ready'. Shown by
+        the tray tooltip/menu and the splash's final detail line. An app
+        built without the lazy-load state (test doubles) reports 'ready'."""
+        if not hasattr(self, '_wake_models_lock'):
+            return 'ready'
+        return self._wake_models_state
+
+    def _request_wake_models(self, start_listening: bool) -> bool:
+        """Ensure the OpenWakeWord detectors are (being) loaded. Returns True
+        when they are ready now. Otherwise starts the loader thread if it is
+        not already running and, if start_listening, records the request
+        under the same lock the loader reads it with, so a load finishing
+        concurrently can never drop it."""
+        if not hasattr(self, '_wake_models_lock'):
+            return True
+        with self._wake_models_lock:
+            if self._wake_models_state == 'ready':
+                return True
+            if start_listening:
+                self._wake_start_pending = True
+            if self._wake_models_state == 'loading':
+                return False
+            self._wake_models_state = 'loading'
+        logger.info("[WAKE] Loading wake word models on their own thread "
+                    "(listening starts when ready)")
+        thread_registry.spawn("dictation.wake_models_load",
+                              self._wake_models_load_worker, daemon=True)
+        self._publish_wake_state()
+        return False
+
+    def _cancel_pending_wake_start(self) -> None:
+        if hasattr(self, '_wake_models_lock'):
+            with self._wake_models_lock:
+                self._wake_start_pending = False
+
+    def _wake_models_load_worker(self) -> None:
+        _t = time.perf_counter()
+        try:
+            self._load_oww_model()
+            self._load_wake_profile_models()
+            # The phrase may have changed while loading (update_config skips
+            # rebuilding a detector that doesn't exist yet) -- honour it.
+            phrase = self.config.get('wake_word_config', {}).get('phrase', 'jarvis')
+            detector = self._wake_detector
+            if detector is not None and phrase.lower().strip() != detector._wake_phrase:
+                oww_threshold = float(self.config.get('wake_word_config', {}).get('oww_threshold', 0.2))
+                self._wake_detector = WakeWordDetector(phrase, threshold=oww_threshold)
+        except Exception as exc:
+            # Detector construction never raises by contract; if something
+            # else did, wake listening still works via the Whisper fallback.
+            logger.exception(f"[WAKE] Wake model load failed: {exc}")
+        with self._wake_models_lock:
+            self._wake_models_state = 'ready'
+            start = self._wake_start_pending
+            self._wake_start_pending = False
+        self.wake_ready.set()
+        logger.info(f"[WAKE] wake_ready: models loaded in "
+                    f"{(time.perf_counter() - _t) * 1000:.0f}ms")
+        self._publish_wake_state()
+        if start and not self.wake_word_active:
+            self.start_wake_word_mode()
+
+    def _publish_wake_state(self) -> None:
+        """Push wake loading/ready to the tray tooltip and indicator label."""
+        try:
+            self._update_tray_tooltip()
+            if getattr(self, 'listening_indicator', None) is not None:
+                self._schedule_ui(self.listening_indicator.set_mode, self._get_mode_display())
+        except Exception as exc:
+            logger.debug(f"[WAKE] Could not publish wake state: {exc}")
+
     def start_wake_word_mode(self):
         """Start wake word listening — always listening for wake word."""
         if not self.model_loaded:
             if self.loading_model:
                 logger.info("Model still loading, please wait...")
+            return
+        # OpenWakeWord loads lazily on first use; the loader calls back into
+        # here once the detectors exist (earcon + ACTIVE state only then).
+        if not self._request_wake_models(start_listening=True):
             return
 
         self._start_hands_free_idle_duck()
@@ -8281,6 +8653,7 @@ class DictationApp:
 
     def stop_wake_word_mode(self):
         """Stop wake word listening mode."""
+        self._cancel_pending_wake_start()
         self.set_app_state(wake_word_active=False)
         self.wake_word_triggered = False
         self._stop_hands_free_idle_duck()
@@ -11918,7 +12291,8 @@ class DictationApp:
         if enabled and not self.wake_word_active:
             self.start_wake_word_mode()
             logger.info("[WAKE] Wake word listener ENABLED")
-        elif not enabled and self.wake_word_active:
+        elif not enabled and (self.wake_word_active
+                              or getattr(self, '_wake_start_pending', False)):
             self.stop_wake_word_mode()
             logger.info("[WAKE] Wake word listener DISABLED")
         # Update tray tooltip
@@ -11990,6 +12364,9 @@ class DictationApp:
         """Build a display string for the current mode + wake word state."""
         mode = self.config.get('mode', 'hold').title()
         if self.config.get('wake_word_enabled', False):
+            wake_state = getattr(self, '_wake_models_state', 'ready')
+            if wake_state != 'ready':
+                return f"{mode} + Wake (loading)"
             return f"{mode} + Wake"
         return mode
 

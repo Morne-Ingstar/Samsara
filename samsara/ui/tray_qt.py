@@ -340,7 +340,14 @@ class SamsaraTrayQt(QObject):
 
         # ---- Wake word ----
         ww_phrase = app.config.get('wake_word_config', {}).get('phrase', DEFAULT_WAKE_PHRASE)
-        ww_act = menu.addAction(f"Wake Word  ({ww_phrase})")
+        ww_label = f"Wake Word  ({ww_phrase})"
+        # Wake models load lazily on their own thread (see dictation.py
+        # wake_ready_state); say so rather than look enabled-but-deaf.
+        wake_state_fn = getattr(app, 'wake_ready_state', None)
+        if (app.config.get('wake_word_enabled', False) and callable(wake_state_fn)
+                and wake_state_fn() != 'ready'):
+            ww_label += "  - loading..."
+        ww_act = menu.addAction(ww_label)
         ww_act.setCheckable(True)
         ww_act.setChecked(bool(app.config.get('wake_word_enabled', False)))
         ww_act.triggered.connect(

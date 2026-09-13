@@ -91,6 +91,92 @@ def _gcd(a: int, b: int) -> int:
     return a
 
 
+# ── Polyphase filter cache ────────────────────────────────────────────────────
+# The filter for a given (up, down) is fully deterministic, but designing it
+# costs the scipy.signal import plus firwin (0.75-0.9 s warm, and 12-13 s on
+# cold boots when the model thread starves this GIL-bound work -- see
+# perf_artifacts/boot_profile.md section 3). Cache it twice: a module-level
+# dict (recovery re-opens in the same process never redesign) and an .npz
+# under <samsara home>/cache/ keyed on (up, down) plus _FILTER_DESIGN_VERSION
+# (bump it whenever the design below changes, so a stale file is never read).
+# The disk cache is best-effort: any read/validation/write failure falls back
+# to designing the filter, never to failing the stream open.
+_FILTER_DESIGN_VERSION = 1
+_FILTER_CACHE: dict[tuple[int, int], tuple[np.ndarray, int, int]] = {}
+_FILTER_CACHE_LOCK = threading.Lock()
+
+
+def _filter_cache_path(up: int, down: int):
+    from samsara.paths import samsara_home_dir  # noqa: PLC0415
+
+    return (samsara_home_dir() / "cache"
+            / f"polyphase_filter_v{_FILTER_DESIGN_VERSION}_{up}_{down}.npz")
+
+
+def _load_cached_filter(up: int, down: int) -> "tuple[np.ndarray, int, int] | None":
+    path = _filter_cache_path(up, down)
+    if not path.is_file():
+        return None
+    try:
+        with np.load(path, allow_pickle=False) as data:
+            h_padded = np.asarray(data["h_padded"], dtype=np.float64)
+            taps_per_phase = int(data["taps_per_phase"])
+            n_pre_remove = int(data["n_pre_remove"])
+            key = (int(data["up"]), int(data["down"]), int(data["version"]))
+        if key != (up, down, _FILTER_DESIGN_VERSION):
+            raise ValueError(f"key mismatch {key}")
+        if h_padded.ndim != 1 or len(h_padded) != taps_per_phase * up \
+                or not np.all(np.isfinite(h_padded)):
+            raise ValueError("invalid filter shape/content")
+        return h_padded, taps_per_phase, n_pre_remove
+    except Exception as exc:
+        logger.warning(f"[ACE] Ignoring unreadable filter cache {path.name}: {exc}")
+        return None
+
+
+def _save_cached_filter(up: int, down: int, state: tuple[np.ndarray, int, int]) -> None:
+    import os  # noqa: PLC0415
+
+    path = _filter_cache_path(up, down)
+    tmp = path.with_name(path.stem + f".{os.getpid()}.tmp.npz")
+    try:
+        path.parent.mkdir(parents=True, exist_ok=True)
+        h_padded, taps_per_phase, n_pre_remove = state
+        np.savez(tmp, h_padded=h_padded, taps_per_phase=taps_per_phase,
+                 n_pre_remove=n_pre_remove, up=up, down=down,
+                 version=_FILTER_DESIGN_VERSION)
+        os.replace(tmp, path)
+    except Exception as exc:
+        logger.warning(f"[ACE] Could not write filter cache {path.name}: {exc}")
+        try:
+            tmp.unlink()
+        except OSError:
+            pass
+
+
+def _get_polyphase_filter(up: int, down: int) -> tuple[np.ndarray, int, int]:
+    """Cached _design_polyphase_filter(up, down): module dict, then disk,
+    then design (and persist). The returned arrays are shared -- read-only
+    by contract (_polyphase_resample never writes them)."""
+    key = (up, down)
+    with _FILTER_CACHE_LOCK:
+        state = _FILTER_CACHE.get(key)
+        if state is not None:
+            return state
+        t0 = time.perf_counter()
+        state = _load_cached_filter(up, down)
+        source = "disk cache"
+        if state is None:
+            state = _design_polyphase_filter(up, down)
+            source = "designed"
+            _save_cached_filter(up, down, state)
+        state[0].setflags(write=False)
+        _FILTER_CACHE[key] = state
+        logger.info(f"[ACE] Polyphase filter {up}/{down}: {source} in "
+                    f"{(time.perf_counter() - t0) * 1000:.0f}ms")
+        return state
+
+
 def _design_polyphase_filter(up: int, down: int) -> tuple[np.ndarray, int, int]:
     """Precompute (h_padded, taps_per_phase, n_pre_remove) for a given
     up/down ratio (already GCD-reduced, coprime). Replicates scipy.signal.
@@ -305,7 +391,7 @@ class AudioCaptureEngine:
         # array arithmetic against these precomputed values (see
         # _polyphase_resample), never filter design, never scipy.
         if self._up != 1 or self._down != 1:
-            h_padded, taps_per_phase, n_pre_remove = _design_polyphase_filter(self._up, self._down)
+            h_padded, taps_per_phase, n_pre_remove = _get_polyphase_filter(self._up, self._down)
             n_out = self._blocksize * self._up
             n_out = n_out // self._down + bool(n_out % self._down)
             self._resample_state = (h_padded, taps_per_phase, n_pre_remove, n_out)

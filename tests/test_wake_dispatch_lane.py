@@ -28,7 +28,7 @@ METHODS = {
     '_confirm_wake_capture', '_restart_wake_session_timer', '_expire_wake_session',
     '_end_wake_session', '_reset_wake_dictation', '_open_hands_free_capture_duck',
     '_close_hands_free_capture_duck', '_restore_hands_free_capture_duck_now',
-    '_filter_dictation_language',
+    '_filter_dictation_language', '_cancel_pending_wake_start',
 }
 
 
