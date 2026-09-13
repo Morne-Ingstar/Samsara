@@ -982,6 +982,11 @@ def _apply_retry_on_suspected_loss(original, retry_fn, audio, sample_rate, audio
     return winner, True, True
 
 
+# X buttons the Win32 mouse hook (samsara/mouse_hook.py) reports. Either may be
+# bound to command_mode.button or to the main record hotkey (config['hotkey']).
+_MOUSE_HOTKEY_BUTTONS = ('mouse4', 'mouse5')
+
+
 def _get_pynput_command_key(button_name: str):
     """Resolve a command_mode.button string to a pynput Key or KeyCode.
 
@@ -2503,6 +2508,11 @@ class DictationApp:
         self._ava_cmd_timer_lock = threading.Lock()
 
         self._mouse_hook = None
+        # Which input drove the current main-hotkey press: 'key' (combo) or
+        # 'mouse' (config['hotkey'] is mouse4/mouse5). on_key_release must
+        # never stop a mouse-held recording.
+        self._main_hotkey_source = 'key'
+        self._main_hotkey_mouse_held = False   # edge trigger for the mouse main hotkey
 
         # Wake-word trace hook — the debug window registers a callback here
         # when open so the main pipeline's decisions show up in its trace view.
@@ -4415,6 +4425,8 @@ class DictationApp:
             self.capture_rate = self._detect_capture_rate(changes['microphone'])
         if 'gesture' in changes:
             self.set_gesture_enabled(changes['gesture'].get('enabled', False))
+        if 'hotkey' in changes or 'command_mode' in changes:
+            self.refresh_mouse_hook()
         # Only rebuild a detector that has been loaded: before the lazy wake
         # load (or while it runs) the loader picks the new phrase up itself.
         if 'wake_word_config' in changes and self.wake_ready_state() == 'ready':
@@ -4533,6 +4545,11 @@ class DictationApp:
                 self.capture_rate = self._detect_capture_rate(changed['microphone'][1])
             except Exception as e:
                 logger.exception(f"[CONFIG] capture_rate update error: {e}")
+        if 'hotkey' in changed or 'command_mode' in changed:
+            try:
+                self.refresh_mouse_hook()
+            except Exception as e:
+                logger.exception(f"[CONFIG] mouse hook refresh error: {e}")
         if 'wake_word_config' in changed and self.wake_ready_state() == 'ready':
             try:
                 new_ww = changed['wake_word_config'][1]
@@ -5652,7 +5669,13 @@ class DictationApp:
         thread = thread_registry.spawn("dictation.load", load, daemon=True)
     
     def parse_hotkey(self, hotkey_str):
-        """Parse hotkey string into set of key names"""
+        """Parse hotkey string into set of key names.
+
+        Mouse bindings ('mouse4'/'mouse5') have no keys: empty set. They are
+        driven by the mouse hook (_on_mouse_button), never by the keyboard.
+        """
+        if hotkey_str.strip().lower() in _MOUSE_HOTKEY_BUTTONS:
+            return set()
         parts = hotkey_str.lower().split('+')
         keys = set()
         for part in parts:
@@ -5709,7 +5732,10 @@ class DictationApp:
         regardless of the order keys were pressed.
         """
         required_keys = self.parse_hotkey(hotkey_str)
-        
+        if not required_keys:
+            # A mouse binding is never "held" on the keyboard.
+            return False
+
         for key in required_keys:
             # Hook-free state check -- see _raw_key_pressed (tribunal fix)
             if not _raw_key_pressed(key):
@@ -5974,6 +6000,7 @@ class DictationApp:
                 logger.debug("[HOTKEY] Ignored re-trigger while stop in flight")
                 return
             logger.debug(f"[HOTKEY] Main hotkey detected: {main_hotkey} (mode: {mode})")
+            self._main_hotkey_source = 'key'
             if mode == 'hold':
                 self.hotkey_pressed = True
                 # Ctrl+Shift always drives batch mode -- streaming uses
@@ -6018,6 +6045,9 @@ class DictationApp:
         memo_pressed = self.check_hotkey_state(memo_hotkey)
         
         if not main_pressed and not cont_pressed and not wake_pressed and not command_pressed and not memo_pressed:
+            if self.hotkey_pressed and getattr(self, '_main_hotkey_source', 'key') == 'mouse':
+                # The mouse button owns this press; its release stops it.
+                return
             if self.hotkey_pressed:
                 def _deferred_stop():
                     try:
@@ -6168,33 +6198,147 @@ class DictationApp:
         except Exception as e:
             logger.exception(f"[CAPSLOCK] stop failed: {e}")
 
-    # ---- Mouse 4 command mode (walkie-talkie hold-to-talk) ----------------
+    # ---- Mouse 4/5: command mode and the main record hotkey ---------------
+
+    def _mouse_hook_bindings(self):
+        """(bound_buttons, suppress_buttons) the mouse hook needs right now.
+
+        command_mode.button honours its suppress_button flag; a mouse main
+        hotkey always suppresses (the OS must never see a record click).
+        """
+        buttons, suppress = set(), set()
+        cfg = self.config.get('command_mode', {}) or {}
+        btn = cfg.get('button', 'rctrl')
+        if btn in _MOUSE_HOTKEY_BUTTONS:
+            buttons.add(btn)
+            if cfg.get('suppress_button', True):
+                suppress.add(btn)
+        hotkey = str(self.config.get('hotkey', '') or '').strip().lower()
+        if hotkey in _MOUSE_HOTKEY_BUTTONS:
+            buttons.add(hotkey)
+            suppress.add(hotkey)
+        return frozenset(buttons), frozenset(suppress)
 
     def _install_mouse_listener(self):
-        """Start the Win32 low-level mouse hook for Mouse 4/5 command mode.
+        """Start the one Win32 low-level mouse hook shared by every Mouse 4/5
+        binding (command_mode.button and/or the main hotkey).
 
-        Only installed when command_mode.button is a mouse source.
-        Keyboard sources (rctrl, f13, etc.) are handled by on_key_press/release.
+        Not installed when nothing is bound to a mouse button. Keyboard
+        sources (rctrl, f13, key combos) are handled by on_key_press/release.
         """
-        cfg = self.config.get('command_mode', {})
-        btn = cfg.get('button', 'rctrl')
-        if btn not in ('mouse4', 'mouse5'):
+        buttons, suppress = self._mouse_hook_bindings()
+        if not buttons:
             self._mouse_hook = None
             return
 
-        should_suppress = cfg.get('suppress_button', True)
-        suppress_btn = btn if should_suppress else None
         try:
             from samsara.mouse_hook import MouseHook
             self._mouse_hook = MouseHook(
-                on_button_event=self._on_command_button,
-                suppress_button=suppress_btn,
+                on_button_event=self._on_mouse_button,
+                suppress_buttons=suppress,
             )
             self._mouse_hook.start()
-            logger.info(f"[CMD MODE] Mouse hook started (suppress={suppress_btn})")
+            logger.info(
+                f"[MOUSE] Mouse hook started (bound={sorted(buttons)}, suppress={sorted(suppress)})"
+            )
         except Exception as e:
-            logger.exception(f"[CMD MODE] Mouse hook failed to start: {e}")
+            logger.exception(f"[MOUSE] Mouse hook failed to start: {e}")
             self._mouse_hook = None
+
+    def refresh_mouse_hook(self):
+        """Reinstall the mouse hook after hotkey / command_mode changes.
+
+        Called from the settings-apply and config-update/reload paths. The
+        hook forwards every X button event and the callback routes by live
+        config, so only the need for a hook and its suppress set matter.
+        """
+        buttons, suppress = self._mouse_hook_bindings()
+        hook = getattr(self, '_mouse_hook', None)
+        if hook is None and not buttons:
+            return
+        if hook is not None and buttons and hook.suppress_buttons == suppress:
+            return
+        if hook is not None:
+            try:
+                hook.stop()
+            except Exception as e:
+                logger.exception(f"[MOUSE] Mouse hook stop failed: {e}")
+            self._mouse_hook = None
+        self._install_mouse_listener()
+
+    def _on_mouse_button(self, button_name, pressed):
+        """Single mouse-hook callback: command mode, then the main hotkey."""
+        self._on_command_button(button_name, pressed)
+        hotkey = str(self.config.get('hotkey', '') or '').strip().lower()
+        if button_name == hotkey:
+            self._on_main_hotkey_mouse(pressed)
+
+    def _on_main_hotkey_mouse(self, pressed):
+        """Main record hotkey bound to Mouse 4/5 -- the keyboard main-hotkey
+        semantics (on_key_press / on_key_release) driven by the button.
+
+        Edge-triggered on press. Guards match the keyboard path: snoozed,
+        another hotkey or recording owning capture, stop in flight. One
+        difference: in toggle mode a press ends the recording this toggle
+        started (the recording guard applies only to starting).
+        """
+        if pressed:
+            if self._main_hotkey_mouse_held:
+                return
+            self._main_hotkey_mouse_held = True
+            if self.snoozed or self.hotkey_pressed:
+                return
+            mode = self.config.get('mode', 'hold')
+            if mode == 'toggle' and self.toggle_active:
+                self._main_hotkey_source = 'mouse'
+                self.hotkey_pressed = True
+                self.toggle_active = False
+                self.stop_recording()
+                return
+            if self.recording or getattr(self, '_streaming_session', None) is not None:
+                logger.info("[HOTKEY] Mouse main hotkey ignored -- another recording owns capture")
+                return
+            if self._stop_in_flight:
+                logger.debug("[HOTKEY] Mouse main hotkey ignored while stop in flight")
+                return
+            logger.debug(f"[HOTKEY] Main hotkey (mouse) pressed: {self.config.get('hotkey')} (mode: {mode})")
+            self._main_hotkey_source = 'mouse'
+            if mode == 'hold':
+                self.hotkey_pressed = True
+                self.start_recording(streaming=False)
+            elif mode == 'toggle':
+                self.hotkey_pressed = True
+                self.toggle_active = True
+                self.start_recording(streaming=False)
+            elif mode == 'continuous':
+                self.hotkey_pressed = True
+                self.toggle_continuous_mode()
+            return
+
+        if not self._main_hotkey_mouse_held:
+            return
+        self._main_hotkey_mouse_held = False
+        if self._main_hotkey_source != 'mouse':
+            return
+        self._main_hotkey_source = 'key'
+        if not self.hotkey_pressed:
+            return
+        self.hotkey_pressed = False
+        if self.config.get('mode', 'hold') == 'hold' and self.recording:
+            def _deferred_stop():
+                try:
+                    self.stop_recording()
+                finally:
+                    self._stop_in_flight = False
+
+            logger.debug("[HOTKEY] Main hotkey (mouse) released, stopping recording")
+            flight_recorder.record(
+                'hold_recording.stop_triggered',
+                reason='main_hotkey_mouse_release',
+                main_hotkey=self.config.get('hotkey'),
+            )
+            self._stop_in_flight = True
+            thread_registry.spawn('stop-rec', _deferred_stop, daemon=True)
 
     def _on_command_button(self, button_name, pressed):
         """Mouse hook callback — routes the configured button to command mode."""

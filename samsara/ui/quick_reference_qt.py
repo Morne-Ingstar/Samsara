@@ -86,6 +86,8 @@ def _pretty_key_combo(raw: str) -> str:
         return "(not set)"
     if raw.strip().lower() == "capslock":
         return "CapsLock"
+    if raw.strip().lower() in ("mouse4", "mouse5"):
+        return _pretty_button(raw.strip().lower())   # main hotkey on a side button
     return "+".join(part.strip().capitalize() for part in raw.split("+") if part.strip())
 
 

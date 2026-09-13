@@ -400,6 +400,101 @@ class TestModesCollisionDetection:
         assert warn.isVisibleTo(win)
 
 
+class TestMouseMainHotkeyCapture:
+    """The primary dictation key may be Mouse 4/5; every other hotkey stays keyboard-only."""
+
+    @staticmethod
+    def _press(btn, button):
+        from PySide6.QtCore import QPointF, Qt
+        from PySide6.QtGui import QMouseEvent
+        from PySide6.QtCore import QEvent
+
+        event = QMouseEvent(
+            QEvent.Type.MouseButtonPress, QPointF(5, 5), QPointF(5, 5),
+            button, button, Qt.KeyboardModifier.NoModifier,
+        )
+        btn.mousePressEvent(event)
+
+    def test_xbutton1_captures_mouse4_with_allow_mouse(self, qapp):
+        from PySide6.QtCore import Qt
+        from samsara.ui.settings_qt import _HotkeyButton
+
+        changed = []
+        btn = _HotkeyButton('ctrl+shift', on_change=lambda: changed.append(True), allow_mouse=True)
+        btn._start_capture()
+        assert btn.text() == "Press keys or Mouse 4/5..."
+
+        self._press(btn, Qt.MouseButton.LeftButton)      # ignored: still capturing
+        assert btn._capturing and btn.combo == 'ctrl+shift'
+
+        self._press(btn, Qt.MouseButton.XButton1)
+        assert not btn._capturing
+        assert btn.combo == 'mouse4'
+        assert btn.text() == 'Mouse 4'
+        assert changed == [True]
+
+    def test_xbutton2_captures_mouse5(self, qapp):
+        from PySide6.QtCore import Qt
+        from samsara.ui.settings_qt import _HotkeyButton
+
+        btn = _HotkeyButton('ctrl+shift', allow_mouse=True)
+        btn._start_capture()
+        self._press(btn, Qt.MouseButton.XButton2)
+        assert btn.combo == 'mouse5'
+
+    def test_xbutton_ignored_without_allow_mouse(self, qapp):
+        from PySide6.QtCore import Qt
+        from samsara.ui.settings_qt import _HotkeyButton
+
+        btn = _HotkeyButton('ctrl+alt+z')
+        btn._start_capture()
+        assert btn.text() == "Press keys..."
+        self._press(btn, Qt.MouseButton.XButton1)
+        assert btn.combo == 'ctrl+alt+z'
+
+    def test_only_the_main_hotkey_field_allows_mouse(self, qapp):
+        from samsara.ui.settings_qt import _SettingsWindow, _HotkeyButton
+        win = _SettingsWindow(_StubApp())
+        assert win._widgets['hotkey']._allow_mouse is True
+        others = [
+            w for key, w in win._widgets.items()
+            if key != 'hotkey' and isinstance(w, _HotkeyButton)
+        ]
+        assert others and not any(w._allow_mouse for w in others)
+
+    def test_readable_hotkey_uses_command_button_labels(self):
+        from samsara.ui.settings_qt import _readable_hotkey, _CMD_BUTTON_KEY_TO_LABEL
+        assert _readable_hotkey('mouse4') == 'Mouse 4' == _CMD_BUTTON_KEY_TO_LABEL['mouse4']
+        assert _readable_hotkey('mouse5') == 'Mouse 5'
+        assert _readable_hotkey('ctrl+shift') == 'Ctrl+Shift'
+
+    def test_main_hotkey_equal_to_command_mode_button_is_a_collision(self, qapp):
+        from samsara.ui.settings_qt import _SettingsWindow, _TAB_NAMES
+        win = _SettingsWindow(_StubApp())
+        win._stack.setCurrentIndex(_TAB_NAMES.index('Modes'))
+
+        win._widgets['hotkey']._combo = 'mouse4'
+        win._widgets['cmd_tab_button'].setCurrentText('Mouse 4')
+        win._check_modes_collisions()
+
+        warn = win._widgets['modes_collision_warn']
+        assert warn.isVisibleTo(win)
+        assert 'Record' in warn.text() and 'Command Mode button' in warn.text()
+
+    def test_apply_refreshes_the_mouse_hook(self, qapp):
+        from samsara.ui.settings_qt import _SettingsWindow
+
+        stub = _StubApp()
+        stub.refresh_mouse_hook = Mock()
+        win = _SettingsWindow(stub)
+        win._widgets['hotkey']._combo = 'mouse5'
+
+        win._apply_and_close()
+
+        assert stub.config['hotkey'] == 'mouse5'
+        stub.refresh_mouse_hook.assert_called_once_with()
+
+
 class TestAvaCloudTabNoLicenseGate:
     """Cloud AI is bring-your-own-key and free -- the settings tab must show
     every cloud control unconditionally, with no license/supporter-key gate
