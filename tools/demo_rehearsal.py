@@ -23,6 +23,9 @@ Usage:
                                                        # (tools/dump_command_metadata.py output)
     python tools/demo_rehearsal.py --live              # execute the resolvable
                                                        # steps, 3 s apart (owner only)
+    python tools/demo_rehearsal.py --opens-session --wake-phrase "hey samsa"
+                                                       # the demo profile (in memory)
+                                                       # with the configured wake phrase
 
 This module never imports dictation.py: Samsara is usually live while it
 runs. Everything it needs from the app is either a pure module
@@ -38,7 +41,8 @@ import os
 import subprocess
 import sys
 import time
-from dataclasses import dataclass
+import types
+from dataclasses import dataclass, replace
 from pathlib import Path
 from typing import Optional
 
@@ -49,7 +53,7 @@ if str(ROOT) not in sys.path:
 from samsara.command_registry import CommandMatcher  # noqa: E402
 from samsara.phonetic_wash import apply_phonetic_wash  # noqa: E402
 from samsara.session_modes import (  # noqa: E402
-    GLOBAL_SESSION_EXIT_PHRASES, SessionMode, _normalize_exact_phrase, is_scratch_that,
+    GLOBAL_SESSION_EXIT_PHRASES, SESSION_SLEEP_PHRASES, SessionMode, _normalize_exact_phrase, is_scratch_that,
     match_ava_invocation, match_literal_payload, match_switch_word, normalize_utterance,
     resolve_ava_invocations,
 )
@@ -190,54 +194,81 @@ def load_config(path=None) -> dict:
 # (status, detail, missing, owner).
 # ---------------------------------------------------------------------------
 
+#: The layout window destinations are resolved against: two side-by-side
+#: 1920x1040 work areas, monitor 1 primary on the left. Deterministic, so the
+#: table never depends on the machine the rehearsal runs on; "here" (the
+#: monitor under the cursor) resolves to monitor 1.
+MOCK_MONITORS = (
+    {"index": 1, "rect": (0, 0, 1920, 1040), "width": 1920, "height": 1040,
+     "primary": True, "device": "\\\\.\\DISPLAY1"},
+    {"index": 2, "rect": (1920, 0, 3840, 1040), "width": 1920, "height": 1040,
+     "primary": False, "device": "\\\\.\\DISPLAY2"},
+)
+WINDOWS_OWNER = "plugins/commands/windows.py (_parse_placements / _parse_destination / handle_send)"
+MUSIC_OWNER = "plugins/commands/music.py (_parse_music_request / handle_play)"
+
+
 def _args_send(remainder: str, config: dict):
-    # plugins/commands/windows.py: _parse_send_remainder + _parse_destination
-    r = remainder.lower().strip()
-    if r.startswith("the "):
-        r = r[4:]
-    app_name, dest = None, r
-    for sep in (" to the ", " to ", " on the ", " on "):
-        if sep in r:
-            app_part, dest = r.split(sep, 1)
-            app_name = None if app_part.strip() in ("", "this") else app_part.strip()
-            break
-    dest = dest.strip()
-    known = "tv" in dest or "here" in dest or any(w.isdigit() for w in dest.split())
-    if known:
-        return WORKS, f"window '{app_name or 'foreground'}' -> monitor '{dest}'", "", ""
-    return (MISSING, f"window '{app_name}' -> destination '{dest}' (unparseable)",
-            "destination grammar knows only 'tv', 'here' and 'monitor N' -- not 'left/right screen'; "
-            "a compound 'X on the left and Y on the right' is not split into two moves",
-            "plugins/commands/windows.py (_parse_destination / handle_send)")
+    """Probe the REAL window grammar: windows._parse_placements splits the
+    (possibly compound) request, windows._parse_destination resolves each
+    destination against MOCK_MONITORS. An UnresolvedDestination -> MISSING
+    with the parser's own reason. Which live window an app name finds is not
+    probed (that needs the desktop); the dispatch result reports it."""
+    try:
+        from unittest import mock  # noqa: PLC0415
+        from plugins.commands import windows  # noqa: PLC0415
+    except Exception as exc:  # pragma: no cover - plugin import broken
+        return MISSING, "window grammar unavailable", f"import failed: {exc}", WINDOWS_OWNER
+    placements = windows._parse_placements(remainder)
+    if not placements or not any(dest for _app, dest in placements):
+        return MISSING, f"no destination in {remainder!r}", "the send grammar found no destination", WINDOWS_OWNER
+    monitors = [dict(m) for m in MOCK_MONITORS]
+    probe_app = types.SimpleNamespace(config=config)
+    moves, unresolved = [], []
+    with mock.patch.object(windows, "get_monitor_under_cursor",
+                           lambda monitors=None: (monitors or [None])[0]):
+        for app_name, dest in placements:
+            target = windows._parse_destination(dest, probe_app, monitors)
+            who = app_name or "foreground window"
+            if target:
+                moves.append(f"{who} -> monitor {target['index']} ('{dest}')")
+            else:
+                unresolved.append(f"{who} -> '{dest}': {getattr(target, 'reason', 'unresolved')}")
+    layout = "mock 2-monitor layout"
+    if unresolved:
+        return (MISSING, f"{len(placements)} placement(s) parsed; unresolved: {'; '.join(unresolved)} ({layout})",
+                "destination did not resolve: " + "; ".join(unresolved), WINDOWS_OWNER)
+    kind = "compound placement" if len(moves) > 1 else "placement"
+    return WORKS, f"{kind}: {', '.join(moves)} ({layout}; windows found live)", "", ""
 
 
 def _args_play_music(remainder: str, config: dict):
-    # plugins/commands/music.py: handle_play
-    q = remainder.strip().lower()
-    if not q or q in ("music", "some music", "something"):
-        return PARTIAL, "Spotify Liked Songs (shuffle)", "no playlist named", "plugins/commands/music.py"
+    """Probe the REAL music grammar: music._parse_music_request, then the
+    same target choice handle_play makes (Liked Songs / configured URI /
+    Spotify search), verified against the Spotify media session at dispatch."""
     try:
-        from plugins.commands.music import SONGS  # noqa: PLC0415
-        names = list(SONGS)
-    except Exception:
-        names = []
-    names += list((config.get("music_library") or {}).keys())
-    hit = next((n for n in names if n.lower() in q), None)
-    if hit:
-        return WORKS, f"configured track '{hit}'", "", ""
-    return (PARTIAL, f"opens a Spotify web search for '{q}' (nothing plays)",
-            "no playlist-by-name path: music.py has fixed SONGS, config music_library, else a browser "
-            "search; playing a named playlist needs the Spotify Web API (music.py's own REVISIT note)",
-            "plugins/commands/music.py (handle_play)")
+        from plugins.commands import music  # noqa: PLC0415
+    except Exception as exc:  # pragma: no cover - plugin import broken
+        return MISSING, "music grammar unavailable", f"import failed: {exc}", MUSIC_OWNER
+    requested, playlist = music._parse_music_request(remainder)
+    kind = "playlist" if playlist else "request"
+    if not requested or requested.lower() in {"music", "something"}:
+        return WORKS, "Spotify Liked Songs (spotify:collection:tracks), playback verified on the Spotify session", "", ""
+    library = {**music.SONGS, **(config.get("music_library") or {})}
+    uri = next((value for name, value in library.items()
+                if name.casefold() == requested.casefold()
+                and isinstance(value, str) and value.startswith("spotify:")), None)
+    if uri is not None:
+        return WORKS, f"{kind} '{requested}' -> configured {uri}, playback verified on the Spotify session", "", ""
+    return (WORKS, f"{kind} '{requested}' -> Spotify search (spotify:search:...), playback verified on the "
+            "Spotify session; the started title is reported, not matched to the request", "", "")
 
 
 def _args_play_resume(remainder: str, config: dict):
-    # plugins/commands/music.py: handle_media_play -- SMTC play, remainder ignored
+    # plugins/commands/music.py: handle_media_play -- bare "play" is SMTC
+    # transport; "play <request>" is handed to handle_play.
     if remainder.strip():
-        return (PARTIAL, "SMTC 'play' to whatever media session is current; the words after 'play' are ignored",
-                "'play <anything>' resumes the current media session instead of choosing music; "
-                "a playlist name is dropped on the floor",
-                "plugins/commands/music.py (handle_play / handle_media_play)")
+        return _args_play_music(remainder, config)
     return WORKS, "SMTC play on the current media session", "", ""
 
 
@@ -329,24 +360,45 @@ def _wake_options(config: dict) -> list:
 
 
 def _resolve_wake(step: Step, config: dict) -> Resolution:
+    # dictation.py _decode_wake_word_buffer -> _wake_opens_session /
+    # _open_session_from_wake: with wake_word_config.opens_session and a
+    # toggle command_mode, a wake hit enters the latched session (same entry
+    # as the toggle tap); otherwise it opens the one-command wake window.
     options = _wake_options(config)
     hits = [p for p in options if match_wake_phrase(step.utterance, p)[0]]
+    ww = config.get("wake_word_config") or {}
     cm_mode = (config.get("command_mode") or {}).get("mode", "hold")
+    opens_session = bool(ww.get("opens_session", False))
+    if hits and opens_session and cm_mode == "toggle":
+        return Resolution(step, f"wake word '{hits[0]}' -> latched hands-free session "
+                          "(wake_word_config.opens_session; same entry as the toggle tap, dictate lane)",
+                          "asleep", WORKS)
+    if hits and opens_session:
+        return Resolution(step, f"wake word '{hits[0]}' -> a one-command wake window "
+                          f"(opens_session ignored: command_mode.mode is '{cm_mode}')",
+                          "asleep", PARTIAL,
+                          "wake_word_config.opens_session needs command_mode.mode 'toggle' -- the latched "
+                          "hands-free session only exists there",
+                          "config: command_mode.mode")
     if hits:
         return Resolution(step, f"wake word '{hits[0]}' -> a one-command wake window ({cm_mode} session untouched)",
                           "asleep", PARTIAL,
                           "the wake word opens a short single-command window, not the latched hands-free "
-                          "session (that opens on the command-mode toggle tap)",
-                          "dictation.py (_process_wake_command / enter_command_mode)")
+                          "session; set wake_word_config.opens_session true (with command_mode.mode 'toggle')",
+                          "config: wake_word_config.opens_session")
     return Resolution(step, f"no wake phrase matches (configured: {', '.join(options)})", "asleep", MISSING,
-                      "'wake up samsara' is not a wake phrase (needs an openWakeWord model + wake_word_config."
-                      "phrase), and even a matching wake word opens a one-command window, not the latched "
-                      "hands-free session -- a 'wake word opens the toggle session' bridge does not exist",
-                      "dictation.py (_process_wake_command / enter_command_mode) + wake_word_config")
+                      f"'{step.utterance}' is not a configured wake phrase: add it to wake_word_config.phrase "
+                      "(no openWakeWord model exists for it, so detection falls back to Whisper transcripts) "
+                      "or rehearse with --wake-phrase; the session bridge itself is "
+                      "wake_word_config.opens_session",
+                      "dictation.py (_decode_wake_word_buffer / _open_session_from_wake) + wake_word_config")
 
 
 def _resolve_sleep(step: Step, lane: LaneResult, mode: SessionMode, config: dict) -> Resolution:
     if lane.kind == "abort":
+        if normalize_utterance(step.utterance) in {normalize_utterance(p) for p in SESSION_SLEEP_PHRASES}:
+            return Resolution(step, "sleep phrase -> exit_command_mode(), staged draft retained, chip 'asleep'",
+                              "any latched mode", WORKS, live_text=None)
         return Resolution(step, "session exit phrase -> exit_command_mode()", "any latched mode", WORKS,
                           live_text=None)
     where = {"dictation": "typed into the focused app as text", "miss": "command miss",
@@ -426,15 +478,21 @@ def _resolve_scratch(step: Step, lane: LaneResult, mode: SessionMode) -> Resolut
                       "samsara/session_modes.py")
 
 
-def rehearse(matcher: CommandMatcher, config: dict, entry_mode: SessionMode = SessionMode.DICTATE) -> list:
+def rehearse(matcher: CommandMatcher, config: dict, entry_mode: SessionMode = SessionMode.DICTATE,
+             wake_phrase: Optional[str] = None) -> list:
     """Dry-run the whole take. The latched hands-free session enters in
     DICTATE (dictation.py enter_command_mode -> reset(initial_mode=DICTATE));
     the simulated mode only moves when the script itself contains a switch
-    word -- it does not, which is most of the story."""
+    word -- it does not, which is most of the story.
+
+    wake_phrase: speak this at the wake step instead of the script's
+    "wake up samsara" (--wake-phrase), while a custom phrase is undecided."""
     mode = entry_mode
     out = []
     for step in TAKE:
         if step.kind == "wake":
+            if wake_phrase:
+                step = replace(step, utterance=wake_phrase)
             out.append(_resolve_wake(step, config))
             continue
         lane = resolve_in_session(step.utterance, mode, matcher, config)
@@ -464,9 +522,12 @@ def _cell(text: str) -> str:
     return str(text).replace("|", "\\|").replace("\n", " ")
 
 
-def render_markdown(results: list, catalog_rows: list, entry_mode: SessionMode) -> str:
+def render_markdown(results: list, catalog_rows: list, entry_mode: SessionMode,
+                    overrides: Optional[list] = None) -> str:
     counts = {s: sum(1 for r in results if r.status == s) for s in (WORKS, PARTIAL, MISSING)}
     builtin = sum(1 for r in catalog_rows if r.get("source") == "builtin")
+    override_lines = (["Rehearsal overrides (not in the app's config): " + "; ".join(overrides) + ".", ""]
+                      if overrides else [])
     lines = [
         "# Demo rehearsal -- the five-minute take (SAMSARA_VISION.md section 7)",
         "",
@@ -477,6 +538,7 @@ def render_markdown(results: list, catalog_rows: list, entry_mode: SessionMode) 
         f"Catalog: {len(catalog_rows)} commands ({builtin} builtin, {len(catalog_rows) - builtin} plugin). "
         f"Hands-free session entry lane: {entry_mode.value}.",
         "",
+        *override_lines,
         f"Result: {counts[WORKS]} WORKS, {counts[PARTIAL]} PARTIAL, {counts[MISSING]} MISSING of {len(results)} steps.",
         "",
         "| step | utterance | resolves to | mode required | status | what is missing (owner) |",
@@ -498,6 +560,9 @@ def render_markdown(results: list, catalog_rows: list, entry_mode: SessionMode) 
         "* 'mode required' is the lane in which the line resolves; 'resolves to' is what the session would "
         "actually do in the lane it is in.",
         "* MISSING names the plugin or module that would own the capability.",
+        "* Window and music lines are resolved by the plugins' own parsers (windows._parse_placements / "
+        "_parse_destination against a mocked two-monitor layout, music._parse_music_request); which live window "
+        "or track is found is only known at dispatch.",
         "",
         "Owners of every MISSING step:",
         "",
@@ -579,13 +644,27 @@ def main(argv=None) -> int:
     parser.add_argument("--config", help="config.json to read (default: the app's own)")
     parser.add_argument("--out", default=str(ROOT / "perf_artifacts" / "demo_rehearsal.md"))
     parser.add_argument("--live", action="store_true", help="execute the resolvable steps (owner only)")
+    parser.add_argument("--wake-phrase",
+                        help="speak this at step 1 instead of 'wake up samsara' (e.g. 'hey samsa'), "
+                             "while a custom wake phrase is undecided")
+    parser.add_argument("--opens-session", action="store_true",
+                        help="rehearse the demo profile: wake_word_config.opens_session true and "
+                             "command_mode.mode 'toggle' (in memory only; config.json is never written)")
     args = parser.parse_args(argv)
 
     config = load_config(args.config)
+    overrides = []
+    if args.opens_session:
+        config = json.loads(json.dumps(config))
+        config.setdefault("wake_word_config", {})["opens_session"] = True
+        config.setdefault("command_mode", {})["mode"] = "toggle"
+        overrides.append("wake_word_config.opens_session = true, command_mode.mode = 'toggle'")
+    if args.wake_phrase:
+        overrides.append(f"step 1 spoken as '{args.wake_phrase}' (--wake-phrase)")
     rows = catalog_from_file(args.catalog) if args.catalog else catalog_from_live_registry()
     matcher = build_matcher(rows, enabled_packs_from_config(config))
-    results = rehearse(matcher, config)
-    report = render_markdown(results, rows, SessionMode.DICTATE)
+    results = rehearse(matcher, config, wake_phrase=args.wake_phrase)
+    report = render_markdown(results, rows, SessionMode.DICTATE, overrides)
     Path(args.out).parent.mkdir(parents=True, exist_ok=True)
     Path(args.out).write_text(report, encoding="utf-8")
     sys.stdout.write(report)

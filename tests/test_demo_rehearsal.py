@@ -92,28 +92,58 @@ class TestTheTake:
 class TestClassification:
     def test_status_per_step(self, results):
         assert {r.step.number: r.status for r in results} == {
-            1: dr.MISSING, 2: dr.PARTIAL, 3: dr.MISSING, 4: dr.MISSING,
-            5: dr.PARTIAL, 6: dr.MISSING, 7: dr.WORKS, 8: dr.MISSING,
+            1: dr.MISSING, 2: dr.PARTIAL, 3: dr.PARTIAL, 4: dr.MISSING,
+            5: dr.PARTIAL, 6: dr.MISSING, 7: dr.WORKS, 8: dr.WORKS,
         }
 
     def test_every_missing_step_names_its_owner(self, results):
         owners = {r.step.number: r.owner for r in results if r.status == dr.MISSING}
         assert "dictation.py" in owners[1] and "wake_word_config" in owners[1]
-        assert "plugins/commands/windows.py" in owners[3]
         assert "app_verbs.py" in owners[4]
         assert "text_marker.py" in owners[6]
-        assert "GLOBAL_SESSION_EXIT_PHRASES" in owners[8]
 
-    def test_step2_resolves_to_smtc_play_not_a_playlist(self, results):
+    def test_go_to_sleep_is_a_built_in_sleep_phrase(self, results):
+        r = results[7]
+        assert r.status == dr.WORKS
+        assert "draft retained" in r.resolves_to and "asleep" in r.resolves_to
+
+    def test_wake_step_works_with_opens_session_and_the_configured_phrase(self, matcher):
+        cfg = json.loads(json.dumps(FIXTURE_CONFIG))
+        cfg["wake_word_config"]["opens_session"] = True
+        res = dr.rehearse(matcher, cfg, wake_phrase="hey jarvis")
+        assert res[0].step.utterance == "hey jarvis"
+        assert res[0].status == dr.WORKS
+        assert "latched hands-free session" in res[0].resolves_to
+
+    def test_opens_session_without_toggle_is_partial(self, matcher):
+        cfg = json.loads(json.dumps(FIXTURE_CONFIG))
+        cfg["wake_word_config"]["opens_session"] = True
+        cfg["command_mode"]["mode"] = "hold"
+        res = dr.rehearse(matcher, cfg, wake_phrase="jarvis")
+        assert res[0].status == dr.PARTIAL and "toggle" in res[0].missing
+
+    def test_unconfigured_wake_phrase_stays_missing_even_with_the_flag(self, matcher):
+        cfg = json.loads(json.dumps(FIXTURE_CONFIG))
+        cfg["wake_word_config"]["opens_session"] = True
+        res = dr.rehearse(matcher, cfg)                      # "wake up samsara"
+        assert res[0].status == dr.MISSING and "--wake-phrase" in res[0].missing
+
+    def test_step2_probes_the_music_grammar_and_names_the_lane_gap(self, results):
         r = results[1]
         assert r.resolves_to.startswith("'play'")
-        assert "command mode" in r.missing            # the entry lane would type it
-        assert "playlist" in r.missing
+        assert "playlist 'alternative rock'" in r.resolves_to and "Spotify" in r.resolves_to
+        assert r.status == dr.PARTIAL
+        assert "command mode" in r.missing and "also:" not in r.missing   # only the lane is missing
 
-    def test_step3_names_the_destination_grammar(self, results):
+    def test_step3_probes_the_compound_window_grammar_and_names_the_lane_gap(self, results):
         r = results[2]
         assert r.resolves_to.startswith("'send'")
-        assert "left/right screen" in r.missing
+        assert "warp -> monitor 1" in r.resolves_to and "claude -> monitor 2" in r.resolves_to
+        assert r.status == dr.PARTIAL and "command mode" in r.missing
+
+    def test_steps_2_and_3_work_in_the_command_lane(self, matcher):
+        res = dr.rehearse(matcher, FIXTURE_CONFIG, entry_mode=SessionMode.COMMAND)
+        assert res[1].status == dr.WORKS and res[2].status == dr.WORKS
 
     def test_step5_is_the_dictate_lane(self, results):
         r = results[4]
@@ -154,25 +184,62 @@ class TestClassification:
 # ---------------------------------------------------------------------------
 
 class TestGrammars:
+    """The rehearsal probes the REAL plugin parsers (windows._parse_placements /
+    _parse_destination against a mocked 2-monitor layout, music._parse_music_request)."""
+
     @pytest.mark.parametrize("remainder,expected", [
         ("warp to monitor 2", dr.WORKS),
         ("chrome to the tv", dr.WORKS),
         ("this here", dr.WORKS),
-        ("warp on the left screen and claude on the right", dr.MISSING),
-        ("warp to the left screen", dr.MISSING),
+        ("warp on the left screen and claude on the right", dr.WORKS),
+        ("warp to the left screen", dr.WORKS),
+        ("claude right", dr.WORKS),
+        ("warp to the middle screen", dr.MISSING),       # 2 monitors: no middle
+        ("warp to monitor 5", dr.MISSING),
+        ("warp on the left screen and claude on the top screen", dr.MISSING),
+        ("warp", dr.MISSING),
     ])
     def test_send_destination_grammar(self, remainder, expected):
         assert dr._args_send(remainder, {})[0] == expected
 
-    def test_play_music_grammar(self):
-        assert dr._args_play_music("", {})[0] == dr.PARTIAL
-        assert dr._args_play_music("my jam", {"music_library": {"My Jam": "spotify:x"}})[0] == dr.WORKS
-        status, _d, missing, owner = dr._args_play_music("something from my alternative rock playlist", {})
-        assert status == dr.PARTIAL and "playlist" in missing and "music.py" in owner
+    def test_unresolved_destination_carries_the_parsers_reason(self):
+        status, _detail, missing, owner = dr._args_send("warp to the middle screen", {})
+        assert status == dr.MISSING
+        assert "no middle screen with 2 monitors" in missing and "windows.py" in owner
 
-    def test_play_resume_ignores_its_remainder(self):
+    def test_compound_placement_resolves_each_window(self):
+        status, detail, _m, _o = dr._args_send("warp on the left screen and claude on the right", {})
+        assert status == dr.WORKS
+        assert "warp -> monitor 1" in detail and "claude -> monitor 2" in detail
+
+    def test_send_really_calls_the_plugin_parser(self, monkeypatch):
+        from plugins.commands import windows
+        seen = []
+        real = windows._parse_placements
+        monkeypatch.setattr(windows, "_parse_placements", lambda r: seen.append(r) or real(r))
+        dr._args_send("warp to monitor 2", {})
+        assert seen == ["warp to monitor 2"]
+
+    def test_play_music_grammar(self):
+        assert dr._args_play_music("", {})[0] == dr.WORKS
+        status, detail, _m, _o = dr._args_play_music("jam", {"music_library": {"Jam": "spotify:track:x"}})
+        assert status == dr.WORKS and "spotify:track:x" in detail
+        status, detail, missing, _o = dr._args_play_music("something from my alternative rock playlist", {})
+        assert status == dr.WORKS and "playlist 'alternative rock'" in detail and "search" in detail
+        assert missing == ""
+
+    def test_play_music_really_calls_the_plugin_parser(self, monkeypatch):
+        from plugins.commands import music
+        seen = []
+        real = music._parse_music_request
+        monkeypatch.setattr(music, "_parse_music_request", lambda r: seen.append(r) or real(r))
+        dr._args_play_music("some jazz", {})
+        assert seen == ["some jazz"]
+
+    def test_play_with_a_request_is_handed_to_the_music_grammar(self):
         assert dr._args_play_resume("", {})[0] == dr.WORKS
-        assert dr._args_play_resume("anything", {})[0] == dr.PARTIAL
+        status, detail, _m, _o = dr._args_play_resume("something from my alternative rock playlist", {})
+        assert status == dr.WORKS and "alternative rock" in detail
 
 
 class TestLaneModel:
@@ -232,8 +299,23 @@ class TestOutput:
             outs.append(out.read_text(encoding="utf-8"))
         assert outs[0] == outs[1]
         assert "| step | utterance | resolves to | mode required | status | what is missing (owner) |" in outs[0]
-        assert "Result: 1 WORKS, 2 PARTIAL, 5 MISSING of 8 steps." in outs[0]
+        assert "Result: 2 WORKS, 3 PARTIAL, 3 MISSING of 8 steps." in outs[0]
         assert "Catalog: 10 commands (4 builtin, 6 plugin)" in outs[0]
+        assert "Rehearsal overrides" not in outs[0]
+
+    def test_demo_profile_overrides_are_in_memory_and_noted(self, tmp_path):
+        catalog = tmp_path / "catalog.json"
+        catalog.write_text(json.dumps({"commands": FIXTURE_CATALOG}), encoding="utf-8")
+        cfg = tmp_path / "config.json"
+        original = json.dumps({**FIXTURE_CONFIG, "command_mode": {"mode": "hold", "abort_phrases": []}})
+        cfg.write_text(original, encoding="utf-8")
+        out = tmp_path / "r.md"
+        assert dr.main(["--catalog", str(catalog), "--config", str(cfg), "--out", str(out),
+                        "--opens-session", "--wake-phrase", "hey jarvis"]) == 0
+        report = out.read_text(encoding="utf-8")
+        assert "Result: 3 WORKS, 3 PARTIAL, 2 MISSING of 8 steps." in report
+        assert "wake_word_config.opens_session = true" in report and "'hey jarvis'" in report
+        assert cfg.read_text(encoding="utf-8") == original      # config file untouched
 
     def test_rows_have_the_documented_columns(self, results):
         row = results[0].as_row()

@@ -9,8 +9,20 @@ Re-generate it after every change; it is the gap between today and the demo.
 
 ## The take (fixed script -- do not paraphrase it away)
 
-Preconditions: Samsara running, hands-free (command-mode toggle) armed,
-Spotify, Warp, Claude and Obsidian installed, two monitors.
+Preconditions: Samsara running, Spotify, Warp, Claude and Obsidian
+installed, two monitors, and the demo profile in config.json:
+
+```json
+"wake_word_enabled": true,
+"wake_word_config": { "phrase": "<the wake phrase>", "opens_session": true },
+"command_mode": { "enabled": true, "mode": "toggle" }
+```
+
+`opens_session` makes the wake phrase open the latched hands-free session
+(the same entry as the command-mode toggle tap) instead of the one-command
+wake window. "wake up samsara" is not a wake phrase today -- see
+docs/WAKE_WORD_GUIDE.md "Wake phrase opens the hands-free session"; until a
+phrase is chosen, say the configured one (e.g. "hey samsa") at line 1.
 
 | # | say | expect |
 |---|-----|--------|
@@ -30,11 +42,14 @@ version of the workarounds, for a human doing the take by hand:
   lines 2-4, and "dictate" (or start line 5 with the word "dictate") before
   the paragraph; finish the paragraph with "end" to commit it. "focus
   obsidian" works inside either lane.
-* Line 8 works as soon as "go to sleep" is in `command_mode.abort_phrases`
-  in config.json (the built-in exit phrases are "stop listening", "exit
-  hands free", "exit command mode").
-* Lines 1, 3, 4 and 6 have no owner yet -- the rehearsal names the plugin
-  that would own each.
+* Line 8: "go to sleep", "samsara sleep" and "sleep now" are built-in sleep
+  phrases -- the whole utterance only, from any lane. The session ends, and a
+  paragraph staged but not yet committed with "end" is kept and comes back
+  as the pending thought the next time hands-free opens. The chip says
+  "asleep". `command_mode.abort_phrases` adds more phrases with the same
+  behaviour.
+* Lines 3, 4 and 6 have no owner yet -- the rehearsal names the plugin that
+  would own each.
 
 ## Running the rehearsal
 
@@ -63,7 +78,11 @@ grammar the resolved plugin actually implements. Status per line:
 Options: `--catalog dump.json` rehearses against a saved
 `tools/dump_command_metadata.py` output (what the tests do); `--config
 path` reads another config.json (wake phrases, abort phrases, packs,
-music_library); `--out path` changes the report path.
+music_library); `--out path` changes the report path; `--opens-session`
+rehearses the demo profile (`wake_word_config.opens_session` true,
+`command_mode.mode` "toggle") in memory without touching config.json;
+`--wake-phrase "hey samsa"` speaks that phrase at line 1 instead of "wake up
+samsara". The report lists any override it used.
 
 Live run (owner only):
 
