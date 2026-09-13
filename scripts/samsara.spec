@@ -69,7 +69,22 @@ oww_model_filenames = [
 ]
 oww_datas, oww_binaries, oww_hiddenimports = collect_all('openwakeword')
 datas += oww_datas
-datas += collect_data_files('openwakeword', subdir='resources/models', includes=oww_model_filenames)
+oww_model_datas = collect_data_files('openwakeword', subdir='resources/models', includes=oww_model_filenames)
+datas += oww_model_datas
+# The openwakeword wheel ships no model files: they arrive via
+# openwakeword.utils.download_models() the first time the app runs, so a fresh
+# CI runner has none and collect_data_files() above returns [] without a word
+# (v0.23.0-beta.1's CI ZIP shipped 0 of 9). Never build without them --
+# tools/release_preflight.py --fetch-oww-models downloads the pinned,
+# SHA-256-verified set into the interpreter's openwakeword package.
+_oww_collected = {os.path.basename(src) for src, _dest in oww_model_datas}
+_oww_missing = [name for name in oww_model_filenames if name not in _oww_collected]
+if _oww_missing:
+    raise SystemExit(
+        "samsara.spec: bundled OpenWakeWord model file(s) not found in the openwakeword "
+        f"package: {', '.join(_oww_missing)} -- run `python tools/release_preflight.py "
+        "--fetch-oww-models` before PyInstaller"
+    )
 
 # 2c. PySide6 / shiboken6 — collect everything (2026-07-10 import audit).
 # ~48 samsara/ui/*_qt.py files depend on PySide6, and it was completely
