@@ -158,6 +158,177 @@ class TestRemainder:
         assert remainder == ''
 
 
+def _ask_matcher():
+    matcher = CommandMatcher()
+    matcher.load_plugins(_plugin_entry('hey ava', aliases=['ask ava', 'ava']))
+    matcher.load_plugins(_plugin_entry('search for'))
+    matcher.load_plugins(_plugin_entry('switch to', aliases=['use']))
+    matcher.freeze()
+    return matcher
+
+
+class TestRemainderIsTheOriginalText:
+    """Astra 2026-09-12 review item 8 (PAYLOAD_NORMALIZATION), inverted: the
+    matcher matches a normalised view but hands over the user's words."""
+
+    @pytest.mark.parametrize('utterance,expected', [
+        # Astra's example: quotes, apostrophe, case-sensitive filenames.
+        ('ask ava Tell Claude: "Don\'t rename Foo.py to foo.py".',
+         'Tell Claude: "Don\'t rename Foo.py to foo.py"'),
+        # Apostrophes and case.
+        ("Ask Ava what's McDonald's phone number?",
+         "what's McDonald's phone number?"),
+        # Case-sensitive code.
+        ('ask ava rename getUserID() to get_user_id() in API.ts',
+         'rename getUserID() to get_user_id() in API.ts'),
+        # URLs keep their scheme, case, path and query.
+        ('search for https://GitHub.com/Foo/Bar?q=A&b=2',
+         'https://GitHub.com/Foo/Bar?q=A&b=2'),
+        # Multi-line payloads keep their line breaks and indentation.
+        ('ask ava\nFirst line.\n  - Second: "x"\nThird',
+         'First line.\n  - Second: "x"\nThird'),
+        # Punctuation attached to the phrase belongs to the phrase.
+        ('Search for, Ergonomic Keyboards.', 'Ergonomic Keyboards'),
+        # Separator-only tokens between phrase and argument are dropped.
+        ('ask ava - Summarise THIS', 'Summarise THIS'),
+        ('ask ava: "quoted"', '"quoted"'),
+    ])
+    def test_original_argument_span(self, utterance, expected):
+        entry, remainder = _ask_matcher().match(utterance)
+        assert entry is not None
+        assert remainder == expected
+
+    def test_alias_match_keeps_original_argument(self):
+        entry, remainder = _ask_matcher().match('Use "Headphones (USB-C)"')
+        assert entry.phrase == 'switch to'
+        assert remainder == '"Headphones (USB-C)"'
+
+    def test_single_word_alias_with_whisper_punctuation(self):
+        entry, remainder = _ask_matcher().match('Ava, Open NOTEPAD.exe.')
+        assert entry.phrase == 'hey ava'
+        assert remainder == 'Open NOTEPAD.exe'
+
+    def test_only_a_trailing_terminator_run_is_dropped(self):
+        _, remainder = _ask_matcher().match('search for foo... bar!?')
+        assert remainder == 'foo... bar!?'
+
+    def test_match_detail_exposes_the_normalised_view_and_offsets(self):
+        text = 'Ask Ava Tell Claude: "Don\'t".'
+        detail = _ask_matcher().match_detail(text)
+        assert detail.entry.phrase == 'hey ava'
+        assert detail.phrase_tokens == ('ask', 'ava')
+        assert text[:detail.argument_start] == 'Ask Ava'
+        assert detail.remainder == 'Tell Claude: "Don\'t"'
+        assert detail.normalized_remainder == 'tell claude dont'
+
+    def test_matching_still_ignores_case_and_punctuation(self):
+        matcher = CommandMatcher()
+        matcher.load_plugins(_plugin_entry('yes'))
+        matcher.freeze()
+        entry, remainder = matcher.match('Yes.')
+        assert entry.phrase == 'yes'
+        assert remainder == ''
+
+
+class TestMetadataOwnership:
+    """The registry keeps every metadata field verbatim; undeclared fields are
+    'unknown' -- never defaulted to safe."""
+
+    def test_plugin_metadata_is_kept_verbatim(self):
+        from samsara import plugin_commands
+        from samsara.command_registry import METADATA_FIELDS
+
+        saved = dict(plugin_commands._REGISTRY)
+        plugin_commands._REGISTRY.clear()
+        try:
+            @plugin_commands.command(
+                'wipe drive', risk_class='destructive', ai_composable=False,
+                side_effects=['file'], preconditions=['confirmed_by_user'],
+                voice_triggerable=False, param_schema={'drive': {'type': 'str'}},
+                reversible=False, preview_template='Erase {drive}', ai_visible=False)
+            def _wipe(app, remainder):
+                return True
+
+            @plugin_commands.command('say hi')
+            def _hi(app, remainder):
+                return True
+
+            matcher = CommandMatcher()
+            matcher.load_plugins(plugin_commands._REGISTRY)
+            matcher.freeze()
+        finally:
+            plugin_commands._REGISTRY.clear()
+            plugin_commands._REGISTRY.update(saved)
+
+        wipe = matcher._entries['wipe drive']
+        assert wipe.metadata == {
+            'ai_visible': False,
+            'risk_class': 'destructive',
+            'ai_composable': False,
+            'side_effects': ['file'],
+            'preconditions': ['confirmed_by_user'],
+            'voice_triggerable': False,
+            'param_schema': {'drive': {'type': 'str'}},
+            'reversible': False,
+            'preview_template': 'Erase {drive}',
+        }
+        hi = matcher._entries['say hi']
+        assert hi.metadata == {name: 'unknown' for name in METADATA_FIELDS}
+        assert hi.risk_class == 'unknown'
+        # Typed gate attributes stay closed for existing readers.
+        assert hi.ai_composable is False
+
+    def test_builtin_safety_fields_are_no_longer_dropped(self):
+        matcher = CommandMatcher()
+        matcher.load_builtins({
+            'close window': {'type': 'hotkey', 'keys': ['alt', 'f4'],
+                             'risk_class': 'destructive', 'voice_triggerable': False},
+            'copy': {'type': 'hotkey', 'keys': ['ctrl', 'c']},
+        })
+        matcher.freeze()
+
+        close = matcher._entries['close window']
+        assert close.metadata['risk_class'] == 'destructive'
+        assert close.metadata['voice_triggerable'] is False
+        assert close.metadata['reversible'] == 'unknown'
+        assert close.risk_class == 'destructive'
+        assert close.voice_triggerable is False
+
+        copy = matcher._entries['copy']
+        assert copy.risk_class == 'unknown'
+        assert set(copy.metadata.values()) == {'unknown'}
+
+    def test_list_commands_exports_metadata(self):
+        matcher = CommandMatcher()
+        matcher.load_builtins(_builtin('copy'))
+        matcher.freeze()
+        [row] = matcher.list_commands()
+        assert row['metadata']['risk_class'] == 'unknown'
+
+    def test_dump_tool_reports_every_command(self):
+        import json
+        import os
+        import subprocess
+
+        root = Path(__file__).resolve().parent.parent
+        proc = subprocess.run(
+            [sys.executable, str(root / 'tools' / 'dump_command_metadata.py')],
+            cwd=str(root), capture_output=True, text=True, encoding='utf-8',
+            errors='replace', timeout=180,
+            env=dict(os.environ, QT_QPA_PLATFORM='offscreen'),
+        )
+        assert proc.returncode == 0, proc.stderr[-3000:]
+        dump = json.loads(proc.stdout)
+        summary = dump['summary']
+        assert summary['commands'] == len(dump['commands']) > 0
+        assert summary['metadata_values'] == (
+            summary['declared_values'] + summary['unknown_values'])
+        by_phrase = {c['phrase']: c for c in dump['commands']}
+        assert by_phrase['volume up']['metadata']['risk_class'] == 'safe'
+        assert all(set(c['metadata']) == set(summary['metadata_fields'])
+                   for c in dump['commands'])
+
+
 class TestNoMatch:
     def test_no_match_returns_none(self):
         matcher = CommandMatcher()

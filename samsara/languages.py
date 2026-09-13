@@ -9,6 +9,107 @@ see resolve_transcribe_language().
 """
 
 import re
+import math
+import threading
+import unicodedata
+from collections import deque
+
+# Measured 2026-09-10: floor((0.9833984375 + 0.82470703125) / 2 * 100) / 100.
+# See perf_artifacts/hf_lang_confidence.{md,json}.
+LANGUAGE_CONFIDENCE_FLOOR = 0.90
+
+# Unicode script blocks, filtered to letters below (punctuation/digits/emoji
+# and inherited combining accents are neutral). Block reference:
+# https://www.unicode.org/Public/17.0.0/ucd/Scripts.txt
+SCRIPT_RANGES = {
+    "latin": ((0x0041, 0x024F), (0x0250, 0x02AF), (0x1D00, 0x1DBF),
+              (0x1E00, 0x1EFF), (0x2C60, 0x2C7F), (0xA720, 0xA7FF),
+              (0xAB30, 0xAB6F), (0xFB00, 0xFB06), (0xFF21, 0xFF5A)),
+    "cyrillic": ((0x0400, 0x052F), (0x1C80, 0x1C8F), (0x2DE0, 0x2DFF), (0xA640, 0xA69F)),
+    "arabic": ((0x0600, 0x06FF), (0x0750, 0x077F), (0x0870, 0x08FF),
+               (0xFB50, 0xFDFF), (0xFE70, 0xFEFF), (0x1EE00, 0x1EEFF)),
+    "han": ((0x3400, 0x4DBF), (0x4E00, 0x9FFF), (0xF900, 0xFAFF), (0x20000, 0x323AF)),
+    "kana": ((0x3040, 0x30FF), (0x31F0, 0x31FF), (0xFF66, 0xFF9F), (0x1B000, 0x1B16F)),
+    "bopomofo": ((0x3100, 0x312F), (0x31A0, 0x31BF)),
+    "hangul": ((0x1100, 0x11FF), (0x3130, 0x318F), (0xA960, 0xA97F),
+               (0xAC00, 0xD7FF), (0xFFA0, 0xFFDC)),
+    "greek": ((0x0370, 0x03FF), (0x1F00, 0x1FFF)),
+    "hebrew": ((0x0590, 0x05FF), (0xFB1D, 0xFB4F)),
+    "devanagari": ((0x0900, 0x097F), (0xA8E0, 0xA8FF)),
+    "bengali": ((0x0980, 0x09FF),), "gurmukhi": ((0x0A00, 0x0A7F),),
+    "gujarati": ((0x0A80, 0x0AFF),), "tamil": ((0x0B80, 0x0BFF),),
+    "telugu": ((0x0C00, 0x0C7F),), "kannada": ((0x0C80, 0x0CFF),),
+    "malayalam": ((0x0D00, 0x0D7F),), "sinhala": ((0x0D80, 0x0DFF),),
+    "thai": ((0x0E00, 0x0E7F),), "lao": ((0x0E80, 0x0EFF),),
+    "tibetan": ((0x0F00, 0x0FFF),),
+    "myanmar": ((0x1000, 0x109F), (0xA9E0, 0xA9FF), (0xAA60, 0xAA7F)),
+    "georgian": ((0x10A0, 0x10FF), (0x1C90, 0x1CBF), (0x2D00, 0x2D2F)),
+    "armenian": ((0x0530, 0x058F), (0xFB13, 0xFB17)),
+    "ethiopic": ((0x1200, 0x139F), (0x2D80, 0x2DDF), (0xAB00, 0xAB2F)),
+    "khmer": ((0x1780, 0x17FF),), "mongolian": ((0x1800, 0x18AF),),
+}
+
+# Other supported Whisper languages use Latin. Include contemporary alternate
+# writing systems where a language is commonly written in more than one script.
+_LANGUAGE_SCRIPT_GROUPS = {
+    "ru uk bg mk be tg tt ba": {"cyrillic"},
+    "sr bs": {"cyrillic", "latin"},
+    "kk az uz": {"cyrillic", "latin", "arabic"},
+    "mn": {"cyrillic", "mongolian"},
+    "ar ur fa ps sd": {"arabic"}, "ha": {"latin", "arabic"},
+    "zh yue": {"han", "bopomofo"}, "ja": {"han", "kana"},
+    "ko": {"hangul", "han"}, "el": {"greek"}, "he yi": {"hebrew"},
+    "hi mr ne sa": {"devanagari"}, "bn as": {"bengali"},
+    "pa": {"gurmukhi", "arabic"}, "gu": {"gujarati"}, "ta": {"tamil"},
+    "te": {"telugu"}, "kn": {"kannada"}, "ml": {"malayalam"},
+    "si": {"sinhala"}, "th": {"thai"}, "lo": {"lao"}, "bo": {"tibetan"},
+    "my": {"myanmar"}, "ka": {"georgian"}, "hy": {"armenian"},
+    "am": {"ethiopic"}, "km": {"khmer"},
+}
+LANGUAGE_SCRIPTS = {lang: scripts for codes, scripts in _LANGUAGE_SCRIPT_GROUPS.items()
+                    for lang in codes.split()}
+
+
+def script_mismatch_ratio(text, expected_languages):
+    """Share of letters outside expected scripts; accents/emoji stay neutral."""
+    scripts = set().union(*(LANGUAGE_SCRIPTS.get(lang, {"latin"})
+                            for lang in expected_languages))
+    ranges = [span for script in scripts for span in SCRIPT_RANGES[script]]
+    # NFKD lets full-width/styled Latin and decomposed accents behave like
+    # ordinary letters. Counting letters avoids spaces diluting a wrong script.
+    letters = [char for char in unicodedata.normalize("NFKD", text) if char.isalpha()]
+    if not letters:
+        return 0.0
+    outside = sum(not any(lo <= ord(char) <= hi for lo, hi in ranges) for char in letters)
+    return outside / len(letters)
+
+
+class LanguageConfidenceGate:
+    """Per-app rolling expectations, never serialized or written to config."""
+    def __init__(self):
+        self.accepted = deque(maxlen=20)
+        self.lock = threading.Lock()
+
+    def evaluate(self, text, language, probability, configured_language, floor,
+                 *, remember=True):
+        try:
+            floor = float(floor)
+            if not math.isfinite(floor) or not 0 <= floor <= 1:
+                raise ValueError("invalid floor")
+        except (TypeError, ValueError):
+            floor = LANGUAGE_CONFIDENCE_FLOOR
+        with self.lock:
+            expected = {configured_language} if configured_language else {"en", *self.accepted}
+            if not text.strip():
+                return None, expected
+            if (language not in expected and probability is not None
+                    and probability < floor):
+                return "low_confidence", expected
+            if script_mismatch_ratio(text, expected) > 0.30:
+                return "script_mismatch", expected
+            if remember and language:
+                self.accepted.append(language)
+            return None, expected
 
 # (display name, ISO 639-1 code). Display names are native/endonym names in
 # the form "Native (code)", e.g. "Deutsch (de)", except English and Auto.

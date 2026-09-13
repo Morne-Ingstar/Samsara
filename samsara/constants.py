@@ -22,6 +22,18 @@ DEFAULT_CONTINUOUS_COMMIT_HOTKEY = 'ctrl+space'  # hotkey that commits when trig
 DEFAULT_CONTINUOUS_MAX_BUFFER_S = 60.0  # safety cap: auto-commit an un-committed 'key'-mode
                                         # session past this many seconds of accumulated speech
 
+# Voice-activity / speech-gate thresholds shared across the hold and
+# hands-free capture paths. Centralized here so the two paths cannot
+# silently drift from each other -- see the "duplicated gate constants"
+# finding in docs/reviews/hands_free_path_review.md. Each value is still
+# tuned for its own gate; unifying the DECLARATION does not mean the
+# hold and hands-free gates share one threshold.
+LIVE_VAD_PROB_THRESHOLD = 0.5        # single-frame "is anyone talking" Silero gate
+CONTIGUOUS_VAD_PROB_THRESHOLD = 0.45  # contiguous-run confidence gate (same Silero model)
+ADAPTIVE_SPEECH_FLOOR_RATIO = 1.5     # speech passes when rms >= ambient floor * this ratio
+HOLD_RELEASE_TAIL_SPEECH_THRESHOLD = 0.008  # hold-mode release-tail RMS floor
+WAKE_SPEECH_THRESHOLD_CAP = 0.01      # hands-free speech_threshold cap when VAD is unavailable
+
 # Wake word defaults (overridable via config)
 WAKE_DETECTION_SILENCE = 0.8        # seconds of silence during wake word listening
 WAKE_COMMAND_TIMEOUT = 5.0         # seconds to wait for command after wake word
