@@ -9,6 +9,7 @@ import re
 import shutil
 import threading
 from datetime import datetime
+from string import Template
 
 from PySide6.QtCore import Qt, QTimer, Signal, QUrl
 from PySide6.QtGui import QColor, QDesktopServices, QFont
@@ -347,10 +348,10 @@ class _HotkeyButton(QPushButton):
 
     _IDLE = (
         "QPushButton {"
-        " background-color: #16161A;"
+        f" background-color: {theme.BG2};"
         " border: 1px solid rgba(255,255,255,0.14);"
         " border-radius: 6px;"
-        " color: #E8E8EA;"
+        f" color: {theme.TEXT_PRIMARY};"
         " font-size: 12px;"
         " font-family: 'Consolas', 'Courier New', monospace;"
         " padding: 6px 14px;"
@@ -362,9 +363,9 @@ class _HotkeyButton(QPushButton):
     _CAPTURING = (
         "QPushButton {"
         " background-color: rgba(94,234,212,0.08);"
-        " border: 1px solid #5EEAD4;"
+        f" border: 1px solid {theme.ACCENT};"
         " border-radius: 6px;"
-        " color: #5EEAD4;"
+        f" color: {theme.ACCENT};"
         " font-size: 12px;"
         " font-family: 'Consolas', 'Courier New', monospace;"
         " padding: 6px 14px;"
@@ -544,15 +545,15 @@ class _HeightForWidthWidget(QWidget):
 # Stylesheet
 # ---------------------------------------------------------------------------
 
-STYLESHEET = """
+STYLESHEET = Template("""
 QMainWindow, QWidget {
-    background-color: #0A0A0B;
-    color: #E8E8EA;
+    background-color: ${BG0};
+    color: ${TEXT_PRIMARY};
     font-family: 'Segoe UI', system-ui, sans-serif;
     font-size: 14px;
 }
 QListWidget {
-    background-color: #111114;
+    background-color: ${BG1};
     border-right: 1px solid rgba(255,255,255,0.08);
     color: #AEB4C0;
     font-size: 14px;
@@ -565,18 +566,18 @@ QListWidget::item {
 }
 QListWidget::item:selected {
     background-color: rgba(94, 234, 212, 0.12);
-    color: #5EEAD4;
-    border-left: 2px solid #5EEAD4;
+    color: ${ACCENT};
+    border-left: 2px solid ${ACCENT};
 }
 QListWidget::item:hover {
     background-color: rgba(255,255,255,0.03);
 }
 QLabel {
-    color: #E8E8EA;
+    color: ${TEXT_PRIMARY};
     /* QLabel inherits from QWidget, so without this it picks up the
-       QMainWindow, QWidget rule's background-color (#0A0A0B) above as an
+       QMainWindow, QWidget rule's background-color (BG0) above as an
        opaque bar behind every label -- most visible against the lighter
-       #161b24 section-card background (see _section_card). Transparent
+       BG1 section-card background (see _section_card). Transparent
        lets each label show whatever surface (card, panel, window) it
        actually sits on instead of painting its own opaque rectangle. */
     background-color: transparent;
@@ -586,16 +587,16 @@ QLabel[class="description"] {
     font-size: 13px;
 }
 QLabel[class="section-title"] {
-    color: #5EEAD4;
+    color: ${ACCENT};
     font-size: 16px;
     font-weight: bold;
 }
 QComboBox {
-    background-color: #16161A;
+    background-color: ${BG2};
     border: 1px solid rgba(255,255,255,0.14);
     border-radius: 6px;
     padding: 8px 12px;
-    color: #E8E8EA;
+    color: ${TEXT_PRIMARY};
     min-width: 200px;
 }
 QComboBox::drop-down {
@@ -603,17 +604,17 @@ QComboBox::drop-down {
     width: 30px;
 }
 QComboBox QAbstractItemView {
-    background-color: #16161A;
-    color: #E8E8EA;
+    background-color: ${BG2};
+    color: ${TEXT_PRIMARY};
     selection-background-color: rgba(94, 234, 212, 0.2);
     border: 1px solid rgba(255,255,255,0.14);
 }
 QCheckBox {
-    color: #E8E8EA;
+    color: ${TEXT_PRIMARY};
     spacing: 8px;
     /* Same cascade cause as the QLabel fix above (9b7f00f): QCheckBox is a
        QWidget with no background-color of its own, so it otherwise picks
-       up the QMainWindow, QWidget rule's #0A0A0B as an opaque bar across
+       up the QMainWindow, QWidget rule's BG0 as an opaque bar across
        the row -- the ::indicator sub-control below already paints its own
        background correctly and is untouched. */
     background-color: transparent;
@@ -623,15 +624,15 @@ QCheckBox::indicator {
     height: 18px;
     border-radius: 4px;
     border: 1px solid rgba(255,255,255,0.14);
-    background-color: #16161A;
+    background-color: ${BG2};
 }
 QCheckBox::indicator:checked {
-    background-color: #5EEAD4;
-    border-color: #5EEAD4;
+    background-color: ${ACCENT};
+    border-color: ${ACCENT};
 }
 QPushButton {
-    background-color: #5EEAD4;
-    color: #0A0A0B;
+    background-color: ${ACCENT};
+    color: ${TEXT_ON_ACCENT};
     border: none;
     border-radius: 6px;
     padding: 10px 24px;
@@ -639,7 +640,7 @@ QPushButton {
     font-size: 14px;
 }
 QPushButton:hover {
-    background-color: #4DD8C2;
+    background-color: ${ACCENT_HOVER};
 }
 QPushButton[class="secondary"] {
     background-color: transparent;
@@ -648,18 +649,18 @@ QPushButton[class="secondary"] {
 }
 QPushButton[class="secondary"]:hover {
     background-color: rgba(255,255,255,0.05);
-    color: #E8E8EA;
+    color: ${TEXT_PRIMARY};
 }
 QScrollArea {
     border: none;
     background-color: transparent;
 }
 QSpinBox, QDoubleSpinBox {
-    background-color: #16161A;
+    background-color: ${BG2};
     border: 1px solid rgba(255,255,255,0.14);
     border-radius: 6px;
     padding: 6px 10px;
-    color: #E8E8EA;
+    color: ${TEXT_PRIMARY};
     min-width: 80px;
 }
 QSpinBox::up-button, QDoubleSpinBox::up-button,
@@ -677,20 +678,20 @@ QSpinBox::down-arrow, QDoubleSpinBox::down-arrow {
     width: 0;
 }
 QLineEdit {
-    background-color: #16161A;
+    background-color: ${BG2};
     border: 1px solid rgba(255,255,255,0.14);
     border-radius: 6px;
     padding: 8px 12px;
-    color: #E8E8EA;
+    color: ${TEXT_PRIMARY};
     font-size: 13px;
 }
 QLineEdit:focus {
     border-color: rgba(94, 234, 212, 0.5);
 }
 QTableWidget {
-    background-color: #111114;
+    background-color: ${BG1};
     gridline-color: rgba(255,255,255,0.05);
-    color: #E8E8EA;
+    color: ${TEXT_PRIMARY};
     border: 1px solid rgba(255,255,255,0.08);
     border-radius: 6px;
     font-size: 13px;
@@ -702,10 +703,10 @@ QTableWidget::item {
 }
 QTableWidget::item:selected {
     background-color: rgba(94,234,212,0.15);
-    color: #E8E8EA;
+    color: ${TEXT_PRIMARY};
 }
 QHeaderView::section {
-    background-color: #16161A;
+    background-color: ${BG2};
     color: #AEB4C0;
     padding: 6px 8px;
     border: none;
@@ -715,9 +716,17 @@ QHeaderView::section {
     font-weight: 600;
 }
 QDialog {
-    background-color: #0A0A0B;
+    background-color: ${BG0};
 }
-"""
+""").substitute(
+    BG0=theme.BG0,
+    TEXT_PRIMARY=theme.TEXT_PRIMARY,
+    BG1=theme.BG1,
+    ACCENT=theme.ACCENT,
+    BG2=theme.BG2,
+    TEXT_ON_ACCENT=theme.TEXT_ON_ACCENT,
+    ACCENT_HOVER=theme.ACCENT_HOVER,
+)
 
 # _SettingsWindow applies its own stylesheet, which overrides the shared
 # theme's QComboBox subcontrols.  Keep the real, high-contrast chevron here
@@ -948,7 +957,7 @@ class _SettingsWindow(QMainWindow):
         # Button bar
         btn_bar = QWidget()
         btn_bar.setFixedHeight(64)
-        btn_bar.setStyleSheet("background-color: #0A0A0B;")
+        btn_bar.setStyleSheet(f"background-color: {theme.BG0};")
         btn_layout = QHBoxLayout(btn_bar)
         btn_layout.setContentsMargins(20, 12, 20, 12)
         btn_layout.addStretch()
@@ -969,15 +978,15 @@ class _SettingsWindow(QMainWindow):
         apply_btn.setFixedWidth(140)
         apply_btn.setStyleSheet(
             "QPushButton {"
-            " background-color: #5EEAD4;"
-            " color: #0A0A0B;"
+            f" background-color: {theme.ACCENT};"
+            f" color: {theme.TEXT_ON_ACCENT};"
             " border: none;"
             " border-radius: 6px;"
             " padding: 10px 24px;"
             " font-weight: 600;"
             " font-size: 14px;"
             "}"
-            "QPushButton:hover { background-color: #4DD8C2; }"
+            f"QPushButton:hover {{ background-color: {theme.ACCENT_HOVER}; }}"
         )
         apply_btn.clicked.connect(self._apply_and_close)
         btn_layout.addWidget(apply_btn)
@@ -1150,7 +1159,7 @@ class _SettingsWindow(QMainWindow):
         from what was typed), so locking navigation away from a tab could
         strand the user looking for something that's actually there."""
         dimmed = _css_color_to_qcolor(theme.TEXT_DISABLED)
-        normal = QColor("#E8E8EA")
+        normal = QColor(theme.TEXT_PRIMARY)
         for row, stack_index in self._sidebar_row_to_stack_index.items():
             item = self._sidebar.item(row)
             if item is None:
@@ -1209,7 +1218,7 @@ class _SettingsWindow(QMainWindow):
         layout.setAlignment(Qt.AlignmentFlag.AlignCenter)
         label = QLabel("Coming soon — this tab is being migrated.")
         label.setAlignment(Qt.AlignmentFlag.AlignCenter)
-        label.setStyleSheet("color: #8A8A92; font-size: 14px;")
+        label.setStyleSheet(f"color: {theme.ICON_IDLE}; font-size: 14px;")
         layout.addWidget(label)
         return w
 
@@ -1290,7 +1299,7 @@ class _SettingsWindow(QMainWindow):
         # Same cascade cause as the QCheckBox/QLabel fixes: a bare QWidget
         # used purely as a row layout container has no background-color of
         # its own, so it otherwise paints the QMainWindow, QWidget rule's
-        # #0A0A0B behind the combo/button gap inside this card. Scoped by
+        # BG0 behind the combo/button gap inside this card. Scoped by
         # objectName rather than a bare/unqualified "background:
         # transparent;" -- the unqualified form leaks into the ancestor
         # stylesheet cascade and strips mic_refresh_btn's app-level
@@ -1315,7 +1324,7 @@ class _SettingsWindow(QMainWindow):
         mic_row_layout.addWidget(mic_refresh_btn)
 
         mic_refresh_hint = QLabel("Stop dictation to refresh devices.")
-        mic_refresh_hint.setStyleSheet("color: #E0A030; font-size: 12px;")
+        mic_refresh_hint.setStyleSheet(f"color: {theme.WARNING}; font-size: 12px;")
         mic_refresh_hint.setVisible(False)
 
         def _on_refresh_mics():
@@ -1484,7 +1493,7 @@ class _SettingsWindow(QMainWindow):
 
         model_lang_hint = QLabel("")
         model_lang_hint.setWordWrap(True)
-        model_lang_hint.setStyleSheet("color: #E0A030; font-size: 12px; margin-left: 4px;")
+        model_lang_hint.setStyleSheet(f"color: {theme.WARNING}; font-size: 12px; margin-left: 4px;")
         model_lang_hint.setVisible(False)
         model_layout.addWidget(model_lang_hint)
 
@@ -1646,7 +1655,7 @@ class _SettingsWindow(QMainWindow):
             "Backups include private values like API keys — keep the files private."
         )
         backup_desc.setObjectName("configBackupPrivacyWarning")
-        backup_desc.setStyleSheet("color: #D9B86C; font-size: 13px;")
+        backup_desc.setStyleSheet(f"color: {theme.WARNING}; font-size: 13px;")
         backup_desc.setWordWrap(True)
         backup_layout.addWidget(backup_desc)
 
@@ -1844,7 +1853,7 @@ class _SettingsWindow(QMainWindow):
         address = QLabel(BETA_SUPPORT_EMAIL)
         address.setObjectName("betaSupportAddressLabel")
         address.setTextInteractionFlags(Qt.TextInteractionFlag.TextSelectableByMouse)
-        address.setStyleSheet("color: #E8E8EA; font-size: 12px;")
+        address.setStyleSheet(f"color: {theme.TEXT_PRIMARY}; font-size: 12px;")
         email_control = QWidget()
         email_row = QHBoxLayout(email_control)
         email_row.setContentsMargins(0, 0, 0, 0)
@@ -2191,7 +2200,7 @@ class _SettingsWindow(QMainWindow):
 
     # Amber "may conflict" style, shared by the Modes tab collision banner.
     _COLLISION_WARN_STYLE = (
-        "color: #E89020; font-size: 12px; "
+        f"color: {theme.WARNING}; font-size: 12px; "
         "background-color: rgba(232,144,32,0.07); "
         "border: 1px solid rgba(232,144,32,0.2); "
         "border-radius: 6px; padding: 6px 10px;"
@@ -2244,7 +2253,7 @@ class _SettingsWindow(QMainWindow):
                 " font-size: 13px;"
                 "}"
                 "QPushButton:hover {"
-                " color: #E8E8EA;"
+                f" color: {theme.TEXT_PRIMARY};"
                 " border-color: rgba(255,255,255,0.28);"
                 "}"
             )
@@ -2312,7 +2321,7 @@ class _SettingsWindow(QMainWindow):
         )
         behavior_note = QLabel(_button_behavior_note())
         behavior_note.setWordWrap(True)
-        behavior_note.setStyleSheet("color: #8A8A92; font-size: 12px;")
+        behavior_note.setStyleSheet(f"color: {theme.ICON_IDLE}; font-size: 12px;")
         self._widgets['button_behavior_note'] = behavior_note
         hands_free_layout.addWidget(behavior_note)
 
@@ -2406,12 +2415,12 @@ class _SettingsWindow(QMainWindow):
 
         wake_note = QLabel("More wake phrases can be added in the config file.")
         wake_note.setWordWrap(True)
-        wake_note.setStyleSheet("color: #8A8A92; font-size: 12px;")
+        wake_note.setStyleSheet(f"color: {theme.ICON_IDLE}; font-size: 12px;")
         hands_free_layout.addWidget(wake_note)
 
         config_only_note = QLabel(_MODES_CONFIG_ONLY_NOTE)
         config_only_note.setWordWrap(True)
-        config_only_note.setStyleSheet("color: #8A8A92; font-size: 12px;")
+        config_only_note.setStyleSheet(f"color: {theme.ICON_IDLE}; font-size: 12px;")
         self._widgets['modes_config_only_note'] = config_only_note
         hands_free_layout.addWidget(config_only_note)
 
@@ -2516,7 +2525,7 @@ class _SettingsWindow(QMainWindow):
             "AI resolution (local or cloud) only when no exact command matches."
         )
         ai_intro.setWordWrap(True)
-        ai_intro.setStyleSheet("color: #8A8A92; font-size: 12px;")
+        ai_intro.setStyleSheet(f"color: {theme.ICON_IDLE}; font-size: 12px;")
         ai_layout.addWidget(ai_intro)
 
         ai_enabled = QCheckBox()
@@ -2551,7 +2560,7 @@ class _SettingsWindow(QMainWindow):
         # Same cascade cause as the QCheckBox/QLabel fixes: a bare QWidget
         # used purely as a disclosure-panel container has no background-
         # color of its own, so it otherwise paints the QMainWindow, QWidget
-        # rule's #0A0A0B across every row inside it when expanded, on top
+        # rule's BG0 across every row inside it when expanded, on top
         # of this card. Scoped by objectName rather than a bare/unqualified
         # "background: transparent;" -- confirmed (see mic_row_widget above)
         # that the unqualified form leaks into the ancestor stylesheet
@@ -3000,7 +3009,7 @@ class _SettingsWindow(QMainWindow):
             "Enable the packs you use. Disabling unused packs improves recognition accuracy."
         )
         desc1.setWordWrap(True)
-        desc1.setStyleSheet("color: #8A8A92; font-size: 12px;")
+        desc1.setStyleSheet(f"color: {theme.ICON_IDLE}; font-size: 12px;")
         layout.addWidget(desc1)
         layout.addSpacing(4)
 
@@ -3011,7 +3020,7 @@ class _SettingsWindow(QMainWindow):
         pack_scroll.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Preferred)
         pack_scroll.setHorizontalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAlwaysOff)
         pack_scroll.setStyleSheet(
-            "QScrollArea { background-color: #111114; border-radius: 6px; "
+            f"QScrollArea {{ background-color: {theme.BG1}; border-radius: 6px; "
             "border: 1px solid rgba(255,255,255,0.08); }"
         )
 
@@ -3049,7 +3058,7 @@ class _SettingsWindow(QMainWindow):
             logger.debug(f"_build_commands_tab: {e}")
 
         restart_lbl = QLabel("Restart Samsara to apply pack changes.")
-        restart_lbl.setStyleSheet("color: #E2A030; font-size: 12px;")
+        restart_lbl.setStyleSheet(f"color: {theme.WARNING}; font-size: 12px;")
         restart_lbl.setVisible(False)
         self._widgets['_pack_restart_lbl'] = restart_lbl
 
@@ -3083,7 +3092,7 @@ class _SettingsWindow(QMainWindow):
                 + count_str
             )
             name_lbl.setStyleSheet(
-                f"color: {'#8A8A92' if always_on else '#E8E8EA'}; "
+                f"color: {theme.ICON_IDLE if always_on else theme.TEXT_PRIMARY}; "
                 f"font-size: 13px; font-weight: {'normal' if always_on else '600'};"
                 "background: transparent;"
             )
@@ -3139,7 +3148,7 @@ class _SettingsWindow(QMainWindow):
         # (528px here vs a 530px viewport) drags the whole page wider. Wrapping
         # does not change how it renders where it already fits on one line.
         instant_note.setWordWrap(True)
-        instant_note.setStyleSheet("color: #8A8A92; font-size: 12px;")
+        instant_note.setStyleSheet(f"color: {theme.ICON_IDLE}; font-size: 12px;")
         layout.addWidget(instant_note)
         layout.addSpacing(4)
 
@@ -3177,10 +3186,10 @@ class _SettingsWindow(QMainWindow):
         edit_btn = QPushButton("Edit")
         edit_btn.setObjectName("editCommandButton")
         edit_btn.setStyleSheet(
-            "QPushButton { background-color: transparent; color: #8A8A92; "
+            f"QPushButton {{ background-color: transparent; color: {theme.ICON_IDLE}; "
             "border: 1px solid rgba(255,255,255,0.14); border-radius: 6px; "
             "padding: 8px 16px; }"
-            "QPushButton:hover { background-color: rgba(255,255,255,0.05); color: #E8E8EA; }"
+            f"QPushButton:hover {{ background-color: rgba(255,255,255,0.05); color: {theme.TEXT_PRIMARY}; }}"
         )
         edit_btn.clicked.connect(lambda: self._edit_selected_command(table))
         btn_row.addWidget(edit_btn)
@@ -3188,7 +3197,7 @@ class _SettingsWindow(QMainWindow):
         del_btn = QPushButton("Delete")
         del_btn.setObjectName("deleteCommandButton")
         del_btn.setStyleSheet(
-            "QPushButton { background-color: rgba(200,60,60,0.15); color: #FF8888; "
+            f"QPushButton {{ background-color: rgba(200,60,60,0.15); color: {theme.ERROR}; "
             "border: 1px solid rgba(200,60,60,0.3); border-radius: 6px; padding: 8px 16px; }"
             "QPushButton:hover { background-color: rgba(200,60,60,0.25); }"
         )
@@ -3198,10 +3207,10 @@ class _SettingsWindow(QMainWindow):
         test_btn = QPushButton("Test")
         test_btn.setObjectName("testCommandButton")
         test_btn.setStyleSheet(
-            "QPushButton { background-color: transparent; color: #8A8A92; "
+            f"QPushButton {{ background-color: transparent; color: {theme.ICON_IDLE}; "
             "border: 1px solid rgba(255,255,255,0.14); border-radius: 6px; "
             "padding: 8px 12px; }"
-            "QPushButton:hover { background-color: rgba(255,255,255,0.05); color: #E8E8EA; }"
+            f"QPushButton:hover {{ background-color: rgba(255,255,255,0.05); color: {theme.TEXT_PRIMARY}; }}"
         )
         test_btn.clicked.connect(lambda: self._test_selected_command(table))
         btn_row.addWidget(test_btn)
@@ -3211,10 +3220,10 @@ class _SettingsWindow(QMainWindow):
         reload_btn = QPushButton("Reload")
         reload_btn.setObjectName("reloadCommandsButton")
         reload_btn.setStyleSheet(
-            "QPushButton { background-color: transparent; color: #8A8A92; "
+            f"QPushButton {{ background-color: transparent; color: {theme.ICON_IDLE}; "
             "border: 1px solid rgba(255,255,255,0.14); border-radius: 6px; "
             "padding: 8px 12px; }"
-            "QPushButton:hover { background-color: rgba(255,255,255,0.05); color: #E8E8EA; }"
+            f"QPushButton:hover {{ background-color: rgba(255,255,255,0.05); color: {theme.TEXT_PRIMARY}; }}"
         )
         reload_btn.clicked.connect(lambda: self._reload_commands(table))
         btn_row.addWidget(reload_btn)
@@ -3226,7 +3235,7 @@ class _SettingsWindow(QMainWindow):
         # single-line minimum is the widest thing on the page and is what the
         # horizontal scrollbar was tracking.
         footer.setWordWrap(True)
-        footer.setStyleSheet("color: #8A8A92; font-size: 12px;")
+        footer.setStyleSheet(f"color: {theme.ICON_IDLE}; font-size: 12px;")
         layout.addWidget(footer)
 
         def _save(acc):
@@ -3394,9 +3403,9 @@ class _SettingsWindow(QMainWindow):
                     phrase, self.app, force_commands=True,
                 )
                 msg = f"'{phrase}' executed OK." if ok else f"'{phrase}' not found or failed."
-                self._test_result.emit(msg, "#5EEAD4" if ok else "#FF6666")
+                self._test_result.emit(msg, theme.ACCENT if ok else theme.ERROR)
             except Exception as exc:
-                self._test_result.emit(f"Error: {exc}", "#FF6666")
+                self._test_result.emit(f"Error: {exc}", theme.ERROR)
             # showNormal() is a QWidget method -- must run on the Qt thread,
             # not this worker thread. qt_runtime.post() is the established
             # marshal-a-callable-onto-the-Qt-thread idiom used throughout
@@ -3463,7 +3472,7 @@ class _SettingsWindow(QMainWindow):
         keys_edit.setPlaceholderText("e.g. ctrl+shift+a")
         pl0.addRow("Keys:", keys_edit)
         hint0 = QLabel("Use + to combine keys: ctrl, shift, alt, a-z, 0-9, f1-f12, etc.")
-        hint0.setStyleSheet("color: #8A8A92; font-size: 11px;")
+        hint0.setStyleSheet(f"color: {theme.ICON_IDLE}; font-size: 11px;")
         pl0.addRow("", hint0)
         stack.addWidget(p_hotkey)   # 0
 
@@ -3540,9 +3549,9 @@ class _SettingsWindow(QMainWindow):
         cancel_btn2 = QPushButton("Cancel")
         cancel_btn2.setFixedWidth(90)
         cancel_btn2.setStyleSheet(
-            "QPushButton { background-color: transparent; color: #8A8A92; "
+            f"QPushButton {{ background-color: transparent; color: {theme.ICON_IDLE}; "
             "border: 1px solid rgba(255,255,255,0.14); border-radius: 6px; padding: 8px 16px; }"
-            "QPushButton:hover { color: #E8E8EA; }"
+            f"QPushButton:hover {{ color: {theme.TEXT_PRIMARY}; }}"
         )
         cancel_btn2.clicked.connect(dlg.reject)
         btn_row2.addWidget(cancel_btn2)
@@ -3655,7 +3664,7 @@ class _SettingsWindow(QMainWindow):
         vol_row = QHBoxLayout()
         vol_row.setSpacing(12)
         vol_lbl = QLabel("Volume:")
-        vol_lbl.setStyleSheet("color: #E8E8EA; font-size: 14px;")
+        vol_lbl.setStyleSheet(f"color: {theme.TEXT_PRIMARY}; font-size: 14px;")
         vol_lbl.setFixedWidth(70)
 
         raw_vol = float(cfg.get('sound_volume', 0.5))
@@ -3669,16 +3678,16 @@ class _SettingsWindow(QMainWindow):
             "}"
             "QSlider::handle:horizontal {"
             "  width: 16px; height: 16px; margin: -6px 0;"
-            "  border-radius: 8px; background: #5EEAD4;"
+            f"  border-radius: 8px; background: {theme.ACCENT};"
             "}"
             "QSlider::sub-page:horizontal {"
-            "  background: #5EEAD4; border-radius: 2px;"
+            f"  background: {theme.ACCENT}; border-radius: 2px;"
             "}"
         )
         self._widgets['sound_volume_slider'] = vol_slider
 
         vol_pct = QLabel(f"{int(raw_vol * 100)}%")
-        vol_pct.setStyleSheet("color: #E8E8EA; font-size: 13px;")
+        vol_pct.setStyleSheet(f"color: {theme.TEXT_PRIMARY}; font-size: 13px;")
         vol_pct.setFixedWidth(40)
         vol_slider.valueChanged.connect(lambda v: vol_pct.setText(f"{v}%"))
 
@@ -3740,14 +3749,14 @@ class _SettingsWindow(QMainWindow):
         layout.addLayout(apply_row)
 
         theme_instant_note = QLabel("\"Apply Theme\" copies the theme's sounds immediately.")
-        theme_instant_note.setStyleSheet("color: #8A8A92; font-size: 12px;")
+        theme_instant_note.setStyleSheet(f"color: {theme.ICON_IDLE}; font-size: 12px;")
         layout.addWidget(theme_instant_note)
         layout.addSpacing(20)
 
         # ---- Section: Earcon Preview -------------------------------------------
         layout.addWidget(self._section_title("Earcon Preview"))
         desc = QLabel("Preview the audio cues for the active theme.")
-        desc.setStyleSheet("color: #8A8A92; font-size: 12px;")
+        desc.setStyleSheet(f"color: {theme.ICON_IDLE}; font-size: 12px;")
         layout.addWidget(desc)
         layout.addSpacing(6)
 
@@ -3777,12 +3786,12 @@ class _SettingsWindow(QMainWindow):
             col_i = (idx % cols) * 2
 
             name_lbl = QLabel(label_text)
-            name_lbl.setStyleSheet("color: #E8E8EA; font-size: 13px;")
+            name_lbl.setStyleSheet(f"color: {theme.TEXT_PRIMARY}; font-size: 13px;")
             play_btn = QPushButton("▶")
             play_btn.setFixedWidth(36)
             play_btn.setStyleSheet(
-                "QPushButton { background-color: #16161A; border: 1px solid rgba(255,255,255,0.14);"
-                " border-radius: 5px; color: #5EEAD4; font-size: 13px; padding: 4px; }"
+                f"QPushButton {{ background-color: {theme.BG2}; border: 1px solid rgba(255,255,255,0.14);"
+                f" border-radius: 5px; color: {theme.ACCENT}; font-size: 13px; padding: 4px; }}"
                 "QPushButton:hover { background-color: rgba(94,234,212,0.12); }"
             )
             play_btn.clicked.connect(
@@ -3803,7 +3812,7 @@ class _SettingsWindow(QMainWindow):
         files_desc = QLabel(
             f"Active sound files from: {sounds_dir}"
         )
-        files_desc.setStyleSheet("color: #8A8A92; font-size: 12px;")
+        files_desc.setStyleSheet(f"color: {theme.ICON_IDLE}; font-size: 12px;")
         files_desc.setWordWrap(True)
         layout.addWidget(files_desc)
         layout.addSpacing(6)
@@ -3821,12 +3830,12 @@ class _SettingsWindow(QMainWindow):
             file_row.setSpacing(10)
 
             name_lbl = QLabel(label_text + ":")
-            name_lbl.setStyleSheet("color: #E8E8EA; font-size: 13px;")
+            name_lbl.setStyleSheet(f"color: {theme.TEXT_PRIMARY}; font-size: 13px;")
             name_lbl.setFixedWidth(150)
 
             fname_lbl = QLabel(wav.name if exists else "not found")
             fname_lbl.setStyleSheet(
-                f"color: {'#8A8A92' if exists else '#FF6666'}; font-size: 12px;"
+                f"color: {theme.ICON_IDLE if exists else theme.ERROR}; font-size: 12px;"
             )
             fname_lbl.setFixedWidth(140)
 
@@ -3834,8 +3843,8 @@ class _SettingsWindow(QMainWindow):
             play_btn.setFixedWidth(36)
             play_btn.setEnabled(exists)
             play_btn.setStyleSheet(
-                "QPushButton { background-color: #16161A; border: 1px solid rgba(255,255,255,0.14);"
-                " border-radius: 5px; color: #5EEAD4; font-size: 13px; padding: 4px; }"
+                f"QPushButton {{ background-color: {theme.BG2}; border: 1px solid rgba(255,255,255,0.14);"
+                f" border-radius: 5px; color: {theme.ACCENT}; font-size: 13px; padding: 4px; }}"
                 "QPushButton:hover { background-color: rgba(94,234,212,0.12); }"
                 "QPushButton:disabled { color: #444; border-color: rgba(255,255,255,0.06); }"
             )
@@ -3998,7 +4007,7 @@ class _SettingsWindow(QMainWindow):
         layout.addWidget(tts_enabled)
 
         restart_note = QLabel("Restart Samsara to apply enable/disable changes.")
-        restart_note.setStyleSheet("color: #8A8A92; font-size: 12px;")
+        restart_note.setStyleSheet(f"color: {theme.ICON_IDLE}; font-size: 12px;")
         layout.addWidget(restart_note)
         layout.addSpacing(16)
 
@@ -4088,11 +4097,11 @@ class _SettingsWindow(QMainWindow):
         vol_slider.setFixedWidth(200)
         vol_slider.setStyleSheet(
             "QSlider::groove:horizontal{height:4px;background:rgba(255,255,255,0.12);border-radius:2px;}"
-            "QSlider::handle:horizontal{width:16px;height:16px;margin:-6px 0;border-radius:8px;background:#5EEAD4;}"
-            "QSlider::sub-page:horizontal{background:#5EEAD4;border-radius:2px;}"
+            f"QSlider::handle:horizontal{{width:16px;height:16px;margin:-6px 0;border-radius:8px;background:{theme.ACCENT};}}"
+            f"QSlider::sub-page:horizontal{{background:{theme.ACCENT};border-radius:2px;}}"
         )
         vol_pct = QLabel(f"{int(raw_vol * 100)}%")
-        vol_pct.setStyleSheet("color: #E8E8EA; font-size: 13px;")
+        vol_pct.setStyleSheet(f"color: {theme.TEXT_PRIMARY}; font-size: 13px;")
         vol_pct.setFixedWidth(40)
         vol_slider.valueChanged.connect(lambda v: vol_pct.setText(f"{v}%"))
         self._widgets['tts_volume_slider'] = vol_slider
@@ -4118,7 +4127,7 @@ class _SettingsWindow(QMainWindow):
             "Reduce background audio while Ava is speaking so her voice is clearly audible."
         )
         duck_desc.setWordWrap(True)
-        duck_desc.setStyleSheet("color: #8A8A92; font-size: 12px;")
+        duck_desc.setStyleSheet(f"color: {theme.ICON_IDLE}; font-size: 12px;")
         layout.addWidget(duck_desc)
         layout.addSpacing(6)
 
@@ -4135,11 +4144,11 @@ class _SettingsWindow(QMainWindow):
         duck_slider.setFixedWidth(200)
         duck_slider.setStyleSheet(
             "QSlider::groove:horizontal{height:4px;background:rgba(255,255,255,0.12);border-radius:2px;}"
-            "QSlider::handle:horizontal{width:16px;height:16px;margin:-6px 0;border-radius:8px;background:#5EEAD4;}"
-            "QSlider::sub-page:horizontal{background:#5EEAD4;border-radius:2px;}"
+            f"QSlider::handle:horizontal{{width:16px;height:16px;margin:-6px 0;border-radius:8px;background:{theme.ACCENT};}}"
+            f"QSlider::sub-page:horizontal{{background:{theme.ACCENT};border-radius:2px;}}"
         )
         duck_pct = QLabel(f"{int(raw_duck * 100)}%")
-        duck_pct.setStyleSheet("color: #E8E8EA; font-size: 13px;")
+        duck_pct.setStyleSheet(f"color: {theme.TEXT_PRIMARY}; font-size: 13px;")
         duck_pct.setFixedWidth(40)
         duck_slider.valueChanged.connect(lambda v: duck_pct.setText(f"{v}%"))
         self._widgets['tts_duck_slider'] = duck_slider
@@ -4165,7 +4174,7 @@ class _SettingsWindow(QMainWindow):
         test_btn.setSizePolicy(QSizePolicy.Policy.Minimum, QSizePolicy.Policy.Fixed)
         test_btn.clicked.connect(self._test_tts)
         test_status = QLabel("")
-        test_status.setStyleSheet("color: #8A8A92; font-size: 12px;")
+        test_status.setStyleSheet(f"color: {theme.ICON_IDLE}; font-size: 12px;")
         self._widgets['tts_test_status'] = test_status
         test_row.addWidget(test_btn)
         test_row.addWidget(test_status)
@@ -4176,9 +4185,9 @@ class _SettingsWindow(QMainWindow):
         # ---- When to speak (collapsible) ------------------------------------
         when_toggle = QPushButton("When should Samsara speak?  ▶")
         when_toggle.setStyleSheet(
-            "QPushButton{background:transparent;color:#8A8A92;border:none;"
+            f"QPushButton{{background:transparent;color:{theme.ICON_IDLE};border:none;"
             "font-size:13px;text-align:left;padding:0;}"
-            "QPushButton:hover{color:#E8E8EA;}"
+            f"QPushButton:hover{{color:{theme.TEXT_PRIMARY};}}"
         )
         layout.addWidget(when_toggle)
 
@@ -4192,7 +4201,7 @@ class _SettingsWindow(QMainWindow):
             "Some of these categories aren't wired up yet — saved now, applied when they are."
         )
         phase_note.setWordWrap(True)
-        phase_note.setStyleSheet("color: #8A8A92; font-size: 12px;")
+        phase_note.setStyleSheet(f"color: {theme.ICON_IDLE}; font-size: 12px;")
         when_layout.addWidget(phase_note)
 
         _WHEN_TOGGLES = [
@@ -4341,7 +4350,7 @@ class _SettingsWindow(QMainWindow):
         # ---- Section: Alarm List --------------------------------------------
         layout.addWidget(self._section_title("Your Alarms"))
         instant_note = QLabel("Changes to alarms below apply immediately.")
-        instant_note.setStyleSheet("color: #8A8A92; font-size: 12px;")
+        instant_note.setStyleSheet(f"color: {theme.ICON_IDLE}; font-size: 12px;")
         layout.addWidget(instant_note)
         layout.addSpacing(4)
 
@@ -4366,9 +4375,9 @@ class _SettingsWindow(QMainWindow):
         btn_row.setSpacing(8)
 
         _SEC = (
-            "QPushButton{background-color:transparent;color:#8A8A92;"
+            f"QPushButton{{background-color:transparent;color:{theme.ICON_IDLE};"
             "border:1px solid rgba(255,255,255,0.14);border-radius:6px;padding:7px 12px;}"
-            "QPushButton:hover{background-color:rgba(255,255,255,0.05);color:#E8E8EA;}"
+            f"QPushButton:hover{{background-color:rgba(255,255,255,0.05);color:{theme.TEXT_PRIMARY};}}"
         )
 
         add_btn = QPushButton("Add Alarm")
@@ -4393,7 +4402,7 @@ class _SettingsWindow(QMainWindow):
         del_btn.setMinimumWidth(80)  # sizeHint is 67; a few px of margin
         del_btn.setSizePolicy(QSizePolicy.Policy.Minimum, QSizePolicy.Policy.Fixed)
         del_btn.setStyleSheet(
-            "QPushButton{background-color:rgba(200,60,60,0.15);color:#FF8888;"
+            f"QPushButton{{background-color:rgba(200,60,60,0.15);color:{theme.ERROR};"
             "border:1px solid rgba(200,60,60,0.3);border-radius:6px;padding:7px 12px;}"
             "QPushButton:hover{background-color:rgba(200,60,60,0.25);}"
         )
@@ -4626,7 +4635,7 @@ class _SettingsWindow(QMainWindow):
         cancel_btn = QPushButton("Cancel")
         cancel_btn.setFixedWidth(80)
         cancel_btn.setStyleSheet(
-            "QPushButton{background-color:transparent;color:#8A8A92;"
+            f"QPushButton{{background-color:transparent;color:{theme.ICON_IDLE};"
             "border:1px solid rgba(255,255,255,0.14);border-radius:6px;padding:8px 14px;}"
         )
         cancel_btn.clicked.connect(dlg.reject)
@@ -4714,7 +4723,7 @@ class _SettingsWindow(QMainWindow):
             "Health entries are logged automatically by voice command."
         )
         instant_note.setWordWrap(True)
-        instant_note.setStyleSheet("color: #8A8A92; font-size: 12px;")
+        instant_note.setStyleSheet(f"color: {theme.ICON_IDLE}; font-size: 12px;")
         layout.addWidget(instant_note)
         layout.addSpacing(8)
 
@@ -4749,7 +4758,7 @@ class _SettingsWindow(QMainWindow):
         for group_name, cmds in commands_info:
             group_lbl = QLabel(group_name)
             group_lbl.setStyleSheet(
-                "color: #E8E8EA; font-size: 13px; font-weight: 600; "
+                f"color: {theme.TEXT_PRIMARY}; font-size: 13px; font-weight: 600; "
                 "margin-top: 6px;"
             )
             layout.addWidget(group_lbl)
@@ -4758,12 +4767,12 @@ class _SettingsWindow(QMainWindow):
                 row.setContentsMargins(12, 1, 0, 1)
                 p = QLabel(phrase)
                 p.setStyleSheet(
-                    "color: #5EEAD4; font-size: 12px; "
+                    f"color: {theme.ACCENT}; font-size: 12px; "
                     "font-family: 'Consolas', 'Courier New', monospace;"
                 )
                 p.setMinimumWidth(240)
                 d = QLabel(desc)
-                d.setStyleSheet("color: #8A8A92; font-size: 12px;")
+                d.setStyleSheet(f"color: {theme.ICON_IDLE}; font-size: 12px;")
                 row.addWidget(p)
                 row.addWidget(d, stretch=1)
                 layout.addLayout(row)
@@ -4775,7 +4784,7 @@ class _SettingsWindow(QMainWindow):
         layout.addSpacing(4)
 
         self._health_count_label = QLabel("Loading...")
-        self._health_count_label.setStyleSheet("color: #8A8A92; font-size: 12px;")
+        self._health_count_label.setStyleSheet(f"color: {theme.ICON_IDLE}; font-size: 12px;")
         layout.addWidget(self._health_count_label)
         layout.addSpacing(4)
 
@@ -4815,7 +4824,7 @@ class _SettingsWindow(QMainWindow):
         self._health_summary_label = QLabel("")
         self._health_summary_label.setWordWrap(True)
         self._health_summary_label.setStyleSheet(
-            "color: #E8E8EA; font-size: 13px; line-height: 1.5;"
+            f"color: {theme.TEXT_PRIMARY}; font-size: 13px; line-height: 1.5;"
         )
         layout.addWidget(self._health_summary_label)
         layout.addSpacing(20)
@@ -4840,7 +4849,7 @@ class _SettingsWindow(QMainWindow):
         layout.addLayout(export_row)
 
         self._health_export_label = QLabel("")
-        self._health_export_label.setStyleSheet("color: #8A8A92; font-size: 12px;")
+        self._health_export_label.setStyleSheet(f"color: {theme.ICON_IDLE}; font-size: 12px;")
         layout.addWidget(self._health_export_label)
         layout.addSpacing(20)
 
@@ -4853,7 +4862,7 @@ class _SettingsWindow(QMainWindow):
             "is heard correctly."
         )
         dict_desc.setWordWrap(True)
-        dict_desc.setStyleSheet("color: #8A8A92; font-size: 12px;")
+        dict_desc.setStyleSheet(f"color: {theme.ICON_IDLE}; font-size: 12px;")
         layout.addWidget(dict_desc)
         layout.addSpacing(6)
 
@@ -4867,7 +4876,7 @@ class _SettingsWindow(QMainWindow):
         layout.addLayout(dict_row)
 
         self._med_dict_label = QLabel("")
-        self._med_dict_label.setStyleSheet("color: #8A8A92; font-size: 12px;")
+        self._med_dict_label.setStyleSheet(f"color: {theme.ICON_IDLE}; font-size: 12px;")
         layout.addWidget(self._med_dict_label)
 
         layout.addStretch()
@@ -4994,7 +5003,7 @@ class _SettingsWindow(QMainWindow):
             dict_path = Path(__file__).parent.parent.parent / "dictionaries" / "medications.json"
             if not dict_path.exists():
                 self._med_dict_label.setText("Dictionary file not found.")
-                self._med_dict_label.setStyleSheet("color: #c0392b; font-size: 12px;")
+                self._med_dict_label.setStyleSheet(f"color: {theme.ERROR}; font-size: 12px;")
                 return
 
             with open(dict_path, "r", encoding="utf-8") as f:
@@ -5023,10 +5032,10 @@ class _SettingsWindow(QMainWindow):
             self._med_dict_label.setText(
                 f"Added {added} new terms ({total} total medication words in vocabulary)."
             )
-            self._med_dict_label.setStyleSheet("color: #5EEAD4; font-size: 12px;")
+            self._med_dict_label.setStyleSheet(f"color: {theme.ACCENT}; font-size: 12px;")
         except Exception as ex:
             self._med_dict_label.setText(f"Error: {ex}")
-            self._med_dict_label.setStyleSheet("color: #c0392b; font-size: 12px;")
+            self._med_dict_label.setStyleSheet(f"color: {theme.ERROR}; font-size: 12px;")
 
     def _build_advanced_tab(self):
         try:
@@ -5213,7 +5222,7 @@ class _SettingsWindow(QMainWindow):
             "evaluating. Restart required; Windows only."
         )
         aec_note.setWordWrap(True)
-        aec_note.setStyleSheet("color: #8A8A92; font-size: 12px; margin-left: 26px;")
+        aec_note.setStyleSheet(f"color: {theme.ICON_IDLE}; font-size: 12px; margin-left: 26px;")
         layout.addWidget(aec_note)
         layout.addSpacing(8)
 
@@ -5246,7 +5255,7 @@ class _SettingsWindow(QMainWindow):
             "restores it after."
         )
         ducking_note.setWordWrap(True)
-        ducking_note.setStyleSheet("color: #8A8A92; font-size: 12px; margin-left: 26px;")
+        ducking_note.setStyleSheet(f"color: {theme.ICON_IDLE}; font-size: 12px; margin-left: 26px;")
         layout.addWidget(ducking_note)
         layout.addSpacing(8)
 
@@ -5270,7 +5279,7 @@ class _SettingsWindow(QMainWindow):
         indicator_desc = QLabel(
             "An always-on-top pill that shows your current mode and pulses while recording."
         )
-        indicator_desc.setStyleSheet("color: #8A8A92; font-size: 12px;")
+        indicator_desc.setStyleSheet(f"color: {theme.ICON_IDLE}; font-size: 12px;")
         layout.addWidget(indicator_desc)
         layout.addSpacing(6)
 
@@ -5309,7 +5318,7 @@ class _SettingsWindow(QMainWindow):
                 "Position set by dragging the indicator. Pick a preset "
                 "above to replace it."
             )
-            custom_note.setStyleSheet("color: #8A8A92; font-size: 12px; margin-left: 26px;")
+            custom_note.setStyleSheet(f"color: {theme.ICON_IDLE}; font-size: 12px; margin-left: 26px;")
             layout.addWidget(custom_note)
 
         layout.addSpacing(20)
@@ -5323,7 +5332,7 @@ class _SettingsWindow(QMainWindow):
             "and is fully released when off."
         )
         gesture_note.setWordWrap(True)
-        gesture_note.setStyleSheet("color: #8A8A92; font-size: 12px;")
+        gesture_note.setStyleSheet(f"color: {theme.ICON_IDLE}; font-size: 12px;")
         layout.addWidget(gesture_note)
         layout.addSpacing(6)
 
@@ -5344,7 +5353,7 @@ class _SettingsWindow(QMainWindow):
             "rephrasing you. Off by default."
         )
         sc_note.setWordWrap(True)
-        sc_note.setStyleSheet("color: #8A8A92; font-size: 12px;")
+        sc_note.setStyleSheet(f"color: {theme.ICON_IDLE}; font-size: 12px;")
         layout.addWidget(sc_note)
         layout.addSpacing(6)
 
@@ -5356,7 +5365,7 @@ class _SettingsWindow(QMainWindow):
 
         sc_status_label = QLabel("Active backend: --")
         sc_status_label.setWordWrap(True)
-        sc_status_label.setStyleSheet("color: #8A8A92; font-size: 12px; margin-left: 4px;")
+        sc_status_label.setStyleSheet(f"color: {theme.ICON_IDLE}; font-size: 12px; margin-left: 4px;")
         self._widgets['sc_status_label'] = sc_status_label
         layout.addWidget(sc_status_label)
         layout.addSpacing(8)
@@ -5381,7 +5390,7 @@ class _SettingsWindow(QMainWindow):
             "will have no backend."
         )
         sc_cloud_hint.setWordWrap(True)
-        sc_cloud_hint.setStyleSheet("color: #E0A030; font-size: 12px; margin-left: 4px;")
+        sc_cloud_hint.setStyleSheet(f"color: {theme.WARNING}; font-size: 12px; margin-left: 4px;")
 
         def _update_sc_cloud_hint(_text=None):
             cloud_enabled = bool(self.app.config.get('cloud_llm', {}).get('enabled', False))
@@ -5451,7 +5460,7 @@ class _SettingsWindow(QMainWindow):
             "Nothing leaves this machine."
         )
         bench_note.setWordWrap(True)
-        bench_note.setStyleSheet("color: #8A8A92; font-size: 12px;")
+        bench_note.setStyleSheet(f"color: {theme.ICON_IDLE}; font-size: 12px;")
         layout.addWidget(bench_note)
         layout.addSpacing(6)
 
@@ -5572,7 +5581,7 @@ class _SettingsWindow(QMainWindow):
             "Free with your own API key."
         )
         enable_note.setWordWrap(True)
-        enable_note.setStyleSheet("color: #8A8A92; font-size: 12px; margin-left: 26px;")
+        enable_note.setStyleSheet(f"color: {theme.ICON_IDLE}; font-size: 12px; margin-left: 26px;")
         layout.addWidget(enable_note)
         layout.addSpacing(8)
 
@@ -5590,7 +5599,7 @@ class _SettingsWindow(QMainWindow):
             "Strict: tight persona, 1-3 sentences, stays in character."
         )
         personality_note.setWordWrap(True)
-        personality_note.setStyleSheet("color: #8A8A92; font-size: 12px; margin-left: 4px;")
+        personality_note.setStyleSheet(f"color: {theme.ICON_IDLE}; font-size: 12px; margin-left: 4px;")
         layout.addWidget(personality_note)
         layout.addSpacing(8)
 
@@ -5613,7 +5622,7 @@ class _SettingsWindow(QMainWindow):
             "Keep last session: the conversation is restored on next launch."
         )
         memory_note.setWordWrap(True)
-        memory_note.setStyleSheet("color: #8A8A92; font-size: 12px; margin-left: 4px;")
+        memory_note.setStyleSheet(f"color: {theme.ICON_IDLE}; font-size: 12px; margin-left: 4px;")
         layout.addWidget(memory_note)
         layout.addSpacing(6)
 
@@ -5667,7 +5676,7 @@ class _SettingsWindow(QMainWindow):
         explainer.setStyleSheet("color: #AEB4C0; font-size: 13px;")
         layout.addWidget(explainer)
         setup_link = QLabel("Setup guide: morneis.com/samsara")
-        setup_link.setStyleSheet("color: #5EEAD4; font-size: 13px;")
+        setup_link.setStyleSheet(f"color: {theme.ACCENT}; font-size: 13px;")
         layout.addWidget(setup_link)
         layout.addSpacing(4)
 
@@ -5689,8 +5698,8 @@ class _SettingsWindow(QMainWindow):
             "QPushButton { background-color: transparent; color: #AEB4C0; "
             "border: 1px solid rgba(255,255,255,0.14); border-radius: 6px; "
             "padding: 6px 10px; font-size: 13px; }"
-            "QPushButton:hover { color: #E8E8EA; }"
-            "QPushButton:checked { border-color: rgba(94,234,212,0.4); color: #5EEAD4; }"
+            f"QPushButton:hover {{ color: {theme.TEXT_PRIMARY}; }}"
+            f"QPushButton:checked {{ border-color: rgba(94,234,212,0.4); color: {theme.ACCENT}; }}"
         )
         show_btn.toggled.connect(
             lambda checked: self._toggle_api_key_show(checked, api_key_entry, show_btn)
@@ -5748,7 +5757,7 @@ class _SettingsWindow(QMainWindow):
         test_btn.setSizePolicy(QSizePolicy.Policy.Minimum, QSizePolicy.Policy.Fixed)
         test_btn.clicked.connect(self._run_test_connection)
         test_status = QLabel("")
-        test_status.setStyleSheet("color: #8A8A92; font-size: 12px;")
+        test_status.setStyleSheet(f"color: {theme.ICON_IDLE}; font-size: 12px;")
         self._widgets['cloud_test_status'] = test_status
         test_row.addWidget(test_btn)
         test_row.addWidget(test_status)
@@ -5765,7 +5774,7 @@ class _SettingsWindow(QMainWindow):
             "unlocks features. morneis.com/samsara/support"
         )
         support_text.setWordWrap(True)
-        support_text.setStyleSheet("color: #8A8A92; font-size: 12px;")
+        support_text.setStyleSheet(f"color: {theme.ICON_IDLE}; font-size: 12px;")
         layout.addWidget(support_text)
         layout.addSpacing(8)
 
@@ -5811,7 +5820,7 @@ class _SettingsWindow(QMainWindow):
         key_row = QHBoxLayout()
         key_row.setSpacing(8)
         key_row_lbl = QLabel("Supporter key (optional):")
-        key_row_lbl.setStyleSheet("color: #E8E8EA; font-size: 13px; background: transparent;")
+        key_row_lbl.setStyleSheet(f"color: {theme.TEXT_PRIMARY}; font-size: 13px; background: transparent;")
         key_row_lbl.setFixedWidth(150)
         license_entry = QLineEdit()
         license_entry.setPlaceholderText("SAMSARA-XXXX-XXXX-XXXX")
@@ -5826,7 +5835,7 @@ class _SettingsWindow(QMainWindow):
         nk_layout.addLayout(key_row)
 
         license_status = QLabel("")
-        license_status.setStyleSheet("color: #FF6666; font-size: 12px; background: transparent;")
+        license_status.setStyleSheet(f"color: {theme.ERROR}; font-size: 12px; background: transparent;")
         self._widgets['cloud_license_status'] = license_status
         nk_layout.addWidget(license_status)
 
@@ -5844,13 +5853,13 @@ class _SettingsWindow(QMainWindow):
 
         active_lbl = QLabel("Supporter key active")
         active_lbl.setStyleSheet(
-            "color: #5EEAD4; font-size: 13px; font-weight: bold; background: transparent;"
+            f"color: {theme.ACCENT}; font-size: 13px; font-weight: bold; background: transparent;"
         )
         hk_layout.addWidget(active_lbl)
 
         masked_lbl = QLabel(premium.masked_key(key) if has_key else "")
         masked_lbl.setStyleSheet(
-            "color: #8A8A92; font-size: 11px; "
+            f"color: {theme.ICON_IDLE}; font-size: 11px; "
             "font-family: 'Consolas', 'Courier New', monospace; background: transparent;"
         )
         self._widgets['cloud_masked_key'] = masked_lbl
@@ -5859,10 +5868,10 @@ class _SettingsWindow(QMainWindow):
         remove_btn = QPushButton("Remove Key")
         remove_btn.setFixedWidth(120)
         remove_btn.setStyleSheet(
-            "QPushButton { background-color: transparent; color: #8A8A92; "
+            f"QPushButton {{ background-color: transparent; color: {theme.ICON_IDLE}; "
             "border: 1px solid rgba(255,255,255,0.14); border-radius: 6px; "
             "padding: 7px 14px; font-size: 13px; }"
-            "QPushButton:hover { background-color: rgba(255,255,255,0.04); color: #E8E8EA; }"
+            f"QPushButton:hover {{ background-color: rgba(255,255,255,0.04); color: {theme.TEXT_PRIMARY}; }}"
         )
         remove_btn.clicked.connect(self._remove_license)
         hk_layout.addWidget(remove_btn, alignment=Qt.AlignmentFlag.AlignLeft)
@@ -5874,7 +5883,7 @@ class _SettingsWindow(QMainWindow):
         layout.addWidget(supporter_frame)
 
         supporter_instant_note = QLabel("Activating or removing a supporter key applies immediately.")
-        supporter_instant_note.setStyleSheet("color: #8A8A92; font-size: 12px;")
+        supporter_instant_note.setStyleSheet(f"color: {theme.ICON_IDLE}; font-size: 12px;")
         layout.addWidget(supporter_instant_note)
 
         def _save(_acc):
@@ -5988,12 +5997,12 @@ class _SettingsWindow(QMainWindow):
         api_key_entry = self._widgets.get('cloud_api_key')
         api_key = api_key_entry.text().strip() if api_key_entry else ""
         if not api_key:
-            self._test_result.emit("No API key entered.", "#E89020")
+            self._test_result.emit("No API key entered.", theme.WARNING)
             return
         provider_combo = self._widgets.get('cloud_provider')
         provider_display = provider_combo.currentText() if provider_combo else _PROVIDER_DISPLAY[0]
         provider = _DISPLAY_TO_CODE.get(provider_display, 'deepseek')
-        self._test_result.emit("Testing...", "#8A8A92")
+        self._test_result.emit("Testing...", theme.ICON_IDLE)
 
         class _FakeApp:
             config = {"cloud_llm": {
@@ -6008,10 +6017,10 @@ class _SettingsWindow(QMainWindow):
                 from samsara import cloud_llm
                 ok, info = cloud_llm.check_available(fake)
                 msg = f"Connected to {provider}." if ok else f"Failed: {info}"
-                color = "#5EEAD4" if ok else "#FF6666"
+                color = theme.ACCENT if ok else theme.ERROR
             except Exception as exc:
                 msg = f"Error: {exc}"
-                color = "#FF6666"
+                color = theme.ERROR
             self._test_result.emit(msg, color)
 
         thread_registry.spawn("settings_qt._do", _do, daemon=True)
@@ -6028,7 +6037,7 @@ class _SettingsWindow(QMainWindow):
 
     def _section_title(self, text):
         label = QLabel(text)
-        label.setStyleSheet("color: #5EEAD4; font-size: 16px; font-weight: bold;")
+        label.setStyleSheet(f"color: {theme.ACCENT}; font-size: 16px; font-weight: bold;")
         return label
 
     def _section_card(self, title: str, subtitle: str | None = None):
@@ -6042,7 +6051,7 @@ class _SettingsWindow(QMainWindow):
         card.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Minimum)
         card.setStyleSheet(
             "QFrame#settingsSectionCard {"
-            " background-color: #161b24;"
+            f" background-color: {theme.BG1};"
             " border: 1px solid rgba(255,255,255,0.12);"
             " border-radius: 12px;"
             "}"
@@ -6054,7 +6063,7 @@ class _SettingsWindow(QMainWindow):
 
         title_label = QLabel(title)
         title_label.setStyleSheet(
-            "color: #5EEAD4; font-size: 17px; font-weight: 700;"
+            f"color: {theme.ACCENT}; font-size: 17px; font-weight: 700;"
         )
         v.addWidget(title_label)
 
@@ -6101,7 +6110,7 @@ class _SettingsWindow(QMainWindow):
         left.setSpacing(4)
 
         lbl = QLabel(label)
-        lbl.setStyleSheet("font-weight: 600; font-size: 14px; color: #E8E8EA;")
+        lbl.setStyleSheet(f"font-weight: 600; font-size: 14px; color: {theme.TEXT_PRIMARY};")
         left.addWidget(lbl)
 
         if description:
