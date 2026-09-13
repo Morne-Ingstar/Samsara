@@ -23,7 +23,8 @@ from PySide6.QtWidgets import (
 )
 
 from samsara import config_defaults
-from samsara.constants import DEFAULT_WAKE_PHRASE
+from samsara.constants import DEFAULT_WAKE_PHRASE, DEFAULT_WAKE_PHRASE_OPTIONS
+from samsara import session_modes
 from samsara.runtime import thread_registry
 from samsara.ui import qt_runtime, theme
 from samsara.audio_devices import force_rescan, list_microphones, pick_index_by_name
@@ -331,12 +332,7 @@ _USE_CASE_CONFIGS = {
 }
 
 _USE_CASE_TIPS = {
-    "chronic_pain": (
-        "Tap Right Ctrl once to start a 15-minute hands-free session. "
-        "Say 'command', 'dictate', or 'hey ava' to switch lanes. In Dictate, "
-        "say 'end' by itself to paste your thought and keep dictating. "
-        "Say 'stop listening' at any time to leave hands-free mode."
-    ),
+    # "chronic_pain" is rendered by _hands_free_tip() from live constants.
     "privacy": (
         "All your data stays on this machine. Voice recognition runs locally "
         "via Whisper — nothing is sent to the cloud."
@@ -350,6 +346,86 @@ _USE_CASE_TIPS = {
         "Text appears wherever your cursor is."
     ),
 }
+
+
+def _merge_wake_word_config(config: dict, phrase=None, wake_command_timeout=None) -> dict:
+    """Read-merge-write config["wake_word_config"] (and its "audio" sub-dict):
+    keys already there survive, only the given values change."""
+    wwc = dict(config.get("wake_word_config") or {})
+    audio = dict(wwc.get("audio") or {})
+    if phrase is not None:
+        wwc["phrase"] = phrase
+    if wake_command_timeout is not None:
+        audio["wake_command_timeout"] = float(wake_command_timeout)
+    if audio:
+        wwc["audio"] = audio
+    config["wake_word_config"] = wwc
+    return config
+
+
+def _finalize_config(config: dict) -> dict:
+    """The dict the wizard hands back (dictation.py writes it as config.json).
+    Folds any legacy flat wake keys into wake_word_config and removes them,
+    so the live key wake_word_config.audio.wake_command_timeout is what gets
+    written -- never the dead top-level wake_word_timeout."""
+    phrase = config.pop("wake_word", None)
+    timeout = config.pop("wake_word_timeout", None)
+    return _merge_wake_word_config(config, phrase=phrase, wake_command_timeout=timeout)
+
+
+def _shortest(phrases) -> str:
+    return min(phrases, key=lambda p: (len(p), p)) if phrases else ""
+
+
+def _hands_free_tip(config: dict) -> str:
+    """The chronic-pain use-case tip, built from the words the session
+    actually honours (session_modes constants + the wizard config) --
+    guidance audit 2026-09-13 row 336 (bare "command" was never a switch
+    word) and row 336-338 (no stop / sleep word was mentioned)."""
+    cm = config.get("command_mode") or {}
+    try:
+        from samsara.ui.quick_reference_qt import _pretty_button  # noqa: PLC0415
+        button = _pretty_button(cm.get("button", "rctrl")).replace(" (default)", "")
+    except Exception:
+        button = "Right Ctrl"
+    minutes = int(cm.get("inactivity_timeout_s", 900)) // 60
+    switches = session_modes._WHOLE_UTTERANCE_SWITCHES
+    cmd_word = _shortest([p for p, m in switches.items() if m is session_modes.SessionMode.COMMAND])
+    dictate_word = _shortest([p for p, m in switches.items() if m is session_modes.SessionMode.DICTATE])
+    ava_word = (session_modes.resolve_ava_invocations(config) or [""])[0]
+    stop_word = session_modes.SESSION_STOP_PHRASES[0]
+    sleep_word = session_modes.SESSION_SLEEP_PHRASES[0]
+    exit_word = session_modes.GLOBAL_SESSION_EXIT_PHRASES[0]
+    return (
+        f"Tap {button} once to start a {minutes}-minute hands-free session. "
+        f"Say '{cmd_word}', '{dictate_word}' or '{ava_word}' to switch lanes. In Dictate, "
+        f"say '{session_modes.DICTATE_COMMIT_PHRASE}' by itself to paste your thought and keep dictating. "
+        f"Say '{stop_word}' to stop what is running (your draft is kept); say '{sleep_word}' "
+        f"or '{exit_word}' to leave hands-free mode."
+    )
+
+
+def _builtin_hotkeys_text(config: dict) -> str:
+    """Keys that exist with no wizard control: read from the wizard config
+    when set, else the same fallback table the Quick Reference uses."""
+    from samsara.ui.quick_reference_qt import _HOTKEY_FALLBACKS, _pretty_key_combo  # noqa: PLC0415
+
+    def key(name):
+        return _pretty_key_combo(config.get(name, _HOTKEY_FALLBACKS.get(name, "")))
+
+    return ("Also built in (change them in Settings -> Modes): "
+            f"undo last dictation {key('undo_hotkey')} - cancel a recording {key('cancel_hotkey')} - "
+            f"Ava key {config.get('ava_mode_key', 'right_alt').replace('_', ' ').title()} - "
+            f"voice memo {key('memo_hotkey')} - correction capture {key('hotkeys.capture_correction')}. "
+            "The full list is in Quick Reference (tray menu).")
+
+
+def _wake_options_text(phrase: str = DEFAULT_WAKE_PHRASE) -> str:
+    """Row 879: the alternatives exist today -- name them instead of
+    promising them."""
+    alternates = [p for p in DEFAULT_WAKE_PHRASE_OPTIONS if p != phrase]
+    return ("Also answers to: " + ", ".join(alternates)
+            + ". Change the phrase later in Settings -> Modes.")
 
 _DEFAULTS = {
     "hotkey":              "ctrl+shift",
@@ -368,8 +444,14 @@ _DEFAULTS = {
     "silence_threshold":   2.0,
     "min_speech_duration": 0.3,
     "command_mode": {"command_matching_enabled": False},
-    "wake_word":           "jarvis",
-    "wake_word_timeout":   5.0,
+    # Nested, live keys (guidance audit 2026-09-13 rows 371/372): the flat
+    # legacy "wake_word" / "wake_word_timeout" keys are migrated away or
+    # silently dropped by dictation.load_config(). _finalize_config()
+    # read-merge-writes this dict; nothing replaces wake_word_config wholesale.
+    "wake_word_config": {
+        "phrase": DEFAULT_WAKE_PHRASE,
+        "audio": {"wake_command_timeout": 5.0},
+    },
     "show_all_audio_devices": False,
     "audio_feedback":      True,
     "first_run_complete":  True,
@@ -843,6 +925,11 @@ class _WizardWindow(QMainWindow):
             row.addWidget(btn, alignment=Qt.AlignmentFlag.AlignVCenter)
             lay.addLayout(row)
 
+        builtin_note = QLabel(_builtin_hotkeys_text(self._config))
+        builtin_note.setWordWrap(True)
+        builtin_note.setStyleSheet("color:#8A8A92;font-size:11px;")
+        lay.addWidget(builtin_note)
+
         # Separator
         sep = QFrame()
         sep.setFrameShape(QFrame.Shape.HLine)
@@ -876,7 +963,8 @@ class _WizardWindow(QMainWindow):
         self._ww_off_note.setVisible(False)
         lay.addWidget(self._ww_off_note)
 
-        coming = QLabel("More wake word options coming soon.")
+        coming = QLabel(_wake_options_text(DEFAULT_WAKE_PHRASE))
+        coming.setWordWrap(True)
         coming.setStyleSheet("color:#8A8A92;font-size:11px;")
         lay.addWidget(coming)
         lay.addStretch()
@@ -1051,7 +1139,8 @@ class _WizardWindow(QMainWindow):
         # Populate the use-case tip
         if self._tip_lbl is not None:
             use_case = self._config.get('_use_case', 'just_dictation')
-            tip = _USE_CASE_TIPS.get(use_case, "")
+            tip = (_hands_free_tip(self._config) if use_case == "chronic_pain"
+                   else _USE_CASE_TIPS.get(use_case, ""))
             self._tip_lbl.setText(tip)
             self._tip_lbl.parentWidget().setVisible(bool(tip))
 
@@ -1060,7 +1149,7 @@ class _WizardWindow(QMainWindow):
         self._config['first_run_complete'] = True
         if self._no_hints_cb is not None and self._no_hints_cb.isChecked():
             self._config['hints_enabled'] = False
-        self.result = self._config
+        self.result = _finalize_config(self._config)
         self.close()
 
     def _apply_use_case_defaults(self):
@@ -1082,7 +1171,7 @@ class _WizardWindow(QMainWindow):
         # Ensure result is always set before signalling done.
         if self.result is None:
             self._config['first_run_complete'] = True
-            self.result = self._config
+            self.result = _finalize_config(self._config)
         self._finished.emit(self.result)
         event.accept()
 

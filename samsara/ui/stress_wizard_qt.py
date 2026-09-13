@@ -196,8 +196,9 @@ class _StressWizardWindow(QMainWindow):
 
         hint = QLabel(
             "This wizard listens for your NEXT real dictation -- perform the "
-            "step above with your actual hotkey. Nothing needs focus; the "
-            "box below fills in on its own once captured."
+            "step above with your actual hotkey (the wake word or a hands-free "
+            "session count too: any real dictation is captured). Nothing needs "
+            "focus; the box below fills in on its own once captured."
         )
         hint.setWordWrap(True)
         hint.setStyleSheet(f"color:{theme.TEXT_SECONDARY};font-size:{theme.FONT_SIZE_CAPTION}px;")
