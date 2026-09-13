@@ -28,6 +28,29 @@ Public API (unchanged from Win32 version):
   set_custom_position(screen_name: str, cx: float, cy: float)
   enter_move_mode() / exit_move_mode(cancel: bool)
   flash_success() / flash_error() / flash_wake()
+  show_outcome(label: str, kind: str, ttl_ms: int | None = 1800)
+  clear_outcome()
+  set_device_lost(lost: bool)
+
+Outcome chip:
+  The indicator is the one place the app says what just happened. Every
+  dispatch outcome maps to one short chip in a single table,
+  samsara.session_modes.outcome_chip -- which is the source of truth, and
+  whose test enumerates every outcome kind from source so none can go
+  unmapped. The colour is the meaning: green (SUCCESS) it worked -- a check
+  mark plus the command ("switch window"), "typed", "undone"; red (ERROR) it
+  failed -- "MISS", a cross plus the reason ("no audio"), and "REC" while a
+  hold is live; amber (WARNING) it was deliberately refused -- "refused: focus
+  lock", "Ava: nothing to do"; teal (ACCENT) a mode change or work still in
+  progress -- an arrow plus the mode ("AVA"), "staged", "Ava" plus an
+  ellipsis. A pending chip (staged, the Ava ellipsis, the ellipsis shown
+  after releasing a hold) stays until the real outcome replaces it; every
+  other chip clears after its TTL. The glyphs are built with chr() in
+  session_modes (CHIP_CHECK etc.) so no source file carries them. The chip draws even
+  when the indicator is switched off in settings, alone and only for its TTL,
+  so a user who cannot hear the earcons still sees every result. A persistent
+  "mic lost" chip, driven by the audio engine's DEVICE_LOST state, overrides
+  the rest until the microphone reconnects.
 
 Move mode (drag-to-reposition):
   The tray's "Move listening indicator..." action calls enter_move_mode(),
@@ -48,7 +71,34 @@ from PySide6.QtCore import Qt, QTimer, QRectF, QPointF, Signal
 from PySide6.QtGui import QColor, QFont, QFontMetrics, QPainter, QPainterPath, QPen
 from PySide6.QtWidgets import QApplication, QMenu, QWidget
 
+from samsara.ui import theme
+
 logger = logging.getLogger(__name__)
+
+# ---------------------------------------------------------------------------
+# Outcome chip -- what just happened (see samsara.session_modes.outcome_chip)
+# ---------------------------------------------------------------------------
+
+#: Chip fill by kind. theme.py tokens only. pending/live share a colour with
+#: accent/error and differ only in having no TTL.
+_CHIP_FILL = {
+    "success": theme.SUCCESS,
+    "error":   theme.ERROR,
+    "warning": theme.WARNING,
+    "accent":  theme.ACCENT,
+    "pending": theme.ACCENT,
+    "live":    theme.ERROR,
+}
+#: Dark text on the saturated fill -- the highest-contrast pairing theme.py
+#: offers (TEXT_ON_ACCENT is BG0), and the chip must be readable at a glance.
+_CHIP_TEXT = theme.TEXT_ON_ACCENT
+_CHIP_FONT_PX = 13
+_CHIP_H = 26
+_CHIP_PAD_X = 12
+_CHIP_GAP = 6
+_CHIP_DEFAULT_TTL_MS = 1800
+_NO_TTL_KINDS = frozenset({"pending", "live"})
+_DEVICE_LOST_LABEL = "mic lost"
 
 # ---------------------------------------------------------------------------
 # Colors
@@ -198,6 +248,20 @@ class ListeningIndicator(QWidget):
         self._flash_timer.setInterval(_FLASH_STEP_INTERVAL)
         self._flash_timer.timeout.connect(self._flash_tick)
 
+        # Outcome chip. _chip_label None means no chip. _chip_only is True
+        # when the chip had to show the widget itself because the indicator
+        # was hidden (listening_indicator_enabled False): the pill body is
+        # then not drawn, and the widget hides again when the chip clears.
+        self._chip_label = None
+        self._chip_kind = None
+        self._chip_only = False
+        self._chip_timer = QTimer(self)
+        self._chip_timer.setSingleShot(True)
+        self._chip_timer.timeout.connect(self._clear_outcome)
+        # Persistent "mic lost" chip, keyed on the audio engine's DEVICE_LOST
+        # state. Wins over any transient outcome chip while set.
+        self._device_lost = False
+
         self.resize(_PILL_MIN_W, _PILL_H)
 
     # ------------------------------------------------------------------
@@ -205,6 +269,9 @@ class ListeningIndicator(QWidget):
     # ------------------------------------------------------------------
 
     def show(self):
+        # An explicit show() means the pill itself is wanted -- leave
+        # chip-only mode (any active chip now draws beside the pill).
+        self._chip_only = False
         self._reposition()
         super().show()
         if self._listening:
@@ -215,12 +282,31 @@ class ListeningIndicator(QWidget):
         self._pulse_timer.stop()
         self._flash_timer.stop()
         self._force_lock()
+        if self._device_lost:
+            # The persistent "mic lost" chip outlives the pill being hidden:
+            # it is the explanation for every capture about to fail.
+            self._chip_timer.stop()
+            self._chip_label = None
+            self._chip_kind = None
+            self._chip_only = True
+            self._reposition()
+            self.update()
+            return
+        self._chip_timer.stop()
+        self._chip_label = None
+        self._chip_kind = None
+        self._chip_only = False
         super().hide()
 
     def destroy(self, destroyWindow=True, destroySubWindows=True):
         self._thinking = False
         self._pulse_timer.stop()
         self._flash_timer.stop()
+        self._chip_timer.stop()
+        self._chip_label = None
+        self._chip_kind = None
+        self._chip_only = False
+        self._device_lost = False
         self._force_lock()
         super().hide()
 
@@ -495,6 +581,90 @@ class ListeningIndicator(QWidget):
             self._start_flash(_TEAL, _LISTENING_FG)
 
     # ------------------------------------------------------------------
+    # Outcome chip
+    # ------------------------------------------------------------------
+
+    def show_outcome(self, label: str, kind: str, ttl_ms: "int | None" = _CHIP_DEFAULT_TTL_MS):
+        """Show a short chip saying what just happened.
+
+        A new call replaces the current chip. `pending` and `live` kinds have
+        no TTL and stay until replaced; every other kind clears after
+        `ttl_ms`. Colours are theme.py tokens by kind.
+
+        Renders even when the indicator is hidden by config
+        (listening_indicator_enabled False): the widget shows in chip-only
+        mode -- no pill body -- for the chip's lifetime, then hides again.
+        That is the whole point for a user who cannot hear the earcons.
+        Never takes focus: this widget's window flags already forbid it.
+        """
+        if not label:
+            self.clear_outcome()
+            return
+        kind = kind if kind in _CHIP_FILL else "warning"
+        self._chip_label = str(label)
+        self._chip_kind = kind
+        self._chip_timer.stop()
+
+        if not self.isVisible():
+            self._chip_only = True
+            self._reposition()
+            super().show()
+        else:
+            self._reposition()
+        self.update()
+
+        if kind not in _NO_TTL_KINDS and ttl_ms:
+            self._chip_timer.start(int(ttl_ms))
+
+    def clear_outcome(self):
+        """Remove the transient chip (the device-lost chip is unaffected)."""
+        self._chip_timer.stop()
+        self._clear_outcome()
+
+    def set_device_lost(self, lost: bool):
+        """Persistent "mic lost" chip, keyed on the audio engine's DEVICE_LOST
+        state (AudioCaptureEngine.device_lost). Stays until cleared by a
+        successful reopen; overrides any transient chip while set, since it
+        is the reason every other action is about to fail."""
+        lost = bool(lost)
+        if lost == self._device_lost:
+            return
+        self._device_lost = lost
+        if lost and not self.isVisible():
+            self._chip_only = True
+            self._reposition()
+            super().show()
+        elif not lost and self._chip_only and self._chip_label is None:
+            self._chip_only = False
+            super().hide()
+            return
+        if self.isVisible():
+            self._reposition()
+            self.update()
+
+    def _active_chip(self) -> "tuple[str, str] | None":
+        """(label, kind) actually drawn, or None. Device-lost wins."""
+        if self._unlocked:
+            return None  # move mode dominates, as it does for the pill
+        if self._device_lost:
+            return (_DEVICE_LOST_LABEL, "error")
+        if self._chip_label:
+            return (self._chip_label, self._chip_kind or "warning")
+        return None
+
+    def _clear_outcome(self):
+        self._chip_label = None
+        self._chip_kind = None
+        if self._chip_only and not self._device_lost:
+            # The chip was the only reason this widget was on screen.
+            self._chip_only = False
+            super().hide()
+            return
+        if self.isVisible():
+            self._reposition()
+            self.update()
+
+    # ------------------------------------------------------------------
     # Mode-machine integration (optional; wired when samsara.mode merges)
     # ------------------------------------------------------------------
 
@@ -591,15 +761,83 @@ class ListeningIndicator(QWidget):
             return
         self._apply_static_position()
 
-    def _resize_to_label(self):
+    def _chip_font(self) -> QFont:
+        f = QFont("Segoe UI")
+        f.setPixelSize(_CHIP_FONT_PX)
+        f.setBold(True)
+        return f
+
+    def _chip_width(self, label: str) -> int:
+        return QFontMetrics(self._chip_font()).horizontalAdvance(label) + 2 * _CHIP_PAD_X
+
+    def _layout(self):
+        """(total_w, total_h, pill_rect|None, chip_rect|None) in widget coords.
+
+        The chip sits below a top-anchored pill and above a bottom-anchored
+        one, so it always grows AWAY from the screen edge the pill hugs and
+        the pill itself never moves when a chip appears.
+        """
         _, _, label, show_dot = self._resolve_colors()
-        self.resize(self._pill_width(label, show_dot), _PILL_H)
+        pill_w = self._pill_width(label, show_dot)
+        chip = self._active_chip()
+        chip_w = self._chip_width(chip[0]) if chip else 0
 
-    def _apply_static_position(self):
-        """Position the pill per self._custom_position (if set) or the
-        preset self._corner. Called only when not unlocked."""
-        pill_w, pill_h = self.width(), _PILL_H
+        if chip is None:
+            return pill_w, _PILL_H, QRectF(0, 0, pill_w, _PILL_H), None
+        if self._chip_only:
+            return chip_w, _CHIP_H, None, QRectF(0, 0, chip_w, _CHIP_H)
 
+        total_w = max(pill_w, chip_w)
+        total_h = _PILL_H + _CHIP_GAP + _CHIP_H
+        # Align both to the edge the pill is anchored to. Centring a chip
+        # wider than the pill would make the widget overhang the screen at a
+        # left/right corner, and the clamp would then drag the pill inward.
+        align = self._chip_h_align()
+        if align == "left":
+            pill_x, chip_x = 0.0, 0.0
+        elif align == "right":
+            pill_x, chip_x = float(total_w - pill_w), float(total_w - chip_w)
+        else:
+            pill_x = (total_w - pill_w) / 2.0
+            chip_x = (total_w - chip_w) / 2.0
+        if self._chip_goes_above():
+            chip_rect = QRectF(chip_x, 0, chip_w, _CHIP_H)
+            pill_rect = QRectF(pill_x, _CHIP_H + _CHIP_GAP, pill_w, _PILL_H)
+        else:
+            pill_rect = QRectF(pill_x, 0, pill_w, _PILL_H)
+            chip_rect = QRectF(chip_x, _PILL_H + _CHIP_GAP, chip_w, _CHIP_H)
+        return total_w, total_h, pill_rect, chip_rect
+
+    def _chip_h_align(self) -> str:
+        """'left' / 'right' / 'center' -- which edge the pill hugs."""
+        if self._custom_position is not None:
+            cx = self._custom_position.get('cx', 0.5)
+            if cx < 1 / 3:
+                return "left"
+            if cx > 2 / 3:
+                return "right"
+            return "center"
+        corner = str(self._corner or "")
+        if corner.endswith("left"):
+            return "left"
+        if corner.endswith("right"):
+            return "right"
+        return "center"
+
+    def _chip_goes_above(self) -> bool:
+        """True when the pill is in the lower half of its screen."""
+        if self._custom_position is not None:
+            return self._custom_position.get('cy', 1.0) >= 0.5
+        return not str(self._corner or "").startswith("top")
+
+    def _resize_to_label(self):
+        total_w, total_h, _, _ = self._layout()
+        self.resize(int(total_w), int(total_h))
+
+    def _pill_anchor(self, pill_w: int):
+        """Where the PILL's top-left goes, exactly as before the chip existed.
+        Returns (x, y, geom) or None when there is no screen."""
+        pill_h = _PILL_H
         if self._custom_position is not None:
             screen = self._resolve_custom_screen()
             if screen is not None:
@@ -609,12 +847,11 @@ class ListeningIndicator(QWidget):
                 x = int(round(cx - pill_w / 2))
                 y = int(round(cy - pill_h / 2))
                 x, y = _clamp_rect(x, y, pill_w, pill_h, geom)
-                self.move(x, y)
-                return
+                return x, y, geom
 
         screen = QApplication.primaryScreen()
         if screen is None:
-            return
+            return None
         geom = screen.availableGeometry()
         wa_x, wa_y = geom.x(), geom.y()
         wa_w, wa_h = geom.width(), geom.height()
@@ -634,17 +871,51 @@ class ListeningIndicator(QWidget):
             x, y = wa_x + wa_w - pill_w - m, wa_y + wa_h - pill_h - m
         else:  # bottom-center default
             x, y = cx, wa_y + wa_h - pill_h - m
+        return x, y, geom
 
+    def _apply_static_position(self):
+        """Position per self._custom_position (if set) or the preset
+        self._corner. Called only when not unlocked.
+
+        The pill's on-screen position is computed exactly as it always was;
+        the widget is then offset so the pill stays put and any chip grows
+        away from the anchored edge. In chip-only mode the chip takes the
+        pill's place, so it follows the same placement and move-mode logic.
+        """
+        _, _, label, show_dot = self._resolve_colors()
+        pill_w = self._pill_width(label, show_dot)
+        anchor = self._pill_anchor(pill_w)
+        if anchor is None:
+            return
+        pill_x, pill_y, geom = anchor
+        total_w, total_h, pill_rect, chip_rect = self._layout()
+
+        if pill_rect is None:  # chip-only: centre the chip on the pill's spot
+            x = int(round(pill_x + (pill_w - total_w) / 2.0))
+            y = int(round(pill_y + (_PILL_H - total_h) / 2.0))
+        else:
+            x = int(round(pill_x - pill_rect.x()))
+            y = int(round(pill_y - pill_rect.y()))
+        x, y = _clamp_rect(x, y, int(total_w), int(total_h), geom)
         self.move(x, y)
 
     def paintEvent(self, event):
         bg_hex, fg_hex, label, show_dot = self._resolve_colors()
+        _, _, pill_rect, chip_rect = self._layout()
 
         painter = QPainter(self)
         painter.setRenderHint(QPainter.RenderHint.Antialiasing)
 
-        # Pill background
-        rect = QRectF(0, 0, self.width(), self.height())
+        if pill_rect is not None:
+            self._paint_pill(painter, pill_rect, bg_hex, fg_hex, label, show_dot)
+
+        chip = self._active_chip()
+        if chip_rect is not None and chip is not None:
+            self._paint_chip(painter, chip_rect, *chip)
+
+        painter.end()
+
+    def _paint_pill(self, painter, rect, bg_hex, fg_hex, label, show_dot):
         path = QPainterPath()
         path.addRoundedRect(rect, _CORNER_R, _CORNER_R)
         painter.fillPath(path, QColor(bg_hex))
@@ -655,15 +926,12 @@ class ListeningIndicator(QWidget):
         if show_dot:
             painter.setBrush(fg)
             painter.setPen(Qt.PenStyle.NoPen)
-            cx = float(_DOT_X)
-            cy = float(self.height()) / 2.0
             painter.drawEllipse(
-                QPointF(cx, cy),
+                QPointF(rect.x() + _DOT_X, rect.y() + rect.height() / 2.0),
                 float(_DOT_R),
                 float(_DOT_R),
             )
 
-        # Text
         painter.setPen(fg)
         painter.setFont(self._font())
         painter.drawText(rect, Qt.AlignmentFlag.AlignCenter, label)
@@ -675,12 +943,18 @@ class ListeningIndicator(QWidget):
             pen.setStyle(Qt.PenStyle.DashLine)
             painter.setPen(pen)
             painter.setBrush(Qt.BrushStyle.NoBrush)
-            outline_rect = rect.adjusted(1, 1, -1, -1)
             outline_path = QPainterPath()
-            outline_path.addRoundedRect(outline_rect, _CORNER_R, _CORNER_R)
+            outline_path.addRoundedRect(rect.adjusted(1, 1, -1, -1), _CORNER_R, _CORNER_R)
             painter.drawPath(outline_path)
 
-        painter.end()
+    def _paint_chip(self, painter, rect, label, kind):
+        radius = rect.height() / 2.0
+        path = QPainterPath()
+        path.addRoundedRect(rect, radius, radius)
+        painter.fillPath(path, QColor(_CHIP_FILL.get(kind, theme.WARNING)))
+        painter.setPen(QColor(_CHIP_TEXT))
+        painter.setFont(self._chip_font())
+        painter.drawText(rect, Qt.AlignmentFlag.AlignCenter, label)
 
     # ------------------------------------------------------------------
     # Pulse animation — Qt timer on main event loop (no background thread)

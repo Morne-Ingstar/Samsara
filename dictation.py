@@ -4861,6 +4861,20 @@ class DictationApp:
         """Return empty on unexpected low-confidence language or script mismatch."""
         if not text.strip():
             return text
+        # VERBATIM toggle, consumed BEFORE the gate and before smart
+        # corrections (the prompt's ordering requirement). This is the single
+        # function every finalize lane -- hold, toggle-DICTATE, wake and
+        # streaming commit -- calls first, so hooking it here makes the
+        # toggle work in every mode without four separate call sites. The
+        # phrase is consumed (returns "") so it is never typed.
+        #
+        # getattr, not a direct call: this method is bound onto bare
+        # SimpleNamespace stubs by the language-gate tests, which exercise
+        # the gate in isolation and have no reason to know about the verbatim
+        # profile. A stub without the collaborator simply skips the toggle.
+        _consume = getattr(self, '_consume_verbatim_toggle', None)
+        if _consume is not None and _consume(text, feedback=feedback):
+            return ''
         gate = self._language_confidence_gate
         language = getattr(info, 'language', None)
         probability = getattr(info, 'language_probability', None)
@@ -6228,17 +6242,22 @@ class DictationApp:
             """
             try:
                 raw = text  # pre-pipeline accumulated thought, for history's raw_text
-                formatted = self.process_transcription(text)
-                cleanup_mode = (
-                    'verbatim' if getattr(self, '_skip_cleanup', False)
-                    else self.config.get('cleanup_mode', 'clean')
-                )
-                formatted = clean_text(formatted, mode=cleanup_mode)
-                if self.config.get('smart_corrections', {}).get('modes', {}).get('wake', True):
-                    formatted = smart_correct(formatted, self)
-                if self.config['add_trailing_space']:
-                    formatted = formatted + " "
-                formatted = self._apply_formatting_tokens(formatted)
+                # VERBATIM profile: replaces the whole pipeline below, since
+                # capitalisation/cleanup/smart-corrections/auto-punctuation
+                # are precisely what it exists to suppress.
+                formatted = self._apply_verbatim_if_active(text)
+                if formatted is None:
+                    formatted = self.process_transcription(text)
+                    cleanup_mode = (
+                        'verbatim' if getattr(self, '_skip_cleanup', False)
+                        else self.config.get('cleanup_mode', 'clean')
+                    )
+                    formatted = clean_text(formatted, mode=cleanup_mode)
+                    if self.config.get('smart_corrections', {}).get('modes', {}).get('wake', True):
+                        formatted = smart_correct(formatted, self)
+                    if self.config['add_trailing_space']:
+                        formatted = formatted + " "
+                    formatted = self._apply_formatting_tokens(formatted)
             except Exception as e:
                 logger.exception(f'[SESSION] DICTATE commit formatting failed: {e}')
                 return False
@@ -6478,11 +6497,22 @@ class DictationApp:
         (early-exit or full worker cycle). Drains the next queued utterance
         if any, else clears the in-flight flag.
 
-        Also touches the session-activity chokepoint: a slow agent response
-        must not let the inactivity timer expire out from under a user who
-        is still mid-conversation with Ava, waiting on an answer that
-        hasn't landed yet."""
+        Also signals the session-activity chokepoint. Note that this call
+        does NOT extend the session: since the 2026-09-10 session policy,
+        _touch_session_activity() only re-arms the inactivity timer for a
+        fresh Silero speech onset (speech_onset=True), and agent completion
+        is explicitly not one -- see its docstring and
+        docs/HANDS_FREE_GATES_FINDINGS.md "Session policy". The call is kept
+        so every lane still reports through the one chokepoint; a slow agent
+        response is covered by the user speaking again, not by this hook."""
         self._touch_session_activity()
+        # Resolves the pending "Ava..." chip. on_done carries no result, so an
+        # early exit (plugin disabled, Ollama unreachable) also lands here --
+        # those paths still speak their own error.
+        _chip = getattr(self, '_show_outcome_chip', None)
+        if _chip is not None:
+            from samsara.session_modes import CHIP_CHECK
+            _chip(f"Ava {CHIP_CHECK}", "success")
         with self._ava_session_dispatch_lock:
             if self._ava_session_dispatch_queue:
                 next_text = self._ava_session_dispatch_queue.popleft()
@@ -7469,9 +7499,19 @@ class DictationApp:
 
         _touch_session_activity() is the SINGLE chokepoint for the unified
         session's inactivity timer: every outcome except "empty" (a
-        discarded near-silence/blank transcription -- never activity) resets
-        it here, once, regardless of which lane produced it. This replaces
-        the old scattered per-lane resets (COMMAND-only, and AVA-only)."""
+        discarded near-silence/blank transcription -- never activity)
+        signals it here, once, regardless of which lane produced it. This
+        replaces the old scattered per-lane resets (COMMAND-only, and
+        AVA-only).
+
+        Signalling is not the same as extending. Since the 2026-09-10
+        session policy, _touch_session_activity() re-arms the timer ONLY for
+        a fresh Silero speech onset (speech_onset=True); this call site
+        passes no such flag, so dispatch outcomes -- decode, delivery,
+        command execution -- funnel through the chokepoint without
+        extending the session. Only the user speaking again does that. See
+        _touch_session_activity's own docstring and
+        docs/HANDS_FREE_GATES_FINDINGS.md "Session policy"."""
         if outcome.kind == "ava_rejected_not_substantive":
             # Coughs/"uh"/stray syllables that survive the hallucination
             # gates but aren't worth an agent API call + spoken reply. No
@@ -7504,8 +7544,86 @@ class DictationApp:
                 getattr(retained, 'value', retained),
             )
             self.play_sound('error')
+        # Best-effort UI side-channel: resolved via getattr so a missing or
+        # failing chip can never skip the earcons above or the inactivity
+        # chokepoint below (this method is also bound onto minimal stubs).
+        _chip = getattr(self, '_show_dispatch_outcome_chip', None)
+        if _chip is not None:
+            _chip(outcome)
         if outcome.kind != "empty":
             self._touch_session_activity()
+
+    # ── Outcome chip (queue 41) ─────────────────────────────────────────────
+    # The listening indicator is the one place the app says what just
+    # happened. The vocabulary lives in session_modes.outcome_chip (Qt-free,
+    # tested); these helpers only schedule it onto the Qt thread.
+
+    def _show_outcome_chip(self, label, kind, ttl_ms="default"):
+        """Schedule a chip on the indicator. Any chip shown here also counts
+        as the resolution of a pending hold "..." -- see _resolve_hold_chip."""
+        self._hold_chip_resolved_seq = getattr(self, '_hold_chip_seq', 0)
+        indicator = getattr(self, 'listening_indicator', None)
+        if indicator is None or not hasattr(indicator, 'show_outcome'):
+            return
+        if ttl_ms == "default":
+            from samsara.session_modes import CHIP_TTL_MS
+            ttl_ms = None if kind in ('pending', 'live') else CHIP_TTL_MS
+        try:
+            self._schedule_ui(indicator.show_outcome, label, kind, ttl_ms)
+        except Exception as exc:
+            logger.debug(f"[CHIP] schedule failed: {exc}")
+
+    def _show_dispatch_outcome_chip(self, outcome) -> None:
+        """Map one DispatchOutcome to its chip. An unmapped kind still shows
+        ("? <kind>", visibly wrong on purpose) and logs a WARNING naming the
+        kind so it gets added to session_modes.outcome_chip."""
+        try:
+            from samsara.session_modes import chip_ttl_ms, is_mapped_outcome, outcome_chip
+            chip = outcome_chip(outcome.kind, outcome.detail)
+            if chip is None:
+                return
+            if not is_mapped_outcome(outcome.kind):
+                # Kind name only -- never the rendered label, which carries
+                # non-ASCII glyphs a cp1252 console handler cannot encode.
+                logger.warning("[CHIP] Unmapped DispatchOutcome kind %r -- add it to "
+                               "session_modes.outcome_chip", outcome.kind)
+            label, chip_kind = chip
+            self._show_outcome_chip(label, chip_kind, chip_ttl_ms(outcome.kind, chip_kind))
+        except Exception as exc:
+            logger.debug(f"[CHIP] outcome chip failed for {outcome.kind!r}: {exc}")
+
+    def _show_hold_pending_chip(self) -> int:
+        """Show the hold-release "..." and return its sequence number.
+
+        Deliberately does NOT mark itself resolved: it is the pending chip the
+        transcription outcome is expected to replace."""
+        from samsara.session_modes import CHIP_ELLIPSIS
+        self._hold_chip_seq = getattr(self, '_hold_chip_seq', 0) + 1
+        seq = self._hold_chip_seq
+        indicator = getattr(self, 'listening_indicator', None)
+        if indicator is not None and hasattr(indicator, 'show_outcome'):
+            try:
+                self._schedule_ui(indicator.show_outcome, CHIP_ELLIPSIS, "pending", None)
+            except Exception as exc:
+                logger.debug(f"[CHIP] pending chip failed: {exc}")
+        return seq
+
+    def _resolve_hold_chip(self, seq: int) -> None:
+        """Watchdog for the hold "..." chip.
+
+        The hold transcription thread has many exits (gated, language
+        rejected, memo, hold-to-command, early returns). Rather than put a
+        chip at every one, the thread's wrapper calls this when it ends: if no
+        terminal chip was shown for THIS hold, the pending "..." is cleared so
+        it can never be left on screen indefinitely."""
+        if getattr(self, '_hold_chip_resolved_seq', 0) >= seq:
+            return
+        indicator = getattr(self, 'listening_indicator', None)
+        if indicator is not None and hasattr(indicator, 'clear_outcome'):
+            try:
+                self._schedule_ui(indicator.clear_outcome)
+            except Exception as exc:
+                logger.debug(f"[CHIP] pending chip clear failed: {exc}")
 
     def _compute_switch_gate_signals(self, audio, seg_list, audio_ref=None) -> "UtteranceSignals":
         """Compute the switch/scratch-that anti-hallucination gate signals
@@ -9762,6 +9880,146 @@ class DictationApp:
     # 'typed_injection_processes' (list of lowercase exe names).
     _TYPED_INJECTION_PROCESSES: frozenset = frozenset()
 
+    # ── VERBATIM profile (samsara/verbatim.py) ──────────────────────────────
+    # This class decides WHEN the profile applies; verbatim.py decides WHAT
+    # the text becomes. Precedence, highest first:
+    #   1. spoken toggle ("literal on" / "verbatim on")
+    #   2. target-process list  (verbatim.processes)
+    #   3. browser address bar  (UIA)
+    #   4. normal -- the usual capitalise/clean/smart-correct pipeline
+
+    def _consume_verbatim_toggle(self, text: str, *, feedback: bool = True) -> bool:
+        """Flip the verbatim toggle if `text` is one of its phrases.
+
+        True means the utterance WAS the toggle and must not be typed. Uses
+        verbatim.match_toggle so the phrase table lives with the rest of the
+        profile's tables."""
+        try:
+            from samsara import verbatim
+            wanted = verbatim.match_toggle(text)
+        except Exception as exc:
+            logger.debug(f"[VERBATIM] toggle match failed: {exc}")
+            return False
+        if wanted is None:
+            return False
+        self.set_verbatim_forced(wanted)
+        if feedback:
+            try:
+                self.play_sound('success')
+            except Exception:
+                pass
+        return True
+
+    def _verbatim_forced(self) -> bool:
+        """The spoken toggle. Cleared when a hands-free session ends."""
+        return bool(getattr(self, '_verbatim_force', False))
+
+    def set_verbatim_forced(self, on: bool) -> None:
+        self._verbatim_force = bool(on)
+        logger.info("[VERBATIM] toggle %s", "ON" if on else "OFF")
+        preview = getattr(self, '_dictate_preview', None)
+        if preview is not None:
+            try:
+                preview.set_literal_badge(bool(on))
+            except Exception as exc:
+                logger.debug(f"[VERBATIM] preview badge failed: {exc}")
+
+    def _verbatim_target_process(self) -> "str | None":
+        """Focused process name when it is on the verbatim list, else None."""
+        try:
+            from samsara import verbatim
+            configured = self.config.get('verbatim', {}).get('processes')
+            name = self._foreground_process_name()
+            if name and verbatim.matches_process(name, configured):
+                return name
+        except Exception as exc:
+            logger.debug(f"[VERBATIM] process check failed: {exc}")
+        return None
+
+    def _verbatim_address_bar(self) -> bool:
+        """True when the focused UIA element is a browser URL bar.
+
+        Reads three properties off the focused control -- ControlTypeName,
+        AutomationId, Name -- and hands them to verbatim.is_address_bar,
+        which owns the matching table. Fails closed (False) if uiautomation
+        is unavailable or the COM call raises."""
+        if not self.config.get('verbatim', {}).get('address_bar', True):
+            return False
+        try:
+            from samsara import verbatim
+            import uiautomation as auto
+            element = auto.GetFocusedControl()
+            if element is None:
+                return False
+            return verbatim.is_address_bar(
+                control_type=getattr(element, 'ControlTypeName', '') or '',
+                automation_id=getattr(element, 'AutomationId', '') or '',
+                name=getattr(element, 'Name', '') or '',
+            )
+        except Exception as exc:
+            logger.debug(f"[VERBATIM] address-bar check unavailable: {exc}")
+            return False
+
+    def _verbatim_rule(self) -> "str | None":
+        """Which rule puts this utterance in verbatim mode, or None.
+
+        Returns the rule name for the one INFO line per utterance required
+        when the profile is active. Order is the documented precedence."""
+        if not self.config.get('verbatim', {}).get('enabled', True):
+            return None
+        if self._verbatim_forced():
+            return "toggle"
+        process = self._verbatim_target_process()
+        if process:
+            return f"process:{process}"
+        if self._verbatim_address_bar():
+            return "address_bar"
+        return None
+
+    def _apply_verbatim_if_active(self, text: str) -> "str | None":
+        """Run the profile when a rule matches; None means 'not verbatim'.
+
+        The single place the three finalize sites call -- each one skips its
+        whole capitalise/clean/smart-correct/formatting-token pipeline when
+        this returns a string, because every one of those steps is exactly
+        what the profile exists to suppress."""
+        if not text:
+            return None
+        rule = self._verbatim_rule()
+        if rule is None:
+            return None
+        try:
+            from samsara import verbatim
+            result = verbatim.apply(text)
+        except Exception as exc:
+            logger.exception(f"[VERBATIM] transform failed, falling back to normal: {exc}")
+            return None
+        logger.info("[VERBATIM] rule=%s applied: %r -> %r", rule, text, result)
+        return result
+
+    def _foreground_process_name(self) -> str:
+        """Lowercase image name of the focused window's process ('warp.exe').
+
+        The one Win32 path for "what am I typing into" -- GetForegroundWindow
+        -> GetWindowThreadProcessId -> psutil name(). Extracted from
+        _foreground_wants_typed_injection so the verbatim profile's target
+        list resolves the process exactly the same way the per-process
+        injection override always has. Returns "" on any failure; every
+        caller must fail toward its safe default."""
+        try:
+            import ctypes
+            import psutil
+            hwnd = ctypes.windll.user32.GetForegroundWindow()
+            if not hwnd:
+                return ""
+            pid = ctypes.c_ulong()
+            ctypes.windll.user32.GetWindowThreadProcessId(hwnd, ctypes.byref(pid))
+            if not pid.value:
+                return ""
+            return psutil.Process(pid.value).name().lower()
+        except Exception:
+            return ""
+
     def _foreground_wants_typed_injection(self) -> bool:
         """True only when the focused window belongs to a process the user
         explicitly opted into typed Unicode injection. Empty allowlist (the
@@ -9770,20 +10028,8 @@ class DictationApp:
         allowed = self.config.get('typed_injection_processes') or self._TYPED_INJECTION_PROCESSES
         if not allowed:
             return False
-        try:
-            import ctypes
-            import psutil
-            hwnd = ctypes.windll.user32.GetForegroundWindow()
-            if not hwnd:
-                return False
-            pid = ctypes.c_ulong()
-            ctypes.windll.user32.GetWindowThreadProcessId(hwnd, ctypes.byref(pid))
-            if not pid.value:
-                return False
-            name = psutil.Process(pid.value).name().lower()
-            return name in {str(a).lower() for a in allowed}
-        except Exception:
-            return False
+        name = self._foreground_process_name()
+        return bool(name) and name in {str(a).lower() for a in allowed}
 
     @staticmethod
     def _flight_foreground_process_name() -> str | None:
@@ -10036,33 +10282,44 @@ class DictationApp:
 
         # Apply text processing (auto-capitalize, number formatting)
         _diag_corr_start = time.perf_counter()
-        text = self.process_transcription(text)
-
-        # Deterministic cleanup (filler removal, spacing).
         raw = text
-        _cmode = 'verbatim' if getattr(self, '_skip_cleanup', False) else self.config.get('cleanup_mode', 'clean')
-        text = clean_text(text, mode=_cmode)
-        t_corrections_ms = int((time.perf_counter() - _diag_corr_start) * 1000)
+        # VERBATIM profile: bypasses this whole pipeline (see
+        # _apply_verbatim_if_active). _verbatim_active gates the steps below.
+        _verbatim_text = self._apply_verbatim_if_active(text)
+        _verbatim_active = _verbatim_text is not None
+        if _verbatim_active:
+            text = _verbatim_text
+            t_corrections_ms = int((time.perf_counter() - _diag_corr_start) * 1000)
+        else:
+            text = self.process_transcription(text)
+
+            # Deterministic cleanup (filler removal, spacing).
+            raw = text
+            _cmode = 'verbatim' if getattr(self, '_skip_cleanup', False) else self.config.get('cleanup_mode', 'clean')
+            text = clean_text(text, mode=_cmode)
+            t_corrections_ms = int((time.perf_counter() - _diag_corr_start) * 1000)
 
         # Smart Corrections (optional LLM cleanup pass) -- wake-word
         # dictation gate. Runs on this same worker thread; never blocks
         # output on failure (see smart_correct docs).
         t_smart_ms = -1
         smart_changed = False
-        if self.config.get('smart_corrections', {}).get('modes', {}).get('wake', True):
+        if (not _verbatim_active
+                and self.config.get('smart_corrections', {}).get('modes', {}).get('wake', True)):
             _diag_smart_start = time.perf_counter()
             _text_before_smart = text
             text = smart_correct(text, self)
             t_smart_ms = int((time.perf_counter() - _diag_smart_start) * 1000)
             smart_changed = (text != _text_before_smart)
 
-        if self.config['add_trailing_space']:
-            text = text + " "
+        if not _verbatim_active:
+            if self.config['add_trailing_space']:
+                text = text + " "
 
-        # Inline formatting tokens ("new line" -> \n, etc.) -- after
-        # smart_correct, before delivery/history, so history stores what
-        # was actually typed (see _apply_formatting_tokens).
-        text = self._apply_formatting_tokens(text)
+            # Inline formatting tokens ("new line" -> \n, etc.) -- after
+            # smart_correct, before delivery/history, so history stores what
+            # was actually typed (see _apply_formatting_tokens).
+            text = self._apply_formatting_tokens(text)
 
         logger.info(f"[OK] {text}")
         self.play_sound("success")
@@ -10497,7 +10754,7 @@ class DictationApp:
         logger.info("[AUDIO] Reloading sounds...")
         self._load_sound_cache()
 
-    def play_sound(self, sound_type, use_winsound=False):
+    def play_sound(self, sound_type, use_winsound=False, volume=None):
         """Play audio feedback sound via persistent output stream (non-blocking, low-latency).
 
         Writes pre-loaded audio data into the playback buffer. The persistent
@@ -10509,6 +10766,10 @@ class DictationApp:
                 earcon name auto-discovered from the active theme directory
                 (e.g. 'capture_started', 'thinking_pulse').
             use_winsound: Deprecated/ignored.
+            volume: optional 0..1 override for THIS playback only. Used by
+                the Settings Sounds tab's Test button so it plays at the
+                slider's current, unsaved value. The saved sound_volume in
+                config is never read or written when this is given.
         """
         if not self.config.get('audio_feedback', True):
             return
@@ -10530,7 +10791,12 @@ class DictationApp:
                       f"(check sounds/themes/<theme>/{sound_type}.wav)")
             return
 
-        volume = self.config.get('sound_volume', 0.5)
+        if volume is None:
+            volume = self.config.get('sound_volume', 0.5)
+        try:
+            volume = min(max(float(volume), 0.0), 1.0)
+        except (TypeError, ValueError):
+            volume = self.config.get('sound_volume', 0.5)
         if volume <= 0:
             return
 
@@ -10780,6 +11046,8 @@ class DictationApp:
                 self.play_sound("error")
                 if hasattr(self, 'listening_indicator'):
                     self._schedule_ui(self.listening_indicator.flash_error)
+                    from samsara.session_modes import CHIP_CROSS
+                    self._show_outcome_chip(f"{CHIP_CROSS} no mic", "error")
                 return
             if self._dictation_consumer.activate() is False:
                 return False
@@ -10810,6 +11078,9 @@ class DictationApp:
         # Update listening indicator
         if hasattr(self, 'listening_indicator'):
             self._schedule_ui(self.listening_indicator.set_listening, True)
+            # "REC" in the live (error) colour for the whole hold -- the one
+            # unambiguous "it is capturing you right now" signal.
+            self._show_outcome_chip("REC", "live", None)
 
         if streaming:
             from samsara.streaming import StreamingSession
@@ -10901,9 +11172,13 @@ class DictationApp:
         self._update_tray_tooltip()
 
         # Update listening indicator
+        _hold_chip_seq = 0
         if hasattr(self, 'listening_indicator'):
             self._schedule_ui(self.listening_indicator.set_listening, False)
-        
+            # "..." until the transcription outcome replaces it; the watchdog
+            # wrapped around the transcribe thread below clears it otherwise.
+            _hold_chip_seq = self._show_hold_pending_chip()
+
         if not adaptive_release_tail:
             # Legacy fixed tail remains for command and streaming paths.
             tail_ms = self.config.get('recording_tail_ms', 250)
@@ -10934,6 +11209,9 @@ class DictationApp:
                 self.play_sound("error")
                 if hasattr(self, 'listening_indicator'):
                     self._schedule_ui(self.listening_indicator.flash_error)
+                    from samsara.session_modes import CHIP_CROSS
+                    # Was a bare beep; the reason is now on screen.
+                    self._show_outcome_chip(f"{CHIP_CROSS} no audio", "error")
                 return
         else:
             # Streaming path (CapsLock): ACE-04B consumer accumulator — no stream to close.
@@ -11200,34 +11478,44 @@ class DictationApp:
                     # Regular dictation mode - proceed with text output
                     # Apply text processing (auto-capitalize, number formatting)
                     _diag_corr_start = time.perf_counter()
-                    text = self.process_transcription(text)
-
-                    # Deterministic cleanup (filler removal, spacing).
                     raw = text
-                    _cmode = 'verbatim' if getattr(self, '_skip_cleanup', False) else self.config.get('cleanup_mode', 'clean')
-                    text = clean_text(text, mode=_cmode)
-                    t_corrections_ms = int((time.perf_counter() - _diag_corr_start) * 1000)
+                    # VERBATIM profile -- see _apply_verbatim_if_active.
+                    _verbatim_text = self._apply_verbatim_if_active(text)
+                    _verbatim_active = _verbatim_text is not None
+                    if _verbatim_active:
+                        text = _verbatim_text
+                        t_corrections_ms = int((time.perf_counter() - _diag_corr_start) * 1000)
+                    else:
+                        text = self.process_transcription(text)
+
+                        # Deterministic cleanup (filler removal, spacing).
+                        raw = text
+                        _cmode = 'verbatim' if getattr(self, '_skip_cleanup', False) else self.config.get('cleanup_mode', 'clean')
+                        text = clean_text(text, mode=_cmode)
+                        t_corrections_ms = int((time.perf_counter() - _diag_corr_start) * 1000)
 
                     # Smart Corrections (optional LLM cleanup pass) -- hotkey
                     # hold-to-dictate gate. Runs on this same worker thread;
                     # never blocks output on failure (see smart_correct docs).
                     t_smart_ms = -1
                     smart_changed = False
-                    if self.config.get('smart_corrections', {}).get('modes', {}).get('hotkey', True):
+                    if (not _verbatim_active
+                            and self.config.get('smart_corrections', {}).get('modes', {}).get('hotkey', True)):
                         _diag_smart_start = time.perf_counter()
                         _text_before_smart = text
                         text = smart_correct(text, self)
                         t_smart_ms = int((time.perf_counter() - _diag_smart_start) * 1000)
                         smart_changed = (text != _text_before_smart)
 
-                    if self.config['add_trailing_space']:
-                        text = text + " "
+                    if not _verbatim_active:
+                        if self.config['add_trailing_space']:
+                            text = text + " "
 
-                    # Inline formatting tokens ("new line" -> \n, etc.) --
-                    # after smart_correct, before delivery/history, so
-                    # history stores what was actually typed (see
-                    # _apply_formatting_tokens).
-                    text = self._apply_formatting_tokens(text)
+                        # Inline formatting tokens ("new line" -> \n, etc.) --
+                        # after smart_correct, before delivery/history, so
+                        # history stores what was actually typed (see
+                        # _apply_formatting_tokens).
+                        text = self._apply_formatting_tokens(text)
 
                     if memo_recording:
                         try:
@@ -11276,6 +11564,7 @@ class DictationApp:
                     self.play_sound("success")
                     if hasattr(self, 'listening_indicator'):
                         self._schedule_ui(self.listening_indicator.flash_success)
+                        self._show_outcome_chip("typed", "success", 900)
 
                     # Add to history
                     self.add_to_history(text.strip(), is_command=False)
@@ -11361,6 +11650,9 @@ class DictationApp:
                             )
                 else:
                     logger.info("No speech detected")
+                    if hasattr(self, 'listening_indicator'):
+                        from samsara.session_modes import CHIP_CROSS
+                        self._show_outcome_chip(f"{CHIP_CROSS} no speech", "error")
                     # Only log "empty" when there was actually audio to transcribe.
                     # Whisper hallucination guard above already filtered <0.5s.
                     if audio_duration > 0.5:
@@ -11408,6 +11700,8 @@ class DictationApp:
                 self.play_sound("error")
                 if hasattr(self, 'listening_indicator'):
                     self._schedule_ui(self.listening_indicator.flash_error)
+                    from samsara.session_modes import CHIP_CROSS
+                    self._show_outcome_chip(f"{CHIP_CROSS} transcribe failed", "error")
                 self._log_history(
                     raw_text="",
                     display_text=f"[FAILED] {e}",
@@ -11422,7 +11716,16 @@ class DictationApp:
                 except Exception as _snd_err:
                     logger.debug(f"Failure earcon (winsound) unavailable: {_snd_err}")
 
-        thread = thread_registry.spawn("dictation.transcribe", transcribe, daemon=True)
+        def _transcribe_with_chip_watchdog():
+            try:
+                transcribe()
+            finally:
+                if _hold_chip_seq:
+                    self._resolve_hold_chip(_hold_chip_seq)
+
+        thread = thread_registry.spawn(
+            "dictation.transcribe", _transcribe_with_chip_watchdog, daemon=True,
+        )
 
     def cancel_recording(self):
         """Escape and failed startup must release the hold even if cancel raises."""
