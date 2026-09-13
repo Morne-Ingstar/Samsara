@@ -34,6 +34,12 @@ PACKS = {
         'always_on': False,
         'default_enabled': True,
     },
+    'window-cube-numbers': {
+        'label': 'Window Cube Numbers',
+        'description': 'Bare "one".."nine" switch windows while the cube is pinned (see docs/WINDOW_CUBE.md)',
+        'always_on': False,
+        'default_enabled': True,
+    },
     'browsers': {
         'label': 'Browsers',
         'description': 'Open Chrome/Firefox/Edge, tab control, zoom, navigation',

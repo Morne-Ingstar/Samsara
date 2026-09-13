@@ -20,6 +20,11 @@ def _app(config):
     app._foreground_wants_typed_injection = (
         dictation.DictationApp._foreground_wants_typed_injection.__get__(app)
     )
+    # The Win32 foreground lookup was extracted into its own helper (shared
+    # with the verbatim profile); bind the real one so the mocks still apply.
+    app._foreground_process_name = (
+        dictation.DictationApp._foreground_process_name.__get__(app)
+    )
     return app
 
 

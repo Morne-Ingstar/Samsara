@@ -8,6 +8,14 @@ function with the app instance and any remainder text after the matched phrase.
 
 Plugins live in plugins/commands/*.py. Drop a file in, it's loaded at startup.
 
+Module identity: load_plugins() imports each file ONCE under its canonical
+package name (plugins/commands/ask_ollama.py -> plugins.commands.ask_ollama)
+and registers it in sys.modules, so discovery and an ordinary
+`from plugins.commands import ask_ollama` share one module object and one
+copy of its module-global state. Import must be side-effect free apart from
+@command registration; background work belongs in an optional module-level
+`start_services(app)` hook, run once per module by start_plugin_services().
+
 Example plugin:
 
     from samsara.plugin_commands import command
@@ -28,8 +36,11 @@ Example plugin:
         return True
 """
 
+import importlib
 import importlib.util
 import logging
+import sys
+import threading
 from pathlib import Path
 
 logger = logging.getLogger(__name__)
@@ -37,6 +48,19 @@ logger = logging.getLogger(__name__)
 # Global registry: phrase -> {func, aliases, source}
 # Aliases are also keys in the registry (pointing to the same entry) for O(1) lookup.
 _REGISTRY = {}
+
+# Module objects discovery has loaded, by resolved file path, and the modules
+# whose start_services(app) hook has already run.
+_LOADED_MODULES = {}
+_STARTED_SERVICES = set()
+# Entries each module's decorators produced, by module name, so a reused
+# module can re-install its commands after the registry was cleared.
+_MODULE_ENTRIES = {}
+_SERVICES_LOCK = threading.Lock()
+
+# Marks a metadata argument the author did not pass, so the registry can
+# report it as unknown instead of as the decorator's default.
+_UNSET = object()
 
 # Optional shared matcher. When set by a CommandExecutor at startup, find_command
 # delegates to its longest-match algorithm so standalone callers (e.g. external
@@ -57,16 +81,23 @@ def clear_shared_matcher():
 
 
 def command(phrase, aliases=None, pack='core', debounce=0.0, app_overrides=None,
-            ai_visible=True,
-            risk_class='safe', ai_composable=False, side_effects=None,
-            preconditions=None, voice_triggerable=True, param_schema=None,
-            reversible=False, preview_template='',
-            side_effect_category=None):
+            ai_visible=_UNSET,
+            risk_class=_UNSET, ai_composable=_UNSET, side_effects=_UNSET,
+            preconditions=_UNSET, voice_triggerable=_UNSET, param_schema=_UNSET,
+            reversible=_UNSET, preview_template=_UNSET,
+            side_effect_category=_UNSET):
     """Decorator: register a function as a voice command.
 
     The decorated function is called as `func(app, remainder)` where `remainder`
-    is text after the matched phrase (empty string if none). Return True if the
-    command handled the input, False to fall through to the next handler.
+    is the ORIGINAL text after the matched phrase (empty string if none) --
+    case, quotes and punctuation intact; only a trailing sentence terminator
+    is dropped. The return value is adapted by
+    command_registry.adapt_handler_return:
+        True                     -> completed
+        None                     -> queued (work scheduled; never a miss)
+        False                    -> declined: fall through as if unmatched
+        a DispatchState / Result -> exactly that state (e.g. FAILED)
+    Raising is a FAILED command -- never re-offered as dictation.
 
     Args:
         phrase: primary trigger phrase
@@ -78,8 +109,11 @@ def command(phrase, aliases=None, pack='core', debounce=0.0, app_overrides=None,
             None means the command is disabled in that app.
         ai_visible: if False, excluded from Ava's injected command list (default True)
 
-        -- AI Config Assistant safety metadata (all optional, default to safe) --
-        risk_class: 'safe' | 'reversible' | 'destructive' (default 'safe')
+        -- AI Config Assistant safety metadata (all optional) --
+        Whatever is passed is kept verbatim in entry['metadata']; anything not
+        passed is recorded there as 'unknown' (never as safe). The flat keys
+        below keep their historical defaults for existing readers.
+        risk_class: 'safe' | 'reversible' | 'destructive' (flat default 'safe')
         ai_composable: if True, may be included in AI-generated macros.
             Defaults to FALSE -- explicit opt-in per ARC narrow-subset requirement.
         side_effects: list of side-effect category strings documenting what the
@@ -101,8 +135,28 @@ def command(phrase, aliases=None, pack='core', debounce=0.0, app_overrides=None,
         preview_template: human-readable template describing what will happen, e.g.
             "Increase volume to {current+20}%". Empty string if not provided.
     """
+    from samsara.command_registry import UNKNOWN  # noqa: PLC0415 -- no import cycle at module load
+
+    if side_effects is _UNSET:
+        side_effects = side_effect_category
+    declared = {
+        'ai_visible': ai_visible,
+        'risk_class': risk_class,
+        'ai_composable': ai_composable,
+        'side_effects': side_effects,
+        'preconditions': preconditions,
+        'voice_triggerable': voice_triggerable,
+        'param_schema': param_schema,
+        'reversible': reversible,
+        'preview_template': preview_template,
+    }
+    metadata = {name: (UNKNOWN if value is _UNSET else value)
+                for name, value in declared.items()}
+
+    def _given(value, default):
+        return default if value is _UNSET else value
+
     def decorator(func):
-        resolved_side_effects = list(side_effects or side_effect_category or [])
         entry = {
             'func': func,
             'phrase': phrase.lower().strip(),
@@ -111,21 +165,54 @@ def command(phrase, aliases=None, pack='core', debounce=0.0, app_overrides=None,
             'pack': pack,
             'debounce': float(debounce),
             'app_overrides': dict(app_overrides) if app_overrides else {},
-            'ai_visible': bool(ai_visible),
-            'risk_class': risk_class,
-            'ai_composable': bool(ai_composable),
-            'side_effects': resolved_side_effects,
-            'preconditions': list(preconditions or []),
-            'voice_triggerable': bool(voice_triggerable),
-            'param_schema': dict(param_schema or {}),
-            'reversible': bool(reversible),
-            'preview_template': str(preview_template),
+            'ai_visible': bool(_given(ai_visible, True)),
+            'risk_class': _given(risk_class, 'safe'),
+            'ai_composable': bool(_given(ai_composable, False)),
+            'side_effects': list(_given(side_effects, None) or []),
+            'preconditions': list(_given(preconditions, None) or []),
+            'voice_triggerable': bool(_given(voice_triggerable, True)),
+            'param_schema': dict(_given(param_schema, None) or {}),
+            'reversible': bool(_given(reversible, False)),
+            'preview_template': str(_given(preview_template, '')),
+            'metadata': dict(metadata),
         }
-        _REGISTRY[entry['phrase']] = entry
-        for alias in entry['aliases']:
-            _REGISTRY[alias] = entry
+        _register(entry)
         return func
     return decorator
+
+
+def _register(entry):
+    """Install one entry under its phrase and aliases, idempotently.
+
+    Re-running the same decorator (importlib.reload, or a module executed
+    twice) replaces that command's previous entry -- including aliases it no
+    longer declares -- instead of leaving a stale duplicate behind.
+    """
+    func = entry['func']
+    identity = (entry['source'], getattr(func, '__qualname__', None))
+    previous = _REGISTRY.get(entry['phrase'])
+    if previous is not None and previous is not entry:
+        prev_identity = (previous['source'], getattr(previous['func'], '__qualname__', None))
+        if prev_identity == identity:
+            for key in [k for k, v in _REGISTRY.items() if v is previous]:
+                del _REGISTRY[key]
+        else:
+            logger.warning("[PLUGINS] Phrase %r from %s replaces the one from %s",
+                           entry['phrase'], entry['source'], previous['source'])
+    _REGISTRY[entry['phrase']] = entry
+    for alias in entry['aliases']:
+        _REGISTRY[alias] = entry
+    produced = _MODULE_ENTRIES.setdefault(entry['source'], {})
+    produced[entry['phrase']] = entry
+
+
+def _reinstall_module_commands(module):
+    """Put back a reused module's commands whose phrase is no longer
+    registered (e.g. a test cleared _REGISTRY). Never displaces a phrase
+    some other registration currently owns."""
+    for phrase, entry in list(_MODULE_ENTRIES.get(module.__name__, {}).items()):
+        if phrase not in _REGISTRY:
+            _register(entry)
 
 
 def find_command(text):
@@ -179,21 +266,138 @@ def find_command(text):
 
 
 def execute_command(text, app=None):
-    """Find and execute a command matching text. Returns (phrase, success) or (None, False)."""
+    """Find and execute a command matching text. Returns (phrase, success) or (None, False).
+
+    success follows command_registry.adapt_handler_return: completed or
+    queued (a None-returning async handler) is success; a decline is not.
+    """
+    from samsara.command_registry import DispatchState, adapt_handler_return  # noqa: PLC0415
+
     entry, remainder = find_command(text)
     if entry is None:
         return None, False
 
     try:
-        result = entry['func'](app, remainder)
-        return entry['phrase'], bool(result)
+        state = adapt_handler_return(entry['func'](app, remainder))
+        return entry['phrase'], state in (DispatchState.COMPLETED, DispatchState.QUEUED)
     except Exception as e:
         logger.exception(f"Plugin command '{entry['phrase']}' failed: {e}")
         return entry['phrase'], False
 
 
+def _canonical_module_name(py_file):
+    """Dotted import name under which importing yields exactly py_file, or
+    None when it is not importable from sys.path.
+
+    Parent directories may be regular or namespace packages (plugins/ has no
+    __init__.py). The longest candidate wins -- plugins.commands.x rather
+    than commands.x should both resolve -- and each candidate is confirmed
+    with find_spec, so a name is only used when it really maps to this file.
+    """
+    py_file = Path(py_file).resolve()
+    roots = set()
+    for entry in sys.path:
+        try:
+            roots.add(Path(entry or '.').resolve())
+        except (OSError, ValueError):
+            continue
+    if not py_file.stem.isidentifier():
+        return None
+    candidates = []
+    parts = [py_file.stem]
+    directory = py_file.parent
+    while True:
+        if directory in roots:
+            candidates.append('.'.join(parts))
+        if directory.parent == directory or not directory.name.isidentifier():
+            break
+        parts.insert(0, directory.name)
+        directory = directory.parent
+    for name in reversed(candidates):
+        existing = sys.modules.get(name)
+        if existing is not None:
+            if _same_file(existing, py_file):
+                return name
+            continue
+        try:
+            spec = importlib.util.find_spec(name)
+        except (ImportError, ValueError):
+            continue
+        if spec is not None and spec.origin and Path(spec.origin).resolve() == py_file:
+            return name
+    return None
+
+
+def _same_file(module, py_file):
+    try:
+        return Path(module.__file__).resolve() == Path(py_file).resolve()
+    except (AttributeError, TypeError, OSError):
+        return False
+
+
+def _import_plugin(py_file):
+    """Import one plugin file exactly once and return its module.
+
+    Canonical package name when there is one (so `import plugins.commands.x`
+    elsewhere yields this same object); otherwise the historical
+    `samsara_plugin_<stem>` name -- registered in sys.modules either way, and
+    the legacy name is kept as an alias of the canonical module for code that
+    looks plugins up by it.
+    """
+    py_file = Path(py_file)
+    resolved = py_file.resolve()
+    legacy_name = f"samsara_plugin_{py_file.stem}"
+    name = _canonical_module_name(py_file)
+
+    module = None
+    if name is not None:
+        module = sys.modules.get(name) or importlib.import_module(name)
+    if module is None:
+        existing = sys.modules.get(legacy_name)
+        if existing is not None and _same_file(existing, py_file):
+            module = existing
+        else:
+            spec = importlib.util.spec_from_file_location(legacy_name, py_file)
+            module = importlib.util.module_from_spec(spec)
+            sys.modules[legacy_name] = module
+            try:
+                spec.loader.exec_module(module)
+            except BaseException:
+                sys.modules.pop(legacy_name, None)
+                raise
+    elif sys.modules.get(legacy_name) is not module:
+        sys.modules[legacy_name] = module
+
+    _reinstall_module_commands(module)
+    _LOADED_MODULES[str(resolved)] = module
+    return module
+
+
+def start_plugin_services(app):
+    """Run each loaded plugin's optional `start_services(app)` hook once.
+
+    This is the explicit app call that replaces import-time side effects
+    (ask_ollama's health monitor used to start as soon as the module was
+    executed -- once per module copy). Idempotent per module object.
+    """
+    with _SERVICES_LOCK:
+        pending = [m for m in _LOADED_MODULES.values()
+                   if id(m) not in _STARTED_SERVICES
+                   and callable(getattr(m, 'start_services', None))]
+        _STARTED_SERVICES.update(id(m) for m in pending)
+    for module in pending:
+        try:
+            module.start_services(app)
+        except Exception as e:
+            logger.exception(f"Plugin {module.__name__} start_services failed: {e}")
+
+
 def load_plugins(plugins_dir):
-    """Auto-load every .py file in plugins_dir. Imports trigger @command decorators."""
+    """Auto-load every .py file in plugins_dir. Imports trigger @command decorators.
+
+    Safe to call repeatedly: a plugin already imported (by discovery or by a
+    plain canonical import) is reused, never executed a second time.
+    """
     plugins_path = Path(plugins_dir)
     if not plugins_path.exists():
         logger.info(f"Plugin directory does not exist, skipping: {plugins_path}")
@@ -206,11 +410,7 @@ def load_plugins(plugins_dir):
             continue  # skip __init__.py, private files
         _pt0 = _time.monotonic()
         try:
-            spec = importlib.util.spec_from_file_location(
-                f"samsara_plugin_{py_file.stem}", py_file
-            )
-            module = importlib.util.module_from_spec(spec)
-            spec.loader.exec_module(module)
+            _import_plugin(py_file)
             loaded += 1
             _pms = (_time.monotonic() - _pt0) * 1000
             if _pms > 50:
@@ -248,5 +448,6 @@ def list_commands():
             'param_schema': entry.get('param_schema', {}),
             'reversible': entry.get('reversible', False),
             'preview_template': entry.get('preview_template', ''),
+            'metadata': dict(entry.get('metadata') or {}),
         })
     return sorted(result, key=lambda x: x['phrase'])

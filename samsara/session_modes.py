@@ -677,8 +677,27 @@ class UnitOfWorkStack:
 
 @dataclass(frozen=True)
 class CommandDispatchResult:
+    """matched: a command CLAIMED the utterance (any state but miss).
+    state: the command_registry.DispatchState value -- "completed", "queued",
+    "matched", "failed", "rejected", "cancelled" or "miss". None means a
+    legacy dispatch fn that only knows matched (treated as completed)."""
+
     matched: bool
     phrase: Optional[str] = None
+    state: Optional[str] = None
+
+
+#: Claimed-but-not-carried-out command states: never dictation, never a
+#: new model request, and nothing to push on the undo stack.
+COMMAND_UNSUCCESSFUL_STATES = frozenset({"failed", "rejected", "cancelled"})
+
+
+def _command_state(result: "CommandDispatchResult") -> str:
+    state = getattr(result, "state", None)
+    state = getattr(state, "value", state)
+    if state:
+        return str(state)
+    return "completed" if result.matched else "miss"
 
 
 class PendingTextPolicy(Enum):
@@ -702,6 +721,7 @@ class DispatchOutcome:
     kind: str
     # one of: "empty" | "abort" | "scratch_success" | "scratch_refuse" |
     # "mode_switch" | "prefix_switch_failed" | "command_executed" |
+    # "command_failed" |
     # "command_miss" | "dictate_injected" | "dictate_suppressed_focus_lock" |
     # "dictate_staged" | "dictate_committed" |
     # "dictate_commit_refused" | "dictate_commit_blocked_focus_lock" |
@@ -792,7 +812,22 @@ def outcome_chip(kind: str, detail: Optional[dict] = None) -> "tuple[str, str] |
         return ("MISS", "error")
     if kind in ("command_executed", "hands_free_command_executed"):
         verb = _first_two_words(detail.get("phrase"))
+        if detail.get("state") in ("queued", "matched"):
+            # Accepted, outcome still to come: an honest "working on it",
+            # never a success tick for work that has not finished.
+            return (f"{verb}{CHIP_ELLIPSIS}" if verb else CHIP_ELLIPSIS, "accent")
         return (f"{CHIP_CHECK} {verb}" if verb else CHIP_CHECK, "success")
+    if kind == "command_failed" or (kind == "hands_free_command_failed"
+                                    and detail.get("state") in ("rejected", "cancelled")):
+        state = detail.get("state")
+        verb = _first_two_words(detail.get("phrase"))
+        if state == "rejected":
+            return (f"refused: {verb}" if verb else "refused", "warning")
+        if state == "cancelled":
+            return (f"cancelled: {verb}" if verb else "cancelled", "warning")
+        if not detail.get("reason") and not detail.get("error") and verb:
+            return (f"{CHIP_CROSS} {verb}", "error")
+        return (f"{CHIP_CROSS} {_reason(kind, detail)}", "error")
     if kind == "mode_switch":
         mode = _mode_label(detail.get("mode"))
         return (f"{CHIP_ARROW} {mode}" if mode else CHIP_ARROW, "accent")
@@ -1256,12 +1291,21 @@ class SessionModeManager:
 
     def _dispatch_command(self, text: str) -> DispatchOutcome:
         result = self._command_dispatch_fn(text)
+        state = _command_state(result)
+        if result.matched and state in COMMAND_UNSUCCESSFUL_STATES:
+            # Recognised but not carried out: say so, but it is still a
+            # command -- not a miss, not dictation, nothing to undo.
+            return DispatchOutcome(kind="command_failed", detail={
+                "phrase": result.phrase, "state": state,
+            })
         if result.matched:
             self._stack.push(StackItem(
                 kind="command", payload=result.phrase or text,
                 mode=SessionMode.COMMAND, timestamp=self._clock(),
             ))
-            return DispatchOutcome(kind="command_executed", detail={"phrase": result.phrase})
+            return DispatchOutcome(kind="command_executed", detail={
+                "phrase": result.phrase, "state": state,
+            })
         return DispatchOutcome(kind="command_miss")
 
     def _dispatch_hands_free_command(
@@ -1280,11 +1324,13 @@ class SessionModeManager:
             commit_detail = committed.detail
 
         result = self._command_dispatch_fn(match.dispatch_text)
-        if not result.matched:
+        state = _command_state(result)
+        if not result.matched or state in COMMAND_UNSUCCESSFUL_STATES:
             return DispatchOutcome(kind="hands_free_command_failed", detail={
                 "phrase": match.phrase,
                 "dispatch_text": match.dispatch_text,
                 "committed": commit_detail,
+                "state": state,
             })
 
         self._stack.push(StackItem(
@@ -1296,6 +1342,7 @@ class SessionModeManager:
             "dispatch_text": match.dispatch_text,
             "committed": commit_detail,
             "mode_retained": self.mode,
+            "state": state,
         })
 
     def _dispatch_dictate(

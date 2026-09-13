@@ -73,7 +73,7 @@ delivery rules:
 | File | Purpose |
 |------|---------|
 | `samsara/command_registry.py` | Unified CommandMatcher — token-based longest-match |
-| `samsara/commands.py` | Modular CommandExecutor (used by tests) |
+| `samsara/commands.py` | Production CommandExecutor: every voice-command lane dispatches through `process_text()`, which returns a `DispatchResult` (miss / matched / queued / completed / failed / rejected / cancelled) |
 | `samsara/plugin_commands.py` | Plugin registry, @command decorator, load_plugins() |
 | `samsara/phonetic_wash.py` | Fixes Whisper misrecognitions before matching |
 

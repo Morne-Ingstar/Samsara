@@ -21,6 +21,170 @@ Priority rules:
 import re
 import threading
 import time
+from enum import Enum
+
+
+# ---------------------------------------------------------------------------
+# Dispatch result contract
+# ---------------------------------------------------------------------------
+
+class DispatchState(str, Enum):
+    """What happened to one utterance offered to the command executor.
+
+    MISS is the only state in which the utterance was NOT claimed as a
+    command; every other state means "a command owns this utterance" and the
+    caller must never re-offer it as dictation or as a new model request --
+    including FAILED, REJECTED and CANCELLED.
+    """
+
+    MISS = "miss"            # no command recognised (or a handler declined)
+    MATCHED = "matched"      # recognised; execution not attempted by this call
+    QUEUED = "queued"        # accepted; work scheduled, outcome arrives later
+    COMPLETED = "completed"  # handler reported success synchronously
+    FAILED = "failed"        # recognised, attempted, and failed (or raised)
+    REJECTED = "rejected"    # recognised but refused before running (debounce)
+    CANCELLED = "cancelled"  # recognised and cancelled before completion
+
+
+class DispatchResult(tuple):
+    """Result of CommandExecutor.process_text.
+
+    Still unpacks as the legacy ``(result, was_command)`` pair, where
+    ``was_command`` now means CLAIMED (state is not MISS) -- a matched command
+    that failed is still a command. New callers read ``.state``.
+    """
+
+    def __new__(cls, state, result=None, phrase=None, detail=None):
+        state = DispatchState(state)
+        self = tuple.__new__(cls, (result, state is not DispatchState.MISS))
+        self.state = state
+        self.phrase = phrase
+        self.detail = dict(detail or {})
+        return self
+
+    def __getnewargs__(self):
+        return (self.state, self[0], self.phrase, self.detail)
+
+    @property
+    def result(self):
+        return self[0]
+
+    @property
+    def claimed(self) -> bool:
+        return self[1]
+
+    @property
+    def succeeded(self) -> bool:
+        """True for COMPLETED and QUEUED (accepted) -- the chip/repeat/history
+        notion of "the command went through", as opposed to merely claimed."""
+        return self.state in (DispatchState.COMPLETED, DispatchState.QUEUED,
+                              DispatchState.MATCHED)
+
+    @classmethod
+    def miss(cls, text, detail=None):
+        return cls(DispatchState.MISS, result=text, detail=detail)
+
+    def __repr__(self):
+        return (f"DispatchResult({self.state.value!r}, result={self[0]!r}, "
+                f"phrase={self.phrase!r})")
+
+
+def adapt_handler_return(value) -> DispatchState:
+    """Map a plugin handler's return value onto a DispatchState.
+
+    The plugin API predates async work, so this is the one boundary adapter:
+      * DispatchResult / DispatchState -> honoured as given
+      * True (or any other truthy value) -> COMPLETED
+      * None -> QUEUED. Handlers such as ask_ollama.handle_ask_ava schedule a
+        worker and return None; that is accepted work, never a miss.
+      * False (or another falsy non-None value) -> MISS. The documented plugin
+        contract is "return False to fall through" -- a decline, e.g.
+        app_lifecycle refusing a non-whole-utterance match. A handler that
+        tried and failed must raise or return DispatchState.FAILED.
+    """
+    if isinstance(value, DispatchResult):
+        return value.state
+    if isinstance(value, DispatchState):
+        return value
+    if value is None:
+        return DispatchState.QUEUED
+    return DispatchState.COMPLETED if value else DispatchState.MISS
+
+
+# ---------------------------------------------------------------------------
+# Command metadata -- one owner, verbatim, never defaulted to safe
+# ---------------------------------------------------------------------------
+
+#: Sentinel for a metadata field the command's author never declared.
+UNKNOWN = "unknown"
+
+#: Every safety/AI metadata field a command can declare (see
+#: plugin_commands.command). The registry keeps each verbatim; an undeclared
+#: field is UNKNOWN in CommandEntry.metadata. Nothing here is enforced yet.
+METADATA_FIELDS = (
+    "ai_visible",
+    "risk_class",
+    "ai_composable",
+    "side_effects",
+    "preconditions",
+    "voice_triggerable",
+    "param_schema",
+    "reversible",
+    "preview_template",
+)
+
+
+def _declared_metadata(source: dict) -> dict:
+    """Pick METADATA_FIELDS out of a dict verbatim; missing -> UNKNOWN."""
+    return {name: source[name] if name in source else UNKNOWN
+            for name in METADATA_FIELDS}
+
+
+# ---------------------------------------------------------------------------
+# Normalised matching view with offsets into the original utterance
+# ---------------------------------------------------------------------------
+
+_RAW_TOKEN_RE = re.compile(r'\S+')
+_NON_WORD_RE = re.compile(r'[^\w]')
+# Separator-only tokens between the phrase and its argument ("ask ava - x").
+_SEPARATOR_TOKEN_RE = re.compile('^[-\u2013\u2014:;,.]+$')
+# Sentence terminators Whisper appends to an utterance. Only these, and only
+# at the very end of the argument, are dropped; everything else is verbatim.
+_TRAILING_TERMINATOR_RE = re.compile(r'[.,;:]+$')
+
+
+def view_tokens(text):
+    """Tokenise for matching: [(normalised, start, end), ...].
+
+    The normalised form is the old matching view -- lowercased with non-word
+    characters removed -- but each token keeps the span of the ORIGINAL text
+    it came from, so an argument can be sliced out verbatim.
+    """
+    tokens = []
+    for m in _RAW_TOKEN_RE.finditer(text or ''):
+        norm = _NON_WORD_RE.sub('', m.group().lower())
+        if norm:
+            tokens.append((norm, m.start(), m.end()))
+    return tokens
+
+
+def argument_text(text, start):
+    """Original-text argument beginning at offset `start`.
+
+    Verbatim except: surrounding whitespace, separator-only tokens directly
+    after the phrase, and one trailing run of sentence terminators.
+    """
+    rest = (text or '')[start:]
+    while True:
+        stripped = rest.lstrip()
+        m = _RAW_TOKEN_RE.match(stripped)
+        if m and _SEPARATOR_TOKEN_RE.match(m.group()):
+            rest = stripped[m.end():]
+            continue
+        rest = stripped
+        break
+    rest = rest.rstrip()
+    return _TRAILING_TERMINATOR_RE.sub('', rest).rstrip()
 
 
 class CommandEntry:
@@ -29,9 +193,10 @@ class CommandEntry:
     def __init__(self, phrase, source, cmd_type, data=None, handler=None,
                  aliases=None, pack='core', debounce=0.0, app_overrides=None,
                  description='',
-                 ai_visible=True, risk_class='safe', ai_composable=False,
+                 ai_visible=True, risk_class=UNKNOWN, ai_composable=False,
                  side_effects=None, preconditions=None, voice_triggerable=True,
-                 param_schema=None, reversible=False, preview_template=''):
+                 param_schema=None, reversible=False, preview_template='',
+                 metadata=None):
         """
         Args:
             phrase: canonical trigger phrase (lowercase, stripped)
@@ -55,6 +220,10 @@ class CommandEntry:
             param_schema: dict of param_name -> constraint spec
             reversible: True if effects can be undone
             preview_template: human-readable template describing what will happen
+            metadata: {field: value} for every METADATA_FIELDS name, verbatim
+                as the author declared it, UNKNOWN where undeclared. The typed
+                attributes above keep their legacy gate-closed defaults for
+                existing readers; `metadata` is the authoritative export.
         """
         self.phrase = phrase.lower().strip()
         self.tokens = self.phrase.split()
@@ -69,7 +238,7 @@ class CommandEntry:
         self.app_overrides = dict(app_overrides) if app_overrides else {}
         self.description = description or ''
         self.ai_visible = bool(ai_visible)
-        self.risk_class = risk_class or 'safe'
+        self.risk_class = risk_class or UNKNOWN
         self.ai_composable = bool(ai_composable)
         self.side_effects = list(side_effects or [])
         self.preconditions = list(preconditions or [])
@@ -77,6 +246,33 @@ class CommandEntry:
         self.param_schema = dict(param_schema or {})
         self.reversible = bool(reversible)
         self.preview_template = str(preview_template)
+        declared = metadata if metadata is not None else {}
+        self.metadata = {name: declared.get(name, UNKNOWN) for name in METADATA_FIELDS}
+        if metadata is not None:
+            # With explicit metadata the risk class is exactly what the author
+            # declared, UNKNOWN when they declared nothing -- never 'safe' by
+            # omission (the plugin decorator's legacy dict still says 'safe').
+            self.risk_class = self.metadata['risk_class'] or UNKNOWN
+
+
+class CommandMatch:
+    """One match with offsets into the text that was matched.
+
+    remainder is the ORIGINAL-text argument (see argument_text);
+    normalized_remainder is the old lowercase/punctuation-free view, for
+    schema-declared slots that want it (app aliases, spoken numbers).
+    """
+
+    __slots__ = ('entry', 'phrase_tokens', 'argument_start', 'remainder',
+                 'normalized_remainder')
+
+    def __init__(self, entry, phrase_tokens, argument_start, remainder,
+                 normalized_remainder):
+        self.entry = entry
+        self.phrase_tokens = tuple(phrase_tokens)
+        self.argument_start = argument_start
+        self.remainder = remainder
+        self.normalized_remainder = normalized_remainder
 
 
 class CommandMatcher:
@@ -138,6 +334,16 @@ class CommandMatcher:
                 debounce=float(data.get('debounce', 0.0)),
                 app_overrides=data.get('app_overrides', {}),
                 description=data.get('description', ''),
+                ai_visible=data.get('ai_visible', True),
+                ai_composable=data.get('ai_composable', False),
+                side_effects=data.get('side_effects', []),
+                preconditions=data.get('preconditions', []),
+                voice_triggerable=data.get('voice_triggerable', True),
+                param_schema=data.get('param_schema', {}),
+                reversible=data.get('reversible', False),
+                preview_template=data.get('preview_template', ''),
+                # Whatever commands.json declares, verbatim; the rest UNKNOWN.
+                metadata=_declared_metadata(data),
             )
             self._entries[name_lower] = entry
 
@@ -184,7 +390,7 @@ class CommandMatcher:
                 app_overrides=entry_data.get('app_overrides', {}),
                 description=doc,
                 ai_visible=entry_data.get('ai_visible', True),
-                risk_class=entry_data.get('risk_class', 'safe'),
+                risk_class=entry_data.get('risk_class', UNKNOWN),
                 ai_composable=entry_data.get('ai_composable', False),
                 side_effects=entry_data.get('side_effects', []),
                 preconditions=entry_data.get('preconditions', []),
@@ -192,6 +398,10 @@ class CommandMatcher:
                 param_schema=entry_data.get('param_schema', {}),
                 reversible=entry_data.get('reversible', False),
                 preview_template=entry_data.get('preview_template', ''),
+                # The decorator records what the author actually declared;
+                # a hand-built registry dict is taken at its word, key by key.
+                metadata=(entry_data['metadata'] if isinstance(entry_data.get('metadata'), dict)
+                          else _declared_metadata(entry_data)),
             )
             self._entries[canonical] = entry
             # Register aliases (skip individually if shadowed)
@@ -245,32 +455,43 @@ class CommandMatcher:
             text: raw transcribed text (e.g. "find tab github")
 
         Returns:
-            (CommandEntry, remainder_str) or (None, '')
+            (CommandEntry, remainder_str) or (None, ''). The remainder is the
+            ORIGINAL text after the matched phrase (case, quotes, apostrophes,
+            filenames and line breaks intact) -- see match_detail().
 
         Example:
             match("find tab github")
             -> (CommandEntry("find tab"), "github")
         """
+        detail = self.match_detail(text)
+        if detail is None:
+            return None, ''
+        return detail.entry, detail.remainder
+
+    def match_detail(self, text):
+        """Like match(), but returns a CommandMatch (or None).
+
+        Matching runs on a normalised VIEW of the utterance -- lowercased,
+        punctuation removed per token. Whisper adds trailing punctuation to
+        short utterances ("Yes." "Yeah.") which would otherwise stop
+        single-word commands like "yes" from ever matching. Every view token
+        keeps its offsets into the original text, and the argument handed to
+        the command is sliced from the original, never rebuilt from the view.
+        """
         if not text or not self._frozen:
-            return None, ''
+            return None
 
-        text_lower = text.lower().strip()
-        # Strip punctuation from tokens for matching only.
-        # Whisper adds trailing punctuation to short utterances ("Yes." "Yeah.")
-        # which prevents single-word commands like "yes" from ever matching.
-        # The original text is NOT modified here — callers hold the raw string
-        # and use it for dictation paste if no command matches.
-        clean_lower = re.sub(r'[^\w\s]', '', text_lower)
-        text_tokens = clean_lower.split()
+        tokens = view_tokens(text)
+        if not tokens:
+            return None
+        text_tokens = [norm for norm, _start, _end in tokens]
+        clean_lower = ' '.join(text_tokens)
 
-        if not text_tokens:
-            return None, ''
-
-        # Exact match on cleaned text (fastest path; built-ins win on collision)
+        # Exact match on the view (fastest path; built-ins win on collision)
         if clean_lower in self._entries:
             entry = self._entries[clean_lower]
             if self._pack_enabled(entry.pack):
-                return entry, ''
+                return CommandMatch(entry, text_tokens, len(text), '', '')
             # Fall through to prefix scan if exact match is from disabled pack
 
         # Token prefix matching: longest registered phrase first.
@@ -281,10 +502,14 @@ class CommandMatcher:
                 continue
             n = len(phrase_tokens)
             if n <= len(text_tokens) and text_tokens[:n] == phrase_tokens:
-                remainder = ' '.join(text_tokens[n:])
-                return entry, remainder
+                start = tokens[n - 1][2]
+                return CommandMatch(
+                    entry, phrase_tokens, start,
+                    argument_text(text, start),
+                    ' '.join(text_tokens[n:]),
+                )
 
-        return None, ''
+        return None
 
     def should_suppress(self, entry) -> bool:
         """Return True if the entry's debounce window has not elapsed.
@@ -329,6 +554,7 @@ class CommandMatcher:
                 'param_schema': entry.param_schema,
                 'reversible': entry.reversible,
                 'preview_template': entry.preview_template,
+                'metadata': dict(entry.metadata),
             })
         return result
 
