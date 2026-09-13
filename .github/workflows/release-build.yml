@@ -6,7 +6,9 @@ name: Release Build (CPU, SignPath-ready)
 # few extra headless-safe smoke assertions), and exactly how to first-run
 # it. This workflow never publishes a release: tag pushes produce a DRAFT
 # GitHub Release only, and workflow_dispatch produces build artifacts with
-# no Release at all.
+# no Release at all. release.yml runs AFTER this workflow (workflow_run),
+# only when it succeeded, and attaches THIS workflow's verified artifact --
+# it no longer builds anything itself, so a failure here attaches nothing.
 #
 # Triggers:
 #   - push of a version tag (v*.*.*)  -> build, verify, package, draft-release
@@ -89,6 +91,18 @@ jobs:
           python -m pip install --upgrade pip
           pip install -r requirements.txt
           pip install "pyinstaller==$env:PYINSTALLER_VERSION"
+
+      # The openwakeword wheel ships no model files; the app downloads them on
+      # first run, which never happens on a runner. v0.23.0-beta.1's CI build
+      # therefore packaged 0 of 9 wake-word models (Docs/RELEASE_CI.md, "Where
+      # the wake-word models come from"). Fetch the pinned, SHA-256-verified
+      # set into the interpreter's openwakeword package BEFORE PyInstaller;
+      # scripts\samsara.spec now also refuses to build without them, and the
+      # OWW check on the frozen output below stays a hard failure.
+      - name: Fetch OpenWakeWord models (pinned, sha256-verified)
+        shell: pwsh
+        run: |
+          python tools\release_preflight.py --fetch-oww-models
 
       - name: Build with PyInstaller (CPU configuration)
         shell: cmd

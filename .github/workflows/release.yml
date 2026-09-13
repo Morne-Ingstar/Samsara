@@ -1,65 +1,59 @@
 name: Release (CPU build)
 
-# CI-verifiable release build -- see RELEASING.md for the full picture,
-# including why this covers only the CPU package this pass.
+# Publishes the CPU ZIP to the tag's GitHub Release -- but ONLY the ZIP that
+# .github/workflows/release-build.yml built and verified. See RELEASING.md
+# for the full picture and Docs/RELEASE_CI.md ("Where the wake-word models
+# come from") for the 2026-09-13 change behind this file's shape.
 #
-# Triggers:
-#   - push of a version tag (v*)              -> build + upload artifact + attach to a GitHub Release
-#   - manual workflow_dispatch                 -> build + upload artifact only (no Release created)
+# History: this workflow used to run its own PyInstaller build on the same
+# tag push, in parallel with release-build.yml, and attach whatever it
+# produced. When v0.23.0-beta.1's CI build shipped 0 of 9 OpenWakeWord
+# models, release-build.yml failed its own OWW check while this workflow was
+# about to attach the very same broken ZIP and had to be cancelled by hand.
+# Nothing tied the two together.
+#
+# Now:
+#   - trigger: workflow_run on "Release Build (CPU, SignPath-ready)" -- GitHub
+#     Actions itself enforces the ordering; the job's `if` refuses anything
+#     but a successful, tag-triggered run.
+#   - the asset is DOWNLOADED from that run (actions/download-artifact with
+#     run-id), never rebuilt here, so the published ZIP is byte-for-byte the
+#     one whose smoke + OWW checks passed.
+#   - a belt-and-braces gate re-opens the ZIP and re-checks the nine wake-word
+#     model files and the .sha256 sidecar before attaching.
+#   - no workflow_dispatch: manual builds go through release-build.yml's own
+#     workflow_dispatch and stay artifacts (no Release), as before.
 
 on:
-  push:
-    tags:
-      - 'v*'
-  workflow_dispatch:
-    inputs:
-      version:
-        description: 'Version string for artifact naming (e.g. v0.22.0-rc1). Leave blank to auto-generate from the commit SHA.'
-        required: false
-        default: ''
+  workflow_run:
+    workflows: ["Release Build (CPU, SignPath-ready)"]
+    types: [completed]
 
 permissions:
-  contents: write # required to attach the zip to a GitHub Release on tag push
+  contents: write # attach the zip to the GitHub Release for the tag
+  actions: read   # download the release-build run's artifact
 
 concurrency:
-  group: release-${{ github.ref }}
-  cancel-in-progress: true
-
-env:
-  # Matches the local dev environment (F:\envs\sami, Python 3.11.15) and
-  # scripts/samsara.spec's expectations. If the project's Python version
-  # ever moves, update this in one place.
-  PYTHON_VERSION: '3.11'
-  # Pinned to the version verified against scripts/samsara.spec locally
-  # (F:\envs\sami has 6.20.0). Bump deliberately, not via auto-latest.
-  PYINSTALLER_VERSION: '6.20.0'
+  group: release-${{ github.event.workflow_run.head_branch }}
+  cancel-in-progress: false
 
 jobs:
-  build-cpu:
+  publish-cpu:
     runs-on: windows-latest
-    timeout-minutes: 60
+    timeout-minutes: 30
+    # Only a SUCCESSFUL release-build run, and only one that a version tag
+    # push triggered (workflow_run.head_branch is the tag name for tag pushes;
+    # workflow_dispatch builds are artifacts only and never reach here).
+    if: >-
+      github.event.workflow_run.conclusion == 'success' &&
+      github.event.workflow_run.event == 'push' &&
+      startsWith(github.event.workflow_run.head_branch, 'v')
 
     steps:
-      - name: Checkout
+      - name: Checkout the built commit
         uses: actions/checkout@v5
-
-      - name: Set up Python
-        uses: actions/setup-python@v6
         with:
-          python-version: ${{ env.PYTHON_VERSION }}
-          cache: 'pip'
-          cache-dependency-path: requirements.txt
-
-      - name: Verify embedded version identity
-        shell: pwsh
-        env:
-          RELEASE_TAG: ${{ github.ref_type == 'tag' && github.ref_name || '' }}
-        run: |
-          if ($env:RELEASE_TAG) {
-            python tools\check_release_version.py --expected $env:RELEASE_TAG
-          } else {
-            python tools\check_release_version.py
-          }
+          ref: ${{ github.event.workflow_run.head_sha }}
 
       - name: Set up Node.js for browser-extension tests
         uses: actions/setup-node@v4
@@ -74,111 +68,60 @@ jobs:
         id: version
         shell: pwsh
         run: |
-          if ("${{ github.ref_type }}" -eq "tag") {
-            $version = "${{ github.ref_name }}"
-          } elseif ("${{ github.event.inputs.version }}" -ne "") {
-            $version = "${{ github.event.inputs.version }}"
-          } else {
-            $shortSha = "${{ github.sha }}".Substring(0, 7)
-            $version = "dev-$shortSha"
-          }
-          Write-Host "Resolved version: $version"
+          $version = "${{ github.event.workflow_run.head_branch }}"
+          Write-Host "Publishing release-build run ${{ github.event.workflow_run.id }} for $version"
           echo "version=$version" >> $env:GITHUB_OUTPUT
 
-      - name: Install build dependencies
-        shell: pwsh
-        run: |
-          python -m pip install --upgrade pip
-          pip install -r requirements.txt
-          pip install "pyinstaller==$env:PYINSTALLER_VERSION"
-
-      - name: Build with PyInstaller (CPU configuration)
-        shell: cmd
-        run: |
-          rem INCLUDE_CUDA intentionally unset -- see scripts\samsara.spec,
-          rem which only bundles CUDA cuDNN/cuBLAS DLLs when INCLUDE_CUDA=1.
-          python -m PyInstaller --clean --noconfirm scripts\samsara.spec
-
-      - name: Verify build output
-        shell: pwsh
-        run: |
-          if (-not (Test-Path "dist\Samsara\Samsara.exe")) {
-            Write-Error "dist\Samsara\Samsara.exe was not produced -- see PyInstaller output above."
-            exit 1
-          }
-          Write-Host "Build OK: dist\Samsara\Samsara.exe"
-
-          # Torch/torchaudio are no longer runtime dependencies and the spec
-          # excludes them. Keep this CI-only defensive cleanup in case a
-          # future transitive/build-environment dependency bypasses the
-          # Analysis excludes.
-          foreach ($leaked in @("dist\Samsara\_internal\torch", "dist\Samsara\_internal\torchaudio")) {
-            if (Test-Path $leaked) {
-              Write-Warning "Removing leaked $leaked (excluded in spec but PyInstaller bundled it anyway)"
-              Remove-Item -Recurse -Force $leaked
-            }
-          }
-
-          $sizeMB = [math]::Round((Get-ChildItem "dist\Samsara" -Recurse | Measure-Object -Property Length -Sum).Sum / 1MB, 1)
-          Write-Host "dist\Samsara size: $sizeMB MB"
-
-      - name: Headless-safe smoke check
-        id: smoke
-        shell: pwsh
-        run: |
-          # See tools\ci_smoke.py's module docstring for why this is a
-          # trimmed subset of tools\frozen_smoke.py's full
-          # 11-check local gate rather than that harness verbatim: a stock
-          # CI runner has no guaranteed audio input device and no warm
-          # Hugging Face model cache, and frozen_smoke.py's strict
-          # "any Traceback = FAIL" check produces false negatives on the
-          # former. tools\frozen_smoke.py keeps gating local releases via
-          # tools\build_and_smoke.cmd -- unchanged, not touched here.
-          python tools\ci_smoke.py dist\Samsara --timeout 180 --log-copy-to ci_smoke_artifacts\samsara.log
-
-      - name: Upload smoke log (always, for inspection)
-        if: always()
-        uses: actions/upload-artifact@v6
+      - name: Download the verified build artifact from release-build
+        uses: actions/download-artifact@v6
         with:
-          name: ci-smoke-log-${{ steps.version.outputs.version }}
-          path: ci_smoke_artifacts\samsara.log
-          if-no-files-found: ignore
-          retention-days: 14
+          run-id: ${{ github.event.workflow_run.id }}
+          github-token: ${{ secrets.GITHUB_TOKEN }}
+          pattern: Samsara-Windows-${{ steps.version.outputs.version }}.zip
+          path: release_asset
+          merge-multiple: true
 
-      - name: Package CPU build
-        id: package
+      - name: Gate -- re-verify the artifact before attaching
+        id: gate
         shell: pwsh
         run: |
           $version = "${{ steps.version.outputs.version }}"
           $zipName = "Samsara-Windows-$version.zip"
-          # Matches the naming convention used for the v0.20.0 release
-          # (release\release_staging\Samsara-Windows-v0.20.0.zip).
-          Compress-Archive -Path "dist\Samsara\*" -DestinationPath $zipName -CompressionLevel Optimal
-          $checksumName = "$zipName.sha256"
-          $checksum = (Get-FileHash -LiteralPath $zipName -Algorithm SHA256).Hash.ToLowerInvariant()
-          Set-Content -LiteralPath $checksumName -Value "$checksum  $zipName" -Encoding ascii
-          $sizeMB = [math]::Round((Get-Item $zipName).Length / 1MB, 1)
-          Write-Host "Packaged $zipName ($sizeMB MB)"
-          Write-Host "SHA-256: $checksum"
-          echo "zip_name=$zipName" >> $env:GITHUB_OUTPUT
-          echo "checksum_name=$checksumName" >> $env:GITHUB_OUTPUT
+          $zip = Join-Path "release_asset" $zipName
+          $sidecar = "$zip.sha256"
+          foreach ($f in @($zip, $sidecar)) {
+            if (-not (Test-Path -LiteralPath $f)) { Write-Error "artifact file missing: $f"; exit 1 }
+          }
+          # .sha256 sidecar must match the zip we are about to publish.
+          $actual = (Get-FileHash -LiteralPath $zip -Algorithm SHA256).Hash.ToLowerInvariant()
+          $expected = ((Get-Content -LiteralPath $sidecar -Raw).Trim() -split '\s+')[0].ToLowerInvariant()
+          if ($actual -ne $expected) { Write-Error "sha256 sidecar mismatch: $actual != $expected"; exit 1 }
+          Write-Host "[PASS] sidecar matches: $actual"
 
-      - name: Upload build artifact
-        uses: actions/upload-artifact@v6
-        with:
-          name: ${{ steps.package.outputs.zip_name }}
-          path: |
-            ${{ steps.package.outputs.zip_name }}
-            ${{ steps.package.outputs.checksum_name }}
-          retention-days: 30
+          # The nine bundled OpenWakeWord model files must be inside the zip
+          # (the check that caught v0.23.0-beta.1's CI build).
+          Expand-Archive -LiteralPath $zip -DestinationPath unpacked -Force
+          $owwModels = @(
+            'alexa_v0.1.onnx', 'embedding_model.onnx', 'hey_jarvis_v0.1.onnx',
+            'hey_mycroft_v0.1.onnx', 'hey_rhasspy_v0.1.onnx', 'melspectrogram.onnx',
+            'silero_vad.onnx', 'timer_v0.1.onnx', 'weather_v0.1.onnx'
+          )
+          $owwDir = 'unpacked\_internal\openwakeword\resources\models'
+          $missing = $owwModels | Where-Object { -not (Test-Path (Join-Path $owwDir $_)) }
+          if ($missing) { Write-Error "zip is missing bundled OWW model file(s): $($missing -join ', ')"; exit 1 }
+          Write-Host "[PASS] all 9 bundled OWW wake-word model files present in $zipName"
+          if (-not (Test-Path 'unpacked\Samsara.exe')) { Write-Error "zip has no Samsara.exe"; exit 1 }
+          Remove-Item -Recurse -Force unpacked
+          echo "zip=$zip" >> $env:GITHUB_OUTPUT
+          echo "sidecar=$sidecar" >> $env:GITHUB_OUTPUT
 
       - name: Attach to GitHub Release
-        if: github.ref_type == 'tag'
         uses: softprops/action-gh-release@v2
         with:
+          tag_name: ${{ steps.version.outputs.version }}
           files: |
-            ${{ steps.package.outputs.zip_name }}
-            ${{ steps.package.outputs.checksum_name }}
+            ${{ steps.gate.outputs.zip }}
+            ${{ steps.gate.outputs.sidecar }}
           generate_release_notes: true
 
       # ----------------------------------------------------------------------

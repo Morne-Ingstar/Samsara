@@ -37,7 +37,9 @@ On a push of a tag matching `v*.*.*`, or a manual `workflow_dispatch`:
 7. Uploads the zip + sidecar, and the smoke log, as workflow artifacts.
 8. On a tag push only: creates a **draft** GitHub Release with the zip and
    sidecar attached (`draft: true`, always -- this workflow never publishes a
-   release; a human still has to open it in the GitHub UI and hit Publish).
+   release). `release.yml` then runs via `workflow_run`, only if this
+   workflow succeeded, downloads this run's artifact and attaches that same
+   zip (it no longer builds its own).
 9. Has a disabled `if: false` SignPath signing step, commented with the exact
    inputs it would need, sitting between packaging and the draft-release
    step.
@@ -49,6 +51,32 @@ uses to build its PyInstaller `datas` list from Git's tracked-file manifest.
 It does not generate a SHA-256 sidecar or any other release manifest -- there
 is no such helper in the file. The `.zip.sha256` sidecar is produced inline
 with PowerShell's `Get-FileHash`, matching what `release.yml` already does.
+
+## Where the wake-word models come from
+
+The nine OpenWakeWord files the build bundles (`alexa_v0.1.onnx`,
+`embedding_model.onnx`, `hey_jarvis_v0.1.onnx`, `hey_mycroft_v0.1.onnx`,
+`hey_rhasspy_v0.1.onnx`, `melspectrogram.onnx`, `silero_vad.onnx`,
+`timer_v0.1.onnx`, `weather_v0.1.onnx`) are **not in the `openwakeword`
+wheel** and not in this repository. The package downloads them into
+`site-packages/openwakeword/resources/models` the first time the app runs
+(`openwakeword.utils.download_models()`), which is why a developer machine
+has them and a fresh CI runner never does -- `scripts/samsara.spec`'s
+`collect_data_files(...)` then quietly collects nothing, and that is how the
+v0.23.0-beta.1 CI ZIP (run 34774339039) shipped 0 of 9 and failed the
+workflow's own OWW check. Since 2026-09-13 `tools/release_preflight.py`
+pins the nine files to the upstream `dscripka/openWakeWord` **v0.5.1**
+release assets by SHA-256 (`OWW_MODELS`); `release-build.yml` runs
+`python tools\release_preflight.py --fetch-oww-models` before PyInstaller
+(download only what is missing, verify every byte, never a silent skip),
+the spec itself now raises if any of the nine is absent, the local preflight
+(`build_release.bat` -> `release_preflight.py`) verifies presence + hashes,
+and `release.yml` -- now triggered by `workflow_run` on this workflow and
+gated on its success -- re-opens the downloaded ZIP and checks the nine
+files again before attaching. What fails if they are missing: the fetch step
+(bad hash or unreachable URL), else the spec (`SystemExit` naming the files),
+else check 7 below on the frozen output, else `release.yml`'s gate; at no
+point does a ZIP without wake-word models reach a GitHub Release.
 
 ## Smoke checks: 8 of 13 run on CI
 
