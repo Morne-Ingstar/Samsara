@@ -102,6 +102,40 @@ command reports partial completion naming the second -- the first move is not un
 | "open calculator" | Launch Calculator |
 | "open file explorer" / "open files" | Win+E |
 
+### Messaging the Claude app
+
+Plugin `message_claude.py`. Sends a message to the Claude **desktop app** (the
+window, not the API and not the ARC Quick Ask inbox) and only reports "sent"
+after the message is seen in the conversation.
+
+| Command | Action |
+|---------|--------|
+| "tell claude <text>" | prepare a draft for the Claude window's current conversation and ask "Send to Claude: <first 60 chars>?" |
+| "ask claude <text>" | same |
+| "message claude <text>" | same |
+| "send claude <text>" | same |
+| "yes" | send the prepared draft (the policy's confirmation) |
+| "ava cancel" / "scratch that" | drop the question; nothing is sent, the draft is kept |
+
+The text is sent as spoken. The one rewrite: a trailing "and ask what's next"
+(or "what is next" / "what to do next" / "for next steps" / "if it's done")
+becomes its own sentence -- "tell claude the mode switch fix landed and ask
+what's next" sends "The mode switch fix landed. What should I do next?".
+
+After "yes" Samsara checks the Claude window still shows the same
+conversation, focuses it, pastes the text into the prompt box, reads the
+box back and requires it to match, presses the app's own Send control, then
+watches the conversation for up to 5 s for the message to appear:
+
+* **Sent** -- the message was observed in the conversation.
+* **Not sent** -- something did not check out before Send (the conversation
+  changed, the prompt box did not contain the text, no Send control): nothing
+  was submitted; the text may be left in the prompt box for you.
+* **Outcome unknown** -- Send was pressed but the message was not seen within
+  5 s. Samsara will NOT resend (a retry could post it twice); look at the
+  Claude window. "repeat" or saying it again creates a new draft and asks
+  again -- it never resubmits the unknown one.
+
 ### Browser
 
 | Command | Action |
