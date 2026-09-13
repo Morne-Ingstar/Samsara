@@ -120,6 +120,42 @@ command reports partial completion naming the second -- the first move is not un
 
 ### Media
 
+#### Named music requests (Spotify)
+
+Bare **"play"** / **"resume"** resumes the current media session as before.
+A name after **"play"** targets the Spotify Windows client:
+
+| Say | Spotify query |
+|---|---|
+| "play my alternative rock playlist" | alternative rock |
+| "play alternative rock playlist" | alternative rock |
+| "play playlist alternative rock" | alternative rock |
+| "play some alternative rock" | alternative rock |
+| "play something from my alternative rock playlist" | alternative rock |
+| "play stuff from alternative rock" | alternative rock |
+| "play Morne's Road Trip" | Morne's Road Trip |
+
+Names retain spaces, apostrophes and case. An exact configured Spotify URI
+is opened directly; otherwise the name is URL-encoded into
+`spotify:search:<query>`. No Web API or credentials are used. If Spotify has
+no SMTC session, Samsara launches `spotify:` and waits up to eight seconds
+for its session before opening the requested URI and sending play **only
+to Spotify**. Missing protocol registration, session timeout or a refused
+play request produces a failed result.
+
+Playback is then observed for up to three seconds. Success requires the
+current SMTC source ID to identify Spotify and its status to be Playing.
+Another playing app produces `played in <app>, not Spotify`. Results carry
+the requested name separately from the observed track title, artist and
+album, when available. An opened search is not proof that a named playlist
+was selected: Spotify may resume its previous track. `request_verified`
+therefore remains false; the result reports the observed title, never
+invents a playlist title. Selecting a search result automatically is not
+implemented. "Play music" with no name retains the Liked Songs URI.
+
+The [Windows SMTC session API](https://learn.microsoft.com/en-us/uwp/api/windows.media.control.globalsystemmediatransportcontrolssession)
+provides the source app ID, playback status and media metadata used here.
+
 | Command | Action |
 |---------|--------|
 | "volume up" / "volume down" | System volume |

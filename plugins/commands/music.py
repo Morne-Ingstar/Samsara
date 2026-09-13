@@ -15,6 +15,11 @@ import subprocess
 import threading
 import os
 import asyncio
+import re
+import time
+from urllib.parse import quote
+
+from samsara.command_registry import DispatchResult, DispatchState
 
 from samsara.plugin_commands import command
 
@@ -24,20 +29,6 @@ from samsara.runtime import thread_registry
 logger = get_logger(__name__)
 
 
-# ---------------------------------------------------------------------------
-# TEMP HACK � REVISIT
-# Spotify URIs (spotify:collection:tracks, spotify:track:...) open Spotify
-# but do not auto-play. Workaround: 2.5s after opening, send an SMTC play
-# command to the foreground media session. Same backend used by media_keys.py.
-#
-# This is brittle:
-#   - Race condition if Spotify takes >2.5s to register a session
-#   - If another media app is already foreground, this plays THAT instead
-#   - No verification that Spotify actually got the play command
-#
-# Proper fix: Spotify Web API (OAuth, refresh tokens, full control).
-# See: C:\Users\Morne\Documents\Claude\REVISIT.md
-# ---------------------------------------------------------------------------
 def _media_transport(action):
     """Send a transport command to the current SMTC session.
 
@@ -243,51 +234,98 @@ def _spotify_mute_toggle():
     return found
 
 
-def _spotify_play_kick():
-    """Send an SMTC play command to whatever just took focus."""
-    try:
-        from winsdk.windows.media.control import (
-            GlobalSystemMediaTransportControlsSessionManager as SessionManager,
-        )
-
-        async def _kick():
-            try:
-                mgr = await SessionManager.request_async()
-                session = mgr.get_current_session()
-                if session:
-                    await session.try_play_async()
-                    print("[MUSIC] SMTC play kick sent")
-                else:
-                    print("[MUSIC] SMTC play kick: no current session yet")
-            except Exception as e:
-                print(f"[MUSIC] SMTC play kick failed: {e}")
-
-        loop = asyncio.new_event_loop()
-        try:
-            loop.run_until_complete(_kick())
-        finally:
-            loop.close()
-    except Exception as e:
-        print(f"[MUSIC] SMTC play kick init failed: {e}")
-
-
 def _open_track(uri_or_url):
-    """Open a Spotify track via the desktop app."""
-    if uri_or_url.startswith('spotify:track:'):
-        # Use start command which routes through Windows protocol handler
-        # This works whether Spotify is open or closed
-        track_id = uri_or_url.split(':')[-1]
-        subprocess.Popen(
-            ['cmd', '/c', 'start', '', f'spotify:track:{track_id}'],
-            creationflags=subprocess.CREATE_NO_WINDOW
-        )
-    elif uri_or_url.startswith('spotify:'):
-        subprocess.Popen(
-            ['cmd', '/c', 'start', '', uri_or_url],
-            creationflags=subprocess.CREATE_NO_WINDOW
-        )
+    """Dispatch a URI without passing user-controlled text through a shell."""
+    if uri_or_url.startswith('spotify:'):
+        os.startfile(uri_or_url)
     else:
         webbrowser.open(uri_or_url)
+
+
+def _parse_music_request(remainder):
+    """Keep name spelling/punctuation; remove only whole-word grammar wrappers."""
+    text = remainder.strip()
+    previous = None
+    while previous != text:
+        previous = text
+        text = re.sub(r"^(?:something from|stuff from|some|my)\s+", "", text,
+                      flags=re.IGNORECASE)
+    playlist = bool(re.match(r"^playlist\s+", text, re.IGNORECASE)
+                    or re.search(r"\s+playlist$", text, re.IGNORECASE))
+    text = re.sub(r"^playlist\s+|\s+playlist$", "", text, flags=re.IGNORECASE)
+    text = re.sub(r"^my\s+", "", text, flags=re.IGNORECASE).strip()
+    return text, playlist
+
+
+def _is_spotify(session):
+    if session is None:
+        return False
+    source = session.source_app_user_model_id.lower()
+    return (source in {"spotify", "spotify.exe"}
+            or source.startswith("spotifyab.spotifymusic_"))
+
+
+async def _session_manager():
+    from winsdk.windows.media.control import (
+        GlobalSystemMediaTransportControlsSessionManager as SessionManager,
+    )
+    return await SessionManager.request_async()
+
+
+def _is_playing(session):
+    # Windows.Media.Control.GlobalSystemMediaTransportControlsSessionPlaybackStatus.Playing
+    return session is not None and int(session.get_playback_info().playback_status) == 4
+
+
+def _music_result(state, requested, message, **detail):
+    return DispatchResult(state, message, "play", {
+        "requested": requested, "message": message, **detail,
+    })
+
+
+async def _play_spotify(requested, uri):
+    """Bound startup and observation; never send transport to another app."""
+    mgr = await _session_manager()
+    session = next((s for s in mgr.get_sessions() if _is_spotify(s)), None)
+    if session is None:
+        _open_track('spotify:')
+        deadline = time.monotonic() + 8.0
+        while session is None and time.monotonic() < deadline:
+            await asyncio.sleep(0.1)
+            session = next((s for s in mgr.get_sessions() if _is_spotify(s)), None)
+        if session is None:
+            return _music_result(DispatchState.FAILED, requested,
+                                 "Spotify session unavailable after 8 s")
+    _open_track(uri)
+    if not await session.try_play_async():
+        return _music_result(DispatchState.FAILED, requested, "Spotify refused play")
+    deadline = time.monotonic() + 3.0
+    other = None
+    while True:
+        current = mgr.get_current_session()
+        if _is_playing(current):
+            if _is_spotify(current):
+                detail = {"source_app_id": current.source_app_user_model_id,
+                          "actual_started": None, "uri": uri,
+                          "request_verified": False}
+                try:
+                    props = await current.try_get_media_properties_async()
+                    detail.update(actual_started=props.title or None,
+                                  album=props.album_title or None,
+                                  artist=props.artist or None)
+                except Exception as exc:
+                    detail["metadata_error"] = str(exc)
+                actual = detail["actual_started"] or "Spotify (title unavailable)"
+                return _music_result(DispatchState.COMPLETED, requested,
+                                     f"Playing {actual}", **detail)
+            other = current.source_app_user_model_id
+        if time.monotonic() >= deadline:
+            message = (f"played in {other}, not Spotify" if other else
+                       "Spotify playback could not be verified")
+            return _music_result(DispatchState.FAILED, requested, message,
+                                 source_app_id=other, uri=uri)
+        await asyncio.sleep(0.1)
+
 
 # Pre-configured songs — Spotify URIs open directly in the app
 SONGS = {
@@ -333,47 +371,24 @@ def _set_volume(level):
     "plays some music", "place music", "plays music"
 ], pack="media", risk_class='safe', ai_composable=True, side_effects=['audio'])
 def handle_play(app, remainder):
-    """Play music. Usage: 'Jarvis, play some sad music'"""
-    if not remainder or remainder.strip().lower() in ('music', 'some music', 'something'):
-        # No specific request — shuffle Liked Songs on Spotify
-        print("[MUSIC] Playing: Liked Songs (shuffle)")
-        _open_track('spotify:collection:tracks')
-        target_vol = int(app.config.get('music_volume', 30))
-        thread_registry.timer("music.set_volume", 2.0, _set_volume, args=[target_vol])
-        # TEMP: send play kick after Spotify registers SMTC session
-        thread_registry.timer("music.spotify_play_kick", 2.5, _spotify_play_kick)
-        return True
-
-    query = remainder.strip().lower()
-
-    # Check configured songs first
-    for name, url in SONGS.items():
-        if name in query:
-            print(f"[MUSIC] Playing: {name}")
-            _open_track(url)
-            # Set modest volume after a short delay (let browser open)
-            target_vol = int(app.config.get('music_volume', 30))
-            thread_registry.timer("music.set_volume", 2.0, _set_volume, args=[target_vol])
-            # TEMP: send play kick after Spotify has time to register SMTC session
-            thread_registry.timer("music.spotify_play_kick", 2.5, _spotify_play_kick)
-            return True
-
-    # Check user-configured songs
-    user_songs = app.config.get('music_library', {})
-    for name, url in user_songs.items():
-        if name.lower() in query:
-            print(f"[MUSIC] Playing: {name}")
-            _open_track(url)
-            target_vol = int(app.config.get('music_volume', 30))
-            thread_registry.timer("music.set_volume", 2.0, _set_volume, args=[target_vol])
-            return True
-
-    # Fallback: search Spotify
-    import urllib.parse
-    search_url = f"https://open.spotify.com/search/{urllib.parse.quote(query)}"
-    print(f"[MUSIC] Searching Spotify for: {query}")
-    webbrowser.open(search_url)
-    return True
+    """Route a named request to Spotify and return an observed playback result."""
+    requested, playlist = _parse_music_request(remainder)
+    if not requested or requested.lower() in {'music', 'something'}:
+        uri = 'spotify:collection:tracks'
+        requested = 'Liked Songs'
+    else:
+        library = {**SONGS, **getattr(app, 'config', {}).get('music_library', {})}
+        uri = next((value for name, value in library.items()
+                    if name.casefold() == requested.casefold()
+                    and isinstance(value, str) and value.startswith('spotify:')), None)
+        if uri is None:
+            uri = 'spotify:search:' + quote(requested, safe='')
+    try:
+        # This handler runs on the command worker, never a timer that outlives it.
+        return asyncio.run(asyncio.wait_for(_play_spotify(requested, uri), timeout=15.0))
+    except Exception as exc:
+        return _music_result(DispatchState.FAILED, requested,
+                             f"Spotify playback failed: {type(exc).__name__}: {exc}")
 
 
 # ── Earbud-style transport commands (SMTC, app-agnostic) ──────────────────
@@ -382,6 +397,8 @@ def handle_play(app, remainder):
          risk_class='safe', ai_composable=True, side_effects=['audio'])
 def handle_media_play(app, remainder):
     """Resume playback on the current media session (earbud-button equivalent)."""
+    if remainder and remainder.strip():
+        return handle_play(app, remainder)
     return _media_transport("play")
 
 
