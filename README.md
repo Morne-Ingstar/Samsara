@@ -10,29 +10,27 @@
 
 ---
 
-## What's New in v0.22.0
+## What's New in v0.23.0-beta.1
 
-**The hands-free release.** Toggle voice control is now a persistent combined
-lane: talk naturally across pauses, say **"end"** when the thought is ready,
-and Samsara pastes it once without leaving HANDS FREE. Exact navigation
-commands remain available between thoughts, so scrolling, focusing another
-window, Show Numbers, clicking, and submitting do not require mode switching.
+**A beta for testers** — the public download stays v0.22.1. Hands-free now
+stays open until you send it to sleep, and commands tell you what actually
+happened.
 
-- **Buffered HANDS FREE dictation** — pauses no longer paste partial fragments
-  or force you to re-enter Dictate mode after every thought.
-- **Commands and dictation coexist** — any enabled command or macro can run as
-  an exact whole utterance; `literal ...` dictates the phrase intentionally.
-- **DOM-aware Show Numbers** — Chromium page controls can come from the bundled
-  extension/loopback bridge, with UI Automation fallback plus high-DPI and
-  multi-monitor coordinate handling.
-- **Quiet wake words work again** — confirmed OpenWakeWord hits are no longer
-  discarded by a second, contradictory volume gate.
-- **Tasks stay local** — the v0.21.1 privacy fix and v0.22 cleanup leave no Task
-  List network or account-sync path.
-- **Voice-managed vocabulary, safer reminder toasts, profile isolation, and
-  clipboard sequence protection** round out the release.
+- **Sleep phrases** — "go to sleep" ends hands-free from any lane and keeps
+  anything you had not sent yet for next time.
+- **Screen destinations** — "put warp on the left screen and claude on the
+  right" places two windows in one sentence, and says so if one fails.
+- **Play a playlist by name** — "play my alternative rock playlist" goes to
+  Spotify and only reports playing once Spotify is playing.
+- **"Tell Claude ..."** — prepares a message for the Claude app, asks "Send?",
+  and reports Sent / Not sent / Outcome unknown from what it sees.
+- **Commands that can't be undone now ask first; spoken commands don't** — and
+  the outcome chip on the listening indicator shows what just happened.
+- **Faster start and steadier audio** — warm boot 6.5 s -> 3.9 s, the Ava mode
+  switch fixed, and microphone loss now recovers the same mic.
 
-See [CHANGELOG.md](CHANGELOG.md) for the complete v0.22.0 notes and history.
+See [CHANGELOG.md](CHANGELOG.md) for the complete v0.23.0-beta.1 notes,
+known issues and history.
 
 ---
 
