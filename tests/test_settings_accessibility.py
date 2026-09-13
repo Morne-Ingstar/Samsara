@@ -135,9 +135,37 @@ def test_commands_page_scrolls_vertically_without_horizontal_overflow(qapp):
             assert button is not None
             assert button.maximumWidth() > button.minimumWidth()
 
+        # Long explanatory sentences must wrap. Unwrapped, a QLabel reports its
+        # full single-line width as minimumSizeHint and drags the whole page
+        # wider than the window -- which is what put a horizontal scrollbar on
+        # this page under any font stack wider than Segoe UI. This is the
+        # font-independent half of the overflow guard below.
+        content = commands_page.widget()
+        long_labels = [
+            label for label in content.findChildren(QLabel)
+            if len(label.text()) > 40 and label.parent() is content
+        ]
+        assert long_labels, "expected the page's explanatory labels"
+        assert all(label.wordWrap() for label in long_labels), (
+            "an explanatory label is unwrapped and will force horizontal overflow: "
+            + repr([label.text() for label in long_labels if not label.wordWrap()])
+        )
+
+        # Was `window.resize(720, 480)` + `maximum() == 0`. The 720 literal
+        # encoded Segoe UI metrics -- it asserted "the page fits inside the
+        # app's minimum window width", which is true for Segoe UI and false for
+        # a ~30% wider fallback, where the five action buttons alone need
+        # ~602px. Derive the width from the page's own content instead, so the
+        # invariant under test is "given the width it asks for, this page never
+        # scrolls horizontally" rather than a pixel count from one font.
         window.resize(720, 480)
         window.show()
         window._stack.setCurrentIndex(settings_qt._TAB_NAMES.index("Commands"))
+        qapp.processEvents()
+        # Chrome (sidebar + margins + scrollbar) is only final once shown.
+        chrome = window.width() - commands_page.viewport().width()
+        required = content.minimumSizeHint().width() + chrome
+        window.resize(max(720, required), 480)
         qapp.processEvents()
         assert commands_page.verticalScrollBar().maximum() > 0
         assert commands_page.horizontalScrollBar().maximum() == 0
