@@ -17,3 +17,6 @@ Samsara is a Windows voice-control and dictation app for people who cannot easil
 
 ## Report format
 Echo every REPORT label from the prompt verbatim, including `branch before/after` and `not done`. Reports are reconciled against the prompt as a checklist and against `git status --porcelain`; omissions are treated as failures.
+
+## Reports
+Before your final message, write the full REPORT verbatim to C:\Users\Morne\Documents\Claude\reports\<queue-id>_<agent>.md (create the folder if missing).
