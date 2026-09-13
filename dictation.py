@@ -41,6 +41,40 @@ if os.environ.get("SAMSARA_DUCKING_HOST") == "1":
         sys.stdout.reconfigure(encoding="utf-8")
     sys.exit(_ducking_host_main())
 
+
+def _enable_faulthandler(log_dir):
+    """Dump every thread's Python stack to <SAMSARA_HOME>/logs/faulthandler.log
+    on a native crash (access violation, SIGSEGV/SIGFPE/SIGILL/SIGABRT).
+
+    2026-09-13: the mic setup guide took the process down with no Python
+    traceback at all -- the regular log just restarted. faulthandler is the
+    only thing that can speak after a native fault, and in a windowless
+    build sys.stderr is a null stream, so it gets its own file. enable()
+    already covers SIGABRT; faulthandler.register() does not exist on Windows
+    and refuses SIGABRT elsewhere, so it is not called. Never raises: a
+    diagnostic must not stop boot. Returns the open file (kept alive for the
+    process lifetime) or None."""
+    import faulthandler as _faulthandler
+    try:
+        log_dir.mkdir(parents=True, exist_ok=True)
+        fh = open(log_dir / "faulthandler.log", "a", encoding="utf-8")
+        fh.write(f"--- Samsara start pid={os.getpid()} ---\n")
+        fh.flush()
+        _faulthandler.enable(file=fh, all_threads=True)
+        return fh
+    except Exception as exc:
+        try:
+            sys.stderr.write(f"[BOOT] faulthandler not enabled: {exc!r}\n")
+        except Exception:
+            pass
+        return None
+
+
+# Before every heavy/native import below (torch guard, sounddevice, scipy,
+# faster-whisper, Qt) so a crash during boot also leaves a dump.
+from samsara.paths import samsara_home_dir as _fh_home_dir
+_FAULTHANDLER_FILE = _enable_faulthandler(_fh_home_dir() / "logs")
+
 # Platform-specific imports
 if sys.platform == 'win32':
     try:

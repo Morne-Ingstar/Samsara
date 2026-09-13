@@ -1236,13 +1236,11 @@ class _WizardWindow(QMainWindow):
 
         mic_id = self._get_current_mic_id()
 
-        ace = None
-        if self._samsara_app is not None:
-            ace = getattr(self._samsara_app, '_ace_engine', None)
-        use_ace = ace is not None and getattr(ace, '_running', False)
+        from samsara.audio_engine.guide_capture import RingLevelMeter, running_engine
+        ace = running_engine(self._samsara_app)
 
-        if use_ace:
-            self._meter_ace_reader = ace.register_consumer("wizard-meter")
+        if ace is not None:
+            self._meter_ace_reader = RingLevelMeter(ace, "wizard-meter")
             print("[WIZARD] Meter: ACE ring consumer")
         else:
             # ACE engine not yet started (typical at first-run — wizard runs
@@ -1266,14 +1264,10 @@ class _WizardWindow(QMainWindow):
             self._meter_timer = None
 
         if self._meter_ace_reader is not None:
-            ace = None
-            if self._samsara_app is not None:
-                ace = getattr(self._samsara_app, '_ace_engine', None)
-            if ace is not None:
-                try:
-                    ace.unregister_consumer(self._meter_ace_reader)
-                except Exception as e:
-                    logger.debug(f"_stop_meter: {e}")
+            try:
+                self._meter_ace_reader.close()
+            except Exception as e:
+                logger.debug(f"_stop_meter: {e}")
             self._meter_ace_reader = None
 
         if self._meter_stream is not None:
@@ -1321,28 +1315,14 @@ class _WizardWindow(QMainWindow):
         """Qt-thread timer callback: read audio, update meter widget."""
         if self._meter is None:
             return
-        import numpy as np
 
         rms = 0.0
         if self._meter_ace_reader is not None:
             try:
-                from samsara.audio_engine.ring import EMPTY
-                ace = getattr(self._samsara_app, '_ace_engine', None)
-                if ace is not None:
-                    chunks = []
-                    while True:
-                        frame = self._meter_ace_reader.read_next()
-                        if frame is EMPTY:
-                            break
-                        chunks.append(frame.pcm.astype(np.float32) / 32767.0)
-                    if chunks:
-                        block = np.concatenate(chunks)
-                        rms = float(np.sqrt(np.mean(block * block)))
-                        self._last_meter_rms = rms
-                    else:
-                        # No new frame this tick; decay the stored value
-                        self._last_meter_rms *= 0.85
-                        rms = self._last_meter_rms
+                # samsara.audio_engine.guide_capture.RingLevelMeter: drains
+                # the ring, decays when no new frame arrived this tick.
+                rms = self._meter_ace_reader.read_rms()
+                self._last_meter_rms = rms
             except Exception as e:
                 logger.debug(f"_meter_tick: {e}")
         elif self._meter_stream is not None:
