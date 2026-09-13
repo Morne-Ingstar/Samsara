@@ -18,6 +18,7 @@ from samsara import config_defaults
 from samsara.constants import DEFAULT_WAKE_PHRASE
 from samsara.log import get_logger
 from samsara.quick_memo import memo_file
+from samsara.support_feedback import open_support_tab
 
 import os
 
@@ -401,6 +402,9 @@ class SamsaraTrayQt(QObject):
         # Tools / Developer submenus further down -- see there for the
         # full placement rationale.
         menu.addAction("Settings").triggered.connect(lambda: app.open_settings())
+        # Beta testers without GitHub: one click to the email/diagnostics page.
+        menu.addAction("Something wrong?").triggered.connect(
+            lambda: open_support_tab(app))
         update_label = (
             f"Install Samsara v{self._available_update.version}…"
             if self._available_update is not None else

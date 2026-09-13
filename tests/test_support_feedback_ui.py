@@ -4,16 +4,24 @@ import threading
 from types import SimpleNamespace
 from pathlib import Path
 
+import pytest
 from PySide6.QtWidgets import QLabel, QPushButton
 from PySide6.QtCore import QUrl
 
 from samsara.support_feedback import (
     BETA_SUPPORT_EMAIL,
-    BETA_SUPPORT_MAILTO,
+    BETA_SUPPORT_SUBJECT,
     BUG_REPORT_URL,
     DOCUMENTATION_URL,
 )
 from samsara.ui import settings_qt
+
+_PRIVATE_VALUES = (
+    "cloud-secret",
+    "supporter-secret",
+    "Private Microphone Name",
+    "private dictated words",
+)
 
 
 class _FeedbackApp:
@@ -89,15 +97,11 @@ def test_help_support_tab_is_discoverable_and_opens_requested_routes(qapp, monke
         assert status is not None
 
         docs.click()
-        beta.click()
         report.click()
 
-        assert opened == [
-            DOCUMENTATION_URL,
-            QUrl(BETA_SUPPORT_MAILTO).toString(),
-            BUG_REPORT_URL,
-        ]
+        assert opened == [DOCUMENTATION_URL, BUG_REPORT_URL]
         assert status.text() == "Opened in your browser."
+        assert beta.text() == "Email the developer"
 
         support_page = window._stack.widget(
             settings_qt._TAB_NAMES.index("Help & Support")
@@ -107,6 +111,104 @@ def test_help_support_tab_is_discoverable_and_opens_requested_routes(qapp, monke
         )
         assert BETA_SUPPORT_EMAIL in support_text
     finally:
+        window.deleteLater()
+
+
+def _email_window(qapp, monkeypatch, open_result):
+    events = []
+    clipboard = _Clipboard()
+    real_set = clipboard.setText
+
+    def set_text(text):
+        events.append("clipboard")
+        real_set(text)
+
+    clipboard.setText = set_text
+    monkeypatch.setattr(settings_qt.QApplication, "clipboard", staticmethod(lambda: clipboard))
+
+    def open_url(url):
+        events.append(("open", url.toString(QUrl.ComponentFormattingOption.FullyEncoded)))
+        if isinstance(open_result, Exception):
+            raise open_result
+        return open_result
+
+    monkeypatch.setattr(settings_qt.QDesktopServices, "openUrl", open_url)
+    return settings_qt._SettingsWindow(_FeedbackApp()), clipboard, events
+
+
+@pytest.mark.parametrize("open_result", [True, False, RuntimeError("no handler")])
+def test_email_copies_the_full_message_before_trying_mailto_and_never_claims_it_opened(
+    qapp, monkeypatch, open_result,
+):
+    window, clipboard, events = _email_window(qapp, monkeypatch, open_result)
+    try:
+        status = window.findChild(QLabel, "feedbackStatusLabel")
+        _button(window, "betaFeedbackButton").click()
+
+        assert events[0] == "clipboard"
+        assert events[1][0] == "open"
+        assert events[1][1].startswith(f"mailto:{BETA_SUPPORT_EMAIL}?subject=")
+        assert "&body=" in events[1][1]
+
+        assert f"To: {BETA_SUPPORT_EMAIL}" in clipboard.text
+        assert f"Subject: {BETA_SUPPORT_SUBJECT}" in clipboard.text
+        assert "What I said / What it did / What I expected:" in clipboard.text
+        assert "Model: medium" in clipboard.text
+        for private_value in _PRIVATE_VALUES:
+            assert private_value not in clipboard.text
+
+        assert status.text() == (
+            "Message copied to your clipboard. If your mail app didn't open, "
+            f"paste it into any email to {BETA_SUPPORT_EMAIL}."
+        )
+        assert "opened" not in status.text().lower()
+    finally:
+        window.deleteLater()
+
+
+def test_support_rows_are_email_diagnostics_github_then_live_log(qapp):
+    window = settings_qt._SettingsWindow(_FeedbackApp())
+    try:
+        page = window._stack.widget(settings_qt._TAB_NAMES.index("Help & Support"))
+        wanted = {"betaFeedbackButton", "copyDiagnosticButton", "reportBugButton", "openLiveLogButton"}
+        seen = []
+
+        def walk(layout_or_widget):
+            layout = layout_or_widget if hasattr(layout_or_widget, "itemAt") else layout_or_widget.layout()
+            if layout is None:
+                name = layout_or_widget.objectName()
+                if name in wanted:
+                    seen.append(name)
+                return
+            for i in range(layout.count()):
+                item = layout.itemAt(i)
+                if item.layout() is not None:
+                    walk(item.layout())
+                elif item.widget() is not None:
+                    walk(item.widget())
+
+        walk(page.widget().layout())
+        assert seen == ["betaFeedbackButton", "copyDiagnosticButton", "reportBugButton", "openLiveLogButton"]
+
+        intro = page.findChild(QLabel, "supportContactIntroLabel")
+        assert intro.text() == "Testers: email is fine. GitHub is for people who already have an account."
+        address = page.findChild(QLabel, "betaSupportAddressLabel")
+        assert address.text() == BETA_SUPPORT_EMAIL
+        assert address.textInteractionFlags() & settings_qt.Qt.TextInteractionFlag.TextSelectableByMouse
+    finally:
+        window.deleteLater()
+
+
+def test_show_tab_selects_help_and_support(qapp):
+    window = settings_qt._SettingsWindow(_FeedbackApp())
+    try:
+        window.show_tab("Help & Support")
+        support_index = settings_qt._TAB_NAMES.index("Help & Support")
+        assert window._stack.currentIndex() == support_index
+        row = window._sidebar.currentRow()
+        assert window._sidebar_row_to_stack_index[row] == support_index
+    finally:
+        window.hide()
         window.deleteLater()
 
 
@@ -153,12 +255,7 @@ def test_help_feedback_opens_live_log_and_copies_allowlisted_diagnostics(
         assert "Model: medium" in clipboard.text
         assert "Requested device: cuda" in clipboard.text
         assert "HANDS FREE enabled: True" in clipboard.text
-        for private_value in (
-            "cloud-secret",
-            "supporter-secret",
-            "Private Microphone Name",
-            "private dictated words",
-        ):
+        for private_value in _PRIVATE_VALUES:
             assert private_value not in clipboard.text
 
         status = window.findChild(QLabel, "feedbackStatusLabel")
