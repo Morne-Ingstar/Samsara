@@ -44,6 +44,58 @@ _HINT_DELAY_MS = 20_000
 # Public entry point
 # ---------------------------------------------------------------------------
 
+def _dictation_instruction(hotkey: str, mode: str) -> str:
+    """Audit row 335: the wording must follow the configured `mode`."""
+    key = (hotkey or 'ctrl+shift').upper()
+    if mode == 'toggle':
+        return (f"Press  {key}  once to start, say anything — 'hello world' works fine — "
+                f"then press it again to transcribe. Text will appear in the box below.")
+    if mode == 'continuous':
+        return (f"Press  {key}  to start continuous dictation and say anything — 'hello world' "
+                f"works fine. Each pause is transcribed on its own; press it again to stop. "
+                f"Text will appear in the box below.")
+    return (f"Hold  {key}  and say anything — 'hello world' works fine. "
+            f"Release to transcribe. Text will appear in the box below.")
+
+
+def _command_count(app):
+    """Audit row 403: never a literal. The live registry when there is an app;
+    otherwise the same loader tools/dump_command_metadata.py uses (no
+    dictation.py import). None when neither is available."""
+    matcher = getattr(getattr(app, 'command_executor', None), '_matcher', None)
+    if matcher is not None:
+        try:
+            return len(matcher.list_commands())
+        except Exception:
+            pass
+    try:
+        from tools.dump_command_metadata import build_dump  # noqa: PLC0415
+        return int(build_dump()['summary']['commands'])
+    except Exception:
+        return None
+
+
+def _commands_banner_text(count) -> str:
+    how_many = f"There are {count} of them" if count else "There are hundreds of them"
+    return (f"Commands do things. {how_many} — scroll, open apps, "
+            "manage windows, type shortcuts, and more.")
+
+
+def _hands_free_text(config: dict) -> str:
+    """Audit row 165: the session, its commit/undo words, undo and cancel keys."""
+    from samsara import session_modes  # noqa: PLC0415
+    from samsara.ui.quick_reference_qt import _HOTKEY_FALLBACKS, _pretty_button, _pretty_key_combo  # noqa: PLC0415
+    cm = config.get('command_mode') or {}
+    button = _pretty_button(cm.get('button', 'rctrl')).replace(' (default)', '')
+    undo = _pretty_key_combo(config.get('undo_hotkey', _HOTKEY_FALLBACKS['undo_hotkey']))
+    cancel = _pretty_key_combo(config.get('cancel_hotkey', _HOTKEY_FALLBACKS['cancel_hotkey']))
+    state = '' if cm.get('enabled', False) else ' (turn it on in Settings -> Modes)'
+    return (f"Hands-free{state}: tap {button} to latch a session, say "
+            f"\"{session_modes.DICTATE_COMMIT_PHRASE}\" to paste a thought and "
+            f"\"{session_modes.SCRATCH_THAT_PHRASE}\" to undo it. Undo the last dictation with {undo}; "
+            f"cancel a recording with {cancel}.")
+
+
 def show_tutorial(app) -> None:
     """Create and display the tutorial window on the Qt thread.
 
@@ -331,10 +383,10 @@ class TutorialWindow(QMainWindow):
     def _build_dictation(self) -> QWidget:
         w, lay = self._padded()
 
-        hotkey = self._app.config.get('hotkey', 'ctrl+shift') if hasattr(self._app, 'config') else 'ctrl+shift'
+        cfg = self._app.config if hasattr(self._app, 'config') else {}
+        hotkey = cfg.get('hotkey', 'ctrl+shift')
         lay.addWidget(self._instruction_box(
-            f"Hold  {hotkey.upper()}  and say anything — 'hello world' works fine. "
-            f"Release to transcribe. Text will appear in the box below."
+            _dictation_instruction(hotkey, cfg.get('mode', 'hold'))
         ))
 
         self._dictation_box = QTextEdit()
@@ -400,10 +452,7 @@ class TutorialWindow(QMainWindow):
         self._scroll_area.setWidget(inner)
         lay.addWidget(self._scroll_area)
 
-        self._cmd_success = self._success_banner(
-            "Commands do things. There are 150+ of them — scroll, open apps, "
-            "manage windows, type shortcuts, and more."
-        )
+        self._cmd_success = self._success_banner(_commands_banner_text(_command_count(self._app)))
         self._cmd_success.setVisible(False)
         lay.addWidget(self._cmd_success)
 
@@ -473,6 +522,10 @@ class TutorialWindow(QMainWindow):
         pointer_lbl.setWordWrap(True)
         pointer_lbl.setStyleSheet("color:#8A8A92;font-size:11px;")
         lay.addWidget(pointer_lbl)
+        hf_lbl = QLabel(_hands_free_text(self._app.config if hasattr(self._app, 'config') else {}))
+        hf_lbl.setWordWrap(True)
+        hf_lbl.setStyleSheet("color:#8A8A92;font-size:11px;")
+        lay.addWidget(hf_lbl)
         lay.addSpacing(12)
 
         # --- Advanced guides ---

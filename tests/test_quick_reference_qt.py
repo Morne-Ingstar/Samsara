@@ -26,6 +26,7 @@ sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 from PySide6.QtWidgets import QLabel
 
 from samsara.ui import quick_reference_qt as qr
+from samsara import session_modes
 from samsara.session_modes import SessionMode
 
 
@@ -79,7 +80,12 @@ class TestResolveHotkeys:
         rows = qr._resolve_hotkeys(app)
         by_label = {r["label"]: r for r in rows}
         assert by_label["Streaming (live partials)"]["enabled"] is True
-        assert by_label["Streaming (live partials)"]["value"] == "CapsLock"
+        # Guidance audit row 170: the key is not configurable -- the hook hardcodes
+        # CapsLock and the row says so, whatever streaming_hotkey holds.
+        assert by_label["Streaming (live partials)"]["value"].startswith(qr.STREAMING_KEY_LABEL)
+        app.config["streaming_hotkey"] = "f9"
+        rows2 = qr._resolve_hotkeys(app)
+        assert {r["label"]: r for r in rows2}["Streaming (live partials)"]["value"].startswith("CapsLock (fixed)")
 
 
 class TestResolveSessionPhrases:
@@ -111,7 +117,9 @@ class TestResolveSessionPhrases:
         # Ava moved OUT of the static registry (2026-07-18, match_ava_invocation)
         # -- default invocations, NOT bare "ava" (deliberately excluded, see
         # session_modes.py). Config-empty app -> module default list.
-        assert state["lane_switches"]["phrases"]["Ava"] == sorted(["hey ava", "so ava", "oracle"])
+        # ... plus the whole-utterance "ava mode" switch word (2026-09-11) from the
+        # static registry -- guidance audit row 165.
+        assert state["lane_switches"]["phrases"]["Ava"] == sorted(["hey ava", "so ava", "oracle", "ava mode"])
         assert "ava" not in state["lane_switches"]["phrases"]["Ava"]
 
     def test_ava_invocation_phrases_reflect_custom_config_on_recall(self):
@@ -119,11 +127,11 @@ class TestResolveSessionPhrases:
         module default, once the user has configured their own list."""
         app = _make_app({"ava_invocations": ["computer"]})
         state = qr._resolve_session_phrases(app)
-        assert state["lane_switches"]["phrases"]["Ava"] == ["computer"]
+        assert state["lane_switches"]["phrases"]["Ava"] == sorted(["computer", "ava mode"])
 
         app.config["ava_invocations"] = ["jarvis", "hey ava"]
         state2 = qr._resolve_session_phrases(app)
-        assert state2["lane_switches"]["phrases"]["Ava"] == sorted(["jarvis", "hey ava"])
+        assert state2["lane_switches"]["phrases"]["Ava"] == sorted(["jarvis", "hey ava", "ava mode"])
 
     def test_abort_enabled_if_either_wake_or_command_mode_on(self):
         assert qr._resolve_session_phrases(
@@ -136,11 +144,14 @@ class TestResolveSessionPhrases:
         app = _make_app({"wake_word_enabled": True,
                           "wake_word_config": {"wake_abort_phrase": ["stop that", "nevermind"]}})
         state = qr._resolve_session_phrases(app)
+        # Sleep phrases moved to their own row (they keep the draft); the exit
+        # list is wake abort words + command_mode.abort_phrases + the exit words.
         assert state["abort"]["words"] == [
             "stop that", "nevermind",
             "stop listening", "exit hands free", "exit command mode",
-            "go to sleep", "samsara sleep", "sleep now",
         ]
+        assert state["sleep"]["words"] == list(session_modes.SESSION_SLEEP_PHRASES)
+        assert state["stop"]["words"] == list(session_modes.SESSION_STOP_PHRASES)
 
     def test_hands_free_toggle_data_reads_from_config(self):
         app = _make_app({
@@ -296,6 +307,7 @@ class TestDisabledStateRendering:
             "command_mode": {"enabled": True, "button": "rctrl", "mode": "toggle"},
             "wake_word_enabled": True,
             "streaming_mode": True,
+            "continuous_commit_trigger": "key",
         })
         win = qr._QuickReferenceWindow(app)
         try:
@@ -377,5 +389,78 @@ class TestRefreshUpdatesLabelText:
             assert not any("over, send" in t for t in texts2)
             assert any("done" in t for t in texts2)
             assert any("echo" in t for t in texts2)
+        finally:
+            win.close()
+
+
+# ============================================================================
+# Guidance audit 2026-09-13 fixes (rows 148, 170, 200, 201, 202, 250, 489/516)
+# ============================================================================
+
+class TestGuidanceAuditFixes:
+    def test_dictate_label_follows_mode(self):
+        for mode, label in qr._DICTATE_MODE_LABELS.items():
+            rows = qr._resolve_hotkeys(_make_app({"mode": mode}))
+            assert any(r["label"] == label for r in rows), mode
+        assert qr._DICTATE_MODE_LABELS["hold"] == "Dictate (hold to talk)"
+        assert "hold" not in qr._DICTATE_MODE_LABELS["toggle"].lower()
+        assert "hold" not in qr._DICTATE_MODE_LABELS["continuous"].lower()
+
+    def test_every_hotkey_the_app_reads_has_a_row_read_from_config(self):
+        cfg = {"continuous_hotkey": "ctrl+alt+1", "wake_word_hotkey": "ctrl+alt+2",
+               "command_hotkey": "ctrl+alt+3", "cancel_hotkey": "f4", "memo_hotkey": "ctrl+alt+5",
+               "correction_hotkey": "ctrl+alt+6", "hotkeys": {"capture_correction": "ctrl+alt+7"},
+               "continuous_commit_hotkey": "ctrl+alt+8", "continuous_commit_trigger": "key"}
+        by_label = {r["label"]: r for r in qr._resolve_hotkeys(_make_app(cfg))}
+        assert by_label["Continuous mode (toggle)"]["value"] == "Ctrl+Alt+1"
+        assert by_label["Wake word listener (toggle)"]["value"] == "Ctrl+Alt+2"
+        assert by_label["Command only (hold)"]["value"] == "Ctrl+Alt+3"
+        assert by_label["Cancel recording"]["value"] == "F4"
+        assert by_label["Voice memo"]["value"] == "Ctrl+Alt+5"
+        assert by_label["Correction report"]["value"] == "Ctrl+Alt+6"
+        assert by_label["Correction capture"]["value"] == "Ctrl+Alt+7"
+        assert by_label["Continuous commit"]["value"].startswith("Ctrl+Alt+8") and by_label["Continuous commit"]["enabled"]
+        assert {r["label"]: r for r in qr._resolve_hotkeys(_make_app({}))}["Continuous commit"]["enabled"] is False
+
+    def test_abort_merges_command_mode_abort_phrases(self):
+        app = _make_app({"command_mode": {"enabled": True, "abort_phrases": ["that will do"]}})
+        state = qr._resolve_session_phrases(app)
+        assert "that will do" in state["abort"]["words"]
+        app.config["command_mode"]["abort_phrases"] = ["enough"]
+        assert "enough" in qr._resolve_session_phrases(app)["abort"]["words"]
+
+    def test_commit_row_mentions_the_and_homophone(self):
+        state = qr._resolve_session_phrases(_make_app({"command_mode": {"enabled": True}}))
+        extra = sorted(session_modes._DICTATE_COMMIT_HOMOPHONES - {session_modes.DICTATE_COMMIT_PHRASE})
+        assert state["dictate_commit"]["homophones"] == extra
+        value = qr._commit_value(state["dictate_commit"])
+        assert value.startswith(session_modes.DICTATE_COMMIT_PHRASE)
+        assert all(f'"{w}"' in value for w in extra)
+        overview = qr._resolve_modes_overview(_make_app({"command_mode": {"enabled": True}}))
+        dictate = next(m for m in overview["modes"] if m["name"] == "HANDS FREE")
+        assert all(f'"{w}"' in dictate["description"] for w in extra)
+
+    def test_prefix_literal_pause_resume_and_opens_session(self):
+        app = _make_app({"command_mode": {"enabled": True}, "wake_word_enabled": True,
+                         "wake_word_config": {"opens_session": True, "pause_words": ["hang on"],
+                                              "resume_words": ["carry on"]}})
+        state = qr._resolve_session_phrases(app)
+        assert state["prefix_switch"]["words"] == sorted(session_modes._PREFIX_SWITCHES)
+        assert state["literal"]["word"] == "literal"
+        assert state["wake"]["opens_session"] is True
+        assert state["wake"]["pause_words"] == ["hang on"] and state["wake"]["resume_words"] == ["carry on"]
+
+    def test_rendered_window_shows_the_new_rows(self, qapp):
+        app = _make_app({"command_mode": {"enabled": True, "mode": "toggle"}, "wake_word_enabled": True,
+                         "wake_word_config": {"opens_session": True}, "mode": "toggle"})
+        win = qr._QuickReferenceWindow(app)
+        try:
+            texts = _all_label_texts(win)
+            assert "Dictate (press to start, press to stop)" in texts
+            assert any(t.startswith("CapsLock (fixed)") for t in texts)
+            assert "Stop (keeps the draft, mic stays on)" in texts
+            assert "Sleep (keeps the draft, ends the session)" in texts
+            assert any("opens the hands-free session" in t for t in texts)
+            assert "Voice memo" in texts and "Correction capture" in texts
         finally:
             win.close()

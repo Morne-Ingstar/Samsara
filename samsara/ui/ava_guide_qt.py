@@ -337,14 +337,12 @@ class _WizardWindow(QDialog):
         lay.setContentsMargins(32, 24, 32, 16)
         lay.setSpacing(14)
 
-        lay.addWidget(_body(
-            "Ava is Samsara's AI assistant. It runs entirely on your machine "
-            "— nothing leaves your computer."
-        ))
+        lay.addWidget(_body(_ava_intro_text(self._app.config)))
         lay.addWidget(_body(
             "The main thing Ava does: <b>you don't have to memorise command phrases.</b> "
             "Say what you mean in plain language, and Ava figures out the right action."
         ))
+        lay.addWidget(_body(_confirmation_text()))
 
         # Example table
         examples_frame = QWidget()
@@ -458,10 +456,7 @@ class _WizardWindow(QDialog):
             step_row.addWidget(txt_lbl, stretch=1)
             inst_lay.addLayout(step_row)
 
-        note = QLabel(
-            "Ollama only uses resources when Ava is actively answering — "
-            "it idles silently in the background otherwise."
-        )
+        note = QLabel(_keep_warm_note(self._app.config))
         note.setWordWrap(True)
         note.setStyleSheet(f"color:{_TEXT_SEC};font-size:11px;font-style:italic;")
         inst_lay.addWidget(note)
@@ -611,13 +606,7 @@ class _WizardWindow(QDialog):
         uf_lay.addWidget(_small_bold("How to use Ava", _ACCENT))
 
         wake = self._app.config.get("wake_word_config", {}).get("phrase", DEFAULT_WAKE_PHRASE)
-        usage_lines = [
-            f'"{wake.title()}, hey Ava" also works — no key needed, fully hands-free.',
-            f'"{wake.title()}, Ava local" — same as above, but guaranteed to stay '
-            f'on your computer. Nothing sent online.',
-            f'"{wake.title()}, Ava cancel" — if Ava asked a question and is waiting '
-            f'for your answer, this clears it.',
-        ]
+        usage_lines = _usage_lines(self._app.config, wake)
         for line in usage_lines:
             row = QHBoxLayout()
             row.setSpacing(8)
@@ -939,6 +928,58 @@ class _WizardWindow(QDialog):
 # ---------------------------------------------------------------------------
 # Small reusable widgets
 # ---------------------------------------------------------------------------
+
+def _ava_intro_text(config: dict) -> str:
+    """Row 341: true only while cloud mode is off -- say so."""
+    cloud_on = bool((config.get("cloud_llm") or {}).get("enabled", False))
+    if cloud_on:
+        return ("Ava is Samsara's AI assistant. Cloud mode is ON right now, so questions go to "
+                "your configured provider; turn it off in Settings -> Ava / Cloud (or say "
+                "'ava local') to keep everything on this machine.")
+    return ("Ava is Samsara's AI assistant. By default it runs entirely on your machine "
+            "— nothing leaves your computer unless you turn on cloud mode "
+            "(Settings -> Ava / Cloud, or say 'ava cloud').")
+
+
+def _confirmation_text() -> str:
+    """Row 345: a model-chosen action that changes something asks first."""
+    from samsara.session_modes import SCRATCH_THAT_PHRASE  # noqa: PLC0415
+    return ("Anything that changes something — sending, closing, deleting — is confirmed "
+            "first: Ava asks, you say <b>\"yes\"</b> to go ahead, or <b>\"ava cancel\"</b> / "
+            f"<b>\"{SCRATCH_THAT_PHRASE}\"</b> to drop it. Commands nobody has classified are "
+            "not offered to Ava at all.")
+
+
+def _keep_warm_note(config: dict) -> str:
+    """Row 462: ava_command_session.keep_warm (default on) holds the model resident."""
+    keep_warm = bool((config.get("ava_command_session") or {}).get("keep_warm", True))
+    if keep_warm:
+        return ("Samsara keeps the model loaded while an Ava session is open so replies are quick "
+                "(Settings -> Modes -> Keep model warm, on). Turn it off and Ollama frees the "
+                "memory between answers.")
+    return ("Keep model warm is off (Settings -> Modes): Ollama loads the model for each answer "
+            "and frees it afterwards, so the first reply of a session is slower.")
+
+
+def _usage_lines(config: dict, wake: str) -> list:
+    """Rows 616 ('Ava local' is a mode switch, not a question), 125 (the second
+    Ava key and the 'ava mode' switch word) and 618."""
+    from samsara import session_modes  # noqa: PLC0415
+    ava_mode = next((p for p, m in session_modes._WHOLE_UTTERANCE_SWITCHES.items()
+                     if m is session_modes.SessionMode.AVA), "ava mode")
+    cmd = config.get("ava_command_session") or {}
+    cmd_key = str(cmd.get("key", "left_alt")).replace("_", " ").title()
+    cmd_state = "" if cmd.get("enabled", False) else " (off -- enable it in Settings -> Modes)"
+    return [
+        f'"{wake.title()}, hey Ava" also works — no key needed, fully hands-free.',
+        f'"{wake.title()}, Ava local" — turns cloud mode off for this session: Ava answers '
+        f'from local Ollama only. ("Ava cloud" turns it back on.)',
+        f'"{wake.title()}, Ava cancel" — if Ava asked a question and is waiting '
+        f'for your answer, this clears it.',
+        f'Say "{ava_mode}" inside a hands-free session to switch to the Ava lane.',
+        f'Hold {cmd_key} for the Ava command session{cmd_state}.',
+    ]
+
 
 def _label(text: str) -> QLabel:
     lbl = QLabel(text)

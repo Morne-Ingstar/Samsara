@@ -43,6 +43,31 @@ _DEFAULT_W = 440
 _DEFAULT_H = 520
 
 
+def _disabled_packs(config: dict | None = None) -> set:
+    """Packs the registry currently refuses (samsara.command_packs.get_enabled_packs).
+    The sheet has no app handle, so it reads the same config.json the app
+    loads; pass a dict to bypass the file (tests)."""
+    try:
+        from samsara.command_packs import PACKS, get_enabled_packs
+        if config is None:
+            import json
+            from samsara.paths import samsara_config_path
+            config = json.loads(samsara_config_path().read_text(encoding="utf-8"))
+        return set(PACKS) - set(get_enabled_packs(config))
+    except Exception:
+        return set()
+
+
+def _annotate_disabled(rows, disabled: set) -> list:
+    """Copy rows, flagging those whose pack is off so the UI can say so."""
+    out = []
+    for row in rows:
+        row = dict(row)
+        row["pack_disabled"] = row.get("pack", "core") in disabled
+        out.append(row)
+    return out
+
+
 def _pack_label(pack_id: str) -> str:
     try:
         from samsara.command_packs import PACKS
@@ -293,6 +318,8 @@ class _StaticRow(QFrame):
         right_text = str(count) if count is not None else (
             cmd.get("pack", "") if cmd.get("pack", "") not in ("", "core") else ""
         )
+        if cmd.get("pack_disabled"):
+            right_text = (right_text + " (pack off)").strip()
         if right_text:
             right_lbl = QLabel(right_text)
             right_lbl.setStyleSheet(f"color:{_TEXT_SEC};font-size:10px;")
@@ -367,12 +394,15 @@ class _CategoryTabBar(QWidget):
         lay.addWidget(self._combo)
         lay.addStretch()
 
-    def set_categories(self, pack_ids: List[str], active_id: str):
+    def set_categories(self, pack_ids: List[str], active_id: str, disabled: set = frozenset()):
         self._pack_ids = ["All"] + pack_ids
+        self._disabled = set(disabled)
         self._combo.blockSignals(True)
         self._combo.clear()
         for pid in self._pack_ids:
             label = "All commands" if pid == "All" else _pack_label(pid)
+            if pid in getattr(self, "_disabled", ()):
+                label += " (off)"
             self._combo.addItem(label, userData=pid)
         # Restore selection
         idx = self._pack_ids.index(active_id) if active_id in self._pack_ids else 0
@@ -508,7 +538,7 @@ class _CheatSheetWindow(QMainWindow):
 
     def refresh_commands(self):
         try:
-            self._all = list(self._commands_cb())
+            self._all = _annotate_disabled(self._commands_cb(), _disabled_packs())
         except Exception as exc:
             print(f"[CHEATSHEET] commands_cb error: {exc}")
             self._all = []
@@ -536,7 +566,8 @@ class _CheatSheetWindow(QMainWindow):
         if self._active_category != "All" and self._active_category not in pack_ids:
             self._active_category = "All"
 
-        self._category_bar.set_categories(pack_ids, self._active_category)
+        self._category_bar.set_categories(pack_ids, self._active_category,
+                                          {p for p in pack_ids if any(c.get("pack_disabled") and c.get("pack") == p for c in self._all)})
         self._apply_filter(self._filter.text())
 
     def _apply_filter(self, text: str = ""):

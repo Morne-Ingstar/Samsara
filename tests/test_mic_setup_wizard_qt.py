@@ -314,3 +314,32 @@ def test_cancelled_production_calibration_unregisters_without_persisting():
     assert app._wake_noise_floor == 0.07
     assert app.config["wake_word_config"]["audio"]["measured_noise_floor"] == 0.07
     app.persist_config.assert_not_called()
+
+
+# ---------------------------------------------------------------------------
+# guidance audit 2026-09-13 rows 912 (FALSE) and 1004 (STALE): the tips point
+# at controls that exist, by their real label, on their real page.
+# ---------------------------------------------------------------------------
+
+def test_no_model_tip_points_at_a_control_that_exists():
+    from pathlib import Path
+    from samsara.ui import mic_setup_wizard_qt as msw
+    source = Path(msw.__file__).read_text(encoding="utf-8")
+    assert "Test Wake Word" not in msw._OWW_NO_MODEL_TIP
+    assert "Advanced" not in msw._OWW_NO_MODEL_TIP
+    assert "Open Wake Word Debug (advanced)" in msw._OWW_NO_MODEL_TIP
+    assert 'QPushButton("Open Wake Word Debug (advanced)")' in source     # the wizard's own button
+
+
+def test_miss_tip_names_the_real_settings_label_and_page():
+    from pathlib import Path
+    from samsara.ui import mic_setup_wizard_qt as msw
+    wizard_src = Path(msw.__file__).read_text(encoding="utf-8")
+    settings_src = (Path(msw.__file__).parent / "settings_qt.py").read_text(encoding="utf-8")
+    assert "'Wake-word threshold'" in wizard_src and "Settings -> Modes (try 0.10)" in wizard_src
+    assert "Wake word sensitivity" not in wizard_src
+    assert '"Wake-word threshold"' in settings_src                           # settings_qt's label
+    modes_start = settings_src.index("def _build_modes_tab")
+    advanced_start = settings_src.index("def _build_advanced_tab")
+    assert modes_start < settings_src.index('"Wake-word threshold"') < advanced_start   # on the Modes page
+    assert "Test Wake Word" not in settings_src

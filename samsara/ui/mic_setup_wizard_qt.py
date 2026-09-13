@@ -66,6 +66,13 @@ _GREEN_DWELL_S = 1.5   # seconds level must stay green before Next enables
 
 _OWW_PASS_THRESHOLD = 2
 _OWW_ATTEMPTS       = 3
+# Guidance audit 2026-09-13 row 912: there is no "Test Wake Word..." control
+# anywhere in Settings; the live detector test is this wizard's own step 3
+# and the debug window on its last page.
+_OWW_NO_MODEL_TIP = ('For a live detector test, click "Open Wake Word Debug (advanced)" '
+                     'on the last page of this guide.')
+_WAKE_OFF_NOTE = ('Wake word is currently off (Settings -> Modes -> Wake word). '
+                  'This test still runs; turn it on to use the phrase day to day.')
 _OWW_ATTEMPT_TIMEOUT = 8.0
 _OWW_NOISE_FLOOR    = 0.005
 _OWW_TARGET_RMS     = 0.10
@@ -405,6 +412,13 @@ class _WizardWindow(QDialog):
             f'speaking volume. Each circle lights up when Samsara hears it.'
         )
         lay.addWidget(self._wake_intro)
+        # Row 91 of the audit: say so when the feature being tested is off.
+        self._wake_off_note = QLabel(_WAKE_OFF_NOTE)
+        self._wake_off_note.setWordWrap(True)
+        self._wake_off_note.setAlignment(Qt.AlignmentFlag.AlignCenter)
+        self._wake_off_note.setStyleSheet(f"color:{_TEXT_SEC};font-size:11px;font-style:italic;")
+        self._wake_off_note.setVisible(not bool(self._app.config.get('wake_word_enabled', False)))
+        lay.addWidget(self._wake_off_note)
         slots_row = QHBoxLayout()
         slots_row.addStretch()
         self._attempt_labels = []
@@ -997,7 +1011,7 @@ class _WizardWindow(QDialog):
                 f"Whisper handles detection instead (no live preview here)."
             )
             self._oww_tip.setText(
-                'Use "Test Wake Word..." in Settings -> Advanced to run a live test.'
+                _OWW_NO_MODEL_TIP
             )
             self._next_btn.setEnabled(True)
             return
@@ -1089,8 +1103,8 @@ class _WizardWindow(QDialog):
             )
             if self._oww_hits < _OWW_PASS_THRESHOLD:
                 tips += (
-                    "  If it keeps missing, lower 'Wake word sensitivity' "
-                    "in Settings -> Advanced (try 0.10)."
+                    "  If it keeps missing, lower 'Wake-word threshold' "
+                    "in Settings -> Modes (try 0.10)."
                 )
             self._oww_tip.setText(tips)
 
