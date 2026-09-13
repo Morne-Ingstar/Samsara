@@ -81,6 +81,7 @@
     "tasks": true,
     "text-editing": true,
     "utilities": false,
+    "window-cube-numbers": true,
     "window-management": true
   },
   "compute_type": "float16",
