@@ -4,8 +4,8 @@
   "entity": {
     "type": "individual",
     "role": "owner",
-    "name": "Morne",
-    "email": "morne@samsara.dev",
+    "name": "Morne Ingstar",
+    "email": "morneingstarproductions@gmail.com",
     "phone": "",
     "description": "I'm a self-taught developer building open-source accessibility tooling for Windows. I have physical challenges with my hands, which is the reason Samsara exists: I needed a fast, reliable voice-control and dictation layer to keep working, and built one. I care about tools that give people back the ability to use their computers on their own terms, and I release my work as open source so others facing similar barriers can use and extend it freely.",
     "webpageUrl": {
