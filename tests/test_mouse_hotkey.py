@@ -14,7 +14,7 @@ import pytest
 sys.path.insert(0, str(Path(__file__).parent.parent))
 
 _BOUND = (
-    '_on_mouse_button', '_on_command_button', '_on_main_hotkey_mouse',
+    '_on_mouse_button', '_on_command_button', '_on_main_hotkey_mouse', '_main_hotkey_toggle_off',
     '_mouse_hook_bindings', '_install_mouse_listener', 'refresh_mouse_hook',
     'parse_hotkey', 'check_hotkey_state', 'on_key_release', 'get_key_name',
 )
@@ -146,11 +146,13 @@ class TestToggleAndContinuous:
         app._on_mouse_button('mouse4', False)
         assert app.calls == [('start', False)] and app.toggle_active is True
         assert spawned == []   # toggle release never stops
+        assert app._main_hotkey_source == 'mouse'   # owner stays until toggle-off (14)
 
         app._on_mouse_button('mouse4', True)
         app._on_mouse_button('mouse4', False)
         assert app.calls == [('start', False), ('stop',)]
         assert app.toggle_active is False and app.hotkey_pressed is False
+        assert app._main_hotkey_source == 'key'
 
     def test_continuous_press_toggles_continuous_mode(self, spawned):
         app = _App(mode='continuous')

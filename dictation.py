@@ -5993,11 +5993,25 @@ class DictationApp:
         if (self.check_hotkey_state(main_hotkey)
                 and main_event_held
                 and not self.hotkey_pressed):
-            if self.recording or getattr(self, '_streaming_session', None) is not None:
-                logger.info("[HOTKEY] Main hotkey ignored -- another recording owns capture")
-                return
             if self._stop_in_flight:
                 logger.debug("[HOTKEY] Ignored re-trigger while stop in flight")
+                return
+            # Toggle-off comes BEFORE the ownership guard (2026-09-13, matching
+            # _on_main_hotkey_mouse): the guard below is about STARTING a
+            # recording while another one owns capture. A toggle recording
+            # that this key started is exactly the recording we are allowed
+            # to stop -- with the guard first, the second press was dead and
+            # the session could only end by voice, tray or timeout. A toggle
+            # started by the mouse path, or capture owned by a streaming /
+            # wake / command session, is still protected.
+            if (mode == 'toggle' and self.toggle_active
+                    and getattr(self, '_main_hotkey_source', 'key') == 'key'
+                    and getattr(self, '_streaming_session', None) is None):
+                logger.debug(f"[HOTKEY] Main hotkey toggle-off: {main_hotkey}")
+                self._main_hotkey_toggle_off('key')
+                return
+            if self.recording or getattr(self, '_streaming_session', None) is not None:
+                logger.info("[HOTKEY] Main hotkey ignored -- another recording owns capture")
                 return
             logger.debug(f"[HOTKEY] Main hotkey detected: {main_hotkey} (mode: {mode})")
             self._main_hotkey_source = 'key'
@@ -6008,12 +6022,8 @@ class DictationApp:
                 self.start_recording(streaming=False)
             elif mode == 'toggle':
                 self.hotkey_pressed = True
-                if self.toggle_active:
-                    self.toggle_active = False
-                    self.stop_recording()
-                else:
-                    self.toggle_active = True
-                    self.start_recording(streaming=False)
+                self.toggle_active = True
+                self.start_recording(streaming=False)
             elif mode == 'continuous':
                 # In continuous mode, main hotkey toggles continuous listening
                 self.hotkey_pressed = True
@@ -6273,6 +6283,15 @@ class DictationApp:
         if button_name == hotkey:
             self._on_main_hotkey_mouse(pressed)
 
+    def _main_hotkey_toggle_off(self, source: str) -> None:
+        """End the toggle recording the main hotkey started -- shared by the
+        keyboard path (on_key_press) and the mouse path (_on_main_hotkey_mouse).
+        Toggle only; hold and continuous never call this."""
+        self._main_hotkey_source = source
+        self.hotkey_pressed = True
+        self.toggle_active = False
+        self.stop_recording()
+
     def _on_main_hotkey_mouse(self, pressed):
         """Main record hotkey bound to Mouse 4/5 -- the keyboard main-hotkey
         semantics (on_key_press / on_key_release) driven by the button.
@@ -6290,10 +6309,7 @@ class DictationApp:
                 return
             mode = self.config.get('mode', 'hold')
             if mode == 'toggle' and self.toggle_active:
-                self._main_hotkey_source = 'mouse'
-                self.hotkey_pressed = True
-                self.toggle_active = False
-                self.stop_recording()
+                self._main_hotkey_toggle_off('mouse')
                 return
             if self.recording or getattr(self, '_streaming_session', None) is not None:
                 logger.info("[HOTKEY] Mouse main hotkey ignored -- another recording owns capture")
@@ -6320,7 +6336,10 @@ class DictationApp:
         self._main_hotkey_mouse_held = False
         if self._main_hotkey_source != 'mouse':
             return
-        self._main_hotkey_source = 'key'
+        if not (self.config.get('mode', 'hold') == 'toggle' and self.toggle_active):
+            # A mouse-started toggle keeps 'mouse' as its owner until it is
+            # stopped, so the keyboard path (on_key_press) leaves it alone.
+            self._main_hotkey_source = 'key'
         if not self.hotkey_pressed:
             return
         self.hotkey_pressed = False
