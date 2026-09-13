@@ -16,6 +16,9 @@ def _plugin_entry(handler):
         "aliases": ["show labels"],
         "source": "test_show_numbers",
         "pack": "accessibility",
+        # The real show_numbers command is a ui action; a hand-built entry
+        # with no risk class is unknown-risk and would wait for a "yes".
+        "risk_class": "safe",
     }
     return {"show numbers": entry, "show labels": entry}
 

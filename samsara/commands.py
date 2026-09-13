@@ -289,7 +289,15 @@ class CommandExecutor:
         if command_name not in self.commands:
             return False
         effective_app = app_instance if app_instance is not None else self._app
-        inv = Invocation(command_name, dict(args or {}), route, generation, prompt, source_text)
+        if generation is None and route is Route.EXACT and not confirmed:
+            # A direct exact invocation (cheat sheet, settings Test, a spoken
+            # phrase) is created by this call: capture its generation now.
+            # Every other route must carry the one captured when its request
+            # was made -- None there is Denied(stale) at the choke point.
+            generation = execution_policy.capture_generation(effective_app)
+        # Invocation.prompt is never user-facing (confirmation text is a local
+        # template), so model/caller wording is not forwarded.
+        inv = Invocation(command_name, dict(args or {}), route, generation, "", source_text)
         decision = execution_policy.authorize(inv, app=effective_app, executor=self, confirmed=confirmed)
         if isinstance(decision, execution_policy.Denied):
             return False
@@ -319,8 +327,7 @@ class CommandExecutor:
         confirmed=True; "ava cancel"/stop rejects it."""
         def _approve(op):
             self.execute_command(inv.command_id, app, route=inv.route, generation=inv.generation,
-                                 prompt=inv.prompt, confirmed=True, args=inv.args,
-                                 source_text=inv.source_text)
+                                 confirmed=True, args=inv.args, source_text=inv.source_text)
         execution_policy.stage_pending(app, inv, decision.prompt, on_approve=_approve,
                                        record_type="action")
         self._speak_confirmation(app, decision.prompt)
@@ -384,6 +391,25 @@ class CommandExecutor:
             return DispatchResult.miss(None)
 
         effective_app = app_instance if app_instance is not None else self._app
+        if generation is None:
+            # This call is where a spoken exact request is created; bind it to
+            # the generation current NOW (a caller holding a capture-time
+            # generation -- wake FIFO, session entry -- passes it instead).
+            generation = execution_policy.capture_generation(effective_app)
+
+        # THE pending question has priority: a complete-utterance "yes" / "no"
+        # / "wait" answers it (single use, deadline, generation and target
+        # checked in execution_policy). A yes that is only part of a sentence,
+        # or quoted, is not an answer and never reaches the confirm handler.
+        if execution_policy.pending_operation() is not None:
+            answer = execution_policy.answer_pending(effective_app, text)
+            if answer is not None:
+                state = DispatchState.COMPLETED if answer in ("approved", "rejected", "extended") \
+                    else DispatchState.REJECTED
+                return DispatchResult(state, "pending_reply", "pending_reply", {'answer': answer})
+        if execution_policy.mentions_confirmation(text):
+            return DispatchResult.miss(text, {'reason': 'not a complete confirmation'})
+
         text_lower = text.lower().strip()
 
         # Command mode toggle — always processed, regardless of mode state
@@ -464,7 +490,11 @@ class CommandExecutor:
                 return DispatchResult(DispatchState.REJECTED, entry.phrase, entry.phrase,
                                       {'reason': 'policy'})
             if isinstance(decision, execution_policy.NeedsConfirmation):
-                def _approve(op, _entry=entry, _rem=remainder, _app=effective_app):
+                def _approve(op, _entry=entry, _rem=remainder, _app=effective_app, _inv=inv):
+                    # Generation re-checked at the effect boundary, after the yes.
+                    if not isinstance(execution_policy.authorize(_inv, app=_app, executor=self, confirmed=True),
+                                      execution_policy.Allowed):
+                        return
                     try:
                         _entry.handler(_app, _rem)
                     except Exception as e:
@@ -474,6 +504,11 @@ class CommandExecutor:
                 self._speak_confirmation(effective_app, decision.prompt)
                 return DispatchResult(DispatchState.QUEUED, entry.phrase, entry.phrase,
                                       {'awaiting_confirmation': True})
+            if not execution_policy.is_fresh(effective_app, generation):
+                # Re-checked at the effect boundary: a stop that landed while
+                # this utterance was being matched wins.
+                return DispatchResult(DispatchState.REJECTED, entry.phrase, entry.phrase,
+                                      {'reason': 'stale'})
             print(f"[PLUGIN] Executing: {entry.phrase}")
             try:
                 state = adapt_handler_return(entry.handler(effective_app, remainder))

@@ -732,8 +732,10 @@ def handle_response(app, response, original_text=None, *, generation=None):
             return
         # One choke point: execute_command authorizes (route=model), runs a
         # read/ui tool, stages write/destructive/unknown for "yes", or denies.
+        # The model's CONFIRM text is never forwarded: the question the user
+        # hears is execution_policy.confirmation_prompt() (local template).
         ran = executor.execute_command(command_name, app, route=Route.MODEL, generation=generation,
-                                       prompt=parsed["confirm_text"], source_text=original_text or "")
+                                       source_text=original_text or "")
         if ran:
             _track_alias_uses(original_text)
 
@@ -745,24 +747,29 @@ def handle_response(app, response, original_text=None, *, generation=None):
             speak(app, f"I don't know how to {verb} things.")
         else:
             result = _execute_action2(app, verb, argument, route=Route.MODEL, generation=generation,
-                                      prompt=parsed["confirm_text"], source_text=original_text or "")
+                                      source_text=original_text or "")
             from plugins.commands.app_verbs import ActionResult
             if result is ActionResult.DONE:
                 _track_alias_uses(original_text)
 
     elif parsed["type"] == "schedule":
+        # Local template from the resolved schedule fields -- never the
+        # model's own CONFIRM wording.
+        what = parsed["command"] or (f"press {parsed['key']}" if parsed["key"] else "that")
+        confirm_text = (f"Repeat {execution_policy._template_value(what)} every "
+                        f"{int(parsed['interval_seconds'])} seconds?")
         with _pending_action_lock:
             _pending_action = {
                 "type": "schedule",
                 "interval_seconds": parsed["interval_seconds"],
                 "command": parsed["command"],
                 "key": parsed["key"],
-                "confirm_text": parsed["confirm_text"],
+                "confirm_text": confirm_text,
                 "original_text": original_text or "",
                 "generation": generation,
                 "expires": time.time() + 30,
             }
-        speak(app, parsed["confirm_text"] + " -- say yes to confirm, or say ava cancel.")
+        speak(app, confirm_text + " -- say yes to confirm, or say ava cancel.")
 
     else:
         speak(app, response)
@@ -791,8 +798,9 @@ def _execute_action2(app, verb, argument, *, route=Route.GRAMMAR, generation=Non
 
     if generation is None:
         generation = execution_policy.current_generation(app)
-    inv = Invocation(f"action2:{verb}", {"target": argument}, route, generation,
-                     prompt or f"{verb.capitalize()} {argument}.", source_text)
+    # No caller/model wording in the invocation: the confirmation question is
+    # execution_policy.confirmation_prompt() ("Close <target>?").
+    inv = Invocation(f"action2:{verb}", {"target": argument}, route, generation, "", source_text)
     decision = execution_policy.authorize(inv, app=app, confirmed=confirmed)
     if isinstance(decision, execution_policy.Denied):
         if decision.reason != "stale":

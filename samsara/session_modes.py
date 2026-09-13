@@ -127,10 +127,29 @@ DICTATE_COMMIT_PHRASE = "end"
 # Deliberate -- the false paste is immediate and visible (recoverable via
 # scratch-that), preferred over the silent commit-miss this fixes.
 _DICTATE_COMMIT_HOMOPHONES = frozenset({"end", "and"})
+#: "Sleep" exits of the latched session (SAMSARA_VISION.md section 1: armed
+#: once by a wake phrase, open until sleep). WHOLE-UTTERANCE only -- unlike
+#: the older exit phrases below, which match anywhere in an utterance, "go to
+#: sleep" is ordinary prose ("the kids need to go to sleep") and must never
+#: end a session from inside a dictated sentence. Sleep stops capture; it
+#: never discards: a staged-but-uncommitted DICTATE draft is retained and
+#: restored the next time the hands-free session opens (Astra review #10).
+SESSION_SLEEP_PHRASES = (
+    "go to sleep",
+    "samsara sleep",
+    "sleep now",
+)
+#: The stop phrase (02_conversational_architecture.md section 5): WHOLE
+#: utterance only. Advances the execution generation, cancels model requests
+#: and queued effects, keeps the draft and keeps the microphone armed -- it
+#: does NOT end the session. "go to sleep" is stop + disarm.
+SESSION_STOP_PHRASES = ("stop",)
+
 GLOBAL_SESSION_EXIT_PHRASES = (
     "stop listening",
     "exit hands free",
     "exit command mode",
+    *SESSION_SLEEP_PHRASES,
 )
 
 
@@ -721,7 +740,7 @@ class DispatchOutcome:
     kind: str
     # one of: "empty" | "abort" | "scratch_success" | "scratch_refuse" |
     # "mode_switch" | "prefix_switch_failed" | "command_executed" |
-    # "command_failed" |
+    # "command_failed" | "stopped" | "pending_reply" |
     # "command_miss" | "dictate_injected" | "dictate_suppressed_focus_lock" |
     # "dictate_staged" | "dictate_committed" |
     # "dictate_commit_refused" | "dictate_commit_blocked_focus_lock" |
@@ -810,6 +829,18 @@ def outcome_chip(kind: str, detail: Optional[dict] = None) -> "tuple[str, str] |
 
     if kind == "command_miss":
         return ("MISS", "error")
+    if kind == "stopped":
+        return ("stopped", "warning")
+    if kind == "pending_reply":
+        answer = str(detail.get("answer") or "")
+        if answer == "approved":
+            return ("confirmed", "success")
+        if answer == "extended":
+            return ("waiting", "pending")
+        if answer == "rejected":
+            return ("cancelled", "warning")
+        why = answer.split(":", 1)[1] if answer.startswith("refused:") else answer
+        return (f"refused: {_short(why)}", "warning")
     if kind in ("command_executed", "hands_free_command_executed"):
         verb = _first_two_words(detail.get("phrase"))
         if detail.get("state") in ("queued", "matched"):
@@ -829,6 +860,8 @@ def outcome_chip(kind: str, detail: Optional[dict] = None) -> "tuple[str, str] |
             return (f"{CHIP_CROSS} {verb}", "error")
         return (f"{CHIP_CROSS} {_reason(kind, detail)}", "error")
     if kind == "mode_switch":
+        if detail.get("sleep"):
+            return ("asleep", "accent")
         mode = _mode_label(detail.get("mode"))
         return (f"{CHIP_ARROW} {mode}" if mode else CHIP_ARROW, "accent")
 
@@ -943,8 +976,33 @@ class SessionModeManager:
         ava_ready_probe_fn: Optional[Callable[[], object]] = None,
         pending_action_scratch_fn: Optional[Callable[[], Optional[bool]]] = None,
         clock: Callable[[], float] = time.time,
+        extra_sleep_phrases: Optional[list[str]] = None,
+        stop_fn: Optional[Callable[[str], Optional[dict]]] = None,
+        pending_reply_fn: Optional[Callable[[str], Optional[str]]] = None,
     ) -> None:
+        # stop_fn(reason): the execution stop (execution_policy.stop_all --
+        # bump the generation FIRST, cancel model requests, drain queued
+        # effects). Called for a whole-utterance "stop" and BEFORE a sleep
+        # phrase ends the session. None = "stop" stays ordinary text (this
+        # module cannot stop anything on its own and never pretends to).
+        self._stop_fn = stop_fn
+        self._stop_phrases = frozenset(normalize_utterance(p) for p in SESSION_STOP_PHRASES)
+        # pending_reply_fn(text): answer the live pending question
+        # (execution_policy.answer_pending). Returns None when the text is not
+        # a complete-utterance reply or nothing is pending.
+        self._pending_reply_fn = pending_reply_fn
         self._abort_phrases = list(abort_phrases)
+        # Sleep phrases (SESSION_SLEEP_PHRASES) match the WHOLE utterance
+        # only and are never compiled into the anywhere-in-the-text abort
+        # patterns below, even when a caller passes them in abort_phrases
+        # (dictation.py passes all of GLOBAL_SESSION_EXIT_PHRASES).
+        # extra_sleep_phrases: config command_mode.abort_phrases -- user-added
+        # exits with the same whole-utterance, draft-retaining behaviour.
+        self._sleep_phrases = frozenset(
+            normalize_utterance(p)
+            for p in (*SESSION_SLEEP_PHRASES, *(extra_sleep_phrases or []))
+            if normalize_utterance(p)
+        )
         # Word-boundary, case-insensitive match per phrase -- a substring
         # check here (phrase.lower() in text_lower) lets "cancel" false-fire
         # on "cancelation" (typo-real-word) or any other word that merely
@@ -952,7 +1010,8 @@ class SessionModeManager:
         # every single utterance, not just switch/scratch candidates.
         self._abort_patterns = [
             re.compile(r"\b" + re.escape(p.strip()) + r"\b", re.IGNORECASE)
-            for p in self._abort_phrases if p.strip()
+            for p in self._abort_phrases
+            if p.strip() and normalize_utterance(p) not in self._sleep_phrases
         ]
         self._foreground_exe_resolver = foreground_exe_resolver
         self._foreground_hwnd_resolver = foreground_hwnd_resolver or (lambda: None)
@@ -991,6 +1050,9 @@ class SessionModeManager:
         self._stage_buffer: str = ""
         self._dictate_pending_buffer: str = ""
         self._dictate_pending_audio: list = []
+        # A staged DICTATE draft set aside by a sleep phrase. Survives reset()
+        # and is put back by the next reset() into the buffered DICTATE lane.
+        self._retained_draft: Optional[dict] = None
 
     # -- session lifecycle -----------------------------------------------
 
@@ -1000,6 +1062,10 @@ class SessionModeManager:
         The default remains COMMAND for legacy/direct callers. The latched
         toggle workflow explicitly starts in DICTATE, which is now its combined
         hands-free command+dictation lane.
+
+        A draft retained by a sleep phrase (see retain_draft) is NOT
+        discarded here: exit resets leave it set aside, and the next reset
+        into the buffered DICTATE lane restores it as the pending thought.
         """
         self.mode = initial_mode
         self._stack = UnitOfWorkStack()
@@ -1009,6 +1075,44 @@ class SessionModeManager:
         self._stage_buffer = ""
         self._dictate_pending_buffer = ""
         self._dictate_pending_audio = []
+        if (self._retained_draft is not None
+                and initial_mode is SessionMode.DICTATE
+                and self._buffer_dictate_until_commit):
+            self._restore_retained_draft()
+
+    def retain_draft(self) -> int:
+        """Set the staged-but-uncommitted DICTATE thought aside so the session
+        can end without losing it. Returns the retained character count (0
+        when nothing was staged; an earlier retained draft is kept then)."""
+        if not self._dictate_pending_buffer:
+            return len(self._retained_draft["buffer"]) if self._retained_draft else 0
+        staged_items = [item for item in self._stack._items
+                        if item.kind == "dictation_staged_chunk"]
+        self._retained_draft = {
+            "buffer": self._dictate_pending_buffer,
+            "audio": list(self._dictate_pending_audio),
+            "last_ended_terminal": self._last_dictate_ended_terminal,
+            "stack_items": staged_items,
+        }
+        return len(self._dictate_pending_buffer)
+
+    @property
+    def retained_draft(self) -> str:
+        """The draft a sleep phrase set aside ('' when none)."""
+        return self._retained_draft["buffer"] if self._retained_draft else ""
+
+    def discard_retained_draft(self) -> None:
+        """Explicitly drop a retained draft -- the only way one is destroyed."""
+        self._retained_draft = None
+
+    def _restore_retained_draft(self) -> None:
+        draft, self._retained_draft = self._retained_draft, None
+        self._dictate_pending_buffer = draft["buffer"]
+        self._dictate_pending_audio = list(draft["audio"])
+        self._last_dictate_ended_terminal = draft["last_ended_terminal"]
+        for item in draft["stack_items"]:
+            self._stack.push(item)
+        log.info("[SESSION] restored %d-char draft retained at sleep", len(draft["buffer"]))
 
     @property
     def stack_depth(self) -> int:
@@ -1065,10 +1169,48 @@ class SessionModeManager:
         # leave a user stuck unable to escape a latched session -- deaf but
         # latched, the design's cardinal sin. Ordinary switches/scratch-that
         # still go through the gate, just not this.
+        # 1a. Sleep: a whole-utterance exit from any lane, same precedence and
+        # same no-gate rule as the abort phrases. The staged draft is set
+        # aside BEFORE on_abort ends the session (whose reset() would
+        # otherwise discard it) -- sleep stops capture, it never discards.
+        normalized = normalize_utterance(text)
+
+        # 0. Stop: same no-gate rule as abort. Generation first (inside
+        # stop_fn), draft untouched, mode and microphone unchanged.
+        if self._stop_fn is not None and normalized in self._stop_phrases:
+            cleared = self._stop_fn("stop") or {}
+            return DispatchOutcome(kind="stopped", detail={
+                "draft_kept_chars": len(self._dictate_pending_buffer),
+                "mode_retained": self.mode,
+                "cleared": dict(cleared) if isinstance(cleared, dict) else {},
+            })
+
+        if normalized in self._sleep_phrases:
+            # Sleep = stop + disarm: the same stop runs FIRST, so nothing
+            # captured before "go to sleep" can act while the session ends.
+            stopped = False
+            if self._stop_fn is not None:
+                self._stop_fn("sleep")
+                stopped = True
+            retained = self.retain_draft()
+            if self._on_abort:
+                self._on_abort()
+            return DispatchOutcome(kind="mode_switch", detail={
+                "mode": "asleep", "sleep": True, "draft_retained_chars": retained,
+                "stopped": stopped,
+            })
+
         if self._matches_abort_phrase(text):
             if self._on_abort:
                 self._on_abort()
             return DispatchOutcome(kind="abort")
+
+        # 1b. A complete-utterance answer to THE pending question has priority
+        # over every lane's interpretation ("yes" / "no" / "wait").
+        if self._pending_reply_fn is not None:
+            answer = self._pending_reply_fn(text)
+            if answer is not None:
+                return DispatchOutcome(kind="pending_reply", detail={"answer": answer})
 
         scratch = is_scratch_that(text)
         commit = (
@@ -1164,6 +1306,12 @@ class SessionModeManager:
         return self._dispatch_in_mode(text, signals=signals)
 
     def _matches_abort_phrase(self, text: str) -> bool:
+        """Any session exit: an abort phrase anywhere in the text, or a sleep
+        phrase as the whole utterance. dispatch_utterance checks sleep first
+        (it has its own outcome); the streaming preview's _is_control_phrase
+        relies on this covering both."""
+        if normalize_utterance(text) in self._sleep_phrases:
+            return True
         return any(pattern.search(text) for pattern in self._abort_patterns)
 
     def commit_pending_dictation(self) -> DispatchOutcome:

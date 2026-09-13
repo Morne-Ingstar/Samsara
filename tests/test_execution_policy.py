@@ -15,6 +15,8 @@ Covers, in order:
     adapter (the Smart Actions dialog); voice "yes" and the dialog resolve
     ONE pending operation
 """
+import ast
+import logging
 import collections
 import json
 import sys
@@ -28,7 +30,7 @@ import pytest
 
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
-import dictation  # noqa: E402
+
 from plugins.commands import ask_ollama  # noqa: E402
 from plugins.commands.app_verbs import ActionResult  # noqa: E402
 from samsara import ava_command_session, commands as commands_mod, execution_policy as ep  # noqa: E402
@@ -132,7 +134,7 @@ class TestClassify:
         ({"type": "hotkey", "keys": ["alt", "f4"]}, RISK_DESTRUCTIVE),
         ({"type": "hotkey", "keys": ["ctrl", "w"]}, RISK_DESTRUCTIVE),
         ({"type": "hotkey", "keys": "ctrl+shift+w"}, RISK_DESTRUCTIVE),
-        ({"type": "hotkey", "keys": ["win", "l"]}, RISK_DESTRUCTIVE),
+        ({"type": "hotkey", "keys": ["win", "l"]}, RISK_UI),
         ({"type": "hotkey", "keys": ["shift", "delete"]}, RISK_DESTRUCTIVE),
         ({"type": "method", "method": "show_cheat_sheet"}, RISK_UI),
         ({"type": "method", "method": "repeat_last_command"}, RISK_UNKNOWN),
@@ -186,24 +188,26 @@ class TestPolicyTable:
 
     @pytest.mark.parametrize("route", MODEL)
     def test_write_needs_confirmation_when_a_model_said_it(self, app, executor, route):
-        d = ep.authorize(Invocation("enter", route=route, generation=7, prompt="Press enter?"),
+        d = ep.authorize(Invocation("enter", route=route, generation=7, prompt="Trust me, just press it"),
                          app=app, executor=executor)
-        assert isinstance(d, NeedsConfirmation) and d.prompt == "Press enter?"
+        # The caller/model wording is ignored; the question is the local template.
+        assert isinstance(d, NeedsConfirmation) and d.prompt == "Enter?"
 
     @pytest.mark.parametrize("route", USER + MODEL)
-    def test_destructive_needs_confirmation_on_every_route(self, app, executor, route):
+    def test_destructive_close_depends_on_route(self, app, executor, route):
         d = ep.authorize(Invocation("close window", route=route, generation=7), app=app, executor=executor)
-        assert isinstance(d, NeedsConfirmation) and d.risk == RISK_DESTRUCTIVE
+        assert isinstance(d, Allowed if route == Route.EXACT else NeedsConfirmation)
+        assert d.risk == RISK_DESTRUCTIVE
 
     @pytest.mark.parametrize("route", USER)
     def test_unknown_needs_confirmation_on_user_routes(self, app, executor, route):
         d = ep.authorize(Invocation("repeat that", route=route, generation=7), app=app, executor=executor)
-        assert isinstance(d, NeedsConfirmation) and d.risk == RISK_UNKNOWN
+        assert isinstance(d, Denied) and d.reason == "nothing to repeat"
 
     @pytest.mark.parametrize("route", MODEL)
     def test_unknown_is_not_on_the_model_allow_list(self, app, executor, route):
         d = ep.authorize(Invocation("repeat that", route=route, generation=7), app=app, executor=executor)
-        assert isinstance(d, Denied) and d.reason == "not_allowed_for_model"
+        assert isinstance(d, Denied) and d.reason == "nothing to repeat"
 
     @pytest.mark.parametrize("route", USER + MODEL)
     def test_stale_generation_is_denied_on_every_route(self, app, executor, route):
@@ -219,9 +223,9 @@ class TestPolicyTable:
                             app=app, executor=executor, confirmed=True)
         assert isinstance(late, Denied) and late.reason == "stale"
 
-    def test_unbound_generation_is_not_stale(self, app, executor):
+    def test_missing_generation_is_stale(self, app, executor):
         d = ep.authorize(Invocation("switch window"), app=app, executor=executor)
-        assert isinstance(d, Allowed)
+        assert isinstance(d, Denied) and d.reason == "stale" and "no generation" in d.detail
 
     def test_every_decision_is_logged_and_chipped(self, app, executor):
         ep.authorize(Invocation("close window", route=Route.MODEL, generation=7), app=app, executor=executor)
@@ -240,7 +244,7 @@ class TestPolicyTable:
                                        app=app, executor=executor), Denied)
         app.config["execution_policy"] = {"model_tool_extra": ["repeat that"]}
         d = ep.authorize(Invocation("repeat that", route=Route.MODEL, generation=7), app=app, executor=executor)
-        assert isinstance(d, NeedsConfirmation), "extra-listed unknown still needs a prompt"
+        assert isinstance(d, Denied) and d.reason == "nothing to repeat"
 
 
 # ---------------------------------------------------------------------------
@@ -350,11 +354,9 @@ class TestExactRoute:
         assert executor.execute_command("enter", app) is True
         assert len(effects) == 1
 
-    def test_exact_destructive_prompts_then_runs_on_yes(self, app, executor, effects):
-        assert executor.execute_command("close window", app, generation=7) is False
-        assert effects == []
-        assert ask_ollama.get_pending_action()["command"] == "close window"
-        ask_ollama.handle_ava_confirm(app)
+    def test_exact_undoable_close_runs_without_prompt(self, app, executor, effects):
+        assert executor.execute_command("close window", app, generation=7) is True
+        assert ask_ollama.get_pending_action() is None
         assert [c.get("keys") for c in effects] == [["alt", "f4"]]
 
     def test_macro_is_classified_by_its_worst_step(self, app, executor, effects):
@@ -388,7 +390,9 @@ def plugin_registry():
 
     plugin_commands.command("set volume", risk_class="reversible",
                             param_schema={"level": {"type": "int", "min": 0, "max": 100}})(_handler("set volume"))
-    plugin_commands.command("show the time", risk_class="safe")(_handler("show the time"))
+    plugin_commands.command("show the time", risk_class="safe",
+                            param_schema={"zone": {"type": "str", "max_len": 40}})(_handler("show the time"))
+    plugin_commands.command("say the date", risk_class="safe")(_handler("say the date"))  # no schema
     plugin_commands.command("legacy thing")(_handler("legacy thing"))      # nothing declared
     plugin_commands.command("wipe drive", risk_class="destructive")(_handler("wipe drive"))
     try:
@@ -401,7 +405,7 @@ def plugin_registry():
 class TestPluginPolicy:
     def test_registry_keeps_declared_and_flat_risk_apart(self, plugin_registry):
         assert ep.classify("legacy thing", declared_only=True)[0] == RISK_UNKNOWN
-        assert ep.classify("legacy thing")[0] == RISK_UI
+        assert ep.classify("legacy thing")[0] == RISK_UNKNOWN
         assert ep.classify("wipe drive", declared_only=True)[0] == RISK_DESTRUCTIVE
         assert ep.classify("set volume")[0] == RISK_WRITE
 
@@ -412,17 +416,22 @@ class TestPluginPolicy:
         assert isinstance(d, Denied) and d.reason == "invalid_args"
         assert isinstance(ep.authorize(Invocation("set volume", {"level": 40}, Route.EXACT, 7), app=app), Allowed)
 
-    def test_declared_safe_plugin_is_model_callable(self, plugin_registry, app):
+    def test_declared_safe_plugin_with_a_schema_is_model_callable(self, plugin_registry, app):
         assert isinstance(ep.authorize(Invocation("show the time", route=Route.MODEL, generation=7), app=app), Allowed)
 
-    def test_undeclared_plugin_is_unknown_to_a_model(self, plugin_registry, app):
-        d = ep.authorize(Invocation("legacy thing", route=Route.MODEL, generation=7), app=app)
-        assert isinstance(d, Denied) and d.reason == "not_allowed_for_model"
+    def test_safe_plugin_without_a_schema_is_unavailable_to_a_model(self, plugin_registry, app):
+        d = ep.authorize(Invocation("say the date", route=Route.MODEL, generation=7), app=app)
+        assert isinstance(d, Denied) and d.reason == "unvalidated"
 
-    def test_undeclared_plugin_still_runs_for_the_users_exact_phrase(self, plugin_registry, executor, app):
+    def test_undeclared_plugin_is_unavailable_to_a_model(self, plugin_registry, app):
+        d = ep.authorize(Invocation("legacy thing", route=Route.MODEL, generation=7), app=app)
+        assert isinstance(d, Denied) and d.reason == "unvalidated"
+
+    def test_undeclared_plugin_prompts_for_the_users_exact_phrase(self, plugin_registry, executor, app):
         result = executor.process_text("legacy thing", app, force_commands=True)
         assert tuple(result) == ("legacy thing", True)
-        assert plugin_registry == [("legacy thing", "")]
+        assert plugin_registry == []
+        assert ask_ollama.get_pending_action()["command"] == "legacy thing"
 
     def test_declared_destructive_plugin_prompts_on_exact(self, plugin_registry, executor, app):
         result = executor.process_text("wipe drive", app, force_commands=True)
@@ -483,7 +492,19 @@ class TestCancelThenLateResponse:
 # ---------------------------------------------------------------------------
 
 def _dictation_app(executor):
-    a = object.__new__(dictation.DictationApp)
+    # Compile only the exercised methods: never import/initialize the live app module.
+    source = Path(__file__).resolve().parents[1] / "dictation.py"
+    tree = ast.parse(source.read_text(encoding="utf-8-sig"))
+    cls = next(n for n in tree.body if isinstance(n, ast.ClassDef) and n.name == "DictationApp")
+    names = {"_ava_session_agent_dispatch_fn", "_start_ava_session_worker",
+             "_try_stop_utterance", "_on_ava_session_request_done",
+             "exit_ava_command_session", "_route_to_ava"}
+    namespace = {"logger": logging.getLogger("policy_test")}
+    methods = [n for n in cls.body if isinstance(n, ast.FunctionDef) and n.name in names]
+    exec(compile(ast.Module(body=methods, type_ignores=[]), str(source), "exec"), namespace)
+    harness = type("PolicyAppHarness", (), {name: namespace[name] for name in names})
+    a = harness()
+    a._try_cancel_pending_ava_utterance = Mock(return_value=False)
     a.config = {"ollama": {"enabled": True}, "ava_command_session": {}}
     a.audio_coordinator = Mock()
     a.play_sound = Mock()
@@ -547,7 +568,7 @@ class TestStopPath:
         assert time.monotonic() - t0 < 1.0, "stop must not queue behind inference"
         assert app._ava_cmd_generation == gen_before + 1
         assert len(app._ava_session_dispatch_queue) == 0
-        assert ("Stopped", "warning") in [c.args for c in app._show_outcome_chip.call_args_list]
+        assert ("stopped", "warning") in [c.args for c in app._show_outcome_chip.call_args_list]
 
         release.set()
         for t in threads:
@@ -615,6 +636,13 @@ def dispatcher(app, monkeypatch):
     monkeypatch.setattr(sa, "_play_earcon", lambda *a, **k: None)
     monkeypatch.setattr(sa, "get_config", lambda app_: {})
     app.config["smart_actions"] = {"enabled": True, "earcons_enabled": False}
+    # Smart Actions tools have no reviewed schema in production (unavailable to
+    # the model); these tests exercise the shared pending machinery with one.
+    monkeypatch.setattr(ep, "SMART_ACTION_SCHEMAS", {
+        "paste_text": {"text": {"type": "str", "required": True}},
+        "send_email": {"to": {"type": "str"}},
+        "delete_file": {"path": {"type": "str", "required": True}},
+    })
     d = ToolDispatcher(app, {"allowed_directories": [], "allowed_domains": [], "tier2_approvals": {}})
     return d
 
@@ -682,7 +710,95 @@ class TestSmartActionsSharedPending:
             t, box = _run_dispatch_in_thread(dispatcher, {"tool": "send_email", "args": {}})
             op = ask_ollama.get_pending_action()["op"]
             app._ava_cmd_generation += 1                   # exit / sleep
-            op.approve()                                   # the button lands late
+            assert op.approve() is False                   # the button lands late
             t.join(3)
         ex.assert_not_called()
-        assert box["result"]["success"] is False and "stale" in box["result"]["result"]
+        assert box["result"]["success"] is False
+        assert op.cancel_reason == "stale"
+
+
+@pytest.mark.parametrize("route", [Route.EXACT, Route.MODEL])
+@pytest.mark.parametrize("phrase", ["close tab", "close window", "lock computer", "lock screen",
+                                    "permanent delete", "going dark", "again", "repeat"])
+def test_owner_decision_eight_commands(app, executor, monkeypatch, phrase, route):
+    executor.commands.update({
+        "lock computer": {"type": "hotkey", "keys": ["win", "l"]},
+        "lock screen": {"type": "hotkey", "keys": ["win", "l"]},
+        "permanent delete": {"type": "hotkey", "keys": ["shift", "delete"]},
+        "again": {"type": "method", "method": "repeat_last_command"},
+        "repeat": {"type": "method", "method": "repeat_last_command"},
+    })
+    monkeypatch.setattr(ep, "_plugin_entry", lambda cid: {
+        "metadata": {"risk_class": "destructive", "reversibility": "unknown"}
+    } if cid == "going dark" else None)
+    app._last_command_name = "switch window"
+    app._last_command = executor.commands["switch window"]
+    d = ep.authorize(Invocation(phrase, route=route, generation=7), app=app)
+    if phrase == "going dark" and route == Route.MODEL:
+        # A plugin with no declared argument schema is unavailable to a model.
+        assert isinstance(d, Denied) and d.reason == "unvalidated"
+        return
+    prompt = phrase in {"permanent delete", "going dark"} or (
+        route == Route.MODEL and phrase in {"close tab", "close window"})
+    assert isinstance(d, NeedsConfirmation if prompt else Allowed)
+    if route == Route.EXACT and phrase in {"close tab", "close window"}:
+        assert d.hint == "undoable"
+
+
+@pytest.mark.parametrize("route", [Route.EXACT, Route.MODEL])
+@pytest.mark.parametrize("last_id", [None, "switch window", "permanent delete"])
+def test_repeat_inherits_target(app, executor, route, last_id):
+    executor.commands["permanent delete"] = {"type": "hotkey", "keys": ["shift", "delete"]}
+    app._last_command_name = last_id
+    app._last_command = executor.commands.get(last_id)
+    d = ep.authorize(Invocation("repeat that", route=route, generation=7), app=app)
+    expected = Denied if last_id is None else NeedsConfirmation if last_id == "permanent delete" else Allowed
+    assert isinstance(d, expected)
+    if last_id is None:
+        assert d.reason == "nothing to repeat"
+    elif last_id == "permanent delete":
+        assert "Permanent delete" in d.prompt
+
+
+@pytest.mark.parametrize("route", [Route.EXACT, Route.MODEL, Route.GRAMMAR])
+@pytest.mark.parametrize("phrase", ["lock screen", "mystery action"])
+def test_unknown_metadata_requires_prompt_except_explicit_safe_table(app, monkeypatch, route, phrase):
+    monkeypatch.setattr(ep, "_plugin_entry", lambda cid: {"risk_class": "safe", "metadata": {"risk_class": "unknown"}})
+    d = ep.authorize(Invocation(phrase, route=route, generation=7), app=app)
+    if route == Route.MODEL:
+        assert isinstance(d, Denied) and d.reason == "unvalidated"   # no schema declared
+    elif phrase == "lock screen" and route == Route.EXACT:
+        assert isinstance(d, Allowed) and d.hint
+    else:
+        assert isinstance(d, NeedsConfirmation)
+
+
+@pytest.mark.parametrize("value,allowed", [(True, True), (False, False), ("unknown", False), ("reversible", True)])
+def test_declared_reversibility_controls_exact_destructive(app, monkeypatch, value, allowed):
+    monkeypatch.setattr(ep, "_plugin_entry", lambda cid: {"metadata": {
+        "risk_class": "destructive", "reversibility": value}})
+    d = ep.authorize(Invocation("going dark", generation=7), app=app)
+    assert isinstance(d, Allowed if allowed else NeedsConfirmation)
+
+
+@pytest.mark.parametrize("change_history", [False, True])
+def test_repeat_confirmation_runs_bound_target_once(app, executor, effects, change_history):
+    executor.commands["permanent delete"] = {"type": "hotkey", "keys": ["shift", "delete"]}
+    app._last_command_name = "permanent delete"
+    app._last_command = executor.commands["permanent delete"]
+    assert executor.execute_command("repeat that", app, route=Route.MODEL, generation=7) is False
+    assert effects == []
+    if change_history:
+        app._last_command_name = "close window"
+        app._last_command = executor.commands["close window"]
+    ask_ollama.handle_ava_confirm(app)
+    assert effects == ([] if change_history else [executor.commands["permanent delete"]])
+    assert ask_ollama.get_pending_action() is None
+
+
+def test_unknown_metadata_respects_explicit_model_allowlist(app, monkeypatch):
+    monkeypatch.setattr(ep, "_plugin_entry", lambda cid: {"metadata": {"risk_class": "unknown"}})
+    app.config["execution_policy"] = {"model_tool_allowlist": ["switch window"]}
+    d = ep.authorize(Invocation("mystery action", route=Route.MODEL, generation=7), app=app)
+    # Undeclared schema denies before the allow-list is even consulted.
+    assert isinstance(d, Denied) and d.reason == "unvalidated"
