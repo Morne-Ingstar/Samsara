@@ -73,6 +73,7 @@ from typing import Any
 
 import numpy as np
 
+from . import device_resolver
 from .frame import FRAME_SIZE, PREBUFFER_FRAMES, SAMPLE_RATE
 from .ring import FrameBus, Reader
 from samsara.log import get_logger
@@ -225,7 +226,18 @@ class AudioCaptureEngine:
         # without this engine knowing anything about the app -- same
         # constructor-injected-callable pattern as SessionModeManager.
         self._device_name: "str | None" = None
+        # (name, hostapi_name) captured on every SUCCESSFUL open. Recovery
+        # resolves this pair back to a live index instead of handing
+        # sounddevice a bare name, which is unresolvable when the same name
+        # exists under several host APIs -- see device_resolver's docstring
+        # and the 2026-09-12 incident it records.
+        self._device_identity: "tuple[str, str] | None" = None
         self._recovering  = False
+        #: True once recovery has exhausted its fast window. The engine keeps
+        #: probing in the background, but callers should treat capture as
+        #: unavailable and say so exactly once -- see device_lost.
+        self._device_lost = False
+        self._reconnect_now = threading.Event()
         self._on_stream_death     = on_stream_death
         self._on_recovery_success = on_recovery_success
         self._on_give_up          = on_give_up
@@ -318,6 +330,39 @@ class AudioCaptureEngine:
         )
         self._stream.start()
 
+        # Identity for recovery, recorded only after a successful open so a
+        # failed attempt can never overwrite a good pair.
+        try:
+            identity = device_resolver.capture_identity(sd, device)
+            if identity is not None:
+                self._device_identity = identity
+                self._device_name = identity[0]
+        except Exception as exc:
+            logger.debug(f"[ACE] identity capture skipped: {exc}")
+
+    # ── Device-lost state ─────────────────────────────────────────────────────
+
+    @property
+    def device_lost(self) -> bool:
+        """True while the input device is gone and the fast recovery window
+        has already expired.
+
+        The app layer uses this for the three things the engine must not do
+        itself: show the persistent indicator, play the failure earcon ONCE
+        per loss rather than per attempt, and refuse hold/wake capture with
+        an explanation instead of a silent frames=0 recording. Cleared
+        automatically by a successful reopen.
+        """
+        return self._device_lost
+
+    def request_reconnect_now(self) -> None:
+        """Force the background probe to retry immediately.
+
+        Public so a tray action ("Reconnect microphone") can short-circuit
+        the 10 s wait without knowing anything about the retry loop.
+        """
+        self._reconnect_now.set()
+
     def stop(self) -> None:
         """Stop and close the PortAudio stream (deliberate, external stop --
         e.g. app shutdown or a user-initiated mic switch). Clears _running
@@ -383,38 +428,102 @@ class AudioCaptureEngine:
             except Exception:
                 logger.exception("[ACE] on_stream_death callback failed")
 
-        device = self._device_name or self._config.get('microphone', None)
         deadline = time.monotonic() + 60.0
         try:
             while self._running and time.monotonic() < deadline:
                 time.sleep(2.0)
                 if not self._running:
                     return  # a deliberate stop() happened while we waited
-                try:
-                    self._teardown_stream_only()  # never two streams alive at once
-                    self._open_stream(device)
-                    self.bump_device_epoch()  # signal the discontinuity to consumers
-                    logger.info("[ACE] Recovery succeeded -- stream rebuilt")
-                    self._recovering = False
-                    if self._on_recovery_success:
-                        try:
-                            self._on_recovery_success()
-                        except Exception:
-                            logger.exception("[ACE] on_recovery_success callback failed")
+                if self._try_reopen(phase="recovery"):
                     return
-                except Exception as exc:
-                    logger.debug(f"[ACE] Recovery attempt failed, retrying in 2s: {exc}")
             if self._running:
                 logger.error(
                     "[ACE] Recovery gave up after 60s -- device never reappeared"
                 )
+                self._device_lost = True
                 if self._on_give_up:
                     try:
                         self._on_give_up()
                     except Exception:
                         logger.exception("[ACE] on_give_up callback failed")
+                # Keep looking. A device that comes back five minutes later
+                # must reconnect on its own -- before this, giving up was
+                # permanent until the user restarted or re-picked the mic
+                # from the tray.
+                self._slow_probe_loop()
         finally:
             self._recovering = False
+
+    def _resolve_device(self):
+        """The device argument for a reopen: an INDEX whenever possible.
+
+        Returns (device, note) where note is a human-readable explanation for
+        the log when the host API changed. Falls back to the configured
+        id/None (system default) only when nothing was recorded -- never to a
+        bare name, which is what could not be resolved in the first place.
+        """
+        import sounddevice as sd
+
+        identity = self._device_identity
+        name = identity[0] if identity else self._device_name
+        recorded_api = identity[1] if identity else ""
+        if not name:
+            return (self._config.get('microphone', None), "")
+        try:
+            index, api, exact = device_resolver.resolve(sd, name, recorded_api)
+        except device_resolver.DeviceNotFound as exc:
+            raise RuntimeError(str(exc)) from exc
+        if exact:
+            return (index, "")
+        return (index, f"host API changed {recorded_api or '(unrecorded)'} -> {api}")
+
+    def _try_reopen(self, *, phase: str) -> bool:
+        """One resolve-and-open attempt. True when the stream is live again."""
+        try:
+            device, note = self._resolve_device()
+            self._teardown_stream_only()  # never two streams alive at once
+            self._open_stream(device)
+            self.bump_device_epoch()  # signal the discontinuity to consumers
+        except Exception as exc:
+            logger.debug(f"[ACE] {phase} attempt failed: {exc}")
+            return False
+        if note:
+            logger.warning("[ACE] Recovered on a different backend -- %s", note)
+        logger.info("[ACE] Recovery succeeded -- stream rebuilt")
+        self._recovering = False
+        self._device_lost = False
+        if self._on_recovery_success:
+            try:
+                self._on_recovery_success()
+            except Exception:
+                logger.exception("[ACE] on_recovery_success callback failed")
+        return True
+
+    def _slow_probe_loop(self, interval_s: float = 10.0) -> None:
+        """After give-up, probe every `interval_s` forever until it returns.
+
+        Only enumerates (device_resolver.device_present) unless the name is
+        actually back, so the steady-state cost of a permanently unplugged
+        device is one query_devices() call every ten seconds. Runs on the
+        same recovery daemon thread -- never on the Qt or boot thread.
+        """
+        import sounddevice as sd
+
+        name = (self._device_identity or (self._device_name, ""))[0]
+        while self._running:
+            forced = self._reconnect_now.wait(timeout=interval_s)
+            self._reconnect_now.clear()
+            if not self._running:
+                return
+            try:
+                present = device_resolver.device_present(sd, name) if name else True
+            except Exception as exc:
+                logger.debug(f"[ACE] probe failed: {exc}")
+                present = False
+            if not present and not forced:
+                continue
+            if self._try_reopen(phase="reconnect probe"):
+                return
 
     # ── Capture callback (HOT PATH — no locks, no logging, no allocation) ────
 
