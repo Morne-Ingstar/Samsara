@@ -1,14 +1,17 @@
 """Render every Samsara icon size and state from assets/icon/samsara.svg.
 
-The SVG is the single source (see its header comment for the structure);
-colours come from samsara/ui/theme.py tokens, so there is no palette in this
-file. Replaces the old one-off assets/icon/_make_*.py / _pack_ico.py scripts
-and keeps their output filenames.
+The SVG is the single source (see its header comment for the structure). The
+drawing itself is samsara.ui.tray_qt.render_mark -- the same routine the
+tray, the listening indicator and the splash use -- so this tool has no
+palette and no renderer of its own. Replaces the old one-off
+assets/icon/_make_*.py / _pack_ico.py scripts and keeps their output
+filenames.
 
 Outputs (all under assets/icon/):
-  samsara_{16,24,32,48,64,128,256}.png   app icon (APP_STATE), one per size
+  samsara_{16,24,32,48,64,128,256}.png   app icon (tray_qt.APP_MARK), one per size
   samsara.ico                            multi-size container of those PNGs
-  states/samsara_{state}_{size}.png      every tray state at TRAY_SIZES
+  states/samsara_{state}_{size}.png      every tray_qt.MARK_STATES entry at TRAY_SIZES
+                                         ("heard" is the animation's static fallback frame)
 
 16 px uses the simplified drawing (#small); 24 px and up use #regular.
 
@@ -24,7 +27,6 @@ import argparse
 import os
 import struct
 import sys
-import xml.etree.ElementTree as ET
 from pathlib import Path
 
 REPO = Path(__file__).resolve().parent.parent
@@ -36,103 +38,34 @@ os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
 if os.name == "nt":
     os.environ.setdefault("QT_QPA_FONTDIR", os.path.join(os.environ.get("WINDIR", r"C:\Windows"), "Fonts"))
 
-from PySide6.QtCore import QByteArray, QBuffer, QIODevice, QRectF, Qt  # noqa: E402
+from PySide6.QtCore import QBuffer, QIODevice, QRectF, Qt  # noqa: E402
 from PySide6.QtGui import QColor, QFont, QGuiApplication, QImage, QPainter  # noqa: E402
-from PySide6.QtSvg import QSvgRenderer  # noqa: E402
 
 from samsara.ui import theme  # noqa: E402
+from samsara.ui.tray_qt import APP_MARK, MARK_STATES, render_mark  # noqa: E402
 
 ICON_DIR = REPO / "assets" / "icon"
-SVG_PATH = ICON_DIR / "samsara.svg"
 STATES_DIR = ICON_DIR / "states"
 
 APP_SIZES = (16, 24, 32, 48, 64, 128, 256)
 TRAY_SIZES = (16, 24, 32, 48, 64)
-SMALL_MAX = 16          # sizes at or below this use the simplified drawing
 
-SVG_NS = "http://www.w3.org/2000/svg"
-ET.register_namespace("", SVG_NS)
-
-# Capture state -> (segment colour, ring drawing).
-CAPTURE = {
-    "idle":      (theme.ICON_IDLE, "ring-hollow"),
-    "listening": (theme.ACCENT, "ring-hollow"),
-    "recording": (theme.RECORDING, "ring-filled"),
-    "ava":       (theme.AVA, "ring-hollow"),
-}
-# Hands-free state -> (eye drawing, eye colour).
-EYE = {
-    "asleep": ("eye-closed", theme.ICON_IDLE),
-    "armed":  ("eye-open", theme.ACCENT),
-    "heard":  ("eye-heard", theme.ACCENT),
-}
-# Named states the app shows: (capture, hands-free).
-STATES = {
-    "idle":      ("idle", "asleep"),
-    "listening": ("listening", "asleep"),
-    "recording": ("recording", "asleep"),
-    "ava":       ("ava", "asleep"),
-    "asleep":    ("idle", "asleep"),
-    "armed":     ("listening", "armed"),
-    "heard":     ("listening", "heard"),
-}
-# The app/taskbar/exe icon is not a live state: brand cyan, eye closed.
-APP_STATE = "listening"
-
-MONTAGE_STATES = ("idle", "listening", "recording", "asleep", "armed", "heard", "ava")
+MONTAGE_STATES = ("off", "asleep", "idle", "listening", "recording", "ava", "armed", "heard")
+_MONTAGE_LABELS = {"heard": "heard-flash"}
+# Montage swatches imitate the Windows taskbar, not the app palette.
 _TASKBAR_DARK = "#202020"
 _TASKBAR_LIGHT = "#f3f3f3"
-_RING_IDS = ("ring-hollow", "ring-filled")
-_EYE_IDS = ("eye-closed", "eye-open", "eye-heard")
 
 
 def _ensure_gui_app():
     return QGuiApplication.instance() or QGuiApplication(sys.argv[:1])
 
 
-def state_svg(state: str, small: bool, source: bytes | None = None) -> bytes:
-    """The SVG with one variant, one ring and one eye visible, recoloured."""
-    capture, hands_free = STATES[state]
-    seg_colour, ring_id = CAPTURE[capture]
-    eye_id, eye_colour = EYE[hands_free]
-    suffix = "-small" if small else ""
-
-    root = ET.fromstring(source if source is not None else SVG_PATH.read_bytes())
-    by_id = {el.get("id"): el for el in root.iter() if el.get("id")}
-
-    by_id["regular"].set("display", "none" if small else "inline")
-    by_id["small"].set("display", "inline" if small else "none")
-    for base in _RING_IDS + _EYE_IDS:
-        wanted = base in (ring_id, eye_id)
-        by_id[base + suffix].set("display", "inline" if wanted else "none")
-
-    ring = by_id[ring_id + suffix]
-    for attr in ("fill", "stroke"):
-        if ring.get(attr, "none") != "none":
-            ring.set(attr, seg_colour)
-    by_id["hub" + suffix].set("fill", theme.ICON_HUB)
-    for el in by_id[eye_id + suffix].iter():
-        role = el.get("data-role")
-        if role == "eye":
-            el.set("stroke", eye_colour)
-        elif role == "pupil":
-            el.set("fill", eye_colour)
-    return ET.tostring(root, encoding="utf-8")
-
-
-def render(state: str, size: int, source: bytes | None = None) -> QImage:
-    """Rasterise one state at one pixel size (ARGB32, transparent background)."""
+def render(state: str, size: int) -> QImage:
+    """One named state (tray_qt.MARK_STATES) at one pixel size."""
     _ensure_gui_app()
-    renderer = QSvgRenderer(QByteArray(state_svg(state, size <= SMALL_MAX, source)))
-    if not renderer.isValid():
-        raise ValueError(f"samsara.svg did not parse for state {state!r}")
-    image = QImage(size, size, QImage.Format.Format_ARGB32_Premultiplied)
-    image.fill(Qt.GlobalColor.transparent)
-    painter = QPainter(image)
-    painter.setRenderHint(QPainter.RenderHint.Antialiasing, True)
-    renderer.render(painter, QRectF(0, 0, size, size))
-    painter.end()
-    return image.convertToFormat(QImage.Format.Format_ARGB32)
+    capture, eye = MARK_STATES[state]
+    return render_mark(capture, eye, size)
 
 
 def png_bytes(image: QImage) -> bytes:
@@ -158,14 +91,15 @@ def build_ico(pngs: list[tuple[int, bytes]]) -> bytes:
 
 def expected_outputs() -> dict[Path, QImage | bytes]:
     """Every generated file -> its image (PNG) or bytes (ICO)."""
+    _ensure_gui_app()
     out: dict[Path, QImage | bytes] = {}
     app_pngs = []
     for size in APP_SIZES:
-        image = render(APP_STATE, size)
+        image = render_mark(*APP_MARK, size)
         out[ICON_DIR / f"samsara_{size}.png"] = image
         app_pngs.append((size, png_bytes(image)))
     out[ICON_DIR / "samsara.ico"] = build_ico(app_pngs)
-    for state in STATES:
+    for state in MARK_STATES:
         for size in TRAY_SIZES:
             out[STATES_DIR / f"samsara_{state}_{size}.png"] = render(state, size)
     return out
@@ -182,9 +116,11 @@ def write_assets() -> list[Path]:
 
 
 def stale_assets() -> list[Path]:
-    """Generated files that are missing or whose pixels differ from the SVG."""
+    """Generated files that are missing, whose pixels differ from the SVG,
+    or that no state produces any more."""
+    expected = expected_outputs()
     stale = []
-    for path, value in expected_outputs().items():
+    for path, value in expected.items():
         if not path.exists():
             stale.append(path)
         elif isinstance(value, bytes):
@@ -192,6 +128,8 @@ def stale_assets() -> list[Path]:
                 stale.append(path)
         elif QImage(str(path)).convertToFormat(QImage.Format.Format_ARGB32) != value:
             stale.append(path)
+    if STATES_DIR.exists():
+        stale.extend(p for p in STATES_DIR.glob("*.png") if p not in expected)
     return stale
 
 
@@ -206,14 +144,14 @@ def _ico_sizes(data: bytes) -> list[int]:
 
 def write_montage(path: Path, magnify: int = 4) -> Path:
     """16 px state sheet: each state at 1x and nearest-neighbour 4x, on a dark
-    and a light taskbar, plus the 32 px regular drawing for reference."""
+    and a light taskbar, plus the 32 px regular drawing on both."""
     _ensure_gui_app()
     cell = 16 * magnify
-    label_w, pad, header_h = 150, 16, 44
+    label_w, pad, header_h = 170, 16, 44
     columns = [
         ("1x dark", _TASKBAR_DARK, 1), (f"{magnify}x dark", _TASKBAR_DARK, magnify),
         ("1x light", _TASKBAR_LIGHT, 1), (f"{magnify}x light", _TASKBAR_LIGHT, magnify),
-        ("32 px dark", _TASKBAR_DARK, None),
+        ("32 px dark", _TASKBAR_DARK, None), ("32 px light", _TASKBAR_LIGHT, None),
     ]
     col_w = cell + 2 * pad
     row_h = cell + 2 * pad
@@ -224,8 +162,7 @@ def write_montage(path: Path, magnify: int = 4) -> Path:
     sheet.fill(QColor(theme.BG0))
     painter = QPainter(sheet)
     painter.setRenderHint(QPainter.RenderHint.Antialiasing, False)
-    font = QFont("Segoe UI", 10)
-    painter.setFont(font)
+    painter.setFont(QFont("Segoe UI", 10))
     painter.setPen(QColor(theme.TEXT_PRIMARY))
     for i, (title, _bg, _scale) in enumerate(columns):
         painter.drawText(QRectF(label_w + i * col_w, 0, col_w, header_h),
@@ -233,14 +170,15 @@ def write_montage(path: Path, magnify: int = 4) -> Path:
 
     for r, state in enumerate(MONTAGE_STATES):
         y = header_h + r * row_h
-        capture, hands_free = STATES[state]
+        capture, eye = MARK_STATES[state]
         painter.setPen(QColor(theme.TEXT_PRIMARY))
         painter.drawText(QRectF(pad, y, label_w - pad, row_h / 2),
-                         Qt.AlignmentFlag.AlignLeft | Qt.AlignmentFlag.AlignBottom, state)
+                         Qt.AlignmentFlag.AlignLeft | Qt.AlignmentFlag.AlignBottom,
+                         _MONTAGE_LABELS.get(state, state))
         painter.setPen(QColor(theme.ICON_IDLE))
         painter.drawText(QRectF(pad, y + row_h / 2, label_w - pad, row_h / 2),
                          Qt.AlignmentFlag.AlignLeft | Qt.AlignmentFlag.AlignTop,
-                         f"{capture} / {hands_free}")
+                         f"{capture} / {eye}")
         small = render(state, 16)
         regular = render(state, 32)
         for i, (_title, bg, scale) in enumerate(columns):

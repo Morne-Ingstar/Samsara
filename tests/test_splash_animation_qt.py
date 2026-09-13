@@ -1,6 +1,7 @@
 """Focused, offscreen-safe tests for the code-native Qt startup splash."""
 
 import os
+from pathlib import Path
 
 os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
 
@@ -8,7 +9,7 @@ import pytest
 
 pytest.importorskip("PySide6")
 
-from PySide6.QtGui import QImage
+from PySide6.QtGui import QImage, QPainter
 from PySide6.QtWidgets import QApplication
 from shiboken6 import isValid
 
@@ -96,6 +97,29 @@ def test_scene_renders_without_assets_or_opengl(app):
     widget.render(image)
     assert not image.isNull()
     assert image.pixelColor(image.width() // 2, image.height() // 2).alpha() > 0
+    widget.close()
+
+
+def test_centre_is_the_brand_mark_drawn_by_the_shared_routine(app, monkeypatch):
+    """09b-2: the splash wheel is the brand mark (cyan, lid closed), spinning;
+    red is never decorative, so nothing on the splash uses RECORDING."""
+    import samsara.ui.splash_qt as splash_module
+    from samsara.ui import theme
+
+    calls = []
+    monkeypatch.setattr(splash_module, "paint_mark",
+                        lambda painter, rect, capture, eye, rotation=0.0, opacity=1.0:
+                        calls.append((capture, eye, rotation)))
+    widget = _SplashWidget()
+    canvas = QImage(10, 10, QImage.Format.Format_ARGB32)   # must outlive the painter
+    painter = QPainter(canvas)
+    widget._paint_vortex(painter, 0.0)
+    widget._paint_vortex(painter, 1.0)
+    painter.end()
+    assert [c[:2] for c in calls] == [("listening", "asleep")] * 2
+    assert calls[1][2] > calls[0][2]                        # it spins
+    source = Path(splash_module.__file__).read_text(encoding="utf-8")
+    assert "theme.RECORDING" not in source and "theme.BRAND_RED" not in source
     widget.close()
 
 

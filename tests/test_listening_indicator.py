@@ -188,3 +188,58 @@ class TestMoveMode:
         indicator.enter_move_mode()
         indicator.exit_move_mode(cancel=True)
         assert indicator._active_chip() == ("staged", "pending")
+
+
+# ---------------------------------------------------------------------------
+# 09b-2: the state glyph is the shared mark; the palette is theme tokens
+# ---------------------------------------------------------------------------
+
+class TestStateGlyphIsTheMark:
+    def _painted_marks(self, qapp, indicator, monkeypatch):
+        from PySide6.QtGui import QImage
+        import samsara.ui.listening_indicator as li
+
+        calls = []
+        real = li.paint_mark
+        monkeypatch.setattr(li, "paint_mark",
+                            lambda painter, rect, capture, eye, rotation=0.0, opacity=1.0:
+                            calls.append((capture, eye)) or real(painter, rect, capture, eye, rotation, opacity))
+        indicator.show()
+        _pump(qapp)
+        image = QImage(indicator.size(), QImage.Format.Format_ARGB32)
+        image.fill(0)
+        indicator.render(image)
+        return calls
+
+    @pytest.mark.parametrize("setup, expected", [
+        (lambda w: None,                         ("idle", "off")),
+        (lambda w: w.set_snoozed(True),          ("idle", "asleep")),
+        (lambda w: w.set_listening(True),        ("listening", "off")),
+        (lambda w: w.set_command_mode(True),     ("listening", "off")),
+        (lambda w: w.set_thinking(True),         ("ava", "off")),
+        (lambda w: w.set_session_mode("AVA", "#a78bfa"), ("ava", "off")),
+    ])
+    def test_each_state_paints_the_shared_mark(self, qapp, indicator, monkeypatch, setup, expected):
+        setup(indicator)
+        calls = self._painted_marks(qapp, indicator, monkeypatch)
+        assert calls and set(calls) == {expected}   # one mark per paint pass
+
+    def test_wake_flash_paints_the_heard_frame(self, qapp, indicator, monkeypatch):
+        indicator.show()
+        indicator.flash_wake()
+        assert ("listening", "heard") in self._painted_marks(qapp, indicator, monkeypatch)
+
+    def test_palette_is_theme_tokens(self):
+        from samsara.ui import theme
+        import samsara.ui.listening_indicator as li
+
+        allowed = {theme.ACCENT, theme.ACCENT_HOVER, theme.BG1, theme.ICON_IDLE, theme.AVA,
+                   theme.SUCCESS, theme.ERROR}
+        mixes = {theme._mix(token, theme.BG0, t)
+                 for token in (theme.ACCENT, theme.SUCCESS, theme.ERROR, theme.AVA)
+                 for t in (0.62, 0.70, 0.80)}
+        for name in ("_TEAL", "_TEAL_DIM", "_TEAL_BRIGHT", "_IDLE_BG", "_IDLE_FG", "_LISTENING_FG",
+                     "_SNOOZE_BG", "_SNOOZE_FG", "_CMD_BG", "_CMD_FG", "_CMD_ACTIVE_BG",
+                     "_CMD_ACTIVE_FG", "_FLASH_SUCCESS_BG", "_FLASH_SUCCESS_FG", "_FLASH_ERROR_BG",
+                     "_FLASH_ERROR_FG", "_VISION_BG", "_VISION_BG_BRIGHT", "_VISION_FG"):
+            assert getattr(li, name) in allowed | mixes, name

@@ -6,6 +6,7 @@ SamsaraTrayQt._rebuild_menu() is exercised directly against a real QMenu
 after the reorganization, and that the new grouping (top-level daily-use,
 Tools submenu, Developer submenu) matches spec.
 """
+import types
 from unittest.mock import Mock
 
 import pytest
@@ -137,6 +138,65 @@ class TestSomethingWrongOpensSupportTab:
         finally:
             window.hide()
             window.deleteLater()
+
+
+class TestTrayDrawsTheMark:
+    """09b-2: the tray icon is the shared mark (tray_qt.render_mark), rendered
+    on the Qt thread from a MarkFrame; the procedural wheel is gone."""
+
+    def test_apply_icon_renders_a_mark_frame_with_the_shared_routine(self, tray, monkeypatch):
+        t, app = tray
+        calls = []
+        real = tray_qt.render_mark
+        monkeypatch.setattr(tray_qt, "render_mark",
+                            lambda *a, **k: calls.append((a, k)) or real(*a, **k))
+        t._apply_icon(tray_qt.MarkFrame("recording", "armed", 30.0, 0.5))
+        assert {a[2] for a, _k in calls} == set(tray_qt._TRAY_SIZES)
+        assert all(a[:2] == ("recording", "armed") and a[3:] == (30.0, 0.5) for a, _k in calls)
+        assert not t._tray.icon().isNull()
+
+    @staticmethod
+    def _app(**state):
+        import dictation
+
+        app = types.SimpleNamespace(
+            recording=False, ava_mode_active=False, ava_command_session_active=False,
+            command_mode_active=False, continuous_active=False, wake_word_active=False,
+            snoozed=False, _tray_heard_eye=None, _icon_rotation=0.0,
+        )
+        for name, value in state.items():
+            setattr(app, name, value)
+        for name in ("_tray_mark", "create_icon_image", "_push_tray_icon", "_flash_tray_heard"):
+            setattr(app, name, getattr(dictation.DictationApp, name).__get__(app))
+        return app
+
+    @pytest.mark.parametrize("state, live", [
+        ("off",       {}),
+        ("idle",      {}),
+        ("asleep",    {"snoozed": True}),
+        ("listening", {"command_mode_active": True}),
+        ("recording", {"recording": True}),
+        ("ava",       {"ava_mode_active": True}),
+        ("armed",     {"wake_word_active": True}),
+        ("heard",     {"wake_word_active": True, "_tray_heard_eye": "heard"}),
+    ])
+    def test_live_app_state_resolves_to_each_named_state(self, state, live):
+        app = self._app(**live)
+        assert app._tray_mark() == tray_qt.MARK_STATES[state]
+        frame = app.create_icon_image()
+        assert isinstance(frame, tray_qt.MarkFrame)
+        assert (frame.capture, frame.eye) == tray_qt.MARK_STATES[state]
+
+    def test_heard_flash_plays_the_keyframes_then_hands_back(self, monkeypatch):
+        import dictation
+
+        pushed = []
+        app = self._app(wake_word_active=True)
+        app._push_tray_icon = lambda: pushed.append(app._tray_mark()[1])
+        monkeypatch.setattr(dictation.thread_registry, "timer",
+                            lambda name, delay, fn, daemon=None: fn())
+        app._flash_tray_heard()
+        assert pushed == ["heard", "armed", "heard", "armed", "asleep", "armed"]
 
 
 class TestQuickReferenceNoLongerBuriedInTools:

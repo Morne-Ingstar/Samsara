@@ -25,7 +25,8 @@ from PySide6.QtGui import (
 from PySide6.QtWidgets import QApplication, QStyle, QWidget
 
 from samsara.runtime import thread_registry
-from samsara.ui import qt_runtime
+from samsara.ui import qt_runtime, theme
+from samsara.ui.tray_qt import paint_mark
 
 log = logging.getLogger(__name__)
 
@@ -254,76 +255,57 @@ class _SplashWidget(QWidget):
     def _paint_panel(painter: QPainter):
         panel = QRectF(7.0, 7.0, 746.0, 416.0)
         gradient = QLinearGradient(0.0, 0.0, _LOGICAL_W, _LOGICAL_H)
-        gradient.setColorAt(0.0, _color("#292c2e", 252))
-        gradient.setColorAt(0.56, _color("#202326", 252))
-        gradient.setColorAt(1.0, _color("#171a1d", 252))
-        painter.setPen(QPen(_color("#5fcbd1", 30), 1.0))
+        # The existing cool surface ladder (theme BG2 -> BG1 -> BG0).
+        gradient.setColorAt(0.0, _color(theme.BG2, 252))
+        gradient.setColorAt(0.56, _color(theme.BG1, 252))
+        gradient.setColorAt(1.0, _color(theme.BG0, 252))
+        painter.setPen(QPen(_color(theme.ACCENT, 30), 1.0))
         painter.setBrush(gradient)
         painter.drawRoundedRect(panel, 38.0, 38.0)
 
     def _paint_knotwork(self, painter: QPainter):
         painter.save()
         painter.setBrush(Qt.BrushStyle.NoBrush)
-        painter.setPen(QPen(_color("#4e9aa0", 18), 2.0))
+        painter.setPen(QPen(_color(theme.ACCENT, 18), 2.0))
         for path in self._knot_paths:
             painter.drawPath(path)
         painter.restore()
 
-    def _paint_vortex(self, painter: QPainter, seconds: float):
-        centre = QPointF(380.0, 213.0)
-        palette = ("#70f1f1", "#f2c873", "#ef7668")
-        painter.save()
-        painter.setBrush(Qt.BrushStyle.NoBrush)
-        for band, value in enumerate(palette):
-            path = QPainterPath()
-            phase = seconds * (0.56 + band * 0.04) + band * math.tau / 3.0
-            for index in range(121):
-                angle = math.tau * index / 120.0
-                radius = (
-                    76.0
-                    + 13.0 * math.sin(3.0 * angle + phase)
-                    + 3.5 * math.sin(7.0 * angle - phase * 0.7)
-                )
-                point = QPointF(
-                    centre.x() + radius * math.cos(angle + phase * 0.1),
-                    centre.y() + radius * math.sin(angle + phase * 0.1),
-                )
-                if index == 0:
-                    path.moveTo(point)
-                else:
-                    path.lineTo(point)
+    #: The brand mark: cyan wheel, lid closed (tray_qt.APP_MARK). The splash
+    #: never uses RECORDING -- nothing is being captured.
+    _MARK = ("listening", "asleep")
+    _MARK_SIZE = 150.0
+    _MARK_SPIN_DEG_PER_S = 42.0
 
-            # Layered strokes provide a controlled glow without blur effects.
-            painter.setPen(QPen(_color(value, 25), 11.0, Qt.PenStyle.SolidLine,
-                                Qt.PenCapStyle.RoundCap, Qt.PenJoinStyle.RoundJoin))
-            painter.drawPath(path)
-            painter.setPen(QPen(_color(value, 105), 3.2, Qt.PenStyle.SolidLine,
-                                Qt.PenCapStyle.RoundCap, Qt.PenJoinStyle.RoundJoin))
-            painter.drawPath(path)
-            painter.setPen(QPen(_color("#f8ffff", 195), 0.9))
-            painter.drawPath(path)
-        painter.restore()
+    def _paint_vortex(self, painter: QPainter, seconds: float):
+        """The Samsara mark at the centre, drawn by the shared routine
+        (tray_qt.paint_mark); the wheel spins while startup works."""
+        centre = QPointF(380.0, 213.0)
+        half = self._MARK_SIZE / 2.0
+        rect = QRectF(centre.x() - half, centre.y() - half, self._MARK_SIZE, self._MARK_SIZE)
+        capture, eye = self._MARK
+        paint_mark(painter, rect, capture, eye, rotation=seconds * self._MARK_SPIN_DEG_PER_S)
 
     def _paint_progress(self, painter: QPainter, seconds: float):
         ring = QRectF(266.0, 99.0, 228.0, 228.0)
         painter.save()
         painter.setBrush(Qt.BrushStyle.NoBrush)
-        painter.setPen(QPen(_color("#6c818a", 70), 7.0, Qt.PenStyle.SolidLine,
+        painter.setPen(QPen(_color(theme.ICON_IDLE, 70), 7.0, Qt.PenStyle.SolidLine,
                             Qt.PenCapStyle.RoundCap))
         painter.drawArc(ring, 0, 360 * 16)
 
         if self._error:
             span = 360.0
             start = 90.0
-            active = "#ef7668"
+            active = theme.ERROR
         elif self._progress is None:
             span = 74.0
             start = 90.0 - (seconds * 42.0 % 360.0)
-            active = "#70e8ec"
+            active = theme.ACCENT
         else:
             span = 360.0 * self._progress
             start = 90.0
-            active = "#f0d488" if self._complete else "#70e8ec"
+            active = theme.SUCCESS if self._complete else theme.ACCENT
 
         painter.setPen(QPen(_color(active, 30), 15.0, Qt.PenStyle.SolidLine,
                             Qt.PenCapStyle.RoundCap))
@@ -356,15 +338,15 @@ class _SplashWidget(QWidget):
         )
         painter.save()
         painter.setBrush(Qt.BrushStyle.NoBrush)
-        painter.setPen(QPen(_color("#a9b9b6", 120), 2.0))
+        painter.setPen(QPen(_color(theme.ICON_IDLE, 120), 2.0))
         painter.drawPath(self._star_path(centre, 43.0, 29.0, 8, seconds * 0.025))
-        painter.setPen(QPen(_color("#d5a76f", 150), 1.4))
+        painter.setPen(QPen(_color(theme.ACCENT, 150), 1.4))
         painter.drawPath(self._star_path(centre, 32.0, 21.0, 4, -seconds * 0.035))
 
         glow = QRadialGradient(centre, 28.0)
-        glow.setColorAt(0.0, _color("#ffd891", round(145 * flicker)))
-        glow.setColorAt(0.45, _color("#f28a4a", round(65 * flicker)))
-        glow.setColorAt(1.0, _color("#d75039", 0))
+        glow.setColorAt(0.0, _color(theme.ACCENT_HOVER, round(145 * flicker)))
+        glow.setColorAt(0.45, _color(theme.ACCENT, round(65 * flicker)))
+        glow.setColorAt(1.0, _color(theme.ACCENT, 0))
         painter.setPen(Qt.PenStyle.NoPen)
         painter.setBrush(glow)
         painter.drawEllipse(centre, 29.0, 29.0)
@@ -377,7 +359,7 @@ class _SplashWidget(QWidget):
         flame.cubicTo(centre.x() + 2.0, centre.y() - 11.0,
                       centre.x() + 22.0, centre.y() + 2.0,
                       centre.x(), centre.y() + 20.0)
-        painter.setBrush(_color("#ffc46e", 220))
+        painter.setBrush(_color(theme.ACCENT_HOVER, 220))
         painter.drawPath(flame)
         painter.restore()
 
@@ -385,31 +367,31 @@ class _SplashWidget(QWidget):
         centre = QPointF(668.0, 330.0)
         rotation = 0.0 if self._reduced_motion else seconds * 0.012
         painter.save()
-        painter.setBrush(_color("#363c3e", 205))
-        painter.setPen(QPen(_color("#9ca6a3", 130), 2.0))
+        painter.setBrush(_color(theme.BG2, 205))
+        painter.setPen(QPen(_color(theme.ICON_IDLE, 130), 2.0))
         painter.drawEllipse(centre, 43.0, 43.0)
         painter.setBrush(Qt.BrushStyle.NoBrush)
         painter.drawEllipse(centre, 35.0, 35.0)
         painter.drawPath(self._star_path(centre, 30.0, 13.0, 6, rotation))
-        painter.setPen(QPen(_color("#d3b884", 105), 1.2))
+        painter.setPen(QPen(_color(theme.ACCENT, 105), 1.2))
         painter.drawPath(self._star_path(centre, 22.0, 10.0, 6, -rotation))
         painter.restore()
 
     def _paint_text(self, painter: QPainter):
         painter.save()
-        painter.setPen(_color("#6ee5e9"))
+        painter.setPen(_color(theme.ACCENT))
         painter.setFont(QFont("Segoe UI Variable Display", 29, QFont.Weight.DemiBold))
         painter.drawText(QRectF(0.0, 21.0, _LOGICAL_W, 47.0),
                          Qt.AlignmentFlag.AlignHCenter | Qt.AlignmentFlag.AlignVCenter,
                          "Samsara")
 
-        painter.setPen(_color("#9da4a5", 190))
+        painter.setPen(_color(theme.ICON_IDLE, 190))
         painter.setFont(QFont("Segoe UI", 12, QFont.Weight.Normal, italic=True))
         painter.drawText(QRectF(0.0, 67.0, _LOGICAL_W, 25.0),
                          Qt.AlignmentFlag.AlignHCenter | Qt.AlignmentFlag.AlignVCenter,
                          "De-articulating Splines.")
 
-        status_color = "#ef8a7f" if self._error else "#e3e7e6"
+        status_color = theme.ERROR if self._error else theme.TEXT_PRIMARY
         painter.setPen(_color(status_color))
         painter.setFont(QFont("Segoe UI", 14, QFont.Weight.DemiBold))
         status = self._status
@@ -419,7 +401,7 @@ class _SplashWidget(QWidget):
                          Qt.AlignmentFlag.AlignHCenter | Qt.AlignmentFlag.AlignVCenter,
                          status)
 
-        painter.setPen(_color("#a7adae", 190))
+        painter.setPen(_color(theme.ICON_IDLE, 190))
         painter.setFont(QFont("Segoe UI", 10))
         painter.drawText(QRectF(135.0, 386.0, 490.0, 24.0),
                          Qt.AlignmentFlag.AlignHCenter | Qt.AlignmentFlag.AlignTop,
@@ -429,7 +411,7 @@ class _SplashWidget(QWidget):
         signature_font = QFont("Segoe UI")
         signature_font.setPixelSize(18)
         painter.setFont(signature_font)
-        painter.setPen(_color("#9aa3a4", 65))
+        painter.setPen(_color(theme.ICON_IDLE, 65))
         painter.drawText(QRectF(445.0, 388.0, 290.0, 32.0),
                          Qt.AlignmentFlag.AlignRight | Qt.AlignmentFlag.AlignBottom,
                          _SIGNATURE_TEXT)
@@ -444,7 +426,7 @@ class _SplashWidget(QWidget):
         strength = math.sin(math.pi * age / 800.0)
         painter.save()
         painter.setBrush(Qt.BrushStyle.NoBrush)
-        painter.setPen(QPen(_color("#f2d891", round(100 * strength)),
+        painter.setPen(QPen(_color(theme.SUCCESS, round(100 * strength)),
                             8.0 + strength * 8.0))
         painter.drawEllipse(QPointF(380.0, 213.0),
                             121.0 + strength * 12.0,
