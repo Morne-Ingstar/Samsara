@@ -709,8 +709,138 @@ class DispatchOutcome:
     # "hands_free_command_refused" | "hands_free_command_blocked" |
     # "hands_free_command_failed" |
     # "ava_dispatched" | "ava_rejected_not_substantive" |
-    # "ava_entry_failed"
+    # "ava_entry_failed" | "dictate_commit_unavailable"
     detail: dict = field(default_factory=dict)
+
+
+# ---------------------------------------------------------------------------
+# Outcome chip vocabulary -- what the listening indicator SAYS happened
+# ---------------------------------------------------------------------------
+#
+# Before this, a MISS, a mode switch, a refused commit and a failed command
+# all produced the same beep, and a deaf user got nothing at all. The chip is
+# the visual half: one short label per dispatch outcome, coloured by meaning.
+# Pure and Qt-free so the whole vocabulary is testable; the listening
+# indicator only ever renders what this returns.
+
+#: Chip kinds. Colours come from samsara.ui.theme in the indicator:
+#: success=SUCCESS, error=ERROR, warning=WARNING, accent=ACCENT,
+#: pending=ACCENT with no TTL, live=ERROR with no TTL (a hold in progress).
+CHIP_KINDS = ("success", "error", "warning", "accent", "pending", "live")
+
+#: Default time on screen, in ms. None = stays until replaced.
+CHIP_TTL_MS = 1800
+_CHIP_TTL_OVERRIDES = {
+    "dictate_committed": 900,
+    "dictate_injected": 900,
+}
+
+#: Outcomes that deliberately show NOTHING. "empty" is a discarded
+#: near-silence decode (never activity); "abort" already has its own loud
+#: session-exit feedback. dictation_chunk is a StackItem kind, not an outcome
+#: kind -- listed only because the queue-41 brief names it, and harmless here.
+_NO_CHIP = frozenset({"empty", "abort", "dictation_chunk"})
+
+_REASON_MAX = 24
+
+# The chip glyphs are built with chr() so this source file stays pure ASCII
+# (non-ASCII literals have caused encoding trouble on this machine). They are
+# symbols, not emoji, and render natively in Qt.
+CHIP_CHECK = chr(0x2713)      # check mark
+CHIP_CROSS = chr(0x2717)      # ballot x
+CHIP_ARROW = chr(0x2192)      # rightwards arrow
+CHIP_ELLIPSIS = chr(0x2026)   # horizontal ellipsis
+
+
+def _short(text, limit=_REASON_MAX) -> str:
+    text = " ".join(str(text or "").split())
+    return text if len(text) <= limit else text[: limit - 1].rstrip() + CHIP_ELLIPSIS
+
+
+def _reason(kind: str, detail: dict) -> str:
+    for key in ("reason", "error"):
+        value = detail.get(key) if isinstance(detail, dict) else None
+        if value:
+            return _short(value)
+    return _short(kind.replace("_", " "))
+
+
+def _first_two_words(phrase) -> str:
+    return " ".join(str(phrase or "").split()[:2])
+
+
+def _mode_label(mode) -> str:
+    value = getattr(mode, "value", mode)
+    return str(value or "").upper()
+
+
+def outcome_chip(kind: str, detail: Optional[dict] = None) -> "tuple[str, str] | None":
+    """(label, chip_kind) for a DispatchOutcome kind, or None for no chip.
+
+    Every kind DispatchOutcome is constructed with in this module is mapped;
+    tests/test_outcome_chip.py enumerates them from this file's AST so a new
+    kind without a chip fails the suite. An unmapped kind that still reaches
+    here at runtime returns ("? <kind>", "warning") -- visibly wrong on
+    purpose, so it gets noticed and mapped; the caller logs it at WARNING.
+    """
+    detail = detail if isinstance(detail, dict) else {}
+
+    if kind in _NO_CHIP:
+        return None
+
+    if kind == "command_miss":
+        return ("MISS", "error")
+    if kind in ("command_executed", "hands_free_command_executed"):
+        verb = _first_two_words(detail.get("phrase"))
+        return (f"{CHIP_CHECK} {verb}" if verb else CHIP_CHECK, "success")
+    if kind == "mode_switch":
+        mode = _mode_label(detail.get("mode"))
+        return (f"{CHIP_ARROW} {mode}" if mode else CHIP_ARROW, "accent")
+
+    if kind in ("ava_entry_failed", "hands_free_command_failed",
+                "dictate_commit_failed", "prefix_switch_failed"):
+        return (f"{CHIP_CROSS} {_reason(kind, detail)}", "error")
+
+    if kind in ("dictate_commit_blocked_focus_lock", "dictate_suppressed_focus_lock"):
+        return ("refused: focus lock", "warning")
+    if kind == "hands_free_command_blocked":
+        commit = str(detail.get("commit_outcome", ""))
+        why = "focus lock" if "focus" in commit else "blocked"
+        return (f"refused: {why}", "warning")
+    if kind in ("dictate_commit_refused", "hands_free_command_refused"):
+        return ("refused: unclear", "warning")
+    # Found in source, not named in the queue-41 brief -- mapped on purpose.
+    if kind == "dictate_commit_unavailable":
+        return ("refused: nothing staged", "warning")
+    if kind == "scratch_refuse":
+        return ("refused: undo", "warning")
+
+    if kind in ("dictate_committed", "dictate_injected"):
+        return ("typed", "success")
+    if kind in ("dictate_staged", "dictation_staged_chunk"):
+        return ("staged", "pending")
+    if kind == "scratch_success":
+        return ("undone", "success")
+
+    if kind == "ava_dispatched":
+        return (f"Ava{CHIP_ELLIPSIS}", "pending")
+    if kind == "ava_rejected_not_substantive":
+        return ("Ava: nothing to do", "warning")
+
+    return (f"? {kind}", "warning")
+
+
+def is_mapped_outcome(kind: str) -> bool:
+    """False only for the '? <kind>' fallback -- used to log unmapped kinds."""
+    chip = outcome_chip(kind)
+    return chip is None or not chip[0].startswith("? ")
+
+
+def chip_ttl_ms(outcome_kind: str, chip_kind: str) -> "int | None":
+    """How long a chip stays up. None = until replaced (pending / live)."""
+    if chip_kind in ("pending", "live"):
+        return None
+    return _CHIP_TTL_OVERRIDES.get(outcome_kind, CHIP_TTL_MS)
 
 
 ForegroundResolver = Callable[[], Optional[str]]

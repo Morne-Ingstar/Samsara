@@ -828,6 +828,7 @@ class _SettingsWindow(QMainWindow):
         self._stack.addWidget(self._build_advanced_tab())      # 8  Advanced
         self._stack.addWidget(self._build_support_tab())       # 9  Help & Support
 
+        self._apply_metric_minimum_widths()
         self._build_search_registry()
 
         self._stack.setCurrentIndex(self._sidebar_row_to_stack_index[first_selectable_row])
@@ -909,6 +910,32 @@ class _SettingsWindow(QMainWindow):
     # ------------------------------------------------------------------
     # Search: live filter across all tabs
     # ------------------------------------------------------------------
+
+    #: Buttons whose minimum width was a literal tuned against Segoe UI
+    #: metrics. The literal stays as the touch-target FLOOR (never narrower
+    #: than it renders today, per the 40px+ accessibility rule); the effective
+    #: minimum is whichever is larger, the floor or the button's own sizeHint.
+    _METRIC_MIN_WIDTH_BUTTONS = {
+        "microphoneRefreshButton": 104,
+    }
+
+    def _apply_metric_minimum_widths(self) -> None:
+        """Re-derive hardcoded button minimums from each button's own metrics.
+
+        Runs AFTER the pages are in self._stack, which is when the window's
+        STYLESHEET cascade actually reaches them: a QPushButton's sizeHint()
+        only includes the stylesheet's padding once it is parented and
+        polished (bare 98px -> 146px styled, measured). Reading it inside the
+        page builder returns the unstyled width, which is exactly the mistake
+        the literals encoded -- they were correct for Segoe UI and clipped the
+        label under any wider font stack.
+        """
+        for object_name, floor_px in self._METRIC_MIN_WIDTH_BUTTONS.items():
+            button = self.findChild(QPushButton, object_name)
+            if button is None:
+                continue
+            button.ensurePolished()
+            button.setMinimumWidth(max(floor_px, button.sizeHint().width()))
 
     def _build_search_registry(self) -> None:
         """Discover every setting row across all tabs by walking the widget
@@ -1172,6 +1199,13 @@ class _SettingsWindow(QMainWindow):
         mic_refresh_btn = QPushButton("Refresh")
         mic_refresh_btn.setObjectName("microphoneRefreshButton")
         mic_refresh_btn.setSizePolicy(QSizePolicy.Policy.Minimum, QSizePolicy.Policy.Fixed)
+        # 104 stays the touch-target FLOOR (the 40px+ accessibility rule --
+        # never narrower than it renders today), but the effective minimum is
+        # now driven by the button's own metrics. The bare 104 assumed Segoe
+        # UI: under any wider font stack the label needs 146 and was clipped,
+        # because sizeHint() scales with the font and a literal does not.
+        # max() means real-platform rendering is unchanged (there sizeHint is
+        # 95, so 104 still wins).
         mic_refresh_btn.setMinimumWidth(104)  # Includes inherited 24px side padding.
         mic_row_layout.addWidget(mic_refresh_btn)
 
@@ -2818,6 +2852,12 @@ class _SettingsWindow(QMainWindow):
         layout.addLayout(cmd_header)
 
         instant_note = QLabel("Changes to commands below apply immediately.")
+        # Word-wrap so this sentence cannot force a horizontal scrollbar on the
+        # Commands page. An unwrapped QLabel reports its FULL single-line width
+        # as minimumSizeHint, which under a wider font stack than Segoe UI
+        # (528px here vs a 530px viewport) drags the whole page wider. Wrapping
+        # does not change how it renders where it already fits on one line.
+        instant_note.setWordWrap(True)
         instant_note.setStyleSheet("color: #8A8A92; font-size: 12px;")
         layout.addWidget(instant_note)
         layout.addSpacing(4)
@@ -2901,6 +2941,10 @@ class _SettingsWindow(QMainWindow):
         layout.addLayout(btn_row)
 
         footer = QLabel("Say these phrases while recording to trigger actions.")
+        # Same reason as instant_note above: unwrapped, this label's 636px
+        # single-line minimum is the widest thing on the page and is what the
+        # horizontal scrollbar was tracking.
+        footer.setWordWrap(True)
         footer.setStyleSheet("color: #8A8A92; font-size: 12px;")
         layout.addWidget(footer)
 
@@ -3541,20 +3585,81 @@ class _SettingsWindow(QMainWindow):
     # Sounds tab helpers
     # ------------------------------------------------------------------
 
+    def _test_volume(self) -> "float | None":
+        """The Sounds tab slider's CURRENT value (0..1), saved or not."""
+        slider = self._widgets.get('sound_volume_slider')
+        if slider is None:
+            return None
+        return slider.value() / 100.0
+
     def _play(self, sounds_dir, sound_key: str) -> None:
-        """Play a sound — tries app.play_sound first, falls back to winsound."""
+        """Play a sound at the slider's current (unsaved) volume.
+
+        Tries app.play_sound first, falls back to winsound. Previously this
+        called app.play_sound(key) with no volume, so Test played at the SAVED
+        sound_volume and moving the slider changed nothing until Apply.
+        """
+        volume = self._test_volume()
         try:
-            self.app.play_sound(sound_key)
+            self.app.play_sound(sound_key, volume=volume)
             return
+        except TypeError:
+            # An app double without the volume parameter -- still play.
+            try:
+                self.app.play_sound(sound_key)
+                return
+            except Exception as e:
+                logger.debug(f"_play: {e}")
         except Exception as e:
             logger.debug(f"_play: {e}")
-        try:
-            import winsound
-            wav = sounds_dir / f"{sound_key}.wav"
-            if wav.exists():
-                winsound.PlaySound(str(wav), winsound.SND_FILENAME | winsound.SND_ASYNC)
-        except Exception as e:
-            print(f"[SOUNDS] Could not play {sound_key}: {e}")
+        wav = sounds_dir / f"{sound_key}.wav"
+        if wav.exists():
+            self._play_wav_at_volume(wav, volume)
+
+    @staticmethod
+    def _play_wav_at_volume(wav, volume) -> None:
+        """winsound fallback that still honours the slider.
+
+        winsound.PlaySound has no volume parameter, so a plain SND_FILENAME
+        call plays at full level regardless of the slider. For 16-bit PCM --
+        every shipped earcon -- the samples are scaled into an in-memory WAV
+        and played with SND_MEMORY. winsound refuses SND_MEMORY together with
+        SND_ASYNC, so that playback runs synchronously on a daemon thread to
+        keep the Qt thread free. Any other format falls back to the old
+        unscaled async playback.
+        """
+        def _scaled_bytes():
+            import array
+            import io
+            import wave
+
+            with wave.open(str(wav), "rb") as src:
+                params = src.getparams()
+                if params.sampwidth != 2:
+                    return None
+                frames = src.readframes(params.nframes)
+            samples = array.array("h", frames)
+            gain = 1.0 if volume is None else min(max(float(volume), 0.0), 1.0)
+            for i, value in enumerate(samples):
+                samples[i] = int(value * gain)
+            out = io.BytesIO()
+            with wave.open(out, "wb") as dst:
+                dst.setparams(params)
+                dst.writeframes(samples.tobytes())
+            return out.getvalue()
+
+        def _run():
+            try:
+                import winsound
+                data = _scaled_bytes() if volume is not None else None
+                if data is not None:
+                    winsound.PlaySound(data, winsound.SND_MEMORY)
+                else:
+                    winsound.PlaySound(str(wav), winsound.SND_FILENAME | winsound.SND_ASYNC)
+            except Exception as e:
+                print(f"[SOUNDS] Could not play {wav.name}: {e}")
+
+        threading.Thread(target=_run, name="settings-sound-test", daemon=True).start()
 
     def _apply_sound_theme(self, theme: str, sounds_dir, themes_dir) -> None:
         """Copy WAV files from the selected theme folder into sounds_dir."""
