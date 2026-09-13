@@ -14,8 +14,17 @@ from typing import Any, Callable, Dict, Optional, Tuple
 
 from . import plugin_commands as _plugin_commands
 from .command_packs import get_enabled_packs
-from .command_registry import CommandMatcher
+from .command_registry import (
+    CommandMatcher,
+    DispatchResult,
+    DispatchState,
+    adapt_handler_return,
+    argument_text,
+    view_tokens,
+)
 from .handlers import CommandContext, get_handler
+from . import execution_policy
+from .execution_policy import Invocation, Route
 from .phonetic_wash import apply_phonetic_wash
 
 from samsara.log import get_logger
@@ -78,10 +87,11 @@ except ImportError:
 class CommandExecutor:
     """Executes voice commands — hotkeys, launches, key holds, etc.
 
-    This is the single authoritative implementation.  dictation.py imports it;
-    tests validate it directly.  The class carries the full production feature
-    set: command debounce, reminder parsing, force_commands bypass for wake
-    word mode, and Smart Actions routing.
+    This is the single authoritative implementation and the production
+    executor: DictationApp constructs it and every voice-command lane
+    dispatches through process_text().  The class carries the full production
+    feature set: command debounce, reminder parsing, force_commands bypass for
+    wake word mode, and Smart Actions routing.
 
     Args:
         commands_path: Path to commands.json (defaults to repo root).
@@ -141,6 +151,11 @@ class CommandExecutor:
         print(f"[PLUGINS] Loaded {unique} plugin commands")
 
         self.rebuild_matcher()
+
+        # Plugin background services (e.g. ask_ollama's health monitor) start
+        # here, once, for a real app -- never as an import side effect.
+        if app is not None:
+            _plugin_commands.start_plugin_services(app)
 
     # ── Command file I/O ────────────────────────────────────────────────────────
 
@@ -259,9 +274,27 @@ class CommandExecutor:
             app=effective_app,
         )
 
-    def execute_command(self, command_name: str, app_instance: Any = None) -> bool:
-        """Execute a voice command by name via the handler registry."""
+    def execute_command(self, command_name: str, app_instance: Any = None, *,
+                        route: Route = Route.EXACT, generation: "int | None" = None,
+                        prompt: str = "", confirmed: bool = False,
+                        args: "dict | None" = None, source_text: str = "") -> bool:
+        """Execute a voice command by name via the handler registry.
+
+        THE built-in choke point (samsara.execution_policy): nothing below
+        touches the keyboard/mouse/apps until authorize() says Allowed.
+        NeedsConfirmation stages the invocation (a later "yes" re-enters
+        here with confirmed=True); Denied executes nothing. Returns True
+        only when the effect actually ran.
+        """
         if command_name not in self.commands:
+            return False
+        effective_app = app_instance if app_instance is not None else self._app
+        inv = Invocation(command_name, dict(args or {}), route, generation, prompt, source_text)
+        decision = execution_policy.authorize(inv, app=effective_app, executor=self, confirmed=confirmed)
+        if isinstance(decision, execution_policy.Denied):
+            return False
+        if isinstance(decision, execution_policy.NeedsConfirmation):
+            self._stage_confirmation(effective_app, inv, decision)
             return False
 
         cmd = self.commands[command_name]
@@ -279,6 +312,29 @@ class CommandExecutor:
         except Exception as e:
             print(f"[ERROR] Command execution error: {e}")
             return False
+
+    def _stage_confirmation(self, app, inv: Invocation, decision) -> None:
+        """Park a NeedsConfirmation in the shared pending slot and ask. "yes"
+        (ask_ollama.handle_ava_confirm) re-enters execute_command with
+        confirmed=True; "ava cancel"/stop rejects it."""
+        def _approve(op):
+            self.execute_command(inv.command_id, app, route=inv.route, generation=inv.generation,
+                                 prompt=inv.prompt, confirmed=True, args=inv.args,
+                                 source_text=inv.source_text)
+        execution_policy.stage_pending(app, inv, decision.prompt, on_approve=_approve,
+                                       record_type="action")
+        self._speak_confirmation(app, decision.prompt)
+
+    def _speak_confirmation(self, app, prompt: str) -> None:
+        text = f"{prompt} -- say yes to confirm, or say ava cancel."
+        speak = getattr(app, 'audio_coordinator', None)
+        try:
+            if speak is not None:
+                speak.speak(text, category="confirmation")
+            else:
+                print(f"[POLICY] {text}")
+        except Exception as e:
+            print(f"[POLICY] confirmation prompt failed: {e}")
 
     def find_command(self, text: str) -> Optional[str]:
         """Return the canonical phrase of the best matching command, or None."""
@@ -301,7 +357,10 @@ class CommandExecutor:
         text: str,
         app_instance: Any = None,
         force_commands: bool = False,
-    ) -> Tuple[Optional[str], bool]:
+        *,
+        route: Route = Route.EXACT,
+        generation: "int | None" = None,
+    ) -> DispatchResult:
         """Process transcribed text — execute a command or return text for dictation.
 
         Args:
@@ -313,11 +372,16 @@ class CommandExecutor:
                            word mode where commands always execute.
 
         Returns:
-            (result, was_command) where result is the matched command phrase,
-            the processed text, or None on empty input.
+            DispatchResult. Unpacks as (result, was_command): result is the
+            matched command phrase, the unprocessed text, or None on empty
+            input; was_command is True for EVERY state except MISS. A command
+            that was matched but failed, was rejected (debounce, policy) or
+            is only queued is still a command -- callers must never re-offer
+            it as dictation or as a new model request. Read .state for the
+            outcome.
         """
         if not text:
-            return None, False
+            return DispatchResult.miss(None)
 
         effective_app = app_instance if app_instance is not None else self._app
         text_lower = text.lower().strip()
@@ -332,7 +396,7 @@ class CommandExecutor:
                     effective_app.config.setdefault('command_mode', {})['command_matching_enabled'] = True
                     effective_app.save_config()
             print("[OK] Command mode ENABLED")
-            return "command_mode_on", True
+            return DispatchResult(DispatchState.COMPLETED, "command_mode_on", "command_mode_on")
 
         if ("command mode off" in text_lower
                 or "command mode disable" in text_lower
@@ -343,7 +407,7 @@ class CommandExecutor:
                     effective_app.config.setdefault('command_mode', {})['command_matching_enabled'] = False
                     effective_app.save_config()
             print("[OFF] Command mode DISABLED")
-            return "command_mode_off", True
+            return DispatchResult(DispatchState.COMPLETED, "command_mode_off", "command_mode_off")
 
         # Reminder commands — always work regardless of command mode
         if effective_app and hasattr(effective_app, 'notification_manager'):
@@ -354,12 +418,13 @@ class CommandExecutor:
                 effective_app.notification_manager.add_quick_reminder(minutes, message)
                 print(f"[OK] Reminder set for {minutes} minutes: {message}")
                 effective_app.play_sound("success")
-                return f"reminder_{minutes}min", True
+                name = f"reminder_{minutes}min"
+                return DispatchResult(DispatchState.COMPLETED, name, name)
 
         # Gate on command_matching_enabled — bypassed by wake word mode via force_commands
         if not force_commands:
             if effective_app and not effective_app.command_matching_enabled:
-                return text, False
+                return DispatchResult.miss(text)
 
         # Phonetic wash for matching only; original text is returned on fallthrough
         # so free-form dictation output is never silently rewritten.
@@ -375,31 +440,94 @@ class CommandExecutor:
                 sa_cfg = getattr(self._app, 'config', {}).get('smart_actions', {})
                 if sa_cfg.get('enabled', False):
                     if self._try_smart_actions_route(text):
-                        return text, True
-            return text, False
+                        return DispatchResult(DispatchState.QUEUED, text, None,
+                                              {'route': 'smart_actions'})
+            return DispatchResult.miss(text)
+        # The wash lowercases and scrubs punctuation for matching; the command
+        # argument must come from what the user actually said.
+        remainder = self._original_remainder(text, match_text, entry, remainder)
 
         # Command mode debounce: suppress rapid re-execution of flagged commands
         in_cmd_mode = getattr(effective_app, 'command_mode_active', False)
         if in_cmd_mode and self._matcher.should_suppress(entry):
             print(f"[CMD] Debounce: '{entry.phrase}' still in cooldown")
-            return entry.phrase, False
+            return DispatchResult(DispatchState.REJECTED, entry.phrase, entry.phrase,
+                                  {'reason': 'debounce'})
 
         if entry.source == 'plugin':
+            # Plugin choke point: same policy, same pending slot as built-ins.
+            inv = Invocation(entry.phrase, {'remainder': remainder}, route, generation, source_text=text)
+            decision = execution_policy.authorize(inv, app=effective_app, executor=self)
+            if isinstance(decision, execution_policy.Denied):
+                # Matched, but not executed. Still "a command" so no caller
+                # re-interprets the utterance as dictation or a model request.
+                return DispatchResult(DispatchState.REJECTED, entry.phrase, entry.phrase,
+                                      {'reason': 'policy'})
+            if isinstance(decision, execution_policy.NeedsConfirmation):
+                def _approve(op, _entry=entry, _rem=remainder, _app=effective_app):
+                    try:
+                        _entry.handler(_app, _rem)
+                    except Exception as e:
+                        print(f"[ERROR] Plugin '{_entry.phrase}' failed: {e}")
+                execution_policy.stage_pending(effective_app, inv, decision.prompt, on_approve=_approve,
+                                               record_type="action")
+                self._speak_confirmation(effective_app, decision.prompt)
+                return DispatchResult(DispatchState.QUEUED, entry.phrase, entry.phrase,
+                                      {'awaiting_confirmation': True})
             print(f"[PLUGIN] Executing: {entry.phrase}")
             try:
-                success = bool(entry.handler(effective_app, remainder))
+                state = adapt_handler_return(entry.handler(effective_app, remainder))
             except Exception as e:
                 print(f"[ERROR] Plugin '{entry.phrase}' failed: {e}")
-                success = False
-            if success:
+                return DispatchResult(DispatchState.FAILED, entry.phrase, entry.phrase,
+                                      {'error': str(e)})
+            if state is DispatchState.MISS:
+                # The handler declined (documented `return False`): not this
+                # command after all, so the utterance is the caller's again.
+                return DispatchResult.miss(text, {'declined_by': entry.phrase})
+            if state in (DispatchState.COMPLETED, DispatchState.QUEUED):
                 self._matcher.record_execution(entry)
-            return entry.phrase, success
+            return DispatchResult(state, entry.phrase, entry.phrase)
 
-        # Built-in command types route through execute_command -> handler registry
-        success = self.execute_command(entry.phrase, app_instance=effective_app)
+        # Built-in command types route through execute_command -> handler
+        # registry (the choke point lives there). Built-ins never decline, so
+        # False is a failed (or policy-held) command, not dictation.
+        success = self.execute_command(entry.phrase, app_instance=effective_app,
+                                       route=route, generation=generation, source_text=text)
         if success:
             self._matcher.record_execution(entry)
-        return entry.phrase, success
+            return DispatchResult(DispatchState.COMPLETED, entry.phrase, entry.phrase)
+        return DispatchResult(DispatchState.FAILED, entry.phrase, entry.phrase)
+
+    def _original_remainder(self, text: str, match_text: str, entry, washed_remainder: str) -> str:
+        """Map a match made on the phonetically washed text back to the
+        argument span of the ORIGINAL utterance.
+
+        The wash may rewrite the command phrase itself ("fine tab" -> "find
+        tab"), so the original is re-matched first; failing that, the shortest
+        original prefix whose wash reproduces exactly the matched phrase
+        tokens marks where the argument begins. When neither maps cleanly the
+        washed remainder is kept (the pre-contract behaviour) rather than
+        guessing at a split.
+        """
+        if not washed_remainder or match_text == text:
+            return washed_remainder
+        detail = self._matcher.match_detail(text)
+        if detail is not None and detail.entry is entry:
+            return detail.remainder
+
+        washed = [tok for tok, _s, _e in view_tokens(match_text)]
+        consumed = len(washed) - len(view_tokens(washed_remainder))
+        if consumed <= 0:
+            return washed_remainder
+        phrase = washed[:consumed]
+        for _norm, _start, end in view_tokens(text)[:consumed + 3]:
+            prefix = [tok for tok, _s, _e in view_tokens(apply_phonetic_wash(text[:end]) or '')]
+            if prefix == phrase:
+                return argument_text(text, end)
+            if len(prefix) > consumed:
+                break
+        return washed_remainder
 
     # ── Smart Actions routing ───────────────────────────────────────────────────
 

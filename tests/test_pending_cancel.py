@@ -110,7 +110,9 @@ def test_latched_ava_nevermind_without_pending_remains_ordinary_agent_prose():
 
     app._ava_session_agent_dispatch_fn("nevermind", None)
 
-    app._start_ava_session_worker.assert_called_once_with("nevermind")
+    # Queue items are generation-bound requests (execution policy), not
+    # bare strings: (generation, text).
+    app._start_ava_session_worker.assert_called_once_with((0, "nevermind"))
     assert app._ava_session_request_in_flight is True
 
 

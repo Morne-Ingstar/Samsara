@@ -11,6 +11,8 @@ from samsara.ava_memory import AvaMemory
 from samsara.languages import LANGUAGES
 from samsara.plugin_commands import command
 from samsara.runtime import thread_registry
+from samsara import execution_policy
+from samsara.execution_policy import Invocation, Route
 
 from samsara.log import get_logger
 
@@ -209,27 +211,10 @@ def _build_ava_memory(app):
 # Anything destructive, irreversible, or context-sensitive in a way that
 # misfiring would be costly. Everything NOT in this set executes immediately.
 
-_UNSAFE_COMMANDS = {
-    # Closing / destructive window ops
-    "close tab", "close window", "close virtual desktop",
-    # File operations
-    "delete file", "permanent delete", "remove file",
-    "delete word", "delete next word", "delete line",
-    # Text operations that lose data silently
-    "cut",
-    # Form / message submission
-    "submit",
-    # Toggles that re-fire as cancel
-    "record screen",
-    # System-level
-    "lock screen", "lock computer", "shutdown", "restart computer", "sleep",
-    # Accessibility toggles users may not want re-fired
-    "start narrator", "stop narrator",
-    # 3D printer destructive
-    "abort print", "cancel print", "cancel printing",
-    # Email / messaging send (when added)
-    "send email", "send message",
-}
+# Retired 2026-09-12 (execution policy): the model-route safety net used to be
+# this denylist, which missed the real "enter" / "delete selection" commands.
+# Risk now comes from samsara.execution_policy.classify() for EVERY route.
+_UNSAFE_COMMANDS: frozenset = frozenset()
 
 # ── ACTION2 grammar v2 -- parameterized app/window verbs ──────────────────────
 # ACTION2 <verb> | <argument>: deterministic resolution (samsara.app_index +
@@ -238,11 +223,10 @@ _UNSAFE_COMMANDS = {
 # plugins.commands.app_verbs.ACTION2_VERB_FUNCS.
 ACTION2_VERBS = ("focus", "open", "close")
 
-# Same spirit as _UNSAFE_COMMANDS above: "close" can lose unsaved work, so it
-# requires confirmation like "close tab"/"close window" already do. "focus"
-# and "open" are no more risky than the existing "open chrome"-style macros
-# (never in _UNSAFE_COMMANDS), so they execute immediately.
-_UNSAFE_ACTION2_VERBS = {"close"}
+# "close" can lose unsaved work, so it requires confirmation like "close
+# tab"/"close window" do; "focus"/"open" execute immediately. Both facts now
+# live in samsara.execution_policy._ACTION2_RISK (one table for every route).
+_UNSAFE_ACTION2_VERBS: frozenset = frozenset()   # retired -- see execution_policy._ACTION2_RISK
 
 # ── Module-level state ────────────────────────────────────────────────────────
 
@@ -699,7 +683,13 @@ def _parse_structured_response(response):
 
 # ── Intent router ─────────────────────────────────────────────────────────────
 
-def handle_response(app, response, original_text=None):
+def handle_response(app, response, original_text=None, *, generation=None):
+    """Route one model response. The model can only NAME a tool id (ACTION)
+    or an ACTION2 verb + argument; whether it runs, is confirmed first, or
+    is refused is decided by samsara.execution_policy at the executor,
+    never here. `generation` is the request identity captured when the
+    request was made -- a response arriving after "cancel"/exit/sleep is
+    Denied(stale) at the choke point."""
     global _pending_action
     if not isinstance(response, str):
         speak(app, "Ollama returned an invalid response.")
@@ -710,14 +700,17 @@ def handle_response(app, response, original_text=None):
         return
 
     print(f"[AVA RAW] {response!r}")
+    if generation is None:
+        generation = execution_policy.current_generation(app)
 
-    # Backward-compat: honour old EXECUTE prefix
+    # The legacy executable protocol ("EXECUTE <free text>") is gone
+    # (Astra 2026-09-12 section 1 item 1): it ran before any confirmation.
+    # A model still emitting it gets a refusal, not an effect.
     if response.startswith("EXECUTE "):
-        command_name = response[8:].strip()
-        if hasattr(app, "command_executor"):
-            app.command_executor.execute_command(command_name)
-        else:
-            speak(app, f"Cannot execute '{command_name}'. Command executor unavailable.")
+        execution_policy._emit(app, Invocation(response[8:].strip().lower(), route=Route.MODEL,
+                                               generation=generation, source_text=original_text or ""),
+                               execution_policy.Denied("legacy_protocol", detail="EXECUTE free text"))
+        speak(app, "That's not a tool I can run.")
         return
 
     parsed = _parse_structured_response(response)
@@ -730,24 +723,19 @@ def handle_response(app, response, original_text=None):
             command_name = re.sub(r'\bopen the\b', 'open', command_name)
             command_name = re.sub(r'\bclose the\b', 'close', command_name)
             command_name = re.sub(r'\s+', ' ', command_name).strip()
-        if command_name and command_name not in _UNSAFE_COMMANDS:
-            # Safe by default — execute immediately, earcon is enough feedback
-            if hasattr(app, "command_executor"):
-                app.command_executor.execute_command(command_name)
-                _track_alias_uses(original_text)
-            else:
-                speak(app, "Command executor unavailable.")
-        else:
-            # Risky command — require confirmation
-            with _pending_action_lock:
-                _pending_action = {
-                    "type": "action",
-                    "command": command_name,
-                    "confirm_text": parsed["confirm_text"],
-                    "original_text": original_text or "",
-                    "expires": time.time() + 30,
-                }
-            speak(app, parsed["confirm_text"] + " -- say yes to confirm, or say ava cancel.")
+        if not command_name:
+            speak(app, "I didn't get a command out of that.")
+            return
+        executor = getattr(app, "command_executor", None)
+        if executor is None:
+            speak(app, "Command executor unavailable.")
+            return
+        # One choke point: execute_command authorizes (route=model), runs a
+        # read/ui tool, stages write/destructive/unknown for "yes", or denies.
+        ran = executor.execute_command(command_name, app, route=Route.MODEL, generation=generation,
+                                       prompt=parsed["confirm_text"], source_text=original_text or "")
+        if ran:
+            _track_alias_uses(original_text)
 
     elif parsed["type"] == "action2":
         verb = parsed["verb"]
@@ -755,20 +743,12 @@ def handle_response(app, response, original_text=None):
         if verb not in ACTION2_VERBS:
             # Model hallucinated an unlisted verb -- fail closed, no guessing.
             speak(app, f"I don't know how to {verb} things.")
-        elif verb in _UNSAFE_ACTION2_VERBS:
-            with _pending_action_lock:
-                _pending_action = {
-                    "type": "action2",
-                    "verb": verb,
-                    "argument": argument,
-                    "confirm_text": parsed["confirm_text"],
-                    "original_text": original_text or "",
-                    "expires": time.time() + 30,
-                }
-            speak(app, parsed["confirm_text"] + " -- say yes to confirm, or say ava cancel.")
         else:
-            _execute_action2(app, verb, argument)
-            _track_alias_uses(original_text)
+            result = _execute_action2(app, verb, argument, route=Route.MODEL, generation=generation,
+                                      prompt=parsed["confirm_text"], source_text=original_text or "")
+            from plugins.commands.app_verbs import ActionResult
+            if result is ActionResult.DONE:
+                _track_alias_uses(original_text)
 
     elif parsed["type"] == "schedule":
         with _pending_action_lock:
@@ -779,6 +759,7 @@ def handle_response(app, response, original_text=None):
                 "key": parsed["key"],
                 "confirm_text": parsed["confirm_text"],
                 "original_text": original_text or "",
+                "generation": generation,
                 "expires": time.time() + 30,
             }
         speak(app, parsed["confirm_text"] + " -- say yes to confirm, or say ava cancel.")
@@ -787,14 +768,18 @@ def handle_response(app, response, original_text=None):
         speak(app, response)
 
 
-def _execute_action2(app, verb, argument):
+def _execute_action2(app, verb, argument, *, route=Route.GRAMMAR, generation=None, prompt="",
+                     confirmed=False, source_text="", speak_fn=None):
     """Execute an ACTION2 verb via the SAME deterministic resolvers the
     plain "focus/open/close <x>" voice commands use (plugins.commands.
     app_verbs) -- one resolution path, Ava-specific feedback layered here.
-    Resolver miss -> speak failure, execute nothing. Success is silent here
-    (matching the existing ACTION path's "earcon is enough feedback" for
-    immediate, non-confirmed execution) -- returns the ActionResult so a
-    confirmed (post "yes") caller can say "Done." itself.
+
+    THE ACTION2 choke point: authorize() runs immediately before do_x().
+    focus/open are ui (Allowed); close is destructive (NeedsConfirmation on
+    every route -- staged here, resolved by "yes" re-entering with
+    confirmed=True). A stale generation executes nothing.
+    Resolver miss -> speak failure, execute nothing. Returns the
+    ActionResult (NOT_FOUND for anything that did not run).
     """
     from plugins.commands.app_verbs import ActionResult, do_close, do_focus, do_open
 
@@ -802,6 +787,31 @@ def _execute_action2(app, verb, argument):
     action_fn = verb_funcs.get(verb)
     if action_fn is None:
         speak(app, f"I don't know how to {verb} things.")
+        return ActionResult.NOT_FOUND
+
+    if generation is None:
+        generation = execution_policy.current_generation(app)
+    inv = Invocation(f"action2:{verb}", {"target": argument}, route, generation,
+                     prompt or f"{verb.capitalize()} {argument}.", source_text)
+    decision = execution_policy.authorize(inv, app=app, confirmed=confirmed)
+    if isinstance(decision, execution_policy.Denied):
+        if decision.reason != "stale":
+            speak(app, f"I can't {verb} that.")
+        return ActionResult.NOT_FOUND
+    if isinstance(decision, execution_policy.NeedsConfirmation):
+        def _approve(op):
+            res = _execute_action2(app, verb, argument, route=route, generation=generation,
+                                   prompt=prompt, confirmed=True, source_text=source_text)
+            if res is ActionResult.DONE:
+                speak(app, "Done.")
+        execution_policy.stage_pending(app, inv, decision.prompt, on_approve=_approve,
+                                       extra={"verb": verb, "argument": argument, "route": route},
+                                       record_type="action2")
+        ask_text = decision.prompt + " -- say yes to confirm, or say ava cancel."
+        if speak_fn is not None:
+            speak_fn(ask_text)      # the waterfall's generation-bound voice
+        else:
+            speak(app, ask_text)
         return ActionResult.NOT_FOUND
     result = action_fn(argument)
     if result is ActionResult.NOT_RUNNING:
@@ -815,10 +825,16 @@ def _execute_action2(app, verb, argument):
 
 def _execute_safe(app, action):
     """Execute a command or keypress from any thread, marshalling to main thread."""
+    generation = action.get("generation")
+    if generation is not None and not execution_policy.is_current(app, generation):
+        _stop_schedule()
+        return
     if action.get("command"):
         def _run():
             try:
-                app.command_executor.execute_command(action["command"])
+                app.command_executor.execute_command(
+                    action["command"], app, route=Route.SCHEDULE, generation=generation,
+                    prompt=action.get("confirm_text", ""))
             except Exception as e:
                 print(f"[AVA SCHEDULER] Command error: {e}")
         # _schedule_ui marshals to Qt main thread via QTimer.singleShot — safe from background threads
@@ -827,7 +843,15 @@ def _execute_safe(app, action):
         else:
             _run()
     elif action.get("key"):
-        _press_key(action["key"])
+        # The KEY form has no registry entry; classify the keys themselves.
+        # A repeat that turns out to be destructive/unknown is stopped, not
+        # pressed on a timer with nobody watching.
+        inv = Invocation(f"key:{action['key']}", route=Route.SCHEDULE, generation=generation,
+                         prompt=action.get("confirm_text", ""))
+        if isinstance(execution_policy.authorize(inv, app=app), execution_policy.Allowed):
+            _press_key(action["key"])
+        else:
+            _stop_schedule()
 
 
 def _press_key(key_string):
@@ -1414,11 +1438,12 @@ def _check_teaching_intent(app, text):
 
 @command(
     "hey ava",
+    risk_class="safe",
     aliases=["ava", "ask ava", "samsara think", "think about", "what do you think"],
     pack="ai",
     ai_visible=False,
 )
-def handle_ask_ava(app, remainder="", on_done=None, **kwargs):
+def handle_ask_ava(app, remainder="", on_done=None, generation=None, **kwargs):
     """on_done: optional zero-arg callback fired exactly once, however this
     call exits -- early return (disabled/empty/unreachable) or after the
     worker thread finishes (success, short-circuit, or exception). Added for
@@ -1443,6 +1468,13 @@ def handle_ask_ava(app, remainder="", on_done=None, **kwargs):
             _done()
             return
 
+    # Request identity (Astra 2026-09-12 section 1 item 3): captured NOW.
+    # "ava cancel", session exit, sleep and the stop path bump it; a model
+    # response that lands afterwards is dropped here and, if it somehow
+    # reaches an executor anyway, Denied(stale) at the choke point.
+    if generation is None:
+        generation = execution_policy.current_generation(app)
+
     def _worker():
         try:
             if _check_teaching_intent(app, remainder):
@@ -1460,7 +1492,10 @@ def handle_ask_ava(app, remainder="", on_done=None, **kwargs):
                 app.play_sound("ava_thinking")
             try:
                 response = ask_ollama(remainder, app)
-                handle_response(app, response, original_text=remainder)
+                if not execution_policy.is_current(app, generation):
+                    print(f"[OLLAMA] Late response after cancel (gen {generation}) -- dropped")
+                    return
+                handle_response(app, response, original_text=remainder, generation=generation)
             except Exception as e:
                 print(f"[OLLAMA] Error in worker: {e}")
                 speak(app, "Sorry, something went wrong.")
@@ -1472,6 +1507,7 @@ def handle_ask_ava(app, remainder="", on_done=None, **kwargs):
 
 @command(
     "is it safe to",
+    risk_class="safe",
     aliases=["should i", "is it okay to"],
     pack="ai",
     ai_visible=False,
@@ -1486,6 +1522,8 @@ def handle_is_it_safe(app, remainder="", **kwargs):
             return
     prompt = f"Is this action safe? {remainder}" if remainder else "Is this action safe?"
 
+    generation = execution_policy.current_generation(app)
+
     def _worker():
         if _check_teaching_intent(app, remainder):
             return
@@ -1493,7 +1531,9 @@ def handle_is_it_safe(app, remainder="", **kwargs):
             app.play_sound("ava_thinking")
         try:
             response = ask_ollama(prompt, app)
-            handle_response(app, response, original_text=remainder)
+            if not execution_policy.is_current(app, generation):
+                return
+            handle_response(app, response, original_text=remainder, generation=generation)
         except Exception as e:
             print(f"[OLLAMA] Error in worker: {e}")
             speak(app, "Sorry, something went wrong.")
@@ -1503,6 +1543,7 @@ def handle_is_it_safe(app, remainder="", **kwargs):
 
 @command(
     "yes",
+    risk_class="safe",
     aliases=["confirm it", "do it", "go ahead", "yeah do it", "yeah", "yep", "yup", "sure"],
     pack="ai",
     ai_visible=False,
@@ -1519,13 +1560,35 @@ def handle_ava_confirm(app, remainder="", **kwargs):
         speak(app, "Nothing pending — confirmation window may have expired.")
         return
 
-    if action["type"] == "action":
+    # A confirmation is itself a request: if the session moved on since it
+    # was staged (cancel / exit / sleep), it is stale and executes nothing.
+    if not execution_policy.is_current(app, action.get("generation")):
+        with _pending_action_lock:
+            _pending_action = None
+        speak(app, "That request expired.")
+        return
+
+    if action.get("op") is not None:
+        # Staged by execution_policy.stage_pending (built-in, plugin, ACTION2
+        # or Smart Actions), whatever the record's type label. approve()
+        # re-enters the same choke point with confirmed=True -- the
+        # generation is checked again there.
+        with _pending_action_lock:
+            _pending_action = None
+        action["op"].approve()
+        _track_alias_uses(action.get("original_text", ""))
+
+    elif action["type"] == "action":
         with _pending_action_lock:
             _pending_action = None
         try:
-            _execute_safe(app, action)
-            _track_alias_uses(action.get("original_text", ""))
-            speak(app, "Done.")
+            ran = app.command_executor.execute_command(
+                action["command"], app, route=action.get("route", Route.MODEL),
+                generation=action.get("generation"), prompt=action.get("confirm_text", ""),
+                confirmed=True, source_text=action.get("original_text", ""))
+            if ran:
+                _track_alias_uses(action.get("original_text", ""))
+                speak(app, "Done.")
         except Exception as e:
             speak(app, f"Command failed: {e}")
 
@@ -1534,9 +1597,11 @@ def handle_ava_confirm(app, remainder="", **kwargs):
             _pending_action = None
         try:
             from plugins.commands.app_verbs import ActionResult
-            result = _execute_action2(app, action["verb"], action["argument"])
-            _track_alias_uses(action.get("original_text", ""))
+            result = _execute_action2(app, action["verb"], action["argument"],
+                                      route=action.get("route", Route.MODEL),
+                                      generation=action.get("generation"), confirmed=True)
             if result is ActionResult.DONE:
+                _track_alias_uses(action.get("original_text", ""))
                 speak(app, "Done.")
         except Exception as e:
             speak(app, f"Command failed: {e}")
@@ -1587,18 +1652,19 @@ def handle_ava_confirm(app, remainder="", **kwargs):
 
 @command(
     "ava cancel",
+    risk_class="safe",
     aliases=["ava stop", "cancel that ava"],
     pack="ai",
     ai_visible=False,
 )
 def handle_ava_cancel(app, remainder="", **kwargs):
-    global _pending_action
-    with _pending_action_lock:
-        had_pending = _pending_action is not None
-        _pending_action = None
-    had_schedule = _scheduled_task is not None
-    _stop_schedule()
-    if had_pending or had_schedule:
+    """Cancel EVERYTHING Ava has in flight, not just a staged prompt: bumps
+    the request generation (so a model response still being awaited is
+    dropped and anything resolving later is Denied(stale) at the choke
+    point), clears the pending slot, the AVA session queue, the waterfall
+    queue and the scheduler. Drafts are untouched."""
+    cleared = execution_policy.stop_all(app, "ava cancel", chip=False)
+    if cleared["pending"] or cleared["schedule"] or cleared["queued"] or cleared["in_flight"]:
         speak(app, "Cancelled.")
     else:
         speak(app, "Nothing to cancel.")
@@ -1606,6 +1672,7 @@ def handle_ava_cancel(app, remainder="", **kwargs):
 
 @command(
     "stop schedule",
+    risk_class="safe",
     aliases=["cancel schedule", "stop repeating", "stop timer", "ava stop schedule"],
     pack="ai",
     ai_visible=False,
@@ -1620,6 +1687,7 @@ def handle_stop_schedule(app, remainder="", **kwargs):
 
 @command(
     "ava forget",
+    risk_class="safe",
     aliases=["forget conversation", "clear memory", "new conversation", "start over ava"],
     pack="ai",
     ai_visible=False,
@@ -1632,6 +1700,7 @@ def handle_ava_forget(app, remainder="", **kwargs):
 
 @command(
     "ava cloud",
+    risk_class="safe",
     aliases=["cloud mode", "use cloud"],
     pack="ai",
     ai_visible=False,
@@ -1657,6 +1726,7 @@ def toggle_cloud(app, remainder="", **kwargs):
 
 @command(
     "ava local",
+    risk_class="safe",
     aliases=["local mode", "use local"],
     pack="ai",
     ai_visible=False,
@@ -1719,12 +1789,25 @@ def _health_monitor_loop():
             logger.debug(f"_health_monitor_loop: {e}")
 
 
+_health_monitor_thread = None
+_health_monitor_start_lock = threading.Lock()
+
+
 def _start_health_monitor(app=None):
-    t = thread_registry.spawn("ollama-health", _health_monitor_loop, daemon=True)
-    return t
+    """Start the monitor thread once per process; later calls return it."""
+    global _health_monitor_thread
+    with _health_monitor_start_lock:
+        if _health_monitor_thread is None:
+            _health_monitor_thread = thread_registry.spawn(
+                "ollama-health", _health_monitor_loop, daemon=True)
+        return _health_monitor_thread
 
 
-_start_health_monitor()
+def start_services(app):
+    """Explicit app-lifecycle hook, called once by
+    plugin_commands.start_plugin_services(). The health monitor used to start
+    at import time, so every extra copy of this module started another one."""
+    _start_health_monitor(app)
 
 
 # ── Legacy safety gate helpers (used by confirm/cancel in dictation pipeline) ─
@@ -1741,4 +1824,11 @@ def get_pending_action():
 def clear_pending_action():
     global _pending_action
     with _pending_action_lock:
+        old = _pending_action
         _pending_action = None
+    op = old.get("op") if isinstance(old, dict) else None
+    if op is not None:
+        try:
+            op.reject()
+        except Exception as exc:
+            logger.debug(f"clear_pending_action: reject failed: {exc}")

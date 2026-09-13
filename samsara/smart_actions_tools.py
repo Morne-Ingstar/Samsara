@@ -25,6 +25,8 @@ from pathlib import Path
 from typing import Any, Dict, List, Optional, Tuple
 
 from samsara.runtime import thread_registry
+from samsara import execution_policy
+from samsara.execution_policy import Invocation, Route
 
 logger = logging.getLogger(__name__)
 
@@ -213,7 +215,12 @@ class ToolDispatcher:
         """Execute a tool call dict from an agent response.
 
         SECURITY: tier is read from local TOOL_TIERS only. Any 'tier' key in
-        tool_call is ignored here and in _get_tier().
+        tool_call is ignored here and in _get_tier(). The execute/confirm/
+        deny decision is samsara.execution_policy's (route=smart_action):
+        AUTO tools are ui -> run; SETUP tools are write -> confirm (once per
+        exact scope, remembered); ALWAYS_CONFIRM tools are destructive ->
+        confirm every time. The confirmation is ONE PendingOperation that the
+        dialog buttons AND voice "yes"/"ava cancel" resolve.
         """
         tool_name = tool_call.get('tool', '')
         args = tool_call.get('args', {})
@@ -221,7 +228,7 @@ class ToolDispatcher:
         if not tool_name:
             return {'success': False, 'result': 'Missing tool name'}
 
-        # SECURITY: local tier only — never read from tool_call
+        # SECURITY: local tier only -- never read from tool_call
         tier = self._get_tier(tool_name)
 
         # Scope check before consent (fail fast, no UI shown)
@@ -230,24 +237,25 @@ class ToolDispatcher:
             logger.warning("[TOOLS] Scope rejected %s: %s", tool_name, scope_reason)
             return {'success': False, 'result': f'Scope check failed: {scope_reason}'}
 
-        if tier == TIER_AUTO:
-            return self._execute(tool_name, args)
+        generation = execution_policy.current_generation(self.app)
+        inv = Invocation(f"smart_action:{tool_name}", dict(args or {}), Route.SMART_ACTION,
+                         generation, self._describe_tool_call(tool_name, args))
 
-        if tier == TIER_SETUP:
-            approval_key = self._build_approval_key(tool_name, args)
-            if self._approvals.get(approval_key):
-                return self._execute(tool_name, args)
-            approved, always = self._request_confirmation(tool_call, allow_always=True)
+        remembered = tier == TIER_SETUP and bool(self._approvals.get(self._build_approval_key(tool_name, args)))
+        decision = execution_policy.authorize(inv, app=self.app, confirmed=remembered)
+        if isinstance(decision, execution_policy.Denied):
+            return {'success': False, 'result': f'Policy denied: {decision.reason}'}
+        if isinstance(decision, execution_policy.NeedsConfirmation):
+            approved, always = self._request_confirmation(tool_call, allow_always=(tier == TIER_SETUP),
+                                                          invocation=inv, prompt=decision.prompt)
             if not approved:
                 return {'success': False, 'result': 'User rejected'}
-            if always:
-                self._store_approval(approval_key)
-            return self._execute(tool_name, args)
-
-        # Tier 3: always confirm — no "always allow"
-        approved, _ = self._request_confirmation(tool_call, allow_always=False)
-        if not approved:
-            return {'success': False, 'result': 'User rejected'}
+            if always and tier == TIER_SETUP:
+                self._store_approval(self._build_approval_key(tool_name, args))
+            # The answer may have arrived after a cancel/exit: re-check.
+            final = execution_policy.authorize(inv, app=self.app, confirmed=True)
+            if not isinstance(final, execution_policy.Allowed):
+                return {'success': False, 'result': f'Policy denied: {getattr(final, "reason", "stale")}'}
         return self._execute(tool_name, args)
 
     def _get_tier(self, tool_name: str) -> int:
@@ -315,32 +323,53 @@ class ToolDispatcher:
     # ---- Confirmation UI -----------------------------------------------------
 
     def _request_confirmation(self, tool_call: dict,
-                               allow_always: bool = False) -> Tuple[bool, bool]:
-        """Show a blocking dialog. Returns (approved, always_allow)."""
+                              allow_always: bool = False,
+                              invocation: "Invocation | None" = None,
+                              prompt: str = "") -> Tuple[bool, bool]:
+        """Stage ONE pending operation and wait for it to be resolved -- by
+        the dialog's buttons, by voice ("yes" / "ava cancel"), by the stop
+        path, or by timeout. Returns (approved, always_allow)."""
         from plugins.commands.smart_actions import (
             EARCON_CONFIRM_REQUIRED, _play_earcon, get_config)
         _play_earcon(self.app, EARCON_CONFIRM_REQUIRED, get_config(self.app))
 
         tool_name = tool_call.get('tool', '')
         args = tool_call.get('args', {})
-        desc = self._describe_tool_call(tool_name, args)
+        desc = prompt or self._describe_tool_call(tool_name, args)
+        if invocation is None:
+            invocation = Invocation(f"smart_action:{tool_name}", dict(args or {}), Route.SMART_ACTION,
+                                    execution_policy.current_generation(self.app), desc)
+        op = execution_policy.stage_pending(self.app, invocation, desc,
+                                            extra={"tool": tool_name, "args": dict(args or {})})
         try:
-            return self._confirm_dialog(desc, allow_always)
+            self._confirm_dialog(desc, allow_always, op)
         except Exception as e:
-            logger.error("[TOOLS] Confirmation dialog failed: %s — rejecting", e)
-            return False, False
+            logger.error("[TOOLS] Confirmation dialog failed: %s -- waiting on voice only", e)
+        op.wait(timeout=120)
+        if op.approved is None:
+            op.reject()
+        # Release the pending slot if it still points at us.
+        try:
+            from plugins.commands import ask_ollama  # noqa: PLC0415
+            with ask_ollama._pending_action_lock:
+                if isinstance(ask_ollama._pending_action, dict) and ask_ollama._pending_action.get("op") is op:
+                    ask_ollama._pending_action = None
+        except Exception as exc:
+            logger.debug("[TOOLS] pending slot release: %s", exc)
+        return bool(op.approved), bool(op.always)
 
     def _confirm_dialog(self, description: str,
-                        allow_always: bool) -> Tuple[bool, bool]:
-        """Blocking confirmation dialog shown on the Qt thread."""
+                        allow_always: bool, op=None) -> None:
+        """Show the (non-blocking) confirmation dialog on the Qt thread; its
+        buttons resolve `op`. Without a Qt app there is no dialog and the
+        caller waits on voice alone."""
         from PySide6.QtWidgets import QApplication
         qt_app = QApplication.instance()
         if qt_app is not None:
-            return self._qt_confirm_dialog(description, allow_always, qt_app)
-        return False, False
+            self._qt_confirm_dialog(description, allow_always, qt_app, op)
 
     def _qt_confirm_dialog(self, description: str, allow_always: bool,
-                           qt_app) -> Tuple[bool, bool]:
+                           qt_app, op=None) -> None:
         from PySide6.QtWidgets import (
             QDialog, QVBoxLayout, QHBoxLayout, QLabel, QPushButton,
         )
@@ -377,15 +406,30 @@ class ToolDispatcher:
 
             def _approve():
                 result['approved'] = True
+                if op is not None:
+                    op.approve()
                 dlg.accept()
 
             def _reject():
+                if op is not None:
+                    op.reject()
                 dlg.reject()
 
             def _always():
                 result['approved'] = True
                 result['always'] = True
+                if op is not None:
+                    op.approve(always=True)
                 dlg.accept()
+
+            # Voice resolved it first: close the dialog.
+            if op is not None:
+                def _poll():
+                    if op.approved is not None:
+                        dlg.close()
+                    elif dlg.isVisible():
+                        QTimer.singleShot(200, dlg, _poll)
+                QTimer.singleShot(200, dlg, _poll)
 
             approve_btn = QPushButton("Approve")
             reject_btn  = QPushButton("Reject")
@@ -403,13 +447,15 @@ class ToolDispatcher:
                 btn_row.addWidget(always_btn)
             lay.addLayout(btn_row)
 
-            # Safety net: mark done if dialog is dismissed any way
-            dlg.finished.connect(lambda _: done.set())
+            # Dismissed any other way (title-bar close, Escape) = rejected.
+            def _finished(_code):
+                done.set()
+                if op is not None and op.approved is None:
+                    op.reject()
+            dlg.finished.connect(_finished)
             dlg.show()
 
         QTimer.singleShot(0, qt_app, _make)
-        done.wait(timeout=120)
-        return result['approved'], result['always']
 
     @staticmethod
     def _describe_tool_call(tool_name: str, args: dict) -> str:

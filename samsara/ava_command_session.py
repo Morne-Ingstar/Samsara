@@ -17,16 +17,15 @@ WATERFALL RESOLVER (spec-mandated, replaces v1 "retrieval"):
       path in this app already uses (hands-free command mode, wake-word
       command dispatch). Builtin + plugin, remainder-tolerant (so
       registered prefix commands like "focus <x>"/"open <x>"/"close <x>"
-      already resolve here), ~0ms, no truncation. Deterministic commands
-      execute immediately -- no confirmation gate -- matching how every
-      other exact-command dispatch path in this app already behaves;
-      _UNSAFE_COMMANDS is an ask_ollama.py-specific safety net for
-      LLM-DECIDED actions, not applied to a phrase the user spoke exactly.
+      already resolve here), ~0ms, no truncation. Execution goes through
+      the ONE choke point (samsara.execution_policy, route=exact): read/ui
+      and write commands run immediately for a phrase the user spoke
+      exactly; destructive ones stage a confirmation on every route.
   (b) ACTION2 grammar (focus/open/close), matched DETERMINISTICALLY here
       (no model call) via a small verb+argument regex over synonyms
       ("launch"/"quit"/"bring up"/leading "please"/"can you" fillers)
       that stage (a)'s registered prefix commands don't already cover.
-      "close" (the one _UNSAFE_ACTION2_VERBS entry) still stages via the
+      "close" (destructive in execution_policy._ACTION2_RISK) stages via the
       SAME ask_ollama._pending_action confirmation binding a model-derived
       ACTION2 close would use -- the argument still needs live
       window/app-index resolution, which carries real ambiguity risk
@@ -78,6 +77,8 @@ from typing import Any, Optional
 
 from samsara.log import get_logger
 from samsara.runtime import thread_registry
+from samsara import execution_policy
+from samsara.execution_policy import Route
 
 logger = get_logger(__name__)
 
@@ -162,25 +163,16 @@ def _match_action2_grammar(utterance: str) -> Optional[tuple[str, str]]:
 
 def _dispatch_action2(app, verb: str, argument: str, generation: int, cfg: dict) -> None:
     """Execute (or stage for confirmation) a deterministically-matched
-    ACTION2 verb -- reuses ask_ollama.py's own executor and confirmation
-    binding verbatim, so "close" behaves identically whether the verb+
-    argument came from D1's model or D3's deterministic stage (b)."""
+    ACTION2 verb through ask_ollama._execute_action2 -- the ONE ACTION2
+    choke point (samsara.execution_policy). "close" is destructive there and
+    stages via the same pending slot a model-derived close would use, so
+    "yes"/"ava cancel" resolve it identically. The captured generation rides
+    along: a resolution that lands after an exit is Denied(stale)."""
     from plugins.commands import ask_ollama  # noqa: PLC0415
 
-    if verb in ask_ollama._UNSAFE_ACTION2_VERBS:
-        confirm_text = f"{verb.capitalize()} {argument}."
-        with ask_ollama._pending_action_lock:
-            ask_ollama._pending_action = {
-                "type": "action2",
-                "verb": verb,
-                "argument": argument,
-                "confirm_text": confirm_text,
-                "original_text": argument,
-                "expires": time.time() + 30,
-            }
-        _speak(app, f"{confirm_text} -- say yes to confirm, or say ava cancel.", generation)
-        return
-    ask_ollama._execute_action2(app, verb, argument)
+    ask_ollama._execute_action2(app, verb, argument, route=Route.GRAMMAR, generation=generation,
+                                source_text=argument,
+                                speak_fn=lambda text: _speak(app, text, generation))
 
 
 # ---------------------------------------------------------------------------
@@ -348,7 +340,7 @@ def _stage_c_llm_fallback(app, utterance: str, shortlist: list[str], generation:
         )
         return False
 
-    ask_ollama.handle_response(app, response, original_text=utterance)
+    ask_ollama.handle_response(app, response, original_text=utterance, generation=generation)
     return True
 
 
@@ -444,10 +436,18 @@ def _process_utterance(app, generation: int, utterance: str) -> None:  # noqa: C
 
     # Stage (a): existing full matcher (builtin + plugin, remainder-tolerant).
     t0 = time.monotonic()
-    _result, was_command = app.command_executor.process_text(utterance, app, force_commands=True)
+    dispatch = app.command_executor.process_text(
+        utterance, app, force_commands=True, route=Route.EXACT, generation=generation)
+    _result, was_command = dispatch
     stage_a_ms = (time.monotonic() - t0) * 1000
     logger.debug(f"[AVA-CMD] Stage (a) took {stage_a_ms:.1f}ms")
+    # was_command is True for every claimed state -- queued (async handler
+    # returned None), failed, rejected, cancelled -- so a recognised command
+    # never falls through to (b)/(c) to be interpreted a second time.
     if was_command:
+        state = getattr(getattr(dispatch, "state", None), "value", "completed")
+        if state not in ("completed", "queued", "matched"):
+            logger.info(f"[AVA-CMD] Stage (a) command {_result!r} {state}; not re-interpreting")
         if getattr(app, "_ava_cmd_generation", generation) != generation:
             logger.debug("[AVA-CMD] Stale generation after stage (a) -- dropping")
             return
@@ -497,6 +497,9 @@ def _worker_loop(app) -> None:
             # -- drain silently.
             continue
         generation, utterance = item
+        if getattr(app, "_ava_cmd_generation", generation) != generation:
+            logger.debug("[AVA-CMD] Stale generation at dequeue -- dropping")
+            continue
         try:
             _process_utterance(app, generation, utterance)
         except Exception as exc:
@@ -533,6 +536,27 @@ def enqueue_utterance(app, generation: int, utterance: str) -> None:
         except queue.Empty as e:
             logger.debug(f"enqueue_utterance: {e}")
     _task_queue.put_nowait((generation, utterance))
+
+
+def drain_stale(app) -> int:
+    """Drop queued utterances whose generation is no longer current WITHOUT
+    setting the cancel flag (the session stays alive). Used by the stop path
+    (execution_policy.stop_all) so "cancel" mid-session empties the backlog
+    while a fresh utterance still works. Returns how many were dropped."""
+    current = getattr(app, "_ava_cmd_generation", None)
+    kept, dropped = [], 0
+    while True:
+        try:
+            item = _task_queue.get_nowait()
+        except queue.Empty:
+            break
+        if current is not None and item[0] != current:
+            dropped += 1
+        else:
+            kept.append(item)
+    for item in kept:
+        _task_queue.put_nowait(item)
+    return dropped
 
 
 def cancel_queue() -> None:

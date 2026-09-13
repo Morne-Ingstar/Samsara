@@ -81,7 +81,11 @@ class TestConfirmationBinding:
         monkeypatch.setattr(ask_ollama, '_execute_action2', execute_mock)
         ava_command_session._dispatch_action2(app, "open", "notepad", 0, {})
         assert ask_ollama.get_pending_action() is None
-        execute_mock.assert_called_once_with(app, "open", "notepad")
+        # Route + generation ride along now (execution policy); the verb and
+        # argument are still exactly what was matched.
+        execute_mock.assert_called_once()
+        assert execute_mock.call_args.args == (app, "open", "notepad")
+        assert execute_mock.call_args.kwargs["generation"] == 0
 
     def test_pending_action_expires_after_ttl(self):
         with ask_ollama._pending_action_lock:
