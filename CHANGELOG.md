@@ -4,6 +4,120 @@ All notable changes to Samsara are documented here.
 
 ## [Unreleased]
 
+## [0.23.0-beta.1] - 2026-09-13
+
+A beta for testers, not the public download (that stays v0.22.1). It is the
+first build of the conversational work: hands-free that stays open until you
+send it to sleep, commands that tell you what actually happened, and a first
+set of "do the real thing" commands for windows, music and the Claude app.
+
+### Added
+
+- **Sleep phrases** — "go to sleep", "samsara sleep" or "sleep now", said on
+  their own, end the hands-free session from any lane. Anything you had
+  dictated but not yet sent with "end" is kept and comes back the next time
+  hands-free opens. A sentence that merely contains the words is dictated.
+- **Wake word can open hands-free** — with `wake_word_config.opens_session`
+  (config file, off by default) the wake phrase opens the same latched
+  hands-free session the toggle key does, instead of a one-command window.
+- **Screen destinations by position** — "put warp on the left screen",
+  "... right / middle / top / bottom screen", "the other screen", and two
+  windows in one sentence: "put warp on the left screen and claude on the
+  right". If the second move fails, Samsara says so instead of claiming success.
+- **Play a playlist by name** — "play my alternative rock playlist" /
+  "play something from ..." goes to Spotify and only reports "playing" once
+  the Spotify media session is actually playing.
+- **"Tell Claude ..."** — prepares a message for the Claude desktop app and
+  asks "Send to Claude: ...?". Only after your "yes" is it pasted and sent,
+  and Samsara reports Sent, Not sent, or Outcome unknown from what it sees in
+  the window; an unknown outcome is never resent.
+- **Outcome chip** — the listening indicator now shows what just happened:
+  a tick for a command that ran, MISS, refused, staged, typed, stopped,
+  asleep. The earcon Test button respects the volume slider.
+- **Window cube** — a pinned, numbered, always-on-top list of open windows;
+  say a number to switch.
+- **Verbatim dictation profile** for terminals and URL bars, plus a spoken
+  toggle.
+- **Quick memo** hotkey and voice command appending to your memos file, and
+  voice memo capture to an Obsidian vault.
+- **Live preview box** for hands-free dictation while you speak.
+- **"What can I say"** — a hands-free section in Quick Reference.
+
+### Fixed
+
+- **Switching into Ava mode** — "ava mode" is a real switch word, and a failed
+  switch is announced instead of silently leaving you where you were.
+- **Microphone loss recovery** — devices are found by name and audio API, so
+  unplugging and replugging (or a Windows reordering) recovers the same mic.
+- **A command that fails is no longer typed as text** or sent to Ava as a new
+  request; a command that was only queued is no longer reported as done.
+- **Your exact words reach the command** — "tell Claude: \"Don't rename
+  Foo.py\"" keeps its capitals, quotes and punctuation.
+- Hands-free toggle session was deaf when the wake word was disabled.
+- Holding the record key during hands-free now suspends and resumes
+  hands-free capture correctly.
+- First-run wizard microphone detection; settings minimum widths from font
+  metrics; the mic dropdown can choose "System default".
+- Hands-free exit freezes (keyboard hook no longer runs session transitions
+  inline); a second keyboard hook was removed.
+- Bundled wake-word models are now in the build (v0.22.1 lacked one).
+- Rich-editor double paste and first-character doubling in Chromium.
+- Config backups before migration and a guard against overwriting config
+  with defaults; invalid config structure is detected before migrating.
+
+### Changed
+
+- **Commands that can't be undone now ask first; spoken commands don't.**
+  A command you say yourself runs straight away unless its effect is
+  irreversible (e.g. permanent delete). Anything proposed by Ava asks "yes?"
+  first. The question is Samsara's own wording, "yes" must be said on its
+  own, a pending question expires after 30 seconds ("wait" extends it once),
+  and "stop" cancels anything still in flight.
+- **Faster start** — warm boot to "Ready" 6.5 s -> 3.9 s: wake-word models are
+  not loaded when the wake word is off, speech output starts in the
+  background, and the microphone calibration is remembered.
+- Clipboard paste is used everywhere by default; typed injection is opt-in
+  per app.
+- Audio ducking runs in a separate helper process and ducks all active
+  output devices; a persistent idle duck and a deeper duck while capturing.
+- The old AI command mode is replaced by the command-first Ava session.
+
+### Under the hood
+
+- Dispatch contract: `DispatchResult` states (miss / matched / queued /
+  completed / failed / rejected / cancelled); `succeeded` means COMPLETED.
+- Plugin identity: each plugin loads once under its canonical package name;
+  background services start from an explicit app call, not on import.
+- Argument spans: matching runs on a normalised view with offsets; commands
+  receive the original-text argument. Command metadata is preserved verbatim
+  (`tools/dump_command_metadata.py`), undeclared fields are `unknown`.
+- Execution policy (`samsara/execution_policy.py`): one choke point with a
+  capture-time request generation, local confirmation templates, strict
+  argument schemas on model routes, a single-use target-bound pending
+  confirmation, and a stop path that bumps the generation first.
+- One-shot config migrations, per-thread boot timers, cached polyphase
+  resampling filter.
+- Flight recorder and incident bundler; zero thread-discipline violations;
+  the full test suite green; release CI workflow and a SignPath-ready draft
+  build workflow; five-minute-take rehearsal tool (`tools/demo_rehearsal.py`).
+
+### Known issues
+
+From the 2026-09-13 hot-path reliability review; none are fixed in this beta.
+
+- A microphone recovery attempt that races with a stop or restart can bring a
+  stopped audio stream back to life.
+- The wake-word utterance queue has no session identity or size limit: after a
+  slow decode, an old utterance can still run after you exit and re-enter.
+- Two ducking volume changes can finish out of order, leaving media quieter
+  (or louder) than intended.
+- If the ducking helper restarts mid-duck, the original volume can be lost, so
+  audio may stay turned down.
+- If console output breaks, a copied image or file list on the clipboard can be
+  lost when Samsara pastes dictation.
+- Packaged beta builds cannot check for updates: the updater accepts only
+  stable version numbers and reports a metadata error instead.
+
 ## [0.22.1] - 2026-07-18
 
 ### Added
