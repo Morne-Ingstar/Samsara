@@ -1716,9 +1716,9 @@ class _SettingsWindow(QMainWindow):
 
         layout.addWidget(self._section_title("Beta support & feedback"))
         contact = QLabel(
-            f"Beta help: email {BETA_SUPPORT_EMAIL}. For reproducible bugs, a "
-            "GitHub report plus safe diagnostics helps most."
+            "Testers: email is fine. GitHub is for people who already have an account."
         )
+        contact.setObjectName("supportContactIntroLabel")
         contact.setWordWrap(True)
         contact.setStyleSheet("color: #AEB4C0; font-size: 13px;")
         layout.addWidget(contact)
@@ -1726,44 +1726,34 @@ class _SettingsWindow(QMainWindow):
         support_status = QLabel("")
         support_status.setObjectName("feedbackStatusLabel")
         support_status.setWordWrap(True)
+        support_status.setTextInteractionFlags(Qt.TextInteractionFlag.TextSelectableByMouse)
         support_status.setStyleSheet("color: #AEB4C0; font-size: 12px;")
 
-        beta_btn = QPushButton("Email beta support")
+        # 1. Email -- first, because most testers have no GitHub account.
+        beta_btn = QPushButton("Email the developer")
         beta_btn.setObjectName("betaFeedbackButton")
         beta_btn.setAccessibleName("Email the Samsara developer for beta support")
         beta_btn.clicked.connect(
-            lambda: self._open_support_url(BETA_SUPPORT_MAILTO, support_status)
+            lambda: self._email_developer(support_status)
         )
+        address = QLabel(BETA_SUPPORT_EMAIL)
+        address.setObjectName("betaSupportAddressLabel")
+        address.setTextInteractionFlags(Qt.TextInteractionFlag.TextSelectableByMouse)
+        address.setStyleSheet("color: #E8E8EA; font-size: 12px;")
+        email_control = QWidget()
+        email_row = QHBoxLayout(email_control)
+        email_row.setContentsMargins(0, 0, 0, 0)
+        email_row.setSpacing(10)
+        email_row.addWidget(beta_btn)
+        email_row.addWidget(address)
         layout.addLayout(self._setting_row(
             "Contact the developer",
-            "Direct beta email; replies are personal and may take time.",
-            beta_btn,
+            "Copies a ready-to-send email with safe diagnostics, then tries your "
+            "mail app. Replies are personal and may take time.",
+            email_control,
         ))
 
-        report_btn = QPushButton("Report a problem")
-        report_btn.setObjectName("reportBugButton")
-        report_btn.setAccessibleName("Report a Samsara problem on GitHub")
-        report_btn.clicked.connect(
-            lambda: self._open_support_url(BUG_REPORT_URL, support_status)
-        )
-        layout.addLayout(self._setting_row(
-            "Report a reproducible problem",
-            "Open a public GitHub report. Include expected behavior, what happened, and steps.",
-            report_btn,
-        ))
-
-        live_log_btn = QPushButton("Open live log")
-        live_log_btn.setObjectName("openLiveLogButton")
-        live_log_btn.setAccessibleName("Open Samsara live log")
-        live_log_btn.clicked.connect(
-            lambda: self._open_live_log_for_support(support_status)
-        )
-        layout.addLayout(self._setting_row(
-            "Live log",
-            "Open the current log to inspect or share only the relevant, redacted lines.",
-            live_log_btn,
-        ))
-
+        # 2. Safe diagnostics
         diagnostics_btn = QPushButton("Copy safe diagnostics")
         diagnostics_btn.setObjectName("copyDiagnosticButton")
         diagnostics_btn.setAccessibleName("Copy safe Samsara diagnostic summary")
@@ -1774,6 +1764,33 @@ class _SettingsWindow(QMainWindow):
             "Safe diagnostic summary",
             "Copy useful runtime facts without logs, dictated text, file paths, or keys.",
             diagnostics_btn,
+        ))
+
+        # 3. GitHub
+        report_btn = QPushButton("Report a problem")
+        report_btn.setObjectName("reportBugButton")
+        report_btn.setAccessibleName("Report a Samsara problem on GitHub")
+        report_btn.clicked.connect(
+            lambda: self._open_support_url(BUG_REPORT_URL, support_status)
+        )
+        layout.addLayout(self._setting_row(
+            "Report a reproducible problem (GitHub)",
+            "Open a public GitHub report. Include expected behavior, what happened, and steps.",
+            report_btn,
+        ))
+
+        # 4. Live log, with its redaction warning
+        live_log_btn = QPushButton("Open live log")
+        live_log_btn.setObjectName("openLiveLogButton")
+        live_log_btn.setAccessibleName("Open Samsara live log")
+        live_log_btn.clicked.connect(
+            lambda: self._open_live_log_for_support(support_status)
+        )
+        layout.addLayout(self._setting_row(
+            "Live log",
+            "The log can contain dictated text and file paths. Review it and share only "
+            "the relevant, redacted lines.",
+            live_log_btn,
         ))
         layout.addWidget(support_status)
         layout.addSpacing(20)
@@ -1809,6 +1826,52 @@ class _SettingsWindow(QMainWindow):
         layout.addStretch()
         scroll.setWidget(container)
         return scroll
+
+    def _email_developer(self, status_label: QLabel) -> None:
+        """Copy the whole support email, then TRY the mail app.
+
+        A mailto: with no registered mail client is handed to the browser
+        and goes nowhere while openUrl still reports success, so the
+        clipboard copy comes first and the status never claims anything
+        opened.
+        """
+        from samsara.support_feedback import (
+            build_support_email_text,
+            build_support_mailto,
+        )
+
+        copied = False
+        try:
+            QApplication.clipboard().setText(build_support_email_text(self.app.config))
+            copied = True
+        except Exception as exc:
+            logger.exception("[SUPPORT] Could not copy the support email: %s", exc)
+        try:
+            QDesktopServices.openUrl(QUrl(build_support_mailto(self.app.config)))
+        except Exception as exc:
+            logger.exception("[SUPPORT] Could not hand off mailto: %s", exc)
+        if copied:
+            status_label.setText(
+                "Message copied to your clipboard. If your mail app didn't open, "
+                f"paste it into any email to {BETA_SUPPORT_EMAIL}."
+            )
+        else:
+            status_label.setText(
+                "Could not copy the message. Write to "
+                f"{BETA_SUPPORT_EMAIL} and use Copy safe diagnostics below."
+            )
+
+    def show_tab(self, name: str) -> None:
+        """Show the window on the named tab (a _TAB_NAMES entry)."""
+        stack_index = _TAB_NAMES.index(name)
+        for row, index in self._sidebar_row_to_stack_index.items():
+            if index == stack_index:
+                self._sidebar.setCurrentRow(row)
+                break
+        self._stack.setCurrentIndex(stack_index)
+        self.show()
+        self.raise_()
+        self.activateWindow()
 
     def _reset_hints(self):
         hints = getattr(self.app, 'hints', None)

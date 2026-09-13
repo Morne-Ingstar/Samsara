@@ -110,6 +110,35 @@ class TestTopLevelDailyUseActions:
         assert "Developer" in texts
 
 
+class TestSomethingWrongOpensSupportTab:
+    def test_item_is_top_level(self, tray):
+        t, app = tray
+        assert "Something wrong?" in _top_level_texts(t._menu)
+
+    def test_item_opens_settings_on_help_and_support(self, qapp, monkeypatch):
+        from types import SimpleNamespace
+        from samsara.ui import qt_runtime, settings_qt
+        from tests.test_support_feedback_ui import _FeedbackApp
+
+        monkeypatch.setattr(qt_runtime, "post", lambda cb: cb())
+        settings_app = _FeedbackApp()
+        window = settings_qt._SettingsWindow(settings_app)
+        try:
+            app = _make_app()
+            app._settings_qt = SimpleNamespace(_window=window)
+            t = SamsaraTrayQt(app)
+            t._rebuild_menu()
+            action = next(a for a in t._menu.actions() if a.text() == "Something wrong?")
+
+            action.trigger()
+
+            app.open_settings.assert_called_once_with()
+            assert window._stack.currentIndex() == settings_qt._TAB_NAMES.index("Help & Support")
+        finally:
+            window.hide()
+            window.deleteLater()
+
+
 class TestQuickReferenceNoLongerBuriedInTools:
     def test_quick_reference_removed_from_tools_submenu(self, tray):
         t, app = tray

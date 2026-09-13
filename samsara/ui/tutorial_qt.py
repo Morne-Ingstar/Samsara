@@ -31,6 +31,7 @@ from PySide6.QtWidgets import (
 
 from samsara.constants import DEFAULT_WAKE_PHRASE
 from samsara.log import get_logger
+from samsara.support_feedback import open_support_tab
 from samsara.ui import theme
 
 logger = get_logger(__name__)
@@ -477,7 +478,20 @@ class TutorialWindow(QMainWindow):
         # --- Advanced guides ---
         next_lbl = QLabel("Go deeper when you're ready:")
         next_lbl.setStyleSheet("color:#E8E8EA;font-size:13px;font-weight:600;")
-        lay.addWidget(next_lbl)
+        # Shares the header row: the window is fixed-height and a row of its
+        # own squeezes the checklist card above.
+        next_row = QHBoxLayout()
+        next_row.addWidget(next_lbl)
+        next_row.addStretch()
+        self._support_btn = QPushButton("Something wrong? Tell me")
+        self._support_btn.setObjectName("tutorialSupportButton")
+        theme.make_secondary(self._support_btn)
+        self._support_btn.clicked.connect(lambda checked=False: open_support_tab(self._app))
+        next_row.addWidget(self._support_btn)
+        lay.addLayout(next_row)
+        self._support_btn.setMinimumWidth(
+            self._button_min_width(self._support_btn, ["Something wrong? Tell me"])
+        )
         lay.addSpacing(4)
 
         _GUIDES = [
