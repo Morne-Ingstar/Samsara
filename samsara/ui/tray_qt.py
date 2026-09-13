@@ -1,17 +1,32 @@
-"""Qt system tray icon for Samsara.
+"""Qt system tray icon for Samsara, and the one routine that draws the mark.
 
 Drop-in replacement for the pystray.Icon usage in dictation.py.
 Exposes the same attribute interface the rest of the app uses:
-    .icon  = pil_image     (property setter, thread-safe)
+    .icon  = MarkFrame     (property setter, thread-safe; a PIL image still works)
     .title = "Samsara - X" (property setter, thread-safe)
     .stop()                (thread-safe, hides icon)
 
 Must be created on the Qt thread (via QTimer.singleShot or similar).
 All Signal-based methods are safe to call from any thread.
+
+render_mark() is the single drawing of the Samsara mark (the three-segment
+wheel plus the hands-free eye, from assets/icon/samsara.svg). The tray, the
+listening indicator, the splash and tools/gen_icons.py all call it -- there
+is no second palette or drawing. It builds Qt image objects, so call it on
+the Qt thread only (off-thread Qt image construction once deadlocked boot;
+see dictation.py's window-icon comment). Worker threads describe a frame
+with MarkFrame and let _apply_icon render it on the Qt thread.
 """
 
-from PySide6.QtCore import Qt, QObject, QTimer, Signal
-from PySide6.QtGui import QAction, QActionGroup, QGuiApplication, QIcon, QImage, QPixmap
+import sys
+import threading
+import xml.etree.ElementTree as ET
+from collections import namedtuple
+from pathlib import Path
+
+from PySide6.QtCore import QByteArray, QObject, QRectF, Qt, QTimer, Signal
+from PySide6.QtGui import QAction, QActionGroup, QGuiApplication, QIcon, QImage, QPainter, QPixmap
+from PySide6.QtSvg import QSvgRenderer
 from PySide6.QtWidgets import QMenu, QSystemTrayIcon
 
 from samsara import config_defaults
@@ -19,10 +34,177 @@ from samsara.constants import DEFAULT_WAKE_PHRASE
 from samsara.log import get_logger
 from samsara.quick_memo import memo_file
 from samsara.support_feedback import open_support_tab
+from samsara.ui import theme
 
 import os
 
 logger = get_logger(__name__)
+
+# ---------------------------------------------------------------------------
+# The mark (owner decisions 2026-09-13)
+# ---------------------------------------------------------------------------
+
+#: Capture state -> ring colour token and ring drawing. Fill (not colour)
+#: is what says "recording"; spin and pulse are runtime.
+MARK_CAPTURE = {
+    "idle":      (theme.ICON_IDLE, "ring-hollow"),
+    "listening": (theme.ACCENT, "ring-hollow"),
+    "recording": (theme.RECORDING, "ring-filled"),
+    "ava":       (theme.AVA, "ring-hollow"),
+}
+#: Hands-free state -> eye drawing (None = no eye). "heard" is the static
+#: fallback frame of the heard animation: the open eye in RECORDING red with
+#: the ring brightened (capture is starting, so red is truthful).
+MARK_EYE = {
+    "off":    None,
+    "asleep": "eye-closed",
+    "armed":  "eye-open",
+    "heard":  "eye-open",
+}
+#: Every named state -> (capture, eye). The generated PNG set
+#: (assets/icon/states/samsara_<state>_<size>.png) and the montage use these
+#: names; the tray composes the live (capture, eye) pair directly.
+MARK_STATES = {
+    "off":       ("idle", "off"),
+    "asleep":    ("idle", "asleep"),
+    "idle":      ("idle", "off"),
+    "listening": ("listening", "off"),
+    "recording": ("recording", "off"),
+    "ava":       ("ava", "off"),
+    "armed":     ("listening", "armed"),
+    "heard":     ("listening", "heard"),
+}
+#: App / exe / taskbar / window icon: brand cyan wheel, lid closed.
+APP_MARK = ("listening", "asleep")
+#: Wake phrase heard: (ms from the hit, eye state). The eye flashes red and
+#: the ring brightens for ~1 s, then the lid closes as the command session
+#: takes over; None hands the eye back to the live state.
+HEARD_KEYFRAMES = (
+    (0, "heard"), (250, "armed"), (500, "heard"), (750, "armed"),
+    (1000, "asleep"), (1300, None),
+)
+#: Tray frame from any thread: rendered on the Qt thread by _apply_icon.
+MarkFrame = namedtuple("MarkFrame", "capture eye rotation opacity", defaults=(0.0, 1.0))
+
+_SMALL_MAX = 16          # sizes at or below this use the simplified drawing
+_HEARD_RING_LIFT = 0.45  # heard: ring colour mixed this far toward TEXT_PRIMARY
+_TRAY_SIZES = (16, 24, 32)
+_SVG_NS = "http://www.w3.org/2000/svg"
+ET.register_namespace("", _SVG_NS)
+_RING_IDS = ("ring-hollow", "ring-filled")
+_EYE_IDS = ("eye-closed", "eye-open")
+_renderer_cache: dict = {}
+_renderer_lock = threading.Lock()
+
+
+def mark_svg_path() -> Path:
+    """assets/icon/samsara.svg in a source checkout or the frozen bundle."""
+    if getattr(sys, "frozen", False) and hasattr(sys, "_MEIPASS"):
+        return Path(sys._MEIPASS) / "assets" / "icon" / "samsara.svg"
+    return Path(__file__).resolve().parents[2] / "assets" / "icon" / "samsara.svg"
+
+
+def mark_colours(capture: str, eye: str) -> tuple[str, str]:
+    """(ring colour, eye colour) -- one token per state, except the heard frame."""
+    colour = MARK_CAPTURE[capture][0]
+    if eye == "heard":
+        return theme._mix(colour, theme.TEXT_PRIMARY, _HEARD_RING_LIFT), theme.RECORDING
+    return colour, colour
+
+
+def mark_svg(capture: str, eye: str, small: bool, layer: str, source: bytes | None = None) -> bytes:
+    """The SVG with only one layer ('ring' or 'eye') of one state visible."""
+    ring_colour, eye_colour = mark_colours(capture, eye)
+    ring_id = MARK_CAPTURE[capture][1]
+    eye_id = MARK_EYE[eye]
+    suffix = "-small" if small else ""
+
+    root = ET.fromstring(source if source is not None else mark_svg_path().read_bytes())
+    by_id = {el.get("id"): el for el in root.iter() if el.get("id")}
+    by_id["regular"].set("display", "none" if small else "inline")
+    by_id["small"].set("display", "inline" if small else "none")
+    for base in _RING_IDS + _EYE_IDS:
+        wanted = (layer == "ring" and base == ring_id) or (layer == "eye" and base == eye_id)
+        by_id[base + suffix].set("display", "inline" if wanted else "none")
+
+    ring = by_id[ring_id + suffix]
+    for attr in ("fill", "stroke"):
+        if ring.get(attr, "none") != "none":
+            ring.set(attr, ring_colour)
+    if eye_id is not None:
+        for el in by_id[eye_id + suffix].iter():
+            role = el.get("data-role")
+            if role == "eye":
+                el.set("stroke", eye_colour)
+            elif role == "pupil":
+                el.set("fill", eye_colour)
+    return ET.tostring(root, encoding="utf-8")
+
+
+def _renderer(capture: str, eye: str, small: bool, layer: str) -> QSvgRenderer | None:
+    key = (capture, eye if layer == "eye" or eye == "heard" else "", small, layer)
+    renderer = _renderer_cache.get(key)
+    if renderer is None:
+        try:
+            renderer = QSvgRenderer(QByteArray(mark_svg(capture, eye, small, layer)))
+        except (OSError, ET.ParseError, KeyError) as exc:
+            logger.warning("[ICON] Samsara mark unavailable: %s", exc)
+            return None
+        if not renderer.isValid():
+            logger.warning("[ICON] Samsara mark did not parse: %s", mark_svg_path())
+            return None
+        _renderer_cache[key] = renderer
+    return renderer
+
+
+def paint_mark(painter: QPainter, rect: QRectF, capture: str, eye: str,
+               rotation: float = 0.0, opacity: float = 1.0) -> None:
+    """Draw the mark into rect on an existing painter (Qt thread only).
+
+    rotation (degrees) spins the ring only -- the eye never turns; opacity
+    fades the whole mark (the listening pulse).
+    """
+    small = min(rect.width(), rect.height()) <= _SMALL_MAX
+    with _renderer_lock:
+        ring = _renderer(capture, eye, small, "ring")
+        eye_renderer = _renderer(capture, eye, small, "eye") if MARK_EYE[eye] else None
+        if ring is None:
+            return
+        painter.save()
+        painter.setRenderHint(QPainter.RenderHint.Antialiasing, True)
+        painter.setOpacity(painter.opacity() * max(0.0, min(1.0, opacity)))
+        centre = rect.center()
+        painter.translate(centre)
+        painter.rotate(rotation)
+        painter.translate(-centre)
+        ring.render(painter, rect)
+        painter.restore()
+        if eye_renderer is not None:
+            painter.save()
+            painter.setRenderHint(QPainter.RenderHint.Antialiasing, True)
+            painter.setOpacity(painter.opacity() * max(0.0, min(1.0, opacity)))
+            eye_renderer.render(painter, rect)
+            painter.restore()
+
+
+def render_mark(capture: str, eye: str, size: int,
+                rotation: float = 0.0, opacity: float = 1.0) -> QImage:
+    """The mark as a transparent ARGB32 image (Qt thread only)."""
+    image = QImage(size, size, QImage.Format.Format_ARGB32_Premultiplied)
+    image.fill(Qt.GlobalColor.transparent)
+    painter = QPainter(image)
+    paint_mark(painter, QRectF(0, 0, size, size), capture, eye, rotation, opacity)
+    painter.end()
+    return image.convertToFormat(QImage.Format.Format_ARGB32)
+
+
+def mark_icon(frame: MarkFrame) -> QIcon:
+    """A multi-size QIcon for one frame, so Windows picks the DPI-right size."""
+    icon = QIcon()
+    for size in _TRAY_SIZES:
+        icon.addPixmap(QPixmap.fromImage(
+            render_mark(frame.capture, frame.eye, size, frame.rotation, frame.opacity)))
+    return icon
 
 # Windows can leave a QSystemTrayIcon's shell-registered screen geometry
 # stale after a sleep/resume cycle (no monitor topology change, so
@@ -39,7 +221,7 @@ _ICON_REFRESH_INTERVAL_MS = 20 * 60 * 1000  # 20 minutes
 class SamsaraTrayQt(QObject):
     """QSystemTrayIcon wrapper matching pystray.Icon's property interface."""
 
-    _icon_sig    = Signal(object)  # PIL Image
+    _icon_sig    = Signal(object)  # MarkFrame (rendered on the Qt thread)
     _tooltip_sig = Signal(str)
     _hide_sig    = Signal()
 
@@ -61,7 +243,7 @@ class SamsaraTrayQt(QObject):
 
         # Initial icon + tooltip
         try:
-            self._apply_icon(app.create_icon_image(active=False))
+            self._apply_icon(app.create_icon_image())
         except Exception as e:
             logger.debug(f"__init__: {e}")
         self._tray.setToolTip("Samsara")
@@ -241,9 +423,14 @@ class SamsaraTrayQt(QObject):
         except Exception as exc:
             logger.warning("[UPDATE] Could not schedule automatic check: %s", exc)
 
-    def _apply_icon(self, pil_image):
+    def _apply_icon(self, frame):
+        """Render a MarkFrame with render_mark (Qt thread). A PIL image is
+        still accepted for callers/tests that pass one."""
         try:
-            rgba = pil_image.convert("RGBA")
+            if isinstance(frame, MarkFrame):
+                self._tray.setIcon(mark_icon(frame))
+                return
+            rgba = frame.convert("RGBA")
             data = rgba.tobytes()
             qi = QImage(data, rgba.width, rgba.height,
                         QImage.Format.Format_RGBA8888)

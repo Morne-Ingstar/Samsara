@@ -67,11 +67,12 @@ Move mode (drag-to-reposition):
 import logging
 import math
 
-from PySide6.QtCore import Qt, QTimer, QRectF, QPointF, Signal
+from PySide6.QtCore import Qt, QTimer, QRectF, Signal
 from PySide6.QtGui import QColor, QFont, QFontMetrics, QPainter, QPainterPath, QPen
 from PySide6.QtWidgets import QApplication, QMenu, QWidget
 
 from samsara.ui import theme
+from samsara.ui.tray_qt import paint_mark
 
 logger = logging.getLogger(__name__)
 
@@ -104,24 +105,30 @@ _DEVICE_LOST_LABEL = "mic lost"
 # Colors
 # ---------------------------------------------------------------------------
 
-_TEAL         = "#00CED1"
-_TEAL_DIM     = "#007A7C"
-_IDLE_BG      = "#2B2B2B"
-_IDLE_FG      = "#888888"
-_LISTENING_FG = "#FFFFFF"
-_SNOOZE_BG    = "#3D2E00"
-_SNOOZE_FG    = "#CC9900"
-_CMD_BG           = "#4d2600"
-_CMD_FG           = "#ff8c00"
-_CMD_ACTIVE_BG    = "#7a3d00"
-_CMD_ACTIVE_FG    = "#ffa500"
-_FLASH_SUCCESS_BG = "#1B5E20"
-_FLASH_SUCCESS_FG = "#66FF66"
-_FLASH_ERROR_BG   = "#7F0000"
-_FLASH_ERROR_FG   = "#FF6666"
-_VISION_BG        = "#2d0050"
-_VISION_BG_BRIGHT = "#4a0080"
-_VISION_FG        = "#cc88ff"
+# theme.py tokens only (one accent, one semantic -- theme.py "Visual
+# identity"). Pill fills are a token mixed toward BG0, never a new hue and
+# never solid accent: the state glyph is the monochrome mark in the state
+# colour and must stay visible on its own pill.
+_TEAL         = theme.ACCENT
+_TEAL_DIM     = theme._mix(theme.ACCENT, theme.BG0, 0.80)
+_TEAL_BRIGHT  = theme._mix(theme.ACCENT, theme.BG0, 0.62)
+_IDLE_BG      = theme.BG1
+_IDLE_FG      = theme.ICON_IDLE
+_LISTENING_FG = theme.ACCENT
+# Snoozed is "asleep": the closed-lid glyph and the label carry it.
+_SNOOZE_BG    = theme.BG1
+_SNOOZE_FG    = theme.ICON_IDLE
+_CMD_BG           = theme._mix(theme.ACCENT, theme.BG0, 0.80)
+_CMD_FG           = theme.ACCENT
+_CMD_ACTIVE_BG    = theme._mix(theme.ACCENT, theme.BG0, 0.62)
+_CMD_ACTIVE_FG    = theme.ACCENT_HOVER
+_FLASH_SUCCESS_BG = theme._mix(theme.SUCCESS, theme.BG0, 0.70)
+_FLASH_SUCCESS_FG = theme.SUCCESS
+_FLASH_ERROR_BG   = theme._mix(theme.ERROR, theme.BG0, 0.70)
+_FLASH_ERROR_FG   = theme.ERROR
+_VISION_BG        = theme._mix(theme.AVA, theme.BG0, 0.80)
+_VISION_BG_BRIGHT = theme._mix(theme.AVA, theme.BG0, 0.62)
+_VISION_FG        = theme.AVA
 
 # ---------------------------------------------------------------------------
 # Geometry
@@ -130,9 +137,9 @@ _VISION_FG        = "#cc88ff"
 _PILL_H       = 36
 _PILL_MIN_W   = 90
 _PILL_PAD_X   = 22
-_DOT_SPACE    = 22
-_DOT_R        = 5
-_DOT_X        = 14
+_DOT_SPACE    = 26        # left reserve for the state glyph (the Samsara mark)
+_GLYPH_PX     = 20
+_GLYPH_X      = 10
 _CORNER_R     = 18.0
 _EDGE_MARGIN  = 24
 
@@ -243,6 +250,7 @@ class ListeningIndicator(QWidget):
         self._flash_bg    = None
         self._flash_fg    = None
         self._flash_step  = 0
+        self._flash_wake  = False
         self._flash_timer = QTimer(self)
         self._flash_timer.setSingleShot(True)
         self._flash_timer.setInterval(_FLASH_STEP_INTERVAL)
@@ -570,15 +578,20 @@ class ListeningIndicator(QWidget):
 
     def flash_success(self):
         if self.isVisible():
+            self._flash_wake = False
             self._start_flash(_FLASH_SUCCESS_BG, _FLASH_SUCCESS_FG)
 
     def flash_error(self):
         if self.isVisible():
+            self._flash_wake = False
             self._start_flash(_FLASH_ERROR_BG, _FLASH_ERROR_FG)
 
     def flash_wake(self):
         if self.isVisible():
-            self._start_flash(_TEAL, _LISTENING_FG)
+            # The glyph plays the heard frame (red eye, bright ring) while
+            # this flash runs -- see tray_qt.HEARD_KEYFRAMES.
+            self._flash_wake = True
+            self._start_flash(_TEAL_BRIGHT, _LISTENING_FG)
 
     # ------------------------------------------------------------------
     # Outcome chip
@@ -703,13 +716,17 @@ class ListeningIndicator(QWidget):
         return f
 
     def _resolve_colors(self):
-        """Return (bg_hex, fg_hex, label, show_dot) from current state."""
+        """Return (bg_hex, fg_hex, label, show_glyph) from current state.
+
+        Every pill state shows the state glyph (the Samsara mark, see
+        _glyph_mark); the 4th element stays for layout callers.
+        """
         t = self._pulse_step / _PULSE_STEPS
 
         if self._unlocked:
             # Move mode dominates every other display state -- the user is
             # actively dragging the pill and needs an unambiguous cue.
-            return _IDLE_BG, _TEAL, "Drag to move", False
+            return _IDLE_BG, _TEAL, "Drag to move", True
 
         if self._flash_bg is not None:
             if self._snoozed:
@@ -718,31 +735,53 @@ class ListeningIndicator(QWidget):
                 label = "CMD"
             else:
                 label = self._mode_text
-            return self._flash_bg, self._flash_fg, label, False
+            return self._flash_bg, self._flash_fg, label, True
 
         if self._session_mode_name:
             # Unified session (COMMAND/DICTATE/AVA) dominates the generic
             # CMD/listening states while active -- it's strictly more
             # informative. A transient flash (above) still interrupts it
             # briefly for success/error confirmation.
-            return _IDLE_BG, self._session_mode_color, self._session_mode_name, False
+            return _IDLE_BG, self._session_mode_color, self._session_mode_name, True
 
         if self._thinking:
-            return _lerp_color(_VISION_BG, _VISION_BG_BRIGHT, t), _VISION_FG, "Vision", False
+            return _lerp_color(_VISION_BG, _VISION_BG_BRIGHT, t), _VISION_FG, "Vision", True
 
         if self._snoozed:
-            return _SNOOZE_BG, _SNOOZE_FG, "Snoozed", False
+            return _SNOOZE_BG, _SNOOZE_FG, "Snoozed", True
 
         if self._command_mode and self._listening:
-            return _lerp_color(_CMD_BG, _CMD_ACTIVE_BG, t), _CMD_ACTIVE_FG, "CMD", False
+            return _lerp_color(_CMD_BG, _CMD_ACTIVE_BG, t), _CMD_ACTIVE_FG, "CMD", True
 
         if self._command_mode:
-            return _CMD_BG, _CMD_FG, "CMD", False
+            return _CMD_BG, _CMD_FG, "CMD", True
 
         if self._listening:
-            return _lerp_color(_TEAL_DIM, _TEAL, t), _LISTENING_FG, self._mode_text, True
+            return _lerp_color(_TEAL_DIM, _TEAL_BRIGHT, t), _LISTENING_FG, self._mode_text, True
 
-        return _IDLE_BG, _IDLE_FG, self._mode_text, False
+        return _IDLE_BG, _IDLE_FG, self._mode_text, True
+
+    def _glyph_mark(self):
+        """(capture, eye, rotation_deg, opacity) for the pill's state glyph --
+        the same mark the tray draws (tray_qt.paint_mark), at pill size.
+
+        Motion on the same drawing: Vision (thinking) spins, listening pulses.
+        """
+        t = self._pulse_step / _PULSE_STEPS
+        if self._unlocked:
+            return "idle", "off", 0.0, 1.0
+        if self._flash_bg is not None and self._flash_wake:
+            return "listening", "heard", 0.0, 1.0
+        if self._session_mode_name:
+            capture = "ava" if str(self._session_mode_name).upper() == "AVA" else "listening"
+            return capture, "off", 0.0, 1.0
+        if self._thinking:
+            return "ava", "off", 360.0 * t, 1.0
+        if self._snoozed:
+            return "idle", "asleep", 0.0, 1.0
+        if self._command_mode or self._listening:
+            return "listening", "off", 0.0, (0.6 + 0.4 * t) if self._listening else 1.0
+        return "idle", "off", 0.0, 1.0
 
     def _pill_width(self, label: str, show_dot: bool) -> int:
         fm = QFontMetrics(self._font())
@@ -922,19 +961,19 @@ class ListeningIndicator(QWidget):
 
         fg = QColor(fg_hex)
 
-        # Dot indicator (shows when listening)
+        text_rect = rect
         if show_dot:
-            painter.setBrush(fg)
-            painter.setPen(Qt.PenStyle.NoPen)
-            painter.drawEllipse(
-                QPointF(rect.x() + _DOT_X, rect.y() + rect.height() / 2.0),
-                float(_DOT_R),
-                float(_DOT_R),
-            )
+            # State glyph: the Samsara mark (shared routine, tray_qt.paint_mark).
+            capture, eye, rotation, opacity = self._glyph_mark()
+            glyph = QRectF(rect.x() + _GLYPH_X,
+                           rect.y() + (rect.height() - _GLYPH_PX) / 2.0,
+                           _GLYPH_PX, _GLYPH_PX)
+            paint_mark(painter, glyph, capture, eye, rotation, opacity)
+            text_rect = rect.adjusted(_DOT_SPACE, 0, 0, 0)
 
         painter.setPen(fg)
         painter.setFont(self._font())
-        painter.drawText(rect, Qt.AlignmentFlag.AlignCenter, label)
+        painter.drawText(text_rect, Qt.AlignmentFlag.AlignCenter, label)
 
         # Unlocked (move-mode) outline -- obvious but tasteful drag affordance
         if self._unlocked:
@@ -1001,7 +1040,7 @@ class ListeningIndicator(QWidget):
         elif self._command_mode:
             target_bg, target_fg = _CMD_BG, _CMD_FG
         elif self._listening:
-            target_bg = _lerp_color(_TEAL_DIM, _TEAL, 0.5)
+            target_bg = _lerp_color(_TEAL_DIM, _TEAL_BRIGHT, 0.5)
             target_fg = _LISTENING_FG
         else:
             target_bg, target_fg = _IDLE_BG, _IDLE_FG

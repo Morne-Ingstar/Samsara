@@ -9959,6 +9959,7 @@ class DictationApp:
             if matched:
                 logger.debug(f"[MIC] Wake word detected: '{wake_phrase}' ({match_type} @ {match_index})")
                 self._confirm_wake_capture()
+                self._flash_tray_heard()
                 if self._wake_opens_session():
                     # wake_word_config.opens_session: the wake phrase arms the
                     # latched hands-free session (SAMSARA_VISION.md section 1)
@@ -12607,12 +12608,6 @@ class DictationApp:
             return  # snooze tooltip managed by _update_snooze_tooltip
         self.tray_icon.title = f"Samsara - {self._get_mode_display()}"
 
-    # Wheel icon color scheme
-    _WHEEL_COLORS = ['#185FA5', '#C0392B', '#1A1A1A']   # blue, red, black
-    _WHEEL_IDLE   = ['#555555', '#666666', '#555555']
-    _WHEEL_SNOOZE = ['#333333', '#333333', '#333333']
-    _WHEEL_GOLD   = '#D4A017'
-
     def _schedule_ui(self, func, *args):
         """Schedule a function on the Qt main thread (replaces root.after).
 
@@ -12632,63 +12627,78 @@ class DictationApp:
             except Exception:
                 logger.exception("_schedule_ui direct-call fallback failed")
 
-    @staticmethod
-    def _arc_polygon(cx, cy, outer_r, inner_r, start_rad, end_rad, steps=24):
-        """Return polygon points for a thick arc segment."""
-        pts = []
-        for i in range(steps + 1):
-            t = start_rad + (end_rad - start_rad) * i / steps
-            pts.append((cx + outer_r * math.cos(t), cy + outer_r * math.sin(t)))
-        for i in range(steps, -1, -1):
-            t = start_rad + (end_rad - start_rad) * i / steps
-            pts.append((cx + inner_r * math.cos(t), cy + inner_r * math.sin(t)))
-        return pts
+    def _tray_mark(self):
+        """(capture, eye) the tray shows for the live app state.
 
-    def create_icon_image(self, active=False, color_offset=0, rotation=0.0):
-        """Create system tray icon — segmented wheel design.
-
-        Three arc segments (blue, red, black) with gaps between them.
-        Active state shows full colors + gold center dot.
-        Idle state shows muted greys.
-        color_offset shifts which color sits in which position (chase animation).
-        rotation rotates the entire wheel (in radians).
+        Capture (wheel): recording > Ava > listening (command mode,
+        continuous, or the wake listener armed) > idle. Eye (hands-free):
+        the heard animation's keyframe while it plays > asleep (snoozed) >
+        armed (wake listener running) > off. See tray_qt.MARK_STATES.
         """
-        size = 64
-        image = Image.new('RGBA', (size, size), (0, 0, 0, 0))
-        draw = ImageDraw.Draw(image)
-
-        cx, cy = size / 2, size / 2
-        ring_width = 12
-        outer_r = size / 2 - 1
-        inner_r = outer_r - ring_width
-
-        if getattr(self, 'snoozed', False):
-            colors = self._WHEEL_SNOOZE
-        elif active:
-            colors = self._WHEEL_COLORS
+        wake_armed = bool(getattr(self, 'wake_word_active', False))
+        snoozed = bool(getattr(self, 'snoozed', False))
+        if getattr(self, 'recording', False):
+            capture = 'recording'
+        elif (getattr(self, 'ava_mode_active', False)
+                or getattr(self, 'ava_command_session_active', False)):
+            capture = 'ava'
+        elif (getattr(self, 'command_mode_active', False)
+                or getattr(self, 'continuous_active', False) or wake_armed):
+            capture = 'listening'
         else:
-            colors = self._WHEEL_IDLE
+            capture = 'idle'
 
-        n = len(colors)
-        gap_rad = math.radians(8)
-        arc_len = (2 * math.pi - gap_rad * n) / n
+        heard_eye = getattr(self, '_tray_heard_eye', None)
+        if heard_eye is not None:
+            eye = heard_eye
+        elif snoozed:
+            eye = 'asleep'
+        elif wake_armed:
+            eye = 'armed'
+        else:
+            eye = 'off'
+        return capture, eye
 
-        # Shift colors by offset for chase animation (clockwise)
-        shifted = [colors[(i - color_offset) % n] for i in range(n)]
+    def create_icon_image(self, rotation=0.0, opacity=1.0):
+        """The tray frame for the live state: a tray_qt.MarkFrame.
 
-        for i, color in enumerate(shifted):
-            start = i * (arc_len + gap_rad) - math.pi / 2 + rotation  # 12 o'clock + rotation
-            end = start + arc_len
-            poly = self._arc_polygon(cx, cy, outer_r, inner_r, start, end)
-            draw.polygon(poly, fill=color)
+        Only describes the frame -- tray_qt renders it with render_mark on
+        the Qt thread, so this is safe from the icon timer's worker thread.
+        rotation is in radians (the chase timer's unit).
+        """
+        from samsara.ui.tray_qt import MarkFrame
+        capture, eye = self._tray_mark()
+        return MarkFrame(capture, eye, math.degrees(rotation), opacity)
 
-        # Gold center dot (visible when active)
-        dot_r = 3
-        if active and not getattr(self, 'snoozed', False):
-            draw.ellipse([cx - dot_r, cy - dot_r, cx + dot_r, cy + dot_r],
-                         fill=self._WHEEL_GOLD)
+    def _push_tray_icon(self):
+        """Show the live tray state now (outside an animation tick)."""
+        if not hasattr(self, 'tray_icon'):
+            return
+        try:
+            self.tray_icon.icon = self.create_icon_image(
+                rotation=getattr(self, '_icon_rotation', 0.0))
+        except OSError as e:
+            logger.debug(f"Tray icon state swap failed: {e}")
 
-        return image
+    def _flash_tray_heard(self):
+        """Wake phrase heard: play tray_qt.HEARD_KEYFRAMES on the tray eye."""
+        from samsara.ui.tray_qt import HEARD_KEYFRAMES
+        self._tray_heard_generation = getattr(self, '_tray_heard_generation', 0) + 1
+        generation = self._tray_heard_generation
+
+        def _step(index):
+            if generation != self._tray_heard_generation:
+                return   # a newer flash superseded this one
+            at_ms, eye = HEARD_KEYFRAMES[index]
+            self._tray_heard_eye = eye
+            self._push_tray_icon()
+            if index + 1 < len(HEARD_KEYFRAMES):
+                delay_s = (HEARD_KEYFRAMES[index + 1][0] - at_ms) / 1000.0
+                thread_registry.timer(
+                    "dictation.tray_heard", delay_s,
+                    lambda: _step(index + 1), daemon=True)
+
+        _step(0)
 
     def _request_icon_chase(self, reason):
         """Register a reason for the icon to animate. Starts animation if not running."""
@@ -12718,19 +12728,19 @@ class DictationApp:
             self._icon_chase_timer = None
         self._icon_chase_offset = 0
         self._icon_rotation = 0.0
-        if hasattr(self, 'tray_icon'):
-            try:
-                self.tray_icon.icon = self.create_icon_image(active=False)
-            except OSError as e:
-                logger.debug(f"Tray icon idle-image swap failed: {e}")
+        self._push_tray_icon()
 
     def _icon_chase_tick(self):
-        """Advance the spin + chase and schedule the next tick.
+        """Advance the tray animation and schedule the next tick.
 
-        Speed varies by active state:
-        - recording:  fast spin + fast chase  (80ms tick, chase every 6 ticks ~480ms)
-        - continuous: medium spin + medium chase (80ms tick, chase every 10 ticks ~800ms)
-        - wake_word:  slow spin + slow chase  (120ms tick, chase every 14 ticks ~1680ms)
+        The mark (tray_qt.render_mark) carries state by shape, and motion
+        on the same drawing adds the rest:
+        - recording:     filled wheel, still (fill is the signal)
+        - transcribing:  the 'recording' reason outlives capture -> fast spin
+        - continuous:    listening pulse, medium period
+        - wake_word:     listening pulse, slow period
+        Tick speed and period come from the existing ICON_* constants
+        (chase_every = ticks per half pulse).
         """
         if not self._icon_animating:
             return
@@ -12749,23 +12759,23 @@ class DictationApp:
             spin_step = ICON_SPIN_SLOW
             chase_every = ICON_CHASE_SLOW
 
-        # Spin
-        self._icon_rotation += spin_step
-
-        # Chase: shift colors every N ticks
-        self._icon_chase_counter += 1
-        if self._icon_chase_counter >= chase_every:
-            self._icon_chase_counter = 0
-            self._icon_chase_offset = (self._icon_chase_offset + 1) % 3
+        self._icon_chase_counter = (self._icon_chase_counter + 1) % (2 * chase_every)
+        opacity = 1.0
+        if getattr(self, 'recording', False):
+            pass   # filled and still
+        elif 'recording' in self._icon_anim_reasons:
+            self._icon_rotation += spin_step   # transcribing: spin
+        else:
+            # Listening: pulse between 55% and 100% over 2 * chase_every ticks.
+            phase = self._icon_chase_counter / (2 * chase_every)
+            opacity = 0.55 + 0.45 * (0.5 + 0.5 * math.cos(2 * math.pi * phase))
 
         if hasattr(self, 'tray_icon'):
             try:
                 self.tray_icon.icon = self.create_icon_image(
-                    active=True,
-                    color_offset=self._icon_chase_offset,
-                    rotation=self._icon_rotation)
+                    rotation=self._icon_rotation, opacity=opacity)
             except OSError as e:
-                # transient WinError during icon handle swap — skip this frame
+                # transient WinError during icon handle swap -- skip this frame
                 logger.debug(f"Tray icon animation frame swap failed: {e}")
 
         self._icon_chase_timer = thread_registry.timer(
@@ -12942,9 +12952,10 @@ class DictationApp:
         self._update_snooze_tooltip()
 
     def _update_snooze_tooltip(self):
-        """Set tray icon tooltip to reflect snooze state."""
+        """Set tray icon tooltip (and the asleep eye) to reflect snooze state."""
         if not hasattr(self, 'tray_icon'):
             return
+        self._push_tray_icon()
         if self.snoozed:
             if self._snooze_resume_time is not None:
                 resume_str = self._snooze_resume_time.strftime("%H:%M")
