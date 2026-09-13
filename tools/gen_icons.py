@@ -25,6 +25,7 @@ from __future__ import annotations
 
 import argparse
 import os
+import re
 import struct
 import sys
 from pathlib import Path
@@ -42,10 +43,19 @@ from PySide6.QtCore import QBuffer, QIODevice, QRectF, Qt  # noqa: E402
 from PySide6.QtGui import QColor, QFont, QGuiApplication, QImage, QPainter  # noqa: E402
 
 from samsara.ui import theme  # noqa: E402
-from samsara.ui.tray_qt import APP_MARK, MARK_STATES, render_mark  # noqa: E402
+from samsara.ui.tray_qt import (  # noqa: E402
+    APP_MARK,
+    MARK_STATES,
+    clear_mark_caches,
+    render_mark,
+    ring_segment_path_data,
+)
 
 ICON_DIR = REPO / "assets" / "icon"
+SVG_PATH = ICON_DIR / "samsara.svg"
 STATES_DIR = ICON_DIR / "states"
+SPIN_SHEET_ANGLES = (0, 45, 90, 135, 180, 225, 270, 315)
+_SEGMENT_PATH = re.compile(r'(<path data-role="segment" d=")([^"]*)(")')
 
 APP_SIZES = (16, 24, 32, 48, 64, 128, 256)
 TRAY_SIZES = (16, 24, 32, 48, 64)
@@ -59,6 +69,36 @@ _TASKBAR_LIGHT = "#f3f3f3"
 
 def _ensure_gui_app():
     return QGuiApplication.instance() or QGuiApplication(sys.argv[:1])
+
+
+def synced_svg_text(text: str) -> str:
+    """samsara.svg with the #regular ring outlines rewritten from the one
+    geometry function (tray_qt.ring_segment_path_data). The #regular drawing
+    holds two groups of three segments (hollow, filled); the #small drawing
+    keeps its plain even-width arcs and is left untouched."""
+    split = text.index('<g id="small"')
+    regular, small = text[:split], text[split:]
+    matches = list(_SEGMENT_PATH.finditer(regular))
+    if len(matches) != 6:
+        raise ValueError(f"expected 6 regular ring segments in samsara.svg, found {len(matches)}")
+    pieces, last = [], 0
+    for index, match in enumerate(matches):
+        pieces.append(regular[last:match.start(2)])
+        pieces.append(ring_segment_path_data(index % 3))
+        last = match.end(2)
+    pieces.append(regular[last:])
+    return "".join(pieces) + small
+
+
+def sync_svg() -> bool:
+    """Write the geometry into samsara.svg. True if the file changed."""
+    text = SVG_PATH.read_text(encoding="utf-8")
+    synced = synced_svg_text(text)
+    if synced == text:
+        return False
+    SVG_PATH.write_text(synced, encoding="utf-8", newline="\n")
+    clear_mark_caches()
+    return True
 
 
 def render(state: str, size: int) -> QImage:
@@ -107,7 +147,7 @@ def expected_outputs() -> dict[Path, QImage | bytes]:
 
 def write_assets() -> list[Path]:
     STATES_DIR.mkdir(parents=True, exist_ok=True)
-    written = []
+    written = [SVG_PATH] if sync_svg() else []
     for path, value in expected_outputs().items():
         data = value if isinstance(value, bytes) else png_bytes(value)
         path.write_bytes(data)
@@ -116,10 +156,14 @@ def write_assets() -> list[Path]:
 
 
 def stale_assets() -> list[Path]:
-    """Generated files that are missing, whose pixels differ from the SVG,
-    or that no state produces any more."""
-    expected = expected_outputs()
+    """samsara.svg out of sync with the ring geometry, plus generated files
+    that are missing, whose pixels differ from the SVG, or that no state
+    produces any more."""
     stale = []
+    svg_text = SVG_PATH.read_text(encoding="utf-8")
+    if synced_svg_text(svg_text) != svg_text:
+        stale.append(SVG_PATH)
+    expected = expected_outputs()
     for path, value in expected.items():
         if not path.exists():
             stale.append(path)
@@ -142,17 +186,22 @@ def _ico_sizes(data: bytes) -> list[int]:
     return sizes
 
 
-def write_montage(path: Path, magnify: int = 4) -> Path:
-    """16 px state sheet: each state at 1x and nearest-neighbour 4x, on a dark
-    and a light taskbar, plus the 32 px regular drawing on both."""
+def _save(image: QImage, path: Path) -> Path:
+    path.parent.mkdir(parents=True, exist_ok=True)
+    if not image.save(str(path)):
+        raise OSError(f"could not write {path}")
+    return path
+
+
+def write_montage(path: Path) -> Path:
+    """The LARGE mark per state on a dark and a light taskbar: 16 px (the plain
+    ring, shown 4x nearest-neighbour), then 32, 48 and 128 px at 1x."""
     _ensure_gui_app()
-    cell = 16 * magnify
-    label_w, pad, header_h = 170, 16, 44
-    columns = [
-        ("1x dark", _TASKBAR_DARK, 1), (f"{magnify}x dark", _TASKBAR_DARK, magnify),
-        ("1x light", _TASKBAR_LIGHT, 1), (f"{magnify}x light", _TASKBAR_LIGHT, magnify),
-        ("32 px dark", _TASKBAR_DARK, None), ("32 px light", _TASKBAR_LIGHT, None),
-    ]
+    label_w, pad, header_h, cell = 170, 12, 44, 128
+    columns = []
+    for tone, bg in (("dark", _TASKBAR_DARK), ("light", _TASKBAR_LIGHT)):
+        columns += [(f"16 px x4 {tone}", bg, 16), (f"32 px {tone}", bg, 32),
+                    (f"48 px {tone}", bg, 48), (f"128 px {tone}", bg, 128)]
     col_w = cell + 2 * pad
     row_h = cell + 2 * pad
     width = label_w + col_w * len(columns)
@@ -179,31 +228,51 @@ def write_montage(path: Path, magnify: int = 4) -> Path:
         painter.drawText(QRectF(pad, y + row_h / 2, label_w - pad, row_h / 2),
                          Qt.AlignmentFlag.AlignLeft | Qt.AlignmentFlag.AlignTop,
                          f"{capture} / {eye}")
-        small = render(state, 16)
-        regular = render(state, 32)
-        for i, (_title, bg, scale) in enumerate(columns):
+        for i, (_title, bg, size) in enumerate(columns):
             x = label_w + i * col_w
             painter.fillRect(x + 4, y + 4, col_w - 8, row_h - 8, QColor(bg))
-            if scale is None:
-                image = regular
-            elif scale == 1:
-                image = small
-            else:
-                image = small.scaled(cell, cell, Qt.AspectRatioMode.IgnoreAspectRatio,
+            image = render(state, size)
+            if size == 16:
+                image = image.scaled(64, 64, Qt.AspectRatioMode.IgnoreAspectRatio,
                                      Qt.TransformationMode.FastTransformation)
             painter.drawImage(x + (col_w - image.width()) // 2,
                               y + (row_h - image.height()) // 2, image)
     painter.end()
-    path.parent.mkdir(parents=True, exist_ok=True)
-    if not sheet.save(str(path)):
-        raise OSError(f"could not write {path}")
-    return path
+    return _save(sheet, path)
+
+
+def write_spin_sheet(path: Path, size: int = 128) -> Path:
+    """The mark at SPIN_SHEET_ANGLES, to prove head and tail read at every
+    rotation (dark and light rows; the eye stays upright)."""
+    _ensure_gui_app()
+    pad, header_h, label_w = 12, 36, 70
+    cell = size + 2 * pad
+    sheet = QImage(label_w + cell * len(SPIN_SHEET_ANGLES), header_h + 2 * cell,
+                   QImage.Format.Format_ARGB32)
+    sheet.fill(QColor(theme.BG0))
+    painter = QPainter(sheet)
+    painter.setFont(QFont("Segoe UI", 10))
+    for i, angle in enumerate(SPIN_SHEET_ANGLES):
+        painter.setPen(QColor(theme.TEXT_PRIMARY))
+        painter.drawText(QRectF(label_w + i * cell, 0, cell, header_h),
+                         Qt.AlignmentFlag.AlignCenter, f"{angle} deg")
+    for row, (tone, bg) in enumerate((("dark", _TASKBAR_DARK), ("light", _TASKBAR_LIGHT))):
+        y = header_h + row * cell
+        painter.setPen(QColor(theme.ICON_IDLE))
+        painter.drawText(QRectF(0, y, label_w, cell), Qt.AlignmentFlag.AlignCenter, tone)
+        for i, angle in enumerate(SPIN_SHEET_ANGLES):
+            x = label_w + i * cell
+            painter.fillRect(x + 4, y + 4, cell - 8, cell - 8, QColor(bg))
+            painter.drawImage(x + pad, y + pad, render_mark(*APP_MARK, size, rotation=float(angle)))
+    painter.end()
+    return _save(sheet, path)
 
 
 def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(description=__doc__.splitlines()[0])
     parser.add_argument("--check", action="store_true", help="exit 1 if generated assets are stale")
-    parser.add_argument("--montage", type=Path, help="write the 16 px state sheet to this path")
+    parser.add_argument("--montage", type=Path, help="write the state montage to this path")
+    parser.add_argument("--spin-sheet", type=Path, help="write the 128 px rotation sheet to this path")
     args = parser.parse_args(argv)
     _ensure_gui_app()
 
@@ -212,8 +281,11 @@ def main(argv: list[str] | None = None) -> int:
         for path in stale:
             print(f"stale: {path.relative_to(REPO)}")
         return 1 if stale else 0
-    if args.montage is not None:
-        print(f"saved {write_montage(args.montage)}")
+    if args.montage is not None or args.spin_sheet is not None:
+        if args.montage is not None:
+            print(f"saved {write_montage(args.montage)}")
+        if args.spin_sheet is not None:
+            print(f"saved {write_spin_sheet(args.spin_sheet)}")
         return 0
     for path in write_assets():
         print(f"saved {path.relative_to(REPO)}")

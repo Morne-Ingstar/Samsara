@@ -66,13 +66,15 @@ Move mode (drag-to-reposition):
 
 import logging
 import math
+import random
 
-from PySide6.QtCore import Qt, QTimer, QRectF, Signal
+from PySide6.QtCore import QElapsedTimer, Qt, QTimer, QRectF, Signal
 from PySide6.QtGui import QColor, QFont, QFontMetrics, QPainter, QPainterPath, QPen
 from PySide6.QtWidgets import QApplication, QMenu, QWidget
 
 from samsara.ui import theme
-from samsara.ui.tray_qt import paint_mark
+from samsara.ui.splash_qt import _system_reduced_motion as _reduced_motion
+from samsara.ui.tray_qt import SPIN_SECONDS_PER_TURN, paint_mark
 
 logger = logging.getLogger(__name__)
 
@@ -152,6 +154,18 @@ _PULSE_STEPS         = 20
 _FLASH_DURATION_MS   = 600
 _FLASH_FADE_STEPS    = 6
 _FLASH_STEP_INTERVAL = _FLASH_DURATION_MS // _FLASH_FADE_STEPS
+
+# Idle life (09b3): the glyph BLINKS and GLANCES now and then while the wake
+# listener is armed. Always under 1 s and always back to the same rest pose
+# -- anything that lasts longer MEANS something (spin = thinking, closed lid
+# = asleep, red = recording). Randomised intervals, so it never reads as a
+# progress rhythm. Never in the tray.
+_BLINK_MS            = 140              # lid closed, then reopens
+_BLINK_INTERVAL_S    = (18.0, 45.0)
+_GLANCE_MS           = 600              # eases out to _GLANCE_DEG and back
+_GLANCE_DEG          = 14.0
+_GLANCE_INTERVAL_S   = (40.0, 90.0)
+_IDLE_FRAME_MS       = 33               # frame timer only runs during a blink/glance
 
 VALID_POSITIONS = (
     "top-left", "top-center", "top-right",
@@ -270,6 +284,28 @@ class ListeningIndicator(QWidget):
         # state. Wins over any transient outcome chip while set.
         self._device_lost = False
 
+        # Wake listener armed (open eye) -- set by dictation.py.
+        self._wake_armed = False
+
+        # Idle life: blink + glance (see _BLINK_* / _GLANCE_*). Two
+        # single-shot schedulers at random intervals, plus a frame timer
+        # that runs ONLY while a blink or glance is in flight.
+        self._clock = QElapsedTimer()
+        self._clock.start()
+        self._idle_enabled = True          # config ui.idle_animation
+        self._idle_rng = random.Random()
+        self._blink_started_ms = None
+        self._glance_started_ms = None
+        self._blink_timer = QTimer(self)
+        self._blink_timer.setSingleShot(True)
+        self._blink_timer.timeout.connect(self._start_blink)
+        self._glance_timer = QTimer(self)
+        self._glance_timer.setSingleShot(True)
+        self._glance_timer.timeout.connect(self._start_glance)
+        self._idle_frame_timer = QTimer(self)
+        self._idle_frame_timer.setInterval(_IDLE_FRAME_MS)
+        self._idle_frame_timer.timeout.connect(self._idle_frame)
+
         self.resize(_PILL_MIN_W, _PILL_H)
 
     # ------------------------------------------------------------------
@@ -282,12 +318,14 @@ class ListeningIndicator(QWidget):
         self._chip_only = False
         self._reposition()
         super().show()
-        if self._listening:
+        if self._listening or self._thinking:
             self._pulse_timer.start()
+        self._state_changed()
 
     def hide(self):
         self._thinking = False
         self._pulse_timer.stop()
+        self._cancel_idle()
         self._flash_timer.stop()
         self._force_lock()
         if self._device_lost:
@@ -309,6 +347,7 @@ class ListeningIndicator(QWidget):
     def destroy(self, destroyWindow=True, destroySubWindows=True):
         self._thinking = False
         self._pulse_timer.stop()
+        self._cancel_idle()
         self._flash_timer.stop()
         self._chip_timer.stop()
         self._chip_label = None
@@ -328,6 +367,7 @@ class ListeningIndicator(QWidget):
         if active == self._listening:
             return
         self._listening = active
+        self._state_changed()
         if not self.isVisible():
             return
         if active:
@@ -344,6 +384,7 @@ class ListeningIndicator(QWidget):
         if snoozed == self._snoozed:
             return
         self._snoozed = snoozed
+        self._state_changed()
         if self.isVisible():
             self._reposition()
             self.update()
@@ -352,6 +393,7 @@ class ListeningIndicator(QWidget):
         if active == self._command_mode:
             return
         self._command_mode = active
+        self._state_changed()
         if self.isVisible():
             self._reposition()
             self.update()
@@ -366,6 +408,7 @@ class ListeningIndicator(QWidget):
             return
         self._session_mode_name = name
         self._session_mode_color = color
+        self._state_changed()
         if self.isVisible():
             self._reposition()
             self.update()
@@ -563,6 +606,7 @@ class ListeningIndicator(QWidget):
         if active == self._thinking:
             return
         self._thinking = active
+        self._state_changed()
         if not self.isVisible():
             return
         if active:
@@ -593,6 +637,131 @@ class ListeningIndicator(QWidget):
             self._flash_wake = True
             self._start_flash(_TEAL_BRIGHT, _LISTENING_FG)
 
+    def set_wake_armed(self, armed: bool):
+        """Wake listener armed: the glyph's eye is open (and may blink)."""
+        armed = bool(armed)
+        if armed == self._wake_armed:
+            return
+        self._wake_armed = armed
+        self._state_changed()
+        if self.isVisible():
+            self.update()
+
+    def set_idle_animation(self, enabled: bool):
+        """Config ui.idle_animation: blink and glance on/off. Never affects
+        state animation (spin, pulse, heard flash)."""
+        self._idle_enabled = bool(enabled)
+        self._state_changed()
+
+    # ------------------------------------------------------------------
+    # Idle life: blink + glance
+    # ------------------------------------------------------------------
+
+    def _now_ms(self) -> int:
+        return self._clock.elapsed()
+
+    def _base_glyph(self):
+        """The state glyph without idle overlays: (capture, eye, rotation, opacity)."""
+        t = self._pulse_step / _PULSE_STEPS
+        if self._unlocked:
+            return "idle", "off", 0.0, 1.0
+        if self._flash_bg is not None and self._flash_wake:
+            return "listening", "heard", 0.0, 1.0
+        if self._session_mode_name:
+            capture = "ava" if str(self._session_mode_name).upper() == "AVA" else "listening"
+            return capture, "off", 0.0, 1.0
+        if self._thinking:
+            turn_ms = SPIN_SECONDS_PER_TURN["thinking"] * 1000.0
+            return "ava", "off", 360.0 * (self._now_ms() % turn_ms) / turn_ms, 1.0
+        if self._snoozed:
+            return "idle", "asleep", 0.0, 1.0
+        pulse = (0.6 + 0.4 * t) if self._listening else 1.0
+        if self._wake_armed and not self._command_mode:
+            return "listening", "armed", 0.0, pulse
+        if self._command_mode or self._listening:
+            return "listening", "off", 0.0, pulse
+        return "idle", "off", 0.0, 1.0
+
+    def _idle_allowed(self) -> bool:
+        """Blink/glance only on a visible, unminimised pill whose eye is open
+        (armed), with idle animation enabled and the OS allowing motion.
+        Never while asleep/off, recording (the live chip), a heard flash,
+        move mode, or chip-only mode."""
+        if not self._idle_enabled or _reduced_motion():
+            return False
+        if not self.isVisible() or self.isMinimized() or self._chip_only:
+            return False
+        if self._unlocked or self._flash_bg is not None or self._chip_kind == "live":
+            return False
+        return self._base_glyph()[1] == "armed"
+
+    def _cancel_idle(self):
+        """Stop any in-flight blink/glance at once and clear the schedule."""
+        self._blink_timer.stop()
+        self._glance_timer.stop()
+        self._idle_frame_timer.stop()
+        was_animating = self._blink_started_ms is not None or self._glance_started_ms is not None
+        self._blink_started_ms = None
+        self._glance_started_ms = None
+        if was_animating and self.isVisible():
+            self.update()
+
+    def _schedule_idle(self):
+        if not self._idle_allowed():
+            self._blink_timer.stop()
+            self._glance_timer.stop()
+            return
+        if not self._blink_timer.isActive() and self._blink_started_ms is None:
+            self._blink_timer.start(int(self._idle_rng.uniform(*_BLINK_INTERVAL_S) * 1000))
+        if not self._glance_timer.isActive() and self._glance_started_ms is None:
+            self._glance_timer.start(int(self._idle_rng.uniform(*_GLANCE_INTERVAL_S) * 1000))
+
+    def _state_changed(self):
+        """A real state change cancels idle motion immediately, then
+        reschedules only if the new state allows it."""
+        self._cancel_idle()
+        self._schedule_idle()
+
+    def _start_blink(self):
+        if not self._idle_allowed():
+            self._schedule_idle()
+            return
+        self._blink_started_ms = self._now_ms()
+        self._idle_frame_timer.start()
+        self.update()
+
+    def _start_glance(self):
+        if not self._idle_allowed():
+            self._schedule_idle()
+            return
+        self._glance_started_ms = self._now_ms()
+        self._idle_frame_timer.start()
+        self.update()
+
+    def _idle_frame(self):
+        now = self._now_ms()
+        if not self._idle_allowed():
+            self._cancel_idle()
+            self._schedule_idle()
+            return
+        if self._blink_started_ms is not None and now - self._blink_started_ms >= _BLINK_MS:
+            self._blink_started_ms = None
+        if self._glance_started_ms is not None and now - self._glance_started_ms >= _GLANCE_MS:
+            self._glance_started_ms = None
+        if self._blink_started_ms is None and self._glance_started_ms is None:
+            self._idle_frame_timer.stop()
+            self._schedule_idle()
+        self.update()
+
+    def _glance_angle(self) -> float:
+        """0 -> _GLANCE_DEG -> 0 over _GLANCE_MS (ease out and back)."""
+        if self._glance_started_ms is None:
+            return 0.0
+        t = (self._now_ms() - self._glance_started_ms) / _GLANCE_MS
+        if t >= 1.0 or t < 0.0:
+            return 0.0
+        return _GLANCE_DEG * math.sin(math.pi * t)
+
     # ------------------------------------------------------------------
     # Outcome chip
     # ------------------------------------------------------------------
@@ -617,6 +786,7 @@ class ListeningIndicator(QWidget):
         self._chip_label = str(label)
         self._chip_kind = kind
         self._chip_timer.stop()
+        self._state_changed()   # e.g. the "live" (recording) chip stops idle motion
 
         if not self.isVisible():
             self._chip_only = True
@@ -668,6 +838,7 @@ class ListeningIndicator(QWidget):
     def _clear_outcome(self):
         self._chip_label = None
         self._chip_kind = None
+        self._state_changed()
         if self._chip_only and not self._device_lost:
             # The chip was the only reason this widget was on screen.
             self._chip_only = False
@@ -765,23 +936,17 @@ class ListeningIndicator(QWidget):
         """(capture, eye, rotation_deg, opacity) for the pill's state glyph --
         the same mark the tray draws (tray_qt.paint_mark), at pill size.
 
-        Motion on the same drawing: Vision (thinking) spins, listening pulses.
+        Motion on the same drawing: Vision (thinking) spins at
+        SPIN_SECONDS_PER_TURN['thinking'], listening pulses, and -- only in
+        the armed (open-eye) state -- the idle blink closes the lid and the
+        idle glance tilts the ring; both end back at the rest pose.
         """
-        t = self._pulse_step / _PULSE_STEPS
-        if self._unlocked:
-            return "idle", "off", 0.0, 1.0
-        if self._flash_bg is not None and self._flash_wake:
-            return "listening", "heard", 0.0, 1.0
-        if self._session_mode_name:
-            capture = "ava" if str(self._session_mode_name).upper() == "AVA" else "listening"
-            return capture, "off", 0.0, 1.0
-        if self._thinking:
-            return "ava", "off", 360.0 * t, 1.0
-        if self._snoozed:
-            return "idle", "asleep", 0.0, 1.0
-        if self._command_mode or self._listening:
-            return "listening", "off", 0.0, (0.6 + 0.4 * t) if self._listening else 1.0
-        return "idle", "off", 0.0, 1.0
+        capture, eye, rotation, opacity = self._base_glyph()
+        if eye == "armed":
+            if self._blink_started_ms is not None:
+                eye = "asleep"
+            rotation += self._glance_angle()
+        return capture, eye, rotation, opacity
 
     def _pill_width(self, label: str, show_dot: bool) -> int:
         fm = QFontMetrics(self._font())
@@ -1021,6 +1186,7 @@ class ListeningIndicator(QWidget):
         self._flash_bg   = bg
         self._flash_fg   = fg
         self._flash_step = 0
+        self._state_changed()   # a flash is a state change: idle motion stops now
         self._reposition()
         self.update()
         self._flash_timer.start()
@@ -1030,6 +1196,8 @@ class ListeningIndicator(QWidget):
         if self._flash_step >= _FLASH_FADE_STEPS or self._flash_bg is None:
             self._flash_bg = None
             self._flash_fg = None
+            self._flash_wake = False
+            self._state_changed()
             self._reposition()
             self.update()
             return

@@ -449,6 +449,9 @@ SETTINGS_SCHEMA = {
         "depends_on": "ducking.enabled",
     },
     "listening_indicator_enabled": {"type": "bool", "default": False, "tab": "advanced"},
+    # Idle blink/glance on the listening indicator's mark (queue 09b3). Only
+    # the idle motion -- state animation (spin, pulse, heard flash) always runs.
+    "ui.idle_animation": {"type": "bool", "default": True, "tab": "advanced"},
     "listening_indicator_position": {
         "type": "enum",
         "options": ["top-left", "top-center", "top-right",

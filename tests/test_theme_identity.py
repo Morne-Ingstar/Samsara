@@ -125,12 +125,15 @@ def _opaque_count(image):
 
 
 def _centre_marks(image):
-    """Opaque pixels in the open space inside the wheel: the eye's SHAPE."""
+    """Opaque pixels in the eye's own box (+-12.5 x +-6.5 of the 64-unit
+    viewBox): the eye's SHAPE. The ouroboros head swells inward near 12
+    o'clock but never enters this box (its inner edge stays >= 13 units out)."""
     size = image.width()
-    centre, radius = size / 2, size * 0.22   # inside the ring's inner edge at every size
+    centre = size / 2
+    half_w, half_h = size * 12.5 / 64, size * 6.5 / 64
     return {
         (x, y) for y in range(size) for x in range(size)
-        if (x + 0.5 - centre) ** 2 + (y + 0.5 - centre) ** 2 <= radius ** 2
+        if abs(x + 0.5 - centre) <= half_w and abs(y + 0.5 - centre) <= half_h
         and image.pixelColor(x, y).alpha() > 128
     }
 
@@ -154,9 +157,87 @@ def test_heard_frame_eye_is_recording_red(qapp):
 
 def test_ring_spins_but_eye_does_not(qapp):
     still = tray_qt.render_mark("listening", "asleep", 64)
-    spun = tray_qt.render_mark("listening", "asleep", 64, rotation=60.0)
+    # 180: the head swings from 12 to 6 o'clock, clear of the eye box.
+    spun = tray_qt.render_mark("listening", "asleep", 64, rotation=180.0)
     assert still != spun
     assert _centre_marks(still) == _centre_marks(spun)
+
+
+# ---------------------------------------------------------------------------
+# 09b3: the ouroboros ring
+# ---------------------------------------------------------------------------
+
+def _svg_regular_and_small():
+    svg = (REPO / "assets" / "icon" / "samsara.svg").read_text(encoding="utf-8")
+    split = svg.index('<g id="small"')
+    return svg[:split], svg[split:]
+
+
+def test_svg_ring_is_the_shared_geometry_function(gen_icons):
+    regular, _small = _svg_regular_and_small()
+    paths = re.findall(r'<path data-role="segment" d="([^"]*)"', regular)
+    expected = [tray_qt.ring_segment_path_data(i) for i in range(3)]
+    assert paths == expected + expected            # hollow group, then filled group
+    assert gen_icons.ring_segment_path_data is tray_qt.ring_segment_path_data
+
+
+def test_width_function_tail_head_and_nose():
+    w = tray_qt.RING_WIDTH
+    tail, head, plain = tray_qt.TAIL_SEGMENT, tray_qt.HEAD_SEGMENT, 1
+    assert tray_qt.ring_width(tail, 0.0) == 0.0                            # tail starts as a point
+    assert tray_qt.ring_width(tail, tray_qt.TAIL_FRACTION) == pytest.approx(w)
+    assert tray_qt.ring_width(head, 1.0) == pytest.approx(w * tray_qt.HEAD_SCALE)
+    over = tray_qt.HEAD_OVERSHOOT_DEG / tray_qt.SEGMENT_SPAN_DEG
+    assert tray_qt.ring_width(head, 1.0 + over) == pytest.approx(0.0)       # nose closes
+    assert 0 < tray_qt.ring_width(head, 1.0 + over / 2) < w * tray_qt.HEAD_SCALE
+    assert all(tray_qt.ring_width(plain, u / 10) == w for u in range(11))
+    # Segment angles and ring radius unchanged from 09b2.
+    assert (tray_qt.SEGMENT_START_DEG, tray_qt.SEGMENT_SPAN_DEG, tray_qt.RING_RADIUS) == (-84.0, 108.0, 24.5)
+    outline = tray_qt.ring_segment_outline(head)
+    assert all(0.0 <= x <= 64.0 and 0.0 <= y <= 64.0 for x, y in outline)
+
+
+def test_16px_is_the_plain_ring_without_head_or_tail(qapp):
+    _regular, small = _svg_regular_and_small()
+    small_paths = re.findall(r'<path data-role="segment" d="([^"]*)"', small)
+    assert small_paths and all(" A 27 27 " in d and " L " not in d for d in small_paths)
+    # More than scale: the 24 px (ouroboros) drawing shrunk to 16 differs from
+    # the 16 px (plain) drawing by far more than resampling noise.
+    plain = tray_qt.render_mark("listening", "off", 16)
+    shrunk = tray_qt.render_mark("listening", "off", 24).scaled(
+        16, 16, tray_qt.Qt.AspectRatioMode.IgnoreAspectRatio,
+        tray_qt.Qt.TransformationMode.SmoothTransformation)
+    differing = sum(abs(plain.pixelColor(x, y).alpha() - shrunk.pixelColor(x, y).alpha()) > 96
+                    for x in range(16) for y in range(16))
+    assert differing >= 12
+
+
+def test_small_sizes_cycle_24_frames_and_large_sizes_rotate_live(qapp):
+    assert tray_qt.frame_step(7.0) == 0 and tray_qt.frame_step(20.0) == 1 and tray_qt.frame_step(-15.0) == 23
+    for size in (16, 24):
+        assert tray_qt.render_mark("listening", "armed", size, rotation=7.0) == \
+            tray_qt.render_mark("listening", "armed", size, rotation=0.0)
+        assert tray_qt.render_mark("listening", "armed", size, rotation=20.0) == \
+            tray_qt.render_mark("listening", "armed", size, rotation=15.0)
+    assert tray_qt.render_mark("listening", "armed", 32, rotation=7.0) != \
+        tray_qt.render_mark("listening", "armed", 32, rotation=0.0)
+
+
+def test_spin_speeds_are_a_state_channel():
+    assert tray_qt.SPIN_SECONDS_PER_TURN == {"thinking": 2.4, "transcribing": 0.9}
+
+
+def test_spin_sheet_renders(qapp, gen_icons, tmp_path):
+    out = gen_icons.write_spin_sheet(tmp_path / "ouroboros_spin.png")
+    assert out.exists() and out.stat().st_size > 0
+    assert gen_icons.SPIN_SHEET_ANGLES == (0, 45, 90, 135, 180, 225, 270, 315)
+
+
+def test_check_flags_svg_drift(gen_icons, monkeypatch):
+    regular, small = _svg_regular_and_small()
+    drifted = regular.replace(tray_qt.ring_segment_path_data(0), "M 0,0 L 1,1 Z", 1) + small
+    assert gen_icons.synced_svg_text(drifted) != drifted
+    assert gen_icons.synced_svg_text(regular + small) == regular + small
 
 
 def test_montage_renders(qapp, gen_icons, tmp_path):
@@ -164,6 +245,16 @@ def test_montage_renders(qapp, gen_icons, tmp_path):
     assert out.exists() and out.stat().st_size > 0
     assert gen_icons.MONTAGE_STATES == ("off", "asleep", "idle", "listening",
                                         "recording", "ava", "armed", "heard")
+
+
+def test_dictation_chase_timer_spins_at_transcribing_speed_without_reset():
+    tree, cls = _dictation_class()
+    source = (REPO / "dictation.py").read_text(encoding="utf-8-sig")
+    methods = {n.name: n for n in cls.body if isinstance(n, ast.FunctionDef)}
+    tick = ast.get_source_segment(source, methods["_icon_chase_tick"])
+    assert "SPIN_SECONDS_PER_TURN['transcribing']" in tick
+    for name in ("_start_icon_chase", "_stop_icon_chase"):
+        assert "_icon_rotation = 0.0" not in ast.get_source_segment(source, methods[name]), name
 
 
 # ---------------------------------------------------------------------------

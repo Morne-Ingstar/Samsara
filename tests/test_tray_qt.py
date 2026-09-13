@@ -199,6 +199,46 @@ class TestTrayDrawsTheMark:
         assert pushed == ["heard", "armed", "heard", "armed", "asleep", "armed"]
 
 
+class TestTraySpinSpeed:
+    """09b3: spin speed is a state channel on the existing chase timer."""
+
+    def _tick_app(self, monkeypatch, reasons, recording):
+        import math as _math
+        import dictation
+
+        frames = []
+        app = TestTrayDrawsTheMark._app(recording=recording)
+        app._icon_animating = True
+        app._icon_anim_reasons = set(reasons)
+        app._icon_chase_counter = 0
+        app._icon_rotation = 1.0
+        app._icon_chase_timer = None
+        app.tray_icon = types.SimpleNamespace()
+        app._icon_chase_tick = dictation.DictationApp._icon_chase_tick.__get__(app)
+        app._stop_icon_chase = dictation.DictationApp._stop_icon_chase.__get__(app)
+        app._push_tray_icon = lambda: frames.append(app._icon_rotation)
+        monkeypatch.setattr(dictation.thread_registry, "timer", lambda *a, **k: None)
+        return app, dictation, _math
+
+    def test_transcribing_turns_once_per_0_9_seconds(self, monkeypatch):
+        app, dictation, math = self._tick_app(monkeypatch, {"recording"}, recording=False)
+        app._icon_chase_tick()
+        step = 2 * math.pi * dictation.ICON_TICK_FAST / tray_qt.SPIN_SECONDS_PER_TURN["transcribing"]
+        assert app._icon_rotation == pytest.approx(1.0 + step)
+
+    def test_recording_is_stopped(self, monkeypatch):
+        app, _dictation, _math = self._tick_app(monkeypatch, {"recording"}, recording=True)
+        app._icon_chase_tick()
+        assert app._icon_rotation == 1.0
+
+    def test_stop_keeps_the_angle_no_aligned_rest(self, monkeypatch):
+        app, _dictation, _math = self._tick_app(monkeypatch, {"recording"}, recording=False)
+        app._icon_chase_tick()
+        angle = app._icon_rotation
+        app._stop_icon_chase()
+        assert app._icon_rotation == angle != 0.0
+
+
 class TestQuickReferenceNoLongerBuriedInTools:
     def test_quick_reference_removed_from_tools_submenu(self, tray):
         t, app = tray

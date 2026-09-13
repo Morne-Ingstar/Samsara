@@ -229,6 +229,10 @@ class TestStateGlyphIsTheMark:
         indicator.flash_wake()
         assert ("listening", "heard") in self._painted_marks(qapp, indicator, monkeypatch)
 
+    def test_armed_paints_the_open_eye(self, qapp, indicator, monkeypatch):
+        indicator.set_wake_armed(True)
+        assert set(self._painted_marks(qapp, indicator, monkeypatch)) == {("listening", "armed")}
+
     def test_palette_is_theme_tokens(self):
         from samsara.ui import theme
         import samsara.ui.listening_indicator as li
@@ -243,3 +247,105 @@ class TestStateGlyphIsTheMark:
                      "_CMD_ACTIVE_FG", "_FLASH_SUCCESS_BG", "_FLASH_SUCCESS_FG", "_FLASH_ERROR_BG",
                      "_FLASH_ERROR_FG", "_VISION_BG", "_VISION_BG_BRIGHT", "_VISION_FG"):
             assert getattr(li, name) in allowed | mixes, name
+
+
+# ---------------------------------------------------------------------------
+# 09b3: idle life -- blink and glance
+# ---------------------------------------------------------------------------
+
+class TestIdleLife:
+    @pytest.fixture
+    def armed(self, qapp, indicator, monkeypatch):
+        import samsara.ui.listening_indicator as li
+
+        monkeypatch.setattr(li, "_reduced_motion", lambda: False)
+        clock = {"ms": 1000}
+        monkeypatch.setattr(indicator, "_now_ms", lambda: clock["ms"])
+        indicator.show()
+        _pump(qapp)
+        indicator.set_wake_armed(True)
+        return indicator, clock, li
+
+    def test_armed_schedules_blink_and_glance_at_random_intervals(self, armed):
+        indicator, _clock, li = armed
+        assert indicator._blink_timer.isActive() and indicator._glance_timer.isActive()
+        lo, hi = li._BLINK_INTERVAL_S
+        assert lo * 1000 <= indicator._blink_timer.interval() <= hi * 1000
+        lo, hi = li._GLANCE_INTERVAL_S
+        assert lo * 1000 <= indicator._glance_timer.interval() <= hi * 1000
+        assert not indicator._idle_frame_timer.isActive()      # nothing runs between events
+
+    def test_blink_closes_the_lid_for_140ms_then_rests(self, armed):
+        indicator, clock, li = armed
+        indicator._start_blink()
+        assert indicator._glyph_mark()[1] == "asleep"
+        clock["ms"] += li._BLINK_MS
+        indicator._idle_frame()
+        assert indicator._glyph_mark()[:3] == ("listening", "armed", 0.0)
+        assert indicator._blink_timer.isActive()                  # next one rescheduled
+        assert li._BLINK_MS < 1000
+
+    def test_glance_eases_out_and_returns_to_rest_under_a_second(self, armed):
+        indicator, clock, li = armed
+        indicator._start_glance()
+        clock["ms"] += li._GLANCE_MS // 2
+        assert indicator._glyph_mark()[2] == pytest.approx(li._GLANCE_DEG, abs=0.5)
+        clock["ms"] += li._GLANCE_MS // 2
+        indicator._idle_frame()
+        assert indicator._glyph_mark()[2] == 0.0
+        assert indicator._glyph_mark()[1] == "armed"               # the eye never turns or closes
+        assert li._GLANCE_MS < 1000 and li._GLANCE_DEG < 360
+
+    @pytest.mark.parametrize("setup", [
+        lambda w: w.set_wake_armed(False),                         # off
+        lambda w: w.set_snoozed(True),                             # asleep
+        lambda w: w.show_outcome("REC", "live", ttl_ms=None),      # recording
+        lambda w: w.flash_wake(),                                  # heard flash
+    ])
+    def test_never_in_off_asleep_recording_or_heard(self, armed, setup):
+        indicator, _clock, _li = armed
+        setup(indicator)
+        assert not indicator._idle_allowed()
+        assert not indicator._blink_timer.isActive() and not indicator._glance_timer.isActive()
+        indicator._start_blink()
+        indicator._start_glance()
+        assert indicator._blink_started_ms is None and indicator._glance_started_ms is None
+
+    def test_state_change_cancels_in_flight_idle_immediately(self, armed):
+        indicator, _clock, _li = armed
+        indicator._start_blink()
+        indicator._start_glance()
+        indicator.set_snoozed(True)
+        assert indicator._blink_started_ms is None and indicator._glance_started_ms is None
+        assert not indicator._idle_frame_timer.isActive()
+        assert indicator._glyph_mark()[:3] == ("idle", "asleep", 0.0)
+
+    def test_config_off_stops_blink_and_glance_but_not_spin(self, armed, qapp):
+        indicator, clock, _li = armed
+        indicator._start_blink()
+        indicator.set_idle_animation(False)
+        assert indicator._blink_started_ms is None
+        assert not indicator._blink_timer.isActive() and not indicator._glance_timer.isActive()
+        indicator.set_wake_armed(False)
+        indicator.set_thinking(True)
+        first = indicator._glyph_mark()[2]
+        clock["ms"] += 600
+        assert indicator._glyph_mark()[2] != first                 # thinking still spins
+        assert indicator._pulse_timer.isActive()
+
+    def test_thinking_spins_at_2_4_seconds_per_turn(self, armed):
+        indicator, clock, _li = armed
+        indicator.set_thinking(True)
+        clock["ms"] = 0
+        assert indicator._glyph_mark()[2] == pytest.approx(0.0)
+        clock["ms"] = 600
+        assert indicator._glyph_mark()[2] == pytest.approx(90.0)
+
+    def test_reduced_motion_and_hidden_pause_idle(self, armed, monkeypatch):
+        indicator, _clock, li = armed
+        monkeypatch.setattr(li, "_reduced_motion", lambda: True)
+        indicator._state_changed()
+        assert not indicator._idle_allowed() and not indicator._blink_timer.isActive()
+        monkeypatch.setattr(li, "_reduced_motion", lambda: False)
+        indicator.hide()
+        assert not indicator._idle_allowed() and not indicator._blink_timer.isActive()
