@@ -1832,6 +1832,13 @@ _REPEAT_BLACKLIST_NAMES = {
 }
 
 
+def _config_phrase_list(value) -> list:
+    """A config phrase list that may be written as one string or a list."""
+    if isinstance(value, str):
+        return [value]
+    return [str(p) for p in (value or []) if isinstance(p, str)]
+
+
 def _is_repeat_blacklisted(name: str, command: dict) -> bool:
     if name in _REPEAT_BLACKLIST_NAMES:
         return True
@@ -6599,6 +6606,10 @@ class DictationApp:
                 self, '_probe_hands_free_command', None,
             ),
             pending_action_scratch_fn=self._pop_pending_action_for_scratch,
+            # command_mode.abort_phrases: user-added whole-utterance exits
+            # that behave like the built-in sleep phrases (draft retained).
+            extra_sleep_phrases=_config_phrase_list(
+                self.config.get('command_mode', {}).get('abort_phrases', [])),
         )
         return self._session_mode_manager
 
@@ -9770,6 +9781,13 @@ class DictationApp:
             if matched:
                 logger.debug(f"[MIC] Wake word detected: '{wake_phrase}' ({match_type} @ {match_index})")
                 self._confirm_wake_capture()
+                if self._wake_opens_session():
+                    # wake_word_config.opens_session: the wake phrase arms the
+                    # latched hands-free session (SAMSARA_VISION.md section 1)
+                    # instead of the one-command window below.
+                    self._open_session_from_wake(corrected_lower[match_index + len(wake_phrase):])
+                    self._emit_wake_trace({"stage": "utterance_end", "result": "wake_opened_session"})
+                    return
                 self.wake_word_triggered = True
                 self.play_sound("start")
 
@@ -9851,6 +9869,39 @@ class DictationApp:
             # Retain the utterance-boundary cleanup hook. The bundled ONNX VAD
             # is stateless between calls, so this is currently a no-op.
             self._vad_reset()
+
+    def _wake_opens_session(self) -> bool:
+        """wake_word_config.opens_session (default False): a wake-word hit
+        opens the latched hands-free session instead of the one-command
+        window. The latched session only exists in command_mode.mode
+        'toggle'; with any other mode the flag is ignored (logged) and the
+        wake word keeps its one-command window."""
+        if not self.config.get('wake_word_config', {}).get('opens_session', False):
+            return False
+        if self.config.get('command_mode', {}).get('mode', 'hold') != 'toggle':
+            logger.warning("[WAKE] wake_word_config.opens_session is set but command_mode.mode "
+                           "is not 'toggle' -- no latched session to open; using the "
+                           "one-command wake window")
+            return False
+        return True
+
+    def _open_session_from_wake(self, trailing_text: str = "") -> None:
+        """Open the latched hands-free session from a wake-word hit, through
+        the SAME entry the command-mode toggle tap uses (enter_command_mode
+        via _dispatch_session_transition), so it enters in the same lane with
+        the same earcon, badge and inactivity timer. Idempotent: a wake word
+        spoken inside an open session changes nothing. Words spoken after the
+        wake phrase in the same utterance are not dispatched -- the session
+        starts listening with the next utterance."""
+        self.wake_word_triggered = False
+        trailing = normalize_command_text(trailing_text or "")
+        if trailing:
+            logger.info(f"[WAKE] Opening hands-free session; not dispatching trailing text {trailing!r}")
+        else:
+            logger.info("[WAKE] Opening hands-free session")
+        if self.command_mode_active:
+            return
+        self._dispatch_session_transition(self.enter_command_mode)
 
     def _process_wake_command(self, text):
         """Route a wake word command based on parsed intent (4-state machine)."""
