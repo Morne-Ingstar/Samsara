@@ -55,6 +55,48 @@ your installation and enabled packs.
 The wake listener is an independent activation layer, not a fourth dictation
 mode. HANDS FREE is the long-running combined command-and-dictation lane.
 
+## Wake phrase opens the hands-free session
+
+By default a wake phrase opens a short one-command window. To have it open
+the latched **HANDS FREE** session instead -- armed once, open until you say
+"go to sleep" -- set, in `%USERPROFILE%\.samsara\config.json` (close Samsara
+first):
+
+```json
+"wake_word_config": { "opens_session": true },
+"command_mode": { "enabled": true, "mode": "toggle" }
+```
+
+The wake phrase then does exactly what a tap of the voice-control toggle
+does: same lane (dictate), earcon, indicator badge and inactivity timeout.
+Words spoken after the wake phrase in the same breath are not run; start
+with the next utterance. The flag needs `command_mode.mode` "toggle" -- with
+"hold" there is no latched session, so the flag is ignored (a warning is
+logged) and the one-command window is used.
+
+Ending the session: "go to sleep", "samsara sleep" or "sleep now", spoken as
+the whole utterance (a sentence that merely contains them is dictated), or
+the older "stop listening" / "exit hands free" / "exit command mode". A
+sleep phrase keeps any staged, uncommitted dictation and restores it the
+next time the session opens. Add your own sleep phrases with
+`command_mode.abort_phrases` (a list).
+
+### A custom wake phrase such as "wake up samsara"
+
+Any phrase in `wake_word_config.phrase` is matched against Whisper's
+transcript today, so a new phrase works without new software. But only
+"jarvis" / "hey jarvis" have a bundled openWakeWord model. Every other phrase
+runs without the cheap pre-filter, which means Whisper decodes all room
+audio while the listener is on. A dedicated model for a new phrase means
+training one with openWakeWord's own training pipeline (not part of this
+repository; see `samsara/wake_models/README.txt`). That takes a GPU for a
+few hours, synthetic positive clips and negative audio. Loading the
+resulting `.onnx` for the main wake phrase also needs a small code change.
+Only wake profiles (`wake_profiles[].oww_model`) load a custom model file
+today, and `_load_oww_model` takes the main phrase's model from
+openWakeWord's bundled set (`samsara/wake_detector.py` `PHRASE_TO_MODEL`).
+Wake profiles do not pass through `opens_session`.
+
 ## App-Specific Wake Profiles
 
 Advanced wake profiles can focus a particular app and start a targeted

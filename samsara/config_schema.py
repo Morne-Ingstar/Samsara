@@ -103,6 +103,18 @@ SETTINGS_SCHEMA = {
         "tab": "hotkeys",
         "depends_on": "wake_word_enabled",
     },
+    "wake_word_config.opens_session": {
+        # True: a wake-word hit opens the latched hands-free session (the
+        # same entry the command-mode toggle tap uses) instead of the
+        # one-command wake window. Needs command_mode.mode 'toggle' -- the
+        # latched session only exists there; otherwise ignored (logged).
+        # No settings-UI widget yet (config-file-editable); see
+        # docs/WAKE_WORD_GUIDE.md "Wake phrase opens the hands-free session".
+        "type": "bool",
+        "default": False,
+        "tab": "hotkeys",
+        "depends_on": "wake_word_enabled",
+    },
     "wake_word_config.oww_threshold": {
         "type": "float",
         "min": 0.05,
@@ -151,6 +163,17 @@ SETTINGS_SCHEMA = {
         "max": 2000,
         "step": 50,
         "default": 200,
+        "tab": "commands",
+    },
+    "command_mode.abort_phrases": {
+        # Extra whole-utterance phrases that end the latched hands-free
+        # session exactly like the built-in sleep phrases
+        # (session_modes.SESSION_SLEEP_PHRASES: "go to sleep", "samsara
+        # sleep", "sleep now"): any lane, staged draft retained. Adds to the
+        # built-in list; it cannot remove from it. Config-file-editable only.
+        "type": "list",
+        "item_type": "str",
+        "default": [],
         "tab": "commands",
     },
     "command_mode.inactivity_timeout_s": {

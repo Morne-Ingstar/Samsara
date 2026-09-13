@@ -139,6 +139,7 @@ class TestResolveSessionPhrases:
         assert state["abort"]["words"] == [
             "stop that", "nevermind",
             "stop listening", "exit hands free", "exit command mode",
+            "go to sleep", "samsara sleep", "sleep now",
         ]
 
     def test_hands_free_toggle_data_reads_from_config(self):
