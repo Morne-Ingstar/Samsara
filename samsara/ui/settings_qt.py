@@ -300,8 +300,15 @@ class _HotkeyButton(QPushButton):
         "}"
     )
 
-    def __init__(self, combo: str, on_change=None):
-        super().__init__(combo or "—")
+    # Side mouse buttons a capture may bind (main hotkey only; see allow_mouse).
+    _MOUSE_CAPTURE = {
+        Qt.MouseButton.XButton1: 'mouse4',
+        Qt.MouseButton.XButton2: 'mouse5',
+    }
+
+    def __init__(self, combo: str, on_change=None, allow_mouse: bool = False):
+        self._allow_mouse = allow_mouse
+        super().__init__(self._idle_text(combo))
         self._combo = combo
         self._capturing = False
         self._held: set[str] = set()
@@ -315,10 +322,19 @@ class _HotkeyButton(QPushButton):
     def combo(self) -> str:
         return self._combo
 
+    @staticmethod
+    def _idle_text(combo: str) -> str:
+        if combo in ('mouse4', 'mouse5'):
+            return _readable_hotkey(combo)
+        return combo or "\u2014"
+
+    def _capture_prompt(self) -> str:
+        return "Press keys or Mouse 4/5..." if self._allow_mouse else "Press keys..."
+
     def _start_capture(self):
         self._capturing = True
         self._held = set()
-        self.setText("Press keys...")
+        self.setText(self._capture_prompt())
         self.setStyleSheet(self._CAPTURING)
         self.setFocus()
 
@@ -326,10 +342,26 @@ class _HotkeyButton(QPushButton):
         self._capturing = False
         if self._held:
             self._combo = _combo_str(self._held)
-        self.setText(self._combo or "—")
+        self.setText(self._idle_text(self._combo))
         self.setStyleSheet(self._IDLE)
         if self._on_change is not None:
             self._on_change()
+
+    def mousePressEvent(self, event):
+        if self._capturing and self._allow_mouse:
+            name = self._MOUSE_CAPTURE.get(event.button())
+            if name is not None:
+                self._held = set()
+                self._combo = name
+                self._finish_capture()
+                event.accept()
+                return
+            if event.button() in (
+                Qt.MouseButton.LeftButton, Qt.MouseButton.RightButton, Qt.MouseButton.MiddleButton,
+            ):
+                event.accept()   # ignored while capturing: keep waiting
+                return
+        super().mousePressEvent(event)
 
     def keyPressEvent(self, event):
         if not self._capturing:
@@ -338,7 +370,7 @@ class _HotkeyButton(QPushButton):
         name = _key_name(event.key())
         if name:
             self._held.add(name)
-            self.setText(_combo_str(self._held) or "Press keys...")
+            self.setText(_combo_str(self._held) or self._capture_prompt())
         event.accept()
 
     def keyReleaseEvent(self, event):
@@ -357,6 +389,8 @@ class _HotkeyButton(QPushButton):
 
 def _readable_hotkey(combo: str) -> str:
     """Human-facing hotkey spelling while keeping stored bindings stable."""
+    if combo in ('mouse4', 'mouse5'):
+        return _CMD_BUTTON_KEY_TO_LABEL[combo]   # 'Mouse 4' / 'Mouse 5'
     names = {
         'ctrl': 'Ctrl', 'shift': 'Shift', 'alt': 'Alt',
         'left_ctrl': 'Left Ctrl', 'right_ctrl': 'Right Ctrl',
@@ -2334,7 +2368,11 @@ class _SettingsWindow(QMainWindow):
              "Paste staged thought", "Insert buffered transcription while staying in hands-free mode."),
         ]
         for config_key, default, label, desc in _dictation_hotkeys:
-            btn = _HotkeyButton(cfg.get(config_key, default), on_change=self._check_modes_collisions)
+            btn = _HotkeyButton(
+                cfg.get(config_key, default), on_change=self._check_modes_collisions,
+                # Only the primary dictation key may be a side mouse button.
+                allow_mouse=(config_key == 'hotkey'),
+            )
             self._widgets[config_key] = btn
             dictation_layout.addLayout(
                 self._setting_row(
@@ -5975,6 +6013,13 @@ class _SettingsWindow(QMainWindow):
             )
             if callable(apply_indicator):
                 apply_indicator()
+
+        # Mouse 4/5 bindings (main hotkey, command-mode button) live in one
+        # Win32 hook; moving a binding between mouse and keyboard reinstalls it.
+        if {'hotkey', 'command_mode'}.intersection(updates):
+            refresh_mouse_hook = getattr(self.app, 'refresh_mouse_hook', None)
+            if callable(refresh_mouse_hook):
+                refresh_mouse_hook()
 
         now_sc_enabled = bool(
             self.app.config.get('smart_corrections', {}).get('enabled', False)

@@ -1,4 +1,5 @@
-"""Win32 low-level mouse hook for command-mode button suppression.
+"""Win32 low-level mouse hook for Mouse 4/5 bindings (command mode and the
+main record hotkey) with per-button suppression.
 
 Allows per-event suppression — we can consume Mouse 4 clicks
 (preventing browser-back) while passing through every other mouse event.
@@ -47,19 +48,36 @@ LowLevelMouseProc = ctypes.WINFUNCTYPE(
 )
 
 
+def _coerce_suppress_buttons(value) -> frozenset:
+    """None -> empty set; 'mouse4' -> {'mouse4'}; any iterable -> its set."""
+    if value is None:
+        return frozenset()
+    if isinstance(value, str):
+        return frozenset((value,))
+    return frozenset(value)
+
+
 class MouseHook:
-    """Win32 WH_MOUSE_LL hook that optionally suppresses a single X button.
+    """Win32 WH_MOUSE_LL hook that optionally suppresses X buttons.
+
+    One instance serves every mouse-bound feature (command mode, the main
+    record hotkey); the callback routes each event.
 
     Args:
         on_button_event: called as on_button_event(button_name, pressed) for
             every XBUTTON event. button_name is 'mouse4' or 'mouse5'.
-        suppress_button: 'mouse4', 'mouse5', or None. When set, matching events
-            return 1 from the hook so the OS never sees them.
+        suppress_buttons: set of 'mouse4'/'mouse5' whose events return 1 from
+            the hook so the OS never sees them. A single name or None is
+            accepted and coerced.
+        suppress_button: legacy single-button spelling of suppress_buttons,
+            used only when suppress_buttons is not given.
     """
 
-    def __init__(self, on_button_event, suppress_button='mouse4'):
+    def __init__(self, on_button_event, suppress_buttons=None, *, suppress_button='mouse4'):
         self.on_button_event = on_button_event
-        self.suppress_button = suppress_button
+        self.suppress_buttons = _coerce_suppress_buttons(
+            suppress_button if suppress_buttons is None else suppress_buttons
+        )
         self._hook_id = None
         self._thread = None
         self._thread_id = None
@@ -87,7 +105,7 @@ class MouseHook:
             except Exception as e:
                 print(f"[MOUSE HOOK] callback error: {e}")
 
-            if button_name == self.suppress_button:
+            if button_name in self.suppress_buttons:
                 return 1  # consume — OS does not see the click
 
         return _user32.CallNextHookEx(self._hook_id, n_code, w_param, l_param)

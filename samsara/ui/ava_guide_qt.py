@@ -129,8 +129,8 @@ _AVA_KEY_OPTIONS = [
     ("Right Alt (default)", "right_alt"),
     ("Right Ctrl",          "rctrl"),
     ("F13",                 "f13"),
-    ("Mouse button 4",      "mouse4"),
-    ("Mouse button 5",      "mouse5"),
+    # No Mouse 4/5 here: _get_pynput_command_key has no mouse mapping, so they
+    # never activated Ava. Side buttons belong to the main record hotkey.
 ]
 
 

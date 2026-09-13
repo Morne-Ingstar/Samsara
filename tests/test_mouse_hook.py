@@ -144,6 +144,47 @@ class TestSuppression:
         assert result == 1
 
 
+class TestSuppressionSet:
+    """One hook serves command mode and the main hotkey: a set of buttons."""
+
+    def test_set_suppresses_both_buttons(self):
+        hook = MouseHook(on_button_event=MagicMock(), suppress_buttons={'mouse4', 'mouse5'})
+        hook._hook_id = 999
+        assert hook._hook_callback(0, WM_XBUTTONDOWN, _make_lp_param(XBUTTON1)) == 1
+        assert hook._hook_callback(0, WM_XBUTTONUP, _make_lp_param(XBUTTON2)) == 1
+
+    def test_set_with_one_button_passes_the_other_through(self):
+        hook = MouseHook(on_button_event=MagicMock(), suppress_buttons={'mouse5'})
+        hook._hook_id = 999
+        with patch.object(ctypes.windll.user32, 'CallNextHookEx', return_value=0) as mock_next:
+            result = hook._hook_callback(0, WM_XBUTTONDOWN, _make_lp_param(XBUTTON1))
+        mock_next.assert_called_once()
+        assert result != 1
+        assert hook._hook_callback(0, WM_XBUTTONDOWN, _make_lp_param(XBUTTON2)) == 1
+
+    def test_empty_set_suppresses_nothing_but_still_reports(self):
+        cb = MagicMock()
+        hook = MouseHook(on_button_event=cb, suppress_buttons=set())
+        hook._hook_id = 999
+        with patch.object(ctypes.windll.user32, 'CallNextHookEx', return_value=0):
+            assert hook._hook_callback(0, WM_XBUTTONDOWN, _make_lp_param(XBUTTON1)) != 1
+        cb.assert_called_once_with('mouse4', True)
+
+    @pytest.mark.parametrize("value, expected", [
+        ('mouse4', frozenset({'mouse4'})),
+        (None, frozenset()),
+        (['mouse4', 'mouse5'], frozenset({'mouse4', 'mouse5'})),
+    ])
+    def test_legacy_suppress_button_str_none_and_iterables_are_coerced(self, value, expected):
+        assert MouseHook(MagicMock(), suppress_button=value).suppress_buttons == expected
+
+    def test_suppress_buttons_str_is_coerced(self):
+        assert MouseHook(MagicMock(), suppress_buttons='mouse5').suppress_buttons == frozenset({'mouse5'})
+
+    def test_legacy_default_still_suppresses_mouse4(self):
+        assert MouseHook(MagicMock()).suppress_buttons == frozenset({'mouse4'})
+
+
 # ---------------------------------------------------------------------------
 # Callback: exception safety
 # ---------------------------------------------------------------------------
