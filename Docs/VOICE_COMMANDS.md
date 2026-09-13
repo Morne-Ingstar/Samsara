@@ -73,6 +73,24 @@ requires `nircmd.exe` in Samsara's `tools/` directory or on `PATH`.
 | "switch window" / "switch app" | Alt+Tab |
 | "full screen" | F11 |
 
+Multi-monitor placement (plugin `windows.py`; "send" = "move" / "put" / "throw"):
+
+| Command | Action |
+|---------|--------|
+| "send chrome to monitor 2" / "put warp on the second screen" | move that app's window to monitor N (monitors numbered left to right) |
+| "put warp on the left screen" / "... right screen" | leftmost / rightmost monitor by physical position |
+| "put claude on the middle screen" | the monitor in between (three or more, odd count) |
+| "put obsidian on the top screen" / "... bottom screen" | stacked layouts |
+| "send this to the other screen" | the monitor the cursor is not on (two monitors) |
+| "send stremio to tv" / "bring chrome here" | configured TV monitor / the monitor under the cursor |
+| "put warp on the left screen and claude on the right" | two placements in one sentence, executed in spoken order; "warp left, claude right" also works |
+| "cursor to the right screen" | teleport the mouse to that monitor's centre |
+
+Two windows of the same app: the most recently active one moves and the outcome says so.
+An unknown screen ("the purple screen", "middle" with two monitors) is refused, never silently
+ignored. In a compound placement, if the first window moved and the second could not, the
+command reports partial completion naming the second -- the first move is not undone.
+
 ### Apps
 
 | Command | Action |
