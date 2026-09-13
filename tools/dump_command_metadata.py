@@ -40,15 +40,25 @@ def _stdout_to_stderr():
         os.close(saved)
 
 
-def build_dump():
-    from samsara.command_registry import METADATA_FIELDS, UNKNOWN
+def build_executor():
+    """The production CommandExecutor over commands.json + every discovered
+    plugin, with no app (plugin services are not started) and with the
+    construction chatter ([OK] Loaded ..., [REGISTRY] ..., log handlers bound
+    to the real stdout) sent to stderr. Shared by this dump and by
+    tools/gen_command_catalog.py / samsara/command_catalog.py so there is
+    ONE way the registry gets loaded for tooling. Never imports dictation.py.
+    """
     from samsara.commands import CommandExecutor
 
-    # Construction chatter ([OK] Loaded ..., [REGISTRY] ..., and log handlers
-    # bound to the real stdout) goes to stderr so stdout stays parseable JSON.
-    # No app: plugin services are not started.
     with _stdout_to_stderr():
-        executor = CommandExecutor(ROOT / "commands.json")
+        return CommandExecutor(ROOT / "commands.json")
+
+
+def build_dump():
+    from samsara.command_registry import METADATA_FIELDS, UNKNOWN
+
+    # Construction chatter goes to stderr so stdout stays parseable JSON.
+    executor = build_executor()
     commands = [
         {
             "phrase": row["phrase"],
