@@ -985,6 +985,14 @@ def _apply_retry_on_suspected_loss(original, retry_fn, audio, sample_rate, audio
 # X buttons the Win32 mouse hook (samsara/mouse_hook.py) reports. Either may be
 # bound to command_mode.button or to the main record hotkey (config['hotkey']).
 _MOUSE_HOTKEY_BUTTONS = ('mouse4', 'mouse5')
+# The keyboard hotkeys other than the main one, with on_key_press's defaults:
+# while any of them is physically held it legitimately owns hotkey_pressed.
+_OTHER_HOTKEY_KEYS = (
+    ('continuous_hotkey', 'ctrl+alt+d'), ('wake_word_hotkey', 'ctrl+alt+w'),
+    ('command_hotkey', 'ctrl+alt+c'), ('memo_hotkey', 'ctrl+alt+m'),
+    ('undo_hotkey', 'ctrl+alt+z'), ('correction_hotkey', 'ctrl+alt+r'),
+    ('cancel_hotkey', 'escape'),
+)
 
 
 def _get_pynput_command_key(button_name: str):
@@ -2512,7 +2520,15 @@ class DictationApp:
         # 'mouse' (config['hotkey'] is mouse4/mouse5). on_key_release must
         # never stop a mouse-held recording.
         self._main_hotkey_source = 'key'
-        self._main_hotkey_mouse_held = False   # edge trigger for the mouse main hotkey
+        # Physical-press state for the main hotkey, one flag per source (28,
+        # 2026-09-13). hotkey_pressed used to carry both "a key is down" and
+        # "the mouse button is down"; a lost release on one path then muted
+        # the other for good. _hold_down_key: the keyboard combo is down and
+        # owns an in-progress main-hotkey action. _hold_down_mouse: the bound
+        # mouse button is down (edge trigger). Toggle state is toggle_active
+        # alone and never sits behind either flag.
+        self._hold_down_key = False
+        self._hold_down_mouse = False
 
         # Wake-word trace hook — the debug window registers a callback here
         # when open so the main pipeline's decisions show up in its trace view.
@@ -5998,44 +6014,100 @@ class DictationApp:
         # when the user only physically holds ctrl.
         required_keys = self.parse_hotkey(main_hotkey)
         main_event_held = required_keys.issubset(self.current_keys)
-        if (self.check_hotkey_state(main_hotkey)
-                and main_event_held
-                and not self.hotkey_pressed):
+        if self.check_hotkey_state(main_hotkey) and main_event_held:
+            if self.hotkey_pressed:
+                # A hotkey action is in progress. If a key-down still owns it
+                # (this press, or another combo physically held) this is
+                # auto-repeat: ignore. Otherwise the flag was stranded by a
+                # lost release; a fresh press must never be ignored for good.
+                if getattr(self, '_hold_down_key', False) or self._other_hotkey_held():
+                    return
+                logger.warning("[HOTKEY] hotkey_pressed was stranded (no key down owns it); "
+                               "clearing it so this press counts | %s", self._hotkey_state_text())
+                self.hotkey_pressed = False
             if self._stop_in_flight:
-                logger.debug("[HOTKEY] Ignored re-trigger while stop in flight")
+                logger.debug("[HOTKEY] Ignored re-trigger while stop in flight | %s",
+                             self._hotkey_state_text())
                 return
             # Toggle-off comes BEFORE the ownership guard (2026-09-13, matching
             # _on_main_hotkey_mouse): the guard below is about STARTING a
-            # recording while another one owns capture. A toggle recording
-            # that this key started is exactly the recording we are allowed
-            # to stop -- with the guard first, the second press was dead and
-            # the session could only end by voice, tray or timeout. A toggle
-            # started by the mouse path, or capture owned by a streaming /
-            # wake / command session, is still protected.
+            # recording while another one owns capture. toggle_active is only
+            # ever set by the main hotkey itself (key or mouse path), so a
+            # main-hotkey press may always end it (28: no owner check -- a
+            # toggle the other path started must not leave this press dead).
+            # Capture owned by a streaming / wake / command session has
+            # toggle_active False and is still protected below.
             if (mode == 'toggle' and self.toggle_active
-                    and getattr(self, '_main_hotkey_source', 'key') == 'key'
                     and getattr(self, '_streaming_session', None) is None):
                 logger.debug(f"[HOTKEY] Main hotkey toggle-off: {main_hotkey}")
+                # The toggle-off press is a physical key-down too: mark it so
+                # auto-repeat cannot start a new toggle before the release.
+                self.hotkey_pressed = True
+                self._hold_down_key = True
                 self._main_hotkey_toggle_off('key')
                 return
             if self.recording or getattr(self, '_streaming_session', None) is not None:
-                logger.info("[HOTKEY] Main hotkey ignored -- another recording owns capture")
+                logger.info("[HOTKEY] Main hotkey ignored -- another recording owns capture | %s",
+                            self._hotkey_state_text())
                 return
             logger.debug(f"[HOTKEY] Main hotkey detected: {main_hotkey} (mode: {mode})")
             self._main_hotkey_source = 'key'
+            self.hotkey_pressed = True
+            self._hold_down_key = True
             if mode == 'hold':
-                self.hotkey_pressed = True
                 # Ctrl+Shift always drives batch mode -- streaming uses
                 # CapsLock as its dedicated hotkey.
                 self.start_recording(streaming=False)
             elif mode == 'toggle':
-                self.hotkey_pressed = True
                 self.toggle_active = True
                 self.start_recording(streaming=False)
+                if not self.recording and self._start_recording_declined():
+                    # No capture started (model still loading, app stopping):
+                    # no toggle is on, so the next press starts one instead of
+                    # "stopping" nothing.
+                    logger.debug("[HOTKEY] Toggle start declined by start_recording | %s",
+                                 self._hotkey_state_text())
+                    self.toggle_active = False
             elif mode == 'continuous':
                 # In continuous mode, main hotkey toggles continuous listening
-                self.hotkey_pressed = True
                 self.toggle_continuous_mode()
+
+    def _start_recording_declined(self) -> bool:
+        """The reasons start_recording returns without capturing that the
+        hotkey guards do not already cover (model not loaded, app stopping)."""
+        return (not getattr(self, 'model_loaded', True)
+                or not getattr(self, '_running', True))
+
+    def _other_hotkey_held(self) -> bool:
+        """True while any configured non-main keyboard hotkey is physically
+        held (OS state) -- its action legitimately owns hotkey_pressed."""
+        for key, default in _OTHER_HOTKEY_KEYS:
+            combo = self.config.get(key, default)
+            try:
+                if combo and self.check_hotkey_state(combo):
+                    return True
+            except Exception as e:
+                logger.debug(f"_other_hotkey_held({combo!r}): {e}")
+        commit = self.config.get('continuous_commit_hotkey')
+        try:
+            if commit and self.check_hotkey_state(commit):
+                return True
+        except Exception as e:
+            logger.debug(f"_other_hotkey_held(commit): {e}")
+        return False
+
+    def _hotkey_state_text(self) -> str:
+        """The hotkey state machine in one line, for every guard's log."""
+        g = lambda name, default=False: getattr(self, name, default)
+        cfg = getattr(self, 'config', {}) or {}
+        return (
+            f"snoozed={g('snoozed')} hotkey_pressed={g('hotkey_pressed')}"
+            f" hold_down_key={g('_hold_down_key')} hold_down_mouse={g('_hold_down_mouse')}"
+            f" source={g('_main_hotkey_source', 'key')} recording={g('recording')}"
+            f" streaming={g('_streaming_session', None) is not None}"
+            f" stop_in_flight={g('_stop_in_flight')} toggle_active={g('toggle_active')}"
+            f" mode={cfg.get('mode', 'hold')} hotkey={cfg.get('hotkey')!r}"
+        )
     
     def on_key_release(self, key):
         """Handle key release - uses state-based checking for reliable detection"""
@@ -6055,24 +6127,31 @@ class DictationApp:
         memo_hotkey = self.config.get('memo_hotkey', 'ctrl+alt+m')
         
         # Reset hotkey flag when no hotkey combo is currently pressed
-        # Use state-based checking for reliable detection
-        main_pressed = self.check_hotkey_state(main_hotkey)
+        # Use state-based checking for reliable detection. The MAIN combo
+        # counts as released when EITHER the OS state or pynput's event-
+        # tracked current_keys says so (the press side requires both to
+        # agree that it is held): a stale GetAsyncKeyState bit can no longer
+        # strand the press flags.
+        main_pressed = (self.check_hotkey_state(main_hotkey)
+                        and self.parse_hotkey(main_hotkey).issubset(self.current_keys))
         cont_pressed = self.check_hotkey_state(cont_hotkey)
         wake_pressed = self.check_hotkey_state(wake_hotkey)
         command_pressed = self.check_hotkey_state(command_hotkey)
         memo_pressed = self.check_hotkey_state(memo_hotkey)
-        
-        if not main_pressed and not cont_pressed and not wake_pressed and not command_pressed and not memo_pressed:
-            if self.hotkey_pressed and getattr(self, '_main_hotkey_source', 'key') == 'mouse':
-                # The mouse button owns this press; its release stops it.
-                return
-            if self.hotkey_pressed:
-                def _deferred_stop():
-                    try:
-                        self.stop_recording()
-                    finally:
-                        self._stop_in_flight = False
 
+        def _deferred_stop():
+            try:
+                self.stop_recording()
+            finally:
+                self._stop_in_flight = False
+
+        # The keyboard's main-hotkey key-down is over once the combo is up,
+        # whatever other combos are held.
+        if getattr(self, '_hold_down_key', False) and not main_pressed:
+            self._hold_down_key = False
+
+        if not main_pressed and not cont_pressed and not wake_pressed and not command_pressed and not memo_pressed:
+            if self.hotkey_pressed:
                 if self._memo_recording and self.recording:
                     logger.debug("[MEMO] Hotkey released, stopping recording")
                     self._stop_in_flight = True
@@ -6088,7 +6167,11 @@ class DictationApp:
                     self._stop_in_flight = True
                     thread_registry.spawn('stop-rec', _deferred_stop, daemon=True)
                     self.hotkey_pressed = False
-                elif mode == 'hold' and self.recording:
+                elif (mode == 'hold' and self.recording
+                        and getattr(self, '_main_hotkey_source', 'key') == 'key'):
+                    # The keyboard's hold press ended. A mouse-held recording
+                    # never sets hotkey_pressed and keeps source 'mouse', so it
+                    # is untouched here: its own release stops it.
                     logger.debug(f"[HOTKEY] Main hotkey released, stopping recording")
                     flight_recorder.record(
                         'hold_recording.stop_triggered',
@@ -6099,6 +6182,8 @@ class DictationApp:
                     thread_registry.spawn('stop-rec', _deferred_stop, daemon=True)
                     self.hotkey_pressed = False
                 else:
+                    logger.debug("[HOTKEY] Keyboard hotkey released: nothing to stop | %s",
+                                 self._hotkey_state_text())
                     self.hotkey_pressed = False
 
     # ---- CapsLock streaming hotkey --------------------------------------
@@ -6256,6 +6341,16 @@ class DictationApp:
                 suppress_buttons=suppress,
             )
             self._mouse_hook.start()
+            if not getattr(self._mouse_hook, 'installed', True):
+                # start() returns whether or not the hook thread managed to
+                # install (28): say so in the log instead of "started", and
+                # drop the object so refresh_mouse_hook() can try again.
+                logger.error(
+                    f"[MOUSE] Mouse hook did NOT install (bound={sorted(buttons)}): "
+                    f"{getattr(self._mouse_hook, 'install_error', '') or 'unknown reason'}"
+                )
+                self._mouse_hook = None
+                return
             logger.info(
                 f"[MOUSE] Mouse hook started (bound={sorted(buttons)}, suppress={sorted(suppress)})"
             )
@@ -6285,73 +6380,111 @@ class DictationApp:
         self._install_mouse_listener()
 
     def _on_mouse_button(self, button_name, pressed):
-        """Single mouse-hook callback: command mode, then the main hotkey."""
-        self._on_command_button(button_name, pressed)
+        """Single mouse-hook callback: command mode, then the main hotkey.
+
+        Logs every event on entry (28): the owner could not see this path
+        at all before, because every guard returned in silence.
+        """
         hotkey = str(self.config.get('hotkey', '') or '').strip().lower()
+        logger.debug("[MOUSE] event button=%s pressed=%s main_hotkey=%r | %s",
+                     button_name, pressed, hotkey, self._hotkey_state_text())
+        try:
+            self._on_command_button(button_name, pressed)
+        except Exception as e:
+            # Command mode must never mute the main hotkey behind it.
+            logger.exception(f"[MOUSE] command-mode handler failed: {e}")
         if button_name == hotkey:
             self._on_main_hotkey_mouse(pressed)
+        else:
+            logger.debug("[MOUSE] %s is not the main hotkey (%r): main path skipped",
+                         button_name, hotkey)
 
     def _main_hotkey_toggle_off(self, source: str) -> None:
         """End the toggle recording the main hotkey started -- shared by the
         keyboard path (on_key_press) and the mouse path (_on_main_hotkey_mouse).
-        Toggle only; hold and continuous never call this."""
+        Toggle only; hold and continuous never call this.
+
+        Touches toggle state only. The physical-press flags belong to the
+        caller (the key path marks its key-down before calling; the mouse
+        path's edge trigger already covers auto-repeat), so a toggle-off can
+        never leave a press flag behind for the other path to trip on.
+        """
         self._main_hotkey_source = source
-        self.hotkey_pressed = True
         self.toggle_active = False
-        self.stop_recording()
+        try:
+            self.stop_recording()
+        finally:
+            # Nothing is capturing for the hotkey any more. stop_recording
+            # leaves this set while hotkey_pressed is True (a held key), which
+            # for a toggle-off is exactly the case -- and a stale True keeps
+            # the wake listener deaf (wake_consumer._post_wake_admission).
+            self._hotkey_recording = False
+
+    def _mouse_guard(self, why: str) -> None:
+        logger.debug("[HOTKEY] Mouse main hotkey: %s | %s", why, self._hotkey_state_text())
 
     def _on_main_hotkey_mouse(self, pressed):
         """Main record hotkey bound to Mouse 4/5 -- the keyboard main-hotkey
         semantics (on_key_press / on_key_release) driven by the button.
 
-        Edge-triggered on press. Guards match the keyboard path: snoozed,
-        another hotkey or recording owning capture, stop in flight. One
-        difference: in toggle mode a press ends the recording this toggle
-        started (the recording guard applies only to starting).
+        Edge-triggered on press through _hold_down_mouse, the mouse's OWN
+        physical-press flag: it never reads or writes hotkey_pressed, so a
+        keyboard flag stranded by a lost release cannot mute the mouse and a
+        lost mouse release cannot mute the keyboard. Guards match the keyboard
+        path: snoozed, another recording owning capture, stop in flight; in
+        toggle mode a press ends the toggle first (before any guard about
+        STARTING). Every guard logs what it saw.
         """
+        mode = self.config.get('mode', 'hold')
         if pressed:
-            if self._main_hotkey_mouse_held:
+            if getattr(self, '_hold_down_mouse', False):
+                self._mouse_guard("press ignored: button already down (auto-repeat)")
                 return
-            self._main_hotkey_mouse_held = True
-            if self.snoozed or self.hotkey_pressed:
+            self._hold_down_mouse = True
+            if self.snoozed:
+                self._mouse_guard("press ignored: snoozed")
                 return
-            mode = self.config.get('mode', 'hold')
             if mode == 'toggle' and self.toggle_active:
+                logger.debug("[HOTKEY] Main hotkey (mouse) toggle-off | %s", self._hotkey_state_text())
                 self._main_hotkey_toggle_off('mouse')
                 return
             if self.recording or getattr(self, '_streaming_session', None) is not None:
-                logger.info("[HOTKEY] Mouse main hotkey ignored -- another recording owns capture")
+                logger.info("[HOTKEY] Mouse main hotkey ignored -- another recording owns capture | %s",
+                            self._hotkey_state_text())
                 return
             if self._stop_in_flight:
-                logger.debug("[HOTKEY] Mouse main hotkey ignored while stop in flight")
+                self._mouse_guard("press ignored: stop in flight")
                 return
             logger.debug(f"[HOTKEY] Main hotkey (mouse) pressed: {self.config.get('hotkey')} (mode: {mode})")
             self._main_hotkey_source = 'mouse'
             if mode == 'hold':
-                self.hotkey_pressed = True
                 self.start_recording(streaming=False)
+                if not self.recording:
+                    self._mouse_guard("start_recording declined the hold press")
             elif mode == 'toggle':
-                self.hotkey_pressed = True
                 self.toggle_active = True
                 self.start_recording(streaming=False)
+                if not self.recording and self._start_recording_declined():
+                    self._mouse_guard("start_recording declined the toggle press; toggle stays off")
+                    self.toggle_active = False
             elif mode == 'continuous':
-                self.hotkey_pressed = True
                 self.toggle_continuous_mode()
             return
 
-        if not self._main_hotkey_mouse_held:
+        if not getattr(self, '_hold_down_mouse', False):
+            self._mouse_guard("release ignored: no press was seen")
             return
-        self._main_hotkey_mouse_held = False
+        self._hold_down_mouse = False
         if self._main_hotkey_source != 'mouse':
+            self._mouse_guard("release: the keyboard owns the main hotkey, nothing to do")
             return
-        if not (self.config.get('mode', 'hold') == 'toggle' and self.toggle_active):
+        if mode == 'toggle' and self.toggle_active:
             # A mouse-started toggle keeps 'mouse' as its owner until it is
             # stopped, so the keyboard path (on_key_press) leaves it alone.
-            self._main_hotkey_source = 'key'
-        if not self.hotkey_pressed:
+            self._mouse_guard("release: toggle stays on until the next press")
             return
-        self.hotkey_pressed = False
-        if self.config.get('mode', 'hold') == 'hold' and self.recording:
+        self._main_hotkey_source = 'key'
+        if mode == 'hold' and self.recording:
             def _deferred_stop():
                 try:
                     self.stop_recording()
@@ -6366,6 +6499,8 @@ class DictationApp:
             )
             self._stop_in_flight = True
             thread_registry.spawn('stop-rec', _deferred_stop, daemon=True)
+            return
+        self._mouse_guard("release: nothing recording, nothing to stop")
 
     def _on_command_button(self, button_name, pressed):
         """Mouse hook callback — routes the configured button to command mode."""

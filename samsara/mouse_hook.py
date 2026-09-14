@@ -11,7 +11,10 @@ import ctypes
 import ctypes.wintypes
 import threading
 
+from samsara.log import get_logger
 from samsara.runtime import thread_registry
+
+logger = get_logger(__name__)
 
 # Win32 constants
 WH_MOUSE_LL = 14
@@ -20,6 +23,7 @@ WM_XBUTTONUP   = 0x020C
 XBUTTON1 = 0x0001   # Mouse 4
 XBUTTON2 = 0x0002   # Mouse 5
 WM_QUIT  = 0x0012
+LLMHF_INJECTED = 0x0001   # MSLLHOOKSTRUCT.flags: event came from SendInput, not hardware
 
 _user32   = ctypes.windll.user32
 _kernel32 = ctypes.windll.kernel32
@@ -46,6 +50,36 @@ LowLevelMouseProc = ctypes.WINFUNCTYPE(
     ctypes.wintypes.WPARAM,
     ctypes.wintypes.LPARAM,
 )
+
+
+def _set_windows_hook_ex():
+    """The SetWindowsHookExW to call.
+
+    ctypes.windll.user32 is one shared object per process, and pynput
+    (imported by the keyboard listener before this hook starts) declares
+    ITS OWN HOOKPROC type in SetWindowsHookExW.argtypes on it. Our
+    LowLevelMouseProc is a different WINFUNCTYPE, so calling that shared
+    function raises "expected WinFunctionType instance instead of
+    WinFunctionType" and the hook silently never installs -- the whole
+    reason Mouse 4 "did nothing" (28, 2026-09-13). A fresh pointer from the
+    library (CDLL.__getitem__ never caches) carries no foreign contract, and
+    we give it ours plus a pointer-sized restype so the hook handle is not
+    truncated on x64. pynput's own pointer is left untouched. When nothing
+    has declared a contract (or tests have patched the attribute) the
+    shared attribute is used as before.
+    """
+    fn = _user32.SetWindowsHookExW
+    argtypes = getattr(fn, 'argtypes', None)
+    try:
+        foreign = bool(argtypes) and len(argtypes) >= 2 and argtypes[1] is not LowLevelMouseProc
+    except TypeError:
+        foreign = False
+    if not foreign:
+        return fn
+    fresh = _user32['SetWindowsHookExW']
+    fresh.argtypes = (ctypes.c_int, LowLevelMouseProc, ctypes.c_void_p, ctypes.wintypes.DWORD)
+    fresh.restype = ctypes.c_void_p
+    return fresh
 
 
 def _coerce_suppress_buttons(value) -> frozenset:
@@ -81,6 +115,8 @@ class MouseHook:
         self._hook_id = None
         self._thread = None
         self._thread_id = None
+        #: Why the hook is not installed, for the app log ('' while it is).
+        self.install_error = ''
         self._ready = threading.Event()
         # Ref must stay alive for the lifetime of the hook
         self._proc = LowLevelMouseProc(self._hook_callback)
@@ -99,10 +135,18 @@ class MouseHook:
             xbutton = (info.mouseData >> 16) & 0xFFFF
             button_name = 'mouse4' if xbutton == XBUTTON1 else 'mouse5'
             pressed = (w_param == WM_XBUTTONDOWN)
+            # Raw delivery, before any app guard (28): this line proves the
+            # hook saw the button at all. injected=True means SendInput
+            # (a probe or vendor software), not the physical mouse.
+            logger.debug("[MOUSE] hook %s pressed=%s injected=%s xbutton=%d",
+                         button_name, pressed, bool(info.flags & LLMHF_INJECTED), xbutton)
 
             try:
                 self.on_button_event(button_name, pressed)
             except Exception as e:
+                # In the log, not just the console: a callback that raises
+                # is otherwise indistinguishable from a hook that never fires.
+                logger.exception(f"[MOUSE HOOK] callback error: {e}")
                 print(f"[MOUSE HOOK] callback error: {e}")
 
             if button_name in self.suppress_buttons:
@@ -120,21 +164,32 @@ class MouseHook:
         self._thread = thread_registry.spawn('mouse-hook', self._run, daemon=True)
         self._ready.wait(timeout=2.0)
 
+    @property
+    def installed(self) -> bool:
+        return bool(self._hook_id)
+
     def _run(self):
         self._thread_id = _kernel32.GetCurrentThreadId()
         try:
-            self._hook_id = _user32.SetWindowsHookExW(WH_MOUSE_LL, self._proc, None, 0)
-        except (ctypes.ArgumentError, OSError) as e:
+            self._hook_id = _set_windows_hook_ex()(WH_MOUSE_LL, self._proc, None, 0)
+        except (ctypes.ArgumentError, OSError, TypeError) as e:
+            self.install_error = f"SetWindowsHookExW raised: {e}"
+            logger.error(f"[MOUSE HOOK] {self.install_error}")
             print(f"[CMD MODE] Mouse hook failed: {e}")
             print("[CMD MODE] Mouse button command mode disabled on this system")
             self._ready.set()
             return
         if not self._hook_id:
+            self.install_error = (f"SetWindowsHookExW returned 0 "
+                                  f"(GetLastError={ctypes.get_last_error() or _kernel32.GetLastError()})")
+            logger.error(f"[MOUSE HOOK] {self.install_error}")
             print("[MOUSE HOOK] SetWindowsHookExW failed")
             self._ready.set()
             return
 
+        self.install_error = ''
         self._ready.set()
+        logger.info(f"[MOUSE HOOK] Hook installed (id={self._hook_id}, thread={self._thread_id})")
         print(f"[MOUSE HOOK] Hook installed (id={self._hook_id})")
 
         msg = ctypes.wintypes.MSG()
@@ -142,6 +197,7 @@ class MouseHook:
         while _user32.GetMessageW(ctypes.byref(msg), None, 0, 0) > 0:
             _user32.TranslateMessage(ctypes.byref(msg))
             _user32.DispatchMessageW(ctypes.byref(msg))
+        logger.info("[MOUSE HOOK] message loop ended (hook id=%s)", self._hook_id)
 
     def stop(self):
         """Uninstall the hook and terminate the message loop."""

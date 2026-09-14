@@ -24,6 +24,7 @@ sys.path.insert(0, str(Path(__file__).parent.parent))
 _BOUND = (
     'on_key_press', 'on_key_release', '_on_main_hotkey_mouse', '_main_hotkey_toggle_off',
     'parse_hotkey', 'check_hotkey_state', 'get_key_name',
+    '_hotkey_state_text', '_other_hotkey_held', '_start_recording_declined', '_mouse_guard',
 )
 
 KEY = 'f8'          # a single named key: parse_hotkey -> {'f8'}, no modifiers
@@ -53,7 +54,9 @@ class _App:
         self.current_keys = set()
         self.key_press_times = {}
         self._main_hotkey_source = 'key'
-        self._main_hotkey_mouse_held = False
+        self._hold_down_key = False
+        self._hold_down_mouse = False
+        self._hotkey_recording = False
         self.calls = []
 
     # -- what the real app would do -------------------------------------
@@ -160,14 +163,18 @@ class TestToggleFromTheKeyboard:
         assert app.toggle_active is True, "the guard must not clear a toggle it did not stop"
         assert app.recording is True
 
-    def test_press_does_not_stop_a_mouse_started_toggle(self, keyboard):
+    def test_press_stops_a_mouse_started_toggle_too(self, keyboard):
+        """28: toggle_active is only ever set by the main hotkey, so a main
+        hotkey press ends it from either path. Before, the owner check left
+        the keyboard press dead until the mouse ended the toggle."""
         app = _App(mode='toggle')
         app._on_main_hotkey_mouse(True)          # mouse starts the toggle
         app._on_main_hotkey_mouse(False)
         assert app.calls == [('start', False)] and app._main_hotkey_source == 'mouse'
         _tap(app, keyboard)
-        assert app.calls == [('start', False)], "keyboard must not stop a recording it does not own"
-        assert app.toggle_active is True and app.recording is True
+        assert app.calls == [('start', False), ('stop',)]
+        assert app.toggle_active is False and app.recording is False
+        assert app.hotkey_pressed is False and app._hold_down_key is False
 
     def test_press_does_not_stop_a_wake_or_command_session_recording(self, keyboard):
         """Capture owned by something else (wake session, command session):
@@ -213,5 +220,9 @@ class TestOtherModesUnchanged:
         app.recording = True
         app._main_hotkey_toggle_off('mouse')
         assert app.calls == [('stop',)]
-        assert app.toggle_active is False and app.hotkey_pressed is True
+        assert app.toggle_active is False
+        # 28: the helper touches toggle state only; the physical-press flags
+        # belong to the caller, so neither path can strand the other.
+        assert app.hotkey_pressed is False and app._hold_down_key is False
+        assert app._hotkey_recording is False
         assert app._main_hotkey_source == 'mouse'
