@@ -319,18 +319,28 @@ class TestPanicRelease:
         app.release_mouse_buttons()
         assert app._mouse_hook is None
         assert [r[0] if isinstance(r, tuple) else r for r in hook.released] == ['release']
-        assert app.config['hotkey'] == 'ctrl+shift'            # in memory only
-        assert any(c[0] == 'chip' and 'released' in c[1] and c[2] == 'warning' for c in app.calls)
+        # 35: the user's choice is never rewritten; the keyboard fallback is a runtime override.
+        assert app.config['hotkey'] == 'mouse4' and app._main_hotkey_override == 'ctrl+shift'
+        assert any(c[0] == 'chip' and 'mouse hotkey off' in c[1] and c[2] == 'warning' for c in app.calls)
 
     def test_release_stays_released_until_bindings_change(self, releasable, spawned):
         app = _App(hotkey='mouse5', command_mode={'enabled': True, 'button': 'mouse4'})
         app._install_mouse_listener()
         app.release_mouse_buttons()
-        app.refresh_mouse_hook()                               # e.g. a config reload: no reinstall
+        app.refresh_mouse_hook(rearm=False)                    # the config-file watcher: no reinstall
         assert len(releasable.created) == 1 and app._mouse_hook is None
-        app.config['command_mode'] = {'enabled': True, 'button': 'mouse5'}   # a real settings change
-        app.refresh_mouse_hook()
+        app.config['command_mode'] = {'enabled': True, 'button': 'mouse5'}   # a real change
+        app.refresh_mouse_hook(rearm=False)
         assert len(releasable.created) == 2 and app._mouse_hook is releasable.created[1]
+
+    def test_settings_apply_rearms_a_released_hook_for_unchanged_bindings(self, releasable, spawned):
+        """35: "set Mouse 4, nothing happened, Apply again" must re-arm."""
+        app = _App(hotkey='mouse4')
+        app._install_mouse_listener()
+        app.release_mouse_buttons()
+        app.refresh_mouse_hook()                               # settings apply (rearm=True)
+        assert len(releasable.created) == 2 and app._mouse_hook is releasable.created[1]
+        assert app._main_hotkey_override is None and app._mouse_hook_released_bindings is None
 
     def test_release_during_a_mouse_hold_stops_the_recording(self, releasable, spawned):
         app = _App(hotkey='mouse4', mode='hold')
@@ -344,15 +354,18 @@ class TestPanicRelease:
         app = _App(hotkey='ctrl+shift')
         app.release_mouse_buttons()
         assert app.config['hotkey'] == 'ctrl+shift' and app._mouse_hook is None
+        assert getattr(app, '_main_hotkey_override', None) is None
 
     def test_watchdog_give_up_falls_back_and_says_so(self, releasable, spawned):
         app = _App(hotkey='mouse4')
         app._install_mouse_listener()
         app._on_mouse_hook_failed("lost 4 times within 60s")
-        assert app._mouse_hook is None and app.config['hotkey'] == 'ctrl+shift'
+        assert app._mouse_hook is None and app.config['hotkey'] == 'mouse4'
+        assert app._main_hotkey_override == 'ctrl+shift'
+        assert 'hands-free mouse control disabled' in app._mouse_hotkey_disabled_reason
         chips = [c for c in app.calls if c[0] == 'chip']
-        assert chips and 'hands-free mouse control disabled' in chips[-1][1] and chips[-1][2] == 'warning'
-        app.refresh_mouse_hook()
+        assert chips and 'mouse hotkey off' in chips[-1][1] and chips[-1][2] == 'warning'
+        app.refresh_mouse_hook(rearm=False)
         assert len(releasable.created) == 1                      # not silently re-armed
 
 

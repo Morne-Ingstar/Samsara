@@ -125,6 +125,45 @@ def _button_behavior_note() -> str:
 class ModesPage:
     """Methods of the Modes settings page (moved from _SettingsWindow)."""
 
+    def _mouse_hotkey_control(self, btn):
+        """The primary-key button, plus an inline notice when the configured
+        mouse hotkey is not actually active (35). The saved choice is shown
+        and kept as it is; the notice retries the hook when clicked."""
+        status_fn = getattr(self.app, 'mouse_hotkey_status', None)
+        try:
+            status = status_fn() if callable(status_fn) else {'state': 'n/a'}
+        except Exception:
+            status = {'state': 'n/a'}
+        self._mouse_hotkey_status_btn = None
+        if status.get('state') != 'disabled':
+            return btn
+        wrap = QWidget()
+        column = QVBoxLayout(wrap)
+        column.setContentsMargins(0, 0, 0, 0)
+        column.setSpacing(4)
+        column.addWidget(btn)
+        notice = QPushButton("not active - hook disabled, click to retry")
+        notice.setObjectName("mouseHotkeyStatus")
+        notice.setFlat(True)
+        notice.setCursor(Qt.CursorShape.PointingHandCursor)
+        notice.setToolTip(f"{status.get('reason', '')}. "
+                          f"{status.get('fallback') or 'The keyboard hotkey'} records meanwhile.")
+        notice.setStyleSheet(f"color: {theme.WARNING}; text-align: left; border: none; padding: 0;")
+
+        def _retry():
+            reenable = getattr(self.app, 'reenable_mouse_hotkey', None)
+            state = reenable() if callable(reenable) else 'disabled'
+            if state == 'active':
+                notice.setText("active")
+                notice.setEnabled(False)
+            else:
+                notice.setText("still not active - click to retry")
+
+        notice.clicked.connect(_retry)
+        column.addWidget(notice)
+        self._mouse_hotkey_status_btn = notice
+        return wrap
+
     def _build_modes_tab(self):
         from samsara.ava_command_session import _DEFAULTS as _AIMD  # noqa: PLC0415
 
@@ -398,7 +437,7 @@ class ModesPage:
                 self._setting_row(
                     label,
                     desc,
-                    btn,
+                    self._mouse_hotkey_control(btn) if config_key == 'hotkey' else btn,
                     control_width=260,
                 )
             )

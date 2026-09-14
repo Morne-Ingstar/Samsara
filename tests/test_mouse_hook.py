@@ -427,27 +427,179 @@ class TestWatchdog:
         hook.watchdog_tick()
         assert restarts == ['start'] * 4 and not hook.gave_up
 
-    def test_cursor_moving_without_callbacks_counts_as_lost(self, monkeypatch):
-        hook, restarts = self._lost_hook()
-        hook._hook_id = 999
-        hook._start_hook_thread = lambda: restarts.append('start') or setattr(hook, '_hook_id', 1000)
-        positions = iter([(0, 0), (5, 5), (9, 9), (12, 12)])
-        monkeypatch.setattr(mh, '_cursor_pos', lambda: next(positions))
-        hook.watchdog_tick()       # baseline
-        hook.watchdog_tick()       # moved, no callback: 1
-        assert restarts == []
-        hook.watchdog_tick()       # moved again, still nothing: lost
-        assert restarts == ['start']
 
-    def test_callbacks_arriving_keep_the_hook_alive(self, monkeypatch):
-        hook, restarts = self._lost_hook()
-        hook._hook_id = 999
-        positions = iter([(0, 0), (5, 5), (9, 9), (12, 12)])
-        monkeypatch.setattr(mh, '_cursor_pos', lambda: next(positions))
-        for _ in range(4):
-            _fire(hook, WM_MOUSEMOVE, 0)
+class _Clock:
+    """Deterministic mh._perf/_sleep: sleep advances time."""
+
+    def __init__(self, start=1000.0):
+        self.now = start
+
+    def perf(self):
+        return self.now
+
+    def sleep(self, seconds):
+        self.now += seconds
+
+
+def _moving_cursor():
+    """Cursor position that changes on every read (the owner kept moving the mouse)."""
+    state = {'i': 0}
+
+    def _pos():
+        state['i'] += 1
+        return (state['i'] * 7, state['i'] * 3)
+
+    return _pos
+
+
+class TestLivenessCounter:
+    """35 regression: EVERY callback is liveness, not just the x-buttons."""
+
+    @pytest.mark.parametrize("label, w_param, xbutton", [
+        ('move', WM_MOUSEMOVE, 0), ('wheel', WM_MOUSEWHEEL, 0), ('h-wheel', WM_MOUSEHWHEEL, 0),
+        ('left down', WM_LBUTTONDOWN, 0), ('left up', WM_LBUTTONUP, 0),
+        ('right down', WM_RBUTTONDOWN, 0), ('right up', WM_RBUTTONUP, 0),
+        ('middle down', WM_MBUTTONDOWN, 0),
+        ('mouse4 down (suppressed)', WM_XBUTTONDOWN, XBUTTON1), ('mouse4 up (suppressed)', WM_XBUTTONUP, XBUTTON1),
+        ('mouse5 down', WM_XBUTTONDOWN, XBUTTON2), ('mouse5 up', WM_XBUTTONUP, XBUTTON2),
+    ])
+    def test_counter_increments_for_every_message(self, label, w_param, xbutton):
+        hook, _ = _make_hook(suppress='mouse4')
+        before = hook.callback_count
+        _fire(hook, w_param, xbutton)
+        assert hook.callback_count == before + 1, label
+
+    def test_counter_increment_is_the_first_thing_the_callback_does(self):
+        import inspect
+        body = inspect.getsource(MouseHook._hook_callback).split("try:", 1)[1]
+        first = next(line.strip() for line in body.splitlines() if line.strip())
+        assert first.startswith("self.callback_count += 1")
+
+
+class TestLivenessDetector:
+    """The watchdog must not condemn a hook that is receiving traffic (35)."""
+
+    def _hook(self, monkeypatch, *, probe='alive', cursor=None):
+        hook, _ = _make_hook(suppress='mouse4', on_hook_failed=MagicMock())
+        clock = _Clock()
+        monkeypatch.setattr(mh, '_perf', clock.perf)
+        monkeypatch.setattr(mh, '_sleep', clock.sleep)
+        monkeypatch.setattr(mh, '_cursor_pos', cursor or _moving_cursor())
+        probes = []
+
+        def _send():
+            probes.append(clock.now)
+            if probe == 'refused':
+                return False
+            if probe == 'alive':
+                hook.callback_count += 1          # our own injected move reached the hook
+            return True
+
+        monkeypatch.setattr(mh, '_send_zero_move', _send)
+        restarts = []
+
+        def _fake_start():
+            restarts.append(clock.now)
+            hook._hook_id = 1000 + len(restarts)
+
+        hook._start_hook_thread = _fake_start
+        hook._stop_hook_thread = MagicMock()
+        return hook, clock, probes, restarts
+
+    def _run(self, hook, clock, seconds, traffic_per_tick=0, step=mh.WATCHDOG_INTERVAL_S):
+        ticks = int(seconds / step)
+        for _ in range(ticks):
+            for _ in range(traffic_per_tick):
+                _fire(hook, WM_MOUSEMOVE, 0)
             hook.watchdog_tick()
-        assert restarts == []
+            clock.now += step
+
+    def test_a_minute_of_move_traffic_without_xbuttons_is_never_lost(self, monkeypatch, caplog):
+        """The owner's log: a hook that dispatched every real press, condemned
+        on cursor movement. Real rate at p10 is 40 callbacks/s (20 per tick);
+        here a meagre 1 callback per 0.5 s tick."""
+        hook, clock, probes, restarts = self._hook(monkeypatch)
+        with caplog.at_level(logging.WARNING, logger='samsara.mouse_hook'):
+            self._run(hook, clock, 60.0, traffic_per_tick=1)
+        assert restarts == [] and probes == [] and not hook.gave_up
+        assert "hook lost" not in caplog.text
+
+    def test_short_silences_are_noise(self, monkeypatch):
+        hook, clock, probes, restarts = self._hook(monkeypatch)
+        for _ in range(30):                       # 2 silent seconds, then traffic, repeatedly
+            self._run(hook, clock, 2.0, traffic_per_tick=0)
+            self._run(hook, clock, 1.0, traffic_per_tick=3)
+        assert probes == [] and restarts == []
+
+    def test_silent_movement_needs_three_checks_over_three_seconds_before_the_self_test(self, monkeypatch):
+        hook, clock, probes, restarts = self._hook(monkeypatch, probe='alive')
+        start = clock.now
+        self._run(hook, clock, 3.4)
+        assert probes == []
+        self._run(hook, clock, 1.0)
+        assert len(probes) == 1 and probes[0] - start >= 3.0
+        assert mh.SILENT_CHECKS == 3 and mh.LIVENESS_CHECK_S == 1.0
+
+    def test_self_test_answered_is_a_false_alarm_not_a_loss(self, monkeypatch, caplog):
+        hook, clock, probes, restarts = self._hook(monkeypatch, probe='alive')
+        with caplog.at_level(logging.INFO, logger=mh.logger.name):
+            self._run(hook, clock, 60.0)          # SetCursorPos-style movement for a minute
+        assert restarts == [] and not hook.gave_up
+        assert len(probes) >= 10 and hook.false_alarms == len(probes)
+        assert sum("answered its self-test" in r.getMessage() for r in caplog.records) == 1   # once per episode
+
+    def test_self_test_refused_is_inconclusive_not_a_loss(self, monkeypatch):
+        hook, clock, probes, restarts = self._hook(monkeypatch, probe='refused')
+        self._run(hook, clock, 30.0)
+        assert probes and restarts == [] and not hook.gave_up
+
+    def test_genuinely_dead_hook_is_lost_reinstalled_and_gives_up_on_the_fourth_loss(self, monkeypatch, caplog):
+        hook, clock, probes, restarts = self._hook(monkeypatch, probe='dead')
+        with caplog.at_level(logging.WARNING, logger='samsara.mouse_hook'):
+            self._run(hook, clock, 30.0)
+        assert len(restarts) == 3
+        assert all(b - a >= 3.0 for a, b in zip(restarts, restarts[1:]))   # the sustained window each time
+        assert hook.gave_up and hook.suppress_buttons == frozenset()
+        hook.on_hook_failed.assert_called_once()
+        assert "missed its own injected self-test" in hook.on_hook_failed.call_args.args[0]
+        assert "reinstalling (1/3" in caplog.text and "giving up" in caplog.text
+
+    def test_stationary_cursor_is_never_evidence(self, monkeypatch):
+        hook, clock, probes, restarts = self._hook(monkeypatch, probe='dead', cursor=lambda: (10, 10))
+        self._run(hook, clock, 60.0)
+        assert probes == [] and restarts == []
+
+    def test_real_self_test_injection_is_a_zero_motion_relative_move(self, monkeypatch):
+        sent = []
+
+        def _fake_send(count, inputs, size):
+            inp = ctypes.cast(inputs, ctypes.POINTER(mh._INPUT)).contents
+            sent.append((count, inp.type, inp.mi.dx, inp.mi.dy, inp.mi.dwFlags, size))
+            return 1
+
+        monkeypatch.setattr(ctypes.windll.user32, 'SendInput', _fake_send)
+        assert mh._send_zero_move() is True
+        assert sent == [(1, mh.INPUT_MOUSE, 0, 0, mh.MOUSEEVENTF_MOVE, ctypes.sizeof(mh._INPUT))]
+
+
+class TestCallNextHookExContract:
+    def test_64bit_lparam_without_declared_argtypes_uses_the_private_pointer(self, monkeypatch):
+        """No argtypes on the shared function: ctypes would overflow on a
+        64-bit LPARAM and cut the chain (what the 35 observer did)."""
+        bare = ctypes.windll.user32['CallNextHookEx']          # fresh pointer, argtypes None
+        monkeypatch.setattr(ctypes.windll.user32, 'CallNextHookEx', bare)
+        calls = []
+        monkeypatch.setattr(mh, '_call_next_fresh', lambda *a: calls.append(a) or 0)
+        big_lparam = 0x7FFF_1234_5678
+        assert mh._call_next_hook_ex(None, 0, WM_MOUSEMOVE, big_lparam) == 0
+        assert calls == [(None, 0, WM_MOUSEMOVE, big_lparam)]
+        assert mh._call_next_fresh is not bare
+
+    def test_declared_argtypes_or_a_patch_are_used_as_they_are(self, monkeypatch):
+        mock_next = MagicMock(return_value=3)
+        monkeypatch.setattr(ctypes.windll.user32, 'CallNextHookEx', mock_next)
+        assert mh._call_next_hook_ex(1, 0, 2, 3) == 3
+        mock_next.assert_called_once_with(1, 0, 2, 3)
 
 
 # ---------------------------------------------------------------------------
@@ -690,3 +842,211 @@ class TestOnCommandButton:
         app._on_command_button('mouse4', False)
         assert app.command_mode_active is True
         assert (app._enter_count, app._exit_count) == (1, 0)
+
+
+# ---------------------------------------------------------------------------
+# 35: loud, reversible fallback -- chip, tray balloon, tray item, Settings row
+# ---------------------------------------------------------------------------
+
+class _InstallableHook:
+    """Stand-in MouseHook with an installed flag the app can read."""
+    created = []
+    install_ok = True
+
+    def __init__(self, on_button_event=None, suppress_buttons=None, **kw):
+        self.suppress_buttons = frozenset(suppress_buttons or ())
+        self.on_hook_failed = kw.get('on_hook_failed')
+        self.installed = False
+        self.install_error = ''
+        self.stopped = False
+        _InstallableHook.created.append(self)
+
+    def start(self):
+        self.installed = _InstallableHook.install_ok
+        self.install_error = '' if self.installed else 'SetWindowsHookExW returned 0'
+
+    def stop(self):
+        self.stopped = True
+        self.installed = False
+
+    def release(self, why=''):
+        self.stop()
+
+
+@pytest.fixture
+def fallback_app(monkeypatch):
+    import types
+    import dictation
+    from tests.test_mouse_hotkey import _App
+
+    monkeypatch.setattr(mh, 'MouseHook', _InstallableHook)
+    monkeypatch.setattr(dictation.thread_registry, 'spawn', lambda name, target, daemon=True, **kw: None)
+    _InstallableHook.created = []
+    _InstallableHook.install_ok = True
+    app = _App(hotkey='mouse4')
+    for name in ('mouse_hotkey_status', 'reenable_mouse_hotkey'):
+        setattr(app, name, getattr(dictation.DictationApp, name).__get__(app))
+    app.balloons = []
+    app.tray_icon = types.SimpleNamespace(notify_warning=lambda title, text: app.balloons.append((title, text)))
+    return app
+
+
+class TestLoudReversibleFallback:
+
+    def test_give_up_is_loud_and_leaves_the_saved_choice_alone(self, fallback_app):
+        app = fallback_app
+        app._install_mouse_listener()
+        assert app.mouse_hotkey_status()['state'] == 'active'
+        app._mouse_hook.installed = False
+        app._on_mouse_hook_failed("no hook callbacks for 3 checks ... missed its own injected self-test")
+        status = app.mouse_hotkey_status()
+        assert status['state'] == 'disabled' and 'self-test' in status['reason']
+        assert status['fallback'] == 'ctrl+shift'
+        assert app.config['hotkey'] == 'mouse4'                              # never rewritten
+        assert any(c[0] == 'chip' and c[2] == 'warning' for c in app.calls)  # chip
+        assert app.balloons and 'disabled' in app.balloons[0][0]             # tray balloon
+        assert 'Re-enable mouse hotkey' in app.balloons[0][1]
+
+    def test_reenable_reinstalls_and_clears_the_fallback(self, fallback_app):
+        app = fallback_app
+        app._install_mouse_listener()
+        app._mouse_hook.installed = False
+        app._on_mouse_hook_failed("lost 4 times within 60s")
+        assert app.reenable_mouse_hotkey() == 'active'
+        assert len(_InstallableHook.created) == 2 and app._mouse_hook is _InstallableHook.created[1]
+        assert app._main_hotkey_override is None and app._mouse_hotkey_disabled_reason is None
+        assert app._mouse_hook_released_bindings is None
+        assert app.mouse_hotkey_status()['state'] == 'active'
+        assert any(c[0] == 'chip' and c[1] == 'mouse hotkey active' for c in app.calls)
+
+    def test_reenable_is_a_noop_when_already_active(self, fallback_app):
+        app = fallback_app
+        app._install_mouse_listener()
+        hook = app._mouse_hook
+        assert app.reenable_mouse_hotkey() == 'active'
+        assert len(_InstallableHook.created) == 1 and app._mouse_hook is hook and not hook.stopped
+
+    def test_reenable_that_cannot_install_stays_disabled_and_says_why(self, fallback_app):
+        app = fallback_app
+        app._install_mouse_listener()
+        app._mouse_hook.installed = False
+        app._on_mouse_hook_failed("lost 4 times within 60s")
+        _InstallableHook.install_ok = False
+        assert app.reenable_mouse_hotkey() == 'disabled'
+        status = app.mouse_hotkey_status()
+        assert status['state'] == 'disabled' and 'did not install' in status['reason']
+        assert app._main_hotkey_override == 'ctrl+shift' and app.config['hotkey'] == 'mouse4'
+
+    def test_no_mouse_binding_means_nothing_to_show(self, fallback_app):
+        app = fallback_app
+        app.config['hotkey'] = 'ctrl+shift'
+        assert app.mouse_hotkey_status()['state'] == 'n/a'
+        assert app.reenable_mouse_hotkey() == 'n/a'
+
+    def test_keyboard_path_reads_the_runtime_override(self):
+        import inspect
+        import dictation
+        for name in ('on_key_press', 'on_key_release'):
+            src = inspect.getsource(getattr(dictation.DictationApp, name))
+            assert "main_hotkey = getattr(self, '_main_hotkey_override', None) or self.config['hotkey']" in src, name
+            assert "main_hotkey = self.config['hotkey']" not in src, name
+
+    def test_config_watcher_does_not_rearm_but_settings_apply_does(self):
+        import inspect
+        import dictation
+        src = inspect.getsource(dictation.DictationApp._apply_disk_config)
+        assert "self.refresh_mouse_hook(rearm=False)" in src
+        assert inspect.signature(dictation.DictationApp.refresh_mouse_hook).parameters['rearm'].default is True
+
+
+class TestTrayMouseHotkeyItems:
+
+    def _menu(self, app):
+        from samsara.ui.tray_qt import SamsaraTrayQt
+        tray = SamsaraTrayQt(app)
+        tray._rebuild_menu()
+        return tray, [a.text() for a in tray._menu.actions()]
+
+    def _app(self, status, hook):
+        from tests.test_tray_qt import _make_app
+        app = _make_app()
+        app.mouse_hotkey_status = MagicMock(return_value=status)
+        app._mouse_hook = hook
+        return app
+
+    def test_disabled_shows_why_and_reenable(self, qapp):
+        app = self._app({'state': 'disabled', 'reason': 'lost 4 times within 60s', 'fallback': 'ctrl+shift'}, None)
+        tray, texts = self._menu(app)
+        assert "Mouse hotkey disabled: lost 4 times within 60s" in texts
+        assert "Re-enable mouse hotkey" in texts and "Release mouse buttons" not in texts
+        action = next(a for a in tray._menu.actions() if a.text() == "Re-enable mouse hotkey")
+        action.trigger()
+        app.reenable_mouse_hotkey.assert_called_once()
+
+    def test_active_offers_reenable_and_release(self, qapp):
+        app = self._app({'state': 'active', 'reason': ''}, object())
+        _tray, texts = self._menu(app)
+        assert "Re-enable mouse hotkey" in texts and "Release mouse buttons" in texts
+        assert not any(t.startswith("Mouse hotkey disabled") for t in texts)
+
+    def test_no_mouse_binding_shows_nothing(self, qapp):
+        app = self._app({'state': 'n/a'}, None)
+        _tray, texts = self._menu(app)
+        assert "Re-enable mouse hotkey" not in texts and "Release mouse buttons" not in texts
+
+    def test_balloon_is_a_thread_safe_signal_to_a_warning_message(self, qapp):
+        from samsara.ui.tray_qt import SamsaraTrayQt
+        from tests.test_tray_qt import _make_app
+        tray = SamsaraTrayQt(_make_app())
+        shown = []
+        tray._tray.showMessage = lambda *a: shown.append(a)
+        tray.notify_warning("Samsara mouse hotkey disabled", "why")
+        qapp.processEvents()
+        assert shown and shown[0][0] == "Samsara mouse hotkey disabled" and shown[0][1] == "why"
+
+
+class TestSettingsHotkeyRowReflectsReality:
+
+    def _window(self, status, reenable_state='active'):
+        from samsara.ui.settings_qt import _SettingsWindow
+        from tests.test_settings import _StubApp
+        app = _StubApp()
+        app.config = {'hotkey': 'mouse4'}
+        app.mouse_hotkey_status = lambda: status
+        app.reenable_mouse_hotkey = MagicMock(return_value=reenable_state)
+        return _SettingsWindow(app), app
+
+    def test_disabled_mouse_hotkey_shows_inline_notice_without_touching_config(self, qapp):
+        from PySide6.QtWidgets import QPushButton
+        win, app = self._window({'state': 'disabled', 'reason': 'lost 4 times within 60s',
+                                 'fallback': 'ctrl+shift'})
+        try:
+            notice = win.findChild(QPushButton, "mouseHotkeyStatus")
+            assert notice is not None
+            assert "not active" in notice.text() and "click to retry" in notice.text()
+            assert "lost 4 times" in notice.toolTip() and "ctrl+shift" in notice.toolTip()
+            assert app.config['hotkey'] == 'mouse4'
+            notice.click()
+            app.reenable_mouse_hotkey.assert_called_once()
+            assert notice.text() == "active" and not notice.isEnabled()
+        finally:
+            win.close()
+
+    def test_failed_retry_says_so(self, qapp):
+        from PySide6.QtWidgets import QPushButton
+        win, app = self._window({'state': 'disabled', 'reason': 'x', 'fallback': 'ctrl+shift'},
+                                reenable_state='disabled')
+        try:
+            notice = win.findChild(QPushButton, "mouseHotkeyStatus")
+            notice.click()
+            assert "still not active" in notice.text() and notice.isEnabled()
+        finally:
+            win.close()
+
+    def test_active_mouse_hotkey_shows_no_notice(self, qapp):
+        from PySide6.QtWidgets import QPushButton
+        win, _app = self._window({'state': 'active', 'reason': ''})
+        try:
+            assert win.findChild(QPushButton, "mouseHotkeyStatus") is None
+        finally:
+            win.close()

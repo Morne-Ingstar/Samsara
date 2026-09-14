@@ -4568,7 +4568,7 @@ class DictationApp:
                 logger.exception(f"[CONFIG] capture_rate update error: {e}")
         if 'hotkey' in changed or 'command_mode' in changed:
             try:
-                self.refresh_mouse_hook()
+                self.refresh_mouse_hook(rearm=False)
             except Exception as e:
                 logger.exception(f"[CONFIG] mouse hook refresh error: {e}")
         if 'ui' in changed and getattr(self, 'listening_indicator', None) is not None:
@@ -5871,8 +5871,9 @@ class DictationApp:
 
         mode = self.config.get('mode', 'hold')
 
-        # Get hotkey configs
-        main_hotkey = self.config['hotkey']
+        # Get hotkey configs. A mouse main hotkey whose hook is disabled runs
+        # on the keyboard fallback (35) -- a runtime override, never a config edit.
+        main_hotkey = getattr(self, '_main_hotkey_override', None) or self.config['hotkey']
         cont_hotkey = self.config.get('continuous_hotkey', 'ctrl+alt+d')
         wake_hotkey = self.config.get('wake_word_hotkey', 'ctrl+alt+w')
         command_hotkey = self.config.get('command_hotkey', 'ctrl+alt+c')
@@ -6119,8 +6120,8 @@ class DictationApp:
 
         mode = self.config.get('mode', 'hold')
         
-        # Get hotkey configs
-        main_hotkey = self.config['hotkey']
+        # Get hotkey configs (runtime keyboard fallback first, see on_key_press)
+        main_hotkey = getattr(self, '_main_hotkey_override', None) or self.config['hotkey']
         cont_hotkey = self.config.get('continuous_hotkey', 'ctrl+alt+d')
         wake_hotkey = self.config.get('wake_word_hotkey', 'ctrl+alt+w')
         command_hotkey = self.config.get('command_hotkey', 'ctrl+alt+c')
@@ -6347,11 +6348,14 @@ class DictationApp:
                 # start() returns whether or not the hook thread managed to
                 # install (28): say so in the log instead of "started", and
                 # drop the object so refresh_mouse_hook() can try again.
+                install_error = getattr(self._mouse_hook, 'install_error', '') or 'unknown reason'
                 logger.error(
-                    f"[MOUSE] Mouse hook did NOT install (bound={sorted(buttons)}): "
-                    f"{getattr(self._mouse_hook, 'install_error', '') or 'unknown reason'}"
+                    f"[MOUSE] Mouse hook did NOT install (bound={sorted(buttons)}): {install_error}"
                 )
                 self._mouse_hook = None
+                fallback = getattr(self, '_mouse_fallback_to_keyboard', None)
+                if callable(fallback):
+                    fallback("mouse hook did not install", install_error)
                 return
             logger.info(
                 f"[MOUSE] Mouse hook started (bound={sorted(buttons)}, suppress={sorted(suppress)})"
@@ -6360,25 +6364,37 @@ class DictationApp:
             logger.exception(f"[MOUSE] Mouse hook failed to start: {e}")
             self._mouse_hook = None
 
-    def refresh_mouse_hook(self):
-        """Reinstall the mouse hook after hotkey / command_mode changes.
+    def refresh_mouse_hook(self, rearm=True):
+        """Install / reinstall / remove the mouse hook to match the effective
+        main hotkey and command_mode binding.
 
-        Called from the settings-apply and config-update/reload paths. The
-        hook forwards every X button event and the callback routes by live
-        config, so only the need for a hook and its suppress set matter.
+        Called from every path that changes them: settings apply (settings_qt),
+        update_config, the external config-file watcher (rearm=False) and the
+        tray / Settings "Re-enable mouse hotkey" (35). The hook forwards every
+        X button event and the callback routes by live config, so only the
+        need for a hook, its suppress set and its liveness matter.
+
+        rearm=True (a user action) clears a released / given-up state and
+        reinstalls a missing or dead hook for unchanged bindings -- the owner's
+        "set Mouse 4, nothing happened, Apply again" case. rearm=False leaves a
+        deliberate release in force until the bindings really change.
         """
         buttons, suppress = self._mouse_hook_bindings()
         hook = getattr(self, '_mouse_hook', None)
         released = getattr(self, '_mouse_hook_released_bindings', None)
         if released is not None:
-            if hook is None and (buttons, suppress) == released:
-                # "Release mouse buttons" / watchdog give-up stays in force
-                # until the bindings really change (settings) or a restart.
+            if not rearm and hook is None and (buttons, suppress) == released:
                 return
+        # Whatever happens next, the old fallback / release no longer applies.
+        # (Plain attributes, not a helper: partial app stand-ins bind this method.)
+        if released is not None or not buttons:
             self._mouse_hook_released_bindings = None
+            self._main_hotkey_override = None
+            self._mouse_hotkey_disabled_reason = None
         if hook is None and not buttons:
             return
-        if hook is not None and buttons and hook.suppress_buttons == suppress:
+        if (hook is not None and buttons and hook.suppress_buttons == suppress
+                and getattr(hook, 'installed', True)):
             return
         if hook is not None:
             try:
@@ -6394,9 +6410,8 @@ class DictationApp:
         keyboard hotkey and say so."""
         logger.error(f"[MOUSE] mouse hook disabled: {reason}")
         self._mouse_hook = None
-        self._mouse_fallback_to_keyboard("hands-free mouse control disabled")
-        # After the fallback edited the hotkey: what "unchanged" means to refresh.
         self._mouse_hook_released_bindings = self._mouse_hook_bindings()
+        self._mouse_fallback_to_keyboard("hands-free mouse control disabled", reason)
 
     def release_mouse_buttons(self):
         """Tray "Release mouse buttons": uninstall the mouse hook immediately.
@@ -6414,31 +6429,83 @@ class DictationApp:
             except Exception as e:
                 logger.exception(f"[MOUSE] release failed: {e}")
         logger.warning("[MOUSE] mouse buttons released by the user")
-        self._mouse_fallback_to_keyboard("mouse buttons released")
-        # After the fallback edited the hotkey: what "unchanged" means to refresh.
         self._mouse_hook_released_bindings = self._mouse_hook_bindings()
+        self._mouse_fallback_to_keyboard("mouse buttons released", "released from the tray")
 
-    def _mouse_fallback_to_keyboard(self, why):
-        """The mouse hook is gone: a mouse main hotkey falls back to the
-        default keyboard hotkey IN MEMORY (not saved), a mouse-held recording
-        is stopped (its release will never arrive), and a chip says so."""
+    def _mouse_fallback_to_keyboard(self, why, reason=''):
+        """The mouse hook is gone. Loud and reversible (35):
+
+        - a mouse main hotkey runs on the default keyboard hotkey through a
+          RUNTIME override (_main_hotkey_override); config['hotkey'] still
+          says mouse4, so Settings shows the user's choice and never saves
+          the fallback;
+        - a mouse-held recording is stopped (its release will never arrive);
+        - an outcome chip, a tray balloon, the tray menu ("Re-enable mouse
+          hotkey") and the Settings hotkey row (mouse_hotkey_status) all say
+          the mouse hotkey is disabled and why.
+        """
         from samsara import config_defaults
         hotkey = str(self.config.get('hotkey', '') or '').strip().lower()
         fallback = config_defaults.DEFAULTS['hotkey']
+        self._mouse_hotkey_disabled_reason = f"{why}: {reason}" if reason else why
         if hotkey in _MOUSE_HOTKEY_BUTTONS:
-            self._mouse_hotkey_fallback_from = hotkey
-            self.config['hotkey'] = fallback
-            logger.warning(f"[MOUSE] {why}: main hotkey {hotkey} -> {fallback} until settings change "
-                           f"(not saved)")
+            self._main_hotkey_override = fallback
+            logger.warning(f"[MOUSE] {why}: main hotkey {hotkey} runs on {fallback} until re-enabled "
+                           f"(config unchanged, not saved)")
         if getattr(self, '_hold_down_mouse', False):
             self._hold_down_mouse = False
             if getattr(self, '_main_hotkey_source', 'key') == 'mouse' and getattr(self, 'recording', False):
                 self._main_hotkey_source = 'key'
                 thread_registry.spawn('stop-rec', self.stop_recording, daemon=True)
         try:
-            self._show_outcome_chip(f"{why} - hotkey {fallback}", "warning")
+            self._show_outcome_chip(f"mouse hotkey off - using {fallback}", "warning")
         except Exception as e:
             logger.debug(f"[MOUSE] fallback chip failed: {e}")
+        notify = getattr(getattr(self, 'tray_icon', None), 'notify_warning', None)
+        if callable(notify):
+            try:
+                notify("Samsara mouse hotkey disabled",
+                       f"{self._mouse_hotkey_disabled_reason}. {fallback} records meanwhile. "
+                       f"Tray menu > Re-enable mouse hotkey to try again.")
+            except Exception as e:
+                logger.debug(f"[MOUSE] fallback balloon failed: {e}")
+
+    def mouse_hotkey_status(self):
+        """{'state': 'n/a' | 'active' | 'disabled', 'reason', 'fallback', 'buttons'}
+        for the tray menu and the Settings hotkey row (35)."""
+        buttons, _suppress = self._mouse_hook_bindings()
+        if not buttons:
+            return {'state': 'n/a', 'reason': '', 'fallback': None, 'buttons': []}
+        hook = getattr(self, '_mouse_hook', None)
+        if hook is not None and getattr(hook, 'installed', False):
+            return {'state': 'active', 'reason': '', 'fallback': None, 'buttons': sorted(buttons)}
+        reason = (getattr(self, '_mouse_hotkey_disabled_reason', None)
+                  or getattr(hook, 'install_error', '') or 'mouse hook not installed')
+        return {'state': 'disabled', 'reason': reason,
+                'fallback': getattr(self, '_main_hotkey_override', None), 'buttons': sorted(buttons)}
+
+    def reenable_mouse_hotkey(self):
+        """Tray / Settings "Re-enable mouse hotkey": reinstall the hook now,
+        without a settings round-trip or a restart. A no-op when the hook is
+        already active. Returns the resulting mouse_hotkey_status()['state']."""
+        status = self.mouse_hotkey_status()
+        if status['state'] == 'active':
+            logger.info("[MOUSE] re-enable mouse hotkey: already active, nothing to do")
+            return 'active'
+        if status['state'] == 'n/a':
+            logger.info("[MOUSE] re-enable mouse hotkey: no mouse button is bound")
+            return 'n/a'
+        logger.info("[MOUSE] re-enable mouse hotkey requested (%s)", status['reason'])
+        self.refresh_mouse_hook(rearm=True)
+        after = self.mouse_hotkey_status()
+        if after['state'] == 'active':
+            try:
+                self._show_outcome_chip("mouse hotkey active", "success")
+            except Exception as e:
+                logger.debug(f"[MOUSE] re-enable chip failed: {e}")
+        else:
+            logger.warning("[MOUSE] re-enable mouse hotkey failed: %s", after['reason'])
+        return after['state']
 
     def _on_mouse_button(self, button_name, pressed):
         """Single mouse-hook callback: command mode, then the main hotkey.
