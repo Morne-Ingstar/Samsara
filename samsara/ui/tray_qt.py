@@ -500,6 +500,7 @@ class SamsaraTrayQt(QObject):
     _icon_sig    = Signal(object)  # MarkFrame (rendered on the Qt thread)
     _tooltip_sig = Signal(str)
     _hide_sig    = Signal()
+    _warning_sig = Signal(str, str)   # (title, text) -> balloon, from any thread
 
     def __init__(self, app):
         super().__init__()
@@ -516,6 +517,7 @@ class SamsaraTrayQt(QObject):
         self._icon_sig.connect(self._apply_icon)
         self._tooltip_sig.connect(self._tray.setToolTip)
         self._hide_sig.connect(self._tray.hide)
+        self._warning_sig.connect(self._show_warning_balloon)
 
         # Initial icon + tooltip
         try:
@@ -570,6 +572,13 @@ class SamsaraTrayQt(QObject):
     @title.setter
     def title(self, text: str):
         self._tooltip_sig.emit(str(text))
+
+    def notify_warning(self, title: str, text: str) -> None:
+        """Show a warning balloon (thread-safe). Used by the mouse-hotkey fallback (35)."""
+        self._warning_sig.emit(str(title), str(text))
+
+    def _show_warning_balloon(self, title: str, text: str) -> None:
+        self._tray.showMessage(title, text, QSystemTrayIcon.MessageIcon.Warning, 12000)
 
     def stop(self):
         try:
@@ -762,7 +771,14 @@ class SamsaraTrayQt(QObject):
         show_act = menu.addAction("Show Samsara")
         show_act.triggered.connect(lambda: app.show_main_window())
         menu.setDefaultAction(show_act)
-        # Panic release (32): only while a Win32 mouse hook is active.
+        # Mouse hotkey (32/35): state, re-enable without a restart, panic release.
+        status_fn = getattr(app, 'mouse_hotkey_status', None)
+        mouse_status = status_fn() if callable(status_fn) else {'state': 'n/a'}
+        if mouse_status.get('state') == 'disabled':
+            info = menu.addAction(f"Mouse hotkey disabled: {mouse_status.get('reason', '')}"[:90])
+            info.setEnabled(False)
+        if mouse_status.get('state') in ('active', 'disabled') and hasattr(app, 'reenable_mouse_hotkey'):
+            menu.addAction("Re-enable mouse hotkey").triggered.connect(lambda: app.reenable_mouse_hotkey())
         if getattr(app, '_mouse_hook', None) is not None and hasattr(app, 'release_mouse_buttons'):
             menu.addAction("Release mouse buttons").triggered.connect(lambda: app.release_mouse_buttons())
         menu.addSeparator()

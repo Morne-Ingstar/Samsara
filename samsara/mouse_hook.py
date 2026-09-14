@@ -20,9 +20,18 @@ on_button_event and runs the watchdog. The callback takes no Python-level
 lock and never logs; it bumps counters the dispatcher reports.
 
 Watchdog: a callback slower than SLOW_CALLBACK_MS is logged at WARNING. A hook
-Windows removed (LowLevelHooksTimeout) or whose thread died is reinstalled; a
-fourth loss inside REINSTALL_WINDOW_S stops suppression, unhooks and calls
-on_hook_failed so the app can fall back to the keyboard hotkey.
+whose thread died is reinstalled; a fourth loss inside REINSTALL_WINDOW_S
+stops suppression, unhooks and calls on_hook_failed so the app can fall back
+to the keyboard hotkey.
+
+Liveness (35, 2026-09-13): every callback -- move, wheel, any button --
+counts. Cursor movement with ZERO callbacks is only a SUSPICION: pointers
+driven by SetCursorPos, pen/touch input and another low-level hook that does
+not call CallNextHookEx all move the cursor without our hook hearing it (the
+owner's watchdog condemned a healthy hook 7 times in 3 minutes on a 1.5 s
+sample). A loss needs SILENT_CHECKS consecutive silent checks (>= 3 s) AND a
+failed self-test: a zero-motion mouse move injected with SendInput that our
+own hook must see within PROBE_WAIT_S.
 
 Panic release: stop()/release() unhook on the thread that installed the hook
 (after its message loop ends); an atexit handler releases every live hook.
@@ -68,15 +77,24 @@ REINSTALL_LIMIT = 3
 REINSTALL_WINDOW_S = 60.0
 #: How often the dispatcher runs the watchdog.
 WATCHDOG_INTERVAL_S = 0.5
-#: Consecutive watchdog intervals with cursor movement but no hook callback
-#: before the hook counts as removed (one SetCursorPos jump is not movement
-#: over two intervals).
-DEAD_HOOK_TICKS = 2
+#: Liveness is sampled this often: cursor position vs callbacks since the last check.
+LIVENESS_CHECK_S = 1.0
+#: Consecutive silent checks (cursor moved, zero callbacks) before the self-test.
+#: Measured on the owner's machine (35): while the cursor moves the hook sees
+#: 40 callbacks/s at p10, 132/s median, 236/s p90 -- three silent seconds of
+#: movement is >= ~120 missing callbacks at the slowest real rate.
+SILENT_CHECKS = 3
+#: How long the self-test waits for our own injected move to reach the hook.
+PROBE_WAIT_S = 0.25
 
 _user32   = ctypes.windll.user32
 _kernel32 = ctypes.windll.kernel32
 _perf = time.perf_counter
+_sleep = time.sleep
 _STOP = object()
+
+MOUSEEVENTF_MOVE = 0x0001
+INPUT_MOUSE = 0
 
 
 class MSLLHOOKSTRUCT(ctypes.Structure):
@@ -130,6 +148,47 @@ def _set_windows_hook_ex():
     fresh.argtypes = (ctypes.c_int, LowLevelMouseProc, ctypes.c_void_p, ctypes.wintypes.DWORD)
     fresh.restype = ctypes.c_void_p
     return fresh
+
+
+# CallNextHookEx with a 64-bit-safe contract. pynput declares argtypes on the
+# shared user32 function when it is imported (the app always imports it);
+# without them ctypes converts the LPARAM pointer as a 32-bit int, raises
+# OverflowError inside the callback, and the chain to every OLDER low-level
+# hook is cut -- the same starvation that makes a hook look "lost" (35).
+_call_next_fresh = _user32['CallNextHookEx']
+_call_next_fresh.argtypes = (ctypes.c_void_p, ctypes.c_int, ctypes.wintypes.WPARAM, ctypes.wintypes.LPARAM)
+_call_next_fresh.restype = ctypes.c_long   # the hook proc returns c_long
+_CFuncPtr = ctypes._CFuncPtr
+
+
+def _call_next_hook_ex(hook_id, n_code, w_param, l_param):
+    fn = _user32.CallNextHookEx
+    if isinstance(fn, _CFuncPtr) and not fn.argtypes:
+        fn = _call_next_fresh
+    return fn(hook_id, n_code, w_param, l_param)
+
+
+class _MOUSEINPUT(ctypes.Structure):
+    _fields_ = [("dx", ctypes.c_long), ("dy", ctypes.c_long), ("mouseData", ctypes.wintypes.DWORD),
+                ("dwFlags", ctypes.wintypes.DWORD), ("time", ctypes.wintypes.DWORD),
+                ("dwExtraInfo", ctypes.c_void_p)]
+
+
+class _INPUT(ctypes.Structure):
+    class _U(ctypes.Union):
+        _fields_ = [("mi", _MOUSEINPUT), ("_pad", ctypes.c_byte * 32)]
+    _anonymous_ = ("u",)
+    _fields_ = [("type", ctypes.wintypes.DWORD), ("u", _U)]
+
+
+def _send_zero_move() -> bool:
+    """Inject one zero-motion relative mouse move; True if Windows accepted it.
+    SendInput is refused (0) on the secure desktop or into higher-integrity
+    input queues -- the self-test is then inconclusive, never a loss."""
+    inp = _INPUT()
+    inp.type = INPUT_MOUSE
+    inp.mi = _MOUSEINPUT(0, 0, 0, MOUSEEVENTF_MOVE, 0, None)
+    return _user32.SendInput(1, ctypes.byref(inp), ctypes.sizeof(_INPUT)) == 1
 
 
 def _coerce_suppress_buttons(value) -> frozenset:
@@ -215,9 +274,13 @@ class MouseHook:
         # Watchdog state.
         self._reinstalls = collections.deque()
         self._watch_due = 0.0
+        self._live_due = 0.0
         self._watch_count = 0
         self._watch_pos = None
-        self._dead_ticks = 0
+        self._silent_checks = 0
+        #: Self-tests the hook answered while the cursor moved silently (false alarms avoided).
+        self.false_alarms = 0
+        self._false_alarm_logged = False
         self.gave_up = False
         #: Thread id that ran UnhookWindowsHookEx last (the installing thread
         #: unless the fallback had to be used).
@@ -232,7 +295,7 @@ class MouseHook:
         t0 = _perf()
         suppress = False
         try:
-            self.callback_count += 1
+            self.callback_count += 1   # EVERY callback is liveness: move, wheel, any button (35)
             if n_code >= 0 and (w_param == WM_XBUTTONDOWN or w_param == WM_XBUTTONUP):
                 info = ctypes.cast(l_param, ctypes.POINTER(MSLLHOOKSTRUCT)).contents
                 name = 'mouse4' if ((info.mouseData >> 16) & 0xFFFF) == XBUTTON1 else 'mouse5'
@@ -258,7 +321,7 @@ class MouseHook:
         if suppress:
             return 1  # consume -- the OS does not see this X button
         try:
-            return _user32.CallNextHookEx(self._hook_id, n_code, w_param, l_param)
+            return _call_next_hook_ex(self._hook_id, n_code, w_param, l_param)
         except BaseException:
             self.callback_errors += 1
             return 0
@@ -332,22 +395,59 @@ class MouseHook:
             self._reported['errors'] = self.callback_errors
 
     def _hook_lost(self) -> str:
-        """Why the hook is gone, or '' while it is alive."""
+        """Why the hook is gone, or '' while it is alive (or merely unproven)."""
         if not self._hook_id:
             return 'hook handle cleared'
         if self._thread is not None and not self._thread.is_alive():
             return 'hook thread ended'
+        now = _perf()
+        if now < self._live_due:
+            return ''
+        self._live_due = now + LIVENESS_CHECK_S
         pos, count = _cursor_pos(), self.callback_count
         moved = pos is not None and self._watch_pos is not None and pos != self._watch_pos
         if moved and count == self._watch_count:
-            self._dead_ticks += 1
+            self._silent_checks += 1
         else:
-            self._dead_ticks = 0
+            self._silent_checks = 0
+            self._false_alarm_logged = False
         self._watch_pos, self._watch_count = pos, count
-        if self._dead_ticks >= DEAD_HOOK_TICKS:
-            self._dead_ticks = 0
-            return 'cursor moving but the hook receives nothing (removed by Windows?)'
-        return ''
+        if self._silent_checks < SILENT_CHECKS:
+            return ''
+        self._silent_checks = 0
+        verdict = self._self_test()
+        self._watch_count = self.callback_count     # the probe's own callback is not user traffic
+        if verdict == 'alive':
+            self.false_alarms += 1
+            if not self._false_alarm_logged:
+                logger.info("[MOUSE HOOK] cursor moved for %d checks with no hook callbacks, but the hook "
+                            "answered its self-test -- the movement did not come through the low-level "
+                            "mouse hook chain (SetCursorPos pointer, pen/touch, or another hook not "
+                            "calling CallNextHookEx); not a loss", SILENT_CHECKS)
+                self._false_alarm_logged = True
+            return ''
+        if verdict == 'inconclusive':
+            logger.debug("[MOUSE HOOK] silent cursor movement; self-test could not inject (SendInput refused)")
+            return ''
+        return (f'no hook callbacks for {SILENT_CHECKS} checks of cursor movement and the hook missed '
+                f'its own injected self-test')
+
+    def _self_test(self) -> str:
+        """'alive' | 'dead' | 'inconclusive': inject a zero-motion move and wait
+        for any callback to arrive."""
+        before = self.callback_count
+        try:
+            if not _send_zero_move():
+                return 'inconclusive'
+        except Exception:
+            return 'inconclusive'
+        deadline = _perf() + PROBE_WAIT_S
+        while True:
+            if self.callback_count != before:
+                return 'alive'
+            if _perf() >= deadline:
+                return 'dead'
+            _sleep(0.01)
 
     def watchdog_tick(self) -> None:
         """Report counters; reinstall a lost hook; give up after too many losses."""
@@ -370,7 +470,8 @@ class MouseHook:
                        reason, len(self._reinstalls), REINSTALL_LIMIT)
         self._stop_hook_thread()
         self._start_hook_thread()
-        self._watch_pos, self._watch_count, self._dead_ticks = None, self.callback_count, 0
+        self._watch_pos, self._watch_count, self._silent_checks = None, self.callback_count, 0
+        self._live_due = 0.0
         if not self.installed:
             logger.error(f"[MOUSE HOOK] reinstall failed: {self.install_error or 'unknown reason'}")
 
@@ -400,7 +501,8 @@ class MouseHook:
         self.gave_up = False
         self._start_hook_thread()
         self._watch_due = _perf() + WATCHDOG_INTERVAL_S
-        self._watch_pos, self._watch_count, self._dead_ticks = None, self.callback_count, 0
+        self._live_due = 0.0
+        self._watch_pos, self._watch_count, self._silent_checks = None, self.callback_count, 0
         if self._dispatcher is None or not self._dispatcher.is_alive():
             self._dispatcher = thread_registry.spawn('mouse-hook-dispatch', self._dispatch_loop, daemon=True)
         _live_hooks.add(self)
