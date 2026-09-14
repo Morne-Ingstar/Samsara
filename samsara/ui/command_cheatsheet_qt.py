@@ -6,6 +6,15 @@ Drop-in replacement for CommandCheatSheet with the same public API:
 
 All Qt operations are posted to the shared qt_runtime event loop.
 show() / hide() / toggle() are safe to call from any thread.
+
+Every row is a command-catalog record (samsara.command_catalog), built at
+runtime from the LIVE registry rows the app passes as commands_cb -- so the
+sheet can never list a command that is not registered. Rows are grouped by
+plugin and show the canonical phrase, up to 3 other phrases, a
+"destructive" tag for destructive commands and a "whole utterance" tag for
+reserved control words (they only work said on their own). If no catalog
+can be built, the sheet says so and links to Help; it never falls back to a
+hand-written list.
 """
 
 import json
@@ -15,16 +24,65 @@ from typing import Callable, List
 from PySide6.QtCore import Qt, QTimer, Signal, QPoint
 from PySide6.QtGui import QColor, QCursor
 from PySide6.QtWidgets import (
-    QComboBox, QMainWindow, QWidget, QVBoxLayout, QHBoxLayout,
+    QApplication, QComboBox, QMainWindow, QWidget, QVBoxLayout, QHBoxLayout,
     QLabel, QListWidget, QListWidgetItem, QLineEdit,
     QFrame, QSizeGrip, QSlider, QMenu, QAbstractItemView,
 )
 
+from samsara import command_catalog
+from samsara.support_feedback import DOCUMENTATION_URL
 from samsara.ui import qt_runtime
 
 from samsara.log import get_logger
 
 logger = get_logger(__name__)
+
+#: Shown instead of the list when no catalog can be built.
+UNAVAILABLE_TEXT = (
+    "The command list is unavailable right now. "
+    f'See <a href="{DOCUMENTATION_URL}">Help</a> for the commands.'
+)
+_ALIAS_LIMIT = 3
+
+
+def catalog_rows(commands: list | None) -> list | None:
+    """Sheet rows for live registry rows (commands_cb()): one catalog record
+    per command, keyed so the sheet can execute and pin it -- "phrase" is the
+    canonical phrase. None when no catalog is available."""
+    records = command_catalog.guidance_catalog(commands)
+    if not records:
+        return None
+    rows = []
+    for record in records:
+        row = dict(record)
+        row["phrase"] = command_catalog.canonical_phrase(record)
+        row["shown_aliases"] = command_catalog.display_aliases(record, _ALIAS_LIMIT)
+        rows.append(row)
+    return rows
+
+
+def plugin_label(plugin: str) -> str:
+    return "Built-in" if plugin == "builtin" else plugin.replace("_", " ").title()
+
+
+def row_tags(row: dict) -> list:
+    tags = []
+    if row.get("risk") == "destructive":
+        tags.append("destructive")
+    if row.get("whole_utterance"):
+        tags.append("whole utterance")
+    return tags
+
+
+def row_text(row: dict) -> str:
+    """One list line: canonical phrase, up to 3 other phrases, then tags."""
+    text = row["phrase"].title()
+    if row.get("shown_aliases"):
+        text += "  -  also: " + ", ".join(row["shown_aliases"])
+    tags = row_tags(row)
+    if tags:
+        text += "  [" + ", ".join(tags) + "]"
+    return text
 
 # ---------------------------------------------------------------------------
 # Colour palette — matches the Tkinter version
@@ -66,14 +124,6 @@ def _annotate_disabled(rows, disabled: set) -> list:
         row["pack_disabled"] = row.get("pack", "core") in disabled
         out.append(row)
     return out
-
-
-def _pack_label(pack_id: str) -> str:
-    try:
-        from samsara.command_packs import PACKS
-        return PACKS.get(pack_id, {}).get("label", pack_id.replace("-", " ").title())
-    except Exception:
-        return pack_id.replace("-", " ").title()
 
 
 _SS = f"""
@@ -395,12 +445,13 @@ class _CategoryTabBar(QWidget):
         lay.addStretch()
 
     def set_categories(self, pack_ids: List[str], active_id: str, disabled: set = frozenset()):
+        """pack_ids are the group ids (catalog plugin stems since queue 15)."""
         self._pack_ids = ["All"] + pack_ids
         self._disabled = set(disabled)
         self._combo.blockSignals(True)
         self._combo.clear()
         for pid in self._pack_ids:
-            label = "All commands" if pid == "All" else _pack_label(pid)
+            label = "All commands" if pid == "All" else plugin_label(pid)
             if pid in getattr(self, "_disabled", ()):
                 label += " (off)"
             self._combo.addItem(label, userData=pid)
@@ -521,6 +572,16 @@ class _CheatSheetWindow(QMainWindow):
         self._list.customContextMenuRequested.connect(self._on_context_menu)
         lay.addWidget(self._list, stretch=1)
 
+        # Degraded path: no catalog -> one honest line and a Help link.
+        self._unavailable = QLabel(UNAVAILABLE_TEXT)
+        self._unavailable.setObjectName("cheatsheetUnavailable")
+        self._unavailable.setWordWrap(True)
+        self._unavailable.setOpenExternalLinks(True)
+        self._unavailable.setTextFormat(Qt.TextFormat.RichText)
+        self._unavailable.setStyleSheet(f"color:{_TEXT_SEC};font-size:12px;padding:12px;")
+        self._unavailable.setVisible(False)
+        lay.addWidget(self._unavailable)
+
         # Resize grip row
         grip_row = QHBoxLayout()
         grip_row.setContentsMargins(0, 0, 0, 0)
@@ -538,36 +599,31 @@ class _CheatSheetWindow(QMainWindow):
 
     def refresh_commands(self):
         try:
-            self._all = _annotate_disabled(self._commands_cb(), _disabled_packs())
+            live = self._commands_cb()
         except Exception as exc:
             print(f"[CHEATSHEET] commands_cb error: {exc}")
-            self._all = []
+            live = None
+        try:
+            rows = catalog_rows(live)
+        except Exception as exc:
+            logger.warning(f"[CHEATSHEET] command catalog unavailable: {exc}")
+            rows = None
+        self._catalog_available = rows is not None
+        self._all = _annotate_disabled(rows or [], _disabled_packs())
+        self._unavailable.setVisible(not self._catalog_available)
+        self._list.setVisible(self._catalog_available)
+        self._category_bar.setVisible(self._catalog_available)
+        self._filter.setVisible(self._catalog_available)
         self._rebuild_static_pane()
 
-        # Build ordered pack list from PACKS definition, only include packs
-        # that have at least one command currently loaded.
-        try:
-            from samsara.command_packs import PACKS
-            pack_order = list(PACKS.keys())
-        except Exception:
-            pack_order = []
-        seen: set = set()
-        pack_ids: List[str] = []
-        for pid in pack_order:
-            if any(c.get("pack", "") == pid for c in self._all):
-                pack_ids.append(pid)
-                seen.add(pid)
-        for c in self._all:
-            pid = c.get("pack", "")
-            if pid and pid not in seen:
-                pack_ids.append(pid)
-                seen.add(pid)
-
-        if self._active_category != "All" and self._active_category not in pack_ids:
+        # Groups are catalog plugins, in label order; a group reads "(off)"
+        # when every command in it belongs to a disabled pack.
+        plugin_ids = sorted({c["plugin"] for c in self._all}, key=plugin_label)
+        if self._active_category != "All" and self._active_category not in plugin_ids:
             self._active_category = "All"
-
-        self._category_bar.set_categories(pack_ids, self._active_category,
-                                          {p for p in pack_ids if any(c.get("pack_disabled") and c.get("pack") == p for c in self._all)})
+        off = {p for p in plugin_ids
+               if all(c.get("pack_disabled") for c in self._all if c["plugin"] == p)}
+        self._category_bar.set_categories(plugin_ids, self._active_category, off)
         self._apply_filter(self._filter.text())
 
     def _apply_filter(self, text: str = ""):
@@ -581,12 +637,9 @@ class _CheatSheetWindow(QMainWindow):
         else:
             filtered = list(self._all)
 
-        # Category filter
+        # Category (plugin group) filter
         if self._active_category != "All":
-            filtered = [
-                c for c in filtered
-                if c.get("pack", "core") == self._active_category
-            ]
+            filtered = [c for c in filtered if c.get("plugin") == self._active_category]
 
         # Pinned items live in static pane — exclude from scroll list
         unpinned = [c for c in filtered if c["phrase"] not in self._pinned]
@@ -594,17 +647,16 @@ class _CheatSheetWindow(QMainWindow):
         self._list.blockSignals(True)
         self._list.clear()
         for cmd in unpinned:
-            phrase = cmd["phrase"]
-            pack   = cmd.get("pack", "")
             item = QListWidgetItem()
-            # Store phrase for execution
-            item.setData(Qt.ItemDataRole.UserRole, phrase)
-            # Format: "phrase" with pack hint right-aligned via spaces
-            display = phrase.title()
-            if pack and pack != "core":
-                # Pad with spaces — approximate right-alignment
-                item.setToolTip(f"Pack: {pack}")
-            item.setText(display)
+            # Execution uses the canonical phrase; the id is kept for tests
+            # and tooling (every row resolves to a real catalog command).
+            item.setData(Qt.ItemDataRole.UserRole, cmd["phrase"])
+            item.setData(Qt.ItemDataRole.UserRole + 1, cmd["canonical_id"])
+            item.setText(row_text(cmd))
+            tooltip = cmd.get("description", "")
+            if cmd.get("pack") not in (None, "", "core"):
+                tooltip += f"\nPack: {cmd['pack']}" + (" (off)" if cmd.get("pack_disabled") else "")
+            item.setToolTip(tooltip.strip())
             item.setForeground(QColor(_TEXT_PRI))
             self._list.addItem(item)
         self._list.blockSignals(False)
@@ -627,7 +679,12 @@ class _CheatSheetWindow(QMainWindow):
                 child.widget().deleteLater()
 
         has_content = False
-        phrase_to_cmd = {c["phrase"]: c for c in self._all}
+        # Usage stats are keyed by whatever phrase was said: map every alias.
+        phrase_to_cmd = {}
+        for c in self._all:
+            for alias in c.get("aliases", []):
+                phrase_to_cmd.setdefault(alias, c)
+            phrase_to_cmd[c["phrase"]] = c
 
         # ---- Most Used ----
         try:
@@ -643,7 +700,7 @@ class _CheatSheetWindow(QMainWindow):
             for phrase, cnt in top:
                 row = _StaticRow(
                     phrase_to_cmd[phrase], count=cnt,
-                    pinned=(phrase in self._pinned),
+                    pinned=(phrase_to_cmd[phrase]["phrase"] in self._pinned),
                     execute_cb=self._execute, toggle_pin_cb=self._toggle_pin,
                     parent=self._static_pane,
                 )
