@@ -8074,6 +8074,12 @@ class DictationApp:
         """Schedule a chip on the indicator. Any chip shown here also counts
         as the resolution of a pending hold "..." -- see _resolve_hold_chip."""
         self._hold_chip_resolved_seq = getattr(self, '_hold_chip_seq', 0)
+        # Home's "last action" card reads this ring (newest last, capped at
+        # 8); pending/live chips are progress, not outcomes, so they are skipped.
+        if kind not in ('pending', 'live'):
+            if getattr(self, '_outcome_ring', None) is None:
+                self._outcome_ring = collections.deque(maxlen=8)
+            self._outcome_ring.append((label, kind, time.time()))
         indicator = getattr(self, 'listening_indicator', None)
         if indicator is None or not hasattr(indicator, 'show_outcome'):
             return

@@ -135,6 +135,13 @@ FONT_SIZE_BODY = 13
 # private stylesheets are intentionally outside this token's scope.
 FONT_SIZE_CAPTION = 12
 
+# Inscription-style display face, used once: the creed on the Home page's
+# identity strip ("Free - Open source - Accessibility first"). Letterspaced
+# capitals in a titling face; colour stays ICON_IDLE/TEXT_SECONDARY, never a
+# texture. Every family in the stack ships with Windows or Office, and the
+# generic serif closes the fallback chain.
+FONT_FAMILY_DISPLAY = "'Perpetua Titling MT', 'Palatino Linotype', 'Book Antiqua', Georgia, serif"
+
 # ---------------------------------------------------------------------------
 # Combo-box dropdown arrow. QComboBox::down-arrow's CSS border-triangle trick
 # (transparent left/right borders + a solid top border) does NOT render as a

@@ -61,6 +61,21 @@ class HistoryStore:
             logger.debug(f"[HISTORY] query failed: {exc}")
             return []
 
+    def words_typed_since(self, since_iso: str) -> int:
+        """Read-only: the number of whitespace-separated words in every
+        'dictation' entry whose timestamp is at or after since_iso (an
+        ISO8601 local-time string, the same form HistoryManager.add writes).
+        Only typed outcomes count -- commands, wake commands and failed
+        attempts are excluded. 0 if history is unavailable."""
+        rows = self.query(type_filter='dictation', since=since_iso, limit=100000)
+        total = 0
+        for row in rows:
+            try:
+                total += len(str(row['display_text'] or '').split())
+            except (KeyError, IndexError, TypeError):
+                continue
+        return total
+
     def delete(self, ids):
         """Delete one or more entries by row id."""
         if self._manager is None:
