@@ -1,5 +1,6 @@
 """Queue 26: the Home page (samsara/ui/home_qt.py) and its wiring into the
-hub window.
+hub window. Queue 41: type scale, plain-language state row, one primary
+control, card descriptions, the outcome row, no Undo on Home.
 
 Widgets are built directly against the session `qapp` fixture (the
 precedent of test_main_window_qt.py); qt_runtime is not exercised. The
@@ -152,7 +153,8 @@ class TestOutcomeRing:
 
 
 # ---------------------------------------------------------------------------
-# Last action card: each kind renders, only its valid actions
+# Last outcome row (41): kind first in plain words, then the content, with
+# only that outcome's own actions
 # ---------------------------------------------------------------------------
 
 class TestLastAction:
@@ -161,13 +163,12 @@ class TestLastAction:
         app._outcome_ring.append((label, kind, time.time()))
         return page(app), app
 
-    def test_typed_shows_the_text_and_enables_undo_only(self, page):
+    def test_typed_reads_dictated_then_the_text_with_teach_only(self, page):
         p, app = self._with(page, "typed", "success")
+        assert p.last_action_kind == "Dictated"
         assert p.last_action_text == "hello world"
-        assert p._undo_btn.isEnabled() and not p._why_btn.isEnabled()
-        assert p._teach_btn.isEnabled()
-        p._undo_btn.click()
-        assert app.scratch_calls == 1
+        assert p._teach_btn.isVisibleTo(p) and p._teach_btn.isEnabled()
+        assert not p._why_btn.isVisibleTo(p)
         p._teach_btn.click()
         assert app.teach_calls == 1
 
@@ -178,21 +179,25 @@ class TestLastAction:
         assert "\n" not in p.last_action_text
         assert p.last_action_text.endswith(chr(0x2026))
 
-    def test_command_renders_check_verb_and_no_undo(self, page):
-        p, _ = self._with(page, f"{CHIP_CHECK} open chrome", "success")
-        assert p.last_action_text == f"{CHIP_CHECK} open chrome"
-        assert not p._undo_btn.isEnabled() and not p._why_btn.isEnabled()
+    def test_command_claims_no_verb_it_cannot_name(self, page):
+        """The chip stores only the first two words ("switch to"), so the row
+        says "Ran a command" and shows the stored fragment, never "Ran switch to"."""
+        p, _ = self._with(page, f"{CHIP_CHECK} switch to", "success")
+        assert p.last_action_kind == "Ran a command"
+        assert p.last_action_text == '"switch to"'
+        assert not p._teach_btn.isVisibleTo(p) and not p._why_btn.isVisibleTo(p)
 
-    def test_miss_renders_cross_and_what_it_heard(self, page):
+    def test_miss_reads_didnt_catch_then_what_it_heard(self, page):
         app = _app(_last_miss_text="opun crome")
         app._outcome_ring.append(("MISS", "error", time.time()))
         p = page(app)
-        assert p.last_action_text == f"{CHIP_CROSS} opun crome"
-        assert not p._undo_btn.isEnabled() and not p._why_btn.isEnabled()
+        assert p.last_action_kind == "Didn't catch"
+        assert p.last_action_text == '"opun crome"'
+        assert not p._teach_btn.isVisibleTo(p) and not p._why_btn.isVisibleTo(p)
 
-    def test_miss_without_the_heard_text_is_still_a_cross(self, page):
+    def test_miss_without_the_heard_text_still_says_what_kind(self, page):
         p, _ = self._with(page, "MISS", "error")
-        assert p.last_action_text == f"{CHIP_CROSS} MISS"
+        assert p.last_action_kind == "Didn't catch" and p.last_action_text == ""
 
     @pytest.mark.parametrize("label,kind,reason", [
         (f"{CHIP_CROSS} no mic", "error", "no mic"),
@@ -201,7 +206,7 @@ class TestLastAction:
     ])
     def test_why_shows_the_reason_when_there_is_one(self, page, qapp, label, kind, reason):
         p, _ = self._with(page, label, kind)
-        assert p._why_btn.isEnabled()
+        assert p._why_btn.isVisibleTo(p) and p._why_btn.isEnabled()
         assert not p._reason.isVisibleTo(p)
         p._why_btn.click()
         qapp.processEvents()
@@ -211,8 +216,9 @@ class TestLastAction:
         p = page(_app())
         records = command_catalog.guidance_catalog(None)
         example = command_catalog.canonical_phrase(command_catalog.pick_examples(records, 1)[0])
-        assert p.last_action_text == f"Nothing yet. Try: {example}"
-        assert not p._undo_btn.isEnabled() and not p._why_btn.isEnabled()
+        assert p.last_action_kind == "Nothing yet."
+        assert p.last_action_text == f"Try: {home_qt.quoted(example)}"
+        assert not p._teach_btn.isVisibleTo(p) and not p._why_btn.isVisibleTo(p)
 
     def test_newest_outcome_wins_and_refresh_follows_the_ring(self, page):
         app = _app()
@@ -220,7 +226,14 @@ class TestLastAction:
         app._outcome_ring.append((f"{CHIP_CHECK} open chrome", "success", time.time()))
         app._outcome_ring.append(("typed", "success", time.time()))
         p.refresh()
-        assert p.last_action_text == "hello world" and p._undo_btn.isEnabled()
+        assert p.last_action_kind == "Dictated" and p.last_action_text == "hello world"
+
+    def test_the_outcome_is_a_row_not_a_titled_card(self, page):
+        p, _ = self._with(page, "typed", "success")
+        row = home_qt.find_by_accessible_name(p, "Last outcome")
+        assert row is not None and row.objectName() != "homeCard"
+        texts = [w.text() for w in row.findChildren(home_qt.QLabel)]
+        assert "LAST ACTION" not in texts
 
 
 # ---------------------------------------------------------------------------
@@ -232,31 +245,31 @@ class TestStateBlock:
         # Config says wake word enabled, runtime says the listener is not armed.
         app = _app(wake_word_active=False)
         p = page(app)
-        assert p.state_texts["Listening"] == "Hold key"
-        assert p.state_texts["Lane"] == "dictate"
-        assert p.state_texts["Next utterance goes to"] == "any textbox"
+        assert p.state_texts["State"] == "Ready. What you say goes to whatever you're typing in."
         assert p._stop_btn.text() == "Stop listening" and not p._stop_btn.isEnabled()
-        assert not p._pause_btn.isEnabled()
+        assert p._stop_reason.isVisibleTo(p) and p._stop_reason.text() == "Nothing to stop right now"
+        assert not p._pause_act.isEnabled()
         app.wake_word_active = True
         p.refresh()
-        assert p.state_texts["Listening"] == "Wake word armed"
-        assert p.state_texts["Lane"] == "command"
+        assert p.state_texts["State"] == (
+            "Wake word is armed " + chr(0x2014) + ' say "jarvis" to start.'
+            " What you say goes to whatever you're typing in.")
         assert not p._stop_btn.isEnabled(), "an armed wake listener is ambient, nothing to stop"
-        assert p._pause_btn.isEnabled() and p._pause_btn.text() == "Pause hands-free"
+        assert p._pause_act.isEnabled() and p._pause_act.text() == "Pause hands-free"
         app.recording = True
         p.refresh()
-        assert p.state_texts["Listening"] == "Recording"
-        assert p._stop_btn.isEnabled()
+        assert p.state_texts["State"].startswith("Listening now.")
+        assert p._stop_btn.isEnabled() and not p._stop_reason.isVisibleTo(p)
 
     def test_absent_mic_is_said_in_error_colour(self, page):
         app = _app(available_mics=[{'id': 1, 'name': 'other'}])   # configured id 7 is gone
         p = page(app)
-        assert "microphone not found" in p.state_texts["Listening"]
-        assert theme.ERROR in p._listening_val.styleSheet()
+        assert p.state_texts["State"].startswith("Microphone not found.")
+        assert theme.ERROR in p._state_line.styleSheet()
         app.available_mics = [{'id': 7, 'name': 'USB mic'}]
         p.refresh()
-        assert "microphone not found" not in p.state_texts["Listening"]
-        assert theme.ERROR not in p._listening_val.styleSheet()
+        assert "Microphone not found" not in p.state_texts["State"]
+        assert theme.ERROR not in p._state_line.styleSheet()
 
     def test_no_devices_at_all_is_absent(self):
         assert home_qt.mic_present(_app(available_mics=[])) is False
@@ -266,21 +279,36 @@ class TestStateBlock:
         app = _app(command_mode_active=True,
                    _session_mode_manager=types.SimpleNamespace(_dictate_target_hwnd=4242))
         p = page(app)
-        assert p.state_texts["Next utterance goes to"] == "Notepad (4242)"
-        assert p.state_texts["Lane"] == "hands-free session"
+        assert p.state_texts["State"] == "Hands-free is on. What you say goes to Notepad (4242)."
         app.command_mode_active = False
         p.refresh()
-        assert p.state_texts["Next utterance goes to"] == "any textbox"
+        assert p.state_texts["State"].endswith("What you say goes to whatever you're typing in.")
+
+    @pytest.mark.parametrize("flags,mode,expected", [
+        ({"command_mode_active": True}, "command", "What you say is taken as a command."),
+        ({"command_mode_active": True}, "ava", "What you say goes to Ava."),
+        ({"ava_command_session_active": True}, None, "What you say goes to Ava."),
+        ({"command_mode_active": True}, "dictate", "What you say goes to whatever you're typing in."),
+    ])
+    def test_session_modes_render_in_plain_words(self, page, flags, mode, expected):
+        from samsara.session_modes import SessionMode
+        manager = types.SimpleNamespace(mode=SessionMode(mode) if mode else None,
+                                        _dictate_target_hwnd=None)
+        p = page(_app(_session_mode_manager=manager, **flags))
+        assert p.state_texts["State"].endswith(expected)
 
     def test_instruction_line_is_generated_from_config_and_catalog(self, page):
         app = _app()
         p = page(app)
         assert p.state_texts["Instruction"] == (
-            "Hold Ctrl+Shift and speak. Say jarvis for hands-free. Say what can i say for commands.")
+            'Hold Ctrl+Shift and speak. Say "what can I say" for commands.')
+        app.config.update({'hotkey': 'mouse4'})
+        p.refresh()
+        assert p.state_texts["Instruction"] == 'Hold Mouse4 and speak. Say "what can I say" for commands.'
         app.config.update({'hotkey': 'ctrl+alt', 'mode': 'toggle', 'wake_word_enabled': False})
         p.refresh()
         assert p.state_texts["Instruction"] == (
-            "Press Ctrl+Alt to start and again to stop. Say what can i say for commands.")
+            'Press Ctrl+Alt to start and again to stop. Say "what can I say" for commands.')
 
     def test_help_phrase_comes_from_the_catalog_only(self, monkeypatch):
         assert home_qt.help_phrase(None) is None
@@ -308,10 +336,10 @@ class TestStateBlock:
         # "Stop listening" when it returned synchronously) and the state
         # line has changed; everything settles on the 150 ms refresh.
         assert not p._stop_btn.isEnabled() and p._stop_btn.text() in ("Stopping", "Stop listening")
-        assert p.state_texts["Listening"] == "Wake word armed"
+        assert p.state_texts["State"].startswith("Wake word is armed")
         QTest.qWait(200)
         assert p._stop_btn.text() == "Stop listening" and not p._stop_btn.isEnabled()
-        assert p.state_texts["Listening"] == "Wake word armed"
+        assert p.state_texts["State"].startswith("Wake word is armed")
 
     def test_stop_button_is_disabled_not_dead_when_nothing_captures(self, page):
         app = _app()
@@ -320,21 +348,23 @@ class TestStateBlock:
         p._on_stop()                              # even called directly, it touches nothing
         assert app.stop_calls == [] and app.snooze_calls == []
 
-    def test_pause_hands_free_is_a_separate_explicit_control_with_a_way_back(self, page, qapp):
+    def test_pause_hands_free_lives_in_the_more_menu_with_a_way_back(self, page, qapp):
         from PySide6.QtTest import QTest
 
         app = _app()
         p = page(app)
-        assert p._pause_btn.text() == p._pause_btn.accessibleName() == "Pause hands-free"
-        p._pause_btn.click()
+        assert p._more_btn.menu() is p._more_menu
+        assert p._more_menu.accessibleName() == "Listening options"
+        assert [a.text() for a in p._more_menu.actions()] == ["Pause hands-free"]
+        p._pause_act.trigger()
         assert app.snooze_calls == [None] and app.snoozed
         QTest.qWait(200)
-        assert p._pause_btn.text() == p._pause_btn.accessibleName() == "Resume hands-free"
-        assert p._pause_btn.isEnabled() and p.state_texts["Listening"] == "Snoozed"
-        p._pause_btn.click()
+        assert p._pause_act.text() == "Resume hands-free" and p._pause_act.isEnabled()
+        assert p.state_texts["State"].startswith("Hands-free is paused.")
+        p._pause_act.trigger()
         QTest.qWait(200)
-        assert not app.snoozed and p._pause_btn.text() == "Pause hands-free"
-        assert p.state_texts["Listening"] == "Wake word armed"
+        assert not app.snoozed and p._pause_act.text() == "Pause hands-free"
+        assert p.state_texts["State"].startswith("Wake word is armed")
 
     def test_stop_capture_helper_never_reaches_the_snooze(self):
         app = _app(recording=True)
@@ -349,7 +379,7 @@ class TestStateBlock:
     def test_state_mark_follows_the_header_frame(self, page):
         from samsara.ui.tray_qt import MarkFrame
         p = page()
-        assert p._mark.width() == p._mark.height() == 60
+        assert p._mark.width() == p._mark.height() == home_qt.STATE_MARK_PX == 44
         p.set_mark_frame(MarkFrame("listening", "armed"))
         assert (p._mark.frame.capture, p._mark.frame.eye) == ("listening", "armed")
 
@@ -367,9 +397,9 @@ class TestCapabilityCards:
         records = command_catalog.guidance_catalog(None)
         n = len(home_qt.matching_records(records, "window"))
         assert n > 0 and values["Control windows"] == f"{n} commands"
-        assert values["Run it hands-free"] == "say jarvis"
+        assert values["Run it hands-free"] == 'say "jarvis"'
         assert values["Dictate anywhere"] == "hold Ctrl+Shift"
-        assert values["Ask Ava"] in ("local", "your key", "local or your key", "off")
+        assert values["Ask Ava"] in ("on", "off")
         assert values["Teach it your words"].endswith(" words") or values["Teach it your words"] == "your dictionary"
         assert not p._catalog_note.isVisibleTo(p)
 
@@ -379,7 +409,7 @@ class TestCapabilityCards:
         assert p.cards[0].value_text == "command list unavailable"
         assert p._catalog_note.isVisibleTo(p)
         assert "unavailable" in p._catalog_note.text() and 'href="' in p._catalog_note.text()
-        assert p.last_action_text == "Nothing yet."
+        assert p.last_action_kind == "Nothing yet." and p.last_action_text == ""
         assert "for commands" not in p.state_texts["Instruction"]
 
     def test_cards_open_the_reference_or_settings_or_the_dictionary(self, page, monkeypatch):
@@ -540,19 +570,17 @@ class TestHubWiring:
         home = win._stack.currentWidget()
         assert isinstance(home, home_qt.HomePage)
 
-        assert find("Listening").text() == "Wake word armed"
-        assert find("Lane").text() == "command"
-        assert find("Next utterance goes to").text() == "any textbox"
+        assert find("State line").text().startswith("Wake word is armed")
         assert find("Instruction").text().startswith("Hold Ctrl+Shift and speak.")
 
         app.recording = True                      # a capture is running
         home.refresh()
-        assert find("Listening").text() == "Recording"
+        assert find("State line").text().startswith("Listening now.")
         find("Stop listening").click(); qapp.processEvents()
         assert app.stop_calls == ["stop_recording"] and app.snooze_calls == []
         from PySide6.QtTest import QTest
         QTest.qWait(200)
-        assert find("Listening").text() == "Wake word armed"
+        assert find("State line").text().startswith("Wake word is armed")
         assert not find("Stop listening").isEnabled()
 
         find("History").click(); qapp.processEvents()
@@ -569,10 +597,22 @@ class TestHubWiring:
         assert (home._mark.frame.capture, home._mark.frame.eye) == ("listening", "armed")
         app.recording = True
         win._refresh_status()
-        assert home.state_texts["Listening"] == "Recording"
+        assert home.state_texts["State"].startswith("Listening now.")
         app._outcome_ring.append(("typed", "success", time.time()))
         win._on_dictation("hello world")
-        assert home.last_action_text == "hello world"
+        assert home.last_action_kind == "Dictated" and home.last_action_text == "hello world"
+
+    def test_the_newest_outcome_is_shown_once_not_again_in_the_status_bar(self, hub, qapp):
+        """41 (4c): the status bar's "Last: ..." preview is gone; Home's row
+        is the one place the newest outcome appears."""
+        from PySide6.QtWidgets import QLabel
+        win, app = hub
+        app._outcome_ring.append(("typed", "success", time.time()))
+        win._on_dictation("hello world")
+        qapp.processEvents()
+        assert not hasattr(win, "_lbl_prev")
+        shown = [l for l in win.findChildren(QLabel) if l.isVisibleTo(win) and "hello world" in l.text()]
+        assert shown == [win._panel_cache["Home"]._action_text]
 
 
 # ---------------------------------------------------------------------------
@@ -702,7 +742,9 @@ class TestDestinations:
         p = page(app)
         table = p.destinations()
         labels = {b.text() for b in p.findChildren(QAbstractButton)}
-        assert labels <= set(table) | {"Stopping", "Resume hands-free", "Pause hands-free"}, labels - set(table)
+        assert labels <= set(table) | {"Stopping"}, labels - set(table)
+        for action in p._more_menu.actions():
+            assert action.text() in table
         for label, (kind, target) in table.items():
             if kind == "app":
                 for name in str(target).split(" | "):
@@ -792,10 +834,11 @@ class TestDestinations:
 
     def test_teach_a_word_is_disabled_with_a_reason_when_nothing_to_correct(self, page):
         app = _app(history_store=_Store(""))
+        app._outcome_ring.append(("typed", "success", time.time()))
         calls = []
         app.open_correction_capture = lambda: calls.append(True)
         p = page(app)
-        assert not p._teach_btn.isEnabled()
+        assert p._teach_btn.isVisibleTo(p) and not p._teach_btn.isEnabled()
         assert p._teach_note.isVisibleTo(p) and p._teach_note.text() == "Nothing to correct yet"
         p._on_teach()                              # even called directly: nothing opens
         assert calls == []
@@ -805,12 +848,282 @@ class TestDestinations:
         p._teach_btn.click()
         assert calls == [True]
 
-    def test_undo_and_why_stay_inline_and_real(self, page):
+    def test_why_stays_inline_and_real(self, page):
+        app = _app(history_store=_Store("hello world"))
+        app._outcome_ring.append(("refused: focus lock", "warning", time.time()))
+        p = page(app)
+        assert p.destinations()["Why?"] == ("inline", "Reason")
+        p._why_btn.click()
+        assert p._reason.text() == "focus lock"
+
+
+# ---------------------------------------------------------------------------
+# 41 (4d): no Undo on Home, and no Home path reaches a keystroke undo
+# ---------------------------------------------------------------------------
+
+_SCRATCH_OR_KEYS = ("_handle_unified_scratch_that", "_do_scratch_that", "scratch", "undo",
+                    "SendInput", "keybd_event", "send_keys", "press_keys", "pyautogui",
+                    "ctrl+z", "backspace", "hotkey_send", "keyboard")
+
+
+def _home_code_identifiers():
+    """Every name, attribute and non-docstring string constant in home_qt.py
+    (comments and docstrings may explain the decision; code may not act on it)."""
+    import ast
+    tree = ast.parse(Path(home_qt.__file__).read_text(encoding="utf-8"))
+    docstrings = set()
+    for node in ast.walk(tree):
+        if isinstance(node, (ast.Module, ast.ClassDef, ast.FunctionDef)) and node.body:
+            first = node.body[0]
+            if isinstance(first, ast.Expr) and isinstance(first.value, ast.Constant):
+                docstrings.add(id(first.value))
+    out = []
+    for node in ast.walk(tree):
+        if isinstance(node, ast.Name):
+            out.append(node.id)
+        elif isinstance(node, ast.Attribute):
+            out.append(node.attr)
+        elif isinstance(node, ast.alias):
+            out.append(node.name)
+        elif isinstance(node, ast.Constant) and isinstance(node.value, str) and id(node) not in docstrings:
+            out.append(node.value)
+    return out
+
+
+class TestNoUndoOnHome:
+    def test_no_undo_control_or_destination(self, page):
         app = _app(history_store=_Store("hello world"))
         app._outcome_ring.append(("typed", "success", time.time()))
         p = page(app)
-        table = p.destinations()
-        assert table["Undo"] == ("app", "_handle_unified_scratch_that")
-        assert table["Why?"] == ("inline", "Reason")
-        p._undo_btn.click()
-        assert app.scratch_calls == 1
+        assert not hasattr(p, "_undo_btn") and not hasattr(p, "_on_undo")
+        assert "Undo" not in p.destinations()
+        assert not any("undo" in t.lower() for t in p.visible_texts())
+
+    def test_home_code_names_no_scratch_or_synthetic_key_path(self):
+        hits = [n for n in _home_code_identifiers()
+                if any(bad.lower() in str(n).lower() for bad in _SCRATCH_OR_KEYS)]
+        assert hits == []
+
+    def test_pressing_everything_on_home_never_reaches_the_session_undo(self, page, monkeypatch, qapp):
+        from PySide6.QtWidgets import QAbstractButton
+        monkeypatch.setattr(home_qt, "open_cheatsheet_filtered", lambda app, n: True)
+        monkeypatch.setattr(home_qt, "open_settings_tab", lambda app, t: True)
+        monkeypatch.setattr(home_qt, "open_guide", lambda app, l: True)
+        popped = []
+        manager = types.SimpleNamespace(mode=None, _dictate_target_hwnd=None,
+                                        _do_scratch_that=lambda: popped.append("stack") or True)
+        app = _app(history_store=_Store("hello world"), _session_mode_manager=manager, recording=True)
+        app._handle_unified_scratch_that = lambda: popped.append("unified")
+        app._outcome_ring.append(("typed", "success", time.time()))
+        p = page(app)
+        p.show_guides(True)
+        qapp.processEvents()
+        for b in p.findChildren(QAbstractButton):
+            if b is p._more_btn:                   # opens a modal menu; its actions are triggered below
+                continue
+            b.click()
+            qapp.processEvents()
+        for action in p._more_menu.actions():
+            action.trigger()
+        assert popped == []
+        assert app.scratch_calls == 0
+
+
+# ---------------------------------------------------------------------------
+# 41: type scale, plain language, quoted phrases, descriptions, one primary
+# control, a shorter state row
+# ---------------------------------------------------------------------------
+
+_BODY_ROLES = ("instruction", "stop reason", "menu item", "button", "outcome text", "note",
+               "card description", "card value", "usage label", "status value")
+
+
+class TestTypeScale:
+    def test_token_table_floors(self):
+        table = theme.HOME_TYPE_SCALE
+        assert min(table.values()) >= theme.TYPE_MIN == 12
+        assert table["nav"] >= 15
+        assert table["card title"] >= 15 and table["outcome kind"] >= 15
+        assert table["state line"] >= 15
+        for role in _BODY_ROLES:
+            assert table[role] >= 14, role
+        assert table["section label"] >= 12 and theme.LETTER_SPACING_SECTION
+        assert table["usage figure"] >= 24
+
+    def test_every_home_text_has_a_role_from_the_table(self, page):
+        from PySide6.QtWidgets import QAbstractButton, QLabel
+        app = _app(history_store=_Store("hello world"))
+        app._outcome_ring.append(("refused: focus lock", "warning", time.time()))
+        p = page(app)
+        for w in p.findChildren(QLabel) + p.findChildren(QAbstractButton):
+            if isinstance(w, QLabel) and not w.text():
+                continue                           # icon pixmaps, empty slots
+            role = w.property("typeRole")
+            assert role in theme.HOME_TYPE_SCALE, (w.accessibleName() or w.text(), role)
+
+    def test_no_home_text_renders_below_12px(self, hub, qapp):
+        """Every stylesheet on the hub window (Home, header, nav, status bar)
+        asks for at least TYPE_MIN px -- scaled by the text scale in force."""
+        import re
+        from PySide6.QtWidgets import QMenu
+        win, _ = hub
+        floor = home_qt._px(theme.TYPE_MIN) if home_qt.text_scale() >= 1 else theme.TYPE_MIN
+        sizes = []
+        for w in [win, *win.findChildren(QWidget), *win.findChildren(QMenu)]:
+            for m in re.finditer(r"font-size:\s*(\d+)px", w.styleSheet() or ""):
+                sizes.append((int(m.group(1)), w.accessibleName() or w.objectName() or type(w).__name__))
+        assert sizes and all(px >= min(floor, theme.TYPE_MIN) for px, _ in sizes), \
+            [s for s in sizes if s[0] < theme.TYPE_MIN]
+
+    def test_nav_uses_the_nav_token(self):
+        assert f"font-size: {theme.TYPE_NAV}px" in main_window_qt._MainWindow._nav_style(True)
+        assert f"font-size: {theme.TYPE_NAV}px" in main_window_qt._MainWindow._nav_style(False)
+
+
+def _states():
+    """App states covering every state line and destination."""
+    from samsara.session_modes import SessionMode
+    mgr = lambda mode, hwnd=None: types.SimpleNamespace(mode=mode, _dictate_target_hwnd=hwnd)
+    return [
+        _app(), _app(wake_word_active=False), _app(recording=True), _app(snoozed=True, wake_word_active=False),
+        _app(continuous_active=True), _app(toggle_active=True),
+        _app(command_mode_active=True, _session_mode_manager=mgr(SessionMode.COMMAND)),
+        _app(command_mode_active=True, _session_mode_manager=mgr(SessionMode.DICTATE)),
+        _app(command_mode_active=True, _session_mode_manager=mgr(SessionMode.AVA)),
+        _app(ava_command_session_active=True), _app(ava_mode_active=True),
+        _app(available_mics=[]),
+        _app(wake_word_active=False, config={'mode': 'continuous', 'hotkey': 'ctrl+shift'}),
+    ]
+
+
+class TestPlainLanguage:
+    def test_lane_never_appears_in_any_user_visible_string(self, page):
+        import re
+        for app in _states():
+            app._outcome_ring.append(("typed", "success", time.time()))
+            p = page(app)
+            bad = [t for t in p.visible_texts() if re.search(r"\blanes?\b", t, re.I)]
+            assert bad == [], bad
+            for name in ("command", "dictate"):
+                assert not any(t.strip().lower() == name for t in p.visible_texts())
+
+    def test_lane_never_appears_on_the_hub_chrome(self, hub):
+        import re
+        from PySide6.QtWidgets import QAbstractButton, QLabel
+        win, _ = hub
+        texts = []
+        for w in win.findChildren(QWidget):
+            if isinstance(w, (QLabel, QAbstractButton)):
+                texts.append(w.text())
+            texts += [w.accessibleName(), w.accessibleDescription(), w.toolTip()]
+        assert not [t for t in texts if t and re.search(r"\blanes?\b", t, re.I)]
+
+    def test_every_spoken_phrase_is_quoted_everywhere(self, page, hub, qapp):
+        """The wake phrase, the catalog's help phrase and the example it offers
+        appear on Home only inside double quotes -- state line, instruction,
+        cards, the outcome row and the hub's status bar."""
+        import re
+        from PySide6.QtWidgets import QAbstractButton, QLabel
+        records = command_catalog.guidance_catalog(None)
+        phrases = {"jarvis", home_qt.help_phrase(records),
+                   command_catalog.canonical_phrase(command_catalog.pick_examples(records, 1)[0])}
+        texts = []
+        for app in _states():
+            texts += page(app).visible_texts()
+        win, _ = hub
+        win._refresh_status()
+        qapp.processEvents()
+        texts += [w.text() for w in win.findChildren(QLabel)]
+        found = 0
+        for text in texts:
+            for phrase in phrases:
+                for m in re.finditer(re.escape(phrase), text, re.I):
+                    found += 1
+                    before = text[m.start() - 1] if m.start() else ""
+                    after = text[m.end()] if m.end() < len(text) else ""
+                    assert before == '"' and after == '"', (phrase, text)
+        assert found >= 4
+
+
+class TestCardsDescribed:
+    def test_each_card_has_a_real_one_line_description(self, page):
+        p = page(_app())
+        descriptions = [c.description_text for c in p.cards]
+        assert all(d and d.endswith(".") and len(d) <= 80 for d in descriptions), descriptions
+        assert len(set(descriptions)) == len(descriptions)
+        for c in p.cards:
+            assert c.accessibleDescription() == c.description_text
+            assert home_qt.find_by_accessible_name(p, f"{c.text()} description").isVisibleTo(p)
+
+    @pytest.mark.parametrize("local,cloud,where", [
+        (True, True, "Runs on your own machine, or your own API key."),
+        (True, False, "Runs on your own machine."),
+        (False, True, "Runs on your own API key."),
+        (False, False, "Turned off; set it up in Settings."),
+    ])
+    def test_ask_ava_says_where_it_runs(self, local, cloud, where):
+        app = _app()
+        app.config.update({'ollama': {'enabled': local}, 'cloud_llm': {'enabled': cloud}})
+        ava = [c for c in home_qt.capability_cards(app, None) if c["title"] == "Ask Ava"][0]
+        assert ava["description"] == f"Ask questions out loud. {where}"
+        assert ava["value"] == ("on" if (local or cloud) else "off")
+
+
+class TestStateRow:
+    def test_exactly_one_primary_control_in_the_state_row(self, page):
+        from PySide6.QtWidgets import QAbstractButton
+        for app in (_app(), _app(recording=True), _app(snoozed=True, wake_word_active=False)):
+            p = page(app)
+            buttons = p.state_row.findChildren(QAbstractButton)
+            primaries = [b for b in buttons if b.property("primary")]
+            assert primaries == [p._stop_btn]
+            assert [b for b in buttons if b not in primaries] == [p._more_btn]
+            assert not any(b.text() in ("Pause hands-free", "Resume hands-free")
+                           for b in p.findChildren(QAbstractButton))
+
+    def test_state_row_is_one_state_line_and_one_instruction_line(self, page):
+        from PySide6.QtWidgets import QLabel
+        p = page(_app())
+        visible = [l for l in p.state_row.findChildren(QLabel) if l.isVisibleTo(p) and l.text()]
+        assert [l.accessibleName() for l in visible] == ["State line", "Instruction", "Stop listening note"]
+
+
+# Measured at b429907 (the three-fact state block) with this same script: 216 px.
+STATE_ROW_HEIGHT_BEFORE = 216
+
+_HEIGHT_SCRIPT = r'''
+import collections, json, sys, types
+sys.path.insert(0, sys.argv[1])
+from PySide6.QtCore import Qt
+from PySide6.QtWidgets import QApplication
+app = QApplication([])
+from samsara.ui.home_qt import HomePage, find_by_accessible_name
+fake = types.SimpleNamespace(
+    config={'mode': 'hold', 'hotkey': 'mouse4', 'microphone': 7, 'wake_word_enabled': True,
+            'wake_word_config': {'phrase': 'jarvis'}},
+    available_mics=[{'id': 7, 'name': 'USB mic'}], recording=False, snoozed=False,
+    wake_word_active=True, continuous_active=False, command_mode_active=False, toggle_active=False,
+    _outcome_ring=collections.deque(maxlen=8))
+page = HomePage(fake)
+page.setAttribute(Qt.WidgetAttribute.WA_DontShowOnScreen, True)
+page.resize(720, 900)
+page.show()
+for _ in range(5):
+    app.processEvents()
+print("RESULT " + json.dumps({"height": find_by_accessible_name(page, "State").height()}))
+'''
+
+
+@pytest.mark.skipif(sys.platform != "win32", reason="measured on the real Windows platform, not offscreen")
+def test_state_row_is_shorter_than_before(tmp_path):
+    """Real platform (offscreen has no fonts and wraps differently), never on screen."""
+    script = tmp_path / "height_check.py"
+    script.write_text(_HEIGHT_SCRIPT, encoding="utf-8")
+    env = {k: v for k, v in os.environ.items() if k not in ("QT_QPA_PLATFORM", "QT_SCALE_FACTOR")}
+    proc = subprocess.run([PY, str(script), str(REPO)], env=env, capture_output=True, text=True,
+                          timeout=110, cwd=str(REPO))
+    line = [l for l in proc.stdout.splitlines() if l.startswith("RESULT ")]
+    assert line, proc.stdout[-2000:] + proc.stderr[-2000:]
+    height = json.loads(line[-1][len("RESULT "):])["height"]
+    assert height < STATE_ROW_HEIGHT_BEFORE, height
+    assert height <= STATE_ROW_HEIGHT_BEFORE * 0.6, height

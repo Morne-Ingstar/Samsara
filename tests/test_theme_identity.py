@@ -653,3 +653,14 @@ def test_brand_mark_is_heavier_than_the_tray_hollow_line(qapp):
     brand = _colour_pixels(tray_qt.render_mark("listening", "off", size, brand=True), theme.ACCENT)
     tray = _colour_pixels(tray_qt.render_mark("listening", "off", size), theme.ACCENT)
     assert brand > tray * 1.3
+
+
+def test_hub_type_scale_is_additive_and_has_no_role_below_the_minimum():
+    """41: one type scale for the hub and Home, added beside the shared four
+    sizes without changing them."""
+    assert (theme.FONT_SIZE_TITLE, theme.FONT_SIZE_HEADING, theme.FONT_SIZE_BODY,
+            theme.FONT_SIZE_CAPTION, theme.FONT_SIZE_DISPLAY) == (20, 15, 13, 12, 22)
+    tokens = {theme.TYPE_NAV, theme.TYPE_STATE, theme.TYPE_CARD_TITLE, theme.TYPE_BODY,
+              theme.TYPE_SECONDARY, theme.TYPE_SECTION_LABEL, theme.TYPE_FIGURE, theme.TYPE_CREED}
+    assert set(theme.HOME_TYPE_SCALE.values()) <= tokens
+    assert min(theme.HOME_TYPE_SCALE.values()) >= theme.TYPE_MIN >= 12

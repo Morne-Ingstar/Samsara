@@ -94,7 +94,7 @@ QMainWindow, QWidget {{
     background: {_BG};
     color: {_TEXT_PRI};
     font-family: 'Segoe UI', sans-serif;
-    font-size: 13px;
+    font-size: {theme.TYPE_BODY}px;
 }}
 QPushButton {{
     background: {_SURFACE};
@@ -102,7 +102,7 @@ QPushButton {{
     border-radius: 4px;
     color: {_TEXT_PRI};
     padding: 5px 14px;
-    font-size: 12px;
+    font-size: {theme.TYPE_BODY}px;
 }}
 QPushButton:hover {{ background: {_ELEVATED}; border-color: {_ACCENT}; }}
 QPushButton:pressed {{ background: {_ACCENT_DIM}; }}
@@ -110,7 +110,7 @@ QStatusBar {{
     background: {_SURFACE};
     border-top: 1px solid {_BORDER};
     color: {_TEXT_SEC};
-    font-size: 11px;
+    font-size: {theme.TYPE_SECTION_LABEL}px;
 }}
 """ + theme.SCROLLBAR_QSS
 
@@ -130,7 +130,7 @@ def _btn(text, *, accent=False):
     return b
 
 
-def _label(text, color=_TEXT_SEC, size=11, bold=False):
+def _label(text, color=_TEXT_SEC, size=theme.TYPE_SECTION_LABEL, bold=False):
     lbl = QLabel(text)
     weight = "600" if bold else "400"
     lbl.setStyleSheet(
@@ -153,12 +153,12 @@ def _status_segment(label_text: str, value_text: str = "..."):
     lay.setSpacing(6)
     label = QLabel(label_text.upper())
     label.setStyleSheet(
-        f"color: {_TEXT_SEC}; font-size: 11px; font-weight: 700;"
-        f" letter-spacing: 0.06em; background: transparent;"
+        f"color: {_TEXT_SEC}; font-size: {theme.TYPE_SECTION_LABEL}px; font-weight: 700;"
+        f" letter-spacing: {theme.LETTER_SPACING_SECTION}; background: transparent;"
     )
     value = QLabel(value_text)
     value.setStyleSheet(
-        f"color: {_TEXT_PRI}; font-size: 14px; font-weight: 500; background: transparent;"
+        f"color: {_TEXT_PRI}; font-size: {theme.TYPE_BODY}px; font-weight: 500; background: transparent;"
     )
     lay.addWidget(label)
     lay.addWidget(value)
@@ -301,7 +301,8 @@ class _MainWindow(QMainWindow):
             f" font-size: {theme.FONT_SIZE_DISPLAY}px; letter-spacing: {theme.LETTER_SPACING_DISPLAY};"
             " background: transparent; border: none;")
         self._badge = QLabel("ready")
-        self._badge.setStyleSheet(f"color: {_TEXT_SEC}; font-size: 11px; background: transparent; border: none;")
+        self._badge.setStyleSheet(
+            f"color: {_TEXT_SEC}; font-size: {theme.TYPE_SECTION_LABEL}px; background: transparent; border: none;")
         # Paused is never invisible or inescapable (38): while hands-free is
         # snoozed the header shows this instead of the badge, and clicking it
         # resumes through the app's own resume_listening.
@@ -311,7 +312,7 @@ class _MainWindow(QMainWindow):
         self._paused_btn.setCursor(Qt.CursorShape.PointingHandCursor)
         self._paused_btn.setStyleSheet(
             f"QPushButton {{ background: {theme.BG2}; color: {theme.WARNING};"
-            f" border: 1px solid {theme.BORDER}; border-radius: 6px; padding: 6px 14px; font-size: 13px; }}"
+            f" border: 1px solid {theme.BORDER}; border-radius: 6px; padding: 6px 14px; font-size: {theme.TYPE_BODY}px; }}"
             f"QPushButton:hover {{ border-color: {theme.ACCENT}; color: {theme.TEXT_PRIMARY}; }}")
         self._paused_btn.clicked.connect(self._on_resume)
         self._paused_btn.setVisible(False)
@@ -385,13 +386,8 @@ class _MainWindow(QMainWindow):
         sb.addWidget(wake_w)
         sb.addWidget(_status_separator())
         sb.addWidget(mic_w)
-
-        self._lbl_prev = QLabel("")
-        self._lbl_prev.setAlignment(Qt.AlignmentFlag.AlignRight)
-        self._lbl_prev.setStyleSheet(
-            f"color: {_TEXT_SEC}; font-size: 14px; background: transparent;"
-        )
-        sb.addPermanentWidget(self._lbl_prev)
+        # No "Last: ..." preview here (41): Home's outcome row is the one
+        # place the newest outcome is shown.
 
     @staticmethod
     def _nav_style(active: bool) -> str:
@@ -400,7 +396,7 @@ class _MainWindow(QMainWindow):
         Rest is TEXT_SECONDARY with a real hover (BG1 fill, TEXT_PRIMARY)."""
         common = (f" border: none; border-radius: 0; text-align: left;"
                   f" padding-left: 16px; padding-right: 12px; min-height: {NAV_ROW_H}px;"
-                  f" font-size: 14px;")
+                  f" font-size: {theme.TYPE_NAV}px;")
         if active:
             return (f"QPushButton {{ background: {theme.BG2}; color: {theme.TEXT_PRIMARY};"
                     f" border-left: 2px solid {theme.ACCENT}; font-weight: 600;{common} }}"
@@ -495,7 +491,8 @@ class _MainWindow(QMainWindow):
         wake_on = cfg.get('wake_word_enabled', False)
         phrase  = cfg.get('wake_word_config', {}).get(
             'phrase', config_defaults.DEFAULTS['wake_word_config.phrase'])
-        self._lbl_wake.setText(f"{phrase} (on)" if wake_on else "Off")
+        # A spoken phrase is always shown quoted (41).
+        self._lbl_wake.setText(f"\"{phrase}\" (on)" if wake_on else "Off")
 
         mic_id   = cfg.get('microphone')
         mic_name = "Default"
@@ -512,33 +509,20 @@ class _MainWindow(QMainWindow):
         self._badge.setVisible(not snoozed)
         if snoozed:
             self._badge.setText("snoozed")
-            self._badge.setStyleSheet(f"color: {_WARNING}; font-size: 11px;")
+            self._badge.setStyleSheet(f"color: {_WARNING}; font-size: {theme.TYPE_SECTION_LABEL}px;")
         elif getattr(self._app, 'recording', False):
             self._badge.setText("recording")
-            self._badge.setStyleSheet(f"color: {_ERROR}; font-size: 11px;")
+            self._badge.setStyleSheet(f"color: {_ERROR}; font-size: {theme.TYPE_SECTION_LABEL}px;")
         elif (getattr(self._app, 'continuous_active', False) or
               getattr(self._app, 'wake_word_active', False)):
             self._badge.setText("listening")
-            self._badge.setStyleSheet(f"color: {_SUCCESS}; font-size: 11px;")
+            self._badge.setStyleSheet(f"color: {_SUCCESS}; font-size: {theme.TYPE_SECTION_LABEL}px;")
         else:
             self._badge.setText("ready")
-            self._badge.setStyleSheet(f"color: {_TEXT_SEC}; font-size: 11px;")
+            self._badge.setStyleSheet(f"color: {_TEXT_SEC}; font-size: {theme.TYPE_SECTION_LABEL}px;")
 
     @Slot(str)
     def _on_dictation(self, text: str):
-        preview = text.replace('\n', ' ').strip()
-        if preview:
-            # Graceful font-metric elision (not a fixed char-count cutoff) --
-            # full text still available via tooltip on hover.
-            fm = self._lbl_prev.fontMetrics()
-            available = max(self._lbl_prev.width(), 220) - 40
-            elided = fm.elidedText(preview, Qt.TextElideMode.ElideRight, available)
-            self._lbl_prev.setText(f"Last: {elided}")
-            self._lbl_prev.setToolTip(preview)
-        else:
-            self._lbl_prev.setText("")
-            self._lbl_prev.setToolTip("")
-
         for name in ("History", "Home"):
             panel = self._panel_cache.get(name)
             if panel is not None and (name == "Home" or self._stack.currentWidget() is panel):
