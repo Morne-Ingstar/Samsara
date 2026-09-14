@@ -142,10 +142,25 @@ class _RejectedRow(QFrame):
 # ---------------------------------------------------------------------------
 
 class CorrectionCaptureQt:
-    """Close-and-destroy window opener -- one fresh window per hotkey press."""
+    """Close-and-destroy window opener -- one fresh window per hotkey press.
+
+    The opener HOLDS the window (40). Before, _open_window kept the new
+    QMainWindow only in a local: with no parent and no Python reference the
+    wrapper was collected the moment the function returned, so the window
+    flashed for a few milliseconds and vanished on every press (the owner's
+    "small black window"). Every other Qt window in this codebase keeps a
+    persistent `self._window`; this one now does too, released again when
+    the user closes it (WA_DeleteOnClose + destroyed).
+    """
 
     def __init__(self, app):
         self.app = app
+        self._window = None
+        self._generation = 0
+
+    @property
+    def window(self):
+        return self._window
 
     def open(self, last_text: str):
         """Safe to call from any thread. `last_text` is prefetched by the
@@ -154,11 +169,31 @@ class CorrectionCaptureQt:
         qt_runtime.post(lambda: self._open_window(last_text))
 
     def _open_window(self, last_text: str):
+        """Runs on the Qt thread. A second press replaces the first window."""
+        previous = self._window
+        if previous is not None:
+            self._window = None
+            try:
+                previous.close()
+            except RuntimeError:
+                pass   # already deleted by Qt
         window = CorrectionCaptureWindow(self.app, last_text)
         window.setAttribute(Qt.WidgetAttribute.WA_DeleteOnClose, True)
+        # The previous window's deletion is deferred, so its destroyed signal
+        # arrives AFTER this one is stored: only the generation that owns
+        # the reference may clear it.
+        self._generation += 1
+        generation = self._generation
+        window.destroyed.connect(lambda *_a, g=generation: self._on_destroyed(g))
+        self._window = window
         window.show()
         window.raise_()
         window.activateWindow()
+        return window
+
+    def _on_destroyed(self, generation: int):
+        if generation == self._generation:
+            self._window = None
 
 
 # ---------------------------------------------------------------------------

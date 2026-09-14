@@ -392,6 +392,8 @@ class TestCapabilityCards:
             c.click()
         assert opened == [("sheet", "window"), ("settings", "Modes"), ("settings", "Modes"),
                           ("settings", "Ava / Cloud"), ("page", "Dictionary")]
+        # the sixth card opens the guides row on the page itself
+        assert p.cards[5].text() == "Guides & help" and p._guides_row.isVisibleTo(p)
 
     def test_cheatsheet_filter_path_sets_category_and_text(self, monkeypatch):
         posted = []
@@ -631,3 +633,184 @@ def test_nothing_clips_at_windows_scaling_and_larger_text(tmp_path, scale_factor
     assert result["buttons_under_44"] == [], result
     if font_factor != "1":
         assert result["scale"] > 1.1
+
+
+# ---------------------------------------------------------------------------
+# 40: every Home action has a concrete destination
+# ---------------------------------------------------------------------------
+
+class _Wrapper:
+    """A settings / cheat-sheet wrapper the way the real ones behave: show()
+    posts its window's construction, so `_window` is None at call time and
+    only exists once the posted init has run."""
+
+    def __init__(self, posted, window_factory):
+        self._window = None
+        self._posted = posted
+        self._factory = window_factory
+
+    def show(self):
+        if self._window is None:
+            self._posted.append(self._init)
+        else:
+            self._posted.append(self._window.show)
+
+    def _init(self):
+        self._window = self._factory()
+
+
+class _SettingsWindow:
+    def __init__(self):
+        self.shown_tabs = []
+        self.shows = 0
+
+    def show(self):
+        self.shows += 1
+
+    def show_tab(self, name):
+        self.shown_tabs.append(name)
+
+
+class _SheetWindow:
+    def __init__(self):
+        self.calls = []
+        self._filter = types.SimpleNamespace(setText=lambda t: self.calls.append(("text", t)))
+
+    def show(self):
+        self.calls.append(("show",))
+
+    def _set_category(self, c):
+        self.calls.append(("cat", c))
+
+
+class TestDestinations:
+    def test_every_action_resolves_to_a_concrete_destination(self, page, monkeypatch):
+        """Table-driven: each button and card on the page maps to an app
+        method that exists, a settings page in the registry, the cheat
+        sheet, a hub page, the guides row, or an inline change -- never a
+        bare pass or a generic landing."""
+        from samsara.ui import settings_qt
+        from PySide6.QtWidgets import QAbstractButton
+
+        app = _app(history_store=_Store("hello world"))
+        app._outcome_ring.append((f"{CHIP_CROSS} no mic", "error", time.time()))
+        app.open_correction_capture = lambda: None
+        app.open_quick_reference = lambda: None
+        app.show_tutorial = lambda: None
+        app.open_settings = lambda: None
+        app.cheat_sheet = types.SimpleNamespace(show=lambda: None, _window=None)
+        p = page(app)
+        table = p.destinations()
+        labels = {b.text() for b in p.findChildren(QAbstractButton)}
+        assert labels <= set(table) | {"Stopping", "Resume hands-free", "Pause hands-free"}, labels - set(table)
+        for label, (kind, target) in table.items():
+            if kind == "app":
+                for name in str(target).split(" | "):
+                    assert callable(getattr(app, name, None)), f"{label}: app has no {name}"
+            elif kind == "settings":
+                assert target in settings_qt._TAB_NAMES, f"{label}: {target!r} is not a settings page"
+            elif kind == "page":
+                assert target in ("History", "Dictionary", "Home")
+            elif kind == "cheatsheet":
+                assert app.cheat_sheet is not None
+            elif kind == "guides":
+                assert target is None
+            elif kind == "inline":
+                assert home_qt.find_by_accessible_name(p, target) is not None
+            else:
+                raise AssertionError(f"{label}: unknown destination kind {kind!r}")
+        # every card's action is one of the handled kinds (no silent else)
+        for spec in home_qt.capability_cards(app, p._records):
+            assert spec["action"] in ("cheatsheet", "settings", "page", "guides")
+
+    def test_ava_card_lands_on_the_ava_settings_page_after_the_window_is_built(self, monkeypatch):
+        """40: the page was selected against the window read at CALL time,
+        which is None on the first open, so Settings opened on page one.
+        Now the id is checked against the registry and the selection runs
+        after the window's own init post."""
+        from samsara.ui import qt_runtime, settings_qt
+
+        posted = []
+        monkeypatch.setattr(qt_runtime, "post", lambda fn: posted.append(fn))
+        app = _app()
+        app._settings_qt = _Wrapper(posted, _SettingsWindow)
+        app.open_settings = app._settings_qt.show
+        assert "Ava / Cloud" in settings_qt._TAB_NAMES
+        assert home_qt.open_settings_tab(app, "Ava / Cloud") is True
+        assert app._settings_qt._window is None, "nothing built yet: the init is still queued"
+        for fn in list(posted):                    # the Qt thread drains FIFO
+            fn()
+        assert app._settings_qt._window.shown_tabs == ["Ava / Cloud"]
+        # a second press on an existing window still selects the page
+        posted.clear()
+        assert home_qt.open_settings_tab(app, "Ava / Cloud") is True
+        for fn in list(posted):
+            fn()
+        assert app._settings_qt._window.shown_tabs == ["Ava / Cloud", "Ava / Cloud"]
+
+    def test_unknown_settings_page_is_refused_loudly(self, monkeypatch, caplog):
+        import logging
+
+        app = _app()
+        opened = []
+        app.open_settings = lambda: opened.append(True)
+        with caplog.at_level(logging.ERROR):
+            assert home_qt.open_settings_tab(app, "Ava") is False
+        assert opened == [] and any("not in the registry" in r.getMessage() for r in caplog.records)
+
+    def test_command_reference_filter_applies_on_the_first_open(self, monkeypatch):
+        from samsara.ui import qt_runtime
+
+        posted = []
+        monkeypatch.setattr(qt_runtime, "post", lambda fn: posted.append(fn))
+        app = _app()
+        app.cheat_sheet = _Wrapper(posted, _SheetWindow)
+        assert home_qt.open_cheatsheet_filtered(app, "window") is True
+        for fn in list(posted):
+            fn()
+        assert app.cheat_sheet._window.calls == [("cat", "All"), ("text", "window")]
+
+    def test_guides_card_opens_the_row_and_each_guide_has_its_surface(self, page, monkeypatch, qapp):
+        opened = []
+        monkeypatch.setattr(home_qt, "open_cheatsheet_filtered", lambda app, n: opened.append(("sheet", n)) or True)
+        monkeypatch.setattr(home_qt, "open_settings_tab", lambda app, t: opened.append(("settings", t)) or True)
+        app = _app()
+        app.open_quick_reference = lambda: opened.append(("app", "open_quick_reference"))
+        app.show_tutorial = lambda: opened.append(("app", "show_tutorial"))
+        p = page(app)
+        assert not p._guides_row.isVisibleTo(p)
+        card = p.cards[5]
+        assert card.text() == card.accessibleName() == "Guides & help" and card.value_text == "4 guides"
+        card.click(); qapp.processEvents()
+        assert p._guides_row.isVisibleTo(p)
+        for label, btn in p._guide_btns.items():
+            assert btn.text() == btn.accessibleName() == label and btn.minimumHeight() >= 44
+            btn.click()
+        assert opened == [("sheet", ""), ("app", "open_quick_reference"), ("app", "show_tutorial"),
+                          ("settings", "Help & Support")]
+        assert [l for l, _k, _t in home_qt.GUIDES] == ["Command reference", "Quick reference", "Tutorial", "Help & support"]
+
+    def test_teach_a_word_is_disabled_with_a_reason_when_nothing_to_correct(self, page):
+        app = _app(history_store=_Store(""))
+        calls = []
+        app.open_correction_capture = lambda: calls.append(True)
+        p = page(app)
+        assert not p._teach_btn.isEnabled()
+        assert p._teach_note.isVisibleTo(p) and p._teach_note.text() == "Nothing to correct yet"
+        p._on_teach()                              # even called directly: nothing opens
+        assert calls == []
+        app.history_store = _Store("hello world")
+        p.refresh()
+        assert p._teach_btn.isEnabled() and not p._teach_note.isVisibleTo(p)
+        p._teach_btn.click()
+        assert calls == [True]
+
+    def test_undo_and_why_stay_inline_and_real(self, page):
+        app = _app(history_store=_Store("hello world"))
+        app._outcome_ring.append(("typed", "success", time.time()))
+        p = page(app)
+        table = p.destinations()
+        assert table["Undo"] == ("app", "_handle_unified_scratch_that")
+        assert table["Why?"] == ("inline", "Reason")
+        p._undo_btn.click()
+        assert app.scratch_calls == 1
