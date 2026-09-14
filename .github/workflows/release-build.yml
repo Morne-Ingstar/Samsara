@@ -252,6 +252,60 @@ jobs:
             ${{ steps.package.outputs.checksum_name }}
           retention-days: 30
 
+      # ------------------------------------------------------------------
+      # Release manifest (33, docs/RELEASE_MANIFEST.md). The nine wake-word
+      # models become one downloadable component, packaged from the SAME
+      # frozen output the OWW check above just verified; then
+      # tools\gen_release_manifest.py declares every component with real
+      # sizes and SHA-256 computed from the files. The generator fails the
+      # job if a built artifact is missing or a wake-word member does not
+      # match its pin, and never writes a placeholder hash.
+      # ------------------------------------------------------------------
+      - name: Package wake-word models component
+        id: models
+        shell: pwsh
+        run: |
+          $version = "${{ steps.version.outputs.version }}"
+          $zipName = "Samsara-WakeWord-Models-$version.zip"
+          $owwDir = 'dist\Samsara\_internal\openwakeword\resources\models'
+          Compress-Archive -Path "$owwDir\*.onnx" -DestinationPath $zipName -CompressionLevel Optimal
+          $checksumName = "$zipName.sha256"
+          $checksum = (Get-FileHash -LiteralPath $zipName -Algorithm SHA256).Hash.ToLowerInvariant()
+          Set-Content -LiteralPath $checksumName -Value "$checksum  $zipName" -Encoding ascii
+          Write-Host "Packaged $zipName"
+          Write-Host "SHA-256: $checksum"
+          echo "zip_name=$zipName" >> $env:GITHUB_OUTPUT
+          echo "checksum_name=$checksumName" >> $env:GITHUB_OUTPUT
+
+      - name: Generate release manifest
+        id: manifest
+        shell: pwsh
+        run: |
+          python tools\gen_release_manifest.py `
+            --artifacts-dir . `
+            --tag "${{ steps.version.outputs.version }}" `
+            --repo "${{ github.repository }}" `
+            --git-sha "${{ github.sha }}" `
+            --output manifest.json
+          Get-Content -LiteralPath manifest.json
+          echo "manifest_name=manifest.json" >> $env:GITHUB_OUTPUT
+
+      - name: Upload wake-word models artifact
+        uses: actions/upload-artifact@b7c566a772e6b6bfb58ed0dc250532a479d7789f
+        with:
+          name: ${{ steps.models.outputs.zip_name }}
+          path: |
+            ${{ steps.models.outputs.zip_name }}
+            ${{ steps.models.outputs.checksum_name }}
+          retention-days: 30
+
+      - name: Upload release manifest artifact
+        uses: actions/upload-artifact@b7c566a772e6b6bfb58ed0dc250532a479d7789f
+        with:
+          name: manifest-${{ steps.version.outputs.version }}
+          path: manifest.json
+          retention-days: 30
+
       # ----------------------------------------------------------------------
       # SignPath signing stub -- DISABLED until a SignPath Foundation account
       # exists (see docs/RELEASE_CI.md for the application process). Once
@@ -286,3 +340,6 @@ jobs:
           files: |
             ${{ steps.package.outputs.zip_name }}
             ${{ steps.package.outputs.checksum_name }}
+            ${{ steps.models.outputs.zip_name }}
+            ${{ steps.models.outputs.checksum_name }}
+            ${{ steps.manifest.outputs.manifest_name }}
