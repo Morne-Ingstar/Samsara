@@ -468,3 +468,118 @@ def test_spec_ships_the_icon_and_the_mark():
     spec = (REPO / "scripts" / "samsara.spec").read_text(encoding="utf-8")
     assert "icon=str(app_dir / 'assets' / 'icon' / 'samsara.ico')" in spec
     assert "'samsara.svg'), 'assets/icon'" in spec
+
+
+# ---------------------------------------------------------------------------
+# 29: one rounded scrollbar treatment app-wide, no arrow buttons
+# ---------------------------------------------------------------------------
+
+_SCROLLBAR_SHEETS_PY = ("samsara/ui/main_window_qt.py", "samsara/ui/settings_qt.py", "samsara/ui/history_view.py",
+                        "samsara/ui/dictionary_panel_qt.py")
+
+
+def _rule(qss, selector):
+    m = re.search(re.escape(selector) + r"\s*\{([^}]*)\}", qss)
+    assert m, selector
+    return m.group(1)
+
+
+def test_scrollbar_rule_is_in_every_window_stylesheet():
+    from samsara.ui import dictionary_panel_qt, history_view, main_window_qt, settings_qt
+    qss = theme.SCROLLBAR_QSS
+    assert qss in theme.build_stylesheet()
+    assert qss in settings_qt.STYLESHEET
+    assert qss in main_window_qt._SS
+    assert qss in dictionary_panel_qt._SS
+    assert qss in history_view.build_stylesheet()
+
+
+def test_scrollbar_rule_shape():
+    qss = theme.SCROLLBAR_QSS
+    width, margin = theme.SCROLLBAR_WIDTH, theme._SCROLLBAR_MARGIN
+    assert (width, margin, theme._SCROLLBAR_MIN_GRAB) == (10, 2, 44)
+    assert f"width: {width + 2 * margin}px" in _rule(qss, "QScrollBar:vertical")
+    assert f"height: {width + 2 * margin}px" in _rule(qss, "QScrollBar:horizontal")
+    for orient, grab in (("vertical", "min-height"), ("horizontal", "min-width")):
+        assert "background: transparent" in _rule(qss, f"QScrollBar:{orient}")
+        handle = _rule(qss, f"QScrollBar::handle:{orient}")
+        assert f"border-radius: {width // 2}px" in handle             # fully rounded
+        assert f"margin: {margin}px" in handle
+        assert f"{grab}: 44px" in handle                               # grabbable, never a sliver
+        lines = _rule(qss, f"QScrollBar::add-line:{orient}, QScrollBar::sub-line:{orient}")
+        assert "width: 0px" in lines and "height: 0px" in lines        # no arrow buttons
+    assert "background: transparent" in _rule(qss, "QScrollBar::add-page, QScrollBar::sub-page")
+    # visible, not overlay-only: nothing hides the bar
+    assert "display" not in qss and "opacity" not in qss and "none;" not in qss.replace("border: none;", "") \
+        .replace("background: none;", "")
+
+
+def test_scrollbar_colours_come_from_tokens():
+    qss = theme.SCROLLBAR_QSS
+    assert not HEX_IN_TEXT.findall(qss)
+    idle = ",".join(str(c) for c in theme._hex_to_rgb(theme.ICON_IDLE))
+    accent = ",".join(str(c) for c in theme._hex_to_rgb(theme.ACCENT))
+    assert f"rgba({idle},0.35)" in _rule(qss, "QScrollBar::handle:vertical")
+    assert f"rgba({idle},0.55)" in _rule(qss, "QScrollBar::handle:vertical:hover, QScrollBar::handle:horizontal:hover")
+    assert f"rgba({accent},0.55)" in _rule(
+        qss, "QScrollBar::handle:vertical:pressed, QScrollBar::handle:horizontal:pressed")
+    block = (REPO / "samsara/ui/theme.py").read_text(encoding="utf-8")
+    block = block[block.index("# Scrollbars -- ONE treatment"):block.index("# Dialog-wide stylesheet")]
+    assert _string_hex_literals(block) == []
+
+
+def test_no_local_scrollbar_overrides_left_in_the_owned_windows():
+    paths = [REPO / p for p in _SCROLLBAR_SHEETS_PY] + sorted((REPO / "samsara/ui/settings").glob("*.py"))
+    for path in paths:
+        source = path.read_text(encoding="utf-8")
+        assert "QScrollBar" not in source, path
+    vertical_policies = sum(p.read_text(encoding="utf-8").count("setVerticalScrollBarPolicy") for p in paths)
+    assert vertical_policies == 1      # settings_qt's fixed-height search strip, not a scroll surface
+
+
+def test_app_stylesheet_install_is_idempotent(qapp):
+    before = qapp.styleSheet()
+    try:
+        theme.install_app_scrollbars(qapp)
+        theme.install_app_scrollbars(qapp)
+        assert qapp.styleSheet().count(theme._SCROLLBAR_MARKER) == 1
+        assert theme.SCROLLBAR_QSS in qapp.styleSheet()
+    finally:
+        qapp.setStyleSheet(before)
+
+
+def test_scrolled_list_renders_without_arrow_subcontrols(qapp):
+    from PySide6.QtCore import Qt
+    from PySide6.QtWidgets import QListWidget, QStyle, QStyleOptionSlider
+
+    lst = QListWidget()
+    lst.setAttribute(Qt.WidgetAttribute.WA_DontShowOnScreen, True)
+    lst.setStyleSheet(theme.build_stylesheet())
+    lst.addItems([f"row {i}" for i in range(300)])
+    lst.resize(240, 200)
+    lst.show()
+    qapp.processEvents()
+    try:
+        bar = lst.verticalScrollBar()
+        assert bar.isVisible() and bar.maximum() > 0
+        assert bar.width() == theme.SCROLLBAR_WIDTH + 2 * theme._SCROLLBAR_MARGIN
+        opt = QStyleOptionSlider()
+        bar.initStyleOption(opt)
+        style = bar.style()
+        cc = QStyle.ComplexControl.CC_ScrollBar
+        for sub in (QStyle.SubControl.SC_ScrollBarAddLine, QStyle.SubControl.SC_ScrollBarSubLine):
+            rect = style.subControlRect(cc, opt, sub, bar)
+            assert rect.isEmpty() or rect.height() == 0 or rect.width() == 0, (sub, rect)
+        handle = style.subControlRect(cc, opt, QStyle.SubControl.SC_ScrollBarSlider, bar)
+        assert handle.height() >= 44
+        image = bar.grab().toImage()
+        c = image.pixelColor(handle.center())
+        idle = theme._hex_to_rgb(theme.ICON_IDLE)                       # premultiplied round trip: +-2
+        assert max(abs(a - b) for a, b in zip((c.red(), c.green(), c.blue()), idle)) <= 2
+        assert abs(c.alpha() - round(0.35 * 255)) <= 2
+        corner = image.pixelColor(handle.left(), handle.top())
+        assert corner.alpha() < c.alpha()                                 # rounded, not a square grip
+        top = image.pixelColor(bar.width() // 2, 0)
+        assert top.alpha() == 0                                           # no arrow button at the top
+    finally:
+        lst.close()

@@ -29,7 +29,7 @@ from PySide6.QtWidgets import (
 )
 
 from samsara import config_defaults
-from samsara.ui import qt_runtime
+from samsara.ui import qt_runtime, theme
 from samsara.ui.tray_qt import MarkFrame, paint_mark
 from samsara.ui.dictionary_panel_qt import DictionaryPanelQt
 from samsara.ui.history_view import HistoryView
@@ -100,24 +100,13 @@ QPushButton {{
 }}
 QPushButton:hover {{ background: {_ELEVATED}; border-color: {_ACCENT}; }}
 QPushButton:pressed {{ background: {_ACCENT_DIM}; }}
-QScrollBar:vertical {{
-    background: {_BG};
-    width: 6px;
-    border: none;
-}}
-QScrollBar::handle:vertical {{
-    background: {_BORDER};
-    border-radius: 3px;
-    min-height: 20px;
-}}
-QScrollBar::add-line:vertical, QScrollBar::sub-line:vertical {{ height: 0; }}
 QStatusBar {{
     background: {_SURFACE};
     border-top: 1px solid {_BORDER};
     color: {_TEXT_SEC};
     font-size: 11px;
 }}
-"""
+""" + theme.SCROLLBAR_QSS
 
 
 # ---------------------------------------------------------------------------
@@ -268,6 +257,7 @@ class _MainWindow(QMainWindow):
         self._geom_timer.timeout.connect(self._save_geometry)
 
         self.setWindowTitle("Samsara")
+        theme.install_app_scrollbars()
         self.setStyleSheet(_SS)
         self.setMinimumSize(MIN_WIDTH, MIN_HEIGHT)
         self._restore_geometry()

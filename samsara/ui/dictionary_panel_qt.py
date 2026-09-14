@@ -24,6 +24,7 @@ from PySide6.QtWidgets import (
 )
 
 from samsara.runtime import thread_registry
+from samsara.ui import theme
 
 logger = logging.getLogger(__name__)
 
@@ -76,10 +77,7 @@ QPushButton {{
 QPushButton:hover {{ background:{_ACCENT}; color:{_BG}; border-color:{_ACCENT}; }}
 QPushButton#danger {{ color:{_ERROR}; border-color:{_ERROR}; }}
 QPushButton#danger:hover {{ background:{_ERROR}; color:{_BG}; }}
-QScrollBar:vertical {{ background:{_BG}; width:6px; border:none; }}
-QScrollBar::handle:vertical {{ background:{_BORDER}; border-radius:3px; min-height:20px; }}
-QScrollBar::add-line:vertical, QScrollBar::sub-line:vertical {{ height:0; }}
-"""
+""" + theme.SCROLLBAR_QSS
 
 
 # ---------------------------------------------------------------------------

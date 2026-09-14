@@ -292,6 +292,81 @@ def style_tip_frame(widget: QWidget) -> None:
 
 
 # ---------------------------------------------------------------------------
+# Scrollbars -- ONE treatment app-wide (queue 29)
+# ---------------------------------------------------------------------------
+# No arrow buttons, a transparent track, a fully rounded ICON_IDLE handle that
+# brightens on hover and turns ACCENT while dragged. Never hidden and never
+# overlay-only: the owner scrolls with painful joints and by voice, so the
+# bar stays visible at a fixed width and the handle keeps a 44 px minimum
+# grab length however long the page is. SCROLLBAR_QSS is part of
+# build_stylesheet() and of every top-level window's own sheet (QSS set on a
+# window beats the application sheet, so the rule has to live there too);
+# install_app_scrollbars() adds it to the application stylesheet for windows
+# that carry no sheet of their own.
+
+SCROLLBAR_WIDTH = 10      # handle thickness in px; the bar adds a 2 px margin each side
+_SCROLLBAR_MARGIN = 2
+_SCROLLBAR_MIN_GRAB = 44  # px, the minimum handle length (accessibility)
+
+
+def _rgba(hex_color: str, alpha: float) -> str:
+    r, g, b = _hex_to_rgb(hex_color)
+    return f"rgba({r},{g},{b},{alpha:.2f})"
+
+
+def _scrollbar_qss() -> str:
+    bar = SCROLLBAR_WIDTH + 2 * _SCROLLBAR_MARGIN
+    radius = SCROLLBAR_WIDTH // 2
+    rest, hover, pressed = _rgba(ICON_IDLE, 0.35), _rgba(ICON_IDLE, 0.55), _rgba(ACCENT, 0.55)
+    return f"""
+QScrollBar:vertical {{
+    background: transparent; border: none; margin: 0px; width: {bar}px;
+}}
+QScrollBar:horizontal {{
+    background: transparent; border: none; margin: 0px; height: {bar}px;
+}}
+QScrollBar::handle:vertical {{
+    background: {rest}; border: none; border-radius: {radius}px;
+    margin: {_SCROLLBAR_MARGIN}px; min-height: {_SCROLLBAR_MIN_GRAB}px;
+}}
+QScrollBar::handle:horizontal {{
+    background: {rest}; border: none; border-radius: {radius}px;
+    margin: {_SCROLLBAR_MARGIN}px; min-width: {_SCROLLBAR_MIN_GRAB}px;
+}}
+QScrollBar::handle:vertical:hover, QScrollBar::handle:horizontal:hover {{ background: {hover}; }}
+QScrollBar::handle:vertical:pressed, QScrollBar::handle:horizontal:pressed {{ background: {pressed}; }}
+QScrollBar::add-line:vertical, QScrollBar::sub-line:vertical {{
+    height: 0px; width: 0px; border: none; background: transparent;
+}}
+QScrollBar::add-line:horizontal, QScrollBar::sub-line:horizontal {{
+    width: 0px; height: 0px; border: none; background: transparent;
+}}
+QScrollBar::up-arrow, QScrollBar::down-arrow, QScrollBar::left-arrow, QScrollBar::right-arrow {{
+    width: 0px; height: 0px; background: none;
+}}
+QScrollBar::add-page, QScrollBar::sub-page {{ background: transparent; }}
+QAbstractScrollArea::corner {{ background: transparent; border: none; }}
+"""
+
+
+SCROLLBAR_QSS = _scrollbar_qss()
+_SCROLLBAR_MARKER = "/* samsara-scrollbars */"
+
+
+def install_app_scrollbars(app=None) -> None:
+    """Add SCROLLBAR_QSS to the QApplication stylesheet once (idempotent), so
+    windows without a sheet of their own inherit the same scrollbars."""
+    if app is None:
+        from PySide6.QtWidgets import QApplication  # noqa: PLC0415
+        app = QApplication.instance()
+    if app is None:
+        return
+    current = app.styleSheet() or ""
+    if _SCROLLBAR_MARKER not in current:
+        app.setStyleSheet(current + _SCROLLBAR_MARKER + SCROLLBAR_QSS)
+
+
+# ---------------------------------------------------------------------------
 # Dialog-wide stylesheet
 # ---------------------------------------------------------------------------
 
@@ -429,4 +504,4 @@ QRadioButton::indicator:checked {{
 }}
 
 QScrollArea {{ border: none; background: transparent; }}
-"""
+""" + SCROLLBAR_QSS
