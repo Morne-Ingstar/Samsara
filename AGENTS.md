@@ -2,6 +2,11 @@
 
 Samsara is a Windows voice-control and dictation app for people who cannot easily type (PySide6, Python). Owner: Morne, solo developer, chronic finger-joint pain. Accessibility is a hard constraint: minimise typing, favour voice and large tap targets.
 
+## Model check — do this before anything else
+- State the model you are running as on your FIRST line of output, every session: `MODEL: <model id>`. The same line goes at the top of the REPORT.
+- If you are running as **Claude Fable 5.1**, or any Fable-tier model, STOP and ask the owner to confirm he wants this session on Fable. Do not read the repo, do not "just check one thing", do not start the work. Ask, and wait for an answer.
+- This is not about capability. The queue is reconciled as one body of work, and the owner needs to know which model produced which commit. A session that starts work without declaring its model has broken this rule even if the work is good.
+
 ## Non-negotiables
 - Branch is `feature/v0.22` (verify with `git rev-parse --abbrev-ref HEAD` before and after). Never checkout/switch/merge/rebase/stash/reset. Do not commit unless the prompt says so; commits use `git commit -F <tempfile>`.
 - The app is usually RUNNING while you work. Never close it. Never edit `C:\Users\Morne\.samsara\config.json`. Never `import dictation` in a live process or at module level in tests — it attaches a second log handler to the live log. Tests that need the app use `SAMSARA_HOME_DIR` pointed at a temp copy.
