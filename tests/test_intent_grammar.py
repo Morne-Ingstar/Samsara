@@ -183,10 +183,25 @@ def test_app_names_use_the_shared_app_index_score(monkeypatch, records):
 
 
 def test_not_wired_into_dispatch():
-    targets = [REPO / "dictation.py", REPO / "samsara" / "session_modes.py", REPO / "samsara" / "commands.py",
+    targets = [REPO / "samsara" / "session_modes.py", REPO / "samsara" / "commands.py",
                REPO / "samsara" / "command_registry.py", *sorted((REPO / "plugins").rglob("*.py"))]
     for path in targets:
         assert "samsara.intent" not in path.read_text(encoding="utf-8", errors="replace"), path
+    # 36: dictation.py may use the gate ONLY as the shadow observer -- both
+    # imports live inside _intent_shadow_observe, nothing dispatches on it.
+    import ast
+    tree = ast.parse((REPO / "dictation.py").read_text(encoding="utf-8-sig"))
+    users = set()
+    for node in ast.walk(tree):
+        if isinstance(node, ast.FunctionDef):
+            for inner in ast.walk(node):
+                if isinstance(inner, ast.ImportFrom) and (inner.module or "").startswith("samsara.intent"):
+                    users.add((node.name, inner.module))
+    top_level = [n for n in tree.body if isinstance(n, (ast.Import, ast.ImportFrom))
+                 and "samsara.intent" in ast.dump(n)]
+    assert top_level == []
+    assert {name for name, _m in users} <= {"_intent_shadow_observe", "_resolver_factory"}
+    assert {m for _n, m in users} == {"samsara.intent.shadow", "samsara.intent.resolve"}
 
 
 # ---------------------------------------------------------------------------

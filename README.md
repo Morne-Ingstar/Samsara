@@ -162,6 +162,8 @@ Ships with 31 plugins including health tracking, voice reminders, alarm manageme
 
 **Privacy note on the Task List plugin:** tasks you add by voice (`plugins/commands/tasks.py`) are stored locally only. As of v0.21.1 this plugin makes no network requests of any kind — an earlier undisclosed "sync to Arcana" network call has been removed entirely (see CHANGELOG.md). If you explicitly select Edge TTS, spoken task confirmations use Microsoft's online speech service like any other text Samsara reads aloud.
 
+**Privacy note on the shadow intent log:** while `intent.shadow_enabled` is on (the default), each hands-free DICTATE utterance's text, the command the intent gate *would* have run, and the focused app's process name (never a window title, never audio) are appended to plain JSONL in `~/.samsara/shadow/intent-YYYY-MM-DD.jsonl`; it is never uploaded or bundled into diagnostics, `tools/shadow_report.py` summarises it, and deleting that folder (or setting `intent.shadow_enabled` to `false` in config.json) clears or stops it.
+
 ---
 
 ## Getting Started
