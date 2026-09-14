@@ -495,9 +495,14 @@ _COMPRESSION_RATIO_THRESHOLD = 2.4
                              # exact way (every temp 0.0-1.0 failed log_prob_threshold, then
                              # compression_ratio hit 7.125 at temp 0.8) because nothing downstream
                              # checked these signals before delivering the text.
-_GATE_MAX_BUFFER_S   = 8.0   # maximum audio window scanned by the hold presence gate.
-                             # Longer buffers scan this prefix only if overall RMS is
-                             # below _SANITY_RMS_FLOOR_DB; audible dictation skips VAD.
+_GATE_MAX_BUFFER_S   = 8.0   # short-capture fast path AND the VAD chunk length of the gate.
+                             # Captures up to this long are scanned in ONE VAD call (unchanged).
+                             # Longer captures skip VAD when overall RMS is at or above
+                             # _SANITY_RMS_FLOOR_DB (audible dictation stays off the VAD lock);
+                             # below it the WHOLE capture is scanned in chunks of this length,
+                             # taking the VAD lock once per chunk (39, 2026-09-13: this used to
+                             # scan only the first 8 s, so quiet toggle takes whose speech
+                             # started later were discarded -- 26.5 s and 69.8 s takes).
                              # Raised 3.0->8.0: 3-6s near-silent/whisper holds were bypassing
                              # the gate and producing phantom "Thank you for watching" text.
                              # NOTE (2026-07-10): that fix only pushed the exposure window out,
@@ -509,6 +514,67 @@ _GATE_VAD_PROB       = CONTIGUOUS_VAD_PROB_THRESHOLD  # Silero speech-probabilit
 _FADE_MS             = 50    # linear fade-in/out applied to hotkey buffers, kills the
                              # press/release click transient before it can reach VAD or Whisper
 _GATE_HEAD_GRACE_CLICK_PAD_MS = 60
+
+#: One contiguous-speech scan: the longest run, where it starts, how much was scanned.
+_SpeechRun = collections.namedtuple(
+    '_SpeechRun', ['passed', 'best_ms', 'offset_s', 'scanned_s', 'chunks', 'method', 'failed_open', 'buffer_s'],
+)
+
+
+class _GateDecision:
+    """The presence gate's verdict for one capture (truthy = SKIP decoding).
+
+    describe() is the log line, with the numbers that make the decision
+    checkable: capture length, the path taken, the longest speech run and the
+    offset where it starts, how much audio was scanned (and in how many
+    chunks), the RMS for long captures, and the threshold applied."""
+
+    __slots__ = ('skip', 'path', 'buffer_s', 'rms_db', 'head_grace_ms', 'best_ms', 'offset_s',
+                 'scanned_s', 'chunks', 'method', 'failed_open')
+
+    def __init__(self, *, skip, path, buffer_s, rms_db=None, head_grace_ms=0.0, best_ms=0,
+                 offset_s=0.0, scanned_s=0.0, chunks=0, method='vad', failed_open=False):
+        self.skip = bool(skip)
+        self.path = path
+        self.buffer_s = float(buffer_s)
+        self.rms_db = rms_db
+        self.head_grace_ms = float(head_grace_ms or 0.0)
+        self.best_ms = int(best_ms)
+        self.offset_s = float(offset_s)
+        self.scanned_s = float(scanned_s)
+        self.chunks = int(chunks)
+        self.method = method
+        self.failed_open = bool(failed_open)
+
+    def __bool__(self):
+        return self.skip
+
+    def describe(self) -> str:
+        floor = f"{_SANITY_RMS_FLOOR_DB:.0f} dBFS"
+        if self.path == 'loud':
+            return (f"[GATE] pass: buffer {self.buffer_s:.2f}s rms {self.rms_db:.1f} dBFS >= {floor} floor "
+                    f"-- audible long capture, decoded without VAD")
+        verdict = "skip" if self.skip else "pass"
+        relation = "<" if self.skip else ">="
+        if self.best_ms > 0:
+            where = (f"longest speech run {self.best_ms}ms at {self.offset_s:.2f}s {relation} "
+                     f"{_GATE_MIN_CONTIG_MS}ms threshold")
+        else:
+            where = f"no speech frames found {relation} {_GATE_MIN_CONTIG_MS}ms threshold"
+        scope = (f"buffer {self.buffer_s:.2f}s, scanned {self.scanned_s:.2f}s "
+                 f"in {self.chunks} chunk{'s' if self.chunks != 1 else ''}, path {self.path}")
+        if self.rms_db is not None:
+            scope += f", rms {self.rms_db:.1f} dBFS < {floor} floor"
+        extras = []
+        if self.method != 'vad':
+            extras.append(f"{self.method} fallback")
+        if self.failed_open:
+            extras.append("failed open")
+        if self.head_grace_ms > 0:
+            extras.append(f"head_grace={self.head_grace_ms:.0f}ms")
+        tail = f", {', '.join(extras)}" if extras else ""
+        suffix = " -- no contiguous speech anywhere in the capture, skipping" if self.skip else ""
+        return f"[GATE] {verdict}: {where} ({scope}{tail}){suffix}"
                              # FIX (2026-07-10 hotkey word-loss investigation, "head grace"):
                              # the start earcon (measured duration, see start_recording) plus
                              # this fixed pad for the mechanical key-press click transient that
@@ -9297,17 +9363,102 @@ class DictationApp:
         return None
 
     def _buffer_should_skip_decode(self, audio, src_rate, *, head_grace_ms=0.0):
-        """Bound long-hold VAD work to eight seconds, only below the existing floor."""
-        if len(audio) / src_rate > _GATE_MAX_BUFFER_S:
-            # Keep real dictation off the VAD lock, including speech starting
-            # after the inspected prefix. The full-buffer RMS scan is cheap.
-            rms = float(np.sqrt(np.mean(np.asarray(audio, dtype=np.float32) ** 2)))
-            if not rms < 10 ** (_SANITY_RMS_FLOOR_DB / 20.0):
-                return False
-            audio = audio[:int(_GATE_MAX_BUFFER_S * src_rate)]
-        return not self._buffer_has_contiguous_speech(
-            audio, src_rate, min_ms=_GATE_MIN_CONTIG_MS, prob_threshold=_GATE_VAD_PROB,
-            head_grace_ms=head_grace_ms,
+        """Presence gate for a finished hotkey capture -> _GateDecision (truthy = skip).
+
+        Three paths, all deciding on the WHOLE capture (39):
+          short   <= _GATE_MAX_BUFFER_S: one VAD call over the buffer -- the
+                  original fast path, unchanged in behaviour;
+          loud    longer, overall RMS >= _SANITY_RMS_FLOOR_DB: audible
+                  dictation, decoded without touching the VAD lock;
+          chunked longer and quiet: every _GATE_MAX_BUFFER_S chunk is scanned,
+                  the longest contiguous speech run is tracked across chunk
+                  boundaries, and the capture is skipped only if no run anywhere
+                  reaches _GATE_MIN_CONTIG_MS.
+        """
+        buffer_s = len(audio) / src_rate
+        if buffer_s <= _GATE_MAX_BUFFER_S:
+            return self._gate_scan(audio, src_rate, head_grace_ms=head_grace_ms, path="short")
+        rms = float(np.sqrt(np.mean(np.asarray(audio, dtype=np.float32) ** 2)))
+        rms_db = 20.0 * math.log10(rms + 1e-12)
+        if not rms < 10 ** (_SANITY_RMS_FLOOR_DB / 20.0):
+            decision = _GateDecision(skip=False, path="loud", buffer_s=buffer_s, rms_db=rms_db,
+                                     head_grace_ms=head_grace_ms)
+            logging.getLogger("Samsara").debug(decision.describe())
+            return decision
+        return self._gate_scan(audio, src_rate, head_grace_ms=head_grace_ms, path="chunked",
+                               chunk_s=_GATE_MAX_BUFFER_S, rms_db=rms_db)
+
+    def _gate_scan(self, audio, src_rate, *, head_grace_ms, path, chunk_s=None, rms_db=None):
+        """Run the contiguous-speech scan for the presence gate and log the decision."""
+        run = self._speech_run_scan(audio, src_rate, min_ms=_GATE_MIN_CONTIG_MS,
+                                    prob_threshold=_GATE_VAD_PROB, head_grace_ms=head_grace_ms,
+                                    chunk_s=chunk_s)
+        decision = _GateDecision(
+            skip=not run.passed, path=path, buffer_s=len(audio) / src_rate, rms_db=rms_db,
+            head_grace_ms=head_grace_ms, best_ms=run.best_ms, offset_s=run.offset_s,
+            scanned_s=run.scanned_s, chunks=run.chunks, method=run.method, failed_open=run.failed_open,
+        )
+        if not decision.skip:
+            logging.getLogger("Samsara").debug(decision.describe())
+        return decision
+
+    def _speech_run_scan(self, audio, src_rate, *, min_ms=_GATE_MIN_CONTIG_MS,
+                         prob_threshold=_GATE_VAD_PROB, head_grace_ms=0.0, chunk_s=None):
+        """Longest contiguous speech run anywhere in `audio` -> _SpeechRun.
+
+        chunk_s=None scans in one VAD call (the original behaviour). With
+        chunk_s, the 16 kHz buffer is split into whole-frame chunks of that
+        length and the lock is taken per chunk, so a long quiet capture never
+        holds the VAD lock for its whole duration; the run counter and its
+        start carry across chunk boundaries, and head grace applies to the
+        buffer's first head_grace_ms only. VAD unavailable or failing -> the
+        ZCR/energy fallback over the whole buffer; that failing -> fail OPEN.
+        """
+        buffer_s = len(audio) / src_rate
+        if not self._vad_available or self._vad_model is None:
+            return self._zcr_speech_run(audio, src_rate, min_ms=min_ms)
+
+        chunk_16k = resample_audio(audio, src_rate, 16000)
+        if chunk_16k.ndim > 1:
+            chunk_16k = chunk_16k.flatten()
+
+        window_size = 512
+        frame_ms = window_size / 16000 * 1000.0  # 32ms per Silero frame
+        min_contig_frames = max(1, int(min_ms / frame_ms))
+        grace_frames = max(0, int(round(head_grace_ms / frame_ms)))
+        step = len(chunk_16k) if chunk_s is None else max(window_size, int(chunk_s * 16000) // window_size * window_size)
+
+        contig = 0
+        run_start = 0
+        best_contig = 0
+        best_start = 0
+        idx = 0
+        chunks = 0
+        try:
+            for begin in range(0, max(1, len(chunk_16k)), max(1, step)):
+                with self._vad_lock:
+                    probabilities = self._vad_probabilities(chunk_16k[begin:begin + step])
+                chunks += 1
+                for speech_prob in probabilities:
+                    if speech_prob > prob_threshold:
+                        if contig == 0:
+                            run_start = idx
+                        contig += 1
+                        if contig > best_contig:
+                            best_contig, best_start = contig, run_start
+                    elif idx < grace_frames:
+                        pass  # head grace: low reading in the known noisy span -- neutral, not a break
+                    else:
+                        contig = 0
+                    idx += 1
+        except Exception as e:
+            logger.exception(f"[VAD] ONNX gate inference failed, using ZCR fallback: {e}")
+            return self._zcr_speech_run(audio, src_rate, min_ms=min_ms)
+
+        return _SpeechRun(
+            passed=best_contig >= min_contig_frames, best_ms=round(best_contig * frame_ms),
+            offset_s=best_start * frame_ms / 1000.0, scanned_s=idx * frame_ms / 1000.0,
+            chunks=chunks, method="vad", failed_open=False, buffer_s=buffer_s,
         )
 
     def _buffer_has_contiguous_speech(self, audio, src_rate,
@@ -9363,11 +9514,16 @@ class DictationApp:
             return self._zcr_energy_contiguous_speech(audio, src_rate, min_ms=min_ms)
 
         contig = 0
+        run_start = 0
         best_contig = 0
+        best_start = 0
         for idx, speech_prob in enumerate(probabilities):
             if speech_prob > prob_threshold:
+                if contig == 0:
+                    run_start = idx
                 contig += 1
-                best_contig = max(best_contig, contig)
+                if contig > best_contig:
+                    best_contig, best_start = contig, run_start
             elif idx < grace_frames:
                 pass  # head grace: low reading in the known noisy span -- neutral, not a break
             else:
@@ -9376,18 +9532,29 @@ class DictationApp:
         passed = best_contig >= min_contig_frames
         if passed:
             # Evidence trail for the next leak: a gate PASS is otherwise
-            # invisible (only SKIP is logged today), so there's no ground
-            # truth for why a given buffer reached Whisper.
+            # invisible, so there's no ground truth for why a given buffer
+            # reached Whisper. Where the run was found makes it checkable (39).
             logging.getLogger("Samsara").debug(
-                "[GATE] pass: max contiguous speech %dms (buffer %.1fs)%s",
-                round(best_contig * frame_ms), len(audio) / src_rate,
+                "[GATE] pass: max contiguous speech %dms at %.2fs (buffer %.1fs)%s",
+                round(best_contig * frame_ms), best_start * frame_ms / 1000.0, len(audio) / src_rate,
                 f", head_grace={head_grace_ms:.0f}ms" if head_grace_ms > 0 else "",
             )
         return passed
 
+    def _zcr_speech_run(self, audio, src_rate, min_ms=_GATE_MIN_CONTIG_MS):
+        """_SpeechRun from the ZCR/energy fallback (whole buffer, one pass)."""
+        buffer_s = len(audio) / src_rate
+        run = self._zcr_energy_contiguous_speech(audio, src_rate, min_ms=min_ms, _detail=True)
+        if not isinstance(run, tuple):          # failed open / too short to analyse
+            return _SpeechRun(passed=bool(run), best_ms=0, offset_s=0.0, scanned_s=0.0, chunks=0,
+                              method="zcr", failed_open=True, buffer_s=buffer_s)
+        passed, best_ms, offset_s, scanned_s = run
+        return _SpeechRun(passed=passed, best_ms=best_ms, offset_s=offset_s, scanned_s=scanned_s,
+                          chunks=1, method="zcr", failed_open=False, buffer_s=buffer_s)
+
     def _zcr_energy_contiguous_speech(self, audio, src_rate,
                                        min_ms=_GATE_MIN_CONTIG_MS,
-                                       zcr_low=0.02, zcr_high=0.30):
+                                       zcr_low=0.02, zcr_high=0.30, _detail=False):
         """Fallback presence gate when Silero VAD is unavailable (Fix 5).
 
         Windowed zero-crossing-rate + energy check: a window counts as
@@ -9436,20 +9603,28 @@ class DictationApp:
             min_contig_frames = max(1, int(min_ms / frame_ms))
 
             contig = 0
+            run_start = 0
             best_contig = 0
-            for is_speech in speech_like:
+            best_start = 0
+            for idx, is_speech in enumerate(speech_like):
                 if is_speech:
+                    if contig == 0:
+                        run_start = idx
                     contig += 1
-                    best_contig = max(best_contig, contig)
+                    if contig > best_contig:
+                        best_contig, best_start = contig, run_start
                 else:
                     contig = 0
 
             passed = best_contig >= min_contig_frames
-            if passed:
+            if passed and not _detail:
                 logging.getLogger("Samsara").debug(
-                    "[GATE] pass: max contiguous speech %dms (buffer %.1fs) [ZCR fallback]",
-                    round(best_contig * frame_ms), len(audio) / src_rate,
+                    "[GATE] pass: max contiguous speech %dms at %.2fs (buffer %.1fs) [ZCR fallback]",
+                    round(best_contig * frame_ms), best_start * frame_ms / 1000.0, len(audio) / src_rate,
                 )
+            if _detail:
+                return (passed, round(best_contig * frame_ms), best_start * frame_ms / 1000.0,
+                        n_windows * frame_ms / 1000.0)
             return passed
         except Exception as e:
             logger.debug(f"[GATE] ZCR fallback failed, failing open: {e}")
@@ -11914,19 +12089,21 @@ class DictationApp:
                 # before it can trigger the gate below or Whisper itself.
                 audio_faded = _fade_edges(audio, self.model_rate, _FADE_MS)
 
-                # Presence gate: scan short buffers, or only the first eight
-                # seconds of long buffers below the existing near-silence floor.
+                # Presence gate over the WHOLE capture (39): one VAD call for
+                # short buffers, no VAD for audible long ones, every chunk of
+                # a quiet long one -- see _buffer_should_skip_decode.
                 # Head grace (2026-07-10): covers the start earcon (measured
                 # duration, 0 if none played this recording) plus a fixed
                 # pad for the mechanical key-click transient -- see
                 # _GATE_HEAD_GRACE_CLICK_PAD_MS.
                 _head_grace_ms = self._last_recording_earcon_ms + _GATE_HEAD_GRACE_CLICK_PAD_MS
-                if self._buffer_should_skip_decode(
+                _gate = self._buffer_should_skip_decode(
                     audio_faded, self.model_rate,
                     head_grace_ms=_head_grace_ms,
-                ):
-                    logger.debug(f"[GATE] No contiguous speech in quiet buffer window "
-                          f"({audio_duration:.2f}s) — skipping")
+                )
+                if _gate:
+                    logger.info(_gate.describe() if isinstance(_gate, _GateDecision) else
+                                f"[GATE] skip: no contiguous speech ({audio_duration:.2f}s)")
                     # FM3 diagnostics: this buffer never reached the model at
                     # all -- distinct from outcome="empty" (model ran, text
                     # came back blank). No transcription happened here, so no
