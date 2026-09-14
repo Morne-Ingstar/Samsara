@@ -45,6 +45,7 @@ from urllib.parse import urlparse
 
 from samsara import components
 from samsara.log import get_logger
+from samsara.runtime import thread_registry
 
 logger = get_logger(__name__)
 
@@ -58,6 +59,12 @@ EXIT_FAILED = 6
 DEFAULT_REPO = "Morne-Ingstar/Samsara"
 MIN_TARGET = 44
 INSTALLED_MARKER_SUFFIX = ".installed"
+#: The wizard reads the network in 256 KB pieces (capped_opener) so a
+#: cancel, polled after every piece, is honoured within about a second even
+#: on a slow link; the headless installer mode keeps the fetcher's 1 MB reads.
+WIZARD_CHUNK = 256 * 1024
+#: How long the page waits for a cancelled worker when its window closes.
+CLOSE_JOIN_S = 1.0
 
 #: What each component enables, in one line, for the wizard page. Unknown
 #: ids fall back to the manifest description.
@@ -237,6 +244,31 @@ def local_dir_opener(components_dir):
     return _open
 
 
+def capped_opener(opener, cap: int = WIZARD_CHUNK):
+    """Wrap an opener so every response.read(n) returns at most `cap`
+    bytes. components.download_component reports progress (and so polls
+    cancel) after each read, so this bounds cancel latency without changing
+    the fetcher's own chunk size or fetch_and_install's signature."""
+    base = opener or components._default_open
+
+    class _Capped:
+        def __init__(self, resp):
+            self._resp = resp
+            self.status = getattr(resp, "status", 200)
+            self.headers = getattr(resp, "headers", {})
+
+        def read(self, n: int) -> bytes:
+            return self._resp.read(min(int(n), cap))
+
+        def close(self):
+            self._resp.close()
+
+    def _open(url: str, headers: dict):
+        return _Capped(base(url, headers))
+
+    return _open
+
+
 def _safe_members(zf: zipfile.ZipFile) -> list:
     members = []
     for info in zf.infolist():
@@ -250,11 +282,14 @@ def _safe_members(zf: zipfile.ZipFile) -> list:
     return members
 
 
-def install_component(archive, component: dict, app_root, downloads_dir) -> list:
+def install_component(archive, component: dict, app_root, downloads_dir, *,
+                      cancel: Optional[Callable[[], bool]] = None) -> list:
     """Unpack a verified archive into app_root/install_dir. Members are
     extracted to a temp folder first and moved into place one file at a
     time with os.replace, then the installed marker is written. Returns the
-    installed relative paths."""
+    installed relative paths. `cancel()` is polled every megabyte during
+    extraction; a True answer raises FetchCancelled before any file has
+    been moved into place (the temp folder is removed)."""
     target = Path(app_root) / component.get("install_dir", ".")
     target.mkdir(parents=True, exist_ok=True)
     installed = []
@@ -266,7 +301,15 @@ def install_component(archive, component: dict, app_root, downloads_dir) -> list
                 out = tmp_path / rel
                 out.parent.mkdir(parents=True, exist_ok=True)
                 with zf.open(info) as src, open(out, "wb") as dst:
-                    shutil.copyfileobj(src, dst, 1 << 20)
+                    while True:
+                        if cancel is not None and cancel():
+                            raise FetchCancelled(component["id"])
+                        piece = src.read(1 << 20)
+                        if not piece:
+                            break
+                        dst.write(piece)
+            if cancel is not None and cancel():
+                raise FetchCancelled(component["id"])
             for _info, rel in members:
                 final = target / rel
                 final.parent.mkdir(parents=True, exist_ok=True)
@@ -281,20 +324,22 @@ def install_component(archive, component: dict, app_root, downloads_dir) -> list
 def fetch_and_install(component: dict, app_root, downloads_dir, *,
                       progress: Optional[Callable[[int, int], None]] = None,
                       cancel: Optional[Callable[[], bool]] = None,
-                      opener=None) -> Path:
+                      opener=None, chunk_size: int = components.DEFAULT_CHUNK) -> Path:
     """Download (verified, resumable) then unpack one component. `cancel()`
-    is polled after every chunk; a True answer raises FetchCancelled with
-    the part file kept for resume and nothing installed."""
+    is polled after every chunk of the download and every megabyte of the
+    unpack; a True answer raises FetchCancelled with the part file kept for
+    resume and nothing installed."""
     def _progress(done, total):
         if cancel is not None and cancel():
             raise FetchCancelled(component["id"])
         if progress is not None:
             progress(done, total)
 
-    archive = components.download_component(component, downloads_dir, progress=_progress, opener=opener)
+    archive = components.download_component(component, downloads_dir, progress=_progress,
+                                            opener=opener, chunk_size=chunk_size)
     if cancel is not None and cancel():
         raise FetchCancelled(component["id"])
-    install_component(archive, component, app_root, downloads_dir)
+    install_component(archive, component, app_root, downloads_dir, cancel=cancel)
     return archive
 
 
@@ -493,6 +538,8 @@ class ComponentsPage:
         self._manifest: Optional[dict] = None
         self._rows: dict = {}
         self._cancel_flags: dict = {}
+        self._workers: dict = {}
+        self._close_hooked = None
         self._error: Optional[str] = None
 
         self.widget = QWidget(parent_widget)
@@ -529,6 +576,7 @@ class ComponentsPage:
         """Reload the manifest and rebuild the rows. Returns the listed
         components (missing, in order). Never raises: a manifest that cannot
         be loaded becomes a visible status line and an empty list."""
+        self._hook_window_close()
         try:
             self._manifest = self._loader()
             self._error = None
@@ -653,7 +701,8 @@ class ComponentsPage:
         def _work():
             try:
                 fetch_and_install(component, self._app_root, self._downloads,
-                                  progress=_progress, cancel=flag.is_set, opener=self._opener)
+                                  progress=_progress, cancel=flag.is_set,
+                                  opener=capped_opener(self._opener))
                 self._post(lambda: self._finish(component_id, "Installed."))
             except FetchCancelled:
                 self._post(lambda: self._finish(component_id, "Cancelled. Nothing was changed.", retry=True))
@@ -661,7 +710,21 @@ class ComponentsPage:
                 self._post(lambda: self._finish(component_id, f"Could not install: {exc}", retry=True))
 
         if self._threaded:
-            threading.Thread(target=_work, name=f"components.fetch.{component_id}", daemon=True).start()
+            # Registered with the thread registry (37) so it shows in
+            # snapshot()/dump(). Daemon on purpose: registry.shutdown() joins
+            # only non-daemon threads, and the app's exit path joins the
+            # registry BEFORE anything closes this window, so a non-daemon
+            # download in flight would hold the quit for the registry's whole
+            # deadline. The page owns the lifetime instead: cancel_all() on
+            # window close (or aboutToQuit) cancels every worker and joins it
+            # for at most CLOSE_JOIN_S -- the cancel is polled every
+            # WIZARD_CHUNK of download (capped_opener) and every megabyte of
+            # unpack, so a
+            # worker exits within about a second and never outlives the
+            # wizard. A download cut at process exit leaves a resumable
+            # .part file and nothing under a final name.
+            self._workers[component_id] = thread_registry.spawn(
+                f"components.fetch.{component_id}", _work, daemon=True)
         else:
             _work()
 
@@ -669,6 +732,51 @@ class ComponentsPage:
         flag = self._cancel_flags.get(component_id)
         if flag is not None:
             flag.set()
+
+    def cancel_all(self, join_timeout: float = CLOSE_JOIN_S) -> list:
+        """Cancel every in-flight fetch and wait for the workers, at most
+        join_timeout seconds in total. Returns the names of workers still
+        alive after that (normally empty)."""
+        for flag in self._cancel_flags.values():
+            flag.set()
+        import time  # noqa: PLC0415
+        deadline = time.monotonic() + max(0.0, join_timeout)
+        for worker in list(self._workers.values()):
+            worker.join(max(0.0, deadline - time.monotonic()))
+        alive = [w.name for w in self._workers.values() if w.is_alive()]
+        if alive:
+            logger.warning("[COMPONENTS] worker(s) still running %.1fs after cancel: %s",
+                           join_timeout, ", ".join(alive))
+        return alive
+
+    def _hook_window_close(self):
+        """Cancel on close: when the hosting top-level window closes, or the
+        application is about to quit, every fetch is cancelled and joined
+        (bounded). Installed once, lazily, because the page is parented into
+        the wizard's stack after construction."""
+        try:
+            from PySide6.QtCore import QEvent, QObject  # noqa: PLC0415
+            from PySide6.QtWidgets import QApplication  # noqa: PLC0415
+        except Exception:  # noqa: BLE001
+            return
+        window = self.widget.window()
+        if window is None or window is self._close_hooked:
+            return
+        page = self
+
+        class _CloseFilter(QObject):
+            def eventFilter(self, obj, event):
+                if event.type() == QEvent.Type.Close:
+                    page.cancel_all()
+                return False
+
+        self._close_filter = _CloseFilter(window)
+        window.installEventFilter(self._close_filter)
+        self._close_hooked = window
+        app = QApplication.instance()
+        if app is not None and not getattr(self, "_quit_hooked", False):
+            app.aboutToQuit.connect(lambda: page.cancel_all())
+            self._quit_hooked = True
 
     def _finish(self, component_id: str, message: str, retry: bool = False):
         row = self._rows.get(component_id)
@@ -699,6 +807,6 @@ __all__ = [
     "COMPONENT_BENEFITS", "COMING_SOON", "NO_NVIDIA", "MIN_TARGET",
     "EXIT_OK", "EXIT_BAD_ARGS", "EXIT_UNAVAILABLE", "EXIT_NETWORK", "EXIT_CANCELLED", "EXIT_FAILED",
     "FetchCancelled", "ComponentsPage", "component_installed", "component_note", "missing_components",
-    "fetch_and_install", "install_component", "fetch_components_main", "format_size",
+    "fetch_and_install", "install_component", "fetch_components_main", "format_size", "capped_opener",
     "local_dir_opener", "nvidia_gpu_present", "default_manifest_url", "default_downloads_dir", "default_app_root",
 ]
