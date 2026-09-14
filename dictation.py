@@ -12770,52 +12770,40 @@ class DictationApp:
     def _icon_chase_tick(self):
         """Advance the tray animation and schedule the next tick.
 
-        The mark (tray_qt.render_mark) carries state by shape, and motion
-        on the same drawing adds the rest (spin = the ouroboros head chasing
-        its tail; speed is a state channel):
-        - recording:     filled wheel, stopped (fill is the signal)
-        - transcribing:  the 'recording' reason outlives capture ->
-                         tray_qt.SPIN_SECONDS_PER_TURN['transcribing'] per turn
-        - continuous:    listening pulse, medium period
-        - wake_word:     listening pulse, slow period
-        Thinking (2.4 s/turn) is signalled only to the listening indicator
-        (set_thinking from ask_ollama / the Ava command session), so the tray
-        has no thinking reason. Tick speed and pulse period come from the
-        existing ICON_* constants (chase_every = ticks per half pulse).
+        Motion means capture (queue 19): the ring TURNS in every active
+        capture state -- the ouroboros head chasing its tail -- and speed is
+        the state channel (tray_qt.SPIN_SECONDS_PER_TURN):
+        - recording:     filled red wheel AND turning, 'recording' pace
+                         (fill/colour = state, rotation = liveness)
+        - transcribing:  the 'recording' reason outlives capture -> fastest
+        - continuous:    'listening' pace (ambient)
+        - wake_word:     'armed' pace (ambient)
+        No opacity pulse any more. At rest the chase is released and the mark
+        stands still (_stop_icon_chase). Thinking (2.4 s/turn) is signalled
+        only to the listening indicator (set_thinking from ask_ollama / the Ava
+        command session), so the tray has no thinking reason. Tick intervals
+        stay the existing ICON_TICK_* constants.
         """
         if not self._icon_animating:
             return
 
         from samsara.ui.tray_qt import SPIN_SECONDS_PER_TURN
 
-        # Determine speed from highest-priority active reason
-        if 'recording' in self._icon_anim_reasons:
-            tick_interval = ICON_TICK_FAST
-            chase_every = ICON_CHASE_FAST
-        elif 'continuous' in self._icon_anim_reasons:
-            tick_interval = ICON_TICK_MEDIUM
-            chase_every = ICON_CHASE_MEDIUM
-        else:  # wake_word or anything else
-            tick_interval = ICON_TICK_SLOW
-            chase_every = ICON_CHASE_SLOW
-
-        self._icon_chase_counter = (self._icon_chase_counter + 1) % (2 * chase_every)
-        opacity = 1.0
+        # Highest-priority active reason picks the tick and the pace.
         if getattr(self, 'recording', False):
-            pass   # filled and stopped
+            tick_interval, pace = ICON_TICK_FAST, 'recording'
         elif 'recording' in self._icon_anim_reasons:
-            # Transcribing: one full turn per SPIN_SECONDS_PER_TURN['transcribing'].
-            self._icon_rotation += (2 * math.pi * tick_interval
-                                    / SPIN_SECONDS_PER_TURN['transcribing'])
-        else:
-            # Listening: pulse between 55% and 100% over 2 * chase_every ticks.
-            phase = self._icon_chase_counter / (2 * chase_every)
-            opacity = 0.55 + 0.45 * (0.5 + 0.5 * math.cos(2 * math.pi * phase))
+            tick_interval, pace = ICON_TICK_FAST, 'transcribing'
+        elif 'continuous' in self._icon_anim_reasons:
+            tick_interval, pace = ICON_TICK_MEDIUM, 'listening'
+        else:  # wake_word or anything else
+            tick_interval, pace = ICON_TICK_SLOW, 'armed'
+
+        self._icon_rotation += 2 * math.pi * tick_interval / SPIN_SECONDS_PER_TURN[pace]
 
         if hasattr(self, 'tray_icon'):
             try:
-                self.tray_icon.icon = self.create_icon_image(
-                    rotation=self._icon_rotation, opacity=opacity)
+                self.tray_icon.icon = self.create_icon_image(rotation=self._icon_rotation)
             except OSError as e:
                 # transient WinError during icon handle swap -- skip this frame
                 logger.debug(f"Tray icon animation frame swap failed: {e}")

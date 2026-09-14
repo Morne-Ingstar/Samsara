@@ -24,6 +24,7 @@ import threading
 import xml.etree.ElementTree as ET
 from collections import namedtuple
 from pathlib import Path
+from typing import Optional
 
 from PySide6.QtCore import QByteArray, QObject, QRectF, Qt, QTimer, Signal
 from PySide6.QtGui import QAction, QActionGroup, QGuiApplication, QIcon, QImage, QPainter, QPixmap
@@ -84,13 +85,30 @@ HEARD_KEYFRAMES = (
     (0, "heard"), (250, "armed"), (500, "heard"), (750, "armed"),
     (1000, "asleep"), (1300, None),
 )
-#: Spin speed is a state channel: seconds per full turn of the ring (head
-#: chasing tail). Recording never spins -- fill is its signal.
-SPIN_SECONDS_PER_TURN = {"thinking": 2.4, "transcribing": 0.9}
+#: Motion means capture (queue 19, correcting 09b3): the ring TURNS in every
+#: active capture state and stands still only at rest. Speed is the state
+#: channel: seconds per full turn of the ring. Recording keeps its filled band
+#: and red -- fill and colour are the state, rotation is the liveness.
+#:   armed         wake listener armed (ambient)
+#:   listening     continuous mode waiting for speech (ambient, same pace)
+#:   recording     capturing speech
+#:   thinking      Ava / LLM working (indicator)
+#:   transcribing  recording finished, speech-to-text running
+SPIN_SECONDS_PER_TURN = {
+    "armed": 3.0,
+    "listening": 3.0,
+    "recording": 1.5,
+    "thinking": 2.4,
+    "transcribing": 0.9,
+}
 #: Tray frame from any thread: rendered on the Qt thread by _apply_icon.
 MarkFrame = namedtuple("MarkFrame", "capture eye rotation opacity", defaults=(0.0, 1.0))
 
-_SMALL_MAX = 16          # sizes at or below this use the simplified drawing (no head/tail)
+_SMALL_MAX = 20          # sizes at or below this use the heavy small drawing (no head/tail)
+#: Taskbar-facing icons (the tray icon; the app/exe/window .ico sizes) use the
+#: heavy drawing up to this size: at 150% scaling Windows shows their 24 px
+#: frame (and 32 px at 200%) in the same slot where 16 px sits at 100%.
+TASKBAR_SMALL_MAX = 32
 _FRAME_MAX = 24          # sizes at or below this draw from 24 pre-rendered 15-degree frames
 _FRAME_STEPS = 24
 _FRAME_CACHE_LIMIT = 2048
@@ -117,8 +135,8 @@ _renderer_lock = threading.Lock()
 # tail when the ring spins clockwise.
 #
 # The same centreline is stroked at two weights -- hollow states at
-# RING_LINE_WIDTH, recording at RING_BAND_WIDTH -- with the same taper and
-# snout. SVG strokes cannot vary in width, so the variable-width stroke is
+# RING_LINE_WIDTH, recording at RING_BAND_WIDTH -- each with its own head and
+# tail profile (weight_profile). SVG strokes cannot vary in width, so the variable-width stroke is
 # expanded here into ONE filled contour per segment (left edge forwards, tip
 # cap, right edge back): no outlined band, no double contour. The tail tip and
 # the nose end in round caps; the other ends are butt, so the 12-degree gaps
@@ -128,23 +146,29 @@ _renderer_lock = threading.Lock()
 RING_CENTRE = 32.0
 VIEWBOX_MARGIN = 0.5
 RING_LINE_WIDTH = 3.0         # hollow weight (idle / listening / ava / armed)
-RING_BAND_WIDTH = 11.0        # recording weight -- same centreline, same taper
-HEAD_SCALE = 1.45             # head grows to this multiple of the weight
-#: The whole ring shrinks so the swollen head at band weight still fits the
-#: viewBox (32 - 0.5 - 11 * 1.45 / 2 = 23.525); no segment moves off the circle.
-RING_RADIUS = RING_CENTRE - VIEWBOX_MARGIN - RING_BAND_WIDTH * HEAD_SCALE / 2.0
+RING_BAND_WIDTH = 11.0        # recording weight -- same centreline, its own taper
 SEGMENT_START_DEG = -84.0     # segment 0 starts just right of 12 o'clock (y down = clockwise)
 SEGMENT_SPAN_DEG = 108.0
 SEGMENT_STEP_DEG = 120.0      # 12-degree gaps at 12, 4 and 8 o'clock
 TAIL_SEGMENT = 0
 HEAD_SEGMENT = 2
-TAIL_FRACTION = 0.30          # tail ramps 0 -> full weight over the first 30% of its arc
-HEAD_FRACTION = 0.20          # head grows to HEAD_SCALE over the last 20% of its arc
-HEAD_OVERSHOOT_DEG = 13.0     # blunt nose closes this far past the head segment's end
-TIP_FRACTION = 0.22           # tail tip / nose end keep this much weight, round-capped (not chiselled)
+HEAD_FRACTION = 0.20          # head grows over the last 20% of its arc
+HEAD_OVERSHOOT_DEG = 13.0     # the centreline runs this far past the head segment's end (both weights)
 _SEGMENT_SAMPLES = 48
 _NOSE_SAMPLES = 12
 _CAP_SAMPLES = 8
+
+#: Head and tail are WEIGHT-DEPENDENT (queue 19): one multiplier cannot serve
+#: both. At the hollow weight (3) a 1.45x snout and short tail barely
+#: register, so the hollow profile swells harder and tapers longer; at the
+#: band weight (11) the same snout closed most of the 12 o'clock gap, so the
+#: band profile swells less and its nose closes within the first quarter of
+#: the overshoot; past the nose the stroke has zero width, so no thin tip
+#: bridges the gap to the tail (the centreline itself is unchanged). Values between
+#: the two weights are interpolated linearly.
+#:   (head_scale, tail_fraction, tip_fraction, nose_fraction)
+HOLLOW_PROFILE = (1.9, 0.45, 0.30, 1.00)
+BAND_PROFILE = (1.25, 0.30, 0.22, 0.25)
 
 
 def _smoothstep(t: float) -> float:
@@ -152,34 +176,64 @@ def _smoothstep(t: float) -> float:
     return t * t * (3.0 - 2.0 * t)
 
 
-def stroke_scale(segment: int, u: float) -> float:
+def weight_profile(weight: float) -> tuple:
+    """(head_scale, tail_fraction, tip_fraction, nose_fraction) for a weight."""
+    t = max(0.0, min(1.0, (weight - RING_LINE_WIDTH) / (RING_BAND_WIDTH - RING_LINE_WIDTH)))
+    return tuple(h + (b - h) * t for h, b in zip(HOLLOW_PROFILE, BAND_PROFILE))
+
+
+def head_scale(weight: float) -> float:
+    return weight_profile(weight)[0]
+
+
+def tail_fraction(weight: float) -> float:
+    return weight_profile(weight)[1]
+
+
+def tip_fraction(weight: float) -> float:
+    return weight_profile(weight)[2]
+
+
+#: The whole ring shrinks so the widest head of either weight still fits the
+#: viewBox; no segment ever moves off the circle.
+#: max(3 * 1.9, 11 * 1.25) = 13.75 -> 32 - 0.5 - 13.75 / 2 = 24.625.
+RING_RADIUS = RING_CENTRE - VIEWBOX_MARGIN - max(
+    RING_LINE_WIDTH * head_scale(RING_LINE_WIDTH),
+    RING_BAND_WIDTH * head_scale(RING_BAND_WIDTH)) / 2.0
+
+
+def stroke_scale(segment: int, u: float, weight: float = RING_BAND_WIDTH) -> float:
     """Stroke width at arc fraction u, as a multiple of the weight.
 
-    u in [0, 1] runs from the segment's start angle to its end angle; the head
-    segment also takes u > 1, up to the nose HEAD_OVERSHOOT_DEG past its end:
-      tail (segment TAIL_SEGMENT, u < TAIL_FRACTION):
-           TIP + (1 - TIP) * smoothstep(u / TAIL_FRACTION)
+    With (H, T, TIP, N) = weight_profile(weight); u in [0, 1] runs from the
+    segment's start angle to its end angle; the head segment also takes u > 1,
+    up to HEAD_OVERSHOOT_DEG past its end:
+      tail (segment TAIL_SEGMENT, u < T):
+           TIP + (1 - TIP) * smoothstep(u / T)
       head (segment HEAD_SEGMENT, 1 - HEAD_FRACTION < u <= 1):
-           1 + (HEAD_SCALE - 1) * smoothstep((u - (1 - HEAD_FRACTION)) / HEAD_FRACTION)
-      nose (segment HEAD_SEGMENT, u > 1, v = (u - 1) / (overshoot / span)):
-           max(TIP, HEAD_SCALE * sqrt(1 - v^2))
+           1 + (H - 1) * smoothstep((u - (1 - HEAD_FRACTION)) / HEAD_FRACTION)
+      nose (segment HEAD_SEGMENT, u > 1, v = (u - 1) / (N * overshoot / span)):
+           max(TIP, H * sqrt(1 - v^2)) for v <= 1, then 0 (the stroke has ended)
       else 1
     """
-    if segment == TAIL_SEGMENT and u < TAIL_FRACTION:
-        return TIP_FRACTION + (1.0 - TIP_FRACTION) * _smoothstep(u / TAIL_FRACTION)
+    head, tail, tip, nose = weight_profile(weight)
+    if segment == TAIL_SEGMENT and u < tail:
+        return tip + (1.0 - tip) * _smoothstep(u / tail)
     if segment == HEAD_SEGMENT:
         if u > 1.0:
-            v = min(1.0, (u - 1.0) / (HEAD_OVERSHOOT_DEG / SEGMENT_SPAN_DEG))
-            return max(TIP_FRACTION, HEAD_SCALE * math.sqrt(max(0.0, 1.0 - v * v)))
+            v = (u - 1.0) / (nose * HEAD_OVERSHOOT_DEG / SEGMENT_SPAN_DEG)
+            if v > 1.0 + 1e-9:
+                return 0.0
+            return max(tip, head * math.sqrt(max(0.0, 1.0 - v * v)))
         if u > 1.0 - HEAD_FRACTION:
             t = (u - (1.0 - HEAD_FRACTION)) / HEAD_FRACTION
-            return 1.0 + (HEAD_SCALE - 1.0) * _smoothstep(t)
+            return 1.0 + (head - 1.0) * _smoothstep(t)
     return 1.0
 
 
 def ring_width(segment: int, u: float, weight: float = RING_BAND_WIDTH) -> float:
     """Stroke width in viewBox units at arc fraction u for a weight."""
-    return weight * stroke_scale(segment, u)
+    return weight * stroke_scale(segment, u, weight)
 
 
 def ring_centreline(segment: int) -> list[tuple[float, float, float, float]]:
@@ -323,10 +377,14 @@ def _renderer(capture: str, eye: str, small: bool, layer: str) -> QSvgRenderer |
     return renderer
 
 
+def _uses_small(size: float, small_max: Optional[int]) -> bool:
+    return size <= (_SMALL_MAX if small_max is None else small_max)
+
+
 def _paint_vector(painter: QPainter, rect: QRectF, capture: str, eye: str,
-                  rotation: float, opacity: float) -> None:
+                  rotation: float, opacity: float, small_max: Optional[int] = None) -> None:
     """Live vector render: ring rotated, eye upright (caller holds the lock)."""
-    small = min(rect.width(), rect.height()) <= _SMALL_MAX
+    small = _uses_small(min(rect.width(), rect.height()), small_max)
     ring = _renderer(capture, eye, small, "ring")
     eye_renderer = _renderer(capture, eye, small, "eye") if MARK_EYE[eye] else None
     if ring is None:
@@ -353,13 +411,15 @@ def frame_step(rotation: float) -> int:
     return int(round(rotation / (360.0 / _FRAME_STEPS))) % _FRAME_STEPS
 
 
-def _frame(capture: str, eye: str, size: int, rotation: float) -> QImage:
+def _frame(capture: str, eye: str, size: int, rotation: float,
+           small_max: Optional[int] = None) -> QImage:
     """A pre-rendered frame for small sizes (caller holds the lock).
 
     At 16-24 px a live-rotated ring aliases badly, so spin cycles 24 frames
     in 15-degree steps, each rendered once from the vector and cached.
     """
-    key = (capture, eye, size, frame_step(rotation))
+    small = _uses_small(size, small_max)
+    key = (capture, eye, size, frame_step(rotation), small)
     image = _frame_cache.get(key)
     if image is None:
         if len(_frame_cache) >= _FRAME_CACHE_LIMIT:
@@ -368,51 +428,58 @@ def _frame(capture: str, eye: str, size: int, rotation: float) -> QImage:
         image.fill(Qt.GlobalColor.transparent)
         frame_painter = QPainter(image)
         _paint_vector(frame_painter, QRectF(0, 0, size, size), capture, eye,
-                      key[3] * (360.0 / _FRAME_STEPS), 1.0)
+                      key[3] * (360.0 / _FRAME_STEPS), 1.0, small_max)
         frame_painter.end()
         _frame_cache[key] = image
     return image
 
 
 def paint_mark(painter: QPainter, rect: QRectF, capture: str, eye: str,
-               rotation: float = 0.0, opacity: float = 1.0) -> None:
+               rotation: float = 0.0, opacity: float = 1.0, *,
+               small_max: Optional[int] = None) -> None:
     """Draw the mark into rect on an existing painter (Qt thread only).
 
-    THE one drawing of the mark: tray, listening indicator, splash and
-    gen_icons all come through here. rotation (degrees) spins the ring only
-    -- the eye never turns; opacity fades the whole mark (the listening
-    pulse). 16-24 px draws a cached 15-degree frame; 32 px and up rotates
-    the vector live.
+    THE one drawing of the mark: tray, listening indicator, splash, the
+    window header and gen_icons all come through here. rotation (degrees)
+    spins the ring only -- the eye never turns; opacity fades the whole mark.
+    Sizes up to small_max (default _SMALL_MAX = 20) use the heavy #small
+    drawing; the taskbar-facing icons pass TASKBAR_SMALL_MAX. 16-24 px draws
+    a cached 15-degree frame; 32 px and up rotates the vector live.
     """
     size = min(rect.width(), rect.height())
     with _renderer_lock:
         if size <= _FRAME_MAX:
-            image = _frame(capture, eye, max(1, int(round(size))), rotation)
+            image = _frame(capture, eye, max(1, int(round(size))), rotation, small_max)
             painter.save()
             painter.setOpacity(painter.opacity() * max(0.0, min(1.0, opacity)))
             painter.drawImage(rect, image)
             painter.restore()
             return
-        _paint_vector(painter, rect, capture, eye, rotation, opacity)
+        _paint_vector(painter, rect, capture, eye, rotation, opacity, small_max)
 
 
 def render_mark(capture: str, eye: str, size: int,
-                rotation: float = 0.0, opacity: float = 1.0) -> QImage:
+                rotation: float = 0.0, opacity: float = 1.0, *,
+                small_max: Optional[int] = None) -> QImage:
     """The mark as a transparent ARGB32 image (Qt thread only)."""
     image = QImage(size, size, QImage.Format.Format_ARGB32_Premultiplied)
     image.fill(Qt.GlobalColor.transparent)
     painter = QPainter(image)
-    paint_mark(painter, QRectF(0, 0, size, size), capture, eye, rotation, opacity)
+    paint_mark(painter, QRectF(0, 0, size, size), capture, eye, rotation, opacity,
+               small_max=small_max)
     painter.end()
     return image.convertToFormat(QImage.Format.Format_ARGB32)
 
 
 def mark_icon(frame: MarkFrame) -> QIcon:
-    """A multi-size QIcon for one frame, so Windows picks the DPI-right size."""
+    """A multi-size QIcon for one frame, so Windows picks the DPI-right size.
+    Every tray size uses the heavy drawing (TASKBAR_SMALL_MAX): at 150%
+    scaling Windows shows the 24 px frame, which must be as present as 16."""
     icon = QIcon()
     for size in _TRAY_SIZES:
         icon.addPixmap(QPixmap.fromImage(
-            render_mark(frame.capture, frame.eye, size, frame.rotation, frame.opacity)))
+            render_mark(frame.capture, frame.eye, size, frame.rotation, frame.opacity,
+                        small_max=TASKBAR_SMALL_MAX)))
     return icon
 
 # Windows can leave a QSystemTrayIcon's shell-registered screen geometry
