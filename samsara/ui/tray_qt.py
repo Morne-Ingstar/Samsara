@@ -107,31 +107,44 @@ _renderer_lock = threading.Lock()
 # ---------------------------------------------------------------------------
 # Ouroboros ring geometry (the #regular drawing, 24 px and up)
 # ---------------------------------------------------------------------------
-# The ring keeps its three segments, angles and radius (centre line 24.5,
-# full width 11 in the 64-unit viewBox: outer 30 / inner 19). At the gap at
-# 12 o'clock, the segment that ENDS there (HEAD_SEGMENT) swells into a blunt
-# snout that runs 13 degrees past its end, into the gap; the segment that
-# STARTS there (TAIL_SEGMENT) grows from a point. Head chases tail when the
-# ring spins clockwise. A stroked arc cannot taper, so every segment is a
-# FILLED outline sampled along its arc with a per-sample width (ring_width).
-# gen_icons.py writes these outlines into assets/icon/samsara.svg; --check
-# fails if the SVG drifts from this function.
+# ONE CENTRELINE PER SEGMENT, stroked at a width that varies along the arc.
+#
+# Every segment's centreline is an arc of the ONE ring circle (RING_RADIUS,
+# constant at every sample -- the head never leaves the circle). At the gap
+# at 12 o'clock the segment that ENDS there (HEAD_SEGMENT) swells into a
+# blunt snout whose nose runs HEAD_OVERSHOOT_DEG past its end into the gap;
+# the segment that STARTS there (TAIL_SEGMENT) grows from a point. Head chases
+# tail when the ring spins clockwise.
+#
+# The same centreline is stroked at two weights -- hollow states at
+# RING_LINE_WIDTH, recording at RING_BAND_WIDTH -- with the same taper and
+# snout. SVG strokes cannot vary in width, so the variable-width stroke is
+# expanded here into ONE filled contour per segment (left edge forwards, tip
+# cap, right edge back): no outlined band, no double contour. The tail tip and
+# the nose end in round caps; the other ends are butt, so the 12-degree gaps
+# stay open at full band weight. gen_icons.py writes the centrelines and both
+# weights' expansions into assets/icon/samsara.svg; --check flags drift.
 
 RING_CENTRE = 32.0
-RING_RADIUS = 24.5
-RING_WIDTH = 11.0
-RING_OUTER_CAP = 30.5        # head grows inward past this, so a 3-unit outline stays in the viewBox
-SEGMENT_START_DEG = -84.0    # segment 0 starts just right of 12 o'clock (y down = clockwise)
+VIEWBOX_MARGIN = 0.5
+RING_LINE_WIDTH = 3.0         # hollow weight (idle / listening / ava / armed)
+RING_BAND_WIDTH = 11.0        # recording weight -- same centreline, same taper
+HEAD_SCALE = 1.45             # head grows to this multiple of the weight
+#: The whole ring shrinks so the swollen head at band weight still fits the
+#: viewBox (32 - 0.5 - 11 * 1.45 / 2 = 23.525); no segment moves off the circle.
+RING_RADIUS = RING_CENTRE - VIEWBOX_MARGIN - RING_BAND_WIDTH * HEAD_SCALE / 2.0
+SEGMENT_START_DEG = -84.0     # segment 0 starts just right of 12 o'clock (y down = clockwise)
 SEGMENT_SPAN_DEG = 108.0
-SEGMENT_STEP_DEG = 120.0     # 12-degree gaps at 12, 4 and 8 o'clock
+SEGMENT_STEP_DEG = 120.0      # 12-degree gaps at 12, 4 and 8 o'clock
 TAIL_SEGMENT = 0
 HEAD_SEGMENT = 2
-TAIL_FRACTION = 0.30         # tail ramps 0 -> full width over the first 30% of its arc
-HEAD_FRACTION = 0.20         # head grows to HEAD_SCALE over the last 20% of its arc
-HEAD_SCALE = 1.55
-HEAD_OVERSHOOT_DEG = 13.0    # blunt nose closes this far past the head segment's end
+TAIL_FRACTION = 0.30          # tail ramps 0 -> full weight over the first 30% of its arc
+HEAD_FRACTION = 0.20          # head grows to HEAD_SCALE over the last 20% of its arc
+HEAD_OVERSHOOT_DEG = 13.0     # blunt nose closes this far past the head segment's end
+TIP_FRACTION = 0.22           # tail tip / nose end keep this much weight, round-capped (not chiselled)
 _SEGMENT_SAMPLES = 48
 _NOSE_SAMPLES = 12
+_CAP_SAMPLES = 8
 
 
 def _smoothstep(t: float) -> float:
@@ -139,59 +152,105 @@ def _smoothstep(t: float) -> float:
     return t * t * (3.0 - 2.0 * t)
 
 
-def ring_width(segment: int, u: float) -> float:
-    """Ring width at arc fraction u of a segment (viewBox units).
+def stroke_scale(segment: int, u: float) -> float:
+    """Stroke width at arc fraction u, as a multiple of the weight.
 
     u in [0, 1] runs from the segment's start angle to its end angle; the head
-    segment also accepts u > 1, up to the nose tip HEAD_OVERSHOOT_DEG past its
-    end:
-      tail  (segment TAIL_SEGMENT, u < TAIL_FRACTION):  W * smoothstep(u / TAIL_FRACTION)
-      head  (segment HEAD_SEGMENT, u > 1 - HEAD_FRACTION):
-            W * (1 + (HEAD_SCALE - 1) * smoothstep((u - (1 - HEAD_FRACTION)) / HEAD_FRACTION))
-      nose  (segment HEAD_SEGMENT, u > 1, v = (u - 1) / (overshoot / span)):
-            W * HEAD_SCALE * sqrt(1 - v^2)      -- an elliptical, blunt point
-      else  W
+    segment also takes u > 1, up to the nose HEAD_OVERSHOOT_DEG past its end:
+      tail (segment TAIL_SEGMENT, u < TAIL_FRACTION):
+           TIP + (1 - TIP) * smoothstep(u / TAIL_FRACTION)
+      head (segment HEAD_SEGMENT, 1 - HEAD_FRACTION < u <= 1):
+           1 + (HEAD_SCALE - 1) * smoothstep((u - (1 - HEAD_FRACTION)) / HEAD_FRACTION)
+      nose (segment HEAD_SEGMENT, u > 1, v = (u - 1) / (overshoot / span)):
+           max(TIP, HEAD_SCALE * sqrt(1 - v^2))
+      else 1
     """
-    w = RING_WIDTH
     if segment == TAIL_SEGMENT and u < TAIL_FRACTION:
-        return w * _smoothstep(u / TAIL_FRACTION)
+        return TIP_FRACTION + (1.0 - TIP_FRACTION) * _smoothstep(u / TAIL_FRACTION)
     if segment == HEAD_SEGMENT:
         if u > 1.0:
-            v = (u - 1.0) / (HEAD_OVERSHOOT_DEG / SEGMENT_SPAN_DEG)
-            return w * HEAD_SCALE * (max(0.0, 1.0 - v * v) ** 0.5)
+            v = min(1.0, (u - 1.0) / (HEAD_OVERSHOOT_DEG / SEGMENT_SPAN_DEG))
+            return max(TIP_FRACTION, HEAD_SCALE * math.sqrt(max(0.0, 1.0 - v * v)))
         if u > 1.0 - HEAD_FRACTION:
             t = (u - (1.0 - HEAD_FRACTION)) / HEAD_FRACTION
-            return w * (1.0 + (HEAD_SCALE - 1.0) * _smoothstep(t))
-    return w
+            return 1.0 + (HEAD_SCALE - 1.0) * _smoothstep(t)
+    return 1.0
 
 
-def ring_segment_outline(segment: int) -> list[tuple[float, float]]:
-    """Closed outline of one segment: outer edge forwards, inner edge back."""
+def ring_width(segment: int, u: float, weight: float = RING_BAND_WIDTH) -> float:
+    """Stroke width in viewBox units at arc fraction u for a weight."""
+    return weight * stroke_scale(segment, u)
+
+
+def ring_centreline(segment: int) -> list[tuple[float, float, float, float]]:
+    """The one centreline of a segment: (u, angle_rad, x, y) samples, all at
+    RING_RADIUS. Both weights stroke exactly these samples."""
     start = SEGMENT_START_DEG + segment * SEGMENT_STEP_DEG
     fractions = [i / _SEGMENT_SAMPLES for i in range(_SEGMENT_SAMPLES + 1)]
     if segment == HEAD_SEGMENT:
         over = HEAD_OVERSHOOT_DEG / SEGMENT_SPAN_DEG
         fractions += [1.0 + over * i / _NOSE_SAMPLES for i in range(1, _NOSE_SAMPLES + 1)]
-    outer, inner = [], []
+    samples = []
     for u in fractions:
         angle = math.radians(start + u * SEGMENT_SPAN_DEG)
-        w = ring_width(segment, u)
-        # The swollen head would cross RING_OUTER_CAP, so its centre line
-        # moves inward just enough; the nose then closes on that centre line
-        # (symmetric edges, blunt tip) rather than collapsing sideways.
-        envelope = RING_WIDTH * HEAD_SCALE if u > 1.0 else w
-        centre = min(RING_RADIUS, RING_OUTER_CAP - envelope / 2.0)
-        r_out = centre + w / 2.0
-        r_in = centre - w / 2.0
-        c, s = math.cos(angle), math.sin(angle)
-        outer.append((RING_CENTRE + r_out * c, RING_CENTRE + r_out * s))
-        inner.append((RING_CENTRE + r_in * c, RING_CENTRE + r_in * s))
-    return outer + inner[::-1]
+        samples.append((u, angle,
+                        RING_CENTRE + RING_RADIUS * math.cos(angle),
+                        RING_CENTRE + RING_RADIUS * math.sin(angle)))
+    return samples
 
 
-def ring_segment_path_data(segment: int) -> str:
-    """SVG path data for one ouroboros segment (what samsara.svg holds)."""
-    points = ring_segment_outline(segment)
+def ring_centreline_path_data(segment: int) -> str:
+    """The centreline as a single SVG arc (reference geometry in samsara.svg)."""
+    samples = ring_centreline(segment)
+    _u0, _a0, x0, y0 = samples[0]
+    _u1, _a1, x1, y1 = samples[-1]
+    r = RING_RADIUS
+    return f"M {x0:.2f},{y0:.2f} A {r:.3f} {r:.3f} 0 0 1 {x1:.2f},{y1:.2f}"
+
+
+def _cap(cx, cy, normal, tangent, half, forward):
+    """Round cap points from the left edge around the tip to the right edge
+    (forward) or from right around the back to left (not forward)."""
+    nx, ny = normal
+    tx, ty = tangent if forward else (-tangent[0], -tangent[1])
+    sign = 1.0 if forward else -1.0
+    points = []
+    for i in range(1, _CAP_SAMPLES):
+        phi = math.pi * i / _CAP_SAMPLES
+        c, s = math.cos(phi), math.sin(phi)
+        points.append((cx + half * (sign * c * nx + s * tx), cy + half * (sign * c * ny + s * ty)))
+    return points
+
+
+def ring_stroke_outline(segment: int, weight: float) -> list[tuple[float, float]]:
+    """ONE closed contour: the segment's centreline stroked at weight *
+    stroke_scale -- left (outer) edge forwards, end cap, right edge back,
+    start cap. Round caps only at the tail tip and the nose."""
+    samples = ring_centreline(segment)
+    left, right = [], []
+    for u, angle, x, y in samples:
+        half = ring_width(segment, u, weight) / 2.0
+        nx, ny = math.cos(angle), math.sin(angle)          # radial (outward) normal
+        left.append((x + half * nx, y + half * ny))
+        right.append((x - half * nx, y - half * ny))
+    points = list(left)
+    u_end, a_end, x_end, y_end = samples[-1]
+    if segment == HEAD_SEGMENT:                              # nose: round cap
+        points += _cap(x_end, y_end, (math.cos(a_end), math.sin(a_end)),
+                       (-math.sin(a_end), math.cos(a_end)),
+                       ring_width(segment, u_end, weight) / 2.0, forward=True)
+    points += right[::-1]
+    u0, a0, x0, y0 = samples[0]
+    if segment == TAIL_SEGMENT:                              # tail tip: round cap
+        points += _cap(x0, y0, (math.cos(a0), math.sin(a0)),
+                       (-math.sin(a0), math.cos(a0)),
+                       ring_width(segment, u0, weight) / 2.0, forward=False)
+    return points
+
+
+def ring_segment_path_data(segment: int, weight: float = RING_BAND_WIDTH) -> str:
+    """SVG path data for one segment's variable-width stroke at a weight."""
+    points = ring_stroke_outline(segment, weight)
     head = f"M {points[0][0]:.2f},{points[0][1]:.2f}"
     body = " ".join(f"L {x:.2f},{y:.2f}" for x, y in points[1:])
     return f"{head} {body} Z"

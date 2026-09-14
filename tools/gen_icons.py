@@ -27,6 +27,7 @@ import argparse
 import os
 import re
 import struct
+import xml.etree.ElementTree as ET
 import sys
 from pathlib import Path
 
@@ -46,8 +47,11 @@ from samsara.ui import theme  # noqa: E402
 from samsara.ui.tray_qt import (  # noqa: E402
     APP_MARK,
     MARK_STATES,
+    RING_BAND_WIDTH,
+    RING_LINE_WIDTH,
     clear_mark_caches,
     render_mark,
+    ring_centreline_path_data,
     ring_segment_path_data,
 )
 
@@ -55,7 +59,9 @@ ICON_DIR = REPO / "assets" / "icon"
 SVG_PATH = ICON_DIR / "samsara.svg"
 STATES_DIR = ICON_DIR / "states"
 SPIN_SHEET_ANGLES = (0, 45, 90, 135, 180, 225, 270, 315)
+WEIGHT_SHEET_ANGLES = (0, 45)
 _SEGMENT_PATH = re.compile(r'(<path data-role="segment" d=")([^"]*)(")')
+_CENTRELINE_PATH = re.compile(r'(<path data-role="centreline" d=")([^"]*)(")')
 
 APP_SIZES = (16, 24, 32, 48, 64, 128, 256)
 TRAY_SIZES = (16, 24, 32, 48, 64)
@@ -71,23 +77,32 @@ def _ensure_gui_app():
     return QGuiApplication.instance() or QGuiApplication(sys.argv[:1])
 
 
+def _replace_paths(text: str, pattern: re.Pattern, values: list[str], what: str) -> str:
+    matches = list(pattern.finditer(text))
+    if len(matches) != len(values):
+        raise ValueError(f"expected {len(values)} {what} in samsara.svg, found {len(matches)}")
+    pieces, last = [], 0
+    for match, value in zip(matches, values):
+        pieces.append(text[last:match.start(2)])
+        pieces.append(value)
+        last = match.end(2)
+    pieces.append(text[last:])
+    return "".join(pieces)
+
+
 def synced_svg_text(text: str) -> str:
-    """samsara.svg with the #regular ring outlines rewritten from the one
-    geometry function (tray_qt.ring_segment_path_data). The #regular drawing
-    holds two groups of three segments (hollow, filled); the #small drawing
-    keeps its plain even-width arcs and is left untouched."""
+    """samsara.svg with the #regular ring rewritten from the one geometry
+    (tray_qt.ring_centreline / stroke_scale): the three reference centrelines,
+    then the same centrelines stroked at the hollow weight (#ring-hollow) and
+    at the band weight (#ring-filled). The #small drawing is left untouched."""
     split = text.index('<g id="small"')
     regular, small = text[:split], text[split:]
-    matches = list(_SEGMENT_PATH.finditer(regular))
-    if len(matches) != 6:
-        raise ValueError(f"expected 6 regular ring segments in samsara.svg, found {len(matches)}")
-    pieces, last = [], 0
-    for index, match in enumerate(matches):
-        pieces.append(regular[last:match.start(2)])
-        pieces.append(ring_segment_path_data(index % 3))
-        last = match.end(2)
-    pieces.append(regular[last:])
-    return "".join(pieces) + small
+    regular = _replace_paths(regular, _CENTRELINE_PATH,
+                             [ring_centreline_path_data(i) for i in range(3)], "ring centrelines")
+    strokes = ([ring_segment_path_data(i, RING_LINE_WIDTH) for i in range(3)]
+               + [ring_segment_path_data(i, RING_BAND_WIDTH) for i in range(3)])
+    regular = _replace_paths(regular, _SEGMENT_PATH, strokes, "regular ring segments")
+    return regular + small
 
 
 def sync_svg() -> bool:
@@ -148,6 +163,8 @@ def expected_outputs() -> dict[Path, QImage | bytes]:
 def write_assets() -> list[Path]:
     STATES_DIR.mkdir(parents=True, exist_ok=True)
     written = [SVG_PATH] if sync_svg() else []
+    # Never overwrite good assets with blank renders of a broken source.
+    ET.fromstring(SVG_PATH.read_text(encoding="utf-8"))
     for path, value in expected_outputs().items():
         data = value if isinstance(value, bytes) else png_bytes(value)
         path.write_bytes(data)
@@ -161,6 +178,12 @@ def stale_assets() -> list[Path]:
     produces any more."""
     stale = []
     svg_text = SVG_PATH.read_text(encoding="utf-8")
+    try:
+        ET.fromstring(svg_text)
+    except ET.ParseError:
+        # An unparseable SVG renders every asset blank, and blank would match
+        # blank files written by the same broken run -- fail loudly instead.
+        return [SVG_PATH]
     if synced_svg_text(svg_text) != svg_text:
         stale.append(SVG_PATH)
     expected = expected_outputs()
@@ -268,11 +291,41 @@ def write_spin_sheet(path: Path, size: int = 128) -> Path:
     return _save(sheet, path)
 
 
+def write_weight_sheet(path: Path, size: int = 128) -> Path:
+    """Both weights of the one centreline side by side at WEIGHT_SHEET_ANGLES:
+    hollow (listening) and recording (band), on dark and light."""
+    _ensure_gui_app()
+    pad, header_h, label_w = 12, 36, 70
+    cell = size + 2 * pad
+    columns = [(angle, weight_label, capture)
+               for angle in WEIGHT_SHEET_ANGLES
+               for weight_label, capture in (("hollow", "listening"), ("recording", "recording"))]
+    sheet = QImage(label_w + cell * len(columns), header_h + 2 * cell, QImage.Format.Format_ARGB32)
+    sheet.fill(QColor(theme.BG0))
+    painter = QPainter(sheet)
+    painter.setFont(QFont("Segoe UI", 10))
+    for i, (angle, weight_label, _capture) in enumerate(columns):
+        painter.setPen(QColor(theme.TEXT_PRIMARY))
+        painter.drawText(QRectF(label_w + i * cell, 0, cell, header_h),
+                         Qt.AlignmentFlag.AlignCenter, f"{weight_label} {angle} deg")
+    for row, (tone, bg) in enumerate((("dark", _TASKBAR_DARK), ("light", _TASKBAR_LIGHT))):
+        y = header_h + row * cell
+        painter.setPen(QColor(theme.ICON_IDLE))
+        painter.drawText(QRectF(0, y, label_w, cell), Qt.AlignmentFlag.AlignCenter, tone)
+        for i, (angle, _weight_label, capture) in enumerate(columns):
+            x = label_w + i * cell
+            painter.fillRect(x + 4, y + 4, cell - 8, cell - 8, QColor(bg))
+            painter.drawImage(x + pad, y + pad, render_mark(capture, "asleep", size, rotation=float(angle)))
+    painter.end()
+    return _save(sheet, path)
+
+
 def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(description=__doc__.splitlines()[0])
     parser.add_argument("--check", action="store_true", help="exit 1 if generated assets are stale")
     parser.add_argument("--montage", type=Path, help="write the state montage to this path")
     parser.add_argument("--spin-sheet", type=Path, help="write the 128 px rotation sheet to this path")
+    parser.add_argument("--weight-sheet", type=Path, help="write the hollow/recording weight sheet to this path")
     args = parser.parse_args(argv)
     _ensure_gui_app()
 
@@ -281,11 +334,13 @@ def main(argv: list[str] | None = None) -> int:
         for path in stale:
             print(f"stale: {path.relative_to(REPO)}")
         return 1 if stale else 0
-    if args.montage is not None or args.spin_sheet is not None:
+    if args.montage is not None or args.spin_sheet is not None or args.weight_sheet is not None:
         if args.montage is not None:
             print(f"saved {write_montage(args.montage)}")
         if args.spin_sheet is not None:
             print(f"saved {write_spin_sheet(args.spin_sheet)}")
+        if args.weight_sheet is not None:
+            print(f"saved {write_weight_sheet(args.weight_sheet)}")
         return 0
     for path in write_assets():
         print(f"saved {path.relative_to(REPO)}")
