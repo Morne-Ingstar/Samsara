@@ -335,11 +335,19 @@ def test_miss_tip_names_the_real_settings_label_and_page():
     from pathlib import Path
     from samsara.ui import mic_setup_wizard_qt as msw
     wizard_src = Path(msw.__file__).read_text(encoding="utf-8")
-    settings_src = (Path(msw.__file__).parent / "settings_qt.py").read_text(encoding="utf-8")
+    # 21 split the settings window into samsara/ui/settings/<page>_qt.py.
+    ui_dir = Path(msw.__file__).parent
+    settings_files = [ui_dir / "settings_qt.py", *sorted((ui_dir / "settings").glob("*.py"))]
+    settings_srcs = {p.name: p.read_text(encoding="utf-8") for p in settings_files}
+    settings_src = "\n".join(settings_srcs.values())
     assert "'Wake-word threshold'" in wizard_src and "Settings -> Modes (try 0.10)" in wizard_src
     assert "Wake word sensitivity" not in wizard_src
-    assert '"Wake-word threshold"' in settings_src                           # settings_qt's label
-    modes_start = settings_src.index("def _build_modes_tab")
-    advanced_start = settings_src.index("def _build_advanced_tab")
-    assert modes_start < settings_src.index('"Wake-word threshold"') < advanced_start   # on the Modes page
+    assert '"Wake-word threshold"' in settings_src                           # settings' label
+    homes = [name for name, src in settings_srcs.items() if '"Wake-word threshold"' in src]
+    assert len(homes) == 1
+    home_src = settings_srcs[homes[0]]
+    modes_start = home_src.index("def _build_modes_tab")                     # same file as the Modes builder
+    label_at = home_src.index('"Wake-word threshold"')
+    next_builder = home_src.find("    def _build_", modes_start + 1)
+    assert modes_start < label_at < (next_builder if next_builder != -1 else len(home_src))   # on the Modes page
     assert "Test Wake Word" not in settings_src

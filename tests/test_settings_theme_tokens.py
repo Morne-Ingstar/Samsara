@@ -1,8 +1,10 @@
 """settings_qt.py draws from theme.py tokens, not its own palette (16).
 
 Two checks:
-  * a source scan: the only ``#rrggbb`` literals left in settings_qt.py are
-    the documented exceptions, at their documented counts;
+  * a source scan: the only ``#rrggbb`` literals left in the settings window
+    source -- settings_qt.py plus its per-page modules under
+    samsara/ui/settings/ (split out in 21) -- are the documented exceptions,
+    at their documented counts;
   * an offscreen smoke: the window builds with the token-substituted
     stylesheet, every tab is shown, and no widget stylesheet still carries
     an old-palette colour. No pixel comparison.
@@ -19,6 +21,9 @@ from PySide6.QtWidgets import QWidget
 from samsara.ui import settings_qt, theme
 
 _SOURCE = Path(settings_qt.__file__)
+# 21 moved each page into samsara/ui/settings/<page>_qt.py; the scan covers
+# the window as a whole, so the counts below are unchanged by the split.
+_SOURCES = (_SOURCE, *sorted((_SOURCE.parent / "settings").glob("*.py")))
 _HEX_RE = re.compile(r"#([0-9a-fA-F]{6})\b")
 
 # Reported exceptions (see reports/16_code.md), upper-cased, with counts.
@@ -65,23 +70,32 @@ class _StubApp:
         pass
 
 
+def _source_text() -> str:
+    return "\n".join(path.read_text(encoding="utf-8") for path in _SOURCES)
+
+
 def _leftovers() -> Counter:
-    src = _SOURCE.read_text(encoding="utf-8")
+    src = _source_text()
     return Counter(h.upper() for h in _HEX_RE.findall(src))
 
 
 class TestSourceScan:
+    def test_scan_covers_the_page_modules(self):
+        names = {path.name for path in _SOURCES}
+        assert "settings_qt.py" in names
+        assert {"general_qt.py", "modes_qt.py", "advanced_qt.py", "help_qt.py"} <= names
+
     def test_only_the_reported_literals_remain(self):
         assert dict(_leftovers()) == EXPECTED_LEFTOVERS
 
     def test_old_palette_is_gone_from_source(self):
-        src = _SOURCE.read_text(encoding="utf-8").upper()
+        src = _source_text().upper()
         present = [c for c in OLD_PALETTE if c in src]
         assert present == []
 
     def test_tokens_are_referenced_not_copied(self):
         """The swap must reference theme.*, not paste the token values in."""
-        src = _SOURCE.read_text(encoding="utf-8").lower()
+        src = _source_text().lower()
         for value in (theme.BG0, theme.BG1, theme.BG2, theme.ACCENT, theme.ERROR,
                       theme.WARNING, theme.ICON_IDLE, theme.TEXT_PRIMARY):
             assert value.lower() not in src, value

@@ -846,7 +846,7 @@ class TestModesTabClaims:
 
     # 1. streaming --------------------------------------------------------
     def test_streaming_key_is_a_fixed_label_and_the_config_key_is_gone(self, qapp):
-        from samsara.ui import settings_qt as sq
+        from samsara.ui.settings import modes_qt as sq   # Modes constants live with the page (21)
         _stub, win = self._win({"streaming_hotkey": "f9"})
         assert 'streaming_hotkey' not in win._widgets
         assert win._widgets['streaming_key_display'].text() == sq._STREAMING_KEY_LABEL == "CapsLock (fixed)"
@@ -872,7 +872,7 @@ class TestModesTabClaims:
 
     # 2. enable voice control ---------------------------------------------
     def test_enable_voice_control_says_the_command_only_key_always_works(self, qapp):
-        from samsara.ui import settings_qt as sq
+        from samsara.ui.settings import modes_qt as sq   # Modes constants live with the page (21)
         _stub, win = self._win()
         assert "always works" in sq._ENABLE_VOICE_CONTROL_DESC
         assert "command-only shortcut below to start" not in sq._ENABLE_VOICE_CONTROL_DESC
@@ -881,7 +881,7 @@ class TestModesTabClaims:
     # 3. Ava mode key -----------------------------------------------------
     def test_ava_key_is_a_named_key_combo_sharing_the_session_key_list(self, qapp):
         from PySide6.QtWidgets import QComboBox
-        from samsara.ui import settings_qt as sq
+        from samsara.ui.settings import modes_qt as sq   # Modes constants live with the page (21)
         _stub, win = self._win({"ava_mode_key": "right_alt"})
         combo = win._widgets['ava_mode_key']
         assert isinstance(combo, QComboBox)
@@ -891,7 +891,7 @@ class TestModesTabClaims:
         assert win._save_fns[1]({})['ava_mode_key'] == 'f13'
 
     def test_ava_key_combo_migration_keeps_unsupported_value_until_picked(self, qapp):
-        from samsara.ui import settings_qt as sq
+        from samsara.ui.settings import modes_qt as sq   # Modes constants live with the page (21)
         _stub, win = self._win({"ava_mode_key": "ctrl+alt+a"})
         combo = win._widgets['ava_mode_key']
         assert combo.currentText() == sq._AVA_KEY_UNSUPPORTED.format(combo="ctrl+alt+a")
@@ -911,7 +911,7 @@ class TestModesTabClaims:
     # 4. button behaviour note --------------------------------------------
     def test_button_behavior_note_is_built_from_session_modes_constants(self, qapp):
         from samsara import session_modes
-        from samsara.ui import settings_qt as sq
+        from samsara.ui.settings import modes_qt as sq   # Modes constants live with the page (21)
         _stub, win = self._win()
         note = win._widgets['button_behavior_note'].text()
         assert note == sq._button_behavior_note()
@@ -925,7 +925,7 @@ class TestModesTabClaims:
     # 5 + 6. descriptions -------------------------------------------------
     def test_paste_staged_and_advanced_descriptions(self, qapp):
         from samsara import session_modes
-        from samsara.ui import settings_qt as sq
+        from samsara.ui.settings import modes_qt as sq   # Modes constants live with the page (21)
         _stub, win = self._win()
         labels = self._labels(win)
         assert sq._PASTE_STAGED_DESC.format(commit=session_modes.DICTATE_COMMIT_PHRASE) in labels
@@ -973,7 +973,7 @@ class TestModesTabClaims:
 
     # 8. config-only note -------------------------------------------------
     def test_config_only_note_lists_the_unexposed_keys(self, qapp):
-        from samsara.ui import settings_qt as sq
+        from samsara.ui.settings import modes_qt as sq   # Modes constants live with the page (21)
         _stub, win = self._win()
         note = win._widgets['modes_config_only_note'].text()
         for key in sq._MODES_CONFIG_ONLY_KEYS:
