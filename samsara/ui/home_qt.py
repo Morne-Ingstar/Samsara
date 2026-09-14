@@ -67,7 +67,17 @@ CAPABILITY_TITLES = (
     "Dictate anywhere",
     "Ask Ava",
     "Teach it your words",
+    "Guides & help",
 )
+#: The guidance hub behind the "Guides & help" card (40): visible label ->
+#: (app method or settings tab). Each is an existing surface.
+GUIDES = (
+    ("Command reference", "cheatsheet", None),
+    ("Quick reference", "app", "open_quick_reference"),
+    ("Tutorial", "app", "show_tutorial"),
+    ("Help & support", "settings", "Help & Support"),
+)
+NOTHING_TO_CORRECT = "Nothing to correct yet"
 ANY_TEXTBOX = "any textbox"
 STOP_LISTENING = "Stop listening"
 STOPPING = "Stopping"
@@ -91,8 +101,9 @@ ICON_GLYPHS = {
     "dictate": chr(0x270E),     # pencil
     "ava": chr(0x2726),         # four-pointed star
     "words": chr(0x2261),       # three lines (same as dictionary)
+    "guides": chr(0x2139),      # information source
 }
-CARD_GLYPHS = ("windows", "hands_free", "dictate", "ava", "words")
+CARD_GLYPHS = ("windows", "hands_free", "dictate", "ava", "words", "guides")
 WORDS_TODAY = "words today"
 WORDS_REMAINING = "words remaining"
 INFINITY = chr(0x221E)
@@ -455,6 +466,8 @@ def capability_cards(app, records) -> list:
         {"title": CAPABILITY_TITLES[4],
          "value": f"{words} words" if words is not None else "your dictionary",
          "action": "page", "arg": "Dictionary"},
+        {"title": CAPABILITY_TITLES[5], "value": f"{len(GUIDES)} guides",
+         "action": "guides", "arg": None},
     ]
 
 
@@ -544,51 +557,117 @@ def stop_listening(app) -> bool:
     return stop_capture(app) is not None
 
 
-def open_cheatsheet_filtered(app, needle: str) -> None:
+def _post_after(fn) -> None:
+    """Run fn on the Qt thread AFTER anything already posted (qt_runtime's
+    posts are FIFO on one thread), so a callback posted after a window's
+    own init post sees the built window. Falls back to a direct call
+    outside the runtime."""
+    try:
+        from samsara.ui import qt_runtime  # noqa: PLC0415
+        qt_runtime.post(fn)
+    except Exception:  # noqa: BLE001
+        fn()
+
+
+def open_cheatsheet_filtered(app, needle: str) -> bool:
     """Show the command reference with its text filter set to `needle` and
-    the category on All (the sheet's own filter path)."""
+    the category on All (the sheet's own filter path). The sheet's window
+    is read when the posted callback RUNS, not when this is called: on the
+    first open the wrapper has no window yet (its init is itself a post),
+    which is why the filter never applied on a first press (40)."""
     sheet = getattr(app, 'cheat_sheet', None)
     if sheet is None:
-        return
+        logger.error("[HOME] Command reference: the app has no cheat_sheet")
+        return False
     try:
         sheet.show()
     except Exception as exc:
-        logger.debug(f"open_cheatsheet_filtered show: {exc}")
-        return
-    window = getattr(sheet, '_window', None)
-    if window is None:
-        return
+        logger.warning(f"[HOME] Command reference show failed: {exc}")
+        return False
 
     def _apply():
+        window = getattr(sheet, '_window', None)
+        if window is None:
+            logger.error("[HOME] Command reference: window not built after its init post")
+            return
         try:
             window._set_category("All")
             window._filter.setText(needle)
         except Exception as exc:
-            logger.debug(f"open_cheatsheet_filtered filter: {exc}")
+            logger.warning(f"[HOME] Command reference filter failed: {exc}")
 
+    _post_after(_apply)
+    return True
+
+
+def settings_tab_ids() -> list:
+    """The settings page registry the hub links into (the split window's
+    _TAB_NAMES); empty when the settings module cannot be imported."""
     try:
-        from samsara.ui import qt_runtime
-        qt_runtime.post(_apply)
-    except Exception:
-        _apply()
+        from samsara.ui.settings_qt import _TAB_NAMES  # noqa: PLC0415
+        return list(_TAB_NAMES)
+    except Exception as exc:  # noqa: BLE001
+        logger.error(f"[HOME] settings page registry unavailable: {exc}")
+        return []
 
 
-def open_settings_tab(app, tab: str) -> None:
+def open_settings_tab(app, tab: str) -> bool:
+    """Open Settings ON `tab`. The tab id is asserted against the page
+    registry at call time (a missing id is logged loudly and nothing
+    opens), and the page is selected in a callback posted AFTER the
+    window's own init post, reading the window when it runs. Before (40),
+    the window was read at call time: None on the first open, so Settings
+    landed on page one -- the owner's "Ask Ava opens Settings at the top".
+    """
+    ids = settings_tab_ids()
+    if tab not in ids:
+        logger.error("[HOME] Settings page %r is not in the registry %r; not opening", tab, ids)
+        return False
     fn = getattr(app, 'open_settings', None)
     if not callable(fn):
-        return
+        logger.error("[HOME] the app has no open_settings")
+        return False
     try:
         fn()
     except Exception as exc:
-        logger.debug(f"open_settings_tab: {exc}")
-        return
-    window = getattr(getattr(app, '_settings_qt', None), '_window', None)
-    if window is not None and hasattr(window, 'show_tab'):
+        logger.warning(f"[HOME] open_settings failed: {exc}")
+        return False
+
+    def _select():
+        window = getattr(getattr(app, '_settings_qt', None), '_window', None)
+        if window is None or not hasattr(window, 'show_tab'):
+            logger.error("[HOME] Settings window not built after its init post; page %r not selected", tab)
+            return
         try:
-            from samsara.ui import qt_runtime
-            qt_runtime.post(lambda: window.show_tab(tab))
+            window.show_tab(tab)
         except Exception as exc:
-            logger.debug(f"open_settings_tab show_tab: {exc}")
+            logger.error(f"[HOME] Settings page {tab!r} could not be selected: {exc}")
+
+    _post_after(_select)
+    return True
+
+
+def open_guide(app, label: str) -> bool:
+    """Open one GUIDES entry by its visible label."""
+    for name, kind, target in GUIDES:
+        if name != label:
+            continue
+        if kind == "cheatsheet":
+            return open_cheatsheet_filtered(app, "")
+        if kind == "settings":
+            return open_settings_tab(app, target)
+        fn = getattr(app, target, None)
+        if not callable(fn):
+            logger.error(f"[HOME] guide {label!r}: the app has no {target}")
+            return False
+        try:
+            fn()
+        except Exception as exc:
+            logger.warning(f"[HOME] guide {label!r} failed: {exc}")
+            return False
+        return True
+    logger.error(f"[HOME] unknown guide {label!r}")
+    return False
 
 
 # ---------------------------------------------------------------------------
@@ -787,7 +866,7 @@ class HomePage(QWidget):
 
         # Tab order: top to bottom, in the order the widgets were built.
         chain = [self._stop_btn, self._pause_btn, self._undo_btn, self._teach_btn, self._why_btn,
-                 *self._cards]
+                 *self._cards, *self._guide_btns.values()]
         for a, b in zip(chain, chain[1:]):
             QWidget.setTabOrder(a, b)
         self._tab_chain = chain
@@ -872,6 +951,12 @@ class HomePage(QWidget):
             btn_row.addWidget(b)
         btn_row.addStretch(1)
         lay.addLayout(btn_row)
+        # Why "Teach a word" is disabled, when it is: a visible reason on its
+        # own line, not a window that opens on nothing (40).
+        self._teach_note = _label("", size=12, color=theme.TEXT_SECONDARY, wrap=True)
+        self._teach_note.setAccessibleName("Teach a word note")
+        self._teach_note.setVisible(False)
+        lay.addWidget(self._teach_note)
         return card
 
     def _build_capabilities(self) -> QWidget:
@@ -901,6 +986,25 @@ class HomePage(QWidget):
         self._cards_cols = 0
         self._relayout_cards(CONTENT_MAX_W)
         lay.addLayout(self._cards_grid)
+
+        # Guides & help (40): the row beneath the cards, opened by the card,
+        # one button per guidance surface. Visible labels are the accessible
+        # names; hidden until the card is pressed.
+        self._guides_row = QWidget()
+        self._guides_row.setStyleSheet("background: transparent;")
+        self._guides_row.setAccessibleName("Guides")
+        glay = QHBoxLayout(self._guides_row)
+        glay.setContentsMargins(0, 0, 0, 0)
+        glay.setSpacing(GRID)
+        self._guide_btns = {}
+        for label, _kind, _target in GUIDES:
+            btn = _button(label)
+            btn.clicked.connect(lambda _=False, l=label: self._on_guide(l))
+            glay.addWidget(btn)
+            self._guide_btns[label] = btn
+        glay.addStretch(1)
+        self._guides_row.setVisible(False)
+        lay.addWidget(self._guides_row)
         return box
 
     def _relayout_cards(self, width: int):
@@ -1051,7 +1155,14 @@ class HomePage(QWidget):
         QTimer.singleShot(FEEDBACK_MS, self.refresh)
         QTimer.singleShot(FEEDBACK_MS * 4, self.refresh)
 
+    def _refresh_teach(self):
+        has_text = bool(last_typed_text(self._app).strip())
+        self._teach_btn.setEnabled(has_text)
+        self._teach_note.setText("" if has_text else NOTHING_TO_CORRECT)
+        self._teach_note.setVisible(not has_text)
+
     def _refresh_last_action(self):
+        self._refresh_teach()
         ring = outcome_ring(self._app)
         outcome = ring[-1] if ring else None
         if outcome != self._last_outcome:
@@ -1118,12 +1229,17 @@ class HomePage(QWidget):
         self.refresh()
 
     def _on_teach(self):
+        if not last_typed_text(self._app).strip():
+            self._refresh_teach()          # says so on the card; opens nothing
+            return
         fn = getattr(self._app, 'open_correction_capture', None)
-        if callable(fn):
-            try:
-                fn()
-            except Exception as exc:
-                logger.warning(f"[HOME] teach a word failed: {exc}")
+        if not callable(fn):
+            logger.error("[HOME] the app has no open_correction_capture")
+            return
+        try:
+            fn()
+        except Exception as exc:
+            logger.warning(f"[HOME] teach a word failed: {exc}")
 
     def _on_why(self):
         if self._last_outcome is None:
@@ -1141,6 +1257,40 @@ class HomePage(QWidget):
             open_settings_tab(self._app, arg)
         elif action == "page":
             self._open_page(arg)
+        elif action == "guides":
+            self.show_guides(not self._guides_row.isVisibleTo(self))
+        else:
+            logger.error(f"[HOME] card action {action!r} has no destination")
+
+    def show_guides(self, visible: bool = True):
+        self._guides_row.setVisible(visible)
+        if visible:
+            first = next(iter(self._guide_btns.values()), None)
+            if first is not None:
+                first.setFocus()
+
+    def _on_guide(self, label: str):
+        open_guide(self._app, label)
+
+    def destinations(self) -> dict:
+        """Every actionable control on this page -> its concrete destination
+        (the table tests/test_home_qt.py checks). kinds: 'app' calls an app
+        method; 'settings' selects a registry page; 'cheatsheet' shows the
+        command reference; 'page' switches the hub page; 'inline' changes
+        this page; 'guides' opens the guides row."""
+        table = {
+            STOP_LISTENING: ("app", "exit_ava_command_session | exit_command_mode | stop_continuous_mode | stop_recording"),
+            PAUSE_HANDS_FREE: ("app", "snooze_listening"),
+            RESUME_HANDS_FREE: ("app", "resume_listening"),
+            "Undo": ("app", "_handle_unified_scratch_that"),
+            "Teach a word": ("app", "open_correction_capture"),
+            "Why?": ("inline", "Reason"),
+        }
+        for spec in capability_cards(self._app, self._records):
+            table[spec["title"]] = (spec["action"], spec["arg"])
+        for label, kind, target in GUIDES:
+            table[label] = (kind, target)
+        return table
 
     # ---- Introspection (tests, screenshots) ------------------------------
 
@@ -1150,7 +1300,9 @@ class HomePage(QWidget):
 
     @property
     def tab_chain(self) -> list:
-        return list(self._tab_chain)
+        """The declared tab order, visible controls only (a hidden guides
+        row is skipped by Qt's focus traversal too)."""
+        return [w for w in self._tab_chain if w.isVisibleTo(self)]
 
     @property
     def state_texts(self) -> dict:
