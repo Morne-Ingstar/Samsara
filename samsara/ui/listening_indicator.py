@@ -660,27 +660,49 @@ class ListeningIndicator(QWidget):
     def _now_ms(self) -> int:
         return self._clock.elapsed()
 
+    def _spin(self, pace: str) -> float:
+        """Continuous clock-driven rotation (degrees) at a SPIN_SECONDS_PER_TURN pace."""
+        turn_ms = SPIN_SECONDS_PER_TURN[pace] * 1000.0
+        return 360.0 * (self._now_ms() % turn_ms) / turn_ms
+
+    def _capture_pace(self):
+        """The pace the ring turns at while capturing, or None at rest.
+        Motion means capture (queue 19): wake armed turns slowly, any other
+        live capture (hold, toggle, continuous, a latched session, the REC
+        chip) at the recording pace."""
+        if self._chip_kind == "live":
+            return "recording"
+        if self._wake_armed:
+            return "armed"
+        if self._listening:
+            return "recording"
+        return None
+
     def _base_glyph(self):
-        """The state glyph without idle overlays: (capture, eye, rotation, opacity)."""
-        t = self._pulse_step / _PULSE_STEPS
+        """The state glyph without idle overlays: (capture, eye, rotation, opacity).
+        Opacity is always 1: the listening pulse was retired in favour of
+        rotation (queue 19); the ring is still only at rest."""
         if self._unlocked:
             return "idle", "off", 0.0, 1.0
         if self._flash_bg is not None and self._flash_wake:
             return "listening", "heard", 0.0, 1.0
+        pace = self._capture_pace()
         if self._session_mode_name:
             capture = "ava" if str(self._session_mode_name).upper() == "AVA" else "listening"
-            return capture, "off", 0.0, 1.0
+            return capture, "off", self._spin(pace) if pace else 0.0, 1.0
         if self._thinking:
-            turn_ms = SPIN_SECONDS_PER_TURN["thinking"] * 1000.0
-            return "ava", "off", 360.0 * (self._now_ms() % turn_ms) / turn_ms, 1.0
+            return "ava", "off", self._spin("thinking"), 1.0
         if self._snoozed:
             return "idle", "asleep", 0.0, 1.0
-        pulse = (0.6 + 0.4 * t) if self._listening else 1.0
+        rotation = self._spin(pace) if pace else 0.0
         if self._wake_armed and not self._command_mode:
-            return "listening", "armed", 0.0, pulse
-        if self._command_mode or self._listening:
-            return "listening", "off", 0.0, pulse
+            return "listening", "armed", rotation, 1.0
+        if self._command_mode or self._listening or pace:
+            return "listening", "off", rotation, 1.0
         return "idle", "off", 0.0, 1.0
+
+    def _spinning(self) -> bool:
+        return self._thinking or self._capture_pace() is not None
 
     def _idle_allowed(self) -> bool:
         """Blink/glance only on a visible, unminimised pill whose eye is open
@@ -713,7 +735,9 @@ class ListeningIndicator(QWidget):
             return
         if not self._blink_timer.isActive() and self._blink_started_ms is None:
             self._blink_timer.start(int(self._idle_rng.uniform(*_BLINK_INTERVAL_S) * 1000))
-        if not self._glance_timer.isActive() and self._glance_started_ms is None:
+        if self._spinning():
+            self._glance_timer.stop()          # no rest pose to tilt from (queue 19)
+        elif not self._glance_timer.isActive() and self._glance_started_ms is None:
             self._glance_timer.start(int(self._idle_rng.uniform(*_GLANCE_INTERVAL_S) * 1000))
 
     def _state_changed(self):
@@ -721,6 +745,9 @@ class ListeningIndicator(QWidget):
         reschedules only if the new state allows it."""
         self._cancel_idle()
         self._schedule_idle()
+        # A capture state that turns the ring needs the frame clock running.
+        if self.isVisible() and self._spinning() and not self._pulse_timer.isActive():
+            self._pulse_timer.start()
 
     def _start_blink(self):
         if not self._idle_allowed():
@@ -731,7 +758,10 @@ class ListeningIndicator(QWidget):
         self.update()
 
     def _start_glance(self):
-        if not self._idle_allowed():
+        # A glance is a tilt that returns to a REST pose; while the ring turns
+        # (every capture state, queue 19) there is no rest pose, so it is
+        # suppressed. The blink still plays.
+        if not self._idle_allowed() or self._spinning():
             self._schedule_idle()
             return
         self._glance_started_ms = self._now_ms()
@@ -936,16 +966,17 @@ class ListeningIndicator(QWidget):
         """(capture, eye, rotation_deg, opacity) for the pill's state glyph --
         the same mark the tray draws (tray_qt.paint_mark), at pill size.
 
-        Motion on the same drawing: Vision (thinking) spins at
-        SPIN_SECONDS_PER_TURN['thinking'], listening pulses, and -- only in
-        the armed (open-eye) state -- the idle blink closes the lid and the
-        idle glance tilts the ring; both end back at the rest pose.
+        Motion on the same drawing: the ring turns in every capture state at
+        its SPIN_SECONDS_PER_TURN pace (thinking, armed, recording) and is
+        still at rest. Only in the armed (open-eye) state the idle blink
+        closes the lid; the idle glance tilts a ring that is NOT turning.
         """
         capture, eye, rotation, opacity = self._base_glyph()
         if eye == "armed":
             if self._blink_started_ms is not None:
                 eye = "asleep"
-            rotation += self._glance_angle()
+            if not self._spinning():
+                rotation += self._glance_angle()
         return capture, eye, rotation, opacity
 
     def _pill_width(self, label: str, show_dot: bool) -> int:
@@ -1165,7 +1196,9 @@ class ListeningIndicator(QWidget):
     # ------------------------------------------------------------------
 
     def _pulse_tick(self):
-        if (not self._listening and not self._thinking) or not self.isVisible():
+        # Also the frame clock for the turning ring (_spinning): it runs while
+        # anything is capturing and stops at rest, so an idle pill never wakes.
+        if (not self._listening and not self._spinning()) or not self.isVisible():
             self._pulse_timer.stop()
             return
         self._pulse_step += self._pulse_direction

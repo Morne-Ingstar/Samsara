@@ -5,7 +5,6 @@ consume it, and the taskbar AUMID. dictation.py is read as source, never
 imported, here."""
 
 import ast
-import hashlib
 import importlib.util
 import io
 import math
@@ -97,7 +96,9 @@ def test_armed_face_is_unchanged_open_eye():
     svg = (REPO / "assets" / "icon" / "samsara.svg").read_text(encoding="utf-8")
     assert 'd="M 20,32 Q 32,21 44,32"' in svg and 'd="M 20,32 Q 32,43 44,32"' in svg
     assert '<circle data-role="pupil" cx="32" cy="32" r="2.5"' in svg
-    assert 'rx="13" ry="8.5"' in svg                         # 16 px dot-in-ellipse
+    # 16-20 px (19): a solid pupil dot, no hairline ellipse.
+    assert '<circle data-role="pupil" cx="32" cy="32" r="7" fill="#8b929c" stroke="none"/>' in svg
+    assert 'rx="13" ry="8.5"' not in svg
 
 
 # ---------------------------------------------------------------------------
@@ -191,10 +192,9 @@ def test_svg_ring_is_the_shared_centreline_at_two_weights(gen_icons):
 @pytest.mark.parametrize("segment", [0, 1, 2])
 def test_hollow_and_recording_are_one_centreline_at_two_widths(segment):
     """Every sample's left/right edge pair, at BOTH weights, straddles the same
-    centreline point, and the widths differ only by the weight ratio."""
+    centreline point; the widths follow each weight's own profile (19)."""
     samples = tray_qt.ring_centreline(segment)
     n = len(samples)
-    ratio = tray_qt.RING_BAND_WIDTH / tray_qt.RING_LINE_WIDTH
     for weight in (tray_qt.RING_LINE_WIDTH, tray_qt.RING_BAND_WIDTH):
         outline = tray_qt.ring_stroke_outline(segment, weight)
         left = outline[:n]
@@ -204,9 +204,11 @@ def test_hollow_and_recording_are_one_centreline_at_two_widths(segment):
             assert (lx + rx) / 2 == pytest.approx(x, abs=1e-9)
             assert (ly + ry) / 2 == pytest.approx(y, abs=1e-9)
             assert math.hypot(lx - rx, ly - ry) == pytest.approx(tray_qt.ring_width(segment, u, weight))
+    # Away from head and tail both weights are the plain stroke.
     for u, *_rest in samples:
-        assert tray_qt.ring_width(segment, u, tray_qt.RING_BAND_WIDTH) == pytest.approx(
-            ratio * tray_qt.ring_width(segment, u, tray_qt.RING_LINE_WIDTH))
+        if 0.5 <= u <= 0.6:
+            for weight in (tray_qt.RING_LINE_WIDTH, tray_qt.RING_BAND_WIDTH):
+                assert tray_qt.ring_width(segment, u, weight) == pytest.approx(weight)
 
 
 @pytest.mark.parametrize("segment", [0, 1, 2])
@@ -217,8 +219,9 @@ def test_head_stays_on_the_constant_ring_radius(segment):
 
 
 def test_whole_ring_shrinks_so_the_band_weight_head_fits():
-    assert tray_qt.RING_RADIUS == pytest.approx(
-        32.0 - tray_qt.VIEWBOX_MARGIN - tray_qt.RING_BAND_WIDTH * tray_qt.HEAD_SCALE / 2)
+    widest_head = max(tray_qt.RING_LINE_WIDTH * tray_qt.head_scale(tray_qt.RING_LINE_WIDTH),
+                      tray_qt.RING_BAND_WIDTH * tray_qt.head_scale(tray_qt.RING_BAND_WIDTH))
+    assert tray_qt.RING_RADIUS == pytest.approx(32.0 - tray_qt.VIEWBOX_MARGIN - widest_head / 2)
     for segment in range(3):
         for weight in (tray_qt.RING_LINE_WIDTH, tray_qt.RING_BAND_WIDTH):
             assert all(0.0 <= x <= 64.0 and 0.0 <= y <= 64.0
@@ -226,43 +229,85 @@ def test_whole_ring_shrinks_so_the_band_weight_head_fits():
     assert (tray_qt.SEGMENT_START_DEG, tray_qt.SEGMENT_SPAN_DEG, tray_qt.SEGMENT_STEP_DEG) == (-84.0, 108.0, 120.0)
 
 
-def test_width_function_tail_head_and_nose():
+@pytest.mark.parametrize("weight", [3.0, 11.0])
+def test_width_function_tail_head_and_nose(weight):
     tail, head, plain = tray_qt.TAIL_SEGMENT, tray_qt.HEAD_SEGMENT, 1
-    tip = tray_qt.TIP_FRACTION
-    assert tray_qt.stroke_scale(tail, 0.0) == pytest.approx(tip)             # round-capped tip, not chiselled
-    assert tray_qt.stroke_scale(tail, tray_qt.TAIL_FRACTION) == pytest.approx(1.0)
-    assert tray_qt.stroke_scale(head, 1.0) == pytest.approx(tray_qt.HEAD_SCALE) == pytest.approx(1.45)
+    tip = tray_qt.tip_fraction(weight)
+    scale = tray_qt.head_scale(weight)
+    assert tray_qt.stroke_scale(tail, 0.0, weight) == pytest.approx(tip)     # round-capped tip, not chiselled
+    assert tray_qt.stroke_scale(tail, tray_qt.tail_fraction(weight), weight) == pytest.approx(1.0)
+    assert tray_qt.stroke_scale(head, 1.0, weight) == pytest.approx(scale)
+    *_profile, nose = tray_qt.weight_profile(weight)
+    over = nose * tray_qt.HEAD_OVERSHOOT_DEG / tray_qt.SEGMENT_SPAN_DEG
+    assert tray_qt.stroke_scale(head, 1.0 + over, weight) == pytest.approx(tip)   # nose closes to a blunt point
+    assert tip < tray_qt.stroke_scale(head, 1.0 + over / 2, weight) < scale
+    assert all(tray_qt.stroke_scale(plain, u / 10, weight) == 1.0 for u in range(11))
+
+
+def test_head_and_tail_depend_on_weight():
+    """19: the thin hollow line needs a bigger head and a longer tail to read;
+    the recording band a small head so its nose stops eating the gap."""
+    line, band = tray_qt.RING_LINE_WIDTH, tray_qt.RING_BAND_WIDTH
+    assert tray_qt.weight_profile(line) == tray_qt.HOLLOW_PROFILE
+    assert tray_qt.weight_profile(band) == tray_qt.BAND_PROFILE
+    assert tray_qt.head_scale(line) == pytest.approx(1.9)
+    assert tray_qt.head_scale(band) == pytest.approx(1.25)
+    assert tray_qt.tail_fraction(line) > tray_qt.tail_fraction(band)
+    mid = (line + band) / 2
+    assert tray_qt.head_scale(band) < tray_qt.head_scale(mid) < tray_qt.head_scale(line)
+    assert not hasattr(tray_qt, "HEAD_SCALE") and not hasattr(tray_qt, "TAIL_FRACTION")
+    # The band nose ends a quarter of the way into the centreline's overshoot
+    # and the stroke stops there (no thin tip across the gap); the hollow nose
+    # uses the whole overshoot.
     over = tray_qt.HEAD_OVERSHOOT_DEG / tray_qt.SEGMENT_SPAN_DEG
-    assert tray_qt.stroke_scale(head, 1.0 + over) == pytest.approx(tip)      # nose closes to a blunt point
-    assert tip < tray_qt.stroke_scale(head, 1.0 + over / 2) < tray_qt.HEAD_SCALE
-    assert all(tray_qt.stroke_scale(plain, u / 10) == 1.0 for u in range(11))
+    head = tray_qt.HEAD_SEGMENT
+    assert tray_qt.stroke_scale(head, 1.0 + 0.25 * over, band) == pytest.approx(tray_qt.tip_fraction(band))
+    assert tray_qt.stroke_scale(head, 1.0 + 0.5 * over, band) == 0.0
+    assert tray_qt.stroke_scale(head, 1.0 + over, line) == pytest.approx(tray_qt.tip_fraction(line))
+    # Nose samples land on the centreline's nose samples, so the band ends on a sample.
+    assert (tray_qt.BAND_PROFILE[3] * tray_qt._NOSE_SAMPLES).is_integer()
 
 
-# Git blob ids of the 16 px assets at 0a438ef (09b3): the #small drawing and
-# every 16 px output must stay byte-identical.
-_SIXTEEN_PX_AT_0A438EF = {
-    "samsara_16.png": "e68ad6e99cde83c45cd76ee952351d9e9d84f2b7",
-    "states/samsara_armed_16.png": "aa876cfa272a17933727a2d6e7e517d8e0e23501",
-    "states/samsara_asleep_16.png": "2c62cc4fdc75262d63b5746c6e4581cce930e40e",
-    "states/samsara_ava_16.png": "c07dc7eec2e7adfcb3aa13ab15f96ce1eb3cf265",
-    "states/samsara_heard_16.png": "2e01f18d49d5c8f9cfcc4cab6ad6e7a6b4c2df20",
-    "states/samsara_idle_16.png": "d4dee0b2e8af7feaec95a6e4bc538a023eb87ff3",
-    "states/samsara_listening_16.png": "7db4962305d0f71d03486c01f5b171bab13f23df",
-    "states/samsara_off_16.png": "d4dee0b2e8af7feaec95a6e4bc538a023eb87ff3",
-    "states/samsara_recording_16.png": "48962922487bab7e5c997cb47535159b233cd8ac",
-}
+def test_recording_head_leaves_the_12_oclock_gap_open(qapp):
+    """19: on the ring's centreline, part of the gap between the band head and
+    the tail stays clear at 256 px."""
+    size = 256
+    image = tray_qt.render_mark("recording", "off", size)
+    k = size / 64.0
+    clear = 0
+    for tenth in range(-960, -840, 5):                  # head end -96 deg to tail start -84 deg
+        a = math.radians(tenth / 10.0)
+        x = size / 2 + tray_qt.RING_RADIUS * k * math.cos(a)
+        y = size / 2 + tray_qt.RING_RADIUS * k * math.sin(a)
+        clear += image.pixelColor(int(x), int(y)).alpha() < 40
+    assert clear >= 6                                   # >= 3 degrees clear
 
 
-@pytest.mark.parametrize("relpath, blob", sorted(_SIXTEEN_PX_AT_0A438EF.items()))
-def test_16px_output_is_byte_identical_to_0a438ef(relpath, blob):
-    data = (REPO / "assets" / "icon" / relpath).read_bytes()
-    assert hashlib.sha1(b"blob %d\0" % len(data) + data).hexdigest() == blob
+def test_small_drawing_is_heavy_with_no_hairlines():
+    """19: the #small ring is at least 6 units wide (1.5 px at 16 px), the
+    open eye a solid dot and the closed eye a thick bar."""
+    _regular, small = _svg_regular_and_small()
+    small_paths = re.findall(r'<path data-role="segment" d="([^"]*)"', small)
+    assert len(small_paths) == 6
+    assert all(" A 25 25 " in d and " L " not in d for d in small_paths)
+    widths = [float(w) for w in re.findall(r'stroke-width="([0-9.]+)"', small)]
+    assert widths and min(widths) >= 6
+    assert '<line data-role="eye" x1="21" y1="32" x2="43" y2="32" stroke="#8b929c" stroke-width="8"/>' in small
+    assert "<ellipse" not in small and "<circle" in small
+    assert tray_qt._SMALL_MAX == 20 and tray_qt.TASKBAR_SMALL_MAX == 32
+
+
+def test_taskbar_sizes_use_the_heavy_drawing(qapp):
+    for size in (16, 20):
+        assert tray_qt.render_mark("listening", "off", size) == \
+            tray_qt.render_mark("listening", "off", size, small_max=tray_qt.TASKBAR_SMALL_MAX)
+    for size in (24, 32):
+        heavy = tray_qt.render_mark("listening", "off", size, small_max=tray_qt.TASKBAR_SMALL_MAX)
+        regular = tray_qt.render_mark("listening", "off", size)
+        assert _opaque_count(heavy) >= 1.8 * _opaque_count(regular)
 
 
 def test_16px_is_the_plain_ring_without_head_or_tail(qapp):
-    _regular, small = _svg_regular_and_small()
-    small_paths = re.findall(r'<path data-role="segment" d="([^"]*)"', small)
-    assert small_paths and all(" A 27 27 " in d and " L " not in d for d in small_paths)
     # More than scale: the 24 px (ouroboros) drawing shrunk to 16 differs from
     # the 16 px (plain) drawing by far more than resampling noise.
     plain = tray_qt.render_mark("listening", "off", 16)
@@ -286,7 +331,8 @@ def test_small_sizes_cycle_24_frames_and_large_sizes_rotate_live(qapp):
 
 
 def test_spin_speeds_are_a_state_channel():
-    assert tray_qt.SPIN_SECONDS_PER_TURN == {"thinking": 2.4, "transcribing": 0.9}
+    assert tray_qt.SPIN_SECONDS_PER_TURN == {
+        "armed": 3.0, "listening": 3.0, "recording": 1.5, "thinking": 2.4, "transcribing": 0.9}
 
 
 def test_spin_sheet_renders(qapp, gen_icons, tmp_path):
@@ -323,12 +369,14 @@ def test_montage_renders(qapp, gen_icons, tmp_path):
                                         "recording", "ava", "armed", "heard")
 
 
-def test_dictation_chase_timer_spins_at_transcribing_speed_without_reset():
+def test_dictation_chase_timer_spins_every_capture_state_without_reset():
     tree, cls = _dictation_class()
     source = (REPO / "dictation.py").read_text(encoding="utf-8-sig")
     methods = {n.name: n for n in cls.body if isinstance(n, ast.FunctionDef)}
     tick = ast.get_source_segment(source, methods["_icon_chase_tick"])
-    assert "SPIN_SECONDS_PER_TURN['transcribing']" in tick
+    assert "SPIN_SECONDS_PER_TURN[pace]" in tick
+    for pace in ("'recording'", "'transcribing'", "'listening'", "'armed'"):
+        assert re.search(r"tick_interval, pace = ICON_TICK_\w+, " + pace, tick), pace
     for name in ("_start_icon_chase", "_stop_icon_chase"):
         assert "_icon_rotation = 0.0" not in ast.get_source_segment(source, methods[name]), name
 

@@ -266,13 +266,14 @@ class TestIdleLife:
         indicator.set_wake_armed(True)
         return indicator, clock, li
 
-    def test_armed_schedules_blink_and_glance_at_random_intervals(self, armed):
+    def test_armed_schedules_blink_at_random_intervals_and_no_glance(self, armed):
+        """19: armed turns, so there is no rest pose to glance from."""
         indicator, _clock, li = armed
-        assert indicator._blink_timer.isActive() and indicator._glance_timer.isActive()
+        assert indicator._blink_timer.isActive() and not indicator._glance_timer.isActive()
         lo, hi = li._BLINK_INTERVAL_S
         assert lo * 1000 <= indicator._blink_timer.interval() <= hi * 1000
-        lo, hi = li._GLANCE_INTERVAL_S
-        assert lo * 1000 <= indicator._glance_timer.interval() <= hi * 1000
+        indicator._start_glance()
+        assert indicator._glance_started_ms is None
         assert not indicator._idle_frame_timer.isActive()      # nothing runs between events
 
     def test_blink_closes_the_lid_for_140ms_then_rests(self, armed):
@@ -281,12 +282,15 @@ class TestIdleLife:
         assert indicator._glyph_mark()[1] == "asleep"
         clock["ms"] += li._BLINK_MS
         indicator._idle_frame()
-        assert indicator._glyph_mark()[:3] == ("listening", "armed", 0.0)
+        assert indicator._glyph_mark() == ("listening", "armed", indicator._spin("armed"), 1.0)
         assert indicator._blink_timer.isActive()                  # next one rescheduled
         assert li._BLINK_MS < 1000
 
-    def test_glance_eases_out_and_returns_to_rest_under_a_second(self, armed):
+    def test_glance_eases_out_and_returns_to_rest_under_a_second(self, armed, monkeypatch):
         indicator, clock, li = armed
+        # The tilt itself, on a ring that is not turning (no live state is).
+        monkeypatch.setattr(indicator, "_spinning", lambda: False)
+        monkeypatch.setattr(indicator, "_capture_pace", lambda: None)
         indicator._start_glance()
         clock["ms"] += li._GLANCE_MS // 2
         assert indicator._glyph_mark()[2] == pytest.approx(li._GLANCE_DEG, abs=0.5)
@@ -340,6 +344,54 @@ class TestIdleLife:
         assert indicator._glyph_mark()[2] == pytest.approx(0.0)
         clock["ms"] = 600
         assert indicator._glyph_mark()[2] == pytest.approx(90.0)
+
+    def test_armed_turns_once_per_3_seconds(self, armed):
+        indicator, clock, _li = armed
+        clock["ms"] = 0
+        assert indicator._glyph_mark() == ("listening", "armed", pytest.approx(0.0), 1.0)
+        clock["ms"] = 750
+        assert indicator._glyph_mark()[2] == pytest.approx(90.0)
+        assert indicator._pulse_timer.isActive()
+
+    @pytest.mark.parametrize("setup", [
+        lambda w: w.set_listening(True),
+        lambda w: w.show_outcome("REC", "live", ttl_ms=None),
+    ])
+    def test_recording_turns_once_per_1_5_seconds_with_no_pulse(self, armed, setup):
+        indicator, clock, _li = armed
+        indicator.set_wake_armed(False)
+        setup(indicator)
+        clock["ms"] = 0
+        first = indicator._glyph_mark()
+        clock["ms"] = 375
+        capture, _eye, rotation, opacity = indicator._glyph_mark()
+        assert rotation == pytest.approx(90.0) and first[2] == pytest.approx(0.0)
+        assert opacity == first[3] == 1.0
+        assert indicator._pulse_timer.isActive()
+
+    @pytest.mark.parametrize("setup", [
+        lambda w: None,                                            # idle
+        lambda w: w.set_snoozed(True),                             # asleep
+    ])
+    def test_rest_is_still(self, armed, setup):
+        indicator, clock, _li = armed
+        indicator.set_wake_armed(False)
+        setup(indicator)
+        marks = set()
+        for ms in (0, 400, 900, 1700):
+            clock["ms"] = ms
+            marks.add(indicator._glyph_mark())
+        assert len(marks) == 1 and next(iter(marks))[2:] == (0.0, 1.0)
+        assert not indicator._spinning()
+
+    def test_glyph_stays_20px_without_reflow(self):
+        """19: 20 px is the heavy small drawing; 24 px would widen the dot
+        reserve (reflowing every pill) and fall back to the thin drawing."""
+        import samsara.ui.listening_indicator as li
+        from samsara.ui import tray_qt
+
+        assert li._GLYPH_PX == 20 and li._GLYPH_PX <= li._DOT_SPACE
+        assert li._GLYPH_PX <= tray_qt._SMALL_MAX
 
     def test_reduced_motion_and_hidden_pause_idle(self, armed, monkeypatch):
         indicator, _clock, li = armed

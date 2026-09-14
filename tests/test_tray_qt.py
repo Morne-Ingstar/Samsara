@@ -226,10 +226,31 @@ class TestTraySpinSpeed:
         step = 2 * math.pi * dictation.ICON_TICK_FAST / tray_qt.SPIN_SECONDS_PER_TURN["transcribing"]
         assert app._icon_rotation == pytest.approx(1.0 + step)
 
-    def test_recording_is_stopped(self, monkeypatch):
-        app, _dictation, _math = self._tick_app(monkeypatch, {"recording"}, recording=True)
+    def test_recording_turns_once_per_1_5_seconds(self, monkeypatch):
+        """19: motion means capture -- recording spins (it was still in 09b3)."""
+        app, dictation, math = self._tick_app(monkeypatch, {"recording"}, recording=True)
         app._icon_chase_tick()
-        assert app._icon_rotation == 1.0
+        step = 2 * math.pi * dictation.ICON_TICK_FAST / tray_qt.SPIN_SECONDS_PER_TURN["recording"]
+        assert tray_qt.SPIN_SECONDS_PER_TURN["recording"] == 1.5
+        assert app._icon_rotation == pytest.approx(1.0 + step)
+
+    @pytest.mark.parametrize("reason, tick", [("continuous", "ICON_TICK_MEDIUM"),
+                                              ("wake_word", "ICON_TICK_SLOW")])
+    def test_ambient_capture_turns_once_per_3_seconds(self, monkeypatch, reason, tick):
+        app, dictation, math = self._tick_app(monkeypatch, {reason}, recording=False)
+        app._icon_chase_tick()
+        step = 2 * math.pi * getattr(dictation, tick) / 3.0
+        assert app._icon_rotation == pytest.approx(1.0 + step)
+
+    def test_tick_frames_carry_no_opacity_pulse(self, monkeypatch):
+        seen = []
+        for reasons, recording in (({"recording"}, True), ({"recording"}, False),
+                                   ({"continuous"}, False), ({"wake_word"}, False)):
+            app, _dictation, _math = self._tick_app(monkeypatch, reasons, recording)
+            app.create_icon_image = lambda rotation=0.0, opacity=1.0: seen.append(opacity)
+            for _ in range(5):
+                app._icon_chase_tick()
+        assert seen and set(seen) == {1.0}
 
     def test_stop_keeps_the_angle_no_aligned_rest(self, monkeypatch):
         app, _dictation, _math = self._tick_app(monkeypatch, {"recording"}, recording=False)
