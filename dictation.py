@@ -7951,6 +7951,13 @@ class DictationApp:
                     )
                 except Exception as e:
                     logger.debug(f'[DICTATE-PREVIEW] on_utterance_final failed: {e}')
+            if _was_dictate_lane:
+                # Shadow intent gate (36): observer only, strictly AFTER
+                # dispatch_utterance has staged/injected the text and the
+                # outcome was handled -- it gets a copy of the text and the
+                # outcome kind, queues them, and returns; the decision runs on
+                # a background worker. It never raises.
+                self._intent_shadow_observe(text, outcome)
         except Exception as exc:
             # Any exception here (transcription error, injection failure,
             # a lane's dispatch blowing up) must earcon and leave the
@@ -7965,6 +7972,34 @@ class DictationApp:
         finally:
             self._transcription_owners.release('toggle', token)
             self._vad_reset()
+
+    def _intent_shadow_observe(self, text, outcome) -> None:
+        """Hand one finalised DICTATE utterance to the shadow intent gate
+        (samsara/intent/shadow.py). Observer only: reads the outcome KIND,
+        never the manager; any failure is counted, logged once, swallowed.
+        Disabled (intent.shadow_enabled false) costs one dict lookup -- no
+        import of the gate, no thread, no file."""
+        try:
+            section = self.config.get('intent')
+            if isinstance(section, dict) and not section.get('shadow_enabled', True):
+                return
+            shadow = getattr(self, '_intent_shadow', None)
+            if shadow is None:
+                from samsara.intent.shadow import IntentShadow
+
+                def _resolver_factory():
+                    # The app's own live registry rows -- never a second
+                    # CommandExecutor (that would reload every plugin).
+                    from samsara.intent.resolve import IntentResolver
+                    return IntentResolver(rows=self.command_executor._matcher.list_commands())
+
+                shadow = self._intent_shadow = IntentShadow(_resolver_factory, lambda: self.config)
+            shadow.observe(str(text), str(getattr(outcome, 'kind', '')))
+        except Exception as exc:
+            self._intent_shadow_errors = getattr(self, '_intent_shadow_errors', 0) + 1
+            if self._intent_shadow_errors == 1:
+                logger.warning(f"[INTENT-SHADOW] observe failed ({type(exc).__name__}: {exc}); "
+                               f"further failures this session are counted, not logged")
 
     def _handle_session_dispatch_outcome(self, outcome: "DispatchOutcome", text: str) -> None:
         """Side effects keyed on the unified session's dispatch outcome that

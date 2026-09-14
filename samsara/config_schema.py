@@ -565,6 +565,13 @@ SETTINGS_SCHEMA = {
         "tab": "advanced",
     },
 
+    # Shadow intent gate (samsara/intent/shadow.py): observer only -- records
+    # what the tier-2 gate WOULD have done for each DICTATE utterance to
+    # ~/.samsara/shadow/intent-YYYY-MM-DD.jsonl; changes nothing the app does.
+    # No settings-UI widget (config-file-editable); intent.shadow_dir, the
+    # folder override, is read inline at its point of use.
+    "intent.shadow_enabled": {"type": "bool", "default": True, "tab": "advanced"},
+
     # -------------------------------------------------------------------------
     # Ava / Cloud tab
     # -------------------------------------------------------------------------
