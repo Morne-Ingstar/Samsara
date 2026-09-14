@@ -21,6 +21,9 @@ Usage:
   F:\\envs\\sami\\python.exe tools\\gen_icons.py --check      exit 1 if assets are stale
   F:\\envs\\sami\\python.exe tools\\gen_icons.py --montage PATH
       16 px state sheet (1x next to 4x, dark and light taskbar) for sign-off
+  F:\\envs\\sami\\python.exe tools\\gen_icons.py --recording-spin PATH
+      the band-weight (recording) mark at eight rotations, 26/44/60/128 px,
+      dark and light, to judge the nose and the 12 o'clock gap (42)
 """
 from __future__ import annotations
 
@@ -301,17 +304,19 @@ def write_spin_sheet(path: Path, size: int = 128) -> Path:
 WEIGHT_SHEET_COLUMNS = (("hollow", "listening", False), ("brand", "listening", True),
                         ("recording", "recording", False))
 #: Rows of the weight sheet: the 128 px judgement size on dark and light,
-#: then the sizes the marks are actually shown at (26 px header, 60 px Home).
+#: then the sizes the marks are actually shown at: the header lockup (34 px
+#: since 42, 26 px before), Home's state mark (44 px) and 60 px.
 WEIGHT_SHEET_ROWS = (("dark", _TASKBAR_DARK, None), ("light", _TASKBAR_LIGHT, None),
-                     ("26 px", _TASKBAR_DARK, 26), ("60 px", _TASKBAR_DARK, 60))
+                     ("26 px", _TASKBAR_DARK, 26), ("34 px", _TASKBAR_DARK, 34),
+                     ("44 px", _TASKBAR_DARK, 44), ("60 px", _TASKBAR_DARK, 60))
 
 
 def write_weight_sheet(path: Path, size: int = 128) -> Path:
     """The three weights of the one centreline side by side at
     WEIGHT_SHEET_ANGLES -- hollow (listening), brand (the header lockup) and
-    recording (band) -- on dark and light at `size`, then at the real 26 px
-    header and 60 px Home sizes so the head and tail can be judged where
-    they are shown."""
+    recording (band) -- on dark and light at `size`, then at the sizes they
+    are shown at (WEIGHT_SHEET_ROWS) so the head and tail can be judged
+    there."""
     _ensure_gui_app()
     pad, header_h, label_w = 12, 36, 70
     cell = size + 2 * pad
@@ -337,6 +342,52 @@ def write_weight_sheet(path: Path, size: int = 128) -> Path:
             px = row_size or size
             image = render_mark(capture, "asleep", px, rotation=float(angle), brand=brand)
             painter.drawImage(x + pad + (size - px) // 2, y + pad + (size - px) // 2, image)
+    painter.end()
+    return _save(sheet, path)
+
+
+#: Rotations and sizes of the recording spin sheet (42).
+RECORDING_SPIN_ANGLES = (0, 45, 90, 135, 180, 225, 270, 315)
+RECORDING_SPIN_SIZES = (26, 44, 60, 128)
+#: Small sizes are also shown magnified (nearest neighbour) so the pixels the
+#: owner sees at 1x can be inspected; (size, factor).
+RECORDING_SPIN_ZOOMS = ((26, 4), (44, 3))
+
+
+def write_recording_spin(path: Path) -> Path:
+    """The band-weight mark (recording, the header/Home presentation) at
+    RECORDING_SPIN_ANGLES: each RECORDING_SPIN_SIZES size at 1x on a dark and
+    a light row, then the small sizes magnified on dark. Judges two things:
+    does the nose read as a head, and does the 12 o'clock gap stay open while
+    the ring turns."""
+    _ensure_gui_app()
+    pad, header_h, label_w = 11, 36, 120
+    cell = 132 + 2 * pad
+    rows = [(f"{size} px {tone}", bg, size, 1)
+            for size in RECORDING_SPIN_SIZES
+            for tone, bg in (("dark", _TASKBAR_DARK), ("light", _TASKBAR_LIGHT))]
+    rows += [(f"{size} px x{factor}", _TASKBAR_DARK, size, factor) for size, factor in RECORDING_SPIN_ZOOMS]
+    sheet = QImage(label_w + cell * len(RECORDING_SPIN_ANGLES), header_h + cell * len(rows),
+                   QImage.Format.Format_ARGB32)
+    sheet.fill(QColor(theme.BG0))
+    painter = QPainter(sheet)
+    painter.setFont(QFont("Segoe UI", 10))
+    for i, angle in enumerate(RECORDING_SPIN_ANGLES):
+        painter.setPen(QColor(theme.TEXT_PRIMARY))
+        painter.drawText(QRectF(label_w + i * cell, 0, cell, header_h),
+                         Qt.AlignmentFlag.AlignCenter, f"{angle} deg")
+    for r, (label, bg, size, factor) in enumerate(rows):
+        y = header_h + r * cell
+        painter.setPen(QColor(theme.TEXT_PRIMARY))
+        painter.drawText(QRectF(pad, y, label_w - pad, cell), Qt.AlignmentFlag.AlignVCenter, label)
+        for i, angle in enumerate(RECORDING_SPIN_ANGLES):
+            x = label_w + i * cell
+            painter.fillRect(x + 4, y + 4, cell - 8, cell - 8, QColor(bg))
+            image = render_mark("recording", "off", size, rotation=float(angle), brand=True)
+            if factor > 1:
+                image = image.scaled(size * factor, size * factor, Qt.AspectRatioMode.IgnoreAspectRatio,
+                                     Qt.TransformationMode.FastTransformation)
+            painter.drawImage(x + (cell - image.width()) // 2, y + (cell - image.height()) // 2, image)
     painter.end()
     return _save(sheet, path)
 
@@ -478,6 +529,8 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument("--weight-sheet", type=Path, help="write the hollow/recording weight sheet to this path")
     parser.add_argument("--taskbar-reality", type=Path, help="write the taskbar composite sheet to this path")
     parser.add_argument("--spin-legibility", type=Path, help="write the 16/32 px rotation sheet to this path")
+    parser.add_argument("--recording-spin", type=Path,
+                        help="write the band-weight rotation sheet (26/44/60/128 px) to this path")
     args = parser.parse_args(argv)
     _ensure_gui_app()
 
@@ -488,7 +541,8 @@ def main(argv: list[str] | None = None) -> int:
         return 1 if stale else 0
     sheets = [(args.montage, write_montage), (args.spin_sheet, write_spin_sheet),
               (args.weight_sheet, write_weight_sheet), (args.taskbar_reality, write_taskbar_reality),
-              (args.spin_legibility, write_spin_legibility)]
+              (args.spin_legibility, write_spin_legibility),
+              (args.recording_spin, write_recording_spin)]
     if any(target is not None for target, _writer in sheets):
         for target, writer in sheets:
             if target is not None:

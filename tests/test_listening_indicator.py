@@ -401,3 +401,159 @@ class TestIdleLife:
         monkeypatch.setattr(li, "_reduced_motion", lambda: False)
         indicator.hide()
         assert not indicator._idle_allowed() and not indicator._blink_timer.isActive()
+
+
+# ---------------------------------------------------------------------------
+# 42: arming the wake word is not recording
+# ---------------------------------------------------------------------------
+
+class TestArmedIsNotRecording:
+    """Owner evidence: enabling wake word from the tray lit the pill as if the
+    record hotkey were held, until a real capture's release cleared it. Root
+    cause: DictationApp.start_wake_word_mode called set_listening(True)
+    beside set_wake_armed(True). Here the REAL start/stop_wake_word_mode run
+    against a real ListeningIndicator; the capture is the indicator call the
+    hotkey capture path makes (set_listening True on press, False on release)."""
+
+    @pytest.fixture
+    def wired(self, qapp, indicator, monkeypatch):
+        from unittest.mock import Mock
+
+        import dictation
+        import samsara.ui.listening_indicator as li
+
+        monkeypatch.setattr(li, "_reduced_motion", lambda: False)
+        monkeypatch.setattr(dictation.time, "sleep", lambda _s: None)
+        app = Mock()
+        app.model_loaded = True
+        app._request_wake_models.return_value = True
+        app.config = {"wake_word_config": {"phrase": "samsara"}}
+        app.recording = False
+        app.listening_indicator = indicator
+
+        def set_app_state(**kw):
+            for name, value in kw.items():
+                setattr(app, name, value)
+
+        app.set_app_state = set_app_state
+        app._schedule_ui = lambda fn, *args: fn(*args)
+        indicator.show()
+        _pump(qapp)
+
+        def arm():
+            dictation.DictationApp.start_wake_word_mode(app)
+
+        def disarm():
+            dictation.DictationApp.stop_wake_word_mode(app)
+
+        def press():                        # hotkey capture starts
+            app.recording = True
+            indicator.set_listening(True)
+
+        def release():                      # hotkey capture ends
+            app.recording = False
+            indicator.set_listening(False)
+
+        return indicator, app, arm, disarm, press, release
+
+    @staticmethod
+    def _assert_armed(indicator):
+        import samsara.ui.listening_indicator as li
+
+        assert indicator.display_state() == li.STATE_ARMED
+        assert indicator.display_state() not in li.CAPTURE_STATES
+        assert not indicator._listening
+        # quiet pill: the idle colours at every pulse step, never the lit teal
+        for step in range(li._PULSE_STEPS + 1):
+            indicator._pulse_step = step
+            bg, fg, _label, _dot = indicator._resolve_colors()
+            assert (bg, fg) == (li._IDLE_BG, li._IDLE_FG)
+        capture, eye, _rotation, opacity = indicator._glyph_mark()
+        assert (capture, eye, opacity) == ("listening", "armed", 1.0)   # eye open
+        assert indicator._capture_pace() == "armed"                     # slow turn, not recording
+
+    @staticmethod
+    def _assert_capture(indicator):
+        import samsara.ui.listening_indicator as li
+
+        assert indicator.display_state() in li.CAPTURE_STATES
+        assert indicator._capture_pace() == "recording"
+        indicator._pulse_step = li._PULSE_STEPS
+        assert indicator._resolve_colors()[0] != li._IDLE_BG
+
+    def test_after_arm_the_indicator_is_armed(self, wired):
+        indicator, _app, arm, _disarm, _press, _release = wired
+        arm()
+        self._assert_armed(indicator)
+
+    def test_after_disarm_the_indicator_is_idle(self, wired):
+        indicator, _app, arm, disarm, _press, _release = wired
+        arm()
+        disarm()
+        assert indicator.display_state() == "idle"
+        assert not indicator._listening and not indicator._wake_armed
+        assert indicator._capture_pace() is None
+
+    def test_a_real_capture_shows_capture_styling_then_clears(self, wired):
+        indicator, _app, _arm, _disarm, press, release = wired
+        press()
+        self._assert_capture(indicator)
+        release()
+        assert indicator.display_state() == "idle"
+
+    def test_arm_capture_release_returns_to_armed(self, wired):
+        indicator, _app, arm, _disarm, press, release = wired
+        arm()
+        self._assert_armed(indicator)
+        press()
+        self._assert_capture(indicator)           # capturing while armed is capturing
+        assert indicator._glyph_mark()[1] == "armed"
+        release()
+        self._assert_armed(indicator)
+
+    def test_disarm_during_a_hotkey_capture_leaves_the_capture_alone(self, wired):
+        indicator, _app, arm, disarm, press, release = wired
+        arm()
+        press()
+        disarm()
+        self._assert_capture(indicator)
+        release()
+        assert indicator.display_state() == "idle"
+
+    def test_disarm_clears_a_wake_owned_capture(self, wired):
+        """Wake phrase heard / wake session set listening; stopping wake mode
+        ends them, so nothing is left looking like capture."""
+        indicator, _app, arm, disarm, _press, _release = wired
+        arm()
+        indicator.set_listening(True)             # wake phrase heard
+        disarm()
+        assert indicator.display_state() == "idle"
+
+    def test_no_path_leaves_capture_styling_stuck(self, wired):
+        import itertools
+
+        import samsara.ui.listening_indicator as li
+
+        indicator, app, arm, disarm, press, release = wired
+        steps = {"arm": arm, "disarm": disarm, "press": press, "release": release}
+        for order in itertools.permutations(steps, 4):
+            for name in order:
+                if name == "press" and app.recording:
+                    continue
+                if name == "release" and not app.recording:
+                    continue
+                steps[name]()
+            if app.recording:
+                release()
+            assert indicator.display_state() not in li.CAPTURE_STATES, order
+            disarm()
+
+    def test_start_wake_word_mode_never_sets_listening(self):
+        import inspect
+
+        import dictation
+
+        source = inspect.getsource(dictation.DictationApp.start_wake_word_mode)
+        code = "\n".join(line.split("#")[0] for line in source.splitlines())
+        assert "set_wake_armed, True" in code
+        assert "set_listening" not in code

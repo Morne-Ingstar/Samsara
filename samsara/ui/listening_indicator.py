@@ -198,6 +198,13 @@ def _clamp_rect(x: int, y: int, w: int, h: int, geom) -> tuple:
 # ListeningIndicator
 # ---------------------------------------------------------------------------
 
+#: Indicator display states (ListeningIndicator.display_state). ARMED is the
+#: quiet wake-listener state: eye open, slow turn, idle pill, no pulse.
+STATE_ARMED = "armed"
+#: The states that carry capture styling (lit pill, pulse, recording pace).
+CAPTURE_STATES = frozenset({"capture", "command-capture"})
+
+
 class ListeningIndicator(QWidget):
     """Always-on-top, click-through pill overlay — PySide6 implementation."""
 
@@ -666,17 +673,40 @@ class ListeningIndicator(QWidget):
         return 360.0 * (self._now_ms() % turn_ms) / turn_ms
 
     def _capture_pace(self):
-        """The pace the ring turns at while capturing, or None at rest.
-        Motion means capture (queue 19): wake armed turns slowly, any other
-        live capture (hold, toggle, continuous, a latched session, the REC
-        chip) at the recording pace."""
-        if self._chip_kind == "live":
+        """The pace the ring turns at, or None at rest.
+        Motion means capture (queue 19): a live capture (hold, toggle,
+        continuous, a latched session, the REC chip) turns at the recording
+        pace; the wake listener merely ARMED turns slowly. A capture beats
+        armed (42): capturing while armed is capturing."""
+        if self._chip_kind == "live" or self._listening:
             return "recording"
         if self._wake_armed:
             return "armed"
-        if self._listening:
-            return "recording"
         return None
+
+    def display_state(self) -> str:
+        """The one name for what the pill is showing now (42), in the same
+        priority order the paint uses (_resolve_colors / _base_glyph):
+          move, heard, flash, session, thinking, snoozed,
+          command-capture, command, capture, armed, idle.
+        CAPTURE_STATES are the ones with capture styling; ARMED is not one."""
+        if self._unlocked:
+            return "move"
+        if self._flash_bg is not None:
+            return "heard" if self._flash_wake else "flash"
+        if self._session_mode_name:
+            return "session"
+        if self._thinking:
+            return "thinking"
+        if self._snoozed:
+            return "snoozed"
+        if self._command_mode:
+            return "command-capture" if self._listening else "command"
+        if self._listening or self._chip_kind == "live":
+            return "capture"
+        if self._wake_armed:
+            return STATE_ARMED
+        return "idle"
 
     def _base_glyph(self):
         """The state glyph without idle overlays: (capture, eye, rotation, opacity).
@@ -1033,8 +1063,11 @@ class ListeningIndicator(QWidget):
         elif align == "right":
             pill_x, chip_x = float(total_w - pill_w), float(total_w - chip_w)
         else:
-            pill_x = (total_w - pill_w) / 2.0
-            chip_x = (total_w - chip_w) / 2.0
+            # Whole pixels: a half-pixel pill offset rounded the widget one
+            # way and the pill the other, moving the pill 1 px when a chip
+            # appeared (odd width difference).
+            pill_x = float((total_w - pill_w) // 2)
+            chip_x = float((total_w - chip_w) // 2)
         if self._chip_goes_above():
             chip_rect = QRectF(chip_x, 0, chip_w, _CHIP_H)
             pill_rect = QRectF(pill_x, _CHIP_H + _CHIP_GAP, pill_w, _PILL_H)

@@ -6,12 +6,13 @@ SamsaraTrayQt._rebuild_menu() is exercised directly against a real QMenu
 after the reorganization, and that the new grouping (top-level daily-use,
 Tools submenu, Developer submenu) matches spec.
 """
+import math
 import types
 from unittest.mock import Mock
 
 import pytest
 
-from samsara.ui import tray_qt
+from samsara.ui import theme, tray_qt
 from samsara.ui.tray_qt import SamsaraTrayQt
 
 
@@ -519,3 +520,153 @@ class TestLoggingSelfCheckWarning:
         t._poll_startup_health()
 
         t._tray.showMessage.assert_not_called()
+
+
+# ---------------------------------------------------------------------------
+# 42: recording spins, the band-weight nose reads as a head, the gap stays open
+# ---------------------------------------------------------------------------
+
+def _load_gen_icons():
+    import importlib.util
+    from pathlib import Path
+
+    path = Path(__file__).resolve().parent.parent / "tools" / "gen_icons.py"
+    spec = importlib.util.spec_from_file_location("gen_icons_42", path)
+    module = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(module)
+    return module
+
+
+#: sha256 of the three ring_segment_path_data strings at each weight, as
+#: committed before 42 (c0a1705). 42 changed only the band weight.
+_PATHS_BEFORE_42 = {
+    "brand": "5c3748c3b29e4f1ac95fc634bf17c1b60c39d544719580d905537b27faea1339",
+    "hollow": "cbe9459344676495faee3d45ff3ab419a94bbecae76ef5c9109319d5be2905e4",
+}
+
+
+def _paths_digest(weight):
+    import hashlib
+
+    joined = "\n".join(tray_qt.ring_segment_path_data(i, weight) for i in range(3))
+    return hashlib.sha256(joined.encode("utf-8")).hexdigest()
+
+
+def _alpha_bilinear(image, x, y):
+    x0, y0 = int(math.floor(x - 0.5)), int(math.floor(y - 0.5))
+    fx, fy = x - 0.5 - x0, y - 0.5 - y0
+    total = 0.0
+    for dx, wx in ((0, 1 - fx), (1, fx)):
+        for dy, wy in ((0, 1 - fy), (1, fy)):
+            px, py = x0 + dx, y0 + dy
+            inside = 0 <= px < image.width() and 0 <= py < image.height()
+            total += (image.pixelColor(px, py).alpha() if inside else 0) * wx * wy
+    return total
+
+
+def _gap_alphas(image, size, rotation):
+    """Rendered alpha along the ring centreline across the 12 o'clock gap
+    (head end -96 deg to tail start -84 deg), turned with the ring."""
+    k = size / 64.0
+    alphas = []
+    for i in range(241):
+        a = math.radians(-96.0 + 12.0 * i / 240 + rotation)
+        alphas.append(_alpha_bilinear(image,
+                                      size / 2 + tray_qt.RING_RADIUS * k * math.cos(a),
+                                      size / 2 + tray_qt.RING_RADIUS * k * math.sin(a)))
+    return alphas
+
+
+
+class TestRecordingSpins:
+    def test_recording_motion_entry_is_non_zero(self):
+        assert tray_qt.SPIN_SECONDS_PER_TURN["recording"] == pytest.approx(1.5)
+        assert tray_qt.SPIN_SECONDS_PER_TURN == {
+            "armed": 3.0, "listening": 3.0, "recording": 1.5, "thinking": 2.4, "transcribing": 0.9}
+
+    def test_recording_colour_and_fill_are_unchanged(self):
+        assert tray_qt.MARK_CAPTURE["recording"] == (theme.RECORDING, "ring-filled")
+        assert tray_qt.BRAND_CAPTURE["recording"] == (theme.RECORDING, "ring-filled")
+
+    def test_recording_frames_differ_with_rotation(self, qapp):
+        a = tray_qt.render_mark("recording", "off", 44, rotation=0.0, brand=True)
+        b = tray_qt.render_mark("recording", "off", 44, rotation=45.0, brand=True)
+        assert a != b
+
+
+class TestBandNoseReadsAsAHead:
+    def test_band_nose_is_long_relative_to_the_head(self):
+        half, length, points = tray_qt.nose_metrics(tray_qt.RING_BAND_WIDTH)
+        assert tray_qt.NOSE_MIN_RATIO >= 0.9
+        assert length / half >= tray_qt.NOSE_MIN_RATIO
+        assert half == pytest.approx(8.80)          # the width is not what changed
+        assert points >= 24                         # smooth at 128 px
+        # The pre-42 band nose (1.29 units on a head 8.80 half-wide, 3
+        # samples) is exactly what the floor rejects.
+        assert 1.29 / 8.80 < tray_qt.NOSE_MIN_RATIO
+
+    def test_nose_lead_is_a_function_of_weight(self):
+        assert tray_qt.nose_lead(tray_qt.RING_LINE_WIDTH) == 0.0
+        assert tray_qt.nose_lead(tray_qt.RING_BRAND_WIDTH) == 0.0
+        assert tray_qt.nose_lead(tray_qt.RING_BAND_WIDTH) == tray_qt.BAND_NOSE_LEAD > 0.0
+
+    def test_band_nose_closes_as_its_own_round_front(self):
+        """No flat face: the width falls continuously from the widest point
+        to zero at the stroke end, and the front sits where the old nose
+        ended (nose fraction 0.25), so the gap is no narrower."""
+        band = tray_qt.RING_BAND_WIDTH
+        head = tray_qt.HEAD_SEGMENT
+        peak, end = tray_qt._nose_span(band)
+        over = tray_qt.HEAD_OVERSHOOT_DEG / tray_qt.SEGMENT_SPAN_DEG
+        assert end == pytest.approx(1.0 + 0.25 * over)
+        assert tray_qt.stroke_scale(head, peak, band) == pytest.approx(tray_qt.head_scale(band))
+        widths = [tray_qt.stroke_scale(head, peak + (end - peak) * i / 50, band) for i in range(51)]
+        assert all(a >= b for a, b in zip(widths, widths[1:]))
+        assert widths[-1] == pytest.approx(0.0, abs=1e-6)
+        assert tray_qt.stroke_scale(head, end + 0.01, band) == 0.0
+
+    def test_band_centreline_is_the_same_circle(self):
+        band = tray_qt.RING_BAND_WIDTH
+        for _u, _a, x, y in tray_qt.ring_centreline(tray_qt.HEAD_SEGMENT, band):
+            assert math.hypot(x - tray_qt.RING_CENTRE, y - tray_qt.RING_CENTRE) == pytest.approx(
+                tray_qt.RING_RADIUS, abs=1e-9)
+
+    def test_brand_and_hollow_geometry_unchanged_from_the_previous_commit(self):
+        assert tray_qt.weight_profile(tray_qt.RING_BRAND_WIDTH) == tray_qt.BRAND_PROFILE
+        assert _paths_digest(tray_qt.RING_BRAND_WIDTH) == _PATHS_BEFORE_42["brand"]
+        assert _paths_digest(tray_qt.RING_LINE_WIDTH) == _PATHS_BEFORE_42["hollow"]
+        half, length, points = tray_qt.nose_metrics(tray_qt.RING_BRAND_WIDTH)
+        assert (round(half, 2), round(length, 2), points) == (4.97, 3.94, 9)
+
+    def test_gen_icons_check_passes(self, qapp):
+        gen_icons = _load_gen_icons()
+        assert gen_icons.stale_assets() == []
+        assert gen_icons.main(["--check"]) == 0
+
+    def test_recording_spin_sheet_renders(self, qapp, tmp_path):
+        gen_icons = _load_gen_icons()
+        out = gen_icons.write_recording_spin(tmp_path / "recording_spin.png")
+        assert out.exists() and out.stat().st_size > 0
+        assert gen_icons.RECORDING_SPIN_ANGLES == (0, 45, 90, 135, 180, 225, 270, 315)
+        assert gen_icons.RECORDING_SPIN_SIZES == (26, 44, 60, 128)
+
+
+class TestTwelveOClockGapStaysOpen:
+    """Measured on the rendered band-weight mark at every spin-sheet angle:
+    somewhere across the gap the centreline is mostly clear (at 26-44 px
+    antialiasing never reaches zero), and at 128 px a clear run of pixels."""
+
+    @pytest.mark.parametrize("size, max_alpha", [(26, 90), (34, 90), (44, 90)])
+    def test_small_sizes_dip_well_below_the_band(self, qapp, size, max_alpha):
+        for rotation in (0, 45, 90, 135, 180, 225, 270, 315):
+            image = tray_qt.render_mark("recording", "off", size, rotation=float(rotation), brand=True)
+            assert min(_gap_alphas(image, size, rotation)) <= max_alpha, (size, rotation)
+
+    def test_128px_has_a_clear_run(self, qapp):
+        size = 128
+        arc_px = tray_qt.RING_RADIUS * (size / 64.0) * math.radians(12.0) / 240
+        for rotation in (0, 45, 90, 135, 180, 225, 270, 315):
+            image = tray_qt.render_mark("recording", "off", size, rotation=float(rotation), brand=True)
+            alphas = _gap_alphas(image, size, rotation)
+            assert min(alphas) == 0, rotation
+            assert sum(arc_px for a in alphas if a < 96) >= 3.5, rotation

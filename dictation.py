@@ -8934,8 +8934,13 @@ class DictationApp:
 
         self.set_app_state(wake_word_active=True)
         self._request_icon_chase('wake_word')
+        # Arming is NOT capturing (42): the indicator goes ARMED -- open eye,
+        # slow turn, no capture pill, no listening pulse. It used to call
+        # set_listening(True) here too, which lit the pill as if the record
+        # hotkey were held and stayed lit until a real capture's release
+        # cleared it. Only an actual capture (hotkey, wake phrase heard,
+        # wake session, continuous) sets listening.
         if getattr(self, 'listening_indicator', None) is not None:
-            self._schedule_ui(self.listening_indicator.set_listening, True)
             self._schedule_ui(self.listening_indicator.set_wake_armed, True)
 
         if hasattr(self, 'hints'):
@@ -8962,8 +8967,13 @@ class DictationApp:
         self.play_sound("stop")
         self._release_icon_chase('wake_word')
         if getattr(self, 'listening_indicator', None) is not None:
-            self._schedule_ui(self.listening_indicator.set_listening, False)
             self._schedule_ui(self.listening_indicator.set_wake_armed, False)
+            # A wake-owned capture (phrase heard, wake session, wake
+            # dictation) ends with wake mode -- _reset_wake_dictation above
+            # does not touch the indicator -- but a hotkey recording in
+            # progress is not wake's to clear; its release does that.
+            if not getattr(self, 'recording', False):
+                self._schedule_ui(self.listening_indicator.set_listening, False)
 
     def _load_vad_model(self):
         """Load Silero VAD for real-time speech detection in the wake callback.
