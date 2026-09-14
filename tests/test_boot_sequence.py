@@ -21,6 +21,7 @@ from unittest.mock import Mock
 import pytest
 
 import dictation
+import samsara.boot as samsara_boot
 
 
 # ── Fix 8: per-thread stage timers ───────────────────────────────────────────
@@ -35,9 +36,9 @@ class _Clock:
 
 def test_boot_timer_steps_are_per_thread(monkeypatch):
     clock = _Clock()
-    monkeypatch.setattr(dictation, "time", types.SimpleNamespace(monotonic=clock.monotonic))
+    monkeypatch.setattr(samsara_boot, "time", types.SimpleNamespace(monotonic=clock.monotonic))
     lines = []
-    timer = dictation._BootStageTimer(log=lines.append)
+    timer = samsara_boot._BootStageTimer(log=lines.append)
 
     clock.now += 0.5
     timer("boot: step A")                     # boot thread: 500 ms since creation

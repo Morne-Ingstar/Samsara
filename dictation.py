@@ -42,38 +42,11 @@ if os.environ.get("SAMSARA_DUCKING_HOST") == "1":
     sys.exit(_ducking_host_main())
 
 
-def _enable_faulthandler(log_dir):
-    """Dump every thread's Python stack to <SAMSARA_HOME>/logs/faulthandler.log
-    on a native crash (access violation, SIGSEGV/SIGFPE/SIGILL/SIGABRT).
-
-    2026-09-13: the mic setup guide took the process down with no Python
-    traceback at all -- the regular log just restarted. faulthandler is the
-    only thing that can speak after a native fault, and in a windowless
-    build sys.stderr is a null stream, so it gets its own file. enable()
-    already covers SIGABRT; faulthandler.register() does not exist on Windows
-    and refuses SIGABRT elsewhere, so it is not called. Never raises: a
-    diagnostic must not stop boot. Returns the open file (kept alive for the
-    process lifetime) or None."""
-    import faulthandler as _faulthandler
-    try:
-        log_dir.mkdir(parents=True, exist_ok=True)
-        fh = open(log_dir / "faulthandler.log", "a", encoding="utf-8")
-        fh.write(f"--- Samsara start pid={os.getpid()} ---\n")
-        fh.flush()
-        _faulthandler.enable(file=fh, all_threads=True)
-        return fh
-    except Exception as exc:
-        try:
-            sys.stderr.write(f"[BOOT] faulthandler not enabled: {exc!r}\n")
-        except Exception:
-            pass
-        return None
-
-
 # Before every heavy/native import below (torch guard, sounddevice, scipy,
 # faster-whisper, Qt) so a crash during boot also leaves a dump.
 from samsara.paths import samsara_home_dir as _fh_home_dir
-_FAULTHANDLER_FILE = _enable_faulthandler(_fh_home_dir() / "logs")
+import samsara.boot as _samsara_boot
+_FAULTHANDLER_FILE = _samsara_boot._enable_faulthandler(_fh_home_dir() / "logs")
 
 # Platform-specific imports
 if sys.platform == 'win32':
@@ -177,227 +150,6 @@ def _hide_console_now():
         logger.debug(f"Could not hide console window: {e}")
 
 # _hide_console_now()  # TEMPORARILY DISABLED for debug — uncomment when done testing
-
-# ============================================================================
-# Single Instance Check - Prevent multiple instances from running
-# ============================================================================
-
-def _is_samsara_process(pid: int) -> bool:
-    """True if `pid` is alive AND looks like a Samsara process.
-
-    Liveness alone isn't enough: PIDs get reused by Windows, so a lock file
-    naming a PID that's alive right now could belong to a completely
-    unrelated process that started after the real Samsara process (which
-    wrote that PID) died or was killed. Checks the process image name --
-    "Samsara.exe" for a frozen build, or a python*.exe running dictation.py
-    for a dev-mode instance.
-
-    Prefers psutil (already a project dependency); falls back to raw
-    ctypes OpenProcess + QueryFullProcessImageNameW if psutil isn't
-    importable for some reason.
-    """
-    try:
-        import psutil
-    except ImportError:
-        psutil = None
-
-    if psutil is not None:
-        try:
-            proc = psutil.Process(pid)
-            name = (proc.name() or "").lower()
-        except (psutil.NoSuchProcess, psutil.AccessDenied):
-            return False
-        except Exception:
-            return False
-        if name == "samsara.exe":
-            return True
-        if name.startswith("python"):
-            try:
-                cmdline = " ".join(proc.cmdline()).lower()
-            except Exception:
-                return False
-            return "dictation.py" in cmdline
-        return False
-
-    if sys.platform != 'win32':
-        # Can't verify identity without psutil off Windows -- assume it's
-        # real rather than risk stealing a live process's lock.
-        return True
-
-    import ctypes
-    import ctypes.wintypes as wt
-
-    PROCESS_QUERY_LIMITED_INFORMATION = 0x1000
-    kernel32 = ctypes.windll.kernel32
-    handle = kernel32.OpenProcess(PROCESS_QUERY_LIMITED_INFORMATION, False, pid)
-    if not handle:
-        # No handle -- process is gone (or inaccessible; treat the same,
-        # since we can't confirm it's Samsara either way).
-        return False
-    try:
-        buf_len = wt.DWORD(260)
-        buf = ctypes.create_unicode_buffer(260)
-        ok = kernel32.QueryFullProcessImageNameW(handle, 0, buf, ctypes.byref(buf_len))
-        if not ok:
-            return False
-        image_name = Path(buf.value).name.lower()
-        return image_name == "samsara.exe" or image_name.startswith("python")
-    finally:
-        kernel32.CloseHandle(handle)
-
-
-def _steal_stale_lock_if_any(lock_file_path) -> None:
-    """If lock_file_path exists and names a dead or non-Samsara PID, delete
-    it. If it names a live Samsara process, log and exit(0) -- never hang;
-    this whole check is non-blocking liveness/identity inspection, no wait.
-
-    Runs before the OS-level lock acquisition below, which still does the
-    actual atomic locking -- this only turns "some stale file is sitting
-    there from a hard kill" into a clean steal instead of a false
-    already-running refusal.
-    """
-    if not lock_file_path.exists():
-        return
-    try:
-        recorded_pid = int(lock_file_path.read_text().strip())
-    except (OSError, ValueError):
-        # Unreadable/empty/corrupt -- can't belong to a live instance we'd
-        # recognize; treat as stale.
-        logger.info("[LOCK] lock file unreadable, stealing")
-        try:
-            lock_file_path.unlink()
-        except OSError as e:
-            logger.debug(f"[LOCK] could not remove unreadable lock file: {e}")
-        return
-
-    if _is_samsara_process(recorded_pid):
-        logger.warning(f"[WARN] Samsara is already running (PID: {recorded_pid})")
-        sys.exit(0)
-
-    logger.info(f"[LOCK] stale lock from PID {recorded_pid}, stealing")
-    try:
-        lock_file_path.unlink()
-    except OSError as e:
-        logger.debug(f"[LOCK] could not remove stale lock file: {e}")
-
-
-def _check_single_instance():
-    """
-    Ensure only one instance of Samsara is running.
-    Windows uses a process-lifetime named mutex; Unix-like systems retain the
-    existing file lock. Returns the retained handle or exits if another
-    instance owns the same profile identity.
-
-    The normal profile uses a fixed identity. When SAMSARA_HOME_DIR is
-    explicitly set (temp-profile tooling, the tray's "Preview First-Run"
-    dev action), the identity is derived from that path, so a preview
-    instance never collides with the primary instance.
-    """
-    if sys.platform == 'win32':
-        from samsara.single_instance import (
-            AlreadyRunningError,
-            acquire_single_instance_mutex,
-        )
-        try:
-            return acquire_single_instance_mutex()
-        except AlreadyRunningError:
-            # Keep this exact marker: frozen smoke tooling recognizes it as
-            # the expected fast refusal when a real instance is already up.
-            logger.warning("[WARN] Samsara is already running")
-            sys.exit(0)
-        except Exception as e:
-            # Preserve the existing fail-open startup policy. A broken
-            # single-instance check must not make an accessibility app
-            # impossible to launch.
-            logger.warning(f"[WARN] Could not check for existing instance: {e}")
-            return None
-
-    from pathlib import Path
-    import tempfile
-
-    home_override = os.environ.get("SAMSARA_HOME_DIR")
-    if home_override:
-        import hashlib
-        # normcase + realpath so equivalent paths (different case, trailing
-        # slash, relative vs absolute, 8.3 vs long form) hash identically --
-        # otherwise two preview launches pointed at "the same" dir by a
-        # human typing it two different ways would get two different locks
-        # and could run concurrently against one profile.
-        normalized = os.path.normcase(os.path.realpath(home_override))
-        digest = hashlib.sha1(normalized.encode("utf-8")).hexdigest()[:12]
-        lock_name = f"samsara-{digest}.lock"
-    else:
-        lock_name = "samsara.lock"
-    lock_file_path = Path(tempfile.gettempdir()) / lock_name
-    _steal_stale_lock_if_any(lock_file_path)
-
-    try:
-        # Open/create lock file
-        if sys.platform == 'win32':
-            import msvcrt
-            # Open in write mode, create if doesn't exist
-            lock_file = open(lock_file_path, 'w')
-            try:
-                # Try to get exclusive lock (non-blocking)
-                msvcrt.locking(lock_file.fileno(), msvcrt.LK_NBLCK, 1)
-                # Write our PID
-                lock_file.write(str(os.getpid()))
-                lock_file.flush()
-                return lock_file  # Keep file open to maintain lock
-            except (IOError, OSError):
-                # Another instance has the lock
-                lock_file.close()
-                # Try to read the other instance's PID
-                try:
-                    with open(lock_file_path, 'r') as f:
-                        other_pid = f.read().strip()
-                    logger.warning(f"[WARN] Samsara is already running (PID: {other_pid})")
-                except Exception as e:
-                    logger.debug(f"Could not read other instance PID: {e}")
-                    logger.warning("[WARN] Samsara is already running")
-                sys.exit(0)
-        else:
-            # Unix-like systems (macOS, Linux)
-            import fcntl
-            lock_file = open(lock_file_path, 'w')
-            try:
-                # Try to get exclusive lock (non-blocking)
-                fcntl.flock(lock_file.fileno(), fcntl.LOCK_EX | fcntl.LOCK_NB)
-                # Write our PID
-                lock_file.write(str(os.getpid()))
-                lock_file.flush()
-                return lock_file  # Keep file open to maintain lock
-            except (IOError, OSError):
-                # Another instance has the lock
-                lock_file.close()
-                try:
-                    with open(lock_file_path, 'r') as f:
-                        other_pid = f.read().strip()
-                    logger.warning(f"[WARN] Samsara is already running (PID: {other_pid})")
-                except Exception as e:
-                    logger.debug(f"Could not read other instance PID: {e}")
-                    logger.warning("[WARN] Samsara is already running")
-                sys.exit(0)
-    except Exception as e:
-        # If locking fails for any reason, log but continue
-        # (better to have duplicate instances than no instances)
-        logger.warning(f"[WARN] Could not check for existing instance: {e}")
-        return None
-
-# Single-instance lock is only meaningful when this file is run as the main
-# program. Acquiring it at import time blocks pytest (any import of dictation
-# triggers sys.exit(0) from _check_single_instance when a prior import already
-# holds the lock). The lock is acquired from the __main__ block below via
-# _acquire_instance_lock() -- the module-level name is kept so tests and
-# helpers can reason about it without triggering the check.
-_instance_lock = None
-
-
-def _acquire_instance_lock():
-    """Acquire the single-instance lock. Called from __main__ only."""
-    global _instance_lock
-    _instance_lock = _check_single_instance()
-    return _instance_lock
 
 # Fix OpenMP conflict between numpy and other libraries
 os.environ["KMP_DUPLICATE_LIB_OK"] = "TRUE"
@@ -540,22 +292,7 @@ if sys.stdout is not None:
 # Check for Visual C++ Redistributable before any DLL-dependent imports.
 # ctranslate2 (used by faster-whisper) requires msvcp140.dll which ships with
 # the VC++ redist. On a clean machine this may not be installed.
-if sys.platform == 'win32':
-    try:
-        import ctypes as _ctypes
-        _ctypes.cdll.LoadLibrary("msvcp140.dll")
-    except OSError:
-        from PySide6.QtWidgets import QApplication as _QApp, QMessageBox as _QMB
-        _app = _QApp.instance() or _QApp(sys.argv)
-        _QMB.critical(
-            None,
-            "Missing Dependency",
-            "Samsara requires the Visual C++ Redistributable.\n\n"
-            "Download it from:\n"
-            "https://aka.ms/vs/17/release/vc_redist.x64.exe\n\n"
-            "Install it and restart Samsara.",
-        )
-        sys.exit(1)
+_samsara_boot.check_vc_redistributable()
 
 def _create_whisper_model(*args, **kwargs):
     from faster_whisper import WhisperModel
@@ -2113,39 +1850,6 @@ def _reap_old_preview_profiles() -> None:
             logger.debug(f"[PREVIEW] Could not reap {path_str}: {e}")
 
 
-class _BootStageTimer:
-    """[BOOT] stage timer with one "last mark" per thread.
-
-    The old closure shared a single last-timestamp between the boot thread
-    and the model thread, so each lane's step durations absorbed the other
-    lane's work (perf_artifacts/boot_profile.md section 4: "ACE audio engine
-    start: 828ms" was really 13,371 ms, "Silero VAD load: 12547ms" was 212 ms).
-    Each thread's first mark measures from begin_thread() if that thread
-    called it, else from timer creation. "total" is always since creation.
-    """
-
-    def __init__(self, log=None):
-        self._t0 = time.monotonic()
-        self._last: dict[int, float] = {}
-        self._lock = threading.Lock()
-        self._log = log or logger.info
-
-    def begin_thread(self) -> None:
-        with self._lock:
-            self._last[threading.get_ident()] = time.monotonic()
-
-    def __call__(self, label: str) -> None:
-        now = time.monotonic()
-        tid = threading.get_ident()
-        with self._lock:
-            last = self._last.get(tid, self._t0)
-            self._last[tid] = now
-        self._log(
-            f"[BOOT] {label}: {(now - last) * 1000:.0f}ms  "
-            f"(total {(now - self._t0) * 1000:.0f}ms, thread={threading.current_thread().name})"
-        )
-
-
 class DictationApp:
     # Config-backup safeguard (2026-07-2x "config wiped to defaults"
     # incident). See save_config()'s rolling-backup step,
@@ -2183,7 +1887,7 @@ class DictationApp:
         self.config_path.parent.mkdir(parents=True, exist_ok=True)
 
         # Boot-phase timing, one "last mark" per thread (see _BootStageTimer).
-        _boot = _BootStageTimer()
+        _boot = _samsara_boot._BootStageTimer()
         self._boot_log = _boot  # expose so load_model_async can use it
 
         # [BOOT-DIAG] perf_counter-based timing for slow-boot diagnosis.
@@ -13836,45 +13540,19 @@ if __name__ == "__main__":
 
     # Guard against double-launch. Must run before the splash / audio starts
     # so a second invocation exits cleanly without grabbing resources.
-    _t = time.perf_counter()
-    _acquire_instance_lock()
-    _dt = (time.perf_counter() - _t) * 1000
-    logger.debug(f"[BOOT-DIAG] instance lock (_check_single_instance): {_dt:.0f}ms")
-    if _dt > 5000:
-        logger.debug(f"[BOOT-DIAG] SLOW STEP: instance lock {_dt:.0f}ms")
+    _samsara_boot.lock_single_instance()
 
     # Source builds historically kept a second config beside dictation.py.
     # Carry the newer legacy profile across exactly once, after acquiring the
     # instance lock and before any settings (including Qt scale) are read.
-    if not getattr(sys, "frozen", False):
-        try:
-            if migrate_legacy_source_config(Path(__file__).parent / "config.json"):
-                logger.info("[CONFIG] Migrated legacy source profile to the per-user profile")
-        except Exception as _config_migration_exc:
-            logger.warning(
-                "[CONFIG] Could not migrate legacy source profile: %s",
-                _config_migration_exc,
-            )
+    _samsara_boot.migrate_legacy_source_profile(Path(__file__).parent)
 
     # QApplication reads QT_SCALE_FACTOR only during construction. Apply the
     # user's restart-required accessibility scale before the splash starts Qt.
-    try:
-        from samsara.ui_scale import apply_early_ui_scale
-        _early_config_path = samsara_config_path()
-        _early_scale = apply_early_ui_scale(_early_config_path)
-        logger.info(f"[UI] Early interface scale: {_early_scale:g}x")
-    except Exception as _scale_exc:
-        logger.warning(f"[UI] Could not apply interface scale: {_scale_exc}")
+    _samsara_boot.apply_early_interface_scale()
 
     # Show splash screen during startup
-    _t = time.perf_counter()
-    from samsara.ui.splash_qt import SplashScreenQt
-    splash = SplashScreenQt()
-    _dt = (time.perf_counter() - _t) * 1000
-    logger.debug(f"[BOOT-DIAG] splash init (SplashScreenQt): {_dt:.0f}ms")
-    if _dt > 5000:
-        logger.debug(f"[BOOT-DIAG] SLOW STEP: splash init {_dt:.0f}ms")
-    splash.set_status("Initializing...")
+    splash = _samsara_boot.create_splash()
 
     app = None
     try:
@@ -13884,14 +13562,7 @@ if __name__ == "__main__":
         # failure is visible instead of flashing away before the traceback can
         # be read.  Rich splashes render a dedicated error state; the original
         # status-only API still gets a useful message.
-        try:
-            splash.set_status("Startup could not finish")
-            if hasattr(splash, "set_detail"):
-                splash.set_detail(str(e))
-            if hasattr(splash, "set_error"):
-                splash.set_error("Startup could not finish", str(e))
-        except Exception as _splash_error:
-            logger.debug(f"Could not show synchronous startup error: {_splash_error}")
+        _samsara_boot.show_startup_failure(splash, e)
         raise e
     finally:
         # os._exit(0) in quit_app bypasses this block, which is correct —
