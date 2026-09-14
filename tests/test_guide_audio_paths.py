@@ -247,10 +247,11 @@ def _dictation_tree():
 
 
 def _load_enable_faulthandler():
-    tree = _dictation_tree()
+    # The function moved to samsara/boot.py in 27; the call stays in dictation.py.
+    tree = ast.parse((ROOT / "samsara" / "boot.py").read_text(encoding="utf-8-sig"))
     fn = next(n for n in tree.body if isinstance(n, ast.FunctionDef) and n.name == "_enable_faulthandler")
     namespace = {"os": os, "sys": sys}
-    exec(compile(ast.Module(body=[fn], type_ignores=[]), "dictation.py", "exec"), namespace)
+    exec(compile(ast.Module(body=[fn], type_ignores=[]), "samsara/boot.py", "exec"), namespace)
     return namespace["_enable_faulthandler"]
 
 
