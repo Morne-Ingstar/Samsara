@@ -81,6 +81,20 @@ jobs:
           path: release_asset
           merge-multiple: true
 
+      # 33: the wake-word models component and the release manifest come
+      # from the same release-build run (docs/RELEASE_MANIFEST.md); they are
+      # never regenerated here.
+      - name: Download the wake-word models component and the manifest
+        uses: actions/download-artifact@v6
+        with:
+          run-id: ${{ github.event.workflow_run.id }}
+          github-token: ${{ secrets.GITHUB_TOKEN }}
+          pattern: |
+            Samsara-WakeWord-Models-${{ steps.version.outputs.version }}.zip
+            manifest-${{ steps.version.outputs.version }}
+          path: release_asset
+          merge-multiple: true
+
       - name: Gate -- re-verify the artifact before attaching
         id: gate
         shell: pwsh
@@ -115,6 +129,37 @@ jobs:
           echo "zip=$zip" >> $env:GITHUB_OUTPUT
           echo "sidecar=$sidecar" >> $env:GITHUB_OUTPUT
 
+          # 33: the manifest must describe exactly the assets being attached.
+          # Its core and wake-word-models entries are re-hashed against the
+          # files here, so a manifest from a different build can never be
+          # published beside these ZIPs.
+          $modelsZip = Join-Path "release_asset" "Samsara-WakeWord-Models-$version.zip"
+          $modelsSidecar = "$modelsZip.sha256"
+          $manifest = Join-Path "release_asset" "manifest.json"
+          foreach ($f in @($modelsZip, $modelsSidecar, $manifest)) {
+            if (-not (Test-Path -LiteralPath $f)) { Write-Error "release asset missing: $f"; exit 1 }
+          }
+          $doc = Get-Content -LiteralPath $manifest -Raw | ConvertFrom-Json
+          if ($doc.schema_version -ne 1) { Write-Error "manifest schema_version $($doc.schema_version) is not 1"; exit 1 }
+          if ($doc.release_tag -ne $version) { Write-Error "manifest release_tag $($doc.release_tag) is not $version"; exit 1 }
+          if ($doc.git_sha -ne "${{ github.event.workflow_run.head_sha }}") { Write-Error "manifest git_sha $($doc.git_sha) is not the built commit"; exit 1 }
+          foreach ($pair in @(@('core', $zip), @('wake-word-models', $modelsZip))) {
+            $id, $file = $pair
+            $entry = $doc.components | Where-Object { $_.id -eq $id }
+            if (-not $entry) { Write-Error "manifest has no component '$id'"; exit 1 }
+            $fileHash = (Get-FileHash -LiteralPath $file -Algorithm SHA256).Hash.ToLowerInvariant()
+            $fileSize = (Get-Item -LiteralPath $file).Length
+            if ($entry.sha256 -ne $fileHash) { Write-Error "manifest '$id' sha256 $($entry.sha256) != $fileHash"; exit 1 }
+            if ($entry.size_bytes -ne $fileSize) { Write-Error "manifest '$id' size_bytes $($entry.size_bytes) != $fileSize"; exit 1 }
+            if ($entry.url -ne "https://github.com/${{ github.repository }}/releases/download/$version/$(Split-Path -Leaf $file)") {
+              Write-Error "manifest '$id' url $($entry.url) does not point at this release's asset"; exit 1
+            }
+            Write-Host "[PASS] manifest '$id' matches $(Split-Path -Leaf $file) ($fileSize bytes, sha256 $fileHash)"
+          }
+          echo "models_zip=$modelsZip" >> $env:GITHUB_OUTPUT
+          echo "models_sidecar=$modelsSidecar" >> $env:GITHUB_OUTPUT
+          echo "manifest=$manifest" >> $env:GITHUB_OUTPUT
+
       - name: Attach to GitHub Release
         uses: softprops/action-gh-release@v2
         with:
@@ -122,6 +167,9 @@ jobs:
           files: |
             ${{ steps.gate.outputs.zip }}
             ${{ steps.gate.outputs.sidecar }}
+            ${{ steps.gate.outputs.models_zip }}
+            ${{ steps.gate.outputs.models_sidecar }}
+            ${{ steps.gate.outputs.manifest }}
           generate_release_notes: true
 
       # ----------------------------------------------------------------------
