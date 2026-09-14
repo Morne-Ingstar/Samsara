@@ -49,6 +49,7 @@ from samsara.ui.tray_qt import (  # noqa: E402
     APP_MARK,
     MARK_STATES,
     RING_BAND_WIDTH,
+    RING_BRAND_WIDTH,
     RING_LINE_WIDTH,
     TASKBAR_SMALL_MAX,
     clear_mark_caches,
@@ -95,14 +96,16 @@ def _replace_paths(text: str, pattern: re.Pattern, values: list[str], what: str)
 def synced_svg_text(text: str) -> str:
     """samsara.svg with the #regular ring rewritten from the one geometry
     (tray_qt.ring_centreline / stroke_scale): the three reference centrelines,
-    then the same centrelines stroked at the hollow weight (#ring-hollow) and
-    at the band weight (#ring-filled). The #small drawing is left untouched."""
+    then the same centrelines stroked at the hollow weight (#ring-hollow),
+    at the band weight (#ring-filled) and at the brand weight (#ring-brand,
+    the window header and Home, 38). The #small drawing is left untouched."""
     split = text.index('<g id="small"')
     regular, small = text[:split], text[split:]
     regular = _replace_paths(regular, _CENTRELINE_PATH,
                              [ring_centreline_path_data(i) for i in range(3)], "ring centrelines")
     strokes = ([ring_segment_path_data(i, RING_LINE_WIDTH) for i in range(3)]
-               + [ring_segment_path_data(i, RING_BAND_WIDTH) for i in range(3)])
+               + [ring_segment_path_data(i, RING_BAND_WIDTH) for i in range(3)]
+               + [ring_segment_path_data(i, RING_BRAND_WIDTH) for i in range(3)])
     regular = _replace_paths(regular, _SEGMENT_PATH, strokes, "regular ring segments")
     return regular + small
 
@@ -293,31 +296,47 @@ def write_spin_sheet(path: Path, size: int = 128) -> Path:
     return _save(sheet, path)
 
 
+#: (label, capture, brand) columns of the weight sheet: the tray's hollow
+#: and band weights, and the brand weight the window header uses (38).
+WEIGHT_SHEET_COLUMNS = (("hollow", "listening", False), ("brand", "listening", True),
+                        ("recording", "recording", False))
+#: Rows of the weight sheet: the 128 px judgement size on dark and light,
+#: then the sizes the marks are actually shown at (26 px header, 60 px Home).
+WEIGHT_SHEET_ROWS = (("dark", _TASKBAR_DARK, None), ("light", _TASKBAR_LIGHT, None),
+                     ("26 px", _TASKBAR_DARK, 26), ("60 px", _TASKBAR_DARK, 60))
+
+
 def write_weight_sheet(path: Path, size: int = 128) -> Path:
-    """Both weights of the one centreline side by side at WEIGHT_SHEET_ANGLES:
-    hollow (listening) and recording (band), on dark and light."""
+    """The three weights of the one centreline side by side at
+    WEIGHT_SHEET_ANGLES -- hollow (listening), brand (the header lockup) and
+    recording (band) -- on dark and light at `size`, then at the real 26 px
+    header and 60 px Home sizes so the head and tail can be judged where
+    they are shown."""
     _ensure_gui_app()
     pad, header_h, label_w = 12, 36, 70
     cell = size + 2 * pad
-    columns = [(angle, weight_label, capture)
+    columns = [(angle, weight_label, capture, brand)
                for angle in WEIGHT_SHEET_ANGLES
-               for weight_label, capture in (("hollow", "listening"), ("recording", "recording"))]
-    sheet = QImage(label_w + cell * len(columns), header_h + 2 * cell, QImage.Format.Format_ARGB32)
+               for weight_label, capture, brand in WEIGHT_SHEET_COLUMNS]
+    sheet = QImage(label_w + cell * len(columns), header_h + len(WEIGHT_SHEET_ROWS) * cell,
+                   QImage.Format.Format_ARGB32)
     sheet.fill(QColor(theme.BG0))
     painter = QPainter(sheet)
     painter.setFont(QFont("Segoe UI", 10))
-    for i, (angle, weight_label, _capture) in enumerate(columns):
+    for i, (angle, weight_label, _capture, _brand) in enumerate(columns):
         painter.setPen(QColor(theme.TEXT_PRIMARY))
         painter.drawText(QRectF(label_w + i * cell, 0, cell, header_h),
                          Qt.AlignmentFlag.AlignCenter, f"{weight_label} {angle} deg")
-    for row, (tone, bg) in enumerate((("dark", _TASKBAR_DARK), ("light", _TASKBAR_LIGHT))):
+    for row, (tone, bg, row_size) in enumerate(WEIGHT_SHEET_ROWS):
         y = header_h + row * cell
         painter.setPen(QColor(theme.ICON_IDLE))
         painter.drawText(QRectF(0, y, label_w, cell), Qt.AlignmentFlag.AlignCenter, tone)
-        for i, (angle, _weight_label, capture) in enumerate(columns):
+        for i, (angle, _weight_label, capture, brand) in enumerate(columns):
             x = label_w + i * cell
             painter.fillRect(x + 4, y + 4, cell - 8, cell - 8, QColor(bg))
-            painter.drawImage(x + pad, y + pad, render_mark(capture, "asleep", size, rotation=float(angle)))
+            px = row_size or size
+            image = render_mark(capture, "asleep", px, rotation=float(angle), brand=brand)
+            painter.drawImage(x + pad + (size - px) // 2, y + pad + (size - px) // 2, image)
     painter.end()
     return _save(sheet, path)
 

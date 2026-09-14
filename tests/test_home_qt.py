@@ -64,7 +64,7 @@ def _app(**over):
         toggle_active=False,
         _outcome_ring=collections.deque(maxlen=8),
         history_store=_Store(),
-        snooze_calls=[], scratch_calls=0, teach_calls=0,
+        snooze_calls=[], stop_calls=[], scratch_calls=0, teach_calls=0,
     )
 
     def snooze_listening(minutes=None):
@@ -72,7 +72,33 @@ def _app(**over):
         app.recording = app.continuous_active = app.wake_word_active = False
         app.snoozed = True
 
+    def resume_listening():
+        app.snoozed = False
+        app.wake_word_active = True
+
+    # The per-lane stop paths the honest control uses (38)
+    def stop_recording():
+        app.stop_calls.append("stop_recording")
+        app.recording = app.toggle_active = False
+
+    def stop_continuous_mode():
+        app.stop_calls.append("stop_continuous_mode")
+        app.continuous_active = False
+
+    def exit_command_mode():
+        app.stop_calls.append("exit_command_mode")
+        app.command_mode_active = app.recording = False
+
+    def exit_ava_command_session():
+        app.stop_calls.append("exit_ava_command_session")
+        app.ava_command_session_active = app.recording = False
+
     app.snooze_listening = snooze_listening
+    app.resume_listening = resume_listening
+    app.stop_recording = stop_recording
+    app.stop_continuous_mode = stop_continuous_mode
+    app.exit_command_mode = exit_command_mode
+    app.exit_ava_command_session = exit_ava_command_session
     app._handle_unified_scratch_that = lambda: setattr(app, 'scratch_calls', app.scratch_calls + 1)
     app.open_correction_capture = lambda: setattr(app, 'teach_calls', app.teach_calls + 1)
     for k, v in over.items():
@@ -209,15 +235,18 @@ class TestStateBlock:
         assert p.state_texts["Listening"] == "Hold key"
         assert p.state_texts["Lane"] == "dictate"
         assert p.state_texts["Next utterance goes to"] == "any textbox"
-        assert p._stop_btn.text() == "Listening is off"
+        assert p._stop_btn.text() == "Stop listening" and not p._stop_btn.isEnabled()
+        assert not p._pause_btn.isEnabled()
         app.wake_word_active = True
         p.refresh()
         assert p.state_texts["Listening"] == "Wake word armed"
         assert p.state_texts["Lane"] == "command"
-        assert p._stop_btn.text() == "Stop listening"
+        assert not p._stop_btn.isEnabled(), "an armed wake listener is ambient, nothing to stop"
+        assert p._pause_btn.isEnabled() and p._pause_btn.text() == "Pause hands-free"
         app.recording = True
         p.refresh()
         assert p.state_texts["Listening"] == "Recording"
+        assert p._stop_btn.isEnabled()
 
     def test_absent_mic_is_said_in_error_colour(self, page):
         app = _app(available_mics=[{'id': 1, 'name': 'other'}])   # configured id 7 is gone
@@ -257,14 +286,60 @@ class TestStateBlock:
         assert home_qt.help_phrase(None) is None
         assert "for commands" not in home_qt.instruction_line({'mode': 'hold'}, None)
 
-    def test_stop_listening_uses_the_tray_snooze_path(self, page):
+    @pytest.mark.parametrize("flag,method", [
+        ("recording", "stop_recording"),
+        ("continuous_active", "stop_continuous_mode"),
+        ("command_mode_active", "exit_command_mode"),
+        ("ava_command_session_active", "exit_ava_command_session"),
+    ])
+    def test_stop_listening_stops_the_current_capture_never_snoozes(self, page, qapp, flag, method):
+        """38: as found, the button called snooze_listening (home_qt.stop_listening).
+        Now it calls the app's own per-lane stop and leaves the wake listener alone."""
+        from PySide6.QtTest import QTest
+
+        app = _app(**{flag: True})
+        p = page(app)
+        assert p._stop_btn.isEnabled()
+        p._stop_btn.click()
+        assert app.stop_calls == [method] and app.snooze_calls == []
+        assert app.snoozed is False and app.wake_word_active is True
+        # feedback within 200 ms: the button is disabled at once (reading
+        # "Stopping" while the app's stop path is still running, or already
+        # "Stop listening" when it returned synchronously) and the state
+        # line has changed; everything settles on the 150 ms refresh.
+        assert not p._stop_btn.isEnabled() and p._stop_btn.text() in ("Stopping", "Stop listening")
+        assert p.state_texts["Listening"] == "Wake word armed"
+        QTest.qWait(200)
+        assert p._stop_btn.text() == "Stop listening" and not p._stop_btn.isEnabled()
+        assert p.state_texts["Listening"] == "Wake word armed"
+
+    def test_stop_button_is_disabled_not_dead_when_nothing_captures(self, page):
         app = _app()
         p = page(app)
-        p._stop_btn.click()
-        assert app.snooze_calls == [None]
-        assert p._stop_btn.text() == "Listening is off"
-        p._stop_btn.click()                       # does nothing when off
-        assert app.snooze_calls == [None]
+        assert not p._stop_btn.isEnabled() and p._stop_btn.text() == "Stop listening"
+        p._on_stop()                              # even called directly, it touches nothing
+        assert app.stop_calls == [] and app.snooze_calls == []
+
+    def test_pause_hands_free_is_a_separate_explicit_control_with_a_way_back(self, page, qapp):
+        from PySide6.QtTest import QTest
+
+        app = _app()
+        p = page(app)
+        assert p._pause_btn.text() == p._pause_btn.accessibleName() == "Pause hands-free"
+        p._pause_btn.click()
+        assert app.snooze_calls == [None] and app.snoozed
+        QTest.qWait(200)
+        assert p._pause_btn.text() == p._pause_btn.accessibleName() == "Resume hands-free"
+        assert p._pause_btn.isEnabled() and p.state_texts["Listening"] == "Snoozed"
+        p._pause_btn.click()
+        QTest.qWait(200)
+        assert not app.snoozed and p._pause_btn.text() == "Pause hands-free"
+        assert p.state_texts["Listening"] == "Wake word armed"
+
+    def test_stop_capture_helper_never_reaches_the_snooze(self):
+        app = _app(recording=True)
+        assert home_qt.stop_capture(app) == "stop_recording"
+        assert home_qt.stop_capture(app) is None and app.snooze_calls == []
 
     def test_tagline_slot_exists_and_is_hidden(self, page):
         p = page()
@@ -468,10 +543,15 @@ class TestHubWiring:
         assert find("Next utterance goes to").text() == "any textbox"
         assert find("Instruction").text().startswith("Hold Ctrl+Shift and speak.")
 
+        app.recording = True                      # a capture is running
+        home.refresh()
+        assert find("Listening").text() == "Recording"
         find("Stop listening").click(); qapp.processEvents()
-        assert app.snooze_calls == [None]
-        assert find("Listening is off") is not None and find("Stop listening") is None
-        assert find("Listening").text() == "Snoozed"
+        assert app.stop_calls == ["stop_recording"] and app.snooze_calls == []
+        from PySide6.QtTest import QTest
+        QTest.qWait(200)
+        assert find("Listening").text() == "Wake word armed"
+        assert not find("Stop listening").isEnabled()
 
         find("History").click(); qapp.processEvents()
         assert win._stack.currentWidget().accessibleName() == "History list"

@@ -141,6 +141,10 @@ FONT_SIZE_CAPTION = 12
 # texture. Every family in the stack ships with Windows or Office, and the
 # generic serif closes the fallback chain.
 FONT_FAMILY_DISPLAY = "'Perpetua Titling MT', 'Palatino Linotype', 'Book Antiqua', Georgia, serif"
+# The wordmark beside the mark in the hub window's header band (38): the
+# display face at a real display size, letterspaced. Additive tokens.
+FONT_SIZE_DISPLAY = 22
+LETTER_SPACING_DISPLAY = "0.14em"
 
 # ---------------------------------------------------------------------------
 # Combo-box dropdown arrow. QComboBox::down-arrow's CSS border-triangle trick

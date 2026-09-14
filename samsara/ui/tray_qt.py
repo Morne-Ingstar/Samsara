@@ -54,6 +54,25 @@ MARK_CAPTURE = {
     "recording": (theme.RECORDING, "ring-filled"),
     "ava":       (theme.AVA, "ring-hollow"),
 }
+#: BRAND presentation (38): the lockup beside the app's name and Home's
+#: 60 px mark show the brand, not the tray's state vocabulary. At rest the
+#: ring is ACCENT at the brand weight (#ring-brand) with the eye always
+#: present -- lid closed when hands-free is off, open when armed. Idle grey
+#: and the eyeless ring are tray rules for 16 px and are retired here;
+#: state is carried by motion, the eye, and RECORDING red while recording.
+#: The tray keeps MARK_CAPTURE / MARK_EYE unchanged.
+BRAND_CAPTURE = {
+    "idle":      (theme.ACCENT, "ring-brand"),
+    "listening": (theme.ACCENT, "ring-brand"),
+    "recording": (theme.RECORDING, "ring-filled"),
+    "ava":       (theme.AVA, "ring-brand"),
+}
+BRAND_EYE = {
+    "off":    "eye-closed",
+    "asleep": "eye-closed",
+    "armed":  "eye-open",
+    "heard":  "eye-open",
+}
 #: Hands-free state -> eye drawing (None = no eye). "heard" is the static
 #: fallback frame of the heard animation: the open eye in RECORDING red with
 #: the ring brightened (capture is starting, so red is truthful).
@@ -116,7 +135,7 @@ _HEARD_RING_LIFT = 0.45  # heard: ring colour mixed this far toward TEXT_PRIMARY
 _TRAY_SIZES = (16, 24, 32)
 _SVG_NS = "http://www.w3.org/2000/svg"
 ET.register_namespace("", _SVG_NS)
-_RING_IDS = ("ring-hollow", "ring-filled")
+_RING_IDS = ("ring-hollow", "ring-filled", "ring-brand")
 _EYE_IDS = ("eye-closed", "eye-open")
 _renderer_cache: dict = {}
 _frame_cache: dict = {}
@@ -147,6 +166,13 @@ RING_CENTRE = 32.0
 VIEWBOX_MARGIN = 0.5
 RING_LINE_WIDTH = 3.0         # hollow weight (idle / listening / ava / armed)
 RING_BAND_WIDTH = 11.0        # recording weight -- same centreline, its own taper
+#: Brand weight (38): the header lockup at 26 px and Home's 60 px mark.
+#: Chosen from the candidate sheet (reports/38/artifacts/candidates.png and
+#: ui_proof/ouroboros_weights.png, 26 px row): 3.0-4.5 are hairlines at
+#: 26 px, 5.0 is the first weight whose head reads, 5.5 keeps head and tail
+#: visible at 26 px and clearly at 60 px without the ring turning into a
+#: band. Same centreline; the head/tail profile is interpolated for it.
+RING_BRAND_WIDTH = 5.5
 SEGMENT_START_DEG = -84.0     # segment 0 starts just right of 12 o'clock (y down = clockwise)
 SEGMENT_SPAN_DEG = 108.0
 SEGMENT_STEP_DEG = 120.0      # 12-degree gaps at 12, 4 and 8 o'clock
@@ -168,7 +194,13 @@ _CAP_SAMPLES = 8
 #: the two weights are interpolated linearly.
 #:   (head_scale, tail_fraction, tip_fraction, nose_fraction)
 HOLLOW_PROFILE = (1.9, 0.45, 0.30, 1.00)
-BAND_PROFILE = (1.25, 0.30, 0.22, 0.25)
+#: 38: the 1.25x band head read as a flat stub (owner screenshot, 26 px
+#: header while recording). 1.6x is a clear head at 26/60/128 px and the
+#: 12 o'clock gap stays visibly open (the nose still ends a quarter of the
+#: way into the overshoot); 1.75x crowded the gap. BAND_HEAD_MIN is the
+#: floor the identity test holds it to.
+BAND_HEAD_MIN = 1.5
+BAND_PROFILE = (1.6, 0.30, 0.22, 0.25)
 
 
 def _smoothstep(t: float) -> float:
@@ -317,19 +349,31 @@ def mark_svg_path() -> Path:
     return Path(__file__).resolve().parents[2] / "assets" / "icon" / "samsara.svg"
 
 
-def mark_colours(capture: str, eye: str) -> tuple[str, str]:
-    """(ring colour, eye colour) -- one token per state, except the heard frame."""
-    colour = MARK_CAPTURE[capture][0]
+def mark_colours(capture: str, eye: str, brand: bool = False) -> tuple[str, str]:
+    """(ring colour, eye colour) -- one token per state, except the heard
+    frame. brand=True uses BRAND_CAPTURE: never ICON_IDLE."""
+    colour = (BRAND_CAPTURE if brand else MARK_CAPTURE)[capture][0]
     if eye == "heard":
         return theme._mix(colour, theme.TEXT_PRIMARY, _HEARD_RING_LIFT), theme.RECORDING
     return colour, colour
 
 
-def mark_svg(capture: str, eye: str, small: bool, layer: str, source: bytes | None = None) -> bytes:
-    """The SVG with only one layer ('ring' or 'eye') of one state visible."""
-    ring_colour, eye_colour = mark_colours(capture, eye)
-    ring_id = MARK_CAPTURE[capture][1]
-    eye_id = MARK_EYE[eye]
+def mark_eye_id(eye: str, brand: bool = False) -> Optional[str]:
+    """The eye drawing for a hands-free state: MARK_EYE (tray: none when
+    off) or BRAND_EYE (always present)."""
+    return (BRAND_EYE if brand else MARK_EYE)[eye]
+
+
+def mark_svg(capture: str, eye: str, small: bool, layer: str, source: bytes | None = None,
+             brand: bool = False) -> bytes:
+    """The SVG with only one layer ('ring' or 'eye') of one state visible.
+    brand=True selects the brand presentation (BRAND_CAPTURE / BRAND_EYE);
+    the brand never uses the #small drawing."""
+    if brand:
+        small = False
+    ring_colour, eye_colour = mark_colours(capture, eye, brand)
+    ring_id = (BRAND_CAPTURE if brand else MARK_CAPTURE)[capture][1]
+    eye_id = mark_eye_id(eye, brand)
     suffix = "-small" if small else ""
 
     root = ET.fromstring(source if source is not None else mark_svg_path().read_bytes())
@@ -338,7 +382,9 @@ def mark_svg(capture: str, eye: str, small: bool, layer: str, source: bytes | No
     by_id["small"].set("display", "inline" if small else "none")
     for base in _RING_IDS + _EYE_IDS:
         wanted = (layer == "ring" and base == ring_id) or (layer == "eye" and base == eye_id)
-        by_id[base + suffix].set("display", "inline" if wanted else "none")
+        el = by_id.get(base + suffix)
+        if el is not None:                       # #small has no brand ring
+            el.set("display", "inline" if wanted else "none")
 
     ring = by_id[ring_id + suffix]
     for attr in ("fill", "stroke"):
@@ -361,12 +407,13 @@ def clear_mark_caches() -> None:
         _frame_cache.clear()
 
 
-def _renderer(capture: str, eye: str, small: bool, layer: str) -> QSvgRenderer | None:
-    key = (capture, eye if layer == "eye" or eye == "heard" else "", small, layer)
+def _renderer(capture: str, eye: str, small: bool, layer: str,
+              brand: bool = False) -> QSvgRenderer | None:
+    key = (capture, eye if layer == "eye" or eye == "heard" else "", small, layer, brand)
     renderer = _renderer_cache.get(key)
     if renderer is None:
         try:
-            renderer = QSvgRenderer(QByteArray(mark_svg(capture, eye, small, layer)))
+            renderer = QSvgRenderer(QByteArray(mark_svg(capture, eye, small, layer, brand=brand)))
         except (OSError, ET.ParseError, KeyError) as exc:
             logger.warning("[ICON] Samsara mark unavailable: %s", exc)
             return None
@@ -382,11 +429,12 @@ def _uses_small(size: float, small_max: Optional[int]) -> bool:
 
 
 def _paint_vector(painter: QPainter, rect: QRectF, capture: str, eye: str,
-                  rotation: float, opacity: float, small_max: Optional[int] = None) -> None:
+                  rotation: float, opacity: float, small_max: Optional[int] = None,
+                  brand: bool = False) -> None:
     """Live vector render: ring rotated, eye upright (caller holds the lock)."""
-    small = _uses_small(min(rect.width(), rect.height()), small_max)
-    ring = _renderer(capture, eye, small, "ring")
-    eye_renderer = _renderer(capture, eye, small, "eye") if MARK_EYE[eye] else None
+    small = False if brand else _uses_small(min(rect.width(), rect.height()), small_max)
+    ring = _renderer(capture, eye, small, "ring", brand)
+    eye_renderer = _renderer(capture, eye, small, "eye", brand) if mark_eye_id(eye, brand) else None
     if ring is None:
         return
     painter.save()
@@ -412,14 +460,14 @@ def frame_step(rotation: float) -> int:
 
 
 def _frame(capture: str, eye: str, size: int, rotation: float,
-           small_max: Optional[int] = None) -> QImage:
+           small_max: Optional[int] = None, brand: bool = False) -> QImage:
     """A pre-rendered frame for small sizes (caller holds the lock).
 
     At 16-24 px a live-rotated ring aliases badly, so spin cycles 24 frames
     in 15-degree steps, each rendered once from the vector and cached.
     """
-    small = _uses_small(size, small_max)
-    key = (capture, eye, size, frame_step(rotation), small)
+    small = False if brand else _uses_small(size, small_max)
+    key = (capture, eye, size, frame_step(rotation), small, brand)
     image = _frame_cache.get(key)
     if image is None:
         if len(_frame_cache) >= _FRAME_CACHE_LIMIT:
@@ -428,7 +476,7 @@ def _frame(capture: str, eye: str, size: int, rotation: float,
         image.fill(Qt.GlobalColor.transparent)
         frame_painter = QPainter(image)
         _paint_vector(frame_painter, QRectF(0, 0, size, size), capture, eye,
-                      key[3] * (360.0 / _FRAME_STEPS), 1.0, small_max)
+                      key[3] * (360.0 / _FRAME_STEPS), 1.0, small_max, brand)
         frame_painter.end()
         _frame_cache[key] = image
     return image
@@ -436,7 +484,7 @@ def _frame(capture: str, eye: str, size: int, rotation: float,
 
 def paint_mark(painter: QPainter, rect: QRectF, capture: str, eye: str,
                rotation: float = 0.0, opacity: float = 1.0, *,
-               small_max: Optional[int] = None) -> None:
+               small_max: Optional[int] = None, brand: bool = False) -> None:
     """Draw the mark into rect on an existing painter (Qt thread only).
 
     THE one drawing of the mark: tray, listening indicator, splash, the
@@ -445,28 +493,31 @@ def paint_mark(painter: QPainter, rect: QRectF, capture: str, eye: str,
     Sizes up to small_max (default _SMALL_MAX = 20) use the heavy #small
     drawing; the taskbar-facing icons pass TASKBAR_SMALL_MAX. 16-24 px draws
     a cached 15-degree frame; 32 px and up rotates the vector live.
+    brand=True is the presentation for the window header and Home (38):
+    BRAND_CAPTURE colours at RING_BRAND_WIDTH, the eye always present,
+    never the #small drawing.
     """
     size = min(rect.width(), rect.height())
     with _renderer_lock:
         if size <= _FRAME_MAX:
-            image = _frame(capture, eye, max(1, int(round(size))), rotation, small_max)
+            image = _frame(capture, eye, max(1, int(round(size))), rotation, small_max, brand)
             painter.save()
             painter.setOpacity(painter.opacity() * max(0.0, min(1.0, opacity)))
             painter.drawImage(rect, image)
             painter.restore()
             return
-        _paint_vector(painter, rect, capture, eye, rotation, opacity, small_max)
+        _paint_vector(painter, rect, capture, eye, rotation, opacity, small_max, brand)
 
 
 def render_mark(capture: str, eye: str, size: int,
                 rotation: float = 0.0, opacity: float = 1.0, *,
-                small_max: Optional[int] = None) -> QImage:
+                small_max: Optional[int] = None, brand: bool = False) -> QImage:
     """The mark as a transparent ARGB32 image (Qt thread only)."""
     image = QImage(size, size, QImage.Format.Format_ARGB32_Premultiplied)
     image.fill(Qt.GlobalColor.transparent)
     painter = QPainter(image)
     paint_mark(painter, QRectF(0, 0, size, size), capture, eye, rotation, opacity,
-               small_max=small_max)
+               small_max=small_max, brand=brand)
     painter.end()
     return image.convertToFormat(QImage.Format.Format_ARGB32)
 
