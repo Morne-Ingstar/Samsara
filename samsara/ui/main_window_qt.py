@@ -7,6 +7,7 @@ Layout:
     +--------------------------------------------------+
     | Samsara                          [status badge]  |
     +----------+---------------------------------------+
+    | Home     |                                       |
     | History  |                                       |
     | Dictionary  (QStackedWidget content area)        |
     | Settings |                                       |
@@ -15,7 +16,8 @@ Layout:
     +--------------------------------------------------+
 
 Settings nav item opens the Qt settings window via app.open_settings().
-History and Dictionary are embedded QWidget panels.
+Home (the landing page, samsara/ui/home_qt.py), History and Dictionary are
+embedded QWidget panels.
 Close button hides to tray (closeEvent suppressed); app.close() force-closes.
 """
 
@@ -31,6 +33,7 @@ from samsara.ui import qt_runtime
 from samsara.ui.tray_qt import MarkFrame, paint_mark
 from samsara.ui.dictionary_panel_qt import DictionaryPanelQt
 from samsara.ui.history_view import HistoryView
+from samsara.ui.home_qt import HomePage
 
 from samsara.log import get_logger
 
@@ -194,6 +197,9 @@ class _HeaderMark(QWidget):
         super().__init__(parent)
         self._app = app
         self._frame = MarkFrame("idle", "off")
+        # Other views of the same frame (Home's 60 px mark): called with the
+        # new MarkFrame whenever it changes, so there is one source only.
+        self.listeners = []
         self.setFixedSize(HEADER_MARK_PX, HEADER_MARK_PX)
         self.setStyleSheet("background: transparent;")
         self.setAccessibleName(mark_accessible_name(self._frame))
@@ -227,6 +233,11 @@ class _HeaderMark(QWidget):
             if name_changed:
                 self.setAccessibleName(mark_accessible_name(frame))
             self.update()
+            for listener in list(self.listeners):
+                try:
+                    listener(frame)
+                except Exception as e:
+                    logger.debug(f"_HeaderMark listener: {e}")
 
     def paintEvent(self, event):
         painter = QPainter(self)
@@ -261,7 +272,7 @@ class _MainWindow(QMainWindow):
         self.setMinimumSize(MIN_WIDTH, MIN_HEIGHT)
         self._restore_geometry()
         self._build_ui()
-        self._activate("History")
+        self._activate("Home")
         self._poll_timer.start()
         self._dictation_sig.connect(self._on_dictation)
 
@@ -310,8 +321,9 @@ class _MainWindow(QMainWindow):
         slay.setSpacing(2)
 
         self._nav_btns = {}
-        for name in ("History", "Dictionary", "Settings"):
+        for name in ("Home", "History", "Dictionary", "Settings"):
             btn = QPushButton(name)
+            btn.setAccessibleName(name)
             btn.setFixedHeight(44)
             btn.setCheckable(True)
             btn.setStyleSheet(self._nav_style(False))
@@ -390,6 +402,11 @@ class _MainWindow(QMainWindow):
         self._highlight(name)
 
     def _make_panel(self, name: str):
+        if name == "Home":
+            page = HomePage(self._app, open_page=self._activate)
+            page.set_mark_frame(self._header_mark.frame)
+            self._header_mark.listeners.append(page.set_mark_frame)
+            return page
         if name == "History":
             store = getattr(self._app, 'history_store', None)
             return HistoryView(
@@ -420,6 +437,13 @@ class _MainWindow(QMainWindow):
 
     def _refresh_status(self):
         cfg = getattr(self._app, 'config', {}) or {}
+
+        home = self._panel_cache.get("Home")
+        if home is not None:
+            try:
+                home.refresh()
+            except Exception as e:
+                logger.debug(f"_refresh_status home: {e}")
 
         mode = cfg.get('mode', 'hold').title()
         self._lbl_mode.setText(mode)
@@ -468,12 +492,13 @@ class _MainWindow(QMainWindow):
             self._lbl_prev.setText("")
             self._lbl_prev.setToolTip("")
 
-        panel = self._panel_cache.get("History")
-        if panel is not None and self._stack.currentWidget() is panel:
-            try:
-                panel.refresh()
-            except Exception as e:
-                logger.debug(f"_on_dictation: {e}")
+        for name in ("History", "Home"):
+            panel = self._panel_cache.get(name)
+            if panel is not None and (name == "Home" or self._stack.currentWidget() is panel):
+                try:
+                    panel.refresh()
+                except Exception as e:
+                    logger.debug(f"_on_dictation: {e}")
 
     # ---- Geometry -----------------------------------------------------------
 
