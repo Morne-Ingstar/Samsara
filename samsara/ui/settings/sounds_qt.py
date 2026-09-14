@@ -351,7 +351,9 @@ class SoundsPage:
             except Exception as e:
                 print(f"[SOUNDS] Could not play {wav.name}: {e}")
 
-        threading.Thread(target=_run, name="settings-sound-test", daemon=True).start()
+        # Registered daemon (37): a sound preview must never keep the app
+        # alive, so it is not joined at shutdown; the registry still sees it.
+        thread_registry.spawn("settings-sound-test", _run, daemon=True)
 
     def _apply_sound_theme(self, theme: str, sounds_dir, themes_dir) -> None:
         """Copy WAV files from the selected theme folder into sounds_dir."""
