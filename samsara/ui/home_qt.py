@@ -33,8 +33,8 @@ from __future__ import annotations
 import datetime as _dt
 from typing import Callable, Optional
 
-from PySide6.QtCore import QRectF, Qt
-from PySide6.QtGui import QPainter
+from PySide6.QtCore import QRectF, QSize, Qt, QTimer
+from PySide6.QtGui import QColor, QFont, QIcon, QPainter, QPixmap
 from PySide6.QtWidgets import (
     QApplication, QFrame, QGridLayout, QHBoxLayout, QLabel, QPushButton,
     QScrollArea, QSizePolicy, QVBoxLayout, QWidget,
@@ -70,7 +70,29 @@ CAPABILITY_TITLES = (
 )
 ANY_TEXTBOX = "any textbox"
 STOP_LISTENING = "Stop listening"
+STOPPING = "Stopping"
 LISTENING_OFF = "Listening is off"
+PAUSE_HANDS_FREE = "Pause hands-free"
+RESUME_HANDS_FREE = "Resume hands-free"
+# How soon the page re-reads runtime state after a control is pressed, so
+# the mark, the state line and the button itself change within 200 ms.
+FEEDBACK_MS = 150
+
+# One icon vocabulary for the hub's nav rows and Home's capability cards
+# (38): plain glyphs from Segoe UI Symbol, built with chr() so this file
+# stays ASCII, painted in the theme's text tokens by glyph_icon().
+ICON_GLYPHS = {
+    "home": chr(0x2302),        # house
+    "history": chr(0x21BA),     # anticlockwise arrow
+    "dictionary": chr(0x2261),  # three lines
+    "settings": chr(0x2699),    # gear
+    "windows": chr(0x25A3),     # square in square
+    "hands_free": chr(0x25C9),  # fisheye
+    "dictate": chr(0x270E),     # pencil
+    "ava": chr(0x2726),         # four-pointed star
+    "words": chr(0x2261),       # three lines (same as dictionary)
+}
+CARD_GLYPHS = ("windows", "hands_free", "dictate", "ava", "words")
 WORDS_TODAY = "words today"
 WORDS_REMAINING = "words remaining"
 INFINITY = chr(0x221E)
@@ -82,6 +104,26 @@ CREED = f"Free {MIDDLE_DOT} Open source {MIDDLE_DOT} Accessibility first"
 # Interpunct-free form for callers that cannot show the middle dot.
 CREED_ASCII = "Free - Open source - Accessibility first"
 _CATALOG_UNAVAILABLE_SHORT = "command list unavailable"
+
+
+def glyph_icon(key: str, colour: str, px: int = 18) -> QIcon:
+    """A QIcon of one ICON_GLYPHS entry painted in `colour` (a theme token),
+    so a button keeps its text as its accessible name and still shows an
+    icon. Renders at 2x for crisp scaling."""
+    glyph = ICON_GLYPHS.get(key, "")
+    size = px * 2
+    pixmap = QPixmap(size, size)
+    pixmap.fill(Qt.GlobalColor.transparent)
+    painter = QPainter(pixmap)
+    painter.setRenderHint(QPainter.RenderHint.Antialiasing, True)
+    font = QFont("Segoe UI Symbol")
+    font.setPixelSize(int(size * 1.0))
+    painter.setFont(font)
+    painter.setPen(QColor(colour))
+    painter.drawText(pixmap.rect(), Qt.AlignmentFlag.AlignCenter, glyph)
+    painter.end()
+    pixmap.setDevicePixelRatio(2.0)
+    return QIcon(pixmap)
 
 
 def text_scale() -> float:
@@ -144,6 +186,17 @@ def listening_state(app) -> tuple:
     if mode == 'toggle':
         return ("Toggle key", False)
     return ("Off", False)
+
+
+def capturing(app) -> bool:
+    """True while something is actually capturing speech: a hold/toggle
+    recording, continuous mode, or a hands-free (command / Ava) session. An
+    armed wake listener is ambient, not a capture."""
+    return bool(getattr(app, 'recording', False)
+                or getattr(app, 'continuous_active', False)
+                or getattr(app, 'toggle_active', False)
+                or getattr(app, 'command_mode_active', False)
+                or getattr(app, 'ava_command_session_active', False))
 
 
 def mic_present(app) -> bool:
@@ -429,11 +482,35 @@ def words_today(app, now: Optional[_dt.datetime] = None) -> int:
 # Actions on the app (each one an existing path)
 # ---------------------------------------------------------------------------
 
-def stop_listening(app) -> bool:
-    """The tray's stop path: Snooze > until resumed (snooze_listening(None))
-    stops recording, continuous and the wake listener. Returns False when
-    nothing was live."""
-    if not listening_state(app)[1]:
+def stop_capture(app) -> Optional[str]:
+    """Stop the CURRENT capture through the app's own per-lane stop path
+    (38): the one the hotkey release / session end use, never the snooze.
+    Returns the name of the method called, or None when nothing was
+    capturing. Order matters: a hands-free session owns its recording."""
+    for flag, method in (
+        ('ava_command_session_active', 'exit_ava_command_session'),
+        ('command_mode_active', 'exit_command_mode'),
+        ('continuous_active', 'stop_continuous_mode'),
+        ('recording', 'stop_recording'),
+        ('toggle_active', 'stop_recording'),
+    ):
+        if getattr(app, flag, False):
+            fn = getattr(app, method, None)
+            if not callable(fn):
+                continue
+            try:
+                fn()
+            except Exception as exc:
+                logger.warning(f"[HOME] {method} failed: {exc}")
+                return None
+            return method
+    return None
+
+
+def pause_hands_free(app) -> bool:
+    """The explicit pause: the tray's snooze until resumed. Only while the
+    wake listener is armed and not already paused."""
+    if getattr(app, 'snoozed', False) or not getattr(app, 'wake_word_active', False):
         return False
     fn = getattr(app, 'snooze_listening', None)
     if not callable(fn):
@@ -441,9 +518,30 @@ def stop_listening(app) -> bool:
     try:
         fn(None)
     except Exception as exc:
-        logger.warning(f"[HOME] stop listening failed: {exc}")
+        logger.warning(f"[HOME] pause hands-free failed: {exc}")
         return False
     return True
+
+
+def resume_hands_free(app) -> bool:
+    """Undo the pause: the app's resume_listening."""
+    if not getattr(app, 'snoozed', False):
+        return False
+    fn = getattr(app, 'resume_listening', None)
+    if not callable(fn):
+        return False
+    try:
+        fn()
+    except Exception as exc:
+        logger.warning(f"[HOME] resume hands-free failed: {exc}")
+        return False
+    return True
+
+
+def stop_listening(app) -> bool:
+    """Kept for callers of the old name: stops the current capture. It
+    never snoozes (that was the wiring the owner found dead-ended)."""
+    return stop_capture(app) is not None
 
 
 def open_cheatsheet_filtered(app, needle: str) -> None:
@@ -580,8 +678,10 @@ class _StateMark(QWidget):
     def paintEvent(self, event):
         painter = QPainter(self)
         f = self._frame
+        # Brand presentation (38): ACCENT at rest with the eye present,
+        # the tray's idle grey and eyeless ring retired on this surface.
         paint_mark(painter, QRectF(0, 0, self.width(), self.height()),
-                   f.capture, f.eye, f.rotation, f.opacity)
+                   f.capture, f.eye, f.rotation, f.opacity, brand=True)
         painter.end()
 
 
@@ -589,9 +689,12 @@ class _CapabilityCard(QPushButton):
     """A card that IS the button: its text is the title (so the accessible
     name equals the visible label); the live value sits below it."""
 
-    def __init__(self, title: str, value: str, parent=None):
+    def __init__(self, title: str, value: str, parent=None, glyph: Optional[str] = None):
         super().__init__(title, parent)
         self.setAccessibleName(title)
+        if glyph:
+            self.setIcon(glyph_icon(glyph, theme.ACCENT))
+            self.setIconSize(QSize(_px(18), _px(18)))
         self.setCursor(Qt.CursorShape.PointingHandCursor)
         self.setFocusPolicy(Qt.FocusPolicy.StrongFocus)
         self.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Minimum)
@@ -683,7 +786,7 @@ class HomePage(QWidget):
         col.addStretch(1)
 
         # Tab order: top to bottom, in the order the widgets were built.
-        chain = [self._stop_btn, self._undo_btn, self._teach_btn, self._why_btn,
+        chain = [self._stop_btn, self._pause_btn, self._undo_btn, self._teach_btn, self._why_btn,
                  *self._cards]
         for a, b in zip(chain, chain[1:]):
             QWidget.setTabOrder(a, b)
@@ -724,9 +827,17 @@ class HomePage(QWidget):
         lay.addWidget(self._tagline)
 
         btn_row = QHBoxLayout()
+        btn_row.setSpacing(GRID)
+        # Stops the CURRENT capture (38). Disabled, never dead, when nothing
+        # is capturing: the state line beside it says what is going on.
         self._stop_btn = _button(STOP_LISTENING)
         self._stop_btn.clicked.connect(self._on_stop)
         btn_row.addWidget(self._stop_btn)
+        # The explicit pause is its own control; while paused it reads
+        # "Resume hands-free" so the state is always visible and exitable.
+        self._pause_btn = _button(PAUSE_HANDS_FREE)
+        self._pause_btn.clicked.connect(self._on_pause)
+        btn_row.addWidget(self._pause_btn)
         btn_row.addStretch(1)
         lay.addLayout(btn_row)
         return card
@@ -783,8 +894,8 @@ class HomePage(QWidget):
         self._cards_grid.setHorizontalSpacing(GRID)
         self._cards_grid.setVerticalSpacing(GRID)
         self._cards = []
-        for spec in capability_cards(self._app, self._records):
-            card = _CapabilityCard(spec["title"], spec["value"])
+        for spec, glyph in zip(capability_cards(self._app, self._records), CARD_GLYPHS):
+            card = _CapabilityCard(spec["title"], spec["value"], glyph=glyph)
             card.clicked.connect(lambda _=False, s=spec: self._on_card(s))
             self._cards.append(card)
         self._cards_cols = 0
@@ -908,13 +1019,37 @@ class HomePage(QWidget):
         self._target_val.setText(target_text(app))
         self._instruction.setText(instruction_line(_cfg(app), self._help))
 
-        stop_text = STOP_LISTENING if live else LISTENING_OFF
-        if self._stop_btn.text() != stop_text:
-            self._stop_btn.setText(stop_text)
-            self._stop_btn.setAccessibleName(stop_text)
+        self._refresh_controls()
 
         self._refresh_last_action()
         self._words_val.setText(str(words_today(app)))
+
+    def _refresh_controls(self):
+        app = self._app
+        active = capturing(app)
+        stopping = getattr(self, '_stopping', False) and active
+        stop_text = STOPPING if stopping else STOP_LISTENING
+        if self._stop_btn.text() != stop_text:
+            self._stop_btn.setText(stop_text)
+            self._stop_btn.setAccessibleName(stop_text)
+        self._stop_btn.setEnabled(active and not stopping)
+        if not active:
+            self._stopping = False
+        snoozed = bool(getattr(app, 'snoozed', False))
+        armed = bool(getattr(app, 'wake_word_active', False))
+        pause_text = RESUME_HANDS_FREE if snoozed else PAUSE_HANDS_FREE
+        if self._pause_btn.text() != pause_text:
+            self._pause_btn.setText(pause_text)
+            self._pause_btn.setAccessibleName(pause_text)
+        self._pause_btn.setEnabled(snoozed or armed)
+
+    def _feedback(self):
+        """Re-read runtime state now and again shortly after, so a press
+        changes the mark, the state line and the button within 200 ms even
+        when the app's stop path finishes asynchronously."""
+        self.refresh()
+        QTimer.singleShot(FEEDBACK_MS, self.refresh)
+        QTimer.singleShot(FEEDBACK_MS * 4, self.refresh)
 
     def _refresh_last_action(self):
         ring = outcome_ring(self._app)
@@ -957,8 +1092,21 @@ class HomePage(QWidget):
     # ---- Actions ----------------------------------------------------------
 
     def _on_stop(self):
-        if stop_listening(self._app):
-            self.refresh()
+        if not capturing(self._app):
+            return
+        self._stopping = True
+        self._stop_btn.setText(STOPPING)
+        self._stop_btn.setAccessibleName(STOPPING)
+        self._stop_btn.setEnabled(False)
+        stop_capture(self._app)
+        self._feedback()
+
+    def _on_pause(self):
+        if getattr(self._app, 'snoozed', False):
+            resume_hands_free(self._app)
+        else:
+            pause_hands_free(self._app)
+        self._feedback()
 
     def _on_undo(self):
         fn = getattr(self._app, '_handle_unified_scratch_that', None)

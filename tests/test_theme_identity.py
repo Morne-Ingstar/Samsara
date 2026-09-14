@@ -176,17 +176,19 @@ def _svg_regular_and_small():
     return svg[:split], svg[split:]
 
 
-def test_svg_ring_is_the_shared_centreline_at_two_weights(gen_icons):
+def test_svg_ring_is_the_shared_centreline_at_three_weights(gen_icons):
     regular, _small = _svg_regular_and_small()
     centrelines = re.findall(r'<path data-role="centreline" d="([^"]*)"', regular)
     assert centrelines == [tray_qt.ring_centreline_path_data(i) for i in range(3)]
     paths = re.findall(r'<path data-role="segment" d="([^"]*)"', regular)
     hollow = [tray_qt.ring_segment_path_data(i, tray_qt.RING_LINE_WIDTH) for i in range(3)]
     band = [tray_qt.ring_segment_path_data(i, tray_qt.RING_BAND_WIDTH) for i in range(3)]
-    assert paths == hollow + band                  # #ring-hollow, then #ring-filled
+    brand = [tray_qt.ring_segment_path_data(i, tray_qt.RING_BRAND_WIDTH) for i in range(3)]
+    assert paths == hollow + band + brand          # #ring-hollow, #ring-filled, #ring-brand (38)
     assert gen_icons.ring_segment_path_data is tray_qt.ring_segment_path_data
     # Hollow is a filled thin stroke-expansion, never an outline stroke.
     assert '<g id="ring-hollow" fill="#8b929c" stroke="none">' in regular
+    assert '<g id="ring-brand" fill="#8b929c" stroke="none" display="none">' in regular
 
 
 @pytest.mark.parametrize("segment", [0, 1, 2])
@@ -251,7 +253,10 @@ def test_head_and_tail_depend_on_weight():
     assert tray_qt.weight_profile(line) == tray_qt.HOLLOW_PROFILE
     assert tray_qt.weight_profile(band) == tray_qt.BAND_PROFILE
     assert tray_qt.head_scale(line) == pytest.approx(1.9)
-    assert tray_qt.head_scale(band) == pytest.approx(1.25)
+    # 38: 1.25x read as a flat stub in the 26 px header; the band head now
+    # sits above BAND_HEAD_MIN and the gap test below still holds.
+    assert tray_qt.head_scale(band) == pytest.approx(tray_qt.BAND_PROFILE[0])
+    assert tray_qt.head_scale(band) >= tray_qt.BAND_HEAD_MIN >= 1.5
     assert tray_qt.tail_fraction(line) > tray_qt.tail_fraction(band)
     mid = (line + band) / 2
     assert tray_qt.head_scale(band) < tray_qt.head_scale(mid) < tray_qt.head_scale(line)
@@ -583,3 +588,68 @@ def test_scrolled_list_renders_without_arrow_subcontrols(qapp):
         assert top.alpha() == 0                                           # no arrow button at the top
     finally:
         lst.close()
+
+
+# ---------------------------------------------------------------------------
+# 38: the brand presentation (window header, Home) versus the tray rules
+# ---------------------------------------------------------------------------
+
+def test_brand_presentation_is_accent_with_the_eye_always_present():
+    """The header lockup and Home's mark show the brand: ACCENT at rest,
+    never ICON_IDLE, the eye present in every hands-free state (closed when
+    off), RECORDING red only while recording. The tray keeps its rules."""
+    assert tray_qt.BRAND_CAPTURE["idle"][0] == theme.ACCENT
+    assert tray_qt.BRAND_CAPTURE["listening"][0] == theme.ACCENT
+    assert tray_qt.BRAND_CAPTURE["recording"] == (theme.RECORDING, "ring-filled")
+    assert theme.ICON_IDLE not in {c for c, _ in tray_qt.BRAND_CAPTURE.values()}
+    assert set(tray_qt.BRAND_EYE) == set(tray_qt.MARK_EYE)
+    assert all(tray_qt.BRAND_EYE[e] is not None for e in tray_qt.BRAND_EYE)
+    assert tray_qt.BRAND_EYE["off"] == "eye-closed" and tray_qt.BRAND_EYE["armed"] == "eye-open"
+    for eye in tray_qt.MARK_EYE:
+        assert tray_qt.mark_eye_id(eye, brand=True) is not None
+    assert tray_qt.mark_colours("idle", "off", brand=True) == (theme.ACCENT, theme.ACCENT)
+    assert tray_qt.mark_colours("recording", "armed", brand=True) == (theme.RECORDING, theme.RECORDING)
+    # tray rules unchanged
+    assert tray_qt.MARK_CAPTURE["idle"][0] == theme.ICON_IDLE and tray_qt.MARK_EYE["off"] is None
+    assert tray_qt.mark_colours("idle", "off") == (theme.ICON_IDLE, theme.ICON_IDLE)
+
+
+def test_brand_weight_sits_between_hollow_and_band():
+    """Chosen from the 26 px row of the weight sheet: heavier than the tray's
+    hollow line so head and tail read at 26 px, well short of the band."""
+    assert tray_qt.RING_LINE_WIDTH < tray_qt.RING_BRAND_WIDTH < tray_qt.RING_BAND_WIDTH
+    assert tray_qt.RING_BRAND_WIDTH >= 5.0
+    assert tray_qt.head_scale(tray_qt.RING_BRAND_WIDTH) > tray_qt.head_scale(tray_qt.RING_BAND_WIDTH)
+
+
+def _colour_pixels(image, hex_colour, tolerance=28):
+    r, g, b = theme._hex_to_rgb(hex_colour)
+    count = 0
+    for y in range(image.height()):
+        for x in range(image.width()):
+            c = image.pixelColor(x, y)
+            if c.alpha() > 200 and abs(c.red() - r) <= tolerance and abs(c.green() - g) <= tolerance \
+                    and abs(c.blue() - b) <= tolerance:
+                count += 1
+    return count
+
+
+@pytest.mark.parametrize("eye", ["off", "asleep", "armed"])
+def test_brand_mark_at_rest_renders_accent_never_grey_with_an_eye(qapp, eye):
+    """At the header's 26 px and Home's 60 px: ACCENT pixels present, no
+    ICON_IDLE pixels, and the centre (the eye) is painted in every state."""
+    for size in (26, 60):
+        image = tray_qt.render_mark("idle", eye, size, brand=True)
+        assert _colour_pixels(image, theme.ACCENT) > size, (size, eye)
+        assert _colour_pixels(image, theme.ICON_IDLE) == 0, (size, eye)
+        centre = image.pixelColor(size // 2, size // 2)
+        assert centre.alpha() > 100, f"no eye at the centre for {eye!r} at {size} px"
+    tray = tray_qt.render_mark("idle", "off", 60)
+    assert _colour_pixels(tray, theme.ICON_IDLE) > 60 and tray.pixelColor(30, 30).alpha() < 40
+
+
+def test_brand_mark_is_heavier_than_the_tray_hollow_line(qapp):
+    size = 60
+    brand = _colour_pixels(tray_qt.render_mark("listening", "off", size, brand=True), theme.ACCENT)
+    tray = _colour_pixels(tray_qt.render_mark("listening", "off", size), theme.ACCENT)
+    assert brand > tray * 1.3

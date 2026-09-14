@@ -21,7 +21,7 @@ embedded QWidget panels.
 Close button hides to tray (closeEvent suppressed); app.close() force-closes.
 """
 
-from PySide6.QtCore import QRectF, Qt, QTimer, Signal, Slot
+from PySide6.QtCore import QRectF, QSize, Qt, QTimer, Signal, Slot
 from PySide6.QtGui import QPainter
 from PySide6.QtWidgets import (
     QApplication, QFrame, QHBoxLayout, QLabel, QMainWindow,
@@ -33,7 +33,7 @@ from samsara.ui import qt_runtime, theme
 from samsara.ui.tray_qt import MarkFrame, paint_mark
 from samsara.ui.dictionary_panel_qt import DictionaryPanelQt
 from samsara.ui.history_view import HistoryView
-from samsara.ui.home_qt import HomePage
+from samsara.ui.home_qt import HomePage, glyph_icon
 
 from samsara.log import get_logger
 
@@ -52,6 +52,12 @@ SIDEBAR_W      = 180
 HISTORY_LIMIT  = 500
 HEADER_MARK_PX = 26
 HEADER_MARK_GAP = 12
+HEADER_H = 64
+NAV_ROW_H = 44
+NAV_ICON_PX = 18
+PAUSED_RESUME = "Paused \u2014 resume"
+#: Nav item -> icon key in home_qt.ICON_GLYPHS (one vocabulary, 38).
+NAV_ICONS = {"Home": "home", "History": "history", "Dictionary": "dictionary", "Settings": "settings"}
 # The header mark follows the tray's live frame (spin while transcribing,
 # listening pulse), so it polls faster than the 2 s status refresh; the
 # timer runs only while the window is shown.
@@ -231,8 +237,12 @@ class _HeaderMark(QWidget):
     def paintEvent(self, event):
         painter = QPainter(self)
         frame = self._frame
+        # Brand presentation (38): the lockup beside the app's name is
+        # ACCENT at the brand weight with the eye present in every
+        # hands-free state; only RECORDING red while recording. The tray
+        # keeps its own 16 px state vocabulary.
         paint_mark(painter, QRectF(0, 0, self.width(), self.height()),
-                   frame.capture, frame.eye, frame.rotation, frame.opacity)
+                   frame.capture, frame.eye, frame.rotation, frame.opacity, brand=True)
         painter.end()
 
 
@@ -275,16 +285,36 @@ class _MainWindow(QMainWindow):
         outer.setContentsMargins(0, 0, 0, 0)
         outer.setSpacing(0)
 
-        # Header
+        # Header band (38): the brand mark and the wordmark in the display
+        # face, on BG0, separated from the content by the BORDER token.
         header = QWidget()
-        header.setFixedHeight(52)
-        header.setStyleSheet(f"background: {_BG}; border-bottom: 1px solid {_BORDER};")
+        header.setObjectName("hubHeader")
+        header.setFixedHeight(HEADER_H)
+        header.setStyleSheet(
+            f"QWidget#hubHeader {{ background: {theme.BG0}; border-bottom: 1px solid {theme.BORDER}; }}")
         hlay = QHBoxLayout(header)
         hlay.setContentsMargins(20, 0, 20, 0)
         title = QLabel("Samsara")
-        title.setStyleSheet(f"color: {_TEXT_PRI}; font-size: 16px; font-weight: 700;")
+        title.setObjectName("hubWordmark")
+        title.setStyleSheet(
+            f"color: {theme.TEXT_PRIMARY}; font-family: {theme.FONT_FAMILY_DISPLAY};"
+            f" font-size: {theme.FONT_SIZE_DISPLAY}px; letter-spacing: {theme.LETTER_SPACING_DISPLAY};"
+            " background: transparent; border: none;")
         self._badge = QLabel("ready")
-        self._badge.setStyleSheet(f"color: {_TEXT_SEC}; font-size: 11px;")
+        self._badge.setStyleSheet(f"color: {_TEXT_SEC}; font-size: 11px; background: transparent; border: none;")
+        # Paused is never invisible or inescapable (38): while hands-free is
+        # snoozed the header shows this instead of the badge, and clicking it
+        # resumes through the app's own resume_listening.
+        self._paused_btn = QPushButton(PAUSED_RESUME)
+        self._paused_btn.setAccessibleName(PAUSED_RESUME)
+        self._paused_btn.setMinimumHeight(NAV_ROW_H)
+        self._paused_btn.setCursor(Qt.CursorShape.PointingHandCursor)
+        self._paused_btn.setStyleSheet(
+            f"QPushButton {{ background: {theme.BG2}; color: {theme.WARNING};"
+            f" border: 1px solid {theme.BORDER}; border-radius: 6px; padding: 6px 14px; font-size: 13px; }}"
+            f"QPushButton:hover {{ border-color: {theme.ACCENT}; color: {theme.TEXT_PRIMARY}; }}")
+        self._paused_btn.clicked.connect(self._on_resume)
+        self._paused_btn.setVisible(False)
         # Live mark, app-avatar style: in the shared header, so every page
         # shows the state. Polled only while the window is shown.
         self._header_mark = _HeaderMark(self._app)
@@ -292,6 +322,7 @@ class _MainWindow(QMainWindow):
         hlay.addSpacing(HEADER_MARK_GAP)
         hlay.addWidget(title)
         hlay.addStretch()
+        hlay.addWidget(self._paused_btn)
         hlay.addWidget(self._badge)
         outer.addWidget(header)
 
@@ -301,11 +332,15 @@ class _MainWindow(QMainWindow):
         blay.setContentsMargins(0, 0, 0, 0)
         blay.setSpacing(0)
 
-        # Sidebar
+        # Sidebar (38): on BG0 so it reads as a different plane from the
+        # BG1 content. Rows are 44 px with an icon from the same vocabulary
+        # as Home's capability cards; the selected row carries a 2 px ACCENT
+        # rail, a BG2 fill, TEXT_PRIMARY and a heavier weight.
         sidebar = QWidget()
+        sidebar.setObjectName("hubSidebar")
         sidebar.setFixedWidth(SIDEBAR_W)
         sidebar.setStyleSheet(
-            f"background: {_SURFACE}; border-right: 1px solid {_BORDER};")
+            f"QWidget#hubSidebar {{ background: {theme.BG0}; border-right: 1px solid {theme.BORDER}; }}")
         slay = QVBoxLayout(sidebar)
         slay.setContentsMargins(0, 12, 0, 12)
         slay.setSpacing(2)
@@ -314,9 +349,11 @@ class _MainWindow(QMainWindow):
         for name in ("Home", "History", "Dictionary", "Settings"):
             btn = QPushButton(name)
             btn.setAccessibleName(name)
-            btn.setFixedHeight(44)
+            btn.setMinimumHeight(NAV_ROW_H)
             btn.setCheckable(True)
-            btn.setStyleSheet(self._nav_style(False))
+            btn.setIconSize(QSize(NAV_ICON_PX, NAV_ICON_PX))
+            btn.setCursor(Qt.CursorShape.PointingHandCursor)
+            self._style_nav(btn, name, False)
             btn.clicked.connect(lambda _, n=name: self._activate(n))
             slay.addWidget(btn)
             self._nav_btns[name] = btn
@@ -324,9 +361,10 @@ class _MainWindow(QMainWindow):
 
         blay.addWidget(sidebar)
 
-        # Content stack
+        # Content stack on BG1 (the sidebar is BG0)
         self._stack = QStackedWidget()
-        self._stack.setStyleSheet(f"background: {_BG};")
+        self._stack.setObjectName("hubContent")
+        self._stack.setStyleSheet(f"QStackedWidget#hubContent {{ background: {theme.BG1}; }}")
         blay.addWidget(self._stack, stretch=1)
         outer.addWidget(body, stretch=1)
 
@@ -357,18 +395,34 @@ class _MainWindow(QMainWindow):
 
     @staticmethod
     def _nav_style(active: bool) -> str:
+        """Nav row stylesheet (38). Selected differs from rest in more than
+        colour: a 2 px ACCENT left rail, a BG2 fill and a heavier weight.
+        Rest is TEXT_SECONDARY with a real hover (BG1 fill, TEXT_PRIMARY)."""
+        common = (f" border: none; border-radius: 0; text-align: left;"
+                  f" padding-left: 16px; padding-right: 12px; min-height: {NAV_ROW_H}px;"
+                  f" font-size: 14px;")
         if active:
-            return (f"QPushButton {{ background: {_ACCENT_DIM}; color: {_ACCENT};"
-                    f" border: none; border-left: 3px solid {_ACCENT};"
-                    f" text-align: left; padding-left: 18px;"
-                    f" font-size: 13px; font-weight: 600;"
-                    f" border-radius: 0; }}")
-        return (f"QPushButton {{ background: transparent; color: {_TEXT_SEC};"
-                f" border: none; border-left: 3px solid transparent;"
-                f" text-align: left; padding-left: 18px;"
-                f" font-size: 13px; font-weight: 600;"
-                f" border-radius: 0; }}"
-                f"QPushButton:hover {{ background: {_ELEVATED}; color: {_TEXT_PRI}; }}")
+            return (f"QPushButton {{ background: {theme.BG2}; color: {theme.TEXT_PRIMARY};"
+                    f" border-left: 2px solid {theme.ACCENT}; font-weight: 600;{common} }}"
+                    f"QPushButton:hover {{ background: {theme.BG2}; color: {theme.TEXT_PRIMARY}; }}")
+        return (f"QPushButton {{ background: transparent; color: {theme.TEXT_SECONDARY};"
+                f" border-left: 2px solid transparent; font-weight: 400;{common} }}"
+                f"QPushButton:hover {{ background: {theme.BG1}; color: {theme.TEXT_PRIMARY}; }}"
+                f"QPushButton:focus {{ background: {theme.BG1}; color: {theme.TEXT_PRIMARY}; }}")
+
+    def _style_nav(self, btn, name: str, active: bool) -> None:
+        btn.setStyleSheet(self._nav_style(active))
+        btn.setIcon(glyph_icon(NAV_ICONS.get(name, ""),
+                               theme.TEXT_PRIMARY if active else theme.TEXT_SECONDARY, NAV_ICON_PX))
+
+    def _on_resume(self):
+        fn = getattr(self._app, 'resume_listening', None)
+        if callable(fn):
+            try:
+                fn()
+            except Exception as e:
+                logger.warning(f"[MAIN] resume_listening failed: {e}")
+        self._refresh_status()
 
     # ---- Navigation ---------------------------------------------------------
 
@@ -421,7 +475,7 @@ class _MainWindow(QMainWindow):
     def _highlight(self, active: str):
         for name, btn in self._nav_btns.items():
             btn.setChecked(name == active)
-            btn.setStyleSheet(self._nav_style(name == active))
+            self._style_nav(btn, name, name == active)
 
     # ---- Status -------------------------------------------------------------
 
@@ -453,7 +507,10 @@ class _MainWindow(QMainWindow):
             mic_name = mic_name[:35] + '...'
         self._lbl_mic.setText(mic_name)
 
-        if getattr(self._app, 'snoozed', False):
+        snoozed = bool(getattr(self._app, 'snoozed', False))
+        self._paused_btn.setVisible(snoozed)
+        self._badge.setVisible(not snoozed)
+        if snoozed:
             self._badge.setText("snoozed")
             self._badge.setStyleSheet(f"color: {_WARNING}; font-size: 11px;")
         elif getattr(self._app, 'recording', False):
