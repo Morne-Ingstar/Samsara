@@ -17,6 +17,7 @@ _BOUND = (
     '_on_mouse_button', '_on_command_button', '_on_main_hotkey_mouse', '_main_hotkey_toggle_off',
     '_mouse_hook_bindings', '_install_mouse_listener', 'refresh_mouse_hook',
     'parse_hotkey', 'check_hotkey_state', 'on_key_release', 'get_key_name',
+    '_hotkey_state_text', '_other_hotkey_held', '_start_recording_declined', '_mouse_guard',
 )
 
 
@@ -42,7 +43,9 @@ class _App:
         self._memo_recording = False
         self.current_keys = set()
         self._main_hotkey_source = 'key'
-        self._main_hotkey_mouse_held = False
+        self._hold_down_key = False
+        self._hold_down_mouse = False
+        self._hotkey_recording = False
         self._mouse_hook = None
         self.calls = []
 
@@ -87,12 +90,13 @@ class TestHold:
         app = _App(mode='hold')
         app._on_mouse_button('mouse4', True)
         assert app.calls == [('start', False)]
-        assert app.hotkey_pressed and app._main_hotkey_source == 'mouse'
+        assert app._hold_down_mouse and app._main_hotkey_source == 'mouse'
+        assert app.hotkey_pressed is False       # 28: the mouse never touches the keyboard flag
 
         app._on_mouse_button('mouse4', False)
         assert [name for name, _ in spawned] == ['stop-rec']
         assert app._stop_in_flight is True
-        assert app.hotkey_pressed is False
+        assert app._hold_down_mouse is False
 
         spawned[0][1]()   # the stop worker
         assert app.calls == [('start', False), ('stop',)]
@@ -266,6 +270,6 @@ class TestKeyboardBranchInert:
 
         app.on_key_release(MagicMock(char='a'))   # any key released, no combo held
 
-        assert spawned == [] and app.recording and app.hotkey_pressed
+        assert spawned == [] and app.recording and app._hold_down_mouse
         app._on_mouse_button('mouse4', False)
         assert [name for name, _ in spawned] == ['stop-rec']
