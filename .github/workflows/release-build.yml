@@ -290,6 +290,15 @@ jobs:
           Get-Content -LiteralPath manifest.json
           echo "manifest_name=manifest.json" >> $env:GITHUB_OUTPUT
 
+      # 34: the installer (installer\samsara.iss). One step: the version comes
+      # from samsara\__init__.py and the component sizes from manifest.json,
+      # both read by tools\build_installer.cmd; Inno Setup 6 is preinstalled on
+      # windows-latest. The setup exe rides along in the manifest artifact
+      # below and on the draft release.
+      - name: Build installer (Inno Setup)
+        shell: cmd
+        run: tools\build_installer.cmd manifest.json
+
       - name: Upload wake-word models artifact
         uses: actions/upload-artifact@b7c566a772e6b6bfb58ed0dc250532a479d7789f
         with:
@@ -303,7 +312,9 @@ jobs:
         uses: actions/upload-artifact@b7c566a772e6b6bfb58ed0dc250532a479d7789f
         with:
           name: manifest-${{ steps.version.outputs.version }}
-          path: manifest.json
+          path: |
+            manifest.json
+            dist\SamsaraSetup-*.exe
           retention-days: 30
 
       # ----------------------------------------------------------------------
@@ -343,3 +354,4 @@ jobs:
             ${{ steps.models.outputs.zip_name }}
             ${{ steps.models.outputs.checksum_name }}
             ${{ steps.manifest.outputs.manifest_name }}
+            dist/SamsaraSetup-*.exe
