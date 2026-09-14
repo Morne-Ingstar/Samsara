@@ -242,7 +242,7 @@ QMenu::item:selected {{
     background-color: rgba(92, 196, 212, 0.16);
     color: {theme.ACCENT};
 }}
-"""
+""" + theme.SCROLLBAR_QSS
 
 
 def _danger_btn(label: str) -> QPushButton:

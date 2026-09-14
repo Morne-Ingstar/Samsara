@@ -52,7 +52,6 @@ class CommandsPage:
         page.setAlignment(
             Qt.AlignmentFlag.AlignTop | Qt.AlignmentFlag.AlignHCenter
         )
-        page.setVerticalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAsNeeded)
 
         outer = QWidget()
         outer.setMaximumWidth(_CONTENT_MAX_WIDTH)

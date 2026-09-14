@@ -633,6 +633,9 @@ QComboBox::down-arrow {{
     margin-right: 10px;
 }}
 """
+# The window's own sheet outranks the application sheet, so the shared
+# scrollbar rule (theme.SCROLLBAR_QSS) is carried here as well.
+STYLESHEET += theme.SCROLLBAR_QSS
 
 _CONTENT_MAX_WIDTH = 1000  # each tab's scrollable content column caps here;
                            # cards expand to fill it below the cap and stop
@@ -754,6 +757,7 @@ class _SettingsWindow(
             min(920, max(720, available.width() - 40)),
             min(700, max(480, available.height() - 40)),
         )
+        theme.install_app_scrollbars()
         self.setStyleSheet(STYLESHEET)
 
         central = QWidget()
