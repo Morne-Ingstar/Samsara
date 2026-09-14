@@ -146,6 +146,43 @@ FONT_FAMILY_DISPLAY = "'Perpetua Titling MT', 'Palatino Linotype', 'Book Antiqua
 FONT_SIZE_DISPLAY = 22
 LETTER_SPACING_DISPLAY = "0.14em"
 
+# Hub type scale (41): ONE scale for the hub window and its Home page. Every
+# text role on Home maps to one of these; none is below TYPE_MIN. Additive --
+# the four shared sizes above are unchanged.
+TYPE_MIN = 12
+TYPE_NAV = 15               # sidebar rows
+TYPE_STATE = 16             # Home's one state line
+TYPE_CARD_TITLE = 15        # capability card titles, the outcome kind
+TYPE_BODY = 14              # body copy, buttons, card values
+TYPE_SECONDARY = 14         # instruction line, descriptions, notes
+TYPE_SECTION_LABEL = 12     # letterspaced capitals ("WHAT YOU CAN DO")
+LETTER_SPACING_SECTION = "0.08em"
+TYPE_FIGURE = 24            # usage figures (words today, infinity)
+TYPE_CREED = 14             # the creed, in the display face
+
+#: Home's text roles -> px (the table tests/test_home_qt.py checks).
+HOME_TYPE_SCALE = {
+    "nav": TYPE_NAV,
+    "state line": TYPE_STATE,
+    "instruction": TYPE_SECONDARY,
+    "stop reason": TYPE_SECONDARY,
+    "menu item": TYPE_BODY,
+    "button": TYPE_BODY,
+    "section label": TYPE_SECTION_LABEL,
+    "outcome kind": TYPE_CARD_TITLE,
+    "outcome text": TYPE_SECONDARY,
+    "note": TYPE_SECONDARY,
+    "card title": TYPE_CARD_TITLE,
+    "card description": TYPE_SECONDARY,
+    "card value": TYPE_BODY,
+    "usage figure": TYPE_FIGURE,
+    "usage label": TYPE_SECONDARY,
+    "creed": TYPE_CREED,
+    "status label": TYPE_SECTION_LABEL,
+    "status value": TYPE_BODY,
+    "header badge": TYPE_SECTION_LABEL,
+}
+
 # ---------------------------------------------------------------------------
 # Combo-box dropdown arrow. QComboBox::down-arrow's CSS border-triangle trick
 # (transparent left/right borders + a solid top border) does NOT render as a

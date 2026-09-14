@@ -3,16 +3,24 @@
 Samsara controls the computer; dictation is one thing it does. Home makes
 that obvious at a glance, top to bottom:
 
-    1. STATE BLOCK    the live mark beside three facts read from RUNTIME
-                      state (never from config alone): what is listening,
-                      which lane, where the next utterance goes; one
-                      instruction line generated from config and the
-                      catalog; a Stop listening button on the tray's path.
-    2. LAST ACTION    the newest entry of DictationApp._outcome_ring (the
-                      ring _show_outcome_chip appends to), rendered by
-                      kind, with only the actions that exist today.
-    3. WHAT YOU CAN DO five cards from the live command catalog.
+    1. STATE ROW      one compact row (41): the live mark, ONE plain state
+                      line read from RUNTIME state (never from config
+                      alone), ONE instruction line generated from config
+                      and the catalog, ONE primary control (Stop
+                      listening, disabled with a visible reason when
+                      nothing is capturing) and a More menu holding
+                      Pause / Resume hands-free.
+    2. LAST OUTCOME   one row, not a card (41): the newest entry of
+                      DictationApp._outcome_ring rendered kind first
+                      ("Dictated", "Ran a command", "Didn't catch"), then
+                      its content, with its inline actions. No Undo: see
+                      the note on _build_last_outcome.
+    3. WHAT YOU CAN DO six cards from the live command catalog, each with a
+                      one-line description.
     4. IDENTITY STRIP words today, the infinity card, the creed.
+
+Every text size comes from theme.HOME_TYPE_SCALE; spoken phrases are always
+shown in double quotes (quoted()).
 
 Every actionable element is a QPushButton whose visible text equals its
 accessible name (WCAG Label in Name), at least 44 px tall, in top-to-bottom
@@ -23,20 +31,21 @@ Runtime sources (the "what will happen when I speak" facts):
                 continuous_active / command_mode_active / toggle_active --
                 the same flags _tray_mark reads (dictation.py) -- plus
                 available_mics vs config['microphone'] for mic presence.
-    lane        ava_command_session_active / ava_mode_active /
-                command_mode_active / wake_word_active.
-    target      SessionModeManager._dictate_target_hwnd (session_modes.py),
-                resolved to the window title; else "any textbox".
+    destination ava_command_session_active / ava_mode_active /
+                command_mode_active, SessionModeManager.mode, and
+                SessionModeManager._dictate_target_hwnd (session_modes.py)
+                resolved to the window title.
 """
 from __future__ import annotations
 
 import datetime as _dt
+import re
 from typing import Callable, Optional
 
-from PySide6.QtCore import QRectF, QSize, Qt, QTimer
+from PySide6.QtCore import QEvent, QRectF, QSize, Qt, QTimer
 from PySide6.QtGui import QColor, QFont, QIcon, QPainter, QPixmap
 from PySide6.QtWidgets import (
-    QApplication, QFrame, QGridLayout, QHBoxLayout, QLabel, QPushButton,
+    QApplication, QFrame, QGridLayout, QHBoxLayout, QLabel, QMenu, QPushButton,
     QScrollArea, QSizePolicy, QVBoxLayout, QWidget,
 )
 
@@ -56,8 +65,9 @@ logger = get_logger(__name__)
 CONTENT_MAX_W = 760
 GRID = 16
 GRID_LG = 24
-STATE_MARK_PX = 60
+STATE_MARK_PX = 44
 MIN_TARGET = 44
+TYPE = theme.HOME_TYPE_SCALE
 OUTCOME_RING_MAX = 8
 BASE_POINT_SIZE = 9.0   # Segoe UI 9 pt is Windows' 100% text size
 
@@ -78,12 +88,36 @@ GUIDES = (
     ("Help & support", "settings", "Help & Support"),
 )
 NOTHING_TO_CORRECT = "Nothing to correct yet"
-ANY_TEXTBOX = "any textbox"
+ANY_TEXTBOX = "whatever you're typing in"
 STOP_LISTENING = "Stop listening"
 STOPPING = "Stopping"
-LISTENING_OFF = "Listening is off"
+NOTHING_TO_STOP = "Nothing to stop right now"
+LISTENING_OFF = "Listening is off."
 PAUSE_HANDS_FREE = "Pause hands-free"
 RESUME_HANDS_FREE = "Resume hands-free"
+MORE = "More"
+LISTENING_OPTIONS = "Listening options"
+MIC_NOT_FOUND = "Microphone not found."
+# The outcome row's kind labels (41, owner's words): the kind carries the
+# weight, the content is secondary.
+KIND_DICTATED = "Dictated"
+KIND_RAN = "Ran a command"
+KIND_MISSED = "Didn't catch"
+NOTHING_YET = "Nothing yet."
+CARD_DESCRIPTIONS = {
+    "Control windows": "Switch, move, tile and close windows by voice.",
+    "Run it hands-free": "Say {phrase}, then talk without holding a key.",
+    "Dictate anywhere": "Your words are typed wherever your cursor is.",
+    "Ask Ava": "Ask questions out loud. {where}",
+    "Teach it your words": "Fix names and words it mishears, so they come out right.",
+    "Guides & help": "Command list, quick reference, tutorial and support.",
+}
+AVA_WHERE = {
+    (True, True): "Runs on your own machine, or your own API key.",
+    (True, False): "Runs on your own machine.",
+    (False, True): "Runs on your own API key.",
+    (False, False): "Turned off; set it up in Settings.",
+}
 # How soon the page re-reads runtime state after a control is pressed, so
 # the mark, the state line and the button itself change within 200 ms.
 FEEDBACK_MS = 150
@@ -224,14 +258,55 @@ def mic_present(app) -> bool:
     return mic_id in ids
 
 
-def lane_text(app) -> str:
-    if (getattr(app, 'ava_command_session_active', False)
-            or getattr(app, 'ava_mode_active', False)
-            or getattr(app, 'command_mode_active', False)):
-        return "hands-free session"
-    if getattr(app, 'wake_word_active', False):
-        return "command"
-    return "dictate"
+def quoted(phrase) -> str:
+    """A spoken phrase as Home shows it: in double quotes, with the lone
+    pronoun capitalised ("what can i say" -> '"what can I say"')."""
+    text = re.sub(r"\bi\b", "I", str(phrase or '').strip())
+    return f'"{text}"'
+
+
+def wake_phrase(cfg: dict) -> str:
+    return str(_cfg_get(cfg, 'wake_word_config.phrase')
+               or config_defaults.DEFAULTS['wake_word_config.phrase'])
+
+
+def destination_sentence(app) -> str:
+    """Where what the user says goes next, in plain words. The session's
+    internal mode names never reach the page."""
+    if getattr(app, 'ava_command_session_active', False) or getattr(app, 'ava_mode_active', False):
+        return "What you say goes to Ava."
+    if getattr(app, 'command_mode_active', False):
+        manager = getattr(app, '_session_mode_manager', None)
+        mode = getattr(getattr(manager, 'mode', None), 'value', None)
+        if mode == 'ava':
+            return "What you say goes to Ava."
+        if mode == 'command':
+            return "What you say is taken as a command."
+    target = target_text(app)
+    return f"What you say goes to {target}."
+
+
+def state_line(app) -> str:
+    """The page's ONE state line: what is happening now, then where speech
+    goes. Read from runtime flags, never from config alone."""
+    cfg = _cfg(app)
+    if getattr(app, 'recording', False) or getattr(app, 'toggle_active', False):
+        first = "Listening now."
+    elif getattr(app, 'ava_command_session_active', False):
+        first = "Ava is listening."
+    elif getattr(app, 'command_mode_active', False):
+        first = "Hands-free is on."
+    elif getattr(app, 'continuous_active', False):
+        first = "Listening continuously."
+    elif getattr(app, 'snoozed', False):
+        first = "Hands-free is paused."
+    elif getattr(app, 'wake_word_active', False):
+        first = f"Wake word is armed {EM_DASH} say {quoted(wake_phrase(cfg))} to start."
+    elif str(_cfg_get(cfg, 'mode') or 'hold') in ('hold', 'toggle'):
+        first = "Ready."
+    else:
+        return LISTENING_OFF
+    return f"{first} {destination_sentence(app)}"
 
 
 def _window_title(hwnd) -> str:
@@ -253,7 +328,7 @@ def _window_title(hwnd) -> str:
 
 def target_text(app) -> str:
     """Where the next utterance goes: the focus-locked window's title while
-    a hands-free session holds one, else "any textbox"."""
+    a hands-free session holds one, else "whatever you're typing in"."""
     session = (getattr(app, 'command_mode_active', False)
                or getattr(app, 'ava_command_session_active', False))
     manager = getattr(app, '_session_mode_manager', None)
@@ -286,8 +361,9 @@ def help_phrase(records) -> Optional[str]:
 
 
 def instruction_line(cfg: dict, help_cmd: Optional[str]) -> str:
-    """One line generated from live config: the hotkey, the wake word when
-    enabled, and the catalog's help phrase when the catalog has one."""
+    """One line generated from live config: the hotkey, and the catalog's
+    help phrase (quoted) when the catalog has one. The wake word is on the
+    state line and the hands-free card, not repeated here (41)."""
     mode = str(_cfg_get(cfg, 'mode') or 'hold')
     hotkey = hotkey_label(_cfg_get(cfg, 'hotkey') or config_defaults.DEFAULTS['hotkey'])
     if mode == 'hold':
@@ -296,12 +372,8 @@ def instruction_line(cfg: dict, help_cmd: Optional[str]) -> str:
         parts = [f"Press {hotkey} to start and again to stop."]
     else:
         parts = ["Speak any time."]
-    if _cfg_get(cfg, 'wake_word_enabled'):
-        phrase = _cfg_get(cfg, 'wake_word_config.phrase')
-        if phrase:
-            parts.append(f"Say {phrase} for hands-free.")
     if help_cmd:
-        parts.append(f"Say {help_cmd} for commands.")
+        parts.append(f"Say {quoted(help_cmd)} for commands.")
     return " ".join(parts)
 
 
@@ -361,17 +433,27 @@ def last_typed_text(app) -> str:
         return ""
 
 
-def render_outcome(app, outcome) -> str:
-    """The card's one line for an outcome tuple (label, kind, ts)."""
+def render_outcome(app, outcome) -> tuple:
+    """(kind label, content) for an outcome tuple (label, kind, ts): the
+    kind in plain words first, then what it was about.
+
+    A command chip stores only the first two words of its phrase
+    (session_modes.outcome_chip), which can sever the object ("switch to"),
+    so the row claims no verb for it: "Ran a command" plus the stored
+    fragment. Chips outside the three kinds show their own label as the
+    kind and no content."""
     label, kind = str(outcome[0]), str(outcome[1])
     cls = classify_outcome(label, kind)
     if cls == "typed":
         text = last_typed_text(app).replace('\n', ' ').strip()
-        return text or label
+        return (KIND_DICTATED, text)
     if cls == "miss":
         heard = str(getattr(app, '_last_miss_text', '') or '').strip()
-        return f"{CHIP_CROSS} {heard or label}"
-    return label
+        return (KIND_MISSED, quoted(heard) if heard else "")
+    if cls == "command":
+        fragment = label[len(CHIP_CHECK):].strip()
+        return (KIND_RAN, quoted(fragment) if fragment else "")
+    return (label, "")
 
 
 # ---------------------------------------------------------------------------
@@ -422,29 +504,33 @@ def _user_word_count() -> Optional[int]:
         return None
 
 
+def _ava_sources(cfg: dict) -> tuple:
+    return (bool(_cfg_get(cfg, 'ollama.enabled')), bool(_cfg_get(cfg, 'cloud_llm.enabled')))
+
+
 def ava_text(cfg: dict) -> str:
-    local = bool(_cfg_get(cfg, 'ollama.enabled'))
-    cloud = bool(_cfg_get(cfg, 'cloud_llm.enabled'))
-    if local and cloud:
-        return "local or your key"
-    if local:
-        return "local"
-    if cloud:
-        return "your key"
-    return "off"
+    """The Ask Ava card's value: on or off. Where it runs is the card's
+    description (41: "local or your key" said nothing to the owner)."""
+    return "on" if any(_ava_sources(cfg)) else "off"
+
+
+def card_description(title: str, cfg: dict) -> str:
+    template = CARD_DESCRIPTIONS.get(title, "")
+    return template.format(phrase=quoted(wake_phrase(cfg)),
+                           where=AVA_WHERE[_ava_sources(cfg)])
 
 
 def capability_cards(app, records) -> list:
-    """The five cards, in order. Each: {title, value, action, arg}.
-    action is 'cheatsheet' (arg = filter text), 'settings' (arg = tab name)
-    or 'page' (arg = hub page name)."""
+    """The six cards, in order. Each: {title, description, value, action,
+    arg}. action is 'cheatsheet' (arg = filter text), 'settings' (arg = tab
+    name), 'page' (arg = hub page name) or 'guides'."""
     cfg = _cfg(app)
     if records is None:
         windows_value = _CATALOG_UNAVAILABLE_SHORT
     else:
         n = len(matching_records(records, "window"))
         windows_value = f"{n} commands"
-    phrase = _cfg_get(cfg, 'wake_word_config.phrase') or config_defaults.DEFAULTS['wake_word_config.phrase']
+    phrase = wake_phrase(cfg)
     mode = str(_cfg_get(cfg, 'mode') or 'hold')
     hotkey = hotkey_label(_cfg_get(cfg, 'hotkey') or config_defaults.DEFAULTS['hotkey'])
     if mode == 'hold':
@@ -454,10 +540,10 @@ def capability_cards(app, records) -> list:
     else:
         dictate_value = "always on"
     words = _user_word_count()
-    return [
+    cards = [
         {"title": CAPABILITY_TITLES[0], "value": windows_value,
          "action": "cheatsheet", "arg": "window"},
-        {"title": CAPABILITY_TITLES[1], "value": f"say {phrase}",
+        {"title": CAPABILITY_TITLES[1], "value": f"say {quoted(phrase)}",
          "action": "settings", "arg": "Modes"},
         {"title": CAPABILITY_TITLES[2], "value": dictate_value,
          "action": "settings", "arg": "Modes"},
@@ -469,6 +555,9 @@ def capability_cards(app, records) -> list:
         {"title": CAPABILITY_TITLES[5], "value": f"{len(GUIDES)} guides",
          "action": "guides", "arg": None},
     ]
+    for card in cards:
+        card["description"] = card_description(card["title"], cfg)
+    return cards
 
 
 # ---------------------------------------------------------------------------
@@ -674,37 +763,63 @@ def open_guide(app, label: str) -> bool:
 # Widgets
 # ---------------------------------------------------------------------------
 
-def _label(text: str, *, size: int, color: str = theme.TEXT_PRIMARY,
-           weight: int = 400, wrap: bool = False, family: Optional[str] = None,
-           spacing: Optional[str] = None) -> QLabel:
-    lbl = QLabel(text)
-    css = (f"color: {color}; font-size: {_px(size)}px; font-weight: {weight};"
+def _label_css(role: str, color: str, weight: int, family: Optional[str] = None,
+               spacing: Optional[str] = None) -> str:
+    css = (f"color: {color}; font-size: {_px(TYPE[role])}px; font-weight: {weight};"
            " background: transparent; border: none;")
     if family:
         css += f" font-family: {family};"
     if spacing:
         css += f" letter-spacing: {spacing};"
-    lbl.setStyleSheet(css)
+    return css
+
+
+def _label(text: str, *, role: str, color: str = theme.TEXT_PRIMARY,
+           weight: int = 400, wrap: bool = False, family: Optional[str] = None,
+           spacing: Optional[str] = None) -> QLabel:
+    """A label sized by its text ROLE in theme.HOME_TYPE_SCALE (41); the role
+    is kept on the widget so the type-scale test can read it back."""
+    lbl = QLabel(text)
+    lbl.setProperty("typeRole", role)
+    lbl.setStyleSheet(_label_css(role, color, weight, family, spacing))
     lbl.setWordWrap(wrap)
     lbl.setTextInteractionFlags(Qt.TextInteractionFlag.NoTextInteraction)
     return lbl
 
 
-def _button(text: str) -> QPushButton:
-    """A visible-label button: accessible name == text, 44 px target."""
+def _section_label(text: str) -> QLabel:
+    return _label(text.upper(), role="section label", color=theme.TEXT_SECONDARY,
+                  weight=700, spacing=theme.LETTER_SPACING_SECTION)
+
+
+def _button(text: str, primary: bool = False) -> QPushButton:
+    """A visible-label button: accessible name == text, 44 px target. A
+    primary button (the state row's one) is ACCENT-filled."""
     btn = QPushButton(text)
     btn.setAccessibleName(text)
+    btn.setProperty("typeRole", "button")
+    btn.setProperty("primary", primary)
     btn.setMinimumHeight(MIN_TARGET)
     btn.setMinimumWidth(MIN_TARGET)
     btn.setCursor(Qt.CursorShape.PointingHandCursor)
     btn.setFocusPolicy(Qt.FocusPolicy.StrongFocus)
+    if primary:
+        fill = (f"background: {theme.ACCENT}; color: {theme.BG0};"
+                f" border: 1px solid {theme.ACCENT}; font-weight: 600;")
+        disabled = (f"QPushButton:disabled {{ background: {theme.BG2}; color: {theme.TEXT_DISABLED};"
+                    f" border-color: {theme.BORDER_FAINT}; font-weight: 400; }}")
+        focus = f"QPushButton:focus {{ border: 2px solid {theme.TEXT_PRIMARY}; }}"
+    else:
+        fill = (f"background: {theme.BG2}; color: {theme.TEXT_PRIMARY};"
+                f" border: 1px solid {theme.BORDER};")
+        disabled = (f"QPushButton:disabled {{ color: {theme.TEXT_DISABLED};"
+                    f" border-color: {theme.BORDER_FAINT}; }}")
+        focus = f"QPushButton:focus {{ border: 2px solid {theme.ACCENT}; }}"
     btn.setStyleSheet(
-        f"QPushButton {{ background: {theme.BG2}; color: {theme.TEXT_PRIMARY};"
-        f" border: 1px solid {theme.BORDER}; border-radius: 6px;"
-        f" padding: {_px(8)}px {_px(14)}px; font-size: {_px(13)}px; }}"
+        f"QPushButton {{ {fill} border-radius: 6px;"
+        f" padding: {_px(8)}px {_px(14)}px; font-size: {_px(TYPE['button'])}px; }}"
         f"QPushButton:hover {{ border-color: {theme.ACCENT}; }}"
-        f"QPushButton:focus {{ border: 2px solid {theme.ACCENT}; }}"
-        f"QPushButton:disabled {{ color: {theme.TEXT_DISABLED}; border-color: {theme.BORDER_FAINT}; }}"
+        f"{focus}{disabled}"
     )
     return btn
 
@@ -716,24 +831,8 @@ def _card() -> QFrame:
     return frame
 
 
-def _fact_row(name: str) -> tuple:
-    """A 'NAME  value' row. Returns (row widget, value label)."""
-    row = QWidget()
-    row.setStyleSheet("background: transparent;")
-    lay = QHBoxLayout(row)
-    lay.setContentsMargins(0, 0, 0, 0)
-    lay.setSpacing(_px(10))
-    key = _label(name.upper(), size=11, color=theme.TEXT_SECONDARY, weight=700, spacing="0.06em")
-    key.setMinimumWidth(_px(150))
-    value = _label("", size=14, weight=500, wrap=True)
-    value.setAccessibleName(name)
-    lay.addWidget(key, alignment=Qt.AlignmentFlag.AlignTop)
-    lay.addWidget(value, stretch=1)
-    return row, value
-
-
 class _StateMark(QWidget):
-    """The mark at 60 px, fed the very same MarkFrame the header mark shows
+    """The mark at 44 px, fed the very same MarkFrame the header mark shows
     (set_frame is called by the owner whenever that frame changes)."""
 
     def __init__(self, parent=None):
@@ -765,43 +864,89 @@ class _StateMark(QWidget):
 
 
 class _CapabilityCard(QPushButton):
-    """A card that IS the button: its text is the title (so the accessible
-    name equals the visible label); the live value sits below it."""
+    """A card that IS the button. Its text is the title, so the accessible
+    name equals the visible label; the title is shown by a label in the
+    card's own layout (with the icon, the one-line description and the live
+    value beneath it) so the card grows with a wrapped description instead
+    of clipping it. The button's own text is painted transparent: the title
+    appears once."""
 
-    def __init__(self, title: str, value: str, parent=None, glyph: Optional[str] = None):
+    def __init__(self, title: str, value: str, description: str = "", parent=None,
+                 glyph: Optional[str] = None):
         super().__init__(title, parent)
         self.setAccessibleName(title)
-        if glyph:
-            self.setIcon(glyph_icon(glyph, theme.ACCENT))
-            self.setIconSize(QSize(_px(18), _px(18)))
+        self.setAccessibleDescription(description)
+        self.setProperty("typeRole", "card title")
         self.setCursor(Qt.CursorShape.PointingHandCursor)
         self.setFocusPolicy(Qt.FocusPolicy.StrongFocus)
-        self.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Minimum)
-        self.setMinimumHeight(max(MIN_TARGET, _px(84)))
+        self.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Preferred)
         self.setStyleSheet(
-            f"QPushButton {{ background: {theme.BG1}; color: {theme.TEXT_PRIMARY};"
+            f"QPushButton {{ background: {theme.BG1}; color: transparent;"
             f" border: 1px solid {theme.BORDER}; border-radius: 8px; text-align: left;"
-            f" padding: {_px(12)}px {_px(14)}px {_px(36)}px {_px(14)}px;"
-            f" font-size: {_px(13)}px; font-weight: 600; }}"
+            f" font-size: {_px(TYPE['card title'])}px; }}"
             f"QPushButton:hover {{ border-color: {theme.ACCENT}; }}"
             f"QPushButton:focus {{ border: 2px solid {theme.ACCENT}; }}"
         )
         lay = QVBoxLayout(self)
         lay.setContentsMargins(_px(14), _px(12), _px(14), _px(12))
-        lay.addStretch()
-        self._value = _label(value, size=13, color=theme.ACCENT, weight=500)
+        lay.setSpacing(_px(6))
+
+        head = QHBoxLayout()
+        head.setSpacing(_px(8))
+        if glyph:
+            icon = QLabel()
+            icon.setPixmap(glyph_icon(glyph, theme.ACCENT).pixmap(QSize(_px(18), _px(18))))
+            icon.setStyleSheet("background: transparent; border: none;")
+            icon.setAttribute(Qt.WidgetAttribute.WA_TransparentForMouseEvents, True)
+            head.addWidget(icon, alignment=Qt.AlignmentFlag.AlignVCenter)
+        self._title = _label(title, role="card title", weight=600)
+        self._title.setAccessibleName(f"{title} title")
+        head.addWidget(self._title, stretch=1)
+        lay.addLayout(head)
+
+        self._description = _label(description, role="card description",
+                                   color=theme.TEXT_SECONDARY, wrap=True)
+        self._description.setAccessibleName(f"{title} description")
+        lay.addWidget(self._description)
+        lay.addStretch(1)
+        self._value = _label(value, role="card value", color=theme.ACCENT, weight=500)
         self._value.setAccessibleName(f"{title} value")
         lay.addWidget(self._value, alignment=Qt.AlignmentFlag.AlignLeft | Qt.AlignmentFlag.AlignBottom)
-        # The grid may not squeeze the card below what its title and value need.
-        self.setMinimumWidth(self.sizeHint().width())
+        for child in (self._title, self._description, self._value):
+            child.setAttribute(Qt.WidgetAttribute.WA_TransparentForMouseEvents, True)
+        self._fit_width()
+
+    def _fit_width(self):
+        # The grid may not squeeze the card below its title and value; the
+        # description wraps instead.
+        m = self.layout().contentsMargins()
+        head = self.layout().itemAt(0).sizeHint().width()
+        need = max(head, self._value.sizeHint().width()) + m.left() + m.right() + 4
+        self.setMinimumWidth(max(MIN_TARGET, need))
+
+    def sizeHint(self):
+        return self.layout().sizeHint().expandedTo(QSize(MIN_TARGET, MIN_TARGET))
+
+    def minimumSizeHint(self):
+        return self.layout().minimumSize().expandedTo(QSize(MIN_TARGET, MIN_TARGET))
+
+    def hasHeightForWidth(self):
+        return True
+
+    def heightForWidth(self, width):
+        return max(MIN_TARGET, self.layout().totalHeightForWidth(width))
 
     @property
     def value_text(self) -> str:
         return self._value.text()
 
+    @property
+    def description_text(self) -> str:
+        return self._description.text()
+
     def set_value(self, value: str):
         self._value.setText(value)
-        self.setMinimumWidth(self.sizeHint().width())
+        self._fit_width()
 
 
 class HomePage(QWidget):
@@ -859,105 +1004,157 @@ class HomePage(QWidget):
         col.setSpacing(GRID_LG)
 
         col.addWidget(self._build_state_block())
-        col.addWidget(self._build_last_action())
+        col.addWidget(self._build_last_outcome())
         col.addWidget(self._build_capabilities())
         col.addWidget(self._build_identity_strip())
         col.addStretch(1)
 
         # Tab order: top to bottom, in the order the widgets were built.
-        chain = [self._stop_btn, self._pause_btn, self._undo_btn, self._teach_btn, self._why_btn,
+        chain = [self._stop_btn, self._more_btn, self._teach_btn, self._why_btn,
                  *self._cards, *self._guide_btns.values()]
         for a, b in zip(chain, chain[1:]):
             QWidget.setTabOrder(a, b)
         self._tab_chain = chain
 
     def _build_state_block(self) -> QWidget:
+        """One compact row (41): mark | state line over instruction line |
+        the one primary control (with its disabled reason) and More."""
         card = _card()
         card.setAccessibleName("State")
-        lay = QVBoxLayout(card)
-        lay.setContentsMargins(GRID_LG, GRID_LG, GRID_LG, GRID_LG)
-        lay.setSpacing(GRID)
+        card.setObjectName("homeCard")
+        row = QGridLayout(card)
+        row.setContentsMargins(GRID, GRID, GRID, GRID)
+        row.setHorizontalSpacing(GRID)
+        row.setVerticalSpacing(_px(8))
+        self._state_grid = row
 
-        top = QHBoxLayout()
-        top.setSpacing(GRID_LG)
         self._mark = _StateMark()
-        top.addWidget(self._mark, alignment=Qt.AlignmentFlag.AlignTop)
+        row.addWidget(self._mark, 0, 0, 2, 1, Qt.AlignmentFlag.AlignVCenter)
 
-        facts = QVBoxLayout()
-        facts.setSpacing(_px(8))
-        row, self._listening_val = _fact_row("Listening")
-        facts.addWidget(row)
-        row, self._lane_val = _fact_row("Lane")
-        facts.addWidget(row)
-        row, self._target_val = _fact_row("Next utterance goes to")
-        facts.addWidget(row)
-        top.addLayout(facts, stretch=1)
-        lay.addLayout(top)
-
-        self._instruction = _label("", size=13, color=theme.TEXT_SECONDARY, wrap=True)
+        text = QVBoxLayout()
+        text.setSpacing(_px(4))
+        self._state_line = _label("", role="state line", weight=500, wrap=True)
+        self._state_line.setAccessibleName("State line")
+        text.addWidget(self._state_line)
+        self._instruction = _label("", role="instruction", color=theme.TEXT_SECONDARY, wrap=True)
         self._instruction.setAccessibleName("Instruction")
-        lay.addWidget(self._instruction)
-
+        text.addWidget(self._instruction)
         # Rotating line slot: the owner fills it later. Hidden by default.
-        self._tagline = _label("", size=13, color=theme.TEXT_SECONDARY, wrap=True)
+        self._tagline = _label("", role="instruction", color=theme.TEXT_SECONDARY, wrap=True)
         self._tagline.setObjectName("home.tagline")
         self._tagline.setAccessibleName("home.tagline")
         self._tagline.setVisible(False)
-        lay.addWidget(self._tagline)
+        text.addWidget(self._tagline)
+        row.addLayout(text, 0, 1)
+        row.setColumnStretch(1, 1)
 
-        btn_row = QHBoxLayout()
-        btn_row.setSpacing(GRID)
-        # Stops the CURRENT capture (38). Disabled, never dead, when nothing
-        # is capturing: the state line beside it says what is going on.
-        self._stop_btn = _button(STOP_LISTENING)
+        # A widget, not a bare layout, so _relayout_state can move it between
+        # grid cells (re-adding a removed layout lost the menu's QAction).
+        self._controls_box = QWidget()
+        self._controls_box.setStyleSheet("background: transparent;")
+        controls = QVBoxLayout(self._controls_box)
+        controls.setContentsMargins(0, 0, 0, 0)
+        controls.setSpacing(_px(4))
+        buttons = QHBoxLayout()
+        buttons.setSpacing(_px(8))
+        # Stops the CURRENT capture (38). The row's one primary control:
+        # disabled, never dead, when nothing is capturing, with the reason
+        # shown beneath it (not hover-only).
+        self._stop_btn = _button(STOP_LISTENING, primary=True)
         self._stop_btn.clicked.connect(self._on_stop)
-        btn_row.addWidget(self._stop_btn)
-        # The explicit pause is its own control; while paused it reads
-        # "Resume hands-free" so the state is always visible and exitable.
-        self._pause_btn = _button(PAUSE_HANDS_FREE)
-        self._pause_btn.clicked.connect(self._on_pause)
-        btn_row.addWidget(self._pause_btn)
-        btn_row.addStretch(1)
-        lay.addLayout(btn_row)
+        buttons.addWidget(self._stop_btn)
+        # Pause / Resume hands-free lives in the overflow menu (41). While
+        # paused the header shows "Paused - resume" as well.
+        self._more_btn = _button(MORE)
+        self._more_menu = QMenu(self._more_btn)
+        self._more_menu.setAccessibleName(LISTENING_OPTIONS)
+        self._more_menu.setStyleSheet(
+            f"QMenu {{ background: {theme.BG1}; color: {theme.TEXT_PRIMARY};"
+            f" border: 1px solid {theme.BORDER}; font-size: {_px(TYPE['menu item'])}px; }}"
+            f"QMenu::item {{ padding: {_px(10)}px {_px(18)}px; min-height: {_px(24)}px; }}"
+            f"QMenu::item:selected {{ background: {theme.BG2}; }}"
+            f"QMenu::item:disabled {{ color: {theme.TEXT_DISABLED}; }}")
+        self._pause_act = self._more_menu.addAction(PAUSE_HANDS_FREE)
+        self._pause_act.triggered.connect(self._on_pause)
+        self._more_btn.setMenu(self._more_menu)
+        buttons.addWidget(self._more_btn)
+        controls.addLayout(buttons)
+        self._stop_reason = _label(NOTHING_TO_STOP, role="stop reason", color=theme.TEXT_SECONDARY,
+                                   wrap=True)
+        self._stop_reason.setAccessibleName("Stop listening note")
+        controls.addWidget(self._stop_reason)
+        self._state_card = card
+        self._state_stacked = None
+        self._relayout_state(CONTENT_MAX_W)
         return card
 
-    def _build_last_action(self) -> QWidget:
-        card = _card()
-        card.setAccessibleName("Last action")
-        lay = QVBoxLayout(card)
-        lay.setContentsMargins(GRID_LG, GRID_LG, GRID_LG, GRID_LG)
-        lay.setSpacing(GRID)
-        lay.addWidget(_label("LAST ACTION", size=11, color=theme.TEXT_SECONDARY,
-                             weight=700, spacing="0.06em"))
-        self._action_text = _label("", size=15, weight=500)
-        self._action_text.setAccessibleName("Last action text")
+    def _relayout_state(self, width: int):
+        """Controls beside the text when the row has room for them and a
+        readable text column; otherwise beneath the text (a large text scale
+        or a narrow window), so nothing is pushed past the viewport."""
+        buttons_w = self._stop_btn.sizeHint().width() + self._more_btn.sizeHint().width() + _px(8)
+        need = 2 * GRID + STATE_MARK_PX + 2 * GRID + buttons_w + _px(260)
+        stacked = need > width
+        if stacked == self._state_stacked:
+            return
+        self._state_stacked = stacked
+        grid = self._state_grid
+        box = self._controls_box
+        grid.removeWidget(box)
+        if stacked:
+            grid.addWidget(box, 1, 1)
+        else:
+            grid.addWidget(box, 0, 2, 2, 1, Qt.AlignmentFlag.AlignVCenter)
+        self._stop_reason.setMinimumWidth(0 if stacked else buttons_w)
+
+    def _build_last_outcome(self) -> QWidget:
+        """The newest outcome as ONE row, not a titled card (41): kind label,
+        content, inline actions. The hub's status bar no longer repeats it.
+
+        No Undo here (41, 4d). The only undo the app has pops the hands-free
+        SESSION stack (session_modes._do_scratch_that): staged text not yet
+        pasted, or a pending Ava action -- and for a committed session chunk
+        it sends backspaces into the target window. Staged text exists only
+        mid-session, when the user is looking at their work and the
+        listening indicator is what is on screen, so that is where an undo
+        belongs. Home never reaches that path."""
+        box = QWidget()
+        box.setStyleSheet("background: transparent;")
+        box.setAccessibleName("Last outcome")
+        lay = QVBoxLayout(box)
+        lay.setContentsMargins(0, 0, 0, 0)
+        lay.setSpacing(_px(4))
+
+        row = QHBoxLayout()
+        row.setSpacing(GRID)
+        self._action_kind = _label("", role="outcome kind", weight=600)
+        self._action_kind.setAccessibleName("Last outcome kind")
+        row.addWidget(self._action_kind, alignment=Qt.AlignmentFlag.AlignVCenter)
+        self._action_text = _label("", role="outcome text", color=theme.TEXT_SECONDARY)
+        self._action_text.setAccessibleName("Last outcome text")
         self._action_text.setProperty("elided", True)
         self._action_text.setSizePolicy(QSizePolicy.Policy.Ignored, QSizePolicy.Policy.Preferred)
-        lay.addWidget(self._action_text)
-        self._reason = _label("", size=13, color=theme.TEXT_SECONDARY, wrap=True)
-        self._reason.setAccessibleName("Reason")
-        self._reason.setVisible(False)
-        lay.addWidget(self._reason)
-
-        btn_row = QHBoxLayout()
-        btn_row.setSpacing(GRID)
-        self._undo_btn = _button("Undo")
-        self._undo_btn.clicked.connect(self._on_undo)
+        self._action_text.installEventFilter(self)
+        row.addWidget(self._action_text, stretch=1, alignment=Qt.AlignmentFlag.AlignVCenter)
         self._teach_btn = _button("Teach a word")
         self._teach_btn.clicked.connect(self._on_teach)
         self._why_btn = _button("Why?")
         self._why_btn.clicked.connect(self._on_why)
-        for b in (self._undo_btn, self._teach_btn, self._why_btn):
-            btn_row.addWidget(b)
-        btn_row.addStretch(1)
-        lay.addLayout(btn_row)
+        row.addWidget(self._teach_btn)
+        row.addWidget(self._why_btn)
+        lay.addLayout(row)
+
+        self._reason = _label("", role="note", color=theme.TEXT_SECONDARY, wrap=True)
+        self._reason.setAccessibleName("Reason")
+        self._reason.setVisible(False)
+        lay.addWidget(self._reason)
         # Why "Teach a word" is disabled, when it is: a visible reason on its
         # own line, not a window that opens on nothing (40).
-        self._teach_note = _label("", size=12, color=theme.TEXT_SECONDARY, wrap=True)
+        self._teach_note = _label("", role="note", color=theme.TEXT_SECONDARY, wrap=True)
         self._teach_note.setAccessibleName("Teach a word note")
         self._teach_note.setVisible(False)
         lay.addWidget(self._teach_note)
-        return card
+        return box
 
     def _build_capabilities(self) -> QWidget:
         box = QWidget()
@@ -965,9 +1162,8 @@ class HomePage(QWidget):
         lay = QVBoxLayout(box)
         lay.setContentsMargins(0, 0, 0, 0)
         lay.setSpacing(GRID)
-        lay.addWidget(_label("WHAT YOU CAN DO", size=11, color=theme.TEXT_SECONDARY,
-                             weight=700, spacing="0.06em"))
-        self._catalog_note = _label(UNAVAILABLE_TEXT, size=12, color=theme.TEXT_SECONDARY, wrap=True)
+        lay.addWidget(_section_label("What you can do"))
+        self._catalog_note = _label(UNAVAILABLE_TEXT, role="note", color=theme.TEXT_SECONDARY, wrap=True)
         self._catalog_note.setTextFormat(Qt.TextFormat.RichText)
         self._catalog_note.setOpenExternalLinks(True)
         self._catalog_note.setTextInteractionFlags(Qt.TextInteractionFlag.TextBrowserInteraction)
@@ -980,7 +1176,7 @@ class HomePage(QWidget):
         self._cards_grid.setVerticalSpacing(GRID)
         self._cards = []
         for spec, glyph in zip(capability_cards(self._app, self._records), CARD_GLYPHS):
-            card = _CapabilityCard(spec["title"], spec["value"], glyph=glyph)
+            card = _CapabilityCard(spec["title"], spec["value"], spec["description"], glyph=glyph)
             card.clicked.connect(lambda _=False, s=spec: self._on_card(s))
             self._cards.append(card)
         self._cards_cols = 0
@@ -1055,7 +1251,7 @@ class HomePage(QWidget):
             card.setFixedSize(w, h)
         self._words_val.setText("0")
 
-        self._creed = _label(CREED, size=14, color=theme.TEXT_SECONDARY, weight=400,
+        self._creed = _label(CREED, role="creed", color=theme.TEXT_SECONDARY, weight=400,
                              family=theme.FONT_FAMILY_DISPLAY, spacing="0.12em")
         self._creed.setAccessibleName("Creed")
         self._creed.setAlignment(Qt.AlignmentFlag.AlignRight | Qt.AlignmentFlag.AlignVCenter)
@@ -1095,10 +1291,10 @@ class HomePage(QWidget):
         lay = QVBoxLayout(card)
         lay.setContentsMargins(GRID, _px(12), GRID, _px(12))
         lay.setSpacing(_px(2))
-        val = _label(value, size=22, color=color, weight=600)
+        val = _label(value, role="usage figure", color=color, weight=600)
         val.setAccessibleName(f"{label} value")
         lay.addWidget(val)
-        lay.addWidget(_label(label, size=11, color=theme.TEXT_SECONDARY, weight=600))
+        lay.addWidget(_label(label, role="usage label", color=theme.TEXT_SECONDARY, weight=600))
         return card, val
 
     # ---- Refresh (runtime) ---------------------------------------------
@@ -1108,19 +1304,13 @@ class HomePage(QWidget):
 
     def refresh(self):
         app = self._app
-        text, live = listening_state(app)
+        line = state_line(app)
         if not mic_present(app):
-            self._listening_val.setText(f"{text} {EM_DASH} microphone not found")
-            self._listening_val.setStyleSheet(
-                f"color: {theme.ERROR}; font-size: {_px(14)}px; font-weight: 500;"
-                " background: transparent; border: none;")
+            self._state_line.setText(f"{MIC_NOT_FOUND} {line}")
+            self._state_line.setStyleSheet(_label_css("state line", theme.ERROR, 500))
         else:
-            self._listening_val.setText(text)
-            self._listening_val.setStyleSheet(
-                f"color: {theme.TEXT_PRIMARY}; font-size: {_px(14)}px; font-weight: 500;"
-                " background: transparent; border: none;")
-        self._lane_val.setText(lane_text(app))
-        self._target_val.setText(target_text(app))
+            self._state_line.setText(line)
+            self._state_line.setStyleSheet(_label_css("state line", theme.TEXT_PRIMARY, 500))
         self._instruction.setText(instruction_line(_cfg(app), self._help))
 
         self._refresh_controls()
@@ -1137,15 +1327,17 @@ class HomePage(QWidget):
             self._stop_btn.setText(stop_text)
             self._stop_btn.setAccessibleName(stop_text)
         self._stop_btn.setEnabled(active and not stopping)
+        # The disabled reason is visible, never hover-only.
+        self._stop_reason.setVisible(not active)
+        self._stop_btn.setAccessibleDescription("" if active else NOTHING_TO_STOP)
         if not active:
             self._stopping = False
         snoozed = bool(getattr(app, 'snoozed', False))
         armed = bool(getattr(app, 'wake_word_active', False))
         pause_text = RESUME_HANDS_FREE if snoozed else PAUSE_HANDS_FREE
-        if self._pause_btn.text() != pause_text:
-            self._pause_btn.setText(pause_text)
-            self._pause_btn.setAccessibleName(pause_text)
-        self._pause_btn.setEnabled(snoozed or armed)
+        if self._pause_act.text() != pause_text:
+            self._pause_act.setText(pause_text)
+        self._pause_act.setEnabled(snoozed or armed)
 
     def _feedback(self):
         """Re-read runtime state now and again shortly after, so a press
@@ -1162,7 +1354,6 @@ class HomePage(QWidget):
         self._teach_note.setVisible(not has_text)
 
     def _refresh_last_action(self):
-        self._refresh_teach()
         ring = outcome_ring(self._app)
         outcome = ring[-1] if ring else None
         if outcome != self._last_outcome:
@@ -1170,34 +1361,56 @@ class HomePage(QWidget):
         self._last_outcome = outcome
         if outcome is None:
             example = catalog_example(self._records)
-            self._action_text.setText(
-                f"Nothing yet. Try: {example}" if example else "Nothing yet.")
-            self._action_text.setToolTip("")
-            self._undo_btn.setEnabled(False)
-            self._why_btn.setEnabled(False)
+            self._action_kind.setText(NOTHING_YET)
+            self._action_full = f"Try: {quoted(example)}" if example else ""
+            self._elide(self._action_full)
+            self._set_outcome_actions(teach=False, why=False)
             return
-        full = render_outcome(self._app, outcome)
+        kind_label, full = render_outcome(self._app, outcome)
+        self._action_kind.setText(kind_label)
         self._action_full = full
         self._elide(full)
-        cls = classify_outcome(outcome[0], outcome[1])
-        self._undo_btn.setEnabled(cls == "typed")
-        self._why_btn.setEnabled(outcome_reason(outcome[0], outcome[1]) is not None)
+        # The row carries only its own outcome's actions (41): Teach a word
+        # beside a dictation, Why? when the outcome carries a reason.
+        self._set_outcome_actions(
+            teach=classify_outcome(outcome[0], outcome[1]) == "typed",
+            why=outcome_reason(outcome[0], outcome[1]) is not None)
+
+    def _set_outcome_actions(self, *, teach: bool, why: bool):
+        self._teach_btn.setVisible(teach)
+        if teach:
+            self._refresh_teach()
+        else:
+            self._teach_note.setVisible(False)
+        self._why_btn.setVisible(why)
+        self._why_btn.setEnabled(why)
 
     def _elide(self, full: str):
         fm = self._action_text.fontMetrics()
-        width = max(self._action_text.width(), 200)
+        width = self._action_text.width()
+        width = width if width > 0 else 200
         self._action_text.setText(fm.elidedText(full, Qt.TextElideMode.ElideRight, width))
         self._action_text.setToolTip("")
+
+    def eventFilter(self, obj, event):
+        # Re-elide whenever the outcome text's own width settles, not only
+        # when the page resizes (the row lays out after the page does).
+        if obj is getattr(self, '_action_text', None) and event.type() == QEvent.Type.Resize:
+            full = getattr(self, '_action_full', None)
+            if full:
+                self._elide(full)
+        return super().eventFilter(obj, event)
 
     def resizeEvent(self, e):
         super().resizeEvent(e)
         # Columns follow the room the viewport gives, not the content's own
         # width (which the grid would otherwise push out sideways).
         avail = max(1, min(CONTENT_MAX_W, self._scroll.viewport().width() - 2 * GRID_LG))
+        self._relayout_state(avail)
         self._relayout_cards(avail)
         self._relayout_identity(avail)
         full = getattr(self, '_action_full', None)
-        if full and self._last_outcome is not None:
+        if full:
             self._elide(full)
 
     # ---- Actions ----------------------------------------------------------
@@ -1218,15 +1431,6 @@ class HomePage(QWidget):
         else:
             pause_hands_free(self._app)
         self._feedback()
-
-    def _on_undo(self):
-        fn = getattr(self._app, '_handle_unified_scratch_that', None)
-        if callable(fn):
-            try:
-                fn()
-            except Exception as exc:
-                logger.warning(f"[HOME] undo failed: {exc}")
-        self.refresh()
 
     def _on_teach(self):
         if not last_typed_text(self._app).strip():
@@ -1282,7 +1486,7 @@ class HomePage(QWidget):
             STOP_LISTENING: ("app", "exit_ava_command_session | exit_command_mode | stop_continuous_mode | stop_recording"),
             PAUSE_HANDS_FREE: ("app", "snooze_listening"),
             RESUME_HANDS_FREE: ("app", "resume_listening"),
-            "Undo": ("app", "_handle_unified_scratch_that"),
+            MORE: ("inline", LISTENING_OPTIONS),
             "Teach a word": ("app", "open_correction_capture"),
             "Why?": ("inline", "Reason"),
         }
@@ -1307,15 +1511,38 @@ class HomePage(QWidget):
     @property
     def state_texts(self) -> dict:
         return {
-            "Listening": self._listening_val.text(),
-            "Lane": self._lane_val.text(),
-            "Next utterance goes to": self._target_val.text(),
+            "State": self._state_line.text(),
             "Instruction": self._instruction.text(),
         }
 
     @property
+    def state_row(self) -> QWidget:
+        return self._state_card
+
+    @property
+    def last_action_kind(self) -> str:
+        return self._action_kind.text()
+
+    @property
     def last_action_text(self) -> str:
         return self._action_text.text()
+
+    def visible_texts(self) -> list:
+        """Every string a user can see or hear on the page: label texts,
+        button labels and accessible names/descriptions, menu items."""
+        from PySide6.QtWidgets import QAbstractButton  # noqa: PLC0415
+        out = []
+        for w in [self, *self.findChildren(QWidget)]:
+            if isinstance(w, QLabel) and w.text():
+                out.append(w.text())
+            if isinstance(w, QAbstractButton) and w.text():
+                out.append(w.text())
+            for s in (w.accessibleName(), w.accessibleDescription(), w.toolTip()):
+                if s:
+                    out.append(s)
+        for act in self._more_menu.actions():
+            out.append(act.text())
+        return out
 
     @property
     def content_widget(self) -> QWidget:
@@ -1354,6 +1581,14 @@ def overflowing_widgets(root: QWidget) -> list:
         if isinstance(w, QLabel) and w.property("elided"):
             if hint.height() > w.height() + 1:
                 bad.append(f"{name}: needs h={hint.height()} has h={w.height()}")
+            continue
+        if not isinstance(w, QLabel) and w.hasHeightForWidth():
+            # A card whose description wraps: judged at the width it was
+            # given, like a wrapped label (its hint is the unwrapped size).
+            need_h = w.heightForWidth(w.width())
+            if w.minimumWidth() > w.width() + 1 or need_h > w.height() + 1:
+                bad.append(f"{name}: needs w>={w.minimumWidth()} h={need_h}"
+                           f" has {w.width()}x{w.height()}")
             continue
         if hint.width() > w.width() + 1 or hint.height() > w.height() + 1:
             bad.append(f"{name}: needs {hint.width()}x{hint.height()}"
