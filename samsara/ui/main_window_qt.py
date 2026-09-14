@@ -19,7 +19,8 @@ History and Dictionary are embedded QWidget panels.
 Close button hides to tray (closeEvent suppressed); app.close() force-closes.
 """
 
-from PySide6.QtCore import Qt, QTimer, Signal, Slot
+from PySide6.QtCore import QRectF, Qt, QTimer, Signal, Slot
+from PySide6.QtGui import QPainter
 from PySide6.QtWidgets import (
     QApplication, QFrame, QHBoxLayout, QLabel, QMainWindow,
     QPushButton, QStackedWidget, QStatusBar, QVBoxLayout, QWidget,
@@ -27,6 +28,7 @@ from PySide6.QtWidgets import (
 
 from samsara import config_defaults
 from samsara.ui import qt_runtime
+from samsara.ui.tray_qt import MarkFrame, paint_mark
 from samsara.ui.dictionary_panel_qt import DictionaryPanelQt
 from samsara.ui.history_view import HistoryView
 
@@ -45,6 +47,25 @@ MIN_HEIGHT     = 500
 STATUS_POLL_MS = 2000
 SIDEBAR_W      = 180
 HISTORY_LIMIT  = 500
+HEADER_MARK_PX = 26
+HEADER_MARK_GAP = 12
+# The header mark follows the tray's live frame (spin while transcribing,
+# listening pulse), so it polls faster than the 2 s status refresh; the
+# timer runs only while the window is shown.
+HEADER_MARK_POLL_MS = 80
+
+_CAPTURE_WORDS = {
+    "idle": "idle",
+    "listening": "listening",
+    "recording": "recording",
+    "ava": "Ava",
+}
+_EYE_WORDS = {
+    "off": "hands-free off",
+    "asleep": "hands-free asleep",
+    "armed": "hands-free armed",
+    "heard": "wake phrase heard",
+}
 
 _BG       = "#0b0e14"
 _SURFACE  = "#131820"
@@ -154,6 +175,67 @@ def _status_separator() -> QFrame:
     return line
 
 
+def mark_accessible_name(frame) -> str:
+    """Accessible name for a MarkFrame, e.g. "Samsara - listening, hands-free armed" (em dash)."""
+    capture = _CAPTURE_WORDS.get(frame.capture, frame.capture)
+    eye = _EYE_WORDS.get(frame.eye, frame.eye)
+    return f"Samsara \u2014 {capture}, {eye}"
+
+
+class _HeaderMark(QWidget):
+    """The live Samsara mark left of the header wordmark.
+
+    State comes from the app's own tray frame (DictationApp.create_icon_image,
+    which resolves DictationApp._tray_mark) -- no second copy of the priority
+    logic -- and is drawn with the one mark routine, tray_qt.paint_mark.
+    """
+
+    def __init__(self, app, parent=None):
+        super().__init__(parent)
+        self._app = app
+        self._frame = MarkFrame("idle", "off")
+        self.setFixedSize(HEADER_MARK_PX, HEADER_MARK_PX)
+        self.setStyleSheet("background: transparent;")
+        self.setAccessibleName(mark_accessible_name(self._frame))
+        self._timer = QTimer(self)
+        self._timer.setInterval(HEADER_MARK_POLL_MS)
+        self._timer.timeout.connect(self.refresh)
+
+    @property
+    def frame(self):
+        return self._frame
+
+    def start(self):
+        self.refresh()
+        self._timer.start()
+
+    def stop(self):
+        self._timer.stop()
+
+    def refresh(self):
+        source = getattr(self._app, "create_icon_image", None)
+        try:
+            frame = source() if callable(source) else None
+        except Exception as e:
+            logger.debug(f"_HeaderMark.refresh: {e}")
+            frame = None
+        if not isinstance(frame, MarkFrame):
+            frame = MarkFrame("idle", "off")
+        if frame != self._frame:
+            name_changed = (frame.capture, frame.eye) != (self._frame.capture, self._frame.eye)
+            self._frame = frame
+            if name_changed:
+                self.setAccessibleName(mark_accessible_name(frame))
+            self.update()
+
+    def paintEvent(self, event):
+        painter = QPainter(self)
+        frame = self._frame
+        paint_mark(painter, QRectF(0, 0, self.width(), self.height()),
+                   frame.capture, frame.eye, frame.rotation, frame.opacity)
+        painter.end()
+
+
 # ---------------------------------------------------------------------------
 # Main Qt window
 # ---------------------------------------------------------------------------
@@ -202,6 +284,11 @@ class _MainWindow(QMainWindow):
         title.setStyleSheet(f"color: {_TEXT_PRI}; font-size: 16px; font-weight: 700;")
         self._badge = QLabel("ready")
         self._badge.setStyleSheet(f"color: {_TEXT_SEC}; font-size: 11px;")
+        # Live mark, app-avatar style: in the shared header, so every page
+        # shows the state. Polled only while the window is shown.
+        self._header_mark = _HeaderMark(self._app)
+        hlay.addWidget(self._header_mark, alignment=Qt.AlignmentFlag.AlignVCenter)
+        hlay.addSpacing(HEADER_MARK_GAP)
         hlay.addWidget(title)
         hlay.addStretch()
         hlay.addWidget(self._badge)
@@ -431,9 +518,20 @@ class _MainWindow(QMainWindow):
 
     # ---- Close / hide -------------------------------------------------------
 
+    def showEvent(self, e):
+        super().showEvent(e)
+        self._header_mark.start()
+
+    def hideEvent(self, e):
+        # Minimise-to-tray and close both arrive here: the header mark stops
+        # polling whenever nobody can see it.
+        self._header_mark.stop()
+        super().hideEvent(e)
+
     def closeEvent(self, e):
         if self._force_close:
             self._poll_timer.stop()
+            self._header_mark.stop()
             self._save_geometry()
             e.accept()
         else:
