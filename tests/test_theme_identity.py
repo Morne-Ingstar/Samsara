@@ -198,9 +198,14 @@ def test_hollow_and_recording_are_one_centreline_at_two_widths(segment):
     samples = tray_qt.ring_centreline(segment)
     n = len(samples)
     for weight in (tray_qt.RING_LINE_WIDTH, tray_qt.RING_BAND_WIDTH):
+        # 42: a weight with a nose lead (the band) strokes its own nose
+        # samples on the same circle and takes no extra nose cap.
+        samples = tray_qt.ring_centreline(segment, weight)
+        n = len(samples)
         outline = tray_qt.ring_stroke_outline(segment, weight)
         left = outline[:n]
-        right_start = n + (tray_qt._CAP_SAMPLES - 1 if segment == tray_qt.HEAD_SEGMENT else 0)
+        capped = segment == tray_qt.HEAD_SEGMENT and tray_qt.nose_lead(weight) == 0.0
+        right_start = n + (tray_qt._CAP_SAMPLES - 1 if capped else 0)
         right = outline[right_start:right_start + n][::-1]
         for (u, _a, x, y), (lx, ly), (rx, ry) in zip(samples, left, right):
             assert (lx + rx) / 2 == pytest.approx(x, abs=1e-9)
@@ -238,11 +243,16 @@ def test_width_function_tail_head_and_nose(weight):
     scale = tray_qt.head_scale(weight)
     assert tray_qt.stroke_scale(tail, 0.0, weight) == pytest.approx(tip)     # round-capped tip, not chiselled
     assert tray_qt.stroke_scale(tail, tray_qt.tail_fraction(weight), weight) == pytest.approx(1.0)
-    assert tray_qt.stroke_scale(head, 1.0, weight) == pytest.approx(scale)
+    # 42: the head is widest at 1 - nose_lead (the segment end when the lead is 0)
+    peak = 1.0 - tray_qt.nose_lead(weight)
+    assert tray_qt.stroke_scale(head, peak, weight) == pytest.approx(scale)
     *_profile, nose = tray_qt.weight_profile(weight)
-    over = nose * tray_qt.HEAD_OVERSHOOT_DEG / tray_qt.SEGMENT_SPAN_DEG
-    assert tray_qt.stroke_scale(head, 1.0 + over, weight) == pytest.approx(tip)   # nose closes to a blunt point
-    assert tip < tray_qt.stroke_scale(head, 1.0 + over / 2, weight) < scale
+    end = 1.0 + nose * tray_qt.HEAD_OVERSHOOT_DEG / tray_qt.SEGMENT_SPAN_DEG
+    # without a lead the nose closes to a blunt TIP stub; with one (the band,
+    # 42) it closes to its own round front
+    closed = tip if tray_qt.nose_lead(weight) == 0.0 else 0.0
+    assert tray_qt.stroke_scale(head, end, weight) == pytest.approx(closed, abs=1e-6)
+    assert closed < tray_qt.stroke_scale(head, (peak + end) / 2, weight) < scale
     assert all(tray_qt.stroke_scale(plain, u / 10, weight) == 1.0 for u in range(11))
 
 
@@ -263,10 +273,12 @@ def test_head_and_tail_depend_on_weight():
     assert not hasattr(tray_qt, "HEAD_SCALE") and not hasattr(tray_qt, "TAIL_FRACTION")
     # The band nose ends a quarter of the way into the centreline's overshoot
     # and the stroke stops there (no thin tip across the gap); the hollow nose
-    # uses the whole overshoot.
+    # uses the whole overshoot. 42: the band nose closes to zero width there
+    # (its own round front, begun nose_lead back into the segment).
     over = tray_qt.HEAD_OVERSHOOT_DEG / tray_qt.SEGMENT_SPAN_DEG
     head = tray_qt.HEAD_SEGMENT
-    assert tray_qt.stroke_scale(head, 1.0 + 0.25 * over, band) == pytest.approx(tray_qt.tip_fraction(band))
+    assert tray_qt.stroke_scale(head, 1.0 + 0.25 * over, band) == pytest.approx(0.0, abs=1e-6)
+    assert tray_qt.stroke_scale(head, 1.0 + 0.2 * over, band) > 0.0
     assert tray_qt.stroke_scale(head, 1.0 + 0.5 * over, band) == 0.0
     assert tray_qt.stroke_scale(head, 1.0 + over, line) == pytest.approx(tray_qt.tip_fraction(line))
     # Nose samples land on the centreline's nose samples, so the band ends on a sample.

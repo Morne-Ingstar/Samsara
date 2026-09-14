@@ -21,6 +21,8 @@ embedded QWidget panels.
 Close button hides to tray (closeEvent suppressed); app.close() force-closes.
 """
 
+import math
+
 from PySide6.QtCore import QRectF, QSize, Qt, QTimer, Signal, Slot
 from PySide6.QtGui import QPainter
 from PySide6.QtWidgets import (
@@ -50,7 +52,9 @@ MIN_HEIGHT     = 500
 STATUS_POLL_MS = 2000
 SIDEBAR_W      = 180
 HISTORY_LIMIT  = 500
-HEADER_MARK_PX = 26
+#: 42: 26 px read too small beside the display wordmark; 34 px, vertically
+#: centred in the unchanged HEADER_H band.
+HEADER_MARK_PX = 34
 HEADER_MARK_GAP = 12
 HEADER_H = 64
 NAV_ROW_H = 44
@@ -186,6 +190,9 @@ class _HeaderMark(QWidget):
     State comes from the app's own tray frame (DictationApp.create_icon_image,
     which resolves DictationApp._tray_mark) -- no second copy of the priority
     logic -- and is drawn with the one mark routine, tray_qt.paint_mark.
+    The ring turns with the tray (42): the frame carries the app's live
+    _icon_rotation, which the chase timer advances in every capture state
+    (recording 1.5 s/turn) and holds still at rest.
     """
 
     def __init__(self, app, parent=None):
@@ -222,6 +229,12 @@ class _HeaderMark(QWidget):
             frame = None
         if not isinstance(frame, MarkFrame):
             frame = MarkFrame("idle", "off")
+        else:
+            # create_icon_image() with no argument describes rotation 0; the
+            # header shows the tray's live angle so recording visibly spins.
+            rotation = vars(self._app).get("_icon_rotation") if hasattr(self._app, "__dict__") else None
+            if isinstance(rotation, (int, float)):
+                frame = frame._replace(rotation=math.degrees(rotation))
         if frame != self._frame:
             name_changed = (frame.capture, frame.eye) != (self._frame.capture, self._frame.eye)
             self._frame = frame

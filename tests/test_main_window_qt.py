@@ -172,7 +172,26 @@ class TestHeaderMark:
         assert widgets[1].spacerItem() is not None and widgets[1].sizeHint().width() == 12
         assert isinstance(widgets[2].widget(), main_window_qt.QLabel)
         assert widgets[2].widget().text() == "Samsara"
-        assert mark.width() == mark.height() == 26
+        assert mark.width() == mark.height() == main_window_qt.HEADER_MARK_PX == 34   # 42: was 26
+        header = mark.parentWidget()
+        assert header.height() == main_window_qt.HEADER_H == 64                   # band height unchanged
+        assert layout.itemAt(0).alignment() & main_window_qt.Qt.AlignmentFlag.AlignVCenter
+
+    def test_recording_turns_with_the_tray_angle(self, window):
+        """42: the header (and Home, fed the same frame) shows the app's live
+        _icon_rotation, so recording spins here too; with no angle yet it is 0."""
+        import math
+
+        win, app = window
+        app.pair = ("recording", "off")
+        win._header_mark.refresh()
+        assert win._header_mark.frame.rotation == 0.0
+        app._icon_rotation = math.pi / 2          # the chase timer advanced a quarter turn
+        win._header_mark.refresh()
+        assert win._header_mark.frame.rotation == pytest.approx(90.0)
+        app._icon_rotation = math.pi
+        win._header_mark.refresh()
+        assert win._header_mark.frame.rotation == pytest.approx(180.0)
 
     @pytest.mark.parametrize("pair", [("listening", "armed"), ("recording", "off"), ("idle", "asleep")])
     def test_renders_the_frame_tray_mark_returned(self, window, monkeypatch, pair):

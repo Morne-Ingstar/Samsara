@@ -158,7 +158,8 @@ _renderer_lock = threading.Lock()
 # tail profile (weight_profile). SVG strokes cannot vary in width, so the variable-width stroke is
 # expanded here into ONE filled contour per segment (left edge forwards, tip
 # cap, right edge back): no outlined band, no double contour. The tail tip and
-# the nose end in round caps; the other ends are butt, so the 12-degree gaps
+# the nose end round (the band's nose closes as a half-ellipse, 42); the other
+# ends are butt, so the 12-degree gaps
 # stay open at full band weight. gen_icons.py writes the centrelines and both
 # weights' expansions into assets/icon/samsara.svg; --check flags drift.
 
@@ -187,20 +188,41 @@ _CAP_SAMPLES = 8
 #: Head and tail are WEIGHT-DEPENDENT (queue 19): one multiplier cannot serve
 #: both. At the hollow weight (3) a 1.45x snout and short tail barely
 #: register, so the hollow profile swells harder and tapers longer; at the
-#: band weight (11) the same snout closed most of the 12 o'clock gap, so the
-#: band profile swells less and its nose closes within the first quarter of
-#: the overshoot; past the nose the stroke has zero width, so no thin tip
-#: bridges the gap to the tail (the centreline itself is unchanged). Values between
-#: the two weights are interpolated linearly.
+#: band weight (11) the head swells less. Past the nose the stroke has zero
+#: width, so no thin tip bridges the gap to the tail (the centreline itself is
+#: unchanged). Profiles are interpolated linearly between three ANCHORS --
+#: hollow, brand and band -- so a change to the band never moves the brand.
 #:   (head_scale, tail_fraction, tip_fraction, nose_fraction)
 HOLLOW_PROFILE = (1.9, 0.45, 0.30, 1.00)
-#: 38: the 1.25x band head read as a flat stub (owner screenshot, 26 px
-#: header while recording). 1.6x is a clear head at 26/60/128 px and the
-#: 12 o'clock gap stays visibly open (the nose still ends a quarter of the
-#: way into the overshoot); 1.75x crowded the gap. BAND_HEAD_MIN is the
-#: floor the identity test holds it to.
+#: Brand weight (38), frozen at the values it was drawn with (the 38
+#: interpolation between hollow and the old band profile): its head already
+#: reads (half-width 4.97, nose 3.94 units over 9 samples), so 42 leaves it
+#: byte-for-byte alone.
+BRAND_PROFILE = (1.80625, 0.403125, 0.275, 0.765625)
+#: 38: the 1.25x band head read as a flat stub; 1.6x is kept (BAND_HEAD_MIN is
+#: the floor the identity test holds it to).
 BAND_HEAD_MIN = 1.5
+#: 42: at 1.6x the band head STILL read as a square cut, and the width was
+#: not the cause -- the nose was. The old band nose was 1.29 units long on a
+#: head 8.80 units half-wide (3 samples): a rounded end that short on a head
+#: that wide is a flat face. The fix lengthens the nose BACKWARDS: the widest
+#: point of the head moves BAND_NOSE_LEAD of the span back into the segment
+#: (nose_lead), and the nose closes from there as a true half-ellipse -- no
+#: tip clamp, no stub cap -- so the nose IS the round cap, about as long as
+#: the head is half-wide. Its front stays exactly where the old nose ended
+#: (nose fraction 0.25 of the overshoot, unchanged), so the 12 o'clock gap is
+#: no narrower. The lead is a function of weight: zero at and below the brand
+#: weight (hollow and brand keep the 38 nose and sampling byte-for-byte),
+#: BAND_NOSE_LEAD at the band.
 BAND_PROFILE = (1.6, 0.30, 0.22, 0.25)
+BAND_NOSE_LEAD = 0.175
+#: The nose of a weight with a lead (widest point to stroke end) must be at
+#: least this multiple of the head's half-width; below it the end reads as a
+#: cut, not a head.
+NOSE_MIN_RATIO = 0.9
+#: A weight with a leading nose gets this many nose samples, spaced densest
+#: at the front where the half-ellipse turns fastest (smooth at 128 px).
+_LEAD_NOSE_SAMPLES = 32
 
 
 def _smoothstep(t: float) -> float:
@@ -208,10 +230,33 @@ def _smoothstep(t: float) -> float:
     return t * t * (3.0 - 2.0 * t)
 
 
+def _anchor_blend(weight: float, low: tuple, mid: tuple, high: tuple) -> tuple:
+    """Piecewise-linear blend through hollow (low), brand (mid) and band
+    (high); exactly an anchor's values at that anchor's weight."""
+    if weight <= RING_LINE_WIDTH:
+        return tuple(low)
+    if weight == RING_BRAND_WIDTH:
+        return tuple(mid)
+    if weight >= RING_BAND_WIDTH:
+        return tuple(high)
+    if weight < RING_BRAND_WIDTH:
+        a, b, lo, hi = RING_LINE_WIDTH, RING_BRAND_WIDTH, low, mid
+    else:
+        a, b, lo, hi = RING_BRAND_WIDTH, RING_BAND_WIDTH, mid, high
+    t = (weight - a) / (b - a)
+    return tuple(x + (y - x) * t for x, y in zip(lo, hi))
+
+
 def weight_profile(weight: float) -> tuple:
     """(head_scale, tail_fraction, tip_fraction, nose_fraction) for a weight."""
-    t = max(0.0, min(1.0, (weight - RING_LINE_WIDTH) / (RING_BAND_WIDTH - RING_LINE_WIDTH)))
-    return tuple(h + (b - h) * t for h, b in zip(HOLLOW_PROFILE, BAND_PROFILE))
+    return _anchor_blend(weight, HOLLOW_PROFILE, BRAND_PROFILE, BAND_PROFILE)
+
+
+def nose_lead(weight: float) -> float:
+    """Fraction of the span before the head segment's end at which the head is
+    widest and the nose begins: 0 at and below the brand weight (the nose
+    starts at the segment end, as in 38), BAND_NOSE_LEAD at the band."""
+    return _anchor_blend(weight, (0.0,), (0.0,), (BAND_NOSE_LEAD,))[0]
 
 
 def head_scale(weight: float) -> float:
@@ -228,7 +273,7 @@ def tip_fraction(weight: float) -> float:
 
 #: The whole ring shrinks so the widest head of either weight still fits the
 #: viewBox; no segment ever moves off the circle.
-#: max(3 * 1.9, 11 * 1.25) = 13.75 -> 32 - 0.5 - 13.75 / 2 = 24.625.
+#: max(3 * 1.9, 11 * 1.6) = 17.6 -> 32 - 0.5 - 17.6 / 2 = 22.7.
 RING_RADIUS = RING_CENTRE - VIEWBOX_MARGIN - max(
     RING_LINE_WIDTH * head_scale(RING_LINE_WIDTH),
     RING_BAND_WIDTH * head_scale(RING_BAND_WIDTH)) / 2.0
@@ -237,28 +282,37 @@ RING_RADIUS = RING_CENTRE - VIEWBOX_MARGIN - max(
 def stroke_scale(segment: int, u: float, weight: float = RING_BAND_WIDTH) -> float:
     """Stroke width at arc fraction u, as a multiple of the weight.
 
-    With (H, T, TIP, N) = weight_profile(weight); u in [0, 1] runs from the
-    segment's start angle to its end angle; the head segment also takes u > 1,
-    up to HEAD_OVERSHOOT_DEG past its end:
+    With (H, T, TIP, N) = weight_profile(weight), L = nose_lead(weight),
+    P = 1 - L (the head's widest point) and E = 1 + N * overshoot / span (the
+    stroke's end); u in [0, 1] runs from the segment's start angle to its end
+    angle, and the head segment also takes u > 1, up to HEAD_OVERSHOOT_DEG
+    past its end:
       tail (segment TAIL_SEGMENT, u < T):
            TIP + (1 - TIP) * smoothstep(u / T)
-      head (segment HEAD_SEGMENT, 1 - HEAD_FRACTION < u <= 1):
-           1 + (H - 1) * smoothstep((u - (1 - HEAD_FRACTION)) / HEAD_FRACTION)
-      nose (segment HEAD_SEGMENT, u > 1, v = (u - 1) / (N * overshoot / span)):
-           max(TIP, H * sqrt(1 - v^2)) for v <= 1, then 0 (the stroke has ended)
+      head (segment HEAD_SEGMENT, P - HEAD_FRACTION < u <= P):
+           1 + (H - 1) * smoothstep((u - (P - HEAD_FRACTION)) / HEAD_FRACTION)
+      nose (segment HEAD_SEGMENT, u > P, v = (u - P) / (E - P)):
+           L = 0:  max(TIP, H * sqrt(1 - v^2)) for v <= 1, then 0
+           L > 0:  H * sqrt(1 - v^2) for v <= 1, then 0 (a true half-ellipse:
+                   the nose closes to its own round front)
       else 1
+    With L = 0 (hollow, brand) this is exactly the 38 formula: widest at the
+    segment end, nose entirely inside the overshoot, blunt TIP stub.
     """
     head, tail, tip, nose = weight_profile(weight)
     if segment == TAIL_SEGMENT and u < tail:
         return tip + (1.0 - tip) * _smoothstep(u / tail)
     if segment == HEAD_SEGMENT:
-        if u > 1.0:
-            v = (u - 1.0) / (nose * HEAD_OVERSHOOT_DEG / SEGMENT_SPAN_DEG)
+        lead = nose_lead(weight)
+        peak = 1.0 - lead
+        if u > peak:
+            v = (u - peak) / (lead + nose * HEAD_OVERSHOOT_DEG / SEGMENT_SPAN_DEG)
             if v > 1.0 + 1e-9:
                 return 0.0
-            return max(tip, head * math.sqrt(max(0.0, 1.0 - v * v)))
-        if u > 1.0 - HEAD_FRACTION:
-            t = (u - (1.0 - HEAD_FRACTION)) / HEAD_FRACTION
+            dome = head * math.sqrt(max(0.0, 1.0 - v * v))
+            return dome if lead > 0.0 else max(tip, dome)
+        if u > peak - HEAD_FRACTION:
+            t = (u - (peak - HEAD_FRACTION)) / HEAD_FRACTION
             return 1.0 + (head - 1.0) * _smoothstep(t)
     return 1.0
 
@@ -268,14 +322,32 @@ def ring_width(segment: int, u: float, weight: float = RING_BAND_WIDTH) -> float
     return weight * stroke_scale(segment, u, weight)
 
 
-def ring_centreline(segment: int) -> list[tuple[float, float, float, float]]:
-    """The one centreline of a segment: (u, angle_rad, x, y) samples, all at
-    RING_RADIUS. Both weights stroke exactly these samples."""
+def _nose_span(weight: float) -> tuple[float, float]:
+    """(u of the head's widest point, u where the stroke ends) for a weight."""
+    lead = nose_lead(weight)
+    nose = weight_profile(weight)[3]
+    return 1.0 - lead, 1.0 + nose * HEAD_OVERSHOOT_DEG / SEGMENT_SPAN_DEG
+
+
+def ring_centreline(segment: int, weight: Optional[float] = None) -> list[tuple[float, float, float, float]]:
+    """A segment's centreline: (u, angle_rad, x, y) samples, all at RING_RADIUS.
+
+    Without a weight (and for any weight without a nose lead -- hollow and
+    brand) these are the 38 samples every weight strokes. A weight with a
+    nose lead (the band) keeps every 38 sample before its widest point, on
+    the same circle, then _LEAD_NOSE_SAMPLES nose samples from the widest
+    point to the stroke end, spaced sin-wise so they crowd the round front,
+    and stops there."""
     start = SEGMENT_START_DEG + segment * SEGMENT_STEP_DEG
     fractions = [i / _SEGMENT_SAMPLES for i in range(_SEGMENT_SAMPLES + 1)]
     if segment == HEAD_SEGMENT:
         over = HEAD_OVERSHOOT_DEG / SEGMENT_SPAN_DEG
         fractions += [1.0 + over * i / _NOSE_SAMPLES for i in range(1, _NOSE_SAMPLES + 1)]
+        if weight is not None and nose_lead(weight) > 0.0:
+            peak, end = _nose_span(weight)
+            dense = [peak + (end - peak) * math.sin(0.5 * math.pi * i / _LEAD_NOSE_SAMPLES)
+                     for i in range(_LEAD_NOSE_SAMPLES + 1)]
+            fractions = [u for u in fractions if u < peak - 1e-9] + dense
     samples = []
     for u in fractions:
         angle = math.radians(start + u * SEGMENT_SPAN_DEG)
@@ -283,6 +355,20 @@ def ring_centreline(segment: int) -> list[tuple[float, float, float, float]]:
                         RING_CENTRE + RING_RADIUS * math.cos(angle),
                         RING_CENTRE + RING_RADIUS * math.sin(angle)))
     return samples
+
+
+def nose_metrics(weight: float) -> tuple[float, float, int]:
+    """(head half-width, nose length, nose sample points) in viewBox units.
+
+    The nose runs from the head's widest point to where the stroke ends,
+    measured along the ring; its sample points are the centreline samples
+    stroked with a non-zero width in (widest point, stroke end]."""
+    peak, end = _nose_span(weight)
+    half = weight * head_scale(weight) / 2.0
+    length = RING_RADIUS * math.radians((end - peak) * SEGMENT_SPAN_DEG)
+    points = sum(1 for u, *_rest in ring_centreline(HEAD_SEGMENT, weight)
+                 if peak + 1e-9 < u <= end + 1e-9 and ring_width(HEAD_SEGMENT, u, weight) > 0.0)
+    return half, length, points
 
 
 def ring_centreline_path_data(segment: int) -> str:
@@ -311,8 +397,9 @@ def _cap(cx, cy, normal, tangent, half, forward):
 def ring_stroke_outline(segment: int, weight: float) -> list[tuple[float, float]]:
     """ONE closed contour: the segment's centreline stroked at weight *
     stroke_scale -- left (outer) edge forwards, end cap, right edge back,
-    start cap. Round caps only at the tail tip and the nose."""
-    samples = ring_centreline(segment)
+    start cap. Round caps only at the tail tip and the nose; a nose with a
+    lead (the band) is its own round front, so it takes no extra cap."""
+    samples = ring_centreline(segment, weight)
     left, right = [], []
     for u, angle, x, y in samples:
         half = ring_width(segment, u, weight) / 2.0
@@ -321,7 +408,7 @@ def ring_stroke_outline(segment: int, weight: float) -> list[tuple[float, float]
         right.append((x - half * nx, y - half * ny))
     points = list(left)
     u_end, a_end, x_end, y_end = samples[-1]
-    if segment == HEAD_SEGMENT:                              # nose: round cap
+    if segment == HEAD_SEGMENT and nose_lead(weight) == 0.0:   # 38 nose: round cap
         points += _cap(x_end, y_end, (math.cos(a_end), math.sin(a_end)),
                        (-math.sin(a_end), math.cos(a_end)),
                        ring_width(segment, u_end, weight) / 2.0, forward=True)
