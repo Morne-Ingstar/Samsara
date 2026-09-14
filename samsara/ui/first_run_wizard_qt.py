@@ -296,6 +296,7 @@ _STEPS = [
     ("Welcome",    "Welcome to Samsara"),
     ("Use Case",   "How Will You Use Samsara?"),
     ("Microphone", "Select Your Microphone"),
+    ("Components", "Optional Components"),
     ("Model",      "Choose Recognition Quality"),
     ("Shortcuts",  "Shortcuts & Wake Word"),
     ("Complete",   "Setup Complete!"),
@@ -660,10 +661,12 @@ class _WizardWindow(QMainWindow):
         self._last_meter_rms: float = 0.0
         self._meter_passed: bool = False
 
+        self._components_page = None
         self._pages = [
             self._build_welcome(),
             self._build_use_case(),
             self._build_microphone(),
+            self._build_components(),
             self._build_model(),
             self._build_shortcuts(),
             self._build_complete(),
@@ -730,8 +733,9 @@ class _WizardWindow(QMainWindow):
         for icon, text in [
             ("1.", "Choose how you'll use Samsara"),
             ("2.", "Select your microphone"),
-            ("3.", "Choose speech recognition quality"),
-            ("4.", "Set your keyboard shortcuts"),
+            ("3.", "Add optional components, now or later"),
+            ("4.", "Choose speech recognition quality"),
+            ("5.", "Set your keyboard shortcuts"),
         ]:
             row = QHBoxLayout()
             icon_lbl = QLabel(icon)
@@ -802,6 +806,15 @@ class _WizardWindow(QMainWindow):
 
         lay.addStretch()
         return w
+
+    def _build_components(self) -> QWidget:
+        """34: the one page after the microphone step that offers whatever
+        the installer did not fetch. Built by samsara.ui.first_run_qt; the
+        wizard only hosts it and wires "Later" to Next."""
+        from samsara.ui.first_run_qt import ComponentsPage
+
+        self._components_page = ComponentsPage(self._stack, on_later=self._go_next)
+        return self._components_page.widget
 
     def _build_microphone(self) -> QWidget:
         w, lay = self._padded()
@@ -1064,6 +1077,10 @@ class _WizardWindow(QMainWindow):
         # Start level meter on microphone step
         if _STEPS[self._step][0] == "Microphone":
             self._start_meter()
+
+        # List whatever is still missing every time the page is entered
+        if _STEPS[self._step][0] == "Components" and self._components_page is not None:
+            self._components_page.refresh()
 
     def _go_next(self):
         self._collect_step()
