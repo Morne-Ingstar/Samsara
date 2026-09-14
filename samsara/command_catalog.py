@@ -512,6 +512,181 @@ def validate_catalog(doc: dict) -> list:
     return problems
 
 
+# ---------------------------------------------------------------------------
+# Runtime views for the guidance surfaces (queue 15)
+# ---------------------------------------------------------------------------
+# The command cheat sheet and the tutorial render these records instead of
+# hand-written command lists. In the running app they are built from the
+# LIVE registry rows the app already hands those surfaces
+# (CommandRegistry.list_commands()) plus commands.json and the in-process
+# plugin registry -- the same inputs build_catalog uses, so the canonical ids
+# match commands_catalog.json -- and they work in the packaged build, which
+# ships commands.json but not commands_catalog.json. Without registry rows
+# (tests, tools) the checked-in commands_catalog.json is read. Either source
+# failing yields None, and every surface shows an honest "unavailable" line.
+
+def _canonical_and_aliases(phrase: str, aliases) -> tuple:
+    canonical = normalize_phrase(phrase)
+    names = {canonical} | {normalize_phrase(a) for a in (aliases or [])}
+    names.discard("")
+    return canonical, sorted(names)
+
+
+def catalog_from_registry_rows(rows, builtin_commands: Optional[dict] = None,
+                               plugin_registry: Optional[dict] = None) -> list:
+    """Catalog records for live registry rows (CommandRegistry.list_commands()).
+
+    Each record has the commands_catalog.json keys the surfaces render --
+    canonical_id, plugin, verb, object, aliases, description, risk,
+    whole_utterance, pack, kind -- plus "phrase" (the canonical phrase) and
+    "args" (declared param_schema or the phrase hints; the handler-body
+    remainder inference needs source text, which only build_catalog reads).
+    Sorted by canonical_id.
+    """
+    if builtin_commands is None:
+        try:
+            builtin_commands = json.loads((ROOT / "commands.json").read_text(encoding="utf-8")).get("commands", {})
+        except (OSError, ValueError):
+            builtin_commands = {}
+    if plugin_registry is None:
+        plugin_registry = {}
+        try:
+            from samsara import plugin_commands  # noqa: PLC0415
+            # _MODULE_ENTRIES survives a cleared _REGISTRY (it is how a reused
+            # module reinstalls its commands). It is in load order and a
+            # later registration replaces an earlier one for the same phrase
+            # (plugin_commands._register), so later modules win here too;
+            # _REGISTRY itself wins where both know a phrase.
+            for module, entries in plugin_commands._MODULE_ENTRIES.items():
+                for phrase, entry in entries.items():
+                    plugin_registry[phrase] = {"source": module}
+            plugin_registry.update(plugin_commands._REGISTRY)
+        except Exception:
+            pass
+    reserved = reserved_whole_utterances()
+    records, seen = [], set()
+    for row in rows or []:
+        phrase = row.get("phrase") or ""
+        canonical, aliases = _canonical_and_aliases(phrase, row.get("aliases"))
+        if not canonical:
+            continue
+        kind = "builtin" if row.get("source") == "builtin" else "plugin"
+        if kind == "builtin":
+            plugin = "builtin"
+        else:
+            entry = plugin_registry.get(phrase) or plugin_registry.get(canonical) or {}
+            module = entry.get("source", "") if isinstance(entry, dict) else ""
+            plugin = module.rsplit(".", 1)[-1] if module else "plugin"
+        cid = f"{plugin}.{slug(phrase)}"
+        if cid in seen:
+            continue
+        seen.add(cid)
+        metadata = row.get("metadata") if isinstance(row.get("metadata"), dict) else {}
+        declared = metadata.get("risk_class") or row.get("risk_class")
+        if declared == "unknown":
+            declared = None
+        data = builtin_commands.get(phrase) if kind == "builtin" else None
+        tokens = canonical.split()
+        records.append({
+            "canonical_id": cid,
+            "plugin": plugin,
+            "phrase": canonical,
+            "verb": tokens[0],
+            "object": "_".join(tokens[1:]),
+            "aliases": aliases,
+            # Declared param_schema, else the phrase hints; the remainder-in-
+            # handler-body inference needs source text and is skipped here.
+            "args": [asdict(a) for a in infer_args(kind, phrase, row.get("param_schema") or None, None)],
+            "description": _first_sentence(row.get("description")) or canonical,
+            "risk": classify_risk(kind, phrase, declared, data),
+            "whole_utterance": canonical in reserved,
+            "pack": row.get("pack") or "core",
+            "kind": kind,
+        })
+    records.sort(key=lambda r: r["canonical_id"])
+    return records
+
+
+def load_catalog_json(path: Optional[Path] = None) -> Optional[list]:
+    """commands_catalog.json's command records, or None when the file is
+    missing, unreadable, not JSON, or fails validate_catalog."""
+    path = Path(path) if path is not None else ROOT / "commands_catalog.json"
+    try:
+        doc = json.loads(path.read_text(encoding="utf-8"))
+    except (OSError, ValueError):
+        return None
+    if validate_catalog(doc):
+        return None
+    return doc["commands"]
+
+
+def guidance_catalog(rows=None, *, catalog_path: Optional[Path] = None) -> Optional[list]:
+    """The records a guidance surface renders: from live registry rows when
+    given (and non-empty), else commands_catalog.json; None if unavailable."""
+    if rows:
+        try:
+            records = catalog_from_registry_rows(rows)
+        except Exception:
+            records = None
+        if records:
+            return records
+    return load_catalog_json(catalog_path)
+
+
+def canonical_phrase(record: dict) -> str:
+    """The canonical spoken form of a record: its "phrase", else the alias
+    whose slug is the canonical_id's suffix."""
+    if record.get("phrase"):
+        return record["phrase"]
+    suffix = record["canonical_id"].split(".", 1)[1]
+    for alias in record.get("aliases", []):
+        if re.sub(r"[^a-z0-9]+", "_", alias).strip("_") == suffix:
+            return alias
+    return suffix.replace("_", " ")
+
+
+def display_aliases(record: dict, limit: int = 3) -> list:
+    """Up to `limit` other phrases for a record, shortest first."""
+    canonical = canonical_phrase(record)
+    others = [a for a in record.get("aliases", []) if a != canonical]
+    return sorted(others, key=lambda a: (len(a), a))[:limit]
+
+
+#: A "try saying ..." example must be local, instant and real: no demo or
+#: sample plugins, and no verbs that reach the network (check / update /
+#: download). Plugin stems and verbs, not command phrases.
+EXAMPLE_EXCLUDED_PLUGINS = frozenset({"demo_commands", "example_greet"})
+EXAMPLE_EXCLUDED_VERBS = frozenset({"check", "update", "download"})
+
+
+def pick_examples(records, count: int = 3, *, enabled_packs: Optional[set] = None,
+                  prefer_risks: tuple = ("read", "ui")) -> list:
+    """Commands safe to suggest as "try saying ..." examples.
+
+    Never destructive; never a whole-utterance control word; never one that
+    needs an argument; never a demo/sample plugin or a network verb
+    (EXAMPLE_EXCLUDED_*); only packs that are enabled (when given). Risk
+    classes in prefer_risks order (read first), then core pack first, then
+    the shortest canonical phrase. Deterministic.
+    """
+    candidates = []
+    for r in records or []:
+        if r.get("risk") == "destructive" or r.get("risk") not in prefer_risks:
+            continue
+        if r.get("whole_utterance"):
+            continue
+        if r.get("plugin") in EXAMPLE_EXCLUDED_PLUGINS or r.get("verb") in EXAMPLE_EXCLUDED_VERBS:
+            continue
+        if any(a.get("required") for a in r.get("args", []) if isinstance(a, dict)):
+            continue
+        if enabled_packs is not None and r.get("pack", "core") not in enabled_packs:
+            continue
+        phrase = canonical_phrase(r)
+        candidates.append((prefer_risks.index(r["risk"]), r.get("pack") != "core", len(phrase), phrase, r))
+    candidates.sort(key=lambda c: c[:4])
+    return [c[4] for c in candidates[:count]]
+
+
 def render_markdown(specs: list) -> str:
     by_plugin = {}
     for s in specs:

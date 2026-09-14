@@ -416,7 +416,7 @@ class TestGuidanceAuditFixes:
         assert by_label["Wake word listener (toggle)"]["value"] == "Ctrl+Alt+2"
         assert by_label["Command only (hold)"]["value"] == "Ctrl+Alt+3"
         assert by_label["Cancel recording"]["value"] == "F4"
-        assert by_label["Voice memo"]["value"] == "Ctrl+Alt+5"
+        assert by_label["Memo recording"]["value"] == "Ctrl+Alt+5"
         assert by_label["Correction report"]["value"] == "Ctrl+Alt+6"
         assert by_label["Correction capture"]["value"] == "Ctrl+Alt+7"
         assert by_label["Continuous commit"]["value"].startswith("Ctrl+Alt+8") and by_label["Continuous commit"]["enabled"]
@@ -461,7 +461,7 @@ class TestGuidanceAuditFixes:
             assert "Stop (keeps the draft, mic stays on)" in texts
             assert "Sleep (keeps the draft, ends the session)" in texts
             assert any("opens the hands-free session" in t for t in texts)
-            assert "Voice memo" in texts and "Correction capture" in texts
+            assert "Memo recording" in texts and "Correction capture" in texts
         finally:
             win.close()
 
@@ -482,7 +482,7 @@ class TestModesTabRoundTripIntoQuickReference:
         win._widgets['ava_mode_key'].setCurrentText('F13')
         updates = win._save_fns[1]({})
         rows = {r["label"]: r for r in qr._resolve_hotkeys(_make_app(updates))}
-        assert rows["Voice memo"]["value"] == "Ctrl+Alt+Q"
+        assert rows["Memo recording"]["value"] == "Ctrl+Alt+Q"
         assert rows["Correction capture"]["value"] == "Ctrl+Alt+Y"
         assert rows["Continuous commit"]["value"].startswith("Ctrl+Alt+K") and rows["Continuous commit"]["enabled"]
         assert rows["Streaming (live partials)"]["value"].startswith(qr.STREAMING_KEY_LABEL)

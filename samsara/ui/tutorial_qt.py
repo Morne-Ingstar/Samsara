@@ -13,9 +13,15 @@ Architecture mirrors first_run_wizard_qt.py exactly:
 Steps:
   0  Welcome     — passive: "takes two minutes" + Let's go
   1  Dictation   — speak → text lands in box → green check
-  2  Command     — say "scroll down" → area scrolls → green check
+  2  Command     — say any command → green check
   3  Done        — checklist recap, all items ticked; points to Ava and
-                   "show numbers" as things to try once set up
+                   the click-by-number overlay as things to try once set up
+
+Every "try saying ..." example and every command named in the text is read
+from the command catalog at runtime (samsara.command_catalog, built from the
+live registry): examples prefer read-only commands, never destructive ones,
+so an example can never name a command that does not exist. With no catalog
+the text says so and links to Help.
 
 Interaction detection hooks (registered on app, removed on window close):
   app._tutorial_hooks['dictation']  one-shot cb(text) after dictation
@@ -29,6 +35,7 @@ from PySide6.QtWidgets import (
     QPushButton, QScrollArea, QTextEdit, QVBoxLayout, QWidget,
 )
 
+from samsara import command_catalog
 from samsara.constants import DEFAULT_WAKE_PHRASE
 from samsara.log import get_logger
 from samsara.support_feedback import open_support_tab
@@ -38,6 +45,99 @@ logger = get_logger(__name__)
 
 # How long to wait before showing the "need a hand?" hint and skip link
 _HINT_DELAY_MS = 20_000
+
+# Catalog commands the done page points at, by canonical id (ids, not
+# phrases: the phrase shown is whatever the catalog says today, and a
+# vanished id simply drops the sentence).
+_HELP_COMMAND_ID = "core_utils.what_can_i_say"
+_NUMBERS_COMMAND_ID = "show_numbers.show_numbers"
+#: The link target the degraded text uses; linkActivated opens Help & Support.
+HELP_LINK = "samsara:help"
+EXAMPLES_UNAVAILABLE = (
+    f'Command examples are unavailable right now. See <a href="{HELP_LINK}">Help</a> '
+    "for the command list."
+)
+
+
+# ---------------------------------------------------------------------------
+# Catalog-driven text (pure helpers, no widgets)
+# ---------------------------------------------------------------------------
+
+def _tutorial_catalog(app):
+    """Catalog records from the app's live registry, else commands_catalog.json;
+    None when neither is available."""
+    rows = None
+    matcher = getattr(getattr(app, 'command_executor', None), '_matcher', None)
+    if matcher is not None:
+        try:
+            rows = matcher.list_commands()
+        except Exception as e:
+            logger.debug(f"_tutorial_catalog: {e}")
+    try:
+        return command_catalog.guidance_catalog(rows)
+    except Exception as e:
+        logger.debug(f"_tutorial_catalog: {e}")
+        return None
+
+
+def _enabled_packs(config: dict):
+    try:
+        from samsara.command_packs import get_enabled_packs  # noqa: PLC0415
+        return set(get_enabled_packs(config or {}))
+    except Exception:
+        return None
+
+
+def _command_examples(records, config: dict, count: int = 3):
+    """Canonical phrases of up to `count` example commands (read first, never
+    destructive, enabled packs only), or None when there is no catalog."""
+    if not records:
+        return None
+    picked = command_catalog.pick_examples(records, count, enabled_packs=_enabled_packs(config))
+    return [command_catalog.canonical_phrase(r) for r in picked] or None
+
+
+def _catalog_phrase(records, canonical_id: str):
+    for record in records or []:
+        if record.get("canonical_id") == canonical_id:
+            return command_catalog.canonical_phrase(record)
+    return None
+
+
+def _command_instruction(examples, hotkey: str, wake: str, wake_enabled: bool) -> str:
+    if not examples:
+        return "Say a voice command. " + EXAMPLES_UNAVAILABLE
+    first, rest = examples[0], examples[1:]
+    bullets = [f'  • Hold  {hotkey.upper()}  and say  "{first}"']
+    if wake_enabled:
+        bullets.append(f'  • Say  "{wake}, {first}"  (wake word mode)')
+    if rest:
+        bullets.append("  • Or any command you know — " + ", ".join(f"'{p}'" for p in rest) + ", etc.")
+    return "Say a voice command. Try one of:\n" + "\n".join(bullets)
+
+
+def _command_hint(examples) -> str:
+    if not examples:
+        return EXAMPLES_UNAVAILABLE
+    quoted = [f"'{p}'" for p in examples]
+    joined = quoted[0] if len(quoted) == 1 else ", ".join(quoted[:-1]) + ", or " + quoted[-1]
+    return f"Try saying {joined}."
+
+
+def _more_text(records) -> str:
+    phrase = _catalog_phrase(records, _HELP_COMMAND_ID)
+    if phrase:
+        return (f'Say "{phrase}" anytime for the full command list, '
+                "or open the Command Reference from the tray menu.")
+    return "Open the Command Reference from the tray menu for the full command list."
+
+
+def _pointer_text(records) -> str:
+    phrase = _catalog_phrase(records, _NUMBERS_COMMAND_ID)
+    if phrase:
+        return (f'Ava (your on-device voice assistant) and "{phrase}" '
+                "(click anything by saying its number) are also here once you set them up.")
+    return "Ava (your on-device voice assistant) is also here once you set it up."
 
 
 # ---------------------------------------------------------------------------
@@ -302,6 +402,14 @@ class TutorialWindow(QMainWindow):
         lay.setSpacing(12)
         return w, lay
 
+    def _link_help(self, label) -> None:
+        """Degraded text carries a Help link: open Settings on Help & Support."""
+        if label is None or HELP_LINK not in label.text():
+            return
+        label.setTextFormat(Qt.TextFormat.RichText)
+        label.setTextInteractionFlags(Qt.TextInteractionFlag.LinksAccessibleByMouse)
+        label.linkActivated.connect(lambda _href: open_support_tab(self._app))
+
     def _instruction_box(self, text: str) -> QFrame:
         """Tinted instruction card used on interactive steps."""
         frame = QFrame()
@@ -424,14 +532,12 @@ class TutorialWindow(QMainWindow):
         cmd_hotkey = cfg.get('command_hotkey', 'ctrl+alt+c')
         wake = cfg.get('wake_word_config', {}).get('phrase', DEFAULT_WAKE_PHRASE)
 
-        bullets = [f"  • Hold  {cmd_hotkey.upper()}  and say  \"scroll down\""]
-        if cfg.get('wake_word_enabled', False):
-            bullets.append(f"  • Say  \"{wake}, scroll down\"  (wake word mode)")
-        bullets.append("  • Or any command you know — 'show numbers', 'what can I say', etc.")
-
-        lay.addWidget(self._instruction_box(
-            "Say a voice command. Try one of:\n" + "\n".join(bullets)
-        ))
+        self._catalog = _tutorial_catalog(self._app)
+        self._examples = _command_examples(self._catalog, cfg)
+        box = self._instruction_box(_command_instruction(
+            self._examples, cmd_hotkey, wake, bool(cfg.get('wake_word_enabled', False))))
+        self._link_help(box.findChild(QLabel))
+        lay.addWidget(box)
 
         # Scrollable demonstration area
         self._scroll_area = QScrollArea()
@@ -446,7 +552,7 @@ class TutorialWindow(QMainWindow):
         inner_lay.setContentsMargins(12, 10, 12, 10)
         inner_lay.setSpacing(4)
         for i in range(1, 15):
-            lbl = QLabel(f"Line {i} — scroll down to see more of this area")
+            lbl = QLabel(f"Line {i} — more of this area continues below")
             lbl.setStyleSheet("color:#4a4a56;font-size:12px;")
             inner_lay.addWidget(lbl)
         self._scroll_area.setWidget(inner)
@@ -456,9 +562,8 @@ class TutorialWindow(QMainWindow):
         self._cmd_success.setVisible(False)
         lay.addWidget(self._cmd_success)
 
-        self._cmd_hint = QLabel(
-            "💡 Try saying 'scroll down', 'show numbers', or 'what can I say'."
-        )
+        self._cmd_hint = QLabel(_command_hint(self._examples))
+        self._link_help(self._cmd_hint)
         self._cmd_hint.setWordWrap(True)
         self._cmd_hint.setStyleSheet("color:#8A8A92;font-size:12px;")
         self._cmd_hint.setVisible(False)
@@ -507,18 +612,15 @@ class TutorialWindow(QMainWindow):
 
         lay.addWidget(card)
 
-        more_lbl = QLabel(
-            'Say "what can I say" anytime for the full command list, '
-            'or open the Command Reference from the tray menu.'
-        )
+        records = getattr(self, '_catalog', None)
+        if records is None:
+            records = _tutorial_catalog(self._app)
+        more_lbl = QLabel(_more_text(records))
         more_lbl.setWordWrap(True)
         more_lbl.setStyleSheet("color:#8A8A92;font-size:12px;")
         lay.addWidget(more_lbl)
 
-        pointer_lbl = QLabel(
-            'Ava (your on-device voice assistant) and "show numbers" '
-            '(click anything by saying its number) are also here once you set them up.'
-        )
+        pointer_lbl = QLabel(_pointer_text(records))
         pointer_lbl.setWordWrap(True)
         pointer_lbl.setStyleSheet("color:#8A8A92;font-size:11px;")
         lay.addWidget(pointer_lbl)

@@ -81,11 +81,16 @@ _DICTATE_MODE_LABELS = {
     "continuous": "Dictate (continuous)",
 }
 
+# Spoken-phrase lists that ALSO exist as command-catalog phrases (the wake
+# abort, pause and resume words) have no literal fallback here (queue 15):
+# dictation.py load_config() always backfills them, so the live config is the
+# only source, and an absent key shows an empty list rather than a copy that
+# could drift from the registry.
 _WAKE_FALLBACKS = {
     "phrase": DEFAULT_WAKE_PHRASE,
     "phrase_options": DEFAULT_WAKE_PHRASE_OPTIONS,
     "end_words": ["over", "done", "end dictation"],
-    "wake_abort_phrase": ["cancel", "cancel dictation", "abort"],
+    "wake_abort_phrase": [],
 }
 
 
@@ -135,9 +140,9 @@ def _lane_switch_phrases(mode: SessionMode) -> list[str]:
     never a phrase list copied into this file, so a change to
     session_modes._WHOLE_UTTERANCE_SWITCHES is reflected here automatically.
 
-    For AVA this returns the static whole-utterance switch ("ava mode",
-    2026-09-11); the configurable invocations ("hey ava", ...) come from
-    _ava_invocation_phrases(app) and the two are shown together."""
+    For AVA this returns the static whole-utterance switch (2026-09-11); the
+    configurable invocations come from _ava_invocation_phrases(app) and the
+    two are shown together."""
     return sorted(
         phrase for phrase, m in session_modes._WHOLE_UTTERANCE_SWITCHES.items()
         if m is mode
@@ -212,7 +217,7 @@ def _resolve_hotkeys(app) -> list[dict]:
             "enabled": streaming_enabled,
         },
         {"label": "Undo last dictation", "value": _key("undo_hotkey"), "enabled": True},
-        {"label": "Voice memo", "value": _key("memo_hotkey"), "enabled": True},
+        {"label": "Memo recording", "value": _key("memo_hotkey"), "enabled": True},
         {"label": "Correction report", "value": _key("correction_hotkey"), "enabled": True},
         {
             "label": "Correction capture",
@@ -264,8 +269,8 @@ def _resolve_session_phrases(app) -> dict:
     ]))
     prefix_switches = sorted(getattr(session_modes, "_PREFIX_SWITCHES", {}))
     homophones = sorted(getattr(session_modes, "_DICTATE_COMMIT_HOMOPHONES", {session_modes.DICTATE_COMMIT_PHRASE}) - {session_modes.DICTATE_COMMIT_PHRASE})
-    pause_words = ww_cfg.get("pause_words", ["pause", "hold on", "wait"])
-    resume_words = ww_cfg.get("resume_words", ["resume", "continue", "go on"])
+    pause_words = ww_cfg.get("pause_words", [])     # live config only (see _WAKE_FALLBACKS)
+    resume_words = ww_cfg.get("resume_words", [])
     opens_session = bool(ww_cfg.get("opens_session", _schema_default("wake_word_config.opens_session", False)))
 
     return {
