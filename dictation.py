@@ -6339,6 +6339,8 @@ class DictationApp:
             self._mouse_hook = MouseHook(
                 on_button_event=self._on_mouse_button,
                 suppress_buttons=suppress,
+                # getattr: partial app stand-ins (tests) may not carry it.
+                on_hook_failed=getattr(self, '_on_mouse_hook_failed', None),
             )
             self._mouse_hook.start()
             if not getattr(self._mouse_hook, 'installed', True):
@@ -6367,6 +6369,13 @@ class DictationApp:
         """
         buttons, suppress = self._mouse_hook_bindings()
         hook = getattr(self, '_mouse_hook', None)
+        released = getattr(self, '_mouse_hook_released_bindings', None)
+        if released is not None:
+            if hook is None and (buttons, suppress) == released:
+                # "Release mouse buttons" / watchdog give-up stays in force
+                # until the bindings really change (settings) or a restart.
+                return
+            self._mouse_hook_released_bindings = None
         if hook is None and not buttons:
             return
         if hook is not None and buttons and hook.suppress_buttons == suppress:
@@ -6379,8 +6388,64 @@ class DictationApp:
             self._mouse_hook = None
         self._install_mouse_listener()
 
+    def _on_mouse_hook_failed(self, reason):
+        """MouseHook gave up after losing the hook repeatedly (dispatcher thread).
+        It has already stopped suppressing and unhooked; fall back to the
+        keyboard hotkey and say so."""
+        logger.error(f"[MOUSE] mouse hook disabled: {reason}")
+        self._mouse_hook = None
+        self._mouse_fallback_to_keyboard("hands-free mouse control disabled")
+        # After the fallback edited the hotkey: what "unchanged" means to refresh.
+        self._mouse_hook_released_bindings = self._mouse_hook_bindings()
+
+    def release_mouse_buttons(self):
+        """Tray "Release mouse buttons": uninstall the mouse hook immediately.
+
+        Panic release -- the owner must never need end-process to get the
+        mouse back. The hook stays off until the mouse bindings change in
+        settings or Samsara restarts; the main hotkey falls back to the
+        keyboard hotkey meanwhile.
+        """
+        hook = getattr(self, '_mouse_hook', None)
+        self._mouse_hook = None
+        if hook is not None:
+            try:
+                hook.release("Release mouse buttons (tray)")
+            except Exception as e:
+                logger.exception(f"[MOUSE] release failed: {e}")
+        logger.warning("[MOUSE] mouse buttons released by the user")
+        self._mouse_fallback_to_keyboard("mouse buttons released")
+        # After the fallback edited the hotkey: what "unchanged" means to refresh.
+        self._mouse_hook_released_bindings = self._mouse_hook_bindings()
+
+    def _mouse_fallback_to_keyboard(self, why):
+        """The mouse hook is gone: a mouse main hotkey falls back to the
+        default keyboard hotkey IN MEMORY (not saved), a mouse-held recording
+        is stopped (its release will never arrive), and a chip says so."""
+        from samsara import config_defaults
+        hotkey = str(self.config.get('hotkey', '') or '').strip().lower()
+        fallback = config_defaults.DEFAULTS['hotkey']
+        if hotkey in _MOUSE_HOTKEY_BUTTONS:
+            self._mouse_hotkey_fallback_from = hotkey
+            self.config['hotkey'] = fallback
+            logger.warning(f"[MOUSE] {why}: main hotkey {hotkey} -> {fallback} until settings change "
+                           f"(not saved)")
+        if getattr(self, '_hold_down_mouse', False):
+            self._hold_down_mouse = False
+            if getattr(self, '_main_hotkey_source', 'key') == 'mouse' and getattr(self, 'recording', False):
+                self._main_hotkey_source = 'key'
+                thread_registry.spawn('stop-rec', self.stop_recording, daemon=True)
+        try:
+            self._show_outcome_chip(f"{why} - hotkey {fallback}", "warning")
+        except Exception as e:
+            logger.debug(f"[MOUSE] fallback chip failed: {e}")
+
     def _on_mouse_button(self, button_name, pressed):
         """Single mouse-hook callback: command mode, then the main hotkey.
+
+        Runs on the MouseHook DISPATCHER thread, never the Win32 hook thread
+        (32): start_recording() here may take hundreds of ms and must not
+        hold up the system's mouse input.
 
         Logs every event on entry (28): the owner could not see this path
         at all before, because every guard returned in silence.
@@ -13469,6 +13534,16 @@ class DictationApp:
         """Exit the application"""
         logger.info("[EXIT] Shutting down Samsara...")
 
+        # Release the Win32 mouse hook FIRST (32): nothing below may hold the
+        # user's mouse hostage, and this method ends in os._exit, which skips
+        # samsara.mouse_hook's atexit release.
+        try:
+            if getattr(self, '_mouse_hook', None) is not None:
+                self._mouse_hook.stop()
+                self._mouse_hook = None
+        except Exception as e:
+            logger.error(f"[EXIT] Mouse hook stop failed: {e}")
+
         # Signal background threads (e.g. stream-health monitor) to stop
         self._running = False
 
@@ -13635,7 +13710,8 @@ class DictationApp:
         except Exception as e:
             logger.debug(f"[EXIT] Keyboard listener stop failed: {e}")
 
-        # Stop Win32 mouse hook (Mouse 4/5 command mode)
+        # Win32 mouse hook: released at the top of quit_app (32); this
+        # repeat covers a hook installed while shutdown was running.
         try:
             if getattr(self, '_mouse_hook', None) is not None:
                 self._mouse_hook.stop()

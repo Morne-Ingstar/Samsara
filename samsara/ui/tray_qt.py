@@ -762,6 +762,9 @@ class SamsaraTrayQt(QObject):
         show_act = menu.addAction("Show Samsara")
         show_act.triggered.connect(lambda: app.show_main_window())
         menu.setDefaultAction(show_act)
+        # Panic release (32): only while a Win32 mouse hook is active.
+        if getattr(app, '_mouse_hook', None) is not None and hasattr(app, 'release_mouse_buttons'):
+            menu.addAction("Release mouse buttons").triggered.connect(lambda: app.release_mouse_buttons())
         menu.addSeparator()
 
         # ---- Microphone submenu ----

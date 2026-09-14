@@ -16,6 +16,14 @@ hook failing to install -- the install result is printed too).
 self-test of the hook code path; they arrive flagged injected=True. A
 physical press shows injected=False. Ctrl+C exits.
 
+--measure times every hook callback (perf_counter around
+MouseHook._hook_callback) and prints press/release durations at exit.
+--handler-ms N makes the event handler sleep N ms, standing in for a slow
+start_recording(): since 32 the callback duration must stay in microseconds
+however slow the handler is (the handler runs on the dispatcher thread).
+
+    F:\\envs\\sami\\python.exe tools\\mouse_hotkey_probe.py --inject 3 --seconds 4 --measure --handler-ms 500
+
 Logging is configured to stdout BEFORE samsara is imported, so samsara.log
 reuses it and never attaches the app's rotating file handler (a second
 writer on ~/.samsara/logs/samsara.log is the landmine this avoids).
@@ -39,7 +47,26 @@ _REPO_ROOT = Path(__file__).resolve().parents[1]
 if str(_REPO_ROOT) not in sys.path:
     sys.path.insert(0, str(_REPO_ROOT))
 
-from samsara.mouse_hook import MouseHook, XBUTTON1, XBUTTON2  # noqa: E402  (after logging setup)
+from samsara.mouse_hook import (  # noqa: E402  (after logging setup)
+    MouseHook, WM_XBUTTONDOWN, WM_XBUTTONUP, XBUTTON1, XBUTTON2,
+)
+
+
+class TimedMouseHook(MouseHook):
+    """MouseHook whose callback is timed from the outside (probe only)."""
+
+    def __init__(self, *args, **kwargs):
+        self.callback_timings = []
+        super().__init__(*args, **kwargs)
+
+    def _hook_callback(self, n_code, w_param, l_param):
+        t0 = time.perf_counter()
+        try:
+            return super()._hook_callback(n_code, w_param, l_param)
+        finally:
+            if w_param in (WM_XBUTTONDOWN, WM_XBUTTONUP):
+                self.callback_timings.append(
+                    ('press' if w_param == WM_XBUTTONDOWN else 'release', (time.perf_counter() - t0) * 1000.0))
 
 MOUSEEVENTF_XDOWN = 0x0080
 MOUSEEVENTF_XUP = 0x0100
@@ -84,6 +111,10 @@ def main() -> int:
                     help="self-test: send N synthetic clicks of --button through SendInput")
     ap.add_argument("--seconds", type=float, default=0.0,
                     help="exit after this many seconds (default: run until Ctrl+C)")
+    ap.add_argument("--measure", action="store_true",
+                    help="time every hook callback and print the durations at exit")
+    ap.add_argument("--handler-ms", type=float, default=0.0, metavar="MS",
+                    help="make the event handler sleep MS ms (a stand-in for a slow start_recording)")
     args = ap.parse_args()
 
     seen = []
@@ -97,12 +128,15 @@ def main() -> int:
         down = bool(ctypes.windll.user32.GetAsyncKeyState(vk) & 0x8000)
         with lock:
             seen.append((name, pressed))
+        if args.handler_ms:
+            time.sleep(args.handler_ms / 1000.0)
         print(f"{stamp} +{rel:8.3f}s  EVENT {name} {'PRESS  ' if pressed else 'RELEASE'}"
               f"  (GetAsyncKeyState says down={down}){'  <-- matches --button' if name == args.button else ''}",
               flush=True)
 
     suppress = () if args.no_suppress else (args.button,)
-    hook = MouseHook(on_button_event=on_event, suppress_buttons=suppress)
+    hook_cls = TimedMouseHook if args.measure else MouseHook
+    hook = hook_cls(on_button_event=on_event, suppress_buttons=suppress)
     hook.start()
     installed = bool(hook._hook_id)
     print(f"hook installed={installed} id={hook._hook_id} thread={hook._thread_id}"
@@ -125,7 +159,15 @@ def main() -> int:
     except KeyboardInterrupt:
         pass
     finally:
+        if args.handler_ms and args.inject:
+            time.sleep(2 * args.inject * args.handler_ms / 1000.0)   # let the dispatcher catch up
         hook.stop()
+    if args.measure:
+        for kind, ms in hook.callback_timings:
+            print(f"callback {kind:7} {ms:9.3f} ms")
+        if hook.callback_timings:
+            print(f"callback max {max(ms for _k, ms in hook.callback_timings):.3f} ms over "
+                  f"{len(hook.callback_timings)} XBUTTON callbacks (handler sleeps {args.handler_ms:g} ms)")
 
     with lock:
         presses = sum(1 for n, p in seen if n == args.button and p)

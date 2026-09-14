@@ -1,21 +1,28 @@
 """Tests for the Win32 low-level mouse hook (samsara/mouse_hook.py).
 
-All Win32 API calls are mocked — no actual hook is installed.
+All Win32 API calls are mocked -- no actual hook is installed.
+
+32 (2026-09-13): the hook callback only enqueues. on_button_event runs on the
+dispatcher thread; tests deliver with hook.dispatch_pending() or a real
+dispatcher thread, and measure that a slow handler never delays the callback.
 """
 
 import ctypes
 import ctypes.wintypes
+import logging
 import sys
 import threading
+import time
 from pathlib import Path
-from unittest.mock import MagicMock, patch, call
+from unittest.mock import MagicMock, patch
 
 import pytest
 
 PROJECT_ROOT = Path(__file__).parent.parent
 sys.path.insert(0, str(PROJECT_ROOT))
 
-from samsara.mouse_hook import (
+import samsara.mouse_hook as mh  # noqa: E402
+from samsara.mouse_hook import (  # noqa: E402
     MouseHook,
     MSLLHOOKSTRUCT,
     WM_XBUTTONDOWN,
@@ -24,6 +31,12 @@ from samsara.mouse_hook import (
     XBUTTON2,
     WH_MOUSE_LL,
 )
+
+WM_MOUSEMOVE = 0x0200
+WM_LBUTTONDOWN, WM_LBUTTONUP = 0x0201, 0x0202
+WM_RBUTTONDOWN, WM_RBUTTONUP = 0x0204, 0x0205
+WM_MBUTTONDOWN, WM_MBUTTONUP = 0x0207, 0x0208
+WM_MOUSEWHEEL, WM_MOUSEHWHEEL = 0x020A, 0x020E
 
 
 # ---------------------------------------------------------------------------
@@ -39,54 +52,54 @@ def _make_lp_param(xbutton: int) -> ctypes.POINTER(MSLLHOOKSTRUCT):
     return ctypes.pointer(info)
 
 
-def _make_hook(on_event=None, suppress='mouse4'):
+def _make_hook(on_event=None, suppress='mouse4', **kw):
     cb = on_event or MagicMock()
-    hook = MouseHook(on_button_event=cb, suppress_button=suppress)
+    hook = MouseHook(on_button_event=cb, suppress_button=suppress, **kw)
     # Pretend the hook is installed so CallNextHookEx doesn't crash
     hook._hook_id = 999
     return hook, cb
 
 
+def _fire(hook, w_param, xbutton=XBUTTON1, n_code=0):
+    with patch.object(ctypes.windll.user32, 'CallNextHookEx', return_value=0):
+        return hook._hook_callback(n_code, w_param, _make_lp_param(xbutton))
+
+
 # ---------------------------------------------------------------------------
-# Callback: event routing
+# Callback: event routing (delivered by the dispatcher, never inline)
 # ---------------------------------------------------------------------------
 
 class TestHookCallback:
 
-    def test_xbutton1_down_fires_mouse4_pressed(self):
+    @pytest.mark.parametrize("w_param, xbutton, expected", [
+        (WM_XBUTTONDOWN, XBUTTON1, ('mouse4', True)),
+        (WM_XBUTTONUP, XBUTTON1, ('mouse4', False)),
+        (WM_XBUTTONDOWN, XBUTTON2, ('mouse5', True)),
+        (WM_XBUTTONUP, XBUTTON2, ('mouse5', False)),
+    ])
+    def test_xbutton_events_are_queued_then_delivered(self, w_param, xbutton, expected):
         hook, cb = _make_hook(suppress=None)
-        with patch.object(ctypes.windll.user32, 'CallNextHookEx', return_value=0):
-            hook._hook_callback(0, WM_XBUTTONDOWN, _make_lp_param(XBUTTON1))
-        cb.assert_called_once_with('mouse4', True)
+        _fire(hook, w_param, xbutton)
+        cb.assert_not_called()                       # nothing runs on the hook thread
+        assert hook.dispatch_pending() == 1
+        cb.assert_called_once_with(*expected)
 
-    def test_xbutton1_up_fires_mouse4_released(self):
-        hook, cb = _make_hook(suppress=None)
-        with patch.object(ctypes.windll.user32, 'CallNextHookEx', return_value=0):
-            hook._hook_callback(0, WM_XBUTTONUP, _make_lp_param(XBUTTON1))
-        cb.assert_called_once_with('mouse4', False)
+    def test_queued_item_is_button_pressed_timestamp(self):
+        hook, _cb = _make_hook(suppress=None)
+        before = time.perf_counter()
+        _fire(hook, WM_XBUTTONDOWN, XBUTTON2)
+        name, pressed, stamp, injected = hook._events.get_nowait()
+        assert (name, pressed, injected) == ('mouse5', True, False)
+        assert before <= stamp <= time.perf_counter()
 
-    def test_xbutton2_down_fires_mouse5_pressed(self):
-        hook, cb = _make_hook(suppress=None)
-        with patch.object(ctypes.windll.user32, 'CallNextHookEx', return_value=0):
-            hook._hook_callback(0, WM_XBUTTONDOWN, _make_lp_param(XBUTTON2))
-        cb.assert_called_once_with('mouse5', True)
-
-    def test_xbutton2_up_fires_mouse5_released(self):
-        hook, cb = _make_hook(suppress=None)
-        with patch.object(ctypes.windll.user32, 'CallNextHookEx', return_value=0):
-            hook._hook_callback(0, WM_XBUTTONUP, _make_lp_param(XBUTTON2))
-        cb.assert_called_once_with('mouse5', False)
-
-    def test_non_xbutton_event_does_not_fire_callback(self):
+    def test_non_xbutton_event_does_not_queue(self):
         hook, cb = _make_hook()
-        WM_MOUSEMOVE = 0x0200
-        with patch.object(ctypes.windll.user32, 'CallNextHookEx', return_value=0):
-            hook._hook_callback(0, WM_MOUSEMOVE, _make_lp_param(0))
+        _fire(hook, WM_MOUSEMOVE, 0)
+        assert hook.dispatch_pending() == 0
         cb.assert_not_called()
 
     def test_non_xbutton_event_calls_next_hook(self):
         hook, cb = _make_hook()
-        WM_MOUSEMOVE = 0x0200
         with patch.object(ctypes.windll.user32, 'CallNextHookEx', return_value=0) as mock_next:
             hook._hook_callback(0, WM_MOUSEMOVE, _make_lp_param(0))
         mock_next.assert_called_once()
@@ -94,38 +107,133 @@ class TestHookCallback:
     def test_negative_n_code_delegates_immediately(self):
         hook, cb = _make_hook()
         with patch.object(ctypes.windll.user32, 'CallNextHookEx', return_value=0) as mock_next:
-            hook._hook_callback(-1, WM_XBUTTONDOWN, _make_lp_param(XBUTTON1))
+            result = hook._hook_callback(-1, WM_XBUTTONDOWN, _make_lp_param(XBUTTON1))
         mock_next.assert_called_once()
+        assert result != 1
+        assert hook.dispatch_pending() == 0
         cb.assert_not_called()
 
 
 # ---------------------------------------------------------------------------
-# Callback: suppression
+# 32: the hook thread never does work
 # ---------------------------------------------------------------------------
 
-class TestSuppression:
+class TestHookThreadNeverWorks:
 
-    def test_suppress_mouse4_returns_1(self):
-        hook, cb = _make_hook(suppress='mouse4')
-        result = hook._hook_callback(0, WM_XBUTTONDOWN, _make_lp_param(XBUTTON1))
-        assert result == 1
+    def test_slow_handler_does_not_delay_the_callback(self):
+        started = threading.Event()
 
-    def test_suppress_mouse4_on_release_returns_1(self):
-        hook, cb = _make_hook(suppress='mouse4')
-        result = hook._hook_callback(0, WM_XBUTTONUP, _make_lp_param(XBUTTON1))
-        assert result == 1
+        def _slow(name, pressed):
+            started.set()
+            time.sleep(0.5)
+
+        hook, _ = _make_hook(on_event=_slow, suppress='mouse4')
+        hook._dispatcher = mh.thread_registry.spawn('test-mouse-dispatch', hook._dispatch_loop, daemon=True)
+        try:
+            durations = []
+            with patch.object(ctypes.windll.user32, 'CallNextHookEx', return_value=0):
+                for w_param in (WM_XBUTTONDOWN, WM_XBUTTONUP, WM_XBUTTONDOWN, WM_XBUTTONUP):
+                    t0 = time.perf_counter()
+                    result = hook._hook_callback(0, w_param, _make_lp_param(XBUTTON1))
+                    durations.append((time.perf_counter() - t0) * 1000)
+                    assert result == 1
+                    started.wait(1.0)         # the dispatcher is busy sleeping now
+            assert started.is_set()
+            assert max(durations) < 5.0, durations          # never the handler's 500 ms
+            assert hook.last_callback_ms < 5.0
+        finally:
+            hook._stopping.set()
+            hook._events.put(mh._STOP)
+            hook._dispatcher.join(timeout=3)
+
+    def test_callback_cost_is_microseconds(self):
+        hook, _ = _make_hook(suppress='mouse4')
+        lp = _make_lp_param(XBUTTON1)
+        times = []
+        with patch.object(ctypes.windll.user32, 'CallNextHookEx', return_value=0):
+            for i in range(200):
+                t0 = time.perf_counter()
+                hook._hook_callback(0, WM_XBUTTONDOWN if i % 2 == 0 else WM_MOUSEMOVE, lp)
+                times.append((time.perf_counter() - t0) * 1e6)
+        times.sort()
+        assert times[len(times) // 2] < 500, times[:5]      # median well under a millisecond
+        assert hook.slow_callbacks == 0
+
+    def test_callback_takes_no_lock_and_never_logs(self, caplog):
+        hook, _ = _make_hook(suppress='mouse4')
+        with caplog.at_level(logging.DEBUG):
+            _fire(hook, WM_XBUTTONDOWN)
+            _fire(hook, WM_MOUSEMOVE, 0)
+        assert caplog.records == []
+        assert type(hook._events).__name__ == 'SimpleQueue'
+
+
+# ---------------------------------------------------------------------------
+# Suppression scope: ONLY the configured button's X events return 1
+# ---------------------------------------------------------------------------
+
+_PASS_THROUGH = [
+    ('move', WM_MOUSEMOVE, 0), ('left down', WM_LBUTTONDOWN, 0), ('left up', WM_LBUTTONUP, 0),
+    ('right down', WM_RBUTTONDOWN, 0), ('right up', WM_RBUTTONUP, 0),
+    ('middle down', WM_MBUTTONDOWN, 0), ('middle up', WM_MBUTTONUP, 0),
+    ('wheel', WM_MOUSEWHEEL, 0), ('h-wheel', WM_MOUSEHWHEEL, 0),
+    ('mouse5 down', WM_XBUTTONDOWN, XBUTTON2), ('mouse5 up', WM_XBUTTONUP, XBUTTON2),
+]
+
+
+class TestSuppressionScope:
+
+    @pytest.mark.parametrize("w_param", [WM_XBUTTONDOWN, WM_XBUTTONUP])
+    def test_configured_button_returns_1(self, w_param):
+        hook, _ = _make_hook(suppress='mouse4')
+        with patch.object(ctypes.windll.user32, 'CallNextHookEx', return_value=0) as mock_next:
+            assert hook._hook_callback(0, w_param, _make_lp_param(XBUTTON1)) == 1
+        mock_next.assert_not_called()
+
+    @pytest.mark.parametrize("label, w_param, xbutton", _PASS_THROUGH, ids=[p[0] for p in _PASS_THROUGH])
+    def test_every_other_message_passes_to_call_next_hook(self, label, w_param, xbutton):
+        hook, _ = _make_hook(suppress='mouse4')
+        lp = _make_lp_param(xbutton)
+        with patch.object(ctypes.windll.user32, 'CallNextHookEx', return_value=7) as mock_next:
+            result = hook._hook_callback(0, w_param, lp)
+        mock_next.assert_called_once_with(999, 0, w_param, lp)
+        assert result == 7
+
+    @pytest.mark.parametrize("label, w_param, xbutton", _PASS_THROUGH, ids=[p[0] for p in _PASS_THROUGH])
+    def test_every_other_message_passes_on_the_exception_path(self, label, w_param, xbutton):
+        hook, _ = _make_hook(suppress='mouse4')
+
+        class _Broken:
+            def put(self, item):
+                raise RuntimeError("queue broke")
+
+            def qsize(self):
+                raise RuntimeError("queue broke")
+
+        hook._events = _Broken()
+        lp = _make_lp_param(xbutton)
+        with patch.object(ctypes.windll.user32, 'CallNextHookEx', return_value=7) as mock_next:
+            assert hook._hook_callback(0, w_param, lp) == 7
+        mock_next.assert_called_once_with(999, 0, w_param, lp)
+
+    @pytest.mark.parametrize("w_param", [WM_XBUTTONDOWN, WM_XBUTTONUP])
+    def test_configured_button_passes_through_when_the_callback_breaks(self, w_param):
+        hook, _ = _make_hook(suppress='mouse4')
+        with patch.object(mh.ctypes, 'cast', side_effect=RuntimeError("bad lParam")), \
+                patch.object(ctypes.windll.user32, 'CallNextHookEx', return_value=0) as mock_next:
+            result = hook._hook_callback(0, w_param, _make_lp_param(XBUTTON1))
+        assert result != 1 and hook.callback_errors == 1
+        mock_next.assert_called_once()
+
+    def test_call_next_hook_raising_still_returns(self):
+        hook, _ = _make_hook(suppress='mouse4')
+        with patch.object(ctypes.windll.user32, 'CallNextHookEx', side_effect=OSError("gone")):
+            assert hook._hook_callback(0, WM_LBUTTONDOWN, _make_lp_param(0)) == 0
+        assert hook.callback_errors == 1
 
     def test_suppress_mouse5_returns_1(self):
         hook, cb = _make_hook(suppress='mouse5')
-        result = hook._hook_callback(0, WM_XBUTTONDOWN, _make_lp_param(XBUTTON2))
-        assert result == 1
-
-    def test_suppress_mouse4_does_not_suppress_mouse5(self):
-        hook, cb = _make_hook(suppress='mouse4')
-        with patch.object(ctypes.windll.user32, 'CallNextHookEx', return_value=0) as mock_next:
-            result = hook._hook_callback(0, WM_XBUTTONDOWN, _make_lp_param(XBUTTON2))
-        mock_next.assert_called_once()
-        assert result != 1
+        assert hook._hook_callback(0, WM_XBUTTONDOWN, _make_lp_param(XBUTTON2)) == 1
 
     def test_suppress_none_passes_mouse4_through(self):
         hook, cb = _make_hook(suppress=None)
@@ -134,14 +242,12 @@ class TestSuppression:
         mock_next.assert_called_once()
         assert result != 1
 
-    def test_suppress_returns_1_even_if_callback_fires(self):
+    def test_suppressed_press_is_still_delivered(self):
         called = []
-        def _cb(btn, pressed):
-            called.append((btn, pressed))
-        hook, _ = _make_hook(on_event=_cb, suppress='mouse4')
-        result = hook._hook_callback(0, WM_XBUTTONDOWN, _make_lp_param(XBUTTON1))
+        hook, _ = _make_hook(on_event=lambda b, p: called.append((b, p)), suppress='mouse4')
+        assert hook._hook_callback(0, WM_XBUTTONDOWN, _make_lp_param(XBUTTON1)) == 1
+        hook.dispatch_pending()
         assert called == [('mouse4', True)]
-        assert result == 1
 
 
 class TestSuppressionSet:
@@ -168,6 +274,7 @@ class TestSuppressionSet:
         hook._hook_id = 999
         with patch.object(ctypes.windll.user32, 'CallNextHookEx', return_value=0):
             assert hook._hook_callback(0, WM_XBUTTONDOWN, _make_lp_param(XBUTTON1)) != 1
+        hook.dispatch_pending()
         cb.assert_called_once_with('mouse4', True)
 
     @pytest.mark.parametrize("value, expected", [
@@ -186,23 +293,165 @@ class TestSuppressionSet:
 
 
 # ---------------------------------------------------------------------------
-# Callback: exception safety
+# Dispatcher: exceptions and back-pressure
 # ---------------------------------------------------------------------------
 
-class TestCallbackException:
+class TestDispatcher:
 
-    def test_exception_in_callback_does_not_propagate(self):
-        def _bad(btn, pressed):
-            raise RuntimeError("test error")
-        hook = MouseHook(on_button_event=_bad, suppress_button=None)
+    def test_handler_exception_does_not_kill_delivery_or_the_hook(self, caplog):
+        seen = []
+
+        def _handler(btn, pressed):
+            seen.append((btn, pressed))
+            if pressed:
+                raise RuntimeError("test error")
+
+        hook, _ = _make_hook(on_event=_handler, suppress='mouse4')
+        assert _fire(hook, WM_XBUTTONDOWN) == 1
+        assert _fire(hook, WM_XBUTTONUP) == 1
+        with caplog.at_level(logging.ERROR, logger='samsara.mouse_hook'):
+            assert hook.dispatch_pending() == 2
+        assert seen == [('mouse4', True), ('mouse4', False)]
+        assert "callback error" in caplog.text
+        with patch.object(ctypes.windll.user32, 'CallNextHookEx', return_value=5) as mock_next:
+            assert hook._hook_callback(0, WM_LBUTTONDOWN, _make_lp_param(0)) == 5
+        mock_next.assert_called_once()
+
+    def test_dispatcher_thread_survives_a_raising_handler(self):
+        delivered = threading.Event()
+        calls = []
+
+        def _handler(btn, pressed):
+            calls.append(pressed)
+            if pressed:
+                raise RuntimeError("boom")
+            delivered.set()
+
+        hook, _ = _make_hook(on_event=_handler)
+        hook._dispatcher = mh.thread_registry.spawn('test-mouse-dispatch', hook._dispatch_loop, daemon=True)
+        try:
+            _fire(hook, WM_XBUTTONDOWN)
+            _fire(hook, WM_XBUTTONUP)
+            assert delivered.wait(2.0)
+            assert calls == [True, False] and hook._dispatcher.is_alive()
+        finally:
+            hook._stopping.set()
+            hook._events.put(mh._STOP)
+            hook._dispatcher.join(timeout=3)
+
+    def test_overflow_drops_oldest(self):
+        hook, _ = _make_hook(suppress=None)
+        for i in range(mh.QUEUE_BOUND + 8):
+            _fire(hook, WM_XBUTTONDOWN if i % 2 == 0 else WM_XBUTTONUP)
+        assert hook._events.qsize() == mh.QUEUE_BOUND
+        assert hook.dropped_events == 8
+        first = hook._events.get_nowait()
+        assert first[1] is True and hook._events.qsize() == mh.QUEUE_BOUND - 1   # event #8 (a press) survived
+
+    def test_overflow_logs_once_per_burst(self, caplog):
+        hook, _ = _make_hook(suppress=None)
+        with caplog.at_level(logging.WARNING, logger='samsara.mouse_hook'):
+            for _ in range(mh.QUEUE_BOUND + 4):
+                _fire(hook, WM_XBUTTONDOWN)
+            hook._report_counters()
+            for _ in range(10):
+                _fire(hook, WM_XBUTTONDOWN)
+            hook._report_counters()
+            assert sum("dropping oldest" in r.message for r in caplog.records) == 1
+            hook.dispatch_pending()
+            hook._report_counters()                  # burst over: queue drained
+            for _ in range(mh.QUEUE_BOUND + 1):
+                _fire(hook, WM_XBUTTONDOWN)
+            hook._report_counters()
+        assert sum("dropping oldest" in r.message for r in caplog.records) == 2
+
+
+# ---------------------------------------------------------------------------
+# Watchdog: slow callbacks, lost hook, reinstall, 3-strike fallback
+# ---------------------------------------------------------------------------
+
+class TestWatchdog:
+
+    def test_slow_callback_is_logged_with_its_duration(self, caplog, monkeypatch):
+        hook, _ = _make_hook()
+        clock = iter([100.0, 100.012])                 # 12 ms inside the callback
+        monkeypatch.setattr(mh, '_perf', lambda: next(clock))
+        _fire(hook, WM_MOUSEMOVE, 0)
+        assert hook.slow_callbacks == 1 and hook.slow_callback_max_ms == pytest.approx(12.0)
+        with caplog.at_level(logging.WARNING, logger='samsara.mouse_hook'):
+            hook._report_counters()
+            hook._report_counters()
+        warnings = [r for r in caplog.records if "exceeded" in r.message]
+        assert len(warnings) == 1 and "12.00 ms" in warnings[0].getMessage()
+
+    def _lost_hook(self, on_failed=None):
+        hook, _ = _make_hook(on_hook_failed=on_failed)
+        hook._hook_id = None                           # Windows removed it
+        restarts = []
+
+        def _fake_start():
+            restarts.append('start')
+            hook._hook_id = None                       # ...and it is lost again every time
+
+        hook._start_hook_thread = _fake_start
+        hook._stop_hook_thread = MagicMock()
+        return hook, restarts
+
+    def test_lost_hook_is_reinstalled_and_logged(self, caplog):
+        hook, restarts = self._lost_hook()
+        with caplog.at_level(logging.WARNING, logger='samsara.mouse_hook'):
+            hook.watchdog_tick()
+        assert restarts == ['start'] and not hook.gave_up
+        assert "reinstalling (1/3" in caplog.text
+
+    def test_three_reinstalls_in_a_minute_then_give_up(self, caplog):
+        failed = []
+        hook, restarts = self._lost_hook(on_failed=failed.append)
+        with caplog.at_level(logging.WARNING, logger='samsara.mouse_hook'):
+            for _ in range(4):
+                hook.watchdog_tick()
+        assert restarts == ['start'] * 3
+        assert hook.gave_up and hook.suppress_buttons == frozenset()
+        assert len(failed) == 1 and "lost 4 times" in failed[0]
+        assert hook._stopping.is_set()
+        hook.watchdog_tick()                           # given up: no further reinstalls
+        assert restarts == ['start'] * 3
+
+    def test_reinstalls_older_than_a_minute_do_not_count(self, monkeypatch):
+        hook, restarts = self._lost_hook()
+        now = [1000.0]
+        monkeypatch.setattr(mh, '_perf', lambda: now[0])
+        for _ in range(3):
+            hook.watchdog_tick()
+        now[0] += mh.REINSTALL_WINDOW_S + 1
+        hook.watchdog_tick()
+        assert restarts == ['start'] * 4 and not hook.gave_up
+
+    def test_cursor_moving_without_callbacks_counts_as_lost(self, monkeypatch):
+        hook, restarts = self._lost_hook()
         hook._hook_id = 999
-        with patch.object(ctypes.windll.user32, 'CallNextHookEx', return_value=0):
-            # Must not raise
-            hook._hook_callback(0, WM_XBUTTONDOWN, _make_lp_param(XBUTTON1))
+        hook._start_hook_thread = lambda: restarts.append('start') or setattr(hook, '_hook_id', 1000)
+        positions = iter([(0, 0), (5, 5), (9, 9), (12, 12)])
+        monkeypatch.setattr(mh, '_cursor_pos', lambda: next(positions))
+        hook.watchdog_tick()       # baseline
+        hook.watchdog_tick()       # moved, no callback: 1
+        assert restarts == []
+        hook.watchdog_tick()       # moved again, still nothing: lost
+        assert restarts == ['start']
+
+    def test_callbacks_arriving_keep_the_hook_alive(self, monkeypatch):
+        hook, restarts = self._lost_hook()
+        hook._hook_id = 999
+        positions = iter([(0, 0), (5, 5), (9, 9), (12, 12)])
+        monkeypatch.setattr(mh, '_cursor_pos', lambda: next(positions))
+        for _ in range(4):
+            _fire(hook, WM_MOUSEMOVE, 0)
+            hook.watchdog_tick()
+        assert restarts == []
 
 
 # ---------------------------------------------------------------------------
-# Lifecycle: start / stop
+# Lifecycle: start / stop / panic release
 # ---------------------------------------------------------------------------
 
 class TestLifecycle:
@@ -213,20 +462,25 @@ class TestLifecycle:
             patch.object(ctypes.windll.user32, 'SetWindowsHookExW',
                          return_value=hook_id),
             patch.object(ctypes.windll.user32, 'GetMessageW',
-                         return_value=0),               # WM_QUIT → loop exits
+                         return_value=0),               # WM_QUIT -> loop exits
             patch.object(ctypes.windll.user32, 'UnhookWindowsHookEx'),
             patch.object(ctypes.windll.user32, 'PostThreadMessageW'),
             patch.object(ctypes.windll.kernel32, 'GetCurrentThreadId',
                          return_value=1234),
         )
 
-    def test_start_calls_set_windows_hook_ex(self):
+    def test_start_calls_set_windows_hook_ex_and_spawns_the_dispatcher(self):
         hook = MouseHook(on_button_event=MagicMock(), suppress_button='mouse4')
         p1, p2, p3, p4, p5 = self._patched_hook()
         with p1 as mock_set, p2, p3, p4, p5:
             hook.start()
             hook._thread.join(timeout=1)
+            assert hook._dispatcher.is_alive()
+            assert hook._dispatcher.name.startswith('mouse-hook-dispatch')
+            assert hook in mh._live_hooks
+            hook.stop()
         mock_set.assert_called_once_with(WH_MOUSE_LL, hook._proc, None, 0)
+        assert not hook._dispatcher.is_alive() and hook not in mh._live_hooks
 
     def test_stop_calls_unhook(self):
         hook = MouseHook(on_button_event=MagicMock(), suppress_button='mouse4')
@@ -255,7 +509,7 @@ class TestLifecycle:
             hook.start()
             hook._thread.join(timeout=1)
             hook.stop()
-        assert hook._hook_id is None
+        assert hook._hook_id is None and not hook.installed
 
     def test_stop_without_start_does_not_raise(self):
         hook = MouseHook(on_button_event=MagicMock(), suppress_button='mouse4')
@@ -267,7 +521,80 @@ class TestLifecycle:
              patch.object(ctypes.windll.kernel32, 'GetCurrentThreadId', return_value=111):
             hook.start()
             hook._thread.join(timeout=1)
+            assert not hook.installed and hook.install_error
+            hook.stop()
         assert hook._hook_id is None or hook._hook_id == 0
+
+    def _blocking_win32(self, hang=False):
+        """Win32 fakes with a real message loop: GetMessageW blocks until
+        PostThreadMessageW(WM_QUIT) (or forever when hang=True, until .unblock())."""
+        quit_posted = threading.Event()
+        unblock = threading.Event()
+
+        def _get_message(*a):
+            (unblock if hang else quit_posted).wait(5)
+            return 0
+
+        patches = (
+            patch.object(ctypes.windll.user32, 'SetWindowsHookExW', return_value=77),
+            patch.object(ctypes.windll.user32, 'GetMessageW', side_effect=_get_message),
+            patch.object(ctypes.windll.user32, 'UnhookWindowsHookEx', return_value=1),
+            patch.object(ctypes.windll.user32, 'PostThreadMessageW', side_effect=lambda *a: quit_posted.set()),
+            patch.object(ctypes.windll.kernel32, 'GetCurrentThreadId', side_effect=threading.get_ident),
+        )
+        return patches, unblock
+
+    def test_unhook_runs_on_the_installing_thread(self):
+        hook = MouseHook(on_button_event=MagicMock(), suppress_button='mouse4')
+        patches, _ = self._blocking_win32()
+        with patches[0], patches[1], patches[2] as mock_unhook, patches[3], patches[4]:
+            hook.start()
+            installing_thread = hook._thread_id
+            assert hook.installed
+            hook.stop()
+        mock_unhook.assert_called_once_with(77)
+        assert hook.unhooked_on_thread == installing_thread != threading.get_ident()
+
+    def test_hung_hook_thread_is_unhooked_from_the_caller_and_logged(self, caplog):
+        hook = MouseHook(on_button_event=MagicMock(), suppress_button='mouse4')
+        patches, unblock = self._blocking_win32(hang=True)
+        with patches[0], patches[1], patches[2] as mock_unhook, patches[3], patches[4]:
+            hook.start()
+            with caplog.at_level(logging.WARNING, logger='samsara.mouse_hook'):
+                hook._stop_hook_thread(timeout=0.1)
+            mock_unhook.assert_called_once_with(77)
+            assert hook.unhooked_on_thread == threading.get_ident()
+            assert "did not unhook" in caplog.text
+            unblock.set()
+            hook._thread.join(timeout=2)
+            hook.stop()
+        mock_unhook.assert_called_once()           # the hook thread found nothing left to unhook
+
+    def test_release_stops_suppressing_and_unhooks(self):
+        hook, _ = _make_hook(suppress='mouse4')
+        hook.stop = MagicMock()
+        hook.release("test")
+        assert hook.suppress_buttons == frozenset()
+        hook.stop.assert_called_once()
+
+    def test_atexit_releases_every_live_hook(self):
+        import atexit as _atexit
+        hook, _ = _make_hook()
+        hook.stop = MagicMock()
+        mh._live_hooks.add(hook)
+        try:
+            mh.release_all_hooks()
+            hook.stop.assert_called_once()
+        finally:
+            mh._live_hooks.discard(hook)
+        source = Path(mh.__file__).read_text(encoding='utf-8')
+        assert "atexit.register(release_all_hooks)" in source and _atexit is not None
+
+    def test_hook_callback_source_does_only_three_things(self):
+        import inspect
+        src = inspect.getsource(MouseHook._hook_callback)
+        for forbidden in ("on_button_event", "logger", "print(", "with ", ".acquire", "Lock"):
+            assert forbidden not in src, forbidden
 
 
 # ---------------------------------------------------------------------------
