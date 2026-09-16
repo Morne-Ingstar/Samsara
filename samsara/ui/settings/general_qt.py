@@ -113,15 +113,10 @@ class GeneralPage:
             width=260,
         )
 
-        # Queue 129. Dark is not universally accessible -- astigmatism, some
-        # low-vision conditions and a bright room all read light-on-dark
-        # worse, not better -- so the theme is a setting, not a given.
-        #
-        # "after restart" is not a hedge. A window builds most of its
-        # stylesheets when it is constructed, so switching under a running app
-        # would repaint some surfaces and not others, and a half-themed app is
-        # worse than one that waits. The label says so rather than leaving the
-        # user to discover it.
+        # Dark is not universally accessible -- astigmatism, some low-vision
+        # conditions and a bright room all read light-on-dark worse, not
+        # better -- so the theme is a setting, not a given. Apply & Close
+        # changes every open surface immediately.
         theme_combo = QComboBox()
         for value in theme.THEME_CHOICES:
             theme_combo.addItem(THEME_LABELS[value], value)
@@ -132,7 +127,7 @@ class GeneralPage:
         _add_row(
             accessibility_layout,
             "Theme",
-            "Dark, light, or follow Windows. Takes effect after restart",
+            "Dark, light, or follow Windows. Applies immediately.",
             theme_combo,
             width=260,
         )

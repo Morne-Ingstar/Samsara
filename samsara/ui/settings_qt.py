@@ -226,6 +226,25 @@ def _css_color_to_qcolor(css: str) -> QColor:
     return QColor(css)
 
 
+def _cloud_ai_state(app, *, reachable: bool | None = None) -> tuple[str, str]:
+    """Return a private state code and honest Cloud AI wording.
+
+    A configured key, the user's enabled switch, and the result of an actual
+    connection test are different facts. Keep them separate so the Advanced
+    page cannot call a stored key "not configured" again.
+    """
+    cfg = getattr(app, "config", {}).get("cloud_llm", {}) or {}
+    if not str(cfg.get("api_key", "")).strip():
+        return "not_keyed", "Cloud AI not configured — no API key"
+    if not bool(cfg.get("enabled", False)):
+        return "keyed_disabled", "Cloud AI configured — disabled"
+    if reachable is True:
+        return "enabled_reachable", "Cloud AI enabled — reachable"
+    if reachable is False:
+        return "enabled_unreachable", "Cloud AI enabled — unreachable"
+    return "enabled_unchecked", "Cloud AI enabled — connection not yet checked"
+
+
 # ---------------------------------------------------------------------------
 # Hotkey capture button
 # ---------------------------------------------------------------------------
@@ -755,6 +774,7 @@ class _SettingsWindow(
         super().__init__()
         self.app = app
         self._widgets = {}
+        self._cloud_reachable: bool | None = None
         # Each _build_x_tab registers a save callable here: fn(updates_so_far)
         # -> dict of top-level config updates for its own tab. Called in
         # registration order (== tab-build order below) by _apply_and_close.
@@ -858,8 +878,12 @@ class _SettingsWindow(
         row = 0
         for group_label, tab_names in _SIDEBAR_GROUPS:
             header_item = QListWidgetItem(group_label.upper())
-            header_item.setFlags(Qt.ItemFlag.NoItemFlags)  # not selectable/enabled -- clicks do nothing
-            header_item.setForeground(QColor(f"{theme.TEXT_SECONDARY}"))
+            # Enabled means Qt honours the explicit token foreground. A
+            # disabled item is painted with the platform's disabled palette
+            # (near-black in the dark theme), even after setForeground().
+            # It remains non-selectable, so clicks still do nothing.
+            header_item.setFlags(Qt.ItemFlag.ItemIsEnabled)
+            header_item.setForeground(QColor(theme.TEXT_PRIMARY))
             header_item.setFont(theme.qfont(theme.TYPE_MIN, weight=QFont.Weight.Bold))
             self._sidebar.addItem(header_item)
             row += 1
@@ -961,11 +985,29 @@ class _SettingsWindow(
         if label is None:
             return
         try:
-            status = smart_corrections.describe_backend_status(self.app)
+            backend = smart_corrections.describe_backend_status(self.app)
+            _state, cloud = _cloud_ai_state(
+                self.app, reachable=self._cloud_reachable
+            )
+            status = f"{backend} · {cloud}"
         except Exception as e:
             logger.debug(f"[SETTINGS] Smart Corrections status refresh failed: {e}")
             status = "unknown"
         label.setText(f"Active backend: {status}")
+
+    def _refresh_sc_cloud_hint(self) -> None:
+        """Keep the Cloud-backend warning aligned with the status line."""
+        hint = self._widgets.get('sc_cloud_hint')
+        backend = self._widgets.get('sc_backend')
+        if hint is None or backend is None:
+            return
+        state, message = _cloud_ai_state(
+            self.app, reachable=self._cloud_reachable
+        )
+        hint.setText(message)
+        hint.setVisible(
+            backend.currentText() == 'cloud' and state != 'enabled_reachable'
+        )
 
     # ------------------------------------------------------------------
     # Search: live filter across all tabs
@@ -1173,6 +1215,27 @@ class _SettingsWindow(
         if label:
             label.setText(msg)
             label.setStyleSheet(f"color: {color}; font-size: {theme.TYPE_MIN}px;")
+        if msg.startswith("Connected to "):
+            self._cloud_reachable = True
+        elif msg.startswith(("Failed:", "Error:")):
+            self._cloud_reachable = False
+        self._refresh_sc_status()
+        self._refresh_sc_cloud_hint()
+
+    def apply_theme(self) -> None:
+        """Refresh this live window without rebuilding unsaved controls."""
+        self.setStyleSheet(stylesheet())
+        for widget in self.findChildren(QWidget):
+            inline = widget.styleSheet()
+            if inline:
+                widget.setStyleSheet(theme.retheme_stylesheet(inline))
+        for row in range(self._sidebar.count()):
+            item = self._sidebar.item(row)
+            if row in self._sidebar_row_to_stack_index:
+                item.setForeground(QColor(theme.TEXT_PRIMARY))
+            else:
+                item.setForeground(QColor(theme.TEXT_PRIMARY))
+        self._apply_search_filter()
 
     # ------------------------------------------------------------------
     # Helpers
@@ -1334,6 +1397,9 @@ class _SettingsWindow(
         with self.app._config_lock:
             self.app.config.update(updates)
             self.app.save_config()
+
+        if 'ui' in updates:
+            theme.set_theme(updates['ui'].get('theme'), refresh=True)
 
         if {
             'listening_indicator_enabled',

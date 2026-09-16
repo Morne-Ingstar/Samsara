@@ -375,22 +375,18 @@ class AdvancedPage:
         ))
         layout.addSpacing(4)
 
-        sc_cloud_hint = QLabel(
-            "Cloud AI isn't set up — enable it on the Ava / Cloud tab or Smart Corrections "
-            "will have no backend."
-        )
+        sc_cloud_hint = QLabel("Cloud AI status")
         sc_cloud_hint.setWordWrap(True)
         sc_cloud_hint.setStyleSheet(f"color: {theme.WARNING}; font-size: {theme.TYPE_MIN}px; margin-left: 4px;")
 
+        self._widgets['sc_cloud_hint'] = sc_cloud_hint
+
         def _update_sc_cloud_hint(_text=None):
-            cloud_enabled = bool(self.app.config.get('cloud_llm', {}).get('enabled', False))
-            sc_cloud_hint.setVisible(
-                sc_backend_combo.currentText() == 'cloud' and not cloud_enabled
-            )
+            self._refresh_sc_cloud_hint()
 
         sc_backend_combo.currentTextChanged.connect(_update_sc_cloud_hint)
-        _update_sc_cloud_hint()
         layout.addWidget(sc_cloud_hint)
+        _update_sc_cloud_hint()
         layout.addSpacing(8)
 
         sc_fallback_cb = QCheckBox(

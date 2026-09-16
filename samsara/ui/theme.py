@@ -206,6 +206,9 @@ DERIVED_TOKENS = (
 #: colour -- that is what the tokens are for. It exists so the app can tell
 #: the user which theme is live and so tests can assert a switch happened.
 _ACTIVE = DEFAULT_THEME
+_REQUESTED_SETTING = DEFAULT_THEME
+_SYSTEM_THEME_TIMER = None
+_RETHEME_REPLACEMENTS: tuple[tuple[str, str], ...] = ()
 
 
 def _install(name: str) -> None:
@@ -288,12 +291,111 @@ def set_theme(setting, *, refresh: bool = True) -> str:
     return the palette name it resolved to. Call it ONCE at startup before
     any window is built; call it again with refresh=True to switch a running
     app (see refresh_all() for what that can and cannot reach)."""
-    name = resolve_theme(setting)
+    global _REQUESTED_SETTING, _RETHEME_REPLACEMENTS
+
+    requested = str(setting or "").strip().lower()
+    _REQUESTED_SETTING = requested if requested in THEME_CHOICES else DEFAULT_THEME
+    name = resolve_theme(_REQUESTED_SETTING)
     if name != _ACTIVE:
+        old_values = _live_theme_values()
         _install(name)
+        _RETHEME_REPLACEMENTS = _build_retheme_replacements(old_values)
         if refresh:
             refresh_all()
+    _ensure_system_theme_monitor()
     return name
+
+
+def _live_theme_values() -> dict[str, str]:
+    """Snapshot every live string token before rebinding the palette."""
+    return {
+        name: value for name, value in globals().items()
+        if name.isupper() and isinstance(value, str)
+    }
+
+
+def _build_retheme_replacements(old_values: dict[str, str]) -> tuple[tuple[str, str], ...]:
+    """Map rendered token values from the old palette to the new one.
+
+    A few long-lived Settings controls own tiny inline sheets. They are built
+    from theme tokens, but Qt stores the rendered strings, not the token
+    expressions. Keeping this mapping here lets those controls repaint
+    without rebuilding the Settings window (and discarding unsaved edits).
+    """
+    replacements = {
+        old: globals()[name]
+        for name, old in old_values.items()
+        if name in globals()
+        and isinstance(globals()[name], str)
+        and old != globals()[name]
+    }
+    # tint() and wash() are deliberately rendered into inline QSS strings.
+    # Cover their two-decimal rgba output as well as the named tokens above.
+    # (That is the exact precision _rgba() writes.)
+    for name, old in old_values.items():
+        new = globals().get(name)
+        if not (isinstance(old, str) and isinstance(new, str)
+                and old.startswith("#") and new.startswith("#")):
+            continue
+        for hundredths in range(101):
+            alpha = hundredths / 100
+            replacements[_rgba(old, alpha)] = _rgba(new, alpha)
+    old_polarity = old_values.get("POLARITY")
+    if old_polarity in ("dark", "light"):
+        old_ink = "#ffffff" if old_polarity == "dark" else "#000000"
+        new_ink = "#ffffff" if POLARITY == "dark" else "#000000"
+        for hundredths in range(101):
+            alpha = hundredths / 100
+            replacements[_rgba(old_ink, alpha)] = _rgba(new_ink, alpha)
+    return tuple(sorted(replacements.items(), key=lambda item: len(item[0]), reverse=True))
+
+
+def retheme_stylesheet(stylesheet: str) -> str:
+    """Rebind token-derived values in an already-assigned widget stylesheet.
+
+    This is deliberately narrow: it is for a widget that was constructed
+    under the immediately preceding palette. New widgets still build their
+    stylesheets directly from current tokens.
+    """
+    restyled = stylesheet
+    for old, new in _RETHEME_REPLACEMENTS:
+        restyled = restyled.replace(old, new)
+    return restyled
+
+
+def _ensure_system_theme_monitor(app=None) -> None:
+    """Poll Windows' app-theme preference while the user chose ``system``.
+
+    ``apply_early_theme`` intentionally runs before Qt exists, so the first
+    window that installs application scrollbars starts this Qt-owned timer.
+    The timer never crosses threads and stops as soon as the user chooses a
+    concrete palette.
+    """
+    global _SYSTEM_THEME_TIMER
+    try:
+        from PySide6.QtCore import QTimer  # noqa: PLC0415
+        from PySide6.QtWidgets import QApplication  # noqa: PLC0415
+    except ImportError:
+        return
+    app = app or QApplication.instance()
+    if app is None:
+        return
+    if _REQUESTED_SETTING != "system":
+        if _SYSTEM_THEME_TIMER is not None:
+            _SYSTEM_THEME_TIMER.stop()
+        return
+    if _SYSTEM_THEME_TIMER is None:
+        _SYSTEM_THEME_TIMER = QTimer(app)
+        _SYSTEM_THEME_TIMER.setInterval(1000)
+        _SYSTEM_THEME_TIMER.timeout.connect(_follow_system_theme)
+    if not _SYSTEM_THEME_TIMER.isActive():
+        _SYSTEM_THEME_TIMER.start()
+
+
+def _follow_system_theme() -> None:
+    """Apply a Windows app-theme change to live widgets, if one occurred."""
+    if _REQUESTED_SETTING == "system":
+        set_theme("system", refresh=True)
 
 
 def refresh_all() -> int:
@@ -314,13 +416,23 @@ def refresh_all() -> int:
 
     restyled = 0
     seen = set()
-    stack = list(app.topLevelWidgets())
+    # A hide-on-close window is not open. It will receive current tokens if
+    # rebuilt later; walking it here wastes work and can retain stale Qt test
+    # wrappers. Collect each visible window's descendants once: repeatedly
+    # calling findChildren() from every descendant is quadratic on Settings.
+    stack = []
+    for window in app.topLevelWidgets():
+        try:
+            if window.isVisible():
+                stack.append(window)
+                stack.extend(window.findChildren(QWidget))
+        except RuntimeError:
+            continue
     while stack:
         widget = stack.pop()
         if id(widget) in seen:
             continue
         seen.add(id(widget))
-        stack.extend(widget.findChildren(QWidget))
         hook = getattr(widget, "apply_theme", None)
         if callable(hook):
             try:
@@ -328,7 +440,10 @@ def refresh_all() -> int:
                 restyled += 1
             except Exception:   # a repaint must never take the app down
                 pass
-        widget.update()
+        try:
+            widget.update()
+        except RuntimeError:
+            pass
     return restyled
 
 
@@ -757,6 +872,7 @@ def install_app_scrollbars(app=None) -> None:
         app = QApplication.instance()
     if app is None:
         return
+    _ensure_system_theme_monitor(app)
     current = app.styleSheet() or ""
     if _SCROLLBAR_MARKER not in current:
         app.setStyleSheet(current + _SCROLLBAR_MARKER + SCROLLBAR_QSS)
