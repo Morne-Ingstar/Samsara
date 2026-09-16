@@ -63,6 +63,14 @@ TAIL_POINTS = {
     '14:11:55': 'nd',
 }
 
+# Queue 139: the live "submit" incident. These arms retain context while
+# checking that an embedded `nd` cannot steer the next decode.
+INCIDENT_TAILS = {
+    'incident_clean': 'eva gets hands thing',
+    'incident_nd_submit': 'eva gets hands thing nd submit',
+    'incident_nd_submit_nd_submit': 'eva gets hands thing nd submit nd submit',
+}
+
 
 def norm(text):
     return ' '.join(text.lower().split()).strip(string.punctuation + ' ')
@@ -84,6 +92,16 @@ def write_wav(path, audio):
 
 def rebuild_tails():
     """Replay dictate_staged texts; verify pending_chars at every step."""
+    missing_logs = [path for path in LOGS if not os.path.exists(path)]
+    if missing_logs:
+        # Normal log rotation must not make the recorded queue-44 corpus
+        # un-runnable. These are the exact tails saved by that measurement,
+        # never reconstructed or invented replacements.
+        cached = json.load(open(OUT_JSON, encoding='utf-8'))
+        tails = cached.get('tails')
+        if not tails or set(TAIL_POINTS) - set(tails):
+            raise SystemExit(f'missing live logs and no complete cached tails: {missing_logs}')
+        return tails, cached.get('pending_checks', [])
     lines = []
     for lf in LOGS:
         for line in open(lf, encoding='utf-8', errors='replace'):
@@ -219,6 +237,8 @@ def run_arms(model, row, pre, word, tail, tails, base):
     row['decodes']['intact/no_prompt'] = decode(model, intact, None)
     for t, tail_text in tails.items():
         row['decodes'][f'intact/tail_{t}'] = decode(model, intact, tail_text)
+    for name, tail_text in INCIDENT_TAILS.items():
+        row['decodes'][f'intact/{name}'] = decode(model, intact, tail_text)
     for cut in CLIP_CUTS_MS:
         # "clipped" = the brief's mechanism: buffer begins cut ms INTO the word.
         clipped = np.concatenate([word[int(cut * SR / 1000):], tail]).astype(np.float32)

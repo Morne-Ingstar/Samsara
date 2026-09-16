@@ -32,7 +32,6 @@ never touched.
 
     F:\\envs\\sami\\python.exe perf_artifacts\\nd_prompt_contamination_106.py
 """
-import ast
 import collections
 import json
 import os
@@ -53,34 +52,9 @@ OUT_MD = os.path.join(HERE, 'nd_prompt_contamination_106.md')
 # -- the production sanitiser, without importing dictation -------------------
 
 def load_sanitiser():
-    """Execute just the queue 106 helpers out of dictation.py's own source.
-
-    Everything they need (re, string, _trim_trailing_garbage_run and its
-    regex) is pulled across by name, so what runs here is byte-for-byte the
-    function the lane runs -- if it changes, this measurement changes with
-    it.
-    """
-    import re
-    import string
-    src = open(os.path.join(ROOT, 'dictation.py'), encoding='utf-8').read()
-    tree = ast.parse(src)
-    wanted_defs = {'_trim_trailing_garbage_run', '_sanitise_context_tail', '_context_words'}
-    wanted_names = {'_TRAILING_GARBAGE_RUN_RE', '_CONTEXT_WORD_STRIP', '_TAIL_REPEAT_RUN',
-                    '_CONTEXT_TAIL_CHARS', '_SENTENCE_START_RE'}
-    picked = []
-    for node in tree.body:
-        if isinstance(node, ast.FunctionDef) and node.name in wanted_defs:
-            picked.append(node)
-        elif isinstance(node, ast.Assign) and any(
-                isinstance(t, ast.Name) and t.id in wanted_names for t in node.targets):
-            picked.append(node)
-    found = {n.name if isinstance(n, ast.FunctionDef) else n.targets[0].id for n in picked}
-    missing = (wanted_defs | wanted_names) - found
-    if missing:
-        raise SystemExit(f'dictation.py no longer defines: {sorted(missing)}')
-    namespace = {'re': re, 'string': string}
-    exec(compile(ast.Module(body=picked, type_ignores=[]), 'dictation.py', 'exec'), namespace)
-    return namespace['_sanitise_context_tail'], namespace['_CONTEXT_TAIL_CHARS']
+    """Load the production pure gate without importing the running app."""
+    from samsara.transcript_gates import _CONTEXT_TAIL_CHARS, _sanitise_context_tail
+    return _sanitise_context_tail, _CONTEXT_TAIL_CHARS
 
 
 def run_arms(model, row, pre, word, tail, prompts, base_name):
@@ -109,6 +83,13 @@ def main():
         print(f'  tail {t} (live -> {base.TAIL_POINTS[t]!r})')
         print(f'    raw   {len(raw):3d}: ...{raw[-64:]!r}')
         print(f'    clean {len(clean):3d}: ...{clean[-64:]!r}')
+
+    for name, raw in base.INCIDENT_TAILS.items():
+        clean = sanitise(raw, cap)
+        cleaned[name] = clean
+        prompts[f'{name}/raw'] = raw
+        prompts[f'{name}/clean'] = clean or None
+        print(f'  {name}: raw={raw!r}; clean={clean!r}')
 
     from faster_whisper import WhisperModel
     model = WhisperModel('medium', device='cuda', compute_type='float16')

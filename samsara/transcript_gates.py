@@ -380,7 +380,15 @@ def _sanitise_context_tail(raw, max_chars=_CONTEXT_TAIL_CHARS):
        boundary when the window holds a usable one, and at a word boundary
        otherwise; never inside a word.
 
-    2. A trailing run of the same word ("...I don't know and nd nd nd") is
+    2. `nd` is a decoder fragment, not an English word. It is removed wherever
+       it occurs in the emitted tail, so a later real word cannot hide it from
+       the old trailing-run rule ("...and nd submit").
+
+    3. An immediate repeat of a short token is collapsed ("submit submit" ->
+       "submit"). This is bounded to adjacent tokens and only changes decoder
+       context, never delivered dictation.
+
+    4. A trailing run of the same word ("...I don't know and nd nd nd") is
        degenerate repetition that got staged, and on the 37-recording table
        it is the whole distance between 0 and 27 correct decodes. Trimmed
        here -- the prompt-side twin of _trim_trailing_garbage_run's trailing
@@ -389,7 +397,7 @@ def _sanitise_context_tail(raw, max_chars=_CONTEXT_TAIL_CHARS):
        one: leaving one "nd" behind lands on the tail_14:11:45 row (3/37),
        removing all three lands on tail_14:11:40 (27/37).
 
-    3. A trailing punctuation-garbage run, for the same reason;
+    5. A trailing punctuation-garbage run, for the same reason;
        _trim_trailing_garbage_run is reused directly rather than restated.
 
     Returns "" when nothing usable survives. No prompt at all is a worse
@@ -425,7 +433,24 @@ def _sanitise_context_tail(raw, max_chars=_CONTEXT_TAIL_CHARS):
             text = text[text.index(' ') + 1:]
         text = text.strip()
 
-    # 2/3. Trailing trims, to a fixed point: removing a degenerate run can
+    # Remove the observed standalone decoder fragment everywhere, rather than
+    # only at the end where a later spoken word can mask it.
+    words = text.split()
+    words = [word for word in words if word.strip(_CONTEXT_WORD_STRIP).lower() != 'nd']
+    text = ' '.join(words)
+
+    # Collapse immediate repeats of short words in the context. Long repeated
+    # words are more likely intentional prose; short fragments are the decoder
+    # failure shape and retaining both makes them a stronger next-prompt bias.
+    collapsed = []
+    for word in text.split():
+        value = word.strip(_CONTEXT_WORD_STRIP).lower()
+        if value and len(value) <= 8 and collapsed and value == collapsed[-1][1]:
+            continue
+        collapsed.append((word, value))
+    text = ' '.join(word for word, _value in collapsed)
+
+    # 4/5. Trailing trims, to a fixed point: removing a degenerate run can
     #      expose the run that seeded it ("a a a b b b").
     while text:
         trimmed = _trim_trailing_garbage_run(text)

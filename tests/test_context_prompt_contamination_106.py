@@ -56,9 +56,10 @@ def _filler(n):
     return " ".join(f"w{i}" for i in range(n))
 
 
-def _seg(text, compression_ratio=1.0, no_speech_prob=0.0):
+def _seg(text, compression_ratio=1.0, no_speech_prob=0.0, avg_logprob=0.0):
     return types.SimpleNamespace(
         text=text, compression_ratio=compression_ratio, no_speech_prob=no_speech_prob,
+        avg_logprob=avg_logprob,
     )
 
 
@@ -197,33 +198,29 @@ class TestSanitiseContextTail:
         clean = dictation._sanitise_context_tail("yeah I don't know and nd nd nd")
         assert clean == "yeah I don't know and"
 
-    def test_a_single_stray_token_is_left_alone(self, real_tails):
-        """Honest limitation, recorded so it is not mistaken for a pass: one
-        "nd" is not a repeat run and cannot be told from a real short word,
-        so tail_14:11:45 survives sanitisation nearly unchanged."""
+    def test_a_single_artifact_is_removed_even_when_a_real_word_follows(self, real_tails):
+        """Queue 139: `nd submit` was the live incident. A later word must
+        not hide the standalone decoder artifact from the prompt cleaner."""
         clean = dictation._sanitise_context_tail(real_tails["14:11:45"])
-        assert clean.endswith("I don't know and nd")
+        assert clean.endswith("I don't know and")
+        assert dictation._sanitise_context_tail("real words nd submit") == "real words submit"
 
     def test_trailing_runs_are_trimmed_to_a_fixed_point(self):
         """Removing one run can expose the run that seeded it."""
         assert dictation._sanitise_context_tail("real words here ha ha ha ho ho ho") == \
-            "real words here"
+            "real words here ha ho"
 
     def test_trailing_punctuation_garbage_is_trimmed_too(self):
         assert dictation._sanitise_context_tail("the " + "_" * 20) == "the"
 
-    def test_two_repeats_are_emphasis_not_degeneracy(self):
-        """Two was tried and rejected -- see _TAIL_REPEAT_RUN. The trim runs
-        to a fixed point, so at two it cascades through consecutive doubled
-        phrases and can cut a tail back far enough to MANUFACTURE the
-        end-anchored match _is_context_echo then refuses as an echo. The
-        cascade is pinned by test_a_genuine_repeat_after_a_gap_is_still_staged
-        above; this is the local half."""
+    def test_immediate_short_repeats_collapse_only_in_decoder_context(self):
+        """Queue 139 intentionally changes the former two-repeat contract.
+        This acts on initial_prompt only, and no longer cascades backward."""
         assert dictation._TAIL_REPEAT_RUN == 3
         text = "I said no no"
-        assert dictation._sanitise_context_tail(text) == text
+        assert dictation._sanitise_context_tail(text) == "I said no"
         cascade = "Oh shit, no way. Baby, baby. What? What?"
-        assert dictation._sanitise_context_tail(cascade) == cascade
+        assert dictation._sanitise_context_tail(cascade) == "Oh shit, no way. Baby, What?"
 
     def test_the_five_real_tails_sanitise_identically_at_two_and_three(self, real_tails):
         """Pins the claim made in _TAIL_REPEAT_RUN's comment: no arm in
@@ -406,6 +403,26 @@ class TestTheLiveIncident:
 
 
 class TestOnlyCleanTextEntersTheTail:
+
+    def test_an_exhausted_dictate_decode_is_not_staged_or_reused_as_prompt(self):
+        app, manager = _make_loop_app(["first", "submit", "third"])
+        app.get_transcription_params = Mock(return_value={"log_prob_threshold": -1.0})
+        outputs = iter([("first", 0.0), ("submit", -1.1), ("third", 0.0)])
+        def transcribe(_audio, **_params):
+            text, avg_logprob = next(outputs)
+            return [_seg(text, avg_logprob=avg_logprob)], types.SimpleNamespace()
+        app.model.transcribe = Mock(side_effect=transcribe)
+
+        _speak(app)
+        _speak(app)
+        _speak(app)
+
+        assert manager.staged == ["first", "third"]
+        assert "submit" not in manager.buffer
+        assert "submit" not in (app.model.transcribe.call_args_list[-1].kwargs.get("initial_prompt") or "")
+        app._show_outcome_chip.assert_called_once_with(
+            "low-confidence decode - not staged", "warning"
+        )
 
     def test_guard_suppressed_text_never_reaches_the_next_prompt(self):
         """The hallucination guard returns before dispatch_utterance, which
