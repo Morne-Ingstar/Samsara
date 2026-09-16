@@ -82,9 +82,11 @@ class TestTopLevelDailyUseActions:
         t, app = tray
         assert "Settings" in _top_level_texts(t._menu)
 
-    def test_history_present_top_level(self, tray):
+    def test_history_present_in_workspace(self, tray):
         t, app = tray
-        assert "History" in _top_level_texts(t._menu)
+        workspace = _submenu(t._menu, "Workspace")
+        assert workspace is not None
+        assert "History" in [action.text() for action in workspace.actions()]
 
     def test_quick_reference_promoted_to_top_level(self, tray):
         t, app = tray
@@ -283,12 +285,12 @@ class TestToolsSubmenuContents:
         missing = self.EXPECTED - texts
         assert not missing, f"missing from Tools: {missing}"
 
-    def test_hotkey_and_model_info_present(self, tray):
+    def test_inert_hotkey_and_model_info_are_not_menu_items(self, tray):
         t, app = tray
         tools = _submenu(t._menu, "Tools")
         texts = [a.text() for a in tools.actions()]
-        assert any(txt.startswith("Hotkey:") for txt in texts)
-        assert any(txt.startswith("Model:") for txt in texts)
+        assert not any(txt.startswith("Hotkey:") for txt in texts)
+        assert not any(txt.startswith("Model:") for txt in texts)
 
     def test_dev_only_items_not_in_tools(self, tray):
         """Dictation Diagnostics / Wake Word Debug / View Live Log /
@@ -580,13 +582,16 @@ class TestUpdateEntryIsBehindAFlag:
         t._rebuild_menu()
         assert not [x for x in self._texts(t) if "Update" in x or "Install Samsara" in x]
 
-    def test_present_in_tools_when_the_flag_is_on(self, qapp, monkeypatch):
+    def test_present_in_tools_with_the_updater_capability_label(self, qapp, monkeypatch):
+        from samsara.updater import update_check_menu_label
+
         app = _make_app()
         app.config["updates"] = {"tray_menu_entry": True}
         t, _started = _stub_tray(monkeypatch, app)
         tools = _submenu(t._menu, "Tools")
-        assert "Check for Updates…" in [a.text() for a in tools.actions()]
-        _action(t._menu, "Check for Updates…").trigger()
+        label = update_check_menu_label()
+        assert label in [a.text() for a in tools.actions()]
+        _action(t._menu, label).trigger()
         SamsaraTrayQt._open_update_dialog.assert_called_once()
 
     def test_a_found_update_is_offered_top_level_when_the_flag_is_on(self, qapp, monkeypatch):
@@ -601,9 +606,8 @@ class TestUpdateEntryIsBehindAFlag:
 
 class TestMenuGrouping61:
     TOP = ["Show Samsara", "Snooze", "Wake Word  (samsara)", "[MIC]  Test Microphone",
-           "Mode:  Hold", "History", "Open memos",
-        "Open the raw memo file", "Quick Reference", "Settings",
-           "Something wrong?", "Tools", "Developer", "Exit"]
+           "Mode:  Hold", "Quick Reference", "Settings", "Something wrong?",
+           "Workspace", "Tools", "Developer", "Exit"]
 
     def test_top_level_is_the_daily_set(self, qapp, monkeypatch):
         app = _make_app()
@@ -620,6 +624,14 @@ class TestMenuGrouping61:
                       "Show Listening Indicator", "Move listening indicator..."):
             assert label in tools
             assert label not in _top_level_texts(t._menu)
+
+    def test_everyday_records_are_in_workspace_not_the_recovery_top_level(self, qapp, monkeypatch):
+        app = _make_app()
+        t, _started = _stub_tray(monkeypatch, app)
+        workspace = _submenu(t._menu, "Workspace")
+        assert workspace is not None
+        assert {"History", "Open memos", RAW_MEMOS} <= {a.text() for a in workspace.actions()}
+        assert not {"History", "Open memos", RAW_MEMOS} & set(_top_level_texts(t._menu))
 
     def test_toggles_keep_their_checked_state_and_pass_it_on(self, qapp, monkeypatch):
         app = _make_app()

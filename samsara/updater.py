@@ -171,6 +171,18 @@ def update_unavailable_reason(
     return None
 
 
+def update_check_menu_label() -> str:
+    """Truthful label for a manual update-check entry in the tray.
+
+    ``check_for_update`` performs a network request only for an eligible
+    frozen Windows build. Source runs and isolated profiles must not present
+    that unavailable action as a check they can perform.
+    """
+    if update_unavailable_reason() is not None:
+        return "Updates unavailable…"
+    return "Check for Updates…"
+
+
 def _require_update_eligible() -> None:
     reason = update_unavailable_reason()
     if reason:
@@ -1521,5 +1533,6 @@ __all__ = [
     "launch_prepared_update",
     "prepare_update",
     "reconcile_update_on_startup",
+    "update_check_menu_label",
     "update_unavailable_reason",
 ]

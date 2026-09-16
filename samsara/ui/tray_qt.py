@@ -31,12 +31,12 @@ from PySide6.QtGui import QAction, QActionGroup, QGuiApplication, QIcon, QImage,
 from PySide6.QtSvg import QSvgRenderer
 from PySide6.QtWidgets import QMenu, QSystemTrayIcon
 
-from samsara import config_defaults
 from samsara.constants import DEFAULT_WAKE_PHRASE
 from samsara.log import get_logger
 from samsara.quick_memo import memo_file
 from samsara.support_feedback import open_support_tab
 from samsara.ui import theme
+from samsara.updater import update_check_menu_label
 
 import os
 
@@ -1014,10 +1014,11 @@ class SamsaraTrayQt(QObject):
         getattr(self._app, self._GUIDE_OPENERS[attr])()
 
     def _update_entry_enabled(self) -> bool:
-        """updates.tray_menu_entry, default OFF (61). The updater has never been
-        exercised in the field, so the tray does not offer it until the owner
-        turns this on. The dialog and updater code paths are untouched; the
-        dialog itself reports a failed check ("Couldn't check for updates")."""
+        """updates.tray_menu_entry, default OFF.
+
+        Its label still comes from updater availability, so source and
+        isolated runs do not promise a GitHub check they cannot make.
+        """
         settings = self._app.config.get('updates', {})
         return isinstance(settings, dict) and settings.get('tray_menu_entry', False) is True
 
@@ -1027,13 +1028,12 @@ class SamsaraTrayQt(QObject):
         Called by QMenu.aboutToShow each time the user right-clicks the
         tray icon -- once per menu open, not on every hover.
 
-        Grouping (61, 2026-09-14, owner: "a bit oversaturated"): the top
-        level holds what a daily user reaches for -- open the app, pause or
-        resume listening, wake word, mic, mode, History, memos, Quick
-        Reference, Settings, help. Setup toggles, overlay windows and
-        one-off tools live in Tools; debug surfaces in Developer. Nothing
-        was removed; "Check for Updates" is behind updates.tray_menu_entry.
-        Every action goes through _add(), so none can fail silently.
+        Recovery-first grouping: a person whose voice control stopped needs
+        app visibility, listening/mic/mode controls, instructions, settings,
+        and support without opening another submenu. Everyday records live
+        in Workspace; setup and one-off tools live in Tools; debug surfaces
+        live in Developer. Every action goes through _add(), so none can fail
+        silently.
         """
         app  = self._app
         menu = self._menu
@@ -1121,14 +1121,17 @@ class SamsaraTrayQt(QObject):
 
         menu.addSeparator()
 
-        # ---- Daily use ----
-        add(menu, "History", lambda: app.open_history())
-        add(menu, "Open memos", self._open_memos)
-        add(menu, "Open the raw memo file", self._open_memo_file)
+        # ---- Recovery first ----
         add(menu, "Quick Reference", lambda: app.open_quick_reference())
         add(menu, "Settings", lambda: app.open_settings())
-        # Beta testers without GitHub: one click to the email/diagnostics page.
         add(menu, "Something wrong?", lambda: open_support_tab(app))
+
+        # ---- Everyday records, out of the recovery path ----
+        workspace_sub = QMenu("Workspace")
+        add(workspace_sub, "History", lambda: app.open_history())
+        add(workspace_sub, "Open memos", self._open_memos)
+        add(workspace_sub, "Open the raw memo file", self._open_memo_file)
+        menu.addMenu(workspace_sub)
 
         menu.addSeparator()
 
@@ -1155,8 +1158,8 @@ class SamsaraTrayQt(QObject):
         tools_sub.addSeparator()
         add(tools_sub, "Recalibrate Mic", lambda: app.recalibrate_mic())
         if self._update_entry_enabled() and self._available_update is None:
-            add(tools_sub, "Check for Updates\u2026", self._open_update_dialog,
-                report_as="Check for Updates")
+            add(tools_sub, update_check_menu_label(), self._open_update_dialog,
+                report_as="Updates")
         tools_sub.addSeparator()
 
         cleanup_sub = QMenu("Cleanup")
@@ -1172,14 +1175,6 @@ class SamsaraTrayQt(QObject):
                       checked=cleanup_mode == val, report_as="Cleanup")
             cleanup_grp.addAction(act)
         tools_sub.addMenu(cleanup_sub)
-
-        tools_sub.addSeparator()
-        info_hotkey = tools_sub.addAction(
-            f"Hotkey:  {app.config.get('hotkey', config_defaults.DEFAULTS['hotkey'])}")
-        info_hotkey.setEnabled(False)
-        info_model = tools_sub.addAction(
-            f"Model:  {app.config.get('model_size', config_defaults.DEFAULTS['model_size'])}")
-        info_model.setEnabled(False)
 
         menu.addMenu(tools_sub)
 
