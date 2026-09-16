@@ -571,6 +571,33 @@ SETTINGS_SCHEMA = {
         "tab": "advanced",
         "depends_on": "ducking.enabled",
     },
+    # Hands-free uses a separate two-stage duck: a deep reduction while it
+    # captures speech and a mild, persistent reduction while it listens.
+    # They deliberately do not depend on ducking.enabled, which controls the
+    # ordinary hold-to-dictate path rather than hands-free listening.
+    "ducking.hands_free_enabled": {
+        "type": "bool",
+        "default": True,
+        "tab": "advanced",
+    },
+    "ducking.hands_free_level": {
+        "type": "float",
+        "min": 0.0,
+        "max": 1.0,
+        "step": 0.05,
+        "default": 0.15,
+        "tab": "advanced",
+        "depends_on": "ducking.hands_free_enabled",
+    },
+    "ducking.hands_free_idle_level": {
+        "type": "float",
+        "min": 0.0,
+        "max": 1.0,
+        "step": 0.05,
+        "default": 0.8,
+        "tab": "advanced",
+        "depends_on": "ducking.hands_free_enabled",
+    },
     "listening_indicator_enabled": {"type": "bool", "default": False, "tab": "advanced"},
     # Idle blink/glance on the listening indicator's mark (queue 09b3). Only
     # the idle motion -- state animation (spin, pulse, heard flash) always runs.

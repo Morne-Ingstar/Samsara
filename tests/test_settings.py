@@ -615,6 +615,15 @@ class TestApplyAndCloseSnapshot:
         # section so a future sibling key survives a save; with an empty
         # starting config there is nothing to preserve.
         expected['ui'] = {'theme': 'dark'}
+        # Queue 158 delta: the Advanced page exposes the two-stage
+        # hands-free duck values. The schema defaults mirror dictation.py's
+        # live fallback values and are persisted with the ordinary ducking
+        # pair, without dropping any existing ducking sibling.
+        expected['ducking'].update({
+            'hands_free_enabled': True,
+            'hands_free_level': 0.15,
+            'hands_free_idle_level': 0.8,
+        })
 
         stub = _StubApp()
         win = _SettingsWindow(stub)

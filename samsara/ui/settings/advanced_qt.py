@@ -260,6 +260,45 @@ class AdvancedPage:
             "Absolute volume level for other apps during dictation (0 = silent, 1 = full volume).",
             ducking_level_spin,
         ))
+        layout.addSpacing(12)
+
+        hands_free_ducking_cb = QCheckBox(
+            "Reduce other apps while hands-free is listening"
+        )
+        hands_free_ducking_cb.setChecked(
+            bool(ducking_cfg.get('hands_free_enabled', True))
+        )
+        self._widgets['adv_hands_free_ducking_enabled'] = hands_free_ducking_cb
+        layout.addWidget(hands_free_ducking_cb)
+
+        hands_free_capture_spin = QDoubleSpinBox()
+        hands_free_capture_spin.setRange(0.0, 1.0)
+        hands_free_capture_spin.setSingleStep(0.05)
+        hands_free_capture_spin.setDecimals(2)
+        hands_free_capture_spin.setValue(
+            float(ducking_cfg.get('hands_free_level', 0.15))
+        )
+        self._widgets['adv_hands_free_ducking_level'] = hands_free_capture_spin
+        layout.addLayout(self._setting_row(
+            "Other apps' volume while hands-free captures",
+            "Temporary reduction while you are speaking. 0 = silent; 1 = no reduction.",
+            hands_free_capture_spin,
+        ))
+
+        hands_free_idle_spin = QDoubleSpinBox()
+        hands_free_idle_spin.setRange(0.0, 1.0)
+        hands_free_idle_spin.setSingleStep(0.05)
+        hands_free_idle_spin.setDecimals(2)
+        hands_free_idle_spin.setValue(
+            float(ducking_cfg.get('hands_free_idle_level', 0.8))
+        )
+        self._widgets['adv_hands_free_idle_level'] = hands_free_idle_spin
+        layout.addLayout(self._setting_row(
+            "Other apps' volume while hands-free is on",
+            "Other apps stay at this volume for as long as hands-free is on. "
+            "1 = no reduction.",
+            hands_free_idle_spin,
+        ))
         layout.addSpacing(20)
 
         # ---- Section: Listening Indicator ----------------------------------
@@ -497,10 +536,21 @@ class AdvancedPage:
                     'enabled':    self._widgets['adv_aec_enabled'].isChecked(),
                     'latency_ms': self._widgets['adv_aec_latency'].value(),
                 }
-                updates['ducking'] = {
+                ducking_out = dict(self.app.config.get('ducking', {}) or {})
+                ducking_out.update({
                     'enabled': self._widgets['adv_ducking_enabled'].isChecked(),
                     'level':   self._widgets['adv_ducking_level'].value(),
-                }
+                    'hands_free_enabled': self._widgets[
+                        'adv_hands_free_ducking_enabled'
+                    ].isChecked(),
+                    'hands_free_level': self._widgets[
+                        'adv_hands_free_ducking_level'
+                    ].value(),
+                    'hands_free_idle_level': self._widgets[
+                        'adv_hands_free_idle_level'
+                    ].value(),
+                })
+                updates['ducking'] = ducking_out
                 updates['listening_indicator_enabled']  = (
                     self._widgets['adv_indicator_enabled'].isChecked()
                 )
