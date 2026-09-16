@@ -34,11 +34,13 @@ import logging
 import math
 import threading
 import time
+from dataclasses import dataclass
 
 import numpy as np
 
 from .frame import FRAME_MS, PREBUFFER_FRAMES, SAMPLE_RATE
 from .ring import EMPTY
+from .wake_prefilter import oww_prefilter
 
 from samsara.constants import (
     DEFAULT_MIN_SPEECH_DURATION,
@@ -68,6 +70,111 @@ _PREVIEW_TAIL_S = 8.0
 _AVA_CMD_TTS_TAIL_S = 0.3
 _THREAD_JOIN_TIMEOUT_S = 2.0
 
+# ── Fatal classification (queue 109, Astra F6) ───────────────────────────────
+# A fatal in the poll loop ends hands-free listening. For a user who cannot
+# type, that is the loss of their input method, so the two things that happen
+# next -- what the app tells them, and whether it tries again by itself -- are
+# decided HERE rather than at the call site, where each caller would guess
+# differently.
+FATAL_TRANSIENT = "transient"
+FATAL_PERMANENT = "permanent"
+
+#: The waits before each automatic restart, so the cap IS the schedule: three
+#: automatic restarts for one transient fault, then the app stops and asks.
+#: Backing off matters because a device that has just gone (a USB mic pulled,
+#: an exclusive-mode grab by another app) is usually still gone 2 s later.
+FATAL_RETRY_DELAYS_S = (2.0, 5.0, 15.0)
+FATAL_RETRY_CAP = len(FATAL_RETRY_DELAYS_S)
+
+#: Never retried, and named rather than inferred. Restarting after one of
+#: these re-enters the same code with the same inputs and raises again on the
+#: very next frame: an automatic retry would be an infinite loop that also
+#: hides the bug behind a restart storm. They are programming errors; the
+#: recovery for them is a fix, and in the meantime an honest explanation and a
+#: restart the USER asks for.
+_PROGRAMMING_ERRORS = (
+    TypeError, AttributeError, NameError, KeyError, IndexError, ValueError,
+    ZeroDivisionError, RuntimeError, AssertionError, ImportError, NotImplementedError,
+)
+
+#: Reason sentences. Plain words, no exception text: the class name and the
+#: message go in the evidence line, which is checkable without being the
+#: headline a user has to parse.
+FATAL_REASONS = {
+    FATAL_TRANSIENT: "Hands-free stopped: the microphone stopped feeding it.",
+    FATAL_PERMANENT: "Hands-free stopped after an internal error.",
+}
+
+
+def _transient_types() -> tuple:
+    """Exception types a restart can plausibly clear.
+
+    OSError covers the device and stream failures that actually end this loop
+    (it is also the base of TimeoutError and the connection errors), and
+    PortAudioError is added when sounddevice is importable -- it is not an
+    OSError, and it is the single most likely fatal on this path.
+    """
+    types = [OSError]
+    try:
+        import sounddevice                                    # noqa: PLC0415
+        error = getattr(sounddevice, "PortAudioError", None)
+        if isinstance(error, type) and issubclass(error, BaseException):
+            types.append(error)
+    except Exception:                                          # pragma: no cover
+        pass
+    return tuple(types)
+
+
+def classify_fatal(exc) -> str:
+    """FATAL_TRANSIENT or FATAL_PERMANENT for one poll-loop exception.
+
+    The programming errors are checked FIRST and by name, so the
+    classification cannot drift if an exception type is ever made to inherit
+    from OSError: anything not positively recognised as a device failure is
+    permanent, which is the safe direction -- a permanent classification
+    costs one manual restart, a wrong transient one costs a retry loop.
+    """
+    if isinstance(exc, _PROGRAMMING_ERRORS):
+        return FATAL_PERMANENT
+    if isinstance(exc, _transient_types()):
+        return FATAL_TRANSIENT
+    return FATAL_PERMANENT
+
+
+@dataclass(frozen=True)
+class HandsFreeFault:
+    """What the app remembers about a fatal until listening is back.
+
+    Persistent on purpose: it is cleared by a SUCCESSFUL restart and by
+    nothing else. A chip that expires, or a beep, leaves a user who cannot
+    type with no record of what happened -- which is the whole of F6.
+    """
+    reason: str                   # one sentence, for the user
+    classification: str           # FATAL_TRANSIENT | FATAL_PERMANENT
+    exception: str                # "PortAudioError: Device unavailable"
+    at: float                     # time.time()
+    attempts: int = 0             # automatic restarts already spent
+    retrying: bool = False        # another automatic restart is scheduled
+
+    @property
+    def evidence(self) -> str:
+        spent = f"{self.attempts} of {FATAL_RETRY_CAP} automatic restarts used"
+        return (f"the wake listener stopped with {self.exception} "
+                f"({self.classification}; {spent})")
+
+
+def fault_from(exc, *, at: float, attempts: int = 0, retrying: bool = False) -> HandsFreeFault:
+    """The fault record for one poll-loop exception."""
+    classification = classify_fatal(exc)
+    detail = str(exc).strip()
+    name = type(exc).__name__
+    return HandsFreeFault(
+        reason=FATAL_REASONS[classification],
+        classification=classification,
+        exception=f"{name}: {detail}" if detail else name,
+        at=at, attempts=attempts, retrying=retrying,
+    )
+
 
 def wake_session_policy(config):
     """Read session policy without changing legacy phrase-string configs."""
@@ -92,6 +199,74 @@ def wake_session_policy(config):
     return result
 
 
+# Queue 44 (2026-09-15): prebuffer_policy=discard dropped the whole 1.5 s
+# rewind on EVERY onset of a post-wake capture, so a late Silero onset left the
+# retained buffer starting mid-word (owner WAVs: 5 of 9 in-session buffers;
+# offline replay of the owner's voice: first word changed in 16/20 normal and
+# 13/15 soft clips, 1/20 and 2/15 with the rewind kept). With a session open the
+# rewind is kept, but never earlier than confirmed_at + post_wake_guard_ms, so
+# audio from before the wake confirmation still cannot leak into the capture.
+# False restores the old discard exactly. Read with the same legacy/canonical
+# merge as wake_session_policy; this is its only read site.
+RETAIN_PREBUFFER_IN_SESSION_KEY = 'retain_prebuffer_in_session'
+RETAIN_PREBUFFER_IN_SESSION_DEFAULT = True
+
+
+def retain_prebuffer_in_session(config) -> bool:
+    legacy = config.get('wake_word_config', {})
+    settings = dict(legacy.get('session', {})) if isinstance(legacy, dict) else {}
+    wake_word = config.get('wake_word', {})
+    if isinstance(wake_word, dict):
+        settings.update(wake_word.get('session', {}))
+    value = settings.get(RETAIN_PREBUFFER_IN_SESSION_KEY, RETAIN_PREBUFFER_IN_SESSION_DEFAULT)
+    return value if isinstance(value, bool) else RETAIN_PREBUFFER_IN_SESSION_DEFAULT
+
+
+def _samples_before(t_capture, n_samples, not_before):
+    """Samples of a block (t_capture = end of block) captured before not_before."""
+    frame_start = t_capture - n_samples / SAMPLE_RATE
+    return min(n_samples, max(0, math.ceil((not_before - frame_start) * SAMPLE_RATE)))
+
+
+# In-session near-silence floor (2026-09-14 live-log incident). Inside an
+# open wake session the adaptive RMS gate is not applied (see
+# in_session_rms_gate); only whole-buffer RMS below this value is skipped.
+# The owner's real in-session speech buffers measured 0.0042-0.0105 RMS, and
+# a buffer's RMS is diluted by the trailing silence window that closes it, so
+# quieter genuine speech is expected. 0.002 is ~2.1x (-6.4 dB) below the
+# quietest observed speech buffer and equals dictation.py's _ABS_FLOOR_MIN
+# (the asleep gate's own "zeroed/DC buffer" floor), so the in-session rule
+# is never stricter than the absolute component of the asleep gate.
+IN_SESSION_NEAR_SILENCE_RMS = 0.002
+
+# Config key (wake_word_config.audio.*, default True via config_defaults):
+# False restores the adaptive gate inside open sessions without a rebuild.
+BYPASS_ADAPTIVE_GATE_IN_SESSION_KEY = 'wake_word_config.audio.bypass_adaptive_gate_in_session'
+
+
+def wake_capture_session_open(app) -> bool:
+    """True when the user has already deliberately woken the app: an open
+    wake session, quick/long dictation, or the post-wake command window.
+    Same definition WakeConsumer._post_wake_admission uses for post-wake
+    capture."""
+    return (
+        getattr(app, 'app_state', None) in ('wake_session', 'quick_dictation', 'long_dictation')
+        or bool(getattr(app, 'wake_word_triggered', False))
+    )
+
+
+def in_session_rms_gate(audio_rms: float):
+    """Skip decision for a buffer captured inside an open session.
+
+    Returns (skip, threshold, rule). The adaptive ambient-floor gate exists to
+    stop background speech waking an ASLEEP app; once a session is open it can
+    only lose the user's words (including end/cancel words), so only genuinely
+    empty buffers are skipped here.
+    """
+    threshold = IN_SESSION_NEAR_SILENCE_RMS
+    return audio_rms < threshold, threshold, 'in_session_near_silence'
+
+
 class WakeStopResult(list):
     """Buffered frames plus explicit join status; compatible with existing flush callers."""
     def __init__(self, frames=(), *, stopped: bool):
@@ -105,8 +280,12 @@ class WakeConsumer:
     Args:
         engine: AudioCaptureEngine.
         app:    DictationApp — policy state lives here.
-        on_fatal: Optional callback(exc) after fatal cleanup on the poll thread;
-                  without it, app.play_sound('error') provides the notification.
+        on_fatal: Optional callback(exc) after fatal cleanup on the poll thread.
+                  Production passes DictationApp._on_wake_consumer_fatal, which
+                  records a persistent fault and schedules the retries a
+                  transient failure is allowed (queue 109). The bare
+                  app.play_sound('error') fallback remains for test doubles and
+                  is NOT recovery: a beep is all a user got before 109.
     """
 
     def __init__(self, engine, app, *, on_fatal=None) -> None:
@@ -153,6 +332,18 @@ class WakeConsumer:
         self._hands_free_capture_duck_token: int | None = None
 
     # ── Lifecycle ─────────────────────────────────────────────────────────────
+
+    @property
+    def running(self) -> bool:
+        """Whether the poll thread is servicing frames right now.
+
+        Public because Home has to answer "is hands-free actually listening?"
+        and the only truthful answer is this flag (queue 109, F12): config
+        says what was asked for, this says what is happening. It goes False in
+        stop(), in _handle_fatal and in _poll_loop's finally, so it cannot
+        stay True on a thread that has died.
+        """
+        return self._running
 
     def start(self) -> bool:
         """Start a fresh listener; refuse while any previous poller is alive."""
@@ -467,24 +658,29 @@ class WakeConsumer:
         confirmed_at, policy, guard_ms = admission
         if policy == 'keep':
             return chunk
-        not_before = confirmed_at + guard_ms / 1000.0
-        frame_start = frame.t_capture - len(chunk) / SAMPLE_RATE
-        skip = min(len(chunk), max(0, math.ceil((not_before - frame_start) * SAMPLE_RATE)))
+        skip = _samples_before(frame.t_capture, len(chunk), confirmed_at + guard_ms / 1000.0)
         self._guard_discarded_samples += skip
         return chunk[skip:]
 
-    def _record_post_wake_capture(self, admission):
+    def _record_post_wake_capture(self, admission, retained_discarded_ms=None):
+        """retained_discarded_ms is set when the in-session rewind was kept: it
+        is the part of the rewind that fell before confirmation + guard."""
         _, policy, guard_ms = admission
-        discarded_ms = (
-            PREBUFFER_FRAMES * FRAME_MS + self._guard_discarded_samples * 1000 / SAMPLE_RATE
-            if policy == 'discard' else 0.0
-        )
+        if retained_discarded_ms is not None:
+            discarded_ms = retained_discarded_ms
+        elif policy == 'discard':
+            discarded_ms = PREBUFFER_FRAMES * FRAME_MS + self._guard_discarded_samples * 1000 / SAMPLE_RATE
+        else:
+            discarded_ms = 0.0
+        retained = retained_discarded_ms is not None
         self._guard_discarded_samples = 0
         self._log_frame(logging.DEBUG, 'capture_policy',
-                        '[WAKE-POLICY] policy=%s discarded_ms=%.3f post_wake_guard_ms=%.3f',
-                        policy, discarded_ms, guard_ms)
+                        '[WAKE-POLICY] policy=%s discarded_ms=%.3f post_wake_guard_ms=%.3f '
+                        'retain_in_session=%s',
+                        policy, discarded_ms, guard_ms, retained)
         flight_recorder.record('wake.capture_policy', policy=policy,
-                               discarded_ms=discarded_ms, post_wake_guard_ms=guard_ms)
+                               discarded_ms=discarded_ms, post_wake_guard_ms=guard_ms,
+                               retain_in_session=retained)
 
     def _drain_toggle_utterances(self) -> None:
         while True:
@@ -937,15 +1133,14 @@ class WakeConsumer:
                 return
             rms = float(np.sqrt(np.mean(raw_chunk ** 2)))
 
-        # OWW pre-filter (data already at 16kHz — no resample needed)
+        # OWW pre-filter (data already at 16kHz — no resample needed). The
+        # gain is samsara.audio_engine.wake_prefilter's, shared with the mic
+        # setup guide's wake test so both score the same signal (queue 67).
         if (app.app_state == 'asleep'
                 and not app.wake_word_triggered
                 and app._wake_detector is not None
                 and app._wake_detector.is_available):
-            _oww_chunk = raw_chunk.copy()
-            if rms > 0.005:
-                _oww_gain = min(0.10 / rms, 20.0)
-                _oww_chunk = np.clip(_oww_chunk * _oww_gain, -1.0, 1.0)
+            _oww_chunk = oww_prefilter(raw_chunk, rms)
             if app._wake_detector.detected(_oww_chunk):
                 app._oww_wake_detected = True
                 app._wake_detector.reset()
@@ -961,10 +1156,7 @@ class WakeConsumer:
             for _profile_detector in getattr(app, '_wake_profile_detectors', {}).values():
                 if _profile_detector is None or not _profile_detector.is_available:
                     continue
-                _oww_chunk = raw_chunk.copy()
-                if rms > 0.005:
-                    _oww_gain = min(0.10 / rms, 20.0)
-                    _oww_chunk = np.clip(_oww_chunk * _oww_gain, -1.0, 1.0)
+                _oww_chunk = oww_prefilter(raw_chunk, rms)
                 if _profile_detector.detected(_oww_chunk):
                     app._oww_wake_detected = True
                     _profile_detector.reset()
@@ -997,12 +1189,20 @@ class WakeConsumer:
                 # raw_chunk again after — that would double the onset frame.
                 # (ARC audit: double-appending of speech onset frame)
                 prebuffer_frames = PREBUFFER_FRAMES
+                retain_not_before = None
                 if admission is not None:
-                    self._record_post_wake_capture(admission)
-                    if admission[1] == 'discard':
-                        prebuffer_frames = 0
-                        self._utterance_frames.append(raw_chunk)
-                        self._buffer_rms_history.append(rms)
+                    if (admission[1] == 'discard'
+                            and wake_capture_session_open(app)
+                            and retain_prebuffer_in_session(app.config)):
+                        # Queue 44: keep the rewind, clamped at confirmation +
+                        # guard (recorded after the re-read, below).
+                        retain_not_before = admission[0] + admission[2] / 1000.0
+                    else:
+                        self._record_post_wake_capture(admission)
+                        if admission[1] == 'discard':
+                            prebuffer_frames = 0
+                            self._utterance_frames.append(raw_chunk)
+                            self._buffer_rms_history.append(rms)
                 if self._is_toggle_dictate(app):
                     # Never rewind farther than the silence boundary that
                     # separated two staged chunks. Otherwise a short manual-
@@ -1014,17 +1214,27 @@ class WakeConsumer:
                     )
                 if prebuffer_frames:
                     self._reader.rewind(prebuffer_frames)
+                clamped_samples = 0
                 for _ in range(prebuffer_frames):
                     pb_frame = self._reader.read_next()
                     if pb_frame is EMPTY:
                         break
                     pb_pcm = pb_frame.pcm.astype(np.float32) / 32767.0
+                    if retain_not_before is not None:
+                        skip = _samples_before(pb_frame.t_capture, len(pb_pcm), retain_not_before)
+                        clamped_samples += skip
+                        pb_pcm = pb_pcm[skip:]
+                        if not len(pb_pcm):
+                            continue
                     self._utterance_frames.append(pb_pcm)
                     self._buffer_rms_history.append(
                         float(np.sqrt(np.mean(pb_pcm ** 2)))
                     )
+                if retain_not_before is not None:
+                    self._record_post_wake_capture(
+                        admission, retained_discarded_ms=clamped_samples * 1000 / SAMPLE_RATE)
                 if prebuffer_frames and self._utterance_frames:
-                    self._log_frame(logging.DEBUG, 'frame_864', f"[PRE] Prepended {len(self._utterance_frames) * FRAME_MS}ms pre-buffer to wake onset")
+                    self._log_frame(logging.DEBUG, 'frame_864', f"[PRE] Prepended {sum(len(c) for c in self._utterance_frames) * 1000 // SAMPLE_RATE}ms pre-buffer to wake onset")
                 # Diagnostic (2026-07-10 hotkey word-loss investigation,
                 # updated by FIX 1, narrowed 2026-07-19 nag incident): this
                 # branch is now UNREACHABLE while a plain hotkey recording

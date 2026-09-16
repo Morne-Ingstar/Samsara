@@ -18,6 +18,41 @@ from collections import deque
 # See perf_artifacts/hf_lang_confidence.{md,json}.
 LANGUAGE_CONFIDENCE_FLOOR = 0.90
 
+#: Queue 119. The floor above used to be reachable ONLY when the detected
+#: language was NOT one we expected. That made it useless against the failure
+#: it was best placed to catch: English TV audio, detected as `en`, which is
+#: always in `expected`, so the probability was never consulted at all.
+#:
+#: Measured on the hands-free corpus + 59 of the owner's own wake captures
+#: (perf_artifacts/hf_bench_119_after.md, reports/119):
+#:     media_only (TV, 30 s)     p = 0.8403 / 0.8413 / 0.8862   -> 362-516 chars
+#:     owner speech, corpus      p = 0.9819 .. 0.9946           ->  18-72  chars
+#:     owner commands >= 2 s     p = 0.9648 .. 0.9961           ->   5-39  chars
+#:     owner commands <  2 s     p = 0.7979 .. 0.9902
+#: The signal separates cleanly (owner min 0.9819 vs media max 0.8862) for
+#: anything long enough to measure -- but NOT for very short audio, where
+#: Whisper's language_probability is unreliable. Both sub-floor owner clips
+#: were 1.2 s, and one of those was a Whisper hallucination ("Thank you for
+#: watching." over near-silence) that this gate SHOULD reject.
+#:
+#: So the floor is applied to same-language audio only when the utterance is
+#: big enough for the probability to mean something. Duration is the honest
+#: measure; when the caller does not supply it we fall back to transcript
+#: length, which is what actually distinguishes the failure: a LONG transcript
+#: from audio the model is not confident about is confabulation over
+#: background speech, which is exactly what the TV clips produce.
+
+#: Seconds of audio below which language_probability is not trusted for a
+#: same-language rejection. 2.0: every owner clip under the floor was 1.2 s,
+#: and every owner clip at or above 2 s scored >= 0.9648 (45 samples).
+LANGUAGE_CONFIDENCE_MIN_DURATION_S = 2.0
+
+#: Transcript-length fallback when duration is unavailable. 150 characters
+#: sits between the longest owner utterance measured (72) and the shortest
+#: media confabulation (362) -- a 2x margin on the side that matters, since
+#: over-rejecting the owner is worse than under-rejecting the TV.
+LANGUAGE_CONFIDENCE_MIN_CHARS = 150
+
 # Unicode script blocks, filtered to letters below (punctuation/digits/emoji
 # and inherited combining accents are neutral). Block reference:
 # https://www.unicode.org/Public/17.0.0/ucd/Scripts.txt
@@ -91,7 +126,7 @@ class LanguageConfidenceGate:
         self.lock = threading.Lock()
 
     def evaluate(self, text, language, probability, configured_language, floor,
-                 *, remember=True):
+                 *, remember=True, duration_s=None):
         try:
             floor = float(floor)
             if not math.isfinite(floor) or not 0 <= floor <= 1:
@@ -102,9 +137,23 @@ class LanguageConfidenceGate:
             expected = {configured_language} if configured_language else {"en", *self.accepted}
             if not text.strip():
                 return None, expected
-            if (language not in expected and probability is not None
-                    and probability < floor):
-                return "low_confidence", expected
+            # Queue 119. Two ways to fail the floor:
+            #   - the language is not one we expect (the original rule), or
+            #   - it IS expected, but this is a substantial utterance the
+            #     model is unsure about -- the TV-audio signature.
+            # The second is duration-gated (or length-gated when the caller
+            # cannot supply duration) so a 1.2 s "done." is never judged on a
+            # probability that short audio cannot support.
+            if probability is not None and probability < floor:
+                if duration_s is None:
+                    substantial = len(text.strip()) >= LANGUAGE_CONFIDENCE_MIN_CHARS
+                else:
+                    try:
+                        substantial = float(duration_s) >= LANGUAGE_CONFIDENCE_MIN_DURATION_S
+                    except (TypeError, ValueError):
+                        substantial = len(text.strip()) >= LANGUAGE_CONFIDENCE_MIN_CHARS
+                if language not in expected or substantial:
+                    return "low_confidence", expected
             if script_mismatch_ratio(text, expected) > 0.30:
                 return "script_mismatch", expected
             if remember and language:

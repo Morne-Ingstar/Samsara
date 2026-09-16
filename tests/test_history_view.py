@@ -2,7 +2,7 @@
 day-grouped history list embedded by BOTH the standalone history_qt.py
 window and main_window_qt.py's History tab.
 
-Pure-function tests (_pill_for_row, _matches_type_filter) need no Qt.
+Pure-function tests (row_outcome, _matches_type_filter) need no Qt.
 Construction tests use the session-scoped `qapp` fixture (tests/conftest.py)
 and pump the Qt event loop briefly since row loading happens on a
 background thread, results marshaled back via Signal.
@@ -20,8 +20,9 @@ sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 from samsara.history import HistoryManager
 from samsara.history_store import HistoryStore
 from samsara.ui import theme
+from samsara.ui import history_view as hv
 from samsara.ui.history_view import (
-    HistoryView, _pill_for_row, _matches_type_filter, _is_empty_wake_attempt,
+    HistoryView, row_outcome, _matches_type_filter, _is_empty_wake_attempt,
     _SCOPE_LAST_7_DAYS, _SCOPE_ALL,
 )
 
@@ -58,40 +59,39 @@ def _make_store(tmp_path, name="history.db"):
 # Pure helpers -- no Qt
 # ============================================================================
 
-class TestPillForRow:
+class TestRowOutcome:
+    """Queue 79: the pill is the entry's outcome, derived from recorded
+    columns. Plain typed dictation carries no pill."""
+
     def test_no_pill_for_plain_dictation(self):
-        assert _pill_for_row("dictation", "success") is None
+        assert row_outcome({"entry_type": "dictation", "status": "success"}) is None
 
     def test_command_pill(self):
-        label, color = _pill_for_row("command", "success")
-        assert label == "Command"
+        outcome = row_outcome({"entry_type": "command", "status": "success"})
+        assert outcome.label == "Command"
 
     def test_wake_command_pill(self):
-        label, color = _pill_for_row("wake_command", "success")
-        assert label == "Wake"
+        outcome = row_outcome({"entry_type": "wake_command", "status": "success", "display_text": "stop listening"})
+        assert outcome.label == "Command"
 
     def test_failed_entry_type_pill(self):
-        label, color = _pill_for_row("failed", "failed")
-        assert label == "Failed"
-        assert color == theme.ERROR
+        outcome = row_outcome({"entry_type": "failed", "status": "failed", "display_text": "[FAILED] x"})
+        assert outcome.label == "Failed"
+        assert hv._pill_colours()[outcome.kind][0] == theme.ERROR
 
-    def test_failed_status_with_other_entry_type_still_gets_failed_pill(self):
-        """A dictation row that failed must show the Failed pill, not be
-        silently treated as plain dictation (the capability restored from
-        the old _HistoryPanel)."""
-        label, color = _pill_for_row("dictation", "failed")
-        assert label == "Failed"
-        assert color == theme.ERROR
+    def test_failed_dictation_is_not_typed_not_generic_failure(self):
+        """A dictation whose paste failed still has its words -- the pill
+        says what happened to them (the entry the user most needs back)."""
+        outcome = row_outcome({"entry_type": "dictation", "status": "failed", "display_text": "hi"})
+        assert outcome.label == "Not typed"
+        assert hv._pill_colours()[outcome.kind][0] == theme.WARNING
 
-    def test_failed_entry_type_with_default_success_status_is_still_red(self):
-        """Regression: some failure paths set entry_type='failed' but leave
-        status at its 'success' default (HistoryManager.add()'s default) --
-        this must NOT fall through to the generic accent-colored pill. Caught
-        via the history_screenshots.py seed data, which hits exactly this
-        combination (store.append('failed', text) never sets status)."""
-        label, color = _pill_for_row("failed", "success")
-        assert label == "Failed"
-        assert color == theme.ERROR
+    def test_failed_entry_type_with_default_success_status_is_still_failed(self):
+        """Some failure paths set entry_type='failed' but leave status at its
+        'success' default -- still a failure, never the accent pill."""
+        outcome = row_outcome({"entry_type": "failed", "status": "success", "display_text": "[FAILED] x"})
+        assert outcome.label == "Failed"
+        assert hv._pill_colours()[outcome.kind][0] == theme.ERROR
 
 
 class TestMatchesTypeFilter:
@@ -108,13 +108,24 @@ class TestMatchesTypeFilter:
         assert _matches_type_filter({"entry_type": "dictation"}, "Dictation")
         assert not _matches_type_filter({"entry_type": "command"}, "Dictation")
 
-    def test_failed_matches_failed_entry_type_or_failed_status(self):
-        assert _matches_type_filter({"entry_type": "failed", "status": "failed"}, "Failed")
-        assert _matches_type_filter({"entry_type": "dictation", "status": "failed"}, "Failed")
-        assert not _matches_type_filter({"entry_type": "dictation", "status": "success"}, "Failed")
+    def test_not_typed_matches_failed_entry_type_or_failed_status(self):
+        # "Failed" is the pre-79 name, kept as an alias of "Not typed".
+        for name in ("Failed", "Not typed"):
+            assert _matches_type_filter({"entry_type": "failed", "status": "failed"}, name)
+            assert _matches_type_filter({"entry_type": "dictation", "status": "failed"}, name)
+            assert not _matches_type_filter({"entry_type": "dictation", "status": "success"}, name)
 
 
 class TestEmptyWakeAttempts:
+    def test_hotkey_no_speech_rows_are_hidden_too(self):
+        """Queue 79: the recorder writes no-speech rows from the hotkey path
+        as well (mode 'hold', status 'empty'); pre-79 they showed as red
+        Failed entries."""
+        assert _is_empty_wake_attempt({
+            "mode": "hold", "entry_type": "failed", "status": "empty",
+            "display_text": "(no speech detected)",
+        })
+
     def test_only_empty_wake_rows_are_hidden(self):
         assert _is_empty_wake_attempt({
             "mode": "wake", "entry_type": "failed", "display_text": "(no speech detected)",

@@ -86,6 +86,11 @@ class _SharedSessionState:
     original_volume: float
     lease_factors: dict[int, float]
     applied_volume: float
+    # 73: the level last confirmed written to the app. `applied_volume` is
+    # bookkeeping and moves before the write; when a session vanishes this is
+    # what the app is really left at, and what a later session of it is
+    # matched against.
+    written_volume: float | None = None
 
 
 _DUCKER_LOCK = threading.Lock()
@@ -102,6 +107,465 @@ def _multiply_factors(factors: Iterable[float]) -> float:
 
 def _clamp_volume(level: float) -> float:
     return max(0.0, min(1.0, float(level)))
+
+
+# --- Duck journal (52) -------------------------------------------------------
+#
+# A duck only exists in this process's memory, and atexit does not run when
+# Windows kills the process (WER after an access violation, Task Manager,
+# os._exit). The other apps then stay ducked, and the next capture read that
+# ducked level as the "original" to restore to -- a self-perpetuating 1%.
+#
+# So every shared-session change is written ahead of the volume change to a
+# small JSON file beside logs/session.running. The write is a whole-file
+# os.replace: once it returns, the bytes belong to the OS and survive the
+# process being terminated (no fsync -- a power loss is not the failure
+# being fixed, and the engage path is latency-sensitive). A clean release
+# removes the entry; whatever is still listed at the next start is a duck
+# nobody restored, and recover_leftover_ducks() puts it back -- but only
+# where the session is still at the level we applied, so a user change made
+# since the crash wins, exactly as stop()'s conditional restore does.
+#
+# The journal also keeps the last plausible original per process name
+# ("known levels"). _vet_original() uses it to refuse an original that is at
+# or below what a capture duck would have produced from that remembered
+# level: that reading is a leftover duck (a crash from before this journal,
+# or a lost journal), not the user's volume.
+#
+# 73 -- stranding WITHOUT a crash. When an app closes its audio stream while
+# ducked, the ducking host drops the session and release() cannot read it
+# ("unknown sid"), so the restore is skipped. Windows keeps the app's volume
+# at the ducked level, and the app's next session opens there. Before 73 the
+# entry then sat in memory until the next launch while a sweep adopted the
+# new session at the ducked level as its "original" -- 0.8 x 0.8 x ... for as
+# long as the idle duck stayed on. Now such an entry goes back to the pending
+# queue at once, and every start() and sweep retries it against the sessions
+# it just listed: a session of that app still at exactly the level we left
+# it at is put back. An entry stays queued while the app is not running (its
+# relaunch opens at the ducked level); it is dropped once the app is seen at
+# any other level (healed, or the user changed it).
+
+DUCK_JOURNAL_NAME = "duck_state.json"
+
+# An original at or below this is never trusted or remembered: no one keeps
+# an app they want to hear at 2%, and it is where two crashed capture ducks
+# (0.12 * 0.12 = 1.4%) leave a full-volume app.
+IMPLAUSIBLE_ORIGINAL_FLOOR = 0.02
+
+# Deep-duck threshold, not a factor: an original at or below remembered * this
+# is treated as a leftover duck whatever produced it (the capture duck, 0.15,
+# and everything composed under it). A shallower duck (the idle duck, 0.8)
+# is recognised by exact match against the factors really in use instead --
+# see _vet_original().
+NEAR_DUCK_FACTOR = 0.15
+
+# Relative tolerance for "this level is exactly remembered * a duck factor".
+# The app holds float32(original * factor): at most one float32 ULP (about
+# 6e-8 relative) from the double we compute. 1e-4 is far above that and far
+# below a 1% volume-mixer step at any audible level.
+_FACTOR_MATCH_REL = 1e-4
+
+# Pending entries kept while their app is not running are capped, oldest out.
+_PENDING_CAP = 64
+
+_JOURNAL_LOCK = threading.RLock()
+_RECOVERY_LOCK = threading.Lock()
+_journal_path: Path | None = None
+_journal_active: dict[str, dict] = {}
+_journal_pending: list[dict] = []
+_known_levels: dict[str, float] = {}
+# 73: every duck factor a SessionDucker has been built with (persisted), so
+# _vet_original() checks the multipliers actually applied on each path.
+_duck_factors: set[float] = set()
+# 73: process name -> level a shallow match rejected this run. Seeing the same
+# level again means the user set it (a leftover is restored or journaled).
+_shallow_rejected: dict[str, float] = {}
+_notice_sink: Any = None
+_pending_notices: list[str] = []
+
+
+def _journal_key(handle: Any) -> str:
+    instance = getattr(handle, "instance_id", None)
+    if instance:
+        return f"instance:{instance}"
+    return f"pid:{getattr(handle, 'pid', 0)}:{getattr(handle, 'process_name', None) or ''}"
+
+
+def _write_journal_locked() -> None:
+    if _journal_path is None:
+        return
+    payload = {
+        "version": 1,
+        "ducked": list(_journal_pending) + list(_journal_active.values()),
+        "known_levels": dict(_known_levels),
+        "duck_factors": sorted(_duck_factors),
+    }
+    tmp = _journal_path.with_name(_journal_path.name + ".tmp")
+    try:
+        _journal_path.parent.mkdir(parents=True, exist_ok=True)
+        tmp.write_text(json.dumps(payload), encoding="utf-8")
+        os.replace(tmp, _journal_path)
+    except Exception as exc:
+        logger.debug("[DUCK] duck journal write failed: %s", exc)
+
+
+def _journal_record(session_id: str, handle: Any, original: float, applied: float) -> None:
+    with _JOURNAL_LOCK:
+        entry = _journal_active.get(session_id)
+        if entry is None:
+            entry = {
+                "key": _journal_key(handle),
+                "pid": int(getattr(handle, "pid", 0) or 0),
+                "process_name": getattr(handle, "process_name", None),
+                "original": float(original),
+            }
+            _journal_active[session_id] = entry
+        # The original is written once, when the shared state is created;
+        # later leases only move `applied`. See test_engage_while_engaged_*.
+        entry["applied"] = float(applied)
+        _write_journal_locked()
+
+
+def _journal_forget(session_id: str) -> None:
+    with _JOURNAL_LOCK:
+        if _journal_active.pop(session_id, None) is not None:
+            _write_journal_locked()
+
+
+def _journal_orphan(session_id: str, left_at: float | None) -> None:
+    """A release could not verify or restore this session (it vanished, or
+    the write failed): hand its entry back to the pending queue so the next
+    start() or sweep retries it (73), instead of waiting for a relaunch."""
+    with _JOURNAL_LOCK:
+        entry = _journal_active.pop(session_id, None)
+        if entry is None:
+            return
+        if left_at is not None:
+            entry["applied"] = float(left_at)
+        _journal_pending.append(entry)
+        if len(_journal_pending) > _PENDING_CAP:
+            dropped = _journal_pending[: len(_journal_pending) - _PENDING_CAP]
+            del _journal_pending[: len(dropped)]
+            logger.warning(
+                "[DUCK] duck journal over %d pending entries, dropped the oldest: %s",
+                _PENDING_CAP, ", ".join(str(e.get("process_name")) for e in dropped),
+            )
+        _write_journal_locked()
+    logger.info(
+        "[DUCK] %s could not be restored now; queued to restore when it is seen again",
+        entry.get("process_name") or session_id,
+    )
+    flight_recorder.record(
+        "ducker_restore_queued", session_id=session_id,
+        process_name=entry.get("process_name"), left_at=left_at,
+    )
+
+
+def _register_duck_factor(level: float) -> None:
+    if 0.0 < level < 1.0:
+        with _JOURNAL_LOCK:
+            _duck_factors.add(round(float(level), 6))
+
+
+def _duck_products() -> list[float]:
+    """Every multiplier a duck can leave an app at: each factor in use and
+    each composition of up to three (idle x capture x hotkey)."""
+    with _JOURNAL_LOCK:
+        factors = sorted(_duck_factors)
+    products: set[float] = set()
+    for size in (1, 2, 3):
+        for combo in itertools.combinations(factors, size):
+            products.add(_multiply_factors(combo))
+    return sorted(products)
+
+
+def set_notice_sink(sink: Any) -> None:
+    """Register `sink(message)` to show the user something ducking could not
+    fix by itself. Notices raised before a sink exists are delivered on
+    registration. Each is delivered once."""
+    global _notice_sink
+    with _JOURNAL_LOCK:
+        _notice_sink = sink
+        queued, _pending_notices[:] = list(_pending_notices), []
+    for message in queued:
+        _deliver_notice(sink, message)
+
+
+def _deliver_notice(sink: Any, message: str) -> None:
+    try:
+        sink(message)
+    except Exception as exc:
+        logger.warning("[DUCK] could not show ducking notice: %s", exc)
+
+
+def _surface_once(message: str) -> None:
+    logger.warning("[DUCK] USER NOTICE: %s", message)
+    flight_recorder.record("ducker_user_notice", message=message)
+    with _JOURNAL_LOCK:
+        sink = _notice_sink
+        if sink is None:
+            _pending_notices.append(message)
+            return
+    _deliver_notice(sink, message)
+
+
+def _remember_level(process_name: str | None, level: float) -> None:
+    if not process_name or level <= IMPLAUSIBLE_ORIGINAL_FLOOR:
+        return
+    with _JOURNAL_LOCK:
+        if _known_levels.get(process_name) != level:
+            _known_levels[process_name] = float(level)
+            _write_journal_locked()
+
+
+def _vet_original(handle: Any, current: float) -> tuple[float, bool]:
+    """(original to use, whether `current` is a plausible user level).
+
+    Implausible:
+      * at or below IMPLAUSIBLE_ORIGINAL_FLOOR;
+      * at or below remembered * NEAR_DUCK_FACTOR (a deep duck, whatever
+        composition produced it);
+      * exactly remembered * a factor or composition really in use (73: the
+        idle duck's 0.8 was never caught by the 0.15 rule). A mixer step
+        cannot be told from a duck by value alone when remembered * factor
+        is a whole percent, so this rule fires once per process name and
+        level per run: seeing the same level again after it was put back
+        means the user chose it, and it is accepted.
+    Then the remembered level (when there is one and it is louder) is what
+    the session returns to; with nothing remembered the current level is
+    used but never remembered, because restoring to a guessed 100% is the
+    louder bug.
+    """
+    name = getattr(handle, "process_name", None)
+    with _JOURNAL_LOCK:
+        remembered = _known_levels.get(name) if name else None
+    near_target = current <= IMPLAUSIBLE_ORIGINAL_FLOOR or (
+        remembered is not None and current <= remembered * NEAR_DUCK_FACTOR + _VOLUME_EPSILON
+    )
+    if not near_target and remembered is not None and current < remembered:
+        factor = next(
+            (p for p in _duck_products()
+             if abs(current - remembered * p) <= _FACTOR_MATCH_REL * remembered * p),
+            None,
+        )
+        if factor is not None:
+            with _JOURNAL_LOCK:
+                previous = _shallow_rejected.pop(name, None)
+                repeat = previous is not None and abs(previous - current) <= _FACTOR_MATCH_REL * current
+                if not repeat:
+                    _shallow_rejected[name] = current
+            if repeat:
+                logger.info(
+                    "[DUCK] %s is back at %.3f after being restored from it -- "
+                    "accepting it as the user's own level", name, current,
+                )
+                return current, True
+            logger.warning(
+                "[DUCK] %s is at %.3f, exactly x%.3f of its remembered %.3f -- "
+                "treating it as a leftover duck and restoring to %.3f",
+                name, current, factor, remembered, remembered,
+            )
+            flight_recorder.record(
+                "ducker_original_rejected", process_name=name, current=current,
+                used=remembered, factor=factor,
+            )
+            return remembered, False
+    if not near_target:
+        return current, True
+    if remembered is not None and remembered > current:
+        logger.warning(
+            "[DUCK] %s is at %.3f, at the duck target of its remembered %.3f -- "
+            "treating it as a leftover duck and restoring to %.3f",
+            name, current, remembered, remembered,
+        )
+        flight_recorder.record(
+            "ducker_original_rejected", process_name=name, current=current, used=remembered,
+        )
+        return remembered, False
+    logger.warning(
+        "[DUCK] %s is at %.3f, too low to trust as its normal volume and nothing "
+        "better is remembered -- ducking from it but not remembering it",
+        name, current,
+    )
+    return current, False
+
+
+def configure_duck_journal(path: str | os.PathLike, *, previous_unclean: bool = False) -> int:
+    """Point the engine at its journal and queue any duck a previous run left
+    behind. Returns the number of leftover entries queued. Recovery runs on a
+    background thread and, at the latest, before the next SessionDucker.start().
+
+    `previous_unclean` is boot.begin_session()'s verdict (logs/session.running
+    was still there). It explains the leftover in the log; the journal entries
+    themselves are the authority on what is still ducked, because quit_app's
+    os._exit can also skip a restore and clears the marker first."""
+    global _journal_path
+    path = Path(path)
+    loaded: dict = {}
+    try:
+        if path.exists():
+            loaded = json.loads(path.read_text(encoding="utf-8")) or {}
+    except Exception as exc:
+        logger.warning("[DUCK] duck journal unreadable, ignoring it: %s", exc)
+        loaded = {}
+    scrubbed_levels: list[str] = []
+    retargeted: list[str] = []
+    abandoned: list[dict] = []
+    with _JOURNAL_LOCK:
+        _journal_path = path
+        _known_levels.clear()
+        for name, level in (loaded.get("known_levels") or {}).items():
+            try:
+                level = float(level)
+            except (TypeError, ValueError):
+                continue
+            if level > IMPLAUSIBLE_ORIGINAL_FLOOR:
+                _known_levels[str(name)] = level
+            else:
+                scrubbed_levels.append(f"{name}={level:.4f}")
+        for factor in loaded.get("duck_factors") or []:
+            try:
+                _register_duck_factor(float(factor))
+            except (TypeError, ValueError):
+                continue
+        # 73: an entry whose original is itself implausible would put the app
+        # back at a leftover duck. With a trusted level remembered for that app,
+        # restore to that instead (still only if the app is at exactly the level
+        # we left it at). With nothing trusted there is no evidence of the right
+        # level: stop tracking it and tell the user once, rather than guess.
+        entries: list[dict] = []
+        for entry in loaded.get("ducked") or []:
+            if not isinstance(entry, dict):
+                continue
+            try:
+                original = float(entry.get("original", 0.0))
+            except (TypeError, ValueError):
+                original = 0.0
+            if original > IMPLAUSIBLE_ORIGINAL_FLOOR:
+                entries.append(entry)
+                continue
+            name = entry.get("process_name")
+            remembered = _known_levels.get(name) if name else None
+            if remembered is not None:
+                retargeted.append(f"{name}: {original:.4f} -> {remembered:.3f}")
+                entries.append(dict(entry, original=remembered))
+            else:
+                abandoned.append(entry)
+        _journal_pending[:] = entries[-_PENDING_CAP:]
+        pending = len(_journal_pending)
+        if scrubbed_levels or retargeted or abandoned:
+            _write_journal_locked()
+    if scrubbed_levels or retargeted or abandoned:
+        logger.warning(
+            "[DUCK] startup scrub: dropped implausible remembered level(s) [%s]; "
+            "restore target raised to the remembered level [%s]; stopped tracking [%s]",
+            ", ".join(scrubbed_levels),
+            ", ".join(retargeted),
+            ", ".join(f"{e.get('process_name')}={float(e.get('original', 0.0)):.4f}" for e in abandoned),
+        )
+        flight_recorder.record(
+            "ducker_journal_scrubbed", known_levels=scrubbed_levels,
+            retargeted=retargeted, abandoned=[e.get("process_name") for e in abandoned],
+        )
+    for entry in abandoned:
+        _surface_once(
+            f"{entry.get('process_name') or 'An app'} may still be very quiet: an earlier "
+            f"Samsara run left it at {float(entry.get('applied', 0.0)) * 100:.1f}% and "
+            "Samsara has no record of its normal volume, so it was left as it is."
+        )
+    if pending:
+        logger.warning(
+            "[DUCK] %d app session(s) were left ducked by the previous run (%s) -- restoring",
+            pending,
+            "it did not shut down cleanly" if previous_unclean else "it exited without restoring",
+        )
+        thread_registry.spawn("duck-journal.recover", recover_leftover_ducks, daemon=True)
+    return pending
+
+
+def recover_leftover_ducks(sessions: list | None = None) -> int:
+    """Restore sessions a previous run -- or a release that could not verify
+    its session -- left ducked. `sessions` is an enumeration the caller just
+    made (start() and sweeps pass theirs); without it one is made here.
+    Idempotent; returns the number of sessions restored. Never raises."""
+    with _RECOVERY_LOCK:
+        with _JOURNAL_LOCK:
+            pending = list(_journal_pending)
+        if not pending:
+            return 0
+        if sessions is None:
+            try:
+                sessions = list(_iter_audio_sessions())
+            except Exception as exc:
+                logger.warning("[DUCK] leftover duck recovery could not list sessions: %s", exc)
+                return 0  # entries stay queued; the next start() retries
+        with _DUCKER_LOCK:
+            owned = set(_SHARED_SESSIONS)
+
+        by_key: dict[str, Any] = {}
+        by_name: dict[str, list] = {}
+        for s in sessions:
+            by_key[_journal_key(s)] = s
+            name = getattr(s, "process_name", None)
+            if name:
+                by_name.setdefault(name, []).append(s)
+
+        restored = 0
+        resolved: list[dict] = []
+        for entry in pending:
+            original = float(entry.get("original", 0.0))
+            applied = float(entry.get("applied", -1.0))
+            name = entry.get("process_name")
+            candidates = [by_key[entry["key"]]] if entry.get("key") in by_key else list(by_name.get(name, []))
+            # A session a live duck holds is that duck's to restore, and says
+            # nothing about this entry either way.
+            candidates = [s for s in candidates if getattr(s, "session_id", None) not in owned]
+            if not candidates:
+                # The app is not running (or only under a live duck). Keep the
+                # entry: Windows keeps a per-app volume, so it opens at the
+                # ducked level when it comes back.
+                continue
+            for session in candidates:
+                # Only a session still at exactly what we left it at is ours
+                # to put back; any other level is a heal or a user change.
+                try:
+                    current = float(session.get_master_volume())
+                except Exception:
+                    continue
+                if not _floats_close(current, applied):
+                    continue
+                if original <= IMPLAUSIBLE_ORIGINAL_FLOOR:
+                    break
+                try:
+                    session.set_master_volume(original)
+                    restored += 1
+                    if session in by_name.get(name, []):
+                        by_name[name].remove(session)
+                except Exception as exc:
+                    logger.warning("[DUCK] leftover duck restore failed for %s: %s", name, exc)
+                break
+            resolved.append(entry)
+            # Restored or not, the journal's original is the best evidence of
+            # this app's real level: it guards the next capture of it.
+            if name and original > IMPLAUSIBLE_ORIGINAL_FLOOR:
+                with _JOURNAL_LOCK:
+                    _known_levels[name] = original
+
+        if not resolved:
+            return 0
+        resolved_ids = {id(e) for e in resolved}
+        with _JOURNAL_LOCK:
+            _journal_pending[:] = [e for e in _journal_pending if id(e) not in resolved_ids]
+            waiting = len(_journal_pending)
+            _write_journal_locked()
+        logger.info(
+            "[DUCK] leftover duck recovery: %d of %d session(s) restored, %d waiting for their app",
+            restored, len(resolved), waiting,
+        )
+        flight_recorder.record(
+            "ducker_leftover_recovered", restored=restored, pending=len(resolved), waiting=waiting,
+        )
+        return restored
 
 
 class SessionDucker:
@@ -136,8 +600,14 @@ class SessionDucker:
         exclude_pids: set[int] | None = None,
     ) -> None:
         self.duck_level = max(0.0, min(1.0, float(duck_level)))
+        _register_duck_factor(self.duck_level)
         self._base_excludes = set(exclude_pids or [])
         self._base_excludes.add(os.getpid())
+        # pid 0 is the Windows "System Sounds" session (psutil names it
+        # "System Idle Process"). It carries notification sounds, not media
+        # that masks speech, and it is shared by all of Windows -- ducking it
+        # bought nothing and stranded it like any app (73).
+        self._base_excludes.add(0)
 
         self._lock = _DUCKER_LOCK
         self._lease_id = next(_LEASE_ID_SOURCE)
@@ -255,6 +725,7 @@ class SessionDucker:
                 return
 
             expected_volume = state.applied_volume
+            left_at = state.written_volume if state.written_volume is not None else expected_volume
             state.lease_factors.pop(self._lease_id, None)
             handle = state.handle
             close_handle = False
@@ -263,6 +734,7 @@ class SessionDucker:
             if state.lease_factors:
                 state.applied_volume = self._target_for_factors(state)
                 restore_volume = state.applied_volume
+                _journal_record(session_id, handle, state.original_volume, restore_volume)
             else:
                 _SHARED_SESSIONS.pop(session_id, None)
                 restore_volume = (
@@ -295,10 +767,20 @@ class SessionDucker:
                     reason=str(exc),
                 )
                 if close_handle:
+                    # 73: queued for the next start() or sweep, which put it
+                    # back if the app is still at the level we left it at.
+                    _journal_orphan(session_id, left_at)
                     self._close_session(handle)
+                else:
+                    # Still leased: the journal must name what the app is
+                    # really at, not the target this release never wrote.
+                    with self._lock:
+                        if _SHARED_SESSIONS.get(session_id) is state:
+                            _journal_record(session_id, handle, state.original_volume, left_at)
                 return
             if not _floats_close(current, expected_volume):
                 if close_handle:
+                    _journal_forget(session_id)  # the user's change wins
                     self._close_session(handle)
                 return
 
@@ -312,8 +794,52 @@ class SessionDucker:
                 session_id,
                 exc,
             )
+            if close_handle:
+                _journal_orphan(session_id, left_at)  # still ducked: retried (73)
+                self._close_session(handle)
+            return
         if close_handle:
+            _journal_forget(session_id)
             self._close_session(handle)
+        else:
+            with self._lock:
+                if _SHARED_SESSIONS.get(session_id) is state:
+                    state.written_volume = restore_volume
+
+    def _sibling_original(self, session: _SessionHandle, live: float) -> float | None:
+        """The original of another session of the same app that a duck holds
+        at exactly `live`, if any (73). A new session opening at the level we
+        wrote to its app is that app's ducked volume -- Windows keeps one per
+        app -- typically because the ducked session just closed its stream
+        and this is its replacement. Adopting `live` as the original is how
+        an app compounded 0.8 x 0.8 x ... under a long idle duck."""
+        name = getattr(session, "process_name", None)
+        if not name:
+            return None
+        with self._lock:
+            for session_id, state in _SHARED_SESSIONS.items():
+                written = state.written_volume
+                if (
+                    session_id == session.session_id
+                    or written is None
+                    or getattr(state.handle, "process_name", None) != name
+                    or abs(written - live) > max(1e-6, _FACTOR_MATCH_REL * written)
+                    or state.original_volume <= live + _VOLUME_EPSILON
+                ):
+                    continue
+                original = state.original_volume
+                break
+            else:
+                return None
+        logger.info(
+            "[DUCK] new %s session opened at %.3f, the level a duck holds it at -- "
+            "restoring it to %.3f with the rest of the app",
+            name, live, original,
+        )
+        flight_recorder.record(
+            "ducker_original_inherited", process_name=name, current=live, used=original,
+        )
+        return original
 
     def _add_session_if_needed(
         self,
@@ -344,6 +870,7 @@ class SessionDucker:
                     state.applied_volume = self._target_for_factors(state)
                     target_volume = state.applied_volume
                     should_add_lease = True
+                    _journal_record(session_id, state.handle, state.original_volume, target_volume)
 
         if close_now:
             self._close_session(session)
@@ -357,6 +884,12 @@ class SessionDucker:
                 self._set_last_error("ISimpleAudioVolume.GetMasterVolume failed")
                 self._close_session(session)
                 return None
+            live_volume = original_volume
+            inherited = self._sibling_original(session, live_volume)
+            if inherited is not None:
+                original_volume, plausible = inherited, False
+            else:
+                original_volume, plausible = _vet_original(session, live_volume)
 
             with self._lock:
                 if not self._is_generation_active(generation) or session_id in self._tracked_by_id:
@@ -373,10 +906,15 @@ class SessionDucker:
                             applied_volume=_clamp_volume(original_volume * self.duck_level),
                         )
                         _SHARED_SESSIONS[session_id] = state
-                        previous_volume = original_volume
+                        # A failed engage rolls back to what was really
+                        # playing, not to a remembered level.
+                        previous_volume = live_volume
                         target_volume = state.applied_volume
                         created_new_state = True
                         should_add_lease = True
+                        _journal_record(session_id, session, original_volume, target_volume)
+                        if plausible:
+                            _remember_level(getattr(session, "process_name", None), original_volume)
                     elif self._lease_id in state.lease_factors:
                         close_now = True
                     else:
@@ -385,6 +923,7 @@ class SessionDucker:
                         state.applied_volume = self._target_for_factors(state)
                         target_volume = state.applied_volume
                         should_add_lease = True
+                        _journal_record(session_id, state.handle, state.original_volume, target_volume)
             if close_now:
                 self._close_session(session)
                 return None
@@ -408,6 +947,8 @@ class SessionDucker:
 
         tracked_now = False
         with self._lock:
+            if _SHARED_SESSIONS.get(session_id) is state:
+                state.written_volume = target_volume
             state = _SHARED_SESSIONS.get(session_id)
             if (
                 state is not None
@@ -454,6 +995,11 @@ class SessionDucker:
         stale_start = False
         try:
             discovered = list(_iter_audio_sessions())
+            if _journal_pending:
+                # A duck left by a crashed run, or by a release that could not
+                # reach its session, goes back before this one reads
+                # "original" levels (52, 73).
+                recover_leftover_ducks(discovered)
             for session in discovered:
                 self._increment_counter(seen=True)
                 if session.pid in self._base_excludes:
@@ -538,6 +1084,8 @@ class SessionDucker:
                 tracked_ids = set(self._tracked_by_id)
 
             sessions = list(_iter_audio_sessions())
+            if _journal_pending:
+                recover_leftover_ducks(sessions)  # before adoption reads originals (73)
             for session in sessions:
                 if session.pid in self._base_excludes:
                     self._close_session(session)
@@ -852,10 +1400,11 @@ class _ProxySessionHandle:
     get_master_volume/set_master_volume/close on them.
     """
 
-    def __init__(self, sid: str, pid: int, generation: int, process_name=None) -> None:
+    def __init__(self, sid: str, pid: int, generation: int, process_name=None, instance_id=None) -> None:
         self.session_id = sid
         self.pid = pid
         self.process_name = process_name
+        self.instance_id = instance_id
         self._generation = generation
 
     def _transport_checked(self) -> DuckingHostTransport:
@@ -909,6 +1458,7 @@ def _iter_audio_sessions() -> Iterable[_SessionHandle]:
             int(entry.get("pid", 0)),
             generation,
             entry.get("process_name"),
+            entry.get("instance"),
         )
         for entry in reply.get("sessions", [])
     ]

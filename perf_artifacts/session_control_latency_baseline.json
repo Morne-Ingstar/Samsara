@@ -1,0 +1,627 @@
+{
+ "logs": [
+  "C:\\Users\\Morne\\.samsara\\logs\\samsara.log.1",
+  "C:\\Users\\Morne\\.samsara\\logs\\samsara.log"
+ ],
+ "utterances_parsed": 796,
+ "commits": 21,
+ "one_word_end_commits": 21,
+ "stage_table_one_word_end": {
+  "endpoint_wait": {
+   "n": 21,
+   "median_ms": 670.0,
+   "p95_ms": 768.0,
+   "min_ms": 570.0,
+   "max_ms": 788.0
+  },
+  "queue_wait": {
+   "n": 21,
+   "median_ms": 1.0,
+   "p95_ms": 292.0,
+   "min_ms": 0.0,
+   "max_ms": 329.0
+  },
+  "decode_word": {
+   "n": 21,
+   "median_ms": 144.0,
+   "p95_ms": 339.0,
+   "min_ms": 131.0,
+   "max_ms": 341.0
+  },
+  "gate": {
+   "n": 21,
+   "median_ms": 2.0,
+   "p95_ms": 3.0,
+   "min_ms": 1.0,
+   "max_ms": 3.0
+  },
+  "commit_redecode": {
+   "n": 19,
+   "median_ms": 364.0,
+   "p95_ms": 964.5,
+   "min_ms": 141.0,
+   "max_ms": 2328.0
+  },
+  "smart_to_paste": {
+   "n": 21,
+   "median_ms": 318.0,
+   "p95_ms": 336.0,
+   "min_ms": 303.0,
+   "max_ms": 349.0
+  },
+  "paste_to_logged": {
+   "n": 21,
+   "median_ms": 14.0,
+   "p95_ms": 34.0,
+   "min_ms": 8.0,
+   "max_ms": 38.0
+  },
+  "capture_to_paste": {
+   "n": 21,
+   "median_ms": 831.0,
+   "p95_ms": 1415.0,
+   "min_ms": 485.0,
+   "max_ms": 2804.0
+  },
+  "speech_offset_to_paste": {
+   "n": 21,
+   "median_ms": 1541.0,
+   "p95_ms": 2177.0,
+   "min_ms": 1213.0,
+   "max_ms": 3404.0
+  },
+  "speech_offset_to_ctrl_v_est": {
+   "n": 21,
+   "median_ms": 1302.0,
+   "p95_ms": 1938.0,
+   "min_ms": 974.0,
+   "max_ms": 3165.0
+  }
+ },
+ "stage_table_all_commits": {
+  "endpoint_wait": {
+   "n": 21,
+   "median_ms": 670.0,
+   "p95_ms": 768.0,
+   "min_ms": 570.0,
+   "max_ms": 788.0
+  },
+  "queue_wait": {
+   "n": 21,
+   "median_ms": 1.0,
+   "p95_ms": 292.0,
+   "min_ms": 0.0,
+   "max_ms": 329.0
+  },
+  "decode_word": {
+   "n": 21,
+   "median_ms": 144.0,
+   "p95_ms": 339.0,
+   "min_ms": 131.0,
+   "max_ms": 341.0
+  },
+  "gate": {
+   "n": 21,
+   "median_ms": 2.0,
+   "p95_ms": 3.0,
+   "min_ms": 1.0,
+   "max_ms": 3.0
+  },
+  "commit_redecode": {
+   "n": 19,
+   "median_ms": 364.0,
+   "p95_ms": 964.5,
+   "min_ms": 141.0,
+   "max_ms": 2328.0
+  },
+  "smart_to_paste": {
+   "n": 21,
+   "median_ms": 318.0,
+   "p95_ms": 336.0,
+   "min_ms": 303.0,
+   "max_ms": 349.0
+  },
+  "paste_to_logged": {
+   "n": 21,
+   "median_ms": 14.0,
+   "p95_ms": 34.0,
+   "min_ms": 8.0,
+   "max_ms": 38.0
+  },
+  "capture_to_paste": {
+   "n": 21,
+   "median_ms": 831.0,
+   "p95_ms": 1415.0,
+   "min_ms": 485.0,
+   "max_ms": 2804.0
+  },
+  "speech_offset_to_paste": {
+   "n": 21,
+   "median_ms": 1541.0,
+   "p95_ms": 2177.0,
+   "min_ms": 1213.0,
+   "max_ms": 3404.0
+  },
+  "speech_offset_to_ctrl_v_est": {
+   "n": 21,
+   "median_ms": 1302.0,
+   "p95_ms": 1938.0,
+   "min_ms": 974.0,
+   "max_ms": 3165.0
+  }
+ },
+ "endpoint_wait_short_utterances": {
+  "n": 362,
+  "median_ms": 700.0,
+  "p95_ms": 833.9,
+  "min_ms": 16.0,
+  "max_ms": 1408.0
+ },
+ "decode_by_audio_length": {
+  "<=2s": {
+   "n": 290,
+   "median_ms": 155.0,
+   "p95_ms": 302.0,
+   "min_ms": 120.0,
+   "max_ms": 13028.0
+  },
+  "2-5s": {
+   "n": 392,
+   "median_ms": 196.0,
+   "p95_ms": 347.2,
+   "min_ms": 129.0,
+   "max_ms": 1924.0
+  },
+  "5-10s": {
+   "n": 104,
+   "median_ms": 271.0,
+   "p95_ms": 558.0,
+   "min_ms": 175.0,
+   "max_ms": 960.0
+  },
+  ">10s": {
+   "n": 10,
+   "median_ms": 460.5,
+   "p95_ms": 1159.3,
+   "min_ms": 282.0,
+   "max_ms": 1229.0
+  }
+ },
+ "commit_redecode_points": [
+  {
+   "audio_s": 11.9,
+   "ms": 668.0
+  },
+  {
+   "audio_s": 40.9,
+   "ms": 813.0
+  },
+  {
+   "audio_s": 89.6,
+   "ms": 2328.0
+  },
+  {
+   "audio_s": 2.0,
+   "ms": 141.0
+  },
+  {
+   "audio_s": 5.1,
+   "ms": 249.0
+  },
+  {
+   "audio_s": 5.0,
+   "ms": 234.0
+  },
+  {
+   "audio_s": 9.8,
+   "ms": 412.0
+  },
+  {
+   "audio_s": 7.2,
+   "ms": 328.0
+  },
+  {
+   "audio_s": 4.4,
+   "ms": 209.0
+  },
+  {
+   "audio_s": 20.6,
+   "ms": 661.0
+  },
+  {
+   "audio_s": 7.7,
+   "ms": 287.0
+  },
+  {
+   "audio_s": 15.0,
+   "ms": 450.0
+  },
+  {
+   "audio_s": 17.9,
+   "ms": 536.0
+  },
+  {
+   "audio_s": 18.4,
+   "ms": 643.0
+  },
+  {
+   "audio_s": 10.8,
+   "ms": 393.0
+  },
+  {
+   "audio_s": 8.6,
+   "ms": 364.0
+  },
+  {
+   "audio_s": 10.0,
+   "ms": 319.0
+  },
+  {
+   "audio_s": 6.6,
+   "ms": 294.0
+  },
+  {
+   "audio_s": 2.1,
+   "ms": 173.0
+  }
+ ],
+ "rows": [
+  {
+   "capture_ts": "2026-09-14 23:08:45,949",
+   "text": "END",
+   "duration_s": 1.4,
+   "endpoint_wait": 631.9999999999999,
+   "queue_wait": 0.0,
+   "decode_word": 241.00017547607422,
+   "gate": 0.9999275207519531,
+   "commit_redecode": 667.9999828338623,
+   "redecode_audio_s": 11.9,
+   "redecode_skipped": false,
+   "smart_to_paste": 302.99997329711914,
+   "paste_to_logged": 8.00013542175293,
+   "capture_to_paste": 1213.0000591278076,
+   "speech_offset_to_paste": 1845.0000591278076,
+   "speech_offset_to_ctrl_v_est": 1606.0000591278076
+  },
+  {
+   "capture_ts": "2026-09-15 01:53:31,865",
+   "text": "End.",
+   "duration_s": 1.5,
+   "endpoint_wait": 632.0000000000001,
+   "queue_wait": 104.00009155273438,
+   "decode_word": 150.9997844696045,
+   "gate": 3.000020980834961,
+   "commit_redecode": null,
+   "redecode_audio_s": null,
+   "redecode_skipped": true,
+   "smart_to_paste": 320.00017166137695,
+   "paste_to_logged": 18.999814987182617,
+   "capture_to_paste": 581.0000896453857,
+   "speech_offset_to_paste": 1213.0000896453857,
+   "speech_offset_to_ctrl_v_est": 974.0000896453857
+  },
+  {
+   "capture_ts": "2026-09-15 02:06:39,385",
+   "text": "End.",
+   "duration_s": 1.5,
+   "endpoint_wait": 669.9999999999999,
+   "queue_wait": 0.9999275207519531,
+   "decode_word": 183.0000877380371,
+   "gate": 3.000020980834961,
+   "commit_redecode": 812.999963760376,
+   "redecode_audio_s": 40.9,
+   "redecode_skipped": false,
+   "smart_to_paste": 348.9999771118164,
+   "paste_to_logged": 9.000062942504883,
+   "capture_to_paste": 1348.9999771118164,
+   "speech_offset_to_paste": 2018.9999771118164,
+   "speech_offset_to_ctrl_v_est": 1779.9999771118164
+  },
+  {
+   "capture_ts": "2026-09-15 02:24:58,964",
+   "text": "End.",
+   "duration_s": 1.5,
+   "endpoint_wait": 600.0000000000001,
+   "queue_wait": 15.000104904174805,
+   "decode_word": 148.00000190734863,
+   "gate": 1.9998550415039062,
+   "commit_redecode": 2328.000068664551,
+   "redecode_audio_s": 89.6,
+   "redecode_skipped": false,
+   "smart_to_paste": 310.99987030029297,
+   "paste_to_logged": 25.00009536743164,
+   "capture_to_paste": 2803.999900817871,
+   "speech_offset_to_paste": 3403.999900817871,
+   "speech_offset_to_ctrl_v_est": 3164.999900817871
+  },
+  {
+   "capture_ts": "2026-09-15 03:40:05,233",
+   "text": "End.",
+   "duration_s": 1.4,
+   "endpoint_wait": 569.9999999999999,
+   "queue_wait": 0.9999275207519531,
+   "decode_word": 302.0000457763672,
+   "gate": 2.000093460083008,
+   "commit_redecode": 140.99979400634766,
+   "redecode_audio_s": 2.0,
+   "redecode_skipped": false,
+   "smart_to_paste": 335.00003814697266,
+   "paste_to_logged": 8.00013542175293,
+   "capture_to_paste": 780.9998989105225,
+   "speech_offset_to_paste": 1350.9998989105225,
+   "speech_offset_to_ctrl_v_est": 1111.9998989105225
+  },
+  {
+   "capture_ts": "2026-09-15 03:40:21,326",
+   "text": "End.",
+   "duration_s": 1.4,
+   "endpoint_wait": 599.9999999999999,
+   "queue_wait": 118.00003051757812,
+   "decode_word": 148.9999294281006,
+   "gate": 3.000020980834961,
+   "commit_redecode": 249.00007247924805,
+   "redecode_audio_s": 5.1,
+   "redecode_skipped": false,
+   "smart_to_paste": 312.000036239624,
+   "paste_to_logged": 7.999897003173828,
+   "capture_to_paste": 831.0000896453857,
+   "speech_offset_to_paste": 1431.0000896453857,
+   "speech_offset_to_ctrl_v_est": 1192.0000896453857
+  },
+  {
+   "capture_ts": "2026-09-15 03:41:41,228",
+   "text": "End.",
+   "duration_s": 1.5,
+   "endpoint_wait": 700.0,
+   "queue_wait": 0.0,
+   "decode_word": 134.00006294250488,
+   "gate": 3.000020980834961,
+   "commit_redecode": 233.99996757507324,
+   "redecode_audio_s": 5.0,
+   "redecode_skipped": false,
+   "smart_to_paste": 312.999963760376,
+   "paste_to_logged": 13.000011444091797,
+   "capture_to_paste": 684.0000152587891,
+   "speech_offset_to_paste": 1384.000015258789,
+   "speech_offset_to_ctrl_v_est": 1145.000015258789
+  },
+  {
+   "capture_ts": "2026-09-15 03:42:12,034",
+   "text": "end",
+   "duration_s": 1.5,
+   "endpoint_wait": 704.0,
+   "queue_wait": 5.000114440917969,
+   "decode_word": 134.99999046325684,
+   "gate": 2.000093460083008,
+   "commit_redecode": 411.9999408721924,
+   "redecode_audio_s": 9.8,
+   "redecode_skipped": false,
+   "smart_to_paste": 317.99983978271484,
+   "paste_to_logged": 9.999990463256836,
+   "capture_to_paste": 871.999979019165,
+   "speech_offset_to_paste": 1575.999979019165,
+   "speech_offset_to_ctrl_v_est": 1336.999979019165
+  },
+  {
+   "capture_ts": "2026-09-15 03:47:01,934",
+   "text": "End.",
+   "duration_s": 1.5,
+   "endpoint_wait": 639.9999999999999,
+   "queue_wait": 0.9999275207519531,
+   "decode_word": 144.00005340576172,
+   "gate": 2.000093460083008,
+   "commit_redecode": 327.9998302459717,
+   "redecode_audio_s": 7.2,
+   "redecode_skipped": false,
+   "smart_to_paste": 315.000057220459,
+   "paste_to_logged": 8.00013542175293,
+   "capture_to_paste": 789.9999618530273,
+   "speech_offset_to_paste": 1429.9999618530273,
+   "speech_offset_to_ctrl_v_est": 1190.9999618530273
+  },
+  {
+   "capture_ts": "2026-09-15 03:56:55,820",
+   "text": "End.",
+   "duration_s": 1.4,
+   "endpoint_wait": 629.9999999999999,
+   "queue_wait": 1.0001659393310547,
+   "decode_word": 141.9999599456787,
+   "gate": 3.000020980834961,
+   "commit_redecode": 208.9998722076416,
+   "redecode_audio_s": 4.4,
+   "redecode_skipped": false,
+   "smart_to_paste": 309.999942779541,
+   "paste_to_logged": 12.000083923339844,
+   "capture_to_paste": 664.9999618530273,
+   "speech_offset_to_paste": 1294.9999618530273,
+   "speech_offset_to_ctrl_v_est": 1055.9999618530273
+  },
+  {
+   "capture_ts": "2026-09-15 04:01:30,627",
+   "text": "End.",
+   "duration_s": 1.4,
+   "endpoint_wait": 762.0,
+   "queue_wait": 291.99981689453125,
+   "decode_word": 140.0001049041748,
+   "gate": 2.000093460083008,
+   "commit_redecode": 660.9997749328613,
+   "redecode_audio_s": 20.6,
+   "redecode_skipped": false,
+   "smart_to_paste": 320.00017166137695,
+   "paste_to_logged": 37.999868392944336,
+   "capture_to_paste": 1414.9999618530273,
+   "speech_offset_to_paste": 2176.9999618530273,
+   "speech_offset_to_ctrl_v_est": 1937.9999618530273
+  },
+  {
+   "capture_ts": "2026-09-15 04:03:26,624",
+   "text": "End",
+   "duration_s": 1.4,
+   "endpoint_wait": 787.9999999999999,
+   "queue_wait": 0.0,
+   "decode_word": 138.99993896484375,
+   "gate": 2.000093460083008,
+   "commit_redecode": 286.9999408721924,
+   "redecode_audio_s": 7.7,
+   "redecode_skipped": false,
+   "smart_to_paste": 317.99983978271484,
+   "paste_to_logged": 8.00013542175293,
+   "capture_to_paste": 745.999813079834,
+   "speech_offset_to_paste": 1533.999813079834,
+   "speech_offset_to_ctrl_v_est": 1294.999813079834
+  },
+  {
+   "capture_ts": "2026-09-15 04:04:28,131",
+   "text": "End.",
+   "duration_s": 1.4,
+   "endpoint_wait": 631.9999999999999,
+   "queue_wait": 1.9998550415039062,
+   "decode_word": 144.00005340576172,
+   "gate": 2.000093460083008,
+   "commit_redecode": 450.0000476837158,
+   "redecode_audio_s": 15.0,
+   "redecode_skipped": false,
+   "smart_to_paste": 310.99987030029297,
+   "paste_to_logged": 13.000011444091797,
+   "capture_to_paste": 908.9999198913574,
+   "speech_offset_to_paste": 1540.9999198913574,
+   "speech_offset_to_ctrl_v_est": 1301.9999198913574
+  },
+  {
+   "capture_ts": "2026-09-15 04:10:56,633",
+   "text": "End.",
+   "duration_s": 1.5,
+   "endpoint_wait": 632.0000000000001,
+   "queue_wait": 0.0,
+   "decode_word": 341.0000801086426,
+   "gate": 0.9999275207519531,
+   "commit_redecode": 536.0000133514404,
+   "redecode_audio_s": 17.9,
+   "redecode_skipped": false,
+   "smart_to_paste": 335.9999656677246,
+   "paste_to_logged": 34.00015830993652,
+   "capture_to_paste": 1213.9999866485596,
+   "speech_offset_to_paste": 1845.9999866485596,
+   "speech_offset_to_ctrl_v_est": 1606.9999866485596
+  },
+  {
+   "capture_ts": "2026-09-15 04:13:45,324",
+   "text": "End.",
+   "duration_s": 1.5,
+   "endpoint_wait": 669.9999999999999,
+   "queue_wait": 152.00018882751465,
+   "decode_word": 134.99999046325684,
+   "gate": 1.9998550415039062,
+   "commit_redecode": 643.0001258850098,
+   "redecode_audio_s": 18.4,
+   "redecode_skipped": false,
+   "smart_to_paste": 309.00001525878906,
+   "paste_to_logged": 16.000032424926758,
+   "capture_to_paste": 1241.0001754760742,
+   "speech_offset_to_paste": 1911.0001754760742,
+   "speech_offset_to_ctrl_v_est": 1672.0001754760742
+  },
+  {
+   "capture_ts": "2026-09-15 05:12:28,732",
+   "text": "End.",
+   "duration_s": 1.5,
+   "endpoint_wait": 704.0,
+   "queue_wait": 0.9999275207519531,
+   "decode_word": 338.99998664855957,
+   "gate": 1.9998550415039062,
+   "commit_redecode": 393.00012588500977,
+   "redecode_audio_s": 10.8,
+   "redecode_skipped": false,
+   "smart_to_paste": 313.99989128112793,
+   "paste_to_logged": 32.000064849853516,
+   "capture_to_paste": 1048.9997863769531,
+   "speech_offset_to_paste": 1752.9997863769531,
+   "speech_offset_to_ctrl_v_est": 1513.9997863769531
+  },
+  {
+   "capture_ts": "2026-09-15 05:17:01,015",
+   "text": "End.",
+   "duration_s": 1.5,
+   "endpoint_wait": 764.0,
+   "queue_wait": 0.0,
+   "decode_word": 130.99980354309082,
+   "gate": 3.000020980834961,
+   "commit_redecode": 364.0000820159912,
+   "redecode_audio_s": 8.6,
+   "redecode_skipped": false,
+   "smart_to_paste": 318.00007820129395,
+   "paste_to_logged": 13.99993896484375,
+   "capture_to_paste": 815.9999847412109,
+   "speech_offset_to_paste": 1579.999984741211,
+   "speech_offset_to_ctrl_v_est": 1340.999984741211
+  },
+  {
+   "capture_ts": "2026-09-15 05:19:29,050",
+   "text": "End.",
+   "duration_s": 1.4,
+   "endpoint_wait": 694.0,
+   "queue_wait": 0.0,
+   "decode_word": 131.99996948242188,
+   "gate": 2.000093460083008,
+   "commit_redecode": 319.0000057220459,
+   "redecode_audio_s": 10.0,
+   "redecode_skipped": false,
+   "smart_to_paste": 328.99999618530273,
+   "paste_to_logged": 13.99993896484375,
+   "capture_to_paste": 782.0000648498535,
+   "speech_offset_to_paste": 1476.0000648498535,
+   "speech_offset_to_ctrl_v_est": 1237.0000648498535
+  },
+  {
+   "capture_ts": "2026-09-15 05:21:11,726",
+   "text": "end",
+   "duration_s": 1.4,
+   "endpoint_wait": 661.9999999999999,
+   "queue_wait": 328.99999618530273,
+   "decode_word": 142.99988746643066,
+   "gate": 3.000020980834961,
+   "commit_redecode": 293.99991035461426,
+   "redecode_audio_s": 6.6,
+   "redecode_skipped": false,
+   "smart_to_paste": 315.000057220459,
+   "paste_to_logged": 22.00007438659668,
+   "capture_to_paste": 1083.9998722076416,
+   "speech_offset_to_paste": 1745.9998722076416,
+   "speech_offset_to_ctrl_v_est": 1506.9998722076416
+  },
+  {
+   "capture_ts": "2026-09-15 14:32:06,233",
+   "text": "End.",
+   "duration_s": 1.5,
+   "endpoint_wait": 736.0,
+   "queue_wait": 0.0,
+   "decode_word": 138.99993896484375,
+   "gate": 3.000020980834961,
+   "commit_redecode": 173.00009727478027,
+   "redecode_audio_s": 2.1,
+   "redecode_skipped": false,
+   "smart_to_paste": 320.9998607635498,
+   "paste_to_logged": 16.000032424926758,
+   "capture_to_paste": 635.9999179840088,
+   "speech_offset_to_paste": 1371.9999179840088,
+   "speech_offset_to_ctrl_v_est": 1132.9999179840088
+  },
+  {
+   "capture_ts": "2026-09-15 14:42:41,245",
+   "text": "End.",
+   "duration_s": 1.6,
+   "endpoint_wait": 768.0000000000001,
+   "queue_wait": 2.000093460083008,
+   "decode_word": 153.0001163482666,
+   "gate": 3.000020980834961,
+   "commit_redecode": null,
+   "redecode_audio_s": null,
+   "redecode_skipped": true,
+   "smart_to_paste": 322.9999542236328,
+   "paste_to_logged": 22.00007438659668,
+   "capture_to_paste": 485.0001335144043,
+   "speech_offset_to_paste": 1253.0001335144043,
+   "speech_offset_to_ctrl_v_est": 1014.0001335144043
+  }
+ ]
+}

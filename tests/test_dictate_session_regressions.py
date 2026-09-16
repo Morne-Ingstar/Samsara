@@ -145,18 +145,18 @@ def test_buffered_session_commit_records_legacy_and_sqlite_history():
     """Natural pauses stage without pasting (req 1); "end" commits once,
     and history/notify/paste all see the same finalized text (req 7).
 
-    Expected text is "1 complete thought." (not "One...") -- format_numbers
-    is on in the default test config and correctly converts the number
-    word, same as it would for any other dictation path (req 3)."""
+    Expected text is "One complete thought.": format_numbers is on in the
+    default test config, and since queue 55 a prose "one" stays a word (it
+    used to be pasted as "1 complete thought.", the owner's reported bug)."""
     app = _buffered_dictation_app()
     manager, outcome = _dictate_and_end(app, ["One complete thought."])
 
     assert outcome.kind == "dictate_committed"
     assert manager.mode is SessionMode.DICTATE
-    app._paste_preserving_clipboard.assert_called_once_with("1 complete thought.", before_paste=ANY)
-    app.add_to_history.assert_called_once_with("1 complete thought.", is_command=False)
+    app._paste_preserving_clipboard.assert_called_once_with("One complete thought.", before_paste=ANY)
+    app.add_to_history.assert_called_once_with("One complete thought.", is_command=False)
     assert app._log_history.call_args.kwargs["mode"] == "dictate"
-    app._notify_main_window.assert_called_once_with("1 complete thought.")
+    app._notify_main_window.assert_called_once_with("One complete thought.")
 
 
 def test_staged_chunks_create_no_history_until_one_successful_paste():

@@ -1,0 +1,1317 @@
+{
+ "tails_raw": {
+  "14:09:20": "t if.. we had a little.. mini square window or overlay that you can put on the screen and it's got. you know, your main. apps uh.. with. number designations next to each one. so like 1, 2, 3, 4, 5, 6.",
+  "14:11:36": "de because you know in dictate well actually no it couldn't be in dictate mode at least I don't see any way for it to be because people could start their sentence with one or two etc yeah I don't know",
+  "14:11:40": "ecause you know in dictate well actually no it couldn't be in dictate mode at least I don't see any way for it to be because people could start their sentence with one or two etc yeah I don't know and",
+  "14:11:45": "use you know in dictate well actually no it couldn't be in dictate mode at least I don't see any way for it to be because people could start their sentence with one or two etc yeah I don't know and nd",
+  "14:11:55": "u know in dictate well actually no it couldn't be in dictate mode at least I don't see any way for it to be because people could start their sentence with one or two etc yeah I don't know and nd nd nd"
+ },
+ "tails_clean": {
+  "14:09:20": "we had a little.. mini square window or overlay that you can put on the screen and it's got. you know, your main. apps uh.. with. number designations next to each one. so like 1, 2, 3, 4, 5, 6.",
+  "14:11:36": "because you know in dictate well actually no it couldn't be in dictate mode at least I don't see any way for it to be because people could start their sentence with one or two etc yeah I don't know",
+  "14:11:40": "you know in dictate well actually no it couldn't be in dictate mode at least I don't see any way for it to be because people could start their sentence with one or two etc yeah I don't know and",
+  "14:11:45": "you know in dictate well actually no it couldn't be in dictate mode at least I don't see any way for it to be because people could start their sentence with one or two etc yeah I don't know and nd",
+  "14:11:55": "know in dictate well actually no it couldn't be in dictate mode at least I don't see any way for it to be because people could start their sentence with one or two etc yeah I don't know and"
+ },
+ "cap": 200,
+ "tail_live_result": {
+  "14:09:20": "and..",
+  "14:11:36": "and",
+  "14:11:40": "nd",
+  "14:11:45": "nd",
+  "14:11:55": "nd"
+ },
+ "pending_checks": [
+  [
+   "14:08:44",
+   31,
+   31
+  ],
+  [
+   "14:08:47",
+   42,
+   42
+  ],
+  [
+   "14:08:54",
+   60,
+   60
+  ],
+  [
+   "14:08:57",
+   71,
+   71
+  ],
+  [
+   "14:09:00",
+   89,
+   89
+  ],
+  [
+   "14:09:03",
+   120,
+   120
+  ],
+  [
+   "14:09:05",
+   135,
+   135
+  ],
+  [
+   "14:09:07",
+   156,
+   156
+  ],
+  [
+   "14:09:09",
+   161,
+   161
+  ],
+  [
+   "14:09:11",
+   172,
+   172
+  ],
+  [
+   "14:09:14",
+   209,
+   209
+  ],
+  [
+   "14:09:18",
+   235,
+   235
+  ],
+  [
+   "14:09:20",
+   240,
+   240
+  ],
+  [
+   "14:09:22",
+   250,
+   250
+  ],
+  [
+   "14:09:30",
+   363,
+   363
+  ],
+  [
+   "14:09:32",
+   367,
+   367
+  ],
+  [
+   "14:09:38",
+   440,
+   440
+  ],
+  [
+   "14:09:40",
+   452,
+   452
+  ],
+  [
+   "14:09:42",
+   455,
+   455
+  ],
+  [
+   "14:09:45",
+   479,
+   479
+  ],
+  [
+   "14:09:46",
+   496,
+   496
+  ],
+  [
+   "14:09:48",
+   500,
+   500
+  ],
+  [
+   "14:09:50",
+   513,
+   513
+  ],
+  [
+   "14:09:53",
+   517,
+   517
+  ],
+  [
+   "14:09:57",
+   526,
+   526
+  ],
+  [
+   "14:09:59",
+   539,
+   539
+  ],
+  [
+   "14:10:06",
+   581,
+   581
+  ],
+  [
+   "14:10:08",
+   612,
+   612
+  ],
+  [
+   "14:10:16",
+   700,
+   700
+  ],
+  [
+   "14:10:17",
+   705,
+   705
+  ],
+  [
+   "14:10:22",
+   771,
+   771
+  ],
+  [
+   "14:10:24",
+   784,
+   784
+  ],
+  [
+   "14:10:26",
+   797,
+   797
+  ],
+  [
+   "14:10:38",
+   869,
+   869
+  ],
+  [
+   "14:10:44",
+   919,
+   919
+  ],
+  [
+   "14:10:52",
+   1006,
+   1006
+  ],
+  [
+   "14:11:02",
+   1076,
+   1076
+  ],
+  [
+   "14:11:04",
+   1096,
+   1096
+  ],
+  [
+   "14:11:10",
+   1101,
+   1101
+  ],
+  [
+   "14:11:26",
+   1237,
+   1237
+  ],
+  [
+   "14:11:27",
+   1244,
+   1244
+  ],
+  [
+   "14:11:29",
+   1248,
+   1248
+  ],
+  [
+   "14:11:33",
+   1266,
+   1266
+  ],
+  [
+   "14:11:36",
+   1270,
+   1270
+  ],
+  [
+   "14:11:40",
+   1273,
+   1273
+  ],
+  [
+   "14:11:45",
+   1276,
+   1276
+  ],
+  [
+   "14:11:49",
+   1279,
+   1279
+  ],
+  [
+   "14:11:55",
+   1282,
+   1282
+  ],
+  [
+   "14:12:03",
+   1303,
+   1303
+  ],
+  [
+   "14:12:08",
+   1349,
+   1349
+  ],
+  [
+   "14:12:12",
+   1374,
+   1374
+  ],
+  [
+   "14:12:19",
+   1390,
+   1390
+  ],
+  [
+   "14:12:25",
+   1417,
+   1417
+  ]
+ ],
+ "rows": [
+  {
+   "source": "owner",
+   "clip": "hotkey_20260911T185540_816130.wav",
+   "logged": "And I don't think we're ready for the application because, w",
+   "word_ms": 160,
+   "room_rms": 0.00741,
+   "word_rms": 0.06047,
+   "decodes": {
+    "no_prompt": "and",
+    "tail_14:09:20/raw": "nd..",
+    "tail_14:09:20/clean": "and..",
+    "tail_14:11:36/raw": "and",
+    "tail_14:11:36/clean": "and",
+    "tail_14:11:40/raw": "then",
+    "tail_14:11:40/clean": "then",
+    "tail_14:11:45/raw": "nd",
+    "tail_14:11:45/clean": "nd",
+    "tail_14:11:55/raw": "nd nd",
+    "tail_14:11:55/clean": "then"
+   }
+  },
+  {
+   "source": "sapi_normal",
+   "clip": "MicrosoftDavidDesktop_r-2.wav",
+   "word_ms": 410,
+   "room_rms": 0.00125,
+   "word_rms": 0.03,
+   "decodes": {
+    "no_prompt": "End.",
+    "tail_14:09:20/raw": "nd.",
+    "tail_14:09:20/clean": "and.",
+    "tail_14:11:36/raw": "and",
+    "tail_14:11:36/clean": "and",
+    "tail_14:11:40/raw": "and",
+    "tail_14:11:40/clean": "and",
+    "tail_14:11:45/raw": "and",
+    "tail_14:11:45/clean": "and",
+    "tail_14:11:55/raw": "nd nd",
+    "tail_14:11:55/clean": "and"
+   }
+  },
+  {
+   "source": "sapi_soft",
+   "clip": "MicrosoftDavidDesktop_r-2.wav",
+   "word_ms": 410,
+   "room_rms": 0.00125,
+   "word_rms": 0.00754,
+   "decodes": {
+    "no_prompt": "and",
+    "tail_14:09:20/raw": "and.",
+    "tail_14:09:20/clean": "and.",
+    "tail_14:11:36/raw": "and",
+    "tail_14:11:36/clean": "and",
+    "tail_14:11:40/raw": "you",
+    "tail_14:11:40/clean": "you",
+    "tail_14:11:45/raw": "nd",
+    "tail_14:11:45/clean": "nd",
+    "tail_14:11:55/raw": "nd nd",
+    "tail_14:11:55/clean": "you"
+   }
+  },
+  {
+   "source": "sapi_normal",
+   "clip": "MicrosoftDavidDesktop_r0.wav",
+   "word_ms": 340,
+   "room_rms": 0.00125,
+   "word_rms": 0.03,
+   "decodes": {
+    "no_prompt": "End.",
+    "tail_14:09:20/raw": "nd.",
+    "tail_14:09:20/clean": "and.",
+    "tail_14:11:36/raw": "and",
+    "tail_14:11:36/clean": "and",
+    "tail_14:11:40/raw": "and",
+    "tail_14:11:40/clean": "and",
+    "tail_14:11:45/raw": "nd",
+    "tail_14:11:45/clean": "and",
+    "tail_14:11:55/raw": "nd nd",
+    "tail_14:11:55/clean": "and"
+   }
+  },
+  {
+   "source": "sapi_soft",
+   "clip": "MicrosoftDavidDesktop_r0.wav",
+   "word_ms": 340,
+   "room_rms": 0.00125,
+   "word_rms": 0.00754,
+   "decodes": {
+    "no_prompt": "End.",
+    "tail_14:09:20/raw": "and.",
+    "tail_14:09:20/clean": "and.",
+    "tail_14:11:36/raw": "and",
+    "tail_14:11:36/clean": "and",
+    "tail_14:11:40/raw": "and",
+    "tail_14:11:40/clean": "and",
+    "tail_14:11:45/raw": "nd",
+    "tail_14:11:45/clean": "nd",
+    "tail_14:11:55/raw": "nd nd",
+    "tail_14:11:55/clean": "and"
+   }
+  },
+  {
+   "source": "sapi_normal",
+   "clip": "MicrosoftDavidDesktop_r2.wav",
+   "word_ms": 265,
+   "room_rms": 0.00125,
+   "word_rms": 0.03,
+   "decodes": {
+    "no_prompt": "and",
+    "tail_14:09:20/raw": "and..",
+    "tail_14:09:20/clean": "and.",
+    "tail_14:11:36/raw": "and",
+    "tail_14:11:36/clean": "and",
+    "tail_14:11:40/raw": "and",
+    "tail_14:11:40/clean": "and",
+    "tail_14:11:45/raw": "nd",
+    "tail_14:11:45/clean": "nd",
+    "tail_14:11:55/raw": "nd",
+    "tail_14:11:55/clean": "and"
+   }
+  },
+  {
+   "source": "sapi_soft",
+   "clip": "MicrosoftDavidDesktop_r2.wav",
+   "word_ms": 265,
+   "room_rms": 0.00125,
+   "word_rms": 0.00754,
+   "decodes": {
+    "no_prompt": "and",
+    "tail_14:09:20/raw": "and.",
+    "tail_14:09:20/clean": "and.",
+    "tail_14:11:36/raw": "and",
+    "tail_14:11:36/clean": "and",
+    "tail_14:11:40/raw": "and",
+    "tail_14:11:40/clean": "and",
+    "tail_14:11:45/raw": "nd",
+    "tail_14:11:45/clean": "nd",
+    "tail_14:11:55/raw": "nd",
+    "tail_14:11:55/clean": "and"
+   }
+  },
+  {
+   "source": "sapi_normal",
+   "clip": "MicrosoftGeorge_r-2.wav",
+   "word_ms": 400,
+   "room_rms": 0.00125,
+   "word_rms": 0.03,
+   "decodes": {
+    "no_prompt": "and",
+    "tail_14:09:20/raw": "and.",
+    "tail_14:09:20/clean": "and.",
+    "tail_14:11:36/raw": "and",
+    "tail_14:11:36/clean": "and",
+    "tail_14:11:40/raw": "and",
+    "tail_14:11:40/clean": "and",
+    "tail_14:11:45/raw": "nd",
+    "tail_14:11:45/clean": "nd",
+    "tail_14:11:55/raw": "nd nd",
+    "tail_14:11:55/clean": "and"
+   }
+  },
+  {
+   "source": "sapi_soft",
+   "clip": "MicrosoftGeorge_r-2.wav",
+   "word_ms": 400,
+   "room_rms": 0.00125,
+   "word_rms": 0.00754,
+   "decodes": {
+    "no_prompt": "and",
+    "tail_14:09:20/raw": "nd.",
+    "tail_14:09:20/clean": "and.",
+    "tail_14:11:36/raw": "and",
+    "tail_14:11:36/clean": "and",
+    "tail_14:11:40/raw": "and",
+    "tail_14:11:40/clean": "and",
+    "tail_14:11:45/raw": "nd",
+    "tail_14:11:45/clean": "nd",
+    "tail_14:11:55/raw": "nd nd",
+    "tail_14:11:55/clean": "and"
+   }
+  },
+  {
+   "source": "sapi_normal",
+   "clip": "MicrosoftGeorge_r0.wav",
+   "word_ms": 325,
+   "room_rms": 0.00125,
+   "word_rms": 0.03,
+   "decodes": {
+    "no_prompt": "and",
+    "tail_14:09:20/raw": "and.",
+    "tail_14:09:20/clean": "and.",
+    "tail_14:11:36/raw": "and",
+    "tail_14:11:36/clean": "and",
+    "tail_14:11:40/raw": "nd",
+    "tail_14:11:40/clean": "nd",
+    "tail_14:11:45/raw": "nd",
+    "tail_14:11:45/clean": "nd",
+    "tail_14:11:55/raw": "nd nd",
+    "tail_14:11:55/clean": "nd"
+   }
+  },
+  {
+   "source": "sapi_soft",
+   "clip": "MicrosoftGeorge_r0.wav",
+   "word_ms": 325,
+   "room_rms": 0.00125,
+   "word_rms": 0.00754,
+   "decodes": {
+    "no_prompt": "and",
+    "tail_14:09:20/raw": "nd.",
+    "tail_14:09:20/clean": "and.",
+    "tail_14:11:36/raw": "and",
+    "tail_14:11:36/clean": "and",
+    "tail_14:11:40/raw": "and",
+    "tail_14:11:40/clean": "and",
+    "tail_14:11:45/raw": "nd",
+    "tail_14:11:45/clean": "nd",
+    "tail_14:11:55/raw": "nd nd",
+    "tail_14:11:55/clean": "and"
+   }
+  },
+  {
+   "source": "sapi_normal",
+   "clip": "MicrosoftGeorge_r2.wav",
+   "word_ms": 265,
+   "room_rms": 0.00125,
+   "word_rms": 0.03,
+   "decodes": {
+    "no_prompt": "and",
+    "tail_14:09:20/raw": "nd.",
+    "tail_14:09:20/clean": "and.",
+    "tail_14:11:36/raw": "and",
+    "tail_14:11:36/clean": "and",
+    "tail_14:11:40/raw": "and",
+    "tail_14:11:40/clean": "and",
+    "tail_14:11:45/raw": "nd",
+    "tail_14:11:45/clean": "nd",
+    "tail_14:11:55/raw": "nd nd",
+    "tail_14:11:55/clean": "and"
+   }
+  },
+  {
+   "source": "sapi_soft",
+   "clip": "MicrosoftGeorge_r2.wav",
+   "word_ms": 265,
+   "room_rms": 0.00125,
+   "word_rms": 0.00754,
+   "decodes": {
+    "no_prompt": "End.",
+    "tail_14:09:20/raw": "nd.",
+    "tail_14:09:20/clean": "and.",
+    "tail_14:11:36/raw": "and",
+    "tail_14:11:36/clean": "and",
+    "tail_14:11:40/raw": "and",
+    "tail_14:11:40/clean": "and",
+    "tail_14:11:45/raw": "nd",
+    "tail_14:11:45/clean": "nd",
+    "tail_14:11:55/raw": "nd nd",
+    "tail_14:11:55/clean": "and"
+   }
+  },
+  {
+   "source": "sapi_normal",
+   "clip": "MicrosoftHazelDesktop_r-2.wav",
+   "word_ms": 495,
+   "room_rms": 0.00125,
+   "word_rms": 0.03,
+   "decodes": {
+    "no_prompt": "and",
+    "tail_14:09:20/raw": "nd.",
+    "tail_14:09:20/clean": "and.",
+    "tail_14:11:36/raw": "and",
+    "tail_14:11:36/clean": "and",
+    "tail_14:11:40/raw": "and",
+    "tail_14:11:40/clean": "and",
+    "tail_14:11:45/raw": "nd",
+    "tail_14:11:45/clean": "nd",
+    "tail_14:11:55/raw": "nd nd",
+    "tail_14:11:55/clean": "and"
+   }
+  },
+  {
+   "source": "sapi_soft",
+   "clip": "MicrosoftHazelDesktop_r-2.wav",
+   "word_ms": 495,
+   "room_rms": 0.00125,
+   "word_rms": 0.00754,
+   "decodes": {
+    "no_prompt": "out",
+    "tail_14:09:20/raw": "out.",
+    "tail_14:09:20/clean": "out",
+    "tail_14:11:36/raw": "oud",
+    "tail_14:11:36/clean": "out",
+    "tail_14:11:40/raw": "and",
+    "tail_14:11:40/clean": "and",
+    "tail_14:11:45/raw": "oud",
+    "tail_14:11:45/clean": "oud",
+    "tail_14:11:55/raw": "nd",
+    "tail_14:11:55/clean": "and"
+   }
+  },
+  {
+   "source": "sapi_normal",
+   "clip": "MicrosoftHazelDesktop_r0.wav",
+   "word_ms": 400,
+   "room_rms": 0.00125,
+   "word_rms": 0.03,
+   "decodes": {
+    "no_prompt": "and",
+    "tail_14:09:20/raw": "nd.",
+    "tail_14:09:20/clean": "and.",
+    "tail_14:11:36/raw": "and",
+    "tail_14:11:36/clean": "and",
+    "tail_14:11:40/raw": "and",
+    "tail_14:11:40/clean": "and",
+    "tail_14:11:45/raw": "nd",
+    "tail_14:11:45/clean": "nd",
+    "tail_14:11:55/raw": "nd nd",
+    "tail_14:11:55/clean": "and"
+   }
+  },
+  {
+   "source": "sapi_soft",
+   "clip": "MicrosoftHazelDesktop_r0.wav",
+   "word_ms": 400,
+   "room_rms": 0.00125,
+   "word_rms": 0.00754,
+   "decodes": {
+    "no_prompt": "out",
+    "tail_14:09:20/raw": "ouch",
+    "tail_14:09:20/clean": "out",
+    "tail_14:11:36/raw": "oud",
+    "tail_14:11:36/clean": "oud",
+    "tail_14:11:40/raw": "oud",
+    "tail_14:11:40/clean": "oud",
+    "tail_14:11:45/raw": "nd",
+    "tail_14:11:45/clean": "nd",
+    "tail_14:11:55/raw": "nd nd",
+    "tail_14:11:55/clean": "and"
+   }
+  },
+  {
+   "source": "sapi_normal",
+   "clip": "MicrosoftHazelDesktop_r2.wav",
+   "word_ms": 325,
+   "room_rms": 0.00125,
+   "word_rms": 0.03,
+   "decodes": {
+    "no_prompt": "and",
+    "tail_14:09:20/raw": "and.",
+    "tail_14:09:20/clean": "and.",
+    "tail_14:11:36/raw": "and",
+    "tail_14:11:36/clean": "and",
+    "tail_14:11:40/raw": "nd",
+    "tail_14:11:40/clean": "nd",
+    "tail_14:11:45/raw": "nd",
+    "tail_14:11:45/clean": "nd",
+    "tail_14:11:55/raw": "nd nd",
+    "tail_14:11:55/clean": "nd"
+   }
+  },
+  {
+   "source": "sapi_soft",
+   "clip": "MicrosoftHazelDesktop_r2.wav",
+   "word_ms": 325,
+   "room_rms": 0.00125,
+   "word_rms": 0.00754,
+   "decodes": {
+    "no_prompt": "Out.",
+    "tail_14:09:20/raw": "ouch.",
+    "tail_14:09:20/clean": "out.",
+    "tail_14:11:36/raw": "and",
+    "tail_14:11:36/clean": "and",
+    "tail_14:11:40/raw": "oud",
+    "tail_14:11:40/clean": "oud",
+    "tail_14:11:45/raw": "nd",
+    "tail_14:11:45/clean": "nd",
+    "tail_14:11:55/raw": "nd nd",
+    "tail_14:11:55/clean": "oud"
+   }
+  },
+  {
+   "source": "sapi_normal",
+   "clip": "MicrosoftMark_r-2.wav",
+   "word_ms": 440,
+   "room_rms": 0.00125,
+   "word_rms": 0.03,
+   "decodes": {
+    "no_prompt": "End.",
+    "tail_14:09:20/raw": "and.",
+    "tail_14:09:20/clean": "and.",
+    "tail_14:11:36/raw": "and",
+    "tail_14:11:36/clean": "and",
+    "tail_14:11:40/raw": "and",
+    "tail_14:11:40/clean": "and",
+    "tail_14:11:45/raw": "nd",
+    "tail_14:11:45/clean": "nd",
+    "tail_14:11:55/raw": "nd",
+    "tail_14:11:55/clean": "and"
+   }
+  },
+  {
+   "source": "sapi_soft",
+   "clip": "MicrosoftMark_r-2.wav",
+   "word_ms": 440,
+   "room_rms": 0.00125,
+   "word_rms": 0.00754,
+   "decodes": {
+    "no_prompt": "and",
+    "tail_14:09:20/raw": "and.",
+    "tail_14:09:20/clean": "and.",
+    "tail_14:11:36/raw": "and",
+    "tail_14:11:36/clean": "and",
+    "tail_14:11:40/raw": "and",
+    "tail_14:11:40/clean": "and",
+    "tail_14:11:45/raw": "nd",
+    "tail_14:11:45/clean": "nd",
+    "tail_14:11:55/raw": "nd",
+    "tail_14:11:55/clean": "and"
+   }
+  },
+  {
+   "source": "sapi_normal",
+   "clip": "MicrosoftMark_r0.wav",
+   "word_ms": 360,
+   "room_rms": 0.00125,
+   "word_rms": 0.03,
+   "decodes": {
+    "no_prompt": "End.",
+    "tail_14:09:20/raw": "end",
+    "tail_14:09:20/clean": "end",
+    "tail_14:11:36/raw": "and",
+    "tail_14:11:36/clean": "and",
+    "tail_14:11:40/raw": "and",
+    "tail_14:11:40/clean": "and",
+    "tail_14:11:45/raw": "nd",
+    "tail_14:11:45/clean": "nd",
+    "tail_14:11:55/raw": "nd",
+    "tail_14:11:55/clean": "and"
+   }
+  },
+  {
+   "source": "sapi_soft",
+   "clip": "MicrosoftMark_r0.wav",
+   "word_ms": 360,
+   "room_rms": 0.00125,
+   "word_rms": 0.00754,
+   "decodes": {
+    "no_prompt": "End.",
+    "tail_14:09:20/raw": "end.",
+    "tail_14:09:20/clean": "end.",
+    "tail_14:11:36/raw": "and",
+    "tail_14:11:36/clean": "and",
+    "tail_14:11:40/raw": "and",
+    "tail_14:11:40/clean": "and",
+    "tail_14:11:45/raw": "nd",
+    "tail_14:11:45/clean": "nd",
+    "tail_14:11:55/raw": "nd",
+    "tail_14:11:55/clean": "and"
+   }
+  },
+  {
+   "source": "sapi_normal",
+   "clip": "MicrosoftMark_r2.wav",
+   "word_ms": 290,
+   "room_rms": 0.00125,
+   "word_rms": 0.03,
+   "decodes": {
+    "no_prompt": "end",
+    "tail_14:09:20/raw": "end.",
+    "tail_14:09:20/clean": "end.",
+    "tail_14:11:36/raw": "and",
+    "tail_14:11:36/clean": "and",
+    "tail_14:11:40/raw": "and",
+    "tail_14:11:40/clean": "and",
+    "tail_14:11:45/raw": "and",
+    "tail_14:11:45/clean": "and",
+    "tail_14:11:55/raw": "nd",
+    "tail_14:11:55/clean": "and"
+   }
+  },
+  {
+   "source": "sapi_soft",
+   "clip": "MicrosoftMark_r2.wav",
+   "word_ms": 290,
+   "room_rms": 0.00125,
+   "word_rms": 0.00754,
+   "decodes": {
+    "no_prompt": "End.",
+    "tail_14:09:20/raw": "end.",
+    "tail_14:09:20/clean": "end.",
+    "tail_14:11:36/raw": "and",
+    "tail_14:11:36/clean": "and",
+    "tail_14:11:40/raw": "and",
+    "tail_14:11:40/clean": "and",
+    "tail_14:11:45/raw": "nd",
+    "tail_14:11:45/clean": "nd",
+    "tail_14:11:55/raw": "nd",
+    "tail_14:11:55/clean": "and"
+   }
+  },
+  {
+   "source": "sapi_normal",
+   "clip": "MicrosoftSusan_r-2.wav",
+   "word_ms": 480,
+   "room_rms": 0.00125,
+   "word_rms": 0.03,
+   "decodes": {
+    "no_prompt": "and",
+    "tail_14:09:20/raw": "nd.",
+    "tail_14:09:20/clean": "and.",
+    "tail_14:11:36/raw": "and",
+    "tail_14:11:36/clean": "and",
+    "tail_14:11:40/raw": "and",
+    "tail_14:11:40/clean": "and",
+    "tail_14:11:45/raw": "nd",
+    "tail_14:11:45/clean": "nd",
+    "tail_14:11:55/raw": "nd nd",
+    "tail_14:11:55/clean": "and"
+   }
+  },
+  {
+   "source": "sapi_soft",
+   "clip": "MicrosoftSusan_r-2.wav",
+   "word_ms": 480,
+   "room_rms": 0.00125,
+   "word_rms": 0.00754,
+   "decodes": {
+    "no_prompt": "Out.",
+    "tail_14:09:20/raw": "out",
+    "tail_14:09:20/clean": "out",
+    "tail_14:11:36/raw": "oud",
+    "tail_14:11:36/clean": "oud",
+    "tail_14:11:40/raw": "oud",
+    "tail_14:11:40/clean": "oud",
+    "tail_14:11:45/raw": "oud",
+    "tail_14:11:45/clean": "oud",
+    "tail_14:11:55/raw": "nd",
+    "tail_14:11:55/clean": "oud"
+   }
+  },
+  {
+   "source": "sapi_normal",
+   "clip": "MicrosoftSusan_r0.wav",
+   "word_ms": 390,
+   "room_rms": 0.00125,
+   "word_rms": 0.03,
+   "decodes": {
+    "no_prompt": "and",
+    "tail_14:09:20/raw": "nd.",
+    "tail_14:09:20/clean": "and.",
+    "tail_14:11:36/raw": "and",
+    "tail_14:11:36/clean": "and",
+    "tail_14:11:40/raw": "nd",
+    "tail_14:11:40/clean": "and",
+    "tail_14:11:45/raw": "nd",
+    "tail_14:11:45/clean": "nd",
+    "tail_14:11:55/raw": "nd nd",
+    "tail_14:11:55/clean": "and"
+   }
+  },
+  {
+   "source": "sapi_soft",
+   "clip": "MicrosoftSusan_r0.wav",
+   "word_ms": 390,
+   "room_rms": 0.00125,
+   "word_rms": 0.00754,
+   "decodes": {
+    "no_prompt": "out",
+    "tail_14:09:20/raw": "ouch",
+    "tail_14:09:20/clean": "out",
+    "tail_14:11:36/raw": "and",
+    "tail_14:11:36/clean": "oud",
+    "tail_14:11:40/raw": "and",
+    "tail_14:11:40/clean": "and",
+    "tail_14:11:45/raw": "nd",
+    "tail_14:11:45/clean": "nd",
+    "tail_14:11:55/raw": "nd nd",
+    "tail_14:11:55/clean": "and"
+   }
+  },
+  {
+   "source": "sapi_normal",
+   "clip": "MicrosoftSusan_r2.wav",
+   "word_ms": 330,
+   "room_rms": 0.00125,
+   "word_rms": 0.03,
+   "decodes": {
+    "no_prompt": "and",
+    "tail_14:09:20/raw": "nd.",
+    "tail_14:09:20/clean": "and.",
+    "tail_14:11:36/raw": "and",
+    "tail_14:11:36/clean": "and",
+    "tail_14:11:40/raw": "nd",
+    "tail_14:11:40/clean": "nd",
+    "tail_14:11:45/raw": "nd",
+    "tail_14:11:45/clean": "nd",
+    "tail_14:11:55/raw": "nd nd",
+    "tail_14:11:55/clean": "nd"
+   }
+  },
+  {
+   "source": "sapi_soft",
+   "clip": "MicrosoftSusan_r2.wav",
+   "word_ms": 330,
+   "room_rms": 0.00125,
+   "word_rms": 0.00754,
+   "decodes": {
+    "no_prompt": "out",
+    "tail_14:09:20/raw": "ouch.",
+    "tail_14:09:20/clean": "ouch.",
+    "tail_14:11:36/raw": "I",
+    "tail_14:11:36/clean": "I",
+    "tail_14:11:40/raw": "I",
+    "tail_14:11:40/clean": "I",
+    "tail_14:11:45/raw": "I",
+    "tail_14:11:45/clean": "I",
+    "tail_14:11:55/raw": "nd nd",
+    "tail_14:11:55/clean": "I"
+   }
+  },
+  {
+   "source": "sapi_normal",
+   "clip": "MicrosoftZiraDesktop_r-2.wav",
+   "word_ms": 475,
+   "room_rms": 0.00125,
+   "word_rms": 0.03,
+   "decodes": {
+    "no_prompt": "End.",
+    "tail_14:09:20/raw": "end",
+    "tail_14:09:20/clean": "end",
+    "tail_14:11:36/raw": "and",
+    "tail_14:11:36/clean": "and",
+    "tail_14:11:40/raw": "and",
+    "tail_14:11:40/clean": "and",
+    "tail_14:11:45/raw": "nd",
+    "tail_14:11:45/clean": "nd",
+    "tail_14:11:55/raw": "nd nd",
+    "tail_14:11:55/clean": "and"
+   }
+  },
+  {
+   "source": "sapi_soft",
+   "clip": "MicrosoftZiraDesktop_r-2.wav",
+   "word_ms": 475,
+   "room_rms": 0.00125,
+   "word_rms": 0.00754,
+   "decodes": {
+    "no_prompt": "End.",
+    "tail_14:09:20/raw": "and.",
+    "tail_14:09:20/clean": "and.",
+    "tail_14:11:36/raw": "and",
+    "tail_14:11:36/clean": "and",
+    "tail_14:11:40/raw": "and",
+    "tail_14:11:40/clean": "and",
+    "tail_14:11:45/raw": "and",
+    "tail_14:11:45/clean": "and",
+    "tail_14:11:55/raw": "nd",
+    "tail_14:11:55/clean": "and"
+   }
+  },
+  {
+   "source": "sapi_normal",
+   "clip": "MicrosoftZiraDesktop_r0.wav",
+   "word_ms": 400,
+   "room_rms": 0.00125,
+   "word_rms": 0.03,
+   "decodes": {
+    "no_prompt": "End.",
+    "tail_14:09:20/raw": "end",
+    "tail_14:09:20/clean": "end",
+    "tail_14:11:36/raw": "and",
+    "tail_14:11:36/clean": "and",
+    "tail_14:11:40/raw": "and",
+    "tail_14:11:40/clean": "and",
+    "tail_14:11:45/raw": "nd",
+    "tail_14:11:45/clean": "and",
+    "tail_14:11:55/raw": "nd nd",
+    "tail_14:11:55/clean": "and"
+   }
+  },
+  {
+   "source": "sapi_soft",
+   "clip": "MicrosoftZiraDesktop_r0.wav",
+   "word_ms": 400,
+   "room_rms": 0.00125,
+   "word_rms": 0.00754,
+   "decodes": {
+    "no_prompt": "End.",
+    "tail_14:09:20/raw": "nd.",
+    "tail_14:09:20/clean": "end.",
+    "tail_14:11:36/raw": "and",
+    "tail_14:11:36/clean": "and",
+    "tail_14:11:40/raw": "and",
+    "tail_14:11:40/clean": "and",
+    "tail_14:11:45/raw": "you",
+    "tail_14:11:45/clean": "you",
+    "tail_14:11:55/raw": "nd nd",
+    "tail_14:11:55/clean": "and"
+   }
+  },
+  {
+   "source": "sapi_normal",
+   "clip": "MicrosoftZiraDesktop_r2.wav",
+   "word_ms": 320,
+   "room_rms": 0.00125,
+   "word_rms": 0.03,
+   "decodes": {
+    "no_prompt": "End.",
+    "tail_14:09:20/raw": "end.",
+    "tail_14:09:20/clean": "end.",
+    "tail_14:11:36/raw": "and",
+    "tail_14:11:36/clean": "and",
+    "tail_14:11:40/raw": "and",
+    "tail_14:11:40/clean": "and",
+    "tail_14:11:45/raw": "nd",
+    "tail_14:11:45/clean": "nd",
+    "tail_14:11:55/raw": "nd nd nd",
+    "tail_14:11:55/clean": "and"
+   }
+  },
+  {
+   "source": "sapi_soft",
+   "clip": "MicrosoftZiraDesktop_r2.wav",
+   "word_ms": 320,
+   "room_rms": 0.00125,
+   "word_rms": 0.00754,
+   "decodes": {
+    "no_prompt": "End.",
+    "tail_14:09:20/raw": "end.",
+    "tail_14:09:20/clean": "end.",
+    "tail_14:11:36/raw": "and",
+    "tail_14:11:36/clean": "and",
+    "tail_14:11:40/raw": "and",
+    "tail_14:11:40/clean": "and",
+    "tail_14:11:45/raw": "nd",
+    "tail_14:11:45/clean": "nd",
+    "tail_14:11:55/raw": "nd nd",
+    "tail_14:11:55/clean": "and"
+   }
+  }
+ ],
+ "summary": {
+  "owner": {
+   "n": 1,
+   "no_prompt": {
+    "and": 1,
+    "nd": 0,
+    "other": 0,
+    "empty": 0
+   },
+   "tail_14:09:20/raw": {
+    "and": 0,
+    "nd": 1,
+    "other": 0,
+    "empty": 0
+   },
+   "tail_14:09:20/clean": {
+    "and": 1,
+    "nd": 0,
+    "other": 0,
+    "empty": 0
+   },
+   "tail_14:11:36/raw": {
+    "and": 1,
+    "nd": 0,
+    "other": 0,
+    "empty": 0
+   },
+   "tail_14:11:36/clean": {
+    "and": 1,
+    "nd": 0,
+    "other": 0,
+    "empty": 0
+   },
+   "tail_14:11:40/raw": {
+    "and": 0,
+    "nd": 0,
+    "other": 1,
+    "empty": 0
+   },
+   "tail_14:11:40/clean": {
+    "and": 0,
+    "nd": 0,
+    "other": 1,
+    "empty": 0
+   },
+   "tail_14:11:45/raw": {
+    "and": 0,
+    "nd": 1,
+    "other": 0,
+    "empty": 0
+   },
+   "tail_14:11:45/clean": {
+    "and": 0,
+    "nd": 1,
+    "other": 0,
+    "empty": 0
+   },
+   "tail_14:11:55/raw": {
+    "and": 0,
+    "nd": 1,
+    "other": 0,
+    "empty": 0
+   },
+   "tail_14:11:55/clean": {
+    "and": 0,
+    "nd": 0,
+    "other": 1,
+    "empty": 0
+   }
+  },
+  "sapi_normal": {
+   "n": 18,
+   "no_prompt": {
+    "and": 10,
+    "nd": 0,
+    "other": 8,
+    "empty": 0
+   },
+   "tail_14:09:20/raw": {
+    "and": 5,
+    "nd": 8,
+    "other": 5,
+    "empty": 0
+   },
+   "tail_14:09:20/clean": {
+    "and": 13,
+    "nd": 0,
+    "other": 5,
+    "empty": 0
+   },
+   "tail_14:11:36/raw": {
+    "and": 18,
+    "nd": 0,
+    "other": 0,
+    "empty": 0
+   },
+   "tail_14:11:36/clean": {
+    "and": 18,
+    "nd": 0,
+    "other": 0,
+    "empty": 0
+   },
+   "tail_14:11:40/raw": {
+    "and": 14,
+    "nd": 4,
+    "other": 0,
+    "empty": 0
+   },
+   "tail_14:11:40/clean": {
+    "and": 15,
+    "nd": 3,
+    "other": 0,
+    "empty": 0
+   },
+   "tail_14:11:45/raw": {
+    "and": 2,
+    "nd": 16,
+    "other": 0,
+    "empty": 0
+   },
+   "tail_14:11:45/clean": {
+    "and": 4,
+    "nd": 14,
+    "other": 0,
+    "empty": 0
+   },
+   "tail_14:11:55/raw": {
+    "and": 0,
+    "nd": 18,
+    "other": 0,
+    "empty": 0
+   },
+   "tail_14:11:55/clean": {
+    "and": 15,
+    "nd": 3,
+    "other": 0,
+    "empty": 0
+   }
+  },
+  "sapi_soft": {
+   "n": 18,
+   "no_prompt": {
+    "and": 5,
+    "nd": 0,
+    "other": 13,
+    "empty": 0
+   },
+   "tail_14:09:20/raw": {
+    "and": 5,
+    "nd": 4,
+    "other": 9,
+    "empty": 0
+   },
+   "tail_14:09:20/clean": {
+    "and": 8,
+    "nd": 0,
+    "other": 10,
+    "empty": 0
+   },
+   "tail_14:11:36/raw": {
+    "and": 14,
+    "nd": 0,
+    "other": 4,
+    "empty": 0
+   },
+   "tail_14:11:36/clean": {
+    "and": 13,
+    "nd": 0,
+    "other": 5,
+    "empty": 0
+   },
+   "tail_14:11:40/raw": {
+    "and": 13,
+    "nd": 0,
+    "other": 5,
+    "empty": 0
+   },
+   "tail_14:11:40/clean": {
+    "and": 13,
+    "nd": 0,
+    "other": 5,
+    "empty": 0
+   },
+   "tail_14:11:45/raw": {
+    "and": 1,
+    "nd": 13,
+    "other": 4,
+    "empty": 0
+   },
+   "tail_14:11:45/clean": {
+    "and": 1,
+    "nd": 13,
+    "other": 4,
+    "empty": 0
+   },
+   "tail_14:11:55/raw": {
+    "and": 0,
+    "nd": 18,
+    "other": 0,
+    "empty": 0
+   },
+   "tail_14:11:55/clean": {
+    "and": 14,
+    "nd": 0,
+    "other": 4,
+    "empty": 0
+   }
+  },
+  "ALL": {
+   "n": 37,
+   "no_prompt": {
+    "and": 16,
+    "nd": 0,
+    "other": 21,
+    "empty": 0
+   },
+   "tail_14:09:20/raw": {
+    "and": 10,
+    "nd": 13,
+    "other": 14,
+    "empty": 0
+   },
+   "tail_14:09:20/clean": {
+    "and": 22,
+    "nd": 0,
+    "other": 15,
+    "empty": 0
+   },
+   "tail_14:11:36/raw": {
+    "and": 33,
+    "nd": 0,
+    "other": 4,
+    "empty": 0
+   },
+   "tail_14:11:36/clean": {
+    "and": 32,
+    "nd": 0,
+    "other": 5,
+    "empty": 0
+   },
+   "tail_14:11:40/raw": {
+    "and": 27,
+    "nd": 4,
+    "other": 6,
+    "empty": 0
+   },
+   "tail_14:11:40/clean": {
+    "and": 28,
+    "nd": 3,
+    "other": 6,
+    "empty": 0
+   },
+   "tail_14:11:45/raw": {
+    "and": 3,
+    "nd": 30,
+    "other": 4,
+    "empty": 0
+   },
+   "tail_14:11:45/clean": {
+    "and": 5,
+    "nd": 28,
+    "other": 4,
+    "empty": 0
+   },
+   "tail_14:11:55/raw": {
+    "and": 0,
+    "nd": 37,
+    "other": 0,
+    "empty": 0
+   },
+   "tail_14:11:55/clean": {
+    "and": 29,
+    "nd": 3,
+    "other": 5,
+    "empty": 0
+   }
+  }
+ },
+ "skipped": {
+  "owner:no_quiet_room_or_onset": 27,
+  "owner:cut_not_heard_as_and_without_prompt": 7,
+  "owner:first_word_not_and": 9
+ }
+}

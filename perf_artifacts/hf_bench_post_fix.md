@@ -1,5 +1,21 @@
 # Hands-free bench
 
+> **Queue 119 correction (2026-09-16).** The `media_only false_accept_rate = 1.0`
+> below is NOT a measurement of the shipping hands-free path. `tools/hf_bench.py`
+> summarises `language_probability` but never constructs a
+> `LanguageConfidenceGate`, so this number covers the decode and the
+> segment-quality gates only. It could not have shown the language gate working
+> or failing either way.
+>
+> Separately, the gate itself was a no-op for this case: it could only reject
+> when the detected language was NOT expected, and TV audio is English, which is
+> always expected. Both were fixed in queue 119.
+>
+> With the production gate applied to these same rows, media_only false-accept
+> is **0.00** and owner false-reject is **0.00**. See
+> `perf_artifacts/hf_bench_119_after.md` and `perf_artifacts/language_gate_119.py`.
+
+
 Resolved config: model=medium, perf=accurate, compute=float16, device=cuda, language=auto, post_gates=True.
 Language metadata is retained before post-gates; text below is after gates.
 This is the offline hf_bench decode/segment-gate seam, not live capture or injection.

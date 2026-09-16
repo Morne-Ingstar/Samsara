@@ -1,0 +1,300 @@
+{
+ "logs": [
+  "C:\\Users\\Morne\\.samsara\\logs\\samsara.log.1",
+  "C:\\Users\\Morne\\.samsara\\logs\\samsara.log"
+ ],
+ "dictate_utterances": 795,
+ "refused_commits": 0,
+ "families": {
+  "end": {
+   "recognised": 21,
+   "miss_near_form_and_repeated": 0,
+   "miss_near_form_only": 15,
+   "short_staged_then_repeated_only": 11
+  },
+  "scratch that": {
+   "recognised": 7,
+   "miss_near_form_and_repeated": 0,
+   "miss_near_form_only": 0,
+   "short_staged_then_repeated_only": 1
+  },
+  "cancel": {
+   "recognised": 3,
+   "miss_near_form_and_repeated": 0,
+   "miss_near_form_only": 0,
+   "short_staged_then_repeated_only": 0
+  }
+ },
+ "candidates": [
+  {
+   "ts": "2026-09-14 23:40:43,857",
+   "text": "And...",
+   "duration_s": 1.4,
+   "gate_run_ms": 608,
+   "near_form": "end",
+   "followed_by": null,
+   "prev": "add, like, personality context.",
+   "next": "dictate_staged: like, behavior context, or..."
+  },
+  {
+   "ts": "2026-09-15 00:47:32,464",
+   "text": "Command.",
+   "duration_s": 1.6,
+   "gate_run_ms": 416,
+   "near_form": null,
+   "followed_by": "scratch that",
+   "prev": "Hey Claude.",
+   "next": "scratch_success: Scratch that."
+  },
+  {
+   "ts": "2026-09-15 01:51:12,264",
+   "text": "And...",
+   "duration_s": 1.7,
+   "gate_run_ms": 512,
+   "near_form": "end",
+   "followed_by": null,
+   "prev": "Thank you.",
+   "next": "dictate_staged: Eh."
+  },
+  {
+   "ts": "2026-09-15 02:06:00,882",
+   "text": "and",
+   "duration_s": 1.9,
+   "gate_run_ms": 608,
+   "near_form": "end",
+   "followed_by": null,
+   "prev": "I would like to set an agent to do a deep dive on our competitors",
+   "next": "dictate_staged: look for..."
+  },
+  {
+   "ts": "2026-09-15 03:39:59,725",
+   "text": "In quotes.",
+   "duration_s": 2.0,
+   "gate_run_ms": 672,
+   "near_form": null,
+   "followed_by": "end",
+   "prev": "Question mark.",
+   "next": "dictate_committed: End."
+  },
+  {
+   "ts": "2026-09-15 03:40:18,822",
+   "text": "In quotes.",
+   "duration_s": 1.8,
+   "gate_run_ms": 608,
+   "near_form": null,
+   "followed_by": "end",
+   "prev": "And which of those deserves your watchful eye?",
+   "next": "dictate_committed: End."
+  },
+  {
+   "ts": "2026-09-15 03:41:37,761",
+   "text": "In quotes.",
+   "duration_s": 1.8,
+   "gate_run_ms": 608,
+   "near_form": null,
+   "followed_by": "end",
+   "prev": "Why not just leave me for the wolves?",
+   "next": "dictate_committed: End."
+  },
+  {
+   "ts": "2026-09-15 03:42:10,625",
+   "text": "end quotes",
+   "duration_s": 2.0,
+   "gate_run_ms": 608,
+   "near_form": null,
+   "followed_by": "end",
+   "prev": "I don't I wouldn't know I don't read a lot of comics",
+   "next": "dictate_committed: end"
+  },
+  {
+   "ts": "2026-09-15 03:46:53,727",
+   "text": "In quotes.",
+   "duration_s": 1.9,
+   "gate_run_ms": 640,
+   "near_form": null,
+   "followed_by": "end",
+   "prev": "I didn't come to your neck of woods unprepared.",
+   "next": "dictate_commit_blocked_focus_lock: End."
+  },
+  {
+   "ts": "2026-09-15 03:56:46,326",
+   "text": "For the military.",
+   "duration_s": 1.9,
+   "gate_run_ms": 768,
+   "near_form": null,
+   "followed_by": "end",
+   "prev": "I told you, I'm an engineer.",
+   "next": "dictate_committed: End."
+  },
+  {
+   "ts": "2026-09-15 04:04:22,529",
+   "text": "In quotes.",
+   "duration_s": 1.8,
+   "gate_run_ms": 640,
+   "near_form": null,
+   "followed_by": "end",
+   "prev": "I'm happy to find my way to a hotel on my own.",
+   "next": "dictate_committed: End."
+  },
+  {
+   "ts": "2026-09-15 05:12:25,128",
+   "text": "In quotes.",
+   "duration_s": 1.6,
+   "gate_run_ms": 608,
+   "near_form": null,
+   "followed_by": "end",
+   "prev": "Why, is he your favorite?",
+   "next": "dictate_committed: End."
+  },
+  {
+   "ts": "2026-09-15 05:16:59,514",
+   "text": "In quotes.",
+   "duration_s": 1.6,
+   "gate_run_ms": 640,
+   "near_form": null,
+   "followed_by": "end",
+   "prev": "I also have a hard time sleeping.",
+   "next": "dictate_committed: End."
+  },
+  {
+   "ts": "2026-09-15 05:19:27,926",
+   "text": "In quotes.",
+   "duration_s": 2.0,
+   "gate_run_ms": 672,
+   "near_form": null,
+   "followed_by": "end",
+   "prev": "you're into.",
+   "next": "dictate_committed: End."
+  },
+  {
+   "ts": "2026-09-15 05:21:06,525",
+   "text": "You're perfect",
+   "duration_s": 1.7,
+   "gate_run_ms": 576,
+   "near_form": null,
+   "followed_by": "end",
+   "prev": "I've been dreaming about this day",
+   "next": "dictate_committed: end"
+  },
+  {
+   "ts": "2026-09-15 14:09:20,433",
+   "text": "and..",
+   "duration_s": 1.8,
+   "gate_run_ms": 640,
+   "near_form": "end",
+   "followed_by": null,
+   "prev": "so like 1, 2, 3, 4, 5, 6.",
+   "next": "dictate_staged: that way.."
+  },
+  {
+   "ts": "2026-09-15 14:11:36,638",
+   "text": "and",
+   "duration_s": 1.5,
+   "gate_run_ms": 352,
+   "near_form": "end",
+   "followed_by": null,
+   "prev": "yeah I don't know",
+   "next": "dictate_staged: nd"
+  },
+  {
+   "ts": "2026-09-15 14:11:40,637",
+   "text": "nd",
+   "duration_s": 1.6,
+   "gate_run_ms": 320,
+   "near_form": "end",
+   "followed_by": null,
+   "prev": "and",
+   "next": "dictate_staged: nd"
+  },
+  {
+   "ts": "2026-09-15 14:11:45,549",
+   "text": "nd",
+   "duration_s": 1.6,
+   "gate_run_ms": 416,
+   "near_form": "end",
+   "followed_by": null,
+   "prev": "nd",
+   "next": "dictate_staged: nd"
+  },
+  {
+   "ts": "2026-09-15 14:11:49,547",
+   "text": "nd",
+   "duration_s": 1.7,
+   "gate_run_ms": 512,
+   "near_form": "end",
+   "followed_by": null,
+   "prev": "nd",
+   "next": "dictate_staged: nd"
+  },
+  {
+   "ts": "2026-09-15 14:11:55,444",
+   "text": "nd",
+   "duration_s": 1.7,
+   "gate_run_ms": 512,
+   "near_form": "end",
+   "followed_by": null,
+   "prev": "nd",
+   "next": "dictate_staged: okay for some reason"
+  },
+  {
+   "ts": "2026-09-15 14:47:30,132",
+   "text": "nd",
+   "duration_s": 1.6,
+   "gate_run_ms": 320,
+   "near_form": "end",
+   "followed_by": null,
+   "prev": "go a long way to impress someone immediately",
+   "next": "dictate_staged: nd"
+  },
+  {
+   "ts": "2026-09-15 14:47:35,135",
+   "text": "nd",
+   "duration_s": 1.6,
+   "gate_run_ms": 320,
+   "near_form": "end",
+   "followed_by": null,
+   "prev": "nd",
+   "next": "dictate_staged: nd"
+  },
+  {
+   "ts": "2026-09-15 14:47:38,225",
+   "text": "nd",
+   "duration_s": 1.9,
+   "gate_run_ms": 608,
+   "near_form": "end",
+   "followed_by": null,
+   "prev": "nd",
+   "next": "dictate_staged: nd"
+  },
+  {
+   "ts": "2026-09-15 14:47:42,725",
+   "text": "nd",
+   "duration_s": 2.4,
+   "gate_run_ms": 512,
+   "near_form": "end",
+   "followed_by": null,
+   "prev": "nd",
+   "next": "dictate_staged: nd"
+  },
+  {
+   "ts": "2026-09-15 14:47:46,339",
+   "text": "nd",
+   "duration_s": 1.6,
+   "gate_run_ms": 320,
+   "near_form": "end",
+   "followed_by": null,
+   "prev": "nd",
+   "next": "hands_free_command_executed: Submit"
+  },
+  {
+   "ts": "2026-09-15 15:12:05,532",
+   "text": "And...",
+   "duration_s": 1.4,
+   "gate_run_ms": 192,
+   "near_form": "end",
+   "followed_by": null,
+   "prev": "The home screen is for, like, information.",
+   "next": "dictate_staged: Like, links to, like..."
+  }
+ ]
+}

@@ -707,7 +707,9 @@ class TestSessionModeManagerDispatch:
     def test_abort_phrase_wins_regardless_of_mode(self, manager_factory):
         mgr, mocks = manager_factory()
         mgr.force_mode(SessionMode.DICTATE)
-        outcome = mgr.dispatch_utterance("please cancel now", GOOD_SIGNALS)
+        # Queue 84: whole utterance. "please cancel now" is a sentence that
+        # merely contains the phrase, and is dictated.
+        outcome = mgr.dispatch_utterance("cancel", GOOD_SIGNALS)
         assert outcome.kind == "abort"
         mocks["on_abort"].assert_called_once()
         mocks["inject"].assert_not_called()
@@ -751,17 +753,29 @@ class TestSessionModeManagerDispatch:
         assert outcome.kind != "abort"
         mocks["on_abort"].assert_not_called()
 
-    def test_word_boundary_abort_still_matches_the_exact_word(self, manager_factory):
+    def test_bare_abort_word_matches(self, manager_factory):
         mgr, mocks = manager_factory(abort_phrases=["cancel", "abort"])
-        outcome = mgr.dispatch_utterance("please cancel", GOOD_SIGNALS)
+        outcome = mgr.dispatch_utterance("Cancel.", GOOD_SIGNALS)
         assert outcome.kind == "abort"
         mocks["on_abort"].assert_called_once()
 
-    def test_multi_word_abort_phrase_matches_at_word_boundaries(self, manager_factory):
+    def test_multi_word_abort_phrase_matches_as_the_whole_utterance(self, manager_factory):
         mgr, mocks = manager_factory(abort_phrases=["cancel dictation"])
-        outcome = mgr.dispatch_utterance("please cancel dictation now", GOOD_SIGNALS)
+        outcome = mgr.dispatch_utterance("cancel dictation", GOOD_SIGNALS)
         assert outcome.kind == "abort"
         mocks["on_abort"].assert_called_once()
+
+    def test_abort_phrase_inside_a_sentence_is_not_an_abort(self, manager_factory):
+        """Queue 84: these were matched ANYWHERE in the utterance until
+        2026-09-15, which is how "Have it stop listening to you, or something
+        like that." ended a session and destroyed a 477-character draft.
+        Covered in depth by tests/test_session_abort_84.py."""
+        mgr, mocks = manager_factory(abort_phrases=["cancel", "abort", "cancel dictation"])
+        for sentence in ("please cancel dictation now",
+                         "we should cancel the meeting tomorrow",
+                         "tell it to abort the launch sequence"):
+            assert mgr.dispatch_utterance(sentence, GOOD_SIGNALS).kind != "abort", sentence
+        mocks["on_abort"].assert_not_called()
 
     def test_command_mode_match_pushes_stack_and_calls_dispatch_fn(self, manager_factory):
         mgr, mocks = manager_factory(command_matches="open chrome")
@@ -1424,13 +1438,13 @@ class TestBufferedDictateCommit:
         assert is_dictate_commit("the end is near") is False
         assert is_dictate_commit("weekend") is False
 
-    def test_and_is_accepted_as_an_end_homophone_whole_utterance_only(self):
-        """"and"/"end" acoustic collision fix -- see
-        _DICTATE_COMMIT_HOMOPHONES in session_modes.py. Isolated "and"
-        commits exactly like "end"; "and" inside ordinary prose never
-        reaches this whole-utterance-only check."""
-        assert is_dictate_commit("and") is True
-        assert is_dictate_commit("And.") is True
+    def test_and_is_not_a_commit_word(self):
+        """Queue 54 reversed the "and" homophone: in the owner's logs a lone
+        "And..." was a mid-thought pause far more often than a misheard
+        "end" -- see _DICTATE_COMMIT_HOMOPHONES in session_modes.py."""
+        assert is_dictate_commit("and") is False
+        assert is_dictate_commit("And.") is False
+        assert is_dictate_commit("And...") is False
         assert is_dictate_commit("you and me") is False
 
     def test_pauses_stage_chunks_without_pasting(self, manager_factory):

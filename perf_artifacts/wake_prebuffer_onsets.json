@@ -1,0 +1,697 @@
+[
+ {
+  "file": "hotkey_20260914T064721_833707.wav",
+  "variant": "normal",
+  "ref_first_word": "did",
+  "lost_ms_by_phase": [
+   -55,
+   -30,
+   -5,
+   120
+  ],
+  "worst": {
+   "phase_ms": 75,
+   "speech_lost_ms": 120.0,
+   "starts_in_speech_energy": true,
+   "buffer_rms": 0.003964523319154978
+  },
+  "discard_first_word_worst": "everything",
+  "keep_first_word_worst": "did"
+ },
+ {
+  "file": "hotkey_20260914T064721_833707.wav",
+  "variant": "soft -12 dB",
+  "ref_first_word": "did",
+  "lost_ms_by_phase": [
+   645,
+   null,
+   null,
+   1020
+  ],
+  "worst": {
+   "phase_ms": 75,
+   "speech_lost_ms": 1020.0,
+   "starts_in_speech_energy": true,
+   "buffer_rms": 0.0007895906455814838
+  },
+  "discard_first_word_worst": "said",
+  "keep_first_word_worst": "did"
+ },
+ {
+  "file": "hotkey_20260914T064553_561158.wav",
+  "variant": "normal",
+  "ref_first_word": "weird",
+  "lost_ms_by_phase": [
+   95,
+   120,
+   145,
+   270
+  ],
+  "worst": {
+   "phase_ms": 75,
+   "speech_lost_ms": 270.0,
+   "starts_in_speech_energy": true,
+   "buffer_rms": 0.004096728749573231
+  },
+  "discard_first_word_worst": "now",
+  "keep_first_word_worst": "weird"
+ },
+ {
+  "file": "hotkey_20260914T064553_561158.wav",
+  "variant": "soft -12 dB",
+  "ref_first_word": "weird",
+  "lost_ms_by_phase": [
+   495,
+   120,
+   2845,
+   2870
+  ],
+  "worst": {
+   "phase_ms": 75,
+   "speech_lost_ms": 2870.0,
+   "starts_in_speech_energy": true,
+   "buffer_rms": 0.0007716345135122538
+  },
+  "discard_first_word_worst": "see",
+  "keep_first_word_worst": "local"
+ },
+ {
+  "file": "hotkey_20260914T063914_053971.wav",
+  "variant": "normal",
+  "ref_first_word": "he",
+  "lost_ms_by_phase": [
+   -60,
+   -35,
+   -10,
+   415
+  ],
+  "worst": {
+   "phase_ms": 75,
+   "speech_lost_ms": 415.0,
+   "starts_in_speech_energy": true,
+   "buffer_rms": 0.0015677539631724358
+  },
+  "discard_first_word_worst": "it",
+  "keep_first_word_worst": "he"
+ },
+ {
+  "file": "hotkey_20260914T063914_053971.wav",
+  "variant": "soft -12 dB",
+  "ref_first_word": "he",
+  "lost_ms_by_phase": [
+   340,
+   365,
+   null,
+   415
+  ],
+  "worst": {
+   "phase_ms": 75,
+   "speech_lost_ms": 415.0,
+   "starts_in_speech_energy": true,
+   "buffer_rms": 0.00038383647915907204
+  },
+  "discard_first_word_worst": "set",
+  "keep_first_word_worst": "he"
+ },
+ {
+  "file": "hotkey_20260914T063819_447961.wav",
+  "variant": "normal",
+  "ref_first_word": "forcing",
+  "lost_ms_by_phase": [
+   270,
+   295,
+   320,
+   245
+  ],
+  "worst": {
+   "phase_ms": 50,
+   "speech_lost_ms": 320.0,
+   "starts_in_speech_energy": true,
+   "buffer_rms": 0.00406876765191555
+  },
+  "discard_first_word_worst": "forcing",
+  "keep_first_word_worst": "by"
+ },
+ {
+  "file": "hotkey_20260914T063819_447961.wav",
+  "variant": "soft -12 dB",
+  "ref_first_word": "forcing",
+  "lost_ms_by_phase": [
+   270,
+   395,
+   520,
+   245
+  ],
+  "worst": {
+   "phase_ms": 50,
+   "speech_lost_ms": 520.0,
+   "starts_in_speech_energy": true,
+   "buffer_rms": 0.0008171331137418747
+  },
+  "discard_first_word_worst": "me",
+  "keep_first_word_worst": "forcing"
+ },
+ {
+  "file": "hotkey_20260914T063808_547947.wav",
+  "variant": "normal",
+  "ref_first_word": "by",
+  "lost_ms_by_phase": [
+   310,
+   335,
+   360,
+   285
+  ],
+  "worst": {
+   "phase_ms": 50,
+   "speech_lost_ms": 360.0,
+   "starts_in_speech_energy": true,
+   "buffer_rms": 0.003129738150164485
+  },
+  "discard_first_word_worst": "letting",
+  "keep_first_word_worst": "by"
+ },
+ {
+  "file": "hotkey_20260914T063808_547947.wav",
+  "variant": "soft -12 dB",
+  "ref_first_word": "by",
+  "lost_ms_by_phase": [
+   610,
+   435,
+   null,
+   null
+  ],
+  "worst": {
+   "phase_ms": 0,
+   "speech_lost_ms": 610.0,
+   "starts_in_speech_energy": true,
+   "buffer_rms": 0.0006683194078505039
+  },
+  "discard_first_word_worst": "thank",
+  "keep_first_word_worst": "by"
+ },
+ {
+  "file": "hotkey_20260914T063751_842166.wav",
+  "variant": "normal",
+  "ref_first_word": "you",
+  "lost_ms_by_phase": [
+   15,
+   40,
+   -35,
+   90
+  ],
+  "worst": {
+   "phase_ms": 75,
+   "speech_lost_ms": 90.0,
+   "starts_in_speech_energy": true,
+   "buffer_rms": 0.003924946766346693
+  },
+  "discard_first_word_worst": "cheated",
+  "keep_first_word_worst": "you"
+ },
+ {
+  "file": "hotkey_20260914T063751_842166.wav",
+  "variant": "soft -12 dB",
+  "ref_first_word": "you",
+  "lost_ms_by_phase": [
+   215,
+   240,
+   null,
+   null
+  ],
+  "worst": {
+   "phase_ms": 25,
+   "speech_lost_ms": 240.0,
+   "starts_in_speech_energy": true,
+   "buffer_rms": 0.0007075949688442051
+  },
+  "discard_first_word_worst": "",
+  "keep_first_word_worst": "you"
+ },
+ {
+  "file": "hotkey_20260914T063748_846983.wav",
+  "variant": "normal",
+  "ref_first_word": "that",
+  "lost_ms_by_phase": [
+   -60,
+   -35,
+   -10,
+   215
+  ],
+  "worst": {
+   "phase_ms": 75,
+   "speech_lost_ms": 215.0,
+   "starts_in_speech_energy": true,
+   "buffer_rms": 0.004392358474433422
+  },
+  "discard_first_word_worst": "more",
+  "keep_first_word_worst": "that"
+ },
+ {
+  "file": "hotkey_20260914T063748_846983.wav",
+  "variant": "soft -12 dB",
+  "ref_first_word": "that",
+  "onset": "never"
+ },
+ {
+  "file": "hotkey_20260914T063740_241956.wav",
+  "variant": "normal",
+  "ref_first_word": "he",
+  "lost_ms_by_phase": [
+   15,
+   40,
+   -35,
+   190
+  ],
+  "worst": {
+   "phase_ms": 75,
+   "speech_lost_ms": 190.0,
+   "starts_in_speech_energy": true,
+   "buffer_rms": 0.006126224994659424
+  },
+  "discard_first_word_worst": "shakes",
+  "keep_first_word_worst": "he"
+ },
+ {
+  "file": "hotkey_20260914T063740_241956.wav",
+  "variant": "soft -12 dB",
+  "ref_first_word": "he",
+  "lost_ms_by_phase": [
+   115,
+   40,
+   65,
+   1090
+  ],
+  "worst": {
+   "phase_ms": 75,
+   "speech_lost_ms": 1090.0,
+   "starts_in_speech_energy": true,
+   "buffer_rms": 0.00152465864084661
+  },
+  "discard_first_word_worst": "shakes",
+  "keep_first_word_worst": "he"
+ },
+ {
+  "file": "hotkey_20260914T063711_148211.wav",
+  "variant": "normal",
+  "ref_first_word": "my",
+  "lost_ms_by_phase": [
+   -20,
+   5,
+   230,
+   255
+  ],
+  "worst": {
+   "phase_ms": 75,
+   "speech_lost_ms": 255.0,
+   "starts_in_speech_energy": true,
+   "buffer_rms": 0.0037837312556803226
+  },
+  "discard_first_word_worst": "i",
+  "keep_first_word_worst": "my"
+ },
+ {
+  "file": "hotkey_20260914T063711_148211.wav",
+  "variant": "soft -12 dB",
+  "ref_first_word": "my",
+  "onset": "never"
+ },
+ {
+  "file": "hotkey_20260914T063654_151659.wav",
+  "variant": "normal",
+  "ref_first_word": "my",
+  "lost_ms_by_phase": [
+   125,
+   450,
+   75,
+   300
+  ],
+  "worst": {
+   "phase_ms": 25,
+   "speech_lost_ms": 450.0,
+   "starts_in_speech_energy": true,
+   "buffer_rms": 0.00340789626352489
+  },
+  "discard_first_word_worst": "and",
+  "keep_first_word_worst": "my"
+ },
+ {
+  "file": "hotkey_20260914T063654_151659.wav",
+  "variant": "soft -12 dB",
+  "ref_first_word": "my",
+  "lost_ms_by_phase": [
+   125,
+   null,
+   null,
+   null
+  ],
+  "worst": {
+   "phase_ms": 0,
+   "speech_lost_ms": 125.0,
+   "starts_in_speech_energy": true,
+   "buffer_rms": 0.0010140335652977228
+  },
+  "discard_first_word_worst": "my",
+  "keep_first_word_worst": "my"
+ },
+ {
+  "file": "hotkey_20260914T063638_429842.wav",
+  "variant": "normal",
+  "ref_first_word": "i",
+  "lost_ms_by_phase": [
+   110,
+   35,
+   160,
+   185
+  ],
+  "worst": {
+   "phase_ms": 75,
+   "speech_lost_ms": 185.0,
+   "starts_in_speech_energy": true,
+   "buffer_rms": 0.0037604740355163813
+  },
+  "discard_first_word_worst": "the",
+  "keep_first_word_worst": "i"
+ },
+ {
+  "file": "hotkey_20260914T063638_429842.wav",
+  "variant": "soft -12 dB",
+  "ref_first_word": "i",
+  "onset": "never"
+ },
+ {
+  "file": "hotkey_20260914T063623_943629.wav",
+  "variant": "normal",
+  "ref_first_word": "i",
+  "lost_ms_by_phase": [
+   110,
+   135,
+   160,
+   185
+  ],
+  "worst": {
+   "phase_ms": 75,
+   "speech_lost_ms": 185.0,
+   "starts_in_speech_energy": true,
+   "buffer_rms": 0.0036479905247688293
+  },
+  "discard_first_word_worst": "may",
+  "keep_first_word_worst": "i"
+ },
+ {
+  "file": "hotkey_20260914T063623_943629.wav",
+  "variant": "soft -12 dB",
+  "ref_first_word": "i",
+  "lost_ms_by_phase": [
+   110,
+   835,
+   860,
+   3285
+  ],
+  "worst": {
+   "phase_ms": 75,
+   "speech_lost_ms": 3285.0,
+   "starts_in_speech_energy": false,
+   "buffer_rms": 0.000666458741761744
+  },
+  "discard_first_word_worst": "from",
+  "keep_first_word_worst": "i"
+ },
+ {
+  "file": "hotkey_20260914T063456_726187.wav",
+  "variant": "normal",
+  "ref_first_word": "with",
+  "lost_ms_by_phase": [
+   10,
+   35,
+   null,
+   null
+  ],
+  "worst": {
+   "phase_ms": 25,
+   "speech_lost_ms": 35.0,
+   "starts_in_speech_energy": true,
+   "buffer_rms": 0.003841100726276636
+  },
+  "discard_first_word_worst": "",
+  "keep_first_word_worst": "with"
+ },
+ {
+  "file": "hotkey_20260914T063456_726187.wav",
+  "variant": "soft -12 dB",
+  "ref_first_word": "with",
+  "onset": "never"
+ },
+ {
+  "file": "hotkey_20260914T063440_548137.wav",
+  "variant": "normal",
+  "ref_first_word": "with",
+  "lost_ms_by_phase": [
+   90,
+   115,
+   40,
+   65
+  ],
+  "worst": {
+   "phase_ms": 25,
+   "speech_lost_ms": 115.0,
+   "starts_in_speech_energy": true,
+   "buffer_rms": 0.004143238067626953
+  },
+  "discard_first_word_worst": "our",
+  "keep_first_word_worst": "with"
+ },
+ {
+  "file": "hotkey_20260914T063440_548137.wav",
+  "variant": "soft -12 dB",
+  "ref_first_word": "with",
+  "lost_ms_by_phase": [
+   90,
+   null,
+   null,
+   null
+  ],
+  "worst": {
+   "phase_ms": 0,
+   "speech_lost_ms": 90.0,
+   "starts_in_speech_energy": false,
+   "buffer_rms": 0.001030581770464778
+  },
+  "discard_first_word_worst": "",
+  "keep_first_word_worst": "with"
+ },
+ {
+  "file": "hotkey_20260914T063437_654564.wav",
+  "variant": "normal",
+  "ref_first_word": "i",
+  "lost_ms_by_phase": [
+   -25,
+   0,
+   25,
+   -50
+  ],
+  "worst": {
+   "phase_ms": 50,
+   "speech_lost_ms": 25.0,
+   "starts_in_speech_energy": true,
+   "buffer_rms": 0.004893317818641663
+  },
+  "discard_first_word_worst": "i",
+  "keep_first_word_worst": "i"
+ },
+ {
+  "file": "hotkey_20260914T063437_654564.wav",
+  "variant": "soft -12 dB",
+  "ref_first_word": "i",
+  "lost_ms_by_phase": [
+   -25,
+   400,
+   225,
+   250
+  ],
+  "worst": {
+   "phase_ms": 25,
+   "speech_lost_ms": 400.0,
+   "starts_in_speech_energy": true,
+   "buffer_rms": 0.0011350290151312947
+  },
+  "discard_first_word_worst": "with",
+  "keep_first_word_worst": "i"
+ },
+ {
+  "file": "hotkey_20260914T063220_439045.wav",
+  "variant": "normal",
+  "ref_first_word": "can",
+  "lost_ms_by_phase": [
+   90,
+   15,
+   40,
+   -35
+  ],
+  "worst": {
+   "phase_ms": 0,
+   "speech_lost_ms": 90.0,
+   "starts_in_speech_energy": true,
+   "buffer_rms": 0.007370482664555311
+  },
+  "discard_first_word_worst": "to",
+  "keep_first_word_worst": "can"
+ },
+ {
+  "file": "hotkey_20260914T063220_439045.wav",
+  "variant": "soft -12 dB",
+  "ref_first_word": "can",
+  "lost_ms_by_phase": [
+   90,
+   315,
+   340,
+   365
+  ],
+  "worst": {
+   "phase_ms": 75,
+   "speech_lost_ms": 365.0,
+   "starts_in_speech_energy": true,
+   "buffer_rms": 0.0017282289918512106
+  },
+  "discard_first_word_worst": "me",
+  "keep_first_word_worst": "can"
+ },
+ {
+  "file": "hotkey_20260914T063127_540533.wav",
+  "variant": "normal",
+  "ref_first_word": "he",
+  "lost_ms_by_phase": [
+   -50,
+   -25,
+   300,
+   325
+  ],
+  "worst": {
+   "phase_ms": 75,
+   "speech_lost_ms": 325.0,
+   "starts_in_speech_energy": true,
+   "buffer_rms": 0.0033179058227688074
+  },
+  "discard_first_word_worst": "it",
+  "keep_first_word_worst": "he"
+ },
+ {
+  "file": "hotkey_20260914T063127_540533.wav",
+  "variant": "soft -12 dB",
+  "ref_first_word": "he",
+  "lost_ms_by_phase": [
+   null,
+   null,
+   null,
+   325
+  ],
+  "worst": {
+   "phase_ms": 75,
+   "speech_lost_ms": 325.0,
+   "starts_in_speech_energy": true,
+   "buffer_rms": 0.0007822082261554897
+  },
+  "discard_first_word_worst": "really",
+  "keep_first_word_worst": "he"
+ },
+ {
+  "file": "hotkey_20260914T062841_560642.wav",
+  "variant": "normal",
+  "ref_first_word": "first",
+  "lost_ms_by_phase": [
+   -40,
+   -15,
+   10,
+   -65
+  ],
+  "worst": {
+   "phase_ms": 50,
+   "speech_lost_ms": 10.0,
+   "starts_in_speech_energy": true,
+   "buffer_rms": 0.006071741692721844
+  },
+  "discard_first_word_worst": "first",
+  "keep_first_word_worst": "first"
+ },
+ {
+  "file": "hotkey_20260914T062841_560642.wav",
+  "variant": "soft -12 dB",
+  "ref_first_word": "first",
+  "lost_ms_by_phase": [
+   -40,
+   -15,
+   null,
+   null
+  ],
+  "worst": {
+   "phase_ms": 25,
+   "speech_lost_ms": -15.0,
+   "starts_in_speech_energy": false,
+   "buffer_rms": 0.0015247625997290015
+  },
+  "discard_first_word_worst": "first",
+  "keep_first_word_worst": "first"
+ },
+ {
+  "file": "hotkey_20260914T062457_553237.wav",
+  "variant": "normal",
+  "ref_first_word": "today",
+  "lost_ms_by_phase": [
+   -70,
+   -45,
+   -20,
+   5
+  ],
+  "worst": {
+   "phase_ms": 75,
+   "speech_lost_ms": 5.0,
+   "starts_in_speech_energy": true,
+   "buffer_rms": 0.0027299481444060802
+  },
+  "discard_first_word_worst": "today",
+  "keep_first_word_worst": "today"
+ },
+ {
+  "file": "hotkey_20260914T062457_553237.wav",
+  "variant": "soft -12 dB",
+  "ref_first_word": "today",
+  "onset": "never"
+ },
+ {
+  "file": "hotkey_20260914T062441_039524.wav",
+  "variant": "normal",
+  "ref_first_word": "i",
+  "lost_ms_by_phase": [
+   135,
+   160,
+   85,
+   210
+  ],
+  "worst": {
+   "phase_ms": 75,
+   "speech_lost_ms": 210.0,
+   "starts_in_speech_energy": true,
+   "buffer_rms": 0.0024387387093156576
+  },
+  "discard_first_word_worst": "compliments",
+  "keep_first_word_worst": "i"
+ },
+ {
+  "file": "hotkey_20260914T062441_039524.wav",
+  "variant": "soft -12 dB",
+  "ref_first_word": "i",
+  "lost_ms_by_phase": [
+   null,
+   5060,
+   null,
+   null
+  ],
+  "worst": {
+   "phase_ms": 25,
+   "speech_lost_ms": 5060.0,
+   "starts_in_speech_energy": false,
+   "buffer_rms": 0.0005769967101514339
+  },
+  "discard_first_word_worst": "",
+  "keep_first_word_worst": "deserve"
+ }
+]

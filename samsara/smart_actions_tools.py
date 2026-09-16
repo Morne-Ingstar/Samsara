@@ -27,6 +27,7 @@ from typing import Any, Dict, List, Optional, Tuple
 from samsara.runtime import thread_registry
 from samsara import execution_policy
 from samsara.execution_policy import Invocation, Route
+from samsara.ui import theme
 
 logger = logging.getLogger(__name__)
 
@@ -393,12 +394,12 @@ class ToolDispatcher:
             lay.setSpacing(10)
 
             hdr = QLabel("The agent wants to:")
-            hdr.setStyleSheet("font-size: 13px;")
+            hdr.setStyleSheet(f"font-size: {theme.TYPE_BODY}px;")
             lay.addWidget(hdr)
 
             desc_lbl = QLabel(description)
             desc_lbl.setWordWrap(True)
-            desc_lbl.setStyleSheet("font-size: 13px; font-weight: 600;")
+            desc_lbl.setStyleSheet(f"font-size: {theme.TYPE_BODY}px; font-weight: 600;")
             lay.addWidget(desc_lbl)
 
             btn_row = QHBoxLayout()

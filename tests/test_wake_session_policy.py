@@ -178,7 +178,9 @@ def test_canonical_keys_override_legacy_session_settings():
 
 
 def test_discard_capture_starts_after_confirmation_and_guard(rig, monkeypatch, caplog):
-    r = rig()
+    # Queue 44: an open session now keeps the rewind by default; this pins the
+    # original discard (tests/test_wake_prebuffer_in_session.py covers retain).
+    r = rig({'wake_word_config': {'session': {'retain_prebuffer_in_session': False}}})
     for i in range(PREBUFFER_FRAMES):
         r.feed(98.6 + i * .1, value=2000, process=False)
     r.reader.snap_to_head()

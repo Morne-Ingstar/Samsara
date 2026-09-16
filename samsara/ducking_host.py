@@ -744,6 +744,10 @@ class _SessionRegistry:
                     "sid": sid,
                     "pid": tracked.pid,
                     "process_name": _process_name(tracked.pid),
+                    # 52: the Windows instance identifier outlives this child
+                    # and the parent, so the parent's duck journal can match
+                    # a session again after a hard kill.
+                    "instance": instance,
                 }
             )
 
