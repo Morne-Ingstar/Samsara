@@ -64,7 +64,6 @@ def _build_restart_args() -> tuple[list[str], str]:
 
 @command("restart samsara", aliases=["restart", "reboot samsara"], pack="core",
          risk_class="destructive",
-         param_schema={"remainder": {"type": "str", "required": False}},
 )
 def restart_app(app, remainder="", **kwargs):
     """Closes Samsara and starts it again."""

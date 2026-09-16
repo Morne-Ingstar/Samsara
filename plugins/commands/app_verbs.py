@@ -289,7 +289,7 @@ def do_close(name: str) -> "ActionResult":
     "focus",
     aliases=["switch to"],
     pack="window-management",
-    risk_class="ui", param_schema={"remainder": {"type": "str", "required": False}},
+    risk_class="ui", param_schema={"app_name": {"type": "app_name", "required": False}},
 )
 def handle_focus(app, remainder):
     """Brings the app you name to the front, such as focus firefox.
@@ -320,7 +320,7 @@ def handle_focus(app, remainder):
 @command(
     "open",
     pack="window-management",
-    risk_class="ui", param_schema={"remainder": {"type": "str", "required": False}},
+    risk_class="ui", param_schema={"app_name": {"type": "app_name", "required": False}},
 )
 def handle_open(app, remainder):
     """Opens the app you name, or brings it to the front if it is already running.
@@ -344,7 +344,7 @@ def handle_open(app, remainder):
     "close",
     pack="window-management",
     risk_class="reversible",
-    param_schema={"remainder": {"type": "str", "required": False}},
+    param_schema={"app_name": {"type": "app_name", "required": False}},
 )
 def handle_close(app, remainder):
     """Closes the app you name, asking it to save first."""

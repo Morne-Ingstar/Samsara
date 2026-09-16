@@ -298,7 +298,6 @@ def handle_read_health(app, remainder="", **kwargs):
              "download health log"],
     pack="health",
     risk_class="write",
-    param_schema={"remainder": {"type": "str", "required": False}},
 )
 def handle_export_health(app, remainder="", **kwargs):
     """Saves your whole health log to a CSV file."""
@@ -313,7 +312,6 @@ def handle_export_health(app, remainder="", **kwargs):
     aliases=["undo health", "remove last health", "delete last health",
              "undo health entry"],
     pack="health", risk_class="destructive",
-    param_schema={"remainder": {"type": "str", "required": False}},
 )
 def handle_undo_health(app, remainder="", **kwargs):
     """Deletes the last thing you logged."""
@@ -334,7 +332,6 @@ def handle_undo_health(app, remainder="", **kwargs):
     aliases=["delete health log", "wipe health log", "reset health log"],
     pack="health",
     risk_class="destructive",
-    param_schema={"remainder": {"type": "str", "required": False}},
 )
 def handle_clear_health(app, remainder="", **kwargs):
     """Deletes every entry in your health log.

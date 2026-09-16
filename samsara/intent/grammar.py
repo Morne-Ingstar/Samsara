@@ -293,6 +293,18 @@ class Grammar:
         while toks and toks[0] in ("the", "a", "letter", "window") and len(toks) > 1:
             toks = toks[1:]
         if kind == "int":
+            if name.endswith("s"):
+                numbers = []
+                for tok in toks:
+                    if tok in ("and", "into", "to"):
+                        continue
+                    n = nz.parse_number([tok])
+                    if n is None:
+                        n = nz.parse_ordinal(tok)
+                    if n is None:
+                        return None
+                    numbers.append(n)
+                return (numbers, 0.0) if numbers else None
             n = nz.parse_number(toks)
             if n is None and len(toks) == 1:
                 n = nz.parse_ordinal(toks[0])
@@ -322,6 +334,8 @@ class Grammar:
         kinds = [k for _n, k, _r in t.args]
         if kinds == ["app_name", "monitor"]:
             return self._send_slots(t, rest)
+        if kinds == ["nato_letter", "monitor"]:
+            return self._letter_monitor_slots(t, rest)
         if len(t.args) == 1:
             name, kind, required = t.args[0]
             if not rest:
@@ -331,6 +345,22 @@ class Grammar:
                 return None
             return {name: got[0]}, got[1]
         return {t.args[0][0]: " ".join(rest)}, P_TEXT_SLOT
+
+    def _letter_monitor_slots(self, t: Template, rest: list):
+        """Parse ``window move B to monitor 2`` into typed label and monitor."""
+        (label_arg, _label_kind, _label_required), (monitor_arg, _monitor_kind, monitor_required) = t.args
+        if not rest:
+            return ({}, P_MISSING_REQUIRED) if not monitor_required else None
+        for cut in range(1, len(rest) + 1):
+            label = self._slot("nato_letter", label_arg, rest[:cut])
+            if label is None:
+                continue
+            if cut == len(rest):
+                return ({label_arg: label[0]}, label[1]) if not monitor_required else None
+            monitor = self._slot("monitor", monitor_arg, rest[cut:])
+            if monitor is not None:
+                return {label_arg: label[0], monitor_arg: monitor[0]}, label[1] + monitor[1]
+        return None
 
     def _send_slots(self, t: Template, rest: list):
         """windows.send-shaped: optional app + required destination, either order."""

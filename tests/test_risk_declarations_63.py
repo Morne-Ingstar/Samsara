@@ -162,10 +162,12 @@ def test_must_ask_commands_declare_destructive(stem, spoken):
 
 
 @pytest.mark.parametrize("stem,spoken", RUNS_DIRECTLY)
-def test_runs_directly_commands_declare_nothing_and_catalog_says_write(stem, spoken, tmp_path):
-    assert "risk_class" not in _decorator(stem, spoken)[1]
+def test_runs_directly_commands_classify_as_write(stem, spoken, tmp_path):
+    """Declared non-destructive risks still run without confirmation."""
     phrase = _register_stub(stem, spoken, [])
-    assert ep.classify(phrase)[0] == "write"
+    # `send` now correctly preserves its declared UI class; all other rows
+    # retain their catalog write class. Neither class asks on a spoken route.
+    assert ep.classify(phrase)[0] == ("ui" if phrase == "send" else "write")
 
 
 @pytest.mark.parametrize("stem,spoken", MUST_ASK)

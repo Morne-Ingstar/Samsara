@@ -163,7 +163,6 @@ def _shift_click(x: int, y: int) -> None:
     aliases=["set marker", "start selection"],
     pack="text-editing",
     risk_class="write",
-    param_schema={"remainder": {"type": "str", "required": False}},
 )
 def mark_here(app, remainder):
     """Sets the start of a selection where the pointer is."""
@@ -183,7 +182,6 @@ def mark_here(app, remainder):
     aliases=["end selection", "select to mark", "grab to here"],
     pack="text-editing",
     risk_class="write",
-    param_schema={"remainder": {"type": "str", "required": False}},
 )
 def select_to_here(app, remainder):
     """Selects from the mark you set to where the pointer is now."""
@@ -250,7 +248,6 @@ def _triple_click():
     aliases=["select this paragraph", "grab paragraph", "select block"],
     pack="text-editing",
     risk_class="write",
-    param_schema={"remainder": {"type": "str", "required": False}},
 )
 def select_paragraph(app, remainder="", **kwargs):
     """Selects the paragraph the pointer is in."""
