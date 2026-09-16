@@ -23,9 +23,12 @@ from the label vocabulary instead, which is all those call sites ever had.
 """
 from __future__ import annotations
 
+from functools import lru_cache
 from typing import NamedTuple, Optional
 
-from samsara.session_modes import CHIP_CHECK
+# Keep this local rather than importing session_modes: command chip labels use
+# the catalog resolver below, and session_modes imports that resolver lazily.
+CHIP_CHECK = chr(0x2713)
 
 #: Chip kinds that are progress, not outcomes. The writer never rings these;
 #: named here so a reader can say why a kind is absent.
@@ -72,17 +75,21 @@ class OutcomeRecord(NamedTuple):
     kind:   the CHIP kind ("success" | "warning" | "error" | "accent").
     at:     ``time.time()`` when it was rung.
     source: the DispatchOutcome kind, or "" for a directly raised chip.
+    canonical_id: stable catalog identity for a command, or "" when this is
+                  not a command or the catalog could not resolve it.
     """
     label: str
     kind: str
     at: float
     source: str = ""
+    canonical_id: str = ""
 
 
-def record(label, kind, at: float, source: str = "") -> OutcomeRecord:
+def record(label, kind, at: float, source: str = "", canonical_id: str = "") -> OutcomeRecord:
     """Build a record with every field normalised to the declared type, so a
     reader never has to defend itself against a None label or a bytes kind."""
-    return OutcomeRecord(str(label or ""), str(kind or ""), float(at), str(source or ""))
+    return OutcomeRecord(str(label or ""), str(kind or ""), float(at), str(source or ""),
+                         str(canonical_id or getattr(label, "canonical_id", "") or ""))
 
 
 def as_record(item) -> Optional[OutcomeRecord]:
@@ -97,16 +104,84 @@ def as_record(item) -> Optional[OutcomeRecord]:
     if isinstance(item, dict):
         return record(item.get("label"), item.get("kind"),
                       item.get("at", item.get("time", 0.0)) or 0.0,
-                      item.get("source", ""))
+                      item.get("source", ""), item.get("canonical_id", ""))
     if isinstance(item, (tuple, list)) and len(item) >= 2:
         at = item[2] if len(item) > 2 else 0.0
         source = item[3] if len(item) > 3 else ""
+        canonical_id = item[4] if len(item) > 4 else ""
         try:
             at = float(at)
         except (TypeError, ValueError):
             at = 0.0
-        return record(item[0], item[1], at, source)
+        return record(item[0], item[1], at, source, canonical_id)
     return None
+
+
+@lru_cache(maxsize=1)
+def _catalog_indexes() -> tuple[dict[str, str], dict[str, str]]:
+    """(normalised spoken phrase -> id, id -> canonical spoken phrase).
+
+    ``command_catalog.load_catalog_json`` intentionally validates and reads
+    its JSON on each call. Outcome chips render on the UI path, so the ring
+    owns this one-process cache rather than making each chip perform disk I/O.
+    An unavailable catalog is a normal degraded state for old history.
+    """
+    aliases: dict[str, str] = {}
+    canonical: dict[str, str] = {}
+    try:
+        from samsara import command_catalog
+        for entry in command_catalog.load_catalog_json() or ():
+            command_id = str(entry.get("canonical_id") or "")
+            if not command_id:
+                continue
+            canonical[command_id] = command_catalog.canonical_phrase(entry)
+            names = [entry.get("phrase"), *(entry.get("aliases") or ())]
+            for name in names:
+                if name:
+                    aliases.setdefault(command_catalog.normalize_phrase(str(name)), command_id)
+    except Exception:
+        # A chip must never make command dispatch or Home fail because a
+        # catalog file is absent during an update or a test fixture.
+        pass
+    return aliases, canonical
+
+
+def canonical_id_for_phrase(phrase) -> str:
+    """Catalog id for a spoken command phrase, or "" when unknown."""
+    if not phrase:
+        return ""
+    try:
+        from samsara.command_catalog import normalize_phrase
+        return _catalog_indexes()[0].get(normalize_phrase(str(phrase)), "")
+    except Exception:
+        return ""
+
+
+class _CommandChipLabel(str):
+    """String-compatible chip text that carries identity to ``record``."""
+
+    def __new__(cls, text: str, canonical_id: str):
+        obj = super().__new__(cls, text)
+        obj.canonical_id = canonical_id
+        return obj
+
+
+def command_chip_label(text: str, phrase) -> str:
+    """Keep the visible chip text while attaching its catalog identity."""
+    return _CommandChipLabel(text, canonical_id_for_phrase(phrase))
+
+
+def canonical_command_label(canonical_id, stored_label: str) -> str:
+    """Full canonical spoken form, falling back to the text already stored."""
+    command_id = str(canonical_id or "")
+    if not command_id:
+        return str(stored_label or "")
+    return _catalog_indexes()[1].get(command_id, str(stored_label or ""))
+
+
+def canonical_command_label_for_phrase(phrase, stored_label: str) -> str:
+    """As above for legacy persistent History rows that store a phrase."""
+    return canonical_command_label(canonical_id_for_phrase(phrase), stored_label)
 
 
 def is_command_outcome(item) -> bool:
