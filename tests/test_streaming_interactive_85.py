@@ -131,7 +131,7 @@ def preview(monkeypatch, queue):
     """A DictatePreviewSession whose overlay is a recording double -- the Qt
     widget has its own tests above; this is about the session wiring."""
     manager = _manager(speak_fn=lambda text, category="confirmation": None)
-    calls = {"transcript": [], "prompt": [], "scroll": []}
+    calls = {"transcript": [], "prompt": [], "scroll": [], "move": []}
 
     class _Overlay:
         def __init__(self, *a, **k):
@@ -148,6 +148,9 @@ def preview(monkeypatch, queue):
 
         def scroll_draft(self, where):
             calls["scroll"].append(where)
+
+        def move_draft(self, position):
+            calls["move"].append(position)
 
         def show(self):
             pass
@@ -245,6 +248,17 @@ def test_the_scroll_phrase_reaches_the_preview_and_is_not_dictated(preview):
     assert outcome.kind == "draft_scrolled"
     assert preview.calls["scroll"] == ["top"]
     assert "top of the draft" not in preview.manager.dictate_pending_buffer
+
+
+def test_voice_placement_reaches_the_preview_and_a_sentence_stays_dictation(preview):
+    _say(preview, "Some staged words.")
+    outcome = preview.manager.dispatch_utterance("move the draft box to the top left", GOOD)
+    assert outcome.kind == "draft_scrolled"
+    assert preview.calls["move"] == ["top-left"]
+    sentence = "Please move the draft box to the top left after this meeting."
+    outcome = preview.manager.dispatch_utterance(sentence, GOOD)
+    assert outcome.kind == "dictate_staged"
+    assert sentence in preview.manager.dictate_pending_buffer
 
 
 def test_existing_scroll_commands_still_mean_the_app_not_the_draft(preview):

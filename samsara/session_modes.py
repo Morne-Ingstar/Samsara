@@ -363,6 +363,17 @@ DRAFT_SCROLL_PHRASES = {
     "bottom of the draft": "bottom",
     "end of the draft": "bottom",
     "show me the rest of the draft": "bottom",
+    # Queue 136: whole-utterance placement controls use the existing
+    # draft-scoped callback, so ordinary sentences remain dictation.
+    "move the draft box to the top left": "move:top-left",
+    "move the draft box to the top center": "move:top-center",
+    "move the draft box to the top right": "move:top-right",
+    "move the draft box to the center left": "move:center-left",
+    "move the draft box to the center": "move:center",
+    "move the draft box to the center right": "move:center-right",
+    "move the draft box to the bottom left": "move:bottom-left",
+    "move the draft box to the bottom center": "move:bottom-center",
+    "move the draft box to the bottom right": "move:bottom-right",
 }
 
 
@@ -379,8 +390,10 @@ def is_forget_correction(raw_text: str) -> bool:
 
 
 def match_draft_scroll(raw_text: str) -> Optional[str]:
-    """"up" | "down" | "top" | "bottom" for a whole-utterance draft-scroll
-    phrase, else None. 'we should scroll the draft up a bit' is dictation."""
+    """Return a draft view or ``move:<preset>`` control for a whole utterance.
+
+    A sentence containing a control phrase is still dictation.
+    """
     return DRAFT_SCROLL_PHRASES.get(normalize_utterance(raw_text))
 
 
