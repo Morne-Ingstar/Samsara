@@ -57,7 +57,7 @@ from samsara.log import get_logger
 
 logger = get_logger(__name__)
 
-SCOPE_KEYS = ("apps", "title", "tags")
+SCOPE_KEYS = ("apps", "title", "tags", "argument_tags")
 
 
 # ---------------------------------------------------------------------------
@@ -69,6 +69,10 @@ class Scope:
     apps: frozenset = frozenset()
     title: Optional[str] = None
     tags: frozenset = frozenset()
+    # Tags required only when the matched phrase has a non-empty remainder.
+    # This keeps a bare command global while making its argument form a
+    # candidate only in the state that gives that argument meaning.
+    argument_tags: frozenset = frozenset()
 
     @property
     def needs_foreground(self) -> bool:
@@ -83,6 +87,8 @@ class Scope:
             out["title"] = self.title
         if self.tags:
             out["tags"] = sorted(self.tags)
+        if self.argument_tags:
+            out["argument_tags"] = sorted(self.argument_tags)
         return out
 
     def describe(self) -> str:
@@ -94,6 +100,9 @@ class Scope:
             parts.append("when the window title matches /" + self.title + "/")
         if self.tags:
             parts.append("while " + " and ".join(_tag_wording(t) for t in sorted(self.tags)))
+        if self.argument_tags:
+            parts.append("with an argument while " + " and ".join(
+                _tag_wording(t) for t in sorted(self.argument_tags)))
         return "only " + "; ".join(parts) if parts else "everywhere"
 
 
@@ -126,7 +135,7 @@ def parse_scope(raw) -> Optional[Scope]:
     if raw is None:
         return None
     if isinstance(raw, Scope):
-        return raw if (raw.apps or raw.title is not None or raw.tags) else None
+        return raw if (raw.apps or raw.title is not None or raw.tags or raw.argument_tags) else None
     if not isinstance(raw, dict):
         raise ValueError(f"scope must be a dict, got {type(raw).__name__}")
     unknown = set(raw) - set(SCOPE_KEYS) - {"app"}
@@ -142,9 +151,10 @@ def parse_scope(raw) -> Optional[Scope]:
         except re.error as exc:
             raise ValueError(f"scope 'title' is not a valid regular expression: {exc}") from exc
     tags = _names(raw.get("tags"), "tags")
-    if not apps and title is None and not tags:
+    argument_tags = _names(raw.get("argument_tags"), "tags")
+    if not apps and title is None and not tags and not argument_tags:
         return None
-    return Scope(apps=apps, title=title, tags=tags)
+    return Scope(apps=apps, title=title, tags=tags, argument_tags=argument_tags)
 
 
 # ---------------------------------------------------------------------------
@@ -214,7 +224,7 @@ class MatchContext:
         return cls(exe=exe.lower(), title=title, resolved=True, tags=frozenset(tags))
 
 
-def scope_live(scope: Optional[Scope], ctx: Optional[MatchContext]) -> tuple:
+def scope_live(scope: Optional[Scope], ctx: Optional[MatchContext], remainder: str = "") -> tuple:
     """(live, why) for one scope. A global scope (None) is always live."""
     if scope is None:
         return True, ""
@@ -224,6 +234,10 @@ def scope_live(scope: Optional[Scope], ctx: Optional[MatchContext]) -> tuple:
         missing = sorted(scope.tags - ctx.tags)
         if missing:
             return False, "needs " + ", ".join(missing)
+    if remainder and remainder.strip() and scope.argument_tags:
+        missing = sorted(scope.argument_tags - ctx.tags)
+        if missing:
+            return False, "argument needs " + ", ".join(missing)
     if scope.needs_foreground:
         if ctx.own_window:
             return False, "Samsara's own window is focused"
