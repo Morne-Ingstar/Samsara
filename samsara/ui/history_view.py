@@ -859,8 +859,8 @@ class _FilterChips(QWidget):
 # Row widgets
 # ---------------------------------------------------------------------------
 
-def _build_day_header_widget(label: str) -> QWidget:
-    w = QWidget()
+def _build_day_header_widget(label: str, parent: QWidget | None = None) -> QWidget:
+    w = QWidget(parent)
     _make_transparent(w)
     lay = QHBoxLayout(w)
     lay.setContentsMargins(_ROW_PAD_H, 14, _ROW_PAD_H, 4)
@@ -884,8 +884,8 @@ def _pill(outcome: Outcome) -> QLabel:
 class _HistoryRow(QWidget):
     """One entry: time | two lines of text over pills + meta | Copy."""
 
-    def __init__(self, row: dict, on_copy):
-        super().__init__()
+    def __init__(self, row: dict, on_copy, parent: QWidget | None = None):
+        super().__init__(parent)
         _make_transparent(self)
         self.row = row
         lay = QHBoxLayout(self)
@@ -956,8 +956,8 @@ class _HistoryRow(QWidget):
         return max(_ROW_MIN_HEIGHT, 2 * _ROW_PAD_V + text_h + 4 + meta_h)
 
 
-def _build_load_older_widget(on_click) -> QWidget:
-    w = QWidget()
+def _build_load_older_widget(on_click, parent: QWidget | None = None) -> QWidget:
+    w = QWidget(parent)
     _make_transparent(w)
     lay = QHBoxLayout(w)
     lay.setContentsMargins(12, 4, 12, 4)
@@ -969,8 +969,10 @@ def _build_load_older_widget(on_click) -> QWidget:
     return w
 
 
-def _build_empty_state_widget(message: str, action_label: str = "", on_action=None) -> QWidget:
-    w = QWidget()
+def _build_empty_state_widget(
+    message: str, action_label: str = "", on_action=None, parent: QWidget | None = None,
+) -> QWidget:
+    w = QWidget(parent)
     _make_transparent(w)
     lay = QVBoxLayout(w)
     lay.setAlignment(Qt.AlignmentFlag.AlignCenter)
@@ -1441,7 +1443,9 @@ class HistoryView(QWidget):
                         header_item.setFlags(Qt.ItemFlag.NoItemFlags)
                         header_item.setSizeHint(_size(_HEADER_HEIGHT))
                         self._list.addItem(header_item)
-                        self._list.setItemWidget(header_item, _build_day_header_widget(label))
+                        self._list.setItemWidget(
+                            header_item, _build_day_header_widget(label, self._list.viewport())
+                        )
                         last_day = label
 
                 item = QListWidgetItem()
@@ -1452,7 +1456,7 @@ class HistoryView(QWidget):
                     'row': dict(row),
                 })
                 self._list.addItem(item)
-                row_widget = _HistoryRow(row, self._copy_row_widget)
+                row_widget = _HistoryRow(row, self._copy_row_widget, self._list.viewport())
                 self._list.setItemWidget(item, row_widget)
                 # Polish after parenting: the view's stylesheet sets the
                 # fonts the wrap/height maths must measure with.
@@ -1471,7 +1475,8 @@ class HistoryView(QWidget):
                 self._load_older_item.setSizeHint(_size(_LOAD_OLDER_HEIGHT))
                 self._list.addItem(self._load_older_item)
                 self._list.setItemWidget(
-                    self._load_older_item, _build_load_older_widget(self._load_older)
+                    self._load_older_item,
+                    _build_load_older_widget(self._load_older, self._list.viewport()),
                 )
 
             if self._list.count() == 0:
@@ -1486,7 +1491,10 @@ class HistoryView(QWidget):
                 self._empty_item.setFlags(Qt.ItemFlag.NoItemFlags)
                 self._empty_item.setSizeHint(_size(_EMPTY_HEIGHT))
                 self._list.addItem(self._empty_item)
-                self._list.setItemWidget(self._empty_item, _build_empty_state_widget(message, *action))
+                self._list.setItemWidget(
+                    self._empty_item,
+                    _build_empty_state_widget(message, *action, parent=self._list.viewport()),
+                )
         finally:
             self._list.setUpdatesEnabled(True)
 
