@@ -6,8 +6,18 @@ Reads ~/.samsara/shadow/intent-*.jsonl (or --dir / explicit files) and prints:
   2. the top 20 utterances the gate would have claimed as commands -- the
      dangerous ones: dictated text that would have executed
   3. the top 20 misses (the gate produced no decision)
-  4. latency percentiles (resolve() elapsed and tiers 1+2), per tier
-  5. false-positive candidates: would-be-command utterances longer than 8 words
+  4. latency percentiles, per tier, for BOTH measurements -- they are not the
+     same thing and the 2026-09-15 Move A tribunal read one as the other:
+       t12_us     tiers 1+2 only. This is what resolve.LATENCY_BUDGET_MS is
+                  stated against, and the only number the budget applies to.
+       elapsed_us wall clock around the whole shadow decision: the lazy
+                  resolver build on the first utterance after the background
+                  worker respawns (it exits after 30 s idle), plus tier 3,
+                  plus whatever else that thread waited on. Rows in the tens
+                  of milliseconds here are cold workers, not slow resolution.
+  5. execution rules (queue 93): which rule demoted a decision, and the
+     rules_version populations, so one log can hold before and after
+  6. false-positive candidates: would-be-command utterances longer than 8 words
 
 Read-only: never modifies or uploads the log.
 
@@ -31,6 +41,8 @@ if str(REPO) not in sys.path:
 
 TOP = 20
 LONG_WORDS = 8
+
+from samsara.intent.resolve import LATENCY_BUDGET_MS  # noqa: E402
 
 
 def default_dir() -> Path:
@@ -116,12 +128,58 @@ def build_report(entries, bad_lines: int = 0, sources=()) -> str:
         rows.append(f"  {n:>4}x  {why:<24}  {text!r}")
 
     section("Latency (microseconds)")
-    rows.append(f"  all resolve()    {_percentiles(e.get('elapsed_us') for e in entries)}")
-    rows.append(f"  tiers 1+2        {_percentiles(e.get('t12_us') for e in entries)}")
-    for tier in ("exact", "grammar", "similarity"):
+    budget_us = int(LATENCY_BUDGET_MS * 1000)
+    rows.append(f"  BUDGET: {budget_us:,} us, and it applies to t12 (tiers 1+2) ONLY.")
+    rows.append("  elapsed = the whole shadow decision incl. tier 3 and the cold resolver")
+    rows.append("  build after an idle worker respawn -- no budget is stated against it.")
+    rows.append("")
+    rows.append(f"  t12      ALL        {_percentiles(e.get('t12_us') for e in entries)}")
+    rows.append(f"  elapsed  ALL        {_percentiles(e.get('elapsed_us') for e in entries)}")
+    for tier in ("exact", "grammar", "similarity", None):
         subset = [e for e in entries if e.get("tier") == tier]
-        if subset:
-            rows.append(f"  decided {tier:<11}{_percentiles(e.get('elapsed_us') for e in subset)}  (n={len(subset)})")
+        if not subset:
+            continue
+        label = tier or "(dictate)"
+        rows.append(f"  t12      {label:<11}{_percentiles(e.get('t12_us') for e in subset)}  (n={len(subset)})")
+        rows.append(f"  elapsed  {label:<11}{_percentiles(e.get('elapsed_us') for e in subset)}  (n={len(subset)})")
+    over = [e for e in entries if isinstance(e.get("t12_us"), (int, float)) and e["t12_us"] > budget_us]
+    rows.append("")
+    rows.append(f"  t12 rows OVER the {budget_us:,} us budget: {len(over)} of {len(entries)}")
+    for e in over[:TOP]:
+        rows.append(f"    {e.get('ts', '?')[:19]}  t12={e['t12_us']:,} us  "
+                    f"elapsed={e.get('elapsed_us', 0):,} us  {e['text']!r}")
+
+    section("Execution rules (queue 93)")
+    versions = Counter(e.get("rules_version") for e in entries)
+    for version, n in sorted(versions.items(), key=lambda kv: (kv[0] is None, kv[0])):
+        rows.append(f"  rules_version {str(version):<8} {n:>7}  "
+                    f"{100.0 * n / max(1, len(entries)):5.1f}%")
+    blocked = Counter(e.get("blocked") for e in entries if e.get("blocked"))
+    if not blocked:
+        rows.append("  (no decision was demoted by an execution rule)")
+    for reason, n in blocked.most_common():
+        rows.append(f"  blocked {reason:<22} {n:>7}")
+    forced = sum(1 for e in entries if e.get("forced"))
+    rows.append(f"  spoken with the command prefix: {forced}")
+    # Queue 127: rule 2 says "only an exact match executes", and the belief was
+    # that zero word-penalty meant the user spoke a registered form. It does
+    # not: a hand-written grammar rule and a template with an inserted
+    # determiner both cost nothing. `literal` records the difference on the
+    # row, and this is the line that reads it back. NOTHING GATES ON IT -- it
+    # is here so the size of that gap is a number instead of an assumption.
+    would_run = [e for e in entries if _category(e["would"]) == "command"]
+    with_field = [e for e in would_run if "literal" in e]
+    if not with_field:
+        rows.append("  literal: no row carries the field (all rows predate queue 127)")
+    else:
+        not_literal = sum(1 for e in with_field if not e.get("literal"))
+        rows.append(f"  would-execute rows whose words were NOT a registered form "
+                    f"(literal=false): {not_literal} of {len(with_field)}"
+                    + (f"  [{len(would_run) - len(with_field)} older row(s) have no field]"
+                       if len(would_run) != len(with_field) else ""))
+        by_tier = Counter(e.get("tier") for e in with_field if not e.get("literal"))
+        for tier, n in by_tier.most_common():
+            rows.append(f"    non-literal via tier {str(tier):<12} {n:>7}")
 
     section(f"False-positive candidates: would-be commands longer than {LONG_WORDS} words")
     long_ones = [e for e in entries
