@@ -96,6 +96,7 @@ _enum_cache: "dict | None" = None   # {'hwnd': int, 't': float, 'elements': list
 _CACHE_TTL      = 10.0   # seconds
 _AUTO_DISMISS_S = 30
 _FG_POLL_MS     = 2000
+_NUMBERS_TAG     = "show_numbers.visible"
 
 # ---------------------------------------------------------------------------
 # DOM (browser-extension) session state -- deliberately a SEPARATE lock and
@@ -968,6 +969,17 @@ def _click_with_validation(element, modifier: str, keys: frozenset = frozenset()
 def _perform_click(element, modifier: str, keys: frozenset = frozenset()) -> bool:
     """UIA-first click, then Win32 fallback. keys holds modifier key names to hold."""
     try:
+        import win32api  # noqa: PLC0415
+        rect = element.BoundingRectangle
+        x = (rect.left + rect.right) // 2
+        y = (rect.top + rect.bottom) // 2
+        # Always leave the pointer on the labelled target. UIA otherwise
+        # invokes with simulateMove=False while the fallback moves it, making
+        # follow-up bare clicks depend on which backend happened to work.
+        _with_physical_dpi_context(lambda: win32api.SetCursorPos((x, y)))
+    except Exception as e:
+        logger.warning("[OVERLAY] could not move pointer to target: %s", e)
+    try:
         if modifier == 'double':
             _apply_modifier_keys(keys, lambda: element.DoubleClick(simulateMove=False))
         elif modifier == 'right':
@@ -981,12 +993,6 @@ def _perform_click(element, modifier: str, keys: frozenset = frozenset()) -> boo
     try:
         import win32api, win32con
         rect = element.BoundingRectangle
-        x = (rect.left + rect.right) // 2
-        y = (rect.top + rect.bottom) // 2
-        # Rectangles are physical pixels; this thread is system-DPI-aware in
-        # the app (pyautogui, reports/70), so place the cursor in PMv2.
-        _with_physical_dpi_context(lambda: win32api.SetCursorPos((x, y)))
-
         def _do_mouse():
             if modifier == 'right':
                 win32api.mouse_event(win32con.MOUSEEVENTF_RIGHTDOWN, 0, 0, 0, 0)
@@ -2121,6 +2127,7 @@ def handle_refresh_numbers(app, remainder):
          aliases=["tap", "press"],
          pack="accessibility",
          risk_class="write", param_schema={"label": {"type": "int", "required": False}},
+         scope={"argument_tags": [_NUMBERS_TAG]},
 )
 def handle_click(app, remainder):
     """Clicks the numbered thing you name, such as click seven.
@@ -2135,7 +2142,7 @@ def handle_click(app, remainder):
         if handled is not None:
             return handled
     if not remainder or not remainder.strip():
-        return True
+        return _click_at_cursor("single")
 
     text = remainder.strip().lower()
 
@@ -2156,18 +2163,42 @@ def handle_click(app, remainder):
 
     text = re.sub(r'^(click|tap|press|select)\s+', '', text.strip()).strip()
 
-    if text and not _is_label_number(text):
+    number = _parse_spoken_number(text)
+    if text and number is None:
         from samsara.screen_ocr import token_view as tokens  # noqa: PLC0415
         if " ".join(tokens(text)) in _KEY_NAMES:
             logger.info("[CLICK-TEXT] %r names a key, not on-screen text -- not reading the screen", text)
             return True
         return _click_text(app, text, modifier, keys_frozen)
 
-    number = _parse_spoken_number(text)
     if number is None:
         logger.info(f"[OVERLAY] Couldn't parse number from: {remainder!r}")
         return True
 
+    return _click_number(app, number, modifier, keys_frozen)
+
+
+def _click_at_cursor(modifier: str) -> bool:
+    """The global bare-click path, intentionally independent of labels."""
+    try:
+        import win32api, win32con  # noqa: PLC0415
+        if modifier == "right":
+            pairs = ((win32con.MOUSEEVENTF_RIGHTDOWN, win32con.MOUSEEVENTF_RIGHTUP),)
+        elif modifier == "double":
+            pairs = ((win32con.MOUSEEVENTF_LEFTDOWN, win32con.MOUSEEVENTF_LEFTUP),) * 2
+        else:
+            pairs = ((win32con.MOUSEEVENTF_LEFTDOWN, win32con.MOUSEEVENTF_LEFTUP),)
+        for down, up in pairs:
+            win32api.mouse_event(down, 0, 0, 0, 0)
+            win32api.mouse_event(up, 0, 0, 0, 0)
+        return True
+    except Exception as exc:
+        logger.warning("[OVERLAY] bare %s click failed: %s", modifier, exc)
+        return False
+
+
+def _click_number(app, number: int, modifier: str, keys_frozen: frozenset = frozenset()) -> bool:
+    """ONE label-resolution path for left, right, and double click."""
     with _dom_lock:
         dom_active = _dom_active
         dom_count = _dom_hint_count
@@ -2219,6 +2250,39 @@ def handle_click(app, remainder):
     return True
 
 
+def _numbered_click_handler(modifier: str):
+    def _handler(app, remainder):
+        if not remainder or not remainder.strip():
+            return _click_at_cursor(modifier)
+        number = _parse_spoken_number(remainder.strip().lower())
+        if number is None:
+            _speak(app, "Say a numbered label while numbers are showing.")
+            return True
+        return _click_number(app, number, modifier)
+    return _handler
+
+
+@command("left click", pack="accessibility", risk_class="write",
+         param_schema={"label": {"type": "int", "required": False}},
+         scope={"argument_tags": [_NUMBERS_TAG]})
+def handle_left_click(app, remainder):
+    return _numbered_click_handler("single")(app, remainder)
+
+
+@command("right click", pack="accessibility", risk_class="write",
+         param_schema={"label": {"type": "int", "required": False}},
+         scope={"argument_tags": [_NUMBERS_TAG]})
+def handle_right_click(app, remainder):
+    return _numbered_click_handler("right")(app, remainder)
+
+
+@command("double click", pack="accessibility", risk_class="write",
+         param_schema={"label": {"type": "int", "required": False}},
+         scope={"argument_tags": [_NUMBERS_TAG]})
+def handle_double_click(app, remainder):
+    return _numbered_click_handler("double")(app, remainder)
+
+
 def enumerate_clickable_elements() -> list:
     """Public alias for _enumerate_foreground_clickables."""
     return _enumerate_foreground_clickables()
@@ -2242,3 +2306,9 @@ def is_overlay_active() -> bool:
     with _dom_lock:
         dom = _dom_active
     return uia or dom or grid_active()
+
+
+try:  # pragma: no cover - import-time scope wiring
+    _command_scope.register_tag_source(_NUMBERS_TAG, is_overlay_active)
+except Exception as _exc:  # pragma: no cover
+    logger.debug("[SHOW_NUMBERS] could not register numbers scope tag: %s", _exc)

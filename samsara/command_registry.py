@@ -368,12 +368,12 @@ class CommandMatcher:
         reason = (_scope.UNRESOLVED_NO_PROVIDER if self._needs_foreground else "")
         return _scope.MatchContext.unresolved(reason, _scope.active_tags())
 
-    def is_live(self, entry, context=None):
+    def is_live(self, entry, context=None, remainder=""):
         """True when `entry` is a candidate in `context` (scope only; packs
         are checked separately)."""
         if entry.scope is None:
             return True
-        return _scope.scope_live(entry.scope, context)[0]
+        return _scope.scope_live(entry.scope, context, remainder)[0]
 
     def out_of_scope_for(self, text, context=None):
         """(entry, why) when ``text`` is EXACTLY the phrase of an enabled but
@@ -616,14 +616,15 @@ class CommandMatcher:
         for phrase_tokens, entry in self._match_table:
             if not self._pack_enabled(entry.pack):
                 continue
-            if entry.scope is not None and not self.is_live(entry, context):
-                continue
             n = len(phrase_tokens)
             if n <= len(text_tokens) and text_tokens[:n] == phrase_tokens:
                 start = tokens[n - 1][2]
+                remainder = argument_text(text, start)
+                if entry.scope is not None and not self.is_live(entry, context, remainder):
+                    continue
                 return CommandMatch(
                     entry, phrase_tokens, start,
-                    argument_text(text, start),
+                    remainder,
                     ' '.join(text_tokens[n:]),
                 )
 

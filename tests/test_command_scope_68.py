@@ -75,6 +75,15 @@ class TestScopeSyntax:
         assert s.to_json() == {"apps": ["obsidian.exe"], "tags": ["a"], "title": "Vault"}
         assert cs.parse_scope({"app": "warp.exe"}).apps == {"warp.exe"}
 
+    def test_argument_tags_are_required_only_for_a_remainder(self):
+        scope = cs.parse_scope({"argument_tags": ["numbers.visible"]})
+        assert scope.to_json() == {"argument_tags": ["numbers.visible"]}
+        plain = cs.MatchContext.for_app("warp.exe")
+        shown = cs.MatchContext.for_app("warp.exe", tags={"numbers.visible"})
+        assert cs.scope_live(scope, plain, "")[0]
+        assert not cs.scope_live(scope, plain, "7")[0]
+        assert cs.scope_live(scope, shown, "7")[0]
+
     @pytest.mark.parametrize("bad", [
         {"apps": []} if False else {"apps": [""]}, {"title": "("}, {"window": "x"}, "obsidian.exe", {"tags": [3]},
     ])
@@ -101,6 +110,14 @@ class TestScopeSyntax:
 # ---------------------------------------------------------------------------
 
 class TestScopedMatching:
+    def test_argument_scoped_prefix_keeps_bare_form_global(self):
+        m = _matcher({"click": {"type": "mouse", "scope": {"argument_tags": ["numbers.visible"]}}})
+        hidden = cs.MatchContext.for_app("warp.exe")
+        shown = cs.MatchContext.for_app("warp.exe", tags={"numbers.visible"})
+        assert m.match("click", hidden)[0].phrase == "click"
+        assert m.match("click 7", hidden) == (None, "")
+        entry, remainder = m.match("click 7", shown)
+        assert entry.phrase == "click" and remainder == "7"
     def test_scoped_matches_only_in_its_app(self):
         m = _matcher(COMMANDS)
         assert m.match("open palette", OBSIDIAN)[0].phrase == "open palette"
@@ -303,6 +320,8 @@ def test_scoped_commands_are_exactly_the_cube_numbers_and_the_mouse_grid(executo
     # are candidates only while the grid is on screen.
     expected.update({p: {"tags": ["mouse_grid.visible"]}
                      for p in ("hide grid", "grid back", "move here")})
+    expected.update({p: {"argument_tags": ["show_numbers.visible"]}
+                     for p in ("click", "left click", "right click", "double click")})
     assert scoped == expected
 
 
@@ -373,9 +392,11 @@ def test_catalog_carries_scope_and_regenerates_identically(executor):
     doc = cc.to_document(specs)
     assert cc.validate_catalog(doc) == []
     scoped = {c["canonical_id"]: c["scope"] for c in doc["commands"] if "scope" in c}
-    # 9 window-cube numbers + queue 71's 3 mouse-grid phrases.
-    assert len(scoped) == 12 and scoped["window_cube.two"] == {"tags": ["window_cube.visible"]}
+    # 9 window-cube numbers + queue 71's 3 mouse-grid phrases + queue 148's
+    # argument-only Show Numbers click forms.
+    assert len(scoped) == 16 and scoped["window_cube.two"] == {"tags": ["window_cube.visible"]}
     assert scoped["show_numbers.hide_grid"] == {"tags": ["mouse_grid.visible"]}
+    assert scoped["show_numbers.right_click"] == {"argument_tags": ["show_numbers.visible"]}
 
 
 def test_catalog_validation_rejects_bad_scope():

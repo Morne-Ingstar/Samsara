@@ -425,26 +425,6 @@
       "pack": "gaming",
       "ai_visible": false
     },
-    "double click": {
-      "type": "mouse",
-      "action": "double_click",
-      "description": "Double-clicks the left mouse button where the pointer is.",
-      "pack": "mouse"
-    },
-    "left click": {
-      "type": "mouse",
-      "action": "click",
-      "button": "left",
-      "description": "Clicks the left mouse button where the pointer is.",
-      "pack": "mouse"
-    },
-    "right click": {
-      "type": "mouse",
-      "action": "click",
-      "button": "right",
-      "description": "Clicks the right mouse button where the pointer is.",
-      "pack": "mouse"
-    },
     "period": {
       "type": "text",
       "text": ".",
