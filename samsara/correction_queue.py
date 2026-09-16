@@ -32,6 +32,7 @@ from __future__ import annotations
 
 import json
 import os
+import re
 import tempfile
 import time
 from typing import Optional
@@ -83,6 +84,72 @@ COMMON_WORDS = frozenset({
 NEVER_HOMOPHONE = "homophone -- which one is right depends on the sentence"
 NEVER_COMMON = "too common a word to rewrite everywhere"
 NEVER_SAME = "no difference once case and punctuation are ignored"
+
+
+def _phoneme_distance(left: list[str], right: list[str]) -> int:
+    """Levenshtein distance for the CMU phoneme lists used by the project's
+    existing phonetic audit.  Keeping it here makes the candidate table usable
+    in the packaged app, where developer-only ``tools/`` is not installed."""
+    if len(left) < len(right):
+        left, right = right, left
+    if not right:
+        return len(left)
+    previous = list(range(len(right) + 1))
+    for i, item in enumerate(left, 1):
+        current = [i] + [0] * len(right)
+        for j, other in enumerate(right, 1):
+            current[j] = min(previous[j] + 1, current[j - 1] + 1,
+                             previous[j - 1] + (item != other))
+        previous = current
+    return previous[-1]
+
+
+def phonetic_neighbours(word: str, terms, limit: int = 5) -> list[str]:
+    """Return likely one-word replacements from *terms*, closest first.
+
+    This is deliberately a tiny, user-owned table rather than an English-word
+    thesaurus: the choices are vocabulary or corrections the person has
+    already taught Samsara.  Known words use CMU phonemes; proper names absent
+    from CMUdict fall back to a strict spelling-neighbour check.
+    """
+    try:
+        import pronouncing  # noqa: PLC0415 -- an existing project dependency
+    except Exception:
+        return []
+    source = (word or "").strip()
+    if not source:
+        return []
+    source_phones = [p.split() for p in pronouncing.phones_for_word(source.lower())]
+    seen, ranked = set(), []
+    for term in terms or ():
+        candidate = " ".join(str(term or "").split())
+        folded = candidate.casefold()
+        if (not candidate or folded == source.casefold() or folded in seen
+                or not re.fullmatch(r"[A-Za-z]+(?:['-][A-Za-z]+)*", candidate)):
+            continue
+        seen.add(folded)
+        candidate_phones = [p.split() for p in pronouncing.phones_for_word(candidate.lower())]
+        # Proper names are why this feature exists and are often absent from
+        # CMUdict.  Compare their spellings only when either side has no CMU
+        # pronunciation; this preserves useful one-letter name variants while
+        # keeping ordinary words on the phoneme path.
+        if not source_phones or not candidate_phones:
+            source_variants = [list(source.casefold())]
+            candidate_variants = [list(candidate.casefold())]
+        else:
+            source_variants = source_phones
+            candidate_variants = candidate_phones
+        distance = min(_phoneme_distance(left, right)
+                       for left in source_variants for right in candidate_variants)
+        phonemes = min(max(len(left), len(right))
+                       for left in source_variants for right in candidate_variants)
+        # Exact homophones always qualify.  For near neighbours, permit one
+        # changed phoneme in a short word and at most one third of a longer one.
+        allowed = max(1, phonemes // 3)
+        if distance <= allowed:
+            ranked.append((distance / max(phonemes, 1), distance, candidate.casefold(), candidate))
+    ranked.sort()
+    return [candidate for _ratio, _distance, _folded, candidate in ranked[:max(0, limit)]]
 
 
 def _norm(word: str) -> str:
@@ -189,6 +256,19 @@ class CorrectionQueue:
             if entry.get("wrong_norm") == w and entry.get("right_norm") == r:
                 return entry
         return None
+
+    def correction_terms(self) -> list[str]:
+        """Words already seen in this person's review-gated correction table.
+
+        They complement the live training vocabulary supplied by the preview;
+        no general dictionary is used, so a suggestion is always grounded in
+        something the person has already chosen to teach or review.
+        """
+        terms = []
+        for bucket in ("pending", "accepted", "rejected"):
+            for entry in self._data.get(bucket, []):
+                terms.extend((entry.get("wrong", ""), entry.get("right", "")))
+        return terms
 
     # -- writing -------------------------------------------------------
 
