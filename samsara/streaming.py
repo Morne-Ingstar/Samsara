@@ -285,7 +285,7 @@ def control_bg():
     return f"{theme.BG2}"
 CLEAR_BUTTON_TEXT = "Clear draft"
 #: Shown while a clicked word waits for its spoken replacement.
-CORRECTION_PROMPT = 'Say the replacement for "{word}" (or say scratch that)'
+CORRECTION_PROMPT = 'Choose a replacement for "{word}", or say it'
 HINT_FONT_SIZE = 11
 
 #: Which commands an idle hint may teach. Only ids: the spoken phrase and what
@@ -587,6 +587,28 @@ class _StreamingWidget:
                 self._prompt.hide()
                 cLay.addWidget(self._prompt)
 
+                # Queue 161: a click opens a tap-first choice list.  It is a
+                # child of the preview rather than a separate window, so it
+                # cannot steal focus from the document being dictated into.
+                self._choices = QWidget()
+                self._choices.setStyleSheet(
+                    f"background:{control_bg()};border:1px solid {theme.ACCENT};border-radius:6px;"
+                )
+                choice_lay = QVBoxLayout(self._choices)
+                choice_lay.setContentsMargins(8, 6, 8, 6)
+                choice_lay.setSpacing(4)
+                self._choice_notice = QLabel("")
+                self._choice_notice.setWordWrap(True)
+                self._choice_notice.setStyleSheet(
+                    f"color:{theme.TEXT_SECONDARY};font-size:{HINT_FONT_SIZE}px;"
+                    f"font-family:'{FONT_FAMILY}';background:transparent;border:none;"
+                )
+                choice_lay.addWidget(self._choice_notice)
+                self._choice_buttons = []
+                self._choice_lay = choice_lay
+                self._choices.hide()
+                cLay.addWidget(self._choices)
+
                 # Controls. Their visibility IS the "you can click me" signal:
                 # they appear only while the box is interactive, and go away
                 # with the fade that makes it click-through.
@@ -644,6 +666,8 @@ class _StreamingWidget:
                 # close (queue 60's rule).
                 self._on_word_clicked = None
                 self._on_clear = None
+                self._on_choice = None
+                self._on_choice_dismiss = None
                 self._interactive = False
                 self._has_draft = False
                 # Dragging is available only while the existing interactive
@@ -768,6 +792,65 @@ class _StreamingWidget:
                     self._prompt.hide()
                 self._position()
 
+            def set_correction_choice_callbacks(self, on_choice, on_dismiss) -> None:
+                self._on_choice = on_choice
+                self._on_choice_dismiss = on_dismiss
+
+            def show_correction_choices(self, word: str, candidates, no_match: bool = False) -> None:
+                """Show large, focusless choices; the original is always safe."""
+                while self._choice_buttons:
+                    button = self._choice_buttons.pop()
+                    self._choice_lay.removeWidget(button)
+                    button.deleteLater()
+                notice = ("Choose what you meant:" if not no_match else
+                          "No similar word is in your vocabulary yet. You can keep the original or say a replacement.")
+                self._choice_notice.setText(notice)
+                for candidate in candidates:
+                    button = QPushButton(candidate)
+                    button.setCursor(Qt.CursorShape.PointingHandCursor)
+                    button.setFocusPolicy(Qt.FocusPolicy.NoFocus)
+                    button.setMinimumHeight(36)
+                    button.setStyleSheet(
+                        f"QPushButton{{background:{theme.BG1};color:{theme.TEXT_PRIMARY};"
+                        f"border:1px solid {theme.BORDER};border-radius:5px;padding:5px 10px;"
+                        f"font-size:{HINT_FONT_SIZE + 1}px;font-family:'{FONT_FAMILY}';text-align:left;}}"
+                        f"QPushButton:hover{{border-color:{theme.ACCENT};}}"
+                    )
+                    button.clicked.connect(lambda _checked=False, choice=candidate: self._choose_correction(choice))
+                    self._choice_lay.addWidget(button)
+                    self._choice_buttons.append(button)
+                dismiss = QPushButton("Dismiss — change nothing")
+                dismiss.setCursor(Qt.CursorShape.PointingHandCursor)
+                dismiss.setFocusPolicy(Qt.FocusPolicy.NoFocus)
+                dismiss.setMinimumHeight(32)
+                dismiss.setStyleSheet(
+                    f"QPushButton{{background:transparent;color:{theme.TEXT_SECONDARY};border:none;"
+                    f"padding:4px;font-size:{HINT_FONT_SIZE}px;font-family:'{FONT_FAMILY}';text-align:left;}}"
+                    f"QPushButton:hover{{color:{theme.TEXT_PRIMARY};}}"
+                )
+                dismiss.clicked.connect(self._dismiss_correction_choices)
+                self._choice_lay.addWidget(dismiss)
+                self._choice_buttons.append(dismiss)
+                self._choices.show()
+                self._position()
+
+            def hide_correction_choices(self) -> None:
+                if self._choices.isVisible():
+                    self._choices.hide()
+                    self._position()
+
+            def _choose_correction(self, choice: str) -> None:
+                callback = self._on_choice
+                self.hide_correction_choices()
+                if callback is not None:
+                    callback(choice)
+
+            def _dismiss_correction_choices(self) -> None:
+                callback = self._on_choice_dismiss
+                self.hide_correction_choices()
+                if callback is not None:
+                    callback()
+
             def _refresh_controls(self) -> None:
                 """The controls are visible exactly when the box takes clicks:
                 that is the user-visible difference between interactive and
@@ -822,6 +905,8 @@ class _StreamingWidget:
                 # session; drop them here for the same reason as the probe.
                 self._on_word_clicked = None
                 self._on_clear = None
+                self._on_choice = None
+                self._on_choice_dismiss = None
 
             def _now(self):
                 return self._clock.elapsed()
@@ -1030,6 +1115,8 @@ class _StreamingWidget:
                     hint_h += self._hint.heightForWidth(OVERLAY_W - 40) + 6
                 if self._prompt.isVisible():
                     hint_h += self._prompt.heightForWidth(OVERLAY_W - 40) + 6
+                if self._choices.isVisible():
+                    hint_h += self._choices.sizeHint().height() + 6
                 if self._controls.isVisible():
                     hint_h += self._controls.sizeHint().height() + 4
                 # Queue 85: the dictate preview may grow taller before it
@@ -1276,6 +1363,8 @@ class StreamingOverlayQt:
         # Both are called ON the Qt thread when the user clicks.
         self._on_word_clicked = None
         self._on_clear = None
+        self._on_choice = None
+        self._on_choice_dismiss = None
         self._preview_position = _preview_position(preview_position)
         self._on_placement_committed = on_placement_committed
 
@@ -1283,12 +1372,18 @@ class StreamingOverlayQt:
         self._on_word_clicked = on_word_clicked
         self._on_clear = on_clear
 
+    def set_correction_choice_callbacks(self, on_choice, on_dismiss) -> None:
+        self._on_choice = on_choice
+        self._on_choice_dismiss = on_dismiss
+
     def _new_widget(self) -> "_StreamingWidget":
         widget = _StreamingWidget(self._dim, self._idle, self._activity_probe, self.idle_hints,
                                   preview_position=self._preview_position,
                                   on_placement_committed=self._on_placement_committed)
         if self._on_word_clicked is not None or self._on_clear is not None:
             widget.enable_interaction(self._on_word_clicked, self._on_clear)
+        if self._on_choice is not None or self._on_choice_dismiss is not None:
+            widget.set_correction_choice_callbacks(self._on_choice, self._on_choice_dismiss)
         return widget
 
     @staticmethod
@@ -1374,6 +1469,18 @@ class StreamingOverlayQt:
         def _apply():
             if self._widget is not None:
                 self._widget.set_prompt(text)
+        self._post(_apply)
+
+    def show_correction_choices(self, word: str, candidates, no_match: bool = False) -> None:
+        def _apply():
+            if self._widget is not None:
+                self._widget.show_correction_choices(word, candidates, no_match)
+        self._post(_apply)
+
+    def hide_correction_choices(self) -> None:
+        def _apply():
+            if self._widget is not None:
+                self._widget.hide_correction_choices()
         self._post(_apply)
 
     def scroll_draft(self, where: str) -> None:
@@ -2132,6 +2239,9 @@ class DictatePreviewSession:
         # utterance is a replacement, never a new dictation fragment.
         self._correction_armed = False
         self._overlay.set_interaction_callbacks(self._on_word_clicked, self._on_clear_clicked)
+        set_choices = getattr(self._overlay, "set_correction_choice_callbacks", None)
+        if callable(set_choices):
+            set_choices(self._on_candidate_chosen, self._on_candidates_dismissed)
 
     # ---- Public lifecycle (call from the session/mode-change thread) ----
 
@@ -2255,8 +2365,65 @@ class DictatePreviewSession:
         if result.get("ok"):
             self._correction_armed = True
             self._set_prompt(CORRECTION_PROMPT.format(word=word))
+            candidates = self._correction_candidates(word)
+            self._show_correction_choices(word, [word] + candidates, no_match=not candidates)
         else:
             logger.info("[DICTATE-PREVIEW] correction refused: %s", result.get("reason"))
+
+    def _correction_candidates(self, word: str) -> list[str]:
+        """Only suggest this person's taught words/corrections, never a
+        generic dictionary.  Re-decode alternatives were empirically identical
+        on a real clip, so the stored clip is intentionally not decoded here."""
+        try:
+            from samsara.correction_queue import get_queue, phonetic_neighbours  # noqa: PLC0415
+            from samsara.phonetic_wash import get_user_corrections  # noqa: PLC0415
+            training = getattr(self.app, "voice_training_window", None)
+            terms = list(getattr(training, "custom_vocab", None) or [])
+            corrections = getattr(training, "corrections_dict", None) or {}
+            if isinstance(corrections, dict):
+                terms.extend(corrections.keys())
+                terms.extend(corrections.values())
+            user_corrections = get_user_corrections() or {}
+            terms.extend(user_corrections.keys())
+            terms.extend(user_corrections.values())
+            terms.extend(get_queue().correction_terms())
+            return phonetic_neighbours(word, terms)
+        except Exception as exc:
+            logger.debug("[DICTATE-PREVIEW] candidate lookup unavailable: %s", exc)
+            return []
+
+    def _show_correction_choices(self, word: str, candidates: list[str], no_match: bool) -> None:
+        try:
+            self._overlay.show_correction_choices(word, candidates, no_match)
+        except Exception as exc:
+            logger.debug("[DICTATE-PREVIEW] correction choices unavailable: %s", exc)
+
+    def _hide_correction_choices(self) -> None:
+        try:
+            self._overlay.hide_correction_choices()
+        except Exception as exc:
+            logger.debug("[DICTATE-PREVIEW] correction choices hide unavailable: %s", exc)
+
+    def _on_candidate_chosen(self, candidate: str) -> None:
+        manager = self._manager()
+        if manager is None:
+            return
+        outcome = manager.choose_word_correction(candidate)
+        self._correction_armed = manager.pending_word_correction() is not None
+        self._resync_from_draft(manager)
+        self._refresh_prompt()
+        self._hide_correction_choices()
+        self._render("")
+        logger.info("[DICTATE-PREVIEW] correction choice %r -> %s", candidate,
+                    getattr(outcome, "kind", outcome))
+
+    def _on_candidates_dismissed(self) -> None:
+        manager = self._manager()
+        if manager is not None:
+            manager.cancel_word_correction("dismissed")
+        self._correction_armed = False
+        self._set_prompt("")
+        self._hide_correction_choices()
 
     def _on_clear_clicked(self) -> None:
         """The Clear draft button (Qt thread). Goes through the session's own
@@ -2313,6 +2480,8 @@ class DictatePreviewSession:
             except Exception as exc:
                 logger.debug(f"[DICTATE-PREVIEW] pending correction unreadable: {exc}")
         self._set_prompt(CORRECTION_PROMPT.format(word=pending["word"]) if pending else "")
+        if not pending:
+            self._hide_correction_choices()
 
     def _set_prompt(self, text: str) -> None:
         """Best-effort, like every other overlay call in this class: the

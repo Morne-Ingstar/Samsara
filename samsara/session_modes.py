@@ -2599,8 +2599,26 @@ class SessionModeManager:
             return DispatchOutcome(kind="dictate_correction_refused",
                                    detail={"word": pending["word"]})
         self._pending_correction = None
+        return self._apply_pending_word_correction(pending, text.strip())
+
+    def choose_word_correction(self, replacement: str) -> DispatchOutcome:
+        """Apply a preview choice through the same replacement/capture path
+        as a spoken answer.  A tap is already the deliberate input, so it does
+        not pass through the speech-quality gate.
+        """
+        with self._dispatch_lock:
+            pending = self._pending_correction
+            if (pending is None or self._clock() > pending["expires"]
+                    or self.mode is not SessionMode.DICTATE):
+                self._pending_correction = None
+                return DispatchOutcome(kind="dictate_correction_unavailable")
+            self._pending_correction = None
+        return self._apply_pending_word_correction(pending, replacement)
+
+    def _apply_pending_word_correction(self, pending: dict, replacement: str) -> DispatchOutcome:
+        """The one apply/capture route shared by spoken and clicked answers."""
         result = self.replace_draft_word(
-            pending["word"], pending["occurrence"], text.strip(),
+            pending["word"], pending["occurrence"], replacement,
             expected_count=pending.get("expected_count") or 0,
         )
         if not result.get("ok"):
