@@ -27,13 +27,13 @@ def _set(app, on: bool) -> bool:
     return True
 
 
-@command("literal on", aliases=["verbatim on"], pack="core")
+@command("literal on", aliases=["verbatim on"], pack="core", risk_class="ui")
 def handle_literal_on(app, remainder=""):
-    """Force the verbatim dictation profile on, regardless of target app."""
+    """Dictates exactly what you say, with no formatting added."""
     return _set(app, True)
 
 
-@command("literal off", aliases=["verbatim off"], pack="core")
+@command("literal off", aliases=["verbatim off"], pack="core", risk_class="ui")
 def handle_literal_off(app, remainder=""):
-    """Return to normal dictation formatting."""
+    """Goes back to normal dictation, with capitals and punctuation added."""
     return _set(app, False)

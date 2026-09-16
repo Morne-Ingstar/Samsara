@@ -13,6 +13,7 @@ Usage:
 from __future__ import annotations
 
 import argparse
+import json
 import sys
 from pathlib import Path
 
@@ -49,6 +50,8 @@ def report(specs, claims) -> str:
         f"plugin {sum(1 for s in specs if s.kind == 'plugin')})",
         f"aliases (phrases): {sum(len(s.aliases) for s in specs)}",
         "per risk: " + ", ".join(f"{k}={by_risk.get(k, 0)}" for k in cc.RISKS),
+        f"scoped commands (queue 68; the rest are global): {sum(1 for s in specs if s.scope)}",
+        *[f"  {s.canonical_id}\t{json.dumps(s.scope, sort_keys=True)}" for s in specs if s.scope],
         f"collisions: {len(colls)}",
         *[f"  {p}\t{' '.join(ids)}" for p, ids in colls],
         f"orphaned phrases (dropped by the registry because their command's canonical phrase collided): {len(orphaned)}",

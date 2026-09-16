@@ -85,7 +85,7 @@ def command(phrase, aliases=None, pack='core', debounce=0.0, app_overrides=None,
             risk_class=_UNSET, ai_composable=_UNSET, side_effects=_UNSET,
             preconditions=_UNSET, voice_triggerable=_UNSET, param_schema=_UNSET,
             reversible=_UNSET, preview_template=_UNSET,
-            side_effect_category=_UNSET):
+            side_effect_category=_UNSET, scope=None):
     """Decorator: register a function as a voice command.
 
     The decorated function is called as `func(app, remainder)` where `remainder`
@@ -134,8 +134,14 @@ def command(phrase, aliases=None, pack='core', debounce=0.0, app_overrides=None,
             but have an undo path.
         preview_template: human-readable template describing what will happen, e.g.
             "Increase volume to {current+20}%". Empty string if not provided.
+        scope: when the command is a candidate (queue 68, samsara.command_scope):
+            {"apps": ["obsidian.exe"], "title": r"regex", "tags": ["window_cube.visible"]}.
+            Omitted = global (live everywhere). A malformed scope raises here,
+            at import, so it can never silently scope a command out.
     """
     from samsara.command_registry import UNKNOWN  # noqa: PLC0415 -- no import cycle at module load
+    from samsara.command_scope import parse_scope  # noqa: PLC0415
+    parsed_scope = parse_scope(scope)
 
     if side_effects is _UNSET:
         side_effects = side_effect_category
@@ -175,6 +181,7 @@ def command(phrase, aliases=None, pack='core', debounce=0.0, app_overrides=None,
             'reversible': bool(_given(reversible, False)),
             'preview_template': str(_given(preview_template, '')),
             'metadata': dict(metadata),
+            'scope': parsed_scope,
         }
         _register(entry)
         return func
@@ -243,13 +250,23 @@ def find_command(text):
         }, remainder
 
     text_lower = text.lower().strip()
+    # Queue 68: the legacy path honours scopes too (tags only -- it has no
+    # foreground provider, so app-scoped commands are not candidates here).
+    from samsara.command_scope import MatchContext, UNRESOLVED_NO_PROVIDER, active_tags, scope_live  # noqa: PLC0415
+    context = MatchContext.unresolved(UNRESOLVED_NO_PROVIDER, active_tags())
+
+    def _live(entry):
+        return scope_live(entry.get('scope'), context)[0]
 
     if text_lower in _REGISTRY:
-        return _REGISTRY[text_lower], ''
+        entry = _REGISTRY[text_lower]
+        return (entry, '') if _live(entry) else (None, '')
 
     # Longest-phrase-first prevents "open" matching before "open browser"
     for phrase in sorted(_REGISTRY, key=len, reverse=True):
         entry = _REGISTRY[phrase]
+        if not _live(entry):
+            continue
 
         if text_lower.startswith(phrase + ' '):
             return entry, text[len(phrase):].strip()

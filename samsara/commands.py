@@ -4,6 +4,7 @@ Samsara Commands Module
 Handles voice command loading, matching, and execution.
 """
 
+import difflib
 import json
 import os
 import re
@@ -12,6 +13,7 @@ import time
 from pathlib import Path
 from typing import Any, Callable, Dict, Optional, Tuple
 
+from . import command_scope as _command_scope
 from . import plugin_commands as _plugin_commands
 from .command_packs import get_enabled_packs
 from .command_registry import (
@@ -82,6 +84,41 @@ except ImportError:
         def click(self, button, count=1): pass
 
     HAS_PYNPUT = False
+
+
+# ---------------------------------------------------------------------------
+# The menu Ava is offered (queue 107 / Astra F1)
+#
+# One executable set, one menu source: ava_menu() below returns canonical ids
+# that execute_canonical() will accept right now -- builtin AND plugin, in an
+# enabled pack, live in the current scope, and callable on the route asking.
+# It is bounded by RELEVANCE to the utterance and a character budget, never by
+# an alphabetical slice: the old `sorted(names)[:100]` cut the menu at "mute
+# tab", so every command from "n" onward -- "volume up", "submit" -- was
+# invisible to Ava while still being a real command the user could speak.
+# ---------------------------------------------------------------------------
+
+#: Budget for the {COMMAND_LIST} substitution. The default enabled packs
+#: produce 271 AI-visible commands / ~3.8k characters, so an ordinary install
+#: is offered ALL of them; only a user who enables every pack loses the least
+#: relevant tail (and never a whole letter range).
+AVA_MENU_MAX_CHARS = 4500
+AVA_MENU_MAX_COMMANDS = 400
+
+
+def menu_score(query: str, candidate: str) -> float:
+    """Dependency-free relevance of one phrase to the utterance (rapidfuzz is
+    not installed here). Moved from ava_command_session._fuzzy_score so the
+    conversation menu and the command-session shortlist rank identically."""
+    q = (query or "").lower().strip()
+    c = (candidate or "").lower().strip()
+    if not q or not c:
+        return 0.0
+    q_tokens = set(q.split())
+    c_tokens = set(c.split())
+    overlap = len(q_tokens & c_tokens) / max(len(q_tokens), len(c_tokens), 1)
+    seq_ratio = difflib.SequenceMatcher(None, q, c).ratio()
+    return 0.5 * overlap + 0.5 * seq_ratio
 
 
 class CommandExecutor:
@@ -184,6 +221,9 @@ class CommandExecutor:
             matcher.load_plugins(_plugin_commands._REGISTRY)
             matcher.freeze()
             matcher.detect_collisions()
+            # Queue 68: scoped commands are evaluated against the foreground
+            # window and active tags at match time (samsara.command_scope).
+            matcher.set_context_provider(_command_scope.capture_context)
             self._matcher = matcher
             _plugin_commands.set_shared_matcher(matcher)
             return matcher
@@ -193,7 +233,7 @@ class CommandExecutor:
         self.load_commands()
         self.rebuild_matcher()
 
-    def _repair_plugin_matcher_drift(self, text: str):
+    def _repair_plugin_matcher_drift(self, text: str, context=None):
         """Rebuild once when a loaded, enabled exact plugin phrase is absent."""
         clean = re.sub(r'[^\w\s]', '', (text or '').lower().strip())
         plugin_entry = _plugin_commands._REGISTRY.get(clean)
@@ -202,11 +242,15 @@ class CommandExecutor:
         app_config = getattr(self._app, 'config', {}) if self._app is not None else {}
         if plugin_entry.get('pack', 'core') not in get_enabled_packs(app_config):
             return None, ''
+        if self._matcher.out_of_scope_for(text, context) is not None:
+            # Registered and enabled, just not live here (queue 68): not drift.
+            # Without this, every out-of-scope phrase would rebuild the matcher.
+            return None, ''
 
         # Another thread may already have repaired the matcher. Retry before
         # rebuilding, then publish one new immutable matcher under the lock.
         with self._matcher_lock:
-            entry, remainder = self._matcher.match(text)
+            entry, remainder = self._matcher.match(text, context)
             if entry is not None:
                 return entry, remainder
             logger.warning(
@@ -214,7 +258,7 @@ class CommandExecutor:
                 clean,
             )
             self.rebuild_matcher()
-            return self._matcher.match(text)
+            return self._matcher.match(text, context)
 
     def save_commands(self) -> None:
         # commands.json lives in the app root, which is monitored by the
@@ -274,60 +318,316 @@ class CommandExecutor:
             app=effective_app,
         )
 
-    def execute_command(self, command_name: str, app_instance: Any = None, *,
-                        route: Route = Route.EXACT, generation: "int | None" = None,
-                        prompt: str = "", confirmed: bool = False,
-                        args: "dict | None" = None, source_text: str = "") -> bool:
-        """Execute a voice command by name via the handler registry.
+    # ── The executable set (queue 107) ──────────────────────────────────────
 
-        THE built-in choke point (samsara.execution_policy): nothing below
-        touches the keyboard/mouse/apps until authorize() says Allowed.
-        NeedsConfirmation stages the invocation (a later "yes" re-enters
-        here with confirmed=True); Denied executes nothing. Returns True
-        only when the effect actually ran.
+    def _registry_entry(self, command_id: str):
+        """The CommandEntry for a canonical phrase OR an alias, whatever its
+        pack or scope says (that is a separate question -- see
+        command_availability). None for ids with no registry row at all
+        ("key:...", "action2:...", a fabricated name)."""
+        cid = (command_id or "").strip().lower()
+        matcher = getattr(self, '_matcher', None)
+        if not cid or matcher is None:
+            return None
+        # command_registry.py belongs to another queue; _entries (canonical
+        # phrases AND aliases -> entry) is read, never mutated, from here.
+        return getattr(matcher, '_entries', {}).get(cid)
+
+    def _ai_visible(self, entry) -> bool:
+        """Whether a registry row may appear in Ava's menu. Built-ins keep
+        their commands.json flag: CommandMatcher.load_builtins does not thread
+        ai_visible through, so entry.ai_visible is always True for them."""
+        if entry.source == 'builtin':
+            return bool((self.commands.get(entry.phrase) or {}).get('ai_visible', True))
+        return bool(entry.ai_visible)
+
+    #: Queue 126/A. Whole utterance only -- normalised, then compared for
+    #: EQUALITY. A sentence that merely contains one of these is prose.
+    _COMMAND_MODE_ON = ("command mode on", "command mode enable", "enable command mode")
+    _COMMAND_MODE_OFF = ("command mode off", "command mode disable", "disable command mode")
+
+    #: A reminder utterance BEGINS with its trigger. "Tell Sarah to remind me
+    #: in 5 minutes to check the build" is a sentence about a reminder.
+    _REMINDER_OPENERS = ("remind me ", "set a reminder", "set reminder")
+    _REMINDER_NUMERIC = re.compile(r"^\d+ minute reminder\b")
+
+    @staticmethod
+    def _whole_utterance(text_lower: str) -> str:
+        """The utterance with trailing sentence punctuation dropped, so
+        "Command mode off." still matches and "...command mode off and..."
+        still does not."""
+        return text_lower.strip().rstrip(".!?,;: ").strip()
+
+    def _is_whole_reminder(self, whole: str) -> bool:
+        if any(whole.startswith(opener) for opener in self._REMINDER_OPENERS):
+            return True
+        return bool(self._REMINDER_NUMERIC.match(whole))
+
+    def _authorize_session_control(self, cid, args, text, app):
+        return execution_policy.authorize(
+            execution_policy.Invocation(
+                cid, args, Route.EXACT,
+                execution_policy.current_generation(app), "", text),
+            app=app, executor=self)
+
+    @staticmethod
+    def _session_control_refusal(decision, name, text):
+        """A refused session control is REJECTED, never a miss: the utterance
+        was claimed, so it must not also be delivered as dictation."""
+        reason = getattr(decision, "reason", None) or "refused"
+        logger.info("[CMD] session control %r refused: %s", name, reason)
+        return DispatchResult(DispatchState.REJECTED, name, name,
+                              {'reason': reason, 'text': text})
+
+    def _session_control_effect(self, text: str, text_lower: str, app):
+        """The three ex-preprocessing effects, each now an authorized
+        invocation. Returns a DispatchResult when one claimed the utterance,
+        else None.
+
+        Authorization STRICTLY precedes the effect: nothing below mutates
+        anything until authorize() has returned Allowed."""
+        whole = self._whole_utterance(text_lower)
+
+        toggles = ((self._COMMAND_MODE_ON, True, "session:command_mode_on", "command_mode_on"),
+                   (self._COMMAND_MODE_OFF, False, "session:command_mode_off", "command_mode_off"))
+        for phrases, enable, cid, name in toggles:
+            if whole not in phrases:
+                continue
+            decision = self._authorize_session_control(cid, {}, text, app)
+            if not isinstance(decision, execution_policy.Allowed):
+                return self._session_control_refusal(decision, name, text)
+            if app:
+                app.command_matching_enabled = enable
+                with app._config_lock:
+                    app.config.setdefault('command_mode', {})['command_matching_enabled'] = enable
+                    app.save_config()
+            print("[OK] Command mode ENABLED" if enable else "[OFF] Command mode DISABLED")
+            return DispatchResult(DispatchState.COMPLETED, name, name)
+
+        # Reminders. parse_remind_command is an re.search, so it matches
+        # inside prose too; the whole-utterance rule is applied here rather
+        # than in notifications.py, which is not this prompt's to change.
+        if app and hasattr(app, 'notification_manager'):
+            parsed = app.notification_manager.parse_remind_command(whole)
+            if parsed and self._is_whole_reminder(whole):
+                minutes, task = parsed
+                message = task if task else "Time's up!"
+                args = {"minutes": int(minutes), "message": message}
+                decision = self._authorize_session_control("session:reminder", args, text, app)
+                if not isinstance(decision, execution_policy.Allowed):
+                    return self._session_control_refusal(decision, "reminder", text)
+                app.notification_manager.add_quick_reminder(minutes, message)
+                print(f"[OK] Reminder set for {minutes} minutes: {message}")
+                app.play_sound("success")
+                name = f"reminder_{minutes}min"
+                return DispatchResult(DispatchState.COMPLETED, name, name)
+        return None
+
+    def command_availability(self, command_id: str, context=None):
+        """None when `command_id` may run HERE, else (reason, detail).
+
+        Pack membership and scope are matcher filters, which only the SPOKEN
+        path passes through (Astra F2): a model proposal, a scheduled repeat
+        and a confirmed callback reach the effect without ever being matched.
+        execution_policy.authorize() calls this so every route meets the same
+        restriction, and the refusal is emitted like any other Denied.
         """
-        if command_name not in self.commands:
-            return False
+        entry = self._registry_entry(command_id)
+        if entry is None:
+            return None
+        matcher = self._matcher
+        if not matcher._pack_enabled(entry.pack):
+            return ("pack_disabled", entry.pack)
+        if entry.scope is None:
+            return None
+        if context is None:
+            context = matcher.current_context()
+        live, why = _command_scope.scope_live(entry.scope, context)
+        if live:
+            return None
+        return ("out_of_scope", why or entry.scope.describe())
+
+    def executable_entries(self, context=None) -> list:
+        """Every registry entry that could run right now: enabled pack, live
+        scope. The set execute_canonical() accepts, deduplicated by command."""
+        matcher = getattr(self, '_matcher', None)
+        if matcher is None:
+            return []
+        if context is None:
+            context = matcher.current_context()
+        out, seen = [], set()
+        for entry in getattr(matcher, '_sorted', []):
+            if id(entry) in seen:
+                continue
+            seen.add(id(entry))
+            if not matcher._pack_enabled(entry.pack):
+                continue
+            if entry.scope is not None and not matcher.is_live(entry, context):
+                continue
+            out.append(entry)
+        return out
+
+    def ava_menu(self, utterance: str = "", *, limit: "int | None" = None,
+                 max_chars: int = AVA_MENU_MAX_CHARS, app: Any = None,
+                 route: Route = Route.MODEL, context=None) -> list:
+        """THE menu source for both Ava paths (queue 107).
+
+        Every name returned is one execute_canonical() will accept on `route`
+        -- decided by asking execution_policy.authorize(quiet=True), the same
+        function the effect boundary asks, so the menu cannot drift from what
+        Ava may actually run. Registered, AI-visible, in an enabled pack, live
+        in this scope, and not refused by the policy.
+
+        Ordered by RELEVANCE to `utterance` (menu_score, canonical phrase or
+        best alias), alphabetical within equal scores, then bounded by
+        `limit` and by `max_chars` of the comma-joined list. Never an
+        alphabetical slice.
+        """
+        effective_app = app if app is not None else self._app
+        generation = execution_policy.current_generation(effective_app)
+        scored = []
+        for entry in self.executable_entries(context):
+            if not self._ai_visible(entry):
+                continue
+            decision = execution_policy.authorize(
+                Invocation(entry.phrase, {}, route, generation, "", ""),
+                app=effective_app, executor=self, quiet=True)
+            if isinstance(decision, execution_policy.Denied):
+                continue
+            best = menu_score(utterance, entry.phrase)
+            for alias in entry.aliases:
+                best = max(best, menu_score(utterance, alias))
+            scored.append((-best, entry.phrase))
+        scored.sort()
+        names, used = [], 0
+        cap = AVA_MENU_MAX_COMMANDS if limit is None else max(0, int(limit))
+        for _neg, phrase in scored:
+            if len(names) >= cap:
+                break
+            cost = len(phrase) + (2 if names else 0)
+            if max_chars and used + cost > max_chars:
+                if limit is None:
+                    break
+                continue
+            names.append(phrase)
+            used += cost
+        return names
+
+    # ── The one execution API (queue 107) ───────────────────────────────────
+
+    def execute_canonical(self, command_id: str, app_instance: Any = None, *,
+                          route: Route = Route.EXACT, generation: "int | None" = None,
+                          args: "dict | None" = None, source_text: str = "",
+                          confirmed: bool = False) -> DispatchResult:
+        """Execute ONE canonical command id (builtin or plugin) and report what
+        really happened.
+
+        The single entry every route uses -- spoken match, model ACTION,
+        scheduled repeat, confirmed callback -- so no caller can report a hit
+        the executor refused (Astra F1). An alias resolves to its canonical
+        phrase. Returns a DispatchResult:
+
+            COMPLETED  the effect ran
+            QUEUED     accepted: staged for "yes", or an async handler
+            REJECTED   refused before running -- detail['reason'] says why
+                       (unknown_command, pack_disabled, out_of_scope, stale,
+                       not_allowed_for_model, unvalidated, ...)
+            FAILED     attempted and failed or raised
+            MISS       a plugin handler declined this utterance (only the
+                       spoken path may then treat the words as dictation)
+        """
         effective_app = app_instance if app_instance is not None else self._app
+        cid = (command_id or "").strip().lower()
+        entry = self._registry_entry(cid)
+        canonical = entry.phrase if entry is not None else cid
+        builtin = self.commands.get(canonical)
         if generation is None and route is Route.EXACT and not confirmed:
             # A direct exact invocation (cheat sheet, settings Test, a spoken
             # phrase) is created by this call: capture its generation now.
             # Every other route must carry the one captured when its request
             # was made -- None there is Denied(stale) at the choke point.
             generation = execution_policy.capture_generation(effective_app)
-        # Invocation.prompt is never user-facing (confirmation text is a local
-        # template), so model/caller wording is not forwarded.
-        inv = Invocation(command_name, dict(args or {}), route, generation, "", source_text)
-        decision = execution_policy.authorize(inv, app=effective_app, executor=self, confirmed=confirmed)
+
+        # THE choke point. Nothing below touches the keyboard/mouse/apps until
+        # authorize() says Allowed; it also checks pack and scope through
+        # command_availability(), on every route.
+        inv = Invocation(canonical, dict(args or {}), route, generation, "", source_text)
+        decision = execution_policy.authorize(inv, app=effective_app, executor=self,
+                                              confirmed=confirmed)
         if isinstance(decision, execution_policy.Denied):
-            return False
+            logger.info("[EXEC] %r refused: %s (%s)", canonical, decision.reason,
+                        getattr(decision, 'detail', '') or '')
+            return DispatchResult(DispatchState.REJECTED, canonical, canonical,
+                                  {'reason': decision.reason,
+                                   'detail': getattr(decision, 'detail', '') or ''})
         if isinstance(decision, execution_policy.NeedsConfirmation):
             self._stage_confirmation(effective_app, inv, decision)
-            return False
+            return DispatchResult(DispatchState.QUEUED, canonical, canonical,
+                                  {'awaiting_confirmation': True, 'prompt': decision.prompt})
 
-        cmd = self.commands[command_name]
-        cmd_type = cmd.get('type')
-        handler = get_handler(cmd_type)
+        if entry is not None and entry.source == 'plugin' and entry.handler is not None:
+            remainder = str((args or {}).get('remainder', '') or '')
+            logger.info("[PLUGIN] Executing: %s", canonical)
+            try:
+                state = adapt_handler_return(entry.handler(effective_app, remainder))
+            except Exception as e:
+                logger.exception("[ERROR] Plugin '%s' failed", canonical)
+                return DispatchResult(DispatchState.FAILED, canonical, canonical, {'error': str(e)})
+            if state is DispatchState.MISS:
+                # The handler declined (documented `return False`): not this
+                # command after all.
+                return DispatchResult(DispatchState.MISS, source_text or canonical, canonical,
+                                      {'declined_by': canonical})
+            if state in (DispatchState.COMPLETED, DispatchState.QUEUED):
+                self._matcher.record_execution(entry)
+            return DispatchResult(state, canonical, canonical)
+
+        if builtin is None:
+            # Authorized (a registry row exists) but nothing here can run it.
+            logger.error("[EXEC] %r has no builtin entry and no plugin handler", canonical)
+            return DispatchResult(DispatchState.FAILED, canonical, canonical,
+                                  {'reason': 'no_handler'})
+        handler = get_handler(builtin.get('type'))
         if handler is None:
-            print(f"[WARN] Unknown command type: {cmd_type}")
-            return False
-
+            print(f"[WARN] Unknown command type: {builtin.get('type')}")
+            return DispatchResult(DispatchState.FAILED, canonical, canonical,
+                                  {'reason': 'unknown_type'})
         try:
-            success = handler.execute(cmd, self._build_context(app_instance))
-            if success:
-                print(f"[OK] Executed: {command_name}")
-            return success
+            success = handler.execute(builtin, self._build_context(app_instance))
         except Exception as e:
             print(f"[ERROR] Command execution error: {e}")
-            return False
+            return DispatchResult(DispatchState.FAILED, canonical, canonical, {'error': str(e)})
+        if not success:
+            return DispatchResult(DispatchState.FAILED, canonical, canonical)
+        print(f"[OK] Executed: {canonical}")
+        if entry is not None:
+            self._matcher.record_execution(entry)
+        return DispatchResult(DispatchState.COMPLETED, canonical, canonical)
+
+    def execute_command(self, command_name: str, app_instance: Any = None, *,
+                        route: Route = Route.EXACT, generation: "int | None" = None,
+                        prompt: str = "", confirmed: bool = False,
+                        args: "dict | None" = None, source_text: str = "") -> bool:
+        """Execute a command by name. True ONLY when the effect actually ran.
+
+        The boolean face of execute_canonical() for callers that only need
+        "did it run" (the cheat sheet, the settings Test button, the
+        scheduler). `prompt` is accepted and ignored: the confirmation
+        question is always a local template, never caller or model wording.
+        """
+        return self.execute_canonical(
+            command_name, app_instance, route=route, generation=generation,
+            args=args, source_text=source_text, confirmed=confirmed,
+        ).state is DispatchState.COMPLETED
 
     def _stage_confirmation(self, app, inv: Invocation, decision) -> None:
         """Park a NeedsConfirmation in the shared pending slot and ask. "yes"
-        (ask_ollama.handle_ava_confirm) re-enters execute_command with
-        confirmed=True; "ava cancel"/stop rejects it."""
+        (ask_ollama.handle_ava_confirm) re-enters execute_canonical with
+        confirmed=True -- which re-authorizes, so a pack switched off or a
+        scope left while the question was open refuses the effect."""
         def _approve(op):
-            self.execute_command(inv.command_id, app, route=inv.route, generation=inv.generation,
-                                 confirmed=True, args=inv.args, source_text=inv.source_text)
+            self.execute_canonical(inv.command_id, app, route=inv.route, generation=inv.generation,
+                                   confirmed=True, args=inv.args, source_text=inv.source_text)
         execution_policy.stage_pending(app, inv, decision.prompt, on_approve=_approve,
                                        record_type="action")
         self._speak_confirmation(app, decision.prompt)
@@ -345,16 +645,18 @@ class CommandExecutor:
 
     def find_command(self, text: str) -> Optional[str]:
         """Return the canonical phrase of the best matching command, or None."""
-        entry, _remainder = self._matcher.match(text)
+        context = self._matcher.current_context()
+        entry, _remainder = self._matcher.match(text, context)
         if entry is None:
-            entry, _remainder = self._repair_plugin_matcher_drift(text)
+            entry, _remainder = self._repair_plugin_matcher_drift(text, context)
         return entry.phrase if entry is not None else None
 
     def find_exact_command(self, text: str) -> Optional[str]:
         """Return a command only when it consumes the complete utterance."""
-        entry, remainder = self._matcher.match(text)
+        context = self._matcher.current_context()
+        entry, remainder = self._matcher.match(text, context)
         if entry is None:
-            entry, remainder = self._repair_plugin_matcher_drift(text)
+            entry, remainder = self._repair_plugin_matcher_drift(text, context)
         if entry is None or remainder:
             return None
         return entry.phrase
@@ -412,40 +714,25 @@ class CommandExecutor:
 
         text_lower = text.lower().strip()
 
-        # Command mode toggle — always processed, regardless of mode state
-        if ("command mode on" in text_lower
-                or "command mode enable" in text_lower
-                or "enable command mode" in text_lower):
-            if effective_app:
-                effective_app.command_matching_enabled = True
-                with effective_app._config_lock:
-                    effective_app.config.setdefault('command_mode', {})['command_matching_enabled'] = True
-                    effective_app.save_config()
-            print("[OK] Command mode ENABLED")
-            return DispatchResult(DispatchState.COMPLETED, "command_mode_on", "command_mode_on")
-
-        if ("command mode off" in text_lower
-                or "command mode disable" in text_lower
-                or "disable command mode" in text_lower):
-            if effective_app:
-                effective_app.command_matching_enabled = False
-                with effective_app._config_lock:
-                    effective_app.config.setdefault('command_mode', {})['command_matching_enabled'] = False
-                    effective_app.save_config()
-            print("[OFF] Command mode DISABLED")
-            return DispatchResult(DispatchState.COMPLETED, "command_mode_off", "command_mode_off")
-
-        # Reminder commands — always work regardless of command mode
-        if effective_app and hasattr(effective_app, 'notification_manager'):
-            reminder_result = effective_app.notification_manager.parse_remind_command(text)
-            if reminder_result:
-                minutes, task = reminder_result
-                message = task if task else "Time's up!"
-                effective_app.notification_manager.add_quick_reminder(minutes, message)
-                print(f"[OK] Reminder set for {minutes} minutes: {message}")
-                effective_app.play_sound("success")
-                name = f"reminder_{minutes}min"
-                return DispatchResult(DispatchState.COMPLETED, name, name)
+        # Queue 126/A. These three used to run their effect HERE, off a
+        # SUBSTRING test, before the matcher and before authorize() had been
+        # called even once. A dictated paragraph containing "command mode
+        # off" turned command matching off and wrote config.json; one
+        # containing "remind me in 5 minutes to ..." scheduled a reminder out
+        # of the rest of the sentence. Both reproduced end to end in the
+        # queue 126 report, with authorize called zero times.
+        #
+        # Two things were wrong and both are fixed:
+        #   * substring, where every other session control is WHOLE UTTERANCE
+        #     (queue 84 -- "Have it stop listening to you, or something like
+        #     that" once destroyed a 477-character draft exactly this way);
+        #   * the effect ran before anything authorized it.
+        # They keep the property that mattered -- "always processed,
+        # regardless of mode state" -- because the command_matching_enabled
+        # gate below still comes after them.
+        session_effect = self._session_control_effect(text, text_lower, effective_app)
+        if session_effect is not None:
+            return session_effect
 
         # Gate on command_matching_enabled — bypassed by wake word mode via force_commands
         if not force_commands:
@@ -455,10 +742,28 @@ class CommandExecutor:
         # Phonetic wash for matching only; original text is returned on fallthrough
         # so free-form dictation output is never silently rewritten.
         match_text = apply_phonetic_wash(text)
-        entry, remainder = self._matcher.match(match_text)
+        # One scope context for the whole utterance (queue 68): every match
+        # below sees the same foreground app and tags.
+        context = self._matcher.current_context()
+        entry, remainder = self._matcher.match(match_text, context)
         if entry is None:
-            entry, remainder = self._repair_plugin_matcher_drift(match_text)
+            entry, remainder = self._repair_plugin_matcher_drift(match_text, context)
         if entry is None:
+            disabled_pack = self._matcher.disabled_pack_for(match_text)
+            if disabled_pack:
+                # Exactly a disabled pack's phrase: say the pack is off rather
+                # than run a shorter command with the rest as its argument.
+                print(f"[CMD] '{text}' belongs to the disabled pack '{disabled_pack}'")
+                return DispatchResult.miss(text, {'reason': 'pack_disabled', 'pack': disabled_pack})
+            out_of_scope = self._matcher.out_of_scope_for(match_text, context)
+            if out_of_scope is not None:
+                # Exactly a scoped command's phrase, not live here: a miss, and
+                # the log says which command and why (never silent).
+                scoped_entry, why = out_of_scope
+                logger.info(f"[SCOPE] {scoped_entry.phrase!r} is {scoped_entry.scope.describe()} "
+                            f"({why}) -- not a candidate for this utterance")
+                return DispatchResult.miss(text, {'reason': 'out_of_scope', 'phrase': scoped_entry.phrase,
+                                                  'scope': scoped_entry.scope.to_json(), 'why': why})
             # Smart Actions routing-verb fallback (e.g. "ask Spotify for jazz").
             # Routing verbs are not @command entries — they live here so they
             # only trigger when no real command matched.
@@ -471,7 +776,7 @@ class CommandExecutor:
             return DispatchResult.miss(text)
         # The wash lowercases and scrubs punctuation for matching; the command
         # argument must come from what the user actually said.
-        remainder = self._original_remainder(text, match_text, entry, remainder)
+        remainder = self._original_remainder(text, match_text, entry, remainder, context)
 
         # Command mode debounce: suppress rapid re-execution of flagged commands
         in_cmd_mode = getattr(effective_app, 'command_mode_active', False)
@@ -480,61 +785,21 @@ class CommandExecutor:
             return DispatchResult(DispatchState.REJECTED, entry.phrase, entry.phrase,
                                   {'reason': 'debounce'})
 
-        if entry.source == 'plugin':
-            # Plugin choke point: same policy, same pending slot as built-ins.
-            inv = Invocation(entry.phrase, {'remainder': remainder}, route, generation, source_text=text)
-            decision = execution_policy.authorize(inv, app=effective_app, executor=self)
-            if isinstance(decision, execution_policy.Denied):
-                # Matched, but not executed. Still "a command" so no caller
-                # re-interprets the utterance as dictation or a model request.
-                return DispatchResult(DispatchState.REJECTED, entry.phrase, entry.phrase,
-                                      {'reason': 'policy'})
-            if isinstance(decision, execution_policy.NeedsConfirmation):
-                def _approve(op, _entry=entry, _rem=remainder, _app=effective_app, _inv=inv):
-                    # Generation re-checked at the effect boundary, after the yes.
-                    if not isinstance(execution_policy.authorize(_inv, app=_app, executor=self, confirmed=True),
-                                      execution_policy.Allowed):
-                        return
-                    try:
-                        _entry.handler(_app, _rem)
-                    except Exception as e:
-                        print(f"[ERROR] Plugin '{_entry.phrase}' failed: {e}")
-                execution_policy.stage_pending(effective_app, inv, decision.prompt, on_approve=_approve,
-                                               record_type="action")
-                self._speak_confirmation(effective_app, decision.prompt)
-                return DispatchResult(DispatchState.QUEUED, entry.phrase, entry.phrase,
-                                      {'awaiting_confirmation': True})
-            if not execution_policy.is_fresh(effective_app, generation):
-                # Re-checked at the effect boundary: a stop that landed while
-                # this utterance was being matched wins.
-                return DispatchResult(DispatchState.REJECTED, entry.phrase, entry.phrase,
-                                      {'reason': 'stale'})
-            print(f"[PLUGIN] Executing: {entry.phrase}")
-            try:
-                state = adapt_handler_return(entry.handler(effective_app, remainder))
-            except Exception as e:
-                print(f"[ERROR] Plugin '{entry.phrase}' failed: {e}")
-                return DispatchResult(DispatchState.FAILED, entry.phrase, entry.phrase,
-                                      {'error': str(e)})
-            if state is DispatchState.MISS:
-                # The handler declined (documented `return False`): not this
-                # command after all, so the utterance is the caller's again.
-                return DispatchResult.miss(text, {'declined_by': entry.phrase})
-            if state in (DispatchState.COMPLETED, DispatchState.QUEUED):
-                self._matcher.record_execution(entry)
-            return DispatchResult(state, entry.phrase, entry.phrase)
+        # ONE execution API for every route (queue 107): the spoken path hands
+        # the matched canonical phrase to execute_canonical exactly as a model
+        # proposal or a scheduled repeat does, and reports what it returns. A
+        # claimed-but-failed command stays claimed -- only a plugin's own
+        # decline (MISS) gives the utterance back as dictation.
+        result = self.execute_canonical(
+            entry.phrase, effective_app, route=route, generation=generation,
+            args=({'remainder': remainder} if entry.source == 'plugin' else None),
+            source_text=text)
+        if result.state is DispatchState.MISS:
+            return DispatchResult.miss(text, dict(result.detail))
+        return result
 
-        # Built-in command types route through execute_command -> handler
-        # registry (the choke point lives there). Built-ins never decline, so
-        # False is a failed (or policy-held) command, not dictation.
-        success = self.execute_command(entry.phrase, app_instance=effective_app,
-                                       route=route, generation=generation, source_text=text)
-        if success:
-            self._matcher.record_execution(entry)
-            return DispatchResult(DispatchState.COMPLETED, entry.phrase, entry.phrase)
-        return DispatchResult(DispatchState.FAILED, entry.phrase, entry.phrase)
-
-    def _original_remainder(self, text: str, match_text: str, entry, washed_remainder: str) -> str:
+    def _original_remainder(self, text: str, match_text: str, entry, washed_remainder: str,
+                            context=None) -> str:
         """Map a match made on the phonetically washed text back to the
         argument span of the ORIGINAL utterance.
 
@@ -547,7 +812,7 @@ class CommandExecutor:
         """
         if not washed_remainder or match_text == text:
             return washed_remainder
-        detail = self._matcher.match_detail(text)
+        detail = self._matcher.match_detail(text, context)
         if detail is not None and detail.entry is entry:
             return detail.remainder
 

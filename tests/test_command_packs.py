@@ -86,7 +86,8 @@ class TestPackFiltering:
         assert remainder == 'github'
 
     def test_disabled_longer_falls_to_shorter_enabled(self):
-        """A disabled 3-token phrase should not block a 1-token enabled phrase."""
+        """A disabled 3-token phrase that is only a PREFIX of the utterance
+        does not block a 1-token enabled phrase."""
         m = _make_matcher(enabled_packs={'core'})
         # 'open chrome browser' is browsers (disabled)
         _register_plugin(m, 'open chrome browser', pack='browsers')
@@ -94,10 +95,10 @@ class TestPackFiltering:
         _register_builtin(m, 'open', pack='core')
         m.freeze()
 
-        entry, remainder = m.match('open chrome browser')
+        entry, remainder = m.match('open chrome browser please')
         assert entry is not None
         assert entry.phrase == 'open'
-        assert remainder == 'chrome browser'
+        assert remainder == 'chrome browser please'
 
     def test_all_packs_enabled_when_none_set(self):
         """When set_enabled_packs is never called, all packs match."""
@@ -108,17 +109,20 @@ class TestPackFiltering:
         entry, _ = m.match('open chrome')
         assert entry is not None
 
-    def test_exact_match_disabled_falls_through_to_prefix(self):
-        """Exact match from disabled pack should fall through to prefix from enabled pack."""
+    def test_exact_match_disabled_is_a_miss_not_a_shorter_command(self):
+        """Queue 58: saying exactly a disabled pack's phrase is a miss that
+        names the pack -- never the enabled prefix with the rest as its
+        argument (was: 'escape key' ran 'escape' + 'key')."""
         m = _make_matcher(enabled_packs={'core'})
         _register_builtin(m, 'escape key', pack='gaming')   # disabled exact match
         _register_builtin(m, 'escape', pack='core')         # enabled prefix
         m.freeze()
 
-        entry, remainder = m.match('escape key')
-        assert entry is not None
-        assert entry.phrase == 'escape'
-        assert remainder == 'key'
+        assert m.match('escape key') == (None, '')
+        assert m.disabled_pack_for('Escape key.') == 'gaming'
+        assert m.disabled_pack_for('escape') is None
+        entry, remainder = m.match('escape')
+        assert entry.phrase == 'escape' and remainder == ''
 
 
 # =============================================================================

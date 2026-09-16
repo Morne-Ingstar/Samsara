@@ -58,8 +58,10 @@ def _fuzzy_match(name_query, alarms):
     "complete alarm",
     aliases=["I did it", "alarm done", "alarm complete"],
     pack="alarms",
+    risk_class="write", param_schema={"remainder": {"type": "str", "required": False}},
 )
 def handle_complete_alarm(app, remainder="", **kwargs):
+    """Marks the alarm you name as done for today."""
     mgr = _get_manager(app)
     if mgr is None:
         _speak(app, "Alarm manager is not available.")
@@ -85,8 +87,10 @@ def handle_complete_alarm(app, remainder="", **kwargs):
     "dismiss alarm",
     aliases=["skip alarm", "snooze alarm", "quiet alarm"],
     pack="alarms",
+    risk_class="ui",
 )
 def handle_dismiss_alarm(app, remainder="", **kwargs):
+    """Silences the alarm that is going off now."""
     mgr = _get_manager(app)
     if mgr is None:
         _speak(app, "Alarm manager is not available.")
@@ -105,8 +109,10 @@ def handle_dismiss_alarm(app, remainder="", **kwargs):
     "read alarms",
     aliases=["list alarms", "what alarms do I have"],
     pack="alarms",
+    risk_class="read",
 )
 def handle_read_alarms(app, remainder="", **kwargs):
+    """Reads out the alarms you have set."""
     mgr = _get_manager(app)
     if mgr is None:
         _speak(app, "Alarm manager is not available.")
@@ -138,8 +144,10 @@ def handle_read_alarms(app, remainder="", **kwargs):
     "enable alarm",
     aliases=["turn on alarm"],
     pack="alarms",
+    risk_class="write", param_schema={"remainder": {"type": "str", "required": False}},
 )
 def handle_enable_alarm(app, remainder="", **kwargs):
+    """Turns the alarm you name back on, so it will sound again."""
     mgr = _get_manager(app)
     if mgr is None:
         _speak(app, "Alarm manager is not available.")
@@ -161,8 +169,10 @@ def handle_enable_alarm(app, remainder="", **kwargs):
     "disable alarm",
     aliases=["turn off alarm"],
     pack="alarms",
+    risk_class="write", param_schema={"remainder": {"type": "str", "required": False}},
 )
 def handle_disable_alarm(app, remainder="", **kwargs):
+    """Turns the alarm you name off, so it will not sound."""
     mgr = _get_manager(app)
     if mgr is None:
         _speak(app, "Alarm manager is not available.")
@@ -184,8 +194,10 @@ def handle_disable_alarm(app, remainder="", **kwargs):
     "show alarms",
     aliases=["alarm status", "alarm overview"],
     pack="alarms",
+    risk_class="ui",
 )
 def handle_show_alarms(app, remainder="", **kwargs):
+    """Puts your alarms on the screen."""
     from samsara.ui.status_overlay import get_overlay
     get_overlay().toggle(
         notification_manager=getattr(app, "notification_manager", None),

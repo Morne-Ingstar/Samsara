@@ -24,7 +24,10 @@ logger = get_logger(__name__)
     "gif of"
 ], pack="screen-capture")
 def handle_gif(app, remainder):
-    """Search Giphy for a GIF. Usage: 'Samsara, search for a gif of dancing cat'"""
+    """Searches Giphy for a GIF of whatever you say next.
+
+    Usage: 'Samsara, search for a gif of dancing cat'
+    """
     if not remainder or not remainder.strip():
         print("[GIF] No search term provided")
         return True

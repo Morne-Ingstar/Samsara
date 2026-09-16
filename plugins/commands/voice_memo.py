@@ -10,6 +10,7 @@ from samsara.plugin_commands import command
 
 @command("voice memo", aliases=["capture memo"], pack="utilities")
 def arm_voice_memo(app, remainder):
+    """Gets ready to record a memo, which you then dictate as usual."""
     voice_memo.arm(app)
     app.play_sound("start")
     print("[MEMO] Say your memo with hold-to-dictate")
@@ -18,6 +19,7 @@ def arm_voice_memo(app, remainder):
 
 @command("cancel memo", pack="utilities")
 def cancel_voice_memo(app, remainder):
+    """Cancels the memo you were about to record."""
     was_armed = voice_memo.disarm(app)
     app.play_sound("stop" if was_armed else "error")
     print("[MEMO] Cancelled" if was_armed else "[MEMO] Nothing armed")

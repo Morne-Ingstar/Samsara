@@ -419,8 +419,19 @@ class TestPluginPolicy:
     def test_declared_safe_plugin_with_a_schema_is_model_callable(self, plugin_registry, app):
         assert isinstance(ep.authorize(Invocation("show the time", route=Route.MODEL, generation=7), app=app), Allowed)
 
-    def test_safe_plugin_without_a_schema_is_unavailable_to_a_model(self, plugin_registry, app):
-        d = ep.authorize(Invocation("say the date", route=Route.MODEL, generation=7), app=app)
+    def test_safe_plugin_without_a_schema_is_model_callable_with_no_arguments(
+            self, plugin_registry, app):
+        """Queue 107 (deliberate reversal of the earlier rule for THIS case
+        only): a read/ui command called with NO arguments has nothing to
+        validate, and an ACTION line has no argument slot at all. Denying it
+        made almost every plugin -- "volume up" included -- offerable to Ava
+        but impossible for her to run, which is Astra F1. Arguments without a
+        schema are still refused, and write/destructive/unclassified commands
+        are still "unvalidated" (the tests below)."""
+        assert isinstance(
+            ep.authorize(Invocation("say the date", route=Route.MODEL, generation=7), app=app),
+            Allowed)
+        d = ep.authorize(Invocation("say the date", {"zone": "utc"}, Route.MODEL, 7), app=app)
         assert isinstance(d, Denied) and d.reason == "unvalidated"
 
     def test_undeclared_plugin_is_unavailable_to_a_model(self, plugin_registry, app):

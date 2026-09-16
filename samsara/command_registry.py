@@ -13,15 +13,28 @@ Priority rules:
 - On exact same-phrase collision, built-ins win (plugins skipped and logged).
 - On prefix overlap (short phrase is a token-prefix of longer phrase), the
   longer phrase wins regardless of source. Collision report logs both.
-- Disabled-pack commands are skipped in match(). If the longest match belongs
-  to a disabled pack the matcher falls through to the next match so a shorter
-  enabled-pack command can still fire.
+- Disabled-pack commands are skipped in match(). An utterance that is EXACTLY
+  a disabled pack's phrase is a miss (disabled_pack_for() names the pack): it
+  never falls through to a shorter enabled command with the rest as its
+  argument ("show windows" with window-management off must not run "show").
+  A disabled phrase that is only a token-prefix of a longer utterance still
+  lets a shorter enabled-pack command match.
+- Scoped commands (queue 68, samsara.command_scope) are candidates only when
+  their scope is live for the utterance's context (foreground app, window
+  title, active tags). Unscoped commands are unaffected. An utterance that is
+  EXACTLY an out-of-scope phrase is a miss, like a disabled pack's
+  (out_of_scope_for() says why).
 """
 
+import logging
 import re
 import threading
 import time
 from enum import Enum
+
+from samsara import command_scope as _scope
+
+_log = logging.getLogger(__name__)
 
 
 # ---------------------------------------------------------------------------
@@ -140,6 +153,32 @@ def _declared_metadata(source: dict) -> dict:
             for name in METADATA_FIELDS}
 
 
+#: Tag no code ever publishes: a command with a malformed scope in
+#: commands.json is loaded but never live, and says so in the log.
+INVALID_SCOPE_TAG = "invalid_scope"
+
+
+def _resolve_scope(declared, pack: str, phrase: str):
+    """The command's own scope, else its pack's (command_packs.PACKS[pack]
+    ['scope']), else None (global). A malformed declaration never makes a
+    command global by accident: it is logged and the command is never live."""
+    raw = declared
+    origin = "command"
+    if raw is None:
+        try:
+            from samsara.command_packs import PACKS  # noqa: PLC0415
+            raw = (PACKS.get(pack) or {}).get("scope")
+            origin = f"pack {pack!r}"
+        except Exception:
+            raw = None
+    try:
+        return _scope.parse_scope(raw)
+    except ValueError as exc:
+        _log.error("[SCOPE] %r: invalid %s scope %r (%s) -- the command is loaded but never live",
+                   phrase, origin, raw, exc)
+        return _scope.Scope(tags=frozenset({INVALID_SCOPE_TAG}))
+
+
 # ---------------------------------------------------------------------------
 # Normalised matching view with offsets into the original utterance
 # ---------------------------------------------------------------------------
@@ -196,7 +235,7 @@ class CommandEntry:
                  ai_visible=True, risk_class=UNKNOWN, ai_composable=False,
                  side_effects=None, preconditions=None, voice_triggerable=True,
                  param_schema=None, reversible=False, preview_template='',
-                 metadata=None):
+                 metadata=None, scope=None):
         """
         Args:
             phrase: canonical trigger phrase (lowercase, stripped)
@@ -246,6 +285,9 @@ class CommandEntry:
         self.param_schema = dict(param_schema or {})
         self.reversible = bool(reversible)
         self.preview_template = str(preview_template)
+        # Queue 68: when this command is a candidate (samsara.command_scope).
+        # None = global, exactly as before scoping existed.
+        self.scope = scope if (scope is None or isinstance(scope, _scope.Scope)) else _scope.parse_scope(scope)
         declared = metadata if metadata is not None else {}
         self.metadata = {name: declared.get(name, UNKNOWN) for name in METADATA_FIELDS}
         if metadata is not None:
@@ -298,6 +340,66 @@ class CommandMatcher:
         # Debounce tracking: phrase -> monotonic timestamp of last execution
         self._last_executions = {}
         self._exec_lock = threading.Lock()
+        # Queue 68: per-utterance scope context. Without a provider (tools,
+        # tests) the foreground is "unresolved" and only tags are read.
+        self._context_provider = None
+        self._has_scoped = False
+        self._needs_foreground = False
+
+    # -- scope (queue 68) -----------------------------------------------------
+
+    def set_context_provider(self, provider):
+        """provider() -> command_scope.MatchContext, called once per match
+        when any registered command is scoped. CommandExecutor installs
+        command_scope.capture_context."""
+        self._context_provider = provider
+
+    def current_context(self):
+        """The context a match uses now, or None when nothing is scoped (the
+        common case costs nothing). Never raises."""
+        if not self._has_scoped:
+            return None
+        if self._needs_foreground and self._context_provider is not None:
+            try:
+                return self._context_provider()
+            except Exception as exc:
+                _log.warning("[SCOPE] context provider failed (%s): app-scoped commands are not "
+                             "candidates for this utterance", exc)
+        reason = (_scope.UNRESOLVED_NO_PROVIDER if self._needs_foreground else "")
+        return _scope.MatchContext.unresolved(reason, _scope.active_tags())
+
+    def is_live(self, entry, context=None):
+        """True when `entry` is a candidate in `context` (scope only; packs
+        are checked separately)."""
+        if entry.scope is None:
+            return True
+        return _scope.scope_live(entry.scope, context)[0]
+
+    def out_of_scope_for(self, text, context=None):
+        """(entry, why) when ``text`` is EXACTLY the phrase of an enabled but
+        out-of-scope command (so match() treated it as a miss), else None."""
+        if not text or not self._frozen or not self._has_scoped:
+            return None
+        clean_lower = ' '.join(norm for norm, _s, _e in view_tokens(text))
+        entry = self._entries.get(clean_lower)
+        if entry is None or entry.scope is None or not self._pack_enabled(entry.pack):
+            return None
+        if context is None:
+            context = self.current_context()
+        live, why = _scope.scope_live(entry.scope, context)
+        return None if live else (entry, why)
+
+    def live_phrase_count(self, context=None):
+        """(live, total) phrase rows among enabled packs for `context` --
+        the size of the candidate set an utterance is matched against."""
+        total = live = 0
+        for _tokens, entry in self._match_table:
+            if not self._pack_enabled(entry.pack):
+                continue
+            total += 1
+            if self.is_live(entry, context):
+                live += 1
+        return live, total
 
     def set_enabled_packs(self, pack_names):
         """Set which packs are active.
@@ -344,6 +446,7 @@ class CommandMatcher:
                 preview_template=data.get('preview_template', ''),
                 # Whatever commands.json declares, verbatim; the rest UNKNOWN.
                 metadata=_declared_metadata(data),
+                scope=_resolve_scope(data.get('scope'), data.get('pack', 'core'), name_lower),
             )
             self._entries[name_lower] = entry
 
@@ -402,6 +505,7 @@ class CommandMatcher:
                 # a hand-built registry dict is taken at its word, key by key.
                 metadata=(entry_data['metadata'] if isinstance(entry_data.get('metadata'), dict)
                           else _declared_metadata(entry_data)),
+                scope=_resolve_scope(entry_data.get('scope'), entry_data.get('pack', 'core'), canonical),
             )
             self._entries[canonical] = entry
             # Register aliases (skip individually if shadowed)
@@ -435,6 +539,10 @@ class CommandMatcher:
         # Re-sort including aliases; a long alias still wins over short canonicals.
         self._match_table.sort(key=lambda x: len(x[0]), reverse=True)
 
+        scoped = [e for e in self._sorted if e.scope is not None]
+        self._has_scoped = bool(scoped)
+        self._needs_foreground = any(e.scope.needs_foreground for e in scoped)
+
         self._frozen = True
 
         unique_entries = len(self._sorted)
@@ -442,7 +550,7 @@ class CommandMatcher:
         print(f"[REGISTRY] Frozen: {unique_entries} commands, "
               f"{total_phrases} phrases (including aliases)")
 
-    def match(self, text):
+    def match(self, text, context=None):
         """Find the best matching command for the given text.
 
         Uses token-based longest-match: tokenizes the input, then
@@ -463,12 +571,12 @@ class CommandMatcher:
             match("find tab github")
             -> (CommandEntry("find tab"), "github")
         """
-        detail = self.match_detail(text)
+        detail = self.match_detail(text, context)
         if detail is None:
             return None, ''
         return detail.entry, detail.remainder
 
-    def match_detail(self, text):
+    def match_detail(self, text, context=None):
         """Like match(), but returns a CommandMatch (or None).
 
         Matching runs on a normalised VIEW of the utterance -- lowercased,
@@ -477,6 +585,9 @@ class CommandMatcher:
         single-word commands like "yes" from ever matching. Every view token
         keeps its offsets into the original text, and the argument handed to
         the command is sliced from the original, never rebuilt from the view.
+
+        context: a command_scope.MatchContext for this utterance; captured
+        from the provider when omitted (only if any command is scoped).
         """
         if not text or not self._frozen:
             return None
@@ -486,19 +597,26 @@ class CommandMatcher:
             return None
         text_tokens = [norm for norm, _start, _end in tokens]
         clean_lower = ' '.join(text_tokens)
+        if context is None and self._has_scoped:
+            context = self.current_context()
 
         # Exact match on the view (fastest path; built-ins win on collision)
         if clean_lower in self._entries:
             entry = self._entries[clean_lower]
-            if self._pack_enabled(entry.pack):
+            if self._pack_enabled(entry.pack) and self.is_live(entry, context):
                 return CommandMatch(entry, text_tokens, len(text), '', '')
-            # Fall through to prefix scan if exact match is from disabled pack
+            # The user said exactly a disabled pack's phrase, or an
+            # out-of-scope command's: a miss, never a different command
+            # (queue 58 / 68). disabled_pack_for() / out_of_scope_for() say why.
+            return None
 
         # Token prefix matching: longest registered phrase first.
-        # Skip entries whose pack is disabled -- the loop continues so a
-        # shorter enabled-pack command can still match.
+        # Skip entries whose pack is disabled or whose scope is not live --
+        # the loop continues so a shorter candidate can still match.
         for phrase_tokens, entry in self._match_table:
             if not self._pack_enabled(entry.pack):
+                continue
+            if entry.scope is not None and not self.is_live(entry, context):
                 continue
             n = len(phrase_tokens)
             if n <= len(text_tokens) and text_tokens[:n] == phrase_tokens:
@@ -510,6 +628,17 @@ class CommandMatcher:
                 )
 
         return None
+
+    def disabled_pack_for(self, text):
+        """The pack name when ``text`` is exactly a phrase of a DISABLED pack
+        (so match() treated it as a miss), else None."""
+        if not text or not self._frozen:
+            return None
+        clean_lower = ' '.join(norm for norm, _s, _e in view_tokens(text))
+        entry = self._entries.get(clean_lower)
+        if entry is None or self._pack_enabled(entry.pack):
+            return None
+        return entry.pack
 
     def should_suppress(self, entry) -> bool:
         """Return True if the entry's debounce window has not elapsed.
@@ -555,6 +684,7 @@ class CommandMatcher:
                 'reversible': entry.reversible,
                 'preview_template': entry.preview_template,
                 'metadata': dict(entry.metadata),
+                'scope': entry.scope.to_json() if entry.scope is not None else None,
             })
         return result
 

@@ -110,7 +110,7 @@ def _parse_temps(resp):
     "three d print a gun", "print me a weapon"
 ], pack="3d-printing")
 def handle_print_gun(app, remainder):
-    """Open the toy gun model in Orca and wake up the printer."""
+    """Opens the toy gun model and wakes the printer up."""
     model_file = app.config.get('flashforge_model_file',
                                 os.path.expanduser(r'~\Downloads\funnygun.3mf'))
     orca = app.config.get('orca_path', ORCA_PATH)
@@ -143,9 +143,12 @@ def handle_print_gun(app, remainder):
 
 @command("start print", aliases=[
     "start printing", "begin print", "begin printing", "print file"
-], pack="3d-printing")
+], pack="3d-printing", risk_class="destructive")
 def handle_start_print(app, remainder):
-    """Start printing a named file. Usage: 'Jarvis, start print benchy'"""
+    """Starts printing the file you name.
+
+    Usage: 'Jarvis, start print benchy'
+    """
     if not remainder:
         filename = app.config.get('flashforge_print_file', '')
         if not filename:
@@ -170,7 +173,7 @@ def handle_start_print(app, remainder):
     "print progress", "is the printer done", "check the printer"
 ], pack="3d-printing")
 def handle_status(app, remainder):
-    """Show printer status, temperatures, and progress."""
+    """Reads out the printer's state, temperatures and progress."""
     status = _parse_status(_send(app, "M119"))
     temps = _parse_temps(_send(app, "M105"))
     progress = _send(app, "M27")
@@ -204,7 +207,7 @@ def handle_status(app, remainder):
     "pause printing", "pause the print", "hold the print"
 ], pack="3d-printing")
 def handle_pause(app, remainder):
-    """Pause the current print."""
+    """Pauses the print the printer is running."""
     resp = _send(app, "M25")
     print(f"[3DP] {'Paused' if resp and 'ok' in resp.lower() else 'Pause failed'}")
     return True
@@ -214,7 +217,7 @@ def handle_pause(app, remainder):
     "resume printing", "continue print", "continue printing"
 ], pack="3d-printing")
 def handle_resume(app, remainder):
-    """Resume a paused print."""
+    """Resumes the print you paused."""
     resp = _send(app, "M24")
     print(f"[3DP] {'Resumed' if resp and 'ok' in resp.lower() else 'Resume failed'}")
     return True
@@ -224,7 +227,7 @@ def handle_resume(app, remainder):
     "cancel printing", "stop print", "stop printing", "abort print"
 ], pack="3d-printing")
 def handle_cancel(app, remainder):
-    """Cancel the current print."""
+    """Cancels the print the printer is running."""
     resp = _send(app, "M26")
     print(f"[3DP] {'Cancelled' if resp and 'ok' in resp.lower() else 'Cancel failed'}")
     return True
@@ -235,7 +238,7 @@ def handle_cancel(app, remainder):
     "chamber light", "turn on printer light"
 ], pack="3d-printing")
 def handle_light(app, remainder):
-    """Toggle the chamber light."""
+    """Turns the printer's chamber light on or off."""
     resp = _send(app, "M146 r255 g255 b255 F0")
     if not resp or 'ok' not in resp.lower():
         # Try alternate command
@@ -249,7 +252,7 @@ def handle_light(app, remainder):
     "available prints", "printer files"
 ], pack="3d-printing")
 def handle_list_files(app, remainder):
-    """List files on the printer."""
+    """Reads out the files stored on the printer."""
     resp = _send(app, "M20")
     if resp:
         files = []

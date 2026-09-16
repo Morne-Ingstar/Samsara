@@ -26,6 +26,7 @@ import json
 import logging
 import os
 import sys
+import time
 from datetime import datetime
 from pathlib import Path
 
@@ -272,6 +273,100 @@ def get_all_movable_windows(extra_ignore=None):
 # Window moving
 # ---------------------------------------------------------------------------
 
+def raise_window(hwnd: int, *, activate: bool) -> bool:
+    """Restore if minimized, then steal foreground using the full incantation.
+
+    Steps:
+      1. Restore if minimised.
+      2. Relax the foreground lock timeout to 0 (best-effort).
+      3. Dual AttachThreadInput: both the current-foreground thread AND the
+         calling thread attach to the target thread's input queue — this is
+         what makes the steal work from background/audio threads.
+      4. ShowWindow, BringWindowToTop, TOPMOST flip, SetForegroundWindow,
+         SetActiveWindow, SetFocus.
+      5. Detach inputs.
+      6. Verify via GetForegroundWindow() == hwnd after a 50 ms settle.
+
+    Returns True if the window is actually in the foreground afterwards,
+    False if Windows still refused (caller should proceed anyway and log it).
+    Backward-safe: all existing callers ignore the return value.
+
+    With ``activate=False`` this performs only the non-activating raise
+    (restore, show, bring-to-top, and the temporary TOPMOST flip), leaving
+    foreground ownership untouched. This is for layout restores, where
+    activating each window would thrash the desktop; successful completion of
+    that non-activating sequence returns True.
+    """
+    try:
+        user32 = ctypes.windll.user32
+
+        # 1. Restore if minimised.
+        if user32.IsIconic(hwnd):
+            user32.ShowWindow(hwnd, win32con.SW_RESTORE)
+
+        _SWP_NOMOVE = 0x0002
+        _SWP_NOSIZE = 0x0001
+        _SWP_NOACTIVATE = 0x0010
+        _SWP_FLAGS = _SWP_NOMOVE | _SWP_NOSIZE | _SWP_NOACTIVATE
+
+        if not activate:
+            user32.ShowWindow(hwnd, win32con.SW_SHOW)
+            user32.BringWindowToTop(hwnd)
+            # TOPMOST flip brings the window forward without permanently
+            # pinning it as always-on-top or stealing foreground ownership.
+            user32.SetWindowPos(hwnd, ctypes.c_void_p(-1), 0, 0, 0, 0, _SWP_FLAGS)
+            user32.SetWindowPos(hwnd, ctypes.c_void_p(-2), 0, 0, 0, 0, _SWP_FLAGS)
+            return True
+
+        # 2. Capture current foreground and thread IDs.
+        fg = user32.GetForegroundWindow()
+        fg_tid = user32.GetWindowThreadProcessId(fg, None)
+        tgt_tid = user32.GetWindowThreadProcessId(hwnd, None)
+        our_tid = ctypes.windll.kernel32.GetCurrentThreadId()
+
+        # 3. Relax foreground lock timeout to 0 ms (best-effort; needs UIPI access).
+        try:
+            timeout = ctypes.c_ulong(0)
+            user32.SystemParametersInfoW(0x2001, 0, ctypes.byref(timeout), 0x0002)
+        except Exception as exc:
+            logger.debug("raise_window: %s", exc)
+
+        # 4. Attach both the foreground-owner thread AND our calling thread to
+        #    the target's input queue, then perform the full steal sequence.
+        attached_fg = bool(
+            fg_tid and fg_tid != tgt_tid and
+            user32.AttachThreadInput(fg_tid, our_tid, True)
+        )
+        attached_us = bool(
+            our_tid and our_tid != tgt_tid and
+            user32.AttachThreadInput(our_tid, tgt_tid, True)
+        )
+        try:
+            user32.ShowWindow(hwnd, win32con.SW_SHOW)
+            user32.BringWindowToTop(hwnd)
+            # TOPMOST flip brings the window above everything without
+            # permanently pinning it as always-on-top.
+            user32.SetWindowPos(hwnd, ctypes.c_void_p(-1), 0, 0, 0, 0, _SWP_FLAGS)
+            user32.SetWindowPos(hwnd, ctypes.c_void_p(-2), 0, 0, 0, 0, _SWP_FLAGS)
+            user32.SetForegroundWindow(hwnd)
+            user32.SetActiveWindow(hwnd)
+            user32.SetFocus(hwnd)
+        finally:
+            if attached_us:
+                user32.AttachThreadInput(our_tid, tgt_tid, False)
+            if attached_fg:
+                user32.AttachThreadInput(fg_tid, our_tid, False)
+
+        # 5. Authoritative verification: trust GetForegroundWindow, not the
+        #    return value of SetForegroundWindow (which lies under lock).
+        time.sleep(0.05)
+        return user32.GetForegroundWindow() == hwnd
+
+    except Exception as exc:
+        logger.debug("raise_window failed for hwnd %s: %s", hwnd, exc)
+        return False
+
+
 def move_window_to_monitor(hwnd, monitor):
     if win32gui.IsIconic(hwnd):
         win32gui.ShowWindow(hwnd, win32con.SW_RESTORE)
@@ -291,6 +386,8 @@ def move_window_to_monitor(hwnd, monitor):
     title = win32gui.GetWindowText(hwnd)
     logger.info("Moving '%s' to monitor %s (%d,%d)", title, monitor['index'], x, y)
     win32gui.SetWindowPos(hwnd, HWND_TOP, x, y, w, h, SWP_SHOWWINDOW)
+    if not raise_window(hwnd, activate=True):
+        logger.debug("Moved hwnd %s to monitor %s but Windows refused to raise it", hwnd, monitor['index'])
 
 
 def maximize_window_on_monitor(hwnd, monitor):
@@ -490,8 +587,10 @@ def _parse_placements(remainder):
 # Command handlers
 # ---------------------------------------------------------------------------
 
-@command("bring", aliases=["bring back", "get", "grab", "fetch"], pack="window-management")
+@command("bring", aliases=["bring back", "get", "grab", "fetch"], pack="window-management",
+         risk_class="ui", param_schema={"remainder": {"type": "str", "required": False}})
 def handle_bring(app, remainder):
+    """Brings the app you name to the screen your pointer is on."""
     logger.info("bring: remainder='%s'", remainder)
     extra_ignore = _get_extra_ignore(app)
     target = get_monitor_under_cursor()
@@ -567,13 +666,15 @@ def _place_one(app_name, dest_text, app, monitors, extra_ignore):
     return detail
 
 
-@command("send", aliases=["move", "put", "throw"], pack="window-management")
+@command("send", aliases=["move", "put", "throw"], pack="window-management",
+         risk_class="ui", param_schema={"remainder": {"type": "str", "required": False}})
 def handle_send(app, remainder):
-    """'send X to <screen>' -- and 'put X on the left screen and Y on the
-    right' (two placements, executed in order). A second placement that
-    fails after the first succeeded is reported as FAILED with the detail
-    naming it: partial completion is never called success and the first
-    move is never undone."""
+    """Moves the app you name to the screen you name, such as the left one.
+
+    A second placement that fails after the first succeeded is reported as
+    FAILED with the detail naming it: partial completion is never called success
+    and the first move is never undone.
+    """
     logger.info("send: remainder='%s'", remainder)
     extra_ignore = _get_extra_ignore(app)
 
@@ -612,8 +713,10 @@ def handle_send(app, remainder):
     return DispatchResult(state, 'send', 'send', {'placements': [], 'failed': outcome, 'reason': outcome['reason']})
 
 
-@command("movie mode", aliases=["movie time", "couch mode", "tv mode"], pack="window-management")
+@command("movie mode", aliases=["movie time", "couch mode", "tv mode"], pack="window-management",
+         risk_class="ui")
 def handle_movie_mode(app, remainder):
+    """Puts video on the TV screen and clears the other screens."""
     extra_ignore = _get_extra_ignore(app)
     tv = get_tv_monitor(app)
     if tv is None:
@@ -807,6 +910,8 @@ def _restore_layout(name):
                 )
                 if maximized:
                     win32gui.ShowWindow(hwnd, win32con.SW_MAXIMIZE)
+                if not raise_window(hwnd, activate=False):
+                    logger.debug("Restored hwnd %s but Windows refused to raise it", hwnd)
                 restored += 1
             except Exception as e:
                 logger.warning("Restore failed for %s hwnd=%s: %s", app_name, hwnd, e)
@@ -869,8 +974,11 @@ def _detect_lost_windows():
 
 @command("save layout",
          aliases=["save window layout", "save this layout"],
-         pack="window-management")
+         pack="window-management",
+         risk_class="write", param_schema={"remainder": {"type": "str", "required": False}},
+)
 def handle_save_layout(app, remainder):
+    """Saves where your windows are now, under the name you give it."""
     name = _extract_layout_name(remainder)
     if not name:
         print("[LAYOUTS] No valid name provided")
@@ -881,8 +989,11 @@ def handle_save_layout(app, remainder):
 
 @command("restore layout",
          aliases=["load layout", "restore window layout"],
-         pack="window-management")
+         pack="window-management",
+         risk_class="ui", param_schema={"remainder": {"type": "str", "required": False}},
+)
 def handle_restore_layout(app, remainder):
+    """Puts your windows back the way a saved layout had them."""
     name = _extract_layout_name(remainder)
     if not name:
         print("[LAYOUTS] No valid name provided")
@@ -893,8 +1004,11 @@ def handle_restore_layout(app, remainder):
 
 @command("list layouts",
          aliases=["show layouts", "what layouts"],
-         pack="window-management")
+         pack="window-management",
+         risk_class="read",
+)
 def handle_list_layouts(app, remainder):
+    """Reads out the window layouts you have saved."""
     layouts = _load_all_layouts()
     if not layouts:
         print("[LAYOUTS] No saved layouts yet")
@@ -905,8 +1019,11 @@ def handle_list_layouts(app, remainder):
 
 @command("delete layout",
          aliases=["forget layout", "remove layout"],
-         pack="window-management")
+         pack="window-management",
+         risk_class="destructive", param_schema={"remainder": {"type": "str", "required": False}},
+)
 def handle_delete_layout(app, remainder):
+    """Deletes the saved window layout you name."""
     name = _extract_layout_name(remainder)
     if not name:
         print("[LAYOUTS] No valid name provided")
@@ -921,8 +1038,11 @@ def handle_delete_layout(app, remainder):
 
 @command("find lost windows",
          aliases=["lost windows", "where are my windows"],
-         pack="window-management")
+         pack="window-management",
+         risk_class="read",
+)
 def handle_find_lost_windows(app, remainder):
+    """Reports any windows sitting off-screen where you cannot reach them."""
     lost = _detect_lost_windows()
     if not lost:
         print("[LOST] No lost windows detected")
@@ -935,8 +1055,11 @@ def handle_find_lost_windows(app, remainder):
 
 @command("rescue lost windows",
          aliases=["recover windows", "bring back lost windows"],
-         pack="window-management")
+         pack="window-management",
+         risk_class="ui",
+)
 def handle_rescue_lost(app, remainder):
+    """Pulls windows that are off-screen back onto a screen you can see."""
     lost = _detect_lost_windows()
     if not lost:
         print("[LOST] No lost windows to rescue")
@@ -949,8 +1072,11 @@ def handle_rescue_lost(app, remainder):
 
 
 @command("find window",
-         pack="window-management")
+         pack="window-management",
+         risk_class="ui", param_schema={"remainder": {"type": "str", "required": False}},
+)
 def handle_find_specific(app, remainder):
+    """Finds the window for the app you name and brings it to the front."""
     if not remainder or not remainder.strip():
         print("[FIND] No app specified")
         return True
@@ -985,8 +1111,11 @@ def handle_find_specific(app, remainder):
     "move the mouse to",
     "teleport cursor to",
     "teleport mouse to",
-], pack="window-management")
+], pack="window-management",
+    risk_class="ui", param_schema={"remainder": {"type": "str", "required": False}},
+)
 def handle_cursor(app, remainder):
+    """Moves the mouse pointer to the screen or place you name."""
     logger.info("cursor: remainder='%s'", remainder)
     monitors = get_monitors()
     target = _parse_destination(remainder, app, monitors)
@@ -1067,8 +1196,10 @@ def _snap_rect(monitor, direction):
     return table.get(direction)
 
 
-@command("snap", aliases=["dock"], pack="window-management")
+@command("snap", aliases=["dock"], pack="window-management",
+         risk_class="ui", param_schema={"remainder": {"type": "str", "required": False}})
 def handle_snap(app, remainder):
+    """Snaps the focused window to the side you name, such as left or right."""
     direction = remainder.strip().lower()
     if direction not in _SNAP_DIRECTIONS:
         print(
@@ -1110,4 +1241,6 @@ def handle_snap(app, remainder):
         title, direction, monitor['index'], x, y, w, h,
     )
     win32gui.SetWindowPos(hwnd, HWND_TOP, x, y, w, h, SWP_SHOWWINDOW)
+    if not raise_window(hwnd, activate=True):
+        logger.debug("Snapped hwnd %s but Windows refused to raise it", hwnd)
     return True

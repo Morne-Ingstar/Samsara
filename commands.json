@@ -28,25 +28,25 @@
           "key": "space"
         }
       ],
-      "description": "Press spacebar 5 times for repeated jumps",
+      "description": "Presses spacebar 5 times for repeated jumps.",
       "pack": "gaming"
     },
     "open chrome": {
       "type": "launch",
       "target": "C:\\Program Files (x86)\\Google\\Chrome\\Application\\chrome.exe",
-      "description": "Open Google Chrome",
+      "description": "Opens Google Chrome.",
       "pack": "browsers"
     },
     "open firefox": {
       "type": "launch",
       "target": "C:\\Program Files\\Mozilla Firefox\\firefox.exe",
-      "description": "Open Firefox",
+      "description": "Opens the Firefox browser.",
       "pack": "browsers"
     },
     "open edge": {
       "type": "launch",
       "target": "C:\\Program Files (x86)\\Microsoft\\Edge\\Application\\msedge.exe",
-      "description": "Open Microsoft Edge",
+      "description": "Opens Microsoft Edge.",
       "pack": "browsers"
     },
     "close window": {
@@ -55,7 +55,7 @@
         "alt",
         "f4"
       ],
-      "description": "Close active window",
+      "description": "Closes active window.",
       "pack": "core"
     },
     "minimize": {
@@ -64,7 +64,7 @@
         "win",
         "down"
       ],
-      "description": "Minimize window",
+      "description": "Minimises window.",
       "pack": "core"
     },
     "maximize": {
@@ -73,7 +73,7 @@
         "win",
         "up"
       ],
-      "description": "Maximize window",
+      "description": "Maximises window.",
       "pack": "core"
     },
     "show desktop": {
@@ -82,7 +82,7 @@
         "win",
         "d"
       ],
-      "description": "Show desktop",
+      "description": "Minimises every window to show the desktop.",
       "pack": "core"
     },
     "minimize all": {
@@ -91,7 +91,7 @@
         "win",
         "d"
       ],
-      "description": "Minimize all windows (show desktop)",
+      "description": "Minimises all windows (show desktop).",
       "pack": "core"
     },
     "minimize everything": {
@@ -100,7 +100,7 @@
         "win",
         "d"
       ],
-      "description": "Minimize all windows (show desktop)",
+      "description": "Minimises all windows (show desktop).",
       "pack": "core"
     },
     "task manager": {
@@ -110,7 +110,7 @@
         "shift",
         "esc"
       ],
-      "description": "Open Task Manager",
+      "description": "Opens Task Manager.",
       "pack": "core"
     },
     "new tab": {
@@ -119,7 +119,7 @@
         "ctrl",
         "t"
       ],
-      "description": "Open new browser tab",
+      "description": "Opens new browser tab.",
       "pack": "browsers",
       "app_overrides": {
         "code.exe": {
@@ -142,7 +142,7 @@
         "ctrl",
         "w"
       ],
-      "description": "Close current tab",
+      "description": "Closes current tab.",
       "pack": "browsers",
       "app_overrides": {
         "code.exe": {
@@ -157,7 +157,7 @@
         "shift",
         "t"
       ],
-      "description": "Reopen closed tab",
+      "description": "Reopens closed tab.",
       "pack": "browsers",
       "app_overrides": {
         "explorer.exe": {
@@ -177,7 +177,7 @@
         "ctrl",
         "tab"
       ],
-      "description": "Switch to next tab",
+      "description": "Switches to next tab.",
       "pack": "browsers"
     },
     "previous tab": {
@@ -187,7 +187,7 @@
         "shift",
         "tab"
       ],
-      "description": "Switch to previous tab",
+      "description": "Switches to previous tab.",
       "pack": "browsers"
     },
     "refresh page": {
@@ -195,7 +195,7 @@
       "keys": [
         "f5"
       ],
-      "description": "Refresh current page",
+      "description": "Refreshes current page.",
       "pack": "browsers"
     },
     "scroll to top": {
@@ -203,7 +203,7 @@
       "keys": [
         "home"
       ],
-      "description": "Scroll to top of page",
+      "description": "Scrolls to top of page.",
       "pack": "core"
     },
     "scroll to bottom": {
@@ -211,7 +211,7 @@
       "keys": [
         "end"
       ],
-      "description": "Scroll to bottom of page",
+      "description": "Scrolls to bottom of page.",
       "pack": "core"
     },
     "go back": {
@@ -220,7 +220,7 @@
         "alt",
         "left"
       ],
-      "description": "Browser back",
+      "description": "Goes back one page in the browser.",
       "pack": "browsers"
     },
     "go forward": {
@@ -229,7 +229,7 @@
         "alt",
         "right"
       ],
-      "description": "Browser forward",
+      "description": "Goes forward one page in the browser.",
       "pack": "browsers"
     },
     "select all": {
@@ -238,7 +238,7 @@
         "ctrl",
         "a"
       ],
-      "description": "Select all text",
+      "description": "Selects all text.",
       "pack": "core"
     },
     "copy": {
@@ -247,7 +247,7 @@
         "ctrl",
         "c"
       ],
-      "description": "Copy selection",
+      "description": "Copies selection.",
       "pack": "core"
     },
     "cut": {
@@ -256,7 +256,7 @@
         "ctrl",
         "x"
       ],
-      "description": "Cut selection",
+      "description": "Cuts selection.",
       "pack": "core"
     },
     "paste": {
@@ -265,31 +265,34 @@
         "ctrl",
         "v"
       ],
-      "description": "Paste from clipboard",
+      "description": "Pastes from clipboard.",
       "pack": "core"
     },
     "undo": {
       "type": "method",
       "method": "undo_last_dictation",
-      "description": "Remove the last pasted dictation",
+      "description": "Removes the last pasted dictation.",
       "pack": "core"
     },
     "open settings": {
-      "type": "method",
-      "method": "open_settings",
-      "description": "Open the Samsara settings window",
+      "type": "hotkey",
+      "keys": [
+        "win",
+        "i"
+      ],
+      "description": "Opens Windows Settings.",
       "pack": "core"
     },
     "show tutorial": {
       "type": "method",
       "method": "show_tutorial",
-      "description": "Open the interactive Samsara tutorial",
+      "description": "Opens the interactive Samsara tutorial.",
       "pack": "core"
     },
     "run tutorial": {
       "type": "method",
       "method": "show_tutorial",
-      "description": "Open the interactive Samsara tutorial",
+      "description": "Opens the interactive Samsara tutorial.",
       "pack": "core"
     },
     "redo": {
@@ -298,7 +301,7 @@
         "ctrl",
         "y"
       ],
-      "description": "Redo last action",
+      "description": "Redoes last action.",
       "pack": "core"
     },
     "save": {
@@ -307,7 +310,7 @@
         "ctrl",
         "s"
       ],
-      "description": "Save current file",
+      "description": "Saves current file.",
       "pack": "core"
     },
     "submit": {
@@ -315,7 +318,7 @@
       "keys": [
         "enter"
       ],
-      "description": "Press Enter",
+      "description": "Presses Enter.",
       "pack": "core"
     },
     "escape": {
@@ -323,19 +326,19 @@
       "keys": [
         "esc"
       ],
-      "description": "Press Escape",
+      "description": "Presses the Escape key.",
       "pack": "core"
     },
     "press tab": {
       "type": "press",
       "key": "tab",
-      "description": "Move focus to the next field",
+      "description": "Moves focus to the next field.",
       "pack": "core"
     },
     "next field": {
       "type": "press",
       "key": "tab",
-      "description": "Move focus to the next field",
+      "description": "Moves focus to the next field.",
       "pack": "core"
     },
     "previous field": {
@@ -344,7 +347,7 @@
         "shift",
         "tab"
       ],
-      "description": "Move focus to the previous field",
+      "description": "Moves focus to the previous field.",
       "pack": "core"
     },
     "back field": {
@@ -353,7 +356,7 @@
         "shift",
         "tab"
       ],
-      "description": "Move focus to the previous field",
+      "description": "Moves focus to the previous field.",
       "pack": "core"
     },
     "back tab": {
@@ -362,7 +365,7 @@
         "shift",
         "tab"
       ],
-      "description": "Move focus to the previous field",
+      "description": "Moves focus to the previous field.",
       "pack": "core"
     },
     "other window": {
@@ -371,231 +374,231 @@
         "alt",
         "tab"
       ],
-      "description": "Switch to the previously active window",
+      "description": "Switches to the previously active window.",
       "pack": "core"
     },
     "press e": {
       "type": "press",
       "key": "e",
-      "description": "Press E key once",
+      "description": "Presses E key once.",
       "pack": "gaming",
       "ai_visible": false
     },
     "press space": {
       "type": "press",
       "key": "space",
-      "description": "Press Spacebar once",
+      "description": "Presses Spacebar once.",
       "pack": "gaming",
       "ai_visible": false
     },
     "hold forward": {
       "type": "key_down",
       "key": "w",
-      "description": "Hold W key down (for gaming)",
+      "description": "Holds W key down (for gaming).",
       "pack": "gaming",
       "ai_visible": false
     },
     "stop forward": {
       "type": "key_up",
       "key": "w",
-      "description": "Release W key",
+      "description": "Releases W key.",
       "pack": "gaming",
       "ai_visible": false
     },
     "hold shift": {
       "type": "key_down",
       "key": "shift",
-      "description": "Hold Shift key down",
+      "description": "Holds Shift key down.",
       "pack": "gaming",
       "ai_visible": false
     },
     "release shift": {
       "type": "key_up",
       "key": "shift",
-      "description": "Release Shift key",
+      "description": "Releases Shift key.",
       "pack": "gaming",
       "ai_visible": false
     },
     "release all": {
       "type": "release_all",
-      "description": "Release all held keys",
+      "description": "Releases all held keys.",
       "pack": "gaming",
       "ai_visible": false
     },
     "double click": {
       "type": "mouse",
       "action": "double_click",
-      "description": "Double click mouse",
+      "description": "Double-clicks the left mouse button where the pointer is.",
       "pack": "mouse"
     },
     "left click": {
       "type": "mouse",
       "action": "click",
       "button": "left",
-      "description": "Single left click",
+      "description": "Clicks the left mouse button where the pointer is.",
       "pack": "mouse"
     },
     "right click": {
       "type": "mouse",
       "action": "click",
       "button": "right",
-      "description": "Single right click",
+      "description": "Clicks the right mouse button where the pointer is.",
       "pack": "mouse"
     },
     "period": {
       "type": "text",
       "text": ".",
-      "description": "Insert period",
+      "description": "Types a full stop at the cursor.",
       "pack": "text-editing",
       "ai_visible": false
     },
     "full stop": {
       "type": "text",
       "text": ".",
-      "description": "Insert period",
+      "description": "Types a full stop at the cursor.",
       "pack": "text-editing"
     },
     "comma": {
       "type": "text",
       "text": ",",
-      "description": "Insert comma",
+      "description": "Types a comma at the cursor.",
       "pack": "text-editing",
       "ai_visible": false
     },
     "question mark": {
       "type": "text",
       "text": "?",
-      "description": "Insert question mark",
+      "description": "Types a question mark at the cursor.",
       "pack": "text-editing",
       "ai_visible": false
     },
     "exclamation mark": {
       "type": "text",
       "text": "!",
-      "description": "Insert exclamation mark",
+      "description": "Types an exclamation mark at the cursor.",
       "pack": "text-editing",
       "ai_visible": false
     },
     "exclamation point": {
       "type": "text",
       "text": "!",
-      "description": "Insert exclamation mark",
+      "description": "Types an exclamation mark at the cursor.",
       "pack": "text-editing",
       "ai_visible": false
     },
     "colon": {
       "type": "text",
       "text": ":",
-      "description": "Insert colon",
+      "description": "Types a colon at the cursor.",
       "pack": "text-editing",
       "ai_visible": false
     },
     "semicolon": {
       "type": "text",
       "text": ";",
-      "description": "Insert semicolon",
+      "description": "Types a semicolon at the cursor.",
       "pack": "text-editing",
       "ai_visible": false
     },
     "apostrophe": {
       "type": "text",
       "text": "'",
-      "description": "Insert apostrophe",
+      "description": "Types an apostrophe at the cursor.",
       "pack": "text-editing",
       "ai_visible": false
     },
     "quote": {
       "type": "text",
       "text": "\"",
-      "description": "Insert double quote",
+      "description": "Types a double quotation mark at the cursor.",
       "pack": "text-editing",
       "ai_visible": false
     },
     "open quote": {
       "type": "text",
       "text": "\"",
-      "description": "Insert opening quote",
+      "description": "Types an opening quotation mark at the cursor.",
       "pack": "text-editing",
       "ai_visible": false
     },
     "close quote": {
       "type": "text",
       "text": "\"",
-      "description": "Insert closing quote",
+      "description": "Types a closing quotation mark at the cursor.",
       "pack": "text-editing",
       "ai_visible": false
     },
     "open parenthesis": {
       "type": "text",
       "text": "(",
-      "description": "Insert opening parenthesis",
+      "description": "Types an opening bracket at the cursor.",
       "pack": "text-editing",
       "ai_visible": false
     },
     "close parenthesis": {
       "type": "text",
       "text": ")",
-      "description": "Insert closing parenthesis",
+      "description": "Types a closing bracket at the cursor.",
       "pack": "text-editing",
       "ai_visible": false
     },
     "open bracket": {
       "type": "text",
       "text": "[",
-      "description": "Insert opening bracket",
+      "description": "Types an opening square bracket at the cursor.",
       "pack": "text-editing",
       "ai_visible": false
     },
     "close bracket": {
       "type": "text",
       "text": "]",
-      "description": "Insert closing bracket",
+      "description": "Types a closing square bracket at the cursor.",
       "pack": "text-editing",
       "ai_visible": false
     },
     "hyphen": {
       "type": "text",
       "text": "-",
-      "description": "Insert hyphen",
+      "description": "Types a hyphen at the cursor.",
       "pack": "text-editing",
       "ai_visible": false
     },
     "dash": {
       "type": "text",
       "text": " - ",
-      "description": "Insert dash with spaces",
+      "description": "Types a dash with a space either side.",
       "pack": "text-editing",
       "ai_visible": false
     },
     "ellipsis": {
       "type": "text",
       "text": "...",
-      "description": "Insert ellipsis",
+      "description": "Types three dots at the cursor.",
       "pack": "text-editing",
       "ai_visible": false
     },
     "new line": {
       "type": "press",
       "key": "enter",
-      "description": "Insert new line",
+      "description": "Starts a new line, without a blank line between.",
       "pack": "text-editing"
     },
     "new paragraph": {
       "type": "text",
       "text": "\n\n",
-      "description": "Insert paragraph break",
+      "description": "Starts a new paragraph, with a blank line between.",
       "pack": "text-editing"
     },
     "space": {
       "type": "text",
       "text": " ",
-      "description": "Insert space",
+      "description": "Types a single space at the cursor.",
       "pack": "text-editing"
     },
     "backspace": {
       "type": "press",
       "key": "backspace",
-      "description": "Delete previous character",
+      "description": "Deletes previous character.",
       "pack": "text-editing"
     },
     "delete word": {
@@ -604,19 +607,19 @@
         "ctrl",
         "backspace"
       ],
-      "description": "Delete previous word",
+      "description": "Deletes previous word.",
       "pack": "text-editing"
     },
     "undo that": {
       "type": "method",
       "method": "undo_last_dictation",
-      "description": "Remove the last pasted dictation",
+      "description": "Removes the last pasted dictation.",
       "pack": "core"
     },
     "scratch that": {
       "type": "method",
       "method": "undo_last_dictation",
-      "description": "Remove the last pasted dictation",
+      "description": "Removes the last pasted dictation.",
       "pack": "core"
     },
     "take a screenshot": {
@@ -626,7 +629,7 @@
         "shift",
         "s"
       ],
-      "description": "Open screenshot snip tool",
+      "description": "Opens screenshot snip tool.",
       "pack": "screen-capture"
     },
     "screenshot": {
@@ -636,7 +639,7 @@
         "shift",
         "s"
       ],
-      "description": "Open screenshot snip tool",
+      "description": "Opens screenshot snip tool.",
       "pack": "screen-capture"
     },
     "lock screen": {
@@ -645,7 +648,7 @@
         "win",
         "l"
       ],
-      "description": "Lock the computer",
+      "description": "Locks the computer.",
       "pack": "core"
     },
     "lock computer": {
@@ -654,19 +657,19 @@
         "win",
         "l"
       ],
-      "description": "Lock the computer",
+      "description": "Locks the computer.",
       "pack": "core"
     },
     "open notepad": {
       "type": "launch",
       "target": "notepad.exe",
-      "description": "Open Notepad",
+      "description": "Opens Notepad with a blank document.",
       "pack": "utilities"
     },
     "open calculator": {
       "type": "launch",
       "target": "calc.exe",
-      "description": "Open Calculator",
+      "description": "Opens the Windows Calculator.",
       "pack": "utilities"
     },
     "open file explorer": {
@@ -675,7 +678,7 @@
         "win",
         "e"
       ],
-      "description": "Open File Explorer",
+      "description": "Opens a new File Explorer window.",
       "pack": "utilities"
     },
     "open files": {
@@ -684,17 +687,8 @@
         "win",
         "e"
       ],
-      "description": "Open File Explorer",
+      "description": "Opens File Explorer.",
       "pack": "utilities"
-    },
-    "open settings": {
-      "type": "hotkey",
-      "keys": [
-        "win",
-        "i"
-      ],
-      "description": "Open Windows Settings",
-      "pack": "core"
     },
     "switch window": {
       "type": "hotkey",
@@ -702,7 +696,7 @@
         "alt",
         "tab"
       ],
-      "description": "Switch to next window",
+      "description": "Switches to next window.",
       "pack": "core"
     },
     "switch app": {
@@ -711,7 +705,7 @@
         "alt",
         "tab"
       ],
-      "description": "Switch to next window",
+      "description": "Switches to next window.",
       "pack": "core"
     },
     "snap left": {
@@ -720,7 +714,7 @@
         "win",
         "left"
       ],
-      "description": "Snap window to left half",
+      "description": "Snaps window to left half.",
       "pack": "core"
     },
     "snap right": {
@@ -729,7 +723,7 @@
         "win",
         "right"
       ],
-      "description": "Snap window to right half",
+      "description": "Snaps window to right half.",
       "pack": "core"
     },
     "full screen": {
@@ -737,7 +731,7 @@
       "keys": [
         "f11"
       ],
-      "description": "Toggle full screen",
+      "description": "Toggles full screen.",
       "pack": "core"
     },
     "zoom in": {
@@ -746,7 +740,7 @@
         "win",
         "+"
       ],
-      "description": "Magnifier: zoom in",
+      "description": "Zooms Windows Magnifier in.",
       "pack": "accessibility"
     },
     "zoom out": {
@@ -755,7 +749,7 @@
         "win",
         "-"
       ],
-      "description": "Magnifier: zoom out",
+      "description": "Zooms Windows Magnifier out.",
       "pack": "accessibility"
     },
     "reset zoom": {
@@ -764,7 +758,7 @@
         "ctrl",
         "0"
       ],
-      "description": "Reset zoom to default",
+      "description": "Resets zoom to default.",
       "pack": "browsers"
     },
     "bold": {
@@ -773,7 +767,7 @@
         "ctrl",
         "b"
       ],
-      "description": "Toggle bold text",
+      "description": "Toggles bold text.",
       "pack": "text-editing"
     },
     "italic": {
@@ -782,7 +776,7 @@
         "ctrl",
         "i"
       ],
-      "description": "Toggle italic text",
+      "description": "Toggles italic text.",
       "pack": "text-editing"
     },
     "underline": {
@@ -791,7 +785,7 @@
         "ctrl",
         "u"
       ],
-      "description": "Toggle underline text",
+      "description": "Toggles underline text.",
       "pack": "text-editing"
     },
     "print": {
@@ -800,7 +794,7 @@
         "ctrl",
         "p"
       ],
-      "description": "Open print dialog",
+      "description": "Opens print dialog.",
       "pack": "text-editing",
       "app_overrides": {
         "obsidian.exe": {
@@ -814,7 +808,7 @@
         "win",
         "."
       ],
-      "description": "Open emoji picker",
+      "description": "Opens emoji picker.",
       "pack": "utilities"
     },
     "notifications": {
@@ -823,7 +817,7 @@
         "win",
         "n"
       ],
-      "description": "Open notification center",
+      "description": "Opens notification center.",
       "pack": "core"
     },
     "select word left": {
@@ -833,7 +827,7 @@
         "shift",
         "left"
       ],
-      "description": "Select word to the left",
+      "description": "Selects word to the left.",
       "pack": "text-editing"
     },
     "select word right": {
@@ -843,7 +837,7 @@
         "shift",
         "right"
       ],
-      "description": "Select word to the right",
+      "description": "Selects word to the right.",
       "pack": "text-editing"
     },
     "delete line": {
@@ -867,13 +861,13 @@
           "key": "delete"
         }
       ],
-      "description": "Select and delete entire line",
+      "description": "Selects and delete entire line.",
       "pack": "text-editing"
     },
     "open terminal": {
       "type": "launch",
       "target": "wt.exe",
-      "description": "Open Windows Terminal",
+      "description": "Opens Windows Terminal.",
       "pack": "utilities"
     },
     "clipboard history": {
@@ -882,73 +876,73 @@
         "win",
         "v"
       ],
-      "description": "Open clipboard history",
+      "description": "Opens clipboard history.",
       "pack": "utilities"
     },
     "open claude": {
       "type": "launch",
       "target": "https://claude.ai",
-      "description": "Open Claude in browser (desktop app not installed)",
+      "description": "Opens Claude in browser (desktop app not installed).",
       "pack": "ai"
     },
     "claude new chat": {
       "type": "launch",
       "target": "https://claude.ai/new",
-      "description": "Start a new Claude chat in browser",
+      "description": "Starts a new Claude chat in browser.",
       "pack": "ai"
     },
     "open claude web": {
       "type": "launch",
       "target": "https://claude.ai",
-      "description": "Open Claude in browser",
+      "description": "Opens Claude in browser.",
       "pack": "ai"
     },
     "claude settings": {
       "type": "launch",
       "target": "https://claude.ai/settings",
-      "description": "Open Claude settings in browser",
+      "description": "Opens Claude settings in browser.",
       "pack": "ai"
     },
     "run claude code": {
       "type": "launch",
       "target": "C:\\Users\\Morne\\AppData\\Roaming\\npm\\claude.cmd",
-      "description": "Launch Claude Code in terminal",
+      "description": "Launches Claude Code in terminal.",
       "pack": "ai"
     },
     "open arc": {
       "type": "launch",
       "target": "F:\\envs\\sami\\python.exe",
-      "description": "Open ARC adversarial review pipeline",
+      "description": "Opens ARC adversarial review pipeline.",
       "pack": "ai"
     },
     "open chatgpt": {
       "type": "launch",
       "target": "https://chat.openai.com",
-      "description": "Open ChatGPT in browser",
+      "description": "Opens ChatGPT in browser.",
       "pack": "ai"
     },
     "open gemini": {
       "type": "launch",
       "target": "https://gemini.google.com",
-      "description": "Open Gemini in browser",
+      "description": "Opens Gemini in browser.",
       "pack": "ai"
     },
     "open perplexity": {
       "type": "launch",
       "target": "https://www.perplexity.ai",
-      "description": "Open Perplexity in browser",
+      "description": "Opens Perplexity in browser.",
       "pack": "ai"
     },
     "claude projects": {
       "type": "launch",
       "target": "https://claude.ai/projects",
-      "description": "Open Claude projects list",
+      "description": "Opens Claude projects list.",
       "pack": "ai"
     },
     "open obsidian": {
       "type": "launch",
       "target": "C:\\Users\\Morne\\AppData\\Local\\Programs\\Obsidian\\Obsidian.exe",
-      "description": "Open Obsidian",
+      "description": "Opens the Obsidian notes app.",
       "pack": "ai"
     },
     "new note": {
@@ -957,7 +951,7 @@
         "ctrl",
         "n"
       ],
-      "description": "Obsidian: create new note",
+      "description": "Creates a new note in Obsidian.",
       "pack": "ai"
     },
     "obsidian new note": {
@@ -966,7 +960,7 @@
         "ctrl",
         "n"
       ],
-      "description": "Obsidian: create new note",
+      "description": "Creates a new note in Obsidian.",
       "pack": "ai"
     },
     "quick switcher": {
@@ -975,7 +969,7 @@
         "ctrl",
         "o"
       ],
-      "description": "Obsidian: open quick switcher",
+      "description": "Opens Obsidian's quick switcher to jump to a note by name.",
       "pack": "ai"
     },
     "open note": {
@@ -984,7 +978,7 @@
         "ctrl",
         "o"
       ],
-      "description": "Obsidian: open quick switcher",
+      "description": "Opens Obsidian's quick switcher to jump to a note by name.",
       "pack": "ai"
     },
     "command palette": {
@@ -993,7 +987,7 @@
         "ctrl",
         "p"
       ],
-      "description": "Obsidian: open command palette",
+      "description": "Opens Obsidian's command palette.",
       "pack": "ai"
     },
     "obsidian search": {
@@ -1003,7 +997,7 @@
         "shift",
         "f"
       ],
-      "description": "Obsidian: search all files",
+      "description": "Searches every note in your Obsidian vault.",
       "pack": "ai"
     },
     "search all notes": {
@@ -1013,7 +1007,7 @@
         "shift",
         "f"
       ],
-      "description": "Obsidian: search all files",
+      "description": "Searches every note in your Obsidian vault.",
       "pack": "ai"
     },
     "search this note": {
@@ -1022,7 +1016,7 @@
         "ctrl",
         "f"
       ],
-      "description": "Obsidian: search current file",
+      "description": "Searches inside the Obsidian note you are in.",
       "pack": "ai"
     },
     "replace in note": {
@@ -1031,7 +1025,7 @@
         "ctrl",
         "h"
       ],
-      "description": "Obsidian: search and replace in file",
+      "description": "Opens search and replace in the Obsidian note you are in.",
       "pack": "ai"
     },
     "graph view": {
@@ -1040,7 +1034,7 @@
         "ctrl",
         "g"
       ],
-      "description": "Obsidian: open graph view",
+      "description": "Opens Obsidian's graph view of how your notes link together.",
       "pack": "ai"
     },
     "open graph": {
@@ -1049,7 +1043,7 @@
         "ctrl",
         "g"
       ],
-      "description": "Obsidian: open graph view",
+      "description": "Opens Obsidian's graph view of how your notes link together.",
       "pack": "ai"
     },
     "toggle preview": {
@@ -1058,7 +1052,7 @@
         "ctrl",
         "e"
       ],
-      "description": "Obsidian: toggle edit/preview mode",
+      "description": "Switches Obsidian between editing a note and reading it.",
       "pack": "ai"
     },
     "reading mode": {
@@ -1067,7 +1061,7 @@
         "ctrl",
         "e"
       ],
-      "description": "Obsidian: toggle edit/preview mode",
+      "description": "Switches Obsidian between editing a note and reading it.",
       "pack": "ai"
     },
     "obsidian settings": {
@@ -1076,7 +1070,7 @@
         "ctrl",
         ","
       ],
-      "description": "Obsidian: open settings",
+      "description": "Opens Obsidian's settings.",
       "pack": "ai"
     },
     "insert link": {
@@ -1085,7 +1079,7 @@
         "ctrl",
         "k"
       ],
-      "description": "Obsidian: insert link",
+      "description": "Inserts a link at the cursor in Obsidian.",
       "pack": "ai"
     },
     "follow link": {
@@ -1094,7 +1088,7 @@
         "alt",
         "enter"
       ],
-      "description": "Obsidian: follow link under cursor",
+      "description": "Follows the Obsidian link under the cursor.",
       "pack": "ai"
     },
     "navigate back": {
@@ -1104,7 +1098,7 @@
         "alt",
         "left"
       ],
-      "description": "Obsidian: navigate back",
+      "description": "Goes back to the note you were reading before in Obsidian.",
       "pack": "ai"
     },
     "navigate forward": {
@@ -1114,7 +1108,7 @@
         "alt",
         "right"
       ],
-      "description": "Obsidian: navigate forward",
+      "description": "Goes forward again through the Obsidian notes you have visited.",
       "pack": "ai"
     },
     "highlight text": {
@@ -1124,7 +1118,7 @@
         "shift",
         "h"
       ],
-      "description": "Obsidian: toggle highlight",
+      "description": "Highlights the selected text in Obsidian.",
       "pack": "ai"
     },
     "obsidian help": {
@@ -1132,7 +1126,7 @@
       "keys": [
         "f1"
       ],
-      "description": "Obsidian: open help",
+      "description": "Opens Obsidian's help.",
       "pack": "ai"
     },
     "today's note": {
@@ -1142,7 +1136,7 @@
         "shift",
         "d"
       ],
-      "description": "Obsidian: open today's daily note (requires Daily Notes plugin)",
+      "description": "Opens today's daily note in Obsidian, if the Daily Notes plugin is on.",
       "pack": "ai"
     },
     "daily note": {
@@ -1152,7 +1146,7 @@
         "shift",
         "d"
       ],
-      "description": "Obsidian: open today's daily note",
+      "description": "Opens today's daily note in Obsidian.",
       "pack": "ai"
     },
     "toggle left sidebar": {
@@ -1162,7 +1156,7 @@
         "shift",
         "b"
       ],
-      "description": "Obsidian: toggle left sidebar",
+      "description": "Shows or hides Obsidian's left sidebar.",
       "pack": "ai"
     },
     "indent line": {
@@ -1171,7 +1165,7 @@
         "ctrl",
         "]"
       ],
-      "description": "Obsidian: indent",
+      "description": "Indents the current line in Obsidian.",
       "pack": "ai"
     },
     "unindent line": {
@@ -1180,43 +1174,43 @@
         "ctrl",
         "["
       ],
-      "description": "Obsidian: unindent",
+      "description": "Unindents the current line in Obsidian.",
       "pack": "ai"
     },
     "open warp": {
       "type": "launch",
       "target": "C:\\Users\\Morne\\AppData\\Local\\Programs\\Warp\\Warp.exe",
-      "description": "Open Warp terminal",
+      "description": "Opens Warp terminal.",
       "pack": "utilities"
     },
     "open vs code": {
       "type": "launch",
       "target": "https://code.visualstudio.com",
-      "description": "VS Code not installed -- opens download page",
+      "description": "Opens the VS Code download page, because VS Code is not installed here.",
       "pack": "utilities"
     },
     "open discord": {
       "type": "launch",
       "target": "C:\\Users\\Morne\\AppData\\Roaming\\Microsoft\\Windows\\Start Menu\\Programs\\Discord Inc\\Discord.lnk",
-      "description": "Open Discord",
+      "description": "Opens the Discord desktop app.",
       "pack": "utilities"
     },
     "open spotify": {
       "type": "launch",
       "target": "C:\\Users\\Morne\\AppData\\Roaming\\Spotify\\Spotify.exe",
-      "description": "Open Spotify",
+      "description": "Opens the Spotify desktop app.",
       "pack": "media"
     },
     "open steam": {
       "type": "launch",
       "target": "C:\\Program Files (x86)\\Steam\\steam.exe",
-      "description": "Open Steam",
+      "description": "Opens the Steam desktop app.",
       "pack": "utilities"
     },
     "open paint": {
       "type": "launch",
       "target": "mspaint.exe",
-      "description": "Open MS Paint",
+      "description": "Opens MS Paint.",
       "pack": "utilities"
     },
     "system info": {
@@ -1225,7 +1219,7 @@
         "win",
         "pause"
       ],
-      "description": "Open system properties",
+      "description": "Opens system properties.",
       "pack": "utilities"
     },
     "run dialog": {
@@ -1234,7 +1228,7 @@
         "win",
         "r"
       ],
-      "description": "Open Run dialog",
+      "description": "Opens Run dialog.",
       "pack": "utilities"
     },
     "action center": {
@@ -1243,7 +1237,7 @@
         "win",
         "a"
       ],
-      "description": "Open action center / quick settings",
+      "description": "Opens action center / quick settings.",
       "pack": "core"
     },
     "search windows": {
@@ -1252,7 +1246,7 @@
         "win",
         "s"
       ],
-      "description": "Open Windows search",
+      "description": "Opens Windows search.",
       "pack": "core"
     },
     "virtual desktop left": {
@@ -1262,7 +1256,7 @@
         "win",
         "left"
       ],
-      "description": "Switch to left virtual desktop",
+      "description": "Switches to left virtual desktop.",
       "pack": "core"
     },
     "virtual desktop right": {
@@ -1272,7 +1266,7 @@
         "win",
         "right"
       ],
-      "description": "Switch to right virtual desktop",
+      "description": "Switches to right virtual desktop.",
       "pack": "core"
     },
     "new virtual desktop": {
@@ -1282,7 +1276,7 @@
         "win",
         "d"
       ],
-      "description": "Create new virtual desktop",
+      "description": "Creates new virtual desktop.",
       "pack": "core"
     },
     "close virtual desktop": {
@@ -1292,7 +1286,7 @@
         "win",
         "f4"
       ],
-      "description": "Close current virtual desktop",
+      "description": "Closes current virtual desktop.",
       "pack": "core"
     },
     "snap top left": {
@@ -1302,7 +1296,7 @@
         "left",
         "up"
       ],
-      "description": "Snap window to top-left quarter",
+      "description": "Snaps window to top-left quarter.",
       "pack": "core"
     },
     "snap top right": {
@@ -1312,55 +1306,55 @@
         "right",
         "up"
       ],
-      "description": "Snap window to top-right quarter",
+      "description": "Snaps window to top-right quarter.",
       "pack": "core"
     },
     "open device manager": {
       "type": "launch",
       "target": "devmgmt.msc",
-      "description": "Open Device Manager",
+      "description": "Opens Device Manager, where Windows lists your hardware.",
       "pack": "utilities"
     },
     "open event viewer": {
       "type": "launch",
       "target": "eventvwr.msc",
-      "description": "Open Event Viewer",
+      "description": "Opens Event Viewer, the Windows system log.",
       "pack": "utilities"
     },
     "open services": {
       "type": "launch",
       "target": "services.msc",
-      "description": "Open Services",
+      "description": "Opens the Windows Services console.",
       "pack": "utilities"
     },
     "open registry": {
       "type": "launch",
       "target": "regedit.exe",
-      "description": "Open Registry Editor",
+      "description": "Opens Registry Editor.",
       "pack": "utilities"
     },
     "open disk management": {
       "type": "launch",
       "target": "diskmgmt.msc",
-      "description": "Open Disk Management",
+      "description": "Opens Disk Management, where Windows lists your drives and partitions.",
       "pack": "utilities"
     },
     "open control panel": {
       "type": "launch",
       "target": "control.exe",
-      "description": "Open Control Panel",
+      "description": "Opens the Windows Control Panel.",
       "pack": "utilities"
     },
     "open sound settings": {
       "type": "launch",
       "target": "ms-settings:sound",
-      "description": "Open Sound settings",
+      "description": "Opens the Windows sound settings, for input and output devices.",
       "pack": "utilities"
     },
     "open display settings": {
       "type": "launch",
       "target": "ms-settings:display",
-      "description": "Open Display settings",
+      "description": "Opens the Windows display settings, for resolution and scaling.",
       "pack": "utilities"
     },
     "address bar": {
@@ -1369,7 +1363,7 @@
         "alt",
         "d"
       ],
-      "description": "Focus browser address bar",
+      "description": "Puts the cursor in the browser's address bar.",
       "pack": "browsers"
     },
     "go to address bar": {
@@ -1378,7 +1372,7 @@
         "alt",
         "d"
       ],
-      "description": "Focus browser address bar",
+      "description": "Focuses browser address bar.",
       "pack": "browsers"
     },
     "open downloads": {
@@ -1387,7 +1381,7 @@
         "ctrl",
         "j"
       ],
-      "description": "Open browser downloads",
+      "description": "Opens browser downloads.",
       "pack": "browsers"
     },
     "open history": {
@@ -1396,7 +1390,7 @@
         "ctrl",
         "h"
       ],
-      "description": "Open browser history",
+      "description": "Opens browser history.",
       "pack": "browsers",
       "app_overrides": {
         "obsidian.exe": {
@@ -1411,7 +1405,7 @@
         "shift",
         "o"
       ],
-      "description": "Open bookmarks manager",
+      "description": "Opens bookmarks manager.",
       "pack": "browsers"
     },
     "bookmark this": {
@@ -1420,7 +1414,7 @@
         "ctrl",
         "d"
       ],
-      "description": "Bookmark current page",
+      "description": "Bookmarks the page you are on.",
       "pack": "browsers"
     },
     "duplicate tab": {
@@ -1441,7 +1435,7 @@
           ]
         }
       ],
-      "description": "Duplicate current browser tab",
+      "description": "Opens a second copy of the browser tab you are on.",
       "pack": "browsers"
     },
     "mute tab": {
@@ -1450,7 +1444,7 @@
         "ctrl",
         "m"
       ],
-      "description": "Mute current tab (Chrome)",
+      "description": "Mutes the sound coming from the Chrome tab you are on.",
       "pack": "browsers"
     },
     "pin tab": {
@@ -1460,7 +1454,7 @@
         "shift",
         "p"
       ],
-      "description": "Pin current tab (Edge)",
+      "description": "Pins the Edge tab you are on so it stays at the front of the bar.",
       "pack": "browsers"
     },
     "open devtools": {
@@ -1468,7 +1462,7 @@
       "keys": [
         "f12"
       ],
-      "description": "Open browser developer tools",
+      "description": "Opens browser developer tools.",
       "pack": "browsers"
     },
     "hard refresh": {
@@ -1478,7 +1472,7 @@
         "shift",
         "r"
       ],
-      "description": "Hard refresh (clear cache)",
+      "description": "Reloads the page and ignores anything the browser had cached.",
       "pack": "browsers"
     },
     "tab one": {
@@ -1487,7 +1481,7 @@
         "ctrl",
         "1"
       ],
-      "description": "Switch to tab 1",
+      "description": "Switches to tab 1.",
       "pack": "browsers"
     },
     "tab two": {
@@ -1496,7 +1490,7 @@
         "ctrl",
         "2"
       ],
-      "description": "Switch to tab 2",
+      "description": "Switches to tab 2.",
       "pack": "browsers"
     },
     "tab three": {
@@ -1505,7 +1499,7 @@
         "ctrl",
         "3"
       ],
-      "description": "Switch to tab 3",
+      "description": "Switches to tab 3.",
       "pack": "browsers"
     },
     "last tab": {
@@ -1514,7 +1508,7 @@
         "ctrl",
         "9"
       ],
-      "description": "Switch to last tab",
+      "description": "Switches to last tab.",
       "pack": "browsers"
     },
     "private window": {
@@ -1524,7 +1518,7 @@
         "shift",
         "n"
       ],
-      "description": "Open private/incognito window",
+      "description": "Opens private/incognito window.",
       "pack": "browsers"
     },
     "reading view": {
@@ -1532,85 +1526,85 @@
       "keys": [
         "f9"
       ],
-      "description": "Toggle reading view (Edge)",
+      "description": "Toggles reading view (Edge).",
       "pack": "browsers"
     },
     "open midjourney": {
       "type": "launch",
       "target": "https://www.midjourney.com",
-      "description": "Open Midjourney in browser",
+      "description": "Opens Midjourney in browser.",
       "pack": "ai"
     },
     "open arcana": {
       "type": "launch",
       "target": "https://morneis.com",
-      "description": "Open The Arcana / morneis.com",
+      "description": "Opens The Arcana / morneis.com.",
       "pack": "ai"
     },
     "go to arcana": {
       "type": "launch",
       "target": "https://morneis.com",
-      "description": "Open The Arcana / morneis.com",
+      "description": "Opens The Arcana / morneis.com.",
       "pack": "ai"
     },
     "open samsara page": {
       "type": "launch",
       "target": "https://morneis.com/samsara",
-      "description": "Open Samsara landing page",
+      "description": "Opens Samsara landing page.",
       "pack": "ai"
     },
     "report a bug": {
       "type": "launch",
       "target": "https://github.com/Morne-Ingstar/Samsara/issues/new?template=bug_report.yml",
-      "description": "Open the structured Samsara problem report form",
+      "description": "Opens the structured Samsara problem report form.",
       "pack": "core"
     },
     "send feedback": {
       "type": "launch",
       "target": "https://github.com/Morne-Ingstar/Samsara/issues/new?template=beta_feedback.yml",
-      "description": "Open the Samsara beta feedback form",
+      "description": "Opens the Samsara beta feedback form.",
       "pack": "core"
     },
     "open github": {
       "type": "launch",
       "target": "https://github.com",
-      "description": "Open GitHub",
+      "description": "Opens github.com in your default browser.",
       "pack": "ai"
     },
     "my github": {
       "type": "launch",
       "target": "https://github.com/Morne-Ingstar",
-      "description": "Open your GitHub profile",
+      "description": "Opens your GitHub profile.",
       "pack": "ai"
     },
     "samsara repo": {
       "type": "launch",
       "target": "https://github.com/Morne-Ingstar/Samsara",
-      "description": "Open Samsara GitHub repo",
+      "description": "Opens Samsara GitHub repo.",
       "pack": "ai"
     },
     "arc repo": {
       "type": "launch",
       "target": "https://github.com/Morne-Ingstar/ARC",
-      "description": "Open ARC GitHub repo",
+      "description": "Opens ARC GitHub repo.",
       "pack": "ai"
     },
     "open hugging face": {
       "type": "launch",
       "target": "https://huggingface.co",
-      "description": "Open Hugging Face",
+      "description": "Opens huggingface.co in your default browser.",
       "pack": "ai"
     },
     "open anthropic": {
       "type": "launch",
       "target": "https://anthropic.com",
-      "description": "Open Anthropic website",
+      "description": "Opens Anthropic website.",
       "pack": "ai"
     },
     "open claude docs": {
       "type": "launch",
       "target": "https://docs.claude.com",
-      "description": "Open Claude documentation",
+      "description": "Opens Claude documentation.",
       "pack": "ai"
     },
     "go to document start": {
@@ -1619,7 +1613,7 @@
         "ctrl",
         "home"
       ],
-      "description": "Move cursor to document start",
+      "description": "Moves cursor to document start.",
       "pack": "text-editing"
     },
     "go to document end": {
@@ -1628,7 +1622,7 @@
         "ctrl",
         "end"
       ],
-      "description": "Move cursor to document end",
+      "description": "Moves cursor to document end.",
       "pack": "text-editing"
     },
     "word left": {
@@ -1637,7 +1631,7 @@
         "ctrl",
         "left"
       ],
-      "description": "Move cursor one word left",
+      "description": "Moves cursor one word left.",
       "pack": "text-editing"
     },
     "word right": {
@@ -1646,7 +1640,7 @@
         "ctrl",
         "right"
       ],
-      "description": "Move cursor one word right",
+      "description": "Moves cursor one word right.",
       "pack": "text-editing"
     },
     "select to end": {
@@ -1655,7 +1649,7 @@
         "shift",
         "end"
       ],
-      "description": "Select to end of line",
+      "description": "Selects to end of line.",
       "pack": "text-editing"
     },
     "select to start": {
@@ -1664,7 +1658,7 @@
         "shift",
         "home"
       ],
-      "description": "Select to start of line",
+      "description": "Selects to start of line.",
       "pack": "text-editing"
     },
     "select to document end": {
@@ -1674,7 +1668,7 @@
         "shift",
         "end"
       ],
-      "description": "Select to end of document",
+      "description": "Selects to end of document.",
       "pack": "text-editing"
     },
     "select to document start": {
@@ -1684,7 +1678,7 @@
         "shift",
         "home"
       ],
-      "description": "Select to start of document",
+      "description": "Selects to start of document.",
       "pack": "text-editing"
     },
     "delete next word": {
@@ -1693,7 +1687,7 @@
         "ctrl",
         "delete"
       ],
-      "description": "Delete next word",
+      "description": "Deletes the word to the right of the cursor.",
       "pack": "text-editing"
     },
     "strikethrough": {
@@ -1703,7 +1697,7 @@
         "shift",
         "5"
       ],
-      "description": "Toggle strikethrough (Google Docs)",
+      "description": "Toggles strikethrough (Google Docs).",
       "pack": "text-editing"
     },
     "heading one": {
@@ -1713,7 +1707,7 @@
         "alt",
         "1"
       ],
-      "description": "Apply Heading 1 style (Google Docs/Word)",
+      "description": "Applies Heading 1 style (Google Docs/Word).",
       "pack": "text-editing"
     },
     "heading two": {
@@ -1723,7 +1717,7 @@
         "alt",
         "2"
       ],
-      "description": "Apply Heading 2 style",
+      "description": "Applies Heading 2 style.",
       "pack": "text-editing"
     },
     "heading three": {
@@ -1733,7 +1727,7 @@
         "alt",
         "3"
       ],
-      "description": "Apply Heading 3 style",
+      "description": "Applies Heading 3 style.",
       "pack": "text-editing"
     },
     "normal text": {
@@ -1743,7 +1737,7 @@
         "alt",
         "0"
       ],
-      "description": "Apply Normal/Body text style",
+      "description": "Applies Normal/Body text style.",
       "pack": "text-editing"
     },
     "record screen": {
@@ -1753,7 +1747,7 @@
         "alt",
         "r"
       ],
-      "description": "Start/stop screen recording (Xbox Game Bar)",
+      "description": "Starts or stops the Xbox Game Bar screen recording.",
       "pack": "screen-capture"
     },
     "game bar": {
@@ -1762,7 +1756,7 @@
         "win",
         "g"
       ],
-      "description": "Open Xbox Game Bar",
+      "description": "Opens Xbox Game Bar.",
       "pack": "screen-capture"
     },
     "capture this window": {
@@ -1771,7 +1765,7 @@
         "alt",
         "print_screen"
       ],
-      "description": "Screenshot active window to clipboard",
+      "description": "Copies a picture of the focused window to the clipboard.",
       "pack": "screen-capture"
     },
     "rename file": {
@@ -1779,7 +1773,7 @@
       "keys": [
         "f2"
       ],
-      "description": "Rename selected file",
+      "description": "Renames the file you have selected.",
       "pack": "utilities"
     },
     "delete file": {
@@ -1787,7 +1781,7 @@
       "keys": [
         "delete"
       ],
-      "description": "Delete selected file/item",
+      "description": "Deletes selected file/item.",
       "pack": "utilities"
     },
     "permanent delete": {
@@ -1796,7 +1790,7 @@
         "shift",
         "delete"
       ],
-      "description": "Permanently delete (skip recycle bin)",
+      "description": "Deletes the selected file outright, without sending it to the recycle bin.",
       "pack": "utilities"
     },
     "new folder": {
@@ -1806,7 +1800,7 @@
         "shift",
         "n"
       ],
-      "description": "Create new folder (in Explorer)",
+      "description": "Creates new folder (in Explorer).",
       "pack": "utilities",
       "app_overrides": {
         "chrome.exe": {
@@ -1826,7 +1820,7 @@
         "alt",
         "enter"
       ],
-      "description": "Open file properties",
+      "description": "Opens file properties.",
       "pack": "utilities",
       "app_overrides": {
         "obsidian.exe": {
@@ -1840,7 +1834,7 @@
         "alt",
         "up"
       ],
-      "description": "Navigate up one folder level",
+      "description": "Moves up one folder in File Explorer.",
       "pack": "utilities"
     },
     "preview pane": {
@@ -1849,7 +1843,7 @@
         "alt",
         "p"
       ],
-      "description": "Toggle preview pane in Explorer",
+      "description": "Toggles preview pane in Explorer.",
       "pack": "utilities"
     },
     "open magnifier": {
@@ -1858,7 +1852,7 @@
         "win",
         "+"
       ],
-      "description": "Open Windows Magnifier",
+      "description": "Opens Windows Magnifier.",
       "pack": "accessibility"
     },
     "close magnifier": {
@@ -1867,7 +1861,7 @@
         "win",
         "esc"
       ],
-      "description": "Exit Magnifier",
+      "description": "Closes the Windows Magnifier.",
       "pack": "accessibility"
     },
     "read this": {
@@ -1877,7 +1871,7 @@
         "alt",
         "enter"
       ],
-      "description": "Magnifier: start reading aloud from cursor",
+      "description": "Has Windows Magnifier start reading aloud from the cursor.",
       "pack": "accessibility"
     },
     "read next sentence": {
@@ -1887,7 +1881,7 @@
         "alt",
         "k"
       ],
-      "description": "Magnifier: read next sentence",
+      "description": "Has Windows Magnifier read the next sentence aloud.",
       "pack": "accessibility"
     },
     "read previous sentence": {
@@ -1897,7 +1891,7 @@
         "alt",
         "h"
       ],
-      "description": "Magnifier: read previous sentence",
+      "description": "Has Windows Magnifier read the previous sentence aloud.",
       "pack": "accessibility"
     },
     "stop reading": {
@@ -1907,7 +1901,7 @@
         "alt",
         "enter"
       ],
-      "description": "Magnifier: pause/stop reading",
+      "description": "Stops Windows Magnifier reading aloud.",
       "pack": "accessibility"
     },
     "start narrator": {
@@ -1917,7 +1911,7 @@
         "ctrl",
         "enter"
       ],
-      "description": "Start or stop Windows Narrator (screen reader)",
+      "description": "Starts or stop Windows Narrator (screen reader).",
       "pack": "accessibility"
     },
     "stop narrator": {
@@ -1927,7 +1921,7 @@
         "ctrl",
         "enter"
       ],
-      "description": "Start or stop Windows Narrator",
+      "description": "Starts or stop Windows Narrator.",
       "pack": "accessibility"
     },
     "high contrast": {
@@ -1937,7 +1931,7 @@
         "shift",
         "print_screen"
       ],
-      "description": "Toggle high contrast mode",
+      "description": "Toggles high contrast mode.",
       "pack": "accessibility"
     },
     "color filters": {
@@ -1947,13 +1941,13 @@
         "ctrl",
         "c"
       ],
-      "description": "Toggle color filters (for color blindness)",
+      "description": "Toggles color filters (for color blindness).",
       "pack": "accessibility"
     },
     "invert colors": {
       "type": "launch",
       "target": "ms-settings:easeofaccess-colorfilter",
-      "description": "Open color filter settings",
+      "description": "Opens color filter settings.",
       "pack": "accessibility"
     },
     "live captions": {
@@ -1963,7 +1957,7 @@
         "ctrl",
         "l"
       ],
-      "description": "Toggle live captions (transcribes any audio on screen)",
+      "description": "Toggles live captions (transcribes any audio on screen).",
       "pack": "accessibility"
     },
     "start captions": {
@@ -1973,19 +1967,19 @@
         "ctrl",
         "l"
       ],
-      "description": "Toggle Windows live captions",
+      "description": "Toggles Windows live captions.",
       "pack": "accessibility"
     },
     "mono audio": {
       "type": "launch",
       "target": "ms-settings:easeofaccess-audio",
-      "description": "Open audio accessibility settings (mono audio, visual alerts)",
+      "description": "Opens audio accessibility settings (mono audio, visual alerts).",
       "pack": "accessibility"
     },
     "visual notifications": {
       "type": "launch",
       "target": "ms-settings:easeofaccess-audio",
-      "description": "Open audio/visual notification settings",
+      "description": "Opens audio/visual notification settings.",
       "pack": "accessibility"
     },
     "on screen keyboard": {
@@ -1995,7 +1989,7 @@
         "ctrl",
         "o"
       ],
-      "description": "Open on-screen keyboard",
+      "description": "Opens on-screen keyboard.",
       "pack": "accessibility"
     },
     "open keyboard": {
@@ -2005,7 +1999,7 @@
         "ctrl",
         "o"
       ],
-      "description": "Open on-screen keyboard",
+      "description": "Opens on-screen keyboard.",
       "pack": "accessibility"
     },
     "virtual keyboard": {
@@ -2015,37 +2009,37 @@
         "ctrl",
         "o"
       ],
-      "description": "Open on-screen keyboard",
+      "description": "Opens on-screen keyboard.",
       "pack": "accessibility"
     },
     "sticky keys": {
       "type": "launch",
       "target": "ms-settings:easeofaccess-keyboard",
-      "description": "Open sticky keys settings (press modifier keys one at a time)",
+      "description": "Opens sticky keys settings (press modifier keys one at a time).",
       "pack": "accessibility"
     },
     "mouse keys": {
       "type": "launch",
       "target": "ms-settings:easeofaccess-mouse",
-      "description": "Open mouse keys settings (control mouse with numpad)",
+      "description": "Opens mouse keys settings (control mouse with numpad).",
       "pack": "accessibility"
     },
     "pointer settings": {
       "type": "launch",
       "target": "ms-settings:easeofaccess-MousePointer",
-      "description": "Open mouse pointer size and color settings",
+      "description": "Opens mouse pointer size and color settings.",
       "pack": "accessibility"
     },
     "bigger cursor": {
       "type": "launch",
       "target": "ms-settings:easeofaccess-MousePointer",
-      "description": "Open cursor size settings",
+      "description": "Opens cursor size settings.",
       "pack": "accessibility"
     },
     "eye control": {
       "type": "launch",
       "target": "ms-settings:easeofaccess-eyecontrol",
-      "description": "Open eye control settings (requires compatible eye tracker)",
+      "description": "Opens eye control settings (requires compatible eye tracker).",
       "pack": "accessibility"
     },
     "windows voice typing": {
@@ -2054,13 +2048,13 @@
         "win",
         "h"
       ],
-      "description": "Open Windows voice typing",
+      "description": "Opens Windows voice typing.",
       "pack": "accessibility"
     },
     "speech recognition": {
       "type": "launch",
       "target": "ms-settings:easeofaccess-speechrecognition",
-      "description": "Open Windows Speech Recognition settings",
+      "description": "Opens Windows Speech Recognition settings.",
       "pack": "accessibility"
     },
     "accessibility settings": {
@@ -2069,7 +2063,7 @@
         "win",
         "u"
       ],
-      "description": "Open all accessibility settings",
+      "description": "Opens all accessibility settings.",
       "pack": "accessibility"
     },
     "ease of access": {
@@ -2078,25 +2072,25 @@
         "win",
         "u"
       ],
-      "description": "Open accessibility settings",
+      "description": "Opens accessibility settings.",
       "pack": "accessibility"
     },
     "text cursor settings": {
       "type": "launch",
       "target": "ms-settings:easeofaccess-cursor",
-      "description": "Open text cursor settings (thickness, color indicator)",
+      "description": "Opens text cursor settings (thickness, color indicator).",
       "pack": "accessibility"
     },
     "cursor indicator": {
       "type": "launch",
       "target": "ms-settings:easeofaccess-cursor",
-      "description": "Open text cursor indicator settings",
+      "description": "Opens text cursor indicator settings.",
       "pack": "accessibility"
     },
     "do not disturb": {
       "type": "launch",
       "target": "ms-settings:quiethours",
-      "description": "Open focus assist settings",
+      "description": "Opens focus assist settings.",
       "pack": "accessibility"
     },
     "focus view": {
@@ -2104,7 +2098,7 @@
       "keys": [
         "f9"
       ],
-      "description": "Toggle immersive reader / reading view (Edge)",
+      "description": "Toggles immersive reader / reading view (Edge).",
       "pack": "accessibility"
     },
     "immersive reader": {
@@ -2112,7 +2106,7 @@
       "keys": [
         "f9"
       ],
-      "description": "Toggle immersive reader in Edge (clean reading mode)",
+      "description": "Toggles immersive reader in Edge (clean reading mode).",
       "pack": "accessibility"
     },
     "read aloud": {
@@ -2122,67 +2116,67 @@
         "shift",
         "u"
       ],
-      "description": "Start Read Aloud in Edge browser",
+      "description": "Starts Read Aloud in Edge browser.",
       "pack": "accessibility"
     },
     "open nvda": {
       "type": "launch",
       "target": "C:\\Program Files (x86)\\NVDA\\nvda.exe",
-      "description": "Open NVDA screen reader (free, must be installed)",
+      "description": "Opens NVDA screen reader (free, must be installed).",
       "pack": "accessibility"
     },
     "open jaws": {
       "type": "launch",
       "target": "https://www.freedomscientific.com/products/software/jaws/",
-      "description": "JAWS not installed -- opens product page",
+      "description": "Opens the JAWS product page, because JAWS is not installed here.",
       "pack": "accessibility"
     },
     "night light": {
       "type": "launch",
       "target": "ms-settings:display-advancedgraphics",
-      "description": "Open night light settings (reduce blue light)",
+      "description": "Opens night light settings (reduce blue light).",
       "pack": "accessibility"
     },
     "display settings": {
       "type": "launch",
       "target": "ms-settings:display",
-      "description": "Open display settings (text size, resolution)",
+      "description": "Opens display settings (text size, resolution).",
       "pack": "accessibility"
     },
     "text size": {
       "type": "launch",
       "target": "ms-settings:easeofaccess-display",
-      "description": "Open text size settings",
+      "description": "Opens text size settings.",
       "pack": "accessibility"
     },
     "make text bigger": {
       "type": "launch",
       "target": "ms-settings:easeofaccess-display",
-      "description": "Open text size / visual accessibility settings",
+      "description": "Opens text size / visual accessibility settings.",
       "pack": "accessibility"
     },
     "dark mode": {
       "type": "launch",
       "target": "ms-settings:personalization-colors",
-      "description": "Open color/theme settings (toggle dark mode)",
+      "description": "Opens color/theme settings (toggle dark mode).",
       "pack": "accessibility"
     },
     "type this": {
       "type": "method",
       "method": "start_recording",
-      "description": "Start Samsara dictation (alias)",
+      "description": "Starts Samsara dictation (alias).",
       "pack": "accessibility"
     },
     "cancel": {
       "type": "method",
       "method": "cancel_recording",
-      "description": "Cancel current Samsara recording",
+      "description": "Stops the recording Samsara is taking and throws it away.",
       "pack": "accessibility"
     },
     "start listening": {
       "type": "method",
       "method": "start_recording",
-      "description": "Start Samsara recording",
+      "description": "Starts Samsara recording.",
       "pack": "accessibility"
     },
     "bigger text": {
@@ -2191,7 +2185,7 @@
         "ctrl",
         "="
       ],
-      "description": "Increase font size (Ctrl+=)",
+      "description": "Makes the text bigger in the app you are using.",
       "pack": "text-editing"
     },
     "smaller text": {
@@ -2200,50 +2194,50 @@
         "ctrl",
         "-"
       ],
-      "description": "Decrease font size (Ctrl+-)",
+      "description": "Makes the text smaller in the app you are using.",
       "pack": "text-editing"
     },
     "show commands": {
       "type": "method",
       "method": "show_cheat_sheet",
       "pack": "core",
-      "description": "Show the command reference overlay"
+      "description": "Puts the command reference overlay on the screen."
     },
     "hide commands": {
       "type": "method",
       "method": "hide_cheat_sheet",
       "pack": "core",
-      "description": "Hide the command reference overlay"
+      "description": "Takes the command reference overlay off the screen."
     },
     "delete": {
       "type": "press",
       "key": "delete",
-      "description": "Delete selected text or item",
+      "description": "Deletes selected text or item.",
       "pack": "text-editing"
     },
     "delete selection": {
       "type": "press",
       "key": "delete",
-      "description": "Delete selected text",
+      "description": "Deletes selected text.",
       "pack": "text-editing"
     },
     "enter": {
       "type": "press",
       "key": "enter",
-      "description": "Press Enter key",
+      "description": "Presses Enter key.",
       "pack": "core"
     },
     "repeat": {
       "type": "method",
       "method": "repeat_last_command",
-      "description": "Repeat the last executed command",
+      "description": "Repeats the last executed command.",
       "pack": "core",
       "ai_visible": false
     },
     "again": {
       "type": "method",
       "method": "repeat_last_command",
-      "description": "Repeat the last executed command",
+      "description": "Repeats the last executed command.",
       "pack": "core",
       "ai_visible": false
     },
@@ -2254,7 +2248,7 @@
         "shift",
         "right"
       ],
-      "description": "Move active window one monitor to the right",
+      "description": "Moves active window one monitor to the right.",
       "pack": "window-management"
     },
     "move to left monitor": {
@@ -2264,7 +2258,7 @@
         "shift",
         "left"
       ],
-      "description": "Move active window one monitor to the left",
+      "description": "Moves active window one monitor to the left.",
       "pack": "window-management"
     },
     "move to next monitor": {
@@ -2274,7 +2268,7 @@
         "shift",
         "right"
       ],
-      "description": "Move active window one monitor to the right",
+      "description": "Moves active window one monitor to the right.",
       "pack": "window-management"
     },
     "send to far right": {
@@ -2298,7 +2292,7 @@
           ]
         }
       ],
-      "description": "Move active window to the far-right monitor (2 steps right)",
+      "description": "Moves active window to the far-right monitor (2 steps right).",
       "pack": "window-management"
     },
     "send to far left": {
@@ -2322,7 +2316,7 @@
           ]
         }
       ],
-      "description": "Move active window to the far-left monitor (2 steps left)",
+      "description": "Moves active window to the far-left monitor (2 steps left).",
       "pack": "window-management"
     },
     "send to middle monitor": {
@@ -2355,7 +2349,7 @@
           ]
         }
       ],
-      "description": "Normalize to far left, then step once right to reach middle monitor",
+      "description": "Moves the focused window to the middle screen.",
       "pack": "window-management"
     },
     "send to main monitor": {
@@ -2379,7 +2373,7 @@
           ]
         }
       ],
-      "description": "Move active window to the main (far-left) monitor",
+      "description": "Moves active window to the main (far-left) monitor.",
       "pack": "window-management"
     },
     "restore window": {
@@ -2388,7 +2382,7 @@
         "win",
         "down"
       ],
-      "description": "Restore (un-maximize) the active window so it can be moved",
+      "description": "Un-maximises the focused window so it can be moved.",
       "pack": "window-management"
     },
     "send maximized right": {
@@ -2419,7 +2413,7 @@
           ]
         }
       ],
-      "description": "Restore, move right one monitor, re-maximize",
+      "description": "Moves the focused window to the screen on the right, still maximised.",
       "pack": "window-management"
     },
     "send maximized left": {
@@ -2450,7 +2444,7 @@
           ]
         }
       ],
-      "description": "Restore, move left one monitor, re-maximize",
+      "description": "Moves the focused window to the screen on the left, still maximised.",
       "pack": "window-management"
     },
     "remove file": {
@@ -2458,56 +2452,68 @@
       "keys": [
         "delete"
       ],
-      "description": "Remove a file (preferred over 'delete file' to avoid collision with 'delete line')",
+      "description": "Removes a file (preferred over 'delete file' to avoid collision with 'delete line').",
       "pack": "utilities"
     },
     "open twitch": {
       "type": "launch",
       "target": "https://www.twitch.tv/",
-      "description": "Open Twitch in browser",
+      "description": "Opens Twitch in browser.",
       "pack": "media"
     },
     "open twitch directory": {
       "type": "launch",
       "target": "https://www.twitch.tv/directory",
-      "description": "Open Twitch browse / directory",
+      "description": "Opens Twitch browse / directory.",
       "pack": "media"
     },
     "open twitch following": {
       "type": "launch",
       "target": "https://www.twitch.tv/directory/following",
-      "description": "Open Twitch channels you follow",
+      "description": "Opens Twitch channels you follow.",
       "pack": "media"
     },
     "steam library": {
       "type": "launch",
       "target": "steam://nav/library",
-      "description": "Open Steam library view",
+      "description": "Opens Steam library view.",
       "pack": "gaming"
     },
     "steam friends": {
       "type": "launch",
       "target": "steam://open/friends",
-      "description": "Open Steam friends list",
+      "description": "Opens Steam friends list.",
       "pack": "gaming"
     },
     "steam store": {
       "type": "launch",
       "target": "steam://nav/store",
-      "description": "Open Steam store",
+      "description": "Opens Steam store.",
       "pack": "gaming"
     },
     "steam downloads": {
       "type": "launch",
       "target": "steam://nav/downloads",
-      "description": "Open Steam downloads view",
+      "description": "Opens Steam downloads view.",
       "pack": "gaming"
     },
     "open log": {
       "type": "method",
       "method": "open_log_file",
-      "description": "Open the Samsara log file in Notepad",
+      "description": "Opens the Samsara log file in Notepad.",
       "pack": "core"
+    },
+    "scratch everything": {
+      "type": "method",
+      "method": "clear_dictation_draft",
+      "description": "Throws away the whole hands-free draft, asking you first.",
+      "pack": "core"
+    },
+    "transcribe file": {
+      "type": "method",
+      "method": "open_transcribe_file",
+      "description": "Opens the window for transcribing an audio file you already have.",
+      "pack": "utilities"
     }
   }
 }

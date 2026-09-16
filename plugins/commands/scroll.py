@@ -107,53 +107,63 @@ def _clicks(app, key: str, default: int) -> int:
 
 # ── Commands ──────────────────────────────────────────────────────────────────
 
-@command("scroll up a little", pack="core")
+@command("scroll up a little", pack="core", risk_class="ui")
 def scroll_up_slow(app, remainder):
+    """Scrolls up a few lines wherever the pointer is."""
     return _scroll(_clicks(app, "slow_clicks", 3), up=True)
 
 
-@command("scroll down a little", pack="core")
+@command("scroll down a little", pack="core", risk_class="ui")
 def scroll_down_slow(app, remainder):
+    """Scrolls down a few lines wherever the pointer is."""
     return _scroll(_clicks(app, "slow_clicks", 3), up=False)
 
 
-@command("scroll up", pack="core")
+@command("scroll up", pack="core", risk_class="ui")
 def scroll_up(app, remainder):
+    """Scrolls up a page's worth wherever the pointer is."""
     return _scroll(_clicks(app, "default_clicks", 8), up=True)
 
 
-@command("scroll down", pack="core")
+@command("scroll down", pack="core", risk_class="ui")
 def scroll_down(app, remainder):
+    """Scrolls down a page's worth wherever the pointer is."""
     return _scroll(_clicks(app, "default_clicks", 8), up=False)
 
 
-@command("scroll up medium", pack="core")
+@command("scroll up medium", pack="core", risk_class="ui")
 def scroll_up_medium(app, remainder):
+    """Scrolls up about twice as far as plain scroll up."""
     return _scroll(_clicks(app, "medium_clicks", 15), up=True)
 
 
-@command("scroll down medium", pack="core")
+@command("scroll down medium", pack="core", risk_class="ui")
 def scroll_down_medium(app, remainder):
+    """Scrolls down about twice as far as plain scroll down."""
     return _scroll(_clicks(app, "medium_clicks", 15), up=False)
 
 
-@command("scroll up high", pack="core")
+@command("scroll up high", pack="core", risk_class="ui")
 def scroll_up_high(app, remainder):
+    """Scrolls a long way up, for skimming back through a page."""
     return _scroll(_clicks(app, "medium_high_clicks", 25), up=True)
 
 
-@command("scroll down high", pack="core")
+@command("scroll down high", pack="core", risk_class="ui")
 def scroll_down_high(app, remainder):
+    """Scrolls a long way down, for skimming forward through a page."""
     return _scroll(_clicks(app, "medium_high_clicks", 25), up=False)
 
 
-@command("scroll up fast", pack="core")
+@command("scroll up fast", pack="core", risk_class="ui")
 def scroll_up_fast(app, remainder):
+    """Scrolls up as far as one command goes, for very long pages."""
     return _scroll(_clicks(app, "fast_clicks", 40), up=True)
 
 
-@command("scroll down fast", pack="core")
+@command("scroll down fast", pack="core", risk_class="ui")
 def scroll_down_fast(app, remainder):
+    """Scrolls down as far as one command goes, for very long pages."""
     return _scroll(_clicks(app, "fast_clicks", 40), up=False)
 
 
@@ -197,6 +207,7 @@ def _send_key_combo(*vkeys) -> bool:
     "scroll to top",
     aliases=["go to top", "top of page", "jump to top"],
     pack="core",
+    risk_class="ui",
 )
 def scroll_to_top(app, remainder):
     return _send_key_combo(VK_CONTROL, VK_HOME)
@@ -206,6 +217,7 @@ def scroll_to_top(app, remainder):
     "scroll to bottom",
     aliases=["go to bottom", "bottom of page", "jump to bottom"],
     pack="core",
+    risk_class="ui",
 )
 def scroll_to_bottom(app, remainder):
     return _send_key_combo(VK_CONTROL, VK_END)
@@ -215,8 +227,10 @@ def scroll_to_bottom(app, remainder):
     "page up",
     aliases=["scroll page up", "up one page"],
     pack="core",
+    risk_class="ui",
 )
 def page_up(app, remainder):
+    """Presses Page Up, moving one screenful back."""
     return _send_key_combo(VK_PRIOR)
 
 
@@ -224,8 +238,10 @@ def page_up(app, remainder):
     "page down",
     aliases=["scroll page down", "down one page"],
     pack="core",
+    risk_class="ui",
 )
 def page_down(app, remainder):
+    """Presses Page Down, moving one screenful forward."""
     return _send_key_combo(VK_NEXT)
 
 
@@ -233,8 +249,10 @@ def page_down(app, remainder):
     "scroll left",
     aliases=["scroll left a little"],
     pack="core",
+    risk_class="ui",
 )
 def scroll_left(app, remainder):
+    """Scrolls sideways to the left, for wide tables and timelines."""
     return _hscroll(_clicks(app, "slow_clicks", 3), right=False)
 
 
@@ -242,6 +260,8 @@ def scroll_left(app, remainder):
     "scroll right",
     aliases=["scroll right a little"],
     pack="core",
+    risk_class="ui",
 )
 def scroll_right(app, remainder):
+    """Scrolls sideways to the right, for wide tables and timelines."""
     return _hscroll(_clicks(app, "slow_clicks", 3), right=True)

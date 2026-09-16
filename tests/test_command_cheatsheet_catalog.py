@@ -145,6 +145,10 @@ def test_window_groups_by_plugin_and_every_item_is_a_catalog_command(qapp, live_
     try:
         ids = {r["canonical_id"] for r in catalog}
         assert win._catalog_available and not win._unavailable.isVisibleTo(win)
+        # Queue 68: "Live here only" is on by default, so scoped commands that
+        # are not live (the window-cube numbers while the cube is hidden) are
+        # hidden and counted; unticking lists every catalog command.
+        win._category_bar._live_only.setChecked(False)
         items = [win._list.item(i) for i in range(win._list.count())]
         assert len(items) == len(catalog)
         assert all(item.data(Qt.ItemDataRole.UserRole + 1) in ids for item in items)

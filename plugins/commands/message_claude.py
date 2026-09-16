@@ -363,7 +363,7 @@ def _failed(app, draft, reason, state="failed", chip="error", extra=None):
          pack="ai", risk_class="write", reversible=True, side_effects=["ui"],
          side_effect_category="draft")
 def handle_claude_message_prepare(app, remainder):
-    """Create an owned draft for the Claude desktop app and ask 'Send?'."""
+    """Drafts a message to the Claude desktop app and asks you to confirm."""
     body = shape_body(remainder)
     if not body:
         _speak(app, "Tell Claude what?")
@@ -423,10 +423,13 @@ def handle_claude_message_prepare(app, remainder):
          side_effects=["message_sent"], side_effect_category="external_write",
          param_schema={"remainder": {"type": "str", "required": True}})
 def handle_claude_message_submit(app, remainder):
-    """Submit a prepared draft. Reached only after the policy's confirmation
-    ('yes' -> stage_pending approve, or the executor's own NeedsConfirmation
-    for a spoken 'claude message submit <id>'). Never retries an unknown
-    outcome: a second submit of the same draft is refused."""
+    """Sends the message you had prepared for Claude.
+
+    Reached only after the policy's confirmation ('yes' -> stage_pending
+    approve, or the executor's own NeedsConfirmation for a spoken 'claude
+    message submit <id>'). Never retries an unknown outcome: a second submit of
+    the same draft is refused.
+    """
     draft_id = (remainder or "").strip()
     draft = get_draft(draft_id)
     if draft is None:

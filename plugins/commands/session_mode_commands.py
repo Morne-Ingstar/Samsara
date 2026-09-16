@@ -10,6 +10,7 @@ from samsara.plugin_commands import command
 
 @command("retype that", aliases=["retype it", "retype last"], pack="session", ai_visible=False)
 def handle_retype_that(app, remainder="", **kwargs):
+    """Types the last thing Samsara held back because the window had changed."""
     manager = getattr(app, "_session_mode_manager", None)
     if manager is None:
         return False

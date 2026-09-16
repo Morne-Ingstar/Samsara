@@ -62,8 +62,12 @@ def _build_restart_args() -> tuple[list[str], str]:
         return [interpreter, script], os.path.dirname(script)
 
 
-@command("restart samsara", aliases=["restart", "reboot samsara"], pack="core")
+@command("restart samsara", aliases=["restart", "reboot samsara"], pack="core",
+         risk_class="destructive",
+         param_schema={"remainder": {"type": "str", "required": False}},
+)
 def restart_app(app, remainder="", **kwargs):
+    """Closes Samsara and starts it again."""
     def _do_restart():
         time.sleep(0.8)
 
@@ -100,9 +104,10 @@ def restart_app(app, remainder="", **kwargs):
     aliases=["check for update", "update samsara"],
     pack="core",
     ai_visible=False,
+    risk_class="write",
 )
 def check_for_updates(app, remainder="", **kwargs):
-    """Open the explicit, privacy-labeled GitHub update check."""
+    """Checks GitHub for a newer version of Samsara."""
     from samsara.ui import qt_runtime
     from samsara.ui.update_qt import show_update_dialog
 
@@ -117,8 +122,10 @@ def check_for_updates(app, remainder="", **kwargs):
     aliases=["refresh config", "reread config", "reload configuration"],
     pack="core",
     ai_visible=False,
+    risk_class="ui",
 )
 def reload_config(app, remainder="", **kwargs):
+    """Re-reads your settings from disk without restarting."""
     if not hasattr(app, 'reload_config_from_disk'):
         speak_if_available(app, "Config reload not available.")
         return
@@ -137,9 +144,10 @@ def reload_config(app, remainder="", **kwargs):
     "what can I say",
     aliases=["help", "what are my commands", "what commands do I have"],
     pack="core",
+    risk_class="read",
 )
 def what_can_i_say(app, remainder="", **kwargs):
-    """Speak the most relevant commands for the current foreground app."""
+    """Reads out the commands that work in the app you are using."""
     try:
         from samsara.handlers import _get_foreground_exe_lower
         exe = _get_foreground_exe_lower()
@@ -155,9 +163,10 @@ def what_can_i_say(app, remainder="", **kwargs):
     aliases=["replay hints", "show hints again"],
     pack="core",
     ai_visible=False,
+    risk_class="write",
 )
 def reset_hints(app, remainder="", **kwargs):
-    """Clear hint history so all contextual hints fire again."""
+    """Clears the hints you have already seen so they can appear again."""
     hints = getattr(app, 'hints', None)
     if hints is None:
         speak_if_available(app, "Hints not available.")

@@ -230,15 +230,23 @@ def handle_new_conversation(app, remainder):
     return True
 
 
-@command("note", pack="smart-actions")
+@command("note", pack="smart-actions",
+         risk_class="write", param_schema={"remainder": {"type": "str", "required": False}})
 def handle_note(app, remainder):
-    """Capture a voice note. 'Jarvis, note to call the doctor about it.'"""
+    """Captures what you say next as a note.
+
+    'Jarvis, note to call the doctor about it.'
+    """
     return _do_capture(app, remainder)
 
 
-@command("brain dump", pack="smart-actions")
+@command("brain dump", pack="smart-actions",
+         risk_class="write", param_schema={"remainder": {"type": "str", "required": False}})
 def handle_brain_dump(app, remainder):
-    """Capture a voice note. 'Jarvis, brain dump pick up groceries.'"""
+    """Captures what you say next as a note.
+
+    'Jarvis, brain dump pick up groceries.'
+    """
     return _do_capture(app, remainder)
 
 

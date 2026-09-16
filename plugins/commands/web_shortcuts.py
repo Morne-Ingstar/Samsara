@@ -18,10 +18,9 @@ def _clean(text):
 
 @command("go to", aliases=["browse to", "pull up", "show me"], pack="utilities")
 def open_site(app, remainder):
-    """Open a web shortcut, URL, or fall back to Google search.
-    
-    'go to youtube'        -> config shortcut
-    'go to latimes.com'    -> opens URL directly
+    """Opens the site you name, or searches Google for it.
+
+    'go to youtube' -> config shortcut 'go to latimes.com' -> opens URL directly
     'go to meatball stuff' -> Google search fallback
     """
     if not remainder:
@@ -63,7 +62,10 @@ def open_site(app, remainder):
 
 @command("search for", aliases=["look up", "google"], pack="utilities")
 def search_web(app, remainder):
-    """Search Google. 'search for cat toys', 'google Python tutorials'."""
+    """Searches Google for whatever you say next.
+
+    'search for cat toys', 'google Python tutorials'.
+    """
     if not remainder:
         print("[WEB] Search for what?")
         return False

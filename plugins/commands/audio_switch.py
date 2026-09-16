@@ -40,7 +40,10 @@ def switch_to(app, remainder):
 @command("switch mic to", aliases=["switch microphone to",
                                    "use mic", "use microphone"], pack="audio")
 def switch_mic(app, remainder):
-    """Switch audio input. 'switch mic to headset', etc."""
+    """Switches the microphone to the one you name.
+
+    'switch mic to headset', etc.
+    """
     if not remainder:
         print("[AUDIO] Switch mic to what? Say a device name.")
         return False

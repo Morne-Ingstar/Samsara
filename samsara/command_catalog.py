@@ -25,6 +25,9 @@ hand-maintained. No behaviour change: nothing in the app reads this file.
         whole_utterance  the phrase is a reserved whole-utterance control word
                          in samsara.session_modes
         pack, kind       command pack; "builtin" | "plugin"
+        scope            only for scoped commands (queue 68): {"apps": [...],
+                         "title": regex, "tags": [...]} -- when the command is a
+                         match candidate (samsara.command_scope). Absent = global.
 
 Risk precedence: declared registry risk_class (safe->ui, reversible->write,
 destructive->destructive, read/ui/write as written) -> built-in type+keys via
@@ -90,6 +93,16 @@ CATALOG_SCHEMA = {
                     "whole_utterance": {"type": "boolean"},
                     "pack": {"type": "string", "minLength": 1},
                     "kind": {"type": "string", "enum": list(KINDS)},
+                    "scope": {
+                        "type": "object",
+                        "additionalProperties": False,
+                        "minProperties": 1,
+                        "properties": {
+                            "apps": {"type": "array", "minItems": 1, "items": {"type": "string", "minLength": 1}},
+                            "title": {"type": "string", "minLength": 1},
+                            "tags": {"type": "array", "minItems": 1, "items": {"type": "string", "minLength": 1}},
+                        },
+                    },
                 },
             },
         },
@@ -119,11 +132,14 @@ class CommandSpec:
     whole_utterance: bool = False
     pack: str = "core"
     kind: str = "plugin"
+    scope: Optional[dict] = None
 
     def to_dict(self) -> dict:
         d = asdict(self)
         d["args"] = [asdict(a) if not isinstance(a, dict) else a for a in self.args]
         d["aliases"] = sorted(set(self.aliases))
+        if not self.scope:
+            d.pop("scope", None)          # global commands carry no scope key
         return d
 
 
@@ -271,6 +287,7 @@ def infer_args(kind: str, phrase: str, param_schema: Optional[dict], func) -> li
 def reserved_whole_utterances() -> set:
     from samsara import session_modes as sm  # noqa: PLC0415
     words = set(sm._WHOLE_UTTERANCE_SWITCHES) | {sm.SCRATCH_THAT_PHRASE, sm.DICTATE_COMMIT_PHRASE}
+    words |= set(getattr(sm, "CLEAR_DRAFT_PHRASES", ()))
     words |= set(sm._DICTATE_COMMIT_HOMOPHONES) | set(sm.GLOBAL_SESSION_EXIT_PHRASES)
     words |= set(getattr(sm, "SESSION_SLEEP_PHRASES", ())) | set(getattr(sm, "SESSION_STOP_PHRASES", ()))
     words |= set(sm.DEFAULT_AVA_INVOCATIONS)
@@ -401,6 +418,7 @@ def build_catalog(executor=None) -> list:
             aliases=sorted(aliases), description=description, risk=risk,
             undoable=guess_undoable(risk, phrase), source=source,
             whole_utterance=phrase in reserved, pack=entry.pack or "core", kind=kind,
+            scope=entry.scope.to_json() if getattr(entry, "scope", None) is not None else None,
         ))
     specs.sort(key=lambda s: s.canonical_id)
     return specs
@@ -509,6 +527,16 @@ def validate_catalog(doc: dict) -> list:
         for k in ("undoable", "whole_utterance"):
             if not isinstance(c[k], bool):
                 problems.append(f"{c['canonical_id']}: {k} not bool")
+        if "scope" in c:
+            from samsara.command_scope import parse_scope  # noqa: PLC0415
+            try:
+                if parse_scope(c["scope"]) is None:
+                    problems.append(f"{c['canonical_id']}: empty scope")
+            except ValueError as exc:
+                problems.append(f"{c['canonical_id']}: scope {exc}")
+        extra = set(c) - set(CATALOG_SCHEMA["properties"]["commands"]["items"]["properties"])
+        if extra:
+            problems.append(f"{c['canonical_id']}: unknown keys {sorted(extra)}")
     return problems
 
 
@@ -602,6 +630,7 @@ def catalog_from_registry_rows(rows, builtin_commands: Optional[dict] = None,
             "whole_utterance": canonical in reserved,
             "pack": row.get("pack") or "core",
             "kind": kind,
+            "scope": row.get("scope") or None,
         })
     records.sort(key=lambda r: r["canonical_id"])
     return records
@@ -687,6 +716,140 @@ def pick_examples(records, count: int = 3, *, enabled_packs: Optional[set] = Non
     return [c[4] for c in candidates[:count]]
 
 
+# ---------------------------------------------------------------------------
+# Canonical view (queue 45) -- read-only derivations over the catalog above
+# ---------------------------------------------------------------------------
+# Nothing below changes a CommandSpec, commands_catalog.json or any runtime
+# path. It answers the questions the grammar / resolver / macro work needs
+# answered first: the spoken canonical form with its slots, whether undo is
+# DECLARED (never guessed -- `undoable` above is 09a's heuristic and is left
+# as-is for its readers), which phrases do not resolve to exactly one
+# command, and which aliases of different commands sound alike.
+
+UNKNOWN_UNDO = "unknown"
+
+
+def declared_undo(metadata: Optional[dict]):
+    """True / False when the command's author declared `reversible` as a
+    boolean (command_registry.METADATA_FIELDS), else "unknown". Never
+    inferred from the phrase or the risk class."""
+    value = (metadata or {}).get("reversible") if isinstance(metadata, dict) else None
+    return value if isinstance(value, bool) else UNKNOWN_UNDO
+
+
+def is_destructive(spec: "CommandSpec") -> bool:
+    return spec.risk == "destructive"
+
+
+def canonical_form(spec: "CommandSpec") -> str:
+    """The spoken canonical form: "verb object" plus one slot per argument,
+    <name:type> when required and [name:type] when optional."""
+    words = [spec.verb, *[w for w in spec.object.split("_") if w]]
+    slots = [(f"<{a.name}:{a.type}>" if a.required else f"[{a.name}:{a.type}]") for a in spec.args]
+    return " ".join(words + slots)
+
+
+def registry_metadata(executor) -> dict:
+    """canonical_id -> the registry's declared metadata dict (METADATA_FIELDS,
+    undeclared fields "unknown"), keyed the way build_catalog keys specs."""
+    out = {}
+    for entry in executor._matcher._sorted:
+        kind = "builtin" if entry.source == "builtin" else "plugin"
+        plugin = "builtin" if kind == "builtin" else _plugin_stem(entry)
+        out.setdefault(f"{plugin}.{slug(entry.phrase)}",
+                       entry.metadata if isinstance(entry.metadata, dict) else {})
+    return out
+
+
+def resolution_rows(specs: Iterable["CommandSpec"], claims: dict) -> list:
+    """Every phrase a source claims or the live registry answers to, with
+    what claims it and what it resolves to. Rows whose status is not "one":
+      zero  -- claimed, but the live registry maps it to nothing (orphan)
+      many  -- claimed by more than one command (collision), or live on more
+               than one command
+    Sorted by phrase. Never picks a winner."""
+    live = {}
+    for spec in specs:
+        for a in spec.aliases:
+            live.setdefault(a, set()).add(spec.canonical_id)
+    rows = []
+    for phrase in sorted(set(claims) | set(live)):
+        claimed = tuple(sorted(claims.get(phrase, ())))
+        resolved = tuple(sorted(live.get(phrase, ())))
+        if len(claimed) > 1 or len(resolved) > 1:
+            status = "many"
+        elif not resolved:
+            status = "zero"
+        else:
+            status = "one"
+        if status != "one":
+            rows.append({"phrase": phrase, "status": status, "claimed_by": claimed, "resolves_to": resolved})
+    return rows
+
+
+def _one_edit(a: str, b: str) -> bool:
+    """Levenshtein distance exactly 1."""
+    if a == b or abs(len(a) - len(b)) > 1:
+        return False
+    if len(a) == len(b):
+        return sum(x != y for x, y in zip(a, b)) == 1
+    short, long_ = (a, b) if len(a) < len(b) else (b, a)
+    i = 0
+    while i < len(short) and short[i] == long_[i]:
+        i += 1
+    return short[i:] == long_[i + 1:]
+
+
+def sound_alike_pairs(specs: Iterable["CommandSpec"]) -> list:
+    """(alias_a, alias_b, id_a, id_b, rule) for aliases of DIFFERENT commands
+    that Whisper can plausibly turn into one another:
+      confusion   identical once every token is folded to its look-alike group
+                  (samsara.intent.normalize.collapse_confusions -- the grammar
+                  tier's own view: WHISPER_CONFUSIONS + EXTRA_CONFUSIONS,
+                  digits read as words), e.g. "tab one" / "tap won"
+      one_letter  same length, exactly one token differs, both tokens are at
+                  least 3 letters and one letter apart, e.g. "snap left" /
+                  "snip left"
+    Pairs are ordered (a < b) and listed once; aliases of the same command
+    are not reported (they reach the same handler)."""
+    from samsara.intent.normalize import collapse_confusions  # noqa: PLC0415
+    owners = {}
+    for spec in specs:
+        for a in spec.aliases:
+            owners.setdefault(a, set()).add(spec.canonical_id)
+    aliases = sorted(owners)
+    found = set()
+
+    by_key = {}
+    for a in aliases:
+        by_key.setdefault(" ".join(collapse_confusions(a.split())), []).append(a)
+    for group in by_key.values():
+        for i, a in enumerate(group):
+            for b in group[i + 1:]:
+                for ia in owners[a]:
+                    for ib in owners[b]:
+                        if ia != ib:
+                            found.add((a, b, ia, ib, "confusion"))
+    confusion_pairs = {(a, b) for a, b, _x, _y, _r in found}
+
+    by_shape = {}
+    for a in aliases:
+        toks = a.split()
+        for i in range(len(toks)):
+            by_shape.setdefault((len(toks), i, tuple(toks[:i]), tuple(toks[i + 1:])), []).append(a)
+    for (_n, i, _pre, _post), group in by_shape.items():
+        for x, a in enumerate(group):
+            for b in group[x + 1:]:
+                ta, tb = a.split()[i], b.split()[i]
+                if (a, b) in confusion_pairs or len(ta) < 3 or len(tb) < 3 or not _one_edit(ta, tb):
+                    continue
+                for ia in owners[a]:
+                    for ib in owners[b]:
+                        if ia != ib:
+                            found.add((a, b, ia, ib, "one_letter"))
+    return sorted(found)
+
+
 def render_markdown(specs: list) -> str:
     by_plugin = {}
     for s in specs:
@@ -703,7 +866,9 @@ def render_markdown(specs: list) -> str:
         f"{len(specs)} commands, {n_alias} phrases, {len(by_plugin)} sources.",
         "",
         "Columns: canonical id; every phrase the registry maps to it; args as name:type (* = required); "
-        "risk (read / ui / write / destructive); undoable; whole-utterance control word (session_modes); source.",
+        "risk (read / ui / write / destructive); undoable; whole-utterance control word (session_modes); source. "
+        "A scoped command's description ends with when it is live (samsara.command_scope); every other command "
+        "is live everywhere.",
         "",
     ]
     for plugin in sorted(by_plugin):
@@ -715,6 +880,9 @@ def render_markdown(specs: list) -> str:
             args = ", ".join(f"{a.name}:{a.type}{'*' if a.required else ''}" for a in s.args) or "-"
             phrases = ", ".join(f"`{a}`" for a in sorted(set(s.aliases)))
             desc = s.description.replace("|", "\\|")
+            if s.scope:
+                from samsara.command_scope import parse_scope  # noqa: PLC0415
+                desc += f" *(Live {parse_scope(s.scope).describe()}.)*".replace("|", "\\|")
             lines.append(f"| `{s.canonical_id}` | {phrases} | {args} | {s.risk} | {'yes' if s.undoable else 'no'} | "
                          f"{'yes' if s.whole_utterance else ''} | {desc} | `{s.source}` |")
         lines.append("")

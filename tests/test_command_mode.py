@@ -456,11 +456,13 @@ class TestCommandModeStateMachine:
         original_timer = app._command_mode_inactivity_timer
         app._reset_command_mode_inactivity_timer(0.05)
         original_timer.cancel.assert_called_once_with()
+        # Queue 50: the callback is armed with its timer generation, so a
+        # stale timer cannot end a live session.
         command_runtime.timer.assert_called_with(
             'dictation.command_mode_inactivity', 0.05,
-            app._on_command_mode_inactivity, daemon=True)
+            app._on_command_mode_inactivity, args=(app._timer_generation,), daemon=True)
         timer = app._command_mode_inactivity_timer
-        command_runtime.timer.call_args.args[2]()
+        command_runtime.timer.call_args.args[2](*command_runtime.timer.call_args.kwargs['args'])
         assert app.command_mode_active is False
         assert app._command_mode_inactivity_timer is None
         timer.cancel.assert_called_once_with()

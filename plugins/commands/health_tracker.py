@@ -113,9 +113,13 @@ def _format_entry_speech(entry):
     "pain level",
     aliases=["my pain is", "pain is", "pain at", "log pain"],
     pack="health",
+    risk_class="write", param_schema={"remainder": {"type": "str", "required": False}},
 )
 def handle_pain_level(app, remainder="", **kwargs):
-    """Log a pain level. 'pain level 6' or 'pain level 4 knees'."""
+    """Logs a pain level, such as pain level six, with an optional place.
+
+    'pain level 6' or 'pain level 4 knees'.
+    """
     level, rest = _parse_pain_level(remainder)
     if level is None:
         _speak(app, "What's your pain level, 1 to 10?")
@@ -147,9 +151,13 @@ def handle_pain_level(app, remainder="", **kwargs):
     aliases=["take", "medication", "just took", "popped a", "popped",
              "log medication", "log med"],
     pack="health",
+    risk_class="write", param_schema={"remainder": {"type": "str", "required": False}},
 )
 def handle_medication(app, remainder="", **kwargs):
-    """Log medication. 'took ibuprofen 400mg' or 'took paracetamol'."""
+    """Logs a medication you have just taken.
+
+    'took ibuprofen 400mg' or 'took paracetamol'.
+    """
     if not remainder or not remainder.strip():
         _speak(app, "What did you take?")
         return True
@@ -176,9 +184,13 @@ def handle_medication(app, remainder="", **kwargs):
     "symptom",
     aliases=["symptoms", "i feel", "i'm feeling", "log symptom"],
     pack="health",
+    risk_class="write", param_schema={"remainder": {"type": "str", "required": False}},
 )
 def handle_symptom(app, remainder="", **kwargs):
-    """Log a freeform symptom. 'symptom my knees are stiff today'."""
+    """Logs a symptom in your own words.
+
+    'symptom my knees are stiff today'.
+    """
     if not remainder or not remainder.strip():
         _speak(app, "What symptom should I log?")
         return True
@@ -197,9 +209,10 @@ def handle_symptom(app, remainder="", **kwargs):
              "how was my week", "health report", "pain summary",
              "how am i doing", "how am i feeling"],
     pack="health",
+    risk_class="read",
 )
 def handle_health_summary(app, remainder="", **kwargs):
-    """Speak a summary of recent health data."""
+    """Reads out a summary of what you have logged recently."""
     # Determine time window
     hours = 24
     if remainder:
@@ -262,9 +275,10 @@ def handle_health_summary(app, remainder="", **kwargs):
     aliases=["read health", "health log", "what did i log",
              "read my health", "health entries"],
     pack="health",
+    risk_class="read",
 )
 def handle_read_health(app, remainder="", **kwargs):
-    """Read back today's health log entries via TTS."""
+    """Reads out what you have logged today."""
     entries = health_store.get_today()
     if not entries:
         _speak(app, "No health entries logged today.")
@@ -283,9 +297,11 @@ def handle_read_health(app, remainder="", **kwargs):
     aliases=["export health", "save health log", "health csv",
              "download health log"],
     pack="health",
+    risk_class="write",
+    param_schema={"remainder": {"type": "str", "required": False}},
 )
 def handle_export_health(app, remainder="", **kwargs):
-    """Export the full health log to CSV on disk."""
+    """Saves your whole health log to a CSV file."""
     filepath = health_store.export_csv()
     _speak(app, f"Health log exported to {os.path.basename(filepath)}.")
     logger.info(f"[HEALTH] Exported to {filepath}")
@@ -296,10 +312,11 @@ def handle_export_health(app, remainder="", **kwargs):
     "undo health log",
     aliases=["undo health", "remove last health", "delete last health",
              "undo health entry"],
-    pack="health",
+    pack="health", risk_class="destructive",
+    param_schema={"remainder": {"type": "str", "required": False}},
 )
 def handle_undo_health(app, remainder="", **kwargs):
-    """Remove the most recent health log entry."""
+    """Deletes the last thing you logged."""
     entries = health_store.get_all()
     if not entries:
         _speak(app, "No health entries to undo.")
@@ -316,9 +333,14 @@ def handle_undo_health(app, remainder="", **kwargs):
     "clear health log",
     aliases=["delete health log", "wipe health log", "reset health log"],
     pack="health",
+    risk_class="destructive",
+    param_schema={"remainder": {"type": "str", "required": False}},
 )
 def handle_clear_health(app, remainder="", **kwargs):
-    """Clear the entire health log. Destructive!"""
+    """Deletes every entry in your health log.
+
+    Destructive!
+    """
     count = health_store.clear_all()
     if count == 0:
         _speak(app, "Health log is already empty.")
