@@ -24,7 +24,14 @@ KNOWN_FIELDS = ('name', 'location', 'pronouns', 'occupation', 'notes')
 
 # ---------------------------------------------------------------------------
 # Teaching patterns — tried in order; first match wins.
-# The "i am" / "i'm" name patterns are deliberately last (most broad).
+#
+# Explicit forms only (queue 57, 2026-09-14). The old broad fall-throughs
+# stored ordinary speech as facts without asking: "I'm lonely." became the
+# user's name, and "I'm in pain" / "I'm a bit tired" matched location and
+# occupation. A pattern belongs here only if nobody says it about a feeling
+# or state -- anything looser must go to the model, never straight to disk.
+# Removed: "i am X" / "i'm X" (name), "i'm in X" (location),
+# "i'm a/an X" / "i am a/an X" (occupation).
 # ---------------------------------------------------------------------------
 
 _P = re.IGNORECASE
@@ -32,22 +39,17 @@ _AVA = r'(?:hey ava,?\s+)?'
 _DOT = r'\.?$'
 
 _TEACHING_PATTERNS = [
-    # name (specific)
+    # name
     (re.compile(rf'^{_AVA}my name is (.+?){_DOT}', _P), 'name'),
     (re.compile(rf'^{_AVA}call me (.+?){_DOT}', _P), 'name'),
-    # location (all before broad name patterns)
+    # location
     (re.compile(rf'^{_AVA}i live in (.+?){_DOT}', _P), 'location'),
-    (re.compile(rf"^{_AVA}i'?m in (.+?){_DOT}", _P), 'location'),
     (re.compile(rf"^{_AVA}i'?m from (.+?){_DOT}", _P), 'location'),
     (re.compile(rf'^{_AVA}my location is (.+?){_DOT}', _P), 'location'),
     # pronouns
     (re.compile(rf'^{_AVA}my pronouns are (.+?){_DOT}', _P), 'pronouns'),
     (re.compile(rf'^{_AVA}use (.+?) pronouns for me{_DOT}', _P), 'pronouns'),
-    # occupation (i'm a / i'm an before generic i'm)
-    (re.compile(rf"^{_AVA}i'?m a (.+?){_DOT}", _P), 'occupation'),
-    (re.compile(rf"^{_AVA}i'?m an (.+?){_DOT}", _P), 'occupation'),
-    (re.compile(rf'^{_AVA}i am a (.+?){_DOT}', _P), 'occupation'),
-    (re.compile(rf'^{_AVA}i am an (.+?){_DOT}', _P), 'occupation'),
+    # occupation
     (re.compile(rf'^{_AVA}i work as (.+?){_DOT}', _P), 'occupation'),
     (re.compile(rf'^{_AVA}my job is (.+?){_DOT}', _P), 'occupation'),
     (re.compile(rf'^{_AVA}i do (.+?) for work{_DOT}', _P), 'occupation'),
@@ -55,9 +57,6 @@ _TEACHING_PATTERNS = [
     (re.compile(rf'^{_AVA}remember about me that (.+?){_DOT}', _P), 'notes'),
     (re.compile(rf'^{_AVA}note about me[:\s]+(.+?){_DOT}', _P), 'notes'),
     (re.compile(rf'^{_AVA}about me[:\s]+(.+?){_DOT}', _P), 'notes'),
-    # name (broad — last)
-    (re.compile(rf'^{_AVA}i am (.+?){_DOT}', _P), 'name'),
-    (re.compile(rf"^{_AVA}i'?m (.+?){_DOT}", _P), 'name'),
 ]
 
 # ---------------------------------------------------------------------------
@@ -67,6 +66,9 @@ _TEACHING_PATTERNS = [
 _FORGET_PATTERNS = [
     (re.compile(rf'^{_AVA}forget what you know about me{_DOT}', _P), 'all'),
     (re.compile(rf'^{_AVA}forget my name{_DOT}', _P), 'name'),
+    # Voice correction of a wrongly stored name (queue 57).
+    (re.compile(rf"^{_AVA}that(?:'s| is) not my name{_DOT}", _P), 'name'),
+    (re.compile(rf"^{_AVA}(?:don'?t|do not) call me that{_DOT}", _P), 'name'),
     (re.compile(rf'^{_AVA}forget my location{_DOT}', _P), 'location'),
     (re.compile(rf'^{_AVA}forget my pronouns{_DOT}', _P), 'pronouns'),
     (re.compile(rf'^{_AVA}forget my occupation{_DOT}', _P), 'occupation'),
