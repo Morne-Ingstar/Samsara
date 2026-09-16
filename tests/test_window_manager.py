@@ -217,7 +217,11 @@ class TestRestoreLayout:
     @pytest.fixture(autouse=True)
     def patch_layouts_path(self, tmp_path):
         layouts_file = tmp_path / 'window_layouts.json'
-        with patch.object(wm, '_get_layouts_path', return_value=layouts_file):
+        # Layout mechanics are covered here; the foreground-safe raise itself
+        # has focused tests in test_window_raise.py. Avoid real user32 calls
+        # while restoring synthetic handles in this headless suite.
+        with patch.object(wm, '_get_layouts_path', return_value=layouts_file), \
+             patch.object(wm, 'raise_window', return_value=True):
             yield layouts_file
 
     def _write_layout(self, path, name, windows):
@@ -279,7 +283,8 @@ class TestRestoreLayout:
                 return [hwnd_code]
             return []
         with patch.object(wm, 'find_windows_by_app', side_effect=_fwa), \
-             patch.object(wm, 'get_monitors', return_value=[MONITOR_1, MONITOR_2]):
+             patch.object(wm, 'get_monitors', return_value=[MONITOR_1, MONITOR_2]), \
+             patch.object(wm, 'raise_window', return_value=True) as raise_window:
             win32gui = sys.modules['win32gui']
             # win32gui is a session-wide shared MagicMock (see the module
             # stub above) -- earlier tests in this class already called
@@ -292,6 +297,10 @@ class TestRestoreLayout:
             assert win32gui.SetWindowPos.call_args_list == [
                 call(hwnd_chrome, wm.HWND_TOP, 0, 0, 800, 600, wm.SWP_SHOWWINDOW),
                 call(hwnd_code, wm.HWND_TOP, 1920, 0, 1920, 1080, wm.SWP_SHOWWINDOW),
+            ]
+            assert raise_window.call_args_list == [
+                call(hwnd_chrome, activate=False),
+                call(hwnd_code, activate=False),
             ]
             win32gui.ShowWindow.assert_called_once_with(
                 hwnd_code, sys.modules['win32con'].SW_MAXIMIZE)
