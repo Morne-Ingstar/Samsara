@@ -191,6 +191,21 @@ SETTINGS_SCHEMA = {
         "default": [],
         "tab": "commands",
     },
+    "command_mode.dictate_commit_word": {
+        # Queue 142. The single word that pastes a staged dictation thought.
+        # Configurable because the old default, "end", is a homophone of the
+        # owner's most common filler: queue 54 measured both directions and
+        # neither is safe while the word collides ("and" in the set commits
+        # unfinished thoughts; "and" out of it types a spoken "end"). Owner
+        # log 2026-09-16 11:21 has five consecutive "And." staged as prose.
+        # ONE word only -- multi-word commit tokens were rejected twice by the
+        # owner. An empty or multi-word value keeps the current word rather
+        # than leaving a session with no way to paste.
+        "type": "str",
+        "default": "finish",
+        "tab": "commands",
+        "depends_on": "command_mode.enabled",
+    },
     "command_mode.stop_phrases": {
         # Queue 116. The emergency stop's whole-utterance phrases. REPLACES
         # session_modes.SESSION_STOP_PHRASES rather than adding to it, so a

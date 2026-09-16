@@ -132,6 +132,42 @@ _DICTATE_COMMIT_HOMOPHONES = frozenset({DICTATE_COMMIT_PHRASE})
 # (see _commit_dictate_buffer); Whisper renders it either way there, so the
 # re-decode tail is stripped of both spellings. Never used for matching.
 _COMMIT_WORD_REDECODE_SPELLINGS = frozenset({"end", "and"})
+
+#: Queue 142. The commit word is configurable, because "end" is a homophone of
+#: the owner's most common filler and queue 54 (above) could only trade one
+#: failure direction for the other: with "and" in the set his fillers committed
+#: unfinished thoughts; without it, his spoken "end" decodes as "And." and gets
+#: typed. Owner log 2026-09-16 11:21 has five consecutive "And." staged as
+#: prose. No matcher can separate two words that sound identical -- the way out
+#: is a word that does not collide, so the default is now "finish".
+#:
+#: Rebinding the module constants rather than threading the word through
+#: SessionModeManager is deliberate: command_catalog, quick_reference_qt,
+#: tutorial_qt, first_run_wizard_qt and settings/modes_qt all READ
+#: DICTATE_COMMIT_PHRASE at call time, so they follow a change for free, and
+#: the 25+ tests that construct a manager keep their signature.
+DEFAULT_DICTATE_COMMIT_PHRASE = "finish"
+#: Words rejected as a commit word: each is a common filler or sentence opener
+#: the decoder emits alone, which is the exact failure this setting exists to
+#: end. Not a hard block -- the caller decides -- but never a default.
+COMMIT_WORD_HOMOPHONE_RISKS = frozenset({"and", "end", "in", "then", "um", "uh", "so", "but"})
+
+
+def set_commit_phrase(word: str) -> str:
+    """Rebind the dictation commit word. Returns the word actually installed.
+
+    Called once at boot from the live config. An empty or multi-word value is
+    refused (the owner rejected multi-word commit tokens twice) and the current
+    word is kept, because a session with no commit word cannot paste a thought.
+    """
+    global DICTATE_COMMIT_PHRASE, _DICTATE_COMMIT_HOMOPHONES
+    candidate = normalize_utterance(word or "")
+    if not candidate or len(candidate.split()) != 1:
+        return DICTATE_COMMIT_PHRASE
+    DICTATE_COMMIT_PHRASE = candidate
+    _DICTATE_COMMIT_HOMOPHONES = frozenset({candidate})
+    return candidate
+
 _SENTENCE_TERMINALS = ".!?"
 #: "Sleep" exits of the latched session (SAMSARA_VISION.md section 1: armed
 #: once by a wake phrase, open until sleep). WHOLE-UTTERANCE only -- unlike
