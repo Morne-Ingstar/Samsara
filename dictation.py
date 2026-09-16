@@ -8111,6 +8111,20 @@ class DictationApp:
                 self._log_cmd_utt_dropped('hallucination_segments', _capture_mode, audio_duration)
                 return
 
+            # An exhausted Whisper fallback can emit plausible text while its
+            # quality signals say no temperature met the configured threshold.
+            # In DICTATE this must stop here: dispatch_utterance is the pending
+            # buffer's sole writer, so allowing it through would feed the bad
+            # decode back as the next initial_prompt.
+            if _was_dictate_lane and _is_quality_exhausted(_kept_segs, transcribe_params):
+                logger.info(f'[GUARD] Refused low-confidence dictate decode: {text!r}')
+                self._log_cmd_utt_dropped('quality_exhausted', _capture_mode, audio_duration)
+                try:
+                    self._show_outcome_chip('low-confidence decode - not staged', 'warning')
+                except Exception as exc:
+                    logger.debug(f'[CMD-UTT] low-confidence chip failed: {exc}')
+                return
+
             logger.debug(f'[CMD-UTT] "{text}"')
 
             if self._command_mode_ghost_tap:
