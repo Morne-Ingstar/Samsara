@@ -12,9 +12,28 @@ import threading
 from types import SimpleNamespace
 
 
+class StubProfileManager:
+    """Enough of the profile service to construct its read-only window."""
+
+    def get_active_profile_names(self):
+        return {"dictionary": "Default", "commands": "Default"}
+
+    def list_dictionary_profiles(self):
+        return [{"name": "Default", "entries": 12, "modified": "2026-09-16"}]
+
+    def list_command_profiles(self):
+        return [{"name": "Default", "entries": 37, "modified": "2026-09-16"}]
+
+    def __getattr__(self, name):
+        return lambda *args, **kwargs: (True, "ok")
+
+
 class StubApp:
     def __init__(self, config: dict | None = None):
+        from samsara.paths import samsara_config_path
+
         self.config = dict(config or {})
+        self.config_path = str(samsara_config_path())
         self._config_lock = threading.Lock()
         self.command_executor = SimpleNamespace(
             commands={}, find_command=lambda phrase: None)

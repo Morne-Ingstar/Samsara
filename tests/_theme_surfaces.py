@@ -16,7 +16,7 @@ from __future__ import annotations
 
 from pathlib import Path
 
-from tests._theme_stub_app import StubApp, build_settings_window
+from tests._theme_stub_app import StubApp, StubProfileManager, build_settings_window
 
 
 def _main_window_page(page: str):
@@ -104,6 +104,22 @@ def _streaming_preview():
     return _StreamingWidget(dim=False)._w
 
 
+def _profile_manager():
+    from samsara.ui.profile_manager_qt import _ProfileManagerWindow
+    return _ProfileManagerWindow(StubProfileManager())
+
+
+def _voice_training():
+    from samsara.ui.voice_training_qt import VoiceTrainingQt, _TrainingWindow
+    app = StubApp()
+    return _TrainingWindow(VoiceTrainingQt(app))
+
+
+def _ava_guide():
+    from samsara.ui.ava_guide_qt import _WizardWindow
+    return _WizardWindow(StubApp())
+
+
 #: name -> zero-arg constructor. The name is also the PNG's filename.
 SURFACES = {
     "home": _main_window_page("Home"),
@@ -129,4 +145,7 @@ SURFACES = {
     "dictionary_panel": _dictionary_panel,
     "status_overlay": _status_overlay,
     "streaming_preview": _streaming_preview,
+    "profile_manager": _profile_manager,
+    "voice_training": _voice_training,
+    "ava_guide": _ava_guide,
 }

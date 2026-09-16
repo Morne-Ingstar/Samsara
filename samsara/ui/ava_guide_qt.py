@@ -19,7 +19,7 @@ import urllib.request
 
 from PySide6.QtCore import Qt, QTimer, Signal
 from PySide6.QtWidgets import (
-    QComboBox, QDialog, QFrame, QHBoxLayout,
+    QComboBox, QDialog, QFrame, QGridLayout, QHBoxLayout,
     QLabel, QPushButton, QSizePolicy, QStackedWidget,
     QVBoxLayout, QWidget,
 )
@@ -256,39 +256,48 @@ class _WizardWindow(QDialog):
         hdr_lay.addWidget(self._step_lbl)
         root.addWidget(hdr)
 
-        # Progress dots
+        # Progress strip.  The old one-row layout gave a dot and a 14 px
+        # label only 28 px of total height, then centered connector lines
+        # through both.  Keep the connectors in the dot row and labels in
+        # their own row so neither can be clipped or overdrawn.
         dots_bar = QWidget()
-        dots_bar.setFixedHeight(28)
+        dots_bar.setObjectName("avaGuideStepStrip")
+        dots_bar.setFixedHeight(52)
         dots_bar.setStyleSheet(
             f"background:{theme.BG1};border-bottom:1px solid {theme.BORDER};"
         )
-        dots_lay = QHBoxLayout(dots_bar)
-        dots_lay.setContentsMargins(24, 0, 24, 0)
-        dots_lay.setSpacing(0)
+        dots_lay = QGridLayout(dots_bar)
+        dots_lay.setContentsMargins(24, 4, 24, 4)
+        dots_lay.setHorizontalSpacing(0)
+        dots_lay.setVerticalSpacing(1)
+        self._step_strip = dots_bar
         self._dots: list[tuple[QLabel, QLabel]] = []
+        self._step_connectors: list[QFrame] = []
         for i, name in enumerate(["Intro", "Ollama", "Model", "Done"]):
+            step_column = i * 2
             if i > 0:
                 line = QFrame()
+                line.setObjectName("avaGuideStepConnector")
                 line.setFixedHeight(2)
                 line.setSizePolicy(
                     QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Fixed
                 )
                 line.setStyleSheet(f"background:{theme.BORDER};")
-                dots_lay.addWidget(line)
-            col = QVBoxLayout()
-            col.setSpacing(2)
+                dots_lay.addWidget(
+                    line, 0, step_column - 1,
+                    alignment=Qt.AlignmentFlag.AlignVCenter,
+                )
+                dots_lay.setColumnStretch(step_column - 1, 1)
+                self._step_connectors.append(line)
             dot = QLabel("●")
             dot.setAlignment(Qt.AlignmentFlag.AlignCenter)
             dot.setStyleSheet(f"color:{theme.TEXT_DISABLED};font-size:{theme.TYPE_MIN}px;")
             lbl = QLabel(name)
             lbl.setAlignment(Qt.AlignmentFlag.AlignCenter)
             lbl.setStyleSheet(f"color:{theme.TEXT_DISABLED};font-size:{theme.TYPE_MIN}px;")
-            col.addWidget(dot)
-            col.addWidget(lbl)
-            container = QWidget()
-            container.setFixedWidth(72)
-            container.setLayout(col)
-            dots_lay.addWidget(container)
+            dots_lay.addWidget(dot, 0, step_column)
+            dots_lay.addWidget(lbl, 1, step_column)
+            dots_lay.setColumnMinimumWidth(step_column, 72)
             self._dots.append((dot, lbl))
         root.addWidget(dots_bar)
 
