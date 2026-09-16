@@ -124,6 +124,10 @@ if os.path.exists(sounddevice_data):
 datas += tracked_tree_datas(app_dir, 'sounds', 'sounds')
 datas += tracked_tree_datas(app_dir, 'profiles', 'profiles')
 datas.append((str(app_dir / 'commands.json'), '.'))
+# `command_catalog.ROOT` is the frozen runtime data root (`_MEIPASS`), as it
+# is for commands.json.  The execution-policy risk fallback needs this exact
+# checked-in catalog; release smoke verifies the staged copy is parseable.
+datas.append((str(app_dir / 'commands_catalog.json'), '.'))
 # Plugins are runtime-loaded Python/data files, so preserve their relative
 # paths while applying the same tracked-file release manifest.
 datas += tracked_tree_datas(app_dir, 'plugins', 'plugins')

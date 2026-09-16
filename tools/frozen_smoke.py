@@ -35,6 +35,7 @@ except ImportError:
     psutil = None
 
 EXE_NAME = "Samsara.exe"
+CATALOG_NAME = "commands_catalog.json"
 
 # Exact strings emitted by dictation.py -- see samsara.log format
 # "%(asctime)s - %(levelname)s - %(message)s".
@@ -155,6 +156,37 @@ def check_bundled_vad(log_text: str) -> Check:
     return check.fail(
         "no VAD load marker before startup completed -- asset/runtime may be missing"
     )
+
+
+def bundled_data_root(dist_path: Path) -> Path:
+    """PyInstaller's current onedir `_MEIPASS` location for `datas` dest `.`.
+
+    `scripts/samsara.spec` sends both commands JSON files to `.`.  In the
+    current one-folder layout that is `dist/Samsara/_internal`, the same root
+    from which `samsara.command_catalog.ROOT` reads in a frozen process.
+    """
+    return dist_path / "_internal"
+
+
+def check_bundled_command_catalog(dist_path: Path) -> Check:
+    """Require the policy catalog in the frozen runtime data root.
+
+    This harness stays independent of source `samsara` imports: it validates
+    the artifact that the EXE will read, not a checkout file that happens to
+    be available beside the harness.
+    """
+    check = Check("bundled commands catalog present and parseable")
+    path = bundled_data_root(dist_path) / CATALOG_NAME
+    try:
+        doc = json.loads(path.read_text(encoding="utf-8"))
+    except FileNotFoundError:
+        return check.fail(f"missing {path}")
+    except (OSError, ValueError) as exc:
+        return check.fail(f"cannot parse {path}: {exc}")
+    commands = doc.get("commands") if isinstance(doc, dict) else None
+    if not isinstance(commands, list):
+        return check.fail(f"{path} has no commands list")
+    return check.ok(f"{len(commands)} command record(s) at {path}")
 
 
 # ---------------------------------------------------------------------------
@@ -496,10 +528,16 @@ def main(argv: list[str] | None = None) -> int:
         print(f"[FAIL] locate {EXE_NAME} -- not found at {exe_path}")
         return 1
 
+    catalog_check = check_bundled_command_catalog(dist_path)
+    if not catalog_check.passed:
+        print(catalog_check.line())
+        print("RESULT: FAIL (0/1 checks passed)")
+        return 1
+
     work_root = Path(tempfile.mkdtemp(prefix="samsara_smoke_"))
     print(f"(isolated temp profile root: {work_root})")
 
-    all_checks: list[Check] = []
+    all_checks: list[Check] = [catalog_check]
     all_checks.extend(run_boot_and_liveness(exe_path, work_root))
     all_checks.extend(run_wizard_path(exe_path, work_root))
 
