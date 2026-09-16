@@ -35,7 +35,30 @@ from samsara.config_transfer import (
     merge_import,
 )
 from samsara.ui import theme
+from samsara.ui import theme
 from samsara.ui_scale import UI_SCALE_OPTIONS, ui_scale_label
+
+#: The three values `ui.theme` may hold, in the words the user reads. "System"
+#: names what it follows, because "System" alone does not say whose setting.
+THEME_LABELS = {
+    "dark": "Dark",
+    "light": "Light",
+    "system": "Follow Windows",
+}
+
+
+def _saved_theme(config) -> str:
+    """The stored `ui.theme`, as one of THEME_CHOICES.
+
+    Read from the nested `ui` dict, falling back to a flat `ui.theme` key and
+    then to the default -- a hand-edited config must not cost the user their
+    Settings window."""
+    stored = (config or {}).get("ui")
+    value = stored.get("theme") if isinstance(stored, dict) else None
+    if value is None:
+        value = (config or {}).get("ui.theme")
+    value = str(value or "").strip().lower()
+    return value if value in theme.THEME_CHOICES else theme.DEFAULT_THEME
 
 # Paths below stay relative to settings_qt.py, where this code was written.
 from samsara.ui.settings_qt import __file__ as _SETTINGS_QT_FILE
@@ -87,6 +110,30 @@ class GeneralPage:
             "Interface size",
             "Scales text, menus, and controls throughout Samsara after restart",
             ui_scale_combo,
+            width=260,
+        )
+
+        # Queue 129. Dark is not universally accessible -- astigmatism, some
+        # low-vision conditions and a bright room all read light-on-dark
+        # worse, not better -- so the theme is a setting, not a given.
+        #
+        # "after restart" is not a hedge. A window builds most of its
+        # stylesheets when it is constructed, so switching under a running app
+        # would repaint some surfaces and not others, and a half-themed app is
+        # worse than one that waits. The label says so rather than leaving the
+        # user to discover it.
+        theme_combo = QComboBox()
+        for value in theme.THEME_CHOICES:
+            theme_combo.addItem(THEME_LABELS[value], value)
+        saved = _saved_theme(self.app.config)
+        theme_combo.setCurrentIndex(max(0, list(theme.THEME_CHOICES).index(saved)))
+        theme_combo.setAccessibleName("Theme")
+        self._widgets['theme_combo'] = theme_combo
+        _add_row(
+            accessibility_layout,
+            "Theme",
+            "Dark, light, or follow Windows. Takes effect after restart",
+            theme_combo,
             width=260,
         )
 
@@ -147,7 +194,7 @@ class GeneralPage:
         mic_row_layout.addWidget(mic_refresh_btn)
 
         mic_refresh_hint = QLabel("Stop dictation to refresh devices.")
-        mic_refresh_hint.setStyleSheet(f"color: {theme.WARNING}; font-size: 12px;")
+        mic_refresh_hint.setStyleSheet(f"color: {theme.WARNING}; font-size: {theme.TYPE_MIN}px;")
         mic_refresh_hint.setVisible(False)
 
         def _on_refresh_mics():
@@ -316,7 +363,7 @@ class GeneralPage:
 
         model_lang_hint = QLabel("")
         model_lang_hint.setWordWrap(True)
-        model_lang_hint.setStyleSheet(f"color: {theme.WARNING}; font-size: 12px; margin-left: 4px;")
+        model_lang_hint.setStyleSheet(f"color: {theme.WARNING}; font-size: {theme.TYPE_MIN}px; margin-left: 4px;")
         model_lang_hint.setVisible(False)
         model_layout.addWidget(model_lang_hint)
 
@@ -453,7 +500,7 @@ class GeneralPage:
         prof_desc = QLabel(
             "Save and load vocabulary, correction, and command profiles."
         )
-        prof_desc.setStyleSheet("color: #AEB4C0; font-size: 13px;")
+        prof_desc.setStyleSheet(f"color: {theme.TEXT_SECONDARY}; font-size: {theme.TYPE_BODY}px;")
         profile_layout.addWidget(prof_desc)
 
         manage_btn = QPushButton("Manage Profiles…")
@@ -478,7 +525,7 @@ class GeneralPage:
             "Backups include private values like API keys — keep the files private."
         )
         backup_desc.setObjectName("configBackupPrivacyWarning")
-        backup_desc.setStyleSheet(f"color: {theme.WARNING}; font-size: 13px;")
+        backup_desc.setStyleSheet(f"color: {theme.WARNING}; font-size: {theme.TYPE_BODY}px;")
         backup_desc.setWordWrap(True)
         backup_layout.addWidget(backup_desc)
 
@@ -519,6 +566,8 @@ class GeneralPage:
                 stored_updates = {}
             updates = {
                 'ui_scale':          UI_SCALE_OPTIONS[self._widgets['ui_scale_combo'].currentText()],
+                'ui':                {**(self.app.config.get('ui') or {}),
+                                      'theme': self._widgets['theme_combo'].currentData()},
                 'auto_paste':         self._widgets['auto_paste'].isChecked(),
                 'add_trailing_space': self._widgets['trailing_space'].isChecked(),
                 'auto_capitalize':    self._widgets['auto_capitalize'].isChecked(),

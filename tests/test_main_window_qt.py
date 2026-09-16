@@ -164,6 +164,11 @@ def window(qapp, monkeypatch):
 
 class TestHeaderMark:
     def test_mark_sits_left_of_the_wordmark_with_a_12px_gap(self, window):
+        """101: 95 removed the wordmark on a brief that turned out to be
+        wrong -- what the owner wanted gone was Home's own body heading, and
+        89 had already taken that. The band is shared by every page, so the
+        word belongs here. Restored: same wording, same display face, same
+        12 px gap, immediately right of the live mark."""
         win, _app = window
         mark = win._header_mark
         layout = mark.parentWidget().layout()
@@ -273,6 +278,46 @@ class TestBrandHeaderAndSidebar:
         header = title.parentWidget()
         assert header.height() == main_window_qt.HEADER_H
         assert f"border-bottom: 1px solid {_theme.BORDER}" in header.styleSheet()
+
+    def test_the_band_says_the_name_once_left_of_the_stretch(self, window, qapp):
+        """101: exactly one "Samsara" in the band, on the left, immediately
+        right of the live mark -- not centred, not doubled, and not carried
+        by any of the state controls that share the band."""
+        win, _ = window
+        win.show(); qapp.processEvents()
+        header = win._header_mark.parentWidget()
+        named = [w for w in header.findChildren(main_window_qt.QLabel) if w.text() == "Samsara"]
+        assert len(named) == 1, [w.objectName() for w in named]
+        title = named[0]
+        assert title.objectName() == "hubWordmark"
+        layout = header.layout()
+        index = {layout.itemAt(i).widget(): i for i in range(layout.count())
+                 if layout.itemAt(i).widget() is not None}
+        stretch = [i for i in range(layout.count())
+                   if layout.itemAt(i).spacerItem() is not None
+                   and layout.itemAt(i).expandingDirections() & main_window_qt.Qt.Orientation.Horizontal]
+        assert stretch, "the band still has its stretch"
+        assert index[title] < min(stretch), "the word sits left of the stretch, not pushed right"
+        mark = win._header_mark
+        assert title.x() >= mark.x() + mark.width(), "immediately right of the live mark"
+        assert title.x() < header.width() // 2, "left-aligned in the band"
+
+    def test_the_title_bar_still_says_the_name(self, window):
+        """89/95/101 all left setWindowTitle alone; the OS title bar is not
+        the duplicate anyone was arguing about."""
+        win, _ = window
+        assert win.windowTitle() == "Samsara"
+
+    def test_home_body_carries_no_samsara_heading(self, window):
+        """89 took the big "Samsara" heading out of Home's body and it stays
+        out: restoring the band's wordmark must not put a second copy back
+        inside the page. Exact match, so the what's-new line
+        ("Samsara <version>") is left alone."""
+        win, _ = window
+        home = win._panel_cache["Home"]
+        headings = [w.text() for w in home.findChildren(main_window_qt.QLabel)
+                    if w.text() == "Samsara"]
+        assert headings == []
 
     def test_sidebar_and_content_are_different_planes(self, window):
         win, _ = window

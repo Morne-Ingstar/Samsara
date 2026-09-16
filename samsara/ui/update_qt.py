@@ -32,6 +32,7 @@ from samsara.updater import (
     prepare_update,
     update_unavailable_reason,
 )
+from samsara.ui import theme
 
 
 logger = get_logger(__name__)
@@ -66,15 +67,15 @@ class _UpdateDialog(QDialog):
         self.setMinimumWidth(520)
         self.setModal(False)
         self.setStyleSheet(
-            "QDialog { background: #0A0A0B; color: #E8E8EA; }"
-            "QLabel { color: #D4D4D8; font-size: 13px; }"
+            f"QDialog {{ background: {theme.BG0}; color: {theme.TEXT_PRIMARY}; }}"
+            f"QLabel {{ color: {theme.TEXT_PRIMARY}; font-size: {theme.TYPE_BODY}px; }}"
             "QPushButton { min-height: 38px; padding: 0 18px; "
-            "background: #17171A; border: 1px solid #3F3F46; border-radius: 7px; }"
-            "QPushButton:hover { border-color: #5EEAD4; }"
-            "QPushButton:disabled { color: #66666D; }"
-            "QProgressBar { background: #17171A; border: 1px solid #3F3F46; "
+            f"background: {theme.BG1}; border: 1px solid {theme.BORDER}; border-radius: 7px; }}"
+            f"QPushButton:hover {{ border-color: {theme.ACCENT}; }}"
+            f"QPushButton:disabled {{ color: {theme.TEXT_SECONDARY}; }}"
+            f"QProgressBar {{ background: {theme.BG1}; border: 1px solid {theme.BORDER}; "
             "border-radius: 5px; text-align: center; }"
-            "QProgressBar::chunk { background: #5EEAD4; border-radius: 4px; }"
+            f"QProgressBar::chunk {{ background: {theme.ACCENT}; border-radius: 4px; }}"
         )
 
         layout = QVBoxLayout(self)
@@ -82,7 +83,7 @@ class _UpdateDialog(QDialog):
         layout.setSpacing(12)
 
         title = QLabel("Samsara Updates")
-        title.setStyleSheet("color: #5EEAD4; font-size: 19px; font-weight: 700;")
+        title.setStyleSheet(f"color: {theme.ACCENT}; font-size: {theme.TYPE_TITLE}px; font-weight: 700;")
         layout.addWidget(title)
 
         privacy = QLabel(

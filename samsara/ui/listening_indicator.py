@@ -82,20 +82,21 @@ logger = logging.getLogger(__name__)
 # Outcome chip -- what just happened (see samsara.session_modes.outcome_chip)
 # ---------------------------------------------------------------------------
 
+
 #: Chip fill by kind. theme.py tokens only. pending/live share a colour with
 #: accent/error and differ only in having no TTL.
-_CHIP_FILL = {
-    "success": theme.SUCCESS,
-    "error":   theme.ERROR,
-    "warning": theme.WARNING,
-    "accent":  theme.ACCENT,
-    "pending": theme.ACCENT,
-    "live":    theme.ERROR,
-}
+def _chip_fill():
+    return {
+        "success": theme.SUCCESS,
+        "error":   theme.ERROR,
+        "warning": theme.WARNING,
+        "accent":  theme.ACCENT,
+        "pending": theme.ACCENT,
+        "live":    theme.ERROR,
+    }
 #: Dark text on the saturated fill -- the highest-contrast pairing theme.py
 #: offers (TEXT_ON_ACCENT is BG0), and the chip must be readable at a glance.
-_CHIP_TEXT = theme.TEXT_ON_ACCENT
-_CHIP_FONT_PX = 13
+_CHIP_FONT_PX = theme.TYPE_MIN
 _CHIP_H = 26
 _CHIP_PAD_X = 12
 _CHIP_GAP = 6
@@ -107,31 +108,42 @@ _DEVICE_LOST_LABEL = "mic lost"
 # Colors
 # ---------------------------------------------------------------------------
 
+
 # theme.py tokens only (one accent, one semantic -- theme.py "Visual
 # identity"). Pill fills are a token mixed toward BG0, never a new hue and
 # never solid accent: the state glyph is the monochrome mark in the state
 # colour and must stay visible on its own pill.
-_TEAL         = theme.ACCENT
-_TEAL_DIM     = theme._mix(theme.ACCENT, theme.BG0, 0.80)
-_TEAL_BRIGHT  = theme._mix(theme.ACCENT, theme.BG0, 0.62)
-_IDLE_BG      = theme.BG1
-_IDLE_FG      = theme.ICON_IDLE
-_LISTENING_FG = theme.ACCENT
-# Snoozed is "asleep": the closed-lid glyph and the label carry it.
-_SNOOZE_BG    = theme.BG1
-_SNOOZE_FG    = theme.ICON_IDLE
-_CMD_BG           = theme._mix(theme.ACCENT, theme.BG0, 0.80)
-_CMD_FG           = theme.ACCENT
-_CMD_ACTIVE_BG    = theme._mix(theme.ACCENT, theme.BG0, 0.62)
-_CMD_ACTIVE_FG    = theme.ACCENT_HOVER
-_FLASH_SUCCESS_BG = theme._mix(theme.SUCCESS, theme.BG0, 0.70)
-_FLASH_SUCCESS_FG = theme.SUCCESS
-_FLASH_ERROR_BG   = theme._mix(theme.ERROR, theme.BG0, 0.70)
-_FLASH_ERROR_FG   = theme.ERROR
-_VISION_BG        = theme._mix(theme.AVA, theme.BG0, 0.80)
-_VISION_BG_BRIGHT = theme._mix(theme.AVA, theme.BG0, 0.62)
-_VISION_FG        = theme.AVA
+def _teal_dim():
+    return theme._mix(theme.ACCENT, theme.BG0, 0.80)
 
+
+def _teal_bright():
+    return theme._mix(theme.ACCENT, theme.BG0, 0.62)
+
+
+# Snoozed is "asleep": the closed-lid glyph and the label carry it.
+def _cmd_bg():
+    return theme._mix(theme.ACCENT, theme.BG0, 0.80)
+
+
+def _cmd_active_bg():
+    return theme._mix(theme.ACCENT, theme.BG0, 0.62)
+
+
+def _flash_success_bg():
+    return theme._mix(theme.SUCCESS, theme.BG0, 0.70)
+
+
+def _flash_error_bg():
+    return theme._mix(theme.ERROR, theme.BG0, 0.70)
+
+
+def _vision_bg():
+    return theme._mix(theme.AVA, theme.BG0, 0.80)
+
+
+def _vision_bg_bright():
+    return theme._mix(theme.AVA, theme.BG0, 0.62)
 # ---------------------------------------------------------------------------
 # Geometry
 # ---------------------------------------------------------------------------
@@ -171,6 +183,7 @@ VALID_POSITIONS = (
     "top-left", "top-center", "top-right",
     "bottom-left", "bottom-center", "bottom-right",
 )
+
 
 # ---------------------------------------------------------------------------
 # Helpers
@@ -630,19 +643,19 @@ class ListeningIndicator(QWidget):
     def flash_success(self):
         if self.isVisible():
             self._flash_wake = False
-            self._start_flash(_FLASH_SUCCESS_BG, _FLASH_SUCCESS_FG)
+            self._start_flash(_flash_success_bg(), theme.SUCCESS)
 
     def flash_error(self):
         if self.isVisible():
             self._flash_wake = False
-            self._start_flash(_FLASH_ERROR_BG, _FLASH_ERROR_FG)
+            self._start_flash(_flash_error_bg(), theme.ERROR)
 
     def flash_wake(self):
         if self.isVisible():
             # The glyph plays the heard frame (red eye, bright ring) while
             # this flash runs -- see tray_qt.HEARD_KEYFRAMES.
             self._flash_wake = True
-            self._start_flash(_TEAL_BRIGHT, _LISTENING_FG)
+            self._start_flash(_teal_bright(), theme.ACCENT)
 
     def set_wake_armed(self, armed: bool):
         """Wake listener armed: the glyph's eye is open (and may blink)."""
@@ -842,7 +855,7 @@ class ListeningIndicator(QWidget):
         if not label:
             self.clear_outcome()
             return
-        kind = kind if kind in _CHIP_FILL else "warning"
+        kind = kind if kind in _chip_fill() else "warning"
         self._chip_label = str(label)
         self._chip_kind = kind
         self._chip_timer.stop()
@@ -942,7 +955,7 @@ class ListeningIndicator(QWidget):
     # ------------------------------------------------------------------
 
     def _font(self) -> QFont:
-        f = QFont("Segoe UI", 9)
+        f = theme.qfont(theme.TYPE_MIN)
         f.setBold(True)
         return f
 
@@ -957,7 +970,7 @@ class ListeningIndicator(QWidget):
         if self._unlocked:
             # Move mode dominates every other display state -- the user is
             # actively dragging the pill and needs an unambiguous cue.
-            return _IDLE_BG, _TEAL, "Drag to move", True
+            return theme.BG1, theme.ACCENT, "Drag to move", True
 
         if self._flash_bg is not None:
             if self._snoozed:
@@ -973,24 +986,24 @@ class ListeningIndicator(QWidget):
             # CMD/listening states while active -- it's strictly more
             # informative. A transient flash (above) still interrupts it
             # briefly for success/error confirmation.
-            return _IDLE_BG, self._session_mode_color, self._session_mode_name, True
+            return theme.BG1, self._session_mode_color, self._session_mode_name, True
 
         if self._thinking:
-            return _lerp_color(_VISION_BG, _VISION_BG_BRIGHT, t), _VISION_FG, "Vision", True
+            return _lerp_color(_vision_bg(), _vision_bg_bright(), t), theme.AVA, "Vision", True
 
         if self._snoozed:
-            return _SNOOZE_BG, _SNOOZE_FG, "Snoozed", True
+            return theme.BG1, theme.ICON_IDLE, "Snoozed", True
 
         if self._command_mode and self._listening:
-            return _lerp_color(_CMD_BG, _CMD_ACTIVE_BG, t), _CMD_ACTIVE_FG, "CMD", True
+            return _lerp_color(_cmd_bg(), _cmd_active_bg(), t), theme.ACCENT_HOVER, "CMD", True
 
         if self._command_mode:
-            return _CMD_BG, _CMD_FG, "CMD", True
+            return _cmd_bg(), theme.ACCENT, "CMD", True
 
         if self._listening:
-            return _lerp_color(_TEAL_DIM, _TEAL_BRIGHT, t), _LISTENING_FG, self._mode_text, True
+            return _lerp_color(_teal_dim(), _teal_bright(), t), theme.ACCENT, self._mode_text, True
 
-        return _IDLE_BG, _IDLE_FG, self._mode_text, True
+        return theme.BG1, theme.ICON_IDLE, self._mode_text, True
 
     def _glyph_mark(self):
         """(capture, eye, rotation_deg, opacity) for the pill's state glyph --
@@ -1028,7 +1041,7 @@ class ListeningIndicator(QWidget):
 
     def _chip_font(self) -> QFont:
         f = QFont("Segoe UI")
-        f.setPixelSize(_CHIP_FONT_PX)
+        f.setPixelSize(theme.TYPE_MIN)
         f.setBold(True)
         return f
 
@@ -1206,7 +1219,7 @@ class ListeningIndicator(QWidget):
 
         # Unlocked (move-mode) outline -- obvious but tasteful drag affordance
         if self._unlocked:
-            pen = QPen(QColor(_TEAL))
+            pen = QPen(QColor(theme.ACCENT))
             pen.setWidth(2)
             pen.setStyle(Qt.PenStyle.DashLine)
             painter.setPen(pen)
@@ -1219,8 +1232,8 @@ class ListeningIndicator(QWidget):
         radius = rect.height() / 2.0
         path = QPainterPath()
         path.addRoundedRect(rect, radius, radius)
-        painter.fillPath(path, QColor(_CHIP_FILL.get(kind, theme.WARNING)))
-        painter.setPen(QColor(_CHIP_TEXT))
+        painter.fillPath(path, QColor(_chip_fill().get(kind, theme.WARNING)))
+        painter.setPen(QColor(theme.TEXT_ON_ACCENT))
         painter.setFont(self._chip_font())
         painter.drawText(rect, Qt.AlignmentFlag.AlignCenter, label)
 
@@ -1270,14 +1283,14 @@ class ListeningIndicator(QWidget):
 
         t = self._flash_step / _FLASH_FADE_STEPS
         if self._snoozed:
-            target_bg, target_fg = _SNOOZE_BG, _SNOOZE_FG
+            target_bg, target_fg = theme.BG1, theme.ICON_IDLE
         elif self._command_mode:
-            target_bg, target_fg = _CMD_BG, _CMD_FG
+            target_bg, target_fg = _cmd_bg(), theme.ACCENT
         elif self._listening:
-            target_bg = _lerp_color(_TEAL_DIM, _TEAL_BRIGHT, 0.5)
-            target_fg = _LISTENING_FG
+            target_bg = _lerp_color(_teal_dim(), _teal_bright(), 0.5)
+            target_fg = theme.ACCENT
         else:
-            target_bg, target_fg = _IDLE_BG, _IDLE_FG
+            target_bg, target_fg = theme.BG1, theme.ICON_IDLE
 
         self._flash_bg = _lerp_color(self._flash_bg, target_bg, t)
         self._flash_fg = _lerp_color(self._flash_fg, target_fg, t)

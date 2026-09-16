@@ -1,0 +1,542 @@
+[
+  {
+    "state": "slot_empty",
+    "size": "900x650",
+    "file": "hub_900x650_slot_empty.png",
+    "text_scale": 1.0,
+    "home_scroll_maximum": 0,
+    "home_overflowing_widgets": [],
+    "status_bar_height": 49,
+    "example_strip_text": "Try saying \"copy\"",
+    "example_strip_label_width": 449,
+    "example_pool": 12,
+    "prev_button": [
+      44,
+      44,
+      "previous example"
+    ],
+    "next_button": [
+      44,
+      44,
+      "next example"
+    ],
+    "card_titles": [
+      "Commands",
+      "Guides & tutorials",
+      "Open Dictionary"
+    ],
+    "card_values": [
+      "\"go back\"",
+      "4 guides",
+      "27 words"
+    ],
+    "words_today": "10,905",
+    "support_line": "Always free. Contributions welcome.",
+    "hint_text": "",
+    "hint_sub": "",
+    "details_button_visible": false,
+    "details_checked": false,
+    "evidence_visible": false,
+    "evidence_text": "",
+    "content_w": 688,
+    "viewport_w": 720,
+    "fits_horizontally": true,
+    "buttons_under_44": [],
+    "PASS": true
+  },
+  {
+    "state": "slot_diagnostic",
+    "size": "900x650",
+    "file": "hub_900x650_slot_diagnostic.png",
+    "text_scale": 1.0,
+    "home_scroll_maximum": 0,
+    "home_overflowing_widgets": [],
+    "status_bar_height": 49,
+    "example_strip_text": "Try saying \"open anthropic\"",
+    "example_strip_label_width": 449,
+    "example_pool": 12,
+    "prev_button": [
+      44,
+      44,
+      "previous example"
+    ],
+    "next_button": [
+      44,
+      44,
+      "next example"
+    ],
+    "card_titles": [
+      "Commands",
+      "Guides & tutorials",
+      "Open Dictionary"
+    ],
+    "card_values": [
+      "\"go back\"",
+      "4 guides",
+      "27 words"
+    ],
+    "words_today": "10,905",
+    "support_line": "Always free. Contributions welcome.",
+    "hint_text": "4 of your last 8 recordings produced no text.",
+    "hint_sub": "If you were speaking, open Voice troubleshooting to investigate.",
+    "details_button_visible": true,
+    "details_checked": false,
+    "evidence_visible": false,
+    "evidence_text": "4/8 recent captures recorded outcome empty or gated (threshold 3)",
+    "content_w": 688,
+    "viewport_w": 720,
+    "fits_horizontally": true,
+    "buttons_under_44": [],
+    "PASS": true
+  },
+  {
+    "state": "whats_new",
+    "size": "900x650",
+    "file": "hub_900x650_whats_new.png",
+    "text_scale": 1.0,
+    "home_scroll_maximum": 0,
+    "home_overflowing_widgets": [],
+    "status_bar_height": 49,
+    "example_strip_text": "Try saying \"hide numbers\"",
+    "example_strip_label_width": 449,
+    "example_pool": 12,
+    "prev_button": [
+      44,
+      44,
+      "previous example"
+    ],
+    "next_button": [
+      44,
+      44,
+      "next example"
+    ],
+    "card_titles": [
+      "Commands",
+      "Guides & tutorials",
+      "Open Dictionary"
+    ],
+    "card_values": [
+      "\"go back\"",
+      "4 guides",
+      "27 words"
+    ],
+    "words_today": "10,905",
+    "support_line": "Always free. Contributions welcome.",
+    "hint_text": "Samsara 0.23.0-beta.1",
+    "hint_sub": "A beta for testers, not the public download (that stays v0.22.1).",
+    "details_button_visible": false,
+    "details_checked": false,
+    "evidence_visible": false,
+    "evidence_text": "",
+    "content_w": 688,
+    "viewport_w": 720,
+    "fits_horizontally": true,
+    "buttons_under_44": [],
+    "PASS": true
+  },
+  {
+    "state": "problem_notice",
+    "size": "900x650",
+    "file": "hub_900x650_problem_notice.png",
+    "text_scale": 1.0,
+    "home_scroll_maximum": 0,
+    "home_overflowing_widgets": [],
+    "status_bar_height": 49,
+    "example_strip_text": "Try saying \"go to address bar\"",
+    "example_strip_label_width": 449,
+    "example_pool": 12,
+    "prev_button": [
+      44,
+      44,
+      "previous example"
+    ],
+    "next_button": [
+      44,
+      44,
+      "next example"
+    ],
+    "card_titles": [
+      "Commands",
+      "Guides & tutorials",
+      "Open Dictionary"
+    ],
+    "card_values": [
+      "\"go back\"",
+      "4 guides",
+      "27 words"
+    ],
+    "words_today": "10,905",
+    "support_line": "Always free. Contributions welcome.",
+    "hint_text": "",
+    "hint_sub": "",
+    "details_button_visible": false,
+    "details_checked": false,
+    "evidence_visible": false,
+    "evidence_text": "",
+    "content_w": 688,
+    "viewport_w": 720,
+    "fits_horizontally": true,
+    "buttons_under_44": [],
+    "PASS": true
+  },
+  {
+    "state": "longest_example",
+    "size": "900x650",
+    "file": "hub_900x650_longest_example.png",
+    "text_scale": 1.0,
+    "home_scroll_maximum": 0,
+    "home_overflowing_widgets": [],
+    "status_bar_height": 49,
+    "example_strip_text": "Try saying \"select to document start\"",
+    "example_strip_label_width": 449,
+    "example_pool": 13,
+    "prev_button": [
+      44,
+      44,
+      "previous example"
+    ],
+    "next_button": [
+      44,
+      44,
+      "next example"
+    ],
+    "card_titles": [
+      "Commands",
+      "Guides & tutorials",
+      "Open Dictionary"
+    ],
+    "card_values": [
+      "\"go back\"",
+      "4 guides",
+      "27 words"
+    ],
+    "words_today": "10,905",
+    "support_line": "Always free. Contributions welcome.",
+    "hint_text": "",
+    "hint_sub": "",
+    "details_button_visible": false,
+    "details_checked": false,
+    "evidence_visible": false,
+    "evidence_text": "",
+    "content_w": 688,
+    "viewport_w": 720,
+    "fits_horizontally": true,
+    "buttons_under_44": [],
+    "PASS": true
+  },
+  {
+    "state": "slot_empty",
+    "size": "1065x906",
+    "file": "hub_1065x906_slot_empty.png",
+    "text_scale": 1.0,
+    "home_scroll_maximum": 0,
+    "home_overflowing_widgets": [],
+    "status_bar_height": 49,
+    "example_strip_text": "Try saying \"search for\"",
+    "example_strip_label_width": 614,
+    "example_pool": 12,
+    "prev_button": [
+      44,
+      44,
+      "previous example"
+    ],
+    "next_button": [
+      44,
+      44,
+      "next example"
+    ],
+    "card_titles": [
+      "Commands",
+      "Guides & tutorials",
+      "Open Dictionary"
+    ],
+    "card_values": [
+      "\"go back\"",
+      "4 guides",
+      "27 words"
+    ],
+    "words_today": "10,905",
+    "support_line": "Always free. Contributions welcome.",
+    "hint_text": "",
+    "hint_sub": "",
+    "details_button_visible": false,
+    "details_checked": false,
+    "evidence_visible": false,
+    "evidence_text": "",
+    "content_w": 760,
+    "viewport_w": 885,
+    "fits_horizontally": true,
+    "buttons_under_44": [],
+    "PASS": true
+  },
+  {
+    "state": "slot_diagnostic",
+    "size": "1065x906",
+    "file": "hub_1065x906_slot_diagnostic.png",
+    "text_scale": 1.0,
+    "home_scroll_maximum": 0,
+    "home_overflowing_widgets": [],
+    "status_bar_height": 49,
+    "example_strip_text": "Try saying \"visual notifications\"",
+    "example_strip_label_width": 614,
+    "example_pool": 12,
+    "prev_button": [
+      44,
+      44,
+      "previous example"
+    ],
+    "next_button": [
+      44,
+      44,
+      "next example"
+    ],
+    "card_titles": [
+      "Commands",
+      "Guides & tutorials",
+      "Open Dictionary"
+    ],
+    "card_values": [
+      "\"go back\"",
+      "4 guides",
+      "27 words"
+    ],
+    "words_today": "10,905",
+    "support_line": "Always free. Contributions welcome.",
+    "hint_text": "4 of your last 8 recordings produced no text.",
+    "hint_sub": "If you were speaking, open Voice troubleshooting to investigate.",
+    "details_button_visible": true,
+    "details_checked": false,
+    "evidence_visible": false,
+    "evidence_text": "4/8 recent captures recorded outcome empty or gated (threshold 3)",
+    "content_w": 760,
+    "viewport_w": 885,
+    "fits_horizontally": true,
+    "buttons_under_44": [],
+    "PASS": true
+  },
+  {
+    "state": "whats_new",
+    "size": "1065x906",
+    "file": "hub_1065x906_whats_new.png",
+    "text_scale": 1.0,
+    "home_scroll_maximum": 0,
+    "home_overflowing_widgets": [],
+    "status_bar_height": 49,
+    "example_strip_text": "Try saying \"show tutorial\"",
+    "example_strip_label_width": 614,
+    "example_pool": 12,
+    "prev_button": [
+      44,
+      44,
+      "previous example"
+    ],
+    "next_button": [
+      44,
+      44,
+      "next example"
+    ],
+    "card_titles": [
+      "Commands",
+      "Guides & tutorials",
+      "Open Dictionary"
+    ],
+    "card_values": [
+      "\"go back\"",
+      "4 guides",
+      "27 words"
+    ],
+    "words_today": "10,905",
+    "support_line": "Always free. Contributions welcome.",
+    "hint_text": "Samsara 0.23.0-beta.1",
+    "hint_sub": "A beta for testers, not the public download (that stays v0.22.1).",
+    "details_button_visible": false,
+    "details_checked": false,
+    "evidence_visible": false,
+    "evidence_text": "",
+    "content_w": 760,
+    "viewport_w": 885,
+    "fits_horizontally": true,
+    "buttons_under_44": [],
+    "PASS": true
+  },
+  {
+    "state": "problem_notice",
+    "size": "1065x906",
+    "file": "hub_1065x906_problem_notice.png",
+    "text_scale": 1.0,
+    "home_scroll_maximum": 0,
+    "home_overflowing_widgets": [],
+    "status_bar_height": 49,
+    "example_strip_text": "Try saying \"go to document start\"",
+    "example_strip_label_width": 614,
+    "example_pool": 12,
+    "prev_button": [
+      44,
+      44,
+      "previous example"
+    ],
+    "next_button": [
+      44,
+      44,
+      "next example"
+    ],
+    "card_titles": [
+      "Commands",
+      "Guides & tutorials",
+      "Open Dictionary"
+    ],
+    "card_values": [
+      "\"go back\"",
+      "4 guides",
+      "27 words"
+    ],
+    "words_today": "10,905",
+    "support_line": "Always free. Contributions welcome.",
+    "hint_text": "",
+    "hint_sub": "",
+    "details_button_visible": false,
+    "details_checked": false,
+    "evidence_visible": false,
+    "evidence_text": "",
+    "content_w": 760,
+    "viewport_w": 885,
+    "fits_horizontally": true,
+    "buttons_under_44": [],
+    "PASS": true
+  },
+  {
+    "state": "longest_example",
+    "size": "1065x906",
+    "file": "hub_1065x906_longest_example.png",
+    "text_scale": 1.0,
+    "home_scroll_maximum": 0,
+    "home_overflowing_widgets": [],
+    "status_bar_height": 49,
+    "example_strip_text": "Try saying \"select to document start\"",
+    "example_strip_label_width": 614,
+    "example_pool": 13,
+    "prev_button": [
+      44,
+      44,
+      "previous example"
+    ],
+    "next_button": [
+      44,
+      44,
+      "next example"
+    ],
+    "card_titles": [
+      "Commands",
+      "Guides & tutorials",
+      "Open Dictionary"
+    ],
+    "card_values": [
+      "\"go back\"",
+      "4 guides",
+      "27 words"
+    ],
+    "words_today": "10,905",
+    "support_line": "Always free. Contributions welcome.",
+    "hint_text": "",
+    "hint_sub": "",
+    "details_button_visible": false,
+    "details_checked": false,
+    "evidence_visible": false,
+    "evidence_text": "",
+    "content_w": 760,
+    "viewport_w": 885,
+    "fits_horizontally": true,
+    "buttons_under_44": [],
+    "PASS": true
+  },
+  {
+    "state": "scale150",
+    "size": "900x650",
+    "file": "hub_900x650_scale150.png",
+    "text_scale": 1.5,
+    "home_scroll_maximum": 646,
+    "home_overflowing_widgets": [],
+    "status_bar_height": 49,
+    "example_strip_text": "Try saying \"steam downloads\"",
+    "example_strip_label_width": 449,
+    "example_pool": 12,
+    "prev_button": [
+      44,
+      44,
+      "previous example"
+    ],
+    "next_button": [
+      44,
+      44,
+      "next example"
+    ],
+    "card_titles": [
+      "Commands",
+      "Guides & tutorials",
+      "Open Dictionary"
+    ],
+    "card_values": [
+      "\"go back\"",
+      "4 guides",
+      "27 words"
+    ],
+    "words_today": "10,905",
+    "support_line": "Always free. Contributions welcome.",
+    "hint_text": "4 of your last 8 recordings produced no text.",
+    "hint_sub": "If you were speaking, open Voice troubleshooting to investigate.",
+    "details_button_visible": true,
+    "details_checked": false,
+    "evidence_visible": false,
+    "evidence_text": "4/8 recent captures recorded outcome empty or gated (threshold 3)",
+    "content_w": 674,
+    "viewport_w": 706,
+    "fits_horizontally": true,
+    "buttons_under_44": [],
+    "PASS": true
+  },
+  {
+    "state": "scale150",
+    "size": "1065x906",
+    "file": "hub_1065x906_scale150.png",
+    "text_scale": 1.5,
+    "home_scroll_maximum": 256,
+    "home_overflowing_widgets": [],
+    "status_bar_height": 49,
+    "example_strip_text": "Try saying \"open disk management\"",
+    "example_strip_label_width": 614,
+    "example_pool": 12,
+    "prev_button": [
+      44,
+      44,
+      "previous example"
+    ],
+    "next_button": [
+      44,
+      44,
+      "next example"
+    ],
+    "card_titles": [
+      "Commands",
+      "Guides & tutorials",
+      "Open Dictionary"
+    ],
+    "card_values": [
+      "\"go back\"",
+      "4 guides",
+      "27 words"
+    ],
+    "words_today": "10,905",
+    "support_line": "Always free. Contributions welcome.",
+    "hint_text": "4 of your last 8 recordings produced no text.",
+    "hint_sub": "If you were speaking, open Voice troubleshooting to investigate.",
+    "details_button_visible": true,
+    "details_checked": false,
+    "evidence_visible": false,
+    "evidence_text": "4/8 recent captures recorded outcome empty or gated (threshold 3)",
+    "content_w": 760,
+    "viewport_w": 871,
+    "fits_horizontally": true,
+    "buttons_under_44": [],
+    "PASS": true
+  }
+]

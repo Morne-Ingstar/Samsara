@@ -37,66 +37,62 @@ logger = get_logger(__name__)
 # stays readable).
 # ---------------------------------------------------------------------------
 
-_BG         = theme.BG0
-_SURFACE    = theme.BG1
-_ELEVATED   = theme.BG2
-_BORDER     = theme.BORDER
-_ACCENT     = theme.ACCENT
-_ACCENT_DIM = "#1a3a42"
-_TEXT_PRI   = theme.TEXT_PRIMARY
-_TEXT_SEC   = theme.TEXT_SECONDARY
 
 # >= 40px accessibility minimum for interactive controls, matching
 # history_view.py's _ROW_HEIGHT / stress_wizard_qt.py's button heights.
 _MIN_TARGET = 44
 
-_STYLESHEET = f"""
-QMainWindow, QWidget {{
-    background-color: {_BG};
-    color: {_TEXT_PRI};
-    font-family: {theme.FONT_FAMILY};
-    font-size: {theme.FONT_SIZE_BODY}px;
-}}
-QListWidget {{
-    background-color: {_SURFACE};
-    border: 1px solid {_BORDER};
-    outline: none;
-}}
-QListWidget::item {{
-    padding: 8px 10px;
-    border-bottom: 1px solid {_BORDER};
-}}
-QListWidget::item:selected {{
-    background-color: {_ACCENT_DIM};
-    color: {_ACCENT};
-}}
-QPushButton {{
-    background-color: {_SURFACE};
-    border: 1px solid {_BORDER};
-    border-radius: 4px;
-    color: {_TEXT_PRI};
-    padding: 8px 14px;
-    font-size: {theme.FONT_SIZE_BODY}px;
-}}
-QPushButton:hover {{
-    background-color: {_ELEVATED};
-    border-color: {_ACCENT};
-}}
-QPushButton:pressed {{
-    background-color: {_ACCENT_DIM};
-}}
-QPushButton:disabled {{
-    color: {_TEXT_SEC};
-}}
-QPlainTextEdit {{
-    background-color: {_ELEVATED};
-    border: 1px solid {_BORDER};
-    color: {_TEXT_PRI};
-    font-family: {theme.FONT_FAMILY};
-    font-size: {theme.FONT_SIZE_BODY}px;
-    padding: 8px 10px;
-}}
-QPlainTextEdit:focus {{ border: 1px solid {_ACCENT}; }}
+def _stylesheet() -> str:
+    """The window's stylesheet, built on demand. Never a module
+    constant: an f-string evaluated at import time freezes whichever
+    palette was live then (queue 129)."""
+    return f"""
+    QMainWindow, QWidget {{
+        background-color: {theme.BG0};
+        color: {theme.TEXT_PRIMARY};
+        font-family: {theme.FONT_FAMILY};
+        font-size: {theme.FONT_SIZE_BODY}px;
+    }}
+    QListWidget {{
+        background-color: {theme.BG1};
+        border: 1px solid {theme.BORDER};
+        outline: none;
+    }}
+    QListWidget::item {{
+        padding: 8px 10px;
+        border-bottom: 1px solid {theme.BORDER};
+    }}
+    QListWidget::item:selected {{
+        background-color: {theme.ACCENT_DIM};
+        color: {theme.ACCENT};
+    }}
+    QPushButton {{
+        background-color: {theme.BG1};
+        border: 1px solid {theme.BORDER};
+        border-radius: 4px;
+        color: {theme.TEXT_PRIMARY};
+        padding: 8px 14px;
+        font-size: {theme.FONT_SIZE_BODY}px;
+    }}
+    QPushButton:hover {{
+        background-color: {theme.BG2};
+        border-color: {theme.ACCENT};
+    }}
+    QPushButton:pressed {{
+        background-color: {theme.ACCENT_DIM};
+    }}
+    QPushButton:disabled {{
+        color: {theme.TEXT_SECONDARY};
+    }}
+    QPlainTextEdit {{
+        background-color: {theme.BG2};
+        border: 1px solid {theme.BORDER};
+        color: {theme.TEXT_PRIMARY};
+        font-family: {theme.FONT_FAMILY};
+        font-size: {theme.FONT_SIZE_BODY}px;
+        padding: 8px 10px;
+    }}
+    QPlainTextEdit:focus {{ border: 1px solid {theme.ACCENT}; }}
 """
 
 
@@ -149,7 +145,7 @@ class BenchmarkReviewWindow(QMainWindow):
         self.setWindowTitle("Benchmark Review")
         self.resize(900, 580)
         self.setMinimumSize(640, 440)
-        self.setStyleSheet(_STYLESHEET)
+        self.setStyleSheet(_stylesheet())
 
         central = QWidget()
         self.setCentralWidget(central)
@@ -163,7 +159,7 @@ class BenchmarkReviewWindow(QMainWindow):
 
         self._progress_lbl = QLabel("")
         self._progress_lbl.setStyleSheet(
-            f"color: {_TEXT_SEC}; font-size: {theme.FONT_SIZE_CAPTION}px;"
+            f"color: {theme.TEXT_SECONDARY}; font-size: {theme.FONT_SIZE_CAPTION}px;"
         )
         left.addWidget(self._progress_lbl)
 
@@ -186,7 +182,7 @@ class BenchmarkReviewWindow(QMainWindow):
         self._meta_lbl = QLabel("Select a sample to review.")
         self._meta_lbl.setWordWrap(True)
         self._meta_lbl.setStyleSheet(
-            f"color: {_TEXT_SEC}; font-size: {theme.FONT_SIZE_CAPTION}px;"
+            f"color: {theme.TEXT_SECONDARY}; font-size: {theme.FONT_SIZE_CAPTION}px;"
         )
         right.addWidget(self._meta_lbl)
 
@@ -218,7 +214,7 @@ class BenchmarkReviewWindow(QMainWindow):
 
         self._status_lbl = QLabel("")
         self._status_lbl.setStyleSheet(
-            f"color: {_TEXT_SEC}; font-size: {theme.FONT_SIZE_CAPTION}px;"
+            f"color: {theme.TEXT_SECONDARY}; font-size: {theme.FONT_SIZE_CAPTION}px;"
         )
         right.addWidget(self._status_lbl)
 

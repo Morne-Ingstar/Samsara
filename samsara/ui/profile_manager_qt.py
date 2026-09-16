@@ -16,66 +16,68 @@ from PySide6.QtWidgets import (
 )
 
 from samsara.ui import qt_runtime
+from samsara.ui import theme
 
 
-_STYLESHEET = """
-QMainWindow, QWidget {
-    background-color: #0A0A0B;
-    color: #E8E8EA;
+def _stylesheet():
+    return f"""
+QMainWindow, QWidget {{
+    background-color: {theme.BG0};
+    color: {theme.TEXT_PRIMARY};
     font-family: 'Segoe UI', system-ui, sans-serif;
-    font-size: 13px;
-}
-QScrollArea { border: none; background: transparent; }
-QLabel { color: #E8E8EA; }
-QComboBox {
-    background-color: #16161A;
-    border: 1px solid rgba(255,255,255,0.14);
+    font-size: {theme.TYPE_BODY}px;
+}}
+QScrollArea {{ border: none; background: transparent; }}
+QLabel {{ color: {theme.TEXT_PRIMARY}; }}
+QComboBox {{
+    background-color: {theme.BG1};
+    border: 1px solid {theme.wash(0.14)};
     border-radius: 6px;
     padding: 7px 10px;
-    color: #E8E8EA;
+    color: {theme.TEXT_PRIMARY};
     min-width: 220px;
-}
-QComboBox::drop-down { border: none; width: 24px; }
-QComboBox QAbstractItemView {
-    background-color: #16161A;
-    color: #E8E8EA;
-    selection-background-color: rgba(94,234,212,0.2);
-    border: 1px solid rgba(255,255,255,0.14);
-}
-QLineEdit {
-    background-color: #16161A;
-    border: 1px solid rgba(255,255,255,0.14);
+}}
+QComboBox::drop-down {{ border: none; width: 24px; }}
+QComboBox QAbstractItemView {{
+    background-color: {theme.BG1};
+    color: {theme.TEXT_PRIMARY};
+    selection-background-color: {theme.tint(theme.ACCENT, 0.2)};
+    border: 1px solid {theme.wash(0.14)};
+}}
+QLineEdit {{
+    background-color: {theme.BG1};
+    border: 1px solid {theme.wash(0.14)};
     border-radius: 6px;
     padding: 8px 12px;
-    color: #E8E8EA;
-}
-QLineEdit:focus { border-color: rgba(94,234,212,0.5); }
-QPushButton {
-    background-color: #5EEAD4;
-    color: #0A0A0B;
+    color: {theme.TEXT_PRIMARY};
+}}
+QLineEdit:focus {{ border-color: {theme.tint(theme.ACCENT, 0.5)}; }}
+QPushButton {{
+    background-color: {theme.ACCENT};
+    color: {theme.BG0};
     border: none;
     border-radius: 6px;
     padding: 7px 14px;
     font-weight: 600;
-    font-size: 13px;
-}
-QPushButton:hover { background-color: #4DD8C2; }
-QPushButton[class="secondary"] {
+    font-size: {theme.TYPE_BODY}px;
+}}
+QPushButton:hover {{ background-color: {theme.ACCENT_HOVER}; }}
+QPushButton[class="secondary"] {{
     background-color: transparent;
-    color: #8A8A92;
-    border: 1px solid rgba(255,255,255,0.14);
-}
-QPushButton[class="secondary"]:hover {
-    background-color: rgba(255,255,255,0.05);
-    color: #E8E8EA;
-}
-QPushButton[class="danger"] {
-    background-color: rgba(180,40,40,0.18);
-    color: #FF8888;
-    border: 1px solid rgba(180,40,40,0.35);
-}
-QPushButton[class="danger"]:hover { background-color: rgba(180,40,40,0.28); }
-QDialog { background-color: #0A0A0B; }
+    color: {theme.TEXT_SECONDARY};
+    border: 1px solid {theme.wash(0.14)};
+}}
+QPushButton[class="secondary"]:hover {{
+    background-color: {theme.wash(0.05)};
+    color: {theme.TEXT_PRIMARY};
+}}
+QPushButton[class="danger"] {{
+    background-color: {theme.tint(theme.RECORDING, 0.18)};
+    color: {theme.ERROR};
+    border: 1px solid {theme.tint(theme.RECORDING, 0.35)};
+}}
+QPushButton[class="danger"]:hover {{ background-color: {theme.tint(theme.RECORDING, 0.28)}; }}
+QDialog {{ background-color: {theme.BG0}; }}
 """
 
 
@@ -140,7 +142,7 @@ class _ProfileManagerWindow(QMainWindow):
         self.setWindowTitle("Profile Manager")
         self.resize(600, 680)
         self.setMinimumSize(480, 480)
-        self.setStyleSheet(_STYLESHEET)
+        self.setStyleSheet(_stylesheet())
 
         scroll = QScrollArea()
         scroll.setWidgetResizable(True)
@@ -161,7 +163,7 @@ class _ProfileManagerWindow(QMainWindow):
         self._dict_active_lbl = QLabel(
             f"Active: {active.get('dictionary') or '(unsaved)'}"
         )
-        self._dict_active_lbl.setStyleSheet("color: #5EEAD4; font-size: 12px;")
+        self._dict_active_lbl.setStyleSheet(f"color: {theme.ACCENT}; font-size: {theme.TYPE_MIN}px;")
 
         dict_profiles = self._pm.list_dictionary_profiles()
         self._dict_combo = self._make_combo(dict_profiles)
@@ -179,7 +181,7 @@ class _ProfileManagerWindow(QMainWindow):
         self._cmd_active_lbl = QLabel(
             f"Active: {active.get('commands') or '(unsaved)'}"
         )
-        self._cmd_active_lbl.setStyleSheet("color: #5EEAD4; font-size: 12px;")
+        self._cmd_active_lbl.setStyleSheet(f"color: {theme.ACCENT}; font-size: {theme.TYPE_MIN}px;")
 
         cmd_profiles = self._pm.list_command_profiles()
         self._cmd_combo = self._make_combo(cmd_profiles)
@@ -200,7 +202,7 @@ class _ProfileManagerWindow(QMainWindow):
             "Profiles are stored in the profiles/ folder and can be shared."
         )
         tips.setWordWrap(True)
-        tips.setStyleSheet("color: #8A8A92; font-size: 12px; line-height: 1.5;")
+        tips.setStyleSheet(f"color: {theme.TEXT_SECONDARY}; font-size: {theme.TYPE_MIN}px; line-height: 1.5;")
         layout.addWidget(tips)
 
         layout.addStretch()
@@ -221,12 +223,12 @@ class _ProfileManagerWindow(QMainWindow):
 
     def _section_title(self, text: str) -> QLabel:
         lbl = QLabel(text)
-        lbl.setStyleSheet("color: #5EEAD4; font-size: 16px; font-weight: bold;")
+        lbl.setStyleSheet(f"color: {theme.ACCENT}; font-size: {theme.TYPE_HEADING}px; font-weight: bold;")
         return lbl
 
     def _desc(self, text: str) -> QLabel:
         lbl = QLabel(text)
-        lbl.setStyleSheet("color: #8A8A92; font-size: 12px;")
+        lbl.setStyleSheet(f"color: {theme.TEXT_SECONDARY}; font-size: {theme.TYPE_MIN}px;")
         return lbl
 
     def _make_combo(self, profiles: list) -> QComboBox:
@@ -243,8 +245,8 @@ class _ProfileManagerWindow(QMainWindow):
     ) -> QFrame:
         frame = QFrame()
         frame.setStyleSheet(
-            "QFrame{background:#111114;border-radius:8px;"
-            "border:1px solid rgba(255,255,255,0.06);}"
+            f"QFrame{{background:{theme.BG1};border-radius:8px;"
+            f"border:1px solid {theme.wash(0.06)};}}"
         )
         layout = QVBoxLayout(frame)
         layout.setContentsMargins(14, 14, 14, 14)
@@ -256,7 +258,7 @@ class _ProfileManagerWindow(QMainWindow):
         sel_row = QHBoxLayout()
         sel_row.setSpacing(8)
         lbl = QLabel("Profile:")
-        lbl.setStyleSheet("color: #8A8A92; font-size: 12px;")
+        lbl.setStyleSheet(f"color: {theme.TEXT_SECONDARY}; font-size: {theme.TYPE_MIN}px;")
         sel_row.addWidget(lbl)
         sel_row.addWidget(combo, stretch=1)
         layout.addLayout(sel_row)
@@ -519,8 +521,8 @@ class _SaveProfileDialog(QDialog):
         cancel = QPushButton("Cancel")
         cancel.setFixedWidth(80)
         cancel.setStyleSheet(
-            "QPushButton{background:transparent;color:#8A8A92;"
-            "border:1px solid rgba(255,255,255,0.14);border-radius:6px;padding:7px 14px;}"
+            f"QPushButton{{background:transparent;color:{theme.TEXT_SECONDARY};"
+            f"border:1px solid {theme.wash(0.14)};border-radius:6px;padding:7px 14px;}}"
         )
         cancel.clicked.connect(self.reject)
         btn_row.addWidget(cancel)

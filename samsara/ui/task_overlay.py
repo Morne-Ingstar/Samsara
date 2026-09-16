@@ -28,64 +28,71 @@ from PySide6.QtWidgets import (
 
 from samsara import tasks_store
 from samsara.ui import qt_runtime
+from samsara.ui import theme
+
 
 # ---------------------------------------------------------------------------
 # Colours
 # ---------------------------------------------------------------------------
 
-_BG       = "#0A0A0B"
-_SURFACE  = "#111114"
-_ELEVATED = "#1a1a1f"
-_BORDER   = "#2a2a32"
-_ACCENT   = "#5EEAD4"
-_TEXT_PRI = "#E8E8EA"
-_TEXT_MUT = "#55555C"
-_RED      = "#f87171"
+def _bg():
+    return f"{theme.BG0}"
 
-_SS = f"""
-QMainWindow, QWidget {{
-    background: {_BG};
-    color: {_TEXT_PRI};
-    font-family: 'Segoe UI', sans-serif;
-    font-size: 13px;
-}}
-QLineEdit {{
-    background: {_SURFACE};
-    border: 1px solid {_BORDER};
-    border-radius: 5px;
-    color: {_TEXT_PRI};
-    padding: 7px 10px;
-    font-size: 13px;
-    selection-background-color: {_ACCENT};
-}}
-QLineEdit:focus {{
-    border-color: {_ACCENT};
-}}
-QScrollBar:vertical {{
-    background: {_BG}; width: 5px; border: none;
-}}
-QScrollBar::handle:vertical {{
-    background: {_BORDER}; border-radius: 2px; min-height: 20px;
-}}
-QScrollBar::add-line:vertical, QScrollBar::sub-line:vertical {{ height: 0; }}
-QCheckBox {{
-    spacing: 0px;
-    background: transparent;
-}}
-QCheckBox::indicator {{
-    width: 16px;
-    height: 16px;
-    border: 2px solid {_BORDER};
-    border-radius: 4px;
-    background: {_SURFACE};
-}}
-QCheckBox::indicator:hover {{
-    border-color: {_ACCENT};
-}}
-QCheckBox::indicator:checked {{
-    background: {_ACCENT};
-    border-color: {_ACCENT};
-}}
+
+def _surface():
+    return f"{theme.BG1}"
+
+
+def _elevated():
+    return f"{theme.BG2}"
+def _ss() -> str:
+    """The window's stylesheet, built on demand. Never a module
+    constant: an f-string evaluated at import time freezes whichever
+    palette was live then (queue 129)."""
+    return f"""
+    QMainWindow, QWidget {{
+        background: {_bg()};
+        color: {theme.TEXT_PRIMARY};
+        font-family: 'Segoe UI', sans-serif;
+        font-size: {theme.TYPE_BODY}px;
+    }}
+    QLineEdit {{
+        background: {_surface()};
+        border: 1px solid {theme.BORDER};
+        border-radius: 5px;
+        color: {theme.TEXT_PRIMARY};
+        padding: 7px 10px;
+        font-size: {theme.TYPE_BODY}px;
+        selection-background-color: {theme.ACCENT};
+    }}
+    QLineEdit:focus {{
+        border-color: {theme.ACCENT};
+    }}
+    QScrollBar:vertical {{
+        background: {_bg()}; width: 5px; border: none;
+    }}
+    QScrollBar::handle:vertical {{
+        background: {theme.BORDER}; border-radius: 2px; min-height: 20px;
+    }}
+    QScrollBar::add-line:vertical, QScrollBar::sub-line:vertical {{ height: 0; }}
+    QCheckBox {{
+        spacing: 0px;
+        background: transparent;
+    }}
+    QCheckBox::indicator {{
+        width: 16px;
+        height: 16px;
+        border: 2px solid {theme.BORDER};
+        border-radius: 4px;
+        background: {_surface()};
+    }}
+    QCheckBox::indicator:hover {{
+        border-color: {theme.ACCENT};
+    }}
+    QCheckBox::indicator:checked {{
+        background: {theme.ACCENT};
+        border-color: {theme.ACCENT};
+    }}
 """
 
 
@@ -129,17 +136,17 @@ class _TaskRow(QWidget):
         self._del.clicked.connect(self._remove)
         self._del.setStyleSheet(
             f"background: transparent; border: none;"
-            f" color: {_TEXT_MUT}; font-size: 14px; font-weight: bold;"
+            f" color: {theme.TEXT_SECONDARY}; font-size: {theme.TYPE_BODY}px; font-weight: bold;"
             f" border-radius: 3px;"
         )
         self._del.enterEvent = lambda e: self._del.setStyleSheet(
-            f"background: rgba(248,113,113,0.15); border: none;"
-            f" color: {_RED}; font-size: 14px; font-weight: bold;"
+            f"background: {theme.tint(theme.ERROR, 0.15)}; border: none;"
+            f" color: {theme.ERROR}; font-size: {theme.TYPE_BODY}px; font-weight: bold;"
             f" border-radius: 3px;"
         )
         self._del.leaveEvent = lambda e: self._del.setStyleSheet(
             f"background: transparent; border: none;"
-            f" color: {_TEXT_MUT}; font-size: 14px; font-weight: bold;"
+            f" color: {theme.TEXT_SECONDARY}; font-size: {theme.TYPE_BODY}px; font-weight: bold;"
             f" border-radius: 3px;"
         )
         lay.addWidget(self._del)
@@ -147,16 +154,16 @@ class _TaskRow(QWidget):
 
     def _apply_text_style(self):
         if self._completed:
-            font = QFont("Segoe UI", 13)
+            font = theme.qfont(theme.TYPE_HEADING)
             font.setStrikeOut(True)
             self._label.setFont(font)
-            self._label.setStyleSheet(f"color: {_TEXT_MUT}; background: transparent;")
+            self._label.setStyleSheet(f"color: {theme.TEXT_SECONDARY}; background: transparent;")
         else:
-            self._label.setFont(QFont("Segoe UI", 13))
-            self._label.setStyleSheet(f"color: {_TEXT_PRI}; background: transparent;")
+            self._label.setFont(theme.qfont(theme.TYPE_HEADING))
+            self._label.setStyleSheet(f"color: {theme.TEXT_PRIMARY}; background: transparent;")
 
     def _apply_style(self):
-        bg = "rgba(255,255,255,0.04)" if self._hovered else "transparent"
+        bg = f"{theme.wash(0.04)}" if self._hovered else "transparent"
         self.setStyleSheet(
             f"_TaskRow {{ background: {bg}; border-radius: 4px; }}"
         )
@@ -192,7 +199,7 @@ class _TaskWindow(QMainWindow):
         super().__init__()
         self.setWindowTitle("Tasks")
         self.setWindowFlags(Qt.WindowStaysOnTopHint | Qt.Tool)
-        self.setStyleSheet(_SS)
+        self.setStyleSheet(_ss())
         self.resize(340, 480)
         self.setMinimumSize(260, 320)
         self._setup_ui()
@@ -208,10 +215,10 @@ class _TaskWindow(QMainWindow):
 
         # Header
         header = QLabel("Tasks")
-        header.setFont(QFont("Segoe UI", 14, QFont.Bold))
+        header.setFont(theme.qfont(theme.TYPE_HEADING, weight=QFont.Bold))
         header.setStyleSheet(
-            f"color: {_ACCENT}; padding-bottom: 8px;"
-            f" border-bottom: 1px solid {_BORDER}; background: transparent;"
+            f"color: {theme.ACCENT}; padding-bottom: 8px;"
+            f" border-bottom: 1px solid {theme.BORDER}; background: transparent;"
         )
         lay.addWidget(header)
 
@@ -236,8 +243,8 @@ class _TaskWindow(QMainWindow):
         # Stats footer
         self._stats = QLabel()
         self._stats.setStyleSheet(
-            f"color: {_TEXT_MUT}; font-size: 11px;"
-            f" padding-top: 4px; border-top: 1px solid {_BORDER};"
+            f"color: {theme.TEXT_SECONDARY}; font-size: {theme.TYPE_MIN}px;"
+            f" padding-top: 4px; border-top: 1px solid {theme.BORDER};"
             f" background: transparent;"
         )
         lay.addWidget(self._stats)
@@ -253,7 +260,7 @@ class _TaskWindow(QMainWindow):
             item.setFlags(Qt.NoItemFlags)
             lbl = QLabel('No tasks yet. Say "add to list" to add one.')
             lbl.setStyleSheet(
-                f"color: {_TEXT_MUT}; padding: 12px 10px;"
+                f"color: {theme.TEXT_SECONDARY}; padding: 12px 10px;"
                 f" background: transparent; font-style: italic;"
             )
             item.setSizeHint(lbl.sizeHint())

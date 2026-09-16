@@ -31,12 +31,11 @@ _HEX_RE = re.compile(r"#([0-9a-fA-F]{6})\b")
 #   #1E1E24: hotkey-button hover, one step above BG2; theme has no BG3.
 #   #55555C: sidebar group header caption; TEXT_DISABLED vs ICON_IDLE is a
 #            judgement call, so it was left for the owner.
-EXPECTED_LEFTOVERS = {
-    "AEB4C0": 16,
-    "D7D9DE": 2,
-    "1E1E24": 1,
-    "55555C": 1,
-}
+#: Queue 129 moved the last four literals in the Settings sources onto
+#: tokens (#AEB4C0 -> TEXT_SECONDARY, #55555C -> TEXT_SECONDARY,
+#: #1E1E24 -> BG1, #D7D9DE -> TEXT_PRIMARY), so nothing is left. The
+#: whole-app version of this check is tests/test_colour_tokens.py.
+EXPECTED_LEFTOVERS: dict[str, int] = {}
 
 # The retired private palette -- must not appear anywhere any more.
 OLD_PALETTE = (
@@ -103,7 +102,7 @@ class TestSourceScan:
 
 class TestStylesheet:
     def test_stylesheet_is_substituted_from_tokens(self):
-        qss = settings_qt.STYLESHEET
+        qss = settings_qt.stylesheet()
         assert "${" not in qss                       # every Template placeholder resolved
         for token in (theme.BG0, theme.BG1, theme.BG2, theme.TEXT_PRIMARY,
                       theme.ACCENT, theme.ACCENT_HOVER, theme.TEXT_ON_ACCENT):
@@ -114,13 +113,13 @@ class TestStylesheet:
     def test_accent_is_the_theme_cyan_not_the_old_teal(self):
         """The visible change: settings used to be teal (#5EEAD4)."""
         assert theme.ACCENT.lower() != "#5eead4"
-        assert f"color: {theme.ACCENT};" in settings_qt.STYLESHEET
-        assert f"background-color: {theme.ACCENT};" in settings_qt.STYLESHEET
+        assert f"color: {theme.ACCENT};" in settings_qt.stylesheet()
+        assert f"background-color: {theme.ACCENT};" in settings_qt.stylesheet()
 
     def test_hotkey_button_styles_use_tokens(self):
-        assert theme.BG2 in settings_qt._HotkeyButton._IDLE
-        assert theme.TEXT_PRIMARY in settings_qt._HotkeyButton._IDLE
-        assert theme.ACCENT in settings_qt._HotkeyButton._CAPTURING
+        assert theme.BG2 in settings_qt._HotkeyButton._idle_qss()
+        assert theme.TEXT_PRIMARY in settings_qt._HotkeyButton._idle_qss()
+        assert theme.ACCENT in settings_qt._HotkeyButton._capturing_qss()
 
 
 class TestOffscreenSmoke:

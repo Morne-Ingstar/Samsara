@@ -22,20 +22,202 @@ Usage:  F:\\envs\\sami\\python.exe tools\\boot_profile.py [--gpu-load]
         --gpu-load actually constructs WhisperModel on CUDA (allocates ~1.5 GB
         VRAM next to the live app); without it the worker stops after imports.
 Output: one JSON document on stdout (last line) -- perf_artifacts/boot_profile.md carries the tables.
+
+Full-boot mode (queue 46):
+        F:\\envs\\sami\\python.exe tools\\boot_profile.py --full-boot N --label NAME [--no-cal-cache]
+            [--set dotted.key=<json> ...]
+        Boots the real dictation.py N times, each in a fresh temp SAMSARA_HOME_DIR holding copies
+        of config.json, hints_shown.json, app_index.json, .source-config-migrated, the polyphase
+        filter cache and (unless --no-cal-cache) mic_calibration.json. Every hotkey / mouse / command-mode button in the
+        temp config is rebound to F13-F24 so a test boot can never dictate, paste or swallow a key
+        the owner is using. Reads the temp home's samsara.log, stops the process tree 3 s after
+        "Startup complete" (or at 180 s), and writes perf_artifacts/boot_fullboot_NAME.{json,md}
+        with per-run milestones (seconds since Popen) and median / min-max per milestone.
 """
 import json
 import os
+import re
 import shutil
+import statistics
 import subprocess
 import sys
 import tempfile
 import time
+from datetime import datetime
 from pathlib import Path
 
 sys.stdout.reconfigure(encoding='utf-8')
 REPO = Path(__file__).resolve().parent.parent
 PY = sys.executable
 GPU_LOAD = '--gpu-load' in sys.argv
+
+# --- full-boot mode -------------------------------------------------------------
+
+_INERT_KEYS = [f'f{i}' for i in range(13, 25)] + [f'shift+f{i}' for i in range(13, 25)]
+_PROFILE_FILES = ['config.json', 'hints_shown.json', 'app_index.json', '.source-config-migrated']
+
+# (key, regex) -- first match wins per run; times are seconds since Popen.
+_MILESTONES = [
+    ('first_log', r'\[TORCH-GUARD\] enabled'),
+    ('main_entry', r'\[BOOT-DIAG\] __main__: entry'),
+    ('splash_shown', r'\[BOOT-DIAG\] splash init'),
+    ('init_entry', r'\[BOOT-DIAG\] __init__ entry'),
+    ('model_kickoff', r'\[BOOT\] model load kicked off'),
+    ('config_watcher', r'\[CONFIG\] File watcher started'),
+    ('shell_ready', r'\[BOOT\] shell ready'),
+    ('tray_created', r'\[BOOT\] tray icon created'),
+    ('tts_ready', r'\[TTS\] AudioCoordinator ready'),
+    ('whisper_ready', r'\[BOOT\] async: Whisper model load'),
+    ('silero_ready', r'\[BOOT\] async: Silero VAD load'),
+    ('ready_for_dictation', r'Ready for dictation\.'),
+    ('startup_complete', r'\[INIT\] Startup complete'),
+]
+_TS = re.compile(r'^(\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2},\d{3}) - \w+ - (.*)$')
+_STAGE = re.compile(r'\[BOOT\] (.+?): (\d+)ms\s+\(total \d+ms, thread=([^)]+)\)')
+
+
+def _inert_config(cfg: dict) -> dict:
+    keys = iter(_INERT_KEYS)
+    for k in sorted(cfg):
+        if (k.endswith('hotkey') or k.endswith('_key')) and isinstance(cfg[k], str):
+            cfg[k] = next(keys)
+    if isinstance(cfg.get('hotkeys'), dict):
+        for k in cfg['hotkeys']:
+            cfg['hotkeys'][k] = next(keys)
+    if isinstance(cfg.get('command_mode'), dict):
+        cfg['command_mode']['button'] = next(keys)
+    return cfg
+
+
+def _apply_overrides(cfg: dict, overrides) -> dict:
+    """--set dotted.key=<json> pairs, e.g. tts.enabled=false."""
+    for item in overrides:
+        dotted, raw = item.split('=', 1)
+        try:
+            value = json.loads(raw)
+        except ValueError:
+            value = raw
+        node = cfg
+        parts = dotted.split('.')
+        for p in parts[:-1]:
+            node = node.setdefault(p, {})
+        node[parts[-1]] = value
+    return cfg
+
+
+def _run_one_boot(cal_cache: bool, overrides=(), timeout_s: float = 180.0) -> dict:
+    live = Path(os.path.expanduser('~')) / '.samsara'
+    home = Path(tempfile.mkdtemp(prefix='samsara_fullboot_'))
+    files = _PROFILE_FILES + (['mic_calibration.json'] if cal_cache else [])
+    for name in files:
+        if (live / name).exists():
+            shutil.copy2(live / name, home / name)
+    # The live profile's polyphase filter disk cache (audio_engine.engine._filter_cache_path);
+    # without it every temp boot would re-design the filter (~0.9 s) and not match a real boot.
+    for npz in (live / 'cache').glob('polyphase_filter_*.npz'):
+        (home / 'cache').mkdir(exist_ok=True)
+        shutil.copy2(npz, home / 'cache' / npz.name)
+    cfg = json.loads((home / 'config.json').read_text(encoding='utf-8'))
+    cfg = _apply_overrides(_inert_config(cfg), overrides)
+    (home / 'config.json').write_text(json.dumps(cfg, indent=2), encoding='utf-8')
+    env = dict(os.environ, SAMSARA_HOME_DIR=str(home), PYTHONIOENCODING='utf-8')
+    log_path = home / 'logs' / 'samsara.log'
+    t0 = time.time()
+    proc = subprocess.Popen([PY, 'dictation.py'], cwd=str(REPO), env=env,
+                            stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL,
+                            creationflags=getattr(subprocess, 'CREATE_NEW_CONSOLE', 0))
+    done_at = None
+    while time.time() - t0 < timeout_s:
+        time.sleep(0.25)
+        if proc.poll() is not None:
+            break
+        if done_at is None and log_path.exists():
+            if 'Startup complete' in log_path.read_text(encoding='utf-8', errors='replace'):
+                done_at = time.time()
+        if done_at is not None and time.time() - done_at >= 3.0:
+            break
+    exit_code = proc.poll()
+    subprocess.run(['taskkill', '/T', '/F', '/PID', str(proc.pid)], capture_output=True)
+    text = log_path.read_text(encoding='utf-8', errors='replace') if log_path.exists() else ''
+    run = {'milestones': {}, 'stages': [], 'migrate_lines': 0, 'calibration': None,
+           'exit_code_before_kill': exit_code, 'timed_out': done_at is None}
+    for line in text.splitlines():
+        m = _TS.match(line)
+        if not m:
+            continue
+        ts = datetime.strptime(m.group(1), '%Y-%m-%d %H:%M:%S,%f').timestamp() - t0
+        msg = m.group(2)
+        for key, pat in _MILESTONES:
+            if key not in run['milestones'] and re.search(pat, msg):
+                run['milestones'][key] = round(ts, 3)
+        s = _STAGE.search(msg)
+        if s:
+            run['stages'].append({'label': s.group(1), 'ms': int(s.group(2)), 'thread': s.group(3)})
+        if '[MIGRATE]' in msg:
+            run['migrate_lines'] += 1
+        c = re.search(r'\[BOOT-DIAG\] mic calibration \((\w+)\): (\d+)ms', msg)
+        if c:
+            run['calibration'] = {'result': c.group(1), 'ms': int(c.group(2))}
+        if re.search(r'\[BOOT-DIAG\] (sounddevice import|__main__: entry|audio_engine import \(total\))', msg):
+            run.setdefault('diag', []).append(msg[:160])
+    shutil.rmtree(home, ignore_errors=True)
+    return run
+
+
+def _spread(values):
+    values = [v for v in values if v is not None]
+    if not values:
+        return None
+    return {'median': round(statistics.median(values), 3), 'min': round(min(values), 3),
+            'max': round(max(values), 3), 'n': len(values)}
+
+
+def full_boot_main(argv) -> None:
+    n = int(argv[argv.index('--full-boot') + 1])
+    label = argv[argv.index('--label') + 1] if '--label' in argv else 'run'
+    cal_cache = '--no-cal-cache' not in argv
+    overrides = [argv[i + 1] for i, a in enumerate(argv) if a == '--set']
+    runs = []
+    for i in range(n):
+        r = _run_one_boot(cal_cache, overrides)
+        runs.append(r)
+        ms = r['milestones']
+        print(f"[{label} {i + 1}/{n}] startup_complete={ms.get('startup_complete')}s "
+              f"whisper={ms.get('whisper_ready')}s shell={ms.get('shell_ready')}s "
+              f"timed_out={r['timed_out']}", flush=True)
+        time.sleep(5)  # let GPU memory and the audio device settle between boots
+    summary = {k: _spread([r['milestones'].get(k) for r in runs]) for k, _ in _MILESTONES}
+    stage_labels = []
+    for r in runs:
+        for s in r['stages']:
+            if s['label'] not in stage_labels:
+                stage_labels.append(s['label'])
+    stages = {lab: _spread([next((s['ms'] for s in r['stages'] if s['label'] == lab), None) for r in runs])
+              for lab in stage_labels}
+    out = {'label': label, 'cal_cache': cal_cache, 'overrides': overrides, 'n': n, 'summary_s': summary, 'stages_ms': stages, 'runs': runs,
+           'git_head': subprocess.run(['git', 'rev-parse', '--short', 'HEAD'], cwd=str(REPO),
+                                      capture_output=True, text=True).stdout.strip()}
+    perf = REPO / 'perf_artifacts'
+    (perf / f'boot_fullboot_{label}.json').write_text(json.dumps(out, indent=2), encoding='utf-8')
+    lines = [f'# Full boot: {label} ({n} runs, calibration cache {"on" if cal_cache else "off"}, '
+             f'overrides {overrides or "none"}, HEAD {out["git_head"]})', '',
+             'Seconds since Popen. Warm disk cache (a true cold boot needs a reboot).', '',
+             '| milestone | median s | min | max |', '|---|---:|---:|---:|']
+    for k, _ in _MILESTONES:
+        s = summary[k]
+        if s:
+            lines.append(f"| {k} | {s['median']} | {s['min']} | {s['max']} |")
+    lines += ['', '| [BOOT] stage | median ms | min | max |', '|---|---:|---:|---:|']
+    for lab, s in stages.items():
+        if s:
+            lines.append(f"| {lab} | {s['median']:.0f} | {s['min']:.0f} | {s['max']:.0f} |")
+    (perf / f'boot_fullboot_{label}.md').write_text('\n'.join(lines) + '\n', encoding='utf-8')
+    print('\n'.join(lines))
+
+
+if '--full-boot' in sys.argv:
+    full_boot_main(sys.argv)
+    sys.exit(0)
 
 # --- temp home: copy config.json only ---------------------------------------
 LIVE_HOME = Path(os.path.expanduser('~')) / '.samsara'

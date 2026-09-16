@@ -23,9 +23,11 @@ mode (the widget silently keeps whatever style it last resolved).
 """
 from __future__ import annotations
 
+import re
 import tempfile
 from pathlib import Path
 
+from PySide6.QtGui import QColor
 from PySide6.QtWidgets import QPushButton, QWidget
 
 # ---------------------------------------------------------------------------
@@ -38,6 +40,38 @@ def _hex_to_rgb(h: str) -> tuple[int, int, int]:
     return int(h[0:2], 16), int(h[2:4], 16), int(h[4:6], 16)
 
 
+_CSS_RGB = re.compile(
+    r"^\s*rgba?\(\s*([\d.]+)\s*,\s*([\d.]+)\s*,\s*([\d.]+)\s*(?:,\s*([\d.]+%?)\s*)?\)\s*$",
+    re.IGNORECASE)
+
+
+def qcolor(value) -> QColor:
+    """A token colour as a QColor, for painting (icons, QPainter pens).
+
+    Tokens are written for stylesheets, so several are CSS 'rgba(r,g,b,a)'
+    with a 0-1 alpha (TEXT_SECONDARY, TEXT_DISABLED, BORDER). QColor(str)
+    only understands '#rgb'/'#rrggbb'/'#aarrggbb' and SVG names: it returns an
+    INVALID colour for rgb()/rgba(), which a pen paints as opaque black --
+    the near-black sidebar icons (queue 74). Unparseable input falls back to
+    TEXT_PRIMARY rather than black, and is never silently invisible."""
+    if isinstance(value, QColor):
+        return QColor(value)
+    text = str(value or "").strip()
+    m = _CSS_RGB.match(text)
+    if m:
+        r, g, b = (max(0, min(255, round(float(c)))) for c in m.group(1, 2, 3))
+        alpha = m.group(4)
+        if alpha is None:
+            a = 255
+        elif alpha.endswith("%"):
+            a = round(max(0.0, min(100.0, float(alpha[:-1]))) * 2.55)
+        else:
+            a = round(max(0.0, min(1.0, float(alpha))) * 255)
+        return QColor(r, g, b, a)
+    colour = QColor(text)
+    return colour if colour.isValid() else QColor(TEXT_PRIMARY)
+
+
 def _rgb_to_hex(rgb: tuple[float, float, float]) -> str:
     return "#" + "".join(f"{max(0, min(255, round(c))):02x}" for c in rgb)
 
@@ -48,92 +82,371 @@ def _mix(hex_a: str, hex_b: str, t: float) -> str:
     return _rgb_to_hex(tuple(a[i] + (b[i] - a[i]) * t for i in range(3)))
 
 
-# ---------------------------------------------------------------------------
-# Surface tiers -- each step must read as visibly distinct on a cheap panel.
-# Values match the mic wizard's existing (proven-working) palette exactly,
-# so converting it to this system doesn't change its appearance.
-# ---------------------------------------------------------------------------
+def mix(hex_a: str, hex_b: str, t: float) -> str:
+    """An OPAQUE blend of two tokens, for a tinted fill that must not let the
+    surface behind it through (a state row, a warning strip). tint() is the
+    translucent one; this is the one to reach for when a widget sits on an
+    unknown background."""
+    return _mix(hex_a, hex_b, t)
 
-BG0 = "#0b0e14"   # window background
-BG1 = "#131820"   # cards, footers/nav bars -- one step up from the window
-BG2 = "#1a2030"   # inputs, hover states -- one step up from cards
-
-# Sharpened border: a translucent white hairline, not a flat gray. Applied to
-# every container, input, combo, and secondary button.
-BORDER = "rgba(255,255,255,0.16)"
-BORDER_FAINT = "rgba(255,255,255,0.08)"   # separators (hr-style, not outlines)
 
 # ---------------------------------------------------------------------------
-# Text tiers
+# Palettes (queue 129) -- TWO of them, one set of token names
 # ---------------------------------------------------------------------------
-
-TEXT_PRIMARY = "#e4e8ef"                  # near-white
-# Secondary copy still needs to read as secondary, but 65% white was too
-# subdued against all three dark surface tiers for explanatory text. Keep
-# this centralized so every shared-theme consumer gets the accessibility
-# improvement without one-off window overrides.
-TEXT_SECONDARY = "rgba(255,255,255,0.75)"
-TEXT_DISABLED = "rgba(255,255,255,0.40)"
-
-# ---------------------------------------------------------------------------
-# Accent -- read from the mic wizard's working "Next" button, the one
-# component the task calls out as already correct. Hover/pressed/disabled
-# are derived, not hand-picked, so the relationship stays principled.
-# ---------------------------------------------------------------------------
-
-ACCENT = "#5cc4d4"
-ACCENT_HOVER = _mix(ACCENT, "#ffffff", 0.10)     # brightens ~10%
-ACCENT_PRESSED = _mix(ACCENT, "#000000", 0.15)   # darkens ~15%
-# Dim accent, not gray-on-gray -- same trick as ARC's #1e3a6e: blend the
-# accent itself toward the window background rather than desaturating to gray.
-ACCENT_DISABLED = _mix(ACCENT, BG0, 0.65)
-TEXT_ON_ACCENT = BG0                              # dark text on accent fill
-
-# Status colors (kept from the mic wizard's existing palette -- not part of
-# the button/border system, but shared here so all three windows agree).
-SUCCESS = "#6ee7a0"   # success / ready
-ERROR = "#f87171"     # failure text and badges (red: never decorative)
-WARNING = "#fbbf24"   # warning / caution
-
-# ---------------------------------------------------------------------------
-# Visual identity (owner decision 2026-09-13): ONE accent, ONE semantic.
 #
-#   ACCENT (cyan) is the only brand colour. Surfaces are the BG0/BG1/BG2
-#   ladder above. Red is never decorative: it means live/recording
-#   (RECORDING) or failure (ERROR). SUCCESS green and WARNING amber keep
-#   their roles. No gold, no second accent.
+# Samsara was dark-only. Dark is not universally accessible: astigmatism,
+# some low-vision conditions and a bright room all read light-on-dark worse,
+# not better. So the token names below are a CONTRACT and the values behind
+# them come from whichever palette is active. Nothing outside this module
+# learns which theme is running -- no surface may branch on it, and
+# tests/test_colour_tokens.py fails the build on a colour literal anywhere
+# in the app.
 #
-# The icon system draws only from these tokens: assets/icon/samsara.svg is
-# the single source and tools/gen_icons.py renders every size and state.
-#   Wheel segments = capture state: ICON_IDLE grey (idle), ACCENT (listening
-#     / wake armed), RECORDING (recording), AVA (Ava owns capture).
-#     Motion and shape carry the state too, never colour alone: hollow
-#     segments = not recording, filled = recording; pulse = listening;
-#     spin = thinking/transcribing.
-#   Hub = hands-free state, drawn as an eye on an ICON_HUB disc: closed line
-#     = asleep/off, open eye with a pupil dot = wake listener armed, large
-#     filled pupil = wake phrase heard, listening for the command.
+# The contract, token by token:
+#   BG0  window background            BG1  cards, footers, nav bars
+#   BG2  inputs, hover fills          BORDER / BORDER_FAINT  hairlines
+#   TEXT_PRIMARY / TEXT_SECONDARY / TEXT_DISABLED   the three text tiers
+#   ACCENT  the one brand colour      TEXT_ON_ACCENT  text on an accent fill
+#   SUCCESS / WARNING / ERROR         state colours (never decorative)
+#   INK_LIGHT / INK_DARK  the palette's two extremes, for ink_on()
+#   RECORDING  live capture           AVA  the on-device assistant
+#   ICON_IDLE  idle marks AND the muted note text used all over Settings
+#   HOVER_WASH / PRESS_WASH  the translucent overlay on a hover/press
+#
+# Derived per palette, never hand-picked: ACCENT_HOVER, ACCENT_PRESSED,
+# ACCENT_DISABLED, ACCENT_DIM, BRAND_RED, ICON_HUB.
+#
+# CONTRAST IS THE ACCEPTANCE GATE, NOT TASTE. Every pair that renders text
+# clears WCAG AA 4.5:1 on all three surfaces in BOTH palettes; the measured
+# table is in tests/test_theme_contrast.py, which fails on a regression.
+# TEXT_DISABLED is the one deliberate exception -- WCAG 2.2 SC 1.4.3 exempts
+# inactive controls, and a disabled control that reads as enabled is its own
+# accessibility bug.
+
+#: Dark: the original palette, value for value. `dark` must stay the default
+#: and must not shift -- this is the app every existing screenshot shows.
+_DARK = {
+    "POLARITY": "dark",
+    "BG0": "#0b0e14",
+    "BG1": "#131820",
+    "BG2": "#1a2030",
+    # Sharpened border: a translucent white hairline, not a flat gray.
+    "BORDER": "rgba(255,255,255,0.16)",
+    "BORDER_FAINT": "rgba(255,255,255,0.08)",
+    "TEXT_PRIMARY": "#e4e8ef",
+    # 65% white was too subdued for explanatory text against all three dark
+    # surfaces; 75% is the accessibility fix every consumer inherits.
+    "TEXT_SECONDARY": "rgba(255,255,255,0.75)",
+    "TEXT_DISABLED": "rgba(255,255,255,0.40)",
+    "ACCENT": "#5cc4d4",
+    "TEXT_ON_ACCENT": "#0b0e14",      # = BG0; dark ink on the bright fill
+    "SUCCESS": "#6ee7a0",
+    "ERROR": "#f87171",
+    "WARNING": "#fbbf24",
+    "RECORDING": "#c0392b",
+    # The two extremes of ink this palette has to offer. ink_on() picks
+    # between them; nothing else should read them directly.
+    "INK_LIGHT": "#ffffff",
+    "INK_DARK": "#0b0e14",
+    "AVA": "#a78bfa",
+    "ICON_IDLE": "#8b929c",
+    "HOVER_WASH": "rgba(255,255,255,0.06)",
+    "PRESS_WASH": "rgba(255,255,255,0.10)",
+}
+
+#: Light: the same roles with the polarity flipped. Surfaces run white-ish
+#: (BG1 is the paper the cards are printed on, BG0 the desk under them, BG2
+#: the recessed input). Every hue keeps its identity -- the accent is still
+#: the same cyan family, red is still red -- but each is darkened until it
+#: clears 4.5:1 on white, because a colour tuned to glow on near-black is
+#: invisible on paper. Worst text pair here is 5.36:1 (ICON_IDLE on BG2).
+#: The reds are also held apart from each other by the same perceptual
+#: distance they have in the dark palette -- ERROR and RECORDING are both
+#: red on purpose, but they must not become the same red.
+_LIGHT = {
+    "POLARITY": "light",
+    "BG0": "#f3f6fa",
+    "BG1": "#ffffff",
+    "BG2": "#e8edf4",
+    "BORDER": "rgba(0,0,0,0.22)",
+    "BORDER_FAINT": "rgba(0,0,0,0.10)",
+    "TEXT_PRIMARY": "#11151c",
+    "TEXT_SECONDARY": "rgba(0,0,0,0.68)",
+    "TEXT_DISABLED": "rgba(0,0,0,0.38)",
+    "ACCENT": "#05687f",
+    "TEXT_ON_ACCENT": "#ffffff",      # light ink on the dark fill
+    "SUCCESS": "#0d6a35",
+    "ERROR": "#b81f1f",
+    "WARNING": "#7f4c00",
+    "RECORDING": "#7d1a0e",
+    "INK_LIGHT": "#ffffff",
+    "INK_DARK": "#0a0c11",
+    "AVA": "#5731bf",
+    "ICON_IDLE": "#5c6068",
+    "HOVER_WASH": "rgba(0,0,0,0.05)",
+    "PRESS_WASH": "rgba(0,0,0,0.09)",
+}
+
+PALETTES = {"dark": _DARK, "light": _LIGHT}
+
+#: Values a config key may carry. "system" is resolved, never stored active.
+THEME_CHOICES = ("dark", "light", "system")
+DEFAULT_THEME = "dark"
+
+#: Every name _install() binds as a module attribute. The colour-literal test
+#: reads this, so a token added to a palette without being listed here fails.
+PALETTE_TOKENS = tuple(_DARK)
+DERIVED_TOKENS = (
+    "ACCENT_HOVER", "ACCENT_PRESSED", "ACCENT_DISABLED", "ACCENT_DIM",
+    "BRAND_RED", "ICON_HUB",
+)
+
+#: The palette currently bound to the module attributes. Read it with
+#: active_theme(); nothing outside this module may branch on it to pick a
+#: colour -- that is what the tokens are for. It exists so the app can tell
+#: the user which theme is live and so tests can assert a switch happened.
+_ACTIVE = DEFAULT_THEME
+
+
+def _install(name: str) -> None:
+    """Bind one palette's tokens, and everything derived from them, onto this
+    module. Every colour in the app resolves through these attributes, so
+    this one call is the whole theme switch."""
+    global _ACTIVE
+    values = dict(PALETTES[name])
+
+    accent, bg0, bg1 = values["ACCENT"], values["BG0"], values["BG1"]
+    if values["POLARITY"] == "dark":
+        # A bright accent on a dark surface: lift on hover, sink on press.
+        values["ACCENT_HOVER"] = _mix(accent, "#ffffff", 0.10)
+        values["ACCENT_PRESSED"] = _mix(accent, "#000000", 0.15)
+    else:
+        # A dark accent on a light surface: the same gesture goes down BOTH
+        # times, or hover would wash the fill out toward the page.
+        values["ACCENT_HOVER"] = _mix(accent, "#000000", 0.12)
+        values["ACCENT_PRESSED"] = _mix(accent, "#000000", 0.26)
+    # Dim accent, not gray-on-gray -- same trick as ARC's #1e3a6e: blend the
+    # accent itself toward the window background rather than desaturating.
+    values["ACCENT_DISABLED"] = _mix(accent, bg0, 0.65)
+    # A tinted accent SURFACE (selected rows, "armed" chips), never text.
+    values["ACCENT_DIM"] = _mix(accent, bg1, 0.78)
+    # Retired as a brand colour; the name is kept for existing importers and
+    # its only role is now RECORDING (live capture).
+    values["BRAND_RED"] = values["RECORDING"]
+    # Hub disc behind the eye, so the eye reads on any taskbar colour.
+    values["ICON_HUB"] = bg1
+
+    globals().update(values)
+    _ACTIVE = name
+    # Derived artefacts that bake token values in. Rebuilt on every switch,
+    # never cached across one.
+    globals()["ARROW_PATH"] = _write_arrow_svg()
+    globals()["SCROLLBAR_QSS"] = _scrollbar_qss()
+
+
+def active_theme() -> str:
+    """Which palette is bound right now: "dark" or "light" (never "system")."""
+    return _ACTIVE
+
+
+def detect_os_theme() -> str:
+    """The OS's own light/dark preference, or DEFAULT_THEME if it cannot be
+    read. Windows keeps it in AppsUseLightTheme (1 = light, 0 = dark); a
+    missing key, a non-Windows host and a frozen build with no registry
+    access all fall back rather than guessing."""
+    try:
+        import winreg  # noqa: PLC0415
+    except ImportError:
+        return DEFAULT_THEME
+    try:
+        with winreg.OpenKey(
+            winreg.HKEY_CURRENT_USER,
+            "Software\\Microsoft\\Windows\\CurrentVersion\\Themes\\Personalize",
+        ) as key:
+            value, _ = winreg.QueryValueEx(key, "AppsUseLightTheme")
+    except OSError:
+        return DEFAULT_THEME
+    try:
+        return "light" if int(value) == 1 else "dark"
+    except (TypeError, ValueError):
+        return DEFAULT_THEME
+
+
+def resolve_theme(setting) -> str:
+    """Map a config value to a palette name. "system" asks the OS; anything
+    unrecognised (a hand-edited config, an older build's value) falls back to
+    the default rather than raising -- a config typo must not cost the user
+    their window."""
+    name = str(setting or "").strip().lower()
+    if name == "system":
+        return detect_os_theme()
+    return name if name in PALETTES else DEFAULT_THEME
+
+
+def set_theme(setting, *, refresh: bool = True) -> str:
+    """Make `setting` ("dark" / "light" / "system") the live palette and
+    return the palette name it resolved to. Call it ONCE at startup before
+    any window is built; call it again with refresh=True to switch a running
+    app (see refresh_all() for what that can and cannot reach)."""
+    name = resolve_theme(setting)
+    if name != _ACTIVE:
+        _install(name)
+        if refresh:
+            refresh_all()
+    return name
+
+
+def refresh_all() -> int:
+    """Re-style what is already on screen, and return how many widgets took
+    it. Best effort by design: a window builds most of its per-widget
+    stylesheets in its constructor, so only widgets that expose an
+    `apply_theme()` of their own can be repainted in place. Everything else
+    picks the new palette up the next time it is opened -- which is why the
+    Settings control says so out loud instead of leaving the user in front of
+    a half-themed app."""
+    from PySide6.QtWidgets import QApplication  # noqa: PLC0415
+
+    app = QApplication.instance()
+    if app is None:
+        return 0
+    app.setStyleSheet((app.styleSheet() or "").split(_SCROLLBAR_MARKER)[0])
+    install_app_scrollbars(app)
+
+    restyled = 0
+    seen = set()
+    stack = list(app.topLevelWidgets())
+    while stack:
+        widget = stack.pop()
+        if id(widget) in seen:
+            continue
+        seen.add(id(widget))
+        stack.extend(widget.findChildren(QWidget))
+        hook = getattr(widget, "apply_theme", None)
+        if callable(hook):
+            try:
+                hook()
+                restyled += 1
+            except Exception:   # a repaint must never take the app down
+                pass
+        widget.update()
+    return restyled
+
+
+# ---------------------------------------------------------------------------
+# Contrast math -- the acceptance gate for a palette, not a test-only helper
 # ---------------------------------------------------------------------------
 
-RECORDING = "#c0392b"   # live capture: recording wheel segments, "live" state
-# Retired as a brand colour. The token name is kept for existing importers;
-# its only role is now RECORDING (live/recording).
-BRAND_RED = RECORDING
-AVA = "#a78bfa"         # Ava, the on-device assistant, owns the capture
-ICON_IDLE = "#8b929c"   # idle wheel segments and the closed eye; mid grey that reads on light and dark taskbars
-ICON_HUB = BG1          # hub disc behind the eye, so the eye reads on any taskbar colour
+def _relative_luminance(rgb) -> float:
+    channels = []
+    for value in rgb:
+        channel = value / 255.0
+        channels.append(channel / 12.92 if channel <= 0.04045
+                        else ((channel + 0.055) / 1.055) ** 2.4)
+    return 0.2126 * channels[0] + 0.7152 * channels[1] + 0.0722 * channels[2]
+
+
+def composite(value, over_hex: str):
+    """A token as an opaque (r,g,b), flattening a translucent one onto
+    `over_hex`.
+
+    Several text tokens are `rgba(...)` with a 0-1 alpha, so the contrast the
+    user actually sees depends on the surface behind them. Measuring such a
+    token as if it were opaque reports a ratio that is never on screen."""
+    colour = qcolor(value)
+    alpha = colour.alpha() / 255.0
+    base = _hex_to_rgb(over_hex)
+    return tuple(round(base[i] * (1.0 - alpha) + channel * alpha)
+                 for i, channel in enumerate(colour.getRgb()[:3]))
+
+
+def ink_on(fill_hex: str) -> str:
+    """The ink from this palette that reads best on a saturated fill.
+
+    There is no one answer, in either palette. White reads on the dark
+    palette's RECORDING (5.44:1) and disappears on its ERROR (2.77:1); the
+    window colour reads on ERROR (6.98:1) and disappears on RECORDING
+    (3.55:1). A badge that picks one and keeps it is unreadable half the
+    time, so the choice is measured rather than written down."""
+    return max((INK_LIGHT, INK_DARK), key=lambda ink: contrast_ratio(ink, fill_hex))
+
+
+def contrast_ratio(foreground, background_hex: str) -> float:
+    """WCAG 2.2 contrast of a token against an opaque surface token. 4.5:1 is
+    the AA floor for normal text, 3:1 for large text and for graphics."""
+    fore = _relative_luminance(composite(foreground, background_hex))
+    back = _relative_luminance(_hex_to_rgb(background_hex))
+    lighter, darker = max(fore, back), min(fore, back)
+    return (lighter + 0.05) / (darker + 0.05)
+
 
 # ---------------------------------------------------------------------------
-# Type scale (4 sizes, mirroring the precedent's scale)
+# Type scale -- ONE scale for the whole app, with enforced floors (queue 83)
 # ---------------------------------------------------------------------------
+#
+# Every font size in the app is one of the TYPE_* tokens below, in CSS/Qt
+# logical px (Qt 6 scales px with Windows display scaling and with Samsara's
+# own Interface size). tests/test_type_floor.py fails the build on a numeric
+# size literal anywhere in samsara/, plugins/ or dictation.py, on a size that
+# bypasses these tokens, on a point-size QFont, and on thin weights.
+#
+# The floors, and why these numbers (an agent cannot see small text; the
+# standard has to be written down):
+#   * WCAG 2.2 sets NO minimum size -- SC 1.4.4 only requires text to survive
+#     200% zoom, SC 1.4.3 defines "large text" as 18pt / 14pt bold. So the
+#     floors come from platform and low-vision guidance instead.
+#   * Windows 11 Fluent type ramp: Body 14 epx, Caption 12 epx. Captions at
+#     12 are a convention for typical sight; this app is for people who are
+#     not typical, and the owner reports the 12-14 px text as hard to read.
+#   * Browser default text, and NN/g, GOV.UK and USWDS body guidance: 16 px.
+#     RNIB Clear Print: 12 pt minimum for reading text -- 16 px at 96 dpi.
+#   TYPE_MIN (14 px): the ABSOLUTE floor -- nothing in the app is smaller than
+#     Windows' own body text. Captions, badges, letterspaced section labels.
+#   TYPE_BODY (16 px): the BODY floor -- anything a user reads as sentences
+#     (body, descriptions, instructions, buttons, inputs, list rows).
+#   Weight: regular (400) or heavier. No Light/Semilight/Thin faces or
+#     font-weight below 400: a thin stroke at 14 px reads smaller than a
+#     regular stroke at 13 (the owner: "small AND thin").
+# Headings keep their step above body so hierarchy survives the floor.
+TYPE_FLOOR_ABSOLUTE = 14
+TYPE_FLOOR_BODY = 16
+FONT_WEIGHT_MIN = 400
+
+TYPE_MIN = TYPE_FLOOR_ABSOLUTE   # captions, badges, metadata, chips
+TYPE_BODY = TYPE_FLOOR_BODY      # body copy, buttons, inputs, list rows
+TYPE_EMPHASIS = 17               # nav rows, card titles, row titles
+TYPE_HEADING = 18                # section headings, the one state line
+TYPE_TITLE = 22                  # window/page titles
+TYPE_DISPLAY = 26                # display wordmark, large labels
+TYPE_FIGURE = 28                 # usage figures
+TYPE_HERO = 40                   # splash title, the biggest in-window text
+TYPE_BANNER = 56                 # full-screen demo banners
+TYPE_GLYPH = 96                  # single decorative glyphs (not reading text)
 
 FONT_FAMILY = "'Segoe UI', system-ui, sans-serif"
-FONT_SIZE_TITLE = 20
-FONT_SIZE_HEADING = 15
-FONT_SIZE_BODY = 13
-# 12 px is the smallest supported shared-theme text. Legacy windows with
-# private stylesheets are intentionally outside this token's scope.
-FONT_SIZE_CAPTION = 12
+# The four shared-scale names predate the hub scale; kept for importers, now
+# aliases of the one scale.
+FONT_SIZE_TITLE = TYPE_TITLE
+FONT_SIZE_HEADING = TYPE_HEADING
+FONT_SIZE_BODY = TYPE_BODY
+FONT_SIZE_CAPTION = TYPE_MIN
+
+
+def qfont(px: int, family: str = "Segoe UI", weight=None, italic: bool = False):
+    """A QFont sized in px from a TYPE_* token -- never QFont(family, points).
+
+    Qt's point sizes are 1.33x px at 96 dpi, so a point literal silently
+    means a different size from every stylesheet token (a 9 pt label is
+    12 px). Painted text and overlays use this so the one scale and its
+    floor apply to them too."""
+    from PySide6.QtGui import QFont  # noqa: PLC0415
+
+    font = QFont(family)
+    font.setPixelSize(int(px))  # type-floor: exempt -- this IS the helper every caller uses
+    if weight is not None:
+        font.setWeight(weight)
+    if italic:
+        font.setItalic(True)
+    return font
 
 # Inscription-style display face, used once: the creed on the Home page's
 # identity strip ("Free - Open source - Accessibility first"). Letterspaced
@@ -143,25 +456,25 @@ FONT_SIZE_CAPTION = 12
 FONT_FAMILY_DISPLAY = "'Perpetua Titling MT', 'Palatino Linotype', 'Book Antiqua', Georgia, serif"
 # The wordmark beside the mark in the hub window's header band (38): the
 # display face at a real display size, letterspaced. Additive tokens.
-FONT_SIZE_DISPLAY = 22
+FONT_SIZE_DISPLAY = TYPE_DISPLAY
 LETTER_SPACING_DISPLAY = "0.14em"
 
-# Hub type scale (41): ONE scale for the hub window and its Home page. Every
-# text role on Home maps to one of these; none is below TYPE_MIN. Additive --
-# the four shared sizes above are unchanged.
-TYPE_MIN = 12
-TYPE_NAV = 15               # sidebar rows
-TYPE_STATE = 16             # Home's one state line
-TYPE_CARD_TITLE = 15        # capability card titles, the outcome kind
-TYPE_BODY = 14              # body copy, buttons, card values
-TYPE_SECONDARY = 14         # instruction line, descriptions, notes
-TYPE_SECTION_LABEL = 12     # letterspaced capitals ("WHAT YOU CAN DO")
+# Hub type scale (41): the hub window and its Home page. Role names kept;
+# values follow the one scale above (83).
+TYPE_NAV = TYPE_EMPHASIS            # sidebar rows
+TYPE_STATE = TYPE_HEADING           # Home's one state line
+TYPE_CARD_TITLE = TYPE_EMPHASIS     # capability card titles, the outcome kind
+TYPE_SECONDARY = TYPE_BODY          # instruction line, descriptions, notes (reading text)
+TYPE_SECTION_LABEL = TYPE_MIN       # letterspaced capitals ("WHAT YOU CAN DO")
 LETTER_SPACING_SECTION = "0.08em"
-TYPE_FIGURE = 24            # usage figures (words today, infinity)
-TYPE_CREED = 14             # the creed, in the display face
+TYPE_CREED = TYPE_BODY              # the creed, in the display face
 
 #: Home's text roles -> px (the table tests/test_home_qt.py checks).
+#: "page title" and "tagline" are additive (queue 86): Home now opens with a
+#: title and the owner's one-line tagline instead of a state panel.
 HOME_TYPE_SCALE = {
+    "page title": TYPE_FIGURE,
+    "tagline": TYPE_SECONDARY,
     "nav": TYPE_NAV,
     "state line": TYPE_STATE,
     "instruction": TYPE_SECONDARY,
@@ -195,49 +508,62 @@ HOME_TYPE_SCALE = {
 # ---------------------------------------------------------------------------
 
 def _write_arrow_svg() -> str:
-    fill = _mix(BG2, "#ffffff", 0.75)   # approximates TEXT_SECONDARY over BG2
+    # Approximates TEXT_SECONDARY composited over BG2, whichever way the
+    # palette points: blend BG2 toward the ink colour, not toward white.
+    ink = "#ffffff" if POLARITY == "dark" else "#000000"
+    fill = _mix(BG2, ink, 0.75)
     svg = (
         '<svg xmlns="http://www.w3.org/2000/svg" width="10" height="6" viewBox="0 0 10 6">'
         f'<path d="M0 0 L5 6 L10 0 Z" fill="{fill}"/></svg>'
     )
-    path = Path(tempfile.gettempdir()) / "samsara_theme_combo_arrow.svg"
+    # One file per theme: Qt caches QSS url() images by path, so reusing one
+    # filename would keep painting the dark arrow after a switch to light.
+    path = Path(tempfile.gettempdir()) / f"samsara_theme_combo_arrow_{POLARITY}.svg"
     path.write_text(svg, encoding="utf-8")
     return path.as_posix()   # QSS url() requires forward slashes, even on Windows
-
-
-ARROW_PATH = _write_arrow_svg()
 
 # ---------------------------------------------------------------------------
 # Per-widget stylesheets (used directly by make_primary/make_secondary, not
 # just via the dialog-wide QSS class selectors -- see module docstring).
 # ---------------------------------------------------------------------------
 
-_PRIMARY_BUTTON_QSS = (
-    f"QPushButton{{background:{ACCENT};color:{TEXT_ON_ACCENT};"
-    f"border:none;border-radius:6px;font-weight:600;padding:10px 24px;}}"
-    f"QPushButton:hover{{background:{ACCENT_HOVER};color:{TEXT_ON_ACCENT};}}"
-    f"QPushButton:pressed{{background:{ACCENT_PRESSED};color:{TEXT_ON_ACCENT};}}"
-    f"QPushButton:disabled{{background:{ACCENT_DISABLED};color:{TEXT_DISABLED};}}"
-)
+# These are FUNCTIONS, not module constants (queue 129). An f-string
+# evaluated at import time freezes whichever palette happened to be active
+# when the module first loaded, which is exactly how a theme switch leaves
+# one dialog black in the middle of a light app. Every QSS string in this
+# file, and in every window that has its own sheet, is built on demand.
 
-_SECONDARY_BUTTON_QSS = (
-    f"QPushButton{{background:transparent;color:{TEXT_PRIMARY};"
-    f"border:1px solid {BORDER};border-radius:6px;padding:10px 24px;}}"
-    f"QPushButton:hover{{background:rgba(255,255,255,0.06);color:{TEXT_PRIMARY};"
-    f"border-color:{BORDER};}}"
-    f"QPushButton:pressed{{background:rgba(255,255,255,0.10);color:{TEXT_PRIMARY};}}"
-    f"QPushButton:disabled{{background:transparent;color:{TEXT_DISABLED};"
-    f"border-color:{BORDER_FAINT};}}"
-)
+def primary_button_qss() -> str:
+    return (
+        f"QPushButton{{background:{ACCENT};color:{TEXT_ON_ACCENT};"
+        f"border:none;border-radius:6px;font-weight:600;padding:10px 24px;}}"
+        f"QPushButton:hover{{background:{ACCENT_HOVER};color:{TEXT_ON_ACCENT};}}"
+        f"QPushButton:pressed{{background:{ACCENT_PRESSED};color:{TEXT_ON_ACCENT};}}"
+        f"QPushButton:disabled{{background:{ACCENT_DISABLED};color:{TEXT_DISABLED};}}"
+    )
+
+
+def secondary_button_qss() -> str:
+    return (
+        f"QPushButton{{background:transparent;color:{TEXT_PRIMARY};"
+        f"border:1px solid {BORDER};border-radius:6px;padding:10px 24px;}}"
+        f"QPushButton:hover{{background:{HOVER_WASH};color:{TEXT_PRIMARY};"
+        f"border-color:{BORDER};}}"
+        f"QPushButton:pressed{{background:{PRESS_WASH};color:{TEXT_PRIMARY};}}"
+        f"QPushButton:disabled{{background:transparent;color:{TEXT_DISABLED};"
+        f"border-color:{BORDER_FAINT};}}"
+    )
+
 
 # Lower-emphasis than secondary: no border, muted text -- for de-emphasized
 # actions like "Skip" that shouldn't compete with the primary/secondary pair.
-_GHOST_BUTTON_QSS = (
-    f"QPushButton{{background:transparent;color:{TEXT_SECONDARY};"
-    f"border:none;padding:10px 12px;}}"
-    f"QPushButton:hover{{color:{TEXT_PRIMARY};background:transparent;}}"
-    f"QPushButton:disabled{{color:{TEXT_DISABLED};}}"
-)
+def ghost_button_qss() -> str:
+    return (
+        f"QPushButton{{background:transparent;color:{TEXT_SECONDARY};"
+        f"border:none;padding:10px 12px;}}"
+        f"QPushButton:hover{{color:{TEXT_PRIMARY};background:transparent;}}"
+        f"QPushButton:disabled{{color:{TEXT_DISABLED};}}"
+    )
 
 
 def make_primary(btn: QPushButton) -> None:
@@ -248,7 +574,7 @@ def make_primary(btn: QPushButton) -> None:
     property-set -> unpolish -> polish order Qt requires to pick up a
     property change that affects style selectors."""
     btn.setProperty("class", "primary")
-    btn.setStyleSheet(_PRIMARY_BUTTON_QSS)
+    btn.setStyleSheet(primary_button_qss())
     btn.style().unpolish(btn)
     btn.style().polish(btn)
 
@@ -256,7 +582,7 @@ def make_primary(btn: QPushButton) -> None:
 def make_secondary(btn: QPushButton) -> None:
     """Style btn as the secondary (outlined) action. See make_primary()."""
     btn.setProperty("class", "secondary")
-    btn.setStyleSheet(_SECONDARY_BUTTON_QSS)
+    btn.setStyleSheet(secondary_button_qss())
     btn.style().unpolish(btn)
     btn.style().polish(btn)
 
@@ -265,18 +591,19 @@ def make_ghost(btn: QPushButton) -> None:
     """Style btn as a low-emphasis, borderless action (e.g. "Skip"). See
     make_primary()."""
     btn.setProperty("class", "ghost")
-    btn.setStyleSheet(_GHOST_BUTTON_QSS)
+    btn.setStyleSheet(ghost_button_qss())
     btn.style().unpolish(btn)
     btn.style().polish(btn)
 
 
-_FOOTER_QSS = f"background:{BG1};border-top:1px solid {BORDER};"
+def footer_qss() -> str:
+    return f"background:{BG1};border-top:1px solid {BORDER};"
 
 
 def style_footer(widget: QWidget) -> None:
     """Apply the footer/nav-bar treatment: BG1 fill + a 1px top border so it
     visually separates from the body above it."""
-    widget.setStyleSheet(_FOOTER_QSS)
+    widget.setStyleSheet(footer_qss())
 
 
 # ---------------------------------------------------------------------------
@@ -355,10 +682,37 @@ def _rgba(hex_color: str, alpha: float) -> str:
     return f"rgba({r},{g},{b},{alpha:.2f})"
 
 
+def tint(hex_color: str, alpha: float) -> str:
+    """A token at partial opacity, for a tinted surface or a hairline.
+
+    The public spelling of the private helper above. Use it instead of
+    writing `rgba(94,234,212,0.15)` -- that literal is the dark accent, and
+    on a light surface it is a barely-there wash of a colour that is no
+    longer the accent at all."""
+    return _rgba(hex_color, alpha)
+
+
+def wash(alpha: float) -> str:
+    """A translucent overlay in the palette's OWN ink direction: white on a
+    dark surface, black on a light one.
+
+    Hover and press states all over the app were written as
+    `rgba(255,255,255,0.06)`. On paper that is invisible -- the same gesture
+    has to go the other way, and only this module knows which way that is."""
+    ink = "#ffffff" if POLARITY == "dark" else "#000000"
+    return _rgba(ink, alpha)
+
+
 def _scrollbar_qss() -> str:
     bar = SCROLLBAR_WIDTH + 2 * _SCROLLBAR_MARGIN
     radius = SCROLLBAR_WIDTH // 2
-    rest, hover, pressed = _rgba(ICON_IDLE, 0.35), _rgba(ICON_IDLE, 0.55), _rgba(ACCENT, 0.55)
+    # The handle is a control, not decoration: WCAG 1.4.11 wants 3:1
+    # against the page behind it. A 35% wash of ICON_IDLE clears that on
+    # the dark surfaces but not on paper, so the light palette leans on
+    # the token harder rather than on a second colour.
+    base = 0.35 if POLARITY == "dark" else 0.60
+    rest, hover, pressed = (_rgba(ICON_IDLE, base), _rgba(ICON_IDLE, base + 0.20),
+                            _rgba(ACCENT, 0.70))
     return f"""
 QScrollBar:vertical {{
     background: transparent; border: none; margin: 0px; width: {bar}px;
@@ -390,7 +744,6 @@ QAbstractScrollArea::corner {{ background: transparent; border: none; }}
 """
 
 
-SCROLLBAR_QSS = _scrollbar_qss()
 _SCROLLBAR_MARKER = "/* samsara-scrollbars */"
 
 
@@ -446,8 +799,8 @@ QPushButton[class="secondary"] {{
     border-radius: 6px;
     padding: 10px 24px;
 }}
-QPushButton[class="secondary"]:hover {{ background-color: rgba(255,255,255,0.06); border-color: {BORDER}; }}
-QPushButton[class="secondary"]:pressed {{ background-color: rgba(255,255,255,0.10); }}
+QPushButton[class="secondary"]:hover {{ background-color: {HOVER_WASH}; border-color: {BORDER}; }}
+QPushButton[class="secondary"]:pressed {{ background-color: {PRESS_WASH}; }}
 QPushButton[class="secondary"]:disabled {{ color: {TEXT_DISABLED}; border-color: {BORDER_FAINT}; }}
 
 QPushButton[class="ghost"] {{
@@ -473,12 +826,12 @@ QFrame[class="card"] {{
 }}
 QFrame[class="instructionBox"] {{
     background-color: {BG1};
-    border: 1px solid rgba(92,196,212,0.25);
+    border: 1px solid {_rgba(ACCENT, 0.25)};
     border-radius: 8px;
 }}
 QFrame[class="successBanner"] {{
-    background-color: rgba(92,196,212,0.08);
-    border: 1px solid rgba(92,196,212,0.3);
+    background-color: {_rgba(ACCENT, 0.08)};
+    border: 1px solid {_rgba(ACCENT, 0.3)};
     border-radius: 8px;
 }}
 QFrame[class="guideCard"] {{
@@ -486,10 +839,10 @@ QFrame[class="guideCard"] {{
     border: 1px solid {BORDER};
     border-radius: 8px;
 }}
-QFrame[class="guideCard"]:hover {{ border-color: rgba(92,196,212,0.4); }}
+QFrame[class="guideCard"]:hover {{ border-color: {_rgba(ACCENT, 0.4)}; }}
 QFrame[class="tipFrame"] {{
-    background-color: rgba(92,196,212,0.08);
-    border: 1px solid rgba(92,196,212,0.25);
+    background-color: {_rgba(ACCENT, 0.08)};
+    border: 1px solid {_rgba(ACCENT, 0.25)};
     border-radius: 8px;
 }}
 
@@ -545,4 +898,12 @@ QRadioButton::indicator:checked {{
 }}
 
 QScrollArea {{ border: none; background: transparent; }}
-""" + SCROLLBAR_QSS
+""" + _scrollbar_qss()
+
+
+# ---------------------------------------------------------------------------
+# Bind the default palette. samsara.ui.theme_boot calls set_theme() with the
+# user's `ui.theme` before the app builds a single window; importing this
+# module on its own (a test, a tool) gets dark, the shipped default.
+# ---------------------------------------------------------------------------
+_install(DEFAULT_THEME)

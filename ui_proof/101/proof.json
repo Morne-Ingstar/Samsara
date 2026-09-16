@@ -1,0 +1,56 @@
+[
+  {
+    "size": "900x650",
+    "page": "Home",
+    "file": "hub_900x650_home.png",
+    "band_height": 64,
+    "samsara_labels_in_band": 1,
+    "wordmark_objectName": "hubWordmark",
+    "wordmark_x": 72,
+    "mark_right_edge": 54,
+    "left_of_band_midpoint": true,
+    "window_title": "Samsara",
+    "home_scroll_maximum": 0,
+    "home_overflowing_widgets": [],
+    "home_samsara_labels_in_body": 0
+  },
+  {
+    "size": "900x650",
+    "page": "History",
+    "file": "hub_900x650_history.png",
+    "band_height": 64,
+    "samsara_labels_in_band": 1,
+    "wordmark_objectName": "hubWordmark",
+    "wordmark_x": 72,
+    "mark_right_edge": 54,
+    "left_of_band_midpoint": true,
+    "window_title": "Samsara"
+  },
+  {
+    "size": "1065x906",
+    "page": "Home",
+    "file": "hub_1065x906_home.png",
+    "band_height": 64,
+    "samsara_labels_in_band": 1,
+    "wordmark_objectName": "hubWordmark",
+    "wordmark_x": 72,
+    "mark_right_edge": 54,
+    "left_of_band_midpoint": true,
+    "window_title": "Samsara",
+    "home_scroll_maximum": 0,
+    "home_overflowing_widgets": [],
+    "home_samsara_labels_in_body": 0
+  },
+  {
+    "size": "1065x906",
+    "page": "History",
+    "file": "hub_1065x906_history.png",
+    "band_height": 64,
+    "samsara_labels_in_band": 1,
+    "wordmark_objectName": "hubWordmark",
+    "wordmark_x": 72,
+    "mark_right_edge": 54,
+    "left_of_band_midpoint": true,
+    "window_title": "Samsara"
+  }
+]

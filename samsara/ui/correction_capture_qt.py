@@ -35,55 +35,50 @@ logger = get_logger(__name__)
 # below stays readable).
 # ---------------------------------------------------------------------------
 
-_BG         = theme.BG0
-_SURFACE    = theme.BG1
-_ELEVATED   = theme.BG2
-_BORDER     = theme.BORDER
-_ACCENT     = theme.ACCENT
-_ACCENT_DIM = "#1a3a42"
-_TEXT_PRI   = theme.TEXT_PRIMARY
-_TEXT_SEC   = theme.TEXT_SECONDARY
-_TEXT_DIS   = theme.TEXT_DISABLED
 
 # >= 40px accessibility minimum for interactive controls (history_view.py /
 # stress_wizard_qt.py convention).
 _MIN_TARGET = 44
 
-_STYLESHEET = f"""
-QMainWindow, QWidget {{
-    background-color: {_BG};
-    color: {_TEXT_PRI};
-    font-family: {theme.FONT_FAMILY};
-    font-size: {theme.FONT_SIZE_BODY}px;
-}}
-QTextEdit {{
-    background-color: {_ELEVATED};
-    border: 1px solid {_BORDER};
-    color: {_TEXT_PRI};
-    font-family: {theme.FONT_FAMILY};
-    font-size: {theme.FONT_SIZE_BODY + 2}px;
-    padding: 8px 10px;
-}}
-QTextEdit:focus {{ border: 1px solid {_ACCENT}; }}
-QPushButton {{
-    background-color: {_SURFACE};
-    border: 1px solid {_BORDER};
-    border-radius: 4px;
-    color: {_TEXT_PRI};
-    padding: 8px 14px;
-    font-size: {theme.FONT_SIZE_BODY}px;
-}}
-QPushButton:hover {{
-    background-color: {_ELEVATED};
-    border-color: {_ACCENT};
-}}
-QPushButton:pressed {{
-    background-color: {_ACCENT_DIM};
-}}
-QPushButton:disabled {{
-    color: {_TEXT_DIS};
-}}
-QScrollArea {{ border: none; background: transparent; }}
+def _stylesheet() -> str:
+    """The window's stylesheet, built on demand. Never a module
+    constant: an f-string evaluated at import time freezes whichever
+    palette was live then (queue 129)."""
+    return f"""
+    QMainWindow, QWidget {{
+        background-color: {theme.BG0};
+        color: {theme.TEXT_PRIMARY};
+        font-family: {theme.FONT_FAMILY};
+        font-size: {theme.FONT_SIZE_BODY}px;
+    }}
+    QTextEdit {{
+        background-color: {theme.BG2};
+        border: 1px solid {theme.BORDER};
+        color: {theme.TEXT_PRIMARY};
+        font-family: {theme.FONT_FAMILY};
+        font-size: {theme.TYPE_EMPHASIS}px;
+        padding: 8px 10px;
+    }}
+    QTextEdit:focus {{ border: 1px solid {theme.ACCENT}; }}
+    QPushButton {{
+        background-color: {theme.BG1};
+        border: 1px solid {theme.BORDER};
+        border-radius: 4px;
+        color: {theme.TEXT_PRIMARY};
+        padding: 8px 14px;
+        font-size: {theme.FONT_SIZE_BODY}px;
+    }}
+    QPushButton:hover {{
+        background-color: {theme.BG2};
+        border-color: {theme.ACCENT};
+    }}
+    QPushButton:pressed {{
+        background-color: {theme.ACCENT_DIM};
+    }}
+    QPushButton:disabled {{
+        color: {theme.TEXT_DISABLED};
+    }}
+    QScrollArea {{ border: none; background: transparent; }}
 """
 
 
@@ -133,7 +128,7 @@ class _RejectedRow(QFrame):
         lay.setContentsMargins(8, 6, 8, 6)
         label = QLabel(f'"{wrong}"  →  "{right}"   — {reason}')
         label.setWordWrap(True)
-        label.setStyleSheet(f"color: {_TEXT_DIS};")
+        label.setStyleSheet(f"color: {theme.TEXT_DISABLED};")
         lay.addWidget(label, stretch=1)
 
 
@@ -210,7 +205,7 @@ class CorrectionCaptureWindow(QMainWindow):
         self.setWindowTitle("Correct Last Dictation")
         self.resize(720, 520)
         self.setMinimumSize(520, 400)
-        self.setStyleSheet(_STYLESHEET)
+        self.setStyleSheet(_stylesheet())
 
         central = QWidget()
         self.setCentralWidget(central)
@@ -252,7 +247,7 @@ class CorrectionCaptureWindow(QMainWindow):
 
         self._status_lbl = QLabel("")
         self._status_lbl.setStyleSheet(
-            f"color: {_TEXT_SEC}; font-size: {theme.FONT_SIZE_CAPTION}px;"
+            f"color: {theme.TEXT_SECONDARY}; font-size: {theme.FONT_SIZE_CAPTION}px;"
         )
         root.addWidget(self._status_lbl)
 
@@ -293,7 +288,7 @@ class CorrectionCaptureWindow(QMainWindow):
 
         if not result.learnable and not result.rejected:
             no_change = QLabel("No word-level correction detected.")
-            no_change.setStyleSheet(f"color: {_TEXT_SEC};")
+            no_change.setStyleSheet(f"color: {theme.TEXT_SECONDARY};")
             self._review_layout.insertWidget(0, no_change)
             return
 
@@ -310,7 +305,7 @@ class CorrectionCaptureWindow(QMainWindow):
 
         if not result.learnable:
             no_change = QLabel("No word-level correction detected.")
-            no_change.setStyleSheet(f"color: {_TEXT_SEC};")
+            no_change.setStyleSheet(f"color: {theme.TEXT_SECONDARY};")
             self._review_layout.insertWidget(0, no_change)
 
     # ------------------------------------------------------------------

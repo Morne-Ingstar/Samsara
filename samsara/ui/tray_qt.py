@@ -46,27 +46,32 @@ logger = get_logger(__name__)
 # The mark (owner decisions 2026-09-13)
 # ---------------------------------------------------------------------------
 
+
 #: Capture state -> ring colour token and ring drawing. Fill (not colour)
 #: is what says "recording"; spin and pulse are runtime.
-MARK_CAPTURE = {
-    "idle":      (theme.ICON_IDLE, "ring-hollow"),
-    "listening": (theme.ACCENT, "ring-hollow"),
-    "recording": (theme.RECORDING, "ring-filled"),
-    "ava":       (theme.AVA, "ring-hollow"),
-}
+def mark_capture():
+    return {
+        "idle":      (theme.ICON_IDLE, "ring-hollow"),
+        "listening": (theme.ACCENT, "ring-hollow"),
+        "recording": (theme.RECORDING, "ring-filled"),
+        "ava":       (theme.AVA, "ring-hollow"),
+    }
+
+
 #: BRAND presentation (38): the lockup beside the app's name and Home's
 #: 60 px mark show the brand, not the tray's state vocabulary. At rest the
 #: ring is ACCENT at the brand weight (#ring-brand) with the eye always
 #: present -- lid closed when hands-free is off, open when armed. Idle grey
 #: and the eyeless ring are tray rules for 16 px and are retired here;
 #: state is carried by motion, the eye, and RECORDING red while recording.
-#: The tray keeps MARK_CAPTURE / MARK_EYE unchanged.
-BRAND_CAPTURE = {
-    "idle":      (theme.ACCENT, "ring-brand"),
-    "listening": (theme.ACCENT, "ring-brand"),
-    "recording": (theme.RECORDING, "ring-filled"),
-    "ava":       (theme.AVA, "ring-brand"),
-}
+#: The tray keeps mark_capture() / MARK_EYE unchanged.
+def brand_capture():
+    return {
+        "idle":      (theme.ACCENT, "ring-brand"),
+        "listening": (theme.ACCENT, "ring-brand"),
+        "recording": (theme.RECORDING, "ring-filled"),
+        "ava":       (theme.AVA, "ring-brand"),
+    }
 BRAND_EYE = {
     "off":    "eye-closed",
     "asleep": "eye-closed",
@@ -438,8 +443,8 @@ def mark_svg_path() -> Path:
 
 def mark_colours(capture: str, eye: str, brand: bool = False) -> tuple[str, str]:
     """(ring colour, eye colour) -- one token per state, except the heard
-    frame. brand=True uses BRAND_CAPTURE: never ICON_IDLE."""
-    colour = (BRAND_CAPTURE if brand else MARK_CAPTURE)[capture][0]
+    frame. brand=True uses brand_capture(): never ICON_IDLE."""
+    colour = (brand_capture() if brand else mark_capture())[capture][0]
     if eye == "heard":
         return theme._mix(colour, theme.TEXT_PRIMARY, _HEARD_RING_LIFT), theme.RECORDING
     return colour, colour
@@ -454,12 +459,12 @@ def mark_eye_id(eye: str, brand: bool = False) -> Optional[str]:
 def mark_svg(capture: str, eye: str, small: bool, layer: str, source: bytes | None = None,
              brand: bool = False) -> bytes:
     """The SVG with only one layer ('ring' or 'eye') of one state visible.
-    brand=True selects the brand presentation (BRAND_CAPTURE / BRAND_EYE);
+    brand=True selects the brand presentation (brand_capture() / BRAND_EYE);
     the brand never uses the #small drawing."""
     if brand:
         small = False
     ring_colour, eye_colour = mark_colours(capture, eye, brand)
-    ring_id = (BRAND_CAPTURE if brand else MARK_CAPTURE)[capture][1]
+    ring_id = (brand_capture() if brand else mark_capture())[capture][1]
     eye_id = mark_eye_id(eye, brand)
     suffix = "-small" if small else ""
 
@@ -488,7 +493,10 @@ def mark_svg(capture: str, eye: str, small: bool, layer: str, source: bytes | No
 
 
 def clear_mark_caches() -> None:
-    """Drop cached renderers and frames (after samsara.svg is rewritten)."""
+    """Drop cached renderers and frames (after samsara.svg is rewritten).
+
+    A palette switch does NOT need this -- the active theme is part of every
+    cache key, so the two themes' marks coexist rather than evict each other."""
     with _renderer_lock:
         _renderer_cache.clear()
         _frame_cache.clear()
@@ -496,7 +504,11 @@ def clear_mark_caches() -> None:
 
 def _renderer(capture: str, eye: str, small: bool, layer: str,
               brand: bool = False) -> QSvgRenderer | None:
-    key = (capture, eye if layer == "eye" or eye == "heard" else "", small, layer, brand)
+    # theme.active_theme() is part of the key: the SVG is coloured from the
+    # palette, so a cached renderer from the other theme would paint the
+    # dark cyan mark onto a white header (queue 129).
+    key = (capture, eye if layer == "eye" or eye == "heard" else "", small, layer,
+           brand, theme.active_theme())
     renderer = _renderer_cache.get(key)
     if renderer is None:
         try:
@@ -554,7 +566,8 @@ def _frame(capture: str, eye: str, size: int, rotation: float,
     in 15-degree steps, each rendered once from the vector and cached.
     """
     small = False if brand else _uses_small(size, small_max)
-    key = (capture, eye, size, frame_step(rotation), small, brand)
+    key = (capture, eye, size, frame_step(rotation), small, brand,
+           theme.active_theme())
     image = _frame_cache.get(key)
     if image is None:
         if len(_frame_cache) >= _FRAME_CACHE_LIMIT:
@@ -581,7 +594,7 @@ def paint_mark(painter: QPainter, rect: QRectF, capture: str, eye: str,
     drawing; the taskbar-facing icons pass TASKBAR_SMALL_MAX. 16-24 px draws
     a cached 15-degree frame; 32 px and up rotates the vector live.
     brand=True is the presentation for the window header and Home (38):
-    BRAND_CAPTURE colours at RING_BRAND_WIDTH, the eye always present,
+    brand_capture() colours at RING_BRAND_WIDTH, the eye always present,
     never the #small drawing.
     """
     size = min(rect.width(), rect.height())
@@ -895,19 +908,140 @@ class SamsaraTrayQt(QObject):
         if self._available_update is not None:
             self._open_update_dialog()
 
+    # ---- Guarded actions -------------------------------------------------
+    #
+    # 61 (2026-09-14): "Open memos" raised inside a Qt slot when no memo had
+    # been recorded; PySide printed the traceback to stderr and the user got
+    # nothing. Every tray action is connected through _safe(), so a handler
+    # that raises is logged AND shown as a tray notification naming the item.
+
+    def _report_action_failure(self, label: str, message: str) -> None:
+        try:
+            self._tray.showMessage(
+                f"Samsara: {label}", message,
+                QSystemTrayIcon.MessageIcon.Warning, 8000,
+            )
+        except Exception as exc:  # the report itself must never raise
+            logger.warning("[TRAY] could not show failure for %r: %s", label, exc)
+
+    def _safe(self, label: str, fn):
+        """A slot for ``fn`` that never raises: a failure is logged and shown
+        to the user as a tray notification naming ``label``."""
+        def _slot(*args):
+            try:
+                return fn(*args)
+            except Exception as exc:
+                logger.exception("[TRAY] %s failed: %s", label, exc)
+                self._report_action_failure(label, f"That didn't work: {exc}")
+                return None
+        return _slot
+
+    def _add(self, menu, label: str, fn, *, checked=None, report_as: Optional[str] = None):
+        """Add an action wired through _safe. ``fn`` takes no argument unless
+        ``checked`` is given; then the action is checkable and ``fn`` receives
+        its new checked state. The state is read from the action itself: PySide
+        passes nothing to a ``*args`` slot, so Qt's ``checked`` never arrives."""
+        act = menu.addAction(label)
+        name = report_as or label
+        if checked is None:
+            act.triggered.connect(self._safe(name, lambda *_a: fn()))
+        else:
+            act.setCheckable(True)
+            act.setChecked(bool(checked))
+            act.triggered.connect(self._safe(name, lambda *_a: fn(act.isChecked())))
+        return act
+
+    # ---- Action bodies that used to fail without a word ------------------
+
+    def _open_memos(self):
+        """Open the memo LIST (queue 92), falling back to the raw file.
+
+        Queue 07 opened memos.md in Notepad because there was nothing else
+        to open. There is now: a page that plays the audio, searches the
+        transcripts and files them by category. The raw file is still one
+        click away inside it, and still what this opens on a build where the
+        hub window is not available.
+        """
+        opener = getattr(self._app, "open_hub_page", None)
+        if callable(opener):
+            try:
+                # Imported here, not at module scope: home_qt imports this
+                # module for the mark, so a top-level import would be a cycle.
+                from samsara.ui.home_qt import MEMOS  # noqa: PLC0415
+                # `is True`, not truthiness: open_hub_page's contract is a
+                # real bool, and anything else (a stub, a half-built hub)
+                # means "I did not open it" -- fall back rather than leave
+                # the user looking at a tray item that did nothing.
+                if opener(MEMOS) is True:
+                    return
+            except Exception as exc:
+                logger.debug("[TRAY] Could not open the memo list: %s", exc)
+        self._open_memo_file()
+
+    def _open_memo_file(self):
+        """Open the raw markdown, creating it first when no memo exists yet.
+
+        Created rather than refused: a missing file only means nothing has
+        been recorded yet, and opening the header-only file shows the user
+        where memos will land. The header matches quick_memo.append_memo,
+        which appends to an existing file without writing a second header.
+        """
+        path = memo_file(self._app.config.get('memo_file') or None)
+        if not path.exists():
+            path.parent.mkdir(parents=True, exist_ok=True)
+            try:
+                with path.open("x", encoding="utf-8") as fh:
+                    fh.write("# Memos\n\n")
+                logger.info("[TRAY] Created empty memo file %s", path)
+            except FileExistsError:
+                pass  # a memo was recorded in between -- open that one
+        startfile = getattr(os, "startfile", None)
+        if startfile is None:
+            raise OSError(f"cannot open files on this platform ({path})")
+        startfile(str(path))
+
+    _GUIDE_OPENERS = {
+        "mic_setup_wizard": "open_mic_setup_guide",
+        "ava_guide": "open_ava_guide",
+    }
+
+    def _open_guide(self, attr: str, label: str):
+        """open_mic_setup_guide / open_ava_guide silently do nothing when the
+        window was never built; say so instead of ignoring the click."""
+        if getattr(self._app, attr, None) is None:
+            self._report_action_failure(label, f"{label} isn't available right now.")
+            return
+        getattr(self._app, self._GUIDE_OPENERS[attr])()
+
+    def _update_entry_enabled(self) -> bool:
+        """updates.tray_menu_entry, default OFF (61). The updater has never been
+        exercised in the field, so the tray does not offer it until the owner
+        turns this on. The dialog and updater code paths are untouched; the
+        dialog itself reports a failed check ("Couldn't check for updates")."""
+        settings = self._app.config.get('updates', {})
+        return isinstance(settings, dict) and settings.get('tray_menu_entry', False) is True
+
     def _rebuild_menu(self):
         """Rebuild the full context menu from live app state.
 
         Called by QMenu.aboutToShow each time the user right-clicks the
         tray icon -- once per menu open, not on every hover.
+
+        Grouping (61, 2026-09-14, owner: "a bit oversaturated"): the top
+        level holds what a daily user reaches for -- open the app, pause or
+        resume listening, wake word, mic, mode, History, memos, Quick
+        Reference, Settings, help. Setup toggles, overlay windows and
+        one-off tools live in Tools; debug surfaces in Developer. Nothing
+        was removed; "Check for Updates" is behind updates.tray_menu_entry.
+        Every action goes through _add(), so none can fail silently.
         """
         app  = self._app
         menu = self._menu
         menu.clear()
+        add = self._add
 
         # ---- Show / hide hub ----
-        show_act = menu.addAction("Show Samsara")
-        show_act.triggered.connect(lambda: app.show_main_window())
+        show_act = add(menu, "Show Samsara", lambda: app.show_main_window())
         menu.setDefaultAction(show_act)
         # Mouse hotkey (32/35): state, re-enable without a restart, panic release.
         status_fn = getattr(app, 'mouse_hotkey_status', None)
@@ -916,10 +1050,42 @@ class SamsaraTrayQt(QObject):
             info = menu.addAction(f"Mouse hotkey disabled: {mouse_status.get('reason', '')}"[:90])
             info.setEnabled(False)
         if mouse_status.get('state') in ('active', 'disabled') and hasattr(app, 'reenable_mouse_hotkey'):
-            menu.addAction("Re-enable mouse hotkey").triggered.connect(lambda: app.reenable_mouse_hotkey())
+            add(menu, "Re-enable mouse hotkey", lambda: app.reenable_mouse_hotkey())
         if getattr(app, '_mouse_hook', None) is not None and hasattr(app, 'release_mouse_buttons'):
-            menu.addAction("Release mouse buttons").triggered.connect(lambda: app.release_mouse_buttons())
+            add(menu, "Release mouse buttons", lambda: app.release_mouse_buttons())
+        if self._available_update is not None and self._update_entry_enabled():
+            add(menu, f"Install Samsara v{self._available_update.version}\u2026",
+                self._open_update_dialog, report_as="Install update")
         menu.addSeparator()
+
+        # ---- Snooze submenu: pause / resume listening ----
+        snoozed = getattr(app, 'snoozed', False)
+        snooze_sub = QMenu("Snoozed" if snoozed else "Snooze")
+        for label, mins in [
+            ("5 minutes",    5),
+            ("15 minutes",   15),
+            ("30 minutes",   30),
+            ("1 hour",       60),
+            ("Until resumed", None),
+        ]:
+            act = add(snooze_sub, label, lambda m=mins: app.snooze_listening(m), report_as="Snooze")
+            act.setEnabled(not snoozed)
+        snooze_sub.addSeparator()
+        resume_act = add(snooze_sub, "Resume now", lambda: app.resume_listening())
+        resume_act.setEnabled(snoozed)
+        menu.addMenu(snooze_sub)
+
+        # ---- Wake word ----
+        ww_phrase = app.config.get('wake_word_config', {}).get('phrase', DEFAULT_WAKE_PHRASE)
+        ww_label = f"Wake Word  ({ww_phrase})"
+        # Wake models load lazily on their own thread (see dictation.py
+        # wake_ready_state); say so rather than look enabled-but-deaf.
+        wake_state_fn = getattr(app, 'wake_ready_state', None)
+        if (app.config.get('wake_word_enabled', False) and callable(wake_state_fn)
+                and wake_state_fn() != 'ready'):
+            ww_label += "  - loading..."
+        add(menu, ww_label, lambda checked: app.set_wake_word_enabled(checked),
+            checked=app.config.get('wake_word_enabled', False), report_as="Wake Word")
 
         # ---- Microphone submenu ----
         mic_label = f"[MIC]  {app.get_current_microphone_name()}"
@@ -932,12 +1098,9 @@ class SamsaraTrayQt(QObject):
                 logger.debug(f"_rebuild_menu: {e}")
         current_mic = app.config.get('microphone')
         for mic in app.available_mics:
-            act = mic_sub.addAction(mic['name'])
-            act.setCheckable(True)
-            act.setChecked(mic['id'] == current_mic)
-            act.triggered.connect(
-                lambda checked, mid=mic['id']: app.switch_microphone_and_refresh(mid)
-            )
+            add(mic_sub, mic['name'],
+                lambda _checked, mid=mic['id']: app.switch_microphone_and_refresh(mid),
+                checked=mic['id'] == current_mic, report_as="Switch microphone")
         menu.addMenu(mic_sub)
 
         # ---- Mode submenu ----
@@ -950,128 +1113,50 @@ class SamsaraTrayQt(QObject):
             ("Toggle (click to start/stop)", "toggle"),
             ("Continuous",               "continuous"),
         ]:
-            act = mode_sub.addAction(label)
-            act.setCheckable(True)
-            act.setChecked(mode == val)
-            act.triggered.connect(
-                lambda checked, m=val: app.switch_mode_from_tray(m) if checked else None
-            )
+            act = add(mode_sub, label,
+                      lambda checked, m=val: app.switch_mode_from_tray(m) if checked else None,
+                      checked=mode == val, report_as="Change mode")
             mode_grp.addAction(act)
         menu.addMenu(mode_sub)
 
-        # ---- Wake word ----
-        ww_phrase = app.config.get('wake_word_config', {}).get('phrase', DEFAULT_WAKE_PHRASE)
-        ww_label = f"Wake Word  ({ww_phrase})"
-        # Wake models load lazily on their own thread (see dictation.py
-        # wake_ready_state); say so rather than look enabled-but-deaf.
-        wake_state_fn = getattr(app, 'wake_ready_state', None)
-        if (app.config.get('wake_word_enabled', False) and callable(wake_state_fn)
-                and wake_state_fn() != 'ready'):
-            ww_label += "  - loading..."
-        ww_act = menu.addAction(ww_label)
-        ww_act.setCheckable(True)
-        ww_act.setChecked(bool(app.config.get('wake_word_enabled', False)))
-        ww_act.triggered.connect(
-            lambda checked: app.set_wake_word_enabled(checked)
-        )
-
-        # ---- Streaming mode ----
-        stream_act = menu.addAction("Streaming Mode  (CapsLock)")
-        stream_act.setCheckable(True)
-        stream_act.setChecked(bool(app.config.get('streaming_mode', False)))
-        stream_act.triggered.connect(
-            lambda checked: app.set_streaming_mode(checked)
-        )
-
-        # ---- Gesture lane ----
-        gesture_act = menu.addAction("Gesture Lane  (webcam)")
-        gesture_act.setCheckable(True)
-        gesture_act.setChecked(bool(app.config.get('gesture', {}).get('enabled', False)))
-        gesture_act.triggered.connect(
-            lambda checked: app.set_gesture_enabled(checked)
-        )
-
-        # ---- Snooze submenu ----
-        snoozed = getattr(app, 'snoozed', False)
-        snooze_sub = QMenu("Snoozed" if snoozed else "Snooze")
-        for label, mins in [
-            ("5 minutes",    5),
-            ("15 minutes",   15),
-            ("30 minutes",   30),
-            ("1 hour",       60),
-            ("Until resumed", None),
-        ]:
-            act = snooze_sub.addAction(label)
-            act.setEnabled(not snoozed)
-            act.triggered.connect(
-                lambda checked, m=mins: app.snooze_listening(m)
-            )
-        snooze_sub.addSeparator()
-        resume_act = snooze_sub.addAction("Resume now")
-        resume_act.setEnabled(snoozed)
-        resume_act.triggered.connect(lambda: app.resume_listening())
-        menu.addMenu(snooze_sub)
-
         menu.addSeparator()
 
-        # ---- Daily-use quick access (2026-07-10 declutter pass) ----
-        # One click for a daily user with chronic finger-joint pain: the
-        # status/mode controls above stay here (operational toggles a user
-        # adjusts routinely), plus the reference/visibility windows below.
-        # Occasional tools and dev/debug surfaces are grouped into the
-        # Tools / Developer submenus further down -- see there for the
-        # full placement rationale.
-        menu.addAction("Settings").triggered.connect(lambda: app.open_settings())
+        # ---- Daily use ----
+        add(menu, "History", lambda: app.open_history())
+        add(menu, "Open memos", self._open_memos)
+        add(menu, "Open the raw memo file", self._open_memo_file)
+        add(menu, "Quick Reference", lambda: app.open_quick_reference())
+        add(menu, "Settings", lambda: app.open_settings())
         # Beta testers without GitHub: one click to the email/diagnostics page.
-        menu.addAction("Something wrong?").triggered.connect(
-            lambda: open_support_tab(app))
-        update_label = (
-            f"Install Samsara v{self._available_update.version}…"
-            if self._available_update is not None else
-            "Check for Updates…"
-        )
-        menu.addAction(update_label).triggered.connect(self._open_update_dialog)
-        menu.addAction("History").triggered.connect(lambda: app.open_history())
-        menu.addAction("Open memos").triggered.connect(
-            lambda: os.startfile(str(memo_file(app.config.get('memo_file') or None))))
-        menu.addAction("Quick Reference").triggered.connect(
-            lambda: app.open_quick_reference())
-
-        cr_act = menu.addAction("Command Reference")
-        cr_act.setCheckable(True)
-        cr_act.setChecked(getattr(getattr(app, 'cheat_sheet', None), '_visible', False))
-        cr_act.triggered.connect(lambda: app.toggle_cheat_sheet())
-
-        li_act = menu.addAction("Show Listening Indicator")
-        li_act.setCheckable(True)
-        li_act.setChecked(bool(app.config.get('listening_indicator_enabled', False)))
-        li_act.triggered.connect(lambda: app.toggle_listening_indicator())
-
-        move_act = menu.addAction("Move listening indicator...")
-        move_act.triggered.connect(lambda: app.enter_indicator_move_mode())
+        add(menu, "Something wrong?", lambda: open_support_tab(app))
 
         menu.addSeparator()
 
-        # ---- Tools submenu: occasionally-used setup/training/review tools ----
+        # ---- Tools submenu: setup toggles, overlays, one-off tools ----
         tools_sub = QMenu("Tools")
-        tools_sub.addAction("Interactive Tutorial").triggered.connect(
-            lambda: app.show_tutorial())
+        add(tools_sub, "Streaming Mode  (CapsLock)", lambda checked: app.set_streaming_mode(checked),
+            checked=app.config.get('streaming_mode', False), report_as="Streaming Mode")
+        add(tools_sub, "Gesture Lane  (webcam)", lambda checked: app.set_gesture_enabled(checked),
+            checked=app.config.get('gesture', {}).get('enabled', False), report_as="Gesture Lane")
+        add(tools_sub, "Command Reference", lambda _checked: app.toggle_cheat_sheet(),
+            checked=getattr(getattr(app, 'cheat_sheet', None), '_visible', False))
+        add(tools_sub, "Show Listening Indicator", lambda _checked: app.toggle_listening_indicator(),
+            checked=app.config.get('listening_indicator_enabled', False))
+        add(tools_sub, "Move listening indicator...", lambda: app.enter_indicator_move_mode(),
+            report_as="Move listening indicator")
         tools_sub.addSeparator()
-        tools_sub.addAction("Mic Setup Guide").triggered.connect(
-            lambda: app.open_mic_setup_guide())
-        tools_sub.addAction("Ava Guide").triggered.connect(
-            lambda: app.open_ava_guide())
-        tools_sub.addAction("Voice Training").triggered.connect(
-            lambda: app.open_voice_training())
-        tools_sub.addAction("Benchmark Review").triggered.connect(
-            lambda: app.open_benchmark_review())
-        tools_sub.addAction("Correct Last Dictation").triggered.connect(
-            lambda: app.open_correction_capture())
-        tools_sub.addAction("Stress Test Wizard").triggered.connect(
-            lambda: app.open_stress_test_wizard())
+        add(tools_sub, "Interactive Tutorial", lambda: app.show_tutorial())
+        add(tools_sub, "Mic Setup Guide", lambda: self._open_guide("mic_setup_wizard", "Mic Setup Guide"))
+        add(tools_sub, "Ava Guide", lambda: self._open_guide("ava_guide", "Ava Guide"))
+        add(tools_sub, "Voice Training", lambda: app.open_voice_training())
+        add(tools_sub, "Benchmark Review", lambda: app.open_benchmark_review())
+        add(tools_sub, "Correct Last Dictation", lambda: app.open_correction_capture())
+        add(tools_sub, "Stress Test Wizard", lambda: app.open_stress_test_wizard())
         tools_sub.addSeparator()
-        tools_sub.addAction("Recalibrate Mic").triggered.connect(
-            lambda: app.recalibrate_mic())
+        add(tools_sub, "Recalibrate Mic", lambda: app.recalibrate_mic())
+        if self._update_entry_enabled() and self._available_update is None:
+            add(tools_sub, "Check for Updates\u2026", self._open_update_dialog,
+                report_as="Check for Updates")
         tools_sub.addSeparator()
 
         cleanup_sub = QMenu("Cleanup")
@@ -1082,12 +1167,9 @@ class SamsaraTrayQt(QObject):
             ("Clean  (remove fillers)", "clean"),
             ("Verbatim  (no cleanup)",  "verbatim"),
         ]:
-            act = cleanup_sub.addAction(label)
-            act.setCheckable(True)
-            act.setChecked(cleanup_mode == val)
-            act.triggered.connect(
-                lambda checked, v=val: app.set_cleanup_mode(v) if checked else None
-            )
+            act = add(cleanup_sub, label,
+                      lambda checked, v=val: app.set_cleanup_mode(v) if checked else None,
+                      checked=cleanup_mode == val, report_as="Cleanup")
             cleanup_grp.addAction(act)
         tools_sub.addMenu(cleanup_sub)
 
@@ -1103,29 +1185,21 @@ class SamsaraTrayQt(QObject):
 
         # ---- Developer submenu: debug/diagnostic surfaces ----
         dev_sub = QMenu("Developer")
-        dev_sub.addAction("Dictation Diagnostics").triggered.connect(
-            lambda: app.open_dictation_diagnostics())
-        dev_sub.addAction("Wake Word Debug").triggered.connect(
-            lambda: app.open_wake_word_debug())
-        dev_sub.addAction("View Live Log").triggered.connect(
-            lambda: app.open_log_viewer())
+        add(dev_sub, "Dictation Diagnostics", lambda: app.open_dictation_diagnostics())
+        add(dev_sub, "Wake Word Debug", lambda: app.open_wake_word_debug())
+        add(dev_sub, "View Live Log", lambda: app.open_log_viewer())
         dev_sub.addSeparator()
-        dev_sub.addAction("Calibrate Echo Cancellation").triggered.connect(
-            lambda: app.calibrate_echo_cancellation())
+        add(dev_sub, "Calibrate Echo Cancellation", lambda: app.calibrate_echo_cancellation())
         dev_sub.addSeparator()
-        dev_sub.addAction("Open Config Folder").triggered.connect(
-            lambda: app.open_config_folder())
+        add(dev_sub, "Open Config Folder", lambda: app.open_config_folder())
         dev_sub.addSeparator()
-        dev_sub.addAction("Preview First-Run (fresh profile)").triggered.connect(
-            lambda: app.preview_first_run())
+        add(dev_sub, "Preview First-Run (fresh profile)", lambda: app.preview_first_run())
         logs_sub = QMenu("View Logs")
-        logs_sub.addAction("Main Log").triggered.connect(
-            lambda: app.open_main_log())
-        logs_sub.addAction("Voice Training Log").triggered.connect(
-            lambda: app.open_voice_training_log())
+        add(logs_sub, "Main Log", lambda: app.open_main_log())
+        add(logs_sub, "Voice Training Log", lambda: app.open_voice_training_log())
         dev_sub.addMenu(logs_sub)
 
         menu.addMenu(dev_sub)
         menu.addSeparator()
 
-        menu.addAction("Exit").triggered.connect(lambda: app.quit_app())
+        add(menu, "Exit", lambda: app.quit_app())

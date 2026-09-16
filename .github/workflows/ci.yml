@@ -54,6 +54,14 @@ jobs:
           python -m pip install -r requirements.txt
           python -m pip install -r requirements-test.txt
 
+      # Queue 110: the checker existed but nothing ran it, so three
+      # unregistered threads and two stale allowlist line numbers sat in the
+      # tree undetected. It needs no dependencies -- stdlib only -- so it runs
+      # before the suite and fails fast.
+      - name: Check thread discipline
+        shell: pwsh
+        run: python tools\check_thread_discipline.py
+
       - name: Run tests with coverage
         shell: pwsh
         run: python -m pytest --cov=. --cov-report=xml --cov-report=term-missing -v

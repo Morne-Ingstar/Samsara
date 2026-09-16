@@ -14,6 +14,7 @@ from PySide6.QtWidgets import (
     QDoubleSpinBox,
     QLabel,
     QLineEdit,
+    QPlainTextEdit,
     QPushButton,
     QScrollArea,
     QSpinBox,
@@ -85,14 +86,194 @@ _AVA_MODE_KEY_DESC = (
     "(dictation.py _get_pynput_command_key)."
 )
 _AVA_KEY_UNSUPPORTED = "(unsupported: {combo}) -- pick a key"
-# command_mode keys the app reads that have no control on this tab yet.
-_MODES_CONFIG_ONLY_KEYS = (
-    "command_matching_enabled", "exit_earcon", "tts_char_limit",
-    "utterance_silence_s", "dictate_utterance_silence_s", "abort_phrases",
+_CMD_TTS_CHAR_LIMIT_DESC = (
+    "In a hands-free command session, spoken command acknowledgements longer "
+    "than this are skipped so speech doesn't talk over your next command. "
+    "Ava's answers, Ava status messages and yes/no confirmations are always "
+    "spoken. No limit (0) speaks every acknowledgement in full."
 )
+_CMD_CANCEL_WINDOW_DESC = (
+    "When a command is recognised while you are dictating, the indicator shows "
+    "\"running <command>... say no\" and waits this long before running it. "
+    "Say \"no\", \"cancel\" or \"stop\" to cancel; start talking and it waits to "
+    "hear you; keep dictating and it is cancelled. Reading commands run at once "
+    "and destructive ones still ask yes or no. Off (0) runs commands at once."
+)
+_CMD_CANCEL_WINDOW_ALL_DESC = (
+    "Also wait before the everyday words the dictation lane has always "
+    "accepted (submit, enter, escape, next field, focus / switch to ...). "
+    "Off by default: those are said on purpose, and a wait slows every send."
+)
+# Queue 62: every command_mode key the app reads now has a control below.
+# A key added here gets listed on the tab as config-file only.
+_MODES_CONFIG_ONLY_KEYS: tuple = ()
 _MODES_CONFIG_ONLY_NOTE = (
     "Config-file only for now (command_mode in config.json): " + ", ".join(_MODES_CONFIG_ONLY_KEYS) + "."
 )
+
+# command_mode.command_matching_enabled: samsara/commands.py process_text
+# gates on app.command_matching_enabled unless force_commands (hands-free
+# session, wake word, Ava, cheat sheet all pass it).
+_CMD_MATCHING_DESC = (
+    "Recognise spoken commands in ordinary dictation. Off: everything you "
+    "dictate is typed as text. Saying 'command mode on' or 'command mode off' "
+    "flips this same switch. Hands-free sessions, the wake word and Ava "
+    "always recognise commands, whatever this is set to."
+)
+# command_mode.exit_earcon: dictation.py exit_command_mode plays 'stop' when
+# the session ends while not recording (stop_recording plays its own).
+_CMD_EXIT_EARCON_DESC = (
+    "Play the stop sound when a voice-control session ends. Off: a session "
+    "that times out or ends by voice closes with no sound, so you only see "
+    "it in the tray."
+)
+# command_mode.utterance_silence_s / dictate_utterance_silence_s:
+# samsara/audio_engine/wake_consumer.py reads both on every audio frame
+# (fallbacks 1.0 / 0.65), so a saved change applies to the next pause.
+_SILENCE_MIN_S = 0.3
+_SILENCE_MAX_S = 3.0
+_CMD_SILENCE_DESC = (
+    "Hands-free COMMAND lane: how long you must pause before what you said "
+    "is treated as one finished command. Shorter runs commands sooner but can "
+    "cut a command in two at a natural pause; longer waits after every command. "
+    f"Limited to {_SILENCE_MIN_S:g}-{_SILENCE_MAX_S:g} s: below that every "
+    "short gap between words would end the command."
+)
+_DICTATE_SILENCE_DESC = (
+    "Hands-free DICTATE lane: how long a pause closes a chunk of dictation. "
+    "Nothing is pasted on this pause (you still say 'end'), but a longer gap "
+    "makes 'end' slower to paste and a shorter one breaks sentences into more "
+    f"pieces. Limited to {_SILENCE_MIN_S:g}-{_SILENCE_MAX_S:g} s."
+)
+# command_mode.preview_idle_delay_s / preview_idle_opacity (queue 75):
+# samsara/streaming.py DictatePreviewSession reads both each time the
+# hands-free session enters DICTATE.
+_PREVIEW_IDLE_DELAY_DESC = (
+    "Hands-free dictation preview: how long after you stop talking (and no new "
+    "text arrives) before the preview box fades. While faded, clicks go "
+    "straight through it to the window underneath. It comes back at once "
+    "when you speak. Applies the next time the session enters dictation."
+)
+_PREVIEW_IDLE_OPACITY_DESC = (
+    "How visible the faded preview stays. The faint box is Samsara's sign that "
+    "it is still listening, so it stays on screen by default. 'Fully hidden' "
+    "removes it while idle; the listening indicator still shows the session."
+)
+_PREVIEW_HIDDEN_WARNING = (
+    "Fully hidden: while you are not talking there is no preview on screen. "
+    "Watch the listening indicator to see that the session is still running."
+)
+
+
+# command_mode.abort_phrases: dictation.py passes it to SessionModeManager as
+# extra_sleep_phrases, which is built once per app run.
+# command_mode.stop_phrases: dictation.py passes it to SessionModeManager as
+# stop_phrases, which REPLACES the built-in list and is read once per app run.
+_STOP_PHRASES_DESC = (
+    "Words, one per line, that stop what Samsara is doing when said on their "
+    "own: the answer being spoken, a question waiting for you, anything "
+    "queued. Your draft, your lane and the microphone are untouched -- it is "
+    "not an exit. Replaces the built-in '{stop}'; leave it empty to keep "
+    "those. Changes apply the next time Samsara starts."
+)
+
+_ABORT_PHRASES_DESC = (
+    "Extra phrases, one per line, that end the hands-free session when said "
+    "on their own, like the built-in '{sleep}'. Your staged draft is kept. "
+    "Empty means only the built-in phrases work; they cannot be removed. "
+    "Changes apply the next time Samsara starts."
+)
+
+
+def _silence_warning(value: float, lane: str, stored=None) -> str:
+    """Inline warning for a per-utterance silence gap ('' when none).
+
+    stored is the raw config value, reported when the spin box had to clamp it.
+    """
+    parts = []
+    if stored is not None:
+        try:
+            raw = float(stored)
+        except (TypeError, ValueError):
+            raw = None
+        if raw is None or not (_SILENCE_MIN_S <= raw <= _SILENCE_MAX_S):
+            parts.append(f"config.json has {stored!r}, outside {_SILENCE_MIN_S:g}-{_SILENCE_MAX_S:g} s; "
+                         f"saving stores {value:g} s.")
+    if lane == 'command':
+        if value < 0.5:
+            parts.append("Very short: a normal pause mid-command can split it into two pieces that both miss.")
+        elif value > 2.0:
+            parts.append("Long: every command waits this long after you stop talking before it runs.")
+    else:
+        if value < 0.4:
+            parts.append("Very short: dictation is cut into many small pieces, which gives recognition less context.")
+        elif value > 2.0:
+            parts.append("Long: saying 'end' waits this long before it pastes.")
+    return " ".join(parts)
+
+
+def _abort_phrase_lines(text: str) -> list:
+    """Editor text -> saved list: stripped, non-empty, first occurrence kept."""
+    return list(dict.fromkeys(line.strip() for line in text.splitlines() if line.strip()))
+
+
+def _abort_phrase_warnings(phrases) -> list:
+    """Why each phrase would misbehave, checked in SessionModeManager.dispatch
+    order: stop is matched first, then sleep (these phrases), then lane
+    switches, commit and scratch-that, which a clashing phrase would swallow."""
+    from samsara import session_modes as sm  # noqa: PLC0415
+    commit = {sm.normalize_utterance(p) for p in sm._DICTATE_COMMIT_HOMOPHONES}
+    switches = {sm.normalize_utterance(p) for p in sm._WHOLE_UTTERANCE_SWITCHES}
+    stops = {sm.normalize_utterance(p) for p in sm.SESSION_STOP_PHRASES}
+    sleeps = {sm.normalize_utterance(p) for p in sm.SESSION_SLEEP_PHRASES}
+    scratch = sm.normalize_utterance(sm.SCRATCH_THAT_PHRASE)
+    out = []
+    for phrase in phrases:
+        norm = sm.normalize_utterance(phrase)
+        if not norm:
+            out.append(f"'{phrase}' is ignored: nothing is left after dropping punctuation and filler words.")
+        elif norm in stops:
+            out.append(f"'{phrase}' is already the stop phrase and is checked first, so it never ends the session.")
+        elif norm in commit:
+            out.append(f"'{phrase}' is the paste word: it would end the session instead of pasting your draft.")
+        elif norm in switches:
+            out.append(f"'{phrase}' switches lanes: it would end the session instead.")
+        elif norm == scratch:
+            out.append(f"'{phrase}' would end the session instead of scratching your last dictation.")
+        elif norm in sleeps:
+            out.append(f"'{phrase}' is already built in.")
+    return out
+def _stop_phrase_warnings(phrases) -> list:
+    """Queue 116. The stop is checked FIRST in dispatch order, so anything
+    listed here wins over every other whole-utterance phrase -- which is the
+    point for a panic control and a trap for everything else."""
+    from samsara import session_modes as sm  # noqa: PLC0415
+    if not [p for p in phrases if sm.normalize_utterance(p)]:
+        built_in = " / ".join(f'"{p}"' for p in sm.SESSION_STOP_PHRASES)
+        return [f"Empty: the built-in {built_in} stays in use. The emergency stop "
+                f"cannot be switched off from here."]
+    commit = {sm.normalize_utterance(p) for p in sm._DICTATE_COMMIT_HOMOPHONES}
+    switches = {sm.normalize_utterance(p) for p in sm._WHOLE_UTTERANCE_SWITCHES}
+    sleeps = {sm.normalize_utterance(p) for p in sm.SESSION_SLEEP_PHRASES}
+    scratch = sm.normalize_utterance(sm.SCRATCH_THAT_PHRASE)
+    out = []
+    for phrase in phrases:
+        norm = sm.normalize_utterance(phrase)
+        if not norm:
+            out.append(f"'{phrase}' is ignored: nothing is left after dropping punctuation and filler words.")
+        elif len(norm.split()) == 1 and len(norm) <= 2:
+            out.append(f"'{phrase}' is very short: a mishearing would halt what is running.")
+        elif norm in commit:
+            out.append(f"'{phrase}' is the paste word: it would halt instead of pasting your draft.")
+        elif norm in switches:
+            out.append(f"'{phrase}' switches lanes: it would halt instead.")
+        elif norm == scratch:
+            out.append(f"'{phrase}' would halt instead of scratching your last dictation.")
+        elif norm in sleeps:
+            out.append(f"'{phrase}' ends the session: as a stop phrase it would halt without sleeping.")
+    return out
+
+
 # Keys that share a default on purpose: each is live in a different mode
 # (hands-free toggle vs continuous mode), so the same combo is not a collision.
 _MODES_COLLISION_EXEMPT_PAIRS = frozenset({
@@ -204,15 +385,15 @@ class ModesPage:
             button.setStyleSheet(
                 "QPushButton {"
                 " background-color: transparent;"
-                " color: #AEB4C0;"
-                " border: 1px solid rgba(255,255,255,0.16);"
+                f" color: {theme.TEXT_SECONDARY};"
+                f" border: 1px solid {theme.wash(0.16)};"
                 " border-radius: 6px;"
                 " padding: 8px 12px;"
                 " font-size: 13px;"
                 "}"
                 "QPushButton:hover {"
                 f" color: {theme.TEXT_PRIMARY};"
-                " border-color: rgba(255,255,255,0.28);"
+                f" border-color: {theme.wash(0.28)};"
                 "}"
             )
             return button
@@ -220,7 +401,7 @@ class ModesPage:
         # One tab-wide collision banner, shown above every section.
         collision_warn = QLabel("")
         collision_warn.setWordWrap(True)
-        collision_warn.setStyleSheet(self._COLLISION_WARN_STYLE)
+        collision_warn.setStyleSheet(self._collision_warn_style())
         collision_warn.setVisible(False)
         self._widgets['modes_collision_warn'] = collision_warn
         layout.addWidget(collision_warn)
@@ -231,7 +412,7 @@ class ModesPage:
             "session, or toggle it for persistent Hands-Free commands and dictation."
         )
         modes_intro.setWordWrap(True)
-        modes_intro.setStyleSheet("color: #AEB4C0; font-size: 13px;")
+        modes_intro.setStyleSheet(f"color: {theme.TEXT_SECONDARY}; font-size: 13px;")
         layout.addWidget(modes_intro)
 
         # ---- Card 1: Hands-Free / Voice Control -------------------------
@@ -285,7 +466,7 @@ class ModesPage:
 
         hold_heading = QLabel("Command-only activation")
         hold_heading.setStyleSheet(
-            "color: #D7D9DE; font-size: 13px; font-weight: 600; margin-top: 4px;"
+            f"color: {theme.TEXT_PRIMARY}; font-size: 13px; font-weight: 600; margin-top: 4px;"
         )
         hands_free_layout.addWidget(hold_heading)
 
@@ -314,7 +495,7 @@ class ModesPage:
 
         wake_heading = QLabel("Wake activation")
         wake_heading.setStyleSheet(
-            "color: #D7D9DE; font-size: 13px; font-weight: 600; margin-top: 4px;"
+            f"color: {theme.TEXT_PRIMARY}; font-size: 13px; font-weight: 600; margin-top: 4px;"
         )
         hands_free_layout.addWidget(wake_heading)
 
@@ -376,11 +557,142 @@ class ModesPage:
         wake_note.setStyleSheet(f"color: {theme.ICON_IDLE}; font-size: 12px;")
         hands_free_layout.addWidget(wake_note)
 
-        config_only_note = QLabel(_MODES_CONFIG_ONLY_NOTE)
-        config_only_note.setWordWrap(True)
-        config_only_note.setStyleSheet(f"color: {theme.ICON_IDLE}; font-size: 12px;")
-        self._widgets['modes_config_only_note'] = config_only_note
-        hands_free_layout.addWidget(config_only_note)
+        # ---- Hands-free session tuning (queue 62) ---------------------
+        session_heading = QLabel("Hands-free session")
+        session_heading.setStyleSheet(
+            f"color: {theme.TEXT_PRIMARY}; font-size: 13px; font-weight: 600; margin-top: 4px;"
+        )
+        hands_free_layout.addWidget(session_heading)
+
+        def _warning_label(name: str) -> QLabel:
+            label = QLabel("")
+            label.setWordWrap(True)
+            label.setStyleSheet(f"color: {theme.WARNING}; font-size: 12px;")
+            label.setVisible(False)
+            self._widgets[name] = label
+            return label
+
+        def _show_warning(label: QLabel, text: str) -> None:
+            label.setText(text)
+            label.setVisible(bool(text))
+
+        silence_rows = (
+            ('cmd_utterance_silence', 'utterance_silence_s', 1.0, 'command',
+             "Command pause length", _CMD_SILENCE_DESC),
+            ('cmd_dictate_utterance_silence', 'dictate_utterance_silence_s',
+             config_defaults.DEFAULTS['command_mode.dictate_utterance_silence_s'], 'dictate',
+             "Dictation pause length", _DICTATE_SILENCE_DESC),
+        )
+        for widget_key, cfg_key, fallback, lane, label, desc in silence_rows:
+            stored = cmd_cfg.get(cfg_key, fallback)
+            spin = QDoubleSpinBox()
+            spin.setRange(_SILENCE_MIN_S, _SILENCE_MAX_S)
+            spin.setSingleStep(0.05)
+            spin.setDecimals(2)
+            spin.setSuffix(" s")
+            try:
+                spin.setValue(float(stored))      # Qt clamps out-of-range values
+                clamped_from = None if _SILENCE_MIN_S <= float(stored) <= _SILENCE_MAX_S else stored
+            except (TypeError, ValueError):
+                spin.setValue(float(fallback))
+                clamped_from = stored
+            self._widgets[widget_key] = spin
+            _add_row(hands_free_layout, label, desc, spin, width=170)
+            warn_label = _warning_label(widget_key + '_warn')
+            hands_free_layout.addWidget(warn_label)
+            _show_warning(warn_label, _silence_warning(spin.value(), lane, clamped_from))
+            spin.valueChanged.connect(
+                lambda v, w=warn_label, ln=lane, c=clamped_from: _show_warning(w, _silence_warning(v, ln, c)))
+
+        exit_earcon_cb = QCheckBox()
+        exit_earcon_cb.setChecked(bool(cmd_cfg.get('exit_earcon', True)))
+        self._widgets['cmd_exit_earcon'] = exit_earcon_cb
+        _add_row(hands_free_layout, "Sound when a session ends", _CMD_EXIT_EARCON_DESC,
+                 exit_earcon_cb, width=220)
+
+        # Queue 75: dictation preview idle fade.
+        from samsara.config_schema import SETTINGS_SCHEMA
+        delay_schema = SETTINGS_SCHEMA['command_mode.preview_idle_delay_s']
+        opacity_schema = SETTINGS_SCHEMA['command_mode.preview_idle_opacity']
+        idle_delay_spin = QDoubleSpinBox()
+        idle_delay_spin.setRange(delay_schema['min'], delay_schema['max'])
+        idle_delay_spin.setSingleStep(delay_schema['step'])
+        idle_delay_spin.setDecimals(1)
+        idle_delay_spin.setSuffix(" s")
+        try:
+            idle_delay_spin.setValue(float(cmd_cfg.get('preview_idle_delay_s', delay_schema['default'])))
+        except (TypeError, ValueError):
+            idle_delay_spin.setValue(delay_schema['default'])
+        self._widgets['cmd_preview_idle_delay'] = idle_delay_spin
+        _add_row(hands_free_layout, "Preview fades after", _PREVIEW_IDLE_DELAY_DESC,
+                 idle_delay_spin, width=170)
+
+        idle_opacity_spin = QSpinBox()
+        idle_opacity_spin.setRange(0, round(opacity_schema['max'] * 100))
+        idle_opacity_spin.setSingleStep(round(opacity_schema['step'] * 100))
+        idle_opacity_spin.setSuffix(" %")
+        idle_opacity_spin.setSpecialValueText("Fully hidden")
+        try:
+            stored_opacity = float(cmd_cfg.get('preview_idle_opacity', opacity_schema['default']))
+        except (TypeError, ValueError):
+            stored_opacity = opacity_schema['default']
+        idle_opacity_spin.setValue(round(stored_opacity * 100))
+        self._widgets['cmd_preview_idle_opacity'] = idle_opacity_spin
+        _add_row(hands_free_layout, "Faded preview visibility", _PREVIEW_IDLE_OPACITY_DESC,
+                 idle_opacity_spin, width=170)
+        idle_hidden_warn = _warning_label('cmd_preview_idle_opacity_warn')
+        hands_free_layout.addWidget(idle_hidden_warn)
+        _show_warning(idle_hidden_warn, _PREVIEW_HIDDEN_WARNING if idle_opacity_spin.value() == 0 else "")
+        idle_opacity_spin.valueChanged.connect(
+            lambda v, w=idle_hidden_warn: _show_warning(w, _PREVIEW_HIDDEN_WARNING if v == 0 else ""))
+
+        stored_stop = cmd_cfg.get('stop_phrases', [])
+        if isinstance(stored_stop, str):
+            stored_stop = [stored_stop]
+        stop_edit = QPlainTextEdit()
+        stop_edit.setPlainText("\n".join(str(p) for p in (stored_stop or []) if isinstance(p, str)))
+        stop_edit.setPlaceholderText("\n".join(session_modes.SESSION_STOP_PHRASES))
+        stop_edit.setFixedHeight(84)
+        self._widgets['cmd_stop_phrases'] = stop_edit
+        _add_row(hands_free_layout, "Stop words",
+                 _STOP_PHRASES_DESC.format(
+                     stop="' / '".join(session_modes.SESSION_STOP_PHRASES)),
+                 stop_edit, width=280)
+        stop_warn = _warning_label('cmd_stop_phrases_warn')
+        hands_free_layout.addWidget(stop_warn)
+
+        def _refresh_stop_warn():
+            _show_warning(stop_warn, " ".join(
+                _stop_phrase_warnings(_abort_phrase_lines(stop_edit.toPlainText()))))
+        stop_edit.textChanged.connect(_refresh_stop_warn)
+        _refresh_stop_warn()
+
+        stored_abort = cmd_cfg.get('abort_phrases', [])
+        if isinstance(stored_abort, str):
+            stored_abort = [stored_abort]
+        abort_edit = QPlainTextEdit()
+        abort_edit.setPlainText("\n".join(str(p) for p in (stored_abort or []) if isinstance(p, str)))
+        abort_edit.setPlaceholderText("No extra phrases (one per line)")
+        abort_edit.setFixedHeight(84)
+        self._widgets['cmd_abort_phrases'] = abort_edit
+        _add_row(hands_free_layout, "Extra exit phrases",
+                 _ABORT_PHRASES_DESC.format(sleep=session_modes.SESSION_SLEEP_PHRASES[0]),
+                 abort_edit, width=280)
+        abort_warn = _warning_label('cmd_abort_phrases_warn')
+        hands_free_layout.addWidget(abort_warn)
+
+        def _refresh_abort_warn():
+            _show_warning(abort_warn, " ".join(
+                _abort_phrase_warnings(_abort_phrase_lines(abort_edit.toPlainText()))))
+        abort_edit.textChanged.connect(_refresh_abort_warn)
+        _refresh_abort_warn()
+
+        if _MODES_CONFIG_ONLY_KEYS:
+            config_only_note = QLabel(_MODES_CONFIG_ONLY_NOTE)
+            config_only_note.setWordWrap(True)
+            config_only_note.setStyleSheet(f"color: {theme.ICON_IDLE}; font-size: 12px;")
+            self._widgets['modes_config_only_note'] = config_only_note
+            hands_free_layout.addWidget(config_only_note)
 
         # ---- Card 2: Dictation bindings ---------------------------------
         dictation_card, dictation_layout = self._section_card(
@@ -388,6 +700,13 @@ class ModesPage:
             "Recording behavior and keys for normal text dictation.",
         )
         layout.addWidget(dictation_card)
+
+        matching_cb = QCheckBox()
+        matching_cb.setChecked(bool(cmd_cfg.get(
+            'command_matching_enabled', getattr(self.app, 'command_matching_enabled', False))))
+        self._widgets['cmd_matching_enabled'] = matching_cb
+        _add_row(dictation_layout, "Commands while dictating", _CMD_MATCHING_DESC,
+                 matching_cb, width=220)
 
         mode_combo = QComboBox()
         mode_combo.addItems(['hold', 'toggle', 'continuous'])
@@ -700,6 +1019,61 @@ class ModesPage:
             )
         )
 
+        # command_mode.tts_char_limit (queue 57). 0 = no limit, shown as
+        # "No limit"; the spin shows the EFFECTIVE value, so a negative or
+        # garbage config value reads as the default the app actually uses.
+        from samsara.tts.coordinator import command_mode_char_limit  # noqa: PLC0415
+        tts_limit_spin = QSpinBox()
+        tts_limit_spin.setRange(0, 1000)
+        tts_limit_spin.setSingleStep(10)
+        tts_limit_spin.setSuffix(" chars")
+        tts_limit_spin.setSpecialValueText("No limit")
+        tts_limit_spin.setValue(command_mode_char_limit(cfg) or 0)
+        self._widgets['cmd_tts_char_limit'] = tts_limit_spin
+        adv_area_layout.addLayout(
+            self._setting_row(
+            "Spoken acknowledgement limit",
+            _CMD_TTS_CHAR_LIMIT_DESC,
+            tts_limit_spin,
+            control_width=180,
+            )
+        )
+
+        # command_mode.cancel_window_s / cancel_window_all_commands (queue
+        # 69). The spin shows the EFFECTIVE value the policy uses, so a garbage
+        # config value reads as the default; 0 is shown as "Off".
+        from samsara.execution_policy import (  # noqa: PLC0415
+            CANCEL_WINDOW_MAX_S, cancel_window_settings)
+        from types import SimpleNamespace  # noqa: PLC0415
+        _cw_seconds, _cw_everyday = cancel_window_settings(SimpleNamespace(config=cfg))
+        cancel_window_spin = QDoubleSpinBox()
+        cancel_window_spin.setRange(0.0, CANCEL_WINDOW_MAX_S)
+        cancel_window_spin.setDecimals(1)
+        cancel_window_spin.setSingleStep(0.5)
+        cancel_window_spin.setSuffix(" s")
+        cancel_window_spin.setSpecialValueText("Off")
+        cancel_window_spin.setValue(_cw_seconds)
+        self._widgets['cmd_cancel_window'] = cancel_window_spin
+        adv_area_layout.addLayout(
+            self._setting_row(
+            "Cancel window for commands heard while dictating",
+            _CMD_CANCEL_WINDOW_DESC,
+            cancel_window_spin,
+            control_width=180,
+            )
+        )
+        cancel_window_all_cb = QCheckBox()
+        cancel_window_all_cb.setChecked(_cw_everyday)
+        self._widgets['cmd_cancel_window_all'] = cancel_window_all_cb
+        adv_area_layout.addLayout(
+            self._setting_row(
+            "Also for everyday words (submit, enter, focus...)",
+            _CMD_CANCEL_WINDOW_ALL_DESC,
+            cancel_window_all_cb,
+            control_width=180,
+            )
+        )
+
         cmd_miss_spin = QSpinBox()
         cmd_miss_spin.setRange(1, 20)
         cmd_miss_spin.setValue(int(cmd_cfg.get('miss_limit', 5)))
@@ -816,6 +1190,29 @@ class ModesPage:
                 cmd_cfg['enter_debounce_ms'] = self._widgets['cmd_debounce'].value()
                 cmd_cfg['inactivity_timeout_s'] = self._widgets['cmd_timeout'].value()
                 cmd_cfg['miss_limit'] = self._widgets['cmd_miss_limit'].value()
+                if 'cmd_tts_char_limit' in self._widgets:
+                    cmd_cfg['tts_char_limit'] = self._widgets['cmd_tts_char_limit'].value()
+                if 'cmd_cancel_window' in self._widgets:
+                    cmd_cfg['cancel_window_s'] = round(self._widgets['cmd_cancel_window'].value(), 1)
+                    cmd_cfg['cancel_window_all_commands'] = self._widgets['cmd_cancel_window_all'].isChecked()
+                # Queue 62 keys.
+                cmd_cfg['utterance_silence_s'] = round(self._widgets['cmd_utterance_silence'].value(), 2)
+                cmd_cfg['dictate_utterance_silence_s'] = round(
+                    self._widgets['cmd_dictate_utterance_silence'].value(), 2)
+                cmd_cfg['exit_earcon'] = self._widgets['cmd_exit_earcon'].isChecked()
+                cmd_cfg['preview_idle_delay_s'] = round(self._widgets['cmd_preview_idle_delay'].value(), 1)
+                cmd_cfg['preview_idle_opacity'] = round(
+                    self._widgets['cmd_preview_idle_opacity'].value() / 100.0, 2)
+                cmd_cfg['abort_phrases'] = _abort_phrase_lines(
+                    self._widgets['cmd_abort_phrases'].toPlainText())
+                cmd_cfg['stop_phrases'] = _abort_phrase_lines(
+                    self._widgets['cmd_stop_phrases'].toPlainText())
+                matching = self._widgets['cmd_matching_enabled'].isChecked()
+                cmd_cfg['command_matching_enabled'] = matching
+                # commands.py gates on the attribute, set once at startup;
+                # keep it in step so the change applies without a restart.
+                if hasattr(self.app, 'command_matching_enabled'):
+                    self.app.command_matching_enabled = matching
                 btn_label = self._widgets['cmd_tab_button'].currentText()
                 cmd_cfg['button'] = _CMD_BUTTON_OPTIONS.get(btn_label, 'rctrl')
                 cmd_cfg['suppress_button'] = self._widgets['cmd_tab_suppress'].isChecked()

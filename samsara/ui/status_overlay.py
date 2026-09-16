@@ -22,35 +22,42 @@ from PySide6.QtWidgets import (
 from samsara.ui import qt_runtime
 
 from samsara.log import get_logger
+from samsara.ui import theme
 
 logger = get_logger(__name__)
 
+
 # ── Palette (matches task_overlay.py dark theme) ──────────────────────────────
 
-_BG       = "#0A0A0B"
-_SURFACE  = "#111114"
-_BORDER   = "#2a2a32"
-_ACCENT   = "#5EEAD4"
-_WARN     = "#f59e0b"
-_WARN_BG  = "#1c1400"
-_TEXT_PRI = "#E8E8EA"
-_TEXT_MUT = "#55555C"
+def _bg():
+    return f"{theme.BG0}"
 
-_SS = f"""
-QMainWindow, QWidget {{
-    background: {_BG};
-    color: {_TEXT_PRI};
-    font-family: 'Segoe UI', sans-serif;
-    font-size: 13px;
-}}
-QScrollArea {{ border: none; background: transparent; }}
-QScrollBar:vertical {{
-    background: {_BG}; width: 5px; border: none;
-}}
-QScrollBar::handle:vertical {{
-    background: {_BORDER}; border-radius: 2px; min-height: 20px;
-}}
-QScrollBar::add-line:vertical, QScrollBar::sub-line:vertical {{ height: 0; }}
+
+def _surface():
+    return f"{theme.BG1}"
+
+
+def _warn_bg():
+    return f"{theme.mix(theme.WARNING, theme.BG0, 0.88)}"
+def _ss() -> str:
+    """The window's stylesheet, built on demand. Never a module
+    constant: an f-string evaluated at import time freezes whichever
+    palette was live then (queue 129)."""
+    return f"""
+    QMainWindow, QWidget {{
+        background: {_bg()};
+        color: {theme.TEXT_PRIMARY};
+        font-family: 'Segoe UI', sans-serif;
+        font-size: {theme.TYPE_BODY}px;
+    }}
+    QScrollArea {{ border: none; background: transparent; }}
+    QScrollBar:vertical {{
+        background: {_bg()}; width: 5px; border: none;
+    }}
+    QScrollBar::handle:vertical {{
+        background: {theme.BORDER}; border-radius: 2px; min-height: 20px;
+    }}
+    QScrollBar::add-line:vertical, QScrollBar::sub-line:vertical {{ height: 0; }}
 """
 
 
@@ -75,6 +82,7 @@ def _format_alarm_remaining(next_at, *, enabled=True, active=False, now=None) ->
     if minutes:
         return f"in {hours} hr {minutes} min"
     return f"in {hours} hr"
+
 
 # ── Schedule formatting helpers ───────────────────────────────────────────────
 
@@ -126,7 +134,7 @@ class _StatusWindow(QMainWindow):
 
         self.setWindowTitle("Reminders & Alarms")
         self.setWindowFlags(Qt.WindowStaysOnTopHint | Qt.Tool)
-        self.setStyleSheet(_SS)
+        self.setStyleSheet(_ss())
         self.resize(320, 440)
         self.setMinimumSize(260, 180)
 
@@ -151,8 +159,8 @@ class _StatusWindow(QMainWindow):
         # Header row
         hdr_row = QHBoxLayout()
         hdr = QLabel("Reminders & Alarms")
-        hdr.setFont(QFont("Segoe UI", 14, QFont.Bold))
-        hdr.setStyleSheet(f"color: {_ACCENT}; background: transparent;")
+        hdr.setFont(theme.qfont(theme.TYPE_HEADING, weight=QFont.Bold))
+        hdr.setStyleSheet(f"color: {theme.ACCENT}; background: transparent;")
         hdr_row.addWidget(hdr, stretch=1)
 
         close_btn = QPushButton("x")
@@ -161,8 +169,8 @@ class _StatusWindow(QMainWindow):
         close_btn.setCursor(Qt.PointingHandCursor)
         close_btn.clicked.connect(self.hide)
         close_btn.setStyleSheet(
-            f"background: transparent; border: none; color: {_TEXT_MUT};"
-            f" font-size: 14px; font-weight: bold; border-radius: 3px;"
+            f"background: transparent; border: none; color: {theme.TEXT_SECONDARY};"
+            f" font-size: {theme.TYPE_BODY}px; font-weight: bold; border-radius: 3px;"
         )
         hdr_row.addWidget(close_btn)
         root.addLayout(hdr_row)
@@ -170,16 +178,16 @@ class _StatusWindow(QMainWindow):
         # Divider
         div = QFrame()
         div.setFrameShape(QFrame.HLine)
-        div.setStyleSheet(f"color: {_BORDER};")
+        div.setStyleSheet(f"color: {theme.BORDER};")
         root.addWidget(div)
 
         # Nagging alarm banner — shown only when an alarm is sounding
         self._nag_banner = QLabel()
         self._nag_banner.setWordWrap(True)
         self._nag_banner.setStyleSheet(
-            f"background: {_WARN_BG}; color: {_WARN};"
-            f" border: 1px solid {_WARN}; border-radius: 5px;"
-            f" padding: 6px 10px; font-weight: bold; background: {_WARN_BG};"
+            f"background: {_warn_bg()}; color: {theme.WARNING};"
+            f" border: 1px solid {theme.WARNING}; border-radius: 5px;"
+            f" padding: 6px 10px; font-weight: bold; background: {_warn_bg()};"
         )
         self._nag_banner.hide()
         root.addWidget(self._nag_banner)
@@ -194,8 +202,8 @@ class _StatusWindow(QMainWindow):
         # Footer
         self._footer = QLabel()
         self._footer.setStyleSheet(
-            f"color: {_TEXT_MUT}; font-size: 10px;"
-            f" padding-top: 4px; border-top: 1px solid {_BORDER};"
+            f"color: {theme.TEXT_SECONDARY}; font-size: {theme.TYPE_MIN}px;"
+            f" padding-top: 4px; border-top: 1px solid {theme.BORDER};"
             f" background: transparent;"
         )
         root.addWidget(self._footer)
@@ -300,21 +308,21 @@ class _StatusWindow(QMainWindow):
 
     def _section(self, layout: QVBoxLayout, text: str):
         lbl = QLabel(text.upper())
-        lbl.setFont(QFont("Segoe UI", 9, QFont.Bold))
+        lbl.setFont(theme.qfont(theme.TYPE_MIN, weight=QFont.Bold))
         lbl.setStyleSheet(
-            f"color: {_TEXT_MUT}; letter-spacing: 1px;"
+            f"color: {theme.TEXT_SECONDARY}; letter-spacing: 1px;"
             f" padding: 6px 0 2px 0; background: transparent;"
         )
         layout.addWidget(lbl)
 
     def _item_row(self, layout: QVBoxLayout, name: str, detail: str, dim: bool = False):
         row = QWidget()
-        row.setStyleSheet(f"background: {_SURFACE}; border-radius: 4px;")
+        row.setStyleSheet(f"background: {_surface()}; border-radius: 4px;")
         hl = QHBoxLayout(row)
         hl.setContentsMargins(10, 6, 10, 6)
         hl.setSpacing(8)
 
-        name_color = _TEXT_MUT if dim else _TEXT_PRI
+        name_color = theme.TEXT_SECONDARY if dim else theme.TEXT_PRIMARY
         name_lbl = QLabel(name)
         name_lbl.setStyleSheet(f"color: {name_color}; background: transparent;")
         hl.addWidget(name_lbl, stretch=1)
@@ -322,7 +330,7 @@ class _StatusWindow(QMainWindow):
         detail_lbl = QLabel(detail)
         detail_lbl.setAlignment(Qt.AlignRight | Qt.AlignVCenter)
         detail_lbl.setStyleSheet(
-            f"color: {_TEXT_MUT}; font-size: 11px; background: transparent;"
+            f"color: {theme.TEXT_SECONDARY}; font-size: {theme.TYPE_MIN}px; background: transparent;"
         )
         hl.addWidget(detail_lbl)
 
@@ -331,7 +339,7 @@ class _StatusWindow(QMainWindow):
     def _empty(self, layout: QVBoxLayout, text: str):
         lbl = QLabel(text)
         lbl.setStyleSheet(
-            f"color: {_TEXT_MUT}; font-style: italic;"
+            f"color: {theme.TEXT_SECONDARY}; font-style: italic;"
             f" padding: 2px 0; background: transparent;"
         )
         layout.addWidget(lbl)

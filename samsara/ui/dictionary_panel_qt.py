@@ -32,51 +32,48 @@ logger = logging.getLogger(__name__)
 # Colours — matches the main Qt window palette
 # ---------------------------------------------------------------------------
 
-_BG       = "#0b0e14"
-_SURFACE  = "#131820"
-_ELEVATED = "#1a2030"
-_BORDER   = "#2a3345"
-_ACCENT   = "#5cc4d4"
-_TEXT_PRI = "#e4e8ef"
-_TEXT_SEC = "#7a8599"
-_SUCCESS  = "#6ee7a0"
-_ERROR    = "#f87171"
-_MUTED    = "#4a5568"
+# Colour comes from samsara.ui.theme, never from a literal here: this
+# module used to keep its own copy of the dark palette, which is exactly
+# how a second palette leaves one window unreadable (queue 129).
 
-_SS = f"""
-QWidget {{ background:{_BG}; color:{_TEXT_PRI};
-          font-family:'Segoe UI',sans-serif; font-size:13px; }}
-QTabWidget::pane {{ border:1px solid {_BORDER}; background:{_BG}; }}
-QTabBar::tab {{ background:{_SURFACE}; color:{_TEXT_SEC};
-                padding:5px 14px; border:none; margin-right:2px; }}
-QTabBar::tab:selected {{ background:{_ELEVATED}; color:{_ACCENT};
-                         border-bottom:2px solid {_ACCENT}; }}
-QTabBar::tab:hover:!selected {{ color:{_TEXT_PRI}; }}
-QListWidget, QTableWidget {{
-    background:{_SURFACE}; border:1px solid {_BORDER};
-    color:{_TEXT_PRI}; outline:none; gridline-color:{_BORDER};
-}}
-QListWidget::item {{ padding:3px 6px; }}
-QListWidget::item:selected {{ background:{_ACCENT}; color:{_BG}; }}
-QTableWidget::item {{ padding:3px 6px; }}
-QTableWidget::item:selected {{ background:{_ACCENT}; color:{_BG}; }}
-QHeaderView::section {{
-    background:{_ELEVATED}; color:{_TEXT_SEC}; border:none;
-    border-right:1px solid {_BORDER}; padding:4px 8px;
-    font-size:11px; font-weight:bold;
-}}
-QLineEdit {{
-    background:{_SURFACE}; border:1px solid {_BORDER};
-    color:{_TEXT_PRI}; padding:4px 8px; border-radius:4px;
-}}
-QLineEdit:focus {{ border-color:{_ACCENT}; }}
-QPushButton {{
-    background:{_ELEVATED}; color:{_TEXT_PRI};
-    border:1px solid {_BORDER}; padding:4px 12px; border-radius:4px;
-}}
-QPushButton:hover {{ background:{_ACCENT}; color:{_BG}; border-color:{_ACCENT}; }}
-QPushButton#danger {{ color:{_ERROR}; border-color:{_ERROR}; }}
-QPushButton#danger:hover {{ background:{_ERROR}; color:{_BG}; }}
+def _ss() -> str:
+    """The window's stylesheet, built on demand. Never a module
+    constant: an f-string evaluated at import time freezes the
+    palette that happened to be live then (queue 129)."""
+    return f"""
+    QWidget {{ background:{theme.BG0}; color:{theme.TEXT_PRIMARY};
+              font-family:'Segoe UI',sans-serif; font-size:{theme.TYPE_BODY}px; }}
+    QTabWidget::pane {{ border:1px solid {theme.BORDER}; background:{theme.BG0}; }}
+    QTabBar::tab {{ background:{theme.BG1}; color:{theme.TEXT_SECONDARY};
+                    padding:5px 14px; border:none; margin-right:2px; }}
+    QTabBar::tab:selected {{ background:{theme.BG2}; color:{theme.ACCENT};
+                             border-bottom:2px solid {theme.ACCENT}; }}
+    QTabBar::tab:hover:!selected {{ color:{theme.TEXT_PRIMARY}; }}
+    QListWidget, QTableWidget {{
+        background:{theme.BG1}; border:1px solid {theme.BORDER};
+        color:{theme.TEXT_PRIMARY}; outline:none; gridline-color:{theme.BORDER};
+    }}
+    QListWidget::item {{ padding:3px 6px; }}
+    QListWidget::item:selected {{ background:{theme.ACCENT}; color:{theme.BG0}; }}
+    QTableWidget::item {{ padding:3px 6px; }}
+    QTableWidget::item:selected {{ background:{theme.ACCENT}; color:{theme.BG0}; }}
+    QHeaderView::section {{
+        background:{theme.BG2}; color:{theme.TEXT_SECONDARY}; border:none;
+        border-right:1px solid {theme.BORDER}; padding:4px 8px;
+        font-size:{theme.TYPE_MIN}px; font-weight:bold;
+    }}
+    QLineEdit {{
+        background:{theme.BG1}; border:1px solid {theme.BORDER};
+        color:{theme.TEXT_PRIMARY}; padding:4px 8px; border-radius:4px;
+    }}
+    QLineEdit:focus {{ border-color:{theme.ACCENT}; }}
+    QPushButton {{
+        background:{theme.BG2}; color:{theme.TEXT_PRIMARY};
+        border:1px solid {theme.BORDER}; padding:4px 12px; border-radius:4px;
+    }}
+    QPushButton:hover {{ background:{theme.ACCENT}; color:{theme.BG0}; border-color:{theme.ACCENT}; }}
+    QPushButton#danger {{ color:{theme.ERROR}; border-color:{theme.ERROR}; }}
+    QPushButton#danger:hover {{ background:{theme.ERROR}; color:{theme.BG0}; }}
 """ + theme.SCROLLBAR_QSS
 
 
@@ -100,7 +97,7 @@ class DictionaryPanelQt(QWidget):
         self._app    = app
         self._alive  = True
         self._sigs   = _Signals()
-        self.setStyleSheet(_SS)
+        self.setStyleSheet(_ss())
         self._build_ui()
 
     def closeEvent(self, e):
@@ -160,7 +157,7 @@ class DictionaryPanelQt(QWidget):
             "Changes take effect on the next dictation — no restart needed."
         )
         desc.setWordWrap(True)
-        desc.setStyleSheet(f"color:{_TEXT_SEC};font-size:12px;")
+        desc.setStyleSheet(f"color:{theme.TEXT_SECONDARY};font-size:{theme.TYPE_MIN}px;")
         lay.addWidget(desc)
 
         # Input row
@@ -200,11 +197,11 @@ class DictionaryPanelQt(QWidget):
 
         # Status label
         self._vocab_status = QLabel("")
-        self._vocab_status.setStyleSheet(f"color:{_TEXT_SEC};font-size:11px;")
+        self._vocab_status.setStyleSheet(f"color:{theme.TEXT_SECONDARY};font-size:{theme.TYPE_MIN}px;")
         lay.addWidget(self._vocab_status)
         self._sigs.status.connect(
             lambda msg, col, w=self._vocab_status:
-                w.setText(msg) or w.setStyleSheet(f"color:{col};font-size:11px;")
+                w.setText(msg) or w.setStyleSheet(f"color:{col};font-size:{theme.TYPE_MIN}px;")
         )
 
         return page
@@ -253,7 +250,7 @@ class DictionaryPanelQt(QWidget):
                 f"Exported {len(self._custom_vocab)} words to {path}"
             )
             self._vocab_status.setStyleSheet(
-                f"color:{_SUCCESS};font-size:11px;"
+                f"color:{theme.SUCCESS};font-size:{theme.TYPE_MIN}px;"
             )
         except Exception as exc:
             QMessageBox.critical(self, "Export failed", str(exc))
@@ -287,7 +284,7 @@ class DictionaryPanelQt(QWidget):
             self._vocab_status.setText(
                 f"Imported {added} new word(s) — skipped duplicates."
             )
-            self._vocab_status.setStyleSheet(f"color:{_SUCCESS};font-size:11px;")
+            self._vocab_status.setStyleSheet(f"color:{theme.SUCCESS};font-size:{theme.TYPE_MIN}px;")
         except Exception as exc:
             QMessageBox.critical(self, "Import failed", str(exc))
 
@@ -327,7 +324,7 @@ class DictionaryPanelQt(QWidget):
 
         desc = QLabel(desc_text)
         desc.setWordWrap(True)
-        desc.setStyleSheet(f"color:{_TEXT_SEC};font-size:12px;")
+        desc.setStyleSheet(f"color:{theme.TEXT_SECONDARY};font-size:{theme.TYPE_MIN}px;")
         lay.addWidget(desc)
 
         # Input row
@@ -336,7 +333,7 @@ class DictionaryPanelQt(QWidget):
         field1 = QLineEdit()
         field1.setPlaceholderText(ph1)
         arrow = QLabel("->")
-        arrow.setStyleSheet(f"color:{_TEXT_SEC};padding:0 4px;")
+        arrow.setStyleSheet(f"color:{theme.TEXT_SECONDARY};padding:0 4px;")
         field2 = QLineEdit()
         field2.setPlaceholderText(ph2)
         add_btn = QPushButton("Add")
@@ -367,13 +364,13 @@ class DictionaryPanelQt(QWidget):
         btn_row.addWidget(rem_btn)
         btn_row.addStretch()
         note = QLabel("Default entries are read-only.")
-        note.setStyleSheet(f"color:{_TEXT_SEC};font-size:11px;")
+        note.setStyleSheet(f"color:{theme.TEXT_SECONDARY};font-size:{theme.TYPE_MIN}px;")
         btn_row.addWidget(note)
         lay.addLayout(btn_row)
 
         # Status
         status_lbl = QLabel("")
-        status_lbl.setStyleSheet(f"color:{_TEXT_SEC};font-size:11px;")
+        status_lbl.setStyleSheet(f"color:{theme.TEXT_SECONDARY};font-size:{theme.TYPE_MIN}px;")
         lay.addWidget(status_lbl)
 
         # Load data and wire up
@@ -428,7 +425,7 @@ class DictionaryPanelQt(QWidget):
             item = QTableWidgetItem(text)
             if is_default:
                 item.setForeground(
-                    __import__('PySide6.QtGui', fromlist=['QColor']).QColor(_MUTED)
+                    __import__('PySide6.QtGui', fromlist=['QColor']).QColor(theme.TEXT_DISABLED)
                 )
             table.setItem(row, col, item)
 

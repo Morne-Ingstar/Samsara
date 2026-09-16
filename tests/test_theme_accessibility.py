@@ -34,7 +34,8 @@ def _contrast_ratio(rgb_a: tuple[int, int, int], rgb_b: tuple[int, int, int]) ->
 
 
 def test_shared_caption_floor_and_secondary_opacity():
-    assert theme.FONT_SIZE_CAPTION == 12
+    # Queue 83 raised the shared caption to the absolute floor (14 px).
+    assert theme.FONT_SIZE_CAPTION == theme.TYPE_MIN >= 14
     assert theme.TEXT_SECONDARY == "rgba(255,255,255,0.75)"
 
 

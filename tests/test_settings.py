@@ -574,6 +574,47 @@ class TestApplyAndCloseSnapshot:
             'continuous_commit_hotkey': 'ctrl+space', 'continuous_commit_trigger': 'silence',
             'ava_mode_enabled': True,
         })
+        # Queue 57 delta: command_mode.tts_char_limit gained a Settings
+        # control, so Apply now writes its effective value (default 50).
+        expected.setdefault('command_mode', {})['tts_char_limit'] = 50
+        # Queue 62 delta: the five remaining config-only command_mode keys
+        # gained controls, so Apply writes their engine fallback values.
+        expected['command_mode'].update({
+            'utterance_silence_s': 1.0, 'dictate_utterance_silence_s': 0.65,
+            'exit_earcon': True, 'abort_phrases': [], 'command_matching_enabled': False,
+        })
+        # Queue 59 delta: the Ava / Cloud page writes the web-search opt-in
+        # (off: Cloud AI is off in the default config, so it cannot apply).
+        expected.setdefault('cloud_llm', {})['web_search'] = False
+        # Queue 69 delta: the dictation-lane cancel window gained controls, so
+        # Apply writes its default (3.0 s, curated everyday words exempt).
+        expected['command_mode'].update({'cancel_window_s': 3.0, 'cancel_window_all_commands': False})
+        # Queue 75 delta: the dictation preview's idle fade gained controls, so
+        # Apply writes their defaults (fade after 5 s to 25% opacity).
+        expected['command_mode'].update({'preview_idle_delay_s': 5.0, 'preview_idle_opacity': 0.25})
+        # Queue 93 delta: the Advanced page gained the command-word escape
+        # hatch, so Apply writes it. Empty is OFF and is the default -- no
+        # prefix word is hard-coded. The page writes the whole `intent`
+        # section so the config-file-only shadow_enabled survives a save;
+        # with an empty starting config there is nothing to preserve.
+        expected['intent'] = {'command_prefix': ''}
+        # Queue 116 delta: the Modes page gained the emergency stop's word
+        # list beside the existing exit phrases, so Apply writes it. Empty is
+        # what a fresh window produces, and empty means "keep the built-in
+        # 'halt' / 'cease'" -- Apply cannot switch the stop off by accident.
+        expected['command_mode']['stop_phrases'] = []
+        # Queue 103 delta: the Sounds page gained the spoken-notices control,
+        # so Apply writes its default. "questions" means the session speaks
+        # only when it is waiting on an answer; what it has already done is
+        # left to the chip. The page writes the whole `feedback` section so
+        # any future sibling key survives a save; with an empty starting
+        # config there is nothing to preserve.
+        expected['feedback'] = {'spoken_notices': 'questions'}
+        # Queue 129 delta: the General page gained the light/dark/system
+        # theme, so Apply writes its default. The page writes the whole `ui`
+        # section so a future sibling key survives a save; with an empty
+        # starting config there is nothing to preserve.
+        expected['ui'] = {'theme': 'dark'}
 
         stub = _StubApp()
         win = _SettingsWindow(stub)
@@ -971,10 +1012,33 @@ class TestModesTabClaims:
         win._check_modes_collisions()
         assert not win._widgets['modes_collision_warn'].isVisible()
 
+    # 7b. command_mode.tts_char_limit control (queue 57) --------------------
+    @pytest.mark.parametrize("stored, shown", [(50, 50), (120, 120), (0, 0), (-5, 50), ("junk", 50)])
+    def test_tts_char_limit_control_shows_effective_value(self, qapp, stored, shown):
+        from samsara.ui.settings import modes_qt as sq
+        _stub, win = self._win({"command_mode": {"tts_char_limit": stored}})
+        spin = win._widgets['cmd_tts_char_limit']
+        assert spin.value() == shown
+        assert spin.specialValueText() == "No limit" and spin.minimum() == 0
+        if shown == 0:
+            assert spin.text() == "No limit"
+        assert sq._CMD_TTS_CHAR_LIMIT_DESC in self._labels(win)
+        assert "Ava" in sq._CMD_TTS_CHAR_LIMIT_DESC and "(0)" in sq._CMD_TTS_CHAR_LIMIT_DESC
+
+    def test_tts_char_limit_control_saves_into_command_mode(self, qapp):
+        _stub, win = self._win({"command_mode": {"tts_char_limit": 50}})
+        win._widgets['cmd_tts_char_limit'].setValue(0)
+        produced = win._save_fns[1]({})
+        assert produced['command_mode']['tts_char_limit'] == 0
+
     # 8. config-only note -------------------------------------------------
     def test_config_only_note_lists_the_unexposed_keys(self, qapp):
         from samsara.ui.settings import modes_qt as sq   # Modes constants live with the page (21)
         _stub, win = self._win()
+        # Queue 62: every key got a control, so the note is not built.
+        if not sq._MODES_CONFIG_ONLY_KEYS:
+            assert 'modes_config_only_note' not in win._widgets
+            return
         note = win._widgets['modes_config_only_note'].text()
         for key in sq._MODES_CONFIG_ONLY_KEYS:
             assert key in note

@@ -265,14 +265,14 @@ class TutorialWindow(QMainWindow):
         hl.setContentsMargins(28, 0, 28, 0)
 
         self._step_lbl = QLabel()
-        self._step_lbl.setStyleSheet("color:#8A8A92;font-size:12px;")
+        self._step_lbl.setStyleSheet(f"color:{theme.TEXT_SECONDARY};font-size:{theme.TYPE_MIN}px;")
         hl.addWidget(self._step_lbl)
         hl.addStretch()
 
         self._dots: list[QLabel] = []
         for _ in self._steps:
             dot = QLabel("●")
-            dot.setStyleSheet("font-size:10px;")
+            dot.setStyleSheet(f"font-size:{theme.TYPE_MIN}px;")
             self._dots.append(dot)
             hl.addWidget(dot)
 
@@ -290,7 +290,7 @@ class TutorialWindow(QMainWindow):
         tbl.setContentsMargins(28, 14, 28, 8)
         self._title_lbl = QLabel()
         self._title_lbl.setStyleSheet(
-            "color:#E8E8EA;font-size:20px;font-weight:bold;"
+            f"color:{theme.TEXT_PRIMARY};font-size:{theme.TYPE_TITLE}px;font-weight:bold;"
         )
         tbl.addWidget(self._title_lbl)
         root.addWidget(title_bar)
@@ -418,7 +418,7 @@ class TutorialWindow(QMainWindow):
         fl.setContentsMargins(16, 12, 16, 12)
         lbl = QLabel(text)
         lbl.setWordWrap(True)
-        lbl.setStyleSheet(f"color:{theme.TEXT_PRIMARY};font-size:13px;")
+        lbl.setStyleSheet(f"color:{theme.TEXT_PRIMARY};font-size:{theme.TYPE_BODY}px;")
         fl.addWidget(lbl)
         return frame
 
@@ -429,11 +429,11 @@ class TutorialWindow(QMainWindow):
         fl.setContentsMargins(14, 10, 14, 10)
         fl.setSpacing(10)
         check = QLabel("✓")
-        check.setStyleSheet(f"color:{theme.ACCENT};font-size:22px;font-weight:bold;")
+        check.setStyleSheet(f"color:{theme.ACCENT};font-size:{theme.TYPE_DISPLAY}px;font-weight:bold;")
         fl.addWidget(check, alignment=Qt.AlignmentFlag.AlignVCenter)
         msg = QLabel(text)
         msg.setWordWrap(True)
-        msg.setStyleSheet(f"color:{theme.TEXT_PRIMARY};font-size:13px;")
+        msg.setStyleSheet(f"color:{theme.TEXT_PRIMARY};font-size:{theme.TYPE_BODY}px;")
         fl.addWidget(msg, stretch=1)
         return frame
 
@@ -453,7 +453,7 @@ class TutorialWindow(QMainWindow):
             "Samsara lets you control your computer and type with your voice."
         )
         headline.setWordWrap(True)
-        headline.setStyleSheet("color:#E8E8EA;font-size:16px;")
+        headline.setStyleSheet(f"color:{theme.TEXT_PRIMARY};font-size:{theme.TYPE_HEADING}px;")
         lay.addWidget(headline)
 
         sub = QLabel(
@@ -461,7 +461,7 @@ class TutorialWindow(QMainWindow):
             "Every step is skippable."
         )
         sub.setWordWrap(True)
-        sub.setStyleSheet("color:#8A8A92;font-size:13px;")
+        sub.setStyleSheet(f"color:{theme.TEXT_SECONDARY};font-size:{theme.TYPE_BODY}px;")
         lay.addWidget(sub)
         lay.addSpacing(8)
 
@@ -477,10 +477,10 @@ class TutorialWindow(QMainWindow):
             row = QHBoxLayout()
             i_lbl = QLabel(icon)
             i_lbl.setFixedWidth(28)
-            i_lbl.setStyleSheet("font-size:16px;")
+            i_lbl.setStyleSheet(f"font-size:{theme.TYPE_HEADING}px;")
             row.addWidget(i_lbl)
             t_lbl = QLabel(label)
-            t_lbl.setStyleSheet("color:#E8E8EA;font-size:13px;")
+            t_lbl.setStyleSheet(f"color:{theme.TEXT_PRIMARY};font-size:{theme.TYPE_BODY}px;")
             row.addWidget(t_lbl)
             row.addStretch()
             tf.addLayout(row)
@@ -518,7 +518,7 @@ class TutorialWindow(QMainWindow):
             f"is your configured record key."
         )
         self._dict_hint.setWordWrap(True)
-        self._dict_hint.setStyleSheet("color:#8A8A92;font-size:12px;")
+        self._dict_hint.setStyleSheet(f"color:{theme.TEXT_SECONDARY};font-size:{theme.TYPE_MIN}px;")
         self._dict_hint.setVisible(False)
         lay.addWidget(self._dict_hint)
 
@@ -553,7 +553,7 @@ class TutorialWindow(QMainWindow):
         inner_lay.setSpacing(4)
         for i in range(1, 15):
             lbl = QLabel(f"Line {i} — more of this area continues below")
-            lbl.setStyleSheet("color:#4a4a56;font-size:12px;")
+            lbl.setStyleSheet(f"color:{theme.BORDER};font-size:{theme.TYPE_MIN}px;")
             inner_lay.addWidget(lbl)
         self._scroll_area.setWidget(inner)
         lay.addWidget(self._scroll_area)
@@ -565,7 +565,7 @@ class TutorialWindow(QMainWindow):
         self._cmd_hint = QLabel(_command_hint(self._examples))
         self._link_help(self._cmd_hint)
         self._cmd_hint.setWordWrap(True)
-        self._cmd_hint.setStyleSheet("color:#8A8A92;font-size:12px;")
+        self._cmd_hint.setStyleSheet(f"color:{theme.TEXT_SECONDARY};font-size:{theme.TYPE_MIN}px;")
         self._cmd_hint.setVisible(False)
         lay.addWidget(self._cmd_hint)
 
@@ -576,7 +576,7 @@ class TutorialWindow(QMainWindow):
         w, lay = self._padded()
 
         done_lbl = QLabel("You know the things that matter.")
-        done_lbl.setStyleSheet(f"color:{theme.ACCENT};font-size:15px;font-weight:600;")
+        done_lbl.setStyleSheet(f"color:{theme.ACCENT};font-size:{theme.TYPE_EMPHASIS}px;font-weight:600;")
         lay.addWidget(done_lbl)
         lay.addSpacing(4)
 
@@ -597,14 +597,14 @@ class TutorialWindow(QMainWindow):
             completed = step_idx in self._completed
             icon_lbl.setStyleSheet(
                 f"color:{theme.ACCENT if completed else theme.TEXT_DISABLED};"
-                f"font-size:16px;font-weight:bold;"
+                f"font-size:{theme.TYPE_HEADING}px;font-weight:bold;"
             )
             icon_lbl.setFixedWidth(24)
             row.addWidget(icon_lbl)
             text_lbl = QLabel(text[2:] if text.startswith("✓  ") else text)
             text_lbl.setStyleSheet(
                 f"color:{theme.TEXT_PRIMARY if completed else theme.TEXT_DISABLED};"
-                f"font-size:13px;"
+                f"font-size:{theme.TYPE_BODY}px;"
             )
             row.addWidget(text_lbl)
             row.addStretch()
@@ -617,22 +617,22 @@ class TutorialWindow(QMainWindow):
             records = _tutorial_catalog(self._app)
         more_lbl = QLabel(_more_text(records))
         more_lbl.setWordWrap(True)
-        more_lbl.setStyleSheet("color:#8A8A92;font-size:12px;")
+        more_lbl.setStyleSheet(f"color:{theme.TEXT_SECONDARY};font-size:{theme.TYPE_MIN}px;")
         lay.addWidget(more_lbl)
 
         pointer_lbl = QLabel(_pointer_text(records))
         pointer_lbl.setWordWrap(True)
-        pointer_lbl.setStyleSheet("color:#8A8A92;font-size:11px;")
+        pointer_lbl.setStyleSheet(f"color:{theme.TEXT_SECONDARY};font-size:{theme.TYPE_MIN}px;")
         lay.addWidget(pointer_lbl)
         hf_lbl = QLabel(_hands_free_text(self._app.config if hasattr(self._app, 'config') else {}))
         hf_lbl.setWordWrap(True)
-        hf_lbl.setStyleSheet("color:#8A8A92;font-size:11px;")
+        hf_lbl.setStyleSheet(f"color:{theme.TEXT_SECONDARY};font-size:{theme.TYPE_MIN}px;")
         lay.addWidget(hf_lbl)
         lay.addSpacing(12)
 
         # --- Advanced guides ---
         next_lbl = QLabel("Go deeper when you're ready:")
-        next_lbl.setStyleSheet("color:#E8E8EA;font-size:13px;font-weight:600;")
+        next_lbl.setStyleSheet(f"color:{theme.TEXT_PRIMARY};font-size:{theme.TYPE_BODY}px;font-weight:600;")
         # Shares the header row: the window is fixed-height and a row of its
         # own squeezes the checklist card above.
         next_row = QHBoxLayout()
@@ -671,9 +671,9 @@ class TutorialWindow(QMainWindow):
             text_col = QVBoxLayout()
             text_col.setSpacing(2)
             title_lbl = QLabel(title)
-            title_lbl.setStyleSheet("color:#E8E8EA;font-size:13px;font-weight:600;")
+            title_lbl.setStyleSheet(f"color:{theme.TEXT_PRIMARY};font-size:{theme.TYPE_BODY}px;font-weight:600;")
             desc_lbl = QLabel(desc)
-            desc_lbl.setStyleSheet("color:#8A8A92;font-size:11px;")
+            desc_lbl.setStyleSheet(f"color:{theme.TEXT_SECONDARY};font-size:{theme.TYPE_MIN}px;")
             text_col.addWidget(title_lbl)
             text_col.addWidget(desc_lbl)
             gc_lay.addLayout(text_col, stretch=1)
@@ -718,8 +718,8 @@ class TutorialWindow(QMainWindow):
         # Dots
         for i, dot in enumerate(self._dots):
             dot.setStyleSheet(
-                f"color:{theme.ACCENT};font-size:10px;" if i == self._step
-                else f"color:{theme.TEXT_DISABLED};font-size:10px;"
+                f"color:{theme.ACCENT};font-size:{theme.TYPE_MIN}px;" if i == self._step
+                else f"color:{theme.TEXT_DISABLED};font-size:{theme.TYPE_MIN}px;"
             )
 
         is_last    = self._step == len(self._steps) - 1

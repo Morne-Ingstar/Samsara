@@ -36,63 +36,59 @@ logger = get_logger(__name__)
 # diagnostics_qt.py/history_qt.py.
 # ---------------------------------------------------------------------------
 
-_BG        = theme.BG0
-_SURFACE   = theme.BG1
-_ELEVATED  = theme.BG2
-_BORDER    = theme.BORDER
-_ACCENT    = theme.ACCENT
-_ACCENT_DIM = "#1a3a42"
-_TEXT_PRI  = theme.TEXT_PRIMARY
-_TEXT_SEC  = theme.TEXT_SECONDARY
 
 _POLL_MS = 500
 _MAX_BLOCK_COUNT = 5000
 _MAX_BUFFERED_LINES = 5000
 _SCROLL_BOTTOM_TOLERANCE = 4
 
-_STYLESHEET = f"""
-QMainWindow, QWidget {{
-    background-color: {_BG};
-    color: {_TEXT_PRI};
-    font-family: {theme.FONT_FAMILY};
-    font-size: {theme.FONT_SIZE_BODY}px;
-}}
-QPlainTextEdit {{
-    background-color: {_SURFACE};
-    border: 1px solid {_BORDER};
-    border-radius: 6px;
-    color: {_TEXT_PRI};
-    font-family: 'Consolas', 'Courier New', monospace;
-    font-size: {theme.FONT_SIZE_CAPTION}px;
-    padding: 8px;
-}}
-QLineEdit {{
-    background-color: {_SURFACE};
-    border: 1px solid {_BORDER};
-    border-radius: 8px;
-    padding: 8px 12px;
-    color: {_TEXT_PRI};
-    font-size: {theme.FONT_SIZE_BODY}px;
-}}
-QLineEdit:focus {{ border-color: {_ACCENT}; }}
-QPushButton {{
-    background-color: {_SURFACE};
-    border: 1px solid {_BORDER};
-    border-radius: 8px;
-    color: {_TEXT_PRI};
-    padding: 8px 16px;
-    font-size: {theme.FONT_SIZE_BODY}px;
-}}
-QPushButton:hover {{
-    background-color: {_ELEVATED};
-    border-color: {_ACCENT};
-}}
-QPushButton:pressed {{ background-color: {_ACCENT_DIM}; }}
-QPushButton:checkable:checked {{
-    background-color: {_ACCENT_DIM};
-    color: {_ACCENT};
-    border-color: {_ACCENT};
-}}
+def _stylesheet() -> str:
+    """The window's stylesheet, built on demand. Never a module
+    constant: an f-string evaluated at import time freezes whichever
+    palette was live then (queue 129)."""
+    return f"""
+    QMainWindow, QWidget {{
+        background-color: {theme.BG0};
+        color: {theme.TEXT_PRIMARY};
+        font-family: {theme.FONT_FAMILY};
+        font-size: {theme.FONT_SIZE_BODY}px;
+    }}
+    QPlainTextEdit {{
+        background-color: {theme.BG1};
+        border: 1px solid {theme.BORDER};
+        border-radius: 6px;
+        color: {theme.TEXT_PRIMARY};
+        font-family: 'Consolas', 'Courier New', monospace;
+        font-size: {theme.FONT_SIZE_CAPTION}px;
+        padding: 8px;
+    }}
+    QLineEdit {{
+        background-color: {theme.BG1};
+        border: 1px solid {theme.BORDER};
+        border-radius: 8px;
+        padding: 8px 12px;
+        color: {theme.TEXT_PRIMARY};
+        font-size: {theme.FONT_SIZE_BODY}px;
+    }}
+    QLineEdit:focus {{ border-color: {theme.ACCENT}; }}
+    QPushButton {{
+        background-color: {theme.BG1};
+        border: 1px solid {theme.BORDER};
+        border-radius: 8px;
+        color: {theme.TEXT_PRIMARY};
+        padding: 8px 16px;
+        font-size: {theme.FONT_SIZE_BODY}px;
+    }}
+    QPushButton:hover {{
+        background-color: {theme.BG2};
+        border-color: {theme.ACCENT};
+    }}
+    QPushButton:pressed {{ background-color: {theme.ACCENT_DIM}; }}
+    QPushButton:checkable:checked {{
+        background-color: {theme.ACCENT_DIM};
+        color: {theme.ACCENT};
+        border-color: {theme.ACCENT};
+    }}
 """
 
 
@@ -142,7 +138,7 @@ class LogViewerWindow(QMainWindow):
         self.setWindowTitle("Samsara — Live Log")
         self.resize(920, 620)
         self.setMinimumSize(560, 400)
-        self.setStyleSheet(_STYLESHEET)
+        self.setStyleSheet(_stylesheet())
 
         self._log_path = SAMSARA_LOG_FILE
         self._tailer = LogTailer(self._log_path)
@@ -189,7 +185,7 @@ class LogViewerWindow(QMainWindow):
 
         self._status_lbl = QLabel("")
         self._status_lbl.setStyleSheet(
-            f"color: {_TEXT_SEC}; font-size: {theme.FONT_SIZE_CAPTION}px;"
+            f"color: {theme.TEXT_SECONDARY}; font-size: {theme.FONT_SIZE_CAPTION}px;"
         )
         root.addWidget(self._status_lbl)
 

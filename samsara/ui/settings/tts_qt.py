@@ -57,7 +57,7 @@ class TTSPage:
         layout.addWidget(tts_enabled)
 
         restart_note = QLabel("Restart Samsara to apply enable/disable changes.")
-        restart_note.setStyleSheet(f"color: {theme.ICON_IDLE}; font-size: 12px;")
+        restart_note.setStyleSheet(f"color: {theme.ICON_IDLE}; font-size: {theme.TYPE_MIN}px;")
         layout.addWidget(restart_note)
         layout.addSpacing(16)
 
@@ -146,12 +146,12 @@ class TTSPage:
         vol_slider.setValue(int(raw_vol * 100))
         vol_slider.setFixedWidth(200)
         vol_slider.setStyleSheet(
-            "QSlider::groove:horizontal{height:4px;background:rgba(255,255,255,0.12);border-radius:2px;}"
+            f"QSlider::groove:horizontal{{height:4px;background:{theme.wash(0.12)};border-radius:2px;}}"
             f"QSlider::handle:horizontal{{width:16px;height:16px;margin:-6px 0;border-radius:8px;background:{theme.ACCENT};}}"
             f"QSlider::sub-page:horizontal{{background:{theme.ACCENT};border-radius:2px;}}"
         )
         vol_pct = QLabel(f"{int(raw_vol * 100)}%")
-        vol_pct.setStyleSheet(f"color: {theme.TEXT_PRIMARY}; font-size: 13px;")
+        vol_pct.setStyleSheet(f"color: {theme.TEXT_PRIMARY}; font-size: {theme.TYPE_BODY}px;")
         vol_pct.setFixedWidth(40)
         vol_slider.valueChanged.connect(lambda v: vol_pct.setText(f"{v}%"))
         self._widgets['tts_volume_slider'] = vol_slider
@@ -177,7 +177,7 @@ class TTSPage:
             "Reduce background audio while Ava is speaking so her voice is clearly audible."
         )
         duck_desc.setWordWrap(True)
-        duck_desc.setStyleSheet(f"color: {theme.ICON_IDLE}; font-size: 12px;")
+        duck_desc.setStyleSheet(f"color: {theme.ICON_IDLE}; font-size: {theme.TYPE_MIN}px;")
         layout.addWidget(duck_desc)
         layout.addSpacing(6)
 
@@ -193,12 +193,12 @@ class TTSPage:
         duck_slider.setValue(int(raw_duck * 100))
         duck_slider.setFixedWidth(200)
         duck_slider.setStyleSheet(
-            "QSlider::groove:horizontal{height:4px;background:rgba(255,255,255,0.12);border-radius:2px;}"
+            f"QSlider::groove:horizontal{{height:4px;background:{theme.wash(0.12)};border-radius:2px;}}"
             f"QSlider::handle:horizontal{{width:16px;height:16px;margin:-6px 0;border-radius:8px;background:{theme.ACCENT};}}"
             f"QSlider::sub-page:horizontal{{background:{theme.ACCENT};border-radius:2px;}}"
         )
         duck_pct = QLabel(f"{int(raw_duck * 100)}%")
-        duck_pct.setStyleSheet(f"color: {theme.TEXT_PRIMARY}; font-size: 13px;")
+        duck_pct.setStyleSheet(f"color: {theme.TEXT_PRIMARY}; font-size: {theme.TYPE_BODY}px;")
         duck_pct.setFixedWidth(40)
         duck_slider.valueChanged.connect(lambda v: duck_pct.setText(f"{v}%"))
         self._widgets['tts_duck_slider'] = duck_slider
@@ -224,7 +224,7 @@ class TTSPage:
         test_btn.setSizePolicy(QSizePolicy.Policy.Minimum, QSizePolicy.Policy.Fixed)
         test_btn.clicked.connect(self._test_tts)
         test_status = QLabel("")
-        test_status.setStyleSheet(f"color: {theme.ICON_IDLE}; font-size: 12px;")
+        test_status.setStyleSheet(f"color: {theme.ICON_IDLE}; font-size: {theme.TYPE_MIN}px;")
         self._widgets['tts_test_status'] = test_status
         test_row.addWidget(test_btn)
         test_row.addWidget(test_status)
@@ -236,7 +236,7 @@ class TTSPage:
         when_toggle = QPushButton("When should Samsara speak?  ▶")
         when_toggle.setStyleSheet(
             f"QPushButton{{background:transparent;color:{theme.ICON_IDLE};border:none;"
-            "font-size:13px;text-align:left;padding:0;}"
+            f"font-size:{theme.TYPE_BODY}px;text-align:left;padding:0;}}"
             f"QPushButton:hover{{color:{theme.TEXT_PRIMARY};}}"
         )
         layout.addWidget(when_toggle)
@@ -251,7 +251,7 @@ class TTSPage:
             "Some of these categories aren't wired up yet — saved now, applied when they are."
         )
         phase_note.setWordWrap(True)
-        phase_note.setStyleSheet(f"color: {theme.ICON_IDLE}; font-size: 12px;")
+        phase_note.setStyleSheet(f"color: {theme.ICON_IDLE}; font-size: {theme.TYPE_MIN}px;")
         when_layout.addWidget(phase_note)
 
         _WHEN_TOGGLES = [

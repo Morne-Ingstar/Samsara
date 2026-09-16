@@ -10,18 +10,45 @@ import logging
 import sys
 
 from PySide6.QtCore import Qt, QPoint, QRect, QRectF
-from PySide6.QtGui import QColor, QPainter, QPainterPath, QFont
+from PySide6.QtGui import QColor, QPainter, QPainterPath, QFont, QPen
 from PySide6.QtWidgets import QApplication, QWidget
 
 from samsara.log import get_logger
+from samsara.ui import theme
 
 logger = get_logger(__name__)
 
 _logger = logging.getLogger(__name__)
 
-_PILL_BG  = QColor(18, 18, 22, 230)
-_PILL_BD  = QColor(70, 70, 80, 200)
-_TEXT_CLR = QColor(255, 255, 255, 255)
+# The overlay floats over other applications, so its pills carry their own
+# near-opaque surface -- but it is the app's surface, from the app's tokens,
+# so a light theme does not leave a black pill on a white desktop.
+# Built per paint, never cached: a module-level QColor would freeze the
+# palette that was live at import (queue 129).
+def _pill_bg() -> QColor:
+    colour = theme.qcolor(theme.BG0)
+    colour.setAlpha(230)
+    return colour
+
+
+def _pill_border() -> QColor:
+    colour = theme.qcolor(theme.mix(theme.BG0, theme.TEXT_PRIMARY, 0.30))
+    colour.setAlpha(200)
+    return colour
+
+
+def _text_colour() -> QColor:
+    return theme.qcolor(theme.TEXT_PRIMARY)
+
+
+# Queue 71: mouse-grid cell outlines. The accent is the app's one accent;
+# the alpha keeps the app underneath readable while the grid is up.
+def _grid_cell_pen() -> QPen:
+    return QPen(theme.qcolor(theme.tint(theme.ACCENT, 0.47)), 1)
+
+
+def _grid_edge_pen() -> QPen:
+    return QPen(theme.qcolor(theme.tint(theme.ACCENT, 0.82)), 2)
 
 # Set True to emit [DPI-COORD] and [OVERLAY-GEOM] debug lines.
 # False by default to keep session logs clean; enable only when diagnosing
@@ -177,31 +204,71 @@ def _map_physical_to_qt(
     )
 
 
+_last_mapping_warning = None
+
+
+def current_monitor_mappings() -> list:
+    """[(physical_rect, qt_rect, dpr, QScreen)] for every monitor, paired by
+    sorted origin. Qt thread only (reads QApplication.screens()).
+
+    Returns [] when the Win32 and Qt monitor lists cannot be paired -- the
+    caller then maps identity. That fallback used to be silent (queue 56:
+    labels far from their elements with nothing in the log); it now logs a
+    WARNING once per distinct layout."""
+    global _last_mapping_warning
+    physical = _win32_monitor_rects()
+    qt_screens = sorted(
+        QApplication.screens(),
+        key=lambda s: (s.geometry().x(), s.geometry().y()),
+    )
+    if len(physical) != len(qt_screens):
+        key = (len(physical), len(qt_screens))
+        if key != _last_mapping_warning:
+            _last_mapping_warning = key
+            logger.warning(
+                "[SHOW_NUMBERS] %d Win32 monitors but %d Qt screens -- cannot map "
+                "UIA physical pixels to Qt coordinates; labels may be misplaced",
+                len(physical), len(qt_screens))
+        return []
+    mappings = []
+    for physical_rect, screen in zip(physical, qt_screens):
+        geo = screen.geometry()
+        qt_rect = (
+            geo.x(), geo.y(),
+            geo.x() + geo.width(), geo.y() + geo.height(),
+        )
+        mappings.append((physical_rect, qt_rect, screen.devicePixelRatio(), screen))
+    return mappings
+
+
+def pill_rect(sx: int, sy: int, pw: int, ph: int, bounds: tuple) -> tuple:
+    """Final (x, y, w, h) of one pill, in logical coordinates.
+
+    The pill's bottom-right sits just outside the element's top-left corner
+    (PILL_ANCHOR_DX/DY), then is clamped to lie fully inside `bounds`
+    (left, top, right, bottom) -- the target window intersected with its
+    screen -- so a label never lands on a different window or off-screen.
+    Pure; shared by paintEvent and by the plan/tests."""
+    left, top, right, bottom = bounds
+    x = sx - pw + PILL_ANCHOR_DX
+    y = sy - ph + PILL_ANCHOR_DY
+    x = max(left, min(x, right - pw))
+    y = max(top, min(y, bottom - ph))
+    return x, y, pw, ph
+
+
 def phys_to_logical(px: int, py: int) -> tuple:
     """Convert UI Automation physical screen coordinates to Qt logical DIPs.
 
     Microsoft specifies that UIA bounding rectangles use physical pixels.
     Qt 6 widget/screen geometry uses device-independent pixels. Always map
     through the containing monitor; never infer UIA's coordinate system from
-    a separately virtualized Win32 query.
+    a separately virtualized Win32 query. Qt thread only.
     """
     try:
-        physical = _win32_monitor_rects()
-        qt_screens = sorted(
-            QApplication.screens(),
-            key=lambda s: (s.geometry().x(), s.geometry().y()),
-        )
-        if len(physical) != len(qt_screens):
+        mappings = [(p, q, r) for p, q, r, _s in current_monitor_mappings()]
+        if not mappings:
             return px, py
-
-        mappings = []
-        for physical_rect, screen in zip(physical, qt_screens):
-            geo = screen.geometry()
-            qt_rect = (
-                geo.x(), geo.y(),
-                geo.x() + geo.width(), geo.y() + geo.height(),
-            )
-            mappings.append((physical_rect, qt_rect, screen.devicePixelRatio()))
 
         result = _map_physical_to_qt(px, py, mappings)
         if _COORD_DEBUG:
@@ -278,6 +345,9 @@ class NumbersOverlayWindow(QWidget):
 
         super().__init__(None)
         self._labels = labels   # list of [screen_x, screen_y, pill_w, pill_h, text]
+        # Queue 71: mouse-grid cell outlines, logical (l, t, r, b). Empty for
+        # the numbers overlay, which draws pills only.
+        self._cells: list = []
         # Set only when this overlay is showing as a visible fallback from a
         # failed DOM (browser-extension) Show Numbers attempt -- see
         # plugins/commands/show_numbers.py's _try_show_dom_numbers. Empty
@@ -303,6 +373,9 @@ class NumbersOverlayWindow(QWidget):
 
         geo = target_screen.geometry()   # Qt device-independent pixels
         self._virt = QRect(geo)          # stable origin used by paintEvent
+        # Pills are clamped inside these logical bounds (queue 56): the target
+        # window intersected with this screen. Default: the whole screen.
+        self._bounds = (geo.x(), geo.y(), geo.x() + geo.width(), geo.y() + geo.height())
         self.setGeometry(geo)
 
         if _COORD_DEBUG:
@@ -321,10 +394,59 @@ class NumbersOverlayWindow(QWidget):
                 self.screen().name() if self.screen() else 'None',
             )
 
-    def update_labels(self, labels: list, caption: str = "") -> None:
+    def update_labels(self, labels: list, caption: str = "", bounds: "tuple | None" = None,
+                      cells: "list | None" = None) -> None:
         self._labels = labels
         self._caption = caption
+        if bounds is not None:
+            self.set_bounds(bounds)
+        self.set_cells(cells)
         self.update()
+
+    def set_cells(self, cells: "list | None") -> None:
+        """Queue 71: cell rectangles to outline, in LOGICAL coordinates
+        (left, top, right, bottom). The mouse grid draws these so the user can
+        see which region each number owns; None (the numbers overlay) draws
+        pills only, exactly as before."""
+        self._cells = list(cells) if cells else []
+
+    def set_bounds(self, bounds: tuple) -> None:
+        """Clamp pills to (left, top, right, bottom), intersected with this
+        window's screen."""
+        v = self._virt
+        left = max(v.x(), bounds[0])
+        top = max(v.y(), bounds[1])
+        right = min(v.x() + v.width(), bounds[2])
+        bottom = min(v.y() + v.height(), bounds[3])
+        if right - left < 40 or bottom - top < 30:
+            left, top, right, bottom = v.x(), v.y(), v.x() + v.width(), v.y() + v.height()
+        self._bounds = (left, top, right, bottom)
+
+    def _paint_cells(self, painter) -> None:
+        """Outline the mouse grid's cells (queue 71).
+
+        A hairline per cell plus a slightly stronger outer border: enough to
+        see which region a number owns, faint enough to read the app through.
+        Coordinates are logical, like the labels, and are offset by the same
+        screen origin.
+        """
+        if not self._cells:
+            return
+        ox, oy = self._virt.x(), self._virt.y()
+        painter.save()
+        painter.setBrush(Qt.NoBrush)
+        for left, top, right, bottom in self._cells:
+            rect = QRectF(left - ox, top - oy, right - left, bottom - top)
+            painter.setPen(_grid_cell_pen())
+            painter.drawRect(rect)
+        outer = QRectF(
+            min(c[0] for c in self._cells) - ox, min(c[1] for c in self._cells) - oy,
+            max(c[2] for c in self._cells) - min(c[0] for c in self._cells),
+            max(c[3] for c in self._cells) - min(c[1] for c in self._cells),
+        )
+        painter.setPen(_grid_edge_pen())
+        painter.drawRect(outer)
+        painter.restore()
 
     def paintEvent(self, event) -> None:
         if not self._labels:
@@ -332,6 +454,7 @@ class NumbersOverlayWindow(QWidget):
 
         painter = QPainter(self)
         painter.setRenderHint(QPainter.Antialiasing, True)
+        self._paint_cells(painter)
 
         # QPainter on a QWidget already consumes Qt device-independent
         # coordinates and applies the window DPR to the backing store. A
@@ -365,19 +488,16 @@ class NumbersOverlayWindow(QWidget):
                     pw * coord_scale, ph * coord_scale,
                 )
 
-        font = QFont("Segoe UI", 11, QFont.Bold)
+        font = theme.qfont(theme.TYPE_BODY, weight=QFont.Bold)
         painter.setFont(font)
 
         ox = self._virt.x()
         oy = self._virt.y()
 
         for sx, sy, pw, ph, text in self._labels:
-            # Anchor: pill bottom-right at element top-left minus a small margin.
-            # Clamp so pills near screen edges stay fully on-screen.
-            ax = max(ox, min(sx - pw + PILL_ANCHOR_DX,
-                             ox + self._virt.width() - pw))
-            ay = max(oy, min(sy - ph + PILL_ANCHOR_DY,
-                             oy + self._virt.height() - ph))
+            # Anchor: pill bottom-right at element top-left minus a small margin,
+            # clamped inside the target window on this screen (pill_rect).
+            ax, ay, _pw, _ph = pill_rect(sx, sy, pw, ph, self._bounds)
             lx = (ax - ox) * coord_scale
             ly = (ay - oy) * coord_scale
             lw = pw * coord_scale
@@ -386,19 +506,19 @@ class NumbersOverlayWindow(QWidget):
 
             path = QPainterPath()
             path.addRoundedRect(rect, 4.0, 4.0)
-            painter.fillPath(path, _PILL_BG)
+            painter.fillPath(path, _pill_bg())
 
-            painter.setPen(_PILL_BD)
+            painter.setPen(_pill_border())
             painter.drawPath(path)
 
-            painter.setPen(_TEXT_CLR)
+            painter.setPen(_text_colour())
             painter.drawText(rect, Qt.AlignCenter, text)
 
         if self._caption:
-            cap_font = QFont("Segoe UI", 9)
+            cap_font = theme.qfont(theme.TYPE_MIN)
             painter.setFont(cap_font)
             cap_rect = QRectF(8, 8, 260, 18)
-            painter.setPen(_TEXT_CLR)
+            painter.setPen(_text_colour())
             painter.drawText(cap_rect, Qt.AlignLeft | Qt.AlignVCenter, self._caption)
 
         painter.end()

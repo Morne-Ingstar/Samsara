@@ -37,32 +37,24 @@ logger = get_logger(__name__)
 # history_qt.py (local aliases so the stylesheet below stays readable).
 # ---------------------------------------------------------------------------
 
-_BG        = theme.BG0
-_SURFACE   = theme.BG1
-_ELEVATED  = theme.BG2
-_BORDER    = theme.BORDER
-_ACCENT    = theme.ACCENT
-_ACCENT_DIM = "#1a3a42"
-_TEXT_PRI  = theme.TEXT_PRIMARY
-_TEXT_SEC  = theme.TEXT_SECONDARY
-_ERROR     = theme.ERROR
-_WARNING   = theme.WARNING
 
 _AUTO_REFRESH_MS = 2000
 _ROW_HEIGHT = 28
 
-_STYLESHEET = f"""
+
+def _stylesheet():
+    return f"""
 QMainWindow, QWidget {{
-    background-color: {_BG};
-    color: {_TEXT_PRI};
+    background-color: {theme.BG0};
+    color: {theme.TEXT_PRIMARY};
     font-family: {theme.FONT_FAMILY};
     font-size: {theme.FONT_SIZE_BODY}px;
 }}
 QTableWidget {{
-    background-color: {_SURFACE};
-    alternate-background-color: rgba(255,255,255,0.022);
+    background-color: {theme.BG1};
+    alternate-background-color: {theme.wash(0.022)};
     gridline-color: transparent;
-    color: {_TEXT_PRI};
+    color: {theme.TEXT_PRIMARY};
     border: none;
     outline: none;
 }}
@@ -71,48 +63,48 @@ QTableWidget::item {{
     border: none;
 }}
 QTableWidget::item:selected {{
-    background-color: {_ACCENT_DIM};
-    color: {_ACCENT};
+    background-color: {theme.ACCENT_DIM};
+    color: {theme.ACCENT};
 }}
 QHeaderView::section {{
-    background-color: {_SURFACE};
-    color: {_TEXT_SEC};
+    background-color: {theme.BG1};
+    color: {theme.TEXT_SECONDARY};
     padding: 5px 10px;
     border: none;
-    border-bottom: 1px solid {_BORDER};
+    border-bottom: 1px solid {theme.BORDER};
     font-size: {theme.FONT_SIZE_CAPTION}px;
     font-weight: 600;
     text-transform: uppercase;
     letter-spacing: 0.04em;
 }}
-QCheckBox {{ color: {_TEXT_PRI}; font-size: {theme.FONT_SIZE_BODY}px; }}
+QCheckBox {{ color: {theme.TEXT_PRIMARY}; font-size: {theme.FONT_SIZE_BODY}px; }}
 QPushButton {{
-    background-color: {_SURFACE};
-    border: 1px solid {_BORDER};
+    background-color: {theme.BG1};
+    border: 1px solid {theme.BORDER};
     border-radius: 4px;
-    color: {_TEXT_PRI};
+    color: {theme.TEXT_PRIMARY};
     padding: 5px 14px;
     font-size: {theme.FONT_SIZE_CAPTION}px;
 }}
 QPushButton:hover {{
-    background-color: {_ELEVATED};
-    border-color: {_ACCENT};
+    background-color: {theme.BG2};
+    border-color: {theme.ACCENT};
 }}
 QPushButton:pressed {{
-    background-color: {_ACCENT_DIM};
+    background-color: {theme.ACCENT_DIM};
 }}
 QPlainTextEdit {{
-    background-color: {_ELEVATED};
+    background-color: {theme.BG2};
     border: none;
-    color: {_TEXT_PRI};
+    color: {theme.TEXT_PRIMARY};
     font-family: 'Consolas', 'Courier New', monospace;
     font-size: {theme.FONT_SIZE_CAPTION}px;
     padding: 8px 10px;
 }}
 QMenu {{
-    background-color: {_ELEVATED};
-    color: {_TEXT_PRI};
-    border: 1px solid {_BORDER};
+    background-color: {theme.BG2};
+    color: {theme.TEXT_PRIMARY};
+    border: 1px solid {theme.BORDER};
     padding: 4px 0;
     font-size: {theme.FONT_SIZE_CAPTION}px;
 }}
@@ -120,12 +112,12 @@ QMenu::item {{
     padding: 5px 24px 5px 16px;
 }}
 QMenu::item:selected {{
-    background-color: {_ACCENT_DIM};
-    color: {_ACCENT};
+    background-color: {theme.ACCENT_DIM};
+    color: {theme.ACCENT};
 }}
 QMenu::separator {{
     height: 1px;
-    background-color: {_BORDER};
+    background-color: {theme.BORDER};
     margin: 2px 8px;
 }}
 """
@@ -148,16 +140,16 @@ def _row_color(rec) -> "QColor | None":
     # uncoloured just because its verdict text doesn't happen to match one
     # of the keyword buckets below.
     if rec.outcome == "empty":
-        return QColor(_ERROR)
+        return QColor(theme.ERROR)
     if rec.outcome == "gated":
-        return QColor(_WARNING)
+        return QColor(theme.WARNING)
     if rec.outcome == "suspected_loss":
-        return QColor(_ERROR)
+        return QColor(theme.ERROR)
     joined = " ".join(rec.verdicts).lower()
     if any(kw in joined for kw in _RED_KEYWORDS):
-        return QColor(_ERROR)
+        return QColor(theme.ERROR)
     if any(kw in joined for kw in _AMBER_KEYWORDS):
-        return QColor(_WARNING)
+        return QColor(theme.WARNING)
     return None
 
 
@@ -228,7 +220,7 @@ class DiagnosticsWindow(QMainWindow):
         self.setWindowTitle("Dictation Diagnostics")
         self.resize(920, 620)
         self.setMinimumSize(600, 420)
-        self.setStyleSheet(_STYLESHEET)
+        self.setStyleSheet(_stylesheet())
 
         central = QWidget()
         self.setCentralWidget(central)
@@ -244,8 +236,8 @@ class DiagnosticsWindow(QMainWindow):
         verdict_frame = QFrame()
         verdict_frame.setObjectName("verdict_frame")
         verdict_frame.setStyleSheet(
-            f"QFrame#verdict_frame {{ background-color: {_ELEVATED};"
-            f" border: 1px solid {_BORDER}; border-radius: 6px; }}"
+            f"QFrame#verdict_frame {{ background-color: {theme.BG2};"
+            f" border: 1px solid {theme.BORDER}; border-radius: 6px; }}"
         )
         verdict_layout = QVBoxLayout(verdict_frame)
         verdict_layout.setContentsMargins(14, 10, 14, 10)
@@ -253,13 +245,13 @@ class DiagnosticsWindow(QMainWindow):
         self._verdict_headline = QLabel("")
         self._verdict_headline.setWordWrap(True)
         self._verdict_headline.setStyleSheet(
-            f"color: {_TEXT_PRI}; font-size: {theme.FONT_SIZE_HEADING}px; font-weight: 600;"
+            f"color: {theme.TEXT_PRIMARY}; font-size: {theme.FONT_SIZE_HEADING}px; font-weight: 600;"
         )
         verdict_layout.addWidget(self._verdict_headline)
         self._verdict_detail = QLabel("")
         self._verdict_detail.setWordWrap(True)
         self._verdict_detail.setStyleSheet(
-            f"color: {_TEXT_SEC}; font-size: {theme.FONT_SIZE_CAPTION}px;"
+            f"color: {theme.TEXT_SECONDARY}; font-size: {theme.FONT_SIZE_CAPTION}px;"
         )
         verdict_layout.addWidget(self._verdict_detail)
         root.addWidget(verdict_frame)
@@ -269,11 +261,11 @@ class DiagnosticsWindow(QMainWindow):
         top_row.setSpacing(10)
 
         self._model_lbl = QLabel("")
-        self._model_lbl.setStyleSheet(f"color: {_TEXT_SEC}; font-size: {theme.FONT_SIZE_CAPTION}px;")
+        self._model_lbl.setStyleSheet(f"color: {theme.TEXT_SECONDARY}; font-size: {theme.FONT_SIZE_CAPTION}px;")
         top_row.addWidget(self._model_lbl)
 
         self._count_lbl = QLabel("")
-        self._count_lbl.setStyleSheet(f"color: {_TEXT_SEC}; font-size: {theme.FONT_SIZE_CAPTION}px;")
+        self._count_lbl.setStyleSheet(f"color: {theme.TEXT_SECONDARY}; font-size: {theme.FONT_SIZE_CAPTION}px;")
         top_row.addWidget(self._count_lbl)
 
         top_row.addStretch()
@@ -326,8 +318,8 @@ class DiagnosticsWindow(QMainWindow):
         detail_frame = QFrame()
         detail_frame.setObjectName("detail_frame")
         detail_frame.setStyleSheet(
-            f"QFrame#detail_frame {{ background-color: {_ELEVATED};"
-            f" border-top: 1px solid {_BORDER}; }}"
+            f"QFrame#detail_frame {{ background-color: {theme.BG2};"
+            f" border-top: 1px solid {theme.BORDER}; }}"
         )
         detail_layout = QVBoxLayout(detail_frame)
         detail_layout.setContentsMargins(0, 0, 0, 0)
@@ -340,7 +332,7 @@ class DiagnosticsWindow(QMainWindow):
         root.addWidget(detail_frame)
 
         self._status_lbl = QLabel("")
-        self._status_lbl.setStyleSheet(f"color: {_TEXT_SEC}; font-size: {theme.FONT_SIZE_CAPTION}px;")
+        self._status_lbl.setStyleSheet(f"color: {theme.TEXT_SECONDARY}; font-size: {theme.FONT_SIZE_CAPTION}px;")
         root.addWidget(self._status_lbl)
 
         self._records = []  # newest-first, parallel to table rows

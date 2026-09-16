@@ -71,7 +71,7 @@ class SoundsPage:
         vol_row = QHBoxLayout()
         vol_row.setSpacing(12)
         vol_lbl = QLabel("Volume:")
-        vol_lbl.setStyleSheet(f"color: {theme.TEXT_PRIMARY}; font-size: 14px;")
+        vol_lbl.setStyleSheet(f"color: {theme.TEXT_PRIMARY}; font-size: {theme.TYPE_BODY}px;")
         vol_lbl.setFixedWidth(70)
 
         raw_vol = float(cfg.get('sound_volume', 0.5))
@@ -81,7 +81,7 @@ class SoundsPage:
         vol_slider.setFixedWidth(200)
         vol_slider.setStyleSheet(
             "QSlider::groove:horizontal {"
-            "  height: 4px; background: rgba(255,255,255,0.12); border-radius: 2px;"
+            f"  height: 4px; background: {theme.wash(0.12)}; border-radius: 2px;"
             "}"
             "QSlider::handle:horizontal {"
             "  width: 16px; height: 16px; margin: -6px 0;"
@@ -94,7 +94,7 @@ class SoundsPage:
         self._widgets['sound_volume_slider'] = vol_slider
 
         vol_pct = QLabel(f"{int(raw_vol * 100)}%")
-        vol_pct.setStyleSheet(f"color: {theme.TEXT_PRIMARY}; font-size: 13px;")
+        vol_pct.setStyleSheet(f"color: {theme.TEXT_PRIMARY}; font-size: {theme.TYPE_BODY}px;")
         vol_pct.setFixedWidth(40)
         vol_slider.valueChanged.connect(lambda v: vol_pct.setText(f"{v}%"))
 
@@ -156,14 +156,39 @@ class SoundsPage:
         layout.addLayout(apply_row)
 
         theme_instant_note = QLabel("\"Apply Theme\" copies the theme's sounds immediately.")
-        theme_instant_note.setStyleSheet(f"color: {theme.ICON_IDLE}; font-size: 12px;")
+        theme_instant_note.setStyleSheet(f"color: {theme.ICON_IDLE}; font-size: {theme.TYPE_MIN}px;")
         layout.addWidget(theme_instant_note)
+
+        # Queue 103: which of the session's own spoken notices are spoken.
+        # Nothing but Ava talks in this app, so a voice after a mouse click
+        # reads as a malfunction -- the incident was clicking "Clear draft"
+        # and being told out loud to say "bring back my draft", which the
+        # chip was already showing.
+        from samsara.config_defaults import cfg_get   # noqa: PLC0415
+        from samsara import session_modes             # noqa: PLC0415
+
+        notices_combo = QComboBox()
+        notices_combo.addItem("Only when it needs an answer", "questions")
+        notices_combo.addItem("Everything it does", "everything")
+        current_notices = cfg_get(cfg, session_modes.SPOKEN_NOTICES_KEY)
+        index = notices_combo.findData(current_notices)
+        notices_combo.setCurrentIndex(index if index >= 0 else 0)
+        self._widgets['spoken_notices_combo'] = notices_combo
+
+        layout.addLayout(self._setting_row(
+            "Spoken notices",
+            "What Samsara says out loud about your draft.  "
+            "\"Only when it needs an answer\" leaves what it has already done "
+            "to the chip.  Choose \"Everything it does\" if you cannot see the "
+            "chip.",
+            notices_combo,
+        ))
         layout.addSpacing(20)
 
         # ---- Section: Earcon Preview -------------------------------------------
         layout.addWidget(self._section_title("Earcon Preview"))
         desc = QLabel("Preview the audio cues for the active theme.")
-        desc.setStyleSheet(f"color: {theme.ICON_IDLE}; font-size: 12px;")
+        desc.setStyleSheet(f"color: {theme.ICON_IDLE}; font-size: {theme.TYPE_MIN}px;")
         layout.addWidget(desc)
         layout.addSpacing(6)
 
@@ -193,13 +218,13 @@ class SoundsPage:
             col_i = (idx % cols) * 2
 
             name_lbl = QLabel(label_text)
-            name_lbl.setStyleSheet(f"color: {theme.TEXT_PRIMARY}; font-size: 13px;")
+            name_lbl.setStyleSheet(f"color: {theme.TEXT_PRIMARY}; font-size: {theme.TYPE_BODY}px;")
             play_btn = QPushButton("▶")
             play_btn.setFixedWidth(36)
             play_btn.setStyleSheet(
-                f"QPushButton {{ background-color: {theme.BG2}; border: 1px solid rgba(255,255,255,0.14);"
-                f" border-radius: 5px; color: {theme.ACCENT}; font-size: 13px; padding: 4px; }}"
-                "QPushButton:hover { background-color: rgba(94,234,212,0.12); }"
+                f"QPushButton {{ background-color: {theme.BG2}; border: 1px solid {theme.wash(0.14)};"
+                f" border-radius: 5px; color: {theme.ACCENT}; font-size: {theme.TYPE_BODY}px; padding: 4px; }}"
+                f"QPushButton:hover {{ background-color: {theme.tint(theme.ACCENT, 0.12)}; }}"
             )
             play_btn.clicked.connect(
                 lambda _=False, k=sound_key: self._play(sounds_dir, k)
@@ -219,7 +244,7 @@ class SoundsPage:
         files_desc = QLabel(
             f"Active sound files from: {sounds_dir}"
         )
-        files_desc.setStyleSheet(f"color: {theme.ICON_IDLE}; font-size: 12px;")
+        files_desc.setStyleSheet(f"color: {theme.ICON_IDLE}; font-size: {theme.TYPE_MIN}px;")
         files_desc.setWordWrap(True)
         layout.addWidget(files_desc)
         layout.addSpacing(6)
@@ -237,12 +262,12 @@ class SoundsPage:
             file_row.setSpacing(10)
 
             name_lbl = QLabel(label_text + ":")
-            name_lbl.setStyleSheet(f"color: {theme.TEXT_PRIMARY}; font-size: 13px;")
+            name_lbl.setStyleSheet(f"color: {theme.TEXT_PRIMARY}; font-size: {theme.TYPE_BODY}px;")
             name_lbl.setFixedWidth(150)
 
             fname_lbl = QLabel(wav.name if exists else "not found")
             fname_lbl.setStyleSheet(
-                f"color: {theme.ICON_IDLE if exists else theme.ERROR}; font-size: 12px;"
+                f"color: {theme.ICON_IDLE if exists else theme.ERROR}; font-size: {theme.TYPE_MIN}px;"
             )
             fname_lbl.setFixedWidth(140)
 
@@ -250,10 +275,10 @@ class SoundsPage:
             play_btn.setFixedWidth(36)
             play_btn.setEnabled(exists)
             play_btn.setStyleSheet(
-                f"QPushButton {{ background-color: {theme.BG2}; border: 1px solid rgba(255,255,255,0.14);"
-                f" border-radius: 5px; color: {theme.ACCENT}; font-size: 13px; padding: 4px; }}"
-                "QPushButton:hover { background-color: rgba(94,234,212,0.12); }"
-                "QPushButton:disabled { color: #444; border-color: rgba(255,255,255,0.06); }"
+                f"QPushButton {{ background-color: {theme.BG2}; border: 1px solid {theme.wash(0.14)};"
+                f" border-radius: 5px; color: {theme.ACCENT}; font-size: {theme.TYPE_BODY}px; padding: 4px; }}"
+                f"QPushButton:hover {{ background-color: {theme.tint(theme.ACCENT, 0.12)}; }}"
+                f"QPushButton:disabled {{ color: {theme.TEXT_DISABLED}; border-color: {theme.wash(0.06)}; }}"
             )
             play_btn.clicked.connect(
                 lambda _=False, k=sound_key: self._play(sounds_dir, k)
@@ -271,6 +296,18 @@ class SoundsPage:
                 updates['audio_feedback'] = self._widgets['sound_feedback'].isChecked()
                 updates['sound_volume'] = self._widgets['sound_volume_slider'].value() / 100.0
                 updates['sound_theme'] = self._widgets['sound_theme_combo'].currentText()
+            if 'spoken_notices_combo' in self._widgets:
+                # NESTED, not the dotted key. settings_qt does a FLAT
+                # config.update(updates), while cfg_get() walks the dotted
+                # path -- so writing "feedback.spoken_notices" as a literal
+                # key would store something cfg_get can never find and the
+                # setting would silently do nothing. Copy the section and
+                # replace it, the same way the Advanced tab writes
+                # smart_corrections.
+                feedback_out = dict(self.app.config.get('feedback', {}) or {})
+                feedback_out['spoken_notices'] = (
+                    self._widgets['spoken_notices_combo'].currentData())
+                updates['feedback'] = feedback_out
             return updates
         self._save_fns.append(_save)
 

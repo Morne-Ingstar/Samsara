@@ -77,17 +77,27 @@ def _combo(held: set) -> str:
 
 
 class _HotkeyBtn(QPushButton):
-    _IDLE = (
-        f"QPushButton{{background:{theme.BG2};border:1px solid {theme.BORDER};"
-        f"border-radius:6px;color:{theme.TEXT_PRIMARY};font-size:12px;"
-        f"font-family:'Consolas','Courier New',monospace;padding:6px 14px;}}"
-        f"QPushButton:hover{{background:{theme.BG2};border-color:{theme.ACCENT};}}"
-    )
-    _ACTIVE = (
-        f"QPushButton{{background:rgba(92,196,212,0.08);border:1px solid {theme.ACCENT};"
-        f"border-radius:6px;color:{theme.ACCENT};font-size:12px;"
-        f"font-family:'Consolas','Courier New',monospace;padding:6px 14px;}}"
-    )
+    @staticmethod
+    def _idle_qss() -> str:
+        """Built per call: a stylesheet assigned in the class body is
+        evaluated once, when the module is imported, so it would keep
+        the startup palette for the life of the process (queue 129)."""
+        return (
+            f"QPushButton{{background:{theme.BG2};border:1px solid {theme.BORDER};"
+            f"border-radius:6px;color:{theme.TEXT_PRIMARY};font-size:{theme.TYPE_MIN}px;"
+            f"font-family:'Consolas','Courier New',monospace;padding:6px 14px;}}"
+            f"QPushButton:hover{{background:{theme.BG2};border-color:{theme.ACCENT};}}"
+        )
+
+    @staticmethod
+    def _active_qss() -> str:
+        """The capturing state. See _idle_qss()."""
+        return (
+            f"QPushButton{{background:{theme.tint(theme.ACCENT, 0.08)};"
+            f"border:1px solid {theme.ACCENT};"
+            f"border-radius:6px;color:{theme.ACCENT};font-size:{theme.TYPE_MIN}px;"
+            f"font-family:'Consolas','Courier New',monospace;padding:6px 14px;}}"
+        )
 
     def __init__(self, combo: str):
         super().__init__(combo or "—")
@@ -96,7 +106,7 @@ class _HotkeyBtn(QPushButton):
         self._held: set[str] = set()
         self.setMinimumWidth(160)
         self.setFocusPolicy(Qt.FocusPolicy.StrongFocus)
-        self.setStyleSheet(self._IDLE)
+        self.setStyleSheet(self._idle_qss())
         self.clicked.connect(self._start)
 
     @property
@@ -107,7 +117,7 @@ class _HotkeyBtn(QPushButton):
         self._capturing = True
         self._held = set()
         self.setText("Press keys…")
-        self.setStyleSheet(self._ACTIVE)
+        self.setStyleSheet(self._active_qss())
         self.setFocus()
 
     def _finish(self):
@@ -115,7 +125,7 @@ class _HotkeyBtn(QPushButton):
         if self._held:
             self._combo = _combo(self._held)
         self.setText(self._combo or "—")
-        self.setStyleSheet(self._IDLE)
+        self.setStyleSheet(self._idle_qss())
 
     def keyPressEvent(self, e):
         if not self._capturing:
@@ -152,12 +162,28 @@ class _MicLevelMeter(QWidget):
     Attack 0.70, decay 0.12 per 40 ms tick; peak holds ~1.1 s then falls.
     """
 
-    _BG    = QColor(19, 24, 32)         # theme.BG1
-    _ZONES = [
-        (0.50, QColor(92, 196, 212)),   # 0-50 %  theme.ACCENT
-        (0.75, QColor(232, 144,  32)),  # 50-75 % amber
-        (1.01, QColor(255,  68,  68)),  # 75-100% red
-    ]
+    # Read per paint, not stored: a QColor built at class-definition time
+    # freezes the palette that was live at import (queue 129).
+    @staticmethod
+    def _bg() -> QColor:
+        return theme.qcolor(theme.BG1)
+
+    @staticmethod
+    def _zones():
+        """Level bands: comfortable (to 50%), loud (to 75%), clipping.
+
+        The BAND is carried by colour alone -- the bar's height is constant
+        and only the fill length changes, so "loud" and "clipping" differ by
+        hue only. The level itself is carried by length, so a user who cannot
+        tell amber from red still sees how loud they are; what they lose is
+        the boundary. Queue 129 reports this rather than fixing it: the fix
+        is a tick mark at each threshold, which is a layout change, not a
+        token change."""
+        return [
+            (0.50, theme.qcolor(theme.ACCENT)),
+            (0.75, theme.qcolor(theme.WARNING)),
+            (1.01, theme.qcolor(theme.ERROR)),
+        ]
 
     def __init__(self, parent=None):
         super().__init__(parent)
@@ -191,11 +217,11 @@ class _MicLevelMeter(QWidget):
         h = self.height()
         p = QPainter(self)
         p.setRenderHint(QPainter.RenderHint.Antialiasing, False)
-        p.fillRect(0, 0, w, h, self._BG)
+        p.fillRect(0, 0, w, h, self._bg())
 
         lv   = max(0.0, min(1.0, self._level))
         prev = 0
-        for thresh, color in self._ZONES:
+        for thresh, color in self._zones():
             seg = int(min(thresh, lv) * w)
             if seg > prev:
                 p.fillRect(prev, 2, seg - prev, h - 4, color)
@@ -206,9 +232,10 @@ class _MicLevelMeter(QWidget):
         pk = max(0.0, min(1.0, self._peak))
         if pk > 0.02:
             px = int(pk * w)
-            p.fillRect(max(0, px - 1), 1, 2, h - 2, QColor(255, 255, 255, 200))
+            p.fillRect(max(0, px - 1), 1, 2, h - 2,
+                       theme.qcolor(theme.wash(0.78)))
 
-        p.setPen(QColor(255, 255, 255, 25))
+        p.setPen(theme.qcolor(theme.wash(0.10)))
         p.drawRect(0, 0, w - 1, h - 1)
         p.end()
 
@@ -603,7 +630,7 @@ class _WizardWindow(QMainWindow):
         hl.setContentsMargins(28, 0, 28, 0)
 
         self._step_lbl = QLabel()
-        self._step_lbl.setStyleSheet("color:#8A8A92;font-size:12px;")
+        self._step_lbl.setStyleSheet(f"color:{theme.TEXT_SECONDARY};font-size:{theme.TYPE_MIN}px;")
         hl.addWidget(self._step_lbl)
 
         hl.addStretch()
@@ -612,7 +639,7 @@ class _WizardWindow(QMainWindow):
         self._dots: list[QLabel] = []
         for _ in _STEPS:
             dot = QLabel("●")
-            dot.setStyleSheet("font-size:10px;")
+            dot.setStyleSheet(f"font-size:{theme.TYPE_MIN}px;")
             self._dots.append(dot)
             hl.addWidget(dot)
 
@@ -631,7 +658,7 @@ class _WizardWindow(QMainWindow):
         tbl.setContentsMargins(28, 14, 28, 8)
         self._title_lbl = QLabel()
         self._title_lbl.setStyleSheet(
-            "color:#E8E8EA;font-size:20px;font-weight:bold;"
+            f"color:{theme.TEXT_PRIMARY};font-size:{theme.TYPE_TITLE}px;font-weight:bold;"
         )
         tbl.addWidget(self._title_lbl)
         root.addWidget(title_bar)
@@ -720,7 +747,7 @@ class _WizardWindow(QMainWindow):
     def _build_welcome(self) -> QWidget:
         w, lay = self._padded()
         sub = QLabel("Voice dictation for Windows — free, local, fast.")
-        sub.setStyleSheet("color:#8A8A92;font-size:13px;")
+        sub.setStyleSheet(f"color:{theme.TEXT_SECONDARY};font-size:{theme.TYPE_BODY}px;")
         lay.addWidget(sub)
         lay.addSpacing(8)
 
@@ -740,10 +767,10 @@ class _WizardWindow(QMainWindow):
             row = QHBoxLayout()
             icon_lbl = QLabel(icon)
             icon_lbl.setFixedWidth(28)
-            icon_lbl.setStyleSheet("font-size:18px;")
+            icon_lbl.setStyleSheet(f"font-size:{theme.TYPE_TITLE}px;")
             row.addWidget(icon_lbl)
             text_lbl = QLabel(text)
-            text_lbl.setStyleSheet("color:#E8E8EA;font-size:13px;")
+            text_lbl.setStyleSheet(f"color:{theme.TEXT_PRIMARY};font-size:{theme.TYPE_BODY}px;")
             row.addWidget(text_lbl)
             row.addStretch()
             sf_layout.addLayout(row)
@@ -753,7 +780,7 @@ class _WizardWindow(QMainWindow):
 
         note = QLabel("Setup is quick. You can change everything later in Settings.")
         note.setWordWrap(True)
-        note.setStyleSheet("color:#8A8A92;font-size:12px;")
+        note.setStyleSheet(f"color:{theme.TEXT_SECONDARY};font-size:{theme.TYPE_MIN}px;")
         lay.addWidget(note)
         lay.addStretch()
         return w
@@ -762,7 +789,7 @@ class _WizardWindow(QMainWindow):
         w, lay = self._padded()
         sub = QLabel("Pick the option that fits best. You can change everything later in Settings.")
         sub.setWordWrap(True)
-        sub.setStyleSheet("color:#8A8A92;font-size:13px;")
+        sub.setStyleSheet(f"color:{theme.TEXT_SECONDARY};font-size:{theme.TYPE_BODY}px;")
         lay.addWidget(sub)
         lay.addSpacing(4)
 
@@ -794,10 +821,10 @@ class _WizardWindow(QMainWindow):
             text_col = QVBoxLayout()
             text_col.setSpacing(3)
             name_lbl = QLabel(title)
-            name_lbl.setStyleSheet("font-weight:600;font-size:13px;color:#E8E8EA;")
+            name_lbl.setStyleSheet(f"font-weight:600;font-size:{theme.TYPE_BODY}px;color:{theme.TEXT_PRIMARY};")
             desc_lbl = QLabel(desc)
             desc_lbl.setWordWrap(True)
-            desc_lbl.setStyleSheet("color:#8A8A92;font-size:12px;")
+            desc_lbl.setStyleSheet(f"color:{theme.TEXT_SECONDARY};font-size:{theme.TYPE_MIN}px;")
             text_col.addWidget(name_lbl)
             text_col.addWidget(desc_lbl)
             cl.addLayout(text_col, stretch=1)
@@ -820,7 +847,7 @@ class _WizardWindow(QMainWindow):
         w, lay = self._padded()
         self._mic_page = w  # saved for _on_mic_result lookup
         sub = QLabel("Choose the microphone Samsara will listen on.")
-        sub.setStyleSheet("color:#8A8A92;font-size:13px;")
+        sub.setStyleSheet(f"color:{theme.TEXT_SECONDARY};font-size:{theme.TYPE_BODY}px;")
         lay.addWidget(sub)
         lay.addSpacing(4)
 
@@ -838,14 +865,14 @@ class _WizardWindow(QMainWindow):
 
         lay.addSpacing(8)
         meter_lbl = QLabel("Input Level")
-        meter_lbl.setStyleSheet("color:#8A8A92;font-size:11px;")
+        meter_lbl.setStyleSheet(f"color:{theme.TEXT_SECONDARY};font-size:{theme.TYPE_MIN}px;")
         lay.addWidget(meter_lbl)
 
         self._meter = _MicLevelMeter()
         lay.addWidget(self._meter)
 
         self._mic_status = QLabel("Speak to test your microphone")
-        self._mic_status.setStyleSheet("color:#8A8A92;font-size:12px;")
+        self._mic_status.setStyleSheet(f"color:{theme.TEXT_SECONDARY};font-size:{theme.TYPE_MIN}px;")
         lay.addWidget(self._mic_status)
 
         lay.addStretch()
@@ -857,7 +884,7 @@ class _WizardWindow(QMainWindow):
             "Larger models are more accurate but use more memory and are slower to start."
         )
         sub.setWordWrap(True)
-        sub.setStyleSheet("color:#8A8A92;font-size:13px;")
+        sub.setStyleSheet(f"color:{theme.TEXT_SECONDARY};font-size:{theme.TYPE_BODY}px;")
         lay.addWidget(sub)
         lay.addSpacing(4)
 
@@ -882,9 +909,9 @@ class _WizardWindow(QMainWindow):
 
             text_col = QVBoxLayout()
             name_lbl = QLabel(title)
-            name_lbl.setStyleSheet("font-weight:600;font-size:14px;color:#E8E8EA;")
+            name_lbl.setStyleSheet(f"font-weight:600;font-size:{theme.TYPE_BODY}px;color:{theme.TEXT_PRIMARY};")
             desc_lbl = QLabel(desc)
-            desc_lbl.setStyleSheet("color:#8A8A92;font-size:12px;")
+            desc_lbl.setStyleSheet(f"color:{theme.TEXT_SECONDARY};font-size:{theme.TYPE_MIN}px;")
             text_col.addWidget(name_lbl)
             text_col.addWidget(desc_lbl)
             cl.addLayout(text_col, stretch=1)
@@ -893,7 +920,7 @@ class _WizardWindow(QMainWindow):
 
         note = QLabel("The model downloads on first use (once). You can change it later in Settings.")
         note.setWordWrap(True)
-        note.setStyleSheet("color:#8A8A92;font-size:12px;")
+        note.setStyleSheet(f"color:{theme.TEXT_SECONDARY};font-size:{theme.TYPE_MIN}px;")
         lay.addWidget(note)
         lay.addStretch()
         return w
@@ -905,7 +932,7 @@ class _WizardWindow(QMainWindow):
 
         inner, lay = self._padded()
         sub = QLabel("Click a button and press your desired key combination.")
-        sub.setStyleSheet("color:#8A8A92;font-size:13px;")
+        sub.setStyleSheet(f"color:{theme.TEXT_SECONDARY};font-size:{theme.TYPE_BODY}px;")
         lay.addWidget(sub)
         lay.addSpacing(4)
 
@@ -926,9 +953,9 @@ class _WizardWindow(QMainWindow):
             left = QVBoxLayout()
             left.setSpacing(2)
             name_lbl = QLabel(label)
-            name_lbl.setStyleSheet("font-weight:600;font-size:13px;color:#E8E8EA;")
+            name_lbl.setStyleSheet(f"font-weight:600;font-size:{theme.TYPE_BODY}px;color:{theme.TEXT_PRIMARY};")
             desc_lbl = QLabel(desc)
-            desc_lbl.setStyleSheet("color:#8A8A92;font-size:11px;")
+            desc_lbl.setStyleSheet(f"color:{theme.TEXT_SECONDARY};font-size:{theme.TYPE_MIN}px;")
             left.addWidget(name_lbl)
             left.addWidget(desc_lbl)
             row.addLayout(left, stretch=1)
@@ -940,13 +967,13 @@ class _WizardWindow(QMainWindow):
 
         builtin_note = QLabel(_builtin_hotkeys_text(self._config))
         builtin_note.setWordWrap(True)
-        builtin_note.setStyleSheet("color:#8A8A92;font-size:11px;")
+        builtin_note.setStyleSheet(f"color:{theme.TEXT_SECONDARY};font-size:{theme.TYPE_MIN}px;")
         lay.addWidget(builtin_note)
 
         # Separator
         sep = QFrame()
         sep.setFrameShape(QFrame.Shape.HLine)
-        sep.setStyleSheet("background:rgba(255,255,255,0.06);max-height:1px;")
+        sep.setStyleSheet(f"background:{theme.wash(0.06)};max-height:1px;")
         lay.addWidget(sep)
 
         # Wake word
@@ -956,13 +983,13 @@ class _WizardWindow(QMainWindow):
         ww_left.addWidget(QLabel("Wake Word Phrase"))
         self._ww_desc = QLabel('Say "Jarvis" or "Hey Jarvis" to activate voice commands')
         self._ww_desc.setWordWrap(True)
-        self._ww_desc.setStyleSheet("color:#8A8A92;font-size:11px;")
+        self._ww_desc.setStyleSheet(f"color:{theme.TEXT_SECONDARY};font-size:{theme.TYPE_MIN}px;")
         ww_left.addWidget(self._ww_desc)
         ww_row.addLayout(ww_left, stretch=1)
 
         ww_lbl = QLabel(DEFAULT_WAKE_PHRASE)
         ww_lbl.setStyleSheet(
-            f"color:{theme.ACCENT};font-size:13px;font-weight:bold;"
+            f"color:{theme.ACCENT};font-size:{theme.TYPE_BODY}px;font-weight:bold;"
             f"font-family:'Consolas','Courier New',monospace;"
         )
         ww_row.addWidget(ww_lbl, alignment=Qt.AlignmentFlag.AlignVCenter)
@@ -972,13 +999,13 @@ class _WizardWindow(QMainWindow):
             "Wake word is off for your setup — turn it on anytime in Settings."
         )
         self._ww_off_note.setWordWrap(True)
-        self._ww_off_note.setStyleSheet("color:#8A8A92;font-size:11px;font-style:italic;")
+        self._ww_off_note.setStyleSheet(f"color:{theme.TEXT_SECONDARY};font-size:{theme.TYPE_MIN}px;font-style:italic;")
         self._ww_off_note.setVisible(False)
         lay.addWidget(self._ww_off_note)
 
         coming = QLabel(_wake_options_text(DEFAULT_WAKE_PHRASE))
         coming.setWordWrap(True)
-        coming.setStyleSheet("color:#8A8A92;font-size:11px;")
+        coming.setStyleSheet(f"color:{theme.TEXT_SECONDARY};font-size:{theme.TYPE_MIN}px;")
         lay.addWidget(coming)
         lay.addStretch()
         scroll.setWidget(inner)
@@ -988,7 +1015,7 @@ class _WizardWindow(QMainWindow):
         w, lay = self._padded()
 
         done_lbl = QLabel("You're all set — Samsara is ready.")
-        done_lbl.setStyleSheet(f"color:{theme.ACCENT};font-size:14px;")
+        done_lbl.setStyleSheet(f"color:{theme.ACCENT};font-size:{theme.TYPE_BODY}px;")
         lay.addWidget(done_lbl)
         lay.addSpacing(4)
 
@@ -1000,7 +1027,7 @@ class _WizardWindow(QMainWindow):
         # Placeholder labels — populated in _show_step when we arrive here
         for _ in range(6):
             lbl = QLabel("")
-            lbl.setStyleSheet(f"color:{theme.TEXT_PRIMARY};font-size:13px;")
+            lbl.setStyleSheet(f"color:{theme.TEXT_PRIMARY};font-size:{theme.TYPE_BODY}px;")
             self._summary_labels.append(lbl)
             cl.addWidget(lbl)
         lay.addWidget(card)
@@ -1012,7 +1039,7 @@ class _WizardWindow(QMainWindow):
         tf_lay.setContentsMargins(16, 12, 16, 12)
         self._tip_lbl = QLabel("")
         self._tip_lbl.setWordWrap(True)
-        self._tip_lbl.setStyleSheet(f"color:{theme.TEXT_PRIMARY};font-size:12px;")
+        self._tip_lbl.setStyleSheet(f"color:{theme.TEXT_PRIMARY};font-size:{theme.TYPE_MIN}px;")
         tf_lay.addWidget(self._tip_lbl)
         lay.addWidget(tip_frame)
 
@@ -1021,12 +1048,12 @@ class _WizardWindow(QMainWindow):
             "Look for the Samsara tray icon to get started."
         )
         note.setWordWrap(True)
-        note.setStyleSheet("color:#8A8A92;font-size:12px;")
+        note.setStyleSheet(f"color:{theme.TEXT_SECONDARY};font-size:{theme.TYPE_MIN}px;")
         lay.addWidget(note)
         lay.addSpacing(12)
 
         self._no_hints_cb = QCheckBox("Don't show me hints (you can re-enable this in Settings)")
-        self._no_hints_cb.setStyleSheet("color:#8A8A92;font-size:12px;")
+        self._no_hints_cb.setStyleSheet(f"color:{theme.TEXT_SECONDARY};font-size:{theme.TYPE_MIN}px;")
         lay.addWidget(self._no_hints_cb)
 
         lay.addStretch()
@@ -1057,8 +1084,8 @@ class _WizardWindow(QMainWindow):
         # Dots
         for i, dot in enumerate(self._dots):
             dot.setStyleSheet(
-                f"color:{theme.ACCENT};font-size:10px;" if i == self._step
-                else f"color:{theme.TEXT_DISABLED};font-size:10px;"
+                f"color:{theme.ACCENT};font-size:{theme.TYPE_MIN}px;" if i == self._step
+                else f"color:{theme.TEXT_DISABLED};font-size:{theme.TYPE_MIN}px;"
             )
 
         # Button states
@@ -1260,7 +1287,7 @@ class _WizardWindow(QMainWindow):
         self._stop_meter()
         if self._mic_status:
             self._mic_status.setText("Refreshing devices…")
-            self._mic_status.setStyleSheet("color:#8A8A92;font-size:12px;")
+            self._mic_status.setStyleSheet(f"color:{theme.TEXT_SECONDARY};font-size:{theme.TYPE_MIN}px;")
         if self._app_ready():
             self._refresh_mics_via_app()
         else:
@@ -1391,7 +1418,7 @@ class _WizardWindow(QMainWindow):
             self._meter.reset()
         if self._mic_status is not None:
             self._mic_status.setText("Speak to test your microphone")
-            self._mic_status.setStyleSheet("color:#8A8A92;font-size:12px;")
+            self._mic_status.setStyleSheet(f"color:{theme.TEXT_SECONDARY};font-size:{theme.TYPE_MIN}px;")
 
     def _open_meter_stream(self, device_id):
         """Open a minimal transient InputStream for meter-only use."""
@@ -1445,7 +1472,7 @@ class _WizardWindow(QMainWindow):
         if mapped > 0.15:   # ~0.003 raw RMS — any real audio above noise floor
             self._meter_passed = True
             self._mic_status.setText("Microphone active")
-            self._mic_status.setStyleSheet(f"color:{theme.ACCENT};font-size:12px;")
+            self._mic_status.setStyleSheet(f"color:{theme.ACCENT};font-size:{theme.TYPE_MIN}px;")
 
     def _on_mic_result(self, msg: str, color: str):
         if msg == "_load_done_":
@@ -1460,7 +1487,7 @@ class _WizardWindow(QMainWindow):
         if msg == "__refresh_skipped__":
             if self._mic_status:
                 self._mic_status.setText("Stop dictation elsewhere to refresh devices.")
-                self._mic_status.setStyleSheet(f"color:{theme.WARNING};font-size:12px;")
+                self._mic_status.setStyleSheet(f"color:{theme.WARNING};font-size:{theme.TYPE_MIN}px;")
             # We stopped our own meter before attempting the refresh --
             # restart it since the refresh didn't happen (nothing else will).
             if _STEPS[self._step][0] == "Microphone":
@@ -1468,7 +1495,7 @@ class _WizardWindow(QMainWindow):
             return
         if self._mic_status:
             self._mic_status.setText(msg)
-            self._mic_status.setStyleSheet(f"color:{color};font-size:12px;")
+            self._mic_status.setStyleSheet(f"color:{color};font-size:{theme.TYPE_MIN}px;")
 
     def _populate_mic_combo(self, preserve_selection: bool = False):
         if self._mic_combo is None:
@@ -1485,7 +1512,7 @@ class _WizardWindow(QMainWindow):
                     self._mic_combo.setCurrentIndex(idx)
             if self._mic_status:
                 self._mic_status.setText("Speak to test your microphone")
-                self._mic_status.setStyleSheet("color:#8A8A92;font-size:12px;")
+                self._mic_status.setStyleSheet(f"color:{theme.TEXT_SECONDARY};font-size:{theme.TYPE_MIN}px;")
         else:
             if self._mic_scan_error is not None:
                 self._mic_combo.addItem("Couldn't scan audio devices — press Refresh")
@@ -1494,7 +1521,7 @@ class _WizardWindow(QMainWindow):
                         f"Mic scan failed ({self._mic_scan_error})",
                     )
                     self._mic_status.setStyleSheet(
-                        f"color:{theme.WARNING};font-size:12px;",
+                        f"color:{theme.WARNING};font-size:{theme.TYPE_MIN}px;",
                     )
             else:
                 self._mic_combo.addItem("No microphones detected")

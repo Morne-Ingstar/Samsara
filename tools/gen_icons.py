@@ -532,6 +532,16 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument("--recording-spin", type=Path,
                         help="write the band-weight rotation sheet (26/44/60/128 px) to this path")
     args = parser.parse_args(argv)
+
+    # Queue 129. The shipped icons are BAKED from the palette that is live
+    # when this runs, and they land on the Windows taskbar and in the tray --
+    # surfaces the app does not own and cannot theme. They must always be the
+    # dark palette's mark, whose ICON_IDLE grey is chosen to read on a light
+    # AND a dark taskbar. Generating them under the light palette would ship
+    # a mark tuned for paper onto whatever the user's taskbar happens to be.
+    from samsara.ui import theme  # noqa: PLC0415
+    theme.set_theme(theme.DEFAULT_THEME, refresh=False)
+
     _ensure_gui_app()
 
     if args.check:

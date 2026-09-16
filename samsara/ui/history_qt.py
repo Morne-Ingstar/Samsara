@@ -8,7 +8,7 @@ embedded History tab. No list logic is duplicated in this file.
 
 from PySide6.QtWidgets import QMainWindow
 
-from samsara.ui import qt_runtime
+from samsara.ui import qt_runtime, theme
 from samsara.ui.history_view import HistoryView
 
 from samsara.log import get_logger
@@ -61,9 +61,12 @@ class _HistoryWindow(QMainWindow):
         super().__init__()
         self.app = app
 
-        self.setWindowTitle("Dictation History")
+        self.setWindowTitle("Samsara History")
         self.resize(860, 620)
         self.setMinimumSize(520, 400)
+        # The window itself paints the view's surface. Without this the
+        # margins around the view showed the platform's default grey.
+        self.setStyleSheet(f"QMainWindow {{ background-color: {theme.BG1}; }}")
 
         store = getattr(app, 'history_store', None)
         self._view = HistoryView(

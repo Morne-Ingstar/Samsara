@@ -212,7 +212,7 @@ class AdvancedPage:
             "evaluating. Restart required; Windows only."
         )
         aec_note.setWordWrap(True)
-        aec_note.setStyleSheet(f"color: {theme.ICON_IDLE}; font-size: 12px; margin-left: 26px;")
+        aec_note.setStyleSheet(f"color: {theme.ICON_IDLE}; font-size: {theme.TYPE_MIN}px; margin-left: 26px;")
         layout.addWidget(aec_note)
         layout.addSpacing(8)
 
@@ -245,7 +245,7 @@ class AdvancedPage:
             "restores it after."
         )
         ducking_note.setWordWrap(True)
-        ducking_note.setStyleSheet(f"color: {theme.ICON_IDLE}; font-size: 12px; margin-left: 26px;")
+        ducking_note.setStyleSheet(f"color: {theme.ICON_IDLE}; font-size: {theme.TYPE_MIN}px; margin-left: 26px;")
         layout.addWidget(ducking_note)
         layout.addSpacing(8)
 
@@ -269,7 +269,7 @@ class AdvancedPage:
         indicator_desc = QLabel(
             "An always-on-top pill that shows your current mode and pulses while recording."
         )
-        indicator_desc.setStyleSheet(f"color: {theme.ICON_IDLE}; font-size: 12px;")
+        indicator_desc.setStyleSheet(f"color: {theme.ICON_IDLE}; font-size: {theme.TYPE_MIN}px;")
         layout.addWidget(indicator_desc)
         layout.addSpacing(6)
 
@@ -308,7 +308,7 @@ class AdvancedPage:
                 "Position set by dragging the indicator. Pick a preset "
                 "above to replace it."
             )
-            custom_note.setStyleSheet(f"color: {theme.ICON_IDLE}; font-size: 12px; margin-left: 26px;")
+            custom_note.setStyleSheet(f"color: {theme.ICON_IDLE}; font-size: {theme.TYPE_MIN}px; margin-left: 26px;")
             layout.addWidget(custom_note)
 
         layout.addSpacing(20)
@@ -322,7 +322,7 @@ class AdvancedPage:
             "and is fully released when off."
         )
         gesture_note.setWordWrap(True)
-        gesture_note.setStyleSheet(f"color: {theme.ICON_IDLE}; font-size: 12px;")
+        gesture_note.setStyleSheet(f"color: {theme.ICON_IDLE}; font-size: {theme.TYPE_MIN}px;")
         layout.addWidget(gesture_note)
         layout.addSpacing(6)
 
@@ -343,7 +343,7 @@ class AdvancedPage:
             "rephrasing you. Off by default."
         )
         sc_note.setWordWrap(True)
-        sc_note.setStyleSheet(f"color: {theme.ICON_IDLE}; font-size: 12px;")
+        sc_note.setStyleSheet(f"color: {theme.ICON_IDLE}; font-size: {theme.TYPE_MIN}px;")
         layout.addWidget(sc_note)
         layout.addSpacing(6)
 
@@ -355,7 +355,7 @@ class AdvancedPage:
 
         sc_status_label = QLabel("Active backend: --")
         sc_status_label.setWordWrap(True)
-        sc_status_label.setStyleSheet(f"color: {theme.ICON_IDLE}; font-size: 12px; margin-left: 4px;")
+        sc_status_label.setStyleSheet(f"color: {theme.ICON_IDLE}; font-size: {theme.TYPE_MIN}px; margin-left: 4px;")
         self._widgets['sc_status_label'] = sc_status_label
         layout.addWidget(sc_status_label)
         layout.addSpacing(8)
@@ -380,7 +380,7 @@ class AdvancedPage:
             "will have no backend."
         )
         sc_cloud_hint.setWordWrap(True)
-        sc_cloud_hint.setStyleSheet(f"color: {theme.WARNING}; font-size: 12px; margin-left: 4px;")
+        sc_cloud_hint.setStyleSheet(f"color: {theme.WARNING}; font-size: {theme.TYPE_MIN}px; margin-left: 4px;")
 
         def _update_sc_cloud_hint(_text=None):
             cloud_enabled = bool(self.app.config.get('cloud_llm', {}).get('enabled', False))
@@ -450,7 +450,7 @@ class AdvancedPage:
             "Nothing leaves this machine."
         )
         bench_note.setWordWrap(True)
-        bench_note.setStyleSheet(f"color: {theme.ICON_IDLE}; font-size: 12px;")
+        bench_note.setStyleSheet(f"color: {theme.ICON_IDLE}; font-size: {theme.TYPE_MIN}px;")
         layout.addWidget(bench_note)
         layout.addSpacing(6)
 
@@ -458,6 +458,32 @@ class AdvancedPage:
         bench_cb.setChecked(bool(bench_cfg.get('collect_samples', False)))
         self._widgets['adv_bench_collect'] = bench_cb
         layout.addWidget(bench_cb)
+        layout.addSpacing(20)
+
+        # ---- Section: Command word (93) --------------------------------------
+        layout.addWidget(self._section_title("Command word"))
+        layout.addSpacing(4)
+
+        intent_note = QLabel(
+            "Samsara types a single word rather than running it as a command, so you can "
+            "dictate \"copy\", \"yes\" or \"Claude\" without anything happening. Set a word "
+            "here and saying it first runs the rest as a command instead -- say it and then "
+            "\"copy\" to actually copy. Leave it empty to turn this off."
+        )
+        intent_note.setWordWrap(True)
+        intent_note.setStyleSheet(f"color: {theme.ICON_IDLE}; font-size: {theme.TYPE_MIN}px;")
+        layout.addWidget(intent_note)
+        layout.addSpacing(6)
+
+        intent_prefix_edit = QLineEdit()
+        intent_prefix_edit.setText(str((cfg.get('intent', {}) or {}).get('command_prefix', '') or ''))
+        intent_prefix_edit.setPlaceholderText("empty -- off")
+        self._widgets['adv_intent_command_prefix'] = intent_prefix_edit
+        layout.addLayout(self._setting_row(
+            "Command word",
+            "Spoken before a command to run it even when it is one word",
+            intent_prefix_edit,
+        ))
 
         def _save(acc):
             updates = {}
@@ -517,6 +543,14 @@ class AdvancedPage:
                     bench_cfg_out = dict(self.app.config.get('benchmark', {}) or {})
                     bench_cfg_out['collect_samples'] = self._widgets['adv_bench_collect'].isChecked()
                     updates['benchmark'] = bench_cfg_out
+                if 'adv_intent_command_prefix' in self._widgets:
+                    # Merge onto the whole intent section: shadow_enabled is
+                    # config-file-only and must survive a Settings save.
+                    intent_out = dict(self.app.config.get('intent', {}) or {})
+                    intent_out['command_prefix'] = (
+                        self._widgets['adv_intent_command_prefix'].text().strip()
+                    )
+                    updates['intent'] = intent_out
                 # Apply manual threshold to wake_word_config if in manual mode --
                 # merge onto whatever the Modes tab already wrote (read from
                 # acc), not self.app.config, so that write isn't clobbered.

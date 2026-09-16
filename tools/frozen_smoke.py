@@ -57,6 +57,9 @@ LOG_STABILITY_WINDOW_S = 5.0
 LOG_STABILITY_MAX_NEW_LINES = 200
 LOG_POLL_INTERVAL_S = 0.25
 SHUTDOWN_TIMEOUT_S = 10.0
+#: samsara.boot.SESSION_MARKER. Duplicated rather than imported: this harness
+#: drives a FROZEN exe and must not need the source package on sys.path.
+SESSION_MARKER = "session.running"
 
 
 # ---------------------------------------------------------------------------
@@ -236,15 +239,22 @@ def check_no_self_respawn(pid: int) -> Check:
     return check.ok("no child Samsara.exe processes")
 
 
-def graceful_shutdown(proc: subprocess.Popen, timeout_s: float = SHUTDOWN_TIMEOUT_S) -> Check:
-    """No scriptable graceful-exit mechanism exists: quit_app() (dictation.py)
+def forced_termination(proc: subprocess.Popen, timeout_s: float = SHUTDOWN_TIMEOUT_S) -> Check:
+    """Named for what it does (108). This calls terminate() -- on Windows,
+    TerminateProcess, identical to a Task-Manager "End task". It bypasses
+    quit_app() (dictation.py) entirely: no duck restoration, no draft or
+    history flush, no thread teardown, no atexit. It therefore proves the
+    process CAN be killed and leaves nothing orphaned, and proves nothing
+    whatever about shutdown cleanliness. It was previously reported as
+    "clean shutdown", which is the opposite of the truth.
+
+    No scriptable graceful-exit mechanism exists to use instead: quit_app()
     is only reachable via the tray "Exit" menu item (a GUI click) or a fatal
     startup-error dialog; there is no signal handler, named event/mutex, or
-    CLI flag registered anywhere in the app. Confirmed by reading
-    quit_app()/tray_qt.py and grepping for signal.signal/win32event usage.
-    Falling back to terminate() (TerminateProcess) -- identical to a
-    Task-Manager "End task": no atexit/signal/app-level cleanup runs."""
-    check = Check("clean shutdown")
+    CLI flag registered anywhere in the app. Until one exists, pair this with
+    quit_path_completed() below, which reads whether the quit path actually
+    ran rather than assuming it did."""
+    check = Check("forced termination")
     proc.terminate()
     try:
         proc.wait(timeout=timeout_s)
@@ -259,8 +269,37 @@ def graceful_shutdown(proc: subprocess.Popen, timeout_s: float = SHUTDOWN_TIMEOU
             f"(no scriptable graceful-exit mechanism exists); force-killed"
         )
     return check.ok(
-        "terminate() -- no scriptable graceful-exit mechanism exists "
-        f"(tray-menu Exit is GUI-only); exited within {timeout_s:.0f}s"
+        f"terminate() (TerminateProcess) -- quit_app() was NOT run, so nothing "
+        f"here covers duck restoration, draft/history flush or thread teardown; "
+        f"exited within {timeout_s:.0f}s"
+    )
+
+
+def quit_path_completed(profile_dir: Path) -> bool:
+    """Did the process reach the end of quit_app()?
+
+    samsara.boot writes SESSION_MARKER ("session.running") on startup and
+    quit_app deletes it through end_session() as its last act, so the marker
+    surviving IS the record that the quit path never ran. This is the one
+    completion marker the app already keeps; nothing new is written for the
+    harness's benefit."""
+    return not (profile_dir / "logs" / SESSION_MARKER).exists()
+
+
+def check_quit_path(profile_dir: Path, *, expected: bool) -> Check:
+    """Report whether the quit path completed, against what this scenario
+    expects. After forced_termination `expected` is False: the marker MUST
+    still be there, and if it is not, something else deleted it and the
+    marker has stopped being evidence of anything."""
+    check = Check("quit path completed" if expected else "quit path correctly did NOT run")
+    completed = quit_path_completed(profile_dir)
+    if completed == expected:
+        return check.ok(
+            f"{SESSION_MARKER} {'cleared by end_session()' if expected else 'still present'}"
+        )
+    return check.fail(
+        f"{SESSION_MARKER} {'still present' if expected else 'was cleared'} -- expected "
+        f"the quit path to {'complete' if expected else 'be bypassed by terminate()'}"
     )
 
 
@@ -364,10 +403,11 @@ def run_boot_and_liveness(exe_path: Path, work_root: Path) -> list[Check]:
 
     finally:
         if proc.poll() is None:
-            checks.append(graceful_shutdown(proc))
+            checks.append(forced_termination(proc))
             checks.append(check_no_orphans(proc.pid, exe_path))
+            checks.append(check_quit_path(profile_dir, expected=False))
         else:
-            checks.append(Check("clean shutdown").ok("process had already exited"))
+            checks.append(Check("forced termination").ok("process had already exited"))
 
     return checks
 
@@ -432,10 +472,11 @@ def run_wizard_path(exe_path: Path, work_root: Path) -> list[Check]:
 
     finally:
         if proc.poll() is None:
-            checks.append(graceful_shutdown(proc))
+            checks.append(forced_termination(proc))
             checks.append(check_no_orphans(proc.pid, exe_path))
+            checks.append(check_quit_path(profile_dir, expected=False))
         else:
-            checks.append(Check("clean shutdown").ok("process had already exited"))
+            checks.append(Check("forced termination").ok("process had already exited"))
 
     return checks
 

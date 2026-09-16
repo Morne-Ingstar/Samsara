@@ -66,7 +66,7 @@ def test_svg_has_no_hub_disc_and_only_token_colours():
 def test_state_map_covers_all_eight_states_with_assets():
     assert set(tray_qt.MARK_STATES) == NAMED_STATES
     for state, (capture, eye) in tray_qt.MARK_STATES.items():
-        assert capture in tray_qt.MARK_CAPTURE and eye in tray_qt.MARK_EYE
+        assert capture in tray_qt.mark_capture() and eye in tray_qt.MARK_EYE
         for size in (16, 24, 32, 48, 64):
             assert (REPO / "assets" / "icon" / "states" / f"samsara_{state}_{size}.png").exists()
     assert tray_qt.MARK_EYE["off"] is None                  # OFF = ring only
@@ -74,7 +74,7 @@ def test_state_map_covers_all_eight_states_with_assets():
 
 
 def test_mark_is_monochrome_per_state_and_heard_is_the_red_eye():
-    for capture, (colour, _ring) in tray_qt.MARK_CAPTURE.items():
+    for capture, (colour, _ring) in tray_qt.mark_capture().items():
         for eye in ("off", "asleep", "armed"):
             assert tray_qt.mark_colours(capture, eye) == (colour, colour)
     ring, eye = tray_qt.mark_colours("listening", "heard")
@@ -505,9 +505,9 @@ def test_scrollbar_rule_is_in_every_window_stylesheet():
     from samsara.ui import dictionary_panel_qt, history_view, main_window_qt, settings_qt
     qss = theme.SCROLLBAR_QSS
     assert qss in theme.build_stylesheet()
-    assert qss in settings_qt.STYLESHEET
-    assert qss in main_window_qt._SS
-    assert qss in dictionary_panel_qt._SS
+    assert qss in settings_qt.stylesheet()
+    assert qss in main_window_qt._ss()
+    assert qss in dictionary_panel_qt._ss()
     assert qss in history_view.build_stylesheet()
 
 
@@ -536,13 +536,18 @@ def test_scrollbar_colours_come_from_tokens():
     assert not HEX_IN_TEXT.findall(qss)
     idle = ",".join(str(c) for c in theme._hex_to_rgb(theme.ICON_IDLE))
     accent = ",".join(str(c) for c in theme._hex_to_rgb(theme.ACCENT))
-    assert f"rgba({idle},0.35)" in _rule(qss, "QScrollBar::handle:vertical")
-    assert f"rgba({idle},0.55)" in _rule(qss, "QScrollBar::handle:vertical:hover, QScrollBar::handle:horizontal:hover")
-    assert f"rgba({accent},0.55)" in _rule(
+    rest = 0.35 if theme.POLARITY == "dark" else 0.60
+    assert f"rgba({idle},{rest:.2f})" in _rule(qss, "QScrollBar::handle:vertical")
+    assert f"rgba({idle},{rest + 0.20:.2f})" in _rule(
+        qss, "QScrollBar::handle:vertical:hover, QScrollBar::handle:horizontal:hover")
+    assert f"rgba({accent},0.70)" in _rule(
         qss, "QScrollBar::handle:vertical:pressed, QScrollBar::handle:horizontal:pressed")
     block = (REPO / "samsara/ui/theme.py").read_text(encoding="utf-8")
     block = block[block.index("# Scrollbars -- ONE treatment"):block.index("# Dialog-wide stylesheet")]
-    assert _string_hex_literals(block) == []
+    # Queue 129: wash() lives in this block and names the two ink extremes
+    # (#ffffff / #000000) to pick a direction from the polarity. Those are the
+    # only literals allowed here -- every COLOUR still comes from a token.
+    assert sorted(_string_hex_literals(block)) == ["#000000", "#ffffff"]
 
 
 def test_no_local_scrollbar_overrides_left_in_the_owned_windows():
@@ -610,10 +615,10 @@ def test_brand_presentation_is_accent_with_the_eye_always_present():
     """The header lockup and Home's mark show the brand: ACCENT at rest,
     never ICON_IDLE, the eye present in every hands-free state (closed when
     off), RECORDING red only while recording. The tray keeps its rules."""
-    assert tray_qt.BRAND_CAPTURE["idle"][0] == theme.ACCENT
-    assert tray_qt.BRAND_CAPTURE["listening"][0] == theme.ACCENT
-    assert tray_qt.BRAND_CAPTURE["recording"] == (theme.RECORDING, "ring-filled")
-    assert theme.ICON_IDLE not in {c for c, _ in tray_qt.BRAND_CAPTURE.values()}
+    assert tray_qt.brand_capture()["idle"][0] == theme.ACCENT
+    assert tray_qt.brand_capture()["listening"][0] == theme.ACCENT
+    assert tray_qt.brand_capture()["recording"] == (theme.RECORDING, "ring-filled")
+    assert theme.ICON_IDLE not in {c for c, _ in tray_qt.brand_capture().values()}
     assert set(tray_qt.BRAND_EYE) == set(tray_qt.MARK_EYE)
     assert all(tray_qt.BRAND_EYE[e] is not None for e in tray_qt.BRAND_EYE)
     assert tray_qt.BRAND_EYE["off"] == "eye-closed" and tray_qt.BRAND_EYE["armed"] == "eye-open"
@@ -622,7 +627,7 @@ def test_brand_presentation_is_accent_with_the_eye_always_present():
     assert tray_qt.mark_colours("idle", "off", brand=True) == (theme.ACCENT, theme.ACCENT)
     assert tray_qt.mark_colours("recording", "armed", brand=True) == (theme.RECORDING, theme.RECORDING)
     # tray rules unchanged
-    assert tray_qt.MARK_CAPTURE["idle"][0] == theme.ICON_IDLE and tray_qt.MARK_EYE["off"] is None
+    assert tray_qt.mark_capture()["idle"][0] == theme.ICON_IDLE and tray_qt.MARK_EYE["off"] is None
     assert tray_qt.mark_colours("idle", "off") == (theme.ICON_IDLE, theme.ICON_IDLE)
 
 
@@ -670,9 +675,10 @@ def test_brand_mark_is_heavier_than_the_tray_hollow_line(qapp):
 def test_hub_type_scale_is_additive_and_has_no_role_below_the_minimum():
     """41: one type scale for the hub and Home, added beside the shared four
     sizes without changing them."""
+    # Queue 83: the shared four are now aliases of the one scale, at the floor.
     assert (theme.FONT_SIZE_TITLE, theme.FONT_SIZE_HEADING, theme.FONT_SIZE_BODY,
-            theme.FONT_SIZE_CAPTION, theme.FONT_SIZE_DISPLAY) == (20, 15, 13, 12, 22)
+            theme.FONT_SIZE_CAPTION, theme.FONT_SIZE_DISPLAY) == (22, 18, 16, 14, 26)
     tokens = {theme.TYPE_NAV, theme.TYPE_STATE, theme.TYPE_CARD_TITLE, theme.TYPE_BODY,
               theme.TYPE_SECONDARY, theme.TYPE_SECTION_LABEL, theme.TYPE_FIGURE, theme.TYPE_CREED}
     assert set(theme.HOME_TYPE_SCALE.values()) <= tokens
-    assert min(theme.HOME_TYPE_SCALE.values()) >= theme.TYPE_MIN >= 12
+    assert min(theme.HOME_TYPE_SCALE.values()) >= theme.TYPE_MIN >= 14

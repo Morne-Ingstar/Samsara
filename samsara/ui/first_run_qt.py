@@ -22,10 +22,12 @@ samsara.components (33):
     lost network leaves the core install exactly as it was (exit 4 / 5), so
     the installer still succeeds with core only and says so.
 
-    NOTE: the dispatch that routes "--fetch-components" from Samsara.exe's
-    entry point (dictation.py __main__) to this function is one `if` at the
-    top of that block; see installer/README.md. Until it lands the exe
-    starts normally and this wizard page offers the same components.
+    The dispatch that routes "--fetch-components" from Samsara.exe's entry
+    point to this function landed in 108: dictation.py calls it from
+    _dispatch_startup_argument, at the TOP of the module, above every heavy
+    import and above the single-instance lock. Above the lock is the part
+    that matters -- below it, a fetch requested while a session was already
+    running exited 0 without fetching anything.
 
 No network access at import time. Every network or file-serving path goes
 through an injectable opener so tests never touch the network.
@@ -548,12 +550,12 @@ class ComponentsPage:
         lay.setSpacing(12)
         self._intro = QLabel("Optional parts you can add now or any time later from Settings.")
         self._intro.setWordWrap(True)
-        self._intro.setStyleSheet(f"color:{theme.TEXT_SECONDARY};font-size:13px;")
+        self._intro.setStyleSheet(f"color:{theme.TEXT_SECONDARY};font-size:{theme.TYPE_BODY}px;")
         lay.addWidget(self._intro)
         self._status = QLabel("")
         self._status.setWordWrap(True)
         self._status.setAccessibleName("Components status")
-        self._status.setStyleSheet(f"color:{theme.TEXT_SECONDARY};font-size:12px;")
+        self._status.setStyleSheet(f"color:{theme.TEXT_SECONDARY};font-size:{theme.TYPE_MIN}px;")
         lay.addWidget(self._status)
         self._rows_host = QWidget()
         self._rows_layout = QVBoxLayout(self._rows_host)
@@ -619,12 +621,12 @@ class ComponentsPage:
             cl.setContentsMargins(16, 12, 16, 12)
             cl.setSpacing(6)
             title = QLabel(f"{component['name']}  ({format_size(component.get('size_bytes'))})")
-            title.setStyleSheet(f"color:{theme.TEXT_PRIMARY};font-size:14px;font-weight:600;")
+            title.setStyleSheet(f"color:{theme.TEXT_PRIMARY};font-size:{theme.TYPE_BODY}px;font-weight:600;")
             title.setAccessibleName(component["name"])
             cl.addWidget(title)
             benefit = QLabel(COMPONENT_BENEFITS.get(component["id"], component.get("description", "")))
             benefit.setWordWrap(True)
-            benefit.setStyleSheet(f"color:{theme.TEXT_SECONDARY};font-size:12px;")
+            benefit.setStyleSheet(f"color:{theme.TEXT_SECONDARY};font-size:{theme.TYPE_MIN}px;")
             cl.addWidget(benefit)
             note = component_note(component, gpu)
             row = QHBoxLayout()
@@ -646,7 +648,7 @@ class ComponentsPage:
             row.addWidget(cancel_btn)
             note_lbl = QLabel(note or "")
             note_lbl.setAccessibleName(f"{component['name']} note")
-            note_lbl.setStyleSheet(f"color:{theme.WARNING};font-size:12px;")
+            note_lbl.setStyleSheet(f"color:{theme.WARNING};font-size:{theme.TYPE_MIN}px;")
             note_lbl.setVisible(bool(note))
             row.addWidget(note_lbl)
             row.addStretch(1)
@@ -661,7 +663,7 @@ class ComponentsPage:
             result = QLabel("")
             result.setWordWrap(True)
             result.setAccessibleName(f"{component['name']} result")
-            result.setStyleSheet(f"color:{theme.TEXT_SECONDARY};font-size:12px;")
+            result.setStyleSheet(f"color:{theme.TEXT_SECONDARY};font-size:{theme.TYPE_MIN}px;")
             cl.addWidget(result)
             if note == COMING_SOON or note == NO_NVIDIA:
                 get_btn.setEnabled(False)

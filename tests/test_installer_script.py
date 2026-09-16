@@ -187,4 +187,8 @@ class TestBuildCommand:
         assert "SmartScreen" in install
         readme = README.read_text(encoding="utf-8")
         assert "SignPath" in readme and "--fetch-components" in readme
-        assert "fetch_components_main(sys.argv[1:])" in readme, "the dictation.py dispatch snippet is documented"
+        # 108: the dispatch is real now, so the README documents where it
+        # LIVES rather than a snippet someone still has to paste in. Both
+        # placement facts are asserted because both are load-bearing.
+        assert "_dispatch_startup_argument" in readme, "the dictation.py dispatch is documented"
+        assert "single-instance lock" in readme and "heavy import" in readme

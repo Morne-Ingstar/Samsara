@@ -142,6 +142,43 @@ def test_model_worker_never_loads_openwakeword(monkeypatch, wake_enabled):
     assert app.start_wake_word_mode.call_count == (1 if wake_enabled else 0)
 
 
+# ── Queue 46: the Smart Corrections warm-up never blocks "Startup complete" ───
+
+@pytest.mark.parametrize("sc_enabled", [False, True])
+def test_smart_corrections_warm_up_is_off_the_startup_lane(monkeypatch, sc_enabled):
+    """warm_up() resolves its backend with a synchronous Ollama HTTP probe
+    (4.0 s measured per boot while Ollama is down). The model worker must
+    reach Startup complete without calling it inline, spawn it on its own
+    thread only when Smart Corrections is enabled, and never at all when off."""
+    app = _worker_app(False)
+    app.config["smart_corrections"] = {"enabled": sc_enabled}
+    app._write_last_known_good = Mock()
+    warm_up = Mock()
+    monkeypatch.setattr(dictation, "_create_whisper_model", Mock(return_value=object()))
+    monkeypatch.setattr(dictation, "smart_corrections_warm_up", warm_up)
+    spawned = {}
+    monkeypatch.setattr(dictation.thread_registry, "spawn",
+                        lambda name, target, daemon=True: spawned.setdefault(name, target))
+    app.load_model_async()
+
+    spawned["dictation.load"]()
+
+    assert app._startup_failed is False
+    warm_up.assert_not_called()                       # never inline on the startup lane
+    if sc_enabled:
+        spawned["dictation.smart_corrections_warm_up"]()
+        warm_up.assert_called_once_with(app)
+    else:
+        assert "dictation.smart_corrections_warm_up" not in spawned
+
+
+def test_tray_and_shell_ready_log_boot_markers(monkeypatch):
+    """tools/boot_profile.py --full-boot reads these two [BOOT] lines."""
+    src = inspect.getsource(dictation.DictationApp.create_tray_icon)
+    assert '_boot_log("tray icon created")' in src
+    assert '_boot_log("shell ready (tray + main window scheduled)")' in src
+
+
 # ── Fix 1: lazy wake load, pending start, wake_ready ─────────────────────────
 
 def _wake_app(monkeypatch):
@@ -394,6 +431,41 @@ def test_corrupt_calibration_file_records_again(tmp_path, monkeypatch):
     (tmp_path / "mic_calibration.json").write_text("{not json")
     app = _cal_app(tmp_path, monkeypatch)
     assert app._run_calibration_if_auto(use_cache=True) == "measured"
+
+
+def test_ceiling_clamped_calibration_is_applied_but_never_persisted(tmp_path, monkeypatch):
+    """Queue 46: an "ambient" recording loud enough to hit CALIBRATION_CEILING
+    is speech or noise, not room tone (live log 2026-09-13: ambient RMS 0.1589
+    -> 0.1500, reused on the next boot). Use it this session, never store it."""
+    from samsara.constants import CALIBRATION_CEILING
+    app = _cal_app(tmp_path, monkeypatch, measured=1.0)
+    assert app._run_calibration_if_auto(use_cache=True) == "measured"
+    assert _threshold(app) == pytest.approx(CALIBRATION_CEILING)
+    assert not (tmp_path / "mic_calibration.json").exists()
+
+
+def test_stored_ceiling_calibration_is_not_reused(tmp_path, monkeypatch):
+    """A cache written before the guard (threshold at the ceiling) records again."""
+    from samsara.constants import CALIBRATION_CEILING
+    _cal_app(tmp_path, monkeypatch)._run_calibration_if_auto(use_cache=True)
+    path = tmp_path / "mic_calibration.json"
+    stored = json.loads(path.read_text())
+    stored["threshold"] = CALIBRATION_CEILING
+    path.write_text(json.dumps(stored))
+    app = _cal_app(tmp_path, monkeypatch)
+
+    assert app._run_calibration_if_auto(use_cache=True) == "measured"
+    assert app.measure_calls == 1
+
+
+def test_background_refresh_does_not_persist_a_ceiling_measurement(tmp_path, monkeypatch):
+    _cal_app(tmp_path, monkeypatch)._run_calibration_if_auto(use_cache=True)
+    before = json.loads((tmp_path / "mic_calibration.json").read_text())
+    app = _cal_app(tmp_path, monkeypatch, measured=1.0)
+    monkeypatch.setattr(dictation.thread_registry, "spawn",
+                        lambda name, target, daemon=True: target())
+    app._refresh_calibration_in_background()
+    assert json.loads((tmp_path / "mic_calibration.json").read_text()) == before
 
 
 def test_background_refresh_skips_while_recording(tmp_path, monkeypatch):
