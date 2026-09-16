@@ -325,17 +325,37 @@ class TestRows:
         assert by_number[3].detail == "", "unique app name should stay one line"
 
     def test_page_two_shows_the_next_block(self, monkeypatch):
-        _set_windows(monkeypatch, [(i, f"W{i}", f"App{i}") for i in range(1, 12)])
+        _set_windows(monkeypatch, [(i, f"W{i}", f"App{i}") for i in range(1, 10)])
         app = _FakeApp()
-        app.config["window_cube"]["max_rows"] = 9
+        app.config["window_cube"]["max_rows"] = 8
         window_cube.handle_show_cube(app, "")
 
         page_one = [s["number"] for s in window_cube._page_slots(app)]
         window_cube.handle_cube_page(app, "two")
         page_two = [s["number"] for s in window_cube._page_slots(app)]
 
-        assert page_one == list(range(1, 10))
-        assert page_two == [10, 11]
+        assert page_one == list(range(1, 9))
+        assert page_two == [9]
+
+    def test_page_three_refuses_and_keeps_the_current_page(self, monkeypatch):
+        _set_windows(monkeypatch, [(i, f"W{i}", f"App{i}") for i in range(1, 10)])
+        app = _FakeApp()
+        app.config["window_cube"]["max_rows"] = 8
+        window_cube.handle_show_cube(app, "")
+        window_cube.handle_cube_page(app, "two")
+
+        assert window_cube.handle_cube_page(app, "three") is True
+        assert window_cube._state_for_tests()["page"] == 2
+        assert "only 2 cube pages" in app.spoken[-1]
+
+    def test_page_question_does_not_offer_a_nonexistent_page(self, monkeypatch):
+        _set_windows(monkeypatch, [(1, "W1", "App1")])
+        app = _FakeApp()
+        window_cube.handle_show_cube(app, "")
+
+        window_cube.handle_cube_page(app, "")
+
+        assert app.spoken[-1] == "There is only one cube page."
 
 
 # ---------------------------------------------------------------------------
