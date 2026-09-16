@@ -321,7 +321,8 @@ def clear_catalog_risk_cache() -> None:
 
 def _catalog_risk_index() -> tuple:
     """({canonical_id: risk}, {(plugin, alias): risk}) from commands_catalog.json,
-    loaded once. Empty when the file is absent (the packaged build) or invalid."""
+    loaded once. Empty when the file is absent or invalid; frozen-smoke treats
+    absence from a packaged build as a release failure."""
     global _catalog_index
     with _catalog_index_lock:
         if _catalog_index is None:

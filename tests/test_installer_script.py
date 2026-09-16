@@ -24,6 +24,7 @@ CMD = REPO / "tools" / "build_installer.cmd"
 README = REPO / "installer" / "README.md"
 INSTALL_DOC = REPO / "docs" / "INSTALL.md"
 WORKFLOW = REPO / ".github" / "workflows" / "release-build.yml"
+SPEC = REPO / "scripts" / "samsara.spec"
 
 
 @pytest.fixture(scope="module")
@@ -149,6 +150,15 @@ class TestInstallBehaviour:
         head = iss[: iss.index("[Setup]")]
         assert "keyboard" in head.lower() and "150%" in head
         assert "WizardResizable=yes" in iss and "WizardSizePercent=120" in iss
+
+
+class TestFrozenBuildData:
+    def test_command_catalog_is_staged_at_the_frozen_data_root(self):
+        spec = SPEC.read_text(encoding="utf-8")
+        # Match commands.json's existing `datas` destination: PyInstaller's
+        # onedir `_MEIPASS` root (`_internal`), where command_catalog.ROOT
+        # resolves at runtime.
+        assert "datas.append((str(app_dir / 'commands_catalog.json'), '.'))" in spec
 
 
 class TestBuildCommand:
