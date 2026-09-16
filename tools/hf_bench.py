@@ -193,6 +193,14 @@ def load_production_adapter():
 
     path = REPO_ROOT / "dictation.py"
     tree = ast.parse(path.read_text(encoding="utf-8"))
+    # Queue 128 moved the output-text quality gates (and the compression
+    # threshold only they read) into samsara/transcript_gates.py, unchanged.
+    # dictation.py re-exports them, but an ImportFrom node is not something
+    # this source-level scrape can execute, so they are read from the file
+    # they now live in -- into the SAME module dict, so gate_overrides()
+    # still rebinds the constants the gate functions actually close over.
+    gates_path = REPO_ROOT / "samsara" / "transcript_gates.py"
+    gates_tree = ast.parse(gates_path.read_text(encoding="utf-8"))
     constants = {
         "_NO_SPEECH_THRESHOLD", "_LOGPROB_THRESHOLD", "_COMPRESSION_RATIO_THRESHOLD",
         "_GATE_VAD_PROB", "_GATE_MIN_CONTIG_MS", "_HALLUCINATION_STRING_BLACKLIST",
@@ -205,11 +213,16 @@ def load_production_adapter():
     method_names = {"get_transcription_params", "_vad_probabilities"}
     app = next(node for node in tree.body
                if isinstance(node, ast.ClassDef) and node.name == "DictationApp")
-    nodes = [node for node in tree.body
-             if (isinstance(node, ast.FunctionDef) and node.name in functions)
-             or (isinstance(node, ast.Assign) and any(
-                 isinstance(target, ast.Name) and target.id in constants
-                 for target in node.targets))]
+
+    def _selected(body):
+        return [node for node in body
+                if (isinstance(node, ast.FunctionDef) and node.name in functions)
+                or (isinstance(node, ast.Assign) and any(
+                    isinstance(target, ast.Name) and target.id in constants
+                    for target in node.targets))]
+
+    nodes = _selected(tree.body)
+    gates_nodes = _selected(gates_tree.body)
     methods = [node for node in app.body
                if isinstance(node, ast.FunctionDef) and node.name in method_names]
     module = ModuleType("hf_bench_production")
@@ -217,6 +230,8 @@ def load_production_adapter():
                            diagnostics=diagnostics, _languages=languages,
                            MODEL_SAMPLE_RATE=constants_module.MODEL_SAMPLE_RATE,
                            CONTIGUOUS_VAD_PROB_THRESHOLD=constants_module.CONTIGUOUS_VAD_PROB_THRESHOLD)
+    exec(compile(ast.Module(body=gates_nodes, type_ignores=[]), str(gates_path), "exec"),
+         module.__dict__)
     exec(compile(ast.Module(body=nodes + methods, type_ignores=[]), str(path), "exec"),
          module.__dict__)
     required = constants | functions | method_names

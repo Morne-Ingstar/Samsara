@@ -44,6 +44,7 @@ from __future__ import annotations
 import logging
 import re
 import string
+import threading
 import time
 from collections import deque
 from dataclasses import dataclass, field
@@ -115,18 +116,23 @@ _PREFIX_SWITCHES: dict[str, SessionMode] = {
 
 SCRATCH_THAT_PHRASE = "scratch that"
 DICTATE_COMMIT_PHRASE = "end"
-# "and"/"end" acoustic collision: a lone sentence-final "and", isolated into
-# its own utterance by a pause, is decoded by Whisper as "end" (or the
-# reverse) often enough to matter. is_dictate_commit() ONLY ever sees a
-# whole isolated utterance (see its docstring/normalize_utterance's
-# whole-equality check below), so treating "and" as a homophone here carries
-# no risk to "and" used inside dictated prose -- mid-sentence "and" never
-# reaches this check. DICTATE_COMMIT_PHRASE stays "end": it's the
-# canonical/displayed word (quick_reference_qt.py shows it as-is, correct).
-# ACCEPTED TRADE: a genuine isolated sentence-final "and" now commits too.
-# Deliberate -- the false paste is immediate and visible (recoverable via
-# scratch-that), preferred over the silent commit-miss this fixes.
-_DICTATE_COMMIT_HOMOPHONES = frozenset({"end", "and"})
+# Words that commit when they are the whole utterance. "and" USED to be here
+# as a homophone of "end" (a lone "and" isolated by a pause commits too). The
+# owner's logs (2026-08-02..2026-09-14, queue 54) reversed that trade: ~39
+# isolated commit words decoded as "End"/"end"/"END", none of the failed
+# commits decoded as a lone "and", and 6 lone "and"/"And."/"And..." utterances
+# all committed -- at least 4 of them mid-thought pauses ("And..." then the
+# sentence carried on), each pasting an unfinished thought. A pause after a
+# sentence-initial "and" is ordinary speech; a pause after "end" is not.
+# Cost of dropping it: a spoken "end" that Whisper hears as a lone "and" now
+# stages "and" and the user repeats "end". The name is kept: command_catalog
+# and quick_reference_qt read this set to reserve/display the commit words.
+_DICTATE_COMMIT_HOMOPHONES = frozenset({DICTATE_COMMIT_PHRASE})
+# A consumed trailing commit word is re-decoded from the same audio at commit
+# (see _commit_dictate_buffer); Whisper renders it either way there, so the
+# re-decode tail is stripped of both spellings. Never used for matching.
+_COMMIT_WORD_REDECODE_SPELLINGS = frozenset({"end", "and"})
+_SENTENCE_TERMINALS = ".!?"
 #: "Sleep" exits of the latched session (SAMSARA_VISION.md section 1: armed
 #: once by a wake phrase, open until sleep). WHOLE-UTTERANCE only -- unlike
 #: the older exit phrases below, which match anywhere in an utterance, "go to
@@ -139,11 +145,26 @@ SESSION_SLEEP_PHRASES = (
     "samsara sleep",
     "sleep now",
 )
-#: The stop phrase (02_conversational_architecture.md section 5): WHOLE
-#: utterance only. Advances the execution generation, cancels model requests
-#: and queued effects, keeps the draft and keeps the microphone armed -- it
-#: does NOT end the session. "go to sleep" is stop + disarm.
-SESSION_STOP_PHRASES = ("stop",)
+#: The stop phrases (02_conversational_architecture.md section 5): WHOLE
+#: utterance only. Advances the execution generation, cancels model requests,
+#: queued effects and the answer being spoken, keeps the draft and keeps the
+#: microphone armed -- it does NOT end the session. "go to sleep" is
+#: stop + disarm.
+#:
+#: Queue 116 replaced ("stop",) with these two, when the stop was wired up for
+#: real. The match has always been whole-utterance only, so "stop the music"
+#: and "I told him to stop" were never at risk -- but a bare "Stop." spoken as
+#: a complete utterance is common enough in real dictation to lose, and once
+#: the branch is live losing it means the word is eaten instead of typed.
+#: "Halt" and "cease" are not words a person dictates alone by accident.
+#: TWO of them, deliberately: a panic control should have more than one way
+#: in, and one may transcribe better than the other in practice.
+#:
+#: config command_mode.stop_phrases overrides this list (not adds to it), so
+#: the owner can change or add a word without a release. An empty or unusable
+#: config value falls back to these -- the emergency stop is not something a
+#: typo in config.json gets to switch off.
+SESSION_STOP_PHRASES = ("halt", "cease")
 
 GLOBAL_SESSION_EXIT_PHRASES = (
     "stop listening",
@@ -151,6 +172,43 @@ GLOBAL_SESSION_EXIT_PHRASES = (
     "exit command mode",
     *SESSION_SLEEP_PHRASES,
 )
+
+#: Queue 84. EVERY session-ending phrase -- the configured aborts ("cancel",
+#: "cancel dictation", "abort") and the exits above -- matches the WHOLE
+#: utterance only, after normalize_utterance(). Until 2026-09-15 the aborts
+#: were word-boundary regexes searched ANYWHERE in the text, so at 15:12:29
+#: "Have it stop listening to you, or something like that." ended the session
+#: and destroyed a 477-character draft. Sleep, stop, scratch-that, clear-draft
+#: and the commit word were already whole-utterance; the aborts were the last
+#: anywhere-matchers, and they were the destructive ones.
+#:
+#: The rule costs nothing an ordinary user notices: a bare "cancel" still
+#: aborts. It only stops a sentence that CONTAINS the phrase from ending the
+#: session -- which is the only way this has ever fired by accident.
+ABORT_PHRASES_ARE_WHOLE_UTTERANCE = True
+
+#: Queue 84. An abort or a confirmed "scratch everything" no longer destroys
+#: text: the draft goes to a recovery slot that survives the session ending,
+#: and one of these phrases (whole utterance, in the dictation lane) puts it
+#: back. Deliberately NOT auto-restored on the next session, unlike a draft
+#: set aside by "go to sleep": an abort is usually meant, so silently
+#: prepending the old draft to the next thought would paste text the user
+#: thought was gone. Recovery is asked for, never assumed.
+#:
+#: Phrase choice: multi-word and verb-first, so ordinary prose does not
+#: collide with them even as a whole utterance; they reuse "draft", the word
+#: the clear-draft question itself uses.
+RECOVER_DRAFT_PHRASES = (
+    "bring back my draft",
+    "bring back the draft",
+    "bring my draft back",
+    "restore my draft",
+    "restore the draft",
+)
+#: How long a recovered draft is kept. Long enough to end a session, restart
+#: it and ask (the owner re-dictated the lost 477 characters 22 s later);
+#: short enough that dictated text is not held in memory indefinitely.
+RECOVERABLE_DRAFT_TTL_S = 300.0
 
 
 def normalize_utterance(text: str) -> str:
@@ -178,12 +236,294 @@ def is_scratch_that(raw_text: str) -> bool:
     return normalize_utterance(raw_text) == SCRATCH_THAT_PHRASE
 
 
-def is_dictate_commit(raw_text: str) -> bool:
-    """Whole-utterance-only manual commit for buffered DICTATE mode.
+#: Queue 99: counted repetition of the SAME scratch. "scratch that twice",
+#: "scratch that three times", "scratch that 4 times" -- N pops of exactly the
+#: path one "scratch that" takes, never a second deletion mechanism.
+#:
+#: Number parsing reuses samsara.intent.normalize.parse_number, which is
+#: already the shared front door the brief asks for: its own docstring records
+#: that it reuses show_numbers._WORD_TO_NUM / _parse_spoken_number for digits,
+#: words and compounds, windows._ORDINALS for ordinals and
+#: window_switcher.PHONETIC for letters. The consolidation queue 45 identified
+#: was done by the intent-grammar work; this adds no fourth parser.
+#:
+#: "twice"/"thrice"/"once" are NOT numbers -- parse_number returns None for
+#: all three -- they are multiplicative adverbs, so they belong to this phrase
+#: grammar rather than to a number table. Three entries, written once.
+_SCRATCH_ADVERBS = {"once": 1, "twice": 2, "thrice": 3}
+_SCRATCH_COUNT_PREFIX = SCRATCH_THAT_PHRASE + " "
+#: Upper bound on a spoken count. Not a policy limit -- the stack itself holds
+#: UnitOfWorkStack.MAX_SIZE -- but a guard against a decode turning a sentence
+#: into "scratch that 4000 times".
+SCRATCH_COUNT_MAX = 20
 
-    Matches DICTATE_COMMIT_PHRASE ("end") OR its acoustic homophone "and"
-    -- see _DICTATE_COMMIT_HOMOPHONES above for why that's safe here."""
+#: Queue 99: "again" repeats the scratch just performed, once more. The owner's
+#: phrasing and the cheaper one to say.
+#:
+#: NOTE there is already a builtin.again -> repeat_last_command ("Repeat the
+#: last executed command", commands.json). This does NOT replace it and does
+#: not add a second catalog entry: in the COMMAND lane that command already
+#: repeats a scratch, because "scratch that" is not in dictation's
+#: _REPEAT_BLACKLIST_NAMES. What it could not reach is the hands-free DICTATE
+#: lane, where this module intercepts the utterance first and a lone "again"
+#: was simply dictated. Same word, same meaning, now also in the lane where
+#: the staged draft lives.
+SCRATCH_AGAIN_PHRASE = "again"
+#: How long after a scratch a bare "again" still means "do that again".
+#:
+#: 8 s. From the owner's own cadence (the 848 hands-free inter-utterance pauses
+#: behind streaming.IDLE_DELAY_S_DEFAULT, 2026-09): median 1.8 s, 75% under
+#: 5.0 s, 90th percentile 20 s. Above the 75th percentile, so a deliberate
+#: follow-up lands inside it comfortably; well under the 90th, so a scratch the
+#: user walked away from does not leave a live trigger behind. The window is
+#: the SECOND guard, not the first: "again" only means this when the previous
+#: resolved action in this session was a scratch, so any other utterance in
+#: between disarms it regardless of the clock. Outside both, it is dictation.
+SCRATCH_AGAIN_TTL_S = 8.0
+
+
+def match_scratch_count(raw_text: str) -> "Optional[int]":
+    """N for a whole-utterance counted scratch, else None.
+
+    Whole-utterance only, like every other scratch phrase: the normalised text
+    must be exactly "scratch that" + a count expression. "let's scratch that
+    idea twice" does not start with the phrase, and "scratch that idea twice"
+    has a remainder that is not a count -- both are dictation.
+    """
+    text = normalize_utterance(raw_text)
+    if not text.startswith(_SCRATCH_COUNT_PREFIX):
+        return None
+    rest = text[len(_SCRATCH_COUNT_PREFIX):].strip()
+    if not rest:
+        return None
+    if rest in _SCRATCH_ADVERBS:
+        return _SCRATCH_ADVERBS[rest]
+    words = rest.split()
+    if words[-1] not in ("times", "time"):
+        return None
+    from samsara.intent.normalize import parse_number  # noqa: PLC0415
+    count = parse_number(words[:-1])
+    if count is None or count < 1 or count > SCRATCH_COUNT_MAX:
+        return None
+    return count
+
+
+def is_scratch_again(raw_text: str) -> bool:
+    """Whole-utterance only -- "say that again" and "run it again" are
+    dictation. Whether it MEANS anything is the session's call: see
+    SCRATCH_AGAIN_TTL_S and _scratch_again_armed."""
+    return normalize_utterance(raw_text) == SCRATCH_AGAIN_PHRASE
+
+
+# Queue 80: discard the WHOLE staged draft ("scratch that" pops one chunk, and
+# the undo stack holds only five). Whole utterance only, like "scratch that".
+# The "scratch" family is the owner's own word for taking dictation back, so
+# these extend a habit instead of adding a new verb. Checked against
+# commands_catalog.json (2026-09-15): no command phrase starts with "scratch"
+# except builtin.scratch_that; "clear ..."/"delete ..."/"cancel ..." phrases
+# already belong to reminders, tasks, health log, Ava memory and the printer,
+# and "cancel"/"abort" are session aborts matched anywhere, so none of those
+# words are used. A dictated sentence that merely contains "scratch
+# everything" never matches: the normalised utterance must equal a phrase.
+# Canonical catalog id: builtin.scratch_everything (commands.json).
+CLEAR_DRAFT_PHRASES = ("scratch everything", "scratch all of that", "scratch all that")
+# Destructive (queue 63): the text is gone, so it always asks first. The reply
+# must be the whole utterance. "cancel" is deliberately NOT a reply word: it is
+# an abort phrase, which is checked first and ends the session.
+CLEAR_DRAFT_CONFIRM_UTTERANCES = frozenset({
+    "yes", "yeah", "yep", "yes please", "yes clear it", "clear it", "confirm", "do it",
+})
+CLEAR_DRAFT_REJECT_UTTERANCES = frozenset({"no", "nope", "no thanks", "keep it", "no keep it", "dont"})
+CLEAR_DRAFT_CONFIRM_TTL_S = 30.0
+
+
+#: Queue 85: a word clicked in the live preview waits for ONE utterance, which
+#: is taken as its replacement rather than dictated. The click is what makes
+#: this unambiguous -- the user performed a deliberate physical act and then
+#: spoke once -- so no reply vocabulary is needed and any wording works ("it's
+#: Ingstar with an I"). Every control phrase still wins (they are checked
+#: first), and saying "scratch that" cancels the correction instead. The TTL
+#: exists so a click the user forgets about cannot swallow a sentence minutes
+#: later; on expiry the utterance is ordinary dictation.
+WORD_CORRECTION_TTL_S = 45.0
+WORD_CORRECTION_CANCEL_PHRASES = ("scratch that", "never mind", "nevermind", "leave it")
+
+#: Queue 85: scroll the PREVIEW, not the app being dictated into. The catalog's
+#: existing "scroll up"/"scroll down"/"page up" commands move the target
+#: document, which is a different and still-wanted action, so these name the
+#: draft instead of overloading them. Whole-utterance only (queue 84) and
+#: non-destructive: the worst a false match can do is move a view.
+DRAFT_SCROLL_PHRASES = {
+    "scroll the draft up": "up",
+    "scroll the draft down": "down",
+    "scroll the draft back": "up",
+    "show me the top of the draft": "top",
+    "top of the draft": "top",
+    "start of the draft": "top",
+    "bottom of the draft": "bottom",
+    "end of the draft": "bottom",
+    "show me the rest of the draft": "bottom",
+}
+
+
+#: Queue 85: take back the last correction, without a mouse. Whole-utterance.
+FORGET_CORRECTION_PHRASES = (
+    "forget that correction",
+    "undo that correction",
+    "forget that word",
+)
+
+
+def is_forget_correction(raw_text: str) -> bool:
+    return normalize_utterance(raw_text) in FORGET_CORRECTION_PHRASES
+
+
+def match_draft_scroll(raw_text: str) -> Optional[str]:
+    """"up" | "down" | "top" | "bottom" for a whole-utterance draft-scroll
+    phrase, else None. 'we should scroll the draft up a bit' is dictation."""
+    return DRAFT_SCROLL_PHRASES.get(normalize_utterance(raw_text))
+
+
+def is_clear_draft(raw_text: str) -> bool:
+    """Whole-utterance only -- 'we should scratch everything we planned' must NOT match."""
+    return normalize_utterance(raw_text) in CLEAR_DRAFT_PHRASES
+
+
+def is_recover_draft(raw_text: str) -> bool:
+    """Whole-utterance only (queue 84) -- 'I had to restore my draft from a
+    backup' is dictation, not a recovery request."""
+    return normalize_utterance(raw_text) in RECOVER_DRAFT_PHRASES
+
+
+def is_dictate_commit(raw_text: str) -> bool:
+    """Whole-utterance manual commit for buffered DICTATE mode.
+
+    Case and punctuation never matter ("End.", "END", "end,"): the match runs
+    on normalize_utterance(). Only DICTATE_COMMIT_PHRASE matches -- see
+    _DICTATE_COMMIT_HOMOPHONES for why a lone "and" no longer does."""
     return normalize_utterance(raw_text) in _DICTATE_COMMIT_HOMOPHONES
+
+
+def _registry_tokens(text: str) -> list:
+    """The command registry's token view, via the intent grammar's normaliser
+    (lowercase, punctuation removed per token). Imported lazily: this module
+    stays free of catalog imports at load time."""
+    from samsara.intent.normalize import tokens  # noqa: PLC0415
+    return tokens(text)
+
+
+def split_trailing_dictate_commit(raw_text: str) -> Optional[str]:
+    """Dictation text before a trailing commit word, or None.
+
+    2026-09-14 22:37:12: the owner said "end" without a long enough pause and
+    Whisper returned one chunk, "...that it got fixed. End." -- the whole-
+    utterance check never saw a lone "end", so "End." was staged as prose.
+
+    Matches only when the commit word is its OWN final sentence: the text
+    before it ends in . ! or ?, and the last token is exactly "end" (any case,
+    trailing punctuation allowed). "we reached the end." and "and then the
+    end" do not match (no sentence break before it); "...fixed. And." does not
+    match (a sentence starting with "And" and a pause is ordinary speech). The
+    returned text keeps its original casing and punctuation."""
+    text = (raw_text or "").strip()
+    if not text:
+        return None
+    parts = text.rsplit(None, 1)
+    if len(parts) != 2:
+        return None
+    body, last = parts[0].rstrip(), parts[1]
+    if not body or body[-1] not in _SENTENCE_TERMINALS:
+        return None
+    if _registry_tokens(last) != [DICTATE_COMMIT_PHRASE]:
+        return None
+    if not _registry_tokens(body):
+        return None
+    return body
+
+
+def strip_redecoded_commit_word(text: str) -> str:
+    """Remove the commit word a re-decode heard at the very end of a thought
+    whose trailing "end" was already consumed ("...got fixed and." ->
+    "...got fixed."). Only called when that consumption happened."""
+    stripped = (text or "").rstrip()
+    parts = stripped.rsplit(None, 1)
+    if len(parts) != 2:
+        return text
+    last_tokens = _registry_tokens(parts[1])
+    if len(last_tokens) != 1 or last_tokens[0] not in _COMMIT_WORD_REDECODE_SPELLINGS:
+        return text
+    body = parts[0].rstrip()
+    trailing = parts[1][len(parts[1].rstrip(string.punctuation)):]
+    if body and body[-1] in ",;:":
+        body = body[:-1]
+    if body and body[-1] not in _SENTENCE_TERMINALS and trailing[:1] in tuple(_SENTENCE_TERMINALS):
+        body += trailing[:1]
+    return body
+
+
+# -- Queue 88: is the commit re-decode better than the staged text? ---------
+#
+# The commit re-decode (dictation.py's _dictate_commit_redecode) hands Whisper
+# the whole stitched thought so it can hear across the pause boundaries the
+# staged fragments were cut on. Usually that is a large win. Sometimes it is
+# not: Whisper's long-form loop can settle into a run-on transcript, opening a
+# new segment with a capital and never terminating the previous one, and the
+# result is measurably WORSE punctuated than the fragments it replaced.
+#
+#   2026-09-15 16:23:58, 107.6 s stitched, committed 1,140 chars:
+#     staged    " When they come up, the, the window's faded, so you can't
+#                really see it." / " I mean, if you squint, you kind of can."
+#     re-decode "...the windows faded, so you can't really see it. I mean if
+#                you squint you kind of can I'm assuming we haven't You know
+#                blah blah blah I guess I'll just keep talking..."
+#
+# Measured over the 37 DICTATE commits in that day's log, the re-decode's OWN
+# sentence-mark density separates the failures from the good re-decodes with
+# no overlap (bad: 0.004-0.016 marks/word; good: 0.029-0.176). The ratio to
+# the staged text does NOT separate them on its own -- a choppy staged buffer
+# carries an absurd density of its own (one full stop every two or three
+# words), so a good re-decode of it can still look like a big drop.
+_SENTENCE_MARK_RE = re.compile(r"[.!?…]")
+_DENSITY_WORD_RE = re.compile(r"[A-Za-z0-9'’]+")
+
+#: A re-decode with fewer than one sentence mark per this many words is a
+#: run-on, independently of what it was decoded from. Ordinary dictated prose
+#: sits near one mark per 15-25 words.
+REDECODE_RUN_ON_WORDS_PER_MARK = 40.0
+
+#: ...and the staged text only wins if it is materially better punctuated,
+#: not merely different. Both guards must fire.
+REDECODE_STAGED_ADVANTAGE = 2.0
+REDECODE_MIN_STAGED_MARKS = 2
+
+
+def sentence_mark_density(text: str) -> float:
+    """Sentence-ending marks (``. ! ? …``) per word. 0.0 for empty text."""
+    words = len(_DENSITY_WORD_RE.findall(text or ""))
+    if not words:
+        return 0.0
+    return len(_SENTENCE_MARK_RE.findall(text)) / words
+
+
+def redecode_is_poorer(staged: str, redecoded: str) -> bool:
+    """True when the commit re-decode is worse punctuated than the staged
+    fragments it would replace, so the staged text must be committed instead.
+
+    Deliberately asymmetric: the re-decode is preferred unless it is BOTH an
+    objective run-on AND clearly beaten by the staged text. Joining fragments
+    legitimately removes sentence ends, and the whole point of the re-decode
+    is to rescue a staged buffer that has little punctuation of its own -- so
+    a staged text with fewer than REDECODE_MIN_STAGED_MARKS marks, or without
+    REDECODE_STAGED_ADVANTAGE times the density, never wins.
+    """
+    if not (staged or "").strip() or not (redecoded or "").strip():
+        return False
+    redecoded_density = sentence_mark_density(redecoded)
+    if redecoded_density * REDECODE_RUN_ON_WORDS_PER_MARK >= 1.0:
+        return False
+    if len(_SENTENCE_MARK_RE.findall(staged)) < REDECODE_MIN_STAGED_MARKS:
+        return False
+    return sentence_mark_density(staged) >= REDECODE_STAGED_ADVANTAGE * redecoded_density
 
 
 def match_literal_payload(raw_text: str) -> Optional[str]:
@@ -423,6 +763,11 @@ _SUBSTANCE_FILLER_TOKENS = frozenset({
 _SUBSTANTIVE_ONE_WORD_ALLOWLIST = frozenset({
     "yes", "no", "stop", "continue", "why", "how",
     "sure", "wait", "thanks", "maybe", "hello", "hi",
+    # Queue 102: the word that applies a staged edit proposal. Exactly the
+    # same case as "yes"/"no"/"stop" above -- a complete, meaningful turn
+    # that happens to be one word. Without it the substance gate eats the
+    # only utterance that can resolve a pending proposal.
+    "apply",
 })
 
 _SUBSTANCE_MIN_LENGTH = 4  # characters, raw (pre-normalization) length
@@ -567,9 +912,17 @@ def _is_continuation_chunk(new_chunk_raw: str) -> bool:
     The same leading-filler skip used by ``seam_join`` is applied first;
     after that, a lower-case alphabetic first character means continuation,
     while uppercase or non-alpha start means new sentence.
+
+    Queue 81: the fragment's own first word must start lower case too. Whisper
+    capitalises the first word of a decode it treats as a new sentence, so a
+    capitalised filler ("So, what's the solution there?", "Okay, now I'm
+    reading") is a sentence start; skipping it and reading the lower-case word
+    after it welded real sentences together in the owner's logs.
     """
     stripped = (new_chunk_raw or "").strip()
     if not stripped:
+        return False
+    if not stripped[0].islower():
         return False
 
     tokens = stripped.split()
@@ -628,6 +981,113 @@ def seam_join(previous_chunk_ended_terminal: bool, new_chunk_raw: str) -> str:
     return " ".join(tokens)
 
 
+# Queue 81 (2026-09-15): when a pause splits one sentence, Whisper marks the
+# break itself -- it ends the unfinished fragment with an ellipsis and, given
+# the DICTATE context tail as initial_prompt, starts the rest in lower case.
+# The branch below used to strip ONE full stop, so "do we..." became "do we..",
+# and commit-time auto-capitalisation then turned ".. deal" into ".. Deal".
+# Only seams whose previous fragment ends in an ellipsis are decided here; any
+# other seam keeps the single-period / seam_join handling unchanged.
+_TRAILING_ELLIPSIS = re.compile(r"(?:\.{2,}|…)\s*\Z")
+
+# A sentence cannot end on these words, so an ellipsis after one is always a
+# trailing-off mid-sentence, whatever case the next fragment starts in.
+_SENTENCE_CANNOT_END_WORDS = frozenset({"a", "an", "the", "my", "your", "our", "their"})
+
+# Joining words that leave a clause open. With these, only a next fragment
+# starting with the pronoun "I" -- whose capital carries no sentence-start
+# information -- is treated as the continuation.
+_OPEN_CLAUSE_CONJUNCTIONS = frozenset({"and", "but", "or", "because", "cause"})
+
+_PRONOUN_I = re.compile(r"\AI(?:'(?:m|ll|ve|d))?\Z")
+
+# Words that cannot follow an article or possessive, so a fragment starting
+# with one after "the..." is the speaker restarting, not finishing the phrase
+# (owner log: "the..." + "There's the six little squares"). Contractions are
+# excluded by the apostrophe check in decide_ellipsis_seam.
+_CANNOT_FOLLOW_DETERMINER = frozenset({
+    "i", "you", "he", "she", "it", "we", "they", "there", "this", "that", "these",
+    "those", "what", "which", "who", "when", "where", "why", "how", "if", "so",
+    "and", "but", "or", "because", "the", "a", "an", "my", "your", "our", "their",
+    "is", "are", "was", "were", "do", "does", "did", "can", "could", "should",
+    "would", "will", "not", "no", "yes", "okay", "ok", "um", "uh", "like", "well",
+})
+
+
+@dataclass(frozen=True)
+class EllipsisSeam:
+    """How to stage a fragment after a fragment that ended in an ellipsis."""
+    join: bool
+    clause: str
+    stripped: str = ""  # exact trailing text removed from the pending buffer
+
+
+# A fragment that is nothing but a hesitation sound carries no sentence of its
+# own; clean_text later deletes "um"/"uh", which would leave its ellipsis glued
+# to the previous full stop ("not good.... So how").
+_HESITATION_SOUNDS = frozenset({"um", "umm", "uh", "uhh", "er", "erm", "hmm", "ah"})
+
+
+def decide_ellipsis_seam(previous_text: str, new_chunk_raw: str,
+                         previous_fragment: Optional[str] = None) -> Optional[EllipsisSeam]:
+    """Decide join-or-separate for a seam whose previous fragment ends in an
+    ellipsis ("..", "..." or the ellipsis character). Returns None for any
+    other seam, which the caller handles as before.
+
+    JOIN (strip the ellipsis, one space, the new fragment's text unchanged):
+      ellipsis_lowercase    the new fragment's first word starts lower case
+      ellipsis_determiner   the word before the ellipsis is an article or
+                            possessive ("the...", "your...") and the new
+                            fragment does not start with a contraction or a
+                            word that cannot follow one (pronoun, verb "is",
+                            conjunction, ...); its case is kept, so a name
+                            stays capitalised ("the.." + "GitHub")
+      ellipsis_conjunction_i  the word before the ellipsis is and/but/or/
+                            because/cause and the new fragment starts with
+                            the pronoun I (I, I'm, I'll, I've, I'd)
+      ellipsis_hesitation_only  previous_fragment (the last staged fragment
+                            on its own) is only hesitation sounds ("Um...");
+                            the new fragment's case is kept
+    Otherwise SEPARATE and the ellipsis stays: an upper-case start after
+    anything else is a new sentence or a name, and a wrong join is harder to
+    notice and fix by voice than an extra stop.
+    """
+    previous = (previous_text or "").rstrip()
+    match = _TRAILING_ELLIPSIS.search(previous)
+    if match is None:
+        return None
+    new_tokens = (new_chunk_raw or "").strip().split()
+    if not new_tokens:
+        return EllipsisSeam(join=False, clause="empty")
+    body = previous[:match.start()].rstrip()
+    prior_words = body.split()
+    if not prior_words:
+        return EllipsisSeam(join=False, clause="ellipsis_only")
+    stripped = previous_text[len(body):]
+
+    first = new_tokens[0]
+    first_alpha = next((ch for ch in first if ch.isalpha()), "")
+    if first_alpha and first_alpha.islower() and first[0].isalpha():
+        return EllipsisSeam(join=True, clause="ellipsis_lowercase", stripped=stripped)
+
+    fragment_words = [w.strip(string.punctuation + "…").lower()
+                      for w in (previous_fragment or "").split()]
+    if fragment_words and all(w in _HESITATION_SOUNDS for w in fragment_words):
+        return EllipsisSeam(join=True, clause="ellipsis_hesitation_only", stripped=stripped)
+
+    last_word = prior_words[-1].strip(string.punctuation).lower()
+    first_word = first.strip(string.punctuation)
+    if (last_word in _SENTENCE_CANNOT_END_WORDS
+            and first[0].isalnum()
+            and "'" not in first_word and "’" not in first_word
+            and first_word.lower() not in _CANNOT_FOLLOW_DETERMINER):
+        return EllipsisSeam(join=True, clause="ellipsis_determiner", stripped=stripped)
+    if (last_word in _OPEN_CLAUSE_CONJUNCTIONS
+            and _PRONOUN_I.match(first.rstrip(string.punctuation))):
+        return EllipsisSeam(join=True, clause="ellipsis_conjunction_i", stripped=stripped)
+    return EllipsisSeam(join=False, clause="ellipsis_new_sentence")
+
+
 def chunk_ends_terminal(text: str) -> bool:
     """True if text's last non-whitespace character is terminal punctuation."""
     t = (text or "").rstrip()
@@ -652,6 +1112,53 @@ def check_focus_lock(target_process: Optional[str], foreground_process: Optional
 
 
 # ---------------------------------------------------------------------------
+# Spoken-notice policy (queue 103)
+# ---------------------------------------------------------------------------
+#
+# Nothing in this app talks except Ava, so a voice arriving after a MOUSE
+# CLICK reads as a malfunction. The incident: clicking "Clear draft" on the
+# streaming preview and being told out loud to say "bring back my draft" --
+# the same sentence the chip was already showing.
+#
+# Every _speak call site is one of exactly two classes:
+
+#: The app is WAITING on an answer and cannot proceed without one. It has
+#: installed state -- a pending clear, an armed correction -- and the next
+#: utterance is the answer. These always speak: a question nobody heard is a
+#: hang.
+QUESTION = "question"
+
+#: The app is reporting what it has ALREADY done. The work is finished, the
+#: chip carries it, and nothing is waiting. Silent by default.
+ACKNOWLEDGEMENT = "acknowledgement"
+
+#: Config key (samsara/config_schema.py, Sounds tab). "questions" (default)
+#: or "everything". There is no "off" -- see the queue 103 report.
+SPOKEN_NOTICES_KEY = "feedback.spoken_notices"
+SPOKEN_NOTICES_QUESTIONS = "questions"
+SPOKEN_NOTICES_EVERYTHING = "everything"
+
+
+def should_speak(notice_class: str, setting: str) -> bool:
+    """Whether a notice of `notice_class` is spoken at `setting`.
+
+    Pure, so the policy can be tested without a manager, a config or a voice.
+
+    "everything" speaks both classes -- it is the accessibility escape hatch
+    for a user who cannot see the chip, and it is the ONLY thing standing
+    between them and silence, so it is deliberately unconditional.
+
+    Anything else, including an unrecognised value, is treated as
+    "questions": the default must survive a typo in config.json, and the
+    failure direction that matters is "too quiet", never "asks something and
+    says nothing".
+    """
+    if setting == SPOKEN_NOTICES_EVERYTHING:
+        return True
+    return notice_class == QUESTION
+
+
+# ---------------------------------------------------------------------------
 # Cross-mode unit-of-work stack ("scratch that")
 # ---------------------------------------------------------------------------
 
@@ -662,6 +1169,18 @@ class StackItem:
     mode: SessionMode
     timestamp: float
     extra: dict = field(default_factory=dict)
+
+
+#: How long a focus-lock-SUPPRESSED dictation chunk may be re-typed by "retype
+#: that" (queue 50, ARC audit5b). Suppressed text used to live until the
+#: session ended -- up to command_mode.inactivity_timeout_s (default 300 s) --
+#: so a later "retype that" could inject something sensitive long after the
+#: user walked away. 20 s, not the auditor's 10 s: recovery by voice is two
+#: utterances (refocus the window, then "retype that"), each needing speech,
+#: an end-of-utterance pause and a decode (~4-5 s apiece), so 10 s would refuse
+#: the very recovery the command exists for. Older items are refused and their
+#: text is dropped from memory (see SessionModeManager._purge_expired_suppressed).
+SUPPRESSED_RETYPE_TTL_S = 20.0
 
 
 class UnitOfWorkStack:
@@ -704,6 +1223,10 @@ class CommandDispatchResult:
     matched: bool
     phrase: Optional[str] = None
     state: Optional[str] = None
+    # Held by the execution policy for a spoken yes/no: nothing has run.
+    awaiting_confirmation: bool = False
+    # A miss because the utterance is exactly a phrase of this disabled pack.
+    disabled_pack: Optional[str] = None
 
 
 #: Claimed-but-not-carried-out command states: never dictation, never a
@@ -733,13 +1256,18 @@ class HandsFreeCommandMatch:
     dispatch_text: str
     phrase: str
     pending_policy: PendingTextPolicy = PendingTextPolicy.PRESERVE
+    # Queue 69: matched from the lane's curated everyday words (submit, enter,
+    # next field, focus ...) rather than the generic whole-utterance fallback.
+    reserved: bool = False
 
 
 @dataclass(frozen=True)
 class DispatchOutcome:
     kind: str
     # one of: "empty" | "abort" | "scratch_success" | "scratch_refuse" |
-    # "mode_switch" | "prefix_switch_failed" | "command_executed" |
+    # "mode_switch" | "prefix_switch_failed" | "command_executed" (it ran,
+    # or its handler accepted the work) | "command_awaiting_confirmation" (held
+    # for a yes/no; nothing ran) |
     # "command_failed" | "stopped" | "pending_reply" |
     # "command_miss" | "dictate_injected" | "dictate_suppressed_focus_lock" |
     # "dictate_staged" | "dictate_committed" |
@@ -747,8 +1275,20 @@ class DispatchOutcome:
     # "dictate_commit_failed" | "hands_free_command_executed" |
     # "hands_free_command_refused" | "hands_free_command_blocked" |
     # "hands_free_command_failed" |
+    # "dictate_clear_awaiting_confirmation" | "dictate_draft_cleared" |
+    # "dictate_clear_declined" | "dictate_clear_nothing" |
+    # "dictate_clear_refused" (queue 80: clear the whole staged draft) |
+    # "dictate_draft_recovered" | "dictate_recover_nothing" (queue 84: put
+    # back the draft an abort or a confirmed clear set aside) |
+    # "command_cancel_window" (queue 69: recognised in the dictation lane and
+    # staged behind a cancel window; nothing has run yet) |
+    # "edit_thinking" (queue 102: the model was asked, nothing staged yet) |
+    # "edit_proposed" (queue 102: a rewrite is staged, nothing applied) |
+    # "edit_applied" | "edit_refused" | "edit_discarded" |
     # "ava_dispatched" | "ava_rejected_not_substantive" |
-    # "ava_entry_failed" | "dictate_commit_unavailable"
+    # "ava_entry_failed" | "dictate_commit_unavailable" |
+    # "dictate_blocked_elevated" (queue 50: foreground window runs at a higher
+    # integrity level; nothing was typed, the text is retained)
     detail: dict = field(default_factory=dict)
 
 
@@ -775,9 +1315,11 @@ _CHIP_TTL_OVERRIDES = {
 }
 
 #: Outcomes that deliberately show NOTHING. "empty" is a discarded
-#: near-silence decode (never activity); "abort" already has its own loud
-#: session-exit feedback. dictation_chunk is a StackItem kind, not an outcome
-#: kind -- listed only because the queue-41 brief names it, and harmless here.
+#: near-silence decode (never activity); "abort" has its own loud session-exit
+#: feedback, and since queue 84 it shows a chip ONLY when it set a draft aside
+#: (see _abort_chip), because then the user has to know the text still exists.
+#: dictation_chunk is a StackItem kind, not an outcome kind -- listed only
+#: because the queue-41 brief names it, and harmless here.
 _NO_CHIP = frozenset({"empty", "abort", "dictation_chunk"})
 
 _REASON_MAX = 24
@@ -789,11 +1331,51 @@ CHIP_CHECK = chr(0x2713)      # check mark
 CHIP_CROSS = chr(0x2717)      # ballot x
 CHIP_ARROW = chr(0x2192)      # rightwards arrow
 CHIP_ELLIPSIS = chr(0x2026)   # horizontal ellipsis
+CHIP_DASH = chr(0x2014)       # em dash, for "undone 5 -- nothing left"
 
 
 def _short(text, limit=_REASON_MAX) -> str:
     text = " ".join(str(text or "").split())
     return text if len(text) <= limit else text[: limit - 1].rstrip() + CHIP_ELLIPSIS
+
+
+#: What execution_policy.stop_all reports it cleared -> what to call it on a
+#: chip, in the order a user would care about. "speech" first because "Ava
+#: kept talking" is the symptom the stop exists to answer.
+_STOPPED_LABELS = (
+    ("speech", lambda n: "speech"),
+    ("in_flight", lambda n: "Ava"),
+    ("pending", lambda n: "confirm"),
+    ("queued", lambda n: f"{n} queued"),
+    ("schedule", lambda n: "schedule"),
+)
+
+
+
+def _stopped_chip(detail: dict) -> "tuple[str, str]":
+    """Queue 116. The stop chip says WHAT was halted, not just that something
+    was -- a chip that reads "stopped" whether it cut an answer off mid-word
+    or found nothing at all teaches the user nothing and, worse, tells them a
+    panic control worked when it did nothing.
+
+    A stop that halts nothing is not a success: it says so, in warning
+    colour, because the interesting case is the user expecting it to have
+    caught something."""
+    cleared = detail.get("cleared")
+    cleared = cleared if isinstance(cleared, dict) else {}
+    parts = [label(cleared.get(key)) for key, label in _STOPPED_LABELS if cleared.get(key)]
+    if not parts:
+        return ("nothing to halt", "warning")
+    # As many as fit, then a count for the rest. Chosen by measuring rather
+    # than by a fixed cap so the chip never truncates a word away mid-stop:
+    # "halted 12 queued, sched..." is a worse answer than "halted 12 queued +1".
+    for count in range(len(parts), 0, -1):
+        text = "halted " + ", ".join(parts[:count])
+        if count < len(parts):
+            text += f" +{len(parts) - count}"
+        if len(text) <= _REASON_MAX:
+            return (text, "warning")
+    return (_short("halted " + parts[0]), "warning")
 
 
 def _reason(kind: str, detail: dict) -> str:
@@ -813,6 +1395,15 @@ def _mode_label(mode) -> str:
     return str(value or "").upper()
 
 
+def _abort_chip(detail: dict):
+    """Queue 84: an abort is normally chipless (it has its own loud earcon),
+    but when it set a draft aside the user has to be told the text still
+    exists and how to ask for it back."""
+    if detail.get("recoverable_chars"):
+        return ("cancelled, say bring back my draft", "warning")
+    return None
+
+
 def outcome_chip(kind: str, detail: Optional[dict] = None) -> "tuple[str, str] | None":
     """(label, chip_kind) for a DispatchOutcome kind, or None for no chip.
 
@@ -824,13 +1415,24 @@ def outcome_chip(kind: str, detail: Optional[dict] = None) -> "tuple[str, str] |
     """
     detail = detail if isinstance(detail, dict) else {}
 
+    if kind == "abort":
+        return _abort_chip(detail)
     if kind in _NO_CHIP:
         return None
 
     if kind == "command_miss":
+        if detail.get("pack"):
+            return (f"pack off: {_short(detail['pack'])}", "warning")
         return ("MISS", "error")
+    if kind == "command_awaiting_confirmation":
+        verb = _first_two_words(detail.get("phrase"))
+        return (f"{verb}? yes or no" if verb else "yes or no?", "pending")
+    if kind == "command_cancel_window":
+        verb = _first_two_words(detail.get("phrase"))
+        return (f"running {verb}{CHIP_ELLIPSIS} say no" if verb else f"running{CHIP_ELLIPSIS} say no",
+                "pending")
     if kind == "stopped":
-        return ("stopped", "warning")
+        return _stopped_chip(detail)
     if kind == "pending_reply":
         answer = str(detail.get("answer") or "")
         if answer == "approved":
@@ -863,6 +1465,9 @@ def outcome_chip(kind: str, detail: Optional[dict] = None) -> "tuple[str, str] |
         if detail.get("sleep"):
             return ("asleep", "accent")
         mode = _mode_label(detail.get("mode"))
+        if detail.get("side_effect_error"):
+            # The mode changed but its display/teardown did not (queue 60).
+            return (f"{CHIP_ARROW} {mode}: display error" if mode else f"{CHIP_ARROW} display error", "warning")
         return (f"{CHIP_ARROW} {mode}" if mode else CHIP_ARROW, "accent")
 
     if kind in ("ava_entry_failed", "hands_free_command_failed",
@@ -871,6 +1476,10 @@ def outcome_chip(kind: str, detail: Optional[dict] = None) -> "tuple[str, str] |
 
     if kind in ("dictate_commit_blocked_focus_lock", "dictate_suppressed_focus_lock"):
         return ("refused: focus lock", "warning")
+    if kind == "dictate_blocked_elevated":
+        # Queue 50: the window runs as administrator; Windows would drop the
+        # keystrokes silently. Never a success chip.
+        return (f"{CHIP_CROSS} can't type: admin window", "error")
     if kind == "hands_free_command_blocked":
         commit = str(detail.get("commit_outcome", ""))
         why = "focus lock" if "focus" in commit else "blocked"
@@ -882,13 +1491,81 @@ def outcome_chip(kind: str, detail: Optional[dict] = None) -> "tuple[str, str] |
         return ("refused: nothing staged", "warning")
     if kind == "scratch_refuse":
         return ("refused: undo", "warning")
+    # Queue 80: clear the whole staged draft.
+    if kind == "dictate_clear_awaiting_confirmation":
+        return ("clear draft? yes or no", "pending")
+    if kind == "dictate_draft_cleared":
+        return ("draft cleared, say bring back my draft", "success")
+    # Queue 84: the draft an abort or a clear set aside, put back on request.
+    if kind == "dictate_draft_recovered":
+        return ("draft back", "success")
+    if kind == "dictate_recover_nothing":
+        return ("nothing to bring back", "warning")
+    if kind == "dictate_clear_declined":
+        return ("draft kept", "success")
+    if kind == "dictate_clear_nothing":
+        return ("refused: nothing staged", "warning")
+    if kind == "dictate_clear_refused":
+        return ("refused: unclear", "warning")
+    # Queue 85: a word clicked in the preview, replaced by the next utterance.
+    if kind == "dictate_word_corrected":
+        word = _short(detail.get("replacement") or "", 16)
+        return (f"{CHIP_CHECK} fixed: {word}" if word else f"{CHIP_CHECK} word fixed", "success")
+    if kind == "dictate_correction_cancelled":
+        return ("correction cancelled", "warning")
+    if kind == "dictate_correction_refused":
+        return ("refused: say it again", "warning")
+    if kind == "dictate_correction_failed":
+        return ("word not found", "warning")
+    if kind == "draft_scrolled":
+        return (f"draft {_short(detail.get('where') or '', 10)}", "accent")
+    if kind == "correction_undone":
+        return (f"forgot {_short(detail.get('wrong') or '', 14)}", "success")
+    if kind == "correction_undo_nothing":
+        return ("nothing to take back", "warning")
 
     if kind in ("dictate_committed", "dictate_injected"):
+        if detail.get("delivery_unverified"):
+            return ("sent, unconfirmed", "warning")
         return ("typed", "success")
     if kind in ("dictate_staged", "dictation_staged_chunk"):
         return ("staged", "pending")
     if kind == "scratch_success":
-        return ("undone", "success")
+        # Queue 99: one chip for however many chunks came off, and it never
+        # claims a count it did not reach. "scratch that ten times" against a
+        # stack of five says five, and says why there is no more.
+        asked, did = detail.get("requested"), detail.get("scratched")
+        if not asked or not did or asked == did == 1:
+            return ("undone", "success")
+        if did >= asked:
+            return (f"undone {did}", "success")
+        if detail.get("reason") == "empty":
+            return (f"undone {did} {CHIP_DASH} nothing left", "warning")
+        return (f"undone {did} of {asked} {CHIP_DASH} stopped", "warning")
+
+    # Queue 102 -- Ava's edit proposals. "edit_proposed" is deliberately a
+    # PENDING chip: chip_ttl_ms() gives pending no TTL, so the proposal stays
+    # on screen until the user answers it instead of expiring after 1.8 s and
+    # leaving them with a staged edit they can no longer see.
+    if kind == "edit_thinking":
+        # The model call is the one slow step the user cannot see. Without
+        # this the chip sits on whatever came before for several seconds and
+        # the app looks like it ignored them. Accent, with a TTL, because it
+        # is superseded by the proposal (or the refusal) that follows.
+        return (f"reading it back{CHIP_ELLIPSIS}", "accent")
+    if kind == "edit_proposed":
+        n = detail.get("changes") or 0
+        unit = "change" if n == 1 else "changes"
+        return (f"proposed edit: {n} {unit} - say apply", "pending")
+    if kind == "edit_applied":
+        n = detail.get("changes") or 0
+        unit = "change" if n == 1 else "changes"
+        return (f"edited {CHIP_CHECK} {n} {unit}", "success")
+    if kind == "edit_discarded":
+        return ("edit dropped", "warning")
+    if kind == "edit_refused":
+        reason = str(detail.get("reason") or "")[:_REASON_MAX]
+        return ((f"no edit {CHIP_DASH} {reason}" if reason else "no edit"), "warning")
 
     if kind == "ava_dispatched":
         return (f"Ava{CHIP_ELLIPSIS}", "pending")
@@ -978,15 +1655,72 @@ class SessionModeManager:
         clock: Callable[[], float] = time.time,
         extra_sleep_phrases: Optional[list[str]] = None,
         stop_fn: Optional[Callable[[str], Optional[dict]]] = None,
+        stop_phrases: Optional[list[str]] = None,
         pending_reply_fn: Optional[Callable[[str], Optional[str]]] = None,
+        window_integrity_fn: Optional[Callable[[], object]] = None,
+        cancel_window_fn: Optional[Callable[[HandsFreeCommandMatch, Callable[[], None]], float]] = None,
+        on_deferred_outcome: Optional[Callable[[DispatchOutcome], None]] = None,
+        speak_fn: Optional[Callable[[str, str], None]] = None,
     ) -> None:
+        # Queue 80: speak_fn(text, category) says the clear-draft question and
+        # its result out loud. dictation.py routes it to
+        # audio_coordinator.speak with category "confirmation", which queue 58
+        # exempts from command_mode.tts_char_limit. None = silent (tests).
+        self._speak_fn = speak_fn
+        # Queue 103. The live value of SPOKEN_NOTICES_KEY. Defaults to the
+        # schema default, so an app that never sets it gets the intended
+        # "questions" behaviour and the incident is fixed with no wiring at
+        # all. set_spoken_notices() is how the app and Settings keep it
+        # current; a bad value is treated as the default by should_speak().
+        self._spoken_notices = SPOKEN_NOTICES_QUESTIONS
+        self._pending_clear: Optional[dict] = None
+        # Queue 85: {"word", "occurrence", "expected_count", "expires", "source"}
+        # while a word clicked in the preview is waiting for its replacement.
+        self._pending_correction: Optional[dict] = None
+        # Called with (wrong, right, context) once a replacement is applied, so
+        # the capture can be queued for review. Never writes the dictionary.
+        self._correction_capture_fn: Optional[Callable[[str, str, str], None]] = None
+        # draft_scroll_fn(where): move the preview's own view. None = the
+        # phrases stay ordinary dictation (no preview, nothing to scroll).
+        self._draft_scroll_fn: Optional[Callable[[str], None]] = None
+        # correction_undo_fn(): take back the last correction (dictionary entry
+        # first, else the newest un-reviewed capture). Returns a dict.
+        self._correction_undo_fn: Optional[Callable[[], dict]] = None
+        # Queue 69 cancel window. cancel_window_fn(match, run) decides whether a
+        # command recognised in the dictation lane waits behind a cancel window;
+        # when it stages one it returns the window in seconds (>0) and calls
+        # run() later, at most once, from whichever thread resolves the window.
+        # 0 = dispatch now, exactly as before. None = no windows at all.
+        # on_deferred_outcome(outcome) receives the outcome of a deferred run.
+        self._cancel_window_fn = cancel_window_fn
+        self._on_deferred_outcome = on_deferred_outcome
+        # Serialises utterance dispatch with deferred runs (a window elapsing
+        # on its timer thread). Re-entrant: a window can be flushed from inside
+        # a dispatch on the same thread.
+        self._dispatch_lock = threading.RLock()
+        self._session_epoch = 0
+        # window_integrity_fn(): an injection_safety.IntegrityVerdict for the
+        # foreground window (queue 50). A `blocked` verdict (the window runs at
+        # a higher integrity level, e.g. elevated/admin) means Windows will
+        # silently drop anything typed into it, so DICTATE delivery refuses
+        # with its own outcome instead of reporting "typed". A verdict that is
+        # not `confirmed_ok` (unknown) still delivers but is reported as
+        # unconfirmed, never as a plain success. None = no check (tests).
+        self._window_integrity_fn = window_integrity_fn
         # stop_fn(reason): the execution stop (execution_policy.stop_all --
         # bump the generation FIRST, cancel model requests, drain queued
         # effects). Called for a whole-utterance "stop" and BEFORE a sleep
         # phrase ends the session. None = "stop" stays ordinary text (this
         # module cannot stop anything on its own and never pretends to).
         self._stop_fn = stop_fn
-        self._stop_phrases = frozenset(normalize_utterance(p) for p in SESSION_STOP_PHRASES)
+        # stop_phrases: config command_mode.stop_phrases REPLACES the built-in
+        # list rather than extending it -- the owner has to be able to change
+        # a word, not only add one. Anything unusable (empty, all blank, not
+        # strings) falls back to SESSION_STOP_PHRASES: a bad config value must
+        # not be a way to silently lose the emergency stop.
+        self._stop_phrases = frozenset(
+            normalize_utterance(p) for p in (stop_phrases or ()) if normalize_utterance(p)
+        ) or frozenset(normalize_utterance(p) for p in SESSION_STOP_PHRASES)
         # pending_reply_fn(text): answer the live pending question
         # (execution_policy.answer_pending). Returns None when the text is not
         # a complete-utterance reply or nothing is pending.
@@ -1003,21 +1737,32 @@ class SessionModeManager:
             for p in (*SESSION_SLEEP_PHRASES, *(extra_sleep_phrases or []))
             if normalize_utterance(p)
         )
-        # Word-boundary, case-insensitive match per phrase -- a substring
-        # check here (phrase.lower() in text_lower) lets "cancel" false-fire
-        # on "cancelation" (typo-real-word) or any other word that merely
-        # CONTAINS an abort phrase. Precompiled once since this runs on
-        # every single utterance, not just switch/scratch candidates.
-        self._abort_patterns = [
-            re.compile(r"\b" + re.escape(p.strip()) + r"\b", re.IGNORECASE)
+        # Queue 84: WHOLE-UTTERANCE equality, normalized once here. This was a
+        # word-boundary regex searched anywhere in the utterance until
+        # 2026-09-15, which is how "Have it stop listening to you, or
+        # something like that." ended a session and destroyed a 477-character
+        # draft. A phrase inside a sentence is now dictation; only the phrase
+        # spoken alone aborts. See ABORT_PHRASES_ARE_WHOLE_UTTERANCE.
+        self._abort_utterances = frozenset(
+            normalize_utterance(p)
             for p in self._abort_phrases
-            if p.strip() and normalize_utterance(p) not in self._sleep_phrases
-        ]
+            if normalize_utterance(p) and normalize_utterance(p) not in self._sleep_phrases
+        )
         self._foreground_exe_resolver = foreground_exe_resolver
         self._foreground_hwnd_resolver = foreground_hwnd_resolver or (lambda: None)
         self._inject_fn = inject_fn
         self._format_dictate_fn = format_dictate_fn or (lambda t: t)
         self._remove_chars_fn = remove_chars_fn
+        # Queue 102. inject_fn runs the FULL formatting pipeline
+        # (process_transcription -> clean_text -> smart_correct -> trailing
+        # space -> formatting tokens) and is therefore unusable for applying
+        # or undoing an edit: it would re-format the model's rewrite on the
+        # way in and re-format the original on the way back out, so "scratch
+        # that" could not restore the original EXACTLY. The edit path needs a
+        # raw, no-pipeline delivery instead. Set by samsara.ava_edit via
+        # set_raw_inject_fn(); None means the edit path is simply unavailable
+        # (fail-closed -- apply_edit and the edit_apply undo both refuse).
+        self._raw_inject_fn = None
         self._command_dispatch_fn = command_dispatch_fn
         self._agent_dispatch_fn = agent_dispatch_fn
         self._on_mode_change = on_mode_change
@@ -1053,6 +1798,14 @@ class SessionModeManager:
         # A staged DICTATE draft set aside by a sleep phrase. Survives reset()
         # and is put back by the next reset() into the buffered DICTATE lane.
         self._retained_draft: Optional[dict] = None
+        # Queue 84: a draft an abort or a confirmed clear would otherwise have
+        # destroyed. Survives reset() like the retained draft, but is only put
+        # back when the user asks (RECOVER_DRAFT_PHRASES), never automatically.
+        self._recoverable_draft: Optional[dict] = None
+        # Queue 99: when the last resolved action was a scratch. Arms a bare
+        # "again" (SCRATCH_AGAIN_TTL_S) and keeps a scratch run open so the
+        # whole run is one undo. Cleared by ANY other resolved utterance.
+        self._last_scratch_at: Optional[float] = None
 
     # -- session lifecycle -----------------------------------------------
 
@@ -1068,6 +1821,8 @@ class SessionModeManager:
         into the buffered DICTATE lane restores it as the pending thought.
         """
         self.mode = initial_mode
+        # A cancel window staged in the previous session never runs in this one.
+        self._session_epoch += 1
         self._stack = UnitOfWorkStack()
         self._dictate_target_process = None
         self._dictate_target_hwnd = None
@@ -1075,6 +1830,9 @@ class SessionModeManager:
         self._stage_buffer = ""
         self._dictate_pending_buffer = ""
         self._dictate_pending_audio = []
+        self._pending_clear = None
+        # Queue 99: a new session never inherits an armed "again".
+        self._last_scratch_at = None
         if (self._retained_draft is not None
                 and initial_mode is SessionMode.DICTATE
                 and self._buffer_dictate_until_commit):
@@ -1105,6 +1863,76 @@ class SessionModeManager:
         """Explicitly drop a retained draft -- the only way one is destroyed."""
         self._retained_draft = None
 
+    # -- queue 84: recoverable draft ----------------------------------------
+
+    def _stash_recoverable_draft(self, source: str) -> int:
+        """Copy the staged draft into the recovery slot before something
+        destroys it. Returns the character count (0 when nothing was staged,
+        which leaves any older recoverable draft alone)."""
+        buffer = self._dictate_pending_buffer
+        # Queue 88: .strip(), not truthiness -- a buffer of whitespace must
+        # never become a recoverable draft, or "bring back my draft" reports
+        # success and puts nothing back.
+        if not buffer.strip():
+            return 0
+        self._recoverable_draft = {
+            "buffer": buffer,
+            "audio": list(self._dictate_pending_audio),
+            "last_ended_terminal": self._last_dictate_ended_terminal,
+            "stack_items": [item for item in self._stack._items
+                            if item.kind == "dictation_staged_chunk"],
+            "source": source,
+            "stashed_at": self._clock(),
+        }
+        log.info("[SESSION] %d-char draft kept for recovery after %s; say %r",
+                 len(buffer), source, RECOVER_DRAFT_PHRASES[0])
+        return len(buffer)
+
+    @property
+    def recoverable_draft(self) -> str:
+        """The draft an abort or clear set aside, '' when there is none or it
+        has expired."""
+        draft = self._recoverable_draft
+        if draft is None:
+            return ""
+        if self._clock() - draft["stashed_at"] > RECOVERABLE_DRAFT_TTL_S:
+            return ""
+        return draft["buffer"]
+
+    def recover_draft(self) -> Optional[dict]:
+        """Put a recoverable draft back into the staged buffer. Returns
+        {"chars", "source", "prepended"} or None when there is nothing to
+        recover. An expired slot is dropped rather than restored."""
+        draft = self._recoverable_draft
+        if draft is None:
+            return None
+        if self._clock() - draft["stashed_at"] > RECOVERABLE_DRAFT_TTL_S:
+            self._recoverable_draft = None
+            log.info("[SESSION] recoverable draft expired (%.0f s limit)", RECOVERABLE_DRAFT_TTL_S)
+            return None
+        if not draft["buffer"].strip():
+            # Queue 88: nothing to put back is "nothing to bring back", never
+            # a success. Belt and braces with _stash_recoverable_draft's own
+            # guard, so a slot written by any future caller cannot lie either.
+            self._recoverable_draft = None
+            log.info("[SESSION] recoverable draft was blank; nothing to bring back")
+            return None
+        self._recoverable_draft = None
+        existing = self._dictate_pending_buffer
+        if existing:
+            # Chronological: what was lost came first. Nothing is overwritten.
+            self._dictate_pending_buffer = draft["buffer"].rstrip() + " " + existing.lstrip()
+            self._dictate_pending_audio = list(draft["audio"]) + list(self._dictate_pending_audio)
+        else:
+            self._dictate_pending_buffer = draft["buffer"]
+            self._dictate_pending_audio = list(draft["audio"])
+            self._last_dictate_ended_terminal = draft["last_ended_terminal"]
+            for item in draft["stack_items"]:
+                self._stack.push(item)
+        log.info("[SESSION] recovered %d-char draft (%s)", len(draft["buffer"]), draft["source"])
+        return {"chars": len(draft["buffer"]), "source": draft["source"],
+                "prepended": bool(existing)}
+
     def _restore_retained_draft(self) -> None:
         draft, self._retained_draft = self._retained_draft, None
         self._dictate_pending_buffer = draft["buffer"]
@@ -1130,7 +1958,6 @@ class SessionModeManager:
         """Text transcribed in manual-commit DICTATE mode but not pasted yet."""
         return self._dictate_pending_buffer
 
-    @property
     def buffer_dictate_until_commit(self) -> bool:
         return self._buffer_dictate_until_commit
 
@@ -1158,9 +1985,23 @@ class SessionModeManager:
     # -- dispatch -----------------------------------------------------------
 
     def dispatch_utterance(self, raw_text: str, signals: UtteranceSignals) -> DispatchOutcome:
+        with self._dispatch_lock:
+            return self._dispatch_utterance_locked(raw_text, signals)
+
+    def _dispatch_utterance_locked(self, raw_text: str, signals: UtteranceSignals) -> DispatchOutcome:
+        # Queue 50: suppressed dictation past its retype TTL leaves memory at
+        # the next utterance, whatever that utterance is.
+        self._purge_expired_suppressed()
         text = (raw_text or "").strip()
         if not text:
             return DispatchOutcome(kind="empty")
+        # Queue 99: "again" means "scratch once more" only when the PREVIOUS
+        # resolved action was a scratch. Disarm here and let the scratch paths
+        # re-arm, so any other utterance -- dictated, command, switch, refused
+        # -- clears it. The clock (SCRATCH_AGAIN_TTL_S) is the second guard;
+        # this is the first, and it does not depend on timing at all.
+        was_scratching = self._last_scratch_at
+        self._last_scratch_at = None
 
         # 1. Global abort phrase -- always wins, every mode, and deliberately
         # checked BEFORE passes_switch_anti_hallucination_gate() below and
@@ -1201,9 +2042,59 @@ class SessionModeManager:
             })
 
         if self._matches_abort_phrase(text):
+            # Queue 84: an abort ends the session without committing, but it
+            # must never DESTROY the draft -- a misheard "cancel" will happen
+            # eventually. The draft is copied aside first (on_abort's
+            # exit_command_mode -> reset() clears the live buffer), and the
+            # user is told how to get it back.
+            recoverable = self._stash_recoverable_draft("cancel")
+            if recoverable:
+                self._speak(f"Cancelled. Your draft is kept. Say {RECOVER_DRAFT_PHRASES[0]} to get it back.",
+                            ACKNOWLEDGEMENT)
             if self._on_abort:
                 self._on_abort()
-            return DispatchOutcome(kind="abort")
+            return DispatchOutcome(kind="abort", detail={
+                "recoverable_chars": recoverable,
+                "recover_phrase": RECOVER_DRAFT_PHRASES[0],
+            })
+
+        # 1b-80. The answer to this session's own "clear the whole draft?"
+        # question. Answered here, before the command probe, because a bare
+        # "yes" otherwise reaches the registry through the COMMIT pending-text
+        # policy, which would paste the very draft the user asked to discard.
+        clear_reply = self._answer_pending_clear(normalized, signals)
+        if clear_reply is not None:
+            return clear_reply
+
+        # 1b-85. A word clicked in the live preview is waiting for its
+        # replacement: this utterance is it, not dictation. Checked after
+        # stop/sleep/abort and the clear question (all of which still win) and
+        # before the lane reads the words.
+        correction = self._consume_word_correction(text, normalized, signals)
+        if correction is not None:
+            return correction
+
+        # 1c-85. "forget that correction": undo the last one by voice. Checked
+        # before the lane reads the words, whole-utterance, and gated like the
+        # other control phrases.
+        if self._correction_undo_fn is not None and is_forget_correction(text):
+            if passes_switch_anti_hallucination_gate(signals):
+                return self._undo_last_correction_outcome()
+            log.info("[SESSION] forget-correction phrase refused by the gate for %r", text)
+
+        # 1d-85. Scroll the preview so the whole draft can be read back by
+        # voice. Non-destructive, whole-utterance, and only while there is a
+        # preview to scroll.
+        if (self._draft_scroll_fn is not None
+                and self._buffer_dictate_until_commit
+                and self.mode is SessionMode.DICTATE):
+            where = match_draft_scroll(text)
+            if where is not None:
+                try:
+                    self._draft_scroll_fn(where)
+                except Exception as exc:
+                    log.warning("[SESSION] draft scroll failed: %s", exc)
+                return DispatchOutcome(kind="draft_scrolled", detail={"where": where})
 
         # 1b. A complete-utterance answer to THE pending question has priority
         # over every lane's interpretation ("yes" / "no" / "wait").
@@ -1212,12 +2103,61 @@ class SessionModeManager:
             if answer is not None:
                 return DispatchOutcome(kind="pending_reply", detail={"answer": answer})
 
+        # 1c-84. "bring back my draft": put back what an abort or a confirmed
+        # clear set aside. Checked before the lane reads the words, and gated
+        # like the clear phrase -- on a gate failure it is ordinary dictation.
+        if (self._buffer_dictate_until_commit
+                and self.mode is SessionMode.DICTATE
+                and is_recover_draft(text)):
+            if passes_switch_anti_hallucination_gate(signals):
+                return self._recover_draft_outcome()
+            log.info("[SESSION] recover-draft phrase refused by the anti-hallucination gate for %r; "
+                     "treating as ordinary dictation", text)
+
+        if (self._buffer_dictate_until_commit
+                and self.mode is SessionMode.DICTATE
+                and is_clear_draft(text)):
+            if passes_switch_anti_hallucination_gate(signals):
+                return self._request_clear_draft()
+            log.info("[SESSION] clear-draft phrase refused by the anti-hallucination gate for %r; "
+                     "treating as ordinary dictation", text)
+
+        # Queue 99: counted scratch and "again", checked with the rest of the
+        # scratch family and BEFORE the single scratch, so "scratch that
+        # twice" is never read as a bare "scratch that" with stray words. Both
+        # go through the same anti-hallucination gate every control word uses;
+        # on a gate failure they fall through and are dictated, exactly as
+        # "scratch that" does.
+        counted = match_scratch_count(text)
+        if counted is None and is_scratch_again(text):
+            self._last_scratch_at = was_scratching      # read the PREVIOUS turn
+            if self._scratch_again_armed():
+                counted = 1
+            self._last_scratch_at = None
+        if counted is not None:
+            if passes_switch_anti_hallucination_gate(signals):
+                return self._scratch_counted_outcome(counted)
+            log.info("[SESSION] counted-scratch phrase refused by the anti-hallucination gate "
+                     "for %r; treating as ordinary dictation", text)
+
         scratch = is_scratch_that(text)
         commit = (
             self._buffer_dictate_until_commit
             and self.mode is SessionMode.DICTATE
             and is_dictate_commit(text)
         )
+        trailing_commit_body = None
+        if (not (scratch or commit)
+                and self._buffer_dictate_until_commit
+                and self.mode is SessionMode.DICTATE):
+            trailing_commit_body = split_trailing_dictate_commit(text)
+            if trailing_commit_body is not None:
+                if passes_dictate_commit_gate(signals, has_pending_text=True):
+                    return self._stage_and_commit_trailing(trailing_commit_body, signals)
+                # Fail closed for the control reading only: the chunk is
+                # staged as prose, exactly as before this path existed.
+                log.info("[SESSION] trailing commit word refused by the commit gate for %r; "
+                         "staging it as dictation", text)
         switch = None if (scratch or commit) else match_switch_word(text, current_mode=self.mode)
         if (switch is None and not (scratch or commit)
                 and match_ava_invocation(text, self._ava_invocations)):
@@ -1251,6 +2191,11 @@ class SessionModeManager:
                     ok = pending_result if pending_result is not None else self._do_scratch_that()
                     if self._on_scratch_result:
                         self._on_scratch_result(ok)
+                    if ok:
+                        # Queue 99: arms a following "again". A bare scratch
+                        # does NOT stash -- its behaviour is unchanged -- so an
+                        # "again" after it opens the run and stashes then.
+                        self._last_scratch_at = self._clock()
                     return DispatchOutcome(kind="scratch_success" if ok else "scratch_refuse")
                 if commit:
                     return self._commit_dictate_buffer(target_mode=None)
@@ -1305,14 +2250,367 @@ class SessionModeManager:
 
         return self._dispatch_in_mode(text, signals=signals)
 
+    # -- queue 80: clear the whole staged draft ----------------------------
+
+    @property
+    def spoken_notices(self) -> str:
+        """Which classes of notice are spoken. See SPOKEN_NOTICES_KEY."""
+        return self._spoken_notices
+
+    def set_spoken_notices(self, value: str) -> str:
+        """Apply the configured value. Accepts the raw config value; anything
+        unrecognised falls back to the default rather than raising, because a
+        hand-edited config.json must not be able to break dispatch. Returns
+        what was actually set."""
+        text = str(value or "").strip().lower()
+        self._spoken_notices = (
+            SPOKEN_NOTICES_EVERYTHING if text == SPOKEN_NOTICES_EVERYTHING
+            else SPOKEN_NOTICES_QUESTIONS
+        )
+        return self._spoken_notices
+
+    def _speak(self, text: str, notice_class: str = ACKNOWLEDGEMENT) -> None:
+        """Say `text`, if this class of notice is spoken at the current
+        setting. See should_speak(). Every call site names its class
+        explicitly; the ACKNOWLEDGEMENT default is the safe one, because a
+        new notice added without thinking about it is silent rather than
+        unexpectedly loud."""
+        if self._speak_fn is None:
+            return
+        if not should_speak(notice_class, self.spoken_notices):
+            log.debug("[SESSION] notice not spoken (%s at %r): %s",
+                      notice_class, self.spoken_notices, text)
+            return
+        try:
+            self._speak_fn(text, "confirmation")
+        except Exception as exc:  # speech must never break dispatch
+            log.warning("[SESSION] clear-draft speech failed: %s", exc)
+
+    def _scratch_counted_outcome(self, count: int) -> DispatchOutcome:
+        """ONE outcome, ONE chip, for however many chunks came off.
+
+        The kinds are the existing scratch_success / scratch_refuse -- a
+        counted scratch is the same event, not a new one, so every consumer
+        (the outcome chip, the earcon via on_scratch_result, the history row)
+        keeps working without knowing counts exist. The numbers ride in the
+        detail dict, where outcome_chip() turns them into the honest label.
+        """
+        result = self._do_scratch_that_n(count)
+        scratched = result["scratched"]
+        if self._on_scratch_result:
+            self._on_scratch_result(bool(scratched))
+        detail = {
+            "requested": result["requested"],
+            "scratched": scratched,
+            "reason": result["reason"],
+        }
+        return DispatchOutcome(
+            kind="scratch_success" if scratched else "scratch_refuse", detail=detail)
+
+    def _request_clear_draft(self) -> DispatchOutcome:
+        """Ask before discarding: destructive, so never on the first utterance."""
+        buffer = self._dictate_pending_buffer
+        if not buffer.strip():
+            self._pending_clear = None
+            self._speak("There is nothing staged to clear.", ACKNOWLEDGEMENT)
+            return DispatchOutcome(kind="dictate_clear_nothing")
+        words = len(buffer.split())
+        self._pending_clear = {
+            "chars": len(buffer), "words": words,
+            "expires": self._clock() + CLEAR_DRAFT_CONFIRM_TTL_S,
+        }
+        noun = "word" if words == 1 else "words"
+        self._speak(f"Clear the whole draft, {words} {noun}? Say yes to clear it, or no to keep it.",
+                    QUESTION)
+        log.info("[SESSION] clear-draft question asked (%d chars, %d words)", len(buffer), words)
+        return DispatchOutcome(kind="dictate_clear_awaiting_confirmation", detail={
+            "pending_chars": len(buffer), "words": words,
+        })
+
+    def _recover_draft_outcome(self) -> DispatchOutcome:
+        """Queue 84: the spoken recovery path for an aborted or cleared draft."""
+        recovered = self.recover_draft()
+        if recovered is None:
+            self._speak("There is no draft to bring back.", ACKNOWLEDGEMENT)
+            return DispatchOutcome(kind="dictate_recover_nothing")
+        words = len(self._dictate_pending_buffer.split())
+        noun = "word" if words == 1 else "words"
+        self._speak(f"Draft back, {words} {noun}. Say end to type it.", ACKNOWLEDGEMENT)
+        return DispatchOutcome(kind="dictate_draft_recovered", detail={
+            "recovered_chars": recovered["chars"], "source": recovered["source"],
+            "prepended": recovered["prepended"],
+            "pending_chars": len(self._dictate_pending_buffer),
+        })
+
+    def _answer_pending_clear(self, normalized: str, signals: UtteranceSignals) -> Optional[DispatchOutcome]:
+        """None when no clear-draft question is open or this utterance is not
+        a yes/no -- the question then lapses and the words are handled as usual."""
+        pending = self._pending_clear
+        if pending is None:
+            return None
+        if self._clock() > pending["expires"] or self.mode is not SessionMode.DICTATE:
+            self._pending_clear = None
+            log.info("[SESSION] clear-draft question expired unanswered; draft kept")
+            return None
+        if normalized in CLEAR_DRAFT_CONFIRM_UTTERANCES:
+            if not passes_switch_anti_hallucination_gate(signals):
+                # A "yes" the gate distrusts (possible hallucination on noise)
+                # never discards text; the question stays open for a real one.
+                return DispatchOutcome(kind="dictate_clear_refused", detail={
+                    "pending_chars": len(self._dictate_pending_buffer),
+                })
+            self._pending_clear = None
+            return self.confirm_clear_draft("scratch everything")
+        if normalized in CLEAR_DRAFT_REJECT_UTTERANCES:
+            self._pending_clear = None
+            self._speak("Kept the draft.", ACKNOWLEDGEMENT)
+            return DispatchOutcome(kind="dictate_clear_declined", detail={
+                "pending_chars": len(self._dictate_pending_buffer),
+            })
+        self._pending_clear = None
+        log.info("[SESSION] clear-draft question dropped: the next utterance was not yes or no; draft kept")
+        return None
+
+    def confirm_clear_draft(self, source: str = "scratch everything") -> DispatchOutcome:
+        """THE clear. The spoken "scratch everything" -> "yes" path and the
+        preview's Clear draft button (queue 85) both end here, so the phrase
+        and the button can never mean different things. Queue 84's recovery
+        slot is filled first: a deliberate clear can also be a mistake."""
+        with self._dispatch_lock:
+            self._pending_clear = None
+            self._stash_recoverable_draft(source)
+            removed = self.clear_pending_draft()
+        log.info("[SESSION] draft cleared via %s (%d chars, recoverable)", source, removed)
+        self._speak(f"Draft cleared. Say {RECOVER_DRAFT_PHRASES[0]} if you want it back.",
+                    ACKNOWLEDGEMENT)
+        return DispatchOutcome(kind="dictate_draft_cleared", detail={
+            "cleared_chars": removed, "recoverable_chars": removed, "source": source,
+        })
+
+    def clear_pending_draft(self) -> int:
+        """Discard the staged-but-uncommitted DICTATE draft (text, audio and the
+        staged-chunk undo entries). Returns the number of characters removed.
+        Nothing is pasted or typed. Callers are responsible for having asked."""
+        with self._dispatch_lock:
+            removed = len(self._dictate_pending_buffer)
+            self._dictate_pending_buffer = ""
+            self._dictate_pending_audio = []
+            self._last_dictate_ended_terminal = None
+            kept = [item for item in self._stack._items if item.kind != "dictation_staged_chunk"]
+            self._stack._items.clear()
+            self._stack._items.extend(kept)
+            self._pending_clear = None
+        log.info("[SESSION] staged draft cleared (%d chars)", removed)
+        return removed
+
+    # -- queue 85: correct one word of the staged draft ---------------------
+
+    def set_draft_scroll_fn(self, fn) -> None:
+        """fn(where): "up" | "down" | "top" | "bottom" on the live preview."""
+        self._draft_scroll_fn = fn
+
+    def set_correction_undo_fn(self, fn) -> None:
+        """fn() -> dict: take back the last correction. See correction_queue."""
+        self._correction_undo_fn = fn
+
+    def _undo_last_correction_outcome(self) -> DispatchOutcome:
+        try:
+            result = self._correction_undo_fn() or {}
+        except Exception as exc:
+            log.warning("[SESSION] correction undo failed: %s", exc)
+            result = {}
+        if not result.get("undone"):
+            self._speak("There is no correction to take back.", ACKNOWLEDGEMENT)
+            return DispatchOutcome(kind="correction_undo_nothing")
+        wrong, right = result.get("wrong", ""), result.get("right", "")
+        self._speak(f'Forgot "{wrong}" to "{right}".'[:60], ACKNOWLEDGEMENT)
+        return DispatchOutcome(kind="correction_undone", detail={
+            "wrong": wrong, "right": right, "where": result.get("where", ""),
+        })
+
+    def set_correction_capture_fn(self, fn) -> None:
+        """fn(wrong, right, context): queue an applied correction for REVIEW.
+        Nothing here ever writes the corrections dictionary."""
+        self._correction_capture_fn = fn
+
+    def request_word_correction(self, word: str, occurrence: int = 0, *,
+                                expected_count: int = 0,
+                                source: str = "preview_click") -> dict:
+        """Arm a correction for one word of the staged draft: the NEXT
+        utterance replaces it instead of being dictated. Returns
+        {"ok": bool, ...}; a refusal never changes anything."""
+        word = (word or "").strip()
+        with self._dispatch_lock:
+            if not self._buffer_dictate_until_commit or self.mode is not SessionMode.DICTATE:
+                return {"ok": False, "reason": "not_dictating"}
+            if not word:
+                return {"ok": False, "reason": "no_word"}
+            if not self._dictate_pending_buffer:
+                return {"ok": False, "reason": "no_draft"}
+            self._pending_correction = {
+                "word": word, "occurrence": max(0, int(occurrence)),
+                "expected_count": max(0, int(expected_count)),
+                "expires": self._clock() + WORD_CORRECTION_TTL_S,
+                "source": source,
+            }
+        log.info("[SESSION] word correction armed for %r (occurrence %d, source %s)",
+                 word, occurrence, source)
+        self._speak(f'Say the replacement for "{word}".', QUESTION)
+        return {"ok": True, "word": word, "occurrence": occurrence,
+                "ttl_s": WORD_CORRECTION_TTL_S}
+
+    def pending_word_correction(self) -> Optional[dict]:
+        """The armed correction, or None (also None once it has expired)."""
+        pending = self._pending_correction
+        if pending is None:
+            return None
+        if self._clock() > pending["expires"]:
+            return None
+        return dict(pending)
+
+    def cancel_word_correction(self, reason: str = "cancelled") -> bool:
+        with self._dispatch_lock:
+            had = self._pending_correction is not None
+            self._pending_correction = None
+        if had:
+            log.info("[SESSION] word correction %s", reason)
+        return had
+
+    def _consume_word_correction(self, text: str, normalized: str,
+                                 signals: UtteranceSignals) -> Optional[DispatchOutcome]:
+        """None when no correction is armed, when it has expired, or when this
+        utterance is a control phrase that should run normally (the correction
+        is dropped first, so a control word is never eaten)."""
+        pending = self._pending_correction
+        if pending is None:
+            return None
+        if self._clock() > pending["expires"] or self.mode is not SessionMode.DICTATE:
+            self._pending_correction = None
+            log.info("[SESSION] word correction expired unanswered; the words are dictation")
+            return None
+        if normalized in WORD_CORRECTION_CANCEL_PHRASES:
+            self._pending_correction = None
+            self._speak("Correction cancelled.", ACKNOWLEDGEMENT)
+            return DispatchOutcome(kind="dictate_correction_cancelled",
+                                   detail={"word": pending["word"]})
+        if (is_dictate_commit(text) or is_clear_draft(text) or is_recover_draft(text)
+                or match_switch_word(text, current_mode=self.mode) is not None
+                or match_ava_invocation(text, self._ava_invocations)):
+            # A real control word wins and still does its own job.
+            self._pending_correction = None
+            log.info("[SESSION] word correction dropped: %r is a control phrase", text)
+            return None
+        if not passes_switch_anti_hallucination_gate(signals):
+            # Degraded audio must not edit the draft; the click stays armed so
+            # the user can simply say the word again.
+            log.info("[SESSION] replacement refused by the anti-hallucination gate for %r", text)
+            return DispatchOutcome(kind="dictate_correction_refused",
+                                   detail={"word": pending["word"]})
+        self._pending_correction = None
+        result = self.replace_draft_word(
+            pending["word"], pending["occurrence"], text.strip(),
+            expected_count=pending.get("expected_count") or 0,
+        )
+        if not result.get("ok"):
+            self._speak("I could not find that word any more.", ACKNOWLEDGEMENT)
+            return DispatchOutcome(kind="dictate_correction_failed", detail={
+                "word": pending["word"], "reason": result.get("reason", "unknown"),
+            })
+        captured = None
+        if self._correction_capture_fn is not None:
+            try:
+                captured = self._correction_capture_fn(
+                    pending["word"], result["replacement"], result.get("context", ""),
+                    result.get("audio"))
+            except Exception as exc:  # capture must never break dispatch
+                log.warning("[SESSION] correction capture failed: %s", exc)
+        return DispatchOutcome(kind="dictate_word_corrected", detail={
+            "word": pending["word"], "replacement": result["replacement"],
+            "pending_chars": len(self._dictate_pending_buffer),
+            "captured": captured,
+        })
+
+    def replace_draft_word(self, word: str, occurrence: int = 0, replacement: str = "",
+                           *, expected_count: int = 0) -> dict:
+        """Replace ONE occurrence of `word` in the staged draft.
+
+        Refuses rather than guesses: if the word is gone, if the number of
+        occurrences no longer matches what the caller saw, or if the index is
+        out of range, nothing is edited (the user dictated more while the
+        click was armed). The top staged chunk is edited alongside the buffer
+        when the word falls inside it, so "scratch that" -- which requires the
+        draft to still END with that chunk -- keeps working."""
+        word = (word or "").strip()
+        replacement = " ".join((replacement or "").split())
+        if not word or not replacement:
+            return {"ok": False, "reason": "empty"}
+        pattern = re.compile(r"(?<!\w)" + re.escape(word) + r"(?!\w)")
+        with self._dispatch_lock:
+            buffer = self._dictate_pending_buffer
+            if not buffer:
+                return {"ok": False, "reason": "no_draft"}
+            matches = list(pattern.finditer(buffer))
+            if not matches:
+                matches = list(re.finditer(
+                    r"(?<!\w)" + re.escape(word) + r"(?!\w)", buffer, re.IGNORECASE))
+            if not matches:
+                return {"ok": False, "reason": "not_found"}
+            if expected_count and len(matches) != expected_count:
+                return {"ok": False, "reason": "draft_changed"}
+            if occurrence >= len(matches):
+                return {"ok": False, "reason": "draft_changed"}
+            match = matches[occurrence]
+            start, end = match.start(), match.end()
+            new_buffer = buffer[:start] + replacement + buffer[end:]
+            # Queue 85: the audio that produced the WRONG word is the training
+            # signal the dictionary's long game wants. Attribute it only when
+            # exactly ONE staged chunk contains the word -- with the word in
+            # several chunks there is no way to tell which utterance it came
+            # from, and a mislabelled clip is worse than none.
+            audio = None
+            chunks = [item for item in self._stack._items
+                      if item.kind == "dictation_staged_chunk"]
+            holders = [i for i, item in enumerate(chunks) if pattern.search(item.payload)]
+            if len(holders) == 1 and holders[0] < len(self._dictate_pending_audio):
+                audio = self._dictate_pending_audio[holders[0]]
+            top = self._stack.peek()
+            if (top is not None and top.kind == "dictation_staged_chunk"
+                    and buffer.endswith(top.payload)):
+                payload_start = len(buffer) - len(top.payload)
+                if start >= payload_start:
+                    top.payload = (top.payload[:start - payload_start] + replacement
+                                   + top.payload[end - payload_start:])
+            self._dictate_pending_buffer = new_buffer
+            self._last_dictate_ended_terminal = (
+                chunk_ends_terminal(new_buffer) if new_buffer else None)
+            context = new_buffer[max(0, start - 40):start + len(replacement) + 40].strip()
+        log.info("[SESSION] draft word corrected: %r -> %r (occurrence %d)",
+                 word, replacement, occurrence)
+        return {"ok": True, "replacement": replacement, "before": buffer,
+                "after": new_buffer, "context": context, "audio": audio}
+
     def _matches_abort_phrase(self, text: str) -> bool:
-        """Any session exit: an abort phrase anywhere in the text, or a sleep
-        phrase as the whole utterance. dispatch_utterance checks sleep first
-        (it has its own outcome); the streaming preview's _is_control_phrase
+        """Any session exit, as the WHOLE utterance (queue 84): an abort
+        phrase or a sleep phrase. dispatch_utterance checks sleep first (it
+        has its own outcome); the streaming preview's _is_control_phrase
         relies on this covering both."""
-        if normalize_utterance(text) in self._sleep_phrases:
-            return True
-        return any(pattern.search(text) for pattern in self._abort_patterns)
+        normalized = normalize_utterance(text)
+        return normalized in self._sleep_phrases or normalized in self._abort_utterances
+
+    def _stage_and_commit_trailing(
+        self, body: str, signals: UtteranceSignals,
+    ) -> DispatchOutcome:
+        """"<prose>. End." in one chunk: stage the prose, then commit it as if
+        "end" had been its own utterance. The commit word never reaches the
+        draft, and the commit re-decode (which hears the same audio) has it
+        stripped from its tail."""
+        staged = self._stage_dictate_chunk(body, audio_ref=signals.audio_ref)
+        if staged.kind != "dictate_staged":
+            return staged
+        outcome = self._commit_dictate_buffer(target_mode=None, consumed_trailing_commit_word=True)
+        if outcome.kind == "dictate_committed":
+            return DispatchOutcome(kind="dictate_committed", detail={**outcome.detail, "commit_word": "trailing"})
+        return outcome
 
     def commit_pending_dictation(self) -> DispatchOutcome:
         """Commit buffered DICTATE immediately for a trusted local trigger.
@@ -1392,7 +2690,11 @@ class SessionModeManager:
                     kind="prefix_switch_failed",
                     detail={"mode": switch.target_mode, "reverted_to": prior_mode, "error": str(exc)},
                 )
-        return DispatchOutcome(kind="mode_switch", detail={"mode": switch.target_mode})
+        detail = {"mode": switch.target_mode}
+        side_effect_error = getattr(self, "_last_mode_change_error", None)
+        if side_effect_error:
+            detail["side_effect_error"] = side_effect_error
+        return DispatchOutcome(kind="mode_switch", detail=detail)
 
     def _switch_mode(self, new_mode: SessionMode) -> None:
         prior_mode = self.mode
@@ -1418,8 +2720,25 @@ class SessionModeManager:
             self._dictate_pending_buffer = ""
             self._dictate_pending_audio = []
         self.mode = new_mode
+        self._last_mode_change_error = None
         if self._on_mode_change:
-            self._on_mode_change(new_mode)
+            # Queue 60: side effects (earcon, mode overlay, DICTATE preview
+            # teardown) run here, on the utterance thread. A failing one must
+            # not propagate out of dispatch_utterance and leave the caller
+            # guessing: the mode change stands (it is the state every later
+            # utterance routes on), the failure is logged and earconed, and
+            # _do_switch reports it on the outcome.
+            try:
+                self._on_mode_change(new_mode)
+            except Exception as exc:
+                self._last_mode_change_error = f"{type(exc).__name__}: {exc}"
+                log.exception("[SESSION] mode change %s -> %s: side effects failed; mode is %s",
+                              prior_mode.value, new_mode.value, new_mode.value)
+                if self._on_switch_dispatch_error:
+                    try:
+                        self._on_switch_dispatch_error(exc)
+                    except Exception:
+                        log.exception("[SESSION] mode change error feedback failed")
 
     def force_mode(self, new_mode: SessionMode) -> None:
         """Apply a non-utterance-driven mode change."""
@@ -1446,6 +2765,11 @@ class SessionModeManager:
             return DispatchOutcome(kind="command_failed", detail={
                 "phrase": result.phrase, "state": state,
             })
+        if result.matched and getattr(result, "awaiting_confirmation", False):
+            # Nothing has run: no undo entry, and never "command_executed".
+            return DispatchOutcome(kind="command_awaiting_confirmation", detail={
+                "phrase": result.phrase, "state": state,
+            })
         if result.matched:
             self._stack.push(StackItem(
                 kind="command", payload=result.phrase or text,
@@ -1454,12 +2778,31 @@ class SessionModeManager:
             return DispatchOutcome(kind="command_executed", detail={
                 "phrase": result.phrase, "state": state,
             })
+        pack = getattr(result, "disabled_pack", None)
+        if pack:
+            return DispatchOutcome(kind="command_miss", detail={
+                "reason": "pack_disabled", "pack": pack,
+            })
         return DispatchOutcome(kind="command_miss")
 
     def _dispatch_hands_free_command(
-        self, match: HandsFreeCommandMatch,
+        self, match: HandsFreeCommandMatch, *, deferred: bool = False,
     ) -> DispatchOutcome:
         """Execute one reserved command without leaving the DICTATE lane."""
+        if not deferred and self._cancel_window_fn is not None:
+            # Queue 69: the window wraps the WHOLE dispatch -- the pending-text
+            # commit included -- so a cancel inside it leaves the draft staged
+            # and nothing pasted or pressed.
+            epoch = self._session_epoch
+            delay = self._cancel_window_fn(match, lambda: self._run_deferred_hands_free(match, epoch))
+            if delay and delay > 0:
+                return DispatchOutcome(kind="command_cancel_window", detail={
+                    "phrase": match.phrase,
+                    "dispatch_text": match.dispatch_text,
+                    "delay_s": float(delay),
+                    "pending_chars": len(self._dictate_pending_buffer),
+                    "mode_retained": self.mode,
+                })
         commit_detail = None
         if match.pending_policy is PendingTextPolicy.COMMIT:
             committed = self._commit_dictate_buffer(target_mode=None)
@@ -1481,6 +2824,15 @@ class SessionModeManager:
                 "state": state,
             })
 
+        if getattr(result, "awaiting_confirmation", False):
+            return DispatchOutcome(kind="command_awaiting_confirmation", detail={
+                "phrase": result.phrase or match.phrase,
+                "dispatch_text": match.dispatch_text,
+                "committed": commit_detail,
+                "mode_retained": self.mode,
+                "state": state,
+            })
+
         self._stack.push(StackItem(
             kind="command", payload=result.phrase or match.phrase,
             mode=SessionMode.DICTATE, timestamp=self._clock(),
@@ -1492,6 +2844,26 @@ class SessionModeManager:
             "mode_retained": self.mode,
             "state": state,
         })
+
+    def _run_deferred_hands_free(self, match: HandsFreeCommandMatch, epoch: int) -> DispatchOutcome:
+        """A cancel window elapsed (or was answered "yes"): dispatch the command
+        it held, unless the session it was staged in is gone."""
+        with self._dispatch_lock:
+            if epoch != self._session_epoch or self.mode is not SessionMode.DICTATE:
+                log.info("[SESSION] deferred %r not run: the session or lane changed", match.phrase)
+                outcome = DispatchOutcome(kind="hands_free_command_refused", detail={
+                    "phrase": match.phrase, "reason": "session changed",
+                    "pending_chars": len(self._dictate_pending_buffer),
+                })
+            else:
+                outcome = self._dispatch_hands_free_command(match, deferred=True)
+        log.info("[SESSION] deferred outcome=%s phrase=%r", outcome.kind, match.phrase)
+        if self._on_deferred_outcome is not None:
+            try:
+                self._on_deferred_outcome(outcome)
+            except Exception:
+                log.exception("[SESSION] deferred outcome handler failed")
+        return outcome
 
     def _dispatch_dictate(
         self, chunk_raw: str, audio_ref: Any = None,
@@ -1520,6 +2892,24 @@ class SessionModeManager:
             return DispatchOutcome(kind="dictate_suppressed_focus_lock", detail={
                 "target_process": target_process, "foreground": foreground,
                 "mode_retained": self.mode,
+            })
+
+        verdict = self._foreground_verdict()
+        if verdict is not None and getattr(verdict, "blocked", False):
+            # Same as a focus-lock suppression: keep the formatted chunk for a
+            # later "retype that", type nothing, and say why.
+            self._stack.push(StackItem(
+                kind="dictation_chunk", payload=self._format_dictate_fn(chunk_raw.strip()),
+                mode=SessionMode.DICTATE, timestamp=self._clock(),
+                extra={"suppressed": True, "target_process": self._dictate_target_process,
+                       "foreground": foreground, "hwnd": self._foreground_hwnd_resolver(),
+                       "blocked_elevated": True},
+            ))
+            log.warning("[SESSION] DICTATE chunk not typed: foreground window is elevated (%s)",
+                        self._describe_verdict(verdict))
+            return DispatchOutcome(kind="dictate_blocked_elevated", detail={
+                "stage": "inject", "target_process": target_process,
+                "integrity": self._describe_verdict(verdict),
             })
 
         if self._last_dictate_ended_terminal is None:
@@ -1580,9 +2970,29 @@ class SessionModeManager:
         correction pass and immediately before delivery") and risk embedding
         control characters (e.g. a "new line" token's literal \\n) into text
         that clean_text/smart_correct haven't seen yet."""
+        stripped_suffix = ""
+        ellipsis_seam = None
+        if self._last_dictate_ended_terminal is not None:
+            top = self._stack.peek()
+            previous_fragment = (
+                top.payload if top is not None and top.kind == "dictation_staged_chunk" else None
+            )
+            ellipsis_seam = decide_ellipsis_seam(
+                self._dictate_pending_buffer, chunk_raw, previous_fragment)
         if self._last_dictate_ended_terminal is None:
             to_stage = chunk_raw.strip()
             stripped_terminal_period = False
+        elif ellipsis_seam is not None:
+            # Queue 81: the previous fragment trailed off. Join only on the
+            # clauses decide_ellipsis_seam lists; otherwise it is a new
+            # sentence and the ellipsis is the speaker's, kept as spoken.
+            stripped_terminal_period = False
+            if ellipsis_seam.join:
+                stripped_suffix = ellipsis_seam.stripped
+                self._dictate_pending_buffer = self._dictate_pending_buffer[:-len(stripped_suffix)]
+            to_stage = " " + chunk_raw.strip()
+            log.debug("[SESSION] DICTATE seam after ellipsis: %s join=%s",
+                      ellipsis_seam.clause, ellipsis_seam.join)
         else:
             if _is_continuation_chunk(chunk_raw):
                 # Continuation path strips only one prior full stop and any
@@ -1606,7 +3016,8 @@ class SessionModeManager:
         self._stack.push(StackItem(
             kind="dictation_staged_chunk", payload=to_stage,
             mode=SessionMode.DICTATE, timestamp=self._clock(),
-            extra={"stripped_terminal_period": stripped_terminal_period},
+            extra={"stripped_terminal_period": stripped_terminal_period,
+                   "stripped_suffix": stripped_suffix},
         ))
         return DispatchOutcome(kind="dictate_staged", detail={
             "text": to_stage,
@@ -1615,6 +3026,7 @@ class SessionModeManager:
 
     def _commit_dictate_buffer(
         self, *, target_mode: Optional[SessionMode],
+        consumed_trailing_commit_word: bool = False,
     ) -> DispatchOutcome:
         """Paste the complete staged thought once, retaining it on failure."""
         text = self._dictate_pending_buffer
@@ -1662,6 +3074,20 @@ class SessionModeManager:
                 "foreground_hwnd": current_hwnd,
             })
 
+        # Queue 50: never "type" into a window that will silently drop it.
+        verdict = self._foreground_verdict()
+        if verdict is not None and getattr(verdict, "blocked", False):
+            log.warning(
+                "[SESSION] DICTATE commit retained: the foreground window runs at a higher "
+                "integrity level (administrator) and would silently drop the text (%s)",
+                self._describe_verdict(verdict),
+            )
+            return DispatchOutcome(kind="dictate_blocked_elevated", detail={
+                "stage": "commit", "pending_chars": len(text), "target_process": foreground,
+                "integrity": self._describe_verdict(verdict),
+            })
+        delivery_unverified = verdict is not None and not getattr(verdict, "confirmed_ok", False)
+
         final_text = text
         if "  " in final_text:
             final_text = re.sub(r" {2,}", " ", final_text)
@@ -1671,8 +3097,22 @@ class SessionModeManager:
                 redecode_text = self._commit_redecode_fn(
                     final_text, list(self._dictate_pending_audio),
                 )
+                if redecode_text and consumed_trailing_commit_word:
+                    redecode_text = strip_redecoded_commit_word(redecode_text)
                 if redecode_text:
-                    final_text = redecode_text
+                    # Queue 88: a re-decode that comes back as a run-on is
+                    # worse than the fragments it replaces -- keep the staged
+                    # text then. See redecode_is_poorer for the measurement
+                    # and the 2026-09-15 16:23:58 commit it was taken from.
+                    if redecode_is_poorer(final_text, redecode_text):
+                        log.warning(
+                            "[SESSION] DICTATE commit kept the staged text: the re-decode is a "
+                            "run-on (%.4f sentence marks/word over %d chars vs %.4f staged)",
+                            sentence_mark_density(redecode_text), len(redecode_text),
+                            sentence_mark_density(final_text),
+                        )
+                    else:
+                        final_text = redecode_text
             except Exception as exc:
                 log.warning(
                     "[SESSION] DICTATE commit re-decode failed; using staged text "
@@ -1738,10 +3178,13 @@ class SessionModeManager:
         self._dictate_target_hwnd = None
         if target_mode is not None:
             self._switch_mode(target_mode)
-        return DispatchOutcome(kind="dictate_committed", detail={
-            "text": final_text, "chars": len(final_text),
-            "mode_retained": self.mode,
-        })
+        detail = {"text": final_text, "chars": len(final_text), "mode_retained": self.mode}
+        if delivery_unverified:
+            # Could not confirm the window accepts typing: the text was sent,
+            # but this must never read as a plain "typed" success.
+            detail["delivery_unverified"] = True
+            detail["integrity"] = self._describe_verdict(verdict)
+        return DispatchOutcome(kind="dictate_committed", detail=detail)
 
     def _dispatch_ava(self, text: str) -> DispatchOutcome:
         """Every AVA-mode utterance goes to the agent as natural language --
@@ -1800,7 +3243,9 @@ class SessionModeManager:
             self._dictate_pending_buffer = self._dictate_pending_buffer[:-len(item.payload)]
             if self._dictate_pending_audio:
                 self._dictate_pending_audio.pop()
-            if item.extra.get("stripped_terminal_period"):
+            if item.extra.get("stripped_suffix"):
+                self._dictate_pending_buffer += item.extra["stripped_suffix"]
+            elif item.extra.get("stripped_terminal_period"):
                 if not self._dictate_pending_buffer.endswith("."):
                     self._dictate_pending_buffer += "."
             self._last_dictate_ended_terminal = (
@@ -1808,6 +3253,8 @@ class SessionModeManager:
                 if self._dictate_pending_buffer else None
             )
             return True
+        if item.kind == "edit_apply":
+            return self._undo_edit_apply(item)
         if item.kind != "dictation_chunk":
             return False  # command undo out of scope; consumed, refuse-style earcon
         foreground = self._foreground_exe_resolver()
@@ -1823,19 +3270,263 @@ class SessionModeManager:
                 recorded_hwnd, current_hwnd,
             )
             return False
-        self._remove_chars_fn(len(item.payload))
+        # remove_chars_fn may report the deletion did not complete (False):
+        # focus changed mid-way, the window is elevated, or input was
+        # refused. None (legacy callables) keeps meaning "done".
+        removed = self._remove_chars_fn(len(item.payload))
+        return removed is not False
+
+    # -- edit apply (queue 102) ----------------------------------------------
+
+    def set_raw_inject_fn(self, fn) -> None:
+        """Install the RAW (no formatting pipeline) delivery callable the
+        edit path needs. See the _raw_inject_fn comment in __init__ for why
+        _inject_fn cannot be used here. Passing None disables the edit path."""
+        self._raw_inject_fn = fn
+
+    def top_dictation_chunk(self) -> "Optional[StackItem]":
+        """The most recent committed dictation chunk, or None.
+
+        This -- not the history store, and not stage_buffer -- is what an
+        edit edits. stage_buffer holds the same characters (both are set to
+        `final_text` when a thought commits), but only the stack item also
+        carries `target_process` and `hwnd`: the window identity that makes a
+        destructive apply safe. An edit with no window to apply it to is not
+        an edit anyone can accept.
+        """
+        item = self._stack.peek()
+        if item is None or item.kind != "dictation_chunk" or not item.payload:
+            return None
+        return item
+
+    def apply_edit(self, rewritten: str, *, before_delete_s: float = 0.0,
+                   after_delete_s: float = 0.0, dwell_fn=None) -> dict:
+        """Replace the most recent dictation chunk with `rewritten`, as ONE
+        unit of work that ONE "scratch that" reverses exactly.
+
+        Returns {"applied": bool, "reason": str, "chars": int}.
+
+        Atomicity, and the honest limit of it. The stack is mutated only
+        AFTER the window has accepted both halves of the change, so every
+        refusal below leaves the text and the stack exactly as they were and
+        "scratch that" still means the original chunk. The one case this
+        cannot make atomic is an OS-level deletion that stops part-way (the
+        user alt-tabs mid-backspace, the target refuses input): the
+        characters already gone are gone. That is the same exposure
+        _do_scratch_that has carried since queue 50 -- inherent to driving
+        another process's text box by keystrokes, not something this path
+        adds -- and it is reported as "the deletion was interrupted" rather
+        than dressed up as a success. The deletion is ONE call, so the window
+        for it is as small as the primitive allows.
+
+        The two focus checks are the same fail-closed pair _do_scratch_that
+        uses, in the same order, for the same reason: applying an edit when
+        the user has moved on would rewrite content in a window that is not
+        theirs.
+        """
+        item = self.top_dictation_chunk()
+        if item is None:
+            return {"applied": False, "reason": "nothing to edit", "chars": 0}
+        if self._raw_inject_fn is None or self._remove_chars_fn is None:
+            return {"applied": False, "reason": "the edit path is not wired", "chars": 0}
+        original = item.payload
+        if not isinstance(rewritten, str) or not rewritten:
+            return {"applied": False, "reason": "nothing to apply", "chars": 0}
+        if rewritten == original:
+            return {"applied": False, "reason": "no change", "chars": 0}
+
+        foreground = self._foreground_exe_resolver()
+        if not check_focus_lock(item.extra.get("target_process"), foreground):
+            log.warning("[AVA-EDIT] apply refused: focus is not the window this text went to")
+            return {"applied": False, "reason": "focus moved", "chars": 0}
+        recorded_hwnd = item.extra.get("hwnd")
+        if recorded_hwnd is None or self._foreground_hwnd_resolver() != recorded_hwnd:
+            log.warning("[AVA-EDIT] apply refused: foreground window changed since this text "
+                        "was dictated (recorded_hwnd=%r)", recorded_hwnd)
+            return {"applied": False, "reason": "the window changed", "chars": 0}
+
+        dwell = dwell_fn if dwell_fn is not None else time.sleep
+        if before_delete_s:
+            dwell(before_delete_s)
+        if self._remove_chars_fn(len(original)) is False:
+            log.error("[AVA-EDIT] apply stopped: the deletion was interrupted")
+            return {"applied": False, "reason": "the deletion was interrupted", "chars": 0}
+        if after_delete_s:
+            dwell(after_delete_s)
+        if self._raw_inject_fn(rewritten) is False:
+            log.error("[AVA-EDIT] apply stopped: the rewrite was not delivered")
+            return {"applied": False, "reason": "the rewrite was not delivered", "chars": 0}
+
+        # One unit in, one unit out: the chunk this edit consumed leaves the
+        # stack and the edit takes its place, carrying the original so the
+        # undo needs nothing else. Depth is unchanged, so an edit never costs
+        # the user one of their five scratches.
+        self._stack.pop()
+        self._stack.push(StackItem(
+            kind="edit_apply", payload=rewritten, mode=item.mode, timestamp=self._clock(),
+            extra={"original": original,
+                   "target_process": item.extra.get("target_process"),
+                   "hwnd": recorded_hwnd},
+        ))
+        self._stage_buffer = rewritten
+        log.info("[AVA-EDIT] applied: %d chars -> %d chars", len(original), len(rewritten))
+        return {"applied": True, "reason": "applied", "chars": len(rewritten)}
+
+    def _undo_edit_apply(self, item: StackItem) -> bool:
+        """A "scratch that" over an applied edit: take the rewrite out and
+        put the original back, byte for byte.
+
+        The original goes back through the RAW injector, never _inject_fn --
+        the formatting pipeline would capitalise, clean and smart-correct it
+        on the way in, and the user would not get their text back, they would
+        get a new formatting of it.
+
+        The original chunk is pushed back afterwards, so a second "scratch
+        that" deletes it exactly as if the edit had never happened. That also
+        makes "scratch that twice" mean what a user would expect: undo the
+        edit, then take the sentence back.
+        """
+        if self._raw_inject_fn is None or self._remove_chars_fn is None:
+            log.warning("[AVA-EDIT] cannot undo an applied edit: the edit path is not wired")
+            return False
+        original = item.extra.get("original")
+        if not isinstance(original, str):
+            return False
+        foreground = self._foreground_exe_resolver()
+        if not check_focus_lock(item.extra.get("target_process"), foreground):
+            return False
+        recorded_hwnd = item.extra.get("hwnd")
+        if recorded_hwnd is None or self._foreground_hwnd_resolver() != recorded_hwnd:
+            log.warning("[AVA-EDIT] undo refused: foreground window changed since the edit "
+                        "was applied (recorded_hwnd=%r)", recorded_hwnd)
+            return False
+        if self._remove_chars_fn(len(item.payload)) is False:
+            return False
+        if self._raw_inject_fn(original) is False:
+            return False
+        self._stack.push(StackItem(
+            kind="dictation_chunk", payload=original, mode=item.mode, timestamp=self._clock(),
+            extra={"target_process": item.extra.get("target_process"), "hwnd": recorded_hwnd},
+        ))
+        self._stage_buffer = original
+        log.info("[AVA-EDIT] edit undone: %d chars restored", len(original))
         return True
+
+    def _do_scratch_that_n(self, count: int) -> dict:
+        """N scratches as ONE action. Returns
+        {"requested", "scratched", "reason"} with reason in
+        "done" | "empty" | "failed".
+
+        Every pop is _do_scratch_that() -- the same focus checks, the same
+        paced deletion, the same buffer arithmetic. What this adds is counting,
+        and two things a repeated single scratch cannot give you:
+
+          * ATOMICITY. The whole count is ONE dispatch: one DispatchOutcome,
+            one chip, one earcon. Nothing downstream sees N events, and the
+            run either reaches the count or stops and says where it stopped.
+          * HONESTY ABOUT THE SHORTFALL. The stack holds
+            UnitOfWorkStack.MAX_SIZE, so "scratch that ten times" cannot do
+            ten. It pops what exists and says so; it never claims the count.
+
+        NOT done, deliberately: routing the run through queue 84's recoverable
+        draft so "bring back my draft" would undo the whole count. That slot
+        PREPENDS on recovery (recover_draft returns "prepended"), which is
+        right when the buffer is empty -- an abort, a cleared draft -- and
+        wrong here, where the chunks the user kept are still staged: the
+        pre-scratch draft would be pasted in front of them and the surviving
+        text would appear twice. Making it replace-style is queue 84's design
+        to change, not this one's. A counted scratch is therefore exactly as
+        recoverable as the single scratch it repeats: not.
+
+        PARTIAL FAILURE stops the run at the first refusal rather than
+        pressing on. _do_scratch_that() returns False for a reason -- the
+        focus moved, the window is not the one that received the text, the
+        buffer no longer ends with the chunk -- and every one of those reasons
+        applies just as much to the next pop. Stopping leaves a draft the user
+        can see, under a chip that says how far it got, instead of pressing on
+        into a window that is no longer theirs.
+        """
+        requested = max(1, int(count))
+        scratched = 0
+        reason = "done"
+        for _ in range(requested):
+            if not self._stack:
+                reason = "empty"
+                break
+            if not self._do_scratch_that():
+                reason = "failed"
+                break
+            scratched += 1
+        if scratched:
+            self._last_scratch_at = self._clock()
+        log.info("[SESSION] counted scratch: asked for %d, scratched %d (%s)",
+                 requested, scratched, reason)
+        return {"requested": requested, "scratched": scratched, "reason": reason}
+
+    def _scratch_again_armed(self) -> bool:
+        """True when a bare "again" means "scratch once more": a scratch was
+        the last resolved action AND it was recent. Any other utterance clears
+        _last_scratch_at, so the clock is the second guard, not the first."""
+        if self._last_scratch_at is None:
+            return False
+        return (self._clock() - self._last_scratch_at) <= SCRATCH_AGAIN_TTL_S
 
     def retype_last_suppressed(self) -> bool:
         """COMMAND-mode 'retype that': re-attempt the most recent DICTATE
-        chunk that focus-lock suppressed, with a fresh focus-lock check."""
+        chunk that focus-lock suppressed, with a fresh focus-lock check.
+
+        Refuses (queue 50) a chunk older than SUPPRESSED_RETYPE_TTL_S -- and
+        drops its text -- and refuses when the foreground window is elevated."""
+        now = self._clock()
         for item in self._stack.items_newest_first():
             if item.kind == "dictation_chunk" and item.extra.get("suppressed"):
+                age = now - item.timestamp
+                if age > SUPPRESSED_RETYPE_TTL_S:
+                    log.info("[SESSION] retype refused: the suppressed dictation is %.0f s old "
+                             "(limit %.0f s); its text has been discarded", age, SUPPRESSED_RETYPE_TTL_S)
+                    self._purge_expired_suppressed(now)
+                    return False
                 foreground = self._foreground_exe_resolver()
                 target = item.extra.get("target_process")
                 if not check_focus_lock(target, foreground):
+                    return False
+                verdict = self._foreground_verdict()
+                if verdict is not None and getattr(verdict, "blocked", False):
+                    log.warning("[SESSION] retype refused: foreground window is elevated (%s)",
+                                self._describe_verdict(verdict))
                     return False
                 self._inject_fn(item.payload)
                 item.extra["suppressed"] = False
                 return True
         return False
+
+    def _purge_expired_suppressed(self, now: Optional[float] = None) -> int:
+        """Drop the text of every suppressed chunk older than the retype TTL,
+        so it is not kept in memory for the rest of the session. Returns how
+        many were purged."""
+        now = self._clock() if now is None else now
+        purged = 0
+        for item in self._stack.items_newest_first():
+            if (item.kind == "dictation_chunk" and item.extra.get("suppressed")
+                    and now - item.timestamp > SUPPRESSED_RETYPE_TTL_S):
+                item.payload = ""
+                item.extra["suppressed"] = False
+                item.extra["expired"] = True
+                purged += 1
+        return purged
+
+    def _foreground_verdict(self):
+        """The foreground integrity verdict, or None when no check is wired
+        or the check itself raised (never blocks delivery on a crash)."""
+        if self._window_integrity_fn is None:
+            return None
+        try:
+            return self._window_integrity_fn()
+        except Exception as exc:
+            log.warning("[SESSION] window integrity check failed: %r", exc)
+            return None
+
+    @staticmethod
+    def _describe_verdict(verdict) -> str:
+        describe = getattr(verdict, "describe", None)
+        return describe() if callable(describe) else repr(verdict)

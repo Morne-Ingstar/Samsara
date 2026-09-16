@@ -10,6 +10,9 @@ samsara/audio_ducking.py's SessionDucker docstring.
 
 from __future__ import annotations
 
+import json
+import logging
+import struct
 import threading
 import ctypes
 import inspect
@@ -93,7 +96,8 @@ class FakeHostTransport:
                     {
                         "sid": session.session_id,
                         "pid": session.pid,
-                        "process_name": None,
+                        "process_name": getattr(session, "process_name", None),
+                        "instance": getattr(session, "instance_id", None),
                     }
                 )
             return {"ok": True, "sessions": listed, "elapsed_ms": 0}
@@ -141,7 +145,7 @@ def use_sessions(sessions) -> None:
 @pytest.fixture(autouse=True)
 def no_threads(monkeypatch):
     global _FAKE_HOST
-    ad._SHARED_SESSIONS.clear()
+    _simulate_new_process()
 
     # One fake child per test, shared by every enumeration in that test --
     # session ids must stay stable across sweeps exactly as a real child's
@@ -166,7 +170,22 @@ def no_threads(monkeypatch):
     )
     yield
     _FAKE_HOST = None
+    _simulate_new_process()
+
+
+def _simulate_new_process() -> None:
+    """Drop every piece of engine state that lives in memory. What is left
+    is exactly what survives a hard kill: the files on disk and the other
+    apps' volumes."""
     ad._SHARED_SESSIONS.clear()
+    ad._journal_active.clear()
+    ad._journal_pending.clear()
+    ad._known_levels.clear()
+    ad._duck_factors.clear()
+    ad._shallow_rejected.clear()
+    ad._pending_notices.clear()
+    ad._notice_sink = None
+    ad._journal_path = None
 
 
 def test_capture_first_idle_second_discovery_restores_full_volume(monkeypatch):
@@ -664,4 +683,456 @@ def test_counters_increment_on_sweep(monkeypatch):
 
     assert ducker.sessions_seen == 2
     assert ducker.sessions_ducked == 2
+    ducker.stop()
+
+
+# --- 52: a crash while ducked -------------------------------------------------
+
+class NamedSession(FakeSession):
+    def __init__(self, session_id, pid, volume, process_name, instance_id=None):
+        super().__init__(session_id, pid, volume)
+        self.process_name = process_name
+        self.instance_id = instance_id
+
+
+@pytest.fixture
+def journal(tmp_path, monkeypatch):
+    spawned = []
+    monkeypatch.setattr(ad.thread_registry, "spawn", lambda *a, **k: spawned.append(a))
+    return tmp_path / ad.DUCK_JOURNAL_NAME
+
+
+def _hard_kill_and_restart(journal_path, sessions, *, unclean=True):
+    """The process dies without stop() or atexit; a new one starts. The fake
+    child is replaced too, so session ids from the dead run mean nothing."""
+    global _FAKE_HOST
+    _simulate_new_process()
+    _FAKE_HOST = FakeHostTransport()
+    use_sessions(sessions)
+    return ad.configure_duck_journal(journal_path, previous_unclean=unclean)
+
+
+def test_hard_kill_while_ducked_restores_pre_duck_levels_on_next_start(journal):
+    spotify = NamedSession("s1", 100, 0.3, "Spotify.exe", "inst-spotify")
+    chrome = NamedSession("s2", 200, 1.0, "chrome.exe", "inst-chrome")
+    use_sessions([spotify, chrome])
+    ad.configure_duck_journal(journal)
+
+    idle = ad.SessionDucker(duck_level=0.8)
+    capture = ad.SessionDucker(duck_level=0.15)
+    idle.start()
+    capture.start()
+    assert spotify.volume == pytest.approx(0.3 * 0.12)
+    assert chrome.volume == pytest.approx(0.12)
+
+    # Killed here. The apps stay ducked; the new run gets fresh sid strings.
+    spotify.session_id, chrome.session_id = "new-1", "new-2"
+    assert _hard_kill_and_restart(journal, [spotify, chrome]) == 2
+    assert ad.recover_leftover_ducks() == 2
+
+    assert spotify.volume == pytest.approx(0.3)
+    assert chrome.volume == pytest.approx(1.0)
+    assert json.loads(journal.read_text(encoding="utf-8"))["ducked"] == []
+
+    # And the next capture ducks from the real level, and restores to it.
+    ducker = ad.SessionDucker(duck_level=0.15)
+    ducker.start()
+    assert spotify.volume == pytest.approx(0.3 * 0.15)
+    ducker.stop()
+    assert spotify.volume == pytest.approx(0.3)
+
+
+def test_recovery_runs_before_the_next_duck_reads_originals(journal):
+    app = NamedSession("s1", 100, 0.5, "vlc.exe", "inst-vlc")
+    use_sessions([app])
+    ad.configure_duck_journal(journal)
+    ad.SessionDucker(duck_level=0.15).start()
+
+    app.session_id = "new-1"
+    _hard_kill_and_restart(journal, [app])
+    ducker = ad.SessionDucker(duck_level=0.15)
+    ducker.start()  # recovery has not run on its thread yet
+    assert app.volume == pytest.approx(0.5 * 0.15)
+    ducker.stop()
+    assert app.volume == pytest.approx(0.5)
+
+
+def test_recovery_leaves_a_session_the_user_changed_after_the_crash(journal):
+    app = NamedSession("s1", 100, 0.6, "vlc.exe", "inst-vlc")
+    use_sessions([app])
+    ad.configure_duck_journal(journal)
+    ad.SessionDucker(duck_level=0.15).start()
+
+    app.volume = 0.25  # the user turned it back up themselves
+    _hard_kill_and_restart(journal, [app])
+    assert ad.recover_leftover_ducks() == 0
+    assert app.volume == pytest.approx(0.25)
+
+
+def test_clean_run_leaves_nothing_to_recover(journal):
+    app = NamedSession("s1", 100, 0.6, "vlc.exe", "inst-vlc")
+    use_sessions([app])
+    ad.configure_duck_journal(journal)
+    ducker = ad.SessionDucker(duck_level=0.15)
+    ducker.start()
+    ducker.stop()
+    assert _hard_kill_and_restart(journal, [app], unclean=False) == 0
+
+
+def test_original_at_the_duck_target_is_rejected_for_the_remembered_level(journal):
+    app = NamedSession("s1", 100, 0.3, "Spotify.exe", "inst-a")
+    use_sessions([app])
+    ad.configure_duck_journal(journal)
+    ducker = ad.SessionDucker(duck_level=0.15)
+    ducker.start()
+    ducker.stop()  # a clean run remembers 0.3
+    assert json.loads(journal.read_text(encoding="utf-8"))["known_levels"] == {"Spotify.exe": 0.3}
+
+    # A pre-journal crash left it ducked and the journal lost the entry:
+    # the next run sees only 0.045, the duck target of 0.3.
+    app.volume = 0.3 * 0.15
+    app.session_id, app.instance_id = "new-1", "inst-b"
+    _hard_kill_and_restart(journal, [app])
+    ducker = ad.SessionDucker(duck_level=0.15)
+    ducker.start()
+    assert ad._SHARED_SESSIONS["new-1"].original_volume == pytest.approx(0.3)
+    ducker.stop()
+    assert app.volume == pytest.approx(0.3)
+    assert json.loads(journal.read_text(encoding="utf-8"))["known_levels"] == {"Spotify.exe": 0.3}
+
+
+def test_implausible_original_with_nothing_remembered_is_not_remembered(journal):
+    app = NamedSession("s1", 100, 0.01, "Spotify.exe", "inst-a")
+    use_sessions([app])
+    ad.configure_duck_journal(journal)
+    ducker = ad.SessionDucker(duck_level=0.15)
+    ducker.start()
+    ducker.stop()
+    assert app.volume == pytest.approx(0.01)  # never guessed up to 100%
+    assert json.loads(journal.read_text(encoding="utf-8"))["known_levels"] == {}
+
+
+def test_deliberate_lower_level_above_the_duck_target_is_accepted(journal):
+    app = NamedSession("s1", 100, 1.0, "chrome.exe", "inst-a")
+    use_sessions([app])
+    ad.configure_duck_journal(journal)
+    first = ad.SessionDucker(duck_level=0.15)
+    first.start()
+    first.stop()
+
+    app.volume = 0.3  # the user turns it down on purpose
+    second = ad.SessionDucker(duck_level=0.15)
+    second.start()
+    second.stop()
+    assert app.volume == pytest.approx(0.3)
+    assert json.loads(journal.read_text(encoding="utf-8"))["known_levels"] == {"chrome.exe": 0.3}
+
+
+def test_engage_while_engaged_does_not_mutate_stored_originals(journal):
+    app = NamedSession("s1", 100, 0.3, "Spotify.exe", "inst-a")
+    use_sessions([app])
+    ad.configure_duck_journal(journal)
+
+    def stored():
+        return [e["original"] for e in json.loads(journal.read_text(encoding="utf-8"))["ducked"]]
+
+    capture = ad.SessionDucker(duck_level=0.15)
+    capture.start()
+    assert stored() == [pytest.approx(0.3)]
+
+    capture.start()          # the documented no-op
+    capture._run_sweep()     # a sweep re-sees the ducked session
+    idle = ad.SessionDucker(duck_level=0.8)
+    idle.start()             # a second lease on the same session
+    idle.stop()
+    assert stored() == [pytest.approx(0.3)]
+    assert ad._SHARED_SESSIONS["s1"].original_volume == pytest.approx(0.3)
+
+    capture.stop()
+    assert app.volume == pytest.approx(0.3)
+    assert stored() == []
+
+
+def test_user_set_30_percent_comes_back_as_30_not_100(journal):
+    app = NamedSession("s1", 100, 0.3, "Spotify.exe", "inst-a")
+    use_sessions([app])
+    ad.configure_duck_journal(journal)
+    ad.SessionDucker(duck_level=0.8).start()
+    ad.SessionDucker(duck_level=0.15).start()
+
+    app.session_id = "new-1"
+    _hard_kill_and_restart(journal, [app])
+    ad.recover_leftover_ducks()
+    assert app.volume == pytest.approx(0.3)
+    assert app.volume_calls[-1] != pytest.approx(1.0)
+
+
+# --- 73: float noise, poisoned journals, real duck factors, no-crash strands --
+
+def _f32(level: float) -> float:
+    return struct.unpack("f", struct.pack("f", float(level)))[0]
+
+
+class Float32Session(NamedSession):
+    """Stores what Core Audio stores: a 32-bit float. Every read is the
+    float32 nearest the double that was written, never the double itself."""
+
+    def __init__(self, session_id, pid, volume, process_name, instance_id=None):
+        super().__init__(session_id, pid, _f32(volume), process_name, instance_id)
+
+    def set_master_volume(self, level: float) -> None:
+        super().set_master_volume(_f32(level))
+
+
+def _vanish(sessions: list, session) -> None:
+    """The app closes its stream: Windows drops the session and the host
+    forgets its sid, so reads of it fail with "unknown sid"."""
+    sessions.remove(session)
+    _fake()._by_sid.pop(session.session_id, None)
+
+
+class _Records(logging.Handler):
+    def __init__(self):
+        super().__init__(logging.DEBUG)
+        self.messages: list[str] = []
+
+    def emit(self, record):
+        self.messages.append(record.getMessage())
+
+
+@pytest.fixture
+def duck_log():
+    handler = _Records()
+    ad.logger.addHandler(handler)
+    yield handler.messages
+    ad.logger.removeHandler(handler)
+
+
+STREMIO = 0.1802240014076233
+STEAM = 0.0508433
+
+
+def test_float_equality_trap_float32_readback_noise_still_restores(journal):
+    # Bug 1 (tribunal): a ducked level read back as float32 must not look like
+    # a user change -- on a live release or in crash recovery.
+    app = Float32Session("s1", 100, STREMIO, "stremio.exe", "inst-a")
+    other = Float32Session("s2", 200, STEAM, "steam.exe", "inst-b")
+    sessions = [app, other]
+    use_sessions(sessions)
+    ad.configure_duck_journal(journal)
+
+    idle = ad.SessionDucker(duck_level=0.8)
+    capture = ad.SessionDucker(duck_level=0.15)
+    idle.start()
+    capture.start()
+    # The noise is real: what the app reports is not the double we applied.
+    assert app.volume != ad._SHARED_SESSIONS["s1"].applied_volume
+    assert other.volume != ad._SHARED_SESSIONS["s2"].applied_volume
+    capture.stop()
+    idle.stop()
+    assert app.volume == pytest.approx(STREMIO, abs=1e-7)
+    assert other.volume == pytest.approx(STEAM, abs=1e-7)
+    assert json.loads(journal.read_text(encoding="utf-8"))["ducked"] == []
+
+    # Same trap on the recovery path: the journal holds the double, the app
+    # holds its float32.
+    ad.SessionDucker(duck_level=0.8).start()
+    app.session_id, other.session_id = "new-1", "new-2"
+    _hard_kill_and_restart(journal, sessions)
+    assert ad.recover_leftover_ducks() == 2
+    assert app.volume == pytest.approx(STREMIO, abs=1e-7)
+    assert other.volume == pytest.approx(STEAM, abs=1e-7)
+
+
+def test_startup_scrubs_sub_floor_journal_and_known_levels_and_logs_it(journal, duck_log):
+    spotify = NamedSession("s1", 100, 0.0015462, "Spotify.exe", "inst-spotify")
+    steam = NamedSession("s2", 200, 0.008, "steam.exe", "inst-steam")
+    journal.write_text(json.dumps({
+        "version": 1,
+        "ducked": [
+            {"key": "instance:inst-spotify", "pid": 100, "process_name": "Spotify.exe",
+             "original": 0.0019327, "applied": 0.0015462},
+            {"key": "instance:inst-steam", "pid": 200, "process_name": "steam.exe",
+             "original": 0.01, "applied": 0.008},
+        ],
+        "known_levels": {"Spotify.exe": 0.0019327, "steam.exe": 1.0, "VoiceAccess.exe": 1.0},
+    }), encoding="utf-8")
+    shown: list[str] = []
+
+    assert _hard_kill_and_restart(journal, [spotify, steam]) == 1
+    on_disk = json.loads(journal.read_text(encoding="utf-8"))
+    assert on_disk["known_levels"] == {"steam.exe": 1.0, "VoiceAccess.exe": 1.0}
+    assert [e["process_name"] for e in on_disk["ducked"]] == ["steam.exe"]
+    scrub = [m for m in duck_log if "startup scrub" in m]
+    assert len(scrub) == 1
+    assert "Spotify.exe=0.0019" in scrub[0]          # remembered level dropped
+    assert "steam.exe: 0.0100 -> 1.000" in scrub[0]  # retargeted to the trusted level
+    assert "stopped tracking [Spotify.exe=0.0019]" in scrub[0]
+
+    # The unrecoverable one is shown once, when the app registers a sink.
+    ad.set_notice_sink(shown.append)
+    ad.set_notice_sink(shown.append)
+    assert len(shown) == 1 and "Spotify.exe" in shown[0]
+
+    assert ad.recover_leftover_ducks() == 1
+    assert steam.volume == pytest.approx(1.0)
+    assert spotify.volume_calls == []  # left alone, not guessed up to 100%
+
+    # The next start has nothing left to scrub or say.
+    duck_log.clear()
+    _hard_kill_and_restart(journal, [spotify, steam], unclean=False)
+    ad.set_notice_sink(shown.append)
+    assert len(shown) == 1
+    assert not [m for m in duck_log if "startup scrub" in m]
+
+
+@pytest.mark.parametrize(
+    "path, factor",
+    [
+        ("idle duck (ducking.hands_free_idle_level)", 0.8),
+        ("capture duck (ducking.hands_free_level)", 0.15),
+        ("idle + capture", 0.8 * 0.15),
+        ("hotkey duck, live config (ducking.level)", 0.1),
+        ("hotkey duck, code default (ducking.level)", 0.2),
+        ("idle + hotkey default", 0.8 * 0.2),
+    ],
+)
+def test_vet_original_rejects_a_leftover_from_each_real_duck_path(journal, path, factor):
+    ad.configure_duck_journal(journal)
+    for level in (0.8, 0.15, 0.1, 0.2):  # every factor dictation.py builds duckers with
+        ad.SessionDucker(duck_level=level)
+    remembered = _f32(0.6)
+    ad._known_levels["vlc.exe"] = remembered
+    handle = NamedSession("s1", 100, 0.0, "vlc.exe")
+
+    assert ad._vet_original(handle, _f32(remembered * factor)) == (remembered, False), path
+
+
+def test_duck_factors_in_use_survive_a_restart(journal):
+    use_sessions([NamedSession("s1", 100, 1.0, "vlc.exe", "inst-a")])
+    ad.configure_duck_journal(journal)
+    ducker = ad.SessionDucker(duck_level=0.8)
+    ducker.start()
+    ducker.stop()
+    _hard_kill_and_restart(journal, [])
+    assert ad._duck_products() == [pytest.approx(0.8)]
+
+
+def test_user_set_30_percent_is_preserved_not_treated_as_leftover(journal):
+    app = NamedSession("s1", 100, 1.0, "Spotify.exe", "inst-a")
+    use_sessions([app])
+    ad.configure_duck_journal(journal)
+    for level in (0.8, 0.15, 0.1, 0.2):
+        ad.SessionDucker(duck_level=level)
+    first = ad.SessionDucker(duck_level=0.8)
+    first.start()
+    first.stop()  # remembers 1.0
+
+    app.volume = 0.3  # the user turns Spotify down
+    idle = ad.SessionDucker(duck_level=0.8)
+    capture = ad.SessionDucker(duck_level=0.15)
+    idle.start()
+    capture.start()
+    assert ad._SHARED_SESSIONS["s1"].original_volume == pytest.approx(0.3)
+    capture.stop()
+    idle.stop()
+    assert app.volume == pytest.approx(0.3)
+    assert json.loads(journal.read_text(encoding="utf-8"))["known_levels"] == {"Spotify.exe": 0.3}
+
+
+def test_user_set_level_equal_to_an_idle_duck_is_accepted_after_one_restore(journal):
+    # 80% of a remembered 100% cannot be told from a leftover idle duck by
+    # value. It is restored once; seeing it again means the user chose it.
+    app = NamedSession("s1", 100, 1.0, "firefox.exe", "inst-a")
+    use_sessions([app])
+    ad.configure_duck_journal(journal)
+    ducker = ad.SessionDucker(duck_level=0.8)
+    ducker.start()
+    ducker.stop()
+
+    app.volume = _f32(0.8)
+    ducker.start()
+    ducker.stop()
+    assert app.volume == pytest.approx(1.0)  # treated as a leftover once
+
+    app.volume = _f32(0.8)  # the user sets it again
+    ducker.start()
+    ducker.stop()
+    assert app.volume == pytest.approx(0.8)
+    assert json.loads(journal.read_text(encoding="utf-8"))["known_levels"] == {"firefox.exe": pytest.approx(0.8)}
+
+
+def test_session_vanishing_while_ducked_does_not_compound(journal):
+    # The no-crash strand in samsara.log ("unknown sid -- skipping restore"):
+    # the app closes its stream while the idle duck holds it, Windows keeps
+    # the app at the ducked level, and its next session opens there. Before
+    # 73 that session was adopted at 0.8 as its "original".
+    sessions = [NamedSession("s1", 100, 1.0, "brave.exe", "inst-1")]
+    use_sessions(sessions)
+    ad.configure_duck_journal(journal)
+    idle = ad.SessionDucker(duck_level=0.8)
+    idle.start()
+    assert sessions[0].volume == pytest.approx(0.8)
+
+    for cycle in range(3):
+        old = sessions[0]
+        _vanish(sessions, old)
+        sessions.append(NamedSession(f"s{cycle + 2}", 100, old.volume, "brave.exe", f"inst-{cycle + 2}"))
+        idle._run_sweep()
+        assert sessions[0].volume == pytest.approx(0.8), cycle
+        assert ad._SHARED_SESSIONS[sessions[0].session_id].original_volume == pytest.approx(1.0), cycle
+        idle.stop()  # the vanished session cannot be read: queued, not lost
+        assert sessions[0].volume == pytest.approx(1.0), cycle
+        idle.start()
+        assert sessions[0].volume == pytest.approx(0.8), cycle
+
+    idle.stop()
+    assert sessions[0].volume == pytest.approx(1.0)
+    on_disk = json.loads(journal.read_text(encoding="utf-8"))
+    assert on_disk["known_levels"] == {"brave.exe": 1.0}
+    assert on_disk["ducked"] == []
+
+
+def test_session_vanished_at_release_is_restored_when_the_app_comes_back(journal):
+    app = NamedSession("s1", 100, 0.5, "Spotify.exe", "inst-a")
+    sessions = [app]
+    use_sessions(sessions)
+    ad.configure_duck_journal(journal)
+    idle = ad.SessionDucker(duck_level=0.8)
+    capture = ad.SessionDucker(duck_level=0.15)
+    idle.start()
+    capture.start()
+    assert app.volume == pytest.approx(0.06)
+
+    _vanish(sessions, app)
+    capture.stop()  # cannot read it; idle still holds it
+    idle.stop()     # cannot read it; queued at the level really left (0.06)
+    queued = json.loads(journal.read_text(encoding="utf-8"))["ducked"]
+    assert [(e["process_name"], e["applied"]) for e in queued] == [("Spotify.exe", pytest.approx(0.06))]
+
+    # A duck while Spotify is closed keeps the entry waiting.
+    other = ad.SessionDucker(duck_level=0.15)
+    other.start()
+    other.stop()
+    assert len(ad._journal_pending) == 1
+
+    # Spotify relaunches at the level Windows kept; the next duck heals it
+    # before reading its original, and releases to the real 0.5.
+    back = NamedSession("s9", 300, 0.06, "Spotify.exe", "inst-z")
+    sessions.append(back)
+    other.start()
+    assert back.volume == pytest.approx(0.5 * 0.15)
+    other.stop()
+    assert back.volume == pytest.approx(0.5)
+    assert json.loads(journal.read_text(encoding="utf-8"))["ducked"] == []
+
+
+def test_system_sounds_session_is_not_ducked(journal):
+    system_sounds = NamedSession("sys", 0, 0.8, "System Idle Process", "inst-sys")
+    app = NamedSession("s1", 100, 1.0, "vlc.exe", "inst-a")
+    use_sessions([system_sounds, app])
+    ducker = ad.SessionDucker(duck_level=0.15)
+    ducker.start()
+    assert system_sounds.volume_calls == []
+    assert app.volume == pytest.approx(0.15)
     ducker.stop()

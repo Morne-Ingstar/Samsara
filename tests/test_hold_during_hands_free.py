@@ -466,7 +466,7 @@ class TestPreviewSuspension:
 
         overlay = StreamingOverlayQt(dim=False)
         captured = []
-        overlay.update_text = lambda text, state=None: captured.append(text)
+        overlay.update_text = lambda text, state=None, rich=False: captured.append(text)
 
         overlay.set_transcript([], "")
 

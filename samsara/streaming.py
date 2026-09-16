@@ -27,7 +27,9 @@ Locks:
 """
 
 import ctypes
+import functools
 import html
+import re
 import sys
 import threading
 import time
@@ -46,6 +48,7 @@ from samsara.runtime import thread_registry
 from samsara.session_modes import (
     SessionMode,
     is_dictate_commit,
+    is_recover_draft,
     is_scratch_that,
     match_ava_invocation,
     match_literal_payload,
@@ -53,6 +56,23 @@ from samsara.session_modes import (
 )
 from samsara.smart_corrections import smart_correct
 from samsara import config_defaults
+
+
+class _ThemeProxy:
+    """`theme.TOKEN`, without importing Qt when this module is imported.
+
+    samsara.ui.theme pulls PySide6 at import, and streaming.py deliberately
+    does not -- every Qt import in here is inside the function that needs it,
+    so the module can be imported during boot before the application exists.
+    Forwarding each attribute also means the token is read at the moment it is
+    used, which is what makes a palette switch reach this overlay at all."""
+
+    def __getattr__(self, name):
+        from samsara.ui import theme as _theme  # noqa: PLC0415
+        return getattr(_theme, name)
+
+
+theme = _ThemeProxy()
 from samsara import diagnostics
 from samsara import languages as _languages
 
@@ -166,10 +186,9 @@ OVERLAY_MAX_H = 200
 TASKBAR_RESERVE = 50
 OVERLAY_GAP_ABOVE_TASKBAR = 80
 
-BG_COLOR = "#1a1a2a"
-TEXT_COLOR = "#ffffff"
-LISTENING_BORDER = "#5fb4a2"
-DONE_BORDER = "#3ad26a"
+
+def bg_color():
+    return f"{theme.BG1}"
 FONT_FAMILY = "Segoe UI"
 FONT_SIZE = 14
 DIM_FONT_SIZE = 11
@@ -178,7 +197,222 @@ DIM_ALPHA = 0.65
 # DictatePreviewSession.set_transcript: muted color for the still-live
 # partial line, so it reads as visually distinct from settled/finalized
 # text without needing a second widget or a border-color swap per tick.
-PARTIAL_TEXT_COLOR = "#9ca3af"
+
+# ---- Idle fade (queue 75) ----------------------------------------------------
+# The hands-free DICTATE preview is the app's one continuous "alive and
+# listening" signal, so idle means faint and click-through, never gone -- a
+# hidden preview looks exactly like a crashed one. "Fully hidden" (opacity 0)
+# exists only as an explicit Settings choice; the listening indicator is
+# force-shown for the whole hands-free session (dictation.py enter_command_mode)
+# and keeps showing state either way.
+#
+# Delay default 5 s: in the owner's logs (848 pauses between hands-free
+# utterances, 2026-09) the median pause is 1.8 s and 75% are under 5.0 s, so a
+# mid-thought pause almost never fades the box; the 90th percentile is 20 s,
+# which is real idle. Opacity 0.25: still plainly a box on the dark desktop,
+# too faint to pull the eye.
+IDLE_DELAY_S_DEFAULT = 5.0
+IDLE_DELAY_S_MIN = 1.0
+IDLE_DELAY_S_MAX = 60.0
+IDLE_OPACITY_DEFAULT = 0.25
+IDLE_OPACITY_MAX = 0.9
+IDLE_DELAY_KEY = "command_mode.preview_idle_delay_s"
+IDLE_OPACITY_KEY = "command_mode.preview_idle_opacity"
+
+# Queue 104: idle stays click-through -- the box lives over other apps, and a
+# faint box that ate clicks would be the worse bug. What was missing was a way
+# back IN. Reaching for "Clear draft" on an idle box put the click straight
+# through into the app underneath, and the only remaining way to wake the box
+# was to speak -- which dictated the utterance ("ah") into the very draft the
+# owner was trying to clear. The cursor arriving over the box now wakes it,
+# polled on the tick below; see cursor_screen_pos() for why nothing
+# event-driven can work here.
+
+#: The ONE timer of an idle-enabled preview: activity poll, fade steps,
+#: the "Listening..." dots and hint rotation all run on its tick (splash_qt's
+#: single frame-timer pattern). Qt thread only.
+IDLE_TICK_MS = 50
+IDLE_FADE_MS = 400
+ELLIPSIS_STEP_MS = 400
+HINT_FIRST_AFTER_MS = 2000      # after the box has finished fading
+HINT_ROTATE_MS = 8000
+LISTENING_WORD = "Listening"
+LISTENING_TEXT = LISTENING_WORD + "..."
+
+# ---------------------------------------------------------------------------
+# Queue 85: the dictate preview is scrollable, has a clear button, and every
+# word is clickable. All of it exists only when `idle` is set (the hands-free
+# DICTATE preview); hold-to-stream keeps the plain, taller-than-nothing label.
+# ---------------------------------------------------------------------------
+
+#: The box may grow taller than the hold-to-stream one: reviewing a draft is
+#: the point. Beyond this it scrolls.
+DICTATE_OVERLAY_MAX_H = 320
+#: How close to the bottom still counts as "following the newest text".
+AUTO_FOLLOW_SLACK_PX = 4
+#: One "scroll the draft up/down" step.
+SCROLL_STEP_PX = 90
+
+
+def control_bg():
+    return f"{theme.BG2}"
+CLEAR_BUTTON_TEXT = "Clear draft"
+#: Shown while a clicked word waits for its spoken replacement.
+CORRECTION_PROMPT = 'Say the replacement for "{word}" (or say scratch that)'
+HINT_FONT_SIZE = 11
+
+#: Which commands an idle hint may teach. Only ids: the spoken phrase and what
+#: it does are read from commands_catalog.json when the preview starts, and an
+#: id the catalog does not have produces no hint -- a hint can never teach a
+#: phrase that no longer works.
+IDLE_HINT_COMMAND_IDS = (
+    "builtin.scratch_that",
+    "builtin.scratch_everything",
+    "builtin.submit",
+    "builtin.new_line",
+    "verbatim_toggle.literal_on",
+)
+
+
+class IdleSettings:
+    """Idle fade settings for one preview, read once from config."""
+
+    __slots__ = ("delay_s", "opacity")
+
+    def __init__(self, delay_s: float = IDLE_DELAY_S_DEFAULT,
+                 opacity: float = IDLE_OPACITY_DEFAULT):
+        self.delay_s = delay_s
+        self.opacity = opacity
+
+    @property
+    def fully_hidden(self) -> bool:
+        return self.opacity <= 0.0
+
+    @classmethod
+    def from_config(cls, config) -> "IdleSettings":
+        """Out-of-range or unreadable values fall back to the defaults rather
+        than to something that could hide the box by accident."""
+        section = (config or {}).get("command_mode", {}) if isinstance(config, dict) else {}
+        if not isinstance(section, dict):
+            section = {}
+
+        def _number(key, default, low, high):
+            try:
+                value = float(section.get(key, default))
+            except (TypeError, ValueError):
+                return default
+            if value != value or not (low <= value <= high):   # NaN or out of range
+                return default
+            return value
+
+        return cls(
+            delay_s=_number("preview_idle_delay_s", IDLE_DELAY_S_DEFAULT,
+                            IDLE_DELAY_S_MIN, IDLE_DELAY_S_MAX),
+            opacity=_number("preview_idle_opacity", IDLE_OPACITY_DEFAULT, 0.0, IDLE_OPACITY_MAX),
+        )
+
+
+def idle_hints_from_catalog(records) -> list:
+    """Hint lines for IDLE_HINT_COMMAND_IDS, text taken from catalog records
+    (canonical phrase + description). Missing ids are skipped; [] when the
+    catalog is unavailable."""
+    from samsara.command_catalog import canonical_phrase
+    by_id = {r.get("canonical_id"): r for r in (records or []) if isinstance(r, dict)}
+    hints = []
+    for command_id in IDLE_HINT_COMMAND_IDS:
+        record = by_id.get(command_id)
+        if record is None:
+            continue
+        try:
+            phrase = canonical_phrase(record)
+        except Exception:
+            continue
+        description = str(record.get("description") or "").strip().rstrip(".")
+        if not phrase or not description or description.lower() == phrase.lower():
+            continue
+        hints.append(f'Say "{phrase}" - {description[0].lower() + description[1:]}')
+    return hints
+
+
+def load_idle_hints() -> list:
+    try:
+        from samsara.command_catalog import load_catalog_json
+        return idle_hints_from_catalog(load_catalog_json())
+    except Exception as exc:
+        logger.debug(f"[DICTATE-PREVIEW] idle hints unavailable: {exc}")
+        return []
+
+
+if sys.platform == "win32":
+    _GWL_EXSTYLE = -20
+    _WS_EX_TRANSPARENT = 0x00000020
+    _WS_EX_LAYERED = 0x00080000
+    # Private prototypes: never set argtypes on the shared windll.user32
+    # function objects other modules call with their own conventions.
+    _GetWindowLongPtrW = ctypes.WINFUNCTYPE(ctypes.c_ssize_t, ctypes.c_void_p, ctypes.c_int)(
+        ("GetWindowLongPtrW", ctypes.windll.user32))
+    _SetWindowLongPtrW = ctypes.WINFUNCTYPE(ctypes.c_ssize_t, ctypes.c_void_p, ctypes.c_int, ctypes.c_ssize_t)(
+        ("SetWindowLongPtrW", ctypes.windll.user32))
+
+
+def set_window_click_through(widget, on: bool) -> None:
+    """Qt thread only. Make a shown top-level pass mouse input to whatever is
+    underneath (on) or take it again (off).
+
+    WA_TransparentForMouseEvents alone only stops Qt handling the click:
+    Windows still delivers it to this window, so the app underneath never gets
+    it. WS_EX_TRANSPARENT on the native window is what makes the OS hit test
+    skip it. Toggled in place, so the box is never re-shown (no flicker, no
+    activation); measured to survive setWindowOpacity (reports/75)."""
+    from PySide6.QtCore import Qt
+    widget.setAttribute(Qt.WidgetAttribute.WA_TransparentForMouseEvents, on)
+    if sys.platform == "win32":
+        hwnd = int(widget.winId())
+        style = _GetWindowLongPtrW(hwnd, _GWL_EXSTYLE)
+        style = (style | _WS_EX_TRANSPARENT | _WS_EX_LAYERED) if on else (style & ~_WS_EX_TRANSPARENT)
+        _SetWindowLongPtrW(hwnd, _GWL_EXSTYLE, style)
+    else:
+        visible = widget.isVisible()
+        widget.setWindowFlag(Qt.WindowType.WindowTransparentForInput, on)
+        if visible:
+            widget.show()
+
+
+def window_is_click_through(widget) -> bool:
+    """What the OS will do with a click on this window (tests, diagnostics)."""
+    from PySide6.QtCore import Qt
+    if sys.platform == "win32":
+        return bool(_GetWindowLongPtrW(int(widget.winId()), _GWL_EXSTYLE) & _WS_EX_TRANSPARENT)
+    return bool(widget.windowFlags() & Qt.WindowType.WindowTransparentForInput)
+
+
+def cursor_screen_pos():
+    """Queue 104. Where the pointer IS, in Qt global coordinates.
+
+    This is the whole trick, so it is worth being explicit about why the
+    obvious alternatives cannot work. An idle preview has WS_EX_TRANSPARENT
+    set (set_window_click_through above), which makes the OS hit test skip
+    the window entirely: Windows never decides the pointer is "over" it, so
+    it sends no WM_MOUSEMOVE/WM_NCHITTEST/WM_MOUSELEAVE for it, so Qt
+    synthesises no enter, leave, move or hover event. enterEvent(),
+    QEvent.HoverEnter, setMouseTracking(), an eventFilter -- every one of
+    them is downstream of a hit test that has already excluded us, and would
+    silently never fire. That is exactly the state in which the preview's
+    buttons need to become reachable again.
+
+    QCursor.pos() is not downstream of any of that. It is a device-state
+    query -- GetCursorPos on Windows -- that asks where the pointer is, not
+    which window is under it. No window need be hit-testable, focused,
+    activated or even visible for it to answer. Polling it and doing our own
+    rectangle test is hit-testing the preview ourselves, which is the only
+    way to hit-test a window the OS has been told to ignore.
+
+    Costs one user32 call. Qt global coordinates are device-independent, the
+    same space QWidget.frameGeometry() reports, so no devicePixelRatio
+    scaling belongs here (unlike the native WindowFromPoint calls in the
+    queue 75 tests, which take physical pixels)."""
+    from PySide6.QtGui import QCursor
+    return QCursor.pos()
 
 PARTIAL_BEAM = 1
 FINAL_BEAM = 5
@@ -200,14 +434,16 @@ PASTE_SETTLE_S = 0.02
 class _StreamingWidget:
     """Internal Qt widget — created on the samsara-qt thread."""
 
-    def __init__(self, dim: bool):
-        from PySide6.QtWidgets import QWidget, QHBoxLayout, QVBoxLayout, QLabel, QApplication
-        from PySide6.QtCore import Qt, QTimer, Signal, Slot
+    def __init__(self, dim: bool, idle: "IdleSettings | None" = None,
+                 activity_probe=None, hints=()):
+        from PySide6.QtWidgets import (QWidget, QHBoxLayout, QVBoxLayout, QLabel, QApplication,
+                                       QFrame, QPushButton, QScrollArea)
+        from PySide6.QtCore import Qt, QTimer, QElapsedTimer, Signal, Slot
         from PySide6.QtGui import QFont
 
         # Inline QWidget subclass so we can define Signals
         class _W(QWidget):
-            _update_sig = Signal(str, str)
+            _update_sig = Signal(str, str, str)
             _flash_sig  = Signal(object)
             _close_sig  = Signal()
 
@@ -240,11 +476,11 @@ class _StreamingWidget:
 
                 self._border = QWidget()
                 self._border.setFixedWidth(4)
-                self._border.setStyleSheet(f"background:{LISTENING_BORDER};")
+                self._border.setStyleSheet(f"background:{theme.ACCENT};")
                 lay.addWidget(self._border)
 
                 content = QWidget()
-                content.setStyleSheet(f"background:{BG_COLOR};")
+                content.setStyleSheet(f"background:{bg_color()};")
                 cLay = QVBoxLayout(content)
                 cLay.setContentsMargins(8, 10, 12, 10)
                 fs = DIM_FONT_SIZE if dim else FONT_SIZE
@@ -252,12 +488,100 @@ class _StreamingWidget:
                 self._label = QLabel(init)
                 self._label.setWordWrap(True)
                 self._label.setStyleSheet(
-                    f"color:{TEXT_COLOR};font-size:{fs}px;"
+                    f"color:{theme.TEXT_PRIMARY};font-size:{fs}px;"
                     f"font-family:'{FONT_FAMILY}';background:transparent;"
                 )
                 self._label.setMinimumWidth(OVERLAY_W - 40)
                 self._label.setMaximumWidth(OVERLAY_W - 40)
-                cLay.addWidget(self._label)
+                self._label.setAlignment(Qt.AlignmentFlag.AlignTop | Qt.AlignmentFlag.AlignLeft)
+                # Queue 85: the transcript lives in a scroll area so a draft
+                # longer than the box can be read back instead of being pushed
+                # out of sight. LinksAccessibleByMouse is what makes each word
+                # clickable (and gives the hand cursor); the label is never
+                # selectable, so a click is unambiguous.
+                self._label.setTextInteractionFlags(Qt.TextInteractionFlag.LinksAccessibleByMouse)
+                self._label.linkActivated.connect(self._on_link)
+                self._scroll = QScrollArea()
+                self._scroll.setWidget(self._label)
+                self._scroll.setWidgetResizable(True)
+                self._scroll.setFrameShape(QFrame.Shape.NoFrame)
+                self._scroll.setHorizontalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAlwaysOff)
+                self._scroll.setVerticalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAsNeeded)
+                self._scroll.setStyleSheet(
+                    "QScrollArea{background:transparent;border:none;}"
+                    "QScrollArea > QWidget > QWidget{background:transparent;}"
+                    "QScrollBar:vertical{background:transparent;width:8px;margin:0;}"
+                    f"QScrollBar::handle:vertical{{background:{theme.BORDER};"
+                    "border-radius:4px;min-height:24px;}"
+                    "QScrollBar::add-line:vertical,QScrollBar::sub-line:vertical{height:0;}"
+                    "QScrollBar::add-page:vertical,QScrollBar::sub-page:vertical{background:transparent;}"
+                )
+                cLay.addWidget(self._scroll, stretch=1)
+                # Auto-follow: stay pinned to the newest words while the view
+                # is at the bottom, and stop following the moment the user
+                # scrolls up to read. Driven by the scrollbar's own signals so
+                # a wheel, a drag and a voice scroll all behave the same.
+                bar = self._scroll.verticalScrollBar()
+                # Queue 90: set BEFORE the connects -- a signal that arrives
+                # during construction must never find these missing.
+                self._follow = True
+                #: The scroll range the current position was decided against.
+                #: A value change that comes with a different maximum is the
+                #: content resizing, not the user scrolling (see
+                #: _on_scroll_value).
+                self._known_max = 0
+                bar.valueChanged.connect(self._on_scroll_value)
+                bar.rangeChanged.connect(self._on_scroll_range)
+                # Idle hint: its own row BELOW the transcript label, so it
+                # never sits where dictated text appears; hidden whenever the
+                # box is active.
+                self._hint = QLabel("")
+                self._hint.setWordWrap(True)
+                self._hint.setStyleSheet(
+                    f"color:{theme.TEXT_SECONDARY};font-size:{HINT_FONT_SIZE}px;"
+                    f"font-family:'{FONT_FAMILY}';background:transparent;"
+                )
+                self._hint.setMinimumWidth(OVERLAY_W - 40)
+                self._hint.setMaximumWidth(OVERLAY_W - 40)
+                self._hint.hide()
+                cLay.addWidget(self._hint)
+
+                # Queue 85: the correction prompt ("say the replacement for
+                # X"), its own row so it never overwrites the transcript.
+                self._prompt = QLabel("")
+                self._prompt.setWordWrap(True)
+                self._prompt.setStyleSheet(
+                    f"color:{theme.WARNING};font-size:{HINT_FONT_SIZE}px;"
+                    f"font-family:'{FONT_FAMILY}';background:transparent;"
+                )
+                self._prompt.setMinimumWidth(OVERLAY_W - 40)
+                self._prompt.setMaximumWidth(OVERLAY_W - 40)
+                self._prompt.hide()
+                cLay.addWidget(self._prompt)
+
+                # Controls. Their visibility IS the "you can click me" signal:
+                # they appear only while the box is interactive, and go away
+                # with the fade that makes it click-through.
+                self._controls = QWidget()
+                self._controls.setStyleSheet("background:transparent;")
+                bLay = QHBoxLayout(self._controls)
+                bLay.setContentsMargins(0, 4, 0, 0)
+                bLay.setSpacing(8)
+                self._clear_btn = QPushButton(CLEAR_BUTTON_TEXT)
+                self._clear_btn.setCursor(Qt.CursorShape.PointingHandCursor)
+                self._clear_btn.setFocusPolicy(Qt.FocusPolicy.NoFocus)
+                self._clear_btn.setStyleSheet(
+                    f"QPushButton{{background:{control_bg()};color:{theme.TEXT_PRIMARY};"
+                    f"border:1px solid {theme.BORDER};border-radius:5px;"
+                    f"padding:3px 10px;font-size:{HINT_FONT_SIZE}px;"
+                    f"font-family:'{FONT_FAMILY}';}}"
+                    f"QPushButton:hover{{border-color:{theme.ACCENT};}}"
+                )
+                self._clear_btn.clicked.connect(self._on_clear_clicked)
+                bLay.addWidget(self._clear_btn)
+                bLay.addStretch(1)
+                self._controls.hide()
+                cLay.addWidget(self._controls)
                 lay.addWidget(content, stretch=1)
 
                 self.setFixedWidth(OVERLAY_W)
@@ -267,41 +591,412 @@ class _StreamingWidget:
                 self._flash_sig.connect(self._on_flash)
                 self._close_sig.connect(self._on_close)
 
+                # Queue 75 idle state. None of this exists for hold-to-stream
+                # (idle is None): that box only lives while a key is held.
+                self._idle = None
+                self._activity_probe = None
+                self._hints = []
+                self._life_timer = None
+                self._clock = QElapsedTimer()
+                self._clock.start()
+                self._reduced_motion = False
+                self._faded = False
+                self._click_through = False
+                self._fade_from = self._fade_to = self._active_alpha = DIM_ALPHA if dim else ALPHA
+                self._fade_started_ms = None
+                self._last_active_ms = 0
+                self._idle_started_ms = 0
+                self._last_content = None
+                self._placeholder_prefix = ""      # label shows the Listening placeholder
+                self._dots_shown = 3
+                self._hint_index = -1
+                self._hint_shown_ms = None
+                # Queue 85. Callbacks are set by enable_interaction and dropped
+                # by stop_life, so the widget holds no session reference at
+                # close (queue 60's rule).
+                self._on_word_clicked = None
+                self._on_clear = None
+                self._interactive = False
+                self._has_draft = False
+
+            # ---- queue 85: scrolling, clear, click-to-correct ---------------
+
+            def enable_interaction(self, on_word_clicked, on_clear):
+                self._on_word_clicked = on_word_clicked
+                self._on_clear = on_clear
+
+            def _on_scroll_value(self, value):
+                """The user (or a voice scroll) moved the view: follow the
+                newest text only while the bottom is in sight.
+
+                Queue 90: a value change that arrives with a DIFFERENT maximum
+                is the draft growing or shrinking under the view -- Qt moves
+                the range and clamps the value itself -- and must never be read
+                as the user having scrolled. Only a move within an unchanged
+                range is a deliberate scroll."""
+                bar = self._scroll.verticalScrollBar()
+                if bar.maximum() != self._known_max:
+                    self._known_max = bar.maximum()
+                    if self._follow:
+                        bar.setValue(bar.maximum())
+                    return
+                self._follow = value >= bar.maximum() - AUTO_FOLLOW_SLACK_PX
+
+            def _on_scroll_range(self, _minimum, maximum):
+                """The transcript got taller or shorter. That is never the user
+                scrolling, so the stored intent survives it: pin to the bottom
+                if we were following, and leave the view exactly where the user
+                put it if we were not."""
+                self._known_max = maximum
+                if self._follow:
+                    self._scroll.verticalScrollBar().setValue(maximum)
+
+            def scroll_draft(self, where: str) -> None:
+                bar = self._scroll.verticalScrollBar()
+                if where == "top":
+                    bar.setValue(bar.minimum())
+                elif where == "bottom":
+                    bar.setValue(bar.maximum())
+                elif where == "up":
+                    bar.setValue(bar.value() - SCROLL_STEP_PX)
+                else:
+                    bar.setValue(bar.value() + SCROLL_STEP_PX)
+                self._follow = bar.value() >= bar.maximum() - AUTO_FOLLOW_SLACK_PX
+
+            def set_prompt(self, text: str) -> None:
+                text = text or ""
+                if text:
+                    self._prompt.setText(text)
+                    if not self._prompt.isVisible():
+                        self._prompt.show()
+                elif self._prompt.isVisible():
+                    self._prompt.hide()
+                self._position()
+
+            def _refresh_controls(self) -> None:
+                """The controls are visible exactly when the box takes clicks:
+                that is the user-visible difference between interactive and
+                click-through."""
+                if self._idle is None:
+                    return
+                show = self._interactive and self._has_draft
+                if show != self._controls.isVisible():
+                    self._controls.setVisible(show)
+                    self._position()
+
+            def _on_link(self, href: str) -> None:
+                if self._on_word_clicked is None or not href.startswith(WORD_LINK_PREFIX):
+                    return
+                try:
+                    index = int(href[len(WORD_LINK_PREFIX):])
+                except ValueError:
+                    return
+                try:
+                    self._on_word_clicked(index)
+                except Exception as exc:
+                    logger.warning(f"[DICTATE-PREVIEW] word click failed: {exc}")
+
+            def _on_clear_clicked(self) -> None:
+                if self._on_clear is None:
+                    return
+                try:
+                    self._on_clear()
+                except Exception as exc:
+                    logger.warning(f"[DICTATE-PREVIEW] clear button failed: {exc}")
+
+            # ---- idle fade (queue 75), Qt thread only -----------------------
+
+            def enable_idle(self, idle, activity_probe, hints):
+                from samsara.ui.splash_qt import _system_reduced_motion
+                self._idle = idle
+                self._activity_probe = activity_probe
+                self._hints = list(hints or ())
+                self._reduced_motion = _system_reduced_motion()
+                self._life_timer = QTimer(self)     # child: dies with the widget
+                self._life_timer.setInterval(IDLE_TICK_MS)
+                self._life_timer.timeout.connect(self._life_tick)
+
+            def stop_life(self):
+                """Stop the idle timer and drop every outside reference. Called
+                by StreamingOverlayQt._dispose_on_qt before hide/deleteLater."""
+                if self._life_timer is not None:
+                    self._life_timer.stop()
+                self._activity_probe = None
+                self._hints = []
+                # Queue 85: the interaction callbacks reference the preview
+                # session; drop them here for the same reason as the probe.
+                self._on_word_clicked = None
+                self._on_clear = None
+
+            def _now(self):
+                return self._clock.elapsed()
+
+            def _set_opacity(self, value):
+                self.setWindowOpacity(max(0.0, min(1.0, value)))
+
+            def _set_click_through(self, on):
+                if on == self._click_through:
+                    return
+                try:
+                    set_window_click_through(self, on)
+                    self._click_through = on
+                except Exception as exc:
+                    logger.debug(f"[DICTATE-PREVIEW] click-through {on} failed: {exc}")
+
+            def _hide_hint(self):
+                self._hint_shown_ms = None
+                if self._hint.isVisible():
+                    self._hint.hide()
+                    self._position()
+
+            def mark_active(self):
+                """Speech, new text or the cursor arriving over the box: full
+                opacity in ONE step (the first words are the ones the user
+                wants to read), clickable, no hint.
+
+                Queue 104 reuses this unchanged as the hover wake path, on
+                purpose -- a box woken by the mouse must be in exactly the
+                state a box woken by speech is in, or "Clear draft" would be
+                visible in one and not the other."""
+                if self._idle is None:
+                    return
+                self._last_active_ms = self._now()
+                self._hide_hint()
+                if self._faded or self._fade_started_ms is not None:
+                    self._faded = False
+                    self._fade_started_ms = None
+                    self._set_opacity(self._active_alpha)
+                    self._set_click_through(False)
+                    self._interactive = True
+                    self._refresh_controls()
+
+            def _begin_idle(self, now):
+                self._faded = True
+                self._idle_started_ms = now
+                self._set_click_through(True)
+                # Click-through and "click a word" cannot both be true: the
+                # controls disappear with the fade, so what you see matches
+                # what the window will accept.
+                self._interactive = False
+                self._refresh_controls()
+                target = self._idle.opacity
+                if self._reduced_motion:
+                    self._set_opacity(target)
+                else:
+                    self._fade_from, self._fade_to = self.windowOpacity(), target
+                    self._fade_started_ms = now
+
+            def _speech_now(self):
+                probe = self._activity_probe
+                if probe is None:
+                    return False
+                try:
+                    return bool(probe())
+                except Exception as exc:
+                    logger.debug(f"[DICTATE-PREVIEW] activity probe failed: {exc}")
+                    return False
+
+            def _cursor_inside(self):
+                """Queue 104. True while the pointer is over the box's screen
+                rect -- the preview hit-testing itself, because the OS has
+                been told not to (see cursor_screen_pos above).
+
+                Deliberately NOT true when the idle opacity is 0. A fully
+                hidden preview is still a rectangle Windows will hit-test the
+                moment WS_EX_TRANSPARENT comes off, so waking it on hover
+                would materialise an invisible 460 px box under the cursor
+                and start it eating the clicks it had been letting through --
+                a worse defect than the one being fixed, and invisible to the
+                user trying to diagnose it. "Hide the preview completely" is
+                an explicit Settings choice; it keeps the pre-104 behaviour,
+                where speech is the way back. Same bail-out as _tick_hint.
+
+                Reads frameGeometry(), not geometry(): the frame rect is what
+                the OS hit-tests. They are equal for this frameless window,
+                so this is a statement of intent rather than a correction.
+                """
+                if self._idle is None or self._idle.fully_hidden:
+                    return False
+                try:
+                    return self.frameGeometry().contains(cursor_screen_pos())
+                except Exception as exc:
+                    logger.debug(f"[DICTATE-PREVIEW] cursor probe failed: {exc}")
+                    return False
+
+            def _life_tick(self):
+                # Queue 104: the isVisible() gate is also what stops the
+                # cursor poll running for a hidden box. It is not an
+                # optimisation there -- a closed/flashed-out preview that
+                # still had a live tick would otherwise keep querying the
+                # pointer against a stale rect.
+                if self._idle is None or not self.isVisible():
+                    return
+                now = self._now()
+                # Queue 104: hover is activity, and treated as activity on
+                # EVERY tick it holds, not just the entering one. That is what
+                # makes the box stay awake for as long as the pointer is on it
+                # (_last_active_ms keeps moving) and makes the idle countdown
+                # restart from the moment the pointer leaves (the last tick
+                # inside was the last bump) -- with no enter/leave state of
+                # our own to get out of step with the real pointer.
+                # `or` short-circuits: no cursor query while speech is live.
+                if self._speech_now() or self._cursor_inside():
+                    self.mark_active()
+                if self._fade_started_ms is not None:
+                    fraction = min(1.0, (now - self._fade_started_ms) / IDLE_FADE_MS)
+                    self._set_opacity(self._fade_from + (self._fade_to - self._fade_from) * fraction)
+                    if fraction >= 1.0:
+                        self._fade_started_ms = None
+                        self._idle_started_ms = now
+                elif not self._faded and now - self._last_active_ms >= self._idle.delay_s * 1000:
+                    self._begin_idle(now)
+                self._tick_dots(now)
+                self._tick_hint(now)
+
+            def _tick_dots(self, now):
+                if self._placeholder_prefix is None or self._reduced_motion:
+                    return
+                dots = 1 + (now // ELLIPSIS_STEP_MS) % 3
+                if dots != self._dots_shown:
+                    self._dots_shown = dots
+                    self._label.setText(self._placeholder_prefix + LISTENING_WORD + "." * dots)
+
+            def _tick_hint(self, now):
+                if (not self._faded or self._fade_started_ms is not None or not self._hints
+                        or self._idle.fully_hidden):
+                    return
+                due = (now - self._idle_started_ms >= HINT_FIRST_AFTER_MS if self._hint_shown_ms is None
+                       else now - self._hint_shown_ms >= HINT_ROTATE_MS)
+                if not due:
+                    return
+                self._hint_index = (self._hint_index + 1) % len(self._hints)
+                self._hint.setText(self._hints[self._hint_index])
+                self._hint_shown_ms = now
+                if not self._hint.isVisible():
+                    self._hint.show()
+                    self._position()
+
             def show_overlay(self):
-                self._border.setStyleSheet(f"background:{LISTENING_BORDER};")
+                self._border.setStyleSheet(f"background:{theme.ACCENT};")
                 self._fade_timer.stop()
                 self.setWindowOpacity(DIM_ALPHA if self._dim else ALPHA)
                 self._fade_alpha = DIM_ALPHA if self._dim else ALPHA
                 self._position()
                 self.show()
                 self.raise_()
+                if self._life_timer is not None:
+                    self._faded = False
+                    self._fade_started_ms = None
+                    self._last_active_ms = self._now()
+                    self._interactive = True
+                    self._refresh_controls()
+                    self._life_timer.start()
+
+            def _transcript_height(self) -> int:
+                """The height the transcript text actually needs at the box's
+                width, measured with the label's own minimum out of the way.
+
+                Queue 90, the cause of BOTH reported defects. Qt's
+                QLabel::heightForWidth() returns
+                `sizeForWidth(w).expandedTo(minimumSize())`, so feeding its
+                answer straight back into setMinimumHeight() -- as queue 85 did
+                -- turns the minimum into a RATCHET: every later measurement
+                reads back max(text height, previous minimum) and the label can
+                only ever get taller. Proof, on a one-line label 460 px wide:
+                heightForWidth is 16 with the minimum at 0, 418 with the
+                minimum at 418, and 16 again once the minimum is cleared.
+
+                What the owner saw: the box grew to 320 px and stayed there
+                after a commit or a clear ("once it goes up it doesn't shrink
+                back down"), and the label kept its high-water height with the
+                short new draft sitting at the TOP of it -- so following the
+                bottom scrolled to the bottom of blank space and the words
+                being spoken were above the visible area ("all the things I'm
+                saying I can't see, because they're at the top of the window").
+                """
+                label = self._label
+                if label.minimumHeight():
+                    label.setMinimumHeight(0)
+                return label.heightForWidth(OVERLAY_W - 40)
 
             def _position(self):
                 scr = QApplication.primaryScreen().availableGeometry()
-                hint_h = self._label.heightForWidth(OVERLAY_W - 40)
+                hint_h = self._transcript_height()
+                if self._idle is not None:
+                    # A word-wrapped QLabel's sizeHint ignores the wrapped
+                    # height, and QScrollArea sizes its widget by that hint --
+                    # so without this the scroll range stays ~0 however long
+                    # the draft gets, and the text is simply clipped.
+                    self._label.setMinimumHeight(hint_h)
+                if self._hint.isVisible():
+                    hint_h += self._hint.heightForWidth(OVERLAY_W - 40) + 6
+                if self._prompt.isVisible():
+                    hint_h += self._prompt.heightForWidth(OVERLAY_W - 40) + 6
+                if self._controls.isVisible():
+                    hint_h += self._controls.sizeHint().height() + 4
+                # Queue 85: the dictate preview may grow taller before it
+                # starts scrolling -- reading the draft back is the point.
+                max_h = OVERLAY_MAX_H if self._idle is None else DICTATE_OVERLAY_MAX_H
                 req_h  = max(OVERLAY_MIN_H,
-                             min(OVERLAY_MAX_H, hint_h + 20))
+                             min(max_h, hint_h + 20))
                 self.setFixedHeight(req_h)
                 x = scr.left() + (scr.width() - OVERLAY_W) // 2
                 y = scr.bottom() - TASKBAR_RESERVE - OVERLAY_GAP_ABOVE_TASKBAR - req_h
                 self.move(x, y)
 
-            def _on_update(self, text, state):
+            def _on_update(self, text, state, text_format="auto"):
+                if self._idle is not None:
+                    # Queue 90: following is NOT re-derived from the scrollbar
+                    # here any more. New text always changes the label's height,
+                    # and the layout can move the range before this runs --
+                    # reading "value < maximum" at that moment says "the user
+                    # scrolled up" when all that happened is that the draft got
+                    # taller, and following would never switch back on by
+                    # itself. The intent lives in self._follow and is changed
+                    # only by a real scroll (_on_scroll_value / scroll_draft).
+                    if state == StreamingOverlayQt.STATE_PLACEHOLDER:
+                        # A commit or a clear: there is no draft left to be
+                        # scrolled up inside, so whatever is said next is
+                        # followed again.
+                        self._follow = True
+                        self._placeholder_prefix = text[:-len(LISTENING_TEXT)] if text.endswith(LISTENING_TEXT) else text
+                        self._dots_shown = 3
+                    else:
+                        self._placeholder_prefix = None
+                        if text != self._last_content:
+                            # Before the text is set: the hint is gone and the
+                            # box is at full opacity when the words appear.
+                            self.mark_active()
+                        self._last_content = text
+                # Queue 55: the preview transcript is escaped HTML. Left on
+                # AutoText, Qt's mightBeRichText() guessed PLAIN for a line
+                # with no tag, and the escaped apostrophe showed literally
+                # as "it&#x27;s". HTML callers now say so explicitly.
+                self._label.setTextFormat({
+                    "rich": Qt.TextFormat.RichText,
+                    "plain": Qt.TextFormat.PlainText,
+                }.get(text_format, Qt.TextFormat.AutoText))
                 self._label.setText(text)
+                if self._idle is not None:
+                    # Only a real transcript gets the clear button: the
+                    # "Listening..." placeholder is not a draft.
+                    self._has_draft = state != StreamingOverlayQt.STATE_PLACEHOLDER and bool(text)
+                    self._refresh_controls()
                 if state == "done":
-                    self._border.setStyleSheet(f"background:{DONE_BORDER};")
+                    self._border.setStyleSheet(f"background:{theme.SUCCESS};")
                 elif state:
-                    self._border.setStyleSheet(f"background:{LISTENING_BORDER};")
+                    self._border.setStyleSheet(f"background:{theme.ACCENT};")
                 self._position()
 
             def _on_flash(self, on_complete):
                 self._on_complete = on_complete
-                self._border.setStyleSheet(f"background:{DONE_BORDER};")
+                self._border.setStyleSheet(f"background:{theme.SUCCESS};")
                 self._fade_alpha = DIM_ALPHA if self._dim else ALPHA
                 self._fade_timer.start()
 
             def _on_close(self):
                 self._fade_timer.stop()
+                self.stop_life()
                 self.hide()
                 cb, self._on_complete = self._on_complete, None
                 if cb:
@@ -319,11 +1014,20 @@ class _StreamingWidget:
                 self.setWindowOpacity(max(0.0, self._fade_alpha))
 
         self._w = _W(dim)
+        if idle is not None:
+            self._w.enable_idle(idle, activity_probe, hints)
 
     def show_overlay(self):      self._w.show_overlay()
-    def update(self, text, st):  self._w._update_sig.emit(text, st or "")
+    def stop_life(self):         self._w.stop_life()
+    def update(self, text, st, text_format="auto"):
+        self._w._update_sig.emit(text, st or "", text_format)
     def flash(self, cb):         self._w._flash_sig.emit(cb)
     def close(self):             self._w._close_sig.emit()
+    # Queue 85. Called on the Qt thread (StreamingOverlayQt posts them).
+    def enable_interaction(self, on_word_clicked, on_clear):
+        self._w.enable_interaction(on_word_clicked, on_clear)
+    def set_prompt(self, text):  self._w.set_prompt(text)
+    def scroll_draft(self, where): self._w.scroll_draft(where)
 
 
 def _safe_str(value) -> str:
@@ -344,7 +1048,33 @@ def _safe_str(value) -> str:
     return value
 
 
-def _join_dictate_fragments(finalized_lines) -> str:
+#: One "word" of the draft, for click-to-correct. Letters, digits, apostrophes
+#: and inner hyphens; surrounding punctuation is never part of the target, so
+#: clicking "Ingstar," corrects "Ingstar".
+_WORD_RE = re.compile(r"[^\W_]+(?:['’-][^\W_]+)*", re.UNICODE)
+#: href scheme for a clickable word: "w:<index into word_targets()>".
+WORD_LINK_PREFIX = "w:"
+
+
+def word_targets(finalized_lines) -> list:
+    """[(word, occurrence)] for every clickable word of the joined draft, in
+    render order. `occurrence` is how many identical words came before it, so
+    the session can replace the RIGHT "that" rather than the first one.
+
+    The renderer below walks the fragments with the same regex in the same
+    order, so index i here is exactly the word behind href "w:i". Sharing this
+    function is what keeps the map and the anchors from drifting apart."""
+    targets, counts = [], {}
+    for line in finalized_lines or []:
+        for match in _WORD_RE.finditer(_safe_str(line) or ""):
+            word = match.group(0)
+            occurrence = counts.get(word, 0)
+            counts[word] = occurrence + 1
+            targets.append((word, occurrence))
+    return targets
+
+
+def _join_dictate_fragments(finalized_lines, link_words: bool = False) -> str:
     """Join DictatePreviewSession's finalized fragments into one HTML
     string for StreamingOverlayQt.set_transcript -- see that method's
     DEFECT 2 note. Same-thought fragments join with a single space; an
@@ -353,10 +1083,32 @@ def _join_dictate_fragments(finalized_lines) -> str:
     never gets an extra leading space glued onto whatever follows it.
     """
     joined = ""
+    index = 0
     for t in finalized_lines:
         if not t:
             continue
-        escaped = html.escape(_safe_str(t)).replace("\r\n", "<br>").replace("\n", "<br>")
+        text = _safe_str(t)
+        if link_words:
+            # Queue 85: every word is an anchor, so a click identifies one
+            # word. Escaping is unchanged -- each piece still goes through
+            # html.escape (queue 55: the apostrophe that rendered as "&#x27;"
+            # was an AutoText guess, not the escaping), and the anchor carries
+            # an explicit colour because Qt would otherwise paint links blue
+            # and underline the whole transcript.
+            parts, pos = [], 0
+            for match in _WORD_RE.finditer(text):
+                parts.append(html.escape(text[pos:match.start()]))
+                parts.append(
+                    f'<a href="{WORD_LINK_PREFIX}{index}" style="color:{theme.TEXT_PRIMARY};'
+                    f'text-decoration:none;">{html.escape(match.group(0))}</a>'
+                )
+                index += 1
+                pos = match.end()
+            parts.append(html.escape(text[pos:]))
+            escaped = "".join(parts)
+        else:
+            escaped = html.escape(text)
+        escaped = escaped.replace("\r\n", "<br>").replace("\n", "<br>")
         if not joined or joined.endswith("<br>"):
             joined += escaped
         else:
@@ -364,47 +1116,126 @@ def _join_dictate_fragments(finalized_lines) -> str:
     return joined
 
 
+#: Strong references to every live overlay widget. Added and removed ONLY on
+#: the Qt thread (StreamingOverlayQt._show_on_qt / _dispose_on_qt), so the
+#: Python wrapper of a top-level QWidget can never reach refcount zero -- and
+#: have Shiboken delete the C++ widget -- on any other thread. See
+#: StreamingOverlayQt's docstring (queue 60).
+_LIVE_WIDGETS: "set[_StreamingWidget]" = set()
+
+
 class StreamingOverlayQt:
     """Thread-safe Qt drop-in for StreamingOverlay.
 
-    Public API is identical.  Widget is created lazily on the samsara-qt
-    thread on first show() so it never touches Qt from the Tk main thread.
+    Public API is identical and may be called from any thread. Every widget
+    operation -- create, update, flash, close, destroy -- is posted to the
+    samsara-qt thread and runs there, in posting order.
+
+    Queue 60 (2026-09-14, two process deaths): the DICTATE-lane preview is
+    torn down by a mode switch on the hands-free utterance thread. close()
+    used to emit a queued close signal and return; the caller then dropped
+    the last reference to this object, and Shiboken destroyed the parentless
+    top-level QWidget on THAT thread while the Qt thread was still dispatching
+    the close/update events queued for it -- "Windows fatal exception: access
+    violation" on the Qt thread. Now the only strong reference to a live
+    widget is _LIVE_WIDGETS, released on the Qt thread after hide() and
+    deleteLater(), so it does not matter which thread drops this object.
     """
 
     STATE_LISTENING  = "listening"
     STATE_PROCESSING = "processing"
     STATE_DONE       = "done"
+    #: Nothing dictated yet: the label is the "Listening..." placeholder whose
+    #: dots animate. Styled like STATE_LISTENING; not activity for the fade.
+    STATE_PLACEHOLDER = "placeholder"
 
-    def __init__(self, dim: bool = False):
+    def __init__(self, dim: bool = False, idle: "IdleSettings | None" = None,
+                 activity_probe=None):
         self._dim    = dim
-        self._widget: "_StreamingWidget | None" = None
+        self._widget: "_StreamingWidget | None" = None   # read/written on the Qt thread only
+        # Queue 75: set before show(); read on the Qt thread when the widget is
+        # created. The probe is called on the Qt thread and must only read
+        # plain Python state (never a Qt object of another thread).
+        self._idle = idle
+        self._activity_probe = activity_probe
+        self.idle_hints: list = []
+        # Queue 85: set before show(); attached to the widget on the Qt thread.
+        # Both are called ON the Qt thread when the user clicks.
+        self._on_word_clicked = None
+        self._on_clear = None
 
-    def _ensure(self):
-        """Create the widget on the Qt thread if not already done."""
-        from PySide6.QtWidgets import QApplication
-        from PySide6.QtCore import QTimer
-        qt_app = QApplication.instance()
-        if qt_app is None or self._widget is not None:
-            return
-        def _make():
-            self._widget = _StreamingWidget(self._dim)
-        QTimer.singleShot(0, qt_app, _make)
+    def set_interaction_callbacks(self, on_word_clicked, on_clear) -> None:
+        self._on_word_clicked = on_word_clicked
+        self._on_clear = on_clear
 
-    def show(self):
+    def _new_widget(self) -> "_StreamingWidget":
+        widget = _StreamingWidget(self._dim, self._idle, self._activity_probe, self.idle_hints)
+        if self._on_word_clicked is not None or self._on_clear is not None:
+            widget.enable_interaction(self._on_word_clicked, self._on_clear)
+        return widget
+
+    @staticmethod
+    def _post(fn) -> bool:
+        """Run fn on the Qt thread (FIFO with every other post). False when
+        there is no QApplication (headless tests): nothing to render."""
         from PySide6.QtWidgets import QApplication
         from PySide6.QtCore import QTimer
         qt_app = QApplication.instance()
         if qt_app is None:
-            return
-        def _show():
-            if self._widget is None:
-                self._widget = _StreamingWidget(self._dim)
-            self._widget.show_overlay()
-        QTimer.singleShot(0, qt_app, _show)
+            return False
+        QTimer.singleShot(0, qt_app, fn)
+        return True
 
-    def update_text(self, text, state=None):
-        if self._widget is not None:
-            self._widget.update(text or "", state or "")
+    def _show_on_qt(self):
+        if self._widget is None:
+            self._widget = self._new_widget()
+            _LIVE_WIDGETS.add(self._widget)
+        self._widget.show_overlay()
+
+    def _dispose_on_qt(self):
+        """Qt thread only. hide() + deleteLater(); the strong reference in
+        _LIVE_WIDGETS is dropped from the widget's own `destroyed` signal,
+        i.e. only once Qt has deleted it. Dropping it here instead could free
+        the Python wrapper -- and with it the C++ widget -- synchronously,
+        which is fatal when this runs from inside the widget's own slot (a
+        fade's completion callback does)."""
+        widget, self._widget = self._widget, None
+        if widget is None:
+            return
+        try:
+            # Queue 75: the idle timer is a child of the widget, created and
+            # started on this thread. Stopped here, before hide/deleteLater, so
+            # no tick can run between the close and the deletion, and the
+            # activity probe (a reference to the session and app) is dropped
+            # now rather than when Qt finally deletes the widget.
+            widget.stop_life()
+            widget._w.destroyed.connect(functools.partial(_LIVE_WIDGETS.discard, widget))
+            widget._w.hide()
+            widget._w.deleteLater()
+        except Exception as exc:
+            logger.warning(f"[STREAM] overlay dispose failed (widget kept alive, hidden if possible): {exc}")
+
+    def _ensure(self):
+        """Create the widget on the Qt thread if not already done."""
+        def _make():
+            if self._widget is None:
+                self._widget = self._new_widget()
+                _LIVE_WIDGETS.add(self._widget)
+        self._post(_make)
+
+    def show(self):
+        self._post(self._show_on_qt)
+
+    def update_text(self, text, state=None, *, rich=False):
+        """rich=True: `text` is escaped HTML and is rendered as rich text
+        unconditionally. Otherwise Qt's AutoText detection applies, as before
+        (hold-to-stream partials pass raw transcript text)."""
+        text, state, fmt = text or "", state or "", "rich" if rich else "auto"
+
+        def _update():
+            if self._widget is not None:
+                self._widget.update(text, state, fmt)
+        self._post(_update)
 
     def set_literal_badge(self, on: bool) -> None:
         """Show/hide the "literal" badge while the VERBATIM profile is forced
@@ -417,19 +1248,33 @@ class StreamingOverlayQt:
         if not getattr(self, "_literal_badge", False):
             return ""
         return (
-            f'<span style="color:{PARTIAL_TEXT_COLOR};font-style:normal;">'
+            f'<span style="color:{theme.TEXT_SECONDARY};font-style:normal;">'
             f'[literal]</span> '
         )
 
-    def set_transcript(self, finalized_lines, partial):
+    def set_prompt(self, text: str) -> None:
+        """Queue 85: the correction prompt row ("" hides it)."""
+        def _apply():
+            if self._widget is not None:
+                self._widget.set_prompt(text)
+        self._post(_apply)
+
+    def scroll_draft(self, where: str) -> None:
+        """Queue 85: "top" | "bottom" | "up" | "down". Any thread."""
+        def _apply():
+            if self._widget is not None:
+                self._widget.scroll_draft(where)
+        self._post(_apply)
+
+    def set_transcript(self, finalized_lines, partial, link_words: bool = False):
         """DictatePreviewSession's rolling-transcript renderer: settled
         finalized utterances (plain text) with the current live partial
         appended in a visually distinct (dimmer, italic) style. Minimal
         addition on top of the existing update() plumbing -- no new Qt
-        signal/slot pair, just the HTML this builds; QLabel's default
-        AutoText format renders it as rich text as soon as it sees the
-        <br>/<span> tags (plain text, e.g. a single finalized line with no
-        live partial, renders exactly as before).
+        signal/slot pair, just the HTML this builds, always sent with
+        rich=True. (Queue 55: it used to rely on QLabel's AutoText guess,
+        which read a single finalized line with no <br>/<span> as PLAIN
+        text and displayed its escaped apostrophe as "&#x27;".)
 
         Text is HTML-escaped since it originates from Whisper transcription
         (untrusted-ish free text) -- a spoken "less than 5" or similar must
@@ -445,17 +1290,20 @@ class StreamingOverlayQt:
         samsara/formatting_tokens.py's "new line"/"new paragraph" -> \\n),
         never merely because it's a separate accumulated fragment.
         """
-        finalized_html = _join_dictate_fragments(finalized_lines)
+        finalized_html = _join_dictate_fragments(finalized_lines, link_words=link_words)
         if partial:
             partial_html = (
-                f'<span style="color:{PARTIAL_TEXT_COLOR};font-style:italic;">'
+                f'<span style="color:{theme.TEXT_SECONDARY};font-style:italic;">'
                 f'{html.escape(_safe_str(partial))}</span>'
             )
             combined = f"{finalized_html}<br>{partial_html}" if finalized_html else partial_html
         else:
             combined = finalized_html
         badge = self._badge_html()
-        self.update_text(badge + (combined or "Listening..."), self.STATE_LISTENING)
+        if combined:
+            self.update_text(badge + combined, self.STATE_LISTENING, rich=True)
+        else:
+            self.update_text(badge + LISTENING_TEXT, self.STATE_PLACEHOLDER, rich=True)
 
     def set_paused(self, finalized_lines):
         """hands_free.suspend_on_hold (2026-09-11): the toggle-DICTATE
@@ -466,21 +1314,32 @@ class StreamingOverlayQt:
         "Listening..." once the hold releases."""
         finalized_html = _join_dictate_fragments(finalized_lines)
         paused_html = (
-            f'<span style="color:{PARTIAL_TEXT_COLOR};font-style:italic;">'
+            f'<span style="color:{theme.TEXT_SECONDARY};font-style:italic;">'
             f'Paused (hold)</span>'
         )
         combined = f"{finalized_html}<br>{paused_html}" if finalized_html else paused_html
-        self.update_text(combined, self.STATE_LISTENING)
+        self.update_text(combined, self.STATE_LISTENING, rich=True)
 
     def flash_done_and_fade(self, on_complete):
-        if self._widget is not None:
-            self._widget.flash(on_complete)
-        elif on_complete:
+        """Flash, fade, then dispose the widget (on the Qt thread) and call
+        on_complete. A hold-to-stream session never calls close() after a
+        fade, so the fade's end is where its widget is released."""
+        def _complete():
+            self._dispose_on_qt()
+            if on_complete:
+                on_complete()
+
+        def _flash():
+            if self._widget is not None:
+                self._widget.flash(_complete)
+            else:
+                _complete()
+        if not self._post(_flash) and on_complete:
             on_complete()
 
     def close(self):
-        if self._widget is not None:
-            self._widget.close()
+        """Hide and destroy the widget on the Qt thread. Idempotent, any thread."""
+        self._post(self._dispose_on_qt)
 
 
 class StreamingWorker(threading.Thread):
@@ -1091,7 +1950,12 @@ class StreamingSession:
 # trivial to test, and a toggle-DICTATE utterance is naturally one
 # spoken thought (silence-bounded), so "last few thoughts" reads more
 # naturally here than "last N seconds" would.
-DICTATE_PREVIEW_TRANSCRIPT_MAX_UTTERANCES = 4
+#: Queue 85: the box scrolls now, so the transcript no longer has to throw the
+#: user's earlier sentences away to stay on screen ("if you say more than two
+#: sentences it starts pushing sentences up and out of the box"). This is only
+#: a runaway guard: every fragment here belongs to ONE staged thought, and the
+#: list is cleared at each commit.
+DICTATE_PREVIEW_TRANSCRIPT_MAX_UTTERANCES = 120
 
 
 class DictatePreviewSession:
@@ -1107,8 +1971,12 @@ class DictatePreviewSession:
     def __init__(self, app):
         self.app = app
         self._stop_event = threading.Event()
-        self._overlay = StreamingOverlayQt(dim=False)
         self._closed = False
+        # Queue 75: faint + click-through when nobody is speaking. Read once
+        # per DICTATE entry, so a Settings change applies from the next entry.
+        self.idle = IdleSettings.from_config(getattr(app, "config", None))
+        self._overlay = StreamingOverlayQt(dim=False, idle=self.idle,
+                                           activity_probe=self._speech_active)
         # Session-scoped rolling transcript -- see module comment above and
         # on_utterance_final below. A fresh DictatePreviewSession is
         # constructed on every DICTATE re-entry (dictation.py's
@@ -1125,12 +1993,31 @@ class DictatePreviewSession:
         # still mid-decode when a commit landed used to render its
         # now-stale text over the just-cleared transcript).
         self._generation = 0
+        # Queue 85: [(word, occurrence)] for the text currently on screen, in
+        # render order. Rebuilt by _render from the SAME helper the renderer
+        # uses, so href "w:i" and self._words[i] are the same word.
+        self._words: list = []
+        # True between a word click and the utterance that answers it: that
+        # utterance is a replacement, never a new dictation fragment.
+        self._correction_armed = False
+        self._overlay.set_interaction_callbacks(self._on_word_clicked, self._on_clear_clicked)
 
     # ---- Public lifecycle (call from the session/mode-change thread) ----
 
     def start(self):
         self._finalized = []
         self._generation = 0
+        self._words = []
+        manager = self._manager()
+        if manager is not None:
+            try:
+                manager.set_correction_capture_fn(self._capture_correction)
+                manager.set_draft_scroll_fn(self.scroll_draft)
+                manager.set_correction_undo_fn(self._undo_last_correction)
+            except Exception as exc:
+                logger.debug(f"[DICTATE-PREVIEW] correction/scroll wiring unavailable: {exc}")
+        # Read here, on the caller's thread, never on the Qt thread.
+        self._overlay.idle_hints = load_idle_hints()
         self._overlay.show()
         # spawn() registers AND starts -- do not call register() again
         # (that would double-enter this thread under a second, -2-suffixed
@@ -1143,7 +2030,7 @@ class DictatePreviewSession:
         the spoken toggle. Best-effort like everything else in this class."""
         try:
             self._overlay.set_literal_badge(on)
-            self._overlay.set_transcript(list(self._finalized), "")
+            self._render("")
         except Exception as exc:
             logger.debug(f"[DICTATE-PREVIEW] literal badge failed: {exc}")
 
@@ -1153,18 +2040,166 @@ class DictatePreviewSession:
         self._stop_event.set()
         self._overlay.close()
 
+    def _speech_active(self) -> bool:
+        """Activity probe for the idle fade, called on the Qt thread every
+        IDLE_TICK_MS. Reads only plain attributes: WakeConsumer sets
+        app.is_speaking at the Silero speech onset (well before the first
+        partial exists), so the box is back at full opacity as the user starts
+        talking, not a second later when text arrives."""
+        if self._closed:
+            return False
+        return bool(getattr(self.app, "is_speaking", False))
+
+    # ---- Queue 85: scroll, clear, click a word to correct it -------------
+
+    def _manager(self):
+        """The session's mode manager, or None. Best-effort like the rest of
+        this class: the preview must never break the dictation path."""
+        try:
+            return self.app._ensure_session_mode_manager()
+        except Exception as exc:
+            logger.debug(f"[DICTATE-PREVIEW] session manager unavailable: {exc}")
+            return None
+
+    def _render(self, partial: str = "") -> None:
+        """The ONE place the transcript is drawn. Rebuilds the clickable-word
+        map from the same fragments in the same order as the renderer, so a
+        click always resolves to the word the user actually clicked."""
+        lines = list(self._finalized)
+        self._words = word_targets(lines)
+        self._overlay.set_transcript(lines, partial, link_words=True)
+
+    def scroll_draft(self, where: str = "up") -> None:
+        """Move the transcript view. "top" | "bottom" | "up" | "down".
+        Safe from any thread (the overlay posts to the Qt thread)."""
+        try:
+            self._overlay.scroll_draft(where)
+        except Exception as exc:
+            logger.debug(f"[DICTATE-PREVIEW] scroll {where} failed: {exc}")
+
+    def _on_word_clicked(self, index: int) -> None:
+        """A word in the preview was clicked (Qt thread). Arms the correction;
+        the NEXT utterance is its replacement. Nothing is changed yet."""
+        if self._closed or index < 0 or index >= len(self._words):
+            return
+        word, occurrence = self._words[index]
+        expected = sum(1 for w, _o in self._words if w == word)
+        manager = self._manager()
+        if manager is None:
+            return
+        try:
+            result = manager.request_word_correction(
+                word, occurrence, expected_count=expected, source="preview_click")
+        except Exception as exc:
+            logger.warning(f"[DICTATE-PREVIEW] could not arm a correction: {exc}")
+            return
+        if result.get("ok"):
+            self._correction_armed = True
+            self._set_prompt(CORRECTION_PROMPT.format(word=word))
+        else:
+            logger.info("[DICTATE-PREVIEW] correction refused: %s", result.get("reason"))
+
+    def _on_clear_clicked(self) -> None:
+        """The Clear draft button (Qt thread). Goes through the session's own
+        confirm_clear_draft -- the exact path the spoken "scratch everything"
+        -> "yes" takes -- so the button and the phrase cannot diverge, and
+        queue 84's recovery slot covers the button too."""
+        if self._closed:
+            return
+        manager = self._manager()
+        if manager is None:
+            return
+        try:
+            outcome = manager.confirm_clear_draft("clear button")
+        except Exception as exc:
+            logger.warning(f"[DICTATE-PREVIEW] clear draft failed: {exc}")
+            return
+        logger.info("[DICTATE-PREVIEW] clear button -> %s", getattr(outcome, "kind", outcome))
+        self._finalized = []
+        self._set_prompt("")
+        self._render("")
+
+    def _resync_from_draft(self, manager=None) -> None:
+        """Replace the preview's own fragments with the session's staged draft.
+        Used after a word correction: the session edited the draft in place, so
+        re-reading it is both simpler and truer than patching the copy here."""
+        manager = manager if manager is not None else self._manager()
+        buffer = ""
+        if manager is not None:
+            try:
+                buffer = manager.dictate_pending_buffer or ""
+            except Exception as exc:
+                logger.debug(f"[DICTATE-PREVIEW] draft unreadable: {exc}")
+                return
+        self._finalized = [buffer] if buffer.strip() else []
+
+    def _undo_last_correction(self) -> dict:
+        """"forget that correction": removes an accepted dictionary entry, or
+        the newest un-reviewed capture when nothing has been accepted."""
+        try:
+            from samsara.correction_queue import undo_last_correction  # noqa: PLC0415
+            return undo_last_correction(self.app)
+        except Exception as exc:
+            logger.warning(f"[DICTATE-PREVIEW] correction undo failed: {exc}")
+            return {"undone": False, "wrong": "", "right": "", "where": "error"}
+
+    def _refresh_prompt(self) -> None:
+        """Keep the "say the replacement" row in step with the session: it
+        disappears as soon as the correction is applied, cancelled or expired."""
+        manager = self._manager()
+        pending = None
+        if manager is not None:
+            try:
+                pending = manager.pending_word_correction()
+            except Exception as exc:
+                logger.debug(f"[DICTATE-PREVIEW] pending correction unreadable: {exc}")
+        self._set_prompt(CORRECTION_PROMPT.format(word=pending["word"]) if pending else "")
+
+    def _set_prompt(self, text: str) -> None:
+        """Best-effort, like every other overlay call in this class: the
+        prompt is a hint, and never worth breaking a dictation utterance for."""
+        try:
+            self._overlay.set_prompt(text)
+        except Exception as exc:
+            logger.debug(f"[DICTATE-PREVIEW] prompt unavailable: {exc}")
+
+    def _capture_correction(self, wrong: str, right: str, context: str = "", audio=None):
+        """Queue an applied correction FOR REVIEW. Never writes the
+        dictionary: a wrong entry there would silently rewrite that word in
+        every future dictation, so a human accepts it in the correction
+        window first (samsara/correction_queue.py explains the classes)."""
+        try:
+            from samsara.correction_queue import get_queue, save_audio  # noqa: PLC0415
+            # The clip is the utterance Whisper got wrong -- saved only when
+            # the word belongs to exactly one staged chunk (see
+            # replace_draft_word), and only for a pair that may ever be stored.
+            clip = None
+            if audio is not None:
+                clip = save_audio(audio, wrong)
+            result = get_queue().capture(wrong, right, source="preview_click",
+                                         context=context, audio=clip)
+        except Exception as exc:
+            logger.warning(f"[DICTATE-PREVIEW] correction capture failed: {exc}")
+            return None
+        if not result.get("stored"):
+            logger.info('[DICTATE-PREVIEW] "%s" -> "%s" fixed in the draft only (%s)',
+                        wrong, right, result.get("reason"))
+        return result
+
     def on_utterance_final(
         self, final_text: str = "", scratch_success: bool = False,
-        dictate_committed: bool = False,
+        dictate_committed: bool = False, draft_recovered: bool = False,
     ) -> None:
         """Called from dictation.py after a DICTATE-lane utterance's
         authoritative final decode/dispatch completes, with that utterance's
         actual final text (the same string dispatch_utterance/injection
         used -- NOT a re-decode), whether dispatch_utterance's OWN outcome
         was a successful scratch-that (outcome.kind == "scratch_success"),
-        and whether it was a successful buffered-DICTATE commit
-        (outcome.kind == "dictate_committed") -- both the real dispatch
-        outcome, not re-derived from text; see _is_control_phrase's
+        whether it was a successful buffered-DICTATE commit
+        (outcome.kind == "dictate_committed"), and whether it put an aborted
+        draft back (outcome.kind == "dictate_draft_recovered", queue 88) --
+        all the real dispatch outcome, not re-derived from text; see
+        _is_control_phrase's
         docstring for why text alone can't tell us this. Appends dictation
         content to the rolling transcript rather than clearing on every
         utterance: the session continues past a pause, so wiping the
@@ -1216,6 +2251,46 @@ class DictatePreviewSession:
             return
         self._generation += 1
         final_text = (final_text or "").strip()
+        # getattr: tests/test_streaming_preview_box.py builds this class with
+        # __new__ and sets only the fields it needs, so a new attribute must
+        # never be assumed present.
+        if getattr(self, "_correction_armed", False):
+            # Queue 85: a word was clicked, so this utterance was its
+            # replacement (or a refusal/cancel of it) -- never a new dictation
+            # fragment. The session edited the draft itself; re-read it rather
+            # than guess what changed.
+            manager = self._manager()
+            still_armed = False
+            if manager is not None:
+                try:
+                    still_armed = manager.pending_word_correction() is not None
+                except Exception as exc:
+                    logger.debug(f"[DICTATE-PREVIEW] pending correction unreadable: {exc}")
+            self._correction_armed = still_armed
+            if dictate_committed or self._dictate_buffer_is_empty():
+                self._finalized = []
+            else:
+                self._resync_from_draft(manager)
+            self._refresh_prompt()
+            self._render("")
+            return
+        if draft_recovered:
+            # Queue 88 (2026-09-15 16:19 live incident): "bring back my draft"
+            # after a cancel restored the session's staged buffer -- the log
+            # and the eventual commit both prove the 53 characters really came
+            # back -- but this box is rebuilt empty on every session entry
+            # (_release_streaming_preview / _ensure_streaming_preview) and its
+            # _finalized list is only ever appended to by THIS method. So the
+            # owner heard "Draft back, 10 words", saw a success chip, and
+            # watched an empty box: a command reporting success while nothing
+            # visible happened. Re-read the session's own draft, exactly as
+            # the queue 85 word-correction path above does -- the recovery
+            # rewrites the whole buffer, so patching this copy could not be
+            # right anyway.
+            self._resync_from_draft()
+            self._refresh_prompt()
+            self._render("")
+            return
         if scratch_success:
             # dispatch_utterance's own outcome, not re-derived from text --
             # the real undo already happened, so mirror it by popping the
@@ -1245,7 +2320,8 @@ class DictatePreviewSession:
         # previous snapshot -- handing out the same list object risks the
         # overlay observing an in-place mutation (append/pop/clear below)
         # partway through, making a transcript line appear to vanish.
-        self._overlay.set_transcript(list(self._finalized), "")
+        self._refresh_prompt()
+        self._render("")
 
     def _dictate_buffer_is_empty(self) -> bool:
         """Robust, caller-independent commit signal: true whenever the
@@ -1312,6 +2388,12 @@ class DictatePreviewSession:
             return bool(
                 is_scratch_that(text)
                 or is_dictate_commit(text)
+                # Queue 88: "bring back my draft" is a control phrase. When
+                # there IS a draft, on_utterance_final resyncs the box from
+                # the session and this never matters; when there is NOT, the
+                # words used to be appended as if the user had dictated them,
+                # under a chip that says "nothing to bring back".
+                or is_recover_draft(text)
                 or match_switch_word(text) is not None
                 or match_ava_invocation(text, manager._ava_invocations)
                 or manager._matches_abort_phrase(text)
@@ -1390,7 +2472,7 @@ class DictatePreviewSession:
                 continue   # no reading/decoding at all while suspended
             if was_suspended:
                 was_suspended = False
-                self._overlay.set_transcript(list(self._finalized), "")
+                self._render("")
             # DEFECT 1 (2026-09-11): captured BEFORE the (slow, model-lock-
             # bound) decode below. If a commit lands on the cmd-utt thread
             # while this tick is mid-decode, on_utterance_final bumps
@@ -1423,7 +2505,7 @@ class DictatePreviewSession:
             # on_utterance_final's suppression below.
             if text and not self._is_control_phrase(text):
                 # Copy for the same reason as on_utterance_final's call above.
-                self._overlay.set_transcript(list(self._finalized), text)
+                self._render(text)
 
     def _enter_hold_pause(self, was_suspended: bool) -> bool:
         """Render the "Paused (hold)" state once per hold; returns the new

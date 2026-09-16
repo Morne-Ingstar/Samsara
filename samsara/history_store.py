@@ -12,10 +12,16 @@ one HistoryManager instance.
 Audit note (cp1252 UnicodeEncodeError): HistoryManager does no file I/O of
 its own (pure sqlite3 -- SQLite TEXT columns are UTF-8 native, no encoding=
 argument to get wrong). dictation.py's history.json load/save
-(load_history/save_history) already pass encoding='utf-8' explicitly. No
-history-related open() call in the codebase was found missing
-encoding='utf-8' -- there is currently no history export/import feature at
-all. Nothing to fix; documented here so this audit doesn't need repeating.
+(load_history/save_history) already pass encoding='utf-8' explicitly.
+
+That note used to end "there is currently no history export/import feature
+at all". Queue 122 added one: samsara/history_export.py writes the store to
+JSON or readable text, and every open() in it passes encoding='utf-8' and
+newline='\\n' explicitly -- it is the first place in the history path where
+an encoding COULD be got wrong, which is what that audit was looking for.
+Export is read-only here: it goes through query() below and this module
+gained no writer. Import does not exist yet; the JSON carries a schema
+version so one can be written without guessing.
 """
 
 from samsara.log import get_logger

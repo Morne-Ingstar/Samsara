@@ -291,10 +291,16 @@ class TestIsControlPhrase:
         session = _bare_preview_with_real_manager()
         assert session._is_control_phrase("literal scratch that") is False
 
-    @pytest.mark.parametrize("text", ["end", "and", "End.", "AND"])
-    def test_dictate_commit_word_and_homophone_are_control_phrases(self, text):
+    @pytest.mark.parametrize("text", ["end", "End.", "END", "end,"])
+    def test_dictate_commit_word_is_a_control_phrase(self, text):
         session = _bare_preview_with_real_manager()
         assert session._is_control_phrase(text) is True
+
+    @pytest.mark.parametrize("text", ["and", "And.", "AND"])
+    def test_lone_and_is_dictation_not_a_control_phrase(self, text):
+        """Queue 54: "and" is no longer a homophone of the commit word."""
+        session = _bare_preview_with_real_manager()
+        assert session._is_control_phrase(text) is False
 
     @pytest.mark.parametrize("text", ["command mode", "dictate mode", "dictate"])
     def test_switch_words_are_control_phrases(self, text):
@@ -321,10 +327,13 @@ class TestIsControlPhrase:
     def test_configured_abort_word_is_also_a_control_phrase(self):
         """_matches_abort_phrase covers the user's configured cancel/abort
         words too, not just the bare GLOBAL_SESSION_EXIT_PHRASES tuple --
-        reusing the manager's real matcher (word-boundary regex, substring
-        anywhere) rather than a whole-utterance-only reimplementation."""
+        reusing the manager's real matcher rather than a reimplementation.
+        Queue 84: that matcher is now WHOLE-UTTERANCE, so a sentence that
+        merely contains the phrase is dictation here too, and the preview
+        shows it instead of swallowing it as a control phrase."""
         session = _bare_preview_with_real_manager()
-        assert session._is_control_phrase("please cancel dictation now") is True
+        assert session._is_control_phrase("cancel dictation") is True
+        assert session._is_control_phrase("please cancel dictation now") is False
 
     def test_ordinary_prose_is_not_a_control_phrase(self):
         session = _bare_preview_with_real_manager()
@@ -397,7 +406,7 @@ class TestOnUtteranceFinal:
         session = _bare_preview(app)
         events = []
         session._overlay = types.SimpleNamespace(
-            set_transcript=lambda lines, partial: events.append((list(lines), partial)),
+            set_transcript=lambda lines, partial, link_words=False: events.append((list(lines), partial)),
         )
         session.on_utterance_final("hello world")
         assert events == [(["hello world"], "")]
@@ -431,7 +440,7 @@ class TestOnUtteranceFinal:
         session.on_utterance_final("scratch that")  # scratch_success=False (default)
         assert session._finalized == []
 
-    @pytest.mark.parametrize("text", ["end", "and", "command mode", "hey ava"])
+    @pytest.mark.parametrize("text", ["end", "command mode", "hey ava"])
     def test_other_control_phrases_final_do_not_grow_the_transcript(self, text):
         session = _bare_preview_with_real_manager(ava_invocations=['hey ava'])
         session.on_utterance_final(text)
@@ -513,7 +522,7 @@ class TestOnUtteranceFinal:
         session = _bare_preview(app)
         events = []
         session._overlay = types.SimpleNamespace(
-            set_transcript=lambda lines, partial: events.append((list(lines), partial)),
+            set_transcript=lambda lines, partial, link_words=False: events.append((list(lines), partial)),
         )
         session.on_utterance_final("first thought")
         events.clear()
@@ -584,7 +593,7 @@ class TestSetTranscriptRendering:
     def test_plain_text_when_only_one_finalized_line_and_no_partial(self):
         overlay = StreamingOverlayQt.__new__(StreamingOverlayQt)
         calls = []
-        overlay.update_text = lambda text, state: calls.append((text, state))
+        overlay.update_text = lambda text, state, rich=False: calls.append((text, state))
         overlay.set_transcript(["hello world"], "")
         assert calls == [("hello world", StreamingOverlayQt.STATE_LISTENING)]
 
@@ -597,14 +606,14 @@ class TestSetTranscriptRendering:
         tests/test_streaming_preview_box.py for the full fix coverage."""
         overlay = StreamingOverlayQt.__new__(StreamingOverlayQt)
         calls = []
-        overlay.update_text = lambda text, state: calls.append((text, state))
+        overlay.update_text = lambda text, state, rich=False: calls.append((text, state))
         overlay.set_transcript(["first", "second"], "")
         assert calls[0][0] == "first second"
 
     def test_partial_appended_in_a_distinct_span(self):
         overlay = StreamingOverlayQt.__new__(StreamingOverlayQt)
         calls = []
-        overlay.update_text = lambda text, state: calls.append((text, state))
+        overlay.update_text = lambda text, state, rich=False: calls.append((text, state))
         overlay.set_transcript(["settled"], "live words")
         text, state = calls[0]
         assert text.startswith("settled<br>")
@@ -614,7 +623,7 @@ class TestSetTranscriptRendering:
     def test_partial_only_when_no_finalized_lines_yet(self):
         overlay = StreamingOverlayQt.__new__(StreamingOverlayQt)
         calls = []
-        overlay.update_text = lambda text, state: calls.append((text, state))
+        overlay.update_text = lambda text, state, rich=False: calls.append((text, state))
         overlay.set_transcript([], "just started talking")
         text, _state = calls[0]
         assert "just started talking" in text
@@ -623,7 +632,7 @@ class TestSetTranscriptRendering:
     def test_html_is_escaped(self):
         overlay = StreamingOverlayQt.__new__(StreamingOverlayQt)
         calls = []
-        overlay.update_text = lambda text, state: calls.append((text, state))
+        overlay.update_text = lambda text, state, rich=False: calls.append((text, state))
         overlay.set_transcript(["less <than> five & six"], "")
         text, _state = calls[0]
         assert "<than>" not in text
@@ -632,9 +641,11 @@ class TestSetTranscriptRendering:
     def test_falls_back_to_listening_placeholder_when_empty(self):
         overlay = StreamingOverlayQt.__new__(StreamingOverlayQt)
         calls = []
-        overlay.update_text = lambda text, state: calls.append((text, state))
+        overlay.update_text = lambda text, state, rich=False: calls.append((text, state))
         overlay.set_transcript([], "")
-        assert calls == [("Listening...", StreamingOverlayQt.STATE_LISTENING)]
+        # Queue 75: the placeholder has its own state -- styled as listening,
+        # but its dots animate and it does not count as activity for the fade.
+        assert calls == [("Listening...", StreamingOverlayQt.STATE_PLACEHOLDER)]
 
 
 # ============================================================================
@@ -1030,3 +1041,195 @@ class TestHandleCommandModeUtteranceOnFinalHook:
         dictation.DictationApp._handle_command_mode_utterance(app, _buffer_for(), 16000)  # must not raise
         manager.dispatch_utterance.assert_called_once()
         app._handle_session_dispatch_outcome.assert_called_once()
+
+
+# ============================================================================
+# Queue 90: the box shrinks back, and it keeps following the newest text.
+#
+# Both defects the owner reported within the hour of queue 85 landing came
+# from ONE line: _position() fed QLabel.heightForWidth() straight back into
+# the label's setMinimumHeight(). Qt's QLabel::heightForWidth() returns
+# sizeForWidth(w).expandedTo(minimumSize()), so that made the minimum a
+# ratchet -- max(text height, previous minimum), never smaller. The box then
+# stayed at its high-water height after a commit ("once it goes up it doesn't
+# shrink back down again"), and the label kept that height with the short new
+# draft at the TOP of it, so following the bottom scrolled to the bottom of
+# blank space ("all the things I'm saying I can't see, because they're at the
+# top of the window").
+# ============================================================================
+
+def _preview_widget(qapp):
+    from samsara.streaming import IdleSettings, _StreamingWidget
+    widget = _StreamingWidget(False, IdleSettings(5.0, 0.25), lambda: False, ())
+    widget.show_overlay()
+    qapp.processEvents()
+    return widget
+
+
+def _close_widget(qapp, widget):
+    widget.stop_life()
+    widget._w.hide()
+    widget._w.deleteLater()
+    qapp.processEvents()
+
+
+def _draft(qapp, widget, lines):
+    """Render a draft exactly as DictatePreviewSession does -- update() then
+    let Qt settle. Deliberately does NOT call _position() a second time: the
+    production path calls it once, from inside _on_update."""
+    from samsara import streaming as st
+    html = st._join_dictate_fragments(lines, link_words=True)
+    widget.update(html, StreamingOverlayQt.STATE_LISTENING, "rich")
+    qapp.processEvents()
+    qapp.processEvents()
+    return html
+
+
+def _commit(qapp, widget):
+    """What a commit or a clear renders: the draft is gone and the box is back
+    to the "Listening..." placeholder."""
+    from samsara import streaming as st
+    widget.update(st.LISTENING_TEXT, StreamingOverlayQt.STATE_PLACEHOLDER, "rich")
+    qapp.processEvents()
+    qapp.processEvents()
+
+
+#: Long enough that the box is at DICTATE_OVERLAY_MAX_H and scrolling well
+#: before the end -- the owner's "more than two sentences", many times over.
+_LONG = [f"Sentence number {i} of a draft that keeps on going and going for a while yet."
+         for i in range(1, 21)]
+
+
+class TestPreviewHeightReturnsToRest:
+    """Defect 90A: the window must give the space back."""
+
+    def test_committing_returns_the_box_to_its_resting_height(self, qapp):
+        from samsara import streaming as st
+        widget = _preview_widget(qapp)
+        try:
+            _draft(qapp, widget, _LONG)
+            assert widget._w.height() == st.DICTATE_OVERLAY_MAX_H, "need a grown box first"
+            _commit(qapp, widget)
+            assert widget._w.height() == st.OVERLAY_MIN_H
+        finally:
+            _close_widget(qapp, widget)
+
+    def test_a_shrinking_draft_shrinks_the_box_with_it(self, qapp):
+        from samsara import streaming as st
+        widget = _preview_widget(qapp)
+        try:
+            _draft(qapp, widget, _LONG)
+            grown = widget._w.height()
+            _draft(qapp, widget, ["Just one short sentence now."])
+            assert widget._w.height() < grown
+            assert widget._w.height() <= st.OVERLAY_MIN_H + 20
+        finally:
+            _close_widget(qapp, widget)
+
+    def test_the_label_never_ratchets_its_minimum_height(self, qapp):
+        """The measurement itself: heightForWidth() is clamped to the widget's
+        own minimumSize, so measuring without clearing the minimum first can
+        only ever return the previous answer or a larger one."""
+        widget = _preview_widget(qapp)
+        try:
+            _draft(qapp, widget, _LONG)
+            tall = widget._w._label.minimumHeight()
+            assert tall > 0
+            _draft(qapp, widget, ["One line."])
+            assert widget._w._label.minimumHeight() < tall
+            assert widget._w._transcript_height() < tall
+        finally:
+            _close_widget(qapp, widget)
+
+    def test_the_grown_box_still_scrolls_rather_than_clipping(self, qapp):
+        """The shrink must not cost queue 85's scrolling: a draft taller than
+        the box still has somewhere to scroll."""
+        widget = _preview_widget(qapp)
+        try:
+            _draft(qapp, widget, _LONG)
+            bar = widget._w._scroll.verticalScrollBar()
+            assert bar.maximum() > 0
+        finally:
+            _close_widget(qapp, widget)
+
+
+class TestPreviewKeepsFollowingNewText:
+    """Defect 90B: the newest words stay visible."""
+
+    def test_the_newest_text_stays_visible_across_many_appends(self, qapp):
+        widget = _preview_widget(qapp)
+        try:
+            bar = widget._w._scroll.verticalScrollBar()
+            for count in range(1, len(_LONG) + 1):
+                _draft(qapp, widget, _LONG[:count])
+                assert bar.value() == bar.maximum(), f"lost the bottom at {count} sentences"
+                assert widget._w._follow is True
+            # The bottom of the scroll range must be the bottom of the TEXT,
+            # not the bottom of a label left over-tall by an earlier draft --
+            # that is what put the owner's words above the visible area.
+            label = widget._w._label
+            assert label.height() <= widget._w._transcript_height() + widget._w.height()
+        finally:
+            _close_widget(qapp, widget)
+
+    def test_a_deliberate_scroll_up_pins_the_view_and_the_bottom_resumes(self, qapp):
+        widget = _preview_widget(qapp)
+        try:
+            _draft(qapp, widget, _LONG)
+            bar = widget._w._scroll.verticalScrollBar()
+            bar.setValue(0)                       # the user scrolls up to read
+            qapp.processEvents()
+            assert widget._w._follow is False
+            _draft(qapp, widget, _LONG + ["A sentence arriving while the user reads the top."])
+            assert bar.value() == 0, "new text must not yank the view"
+            bar.setValue(bar.maximum())           # back to the bottom
+            qapp.processEvents()
+            assert widget._w._follow is True
+            _draft(qapp, widget, _LONG + ["One.", "And one more after that one."])
+            assert bar.value() == bar.maximum()
+        finally:
+            _close_widget(qapp, widget)
+
+    def test_a_content_height_change_is_never_mistaken_for_a_user_scroll(self, qapp):
+        """The regression test for the confusion itself.
+
+        When the draft gets taller the scroll range moves before the view is
+        pinned, so for an instant the stored position is no longer at the
+        maximum. Queue 85 re-derived "is the user at the bottom?" from exactly
+        that geometry on every update, so a taller range read as "the user
+        scrolled up" and following stopped for good -- nothing ever turned it
+        back on. Following is intent now, and a range change does not touch it.
+        """
+        widget = _preview_widget(qapp)
+        try:
+            _draft(qapp, widget, _LONG)
+            bar = widget._w._scroll.verticalScrollBar()
+            assert widget._w._follow is True and bar.value() == bar.maximum()
+            # Exactly the state a mid-layout growth leaves behind: a bigger
+            # maximum with the old value still stored.
+            bar.blockSignals(True)
+            bar.setRange(bar.minimum(), bar.maximum() + 400)
+            bar.blockSignals(False)
+            _draft(qapp, widget, _LONG + ["The next thing the owner says out loud."])
+            assert widget._w._follow is True, "a taller draft is not a user scroll"
+            assert bar.value() == bar.maximum()
+        finally:
+            _close_widget(qapp, widget)
+
+    def test_committing_resumes_following_even_from_the_top_of_the_draft(self, qapp):
+        """Scrolled to the very top, then a commit: the range collapses to
+        zero without the value ever changing, so nothing would re-arm
+        following by itself. The placeholder does it explicitly."""
+        widget = _preview_widget(qapp)
+        try:
+            _draft(qapp, widget, _LONG)
+            bar = widget._w._scroll.verticalScrollBar()
+            bar.setValue(0)
+            qapp.processEvents()
+            assert widget._w._follow is False
+            _commit(qapp, widget)
+            assert widget._w._follow is True
+            _draft(qapp, widget, _LONG)
+            assert bar.value() == bar.maximum()
+        finally:
+            _close_widget(qapp, widget)

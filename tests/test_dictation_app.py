@@ -192,14 +192,15 @@ class TestTextProcessing:
         assert result == "hello world"
 
     def test_format_numbers_single_digits(self, sample_config, tmp_path):
-        """Test formatting single digit numbers"""
+        """Queue 55: zero..nine are digits only in a number context (a cue
+        such as "page", or a run of number words); in prose they stay words."""
         sample_config['auto_capitalize'] = False
         sample_config['format_numbers'] = True
 
         app = create_test_app(sample_config, tmp_path)
 
-        result = app.process_transcription("I have five apples")
-        assert result == "I have 5 apples"
+        assert app.process_transcription("I have five apples") == "I have five apples"
+        assert app.process_transcription("turn to page five") == "turn to page 5"
 
     def test_format_numbers_teens(self, sample_config, tmp_path):
         """Test formatting teen numbers"""
@@ -248,12 +249,8 @@ class TestTextProcessing:
 
         app = create_test_app(sample_config, tmp_path)
 
-        result = app.process_transcription("five, six, seven.")
-        assert "5" in result
-        assert "6" in result
-        assert "7" in result
-        assert "," in result
-        assert "." in result
+        result = app.process_transcription("chapter five, step six and seven eight.")
+        assert result == "chapter 5, step 6 and 7 8."
 
     def test_combined_capitalize_and_numbers(self, sample_config, tmp_path):
         """Test both auto-capitalize and number formatting together"""
@@ -263,8 +260,7 @@ class TestTextProcessing:
         app = create_test_app(sample_config, tmp_path)
 
         result = app.process_transcription("i have twenty one apples. there are five left")
-        assert result.startswith("I have 21")
-        assert "5 left" in result
+        assert result == "I have 21 apples. There are five left"
 
     def test_process_empty_text(self, sample_config, tmp_path):
         """Test processing empty text"""

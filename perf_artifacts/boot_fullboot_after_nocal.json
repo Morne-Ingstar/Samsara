@@ -1,0 +1,535 @@
+{
+  "label": "after_nocal",
+  "cal_cache": false,
+  "overrides": [],
+  "n": 3,
+  "summary_s": {
+    "first_log": {
+      "median": 0.3,
+      "min": 0.293,
+      "max": 0.323,
+      "n": 3
+    },
+    "main_entry": {
+      "median": 0.889,
+      "min": 0.876,
+      "max": 0.917,
+      "n": 3
+    },
+    "splash_shown": {
+      "median": 0.926,
+      "min": 0.921,
+      "max": 0.957,
+      "n": 3
+    },
+    "init_entry": {
+      "median": 0.926,
+      "min": 0.921,
+      "max": 0.957,
+      "n": 3
+    },
+    "model_kickoff": {
+      "median": 2.914,
+      "min": 2.913,
+      "max": 3.016,
+      "n": 3
+    },
+    "config_watcher": {
+      "median": 2.976,
+      "min": 2.972,
+      "max": 3.075,
+      "n": 3
+    },
+    "shell_ready": {
+      "median": 2.976,
+      "min": 2.972,
+      "max": 3.075,
+      "n": 3
+    },
+    "tray_created": {
+      "median": 2.992,
+      "min": 2.992,
+      "max": 3.092,
+      "n": 3
+    },
+    "tts_ready": {
+      "median": 3.604,
+      "min": 3.574,
+      "max": 3.658,
+      "n": 3
+    },
+    "whisper_ready": {
+      "median": 5.527,
+      "min": 5.479,
+      "max": 5.617,
+      "n": 3
+    },
+    "silero_ready": {
+      "median": 5.58,
+      "min": 5.532,
+      "max": 5.677,
+      "n": 3
+    },
+    "ready_for_dictation": {
+      "median": 5.58,
+      "min": 5.532,
+      "max": 5.677,
+      "n": 3
+    },
+    "startup_complete": {
+      "median": 5.588,
+      "min": 5.538,
+      "max": 5.684,
+      "n": 3
+    }
+  },
+  "stages_ms": {
+    "config load": {
+      "median": 109,
+      "min": 63,
+      "max": 125,
+      "n": 3
+    },
+    "audio device enumeration": {
+      "median": 15,
+      "min": 0,
+      "max": 16,
+      "n": 3
+    },
+    "mic calibration": {
+      "median": 1532,
+      "min": 1531,
+      "max": 1547,
+      "n": 3
+    },
+    "sound setup": {
+      "median": 16,
+      "min": 15,
+      "max": 31,
+      "n": 3
+    },
+    "plugin discovery + command executor": {
+      "median": 219,
+      "min": 219,
+      "max": 235,
+      "n": 3
+    },
+    "history / SQLite init": {
+      "median": 93,
+      "min": 31,
+      "max": 109,
+      "n": 3
+    },
+    "TTS engine init (deferred)": {
+      "median": 31,
+      "min": 16,
+      "max": 32,
+      "n": 3
+    },
+    "smart actions init": {
+      "median": 0,
+      "min": 0,
+      "max": 0,
+      "n": 3
+    },
+    "keyboard/mouse listener setup": {
+      "median": 16,
+      "min": 15,
+      "max": 16,
+      "n": 3
+    },
+    "ACE audio engine start": {
+      "median": 0,
+      "min": 0,
+      "max": 0,
+      "n": 3
+    },
+    "model load kicked off (async)": {
+      "median": 0,
+      "min": 0,
+      "max": 0,
+      "n": 3
+    },
+    "shell ready (tray + main window scheduled)": {
+      "median": 62,
+      "min": 62,
+      "max": 63,
+      "n": 3
+    },
+    "tray icon created": {
+      "median": 2063,
+      "min": 2062,
+      "max": 2141,
+      "n": 3
+    },
+    "async: Whisper model load (hotkey dictation ready)": {
+      "median": 2609,
+      "min": 2578,
+      "max": 2625,
+      "n": 3
+    },
+    "async: Silero VAD load": {
+      "median": 47,
+      "min": 46,
+      "max": 47,
+      "n": 3
+    },
+    "async: wake word + audio stream start": {
+      "median": 0,
+      "min": 0,
+      "max": 16,
+      "n": 3
+    },
+    "async: startup complete": {
+      "median": 0,
+      "min": 0,
+      "max": 16,
+      "n": 3
+    }
+  },
+  "runs": [
+    {
+      "milestones": {
+        "first_log": 0.3,
+        "main_entry": 0.876,
+        "splash_shown": 0.921,
+        "init_entry": 0.921,
+        "model_kickoff": 2.913,
+        "config_watcher": 2.972,
+        "shell_ready": 2.972,
+        "tray_created": 2.992,
+        "tts_ready": 3.604,
+        "whisper_ready": 5.527,
+        "silero_ready": 5.58,
+        "ready_for_dictation": 5.58,
+        "startup_complete": 5.588
+      },
+      "stages": [
+        {
+          "label": "config load",
+          "ms": 63,
+          "thread": "MainThread"
+        },
+        {
+          "label": "audio device enumeration",
+          "ms": 15,
+          "thread": "MainThread"
+        },
+        {
+          "label": "mic calibration",
+          "ms": 1532,
+          "thread": "MainThread"
+        },
+        {
+          "label": "sound setup",
+          "ms": 15,
+          "thread": "MainThread"
+        },
+        {
+          "label": "plugin discovery + command executor",
+          "ms": 235,
+          "thread": "MainThread"
+        },
+        {
+          "label": "history / SQLite init",
+          "ms": 93,
+          "thread": "MainThread"
+        },
+        {
+          "label": "TTS engine init (deferred)",
+          "ms": 16,
+          "thread": "MainThread"
+        },
+        {
+          "label": "smart actions init",
+          "ms": 0,
+          "thread": "MainThread"
+        },
+        {
+          "label": "keyboard/mouse listener setup",
+          "ms": 16,
+          "thread": "MainThread"
+        },
+        {
+          "label": "ACE audio engine start",
+          "ms": 0,
+          "thread": "MainThread"
+        },
+        {
+          "label": "model load kicked off (async)",
+          "ms": 0,
+          "thread": "MainThread"
+        },
+        {
+          "label": "shell ready (tray + main window scheduled)",
+          "ms": 62,
+          "thread": "MainThread"
+        },
+        {
+          "label": "tray icon created",
+          "ms": 2063,
+          "thread": "samsara-qt"
+        },
+        {
+          "label": "async: Whisper model load (hotkey dictation ready)",
+          "ms": 2625,
+          "thread": "dictation.load"
+        },
+        {
+          "label": "async: Silero VAD load",
+          "ms": 46,
+          "thread": "dictation.load"
+        },
+        {
+          "label": "async: wake word + audio stream start",
+          "ms": 0,
+          "thread": "dictation.load"
+        },
+        {
+          "label": "async: startup complete",
+          "ms": 16,
+          "thread": "dictation.load"
+        }
+      ],
+      "migrate_lines": 0,
+      "calibration": {
+        "result": "measured",
+        "ms": 1534
+      },
+      "exit_code_before_kill": null,
+      "timed_out": false,
+      "diag": [
+        "[BOOT-DIAG] __main__: entry (since sounddevice import: 354ms)"
+      ]
+    },
+    {
+      "milestones": {
+        "first_log": 0.293,
+        "main_entry": 0.889,
+        "splash_shown": 0.926,
+        "init_entry": 0.926,
+        "model_kickoff": 2.914,
+        "config_watcher": 2.976,
+        "shell_ready": 2.976,
+        "tray_created": 2.992,
+        "tts_ready": 3.574,
+        "whisper_ready": 5.479,
+        "silero_ready": 5.532,
+        "ready_for_dictation": 5.532,
+        "startup_complete": 5.538
+      },
+      "stages": [
+        {
+          "label": "config load",
+          "ms": 109,
+          "thread": "MainThread"
+        },
+        {
+          "label": "audio device enumeration",
+          "ms": 0,
+          "thread": "MainThread"
+        },
+        {
+          "label": "mic calibration",
+          "ms": 1547,
+          "thread": "MainThread"
+        },
+        {
+          "label": "sound setup",
+          "ms": 31,
+          "thread": "MainThread"
+        },
+        {
+          "label": "plugin discovery + command executor",
+          "ms": 219,
+          "thread": "MainThread"
+        },
+        {
+          "label": "history / SQLite init",
+          "ms": 31,
+          "thread": "MainThread"
+        },
+        {
+          "label": "TTS engine init (deferred)",
+          "ms": 32,
+          "thread": "MainThread"
+        },
+        {
+          "label": "smart actions init",
+          "ms": 0,
+          "thread": "MainThread"
+        },
+        {
+          "label": "keyboard/mouse listener setup",
+          "ms": 15,
+          "thread": "MainThread"
+        },
+        {
+          "label": "ACE audio engine start",
+          "ms": 0,
+          "thread": "MainThread"
+        },
+        {
+          "label": "model load kicked off (async)",
+          "ms": 0,
+          "thread": "MainThread"
+        },
+        {
+          "label": "shell ready (tray + main window scheduled)",
+          "ms": 63,
+          "thread": "MainThread"
+        },
+        {
+          "label": "tray icon created",
+          "ms": 2062,
+          "thread": "samsara-qt"
+        },
+        {
+          "label": "async: Whisper model load (hotkey dictation ready)",
+          "ms": 2578,
+          "thread": "dictation.load"
+        },
+        {
+          "label": "async: Silero VAD load",
+          "ms": 47,
+          "thread": "dictation.load"
+        },
+        {
+          "label": "async: wake word + audio stream start",
+          "ms": 0,
+          "thread": "dictation.load"
+        },
+        {
+          "label": "async: startup complete",
+          "ms": 0,
+          "thread": "dictation.load"
+        }
+      ],
+      "migrate_lines": 0,
+      "calibration": {
+        "result": "measured",
+        "ms": 1538
+      },
+      "exit_code_before_kill": null,
+      "timed_out": false,
+      "diag": [
+        "[BOOT-DIAG] __main__: entry (since sounddevice import: 364ms)"
+      ]
+    },
+    {
+      "milestones": {
+        "first_log": 0.323,
+        "main_entry": 0.917,
+        "splash_shown": 0.957,
+        "init_entry": 0.957,
+        "model_kickoff": 3.016,
+        "config_watcher": 3.075,
+        "shell_ready": 3.075,
+        "tray_created": 3.092,
+        "tts_ready": 3.658,
+        "whisper_ready": 5.617,
+        "silero_ready": 5.677,
+        "ready_for_dictation": 5.677,
+        "startup_complete": 5.684
+      },
+      "stages": [
+        {
+          "label": "config load",
+          "ms": 125,
+          "thread": "MainThread"
+        },
+        {
+          "label": "audio device enumeration",
+          "ms": 16,
+          "thread": "MainThread"
+        },
+        {
+          "label": "mic calibration",
+          "ms": 1531,
+          "thread": "MainThread"
+        },
+        {
+          "label": "sound setup",
+          "ms": 16,
+          "thread": "MainThread"
+        },
+        {
+          "label": "plugin discovery + command executor",
+          "ms": 219,
+          "thread": "MainThread"
+        },
+        {
+          "label": "history / SQLite init",
+          "ms": 109,
+          "thread": "MainThread"
+        },
+        {
+          "label": "TTS engine init (deferred)",
+          "ms": 31,
+          "thread": "MainThread"
+        },
+        {
+          "label": "smart actions init",
+          "ms": 0,
+          "thread": "MainThread"
+        },
+        {
+          "label": "keyboard/mouse listener setup",
+          "ms": 16,
+          "thread": "MainThread"
+        },
+        {
+          "label": "ACE audio engine start",
+          "ms": 0,
+          "thread": "MainThread"
+        },
+        {
+          "label": "model load kicked off (async)",
+          "ms": 0,
+          "thread": "MainThread"
+        },
+        {
+          "label": "shell ready (tray + main window scheduled)",
+          "ms": 62,
+          "thread": "MainThread"
+        },
+        {
+          "label": "tray icon created",
+          "ms": 2141,
+          "thread": "samsara-qt"
+        },
+        {
+          "label": "async: Whisper model load (hotkey dictation ready)",
+          "ms": 2609,
+          "thread": "dictation.load"
+        },
+        {
+          "label": "async: Silero VAD load",
+          "ms": 47,
+          "thread": "dictation.load"
+        },
+        {
+          "label": "async: wake word + audio stream start",
+          "ms": 16,
+          "thread": "dictation.load"
+        },
+        {
+          "label": "async: startup complete",
+          "ms": 0,
+          "thread": "dictation.load"
+        }
+      ],
+      "migrate_lines": 0,
+      "calibration": {
+        "result": "measured",
+        "ms": 1530
+      },
+      "exit_code_before_kill": null,
+      "timed_out": false,
+      "diag": [
+        "[BOOT-DIAG] __main__: entry (since sounddevice import: 371ms)"
+      ]
+    }
+  ],
+  "git_head": "eeebf68"
+}

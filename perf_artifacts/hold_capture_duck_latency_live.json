@@ -1,0 +1,135 @@
+{
+  "date": "2026-09-10",
+  "backend": "live WASAPI child",
+  "status": "ok",
+  "factor_key": "ducking.hands_free_level",
+  "factor": 0.15,
+  "excluded_pids": [
+    36464,
+    53240,
+    21748,
+    45896,
+    45996,
+    48416,
+    46688,
+    48560
+  ],
+  "sessions": {
+    "seen": 4,
+    "ducked": 3,
+    "failed": 0,
+    "last_error": null
+  },
+  "first_engage_ms": 162.73300000466406,
+  "reused_median_ms": 0.007800001185387373,
+  "reused_max_ms": 0.009700015652924776,
+  "open_owners_after": 0,
+  "samples": [
+    {
+      "owner_token": -1,
+      "confirmed": true,
+      "elapsed_ms": 162.73300000466406
+    },
+    {
+      "owner_token": -2,
+      "confirmed": true,
+      "elapsed_ms": 0.009700015652924776
+    },
+    {
+      "owner_token": -3,
+      "confirmed": true,
+      "elapsed_ms": 0.009100011084228754
+    },
+    {
+      "owner_token": -4,
+      "confirmed": true,
+      "elapsed_ms": 0.008200004231184721
+    },
+    {
+      "owner_token": -5,
+      "confirmed": true,
+      "elapsed_ms": 0.008000002708286047
+    },
+    {
+      "owner_token": -6,
+      "confirmed": true,
+      "elapsed_ms": 0.008400005754083395
+    },
+    {
+      "owner_token": -7,
+      "confirmed": true,
+      "elapsed_ms": 0.008600007276982069
+    },
+    {
+      "owner_token": -8,
+      "confirmed": true,
+      "elapsed_ms": 0.009100011084228754
+    },
+    {
+      "owner_token": -9,
+      "confirmed": true,
+      "elapsed_ms": 0.008800008799880743
+    },
+    {
+      "owner_token": -10,
+      "confirmed": true,
+      "elapsed_ms": 0.00580001506023109
+    },
+    {
+      "owner_token": -11,
+      "confirmed": true,
+      "elapsed_ms": 0.007399998139590025
+    },
+    {
+      "owner_token": -12,
+      "confirmed": true,
+      "elapsed_ms": 0.008400005754083395
+    },
+    {
+      "owner_token": -13,
+      "confirmed": true,
+      "elapsed_ms": 0.009199982741847634
+    },
+    {
+      "owner_token": -14,
+      "confirmed": true,
+      "elapsed_ms": 0.007099995855242014
+    },
+    {
+      "owner_token": -15,
+      "confirmed": true,
+      "elapsed_ms": 0.006999995093792677
+    },
+    {
+      "owner_token": -16,
+      "confirmed": true,
+      "elapsed_ms": 0.006799993570894003
+    },
+    {
+      "owner_token": -17,
+      "confirmed": true,
+      "elapsed_ms": 0.006600021151825786
+    },
+    {
+      "owner_token": -18,
+      "confirmed": true,
+      "elapsed_ms": 0.006999995093792677
+    },
+    {
+      "owner_token": -19,
+      "confirmed": true,
+      "elapsed_ms": 0.007399998139590025
+    },
+    {
+      "owner_token": -20,
+      "confirmed": true,
+      "elapsed_ms": 0.007599999662488699
+    },
+    {
+      "owner_token": -21,
+      "confirmed": true,
+      "elapsed_ms": 0.007399998139590025
+    }
+  ],
+  "limitation": "Measures volume acknowledgement and ownership, not acoustic settling or microphone capture."
+}

@@ -1,0 +1,1007 @@
+{
+ "sequences": 227,
+ "seams": 1742,
+ "changed": [
+  {
+   "start": "2026-07-14 12:56:23",
+   "prev": "uh...",
+   "next": "the commands are working, end",
+   "clause": "ellipsis_lowercase",
+   "before_tail": "uh.. the commands are working, end",
+   "after_tail": "uh the commands are working, end"
+  },
+  {
+   "start": "2026-07-14 16:33:10",
+   "prev": "basically...",
+   "next": "you can see like",
+   "clause": "ellipsis_lowercase",
+   "before_tail": "basically.. you can see like",
+   "after_tail": "basically you can see like"
+  },
+  {
+   "start": "2026-07-14 16:33:10",
+   "prev": "i mean I know...",
+   "next": "it wasn't my config so it was probably the default but",
+   "clause": "ellipsis_lowercase",
+   "before_tail": "i mean I know.. it wasn't my config so it was probably the default but",
+   "after_tail": "i mean I know it wasn't my config so it was probably the default but"
+  },
+  {
+   "start": "2026-07-14 16:33:10",
+   "prev": "initial setup is...",
+   "next": "introducing hands-free mode and",
+   "clause": "ellipsis_lowercase",
+   "before_tail": "initial setup is.. introducing hands-free mode and",
+   "after_tail": "initial setup is introducing hands-free mode and"
+  },
+  {
+   "start": "2026-07-14 16:40:39",
+   "prev": "uh...",
+   "next": "how does one",
+   "clause": "ellipsis_lowercase",
+   "before_tail": "uh.. how does one",
+   "after_tail": "uh how does one"
+  },
+  {
+   "start": "2026-07-14 16:40:39",
+   "prev": "uh...",
+   "next": "you know",
+   "clause": "ellipsis_lowercase",
+   "before_tail": "uh.. you know",
+   "after_tail": "uh you know"
+  },
+  {
+   "start": "2026-07-14 16:40:39",
+   "prev": "uh...",
+   "next": "I set a long list of things and then",
+   "clause": "ellipsis_hesitation_only",
+   "before_tail": "uh... I set a long list of things and then",
+   "after_tail": "uh I set a long list of things and then"
+  },
+  {
+   "start": "2026-07-14 16:40:39",
+   "prev": "it just...",
+   "next": "delete it at all.",
+   "clause": "ellipsis_lowercase",
+   "before_tail": "it just.. delete it at all.",
+   "after_tail": "it just delete it at all."
+  },
+  {
+   "start": "2026-07-14 17:22:04",
+   "prev": "and if it was gone...",
+   "next": "then, you know...",
+   "clause": "ellipsis_lowercase",
+   "before_tail": "and if it was gone.. then, you know...",
+   "after_tail": "and if it was gone then, you know..."
+  },
+  {
+   "start": "2026-07-14 17:22:04",
+   "prev": "then, you know...",
+   "next": "that makes it easier to have type on",
+   "clause": "ellipsis_lowercase",
+   "before_tail": "then, you know.. that makes it easier to have type on",
+   "after_tail": "then, you know that makes it easier to have type on"
+  },
+  {
+   "start": "2026-07-14 17:22:04",
+   "prev": "and...",
+   "next": "so",
+   "clause": "ellipsis_lowercase",
+   "before_tail": "and... so",
+   "after_tail": "and so"
+  },
+  {
+   "start": "2026-07-14 17:22:04",
+   "prev": "uh...",
+   "next": "will not have any of the system-wide stuff so that removes the ton of space",
+   "clause": "ellipsis_lowercase",
+   "before_tail": "uh.. will not have any of the system-wide stuff so that removes the ton of space",
+   "after_tail": "uh will not have any of the system-wide stuff so that removes the ton of space"
+  },
+  {
+   "start": "2026-07-14 17:28:41",
+   "prev": "will be...",
+   "next": "the pointer, and then",
+   "clause": "ellipsis_lowercase",
+   "before_tail": "will be.. the pointer, and then",
+   "after_tail": "will be the pointer, and then"
+  },
+  {
+   "start": "2026-07-14 17:31:43",
+   "prev": "have a...",
+   "next": "map to key, that",
+   "clause": "ellipsis_lowercase",
+   "before_tail": "have a.. map to key, that",
+   "after_tail": "have a map to key, that"
+  },
+  {
+   "start": "2026-07-14 17:31:43",
+   "prev": "in the...",
+   "next": "transcription cache",
+   "clause": "ellipsis_lowercase",
+   "before_tail": "in the.. transcription cache",
+   "after_tail": "in the transcription cache"
+  },
+  {
+   "start": "2026-07-14 17:34:35",
+   "prev": "there was...",
+   "next": "a pretty quick uh",
+   "clause": "ellipsis_lowercase",
+   "before_tail": "there was.. a pretty quick uh",
+   "after_tail": "there was a pretty quick uh"
+  },
+  {
+   "start": "2026-07-14 17:57:46",
+   "prev": "I'll talk to Brayson first and then I'll give Brayson his...",
+   "next": "and then yeah, let's get this show on the road fellas",
+   "clause": "ellipsis_lowercase",
+   "before_tail": "rst and then I'll give Brayson his.. and then yeah, let's get this show on the road fellas",
+   "after_tail": "first and then I'll give Brayson his and then yeah, let's get this show on the road fellas"
+  },
+  {
+   "start": "2026-07-14 17:57:46",
+   "prev": "Thank you, Chad I'm excited, we have an expir...",
+   "next": "you're on mute",
+   "clause": "ellipsis_lowercase",
+   "before_tail": "Thank you, Chad I'm excited, we have an expir.. you're on mute",
+   "after_tail": "Thank you, Chad I'm excited, we have an expir you're on mute"
+  },
+  {
+   "start": "2026-07-14 20:45:18",
+   "prev": "i thought that with hands free, um...",
+   "next": "commands would only work if they were",
+   "clause": "ellipsis_lowercase",
+   "before_tail": "i thought that with hands free, um.. commands would only work if they were",
+   "after_tail": "i thought that with hands free, um commands would only work if they were"
+  },
+  {
+   "start": "2026-07-14 20:45:18",
+   "prev": "Should we...",
+   "next": "do like a final",
+   "clause": "ellipsis_lowercase",
+   "before_tail": "Should we.. do like a final",
+   "after_tail": "Should we do like a final"
+  },
+  {
+   "start": "2026-07-14 22:38:00",
+   "prev": "as hitting control v to pe- or right clicking to paste. It's just...",
+   "next": "by voice instead.",
+   "clause": "ellipsis_lowercase",
+   "before_tail": "as hitting control v to pe- or right clicking to paste. It's just.. by voice instead.",
+   "after_tail": "as hitting control v to pe- or right clicking to paste. It's just by voice instead."
+  },
+  {
+   "start": "2026-07-15 12:24:02",
+   "prev": "i'm bad at coming up with commands because...",
+   "next": "it just always seems more convenient to just",
+   "clause": "ellipsis_lowercase",
+   "before_tail": "i'm bad at coming up with commands because.. it just always seems more convenient to just",
+   "after_tail": "i'm bad at coming up with commands because it just always seems more convenient to just"
+  },
+  {
+   "start": "2026-07-15 12:41:00",
+   "prev": "but...",
+   "next": "honestly, probably a good idea",
+   "clause": "ellipsis_lowercase",
+   "before_tail": "but.. honestly, probably a good idea",
+   "after_tail": "but honestly, probably a good idea"
+  },
+  {
+   "start": "2026-07-15 12:41:00",
+   "prev": "this shit looks...",
+   "next": "iffy",
+   "clause": "ellipsis_lowercase",
+   "before_tail": "this shit looks.. iffy",
+   "after_tail": "this shit looks iffy"
+  },
+  {
+   "start": "2026-07-15 12:41:00",
+   "prev": "which kind of means I could like...",
+   "next": "go get some wine",
+   "clause": "ellipsis_lowercase",
+   "before_tail": "which kind of means I could like.. go get some wine",
+   "after_tail": "which kind of means I could like go get some wine"
+  },
+  {
+   "start": "2026-07-15 12:41:00",
+   "prev": "I don't...",
+   "next": "there's nothing in here",
+   "clause": "ellipsis_lowercase",
+   "before_tail": "I don't.. there's nothing in here",
+   "after_tail": "I don't there's nothing in here"
+  },
+  {
+   "start": "2026-07-15 12:52:53",
+   "prev": "but...",
+   "next": "you know that just shows you what it looks like you can't all you can do is close it from there",
+   "clause": "ellipsis_lowercase",
+   "before_tail": "now that just shows you what it looks like you can't all you can do is close it from there",
+   "after_tail": "now that just shows you what it looks like you can't all you can do is close it from there"
+  },
+  {
+   "start": "2026-07-15 12:52:53",
+   "prev": "just like...",
+   "next": "winged it, bye.",
+   "clause": "ellipsis_lowercase",
+   "before_tail": "just like.. winged it, bye.",
+   "after_tail": "just like winged it, bye."
+  },
+  {
+   "start": "2026-07-15 13:45:28",
+   "prev": "speaking of ...",
+   "next": "the underscores that happened in that rant.",
+   "clause": "ellipsis_lowercase",
+   "before_tail": "speaking of .. the underscores that happened in that rant.",
+   "after_tail": "speaking of the underscores that happened in that rant."
+  },
+  {
+   "start": "2026-07-15 13:47:43",
+   "prev": "unless you want to just fix it all yourself, I mean...",
+   "next": "if you insist.",
+   "clause": "ellipsis_lowercase",
+   "before_tail": "unless you want to just fix it all yourself, I mean.. if you insist.",
+   "after_tail": "unless you want to just fix it all yourself, I mean if you insist."
+  },
+  {
+   "start": "2026-07-15 13:59:29",
+   "prev": "i can only do 10, so I think I picked...",
+   "next": "the ones that are actually useful.",
+   "clause": "ellipsis_lowercase",
+   "before_tail": "i can only do 10, so I think I picked.. the ones that are actually useful.",
+   "after_tail": "i can only do 10, so I think I picked the ones that are actually useful."
+  },
+  {
+   "start": "2026-08-02 18:47:07",
+   "prev": "uh...",
+   "next": "i don't know",
+   "clause": "ellipsis_lowercase",
+   "before_tail": "uh.. i don't know",
+   "after_tail": "uh i don't know"
+  },
+  {
+   "start": "2026-08-02 18:48:01",
+   "prev": "And I feel like it's only after...",
+   "next": "doing a massive amount and variety of...",
+   "clause": "ellipsis_lowercase",
+   "before_tail": "And I feel like it's only after.. doing a massive amount and variety of...",
+   "after_tail": "And I feel like it's only after doing a massive amount and variety of..."
+  },
+  {
+   "start": "2026-08-02 18:48:01",
+   "prev": "doing a massive amount and variety of...",
+   "next": "psychedelics.",
+   "clause": "ellipsis_lowercase",
+   "before_tail": "doing a massive amount and variety of.. psychedelics.",
+   "after_tail": "doing a massive amount and variety of psychedelics."
+  },
+  {
+   "start": "2026-08-03 16:23:32",
+   "prev": "And he goes out on a journey to...",
+   "next": "find a way.",
+   "clause": "ellipsis_lowercase",
+   "before_tail": "And he goes out on a journey to.. find a way.",
+   "after_tail": "And he goes out on a journey to find a way."
+  },
+  {
+   "start": "2026-08-03 16:23:32",
+   "prev": "To undo...",
+   "next": "everything that happened.",
+   "clause": "ellipsis_lowercase",
+   "before_tail": "To undo.. everything that happened.",
+   "after_tail": "To undo everything that happened."
+  },
+  {
+   "start": "2026-08-03 16:23:32",
+   "prev": "That.. will lead him to.. that..",
+   "next": "realm of dead gods and magic.",
+   "clause": "ellipsis_lowercase",
+   "before_tail": "That.. will lead him to.. that. realm of dead gods and magic.",
+   "after_tail": "That.. will lead him to.. that realm of dead gods and magic."
+  },
+  {
+   "start": "2026-09-11 15:33:51",
+   "prev": "I did make the mistake of doing hold to record while hands-remote is on, and it actually worked fine, except it also cached the same words in the...",
+   "next": "hands-free box.",
+   "clause": "ellipsis_lowercase",
+   "before_tail": "and it actually worked fine, except it also cached the same words in the.. hands-free box.",
+   "after_tail": ", and it actually worked fine, except it also cached the same words in the hands-free box."
+  },
+  {
+   "start": "2026-09-11 15:37:57",
+   "prev": "While you get brainstorming on that stuff, I will, um...",
+   "next": "work on the other stuff.",
+   "clause": "ellipsis_lowercase",
+   "before_tail": "While you get brainstorming on that stuff, I will, um.. work on the other stuff.",
+   "after_tail": "While you get brainstorming on that stuff, I will, um work on the other stuff."
+  },
+  {
+   "start": "2026-09-14 01:52:21",
+   "prev": "the...",
+   "next": "people getting misled by screenshots that aren't, like...",
+   "clause": "ellipsis_lowercase",
+   "before_tail": "the.. people getting misled by screenshots that aren't, like...",
+   "after_tail": "the people getting misled by screenshots that aren't, like..."
+  },
+  {
+   "start": "2026-09-14 01:52:21",
+   "prev": "people getting misled by screenshots that aren't, like...",
+   "next": "the finished product, well that's already the case. There's already screenshots up there.",
+   "clause": "ellipsis_lowercase",
+   "before_tail": " the finished product, well that's already the case. There's already screenshots up there.",
+   "after_tail": " the finished product, well that's already the case. There's already screenshots up there."
+  },
+  {
+   "start": "2026-09-14 22:35:31",
+   "prev": "Also, uh...",
+   "next": "in the streaming window.",
+   "clause": "ellipsis_lowercase",
+   "before_tail": "Also, uh.. in the streaming window.",
+   "after_tail": "Also, uh in the streaming window."
+  },
+  {
+   "start": "2026-09-14 22:35:31",
+   "prev": "Uh..",
+   "next": "It will often replace asterisks.",
+   "clause": "ellipsis_hesitation_only",
+   "before_tail": "Uh.. It will often replace asterisks.",
+   "after_tail": "Uh It will often replace asterisks."
+  },
+  {
+   "start": "2026-09-14 22:50:28",
+   "prev": "just...",
+   "next": "a lot of different commands.",
+   "clause": "ellipsis_lowercase",
+   "before_tail": "just.. a lot of different commands.",
+   "after_tail": "just a lot of different commands."
+  },
+  {
+   "start": "2026-09-14 23:11:50",
+   "prev": "Uh...",
+   "next": "I'm not using it with Olama. I use it with...",
+   "clause": "ellipsis_hesitation_only",
+   "before_tail": "Uh... I'm not using it with Olama. I use it with...",
+   "after_tail": "Uh I'm not using it with Olama. I use it with..."
+  },
+  {
+   "start": "2026-09-14 23:16:29",
+   "prev": "In the AVA section of the settings, there is a setting for max turns remembered, which means...",
+   "next": "max, like...",
+   "clause": "ellipsis_lowercase",
+   "before_tail": "n of the settings, there is a setting for max turns remembered, which means.. max, like...",
+   "after_tail": "ion of the settings, there is a setting for max turns remembered, which means max, like..."
+  },
+  {
+   "start": "2026-09-14 23:16:29",
+   "prev": "max, like...",
+   "next": "back and forth interactions before the AVA starts forgetting.",
+   "clause": "ellipsis_lowercase",
+   "before_tail": "max, like.. back and forth interactions before the AVA starts forgetting.",
+   "after_tail": "max, like back and forth interactions before the AVA starts forgetting."
+  },
+  {
+   "start": "2026-09-14 23:16:29",
+   "prev": "It sounds like maybe..",
+   "next": "there was a mix-up and that number is actually deciding how many characters she can use instead of how many conversation turns are kept in the local memory for her as context.",
+   "clause": "ellipsis_lowercase",
+   "before_tail": "se instead of how many conversation turns are kept in the local memory for her as context.",
+   "after_tail": "se instead of how many conversation turns are kept in the local memory for her as context."
+  },
+  {
+   "start": "2026-09-14 23:33:02",
+   "prev": "I mean, my guess would be that...",
+   "next": "because...",
+   "clause": "ellipsis_lowercase",
+   "before_tail": "I mean, my guess would be that.. because...",
+   "after_tail": "I mean, my guess would be that because..."
+  },
+  {
+   "start": "2026-09-14 23:33:02",
+   "prev": "because...",
+   "next": "it's going from DeepSeq's API...",
+   "clause": "ellipsis_lowercase",
+   "before_tail": "because.. it's going from DeepSeq's API...",
+   "after_tail": "because it's going from DeepSeq's API..."
+  },
+  {
+   "start": "2026-09-14 23:33:02",
+   "prev": "it's going from DeepSeq's API...",
+   "next": "to, like, Samsara.",
+   "clause": "ellipsis_lowercase",
+   "before_tail": "it's going from DeepSeq's API.. to, like, Samsara.",
+   "after_tail": "it's going from DeepSeq's API to, like, Samsara."
+  },
+  {
+   "start": "2026-09-14 23:33:02",
+   "prev": "So, what's the solution there? How, uh, can we use a different, um..",
+   "next": "a different model?",
+   "clause": "ellipsis_lowercase",
+   "before_tail": "So, what's the solution there? How, uh, can we use a different, um. a different model?",
+   "after_tail": "So, what's the solution there? How, uh, can we use a different, um a different model?"
+  },
+  {
+   "start": "2026-09-14 23:40:30",
+   "prev": "Um...",
+   "next": "Maybe we could add a section in the AVA settings.",
+   "clause": "ellipsis_hesitation_only",
+   "before_tail": "Um... Maybe we could add a section in the AVA settings.",
+   "after_tail": "Um Maybe we could add a section in the AVA settings."
+  },
+  {
+   "start": "2026-09-14 23:40:30",
+   "prev": "To, um...",
+   "next": "add, like, personality context.",
+   "clause": "ellipsis_lowercase",
+   "before_tail": "To, um.. add, like, personality context.",
+   "after_tail": "To, um add, like, personality context."
+  },
+  {
+   "start": "2026-09-14 23:40:30",
+   "prev": "And...",
+   "next": "like, behavior context, or...",
+   "clause": "ellipsis_lowercase",
+   "before_tail": "And.. like, behavior context, or...",
+   "after_tail": "And like, behavior context, or..."
+  },
+  {
+   "start": "2026-09-14 23:40:30",
+   "prev": "like, behavior context, or...",
+   "next": "memory, and stuff like that.",
+   "clause": "ellipsis_lowercase",
+   "before_tail": "like, behavior context, or.. memory, and stuff like that.",
+   "after_tail": "like, behavior context, or memory, and stuff like that."
+  },
+  {
+   "start": "2026-09-14 23:40:30",
+   "prev": "That you had, like a...",
+   "next": "Getting it a type of, like, soul, or individuality.",
+   "clause": "ellipsis_determiner",
+   "before_tail": "That you had, like a... Getting it a type of, like, soul, or individuality.",
+   "after_tail": "That you had, like a Getting it a type of, like, soul, or individuality."
+  },
+  {
+   "start": "2026-09-15 01:12:11",
+   "prev": "I would like...",
+   "next": "you to dig into these setups that these other guys use for...",
+   "clause": "ellipsis_lowercase",
+   "before_tail": "I would like.. you to dig into these setups that these other guys use for...",
+   "after_tail": "I would like you to dig into these setups that these other guys use for..."
+  },
+  {
+   "start": "2026-09-15 01:12:11",
+   "prev": "you to dig into these setups that these other guys use for...",
+   "next": "um...",
+   "clause": "ellipsis_lowercase",
+   "before_tail": "you to dig into these setups that these other guys use for... um...",
+   "after_tail": "you to dig into these setups that these other guys use for um..."
+  },
+  {
+   "start": "2026-09-15 01:12:11",
+   "prev": "um...",
+   "next": "these advanced workflows.",
+   "clause": "ellipsis_lowercase",
+   "before_tail": "um.. these advanced workflows.",
+   "after_tail": "um these advanced workflows."
+  },
+  {
+   "start": "2026-09-15 01:12:11",
+   "prev": "I want to know if there's anything...",
+   "next": "in this area that I should start learning how to use.",
+   "clause": "ellipsis_lowercase",
+   "before_tail": "I want to know if there's anything.. in this area that I should start learning how to use.",
+   "after_tail": "I want to know if there's anything in this area that I should start learning how to use."
+  },
+  {
+   "start": "2026-09-15 01:12:11",
+   "prev": "I mean, yeah, I get a fair amount done, but I feel like I'm...",
+   "next": "uh...",
+   "clause": "ellipsis_lowercase",
+   "before_tail": "I mean, yeah, I get a fair amount done, but I feel like I'm... uh...",
+   "after_tail": "I mean, yeah, I get a fair amount done, but I feel like I'm uh..."
+  },
+  {
+   "start": "2026-09-15 01:12:11",
+   "prev": "uh...",
+   "next": "using baby toys while they're, you know...",
+   "clause": "ellipsis_lowercase",
+   "before_tail": "uh.. using baby toys while they're, you know...",
+   "after_tail": "uh using baby toys while they're, you know..."
+  },
+  {
+   "start": "2026-09-15 01:12:11",
+   "prev": "using baby toys while they're, you know...",
+   "next": "running around with guns.",
+   "clause": "ellipsis_lowercase",
+   "before_tail": "using baby toys while they're, you know.. running around with guns.",
+   "after_tail": "using baby toys while they're, you know running around with guns."
+  },
+  {
+   "start": "2026-09-15 01:21:56",
+   "prev": "But all he's talking about is...",
+   "next": "like, removing one...",
+   "clause": "ellipsis_lowercase",
+   "before_tail": "But all he's talking about is.. like, removing one...",
+   "after_tail": "But all he's talking about is like, removing one..."
+  },
+  {
+   "start": "2026-09-15 01:21:56",
+   "prev": "like, removing one...",
+   "next": "small layer of interaction.",
+   "clause": "ellipsis_lowercase",
+   "before_tail": "like, removing one.. small layer of interaction.",
+   "after_tail": "like, removing one small layer of interaction."
+  },
+  {
+   "start": "2026-09-15 01:21:56",
+   "prev": "That's fine if you just want one thing, but if you're like developing a whole.. like..",
+   "next": "complex software.",
+   "clause": "ellipsis_lowercase",
+   "before_tail": "f you just want one thing, but if you're like developing a whole.. like. complex software.",
+   "after_tail": "if you just want one thing, but if you're like developing a whole.. like complex software."
+  },
+  {
+   "start": "2026-09-15 01:21:56",
+   "prev": "And when I looked at the..",
+   "next": "GitHub for the SDK, it doesn't look like an application.",
+   "clause": "ellipsis_determiner",
+   "before_tail": "And when I looked at the.. GitHub for the SDK, it doesn't look like an application.",
+   "after_tail": "And when I looked at the GitHub for the SDK, it doesn't look like an application."
+  },
+  {
+   "start": "2026-09-15 01:21:56",
+   "prev": "It says you pass a prompt..",
+   "next": "and allowed tools list and the agent loop runs to completion.",
+   "clause": "ellipsis_lowercase",
+   "before_tail": "It says you pass a prompt. and allowed tools list and the agent loop runs to completion.",
+   "after_tail": "It says you pass a prompt and allowed tools list and the agent loop runs to completion."
+  },
+  {
+   "start": "2026-09-15 01:21:56",
+   "prev": "I mean isn't that what I do and I just..",
+   "next": "have you give me a prompt and pass it to one of the agents I have?",
+   "clause": "ellipsis_lowercase",
+   "before_tail": "t what I do and I just. have you give me a prompt and pass it to one of the agents I have?",
+   "after_tail": "at what I do and I just have you give me a prompt and pass it to one of the agents I have?"
+  },
+  {
+   "start": "2026-09-15 01:51:08",
+   "prev": "Because I've never used show numbers in, like...",
+   "next": "a different app before.",
+   "clause": "ellipsis_lowercase",
+   "before_tail": "Because I've never used show numbers in, like.. a different app before.",
+   "after_tail": "Because I've never used show numbers in, like a different app before."
+  },
+  {
+   "start": "2026-09-15 01:51:08",
+   "prev": "Um..",
+   "next": "For one thing, what's the deal with the, uh..",
+   "clause": "ellipsis_hesitation_only",
+   "before_tail": "Um.. For one thing, what's the deal with the, uh..",
+   "after_tail": "Um For one thing, what's the deal with the, uh.."
+  },
+  {
+   "start": "2026-09-15 01:51:08",
+   "prev": "For one thing, what's the deal with the, uh..",
+   "next": "the light weight?",
+   "clause": "ellipsis_lowercase",
+   "before_tail": "For one thing, what's the deal with the, uh. the light weight?",
+   "after_tail": "For one thing, what's the deal with the, uh the light weight?"
+  },
+  {
+   "start": "2026-09-15 01:59:57",
+   "prev": "Do you think we should find...",
+   "next": "a way?",
+   "clause": "ellipsis_lowercase",
+   "before_tail": "Do you think we should find.. a way?",
+   "after_tail": "Do you think we should find a way?"
+  },
+  {
+   "start": "2026-09-15 02:05:59",
+   "prev": "Um...",
+   "next": "...any new features, uh...",
+   "clause": "ellipsis_hesitation_only",
+   "before_tail": "Um... ...any new features, uh...",
+   "after_tail": "Um ...any new features, uh..."
+  },
+  {
+   "start": "2026-09-15 02:21:33",
+   "prev": "I don't know if adding a full, like...",
+   "next": "open section above.",
+   "clause": "ellipsis_lowercase",
+   "before_tail": "I don't know if adding a full, like.. open section above.",
+   "after_tail": "I don't know if adding a full, like open section above."
+  },
+  {
+   "start": "2026-09-15 02:21:33",
+   "prev": "top section is a good idea, but maybe...",
+   "next": "you could work.",
+   "clause": "ellipsis_lowercase",
+   "before_tail": "top section is a good idea, but maybe.. you could work.",
+   "after_tail": "top section is a good idea, but maybe you could work."
+  },
+  {
+   "start": "2026-09-15 04:13:02",
+   "prev": "I don't want to answer because...",
+   "next": "this whole testing thing.",
+   "clause": "ellipsis_lowercase",
+   "before_tail": "I don't want to answer because.. this whole testing thing.",
+   "after_tail": "I don't want to answer because this whole testing thing."
+  },
+  {
+   "start": "2026-09-15 14:08:44",
+   "prev": "what if...",
+   "next": "we had a little...",
+   "clause": "ellipsis_lowercase",
+   "before_tail": "what if.. we had a little...",
+   "after_tail": "what if we had a little..."
+  },
+  {
+   "start": "2026-09-15 14:08:44",
+   "prev": "we had a little...",
+   "next": "mini square",
+   "clause": "ellipsis_lowercase",
+   "before_tail": "we had a little.. mini square",
+   "after_tail": "we had a little mini square"
+  },
+  {
+   "start": "2026-09-15 14:08:44",
+   "prev": "and it's got..",
+   "next": "you know, your main..",
+   "clause": "ellipsis_lowercase",
+   "before_tail": "and it's got. you know, your main..",
+   "after_tail": "and it's got you know, your main.."
+  },
+  {
+   "start": "2026-09-15 14:08:44",
+   "prev": "you know, your main..",
+   "next": "apps.",
+   "clause": "ellipsis_lowercase",
+   "before_tail": "you know, your main. apps.",
+   "after_tail": "you know, your main apps."
+  },
+  {
+   "start": "2026-09-15 14:08:44",
+   "prev": "uh.. with..",
+   "next": "number designations next to each one.",
+   "clause": "ellipsis_lowercase",
+   "before_tail": "uh.. with. number designations next to each one.",
+   "after_tail": "uh.. with number designations next to each one."
+  },
+  {
+   "start": "2026-09-15 14:08:44",
+   "prev": "and..",
+   "next": "that way..",
+   "clause": "ellipsis_lowercase",
+   "before_tail": "and. that way..",
+   "after_tail": "and that way.."
+  },
+  {
+   "start": "2026-09-15 14:08:44",
+   "prev": "that way..",
+   "next": "you know, swapping between windows or moving windows or doing anything like that is as easy as saying, you know..",
+   "clause": "ellipsis_lowercase",
+   "before_tail": "een windows or moving windows or doing anything like that is as easy as saying, you know..",
+   "after_tail": "een windows or moving windows or doing anything like that is as easy as saying, you know.."
+  },
+  {
+   "start": "2026-09-15 14:08:44",
+   "prev": "you know, swapping between windows or moving windows or doing anything like that is as easy as saying, you know..",
+   "next": "one.",
+   "clause": "ellipsis_lowercase",
+   "before_tail": "windows or moving windows or doing anything like that is as easy as saying, you know. one.",
+   "after_tail": " windows or moving windows or doing anything like that is as easy as saying, you know one."
+  },
+  {
+   "start": "2026-09-15 14:15:00",
+   "prev": "There are potential...",
+   "next": "times when a sentence might start with one left.",
+   "clause": "ellipsis_lowercase",
+   "before_tail": "There are potential.. times when a sentence might start with one left.",
+   "after_tail": "There are potential times when a sentence might start with one left."
+  },
+  {
+   "start": "2026-09-15 14:15:00",
+   "prev": "I'm sure something...",
+   "next": "will come up.",
+   "clause": "ellipsis_lowercase",
+   "before_tail": "I'm sure something.. will come up.",
+   "after_tail": "I'm sure something will come up."
+  },
+  {
+   "start": "2026-09-15 14:19:26",
+   "prev": "terminals, and then...",
+   "next": "put them...",
+   "clause": "ellipsis_lowercase",
+   "before_tail": "terminals, and then.. put them...",
+   "after_tail": "terminals, and then put them..."
+  },
+  {
+   "start": "2026-09-15 14:19:26",
+   "prev": "put them...",
+   "next": "on the same screen, like side-by-side?",
+   "clause": "ellipsis_lowercase",
+   "before_tail": "put them.. on the same screen, like side-by-side?",
+   "after_tail": "put them on the same screen, like side-by-side?"
+  },
+  {
+   "start": "2026-09-15 14:37:44",
+   "prev": "I noticed that I'm still unable to...",
+   "next": "edit things on the page.",
+   "clause": "ellipsis_lowercase",
+   "before_tail": "I noticed that I'm still unable to.. edit things on the page.",
+   "after_tail": "I noticed that I'm still unable to edit things on the page."
+  },
+  {
+   "start": "2026-09-15 14:37:44",
+   "prev": "On the main page of the arcana, not, you know, the...",
+   "next": "Mourn is website, because they're two separate things.",
+   "clause": "ellipsis_determiner",
+   "before_tail": "f the arcana, not, you know, the... Mourn is website, because they're two separate things.",
+   "after_tail": "e of the arcana, not, you know, the Mourn is website, because they're two separate things."
+  },
+  {
+   "start": "2026-09-15 14:37:44",
+   "prev": "Um...",
+   "next": "The, the stuff below...",
+   "clause": "ellipsis_hesitation_only",
+   "before_tail": "Um... The, the stuff below...",
+   "after_tail": "Um The, the stuff below..."
+  },
+  {
+   "start": "2026-09-15 14:37:44",
+   "prev": "Um...",
+   "next": "I don't know, my first thought is, like...",
+   "clause": "ellipsis_hesitation_only",
+   "before_tail": "Um... I don't know, my first thought is, like...",
+   "after_tail": "Um I don't know, my first thought is, like..."
+  },
+  {
+   "start": "2026-09-15 14:37:44",
+   "prev": "Um...",
+   "next": "I don't really know if...",
+   "clause": "ellipsis_hesitation_only",
+   "before_tail": "Um... I don't really know if...",
+   "after_tail": "Um I don't really know if..."
+  },
+  {
+   "start": "2026-09-15 14:37:44",
+   "prev": "I don't really know if...",
+   "next": "we should fix that, or if it's fine.",
+   "clause": "ellipsis_lowercase",
+   "before_tail": "I don't really know if.. we should fix that, or if it's fine.",
+   "after_tail": "I don't really know if we should fix that, or if it's fine."
+  },
+  {
+   "start": "2026-09-15 14:37:44",
+   "prev": "Um...",
+   "next": "On the Samsara page itself, the top is looking fantastic, although the image there of the main menu is going to change soon, obviously, because we're still changing it.",
+   "clause": "ellipsis_hesitation_only",
+   "before_tail": "here of the main menu is going to change soon, obviously, because we're still changing it.",
+   "after_tail": "here of the main menu is going to change soon, obviously, because we're still changing it."
+  },
+  {
+   "start": "2026-09-15 14:37:44",
+   "prev": "that's...",
+   "next": "right there.",
+   "clause": "ellipsis_lowercase",
+   "before_tail": "that's.. right there.",
+   "after_tail": "that's right there."
+  },
+  {
+   "start": "2026-09-15 14:37:44",
+   "prev": "Also, under what it does...",
+   "next": "the...",
+   "clause": "ellipsis_lowercase",
+   "before_tail": "Also, under what it does.. the...",
+   "after_tail": "Also, under what it does the..."
+  },
+  {
+   "start": "2026-09-15 14:37:44",
+   "prev": "I want...",
+   "next": "one of y'all to...",
+   "clause": "ellipsis_lowercase",
+   "before_tail": "I want.. one of y'all to...",
+   "after_tail": "I want one of y'all to..."
+  },
+  {
+   "start": "2026-09-15 14:37:44",
+   "prev": "one of y'all to...",
+   "next": "take a look at that, because...",
+   "clause": "ellipsis_lowercase",
+   "before_tail": "one of y'all to.. take a look at that, because...",
+   "after_tail": "one of y'all to take a look at that, because..."
+  },
+  {
+   "start": "2026-09-15 14:37:44",
+   "prev": "It is very outdated. That's, like, from a year ago. So, let's...",
+   "next": "redo that, sort of bring that part of the page up to speed.",
+   "clause": "ellipsis_lowercase",
+   "before_tail": ", from a year ago. So, let's.. redo that, sort of bring that part of the page up to speed.",
+   "after_tail": "ke, from a year ago. So, let's redo that, sort of bring that part of the page up to speed."
+  },
+  {
+   "start": "2026-09-15 14:37:44",
+   "prev": "But...",
+   "next": "that...",
+   "clause": "ellipsis_lowercase",
+   "before_tail": "But.. that...",
+   "after_tail": "But that..."
+  },
+  {
+   "start": "2026-09-15 14:37:44",
+   "prev": "that...",
+   "next": "command reference window just needs an overhaul, so let's put that in a prompt.",
+   "clause": "ellipsis_lowercase",
+   "before_tail": "that.. command reference window just needs an overhaul, so let's put that in a prompt.",
+   "after_tail": "that command reference window just needs an overhaul, so let's put that in a prompt."
+  },
+  {
+   "start": "2026-09-15 14:50:59",
+   "prev": "Not a long time, but like...",
+   "next": "maybe a full second, maybe a little more than that.",
+   "clause": "ellipsis_lowercase",
+   "before_tail": "Not a long time, but like.. maybe a full second, maybe a little more than that.",
+   "after_tail": "Not a long time, but like maybe a full second, maybe a little more than that."
+  },
+  {
+   "start": "2026-09-15 14:50:59",
+   "prev": "We need to put...",
+   "next": "more work into making sure that...",
+   "clause": "ellipsis_lowercase",
+   "before_tail": "We need to put.. more work into making sure that...",
+   "after_tail": "We need to put more work into making sure that..."
+  },
+  {
+   "start": "2026-09-15 14:50:59",
+   "prev": "more work into making sure that...",
+   "next": "of.. certain select.",
+   "clause": "ellipsis_lowercase",
+   "before_tail": "more work into making sure that.. of.. certain select.",
+   "after_tail": "more work into making sure that of.. certain select."
+  },
+  {
+   "start": "2026-09-15 14:50:59",
+   "prev": "Like, I.. last thing I want is someone saying...",
+   "next": "nd to end their...",
+   "clause": "ellipsis_lowercase",
+   "before_tail": "Like, I.. last thing I want is someone saying.. nd to end their...",
+   "after_tail": "Like, I.. last thing I want is someone saying nd to end their..."
+  },
+  {
+   "start": "2026-09-15 14:50:59",
+   "prev": "nd to end their...",
+   "next": "thing. And then...",
+   "clause": "ellipsis_lowercase",
+   "before_tail": "nd to end their.. thing. And then...",
+   "after_tail": "nd to end their thing. And then..."
+  },
+  {
+   "start": "2026-09-15 14:50:59",
+   "prev": "thing. And then...",
+   "next": "waiting a few seconds and then yelling it because it didn't hear them the first time.",
+   "clause": "ellipsis_lowercase",
+   "before_tail": "en.. waiting a few seconds and then yelling it because it didn't hear them the first time.",
+   "after_tail": "then waiting a few seconds and then yelling it because it didn't hear them the first time."
+  },
+  {
+   "start": "2026-09-15 14:58:34",
+   "prev": "And yet, all of a sudden, just that one message...",
+   "next": "was really bad, in that regard.",
+   "clause": "ellipsis_lowercase",
+   "before_tail": "And yet, all of a sudden, just that one message.. was really bad, in that regard.",
+   "after_tail": "And yet, all of a sudden, just that one message was really bad, in that regard."
+  },
+  {
+   "start": "2026-09-15 14:58:34",
+   "prev": "I'm looking at the...",
+   "next": "Dictation pause length.",
+   "clause": "ellipsis_determiner",
+   "before_tail": "I'm looking at the... Dictation pause length.",
+   "after_tail": "I'm looking at the Dictation pause length."
+  },
+  {
+   "start": "2026-09-15 14:58:34",
+   "prev": "And it says, lowering it makes...",
+   "next": "hands-free, break sentences into more and more pieces. Which is also not good.",
+   "clause": "ellipsis_lowercase",
+   "before_tail": " it makes.. hands-free, break sentences into more and more pieces. Which is also not good.",
+   "after_tail": "ng it makes hands-free, break sentences into more and more pieces. Which is also not good."
+  },
+  {
+   "start": "2026-09-15 14:58:34",
+   "prev": "Um...",
+   "next": "So how do we...",
+   "clause": "ellipsis_hesitation_only",
+   "before_tail": "Um.. So how do we...",
+   "after_tail": "Um So how do we..."
+  },
+  {
+   "start": "2026-09-15 14:58:34",
+   "prev": "So how do we...",
+   "next": "deal with that?",
+   "clause": "ellipsis_lowercase",
+   "before_tail": "So how do we.. deal with that?",
+   "after_tail": "So how do we deal with that?"
+  },
+  {
+   "start": "2026-09-15 14:58:34",
+   "prev": "Cause like, I want it to be fast, but..",
+   "next": "I want the sentences to, you know, be cohesive.",
+   "clause": "ellipsis_conjunction_i",
+   "before_tail": "Cause like, I want it to be fast, but.. I want the sentences to, you know, be cohesive.",
+   "after_tail": "Cause like, I want it to be fast, but I want the sentences to, you know, be cohesive."
+  },
+  {
+   "start": "2026-09-15 14:58:34",
+   "prev": "I thought, whisper, like..",
+   "next": "put the sentences together properly.",
+   "clause": "ellipsis_lowercase",
+   "before_tail": "I thought, whisper, like. put the sentences together properly.",
+   "after_tail": "I thought, whisper, like put the sentences together properly."
+  },
+  {
+   "start": "2026-09-15 15:09:41",
+   "prev": "Uh...",
+   "next": "I'm sure we, you.",
+   "clause": "ellipsis_hesitation_only",
+   "before_tail": "Uh... I'm sure we, you.",
+   "after_tail": "Uh I'm sure we, you."
+  },
+  {
+   "start": "2026-09-15 15:11:33",
+   "prev": "Valid critique of that section, the...",
+   "next": "Listening now?",
+   "clause": "ellipsis_determiner",
+   "before_tail": "Valid critique of that section, the... Listening now?",
+   "after_tail": "Valid critique of that section, the Listening now?"
+  },
+  {
+   "start": "2026-09-15 15:11:33",
+   "prev": "And...",
+   "next": "Like, links to, like...",
+   "clause": "ellipsis_new_sentence",
+   "before_tail": "And.. Like, links to, like...",
+   "after_tail": "And... Like, links to, like..."
+  },
+  {
+   "start": "2026-09-15 15:12:51",
+   "prev": "Um...",
+   "next": "It seems like filler...",
+   "clause": "ellipsis_hesitation_only",
+   "before_tail": "Um... It seems like filler...",
+   "after_tail": "Um It seems like filler..."
+  },
+  {
+   "start": "2026-09-15 15:12:51",
+   "prev": "Uh, I don't see anyone ever using it because, like, why would you be using the home screen to control your dictation? That's what you have...",
+   "next": "your voice and the keyboard and all sorts of other shit for.",
+   "clause": "ellipsis_lowercase",
+   "before_tail": "ation? That's what you have.. your voice and the keyboard and all sorts of other shit for.",
+   "after_tail": "ctation? That's what you have your voice and the keyboard and all sorts of other shit for."
+  },
+  {
+   "start": "2026-09-15 15:12:51",
+   "prev": "Um..",
+   "next": "Like, or in statistics and stuff like that. Just like it is for with other apps.",
+   "clause": "ellipsis_hesitation_only",
+   "before_tail": "Um. Like, or in statistics and stuff like that. Just like it is for with other apps.",
+   "after_tail": "Um Like, or in statistics and stuff like that. Just like it is for with other apps."
+  }
+ ],
+ "ellipsis_clause_counts": {
+  "ellipsis_conjunction_i join=True": 1,
+  "ellipsis_determiner join=True": 5,
+  "ellipsis_hesitation_only join=True": 14,
+  "ellipsis_lowercase join=True": 102,
+  "ellipsis_new_sentence join=False": 110
+ },
+ "fallback_commit_14_50_and_14_58": {
+  "2026-09-15 14:50:59": {
+   "before": "This is kind of just like an aesthetics or kind of neat thing I thought of but in the streaming dictate window where it says listening dot dot dot. Could we make it? You know go from one dot to two dot to three dot back to one, you know over and over like that. Ah. Just looks a little nicer. And I was also thinking maybe like if you're not currently saying anything. Occasionally like a hint could. Maybe appear in light letters. Saying something, how to undo. Your. Last utterance or how to like clear the whole streaming box. Or, just hints on. How to use. That stuff. By the way, how do you clear your whole. Streaming box. I know you say scratch that to go back one. But doing that over and over again is annoying. Another thing we might want to put on the agenda. Is finding ways to speed. Up. Command. Interpretation. And. Command. Execution. Like. I want. To get. As close to. Like. 100 or 200 milliseconds as possible. I doubt, that is possible. But. I'm sure we could, or I could think of tricks. Maybe it's faster for people who are using a smaller model. I think I'm using a medium sized one. Maybe I'll try switching to a smaller one and see how the command execution is. There's a long time between when I say end and when it paces the message. Not a long time, but like.. Maybe a full second, maybe a little more than that. Speaking of which... We need to put.. More work into making sure that.. Of.. Certain select commands are always heard correctly immediately. Ah., I.. Last thing I want is someone saying.. Nd to end their.. Thing. And then.. Waiting a few seconds and then yelling it because it didn't hear them the first time. I want it to always know. Or at least get as close to that as possible.",
+   "after": "This is kind of just like an aesthetics or kind of neat thing I thought of but in the streaming dictate window where it says listening dot dot dot. Could we make it? You know go from one dot to two dot to three dot back to one, you know over and over like that. Ah. Just looks a little nicer. And I was also thinking maybe like if you're not currently saying anything. Occasionally like a hint could. Maybe appear in light letters. Saying something, how to undo. Your. Last utterance or how to like clear the whole streaming box. Or, just hints on. How to use. That stuff. By the way, how do you clear your whole. Streaming box. I know you say scratch that to go back one. But doing that over and over again is annoying. Another thing we might want to put on the agenda. Is finding ways to speed. Up. Command. Interpretation. And. Command. Execution. Like. I want. To get. As close to. Like. 100 or 200 milliseconds as possible. I doubt, that is possible. But. I'm sure we could, or I could think of tricks. Maybe it's faster for people who are using a smaller model. I think I'm using a medium sized one. Maybe I'll try switching to a smaller one and see how the command execution is. There's a long time between when I say end and when it paces the message. Not a long time, but like maybe a full second, maybe a little more than that. Speaking of which... We need to put more work into making sure that of.. Certain select commands are always heard correctly immediately. Ah., I.. Last thing I want is someone saying nd to end their thing. And then waiting a few seconds and then yelling it because it didn't hear them the first time. I want it to always know. Or at least get as close to that as possible."
+  },
+  "2026-09-15 14:58:34": {
+   "before": "Do you notice how in that last message to you that it was breaking up? My utterances, a ton, and then never, combine them? There was just periods everywhere. I don't understand why that happened when I haven't changed anything. And yet, all of a sudden, just that one message.. Was really bad, in that regard. I'm looking at the... Dictation pause length. It's at.65 seconds. And it says, lowering it makes.. Hands-free, break sentences into more and more pieces. Which is also not good... So how do we.. Deal with that? Cause, I want it to be fast, but.. I want the sentences to, be cohesive. I thought, whisper, like. Put the sentences together properly, intelligently. If it's just like a limitation of whisper, maybe we should look into that other model we were talking about adopting.",
+   "after": "Do you notice how in that last message to you that it was breaking up? My utterances, a ton, and then never, combine them? There was just periods everywhere. I don't understand why that happened when I haven't changed anything. And yet, all of a sudden, just that one message was really bad, in that regard. I'm looking at the Dictation pause length. It's at.65 seconds. And it says, lowering it makes hands-free, break sentences into more and more pieces. Which is also not good. So how do we deal with that? Cause, I want it to be fast, but I want the sentences to, be cohesive. I thought, whisper, like put the sentences together properly, intelligently. If it's just like a limitation of whisper, maybe we should look into that other model we were talking about adopting."
+  }
+ }
+}

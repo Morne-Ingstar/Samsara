@@ -419,6 +419,35 @@ def _snapshot_real_clipboard() -> dict:
     return snapshot
 
 
+#: Formats Windows re-creates from the two the safety net restores, so their
+#: presence does not mean anything would be lost.
+_RESYNTHESIZED_BY_WINDOWS = {CF_TEXT, CF_OEMTEXT, CF_LOCALE, CF_BITMAP, CF_DIBV5, 9}  # 9 = CF_PALETTE
+
+
+def _unrestorable_real_formats() -> set:
+    """Formats on the REAL clipboard that _restore_real_clipboard() could not
+    put back. Read-only (enumeration). Any failure is treated as 'cannot
+    tell', which also means the tests must not run."""
+    import win32clipboard
+
+    try:
+        win32clipboard.OpenClipboard()
+    except Exception:
+        return {-1}
+    try:
+        present, fmt = set(), 0
+        while True:
+            fmt = win32clipboard.EnumClipboardFormats(fmt)
+            if not fmt:
+                break
+            present.add(fmt)
+    except Exception:
+        return {-1}
+    finally:
+        win32clipboard.CloseClipboard()
+    return present - set(_SNAPSHOT_FORMATS) - _RESYNTHESIZED_BY_WINDOWS
+
+
 def _restore_real_clipboard(snapshot: dict) -> None:
     """Restore a snapshot taken by _snapshot_real_clipboard(), or just
     empty the clipboard if the snapshot was empty (the user's clipboard
@@ -448,6 +477,14 @@ def preserve_real_clipboard():
     passes. The snapshot/restore calls themselves are a handful of Win32
     API calls -- negligible cost per test.
     """
+    # ARC audit6 (49): this safety net can only put back CF_UNICODETEXT and
+    # CF_DIB (plus what Windows re-creates from them). If the user's real
+    # clipboard holds anything else -- copied files, Office data, custom
+    # formats -- running the test would destroy it. Skip instead.
+    unrestorable = _unrestorable_real_formats()
+    if unrestorable:
+        pytest.skip("real clipboard holds content this safety net cannot restore "
+                    f"(formats {sorted(unrestorable)}); not touching it")
     snapshot = _snapshot_real_clipboard()
     yield
     try:

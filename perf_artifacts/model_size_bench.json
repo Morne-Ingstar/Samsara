@@ -1,0 +1,1268 @@
+{
+ "params": {
+  "language": "en",
+  "beam_size": 5,
+  "vad_filter": false,
+  "condition_on_previous_text": true,
+  "without_timestamps": false,
+  "no_speech_threshold": 0.6,
+  "log_prob_threshold": -1.0
+ },
+ "load_ms": {
+  "medium": 1684.035699989181,
+  "small": 1444.1916000214405
+ },
+ "labelled": [
+  {
+   "wav": "C:\\Users\\Morne\\.samsara-daily\\debug_audio\\wake_202813_196047.wav",
+   "live": "Jarvis dictate",
+   "truth": "jarvis dictate",
+   "seconds": 3.4,
+   "medium": {
+    "text": "Jarvis Dictate",
+    "ms": 186.8,
+    "exact": true,
+    "wer": 0.0
+   },
+   "small": {
+    "text": "Jarvis dictate",
+    "ms": 92.6,
+    "exact": true,
+    "wer": 0.0
+   }
+  },
+  {
+   "wav": "C:\\Users\\Morne\\.samsara-daily\\debug_audio\\wake_202818_307048.wav",
+   "live": "This is round one, over.",
+   "truth": "this is round one over",
+   "seconds": 2.9,
+   "medium": {
+    "text": "This is round one. Over.",
+    "ms": 202.5,
+    "exact": true,
+    "wer": 0.0,
+    "control_ok": true
+   },
+   "small": {
+    "text": "This is round one. Over.",
+    "ms": 108.8,
+    "exact": true,
+    "wer": 0.0,
+    "control_ok": true
+   }
+  },
+  {
+   "wav": "C:\\Users\\Morne\\.samsara-daily\\debug_audio\\wake_202837_595861.wav",
+   "live": "Jarvis dictate.",
+   "truth": "jarvis dictate",
+   "seconds": 3.5,
+   "medium": {
+    "text": "Jarvis, dictate.",
+    "ms": 194.9,
+    "exact": true,
+    "wer": 0.0
+   },
+   "small": {
+    "text": "Jarvis, dictate.",
+    "ms": 88.5,
+    "exact": true,
+    "wer": 0.0
+   }
+  },
+  {
+   "wav": "C:\\Users\\Morne\\.samsara-daily\\debug_audio\\wake_202842_802484.wav",
+   "live": "This is round two, cancel.",
+   "truth": "this is round two cancel",
+   "seconds": 3.1,
+   "medium": {
+    "text": "This is round two, cancel.",
+    "ms": 258.0,
+    "exact": true,
+    "wer": 0.0,
+    "control_ok": true
+   },
+   "small": {
+    "text": "This is round two, cancel.",
+    "ms": 98.4,
+    "exact": true,
+    "wer": 0.0,
+    "control_ok": true
+   }
+  },
+  {
+   "wav": "C:\\Users\\Morne\\.samsara-daily\\debug_audio\\wake_202848_504469.wav",
+   "live": "Jarvis dictate.",
+   "truth": "jarvis dictate",
+   "seconds": 3.4,
+   "medium": {
+    "text": "Jarvis Dictate",
+    "ms": 182.6,
+    "exact": true,
+    "wer": 0.0
+   },
+   "small": {
+    "text": "Jarvis Dictate",
+    "ms": 88.6,
+    "exact": true,
+    "wer": 0.0
+   }
+  },
+  {
+   "wav": "C:\\Users\\Morne\\.samsara-daily\\debug_audio\\wake_202851_696225.wav",
+   "live": "Over.",
+   "truth": "over",
+   "seconds": 1.6,
+   "medium": {
+    "text": "Over.",
+    "ms": 136.7,
+    "exact": true,
+    "wer": 0.0,
+    "control_ok": true
+   },
+   "small": {
+    "text": "over.",
+    "ms": 70.1,
+    "exact": true,
+    "wer": 0.0,
+    "control_ok": true
+   }
+  },
+  {
+   "wav": "C:\\Users\\Morne\\.samsara-daily\\debug_audio\\wake_202908_403852.wav",
+   "live": "Jarvis dictate.",
+   "truth": "jarvis dictate",
+   "seconds": 3.1,
+   "medium": {
+    "text": "Jarvis Dictate?",
+    "ms": 196.5,
+    "exact": true,
+    "wer": 0.0
+   },
+   "small": {
+    "text": "Jarvis Dictate",
+    "ms": 97.0,
+    "exact": true,
+    "wer": 0.0
+   }
+  },
+  {
+   "wav": "C:\\Users\\Morne\\.samsara-daily\\debug_audio\\wake_202912_689871.wav",
+   "live": "This is round four.",
+   "truth": "this is round four",
+   "seconds": 2.3,
+   "medium": {
+    "text": "This is round four.",
+    "ms": 161.2,
+    "exact": true,
+    "wer": 0.0
+   },
+   "small": {
+    "text": "This is round four.",
+    "ms": 86.5,
+    "exact": true,
+    "wer": 0.0
+   }
+  },
+  {
+   "wav": "C:\\Users\\Morne\\.samsara-daily\\debug_audio\\wake_202921_006779.wav",
+   "live": "Jarvis dictate.",
+   "truth": "jarvis dictate",
+   "seconds": 3.3,
+   "medium": {
+    "text": "Jarvis Dictate",
+    "ms": 163.9,
+    "exact": true,
+    "wer": 0.0
+   },
+   "small": {
+    "text": "Jarvis dictate",
+    "ms": 101.5,
+    "exact": true,
+    "wer": 0.0
+   }
+  },
+  {
+   "wav": "C:\\Users\\Morne\\.samsara-daily\\debug_audio\\wake_202924_796701.wav",
+   "live": "This is round five.",
+   "truth": "this is round five",
+   "seconds": 2.0,
+   "medium": {
+    "text": "This is round 5.",
+    "ms": 167.6,
+    "exact": false,
+    "wer": 0.25
+   },
+   "small": {
+    "text": "This is round five.",
+    "ms": 90.6,
+    "exact": true,
+    "wer": 0.0
+   }
+  },
+  {
+   "wav": "C:\\Users\\Morne\\.samsara-daily\\debug_audio\\wake_202937_904595.wav",
+   "live": "Jarvis dictate.",
+   "truth": "jarvis dictate",
+   "seconds": 3.5,
+   "medium": {
+    "text": "The Jarvis Dictate",
+    "ms": 180.0,
+    "exact": false,
+    "wer": 0.5
+   },
+   "small": {
+    "text": "Jarvis dictate",
+    "ms": 90.3,
+    "exact": true,
+    "wer": 0.0
+   }
+  },
+  {
+   "wav": "C:\\Users\\Morne\\.samsara-daily\\debug_audio\\wake_202953_704197.wav",
+   "live": "over.",
+   "truth": "over",
+   "seconds": 1.4,
+   "medium": {
+    "text": "over.",
+    "ms": 141.5,
+    "exact": true,
+    "wer": 0.0,
+    "control_ok": true
+   },
+   "small": {
+    "text": "over.",
+    "ms": 72.2,
+    "exact": true,
+    "wer": 0.0,
+    "control_ok": true
+   }
+  },
+  {
+   "wav": "C:\\Users\\Morne\\.samsara-daily\\debug_audio\\wake_203009_107501.wav",
+   "live": "Jarvis, dictate.",
+   "truth": "jarvis dictate",
+   "seconds": 3.4,
+   "medium": {
+    "text": "Jarvis, dictate.",
+    "ms": 177.7,
+    "exact": true,
+    "wer": 0.0
+   },
+   "small": {
+    "text": "Jarvis Dictate",
+    "ms": 91.8,
+    "exact": true,
+    "wer": 0.0
+   }
+  },
+  {
+   "wav": "C:\\Users\\Morne\\.samsara-daily\\debug_audio\\wake_203012_895987.wav",
+   "live": "cancel.",
+   "truth": "cancel",
+   "seconds": 1.5,
+   "medium": {
+    "text": "cancel.",
+    "ms": 156.5,
+    "exact": true,
+    "wer": 0.0,
+    "control_ok": true
+   },
+   "small": {
+    "text": "Cancel.",
+    "ms": 77.7,
+    "exact": true,
+    "wer": 0.0,
+    "control_ok": true
+   }
+  },
+  {
+   "wav": "C:\\Users\\Morne\\.samsara-daily\\debug_audio\\wake_203018_704721.wav",
+   "live": "Jarvis dictate",
+   "truth": "jarvis dictate",
+   "seconds": 3.4,
+   "medium": {
+    "text": "Jarvis, stick tape.",
+    "ms": 199.8,
+    "exact": false,
+    "wer": 1.0
+   },
+   "small": {
+    "text": "Jarvis, dictate.",
+    "ms": 101.8,
+    "exact": true,
+    "wer": 0.0
+   }
+  },
+  {
+   "wav": "C:\\Users\\Morne\\.samsara-daily\\debug_audio\\wake_203021_401262.wav",
+   "live": "done.",
+   "truth": "done",
+   "seconds": 1.2,
+   "medium": {
+    "text": "done.",
+    "ms": 140.6,
+    "exact": true,
+    "wer": 0.0,
+    "control_ok": true
+   },
+   "small": {
+    "text": "done.",
+    "ms": 79.1,
+    "exact": true,
+    "wer": 0.0,
+    "control_ok": true
+   }
+  },
+  {
+   "wav": "C:\\Users\\Morne\\.samsara-daily\\debug_audio\\wake_032912_683841.wav",
+   "live": "Jarvis Dictate",
+   "truth": "jarvis dictate",
+   "seconds": 3.3,
+   "medium": {
+    "text": "Jarvis Dictate.",
+    "ms": 180.5,
+    "exact": true,
+    "wer": 0.0
+   },
+   "small": {
+    "text": "Jarvis Stick Tape.",
+    "ms": 99.9,
+    "exact": false,
+    "wer": 1.0
+   }
+  },
+  {
+   "wav": "C:\\Users\\Morne\\.samsara-daily\\debug_audio\\wake_032915_700130.wav",
+   "live": "Over.",
+   "truth": "over",
+   "seconds": 1.7,
+   "medium": {
+    "text": "Over.",
+    "ms": 145.6,
+    "exact": true,
+    "wer": 0.0,
+    "control_ok": true
+   },
+   "small": {
+    "text": "over.",
+    "ms": 74.8,
+    "exact": true,
+    "wer": 0.0,
+    "control_ok": true
+   }
+  },
+  {
+   "wav": "C:\\Users\\Morne\\.samsara-daily\\debug_audio\\wake_032933_402321.wav",
+   "live": "Jarvis dictate.",
+   "truth": "jarvis dictate",
+   "seconds": 3.4,
+   "medium": {
+    "text": "Jarvis Dictate",
+    "ms": 168.3,
+    "exact": true,
+    "wer": 0.0
+   },
+   "small": {
+    "text": "Jarvis Dictate",
+    "ms": 89.6,
+    "exact": true,
+    "wer": 0.0
+   }
+  },
+  {
+   "wav": "C:\\Users\\Morne\\.samsara-daily\\debug_audio\\wake_032936_396703.wav",
+   "live": "cancel.",
+   "truth": "cancel",
+   "seconds": 1.6,
+   "medium": {
+    "text": "cancel.",
+    "ms": 149.8,
+    "exact": true,
+    "wer": 0.0,
+    "control_ok": true
+   },
+   "small": {
+    "text": "Cancel.",
+    "ms": 88.1,
+    "exact": true,
+    "wer": 0.0,
+    "control_ok": true
+   }
+  },
+  {
+   "wav": "C:\\Users\\Morne\\.samsara-daily\\debug_audio\\wake_032950_598885.wav",
+   "live": "Jarvis Dictate.",
+   "truth": "jarvis dictate",
+   "seconds": 3.3,
+   "medium": {
+    "text": "Jarvis Dictate.",
+    "ms": 179.8,
+    "exact": true,
+    "wer": 0.0
+   },
+   "small": {
+    "text": "Jarvis Dictate",
+    "ms": 101.1,
+    "exact": true,
+    "wer": 0.0
+   }
+  },
+  {
+   "wav": "C:\\Users\\Morne\\.samsara-daily\\debug_audio\\wake_032954_696260.wav",
+   "live": "Done.",
+   "truth": "done",
+   "seconds": 1.4,
+   "medium": {
+    "text": "Done.",
+    "ms": 154.5,
+    "exact": true,
+    "wer": 0.0,
+    "control_ok": true
+   },
+   "small": {
+    "text": "Done.",
+    "ms": 72.1,
+    "exact": true,
+    "wer": 0.0,
+    "control_ok": true
+   }
+  },
+  {
+   "wav": "C:\\Users\\Morne\\.samsara-daily\\debug_audio\\wake_032958_985106.wav",
+   "live": "Jarvis dictate.",
+   "truth": "jarvis dictate",
+   "seconds": 3.2,
+   "medium": {
+    "text": "Jarvis, dictate.",
+    "ms": 188.5,
+    "exact": true,
+    "wer": 0.0
+   },
+   "small": {
+    "text": "Jarvis Dictate",
+    "ms": 87.5,
+    "exact": true,
+    "wer": 0.0
+   }
+  },
+  {
+   "wav": "C:\\Users\\Morne\\.samsara-daily\\debug_audio\\wake_033001_784565.wav",
+   "live": "Over.",
+   "truth": "over",
+   "seconds": 1.4,
+   "medium": {
+    "text": "Over.",
+    "ms": 142.3,
+    "exact": true,
+    "wer": 0.0,
+    "control_ok": true
+   },
+   "small": {
+    "text": "over.",
+    "ms": 77.8,
+    "exact": true,
+    "wer": 0.0,
+    "control_ok": true
+   }
+  },
+  {
+   "wav": "C:\\Users\\Morne\\.samsara-daily\\debug_audio\\wake_033006_198850.wav",
+   "live": "Jarvis dictate.",
+   "truth": "jarvis dictate",
+   "seconds": 3.3,
+   "medium": {
+    "text": "Jarvis Dictate",
+    "ms": 164.0,
+    "exact": true,
+    "wer": 0.0
+   },
+   "small": {
+    "text": "Jarvis Dictate",
+    "ms": 90.7,
+    "exact": true,
+    "wer": 0.0
+   }
+  },
+  {
+   "wav": "C:\\Users\\Morne\\.samsara-daily\\debug_audio\\wake_033009_103672.wav",
+   "live": "Cancel.",
+   "truth": "cancel",
+   "seconds": 1.5,
+   "medium": {
+    "text": "Cancel.",
+    "ms": 166.2,
+    "exact": true,
+    "wer": 0.0,
+    "control_ok": true
+   },
+   "small": {
+    "text": "Cancel.",
+    "ms": 85.2,
+    "exact": true,
+    "wer": 0.0,
+    "control_ok": true
+   }
+  },
+  {
+   "wav": "C:\\Users\\Morne\\.samsara-daily\\debug_audio\\wake_033013_533092.wav",
+   "live": "Jarvis dictate.",
+   "truth": "jarvis dictate",
+   "seconds": 3.3,
+   "medium": {
+    "text": "Jarvis Dictate",
+    "ms": 176.8,
+    "exact": true,
+    "wer": 0.0
+   },
+   "small": {
+    "text": "Jarvis Dictate",
+    "ms": 86.5,
+    "exact": true,
+    "wer": 0.0
+   }
+  },
+  {
+   "wav": "C:\\Users\\Morne\\.samsara-daily\\debug_audio\\wake_033016_285979.wav",
+   "live": "Done.",
+   "truth": "done",
+   "seconds": 1.2,
+   "medium": {
+    "text": "Done.",
+    "ms": 139.8,
+    "exact": true,
+    "wer": 0.0,
+    "control_ok": true
+   },
+   "small": {
+    "text": "done.",
+    "ms": 75.1,
+    "exact": true,
+    "wer": 0.0,
+    "control_ok": true
+   }
+  },
+  {
+   "wav": "C:\\Users\\Morne\\.samsara-daily\\debug_audio\\wake_033021_790045.wav",
+   "live": "Jarvis dictate.",
+   "truth": "jarvis dictate",
+   "seconds": 3.3,
+   "medium": {
+    "text": "Jarvis Dictate.",
+    "ms": 174.3,
+    "exact": true,
+    "wer": 0.0
+   },
+   "small": {
+    "text": "Jarvis Dictate",
+    "ms": 96.2,
+    "exact": true,
+    "wer": 0.0
+   }
+  },
+  {
+   "wav": "C:\\Users\\Morne\\.samsara-daily\\debug_audio\\wake_033024_598912.wav",
+   "live": "Over.",
+   "truth": "over",
+   "seconds": 1.2,
+   "medium": {
+    "text": "Over.",
+    "ms": 139.4,
+    "exact": true,
+    "wer": 0.0,
+    "control_ok": true
+   },
+   "small": {
+    "text": "over.",
+    "ms": 70.1,
+    "exact": true,
+    "wer": 0.0,
+    "control_ok": true
+   }
+  },
+  {
+   "wav": "C:\\Users\\Morne\\.samsara-daily\\debug_audio\\wake_033028_411005.wav",
+   "live": "Jarvis, stick tape.",
+   "truth": "jarvis dictate",
+   "seconds": 3.3,
+   "medium": {
+    "text": "Jarvis Stick Tape.",
+    "ms": 172.3,
+    "exact": false,
+    "wer": 1.0
+   },
+   "small": {
+    "text": "Jarvis, dictate.",
+    "ms": 102.7,
+    "exact": true,
+    "wer": 0.0
+   }
+  },
+  {
+   "wav": "C:\\Users\\Morne\\.samsara-daily\\debug_audio\\wake_033034_502078.wav",
+   "live": "Jarvis Dictate.",
+   "truth": "jarvis dictate",
+   "seconds": 3.3,
+   "medium": {
+    "text": "Jar of this stick tape.",
+    "ms": 175.5,
+    "exact": false,
+    "wer": 2.5
+   },
+   "small": {
+    "text": "Jarvis, dictate.",
+    "ms": 85.3,
+    "exact": true,
+    "wer": 0.0
+   }
+  },
+  {
+   "wav": "C:\\Users\\Morne\\.samsara-daily\\debug_audio\\wake_033036_980043.wav",
+   "live": "Done.",
+   "truth": "done",
+   "seconds": 1.2,
+   "medium": {
+    "text": "Done.",
+    "ms": 136.9,
+    "exact": true,
+    "wer": 0.0,
+    "control_ok": true
+   },
+   "small": {
+    "text": "Done.",
+    "ms": 70.8,
+    "exact": true,
+    "wer": 0.0,
+    "control_ok": true
+   }
+  },
+  {
+   "wav": "C:\\Users\\Morne\\.samsara-daily\\debug_audio\\wake_033042_599454.wav",
+   "live": "Jarvis Stick Tape.",
+   "truth": "jarvis dictate",
+   "seconds": 3.3,
+   "medium": {
+    "text": "Jarvis Dictate",
+    "ms": 183.3,
+    "exact": true,
+    "wer": 0.0
+   },
+   "small": {
+    "text": "Jarvis, dictate.",
+    "ms": 101.7,
+    "exact": true,
+    "wer": 0.0
+   }
+  },
+  {
+   "wav": "C:\\Users\\Morne\\.samsara-daily\\debug_audio\\wake_033056_676107.wav",
+   "live": "Jarvis Sticktape?",
+   "truth": "jarvis dictate",
+   "seconds": 3.3,
+   "medium": {
+    "text": "Jarvis Sticktape.",
+    "ms": 173.0,
+    "exact": false,
+    "wer": 0.5
+   },
+   "small": {
+    "text": "Jarvis Stick Tape.",
+    "ms": 94.0,
+    "exact": false,
+    "wer": 1.0
+   }
+  },
+  {
+   "wav": "C:\\Users\\Morne\\.samsara-daily\\debug_audio\\wake_033112_598943.wav",
+   "live": "Jarvis stick tape.",
+   "truth": "jarvis dictate",
+   "seconds": 3.3,
+   "medium": {
+    "text": "Jarvis Stick Tape.",
+    "ms": 198.2,
+    "exact": false,
+    "wer": 1.0
+   },
+   "small": {
+    "text": "Jarvis Stick Tape.",
+    "ms": 95.2,
+    "exact": false,
+    "wer": 1.0
+   }
+  },
+  {
+   "wav": "C:\\Users\\Morne\\.samsara-daily\\debug_audio\\wake_033119_398901.wav",
+   "live": "Jarvis stick tape.",
+   "truth": "jarvis dictate",
+   "seconds": 3.3,
+   "medium": {
+    "text": "Jarvis stick tape.",
+    "ms": 183.7,
+    "exact": false,
+    "wer": 1.0
+   },
+   "small": {
+    "text": "Jarvis Stick Tape",
+    "ms": 93.1,
+    "exact": false,
+    "wer": 1.0
+   }
+  },
+  {
+   "wav": "C:\\Users\\Morne\\.samsara-daily\\debug_audio\\wake_033148_431851.wav",
+   "live": "Jarvis dictate.",
+   "truth": "jarvis dictate",
+   "seconds": 3.3,
+   "medium": {
+    "text": "Jarvis, dictate.",
+    "ms": 184.0,
+    "exact": true,
+    "wer": 0.0
+   },
+   "small": {
+    "text": "Jarvis, dictate.",
+    "ms": 101.8,
+    "exact": true,
+    "wer": 0.0
+   }
+  },
+  {
+   "wav": "C:\\Users\\Morne\\.samsara-daily\\debug_audio\\wake_033154_834804.wav",
+   "live": "This is a test sentence. Over.",
+   "truth": "this is a test sentence over",
+   "seconds": 3.4,
+   "medium": {
+    "text": "This is a test sentence. Over.",
+    "ms": 216.4,
+    "exact": true,
+    "wer": 0.0,
+    "control_ok": true
+   },
+   "small": {
+    "text": "This is a test sentence. Over.",
+    "ms": 128.1,
+    "exact": true,
+    "wer": 0.0,
+    "control_ok": true
+   }
+  },
+  {
+   "wav": "C:\\Users\\Morne\\.samsara-daily\\debug_audio\\wake_033200_723295.wav",
+   "live": "Jarvis dictate.",
+   "truth": "jarvis dictate",
+   "seconds": 3.3,
+   "medium": {
+    "text": "Jarvis dictate.",
+    "ms": 163.1,
+    "exact": true,
+    "wer": 0.0
+   },
+   "small": {
+    "text": "Jarvis, dictate.",
+    "ms": 94.8,
+    "exact": true,
+    "wer": 0.0
+   }
+  },
+  {
+   "wav": "C:\\Users\\Morne\\.samsara-daily\\debug_audio\\wake_033205_926509.wav",
+   "live": "This is another test sentence. Cancel.",
+   "truth": "this is another test sentence cancel",
+   "seconds": 3.4,
+   "medium": {
+    "text": "This is another test sentence. Cancel.",
+    "ms": 221.0,
+    "exact": true,
+    "wer": 0.0,
+    "control_ok": true
+   },
+   "small": {
+    "text": "This is another test sentence. Cancel.",
+    "ms": 139.8,
+    "exact": true,
+    "wer": 0.0,
+    "control_ok": true
+   }
+  },
+  {
+   "wav": "C:\\Users\\Morne\\.samsara-daily\\debug_audio\\wake_033213_723042.wav",
+   "live": "Jarvis dictate.",
+   "truth": "jarvis dictate",
+   "seconds": 4.1,
+   "medium": {
+    "text": "Jarvis Dictate",
+    "ms": 162.6,
+    "exact": true,
+    "wer": 0.0
+   },
+   "small": {
+    "text": "Jarvis Dictate.",
+    "ms": 93.4,
+    "exact": true,
+    "wer": 0.0
+   }
+  },
+  {
+   "wav": "C:\\Users\\Morne\\.samsara-daily\\debug_audio\\wake_033221_727350.wav",
+   "live": "Done.",
+   "truth": "done",
+   "seconds": 1.2,
+   "medium": {
+    "text": "Done.",
+    "ms": 136.7,
+    "exact": true,
+    "wer": 0.0,
+    "control_ok": true
+   },
+   "small": {
+    "text": "Done.",
+    "ms": 75.1,
+    "exact": true,
+    "wer": 0.0,
+    "control_ok": true
+   }
+  }
+ ],
+ "unlabelled": [
+  {
+   "wav": "C:\\Users\\Morne\\.samsara\\debug\\hotkey_20260911T195158_423064.wav",
+   "seconds": 3.6,
+   "medium": {
+    "text": "Remind me what coda tier means.",
+    "ms": 204.6
+   },
+   "small": {
+    "text": "Remind me what Codeteer means.",
+    "ms": 117.0
+   },
+   "small_vs_medium_wer": 0.333
+  },
+  {
+   "wav": "C:\\Users\\Morne\\.samsara\\debug\\hotkey_20260913T024309_878456.wav",
+   "seconds": 3.0,
+   "medium": {
+    "text": "just without the hand movements.",
+    "ms": 189.5
+   },
+   "small": {
+    "text": "just without the hand movements.",
+    "ms": 86.6
+   },
+   "small_vs_medium_wer": 0.0
+  },
+  {
+   "wav": "C:\\Users\\Morne\\.samsara\\debug\\hotkey_20260913T234410_771166.wav",
+   "seconds": 4.1,
+   "medium": {
+    "text": "I think my card only has 8 gigabytes, not 10.",
+    "ms": 232.2
+   },
+   "small": {
+    "text": "I think my card only has 8 gigabytes, not 10.",
+    "ms": 121.8
+   },
+   "small_vs_medium_wer": 0.0
+  },
+  {
+   "wav": "C:\\Users\\Morne\\.samsara\\debug\\hotkey_20260914T214818_696480.wav",
+   "seconds": 4.4,
+   "medium": {
+    "text": "I'm having a difficult time explaining this",
+    "ms": 200.2
+   },
+   "small": {
+    "text": "I'm having a difficult time explaining this.",
+    "ms": 107.7
+   },
+   "small_vs_medium_wer": 0.0
+  },
+  {
+   "wav": "C:\\Users\\Morne\\.samsara\\debug\\hotkey_20260913T103233_035701.wav",
+   "seconds": 4.8,
+   "medium": {
+    "text": "How long till you think I can start using it?",
+    "ms": 207.1
+   },
+   "small": {
+    "text": "How long do you think I can start using it?",
+    "ms": 111.3
+   },
+   "small_vs_medium_wer": 0.1
+  },
+  {
+   "wav": "C:\\Users\\Morne\\.samsara\\debug\\hotkey_20260912T223352_059379.wav",
+   "seconds": 2.0,
+   "medium": {
+    "text": "I had to restart the session.",
+    "ms": 178.2
+   },
+   "small": {
+    "text": "I had to restart the session.",
+    "ms": 98.5
+   },
+   "small_vs_medium_wer": 0.0
+  },
+  {
+   "wav": "C:\\Users\\Morne\\.samsara\\debug\\hotkey_20260912T223242_307093.wav",
+   "seconds": 4.9,
+   "medium": {
+    "text": "",
+    "ms": 164.7
+   },
+   "small": {
+    "text": "You",
+    "ms": 95.4
+   },
+   "small_vs_medium_wer": 1.0
+  },
+  {
+   "wav": "C:\\Users\\Morne\\.samsara\\debug\\hotkey_20260913T231424_924776.wav",
+   "seconds": 3.6,
+   "medium": {
+    "text": "And this report changes nothing on that, right?",
+    "ms": 207.6
+   },
+   "small": {
+    "text": "And this report changes nothing on that right?",
+    "ms": 110.0
+   },
+   "small_vs_medium_wer": 0.0
+  },
+  {
+   "wav": "C:\\Users\\Morne\\.samsara\\debug\\hotkey_20260913T094142_931691.wav",
+   "seconds": 4.8,
+   "medium": {
+    "text": "Okay, so maybe I should just do trazodon and no co-typing",
+    "ms": 273.0
+   },
+   "small": {
+    "text": "Okay, so maybe I should just do trisodone and no cotypene.",
+    "ms": 152.1
+   },
+   "small_vs_medium_wer": 0.25
+  },
+  {
+   "wav": "C:\\Users\\Morne\\.samsara\\debug\\hotkey_20260912T223425_521113.wav",
+   "seconds": 2.4,
+   "medium": {
+    "text": "Need full prompt.",
+    "ms": 162.3
+   },
+   "small": {
+    "text": "Need full prompt",
+    "ms": 82.9
+   },
+   "small_vs_medium_wer": 0.0
+  },
+  {
+   "wav": "C:\\Users\\Morne\\.samsara\\debug\\hotkey_20260910T103948_989797.wav",
+   "seconds": 12.3,
+   "medium": {
+    "text": "That utopia is a thing of myths and eternally out of mankind's reach.",
+    "ms": 283.0
+   },
+   "small": {
+    "text": "That utopia is a thing of myths and eternally out of mankind's reach.",
+    "ms": 144.0
+   },
+   "small_vs_medium_wer": 0.0
+  },
+  {
+   "wav": "C:\\Users\\Morne\\.samsara\\debug\\hotkey_20260914T035122_820071.wav",
+   "seconds": 5.2,
+   "medium": {
+    "text": "So now when the AI generates it sounds like a Texan accent.",
+    "ms": 254.7
+   },
+   "small": {
+    "text": "So now when the AI generates it, it sounds like a Texan accent.",
+    "ms": 133.9
+   },
+   "small_vs_medium_wer": 0.083
+  },
+  {
+   "wav": "C:\\Users\\Morne\\.samsara\\debug\\hotkey_20260912T212518_197160.wav",
+   "seconds": 8.1,
+   "medium": {
+    "text": "What if we don't actually need an AIM-I model to get the results that OLAMA is giving us?",
+    "ms": 333.3
+   },
+   "small": {
+    "text": "What if we don't actually need an aim-I model to get the results that Olama is giving us?",
+    "ms": 174.3
+   },
+   "small_vs_medium_wer": 0.0
+  },
+  {
+   "wav": "C:\\Users\\Morne\\.samsara\\debug\\hotkey_20260911T173149_935181.wav",
+   "seconds": 6.5,
+   "medium": {
+    "text": "Okay, I've been writing a fair amount since I got back from residential.",
+    "ms": 269.4
+   },
+   "small": {
+    "text": "Okay, I've been writing a fair amount since I got back from residential.",
+    "ms": 154.1
+   },
+   "small_vs_medium_wer": 0.0
+  },
+  {
+   "wav": "C:\\Users\\Morne\\.samsara\\debug\\hotkey_20260914T183259_595013.wav",
+   "seconds": 14.4,
+   "medium": {
+    "text": "But I believe we had a pretty comprehensive roadmap planned out for, you know, different features and, you know, what comes next. So hopefully that's enough.",
+    "ms": 462.9
+   },
+   "small": {
+    "text": "But I believe we had a pretty comprehensive roadmap planned out for, you know, different features and, you know, what comes next. So hopefully that's enough.",
+    "ms": 292.6
+   },
+   "small_vs_medium_wer": 0.0
+  },
+  {
+   "wav": "C:\\Users\\Morne\\.samsara\\debug\\hotkey_20260910T111711_305914.wav",
+   "seconds": 9.0,
+   "medium": {
+    "text": "What's next?",
+    "ms": 159.5
+   },
+   "small": {
+    "text": "What's next?",
+    "ms": 99.0
+   },
+   "small_vs_medium_wer": 0.0
+  },
+  {
+   "wav": "C:\\Users\\Morne\\.samsara\\debug\\hotkey_20260912T223231_216839.wav",
+   "seconds": 7.6,
+   "medium": {
+    "text": "Do you walk up to people in wheelchairs and tell them they're cheating because the wheels are doing all the moving?",
+    "ms": 359.1
+   },
+   "small": {
+    "text": "Do you walk up to people in wheelchairs and tell them they're cheating because the wheels are doing all the moving?",
+    "ms": 196.9
+   },
+   "small_vs_medium_wer": 0.0
+  },
+  {
+   "wav": "C:\\Users\\Morne\\.samsara\\debug\\hotkey_20260911T181002_823587.wav",
+   "seconds": 12.4,
+   "medium": {
+    "text": "I'm bringing these things up because we're basically just waiting on code to finish. It's prompt, I don't think there are any more for Codex.",
+    "ms": 452.8
+   },
+   "small": {
+    "text": "I'm bringing these things up because we're basically just waiting on code to finish. It's prompt. I don't think there are any more for codecs.",
+    "ms": 265.5
+   },
+   "small_vs_medium_wer": 0.04
+  },
+  {
+   "wav": "C:\\Users\\Morne\\.samsara\\debug\\hotkey_20260911T143540_994235.wav",
+   "seconds": 13.0,
+   "medium": {
+    "text": "Ways to stay cool when I'm stuck with a closed door in the garage and just a fan pointed at me to cool me.",
+    "ms": 402.8
+   },
+   "small": {
+    "text": "Ways to stay cool when I'm stuck with a closed door in the garage and just a fan pointed at me to cool me.",
+    "ms": 215.4
+   },
+   "small_vs_medium_wer": 0.0
+  },
+  {
+   "wav": "C:\\Users\\Morne\\.samsara\\debug\\hotkey_20260913T233630_783757.wav",
+   "seconds": 9.5,
+   "medium": {
+    "text": "Which image generation model should I download for those purposes for Comfy?",
+    "ms": 264.1
+   },
+   "small": {
+    "text": "Which image generation model should I download for those purposes for comfy?",
+    "ms": 131.8
+   },
+   "small_vs_medium_wer": 0.0
+  },
+  {
+   "wav": "C:\\Users\\Morne\\.samsara\\debug\\hotkey_20260914T183908_712353.wav",
+   "seconds": 15.8,
+   "medium": {
+    "text": "I sometimes tolerate one but when it comes to my work and my purpose and my goals, the no. I think big.",
+    "ms": 366.6
+   },
+   "small": {
+    "text": "I sometimes tolerate one, but when it comes to my work and my purpose and my goals, then no, I think big.",
+    "ms": 250.4
+   },
+   "small_vs_medium_wer": 0.045
+  },
+  {
+   "wav": "C:\\Users\\Morne\\.samsara\\debug\\hotkey_20260910T103934_503632.wav",
+   "seconds": 15.9,
+   "medium": {
+    "text": "Does the logical part of my brain accept that it's likely that this world will never get better?",
+    "ms": 325.4
+   },
+   "small": {
+    "text": "Does the logical part of my brain accept that it's likely that this world will never get better?",
+    "ms": 183.2
+   },
+   "small_vs_medium_wer": 0.0
+  },
+  {
+   "wav": "C:\\Users\\Morne\\.samsara\\debug\\hotkey_20260911T155800_479664.wav",
+   "seconds": 17.8,
+   "medium": {
+    "text": "When you grow up, always being the smartest person in the room, it teaches you all the wrong lessons.",
+    "ms": 347.2
+   },
+   "small": {
+    "text": "When you grow up always being the smartest person in the room, it teaches you all the wrong lessons.",
+    "ms": 196.5
+   },
+   "small_vs_medium_wer": 0.0
+  },
+  {
+   "wav": "C:\\Users\\Morne\\.samsara\\debug\\hotkey_20260913T211406_817865.wav",
+   "seconds": 15.6,
+   "medium": {
+    "text": "I wrote something just kind of off the cuff.",
+    "ms": 248.7
+   },
+   "small": {
+    "text": "I wrote something just kind of off the cuff.",
+    "ms": 113.8
+   },
+   "small_vs_medium_wer": 0.0
+  },
+  {
+   "wav": "C:\\Users\\Morne\\.samsara\\debug\\hotkey_20260914T214953_206408.wav",
+   "seconds": 15.7,
+   "medium": {
+    "text": "because a lot of stuff gets lost every time I start a new conversation and there's a ton of stuff that isn't in the project files",
+    "ms": 407.7
+   },
+   "small": {
+    "text": "Because a lot of stuff gets lost every time I start a new conversation and there's a ton of stuff that isn't in the project files.",
+    "ms": 226.3
+   },
+   "small_vs_medium_wer": 0.0
+  },
+  {
+   "wav": "C:\\Users\\Morne\\.samsara\\debug\\hotkey_20260911T145402_160866.wav",
+   "seconds": 18.0,
+   "medium": {
+    "text": "I've begun dieting and you know I do three mile power walks every few days.",
+    "ms": 316.4
+   },
+   "small": {
+    "text": "I've begun dieting and, you know, I do 3 mile power walks every few days.",
+    "ms": 168.4
+   },
+   "small_vs_medium_wer": 0.067
+  },
+  {
+   "wav": "C:\\Users\\Morne\\.samsara\\debug\\hotkey_20260911T173619_531010.wav",
+   "seconds": 20.2,
+   "medium": {
+    "text": "The buggery thing, I just often do wordplay of that variety just because I get bored with saying things just the normal way.",
+    "ms": 758.8
+   },
+   "small": {
+    "text": "The buggery thing, I just often do wordplay of that variety just because I get bored with saying things just the normal way.",
+    "ms": 217.4
+   },
+   "small_vs_medium_wer": 0.0
+  },
+  {
+   "wav": "C:\\Users\\Morne\\.samsara\\debug\\hotkey_20260911T201226_719890.wav",
+   "seconds": 18.6,
+   "medium": {
+    "text": "Where are we on that tag search algorithm for obsidian or whatever?",
+    "ms": 310.2
+   },
+   "small": {
+    "text": "Where are we on that tag search algorithm for Obsidian or whatever?",
+    "ms": 143.4
+   },
+   "small_vs_medium_wer": 0.0
+  },
+  {
+   "wav": "C:\\Users\\Morne\\.samsara\\debug\\hotkey_20260913T122718_969046.wav",
+   "seconds": 15.2,
+   "medium": {
+    "text": "okay I think it might have finished can you check status on everything and let's get that queue you know beefed up a little it's looking kinda scarce",
+    "ms": 659.0
+   },
+   "small": {
+    "text": "Okay, I think it might have finished. Can you check status on everything? And let's get that Q beefed up a little. It's looking kind of scarce.",
+    "ms": 254.3
+   },
+   "small_vs_medium_wer": 0.179
+  },
+  {
+   "wav": "C:\\Users\\Morne\\.samsara\\debug\\hotkey_20260913T104927_483223.wav",
+   "seconds": 27.8,
+   "medium": {
+    "text": "Okay, so number one, let's update that feature so that we can have mouse buttons mapped to functions.",
+    "ms": 716.3
+   },
+   "small": {
+    "text": "Okay, so, number one, let's, uh, you know, update that feature so that we can have mouse buttons, uh, mapped to functions.",
+    "ms": 328.0
+   },
+   "small_vs_medium_wer": 0.222
+  }
+ ],
+ "summary": {
+  "medium": {
+   "labelled_n": 43,
+   "labelled_exact": 35,
+   "labelled_mean_wer": 0.18,
+   "control_word_n": 17,
+   "control_word_ok": 17,
+   "labelled_ms_median": 173.0,
+   "labelled_ms_p95": 215.0,
+   "short_<=3s": {
+    "n": 19,
+    "median_ms": 149.8,
+    "p95_ms": 190.8
+   },
+   "mid_3-10s": {
+    "n": 40,
+    "median_ms": 185.4,
+    "p95_ms": 276.0
+   },
+   "long_>10s": {
+    "n": 14,
+    "median_ms": 384.7,
+    "p95_ms": 731.2
+   }
+  },
+  "small": {
+   "labelled_n": 43,
+   "labelled_exact": 39,
+   "labelled_mean_wer": 0.093,
+   "control_word_n": 17,
+   "control_word_ok": 17,
+   "labelled_ms_median": 90.6,
+   "labelled_ms_p95": 108.2,
+   "short_<=3s": {
+    "n": 19,
+    "median_ms": 77.8,
+    "p95_ms": 99.5
+   },
+   "mid_3-10s": {
+    "n": 40,
+    "median_ms": 99.5,
+    "p95_ms": 155.1
+   },
+   "long_>10s": {
+    "n": 14,
+    "median_ms": 216.4,
+    "p95_ms": 305.0
+   }
+  },
+  "small_vs_medium_disagreement_wer_mean": 0.077
+ }
+}

@@ -1,0 +1,843 @@
+{
+ "runs": [
+  {
+   "lane": "hotkey",
+   "profile": "default",
+   "model": "base",
+   "device": "cuda",
+   "compute_type": "float16",
+   "target": "win32-edit",
+   "trials": 29,
+   "errors": [
+    {
+     "error": "text never appeared",
+     "clip": "hotkey_20260713T035600_493487.wav",
+     "text": "Also the UI.",
+     "target_had": "",
+     "foreground_at_paste": true
+    },
+    {
+     "error": "empty decode",
+     "clip": "hotkey_20260911T202606_820736.wav"
+    },
+    {
+     "error": "empty decode",
+     "clip": "hotkey_20260724T072130_725061.wav"
+    }
+   ],
+   "note": "Samsara running (medium on the same GPU); owner idle",
+   "silence_gap_s": null,
+   "silence_gap_source": null,
+   "e2e_ms": {
+    "n": 29,
+    "p50": 651.3,
+    "p95": 1922.8,
+    "max": 2658.4,
+    "mean": 861.5
+   },
+   "app_ms": {
+    "n": 29,
+    "p50": 351.0,
+    "p95": 462.5,
+    "max": 486.9,
+    "mean": 354.3
+   },
+   "capture_gap_ms": {
+    "n": 29,
+    "p50": 300.3,
+    "p95": 1540.4,
+    "max": 2200.5,
+    "mean": 507.3
+   },
+   "decode_ms": {
+    "n": 29,
+    "p50": 239.0,
+    "p95": 337.1,
+    "max": 375.0,
+    "mean": 231.9
+   },
+   "decode_to_visible_ms": {
+    "n": 29,
+    "p50": 94.3,
+    "p95": 202.1,
+    "max": 221.1,
+    "mean": 122.4
+   },
+   "paste_call_ms": {
+    "n": 29,
+    "p50": 319.4,
+    "p95": 360.0,
+    "max": 377.2,
+    "mean": 327.1
+   },
+   "rows": [
+    {
+     "clip": "hotkey_20260912T200518_355090.wav",
+     "audio_s": 7.1,
+     "speech_end_s": 4.8,
+     "text": "That's what they've inherited.",
+     "capture_gap_ms": 2200.5,
+     "decode_ms": 236.8,
+     "paste_call_ms": 377.2,
+     "decode_to_visible_ms": 221.1,
+     "app_ms": 457.9,
+     "e2e_ms": 2658.4
+    },
+    {
+     "clip": "hotkey_20260711T122347_784747.wav",
+     "audio_s": 3.5,
+     "speech_end_s": 3.2,
+     "text": "You tell me which would work better.",
+     "capture_gap_ms": 200.5,
+     "decode_ms": 248.6,
+     "paste_call_ms": 313.6,
+     "decode_to_visible_ms": 75.9,
+     "app_ms": 324.5,
+     "e2e_ms": 525.0
+    },
+    {
+     "clip": "hotkey_20260715T163521_928948.wav",
+     "audio_s": 4.0,
+     "speech_end_s": 3.5,
+     "text": "Yeah, we can read it.",
+     "capture_gap_ms": 400.1,
+     "decode_ms": 239.0,
+     "paste_call_ms": 336.8,
+     "decode_to_visible_ms": 100.9,
+     "app_ms": 339.8,
+     "e2e_ms": 740.0
+    },
+    {
+     "clip": "hotkey_20260910T152303_279225.wav",
+     "audio_s": 7.5,
+     "speech_end_s": 5.7,
+     "text": "20 years of addiction, five years of therapy.",
+     "capture_gap_ms": 1700.4,
+     "decode_ms": 256.8,
+     "paste_call_ms": 313.3,
+     "decode_to_visible_ms": 76.5,
+     "app_ms": 333.3,
+     "e2e_ms": 2033.8
+    },
+    {
+     "clip": "hotkey_20260906T172702_184736.wav",
+     "audio_s": 4.3,
+     "speech_end_s": 3.7,
+     "text": "I'm in the main city right now.",
+     "capture_gap_ms": 500.4,
+     "decode_ms": 163.3,
+     "paste_call_ms": 329.6,
+     "decode_to_visible_ms": 92.8,
+     "app_ms": 256.1,
+     "e2e_ms": 756.6
+    },
+    {
+     "clip": "hotkey_20260723T151227_449719.wav",
+     "audio_s": 3.5,
+     "speech_end_s": 3.1,
+     "text": "Check one two.",
+     "capture_gap_ms": 300.3,
+     "decode_ms": 129.7,
+     "paste_call_ms": 322.3,
+     "decode_to_visible_ms": 159.5,
+     "app_ms": 289.2,
+     "e2e_ms": 589.6
+    },
+    {
+     "clip": "hotkey_20260911T160052_174834.wav",
+     "audio_s": 5.7,
+     "speech_end_s": 5.2,
+     "text": "Do you have any work for Codex to do right now?",
+     "capture_gap_ms": 400.2,
+     "decode_ms": 282.7,
+     "paste_call_ms": 360.9,
+     "decode_to_visible_ms": 204.2,
+     "app_ms": 486.9,
+     "e2e_ms": 887.1
+    },
+    {
+     "clip": "hotkey_20260910T112133_585003.wav",
+     "audio_s": 3.9,
+     "speech_end_s": 3.6,
+     "text": "The TV audio comes out of the PC.",
+     "capture_gap_ms": 200.5,
+     "decode_ms": 266.7,
+     "paste_call_ms": 358.7,
+     "decode_to_visible_ms": 198.9,
+     "app_ms": 465.5,
+     "e2e_ms": 666.0
+    },
+    {
+     "clip": "hotkey_20260718T030357_726311.wav",
+     "audio_s": 5.0,
+     "speech_end_s": 3.9,
+     "text": "Where should I go from here?",
+     "capture_gap_ms": 1000.2,
+     "decode_ms": 233.5,
+     "paste_call_ms": 344.6,
+     "decode_to_visible_ms": 181.8,
+     "app_ms": 415.3,
+     "e2e_ms": 1415.5
+    },
+    {
+     "clip": "hotkey_20260914T221243_695222.wav",
+     "audio_s": 4.9,
+     "speech_end_s": 4.4,
+     "text": "Actually, nevermind, I just figured out why it's doing that.",
+     "capture_gap_ms": 400.3,
+     "decode_ms": 196.5,
+     "paste_call_ms": 334.3,
+     "decode_to_visible_ms": 175.9,
+     "app_ms": 372.3,
+     "e2e_ms": 772.6
+    },
+    {
+     "clip": "hotkey_20260804T235245_861375.wav",
+     "audio_s": 3.8,
+     "speech_end_s": 2.8,
+     "text": "Check one, too.",
+     "capture_gap_ms": 900.2,
+     "decode_ms": 138.1,
+     "paste_call_ms": 318.9,
+     "decode_to_visible_ms": 161.0,
+     "app_ms": 299.1,
+     "e2e_ms": 1199.3
+    },
+    {
+     "clip": "hotkey_20260713T031127_954480.wav",
+     "audio_s": 7.6,
+     "speech_end_s": 7.3,
+     "text": "I don't think I've asked what you think of this project.",
+     "capture_gap_ms": 200.2,
+     "decode_ms": 259.3,
+     "paste_call_ms": 316.9,
+     "decode_to_visible_ms": 156.2,
+     "app_ms": 415.5,
+     "e2e_ms": 615.8
+    },
+    {
+     "clip": "hotkey_20260713T092338_050352.wav",
+     "audio_s": 5.5,
+     "speech_end_s": 5.2,
+     "text": "I have chronic pain in my fingers can you add it?",
+     "capture_gap_ms": 200.5,
+     "decode_ms": 184.8,
+     "paste_call_ms": 315.5,
+     "decode_to_visible_ms": 171.9,
+     "app_ms": 356.7,
+     "e2e_ms": 557.2
+    },
+    {
+     "clip": "hotkey_20260710T052528_367085.wav",
+     "audio_s": 2.6,
+     "speech_end_s": 2.3,
+     "text": "You know what I mean?",
+     "capture_gap_ms": 201.1,
+     "decode_ms": 126.6,
+     "paste_call_ms": 320.1,
+     "decode_to_visible_ms": 83.6,
+     "app_ms": 210.2,
+     "e2e_ms": 411.3
+    },
+    {
+     "clip": "hotkey_20260911T155626_876821.wav",
+     "audio_s": 4.7,
+     "speech_end_s": 4.3,
+     "text": "The more powerful a person's mind, the more powerful their ego is.",
+     "capture_gap_ms": 300.6,
+     "decode_ms": 306.3,
+     "paste_call_ms": 306.8,
+     "decode_to_visible_ms": 69.6,
+     "app_ms": 375.9,
+     "e2e_ms": 676.5
+    },
+    {
+     "clip": "hotkey_20260713T045009_481567.wav",
+     "audio_s": 7.6,
+     "speech_end_s": 7.3,
+     "text": "I've got a ticket to ride.",
+     "capture_gap_ms": 200.4,
+     "decode_ms": 241.2,
+     "paste_call_ms": 317.4,
+     "decode_to_visible_ms": 79.9,
+     "app_ms": 321.2,
+     "e2e_ms": 521.6
+    },
+    {
+     "clip": "hotkey_20260710T205637_584339.wav",
+     "audio_s": 3.9,
+     "speech_end_s": 3.6,
+     "text": "it's definitely an issue",
+     "capture_gap_ms": 200.6,
+     "decode_ms": 212.9,
+     "paste_call_ms": 331.8,
+     "decode_to_visible_ms": 94.3,
+     "app_ms": 307.2,
+     "e2e_ms": 507.9
+    },
+    {
+     "clip": "hotkey_20260913T103115_032228.wav",
+     "audio_s": 5.6,
+     "speech_end_s": 4.2,
+     "text": "What I really care about is Fable Usage. That's the one that's going to run out.",
+     "capture_gap_ms": 1300.5,
+     "decode_ms": 375.0,
+     "paste_call_ms": 316.3,
+     "decode_to_visible_ms": 80.8,
+     "app_ms": 455.8,
+     "e2e_ms": 1756.3
+    },
+    {
+     "clip": "hotkey_20260909T161407_906636.wav",
+     "audio_s": 6.6,
+     "speech_end_s": 6.3,
+     "text": "Is there no other specialty that deals with this problem?",
+     "capture_gap_ms": 200.3,
+     "decode_ms": 247.6,
+     "paste_call_ms": 347.5,
+     "decode_to_visible_ms": 99.7,
+     "app_ms": 347.2,
+     "e2e_ms": 547.5
+    },
+    {
+     "clip": "hotkey_20260909T224753_365333.wav",
+     "audio_s": 6.7,
+     "speech_end_s": 6.3,
+     "text": "and maybe add some metadata like book descriptions and stuff like that",
+     "capture_gap_ms": 300.5,
+     "decode_ms": 357.6,
+     "paste_call_ms": 322.4,
+     "decode_to_visible_ms": 86.8,
+     "app_ms": 444.4,
+     "e2e_ms": 744.8
+    },
+    {
+     "clip": "hotkey_20260713T013540_742300.wav",
+     "audio_s": 4.4,
+     "speech_end_s": 4.0,
+     "text": "Nah, it kinda feels basic.",
+     "capture_gap_ms": 300.5,
+     "decode_ms": 182.2,
+     "paste_call_ms": 341.0,
+     "decode_to_visible_ms": 84.0,
+     "app_ms": 266.2,
+     "e2e_ms": 566.7
+    },
+    {
+     "clip": "hotkey_20260913T121738_739444.wav",
+     "audio_s": 7.7,
+     "speech_end_s": 6.3,
+     "text": "Now if those maps were wrong, then yeah, that changes my projection by a lot.",
+     "capture_gap_ms": 1300.3,
+     "decode_ms": 262.0,
+     "paste_call_ms": 312.7,
+     "decode_to_visible_ms": 77.4,
+     "app_ms": 339.4,
+     "e2e_ms": 1639.7
+    },
+    {
+     "clip": "hotkey_20260914T064553_561158.wav",
+     "audio_s": 3.8,
+     "speech_end_s": 3.5,
+     "text": "weird now it's not loading on my local PC.",
+     "capture_gap_ms": 200.3,
+     "decode_ms": 160.3,
+     "paste_call_ms": 318.0,
+     "decode_to_visible_ms": 81.6,
+     "app_ms": 241.9,
+     "e2e_ms": 442.1
+    },
+    {
+     "clip": "hotkey_20260711T153426_152072.wav",
+     "audio_s": 5.1,
+     "speech_end_s": 4.8,
+     "text": "GPT 5.6 released.",
+     "capture_gap_ms": 200.3,
+     "decode_ms": 273.1,
+     "paste_call_ms": 318.0,
+     "decode_to_visible_ms": 82.2,
+     "app_ms": 355.2,
+     "e2e_ms": 555.5
+    },
+    {
+     "clip": "hotkey_20260909T161400_012802.wav",
+     "audio_s": 5.2,
+     "speech_end_s": 4.8,
+     "text": "So did I just not get the right rheumatologist?",
+     "capture_gap_ms": 300.3,
+     "decode_ms": 271.0,
+     "paste_call_ms": 316.4,
+     "decode_to_visible_ms": 79.9,
+     "app_ms": 351.0,
+     "e2e_ms": 651.3
+    },
+    {
+     "clip": "hotkey_20260711T101521_581138.wav",
+     "audio_s": 3.6,
+     "speech_end_s": 3.2,
+     "text": "I'm ordering more online.",
+     "capture_gap_ms": 300.1,
+     "decode_ms": 246.9,
+     "paste_call_ms": 319.4,
+     "decode_to_visible_ms": 83.7,
+     "app_ms": 330.5,
+     "e2e_ms": 630.6
+    },
+    {
+     "clip": "hotkey_20260910T104306_690885.wav",
+     "audio_s": 4.0,
+     "speech_end_s": 3.7,
+     "text": "Let me know if you can think of anything else.",
+     "capture_gap_ms": 200.5,
+     "decode_ms": 189.1,
+     "paste_call_ms": 326.9,
+     "decode_to_visible_ms": 177.6,
+     "app_ms": 366.7,
+     "e2e_ms": 567.2
+    },
+    {
+     "clip": "hotkey_20260713T103847_105501.wav",
+     "audio_s": 7.1,
+     "speech_end_s": 6.8,
+     "text": "Why do I need to pair with the QR code every single time I reconnect?",
+     "capture_gap_ms": 200.4,
+     "decode_ms": 231.8,
+     "paste_call_ms": 313.4,
+     "decode_to_visible_ms": 156.1,
+     "app_ms": 387.9,
+     "e2e_ms": 588.2
+    },
+    {
+     "clip": "hotkey_20260909T115535_647357.wav",
+     "audio_s": 4.9,
+     "speech_end_s": 4.4,
+     "text": "How do I change which feats are currently equipped?",
+     "capture_gap_ms": 400.1,
+     "decode_ms": 205.9,
+     "paste_call_ms": 316.6,
+     "decode_to_visible_ms": 154.7,
+     "app_ms": 360.6,
+     "e2e_ms": 760.7
+    }
+   ]
+  },
+  {
+   "lane": "handsfree",
+   "profile": "default",
+   "model": "base",
+   "device": "cuda",
+   "compute_type": "float16",
+   "target": "win32-edit",
+   "trials": 29,
+   "errors": [
+    {
+     "error": "empty decode",
+     "clip": "hotkey_20260911T202606_820736.wav"
+    },
+    {
+     "error": "empty decode",
+     "clip": "hotkey_20260724T072130_725061.wav"
+    },
+    {
+     "error": "empty decode",
+     "clip": "hotkey_20260710T052528_367085.wav"
+    }
+   ],
+   "note": "Samsara running (medium on the same GPU); owner idle",
+   "silence_gap_s": 0.65,
+   "silence_gap_source": "~/.samsara/config.json command_mode.dictate_utterance_silence_s",
+   "e2e_ms": {
+    "n": 29,
+    "p50": 948.5,
+    "p95": 1093.1,
+    "max": 1120.7,
+    "mean": 548.6
+   },
+   "app_ms": {
+    "n": 29,
+    "p50": 303.7,
+    "p95": 411.7,
+    "max": 445.7,
+    "mean": 318.4
+   },
+   "capture_gap_ms": {
+    "n": 29,
+    "p50": 650.5,
+    "p95": 701.1,
+    "max": 701.1,
+    "mean": 230.2
+   },
+   "decode_ms": {
+    "n": 29,
+    "p50": 218.9,
+    "p95": 309.5,
+    "max": 332.3,
+    "mean": 212.2
+   },
+   "decode_to_visible_ms": {
+    "n": 29,
+    "p50": 80.5,
+    "p95": 188.1,
+    "max": 210.9,
+    "mean": 106.3
+   },
+   "paste_call_ms": {
+    "n": 29,
+    "p50": 315.2,
+    "p95": 356.1,
+    "max": 364.1,
+    "mean": 321.0
+   },
+   "rows": [
+    {
+     "clip": "hotkey_20260912T200518_355090.wav",
+     "audio_s": 7.1,
+     "speech_end_s": 4.8,
+     "text": "That's...",
+     "capture_gap_ms": -897.3,
+     "decode_ms": 139.6,
+     "paste_call_ms": 361.4,
+     "decode_to_visible_ms": 126.2,
+     "app_ms": 265.8,
+     "e2e_ms": -631.5
+    },
+    {
+     "clip": "hotkey_20260711T122347_784747.wav",
+     "audio_s": 3.5,
+     "speech_end_s": 3.2,
+     "text": "You tell me which would work better.",
+     "capture_gap_ms": 650.9,
+     "decode_ms": 305.6,
+     "paste_call_ms": 312.5,
+     "decode_to_visible_ms": 75.4,
+     "app_ms": 381.0,
+     "e2e_ms": 1031.8
+    },
+    {
+     "clip": "hotkey_20260715T163521_928948.wav",
+     "audio_s": 4.0,
+     "speech_end_s": 3.5,
+     "text": "Yeah, we can read it.",
+     "capture_gap_ms": 650.5,
+     "decode_ms": 158.0,
+     "paste_call_ms": 313.3,
+     "decode_to_visible_ms": 77.4,
+     "app_ms": 235.4,
+     "e2e_ms": 885.9
+    },
+    {
+     "clip": "hotkey_20260910T152303_279225.wav",
+     "audio_s": 7.5,
+     "speech_end_s": 5.7,
+     "text": "20 years of",
+     "capture_gap_ms": -2197.8,
+     "decode_ms": 207.8,
+     "paste_call_ms": 320.3,
+     "decode_to_visible_ms": 165.9,
+     "app_ms": 373.7,
+     "e2e_ms": -1824.0
+    },
+    {
+     "clip": "hotkey_20260906T172702_184736.wav",
+     "audio_s": 4.3,
+     "speech_end_s": 3.7,
+     "text": "I'm in the main city right now.",
+     "capture_gap_ms": 650.5,
+     "decode_ms": 218.9,
+     "paste_call_ms": 336.2,
+     "decode_to_visible_ms": 181.0,
+     "app_ms": 399.9,
+     "e2e_ms": 1050.4
+    },
+    {
+     "clip": "hotkey_20260713T035600_493487.wav",
+     "audio_s": 5.0,
+     "speech_end_s": 4.7,
+     "text": "Also the UI.",
+     "capture_gap_ms": 650.4,
+     "decode_ms": 132.1,
+     "paste_call_ms": 314.9,
+     "decode_to_visible_ms": 159.4,
+     "app_ms": 291.5,
+     "e2e_ms": 941.9
+    },
+    {
+     "clip": "hotkey_20260723T151227_449719.wav",
+     "audio_s": 3.5,
+     "speech_end_s": 3.1,
+     "text": "Check one two.",
+     "capture_gap_ms": 650.1,
+     "decode_ms": 249.5,
+     "paste_call_ms": 314.0,
+     "decode_to_visible_ms": 76.6,
+     "app_ms": 326.1,
+     "e2e_ms": 976.2
+    },
+    {
+     "clip": "hotkey_20260911T160052_174834.wav",
+     "audio_s": 5.7,
+     "speech_end_s": 5.2,
+     "text": "Do you have any work for Codex?",
+     "capture_gap_ms": -1599.3,
+     "decode_ms": 145.0,
+     "paste_call_ms": 323.3,
+     "decode_to_visible_ms": 87.5,
+     "app_ms": 232.5,
+     "e2e_ms": -1366.8
+    },
+    {
+     "clip": "hotkey_20260910T112133_585003.wav",
+     "audio_s": 3.9,
+     "speech_end_s": 3.6,
+     "text": "The TV audio comes out of the PC.",
+     "capture_gap_ms": 650.5,
+     "decode_ms": 290.3,
+     "paste_call_ms": 316.3,
+     "decode_to_visible_ms": 80.2,
+     "app_ms": 370.5,
+     "e2e_ms": 1020.9
+    },
+    {
+     "clip": "hotkey_20260718T030357_726311.wav",
+     "audio_s": 5.0,
+     "speech_end_s": 3.9,
+     "text": "Where should I go from here?",
+     "capture_gap_ms": 701.0,
+     "decode_ms": 150.9,
+     "paste_call_ms": 322.6,
+     "decode_to_visible_ms": 86.3,
+     "app_ms": 237.2,
+     "e2e_ms": 938.2
+    },
+    {
+     "clip": "hotkey_20260914T221243_695222.wav",
+     "audio_s": 4.9,
+     "speech_end_s": 4.4,
+     "text": "Actually, nevermind, I just figured out why it's doing that.",
+     "capture_gap_ms": 650.6,
+     "decode_ms": 252.9,
+     "paste_call_ms": 348.1,
+     "decode_to_visible_ms": 192.8,
+     "app_ms": 445.7,
+     "e2e_ms": 1096.2
+    },
+    {
+     "clip": "hotkey_20260804T235245_861375.wav",
+     "audio_s": 3.8,
+     "speech_end_s": 2.8,
+     "text": "Check one, too.",
+     "capture_gap_ms": 701.1,
+     "decode_ms": 234.1,
+     "paste_call_ms": 313.2,
+     "decode_to_visible_ms": 153.2,
+     "app_ms": 387.3,
+     "e2e_ms": 1088.4
+    },
+    {
+     "clip": "hotkey_20260713T031127_954480.wav",
+     "audio_s": 7.6,
+     "speech_end_s": 7.3,
+     "text": "I don't think I've asked what you think of this...",
+     "capture_gap_ms": -898.9,
+     "decode_ms": 270.9,
+     "paste_call_ms": 318.2,
+     "decode_to_visible_ms": 82.1,
+     "app_ms": 353.0,
+     "e2e_ms": -545.9
+    },
+    {
+     "clip": "hotkey_20260713T092338_050352.wav",
+     "audio_s": 5.5,
+     "speech_end_s": 5.2,
+     "text": "I have chronic pain in my fingers can you add it?",
+     "capture_gap_ms": 650.5,
+     "decode_ms": 173.4,
+     "paste_call_ms": 324.7,
+     "decode_to_visible_ms": 86.5,
+     "app_ms": 259.9,
+     "e2e_ms": 910.4
+    },
+    {
+     "clip": "hotkey_20260911T155626_876821.wav",
+     "audio_s": 4.7,
+     "speech_end_s": 4.3,
+     "text": "The more powerful a person's mind, the more powerful their ego is.",
+     "capture_gap_ms": 650.6,
+     "decode_ms": 225.8,
+     "paste_call_ms": 313.7,
+     "decode_to_visible_ms": 78.0,
+     "app_ms": 303.7,
+     "e2e_ms": 954.3
+    },
+    {
+     "clip": "hotkey_20260713T045009_481567.wav",
+     "audio_s": 7.6,
+     "speech_end_s": 7.3,
+     "text": "I've got a ticket to ride.",
+     "capture_gap_ms": 650.6,
+     "decode_ms": 187.4,
+     "paste_call_ms": 319.1,
+     "decode_to_visible_ms": 79.8,
+     "app_ms": 267.2,
+     "e2e_ms": 917.8
+    },
+    {
+     "clip": "hotkey_20260710T205637_584339.wav",
+     "audio_s": 3.9,
+     "speech_end_s": 3.6,
+     "text": "it's definitely an issue",
+     "capture_gap_ms": 650.4,
+     "decode_ms": 131.4,
+     "paste_call_ms": 364.1,
+     "decode_to_visible_ms": 210.9,
+     "app_ms": 342.3,
+     "e2e_ms": 992.7
+    },
+    {
+     "clip": "hotkey_20260913T103115_032228.wav",
+     "audio_s": 5.6,
+     "speech_end_s": 4.2,
+     "text": "What I really care about is Fable Usage. That's the one that's going to run out.",
+     "capture_gap_ms": 700.9,
+     "decode_ms": 285.3,
+     "paste_call_ms": 312.6,
+     "decode_to_visible_ms": 78.1,
+     "app_ms": 363.3,
+     "e2e_ms": 1064.2
+    },
+    {
+     "clip": "hotkey_20260909T161407_906636.wav",
+     "audio_s": 6.6,
+     "speech_end_s": 6.3,
+     "text": "Is there no other specialty that deals with this problem?",
+     "capture_gap_ms": 650.1,
+     "decode_ms": 312.1,
+     "paste_call_ms": 314.0,
+     "decode_to_visible_ms": 77.5,
+     "app_ms": 389.5,
+     "e2e_ms": 1039.7
+    },
+    {
+     "clip": "hotkey_20260909T224753_365333.wav",
+     "audio_s": 6.7,
+     "speech_end_s": 6.3,
+     "text": "and maybe add some metadata like.",
+     "capture_gap_ms": -1699.4,
+     "decode_ms": 153.4,
+     "paste_call_ms": 308.8,
+     "decode_to_visible_ms": 147.2,
+     "app_ms": 300.6,
+     "e2e_ms": -1398.8
+    },
+    {
+     "clip": "hotkey_20260713T013540_742300.wav",
+     "audio_s": 4.4,
+     "speech_end_s": 4.0,
+     "text": "Nah, it kinda feels basic.",
+     "capture_gap_ms": 650.6,
+     "decode_ms": 118.5,
+     "paste_call_ms": 316.5,
+     "decode_to_visible_ms": 154.9,
+     "app_ms": 273.3,
+     "e2e_ms": 923.9
+    },
+    {
+     "clip": "hotkey_20260913T121738_739444.wav",
+     "audio_s": 7.7,
+     "speech_end_s": 6.3,
+     "text": "Now if those maps were wrong, then yeah, that changes my projection by a lot.",
+     "capture_gap_ms": 701.1,
+     "decode_ms": 332.3,
+     "paste_call_ms": 324.2,
+     "decode_to_visible_ms": 87.2,
+     "app_ms": 419.6,
+     "e2e_ms": 1120.7
+    },
+    {
+     "clip": "hotkey_20260914T064553_561158.wav",
+     "audio_s": 3.8,
+     "speech_end_s": 3.5,
+     "text": "weird now it's not loading on my",
+     "capture_gap_ms": -1196.1,
+     "decode_ms": 112.6,
+     "paste_call_ms": 317.0,
+     "decode_to_visible_ms": 80.5,
+     "app_ms": 193.1,
+     "e2e_ms": -1002.9
+    },
+    {
+     "clip": "hotkey_20260711T153426_152072.wav",
+     "audio_s": 5.1,
+     "speech_end_s": 4.8,
+     "text": "GPT 5.6 released.",
+     "capture_gap_ms": 650.3,
+     "decode_ms": 228.6,
+     "paste_call_ms": 314.0,
+     "decode_to_visible_ms": 77.2,
+     "app_ms": 305.9,
+     "e2e_ms": 956.2
+    },
+    {
+     "clip": "hotkey_20260909T161400_012802.wav",
+     "audio_s": 5.2,
+     "speech_end_s": 4.8,
+     "text": "So did I just not get the right rheumatologist?",
+     "capture_gap_ms": 650.2,
+     "decode_ms": 302.8,
+     "paste_call_ms": 308.8,
+     "decode_to_visible_ms": 72.7,
+     "app_ms": 375.5,
+     "e2e_ms": 1025.8
+    },
+    {
+     "clip": "hotkey_20260711T101521_581138.wav",
+     "audio_s": 3.6,
+     "speech_end_s": 3.2,
+     "text": "I'm ordering more online.",
+     "capture_gap_ms": 650.7,
+     "decode_ms": 226.1,
+     "paste_call_ms": 315.2,
+     "decode_to_visible_ms": 77.2,
+     "app_ms": 303.3,
+     "e2e_ms": 953.9
+    },
+    {
+     "clip": "hotkey_20260910T104306_690885.wav",
+     "audio_s": 4.0,
+     "speech_end_s": 3.7,
+     "text": "Let me know if you can think of anything else.",
+     "capture_gap_ms": 650.6,
+     "decode_ms": 168.4,
+     "paste_call_ms": 313.7,
+     "decode_to_visible_ms": 77.0,
+     "app_ms": 245.5,
+     "e2e_ms": 896.0
+    },
+    {
+     "clip": "hotkey_20260713T103847_105501.wav",
+     "audio_s": 7.1,
+     "speech_end_s": 6.8,
+     "text": "Why do I need to pair with the QR code every single time I reconnect?",
+     "capture_gap_ms": 650.6,
+     "decode_ms": 217.7,
+     "paste_call_ms": 314.5,
+     "decode_to_visible_ms": 77.5,
+     "app_ms": 295.2,
+     "e2e_ms": 945.8
+    },
+    {
+     "clip": "hotkey_20260909T115535_647357.wav",
+     "audio_s": 4.9,
+     "speech_end_s": 4.4,
+     "text": "How do I change which feats are currently equipped?",
+     "capture_gap_ms": 651.0,
+     "decode_ms": 221.2,
+     "paste_call_ms": 312.8,
+     "decode_to_visible_ms": 76.3,
+     "app_ms": 297.5,
+     "e2e_ms": 948.5
+    }
+   ]
+  }
+ ]
+}

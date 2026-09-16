@@ -42,6 +42,40 @@ if os.environ.get("SAMSARA_DUCKING_HOST") == "1":
     sys.exit(_ducking_host_main())
 
 
+#: Startup argument dispatch (108/F9). CLI modes that are NOT "run the app"
+#: are routed here and exit, for the same reason the ducking host above does:
+#: they must never build a second app, and -- the part that was actually
+#: broken -- they must never reach the single-instance lock. Keep this ABOVE
+#: every heavy import below.
+#:
+#: installer/samsara.iss runs `Samsara.exe --fetch-components <ids> ...` at
+#: ssPostInstall with ewWaitUntilTerminated. Before 108 nothing dispatched it,
+#: so the installer either waited on a normal long-running app (no instance
+#: running) or got exit 0 from the instance lock in samsara/boot.py with no
+#: fetch having happened (one already running) -- both silent. The lock is
+#: ~14,700 lines below; this runs first, so a fetch during an active session
+#: still fetches, which is exactly what post-install needs.
+_ARGUMENT_MODES = ("--fetch-components",)
+
+
+def _dispatch_startup_argument(argv):
+    """Return an exit code for a non-app CLI mode, or None to start the app.
+
+    argv is sys.argv[1:]. Kept a plain function with no app state so the
+    tests can drive it without importing anything heavy."""
+    if not argv or not any(arg in _ARGUMENT_MODES for arg in argv):
+        return None
+    # Imported here, not at module scope: the app path must not pay for it,
+    # and this module is imported by tooling that never passes arguments.
+    from samsara.ui.first_run_qt import fetch_components_main
+    return int(fetch_components_main(argv))
+
+
+_STARTUP_ARGUMENT_CODE = _dispatch_startup_argument(sys.argv[1:])
+if _STARTUP_ARGUMENT_CODE is not None:
+    sys.exit(_STARTUP_ARGUMENT_CODE)
+
+
 # Before every heavy/native import below (torch guard, sounddevice, scipy,
 # faster-whisper, Qt) so a crash during boot also leaves a dump.
 from samsara.paths import samsara_home_dir as _fh_home_dir
@@ -344,11 +378,15 @@ except Exception as _ag_err:
 from samsara.profiles import ProfileManager
 from samsara.ui.listening_indicator import ListeningIndicator
 from samsara.cleanup import clean_text
-from samsara.smart_corrections import smart_correct, warm_up as smart_corrections_warm_up
+from samsara.smart_corrections import (
+    smart_correct, warm_up as smart_corrections_warm_up, is_enabled as smart_corrections_is_enabled,
+)
 from samsara.formatting_tokens import apply_formatting_tokens_if_enabled
 from samsara import config_defaults
+from samsara import injection_safety
 from samsara import diagnostics
 from samsara import flight_recorder
+from samsara import outcome_ring
 from samsara import benchmark_store
 from samsara import languages as _languages
 from samsara.history import HistoryManager
@@ -386,6 +424,22 @@ from samsara import wake_profiles
 from samsara import voice_memo
 from samsara import quick_memo
 from samsara.clipboard import paste_with_preservation, type_text_unicode
+# Queue 128: the output-text quality gates moved to samsara/transcript_gates.py
+# unchanged. Every name is re-exported here -- several are unused inside this
+# file and exist only so dictation.<name> keeps resolving for the tests and
+# tools that reach for them by that path.
+from samsara.transcript_gates import (
+    _COMPRESSION_RATIO_THRESHOLD,
+    _HALLUCINATION_STRING_BLACKLIST, _is_hallucinated_segments,
+    _TRAILING_GARBAGE_RUN_RE, _trim_trailing_garbage_run,
+    _drop_trailing_garbage_segments,
+    _CONTEXT_WORD_STRIP, _context_words,
+    _ECHO_MIN_WORDS, _CONTEXT_ECHO_CHIP, _is_context_echo,
+    _TAIL_REPEAT_RUN, _CONTEXT_TAIL_CHARS, _SENTENCE_START_RE,
+    _sanitise_context_tail,
+    _is_quality_exhausted, _keep_low_confidence_long_chunk,
+    _apply_segment_quality_gates,
+)
 from samsara.wake_detector import WakeWordDetector
 from samsara.handlers import _get_foreground_exe_lower, _get_foreground_hwnd
 from samsara.runtime import thread_registry
@@ -394,6 +448,10 @@ from samsara.session_modes import (
     SessionMode, SessionModeManager, UtteranceSignals, CommandDispatchResult,
     HandsFreeCommandMatch, PendingTextPolicy, normalize_utterance,
     GLOBAL_SESSION_EXIT_PHRASES, resolve_ava_invocations, is_scratch_that,
+    # Queue 106: the control-phrase exemption in _is_dictate_context_echo
+    # checks the SAME matchers dispatch_utterance does, so a refused echo can
+    # never be a phrase the session would have acted on.
+    is_dictate_commit, is_recover_draft, match_switch_word,
 )
 
 # Commands with special pending-text behavior inside the combined hands-free
@@ -481,20 +539,6 @@ _WAKE_SESSION_SEND_WORDS  = ['over', 'send'] # default send terminators that fin
 # Per ARC tribunal verdict, arc_20260701_143252.md.
 _NO_SPEECH_THRESHOLD = 0.6   # faster-whisper native: per-segment silence-probability cutoff
 _LOGPROB_THRESHOLD   = -1.0  # faster-whisper native: log_prob_threshold (avg log-prob floor)
-_COMPRESSION_RATIO_THRESHOLD = 2.4
-                             # faster-whisper's own built-in compression_ratio_threshold default
-                             # -- never explicitly passed as a transcribe() kwarg anywhere in this
-                             # file (see get_transcription_params), so there's no config value to
-                             # read back; this matches both faster-whisper's real internal default
-                             # and samsara/diagnostics.py's classify() heuristic. Used by
-                             # _is_quality_exhausted (2026-07-10): when faster-whisper's own
-                             # temperature fallback ladder exhausts every rung and still can't
-                             # meet log_prob_threshold/this compression ceiling, it returns the
-                             # final failed attempt anyway rather than nothing -- an 11.7s blank
-                             # hotkey hold on 2026-07-10 delivered "Thank you for watching!" this
-                             # exact way (every temp 0.0-1.0 failed log_prob_threshold, then
-                             # compression_ratio hit 7.125 at temp 0.8) because nothing downstream
-                             # checked these signals before delivering the text.
 _GATE_MAX_BUFFER_S   = 8.0   # short-capture fast path AND the VAD chunk length of the gate.
                              # Captures up to this long are scanned in ONE VAD call (unchanged).
                              # Longer captures skip VAD when overall RMS is at or above
@@ -995,341 +1039,6 @@ def resample_audio(audio, orig_sr, target_sr=MODEL_SAMPLE_RATE):
     return np.interp(new_indices, old_indices, audio).astype(np.float32)
 
 
-# Well-known Whisper hallucination strings that appear on near-silent audio,
-# across languages -- Signature E below. Language-independent by
-# construction (checked as a plain case-insensitive substring match, no
-# transcription-language dependency), so it extends _is_hallucinated_segments
-# rather than needing a separate per-language check. "amara.org" alone
-# catches variants not explicitly listed (Amara.org crowd-subtitles the
-# phrase on many different source videos/languages).
-#
-# 2026-07-10: added the ENGLISH "thank you for watching" family -- every
-# non-English variant of this exact staple (Japanese/Chinese/Ukrainian/
-# Spanish below) was already covered, but the English original was missing
-# entirely. An 11.7s blank hotkey hold delivered "Thank you for watching!"
-# verbatim because of that gap (see _is_quality_exhausted for the other half
-# of that fix -- the decode had ALSO exhausted every quality threshold).
-# Matching is via the existing lowercase-substring + dominance-ratio check
-# below (case/punctuation-insensitive by construction: text is lowercased
-# and only whitespace-normalized, so trailing "!"/"." on the transcript
-# doesn't prevent the bare phrase from still dominating the ratio). No other
-# hallucination staples added here -- stay scoped to this exact family.
-_HALLUCINATION_STRING_BLACKLIST = (
-    "thank you for watching",
-    "thanks for watching",
-    "untertitel der amara.org-community",
-    "sous-titrage st' 501",
-    "ご視聴ありがとうございました",
-    "字幕由amara.org社区提供",
-    "дякую за перегляд",
-    "gracias por ver el video",
-    "amara.org",
-)
-
-
-def _is_hallucinated_segments(seg_list, text):
-    """True if the transcription shows Whisper's degenerate-repetition signature.
-
-    BACKSTOP ONLY. The primary hallucination defenses are causal and run
-    before/during transcription: faster-whisper's native no_speech_threshold/
-    log_prob_threshold, the per-press condition_on_previous_text=False
-    conversation-context reset, the contiguous-confidence VAD gate on short
-    buffers, and the click-fade (see module-level _NO_SPEECH_THRESHOLD /
-    _GATE_* / _FADE_MS constants and _buffer_has_contiguous_speech). This
-    output-text heuristic is a cheap last-resort net for whatever slips
-    through those, not the primary defense -- avoid extending the
-    repetition-based signatures (A/B/D); the fixed-string blacklist
-    (Signature E) is a deliberate, bounded exception since those exact
-    strings are never legitimate dictation regardless of language.
-
-    Uses telemetry Whisper already computed; no re-inference. Conservative:
-    only fires on clear signatures so real speech is never dropped."""
-    t = (text or "").strip()
-    if not t:
-        return False
-    # Signature E: well-known multilingual Whisper hallucination strings
-    # (subtitle-crowdsourcing credits that leak out on near-silent audio).
-    # Language-independent -- checked regardless of the configured
-    # dictation language.
-    #
-    # DOMINANCE, NOT PRESENCE: a legitimate utterance can simply MENTION one
-    # of these strings ("I was reading about the amara.org community") --
-    # discarding the whole transcription on bare substring presence would
-    # eat real speech (the bare "amara.org" entry is the worst case for
-    # this). Gate on the longest matching phrase covering >=80% of the
-    # (whitespace-normalized) transcript instead -- that's the phrase
-    # constituting substantially the whole output, not an incidental
-    # mention. Below that ratio it's incidental and falls through to the
-    # repetition signatures (A/B/D) below. Never scrub/mutate the text: a
-    # mid-string removal would corrupt legitimate surrounding speech --
-    # gate-or-pass is the only safe move, so this stays a pure boolean check.
-    t_lower = t.lower()
-    t_norm = re.sub(r'\s+', ' ', t_lower).strip()
-    if t_norm:
-        best_len = 0
-        for phrase in _HALLUCINATION_STRING_BLACKLIST:
-            phrase_norm = re.sub(r'\s+', ' ', phrase).strip()
-            if phrase_norm and phrase_norm in t_norm:
-                best_len = max(best_len, len(phrase_norm))
-        if best_len and best_len / len(t_norm) >= 0.80:
-            return True
-    # Signature A: high compression ratio on any segment (repetition compresses hard).
-    # Whisper's own reject threshold is 2.4; we use a slightly higher 3.0 to stay
-    # conservative and avoid touching borderline-but-real speech.
-    for s in seg_list:
-        cr = getattr(s, "compression_ratio", None)
-        if cr is not None and cr > 3.0:
-            return True
-    # Signature B: low lexical diversity repetition (e.g. "click click click click").
-    # Strip surrounding punctuation before comparing words so "click," "click."
-    # "click!" count as the same repeated word instead of inflating diversity.
-    words = [w.strip(string.punctuation) for w in t.lower().split()]
-    words = [w for w in words if w]
-    if len(words) >= 4:
-        uniq = len(set(words))
-        if uniq <= max(2, len(words) // 4):
-            return True
-    # Signature D: the ENTIRE transcription is 2-3 identical tokens (e.g.
-    # "click click", "beep beep beep"). Too short to trip Signature B's
-    # >=4-word check. An embedded mention inside real speech ("I heard a
-    # click click sound") is untouched -- this only fires when the repeat
-    # IS the whole transcription, not part of a longer one.
-    #
-    # CORROBORATION REQUIRED: a bare 2-3 token whole-utterance repeat is
-    # NOT on its own a reliable hallucination signal -- real emphatic
-    # speech ("no no", "stop stop", "yes yes yes") looks identical at the
-    # text level. This must only fire when acoustically corroborated: every
-    # segment's no_speech_prob > 0.5 (near-silence). A user actually saying
-    # "no no" into a live mic produces LOW no_speech_prob and now passes
-    # through untouched; a phantom "click click" from a near-silent buffer
-    # keeps HIGH no_speech_prob and is still caught. Empty seg_list or any
-    # segment missing no_speech_prob telemetry means there's nothing to
-    # corroborate with -- never fire in that case. Eating real speech is
-    # worse than letting a rare hallucination through.
-    if 2 <= len(words) <= 3 and len(set(words)) == 1 and seg_list:
-        nsp_values = [getattr(s, "no_speech_prob", None) for s in seg_list]
-        if all(v is not None and v > 0.5 for v in nsp_values):
-            return True
-    # Signature C: very high no_speech_prob across all segments AND short output
-    # (near-silent buffer that still emitted a token or two).
-    if seg_list:
-        nsp = [getattr(s, "no_speech_prob", 0.0) or 0.0 for s in seg_list]
-        if nsp and min(nsp) > 0.8 and len(words) <= 3:
-            return True
-    return False
-
-
-# Trailing run of a repeated non-speech punctuation character (underscore,
-# dash, period) -- 6 or more in a row. Confirmed in production
-# (~/.samsara/logs/samsara.log, 2026-07-14/15) as Whisper's degenerate
-# output on the near-silent tail of a toggle command-mode utterance, e.g.
-# '"the __________"' and '"ready for ______...______"' (hundreds of chars).
-# INVISIBLE to _is_hallucinated_segments' Signature B: that check strips
-# surrounding punctuation before comparing words (string.punctuation
-# includes '_'/'-'/'.'), so a run of underscores collapses to an empty
-# "word" and is filtered out of the word list entirely rather than
-# registering as repetition. Used only by _handle_command_mode_utterance
-# (see there for why trim-not-reject is the right call for that path) --
-# the hotkey path's _apply_segment_quality_gates is untouched.
-_TRAILING_GARBAGE_RUN_RE = re.compile(r'([_\-.])\1{5,}\s*$')
-
-
-def _trim_trailing_garbage_run(text):
-    """Strip a trailing run of 6+ repeated underscore/dash/period characters
-    from text. Real words consistently precede the run in every observed
-    case, so this trims rather than discarding the whole string -- callers
-    that need whole-utterance rejection (e.g. no real words at all) should
-    check whether the result is empty."""
-    match = _TRAILING_GARBAGE_RUN_RE.search(text)
-    if not match:
-        return text
-    return text[:match.start()].rstrip()
-
-
-def _drop_trailing_garbage_segments(seg_list):
-    """Drop trailing segments whose own text is changed by
-    _trim_trailing_garbage_run (fully consumed as pure garbage, or a real
-    prefix with a garbage tail), stopping at the first trailing segment
-    trimming leaves untouched.
-
-    Whisper sets a segment's compression_ratio/no_speech_prob telemetry
-    against its UNTRIMMED text -- a long repeated-character run compresses
-    at 6-17x in testing (comfortably past _is_hallucinated_segments'
-    Signature A threshold of 3.0), so leaving that segment's object in the
-    list handed to _is_hallucinated_segments would reject the WHOLE
-    utterance -- including real speech in segments before it -- off that
-    one segment's inflated ratio, even after the delivered text itself has
-    been trimmed clean. This only excludes the segment OBJECT (its
-    telemetry) from that check; the real words it contained still reach
-    the delivered text via the separate string-level
-    _trim_trailing_garbage_run call on the joined text."""
-    segs = list(seg_list)
-    while segs:
-        seg_text = (getattr(segs[-1], "text", "") or "").strip()
-        if seg_text and _trim_trailing_garbage_run(seg_text) != seg_text:
-            segs.pop()
-            continue
-        break
-    return segs
-
-
-def _is_quality_exhausted(seg_list, transcribe_params):
-    """True if faster-whisper's OWN quality gate never actually passed for
-    this decode -- its temperature fallback ladder exhausted every rung
-    (0.0, 0.2, 0.4, ... up to 1.0 by default) still failing log_prob_
-    threshold or the compression-ratio ceiling, and it returned the final
-    failed attempt anyway rather than nothing. See module-level comment on
-    _COMPRESSION_RATIO_THRESHOLD for the production incident this fixes.
-
-    Distinct from _is_hallucinated_segments: that's a backstop against
-    KNOWN hallucination TEXT signatures (fixed phrases, repetition) --
-    this is a pure QUALITY-SIGNAL check, independent of what the text
-    actually says. A transcription can look perfectly plausible and still
-    be untrustworthy if Whisper itself never found a decode confident
-    enough to stop early on.
-
-    Reads log_prob_threshold from transcribe_params -- the SAME dict
-    actually passed to model.transcribe() for this call -- so this can
-    never drift from what was really configured. compression_ratio_
-    threshold is never explicitly passed as a kwarg anywhere in this file
-    (see get_transcription_params/_build_hotkey_transcribe_params), so
-    there is no config value to read for it; _COMPRESSION_RATIO_THRESHOLD
-    is faster-whisper's own real internal default for that check.
-
-    Real speech does not produce these signals (that's the entire premise
-    behind faster-whisper accepting a decode instead of escalating temp
-    in the first place) -- a normal dictation's segments pass both checks,
-    so this never fires on genuine speech, long or short. Empty seg_list
-    means nothing to judge -- never fires."""
-    if not seg_list:
-        return False
-    sig = diagnostics.segment_signals(seg_list)
-    if sig['n_segments'] == 0:
-        return False
-    logprob_threshold = transcribe_params.get('log_prob_threshold')
-    failing_logprob = (
-        logprob_threshold is not None
-        and sig['avg_logprob'] is not None
-        and sig['avg_logprob'] < logprob_threshold
-    )
-    failing_compression = (
-        sig['compression_ratio'] is not None
-        and sig['compression_ratio'] > _COMPRESSION_RATIO_THRESHOLD
-    )
-    return failing_logprob or failing_compression
-
-
-def _keep_low_confidence_long_chunk(seg_list, text, duration_s):
-    """Allow a narrowly safe long-dictation fallback after quality exhaustion.
-
-    Faster-whisper may exhaust its temperature ladder on a real, continuous
-    sentence and still return a coherent final decode.  Silently throwing away
-    that entire chunk is worse than preserving a possible transcription error.
-    This is intentionally *not* a general quality bypass: callers must first
-    reject known hallucination signatures, and this fallback additionally
-    requires sustained content, low final compression, and audible speech.
-    """
-    if duration_s < 5.0:
-        return False
-    words = [word for word in re.findall(r"\b\w+\b", text or "") if word]
-    if len(words) < 5:
-        return False
-    sig = diagnostics.segment_signals(seg_list)
-    if sig["n_segments"] == 0:
-        return False
-    compression = sig["compression_ratio"]
-    if compression is None or compression > _COMPRESSION_RATIO_THRESHOLD:
-        return False
-    # segment_signals returns the highest no-speech probability across the
-    # chunk. A single near-silent segment is enough to keep the hard reject.
-    no_speech = sig["no_speech_prob"]
-    return no_speech is not None and no_speech <= 0.5
-
-
-def _apply_segment_quality_gates(seg_list, transcribe_params, audio_duration):
-    """Segment-level hallucination/quality gating for one full decode.
-
-    Replaces the old per-chunk aggregate gating: on a single long decode,
-    rejecting the AGGREGATE means total data loss for an accessibility tool
-    whose user cannot retype what was lost. This evaluates hallucination and
-    quality per segment instead, so one bad segment among many good ones
-    only costs that segment, not the whole recording.
-
-    Returns (text, low_confidence):
-      text: the text to deliver (possibly "").
-      low_confidence: True only when every segment that survived
-        hallucination screening still failed the quality gate, and the
-        never-silently-empty floor below delivered the raw text anyway.
-
-    Order of operations:
-    1. Whole-decode hallucination check, over every segment and the full
-       joined text -- catches CROSS-segment patterns (the model echoing the
-       same phrase across many segments), which is invisible to any
-       single-segment check. If this fires the entire decode is discarded;
-       a decode that IS entirely hallucination legitimately returns "" and
-       the floor in step 3 does not apply to it.
-    2. Otherwise, walk segments in order. A segment is dropped, and only
-       that segment, when it is itself a hallucination in isolation
-       (single-segment garbage -- e.g. one "click click click" segment
-       embedded in an otherwise-real long recording, which whole-decode
-       diversity/dominance checks could miss once diluted by the
-       surrounding real speech) or when it individually fails
-       _is_quality_exhausted. Surviving segments are joined in order.
-    3. If every non-hallucinated segment was dropped for QUALITY and the
-       unfiltered text is non-empty, never silently return empty on
-       quality grounds alone: apply the SAME "plausible long dictation"
-       judgment _keep_low_confidence_long_chunk already encodes (commit
-       d5d6b2d's fix for a real 25s chunk), now over the whole decode
-       instead of a 25s chunk. For a hands-free user, imperfect text is
-       far easier to fix by voice than a lost thought is to re-dictate.
-    """
-    log = logging.getLogger("Samsara")
-    raw_text = "".join(getattr(seg, "text", "") or "" for seg in seg_list).strip()
-
-    if _is_hallucinated_segments(seg_list, raw_text):
-        log.info(f"[GUARD] Suppressed hallucination: {raw_text!r}")
-        return "", False
-
-    kept = []
-    dropped_for_quality = False
-    for seg in seg_list:
-        seg_text = (getattr(seg, "text", "") or "").strip()
-        if not seg_text:
-            continue
-        if _is_hallucinated_segments([seg], seg_text):
-            log.info(f"[GUARD] Suppressed hallucinated segment: {seg_text!r}")
-            continue
-        if _is_quality_exhausted([seg], transcribe_params):
-            dropped_for_quality = True
-            sig = diagnostics.segment_signals([seg])
-            log.info(
-                f"[QUALITY] dropped low-confidence segment (logprob "
-                f"{sig['avg_logprob']}, compression {sig['compression_ratio']}, "
-                f"no_speech {sig['no_speech_prob']}): {seg_text!r}"
-            )
-            continue
-        kept.append(seg)
-
-    text = "".join(getattr(seg, "text", "") or "" for seg in kept).strip()
-    if text or not dropped_for_quality:
-        return text, False
-
-    # Every segment that survived hallucination screening still failed
-    # quality. Never silently return empty on quality grounds alone.
-    if raw_text and _keep_low_confidence_long_chunk(seg_list, raw_text, audio_duration):
-        log.warning(
-            f"[QUALITY] every segment failed quality gates -- delivering "
-            f"low-confidence decode ({audio_duration:.1f}s): {raw_text!r}"
-        )
-        return raw_text, True
-
-    log.info(
-        f"[QUALITY] every segment failed quality gates and floor criteria "
-        f"not met -- rejecting ({audio_duration:.1f}s): {raw_text!r}"
-    )
-    return "", False
-
-
 def hide_console():
     """Hide the console window (Windows only, no-op on other platforms)"""
     if sys.platform != 'win32':
@@ -1680,6 +1389,16 @@ _REPEAT_BLACKLIST_NAMES = {
     "repeat",
     "again",
 }
+
+
+def _cancel_window_module():
+    """samsara.execution_policy when the queue-69 cancel window hooks can run
+    (never raises; None when unavailable)."""
+    try:
+        from samsara import execution_policy
+        return execution_policy
+    except Exception:
+        return None
 
 
 def _config_phrase_list(value) -> list:
@@ -2224,6 +1943,11 @@ class DictationApp:
         self._command_mode_miss_count = 0
         self._command_mode_inactivity_timer = None
         self._command_mode_timer_lock = threading.Lock()
+        # Queue 50 (ARC audit5b): bumped on EVERY reset and cancel. A timer
+        # callback carries the generation it was armed with and does nothing
+        # unless that is still current -- Timer.cancel() cannot stop a
+        # callback that has already started running.
+        self._timer_generation = 0
         # Monotonic deadline the current inactivity timer will fire at --
         # threading.Timer has no query-remaining-time API, so this is
         # tracked alongside it (set/cleared in lockstep, see
@@ -2769,6 +2493,13 @@ class DictationApp:
         # the other still using it.
         self._wake_consumer_reasons = set()
         self._wake_consumer_lock    = threading.Lock()
+        # Queue 109: the last fatal that stopped hands-free listening
+        # (audio_engine.wake_consumer.HandsFreeFault), or None when listening
+        # is healthy. PERSISTENT -- cleared only by a successful restart, so
+        # Home can still explain a stop the user walked away from. The
+        # counter is the automatic-restart budget, reset by a user restart.
+        self._hands_free_fault          = None
+        self._hands_free_fault_attempts = 0
         self._ace_dictation_active  = False   # True while hold-mode uses ACE consumer path
         self._ace_streaming_active  = False   # True while CapsLock streaming uses ACE consumer
         self._streaming_session     = None    # Sole owner until final/cancel cleanup completes
@@ -3003,9 +2734,16 @@ class DictationApp:
                 app=self,
             )
 
+            # on_fatal is not optional in production (queue 109, Astra F6):
+            # without it a fatal in the poll loop ends hands-free listening
+            # and tells the user with one error beep. For someone who cannot
+            # type, that is their input method gone with no explanation and
+            # no way back. The handler records a persistent fault Home reads
+            # and, for a transient failure only, restarts by itself.
             self._wake_consumer = WakeConsumer(
                 engine=self._ace_engine,
                 app=self,
+                on_fatal=self._on_wake_consumer_fatal,
             )
 
             logger.debug("[ACE] Engine started — hold / continuous / wake dictation ready")
@@ -3185,7 +2923,21 @@ class DictationApp:
             "correction_hotkey": "ctrl+alt+r",
             "cancel_hotkey": "escape",
             "memo_hotkey": "ctrl+alt+m",
-            "memo_retain_audio": False,
+            # Queue 92: memo audio is now kept BY DEFAULT. The flag was
+            # written for the dictation path, where retention is clearly
+            # wrong; for a memo the recording IS the feature -- "record
+            # whatever I said" -- and a mis-transcribed name in a memo is
+            # not reconstructable from the words. Nothing leaves the
+            # machine, and the retention policy below bounds the cost.
+            # Anyone who had set this False keeps False.
+            "memo_retain_audio": True,
+            # The retention policy (samsara.quick_memo.prune_audio): audio
+            # older than this many days goes, then the oldest goes until the
+            # total fits the size cap. 0 disables either limit. A memo the
+            # user pinned in the memo list is never pruned, and a pruned
+            # memo keeps its transcript -- only the WAV is removed.
+            "memo_audio_retention_days": 90,
+            "memo_audio_max_mb": 500,
             "memo_file": None,
             # Nested hotkey namespace (new features land here rather than as
             # more top-level *_hotkey keys). capture_correction opens the
@@ -3371,6 +3123,13 @@ class DictationApp:
                 "note_relpath": "Voice Memos.md",
                 "attachments_relpath": "Attachments/Memos",
                 "arm_timeout_s": 120,
+                # Queue 92: the vault is a MIRROR, not the store of record.
+                # Off by default because vault_dir does not exist for most
+                # users and Samsara must not append to someone's notes
+                # uninvited. Switch it on and every memo is also written
+                # into the vault as an ![[embed]] plus transcript, which
+                # Obsidian plays inline and syncs to a phone for free.
+                "mirror_memos": False,
             },
             # Hub window geometry (size/position persist across sessions)
             "window_width": 900,
@@ -4450,10 +4209,27 @@ class DictationApp:
             return None
         if not (0 <= age < self._CALIBRATION_MAX_AGE_S) or not math.isfinite(threshold):
             return None
+        if self._calibration_saturated(threshold):
+            return None
         return threshold
 
+    @staticmethod
+    def _calibration_saturated(threshold: float) -> bool:
+        """True when calibrate_threshold clamped to CALIBRATION_CEILING: the
+        "ambient" recording was speech or noise, not room tone (live log
+        2026-09-13: ambient RMS 0.1589 -> 0.1500, then reused on the next
+        boot). Such a value may serve the current session but must never be
+        stored or reused -- re-measuring beats reviving a bad calibration."""
+        from samsara.constants import CALIBRATION_CEILING
+        return threshold >= CALIBRATION_CEILING
+
     def _save_calibration(self, threshold: float) -> None:
-        """Persist a measured threshold with its device identity. Never raises."""
+        """Persist a measured threshold with its device identity. Never raises.
+        A ceiling-clamped (contaminated) threshold is not persisted."""
+        if self._calibration_saturated(threshold):
+            logger.info(f"[CAL] Not persisting calibration at the ceiling "
+                        f"({threshold:.4f}); the room was not quiet")
+            return
         path = self._calibration_cache_path()
         record = dict(self._calibration_identity(),
                       threshold=float(threshold), calibrated_at=time.time())
@@ -4533,7 +4309,7 @@ class DictationApp:
                 logger.info("[CAL] Background recalibration skipped: recording in progress")
                 return
             threshold, ok = self._measure_speech_threshold()
-            if not ok or getattr(self, 'recording', False):
+            if not ok or getattr(self, 'recording', False) or self._calibration_saturated(threshold):
                 logger.info("[CAL] Background recalibration discarded")
                 return
             self._save_calibration(threshold)
@@ -4791,7 +4567,15 @@ class DictationApp:
                     speech_pad_ms=100,
                 ),
                 'condition_on_previous_text': False,
-                'without_timestamps': True,
+                # Queue 124: was True, and that silently lost long-form
+                # speech -- see the block on `balanced` below for the
+                # mechanism and the measurements. `fast` had it worse than
+                # `balanced` (87.9% of the words returned against 94.4%), and
+                # fixing it costs `fast` 0.21 WER points and 16 ms on short
+                # clips. "May sacrifice some accuracy" is a fair description
+                # of beam 1; silently dropping an eighth of a paragraph is
+                # not, and it is not what anyone chooses this mode for.
+                'without_timestamps': False,
                 'word_timestamps': False,
                 'temperature': 0.0,  # Deterministic (faster)
             }
@@ -4809,7 +4593,7 @@ class DictationApp:
                 'without_timestamps': False,
                 'word_timestamps': False,
             }
-        else:  # balanced (default)
+        else:  # balanced
             return {
                 **base_params,
                 'beam_size': 3,
@@ -4819,7 +4603,38 @@ class DictationApp:
                     speech_pad_ms=200,
                 ),
                 'condition_on_previous_text': False,
-                'without_timestamps': True,
+                # Queue 124. THIS LINE WAS `True`, AND IT LOST DICTATED TEXT.
+                # Do not put it back without reading the report.
+                #
+                # Measured on 5 minutes of continuous read speech, one
+                # parameter changed per arm (perf_artifacts + queue 124):
+                #
+                #   base   balanced              7.95% WER, 94.4% of words
+                #   base   + without_timestamps  2.89% WER, 99.5% of words
+                #   small  balanced             34.88% WER, 66.1% of words
+                #   small  + without_timestamps  1.63% WER, 99.5% of words
+                #
+                # condition_on_previous_text is NOT the cause -- flipping it
+                # alone changed nothing (base 7.95% -> 8.31%). The 118 report
+                # attributed the loss to lost context; that was wrong.
+                #
+                # MECHANISM, read from faster_whisper/transcribe.py: with
+                # without_timestamps=True the prompt carries the
+                # `no_timestamps` token (:1554), so the model emits no
+                # timestamp tokens, so _split_segments_by_timestamps finds
+                # none and falls through to `seek += segment_size` -- the
+                # decoder can only advance in whole 30 s blocks. A window
+                # culled by no_speech_threshold/log_prob_threshold does
+                # `seek += segment_size; continue` (:1234) and takes 30
+                # SECONDS OF SPEECH with it, and a window that decodes only
+                # part of its audio cannot resume at the last word. With
+                # timestamps on, seek advances to the last decoded timestamp
+                # (:1079) and nothing between windows is lost.
+                #
+                # Short utterances hide all of it: they fit in one window, so
+                # there is no seam to lose. That is why every prior bench
+                # missed this.
+                'without_timestamps': False,
                 'word_timestamps': False,
             }
 
@@ -5022,56 +4837,12 @@ class DictationApp:
                 self._skip_cleanup = True   # tell caller to bypass clean_text
                 return _formatted
 
-        # Number word to digit mapping
-        number_words = {
-            'zero': '0', 'one': '1', 'two': '2', 'three': '3', 'four': '4',
-            'five': '5', 'six': '6', 'seven': '7', 'eight': '8', 'nine': '9',
-            'ten': '10', 'eleven': '11', 'twelve': '12', 'thirteen': '13',
-            'fourteen': '14', 'fifteen': '15', 'sixteen': '16', 'seventeen': '17',
-            'eighteen': '18', 'nineteen': '19', 'twenty': '20', 'thirty': '30',
-            'forty': '40', 'fifty': '50', 'sixty': '60', 'seventy': '70',
-            'eighty': '80', 'ninety': '90', 'hundred': '100', 'thousand': '1000',
-            'million': '1000000', 'billion': '1000000000',
-        }
-
-        # Format numbers (e.g., "twenty one" -> "21")
+        # Format numbers: digits only where the words are used as numbers
+        # ("page one" -> "page 1", "twenty one" -> "21"); a prose "one" stays
+        # a word. Rule and history: samsara/number_format.py (queue 55).
         if self.config.get('format_numbers', True):
-            # Handle compound numbers like "twenty one", "thirty five"
-            tens = {'twenty': 20, 'thirty': 30, 'forty': 40, 'fifty': 50,
-                    'sixty': 60, 'seventy': 70, 'eighty': 80, 'ninety': 90}
-            ones = {'one': 1, 'two': 2, 'three': 3, 'four': 4, 'five': 5,
-                    'six': 6, 'seven': 7, 'eight': 8, 'nine': 9}
-
-            # Pattern for "twenty one" style numbers
-            for ten_word, ten_val in tens.items():
-                for one_word, one_val in ones.items():
-                    pattern = rf'\b{ten_word}[\s-]{one_word}\b'
-                    text = re.sub(pattern, str(ten_val + one_val), text, flags=re.IGNORECASE)
-
-            # Replace standalone number words
-            words = text.split()
-            new_words = []
-            for word in words:
-                # Preserve punctuation attached to word
-                prefix = ''
-                suffix = ''
-                core = word
-
-                # Extract leading/trailing punctuation
-                while core and not core[0].isalnum():
-                    prefix += core[0]
-                    core = core[1:]
-                while core and not core[-1].isalnum():
-                    suffix = core[-1] + suffix
-                    core = core[:-1]
-
-                # Check if core word is a number word
-                if core.lower() in number_words:
-                    new_words.append(prefix + number_words[core.lower()] + suffix)
-                else:
-                    new_words.append(word)
-
-            text = ' '.join(new_words)
+            from samsara.number_format import format_spoken_numbers
+            text = format_spoken_numbers(text)
 
         # Auto-capitalize
         if self.config.get('auto_capitalize', True):
@@ -5404,11 +5175,20 @@ class DictationApp:
 
             # Warm the local Ollama model (if Smart Corrections resolves to
             # it) so the first real correction call doesn't also pay a
-            # cold-start model-load penalty. Fire-and-forget, own thread.
-            try:
-                smart_corrections_warm_up(self)
-            except Exception as e:
-                logger.debug(f"[SMART] warm_up call failed: {e}")
+            # cold-start model-load penalty. warm_up() resolves the backend
+            # first, and that is a synchronous HTTP probe of Ollama (2 s
+            # timeout, 4.0 s measured on every boot while Ollama is down) --
+            # so it runs on its own thread, never on this lane before
+            # "Startup complete", and only when Smart Corrections is on
+            # (settings_qt warms it when the user turns it on later).
+            if smart_corrections_is_enabled(self):
+                def _smart_warm_up():
+                    try:
+                        smart_corrections_warm_up(self)
+                    except Exception as e:
+                        logger.debug(f"[SMART] warm_up call failed: {e}")
+                thread_registry.spawn("dictation.smart_corrections_warm_up",
+                                      _smart_warm_up, daemon=True)
 
             # Ensure clean state — reset any recording flags that may have
             # been tripped by keyboard events during startup
@@ -6600,6 +6380,10 @@ class DictationApp:
         # pending text first because they may move focus, submit, launch a
         # process, or invalidate the current target. Curated navigation above
         # retains its more precise PRESERVE/COMMIT policy.
+        # Queue 69: curated everyday words (and a Show Numbers click) are
+        # "reserved"; only the generic fallback below is not. The cancel
+        # window applies to reserved words only when the user extends it.
+        reserved = policy is not None
         if policy is None:
             command_executor = getattr(self, 'command_executor', None)
             find_exact = getattr(command_executor, 'find_exact_command', None)
@@ -6620,7 +6404,38 @@ class DictationApp:
             dispatch_text=dispatch_text,
             phrase=canonical,
             pending_policy=policy,
+            reserved=reserved,
         )
+
+    def _stage_hands_free_cancel_window(self, match, run) -> float:
+        """Queue 69: SessionModeManager's cancel_window_fn. Stages `run` behind
+        a cancel window when the execution policy gives this command one;
+        returns the window in seconds, or 0.0 to dispatch now (off, a read
+        command, one that keeps its yes/no, or anything going wrong)."""
+        try:
+            from samsara import execution_policy as _policy
+            delay = _policy.cancel_window_for(match.phrase, self, reserved=bool(getattr(match, 'reserved', False)))
+            if delay <= 0:
+                # An earlier window still open runs first: commands keep the
+                # order they were said in.
+                _policy.flush_cancel_window()
+                return 0.0
+            inv = _policy.Invocation(
+                command_id=match.phrase,
+                route=_policy.Route.EXACT,
+                generation=_policy.current_generation(self),
+                source_text=match.dispatch_text,
+            )
+            _policy.stage_cancel_window(self, inv, match.phrase, delay, run)
+            return delay
+        except Exception as exc:
+            logger.warning(f'[SESSION] cancel window unavailable, dispatching now: {exc}')
+            return 0.0
+
+    def _handle_deferred_session_outcome(self, outcome) -> None:
+        """A command held by a cancel window finally ran (or was refused)."""
+        logger.info(f'[SESSION] deferred outcome={outcome.kind} detail={outcome.detail}')
+        self._handle_session_dispatch_outcome(outcome, str(outcome.detail.get('dispatch_text') or ''))
 
     def _ensure_session_mode_manager(self) -> "SessionModeManager":
         """Lazily build the SessionModeManager with its wired callables.
@@ -6647,10 +6462,14 @@ class DictationApp:
             # older/stub executor only knows claimed-or-not.
             state = getattr(getattr(dispatch, 'state', None), 'value', None) or (
                 'completed' if was_command else 'miss')
+            detail = getattr(dispatch, 'detail', None) or {}
+            awaiting = bool(was_command and detail.get('awaiting_confirmation'))
+            self._log_command_dispatch(text, result if was_command else None, state)
             if was_command:
                 # Claimed, whatever the state: a failed or refused command is
-                # still a command -- not a miss, never dictation.
-                carried_out = state in ('completed', 'queued', 'matched')
+                # still a command -- not a miss, never dictation. Held for a
+                # yes/no is not carried out: nothing has run yet.
+                carried_out = state in ('completed', 'queued', 'matched') and not awaiting
                 _store_cmd = self.command_executor.commands.get(result) or {'type': 'plugin'}
                 if (carried_out and result
                         and not _is_repeat_blacklisted(result, _store_cmd)
@@ -6664,7 +6483,7 @@ class DictationApp:
                     raw_text=text,
                     duration_ms=int(audio_duration * 1000),
                     mode='command',
-                    status='success' if carried_out else state,
+                    status='success' if carried_out else ('awaiting_confirmation' if awaiting else state),
                     entry_type='command',
                     matched_command=str(result) if result else None,
                 )
@@ -6675,9 +6494,14 @@ class DictationApp:
                     # Inactivity timer reset happens once, uniformly, in
                     # _handle_session_dispatch_outcome (the single chokepoint)
                     # after dispatch_utterance returns -- not duplicated here.
-                return CommandDispatchResult(matched=True, phrase=result, state=state)
+                return CommandDispatchResult(matched=True, phrase=result, state=state,
+                                             awaiting_confirmation=awaiting)
 
-            logger.info(f'[CMD] No command matched: "{text}"')
+            disabled_pack = detail.get('pack') if detail.get('reason') == 'pack_disabled' else None
+            if disabled_pack:
+                logger.info(f'[CMD] "{text}" is a command in the disabled pack {disabled_pack!r}')
+            else:
+                logger.info(f'[CMD] No command matched: "{text}"')
             if (self.command_mode_active
                     and (self._session_mode_manager is None
                          or self._session_mode_manager.mode is SessionMode.COMMAND)):
@@ -6687,7 +6511,7 @@ class DictationApp:
                 if self._command_mode_miss_count >= miss_limit:
                     logger.info(f'[CMD MODE] Miss limit ({miss_limit}) reached')
                     self.exit_command_mode()
-            return CommandDispatchResult(matched=False, phrase=None)
+            return CommandDispatchResult(matched=False, phrase=None, disabled_pack=disabled_pack)
 
         def _inject_fn(text: str, commit_focus_guard=None):
             """Commit one complete unified-session DICTATE thought.
@@ -6756,12 +6580,28 @@ class DictationApp:
                 self._notify_main_window(display)
             return formatted
 
-        def _remove_chars_fn(n: int) -> None:
-            # Same select-back + delete idiom as undo_last_dictation() --
-            # reused, not new injection code.
-            for _ in range(n):
-                pyautogui.hotkey('shift', 'left')
-            pyautogui.press('delete')
+        def _remove_chars_fn(n: int) -> bool:
+            # Queue 50 (ARC audit5b): was n x pyautogui.hotkey('shift','left')
+            # + press('delete'). Measured (reports/50): pyautogui sends arrows
+            # with scan code 0 and no extended-key flag and sleeps PAUSE=0.1 s
+            # after every call, so 40 characters took 4.1 s and -- on a plain
+            # text control and on a target that samples Shift late -- selected
+            # nothing or deleted the wrong character. Paced Backspace carries
+            # no modifier state and re-checks the target window between
+            # batches: 40 characters in 0.14 s, exact on all three targets.
+            verdict = injection_safety.window_integrity()
+            if verdict.blocked:
+                logger.warning('[SESSION] scratch-that refused: foreground window is elevated (%s)',
+                               verdict.describe())
+                return False
+            start_hwnd = _get_foreground_hwnd()
+            deleted, why = injection_safety.delete_backwards(
+                n, still_target=lambda: start_hwnd is not None and _get_foreground_hwnd() == start_hwnd)
+            if why != 'done':
+                logger.warning('[SESSION] scratch-that stopped after %d of %d characters: %s',
+                               deleted, n, why)
+                return False
+            return True
 
         _MODE_EARCONS = {
             SessionMode.COMMAND: 'mode_command',
@@ -6770,9 +6610,30 @@ class DictationApp:
         }
 
         def _on_mode_change(mode: "SessionMode") -> None:
+            # Queue 110. A mode switch is unambiguous user intent to move on,
+            # so it cancels whatever Ava is still doing BEFORE the new mode's
+            # earcon -- speech stopped, pending reply dropped, generation
+            # bumped so a slow response cannot land afterwards, staged action
+            # rejected, chipped. Gated on turn_is_live() so an ordinary switch
+            # with nothing in flight costs nothing and leaves a staged
+            # confirmation from some other subsystem alone.
+            _cancel = getattr(self, '_cancel_ava_turn', None)
+            if _cancel is not None:
+                _cancel(f'mode switch to {getattr(mode, "value", mode)}')
             self.play_sound(_MODE_EARCONS.get(mode, 'mode_command'))
             self._update_mode_overlay(mode)
             self._update_streaming_preview(mode)
+            if mode is SessionMode.AVA:
+                # Shown after this utterance's own outcome chip ("-> AVA"),
+                # which would otherwise replace it at once -- see
+                # _handle_session_dispatch_outcome.
+                self._ava_readiness_chip_due = True
+
+        try:
+            from samsara import ava_readiness
+            ava_readiness.tracker.add_listener(self._on_ava_readiness_change)
+        except Exception as exc:
+            logger.debug(f'[AVA-READY] listener registration failed: {exc}')
 
         def _on_focus_lock_revert() -> None:
             logger.info('[SESSION] Focus-lock mismatch -- foreground window changed; '
@@ -6785,11 +6646,51 @@ class DictationApp:
 
         def _on_abort() -> None:
             logger.info('[SESSION] Global abort phrase -- exiting command mode')
+            # Queue 110: an abort phrase ("cancel") and a sleep phrase both
+            # land here, and both must reach an Ava turn that is still
+            # talking. Only "stop" did before, and only in the AVA lane
+            # (_try_stop_utterance).
+            _cancel = getattr(self, '_cancel_ava_turn', None)
+            if _cancel is not None:
+                _cancel('abort phrase')
             self.exit_command_mode()
 
         def _on_switch_dispatch_error(exc: Exception) -> None:
-            logger.error(f'[SESSION] Prefix-switch payload dispatch failed, mode reverted: {exc}')
+            # Shared by a failed prefix-switch payload (mode reverted), a failed
+            # DICTATE commit (draft retained) and failing mode-change side
+            # effects (mode kept) -- session_modes logs which one it was.
+            logger.error(f'[SESSION] Session action failed: {exc}')
             self.play_sound('error')
+
+        def _session_stop(reason: str) -> dict:
+            """Queue 116: the spoken emergency stop, and the stop half of a
+            sleep phrase. This is the callable session_modes has accepted as
+            `stop_fn` since it was written and NEVER been passed -- which made
+            session_modes' stop branch dead in the shipped app, and made
+            sleep's "the stop runs FIRST" guarantee false.
+
+            execution_policy.stop_all bumps the execution generation first, so
+            anything mid-model-call is stale before anything else is touched,
+            then cancels the answer being spoken (queue 110), the staged
+            confirmation, both Ava queues and the schedule. Drafts, mode and
+            microphone are deliberately untouched: a stop is not an abort and
+            not a sleep.
+
+            chip=False: the DispatchOutcome(kind="stopped") chip says WHAT was
+            halted, which the generic "stopped" chip would replace with less.
+            The earcon fires only when something really was in flight, so a
+            stop that caught nothing does not sound like a success.
+            """
+            from samsara import execution_policy  # noqa: PLC0415
+            cleared = execution_policy.stop_all(
+                self, f'voice stop ({reason})', chip=False) or {}
+            try:
+                if any(cleared.get(k) for k in
+                       ('speech', 'in_flight', 'pending', 'queued', 'schedule')):
+                    self.play_sound('stop')
+            except Exception as exc:
+                logger.debug(f'[SESSION] stop earcon failed: {exc}')
+            return cleared
 
         ww_cfg = self.config.get('wake_word_config', {})
         configured_abort = ww_cfg.get(
@@ -6816,15 +6717,17 @@ class DictationApp:
             otherwise stall the mode change behind a socket timeout. The
             per-utterance dispatch path already reports an unreachable host."""
             try:
-                from plugins.commands.ask_ollama import is_enabled
+                from plugins.commands.ask_ollama import ava_entry_block_reason
             except Exception as exc:
                 return f"the Ava plugin could not be imported ({exc})"
             try:
-                if not is_enabled(self):
-                    return "the Ava plugin is disabled in settings"
+                # Queue 57: also refuses when the cached readiness of the
+                # configured provider (DeepSeek, Ollama, ...) is offline.
+                # Still no network here -- samsara/ava_readiness.py probes in
+                # the background and this reads its snapshot.
+                return ava_entry_block_reason(self)
             except Exception as exc:
                 return f"the Ava plugin readiness check failed ({exc})"
-            return None
 
         self._session_mode_manager = SessionModeManager(
             abort_phrases=abort_phrases,
@@ -6835,6 +6738,7 @@ class DictationApp:
             inject_fn=_inject_fn,
             format_dictate_fn=self._apply_formatting_tokens,
             remove_chars_fn=_remove_chars_fn,
+            window_integrity_fn=injection_safety.window_integrity,
             command_dispatch_fn=_command_dispatch_fn,
             agent_dispatch_fn=self._ava_session_agent_dispatch_fn,
             on_mode_change=_on_mode_change,
@@ -6848,12 +6752,111 @@ class DictationApp:
                 self, '_probe_hands_free_command', None,
             ),
             pending_action_scratch_fn=self._pop_pending_action_for_scratch,
+            # Queue 69: a complete-utterance "no" / "cancel" / "stop" (or a
+            # number for a choice) answers an open cancel window before any
+            # lane reads the words. Returns None when no window is open, so
+            # with the window off every utterance goes where it went before.
+            pending_reply_fn=self._answer_cancel_window,
+            cancel_window_fn=self._stage_hands_free_cancel_window,
+            on_deferred_outcome=self._handle_deferred_session_outcome,
             # command_mode.abort_phrases: user-added whole-utterance exits
             # that behave like the built-in sleep phrases (draft retained).
             extra_sleep_phrases=_config_phrase_list(
                 self.config.get('command_mode', {}).get('abort_phrases', [])),
+            # Queue 116: the emergency stop. stop_phrases REPLACES the
+            # built-in list (session_modes falls back to it when the config
+            # value is empty or unusable), so a word can be changed and not
+            # only added.
+            stop_fn=_session_stop,
+            stop_phrases=_config_phrase_list(
+                self.config.get('command_mode', {}).get('stop_phrases', [])),
+            # Queue 80: "scratch everything" asks out loud before discarding.
+            speak_fn=self._speak_session_notice,
         )
         return self._session_mode_manager
+
+    def _speak_session_notice(self, text: str, category: str = "confirmation") -> None:
+        """Queue 80: session questions and their results, spoken. Category
+        "confirmation" is exempt from command_mode.tts_char_limit (queue 58).
+        Never raises: speech must not break dispatch."""
+        try:
+            coordinator = getattr(self, 'audio_coordinator', None)
+            if coordinator is not None:
+                coordinator.speak(text, category=category)
+            else:
+                logger.warning(f'[SESSION] no audio coordinator; not spoken: {text!r}')
+        except Exception as exc:
+            logger.warning(f'[SESSION] session notice not spoken ({exc}): {text!r}')
+
+    def clear_dictation_draft(self):
+        """builtin.scratch_everything outside the hands-free dictation lane
+        (e.g. command mode). The lane itself intercepts the phrase and asks
+        first; here execution_policy has already asked, because the method is
+        rated destructive (_METHOD_RISK). Discards the staged draft only --
+        nothing already pasted is touched."""
+        manager = getattr(self, '_session_mode_manager', None)
+        if manager is None or not manager.dictate_pending_buffer.strip():
+            self._speak_session_notice("There is nothing staged to clear.")
+            return False
+        manager.clear_pending_draft()
+        self._speak_session_notice("Draft cleared.")
+        return True
+
+    def _answer_cancel_window(self, text: str):
+        try:
+            from samsara import execution_policy as _policy
+            return _policy.answer_cancel_window(self, text)
+        except Exception as exc:
+            logger.debug(f'[SESSION] cancel window reply unavailable: {exc}')
+            return None
+
+    def _log_command_dispatch(self, utterance: str, phrase, state: str) -> None:
+        """[CMD-DISPATCH]: one INFO line per hands-free command dispatch, with
+        the session mode, the registry phrase, its catalog canonical id and
+        the real state. 2026-09-14 22:35: "show windows" logged only
+        outcome=command_executed state=queued -- it was actually held by the
+        execution policy for a confirmation whose spoken prompt was
+        suppressed by command_mode.tts_char_limit, and nothing ran. Logging
+        must never break dispatch. (Queue 58: confirmation questions are now
+        exempt from that limit, and a held command reports
+        command_awaiting_confirmation.)"""
+        try:
+            manager = self._session_mode_manager
+            mode = manager.mode.value if manager is not None else 'no_session'
+            canonical = self._command_canonical_id(phrase) if phrase else None
+            awaiting = False
+            if state == 'queued' and phrase:
+                from samsara.execution_policy import pending_operation
+                op = pending_operation()
+                inv = getattr(op, 'invocation', None)
+                if op is not None and getattr(inv, 'command_id', None) == phrase:
+                    awaiting = True
+            logger.info(
+                f'[CMD-DISPATCH] mode={mode} utterance={utterance!r} resolved={phrase!r} '
+                f'canonical={canonical} state={state} awaiting_confirmation={awaiting}'
+            )
+        except Exception as exc:
+            logger.debug(f'[CMD-DISPATCH] logging failed: {exc}')
+
+    def _command_canonical_id(self, phrase: str):
+        """Registry phrase -> commands_catalog.json canonical_id (e.g. "show
+        windows" -> "window_switcher.show_windows"), or None. Built once from
+        the catalog file; aliases map to their record's id."""
+        table = getattr(self, '_command_canonical_ids', None)
+        if table is None:
+            table = {}
+            try:
+                from samsara.command_catalog import load_catalog_json, normalize_phrase
+                for record in load_catalog_json() or []:
+                    cid = record.get('canonical_id')
+                    for name in [record.get('phrase'), *(record.get('aliases') or [])]:
+                        if name and cid:
+                            table.setdefault(normalize_phrase(name), cid)
+            except Exception as exc:
+                logger.debug(f'[CMD-DISPATCH] catalog unavailable for canonical ids: {exc}')
+            self._command_canonical_ids = table
+        from samsara.command_catalog import normalize_phrase
+        return table.get(normalize_phrase(str(phrase)))
 
     def _dictate_commit_redecode(self, joined_text: str, audio_refs: list):
         """Re-decode a complete DICTATE thought from collected per-utterance audio."""
@@ -6954,6 +6957,28 @@ class DictationApp:
         # an exact stop/cancel utterance never queues behind the model.
         if self._try_stop_utterance(text, 'ava session'):
             return
+        # Queue 102 -- Ava's edit proposals. THE ONE dispatch call site this
+        # feature touches. It sits here, and not in session_modes' dispatch,
+        # deliberately: this is already the Ava address path, so the edit
+        # feature inherits the trigger rather than inventing one. By the time
+        # an utterance reaches this function it has been through the substance
+        # gate and detect_stage_reference has already decided whether it is
+        # talking about the staged dictation -- which is exactly the question
+        # "make that shorter" asks.
+        #
+        # Placed AFTER cancel and stop so neither can be swallowed by a staged
+        # proposal, and BEFORE the agent queue so an edit never costs an Ava
+        # request. Returns False for anything it does not claim, and its own
+        # errors are caught inside, so a bug in the edit path can only ever
+        # cost the user an edit -- never their Ava turn.
+        # getattr, not a bare attribute call: this function is exercised with
+        # app harnesses that implement only the surface under test (see
+        # tests/test_execution_policy.py::TestStopPath), and an AttributeError
+        # on the LOOKUP happens before _try_ava_edit's own guard can catch it.
+        # Same defensive shape queue 110 uses for _cancel_ava_turn just below.
+        _try_edit = getattr(self, '_try_ava_edit', None)
+        if _try_edit is not None and _try_edit(text):
+            return
         payload_text = f"STAGED TEXT:\n{context}\n\n{text}" if context else text
         # Request identity: captured at the moment the user spoke. Queue
         # items are (generation, text), never bare strings -- see
@@ -6980,6 +7005,38 @@ class DictationApp:
         generation, payload_text = request if isinstance(request, tuple) else (None, request)
         handle_ask_ava(self, remainder=payload_text, on_done=self._on_ava_session_request_done,
                        generation=generation)
+
+    def _try_ava_edit(self, text: str) -> bool:
+        """Queue 102. Hand the utterance to samsara.ava_edit; True means the
+        edit path consumed it and it must NOT go to the agent.
+
+        Everything the feature does lives behind this one call -- proposing,
+        the staged-proposal slot, the chip, the spoken diff, and the apply.
+        Import is local so a broken/absent edit package cannot stop the app
+        from booting or take the Ava lane down with it."""
+        try:
+            from samsara import ava_edit  # noqa: PLC0415
+            return ava_edit.handle_utterance(self, text)
+        except Exception as exc:
+            logger.debug(f'[AVA-EDIT] edit path unavailable: {exc}')
+            return False
+
+    def _cancel_ava_turn(self, reason: str):
+        """Queue 110. Cancel an Ava turn that is still live, from a trigger
+        that is not a spoken stop: a mode switch, an abort/sleep phrase.
+
+        Delegates to plugins.commands.ask_ollama.cancel_turn, which is the
+        one seam -- it decides whether anything is live and does the whole
+        cancellation through execution_policy.stop_all. Returns None when
+        there was nothing to cancel. Never raises: a mode change must happen
+        even if the Ava plugin is missing or broken.
+        """
+        try:
+            from plugins.commands.ask_ollama import cancel_turn  # noqa: PLC0415
+            return cancel_turn(self, reason)
+        except Exception as exc:
+            logger.debug(f'[AVA-SESSION] cancel_turn unavailable ({reason}): {exc}')
+            return None
 
     def _try_stop_utterance(self, text: str, lane: str) -> bool:
         """Exact "stop"/"cancel"/"never mind"/"go to sleep" spoken into an
@@ -7011,13 +7068,19 @@ class DictationApp:
         so every lane still reports through the one chokepoint; a slow agent
         response is covered by the user speaking again, not by this hook."""
         self._touch_session_activity()
-        # Resolves the pending "Ava..." chip. on_done carries no result, so an
-        # early exit (plugin disabled, Ollama unreachable) also lands here --
-        # those paths still speak their own error.
+        # Resolves the pending "Ava..." chip with what actually happened
+        # (queue 57): handle_ask_ava leaves (label, kind) on
+        # self._ava_turn_outcome -- a failure, an unspoken answer and a
+        # cancelled request are no longer shown as "Ava <check>".
         _chip = getattr(self, '_show_outcome_chip', None)
+        turn_chip = getattr(self, '_ava_turn_outcome', None)
+        self._ava_turn_outcome = None
+        if turn_chip is None:
+            # No recorded outcome = the request was dropped (cancel/stop made
+            # it stale). The pending "Ava..." chip has no TTL, so resolve it.
+            turn_chip = ("Ava: cancelled", "accent")
         if _chip is not None:
-            from samsara.session_modes import CHIP_CHECK
-            _chip(f"Ava {CHIP_CHECK}", "success")
+            _chip(*turn_chip)
         from samsara import execution_policy  # noqa: PLC0415
         with self._ava_session_dispatch_lock:
             next_request = None
@@ -7039,14 +7102,23 @@ class DictationApp:
     # or otherwise touched by session code; an earlier version wired the
     # badge there and every mode transition popped/hid the user's Reminders
     # window as a side effect.
-    _MODE_OVERLAY = {
-        SessionMode.COMMAND: ("COMMAND", "#5EEAD4"),
-        SessionMode.DICTATE: ("HANDS FREE", "#f59e0b"),
-        SessionMode.AVA: ("AVA", "#A78BFA"),
-    }
+    @staticmethod
+    def _mode_overlay():
+        """Badge label and colour per session mode.
+
+        A method, not a class attribute: a dict built when the class body runs
+        reads each token once, at import, and would keep the startup palette
+        for the life of the process (queue 129)."""
+        from samsara.ui import theme  # noqa: PLC0415
+        return {
+            SessionMode.COMMAND: ("COMMAND", theme.ACCENT),
+            SessionMode.DICTATE: ("HANDS FREE", theme.WARNING),
+            SessionMode.AVA: ("AVA", theme.AVA),
+        }
 
     def _update_mode_overlay(self, mode: "SessionMode") -> None:
-        name, color = self._MODE_OVERLAY.get(mode, ("COMMAND", "#5EEAD4"))
+        from samsara.ui import theme  # noqa: PLC0415
+        name, color = self._mode_overlay().get(mode, ("COMMAND", theme.ACCENT))
         if hasattr(self, 'listening_indicator'):
             self._schedule_ui(self.listening_indicator.set_session_mode, name, color)
 
@@ -7363,7 +7435,8 @@ class DictationApp:
             # either, reusing the existing COMMAND/DICTATE/AVA badge
             # mechanism (session_modes.py's hands-free lane already uses
             # it the same way).
-            self._schedule_ui(self.listening_indicator.set_session_mode, "AVA CMD", "#89ddff")
+            from samsara.ui import theme  # noqa: PLC0415
+            self._schedule_ui(self.listening_indicator.set_session_mode, "AVA CMD", theme.ACCENT)
         thread_registry.spawn('ava-cmd-enter', self._do_enter_ava_command_session, daemon=True)
 
     def _do_enter_ava_command_session(self):
@@ -7424,7 +7497,16 @@ class DictationApp:
         # the clearing half runs here. Drafts are untouched.
         try:
             from samsara import execution_policy  # noqa: PLC0415
-            execution_policy.stop_all(self, 'ava command session exit', chip=False, bump=False)
+            cleared = execution_policy.stop_all(self, 'ava command session exit',
+                                                chip=False, bump=False)
+            # Queue 110: chip=False stays (the generic "stopped" chip is not
+            # what leaving a session means), but a turn that was actually cut
+            # off mid-answer has to SAY so -- the exit earcon alone reads as a
+            # normal exit. Only when something was really in flight.
+            if cleared.get("speech") or cleared.get("in_flight") or cleared.get("queued"):
+                show = getattr(self, '_show_outcome_chip', None)
+                if show is not None:
+                    self._schedule_ui(show, "Ava: cancelled", "accent")
         except Exception as e:
             logger.debug(f"[AVA-CMD] stop_all on exit failed: {e}")
         if hasattr(self, 'listening_indicator'):
@@ -7692,10 +7774,11 @@ class DictationApp:
 
     def _reset_command_mode_inactivity_timer(self, timeout_s):
         with self._command_mode_timer_lock:
-            self._cancel_command_mode_inactivity_timer_locked()
+            self._cancel_command_mode_inactivity_timer_locked()   # bumps the generation
+            generation = self._timer_generation
             t = thread_registry.timer(
                 "dictation.command_mode_inactivity", timeout_s,
-                self._on_command_mode_inactivity, daemon=True)
+                self._on_command_mode_inactivity, args=(generation,), daemon=True)
             self._command_mode_inactivity_timer = t
             self._command_mode_inactivity_deadline = time.monotonic() + timeout_s
 
@@ -7711,6 +7794,8 @@ class DictationApp:
         thread at the same moment a fresh command-mode utterance is
         dispatched on its own per-utterance thread) can never race and leak
         a second live timer."""
+        # Invalidate whatever is armed -- including a callback already running.
+        self._timer_generation = getattr(self, '_timer_generation', 0) + 1
         t = self._command_mode_inactivity_timer
         if t is not None:
             t.cancel()
@@ -7757,6 +7842,9 @@ class DictationApp:
         timer out from under the deliberate pause below."""
         if not speech_onset or not self.command_mode_active:
             return
+        _cancel_windows = _cancel_window_module()
+        if _cancel_windows is not None:
+            _cancel_windows.note_speech_onset(self)
         if self._session_recovery_pause:
             return
         cm_cfg = self.config.get('command_mode', {})
@@ -7787,14 +7875,30 @@ class DictationApp:
         if self.command_mode_active and cm_cfg.get('mode', 'hold') == 'toggle':
             self._reset_command_mode_inactivity_timer(cm_cfg.get('inactivity_timeout_s', 300))
 
-    def _on_command_mode_inactivity(self):
+    def _on_command_mode_inactivity(self, generation=None):
         """threading.Timer callback -- runs on its own thread. Must never
         raise uncaught: a raise here would leave the session latched
         (command_mode_active still True) but with its only path back to
         COMMAND-mode listening broken -- deaf but latched, a zombie
         session. On any failure inside exit_command_mode(), force the same
         end-state directly (flip the flag, cancel the timer, reset mode
-        state) so the session provably ends rather than hanging."""
+        state) so the session provably ends rather than hanging.
+
+        `generation` (queue 50): the timer generation this callback was armed
+        with. If a reset or cancel has happened since, this is a stale timer
+        whose Timer.cancel() came too late -- it must not end the live
+        session. The check and the claim happen under the timer lock; None
+        (direct callers) skips the check."""
+        if generation is not None:
+            with self._command_mode_timer_lock:
+                if generation != self._timer_generation:
+                    logger.info("[CMD MODE] Stale inactivity timer (generation %s, current %s) ignored",
+                                generation, self._timer_generation)
+                    return
+                # Claim it: this callback is now the one ending the session, so
+                # a second run of the same timer is stale too. exit_command_mode
+                # still cancels and clears the timer object itself.
+                self._timer_generation += 1
         try:
             logger.info("[CMD MODE] Inactivity timeout — exiting command mode")
             self.exit_command_mode()
@@ -7850,14 +7954,27 @@ class DictationApp:
         switch matcher needs, and hand the text off.
         """
         token = self._transcription_owners.claim('toggle')
+        # 2026-09-14 (queue 54): every capture logs its session mode, and
+        # every return before dispatch_utterance names why -- a user must
+        # never be left with silence as the only record of what happened.
+        _capture_mode = 'unknown'
+        audio_duration = 0.0
+        _dispatched = False
+        try:
+            _mgr = self._session_mode_manager
+            _capture_mode = _mgr.mode.value if _mgr is not None else 'no_session'
+        except Exception:
+            pass
         try:
             audio = np.concatenate(buffer)
             audio = resample_audio(audio, src_rate, self.model_rate)
             audio_duration = len(audio) / self.model_rate
 
             if audio_duration < 0.3:
+                self._log_cmd_utt_dropped('too_short', _capture_mode, audio_duration)
                 return
 
+            logger.info(f'[CMD-UTT] capture mode={_capture_mode} duration={audio_duration:.1f}s')
             logger.debug(f'[CMD-UTT] Transcribing {audio_duration:.1f}s utterance')
 
             # Command-mode utterances (mode==COMMAND) are matched against the
@@ -7907,11 +8024,27 @@ class DictationApp:
             transcribe_params = self.get_transcription_params(include_vocabulary=_is_command_lane)
             transcribe_params['vad_filter'] = False
             transcribe_params['language'] = 'en'
+            # Queue 106: kept for the echo check after the decode -- the
+            # refusal has to compare the text against the prompt this
+            # utterance was ACTUALLY conditioned on, not a tail recomputed
+            # afterwards from a buffer that may have moved on.
+            context_tail = ''
             if (
                 manager.mode is SessionMode.DICTATE
                 and audio_duration <= 25.0
             ):
-                context_tail = manager.dictate_context_tail()
+                # Queue 106: dictate_context_tail returns a raw
+                # source[-200:] character slice, which in the five real
+                # tails recovered for queue 44 always began mid-word and
+                # once ended "and nd nd nd". Sanitised before it is handed
+                # to the decoder -- see _sanitise_context_tail.
+                # Called with no argument, as before: the manager owns the
+                # window size (its own max_chars default), _CONTEXT_TAIL_CHARS
+                # only tells the sanitiser how wide that window is so it can
+                # tell a truncated slice from a whole short buffer. The two
+                # are pinned equal by tests/test_context_prompt_contamination_106.
+                context_tail = _sanitise_context_tail(
+                    manager.dictate_context_tail(), _CONTEXT_TAIL_CHARS)
                 # 02e00b9: 25 s guard keeps short-turn DICTATE chunks
                 # continuity-biased, but skips long-tail decodes where
                 # Whisper can become unstable when initial_prompt carries
@@ -7927,6 +8060,7 @@ class DictationApp:
 
             if not text:
                 logger.debug('[CMD-UTT] Empty transcription')
+                self._log_cmd_utt_dropped('empty_transcription', _capture_mode, audio_duration)
                 return
 
             # Hallucination screening -- this toggle-session path runs its
@@ -7967,12 +8101,14 @@ class DictationApp:
             if _trimmed != text:
                 if not _trimmed:
                     logger.info(f'[GUARD] Suppressed hallucination: {text!r}')
+                    self._log_cmd_utt_dropped('hallucination_trailing_garbage', _capture_mode, audio_duration)
                     return
                 logger.info(f'[GUARD] Trimmed trailing garbage: {text!r} -> {_trimmed!r}')
                 text = _trimmed
 
             if _is_hallucinated_segments(_kept_segs, text):
                 logger.info(f'[GUARD] Suppressed hallucination: {text!r}')
+                self._log_cmd_utt_dropped('hallucination_segments', _capture_mode, audio_duration)
                 return
 
             logger.debug(f'[CMD-UTT] "{text}"')
@@ -7980,13 +8116,34 @@ class DictationApp:
             if self._command_mode_ghost_tap:
                 self._command_mode_ghost_tap = False
                 logger.debug('[CMD-UTT] Ghost tap — discarding')
+                self._log_cmd_utt_dropped('ghost_tap', _capture_mode, audio_duration)
                 return
 
             if not _is_command_lane:
                 text = self._filter_dictation_language(text, info)
                 if not text:
                     logger.debug('[CMD-UTT] Empty transcription')
+                    self._log_cmd_utt_dropped('language_filter', _capture_mode, audio_duration)
                     return
+
+            # Queue 106: the decode reproduced the end of the prompt it was
+            # given. Refused HERE, before dispatch_utterance -- which is the
+            # only writer of the pending/stage buffer, and therefore the only
+            # way anything reaches the next utterance's context tail. That is
+            # what keeps the loop from closing: an echo is neither pasted nor
+            # allowed to become the prompt that produces the next one.
+            if self._is_dictate_context_echo(text, context_tail):
+                logger.info(f'[GUARD] Refused context echo: {text!r} '
+                            f'(tail ends {context_tail[-60:]!r})')
+                self._log_cmd_utt_dropped('context_echo', _capture_mode, audio_duration)
+                # Never a silent drop. The user has to know their words did
+                # not land, or they carry on talking into a draft that
+                # stopped listening several sentences ago.
+                try:
+                    self._show_outcome_chip(_CONTEXT_ECHO_CHIP, 'warning')
+                except Exception as exc:
+                    logger.debug(f'[CMD-UTT] context-echo chip failed: {exc}')
+                return
 
             signals = self._compute_switch_gate_signals(
                 audio,
@@ -7995,9 +8152,18 @@ class DictationApp:
             )
             self._current_utterance_duration_s = audio_duration
 
+            _cancel_windows = _cancel_window_module()
+            if _cancel_windows is not None:
+                _cancel_windows.note_utterance_start()
             outcome = manager.dispatch_utterance(text, signals)
+            _dispatched = True
             logger.info(f'[SESSION] mode={manager.mode.value} outcome={outcome.kind} detail={outcome.detail}')
             self._handle_session_dispatch_outcome(outcome, text)
+            if _cancel_windows is not None:
+                # Queue 69: a window HELD by this utterance's speech onset is
+                # decided by what the utterance became (after its own chip,
+                # so a "cancelled" chip is the one left showing).
+                _cancel_windows.after_utterance(self, outcome.kind)
             if _was_dictate_lane and self._dictate_preview is not None:
                 # This utterance's authoritative final just landed. `text`
                 # is the same string dispatch_utterance above just used --
@@ -8014,6 +8180,11 @@ class DictationApp:
                         text,
                         scratch_success=(outcome.kind == 'scratch_success'),
                         dictate_committed=(outcome.kind == 'dictate_committed'),
+                        # Queue 88: "bring back my draft" rewrote the staged
+                        # buffer from the recovery slot. The preview has no
+                        # other way to learn that -- the utterance's own text
+                        # is the control phrase, not the draft.
+                        draft_recovered=(outcome.kind == 'dictate_draft_recovered'),
                     )
                 except Exception as e:
                     logger.debug(f'[DICTATE-PREVIEW] on_utterance_final failed: {e}')
@@ -8031,6 +8202,8 @@ class DictationApp:
             # this utterance's thread silently. Mode/command_mode_active
             # are untouched, so the next utterance dispatches normally.
             logger.exception(f'[CMD-UTT] Error: {exc}')
+            if not _dispatched:
+                self._log_cmd_utt_dropped(f'error:{type(exc).__name__}', _capture_mode, audio_duration)
             try:
                 self.play_sound('error')
             except Exception as e:
@@ -8038,6 +8211,57 @@ class DictationApp:
         finally:
             self._transcription_owners.release('toggle', token)
             self._vad_reset()
+
+    def _is_dictate_context_echo(self, text, context_tail) -> bool:
+        """_is_context_echo, with the one exemption that predicate cannot
+        make on its own: a recognised session CONTROL phrase is never an
+        echo, however well it matches the tail.
+
+        "bring back my draft" is four words, exactly the echo floor, and it
+        is the phrase the owner reaches for when the draft is already in a
+        mess -- precisely the state in which the buffer might end with odd
+        text. Refusing a control phrase would be this fix eating the way out
+        of the problem it exists to fix. Checked against the same matchers
+        dispatch_utterance itself uses, so the exemption can never drift
+        from what actually counts as control.
+
+        Only the PURE module-level matchers are consulted -- deliberately not
+        the manager-bound ones (_matches_abort_phrase, match_ava_invocation).
+        Those need session state this predicate would have to reach for, and
+        the exemption they would add is empty in practice: every control
+        phrase that is both four words or more AND could plausibly be the
+        verbatim tail of dictated prose is covered here, "bring back my
+        draft" being the one that actually matters. A predicate that can
+        disable the whole check by reading a stray attribute is worth less
+        than the case it would cover.
+
+        Best effort: a matcher raising falls back to the plain text check
+        rather than to accepting the echo.
+        """
+        if not _is_context_echo(text, context_tail):
+            return False
+        try:
+            if (is_scratch_that(text)
+                    or is_dictate_commit(text)
+                    or is_recover_draft(text)
+                    or match_switch_word(text) is not None):
+                logger.debug(f'[CMD-UTT] context echo exempt (control phrase): {text!r}')
+                return False
+        except Exception as exc:
+            logger.debug(f'[CMD-UTT] control-phrase exemption unavailable: {exc}')
+        return True
+
+    @staticmethod
+    def _log_cmd_utt_dropped(reason: str, mode: str, duration_s: float) -> None:
+        """One INFO line for an utterance that never reached (or never finished)
+        SessionModeManager.dispatch_utterance. The reason is a fixed token so the
+        log answers "why did nothing happen?" without the transcript text."""
+        logger.info(f'[CMD-UTT] dropped reason={reason} mode={mode} duration={duration_s:.1f}s')
+        _cancel_windows = _cancel_window_module()
+        if _cancel_windows is not None:
+            # Queue 69: the sound that held a cancel window was not speech
+            # that reached dispatch -- release the hold (the command runs).
+            _cancel_windows.after_utterance(None, f'dropped_{reason}')
 
     def _intent_shadow_observe(self, text, outcome) -> None:
         """Hand one finalised DICTATE utterance to the shadow intent gate
@@ -8106,6 +8330,15 @@ class DictationApp:
             logger.info('[SESSION] Hands-free command rejected by anti-hallucination gate; '
                         'pending text retained')
             self.play_sound('scratch_refuse')
+        elif outcome.kind == "dictate_recover_nothing":
+            # Queue 88: "bring back my draft" with an empty slot is a REFUSAL,
+            # and must sound like one. SessionModeManager already speaks
+            # "There is no draft to bring back." and the chip reads "nothing to
+            # bring back"; this is the same "didn't go through" earcon every
+            # other refusal on this path uses, so the answer is unmistakable
+            # before the sentence has even started.
+            logger.info('[SESSION] recover-draft asked for with an empty slot; nothing restored')
+            self.play_sound('scratch_refuse')
         elif outcome.kind in ("hands_free_command_failed", "command_failed"):
             # Recognised command that did not carry out (failed, refused by
             # debounce/policy, or cancelled). Refusals get the "didn't go
@@ -8117,6 +8350,13 @@ class DictationApp:
             else:
                 logger.error('[SESSION] Command failed to execute: %r', outcome.detail)
                 self.play_sound('error')
+        elif outcome.kind == "dictate_blocked_elevated":
+            # Queue 50: the "audible lie" -- Windows would silently drop
+            # anything typed into an elevated window. Its own earcon, never a
+            # success sound; the text is retained.
+            logger.warning('[SESSION] Not typing: the foreground window runs as administrator '
+                           '(%s) -- text kept', outcome.detail.get('integrity'))
+            self._play_window_locked()
         elif outcome.kind == "ava_entry_failed":
             # 2026-09-11: AVA entry must never fail silently. The session
             # already logged the reason at WARNING and stayed in the previous
@@ -8128,12 +8368,26 @@ class DictationApp:
                 getattr(retained, 'value', retained),
             )
             self.play_sound('error')
+            _refusal = getattr(self, '_speak_ava_entry_refusal', None)   # stubs may lack it
+            if _refusal is not None:
+                _refusal(outcome.detail.get('reason'))
+            if str(outcome.detail.get('reason') or '').startswith('Ava is offline'):
+                # The generic chip truncates the sentence to ~24 chars; the
+                # readiness chip says "Ava: offline: bad API key" instead.
+                self._ava_readiness_chip_due = True
         # Best-effort UI side-channel: resolved via getattr so a missing or
         # failing chip can never skip the earcons above or the inactivity
         # chokepoint below (this method is also bound onto minimal stubs).
         _chip = getattr(self, '_show_dispatch_outcome_chip', None)
         if _chip is not None:
             _chip(outcome)
+        if getattr(self, '_ava_readiness_chip_due', False):
+            # Queue 57: readiness of the configured provider, before the user
+            # speaks to Ava. Replaces the "-> AVA" switch chip on purpose.
+            self._ava_readiness_chip_due = False
+            _ready_chip = getattr(self, '_show_ava_readiness_chip', None)
+            if _ready_chip is not None:
+                _ready_chip()
         if outcome.kind != "empty":
             self._touch_session_activity()
 
@@ -8142,16 +8396,94 @@ class DictationApp:
     # happened. The vocabulary lives in session_modes.outcome_chip (Qt-free,
     # tested); these helpers only schedule it onto the Qt thread.
 
-    def _show_outcome_chip(self, label, kind, ttl_ms="default"):
+    #: Chip for the queue-50 elevated-window refusal (same text the session
+    #: outcome chip uses -- see session_modes.outcome_chip).
+    WINDOW_LOCKED_CHIP = chr(0x2717) + " can't type: admin window"   # session_modes.CHIP_CROSS
+
+    def _play_window_locked(self) -> None:
+        """The queue-50 'this window will not accept typing' earcon. Falls back
+        to the error earcon for a sound theme without window_locked.wav, so it
+        is never silent and never a success sound."""
+        cache = getattr(self, '_sound_cache', None) or {}
+        self.play_sound('window_locked' if 'window_locked' in cache else 'error')
+
+    def _announce_window_locked(self, verdict, lane: str) -> None:
+        """Log + earcon + chip for a delivery refused because the foreground
+        window runs at a higher integrity level."""
+        logger.warning("[INJECT] %s: not typing -- the foreground window runs as administrator and "
+                       "Windows would silently drop the text (%s)", lane, verdict.describe())
+        self._play_window_locked()
+        self._show_outcome_chip(self.WINDOW_LOCKED_CHIP, "error")
+
+    # ── Ava readiness surface (queue 57) ────────────────────────────────────
+    AVA_READINESS_CHIP_TTL_MS = 4000
+
+    def _speak_ava_entry_refusal(self, reason) -> None:
+        """Say why AVA entry was refused. ask_ollama's reasons are already
+        sentences ("Ava is offline. DeepSeek rejected the API key. ...");
+        internal ones get a plain prefix. Category ava_status is exempt from
+        command_mode.tts_char_limit, which would otherwise swallow it."""
+        try:
+            text = str(reason or "").strip()
+            if not text.startswith("Ava "):
+                text = f"Ava is not available: {text or 'unknown reason'}."
+            coordinator = getattr(self, 'audio_coordinator', None)
+            if coordinator is not None:
+                coordinator.speak(text, category="ava_status")
+        except Exception as exc:
+            logger.debug(f"[SESSION] Ava refusal speech failed: {exc}")
+
+    def _show_ava_readiness_chip(self) -> None:
+        """"Ava: ready (DeepSeek)" / "Ava: offline: bad API key" /
+        "Ava: checking (DeepSeek)" -- shown on entering AVA, before the user
+        has said anything, and again whenever readiness changes while in AVA."""
+        try:
+            from plugins.commands.ask_ollama import readiness_chip
+            label, kind = readiness_chip(self)
+            self._show_outcome_chip(label, kind, self.AVA_READINESS_CHIP_TTL_MS)
+        except Exception as exc:
+            logger.debug(f"[AVA-READY] chip failed: {exc}")
+
+    def _on_ava_readiness_change(self, old, new) -> None:
+        """ava_readiness listener (monitor thread or Ava worker). Only
+        surfaces while the session is in AVA; a failed turn already spoke its
+        own reason, so only probe-detected losses are spoken here."""
+        try:
+            manager = getattr(self, '_session_mode_manager', None)
+            if manager is None or manager.mode is not SessionMode.AVA:
+                return
+            if not getattr(self, 'command_mode_active', False):
+                return
+            self._show_ava_readiness_chip()
+            if new.offline and not old.offline and new.source == 'probe':
+                coordinator = getattr(self, 'audio_coordinator', None)
+                if coordinator is not None:
+                    coordinator.speak(new.spoken_reason(), category="ava_status")
+        except Exception as exc:
+            logger.debug(f"[AVA-READY] change handler failed: {exc}")
+
+    def _show_outcome_chip(self, label, kind, ttl_ms="default", *, source=""):
         """Schedule a chip on the indicator. Any chip shown here also counts
-        as the resolution of a pending hold "..." -- see _resolve_hold_chip."""
+        as the resolution of a pending hold "..." -- see _resolve_hold_chip.
+
+        `source` is the DispatchOutcome kind this chip was made from, passed
+        by _show_dispatch_outcome_chip and empty for a directly raised chip.
+        It is what lets a reader tell a COMMAND outcome from a dictation one
+        (queue 109): outcome_chip() maps unrelated kinds onto identical words,
+        so the label alone cannot answer that, and Home's miss diagnostic
+        counts commands.
+        """
         self._hold_chip_resolved_seq = getattr(self, '_hold_chip_seq', 0)
-        # Home's "last action" card reads this ring (newest last, capped at
-        # 8); pending/live chips are progress, not outcomes, so they are skipped.
-        if kind not in ('pending', 'live'):
+        # Home's "last action" card and its miss diagnostic read this ring
+        # (newest last, capped at 8); pending/live chips are progress, not
+        # outcomes, so they are skipped. One schema for writer and readers --
+        # samsara.outcome_ring.OutcomeRecord, a NamedTuple, so the positional
+        # readers (home_qt.render_outcome) are unaffected.
+        if kind not in outcome_ring.PROGRESS_KINDS:
             if getattr(self, '_outcome_ring', None) is None:
                 self._outcome_ring = collections.deque(maxlen=8)
-            self._outcome_ring.append((label, kind, time.time()))
+            self._outcome_ring.append(
+                outcome_ring.record(label, kind, time.time(), source))
         indicator = getattr(self, 'listening_indicator', None)
         if indicator is None or not hasattr(indicator, 'show_outcome'):
             return
@@ -8178,7 +8510,11 @@ class DictationApp:
                 logger.warning("[CHIP] Unmapped DispatchOutcome kind %r -- add it to "
                                "session_modes.outcome_chip", outcome.kind)
             label, chip_kind = chip
-            self._show_outcome_chip(label, chip_kind, chip_ttl_ms(outcome.kind, chip_kind))
+            # The DispatchOutcome kind travels with the chip into the ring
+            # (queue 109): it is the only field that says which lane the
+            # outcome belongs to once the label has been rendered.
+            self._show_outcome_chip(label, chip_kind, chip_ttl_ms(outcome.kind, chip_kind),
+                                    source=outcome.kind)
         except Exception as exc:
             logger.debug(f"[CHIP] outcome chip failed for {outcome.kind!r}: {exc}")
 
@@ -8448,6 +8784,136 @@ class DictationApp:
             self.stop_wake_word_mode()
         else:
             self.start_wake_word_mode()
+
+    # ── Hands-free fatal recovery (queue 109, Astra F6) ───────────────────
+
+    def _on_wake_consumer_fatal(self, exc) -> None:
+        """WakeConsumer.on_fatal -- the poll loop has died and cleaned up.
+
+        Runs ON THE DYING POLL THREAD, after _handle_fatal has released the
+        ducks, drained the toggle queue, cancelled the session timers and
+        cleared the session flags. Everything here must therefore be quick
+        and must not raise: this thread is about to end either way, and a
+        failure here is the difference between an explained stop and a
+        silent one.
+
+        Two things happen. The fault is RECORDED, persistently -- it is read
+        by samsara.ui.home_signals.hands_free_state and lives until a restart
+        succeeds, because a chip that expires and an error beep are exactly
+        what left the user with nothing. And, only for a failure classified
+        transient (wake_consumer.classify_fatal), a restart is scheduled,
+        capped at wake_consumer.FATAL_RETRY_CAP attempts on a backoff. A
+        programming error is never retried: it would raise again on the next
+        frame and spin.
+        """
+        try:
+            from samsara.audio_engine import wake_consumer as _wc   # noqa: PLC0415
+            attempts = int(getattr(self, '_hands_free_fault_attempts', 0) or 0)
+            classification = _wc.classify_fatal(exc)
+            retrying = (classification == _wc.FATAL_TRANSIENT
+                        and attempts < _wc.FATAL_RETRY_CAP)
+            self._hands_free_fault = _wc.fault_from(
+                exc, at=time.time(), attempts=attempts, retrying=retrying)
+            logger.error("[WAKE] Hands-free stopped (%s, attempt %d/%d, retry=%s): %s",
+                         classification, attempts, _wc.FATAL_RETRY_CAP, retrying, exc)
+            flight_recorder.record('wake.fatal', classification=classification,
+                                   attempts=attempts, retrying=retrying,
+                                   exc=type(exc).__name__)
+        except Exception as record_exc:
+            logger.exception(f"[WAKE] Could not record the hands-free fault: {record_exc}")
+            retrying = False
+
+        try:
+            if callable(getattr(self, 'play_sound', None)):
+                self.play_sound('error')
+        except Exception as sound_exc:
+            logger.debug(f"[WAKE] fatal earcon failed: {sound_exc}")
+        self._publish_hands_free_fault()
+
+        if not retrying:
+            return
+        try:
+            from samsara.audio_engine import wake_consumer as _wc   # noqa: PLC0415
+            delay = _wc.FATAL_RETRY_DELAYS_S[attempts]
+            self._hands_free_fault_attempts = attempts + 1
+            thread_registry.timer('wake.fatal_restart', delay,
+                                  self._retry_hands_free_after_fatal,
+                                  args=(attempts + 1,), daemon=True)
+            logger.info("[WAKE] Automatic hands-free restart %d/%d in %.0fs",
+                        attempts + 1, _wc.FATAL_RETRY_CAP, delay)
+        except Exception as retry_exc:
+            logger.exception(f"[WAKE] Could not schedule the hands-free restart: {retry_exc}")
+
+    def _retry_hands_free_after_fatal(self, attempt: int) -> None:
+        """One scheduled automatic restart. A restart that does not bring
+        capture back leaves the fault standing, with `retrying` now false
+        when the budget is spent, so Home stops promising another go."""
+        if getattr(self, '_hands_free_fault', None) is None:
+            return                     # something already recovered it
+        ok = self.restart_hands_free(source=f"auto:{attempt}")
+        logger.info("[WAKE] Automatic hands-free restart %d: %s",
+                    attempt, "listening again" if ok else "still stopped")
+
+    def restart_hands_free(self, *, source: str = "user") -> bool:
+        """Bring hands-free listening back after a fatal stop.
+
+        Returns True only when the wake listener is actually running again --
+        never on "the restart was attempted". Home's recovery button reads
+        this, and a button that reports success onto a still-dead listener is
+        the failure this whole queue is about.
+
+        A USER restart also resets the automatic budget: someone asking again
+        by hand is a new attempt, not a continuation of the app's own.
+        """
+        if source == "user":
+            self._hands_free_fault_attempts = 0
+        if not self.config.get('wake_word_enabled', False):
+            # Nothing to restore: hands-free is switched off, which Home
+            # reports as OFF rather than as a fault.
+            self._hands_free_fault = None
+            return False
+        try:
+            if not self.wake_word_active:
+                self.start_wake_word_mode()
+            else:
+                self._ensure_wake_consumer('wake_word')
+        except Exception as exc:
+            logger.exception(f"[WAKE] Hands-free restart failed: {exc}")
+            return False
+
+        consumer = getattr(self, '_wake_consumer', None)
+        running = bool(getattr(consumer, 'running', False))
+        if running and self.wake_word_active:
+            self._hands_free_fault = None
+            self._hands_free_fault_attempts = 0
+            logger.info("[WAKE] Hands-free restarted (%s)", source)
+        else:
+            fault = getattr(self, '_hands_free_fault', None)
+            if fault is not None:
+                # The restart did not take. Keep the explanation and say
+                # truthfully whether the app still intends to try again.
+                try:
+                    import dataclasses                               # noqa: PLC0415
+                    from samsara.audio_engine import wake_consumer as _wc  # noqa: PLC0415
+                    spent = int(getattr(self, '_hands_free_fault_attempts', 0) or 0)
+                    self._hands_free_fault = dataclasses.replace(
+                        fault, attempts=spent,
+                        retrying=(fault.classification == _wc.FATAL_TRANSIENT
+                                  and spent < _wc.FATAL_RETRY_CAP))
+                except Exception as exc:
+                    logger.debug(f"[WAKE] Could not update the hands-free fault: {exc}")
+        self._publish_hands_free_fault()
+        return running and bool(self.wake_word_active)
+
+    def _publish_hands_free_fault(self) -> None:
+        """Push the fault (or its clearing) to the surfaces that already
+        re-read app state -- the tray tooltip and the indicator's mode label.
+        Home re-reads on its own poll; this is so the tray does not keep
+        claiming a listener that has stopped."""
+        try:
+            self._publish_wake_state()
+        except Exception as exc:
+            logger.debug(f"[WAKE] Could not publish the hands-free fault: {exc}")
 
     def _ensure_wake_consumer(self, reason: str) -> None:
         """Ensure the WakeConsumer PIPELINE (poll thread) is running for
@@ -9666,6 +10132,15 @@ class DictationApp:
             # Never let a debug UI bug break the main pipeline
             logger.exception(f"[WARN] wake trace callback failed: {e}")
 
+    #: Minimum sample for a wake floor (48). A frame is one ACE ring frame:
+    #: FRAME_MS (100 ms) of 16 kHz audio, so 3 s should yield 30. The floor is
+    #: a median of per-frame RMS; below 80 % of the expected frames the window
+    #: had a stall (the 2026-09-14 21:02 run wrote a floor from 5 frames while
+    #: the process was already dying), and never fewer than 20 frames (2 s),
+    #: or one noise burst moves the median. Below either: nothing is written.
+    _WAKE_CAL_MIN_FRACTION = 0.8
+    _WAKE_CAL_MIN_FRAMES = 20
+
     def calibrate_wake_mic(self, seconds: float = 3.0,
                            cancel_event=None) -> float | None:
         """Sample ambient audio for *seconds* and seed the adaptive noise floor.
@@ -9674,23 +10149,42 @@ class DictationApp:
         second InputStream is opened.  The temporary reader starts at the live
         write head so calibration measures a fresh, full quiet interval.
 
-        Returns the measured floor RMS, or None if no frames were available.
-        Persists the result to wake_word_config.audio.measured_noise_floor so
-        the floor survives a restart and seeds the EMA on next boot.
-        When cancel_event is supplied, cancellation returns None without
-        changing or persisting the current floor.
+        Returns the measured floor RMS, or None when nothing was written:
+        engine not running, cancelled, or too small a sample (see
+        _WAKE_CAL_MIN_FRACTION / _WAKE_CAL_MIN_FRAMES). Every outcome leaves
+        self.last_wake_calibration = {status, frames, expected_frames,
+        min_frames, seconds, floor, message} for the UI to show.
+        Persists a successful result to
+        wake_word_config.audio.measured_noise_floor so the floor survives a
+        restart and seeds the EMA on next boot. When cancel_event is
+        supplied, cancellation returns None without changing or persisting
+        the current floor.
         """
         import logging as _log
+        from samsara.audio_engine.frame import FRAME_MS as _FRAME_MS, SAMPLE_RATE as _FRAME_RATE
+
+        expected_frames = max(1, int(round(seconds * 1000 / _FRAME_MS)))
+        min_frames = max(self._WAKE_CAL_MIN_FRAMES, math.ceil(expected_frames * self._WAKE_CAL_MIN_FRACTION))
+
+        def _report(status, frames=0, samples=0, floor=None, message=""):
+            self.last_wake_calibration = {
+                "status": status, "frames": frames, "expected_frames": expected_frames,
+                "min_frames": min_frames, "seconds": samples / _FRAME_RATE, "floor": floor,
+                "message": message,
+            }
 
         engine = getattr(self, '_ace_engine', None)
         if engine is None or not engine._running:
             _log.getLogger().warning("[CAL] ACE engine not running — calibrate_wake_mic has no audio source")
+            _report("unavailable", message="Background calibration was unavailable: the audio engine is not "
+                                           "running. Nothing was saved.")
             return None
 
         reader = engine.register_consumer("wake-calibration")
         from samsara.audio_engine.ring import EMPTY as _EMPTY
 
         rms_values = []
+        samples = 0
         deadline = time.monotonic() + seconds
         cancelled = False
         try:
@@ -9703,22 +10197,31 @@ class DictationApp:
                     time.sleep(0.005)
                     continue
                 chunk = frame.pcm.astype(np.float32) / 32767.0
+                samples += len(chunk)
                 rms_values.append(float(np.sqrt(np.mean(chunk ** 2))))
         finally:
             engine.unregister_consumer(reader)
 
         if cancelled:
             _log.getLogger().info("[CAL] Wake mic calibration cancelled")
+            _report("cancelled", len(rms_values), samples, message="Calibration cancelled. Nothing was saved.")
             return None
 
-        if not rms_values:
-            _log.getLogger().warning("[CAL] calibrate_wake_mic: no frames collected")
+        if len(rms_values) < min_frames:
+            got_s = samples / _FRAME_RATE
+            message = (f"Calibration refused: only {len(rms_values)} of the {expected_frames} expected "
+                       f"{_FRAME_MS} ms frames arrived ({got_s:.1f} s of audio; at least {min_frames} "
+                       f"are needed). Nothing was saved -- try again.")
+            _log.getLogger().warning(f"[CAL] {message}")
+            _report("insufficient", len(rms_values), samples, message=message)
             return None
 
         measured = float(np.median(rms_values))
         measured = max(measured, _NOISE_FLOOR_MIN)
         self._wake_noise_floor = measured
-        _log.getLogger().info(f"[CAL] Wake mic calibrated: floor={measured:.5f} ({len(rms_values)} frames)")
+        _report("ok", len(rms_values), samples, floor=measured)
+        _log.getLogger().info(f"[CAL] Wake mic calibrated: floor={measured:.5f} ({len(rms_values)} frames, "
+                              f"{samples / _FRAME_RATE:.1f} s)")
 
         # Persist so the floor survives restart.
         with self._config_lock:
@@ -9742,6 +10245,25 @@ class DictationApp:
                 "Whisper confirmation still required"
             )
             return False
+
+        # 2026-09-14 live-log incident: inside an open session the adaptive
+        # gate (floor 0.0088 x1.5 = 0.0132) sat above the owner's speech
+        # (0.004-0.010) and discarded every capture, end/cancel words
+        # included. Once the user has deliberately woken the app, skip only
+        # near-silence. Returns before the EMA update: in-session buffers are
+        # the user's voice, not ambient, same reasoning as the OWW bypass.
+        from samsara.audio_engine.wake_consumer import (
+            BYPASS_ADAPTIVE_GATE_IN_SESSION_KEY, in_session_rms_gate,
+            wake_capture_session_open,
+        )
+        session_open = wake_capture_session_open(self)
+        if session_open and config_defaults.cfg_get(self.config, BYPASS_ADAPTIVE_GATE_IN_SESSION_KEY):
+            skip, threshold, rule = in_session_rms_gate(audio_rms)
+            logger.info(
+                f"[WAKE-GATE] state={self.app_state} rms={audio_rms:.4f} threshold={threshold:.4f} "
+                f"rule={rule} decision={'skip' if skip else 'pass'}"
+            )
+            return skip
 
         ww_config = self.config.get('wake_word_config', {})
         audio_config = ww_config.get('audio', {})
@@ -9771,6 +10293,13 @@ class DictationApp:
                 )
 
             gate_level = max(self._wake_noise_floor * _SPEECH_FLOOR_RATIO, _ABS_FLOOR_MIN)
+            if session_open:
+                # Bypass disabled by config: the pre-fix rule still decides,
+                # but an in-session skip is never silent.
+                logger.info(
+                    f"[WAKE-GATE] state={self.app_state} rms={audio_rms:.4f} threshold={gate_level:.4f} "
+                    f"rule=adaptive decision={'skip' if audio_rms < gate_level else 'pass'}"
+                )
             if audio_rms < gate_level:
                 logging.debug(
                     f"[WAKE] gated (rms {audio_rms:.4f} < adaptive {gate_level:.4f}"
@@ -9779,6 +10308,11 @@ class DictationApp:
                 return True
         else:
             speech_threshold = audio_config.get('speech_threshold', DEFAULT_SPEECH_THRESHOLD)
+            if session_open:
+                logger.info(
+                    f"[WAKE-GATE] state={self.app_state} rms={audio_rms:.4f} threshold={speech_threshold:.4f} "
+                    f"rule=fixed_speech_threshold decision={'skip' if audio_rms < speech_threshold else 'pass'}"
+                )
             if audio_rms < speech_threshold:
                 logging.debug(
                     f"[WAKE] Below speech threshold (RMS {audio_rms:.4f} < {speech_threshold:.4f}), skipping"
@@ -10881,6 +11415,14 @@ class DictationApp:
 
     def _paste_preserving_clipboard(self, text, before_paste=None):
         """Paste text via clipboard while preserving the user's original clipboard content."""
+        # Queue 50: the single delivery chokepoint (hold, wake, session commit)
+        # refuses a window Windows will not let us type into. Callers with
+        # their own announcement (session outcome, hold path) check earlier;
+        # this guard makes every other lane fail honestly instead of "pasting".
+        _verdict = injection_safety.window_integrity()
+        if _verdict.blocked:
+            logger.warning("[INJECT] delivery refused: foreground window is elevated (%s)", _verdict.describe())
+            return False
         delay = self.config.get('clipboard_delay', CLIPBOARD_RESTORE_DELAY)
         paste_target = {'hwnd': None}
 
@@ -12217,10 +12759,15 @@ class DictationApp:
                 if text:
                     text_lower = text.lower().strip()
 
-                    # Voice exit from Mouse 4 command mode
-                    if is_command_mode and any(
-                        p in text_lower for p in ["exit command mode", "stop listening"]
-                    ):
+                    # Voice exit from Mouse 4 command mode. Queue 84: WHOLE
+                    # utterance only. This was a substring test, the same rule
+                    # that let "Have it stop listening to you, or something
+                    # like that." end a hands-free session and destroy a
+                    # 477-character draft. No draft lives in this lane, but a
+                    # sentence containing the phrase must not end it either.
+                    if is_command_mode and normalize_utterance(text) in {
+                        normalize_utterance(p) for p in ("exit command mode", "stop listening")
+                    }:
                         logger.info(f"[CMD MODE] Voice exit: '{text_lower}'")
                         self.exit_command_mode()
                         return
@@ -12352,18 +12899,38 @@ class DictationApp:
                         try:
                             memo_home = self.config.get('memo_file') or None
                             audio_path = None
-                            if self.config.get('memo_retain_audio', False):
+                            if self.config.get('memo_retain_audio', True):
                                 audio_path = quick_memo.retain_audio(
                                     audio, self.model_rate, home=memo_home)
-                            quick_memo.append_memo(
-                                text.strip(), source='voice',
-                                audio_path=audio_path, home=memo_home)
+                            # Queue 92: a memo that opens with a category the
+                            # user has already defined ("shopping: milk") is
+                            # filed under it. An unknown first word is just
+                            # part of the memo -- nothing is ever invented.
+                            known = quick_memo.categories(memo_home)
+                            category, body = quick_memo.split_category(
+                                text.strip(), known)
+                            record = quick_memo.add_memo(
+                                body, source=quick_memo.SOURCE_VOICE,
+                                audio_path=audio_path, home=memo_home,
+                                category=category,
+                                category_source=(quick_memo.CATEGORY_SPOKEN
+                                                 if category else None))
                         except Exception as exc:
                             logger.exception(f"[MEMO] Save failed: {exc}")
                             self.play_sound('error')
                             return
+                        # Best-effort extras, AFTER the memo is safely stored:
+                        # neither may turn a saved memo into a failure.
+                        try:
+                            quick_memo.mirror_to_vault(record, self.config, home=memo_home)
+                        except Exception as exc:
+                            logger.debug(f"[MEMO] Mirror skipped: {exc}")
+                        try:
+                            quick_memo.prune_audio(self.config, home=memo_home)
+                        except Exception as exc:
+                            logger.debug(f"[MEMO] Prune skipped: {exc}")
                         self.play_sound('capture_saved')
-                        self.add_to_history("[memo] " + text.strip(), is_command=False)
+                        self.add_to_history("[memo] " + body, is_command=False)
                         return
 
                     # Voice memo divert (2026-07-24): "voice memo" arms a
@@ -12392,10 +12959,32 @@ class DictationApp:
                         return
 
                     logger.info(f"[OK] {text}")
-                    self.play_sound("success")
-                    if hasattr(self, 'listening_indicator'):
-                        self._schedule_ui(self.listening_indicator.flash_success)
-                        self._show_outcome_chip("typed", "success", 900)
+                    # Queue 50: this success sound used to play before the
+                    # paste below, even into an elevated window that drops
+                    # every keystroke. Check first; never claim success there.
+                    _verdict = injection_safety.window_integrity() if self.config['auto_paste'] else None
+                    if _verdict is not None and _verdict.blocked:
+                        self._announce_window_locked(_verdict, "hold dictation")
+                        self.add_to_history(text.strip(), is_command=False)
+                        self._log_history(
+                            raw_text=raw,
+                            display_text=text.strip(),
+                            duration_ms=int(audio_duration * 1000),
+                            mode="hold",
+                            status="failed",
+                            entry_type="dictation",
+                        )
+                        return
+                    if _verdict is None or _verdict.confirmed_ok:
+                        self.play_sound("success")
+                        if hasattr(self, 'listening_indicator'):
+                            self._schedule_ui(self.listening_indicator.flash_success)
+                            self._show_outcome_chip("typed", "success", 900)
+                    else:
+                        logger.warning("[INJECT] hold dictation: cannot confirm the foreground window "
+                                       "accepts typing (%s) -- sending without a success sound",
+                                       _verdict.describe())
+                        self._show_outcome_chip("sent, unconfirmed", "warning")
 
                     # Add to history
                     self.add_to_history(text.strip(), is_command=False)
@@ -12777,6 +13366,24 @@ class DictationApp:
         except Exception as e:
             logger.exception(f"[UI] Failed to show main window: {e}")
 
+    def open_hub_page(self, name):
+        """Open the hub window on one named page (queue 92).
+
+        The tray's "Open memos" goes through here. Returns False when the
+        hub cannot take it, so the caller falls back to its own affordance
+        (for memos, the raw markdown file) instead of appearing to do
+        nothing.
+        """
+        window = getattr(self, 'main_window', None)
+        opener = getattr(window, 'open_page', None) if window is not None else None
+        if not callable(opener):
+            return False
+        try:
+            return bool(opener(name))
+        except Exception as exc:
+            logger.exception(f"[UI] Failed to open hub page {name}: {exc}")
+            return False
+
     def hide_main_window(self):
         """Close button on the hub: just minimize to tray."""
         try:
@@ -13091,6 +13698,19 @@ class DictationApp:
         except Exception as e:
             logger.exception(f"[CORRECT-CAP] Error opening correction capture: {e}")
 
+    def open_transcribe_file(self):
+        """Open the "Transcribe a file" dialog (queue 123).
+
+        Sits beside the other open_* window openers and is the entry point
+        commands.json's "transcribe file" points at. The decode runs on the
+        thread registry from inside the dialog; nothing here touches the
+        microphone or the capture lanes."""
+        try:
+            from samsara.ui.transcribe_file_qt import open_transcribe_file
+            self._transcribe_file_qt = open_transcribe_file(self)
+        except Exception as e:
+            logger.exception(f"[FILE-TX] Error opening the transcribe-file dialog: {e}")
+
     def open_benchmark_review(self):
         """Open the personal WER benchmark gold-standard review window"""
         try:
@@ -13370,8 +13990,12 @@ class DictationApp:
         from PySide6.QtCore import QTimer
         qt_app = __import__('PySide6.QtWidgets', fromlist=['QApplication']).QApplication.instance()
 
+        _boot_log = getattr(self, '_boot_log', None)
+
         def _create():
             self.tray_icon = _SamsaraTrayQt(self)
+            if _boot_log is not None:
+                _boot_log("tray icon created")
 
         QTimer.singleShot(0, qt_app, _create)
         QTimer.singleShot(0, qt_app, self.show_main_window)
@@ -13382,6 +14006,8 @@ class DictationApp:
         shell_ready = getattr(self, "_startup_shell_ready", None)
         if shell_ready is not None:
             shell_ready.set()
+        if _boot_log is not None:
+            _boot_log("shell ready (tray + main window scheduled)")
 
         while self._running:
             import time as _t
@@ -13753,6 +14379,7 @@ class DictationApp:
         # Force exit — bypasses any remaining thread cleanup but guarantees
         # termination even if a background thread or Qt modal is blocking.
         logger.info("[EXIT] Goodbye!")
+        _samsara_boot.end_session(LOG_DIR)      # 48: a deliberate exit, not a crash
         os._exit(0)
 
 if __name__ == "__main__":
@@ -13764,6 +14391,19 @@ if __name__ == "__main__":
     # so a second invocation exits cleanly without grabbing resources.
     _samsara_boot.lock_single_instance()
 
+    # 48: after the lock, so a refused second launch never touches the running
+    # session's marker. Notes a previous run that never reached quit_app (with
+    # its faulthandler summary), and logs worker-thread / unraisable exceptions
+    # and Qt's own warnings. See samsara/boot.py "Crash evidence".
+    _previous_session = _samsara_boot.begin_session(LOG_DIR, logger)
+    # 52: put back any app volume a killed run left ducked, before anything
+    # can start a new duck and mistake the ducked level for the user's own.
+    audio_ducking.configure_duck_journal(
+        LOG_DIR / audio_ducking.DUCK_JOURNAL_NAME, previous_unclean=_previous_session is not None,
+    )
+    _samsara_boot.install_exception_hooks(logger)
+    _samsara_boot.install_qt_message_handler(logger)
+
     # Source builds historically kept a second config beside dictation.py.
     # Carry the newer legacy profile across exactly once, after acquiring the
     # instance lock and before any settings (including Qt scale) are read.
@@ -13772,6 +14412,10 @@ if __name__ == "__main__":
     # QApplication reads QT_SCALE_FACTOR only during construction. Apply the
     # user's restart-required accessibility scale before the splash starts Qt.
     _samsara_boot.apply_early_interface_scale()
+
+    # The palette has to be bound before the splash -- the first window built
+    # -- or that window keeps the default one for the life of the process.
+    _samsara_boot.apply_early_theme()
 
     # Show splash screen during startup
     splash = _samsara_boot.create_splash()

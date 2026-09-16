@@ -53,6 +53,42 @@ _EARCON_DURATIONS_MS: Dict[str, int] = {
 }
 _DEFAULT_EARCON_DURATION_MS = 300
 
+# command_mode.tts_char_limit exists to keep command-mode ACKNOWLEDGEMENTS
+# short so speech does not talk over the next command. It was applied to
+# every category, which silenced every Ava answer spoken during a hands-free
+# session (queue 57, 2026-09-14 log: 329/111/111/67-char DeepSeek replies all
+# "TTS suppressed ... > 50"). Categories listed here are never subject to it:
+#   ava_response        -- Ava's answers and Ava's own prompts (ask_ollama.speak)
+#   ava_status          -- "Ava is offline ..." / entry refusal reasons
+#   ava_command_session -- the Ava command session's spoken replies
+#   confirmation        -- yes/no questions (samsara/commands.py, message_claude).
+#                          A question the user cannot hear is worse than a long
+#                          one: queue 58, 2026-09-14 "show windows" waited on a
+#                          55-char prompt that was never spoken.
+TTS_CHAR_LIMIT_EXEMPT_CATEGORIES = frozenset({
+    "ava_response", "ava_status", "ava_command_session", "confirmation",
+})
+
+DEFAULT_COMMAND_MODE_TTS_CHAR_LIMIT = 50
+SUPPRESSED_CMD_MODE_ID = 'noop-cmd-mode'
+
+
+def command_mode_char_limit(config) -> Optional[int]:
+    """Effective command_mode.tts_char_limit: a positive int, or None for
+    "no limit". 0 means no limit (every acknowledgement is spoken in full);
+    a missing, negative or non-numeric value falls back to the default."""
+    raw = ((config or {}).get('command_mode', {}) or {}).get(
+        'tts_char_limit', DEFAULT_COMMAND_MODE_TTS_CHAR_LIMIT)
+    try:
+        value = int(raw)
+    except (TypeError, ValueError):
+        return DEFAULT_COMMAND_MODE_TTS_CHAR_LIMIT
+    if value == 0:
+        return None
+    if value < 0:
+        return DEFAULT_COMMAND_MODE_TTS_CHAR_LIMIT
+    return value
+
 
 class AudioCoordinator:
     """Centralized audio state machine.
@@ -137,16 +173,18 @@ class AudioCoordinator:
 
         Plugins and subsystems should call this instead of engine.speak().
         """
-        # Suppress long TTS responses while command mode is active so the
-        # assistant doesn't talk over the user's next command.
-        if getattr(self.app, 'command_mode_active', False):
-            char_limit = self.app.config.get('command_mode', {}).get('tts_char_limit', 50)
-            if len(text) > char_limit:
+        # Suppress long acknowledgements while command mode is active so the
+        # assistant doesn't talk over the user's next command. Ava speech is
+        # exempt -- see TTS_CHAR_LIMIT_EXEMPT_CATEGORIES.
+        if (getattr(self.app, 'command_mode_active', False)
+                and category not in TTS_CHAR_LIMIT_EXEMPT_CATEGORIES):
+            char_limit = command_mode_char_limit(getattr(self.app, 'config', {}))
+            if char_limit is not None and len(text) > char_limit:
                 logger.info(
-                    "AudioCoordinator: TTS suppressed (%d chars > %d) in command mode",
-                    len(text), char_limit,
+                    "AudioCoordinator: TTS suppressed (%d chars > %d, category=%s) in command mode",
+                    len(text), char_limit, category,
                 )
-                return SpeechHandle(utterance_id='noop-cmd-mode')
+                return SpeechHandle(utterance_id=SUPPRESSED_CMD_MODE_ID)
 
         tts_cfg = self.app.config.get('tts', {})
         effective_speed = speed if speed is not None else tts_cfg.get('speed', 1.0)

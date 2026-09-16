@@ -36,9 +36,23 @@ from samsara.streaming import (
 class _FakeOverlay:
     def __init__(self):
         self.calls = []
+        self.prompts = []
 
-    def set_transcript(self, finalized, partial):
+    # link_words / set_prompt / set_interaction_callbacks / scroll_draft are
+    # queue 85's additions to the real overlay; mirrored here so this double
+    # keeps matching the API it stands in for. The recorded tuple is
+    # unchanged, so every assertion below still reads the same.
+    def set_transcript(self, finalized, partial, link_words=False):
         self.calls.append((list(finalized), partial))
+
+    def set_prompt(self, text):
+        self.prompts.append(text)
+
+    def set_interaction_callbacks(self, on_word_clicked, on_clear):
+        pass
+
+    def scroll_draft(self, where):
+        pass
 
     def show(self):
         pass
@@ -353,7 +367,7 @@ class TestFullRenderRoundTrip:
     def _capturing_overlay():
         overlay = StreamingOverlayQt(dim=False)
         captured = []
-        overlay.update_text = lambda text, state=None: captured.append((text, state))
+        overlay.update_text = lambda text, state=None, rich=False: captured.append((text, state))
         return overlay, captured
 
     def test_finalized_and_partial_both_survive_the_render(self):

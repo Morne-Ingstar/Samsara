@@ -143,3 +143,145 @@ class TestIdentityFastPath:
     def test_literal_tab_utterance_returns_identical_object(self):
         text = "tab"
         assert apply_formatting_tokens(text) is text
+
+
+# ---------------------------------------------------------------------------
+# 53: quotes, parens, asterisks and trailing wrap modifiers
+# ---------------------------------------------------------------------------
+
+class TestQuoteAndParenSpacing:
+    def test_open_and_close_quote_hug_the_quoted_words(self):
+        assert apply_formatting_tokens("he said open quote hello close quote") == 'he said "hello"'
+
+    def test_parens_hug_their_contents(self):
+        assert apply_formatting_tokens("open paren like this close paren") == "(like this)"
+
+    def test_quotes_are_straight_not_smart(self):
+        out = apply_formatting_tokens("open quote hi close quote")
+        assert out == '"hi"' and "\u201c" not in out and "\u201d" not in out
+
+    def test_space_outside_the_pair_is_kept(self):
+        assert apply_formatting_tokens("a open paren b close paren c") == "a (b) c"
+
+    def test_whisper_commas_around_the_spoken_phrases_are_absorbed(self):
+        assert apply_formatting_tokens("He said, open quote, hello, close quote.") == 'He said, "hello".'
+
+    def test_token_at_the_very_start(self):
+        assert apply_formatting_tokens("open quote hello there close quote") == '"hello there"'
+
+    def test_token_at_the_very_end(self):
+        assert apply_formatting_tokens("the word is open quote done close quote") == 'the word is "done"'
+        assert apply_formatting_tokens("hello close quote") == 'hello"'
+
+    def test_case_insensitive(self):
+        assert apply_formatting_tokens("Open Quote hi Close Quote") == '"hi"'
+
+
+class TestAsterisks:
+    def test_double_asterisk_pair_makes_bold(self):
+        # 53 decision: asterisks have no open/close words, so within one
+        # utterance each phrase alternates open, close.
+        assert apply_formatting_tokens("double asterisk bold double asterisk") == "**bold**"
+
+    def test_single_asterisk_pair(self):
+        assert apply_formatting_tokens("this is asterisk important asterisk ok") == "this is *important* ok"
+
+    def test_unclosed_double_asterisk_just_opens(self):
+        assert apply_formatting_tokens("double asterisk bold") == "**bold"
+
+    def test_double_asterisk_is_not_split_into_double_plus_asterisk(self):
+        out = apply_formatting_tokens("say double asterisk here double asterisk")
+        assert out == "say **here**" and "double" not in out
+
+    def test_single_and_double_alternate_independently(self):
+        assert (apply_formatting_tokens("double asterisk a asterisk b asterisk c double asterisk")
+                == "**a *b* c**")
+
+
+class TestStarIsNotAToken:
+    """53 decision: "star" is ordinary speech in prose ("five star", "star
+    wars"); only the precise word "asterisk" inserts *."""
+
+    @pytest.mark.parametrize("text", [
+        "five star review", "star wars", "a star", "star", "starred", "the stars align",
+    ])
+    def test_star_stays_literal(self, text):
+        assert apply_formatting_tokens(text) is text
+
+
+class TestTrailingWrapModifiers:
+    @pytest.mark.parametrize("text,expected", [
+        ("he said hello in quotes", '"he said hello"'),
+        ("he said hello in quotes.", '"he said hello"'),
+        ("He said hello in quotes!", '"He said hello"'),
+        ("he said hello in quotes .", '"he said hello"'),
+        ("make this in asterisks", "*make this*"),
+        ("make this in asterisks.", "*make this*"),
+        ("the title in bold", "**the title**"),
+        ("an aside in parens", "(an aside)"),
+        ("an aside in parens.", "(an aside)"),
+        ("IMPORTANT IN BOLD", "**IMPORTANT**"),
+    ])
+    def test_trailing_modifier_wraps_the_whole_utterance(self, text, expected):
+        assert apply_formatting_tokens(text) == expected
+
+    def test_no_invented_period_inside_the_wrap(self):
+        assert apply_formatting_tokens("he said hello in quotes.") == '"he said hello"'
+
+    def test_punctuation_spoken_before_the_trigger_stays_put(self):
+        assert apply_formatting_tokens("wait, what? in quotes") == '"wait, what?"'
+
+    @pytest.mark.parametrize("text", [
+        "put it in quotes please",
+        "the in quotes part",
+        "write this in bold letters",
+        "say it in parens later",
+    ])
+    def test_mid_utterance_trigger_is_literal(self, text):
+        assert apply_formatting_tokens(text) is text
+
+    @pytest.mark.parametrize("text", ["in quotes", "in quotes.", "In Bold", " in parens "])
+    def test_trigger_only_utterance_is_left_literal(self, text):
+        # Nothing to wrap: typing the words is visible and undoable, unlike
+        # an empty "" pair or silently dropping the utterance.
+        assert apply_formatting_tokens(text) == text
+
+    def test_only_one_modifier_the_earlier_one_is_literal(self):
+        assert apply_formatting_tokens("hello in bold in quotes") == '"hello in bold"'
+
+    def test_inline_tokens_substitute_first_then_the_wrap_goes_around_the_text(self):
+        # The bullet marker is structure, so it stays outside the wrap.
+        assert apply_formatting_tokens("bullet one in quotes") == '• "one"'
+        assert apply_formatting_tokens("intro bullet one in quotes") == '"intro\n• one"'
+
+    def test_edge_line_breaks_stay_outside_the_wrap(self):
+        assert apply_formatting_tokens("hello new line in quotes") == '"hello"\n'
+        assert apply_formatting_tokens("new line hello in bold") == "\n**hello**"
+
+    def test_inline_quotes_inside_a_trailing_paren_wrap(self):
+        assert apply_formatting_tokens("he said open quote hi close quote in parens") == '(he said "hi")'
+
+
+class TestExistingTokensUnchangedBy53:
+    """Byte-identical outputs for the original four tokens, recorded from the
+    module before 53 (reports/53/artifacts/golden_before.json)."""
+
+    @pytest.mark.parametrize("text,expected", [
+        ("hello new line world", "hello\nworld"),
+        ("hello new paragraph world", "hello\n\nworld"),
+        ("hello insert tab world", "hello\tworld"),
+        ("hello bullet world", "hello\n• world"),
+        ("bullet first item", "• first item"),
+        ("new line hello", "\nhello"),
+        ("hello new line", "hello\n"),
+        ("intro new paragraph body insert tab indented new line end", "intro\n\nbody\tindented\nend"),
+        ("notes bullet point", "notes\n• "),
+        ("  hello  new line  world ", "  hello \n world "),
+        ("a new line new line b", "a\n\nb"),
+        ("x bullet point bullet y", "x\n• \n• y"),
+        ("NEW LINE", "\n"),
+        ("hello\tinsert tab\tworld", "hello\t\t\tworld"),
+        ("hello, new line, world.", "hello,\n, world."),
+    ])
+    def test_golden(self, text, expected):
+        assert apply_formatting_tokens(text) == expected
