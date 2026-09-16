@@ -2,9 +2,8 @@
 command table built from the live registry.
 
   * every commands.json phrase and every registered plugin phrase resolves
-    to exactly one canonical_id -- except the collisions frozen in
-    tests/command_catalog_known_collisions.txt (a new collision, or one that
-    disappeared, fails until that file is updated on purpose)
+    to exactly one canonical_id; collisions and orphaned phrases fail the
+    gate immediately
   * no canonical_id without an alias; risk never empty; JSON validates
     against CATALOG_SCHEMA (jsonschema) and the module's own validator
   * generation is deterministic and the committed files are fresh
@@ -20,9 +19,6 @@ sys.path.insert(0, str(ROOT))
 
 from samsara import command_catalog as cc  # noqa: E402
 from tools import gen_command_catalog as gen  # noqa: E402
-
-COLLISIONS_FILE = ROOT / "tests" / "command_catalog_known_collisions.txt"
-
 
 @pytest.fixture(scope="module")
 def registry():
@@ -43,29 +39,18 @@ def claims(registry):
     return registry[2]
 
 
-def _known():
-    """(collisions, orphans) frozen in tests/command_catalog_known_collisions.txt."""
-    return cc.parse_collisions(COLLISIONS_FILE.read_text(encoding="utf-8"))
-
-
-def _known_phrases():
-    colls, orphaned = _known()
-    return {p for p, _ids in colls} | {p for p, _ids in orphaned}
-
-
 class TestResolution:
     def test_every_builtin_phrase_resolves_to_exactly_one_id(self, specs, claims):
         by_alias = {}
         for s in specs:
             for a in s.aliases:
                 by_alias.setdefault(a, set()).add(s.canonical_id)
-        known = _known_phrases()
         keys = json.loads((ROOT / "commands.json").read_text(encoding="utf-8"))["commands"]
         bad = {}
         for key in keys:
             phrase = cc.normalize_phrase(key)
             ids = by_alias.get(phrase, set())
-            if len(ids) != 1 and phrase not in known:
+            if len(ids) != 1:
                 bad[phrase] = ids
         assert not bad, f"builtin phrases not resolving to exactly one id: {bad}"
 
@@ -74,29 +59,18 @@ class TestResolution:
         for s in specs:
             for a in s.aliases:
                 by_alias.setdefault(a, set()).add(s.canonical_id)
-        known = _known_phrases()
         bad = {}
         for phrase, ids in claims.items():
             resolved = by_alias.get(phrase, set())
-            if len(resolved) != 1 and phrase not in known:
+            if len(resolved) != 1:
                 bad[phrase] = (ids, resolved)
         assert not bad, f"phrases not resolving to exactly one id: {bad}"
 
-    def test_collisions_are_frozen(self, specs, claims):
-        """The phrases claimed by more than one command, and the phrases the
-        registry drops because of those collisions, must equal the committed
-        list -- visible, and changed only on purpose."""
-        known_colls, known_orphans = _known()
-        assert cc.collisions(claims) == known_colls
-        assert cc.orphans(claims, specs) == known_orphans
+    def test_no_collisions(self, claims):
+        assert not cc.collisions(claims)
 
-    def test_orphans_really_resolve_to_nothing(self, specs):
-        """Documents the registry behaviour the orphan list records."""
-        live = {a for s in specs for a in s.aliases}
-        _colls, known_orphans = _known()
-        assert known_orphans, "the tree currently has orphaned aliases; see the frozen file"
-        for phrase, _ids in known_orphans:
-            assert phrase not in live, phrase
+    def test_no_orphaned_phrases(self, specs, claims):
+        assert not cc.orphans(claims, specs)
 
     def test_catalog_aliases_are_registry_normalised(self, specs):
         for s in specs:
@@ -141,15 +115,10 @@ class TestRecords:
     def test_known_specs_look_right(self, specs):
         by_id = {s.canonical_id: s for s in specs}
         send = by_id["windows.send"]
-        # Queue 112 declared param_schema={"remainder": str} on "send" so a
-        # model may pass the spoken words at all (without a schema the policy
-        # refuses the call as "unvalidated"). infer_args prefers a DECLARED
-        # schema over the _ARG_HINTS table, so the catalog now documents the
-        # one argument the handler can actually receive -- free text -- rather
-        # than the two the PHRASE implies. That is a loss of documentation
-        # detail on 25 of the 29 _ARG_HINTS commands; see the queue 115 report.
-        assert {a.type for a in send.args} == {"text"}
-        assert {a.name for a in send.args} == {"remainder"}
+        # Queue 134 restored the declared typed slots: the catalog exposes
+        # fields the resolver and policy validate, not handler remainder.
+        assert {a.type for a in send.args} == {"app_name", "monitor"}
+        assert {a.name for a in send.args} == {"app_name", "monitor"}
         assert "put" in send.aliases and send.source.startswith("plugins/commands/windows.py:")
         assert by_id["builtin.close_window"].risk == "destructive"
         assert by_id["builtin.switch_window"].risk == "ui"

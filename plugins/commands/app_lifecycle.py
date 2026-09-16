@@ -336,7 +336,7 @@ def restart_sigil(app, remainder="", **kwargs):
     return _dispatch(app, "sigil", "restart", remainder)
 
 
-@command("what can i say", aliases=["show quick reference"], **_COMMAND_META)
+@command("show quick reference", **_COMMAND_META)
 def open_quick_reference(app, remainder="", **kwargs):
     if app is None or not hasattr(app, "open_quick_reference"):
         return False

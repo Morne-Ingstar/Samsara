@@ -7,13 +7,7 @@
         "complete alarm",
         "i did it"
       ],
-      "args": [
-        {
-          "name": "remainder",
-          "required": false,
-          "type": "text"
-        }
-      ],
+      "args": [],
       "canonical_id": "alarm_commands.complete_alarm",
       "description": "Marks the alarm you name as done for today.",
       "kind": "plugin",
@@ -33,7 +27,7 @@
       ],
       "args": [
         {
-          "name": "remainder",
+          "name": "alarm_name",
           "required": false,
           "type": "text"
         }
@@ -77,7 +71,7 @@
       ],
       "args": [
         {
-          "name": "remainder",
+          "name": "alarm_name",
           "required": false,
           "type": "text"
         }
@@ -200,6 +194,23 @@
       "source": "plugins/commands/app_lifecycle.py:297",
       "undoable": false,
       "verb": "restart",
+      "whole_utterance": false
+    },
+    {
+      "aliases": [
+        "show quick reference"
+      ],
+      "args": [],
+      "canonical_id": "app_lifecycle.show_quick_reference",
+      "description": "show quick reference",
+      "kind": "plugin",
+      "object": "quick_reference",
+      "pack": "utilities",
+      "plugin": "app_lifecycle",
+      "risk": "write",
+      "source": "plugins/commands/app_lifecycle.py:339",
+      "undoable": false,
+      "verb": "show",
       "whole_utterance": false
     },
     {
@@ -351,9 +362,9 @@
       ],
       "args": [
         {
-          "name": "remainder",
+          "name": "app_name",
           "required": false,
-          "type": "text"
+          "type": "app_name"
         }
       ],
       "canonical_id": "app_verbs.close",
@@ -375,9 +386,9 @@
       ],
       "args": [
         {
-          "name": "remainder",
+          "name": "app_name",
           "required": false,
-          "type": "text"
+          "type": "app_name"
         }
       ],
       "canonical_id": "app_verbs.focus",
@@ -398,9 +409,9 @@
       ],
       "args": [
         {
-          "name": "remainder",
+          "name": "app_name",
           "required": false,
-          "type": "text"
+          "type": "app_name"
         }
       ],
       "canonical_id": "app_verbs.open",
@@ -429,7 +440,7 @@
       "pack": "ai",
       "plugin": "ask_ollama",
       "risk": "ui",
-      "source": "plugins/commands/ask_ollama.py:2296",
+      "source": "plugins/commands/ask_ollama.py:2637",
       "undoable": true,
       "verb": "ava",
       "whole_utterance": false
@@ -448,7 +459,7 @@
       "pack": "ai",
       "plugin": "ask_ollama",
       "risk": "ui",
-      "source": "plugins/commands/ask_ollama.py:2348",
+      "source": "plugins/commands/ask_ollama.py:2689",
       "undoable": true,
       "verb": "ava",
       "whole_utterance": false
@@ -458,7 +469,6 @@
         "ava forget",
         "clear memory",
         "forget conversation",
-        "new conversation",
         "start over ava"
       ],
       "args": [],
@@ -469,7 +479,7 @@
       "pack": "ai",
       "plugin": "ask_ollama",
       "risk": "ui",
-      "source": "plugins/commands/ask_ollama.py:2334",
+      "source": "plugins/commands/ask_ollama.py:2675",
       "undoable": true,
       "verb": "ava",
       "whole_utterance": false
@@ -488,7 +498,7 @@
       "pack": "ai",
       "plugin": "ask_ollama",
       "risk": "ui",
-      "source": "plugins/commands/ask_ollama.py:2375",
+      "source": "plugins/commands/ask_ollama.py:2716",
       "undoable": true,
       "verb": "ava",
       "whole_utterance": false
@@ -516,7 +526,7 @@
       "pack": "ai",
       "plugin": "ask_ollama",
       "risk": "ui",
-      "source": "plugins/commands/ask_ollama.py:2039",
+      "source": "plugins/commands/ask_ollama.py:2380",
       "undoable": true,
       "verb": "hey",
       "whole_utterance": true
@@ -541,7 +551,7 @@
       "pack": "ai",
       "plugin": "ask_ollama",
       "risk": "ui",
-      "source": "plugins/commands/ask_ollama.py:2149",
+      "source": "plugins/commands/ask_ollama.py:2490",
       "undoable": true,
       "verb": "is",
       "whole_utterance": false
@@ -562,7 +572,7 @@
       "pack": "ai",
       "plugin": "ask_ollama",
       "risk": "ui",
-      "source": "plugins/commands/ask_ollama.py:2315",
+      "source": "plugins/commands/ask_ollama.py:2656",
       "undoable": true,
       "verb": "stop",
       "whole_utterance": false
@@ -587,9 +597,33 @@
       "pack": "ai",
       "plugin": "ask_ollama",
       "risk": "ui",
-      "source": "plugins/commands/ask_ollama.py:2186",
+      "source": "plugins/commands/ask_ollama.py:2527",
       "undoable": true,
       "verb": "yes",
+      "whole_utterance": false
+    },
+    {
+      "aliases": [
+        "switch audio to",
+        "use"
+      ],
+      "args": [
+        {
+          "name": "text",
+          "required": false,
+          "type": "text"
+        }
+      ],
+      "canonical_id": "audio_switch.switch_audio_to",
+      "description": "Switch audio output.",
+      "kind": "plugin",
+      "object": "audio_to",
+      "pack": "audio",
+      "plugin": "audio_switch",
+      "risk": "ui",
+      "source": "plugins/commands/audio_switch.py:30",
+      "undoable": true,
+      "verb": "switch",
       "whole_utterance": false
     },
     {
@@ -5545,7 +5579,7 @@
       "pack": "core",
       "plugin": "core_utils",
       "risk": "write",
-      "source": "plugins/commands/core_utils.py:102",
+      "source": "plugins/commands/core_utils.py:101",
       "undoable": false,
       "verb": "check",
       "whole_utterance": false
@@ -5565,7 +5599,7 @@
       "pack": "core",
       "plugin": "core_utils",
       "risk": "ui",
-      "source": "plugins/commands/core_utils.py:120",
+      "source": "plugins/commands/core_utils.py:119",
       "undoable": true,
       "verb": "reload",
       "whole_utterance": false
@@ -5584,7 +5618,7 @@
       "pack": "core",
       "plugin": "core_utils",
       "risk": "write",
-      "source": "plugins/commands/core_utils.py:161",
+      "source": "plugins/commands/core_utils.py:160",
       "undoable": false,
       "verb": "reset",
       "whole_utterance": false
@@ -5595,13 +5629,7 @@
         "restart",
         "restart samsara"
       ],
-      "args": [
-        {
-          "name": "remainder",
-          "required": false,
-          "type": "text"
-        }
-      ],
+      "args": [],
       "canonical_id": "core_utils.restart_samsara",
       "description": "Closes Samsara and starts it again.",
       "kind": "plugin",
@@ -5629,7 +5657,7 @@
       "pack": "core",
       "plugin": "core_utils",
       "risk": "read",
-      "source": "plugins/commands/core_utils.py:143",
+      "source": "plugins/commands/core_utils.py:142",
       "undoable": true,
       "verb": "what",
       "whole_utterance": false
@@ -5648,7 +5676,7 @@
       "pack": "core",
       "plugin": "demo_commands",
       "risk": "ui",
-      "source": "plugins/commands/demo_commands.py:521",
+      "source": "plugins/commands/demo_commands.py:525",
       "undoable": true,
       "verb": "archive",
       "whole_utterance": false
@@ -5667,7 +5695,7 @@
       "pack": "core",
       "plugin": "demo_commands",
       "risk": "destructive",
-      "source": "plugins/commands/demo_commands.py:507",
+      "source": "plugins/commands/demo_commands.py:511",
       "undoable": false,
       "verb": "clear",
       "whole_utterance": false
@@ -5692,7 +5720,7 @@
       "pack": "core",
       "plugin": "demo_commands",
       "risk": "ui",
-      "source": "plugins/commands/demo_commands.py:488",
+      "source": "plugins/commands/demo_commands.py:492",
       "undoable": true,
       "verb": "explode",
       "whole_utterance": false
@@ -5712,7 +5740,7 @@
       "pack": "core",
       "plugin": "demo_commands",
       "risk": "ui",
-      "source": "plugins/commands/demo_commands.py:266",
+      "source": "plugins/commands/demo_commands.py:267",
       "undoable": true,
       "verb": "fucking",
       "whole_utterance": false
@@ -5733,7 +5761,7 @@
       "pack": "core",
       "plugin": "demo_commands",
       "risk": "ui",
-      "source": "plugins/commands/demo_commands.py:581",
+      "source": "plugins/commands/demo_commands.py:585",
       "undoable": true,
       "verb": "move",
       "whole_utterance": false
@@ -5754,7 +5782,7 @@
       "pack": "core",
       "plugin": "demo_commands",
       "risk": "ui",
-      "source": "plugins/commands/demo_commands.py:541",
+      "source": "plugins/commands/demo_commands.py:545",
       "undoable": true,
       "verb": "resume",
       "whole_utterance": false
@@ -5774,14 +5802,13 @@
       "pack": "core",
       "plugin": "demo_commands",
       "risk": "read",
-      "source": "plugins/commands/demo_commands.py:347",
+      "source": "plugins/commands/demo_commands.py:348",
       "undoable": true,
       "verb": "show",
       "whole_utterance": false
     },
     {
       "aliases": [
-        "morning routine",
         "wake me the fuck up",
         "wake me up"
       ],
@@ -5812,7 +5839,7 @@
       "pack": "core",
       "plugin": "demo_commands",
       "risk": "read",
-      "source": "plugins/commands/demo_commands.py:324",
+      "source": "plugins/commands/demo_commands.py:325",
       "undoable": true,
       "verb": "what",
       "whole_utterance": false
@@ -6047,13 +6074,7 @@
         "reset health log",
         "wipe health log"
       ],
-      "args": [
-        {
-          "name": "remainder",
-          "required": false,
-          "type": "text"
-        }
-      ],
+      "args": [],
       "canonical_id": "health_tracker.clear_health_log",
       "description": "Deletes every entry in your health log.",
       "kind": "plugin",
@@ -6061,7 +6082,7 @@
       "pack": "health",
       "plugin": "health_tracker",
       "risk": "destructive",
-      "source": "plugins/commands/health_tracker.py:332",
+      "source": "plugins/commands/health_tracker.py:330",
       "undoable": false,
       "verb": "clear",
       "whole_utterance": false
@@ -6074,13 +6095,7 @@
         "health csv",
         "save health log"
       ],
-      "args": [
-        {
-          "name": "remainder",
-          "required": false,
-          "type": "text"
-        }
-      ],
+      "args": [],
       "canonical_id": "health_tracker.export_health_log",
       "description": "Saves your whole health log to a CSV file.",
       "kind": "plugin",
@@ -6238,13 +6253,7 @@
         "undo health entry",
         "undo health log"
       ],
-      "args": [
-        {
-          "name": "remainder",
-          "required": false,
-          "type": "text"
-        }
-      ],
+      "args": [],
       "canonical_id": "health_tracker.undo_health_log",
       "description": "Deletes the last thing you logged.",
       "kind": "plugin",
@@ -6252,7 +6261,7 @@
       "pack": "health",
       "plugin": "health_tracker",
       "risk": "destructive",
-      "source": "plugins/commands/health_tracker.py:311",
+      "source": "plugins/commands/health_tracker.py:310",
       "undoable": false,
       "verb": "undo",
       "whole_utterance": false
@@ -6453,6 +6462,25 @@
     },
     {
       "aliases": [
+        "good morning",
+        "morning routine",
+        "start my day"
+      ],
+      "args": [],
+      "canonical_id": "macros.morning_routine",
+      "description": "Open daily sites, set comfortable volume.",
+      "kind": "plugin",
+      "object": "routine",
+      "pack": "macros",
+      "plugin": "macros",
+      "risk": "write",
+      "source": "plugins/commands/macros.py:81",
+      "undoable": false,
+      "verb": "morning",
+      "whole_utterance": false
+    },
+    {
+      "aliases": [
         "demo mode",
         "presentation mode"
       ],
@@ -6644,8 +6672,6 @@
     {
       "aliases": [
         "next",
-        "next song",
-        "next track",
         "skip",
         "skip track"
       ],
@@ -6664,8 +6690,7 @@
     },
     {
       "aliases": [
-        "pause",
-        "pause music"
+        "pause"
       ],
       "args": [],
       "canonical_id": "music.pause",
@@ -6989,6 +7014,25 @@
     },
     {
       "aliases": [
+        "bottom of page",
+        "go to bottom",
+        "jump to bottom"
+      ],
+      "args": [],
+      "canonical_id": "scroll.bottom_of_page",
+      "description": "bottom of page",
+      "kind": "plugin",
+      "object": "of_page",
+      "pack": "core",
+      "plugin": "scroll",
+      "risk": "ui",
+      "source": "plugins/commands/scroll.py:216",
+      "undoable": true,
+      "verb": "bottom",
+      "whole_utterance": false
+    },
+    {
+      "aliases": [
         "down one page",
         "page down",
         "scroll page down"
@@ -7233,6 +7277,25 @@
     },
     {
       "aliases": [
+        "go to top",
+        "jump to top",
+        "top of page"
+      ],
+      "args": [],
+      "canonical_id": "scroll.top_of_page",
+      "description": "top of page",
+      "kind": "plugin",
+      "object": "of_page",
+      "pack": "core",
+      "plugin": "scroll",
+      "risk": "ui",
+      "source": "plugins/commands/scroll.py:206",
+      "undoable": true,
+      "verb": "top",
+      "whole_utterance": false
+    },
+    {
+      "aliases": [
         "retype it",
         "retype last",
         "retype that"
@@ -7258,9 +7321,9 @@
       ],
       "args": [
         {
-          "name": "remainder",
+          "name": "label",
           "required": false,
-          "type": "text"
+          "type": "int"
         }
       ],
       "canonical_id": "show_numbers.click",
@@ -7495,6 +7558,25 @@
       "source": "plugins/commands/smart_actions.py:243",
       "undoable": false,
       "verb": "brain",
+      "whole_utterance": false
+    },
+    {
+      "aliases": [
+        "fresh start",
+        "new conversation",
+        "reset conversation"
+      ],
+      "args": [],
+      "canonical_id": "smart_actions.new_conversation",
+      "description": "End the current Smart Actions session.",
+      "kind": "plugin",
+      "object": "conversation",
+      "pack": "smart-actions",
+      "plugin": "smart_actions",
+      "risk": "write",
+      "source": "plugins/commands/smart_actions.py:224",
+      "undoable": true,
+      "verb": "new",
       "whole_utterance": false
     },
     {
@@ -7772,7 +7854,7 @@
       ],
       "args": [
         {
-          "name": "remainder",
+          "name": "query",
           "required": false,
           "type": "text"
         }
@@ -7823,13 +7905,7 @@
         "clear done tasks",
         "remove completed"
       ],
-      "args": [
-        {
-          "name": "remainder",
-          "required": false,
-          "type": "text"
-        }
-      ],
+      "args": [],
       "canonical_id": "tasks.clear_completed",
       "description": "Deletes every task already marked as done.",
       "kind": "plugin",
@@ -7852,9 +7928,9 @@
       ],
       "args": [
         {
-          "name": "remainder",
+          "name": "task_number",
           "required": false,
-          "type": "text"
+          "type": "int"
         }
       ],
       "canonical_id": "tasks.complete_task",
@@ -7903,7 +7979,7 @@
       "pack": "tasks",
       "plugin": "tasks",
       "risk": "read",
-      "source": "plugins/commands/tasks.py:163",
+      "source": "plugins/commands/tasks.py:162",
       "undoable": true,
       "verb": "read",
       "whole_utterance": false
@@ -7915,9 +7991,9 @@
       ],
       "args": [
         {
-          "name": "remainder",
+          "name": "task_number",
           "required": false,
-          "type": "text"
+          "type": "int"
         }
       ],
       "canonical_id": "tasks.remove_task",
@@ -7959,13 +8035,7 @@
         "set marker",
         "start selection"
       ],
-      "args": [
-        {
-          "name": "remainder",
-          "required": false,
-          "type": "text"
-        }
-      ],
+      "args": [],
       "canonical_id": "text_marker.mark_here",
       "description": "Sets the start of a selection where the pointer is.",
       "kind": "plugin",
@@ -7985,13 +8055,7 @@
         "select paragraph",
         "select this paragraph"
       ],
-      "args": [
-        {
-          "name": "remainder",
-          "required": false,
-          "type": "text"
-        }
-      ],
+      "args": [],
       "canonical_id": "text_marker.select_paragraph",
       "description": "Selects the paragraph the pointer is in.",
       "kind": "plugin",
@@ -7999,7 +8063,7 @@
       "pack": "text-editing",
       "plugin": "text_marker",
       "risk": "write",
-      "source": "plugins/commands/text_marker.py:248",
+      "source": "plugins/commands/text_marker.py:246",
       "undoable": false,
       "verb": "select",
       "whole_utterance": false
@@ -8011,13 +8075,7 @@
         "select to here",
         "select to mark"
       ],
-      "args": [
-        {
-          "name": "remainder",
-          "required": false,
-          "type": "text"
-        }
-      ],
+      "args": [],
       "canonical_id": "text_marker.select_to_here",
       "description": "Selects from the mark you set to where the pointer is now.",
       "kind": "plugin",
@@ -8025,7 +8083,7 @@
       "pack": "text-editing",
       "plugin": "text_marker",
       "risk": "write",
-      "source": "plugins/commands/text_marker.py:181",
+      "source": "plugins/commands/text_marker.py:180",
       "undoable": false,
       "verb": "select",
       "whole_utterance": false
@@ -8252,9 +8310,9 @@
       ],
       "args": [
         {
-          "name": "remainder",
+          "name": "numbers",
           "required": false,
-          "type": "text"
+          "type": "int"
         }
       ],
       "canonical_id": "window_cube.cube_copy",
@@ -8277,9 +8335,9 @@
       ],
       "args": [
         {
-          "name": "remainder",
+          "name": "page",
           "required": false,
-          "type": "text"
+          "type": "int"
         }
       ],
       "canonical_id": "window_cube.cube_page",
@@ -8301,9 +8359,9 @@
       ],
       "args": [
         {
-          "name": "remainder",
+          "name": "numbers",
           "required": false,
-          "type": "text"
+          "type": "int"
         }
       ],
       "canonical_id": "window_cube.cube_tile",
@@ -8764,7 +8822,7 @@
       "pack": "window-management",
       "plugin": "window_switcher",
       "risk": "ui",
-      "source": "plugins/commands/window_switcher.py:1024",
+      "source": "plugins/commands/window_switcher.py:953",
       "undoable": true,
       "verb": "hide",
       "whole_utterance": false
@@ -8783,7 +8841,7 @@
       "pack": "window-management",
       "plugin": "window_switcher",
       "risk": "read",
-      "source": "plugins/commands/window_switcher.py:1041",
+      "source": "plugins/commands/window_switcher.py:970",
       "undoable": true,
       "verb": "read",
       "whole_utterance": false
@@ -8802,7 +8860,7 @@
       "pack": "window-management",
       "plugin": "window_switcher",
       "risk": "read",
-      "source": "plugins/commands/window_switcher.py:684",
+      "source": "plugins/commands/window_switcher.py:613",
       "undoable": true,
       "verb": "show",
       "whole_utterance": false
@@ -8815,9 +8873,9 @@
       ],
       "args": [
         {
-          "name": "remainder",
+          "name": "label",
           "required": false,
-          "type": "text"
+          "type": "nato_letter"
         }
       ],
       "canonical_id": "window_switcher.window_bring",
@@ -8827,7 +8885,7 @@
       "pack": "window-management",
       "plugin": "window_switcher",
       "risk": "ui",
-      "source": "plugins/commands/window_switcher.py:748",
+      "source": "plugins/commands/window_switcher.py:677",
       "undoable": true,
       "verb": "window",
       "whole_utterance": false
@@ -8838,9 +8896,9 @@
       ],
       "args": [
         {
-          "name": "remainder",
+          "name": "label",
           "required": false,
-          "type": "text"
+          "type": "nato_letter"
         }
       ],
       "canonical_id": "window_switcher.window_close",
@@ -8850,7 +8908,7 @@
       "pack": "window-management",
       "plugin": "window_switcher",
       "risk": "write",
-      "source": "plugins/commands/window_switcher.py:875",
+      "source": "plugins/commands/window_switcher.py:804",
       "undoable": false,
       "verb": "window",
       "whole_utterance": false
@@ -8863,9 +8921,9 @@
       ],
       "args": [
         {
-          "name": "remainder",
+          "name": "labels",
           "required": false,
-          "type": "text"
+          "type": "nato_letter"
         }
       ],
       "canonical_id": "window_switcher.window_copy",
@@ -8875,7 +8933,7 @@
       "pack": "window-management",
       "plugin": "window_switcher",
       "risk": "write",
-      "source": "plugins/commands/window_switcher.py:906",
+      "source": "plugins/commands/window_switcher.py:835",
       "undoable": false,
       "verb": "window",
       "whole_utterance": false
@@ -8887,9 +8945,14 @@
       ],
       "args": [
         {
-          "name": "remainder",
+          "name": "label",
           "required": false,
-          "type": "text"
+          "type": "nato_letter"
+        },
+        {
+          "name": "monitor",
+          "required": false,
+          "type": "monitor"
         }
       ],
       "canonical_id": "window_switcher.window_move",
@@ -8899,7 +8962,7 @@
       "pack": "window-management",
       "plugin": "window_switcher",
       "risk": "ui",
-      "source": "plugins/commands/window_switcher.py:774",
+      "source": "plugins/commands/window_switcher.py:703",
       "undoable": true,
       "verb": "window",
       "whole_utterance": false
@@ -8911,9 +8974,9 @@
       ],
       "args": [
         {
-          "name": "remainder",
+          "name": "label",
           "required": false,
-          "type": "text"
+          "type": "nato_letter"
         }
       ],
       "canonical_id": "window_switcher.window_mute",
@@ -8923,7 +8986,7 @@
       "pack": "window-management",
       "plugin": "window_switcher",
       "risk": "ui",
-      "source": "plugins/commands/window_switcher.py:826",
+      "source": "plugins/commands/window_switcher.py:755",
       "undoable": true,
       "verb": "window",
       "whole_utterance": false
@@ -8937,9 +9000,9 @@
       ],
       "args": [
         {
-          "name": "remainder",
+          "name": "label",
           "required": false,
-          "type": "text"
+          "type": "nato_letter"
         }
       ],
       "canonical_id": "window_switcher.window_switch",
@@ -8949,7 +9012,7 @@
       "pack": "window-management",
       "plugin": "window_switcher",
       "risk": "ui",
-      "source": "plugins/commands/window_switcher.py:721",
+      "source": "plugins/commands/window_switcher.py:650",
       "undoable": true,
       "verb": "window",
       "whole_utterance": false
@@ -8961,9 +9024,9 @@
       ],
       "args": [
         {
-          "name": "remainder",
+          "name": "labels",
           "required": false,
-          "type": "text"
+          "type": "nato_letter"
         }
       ],
       "canonical_id": "window_switcher.window_tile",
@@ -8973,7 +9036,7 @@
       "pack": "window-management",
       "plugin": "window_switcher",
       "risk": "ui",
-      "source": "plugins/commands/window_switcher.py:961",
+      "source": "plugins/commands/window_switcher.py:890",
       "undoable": true,
       "verb": "window",
       "whole_utterance": false
@@ -8985,9 +9048,9 @@
       ],
       "args": [
         {
-          "name": "remainder",
+          "name": "label",
           "required": false,
-          "type": "text"
+          "type": "nato_letter"
         }
       ],
       "canonical_id": "window_switcher.window_unmute",
@@ -8997,7 +9060,7 @@
       "pack": "window-management",
       "plugin": "window_switcher",
       "risk": "ui",
-      "source": "plugins/commands/window_switcher.py:849",
+      "source": "plugins/commands/window_switcher.py:778",
       "undoable": true,
       "verb": "window",
       "whole_utterance": false
@@ -9012,9 +9075,9 @@
       ],
       "args": [
         {
-          "name": "remainder",
+          "name": "app_name",
           "required": false,
-          "type": "text"
+          "type": "app_name"
         }
       ],
       "canonical_id": "windows.bring",
@@ -9024,7 +9087,7 @@
       "pack": "window-management",
       "plugin": "windows",
       "risk": "ui",
-      "source": "plugins/commands/windows.py:493",
+      "source": "plugins/commands/windows.py:590",
       "undoable": true,
       "verb": "bring",
       "whole_utterance": false
@@ -9043,9 +9106,9 @@
       ],
       "args": [
         {
-          "name": "remainder",
+          "name": "monitor",
           "required": false,
-          "type": "text"
+          "type": "monitor"
         }
       ],
       "canonical_id": "windows.cursor_to",
@@ -9055,7 +9118,7 @@
       "pack": "window-management",
       "plugin": "windows",
       "risk": "ui",
-      "source": "plugins/commands/windows.py:1006",
+      "source": "plugins/commands/windows.py:1105",
       "undoable": true,
       "verb": "cursor",
       "whole_utterance": false
@@ -9068,7 +9131,7 @@
       ],
       "args": [
         {
-          "name": "remainder",
+          "name": "name",
           "required": false,
           "type": "text"
         }
@@ -9080,7 +9143,7 @@
       "pack": "window-management",
       "plugin": "windows",
       "risk": "destructive",
-      "source": "plugins/commands/windows.py:921",
+      "source": "plugins/commands/windows.py:1020",
       "undoable": false,
       "verb": "delete",
       "whole_utterance": false
@@ -9099,7 +9162,7 @@
       "pack": "window-management",
       "plugin": "windows",
       "risk": "read",
-      "source": "plugins/commands/windows.py:940",
+      "source": "plugins/commands/windows.py:1039",
       "undoable": true,
       "verb": "find",
       "whole_utterance": false
@@ -9110,9 +9173,9 @@
       ],
       "args": [
         {
-          "name": "remainder",
+          "name": "app_name",
           "required": false,
-          "type": "text"
+          "type": "app_name"
         }
       ],
       "canonical_id": "windows.find_window",
@@ -9122,7 +9185,7 @@
       "pack": "window-management",
       "plugin": "windows",
       "risk": "ui",
-      "source": "plugins/commands/windows.py:975",
+      "source": "plugins/commands/windows.py:1074",
       "undoable": true,
       "verb": "find",
       "whole_utterance": false
@@ -9141,7 +9204,7 @@
       "pack": "window-management",
       "plugin": "windows",
       "risk": "read",
-      "source": "plugins/commands/windows.py:906",
+      "source": "plugins/commands/windows.py:1005",
       "undoable": true,
       "verb": "list",
       "whole_utterance": false
@@ -9161,7 +9224,7 @@
       "pack": "window-management",
       "plugin": "windows",
       "risk": "ui",
-      "source": "plugins/commands/windows.py:619",
+      "source": "plugins/commands/windows.py:716",
       "undoable": true,
       "verb": "movie",
       "whole_utterance": false
@@ -9180,7 +9243,7 @@
       "pack": "window-management",
       "plugin": "windows",
       "risk": "ui",
-      "source": "plugins/commands/windows.py:957",
+      "source": "plugins/commands/windows.py:1056",
       "undoable": true,
       "verb": "rescue",
       "whole_utterance": false
@@ -9193,7 +9256,7 @@
       ],
       "args": [
         {
-          "name": "remainder",
+          "name": "name",
           "required": false,
           "type": "text"
         }
@@ -9205,7 +9268,7 @@
       "pack": "window-management",
       "plugin": "windows",
       "risk": "ui",
-      "source": "plugins/commands/windows.py:891",
+      "source": "plugins/commands/windows.py:990",
       "undoable": true,
       "verb": "restore",
       "whole_utterance": false
@@ -9218,7 +9281,7 @@
       ],
       "args": [
         {
-          "name": "remainder",
+          "name": "name",
           "required": false,
           "type": "text"
         }
@@ -9230,7 +9293,7 @@
       "pack": "window-management",
       "plugin": "windows",
       "risk": "write",
-      "source": "plugins/commands/windows.py:876",
+      "source": "plugins/commands/windows.py:975",
       "undoable": false,
       "verb": "save",
       "whole_utterance": false
@@ -9244,9 +9307,14 @@
       ],
       "args": [
         {
-          "name": "remainder",
+          "name": "app_name",
           "required": false,
-          "type": "text"
+          "type": "app_name"
+        },
+        {
+          "name": "monitor",
+          "required": false,
+          "type": "monitor"
         }
       ],
       "canonical_id": "windows.send",
@@ -9256,7 +9324,7 @@
       "pack": "window-management",
       "plugin": "windows",
       "risk": "ui",
-      "source": "plugins/commands/windows.py:572",
+      "source": "plugins/commands/windows.py:669",
       "undoable": true,
       "verb": "send",
       "whole_utterance": false
@@ -9268,9 +9336,9 @@
       ],
       "args": [
         {
-          "name": "remainder",
+          "name": "side",
           "required": false,
-          "type": "text"
+          "type": "side"
         }
       ],
       "canonical_id": "windows.snap",
@@ -9280,7 +9348,7 @@
       "pack": "window-management",
       "plugin": "windows",
       "risk": "ui",
-      "source": "plugins/commands/windows.py:1100",
+      "source": "plugins/commands/windows.py:1199",
       "undoable": true,
       "verb": "snap",
       "whole_utterance": false
