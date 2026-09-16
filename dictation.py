@@ -3314,6 +3314,15 @@ class DictationApp:
 
     def _migrate_wake_word_config(self, default_config):
         """Migrate old flat wake word settings to new nested structure"""
+        # The top-level key is the sole listener switch.  The stale nested
+        # key is never read, so remove it.  Only use its legacy value when
+        # the authoritative key is absent.
+        wwc = self.config.get('wake_word_config')
+        if isinstance(wwc, dict) and 'enabled' in wwc:
+            legacy_enabled = wwc.pop('enabled')
+            if 'wake_word_enabled' not in self.config:
+                self.config['wake_word_enabled'] = bool(legacy_enabled)
+            self.save_config()
         if self._wake_word_config_already_migrated():
             wake_profiles.validate_wake_profiles(self.config['wake_profiles'])
             logger.debug("wake config migration: no-op")
@@ -8823,7 +8832,9 @@ class DictationApp:
         nothing else to exclude today. A dedicated method -- rather than
         an inline literal at each call site -- so a future PID-tracking
         addition has exactly one place to plug in."""
-        return set()
+        # The Core Audio host is a child Python process in source runs.  It
+        # has a session of its own and must never become a duck target.
+        return audio_ducking.ducking_host_pids()
 
     def _bump_wake_gate_freeze(self) -> None:
         """Called on every duck transition (idle or capture, start or
@@ -10119,7 +10130,11 @@ class DictationApp:
 
     def process_wake_word_buffer(self, buffer, src_rate=None, *, oww_confirmed=False,
                                  owner_token=None, tracked=False):
-        """Transfer one utterance and its duck owner to the bounded wake FIFO."""
+        """Transfer one utterance to the bounded wake FIFO.
+
+        The capture duck protects recording, not Whisper decoding. Release
+        its owner before enqueueing so a queued decode cannot keep media low.
+        """
         src_rate = self.capture_rate if src_rate is None else src_rate
         with self._wake_session_lock:
             session_started_at = (
@@ -10130,15 +10145,14 @@ class DictationApp:
             with self._dictation_finalize_lock:
                 self._pending_transcriptions += 1
 
+        if owner_token is not None:
+            self._close_hands_free_capture_duck(owner_token)
+
         def finish():
-            try:
-                if owner_token is not None:
-                    self._close_hands_free_capture_duck(owner_token)
-            finally:
-                if tracked:
-                    with self._dictation_finalize_lock:
-                        self._pending_transcriptions = max(0, self._pending_transcriptions - 1)
-                    self._maybe_finalize_dictation()
+            if tracked:
+                with self._dictation_finalize_lock:
+                    self._pending_transcriptions = max(0, self._pending_transcriptions - 1)
+                self._maybe_finalize_dictation()
 
         def decode():
             if not self.wake_word_active:
