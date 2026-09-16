@@ -19,7 +19,7 @@ from tools import hf_bench
 
 def load_gate_methods():
     root = Path(__file__).resolve().parents[1]
-    from samsara import session_modes, transcript_gates
+    from samsara import audio_tools, session_modes, transcript_gates
     spec = importlib.util.spec_from_file_location("offline_languages", root / "samsara/languages.py")
     languages = importlib.util.module_from_spec(spec)
     spec.loader.exec_module(languages)
@@ -41,12 +41,22 @@ def load_gate_methods():
                            # Queue 69's optional policy integration is not
                            # the language gate under test.
                            _cancel_window_module=lambda: None)
+    # Queue 151's audio helpers are imported directly; dictation.py only
+    # re-exports them now, and an AST scrape would silently collect nothing.
+    module.__dict__.update({
+        name: getattr(audio_tools, name)
+        for name in (
+            "_HotkeyDecodeResult", "_SANITY_RMS_FLOOR_DB", "_SANITY_RMS_WINDOW_S",
+            "_SANITY_MIN_DURATION_S", "_SANITY_MIN_CPS", "_SANITY_MIN_SPEECH_COVERAGE",
+            "_apply_retry_on_suspected_loss", "_suspected_silent_data_loss",
+            "_speech_rms_coverage", "_split_audio_at_silences", "_fade_edges",
+            "_dump_hotkey_buffer", "resample_audio",
+        )
+    })
     path = root / "dictation.py"
     tree = ast.parse(path.read_text(encoding="utf-8"))
-    constants = {"_HotkeyDecodeResult", "_LONG_DECODE_CEILING_S", "_GATE_MAX_BUFFER_S",
-                 "_SANITY_RMS_FLOOR_DB", "_SANITY_RMS_WINDOW_S", "_SANITY_MIN_DURATION_S",
-                 "_SANITY_MIN_CPS", "_SANITY_MIN_SPEECH_COVERAGE", "_SpeechRun", "_GateDecision"}
-    functions = {"_apply_retry_on_suspected_loss", "_suspected_silent_data_loss", "_speech_rms_coverage"}
+    constants = {"_LONG_DECODE_CEILING_S", "_GATE_MAX_BUFFER_S", "_SpeechRun", "_GateDecision"}
+    functions = set()
     methods = {"_filter_dictation_language", "_decode_hotkey_audio", "_buffer_should_skip_decode",
                "transcribe_continuous_buffer", "_decode_wake_word_buffer",
                "_handle_command_mode_utterance", "_dictate_commit_redecode", "_gate_scan",

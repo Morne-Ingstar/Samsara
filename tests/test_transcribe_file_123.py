@@ -4,10 +4,8 @@ Nothing here imports dictation.py and nothing here loads a Whisper model.
 
   * The LOADER is real: `faster_whisper.audio.decode_audio` runs against
     WAVs written by these tests. That is the point of reusing it.
-  * The SPLITTER is real too, and is the production one -- extracted from
-    dictation.py's source by AST and executed in isolation, so the seam
-    property is proved against the code that actually ships rather than a
-    copy. (Importing dictation would start the app's module body.)
+  * The SPLITTER is real too, imported directly from its small production
+    module. Importing it never starts dictation.py's app module body.
   * Only the DECODER is faked, because it is the one piece that needs a
     2 GB model. The fake records exactly what it was handed, which is how
     the "no microphone" and "never dispatched" claims are checked.
@@ -34,17 +32,10 @@ RATE = tf.SAMPLE_RATE
 # ---------------------------------------------------------------------------
 # The real production splitter, without importing dictation
 # ---------------------------------------------------------------------------
-
-def _production_splitter():
-    source = (REPO / "dictation.py").read_text(encoding="utf-8", errors="replace")
-    node = next(n for n in ast.parse(source).body
-                if isinstance(n, ast.FunctionDef) and n.name == "_split_audio_at_silences")
-    namespace = {"np": np}
-    exec(compile(ast.Module([node], []), "<split>", "exec"), namespace)  # noqa: S102
-    return namespace["_split_audio_at_silences"]
+from samsara import audio_tools
 
 
-SPLIT = _production_splitter()
+SPLIT = audio_tools._split_audio_at_silences
 
 
 def _speech(seconds, seed=0, level=0.2):
@@ -315,6 +306,7 @@ def test_the_production_decode_entry_is_the_one_called(wav):
             imported |= {a.name.split(".")[0] for a in node.names}
         elif isinstance(node, ast.ImportFrom) and node.module:
             imported.add(node.module.split(".")[0])
+    assert "dictation" not in imported
     assert "wave" not in imported
     assert "soundfile" not in imported and "librosa" not in imported
 
