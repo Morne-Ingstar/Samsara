@@ -3,6 +3,9 @@
 import time
 from datetime import datetime, timedelta
 
+from PySide6.QtCore import QEvent, QObject
+from PySide6.QtWidgets import QWidget
+
 from samsara.history import HistoryManager
 from samsara.history_store import HistoryStore
 from samsara.ui import history_view as hv
@@ -70,3 +73,53 @@ def test_first_open_builds_one_eager_page_then_offers_paging(qapp, tmp_path):
     assert view._load_older_item is not None
     assert len(view._rows_by_item_id) == hv._PAGE_SIZE
     manager.close()
+
+
+def test_filter_changes_never_show_transient_top_level_widgets(qapp, tmp_path):
+    """Queue 164: filter reloads must be as safe as the initial render.
+
+    The probe watches Qt's actual Show events, which catches a child made
+    visible before its layout gets a chance to adopt it. Sampling only at
+    QListWidget.setItemWidget() missed exactly that interval.
+    """
+    class TopLevelShowProbe(QObject):
+        def __init__(self):
+            super().__init__()
+            self.widgets = []
+
+        def eventFilter(self, obj, event):  # noqa: N802 - Qt API name
+            if (event.type() == QEvent.Type.Show and isinstance(obj, QWidget)
+                    and obj.isWindow()):
+                self.widgets.append(obj)
+            return False
+
+    manager = HistoryManager(db_path=str(tmp_path / "history.db"))
+    store = HistoryStore(manager)
+    for index in range(hv._PAGE_SIZE * 2):
+        store.append("dictation" if index % 2 else "command", f"history entry {index}")
+
+    view = hv.HistoryView(store)
+    view.show()
+    assert _pump_until(qapp, lambda: len(view._rows_by_item_id) == hv._PAGE_SIZE)
+
+    probe = TopLevelShowProbe()
+    qapp.installEventFilter(probe)
+    rendered = []
+    original_render = view._render_rows
+
+    def record_render(rows, append):
+        rendered.append((len(rows), append))
+        return original_render(rows, append)
+
+    view._render_rows = record_render
+    try:
+        for choice in (hv.FILTER_DICTATION, hv.FILTER_COMMANDS, hv.FILTER_ALL):
+            before = len(rendered)
+            view._filter.setCurrentText(choice)
+            assert _pump_until(qapp, lambda: len(rendered) > before)
+    finally:
+        qapp.removeEventFilter(probe)
+        view.hide()
+        manager.close()
+
+    assert probe.widgets == []
