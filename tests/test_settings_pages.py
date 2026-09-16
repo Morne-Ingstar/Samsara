@@ -103,7 +103,9 @@ KEYS_BEFORE_SPLIT = {
     ],
     "_build_advanced_tab": [
         'benchmark.collect_samples', 'benchmark.max_samples', 'cal_multiplier', 'compute_type',
-        'device', 'ducking.enabled', 'ducking.level', 'echo_cancellation.enabled',
+        'device', 'ducking.enabled', 'ducking.level', 'ducking.hands_free_enabled',
+        'ducking.hands_free_idle_level', 'ducking.hands_free_level',
+        'echo_cancellation.enabled',
         'echo_cancellation.latency_ms', 'gesture.enabled',
         # Queue 93: the command-word escape hatch -- the one config key that
         # lets a one-word command run despite intent execution rule 1. The
