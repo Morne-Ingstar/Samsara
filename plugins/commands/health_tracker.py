@@ -24,12 +24,13 @@ from samsara import health_store
 from samsara.plugin_commands import command
 
 logger = logging.getLogger(__name__)
+READBACK_ITEM_LIMIT = 5
 
 
-def _speak(app, text):
+def _speak(app, text, *, category="agent_response"):
     """TTS or print fallback."""
     if hasattr(app, "audio_coordinator") and app.audio_coordinator:
-        app.audio_coordinator.speak(text, category="agent_response", interruptible=False)
+        app.audio_coordinator.speak(text, category=category, interruptible=False)
     elif hasattr(app, "tts_engine") and app.tts_engine:
         app.tts_engine.speak(text)
     else:
@@ -227,7 +228,7 @@ def handle_health_summary(app, remainder="", **kwargs):
     entries = health_store.get_recent(hours=hours)
     if not entries:
         period = "today" if hours <= 24 else f"the last {hours // 24} days"
-        _speak(app, f"No health entries logged {period}.")
+        _speak(app, f"No health entries logged {period}.", category="readback")
         return True
 
     pain_entries = [e for e in entries if e["type"] == "pain"]
@@ -258,13 +259,20 @@ def handle_health_summary(app, remainder="", **kwargs):
             med_names[name] = med_names.get(name, 0) + 1
         med_parts = [f"{name} x{count}" if count > 1 else name
                      for name, count in med_names.items()]
+        omitted_medication_types = max(0, len(med_parts) - READBACK_ITEM_LIMIT)
+        med_parts = med_parts[:READBACK_ITEM_LIMIT]
         parts.append(f"Medications: {', '.join(med_parts)}.")
+        if omitted_medication_types:
+            parts.append(
+                "This is a shortened summary; "
+                f"{omitted_medication_types} more medication types were not read."
+            )
 
     # Symptom count
     if symptom_entries:
         parts.append(f"{len(symptom_entries)} symptom note{'s' if len(symptom_entries) != 1 else ''} logged.")
 
-    _speak(app, " ".join(parts))
+    _speak(app, " ".join(parts), category="readback")
     return True
 
 
@@ -281,14 +289,19 @@ def handle_read_health(app, remainder="", **kwargs):
     """Reads out what you have logged today."""
     entries = health_store.get_today()
     if not entries:
-        _speak(app, "No health entries logged today.")
+        _speak(app, "No health entries logged today.", category="readback")
         return True
 
     parts = [f"You have {len(entries)} health entr{'ies' if len(entries) != 1 else 'y'} today."]
-    for e in entries:
+    for e in entries[:READBACK_ITEM_LIMIT]:
         parts.append(_format_entry_speech(e))
 
-    _speak(app, " ".join(parts))
+    if len(entries) > READBACK_ITEM_LIMIT:
+        parts.append(
+            "This is a shortened list; "
+            f"{len(entries) - READBACK_ITEM_LIMIT} more health entries were not read."
+        )
+    _speak(app, " ".join(parts), category="readback")
     return True
 
 

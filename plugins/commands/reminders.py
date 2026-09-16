@@ -16,10 +16,11 @@ from datetime import datetime
 from samsara.plugin_commands import command
 from plugins.commands.timer import _format_duration, _parse_duration
 
+READBACK_ITEM_LIMIT = 5
 
-def _speak(app, text):
+def _speak(app, text, *, category="agent_response"):
     if hasattr(app, "audio_coordinator") and app.audio_coordinator:
-        app.audio_coordinator.speak(text, category="agent_response", interruptible=False)
+        app.audio_coordinator.speak(text, category=category, interruptible=False)
     elif hasattr(app, "tts_engine") and app.tts_engine:
         app.tts_engine.speak(text)
     else:
@@ -196,22 +197,26 @@ def handle_read_reminders(app, remainder="", **kwargs):
     """Reads out the reminders you have set."""
     nm = _get_manager(app)
     if nm is None:
-        _speak(app, "Reminder system is not available.")
+        _speak(app, "Reminder system is not available.", category="readback")
         return True
 
     active = [r for r in nm.get_all_reminders() if r.get("enabled", True)]
     if not active:
-        _speak(app, "No active reminders.")
+        _speak(app, "No active reminders.", category="readback")
         return True
 
     n = len(active)
     parts = [f"You have {n} reminder{'s' if n != 1 else ''}."]
-    for r in active:
+    for r in active[:READBACK_ITEM_LIMIT]:
         name = r.get("name", "Unnamed")
         desc = _describe_schedule(r.get("schedule", {}))
         parts.append(f"{name} {desc}.".strip())
 
-    _speak(app, " ".join(parts))
+    if n > READBACK_ITEM_LIMIT:
+        parts.append(
+            f"This is a shortened list; {n - READBACK_ITEM_LIMIT} more reminders were not read."
+        )
+    _speak(app, " ".join(parts), category="readback")
     return True
 
 

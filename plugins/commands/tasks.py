@@ -21,6 +21,7 @@ from samsara.plugin_commands import command
 
 
 _overlay = None
+READBACK_ITEM_LIMIT = 5
 
 
 def _get_overlay():
@@ -36,9 +37,9 @@ def _refresh_overlay():
         _overlay.refresh(tasks_store.get_all())
 
 
-def _speak(app, text):
+def _speak(app, text, *, category="agent_response"):
     if hasattr(app, "audio_coordinator") and app.audio_coordinator:
-        app.audio_coordinator.speak(text, category="agent_response", interruptible=False)
+        app.audio_coordinator.speak(text, category=category, interruptible=False)
     elif hasattr(app, "tts_engine") and app.tts_engine:
         app.tts_engine.speak(text)
     else:
@@ -169,11 +170,15 @@ def handle_read_tasks(app, remainder="", **kwargs):
     """Reads out the tasks you have not finished."""
     active = tasks_store.get_active()
     if not active:
-        _speak(app, "No active tasks.")
+        _speak(app, "No active tasks.", category="readback")
         return True
     n = len(active)
     parts = [f"You have {n} task{'s' if n != 1 else ''}."]
-    for i, t in enumerate(active, 1):
+    for i, t in enumerate(active[:READBACK_ITEM_LIMIT], 1):
         parts.append(f"{i}: {t['text']}.")
-    _speak(app, " ".join(parts))
+    if n > READBACK_ITEM_LIMIT:
+        parts.append(
+            f"This is a shortened list; {n - READBACK_ITEM_LIMIT} more tasks were not read."
+        )
+    _speak(app, " ".join(parts), category="readback")
     return True

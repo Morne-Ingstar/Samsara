@@ -65,8 +65,11 @@ _DEFAULT_EARCON_DURATION_MS = 300
 #                          A question the user cannot hear is worse than a long
 #                          one: queue 58, 2026-09-14 "show windows" waited on a
 #                          55-char prompt that was never spoken.
+#   readback            -- bounded, requested task/reminder/health information.
+#                          A requested list must not be silently cut off; its
+#                          callers summarise long lists before speaking.
 TTS_CHAR_LIMIT_EXEMPT_CATEGORIES = frozenset({
-    "ava_response", "ava_status", "ava_command_session", "confirmation",
+    "ava_response", "ava_status", "ava_command_session", "confirmation", "readback",
 })
 
 DEFAULT_COMMAND_MODE_TTS_CHAR_LIMIT = 50
