@@ -1231,6 +1231,13 @@ class DuckingHostTransport:
         self._spawn_fn = spawn_fn  # tests inject a fake child here
 
     @property
+    def child_pid(self) -> int | None:
+        """The isolated COM helper PID, if it has been spawned."""
+        with self._lock:
+            pid = getattr(self._proc, "pid", None)
+        return pid if isinstance(pid, int) else None
+
+    @property
     def generation(self) -> int:
         return self._generation
 
@@ -1452,6 +1459,7 @@ def _iter_audio_sessions() -> Iterable[_SessionHandle]:
     if not reply.get("ok"):
         raise OSError(f"list_sessions failed: {reply.get('err')}")
     generation = transport.generation
+    host_pid = getattr(transport, "child_pid", None)
     return [
         _ProxySessionHandle(
             entry["sid"],
@@ -1461,7 +1469,14 @@ def _iter_audio_sessions() -> Iterable[_SessionHandle]:
             entry.get("instance"),
         )
         for entry in reply.get("sessions", [])
+        if int(entry.get("pid", 0)) != host_pid
     ]
+
+
+def ducking_host_pids() -> set[int]:
+    """PIDs owned by the COM helper, which must never be duck targets."""
+    pid = getattr(_get_transport(), "child_pid", None)
+    return {pid} if pid is not None else set()
 
 
 # --- Module-level compatibility shims (hotfix 2026-07-24) -------------------
