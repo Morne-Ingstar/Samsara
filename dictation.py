@@ -6448,6 +6448,30 @@ class DictationApp:
         if self._session_mode_manager is not None:
             return self._session_mode_manager
 
+        # Queue 142: install the configured commit word before anything reads
+        # it. session_modes keeps it as a module constant, so this one call
+        # also reaches command_catalog, quick_reference_qt, tutorial_qt,
+        # first_run_wizard_qt and settings/modes_qt, all of which read
+        # DICTATE_COMMIT_PHRASE at call time.
+        try:
+            from samsara import session_modes  # noqa: PLC0415
+            _configured_commit = (self.config.get('command_mode', {})
+                                  .get('dictate_commit_word')
+                                  or session_modes.DEFAULT_DICTATE_COMMIT_PHRASE)
+            _installed = session_modes.set_commit_phrase(_configured_commit)
+            if _installed != str(_configured_commit).strip().lower():
+                logger.warning(
+                    "[SESSION] commit word %r refused (one word only); keeping %r",
+                    _configured_commit, _installed)
+            else:
+                logger.info("[SESSION] dictation commit word: %r", _installed)
+            if _installed in session_modes.COMMIT_WORD_HOMOPHONE_RISKS:
+                logger.warning(
+                    "[SESSION] commit word %r is a common filler; a pause after it "
+                    "in ordinary speech will paste the draft", _installed)
+        except Exception as exc:  # never block the session on a config read
+            logger.warning("[SESSION] commit word not applied: %s", exc)
+
         def _command_dispatch_fn(text: str) -> CommandDispatchResult:
             audio_duration = getattr(self, '_current_utterance_duration_s', 0.0)
             # SessionModeManager calls this only after committing an utterance
