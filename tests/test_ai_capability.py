@@ -249,12 +249,13 @@ class TestValidateProposalAccepts:
         result = validate_proposal(proposal, SNAPSHOT)
         assert result["valid"] is True
 
-    def test_extra_unrecognised_params_are_ignored(self):
-        # Unknown params should not cause failure; the schema only validates keys it knows
+    def test_extra_unrecognised_params_are_rejected(self):
+        # The proposal gate matches execution_policy: only declared keys pass.
         proposal = {"steps": [{"action_id": "volume up",
                                 "params": {"unknown_extra": "ignored"}}]}
         result = validate_proposal(proposal, SNAPSHOT)
-        assert result["valid"] is True
+        assert result["valid"] is False
+        assert any("undeclared" in error for error in result["errors"])
 
 
 # ---------------------------------------------------------------------------
@@ -338,7 +339,7 @@ class TestValidateProposalRejectsOutOfRange:
                                 "params": {"level": "bright"}}]}
         result = validate_proposal(proposal, SNAPSHOT)
         assert result["valid"] is False
-        assert any("numeric" in e for e in result["errors"])
+        assert any("must be an int" in e for e in result["errors"])
 
     def test_missing_required_param(self):
         proposal = {"steps": [{"action_id": "set brightness", "params": {}}]}

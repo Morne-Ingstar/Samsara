@@ -15,6 +15,7 @@ import hashlib
 import json
 
 from samsara.config_schema import SETTINGS_SCHEMA
+from samsara.execution_policy import DEFAULT_MAX_STR_LEN, _type_ok
 
 
 def get_settings_constraints():
@@ -59,8 +60,8 @@ def get_capability_snapshot(matcher, settings_constraints=None):
             "settings": dict,              # settings_constraints
         }
 
-    The "version" hash changes whenever the composable command set changes
-    (command added/removed, risk_class or side_effects altered). Use it to
+    The "version" hash changes whenever the composable command set or the
+    parameter constraints used to validate proposals changes. Use it to
     detect stale snapshots between validate and apply.
     """
     if settings_constraints is None:
@@ -91,7 +92,7 @@ def get_capability_snapshot(matcher, settings_constraints=None):
             "preview_template":  cmd.get("preview_template", ""),
         }
 
-    # Version: sha256 of the composable set's risk fingerprint.
+    # Version: sha256 of the composable set's validation fingerprint.
     # Truncated to 16 chars for readability; collision risk is negligible
     # for this use case (detecting staleness, not security).
     fingerprint_data = json.dumps(
@@ -99,6 +100,7 @@ def get_capability_snapshot(matcher, settings_constraints=None):
             k: {
                 "risk_class":  v["risk_class"],
                 "side_effects": sorted(v["side_effects"]),
+                "param_schema": v["param_schema"],
             }
             for k, v in sorted(composable.items())
         },
@@ -169,6 +171,12 @@ def validate_proposal(proposal_json, snapshot):
             errors.append(f"{prefix}: missing 'action_id'")
             continue
 
+        if not isinstance(action_id, str):
+            errors.append(
+                f"{prefix}: 'action_id' must be a string, got {type(action_id).__name__}"
+            )
+            continue
+
         if action_id not in composable:
             if action_id in all_ids:
                 errors.append(
@@ -194,6 +202,10 @@ def validate_proposal(proposal_json, snapshot):
             continue
 
         param_schema = cmd_spec.get("param_schema") or {}
+        extra_params = [name for name in params if name not in param_schema]
+        if extra_params:
+            errors.append(f"{prefix}: undeclared parameters {extra_params!r}")
+
         for param_name, param_spec in param_schema.items():
             required = param_spec.get("required", False)
 
@@ -205,14 +217,26 @@ def validate_proposal(proposal_json, snapshot):
             val = params[param_name]
             p_type = param_spec.get("type")
 
-            if p_type in ("int", "float"):
-                try:
-                    num = float(val)
-                except (TypeError, ValueError):
+            if p_type in ("int", "float", "bool", "str"):
+                if not _type_ok(p_type, val):
+                    article = "an" if p_type == "int" else "a"
                     errors.append(
-                        f"{prefix}: param '{param_name}' must be numeric, got {val!r}"
+                        f"{prefix}: param '{param_name}' must be {article} {p_type}, got {val!r}"
                     )
                     continue
+
+                if p_type == "str":
+                    limit = param_spec.get("max_len", DEFAULT_MAX_STR_LEN)
+                    if len(val) > limit:
+                        errors.append(
+                            f"{prefix}: param '{param_name}' exceeds max length {limit}"
+                        )
+                    continue
+
+                if p_type == "bool":
+                    continue
+
+                num = val
                 p_min = param_spec.get("min")
                 p_max = param_spec.get("max")
                 if p_min is not None and num < p_min:
@@ -231,5 +255,10 @@ def validate_proposal(proposal_json, snapshot):
                         f"{prefix}: param '{param_name}' value {val!r} "
                         f"not in allowed options {allowed}"
                     )
+
+            else:
+                errors.append(
+                    f"{prefix}: param '{param_name}' has unsupported type {p_type!r}"
+                )
 
     return {"valid": len(errors) == 0, "errors": errors}
