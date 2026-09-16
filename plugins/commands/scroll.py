@@ -204,8 +204,8 @@ def _send_key_combo(*vkeys) -> bool:
 
 
 @command(
-    "scroll to top",
-    aliases=["go to top", "top of page", "jump to top"],
+    "top of page",
+    aliases=["go to top", "jump to top"],
     pack="core",
     risk_class="ui",
 )
@@ -214,8 +214,8 @@ def scroll_to_top(app, remainder):
 
 
 @command(
-    "scroll to bottom",
-    aliases=["go to bottom", "bottom of page", "jump to bottom"],
+    "bottom of page",
+    aliases=["go to bottom", "jump to bottom"],
     pack="core",
     risk_class="ui",
 )

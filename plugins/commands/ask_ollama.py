@@ -2675,7 +2675,7 @@ def handle_stop_schedule(app, remainder="", **kwargs):
 @command(
     "ava forget",
     risk_class="safe",
-    aliases=["forget conversation", "clear memory", "new conversation", "start over ava"],
+    aliases=["forget conversation", "clear memory", "start over ava"],
     pack="ai",
     ai_visible=False,
 )

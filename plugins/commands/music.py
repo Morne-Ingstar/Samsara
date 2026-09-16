@@ -402,14 +402,14 @@ def handle_media_play(app, remainder):
     return _media_transport("play")
 
 
-@command("pause", aliases=["pause music"], pack="media",
+@command("pause", pack="media",
          risk_class='safe', ai_composable=True, side_effects=['audio'])
 def handle_media_pause(app, remainder):
     """Pauses whatever is playing."""
     return _media_transport("pause")
 
 
-@command("next", aliases=["skip", "next track", "next song", "skip track"], pack="media",
+@command("next", aliases=["skip", "skip track"], pack="media",
          risk_class='safe', ai_composable=True, side_effects=['audio'])
 def handle_media_next(app, remainder):
     """Skips to the next track."""
