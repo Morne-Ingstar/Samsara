@@ -650,7 +650,7 @@ def handle_show_windows(app, remainder):
 @command("window switch",
          aliases=["window focus", "switch to window", "go to window"],
          pack="window-management",
-         risk_class="ui", param_schema={"remainder": {"type": "str", "required": False}},
+         risk_class="ui", param_schema={"label": {"type": "nato_letter", "required": False}},
 )
 def handle_window_switch(app, remainder):
     """Brings the window with the letter you name to the front."""
@@ -677,7 +677,7 @@ def handle_window_switch(app, remainder):
 @command("window bring",
          aliases=["bring window", "bring forward"],
          pack="window-management",
-         risk_class="ui", param_schema={"remainder": {"type": "str", "required": False}},
+         risk_class="ui", param_schema={"label": {"type": "nato_letter", "required": False}},
 )
 def handle_window_bring(app, remainder):
     """Moves the window with the letter you name to the screen you are on."""
@@ -703,7 +703,7 @@ def handle_window_bring(app, remainder):
 @command("window move",
          aliases=["move window"],
          pack="window-management",
-         risk_class="ui", param_schema={"remainder": {"type": "str", "required": False}},
+         risk_class="ui", param_schema={"label": {"type": "nato_letter", "required": False}, "monitor": {"type": "monitor", "required": False}},
 )
 def handle_window_move(app, remainder):
     """Moves the window with the letter you name to another screen."""
@@ -755,7 +755,7 @@ def handle_window_move(app, remainder):
 @command("window mute",
          aliases=["mute window"],
          pack="window-management",
-         risk_class="ui", param_schema={"remainder": {"type": "str", "required": False}},
+         risk_class="ui", param_schema={"label": {"type": "nato_letter", "required": False}},
 )
 def handle_window_mute(app, remainder):
     """Mutes the audio coming from the window with the letter you name."""
@@ -778,7 +778,7 @@ def handle_window_mute(app, remainder):
 @command("window unmute",
          aliases=["unmute window"],
          pack="window-management",
-         risk_class="ui", param_schema={"remainder": {"type": "str", "required": False}},
+         risk_class="ui", param_schema={"label": {"type": "nato_letter", "required": False}},
 )
 def handle_window_unmute(app, remainder):
     """Unmutes the audio from the window with the letter you name."""
@@ -803,7 +803,7 @@ def handle_window_unmute(app, remainder):
 
 @command("window close",
          pack="window-management",
-         risk_class="write", param_schema={"remainder": {"type": "str", "required": False}},
+         risk_class="write", param_schema={"label": {"type": "nato_letter", "required": False}},
 )
 def handle_window_close(app, remainder):
     """Closes the window with the letter you name, asking it to save first."""
@@ -835,7 +835,7 @@ def handle_window_close(app, remainder):
 @command("window copy",
          aliases=["copy from window", "copy from"],
          pack="window-management",
-         risk_class="write", param_schema={"remainder": {"type": "str", "required": False}},
+         risk_class="write", param_schema={"labels": {"type": "nato_letter", "required": False}},
 )
 def handle_window_copy(app, remainder):
     """Copies the text from one lettered window into another."""
@@ -890,7 +890,7 @@ def handle_window_copy(app, remainder):
 @command("window tile",
          aliases=["tile windows"],
          pack="window-management",
-         risk_class="ui", param_schema={"remainder": {"type": "str", "required": False}},
+         risk_class="ui", param_schema={"labels": {"type": "nato_letter", "required": False}},
 )
 def handle_window_tile(app, remainder):
     """Arranges the lettered windows you name side by side."""

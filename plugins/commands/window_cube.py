@@ -359,7 +359,7 @@ def handle_refresh_cube(app, remainder):
 
 @command("cube page", aliases=["cube page two", "cube page one"],
          pack="window-management",
-         risk_class="ui", param_schema={"remainder": {"type": "str", "required": False}},
+         risk_class="ui", param_schema={"page": {"type": "int", "required": False}},
 )
 def handle_cube_page(app, remainder):
     """Shows the next page of the numbered window grid, or the page you name."""
@@ -476,7 +476,7 @@ def _numbers_in(text: str) -> list:
 
 
 @command("cube copy", aliases=["cube copy into"], pack="window-management",
-         risk_class="write", param_schema={"remainder": {"type": "str", "required": False}})
+         risk_class="write", param_schema={"numbers": {"type": "int", "required": False}})
 def handle_cube_copy(app, remainder):
     """Copies the text from one numbered window into another."""
     numbers = _numbers_in(remainder)
@@ -491,7 +491,7 @@ def handle_cube_copy(app, remainder):
 
 
 @command("cube tile", aliases=["cube tile and"], pack="window-management",
-         risk_class="ui", param_schema={"remainder": {"type": "str", "required": False}})
+         risk_class="ui", param_schema={"numbers": {"type": "int", "required": False}})
 def handle_cube_tile(app, remainder):
     """Arranges the numbered windows you name side by side."""
     numbers = _numbers_in(remainder)

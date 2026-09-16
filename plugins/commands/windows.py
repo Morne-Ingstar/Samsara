@@ -588,7 +588,7 @@ def _parse_placements(remainder):
 # ---------------------------------------------------------------------------
 
 @command("bring", aliases=["bring back", "get", "grab", "fetch"], pack="window-management",
-         risk_class="ui", param_schema={"remainder": {"type": "str", "required": False}})
+         risk_class="ui", param_schema={"app_name": {"type": "app_name", "required": False}})
 def handle_bring(app, remainder):
     """Brings the app you name to the screen your pointer is on."""
     logger.info("bring: remainder='%s'", remainder)
@@ -667,7 +667,7 @@ def _place_one(app_name, dest_text, app, monitors, extra_ignore):
 
 
 @command("send", aliases=["move", "put", "throw"], pack="window-management",
-         risk_class="ui", param_schema={"remainder": {"type": "str", "required": False}})
+         risk_class="ui", param_schema={"app_name": {"type": "app_name", "required": False}, "monitor": {"type": "monitor", "required": False}})
 def handle_send(app, remainder):
     """Moves the app you name to the screen you name, such as the left one.
 
@@ -975,7 +975,7 @@ def _detect_lost_windows():
 @command("save layout",
          aliases=["save window layout", "save this layout"],
          pack="window-management",
-         risk_class="write", param_schema={"remainder": {"type": "str", "required": False}},
+         risk_class="write", param_schema={"name": {"type": "text", "required": False}},
 )
 def handle_save_layout(app, remainder):
     """Saves where your windows are now, under the name you give it."""
@@ -990,7 +990,7 @@ def handle_save_layout(app, remainder):
 @command("restore layout",
          aliases=["load layout", "restore window layout"],
          pack="window-management",
-         risk_class="ui", param_schema={"remainder": {"type": "str", "required": False}},
+         risk_class="ui", param_schema={"name": {"type": "text", "required": False}},
 )
 def handle_restore_layout(app, remainder):
     """Puts your windows back the way a saved layout had them."""
@@ -1020,7 +1020,7 @@ def handle_list_layouts(app, remainder):
 @command("delete layout",
          aliases=["forget layout", "remove layout"],
          pack="window-management",
-         risk_class="destructive", param_schema={"remainder": {"type": "str", "required": False}},
+         risk_class="destructive", param_schema={"name": {"type": "text", "required": False}},
 )
 def handle_delete_layout(app, remainder):
     """Deletes the saved window layout you name."""
@@ -1073,7 +1073,7 @@ def handle_rescue_lost(app, remainder):
 
 @command("find window",
          pack="window-management",
-         risk_class="ui", param_schema={"remainder": {"type": "str", "required": False}},
+         risk_class="ui", param_schema={"app_name": {"type": "app_name", "required": False}},
 )
 def handle_find_specific(app, remainder):
     """Finds the window for the app you name and brings it to the front."""
@@ -1112,7 +1112,7 @@ def handle_find_specific(app, remainder):
     "teleport cursor to",
     "teleport mouse to",
 ], pack="window-management",
-    risk_class="ui", param_schema={"remainder": {"type": "str", "required": False}},
+    risk_class="ui", param_schema={"monitor": {"type": "monitor", "required": False}},
 )
 def handle_cursor(app, remainder):
     """Moves the mouse pointer to the screen or place you name."""
@@ -1197,7 +1197,7 @@ def _snap_rect(monitor, direction):
 
 
 @command("snap", aliases=["dock"], pack="window-management",
-         risk_class="ui", param_schema={"remainder": {"type": "str", "required": False}})
+         risk_class="ui", param_schema={"side": {"type": "side", "required": False}})
 def handle_snap(app, remainder):
     """Snaps the focused window to the side you name, such as left or right."""
     direction = remainder.strip().lower()

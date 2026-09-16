@@ -100,7 +100,7 @@ def handle_hide_tasks(app, remainder="", **kwargs):
     "complete task",
     aliases=["finish task", "done task", "check task", "task complete"],
     pack="tasks",
-    risk_class="write", param_schema={"remainder": {"type": "str", "required": False}},
+    risk_class="write", param_schema={"task_number": {"type": "int", "required": False}},
 )
 def handle_complete_task(app, remainder="", **kwargs):
     """Marks the task you name as done."""
@@ -123,7 +123,7 @@ def handle_complete_task(app, remainder="", **kwargs):
     "remove task",
     aliases=["delete task"],
     pack="tasks",
-    risk_class="destructive", param_schema={"remainder": {"type": "str", "required": False}},
+    risk_class="destructive", param_schema={"task_number": {"type": "int", "required": False}},
 )
 def handle_remove_task(app, remainder="", **kwargs):
     """Deletes the task you name from the list."""
@@ -147,7 +147,6 @@ def handle_remove_task(app, remainder="", **kwargs):
     aliases=["clear done tasks", "remove completed"],
     pack="tasks",
     risk_class="destructive",
-    param_schema={"remainder": {"type": "str", "required": False}},
 )
 def handle_clear_completed(app, remainder="", **kwargs):
     """Deletes every task already marked as done."""

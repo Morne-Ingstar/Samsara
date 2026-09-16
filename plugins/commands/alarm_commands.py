@@ -58,7 +58,7 @@ def _fuzzy_match(name_query, alarms):
     "complete alarm",
     aliases=["I did it", "alarm done", "alarm complete"],
     pack="alarms",
-    risk_class="write", param_schema={"remainder": {"type": "str", "required": False}},
+    risk_class="write",
 )
 def handle_complete_alarm(app, remainder="", **kwargs):
     """Marks the alarm you name as done for today."""
@@ -144,7 +144,7 @@ def handle_read_alarms(app, remainder="", **kwargs):
     "enable alarm",
     aliases=["turn on alarm"],
     pack="alarms",
-    risk_class="write", param_schema={"remainder": {"type": "str", "required": False}},
+    risk_class="write", param_schema={"alarm_name": {"type": "str", "required": False}},
 )
 def handle_enable_alarm(app, remainder="", **kwargs):
     """Turns the alarm you name back on, so it will sound again."""
@@ -169,7 +169,7 @@ def handle_enable_alarm(app, remainder="", **kwargs):
     "disable alarm",
     aliases=["turn off alarm"],
     pack="alarms",
-    risk_class="write", param_schema={"remainder": {"type": "str", "required": False}},
+    risk_class="write", param_schema={"alarm_name": {"type": "str", "required": False}},
 )
 def handle_disable_alarm(app, remainder="", **kwargs):
     """Turns the alarm you name off, so it will not sound."""

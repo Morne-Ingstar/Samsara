@@ -2120,7 +2120,7 @@ def handle_refresh_numbers(app, remainder):
 @command("click",
          aliases=["tap", "press"],
          pack="accessibility",
-         risk_class="write", param_schema={"remainder": {"type": "str", "required": False}},
+         risk_class="write", param_schema={"label": {"type": "int", "required": False}},
 )
 def handle_click(app, remainder):
     """Clicks the numbered thing you name, such as click seven.
