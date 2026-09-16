@@ -731,13 +731,15 @@ QScrollBar::handle:horizontal {{
 QScrollBar::handle:vertical:hover, QScrollBar::handle:horizontal:hover {{ background: {hover}; }}
 QScrollBar::handle:vertical:pressed, QScrollBar::handle:horizontal:pressed {{ background: {pressed}; }}
 QScrollBar::add-line:vertical, QScrollBar::sub-line:vertical {{
-    height: 0px; width: 0px; border: none; background: transparent;
+    subcontrol-origin: margin; height: 0px; width: 0px;
+    border: none; background-color: transparent; image: none;
 }}
 QScrollBar::add-line:horizontal, QScrollBar::sub-line:horizontal {{
-    width: 0px; height: 0px; border: none; background: transparent;
+    subcontrol-origin: margin; width: 0px; height: 0px;
+    border: none; background-color: transparent; image: none;
 }}
 QScrollBar::up-arrow, QScrollBar::down-arrow, QScrollBar::left-arrow, QScrollBar::right-arrow {{
-    width: 0px; height: 0px; background: none;
+    width: 0px; height: 0px; border: none; background-color: transparent; image: none;
 }}
 QScrollBar::add-page, QScrollBar::sub-page {{ background: transparent; }}
 QAbstractScrollArea::corner {{ background: transparent; border: none; }}

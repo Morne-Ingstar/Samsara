@@ -133,10 +133,13 @@ def _luminance(pixel: int) -> float:
     return 0.2126 * r + 0.7152 * g + 0.0722 * b
 
 
-#: Four windows that each own a private stylesheet, so each is a separate
-#: chance to be the one dialog that stays dark. The brief asks for at least
-#: three; the full set of 22 is rendered by tools/theme_proof.py.
-SURFACES = ["home", "settings_general", "quick_reference", "tutorial"]
+#: Every independently styled surface selected as a switch gate. The three
+#: queue-129 rewrites below used to be absent from both this test and the
+#: shared proof table.
+SURFACES = [
+    "home", "settings_general", "quick_reference", "tutorial",
+    "profile_manager", "voice_training", "ava_guide",
+]
 
 
 @pytest.mark.parametrize("surface", SURFACES)
@@ -144,8 +147,8 @@ def test_switching_the_setting_changes_what_the_surface_renders(
         surface, qapp, dark_again):
     """Build the same surface under each palette and compare the pixels.
 
-    Four surfaces, not one: the failure this guards against is per-window --
-    one dialog that kept its own stylesheet and stays dark in a light app."""
+    Each independently styled window is a separate chance to retain a frozen
+    dark stylesheet, so each listed surface gets its own pixel assertion."""
     from tests._theme_surfaces import SURFACES as BUILDERS
 
     theme.set_theme("dark", refresh=False)

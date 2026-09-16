@@ -14,7 +14,7 @@ two things a palette switch is most likely to break:
 Usage:
     F:\\envs\\sami\\python.exe tools\\theme_proof.py
 
-Output: ui_proof/129/<surface>_<theme>.png plus proof.json with the table.
+Output: ui_proof/147/<surface>_<theme>.png plus proof.json with the table.
 """
 
 from __future__ import annotations
@@ -33,7 +33,7 @@ from PySide6.QtWidgets import QAbstractScrollArea, QApplication  # noqa: E402
 from samsara.ui import theme  # noqa: E402
 from tests._theme_surfaces import SURFACES  # noqa: E402
 
-OUT_DIR = REPO_ROOT / "ui_proof" / "129"
+OUT_DIR = REPO_ROOT / "ui_proof" / "147"
 WINDOW_SIZE = (960, 700)
 
 
