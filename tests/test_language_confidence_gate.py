@@ -19,26 +19,43 @@ from tools import hf_bench
 
 def load_gate_methods():
     root = Path(__file__).resolve().parents[1]
+    from samsara import session_modes, transcript_gates
     spec = importlib.util.spec_from_file_location("offline_languages", root / "samsara/languages.py")
     languages = importlib.util.module_from_spec(spec)
     spec.loader.exec_module(languages)
     module = hf_bench.load_production_adapter()
     module.__dict__.update(_languages=languages, collections=collections, math=math, time=time,
                            logger=logging.getLogger("language_gate_test"),
-                           flight_recorder=SimpleNamespace(record=Mock()))
+                           flight_recorder=SimpleNamespace(record=Mock()),
+                           # Queue 128's pure gates are imported directly;
+                           # dictation.py only re-exports them now.
+                           _sanitise_context_tail=transcript_gates._sanitise_context_tail,
+                           _CONTEXT_TAIL_CHARS=transcript_gates._CONTEXT_TAIL_CHARS,
+                           _is_context_echo=transcript_gates._is_context_echo,
+                           _CONTEXT_ECHO_CHIP=transcript_gates._CONTEXT_ECHO_CHIP,
+                           _is_quality_exhausted=transcript_gates._is_quality_exhausted,
+                           is_scratch_that=session_modes.is_scratch_that,
+                           is_dictate_commit=session_modes.is_dictate_commit,
+                           is_recover_draft=session_modes.is_recover_draft,
+                           match_switch_word=session_modes.match_switch_word,
+                           # Queue 69's optional policy integration is not
+                           # the language gate under test.
+                           _cancel_window_module=lambda: None)
     path = root / "dictation.py"
     tree = ast.parse(path.read_text(encoding="utf-8"))
     constants = {"_HotkeyDecodeResult", "_LONG_DECODE_CEILING_S", "_GATE_MAX_BUFFER_S",
                  "_SANITY_RMS_FLOOR_DB", "_SANITY_RMS_WINDOW_S", "_SANITY_MIN_DURATION_S",
-                 "_SANITY_MIN_CPS", "_SANITY_MIN_SPEECH_COVERAGE"}
+                 "_SANITY_MIN_CPS", "_SANITY_MIN_SPEECH_COVERAGE", "_SpeechRun", "_GateDecision"}
     functions = {"_apply_retry_on_suspected_loss", "_suspected_silent_data_loss", "_speech_rms_coverage"}
     methods = {"_filter_dictation_language", "_decode_hotkey_audio", "_buffer_should_skip_decode",
                "transcribe_continuous_buffer", "_decode_wake_word_buffer",
-               "_handle_command_mode_utterance", "_dictate_commit_redecode"}
+               "_handle_command_mode_utterance", "_dictate_commit_redecode", "_gate_scan",
+               "_is_dictate_context_echo", "_log_cmd_utt_dropped"}
     nodes = [node for node in tree.body
              if (isinstance(node, ast.Assign) and any(isinstance(t, ast.Name) and t.id in constants
                                                      for t in node.targets))
-             or (isinstance(node, ast.FunctionDef) and node.name in functions)]
+             or (isinstance(node, ast.FunctionDef) and node.name in functions)
+             or (isinstance(node, ast.ClassDef) and node.name in constants)]
     app = next(node for node in tree.body if isinstance(node, ast.ClassDef) and node.name == "DictationApp")
     nodes += [node for node in app.body if isinstance(node, ast.FunctionDef) and node.name in methods]
     exec(compile(ast.Module(body=nodes, type_ignores=[]), str(path), "exec"), module.__dict__)
@@ -61,7 +78,14 @@ def app():
         _transcription_owners=SimpleNamespace(claim=Mock(), release=Mock()),
     )
     for name in production.method_names:
-        setattr(fake, name, MethodType(getattr(production, name), fake))
+        method = getattr(production, name)
+        setattr(fake, name, method if name == "_log_cmd_utt_dropped" else MethodType(method, fake))
+    # _buffer_should_skip_decode now delegates to the richer run scanner.
+    # Keep this test at that boundary: individual VAD/ZCR behavior has its
+    # own tests, while these assertions cover which capture path is selected.
+    fake._speech_run_scan = Mock(return_value=production._SpeechRun(
+        False, 0, 0.0, 0.0, 0, "vad", False, 0.0))
+    fake._is_dictate_context_echo = Mock(return_value=False)
     return fake
 
 
@@ -150,12 +174,14 @@ def test_preview_and_empty_results_do_not_train_or_play_sound(app):
     app.play_sound.assert_not_called()
 
 
-def test_30_second_silence_skipped_and_only_first_eight_seconds_scanned(app):
+def test_30_second_silence_scans_in_bounded_eight_second_chunks(app):
     audio = np.zeros(30 * 16000, dtype=np.float32)
     assert app._buffer_should_skip_decode(audio, 16000, head_grace_ms=100)
-    args, kwargs = app._buffer_has_contiguous_speech.call_args
-    assert len(args[0]) == 8 * 16000
-    assert np.shares_memory(args[0], audio)
+    args, kwargs = app._speech_run_scan.call_args
+    assert args[0] is audio
+    # Long quiet buffers now scan every bounded eight-second chunk, rather
+    # than silently deciding from only the head.
+    assert kwargs["chunk_s"] == 8
     assert kwargs["head_grace_ms"] == 100
 
 
@@ -166,18 +192,20 @@ def test_speech_only_after_ten_seconds_above_existing_floor_skips_vad_not_decode
     audio[10 * 16000:] = floor * 4 * np.sin(2 * np.pi * 220 * t)
     assert np.sqrt(np.mean(audio ** 2)) > floor
     assert not app._buffer_should_skip_decode(audio, 16000)
-    app._buffer_has_contiguous_speech.assert_not_called()
+    app._speech_run_scan.assert_not_called()
 
 
 def test_quiet_long_buffer_with_contiguous_prefix_speech_is_kept(app):
-    app._buffer_has_contiguous_speech.return_value = True
+    app._speech_run_scan.return_value = app.production._SpeechRun(
+        True, 160, 0.0, 8.0, 1, "vad", False, 30.0)
     assert not app._buffer_should_skip_decode(np.zeros(30 * 16000), 16000)
 
 
 def test_short_buffer_retains_existing_presence_gate(app):
     audio = np.ones(8 * 16000, dtype=np.float32)
     assert app._buffer_should_skip_decode(audio, 16000)
-    assert app._buffer_has_contiguous_speech.call_args.args[0] is audio
+    assert app._speech_run_scan.call_args.args[0] is audio
+    assert app._speech_run_scan.call_args.kwargs["chunk_s"] is None
 
 
 def test_hotkey_language_rejection_cannot_be_retried_into_output(app):

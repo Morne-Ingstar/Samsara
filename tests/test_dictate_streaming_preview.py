@@ -137,6 +137,7 @@ def _bare_preview(app):
         show=lambda: None, close=lambda: None,
         update_text=lambda *a, **k: None,
         set_transcript=lambda *a, **k: None,
+        set_prompt=lambda *a, **k: None,
         flash_done_and_fade=lambda cb: cb() if cb else None,
     )
     session._closed = False
@@ -275,7 +276,13 @@ def _real_session_manager(ava_invocations=None):
 
 def _bare_preview_with_real_manager(ava_invocations=None):
     manager = _real_session_manager(ava_invocations=ava_invocations)
-    app = types.SimpleNamespace(_ensure_session_mode_manager=lambda: manager)
+    # DictatePreviewSession refreshes the live decoder prompt after a final;
+    # this focused control-phrase harness does not need to retain it, but it
+    # must implement the real app seam so that refresh cannot abort rendering.
+    app = types.SimpleNamespace(
+        _ensure_session_mode_manager=lambda: manager,
+        set_prompt=lambda *args, **kwargs: None,
+    )
     return _bare_preview(app)
 
 
@@ -971,7 +978,8 @@ class TestHandleCommandModeUtteranceOnFinalHook:
         app, _manager = _make_utterance_app(SessionMode.DICTATE, dictate_preview=preview)
         dictation.DictationApp._handle_command_mode_utterance(app, _buffer_for(), 16000)
         preview.on_utterance_final.assert_called_once_with(
-            "hello world", scratch_success=False, dictate_committed=False)
+            "hello world", scratch_success=False, dictate_committed=False,
+            draft_recovered=False)
 
     def test_scratch_success_outcome_is_threaded_through_as_the_real_signal(self):
         """dispatch_utterance's own outcome.kind == "scratch_success" -- not
@@ -983,7 +991,8 @@ class TestHandleCommandModeUtteranceOnFinalHook:
             SessionMode.DICTATE, dictate_preview=preview, outcome_kind="scratch_success")
         dictation.DictationApp._handle_command_mode_utterance(app, _buffer_for(), 16000)
         preview.on_utterance_final.assert_called_once_with(
-            "hello world", scratch_success=True, dictate_committed=False)
+            "hello world", scratch_success=True, dictate_committed=False,
+            draft_recovered=False)
 
     def test_dictate_committed_outcome_is_threaded_through_as_the_real_signal(self):
         """2026-07-19 dogfooding fix: outcome.kind == "dictate_committed" is
@@ -995,7 +1004,8 @@ class TestHandleCommandModeUtteranceOnFinalHook:
             SessionMode.DICTATE, dictate_preview=preview, outcome_kind="dictate_committed")
         dictation.DictationApp._handle_command_mode_utterance(app, _buffer_for(), 16000)
         preview.on_utterance_final.assert_called_once_with(
-            "hello world", scratch_success=False, dictate_committed=True)
+            "hello world", scratch_success=False, dictate_committed=True,
+            draft_recovered=False)
 
     @pytest.mark.parametrize("outcome_kind", [
         "dictate_commit_refused",
@@ -1011,7 +1021,8 @@ class TestHandleCommandModeUtteranceOnFinalHook:
             SessionMode.DICTATE, dictate_preview=preview, outcome_kind=outcome_kind)
         dictation.DictationApp._handle_command_mode_utterance(app, _buffer_for(), 16000)
         preview.on_utterance_final.assert_called_once_with(
-            "hello world", scratch_success=False, dictate_committed=False)
+            "hello world", scratch_success=False, dictate_committed=False,
+            draft_recovered=False)
 
     def test_command_lane_final_does_not_touch_the_preview(self):
         """COMMAND-lane utterances never showed a preview in the first
