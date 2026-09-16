@@ -87,17 +87,29 @@ from samsara.plugin_commands import command
 @command(
     "my command",
     aliases=["do the thing"],
-    description="Describe the effect",
     pack="core",
+    risk_class="read",
+    param_schema={"remainder": {"type": "str", "required": False}},
 )
 def my_command(app, remainder="", **kwargs):
+    """Describe the effect here; the command list reads this docstring."""
     # Use remainder for words spoken after the registered phrase.
+    # This example has no side effects. Implement your action here.
     return True
 ```
 
 Plugins are Python code with the same permissions as Samsara. Only install or
 write plugins you trust. Restart Samsara after adding or changing a plugin so
 plugin discovery runs cleanly.
+
+Choose risk and argument metadata that describe the action you actually
+implement; do not copy `risk_class="read"` onto a command that changes files,
+sends text, or controls another application. See the
+[execution policy](EXECUTION_POLICY.md) and
+[command catalog](COMMAND_CATALOG.md) for the current contract.
+
+Descriptions come from the handler's docstring; `description` is not an
+argument to the `command` decorator.
 
 ## Command Design Tips
 

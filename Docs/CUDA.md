@@ -37,3 +37,39 @@ The NVIDIA files remain governed by NVIDIA's applicable
 [CUDA](https://docs.nvidia.com/cuda/eula/) and
 [cuDNN](https://docs.nvidia.com/deeplearning/cudnn/backend/latest/reference/eula.html)
 license terms; they are not relicensed under Samsara's AGPL license.
+
+## Source environments
+
+For a source checkout, the same compatible runtime DLLs must be discoverable
+by ctranslate2 at startup. The application's device dropdown offers CUDA only
+when the complete required runtime set is available; an incomplete set falls
+back to CPU with a message identifying the missing files.
+
+If a compatible, already-tested PyTorch environment contains these libraries,
+you can copy them from its `torch\lib` folder. Adjust both paths to your own
+environments before running this PowerShell block with Samsara closed:
+
+```powershell
+$samsaraTorchLib = "<torch-env>\Lib\site-packages\torch\lib"
+$samsaraTranslateLib = "<samsara-env>\Lib\site-packages\ctranslate2"
+$samsaraCudaFiles = @(
+  "cublas64_12.dll", "cublasLt64_12.dll", "cudart64_12.dll",
+  "cudnn_adv64_9.dll", "cudnn_cnn64_9.dll",
+  "cudnn_engines_precompiled64_9.dll",
+  "cudnn_engines_runtime_compiled64_9.dll", "cudnn_graph64_9.dll",
+  "cudnn_heuristic64_9.dll", "cudnn_ops64_9.dll"
+)
+$samsaraCudaFiles | ForEach-Object {
+  Copy-Item -LiteralPath (Join-Path $samsaraTorchLib $_) -Destination $samsaraTranslateLib
+}
+```
+
+An arbitrary torch version is not a compatibility guarantee. Use the verified
+pack above if you do not already have a matching runtime set. Do not install
+torch solely to obtain these DLLs. For a source environment, unpack the pack
+into that environment's `Lib\site-packages\ctranslate2` directory rather than
+the packaged app's `_internal` directory.
+
+Restart Samsara, select **CUDA (NVIDIA GPU)** in Settings, and check the startup
+log for `Device: cuda, Compute: float16`. Performance varies with the GPU and
+transcription model; there is no fixed speedup multiplier.

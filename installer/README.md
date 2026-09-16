@@ -57,18 +57,19 @@ install is complete either way, and the Finished page says which case
 happened. `/ComponentsDir="D:\folder"` serves the archives from a local folder
 (no network); `/NoFetch` skips the step.
 
-Dispatch, not yet wired: `dictation.py`'s `__main__` block does not yet look
-at `sys.argv` for `--fetch-components`. The one addition it needs, before the
-instance lock is taken:
+Dispatch (wired in 108): `dictation.py` routes `--fetch-components` through
+`_dispatch_startup_argument`, at the top of the module.
+It runs above every heavy import, and above the single-instance lock.
+Both placements are load-bearing: above the imports so post-install costs
+~200 ms instead of a full app boot, and above the lock so a fetch requested
+while a session is already running still fetches instead of exiting 0 having
+done nothing.
 
-```python
-    if "--fetch-components" in sys.argv:
-        from samsara.ui.first_run_qt import fetch_components_main
-        sys.exit(fetch_components_main(sys.argv[1:]))
-```
-
-Until that lands, the installer's launch simply starts Samsara, whose
-first-run wizard offers the same components on its Optional Components page.
+The wizard's Optional Components page offers the same components, forever,
+for anything the installer did not fetch. It shares the download-and-unpack
+core (`fetch_and_install`) with this mode but not the outer shell: the
+installer needs argv and an exit code, the wizard needs per-component
+buttons and cancel.
 
 ## Accessibility
 
