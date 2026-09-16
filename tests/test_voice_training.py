@@ -357,7 +357,7 @@ class TestTrainingDataPersistence:
         assert vt.corrections_dict == {'wrong': 'right'}
 
     def test_load_training_data_missing_file(self, tmp_path):
-        """Test loading when training file doesn't exist"""
+        """A fresh profile is seeded once from the bundled dictionary."""
         mock_app = Mock()
         mock_app.config_path = tmp_path / 'config.json'
         mock_app.config = {'initial_prompt': ''}
@@ -366,7 +366,8 @@ class TestTrainingDataPersistence:
         vt = VoiceTrainingQt(mock_app)
 
         assert vt.custom_vocab == []
-        assert vt.corrections_dict == {}
+        assert vt.corrections_dict
+        assert (tmp_path / 'training_data.json').exists()
 
     def test_save_training_data(self, tmp_path):
         """Test saving training data to file"""
