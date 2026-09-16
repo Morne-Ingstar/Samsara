@@ -261,6 +261,15 @@ SETTINGS_SCHEMA = {
         "default": 0.25,
         "tab": "commands",
     },
+    # Queue 140: during a latched AVA reply, suppress the session capture
+    # path (including an already-open capture) while keeping OpenWakeWord
+    # available as the hands-free interruption route.
+    "command_mode.ava_tts_half_duplex": {
+        "type": "bool",
+        "default": True,
+        "tab": "commands",
+        "depends_on": "command_mode.enabled",
+    },
     # Ava Front Door P1: D3 command-first latched session (waterfall
     # resolver -- exact/alias match, then ACTION2 grammar, then one LLM
     # fallback pass). Replaces the deleted ai_command_mode.* block; see
