@@ -376,9 +376,15 @@ def handle_cube_page(app, remainder):
                 page = int(token)
                 break
     if page is None:
-        _speak(app, "Which page? Say cube page two.")
+        total = max(1, (len(_slots) + _max_rows(app) - 1) // _max_rows(app))
+        _speak(app, "Which page? Say cube page two." if total > 1
+               else "There is only one cube page.")
         return True
-    _page = max(1, page)
+    total = max(1, (len(_slots) + _max_rows(app) - 1) // _max_rows(app))
+    if page < 1 or page > total:
+        _speak(app, f"There {'is' if total == 1 else 'are'} only {total} cube page{'s' if total != 1 else ''}.")
+        return True
+    _page = page
     _render(app)
     print(f"[CUBE] page {_page}")
     return True

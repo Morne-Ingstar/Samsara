@@ -50,6 +50,10 @@ _c_void  = ctypes.c_void_p
 HRESULT  = ctypes.HRESULT
 
 GWL_EXSTYLE       = -20
+GW_OWNER           = 4
+WS_EX_TOOLWINDOW   = 0x00000080
+WS_EX_APPWINDOW    = 0x00040000
+DWMWA_CLOAKED      = 14
 WS_EX_LAYERED     = 0x00080000
 WS_EX_TRANSPARENT = 0x00000020
 SW_RESTORE        = 9
@@ -154,6 +158,40 @@ _SKIP_TITLES = frozenset({
     'Microsoft Text Input Application',
 })
 
+
+def _alt_tab_eligible(window: dict) -> bool:
+    """Whether a window meets the shell's application-window convention.
+
+    This is deliberately structural rather than an executable-name blocklist:
+    visible/minimized titled top-level windows survive, except DWM-cloaked
+    windows, tool windows, and ordinary owned dialogs.  APPWINDOW explicitly
+    opts a tool/owned window back in, matching the Win32 task-switcher
+    convention.
+    """
+    if not window.get("visible") and not window.get("minimized"):
+        return False
+    if not window.get("title") or window.get("cloaked"):
+        return False
+    exstyle = int(window.get("exstyle", 0))
+    appwindow = bool(exstyle & WS_EX_APPWINDOW)
+    if exstyle & WS_EX_TOOLWINDOW and not appwindow:
+        return False
+    if window.get("owner") and not appwindow:
+        return False
+    return True
+
+
+def _is_cloaked(hwnd) -> bool:
+    """True if DWM says the top-level window is not currently presentable."""
+    try:
+        value = wintypes.DWORD(0)
+        result = ctypes.windll.dwmapi.DwmGetWindowAttribute(
+            hwnd, DWMWA_CLOAKED, ctypes.byref(value), ctypes.sizeof(value))
+        return result == 0 and bool(value.value)
+    except Exception:
+        # Older Windows / unavailable DWM: retain the visible-window fallback.
+        return False
+
 def _own_hwnd(app) -> set:
     """Return hwnds to exclude from window listing.
 
@@ -175,11 +213,6 @@ def _get_all_windows(exclude_hwnds: set = None) -> list:
     def _cb(hwnd, _):
         if hwnd in exclude:
             return True
-        visible   = bool(user32.IsWindowVisible(hwnd))
-        minimized = bool(user32.IsIconic(hwnd))
-        if not visible and not minimized:
-            return True
-
         title_len = user32.GetWindowTextLengthW(hwnd)
         if title_len == 0:
             return True
@@ -190,6 +223,19 @@ def _get_all_windows(exclude_hwnds: set = None) -> list:
         if not title or title in _SKIP_TITLES:
             return True
         if title.startswith('Samsara'):
+            return True
+
+        visible = bool(user32.IsWindowVisible(hwnd))
+        minimized = bool(user32.IsIconic(hwnd))
+        descriptor = {
+            "visible": visible,
+            "minimized": minimized,
+            "title": title,
+            "owner": int(user32.GetWindow(hwnd, GW_OWNER) or 0),
+            "exstyle": int(user32.GetWindowLongPtrW(hwnd, GWL_EXSTYLE)),
+            "cloaked": _is_cloaked(hwnd),
+        }
+        if not _alt_tab_eligible(descriptor):
             return True
 
         rect = wintypes.RECT()
