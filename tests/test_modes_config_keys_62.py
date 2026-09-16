@@ -185,7 +185,7 @@ def test_silence_warnings_follow_the_value(qapp):
     ("end", "paste word"),
     ("dictate", "switches lanes"),
     ("command mode", "switches lanes"),
-    ("stop", "stop phrase"),
+    (sm.SESSION_STOP_PHRASES[0], "stop phrase"),
     ("scratch that", "scratching"),
     ("go to sleep", "already built in"),
     ("um", "ignored"),

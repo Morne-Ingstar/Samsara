@@ -14,7 +14,7 @@ from unittest.mock import Mock
 import numpy as np
 import pytest
 
-from samsara import session_modes
+from samsara import session_modes, transcript_gates
 from samsara.command_registry import CommandMatcher
 from samsara.session_modes import (
     CommandDispatchResult,
@@ -212,8 +212,8 @@ def test_show_windows_in_command_mode_dispatches_to_window_switcher_show_windows
     assert app._command_canonical_id("show numbers") == "show_numbers.show_numbers"
 
 
-_METHODS = ("_handle_command_mode_utterance", "_log_cmd_utt_dropped",
-            "_log_command_dispatch", "_command_canonical_id")
+_METHODS = ("_handle_command_mode_utterance", "_is_dictate_context_echo",
+            "_log_cmd_utt_dropped", "_log_command_dispatch", "_command_canonical_id")
 
 
 def _load_methods():
@@ -225,9 +225,24 @@ def _load_methods():
     module.__dict__.update(
         np=np, logger=logging.getLogger("dictation_extract_54"), SessionMode=SessionMode,
         resample_audio=lambda audio, *a: audio,
-        _drop_trailing_garbage_segments=lambda segs: segs,
-        _trim_trailing_garbage_run=lambda text: text,
-        _is_hallucinated_segments=lambda segs, text: False,
+        # Queue 128 moved these pure, Qt/model-free gates out of dictation.
+        # Import their production module instead of duplicating its AST seam.
+        _drop_trailing_garbage_segments=transcript_gates._drop_trailing_garbage_segments,
+        _trim_trailing_garbage_run=transcript_gates._trim_trailing_garbage_run,
+        _is_hallucinated_segments=transcript_gates._is_hallucinated_segments,
+        _is_quality_exhausted=transcript_gates._is_quality_exhausted,
+        _sanitise_context_tail=transcript_gates._sanitise_context_tail,
+        _CONTEXT_TAIL_CHARS=transcript_gates._CONTEXT_TAIL_CHARS,
+        _CONTEXT_ECHO_CHIP=transcript_gates._CONTEXT_ECHO_CHIP,
+        _is_context_echo=transcript_gates._is_context_echo,
+        is_scratch_that=session_modes.is_scratch_that,
+        is_dictate_commit=session_modes.is_dictate_commit,
+        is_recover_draft=session_modes.is_recover_draft,
+        match_switch_word=session_modes.match_switch_word,
+        # This extraction tests transcript dispatch/logging, not queue-69's
+        # execution-policy window lifecycle. A no-window adapter is the same
+        # safe seam the app uses when that optional module is unavailable.
+        _cancel_window_module=lambda: None,
     )
     exec(compile(ast.Module(body=nodes, type_ignores=[]), "dictation.py", "exec"), module.__dict__)
     return module

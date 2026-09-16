@@ -210,6 +210,10 @@ def test_stop_and_sleep_keep_their_existing_behaviour():
 
 def test_an_aborted_draft_is_kept_and_can_be_brought_back():
     manager = make_manager()
+    # Draft recovery is an ACKNOWLEDGEMENT. The default spoken-notices policy
+    # speaks questions only; use the explicit accessibility setting here to
+    # keep asserting the recovery guidance is available aloud.
+    manager.set_spoken_notices(sm.SPOKEN_NOTICES_EVERYTHING)
     stage(manager)
     draft = manager._dictate_pending_buffer
 
@@ -252,6 +256,7 @@ def test_recovered_text_goes_in_front_of_a_draft_started_since():
 
 def test_recovery_is_refused_plainly_when_there_is_nothing_to_recover():
     manager = make_manager()
+    manager.set_spoken_notices(sm.SPOKEN_NOTICES_EVERYTHING)
 
     outcome = manager.dispatch_utterance("bring back my draft", GOOD_SIGNALS)
 

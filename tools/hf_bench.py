@@ -186,6 +186,7 @@ def _source_helpers(relative_path, names):
 def load_production_adapter():
     """Bind only offline decode helpers; never execute the app/log bootstrap."""
     import numpy as np
+    from samsara import transcript_gates
     diagnostics = _source_helpers("samsara/diagnostics.py", {"segment_signals"})
     languages = _source_helpers("samsara/languages.py", {"resolve_transcribe_language"})
     constants_module = _source_helpers(
@@ -193,18 +194,19 @@ def load_production_adapter():
 
     path = REPO_ROOT / "dictation.py"
     tree = ast.parse(path.read_text(encoding="utf-8"))
-    # Queue 128 moved the output-text quality gates (and the compression
-    # threshold only they read) into samsara/transcript_gates.py, unchanged.
-    # dictation.py re-exports them, but an ImportFrom node is not something
-    # this source-level scrape can execute, so they are read from the file
-    # they now live in -- into the SAME module dict, so gate_overrides()
-    # still rebinds the constants the gate functions actually close over.
-    gates_path = REPO_ROOT / "samsara" / "transcript_gates.py"
-    gates_tree = ast.parse(gates_path.read_text(encoding="utf-8"))
-    constants = {
-        "_NO_SPEECH_THRESHOLD", "_LOGPROB_THRESHOLD", "_COMPRESSION_RATIO_THRESHOLD",
-        "_GATE_VAD_PROB", "_GATE_MIN_CONTIG_MS", "_HALLUCINATION_STRING_BLACKLIST",
+    # Queue 128 moved these gates into an importable pure module.  Import it
+    # directly: scraping an ImportFrom re-export in dictation.py silently
+    # misses dependencies whenever that seam moves again.
+    # Four thresholds remain local to the decode entry points.  The two
+    # extraction-era quality-gate constants are owned by transcript_gates.
+    dictation_constants = {
+        "_NO_SPEECH_THRESHOLD", "_LOGPROB_THRESHOLD",
+        "_GATE_VAD_PROB", "_GATE_MIN_CONTIG_MS",
     }
+    gate_constants = {
+        "_COMPRESSION_RATIO_THRESHOLD", "_HALLUCINATION_STRING_BLACKLIST",
+    }
+    constants = dictation_constants | gate_constants
     functions = {
         "_create_whisper_model", "resample_audio", "_is_hallucinated_segments",
         "_is_quality_exhausted", "_keep_low_confidence_long_chunk",
@@ -222,16 +224,17 @@ def load_production_adapter():
                     for target in node.targets))]
 
     nodes = _selected(tree.body)
-    gates_nodes = _selected(gates_tree.body)
     methods = [node for node in app.body
                if isinstance(node, ast.FunctionDef) and node.name in method_names]
     module = ModuleType("hf_bench_production")
     module.__dict__.update(np=np, re=re, string=string, logging=logging,
                            diagnostics=diagnostics, _languages=languages,
                            MODEL_SAMPLE_RATE=constants_module.MODEL_SAMPLE_RATE,
-                           CONTIGUOUS_VAD_PROB_THRESHOLD=constants_module.CONTIGUOUS_VAD_PROB_THRESHOLD)
-    exec(compile(ast.Module(body=gates_nodes, type_ignores=[]), str(gates_path), "exec"),
-         module.__dict__)
+                           CONTIGUOUS_VAD_PROB_THRESHOLD=constants_module.CONTIGUOUS_VAD_PROB_THRESHOLD,
+                           transcript_gates=transcript_gates)
+    for name in gate_constants | {"_is_hallucinated_segments", "_is_quality_exhausted",
+                                  "_keep_low_confidence_long_chunk", "_apply_segment_quality_gates"}:
+        module.__dict__[name] = getattr(transcript_gates, name)
     exec(compile(ast.Module(body=nodes + methods, type_ignores=[]), str(path), "exec"),
          module.__dict__)
     required = constants | functions | method_names
@@ -312,16 +315,21 @@ class RealPipeline:
                  "_NO_SPEECH_THRESHOLD": "no_speech_threshold",
                  "_LOGPROB_THRESHOLD": "log_prob_threshold",
                  "_COMPRESSION_RATIO_THRESHOLD": "compression_ratio_threshold"}
-        old = {}
+        old = []
         try:
             for name, key in names.items():
                 if key in self.config:
-                    old[name] = getattr(self.production, name)
-                    setattr(self.production, name, self.config[key])
+                    # Gate functions retain transcript_gates' globals after
+                    # direct import, so override there as well as on the
+                    # adapter's public compatibility view.
+                    for target in (self.production, self.production.transcript_gates):
+                        if hasattr(target, name):
+                            old.append((target, name, getattr(target, name)))
+                            setattr(target, name, self.config[key])
             yield
         finally:
-            for name, value in old.items():
-                setattr(self.production, name, value)
+            for target, name, value in reversed(old):
+                setattr(target, name, value)
 
     def run(self, audio, rate: int) -> tuple[str, list, float]:
         audio = self.production.resample_audio(audio, rate, self.model_rate)
