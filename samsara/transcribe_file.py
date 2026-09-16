@@ -36,6 +36,7 @@ from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Callable, Optional
 
+from samsara import audio_tools
 from samsara.log import get_logger
 
 logger = get_logger(__name__)
@@ -196,12 +197,10 @@ def load_audio(path, sample_rate: int = SAMPLE_RATE):
 # ---------------------------------------------------------------------------
 
 def _split(app, audio):
-    """The app's own splitter, at its own defaults. Imported lazily and by
-    name so this module never imports dictation at collection time."""
+    """The app's own splitter, at its own defaults."""
     splitter = getattr(app, "_split_audio_at_silences", None)
     if splitter is None:
-        import dictation  # noqa: PLC0415
-        splitter = dictation._split_audio_at_silences
+        splitter = audio_tools._split_audio_at_silences
     return splitter(audio, SAMPLE_RATE)
 
 

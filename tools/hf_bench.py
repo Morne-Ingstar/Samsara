@@ -186,7 +186,7 @@ def _source_helpers(relative_path, names):
 def load_production_adapter():
     """Bind only offline decode helpers; never execute the app/log bootstrap."""
     import numpy as np
-    from samsara import transcript_gates
+    from samsara import audio_tools, transcript_gates
     diagnostics = _source_helpers("samsara/diagnostics.py", {"segment_signals"})
     languages = _source_helpers("samsara/languages.py", {"resolve_transcribe_language"})
     constants_module = _source_helpers(
@@ -208,7 +208,7 @@ def load_production_adapter():
     }
     constants = dictation_constants | gate_constants
     functions = {
-        "_create_whisper_model", "resample_audio", "_is_hallucinated_segments",
+        "_create_whisper_model", "_is_hallucinated_segments",
         "_is_quality_exhausted", "_keep_low_confidence_long_chunk",
         "_apply_segment_quality_gates",
     }
@@ -231,7 +231,8 @@ def load_production_adapter():
                            diagnostics=diagnostics, _languages=languages,
                            MODEL_SAMPLE_RATE=constants_module.MODEL_SAMPLE_RATE,
                            CONTIGUOUS_VAD_PROB_THRESHOLD=constants_module.CONTIGUOUS_VAD_PROB_THRESHOLD,
-                           transcript_gates=transcript_gates)
+                           transcript_gates=transcript_gates,
+                           resample_audio=audio_tools.resample_audio)
     for name in gate_constants | {"_is_hallucinated_segments", "_is_quality_exhausted",
                                   "_keep_low_confidence_long_chunk", "_apply_segment_quality_gates"}:
         module.__dict__[name] = getattr(transcript_gates, name)
