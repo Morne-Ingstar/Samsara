@@ -70,6 +70,24 @@ class TestRowOutcome:
         outcome = row_outcome({"entry_type": "command", "status": "success"})
         assert outcome.label == "Command"
 
+    @pytest.mark.parametrize(("matched", "expected"), [
+        ("switch to", "focus"),
+        ("switch audio to", "switch audio to"),
+    ])
+    def test_command_pill_uses_full_catalog_form(self, matched, expected):
+        outcome = row_outcome({
+            "entry_type": "command", "status": "success",
+            "matched_command": matched,
+        })
+        assert outcome.label == expected
+
+    def test_command_pill_keeps_removed_command_phrase(self):
+        outcome = row_outcome({
+            "entry_type": "command", "status": "success",
+            "matched_command": "my legacy macro",
+        })
+        assert outcome.label == "my legacy macro"
+
     def test_wake_command_pill(self):
         outcome = row_outcome({"entry_type": "wake_command", "status": "success", "display_text": "stop listening"})
         assert outcome.label == "Command"

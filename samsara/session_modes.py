@@ -1459,6 +1459,16 @@ def _first_two_words(phrase) -> str:
     return " ".join(str(phrase or "").split()[:2])
 
 
+def _command_chip_label(text: str, phrase) -> str:
+    """Visible command text plus its catalog id for the outcome ring.
+
+    The import is deliberately here: session_modes is the command-path core,
+    while the catalog is only needed when a chip is actually built.
+    """
+    from samsara.outcome_ring import command_chip_label
+    return command_chip_label(text, phrase)
+
+
 def _mode_label(mode) -> str:
     value = getattr(mode, "value", mode)
     return str(value or "").upper()
@@ -1495,11 +1505,12 @@ def outcome_chip(kind: str, detail: Optional[dict] = None) -> "tuple[str, str] |
         return ("MISS", "error")
     if kind == "command_awaiting_confirmation":
         verb = _first_two_words(detail.get("phrase"))
-        return (f"{verb}? yes or no" if verb else "yes or no?", "pending")
+        text = f"{verb}? yes or no" if verb else "yes or no?"
+        return (_command_chip_label(text, detail.get("phrase")), "pending")
     if kind == "command_cancel_window":
         verb = _first_two_words(detail.get("phrase"))
-        return (f"running {verb}{CHIP_ELLIPSIS} say no" if verb else f"running{CHIP_ELLIPSIS} say no",
-                "pending")
+        text = (f"running {verb}{CHIP_ELLIPSIS} say no" if verb else f"running{CHIP_ELLIPSIS} say no")
+        return (_command_chip_label(text, detail.get("phrase")), "pending")
     if kind == "stopped":
         return _stopped_chip(detail)
     if kind == "pending_reply":
@@ -1517,19 +1528,23 @@ def outcome_chip(kind: str, detail: Optional[dict] = None) -> "tuple[str, str] |
         if detail.get("state") in ("queued", "matched"):
             # Accepted, outcome still to come: an honest "working on it",
             # never a success tick for work that has not finished.
-            return (f"{verb}{CHIP_ELLIPSIS}" if verb else CHIP_ELLIPSIS, "accent")
-        return (f"{CHIP_CHECK} {verb}" if verb else CHIP_CHECK, "success")
+            text = f"{verb}{CHIP_ELLIPSIS}" if verb else CHIP_ELLIPSIS
+            return (_command_chip_label(text, detail.get("phrase")), "accent")
+        text = f"{CHIP_CHECK} {verb}" if verb else CHIP_CHECK
+        return (_command_chip_label(text, detail.get("phrase")), "success")
     if kind == "command_failed" or (kind == "hands_free_command_failed"
                                     and detail.get("state") in ("rejected", "cancelled")):
         state = detail.get("state")
         verb = _first_two_words(detail.get("phrase"))
         if state == "rejected":
-            return (f"refused: {verb}" if verb else "refused", "warning")
+            text = f"refused: {verb}" if verb else "refused"
+            return (_command_chip_label(text, detail.get("phrase")), "warning")
         if state == "cancelled":
-            return (f"cancelled: {verb}" if verb else "cancelled", "warning")
+            text = f"cancelled: {verb}" if verb else "cancelled"
+            return (_command_chip_label(text, detail.get("phrase")), "warning")
         if not detail.get("reason") and not detail.get("error") and verb:
-            return (f"{CHIP_CROSS} {verb}", "error")
-        return (f"{CHIP_CROSS} {_reason(kind, detail)}", "error")
+            return (_command_chip_label(f"{CHIP_CROSS} {verb}", detail.get("phrase")), "error")
+        return (_command_chip_label(f"{CHIP_CROSS} {_reason(kind, detail)}", detail.get("phrase")), "error")
     if kind == "mode_switch":
         if detail.get("sleep"):
             return ("asleep", "accent")
@@ -1541,7 +1556,10 @@ def outcome_chip(kind: str, detail: Optional[dict] = None) -> "tuple[str, str] |
 
     if kind in ("ava_entry_failed", "hands_free_command_failed",
                 "dictate_commit_failed", "prefix_switch_failed"):
-        return (f"{CHIP_CROSS} {_reason(kind, detail)}", "error")
+        text = f"{CHIP_CROSS} {_reason(kind, detail)}"
+        if kind == "hands_free_command_failed":
+            text = _command_chip_label(text, detail.get("phrase"))
+        return (text, "error")
 
     if kind in ("dictate_commit_blocked_focus_lock", "dictate_suppressed_focus_lock"):
         return ("refused: focus lock", "warning")
@@ -1552,9 +1570,12 @@ def outcome_chip(kind: str, detail: Optional[dict] = None) -> "tuple[str, str] |
     if kind == "hands_free_command_blocked":
         commit = str(detail.get("commit_outcome", ""))
         why = "focus lock" if "focus" in commit else "blocked"
-        return (f"refused: {why}", "warning")
+        return (_command_chip_label(f"refused: {why}", detail.get("phrase")), "warning")
     if kind in ("dictate_commit_refused", "hands_free_command_refused"):
-        return ("refused: unclear", "warning")
+        text = "refused: unclear"
+        if kind == "hands_free_command_refused":
+            text = _command_chip_label(text, detail.get("phrase"))
+        return (text, "warning")
     # Found in source, not named in the queue-41 brief -- mapped on purpose.
     if kind == "dictate_commit_unavailable":
         return ("refused: nothing staged", "warning")

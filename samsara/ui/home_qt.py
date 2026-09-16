@@ -57,7 +57,7 @@ from PySide6.QtWidgets import (
     QScrollArea, QSizePolicy, QVBoxLayout, QWidget,
 )
 
-from samsara import __version__, command_catalog, config_defaults
+from samsara import __version__, command_catalog, config_defaults, outcome_ring as outcome_ring_schema
 from samsara.log import get_logger
 from samsara.session_modes import CHIP_CHECK, CHIP_CROSS
 from samsara.ui import home_signals, theme
@@ -770,11 +770,10 @@ def render_outcome(app, outcome) -> tuple:
     """(kind label, content) for an outcome tuple (label, kind, ts): the
     kind in plain words first, then what it was about.
 
-    A command chip stores only the first two words of its phrase
-    (session_modes.outcome_chip), which can sever the object ("switch to"),
-    so the row claims no verb for it: "Ran a command" plus the stored
-    fragment. Chips outside the three kinds show their own label as the
-    kind and no content."""
+    Command records carry a catalog id alongside their short live-chip label.
+    The row resolves that id through the cached ring lookup; old records and
+    removed commands keep their stored human text. Chips outside the three
+    kinds show their own label as the kind and no content."""
     label, kind = str(outcome[0]), str(outcome[1])
     cls = classify_outcome(label, kind)
     if cls == "typed":
@@ -785,7 +784,10 @@ def render_outcome(app, outcome) -> tuple:
         return (KIND_MISSED, quoted(heard) if heard else "")
     if cls == "command":
         fragment = label[len(CHIP_CHECK):].strip()
-        return (KIND_RAN, quoted(fragment) if fragment else "")
+        record = outcome_ring_schema.as_record(outcome)
+        command_id = record.canonical_id if record is not None else ""
+        text = outcome_ring_schema.canonical_command_label(command_id, fragment)
+        return (KIND_RAN, quoted(text) if text else "")
     return (label, "")
 
 

@@ -1058,6 +1058,36 @@ HINT = home_signals.Hint(
     evidence="4/20 recent captures recorded outcome empty or gated (threshold 3)")
 
 
+class TestCommandOutcomeRendering:
+    """Queue 154: the live chip may be short; Home must not be."""
+
+    @pytest.mark.parametrize(("spoken", "expected"), [
+        ("switch to", "focus"),
+        ("switch audio to", "switch audio to"),
+    ])
+    def test_catalog_id_renders_full_canonical_command(self, spoken, expected):
+        from samsara import outcome_ring as ring_schema
+        from samsara.session_modes import outcome_chip
+
+        label, kind = outcome_chip("command_executed", {"phrase": spoken})
+        record = ring_schema.record(label, kind, 1.0, "command_executed")
+
+        assert record.canonical_id
+        assert home_qt.render_outcome(_app(), record) == (
+            home_qt.KIND_RAN, home_qt.quoted(expected))
+
+    def test_missing_catalog_id_keeps_the_stored_human_label(self):
+        from samsara import outcome_ring as ring_schema
+        from samsara.session_modes import CHIP_CHECK
+
+        record = ring_schema.record(
+            f"{CHIP_CHECK} legacy macro", "success", 1.0,
+            "command_executed", "macros.removed_command")
+
+        assert home_qt.render_outcome(_app(), record) == (
+            home_qt.KIND_RAN, home_qt.quoted("legacy macro"))
+
+
 class TestHomeFitsTheDefaultWindow:
     """The owner's constraint (89): DEFAULT_WIDTH x DEFAULT_HEIGHT stays
     900x650 and Home's content has to fit the 548 px viewport it leaves.
