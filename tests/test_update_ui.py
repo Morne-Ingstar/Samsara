@@ -252,12 +252,16 @@ def test_tray_update_action_changes_to_install_and_notifies(qapp, monkeypatch):
     monkeypatch.setattr(
         update_qt, "maybe_start_automatic_update_check", lambda *_args: False,
     )
-    tray = SamsaraTrayQt(_tray_app())
+    # 61: the tray entry is behind updates.tray_menu_entry (default off);
+    # "Check for Updates" lives in Tools, a found update is offered top level.
+    tray = SamsaraTrayQt(_tray_app({"updates": {"tray_menu_entry": True}}))
     message = Mock()
     monkeypatch.setattr(tray._tray, "showMessage", message)
     try:
         tray._rebuild_menu()
-        assert "Check for Updates…" in _texts(tray._menu)
+        tools = next(a.menu() for a in tray._menu.actions() if a.text() == "Tools")
+        assert "Check for Updates…" in _texts(tools)
+        assert "Check for Updates…" not in _texts(tray._menu)
 
         release = _release()
         tray._show_update_available(release)
@@ -268,7 +272,8 @@ def test_tray_update_action_changes_to_install_and_notifies(qapp, monkeypatch):
 
         tray._rebuild_menu()
         assert "Install Samsara v0.22.1…" in _texts(tray._menu)
-        assert "Check for Updates…" not in _texts(tray._menu)
+        tools = next(a.menu() for a in tray._menu.actions() if a.text() == "Tools")
+        assert "Check for Updates…" not in _texts(tools)
     finally:
         tray.stop()
 

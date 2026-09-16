@@ -112,9 +112,14 @@ def test_module_level_steps_run_in_the_original_order():
 def test_main_block_steps_run_in_the_original_order():
     tree = _tree(DICTATION_SRC)
     main = next(n for n in tree.body if isinstance(n, ast.If) and "__main__" in ast.dump(n.test))
+    # 48: the crash-evidence steps run right after the instance lock (a refused
+    # second launch must never touch the running session's marker) and before
+    # anything else can crash.
     assert _boot_call_lines([main]) == [
-        "lock_single_instance", "migrate_legacy_source_profile",
-        "apply_early_interface_scale", "create_splash", "show_startup_failure",
+        "lock_single_instance", "begin_session", "install_exception_hooks", "install_qt_message_handler",
+        "migrate_legacy_source_profile",
+        "apply_early_interface_scale", "apply_early_theme",
+        "create_splash", "show_startup_failure",
     ]
     src = ast.unparse(main)
     assert src.index("create_splash") < src.index("DictationApp(splash)")

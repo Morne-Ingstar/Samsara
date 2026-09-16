@@ -53,7 +53,7 @@ class HealthPage:
             "Health entries are logged automatically by voice command."
         )
         instant_note.setWordWrap(True)
-        instant_note.setStyleSheet(f"color: {theme.ICON_IDLE}; font-size: 12px;")
+        instant_note.setStyleSheet(f"color: {theme.ICON_IDLE}; font-size: {theme.TYPE_MIN}px;")
         layout.addWidget(instant_note)
         layout.addSpacing(8)
 
@@ -88,7 +88,7 @@ class HealthPage:
         for group_name, cmds in commands_info:
             group_lbl = QLabel(group_name)
             group_lbl.setStyleSheet(
-                f"color: {theme.TEXT_PRIMARY}; font-size: 13px; font-weight: 600; "
+                f"color: {theme.TEXT_PRIMARY}; font-size: {theme.TYPE_BODY}px; font-weight: 600; "
                 "margin-top: 6px;"
             )
             layout.addWidget(group_lbl)
@@ -97,12 +97,12 @@ class HealthPage:
                 row.setContentsMargins(12, 1, 0, 1)
                 p = QLabel(phrase)
                 p.setStyleSheet(
-                    f"color: {theme.ACCENT}; font-size: 12px; "
+                    f"color: {theme.ACCENT}; font-size: {theme.TYPE_MIN}px; "
                     "font-family: 'Consolas', 'Courier New', monospace;"
                 )
                 p.setMinimumWidth(240)
                 d = QLabel(desc)
-                d.setStyleSheet(f"color: {theme.ICON_IDLE}; font-size: 12px;")
+                d.setStyleSheet(f"color: {theme.ICON_IDLE}; font-size: {theme.TYPE_MIN}px;")
                 row.addWidget(p)
                 row.addWidget(d, stretch=1)
                 layout.addLayout(row)
@@ -114,7 +114,7 @@ class HealthPage:
         layout.addSpacing(4)
 
         self._health_count_label = QLabel("Loading...")
-        self._health_count_label.setStyleSheet(f"color: {theme.ICON_IDLE}; font-size: 12px;")
+        self._health_count_label.setStyleSheet(f"color: {theme.ICON_IDLE}; font-size: {theme.TYPE_MIN}px;")
         layout.addWidget(self._health_count_label)
         layout.addSpacing(4)
 
@@ -154,7 +154,7 @@ class HealthPage:
         self._health_summary_label = QLabel("")
         self._health_summary_label.setWordWrap(True)
         self._health_summary_label.setStyleSheet(
-            f"color: {theme.TEXT_PRIMARY}; font-size: 13px; line-height: 1.5;"
+            f"color: {theme.TEXT_PRIMARY}; font-size: {theme.TYPE_BODY}px; line-height: 1.5;"
         )
         layout.addWidget(self._health_summary_label)
         layout.addSpacing(20)
@@ -179,7 +179,7 @@ class HealthPage:
         layout.addLayout(export_row)
 
         self._health_export_label = QLabel("")
-        self._health_export_label.setStyleSheet(f"color: {theme.ICON_IDLE}; font-size: 12px;")
+        self._health_export_label.setStyleSheet(f"color: {theme.ICON_IDLE}; font-size: {theme.TYPE_MIN}px;")
         layout.addWidget(self._health_export_label)
         layout.addSpacing(20)
 
@@ -192,7 +192,7 @@ class HealthPage:
             "is heard correctly."
         )
         dict_desc.setWordWrap(True)
-        dict_desc.setStyleSheet(f"color: {theme.ICON_IDLE}; font-size: 12px;")
+        dict_desc.setStyleSheet(f"color: {theme.ICON_IDLE}; font-size: {theme.TYPE_MIN}px;")
         layout.addWidget(dict_desc)
         layout.addSpacing(6)
 
@@ -206,7 +206,7 @@ class HealthPage:
         layout.addLayout(dict_row)
 
         self._med_dict_label = QLabel("")
-        self._med_dict_label.setStyleSheet(f"color: {theme.ICON_IDLE}; font-size: 12px;")
+        self._med_dict_label.setStyleSheet(f"color: {theme.ICON_IDLE}; font-size: {theme.TYPE_MIN}px;")
         layout.addWidget(self._med_dict_label)
 
         layout.addStretch()
@@ -333,7 +333,7 @@ class HealthPage:
             dict_path = Path(_SETTINGS_QT_FILE).parent.parent.parent / "dictionaries" / "medications.json"
             if not dict_path.exists():
                 self._med_dict_label.setText("Dictionary file not found.")
-                self._med_dict_label.setStyleSheet(f"color: {theme.ERROR}; font-size: 12px;")
+                self._med_dict_label.setStyleSheet(f"color: {theme.ERROR}; font-size: {theme.TYPE_MIN}px;")
                 return
 
             with open(dict_path, "r", encoding="utf-8") as f:
@@ -362,7 +362,7 @@ class HealthPage:
             self._med_dict_label.setText(
                 f"Added {added} new terms ({total} total medication words in vocabulary)."
             )
-            self._med_dict_label.setStyleSheet(f"color: {theme.ACCENT}; font-size: 12px;")
+            self._med_dict_label.setStyleSheet(f"color: {theme.ACCENT}; font-size: {theme.TYPE_MIN}px;")
         except Exception as ex:
             self._med_dict_label.setText(f"Error: {ex}")
-            self._med_dict_label.setStyleSheet(f"color: {theme.ERROR}; font-size: 12px;")
+            self._med_dict_label.setStyleSheet(f"color: {theme.ERROR}; font-size: {theme.TYPE_MIN}px;")

@@ -239,31 +239,40 @@ def _css_color_to_qcolor(css: str) -> QColor:
 class _HotkeyButton(QPushButton):
     """Shows the current hotkey combo; captures a new one when clicked."""
 
-    _IDLE = (
-        "QPushButton {"
-        f" background-color: {theme.BG2};"
-        " border: 1px solid rgba(255,255,255,0.14);"
-        " border-radius: 6px;"
-        f" color: {theme.TEXT_PRIMARY};"
-        " font-size: 12px;"
-        " font-family: 'Consolas', 'Courier New', monospace;"
-        " padding: 6px 14px;"
-        "}"
-        "QPushButton:hover {"
-        " background-color: #1E1E24;"
-        "}"
-    )
-    _CAPTURING = (
-        "QPushButton {"
-        " background-color: rgba(94,234,212,0.08);"
-        f" border: 1px solid {theme.ACCENT};"
-        " border-radius: 6px;"
-        f" color: {theme.ACCENT};"
-        " font-size: 12px;"
-        " font-family: 'Consolas', 'Courier New', monospace;"
-        " padding: 6px 14px;"
-        "}"
-    )
+    @staticmethod
+    def _idle_qss() -> str:
+        """Built per call: a stylesheet assigned in the class body is
+        evaluated once, when the module is imported, so it would keep
+        the startup palette for the life of the process (queue 129)."""
+        return (
+            "QPushButton {"
+            f" background-color: {theme.BG2};"
+            f" border: 1px solid {theme.wash(0.14)};"
+            " border-radius: 6px;"
+            f" color: {theme.TEXT_PRIMARY};"
+            f" font-size: {theme.TYPE_MIN}px;"
+            " font-family: 'Consolas', 'Courier New', monospace;"
+            " padding: 6px 14px;"
+            "}"
+            "QPushButton:hover {"
+            f" background-color: {theme.BG1};"
+            "}"
+        )
+
+    @staticmethod
+    def _capturing_qss() -> str:
+        """The capturing state. See _idle_qss()."""
+        return (
+            "QPushButton {"
+            f" background-color: {theme.tint(theme.ACCENT, 0.08)};"
+            f" border: 1px solid {theme.ACCENT};"
+            " border-radius: 6px;"
+            f" color: {theme.ACCENT};"
+            f" font-size: {theme.TYPE_MIN}px;"
+            " font-family: 'Consolas', 'Courier New', monospace;"
+            " padding: 6px 14px;"
+            "}"
+        )
 
     # Side mouse buttons a capture may bind (main hotkey only; see allow_mouse).
     _MOUSE_CAPTURE = {
@@ -280,7 +289,7 @@ class _HotkeyButton(QPushButton):
         self._on_change = on_change   # optional callable(), fired after a new combo is captured
         self.setMinimumWidth(180)
         self.setFocusPolicy(Qt.FocusPolicy.StrongFocus)
-        self.setStyleSheet(self._IDLE)
+        self.setStyleSheet(self._idle_qss())
         self.clicked.connect(self._start_capture)
 
     @property
@@ -300,7 +309,7 @@ class _HotkeyButton(QPushButton):
         self._capturing = True
         self._held = set()
         self.setText(self._capture_prompt())
-        self.setStyleSheet(self._CAPTURING)
+        self.setStyleSheet(self._capturing_qss())
         self.setFocus()
 
     def _finish_capture(self):
@@ -308,7 +317,7 @@ class _HotkeyButton(QPushButton):
         if self._held:
             self._combo = _combo_str(self._held)
         self.setText(self._idle_text(self._combo))
-        self.setStyleSheet(self._IDLE)
+        self.setStyleSheet(self._idle_qss())
         if self._on_change is not None:
             self._on_change()
 
@@ -372,15 +381,20 @@ def _readable_hotkey(combo: str) -> str:
 class _AlarmHotkeyButton(_HotkeyButton):
     """Alarm shortcut capture with a readable action-labelled idle state."""
 
-    _ALARM_IDLE = _HotkeyButton._IDLE.replace(
-        "font-size: 12px;", "font-size: 14px; font-weight: 600;"
-    ).replace("'Consolas', 'Courier New', monospace", "'Segoe UI', sans-serif")
+    @staticmethod
+    def _alarm_idle_qss() -> str:
+        """The alarm rows read as sentences, not as key caps: one step up in
+        size, semibold, and the UI face instead of the monospace one."""
+        return _HotkeyButton._idle_qss().replace(
+            f"font-size: {theme.TYPE_MIN}px;",
+            f"font-size: {theme.TYPE_BODY}px; font-weight: 600;"
+        ).replace("'Consolas', 'Courier New', monospace", "'Segoe UI', sans-serif")
 
     def __init__(self, combo: str, action: str):
         self._alarm_action = action
         super().__init__(combo)
         self.setMinimumHeight(38)
-        self.setStyleSheet(self._ALARM_IDLE)
+        self.setStyleSheet(self._alarm_idle_qss())
         self._show_idle_text()
 
     def _show_idle_text(self) -> None:
@@ -391,7 +405,7 @@ class _AlarmHotkeyButton(_HotkeyButton):
 
     def _finish_capture(self):
         super()._finish_capture()
-        self.setStyleSheet(self._ALARM_IDLE)
+        self.setStyleSheet(self._alarm_idle_qss())
         self._show_idle_text()
 
 
@@ -438,35 +452,47 @@ class _HeightForWidthWidget(QWidget):
 # Stylesheet
 # ---------------------------------------------------------------------------
 
-STYLESHEET = Template("""
-QMainWindow, QWidget {
-    background-color: ${BG0};
-    color: ${TEXT_PRIMARY};
+def stylesheet() -> str:
+    """The Settings window's own sheet, built on demand.
+
+    Not a module constant: a Template substituted at import time freezes
+    whichever palette was live then -- and this is the one window the user
+    changes the theme FROM (queue 129).
+
+    _SettingsWindow's sheet overrides the shared theme's QComboBox
+    subcontrols, so the real high-contrast chevron is repeated here:
+    reserving a drop-down area without an arrow made every selector look
+    like a read-only text field. A window's own sheet also outranks the
+    application sheet, so the shared scrollbar rule comes along too."""
+    return (Template(f"""
+QMainWindow, QWidget {{
+    background-color: ${{BG0}};
+    color: ${{TEXT_PRIMARY}};
     font-family: 'Segoe UI', system-ui, sans-serif;
-    font-size: 14px;
-}
-QListWidget {
-    background-color: ${BG1};
-    border-right: 1px solid rgba(255,255,255,0.08);
-    color: #AEB4C0;
-    font-size: 14px;
+    font-size: {theme.TYPE_BODY}px;
+}}
+QListWidget {{
+    background-color: ${{BG1}};
+    border-right: 1px solid {theme.wash(0.08)};
+    color: {theme.TEXT_SECONDARY};
+    font-size: {theme.TYPE_BODY}px;
     padding: 8px 0;
     outline: none;
-}
-QListWidget::item {
+}}
+QListWidget::item {{
     padding: 10px 20px;
     border: none;
-}
-QListWidget::item:selected {
-    background-color: rgba(94, 234, 212, 0.12);
-    color: ${ACCENT};
-    border-left: 2px solid ${ACCENT};
-}
-QListWidget::item:hover {
-    background-color: rgba(255,255,255,0.03);
-}
-QLabel {
-    color: ${TEXT_PRIMARY};
+}}
+QListWidget::item:selected {{
+    background-color: {theme.tint(theme.ACCENT, 0.12)};
+    color: ${{ACCENT}};
+    border-left: 2px solid ${{ACCENT}};
+}}
+QListWidget::item:hover {{
+    background-color: {theme.wash(0.03)};
+}}
+QLabel {{
+    color: ${{TEXT_PRIMARY}};
     /* QLabel inherits from QWidget, so without this it picks up the
        QMainWindow, QWidget rule's background-color (BG0) above as an
        opaque bar behind every label -- most visible against the lighter
@@ -474,36 +500,36 @@ QLabel {
        lets each label show whatever surface (card, panel, window) it
        actually sits on instead of painting its own opaque rectangle. */
     background-color: transparent;
-}
-QLabel[class="description"] {
-    color: #AEB4C0;
-    font-size: 13px;
-}
-QLabel[class="section-title"] {
-    color: ${ACCENT};
-    font-size: 16px;
+}}
+QLabel[class="description"] {{
+    color: {theme.TEXT_SECONDARY};
+    font-size: {theme.TYPE_BODY}px;
+}}
+QLabel[class="section-title"] {{
+    color: ${{ACCENT}};
+    font-size: {theme.TYPE_HEADING}px;
     font-weight: bold;
-}
-QComboBox {
-    background-color: ${BG2};
-    border: 1px solid rgba(255,255,255,0.14);
+}}
+QComboBox {{
+    background-color: ${{BG2}};
+    border: 1px solid {theme.wash(0.14)};
     border-radius: 6px;
     padding: 8px 12px;
-    color: ${TEXT_PRIMARY};
+    color: ${{TEXT_PRIMARY}};
     min-width: 200px;
-}
-QComboBox::drop-down {
+}}
+QComboBox::drop-down {{
     border: none;
     width: 30px;
-}
-QComboBox QAbstractItemView {
-    background-color: ${BG2};
-    color: ${TEXT_PRIMARY};
-    selection-background-color: rgba(94, 234, 212, 0.2);
-    border: 1px solid rgba(255,255,255,0.14);
-}
-QCheckBox {
-    color: ${TEXT_PRIMARY};
+}}
+QComboBox QAbstractItemView {{
+    background-color: ${{BG2}};
+    color: ${{TEXT_PRIMARY}};
+    selection-background-color: {theme.tint(theme.ACCENT, 0.2)};
+    border: 1px solid {theme.wash(0.14)};
+}}
+QCheckBox {{
+    color: ${{TEXT_PRIMARY}};
     spacing: 8px;
     /* Same cascade cause as the QLabel fix above (9b7f00f): QCheckBox is a
        QWidget with no background-color of its own, so it otherwise picks
@@ -511,121 +537,116 @@ QCheckBox {
        the row -- the ::indicator sub-control below already paints its own
        background correctly and is untouched. */
     background-color: transparent;
-}
-QCheckBox::indicator {
+}}
+QCheckBox::indicator {{
     width: 18px;
     height: 18px;
     border-radius: 4px;
-    border: 1px solid rgba(255,255,255,0.14);
-    background-color: ${BG2};
-}
-QCheckBox::indicator:checked {
-    background-color: ${ACCENT};
-    border-color: ${ACCENT};
-}
-QPushButton {
-    background-color: ${ACCENT};
-    color: ${TEXT_ON_ACCENT};
+    border: 1px solid {theme.wash(0.14)};
+    background-color: ${{BG2}};
+}}
+QCheckBox::indicator:checked {{
+    background-color: ${{ACCENT}};
+    border-color: ${{ACCENT}};
+}}
+QPushButton {{
+    background-color: ${{ACCENT}};
+    color: ${{TEXT_ON_ACCENT}};
     border: none;
     border-radius: 6px;
     padding: 10px 24px;
     font-weight: 600;
-    font-size: 14px;
-}
-QPushButton:hover {
-    background-color: ${ACCENT_HOVER};
-}
-QPushButton[class="secondary"] {
+    font-size: {theme.TYPE_BODY}px;
+}}
+QPushButton:hover {{
+    background-color: ${{ACCENT_HOVER}};
+}}
+QPushButton[class="secondary"] {{
     background-color: transparent;
-    color: #AEB4C0;
-    border: 1px solid rgba(255,255,255,0.14);
-}
-QPushButton[class="secondary"]:hover {
-    background-color: rgba(255,255,255,0.05);
-    color: ${TEXT_PRIMARY};
-}
-QScrollArea {
+    color: {theme.TEXT_SECONDARY};
+    border: 1px solid {theme.wash(0.14)};
+}}
+QPushButton[class="secondary"]:hover {{
+    background-color: {theme.wash(0.05)};
+    color: ${{TEXT_PRIMARY}};
+}}
+QScrollArea {{
     border: none;
     background-color: transparent;
-}
-QSpinBox, QDoubleSpinBox {
-    background-color: ${BG2};
-    border: 1px solid rgba(255,255,255,0.14);
+}}
+QSpinBox, QDoubleSpinBox {{
+    background-color: ${{BG2}};
+    border: 1px solid {theme.wash(0.14)};
     border-radius: 6px;
     padding: 6px 10px;
-    color: ${TEXT_PRIMARY};
+    color: ${{TEXT_PRIMARY}};
     min-width: 80px;
-}
+}}
 QSpinBox::up-button, QDoubleSpinBox::up-button,
-QSpinBox::down-button, QDoubleSpinBox::down-button {
+QSpinBox::down-button, QDoubleSpinBox::down-button {{
     background-color: transparent;
     border: none;
     width: 20px;
-}
-QSpinBox::up-arrow, QDoubleSpinBox::up-arrow {
+}}
+QSpinBox::up-arrow, QDoubleSpinBox::up-arrow {{
     image: none;
     width: 0;
-}
-QSpinBox::down-arrow, QDoubleSpinBox::down-arrow {
+}}
+QSpinBox::down-arrow, QDoubleSpinBox::down-arrow {{
     image: none;
     width: 0;
-}
-QLineEdit {
-    background-color: ${BG2};
-    border: 1px solid rgba(255,255,255,0.14);
+}}
+QLineEdit {{
+    background-color: ${{BG2}};
+    border: 1px solid {theme.wash(0.14)};
     border-radius: 6px;
     padding: 8px 12px;
-    color: ${TEXT_PRIMARY};
-    font-size: 13px;
-}
-QLineEdit:focus {
-    border-color: rgba(94, 234, 212, 0.5);
-}
-QTableWidget {
-    background-color: ${BG1};
-    gridline-color: rgba(255,255,255,0.05);
-    color: ${TEXT_PRIMARY};
-    border: 1px solid rgba(255,255,255,0.08);
+    color: ${{TEXT_PRIMARY}};
+    font-size: {theme.TYPE_BODY}px;
+}}
+QLineEdit:focus {{
+    border-color: {theme.tint(theme.ACCENT, 0.5)};
+}}
+QTableWidget {{
+    background-color: ${{BG1}};
+    gridline-color: {theme.wash(0.05)};
+    color: ${{TEXT_PRIMARY}};
+    border: 1px solid {theme.wash(0.08)};
     border-radius: 6px;
-    font-size: 13px;
+    font-size: {theme.TYPE_BODY}px;
     outline: none;
-}
-QTableWidget::item {
+}}
+QTableWidget::item {{
     padding: 5px 8px;
     border: none;
-}
-QTableWidget::item:selected {
-    background-color: rgba(94,234,212,0.15);
-    color: ${TEXT_PRIMARY};
-}
-QHeaderView::section {
-    background-color: ${BG2};
-    color: #AEB4C0;
+}}
+QTableWidget::item:selected {{
+    background-color: {theme.tint(theme.ACCENT, 0.15)};
+    color: ${{TEXT_PRIMARY}};
+}}
+QHeaderView::section {{
+    background-color: ${{BG2}};
+    color: {theme.TEXT_SECONDARY};
     padding: 6px 8px;
     border: none;
-    border-bottom: 1px solid rgba(255,255,255,0.08);
-    border-right: 1px solid rgba(255,255,255,0.04);
-    font-size: 13px;
+    border-bottom: 1px solid {theme.wash(0.08)};
+    border-right: 1px solid {theme.wash(0.04)};
+    font-size: {theme.TYPE_BODY}px;
     font-weight: 600;
-}
-QDialog {
-    background-color: ${BG0};
-}
-""").substitute(
-    BG0=theme.BG0,
-    TEXT_PRIMARY=theme.TEXT_PRIMARY,
-    BG1=theme.BG1,
-    ACCENT=theme.ACCENT,
-    BG2=theme.BG2,
-    TEXT_ON_ACCENT=theme.TEXT_ON_ACCENT,
-    ACCENT_HOVER=theme.ACCENT_HOVER,
-)
-
-# _SettingsWindow applies its own stylesheet, which overrides the shared
-# theme's QComboBox subcontrols.  Keep the real, high-contrast chevron here
-# as well: reserving a drop-down area without an arrow made every selector
-# look like a read-only text field.
-STYLESHEET += f"""
+}}
+QDialog {{
+    background-color: ${{BG0}};
+}}
+    """).substitute(
+        BG0=theme.BG0,
+        TEXT_PRIMARY=theme.TEXT_PRIMARY,
+        BG1=theme.BG1,
+        ACCENT=theme.ACCENT,
+        BG2=theme.BG2,
+        TEXT_ON_ACCENT=theme.TEXT_ON_ACCENT,
+        ACCENT_HOVER=theme.ACCENT_HOVER,
+    )
+            + f"""
 QComboBox::down-arrow {{
     image: url({theme.ARROW_PATH});
     width: 10px;
@@ -633,9 +654,7 @@ QComboBox::down-arrow {{
     margin-right: 10px;
 }}
 """
-# The window's own sheet outranks the application sheet, so the shared
-# scrollbar rule (theme.SCROLLBAR_QSS) is carried here as well.
-STYLESHEET += theme.SCROLLBAR_QSS
+            + theme.SCROLLBAR_QSS)
 
 _CONTENT_MAX_WIDTH = 1000  # each tab's scrollable content column caps here;
                            # cards expand to fill it below the cap and stop
@@ -758,7 +777,7 @@ class _SettingsWindow(
             min(700, max(480, available.height() - 40)),
         )
         theme.install_app_scrollbars()
-        self.setStyleSheet(STYLESHEET)
+        self.setStyleSheet(stylesheet())
 
         central = QWidget()
         self.setCentralWidget(central)
@@ -840,8 +859,8 @@ class _SettingsWindow(
         for group_label, tab_names in _SIDEBAR_GROUPS:
             header_item = QListWidgetItem(group_label.upper())
             header_item.setFlags(Qt.ItemFlag.NoItemFlags)  # not selectable/enabled -- clicks do nothing
-            header_item.setForeground(QColor("#55555C"))
-            header_item.setFont(QFont("Segoe UI", 9, QFont.Weight.Bold))
+            header_item.setForeground(QColor(f"{theme.TEXT_SECONDARY}"))
+            header_item.setFont(theme.qfont(theme.TYPE_MIN, weight=QFont.Weight.Bold))
             self._sidebar.addItem(header_item)
             row += 1
 
@@ -878,7 +897,7 @@ class _SettingsWindow(
         # Separator above button bar
         sep = QFrame()
         sep.setFrameShape(QFrame.Shape.HLine)
-        sep.setStyleSheet("background-color: rgba(255,255,255,0.08); max-height: 1px;")
+        sep.setStyleSheet(f"background-color: {theme.wash(0.08)}; max-height: 1px;")
         root.addWidget(sep)
 
         # Button bar
@@ -911,7 +930,7 @@ class _SettingsWindow(
             " border-radius: 6px;"
             " padding: 10px 24px;"
             " font-weight: 600;"
-            " font-size: 14px;"
+            f" font-size: {theme.TYPE_BODY}px;"
             "}"
             f"QPushButton:hover {{ background-color: {theme.ACCENT_HOVER}; }}"
         )
@@ -964,7 +983,7 @@ class _SettingsWindow(
         """Re-derive hardcoded button minimums from each button's own metrics.
 
         Runs AFTER the pages are in self._stack, which is when the window's
-        STYLESHEET cascade actually reaches them: a QPushButton's sizeHint()
+        stylesheet() cascade actually reaches them: a QPushButton's sizeHint()
         only includes the stylesheet's padding once it is parented and
         polished (bare 98px -> 146px styled, measured). Reading it inside the
         page builder returns the unstyled width, which is exactly the mistake
@@ -1103,7 +1122,7 @@ class _SettingsWindow(
         layout.setAlignment(Qt.AlignmentFlag.AlignCenter)
         label = QLabel("Coming soon — this tab is being migrated.")
         label.setAlignment(Qt.AlignmentFlag.AlignCenter)
-        label.setStyleSheet(f"color: {theme.ICON_IDLE}; font-size: 14px;")
+        label.setStyleSheet(f"color: {theme.ICON_IDLE}; font-size: {theme.TYPE_BODY}px;")
         layout.addWidget(label)
         return w
 
@@ -1120,12 +1139,14 @@ class _SettingsWindow(
         self.activateWindow()
 
     # Amber "may conflict" style, shared by the Modes tab collision banner.
-    _COLLISION_WARN_STYLE = (
-        f"color: {theme.WARNING}; font-size: 12px; "
-        "background-color: rgba(232,144,32,0.07); "
-        "border: 1px solid rgba(232,144,32,0.2); "
-        "border-radius: 6px; padding: 6px 10px;"
-    )
+    @staticmethod
+    def _collision_warn_style() -> str:
+        """See _HotkeyButton._idle_qss(): built per call, not per import."""
+        return (            f"color: {theme.WARNING}; font-size: {theme.TYPE_MIN}px; "
+            f"background-color: {theme.tint(theme.WARNING, 0.07)}; "
+            f"border: 1px solid {theme.tint(theme.WARNING, 0.2)}; "
+            "border-radius: 6px; padding: 6px 10px;"
+        )
 
     # ------------------------------------------------------------------
     # Commands tab helpers
@@ -1151,7 +1172,7 @@ class _SettingsWindow(
         label = self._widgets.get('cloud_test_status')
         if label:
             label.setText(msg)
-            label.setStyleSheet(f"color: {color}; font-size: 12px;")
+            label.setStyleSheet(f"color: {color}; font-size: {theme.TYPE_MIN}px;")
 
     # ------------------------------------------------------------------
     # Helpers
@@ -1159,7 +1180,7 @@ class _SettingsWindow(
 
     def _section_title(self, text):
         label = QLabel(text)
-        label.setStyleSheet(f"color: {theme.ACCENT}; font-size: 16px; font-weight: bold;")
+        label.setStyleSheet(f"color: {theme.ACCENT}; font-size: {theme.TYPE_HEADING}px; font-weight: bold;")
         return label
 
     def _section_card(self, title: str, subtitle: str | None = None):
@@ -1174,7 +1195,7 @@ class _SettingsWindow(
         card.setStyleSheet(
             "QFrame#settingsSectionCard {"
             f" background-color: {theme.BG1};"
-            " border: 1px solid rgba(255,255,255,0.12);"
+            f" border: 1px solid {theme.wash(0.12)};"
             " border-radius: 12px;"
             "}"
         )
@@ -1185,14 +1206,14 @@ class _SettingsWindow(
 
         title_label = QLabel(title)
         title_label.setStyleSheet(
-            f"color: {theme.ACCENT}; font-size: 17px; font-weight: 700;"
+            f"color: {theme.ACCENT}; font-size: {theme.TYPE_HEADING}px; font-weight: 700;"
         )
         v.addWidget(title_label)
 
         if subtitle:
             subtitle_label = QLabel(subtitle)
             subtitle_label.setWordWrap(True)
-            subtitle_label.setStyleSheet("color: #AEB4C0; font-size: 12px;")
+            subtitle_label.setStyleSheet(f"color: {theme.TEXT_SECONDARY}; font-size: {theme.TYPE_MIN}px;")
             v.addWidget(subtitle_label)
         return card, v
 
@@ -1232,12 +1253,12 @@ class _SettingsWindow(
         left.setSpacing(4)
 
         lbl = QLabel(label)
-        lbl.setStyleSheet(f"font-weight: 600; font-size: 14px; color: {theme.TEXT_PRIMARY};")
+        lbl.setStyleSheet(f"font-weight: 600; font-size: {theme.TYPE_BODY}px; color: {theme.TEXT_PRIMARY};")
         left.addWidget(lbl)
 
         if description:
             desc = QLabel(description)
-            desc.setStyleSheet("color: #AEB4C0; font-size: 13px;")
+            desc.setStyleSheet(f"color: {theme.TEXT_SECONDARY}; font-size: {theme.TYPE_BODY}px;")
             desc.setWordWrap(True)
             left.addWidget(desc)
 

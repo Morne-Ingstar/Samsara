@@ -101,14 +101,14 @@ class AlarmsPage:
 
         sep = QFrame()
         sep.setFrameShape(QFrame.Shape.HLine)
-        sep.setStyleSheet("background-color: rgba(255,255,255,0.06); max-height: 1px;")
+        sep.setStyleSheet(f"background-color: {theme.wash(0.06)}; max-height: 1px;")
         layout.addWidget(sep)
         layout.addSpacing(4)
 
         # ---- Section: Alarm List --------------------------------------------
         layout.addWidget(self._section_title("Your Alarms"))
         instant_note = QLabel("Changes to alarms below apply immediately.")
-        instant_note.setStyleSheet(f"color: {theme.ICON_IDLE}; font-size: 12px;")
+        instant_note.setStyleSheet(f"color: {theme.ICON_IDLE}; font-size: {theme.TYPE_MIN}px;")
         layout.addWidget(instant_note)
         layout.addSpacing(4)
 
@@ -134,8 +134,8 @@ class AlarmsPage:
 
         _SEC = (
             f"QPushButton{{background-color:transparent;color:{theme.ICON_IDLE};"
-            "border:1px solid rgba(255,255,255,0.14);border-radius:6px;padding:7px 12px;}"
-            f"QPushButton:hover{{background-color:rgba(255,255,255,0.05);color:{theme.TEXT_PRIMARY};}}"
+            f"border:1px solid {theme.wash(0.14)};border-radius:6px;padding:7px 12px;}}"
+            f"QPushButton:hover{{background-color:{theme.wash(0.05)};color:{theme.TEXT_PRIMARY};}}"
         )
 
         add_btn = QPushButton("Add Alarm")
@@ -160,9 +160,9 @@ class AlarmsPage:
         del_btn.setMinimumWidth(80)  # sizeHint is 67; a few px of margin
         del_btn.setSizePolicy(QSizePolicy.Policy.Minimum, QSizePolicy.Policy.Fixed)
         del_btn.setStyleSheet(
-            f"QPushButton{{background-color:rgba(200,60,60,0.15);color:{theme.ERROR};"
-            "border:1px solid rgba(200,60,60,0.3);border-radius:6px;padding:7px 12px;}"
-            "QPushButton:hover{background-color:rgba(200,60,60,0.25);}"
+            f"QPushButton{{background-color:{theme.tint(theme.RECORDING, 0.15)};color:{theme.ERROR};"
+            f"border:1px solid {theme.tint(theme.RECORDING, 0.3)};border-radius:6px;padding:7px 12px;}}"
+            f"QPushButton:hover{{background-color:{theme.tint(theme.RECORDING, 0.25)};}}"
         )
         del_btn.clicked.connect(lambda: self._delete_selected_alarm(table))
         btn_row.addWidget(del_btn)
@@ -394,7 +394,7 @@ class AlarmsPage:
         cancel_btn.setFixedWidth(80)
         cancel_btn.setStyleSheet(
             f"QPushButton{{background-color:transparent;color:{theme.ICON_IDLE};"
-            "border:1px solid rgba(255,255,255,0.14);border-radius:6px;padding:8px 14px;}"
+            f"border:1px solid {theme.wash(0.14)};border-radius:6px;padding:8px 14px;}}"
         )
         cancel_btn.clicked.connect(dlg.reject)
         btn_row2.addWidget(cancel_btn)

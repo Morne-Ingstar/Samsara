@@ -103,7 +103,7 @@ class HelpPage:
         )
         intro.setObjectName("supportIntroLabel")
         intro.setWordWrap(True)
-        intro.setStyleSheet("color: #AEB4C0; font-size: 13px;")
+        intro.setStyleSheet(f"color: {theme.TEXT_SECONDARY}; font-size: {theme.TYPE_BODY}px;")
         layout.addWidget(intro)
 
         docs_btn = QPushButton("Open documentation")
@@ -159,14 +159,14 @@ class HelpPage:
         )
         contact.setObjectName("supportContactIntroLabel")
         contact.setWordWrap(True)
-        contact.setStyleSheet("color: #AEB4C0; font-size: 13px;")
+        contact.setStyleSheet(f"color: {theme.TEXT_SECONDARY}; font-size: {theme.TYPE_BODY}px;")
         layout.addWidget(contact)
 
         support_status = QLabel("")
         support_status.setObjectName("feedbackStatusLabel")
         support_status.setWordWrap(True)
         support_status.setTextInteractionFlags(Qt.TextInteractionFlag.TextSelectableByMouse)
-        support_status.setStyleSheet("color: #AEB4C0; font-size: 12px;")
+        support_status.setStyleSheet(f"color: {theme.TEXT_SECONDARY}; font-size: {theme.TYPE_MIN}px;")
 
         # 1. Email -- first, because most testers have no GitHub account.
         beta_btn = QPushButton("Email the developer")
@@ -178,7 +178,7 @@ class HelpPage:
         address = QLabel(BETA_SUPPORT_EMAIL)
         address.setObjectName("betaSupportAddressLabel")
         address.setTextInteractionFlags(Qt.TextInteractionFlag.TextSelectableByMouse)
-        address.setStyleSheet(f"color: {theme.TEXT_PRIMARY}; font-size: 12px;")
+        address.setStyleSheet(f"color: {theme.TEXT_PRIMARY}; font-size: {theme.TYPE_MIN}px;")
         email_control = QWidget()
         email_row = QHBoxLayout(email_control)
         email_row.setContentsMargins(0, 0, 0, 0)

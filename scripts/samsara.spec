@@ -322,6 +322,7 @@ hiddenimports = [
     'samsara.command_stats',
     'samsara.commands',
     'samsara.constants',
+    'samsara.transcript_gates',
     'samsara.echo_cancel',
     'samsara.key_macros',
     'samsara.notifications',

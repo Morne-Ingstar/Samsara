@@ -1,0 +1,50 @@
+[
+  {
+    "file": "snippets_900x650_empty_scale15.png",
+    "size": "900x650",
+    "state": "empty",
+    "scale": "1.5",
+    "rows": 0,
+    "scroll_maximums": [],
+    "overflowing_widgets": [],
+    "buttons_under_44": [],
+    "focusable": true,
+    "status": "No snippets yet. Dictate something, then say \"sa"
+  },
+  {
+    "file": "snippets_1065x906_empty_scale15.png",
+    "size": "1065x906",
+    "state": "empty",
+    "scale": "1.5",
+    "rows": 0,
+    "scroll_maximums": [],
+    "overflowing_widgets": [],
+    "buttons_under_44": [],
+    "focusable": true,
+    "status": "No snippets yet. Dictate something, then say \"sa"
+  },
+  {
+    "file": "snippets_900x650_full_scale15.png",
+    "size": "900x650",
+    "state": "full",
+    "scale": "1.5",
+    "rows": 6,
+    "scroll_maximums": [],
+    "overflowing_widgets": [],
+    "buttons_under_44": [],
+    "focusable": true,
+    "status": "6 of 6 snippets"
+  },
+  {
+    "file": "snippets_1065x906_full_scale15.png",
+    "size": "1065x906",
+    "state": "full",
+    "scale": "1.5",
+    "rows": 6,
+    "scroll_maximums": [],
+    "overflowing_widgets": [],
+    "buttons_under_44": [],
+    "focusable": true,
+    "status": "6 of 6 snippets"
+  }
+]

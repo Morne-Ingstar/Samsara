@@ -231,8 +231,8 @@ def test_settings_stylesheet_keeps_the_visible_combo_chevron():
     A blank QComboBox::drop-down area is not an acceptable fallback: users
     cannot tell a selector from a text field, particularly at high DPI.
     """
-    assert "QComboBox::down-arrow" in settings_qt.STYLESHEET
-    assert settings_qt.theme.ARROW_PATH in settings_qt.STYLESHEET
+    assert "QComboBox::down-arrow" in settings_qt.stylesheet()
+    assert settings_qt.theme.ARROW_PATH in settings_qt.stylesheet()
     assert Path(settings_qt.theme.ARROW_PATH).is_file()
 
 

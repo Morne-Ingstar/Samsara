@@ -1,0 +1,749 @@
+{
+  "rows": [
+    {
+      "surface": "home",
+      "theme": "dark",
+      "png": "home_dark.png",
+      "size": [
+        960,
+        700
+      ],
+      "dominant_luminance": 23.5,
+      "scroll_overflow_px": 0,
+      "clipped": [
+        "homeCard() 146 < 274",
+        "QLabel(Samsara 0.23.0-beta.1) 22 < 45",
+        "QLabel(A beta for testers, not the ) 21 < 42",
+        "QWidget() 104 < 147",
+        "QWidget() 95 < 138",
+        "QLabel(Free \u00b7 Open source \u00b7 Accessi) 22 < 44"
+      ]
+    },
+    {
+      "surface": "home",
+      "theme": "light",
+      "png": "home_light.png",
+      "size": [
+        960,
+        700
+      ],
+      "dominant_luminance": 255.0,
+      "scroll_overflow_px": 0,
+      "clipped": [
+        "homeCard() 146 < 274",
+        "QLabel(Samsara 0.23.0-beta.1) 22 < 45",
+        "QLabel(A beta for testers, not the ) 21 < 42",
+        "QWidget() 104 < 147",
+        "QWidget() 95 < 138",
+        "QLabel(Free \u00b7 Open source \u00b7 Accessi) 22 < 44"
+      ]
+    },
+    {
+      "surface": "history",
+      "theme": "dark",
+      "png": "history_dark.png",
+      "size": [
+        960,
+        700
+      ],
+      "dominant_luminance": 23.5,
+      "scroll_overflow_px": 61,
+      "clipped": [
+        "historySubtitle(Newest first. Double-click a) 21 < 42",
+        "historyTransparent() 40 < 86"
+      ]
+    },
+    {
+      "surface": "history",
+      "theme": "light",
+      "png": "history_light.png",
+      "size": [
+        960,
+        700
+      ],
+      "dominant_luminance": 255.0,
+      "scroll_overflow_px": 61,
+      "clipped": [
+        "historySubtitle(Newest first. Double-click a) 21 < 42",
+        "historyTransparent() 40 < 86"
+      ]
+    },
+    {
+      "surface": "memos",
+      "theme": "dark",
+      "png": "memos_dark.png",
+      "size": [
+        960,
+        700
+      ],
+      "dominant_luminance": 13.8,
+      "scroll_overflow_px": 61,
+      "clipped": [
+        "QLabel(health care note.I need to l) 85 < 148"
+      ]
+    },
+    {
+      "surface": "memos",
+      "theme": "light",
+      "png": "memos_light.png",
+      "size": [
+        960,
+        700
+      ],
+      "dominant_luminance": 245.7,
+      "scroll_overflow_px": 61,
+      "clipped": [
+        "QLabel(health care note.I need to l) 85 < 148"
+      ]
+    },
+    {
+      "surface": "snippets",
+      "theme": "dark",
+      "png": "snippets_dark.png",
+      "size": [
+        960,
+        700
+      ],
+      "dominant_luminance": 13.8,
+      "scroll_overflow_px": 61,
+      "clipped": [
+        "QWidget() 651 < 658",
+        "QWidget() 587 < 594",
+        "hubContent() 587 < 594",
+        "SnippetsPage() 587 < 615",
+        "QListWidget() 185 < 192",
+        "QPlainTextEdit() 132 < 192"
+      ]
+    },
+    {
+      "surface": "snippets",
+      "theme": "light",
+      "png": "snippets_light.png",
+      "size": [
+        960,
+        700
+      ],
+      "dominant_luminance": 245.7,
+      "scroll_overflow_px": 61,
+      "clipped": [
+        "QWidget() 651 < 658",
+        "QWidget() 587 < 594",
+        "hubContent() 587 < 594",
+        "SnippetsPage() 587 < 615",
+        "QListWidget() 185 < 192",
+        "QPlainTextEdit() 132 < 192"
+      ]
+    },
+    {
+      "surface": "dictionary",
+      "theme": "dark",
+      "png": "dictionary_dark.png",
+      "size": [
+        960,
+        700
+      ],
+      "dominant_luminance": 23.5,
+      "scroll_overflow_px": 93,
+      "clipped": [
+        "QLabel(Words injected into Whisper') 38 < 114"
+      ]
+    },
+    {
+      "surface": "dictionary",
+      "theme": "light",
+      "png": "dictionary_light.png",
+      "size": [
+        960,
+        700
+      ],
+      "dominant_luminance": 255.0,
+      "scroll_overflow_px": 93,
+      "clipped": [
+        "QLabel(Words injected into Whisper') 38 < 114"
+      ]
+    },
+    {
+      "surface": "settings_general",
+      "theme": "dark",
+      "png": "settings_general_dark.png",
+      "size": [
+        960,
+        700
+      ],
+      "dominant_luminance": 23.5,
+      "scroll_overflow_px": 4791,
+      "clipped": [
+        "QWidget() 700 < 874",
+        "QWidget() 567 < 741",
+        "QStackedWidget() 567 < 741",
+        "settingsSectionCard() 262 < 283",
+        "QLabel(Sizing and readability optio) 19 < 38",
+        "settingRowLabelColumn() 46 < 67"
+      ]
+    },
+    {
+      "surface": "settings_general",
+      "theme": "light",
+      "png": "settings_general_light.png",
+      "size": [
+        960,
+        700
+      ],
+      "dominant_luminance": 255.0,
+      "scroll_overflow_px": 4791,
+      "clipped": [
+        "QWidget() 700 < 874",
+        "QWidget() 567 < 741",
+        "QStackedWidget() 567 < 741",
+        "settingsSectionCard() 262 < 283",
+        "QLabel(Sizing and readability optio) 19 < 38",
+        "settingRowLabelColumn() 46 < 67"
+      ]
+    },
+    {
+      "surface": "settings_modes",
+      "theme": "dark",
+      "png": "settings_modes_dark.png",
+      "size": [
+        960,
+        700
+      ],
+      "dominant_luminance": 23.5,
+      "scroll_overflow_px": 4000,
+      "clipped": [
+        "QWidget() 700 < 874",
+        "QWidget() 567 < 741",
+        "QStackedWidget() 567 < 741",
+        "QLabel(Choose how voice control sta) 34 < 68",
+        "settingRowLabelColumn() 67 < 88",
+        "QLabel(Enables the voice-control bu) 42 < 63"
+      ]
+    },
+    {
+      "surface": "settings_modes",
+      "theme": "light",
+      "png": "settings_modes_light.png",
+      "size": [
+        960,
+        700
+      ],
+      "dominant_luminance": 255.0,
+      "scroll_overflow_px": 4000,
+      "clipped": [
+        "QWidget() 700 < 874",
+        "QWidget() 567 < 741",
+        "QStackedWidget() 567 < 741",
+        "QLabel(Choose how voice control sta) 34 < 68",
+        "settingRowLabelColumn() 67 < 88",
+        "QLabel(Enables the voice-control bu) 42 < 63"
+      ]
+    },
+    {
+      "surface": "settings_commands",
+      "theme": "dark",
+      "png": "settings_commands_dark.png",
+      "size": [
+        960,
+        700
+      ],
+      "dominant_luminance": 23.5,
+      "scroll_overflow_px": 4791,
+      "clipped": [
+        "QWidget() 700 < 874",
+        "QWidget() 567 < 741",
+        "QStackedWidget() 567 < 741",
+        "commandsPageContent() 1042 < 1061",
+        "QLabel(Enable the packs you use. Di) 19 < 57",
+        "QWidget() 1117 < 1852"
+      ]
+    },
+    {
+      "surface": "settings_commands",
+      "theme": "light",
+      "png": "settings_commands_light.png",
+      "size": [
+        960,
+        700
+      ],
+      "dominant_luminance": 255.0,
+      "scroll_overflow_px": 4791,
+      "clipped": [
+        "QWidget() 700 < 874",
+        "QWidget() 567 < 741",
+        "QStackedWidget() 567 < 741",
+        "commandsPageContent() 1042 < 1061",
+        "QLabel(Enable the packs you use. Di) 19 < 57",
+        "QWidget() 1117 < 1852"
+      ]
+    },
+    {
+      "surface": "settings_sounds",
+      "theme": "dark",
+      "png": "settings_sounds_dark.png",
+      "size": [
+        960,
+        700
+      ],
+      "dominant_luminance": 13.8,
+      "scroll_overflow_px": 4791,
+      "clipped": [
+        "QWidget() 700 < 874",
+        "QWidget() 567 < 741",
+        "QStackedWidget() 567 < 741",
+        "QWidget() 983 < 1046",
+        "settingRowLabelColumn() 67 < 88",
+        "QLabel(cute = playful bloops  \u2022  wa) 42 < 63"
+      ]
+    },
+    {
+      "surface": "settings_sounds",
+      "theme": "light",
+      "png": "settings_sounds_light.png",
+      "size": [
+        960,
+        700
+      ],
+      "dominant_luminance": 245.7,
+      "scroll_overflow_px": 4791,
+      "clipped": [
+        "QWidget() 700 < 874",
+        "QWidget() 567 < 741",
+        "QStackedWidget() 567 < 741",
+        "QWidget() 983 < 1046",
+        "settingRowLabelColumn() 67 < 88",
+        "QLabel(cute = playful bloops  \u2022  wa) 42 < 63"
+      ]
+    },
+    {
+      "surface": "settings_tts",
+      "theme": "dark",
+      "png": "settings_tts_dark.png",
+      "size": [
+        960,
+        700
+      ],
+      "dominant_luminance": 13.8,
+      "scroll_overflow_px": 4791,
+      "clipped": [
+        "QWidget() 700 < 874",
+        "QWidget() 567 < 741",
+        "QStackedWidget() 567 < 741",
+        "QWidget() 978 < 1062",
+        "settingRowLabelColumn() 67 < 88",
+        "QLabel(winrt: built-in Windows voic) 42 < 63"
+      ]
+    },
+    {
+      "surface": "settings_tts",
+      "theme": "light",
+      "png": "settings_tts_light.png",
+      "size": [
+        960,
+        700
+      ],
+      "dominant_luminance": 245.7,
+      "scroll_overflow_px": 4791,
+      "clipped": [
+        "QWidget() 700 < 874",
+        "QWidget() 567 < 741",
+        "QStackedWidget() 567 < 741",
+        "QWidget() 978 < 1062",
+        "settingRowLabelColumn() 67 < 88",
+        "QLabel(winrt: built-in Windows voic) 42 < 63"
+      ]
+    },
+    {
+      "surface": "settings_advanced",
+      "theme": "dark",
+      "png": "settings_advanced_dark.png",
+      "size": [
+        960,
+        700
+      ],
+      "dominant_luminance": 13.8,
+      "scroll_overflow_px": 4791,
+      "clipped": [
+        "QWidget() 700 < 874",
+        "QWidget() 567 < 741",
+        "QStackedWidget() 567 < 741",
+        "settingRowLabelColumn() 67 < 88",
+        "QLabel(CUDA detected \u2014 NVIDIA GPU a) 42 < 63",
+        "settingRowLabelColumn() 46 < 67"
+      ]
+    },
+    {
+      "surface": "settings_advanced",
+      "theme": "light",
+      "png": "settings_advanced_light.png",
+      "size": [
+        960,
+        700
+      ],
+      "dominant_luminance": 245.7,
+      "scroll_overflow_px": 4791,
+      "clipped": [
+        "QWidget() 700 < 874",
+        "QWidget() 567 < 741",
+        "QStackedWidget() 567 < 741",
+        "settingRowLabelColumn() 67 < 88",
+        "QLabel(CUDA detected \u2014 NVIDIA GPU a) 42 < 63",
+        "settingRowLabelColumn() 46 < 67"
+      ]
+    },
+    {
+      "surface": "settings_help",
+      "theme": "dark",
+      "png": "settings_help_dark.png",
+      "size": [
+        960,
+        700
+      ],
+      "dominant_luminance": 13.8,
+      "scroll_overflow_px": 4791,
+      "clipped": [
+        "QWidget() 700 < 874",
+        "QWidget() 567 < 741",
+        "QStackedWidget() 567 < 741",
+        "supportIntroLabel(Start with the documentation) 42 < 63",
+        "settingRowLabelColumn() 67 < 88",
+        "QLabel(Quick start, voice-command r) 42 < 63"
+      ]
+    },
+    {
+      "surface": "settings_help",
+      "theme": "light",
+      "png": "settings_help_light.png",
+      "size": [
+        960,
+        700
+      ],
+      "dominant_luminance": 245.7,
+      "scroll_overflow_px": 4791,
+      "clipped": [
+        "QWidget() 700 < 874",
+        "QWidget() 567 < 741",
+        "QStackedWidget() 567 < 741",
+        "supportIntroLabel(Start with the documentation) 42 < 63",
+        "settingRowLabelColumn() 67 < 88",
+        "QLabel(Quick start, voice-command r) 42 < 63"
+      ]
+    },
+    {
+      "surface": "first_run_wizard",
+      "theme": "dark",
+      "png": "first_run_wizard_dark.png",
+      "size": [
+        960,
+        700
+      ],
+      "dominant_luminance": 13.8,
+      "scroll_overflow_px": 0,
+      "clipped": [
+        "QWidget() 30 < 173",
+        "QLabel(Optional parts you can add n) 0 < 42",
+        "QLabel() 0 < 19",
+        "QLabel(Setup is quick. You can chan) 19 < 38",
+        "QWidget() 64 < 67",
+        "QPushButton(Back) 40 < 43"
+      ]
+    },
+    {
+      "surface": "first_run_wizard",
+      "theme": "light",
+      "png": "first_run_wizard_light.png",
+      "size": [
+        960,
+        700
+      ],
+      "dominant_luminance": 245.7,
+      "scroll_overflow_px": 0,
+      "clipped": [
+        "QWidget() 30 < 173",
+        "QLabel(Optional parts you can add n) 0 < 42",
+        "QLabel() 0 < 19",
+        "QLabel(Setup is quick. You can chan) 19 < 38",
+        "QWidget() 64 < 67",
+        "QPushButton(Back) 40 < 43"
+      ]
+    },
+    {
+      "surface": "mic_wizard",
+      "theme": "dark",
+      "png": "mic_wizard_dark.png",
+      "size": [
+        560,
+        484
+      ],
+      "dominant_luminance": 13.8,
+      "scroll_overflow_px": 0,
+      "clipped": [
+        "QStackedWidget() 308 < 348",
+        "QLabel(Select the microphone you'll) 42 < 63",
+        "QProgressBar(0%) 24 < 31"
+      ]
+    },
+    {
+      "surface": "mic_wizard",
+      "theme": "light",
+      "png": "mic_wizard_light.png",
+      "size": [
+        560,
+        484
+      ],
+      "dominant_luminance": 245.7,
+      "scroll_overflow_px": 0,
+      "clipped": [
+        "QStackedWidget() 308 < 348",
+        "QLabel(Select the microphone you'll) 42 < 63",
+        "QProgressBar(0%) 24 < 31"
+      ]
+    },
+    {
+      "surface": "tutorial",
+      "theme": "dark",
+      "png": "tutorial_dark.png",
+      "size": [
+        620,
+        722
+      ],
+      "dominant_luminance": 13.8,
+      "scroll_overflow_px": 0,
+      "clipped": [
+        "QLabel(Samsara lets you control you) 24 < 48",
+        "QLabel(Let's try each thing once \u2014 ) 21 < 63",
+        "QWidget() 64 < 67",
+        "QPushButton(Back) 40 < 43"
+      ]
+    },
+    {
+      "surface": "tutorial",
+      "theme": "light",
+      "png": "tutorial_light.png",
+      "size": [
+        620,
+        722
+      ],
+      "dominant_luminance": 245.7,
+      "scroll_overflow_px": 0,
+      "clipped": [
+        "QLabel(Samsara lets you control you) 24 < 48",
+        "QLabel(Let's try each thing once \u2014 ) 21 < 63",
+        "QWidget() 64 < 67",
+        "QPushButton(Back) 40 < 43"
+      ]
+    },
+    {
+      "surface": "command_reference",
+      "theme": "dark",
+      "png": "command_reference_dark.png",
+      "size": [
+        960,
+        700
+      ],
+      "dominant_luminance": 23.5,
+      "scroll_overflow_px": 473,
+      "clipped": []
+    },
+    {
+      "surface": "command_reference",
+      "theme": "light",
+      "png": "command_reference_light.png",
+      "size": [
+        960,
+        700
+      ],
+      "dominant_luminance": 255.0,
+      "scroll_overflow_px": 473,
+      "clipped": []
+    },
+    {
+      "surface": "quick_reference",
+      "theme": "dark",
+      "png": "quick_reference_dark.png",
+      "size": [
+        960,
+        700
+      ],
+      "dominant_luminance": 23.5,
+      "scroll_overflow_px": 2333,
+      "clipped": [
+        "QFrame() 252 < 347",
+        "QLabel(Legacy command-only lane ret) 19 < 38",
+        "QLabel(HANDS FREE: ordinary speech ) 38 < 76",
+        "QLabel(Everything you say goes to t) 38 < 76"
+      ]
+    },
+    {
+      "surface": "quick_reference",
+      "theme": "light",
+      "png": "quick_reference_light.png",
+      "size": [
+        960,
+        700
+      ],
+      "dominant_luminance": 255.0,
+      "scroll_overflow_px": 2333,
+      "clipped": [
+        "QFrame() 252 < 347",
+        "QLabel(Legacy command-only lane ret) 19 < 38",
+        "QLabel(HANDS FREE: ordinary speech ) 38 < 76",
+        "QLabel(Everything you say goes to t) 38 < 76"
+      ]
+    },
+    {
+      "surface": "listening_indicator",
+      "theme": "dark",
+      "png": "listening_indicator_dark.png",
+      "size": [
+        103,
+        36
+      ],
+      "dominant_luminance": 23.5,
+      "scroll_overflow_px": 0,
+      "clipped": []
+    },
+    {
+      "surface": "listening_indicator",
+      "theme": "light",
+      "png": "listening_indicator_light.png",
+      "size": [
+        103,
+        36
+      ],
+      "dominant_luminance": 255.0,
+      "scroll_overflow_px": 0,
+      "clipped": []
+    },
+    {
+      "surface": "splash",
+      "theme": "dark",
+      "png": "splash_dark.png",
+      "size": [
+        646,
+        366
+      ],
+      "dominant_luminance": 0.0,
+      "scroll_overflow_px": 0,
+      "clipped": []
+    },
+    {
+      "surface": "splash",
+      "theme": "light",
+      "png": "splash_light.png",
+      "size": [
+        646,
+        366
+      ],
+      "dominant_luminance": 248.9,
+      "scroll_overflow_px": 0,
+      "clipped": []
+    },
+    {
+      "surface": "history_view",
+      "theme": "dark",
+      "png": "history_view_dark.png",
+      "size": [
+        960,
+        700
+      ],
+      "dominant_luminance": 23.5,
+      "scroll_overflow_px": 1,
+      "clipped": [
+        "historySubtitle(Newest first. Double-click a) 21 < 42",
+        "historyTransparent() 40 < 86"
+      ]
+    },
+    {
+      "surface": "history_view",
+      "theme": "light",
+      "png": "history_view_light.png",
+      "size": [
+        960,
+        700
+      ],
+      "dominant_luminance": 255.0,
+      "scroll_overflow_px": 1,
+      "clipped": [
+        "historySubtitle(Newest first. Double-click a) 21 < 42",
+        "historyTransparent() 40 < 86"
+      ]
+    },
+    {
+      "surface": "dictionary_panel",
+      "theme": "dark",
+      "png": "dictionary_panel_dark.png",
+      "size": [
+        960,
+        700
+      ],
+      "dominant_luminance": 23.5,
+      "scroll_overflow_px": 93,
+      "clipped": [
+        "QLabel(Words injected into Whisper') 38 < 114"
+      ]
+    },
+    {
+      "surface": "dictionary_panel",
+      "theme": "light",
+      "png": "dictionary_panel_light.png",
+      "size": [
+        960,
+        700
+      ],
+      "dominant_luminance": 255.0,
+      "scroll_overflow_px": 93,
+      "clipped": [
+        "QLabel(Words injected into Whisper') 38 < 114"
+      ]
+    },
+    {
+      "surface": "status_overlay",
+      "theme": "dark",
+      "png": "status_overlay_dark.png",
+      "size": [
+        960,
+        700
+      ],
+      "dominant_luminance": 13.8,
+      "scroll_overflow_px": 0,
+      "clipped": []
+    },
+    {
+      "surface": "status_overlay",
+      "theme": "light",
+      "png": "status_overlay_light.png",
+      "size": [
+        960,
+        700
+      ],
+      "dominant_luminance": 245.7,
+      "scroll_overflow_px": 0,
+      "clipped": []
+    },
+    {
+      "surface": "streaming_preview",
+      "theme": "dark",
+      "png": "streaming_preview_dark.png",
+      "size": [
+        500,
+        700
+      ],
+      "dominant_luminance": 23.5,
+      "scroll_overflow_px": 0,
+      "clipped": []
+    },
+    {
+      "surface": "streaming_preview",
+      "theme": "light",
+      "png": "streaming_preview_light.png",
+      "size": [
+        500,
+        700
+      ],
+      "dominant_luminance": 255.0,
+      "scroll_overflow_px": 0,
+      "clipped": []
+    }
+  ],
+  "failures": []
+}

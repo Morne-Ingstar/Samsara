@@ -60,6 +60,19 @@ CUDA_DLL_ALLOWLIST = frozenset(
 )
 
 _STABLE_VERSION_RE = re.compile(r"^v?(0|[1-9]\d*)\.(0|[1-9]\d*)\.(0|[1-9]\d*)$")
+#: The INSTALLED version may be a prerelease -- 0.23.0-beta.1 is a real build
+#: people are running (108/F10). Two separate decisions live here and must not
+#: be conflated again:
+#:   * what this build IS          -> _parse_version, prereleases allowed
+#:   * what may be OFFERED to it   -> _parse_stable_version, stable only
+#: Before 108 the installed version went through the stable-only parser, so a
+#: beta raised ReleaseMetadataError before any network request and could not
+#: see an update of any kind, including the stable release that supersedes it.
+_VERSION_RE = re.compile(
+    r"^v?(0|[1-9]\d*)\.(0|[1-9]\d*)\.(0|[1-9]\d*)"
+    r"(?:-([0-9A-Za-z.-]+))?"          # prerelease: beta.1, rc.2, alpha
+    r"(?:\+[0-9A-Za-z.-]+)?$"          # build metadata: ignored for precedence
+)
 _SHA256_RE = re.compile(r"^([0-9a-fA-F]{64})(?:\s+[*]?(.+))?$")
 _GITHUB_REDIRECT_HOSTS = frozenset(
     {
@@ -173,6 +186,37 @@ def _parse_stable_version(value: str) -> tuple[int, int, int]:
     return tuple(int(part) for part in match.groups())  # type: ignore[return-value]
 
 
+def _prerelease_key(prerelease: str) -> tuple:
+    """SemVer precedence for the prerelease part. A build with no prerelease
+    outranks every prerelease of the same MAJOR.MINOR.PATCH, so 0.23.0-beta.1
+    is BELOW 0.23.0 and the stable release is offered to the beta. Numeric
+    identifiers compare numerically and rank below alphanumeric ones; the
+    wrappers keep every element the same shape so tuples stay comparable."""
+    if not prerelease:
+        return (1,)
+    parts = []
+    for identifier in prerelease.split("."):
+        if identifier.isdigit():
+            parts.append((0, int(identifier), ""))
+        else:
+            parts.append((1, 0, identifier))
+    return (0, tuple(parts))
+
+
+def _parse_version(value: str) -> tuple:
+    """A comparable SemVer key that ACCEPTS a prerelease. Used for both sides
+    of the comparison in check_for_update -- never mix it with
+    _parse_stable_version's 3-tuple, which would compare short and always
+    sort below an equal 4-tuple."""
+    match = _VERSION_RE.fullmatch(str(value).strip())
+    if not match:
+        raise ReleaseMetadataError(
+            f"Expected a version such as v0.22.1 or v0.23.0-beta.1, received {value!r}."
+        )
+    major, minor, patch, prerelease = match.groups()
+    return (int(major), int(minor), int(patch), _prerelease_key(prerelease or ""))
+
+
 def _clean_parsed_url(url: str):
     parsed = urlparse(url)
     try:
@@ -246,15 +290,26 @@ def check_for_update(
     opener=urllib.request.urlopen,
     api_url: str = GITHUB_RELEASES_API,
     timeout: float = NETWORK_TIMEOUT_S,
+    allow_prerelease: bool = False,
 ) -> ReleaseInfo | None:
     """Query GitHub's latest stable release after an explicit caller action.
 
     Returns ``None`` when the current build is already current. An unverified
     release (including v0.22.0, which has no checksum asset) is reported as a
     visible :class:`ReleaseMetadataError`, never offered for installation.
+
+    ``current_version`` MAY be a prerelease: what this build is and what it is
+    allowed to install are separate questions (108/F10). ``allow_prerelease``
+    answers only the second one and defaults to False -- the offered-update
+    policy stays stable-only, which is the intent: a beta tester should be
+    moved onto the stable release that supersedes their build, not sideways
+    onto another beta. Note that GitHub's /releases/latest endpoint does not
+    serve prereleases at all, so switching the policy in production also means
+    switching to /releases; the flag exists so the two decisions are separate
+    in code and separately testable, not as a finished feature.
     """
     _require_update_eligible()
-    current = _parse_stable_version(current_version)
+    current = _parse_version(current_version)
     _validate_github_api_url(api_url)
     request = urllib.request.Request(
         api_url,
@@ -276,12 +331,14 @@ def check_for_update(
 
     if not isinstance(payload, dict):
         raise ReleaseMetadataError("GitHub returned invalid release metadata.")
-    if payload.get("draft") or payload.get("prerelease"):
+    if payload.get("draft") or (payload.get("prerelease") and not allow_prerelease):
         raise ReleaseMetadataError("GitHub's latest release is not a stable release.")
     tag = payload.get("tag_name")
     if not isinstance(tag, str):
         raise ReleaseMetadataError("The release is missing its version tag.")
-    latest = _parse_stable_version(tag)
+    if not allow_prerelease:
+        _parse_stable_version(tag)      # offered-update policy: stable tags only
+    latest = _parse_version(tag)
     if latest <= current:
         return None
 
@@ -319,7 +376,11 @@ def check_for_update(
     _validate_release_asset_url(asset_url, tag, zip_name)
     _validate_release_asset_url(checksum_url, tag, checksum_name)
     return ReleaseInfo(
-        version=".".join(str(part) for part in latest),
+        # From the TAG, not from the parsed key: the key is a comparison
+        # tuple whose shape is an implementation detail (108 gave it a fourth
+        # element for prerelease precedence), and this string is shown to the
+        # user and written into the update status file.
+        version=tag.strip().removeprefix("v"),
         tag=tag,
         asset_size=asset_size,
         asset_url=asset_url,

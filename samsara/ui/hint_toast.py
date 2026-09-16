@@ -15,11 +15,18 @@ from PySide6.QtWidgets import (
     QApplication, QCheckBox, QHBoxLayout, QLabel,
     QPushButton, QVBoxLayout, QWidget,
 )
-
-_BG     = "rgba(18, 18, 22, 235)"
-_BORDER = "rgba(94, 234, 212, 0.22)"
+from samsara.ui import theme
 
 
+def _bg():
+    """The toast floats over other windows, so it needs a surface of its
+    own -- near-opaque, but still the app's BG0 rather than a fixed
+    near-black that would sit like a hole in a light desktop."""
+    return theme.tint(theme.BG0, 0.92)
+
+
+def _border():
+    return f"{theme.tint(theme.ACCENT, 0.22)}"
 class HintToast(QWidget):
     """Non-blocking hint notification rendered in the bottom-right corner."""
 
@@ -61,9 +68,9 @@ class HintToast(QWidget):
         box.setObjectName("box")
         box.setStyleSheet(
             f"#box {{"
-            f" background: {_BG};"
+            f" background: {_bg()};"
             f" border-radius: 10px;"
-            f" border: 1px solid {_BORDER};"
+            f" border: 1px solid {_border()};"
             f"}}"
         )
         outer.addWidget(box)
@@ -80,17 +87,17 @@ class HintToast(QWidget):
         icon_lbl.setFixedSize(18, 18)
         icon_lbl.setAlignment(Qt.AlignCenter)
         icon_lbl.setStyleSheet(
-            "background: rgba(94,234,212,0.15);"
-            " color: #5EEAD4;"
+            f"background: {theme.tint(theme.ACCENT, 0.15)};"
+            f" color: {theme.ACCENT};"
             " border-radius: 9px;"
             " font-weight: bold;"
-            " font-size: 11px;"
+            f" font-size: {theme.TYPE_MIN}px;"
         )
         hdr.addWidget(icon_lbl)
 
         title_lbl = QLabel("Hint")
         title_lbl.setStyleSheet(
-            "color: #5EEAD4; font-size: 11px; font-weight: 600;"
+            f"color: {theme.ACCENT}; font-size: {theme.TYPE_MIN}px; font-weight: 600;"
         )
         hdr.addWidget(title_lbl)
         hdr.addStretch()
@@ -102,11 +109,11 @@ class HintToast(QWidget):
         close_btn.setStyleSheet(
             "QPushButton {"
             " background: transparent; border: none;"
-            " color: #55555C; font-size: 13px; font-weight: bold;"
+            f" color: {theme.TEXT_SECONDARY}; font-size: {theme.TYPE_BODY}px; font-weight: bold;"
             " border-radius: 3px;"
             "}"
             "QPushButton:hover {"
-            " background: rgba(255,255,255,0.08); color: #E8E8EA;"
+            f" background: {theme.wash(0.08)}; color: {theme.TEXT_PRIMARY};"
             "}"
         )
         close_btn.clicked.connect(self._dismiss)
@@ -116,12 +123,12 @@ class HintToast(QWidget):
         # message
         msg = QLabel(message)
         msg.setWordWrap(True)
-        msg.setStyleSheet("color: #E8E8EA; font-size: 12px;")
+        msg.setStyleSheet(f"color: {theme.TEXT_PRIMARY}; font-size: {theme.TYPE_MIN}px;")
         vl.addWidget(msg)
 
         # "don't show hints" opt-out checkbox
         no_hints = QCheckBox("Don't show hints")
-        no_hints.setStyleSheet("color: #55555C; font-size: 11px;")
+        no_hints.setStyleSheet(f"color: {theme.TEXT_SECONDARY}; font-size: {theme.TYPE_MIN}px;")
         no_hints.setFocusPolicy(Qt.NoFocus)
         no_hints.toggled.connect(self._on_no_hints_toggled)
         vl.addWidget(no_hints)

@@ -366,6 +366,277 @@ class TestAllPreviousActionsStillReachable:
         assert any("Verbatim" in txt for txt in texts)
 
 
+# ---------------------------------------------------------------------------
+# 61: a dead entry, a promise the app can't keep, and too many items
+# ---------------------------------------------------------------------------
+
+def _all_actions(menu, acc=None):
+    acc = [] if acc is None else acc
+    for a in menu.actions():
+        if a.isSeparator():
+            continue
+        if a.menu() is not None:
+            _all_actions(a.menu(), acc)
+        else:
+            acc.append(a)
+    return acc
+
+
+def _action(menu, text):
+    return next(a for a in _all_actions(menu) if a.text() == text)
+
+
+#: Info rows with nothing connected (they are disabled labels).
+_INFO_PREFIXES = ("Hotkey:", "Model:", "Mouse hotkey disabled")
+
+#: Every app method a tray action calls.
+_HANDLERS = (
+    "show_main_window", "reenable_mouse_hotkey", "release_mouse_buttons",
+    "switch_microphone_and_refresh", "switch_mode_from_tray", "set_wake_word_enabled",
+    "set_streaming_mode", "set_gesture_enabled", "snooze_listening", "resume_listening",
+    "open_settings", "open_history", "open_quick_reference", "toggle_cheat_sheet",
+    "toggle_listening_indicator", "enter_indicator_move_mode", "show_tutorial",
+    "open_mic_setup_guide", "open_ava_guide", "open_voice_training", "open_benchmark_review",
+    "open_correction_capture", "open_stress_test_wizard", "recalibrate_mic", "set_cleanup_mode",
+    "open_dictation_diagnostics", "open_wake_word_debug", "open_log_viewer",
+    "calibrate_echo_cancellation", "open_config_folder", "preview_first_run",
+    "open_main_log", "open_voice_training_log", "quit_app",
+)
+
+
+@pytest.fixture
+def slot_errors(monkeypatch):
+    """Exceptions escaping a Qt slot go to sys.excepthook (PySide prints and
+    swallows them) -- collect them so a test can assert there were none."""
+    import sys
+    errors = []
+    monkeypatch.setattr(sys, "excepthook", lambda *exc: errors.append(exc))
+    return errors
+
+
+def _stub_tray(monkeypatch, app, *, raising=False):
+    boom = RuntimeError("boom")
+    started = Mock(side_effect=boom if raising else None)
+    monkeypatch.setattr(tray_qt.os, "startfile", started, raising=False)
+    monkeypatch.setattr(tray_qt, "open_support_tab", Mock(side_effect=boom if raising else None))
+    monkeypatch.setattr(SamsaraTrayQt, "_open_update_dialog",
+                        Mock(side_effect=boom if raising else None))
+    if raising:
+        for name in _HANDLERS:
+            getattr(app, name).side_effect = boom
+    t = SamsaraTrayQt(app)
+    t._tray = Mock()
+    t._rebuild_menu()
+    return t, started
+
+
+RAW_MEMOS = "Open the raw memo file"
+
+
+class TestOpenMemos:
+    """Queue 61's guarantees, kept, on the item that now does the opening.
+
+    Queue 92 gave "Open memos" a real destination -- the memo list, which
+    plays the audio and searches the transcripts -- so the raw markdown
+    moved to its own item. The file is still created with the right header,
+    a failure is still reported, and nothing fails silently.
+    """
+
+    def test_no_memo_file_creates_it_with_the_header_and_opens_it(self, qapp, tmp_path, monkeypatch, slot_errors):
+        app = _make_app()
+        memo = tmp_path / "never" / "memos.md"
+        app.config["memo_file"] = str(memo)
+        t, started = _stub_tray(monkeypatch, app)
+
+        _action(t._menu, RAW_MEMOS).trigger()
+
+        assert memo.read_text(encoding="utf-8") == "# Memos\n\n"
+        started.assert_called_once_with(str(memo))
+        t._tray.showMessage.assert_not_called()
+        assert slot_errors == []
+
+    def test_existing_memo_file_is_opened_untouched(self, qapp, tmp_path, monkeypatch, slot_errors):
+        app = _make_app()
+        memo = tmp_path / "memos.md"
+        memo.write_text("# Memos\n\n## 2026-09-14 10:00\nbuy milk\n\n", encoding="utf-8")
+        app.config["memo_file"] = str(memo)
+        t, started = _stub_tray(monkeypatch, app)
+
+        _action(t._menu, RAW_MEMOS).trigger()
+
+        assert "buy milk" in memo.read_text(encoding="utf-8")
+        started.assert_called_once_with(str(memo))
+        assert slot_errors == []
+
+    def test_open_failure_is_told_to_the_user_and_never_raises(self, qapp, tmp_path, monkeypatch, slot_errors):
+        app = _make_app()
+        app.config["memo_file"] = str(tmp_path / "memos.md")
+        t, _started = _stub_tray(monkeypatch, app, raising=True)
+
+        _action(t._menu, RAW_MEMOS).trigger()
+
+        assert slot_errors == []
+        title, message = t._tray.showMessage.call_args[0][:2]
+        assert RAW_MEMOS in title and "boom" in message
+
+    def test_memo_header_matches_quick_memo(self, qapp, tmp_path, monkeypatch):
+        """A memo recorded after the tray created the file gets no second header."""
+        from samsara.quick_memo import append_memo
+        app = _make_app()
+        memo = tmp_path / "memos.md"
+        app.config["memo_file"] = str(memo)
+        t, _started = _stub_tray(monkeypatch, app)
+        _action(t._menu, RAW_MEMOS).trigger()
+        append_memo("first", "voice", home=str(memo))
+        assert memo.read_text(encoding="utf-8").count("# Memos") == 1
+
+    def test_open_memos_goes_to_the_memo_list_not_notepad(self, qapp, tmp_path, monkeypatch, slot_errors):
+        """Queue 92: the tray item points at the UI."""
+        from samsara.ui.home_qt import MEMOS
+        app = _make_app()
+        memo = tmp_path / "memos.md"
+        app.config["memo_file"] = str(memo)
+        app.open_hub_page = Mock(return_value=True)
+        t, started = _stub_tray(monkeypatch, app)
+
+        _action(t._menu, "Open memos").trigger()
+
+        app.open_hub_page.assert_called_once_with(MEMOS)
+        started.assert_not_called()          # no Notepad
+        assert not memo.exists()             # and no file created behind it
+        assert slot_errors == []
+
+    def test_open_memos_falls_back_to_the_file_when_the_hub_cannot_take_it(
+            self, qapp, tmp_path, monkeypatch, slot_errors):
+        """A hub that is not up must not make the tray item do nothing."""
+        app = _make_app()
+        memo = tmp_path / "memos.md"
+        app.config["memo_file"] = str(memo)
+        app.open_hub_page = Mock(return_value=False)
+        t, started = _stub_tray(monkeypatch, app)
+
+        _action(t._menu, "Open memos").trigger()
+
+        started.assert_called_once_with(str(memo))
+        assert memo.read_text(encoding="utf-8") == "# Memos\n\n"
+        assert slot_errors == []
+
+
+class TestNoTrayActionFailsSilently:
+    def _triggerable(self, t):
+        acts = [a for a in _all_actions(t._menu) if not a.text().startswith(_INFO_PREFIXES)]
+        for a in acts:
+            a.setEnabled(True)   # e.g. "Resume now" is disabled while not snoozed
+        return acts
+
+    def test_every_action_with_a_stubbed_handler_runs_without_raising(self, qapp, monkeypatch, slot_errors):
+        app = _make_app()
+        app.config["updates"] = {"tray_menu_entry": True}
+        t, _started = _stub_tray(monkeypatch, app)
+        acts = self._triggerable(t)
+        assert len(acts) > 40
+        for a in acts:
+            a.trigger()
+        assert slot_errors == []
+        t._tray.showMessage.assert_not_called()
+        app.quit_app.assert_called_once_with()
+        app.open_history.assert_called_once_with()
+
+    def test_every_action_whose_handler_raises_tells_the_user(self, qapp, monkeypatch, slot_errors):
+        app = _make_app()
+        app.config["updates"] = {"tray_menu_entry": True}
+        t, _started = _stub_tray(monkeypatch, app, raising=True)
+        for a in self._triggerable(t):
+            if a.actionGroup() is not None and a.isChecked():
+                continue   # re-selecting the current mode / cleanup is a deliberate no-op
+            before = t._tray.showMessage.call_count
+            a.trigger()
+            assert t._tray.showMessage.call_count == before + 1, a.text()
+        assert slot_errors == []
+
+    def test_a_guide_that_was_never_built_says_so(self, qapp, monkeypatch, slot_errors):
+        app = _make_app()
+        app.mic_setup_wizard = None
+        t, _started = _stub_tray(monkeypatch, app)
+        _action(t._menu, "Mic Setup Guide").trigger()
+        app.open_mic_setup_guide.assert_not_called()
+        assert "isn't available" in t._tray.showMessage.call_args[0][1]
+        assert slot_errors == []
+
+
+class TestUpdateEntryIsBehindAFlag:
+    @staticmethod
+    def _texts(t):
+        return [a.text() for a in _all_actions(t._menu)]
+
+    @pytest.mark.parametrize("updates", [None, {}, {"tray_menu_entry": False}, {"tray_menu_entry": "yes"}])
+    def test_absent_when_the_flag_is_off(self, qapp, monkeypatch, updates):
+        app = _make_app()
+        if updates is not None:
+            app.config["updates"] = updates
+        t, _started = _stub_tray(monkeypatch, app)
+        assert not [x for x in self._texts(t) if "Update" in x or "Install Samsara" in x]
+        t._available_update = types.SimpleNamespace(version="9.9.9")
+        t._rebuild_menu()
+        assert not [x for x in self._texts(t) if "Update" in x or "Install Samsara" in x]
+
+    def test_present_in_tools_when_the_flag_is_on(self, qapp, monkeypatch):
+        app = _make_app()
+        app.config["updates"] = {"tray_menu_entry": True}
+        t, _started = _stub_tray(monkeypatch, app)
+        tools = _submenu(t._menu, "Tools")
+        assert "Check for Updates…" in [a.text() for a in tools.actions()]
+        _action(t._menu, "Check for Updates…").trigger()
+        SamsaraTrayQt._open_update_dialog.assert_called_once()
+
+    def test_a_found_update_is_offered_top_level_when_the_flag_is_on(self, qapp, monkeypatch):
+        app = _make_app()
+        app.config["updates"] = {"tray_menu_entry": True}
+        t, _started = _stub_tray(monkeypatch, app)
+        t._available_update = types.SimpleNamespace(version="9.9.9")
+        t._rebuild_menu()
+        assert "Install Samsara v9.9.9…" in _top_level_texts(t._menu)
+        assert "Check for Updates…" not in self._texts(t)
+
+
+class TestMenuGrouping61:
+    TOP = ["Show Samsara", "Snooze", "Wake Word  (samsara)", "[MIC]  Test Microphone",
+           "Mode:  Hold", "History", "Open memos",
+        "Open the raw memo file", "Quick Reference", "Settings",
+           "Something wrong?", "Tools", "Developer", "Exit"]
+
+    def test_top_level_is_the_daily_set(self, qapp, monkeypatch):
+        app = _make_app()
+        app._mouse_hook = None
+        t, _started = _stub_tray(monkeypatch, app)
+        texts = [a.text() for a in t._menu.actions() if not a.isSeparator()]
+        assert texts == self.TOP
+
+    def test_setup_toggles_and_overlays_moved_to_tools(self, qapp, monkeypatch):
+        app = _make_app()
+        t, _started = _stub_tray(monkeypatch, app)
+        tools = {a.text() for a in _submenu(t._menu, "Tools").actions()}
+        for label in ("Streaming Mode  (CapsLock)", "Gesture Lane  (webcam)", "Command Reference",
+                      "Show Listening Indicator", "Move listening indicator..."):
+            assert label in tools
+            assert label not in _top_level_texts(t._menu)
+
+    def test_toggles_keep_their_checked_state_and_pass_it_on(self, qapp, monkeypatch):
+        app = _make_app()
+        app.config["streaming_mode"] = True
+        t, _started = _stub_tray(monkeypatch, app)
+        act = _action(t._menu, "Streaming Mode  (CapsLock)")
+        assert act.isCheckable() and act.isChecked()
+        act.trigger()
+        app.set_streaming_mode.assert_called_once_with(False)
+        wake = _action(t._menu, "Wake Word  (samsara)")
+        assert not wake.isChecked()
+        wake.trigger()
+        app.set_wake_word_enabled.assert_called_once_with(True)
+        _action(t._menu, "Toggle (click to start/stop)").trigger()
+        app.switch_mode_from_tray.assert_called_once_with("toggle")
+
+
 class TestIconGeometryRefresh:
     """Windows can leave the tray icon's shell-registered screen geometry
     stale after a sleep/resume cycle or a monitor topology change, which
@@ -585,8 +856,8 @@ class TestRecordingSpins:
             "armed": 3.0, "listening": 3.0, "recording": 1.5, "thinking": 2.4, "transcribing": 0.9}
 
     def test_recording_colour_and_fill_are_unchanged(self):
-        assert tray_qt.MARK_CAPTURE["recording"] == (theme.RECORDING, "ring-filled")
-        assert tray_qt.BRAND_CAPTURE["recording"] == (theme.RECORDING, "ring-filled")
+        assert tray_qt.mark_capture()["recording"] == (theme.RECORDING, "ring-filled")
+        assert tray_qt.brand_capture()["recording"] == (theme.RECORDING, "ring-filled")
 
     def test_recording_frames_differ_with_rotation(self, qapp):
         a = tray_qt.render_mark("recording", "off", 44, rotation=0.0, brand=True)

@@ -27,6 +27,7 @@ from PySide6.QtWidgets import QApplication, QStyle, QWidget
 from samsara.runtime import thread_registry
 from samsara.ui import qt_runtime, theme
 from samsara.ui.tray_qt import paint_mark
+from samsara.ui import theme
 
 log = logging.getLogger(__name__)
 
@@ -151,6 +152,7 @@ class _SplashWidget(QWidget):
 
     def closeEvent(self, event):
         self._frame_timer.stop()
+        log.info("[SPLASH] closed")
         event.accept()
 
     @Slot()
@@ -380,20 +382,20 @@ class _SplashWidget(QWidget):
     def _paint_text(self, painter: QPainter):
         painter.save()
         painter.setPen(_color(theme.ACCENT))
-        painter.setFont(QFont("Segoe UI Variable Display", 29, QFont.Weight.DemiBold))
+        painter.setFont(theme.qfont(theme.TYPE_HERO, "Segoe UI Variable Display", QFont.Weight.DemiBold))
         painter.drawText(QRectF(0.0, 21.0, _LOGICAL_W, 47.0),
                          Qt.AlignmentFlag.AlignHCenter | Qt.AlignmentFlag.AlignVCenter,
                          "Samsara")
 
         painter.setPen(_color(theme.ICON_IDLE, 190))
-        painter.setFont(QFont("Segoe UI", 12, QFont.Weight.Normal, italic=True))
+        painter.setFont(theme.qfont(theme.TYPE_BODY, weight=QFont.Weight.Normal, italic=True))
         painter.drawText(QRectF(0.0, 67.0, _LOGICAL_W, 25.0),
                          Qt.AlignmentFlag.AlignHCenter | Qt.AlignmentFlag.AlignVCenter,
                          "De-articulating Splines.")
 
         status_color = theme.ERROR if self._error else theme.TEXT_PRIMARY
         painter.setPen(_color(status_color))
-        painter.setFont(QFont("Segoe UI", 14, QFont.Weight.DemiBold))
+        painter.setFont(theme.qfont(theme.TYPE_HEADING, weight=QFont.Weight.DemiBold))
         status = self._status
         if self._progress is not None and not self._complete and not self._error:
             status = f"{status}  [{round(self._progress * 100)}%]"
@@ -402,14 +404,13 @@ class _SplashWidget(QWidget):
                          status)
 
         painter.setPen(_color(theme.ICON_IDLE, 190))
-        painter.setFont(QFont("Segoe UI", 10))
+        painter.setFont(theme.qfont(theme.TYPE_MIN))
         painter.drawText(QRectF(135.0, 386.0, 490.0, 24.0),
                          Qt.AlignmentFlag.AlignHCenter | Qt.AlignmentFlag.AlignTop,
                          self._detail)
 
         # A deliberately quiet maker's mark, tucked inside the panel corner.
-        signature_font = QFont("Segoe UI")
-        signature_font.setPixelSize(18)
+        signature_font = theme.qfont(theme.TYPE_HEADING)
         painter.setFont(signature_font)
         painter.setPen(_color(theme.ICON_IDLE, 65))
         painter.drawText(QRectF(445.0, 388.0, 290.0, 32.0),

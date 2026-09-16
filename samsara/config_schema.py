@@ -43,6 +43,21 @@ SETTINGS_SCHEMA = {
         "default": "en",
         "tab": "general",
     },
+    # Queue 129. Dark is not universally accessible: astigmatism, some
+    # low-vision conditions and a bright room all read light-on-dark worse,
+    # not better, so an accessibility tool with one forced theme has a gap.
+    #   "dark"    the shipped palette, unchanged. DEFAULT.
+    #   "light"   the same tokens with the polarity flipped.
+    #   "system"  follow Windows' own app-theme setting.
+    # Resolved by samsara.ui.theme.resolve_theme() and applied at startup;
+    # see the Settings control, which says out loud that a change lands on
+    # restart rather than leaving half the windows on the old palette.
+    "ui.theme": {
+        "type": "enum",
+        "options": ["dark", "light", "system"],
+        "default": "dark",
+        "tab": "general",
+    },
     "auto_paste":           {"type": "bool", "default": True,  "tab": "general"},
     "add_trailing_space":   {"type": "bool", "default": True,  "tab": "general"},
     "auto_capitalize":      {"type": "bool", "default": True,  "tab": "general"},
@@ -176,6 +191,22 @@ SETTINGS_SCHEMA = {
         "default": [],
         "tab": "commands",
     },
+    "command_mode.stop_phrases": {
+        # Queue 116. The emergency stop's whole-utterance phrases. REPLACES
+        # session_modes.SESSION_STOP_PHRASES rather than adding to it, so a
+        # word can be changed and not only appended -- if one of the defaults
+        # transcribes badly on this machine the owner swaps it without a
+        # release. Saying one of these advances the execution generation,
+        # cancels the answer being spoken, the staged confirmation, both Ava
+        # queues and the schedule; it keeps the draft, the mode and the
+        # microphone. It is not an abort and not a sleep.
+        # Empty or unusable falls back to the built-ins: a typo here must not
+        # be a way to lose the stop.
+        "type": "list",
+        "item_type": "str",
+        "default": ["halt", "cease"],
+        "tab": "commands",
+    },
     "command_mode.inactivity_timeout_s": {
         "type": "int",
         "min": 5,
@@ -209,6 +240,26 @@ SETTINGS_SCHEMA = {
         "default": True,
         "tab": "commands",
         "depends_on": "command_mode.enabled",
+    },
+    # Queue 75: that preview fades to this opacity after this many seconds
+    # with no speech and no new text, and lets clicks through while faded.
+    # 0.0 is "fully hidden" -- an explicit choice, never the default. Modes
+    # tab controls; samsara/streaming.py IdleSettings reads them.
+    "command_mode.preview_idle_delay_s": {
+        "type": "float",
+        "min": 1.0,
+        "max": 60.0,
+        "step": 0.5,
+        "default": 5.0,
+        "tab": "commands",
+    },
+    "command_mode.preview_idle_opacity": {
+        "type": "float",
+        "min": 0.0,
+        "max": 0.9,
+        "step": 0.05,
+        "default": 0.25,
+        "tab": "commands",
     },
     # Ava Front Door P1: D3 command-first latched session (waterfall
     # resolver -- exact/alias match, then ACTION2 grammar, then one LLM
@@ -297,6 +348,30 @@ SETTINGS_SCHEMA = {
         "default": "cute",
         "tab": "sounds",
     },
+    # Queue 103. Which of the session's own spoken notices are actually
+    # spoken. Nothing in this app talks except Ava, so a voice arriving after
+    # a MOUSE CLICK reads as a malfunction -- the incident was clicking
+    # "Clear draft" and being told out loud to say "bring back my draft",
+    # a sentence the chip was already showing.
+    #
+    #   "questions"   -- the app speaks only when it is WAITING on an answer
+    #                    (the clear-draft yes/no, the spelling prompt). What
+    #                    it has already done is left to the chip. DEFAULT.
+    #   "everything"  -- today's behaviour, kept for a user who cannot see
+    #                    the chip at all. This is the accessibility escape
+    #                    hatch and must never be removed.
+    #
+    # There is deliberately no "off". See the queue 103 report: neither
+    # QUESTION-class prompt carries an earcon, and the spelling prompt has no
+    # outcome chip at all, so "off" would leave the app waiting on an answer
+    # it had given no sign of wanting. Adding earcons is out of scope here,
+    # so the value is not offered rather than shipped as a trap.
+    "feedback.spoken_notices": {
+        "type": "enum",
+        "options": ["questions", "everything"],
+        "default": "questions",
+        "tab": "sounds",
+    },
 
     # -------------------------------------------------------------------------
     # TTS tab
@@ -372,10 +447,18 @@ SETTINGS_SCHEMA = {
     # -------------------------------------------------------------------------
     # Advanced tab
     # -------------------------------------------------------------------------
+    # Queue 124 (documentation defect found by 118): this said `cpu` while the
+    # app's own defaults ship `device: "auto"` (dictation.py:3512), which
+    # resolves to CUDA when ctranslate2 reports it (:5587). The app's default
+    # wins at runtime, so the schema was describing a first run that never
+    # happens. Corrected to state what actually ships. The resolution logic is
+    # UNCHANGED -- this is documentation, not behaviour. compute_type is also
+    # derived there ("float16" if cuda else "int8", :5601) and is NOT read
+    # from this schema for the main model load; see the queue 124 report.
     "device": {
         "type": "enum",
-        "options": ["cpu", "cuda"],
-        "default": "cpu",
+        "options": ["auto", "cpu", "cuda"],
+        "default": "auto",
         "tab": "advanced",
     },
     "compute_type": {
@@ -384,10 +467,18 @@ SETTINGS_SCHEMA = {
         "default": "float16",
         "tab": "advanced",
     },
+    # Queue 124: `balanced` was the shipped default and it silently LOST
+    # long-form speech -- on five minutes of continuous speech it returned
+    # 94% of the words on `base` and 66% on `small`, with no warning. The
+    # cause is `without_timestamps=True` (measured per-parameter; see the
+    # queue 124 report), which is now fixed in every profile -- but `accurate`
+    # is also the most accurate on BOTH corpora measured, so it is the
+    # default. Cost on `base`, 120 short clips: WER 3.61% -> 3.91% and decode
+    # p50 66 ms -> 100 ms, about 5% of the end-to-end p50 queue 118 measured.
     "performance_mode": {
         "type": "enum",
         "options": ["fast", "balanced", "accurate"],
-        "default": "balanced",
+        "default": "accurate",
         "tab": "advanced",
     },
     "silence_threshold": {
@@ -477,6 +568,34 @@ SETTINGS_SCHEMA = {
         "options": ["clean", "verbatim"],
         "default": "clean",
         "tab": "general",
+    },
+
+    # Ava's edit proposals (queue 102): "make that more formal" over the text
+    # just dictated. Nothing is ever applied without the spoken word "apply",
+    # so `enabled` gates whether the PROPOSAL is offered at all, not whether
+    # something can happen behind the user's back.
+    "ava_edit.enabled": {"type": "bool", "default": True, "tab": "advanced"},
+    # Choreography only -- see samsara/ava_edit/pacing.py, which is built so
+    # this cannot change WHAT is applied. "cinematic" adds dwell either side
+    # of the deletion so a screen recording reads; "instant" is daily use.
+    "ava_edit.demo_pacing": {
+        "type": "enum",
+        "options": ["instant", "cinematic"],
+        "default": "instant",
+        "tab": "advanced",
+        "depends_on": "ava_edit.enabled",
+    },
+    "ava_edit.model": {
+        "type": "str",
+        "default": "llama3.2:3b",
+        "tab": "advanced",
+        "depends_on": "ava_edit.enabled",
+    },
+    "ava_edit.timeout_s": {
+        "type": "float",
+        "default": 12.0,
+        "tab": "advanced",
+        "depends_on": "ava_edit.enabled",
     },
 
     # Smart Corrections: optional LLM post-processing pass over dictation
@@ -572,6 +691,14 @@ SETTINGS_SCHEMA = {
     # folder override, is read inline at its point of use.
     "intent.shadow_enabled": {"type": "bool", "default": True, "tab": "advanced"},
 
+    # Queue 93 escape hatch: a word that, spoken first, forces the rest of the
+    # utterance to be read as a command -- "<prefix> copy" runs copy even
+    # though execution rule 1 (no single-word command executes) would
+    # otherwise type it. Empty is OFF and is the default: no prefix word is
+    # hard-coded, the owner picks one from shadow data. It never waives rule 2
+    # (only an exact match executes), so it cannot promote a homophone.
+    "intent.command_prefix": {"type": "str", "default": "", "tab": "advanced"},
+
     # -------------------------------------------------------------------------
     # Ava / Cloud tab
     # -------------------------------------------------------------------------
@@ -593,6 +720,18 @@ SETTINGS_SCHEMA = {
         "max": 120,
         "step": 5,
         "default": 30,
+        "tab": "ava",
+        "depends_on": "cloud_llm.enabled",
+    },
+    # Queue 59: Ava web search through DeepSeek's Anthropic-compatible
+    # endpoint. Explicit opt-in (sends the question to DeepSeek's servers);
+    # DeepSeek only. Config-file-only tuning read by cloud_llm.send_web_search:
+    # cloud_llm.search_max_uses (default 3, clamped 1-10),
+    # cloud_llm.search_max_tokens (default 1024, clamped 256-4096),
+    # cloud_llm.search_model (default "deepseek-flash").
+    "cloud_llm.web_search": {
+        "type": "bool",
+        "default": False,
         "tab": "ava",
         "depends_on": "cloud_llm.enabled",
     },

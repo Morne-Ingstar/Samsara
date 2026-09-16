@@ -6,16 +6,16 @@ from pathlib import Path
 PROJECT_ROOT = Path(__file__).parent.parent
 sys.path.insert(0, str(PROJECT_ROOT))
 
-# Stub uiautomation so the module loads in CI without the package installed.
-if 'uiautomation' not in sys.modules:
-    import types
-    sys.modules['uiautomation'] = types.ModuleType('uiautomation')
-
-# Stub win32 modules
-for _mod in ('win32api', 'win32con', 'win32gui'):
+# Stub uiautomation / win32 only when the real package is missing (CI).
+# An unconditional empty stub leaked into every other test collected in the
+# same process (plugin loading then failed on win32api.error) -- queue 56.
+for _mod in ('uiautomation', 'win32api', 'win32con', 'win32gui'):
     if _mod not in sys.modules:
-        import types
-        sys.modules[_mod] = types.ModuleType(_mod)
+        try:
+            __import__(_mod)
+        except ImportError:
+            import types
+            sys.modules[_mod] = types.ModuleType(_mod)
 
 from plugins.commands.show_numbers import _get_foreground_control, _parse_spoken_number
 

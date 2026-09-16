@@ -4,7 +4,7 @@ from types import SimpleNamespace
 from PySide6.QtCore import Qt
 from PySide6.QtWidgets import QLabel, QPushButton, QScrollArea, QSizePolicy
 
-from samsara.ui import settings_qt
+from samsara.ui import settings_qt, theme
 from samsara.ui_scale import UI_SCALE_OPTIONS
 
 
@@ -55,24 +55,25 @@ def test_general_interface_size_uses_supported_values_and_normal_apply(qapp):
 
 
 def test_shared_and_provider_secondary_copy_is_larger_and_higher_contrast(qapp):
-    assert 'QLabel[class="description"]' in settings_qt.STYLESHEET
-    description_rule = settings_qt.STYLESHEET.split(
+    assert 'QLabel[class="description"]' in settings_qt.stylesheet()
+    description_rule = settings_qt.stylesheet().split(
         'QLabel[class="description"]', 1
     )[1].split("}", 1)[0]
-    assert "color: #AEB4C0" in description_rule
-    assert "font-size: 13px" in description_rule
+    # Queue 129: the literal became the token it was approximating.
+    assert f"color: {theme.TEXT_SECONDARY}" in description_rule
+    assert f"font-size: {theme.TYPE_BODY}px" in description_rule  # 83: body floor
 
-    header_rule = settings_qt.STYLESHEET.split(
+    header_rule = settings_qt.stylesheet().split(
         "QHeaderView::section", 1
     )[1].split("}", 1)[0]
-    assert "color: #AEB4C0" in header_rule
-    assert "font-size: 13px" in header_rule
+    assert f"color: {theme.TEXT_SECONDARY}" in header_rule
+    assert f"font-size: {theme.TYPE_BODY}px" in header_rule  # 83: body floor
 
     window = settings_qt._SettingsWindow(_SettingsApp())
     try:
         provider_style = window._widgets["cloud_info_label"].styleSheet()
-        assert "#AEB4C0" in provider_style
-        assert "13px" in provider_style
+        assert theme.TEXT_SECONDARY in provider_style
+        assert f"{theme.TYPE_BODY}px" in provider_style  # 83: body floor
     finally:
         window.deleteLater()
 

@@ -40,6 +40,11 @@ _EXTRA_DEFAULTS = {
     # 'discoball.local') were leftover dev/demo values, not an intended
     # shipped default.
     "hyperion_host": "",
+    # 2026-09-14: inside an open wake session (quick/long dictation, wake
+    # session, post-wake command window) skip the adaptive RMS gate and use
+    # only the near-silence floor (wake_consumer.IN_SESSION_NEAR_SILENCE_RMS).
+    # False restores the pre-fix behaviour. The asleep gate is unaffected.
+    "wake_word_config.audio.bypass_adaptive_gate_in_session": True,
 }
 
 DEFAULTS = {key: entry["default"] for key, entry in SETTINGS_SCHEMA.items() if "default" in entry}

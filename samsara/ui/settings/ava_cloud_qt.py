@@ -54,6 +54,20 @@ _PROVIDER_INFO = {
 }
 
 
+_WEB_SEARCH_NOTE = (
+    "Off by default. When on, your question to Ava (and the recent conversation) "
+    "is sent to DeepSeek's servers, which search the web and read pages to answer. "
+    "Ava speaks a short summary and shows the full answer and its sources on screen. "
+    "Web answers are treated as information only: they can never run a command, "
+    "press keys or change files. Each search uses extra DeepSeek tokens."
+)
+_WEB_SEARCH_UNAVAILABLE = (
+    "Not available right now: web search needs Cloud AI enabled with DeepSeek as "
+    "the provider. Local models (Ollama) and the other providers have no built-in "
+    "web search, so Ava answers from what the model already knows."
+)
+
+
 class AvaCloudPage:
     """Methods of the Ava / Cloud settings page (moved from _SettingsWindow)."""
 
@@ -89,7 +103,7 @@ class AvaCloudPage:
             "Free with your own API key."
         )
         enable_note.setWordWrap(True)
-        enable_note.setStyleSheet(f"color: {theme.ICON_IDLE}; font-size: 12px; margin-left: 26px;")
+        enable_note.setStyleSheet(f"color: {theme.ICON_IDLE}; font-size: {theme.TYPE_MIN}px; margin-left: 26px;")
         layout.addWidget(enable_note)
         layout.addSpacing(8)
 
@@ -107,7 +121,7 @@ class AvaCloudPage:
             "Strict: tight persona, 1-3 sentences, stays in character."
         )
         personality_note.setWordWrap(True)
-        personality_note.setStyleSheet(f"color: {theme.ICON_IDLE}; font-size: 12px; margin-left: 4px;")
+        personality_note.setStyleSheet(f"color: {theme.ICON_IDLE}; font-size: {theme.TYPE_MIN}px; margin-left: 4px;")
         layout.addWidget(personality_note)
         layout.addSpacing(8)
 
@@ -130,7 +144,7 @@ class AvaCloudPage:
             "Keep last session: the conversation is restored on next launch."
         )
         memory_note.setWordWrap(True)
-        memory_note.setStyleSheet(f"color: {theme.ICON_IDLE}; font-size: 12px; margin-left: 4px;")
+        memory_note.setStyleSheet(f"color: {theme.ICON_IDLE}; font-size: {theme.TYPE_MIN}px; margin-left: 4px;")
         layout.addWidget(memory_note)
         layout.addSpacing(6)
 
@@ -168,7 +182,7 @@ class AvaCloudPage:
         # a disabled QLineEdit.
         info_label = QLabel(_PROVIDER_INFO.get(current_provider, ""))
         info_label.setWordWrap(True)
-        info_label.setStyleSheet("color: #AEB4C0; font-size: 13px; background: transparent;")
+        info_label.setStyleSheet(f"color: {theme.TEXT_SECONDARY}; font-size: {theme.TYPE_BODY}px; background: transparent;")
         self._widgets['cloud_info_label'] = info_label
         layout.addWidget(info_label)
 
@@ -181,10 +195,10 @@ class AvaCloudPage:
             "no Samsara account, no payment to us."
         )
         explainer.setWordWrap(True)
-        explainer.setStyleSheet("color: #AEB4C0; font-size: 13px;")
+        explainer.setStyleSheet(f"color: {theme.TEXT_SECONDARY}; font-size: {theme.TYPE_BODY}px;")
         layout.addWidget(explainer)
         setup_link = QLabel("Setup guide: morneis.com/samsara")
-        setup_link.setStyleSheet(f"color: {theme.ACCENT}; font-size: 13px;")
+        setup_link.setStyleSheet(f"color: {theme.ACCENT}; font-size: {theme.TYPE_BODY}px;")
         layout.addWidget(setup_link)
         layout.addSpacing(4)
 
@@ -203,11 +217,11 @@ class AvaCloudPage:
         show_btn.setCheckable(True)
         show_btn.setFixedWidth(60)
         show_btn.setStyleSheet(
-            "QPushButton { background-color: transparent; color: #AEB4C0; "
-            "border: 1px solid rgba(255,255,255,0.14); border-radius: 6px; "
-            "padding: 6px 10px; font-size: 13px; }"
+            f"QPushButton {{ background-color: transparent; color: {theme.TEXT_SECONDARY}; "
+            f"border: 1px solid {theme.wash(0.14)}; border-radius: 6px; "
+            f"padding: 6px 10px; font-size: {theme.TYPE_BODY}px; }}"
             f"QPushButton:hover {{ color: {theme.TEXT_PRIMARY}; }}"
-            f"QPushButton:checked {{ border-color: rgba(94,234,212,0.4); color: {theme.ACCENT}; }}"
+            f"QPushButton:checked {{ border-color: {theme.tint(theme.ACCENT, 0.4)}; color: {theme.ACCENT}; }}"
         )
         show_btn.toggled.connect(
             lambda checked: self._toggle_api_key_show(checked, api_key_entry, show_btn)
@@ -243,6 +257,29 @@ class AvaCloudPage:
         ))
         layout.addSpacing(8)
 
+        # Web search (queue 59) -- explicit cloud opt-in, DeepSeek only.
+        layout.addWidget(self._section_title("Web search"))
+        layout.addSpacing(4)
+        web_search_cb = QCheckBox("Let Ava search the web (DeepSeek only)")
+        web_search_cb.setChecked(bool(cfg.get('web_search', False)))
+        self._widgets['cloud_web_search'] = web_search_cb
+        layout.addWidget(web_search_cb)
+        web_search_note = QLabel(_WEB_SEARCH_NOTE)
+        web_search_note.setWordWrap(True)
+        web_search_note.setTextFormat(Qt.TextFormat.PlainText)
+        web_search_note.setStyleSheet(f"color: {theme.ICON_IDLE}; font-size: {theme.TYPE_MIN}px; margin-left: 26px;")
+        layout.addWidget(web_search_note)
+        web_search_unavailable = QLabel(_WEB_SEARCH_UNAVAILABLE)
+        web_search_unavailable.setWordWrap(True)
+        web_search_unavailable.setTextFormat(Qt.TextFormat.PlainText)
+        web_search_unavailable.setStyleSheet(f"color: {theme.WARNING}; font-size: {theme.TYPE_MIN}px; margin-left: 26px;")
+        self._widgets['cloud_web_search_unavailable'] = web_search_unavailable
+        layout.addWidget(web_search_unavailable)
+        cloud_enabled.toggled.connect(lambda _checked: self._sync_web_search_availability())
+        provider_combo.currentTextChanged.connect(lambda _text: self._sync_web_search_availability())
+        self._sync_web_search_availability()
+        layout.addSpacing(8)
+
         # Timeout
         timeout_spin = QSpinBox()
         timeout_spin.setRange(5, 120)
@@ -265,7 +302,7 @@ class AvaCloudPage:
         test_btn.setSizePolicy(QSizePolicy.Policy.Minimum, QSizePolicy.Policy.Fixed)
         test_btn.clicked.connect(self._run_test_connection)
         test_status = QLabel("")
-        test_status.setStyleSheet(f"color: {theme.ICON_IDLE}; font-size: 12px;")
+        test_status.setStyleSheet(f"color: {theme.ICON_IDLE}; font-size: {theme.TYPE_MIN}px;")
         self._widgets['cloud_test_status'] = test_status
         test_row.addWidget(test_btn)
         test_row.addWidget(test_status)
@@ -282,7 +319,7 @@ class AvaCloudPage:
             "unlocks features. morneis.com/samsara/support"
         )
         support_text.setWordWrap(True)
-        support_text.setStyleSheet(f"color: {theme.ICON_IDLE}; font-size: 12px;")
+        support_text.setStyleSheet(f"color: {theme.ICON_IDLE}; font-size: {theme.TYPE_MIN}px;")
         layout.addWidget(support_text)
         layout.addSpacing(8)
 
@@ -328,7 +365,7 @@ class AvaCloudPage:
         key_row = QHBoxLayout()
         key_row.setSpacing(8)
         key_row_lbl = QLabel("Supporter key (optional):")
-        key_row_lbl.setStyleSheet(f"color: {theme.TEXT_PRIMARY}; font-size: 13px; background: transparent;")
+        key_row_lbl.setStyleSheet(f"color: {theme.TEXT_PRIMARY}; font-size: {theme.TYPE_BODY}px; background: transparent;")
         key_row_lbl.setFixedWidth(150)
         license_entry = QLineEdit()
         license_entry.setPlaceholderText("SAMSARA-XXXX-XXXX-XXXX")
@@ -343,7 +380,7 @@ class AvaCloudPage:
         nk_layout.addLayout(key_row)
 
         license_status = QLabel("")
-        license_status.setStyleSheet(f"color: {theme.ERROR}; font-size: 12px; background: transparent;")
+        license_status.setStyleSheet(f"color: {theme.ERROR}; font-size: {theme.TYPE_MIN}px; background: transparent;")
         self._widgets['cloud_license_status'] = license_status
         nk_layout.addWidget(license_status)
 
@@ -361,13 +398,13 @@ class AvaCloudPage:
 
         active_lbl = QLabel("Supporter key active")
         active_lbl.setStyleSheet(
-            f"color: {theme.ACCENT}; font-size: 13px; font-weight: bold; background: transparent;"
+            f"color: {theme.ACCENT}; font-size: {theme.TYPE_BODY}px; font-weight: bold; background: transparent;"
         )
         hk_layout.addWidget(active_lbl)
 
         masked_lbl = QLabel(premium.masked_key(key) if has_key else "")
         masked_lbl.setStyleSheet(
-            f"color: {theme.ICON_IDLE}; font-size: 11px; "
+            f"color: {theme.ICON_IDLE}; font-size: {theme.TYPE_MIN}px; "
             "font-family: 'Consolas', 'Courier New', monospace; background: transparent;"
         )
         self._widgets['cloud_masked_key'] = masked_lbl
@@ -377,9 +414,9 @@ class AvaCloudPage:
         remove_btn.setFixedWidth(120)
         remove_btn.setStyleSheet(
             f"QPushButton {{ background-color: transparent; color: {theme.ICON_IDLE}; "
-            "border: 1px solid rgba(255,255,255,0.14); border-radius: 6px; "
-            "padding: 7px 14px; font-size: 13px; }"
-            f"QPushButton:hover {{ background-color: rgba(255,255,255,0.04); color: {theme.TEXT_PRIMARY}; }}"
+            f"border: 1px solid {theme.wash(0.14)}; border-radius: 6px; "
+            f"padding: 7px 14px; font-size: {theme.TYPE_BODY}px; }}"
+            f"QPushButton:hover {{ background-color: {theme.wash(0.04)}; color: {theme.TEXT_PRIMARY}; }}"
         )
         remove_btn.clicked.connect(self._remove_license)
         hk_layout.addWidget(remove_btn, alignment=Qt.AlignmentFlag.AlignLeft)
@@ -391,7 +428,7 @@ class AvaCloudPage:
         layout.addWidget(supporter_frame)
 
         supporter_instant_note = QLabel("Activating or removing a supporter key applies immediately.")
-        supporter_instant_note.setStyleSheet(f"color: {theme.ICON_IDLE}; font-size: 12px;")
+        supporter_instant_note.setStyleSheet(f"color: {theme.ICON_IDLE}; font-size: {theme.TYPE_MIN}px;")
         layout.addWidget(supporter_instant_note)
 
         def _save(_acc):
@@ -406,6 +443,12 @@ class AvaCloudPage:
                 cloud_cfg['provider'] = provider
                 cloud_cfg['api_key'] = api_key
                 cloud_cfg['timeout_seconds'] = self._widgets['cloud_timeout'].value()
+                web_search_cb = self._widgets.get('cloud_web_search')
+                if web_search_cb is not None:
+                    # Stored only while it can apply (Cloud AI on, DeepSeek);
+                    # never left silently armed for a later provider switch.
+                    cloud_cfg['web_search'] = bool(
+                        web_search_cb.isEnabled() and web_search_cb.isChecked())
                 if model_override:
                     cloud_cfg['model'] = model_override
                 elif 'model' in cloud_cfg:
@@ -430,6 +473,24 @@ class AvaCloudPage:
         layout.addStretch()
         scroll.setWidget(container)
         return scroll
+    def _sync_web_search_availability(self):
+        """Web search exists only for Cloud AI with DeepSeek. Otherwise the
+        box is disabled AND unchecked, and the reason is shown -- never a
+        control that silently does nothing (local Ollama has no search)."""
+        cb = self._widgets.get('cloud_web_search')
+        note = self._widgets.get('cloud_web_search_unavailable')
+        enabled_cb = self._widgets.get('cloud_enabled')
+        provider_combo = self._widgets.get('cloud_provider')
+        if cb is None or enabled_cb is None or provider_combo is None:
+            return
+        provider = _DISPLAY_TO_CODE.get(provider_combo.currentText(), 'deepseek')
+        available = enabled_cb.isChecked() and provider == 'deepseek'
+        if not available:
+            cb.setChecked(False)
+        cb.setEnabled(available)
+        if note is not None:
+            note.setVisible(not available)
+
     def _provider_info(self, display_name: str) -> str:
         code = _DISPLAY_TO_CODE.get(display_name, 'deepseek')
         return _PROVIDER_INFO.get(code, "")

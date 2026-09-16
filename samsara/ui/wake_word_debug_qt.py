@@ -31,6 +31,7 @@ from samsara.runtime import thread_registry
 from samsara.languages import resolve_transcribe_language
 
 from samsara.log import get_logger
+from samsara.ui import theme
 
 logger = get_logger(__name__)
 
@@ -38,86 +39,78 @@ logger = get_logger(__name__)
 # Palette
 # ---------------------------------------------------------------------------
 
-_BG       = "#0b0e14"
-_SURFACE  = "#131820"
-_ELEVATED = "#1a2030"
-_BORDER   = "#2a3345"
-_ACCENT   = "#5cc4d4"
-_ACCENT_DIM = "#1a3a42"
-_TEXT_PRI = "#e4e8ef"
-_TEXT_SEC = "#7a8599"
-_TEXT_DIS = "#4a5568"
-_SUCCESS  = "#6ee7a0"
-_ERROR    = "#f87171"
-_WARNING  = "#fbbf24"
-_GOLD     = "#FFD700"
-_GREEN    = "#00FF00"
-_CYAN     = "#00CED1"
+# Colour comes from samsara.ui.theme, never from a literal here: this
+# module used to keep its own copy of the dark palette, which is exactly
+# how a second palette leaves one window unreadable (queue 129).
 
 _MAX_TIMELINE_UTTERANCES = 50
 
-_SS = f"""
-QMainWindow, QWidget {{
-    background: {_BG};
-    color: {_TEXT_PRI};
-    font-family: 'Segoe UI', sans-serif;
-    font-size: 12px;
-}}
-QFrame[class="card"] {{
-    background: {_SURFACE};
-    border: 1px solid {_BORDER};
-    border-radius: 6px;
-}}
-QPlainTextEdit {{
-    background: {_SURFACE};
-    border: 1px solid {_BORDER};
-    border-radius: 4px;
-    color: {_TEXT_PRI};
-    font-family: 'Consolas', monospace;
-    font-size: 11px;
-    padding: 6px;
-}}
-QPushButton {{
-    background: {_SURFACE};
-    border: 1px solid {_BORDER};
-    border-radius: 4px;
-    color: {_TEXT_PRI};
-    padding: 5px 14px;
-    font-size: 12px;
-    min-width: 80px;
-}}
-QPushButton:hover  {{ background: {_ELEVATED}; border-color: {_ACCENT}; }}
-QPushButton:pressed {{ background: {_ACCENT_DIM}; }}
-QPushButton:disabled {{ color: {_TEXT_DIS}; border-color: {_TEXT_DIS}; }}
-QSlider::groove:horizontal {{
-    height: 4px; background: {_BORDER}; border-radius: 2px;
-}}
-QSlider::handle:horizontal {{
-    background: {_ACCENT}; width: 12px; height: 12px;
-    margin: -4px 0; border-radius: 6px;
-}}
-QSlider::sub-page:horizontal {{ background: {_ACCENT}; border-radius: 2px; }}
-QDoubleSpinBox, QComboBox {{
-    background: {_SURFACE};
-    border: 1px solid {_BORDER};
-    border-radius: 4px;
-    color: {_TEXT_PRI};
-    padding: 4px 8px;
-    min-width: 70px;
-}}
-QComboBox::drop-down {{ border: none; width: 20px; }}
-QComboBox QAbstractItemView {{
-    background: {_ELEVATED}; border: 1px solid {_BORDER};
-    color: {_TEXT_PRI};
-    selection-background-color: {_ACCENT_DIM};
-}}
-QScrollBar:vertical {{
-    background: {_BG}; width: 6px; border: none;
-}}
-QScrollBar::handle:vertical {{
-    background: {_BORDER}; border-radius: 3px; min-height: 20px;
-}}
-QScrollBar::add-line:vertical, QScrollBar::sub-line:vertical {{ height: 0; }}
+def _ss() -> str:
+    """The window's stylesheet, built on demand. Never a module
+    constant: an f-string evaluated at import time freezes the
+    palette that happened to be live then (queue 129)."""
+    return f"""
+    QMainWindow, QWidget {{
+        background: {theme.BG0};
+        color: {theme.TEXT_PRIMARY};
+        font-family: 'Segoe UI', sans-serif;
+        font-size: {theme.TYPE_MIN}px;
+    }}
+    QFrame[class="card"] {{
+        background: {theme.BG1};
+        border: 1px solid {theme.BORDER};
+        border-radius: 6px;
+    }}
+    QPlainTextEdit {{
+        background: {theme.BG1};
+        border: 1px solid {theme.BORDER};
+        border-radius: 4px;
+        color: {theme.TEXT_PRIMARY};
+        font-family: 'Consolas', monospace;
+        font-size: {theme.TYPE_MIN}px;
+        padding: 6px;
+    }}
+    QPushButton {{
+        background: {theme.BG1};
+        border: 1px solid {theme.BORDER};
+        border-radius: 4px;
+        color: {theme.TEXT_PRIMARY};
+        padding: 5px 14px;
+        font-size: {theme.TYPE_MIN}px;
+        min-width: 80px;
+    }}
+    QPushButton:hover  {{ background: {theme.BG2}; border-color: {theme.ACCENT}; }}
+    QPushButton:pressed {{ background: {theme.ACCENT_DIM}; }}
+    QPushButton:disabled {{ color: {theme.TEXT_DISABLED}; border-color: {theme.TEXT_DISABLED}; }}
+    QSlider::groove:horizontal {{
+        height: 4px; background: {theme.BORDER}; border-radius: 2px;
+    }}
+    QSlider::handle:horizontal {{
+        background: {theme.ACCENT}; width: 12px; height: 12px;
+        margin: -4px 0; border-radius: 6px;
+    }}
+    QSlider::sub-page:horizontal {{ background: {theme.ACCENT}; border-radius: 2px; }}
+    QDoubleSpinBox, QComboBox {{
+        background: {theme.BG1};
+        border: 1px solid {theme.BORDER};
+        border-radius: 4px;
+        color: {theme.TEXT_PRIMARY};
+        padding: 4px 8px;
+        min-width: 70px;
+    }}
+    QComboBox::drop-down {{ border: none; width: 20px; }}
+    QComboBox QAbstractItemView {{
+        background: {theme.BG2}; border: 1px solid {theme.BORDER};
+        color: {theme.TEXT_PRIMARY};
+        selection-background-color: {theme.ACCENT_DIM};
+    }}
+    QScrollBar:vertical {{
+        background: {theme.BG0}; width: 6px; border: none;
+    }}
+    QScrollBar::handle:vertical {{
+        background: {theme.BORDER}; border-radius: 3px; min-height: 20px;
+    }}
+    QScrollBar::add-line:vertical, QScrollBar::sub-line:vertical {{ height: 0; }}
 """
 
 
@@ -142,22 +135,27 @@ def _resample_audio(audio: np.ndarray, orig_sr: int, target_sr: int = 16000) -> 
 def _card():
     f = QFrame()
     f.setProperty("class", "card")
-    f.setStyleSheet(f"background: {_SURFACE}; border: 1px solid {_BORDER}; border-radius: 6px;")
+    f.setStyleSheet(f"background: {theme.BG1}; border: 1px solid {theme.BORDER}; border-radius: 6px;")
     return f
 
 
 def _section_label(text):
     lbl = QLabel(text)
     lbl.setStyleSheet(
-        f"color: {_TEXT_PRI}; background: transparent;"
-        " font-size: 13px; font-weight: 700;"
+        f"color: {theme.TEXT_PRIMARY}; background: transparent;"
+        f" font-size: {theme.TYPE_BODY}px; font-weight: 700;"
     )
     return lbl
 
 
-def _kv_label(text, color=_TEXT_SEC):
+def _kv_label(text, color=None):
+    # None, not the token itself: a default argument is evaluated when the
+    # def runs, so a token there keeps the palette that was live at import
+    # (queue 129).
+    if color is None:
+        color = theme.TEXT_SECONDARY
     lbl = QLabel(text)
-    lbl.setStyleSheet(f"color: {color}; background: transparent; font-size: 12px;")
+    lbl.setStyleSheet(f"color: {color}; background: transparent; font-size: {theme.TYPE_MIN}px;")
     return lbl
 
 
@@ -166,7 +164,7 @@ def _btn(text, color=None):
     if color:
         b.setStyleSheet(
             f"background: {color}; border: 1px solid {color};"
-            f" border-radius: 4px; color: white; padding: 5px 14px;"
+            f" border-radius: 4px; color: {theme.TEXT_PRIMARY}; padding: 5px 14px;"
         )
     return b
 
@@ -217,7 +215,7 @@ class _DebugWindow(QMainWindow):
         self._pending_rms = None
 
         self.setWindowTitle("Wake Word Debug")
-        self.setStyleSheet(_SS)
+        self.setStyleSheet(_ss())
         self.resize(750, 900)
         self.setMinimumSize(680, 700)
 
@@ -233,7 +231,7 @@ class _DebugWindow(QMainWindow):
         scroll = QScrollArea()
         scroll.setWidgetResizable(True)
         scroll.setFrameShape(QFrame.NoFrame)
-        scroll.setStyleSheet(f"background: {_BG};")
+        scroll.setStyleSheet(f"background: {theme.BG0};")
         self.setCentralWidget(scroll)
 
         container = QWidget()
@@ -277,15 +275,15 @@ class _DebugWindow(QMainWindow):
         phrase  = ww.get('phrase', config_defaults.DEFAULTS['wake_word_config.phrase'])
         end_cfg = ww.get('end_word', {})
         end_txt = f'"{end_cfg.get("phrase", "over")}"' if end_cfg.get('enabled') else "(disabled)"
-        end_col = _CYAN if end_cfg.get('enabled') else _TEXT_SEC
+        end_col = theme.ACCENT if end_cfg.get('enabled') else theme.TEXT_SECONDARY
 
-        self._state_lbl = self._kv_row(lay, "State:",        "Idle",          _TEXT_SEC)
-        self._wake_lbl  = self._kv_row(lay, "Wake phrase:",  f'"{phrase}"',   _CYAN)
+        self._state_lbl = self._kv_row(lay, "State:",        "Idle",          theme.TEXT_SECONDARY)
+        self._wake_lbl  = self._kv_row(lay, "Wake phrase:",  f'"{phrase}"',   theme.ACCENT)
         self._end_lbl   = self._kv_row(lay, "End word:",     end_txt,         end_col)
-        self._mode_lbl  = self._kv_row(lay, "Dict. mode:",   "None",          _TEXT_SEC)
-        self._timer_lbl = self._kv_row(lay, "Timer:",        "--",            _TEXT_SEC)
-        self._flow_lbl  = self._kv_row(lay, "Flow:",         "Idle",          _TEXT_SEC, wrap=True)
-        self._heard_lbl = self._kv_row(lay, "Last heard:",   "(nothing yet)", _TEXT_SEC, wrap=True)
+        self._mode_lbl  = self._kv_row(lay, "Dict. mode:",   "None",          theme.TEXT_SECONDARY)
+        self._timer_lbl = self._kv_row(lay, "Timer:",        "--",            theme.TEXT_SECONDARY)
+        self._flow_lbl  = self._kv_row(lay, "Flow:",         "Idle",          theme.TEXT_SECONDARY, wrap=True)
+        self._heard_lbl = self._kv_row(lay, "Last heard:",   "(nothing yet)", theme.TEXT_SECONDARY, wrap=True)
         return card
 
     def _build_eval_card(self):
@@ -321,7 +319,7 @@ class _DebugWindow(QMainWindow):
         lay.addLayout(bar_row)
 
         thresh = self._app.config.get('wake_word_config', {}).get('audio', {}).get('speech_threshold', 0.03)
-        self._thresh_lbl = self._kv_row(lay, "Speech threshold:", f"{thresh:.3f}", _TEXT_SEC)
+        self._thresh_lbl = self._kv_row(lay, "Speech threshold:", f"{thresh:.3f}", theme.TEXT_SECONDARY)
         return card
 
     def _build_params_card(self):
@@ -342,11 +340,11 @@ class _DebugWindow(QMainWindow):
             audio_cfg.get('min_speech_duration', 0.3), 0.1, 2.0, 1)
 
         sep = QFrame(); sep.setFrameShape(QFrame.HLine)
-        sep.setStyleSheet(f"color: {_BORDER};")
+        sep.setStyleSheet(f"color: {theme.BORDER};")
         lay.addWidget(sep)
 
         to_lbl = QLabel("Mode Timeouts:")
-        to_lbl.setStyleSheet(f"color: {_TEXT_PRI}; font-weight: 600;")
+        to_lbl.setStyleSheet(f"color: {theme.TEXT_PRIMARY}; font-weight: 600;")
         lay.addWidget(to_lbl)
 
         self._dictate_spin, _ = self._slider_row(
@@ -366,14 +364,14 @@ class _DebugWindow(QMainWindow):
         lay.setContentsMargins(0, 0, 0, 0)
         lay.setSpacing(8)
 
-        self._start_btn = _btn("Start Test", "#1a5c1a")
-        self._stop_btn  = _btn("Stop",       "#5c1a1a")
+        self._start_btn = _btn("Start Test", theme.mix(theme.SUCCESS, theme.BG1, 0.72))
+        self._stop_btn  = _btn("Stop",       theme.mix(theme.ERROR, theme.BG1, 0.72))
         self._stop_btn.setEnabled(False)
         clear_btn   = _btn("Clear Log")
         apply_btn   = _btn("Apply to Config")
         apply_btn.setStyleSheet(
-            f"background: {_ACCENT_DIM}; border: 1px solid {_ACCENT};"
-            f" border-radius: 4px; color: {_ACCENT}; padding: 5px 14px;")
+            f"background: {theme.ACCENT_DIM}; border: 1px solid {theme.ACCENT};"
+            f" border-radius: 4px; color: {theme.ACCENT}; padding: 5px 14px;")
 
         self._start_btn.clicked.connect(self._on_start)
         self._stop_btn.clicked.connect(self._on_stop)
@@ -452,12 +450,17 @@ class _DebugWindow(QMainWindow):
     # ---- Layout helpers ---------------------------------------------------
 
     @staticmethod
-    def _kv_row(parent_lay, key, value, color=_TEXT_SEC, wrap=False):
+    def _kv_row(parent_lay, key, value, color=None, wrap=False):
+        # None, not the token itself: a default argument is evaluated when the
+        # def runs, so a token there keeps the palette that was live at import
+        # (queue 129).
+        if color is None:
+            color = theme.TEXT_SECONDARY
         row = QHBoxLayout()
         row.setSpacing(8)
         key_lbl = QLabel(key)
         key_lbl.setFixedWidth(120)
-        key_lbl.setStyleSheet(f"color: {_TEXT_SEC}; background: transparent;")
+        key_lbl.setStyleSheet(f"color: {theme.TEXT_SECONDARY}; background: transparent;")
         val_lbl = QLabel(value)
         val_lbl.setStyleSheet(f"color: {color}; background: transparent;")
         if wrap:
@@ -473,9 +476,9 @@ class _DebugWindow(QMainWindow):
         row.setSpacing(8)
         key_lbl = QLabel(key)
         key_lbl.setFixedWidth(120)
-        key_lbl.setStyleSheet(f"color: {_TEXT_DIS}; background: transparent;")
+        key_lbl.setStyleSheet(f"color: {theme.TEXT_DISABLED}; background: transparent;")
         val_lbl = QLabel("--")
-        val_lbl.setStyleSheet(f"color: {_TEXT_SEC}; background: transparent;")
+        val_lbl.setStyleSheet(f"color: {theme.TEXT_SECONDARY}; background: transparent;")
         row.addWidget(key_lbl)
         row.addWidget(val_lbl, stretch=1)
         parent_lay.addLayout(row)
@@ -487,14 +490,14 @@ class _DebugWindow(QMainWindow):
         row.setSpacing(8)
         lbl = QLabel(label)
         lbl.setFixedWidth(140)
-        lbl.setStyleSheet(f"color: {_TEXT_SEC}; background: transparent;")
+        lbl.setStyleSheet(f"color: {theme.TEXT_SECONDARY}; background: transparent;")
         slider = QSlider(Qt.Horizontal)
         steps  = 1000
         slider.setRange(0, steps)
         slider.setValue(int((init - lo) / (hi - lo) * steps))
         val_lbl = QLabel(f"{init:.{decimals}f}")
         val_lbl.setFixedWidth(50)
-        val_lbl.setStyleSheet(f"color: {_TEXT_PRI}; background: transparent;")
+        val_lbl.setStyleSheet(f"color: {theme.TEXT_PRIMARY}; background: transparent;")
         spin = QDoubleSpinBox()
         spin.setRange(lo, hi)
         spin.setDecimals(decimals)
@@ -677,16 +680,16 @@ class _DebugWindow(QMainWindow):
     def _set_mode(self, mode):
         if mode:
             self._mode_lbl.setText(mode.replace('_', ' ').title())
-            self._mode_lbl.setStyleSheet(f"color: {_GOLD}; background: transparent;")
+            self._mode_lbl.setStyleSheet(f"color: {theme.WARNING}; background: transparent;")
         else:
             self._mode_lbl.setText("None")
-            self._mode_lbl.setStyleSheet(f"color: {_TEXT_SEC}; background: transparent;")
+            self._mode_lbl.setStyleSheet(f"color: {theme.TEXT_SECONDARY}; background: transparent;")
 
     @Slot(str)
     def _set_heard(self, text: str):
         display = text if len(text) < 70 else text[:67] + "..."
         self._heard_lbl.setText(f'"{display}"')
-        self._heard_lbl.setStyleSheet(f"color: {_TEXT_PRI}; background: transparent;")
+        self._heard_lbl.setStyleSheet(f"color: {theme.TEXT_PRIMARY}; background: transparent;")
 
     @Slot(str)
     def _set_flow(self, text: str):
@@ -710,14 +713,14 @@ class _DebugWindow(QMainWindow):
         self._ev_norm.setText(_clamp(norm))
         if correction_applied:
             self._ev_corrected.setText(_clamp(corr))
-            self._ev_corrected.setStyleSheet(f"color: {_GOLD}; background: transparent;")
+            self._ev_corrected.setStyleSheet(f"color: {theme.WARNING}; background: transparent;")
         else:
             self._ev_corrected.setText("(no correction applied)")
-            self._ev_corrected.setStyleSheet(f"color: {_TEXT_DIS}; background: transparent;")
+            self._ev_corrected.setStyleSheet(f"color: {theme.TEXT_DISABLED}; background: transparent;")
         self._ev_phrase.setText(f'"{phrase}"')
         self._ev_match.setText("YES" if matched else "NO")
         self._ev_match.setStyleSheet(
-            f"color: {_GREEN if matched else _TEXT_DIS}; background: transparent;")
+            f"color: {theme.SUCCESS if matched else theme.TEXT_DISABLED}; background: transparent;")
         self._ev_method.setText(mtype)
         self._ev_index.setText(str(idx) if idx >= 0 else "--")
 
@@ -726,7 +729,7 @@ class _DebugWindow(QMainWindow):
         self._level_bar.setValue(min(1000, int(rms * 10000)))
         self._level_val.setText(f"{rms:.3f}")
         thresh = self._thresh_spin.value()
-        color  = _GREEN if rms > thresh else _ACCENT
+        color  = theme.SUCCESS if rms > thresh else theme.ACCENT
         self._level_bar.setStyleSheet(
             f"QSlider::sub-page:horizontal {{ background: {color}; border-radius: 2px; }}")
 
@@ -750,7 +753,7 @@ class _DebugWindow(QMainWindow):
 
     def _update_timer_display(self):
         if not self._dictation_mode or not self._dictation_start:
-            self._timer_sig.emit("--", _TEXT_SEC)
+            self._timer_sig.emit("--", theme.TEXT_SECONDARY)
             return
         timeout = {
             'long_dictate':  self._long_spin.value(),
@@ -758,10 +761,10 @@ class _DebugWindow(QMainWindow):
         }.get(self._dictation_mode, self._dictate_spin.value())
         remaining = max(0.0, timeout - (time.time() - self._dictation_start))
         if remaining > 0:
-            color = _GREEN if remaining > timeout * 0.3 else _ERROR
+            color = theme.SUCCESS if remaining > timeout * 0.3 else theme.ERROR
             self._timer_sig.emit(f"{remaining:.1f}s", color)
         else:
-            self._timer_sig.emit("0.0s", _ERROR)
+            self._timer_sig.emit("0.0s", theme.ERROR)
             if not self._get_require_end():
                 self.log(f"Timer expired — output: \"{' '.join(self._dictation_buf)}\"")
                 self._reset_listening_state()
@@ -876,10 +879,10 @@ class _DebugWindow(QMainWindow):
         self._dictation_start = None
 
         self._btns_sig.emit(True)
-        self._state_sig.emit("Listening for wake word...", _CYAN)
+        self._state_sig.emit("Listening for wake word...", theme.ACCENT)
         self._mode_sig.emit(None)
         self._flow_sig.emit("Listening...")
-        self._timer_sig.emit("--", _TEXT_SEC)
+        self._timer_sig.emit("--", theme.TEXT_SECONDARY)
         self.log("Started listening...")
 
         try:
@@ -914,10 +917,10 @@ class _DebugWindow(QMainWindow):
             self.audio_stream = None
 
         self._btns_sig.emit(False)
-        self._state_sig.emit("Stopped", _TEXT_SEC)
+        self._state_sig.emit("Stopped", theme.TEXT_SECONDARY)
         self._mode_sig.emit(None)
         self._flow_sig.emit("Idle")
-        self._timer_sig.emit("--", _TEXT_SEC)
+        self._timer_sig.emit("--", theme.TEXT_SECONDARY)
         self._level_sig.emit(0.0)
         self.log("Stopped listening.")
 
@@ -946,7 +949,7 @@ class _DebugWindow(QMainWindow):
             if not self._is_speaking:
                 self._is_speaking = True
                 mode_str = self._dictation_mode or 'listening'
-                self._state_sig.emit(f"Speaking ({mode_str})", _GREEN)
+                self._state_sig.emit(f"Speaking ({mode_str})", theme.SUCCESS)
             self._silence_start = None
             self._speech_buffer.append(chunk)
         elif self._is_speaking:
@@ -978,7 +981,7 @@ class _DebugWindow(QMainWindow):
     # ----------------------------------------------------------------
 
     def _process_audio(self, buffer: list):
-        self._state_sig.emit("Processing...", _ERROR)
+        self._state_sig.emit("Processing...", theme.ERROR)
         try:
             audio        = np.concatenate(buffer)
             capture_rate = getattr(self._app, 'capture_rate', 48000)
@@ -1049,7 +1052,7 @@ class _DebugWindow(QMainWindow):
                 if command:
                     self._classify_command(command)
                 else:
-                    self._state_sig.emit("Waiting for command...", _GOLD)
+                    self._state_sig.emit("Waiting for command...", theme.WARNING)
                     self._flow_sig.emit("Wake Word [*] -> Waiting...")
                     self.trace({'stage': 'command_classify', 'command': '',
                                 'classification': 'waiting_for_command',
@@ -1067,7 +1070,7 @@ class _DebugWindow(QMainWindow):
 
         except Exception as e:
             self.log(f"ERROR: {e}")
-            self._state_sig.emit("Error — see log", "#FF0000")
+            self._state_sig.emit("Error — see log", f"{theme.ERROR}")
 
     def _handle_dictation(self, text: str, text_lower: str, ww_cfg: dict) -> str:
         cancel_cfg = ww_cfg.get('cancel_word', {})
@@ -1166,7 +1169,7 @@ class _DebugWindow(QMainWindow):
                if initial_content else f"-> Starting {display} mode")
         self.log(msg)
         self._mode_sig.emit(mode)
-        self._state_sig.emit(f"Dictating ({mode.replace('_', ' ')})...", _GOLD)
+        self._state_sig.emit(f"Dictating ({mode.replace('_', ' ')})...", theme.WARNING)
         self._flow_sig.emit(f"Wake Word -> {display} -> [Recording...]")
 
     def _reset_listening_state(self):
@@ -1174,13 +1177,13 @@ class _DebugWindow(QMainWindow):
             return
         if self._dictation_mode:
             self._state_sig.emit(
-                f"Dictating ({self._dictation_mode.replace('_', ' ')})...", _GOLD)
+                f"Dictating ({self._dictation_mode.replace('_', ' ')})...", theme.WARNING)
         elif self._wake_triggered:
-            self._state_sig.emit("Waiting for command...", _GOLD)
+            self._state_sig.emit("Waiting for command...", theme.WARNING)
         else:
-            self._state_sig.emit("Listening for wake word...", _CYAN)
+            self._state_sig.emit("Listening for wake word...", theme.ACCENT)
             self._flow_sig.emit("Listening...")
-            self._timer_sig.emit("--", _TEXT_SEC)
+            self._timer_sig.emit("--", theme.TEXT_SECONDARY)
 
     # ----------------------------------------------------------------
     # Test controls (Phase 2 complete)
@@ -1199,7 +1202,7 @@ class _DebugWindow(QMainWindow):
         self._wake_triggered  = False
         self._dictation_start = time.time()
         self._mode_sig.emit(mode)
-        self._state_sig.emit(f"Dictating ({mode.replace('_', ' ')})...", _GOLD)
+        self._state_sig.emit(f"Dictating ({mode.replace('_', ' ')})...", theme.WARNING)
         self.log(f"Forced into {mode} mode — speak now.")
 
     def _reset_test_mode(self):
@@ -1209,9 +1212,9 @@ class _DebugWindow(QMainWindow):
         self._dictation_start = None
         self._mode_sig.emit(None)
         self._flow_sig.emit("Idle")
-        self._timer_sig.emit("--", _TEXT_SEC)
+        self._timer_sig.emit("--", theme.TEXT_SECONDARY)
         if self.running:
-            self._state_sig.emit("Listening for wake word...", _CYAN)
+            self._state_sig.emit("Listening for wake word...", theme.ACCENT)
             self.log("Reset to wake word listening.")
 
     def _simulate_word(self, word_type: str):
@@ -1244,7 +1247,12 @@ class _DebugWindow(QMainWindow):
     # Lifecycle
     # ----------------------------------------------------------------
 
-    def update_state(self, text: str, color: str = _TEXT_SEC):
+    def update_state(self, text: str, color: str | None = None):
+        # None, not the token itself: a default argument is evaluated when the
+        # def runs, so a token there keeps the palette that was live at import
+        # (queue 129).
+        if color is None:
+            color = theme.TEXT_SECONDARY
         self._state_sig.emit(text, color)
 
     def update_mode(self, mode):

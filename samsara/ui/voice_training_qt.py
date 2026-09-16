@@ -62,128 +62,125 @@ _COMMON_ENGLISH = {
 # Colours
 # ---------------------------------------------------------------------------
 
-_BG       = "#0b0e14"
-_SURFACE  = "#131820"
-_ELEVATED = "#1a2030"
-_BORDER   = "#2a3345"
-_ACCENT   = "#5cc4d4"
-_TEXT_PRI = "#e4e8ef"
-_TEXT_SEC = "#7a8599"
-_SUCCESS  = "#6ee7a0"
-_ERROR    = "#f87171"
-_WARNING  = "#fbbf24"
+# Colour comes from samsara.ui.theme, never from a literal here: this
+# module used to keep its own copy of the dark palette, which is exactly
+# how a second palette leaves one window unreadable (queue 129).
 
-_SS = f"""
-QMainWindow, QDialog, QWidget {{
-    background: {_BG};
-    color: {_TEXT_PRI};
-    font-family: 'Segoe UI', sans-serif;
-    font-size: 13px;
-}}
-QTabWidget::pane {{
-    border: 1px solid {_BORDER};
-    background: {_BG};
-}}
-QTabBar::tab {{
-    background: {_SURFACE};
-    color: {_TEXT_SEC};
-    padding: 7px 18px;
-    border: none;
-    margin-right: 2px;
-}}
-QTabBar::tab:selected {{
-    background: {_ELEVATED};
-    color: {_ACCENT};
-    border-bottom: 2px solid {_ACCENT};
-}}
-QTabBar::tab:hover:!selected {{ color: {_TEXT_PRI}; }}
-QLineEdit, QTextEdit, QPlainTextEdit {{
-    background: {_SURFACE};
-    border: 1px solid {_BORDER};
-    color: {_TEXT_PRI};
-    padding: 4px 8px;
-    border-radius: 4px;
-}}
-QLineEdit:focus, QTextEdit:focus {{ border-color: {_ACCENT}; }}
-QPushButton {{
-    background: {_ELEVATED};
-    color: {_TEXT_PRI};
-    border: 1px solid {_BORDER};
-    padding: 5px 14px;
-    border-radius: 4px;
-}}
-QPushButton:hover {{
-    background: {_ACCENT};
-    color: {_BG};
-    border-color: {_ACCENT};
-}}
-QPushButton:pressed {{ background: #4aa8b8; }}
-QPushButton#danger {{
-    color: {_ERROR};
-    border-color: {_ERROR};
-}}
-QPushButton#danger:hover {{
-    background: {_ERROR};
-    color: {_BG};
-}}
-QListWidget {{
-    background: {_SURFACE};
-    border: 1px solid {_BORDER};
-    color: {_TEXT_PRI};
-    outline: none;
-}}
-QListWidget::item {{ padding: 3px 8px; }}
-QListWidget::item:selected {{ background: {_ACCENT}; color: {_BG}; }}
-QTableWidget {{
-    background: {_SURFACE};
-    border: 1px solid {_BORDER};
-    gridline-color: {_BORDER};
-    color: {_TEXT_PRI};
-    outline: none;
-}}
-QTableWidget::item:selected {{ background: {_ACCENT}; color: {_BG}; }}
-QHeaderView::section {{
-    background: {_ELEVATED};
-    color: {_TEXT_SEC};
-    border: none;
-    border-right: 1px solid {_BORDER};
-    padding: 4px 8px;
-    font-size: 11px;
-    font-weight: bold;
-}}
-QComboBox {{
-    background: {_SURFACE};
-    border: 1px solid {_BORDER};
-    color: {_TEXT_PRI};
-    padding: 4px 8px;
-    border-radius: 4px;
-}}
-QComboBox::drop-down {{ border: none; width: 20px; }}
-QComboBox QAbstractItemView {{
-    background: {_SURFACE};
-    color: {_TEXT_PRI};
-    selection-background-color: {_ACCENT};
-    selection-color: {_BG};
-    border: 1px solid {_BORDER};
-}}
-QScrollBar:vertical {{
-    background: {_BG};
-    width: 6px;
-    border: none;
-}}
-QScrollBar::handle:vertical {{
-    background: {_BORDER};
-    border-radius: 3px;
-    min-height: 20px;
-}}
-QScrollBar::add-line:vertical, QScrollBar::sub-line:vertical {{ height: 0; }}
-QProgressBar {{
-    background: {_SURFACE};
-    border: 1px solid {_BORDER};
-    border-radius: 4px;
-    text-align: center;
-}}
-QProgressBar::chunk {{ background: {_SUCCESS}; border-radius: 3px; }}
+def _ss() -> str:
+    """The window's stylesheet, built on demand. Never a module
+    constant: an f-string evaluated at import time freezes the
+    palette that happened to be live then (queue 129)."""
+    return f"""
+    QMainWindow, QDialog, QWidget {{
+        background: {theme.BG0};
+        color: {theme.TEXT_PRIMARY};
+        font-family: 'Segoe UI', sans-serif;
+        font-size: {theme.TYPE_BODY}px;
+    }}
+    QTabWidget::pane {{
+        border: 1px solid {theme.BORDER};
+        background: {theme.BG0};
+    }}
+    QTabBar::tab {{
+        background: {theme.BG1};
+        color: {theme.TEXT_SECONDARY};
+        padding: 7px 18px;
+        border: none;
+        margin-right: 2px;
+    }}
+    QTabBar::tab:selected {{
+        background: {theme.BG2};
+        color: {theme.ACCENT};
+        border-bottom: 2px solid {theme.ACCENT};
+    }}
+    QTabBar::tab:hover:!selected {{ color: {theme.TEXT_PRIMARY}; }}
+    QLineEdit, QTextEdit, QPlainTextEdit {{
+        background: {theme.BG1};
+        border: 1px solid {theme.BORDER};
+        color: {theme.TEXT_PRIMARY};
+        padding: 4px 8px;
+        border-radius: 4px;
+    }}
+    QLineEdit:focus, QTextEdit:focus {{ border-color: {theme.ACCENT}; }}
+    QPushButton {{
+        background: {theme.BG2};
+        color: {theme.TEXT_PRIMARY};
+        border: 1px solid {theme.BORDER};
+        padding: 5px 14px;
+        border-radius: 4px;
+    }}
+    QPushButton:hover {{
+        background: {theme.ACCENT};
+        color: {theme.BG0};
+        border-color: {theme.ACCENT};
+    }}
+    QPushButton:pressed {{ background: {theme.ACCENT_HOVER}; }}
+    QPushButton#danger {{
+        color: {theme.ERROR};
+        border-color: {theme.ERROR};
+    }}
+    QPushButton#danger:hover {{
+        background: {theme.ERROR};
+        color: {theme.BG0};
+    }}
+    QListWidget {{
+        background: {theme.BG1};
+        border: 1px solid {theme.BORDER};
+        color: {theme.TEXT_PRIMARY};
+        outline: none;
+    }}
+    QListWidget::item {{ padding: 3px 8px; }}
+    QListWidget::item:selected {{ background: {theme.ACCENT}; color: {theme.BG0}; }}
+    QTableWidget {{
+        background: {theme.BG1};
+        border: 1px solid {theme.BORDER};
+        gridline-color: {theme.BORDER};
+        color: {theme.TEXT_PRIMARY};
+        outline: none;
+    }}
+    QTableWidget::item:selected {{ background: {theme.ACCENT}; color: {theme.BG0}; }}
+    QHeaderView::section {{
+        background: {theme.BG2};
+        color: {theme.TEXT_SECONDARY};
+        border: none;
+        border-right: 1px solid {theme.BORDER};
+        padding: 4px 8px;
+        font-size: {theme.TYPE_MIN}px;
+        font-weight: bold;
+    }}
+    QComboBox {{
+        background: {theme.BG1};
+        border: 1px solid {theme.BORDER};
+        color: {theme.TEXT_PRIMARY};
+        padding: 4px 8px;
+        border-radius: 4px;
+    }}
+    QComboBox::drop-down {{ border: none; width: 20px; }}
+    QComboBox QAbstractItemView {{
+        background: {theme.BG1};
+        color: {theme.TEXT_PRIMARY};
+        selection-background-color: {theme.ACCENT};
+        selection-color: {theme.BG0};
+        border: 1px solid {theme.BORDER};
+    }}
+    QScrollBar:vertical {{
+        background: {theme.BG0};
+        width: 6px;
+        border: none;
+    }}
+    QScrollBar::handle:vertical {{
+        background: {theme.BORDER};
+        border-radius: 3px;
+        min-height: 20px;
+    }}
+    QScrollBar::add-line:vertical, QScrollBar::sub-line:vertical {{ height: 0; }}
+    QProgressBar {{
+        background: {theme.BG1};
+        border: 1px solid {theme.BORDER};
+        border-radius: 4px;
+        text-align: center;
+    }}
+    QProgressBar::chunk {{ background: {theme.SUCCESS}; border-radius: 3px; }}
 """
 
 
@@ -569,7 +566,7 @@ class _TrainingWindow(QMainWindow):
         self.setWindowTitle("Samsara Voice Training")
         self.resize(760, 680)
         self.setMinimumSize(620, 520)
-        self.setStyleSheet(_SS)
+        self.setStyleSheet(_ss())
         self.setWindowFlags(
             Qt.WindowType.Window |
             Qt.WindowType.WindowCloseButtonHint |
@@ -630,7 +627,7 @@ class _TrainingWindow(QMainWindow):
         ml.addWidget(self._level_bar)
 
         self._level_label = QLabel("Volume: 0%")
-        self._level_label.setStyleSheet(f"color:{_TEXT_SEC};font-size:11px;")
+        self._level_label.setStyleSheet(f"color:{theme.TEXT_SECONDARY};font-size:{theme.TYPE_MIN}px;")
         ml.addWidget(self._level_label)
 
         btn_row = QHBoxLayout()
@@ -652,7 +649,7 @@ class _TrainingWindow(QMainWindow):
             "Speak at your normal volume.  "
             "Green = good level,  Orange = too loud,  Red = too quiet."
         )
-        hint.setStyleSheet(f"color:{_TEXT_SEC};font-size:11px;")
+        hint.setStyleSheet(f"color:{theme.TEXT_SECONDARY};font-size:{theme.TYPE_MIN}px;")
         hint.setWordWrap(True)
         ml.addWidget(hint)
 
@@ -664,12 +661,12 @@ class _TrainingWindow(QMainWindow):
         pl.setSpacing(4)
 
         sub = QLabel("Speak each phrase when prompted (5-second recording per phrase):")
-        sub.setStyleSheet(f"color:{_TEXT_SEC};font-size:11px;")
+        sub.setStyleSheet(f"color:{theme.TEXT_SECONDARY};font-size:{theme.TYPE_MIN}px;")
         pl.addWidget(sub)
 
         # Recording failures are shown here, never swallowed into a log line.
         self._phrase_status = QLabel("")
-        self._phrase_status.setStyleSheet(f"color:{_TEXT_SEC};font-size:11px;")
+        self._phrase_status.setStyleSheet(f"color:{theme.TEXT_SECONDARY};font-size:{theme.TYPE_MIN}px;")
         self._phrase_status.setWordWrap(True)
         pl.addWidget(self._phrase_status)
 
@@ -691,7 +688,7 @@ class _TrainingWindow(QMainWindow):
             status = QLabel("--")
             status.setFixedWidth(28)
             status.setAlignment(Qt.AlignmentFlag.AlignCenter)
-            status.setStyleSheet(f"color:{_TEXT_SEC};font-weight:bold;")
+            status.setStyleSheet(f"color:{theme.TEXT_SECONDARY};font-weight:bold;")
             self._phrase_results.append(status)
             row.addWidget(status)
 
@@ -715,7 +712,7 @@ class _TrainingWindow(QMainWindow):
     def _start_monitoring(self):
         self._tr._monitoring = True
         self._monitor_btn.setText("Stop Monitoring")
-        self._level_label.setStyleSheet(f"color:{_TEXT_SEC};font-size:11px;")
+        self._level_label.setStyleSheet(f"color:{theme.TEXT_SECONDARY};font-size:{theme.TYPE_MIN}px;")
         thread_registry.spawn("vt-monitor", self._monitor_worker, daemon=True)
 
     def _monitor_worker(self):
@@ -772,32 +769,32 @@ class _TrainingWindow(QMainWindow):
         self._monitor_btn.setText("Start Monitoring")
         self._level_bar.setValue(0)
         self._level_label.setText(f"Microphone error: {message}")
-        self._level_label.setStyleSheet(f"color:{_ERROR};font-size:11px;font-weight:bold;")
+        self._level_label.setStyleSheet(f"color:{theme.ERROR};font-size:{theme.TYPE_MIN}px;font-weight:bold;")
 
     def _stop_monitoring(self):
         self._tr._monitoring = False
         self._monitor_btn.setText("Start Monitoring")
         self._level_bar.setValue(0)
         self._level_label.setText("Volume: 0%")
-        self._level_label.setStyleSheet(f"color:{_TEXT_SEC};font-size:11px;")
+        self._level_label.setStyleSheet(f"color:{theme.TEXT_SECONDARY};font-size:{theme.TYPE_MIN}px;")
 
     def _on_level(self, level: float):
         self._level_bar.setValue(int(level))
         if level < 30:
-            chunk_color = _ERROR
+            chunk_color = theme.ERROR
         elif level < 70:
-            chunk_color = _SUCCESS
+            chunk_color = theme.SUCCESS
         else:
-            chunk_color = _WARNING
+            chunk_color = theme.WARNING
         self._level_bar.setStyleSheet(
-            f"QProgressBar{{background:{_SURFACE};border:1px solid {_BORDER};border-radius:4px;}}"
+            f"QProgressBar{{background:{theme.BG1};border:1px solid {theme.BORDER};border-radius:4px;}}"
             f"QProgressBar::chunk{{background:{chunk_color};border-radius:3px;}}"
         )
         self._level_label.setText(f"Volume: {int(level)}%")
 
     def _test_phrase(self, phrase: str, idx: int):
         self._phrase_results[idx].setText("...")
-        self._phrase_results[idx].setStyleSheet(f"color:{_ACCENT};font-weight:bold;")
+        self._phrase_results[idx].setStyleSheet(f"color:{theme.ACCENT};font-weight:bold;")
 
         self._phrase_status.setText("")
 
@@ -805,7 +802,7 @@ class _TrainingWindow(QMainWindow):
             try:
                 # Recording cue — the 5s window starts now. Signal only;
                 # never mutate widgets directly from this worker thread.
-                self._phrase_sig.emit(idx, "REC", _WARNING)
+                self._phrase_sig.emit(idx, "REC", theme.WARNING)
                 try:
                     audio = self._record_test_audio(5.0)
                 except Exception as exc:
@@ -815,7 +812,7 @@ class _TrainingWindow(QMainWindow):
                 if audio.size == 0:
                     self._phrase_error_sig.emit(idx, "no audio was recorded")
                     return
-                self._phrase_sig.emit(idx, "...", _ACCENT)
+                self._phrase_sig.emit(idx, "...", theme.ACCENT)
 
                 # Measure the SAME pipeline dictation uses, not a hardcoded
                 # stand-in — only vad_filter is forced off, matching the
@@ -831,16 +828,16 @@ class _TrainingWindow(QMainWindow):
                 norm_result   = _normalize_phrase(raw_result)
                 norm_expected = _normalize_phrase(phrase)
                 if norm_result == norm_expected:
-                    self._phrase_sig.emit(idx, "OK", _SUCCESS)
+                    self._phrase_sig.emit(idx, "OK", theme.SUCCESS)
                 else:
-                    self._phrase_sig.emit(idx, "X", _ERROR)
+                    self._phrase_sig.emit(idx, "X", theme.ERROR)
                     similarity = _word_similarity(norm_expected, norm_result)
                     self._phrase_detail_sig.emit(
                         f"Expected:\n{phrase}\n\nGot:\n{raw_result}\n\nAccuracy: {similarity:.1f}%"
                     )
             except Exception as exc:
                 logger.error(f"Test phrase error: {exc}", exc_info=True)
-                self._phrase_sig.emit(idx, "!", _WARNING)
+                self._phrase_sig.emit(idx, "!", theme.WARNING)
 
         thread_registry.spawn("vt-test", _run, daemon=True)
 
@@ -860,9 +857,9 @@ class _TrainingWindow(QMainWindow):
         return guide_capture.to_model_rate(audio, rate)
 
     def _on_phrase_error(self, idx: int, message: str):
-        self._on_phrase_result(idx, "!", _ERROR)
+        self._on_phrase_result(idx, "!", theme.ERROR)
         self._phrase_status.setText(f"Recording failed: {message}")
-        self._phrase_status.setStyleSheet(f"color:{_ERROR};font-size:11px;font-weight:bold;")
+        self._phrase_status.setStyleSheet(f"color:{theme.ERROR};font-size:{theme.TYPE_MIN}px;font-weight:bold;")
 
     def _on_phrase_result(self, idx: int, text: str, color: str):
         lbl = self._phrase_results[idx]
@@ -884,14 +881,14 @@ class _TrainingWindow(QMainWindow):
         lay.setSpacing(12)
 
         title = QLabel("Custom Vocabulary")
-        title.setStyleSheet(f"color:{_TEXT_PRI};font-size:15px;font-weight:bold;")
+        title.setStyleSheet(f"color:{theme.TEXT_PRIMARY};font-size:{theme.TYPE_EMPHASIS}px;font-weight:bold;")
         lay.addWidget(title)
 
         desc = QLabel(
             "Add words or phrases that Whisper often misrecognises (technical terms, names, jargon).\n"
             "These are injected into Whisper's initial_prompt to bias transcription toward them."
         )
-        desc.setStyleSheet(f"color:{_TEXT_SEC};font-size:11px;")
+        desc.setStyleSheet(f"color:{theme.TEXT_SECONDARY};font-size:{theme.TYPE_MIN}px;")
         desc.setWordWrap(True)
         lay.addWidget(desc)
 
@@ -961,14 +958,14 @@ class _TrainingWindow(QMainWindow):
         lay.setSpacing(12)
 
         title = QLabel("Corrections Dictionary")
-        title.setStyleSheet(f"color:{_TEXT_PRI};font-size:15px;font-weight:bold;")
+        title.setStyleSheet(f"color:{theme.TEXT_PRIMARY};font-size:{theme.TYPE_EMPHASIS}px;font-weight:bold;")
         lay.addWidget(title)
 
         desc = QLabel(
             "Map Whisper transcription errors to your intended text.\n"
             "Applied automatically as a post-processing step after every transcription."
         )
-        desc.setStyleSheet(f"color:{_TEXT_SEC};font-size:11px;")
+        desc.setStyleSheet(f"color:{theme.TEXT_SECONDARY};font-size:{theme.TYPE_MIN}px;")
         desc.setWordWrap(True)
         lay.addWidget(desc)
 
@@ -977,7 +974,7 @@ class _TrainingWindow(QMainWindow):
         self._wrong_input.setPlaceholderText("Whisper says...")
         inp_row.addWidget(self._wrong_input, stretch=1)
         arrow = QLabel("->")
-        arrow.setStyleSheet(f"color:{_TEXT_SEC};padding:0 6px;")
+        arrow.setStyleSheet(f"color:{theme.TEXT_SECONDARY};padding:0 6px;")
         inp_row.addWidget(arrow)
         self._correct_input = QLineEdit()
         self._correct_input.setPlaceholderText("You meant...")
@@ -1084,7 +1081,7 @@ class _TrainingWindow(QMainWindow):
             "medium: Very good  |  large-v3: Best quality (requires GPU)\n"
             "Change in Settings -> General.  Takes effect on restart."
         )
-        info.setStyleSheet(f"color:{_TEXT_SEC};font-size:11px;")
+        info.setStyleSheet(f"color:{theme.TEXT_SECONDARY};font-size:{theme.TYPE_MIN}px;")
         info.setWordWrap(True)
         ml.addWidget(info)
 
@@ -1260,7 +1257,7 @@ class _TrainingWindow(QMainWindow):
         """Return (outer_frame, body_widget).  Caller sets a layout on body."""
         frame = QFrame()
         frame.setStyleSheet(
-            f"QFrame{{background:{_SURFACE};border:1px solid {_BORDER};border-radius:6px;}}"
+            f"QFrame{{background:{theme.BG1};border:1px solid {theme.BORDER};border-radius:6px;}}"
         )
         outer_lay = QVBoxLayout(frame)
         outer_lay.setContentsMargins(0, 0, 0, 0)
@@ -1269,9 +1266,9 @@ class _TrainingWindow(QMainWindow):
         hdr = QLabel(f"  {title}")
         hdr.setFixedHeight(32)
         hdr.setStyleSheet(
-            f"color:{_TEXT_PRI};font-size:13px;font-weight:bold;"
-            f"background:{_ELEVATED};border-radius:6px 6px 0 0;"
-            f"border-bottom:1px solid {_BORDER};"
+            f"color:{theme.TEXT_PRIMARY};font-size:{theme.TYPE_BODY}px;font-weight:bold;"
+            f"background:{theme.BG2};border-radius:6px 6px 0 0;"
+            f"border-bottom:1px solid {theme.BORDER};"
         )
         outer_lay.addWidget(hdr)
 

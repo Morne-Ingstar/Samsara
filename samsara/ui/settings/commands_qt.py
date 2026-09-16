@@ -69,7 +69,7 @@ class CommandsPage:
             "Enable the packs you use. Disabling unused packs improves recognition accuracy."
         )
         desc1.setWordWrap(True)
-        desc1.setStyleSheet(f"color: {theme.ICON_IDLE}; font-size: 12px;")
+        desc1.setStyleSheet(f"color: {theme.ICON_IDLE}; font-size: {theme.TYPE_MIN}px;")
         layout.addWidget(desc1)
         layout.addSpacing(4)
 
@@ -81,7 +81,7 @@ class CommandsPage:
         pack_scroll.setHorizontalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAlwaysOff)
         pack_scroll.setStyleSheet(
             f"QScrollArea {{ background-color: {theme.BG1}; border-radius: 6px; "
-            "border: 1px solid rgba(255,255,255,0.08); }"
+            f"border: 1px solid {theme.wash(0.08)}; }}"
         )
 
         pack_container = QWidget()
@@ -118,7 +118,7 @@ class CommandsPage:
             logger.debug(f"_build_commands_tab: {e}")
 
         restart_lbl = QLabel("Restart Samsara to apply pack changes.")
-        restart_lbl.setStyleSheet(f"color: {theme.WARNING}; font-size: 12px;")
+        restart_lbl.setStyleSheet(f"color: {theme.WARNING}; font-size: {theme.TYPE_MIN}px;")
         restart_lbl.setVisible(False)
         self._widgets['_pack_restart_lbl'] = restart_lbl
 
@@ -153,7 +153,7 @@ class CommandsPage:
             )
             name_lbl.setStyleSheet(
                 f"color: {theme.ICON_IDLE if always_on else theme.TEXT_PRIMARY}; "
-                f"font-size: 13px; font-weight: {'normal' if always_on else '600'};"
+                f"font-size: {theme.TYPE_BODY}px; font-weight: {'normal' if always_on else '600'};"
                 "background: transparent;"
             )
             text_col.addWidget(name_lbl)
@@ -161,7 +161,7 @@ class CommandsPage:
             desc_lbl = QLabel(meta.get('description', ''))
             desc_lbl.setObjectName(f"commandPackDescription_{pack_id}")
             desc_lbl.setStyleSheet(
-                "color: #AEB4C0; font-size: 13px; background: transparent;"
+                f"color: {theme.TEXT_SECONDARY}; font-size: {theme.TYPE_BODY}px; background: transparent;"
             )
             desc_lbl.setWordWrap(True)
             desc_lbl.setMinimumWidth(0)
@@ -182,7 +182,7 @@ class CommandsPage:
 
         sep2 = QFrame()
         sep2.setFrameShape(QFrame.Shape.HLine)
-        sep2.setStyleSheet("background-color: rgba(255,255,255,0.06); max-height: 1px;")
+        sep2.setStyleSheet(f"background-color: {theme.wash(0.06)}; max-height: 1px;")
         layout.addWidget(sep2)
         layout.addSpacing(4)
 
@@ -208,7 +208,7 @@ class CommandsPage:
         # (528px here vs a 530px viewport) drags the whole page wider. Wrapping
         # does not change how it renders where it already fits on one line.
         instant_note.setWordWrap(True)
-        instant_note.setStyleSheet(f"color: {theme.ICON_IDLE}; font-size: 12px;")
+        instant_note.setStyleSheet(f"color: {theme.ICON_IDLE}; font-size: {theme.TYPE_MIN}px;")
         layout.addWidget(instant_note)
         layout.addSpacing(4)
 
@@ -226,7 +226,7 @@ class CommandsPage:
         table.setAlternatingRowColors(True)
         table.setStyleSheet(
             table.styleSheet()
-            + "QTableWidget { alternate-background-color: rgba(255,255,255,0.02); }"
+            + f"QTableWidget {{ alternate-background-color: {theme.wash(0.02)}; }}"
         )
         table.setMinimumHeight(260)
         self._widgets['cmd_table'] = table
@@ -247,9 +247,9 @@ class CommandsPage:
         edit_btn.setObjectName("editCommandButton")
         edit_btn.setStyleSheet(
             f"QPushButton {{ background-color: transparent; color: {theme.ICON_IDLE}; "
-            "border: 1px solid rgba(255,255,255,0.14); border-radius: 6px; "
+            f"border: 1px solid {theme.wash(0.14)}; border-radius: 6px; "
             "padding: 8px 16px; }"
-            f"QPushButton:hover {{ background-color: rgba(255,255,255,0.05); color: {theme.TEXT_PRIMARY}; }}"
+            f"QPushButton:hover {{ background-color: {theme.wash(0.05)}; color: {theme.TEXT_PRIMARY}; }}"
         )
         edit_btn.clicked.connect(lambda: self._edit_selected_command(table))
         btn_row.addWidget(edit_btn)
@@ -257,9 +257,9 @@ class CommandsPage:
         del_btn = QPushButton("Delete")
         del_btn.setObjectName("deleteCommandButton")
         del_btn.setStyleSheet(
-            f"QPushButton {{ background-color: rgba(200,60,60,0.15); color: {theme.ERROR}; "
-            "border: 1px solid rgba(200,60,60,0.3); border-radius: 6px; padding: 8px 16px; }"
-            "QPushButton:hover { background-color: rgba(200,60,60,0.25); }"
+            f"QPushButton {{ background-color: {theme.tint(theme.RECORDING, 0.15)}; color: {theme.ERROR}; "
+            f"border: 1px solid {theme.tint(theme.RECORDING, 0.3)}; border-radius: 6px; padding: 8px 16px; }}"
+            f"QPushButton:hover {{ background-color: {theme.tint(theme.RECORDING, 0.25)}; }}"
         )
         del_btn.clicked.connect(lambda: self._delete_selected_command(table))
         btn_row.addWidget(del_btn)
@@ -268,9 +268,9 @@ class CommandsPage:
         test_btn.setObjectName("testCommandButton")
         test_btn.setStyleSheet(
             f"QPushButton {{ background-color: transparent; color: {theme.ICON_IDLE}; "
-            "border: 1px solid rgba(255,255,255,0.14); border-radius: 6px; "
+            f"border: 1px solid {theme.wash(0.14)}; border-radius: 6px; "
             "padding: 8px 12px; }"
-            f"QPushButton:hover {{ background-color: rgba(255,255,255,0.05); color: {theme.TEXT_PRIMARY}; }}"
+            f"QPushButton:hover {{ background-color: {theme.wash(0.05)}; color: {theme.TEXT_PRIMARY}; }}"
         )
         test_btn.clicked.connect(lambda: self._test_selected_command(table))
         btn_row.addWidget(test_btn)
@@ -281,9 +281,9 @@ class CommandsPage:
         reload_btn.setObjectName("reloadCommandsButton")
         reload_btn.setStyleSheet(
             f"QPushButton {{ background-color: transparent; color: {theme.ICON_IDLE}; "
-            "border: 1px solid rgba(255,255,255,0.14); border-radius: 6px; "
+            f"border: 1px solid {theme.wash(0.14)}; border-radius: 6px; "
             "padding: 8px 12px; }"
-            f"QPushButton:hover {{ background-color: rgba(255,255,255,0.05); color: {theme.TEXT_PRIMARY}; }}"
+            f"QPushButton:hover {{ background-color: {theme.wash(0.05)}; color: {theme.TEXT_PRIMARY}; }}"
         )
         reload_btn.clicked.connect(lambda: self._reload_commands(table))
         btn_row.addWidget(reload_btn)
@@ -295,7 +295,7 @@ class CommandsPage:
         # single-line minimum is the widest thing on the page and is what the
         # horizontal scrollbar was tracking.
         footer.setWordWrap(True)
-        footer.setStyleSheet(f"color: {theme.ICON_IDLE}; font-size: 12px;")
+        footer.setStyleSheet(f"color: {theme.ICON_IDLE}; font-size: {theme.TYPE_MIN}px;")
         layout.addWidget(footer)
 
         def _save(acc):
@@ -527,7 +527,7 @@ class CommandsPage:
         keys_edit.setPlaceholderText("e.g. ctrl+shift+a")
         pl0.addRow("Keys:", keys_edit)
         hint0 = QLabel("Use + to combine keys: ctrl, shift, alt, a-z, 0-9, f1-f12, etc.")
-        hint0.setStyleSheet(f"color: {theme.ICON_IDLE}; font-size: 11px;")
+        hint0.setStyleSheet(f"color: {theme.ICON_IDLE}; font-size: {theme.TYPE_MIN}px;")
         pl0.addRow("", hint0)
         stack.addWidget(p_hotkey)   # 0
 
@@ -605,7 +605,7 @@ class CommandsPage:
         cancel_btn2.setFixedWidth(90)
         cancel_btn2.setStyleSheet(
             f"QPushButton {{ background-color: transparent; color: {theme.ICON_IDLE}; "
-            "border: 1px solid rgba(255,255,255,0.14); border-radius: 6px; padding: 8px 16px; }"
+            f"border: 1px solid {theme.wash(0.14)}; border-radius: 6px; padding: 8px 16px; }}"
             f"QPushButton:hover {{ color: {theme.TEXT_PRIMARY}; }}"
         )
         cancel_btn2.clicked.connect(dlg.reject)

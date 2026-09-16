@@ -188,7 +188,7 @@ class _ToastWindow(QWidget):
                         f"QPushButton{{background:transparent;color:{theme.TEXT_PRIMARY};"
                         f"border:1px solid {theme.BORDER};border-radius:6px;"
                         f"font-size:{theme.FONT_SIZE_CAPTION}px;padding:6px 12px;}}"
-                        f"QPushButton:hover{{background:rgba(255,255,255,0.06);}}"
+                        f"QPushButton:hover{{background:{theme.wash(0.06)};}}"
                     )
                     dismiss_btn.clicked.connect(
                         lambda _checked=False, r=row: self._activate_row(r, r.on_dismiss)

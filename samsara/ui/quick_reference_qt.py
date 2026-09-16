@@ -365,7 +365,9 @@ def _resolve_formatting_tokens(app) -> dict:
             return "tab character"
         if repl.strip() == "•":
             return "bullet point"
-        return repr(repl)
+        symbols = {'"': 'straight quote "', "(": "opening parenthesis (", ")": "closing parenthesis )",
+                   "*": "asterisk *", "**": "double asterisk **"}
+        return symbols.get(repl, repr(repl))
 
     grouped: dict[str, list[str]] = {}
     for phrase, repl in ft._SIMPLE_TOKENS:
@@ -374,6 +376,11 @@ def _resolve_formatting_tokens(app) -> dict:
     rows = [
         {"phrase": " / ".join(f'"{p}"' for p in phrases), "inserts": _describe(repl)}
         for repl, phrases in grouped.items()
+    ]
+    # Trailing modifiers (53): the utterance's final words wrap all of it.
+    rows += [
+        {"phrase": f'"... {trigger}" (at the end)', "inserts": f"wraps what you said in {before}...{after}"}
+        for trigger, before, after in ft.TRAILING_WRAPS
     ]
     return {"enabled": enabled, "tokens": rows}
 
@@ -507,14 +514,22 @@ class _QuickReferenceWindow(QMainWindow):
         row = QHBoxLayout()
         row.setSpacing(12)
         lbl = QLabel(label)
-        color = theme.TEXT_SECONDARY if enabled else theme.TEXT_DISABLED
+        # Queue 78 contrast audit: TEXT_DISABLED is rgba(255,255,255,0.40),
+        # which is 3.82:1 on the card -- under WCAG AA. WCAG exempts INACTIVE
+        # CONTROLS, and these are not controls: they are rows about a feature
+        # that is switched off, which this window exists to have the user read
+        # ("so the user learns the feature exists", see the module docstring).
+        # A row that is off is now marked the way it always also was -- by the
+        # word "(disabled)" -- and by its value dropping from TEXT_PRIMARY to
+        # TEXT_SECONDARY, so it still reads as secondary at 10.33:1.
+        color = theme.TEXT_SECONDARY
         lbl.setStyleSheet(f"color: {color}; font-size: {theme.FONT_SIZE_BODY}px;")
         row.addWidget(lbl)
         row.addStretch()
         text = value if enabled else f"{value}  (disabled)"
         val = QLabel(text)
         val.setWordWrap(True)
-        val_color = theme.TEXT_PRIMARY if enabled else theme.TEXT_DISABLED
+        val_color = theme.TEXT_PRIMARY if enabled else theme.TEXT_SECONDARY
         val.setStyleSheet(
             f"color: {val_color}; font-size: {theme.FONT_SIZE_HEADING}px; font-weight: 600;"
         )
@@ -622,13 +637,15 @@ class _QuickReferenceWindow(QMainWindow):
         for mode in state["modes"]:
             row = QVBoxLayout()
             row.setSpacing(2)
-            name_color = theme.TEXT_PRIMARY if enabled else theme.TEXT_DISABLED
+            # Same as _row above (78): readable, with "(disabled)" carrying
+            # the state and the drop to TEXT_SECONDARY carrying the emphasis.
+            name_color = theme.TEXT_PRIMARY if enabled else theme.TEXT_SECONDARY
             name = QLabel(mode["name"])
             name.setStyleSheet(
                 f"color: {name_color}; font-size: {theme.FONT_SIZE_BODY}px; font-weight: 700;"
             )
             row.addWidget(name)
-            desc_color = theme.TEXT_SECONDARY if enabled else theme.TEXT_DISABLED
+            desc_color = theme.TEXT_SECONDARY
             desc_text = mode["description"]
             if not enabled:
                 desc_text += "  (disabled)"

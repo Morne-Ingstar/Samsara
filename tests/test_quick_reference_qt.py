@@ -185,7 +185,15 @@ class TestResolveFormattingTokens:
         assert "new paragraph" in phrases
         assert "bullet" in phrases
         assert "insert tab" in phrases
-        assert len(state["tokens"]) == 4
+        # 53: the rows come from the module -- one per distinct insertion plus
+        # one per trailing wrap -- never a hand-kept count.
+        from samsara import formatting_tokens as ft
+        assert "open quote" in phrases and "double asterisk" in phrases and "in quotes" in phrases
+        assert "star" not in phrases.replace("asterisk", "")
+        distinct = len({repl for _phrase, repl in ft._SIMPLE_TOKENS})
+        assert len(state["tokens"]) == distinct + len(ft.TRAILING_WRAPS)
+        inserts = [t["inserts"] for t in state["tokens"]]
+        assert 'straight quote "' in inserts and not any(i.startswith("'") for i in inserts)
 
     def test_disabled_reflected(self):
         app = _make_app({"formatting_tokens": {"enabled": False}})

@@ -50,8 +50,12 @@ PAGE_MODULES = {
 KEYS_BEFORE_SPLIT = {
     "_build_general_tab": [
         'add_trailing_space', 'auto_capitalize', 'auto_paste', 'cleanup_mode', 'format_numbers',
-        'hints_enabled', 'language', 'microphone', 'microphone_name', 'model_size', 'ui_scale',
-        'updates.automatic_checks',
+        'hints_enabled', 'language', 'microphone', 'microphone_name', 'model_size',
+        # Queue 129: the theme control. The page writes the whole `ui` section
+        # so a sibling key set elsewhere (ui.idle_animation) survives a save
+        # rather than being dropped, which is why both appear here.
+        'ui.idle_animation', 'ui.theme',
+        'ui_scale', 'updates.automatic_checks',
     ],
     "_build_modes_tab": [
         'ava_command_session.backend', 'ava_command_session.enabled',
@@ -64,7 +68,13 @@ KEYS_BEFORE_SPLIT = {
         'command_mode.dictate_utterance_silence_s', 'command_mode.enabled',
         'command_mode.enter_debounce_ms', 'command_mode.inactivity_timeout_s',
         'command_mode.miss_limit', 'command_mode.mode', 'command_mode.session_streaming_preview',
-        'command_mode.suppress_button', 'continuous_commit_hotkey', 'continuous_commit_trigger',
+        'command_mode.suppress_button', 'command_mode.tts_char_limit',   # queue 57: now has a control
+        'command_mode.command_matching_enabled', 'command_mode.exit_earcon',   # queue 62: now have controls
+        'command_mode.utterance_silence_s',
+        'command_mode.cancel_window_s', 'command_mode.cancel_window_all_commands',   # queue 69
+        'command_mode.preview_idle_delay_s', 'command_mode.preview_idle_opacity',    # queue 75
+        'command_mode.stop_phrases',   # queue 116: the emergency stop's words
+        'continuous_commit_hotkey', 'continuous_commit_trigger',
         'continuous_hotkey', 'correction_hotkey', 'dictate_commit_hotkey', 'hotkey',
         'hotkeys.capture_correction', 'memo_hotkey', 'mode', 'undo_hotkey',
         'wake_word_config.audio.speech_threshold', 'wake_word_config.audio.wake_command_timeout',
@@ -72,7 +82,10 @@ KEYS_BEFORE_SPLIT = {
         'wake_word_config.phrase', 'wake_word_config.quick_silence_timeout',
         'wake_word_config.wake_abort_phrase', 'wake_word_enabled', 'wake_word_hotkey',
     ],
-    "_build_sounds_tab": ['audio_feedback', 'sound_theme', 'sound_volume'],
+    # Queue 103 added feedback.spoken_notices: the Sounds page now also
+    # writes which of the session's own notices are spoken out loud.
+    "_build_sounds_tab": ['audio_feedback', 'feedback.spoken_notices', 'sound_theme',
+                          'sound_volume'],
     "_build_tts_tab": [
         'audio_coordinator.duck_factor', 'audio_coordinator.enabled', 'tts.enabled', 'tts.engine',
         'tts.pitch', 'tts.rate', 'tts.speed', 'tts.use_for_agent_responses',
@@ -82,6 +95,7 @@ KEYS_BEFORE_SPLIT = {
     "_build_ava_cloud_tab": [
         'ava_memory.max_turns', 'ava_memory.mode', 'ava_personality', 'cloud_llm.api_key',
         'cloud_llm.enabled', 'cloud_llm.provider', 'cloud_llm.timeout_seconds',
+        'cloud_llm.web_search',   # queue 59
     ],
     "_build_alarms_tab": [
         'alarms.complete_hotkey', 'alarms.dismiss_hotkey', 'alarms.enabled',
@@ -90,7 +104,13 @@ KEYS_BEFORE_SPLIT = {
     "_build_advanced_tab": [
         'benchmark.collect_samples', 'benchmark.max_samples', 'cal_multiplier', 'compute_type',
         'device', 'ducking.enabled', 'ducking.level', 'echo_cancellation.enabled',
-        'echo_cancellation.latency_ms', 'gesture.enabled', 'listening_indicator_enabled',
+        'echo_cancellation.latency_ms', 'gesture.enabled',
+        # Queue 93: the command-word escape hatch -- the one config key that
+        # lets a one-word command run despite intent execution rule 1. The
+        # page writes the whole `intent` section, so shadow_enabled (which
+        # has no widget, by design) is preserved through a save rather than
+        # dropped -- hence both keys here, only one of them editable.
+        'intent.command_prefix', 'intent.shadow_enabled', 'listening_indicator_enabled',
         'listening_indicator_position', 'min_speech_duration', 'performance_mode',
         'silence_threshold', 'smart_corrections.allow_cloud_fallback', 'smart_corrections.backend',
         'smart_corrections.enabled', 'smart_corrections.keep_alive', 'smart_corrections.min_words',
@@ -226,7 +246,7 @@ def test_window_keeps_the_shared_surface():
     for name in ("__init__", "_apply_and_close", "_section_card", "_section_title", "_setting_row",
                  "_build_search_registry", "_apply_search_filter", "show_tab"):
         assert name in own, name
-    for name in ("_HotkeyButton", "_AlarmHotkeyButton", "_HeightForWidthWidget", "STYLESHEET",
+    for name in ("_HotkeyButton", "_AlarmHotkeyButton", "_HeightForWidthWidget", "stylesheet",
                  "_TAB_NAMES", "_SIDEBAR_GROUPS", "_CMD_BUTTON_OPTIONS", "_format_alarm_next",
                  "_collect_command_rows"):
         assert hasattr(settings_qt, name), name

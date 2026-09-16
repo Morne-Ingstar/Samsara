@@ -18,7 +18,14 @@ sys.path.insert(0, str(PROJECT_ROOT))
 
 for _mod in ("uiautomation", "win32api", "win32con", "win32gui", "win32process"):
     if _mod not in sys.modules:
-        sys.modules[_mod] = types.ModuleType(_mod)
+        # Stub only when the real module is missing (CI). An unconditional
+        # empty stub leaked into every other test collected in the same
+        # process -- e.g. plugin loading then failed on win32api.error and the
+        # command-catalog tests saw a different registry (queue 56).
+        try:
+            __import__(_mod)
+        except ImportError:
+            sys.modules[_mod] = types.ModuleType(_mod)
 
 # psutil is a real dependency used by the frozen-smoke tests.  Import it when
 # available instead of leaving a skeletal collection-time stub in sys.modules

@@ -4,7 +4,7 @@
 
 # Explicitly out of scope per the thread-registry migration task: a small
 # standalone subprocess helper, not part of the app's own thread lifecycle.
-plugins/assets/sleep_overlay.py:75
+plugins/assets/sleep_overlay.py:76
 
 # Standalone throwaway architecture spike -- docstring says "Does NOT import
 # Samsara modules"; not part of the shipped app.
@@ -27,4 +27,4 @@ samsara/ui/qt_runtime.py:60
 # thread_registry.timer() starts immediately on construction, which would
 # invert that ordering. Kept as raw construction + register() right after
 # .start() to preserve the exact original sequencing.
-samsara/tts/coordinator.py:216
+samsara/tts/coordinator.py:254

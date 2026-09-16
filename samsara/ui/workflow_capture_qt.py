@@ -19,6 +19,7 @@ from PySide6.QtWidgets import (
 
 from samsara.ui import qt_runtime
 from samsara.runtime import thread_registry
+from samsara.ui import theme
 
 _log = __import__('logging').getLogger(__name__)
 
@@ -69,12 +70,12 @@ class _ReviewWindow(QWidget):
         # --- title + indicator ---
         top = QHBoxLayout()
         self._title_label = QLabel("Workflow Capture Review")
-        self._title_label.setStyleSheet("font-weight: bold; font-size: 14px;")
+        self._title_label.setStyleSheet(f"font-weight: bold; font-size: {theme.TYPE_BODY}px;")
         top.addWidget(self._title_label)
         top.addStretch()
         self._indicator = QLabel("RECORDING")
         self._indicator.setStyleSheet(
-            "color: white; background: #c0392b; "
+            f"color: {theme.ink_on(theme.RECORDING)}; background: {theme.RECORDING}; "
             "padding: 2px 8px; border-radius: 4px; font-weight: bold;"
         )
         self._indicator.setVisible(False)
@@ -90,7 +91,7 @@ class _ReviewWindow(QWidget):
             "Uncheck items you do NOT want analyzed. "
             "Nothing is sent until you click Analyze."
         )
-        hint.setStyleSheet("color: #777; font-size: 11px;")
+        hint.setStyleSheet(f"color: {theme.TEXT_SECONDARY}; font-size: {theme.TYPE_MIN}px;")
         root.addWidget(hint)
 
         # --- scrollable checkbox list ---
@@ -136,8 +137,8 @@ class _ReviewWindow(QWidget):
         ctrl_row.addSpacing(16)
         self._analyze_btn = QPushButton("Analyze selected events")
         self._analyze_btn.setStyleSheet(
-            "QPushButton { background: #2980b9; color: white; padding: 4px 14px; border-radius: 4px; }"
-            "QPushButton:disabled { background: #7f8c8d; }"
+            f"QPushButton {{ background: {theme.ACCENT}; color: {theme.TEXT_ON_ACCENT}; padding: 4px 14px; border-radius: 4px; }}"
+            f"QPushButton:disabled {{ background: {theme.ACCENT_DISABLED}; }}"
         )
         self._analyze_btn.clicked.connect(self._on_analyze)
         ctrl_row.addWidget(self._analyze_btn)
@@ -146,7 +147,7 @@ class _ReviewWindow(QWidget):
 
         # --- status label ---
         self._status_label = QLabel("")
-        self._status_label.setStyleSheet("color: #555; font-size: 11px;")
+        self._status_label.setStyleSheet(f"color: {theme.TEXT_SECONDARY}; font-size: {theme.TYPE_MIN}px;")
         root.addWidget(self._status_label)
 
         # --- result text ---
@@ -156,7 +157,7 @@ class _ReviewWindow(QWidget):
         self._result.setReadOnly(True)
         self._result.setMinimumHeight(160)
         self._result.setPlaceholderText("(Click 'Analyze selected events' to generate proposals.)")
-        self._result.setStyleSheet("font-family: monospace; font-size: 11px;")
+        self._result.setStyleSheet(f"font-family: monospace; font-size: {theme.TYPE_MIN}px;")
         root.addWidget(self._result)
 
         # --- close ---
@@ -206,7 +207,7 @@ class _ReviewWindow(QWidget):
                     'proc':  '[proc]'}.get(ev.kind, '[?]')
             cb = QCheckBox(f"{icon}  {ev.label}")
             cb.setChecked(True)
-            cb.setStyleSheet("font-size: 11px;")
+            cb.setStyleSheet(f"font-size: {theme.TYPE_MIN}px;")
             # Insert before the trailing stretch
             self._list_layout.insertWidget(self._list_layout.count() - 1, cb)
             self._checkboxes.append(cb)

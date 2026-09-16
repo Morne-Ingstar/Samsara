@@ -245,8 +245,10 @@ def test_audio_worker_debounces_adjacent_positive_frames_until_silence(
         def close(self):
             pass
 
+    # 51: the step scores chunks with process_audio (so every attempt can
+    # report its best score) and compares against the configured threshold.
     detector = SimpleNamespace(
-        detected=Mock(return_value=True),
+        process_audio=Mock(return_value=0.9),
         reset=Mock(),
     )
     monkeypatch.setattr(wizard.sd, "InputStream", lambda **kwargs: _Stream())
@@ -255,6 +257,9 @@ def test_audio_worker_debounces_adjacent_positive_frames_until_silence(
         "query_devices",
         lambda device: {"default_samplerate": 16000},
     )
+    # 67: the fake blocks are 16 kHz frames; do not let the real device's
+    # rate decide the stream's block size.
+    monkeypatch.setattr(wizard, "_detect_capture_rate", lambda device: 16000)
     sleep = Mock()
     monkeypatch.setattr(wizard.time, "sleep", sleep)
     hits = []
@@ -268,7 +273,7 @@ def test_audio_worker_debounces_adjacent_positive_frames_until_silence(
     window._audio_worker()
 
     assert len(hits) == 2
-    assert detector.detected.call_count == 2
+    assert detector.process_audio.call_count == 2
     assert detector.reset.call_count == 1
     sleep.assert_not_called()
 
