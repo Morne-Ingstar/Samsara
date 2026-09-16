@@ -4,7 +4,7 @@ Drop-in Qt replacement for samsara.ui.dictionary_frame.DictionaryFrame.
 
 Three sub-tabs:
   Vocabulary   — words injected into Whisper's initial_prompt
-  Corrections  — phonetic-wash overrides (samsara.phonetic_wash)
+  Corrections  — deterministic dictated-text corrections (VoiceTrainingQt)
   Wake Words   — wake-phrase misrecognition map (samsara.wake_corrections)
 
 Data is read/written through the same service layer as the CTk version;
@@ -295,7 +295,7 @@ class DictionaryPanelQt(QWidget):
     def _build_kv_tab(self, mode: str) -> QWidget:
         """Build a two-column key-value editor tab.
 
-        mode='corrections' -> phonetic_wash
+        mode='corrections' -> VoiceTrainingQt training_data.json
         mode='wake'        -> wake_corrections
         """
         page = QWidget()
@@ -305,9 +305,9 @@ class DictionaryPanelQt(QWidget):
 
         if mode == "corrections":
             desc_text = (
-                'Fixes Whisper misrecognitions in command phrases '
-                '(e.g. "open crow" -> "open chrome").  '
-                'User entries override built-in defaults.'
+                'Fixes Whisper misrecognitions in dictated text '
+                '(e.g. "open crow" -> "open Chrome").  '
+                'Changes take effect on the next dictation.'
             )
             col1_hdr = "Heard"
             col2_hdr = "Should be"
@@ -363,7 +363,7 @@ class DictionaryPanelQt(QWidget):
         rem_btn.setObjectName("danger")
         btn_row.addWidget(rem_btn)
         btn_row.addStretch()
-        note = QLabel("Default entries are read-only.")
+        note = QLabel("Removing a seeded entry keeps it removed.")
         note.setStyleSheet(f"color:{theme.TEXT_SECONDARY};font-size:{theme.TYPE_MIN}px;")
         btn_row.addWidget(note)
         lay.addLayout(btn_row)
@@ -388,25 +388,25 @@ class DictionaryPanelQt(QWidget):
         return page
 
     def _kv_module(self, mode: str):
-        if mode == "corrections":
-            from samsara import phonetic_wash as _m
-        else:
+        if mode == "wake":
             from samsara import wake_corrections as _m
-        return _m
+            return _m
+        raise ValueError(f"No key-value module for mode {mode!r}")
 
     def _kv_load(self, table: QTableWidget, mode: str):
         """Populate table with user entries (editable) then defaults (dimmed)."""
         table.setRowCount(0)
         try:
+            if mode == "corrections":
+                vt = self._vt
+                if vt is None:
+                    return
+                for key in sorted(vt.corrections_dict):
+                    self._kv_insert_row(table, key, vt.corrections_dict[key], "user")
+                return
             mod = self._kv_module(mode)
             user = mod.get_user_corrections() or {}
-
-            if mode == "corrections":
-                phrase_def = mod.get_default_phrase_corrections() or {}
-                word_def   = mod.get_default_word_corrections()   or {}
-                defaults   = {**phrase_def, **word_def}
-            else:
-                defaults = mod.get_default_corrections() or {}
+            defaults = mod.get_default_corrections() or {}
 
             for k in sorted(user):
                 self._kv_insert_row(table, k, user[k], "user")
@@ -440,16 +440,20 @@ class DictionaryPanelQt(QWidget):
 
         def _do():
             try:
-                mod = self._kv_module(mode)
-                cur = mod.get_user_corrections() or {}
-                cur[heard] = right
-                # Adding always grows the dict, so this can never trip the
-                # empty-overwrite guard -- default allow_empty=False is
-                # correct here; checked anyway so a write failure for any
-                # OTHER reason still surfaces instead of reloading stale state.
-                saved = mod.set_user_corrections(cur)
-                if saved and hasattr(mod, 'reload_corrections'):
-                    mod.reload_corrections()
+                if mode == "corrections":
+                    vt = self._vt
+                    saved = vt is not None and vt.add_correction(heard, right)
+                else:
+                    mod = self._kv_module(mode)
+                    cur = mod.get_user_corrections() or {}
+                    cur[heard] = right
+                    # Adding always grows the dict, so this can never trip the
+                    # empty-overwrite guard -- default allow_empty=False is
+                    # correct here; checked anyway so a write failure for any
+                    # OTHER reason still surfaces instead of reloading stale state.
+                    saved = mod.set_user_corrections(cur)
+                    if saved and hasattr(mod, 'reload_corrections'):
+                        mod.reload_corrections()
                 if self._alive:
                     from PySide6.QtCore import QTimer
                     from PySide6.QtWidgets import QApplication
@@ -495,17 +499,21 @@ class DictionaryPanelQt(QWidget):
 
         def _do():
             try:
-                mod = self._kv_module(mode)
-                cur = mod.get_user_corrections() or {}
-                for k in keys:
-                    cur.pop(k, None)
-                # This IS the panel's clear-all-user-entries path: the user
-                # explicitly selected and removed every row, which can
-                # legitimately drive cur to {} -- allow_empty=True so the
-                # empty-overwrite guard doesn't refuse a deliberate delete.
-                saved = mod.set_user_corrections(cur, allow_empty=True)
-                if saved and hasattr(mod, 'reload_corrections'):
-                    mod.reload_corrections()
+                if mode == "corrections":
+                    vt = self._vt
+                    saved = vt is not None and all(vt.remove_correction(key) for key in keys)
+                else:
+                    mod = self._kv_module(mode)
+                    cur = mod.get_user_corrections() or {}
+                    for k in keys:
+                        cur.pop(k, None)
+                    # This IS the panel's clear-all-user-entries path: the user
+                    # explicitly selected and removed every row, which can
+                    # legitimately drive cur to {} -- allow_empty=True so the
+                    # empty-overwrite guard doesn't refuse a deliberate delete.
+                    saved = mod.set_user_corrections(cur, allow_empty=True)
+                    if saved and hasattr(mod, 'reload_corrections'):
+                        mod.reload_corrections()
                 if self._alive:
                     from PySide6.QtCore import QTimer
                     from PySide6.QtWidgets import QApplication

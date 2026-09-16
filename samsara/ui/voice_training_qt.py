@@ -15,6 +15,7 @@ import json
 import logging
 import re
 import shutil
+import sys
 import threading
 import time
 import unicodedata
@@ -236,7 +237,32 @@ class VoiceTrainingQt:
                 # 2026-07-09 correction-store loss pattern.
                 self._quarantine_path = quarantine_corrupt_file(training_file, logger, exc)
                 self._load_failed = True
+        else:
+            # The shipped Default dictionary is a seed for a new profile, not
+            # a profile silently selected over the user's data.  Persisting it
+            # once is important: after a user removes one of its corrections,
+            # the now-present (even if empty) training_data.json is the record
+            # of that choice and a later launch must not put it back.
+            default_path = self._bundled_default_dictionary_path()
+            try:
+                with open(default_path, 'r', encoding='utf-8') as f:
+                    default_data = json.load(f)
+                # A profile's vocabulary is deliberate decoder context, so
+                # applying it requires an explicit profile load.  Only the
+                # conservative correction map is safe as a first-run seed.
+                self.custom_vocab = []
+                self.corrections_dict = dict(default_data.get('corrections', {}))
+                if not self.save_training_data():
+                    logger.warning("[STORE] Could not persist bundled default dictionary")
+            except (OSError, ValueError, TypeError) as exc:
+                logger.warning("[STORE] Could not load bundled default dictionary: %s", exc)
         self._rebuild_corrections_pattern()
+
+    @staticmethod
+    def _bundled_default_dictionary_path() -> Path:
+        """Return the packaged Default dictionary for first-profile seeding."""
+        root = Path(getattr(sys, '_MEIPASS', Path(__file__).resolve().parents[2]))
+        return root / 'profiles' / 'dictionaries' / 'Default.json'
 
     # ----------------------------------------------------------------
     # Single-pair add/remove (2026-07-11) -- canonical entry points for
