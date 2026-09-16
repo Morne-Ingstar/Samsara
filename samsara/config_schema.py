@@ -261,6 +261,14 @@ SETTINGS_SCHEMA = {
         "default": 0.25,
         "tab": "commands",
     },
+    # Queue 136: the dictation preview's preset name, or a serialized custom
+    # center written after a drag.  It is deliberately a string so the normal
+    # config validator can retain a monitor identity without a second key.
+    "command_mode.preview_position": {
+        "type": "str",
+        "default": "bottom-center",
+        "tab": "commands",
+    },
     # Queue 140: during a latched AVA reply, suppress the session capture
     # path (including an already-open capture) while keeping OpenWakeWord
     # available as the hands-free interruption route.

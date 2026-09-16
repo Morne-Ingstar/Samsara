@@ -79,6 +79,33 @@ from samsara import languages as _languages
 logger = get_logger(__name__)
 
 
+# Queue 136.  Presets are useful by voice; a drag uses the same normalized
+# center + named-screen representation as ListeningIndicator, serialized in
+# this one schema-backed setting as ``custom|screen|cx|cy``.
+PREVIEW_POSITION_DEFAULT = "bottom-center"
+PREVIEW_POSITION_PRESETS = frozenset({
+    "top-left", "top-center", "top-right", "center-left", "center",
+    "center-right", "bottom-left", "bottom-center", "bottom-right",
+})
+
+
+def _preview_position(value):
+    """Validated preset/custom preview placement from config."""
+    if value in PREVIEW_POSITION_PRESETS:
+        return value
+    if isinstance(value, str) and value.startswith("custom|"):
+        parts = value.split("|", 3)
+        if len(parts) == 4:
+            try:
+                cx, cy = float(parts[2]), float(parts[3])
+            except (TypeError, ValueError):
+                pass
+            else:
+                if all(np.isfinite(v) for v in (cx, cy)):
+                    return ("custom", parts[1], min(max(cx, 0.0), 1.0), min(max(cy, 0.0), 1.0))
+    return PREVIEW_POSITION_DEFAULT
+
+
 # ---- Modifier-release plumbing (Windows) -----------------------------------
 #
 # In streaming direct-paste mode the user is physically holding the hotkey
@@ -435,7 +462,8 @@ class _StreamingWidget:
     """Internal Qt widget — created on the samsara-qt thread."""
 
     def __init__(self, dim: bool, idle: "IdleSettings | None" = None,
-                 activity_probe=None, hints=()):
+                 activity_probe=None, hints=(), preview_position=PREVIEW_POSITION_DEFAULT,
+                 on_placement_committed=None):
         from PySide6.QtWidgets import (QWidget, QHBoxLayout, QVBoxLayout, QLabel, QApplication,
                                        QFrame, QPushButton, QScrollArea)
         from PySide6.QtCore import Qt, QTimer, QElapsedTimer, Signal, Slot
@@ -618,6 +646,12 @@ class _StreamingWidget:
                 self._on_clear = None
                 self._interactive = False
                 self._has_draft = False
+                # Dragging is available only while the existing interactive
+                # state is visible; idle remains genuinely click-through.
+                self._dragging = False
+                self._drag_offset = None
+                self._preview_position = _preview_position(preview_position)
+                self._on_placement_committed = on_placement_committed
 
             # ---- queue 85: scrolling, clear, click-to-correct ---------------
 
@@ -662,6 +696,67 @@ class _StreamingWidget:
                 else:
                     bar.setValue(bar.value() + SCROLL_STEP_PX)
                 self._follow = bar.value() >= bar.maximum() - AUTO_FOLLOW_SLACK_PX
+
+            def set_preview_position(self, position):
+                if position not in PREVIEW_POSITION_PRESETS:
+                    return
+                self._preview_position = position
+                self._position()
+                callback = self._on_placement_committed
+                if callback is not None:
+                    callback(position)
+
+            def _placement_screen(self):
+                placement = self._preview_position
+                if isinstance(placement, tuple):
+                    name = placement[1]
+                    for screen in QApplication.screens():
+                        if screen.name() == name:
+                            return screen
+                return QApplication.primaryScreen()
+
+            @staticmethod
+            def _clamp_position(x, y, w, h, geom):
+                return (max(geom.left(), min(x, geom.right() - w + 1)),
+                        max(geom.top(), min(y, geom.bottom() - h + 1)))
+
+            def _commit_drag_position(self):
+                screen = QApplication.screenAt(self.mapToGlobal(self.rect().center()))
+                screen = screen or QApplication.primaryScreen()
+                if screen is None:
+                    return
+                geom = screen.availableGeometry()
+                x, y = self._clamp_position(self.x(), self.y(), self.width(), self.height(), geom)
+                self.move(x, y)
+                cx = min(max(((x + self.width() / 2) - geom.x()) / max(geom.width(), 1), 0.0), 1.0)
+                cy = min(max(((y + self.height() / 2) - geom.y()) / max(geom.height(), 1), 0.0), 1.0)
+                self._preview_position = ("custom", screen.name(), cx, cy)
+                callback = self._on_placement_committed
+                if callback is not None:
+                    callback(f"custom|{screen.name()}|{cx:.6f}|{cy:.6f}")
+
+            def mousePressEvent(self, event):
+                if self._interactive and event.button() == Qt.MouseButton.LeftButton:
+                    self._dragging = True
+                    self._drag_offset = event.globalPosition().toPoint() - self.pos()
+                    event.accept()
+                    return
+                super().mousePressEvent(event)
+
+            def mouseMoveEvent(self, event):
+                if self._interactive and self._dragging:
+                    self.move(event.globalPosition().toPoint() - self._drag_offset)
+                    event.accept()
+                    return
+                super().mouseMoveEvent(event)
+
+            def mouseReleaseEvent(self, event):
+                if self._interactive and self._dragging and event.button() == Qt.MouseButton.LeftButton:
+                    self._dragging = False
+                    self._commit_drag_position()
+                    event.accept()
+                    return
+                super().mouseReleaseEvent(event)
 
             def set_prompt(self, text: str) -> None:
                 text = text or ""
@@ -920,7 +1015,10 @@ class _StreamingWidget:
                 return label.heightForWidth(OVERLAY_W - 40)
 
             def _position(self):
-                scr = QApplication.primaryScreen().availableGeometry()
+                screen = self._placement_screen()
+                if screen is None:
+                    return
+                scr = screen.availableGeometry()
                 hint_h = self._transcript_height()
                 if self._idle is not None:
                     # A word-wrapped QLabel's sizeHint ignores the wrapped
@@ -940,8 +1038,22 @@ class _StreamingWidget:
                 req_h  = max(OVERLAY_MIN_H,
                              min(max_h, hint_h + 20))
                 self.setFixedHeight(req_h)
-                x = scr.left() + (scr.width() - OVERLAY_W) // 2
-                y = scr.bottom() - TASKBAR_RESERVE - OVERLAY_GAP_ABOVE_TASKBAR - req_h
+                placement = self._preview_position
+                if isinstance(placement, tuple):
+                    _custom, _screen_name, cx, cy = placement
+                    x = round(scr.x() + cx * scr.width() - OVERLAY_W / 2)
+                    y = round(scr.y() + cy * scr.height() - req_h / 2)
+                else:
+                    vertical, horizontal = placement.split("-", 1) if "-" in placement else ("center", placement)
+                    x = (scr.left() if horizontal == "left" else
+                         scr.right() - OVERLAY_W + 1 if horizontal == "right" else
+                         scr.left() + (scr.width() - OVERLAY_W) // 2)
+                    y = (scr.top() if vertical == "top" else
+                         scr.bottom() - req_h + 1 if vertical == "bottom" else
+                         scr.top() + (scr.height() - req_h) // 2)
+                    if placement == PREVIEW_POSITION_DEFAULT:
+                        y -= TASKBAR_RESERVE + OVERLAY_GAP_ABOVE_TASKBAR
+                x, y = self._clamp_position(x, y, OVERLAY_W, req_h, scr)
                 self.move(x, y)
 
             def _on_update(self, text, state, text_format="auto"):
@@ -1150,7 +1262,8 @@ class StreamingOverlayQt:
     STATE_PLACEHOLDER = "placeholder"
 
     def __init__(self, dim: bool = False, idle: "IdleSettings | None" = None,
-                 activity_probe=None):
+                 activity_probe=None, preview_position=PREVIEW_POSITION_DEFAULT,
+                 on_placement_committed=None):
         self._dim    = dim
         self._widget: "_StreamingWidget | None" = None   # read/written on the Qt thread only
         # Queue 75: set before show(); read on the Qt thread when the widget is
@@ -1163,13 +1276,17 @@ class StreamingOverlayQt:
         # Both are called ON the Qt thread when the user clicks.
         self._on_word_clicked = None
         self._on_clear = None
+        self._preview_position = _preview_position(preview_position)
+        self._on_placement_committed = on_placement_committed
 
     def set_interaction_callbacks(self, on_word_clicked, on_clear) -> None:
         self._on_word_clicked = on_word_clicked
         self._on_clear = on_clear
 
     def _new_widget(self) -> "_StreamingWidget":
-        widget = _StreamingWidget(self._dim, self._idle, self._activity_probe, self.idle_hints)
+        widget = _StreamingWidget(self._dim, self._idle, self._activity_probe, self.idle_hints,
+                                  preview_position=self._preview_position,
+                                  on_placement_committed=self._on_placement_committed)
         if self._on_word_clicked is not None or self._on_clear is not None:
             widget.enable_interaction(self._on_word_clicked, self._on_clear)
         return widget
@@ -1264,6 +1381,16 @@ class StreamingOverlayQt:
         def _apply():
             if self._widget is not None:
                 self._widget.scroll_draft(where)
+        self._post(_apply)
+
+    def move_draft(self, position: str) -> None:
+        """Place the preview at a named screen position without activation."""
+        if position not in PREVIEW_POSITION_PRESETS:
+            return
+        self._preview_position = position
+        def _apply():
+            if self._widget is not None:
+                self._widget.set_preview_position(position)
         self._post(_apply)
 
     def set_transcript(self, finalized_lines, partial, link_words: bool = False):
@@ -1975,8 +2102,12 @@ class DictatePreviewSession:
         # Queue 75: faint + click-through when nobody is speaking. Read once
         # per DICTATE entry, so a Settings change applies from the next entry.
         self.idle = IdleSettings.from_config(getattr(app, "config", None))
+        command_mode = getattr(app, "config", {}).get("command_mode", {})
+        saved_placement = command_mode.get("preview_position", PREVIEW_POSITION_DEFAULT)
         self._overlay = StreamingOverlayQt(dim=False, idle=self.idle,
-                                           activity_probe=self._speech_active)
+                                           activity_probe=self._speech_active,
+                                           preview_position=saved_placement,
+                                           on_placement_committed=self._save_preview_placement)
         # Session-scoped rolling transcript -- see module comment above and
         # on_utterance_final below. A fresh DictatePreviewSession is
         # constructed on every DICTATE re-entry (dictation.py's
@@ -2070,12 +2201,40 @@ class DictatePreviewSession:
         self._overlay.set_transcript(lines, partial, link_words=True)
 
     def scroll_draft(self, where: str = "up") -> None:
-        """Move the transcript view. "top" | "bottom" | "up" | "down".
+        """Move the transcript view or place its box by its named voice preset.
         Safe from any thread (the overlay posts to the Qt thread)."""
         try:
-            self._overlay.scroll_draft(where)
+            if where.startswith("move:"):
+                self._overlay.move_draft(where.removeprefix("move:"))
+            else:
+                self._overlay.scroll_draft(where)
         except Exception as exc:
             logger.debug(f"[DICTATE-PREVIEW] scroll {where} failed: {exc}")
+
+    def _save_preview_placement(self, placement: str) -> None:
+        """Persist the widget's normalized drag or named voice placement.
+
+        The Qt widget only emits a value; config mutation stays with the app,
+        mirroring ListeningIndicator's placement_committed boundary.
+        """
+        if not isinstance(placement, str):
+            return
+        config = getattr(self.app, "config", None)
+        if not isinstance(config, dict):
+            return
+        command_mode = dict(config.get("command_mode", {}) or {})
+        command_mode["preview_position"] = placement
+        updater = getattr(self.app, "update_config_and_save", None)
+        try:
+            if callable(updater):
+                updater({"command_mode": command_mode})
+            else:
+                config["command_mode"] = command_mode
+                save = getattr(self.app, "save_config", None)
+                if callable(save):
+                    save()
+        except Exception as exc:
+            logger.debug("[DICTATE-PREVIEW] placement save failed: %s", exc)
 
     def _on_word_clicked(self, index: int) -> None:
         """A word in the preview was clicked (Qt thread). Arms the correction;
