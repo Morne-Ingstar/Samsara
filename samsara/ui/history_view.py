@@ -693,15 +693,15 @@ def _make_transparent(widget: QWidget) -> None:
     widget.setObjectName(_TRANSPARENT)
 
 
-def _danger_btn(label: str) -> QPushButton:
-    b = QPushButton(label)
+def _danger_btn(label: str, parent: QWidget | None = None) -> QPushButton:
+    b = QPushButton(label, parent)
     _set_class(b, "danger")
     return b
 
 
-def _plain_label(text: str = "", object_name: str = "") -> QLabel:
+def _plain_label(text: str = "", object_name: str = "", parent: QWidget | None = None) -> QLabel:
     """A QLabel that can never interpret user text as markup."""
-    lbl = QLabel()
+    lbl = QLabel(parent)
     lbl.setTextFormat(Qt.TextFormat.PlainText)
     if object_name:
         lbl.setObjectName(object_name)
@@ -819,7 +819,7 @@ class _FilterChips(QWidget):
         self._group.setExclusive(True)
         self._buttons = {}
         for name in names:
-            btn = QPushButton(name)
+            btn = QPushButton(name, self)
             btn.setCheckable(True)
             btn.setAccessibleName(f"Show {name.lower()} entries" if name != FILTER_ALL else "Show all entries")
             btn.setCursor(Qt.CursorShape.PointingHandCursor)
@@ -857,15 +857,15 @@ def _build_day_header_widget(label: str, parent: QWidget | None = None) -> QWidg
     _make_transparent(w)
     lay = QHBoxLayout(w)
     lay.setContentsMargins(_ROW_PAD_H, 14, _ROW_PAD_H, 4)
-    lbl = _plain_label(label.upper(), "historyDayHeader")
+    lbl = _plain_label(label.upper(), "historyDayHeader", w)
     lay.addWidget(lbl)
     lay.addStretch()
     return w
 
 
-def _pill(outcome: Outcome) -> QLabel:
+def _pill(outcome: Outcome, parent: QWidget | None = None) -> QLabel:
     text_colour, background = _pill_colours()[outcome.kind]
-    pill = _plain_label(outcome.label, "historyPill")
+    pill = _plain_label(outcome.label, "historyPill", parent)
     pill.setProperty("kind", outcome.kind)
     pill.setStyleSheet(
         f"color: {text_colour}; background: {background}; border: none; border-radius: 9px;"
@@ -886,7 +886,7 @@ class _HistoryRow(QWidget):
         lay.setSpacing(_ROW_SPACING)
 
         dt = _parse_ts(str(row.get('timestamp', '')))
-        self.time_label = _plain_label(dt.strftime("%H:%M") if dt else "", "historyTime")
+        self.time_label = _plain_label(dt.strftime("%H:%M") if dt else "", "historyTime", self)
         self.time_label.setFixedWidth(_TIME_COL_WIDTH)
         self.time_label.setAlignment(Qt.AlignmentFlag.AlignLeft | Qt.AlignmentFlag.AlignTop)
         lay.addWidget(self.time_label, alignment=Qt.AlignmentFlag.AlignTop)
@@ -895,7 +895,7 @@ class _HistoryRow(QWidget):
         body.setContentsMargins(0, 0, 0, 0)
         body.setSpacing(4)
         self.full_text = list_text(row)
-        self.text_label = _plain_label(self.full_text, "historyText")
+        self.text_label = _plain_label(self.full_text, "historyText", self)
         self.text_label.setSizePolicy(QSizePolicy.Policy.Ignored, QSizePolicy.Policy.Preferred)
         if is_no_speech_attempt(row) or str(row.get('entry_type')) == 'failed':
             self.text_label.setStyleSheet(f"color: {theme.TEXT_SECONDARY};")
@@ -904,16 +904,16 @@ class _HistoryRow(QWidget):
         meta_row = QHBoxLayout()
         meta_row.setContentsMargins(0, 0, 0, 0)
         meta_row.setSpacing(6)
-        self.pills = [_pill(p) for p in row_pills(row)]
+        self.pills = [_pill(p, self) for p in row_pills(row)]
         for pill in self.pills:
             meta_row.addWidget(pill)
-        self.meta_label = _plain_label(meta_text(row), "historyMeta")
+        self.meta_label = _plain_label(meta_text(row), "historyMeta", self)
         self.meta_label.setSizePolicy(QSizePolicy.Policy.Ignored, QSizePolicy.Policy.Preferred)
         meta_row.addWidget(self.meta_label, stretch=1)
         body.addLayout(meta_row)
         lay.addLayout(body, stretch=1)
 
-        self.copy_button = QPushButton("Copy")
+        self.copy_button = QPushButton("Copy", self)
         _set_class(self.copy_button, "rowCopy")
         self.copy_button.setFixedWidth(_COPY_BTN_WIDTH)
         self.copy_button.setCursor(Qt.CursorShape.PointingHandCursor)
@@ -955,7 +955,7 @@ def _build_load_older_widget(on_click, parent: QWidget | None = None) -> QWidget
     lay = QHBoxLayout(w)
     lay.setContentsMargins(12, 4, 12, 4)
     lay.addStretch()
-    btn = QPushButton("Load older entries")
+    btn = QPushButton("Load older entries", w)
     btn.clicked.connect(on_click)
     lay.addWidget(btn)
     lay.addStretch()
@@ -970,13 +970,13 @@ def _build_empty_state_widget(
     lay = QVBoxLayout(w)
     lay.setAlignment(Qt.AlignmentFlag.AlignCenter)
     lay.setSpacing(12)
-    lbl = _plain_label(message, "historyEmpty")
+    lbl = _plain_label(message, "historyEmpty", w)
     lbl.setAlignment(Qt.AlignmentFlag.AlignCenter)
     lbl.setWordWrap(True)
     lbl.setMinimumWidth(320)
     lay.addWidget(lbl)
     if action_label and on_action is not None:
-        btn = QPushButton(action_label)
+        btn = QPushButton(action_label, w)
         btn.clicked.connect(on_action)
         lay.addWidget(btn, alignment=Qt.AlignmentFlag.AlignCenter)
     w._message_label = lbl
@@ -995,37 +995,37 @@ class _DetailCard(QFrame):
         lay.setContentsMargins(16, 12, 16, 12)
         lay.setSpacing(8)
 
-        self.meta = _plain_label("", "historyDetailMeta")
+        self.meta = _plain_label("", "historyDetailMeta", self)
         self.meta.setWordWrap(True)
         lay.addWidget(self.meta)
 
-        self.text = QPlainTextEdit()
+        self.text = QPlainTextEdit(self)
         self.text.setReadOnly(True)
         self.text.setFrameShape(QFrame.Shape.NoFrame)
         self.text.setAccessibleName("Entry text")
         self.text.document().setDocumentMargin(0)   # text lines up with the meta line
         lay.addWidget(self.text)
 
-        self.heard_as = _plain_label("", "historyHeardAs")
+        self.heard_as = _plain_label("", "historyHeardAs", self)
         self.heard_as.setWordWrap(True)
         self.heard_as.setTextInteractionFlags(Qt.TextInteractionFlag.TextSelectableByMouse)
         lay.addWidget(self.heard_as)
 
-        self.note = _plain_label("", "historyNote")
+        self.note = _plain_label("", "historyNote", self)
         self.note.setWordWrap(True)
         lay.addWidget(self.note)
 
         actions = QHBoxLayout()
         actions.setSpacing(8)
-        self.copy_button = QPushButton("Copy text")
+        self.copy_button = QPushButton("Copy text", self)
         _set_class(self.copy_button, "primary")
         self.copy_button.clicked.connect(on_copy)
         actions.addWidget(self.copy_button)
-        self.copy_original_button = QPushButton("Copy original words")
+        self.copy_original_button = QPushButton("Copy original words", self)
         self.copy_original_button.clicked.connect(on_copy_original)
         actions.addWidget(self.copy_original_button)
         actions.addStretch()
-        self.delete_button = _danger_btn("Delete entry")
+        self.delete_button = _danger_btn("Delete entry", self)
         self.delete_button.clicked.connect(on_delete)
         actions.addWidget(self.delete_button)
         lay.addLayout(actions)
@@ -1146,16 +1146,16 @@ class HistoryView(QWidget):
         root.setSpacing(10)
 
         # ---- Header -------------------------------------------------------
-        self._title = _plain_label(TITLE, "historyTitle")
+        self._title = _plain_label(TITLE, "historyTitle", self)
         root.addWidget(self._title)
-        self._subtitle = _plain_label(SUBTITLE, "historySubtitle")
+        self._subtitle = _plain_label(SUBTITLE, "historySubtitle", self)
         self._subtitle.setWordWrap(True)
         root.addWidget(self._subtitle)
 
         # ---- Search + range ------------------------------------------------
         search_row = QHBoxLayout()
         search_row.setSpacing(8)
-        self._search = QLineEdit()
+        self._search = QLineEdit(self)
         self._search.setPlaceholderText(SEARCH_PLACEHOLDER)
         self._search.setClearButtonEnabled(True)
         self._search.setAccessibleName("Search history")
@@ -1166,7 +1166,7 @@ class HistoryView(QWidget):
         self._search.textChanged.connect(self._query_changed)
         search_row.addWidget(self._search, stretch=1)
 
-        self._scope = QComboBox()
+        self._scope = QComboBox(self)
         self._scope.addItems([_SCOPE_LAST_7_DAYS, _SCOPE_ALL])
         saved_scope = self._settings.value(_SCOPE_SETTING, _SCOPE_LAST_7_DAYS, type=str)
         saved_scope = _SCOPE_ALIASES.get(saved_scope, saved_scope)
@@ -1180,13 +1180,13 @@ class HistoryView(QWidget):
         root.addLayout(search_row)
 
         # ---- Filters (wrap, never clip) ------------------------------------
-        filter_host = QWidget()
+        filter_host = QWidget(self)
         _make_transparent(filter_host)
         flow = _FlowLayout(filter_host, h_spacing=16, v_spacing=6)
-        self._filter = _FilterChips(_FILTERS)
+        self._filter = _FilterChips(_FILTERS, filter_host)
         self._filter.currentTextChanged.connect(lambda _: self._reload())
         flow.addWidget(self._filter)
-        self._show_empty_wake = QCheckBox(NO_SPEECH_TOGGLE_LABEL)
+        self._show_empty_wake = QCheckBox(NO_SPEECH_TOGGLE_LABEL, filter_host)
         self._show_empty_wake.setChecked(
             self._settings.value(_EMPTY_WAKE_SETTING, False, type=bool)
         )
@@ -1196,7 +1196,7 @@ class HistoryView(QWidget):
         root.addWidget(filter_host)
 
         # ---- List ---------------------------------------------------------
-        self._list = QListWidget()
+        self._list = QListWidget(self)
         self._list.setSelectionMode(QAbstractItemView.SelectionMode.SingleSelection)
         self._list.setVerticalScrollMode(QAbstractItemView.ScrollMode.ScrollPerPixel)
         self._list.setHorizontalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAlwaysOff)
@@ -1216,6 +1216,7 @@ class HistoryView(QWidget):
             on_copy=self._copy_selected,
             on_copy_original=self._copy_selected_original,
             on_delete=self._delete_selected,
+            parent=self,
         )
         self._detail.setVisible(False)
         root.addWidget(self._detail)
@@ -1223,14 +1224,14 @@ class HistoryView(QWidget):
         # ---- Footer ---------------------------------------------------------
         footer = QHBoxLayout()
         footer.setSpacing(8)
-        self._status_lbl = _plain_label("", "historyStatus")
+        self._status_lbl = _plain_label("", "historyStatus", self)
         self._status_lbl.setSizePolicy(QSizePolicy.Policy.Ignored, QSizePolicy.Policy.Preferred)
         footer.addWidget(self._status_lbl, stretch=1)
         # Queue 122. The way out. 44 px explicitly, not this file's local
         # _CONTROL_H of 40: the brief asks for 44 and a button that hands
         # over everything you have ever dictated should not be the smallest
         # target on the page.
-        self._export_btn = QPushButton(EXPORT_LABEL)
+        self._export_btn = QPushButton(EXPORT_LABEL, self)
         self._export_btn.setAccessibleName(EXPORT_LABEL)
         _set_class(self._export_btn, "export")
         self._export_btn.setMinimumWidth(44)
@@ -1239,7 +1240,7 @@ class HistoryView(QWidget):
             "Save your history to a file you choose. Nothing is written until you pick a path.")
         self._export_btn.clicked.connect(self._export_history)
         footer.addWidget(self._export_btn)
-        self._clear_btn = _danger_btn("Clear history\u2026")
+        self._clear_btn = _danger_btn("Clear history\u2026", self)
         self._clear_btn.clicked.connect(self._clear_all)
         footer.addWidget(self._clear_btn)
         root.addLayout(footer)
