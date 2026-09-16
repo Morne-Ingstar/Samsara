@@ -48,6 +48,7 @@ from samsara.constants import (
     WAKE_DETECTION_SILENCE,
     WAKE_SPEECH_THRESHOLD_CAP,
 )
+from samsara.config_defaults import cfg_get
 from samsara.session_modes import SessionMode
 from samsara.log import get_logger
 from samsara.runtime import thread_registry
@@ -618,6 +619,55 @@ class WakeConsumer:
         )
 
     @classmethod
+    def _is_latched_ava_mode(cls, app) -> bool:
+        """True only for the AVA lane inside the latched toggle session.
+
+        This is deliberately distinct from ``ava_command_session_active``:
+        that older Ava-command waterfall session already owns the original
+        half-duplex guard.
+        """
+        manager = getattr(app, '_session_mode_manager', None)
+        return (
+            cls._is_toggle_cmd(app)
+            and manager is not None
+            and manager.mode is SessionMode.AVA
+        )
+
+    @staticmethod
+    def _ava_tts_half_duplex_enabled(app) -> bool:
+        return bool(cfg_get(app.config, 'command_mode.ava_tts_half_duplex'))
+
+    def _wake_barge_in_during_ava_tts(self, raw_chunk, coordinator) -> bool:
+        """Cancel an AVA reply only after the still-live wake detector hits.
+
+        While the latched AVA lane is half-duplex, ordinary capture is fully
+        deaf to avoid treating Ava's own speaker audio as a user utterance.
+        This narrow path intentionally runs OpenWakeWord alone; on a positive
+        hit it cancels reply TTS, clears any contaminated capture, and lets
+        the current frame continue through the normal fresh-capture path.
+        """
+        app = self._app
+        detector = getattr(app, '_wake_detector', None)
+        if detector is None or not getattr(detector, 'is_available', False):
+            return False
+        try:
+            if not detector.detected(oww_prefilter(raw_chunk)):
+                return False
+            detector.reset()
+            coordinator.cancel_speech()
+            self.abort_utterance()
+            self._ava_cmd_tts_was_speaking = False
+            self._ava_cmd_tts_speaking_end = None
+            self._ava_cmd_tts_suppressed_last = False
+            flight_recorder.record('wake.ava_barge_in', source='oww')
+            logger.info('[AVA] Wake detector interrupted reply; capture re-armed')
+            return True
+        except Exception as exc:
+            self._log_frame(logging.DEBUG, 'ava_barge_in_detector',
+                            '[AVA] wake-detector barge-in check failed: %s', exc)
+            return False
+
+    @classmethod
     def _hard_cap_applies(cls, app) -> bool:
         """Whether the 7-second noise/echo discard applies to this lane."""
         return (
@@ -953,8 +1003,8 @@ class WakeConsumer:
                         self._log_frame(logging.DEBUG, 'hold_timer_resume_failed',
                                         "inactivity timer resume failed: %s", e)
 
-        # ── Ava command session half-duplex guard (2026-07-23 G3 live-test
-        # finding): full deafness while the session's own TTS is playing,
+        # ── Ava half-duplex guard (2026-07-23 G3 live-test finding, extended
+        # to latched AVA in queue 140): full deafness while the session's own TTS is playing,
         # plus a short tail after playback completes, so the mic never
         # captures Ava's own voice as if it were the next user utterance
         # (log-confirmed: an utterance transcribed as ", open up, I'm
@@ -967,7 +1017,16 @@ class WakeConsumer:
         # SPEAKING state (ac.is_speaking), not app.is_speaking -- that flag
         # means something unrelated here (VAD-detected USER speech onset,
         # set just below in the speech-accumulation block).
-        if self._is_ai_cmd_mode(app):
+        latched_ava = self._is_latched_ava_mode(app)
+        half_duplex = self._is_ai_cmd_mode(app) or (
+            latched_ava and self._ava_tts_half_duplex_enabled(app)
+        )
+        ava_barge_in_hit = False
+        # Convert before the guard only because the latched AVA escape needs
+        # this exact frame for OpenWakeWord. No RMS/VAD/onset/buffering runs
+        # unless the detector positively interrupts reply TTS.
+        raw_chunk = frame.pcm.astype(np.float32) / 32767.0   # shape: (FRAME_SIZE,)
+        if half_duplex:
             coordinator = getattr(app, 'audio_coordinator', None)
             tts_speaking = bool(coordinator is not None and coordinator.is_speaking)
             if tts_speaking:
@@ -981,14 +1040,26 @@ class WakeConsumer:
                 and (time.monotonic() - self._ava_cmd_tts_speaking_end) < _AVA_CMD_TTS_TAIL_S
             )
             if tts_speaking or in_tail:
-                if not self._ava_cmd_tts_suppressed_last:
-                    self._log_frame(logging.DEBUG, 'ava_tts_suppressed',
-                        "[SEAM] Ava command session suppression ENGAGED (session "
-                        "TTS speaking or in its tail) -- speech detection fully "
-                        "skipped until playback + tail complete"
-                    )
-                    self._ava_cmd_tts_suppressed_last = True
-                return   # cursor already advanced (frame already read in _poll_loop)
+                if (latched_ava and coordinator is not None
+                        and self._wake_barge_in_during_ava_tts(raw_chunk, coordinator)):
+                    ava_barge_in_hit = True
+                    # TTS was cancelled and the contaminated capture was
+                    # discarded. Continue below so this wake-word frame opens
+                    # the user's fresh AVA capture.
+                    pass
+                else:
+                    if not self._ava_cmd_tts_suppressed_last:
+                        # A reply that starts over an open capture must not
+                        # leave its already-buffered echo eligible to flush.
+                        self.abort_utterance()
+                    if not self._ava_cmd_tts_suppressed_last:
+                        self._log_frame(logging.DEBUG, 'ava_tts_suppressed',
+                            "[SEAM] Ava command session suppression ENGAGED (session "
+                            "TTS speaking or in its tail) -- speech detection fully "
+                            "skipped until playback + tail complete"
+                        )
+                        self._ava_cmd_tts_suppressed_last = True
+                    return   # cursor already advanced (frame already read in _poll_loop)
             if self._ava_cmd_tts_suppressed_last:
                 self._log_frame(logging.DEBUG, 'frame_665', "[SEAM] Ava command session suppression RELEASED (TTS + tail complete)")
                 self._ava_cmd_tts_suppressed_last = False
@@ -999,10 +1070,6 @@ class WakeConsumer:
             self._ava_cmd_tts_was_speaking = False
             self._ava_cmd_tts_speaking_end = None
             self._ava_cmd_tts_suppressed_last = False
-
-        # Convert int16 ring frame -> float32 at SAMPLE_RATE
-        # Ring stores raw (non-AEC) audio — correct for both VAD and Whisper.
-        raw_chunk = frame.pcm.astype(np.float32) / 32767.0   # shape: (FRAME_SIZE,)
 
         admission = self._post_wake_admission()
         if admission != self._wake_admission:
@@ -1138,6 +1205,7 @@ class WakeConsumer:
         # setup guide's wake test so both score the same signal (queue 67).
         if (app.app_state == 'asleep'
                 and not app.wake_word_triggered
+                and not ava_barge_in_hit
                 and app._wake_detector is not None
                 and app._wake_detector.is_available):
             _oww_chunk = oww_prefilter(raw_chunk, rms)

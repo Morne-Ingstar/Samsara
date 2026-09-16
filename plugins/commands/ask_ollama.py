@@ -597,7 +597,7 @@ def speak(app, text, category="ava_response"):
     except Exception as exc:
         logger.debug(f"speak: generation stamp failed: {exc}")
     if hasattr(app, "audio_coordinator") and app.audio_coordinator:
-        handle = app.audio_coordinator.speak(text, category=category, interruptible=False)
+        handle = app.audio_coordinator.speak(text, category=category, interruptible=True)
         if getattr(handle, "utterance_id", None) == "noop-cmd-mode":
             _record_speech(False, "suppressed by command_mode.tts_char_limit", chars)
             return False
