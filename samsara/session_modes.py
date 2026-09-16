@@ -1033,6 +1033,17 @@ class EllipsisSeam:
     join: bool
     clause: str
     stripped: str = ""  # exact trailing text removed from the pending buffer
+    lead_stripped: str = ""  # leading ellipsis removed from the NEW chunk
+
+
+#: Whisper marks a continuation by ENDING the previous fragment with an ellipsis
+#: and STARTING the next one with another ("when you send a window..." then
+#: "...to the left"). The leading one is a decoder artifact, not speech, and it
+#: used to defeat the very clause meant to catch this case: the first token was
+#: "...to", so `first[0].isalpha()` was False and every clause below fell
+#: through to ellipsis_new_sentence. Owner log 2026-09-16 12:09, four seams in
+#: one thought: "So I was...... at the store. And then...... this guy".
+_LEADING_ELLIPSIS = re.compile(r"\A\s*(?:\.{2,}|…)\s*")
 
 
 # A fragment that is nothing but a hesitation sound carries no sentence of its
@@ -1069,24 +1080,31 @@ def decide_ellipsis_seam(previous_text: str, new_chunk_raw: str,
     match = _TRAILING_ELLIPSIS.search(previous)
     if match is None:
         return None
-    new_tokens = (new_chunk_raw or "").strip().split()
+    raw = new_chunk_raw or ""
+    lead = _LEADING_ELLIPSIS.match(raw)
+    lead_stripped = lead.group(0) if lead else ""
+    if lead_stripped:
+        raw = raw[lead.end():]
+    new_tokens = raw.strip().split()
     if not new_tokens:
-        return EllipsisSeam(join=False, clause="empty")
+        return EllipsisSeam(join=False, clause="empty", lead_stripped=lead_stripped)
     body = previous[:match.start()].rstrip()
     prior_words = body.split()
     if not prior_words:
-        return EllipsisSeam(join=False, clause="ellipsis_only")
+        return EllipsisSeam(join=False, clause="ellipsis_only", lead_stripped=lead_stripped)
     stripped = previous_text[len(body):]
 
     first = new_tokens[0]
     first_alpha = next((ch for ch in first if ch.isalpha()), "")
     if first_alpha and first_alpha.islower() and first[0].isalpha():
-        return EllipsisSeam(join=True, clause="ellipsis_lowercase", stripped=stripped)
+        return EllipsisSeam(join=True, clause="ellipsis_lowercase", stripped=stripped,
+                            lead_stripped=lead_stripped)
 
     fragment_words = [w.strip(string.punctuation + "…").lower()
                       for w in (previous_fragment or "").split()]
     if fragment_words and all(w in _HESITATION_SOUNDS for w in fragment_words):
-        return EllipsisSeam(join=True, clause="ellipsis_hesitation_only", stripped=stripped)
+        return EllipsisSeam(join=True, clause="ellipsis_hesitation_only", stripped=stripped,
+                            lead_stripped=lead_stripped)
 
     last_word = prior_words[-1].strip(string.punctuation).lower()
     first_word = first.strip(string.punctuation)
@@ -1094,11 +1112,13 @@ def decide_ellipsis_seam(previous_text: str, new_chunk_raw: str,
             and first[0].isalnum()
             and "'" not in first_word and "’" not in first_word
             and first_word.lower() not in _CANNOT_FOLLOW_DETERMINER):
-        return EllipsisSeam(join=True, clause="ellipsis_determiner", stripped=stripped)
+        return EllipsisSeam(join=True, clause="ellipsis_determiner", stripped=stripped,
+                            lead_stripped=lead_stripped)
     if (last_word in _OPEN_CLAUSE_CONJUNCTIONS
             and _PRONOUN_I.match(first.rstrip(string.punctuation))):
-        return EllipsisSeam(join=True, clause="ellipsis_conjunction_i", stripped=stripped)
-    return EllipsisSeam(join=False, clause="ellipsis_new_sentence")
+        return EllipsisSeam(join=True, clause="ellipsis_conjunction_i", stripped=stripped,
+                            lead_stripped=lead_stripped)
+    return EllipsisSeam(join=False, clause="ellipsis_new_sentence", lead_stripped=lead_stripped)
 
 
 def chunk_ends_terminal(text: str) -> bool:
@@ -3003,9 +3023,16 @@ class SessionModeManager:
             if ellipsis_seam.join:
                 stripped_suffix = ellipsis_seam.stripped
                 self._dictate_pending_buffer = self._dictate_pending_buffer[:-len(stripped_suffix)]
-            to_stage = " " + chunk_raw.strip()
-            log.debug("[SESSION] DICTATE seam after ellipsis: %s join=%s",
-                      ellipsis_seam.clause, ellipsis_seam.join)
+            # The NEW chunk's leading ellipsis is a decoder artifact either way:
+            # on a join it would land mid-sentence, and on a separate it would
+            # open the next sentence with dots. The speaker's own trailing
+            # ellipsis on the previous fragment is what survives a separate.
+            chunk_body = chunk_raw
+            if ellipsis_seam.lead_stripped:
+                chunk_body = chunk_raw[len(ellipsis_seam.lead_stripped):]
+            to_stage = " " + chunk_body.strip()
+            log.debug("[SESSION] DICTATE seam after ellipsis: %s join=%s lead_stripped=%r",
+                      ellipsis_seam.clause, ellipsis_seam.join, ellipsis_seam.lead_stripped)
         else:
             if _is_continuation_chunk(chunk_raw):
                 # Continuation path strips only one prior full stop and any
