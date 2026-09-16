@@ -149,6 +149,10 @@ def test_explicit_command_lane_bypasses_regular_dictation_command_gate(monkeypat
         # read off self.
         _dictate_commit_redecode=lambda *args, **kwargs: None,
         _pop_pending_action_for_scratch=lambda *args, **kwargs: None,
+        _answer_cancel_window=lambda *args, **kwargs: None,
+        _stage_hands_free_cancel_window=lambda *args, **kwargs: 0.0,
+        _handle_deferred_session_outcome=lambda *args, **kwargs: None,
+        _speak_session_notice=lambda *args, **kwargs: None,
         _log_command_dispatch=lambda *args, **kwargs: None,
     )
     monkeypatch.setattr(dictation, "increment_command_count", lambda name: None)

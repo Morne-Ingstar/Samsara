@@ -2027,7 +2027,9 @@ class SessionModeManager:
         """Text transcribed in manual-commit DICTATE mode but not pasted yet."""
         return self._dictate_pending_buffer
 
+    @property
     def buffer_dictate_until_commit(self) -> bool:
+        """Whether DICTATE stages text until an explicit commit phrase."""
         return self._buffer_dictate_until_commit
 
     def dictate_context_tail(self, max_chars: int = 200) -> str:
