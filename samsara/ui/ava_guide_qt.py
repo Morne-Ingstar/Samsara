@@ -29,6 +29,7 @@ from samsara.runtime import thread_registry
 from samsara.ui import qt_runtime
 
 from samsara.log import get_logger
+from samsara.ui import theme
 
 logger = get_logger(__name__)
 
@@ -36,79 +37,78 @@ logger = get_logger(__name__)
 # Colours — identical to mic_setup_wizard_qt.py
 # ---------------------------------------------------------------------------
 
-_BG       = "#0b0e14"
-_SURFACE  = "#131820"
-_ELEVATED = "#1a2030"
-_BORDER   = "#2a3345"
-_ACCENT   = "#5cc4d4"
-_TEXT_PRI = "#e4e8ef"
-_TEXT_SEC = "#7a8599"
-_SUCCESS  = "#6ee7a0"
-_ERROR    = "#f87171"
-_WARNING  = "#fbbf24"
-_MUTED    = "#4a5568"
 
-_PRIMARY_SS = (
-    f"QPushButton{{background:{_ACCENT};color:{_BG};"
-    f"border:none;border-radius:4px;font-weight:bold;padding:6px 18px;}}"
-    f"QPushButton:hover{{background:#4ab8c8;color:{_BG};}}"
-    f"QPushButton:disabled{{background:{_ELEVATED};color:{_MUTED};"
-    f"border:1px solid {_BORDER};}}"
-)
+# Colour comes from samsara.ui.theme, never from a literal here: this
+# module used to keep its own copy of the dark palette, which is exactly
+# how a second palette leaves one window unreadable (queue 129).
 
-_SS = f"""
-QDialog, QWidget {{
-    background: {_BG};
-    color: {_TEXT_PRI};
-    font-family: 'Segoe UI', sans-serif;
-    font-size: 13px;
-}}
-QPushButton {{
-    background: {_ELEVATED};
-    color: {_TEXT_PRI};
-    border: 1px solid {_BORDER};
-    padding: 6px 18px;
-    border-radius: 4px;
-    min-width: 80px;
-}}
-QPushButton:hover {{
-    background: {_ACCENT};
-    color: {_BG};
-    border-color: {_ACCENT};
-}}
-QPushButton:disabled {{
-    background: {_ELEVATED};
-    color: {_MUTED};
-    border-color: {_BORDER};
-}}
-QPushButton#primary {{
-    background: {_ACCENT};
-    color: {_BG};
-    border-color: {_ACCENT};
-    font-weight: bold;
-}}
-QPushButton#primary:hover {{ background: #4ab8c8; }}
-QPushButton#ghost {{
-    background: transparent;
-    color: {_TEXT_SEC};
-    border: none;
-}}
-QPushButton#ghost:hover {{ color: {_TEXT_PRI}; background: transparent; }}
-QComboBox {{
-    background: {_SURFACE};
-    border: 1px solid {_BORDER};
-    color: {_TEXT_PRI};
-    padding: 5px 10px;
-    border-radius: 4px;
-}}
-QComboBox::drop-down {{ border: none; width: 20px; }}
-QComboBox QAbstractItemView {{
-    background: {_SURFACE};
-    color: {_TEXT_PRI};
-    selection-background-color: {_ACCENT};
-    selection-color: {_BG};
-    border: 1px solid {_BORDER};
-}}
+def _primary_ss():
+    return (
+        f"QPushButton{{background:{theme.ACCENT};color:{theme.BG0};"
+        f"border:none;border-radius:4px;font-weight:bold;padding:6px 18px;}}"
+        f"QPushButton:hover{{background:{theme.ACCENT_HOVER};color:{theme.BG0};}}"
+        f"QPushButton:disabled{{background:{theme.BG2};color:{theme.TEXT_DISABLED};"
+        f"border:1px solid {theme.BORDER};}}"
+    )
+
+
+def _ss() -> str:
+    """The window's stylesheet, built on demand. Never a module
+    constant: an f-string evaluated at import time freezes the
+    palette that happened to be live then (queue 129)."""
+    return f"""
+    QDialog, QWidget {{
+        background: {theme.BG0};
+        color: {theme.TEXT_PRIMARY};
+        font-family: 'Segoe UI', sans-serif;
+        font-size: {theme.TYPE_BODY}px;
+    }}
+    QPushButton {{
+        background: {theme.BG2};
+        color: {theme.TEXT_PRIMARY};
+        border: 1px solid {theme.BORDER};
+        padding: 6px 18px;
+        border-radius: 4px;
+        min-width: 80px;
+    }}
+    QPushButton:hover {{
+        background: {theme.ACCENT};
+        color: {theme.BG0};
+        border-color: {theme.ACCENT};
+    }}
+    QPushButton:disabled {{
+        background: {theme.BG2};
+        color: {theme.TEXT_DISABLED};
+        border-color: {theme.BORDER};
+    }}
+    QPushButton#primary {{
+        background: {theme.ACCENT};
+        color: {theme.BG0};
+        border-color: {theme.ACCENT};
+        font-weight: bold;
+    }}
+    QPushButton#primary:hover {{ background: {theme.ACCENT_HOVER}; }}
+    QPushButton#ghost {{
+        background: transparent;
+        color: {theme.TEXT_SECONDARY};
+        border: none;
+    }}
+    QPushButton#ghost:hover {{ color: {theme.TEXT_PRIMARY}; background: transparent; }}
+    QComboBox {{
+        background: {theme.BG1};
+        border: 1px solid {theme.BORDER};
+        color: {theme.TEXT_PRIMARY};
+        padding: 5px 10px;
+        border-radius: 4px;
+    }}
+    QComboBox::drop-down {{ border: none; width: 20px; }}
+    QComboBox QAbstractItemView {{
+        background: {theme.BG1};
+        color: {theme.TEXT_PRIMARY};
+        selection-background-color: {theme.ACCENT};
+        selection-color: {theme.BG0};
+        border: 1px solid {theme.BORDER};
+    }}
 """
 
 # ---------------------------------------------------------------------------
@@ -218,7 +218,7 @@ class _WizardWindow(QDialog):
 
         self.setWindowTitle("Ava Setup Guide")
         self.setFixedSize(580, 500)
-        self.setStyleSheet(_SS)
+        self.setStyleSheet(_ss())
         self.setWindowFlags(
             Qt.WindowType.Dialog |
             Qt.WindowType.WindowCloseButtonHint |
@@ -243,16 +243,16 @@ class _WizardWindow(QDialog):
         # Header
         hdr = QWidget()
         hdr.setFixedHeight(60)
-        hdr.setStyleSheet(f"background:{_SURFACE};border-bottom:1px solid {_BORDER};")
+        hdr.setStyleSheet(f"background:{theme.BG1};border-bottom:1px solid {theme.BORDER};")
         hdr_lay = QHBoxLayout(hdr)
         hdr_lay.setContentsMargins(24, 0, 24, 0)
         self._title_lbl = QLabel()
         self._title_lbl.setStyleSheet(
-            f"color:{_TEXT_PRI};font-size:15px;font-weight:bold;"
+            f"color:{theme.TEXT_PRIMARY};font-size:{theme.TYPE_EMPHASIS}px;font-weight:bold;"
         )
         hdr_lay.addWidget(self._title_lbl, stretch=1)
         self._step_lbl = QLabel()
-        self._step_lbl.setStyleSheet(f"color:{_TEXT_SEC};font-size:11px;")
+        self._step_lbl.setStyleSheet(f"color:{theme.TEXT_SECONDARY};font-size:{theme.TYPE_MIN}px;")
         hdr_lay.addWidget(self._step_lbl)
         root.addWidget(hdr)
 
@@ -260,7 +260,7 @@ class _WizardWindow(QDialog):
         dots_bar = QWidget()
         dots_bar.setFixedHeight(28)
         dots_bar.setStyleSheet(
-            f"background:{_SURFACE};border-bottom:1px solid {_BORDER};"
+            f"background:{theme.BG1};border-bottom:1px solid {theme.BORDER};"
         )
         dots_lay = QHBoxLayout(dots_bar)
         dots_lay.setContentsMargins(24, 0, 24, 0)
@@ -273,16 +273,16 @@ class _WizardWindow(QDialog):
                 line.setSizePolicy(
                     QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Fixed
                 )
-                line.setStyleSheet(f"background:{_BORDER};")
+                line.setStyleSheet(f"background:{theme.BORDER};")
                 dots_lay.addWidget(line)
             col = QVBoxLayout()
             col.setSpacing(2)
             dot = QLabel("●")
             dot.setAlignment(Qt.AlignmentFlag.AlignCenter)
-            dot.setStyleSheet(f"color:{_MUTED};font-size:9px;")
+            dot.setStyleSheet(f"color:{theme.TEXT_DISABLED};font-size:{theme.TYPE_MIN}px;")
             lbl = QLabel(name)
             lbl.setAlignment(Qt.AlignmentFlag.AlignCenter)
-            lbl.setStyleSheet(f"color:{_MUTED};font-size:10px;")
+            lbl.setStyleSheet(f"color:{theme.TEXT_DISABLED};font-size:{theme.TYPE_MIN}px;")
             col.addWidget(dot)
             col.addWidget(lbl)
             container = QWidget()
@@ -303,7 +303,7 @@ class _WizardWindow(QDialog):
         # Nav bar
         nav = QWidget()
         nav.setFixedHeight(64)
-        nav.setStyleSheet(f"background:{_SURFACE};border-top:1px solid {_BORDER};")
+        nav.setStyleSheet(f"background:{theme.BG1};border-top:1px solid {theme.BORDER};")
         nav_lay = QHBoxLayout(nav)
         nav_lay.setContentsMargins(24, 0, 24, 0)
         nav_lay.setSpacing(10)
@@ -322,7 +322,7 @@ class _WizardWindow(QDialog):
         nav_lay.addWidget(self._skip_btn)
 
         self._next_btn = QPushButton("Next  ->")
-        self._next_btn.setStyleSheet(_PRIMARY_SS)
+        self._next_btn.setStyleSheet(_primary_ss())
         self._next_btn.setFixedWidth(110)
         self._next_btn.clicked.connect(self._go_next)
         nav_lay.addWidget(self._next_btn)
@@ -347,20 +347,20 @@ class _WizardWindow(QDialog):
         # Example table
         examples_frame = QWidget()
         examples_frame.setStyleSheet(
-            f"background:{_SURFACE};border-radius:6px;border:1px solid {_BORDER};"
+            f"background:{theme.BG1};border-radius:6px;border:1px solid {theme.BORDER};"
         )
         ex_lay = QVBoxLayout(examples_frame)
         ex_lay.setContentsMargins(16, 12, 16, 12)
         ex_lay.setSpacing(6)
 
         ex_hdr = QHBoxLayout()
-        ex_hdr.addWidget(_small_bold("Instead of remembering...", _TEXT_SEC), stretch=1)
-        ex_hdr.addWidget(_small_bold("You can say...", _ACCENT), stretch=1)
+        ex_hdr.addWidget(_small_bold("Instead of remembering...", theme.TEXT_SECONDARY), stretch=1)
+        ex_hdr.addWidget(_small_bold("You can say...", theme.ACCENT), stretch=1)
         ex_lay.addLayout(ex_hdr)
 
         div = QFrame()
         div.setFrameShape(QFrame.Shape.HLine)
-        div.setStyleSheet(f"color:{_BORDER};")
+        div.setStyleSheet(f"color:{theme.BORDER};")
         ex_lay.addWidget(div)
 
         _EXAMPLES = [
@@ -375,10 +375,10 @@ class _WizardWindow(QDialog):
             row.setSpacing(12)
             lft = QLabel(exact)
             lft.setStyleSheet(
-                f"color:{_TEXT_SEC};font-size:11px;font-family:'Consolas',monospace;"
+                f"color:{theme.TEXT_SECONDARY};font-size:{theme.TYPE_MIN}px;font-family:'Consolas',monospace;"
             )
             rgt = QLabel(natural)
-            rgt.setStyleSheet(f"color:{_TEXT_PRI};font-size:11px;font-style:italic;")
+            rgt.setStyleSheet(f"color:{theme.TEXT_PRIMARY};font-size:{theme.TYPE_MIN}px;font-style:italic;")
             row.addWidget(lft, stretch=1)
             row.addWidget(rgt, stretch=1)
             ex_lay.addLayout(row)
@@ -407,18 +407,18 @@ class _WizardWindow(QDialog):
         # Status card
         status_card = QWidget()
         status_card.setStyleSheet(
-            f"background:{_SURFACE};border-radius:6px;border:1px solid {_BORDER};"
+            f"background:{theme.BG1};border-radius:6px;border:1px solid {theme.BORDER};"
         )
         sc_lay = QHBoxLayout(status_card)
         sc_lay.setContentsMargins(16, 14, 16, 14)
         sc_lay.setSpacing(12)
 
         self._ollama_dot = QLabel("●")
-        self._ollama_dot.setStyleSheet(f"color:{_MUTED};font-size:16px;")
+        self._ollama_dot.setStyleSheet(f"color:{theme.TEXT_DISABLED};font-size:{theme.TYPE_HEADING}px;")
         sc_lay.addWidget(self._ollama_dot)
 
         self._ollama_status_lbl = QLabel("Checking...")
-        self._ollama_status_lbl.setStyleSheet(f"color:{_TEXT_SEC};font-size:13px;")
+        self._ollama_status_lbl.setStyleSheet(f"color:{theme.TEXT_SECONDARY};font-size:{theme.TYPE_BODY}px;")
         sc_lay.addWidget(self._ollama_status_lbl, stretch=1)
 
         self._ollama_check_btn = QPushButton("Check again")
@@ -448,17 +448,17 @@ class _WizardWindow(QDialog):
             step_row.setSpacing(8)
             num_lbl = QLabel(num)
             num_lbl.setFixedWidth(20)
-            num_lbl.setStyleSheet(f"color:{_ACCENT};font-weight:bold;font-size:13px;")
+            num_lbl.setStyleSheet(f"color:{theme.ACCENT};font-weight:bold;font-size:{theme.TYPE_BODY}px;")
             step_row.addWidget(num_lbl)
             txt_lbl = QLabel(text)
             txt_lbl.setWordWrap(True)
-            txt_lbl.setStyleSheet(f"color:{_TEXT_PRI};font-size:13px;")
+            txt_lbl.setStyleSheet(f"color:{theme.TEXT_PRIMARY};font-size:{theme.TYPE_BODY}px;")
             step_row.addWidget(txt_lbl, stretch=1)
             inst_lay.addLayout(step_row)
 
         note = QLabel(_keep_warm_note(self._app.config))
         note.setWordWrap(True)
-        note.setStyleSheet(f"color:{_TEXT_SEC};font-size:11px;font-style:italic;")
+        note.setStyleSheet(f"color:{theme.TEXT_SECONDARY};font-size:{theme.TYPE_MIN}px;font-style:italic;")
         inst_lay.addWidget(note)
 
         lay.addWidget(self._install_instructions)
@@ -494,7 +494,7 @@ class _WizardWindow(QDialog):
         # Description label
         self._model_desc = QLabel(_MODELS[0][2])
         self._model_desc.setStyleSheet(
-            f"color:{_TEXT_SEC};font-size:11px;font-style:italic;"
+            f"color:{theme.TEXT_SECONDARY};font-size:{theme.TYPE_MIN}px;font-style:italic;"
         )
         lay.addWidget(self._model_desc)
 
@@ -503,11 +503,11 @@ class _WizardWindow(QDialog):
         pull_row.setSpacing(10)
 
         self._model_status_dot = QLabel("●")
-        self._model_status_dot.setStyleSheet(f"color:{_MUTED};font-size:14px;")
+        self._model_status_dot.setStyleSheet(f"color:{theme.TEXT_DISABLED};font-size:{theme.TYPE_BODY}px;")
         pull_row.addWidget(self._model_status_dot)
 
         self._model_status_lbl = QLabel("Not checked yet")
-        self._model_status_lbl.setStyleSheet(f"color:{_TEXT_SEC};font-size:12px;")
+        self._model_status_lbl.setStyleSheet(f"color:{theme.TEXT_SECONDARY};font-size:{theme.TYPE_MIN}px;")
         pull_row.addWidget(self._model_status_lbl, stretch=1)
 
         self._pull_btn = QPushButton("Pull model")
@@ -521,9 +521,9 @@ class _WizardWindow(QDialog):
         self._pull_progress = QLabel("")
         self._pull_progress.setWordWrap(True)
         self._pull_progress.setStyleSheet(
-            f"color:{_TEXT_SEC};font-size:11px;"
+            f"color:{theme.TEXT_SECONDARY};font-size:{theme.TYPE_MIN}px;"
             f"font-family:'Consolas',monospace;"
-            f"background:{_SURFACE};border-radius:4px;padding:6px 8px;"
+            f"background:{theme.BG1};border-radius:4px;padding:6px 8px;"
         )
         self._pull_progress.setVisible(False)
         lay.addWidget(self._pull_progress)
@@ -532,7 +532,7 @@ class _WizardWindow(QDialog):
         self._installed_note = QLabel("")
         self._installed_note.setWordWrap(True)
         self._installed_note.setStyleSheet(
-            f"color:{_TEXT_SEC};font-size:11px;font-style:italic;"
+            f"color:{theme.TEXT_SECONDARY};font-size:{theme.TYPE_MIN}px;font-style:italic;"
         )
         lay.addWidget(self._installed_note)
 
@@ -547,7 +547,7 @@ class _WizardWindow(QDialog):
 
         title = QLabel("Ava is ready.")
         title.setStyleSheet(
-            f"color:{_SUCCESS};font-size:18px;font-weight:bold;"
+            f"color:{theme.SUCCESS};font-size:{theme.TYPE_TITLE}px;font-weight:bold;"
         )
         title.setAlignment(Qt.AlignmentFlag.AlignCenter)
         lay.addWidget(title)
@@ -555,19 +555,19 @@ class _WizardWindow(QDialog):
         self._done_summary = QLabel("")
         self._done_summary.setAlignment(Qt.AlignmentFlag.AlignCenter)
         self._done_summary.setWordWrap(True)
-        self._done_summary.setStyleSheet(f"color:{_TEXT_SEC};font-size:12px;")
+        self._done_summary.setStyleSheet(f"color:{theme.TEXT_SECONDARY};font-size:{theme.TYPE_MIN}px;")
         lay.addWidget(self._done_summary)
 
         # ---- Activation key selector ----
         key_frame = QWidget()
         key_frame.setStyleSheet(
-            f"background:{_SURFACE};border-radius:6px;border:1px solid {_BORDER};"
+            f"background:{theme.BG1};border-radius:6px;border:1px solid {theme.BORDER};"
         )
         kf_lay = QVBoxLayout(key_frame)
         kf_lay.setContentsMargins(16, 12, 16, 12)
         kf_lay.setSpacing(8)
 
-        kf_lay.addWidget(_small_bold("Activation key", _ACCENT))
+        kf_lay.addWidget(_small_bold("Activation key", theme.ACCENT))
         kf_lay.addWidget(_body(
             "Hold this key and speak — Ava listens while you hold it, "
             "then responds when you release."
@@ -597,13 +597,13 @@ class _WizardWindow(QDialog):
         # ---- How to use ----
         usage_frame = QWidget()
         usage_frame.setStyleSheet(
-            f"background:{_SURFACE};border-radius:6px;border:1px solid {_BORDER};"
+            f"background:{theme.BG1};border-radius:6px;border:1px solid {theme.BORDER};"
         )
         uf_lay = QVBoxLayout(usage_frame)
         uf_lay.setContentsMargins(16, 12, 16, 12)
         uf_lay.setSpacing(6)
 
-        uf_lay.addWidget(_small_bold("How to use Ava", _ACCENT))
+        uf_lay.addWidget(_small_bold("How to use Ava", theme.ACCENT))
 
         wake = self._app.config.get("wake_word_config", {}).get("phrase", DEFAULT_WAKE_PHRASE)
         usage_lines = _usage_lines(self._app.config, wake)
@@ -612,11 +612,11 @@ class _WizardWindow(QDialog):
             row.setSpacing(8)
             bullet = QLabel("·")
             bullet.setFixedWidth(12)
-            bullet.setStyleSheet(f"color:{_ACCENT};font-size:16px;")
+            bullet.setStyleSheet(f"color:{theme.ACCENT};font-size:{theme.TYPE_HEADING}px;")
             row.addWidget(bullet)
             lbl = QLabel(line)
             lbl.setWordWrap(True)
-            lbl.setStyleSheet(f"color:{_TEXT_PRI};font-size:12px;")
+            lbl.setStyleSheet(f"color:{theme.TEXT_PRIMARY};font-size:{theme.TYPE_MIN}px;")
             row.addWidget(lbl, stretch=1)
             uf_lay.addLayout(row)
 
@@ -624,7 +624,7 @@ class _WizardWindow(QDialog):
 
         # Enable pack button (shown if AI pack is disabled)
         self._enable_pack_btn = QPushButton("Enable AI commands pack")
-        self._enable_pack_btn.setStyleSheet(_PRIMARY_SS)
+        self._enable_pack_btn.setStyleSheet(_primary_ss())
         self._enable_pack_btn.setFixedWidth(220)
         self._enable_pack_btn.clicked.connect(self._enable_ai_pack)
         btn_row = QHBoxLayout()
@@ -649,16 +649,16 @@ class _WizardWindow(QDialog):
 
         for i, (dot, lbl) in enumerate(self._dots):
             if i < step:
-                dot.setStyleSheet(f"color:{_SUCCESS};font-size:9px;")
-                lbl.setStyleSheet(f"color:{_SUCCESS};font-size:10px;")
+                dot.setStyleSheet(f"color:{theme.SUCCESS};font-size:{theme.TYPE_MIN}px;")
+                lbl.setStyleSheet(f"color:{theme.SUCCESS};font-size:{theme.TYPE_MIN}px;")
             elif i == step:
-                dot.setStyleSheet(f"color:{_ACCENT};font-size:9px;")
+                dot.setStyleSheet(f"color:{theme.ACCENT};font-size:{theme.TYPE_MIN}px;")
                 lbl.setStyleSheet(
-                    f"color:{_ACCENT};font-size:10px;font-weight:bold;"
+                    f"color:{theme.ACCENT};font-size:{theme.TYPE_MIN}px;font-weight:bold;"
                 )
             else:
-                dot.setStyleSheet(f"color:{_MUTED};font-size:9px;")
-                lbl.setStyleSheet(f"color:{_MUTED};font-size:10px;")
+                dot.setStyleSheet(f"color:{theme.TEXT_DISABLED};font-size:{theme.TYPE_MIN}px;")
+                lbl.setStyleSheet(f"color:{theme.TEXT_DISABLED};font-size:{theme.TYPE_MIN}px;")
 
         self._back_btn.setVisible(step > 0)
 
@@ -703,7 +703,7 @@ class _WizardWindow(QDialog):
     # ----------------------------------------------------------------
 
     def _check_ollama(self):
-        self._ollama_dot.setStyleSheet(f"color:{_MUTED};font-size:16px;")
+        self._ollama_dot.setStyleSheet(f"color:{theme.TEXT_DISABLED};font-size:{theme.TYPE_HEADING}px;")
         self._ollama_status_lbl.setText("Checking...")
         self._ollama_check_btn.setEnabled(False)
 
@@ -718,7 +718,7 @@ class _WizardWindow(QDialog):
         self._installed_models = models
 
         if running:
-            self._ollama_dot.setStyleSheet(f"color:{_SUCCESS};font-size:16px;")
+            self._ollama_dot.setStyleSheet(f"color:{theme.SUCCESS};font-size:{theme.TYPE_HEADING}px;")
             if models:
                 self._ollama_status_lbl.setText(
                     f"Ollama is running  |  {len(models)} model"
@@ -730,7 +730,7 @@ class _WizardWindow(QDialog):
                 )
             self._install_instructions.setVisible(False)
         else:
-            self._ollama_dot.setStyleSheet(f"color:{_ERROR};font-size:16px;")
+            self._ollama_dot.setStyleSheet(f"color:{theme.ERROR};font-size:{theme.TYPE_HEADING}px;")
             self._ollama_status_lbl.setText("Ollama is not running")
             self._install_instructions.setVisible(True)
 
@@ -745,7 +745,7 @@ class _WizardWindow(QDialog):
         self._refresh_model_status()
 
     def _check_installed_models(self):
-        self._model_status_dot.setStyleSheet(f"color:{_MUTED};font-size:14px;")
+        self._model_status_dot.setStyleSheet(f"color:{theme.TEXT_DISABLED};font-size:{theme.TYPE_BODY}px;")
         self._model_status_lbl.setText("Checking Ollama...")
         self._pull_btn.setEnabled(False)
         self._next_btn.setEnabled(False)
@@ -767,13 +767,13 @@ class _WizardWindow(QDialog):
         matched = [m for m in self._installed_models if m.startswith(base)]
 
         if matched:
-            self._model_status_dot.setStyleSheet(f"color:{_SUCCESS};font-size:14px;")
+            self._model_status_dot.setStyleSheet(f"color:{theme.SUCCESS};font-size:{theme.TYPE_BODY}px;")
             self._model_status_lbl.setText(f"Installed: {matched[0]}")
             self._pull_btn.setEnabled(True)
             self._pull_btn.setText("Re-pull")
             self._next_btn.setEnabled(True)
         else:
-            self._model_status_dot.setStyleSheet(f"color:{_WARNING};font-size:14px;")
+            self._model_status_dot.setStyleSheet(f"color:{theme.WARNING};font-size:{theme.TYPE_BODY}px;")
             self._model_status_lbl.setText("Not installed — click Pull to download")
             self._pull_btn.setEnabled(True)
             self._pull_btn.setText("Pull model")
@@ -807,7 +807,7 @@ class _WizardWindow(QDialog):
         self._pull_btn.setText("Pulling...")
         self._pull_progress.setVisible(True)
         self._pull_progress.setText("Starting download...")
-        self._model_status_dot.setStyleSheet(f"color:{_ACCENT};font-size:14px;")
+        self._model_status_dot.setStyleSheet(f"color:{theme.ACCENT};font-size:{theme.TYPE_BODY}px;")
         self._model_status_lbl.setText(f"Downloading {model}...")
 
         def _run():
@@ -848,13 +848,13 @@ class _WizardWindow(QDialog):
         self._pull_btn.setText("Pull model")
         if success:
             self._pull_progress.setText("Download complete.")
-            self._model_status_dot.setStyleSheet(f"color:{_SUCCESS};font-size:14px;")
+            self._model_status_dot.setStyleSheet(f"color:{theme.SUCCESS};font-size:{theme.TYPE_BODY}px;")
             self._model_status_lbl.setText(f"Installed: {self._selected_model_name}")
             self._next_btn.setEnabled(True)
             # Save model choice to config
             self._save_model_choice(self._selected_model_name)
         else:
-            self._model_status_dot.setStyleSheet(f"color:{_ERROR};font-size:14px;")
+            self._model_status_dot.setStyleSheet(f"color:{theme.ERROR};font-size:{theme.TYPE_BODY}px;")
             self._model_status_lbl.setText("Download failed — see above for details")
 
     def _save_model_choice(self, model_name: str):
@@ -983,7 +983,7 @@ def _usage_lines(config: dict, wake: str) -> list:
 
 def _label(text: str) -> QLabel:
     lbl = QLabel(text)
-    lbl.setStyleSheet(f"color:{_TEXT_SEC};font-size:12px;")
+    lbl.setStyleSheet(f"color:{theme.TEXT_SECONDARY};font-size:{theme.TYPE_MIN}px;")
     return lbl
 
 
@@ -991,13 +991,18 @@ def _body(text: str) -> QLabel:
     lbl = QLabel(text)
     lbl.setWordWrap(True)
     lbl.setTextFormat(Qt.TextFormat.RichText)
-    lbl.setStyleSheet(f"color:{_TEXT_PRI};font-size:13px;line-height:1.5;")
+    lbl.setStyleSheet(f"color:{theme.TEXT_PRIMARY};font-size:{theme.TYPE_BODY}px;line-height:1.5;")
     return lbl
 
 
-def _small_bold(text: str, color: str = _TEXT_PRI) -> QLabel:
+def _small_bold(text: str, color: str | None = None) -> QLabel:
+    # None, not the token itself: a default argument is evaluated when the
+    # def runs, so a token there keeps the palette that was live at import
+    # (queue 129).
+    if color is None:
+        color = theme.TEXT_PRIMARY
     lbl = QLabel(text)
     lbl.setStyleSheet(
-        f"color:{color};font-size:11px;font-weight:bold;letter-spacing:0.5px;"
+        f"color:{color};font-size:{theme.TYPE_MIN}px;font-weight:bold;letter-spacing:0.5px;"
     )
     return lbl

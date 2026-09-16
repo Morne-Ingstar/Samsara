@@ -180,66 +180,31 @@ def _dispatch_action2(app, verb: str, argument: str, generation: int, cfg: dict)
 # ---------------------------------------------------------------------------
 
 def _fuzzy_score(query: str, candidate: str) -> float:
-    """Dependency-free string similarity -- rapidfuzz is not installed in
-    this environment (checked at build time), so this blends a
-    normalized-token-overlap score with difflib.SequenceMatcher's ratio
-    (stdlib, no new dependency). Not a rapidfuzz-quality scorer, but
-    sufficient to rank a shortlist of a few hundred short phrases."""
-    q = query.lower().strip()
-    c = candidate.lower().strip()
-    if not q or not c:
-        return 0.0
-    q_tokens = set(q.split())
-    c_tokens = set(c.split())
-    overlap = len(q_tokens & c_tokens) / max(len(q_tokens), len(c_tokens), 1)
-    seq_ratio = difflib.SequenceMatcher(None, q, c).ratio()
-    return 0.5 * overlap + 0.5 * seq_ratio
+    """Kept as this module's name for the scorer, which now lives with the
+    menu it ranks (samsara.commands.menu_score) so the conversation menu and
+    this shortlist cannot drift apart (queue 107)."""
+    from samsara.commands import menu_score  # noqa: PLC0415
 
-
-def _all_ai_visible_phrases(app) -> list[tuple[str, str]]:
-    """(phrase_or_alias, canonical_name) pairs for every AI-visible
-    registered command -- builtin + plugin, canonical phrase + every
-    alias. Corrects a known CommandMatcher.load_builtins() bug (built-in
-    ai_visible is not threaded through, so matcher.list_commands() always
-    reports True for builtins) by overriding from the raw commands.json
-    dict for source=='builtin' entries, same workaround
-    ai_command_mode.py's own _build_menu() used to need."""
-    command_executor = getattr(app, "command_executor", None)
-    matcher = getattr(command_executor, "_matcher", None)
-    if matcher is None:
-        return []
-    raw_builtins = getattr(command_executor, "commands", {}) or {}
-    out: list[tuple[str, str]] = []
-    for entry in matcher.list_commands():
-        ai_visible = entry.get("ai_visible", True)
-        if entry.get("source") == "builtin":
-            ai_visible = raw_builtins.get(entry["phrase"], {}).get("ai_visible", True)
-        if not ai_visible:
-            continue
-        phrase = entry["phrase"]
-        out.append((phrase, phrase))
-        for alias in entry.get("aliases") or ():
-            out.append((alias, phrase))
-    return out
+    return menu_score(query, candidate)
 
 
 def _build_shortlist(app, utterance: str, cfg: dict) -> list[str]:
-    """Top-N canonical command names (deduplicated, best-scoring alias or
-    canonical phrase wins) for the stage (c) system prompt's
-    {COMMAND_LIST} substitution."""
+    """Top-N canonical command names for the stage (c) system prompt's
+    {COMMAND_LIST} substitution.
+
+    Queue 107: this is now CommandExecutor.ava_menu() -- the ONE menu source
+    the conversation path uses too -- bounded to shortlist_size by the same
+    relevance ranking. It offers only what execute_canonical() will accept on
+    the model route, so a shortlist entry the model copies verbatim can never
+    be a command the executor then refuses as unknown (Astra F1).
+    """
     n = int(cfg.get("shortlist_size", _DEFAULTS["shortlist_size"]))
-    phrases = _all_ai_visible_phrases(app)
-    scored = sorted(phrases, key=lambda p: -_fuzzy_score(utterance, p[0]))
-    seen: set[str] = set()
-    out: list[str] = []
-    for _phrase_str, canonical in scored:
-        if canonical in seen:
-            continue
-        seen.add(canonical)
-        out.append(canonical)
-        if len(out) >= n:
-            break
-    return out
+    executor = getattr(app, "command_executor", None)
+    if executor is None or not hasattr(executor, "ava_menu"):
+        return []
+    from samsara.execution_policy import Route as _Route  # noqa: PLC0415
+
+    return executor.ava_menu(utterance, limit=n, app=app, route=_Route.MODEL)
 
 
 # Reinforces the CLOSED-WORLD constraint enforced in CODE below (see
@@ -340,7 +305,21 @@ def _stage_c_llm_fallback(app, utterance: str, shortlist: list[str], generation:
         )
         return False
 
-    ask_ollama.handle_response(app, response, original_text=utterance, generation=generation)
+    # Queue 107 / Astra F1: a hit is what the EXECUTOR did, not the fact that
+    # a well-formed proposal was forwarded. handle_response returns the real
+    # outcome; a refused or failed action registers as a miss, so the session
+    # says "I didn't catch a command in that" instead of falling silent after
+    # doing nothing.
+    outcome = ask_ollama.handle_response(app, response, original_text=utterance,
+                                         generation=generation)
+    if outcome is None:
+        return True
+    if outcome.state == "stale":
+        return True             # not a miss: the session moved on
+    if not outcome.ok:
+        logger.info("[AVA-CMD] Stage (c) proposal %r was %s (%s)",
+                    outcome.name, outcome.state, outcome.reason)
+        return False
     return True
 
 
