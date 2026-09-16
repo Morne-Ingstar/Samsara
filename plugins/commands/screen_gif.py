@@ -22,6 +22,7 @@ from samsara.plugin_commands import command
 from samsara.runtime import thread_registry
 
 from samsara.log import get_logger
+from samsara.ui import theme
 
 logger = get_logger(__name__)
 
@@ -114,10 +115,10 @@ def _show_recording_indicator():
                 Qt.FramelessWindowHint | Qt.WindowStaysOnTopHint | Qt.Tool
             )
             indicator.setStyleSheet(
-                "background-color: #cc0000; color: white;"
+                f"background-color: {theme.RECORDING}; color: {theme.ink_on(theme.RECORDING)};"
                 " padding: 4px 10px; border-radius: 4px;"
             )
-            indicator.setFont(QFont('Arial', 12, QFont.Bold))
+            indicator.setFont(theme.qfont(theme.TYPE_BODY, "Arial", QFont.Bold))
             indicator.adjustSize()
             indicator.move(10, 10)
             indicator.setWindowOpacity(0.85)
@@ -327,9 +328,12 @@ def _start_recording(app, remainder, window_only=False):
 @command("record my screen", aliases=[
     "start recording", "record a gif",
     "capture my screen", "screen record",
-], pack="screen-capture")
+], pack="screen-capture", risk_class="destructive")
 def handle_record_screen(app, remainder):
-    """Record full screen as GIF. Usage: 'Samsara, record my screen'"""
+    """Starts recording the whole screen as a GIF.
+
+    Usage: 'Samsara, record my screen'
+    """
     return _start_recording(app, remainder, window_only=False)
 
 
@@ -337,9 +341,12 @@ def handle_record_screen(app, remainder):
 @command("record this window", aliases=[
     "record window",
     "record this", "capture this",
-], pack="screen-capture")
+], pack="screen-capture", risk_class="destructive")
 def handle_record_window(app, remainder):
-    """Record active window as GIF. Usage: 'Samsara, record this window'"""
+    """Starts recording the focused window as a GIF.
+
+    Usage: 'Samsara, record this window'
+    """
     return _start_recording(app, remainder, window_only=True)
 
 
@@ -350,7 +357,7 @@ def handle_record_window(app, remainder):
     "stop the recording"
 ], pack="screen-capture")
 def handle_stop_recording(app, remainder):
-    """Stop screen recording and save the GIF."""
+    """Stops the screen recording and saves the GIF."""
     global _recording
     
     if not _recording:

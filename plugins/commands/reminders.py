@@ -130,6 +130,7 @@ def _fuzzy_find(query, reminders):
     pack="utilities",
 )
 def handle_remind_me_to(app, remainder="", **kwargs):
+    """Sets a reminder from what you say, such as remind me to stretch at four."""
     nm = _get_manager(app)
     if nm is None:
         _speak(app, "Reminder system is not available.")
@@ -192,6 +193,7 @@ def handle_remind_me_to(app, remainder="", **kwargs):
     pack="utilities",
 )
 def handle_read_reminders(app, remainder="", **kwargs):
+    """Reads out the reminders you have set."""
     nm = _get_manager(app)
     if nm is None:
         _speak(app, "Reminder system is not available.")
@@ -219,6 +221,7 @@ def handle_read_reminders(app, remainder="", **kwargs):
     pack="utilities",
 )
 def handle_cancel_reminder(app, remainder="", **kwargs):
+    """Cancels the reminder you name."""
     nm = _get_manager(app)
     if nm is None:
         _speak(app, "Reminder system is not available.")
@@ -262,6 +265,7 @@ def handle_cancel_reminder(app, remainder="", **kwargs):
     pack="utilities",
 )
 def handle_cancel_all_reminders(app, remainder="", **kwargs):
+    """Cancels every reminder you have set."""
     nm = _get_manager(app)
     if nm is None:
         _speak(app, "Reminder system is not available.")
@@ -285,6 +289,7 @@ def handle_cancel_all_reminders(app, remainder="", **kwargs):
     pack="utilities",
 )
 def handle_show_reminders(app, remainder="", **kwargs):
+    """Puts your reminders on the screen."""
     from samsara.ui.status_overlay import get_overlay
     get_overlay().toggle(
         notification_manager=getattr(app, "notification_manager", None),

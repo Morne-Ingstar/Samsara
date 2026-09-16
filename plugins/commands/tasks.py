@@ -57,8 +57,10 @@ def _parse_position(remainder):
     "add to list",
     aliases=["add to tasks", "todo", "add to the list", "add task", "new task"],
     pack="tasks",
+    risk_class="write", param_schema={"remainder": {"type": "str", "required": False}},
 )
 def handle_add_to_list(app, remainder="", **kwargs):
+    """Adds what you say next to your task list."""
     if not remainder or not remainder.strip():
         _speak(app, "What should I add to your list?")
         return True
@@ -73,8 +75,10 @@ def handle_add_to_list(app, remainder="", **kwargs):
     "show tasks",
     aliases=["task list", "show my tasks", "open tasks", "show task list"],
     pack="tasks",
+    risk_class="ui",
 )
 def handle_show_tasks(app, remainder="", **kwargs):
+    """Puts your task list on the screen."""
     _get_overlay().show(tasks_store.get_all())
     return True
 
@@ -83,8 +87,10 @@ def handle_show_tasks(app, remainder="", **kwargs):
     "hide tasks",
     aliases=["close tasks", "close task list"],
     pack="tasks",
+    risk_class="ui",
 )
 def handle_hide_tasks(app, remainder="", **kwargs):
+    """Takes the task list off the screen."""
     if _overlay is not None:
         _overlay.hide()
     return True
@@ -94,8 +100,10 @@ def handle_hide_tasks(app, remainder="", **kwargs):
     "complete task",
     aliases=["finish task", "done task", "check task", "task complete"],
     pack="tasks",
+    risk_class="write", param_schema={"remainder": {"type": "str", "required": False}},
 )
 def handle_complete_task(app, remainder="", **kwargs):
+    """Marks the task you name as done."""
     pos = _parse_position(remainder)
     if pos is None:
         _speak(app, "Which task number?")
@@ -115,8 +123,10 @@ def handle_complete_task(app, remainder="", **kwargs):
     "remove task",
     aliases=["delete task"],
     pack="tasks",
+    risk_class="destructive", param_schema={"remainder": {"type": "str", "required": False}},
 )
 def handle_remove_task(app, remainder="", **kwargs):
+    """Deletes the task you name from the list."""
     pos = _parse_position(remainder)
     if pos is None:
         _speak(app, "Which task number?")
@@ -136,8 +146,11 @@ def handle_remove_task(app, remainder="", **kwargs):
     "clear completed",
     aliases=["clear done tasks", "remove completed"],
     pack="tasks",
+    risk_class="destructive",
+    param_schema={"remainder": {"type": "str", "required": False}},
 )
 def handle_clear_completed(app, remainder="", **kwargs):
+    """Deletes every task already marked as done."""
     count = tasks_store.clear_completed()
     _refresh_overlay()
     if count == 0:
@@ -151,8 +164,10 @@ def handle_clear_completed(app, remainder="", **kwargs):
     "read tasks",
     aliases=["read my tasks", "what are my tasks", "list tasks"],
     pack="tasks",
+    risk_class="read",
 )
 def handle_read_tasks(app, remainder="", **kwargs):
+    """Reads out the tasks you have not finished."""
     active = tasks_store.get_active()
     if not active:
         _speak(app, "No active tasks.")

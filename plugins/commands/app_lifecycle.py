@@ -284,46 +284,55 @@ _COMMAND_META = {
 
 @command("start strata", aliases=["launch strata"], **_COMMAND_META)
 def start_strata(app, remainder="", **kwargs):
+    """Starts Strata running in the background."""
     return _dispatch(app, "strata", "start", remainder)
 
 
 @command("stop strata", **_COMMAND_META)
 def stop_strata(app, remainder="", **kwargs):
+    """Stops Strata."""
     return _dispatch(app, "strata", "stop", remainder)
 
 
 @command("restart strata", **_COMMAND_META)
 def restart_strata(app, remainder="", **kwargs):
+    """Stops Strata and starts it again."""
     return _dispatch(app, "strata", "restart", remainder)
 
 
 @command("start ariadne", aliases=["launch ariadne"], **_COMMAND_META)
 def start_ariadne(app, remainder="", **kwargs):
+    """Starts Ariadne running in the background."""
     return _dispatch(app, "ariadne", "start", remainder)
 
 
 @command("stop ariadne", **_COMMAND_META)
 def stop_ariadne(app, remainder="", **kwargs):
+    """Stops Ariadne."""
     return _dispatch(app, "ariadne", "stop", remainder)
 
 
 @command("restart ariadne", **_COMMAND_META)
 def restart_ariadne(app, remainder="", **kwargs):
+    """Stops Ariadne and starts it again."""
     return _dispatch(app, "ariadne", "restart", remainder)
 
 
 @command("start sigil server", aliases=["start sigil", "launch sigil server"], **_COMMAND_META)
 def start_sigil(app, remainder="", **kwargs):
+    """Starts the Sigil server running in the background."""
     return _dispatch(app, "sigil", "start", remainder)
 
 
 @command("stop sigil server", aliases=["stop sigil"], **_COMMAND_META)
 def stop_sigil(app, remainder="", **kwargs):
+    """Stops the Sigil server."""
     return _dispatch(app, "sigil", "stop", remainder)
 
 
 @command("restart sigil server", aliases=["restart sigil"], **_COMMAND_META)
 def restart_sigil(app, remainder="", **kwargs):
+    """Stops the Sigil server and starts it again."""
     return _dispatch(app, "sigil", "restart", remainder)
 
 

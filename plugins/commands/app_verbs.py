@@ -289,13 +289,17 @@ def do_close(name: str) -> "ActionResult":
     "focus",
     aliases=["switch to"],
     pack="window-management",
+    risk_class="ui", param_schema={"remainder": {"type": "str", "required": False}},
 )
 def handle_focus(app, remainder):
-    """"focus <x>" / "switch to <x>" -- registered as the bare single-token
-    verb (no regex/prefix marker in this codebase's command matcher -- see
-    command_registry.CommandMatcher.match(): matching is longest-registered-
-    phrase-first, so every existing 2+-token literal macro ("open chrome",
-    "close tab", etc.) already outranks this 1-token fallback for free)."""
+    """Brings the app you name to the front, such as focus firefox.
+
+    Registered as the bare single-token verb (no regex/prefix marker in this
+    codebase's command matcher -- see command_registry.CommandMatcher.match():
+    matching is longest-registered-phrase-first, so every existing 2+-token
+    literal macro ("open chrome", "close tab", etc.) already outranks this
+    1-token fallback for free).
+    """
     name = (remainder or "").strip()
     if not name:
         return False
@@ -316,11 +320,14 @@ def handle_focus(app, remainder):
 @command(
     "open",
     pack="window-management",
+    risk_class="ui", param_schema={"remainder": {"type": "str", "required": False}},
 )
 def handle_open(app, remainder):
-    """"open <x>" -- focuses if already running, else launches. Never
-    registered with a longer phrase, so any existing "open <literal>" macro
-    (all 2+ tokens) wins precedence automatically."""
+    """Opens the app you name, or brings it to the front if it is already running.
+
+    Never registered with a longer phrase, so any existing "open <literal>"
+    macro (all 2+ tokens) wins precedence automatically.
+    """
     name = (remainder or "").strip()
     if not name:
         return False
@@ -337,9 +344,10 @@ def handle_open(app, remainder):
     "close",
     pack="window-management",
     risk_class="reversible",
+    param_schema={"remainder": {"type": "str", "required": False}},
 )
 def handle_close(app, remainder):
-    """"close <x>" -- graceful WM_CLOSE, never a forced kill."""
+    """Closes the app you name, asking it to save first."""
     name = (remainder or "").strip()
     if not name:
         return False

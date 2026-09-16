@@ -169,6 +169,8 @@ _SHIFTED_KEY_IS_SELECTION = {"left", "right", "up", "down", "home", "end", "page
 # Method-type built-ins: explicit, because a method name says nothing about its effect.
 _METHOD_RISK = {
     "undo_last_dictation": RISK_WRITE,
+    # Queue 80: discards the whole staged draft; the text cannot be recovered.
+    "clear_dictation_draft": RISK_DESTRUCTIVE,
     "start_recording": RISK_UI,
     "cancel_recording": RISK_UI,
     "show_tutorial": RISK_UI,
@@ -179,6 +181,49 @@ _METHOD_RISK = {
 }
 
 _ACTION2_RISK = {"focus": RISK_UI, "open": RISK_UI, "close": RISK_DESTRUCTIVE}
+
+#: Queue 126/A. Three effects used to run in CommandExecutor.process_text
+#: BEFORE anything was authorized, off a SUBSTRING match: a dictated
+#: paragraph containing "command mode off" turned command matching off and
+#: wrote config.json, and one containing "remind me in 5 minutes to ..."
+#: scheduled a reminder from the rest of the sentence. Reproduced end to end
+#: in the queue 126 report; authorize() was called zero times in all three.
+#:
+#: They are real effects, so they get real identities and go through the same
+#: chokepoint as everything else. They are not registry commands (checked:
+#: none of the four phrases resolves), so the ids are synthetic and declared
+#: here. RISK_WRITE, deliberately: a user route runs them without a question,
+#: exactly as before, while a MODEL naming one has to be confirmed.
+SESSION_CONTROL_IDS = {
+    "session:command_mode_on": RISK_WRITE,
+    "session:command_mode_off": RISK_WRITE,
+    "session:reminder": RISK_WRITE,
+}
+
+#: Queue 126/B. A synthetic id -> the REGISTRY command whose pack and scope
+#: govern the same effect.
+#:
+#: Without this the restriction binds to whether an id happens to resolve
+#: rather than to what the effect does: with window-management switched off,
+#: authorize denied the registered `open` with pack_disabled and ALLOWED
+#: `action2:open` on the same target in the same breath (reproduced in the
+#: queue 126 report). The pack is a statement about the effect; a second way
+#: of naming the effect must not escape it.
+SYNTHETIC_GOVERNORS = {
+    "action2:open": "open",
+    "action2:focus": "focus",
+    "action2:close": "close",
+}
+
+
+def governing_command_id(command_id: str) -> str:
+    """The id whose pack/scope restriction applies to this effect.
+
+    For a registry id, itself. For a synthetic id that stands in for a
+    registered command, that command -- so "refused when spoken" and
+    "refused when a model proposes it" cannot disagree."""
+    cid = (command_id or "").strip().lower()
+    return SYNTHETIC_GOVERNORS.get(cid, cid)
 
 _PLUGIN_RISK_CLASS = {
     "read": RISK_READ,
@@ -262,6 +307,59 @@ def _worse(a: str, b: str) -> str:
     return a if _RISK_ORDER.get(a, 4) >= _RISK_ORDER.get(b, 4) else b
 
 
+_CATALOG_RISKS = frozenset({RISK_READ, RISK_UI, RISK_WRITE, RISK_DESTRUCTIVE})
+_catalog_index: Optional[tuple] = None
+_catalog_index_lock = threading.Lock()
+
+
+def clear_catalog_risk_cache() -> None:
+    """Forget the loaded commands_catalog.json ratings (tests, a regenerated catalog)."""
+    global _catalog_index
+    with _catalog_index_lock:
+        _catalog_index = None
+
+
+def _catalog_risk_index() -> tuple:
+    """({canonical_id: risk}, {(plugin, alias): risk}) from commands_catalog.json,
+    loaded once. Empty when the file is absent (the packaged build) or invalid."""
+    global _catalog_index
+    with _catalog_index_lock:
+        if _catalog_index is None:
+            by_id, by_alias = {}, {}
+            try:
+                from samsara.command_catalog import load_catalog_json  # noqa: PLC0415
+                for record in load_catalog_json() or []:
+                    risk = record.get("risk")
+                    if record.get("kind") != "plugin" or risk not in _CATALOG_RISKS:
+                        continue
+                    by_id[record.get("canonical_id")] = risk
+                    for alias in record.get("aliases") or []:
+                        by_alias.setdefault((record.get("plugin"), alias), risk)
+            except Exception as exc:
+                logger.debug("[POLICY] commands_catalog.json unavailable for risk fallback: %s", exc)
+            _catalog_index = (by_id, by_alias)
+        return _catalog_index
+
+
+def catalog_risk(entry: dict, command_id: str = "") -> Optional[str]:
+    """The commands_catalog.json risk for a plugin registry entry, or None.
+
+    Keyed by the catalog's canonical id (module stem + slug of the entry's
+    primary phrase), falling back to the spoken alias within the same plugin.
+    Used only when the command declares no risk_class itself."""
+    try:
+        from samsara.command_catalog import normalize_phrase, slug  # noqa: PLC0415
+    except Exception:
+        return None
+    by_id, by_alias = _catalog_risk_index()
+    plugin = str(entry.get("source") or "").rsplit(".", 1)[-1]
+    phrase = normalize_phrase(entry.get("phrase") or command_id)
+    risk = by_id.get(f"{plugin}.{slug(phrase)}")
+    if risk is None:
+        risk = by_alias.get((plugin, normalize_phrase(command_id)))
+    return risk
+
+
 def _plugin_entry(command_id: str):
     try:
         from samsara import plugin_commands  # noqa: PLC0415
@@ -275,6 +373,12 @@ def _plugin_entry(command_id: str):
 NO_ARGS_SCHEMA = MappingProxyType({})
 
 #: ACTION2 verbs carry exactly one target name.
+#: The session controls take at most a free-text body (the reminder's).
+_SESSION_CONTROL_SCHEMA = MappingProxyType({
+    "minutes": {"type": "int", "required": False},
+    "message": {"type": "str", "required": False},
+})
+
 _ACTION2_SCHEMA = MappingProxyType({
     "target": {"type": "str", "required": True, "max_len": 120},
 })
@@ -310,10 +414,15 @@ def classify(command_id: str, *, executor=None, app=None, declared_only: bool = 
     (commands.json built-ins, raw keys), else the declared mapping.
 
     All routes use declared metadata when available. The legacy flat default
-    'safe' cannot make an undeclared plugin safe. ``declared_only`` remains
-    accepted for callers of the earlier policy API.
+    'safe' cannot make an undeclared plugin safe. When a plugin declares no
+    risk and ``declared_only`` is False (user routes), the command's rating in
+    commands_catalog.json is used (:func:`catalog_risk`); ``declared_only``
+    (model routes) keeps such a command ``unknown``.
     """
     cid = (command_id or "").strip().lower()
+    if cid in SESSION_CONTROL_IDS:
+        # Reversible: say it again, or cancel the reminder.
+        return SESSION_CONTROL_IDS[cid], True, _SESSION_CONTROL_SCHEMA
     if cid.startswith("key:"):
         # A raw key press with no registry entry (the scheduler's KEY form).
         return classify_keys(cid[4:]), False, NO_ARGS_SCHEMA
@@ -349,12 +458,45 @@ def classify(command_id: str, *, executor=None, app=None, declared_only: bool = 
         flat = str(entry.get("risk_class") or "unknown").lower()
         # Flat metadata is authoritative only for older entries with no metadata view.
         risk = _PLUGIN_RISK_CLASS.get(declared if "metadata" in entry else flat, RISK_UNKNOWN)
+        if risk == RISK_UNKNOWN and not declared_only:
+            # User routes: a command that declares nothing takes the reviewed
+            # commands_catalog.json rating. Model routes keep "unknown".
+            risk = catalog_risk(entry, cid) or RISK_UNKNOWN
         return risk, not _irreversible(entry), _declared_schema(entry)
     return RISK_UNKNOWN, False, None
 
 
+def _availability_block(command_id: str, *, executor=None, app=None):
+    """(reason, detail) when the executor says this command cannot run here
+    (pack switched off, scope not live), else None. Delegated to
+    CommandExecutor.command_availability so pack/scope membership has ONE
+    definition; an executor without it (a stub, a tool) blocks nothing."""
+    ex = executor if executor is not None else getattr(app, "command_executor", None)
+    fn = getattr(ex, "command_availability", None)
+    if not callable(fn):
+        return None
+    # Queue 126/B: ask about the EFFECT, not about the spelling of the id.
+    # command_availability looks its argument up in the registry and blocks
+    # nothing when it finds nothing, so a synthetic id used to walk past a
+    # disabled pack that stopped the identical spoken command.
+    governed = governing_command_id(command_id)
+    try:
+        blocked = fn(governed)
+    except Exception as exc:                      # never fail an effect on the check itself
+        logger.debug("availability check failed for %r: %s", command_id, exc)
+        return None
+    # A stub or mock executor can answer anything; only a real (reason, detail)
+    # pair blocks an effect, never a truthy object of an unexpected shape.
+    if not isinstance(blocked, (tuple, list)) or len(blocked) != 2:
+        return None
+    reason, detail = blocked
+    return str(reason), str(detail)
+
+
 def command_exists(command_id: str, *, executor=None, app=None) -> bool:
     cid = (command_id or "").strip().lower()
+    if cid in SESSION_CONTROL_IDS:
+        return True
     if cid.startswith("key:"):
         return bool(_norm_keys(cid[4:]))
     if cid.startswith("action2:"):
@@ -574,14 +716,31 @@ def stop_all(app, reason: str = "stop", *, chip: bool = True, bump: bool = True)
 
     Bumps the generation FIRST (so any worker that is mid-model-call or
     mid-resolution is stale before we touch anything else), then clears every
-    place a request can be waiting: the staged confirmation, the AVA-session
-    queue, the D3 waterfall queue, the scheduler. Drafts (staged dictation)
-    are deliberately untouched. Returns what was cleared, for feedback.
+    place a request can be waiting: the answer already being spoken (queue
+    110), the staged confirmation, the AVA-session queue, the D3 waterfall
+    queue, the scheduler. Drafts (staged dictation) are deliberately
+    untouched. Returns what was cleared, for feedback.
     """
     # bump=False is for a caller that has ALREADY bumped under its own lock
     # (exit_ava_command_session) and only needs the clearing half.
     gen = bump_generation(app, reason) if bump else current_generation(app)
-    cleared = {"generation": gen, "pending": False, "queued": 0, "in_flight": False, "schedule": False}
+    cleared = {"generation": gen, "pending": False, "queued": 0, "in_flight": False,
+               "schedule": False, "speech": False}
+
+    # Queue 110. The stop also has to reach the ANSWER ALREADY BEING SPOKEN.
+    # Until now stop_all cleared every queue and bumped the generation but
+    # never touched TTS, so the owner could switch modes mid-answer, have the
+    # turn correctly invalidated, and still sit through the rest of the
+    # sentence. AudioCoordinator.speak(category="ava_response") is handed
+    # interruptible=False, which only governs barge-in; cancel_speech() is the
+    # explicit stop and cancels it regardless.
+    coordinator = getattr(app, "audio_coordinator", None)
+    if coordinator is not None:
+        try:
+            cleared["speech"] = bool(getattr(coordinator, "is_speaking", False))
+            coordinator.cancel_speech()
+        except Exception as exc:
+            logger.debug("[POLICY] stop_all: speech not cancelled: %s", exc)
 
     # Staged confirmation (Ava pending action, incl. a Smart Actions dialog wait).
     try:
@@ -724,14 +883,28 @@ def confirmation_prompt(command_id: str, args: Optional[dict] = None) -> str:
     return f"{_template_value(cid).capitalize()}?"
 
 
-def authorize(inv: Invocation, *, app=None, executor=None, confirmed: bool = False):
+def _quiet_emit(app, inv, decision):
+    """The no-op stand-in for _emit when a decision is only being asked
+    about, not made (authorize(quiet=True))."""
+    return None
+
+
+def authorize(inv: Invocation, *, app=None, executor=None, confirmed: bool = False,
+              quiet: bool = False):
     """Decide whether `inv` may cause its effect right now.
 
     ``confirmed=True`` means the user already answered a NeedsConfirmation
     for this exact invocation; the generation, allow-list and args checks
     still apply (a confirmation can be stale too).
+
+    ``quiet=True`` asks the same question WITHOUT recording a decision: it is
+    how CommandExecutor.ava_menu builds Ava's menu (queue 107), so what she is
+    offered is decided by this function and cannot drift from what she may
+    run. Nothing is staged or emitted; only a real invocation is logged.
     """
     cid = (inv.command_id or "").strip().lower()
+    # One decision function; `quiet` only silences the record of it.
+    emit = _quiet_emit if quiet else _emit
 
     # 1. Request identity: anything from a superseded request is dead, and a
     # request that never captured a generation has no identity at all.
@@ -739,16 +912,29 @@ def authorize(inv: Invocation, *, app=None, executor=None, confirmed: bool = Fal
         detail = ("no generation captured" if inv.generation is None
                   else f"generation {inv.generation} != {current_generation(app)}")
         d = Denied("stale", detail=detail)
-        _emit(app, inv, d)
+        emit(app, inv, d)
         return d
 
     # 2. The id must resolve to something the registry knows.
     if not command_exists(cid, executor=executor, app=app):
         d = Denied("unknown_command", detail=cid)
-        _emit(app, inv, d)
+        emit(app, inv, d)
         return d
 
     ex = executor if executor is not None else getattr(app, "command_executor", None)
+
+    # 2b. Availability: an enabled pack, and a scope that is live HERE (queue
+    # 107 / Astra F2). The matcher applies both, but only the spoken path goes
+    # through the matcher -- a model proposal, a scheduled repeat and a
+    # confirmed callback reach the effect without ever being matched, and used
+    # to run past a restriction that blocked the same words spoken aloud. The
+    # refusal is emitted like any other Denied, never silent.
+    blocked = _availability_block(cid, executor=ex, app=app)
+    if blocked:
+        d = Denied(blocked[0], detail=blocked[1])
+        emit(app, inv, d)
+        return d
+
     command = (getattr(ex, "commands", None) or {}).get(cid, {})
     if command.get("method") == "repeat_last_command":
         last_id = getattr(app, "_last_command_name", None)
@@ -756,16 +942,16 @@ def authorize(inv: Invocation, *, app=None, executor=None, confirmed: bool = Fal
         target = (getattr(ex, "commands", None) or {}).get(last_id, {})
         if not isinstance(last_id, str) or not last or last_id == cid or target.get("method") == "repeat_last_command":
             d = Denied("nothing to repeat")
-            _emit(app, inv, d)
+            emit(app, inv, d)
             return d
         # The repeat handler dispatches this stored command, not the repeat verb.
         if target and target != last:
             d = Denied("repeat target changed", detail=last_id)
-            _emit(app, inv, d)
+            emit(app, inv, d)
             return d
         return authorize(Invocation(last_id, inv.args, inv.route, inv.generation,
                                     source_text=inv.source_text),
-                         app=app, executor=ex, confirmed=confirmed)
+                         app=app, executor=ex, confirmed=confirmed, quiet=quiet)
 
     # Model routes see only what the registry DECLARES (undeclared = unknown).
     risk, _reversible, schema = classify(cid, executor=executor, app=app,
@@ -774,21 +960,32 @@ def authorize(inv: Invocation, *, app=None, executor=None, confirmed: bool = Fal
     # 3. Arguments must satisfy the command's own schema; an undeclared schema
     # makes the tool unavailable to a model.
     err = validate_args(schema, inv.args, route=inv.route)
+    if (err and err[0] == "unvalidated" and not inv.args and risk in (RISK_READ, RISK_UI)):
+        # Queue 107 / Astra F1, narrowly: a proposal carrying NO arguments has
+        # nothing to validate -- an ACTION line is the whole instruction (the
+        # system prompt gives it no argument slot). Denying these made almost
+        # every plugin offerable but unrunnable: "volume up" is declared safe
+        # and takes no arguments, yet a model naming it could never run it.
+        # Deliberately limited to read/ui, which the table below allows
+        # without a question anyway: nothing write, destructive or
+        # unclassified gains model reach from this -- those still read
+        # "unvalidated" here.
+        err = None
     if err:
         d = Denied(err[0], risk=risk, detail=err[1])
-        _emit(app, inv, d)
+        emit(app, inv, d)
         return d
 
     # 4. A model may only ever name tools on the allow-list.
     if inv.route in MODEL_ROUTES and not model_may_call(cid, app=app, executor=executor, risk=risk):
         d = Denied("not_allowed_for_model", risk=risk, detail=cid)
-        _emit(app, inv, d)
+        emit(app, inv, d)
         return d
 
     # 5. Already confirmed by the user for this invocation.
     if confirmed:
         a = Allowed("confirmed", risk=risk)
-        _emit(app, inv, a)
+        emit(app, inv, a)
         return a
 
     # 6. The policy table.
@@ -802,7 +999,7 @@ def authorize(inv: Invocation, *, app=None, executor=None, confirmed: bool = Fal
         a = Allowed("undoable", risk=risk, hint="undoable")
     else:
         a = NeedsConfirmation(confirmation_prompt(cid, inv.args), risk=risk)
-    _emit(app, inv, a)
+    emit(app, inv, a)
     return a
 
 
@@ -858,6 +1055,8 @@ class PendingOperation:
         self.expires = time.time() + CONFIRM_TTL_S
         self.extended = False
         self.cancel_reason: Optional[str] = None
+        #: Set by refusal() when the bound target moved, for the spoken reason.
+        self.target_change: Optional[str] = None
         self._on_approve = on_approve
         self._on_reject = on_reject
         self._event = threading.Event()
@@ -886,7 +1085,10 @@ class PendingOperation:
                 logger.debug("[POLICY] target probe failed: %s", exc)
                 return "target changed"
             if now != self.targets:
-                return "target changed"
+                # Queue 126/C: named, not just reported. The caller speaks
+                # this, so "I did nothing" comes with the reason.
+                self.target_change = describe_target_change(self.targets, now)
+                return f"target changed: {self.target_change}"
         return None
 
     def is_live(self, app=None) -> bool:
@@ -949,6 +1151,86 @@ class PendingOperation:
         return self._event.wait(timeout)
 
 
+#: Queue 126/C. Approval binds a TARGET, not just a command and arguments.
+#:
+#: PendingOperation has supported `targets`/`target_probe` since queue 107 and
+#: NOTHING passed them (grepped: the only references were the definitions), so
+#: `refusal()` skipped the target check on every real approval. Reproduced:
+#: "Close the window?" asked while the bank was in front, the user alt-tabbed,
+#: said yes, and the unsaved document was closed instead -- refusal() returned
+#: None throughout.
+#:
+#: So a target is now resolved AT THE MOMENT THE QUESTION IS ASKED and
+#: re-resolved when the answer arrives. A difference is refused and named. It
+#: is never silently re-resolved, which would be the same bug with a tidier
+#: implementation.
+TARGET_ARG_NAMES = ("target", "app_name", "window", "label")
+
+
+def resolve_target(name: str) -> Optional[dict]:
+    """The identity of the window a spoken target names, or None when it
+    cannot be resolved right now. Never raises: a probe that throws must not
+    be able to approve something, and `bind_target` treats None as "gone"."""
+    if not name:
+        return None
+    try:
+        from plugins.commands.app_verbs import resolve_window  # noqa: PLC0415
+        found = resolve_window(name)
+    except Exception as exc:
+        logger.debug("[POLICY] target resolve failed for %r: %s", name, exc)
+        return None
+    if not found:
+        return None
+    hwnd, title, process = (list(found) + [None, None, None])[:3]
+    return {"hwnd": hwnd, "process": (process or "").lower()}
+
+
+def bind_target(inv: Invocation, resolver=None):
+    """(targets, probe) for an invocation that names a target, else (None, None).
+
+    `targets` is what the question was asked about. `probe` re-reads it at
+    approval; PendingOperation.refusal() compares the two and refuses on any
+    difference -- including the target having disappeared, which the probe
+    reports as {"gone": <name>} so it cannot compare equal to a real window.
+    """
+    name = None
+    for key in TARGET_ARG_NAMES:
+        value = (inv.args or {}).get(key)
+        if isinstance(value, str) and value.strip():
+            name = value.strip()
+            break
+    if name is None:
+        return None, None
+
+    def _probe():
+        # Looked up here, not bound as a default argument: the module-level
+        # resolver is the seam tests and callers replace.
+        fn = resolver if resolver is not None else resolve_target
+        try:
+            found = fn(name)
+        except Exception as exc:
+            # A probe that throws must REFUSE, never approve. {"gone": ...}
+            # cannot compare equal to a resolved window, so the mismatch
+            # check refuses on its own.
+            logger.debug("[POLICY] target probe raised for %r: %s", name, exc)
+            return {"gone": name}
+        return found or {"gone": name}
+
+    return _probe(), _probe
+
+
+def describe_target_change(before: Optional[dict], after: Optional[dict]) -> str:
+    """One sentence naming what moved, for the spoken refusal."""
+    before, after = before or {}, after or {}
+    if after.get("gone"):
+        return f"{after['gone']} is not open any more"
+    if before.get("gone"):
+        return f"{before['gone']} was not open when I asked"
+    if before.get("process") and after.get("process") and before["process"] != after["process"]:
+        return f"that is {after['process']} now, not {before['process']}"
+    return "a different window is in front now"
+
+
 def stage_pending(app, inv: Invocation, prompt: str, *, on_approve=None, on_reject=None,
                   extra: Optional[dict] = None, record_type: str = "invocation",
                   targets: Optional[dict] = None,
@@ -959,13 +1241,18 @@ def stage_pending(app, inv: Invocation, prompt: str, *, on_approve=None, on_reje
 
     ``targets`` / ``target_probe``: the target versions the question was
     asked about (e.g. {"hwnd": 1234, "title_rev": 7}) and a callable that
-    re-reads them; approval is refused if they differ.
+    re-reads them; approval is refused if they differ. Queue 126/C: when the
+    caller supplies neither and the invocation NAMES a target, they are
+    derived here (``bind_target``) -- the support existed and no caller used
+    it, which is how "close this window" closed a different one.
 
     ``record_type`` keeps the slot's existing vocabulary ("action" for a
     command id, "action2" for a verb+argument, "invocation" for anything
     else) so scratch-that / cancel / tests keep reading it; every record
     carries ``op`` and "yes" resolves that, whatever the type says.
     """
+    if targets is None and target_probe is None:
+        targets, target_probe = bind_target(inv)
     ex = getattr(app, "command_executor", None)
     table = getattr(ex, "commands", None) or {}
     if table.get(inv.command_id, {}).get("method") == "repeat_last_command":
@@ -1010,18 +1297,29 @@ def stage_pending(app, inv: Invocation, prompt: str, *, on_approve=None, on_reje
     }
     if extra:
         record.update(extra)
+    _install_record(app, record)
+    return op
+
+
+def _install_record(app, record: dict) -> None:
+    """Put `record` in the shared pending slot. A previous yes/no question is
+    superseded (cancelled visibly); a previous CANCEL WINDOW is flushed -- run
+    now -- because the user moving on to the next command without saying "no"
+    is not a cancel (queue 69)."""
     try:
         from plugins.commands import ask_ollama  # noqa: PLC0415
         with ask_ollama._pending_action_lock:
             old = ask_ollama._pending_action
             ask_ollama._pending_action = record
-        if isinstance(old, dict) and isinstance(old.get("op"), PendingOperation):
-            old["op"].cancel(app, "superseded")
+        old_op = old.get("op") if isinstance(old, dict) else None
+        if isinstance(old_op, TimedOperation) and old_op.approved is None and not old_op.converted:
+            old_op.run_now("the next command arrived", release=False)
+        elif isinstance(old_op, PendingOperation):
+            old_op.cancel(app, "superseded")
         elif isinstance(old, dict):
             _chip(app, "cancelled: superseded", "warning")
     except Exception as exc:
-        logger.debug("[POLICY] stage_pending: pending slot unavailable: %s", exc)
-    return op
+        logger.debug("[POLICY] pending slot unavailable: %s", exc)
 
 
 def pending_operation() -> Optional[PendingOperation]:
@@ -1105,8 +1403,10 @@ def answer_pending(app, text: str, *, source: str = ANSWER_VOICE) -> Optional[st
     "refused:<why>" (stale / expired / target changed / already answered /
     model / wait already used). Only this function and the dialog buttons
     resolve a pending operation."""
-    reply = classify_reply(text)
     op = pending_operation()
+    if isinstance(op, (TimedOperation, ChoiceOperation)):
+        return answer_cancel_window(app, text, source=source)
+    reply = classify_reply(text)
     if reply is None or op is None:
         return None
     if source not in (ANSWER_VOICE, ANSWER_DIALOG):
@@ -1134,3 +1434,415 @@ def answer_pending(app, text: str, *, source: str = ANSWER_VOICE) -> Optional[st
         op.cancel(app, why)
         return f"refused:{why}"
     return "approved" if op.approve(app=app) else "refused:already answered"
+
+
+# ---------------------------------------------------------------------------
+# Cancel window (queue 69): a third state between "run it" and "ask yes/no"
+# ---------------------------------------------------------------------------
+#
+# No comparable tool solved command-vs-dictation with a classifier (queue 66);
+# they make a wrong execution cheap instead. A non-read command recognised
+# INSIDE the dictation lane is staged here for a short window, shown on the
+# chip as "running <X>... say no", and runs when the window elapses unless:
+#
+#   * the user says a cancel word ("no", "cancel", "stop" ...) as a complete
+#     utterance -> cancelled;
+#   * the user starts speaking inside the window -> the command is HELD until
+#     that utterance is decided: a cancel word cancels, dictation cancels
+#     ("you kept talking" -- the shadow log's false positives were followed by
+#     more dictation 5/7 times within 3 s, real commands 0/37), anything else
+#     runs it;
+#   * "yes" runs it now; "wait" turns it into an ordinary yes/no question;
+#   * a stop bumped the generation, the session ended, or the foreground
+#     window changed -> refused, never run.
+#
+# Read commands never get a window; destructive ones keep their spoken yes/no
+# (queue 63) and unknown-risk ones keep the NeedsConfirmation path. Only the
+# dictation lane opens windows; ordinary dictation never touches this code.
+#
+# Default 3.0 s, from the measurement in reports/69: a short utterance takes a
+# median 1.78 s (p90 2.41 s) from speech onset to dispatch, so a window cannot
+# wait for a cancel to be DECIDED; it only has to see it START (the hold), and
+# 3.0 s leaves room to notice the chip and begin speaking.
+
+CANCEL_WINDOW_DEFAULT_S = 3.0
+CANCEL_WINDOW_MAX_S = 5.0
+#: Longest a held window waits for the utterance that started inside it.
+CANCEL_HOLD_MAX_S = 6.0
+#: How long a numbered choice stays open.
+CHOICE_TTL_S = 12.0
+#: Complete-utterance cancel words while a window is open.
+CANCEL_WINDOW_UTTERANCES = frozenset({
+    "no", "nope", "no thanks", "don't", "do not", "no don't", "no no",
+    "cancel", "cancel that", "stop", "stop that", "stop it",
+})
+#: Session outcomes that mean "the user kept dictating".
+DICTATION_OUTCOMES = frozenset({"dictate_staged", "dictate_injected"})
+#: Outcomes that do not resolve a held window (the reply itself, the window's
+#: own staging).
+_NEUTRAL_OUTCOMES = frozenset({"pending_reply", "command_cancel_window"})
+
+
+def cancel_window_settings(app) -> tuple:
+    """(seconds, applies_to_everyday_words). seconds 0 = off."""
+    cfg = {}
+    try:
+        cfg = (getattr(app, "config", {}) or {}).get("command_mode", {}) or {}
+    except Exception:
+        cfg = {}
+    raw = cfg.get("cancel_window_s", CANCEL_WINDOW_DEFAULT_S)
+    try:
+        seconds = float(raw)
+    except (TypeError, ValueError):
+        seconds = CANCEL_WINDOW_DEFAULT_S
+    if seconds != seconds or seconds < 0:          # NaN / negative
+        seconds = CANCEL_WINDOW_DEFAULT_S
+    seconds = min(seconds, CANCEL_WINDOW_MAX_S)
+    return seconds, bool(cfg.get("cancel_window_all_commands", False))
+
+
+def cancel_window_for(command_id: str, app, *, executor=None, reserved: bool = False) -> float:
+    """Seconds of cancel window for a command recognised in the dictation
+    lane, or 0 for none. `reserved`: matched as one of the lane's curated
+    everyday words (submit, enter, next tab, focus ...), which only get a
+    window when the user extends it to them."""
+    seconds, everyday = cancel_window_settings(app)
+    if seconds <= 0 or (reserved and not everyday):
+        return 0.0
+    try:
+        risk, reversible, _schema = classify(command_id, executor=executor, app=app)
+    except Exception as exc:
+        logger.debug("[POLICY] cancel window: classify(%s) failed: %s", command_id, exc)
+        return 0.0
+    if risk in (RISK_UI, RISK_WRITE) or (risk == RISK_DESTRUCTIVE and reversible):
+        return seconds
+    # read: immediate. destructive (not undoable) / unknown: the yes/no path.
+    return 0.0
+
+
+class _SpeechEdges:
+    """Speech onset / utterance dispatch edges, for holding a window. Edges
+    are ordered by a counter, not a clock: two edges inside one Windows clock
+    tick (~15 ms) must still compare in the order they happened."""
+
+    def __init__(self):
+        self.lock = threading.Lock()
+        self.seq = 0
+        self.last_onset = 0
+        self.last_dispatch_start = 0
+
+
+_speech = _SpeechEdges()
+
+
+def _foreground_target() -> dict:
+    try:
+        import ctypes  # noqa: PLC0415
+        hwnd = int(ctypes.windll.user32.GetForegroundWindow() or 0)
+        return {"hwnd": hwnd} if hwnd else {}
+    except Exception:
+        return {}
+
+
+class TimedOperation(PendingOperation):
+    """A cancel window in the shared pending slot. Runs itself when the window
+    elapses; see the section comment above."""
+
+    kind = "cancel_window"
+
+    def __init__(self, inv: Invocation, label: str, delay_s: float, run, *, app=None,
+                 targets: Optional[dict] = None, target_probe: Optional[Callable[[], dict]] = None,
+                 clock: Callable[[], float] = time.monotonic, timer_factory=None):
+        super().__init__(inv, f"running {label}", on_approve=lambda _op: run(), app=app,
+                         targets=targets, target_probe=target_probe, clock=clock)
+        self.label = label
+        self.delay_s = float(delay_s)
+        self.deadline = clock() + self.delay_s
+        self.expires = time.time() + self.delay_s
+        self.held = False
+        self.converted = False            # "wait" turned it into a yes/no
+        self.outcome_reason: Optional[str] = None
+        self._timer = None
+        self._timer_factory = timer_factory
+
+    # A window's deadline is when it RUNS, not when it becomes unanswerable.
+    def is_expired(self) -> bool:
+        if self.converted:
+            return self._clock() > self.deadline
+        return self._clock() > self.deadline + CANCEL_HOLD_MAX_S + 1.0
+
+    def _arm(self, seconds: float, fn) -> None:
+        self._disarm()
+        factory = self._timer_factory
+        if factory is None:
+            from samsara.runtime import thread_registry  # noqa: PLC0415
+            factory = lambda s, f: thread_registry.timer("policy.cancel_window", s, f, daemon=True)  # noqa: E731
+        self._timer = factory(max(0.0, seconds), fn)
+
+    def _disarm(self) -> None:
+        timer, self._timer = self._timer, None
+        if timer is not None:
+            try:
+                timer.cancel()
+            except Exception:
+                pass
+
+    def start(self) -> None:
+        self._arm(self.delay_s, self._elapsed)
+
+    def _elapsed(self) -> None:
+        with self._lock:
+            if self.approved is not None or self.held or self.converted:
+                return
+        self.run_now("window elapsed")
+
+    def hold(self) -> bool:
+        """Speech started inside the window: wait for that utterance."""
+        with self._lock:
+            if self.approved is not None or self.held or self.converted:
+                return False
+            self.held = True
+            self.deadline = max(self.deadline, self._clock() + CANCEL_HOLD_MAX_S)
+        self._arm(CANCEL_HOLD_MAX_S, self._hold_expired)
+        logger.info("[POLICY] cancel window %s held: speech started inside it", self.invocation.command_id)
+        return True
+
+    def _hold_expired(self) -> None:
+        with self._lock:
+            if self.approved is not None or not self.held:
+                return
+        _release_slot(self)
+        self.cancel(self._app, "no answer heard in time")
+
+    def run_now(self, reason: str, *, release: bool = True) -> bool:
+        if release:
+            _release_slot(self)
+        why = self.refusal(self._app)
+        if why is not None:
+            if why != "already answered":
+                self.cancel(self._app, why)
+            return False
+        self.outcome_reason = reason
+        logger.info("[POLICY] cancel window ran %s (%s) after %.2fs", self.invocation.command_id,
+                    reason, self.delay_s)
+        return self.resolve(True)
+
+    def convert_to_question(self) -> bool:
+        """"wait": stop the clock; ask yes/no with the ordinary TTL."""
+        with self._lock:
+            if self.approved is not None or self.converted:
+                return False
+            self.converted = True
+            self.held = False
+            self.deadline = self._clock() + CONFIRM_TTL_S
+            self.expires = time.time() + CONFIRM_TTL_S
+        self._disarm()
+        return True
+
+    def resolve(self, approved: bool, *, always: bool = False) -> bool:
+        self._disarm()
+        return super().resolve(approved, always=always)
+
+    def cancel(self, app=None, reason: str = "cancelled", *, chip: bool = True) -> bool:
+        resolved = self.resolve(False)
+        if resolved:
+            self.cancel_reason = reason
+            logger.info("[POLICY] cancel window %s cancelled: %s", self.invocation.command_id, reason)
+            if chip:
+                _chip(app if app is not None else self._app, f"cancelled {self.label}: {reason}", "warning")
+        return resolved
+
+
+def stage_cancel_window(app, inv: Invocation, label: str, delay_s: float, run, *,
+                        bind_foreground: bool = True, timer_factory=None) -> TimedOperation:
+    """Stage `run` behind a cancel window of `delay_s` seconds. `run()` is
+    called at most once, on the thread that resolves the window."""
+    targets, probe = None, None
+    if bind_foreground:
+        targets = _foreground_target()
+        if targets:
+            probe = _foreground_target
+    op = TimedOperation(inv, label, delay_s, run, app=app, targets=targets, target_probe=probe,
+                        timer_factory=timer_factory)
+    record = {
+        "type": "cancel_window",
+        "op": op,
+        "op_id": op.op_id,
+        "confirm_text": op.prompt,
+        "generation": inv.generation,
+        "arg_hash": op.arg_hash,
+        "targets": dict(op.targets),
+        "expires": op.expires,
+        "original_text": inv.source_text,
+        "command": inv.command_id,
+    }
+    _install_record(app, record)
+    with _speech.lock:
+        speaking = _speech.last_onset > _speech.last_dispatch_start > 0
+    logger.info("[POLICY] cancel window %.2fs: %s risk-window op=%s%s", op.delay_s, inv.command_id,
+                op.op_id[:8], " (held: speech already under way)" if speaking else "")
+    if speaking:
+        op.hold()
+    else:
+        op.start()
+    return op
+
+
+class ChoiceOperation(PendingOperation):
+    """Numbered alternatives ("1 X · 2 Y -- say a number") when two commands
+    match near-equally: the user picks, the app never guesses."""
+
+    kind = "choice"
+
+    def __init__(self, inv: Invocation, options: list, *, app=None,
+                 clock: Callable[[], float] = time.monotonic, timer_factory=None):
+        labels = [str(label) for label, _run in options]
+        super().__init__(inv, "choose: " + " / ".join(labels), app=app, clock=clock)
+        self.options = list(options)
+        self.chosen: Optional[int] = None
+        self.deadline = clock() + CHOICE_TTL_S
+        self.expires = time.time() + CHOICE_TTL_S
+        self._timer = None
+        factory = timer_factory
+        if factory is None:
+            from samsara.runtime import thread_registry  # noqa: PLC0415
+            factory = lambda s, f: thread_registry.timer("policy.choice", s, f, daemon=True)  # noqa: E731
+        self._timer = factory(CHOICE_TTL_S, self._timed_out)
+
+    def _timed_out(self) -> None:
+        if self.approved is None:
+            _release_slot(self)
+            self.cancel(self._app, "no choice made")
+
+    def choose(self, number: int) -> bool:
+        if not 1 <= number <= len(self.options) or self.approved is not None:
+            return False
+        why = self.refusal(self._app)
+        _release_slot(self)
+        if why is not None:
+            self.cancel(self._app, why)
+            return False
+        self.chosen = number
+        _label, run = self.options[number - 1]
+        self._on_approve = lambda _op: run()
+        if self._timer is not None:
+            try:
+                self._timer.cancel()
+            except Exception:
+                pass
+        logger.info("[POLICY] choice %d of %d: %s", number, len(self.options), _label)
+        return self.resolve(True)
+
+
+def choice_chip_label(options: list) -> str:
+    parts = [f"{i} {label}" for i, (label, _run) in enumerate(options, start=1)]
+    return " · ".join(parts) + " -- say a number"
+
+
+def stage_choice(app, inv: Invocation, options: list, *, timer_factory=None) -> ChoiceOperation:
+    """Offer 2..9 numbered alternatives [(label, run), ...]."""
+    if not 2 <= len(options) <= 9:
+        raise ValueError("a choice needs 2 to 9 options")
+    op = ChoiceOperation(inv, options, app=app, timer_factory=timer_factory)
+    _install_record(app, {"type": "choice", "op": op, "op_id": op.op_id, "confirm_text": op.prompt,
+                          "generation": inv.generation, "arg_hash": op.arg_hash, "targets": {},
+                          "expires": op.expires, "original_text": inv.source_text,
+                          "command": inv.command_id})
+    _chip(app, choice_chip_label(options), "pending")
+    logger.info("[POLICY] choice staged: %s", " / ".join(str(l) for l, _r in options))
+    return op
+
+
+_NUMBER_WORDS = {"one": 1, "two": 2, "three": 3, "four": 4, "five": 5, "six": 6, "seven": 7,
+                 "eight": 8, "nine": 9, "won": 1, "to": 2, "too": 2, "for": 4}
+
+
+def _spoken_number(text: str) -> Optional[int]:
+    norm = _normalize_reply(text)
+    for prefix in ("number ", "option "):
+        if norm.startswith(prefix):
+            norm = norm[len(prefix):]
+    if norm.isdigit() and len(norm) == 1:
+        return int(norm)
+    return _NUMBER_WORDS.get(norm)
+
+
+def answer_cancel_window(app, text: str, *, source: str = ANSWER_VOICE) -> Optional[str]:
+    """A complete-utterance reply to an open cancel window or choice; None
+    when nothing of that kind is open or `text` is not a reply to it (the
+    utterance then goes on to its lane as usual). Wired as the session's
+    pending_reply_fn, so it runs before any lane interprets the words."""
+    op = pending_operation()
+    if not isinstance(op, (TimedOperation, ChoiceOperation)) or op.approved is not None:
+        return None
+    if source not in (ANSWER_VOICE, ANSWER_DIALOG):
+        logger.warning("[POLICY] ignored a %s-sourced reply to %s", source, op.op_id[:8])
+        return "refused:model"
+    raw = (text or "").strip()
+    if not raw or any(q in raw for q in _QUOTES if q != "'"):
+        return None
+    normalized = _normalize_reply(raw)
+    if isinstance(op, ChoiceOperation):
+        number = _spoken_number(raw)
+        if number is not None:
+            return "approved" if op.choose(number) else "refused:not an option"
+        if normalized in CANCEL_WINDOW_UTTERANCES:
+            _release_slot(op)
+            op.cancel(app, "you said no")
+            return "rejected"
+        return None
+    if normalized in CANCEL_WINDOW_UTTERANCES:
+        _release_slot(op)
+        op.cancel(app, "you said no")
+        return "rejected"
+    reply = classify_reply(raw)
+    if reply == REPLY_YES:
+        return "approved" if op.run_now("you said yes") else f"refused:{op.cancel_reason or 'not live'}"
+    if reply == REPLY_WAIT and not op.converted:
+        if op.convert_to_question():
+            _chip(app, f"{op.label}? yes or no", "pending")
+            return "extended"
+    return None
+
+
+def flush_cancel_window(reason: str = "the next command arrived") -> bool:
+    """Run an open (not converted) cancel window now. Called before a command
+    that does NOT get a window is dispatched in the lane, so two commands
+    still run in the order they were said."""
+    op = pending_operation()
+    if not isinstance(op, TimedOperation) or op.approved is not None or op.converted:
+        return False
+    return op.run_now(reason)
+
+
+def note_utterance_start() -> None:
+    """The session began dispatching an utterance (queue 69 hold bookkeeping)."""
+    with _speech.lock:
+        _speech.seq += 1
+        _speech.last_dispatch_start = _speech.seq
+
+
+def note_speech_onset(app=None) -> None:
+    """A fresh speech onset: holds an open cancel window until that utterance
+    is decided. Never raises; costs a lock when nothing is open."""
+    with _speech.lock:
+        _speech.seq += 1
+        _speech.last_onset = _speech.seq
+    op = pending_operation()
+    if isinstance(op, TimedOperation) and op.approved is None and not op.converted:
+        op.hold()
+
+
+def after_utterance(app, outcome_kind: str) -> Optional[str]:
+    """Resolve a HELD window by what the utterance inside it turned out to be.
+    Returns "cancelled" / "ran" / None (nothing held, or a neutral outcome)."""
+    op = pending_operation()
+    if not isinstance(op, TimedOperation) or op.approved is not None or not op.held or op.converted:
+        return None
+    if outcome_kind in _NEUTRAL_OUTCOMES:
+        return None
+    if outcome_kind in DICTATION_OUTCOMES:
+        _release_slot(op)
+        op.cancel(app, "you kept talking")
+        return "cancelled"
+    return "ran" if op.run_now(f"next utterance was {outcome_kind}") else None

@@ -57,9 +57,14 @@ def _focus_browser():
 
 
 @command("find tab", aliases=["find the tab", "switch to tab",
-                              "where is", "find my"], pack="browsers")
+                              "where is", "find my"], pack="browsers",
+                              risk_class="ui", param_schema={"remainder": {"type": "str", "required": False}},
+)
 def find_tab(app, remainder):
-    """Search browser tabs. 'find tab github', 'where is slack'."""
+    """Finds the browser tab matching what you say and switches to it.
+
+    'find tab github', 'where is slack'.
+    """
     if not remainder:
         print("[TABS] Find which tab? Say a keyword.")
         return False

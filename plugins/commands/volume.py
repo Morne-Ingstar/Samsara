@@ -265,7 +265,7 @@ _audio = _CoreAudio()
 ], pack="media",
     risk_class='safe', ai_composable=True, side_effects=['audio'])
 def handle_volume_up(app, remainder):
-    """Increase system volume by 20%."""
+    """Turns the system volume up by twenty percent."""
     current = _audio.get_volume()
     if current is None:
         print("[VOLUME] Failed to read volume")
@@ -282,7 +282,7 @@ def handle_volume_up(app, remainder):
 ], pack="media",
     risk_class='safe', ai_composable=True, side_effects=['audio'])
 def handle_volume_down(app, remainder):
-    """Decrease system volume by 20%."""
+    """Turns the system volume down by twenty percent."""
     current = _audio.get_volume()
     if current is None:
         print("[VOLUME] Failed to read volume")
@@ -298,7 +298,7 @@ def handle_volume_down(app, remainder):
 ], pack="media",
     risk_class='safe', ai_composable=True, side_effects=['audio'])
 def handle_mute(app, remainder):
-    """Toggle system mute."""
+    """Mutes or unmutes the system sound."""
     muted = _audio.get_mute()
     if muted is None:
         print("[VOLUME] Failed to read mute state")

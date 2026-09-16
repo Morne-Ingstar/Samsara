@@ -141,7 +141,15 @@ class TestRecords:
     def test_known_specs_look_right(self, specs):
         by_id = {s.canonical_id: s for s in specs}
         send = by_id["windows.send"]
-        assert {a.type for a in send.args} == {"app_name", "monitor"}
+        # Queue 112 declared param_schema={"remainder": str} on "send" so a
+        # model may pass the spoken words at all (without a schema the policy
+        # refuses the call as "unvalidated"). infer_args prefers a DECLARED
+        # schema over the _ARG_HINTS table, so the catalog now documents the
+        # one argument the handler can actually receive -- free text -- rather
+        # than the two the PHRASE implies. That is a loss of documentation
+        # detail on 25 of the 29 _ARG_HINTS commands; see the queue 115 report.
+        assert {a.type for a in send.args} == {"text"}
+        assert {a.name for a in send.args} == {"remainder"}
         assert "put" in send.aliases and send.source.startswith("plugins/commands/windows.py:")
         assert by_id["builtin.close_window"].risk == "destructive"
         assert by_id["builtin.switch_window"].risk == "ui"

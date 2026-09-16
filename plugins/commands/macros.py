@@ -36,7 +36,7 @@ def _nircmd(args):
          voice_triggerable=False,
          side_effects=['audio', 'ui', 'system'])
 def going_dark(app, remainder):
-    """Mute, minimize everything, lock screen."""
+    """Mutes the sound, minimises everything and locks the screen."""
     print("[MACRO] Going dark...")
     _nircmd(["mutesysvolume", "1"])       # mute system audio
     time.sleep(0.1)
@@ -51,7 +51,7 @@ def going_dark(app, remainder):
          risk_class='reversible', ai_composable=False,
          side_effects=['audio', 'ui', 'launch'])
 def focus_mode(app, remainder):
-    """Low volume, open IDE, minimal distractions."""
+    """Turns the volume down, opens your editor and clears distractions."""
     print("[MACRO] Entering focus mode...")
     _nircmd(["setsysvolume", "13107"])     # ~20% volume
     time.sleep(0.1)
@@ -69,7 +69,7 @@ def focus_mode(app, remainder):
          risk_class='reversible', ai_composable=False,
          side_effects=['audio', 'system'])
 def break_time(app, remainder):
-    """Pause media, lock screen for a break."""
+    """Pauses media and locks the screen, for a break."""
     print("[MACRO] Break time...")
     pyautogui.press('playpause')          # pause whatever is playing
     time.sleep(0.2)
@@ -106,7 +106,7 @@ def morning_routine(app, remainder):
          risk_class='reversible', ai_composable=False,
          side_effects=['audio', 'ui', 'keystrokes'])
 def presentation_mode(app, remainder):
-    """Maximize current window, full-ish volume."""
+    """Maximises the focused window and turns the volume up."""
     print("[MACRO] Presentation mode...")
     _nircmd(["setsysvolume", "52428"])     # ~80% volume
     time.sleep(0.1)
@@ -122,7 +122,7 @@ def presentation_mode(app, remainder):
                                    "clean desktop"], pack="macros",
          risk_class='safe', ai_composable=True, side_effects=['ui'])
 def clear_desk(app, remainder):
-    """Minimize all windows."""
+    """Minimises every window."""
     print("[MACRO] Clearing desktop...")
     pyautogui.hotkey('win', 'd')
     return True

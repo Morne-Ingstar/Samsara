@@ -162,9 +162,11 @@ def _shift_click(x: int, y: int) -> None:
     "mark here",
     aliases=["set marker", "start selection"],
     pack="text-editing",
+    risk_class="write",
+    param_schema={"remainder": {"type": "str", "required": False}},
 )
 def mark_here(app, remainder):
-    """Anchor the selection start at the current mouse position."""
+    """Sets the start of a selection where the pointer is."""
     global _marker_set, _marker_pos, _marker_hwnd
 
     x, y = _get_cursor_pos()
@@ -180,9 +182,11 @@ def mark_here(app, remainder):
     "select to here",
     aliases=["end selection", "select to mark", "grab to here"],
     pack="text-editing",
+    risk_class="write",
+    param_schema={"remainder": {"type": "str", "required": False}},
 )
 def select_to_here(app, remainder):
-    """Extend the selection from the anchor to the current mouse position."""
+    """Selects from the mark you set to where the pointer is now."""
     global _marker_set, _marker_pos, _marker_hwnd
 
     if not _marker_set:
@@ -245,9 +249,11 @@ def _triple_click():
     "select paragraph",
     aliases=["select this paragraph", "grab paragraph", "select block"],
     pack="text-editing",
+    risk_class="write",
+    param_schema={"remainder": {"type": "str", "required": False}},
 )
 def select_paragraph(app, remainder="", **kwargs):
-    """Triple-click at current mouse position to select the paragraph."""
+    """Selects the paragraph the pointer is in."""
     _triple_click()
     print("[MARKER] Triple-click — paragraph selected")
     return True

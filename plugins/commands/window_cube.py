@@ -310,8 +310,11 @@ def _numbers_active(app) -> bool:
 # ---------------------------------------------------------------------------
 
 @command("show cube", aliases=["pin windows", "pin cube"],
-         pack="window-management")
+         pack="window-management",
+         risk_class="ui",
+)
 def handle_show_cube(app, remainder):
+    """Pins a numbered grid of your open windows to the screen."""
     global _pinned, _page, _app_ref
     _app_ref = app
     _page = 1
@@ -323,8 +326,11 @@ def handle_show_cube(app, remainder):
 
 
 @command("hide cube", aliases=["unpin windows", "unpin cube"],
-         pack="window-management")
+         pack="window-management",
+         risk_class="ui",
+)
 def handle_hide_cube(app, remainder):
+    """Takes the numbered window grid off the screen."""
     global _pinned
     _remember_position(app)
     _pinned = False
@@ -338,8 +344,11 @@ def handle_hide_cube(app, remainder):
 
 
 @command("refresh cube", aliases=["update cube", "rescan cube"],
-         pack="window-management")
+         pack="window-management",
+         risk_class="ui",
+)
 def handle_refresh_cube(app, remainder):
+    """Rescans your open windows and redraws the numbered grid."""
     if not _pinned:
         return handle_show_cube(app, remainder)
     slots = _sync(app)
@@ -349,8 +358,11 @@ def handle_refresh_cube(app, remainder):
 
 
 @command("cube page", aliases=["cube page two", "cube page one"],
-         pack="window-management")
+         pack="window-management",
+         risk_class="ui", param_schema={"remainder": {"type": "str", "required": False}},
+)
 def handle_cube_page(app, remainder):
+    """Shows the next page of the numbered window grid, or the page you name."""
     global _page
     text = (remainder or "").strip().lower()
     page = None
@@ -391,8 +403,8 @@ def _make_bare_number_handler(word: str, value: int):
         return _switch_to_number(app, value)
     _handler.__name__ = f"handle_cube_number_{value}"
     _handler.__doc__ = (
-        f'Switch to window {value}. Active ONLY while the cube is pinned and '
-        f'the session is in COMMAND/hold context.'
+        f'Switches to window {value} in the numbered grid. '
+        f'Active only while the grid is pinned and you are in command mode.'
     )
     return _handler
 
@@ -403,20 +415,21 @@ def _make_window_number_handler(value: int):
             return False
         return _switch_to_number(app, value)
     _handler.__name__ = f"handle_window_number_{value}"
-    _handler.__doc__ = f'Switch to window {value}. Works in every mode while pinned.'
+    _handler.__doc__ = (f'Switches to window {value} in the numbered grid. '
+                        f'Works in every mode while the grid is pinned.')
     return _handler
 
 
 # "one".."nine" and "1".."9" -- own pack so the whole set can be disabled.
 for _word, _value in _NUMBER_WORDS.items():
-    command(_word, aliases=[str(_value)], pack="window-cube-numbers",
-            ai_visible=False)(_make_bare_number_handler(_word, _value))
+    command(_word, aliases=[str(_value)], pack="window-cube-numbers", scope={"tags": ["window_cube.visible"]},
+            ai_visible=False, risk_class="ui")(_make_bare_number_handler(_word, _value))
 
 # "window one".."window nine" -- unambiguous, so safe in every mode.
 for _word, _value in _NUMBER_WORDS.items():
     command(f"window {_word}", aliases=[f"window {_value}"],
             pack="window-management",
-            ai_visible=False)(_make_window_number_handler(_value))
+            ai_visible=False, risk_class="ui")(_make_window_number_handler(_value))
 
 
 # ---------------------------------------------------------------------------
@@ -462,9 +475,10 @@ def _numbers_in(text: str) -> list:
     return out
 
 
-@command("cube copy", aliases=["cube copy into"], pack="window-management")
+@command("cube copy", aliases=["cube copy into"], pack="window-management",
+         risk_class="write", param_schema={"remainder": {"type": "str", "required": False}})
 def handle_cube_copy(app, remainder):
-    """"cube copy 2 into 4" -- delegates to window_switcher's window copy."""
+    """Copies the text from one numbered window into another."""
     numbers = _numbers_in(remainder)
     if len(numbers) < 2:
         _speak(app, "Need two numbers. Say cube copy 2 into 4.")
@@ -476,9 +490,10 @@ def handle_cube_copy(app, remainder):
     return handle_window_copy(app, f"{letters[0]} into {letters[1]}")
 
 
-@command("cube tile", aliases=["cube tile and"], pack="window-management")
+@command("cube tile", aliases=["cube tile and"], pack="window-management",
+         risk_class="ui", param_schema={"remainder": {"type": "str", "required": False}})
 def handle_cube_tile(app, remainder):
-    """"cube tile 2 and 4" -- delegates to window_switcher's window tile."""
+    """Arranges the numbered windows you name side by side."""
     numbers = _numbers_in(remainder)
     if len(numbers) < 2:
         _speak(app, "Need at least two numbers. Say cube tile 2 and 4.")
@@ -506,3 +521,11 @@ def _reset_for_tests():
     _pinned = False
     _page = 1
     _app_ref = None
+
+
+# Queue 68: the bare numbers above are scoped to this tag, so they are not even
+# match CANDIDATES unless the cube is on screen (the Move A tribunal's M1). The
+# panel has no close button and never takes focus, so "pinned" is "on screen".
+# Registered at the end of the file so no decorator line number moves.
+from samsara import command_scope as _command_scope  # noqa: E402
+_command_scope.register_tag_source("window_cube.visible", lambda: bool(_pinned))

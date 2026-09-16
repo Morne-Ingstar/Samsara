@@ -371,7 +371,7 @@ def _set_volume(level):
     "plays some music", "place music", "plays music"
 ], pack="media", risk_class='safe', ai_composable=True, side_effects=['audio'])
 def handle_play(app, remainder):
-    """Route a named request to Spotify and return an observed playback result."""
+    """Plays what you name on Spotify, such as play music by Nick Cave."""
     requested, playlist = _parse_music_request(remainder)
     if not requested or requested.lower() in {'music', 'something'}:
         uri = 'spotify:collection:tracks'
@@ -396,7 +396,7 @@ def handle_play(app, remainder):
 @command("play", aliases=["resume"], pack="media",
          risk_class='safe', ai_composable=True, side_effects=['audio'])
 def handle_media_play(app, remainder):
-    """Resume playback on the current media session (earbud-button equivalent)."""
+    """Resumes whatever was playing."""
     if remainder and remainder.strip():
         return handle_play(app, remainder)
     return _media_transport("play")
@@ -405,20 +405,20 @@ def handle_media_play(app, remainder):
 @command("pause", aliases=["pause music"], pack="media",
          risk_class='safe', ai_composable=True, side_effects=['audio'])
 def handle_media_pause(app, remainder):
-    """Pause playback on the current media session."""
+    """Pauses whatever is playing."""
     return _media_transport("pause")
 
 
 @command("next", aliases=["skip", "next track", "next song", "skip track"], pack="media",
          risk_class='safe', ai_composable=True, side_effects=['audio'])
 def handle_media_next(app, remainder):
-    """Skip to the next track on the current media session."""
+    """Skips to the next track."""
     return _media_transport("next")
 
 
 @command("mute", aliases=["mute spotify"], pack="media",
          risk_class='safe', ai_composable=True, side_effects=['audio'])
 def handle_spotify_mute(app, remainder):
-    """Toggle Spotify's per-app audio session mute (not system mute)."""
+    """Mutes or unmutes Spotify without touching the system volume."""
     return _spotify_mute_toggle()
 

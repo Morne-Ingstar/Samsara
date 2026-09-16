@@ -396,6 +396,7 @@ class TestDictationSessionDispatchFn:
             exit_command_mode=lambda: None,
             _dictate_commit_redecode=lambda *a, **k: None,
             _pop_pending_action_for_scratch=lambda *a, **k: None,
+            _log_command_dispatch=lambda *a, **k: None,
         )
         return dictation, app, history
 
@@ -426,3 +427,27 @@ class TestDictationSessionDispatchFn:
         assert result.state == "queued"
         assert counted == ["hey ava"]
         assert history[-1]["status"] == "success"
+
+    def test_held_for_confirmation_is_not_carried_out(self, monkeypatch):
+        """Queue 58: queued-for-a-yes/no is not a run command."""
+        dispatch = DispatchResult(DispatchState.QUEUED, "show windows", "show windows",
+                                  {"awaiting_confirmation": True})
+        dictation, app, history = self._app(dispatch)
+        counted = []
+        monkeypatch.setattr(dictation, "increment_command_count", counted.append)
+
+        manager = dictation.DictationApp._ensure_session_mode_manager(app)
+        result = manager._command_dispatch_fn("show windows")
+
+        assert result == sm.CommandDispatchResult(matched=True, phrase="show windows", state="queued",
+                                                  awaiting_confirmation=True)
+        assert counted == []
+        assert history[-1]["status"] == "awaiting_confirmation"
+        assert not hasattr(app, "_last_command_name")
+
+    def test_disabled_pack_miss_carries_the_pack(self, monkeypatch):
+        dispatch = DispatchResult.miss("show windows", {"reason": "pack_disabled", "pack": "window-management"})
+        dictation, app, history = self._app(dispatch)
+        manager = dictation.DictationApp._ensure_session_mode_manager(app)
+        result = manager._command_dispatch_fn("show windows")
+        assert result == sm.CommandDispatchResult(matched=False, disabled_pack="window-management")

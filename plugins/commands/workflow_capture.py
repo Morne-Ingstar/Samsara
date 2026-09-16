@@ -576,9 +576,12 @@ def analyze_cloud(summary: str, app) -> str:
 
 @command("start capture",
          aliases=["begin capture", "capture workflow", "start workflow capture"],
-         pack="experimental")
+         pack="experimental", risk_class="destructive")
 def handle_start_capture(app, remainder):
-    """Start structure-only workflow capture. Records shortcuts and clicks, never content."""
+    """Starts recording which shortcuts and clicks you use, never what you type.
+
+    Records shortcuts and clicks, never content.
+    """
     msg = start_capture()
     print(f"[CAPTURE] {msg}")
     try:
@@ -593,7 +596,7 @@ def handle_start_capture(app, remainder):
          aliases=["stop recording workflow", "end capture", "finish capture"],
          pack="experimental")
 def handle_stop_capture(app, remainder):
-    """Stop capture and open the review window."""
+    """Stops recording your workflow and opens the review window."""
     events = stop_capture()
     print(f"[CAPTURE] Stopped. {len(events)} events captured.")
     try:
@@ -609,6 +612,7 @@ def handle_stop_capture(app, remainder):
          aliases=["workflow capture status", "how many events"],
          pack="experimental")
 def handle_capture_status(app, remainder):
+    """Says whether workflow capture is running and how much it has recorded."""
     state = "ACTIVE" if is_capturing() else "inactive"
     print(f"[CAPTURE] {state} — {event_count()} events")
     return True
@@ -618,7 +622,7 @@ def handle_capture_status(app, remainder):
          aliases=["show capture review", "open capture review"],
          pack="experimental")
 def handle_review_capture(app, remainder):
-    """Re-open the review window with the most recent capture."""
+    """Reopens the review window showing the last workflow you captured."""
     with _lock:
         snapshot = list(_events)
     if not snapshot:

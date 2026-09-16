@@ -125,7 +125,10 @@ _timer_lock = threading.Lock()
     "remind me in", "start a timer", "start timer"
 ], pack="utilities")
 def handle_timer(app, remainder):
-    """Set a countdown timer. Usage: 'Jarvis, set a timer for 5 minutes'"""
+    """Sets a countdown timer for the length you say.
+
+    Usage: 'Jarvis, set a timer for 5 minutes'
+    """
     seconds, error = _parse_duration(remainder)
     if error:
         print(f"[TIMER] {error}")

@@ -59,6 +59,7 @@ except ImportError:
     "hold on", "pause it"
 ], pack="stremio")
 def handle_pause(app, remainder):
+    """Pauses what is playing in Stremio."""
     print("[STREMIO] Pausing")
     return stremio_control.pause_play()
 
@@ -69,6 +70,7 @@ def handle_pause(app, remainder):
     "unpause", "unpause stremio", "keep playing", "resume it"
 ], pack="stremio")
 def handle_resume(app, remainder):
+    """Resumes what was playing in Stremio."""
     print("[STREMIO] Resuming")
     return stremio_control.pause_play()
 
@@ -77,6 +79,7 @@ def handle_resume(app, remainder):
     "skip ahead", "fast forward", "forward", "next bit"
 ], pack="stremio")
 def handle_skip_forward(app, remainder):
+    """Jumps forward in what is playing in Stremio."""
     print("[STREMIO] Skipping forward")
     return stremio_control.skip_forward()
 
@@ -85,6 +88,7 @@ def handle_skip_forward(app, remainder):
     "rewind", "back up", "skip backward", "go backwards"
 ], pack="stremio")
 def handle_skip_back(app, remainder):
+    """Jumps back in what is playing in Stremio."""
     print("[STREMIO] Skipping back")
     return stremio_control.skip_back()
 
@@ -94,12 +98,14 @@ def handle_skip_back(app, remainder):
     "stremio fullscreen", "go fullscreen"
 ], pack="stremio")
 def handle_fullscreen(app, remainder):
+    """Switches Stremio between fullscreen and a window."""
     print("[STREMIO] Toggling fullscreen")
     return stremio_control.fullscreen()
 
 
 @command("mute stremio", aliases=["unmute stremio", "silence stremio"], pack="stremio")
 def handle_mute_stremio(app, remainder):
+    """Mutes or unmutes Stremio."""
     print("[STREMIO] Toggling mute")
     return stremio_control.mute()
 
@@ -108,6 +114,7 @@ def handle_mute_stremio(app, remainder):
     "launch stremio", "start stremio", "bring up stremio"
 ], pack="stremio")
 def handle_open_stremio(app, remainder):
+    """Opens the Stremio app."""
     print("[STREMIO] Launching")
     subprocess.Popen(
         ['cmd', '/c', 'start', '', 'stremio://'],
@@ -118,6 +125,7 @@ def handle_open_stremio(app, remainder):
 
 @command("close stremio", aliases=["quit stremio", "exit stremio"], pack="stremio")
 def handle_close_stremio(app, remainder):
+    """Closes the Stremio app."""
     print("[STREMIO] Closing")
     # Was 'stremio.exe' -- stale process name, latent bug fixed 2026-07-10.
     # Stremio's process is now stremio-shell-ng.exe (stremio-runtime.exe is

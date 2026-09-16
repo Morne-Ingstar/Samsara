@@ -35,6 +35,7 @@ from samsara.plugin_commands import command
 
 from samsara.log import get_logger
 from samsara.runtime import thread_registry
+from samsara.ui import theme
 
 logger = get_logger(__name__)
 
@@ -301,10 +302,10 @@ def _make_overlay_manager_class():
 
                     lbl = QLabel(letter, win)
                     lbl.setAlignment(Qt.AlignCenter)
-                    lbl.setFont(QFont("Segoe UI", 22, QFont.Bold))
+                    lbl.setFont(theme.qfont(theme.TYPE_HERO, weight=QFont.Bold))
                     lbl.setStyleSheet(
-                        "color: white;"
-                        " background-color: rgba(26,26,26,224);"
+                        f"color: {theme.TEXT_PRIMARY};"
+                        f" background-color: {theme.tint(theme.BG0, 0.88)};"
                         " border-radius: 8px;"
                     )
                     lbl.setFixedSize(pill, pill)
@@ -406,80 +407,9 @@ def _reset_timer() -> None:
 # ---------------------------------------------------------------------------
 
 def _force_focus(hwnd: int) -> bool:
-    """Restore if minimized, then steal foreground using the full incantation.
-
-    Steps:
-      1. Restore if minimised.
-      2. Relax the foreground lock timeout to 0 (best-effort).
-      3. Dual AttachThreadInput: both the current-foreground thread AND the
-         calling thread attach to the target thread's input queue — this is
-         what makes the steal work from background/audio threads.
-      4. ShowWindow, BringWindowToTop, TOPMOST flip, SetForegroundWindow,
-         SetActiveWindow, SetFocus.
-      5. Detach inputs.
-      6. Verify via GetForegroundWindow() == hwnd after a 50 ms settle.
-
-    Returns True if the window is actually in the foreground afterwards,
-    False if Windows still refused (caller should proceed anyway and log it).
-    Backward-safe: all existing callers ignore the return value.
-    """
-    try:
-        # 1. Restore if minimised
-        if user32.IsIconic(hwnd):
-            user32.ShowWindow(hwnd, SW_RESTORE)
-
-        # 2. Capture current foreground and thread IDs
-        fg      = user32.GetForegroundWindow()
-        fg_tid  = user32.GetWindowThreadProcessId(fg,   None)
-        tgt_tid = user32.GetWindowThreadProcessId(hwnd, None)
-        our_tid = kernel32.GetCurrentThreadId()
-
-        # 3. Relax foreground lock timeout to 0 ms (best-effort; needs UIPI access)
-        try:
-            _tmo = ctypes.c_ulong(0)
-            user32.SystemParametersInfoW(0x2001, 0, ctypes.byref(_tmo), 0x0002)
-        except Exception as e:
-            logger.debug(f"_force_focus: {e}")
-
-        # 4. Attach both the foreground-owner thread AND our calling thread to
-        #    the target's input queue, then perform the full steal sequence.
-        _SWP_NOMOVE     = 0x0002
-        _SWP_NOSIZE     = 0x0001
-        _SWP_NOACTIVATE = 0x0010
-        _SWP_FLAGS      = _SWP_NOMOVE | _SWP_NOSIZE | _SWP_NOACTIVATE
-
-        attached_fg = bool(
-            fg_tid and fg_tid != tgt_tid and
-            user32.AttachThreadInput(fg_tid, our_tid, True)
-        )
-        attached_us = bool(
-            our_tid and our_tid != tgt_tid and
-            user32.AttachThreadInput(our_tid, tgt_tid, True)
-        )
-        try:
-            user32.ShowWindow(hwnd, SW_SHOW)
-            user32.BringWindowToTop(hwnd)
-            # TOPMOST flip brings the window above everything without
-            # permanently pinning it as always-on-top.
-            user32.SetWindowPos(hwnd, ctypes.c_void_p(-1), 0, 0, 0, 0, _SWP_FLAGS)
-            user32.SetWindowPos(hwnd, ctypes.c_void_p(-2), 0, 0, 0, 0, _SWP_FLAGS)
-            user32.SetForegroundWindow(hwnd)
-            user32.SetActiveWindow(hwnd)
-            user32.SetFocus(hwnd)
-        finally:
-            if attached_us:
-                user32.AttachThreadInput(our_tid, tgt_tid, False)
-            if attached_fg:
-                user32.AttachThreadInput(fg_tid, our_tid, False)
-
-        # 5. Authoritative verification: trust GetForegroundWindow, not the
-        #    return value of SetForegroundWindow (which lies under lock).
-        time.sleep(0.05)
-        return user32.GetForegroundWindow() == hwnd
-
-    except Exception as exc:
-        print(f"[FORCE-FOCUS] Error: {exc}")
-        return False
+    """Delegate focus activation to the shared lower-level window helper."""
+    from plugins.commands.windows import raise_window
+    return raise_window(hwnd, activate=True)
 
 # ---------------------------------------------------------------------------
 # Monitor helpers (delegates to windows.py)
@@ -682,8 +612,9 @@ def get_window_by_letter(letter: str):
 
 @command("show windows",
          aliases=["label windows", "window labels"],
-         pack="window-management")
+         pack="window-management", risk_class="read")
 def handle_show_windows(app, remainder):
+    """Labels every open window with a letter so you can name one out loud."""
     global _mapping, _active, _app_ref
 
     exclude = _own_hwnd(app)
@@ -718,8 +649,11 @@ def handle_show_windows(app, remainder):
 
 @command("window switch",
          aliases=["window focus", "switch to window", "go to window"],
-         pack="window-management")
+         pack="window-management",
+         risk_class="ui", param_schema={"remainder": {"type": "str", "required": False}},
+)
 def handle_window_switch(app, remainder):
+    """Brings the window with the letter you name to the front."""
     letters = _parse_letters(remainder or '')
     if not letters:
         _speak(app, "Which window? Say window switch B.")
@@ -742,8 +676,11 @@ def handle_window_switch(app, remainder):
 
 @command("window bring",
          aliases=["bring window", "bring forward"],
-         pack="window-management")
+         pack="window-management",
+         risk_class="ui", param_schema={"remainder": {"type": "str", "required": False}},
+)
 def handle_window_bring(app, remainder):
+    """Moves the window with the letter you name to the screen you are on."""
     letters = _parse_letters(remainder or '')
     if not letters:
         _speak(app, "Which window? Say window bring B.")
@@ -765,8 +702,11 @@ def handle_window_bring(app, remainder):
 
 @command("window move",
          aliases=["move window"],
-         pack="window-management")
+         pack="window-management",
+         risk_class="ui", param_schema={"remainder": {"type": "str", "required": False}},
+)
 def handle_window_move(app, remainder):
+    """Moves the window with the letter you name to another screen."""
     letters = _parse_letters(remainder or '')
     if not letters:
         _speak(app, "Which window? Say window move B to monitor 2.")
@@ -814,8 +754,11 @@ def handle_window_move(app, remainder):
 
 @command("window mute",
          aliases=["mute window"],
-         pack="window-management")
+         pack="window-management",
+         risk_class="ui", param_schema={"remainder": {"type": "str", "required": False}},
+)
 def handle_window_mute(app, remainder):
+    """Mutes the audio coming from the window with the letter you name."""
     letters = _parse_letters(remainder or '')
     if not letters:
         _speak(app, "Which window? Say window mute C.")
@@ -834,8 +777,11 @@ def handle_window_mute(app, remainder):
 
 @command("window unmute",
          aliases=["unmute window"],
-         pack="window-management")
+         pack="window-management",
+         risk_class="ui", param_schema={"remainder": {"type": "str", "required": False}},
+)
 def handle_window_unmute(app, remainder):
+    """Unmutes the audio from the window with the letter you name."""
     letters = _parse_letters(remainder or '')
     if not letters:
         _speak(app, "Which window? Say window unmute C.")
@@ -856,8 +802,11 @@ def handle_window_unmute(app, remainder):
 # ---------------------------------------------------------------------------
 
 @command("window close",
-         pack="window-management")
+         pack="window-management",
+         risk_class="write", param_schema={"remainder": {"type": "str", "required": False}},
+)
 def handle_window_close(app, remainder):
+    """Closes the window with the letter you name, asking it to save first."""
     letters = _parse_letters(remainder or '')
     if not letters:
         _speak(app, "Which window? Say window close D.")
@@ -885,8 +834,11 @@ def handle_window_close(app, remainder):
 
 @command("window copy",
          aliases=["copy from window", "copy from"],
-         pack="window-management")
+         pack="window-management",
+         risk_class="write", param_schema={"remainder": {"type": "str", "required": False}},
+)
 def handle_window_copy(app, remainder):
+    """Copies the text from one lettered window into another."""
     letters = _parse_letters(remainder or '')
     if len(letters) < 2:
         _speak(app, "Need two windows. Say window copy A into B.")
@@ -937,8 +889,11 @@ def handle_window_copy(app, remainder):
 
 @command("window tile",
          aliases=["tile windows"],
-         pack="window-management")
+         pack="window-management",
+         risk_class="ui", param_schema={"remainder": {"type": "str", "required": False}},
+)
 def handle_window_tile(app, remainder):
+    """Arranges the lettered windows you name side by side."""
     letters = _parse_letters(remainder or '')
     if len(letters) < 2:
         _speak(app, "Need at least 2 windows. Say window tile A and C.")
@@ -997,8 +952,11 @@ def handle_window_tile(app, remainder):
 
 @command("hide windows",
          aliases=["hide window labels", "dismiss windows"],
-         pack="window-management")
+         pack="window-management",
+         risk_class="ui",
+)
 def handle_hide_windows(app, remainder):
+    """Clears the window letters from the screen."""
     global _app_ref
     _app_ref = app
     _dismiss_all(clear_mapping=True)
@@ -1011,8 +969,11 @@ def handle_hide_windows(app, remainder):
 
 @command("read windows",
          aliases=["list windows", "what windows"],
-         pack="window-management")
+         pack="window-management",
+         risk_class="read",
+)
 def handle_read_windows(app, remainder):
+    """Reads out the open windows and their letters."""
     global _app_ref
     _app_ref = app
 
