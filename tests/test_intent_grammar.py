@@ -339,17 +339,25 @@ def test_tier_order_and_thresholds_are_constants():
     assert rs.LATENCY_BUDGET_MS == 30.0
 
 
-@pytest.mark.parametrize("text, tier, cid", [
-    ("open chrome", "exact", "builtin.open_chrome"),
-    ("Please take a screenshot.", "exact", "builtin.take_a_screenshot"),
-    ("can you launch spotify for me", "grammar", "builtin.open_spotify"),
-    ("tab next", "similarity", "builtin.next_tab"),
+@pytest.mark.parametrize("text, tier, cid, kind", [
+    ("open chrome", "exact", "builtin.open_chrome", rs.RESOLVED),
+    ("Please take a screenshot.", "exact", "builtin.take_a_screenshot", rs.RESOLVED),
+    # Queue 93 rule 2: "launch" is a SYNONYM of "open", so this is not an
+    # exact match and may only suggest. The tier order is unchanged -- the
+    # grammar still names the right command -- but naming is not executing.
+    ("can you launch spotify for me", "grammar", "builtin.open_spotify", rs.SUGGEST),
+    # Queue 93 rule 2: tier 3 is order-free token overlap over confusion
+    # keys. Fuzzy by construction, so it can never execute.
+    ("tab next", "similarity", "builtin.next_tab", rs.SUGGEST),
 ])
-def test_tiers_in_order(resolver, text, tier, cid):
+def test_tiers_in_order(resolver, text, tier, cid, kind):
     res = resolver.resolve(text)
-    assert (res.kind, res.tier, res.canonical_id) == (rs.RESOLVED, tier, cid)
+    assert (res.kind, res.tier, res.canonical_id) == (kind, tier, cid)
     if tier == "exact":
         assert res.confidence == 1.0
+    if kind == rs.SUGGEST:
+        assert res.blocked == rs.BLOCK_INEXACT
+        assert cid in res.suggestions
 
 
 def test_exact_beats_grammar_even_when_grammar_would_parse(resolver):
@@ -379,8 +387,12 @@ def test_destructive_with_a_text_slot_still_resolves_when_said_plainly(resolver)
 def test_required_argument_missing_is_a_suggestion(resolver):
     res = resolver.resolve("window switch")
     assert res.kind == rs.RESOLVED and res.tier == "exact"          # the alias itself, as the registry has it
+    # "please" is a filler, so this is the one-word utterance "focus", of the
+    # one-word command app_verbs.focus. Queue 93 rule 1: it is dictation, and
+    # says so -- twice over, which is the point of the rule.
     res = resolver.resolve("please focus")
-    assert res.kind in (rs.RESOLVED, rs.SUGGEST)
+    assert res.kind == rs.DICTATION
+    assert res.blocked in (rs.BLOCK_ONE_WORD_UTTERANCE, rs.BLOCK_ONE_WORD_COMMAND)
     res = resolver.resolve("shift window")                          # grammar: window_move without a label
     assert res.kind == rs.SUGGEST and res.canonical_id == "window_switcher.window_move"
 

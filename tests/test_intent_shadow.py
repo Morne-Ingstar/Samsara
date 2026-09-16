@@ -30,8 +30,11 @@ from samsara.session_modes import (
 
 REPO = Path(__file__).resolve().parent.parent
 
+#: Schema v2 (queue 93) adds rules_version / blocked / forced, so one log can
+#: hold rows decided by different execution rules and a later read can tell
+#: them apart. Still no title, no audio, no path.
 EXPECTED_KEYS = {"v", "ts", "text", "delivery", "would", "confidence", "tier", "elapsed_us",
-                 "t12_us", "suggestions", "chain", "app"}
+                 "t12_us", "suggestions", "chain", "app", "rules_version", "blocked", "forced"}
 
 #: The DICTATE regression corpus: ordinary dictation (incl. phrases that look
 #: like commands), the look-alike commit words, control phrases, a hands-free
@@ -458,7 +461,14 @@ def test_shadow_report_prints_every_section(tmp_path):
     assert re.search(r"dictate\s+1\s+16\.7%", out) and re.search(r"command\s+3\s+50\.0%", out)
     assert "2x  builtin.open_chrome" in out
     assert "1x  RuntimeError" in out
-    assert "p50" in out and "decided exact" in out
+    assert "p50" in out
+    # Queue 93: the per-tier lines say WHICH measurement they are. The Move A
+    # tribunal read an elapsed_us row as a tier-1+2 budget breach because the
+    # old report printed them under one unlabelled heading.
+    assert "t12      exact" in out and "elapsed  exact" in out
+    assert "applies to t12 (tiers 1+2) ONLY" in out
+    assert "t12 rows OVER the 30,000 us budget" in out
+    assert "Execution rules (queue 93)" in out
     fp = out.split("False-positive candidates", 1)[1]
     assert "windows.send" in fp and "open chrome" not in fp
 

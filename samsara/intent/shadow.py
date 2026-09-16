@@ -11,8 +11,8 @@ and the outcome KIND (a string) after dispatch has returned, the decision
 runs on a background worker (thread_registry 'intent-shadow'), and its only
 side effect is that file. Every failure is counted, logged once, swallowed.
 
-Line schema (v1):
-    v            1
+Line schema (v2 -- v1 rows are still readable; the reader keys off `would`):
+    v            2
     ts           local ISO-8601 timestamp with offset
     text         the utterance as dispatched
     delivery     "staged" | "injected"   (the DICTATE outcome it came from)
@@ -20,8 +20,34 @@ Line schema (v1):
                  miss = the gate produced no decision (catalog unavailable or resolve raised)
     confidence   float or null
     tier         "exact" | "grammar" | "similarity" | null
-    elapsed_us   microseconds spent in resolve() (the whole call)
-    t12_us       microseconds spent in tiers 1+2, or null
+    elapsed_us   microseconds of WALL CLOCK around the whole record() decision:
+                 the lazy resolver build on the first utterance after the
+                 worker respawns, plus tier 3, plus whatever else this
+                 background thread waited on. NOT the tier 1+2 budget, and
+                 not comparable to it -- see t12_us. (Queue 93: every row
+                 over 30 ms in the first 1,777 followed an idle gap of more
+                 than a minute, i.e. a cold worker, not slow resolution.)
+    t12_us       microseconds spent in tiers 1+2 -- the measurement
+                 resolve.LATENCY_BUDGET_MS is stated against -- or null
+    rules_version which execution rules decided this row (resolve.
+                 EXECUTION_RULES_VERSION); null when the gate produced no
+                 decision. Lets one log hold before/after populations.
+    blocked      the execution rule that demoted a resolved decision
+                 ("one_word_command" | "one_word_utterance" |
+                 "inexact_match"), else null. A blocked row's `would` is
+                 already the demoted outcome; this says what it would have
+                 been without the rule.
+    forced       true when the utterance opened with the configured command
+                 prefix (intent.command_prefix), which waives rule 1
+    literal      true when the command words spoken ARE a registered alias or
+                 canonical phrase, in order, with nothing inserted (queue
+                 127). Zero word-penalty does NOT imply this: a hand-written
+                 grammar rule returns a form that is in no alias, and a
+                 template accepts inserted determiners for free, and a filled
+                 slot is the user's words rather than the catalog's. Rule 2
+                 has always CLAIMED to test this and has always tested the
+                 penalty instead; queue 127 records the difference so it can
+                 be counted rather than assumed. Nothing gates on it.
     suggestions  [canonical_id, ...] for suggest, else []
     chain        [canonical_id, ...] for an "and"/"then" chain, else []
     app          focused process image name ("warp.exe") or null -- NEVER a window title
@@ -50,7 +76,7 @@ DEFAULT_ENABLED = True
 OBSERVED_OUTCOMES = {"dictate_staged": "staged", "dictate_injected": "injected"}
 #: Utterances waiting for the worker beyond this are dropped (counted).
 QUEUE_BOUND = 256
-SCHEMA_VERSION = 1
+SCHEMA_VERSION = 2
 _STOP = object()
 
 
@@ -61,6 +87,13 @@ def shadow_settings(config) -> dict:
 
 def shadow_enabled(config) -> bool:
     return bool(shadow_settings(config).get("shadow_enabled", DEFAULT_ENABLED))
+
+
+def command_prefix(config) -> str:
+    """The escape-hatch prefix word (queue 93). Empty = off, the default:
+    the owner picks the word from shadow data later, so nothing is
+    hard-coded here."""
+    return str(shadow_settings(config).get("command_prefix", "") or "")
 
 
 def shadow_dir(config) -> Path:
@@ -97,6 +130,30 @@ def process_name(pid: Optional[int]) -> Optional[str]:
         return None
 
 
+def _tags_now() -> frozenset:
+    """Scope tags active right now (queue 68); empty on any failure."""
+    try:
+        from samsara.command_scope import active_tags  # noqa: PLC0415
+        return active_tags()
+    except Exception:
+        return frozenset()
+
+
+def scope_context(app: Optional[str], pid: Optional[int], tags=None):
+    """The command_scope.MatchContext for a shadowed utterance, from the
+    focused process captured at observe time. The shadow never reads window
+    titles, so title-scoped commands are judged as not live here."""
+    import os  # noqa: PLC0415
+    from samsara import command_scope  # noqa: PLC0415
+    tags = frozenset(tags or ())
+    if not app:
+        return command_scope.MatchContext.unresolved(command_scope.UNRESOLVED_NO_NAME, tags)
+    if pid is not None and pid == os.getpid():
+        return command_scope.MatchContext(exe=app, resolved=False, own_window=True,
+                                          reason=command_scope.OWN_WINDOW, tags=tags)
+    return command_scope.MatchContext.for_app(app, tags=tags)
+
+
 def would_have_done(resolution) -> str:
     kind = getattr(resolution, "kind", None)
     cid = getattr(resolution, "canonical_id", None)
@@ -123,6 +180,10 @@ def build_entry(text: str, delivery: str, resolution, *, elapsed_us: int, app: O
         "t12_us": int(round(resolution.t12_ms * 1000)) if resolution is not None else None,
         "suggestions": list(getattr(resolution, "suggestions", ()) or ()) if resolution is not None else [],
         "chain": [p.canonical_id for p in (getattr(resolution, "chain", ()) or ())] if resolution is not None else [],
+        "rules_version": getattr(resolution, "rules_version", None) if resolution is not None else None,
+        "blocked": getattr(resolution, "blocked", None) if resolution is not None else None,
+        "forced": bool(getattr(resolution, "forced", False)) if resolution is not None else False,
+        "literal": bool(getattr(resolution, "literal", False)) if resolution is not None else False,
         "app": app,
     }
     if error:
@@ -165,7 +226,7 @@ class IntentShadow:
             if self._queue.qsize() >= QUEUE_BOUND:
                 self.dropped += 1
                 return False
-            self._queue.put((str(text), delivery, self._now(), self._pid_fn()))
+            self._queue.put((str(text), delivery, self._now(), self._pid_fn(), _tags_now()))
             self.observed += 1
             if self._worker is None or not self._worker.is_alive():
                 spawn = self._spawn
@@ -202,24 +263,37 @@ class IntentShadow:
                 self._count_error("catalog", exc)
         return self._resolver
 
-    def record(self, text: str, delivery: str, when: datetime, pid: Optional[int]) -> Optional[dict]:
-        """Decide and append one line (worker thread). Never raises."""
+    def record(self, text: str, delivery: str, when: datetime, pid: Optional[int],
+               tags=None) -> Optional[dict]:
+        """Decide and append one line (worker thread). Never raises.
+
+        tags: the scope tags active when the utterance was observed (queue 68),
+        so a command scoped to app state (e.g. the window cube on screen) is
+        judged against the state at dispatch, not whenever the worker runs."""
         try:
             config = self._config_source()
             if not shadow_enabled(config):
                 return None
             resolution, error = None, None
+            app = self._name_fn(pid)
             t0 = time.perf_counter()
             resolver = self._get_resolver()
             if resolver is not None:
                 try:
-                    resolution = resolver.resolve(text)
+                    if hasattr(resolver, "excluded_ids"):
+                        # An IntentResolver: it takes the scope context and the
+                        # escape-hatch prefix, both read fresh from config so a
+                        # setting change lands without rebuilding the catalog.
+                        resolution = resolver.resolve(text, context=scope_context(app, pid, tags),
+                                                      prefix=command_prefix(config))
+                    else:
+                        resolution = resolver.resolve(text)
                 except Exception as exc:
                     error = type(exc).__name__
                     self._count_error("resolve", exc)
             elapsed_us = int((time.perf_counter() - t0) * 1_000_000)
             entry = build_entry(text, delivery, resolution, elapsed_us=elapsed_us,
-                                app=self._name_fn(pid), when=when, error=error)
+                                app=app, when=when, error=error)
             folder = shadow_dir(config)
             folder.mkdir(parents=True, exist_ok=True)
             path = folder / f"intent-{when:%Y-%m-%d}.jsonl"
