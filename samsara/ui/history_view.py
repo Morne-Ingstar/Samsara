@@ -49,6 +49,7 @@ from PySide6.QtWidgets import (
 )
 
 from samsara import history_export
+from samsara import outcome_ring
 from samsara.ui import theme
 from samsara.runtime import thread_registry
 
@@ -215,7 +216,13 @@ def row_outcome(row: dict) -> "Outcome | None":
         return Outcome("Failed", KIND_FAILED)
     if entry_type in ('command', 'wake_command'):
         if status == 'success':
-            return Outcome("Command", KIND_COMMAND)
+            # Persistent history predates OutcomeRecord and stores the matched
+            # spoken phrase. Resolve it through the same cached catalog index;
+            # a macro or command removed in a later release retains that
+            # stored phrase rather than exposing an internal id or a blank.
+            stored = str(row.get("matched_command") or "").strip()
+            label = outcome_ring.canonical_command_label_for_phrase(stored, stored)
+            return Outcome(label or "Command", KIND_COMMAND)
         return Outcome(status.replace('_', ' ').capitalize() or "Command", KIND_NOT_TYPED)
     if status == 'failed':
         return Outcome("Not typed", KIND_NOT_TYPED)
