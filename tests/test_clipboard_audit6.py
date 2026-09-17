@@ -57,6 +57,7 @@ class FakeClipboard:
         self.alloc_fail_on = None      # 1-based GlobalAlloc call number that returns NULL
         self.alloc_calls = 0
         self.set_fail_fmts = set()
+        self.set_fail_once_fmts = set()
         self.size_override = {}        # fmt -> reported GlobalSize
         self.before_open = None        # callable run just before a successful OpenClipboard
         self.empties = 0
@@ -100,6 +101,9 @@ class FakeClipboard:
     def SetClipboardData(self, fmt, h):
         assert self.is_open
         if fmt in self.set_fail_fmts:
+            return 0
+        if fmt in self.set_fail_once_fmts:
+            self.set_fail_once_fmts.remove(fmt)
             return 0
         self.formats[fmt] = bytes(self.mem.pop(h))
         self.allocated.discard(h)      # ownership passes to the clipboard
@@ -304,6 +308,16 @@ def test_set_failure_after_empty_is_reported_as_partial(fake, caplog):
     assert CF_HDROP in fake.formats
     assert any("restore was partial" in r.getMessage() and "Shell IDList Array" in r.getMessage()
                for r in caplog.records)
+
+
+def test_first_set_failure_retries_with_fresh_handle_and_restores_original(fake):
+    original = {CF_HDROP: _dropfiles(r"C:\a.txt"), SHELL_IDLIST: b"idl"}
+    snapshot = ClipboardSnapshot(original)
+    fake.formats = {CF_UNICODETEXT: _utf16("Samsara's temporary paste")}
+    fake.set_fail_once_fmts = {CF_HDROP}
+
+    assert restore_clipboard(snapshot) is True
+    assert fake.formats == original
 
 
 # ---------------------------------------------------------------------------
