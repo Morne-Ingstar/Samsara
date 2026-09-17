@@ -28,6 +28,7 @@ from urllib.parse import urlparse
 
 from samsara import __version__
 from samsara.paths import samsara_home_dir
+from samsara.runtime_manifest import OWW_MODEL_FILENAMES
 from samsara.update_customizations import migrate_update_customizations
 
 
@@ -786,6 +787,16 @@ def prepare_update(
         archive.unlink()
         if not (staged / "Samsara.exe").is_file():
             raise UnsafeArchiveError("The verified update does not contain Samsara.exe.")
+        models_dir = staged / "_internal" / "openwakeword" / "resources" / "models"
+        missing_models = [
+            name for name in OWW_MODEL_FILENAMES
+            if not (models_dir / name).is_file()
+        ]
+        if missing_models:
+            raise UnsafeArchiveError(
+                "The verified update is missing bundled OpenWakeWord model "
+                f"file(s): {', '.join(missing_models)}."
+            )
         _preserve_cuda_dlls(install, staged)
         migrate_update_customizations(
             install,
