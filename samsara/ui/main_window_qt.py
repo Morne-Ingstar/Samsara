@@ -313,13 +313,6 @@ class _MainWindow(QMainWindow):
 
         self.setWindowTitle("Samsara")
         theme.install_app_scrollbars()
-        # Every token-expanded sheet in the hub is long-lived.  Subscribe the
-        # root once; apply_theme() rethemes its existing page descendants in
-        # place, preserving the current page, scroll positions and any live
-        # state rather than rebuilding a window after a Settings change.
-        self._theme_change_signal = theme.theme_change_signal()
-        self._theme_change_signal.changed.connect(self.apply_theme)
-        self._theme_signal_manages_descendants = True
         self.setStyleSheet(_ss())
         self.setMinimumSize(MIN_WIDTH, MIN_HEIGHT)
         self._restore_geometry()
@@ -327,35 +320,6 @@ class _MainWindow(QMainWindow):
         self._activate("Home")
         self._poll_timer.start()
         self._dictation_sig.connect(self._on_dictation)
-
-    @Slot(str)
-    def apply_theme(self, _resolved_theme: str = "") -> None:
-        """Rebind all already-constructed hub sheets to the live tokens.
-
-        Child panels deliberately keep their widget instances: the shared
-        theme signal reaches this root, whose descendants are the main
-        window's complete page cache.  Inline QSS receives the old-to-new
-        token mapping; root/nav/status sheets are rebuilt from current tokens
-        where their icons or state colours also need fresh paint data.
-        """
-        self.setStyleSheet(_ss())
-        for widget in self.findChildren(QWidget):
-            inline = widget.styleSheet()
-            if inline:
-                widget.setStyleSheet(theme.retheme_stylesheet(inline))
-        for name, button in self._nav_btns.items():
-            self._style_nav(button, name, button.isChecked())
-        self._refresh_status()
-        # The tray is a QSystemTrayIcon, not a QWidget, so refresh_all()
-        # cannot visit it.  Its app-owned push method renders the existing
-        # MarkFrame against the current palette on this same Qt thread.
-        push_tray_icon = getattr(self._app, "_push_tray_icon", None)
-        if callable(push_tray_icon):
-            try:
-                push_tray_icon()
-            except Exception as exc:
-                logger.debug(f"apply_theme tray icon refresh: {exc}")
-        self.update()
 
     # ---- Layout -------------------------------------------------------------
 

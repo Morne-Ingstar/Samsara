@@ -27,7 +27,6 @@ import re
 import tempfile
 from pathlib import Path
 
-from PySide6.QtCore import QObject, Signal
 from PySide6.QtGui import QColor
 from PySide6.QtWidgets import QPushButton, QWidget
 
@@ -212,26 +211,6 @@ _SYSTEM_THEME_TIMER = None
 _RETHEME_REPLACEMENTS: tuple[tuple[str, str], ...] = ()
 
 
-class _ThemeChangeSignal(QObject):
-    """The one live-palette notification channel for Qt surfaces.
-
-    A token is a module value, not a live reference: a QSS f-string made
-    while a window is constructed retains the old colour text.  The signal is
-    emitted only for ``set_theme(..., refresh=True)`` so boot may still bind a
-    palette before Qt exists without needlessly restyling anything.
-    """
-
-    changed = Signal(str)
-
-
-_THEME_CHANGE_SIGNAL = _ThemeChangeSignal()
-
-
-def theme_change_signal() -> _ThemeChangeSignal:
-    """Return the shared signal whose payload is the resolved palette name."""
-    return _THEME_CHANGE_SIGNAL
-
-
 def _install(name: str) -> None:
     """Bind one palette's tokens, and everything derived from them, onto this
     module. Every colour in the app resolves through these attributes, so
@@ -322,7 +301,6 @@ def set_theme(setting, *, refresh: bool = True) -> str:
         _install(name)
         _RETHEME_REPLACEMENTS = _build_retheme_replacements(old_values)
         if refresh:
-            _THEME_CHANGE_SIGNAL.changed.emit(name)
             refresh_all()
     _ensure_system_theme_monitor()
     return name
@@ -344,17 +322,13 @@ def _build_retheme_replacements(old_values: dict[str, str]) -> tuple[tuple[str, 
     expressions. Keeping this mapping here lets those controls repaint
     without rebuilding the Settings window (and discarding unsaved edits).
     """
-    replacements: dict[str, str] = {}
-    for name, old in old_values.items():
-        new = globals().get(name)
-        if not (isinstance(old, str) and isinstance(new, str) and old != new):
-            continue
-        # Several semantic tokens deliberately share an old literal.  For
-        # example dark BG0 and INK_DARK are both #0a0c11, but only BG0 changes
-        # in light mode.  _live_theme_values preserves palette order, with
-        # the surface token first; never let a later unchanged alias erase
-        # that required live-surface replacement.
-        replacements.setdefault(old, new)
+    replacements = {
+        old: globals()[name]
+        for name, old in old_values.items()
+        if name in globals()
+        and isinstance(globals()[name], str)
+        and old != globals()[name]
+    }
     # tint() and wash() are deliberately rendered into inline QSS strings.
     # Cover their two-decimal rgba output as well as the named tokens above.
     # (That is the exact precision _rgba() writes.)
@@ -451,8 +425,7 @@ def refresh_all() -> int:
         try:
             if window.isVisible():
                 stack.append(window)
-                if not getattr(window, "_theme_signal_manages_descendants", False):
-                    stack.extend(window.findChildren(QWidget))
+                stack.extend(window.findChildren(QWidget))
         except RuntimeError:
             continue
     while stack:
@@ -460,22 +433,6 @@ def refresh_all() -> int:
         if id(widget) in seen:
             continue
         seen.add(id(widget))
-        # A subscribed root already restyled its full tree synchronously
-        # before refresh_all() began.  Avoid a second stylesheet pass (and
-        # attendant extra repaint) over that same visible window.
-        if getattr(widget, "_theme_signal_manages_descendants", False):
-            continue
-        # A visible detached surface may not have a bespoke hook.  Its direct
-        # QSS is still a token-expanded snapshot, so rebind it at the shared
-        # seam before asking any richer hook to rebuild dynamic content.
-        # `styleSheet()` is direct-widget QSS only; inherited application QSS
-        # is left to install_app_scrollbars() above.
-        try:
-            inline = widget.styleSheet()
-            if inline:
-                widget.setStyleSheet(retheme_stylesheet(inline))
-        except RuntimeError:
-            continue
         hook = getattr(widget, "apply_theme", None)
         if callable(hook):
             try:
