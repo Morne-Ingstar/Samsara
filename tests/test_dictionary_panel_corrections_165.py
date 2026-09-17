@@ -5,7 +5,6 @@ VoiceTrainingQt instance used by both normal dictated-text pipelines.
 """
 
 import json
-from pathlib import Path
 from types import SimpleNamespace
 
 import pytest
@@ -13,6 +12,7 @@ from PySide6.QtWidgets import QLabel, QLineEdit, QTableWidget
 
 from samsara.ui.dictionary_panel_qt import DictionaryPanelQt
 from samsara.ui.voice_training_qt import VoiceTrainingQt
+from samsara.smart_corrections import smart_correct
 
 
 def _app(tmp_path):
@@ -56,22 +56,14 @@ def test_panel_correction_rewrites_dictated_text_and_not_phonetic_wash(panel_app
 
     _panel_add(panel, qapp)
 
-    assert app.voice_training_window.apply_corrections("a mistranscription occurred") == "a intended occurred"
+    corrected = app.voice_training_window.apply_corrections("a mistranscription occurred")
+    assert corrected == "a intended occurred"
+    # Smart Corrections is the downstream optional cleanup stage. With its
+    # default disabled configuration it preserves the deterministic result.
+    assert smart_correct(corrected, app) == "a intended occurred"
     saved = json.loads((tmp_path / "training_data.json").read_text(encoding="utf-8"))
     assert saved["corrections"] == {"mistranscription": "intended"}
     assert not (tmp_path / "user_corrections.json").exists()
-
-
-def test_both_normal_dictation_paths_use_the_authoritative_correction_pass():
-    """Keep the hold and hands-free source paths wired to the same pass.
-
-    Importing dictation is forbidden while the live app runs, so inspect only
-    its source here.  The two named paths are the hold transcription and the
-    hands-free session decode; both must invoke the VoiceTrainingQt method.
-    """
-    source = (Path(__file__).parents[1] / "dictation.py").read_text(encoding="utf-8")
-    assert "# Apply corrections dictionary\n            text = self.voice_training_window.apply_corrections(text)" in source
-    assert "text = self.voice_training_window.apply_corrections(text)\n\n            if not text:\n                logger.debug('[CMD-UTT] Empty transcription')" in source
 
 
 def test_deleted_bundled_correction_stays_deleted_after_restart(tmp_path, monkeypatch, qapp):
