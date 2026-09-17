@@ -277,9 +277,11 @@ def _make_utterance_stub():
         def __init__(self):
             self._wake_transcription_in_progress = False
             self.command_mode_active = True
+            self.model_rate = 16000
             self._sounds = []
             self.vad_reset_calls = 0
             self._transcription_owners = TranscriptionOwners()
+            self._log_cmd_utt_dropped = Mock()
 
         def play_sound(self, name, **_kwargs):
             self._sounds.append(name)

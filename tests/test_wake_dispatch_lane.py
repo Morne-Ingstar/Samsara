@@ -108,6 +108,7 @@ def rig(monkeypatch):
             model=SimpleNamespace(transcribe=Mock(return_value=([], SimpleNamespace(language='en')))),
             voice_training_window=SimpleNamespace(apply_corrections=lambda text: text),
             _log_history=Mock(), play_sound=Mock(), _maybe_finalize_dictation=Mock(),
+            _log_cmd_utt_dropped=Mock(),
             _language_confidence_gate=_languages.LanguageConfidenceGate(),
         )
         app.set_app_state = lambda **fields: app.__dict__.update(fields)
@@ -190,7 +191,9 @@ def test_fifth_waiting_utterance_drops_oldest_and_finishes_its_owners(rig, caplo
         assert entered.wait(2)
         for i in range(1, 6):
             app.process_wake_word_buffer(audio(i), tracked=True, owner_token=100+i)
-        app._close_hands_free_capture_duck.assert_called_once_with(101)
+        # 525689c deliberately releases capture ducking before queued decode,
+        # so every completed capture has already returned media to normal.
+        assert sorted(c.args[0] for c in app._close_hands_free_capture_duck.call_args_list) == list(range(100, 106))
         assert app._pending_transcriptions == 5  # One decoding plus four waiting.
         assert any(r.levelno == logging.WARNING and 'dropping oldest' in r.message
                    for r in caplog.records)
