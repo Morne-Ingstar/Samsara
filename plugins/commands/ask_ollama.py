@@ -1246,7 +1246,9 @@ def ask_model(prompt, app, model=None, system=None, allow_search=False):
             timeout=get_timeout(app),
         )
         response.raise_for_status()
-        reply = response.json().get("message", {}).get("content", "").strip()
+        reply = ava_readiness.ollama_response_content(response)
+        if not reply:
+            return _local_failed(ava_readiness.PROVIDER_ERROR)
         if reply:
             app._ava_memory.add_assistant(reply)
             app._ava_memory.save()

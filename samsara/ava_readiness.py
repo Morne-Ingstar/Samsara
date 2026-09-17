@@ -181,6 +181,22 @@ def classify_error_text(message: str) -> str:
     return PROVIDER_ERROR
 
 
+def ollama_response_content(response) -> str:
+    """Return a usable Ollama chat completion, or an empty string.
+
+    Both the user-facing Ava turn and the boot warm-up need the same proof
+    that a successful HTTP response actually contains a reply.
+    """
+    payload = response.json()
+    if not isinstance(payload, dict):
+        return ""
+    message = payload.get("message")
+    if not isinstance(message, dict):
+        return ""
+    content = message.get("content")
+    return content.strip() if isinstance(content, str) else ""
+
+
 def configured_provider(app) -> str:
     """The provider Ava will actually use for the next turn -- the same
     rule ask_ollama routes by (cloud only when enabled AND keyed)."""
@@ -270,6 +286,8 @@ def warm_configured_provider(app) -> Readiness:
                 timeout=timeout,
             )
             response.raise_for_status()
+            if not ollama_response_content(response):
+                failure_kind = PROVIDER_ERROR
         else:
             from samsara import cloud_llm  # noqa: PLC0415
             response = cloud_llm.send(
