@@ -35,6 +35,7 @@ PAUSED = "paused"
 OFF = "off"
 UNAVAILABLE = "unavailable"
 UNKNOWN = "unknown"
+WARMING = "warming"
 
 DICTATION = "Dictation"
 HANDS_FREE = "Hands-free"
@@ -63,11 +64,13 @@ AVA_AWAKE = "awake"
 AVA_DIM = "dim"
 AVA_THINKING = "thinking"
 AVA_ASLEEP = "asleep"
+AVA_WARMING = "warming"
 AVA_STATE_TEXT = {
     AVA_AWAKE: "Ava is ready to answer.",
     AVA_DIM: "Ava cannot answer right now.",
     AVA_THINKING: "Ava is working on your question.",
     AVA_ASLEEP: "Ava is off.",
+    AVA_WARMING: "Ava is warming up.",
 }
 #: "Thinking" must resolve to an answer, a failure or a cancellation -- it can
 #: never be an indefinite explanation for silence (queue 82). After this long
@@ -311,6 +314,9 @@ def ava_state(app) -> CapabilityState:
     state = getattr(readiness, "state", None)
     if state == getattr(ava_readiness, "READY", "ready"):
         return CapabilityState(AVA, READY, "", "the provider answered its readiness check")
+    if state == getattr(ava_readiness, "WARMING", "warming"):
+        return CapabilityState(AVA, WARMING, readiness.sentence(),
+                               "a background warm-up completion is in progress")
     if state == getattr(ava_readiness, "OFFLINE", "offline"):
         try:
             detail = readiness.sentence()
@@ -358,6 +364,8 @@ def ava_presence(app, now: Optional[float] = None) -> tuple:
         return AVA_ASLEEP, AVA_STATE_TEXT[AVA_ASLEEP]
     if state.status == READY:
         return AVA_AWAKE, AVA_STATE_TEXT[AVA_AWAKE]
+    if state.status == WARMING:
+        return AVA_WARMING, state.detail or AVA_STATE_TEXT[AVA_WARMING]
     # UNAVAILABLE or UNKNOWN: dim, and the reason is always spelled out --
     # a dimmed avatar on its own cannot say why Ava is unavailable.
     return AVA_DIM, state.detail or AVA_STATE_TEXT[AVA_DIM]

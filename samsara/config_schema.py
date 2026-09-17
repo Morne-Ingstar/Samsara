@@ -800,6 +800,11 @@ SETTINGS_SCHEMA = {
         "default": "relaxed",
         "tab": "ava",
     },
+    "ava.warm_on_boot": {
+        "type": "bool",
+        "default": True,
+        "tab": "ava",
+    },
     "ava_invocations": {
         # Exact whole-utterance phrases that switch into Ava mode -- see
         # samsara/session_modes.py's match_ava_invocation(). No settings-UI
