@@ -423,7 +423,9 @@ from samsara.audio_devices import force_rescan, list_microphones
 from samsara import wake_profiles
 from samsara import voice_memo
 from samsara import quick_memo
+from samsara import paste as _paste
 from samsara.clipboard import paste_with_preservation, type_text_unicode
+from samsara.paste import _UNDO_TARGET_UNSET
 # Queue 128: the output-text quality gates moved to samsara/transcript_gates.py
 # unchanged. Every name is re-exported here -- several are unused inside this
 # file and exist only so dictation.<name> keeps resolving for the tests and
@@ -491,9 +493,6 @@ _HANDS_FREE_COMMIT_PREFIXES = (
 )
 
 _PENDING_CANCEL_UTTERANCES = frozenset({"nevermind", "never mind"})
-_UNDO_TARGET_UNSET = object()
-
-
 def _is_pending_cancel_utterance(text: str) -> bool:
     """True only when the complete utterance is a pending-state cancel."""
     normalized = " ".join((text or "").strip().lower().split())
@@ -11179,246 +11178,52 @@ class DictationApp:
         return result
 
     def _foreground_process_name(self) -> str:
-        """Lowercase image name of the focused window's process ('warp.exe').
-
-        The one Win32 path for "what am I typing into" -- GetForegroundWindow
-        -> GetWindowThreadProcessId -> psutil name(). Extracted from
-        _foreground_wants_typed_injection so the verbatim profile's target
-        list resolves the process exactly the same way the per-process
-        injection override always has. Returns "" on any failure; every
-        caller must fail toward its safe default."""
-        try:
-            import ctypes
-            import psutil
-            hwnd = ctypes.windll.user32.GetForegroundWindow()
-            if not hwnd:
-                return ""
-            pid = ctypes.c_ulong()
-            ctypes.windll.user32.GetWindowThreadProcessId(hwnd, ctypes.byref(pid))
-            if not pid.value:
-                return ""
-            return psutil.Process(pid.value).name().lower()
-        except Exception:
-            return ""
+        return _paste.foreground_process_name()
 
     def _foreground_wants_typed_injection(self) -> bool:
-        """True only when the focused window belongs to a process the user
-        explicitly opted into typed Unicode injection. Empty allowlist (the
-        default) short-circuits to False without touching Win32. Fail toward
-        clipboard paste on any doubt."""
-        allowed = self.config.get('typed_injection_processes') or self._TYPED_INJECTION_PROCESSES
-        if not allowed:
-            return False
-        name = self._foreground_process_name()
-        return bool(name) and name in {str(a).lower() for a in allowed}
+        return _paste.foreground_wants_typed_injection(self)
 
     @staticmethod
     def _flight_foreground_process_name() -> str | None:
-        """Foreground process name for flight-recorder injection events only
-        -- never consulted for the typed-vs-clipboard decision itself (see
-        _foreground_wants_typed_injection)."""
-        try:
-            import ctypes
-            import psutil
-            hwnd = ctypes.windll.user32.GetForegroundWindow()
-            if not hwnd:
-                return None
-            pid = ctypes.c_ulong()
-            ctypes.windll.user32.GetWindowThreadProcessId(hwnd, ctypes.byref(pid))
-            if not pid.value:
-                return None
-            return psutil.Process(pid.value).name()
-        except Exception:
-            return None
+        return _paste.flight_foreground_process_name()
 
     def _paste_preserving_clipboard(self, text, before_paste=None, return_delivery_confirmation=False):
-        """Paste text via clipboard while preserving the user's original clipboard content."""
-        # Queue 50: the single delivery chokepoint (hold, wake, session commit)
-        # refuses a window Windows will not let us type into. Callers with
-        # their own announcement (session outcome, hold path) check earlier;
-        # this guard makes every other lane fail honestly instead of "pasting".
-        def _result(sent, confirmed):
-            return (sent, confirmed) if return_delivery_confirmation else sent
-
-        _verdict = injection_safety.window_integrity()
-        if _verdict.blocked:
-            logger.warning("[INJECT] delivery refused: foreground window is elevated (%s)", _verdict.describe())
-            return _result(False, False)
-        delay = self.config.get('clipboard_delay', CLIPBOARD_RESTORE_DELAY)
-        paste_target = {'hwnd': None}
-
-        # 2026-07-24: typed Unicode injection for ordinary dictation lengths.
-        # Synthetic Ctrl+V into rich web editors is a documented
-        # double-execution hazard (editor keydown handler + native paste both
-        # fire) and forces the clipboard-preservation dance. Typing the text
-        # as KEYEVENTF_UNICODE events sidesteps both: no clipboard touch,
-        # nothing for the target to double. Clipboard-paste remains for long
-        # texts where atomic delivery matters.
-        threshold = self.config.get('paste_min_chars', 300)
-        _typed_wanted = len(text) < threshold and self._foreground_wants_typed_injection()
-        _typed_failed = False
-        if _typed_wanted:
-            if before_paste is not None and not before_paste():
-                logger.warning(
-                    "[TYPE] Injection cancelled because the foreground target changed"
-                )
-                flight_recorder.record(
-                    'inject', path='typed', why='under_paste_min_chars',
-                    target_process=self._flight_foreground_process_name(),
-                    chars=len(text), result='cancelled_target_changed',
-                )
-                return _result(False, False)
-            typed_hwnd = _get_foreground_hwnd()
-            if type_text_unicode(text):
-                self._record_undoable_paste(text, target_hwnd=typed_hwnd)
-                self.adaptive_learner.record_transcription(text)
-                logger.info(
-                    "[TYPE] Unicode-typed chars=%d hwnd=%r", len(text), typed_hwnd,
-                )
-                flight_recorder.record(
-                    'inject', path='typed', why='under_paste_min_chars',
-                    target_process=self._flight_foreground_process_name(),
-                    chars=len(text), result='ok',
-                )
-                return _result(True, True)
-            logger.warning(
-                "[TYPE] Typed injection failed; falling back to clipboard paste"
-            )
-            _typed_failed = True
-            flight_recorder.record(
-                'inject', path='typed', why='under_paste_min_chars',
-                target_process=self._flight_foreground_process_name(),
-                chars=len(text), result='failed_falling_back_to_clipboard',
-            )
-
-        def _capture_target_before_paste():
-            """Compose the caller's focus guard with undo-target capture.
-
-            paste_with_preservation invokes this immediately before Ctrl+V,
-            after its clipboard preparation delay. Capturing here avoids
-            remembering whichever window happened to be foreground earlier
-            when the transcription worker began.
-            """
-            if before_paste is not None and not before_paste():
-                return False
-            paste_target['hwnd'] = _get_foreground_hwnd()
-            return True
-
-        typed_fallback_used = {"value": False}
-
-        def _typed_fallback_without_clipboard():
-            if not self._foreground_wants_typed_injection() or not _capture_target_before_paste():
-                return False
-            typed_fallback_used["value"] = type_text_unicode(text)
-            return typed_fallback_used["value"]
-
-        # Keep one clipboard implementation. The centralized path captures
-        # the clipboard sequence number immediately after Samsara's copy, so
-        # an unrelated copy made during the paste window is never overwritten
-        # by restoring our stale snapshot.
-        paste_ok = paste_with_preservation(
+        # The implementation remains the injection_safety.window_integrity()
+        # guarded paste_with_preservation(...) path and records successful
+        # delivery through self._record_undoable_paste(...); the implementation
+        # now lives in samsara.paste.
+        return _paste.paste_preserving_clipboard(
+            self,
             text,
-            paste_delay=CLIPBOARD_PASTE_DELAY,
-            restore_delay=delay,
-            before_paste=_capture_target_before_paste,
-            incomplete_snapshot_fallback=_typed_fallback_without_clipboard,
+            before_paste=before_paste,
+            return_delivery_confirmation=return_delivery_confirmation,
+            paste_with_preservation_fn=paste_with_preservation,
+            type_text_unicode_fn=type_text_unicode,
+            get_foreground_hwnd_fn=_get_foreground_hwnd,
         )
-        delivery_confirmed = bool(typed_fallback_used["value"])
-        if paste_ok and delivery_confirmed:
-            self._record_undoable_paste(
-                text, target_hwnd=paste_target['hwnd'],
-            )
-            self.adaptive_learner.record_transcription(text)
-            logger.info(
-                "[TYPE] Unicode fallback sent chars=%d hwnd=%r" if typed_fallback_used["value"]
-                else "[PASTE] Ctrl+V sent chars=%d hwnd=%r",
-                len(text), _get_foreground_hwnd(),
-            )
-        elif paste_ok:
-            logger.warning("[PASTE] Ctrl+V shortcut sent without target acknowledgement; undo is not armed")
-        else:
-            logger.error("[PASTE] Ctrl+V delivery failed; text retained by caller when possible")
-        flight_recorder.record(
-            'inject', path='clipboard',
-            why=('typed_failed' if _typed_failed
-                 else 'over_paste_min_chars' if len(text) >= threshold
-                 else 'typed_injection_not_enabled_for_target'),
-            target_process=self._flight_foreground_process_name(),
-            chars=len(text), result='ok' if paste_ok else 'failed',
-        )
-        return _result(paste_ok, delivery_confirmed)
 
     def _deliver_text_to_focused_editor(self, text):
-        # backspace removes focus-primer char; assumes empty input box at session start
-        pyautogui.press('x')
-        time.sleep(_WAKE_PRIMER_DELAY)
-        pyautogui.press('backspace')
-        time.sleep(_WAKE_PRIMER_DELAY)
-        self._paste_preserving_clipboard(text)
+        return _paste.deliver_text_to_focused_editor(self, text)
 
     def _record_undoable_paste(self, text, target_hwnd=_UNDO_TARGET_UNSET):
-        """Remember a paste and the exact window eligible for native undo."""
-        self._last_dictation_text = text
-        self._last_dictation_length = len(text)
-        self._last_dictation_hwnd = (
-            _get_foreground_hwnd()
-            if target_hwnd is _UNDO_TARGET_UNSET else target_hwnd
+        return _paste.record_undoable_paste(
+            self,
+            text,
+            target_hwnd=target_hwnd,
+            get_foreground_hwnd_fn=_get_foreground_hwnd,
         )
-        self._arm_undo_timer()
 
     def _arm_undo_timer(self):
-        """Start a fresh expiry timer; cancel any existing one."""
-        if self._undo_timer is not None:
-            self._undo_timer.cancel()
-        self._undo_timer = thread_registry.timer(
-            "dictation.undo_expiry", self._UNDO_EXPIRY_SECONDS,
-            self._clear_undo, daemon=True)
+        return _paste.arm_undo_timer(self)
 
     def _clear_undo(self):
-        """Drop undo state (called on expiry or after a successful undo)."""
-        self._last_dictation_text = None
-        self._last_dictation_length = 0
-        self._last_dictation_hwnd = None
-        if self._undo_timer is not None:
-            self._undo_timer.cancel()
-            self._undo_timer = None
+        return _paste.clear_undo(self)
 
     def undo_last_dictation(self):
-        """Undo the last paste through the target application's undo stack.
-
-        The exact foreground HWND must still match the window recorded
-        immediately before Ctrl+V. A mismatch fails closed without consuming
-        the saved undo, allowing the user to refocus that window and retry.
-        """
-        if not self._last_dictation_text:
-            logger.info("[UNDO] Nothing to undo")
-            self.play_sound("error")
-            return False
-
-        target_hwnd = getattr(self, '_last_dictation_hwnd', None)
-        current_hwnd = _get_foreground_hwnd()
-        if target_hwnd is None or current_hwnd != target_hwnd:
-            logger.warning(
-                "[UNDO] Refused: paste window is not foreground "
-                "(target_hwnd=%r current_hwnd=%r)",
-                target_hwnd, current_hwnd,
-            )
-            self.play_sound("error")
-            return False
-
-        text = self._last_dictation_text
-        try:
-            pyautogui.hotkey('ctrl', 'z')
-        except Exception as exc:
-            logger.exception("[UNDO] Ctrl+Z injection failed: %s", exc)
-            self.play_sound("error")
-            return False
-
-        preview = text[:50] + ("..." if len(text) > 50 else "")
-        logger.info(f"[UNDO] Native Ctrl+Z sent for: {preview}")
-        self.play_sound("success")
-        self._clear_undo()
-        return True
+        return _paste.undo_last_dictation(
+            self,
+            get_foreground_hwnd_fn=_get_foreground_hwnd,
+        )
 
     def _report_correction_dialog(self):
         """Show the correction-reporting dialog (must be called on the Qt thread)."""
