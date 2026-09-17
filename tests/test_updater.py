@@ -10,6 +10,7 @@ from pathlib import Path
 import pytest
 
 from samsara import updater
+from samsara.runtime_manifest import OWW_MODEL_FILENAMES
 
 
 class _Response(io.BytesIO):
@@ -61,14 +62,21 @@ def _release_payload(tag="v0.22.1", archive_size=123, *, checksum=True):
     }
 
 
-def _archive_bytes(entries=None):
+def _archive_bytes(entries=None, *, include_models=True):
+    archive_entries = dict(entries or {
+        "Samsara.exe": b"new exe",
+        "commands.json": b'{"commands": {}}',
+        "_internal/ctranslate2/ctranslate2.dll": b"new runtime",
+    })
+    if include_models:
+        for filename in OWW_MODEL_FILENAMES:
+            archive_entries.setdefault(
+                f"_internal/openwakeword/resources/models/{filename}",
+                f"model:{filename}".encode(),
+            )
     output = io.BytesIO()
     with zipfile.ZipFile(output, "w", zipfile.ZIP_DEFLATED) as bundle:
-        for name, contents in (entries or {
-            "Samsara.exe": b"new exe",
-            "commands.json": b'{"commands": {}}',
-            "_internal/ctranslate2/ctranslate2.dll": b"new runtime",
-        }).items():
+        for name, contents in archive_entries.items():
             bundle.writestr(name, contents)
     return output.getvalue()
 
@@ -288,6 +296,20 @@ def test_prepare_verifies_extracts_beside_install_and_preserves_only_cuda_allowl
     ).exists()
     assert progress[-1] == (release.asset_size, release.asset_size)
     assert not list(prepared.workspace_dir.glob("*.zip"))
+
+
+def test_prepare_rejects_archive_missing_wake_word_models(tmp_path, monkeypatch):
+    release, install, home, opener = _prepare_inputs(
+        tmp_path,
+        monkeypatch,
+        archive=_archive_bytes(include_models=False),
+    )
+
+    with pytest.raises(updater.UnsafeArchiveError, match="missing bundled OpenWakeWord"):
+        updater.prepare_update(release, install, opener=opener)
+
+    assert not list(tmp_path.glob(".Samsara-update-*"))
+    assert not (home / "updates" / "last_update.json").exists()
 
 
 def test_prepare_does_not_overwrite_cuda_dll_shipped_by_new_release(
