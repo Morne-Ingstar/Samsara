@@ -4,6 +4,57 @@ All notable changes to Samsara are documented here.
 
 ## [Unreleased]
 
+## [0.30.0-beta.1] - 2026-09-17
+
+A beta for testers. The public download remains v0.22.1 while this build is
+tested on more machines.
+
+### Added
+
+- **Dictionary corrections that apply everywhere** — add a correction once in
+  Dictionary and it is applied to dictated text, rather than only appearing in
+  the panel.
+- **Ava start-up readiness** — Ava can warm a configured provider so the first
+  reply is faster. Local providers warm by default; cloud warming is off until
+  you opt in because it sends a small billable request.
+- **Ava consent, captions and mute** — Ava asks before it is enabled, can show
+  its replies in a high-contrast caption panel, and can mute only Ava's speech
+  while leaving command sounds on.
+- **Named Spotify items** — save playlists, albums, artists, or tracks once in
+  Settings, then say “playlist Morning” or “album Blue Train.”
+- **Focused voice help** — “what can I say” opens the command sheet for the
+  app you are using, alongside commands that work everywhere.
+
+### Fixed
+
+- **Copied files stay safe** — clipboard recovery now refuses to destroy a
+  copied file list when a paste cannot be proved to have landed.
+- **Safer updates** — a failed update rolls back without leaving the installed
+  app unusable, and updates refuse a package missing its bundled wake-word
+  models.
+- **First-run is honest** — setup no longer hangs on background work and it
+  cannot complete until a usable microphone has been chosen.
+- **Ava actions stay bounded** — model-proposed actions are limited to the
+  menu Samsara actually offered; stale or denied actions cannot run later.
+
+### Changed
+
+- **Live theme switching** — changing light/dark mode updates open Samsara
+  windows immediately.
+- **Hands-free control is clearer** — the commit word is configurable, with
+  “finish” as the default, and Settings exposes the hands-free ducking
+  controls.
+- **Home and History tell the truth** — Home's example strip only shows
+  universal command packs, and History labels command rows with their
+  canonical command name.
+
+### Under the hood
+
+- Qt import discipline now catches Qt objects constructed at module import,
+  preventing a startup-thread crash class before it reaches a build.
+- Ava warm-up results are generation-bound, require a usable completion, and
+  cannot overwrite fresher evidence from a real turn.
+
 ## [0.23.0-beta.1] - 2026-09-13
 
 A beta for testers, not the public download (that stays v0.22.1). It is the

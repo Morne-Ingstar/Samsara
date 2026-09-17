@@ -12,7 +12,7 @@ No word limits, subscriptions, or paid feature tiers. Optional third-party
 services may have their own charges.
 
 **[Download for Windows](https://github.com/Morne-Ingstar/Samsara/releases/latest)**
-· [Try the beta](https://github.com/Morne-Ingstar/Samsara/releases/tag/v0.23.0-beta.1)
+· [Try the beta](https://github.com/Morne-Ingstar/Samsara/releases/tag/v0.30.0-beta.1)
 · [Website](https://morneis.com/samsara)
 
 ![Samsara's dark Home window, with navigation for History, Memos, Dictionary, Voice help and Settings; command and guide cards; and an unlimited words-remaining indicator.](assets/screenshots/samsara-home-beta.png)
@@ -50,7 +50,7 @@ or **“double click 7.”**
 | Download | Who it is for |
 | --- | --- |
 | [**v0.22.1 — public release**](https://github.com/Morne-Ingstar/Samsara/releases/tag/v0.22.1) | Start here for everyday use. |
-| [**v0.23.0-beta.1 — tester build**](https://github.com/Morne-Ingstar/Samsara/releases/tag/v0.23.0-beta.1) | Try newer hands-free and command workflows and report rough edges. |
+| [**v0.30.0-beta.1 — tester build**](https://github.com/Morne-Ingstar/Samsara/releases/tag/v0.30.0-beta.1) | Try newer hands-free and command workflows and report rough edges. |
 
 Samsara is still evolving; “public release” does not mean every workflow is
 finished. The screenshot above comes from beta/development work, and features
