@@ -1352,8 +1352,7 @@ def action_is_grounded(command_name: str, utterance: str) -> bool:
 
 def offered_menu(app, utterance: str = "") -> "list | None":
     """The command names a model was allowed to choose from, or None when the
-    menu cannot be built (in which case membership is not enforced -- a
-    broken executor must not turn every request into a refusal).
+    menu cannot be rebuilt.
 
     Queue 125 finding: the closed-world gate
     (ava_command_session._closed_world_selection_ok) is only reached on the
@@ -1504,24 +1503,24 @@ def handle_response(app, response, original_text=None, *, generation=None):
         # ava_command_session's gate only covers the command-session route,
         # and handle_ask_ava / handle_is_it_safe reach here without it.
         #
-        # The test is "does this command exist at all", NOT "is it on the
-        # menu right now". A command that exists but is unavailable (pack
-        # switched off, scope not live) is left to execute_canonical, whose
-        # refusal NAMES the reason -- queue 107 built that deliberately, and
-        # replacing "volume up is in the media pack, and that pack is
-        # switched off" with a generic "I don't have that" would be a
-        # regression in the one place the user is being told why.
-        menu = offered_menu(app, original_text or "")
-        if menu is not None and command_name not in {m.lower() for m in menu}:
-            # Not fatal on its own -- but worth seeing, because a name the
-            # model was never shown is the shape invention takes.
-            logger.info("[AVA-GATE] %r was not in the offered menu", command_name)
         if not execution_policy.command_exists(command_name, app=app,
                                                executor=getattr(app, "command_executor", None)):
             logger.info("[AVA-GATE] %r is not a command at all -- invented", command_name)
             speak(app, "I don't have a command called that.")
             return TurnOutcome("action", "refused", reason="not_a_command",
                                name=command_name)
+
+        # The menu is the model's complete authority for this turn.  A
+        # command absent from it must not reach the executor, even when it is
+        # otherwise registered: AI-hidden controls such as "ava forget" and
+        # "yes" deliberately exist but are never model-callable.
+        menu = offered_menu(app, original_text or "")
+        names = {str(item).lower() for item in menu} if menu is not None else set()
+        if command_name not in names:
+            status = "menu unavailable" if menu is None else "not offered"
+            logger.warning("[AVA-GATE] refused model ACTION %r: %s", command_name, status)
+            speak(app, "That wasn't one of the commands I offered.")
+            return TurnOutcome("action", "refused", reason="not_offered", name=command_name)
 
         # --- Queue 125, gate 2: an app-naming command must name the app the
         # user said. This is the one that stops "Bring up Blender" ->
