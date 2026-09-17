@@ -138,11 +138,8 @@ def component_installed(component: dict, app_root, downloads_dir) -> bool:
     except (OSError, IndexError, UnicodeDecodeError):
         pass
     if cid == "wake-word-models":
-        try:
-            from tools.release_preflight import OWW_MODELS  # noqa: PLC0415
-            names = list(OWW_MODELS)
-        except Exception:  # noqa: BLE001 - frozen build has no tools/
-            names = []
+        from samsara.runtime_manifest import OWW_MODEL_FILENAMES  # noqa: PLC0415
+        names = OWW_MODEL_FILENAMES
         target = app_root / component.get("install_dir", ".")
         return bool(names) and all((target / n).is_file() for n in names)
     if cid == "cuda-pack":
