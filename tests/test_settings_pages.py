@@ -105,6 +105,10 @@ KEYS_BEFORE_SPLIT = {
         'tts.use_for_status_updates', 'tts.use_for_warnings', 'tts.volume',
     ],
     "_build_ava_cloud_tab": [
+        # Queue 183's consent record and queue 175e's warm choice are both
+        # preserved when this page writes the existing `ava` section.
+        'ava.consent.accepted_at', 'ava.consent.cloud_version', 'ava.consent.version',
+        'ava.warm_on_boot',
         'ava_memory.max_turns', 'ava_memory.mode', 'ava_personality', 'cloud_llm.api_key',
         'cloud_llm.enabled', 'cloud_llm.provider', 'cloud_llm.timeout_seconds',
         'cloud_llm.web_search',   # queue 59
