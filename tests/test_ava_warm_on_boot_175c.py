@@ -69,6 +69,9 @@ def test_warm_completion_holds_warming_until_the_worker_returns(monkeypatch):
         def raise_for_status(self):
             return None
 
+        def json(self):
+            return {"message": {"content": "ready"}}
+
     def _post(*_args, **_kwargs):
         entered.set()
         assert release.wait(2)
@@ -84,6 +87,24 @@ def test_warm_completion_holds_warming_until_the_worker_returns(monkeypatch):
     worker.join(2)
     assert not worker.is_alive()
     assert ava_readiness.tracker.snapshot().ready
+
+
+def test_warm_ollama_empty_completion_records_provider_error(monkeypatch):
+    class _Response:
+        def raise_for_status(self):
+            return None
+
+        def json(self):
+            return {}
+
+    import requests
+    monkeypatch.setattr(requests, "post", lambda *_args, **_kwargs: _Response())
+
+    result = ava_readiness.warm_configured_provider(_app())
+
+    assert result.offline
+    assert result.provider == "ollama"
+    assert result.failure_kind == ava_readiness.PROVIDER_ERROR
 
 
 def test_schedule_warm_on_boot_runs_completion_in_the_spawned_worker(monkeypatch):
