@@ -344,6 +344,17 @@ class DictionaryPanelQt(QWidget):
         inp_row.addWidget(add_btn)
         lay.addLayout(inp_row)
 
+        # OWNER COPY — REVIEW: replace this placeholder with owner-approved copy.
+        if mode == "corrections":
+            scope_note = QLabel(
+                "A correction replaces the word everywhere it is dictated as a standalone word."
+            )
+            scope_note.setWordWrap(True)
+            scope_note.setStyleSheet(
+                f"color:{theme.TEXT_SECONDARY};font-size:{theme.TYPE_MIN}px;"
+            )
+            lay.addWidget(scope_note)
+
         # Table: Heard | Value | Source
         table = QTableWidget(0, 3)
         table.setHorizontalHeaderLabels([col1_hdr, col2_hdr, "Source"])
