@@ -129,7 +129,7 @@ class TestSettingsWindowConstruction:
         assert 'Modes' in _TAB_NAMES
         assert 'Hotkeys' not in _TAB_NAMES
         assert 'AI Commands' not in _TAB_NAMES
-        assert len(_TAB_NAMES) == 10
+        assert len(_TAB_NAMES) == 11
 
         sidebar_labels = {win._sidebar.item(i).text() for i in range(win._sidebar.count())}
         assert 'Modes' in sidebar_labels
@@ -288,7 +288,7 @@ class TestSidebarGrouping:
                 headers.append(item.text())
 
         assert len(headers) == 3
-        assert len(selectable) == 10
+        assert len(selectable) == 11
         assert set(headers) == {'SETTINGS', 'TOOLS', 'SUPPORT'}
 
     def test_tab_indices_unchanged(self, qapp):
@@ -300,7 +300,7 @@ class TestSidebarGrouping:
         expected = {
             'General': 0, 'Modes': 1, 'Commands': 2, 'Sounds': 3, 'TTS': 4,
             'Ava / Cloud': 5, 'Alarms': 6, 'Health': 7, 'Advanced': 8,
-            'Help & Support': 9,
+            'Help & Support': 9, 'Music': 10,
         }
         for row, stack_index in win._sidebar_row_to_stack_index.items():
             name = win._sidebar.item(row).text()

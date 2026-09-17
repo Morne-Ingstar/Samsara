@@ -844,4 +844,9 @@ SETTINGS_SCHEMA = {
     "ollama.timeout_seconds":     {"type": "int",  "min": 5,   "max": 300,  "default": 30, "tab": "ava"},
     "ollama.max_response_length": {"type": "int",  "min": 100, "max": 4000, "default": 800,"tab": "ava"},
     "ollama.safety_gate_enabled": {"type": "bool", "default": True,                        "tab": "ava"},
+    "music_library": {
+        "type": "dict",
+        "default": {},
+        "tab": "music",
+    },
 }

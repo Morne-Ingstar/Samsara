@@ -20,6 +20,7 @@ import time
 from urllib.parse import quote
 
 from samsara.command_registry import DispatchResult, DispatchState
+from samsara.command_registry import view_tokens
 
 from samsara.plugin_commands import command
 
@@ -250,11 +251,142 @@ def _parse_music_request(remainder):
         previous = text
         text = re.sub(r"^(?:something from|stuff from|some|my)\s+", "", text,
                       flags=re.IGNORECASE)
-    playlist = bool(re.match(r"^playlist\s+", text, re.IGNORECASE)
-                    or re.search(r"\s+playlist$", text, re.IGNORECASE))
-    text = re.sub(r"^playlist\s+|\s+playlist$", "", text, flags=re.IGNORECASE)
+    kind_match = re.search(r"^(playlist|album|artist)\s+|\s+(playlist|album|artist)$",
+                           text, re.IGNORECASE)
+    kind = next((part.casefold() for part in kind_match.groups() if part), None) if kind_match else None
+    text = re.sub(r"^(?:playlist|album|artist)\s+|\s+(?:playlist|album|artist)$", "", text,
+                  flags=re.IGNORECASE)
     text = re.sub(r"^my\s+", "", text, flags=re.IGNORECASE).strip()
-    return text, playlist
+    return text, kind
+
+
+_SPOTIFY_TYPES = frozenset({"playlist", "album", "artist", "track"})
+_SPOTIFY_URI_RE = re.compile(r"spotify:(playlist|album|artist|track):([A-Za-z0-9]+)$", re.IGNORECASE)
+
+
+def normalize_spotify_link(link):
+    """Return canonical Spotify metadata for a pasted URI or open.spotify URL."""
+    text = str(link or "").strip()
+    match = _SPOTIFY_URI_RE.fullmatch(text)
+    if match:
+        kind, item_id = match.groups()
+        return {"uri": f"spotify:{kind.casefold()}:{item_id}", "type": kind.casefold()}
+
+    match = re.fullmatch(
+        r"https?://(?:www\.)?open\.spotify\.com/(?:intl-[^/]+/)?"
+        r"(playlist|album|artist|track)/([A-Za-z0-9]+)(?:[/?#].*)?",
+        text,
+        re.IGNORECASE,
+    )
+    if not match:
+        return None
+    kind, item_id = match.groups()
+    return {"uri": f"spotify:{kind.casefold()}:{item_id}", "type": kind.casefold()}
+
+
+def migrate_music_library(config):
+    """Upgrade legacy ``name: spotify:uri`` values to typed library rows."""
+    raw = config.get("music_library", {}) if isinstance(config, dict) else {}
+    if not isinstance(raw, dict):
+        return {}
+    upgraded = {}
+    changed = False
+    for name, value in raw.items():
+        if not isinstance(name, str) or not name.strip():
+            changed = True
+            continue
+        link = value.get("uri") if isinstance(value, dict) else value
+        normalized = normalize_spotify_link(link)
+        if normalized is None:
+            changed = True
+            continue
+        upgraded[name] = normalized
+        changed = changed or value != normalized
+    if changed:
+        config["music_library"] = upgraded
+        logger.info("[MUSIC] migrated legacy music_library entries to typed Spotify rows")
+    return upgraded
+
+
+def _normalised_words(text):
+    """The command registry's punctuation-insensitive matching view."""
+    return tuple(token for token, _start, _end in view_tokens(text or ""))
+
+
+def _edit_distance(left, right):
+    """Small dependency-free Levenshtein distance for Whisper near-misses."""
+    if len(left) < len(right):
+        left, right = right, left
+    previous = list(range(len(right) + 1))
+    for index, char in enumerate(left, 1):
+        current = [index]
+        for other_index, other in enumerate(right, 1):
+            current.append(min(current[-1] + 1, previous[other_index] + 1,
+                               previous[other_index - 1] + (char != other)))
+        previous = current
+    return previous[-1]
+
+
+def _library_entries(app):
+    config = getattr(app, "config", {}) or {}
+    library = migrate_music_library(config)
+    entries = [{"name": name, **entry, "user": True} for name, entry in library.items()]
+    user_names = {_normalised_words(entry["name"]) for entry in entries}
+    for name, uri in SONGS.items():
+        if _normalised_words(name) not in user_names:
+            entries.append({"name": name, "uri": uri, "type": "track", "user": False})
+    return entries
+
+
+def resolve_music_name(app, requested, preferred_type=None):
+    """Resolve a spoken name as exact, unique prefix, or small edit distance."""
+    words = _normalised_words(requested)
+    if not words:
+        return "none", []
+    candidates = _library_entries(app)
+    if preferred_type in _SPOTIFY_TYPES:
+        candidates = [entry for entry in candidates if entry["type"] == preferred_type]
+
+    exact = [entry for entry in candidates if _normalised_words(entry["name"]) == words]
+    if len(exact) == 1:
+        return "match", exact[0]
+    if len(exact) > 1:
+        return "ambiguous", exact
+
+    prefixes = [entry for entry in candidates
+                if _normalised_words(entry["name"])[:len(words)] == words]
+    if len(prefixes) == 1:
+        return "match", prefixes[0]
+    if len(prefixes) > 1:
+        return "ambiguous", prefixes
+
+    spoken = "".join(words)
+    limit = 1 if len(spoken) < 6 else 2
+    nearby = [entry for entry in candidates
+              if _edit_distance(spoken, "".join(_normalised_words(entry["name"]))) <= limit]
+    if len(nearby) == 1:
+        return "match", nearby[0]
+    if len(nearby) > 1:
+        return "ambiguous", nearby
+    return "none", []
+
+
+def _announce(app, message):
+    """Give the user the same plain outcome in the chip and by speech."""
+    show = getattr(app, "_show_outcome_chip", None)
+    if callable(show):
+        try:
+            show(message, "warning", 3500)
+        except Exception:
+            logger.debug("[MUSIC] outcome chip unavailable", exc_info=True)
+    coordinator = getattr(app, "audio_coordinator", None)
+    try:
+        if coordinator is not None:
+            coordinator.speak(message, category="agent_response", interruptible=False)
+        elif getattr(app, "tts_engine", None) is not None:
+            app.tts_engine.speak(message)
+    except Exception:
+        logger.debug("[MUSIC] spoken outcome unavailable", exc_info=True)
 
 
 def _is_spotify(session):
@@ -372,17 +504,28 @@ def _set_volume(level):
 ], pack="media", risk_class='safe', ai_composable=True, side_effects=['audio'])
 def handle_play(app, remainder):
     """Plays what you name on Spotify, such as play music by Nick Cave."""
-    requested, playlist = _parse_music_request(remainder)
+    requested, preferred_type = _parse_music_request(remainder)
     if not requested or requested.lower() in {'music', 'something'}:
         uri = 'spotify:collection:tracks'
         requested = 'Liked Songs'
     else:
-        library = {**SONGS, **getattr(app, 'config', {}).get('music_library', {})}
-        uri = next((value for name, value in library.items()
-                    if name.casefold() == requested.casefold()
-                    and isinstance(value, str) and value.startswith('spotify:')), None)
-        if uri is None:
-            uri = 'spotify:search:' + quote(requested, safe='')
+        resolution, entry = resolve_music_name(app, requested, preferred_type)
+        if resolution == "ambiguous":
+            choices = " or ".join(item["name"] for item in entry[:2])
+            message = f"Which one: {choices}?"
+            _announce(app, message)
+            return _music_result(DispatchState.FAILED, requested, message,
+                                 candidates=[item["name"] for item in entry])
+        if resolution == "none":
+            message = f"No '{requested}' in your music library. Say search to search Spotify."
+            try:
+                setattr(app, "_music_pending_search", requested)
+            except Exception:
+                pass
+            _announce(app, message)
+            return _music_result(DispatchState.FAILED, requested, message,
+                                 search_available=True)
+        uri = entry["uri"]
     try:
         # This handler runs on the command worker, never a timer that outlives it.
         return asyncio.run(asyncio.wait_for(_play_spotify(requested, uri), timeout=15.0))
@@ -391,15 +534,59 @@ def handle_play(app, remainder):
                              f"Spotify playback failed: {type(exc).__name__}: {exc}")
 
 
+@command("search", pack="media", risk_class='safe', ai_composable=True,
+         side_effects=['audio'])
+def handle_music_search(app, remainder):
+    """Search Spotify only after a named-library miss asked for it."""
+    requested = getattr(app, "_music_pending_search", None)
+    if not requested:
+        return False
+    try:
+        delattr(app, "_music_pending_search")
+    except AttributeError:
+        pass
+    uri = 'spotify:search:' + quote(requested, safe='')
+    try:
+        return asyncio.run(asyncio.wait_for(_play_spotify(requested, uri), timeout=15.0))
+    except Exception as exc:
+        return _music_result(DispatchState.FAILED, requested,
+                             f"Spotify search failed: {type(exc).__name__}: {exc}")
+
+
 # ── Earbud-style transport commands (SMTC, app-agnostic) ──────────────────
 
 @command("play", aliases=["resume"], pack="media",
-         risk_class='safe', ai_composable=True, side_effects=['audio'])
+         risk_class='safe', ai_composable=True, side_effects=['audio'],
+         param_schema={"name": {"type": "str", "required": False, "max_len": 120}})
 def handle_media_play(app, remainder):
     """Resumes whatever was playing."""
     if remainder and remainder.strip():
         return handle_play(app, remainder)
     return _media_transport("play")
+
+
+@command("playlist", pack="media", risk_class='safe', ai_composable=True,
+         side_effects=['audio'],
+         param_schema={"name": {"type": "str", "required": True, "max_len": 120}})
+def handle_playlist(app, remainder):
+    """Play a named Spotify playlist from the user's Music library."""
+    return handle_play(app, f"playlist {remainder}")
+
+
+@command("album", pack="media", risk_class='safe', ai_composable=True,
+         side_effects=['audio'],
+         param_schema={"name": {"type": "str", "required": True, "max_len": 120}})
+def handle_album(app, remainder):
+    """Play a named Spotify album from the user's Music library."""
+    return handle_play(app, f"album {remainder}")
+
+
+@command("artist", pack="media", risk_class='safe', ai_composable=True,
+         side_effects=['audio'],
+         param_schema={"name": {"type": "str", "required": True, "max_len": 120}})
+def handle_artist(app, remainder):
+    """Play a named Spotify artist from the user's Music library."""
+    return handle_play(app, f"artist {remainder}")
 
 
 @command("pause", pack="media",
