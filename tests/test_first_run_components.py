@@ -270,6 +270,23 @@ def page(qapp, world):
 
 
 class TestComponentsPage:
+    def test_async_refresh_does_not_run_loader_on_qt_thread(self, page, monkeypatch):
+        p, _, _ = page
+        workers = []
+        monkeypatch.setattr(fq.thread_registry, "spawn", lambda _name, target, **_kw: workers.append(target))
+        monkeypatch.setattr(p, "_post", lambda fn: fn())
+        calls = []
+        p._threaded = True
+        p._loader = lambda: calls.append("loaded") or {"components": []}
+
+        assert p.refresh_async() == []
+        assert calls == []
+        assert p._status.text() == "Loading component list…"
+        assert len(workers) == 1
+        workers[0]()
+        assert calls == ["loaded"]
+        assert p._status.text() == "Everything is installed."
+
     def test_lists_exactly_the_missing_components(self, page, world):
         p, _, _ = page
         listed = p.refresh()

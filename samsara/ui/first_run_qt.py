@@ -543,6 +543,7 @@ class ComponentsPage:
         self._workers: dict = {}
         self._close_hooked = None
         self._error: Optional[str] = None
+        self._manifest_generation = 0
 
         self.widget = QWidget(parent_widget)
         lay = QVBoxLayout(self.widget)
@@ -579,6 +580,7 @@ class ComponentsPage:
         components (missing, in order). Never raises: a manifest that cannot
         be loaded becomes a visible status line and an empty list."""
         self._hook_window_close()
+        self._manifest_generation += 1
         try:
             self._manifest = self._loader()
             self._error = None
@@ -587,6 +589,39 @@ class ComponentsPage:
             self._error = f"The component list is unavailable right now ({exc}). You can add components later from Settings."
         self._rebuild()
         return list(self._listed)
+
+    def refresh_async(self) -> list:
+        """Load the manifest without blocking the Qt event thread."""
+        self._hook_window_close()
+        if not self._threaded:
+            return self.refresh()
+        self._manifest_generation += 1
+        generation = self._manifest_generation
+        self._status.setText("Loading component list…")
+
+        def _load():
+            try:
+                manifest = self._loader()
+            except Exception as exc:  # noqa: BLE001
+                self._post(lambda: self._finish_manifest_refresh(generation, None, exc))
+            else:
+                self._post(lambda: self._finish_manifest_refresh(generation, manifest, None))
+
+        thread_registry.spawn("components.manifest", _load, daemon=True)
+        return list(getattr(self, "_listed", []))
+
+    def _finish_manifest_refresh(self, generation: int, manifest, error):
+        if generation != self._manifest_generation:
+            return
+        if error is None:
+            self._manifest, self._error = manifest, None
+        else:
+            self._manifest = None
+            self._error = (
+                f"The component list is unavailable right now ({error}). "
+                "You can add components later from Settings."
+            )
+        self._rebuild()
 
     @property
     def listed(self) -> list:
@@ -769,6 +804,7 @@ class ComponentsPage:
         class _CloseFilter(QObject):
             def eventFilter(self, obj, event):
                 if event.type() == QEvent.Type.Close:
+                    page._manifest_generation += 1
                     page.cancel_all()
                 return False
 
