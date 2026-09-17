@@ -72,7 +72,9 @@ KEYS_BEFORE_SPLIT = {
         'ava_command_session.queue_depth_cap', 'ava_command_session.ready_cue_dir',
         'ava_command_session.ready_cue_enabled', 'ava_command_session.shortlist_size',
         'ava_mode_enabled', 'ava_mode_key', 'cancel_hotkey', 'command_hotkey',
-        'command_mode.abort_phrases', 'command_mode.button',
+        'command_mode.abort_phrases', 'command_mode.ava_tts_half_duplex',  # 9dc560f
+        'command_mode.button',
+        'command_mode.dictate_commit_word',  # 3da3d0b
         'command_mode.dictate_utterance_silence_s', 'command_mode.enabled',
         'command_mode.enter_debounce_ms', 'command_mode.inactivity_timeout_s',
         'command_mode.miss_limit', 'command_mode.mode', 'command_mode.session_streaming_preview',
@@ -81,10 +83,12 @@ KEYS_BEFORE_SPLIT = {
         'command_mode.utterance_silence_s',
         'command_mode.cancel_window_s', 'command_mode.cancel_window_all_commands',   # queue 69
         'command_mode.preview_idle_delay_s', 'command_mode.preview_idle_opacity',    # queue 75
+        'command_mode.preview_position',  # 03956c8
         'command_mode.stop_phrases',   # queue 116: the emergency stop's words
         'continuous_commit_hotkey', 'continuous_commit_trigger',
         'continuous_hotkey', 'correction_hotkey', 'dictate_commit_hotkey', 'hotkey',
         'hotkeys.capture_correction', 'memo_hotkey', 'mode', 'undo_hotkey',
+        'wake_word_config.audio.bypass_adaptive_gate_in_session',  # 885707f
         'wake_word_config.audio.speech_threshold', 'wake_word_config.audio.wake_command_timeout',
         'wake_word_config.opens_session', 'wake_word_config.oww_threshold',
         'wake_word_config.phrase', 'wake_word_config.quick_silence_timeout',
