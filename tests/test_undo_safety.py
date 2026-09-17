@@ -147,12 +147,13 @@ def test_explicitly_missing_pre_paste_target_stays_fail_closed(monkeypatch):
     foreground.assert_not_called()
 
 
-def test_paste_records_window_captured_immediately_before_ctrl_v(monkeypatch):
+def test_paste_captures_window_immediately_before_unconfirmed_shortcut(monkeypatch):
     app = _paste_app()
     target = Mock(return_value=4242)
     monkeypatch.setattr(dictation, "_get_foreground_hwnd", target)
 
-    def central_paste(text, *, paste_delay, restore_delay, before_paste):
+    def central_paste(text, *, paste_delay, restore_delay, before_paste,
+                      incomplete_snapshot_fallback=None):
         assert text == "delivered text"
         assert before_paste() is True
         return True
@@ -161,9 +162,10 @@ def test_paste_records_window_captured_immediately_before_ctrl_v(monkeypatch):
 
     assert app._paste_preserving_clipboard("delivered text") is True
 
-    app._record_undoable_paste.assert_called_once_with(
-        "delivered text", target_hwnd=4242,
-    )
+    target.assert_called_once_with()
+    # 43b443e made a successful but unconfirmed shortcut non-undoable; only
+    # confirmed typed delivery may arm the single-level undo state.
+    app._record_undoable_paste.assert_not_called()
 
 
 def test_rejected_pre_paste_guard_does_not_capture_or_record_window(monkeypatch):
@@ -172,7 +174,8 @@ def test_rejected_pre_paste_guard_does_not_capture_or_record_window(monkeypatch)
     caller_guard = Mock(return_value=False)
     monkeypatch.setattr(dictation, "_get_foreground_hwnd", foreground)
 
-    def central_paste(text, *, paste_delay, restore_delay, before_paste):
+    def central_paste(text, *, paste_delay, restore_delay, before_paste,
+                      incomplete_snapshot_fallback=None):
         return bool(before_paste())
 
     monkeypatch.setattr(dictation, "paste_with_preservation", central_paste)
