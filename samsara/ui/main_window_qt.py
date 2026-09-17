@@ -313,6 +313,12 @@ class _MainWindow(QMainWindow):
 
         self.setWindowTitle("Samsara")
         theme.install_app_scrollbars()
+        # This constructor runs on qt_runtime's QApplication thread. The
+        # accessor refuses earlier/wrong-thread creation, so this is the one
+        # safe point to subscribe the already-open hub to palette changes.
+        self._theme_change_signal = theme.theme_change_signal()
+        self._theme_change_signal.changed.connect(self.apply_theme)
+        self._theme_signal_manages_descendants = True
         self.setStyleSheet(_ss())
         self.setMinimumSize(MIN_WIDTH, MIN_HEIGHT)
         self._restore_geometry()
@@ -320,6 +326,27 @@ class _MainWindow(QMainWindow):
         self._activate("Home")
         self._poll_timer.start()
         self._dictation_sig.connect(self._on_dictation)
+
+    @Slot(str)
+    def apply_theme(self, _resolved_theme: str = "") -> None:
+        """Rebind existing hub/page QSS without recreating any surface."""
+        self.setStyleSheet(_ss())
+        for widget in self.findChildren(QWidget):
+            inline = widget.styleSheet()
+            if inline:
+                widget.setStyleSheet(theme.retheme_stylesheet(inline))
+        for name, button in self._nav_btns.items():
+            self._style_nav(button, name, button.isChecked())
+        self._refresh_status()
+        # QSystemTrayIcon is not in QApplication.topLevelWidgets(). Refresh
+        # its existing MarkFrame through the app's Qt-thread method now.
+        push_tray_icon = getattr(self._app, "_push_tray_icon", None)
+        if callable(push_tray_icon):
+            try:
+                push_tray_icon()
+            except Exception as exc:
+                logger.debug(f"apply_theme tray icon refresh: {exc}")
+        self.update()
 
     # ---- Layout -------------------------------------------------------------
 

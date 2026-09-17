@@ -27,6 +27,7 @@ import re
 import tempfile
 from pathlib import Path
 
+from PySide6.QtCore import QObject, QThread, Signal
 from PySide6.QtGui import QColor
 from PySide6.QtWidgets import QPushButton, QWidget
 
@@ -209,6 +210,41 @@ _ACTIVE = DEFAULT_THEME
 _REQUESTED_SETTING = DEFAULT_THEME
 _SYSTEM_THEME_TIMER = None
 _RETHEME_REPLACEMENTS: tuple[tuple[str, str], ...] = ()
+# Deliberately only a Python sentinel at import time.  QApplication is owned
+# by samsara-qt, not the importing thread (see theme_change_signal()).
+_THEME_CHANGE_SIGNAL = None
+
+
+class _ThemeChangeSignal(QObject):
+    """Qt-thread-owned delivery channel for a resolved live palette."""
+
+    changed = Signal(str)
+
+
+def theme_change_signal() -> _ThemeChangeSignal:
+    """Return the lazy, Qt-thread-owned live-theme signal.
+
+    Creating a QObject while theme is imported is unsafe here: boot imports
+    theme on its non-Qt thread, whereas qt_runtime creates QApplication on its
+    dedicated samsara-qt thread.  Refuse both invalid call sites explicitly
+    rather than creating an object with the wrong affinity.
+    """
+    from PySide6.QtWidgets import QApplication  # noqa: PLC0415
+
+    app = QApplication.instance()
+    if app is None:
+        raise RuntimeError(
+            "theme_change_signal() requires an existing QApplication"
+        )
+    if QThread.currentThread() != app.thread():
+        raise RuntimeError(
+            "theme_change_signal() must be first requested on the QApplication thread"
+        )
+
+    global _THEME_CHANGE_SIGNAL
+    if _THEME_CHANGE_SIGNAL is None:
+        _THEME_CHANGE_SIGNAL = _ThemeChangeSignal(app)
+    return _THEME_CHANGE_SIGNAL
 
 
 def _install(name: str) -> None:
@@ -301,6 +337,7 @@ def set_theme(setting, *, refresh: bool = True) -> str:
         _install(name)
         _RETHEME_REPLACEMENTS = _build_retheme_replacements(old_values)
         if refresh:
+            theme_change_signal().changed.emit(name)
             refresh_all()
     _ensure_system_theme_monitor()
     return name
@@ -322,13 +359,16 @@ def _build_retheme_replacements(old_values: dict[str, str]) -> tuple[tuple[str, 
     expressions. Keeping this mapping here lets those controls repaint
     without rebuilding the Settings window (and discarding unsaved edits).
     """
-    replacements = {
-        old: globals()[name]
-        for name, old in old_values.items()
-        if name in globals()
-        and isinstance(globals()[name], str)
-        and old != globals()[name]
-    }
+    replacements: dict[str, str] = {}
+    for name, old in old_values.items():
+        new = globals().get(name)
+        if not (isinstance(old, str) and isinstance(new, str) and old != new):
+            continue
+        # Several semantic tokens deliberately share an old literal.  For
+        # example dark BG0 and INK_DARK are both #0a0c11, but only BG0 changes
+        # in light mode.  Palette order has the surface token first; never
+        # let a later unchanged alias erase that needed replacement.
+        replacements.setdefault(old, new)
     # tint() and wash() are deliberately rendered into inline QSS strings.
     # Cover their two-decimal rgba output as well as the named tokens above.
     # (That is the exact precision _rgba() writes.)
@@ -399,13 +439,17 @@ def _follow_system_theme() -> None:
 
 
 def refresh_all() -> int:
-    """Re-style what is already on screen, and return how many widgets took
-    it. Best effort by design: a window builds most of its per-widget
-    stylesheets in its constructor, so only widgets that expose an
-    `apply_theme()` of their own can be repainted in place. Everything else
-    picks the new palette up the next time it is opened -- which is why the
-    Settings control says so out loud instead of leaving the user in front of
-    a half-themed app."""
+    """Re-style visible Qt surfaces and return successful explicit hooks.
+
+    Direct widget QSS is rebound where it contains the immediately preceding
+    token values, then a surface's optional ``apply_theme()`` hook can rebuild
+    its own composite QSS.  A subscribed root manages its descendants before
+    this walker starts, so it is not double-restyled.  This cannot reach
+    hidden/closed windows, non-Qt native UI, or a custom paint surface that
+    neither reads theme tokens during paint nor exposes a hook; those use the
+    current palette when next shown.  The main hub explicitly refreshes its
+    tray icon because QSystemTrayIcon is outside QApplication's widget tree.
+    """
     from PySide6.QtWidgets import QApplication  # noqa: PLC0415
 
     app = QApplication.instance()
@@ -425,7 +469,8 @@ def refresh_all() -> int:
         try:
             if window.isVisible():
                 stack.append(window)
-                stack.extend(window.findChildren(QWidget))
+                if not getattr(window, "_theme_signal_manages_descendants", False):
+                    stack.extend(window.findChildren(QWidget))
         except RuntimeError:
             continue
     while stack:
@@ -433,6 +478,18 @@ def refresh_all() -> int:
         if id(widget) in seen:
             continue
         seen.add(id(widget))
+        # A subscribed root already restyled its complete tree before this
+        # legacy walker started. Avoid its second full-QSS/repaint pass.
+        if getattr(widget, "_theme_signal_manages_descendants", False):
+            continue
+        # Visible detached surfaces may not expose a bespoke apply_theme()
+        # hook. Their direct QSS is still a token-expanded snapshot.
+        try:
+            inline = widget.styleSheet()
+            if inline:
+                widget.setStyleSheet(retheme_stylesheet(inline))
+        except RuntimeError:
+            continue
         hook = getattr(widget, "apply_theme", None)
         if callable(hook):
             try:
