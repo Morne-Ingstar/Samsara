@@ -519,9 +519,7 @@ class AvaCloudPage:
             if 'ava_personality' in self._widgets:
                 updates['ava_personality'] = self._widgets['ava_personality'].currentText().lower()
 
-            if ('ava_warm_on_boot' in self._widgets and (
-                    warm_choice_is_explicit['value']
-                    or self.app.config.get('ava', {}))):
+            if 'ava_warm_on_boot' in self._widgets and warm_choice_is_explicit['value']:
                 ava_cfg = dict(_acc.get('ava', self.app.config.get('ava', {})) or {})
                 ava_cfg['warm_on_boot'] = self._widgets['ava_warm_on_boot'].isChecked()
                 updates['ava'] = ava_cfg
