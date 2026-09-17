@@ -38,6 +38,7 @@ logger = get_logger(__name__)
 READY = "ready"
 OFFLINE = "offline"
 UNKNOWN = "unknown"
+WARMING = "warming"
 
 # Failure kinds, shared by the probe and by real turns.
 UNREACHABLE = "unreachable"
@@ -69,7 +70,7 @@ def display_name(provider: Optional[str]) -> str:
 
 @dataclass(frozen=True)
 class Readiness:
-    state: str                      # READY | OFFLINE | UNKNOWN
+    state: str                      # READY | OFFLINE | UNKNOWN | WARMING
     provider: Optional[str] = None  # "deepseek", "ollama", ...
     failure_kind: Optional[str] = None
     source: str = "initial"         # "probe" | "turn" | "initial"
@@ -83,14 +84,29 @@ class Readiness:
     def offline(self) -> bool:
         return self.state == OFFLINE
 
+    @property
+    def warming(self) -> bool:
+        return self.state == WARMING
+
     def badge_label(self) -> str:
-        """Short label for the indicator: "Ava: ready" / "Ava: offline" /
-        "Ava: checking"."""
+        """Short label for the indicator."""
         if self.state == READY:
             return "Ava: ready"
+        if self.state == WARMING:
+            return "Ava: warming"
         if self.state == OFFLINE:
             return "Ava: offline"
         return "Ava: checking"
+
+    def sentence(self) -> str:
+        """One visible, non-secret sentence for this readiness state."""
+        if self.state == READY:
+            return "Ava is ready to answer."
+        if self.state == WARMING:
+            return "Ava is warming up."
+        if self.state == OFFLINE:
+            return self.spoken_reason()
+        return "Ava has not been checked yet."
 
     def spoken_reason(self) -> str:
         return failure_sentence(self.failure_kind, self.provider)
@@ -175,6 +191,23 @@ def configured_provider(app) -> str:
     return "ollama"
 
 
+def provider_is_configured(app) -> bool:
+    """Whether an enabled provider exists to warm, without doing I/O."""
+    config = getattr(app, "config", {}) or {}
+    cloud = config.get("cloud_llm", {}) or {}
+    ollama = config.get("ollama", {}) or {}
+    return bool(cloud.get("enabled") and cloud.get("api_key")) or bool(ollama.get("enabled", True))
+
+
+def warm_on_boot_enabled(app) -> bool:
+    """Respect an explicit opt-out; absent config follows the schema default
+    only when there is a provider to warm."""
+    config = getattr(app, "config", {}) or {}
+    ava = config.get("ava", {}) or {}
+    value = ava.get("warm_on_boot", config.get("ava.warm_on_boot", True))
+    return provider_is_configured(app) and bool(value)
+
+
 def probe_configured_provider(app, http_get=None, timeout: float = PROBE_TIMEOUT_S):
     """One blocking health check of the configured provider. Returns
     (provider, failure_kind_or_None). Call from the monitor thread only.
@@ -214,6 +247,50 @@ def probe_configured_provider(app, http_get=None, timeout: float = PROBE_TIMEOUT
         return provider, PROVIDER_ERROR
 
 
+def warm_configured_provider(app) -> Readiness:
+    """Run one harmless completion after startup to make the configured model
+    resident. This is called from a background worker, never the boot lane."""
+    import requests  # noqa: PLC0415
+
+    provider = configured_provider(app)
+    tracker.begin_warming(provider)
+    started = time.monotonic()
+    failure_kind = None
+    try:
+        if provider == "ollama":
+            config = getattr(app, "config", {}) or {}
+            ollama = config.get("ollama", {}) or {}
+            host = str(ollama.get("host", "http://localhost:11434")).rstrip("/")
+            timeout = float(ollama.get("timeout_seconds", 30) or 30)
+            response = requests.post(
+                f"{host}/api/chat",
+                json={"model": str(ollama.get("model", "llama3")),
+                      "messages": [{"role": "user", "content": "Reply only: ready."}],
+                      "stream": False},
+                timeout=timeout,
+            )
+            response.raise_for_status()
+        else:
+            from samsara import cloud_llm  # noqa: PLC0415
+            response = cloud_llm.send(
+                "You are warming up. Reply only: ready.", "ready", app,
+                timeout=float((getattr(app, "config", {}) or {}).get("cloud_llm", {}).get("timeout_seconds", 30) or 30),
+            )
+            if str(response).startswith("Error:"):
+                failure_kind = classify_error_text(str(response))
+    except requests.exceptions.Timeout:
+        failure_kind = TIMEOUT
+    except requests.exceptions.ConnectionError:
+        failure_kind = UNREACHABLE
+    except Exception as exc:
+        logger.debug("[AVA-WARM] completion failed: %s", type(exc).__name__)
+        failure_kind = PROVIDER_ERROR
+    result = tracker.record_warm_result(provider, failure_kind)
+    logger.info("[AVA-WARM] provider=%s state=%s latency_ms=%d", provider, result.state,
+                round((time.monotonic() - started) * 1000))
+    return result
+
+
 class ReadinessTracker:
     """Thread-safe cached readiness with change listeners."""
 
@@ -237,9 +314,10 @@ class ReadinessTracker:
             if fn in self._listeners:
                 self._listeners.remove(fn)
 
-    def _set(self, provider: Optional[str], failure_kind: Optional[str], source: str) -> Readiness:
+    def _set(self, provider: Optional[str], failure_kind: Optional[str], source: str,
+             state: Optional[str] = None) -> Readiness:
         new = Readiness(
-            state=READY if failure_kind is None else OFFLINE,
+            state=state or (READY if failure_kind is None else OFFLINE),
             provider=provider,
             failure_kind=failure_kind,
             source=source,
@@ -268,6 +346,12 @@ class ReadinessTracker:
     def record_turn(self, provider: Optional[str], failure_kind: Optional[str]) -> Readiness:
         return self._set(provider, failure_kind, "turn")
 
+    def begin_warming(self, provider: Optional[str]) -> Readiness:
+        return self._set(provider, None, "warmup", state=WARMING)
+
+    def record_warm_result(self, provider: Optional[str], failure_kind: Optional[str]) -> Readiness:
+        return self._set(provider, failure_kind, "warmup")
+
     def reset(self) -> None:
         with self._lock:
             self._current = Readiness(UNKNOWN)
@@ -288,7 +372,12 @@ class ReadinessMonitor:
         self._stop = threading.Event()
 
     def run_once(self) -> Readiness:
+        was_warming = self._tracker.snapshot().warming
         provider, failure_kind = self._probe_fn()
+        # A warm-up completion is fresher evidence than this independent
+        # health probe. Do not flash an offline badge while it is in flight.
+        if was_warming or self._tracker.snapshot().warming:
+            return self._tracker.snapshot()
         return self._tracker.record_probe(provider, failure_kind)
 
     def wake(self) -> None:
@@ -351,3 +440,13 @@ def start_monitor(app, spawn) -> ReadinessMonitor:
             _monitor = ReadinessMonitor(tracker, lambda: probe_configured_provider(app))
             spawn("ava-readiness", _monitor.run)
         return _monitor
+
+
+def schedule_warm_on_boot(app, spawn) -> bool:
+    """Schedule the optional warm-up after the app has announced startup.
+    ``spawn`` is the app's thread registry, so the completion never runs on
+    the boot thread."""
+    if not warm_on_boot_enabled(app):
+        return False
+    spawn("ava-warm-on-boot", lambda: warm_configured_provider(app))
+    return True

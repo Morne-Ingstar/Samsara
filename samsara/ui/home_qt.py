@@ -1473,6 +1473,7 @@ AVA_SHORT_STATE = {
     home_signals.AVA_THINKING: "working",
     home_signals.AVA_DIM: "unavailable",
     home_signals.AVA_ASLEEP: "off",
+    home_signals.AVA_WARMING: "warming",
 }
 AVA_HEADER_MARK_PX = 18
 

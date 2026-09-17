@@ -4974,6 +4974,12 @@ class DictationApp:
             self.update_splash("Samsara ready", 100, _ready_detail)
             logger.info(f"[INIT] Startup complete. (wake: {self.wake_ready_state()})")
             _boot_log("async: startup complete")
+            try:
+                from samsara import ava_readiness
+                ava_readiness.schedule_warm_on_boot(
+                    self, lambda name, fn: thread_registry.spawn(name, fn, daemon=True))
+            except Exception as exc:
+                logger.debug(f"[AVA-WARM] could not schedule warm-up: {exc}")
 
             # Config-backup safeguard: only NOW, having reached "startup
             # complete" without raising anywhere above in this closure, is
