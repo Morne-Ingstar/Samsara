@@ -74,7 +74,7 @@ class AvaConsentDialog(QDialog):
         text.setWordWrap(True)
         text.setTextFormat(Qt.TextFormat.PlainText)
         text.setAccessibleName("What turning Ava on means")
-        text.setStyleSheet(f"font-size: {max(16, theme.TYPE_BODY)}px;")
+        text.setStyleSheet(f"font-size: {theme.TYPE_BODY}px;")
         layout.addWidget(text)
 
         buttons = QHBoxLayout()
