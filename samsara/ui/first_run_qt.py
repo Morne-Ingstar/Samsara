@@ -35,6 +35,7 @@ through an injectable opener so tests never touch the network.
 from __future__ import annotations
 
 import argparse
+import json
 import os
 import shutil
 import sys
@@ -119,6 +120,16 @@ def format_size(size_bytes) -> str:
 
 def _marker(component: dict, downloads_dir: Path) -> Path:
     return Path(downloads_dir) / (component["id"] + INSTALLED_MARKER_SUFFIX)
+
+
+def _cache_manifest(manifest: dict, downloads_dir: Path) -> None:
+    """Keep the validated catalog available to the next offline wizard run."""
+    downloads_dir = Path(downloads_dir)
+    downloads_dir.mkdir(parents=True, exist_ok=True)
+    target = downloads_dir / "manifest.json"
+    tmp = target.with_suffix(".json.tmp")
+    tmp.write_text(json.dumps(manifest, indent=2, sort_keys=True) + "\n", encoding="utf-8")
+    os.replace(tmp, target)
 
 
 def component_installed(component: dict, app_root, downloads_dir) -> bool:
@@ -399,6 +410,10 @@ def fetch_components_main(argv=None, *, fetch=None, opener=None, cancel=None,
 
     app_root = Path(args.app_root) if args.app_root else default_app_root()
     downloads_dir = Path(args.downloads_dir) if args.downloads_dir else default_downloads_dir()
+    try:
+        _cache_manifest(manifest, downloads_dir)
+    except OSError as exc:
+        logger.warning("Could not cache component manifest at %s: %s", downloads_dir, exc)
     if opener is None and args.components_dir:
         opener = local_dir_opener(args.components_dir)
 
