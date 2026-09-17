@@ -3371,7 +3371,7 @@ class SessionModeManager:
              the user right now, so undoing here would delete content in
              the wrong window -- irreversible for a keyboard-unable user.
              We refuse rather than guess or auto-refocus."""
-        item = self._stack.pop()
+        item = self._stack.peek()
         if item is None:
             return False
         if item.kind == "dictation_staged_chunk":
@@ -3389,11 +3389,13 @@ class SessionModeManager:
                 chunk_ends_terminal(self._dictate_pending_buffer)
                 if self._dictate_pending_buffer else None
             )
+            self._stack.pop()
             return True
         if item.kind == "edit_apply":
             return self._undo_edit_apply(item)
         if item.kind != "dictation_chunk":
-            return False  # command undo out of scope; consumed, refuse-style earcon
+            self._stack.pop()
+            return False  # command undo out of scope; deliberately consumed
         foreground = self._foreground_exe_resolver()
         target = item.extra.get("target_process")
         if not check_focus_lock(target, foreground):
@@ -3411,7 +3413,10 @@ class SessionModeManager:
         # focus changed mid-way, the window is elevated, or input was
         # refused. None (legacy callables) keeps meaning "done".
         removed = self._remove_chars_fn(len(item.payload))
-        return removed is not False
+        if removed is False:
+            return False
+        self._stack.pop()
+        return True
 
     # -- edit apply (queue 102) ----------------------------------------------
 
@@ -3541,6 +3546,7 @@ class SessionModeManager:
             return False
         if self._raw_inject_fn(original) is False:
             return False
+        self._stack.pop()
         self._stack.push(StackItem(
             kind="dictation_chunk", payload=original, mode=item.mode, timestamp=self._clock(),
             extra={"target_process": item.extra.get("target_process"), "hwnd": recorded_hwnd},
