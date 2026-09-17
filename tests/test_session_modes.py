@@ -16,6 +16,7 @@ from samsara.session_modes import (
     StackItem,
     UnitOfWorkStack,
     SessionModeManager,
+    InjectionDelivery,
     normalize_utterance,
     is_scratch_that,
     is_dictate_commit,
@@ -1767,6 +1768,18 @@ class TestBufferedDictateCommit:
         assert mgr.mode is SessionMode.DICTATE
         assert mgr.dictate_pending_buffer == "Keep this safe"
         mocks["on_switch_dispatch_error"].assert_called_once()
+
+    def test_unacknowledged_paste_does_not_arm_scratch_that(self, manager_factory):
+        mgr, mocks = manager_factory(buffer_dictate_until_commit=True)
+        mocks["inject"].return_value = InjectionDelivery("Keep this safe", confirmed=False)
+        mgr.force_mode(SessionMode.DICTATE)
+        mgr._dictate_pending_buffer = "Keep this safe"
+
+        outcome = mgr.commit_pending_dictation()
+
+        assert outcome.kind == "dictate_committed"
+        assert outcome.detail["delivery_unverified"] is True
+        assert mgr.stack_depth == 0
 
     def test_scratch_removes_last_staged_chunk_without_editor_keystrokes(self, manager_factory):
         mgr, mocks = manager_factory(buffer_dictate_until_commit=True)
