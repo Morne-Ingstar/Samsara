@@ -615,6 +615,10 @@ class TestApplyAndCloseSnapshot:
         # section so a future sibling key survives a save; with an empty
         # starting config there is nothing to preserve.
         expected['ui'] = {'theme': 'dark'}
+        # Queue 187 delta: the Music page now writes its library section.
+        # An empty starting config has no folders, playlists, albums or
+        # artists to preserve, so Apply writes the empty mapping.
+        expected['music_library'] = {}
         # Queue 176 delta: the General page's Accessibility section gained the
         # two Ava-captions controls, so Apply writes their defaults. Both are
         # OFF -- captions are a mode the user opts into, and Ava keeps her
