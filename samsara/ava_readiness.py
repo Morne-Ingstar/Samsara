@@ -216,11 +216,19 @@ def provider_is_configured(app) -> bool:
 
 
 def warm_on_boot_enabled(app) -> bool:
-    """Respect an explicit opt-out; absent config follows the schema default
-    only when there is a provider to warm."""
+    """Respect an explicit choice; default local on and cloud off.
+
+    Cloud warm-ups consume a billable completion, so absence is not consent.
+    Local Ollama warm-up remains on by default for its first-reply benefit.
+    """
     config = getattr(app, "config", {}) or {}
     ava = config.get("ava", {}) or {}
-    value = ava.get("warm_on_boot", config.get("ava.warm_on_boot", True))
+    if "warm_on_boot" in ava:
+        value = ava["warm_on_boot"]
+    elif "ava.warm_on_boot" in config:
+        value = config["ava.warm_on_boot"]
+    else:
+        value = configured_provider(app) == "ollama"
     return provider_is_configured(app) and bool(value)
 
 
