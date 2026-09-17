@@ -535,17 +535,26 @@ class ModesPage:
         )
 
         phrases = ww_cfg.get('phrase_options', DEFAULT_WAKE_PHRASE_OPTIONS)
-        primary_phrase = phrases[0] if phrases else DEFAULT_WAKE_PHRASE
-        wake_phrase_display = QLineEdit(primary_phrase)
-        wake_phrase_display.setReadOnly(True)
-        wake_phrase_display.setObjectName("wakePhraseDisplay")
-        wake_phrase_display.setPlaceholderText("wake phrase")
-        self._widgets['wake_word_phrase_display'] = wake_phrase_display
+        if isinstance(phrases, str):
+            phrases = [phrases]
+        phrases = [str(phrase) for phrase in (phrases or []) if str(phrase).strip()]
+        if not phrases:
+            phrases = [DEFAULT_WAKE_PHRASE]
+        current_phrase = str(ww_cfg.get('phrase') or phrases[0])
+        if current_phrase not in phrases:
+            current_phrase = phrases[0]
+        wake_phrase_combo = QComboBox()
+        wake_phrase_combo.addItems(phrases)
+        wake_phrase_combo.setCurrentText(current_phrase)
+        wake_phrase_combo.setObjectName("wakePhraseCombo")
+        self._widgets['wake_word_phrase'] = wake_phrase_combo
+        # Compatibility alias for callers that only need the page's control.
+        self._widgets['wake_word_phrase_display'] = wake_phrase_combo
         _add_row(
             hands_free_layout,
             "Wake phrase",
-            "The word or phrase that activates voice control.",
-            wake_phrase_display,
+            "Choose the trained model that activates voice control.",
+            wake_phrase_combo,
             width=340,
         )
 
@@ -564,7 +573,10 @@ class ModesPage:
             width=170,
         )
 
-        wake_note = QLabel("More wake phrases can be added in the config file.")
+        # OWNER COPY — REVIEW
+        wake_note = QLabel(
+            "Wake phrases are trained models. Custom phrases need a custom model."
+        )
         wake_note.setWordWrap(True)
         wake_note.setStyleSheet(f"color: {theme.ICON_IDLE}; font-size: 12px;")
         hands_free_layout.addWidget(wake_note)
@@ -1241,6 +1253,10 @@ class ModesPage:
                 ww_cfg['audio'] = ww_audio
                 ww_cfg['quick_silence_timeout'] = self._widgets['quick_silence'].value()
                 ww_cfg['oww_threshold'] = max(0.01, min(1.0, self._widgets['oww_threshold'].value()))
+                phrase_combo = self._widgets.get('wake_word_phrase')
+                if (isinstance(phrase_combo, QComboBox)
+                        and ('phrase' in ww_cfg or phrase_combo.currentText() != phrases[0])):
+                    ww_cfg['phrase'] = phrase_combo.currentText()
                 updates['wake_word_config'] = ww_cfg
 
             # Command mode nested config -- button/suppress_button now live

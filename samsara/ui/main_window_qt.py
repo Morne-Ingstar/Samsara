@@ -201,6 +201,17 @@ def _status_segment(label_text: str, value_text: str = "..."):
     return w, value
 
 
+def _hands_free_active(app) -> bool:
+    """Whether an open-mic session currently owns the hands-free listener."""
+    cfg = getattr(app, "config", {}) or {}
+    command_cfg = cfg.get("command_mode", {}) or {}
+    toggle_session = (
+        bool(getattr(app, "command_mode_active", False))
+        and command_cfg.get("mode", "hold") == "toggle"
+    )
+    return toggle_session or bool(getattr(app, "ava_command_session_active", False))
+
+
 def _status_separator() -> QFrame:
     line = QFrame()
     line.setFrameShape(QFrame.Shape.VLine)
@@ -605,8 +616,22 @@ class _MainWindow(QMainWindow):
         wake_on = cfg.get('wake_word_enabled', False)
         phrase  = cfg.get('wake_word_config', {}).get(
             'phrase', config_defaults.DEFAULTS['wake_word_config.phrase'])
-        # A spoken phrase is always shown quoted (41).
-        self._lbl_wake.setText(f"\"{phrase}\" (on)" if wake_on else "Off")
+        if _hands_free_active(self._app):
+            # Same inactive visual language as ListeningIndicator's Snoozed
+            # state: the configured wake model is present but suspended while
+            # the open-mic hands-free session listens.
+            self._lbl_wake.setText(f"\"{phrase}\" (suspended)")
+            self._lbl_wake.setStyleSheet(
+                f"color: {theme.ICON_IDLE}; font-size: {theme.TYPE_BODY}px;"
+                " font-weight: 500; background: transparent;"
+            )
+        else:
+            # A spoken phrase is always shown quoted (41).
+            self._lbl_wake.setText(f"\"{phrase}\" (on)" if wake_on else "Off")
+            self._lbl_wake.setStyleSheet(
+                f"color: {theme.TEXT_PRIMARY}; font-size: {theme.TYPE_BODY}px;"
+                " font-weight: 500; background: transparent;"
+            )
 
         mic_id   = cfg.get('microphone')
         mic_name = "Default"

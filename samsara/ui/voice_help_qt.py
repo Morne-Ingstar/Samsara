@@ -46,6 +46,10 @@ PAUSE = "Pause listening"
 RESUME = "Resume listening"
 REPORT_HINT = ("Nothing here is a diagnosis on its own. If speech is not working and every line "
                "below looks fine, that is worth reporting.")
+# OWNER COPY — REVIEW
+HANDS_FREE_WAKE_EVIDENCE = (
+    "Hands-free is on — the wake phrase is not used while hands-free listens"
+)
 
 #: Status -> the word the page uses, so one vocabulary covers every surface.
 STATUS_WORDS = {
@@ -98,6 +102,8 @@ def check_stage(app, key: str) -> tuple:
             return home_signals.UNKNOWN, "Nothing has been recorded yet this session."
         return home_signals.READY, f"The last {examined} recordings reached the recogniser."
     if key == "wake":
+        if _hands_free_active(app):
+            return home_signals.OFF, HANDS_FREE_WAKE_EVIDENCE
         state = states[home_signals.HANDS_FREE]
         if state.status == home_signals.OFF:
             return home_signals.OFF, "The wake word is switched off in Settings."
@@ -139,6 +145,17 @@ def _diag(app, limit=home_signals.NO_TEXT_WINDOW):
 
 def _wake_records(app) -> int:
     return sum(1 for r in _diag(app) if getattr(r, "mode", "") == "wake")
+
+
+def _hands_free_active(app) -> bool:
+    """Whether an open-mic session currently owns the hands-free listener."""
+    cfg = getattr(app, "config", {}) or {}
+    command_cfg = cfg.get("command_mode", {}) or {}
+    toggle_session = (
+        bool(getattr(app, "command_mode_active", False))
+        and command_cfg.get("mode", "hold") == "toggle"
+    )
+    return toggle_session or bool(getattr(app, "ava_command_session_active", False))
 
 
 def _records_with_text(app) -> int:

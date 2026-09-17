@@ -77,7 +77,7 @@ def _fire_one_shot_hooks(rec) -> None:
 
 @dataclass
 class DiagRecord:
-    mode: str                      # "hotkey" | "wake" | "streaming" | "command"
+    mode: str                      # "hotkey" | "wake" | "streaming" | "command" | "hands_free"
     audio_s: float
     model_name: str
     device: str
@@ -111,6 +111,7 @@ class DiagRecord:
     # 2026-07-16 incident it was added for.
     outcome: str = "ok"              # "ok" | "empty" | "gated" | "low_confidence" | "suspected_loss"
     path: str = ""                   # "long" | "short" | "" (n/a, e.g. gated)
+    lane: str = ""                   # hands-free lane: "dictate" | "command" | "ava"
 
 
 # ---------------------------------------------------------------------------

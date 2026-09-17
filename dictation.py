@@ -7850,10 +7850,46 @@ class DictationApp:
                 if context_tail:
                     transcribe_params['initial_prompt'] = context_tail
 
+            transcribe_start = time.time()
             with self.model_lock:
                 segments, info = self.model.transcribe(audio, **transcribe_params)
                 seg_list = list(segments)
             text = ''.join(s.text for s in seg_list).strip()
+            transcribe_time = time.time() - transcribe_start
+            # Hands-free uses this VAD-bounded per-utterance path instead of
+            # the hold-to-dictate finalizer. Keep the same diagnostic record
+            # contract at the recogniser boundary so Voice Help can see both
+            # capture families. This is deliberately before dispatch: a
+            # recognised utterance that a later policy gate refuses is still
+            # evidence that audio reached Whisper.
+            try:
+                _diag_sig = diagnostics.segment_signals(seg_list)
+            except Exception as _diag_exc:
+                logger.debug(f"[DIAG] hands-free signal extraction failed: {_diag_exc}")
+                _diag_sig = {}
+            try:
+                diagnostics.record(diagnostics.DiagRecord(
+                    mode="hands_free",
+                    lane=_capture_mode,
+                    audio_s=audio_duration,
+                    model_name=self.config.get('model_size', config_defaults.DEFAULTS['model_size']),
+                    device=getattr(self, 'device_type', 'unknown'),
+                    compute_type=self.config.get('compute_type', config_defaults.DEFAULTS['compute_type']),
+                    t_transcribe_ms=int(transcribe_time * 1000),
+                    t_total_ms=int(transcribe_time * 1000),
+                    avg_logprob=_diag_sig.get('avg_logprob'),
+                    compression_ratio=_diag_sig.get('compression_ratio'),
+                    no_speech_prob=_diag_sig.get('no_speech_prob'),
+                    temperature=_diag_sig.get('temperature'),
+                    n_segments=_diag_sig.get('n_segments', 0),
+                    text=text,
+                    language=_languages.describe_diagnostics_language(
+                        self.config.get('language', 'en'), getattr(info, 'language', None),
+                    ),
+                    outcome="empty" if not text else "ok",
+                ), app=self)
+            except Exception as _diag_exc:
+                logger.debug(f"[DIAG] hands-free record failed: {_diag_exc}")
             text = self.voice_training_window.apply_corrections(text)
 
             if not text:
