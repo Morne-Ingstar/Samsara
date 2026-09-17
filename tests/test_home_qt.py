@@ -885,9 +885,9 @@ class TestCommandExampleSource:
         """Queue 68 scopes: an app-scoped command is only live on a match."""
         records = [
             {"canonical_id": "p.global_one", "phrase": "scroll down", "risk": "ui",
-             "aliases": [], "args": [], "scope": None},
+             "pack": "utilities", "aliases": [], "args": [], "scope": None},
             {"canonical_id": "p.obsidian_one", "phrase": "next note", "risk": "ui",
-             "aliases": [], "args": [], "scope": {"apps": ["obsidian.exe"]}},
+             "pack": "utilities", "aliases": [], "args": [], "scope": {"apps": ["obsidian.exe"]}},
         ]
         here = command_scope.MatchContext.for_app("warp.exe")
         phrases = command_marquee.example_phrases(records, ctx=here, rng=random.Random(3))
@@ -1341,24 +1341,21 @@ class TestTheStatsSitOnTheFloor:
         assert home_qt.CREED in texts
 
 
-class TestTheExamplePoolOffersNoHardware:
-    """95: "print me a gun" is a real FlashForge command, honestly classed
-    "ui" and needing no argument, so every existing filter passed it. What it
-    does is start a physical machine in the owner's room."""
+class TestTheExamplePoolOffersUniversalCommands:
+    """The status strip must not advertise optional app or hardware packs."""
 
-    def test_no_phrase_comes_from_a_hardware_pack(self):
+    def test_full_catalog_offers_only_allow_list_packs(self):
         records = command_catalog.load_catalog_json()
         offered = set(command_marquee.example_phrases(records, count=1000,
                                                       rng=random.Random(11)))
         assert offered, "the pool must not be empty"
         for record in records:
             if command_catalog.canonical_phrase(record) in offered:
-                assert record.get("pack") not in command_marquee.HARDWARE_PACKS, \
+                assert record.get("pack") in command_marquee.EXAMPLE_ALLOWED_PACKS, \
                     record.get("canonical_id")
 
-    def test_the_printer_commands_are_gone_by_pack_not_by_phrase(self):
-        """Excluded by the catalog's own grouping, so a second printer plugin
-        is excluded the day it lands. Nothing here matches on the words."""
+    def test_a_new_optional_plugin_is_excluded_without_touching_this_code(self):
+        """Pack grouping, not words or plugin names, makes this future-safe."""
         records = command_catalog.load_catalog_json()
         printer = [r for r in records if r.get("plugin") == "flashforge_printer"]
         assert printer, "the catalog must still carry the printer plugin"
@@ -1368,21 +1365,18 @@ class TestTheExamplePoolOffersNoHardware:
         assert not offered & {command_catalog.canonical_phrase(r) for r in printer}
         assert "print me a gun" not in offered
 
-    def test_a_new_hardware_plugin_is_excluded_without_touching_this_code(self):
+    def test_a_new_unapproved_pack_is_excluded_without_touching_this_code(self):
         records = [
             {"canonical_id": "p.safe", "phrase": "scroll down", "risk": "ui",
              "pack": "utilities", "aliases": [], "args": [], "scope": None},
-            {"canonical_id": "p.kiln", "phrase": "fire the kiln", "risk": "ui",
-             "pack": "3d-printing", "aliases": [], "args": [], "scope": None},
-            {"canonical_id": "p.lamp", "phrase": "warm white", "risk": "ui",
-             "pack": "smart-home", "aliases": [], "args": [], "scope": None},
+            {"canonical_id": "p.integration", "phrase": "open niche app", "risk": "ui",
+             "pack": "new-integration", "aliases": [], "args": [], "scope": None},
         ]
         offered = command_marquee.example_phrases(records, count=10, rng=random.Random(13))
         assert offered == ["scroll down"]
 
-    def test_software_playback_is_not_hardware_and_stays(self):
-        """The rule is "drives a physical device", not "touches media": the
-        pool must not quietly lose everything fun."""
+    def test_media_and_stremio_packs_are_not_first_screen_examples(self):
+        """They are optional integrations, not universal first-run actions."""
         records = command_catalog.load_catalog_json()
         offered = set(command_marquee.example_phrases(records, count=1000,
                                                       rng=random.Random(14)))
@@ -1390,8 +1384,8 @@ class TestTheExamplePoolOffersNoHardware:
                  if r.get("pack") in ("media", "stremio")
                  and r.get("risk") in command_marquee.SAFE_RISKS
                  and not any(a.get("required") for a in r.get("args", []) if isinstance(a, dict))}
-        assert media & offered, "media playback phrases should still be offered"
-        assert len(offered) > 250, "the pool must stay large enough to feel random"
+        assert not media & offered
+        assert len(offered) > 150, "the universal pool must stay large enough to feel random"
 
 
 # ---------------------------------------------------------------------------
