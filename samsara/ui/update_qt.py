@@ -37,6 +37,7 @@ from samsara.ui import theme
 
 logger = get_logger(__name__)
 AUTO_CHECK_INTERVAL_S = 24 * 60 * 60
+_automatic_check_failure_reported = False
 
 _dialog: "_UpdateDialog | None" = None
 
@@ -316,11 +317,11 @@ def show_update_dialog(app, *, check_immediately=False, initial_release=None):
     return _dialog
 
 
-def maybe_start_automatic_update_check(app, on_available) -> bool:
+def maybe_start_automatic_update_check(app, on_available, on_error=None) -> bool:
     """Start one explicitly enabled, at-most-daily GitHub check.
 
-    Returns ``True`` only when a worker was started. Failures are logged but
-    intentionally do not interrupt a user's startup.
+    Returns ``True`` only when a worker was started. Failures are logged and,
+    when supplied, reported once without interrupting a user's startup.
     """
     if not is_frozen_build() or update_unavailable_reason():
         return False
@@ -350,10 +351,15 @@ def maybe_start_automatic_update_check(app, on_available) -> bool:
     logger.info("[UPDATE] Starting opted-in automatic GitHub release check")
 
     def _worker():
+        global _automatic_check_failure_reported
         try:
             release = check_for_update(current_version=__version__)
         except Exception as exc:
             logger.info("[UPDATE] Automatic check unavailable: %s", exc)
+            if on_error is not None and not _automatic_check_failure_reported:
+                _automatic_check_failure_reported = True
+                error = str(exc)
+                qt_runtime.post(lambda error=error: on_error(error))
             return
         if release is not None:
             qt_runtime.post(lambda: on_available(release))

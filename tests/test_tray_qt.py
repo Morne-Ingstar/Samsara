@@ -547,6 +547,14 @@ class TestNoTrayActionFailsSilently:
     def test_every_action_whose_handler_raises_tells_the_user(self, qapp, monkeypatch, slot_errors):
         app = _make_app()
         app.config["updates"] = {"tray_menu_entry": True}
+        monkeypatch.setattr(
+            "samsara.streaming.reset_preview_placement",
+            Mock(side_effect=RuntimeError("boom")),
+        )
+        monkeypatch.setattr(
+            "samsara.ui.listening_indicator.reset_indicator_placement",
+            Mock(side_effect=RuntimeError("boom")),
+        )
         t, _started = _stub_tray(monkeypatch, app, raising=True)
         for a in self._triggerable(t):
             if a.actionGroup() is not None and a.isChecked():

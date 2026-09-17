@@ -923,9 +923,11 @@ def test_release_workflow_publishes_zip_checksum_asset():
     workflow = (
         Path(__file__).parents[1] / ".github" / "workflows" / "release.yml"
     ).read_text(encoding="utf-8")
-    assert "Get-FileHash -LiteralPath $zipName -Algorithm SHA256" in workflow
-    assert "checksum_name=$checksumName" in workflow
-    assert "${{ steps.package.outputs.checksum_name }}" in workflow
+    assert "actions/download-artifact@v6" in workflow
+    assert "Get-FileHash -LiteralPath $zip -Algorithm SHA256" in workflow
+    assert "Samsara-WakeWord-Models-${{ steps.version.outputs.version }}.zip" in workflow
+    assert "zip is missing bundled OWW model file(s)" in workflow
+    assert "${{ steps.gate.outputs.sidecar }}" in workflow
 
 
 def test_frozen_build_explicitly_collects_updater_module():
