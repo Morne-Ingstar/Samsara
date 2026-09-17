@@ -26,7 +26,7 @@ from PySide6.QtWidgets import (
 
 from samsara.constants import DEFAULT_WAKE_PHRASE
 from samsara.runtime import thread_registry
-from samsara.ui import qt_runtime
+from samsara.ui import ava_consent_qt, qt_runtime
 
 from samsara.log import get_logger
 from samsara.ui import theme
@@ -906,6 +906,19 @@ class _WizardWindow(QDialog):
 
     def _enable_ai_pack(self):
         try:
+            cloud_enabled = bool(
+                (self._app.config.get("cloud_llm", {}) or {}).get("enabled", False))
+            if ava_consent_qt.consent_required(
+                self._app.config, cloud_enabled=cloud_enabled
+            ):
+                consent = ava_consent_qt.request_consent(
+                    self, self._app.config, cloud_enabled=cloud_enabled
+                )
+                if consent is None:
+                    return
+                ava_cfg = dict(self._app.config.get("ava", {}) or {})
+                ava_cfg["consent"] = consent
+                self._app.update_config({"ava": ava_cfg}, save=True)
             packs = dict(self._app.config.get("command_packs", {}))
             packs["ai"] = True
             self._app.update_config({"command_packs": packs}, save=True)

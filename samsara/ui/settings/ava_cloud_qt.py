@@ -25,7 +25,7 @@ from PySide6.QtWidgets import (
 
 from samsara.runtime import thread_registry
 from samsara import ava_readiness
-from samsara.ui import theme
+from samsara.ui import ava_consent_qt, theme
 
 from samsara.ui.settings_qt import _CONTENT_MAX_WIDTH
 
@@ -106,6 +106,11 @@ class AvaCloudPage:
         enable_note.setWordWrap(True)
         enable_note.setStyleSheet(f"color: {theme.ICON_IDLE}; font-size: {theme.TYPE_MIN}px; margin-left: 26px;")
         layout.addWidget(enable_note)
+        consent_btn = QPushButton("Read this again")
+        consent_btn.setAccessibleName("Read what turning Ava on means again")
+        theme.make_secondary(consent_btn)
+        consent_btn.clicked.connect(lambda: ava_consent_qt.show_consent_copy(self))
+        layout.addWidget(consent_btn, alignment=Qt.AlignmentFlag.AlignLeft)
         layout.addSpacing(8)
 
         # OWNER COPY — REVIEW: This sends a small request at startup so Ava's
@@ -122,6 +127,15 @@ class AvaCloudPage:
             warm_choice_is_explicit["value"] = True
 
         def _default_warm_for_provider(cloud_is_enabled):
+            if cloud_is_enabled:
+                effective = dict(self.app.config)
+                ava_cfg = dict(effective.get("ava", {}) or {})
+                staged = getattr(self, "_ava_consent_staged", None)
+                if staged is not None:
+                    ava_cfg["consent"] = staged
+                effective["ava"] = ava_cfg
+                if ava_consent_qt.consent_required(effective, cloud_enabled=True):
+                    return
             if not warm_choice_is_explicit["value"]:
                 was_blocked = warm_on_boot.blockSignals(True)
                 warm_on_boot.setChecked(not cloud_is_enabled)
@@ -129,6 +143,27 @@ class AvaCloudPage:
 
         warm_on_boot.toggled.connect(_remember_warm_choice)
         cloud_enabled.toggled.connect(_default_warm_for_provider)
+
+        def _confirm_cloud_enable(checked):
+            if not checked:
+                return
+            effective = dict(self.app.config)
+            ava_cfg = dict(effective.get("ava", {}) or {})
+            staged = getattr(self, "_ava_consent_staged", None)
+            if staged is not None:
+                ava_cfg["consent"] = staged
+            effective["ava"] = ava_cfg
+            if not ava_consent_qt.consent_required(effective, cloud_enabled=True):
+                return
+            was_blocked = cloud_enabled.blockSignals(True)
+            cloud_enabled.setChecked(False)
+            cloud_enabled.blockSignals(was_blocked)
+            consent = ava_consent_qt.request_consent(self, effective, cloud_enabled=True)
+            if consent is not None:
+                self._ava_consent_staged = consent
+                cloud_enabled.setChecked(True)
+
+        cloud_enabled.clicked.connect(_confirm_cloud_enable)
         self._widgets['ava_warm_on_boot'] = warm_on_boot
         layout.addWidget(warm_on_boot)
         layout.addSpacing(8)
@@ -484,9 +519,17 @@ class AvaCloudPage:
             if 'ava_personality' in self._widgets:
                 updates['ava_personality'] = self._widgets['ava_personality'].currentText().lower()
 
-            if 'ava_warm_on_boot' in self._widgets:
-                ava_cfg = dict(self.app.config.get('ava', {}) or {})
+            if ('ava_warm_on_boot' in self._widgets and (
+                    warm_choice_is_explicit['value']
+                    or self.app.config.get('ava', {}))):
+                ava_cfg = dict(_acc.get('ava', self.app.config.get('ava', {})) or {})
                 ava_cfg['warm_on_boot'] = self._widgets['ava_warm_on_boot'].isChecked()
+                updates['ava'] = ava_cfg
+
+            staged_consent = getattr(self, "_ava_consent_staged", None)
+            if staged_consent is not None:
+                ava_cfg = dict(updates.get('ava', _acc.get('ava', self.app.config.get('ava', {}))) or {})
+                ava_cfg['consent'] = staged_consent
                 updates['ava'] = ava_cfg
 
             if 'ava_memory_mode' in self._widgets:
