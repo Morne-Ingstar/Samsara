@@ -87,7 +87,7 @@ def _make_stub(mode='toggle', enabled=True, listening_indicator_enabled=False):
         enter_command_mode = _d.DictationApp.enter_command_mode
         exit_command_mode = _d.DictationApp.exit_command_mode
         _update_mode_overlay = _d.DictationApp._update_mode_overlay
-        _MODE_OVERLAY = _d.DictationApp._MODE_OVERLAY
+        _mode_overlay = staticmethod(_d.DictationApp._mode_overlay)
 
         def __init__(self):
             self.command_mode_active = False
@@ -173,25 +173,73 @@ class TestModeOverlayDrivesThePill:
     pill interface (listening_indicator is a Mock here)."""
 
     def test_command_mode_badge(self):
+        from samsara.ui import theme
         stub = _make_stub()
         stub._update_mode_overlay(_session_mode_enum().COMMAND)
         stub.listening_indicator.set_session_mode.assert_called_once_with(
-            "COMMAND", "#5EEAD4"
+            "COMMAND", theme.ACCENT
         )
 
     def test_hands_free_lane_badge(self):
+        from samsara.ui import theme
         stub = _make_stub()
         stub._update_mode_overlay(_session_mode_enum().DICTATE)
         stub.listening_indicator.set_session_mode.assert_called_once_with(
-            "HANDS FREE", "#f59e0b"
+            "HANDS FREE", theme.WARNING
         )
 
     def test_ava_mode_badge(self):
+        from samsara.ui import theme
         stub = _make_stub()
         stub._update_mode_overlay(_session_mode_enum().AVA)
         stub.listening_indicator.set_session_mode.assert_called_once_with(
-            "AVA", "#A78BFA"
+            "AVA", theme.AVA
         )
+
+    def test_failed_mode_change_restores_lane_badge_and_emits_error_chip(self):
+        """A callback can fail after scheduling the target badge (queue 186).
+
+        The real manager must restore both the routing lane and the visible
+        badge, and its outcome must carry a reason for the dispatch chip.
+        """
+        from samsara.session_modes import (
+            CommandDispatchResult, SessionMode, SessionModeManager,
+            UtteranceSignals, outcome_chip,
+        )
+
+        shown = {"mode": SessionMode.COMMAND}
+        target_attempted = False
+
+        def on_mode_change(mode):
+            nonlocal target_attempted
+            shown["mode"] = mode
+            if mode is SessionMode.DICTATE and not target_attempted:
+                target_attempted = True
+                raise RuntimeError("mode earcon failed")
+
+        manager = SessionModeManager(
+            abort_phrases=["cancel"],
+            foreground_exe_resolver=lambda: "notepad.exe",
+            foreground_hwnd_resolver=lambda: 1,
+            inject_fn=lambda _text: None,
+            remove_chars_fn=lambda _count: True,
+            command_dispatch_fn=lambda text: CommandDispatchResult(matched=True, phrase=text),
+            agent_dispatch_fn=lambda _text, _context: None,
+            on_mode_change=on_mode_change,
+            on_focus_lock_revert=lambda: None,
+            on_scratch_result=lambda _success: None,
+            on_abort=lambda: None,
+        )
+        good = UtteranceSignals(has_contiguous_speech=True, compression_ratios=(1.2,))
+
+        outcome = manager.dispatch_utterance("dictate mode", good)
+
+        assert outcome.kind == "mode_switch_failed"
+        assert manager.mode is SessionMode.COMMAND
+        assert shown["mode"] is SessionMode.COMMAND
+        chip_label, chip_kind = outcome_chip(outcome.kind, outcome.detail)
+        assert chip_kind == "error"
+        assert chip_label.startswith("✗ RuntimeError:")
 
 
 class TestSessionStartEndForceVisible:
@@ -209,13 +257,14 @@ class TestSessionStartEndForceVisible:
         stub.listening_indicator.show.assert_called_once()
 
     def test_toggle_session_starts_in_combined_hands_free_lane(self):
+        from samsara.ui import theme
         stub = _make_stub(mode='toggle')
         stub.enter_command_mode()
         stub._session_mode_manager.reset.assert_called_once_with(
             initial_mode=_session_mode_enum().DICTATE,
         )
         stub.listening_indicator.set_session_mode.assert_any_call(
-            "HANDS FREE", "#f59e0b",
+            "HANDS FREE", theme.WARNING,
         )
 
     def test_session_end_hides_pill_when_indicator_disabled(self):
