@@ -693,6 +693,7 @@ _TAB_NAMES = [
     "Health",
     "Advanced",
     "Help & Support",
+    "Music",
 ]  # order matches self._stack.addWidget(...) calls in __init__ -- tab
    # INDICES must not change; _SIDEBAR_GROUPS below only changes their
    # VISUAL order/grouping in the sidebar.
@@ -701,7 +702,7 @@ _TAB_NAMES = [
 # Close; "Tools" tabs (Commands editor, Alarms manager, Health log) save
 # instantly -- see each tab's "apply immediately" caption.
 _SIDEBAR_GROUPS = [
-    ("Settings", ["General", "Modes", "Sounds", "TTS", "Ava / Cloud", "Advanced"]),
+    ("Settings", ["General", "Modes", "Sounds", "TTS", "Ava / Cloud", "Music", "Advanced"]),
     ("Tools",    ["Commands", "Alarms", "Health"]),
     ("Support", ["Help & Support"]),
 ]
@@ -748,6 +749,7 @@ from samsara.ui.settings.alarms_qt import AlarmsPage  # noqa: E402
 from samsara.ui.settings.health_qt import HealthPage  # noqa: E402
 from samsara.ui.settings.advanced_qt import AdvancedPage  # noqa: E402
 from samsara.ui.settings.help_qt import HelpPage  # noqa: E402
+from samsara.ui.settings.music_qt import MusicPage  # noqa: E402
 
 
 # ---------------------------------------------------------------------------
@@ -765,6 +767,7 @@ class _SettingsWindow(
     HealthPage,
     AdvancedPage,
     HelpPage,
+    MusicPage,
     QMainWindow,
 ):
     # Emitted from worker threads to update the test-connection label safely
@@ -911,6 +914,7 @@ class _SettingsWindow(
         self._stack.addWidget(self._build_health_tab())     # 7  Health
         self._stack.addWidget(self._build_advanced_tab())      # 8  Advanced
         self._stack.addWidget(self._build_support_tab())       # 9  Help & Support
+        self._stack.addWidget(self._build_music_tab())         # 10 Music
 
         self._apply_metric_minimum_widths()
         self._build_search_registry()

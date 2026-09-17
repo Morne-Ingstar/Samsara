@@ -40,6 +40,7 @@ PAGE_MODULES = {
     "Health": "health_qt",
     "Advanced": "advanced_qt",
     "Help & Support": "help_qt",
+    "Music": "music_qt",
 }
 
 #: Flattened config keys each page's save fn wrote BEFORE the split, captured
@@ -120,6 +121,7 @@ KEYS_BEFORE_SPLIT = {
         'smart_corrections.modes.wake', 'smart_corrections.ollama_model',
         'smart_corrections.repair_disfluencies', 'smart_corrections.timeout_s', 'threshold_mode',
     ],
+    "_build_music_tab": ['music_library'],
 }
 
 
