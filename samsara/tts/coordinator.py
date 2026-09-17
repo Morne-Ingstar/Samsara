@@ -75,6 +75,20 @@ TTS_CHAR_LIMIT_EXEMPT_CATEGORIES = frozenset({
 DEFAULT_COMMAND_MODE_TTS_CHAR_LIMIT = 50
 SUPPRESSED_CMD_MODE_ID = 'noop-cmd-mode'
 
+# Queue 176 -- the categories that carry AVA's own voice, as opposed to a
+# command acknowledgement. Ava captions mirror these on screen, and
+# accessibility.ava_mute_audio silences exactly these and nothing else.
+#
+# `agent_response` is deliberately NOT here: it is what a command plugin says
+# when it has done something ("Alarm set for seven"), not Ava speaking. Muting
+# it would take away the confirmations a deaf-mode user still needs, and
+# captioning it would put command chatter in a window labelled Ava.
+AVA_SPEECH_CATEGORIES = frozenset({
+    "ava_response", "ava_status", "ava_command_session",
+})
+#: Returned when Ava's audio is muted: the caption was shown, nothing spoke.
+MUTED_AVA_ID = 'noop-ava-muted'
+
 
 def command_mode_char_limit(config) -> Optional[int]:
     """Effective command_mode.tts_char_limit: a positive int, or None for
@@ -189,6 +203,27 @@ class AudioCoordinator:
                 )
                 return SpeechHandle(utterance_id=SUPPRESSED_CMD_MODE_ID)
 
+        # Queue 176: Ava's captions and Ava's audio mute. This is the one
+        # place every Ava utterance passes through with its text intact, so
+        # it is where the visual channel is fed and where the audio channel
+        # is switched off -- doing it at each caller would leave whichever
+        # lane was added next silently uncaptioned.
+        if category in AVA_SPEECH_CATEGORIES:
+            captions, muted = self._ava_accessibility()
+            if muted:
+                if captions:
+                    # No speech to wait for, so the linger starts now.
+                    self._emit_caption(text, hold=False)
+                logger.info(
+                    "AudioCoordinator: Ava audio muted (category=%s, captions=%s)",
+                    category, captions,
+                )
+                return SpeechHandle(utterance_id=MUTED_AVA_ID)
+            if captions:
+                self._emit_caption(text, hold=True)
+                # Release the caption's hold when THIS utterance finishes.
+                on_done = self._with_caption_release(on_done)
+
         tts_cfg = self.app.config.get('tts', {})
         effective_speed = speed if speed is not None else tts_cfg.get('speed', 1.0)
         effective_volume = volume if volume is not None else tts_cfg.get('volume', 0.8)
@@ -218,6 +253,48 @@ class AudioCoordinator:
 
         self._active_handle = handle
         return handle
+
+    # ------------------------------------------------------------------
+    # Ava captions (queue 176)
+    #
+    # Read per utterance, never cached: these are settings MODES the user
+    # can turn on mid-conversation, and a cached flag would mean the mode
+    # only takes effect after a restart. Every call is defensive -- a UI
+    # module that fails to import must cost a caption, never the speech.
+    # ------------------------------------------------------------------
+
+    def _ava_accessibility(self) -> tuple:
+        """(captions_on, audio_muted) for Ava's speech, from live config."""
+        try:
+            from samsara.ui import ava_captions_qt        # noqa: PLC0415
+            config = getattr(self.app, 'config', {})
+            return (ava_captions_qt.captions_enabled(config),
+                    ava_captions_qt.ava_audio_muted(config))
+        except Exception:
+            logger.debug("AudioCoordinator: Ava captions unavailable", exc_info=True)
+            return (False, False)
+
+    def _emit_caption(self, text: str, *, hold: bool) -> None:
+        """Put Ava's words on screen. The panel marshals to the Qt thread."""
+        try:
+            from samsara.ui import ava_captions_qt        # noqa: PLC0415
+            ava_captions_qt.show_caption(self.app, text, hold=hold)
+        except Exception:
+            logger.warning("AudioCoordinator: could not show the Ava caption",
+                           exc_info=True)
+
+    def _with_caption_release(self, on_done):
+        """`on_done` that also ends the caption's hold, so the linger is
+        measured from the end of SPEECH and not from the start of it."""
+        def _release_then_done():
+            try:
+                from samsara.ui import ava_captions_qt    # noqa: PLC0415
+                ava_captions_qt.release_caption(self.app)
+            except Exception:
+                logger.debug("AudioCoordinator: caption release failed", exc_info=True)
+            if on_done:
+                on_done()
+        return _release_then_done
 
     def cancel_speech(self) -> None:
         """Cancel any in-progress TTS and return to IDLE."""

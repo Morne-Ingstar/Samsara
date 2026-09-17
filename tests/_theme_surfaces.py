@@ -120,6 +120,21 @@ def _ava_guide():
     return _WizardWindow(StubApp())
 
 
+def _ava_captions():
+    """The queue-176 caption panel, carrying a two-sentence reply.
+
+    Built directly, not through show_caption(), because the facade caches one
+    panel per process and the proof tool renders each surface twice."""
+    from samsara.ui.ava_captions_qt import _CaptionsWindow
+
+    window = _CaptionsWindow(StubApp({"accessibility": {"ava_captions": True}}))
+    window.show_text(
+        "The kettle is on the second shelf. I moved it there when the "
+        "cupboard was rearranged.",
+        hold=True, linger_s=6.0)
+    return window
+
+
 #: name -> zero-arg constructor. The name is also the PNG's filename.
 SURFACES = {
     "home": _main_window_page("Home"),
@@ -148,4 +163,5 @@ SURFACES = {
     "profile_manager": _profile_manager,
     "voice_training": _voice_training,
     "ava_guide": _ava_guide,
+    "ava_captions": _ava_captions,
 }

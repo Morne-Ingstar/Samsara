@@ -69,6 +69,48 @@ SETTINGS_SCHEMA = {
         "tab": "general",
     },
     "formatting_tokens.enabled": {"type": "bool", "default": True, "tab": "general"},
+    # Queue 176 -- Ava captions, the first of the ROADMAP's disability-support
+    # modes. Ava's speech is shown on screen so a deaf user can hold the same
+    # conversation; audio stays ON unless the second key is set. Both are
+    # MODES, on until switched off, not session states.
+    #   ava_captions      show every Ava utterance in the caption panel
+    #   ava_mute_audio    do not speak Ava's replies at all (captions still
+    #                     show; command acknowledgements and earcons are a
+    #                     different channel and are unaffected)
+    # The panel is samsara/ui/ava_captions_qt.py; the emit point is the one
+    # hook in AudioCoordinator.speak().
+    "accessibility.ava_captions": {
+        "type": "bool",
+        "default": False,
+        "tab": "general",
+    },
+    "accessibility.ava_mute_audio": {
+        "type": "bool",
+        "default": False,
+        "tab": "general",
+        "depends_on": "accessibility.ava_captions",
+    },
+    # How long a caption stays after Ava stops speaking. Configurable because
+    # reading speed is exactly the thing this mode exists to accommodate; no
+    # Settings control, so the two toggles stay the whole visible surface.
+    "accessibility.ava_captions_linger_s": {
+        "type": "float",
+        "min": 1.0,
+        "max": 60.0,
+        "step": 0.5,
+        "default": 6.0,
+        "tab": "general",
+        "depends_on": "accessibility.ava_captions",
+    },
+    # A preset name or a dragged `custom|<screen>|<cx>|<cy>` center -- the
+    # same one-string scheme as command_mode.preview_position, so a monitor
+    # identity survives a resolution change without a second key.
+    "accessibility.ava_captions_position": {
+        "type": "str",
+        "default": "bottom-center",
+        "tab": "general",
+        "depends_on": "accessibility.ava_captions",
+    },
     "cleanup_mode": {
         "type": "enum",
         "options": ["clean", "verbatim"],
