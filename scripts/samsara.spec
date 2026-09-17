@@ -13,6 +13,7 @@ from PyInstaller.utils.hooks import (
     collect_submodules,
 )
 from tools.release_manifest import tracked_tree_datas
+from samsara.runtime_manifest import OWW_MODEL_FILENAMES
 
 block_cipher = None
 
@@ -56,17 +57,7 @@ if os.path.exists(faster_whisper_assets):
 
 # 2b. OpenWakeWord — keep runtime code imports and binaries from collect_all, then
 # explicitly pin OWW ONNX artifacts needed for bundled inference.
-oww_model_filenames = [
-    'alexa_v0.1.onnx',
-    'embedding_model.onnx',
-    'hey_jarvis_v0.1.onnx',
-    'hey_mycroft_v0.1.onnx',
-    'hey_rhasspy_v0.1.onnx',
-    'melspectrogram.onnx',
-    'silero_vad.onnx',
-    'timer_v0.1.onnx',
-    'weather_v0.1.onnx',
-]
+oww_model_filenames = list(OWW_MODEL_FILENAMES)
 oww_datas, oww_binaries, oww_hiddenimports = collect_all('openwakeword')
 datas += oww_datas
 oww_model_datas = collect_data_files('openwakeword', subdir='resources/models', includes=oww_model_filenames)
