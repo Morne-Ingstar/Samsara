@@ -253,7 +253,7 @@ def warm_configured_provider(app) -> Readiness:
     import requests  # noqa: PLC0415
 
     provider = configured_provider(app)
-    tracker.begin_warming(provider)
+    generation = tracker.begin_warming(provider)
     started = time.monotonic()
     failure_kind = None
     try:
@@ -285,7 +285,7 @@ def warm_configured_provider(app) -> Readiness:
     except Exception as exc:
         logger.debug("[AVA-WARM] completion failed: %s", type(exc).__name__)
         failure_kind = PROVIDER_ERROR
-    result = tracker.record_warm_result(provider, failure_kind)
+    result = tracker.record_warm_result(provider, failure_kind, generation)
     logger.info("[AVA-WARM] provider=%s state=%s latency_ms=%d", provider, result.state,
                 round((time.monotonic() - started) * 1000))
     return result
@@ -298,6 +298,7 @@ class ReadinessTracker:
         self._clock = clock
         self._lock = threading.Lock()
         self._current = Readiness(UNKNOWN)
+        self._warm_generation = 0
         self._listeners: List[Callable[[Readiness, Readiness], None]] = []
 
     def snapshot(self) -> Readiness:
@@ -315,7 +316,8 @@ class ReadinessTracker:
                 self._listeners.remove(fn)
 
     def _set(self, provider: Optional[str], failure_kind: Optional[str], source: str,
-             state: Optional[str] = None) -> Readiness:
+             state: Optional[str] = None, *, expected_warm_generation: Optional[int] = None,
+             invalidate_warm: bool = False, begin_warm: bool = False) -> tuple[Readiness, Optional[int]]:
         new = Readiness(
             state=state or (READY if failure_kind is None else OFFLINE),
             provider=provider,
@@ -324,6 +326,12 @@ class ReadinessTracker:
             checked_at=self._clock(),
         )
         with self._lock:
+            if expected_warm_generation is not None and \
+                    expected_warm_generation != self._warm_generation:
+                return self._current, None
+            if begin_warm or invalidate_warm:
+                self._warm_generation += 1
+            generation = self._warm_generation if begin_warm else None
             old = self._current
             self._current = new
             listeners = list(self._listeners)
@@ -338,22 +346,34 @@ class ReadinessTracker:
                     fn(old, new)
                 except Exception as exc:
                     logger.debug(f"[AVA-READY] listener failed: {exc}")
-        return new
+        return new, generation
 
     def record_probe(self, provider: Optional[str], failure_kind: Optional[str]) -> Readiness:
-        return self._set(provider, failure_kind, "probe")
+        return self._set(provider, failure_kind, "probe")[0]
 
     def record_turn(self, provider: Optional[str], failure_kind: Optional[str]) -> Readiness:
-        return self._set(provider, failure_kind, "turn")
+        return self._set(provider, failure_kind, "turn", invalidate_warm=True)[0]
 
-    def begin_warming(self, provider: Optional[str]) -> Readiness:
-        return self._set(provider, None, "warmup", state=WARMING)
+    def begin_warming(self, provider: Optional[str]) -> int:
+        """Publish warming and return the generation allowed to finish it.
 
-    def record_warm_result(self, provider: Optional[str], failure_kind: Optional[str]) -> Readiness:
-        return self._set(provider, failure_kind, "warmup")
+        A real turn or a later warm-up advances the generation, so an older
+        background completion cannot replace fresher user-facing evidence.
+        """
+        _state, generation = self._set(provider, None, "warmup", state=WARMING,
+                                       begin_warm=True)
+        assert generation is not None
+        return generation
+
+    def record_warm_result(self, provider: Optional[str], failure_kind: Optional[str],
+                           generation: int) -> Readiness:
+        """Commit only the still-current warm-up generation's outcome."""
+        return self._set(provider, failure_kind, "warmup",
+                         expected_warm_generation=generation)[0]
 
     def reset(self) -> None:
         with self._lock:
+            self._warm_generation += 1
             self._current = Readiness(UNKNOWN)
 
 
