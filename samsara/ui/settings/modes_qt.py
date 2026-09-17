@@ -306,6 +306,18 @@ def _button_behavior_note() -> str:
 class ModesPage:
     """Methods of the Modes settings page (moved from _SettingsWindow)."""
 
+    def _reset_preview_position(self):
+        from samsara.streaming import reset_preview_placement  # noqa: PLC0415
+        return reset_preview_placement(self.app)
+
+    def _reset_indicator_position(self):
+        from samsara.ui.listening_indicator import reset_indicator_placement  # noqa: PLC0415
+        return reset_indicator_placement(self.app)
+
+    def _reset_floating_window_positions(self):
+        self._reset_preview_position()
+        self._reset_indicator_position()
+
     def _mouse_hotkey_control(self, btn):
         """The primary-key button, plus an inline notice when the configured
         mouse hotkey is not actually active (35). The saved choice is shown
@@ -645,6 +657,27 @@ class ModesPage:
         _show_warning(idle_hidden_warn, _PREVIEW_HIDDEN_WARNING if idle_opacity_spin.value() == 0 else "")
         idle_opacity_spin.valueChanged.connect(
             lambda v, w=idle_hidden_warn: _show_warning(w, _PREVIEW_HIDDEN_WARNING if v == 0 else ""))
+
+        recovery_heading = QLabel("Floating window recovery")
+        recovery_heading.setStyleSheet(
+            f"color: {theme.TEXT_PRIMARY}; font-size: 13px; font-weight: 600; margin-top: 4px;"
+        )
+        hands_free_layout.addWidget(recovery_heading)
+        preview_reset = QPushButton("Reset preview position")
+        preview_reset.clicked.connect(self._reset_preview_position)
+        self._widgets['reset_preview_position'] = preview_reset
+        _add_row(hands_free_layout, "Dictation preview", "Move the preview back to its default position.",
+                 preview_reset, width=220)
+        indicator_reset = QPushButton("Reset indicator position")
+        indicator_reset.clicked.connect(self._reset_indicator_position)
+        self._widgets['reset_indicator_position'] = indicator_reset
+        _add_row(hands_free_layout, "Listening indicator", "Move the listening indicator back to its default position.",
+                 indicator_reset, width=220)
+        both_reset = QPushButton("Reset both floating windows")
+        both_reset.clicked.connect(self._reset_floating_window_positions)
+        self._widgets['reset_floating_window_positions'] = both_reset
+        _add_row(hands_free_layout, "Reset both", "Restore both floating windows in one action.",
+                 both_reset, width=250)
 
         stored_stop = cmd_cfg.get('stop_phrases', [])
         if isinstance(stored_stop, str):

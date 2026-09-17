@@ -207,6 +207,37 @@ def _clamp_rect(x: int, y: int, w: int, h: int, geom) -> tuple:
     return x, y
 
 
+def _reachable_rect(x: int, y: int, w: int, h: int, geom) -> tuple:
+    """Clamp custom placement inside a taskbar-safe, reachable inset."""
+    margin = min(
+        _EDGE_MARGIN,
+        max((geom.width() - w) // 2, 0),
+        max((geom.height() - h) // 2, 0),
+    )
+    safe_geom = geom.adjusted(margin, margin, -margin, -margin)
+    return _clamp_rect(x, y, w, h, safe_geom)
+
+
+def reset_indicator_placement(app) -> bool:
+    """Restore the indicator default through the shared recovery path."""
+    config = getattr(app, "config", None)
+    if not isinstance(config, dict):
+        return False
+    changes = {
+        "listening_indicator_position": "bottom-center",
+        "listening_indicator_custom_position": None,
+    }
+    update = getattr(app, "update_config_and_save", None)
+    if callable(update):
+        update(changes)
+    else:
+        config.update(changes)
+    apply = getattr(app, "apply_listening_indicator_settings", None)
+    if callable(apply):
+        apply()
+    return True
+
+
 # ---------------------------------------------------------------------------
 # ListeningIndicator
 # ---------------------------------------------------------------------------
@@ -469,8 +500,17 @@ class ListeningIndicator(QWidget):
                 cx, cy,
             )
             return
+        normalized_name = screen_name if isinstance(screen_name, str) else None
+        if normalized_name and not any(
+                screen.name() == normalized_name for screen in QApplication.screens()):
+            logger.warning(
+                "Listening-indicator screen %r is unavailable; restoring default position.",
+                normalized_name,
+            )
+            self.set_position("bottom-center")
+            return
         self._custom_position = {
-            'screen': screen_name if isinstance(screen_name, str) else None,
+            'screen': normalized_name,
             'cx': min(max(cx, 0.0), 1.0),
             'cy': min(max(cy, 0.0), 1.0),
         }
@@ -549,7 +589,7 @@ class ListeningIndicator(QWidget):
             return
         geom = screen.availableGeometry()
         w, h = self.width(), self.height()
-        x, y = _clamp_rect(self.x(), self.y(), w, h, geom)
+        x, y = _reachable_rect(self.x(), self.y(), w, h, geom)
         self.move(x, y)
         cx = ((x + w / 2.0) - geom.x()) / max(geom.width(), 1)
         cy = ((y + h / 2.0) - geom.y()) / max(geom.height(), 1)
@@ -576,6 +616,12 @@ class ListeningIndicator(QWidget):
             for scr in QApplication.screens():
                 if scr.name() == name:
                     return scr
+            logger.warning(
+                "Listening-indicator screen %r disappeared; restoring default position.",
+                name,
+            )
+            self._custom_position = None
+            self._corner = "bottom-center"
         return QApplication.primaryScreen()
 
     # ------------------------------------------------------------------
@@ -1127,7 +1173,7 @@ class ListeningIndicator(QWidget):
                 cy = geom.y() + self._custom_position['cy'] * geom.height()
                 x = int(round(cx - pill_w / 2))
                 y = int(round(cy - pill_h / 2))
-                x, y = _clamp_rect(x, y, pill_w, pill_h, geom)
+                x, y = _reachable_rect(x, y, pill_w, pill_h, geom)
                 return x, y, geom
 
         screen = QApplication.primaryScreen()
@@ -1177,7 +1223,8 @@ class ListeningIndicator(QWidget):
         else:
             x = int(round(pill_x - pill_rect.x()))
             y = int(round(pill_y - pill_rect.y()))
-        x, y = _clamp_rect(x, y, int(total_w), int(total_h), geom)
+        clamp = _reachable_rect if self._custom_position is not None else _clamp_rect
+        x, y = clamp(x, y, int(total_w), int(total_h), geom)
         self.move(x, y)
 
     def paintEvent(self, event):

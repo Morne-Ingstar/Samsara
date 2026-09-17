@@ -1022,6 +1022,22 @@ class SamsaraTrayQt(QObject):
         settings = self._app.config.get('updates', {})
         return isinstance(settings, dict) and settings.get('tray_menu_entry', False) is True
 
+    def _reset_preview_position(self):
+        from samsara.streaming import reset_preview_placement  # noqa: PLC0415
+        if not reset_preview_placement(self._app):
+            raise RuntimeError("Dictation preview reset is unavailable")
+        return True
+
+    def _reset_indicator_position(self):
+        from samsara.ui.listening_indicator import reset_indicator_placement  # noqa: PLC0415
+        if not reset_indicator_placement(self._app):
+            raise RuntimeError("Listening indicator reset is unavailable")
+        return True
+
+    def _reset_floating_window_positions(self):
+        self._reset_preview_position()
+        self._reset_indicator_position()
+
     def _rebuild_menu(self):
         """Rebuild the full context menu from live app state.
 
@@ -1137,6 +1153,15 @@ class SamsaraTrayQt(QObject):
 
         # ---- Tools submenu: setup toggles, overlays, one-off tools ----
         tools_sub = QMenu("Tools")
+        window_recovery = QMenu("Window recovery")
+        add(window_recovery, "Reset dictation preview", self._reset_preview_position,
+            report_as="Reset dictation preview")
+        add(window_recovery, "Reset listening indicator", self._reset_indicator_position,
+            report_as="Reset listening indicator")
+        add(window_recovery, "Reset both floating windows", self._reset_floating_window_positions,
+            report_as="Reset floating windows")
+        tools_sub.addMenu(window_recovery)
+        tools_sub.addSeparator()
         add(tools_sub, "Streaming Mode  (CapsLock)", lambda checked: app.set_streaming_mode(checked),
             checked=app.config.get('streaming_mode', False), report_as="Streaming Mode")
         add(tools_sub, "Gesture Lane  (webcam)", lambda checked: app.set_gesture_enabled(checked),
