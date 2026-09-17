@@ -6,6 +6,7 @@ import os
 import subprocess
 import sys
 import time
+from pathlib import Path
 
 from samsara.plugin_commands import command
 from samsara.runtime import thread_registry
@@ -13,6 +14,16 @@ from samsara.runtime import thread_registry
 from samsara.log import get_logger
 
 logger = get_logger(__name__)
+
+
+def start_services(app):
+    """Install the user-owned alias file after the live matcher exists."""
+    try:
+        from samsara import plugin_commands
+        from samsara.command_catalog import install_user_aliases
+        install_user_aliases(plugin_commands._shared_matcher, Path(app.config_path).parent)
+    except Exception as exc:
+        logger.warning("[ALIASES] Could not load personal aliases: %s", exc)
 
 def speak_if_available(app, text):
     if hasattr(app, 'audio_coordinator') and app.audio_coordinator:
@@ -197,4 +208,37 @@ def reset_floating_windows(app, remainder="", **kwargs):
     # Voice commands arrive from the session worker; the live Qt widgets must
     # only be moved on the Qt runtime's thread.
     qt_runtime.post(_reset)
+    return True
+
+
+@command("save alias", aliases=["remove alias"], pack="core", risk_class="write")
+def personal_alias(app, remainder="", **kwargs):
+    """Saves the offered wording; say "remove alias <words>" to undo it."""
+    from samsara.command_catalog import (
+        install_user_aliases, remove_user_alias, save_user_alias,
+    )
+
+    home_dir = Path(app.config_path).parent
+    matcher = getattr(getattr(app, "command_executor", None), "_matcher", None)
+    alias = str(remainder or "").strip()
+    if alias:
+        if remove_user_alias(alias, home_dir, matcher):
+            speak_if_available(app, "Alias removed.")
+        else:
+            speak_if_available(app, "I could not find that alias.")
+        return True
+    offer = getattr(app, "_personal_alias_offer", None)
+    if not offer or time.monotonic() > offer.get("expires", 0):
+        app._personal_alias_offer = None
+        speak_if_available(app, "There is no alias waiting to save.")
+        return True
+    alias, canonical = offer["miss"], offer["canonical"]
+    existing = getattr(matcher, "_entries", {}).get(alias) if matcher is not None else None
+    if existing is not None and existing.phrase != canonical:
+        speak_if_available(app, "That phrase already belongs to another command.")
+        return True
+    if save_user_alias(alias, canonical, home_dir):
+        install_user_aliases(matcher, home_dir)
+        app._personal_alias_offer = None
+        speak_if_available(app, f"Saved {alias} as another way to say {canonical}.")
     return True

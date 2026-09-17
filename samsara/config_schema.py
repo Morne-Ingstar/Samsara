@@ -288,6 +288,14 @@ SETTINGS_SCHEMA = {
         "default": 5,
         "tab": "commands",
     },
+    "command_mode.personal_alias_offer_timeout_s": {
+        "type": "int",
+        "min": 3,
+        "max": 30,
+        "step": 1,
+        "default": 8,
+        "tab": "commands",
+    },
     # Live streaming-partials overlay preview for the toggle-DICTATE lane
     # (hands-free session). Preview only -- injection stays per-utterance
     # finals on the silence boundary; see samsara/streaming.py's

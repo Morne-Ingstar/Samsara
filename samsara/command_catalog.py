@@ -39,12 +39,16 @@ from __future__ import annotations
 
 import inspect
 import json
+import logging
+import os
 import re
 from dataclasses import asdict, dataclass, field
 from pathlib import Path
 from typing import Iterable, Optional
 
 ROOT = Path(__file__).resolve().parent.parent
+USER_ALIASES_FILENAME = "user_aliases.json"
+_ALIAS_LOG = logging.getLogger(__name__)
 
 ARG_TYPES = ("int", "nato_letter", "app_name", "monitor", "side", "playlist", "text", "none")
 RISKS = ("read", "ui", "write", "destructive")
@@ -152,6 +156,137 @@ def normalize_phrase(phrase: str) -> str:
     characters stripped per token (samsara.command_registry.view_tokens)."""
     from samsara.command_registry import view_tokens  # noqa: PLC0415
     return " ".join(tok for tok, _s, _e in view_tokens(phrase or ""))
+
+
+def user_aliases_path(home_dir: Optional[Path] = None) -> Path:
+    """The per-user alias store, beside training_data.json and config.json."""
+    if home_dir is None:
+        from samsara.paths import samsara_home_dir  # noqa: PLC0415
+        home_dir = samsara_home_dir()
+    return Path(home_dir) / USER_ALIASES_FILENAME
+
+
+def load_user_aliases(home_dir: Optional[Path] = None) -> dict[str, str]:
+    """Read the user-owned alias map. An absent file is intentionally empty.
+
+    There is no bundled seed: the user's file is the only authority and a
+    malformed file is quarantined rather than overwritten on a later save.
+    """
+    path = user_aliases_path(home_dir)
+    if not path.exists():
+        return {}
+    try:
+        data = json.loads(path.read_text(encoding="utf-8"))
+        raw = data.get("aliases", {}) if isinstance(data, dict) else {}
+        if not isinstance(raw, dict):
+            raise ValueError("aliases must be an object")
+        return {
+            alias: canonical
+            for key, value in raw.items()
+            if (alias := normalize_phrase(str(key)))
+            and (canonical := normalize_phrase(str(value)))
+        }
+    except Exception as exc:
+        from samsara.paths import quarantine_corrupt_file  # noqa: PLC0415
+        quarantine_corrupt_file(path, _ALIAS_LOG, exc)
+        return {}
+
+
+def save_user_alias(alias: str, canonical: str, home_dir: Optional[Path] = None) -> bool:
+    """Atomically persist one normalised personal alias without touching config."""
+    alias, canonical = normalize_phrase(alias), normalize_phrase(canonical)
+    if not alias or not canonical or alias == canonical:
+        return False
+    path = user_aliases_path(home_dir)
+    aliases = load_user_aliases(path.parent)
+    aliases[alias] = canonical
+    path.parent.mkdir(parents=True, exist_ok=True)
+    temporary = path.with_suffix(".json.tmp")
+    temporary.write_text(json.dumps({"version": 1, "aliases": aliases}, indent=2, sort_keys=True),
+                         encoding="utf-8")
+    os.replace(temporary, path)
+    return True
+
+
+def _refresh_match_table(matcher) -> None:
+    matcher._match_table = [
+        (alias.split(), entry)
+        for entry in {id(entry): entry for entry in matcher._entries.values()}.values()
+        for alias in [entry.phrase, *entry.aliases]
+    ]
+    matcher._match_table.sort(key=lambda item: len(item[0]), reverse=True)
+
+
+def install_user_aliases(matcher, home_dir: Optional[Path] = None) -> int:
+    """Add persisted aliases to a live, already-frozen matcher.
+
+    The matcher is intentionally the supplied live registry: this lets boot
+    and save update the same command surface the cheat sheet reads, without
+    changing commands.json or reconstructing plugin discovery.
+    """
+    if matcher is None:
+        return 0
+    added = 0
+    for alias, canonical in load_user_aliases(home_dir).items():
+        entry = matcher._entries.get(canonical)
+        if entry is None or alias in matcher._entries:
+            continue
+        entry.aliases.append(alias)
+        matcher._entries[alias] = entry
+        added += 1
+    if added:
+        _refresh_match_table(matcher)
+    return added
+
+
+def remove_user_alias(alias: str, home_dir: Optional[Path] = None, matcher=None) -> bool:
+    """Remove a saved alias from disk and, when supplied, the live matcher."""
+    alias = normalize_phrase(alias)
+    aliases = load_user_aliases(home_dir)
+    if not alias or alias not in aliases:
+        return False
+    del aliases[alias]
+    path = user_aliases_path(home_dir)
+    temporary = path.with_suffix(".json.tmp")
+    temporary.write_text(json.dumps({"version": 1, "aliases": aliases}, indent=2, sort_keys=True),
+                         encoding="utf-8")
+    os.replace(temporary, path)
+    if matcher is not None:
+        entry = matcher._entries.pop(alias, None)
+        if entry is not None and alias in entry.aliases:
+            entry.aliases.remove(alias)
+            _refresh_match_table(matcher)
+    return True
+
+
+def personal_alias_offer_after_outcome(app, outcome, text: str, *, now=None) -> Optional[dict]:
+    """Track exactly one MISS and offer it only when the next utterance wins."""
+    import time  # noqa: PLC0415
+    from samsara.config_defaults import cfg_get  # noqa: PLC0415
+
+    now = time.monotonic() if now is None else now
+    pending = getattr(app, "_personal_alias_offer", None)
+    if pending and now > pending["expires"]:
+        pending = None
+        app._personal_alias_offer = None
+    kind = str(getattr(outcome, "kind", ""))
+    spoken = normalize_phrase(text)
+    if pending and spoken in {"no thanks", "no thank you"}:
+        app._personal_alias_offer = None
+        return None
+    if kind == "command_miss" and spoken:
+        app._personal_alias_offer = {
+            "miss": spoken, "expires": now + cfg_get(app.config, "command_mode.personal_alias_offer_timeout_s"),
+        }
+        return None
+    if pending and kind in {"command_executed", "hands_free_command_executed"}:
+        canonical = normalize_phrase(getattr(outcome, "detail", {}).get("phrase", ""))
+        if canonical:
+            pending["canonical"] = canonical
+            return dict(pending)
+    if pending and kind not in {"empty", "command_miss"}:
+        app._personal_alias_offer = None
+    return None
 
 
 def slug(phrase: str) -> str:
@@ -678,7 +813,11 @@ def display_aliases(record: dict, limit: int = 3) -> list:
     """Up to `limit` other phrases for a record, shortest first."""
     canonical = canonical_phrase(record)
     others = [a for a in record.get("aliases", []) if a != canonical]
-    return sorted(others, key=lambda a: (len(a), a))[:limit]
+    personal = {alias for alias, target in load_user_aliases().items() if target == canonical}
+    return [
+        f"{alias} (yours)" if alias in personal else alias
+        for alias in sorted(others, key=lambda a: (len(a), a))[:limit]
+    ]
 
 
 #: A "try saying ..." example must be local, instant and real: no demo or
