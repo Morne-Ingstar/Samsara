@@ -119,6 +119,7 @@ tbody tr:hover td.samsara-col {
 .check { color: #5EEAD4; }
 .cross { color: #8A8A92; }
 .highlight { color: #5EEAD4; font-weight: 600; }
+.not-publicly-verified { color: var(--text-muted); font-size: 12px; }
 
 /* Engine section */
 .engine-section {
@@ -182,131 +183,123 @@ footer {
 <tbody>
 <tr>
     <td>Price</td>
-    <td class="samsara-col"><span class="highlight">Free &amp; open source</span></td>
-    <td>Contact sales / reseller pricing</td>
-    <td>Free; optional $25/mo Patreon beta</td>
-    <td>Included with Windows 11 22H2+</td>
-    <td>Free local; cloud plans from $6.67/user/mo annually</td>
+    <td class="samsara-col"><span class="highlight">Free, AGPL-3.0; optional third-party services may charge.</span></td>
+    <td><span class="not-publicly-verified">Not publicly verified</span></td>
+    <td><span class="not-publicly-verified">Not publicly verified</span></td>
+    <td><span class="not-publicly-verified">Not publicly verified</span></td>
+    <td><span class="not-publicly-verified">Not publicly verified</span></td>
 </tr>
 <tr>
     <td>Platform</td>
-    <td class="samsara-col">Windows</td>
-    <td>Windows 10/11</td>
-    <td>Windows 8+, macOS 10.13+, Linux/X11</td>
-    <td>Windows 11 22H2+</td>
-    <td>Windows, macOS, Linux</td>
+    <td class="samsara-col">Windows 10/11</td>
+    <td><span class="not-publicly-verified">Not publicly verified</span></td>
+    <td><span class="not-publicly-verified">Not publicly verified</span></td>
+    <td><span class="not-publicly-verified">Not publicly verified</span></td>
+    <td><span class="not-publicly-verified">Not publicly verified</span></td>
 </tr>
 <tr>
     <td>Works offline</td>
-    <td class="samsara-col"><span class="check">&#10003; Core local; network features optional</span></td>
-    <td>Local recognition; internet for download and activation</td>
-    <td><span class="check">&#10003; Local recognition available</span></td>
-    <td><span class="check">&#10003; On-device after speech-model setup</span></td>
-    <td>Local models; optional cloud/BYOK</td>
+    <td class="samsara-col"><span class="check">&#10003; Core dictation and wake processing are local; downloads and optional features can use network.</span></td>
+    <td><span class="not-publicly-verified">Not publicly verified</span></td>
+    <td><span class="not-publicly-verified">Not publicly verified</span></td>
+    <td><span class="not-publicly-verified">Not publicly verified</span></td>
+    <td><span class="not-publicly-verified">Not publicly verified</span></td>
 </tr>
 <tr>
     <td>Speech engine</td>
-    <td class="samsara-col">Whisper (faster-whisper / CTranslate2)</td>
-    <td>Nuance Deep Learning; adapts to speaker</td>
-    <td>Conformer; beta offers additional hybrid engines</td>
-    <td>Microsoft on-device speech recognition</td>
-    <td>Whisper/whisper.cpp + NVIDIA Parakeet; optional cloud STT</td>
+    <td class="samsara-col">Whisper via faster-whisper; optional NVIDIA CUDA acceleration.</td>
+    <td><span class="not-publicly-verified">Not publicly verified</span></td>
+    <td><span class="not-publicly-verified">Not publicly verified</span></td>
+    <td><span class="not-publicly-verified">Not publicly verified</span></td>
+    <td><span class="not-publicly-verified">Not publicly verified</span></td>
 </tr>
 <tr>
     <td>Voice commands</td>
-    <td class="samsara-col"><span class="highlight">Extensive, built-in</span></td>
-    <td>Built-in control + custom multi-step macros</td>
-    <td>Extensive through user/community scripts</td>
-    <td>Windows, app, mouse, keyboard, browser and text control</td>
-    <td>Dictation + AI agent/actions; not general desktop control</td>
+    <td class="samsara-col"><span class="highlight">Extensive: built-ins and plugins</span></td>
+    <td><span class="not-publicly-verified">Not publicly verified</span></td>
+    <td><span class="not-publicly-verified">Not publicly verified</span></td>
+    <td><span class="not-publicly-verified">Not publicly verified</span></td>
+    <td><span class="not-publicly-verified">Not publicly verified</span></td>
 </tr>
 <tr>
     <td>Custom commands</td>
-    <td class="samsara-col"><span class="highlight">Python plugins</span></td>
-    <td>Voice macros</td>
-    <td>.talon files + Python</td>
-    <td>Voice shortcuts with up to 8 supported actions</td>
-    <td>Custom AI actions/prompts; no desktop macros documented</td>
+    <td class="samsara-col"><span class="highlight">Python command plugins.</span></td>
+    <td><span class="not-publicly-verified">Not publicly verified</span></td>
+    <td><span class="not-publicly-verified">Not publicly verified</span></td>
+    <td><span class="not-publicly-verified">Not publicly verified</span></td>
+    <td><span class="not-publicly-verified">Not publicly verified</span></td>
 </tr>
 <tr>
     <td>Dictation</td>
-    <td class="samsara-col">Hold, streaming, and buffered HANDS FREE</td>
-    <td>Real-time; adapts while dictating</td>
-    <td>Script-driven dictation/mixed mode; beta Whisper hybrid</td>
-    <td>Real-time</td>
-    <td>AI-cleaned dictation</td>
+    <td class="samsara-col">Hold-to-dictate, Continuous, and Hands Free dictation.</td>
+    <td><span class="not-publicly-verified">Not publicly verified</span></td>
+    <td><span class="not-publicly-verified">Not publicly verified</span></td>
+    <td><span class="not-publicly-verified">Not publicly verified</span></td>
+    <td><span class="not-publicly-verified">Not publicly verified</span></td>
 </tr>
 <tr>
     <td>Training required</td>
     <td class="samsara-col"><span class="highlight">None</span></td>
-    <td>No initial profile training; adapts while dictating</td>
-    <td>No profile training documented; script setup required</td>
-    <td>None</td>
-    <td>None</td>
+    <td><span class="not-publicly-verified">Not publicly verified</span></td>
+    <td><span class="not-publicly-verified">Not publicly verified</span></td>
+    <td><span class="not-publicly-verified">Not publicly verified</span></td>
+    <td><span class="not-publicly-verified">Not publicly verified</span></td>
 </tr>
 <tr>
     <td>Wake word</td>
     <td class="samsara-col"><span class="check">&#10003; Configurable (OpenWakeWord or transcript fallback)</span></td>
-    <td>"Wake Up" / "Listen to Me" from sleep mode</td>
-    <td>Not documented</td>
-    <td>"Voice access wake up" / "Unmute"</td>
-    <td>No always-listening wake word documented; uses hotkeys</td>
+    <td><span class="not-publicly-verified">Not publicly verified</span></td>
+    <td><span class="not-publicly-verified">Not publicly verified</span></td>
+    <td><span class="not-publicly-verified">Not publicly verified</span></td>
+    <td><span class="not-publicly-verified">Not publicly verified</span></td>
 </tr>
 <tr>
     <td>AI assistant</td>
-    <td class="samsara-col"><span class="check">&#10003; Ava (local or cloud LLM)</span></td>
-    <td><span class="cross">No general-purpose assistant built in</span></td>
-    <td><span class="cross">No general-purpose assistant built in</span></td>
-    <td><span class="cross">No general-purpose assistant built into Voice Access</span></td>
-    <td><span class="check">&#10003; Named local or cloud AI agent</span></td>
+    <td class="samsara-col"><span class="check">&#10003; Ava: local Ollama or user-configured cloud LLM.</span></td>
+    <td><span class="not-publicly-verified">Not publicly verified</span></td>
+    <td><span class="not-publicly-verified">Not publicly verified</span></td>
+    <td><span class="not-publicly-verified">Not publicly verified</span></td>
+    <td><span class="not-publicly-verified">Not publicly verified</span></td>
 </tr>
 <tr>
     <td>Text selection</td>
-    <td class="samsara-col"><span class="highlight">Voice markers</span></td>
-    <td>Voice editing</td>
-    <td>Cursor/selection commands</td>
-    <td>Direct editing commands + number/grid overlays</td>
-    <td><span class="cross">&#10007;</span></td>
-</tr>
-<tr>
-    <td>Eye tracking</td>
-    <td class="samsara-col"><span class="cross">&#10007;</span></td>
-    <td><span class="cross">&#10007;</span></td>
-    <td><span class="check">&#10003; Supported Tobii devices</span></td>
-    <td><span class="cross">&#10007;</span></td>
-    <td><span class="cross">&#10007;</span></td>
+    <td class="samsara-col"><span class="highlight">Voice markers and selection commands.</span></td>
+    <td><span class="not-publicly-verified">Not publicly verified</span></td>
+    <td><span class="not-publicly-verified">Not publicly verified</span></td>
+    <td><span class="not-publicly-verified">Not publicly verified</span></td>
+    <td><span class="not-publicly-verified">Not publicly verified</span></td>
 </tr>
 <tr>
     <td>GPU acceleration</td>
-    <td class="samsara-col"><span class="check">&#10003; CUDA optional</span></td>
-    <td>Not documented</td>
-    <td>N/A</td>
-    <td>N/A</td>
-    <td>CUDA; local LLM may use Vulkan/Metal</td>
+    <td class="samsara-col"><span class="check">&#10003; Optional NVIDIA CUDA acceleration.</span></td>
+    <td><span class="not-publicly-verified">Not publicly verified</span></td>
+    <td><span class="not-publicly-verified">Not publicly verified</span></td>
+    <td><span class="not-publicly-verified">Not publicly verified</span></td>
+    <td><span class="not-publicly-verified">Not publicly verified</span></td>
 </tr>
 <tr>
     <td>Privacy</td>
     <td class="samsara-col"><span class="highlight">No telemetry; optional network paths disclosed</span></td>
-    <td>Local recognition; online activation; optional enterprise management</td>
-    <td>Not clearly documented by vendor</td>
-    <td>On-device recognition; voice data not sent to Microsoft</td>
-    <td>Local audio stays local; diagnostics opt-in; cloud/sync optional</td>
+    <td><span class="not-publicly-verified">Not publicly verified</span></td>
+    <td><span class="not-publicly-verified">Not publicly verified</span></td>
+    <td><span class="not-publicly-verified">Not publicly verified</span></td>
+    <td><span class="not-publicly-verified">Not publicly verified</span></td>
 </tr>
 <tr>
     <td>Open source</td>
-    <td class="samsara-col"><span class="check">&#10003; AGPL-3.0</span></td>
-    <td><span class="cross">&#10007; Proprietary</span></td>
-    <td>Core app not published; community/user scripts are open</td>
-    <td><span class="cross">&#10007; Proprietary</span></td>
-    <td><span class="check">&#10003;</span></td>
+    <td class="samsara-col"><span class="check">&#10003; AGPL-3.0.</span></td>
+    <td><span class="not-publicly-verified">Not publicly verified</span></td>
+    <td><span class="not-publicly-verified">Not publicly verified</span></td>
+    <td><span class="not-publicly-verified">Not publicly verified</span></td>
+    <td><span class="not-publicly-verified">Not publicly verified</span></td>
 </tr>
 <tr>
     <td>Best for</td>
     <td class="samsara-col">Accessibility + desktop control</td>
-    <td>Professional dictation</td>
-    <td>Developers / power users</td>
-    <td>General Windows users</td>
-    <td>Fast dictation</td>
+    <td><span class="not-publicly-verified">Not publicly verified</span></td>
+    <td><span class="not-publicly-verified">Not publicly verified</span></td>
+    <td><span class="not-publicly-verified">Not publicly verified</span></td>
+    <td><span class="not-publicly-verified">Not publicly verified</span></td>
 </tr>
 </tbody>
 </table>
@@ -314,7 +307,6 @@ footer {
 
 <div class="engine-section">
     <h2>Sources and scope</h2>
-    <p>Checked against vendor documentation in July 2026. Products change; follow the vendor links before making a purchase or deployment decision. "Not documented" means the vendor sources reviewed did not establish the claim—it does not prove a feature is impossible.</p>
     <p>
         <a href="https://dragon.nuance.com/en-us/dragon-professional">Dragon Professional</a> &middot;
         <a href="https://talonvoice.com/docs/">Talon Voice</a> &middot;
