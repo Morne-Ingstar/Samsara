@@ -31,12 +31,25 @@ def _app(*, warm_on_boot=True):
 
 def test_warming_is_neither_ready_nor_offline_and_has_its_own_copy():
     tracker = ava_readiness.ReadinessTracker()
-    warming = tracker.begin_warming("ollama")
+    generation = tracker.begin_warming("ollama")
+    assert isinstance(generation, int)
+    warming = tracker.snapshot()
     assert warming.warming
     assert not warming.ready
     assert not warming.offline
     assert warming.badge_label() == "Ava: warming"
     assert warming.sentence() == "Ava is warming up."
+
+
+def test_stale_warm_result_cannot_overwrite_a_later_failed_real_turn():
+    tracker = ava_readiness.ReadinessTracker()
+    generation = tracker.begin_warming("ollama")
+    real_turn = tracker.record_turn("ollama", ava_readiness.UNREACHABLE)
+    result = tracker.record_warm_result("ollama", None, generation)
+
+    assert real_turn.offline
+    assert result == real_turn
+    assert tracker.snapshot() == real_turn
 
 
 def test_monitor_probe_does_not_demote_an_inflight_warmup():
