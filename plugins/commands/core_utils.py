@@ -173,3 +173,32 @@ def reset_hints(app, remainder="", **kwargs):
     hints.reset()
     speak_if_available(app, "Hints reset.")
     return True
+
+
+@command(
+    "reset floating windows",
+    aliases=["reset window positions"],
+    pack="core",
+    ai_visible=False,
+    risk_class="ui",
+)
+def reset_floating_windows(app, remainder="", **kwargs):
+    """Restores both floating windows to their default positions."""
+    # The combined hands-free lane is also a dictation lane. Do not take a
+    # prefix out of a sentence; this is an exact whole-utterance recovery
+    # command, like the draft-view controls in session_modes.
+    if str(remainder or "").strip():
+        return False
+    from samsara.ui import qt_runtime
+    from samsara.streaming import reset_preview_placement
+    from samsara.ui.listening_indicator import reset_indicator_placement
+
+    def _reset():
+        reset_preview_placement(app)
+        reset_indicator_placement(app)
+        speak_if_available(app, "Floating windows reset.")
+
+    # Voice commands arrive from the session worker; the live Qt widgets must
+    # only be moved on the Qt runtime's thread.
+    qt_runtime.post(_reset)
+    return True

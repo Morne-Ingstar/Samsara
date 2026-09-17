@@ -87,6 +87,7 @@ PREVIEW_POSITION_PRESETS = frozenset({
     "top-left", "top-center", "top-right", "center-left", "center",
     "center-right", "bottom-left", "bottom-center", "bottom-right",
 })
+_CUSTOM_REACHABLE_MARGIN = 24
 
 
 def _preview_position(value):
@@ -104,6 +105,32 @@ def _preview_position(value):
                 if all(np.isfinite(v) for v in (cx, cy)):
                     return ("custom", parts[1], min(max(cx, 0.0), 1.0), min(max(cy, 0.0), 1.0))
     return PREVIEW_POSITION_DEFAULT
+
+
+def reset_preview_placement(app) -> bool:
+    """Restore the preview to its documented default and move a live one.
+
+    This is deliberately the one reset path used by settings, tray, and the
+    voice command. A live DictatePreviewSession is optional: persisting the
+    default still makes the next session recoverable.
+    """
+    config = getattr(app, "config", None)
+    if not isinstance(config, dict):
+        return False
+    command_mode = dict(config.get("command_mode") or {})
+    command_mode["preview_position"] = PREVIEW_POSITION_DEFAULT
+    update = getattr(app, "update_config_and_save", None)
+    if callable(update):
+        update({"command_mode": command_mode})
+    else:
+        config["command_mode"] = command_mode
+
+    session = getattr(app, "_dictate_preview", None)
+    overlay = getattr(session, "_overlay", None)
+    move = getattr(overlay, "move_draft", None)
+    if callable(move):
+        move(PREVIEW_POSITION_DEFAULT)
+    return True
 
 
 # ---- Modifier-release plumbing (Windows) -----------------------------------
@@ -737,6 +764,13 @@ class _StreamingWidget:
                     for screen in QApplication.screens():
                         if screen.name() == name:
                             return screen
+                    # A named monitor can disappear after undocking. Its
+                    # fractions have no useful meaning on another display;
+                    # use the primary screen's documented default instead.
+                    self._preview_position = PREVIEW_POSITION_DEFAULT
+                    callback = self._on_placement_committed
+                    if callback is not None:
+                        callback(PREVIEW_POSITION_DEFAULT)
                 return QApplication.primaryScreen()
 
             @staticmethod
@@ -744,13 +778,25 @@ class _StreamingWidget:
                 return (max(geom.left(), min(x, geom.right() - w + 1)),
                         max(geom.top(), min(y, geom.bottom() - h + 1)))
 
+            @classmethod
+            def _clamp_custom_position(cls, x, y, w, h, geom):
+                """Keep custom drags visibly inside the usable desktop."""
+                margin = min(
+                    _CUSTOM_REACHABLE_MARGIN,
+                    max((geom.width() - w) // 2, 0),
+                    max((geom.height() - h) // 2, 0),
+                )
+                safe_geom = geom.adjusted(margin, margin, -margin, -margin)
+                return cls._clamp_position(x, y, w, h, safe_geom)
+
             def _commit_drag_position(self):
                 screen = QApplication.screenAt(self.mapToGlobal(self.rect().center()))
                 screen = screen or QApplication.primaryScreen()
                 if screen is None:
                     return
                 geom = screen.availableGeometry()
-                x, y = self._clamp_position(self.x(), self.y(), self.width(), self.height(), geom)
+                x, y = self._clamp_custom_position(
+                    self.x(), self.y(), self.width(), self.height(), geom)
                 self.move(x, y)
                 cx = min(max(((x + self.width() / 2) - geom.x()) / max(geom.width(), 1), 0.0), 1.0)
                 cy = min(max(((y + self.height() / 2) - geom.y()) / max(geom.height(), 1), 0.0), 1.0)
@@ -1140,7 +1186,9 @@ class _StreamingWidget:
                          scr.top() + (scr.height() - req_h) // 2)
                     if placement == PREVIEW_POSITION_DEFAULT:
                         y -= TASKBAR_RESERVE + OVERLAY_GAP_ABOVE_TASKBAR
-                x, y = self._clamp_position(x, y, OVERLAY_W, req_h, scr)
+                clamp = (self._clamp_custom_position if isinstance(placement, tuple)
+                         else self._clamp_position)
+                x, y = clamp(x, y, OVERLAY_W, req_h, scr)
                 self.move(x, y)
 
             def _on_update(self, text, state, text_format="auto"):
@@ -1225,6 +1273,10 @@ class _StreamingWidget:
     # Queue 85. Called on the Qt thread (StreamingOverlayQt posts them).
     def enable_interaction(self, on_word_clicked, on_clear):
         self._w.enable_interaction(on_word_clicked, on_clear)
+    def set_correction_choice_callbacks(self, on_choice, on_dismiss):
+        # Queue 161 installs these during construction. Keep the wrapper
+        # surface complete so entering Hands-Free cannot crash.
+        self._w.set_correction_choice_callbacks(on_choice, on_dismiss)
     def set_prompt(self, text):  self._w.set_prompt(text)
     def scroll_draft(self, where): self._w.scroll_draft(where)
 
