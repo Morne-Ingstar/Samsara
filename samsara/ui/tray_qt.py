@@ -48,13 +48,15 @@ logger = get_logger(__name__)
 
 
 #: Capture state -> ring colour token and ring drawing. Fill (not colour)
-#: is what says "recording"; spin and pulse are runtime.
+#: is what says "recording"; spin and pulse are runtime. Ava uses the
+#: thicker brand-weight hollow ring so listening and Ava remain distinct when
+#: their colour tokens cannot be seen.
 def mark_capture():
     return {
         "idle":      (theme.ICON_IDLE, "ring-hollow"),
         "listening": (theme.ACCENT, "ring-hollow"),
         "recording": (theme.RECORDING, "ring-filled"),
-        "ava":       (theme.AVA, "ring-hollow"),
+        "ava":       (theme.AVA, "ring-brand"),
     }
 
 
