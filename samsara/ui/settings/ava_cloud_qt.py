@@ -24,6 +24,7 @@ from PySide6.QtWidgets import (
 )
 
 from samsara.runtime import thread_registry
+from samsara import ava_readiness
 from samsara.ui import theme
 
 from samsara.ui.settings_qt import _CONTENT_MAX_WIDTH
@@ -105,6 +106,31 @@ class AvaCloudPage:
         enable_note.setWordWrap(True)
         enable_note.setStyleSheet(f"color: {theme.ICON_IDLE}; font-size: {theme.TYPE_MIN}px; margin-left: 26px;")
         layout.addWidget(enable_note)
+        layout.addSpacing(8)
+
+        # OWNER COPY — REVIEW: This sends a small request at startup so Ava's
+        # first reply is fast.
+        warm_on_boot = QCheckBox(
+            "Warm Ava at startup (sends a small request so the first reply is fast)"
+        )
+        warm_on_boot.setChecked(ava_readiness.warm_on_boot_enabled(self.app))
+        warm_choice_is_explicit = {
+            "value": "warm_on_boot" in (self.app.config.get("ava", {}) or {})
+        }
+
+        def _remember_warm_choice(_checked):
+            warm_choice_is_explicit["value"] = True
+
+        def _default_warm_for_provider(cloud_is_enabled):
+            if not warm_choice_is_explicit["value"]:
+                was_blocked = warm_on_boot.blockSignals(True)
+                warm_on_boot.setChecked(not cloud_is_enabled)
+                warm_on_boot.blockSignals(was_blocked)
+
+        warm_on_boot.toggled.connect(_remember_warm_choice)
+        cloud_enabled.toggled.connect(_default_warm_for_provider)
+        self._widgets['ava_warm_on_boot'] = warm_on_boot
+        layout.addWidget(warm_on_boot)
         layout.addSpacing(8)
 
         # Ava Personality toggle
@@ -457,6 +483,11 @@ class AvaCloudPage:
 
             if 'ava_personality' in self._widgets:
                 updates['ava_personality'] = self._widgets['ava_personality'].currentText().lower()
+
+            if 'ava_warm_on_boot' in self._widgets:
+                ava_cfg = dict(self.app.config.get('ava', {}) or {})
+                ava_cfg['warm_on_boot'] = self._widgets['ava_warm_on_boot'].isChecked()
+                updates['ava'] = ava_cfg
 
             if 'ava_memory_mode' in self._widgets:
                 mem_updates = dict(self.app.config.get('ava_memory', {}))

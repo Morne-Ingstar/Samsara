@@ -21,12 +21,14 @@ def _fresh_tracker(monkeypatch):
     ava_readiness.tracker.reset()
 
 
-def _app(*, warm_on_boot=True):
-    return SimpleNamespace(config={
-        "ava": {"warm_on_boot": warm_on_boot},
+def _app(*, warm_on_boot=True, cloud_enabled=False):
+    config = {
         "ollama": {"enabled": True, "host": "http://ollama.test", "model": "test", "timeout_seconds": 1},
-        "cloud_llm": {"enabled": False, "api_key": ""},
-    })
+        "cloud_llm": {"enabled": cloud_enabled, "api_key": "test-key" if cloud_enabled else ""},
+    }
+    if warm_on_boot is not None:
+        config["ava"] = {"warm_on_boot": warm_on_boot}
+    return SimpleNamespace(config=config)
 
 
 def test_warming_is_neither_ready_nor_offline_and_has_its_own_copy():
@@ -134,9 +136,15 @@ def test_warm_on_boot_is_not_scheduled_when_disabled():
     assert calls == []
 
 
+def test_warm_on_boot_defaults_local_on_and_cloud_off():
+    assert ava_readiness.warm_on_boot_enabled(_app(warm_on_boot=None))
+    assert not ava_readiness.warm_on_boot_enabled(
+        _app(warm_on_boot=None, cloud_enabled=True))
+
+
 def test_schema_registers_the_warm_on_boot_default():
     assert config_schema.SETTINGS_SCHEMA["ava.warm_on_boot"] == {
-        "type": "bool", "default": True, "tab": "ava"}
+        "type": "bool", "default": False, "tab": "ava"}
 
 
 def test_home_signals_maps_readiness_warming(monkeypatch):

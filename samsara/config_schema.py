@@ -802,7 +802,7 @@ SETTINGS_SCHEMA = {
     },
     "ava.warm_on_boot": {
         "type": "bool",
-        "default": True,
+        "default": False,
         "tab": "ava",
     },
     "ava_invocations": {
