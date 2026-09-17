@@ -29,8 +29,8 @@ that were not true. This file pins the repairs.
      canonical phrase so every member counts.
 
   4. THE FIXTURE WAS STALE. tests/fixtures/intent_eval.jsonl was generated
-     against a smaller catalog, so ten commands were measured at zero lines.
-     Regenerated against the live 491.
+     against a smaller catalog, so commands were measured at zero lines.
+     Regenerated against the live 503.
 
 Everything here is observer-only and stays that way: TestTheGateStillRunsNothing
 is the test that fails if any of this ever reaches the live path.
