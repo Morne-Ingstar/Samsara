@@ -60,299 +60,296 @@ Columns: canonical id; every phrase the registry maps to it; args as name:type (
 | `audio_switch.switch_audio_to` | `switch audio to`, `use` | text:text | ui | yes |  | Switch audio output. | `plugins/commands/audio_switch.py:30` |
 | `audio_switch.switch_mic_to` | `switch mic to`, `switch microphone to`, `use mic`, `use microphone` | text:text | ui | yes |  | Switches the microphone to the one you name. | `plugins/commands/audio_switch.py:40` |
 
-## builtin (289)
+## builtin (286)
 
 | canonical id | phrases | args | risk | undo | whole | description | source |
 |---|---|---|---|---|---|---|---|
-| `builtin.accessibility_settings` | `accessibility settings` | - | ui | yes |  | Opens all accessibility settings. | `commands.json:2060` |
-| `builtin.action_center` | `action center` | - | ui | yes |  | Opens action center / quick settings. | `commands.json:1234` |
-| `builtin.address_bar` | `address bar` | - | ui | yes |  | Puts the cursor in the browser's address bar. | `commands.json:1360` |
-| `builtin.again` | `again` | - | ui | yes |  | Repeats the last executed command. | `commands.json:2237` |
-| `builtin.apostrophe` | `apostrophe` | - | write | no |  | Types an apostrophe at the cursor. | `commands.json:503` |
-| `builtin.arc_repo` | `arc repo` | - | ui | yes |  | Opens ARC GitHub repo. | `commands.json:1586` |
+| `builtin.accessibility_settings` | `accessibility settings` | - | ui | yes |  | Opens all accessibility settings. | `commands.json:2040` |
+| `builtin.action_center` | `action center` | - | ui | yes |  | Opens action center / quick settings. | `commands.json:1214` |
+| `builtin.address_bar` | `address bar` | - | ui | yes |  | Puts the cursor in the browser's address bar. | `commands.json:1340` |
+| `builtin.again` | `again` | - | ui | yes |  | Repeats the last executed command. | `commands.json:2217` |
+| `builtin.apostrophe` | `apostrophe` | - | write | no |  | Types an apostrophe at the cursor. | `commands.json:483` |
+| `builtin.arc_repo` | `arc repo` | - | ui | yes |  | Opens ARC GitHub repo. | `commands.json:1566` |
 | `builtin.back_field` | `back field` | - | ui | yes |  | Moves focus to the previous field. | `commands.json:353` |
 | `builtin.back_tab` | `back tab` | - | ui | yes |  | Moves focus to the previous field. | `commands.json:362` |
-| `builtin.backspace` | `backspace` | - | write | no |  | Deletes previous character. | `commands.json:598` |
-| `builtin.bigger_cursor` | `bigger cursor` | - | ui | yes |  | Opens cursor size settings. | `commands.json:2033` |
-| `builtin.bigger_text` | `bigger text` | - | ui | yes |  | Makes the text bigger in the app you are using. | `commands.json:2182` |
-| `builtin.bold` | `bold` | - | ui | yes |  | Toggles bold text. | `commands.json:764` |
-| `builtin.bookmark_this` | `bookmark this` | - | write | no |  | Bookmarks the page you are on. | `commands.json:1411` |
-| `builtin.cancel` | `cancel` | - | ui | yes |  | Stops the recording Samsara is taking and throws it away. | `commands.json:2170` |
-| `builtin.capture_this_window` | `capture this window` | - | ui | yes |  | Copies a picture of the focused window to the clipboard. | `commands.json:1762` |
-| `builtin.claude_new_chat` | `claude new chat` | - | ui | yes |  | Starts a new Claude chat in browser. | `commands.json:888` |
-| `builtin.claude_projects` | `claude projects` | - | ui | yes |  | Opens Claude projects list. | `commands.json:936` |
-| `builtin.claude_settings` | `claude settings` | - | ui | yes |  | Opens Claude settings in browser. | `commands.json:900` |
-| `builtin.clipboard_history` | `clipboard history` | - | ui | yes |  | Opens clipboard history. | `commands.json:873` |
-| `builtin.close_bracket` | `close bracket` | - | write | no |  | Types a closing square bracket at the cursor. | `commands.json:552` |
-| `builtin.close_magnifier` | `close magnifier` | - | ui | yes |  | Closes the Windows Magnifier. | `commands.json:1858` |
-| `builtin.close_parenthesis` | `close parenthesis` | - | write | no |  | Types a closing bracket at the cursor. | `commands.json:538` |
-| `builtin.close_quote` | `close quote` | - | write | no |  | Types a closing quotation mark at the cursor. | `commands.json:524` |
+| `builtin.backspace` | `backspace` | - | write | no |  | Deletes previous character. | `commands.json:578` |
+| `builtin.bigger_cursor` | `bigger cursor` | - | ui | yes |  | Opens cursor size settings. | `commands.json:2013` |
+| `builtin.bigger_text` | `bigger text` | - | ui | yes |  | Makes the text bigger in the app you are using. | `commands.json:2162` |
+| `builtin.bold` | `bold` | - | ui | yes |  | Toggles bold text. | `commands.json:744` |
+| `builtin.bookmark_this` | `bookmark this` | - | write | no |  | Bookmarks the page you are on. | `commands.json:1391` |
+| `builtin.cancel` | `cancel` | - | ui | yes |  | Stops the recording Samsara is taking and throws it away. | `commands.json:2150` |
+| `builtin.capture_this_window` | `capture this window` | - | ui | yes |  | Copies a picture of the focused window to the clipboard. | `commands.json:1742` |
+| `builtin.claude_new_chat` | `claude new chat` | - | ui | yes |  | Starts a new Claude chat in browser. | `commands.json:868` |
+| `builtin.claude_projects` | `claude projects` | - | ui | yes |  | Opens Claude projects list. | `commands.json:916` |
+| `builtin.claude_settings` | `claude settings` | - | ui | yes |  | Opens Claude settings in browser. | `commands.json:880` |
+| `builtin.clipboard_history` | `clipboard history` | - | ui | yes |  | Opens clipboard history. | `commands.json:853` |
+| `builtin.close_bracket` | `close bracket` | - | write | no |  | Types a closing square bracket at the cursor. | `commands.json:532` |
+| `builtin.close_magnifier` | `close magnifier` | - | ui | yes |  | Closes the Windows Magnifier. | `commands.json:1838` |
+| `builtin.close_parenthesis` | `close parenthesis` | - | write | no |  | Types a closing bracket at the cursor. | `commands.json:518` |
+| `builtin.close_quote` | `close quote` | - | write | no |  | Types a closing quotation mark at the cursor. | `commands.json:504` |
 | `builtin.close_tab` | `close tab` | - | destructive | yes |  | Closes current tab. | `commands.json:139` |
-| `builtin.close_virtual_desktop` | `close virtual desktop` | - | ui | yes |  | Closes current virtual desktop. | `commands.json:1282` |
+| `builtin.close_virtual_desktop` | `close virtual desktop` | - | ui | yes |  | Closes current virtual desktop. | `commands.json:1262` |
 | `builtin.close_window` | `close window` | - | destructive | yes |  | Closes active window. | `commands.json:52` |
-| `builtin.colon` | `colon` | - | write | no |  | Types a colon at the cursor. | `commands.json:489` |
-| `builtin.color_filters` | `color filters` | - | ui | yes |  | Toggles color filters (for color blindness). | `commands.json:1937` |
-| `builtin.comma` | `comma` | - | write | no |  | Types a comma at the cursor. | `commands.json:461` |
-| `builtin.command_palette` | `command palette` | - | write | no |  | Opens Obsidian's command palette. | `commands.json:984` |
+| `builtin.colon` | `colon` | - | write | no |  | Types a colon at the cursor. | `commands.json:469` |
+| `builtin.color_filters` | `color filters` | - | ui | yes |  | Toggles color filters (for color blindness). | `commands.json:1917` |
+| `builtin.comma` | `comma` | - | write | no |  | Types a comma at the cursor. | `commands.json:441` |
+| `builtin.command_palette` | `command palette` | - | write | no |  | Opens Obsidian's command palette. | `commands.json:964` |
 | `builtin.copy` | `copy` | - | ui | yes |  | Copies selection. | `commands.json:244` |
-| `builtin.cursor_indicator` | `cursor indicator` | - | ui | yes |  | Opens text cursor indicator settings. | `commands.json:2084` |
+| `builtin.cursor_indicator` | `cursor indicator` | - | ui | yes |  | Opens text cursor indicator settings. | `commands.json:2064` |
 | `builtin.cut` | `cut` | - | write | no |  | Cuts selection. | `commands.json:253` |
-| `builtin.daily_note` | `daily note` | - | write | no |  | Opens today's daily note in Obsidian. | `commands.json:1142` |
-| `builtin.dark_mode` | `dark mode` | - | ui | yes |  | Opens color/theme settings (toggle dark mode). | `commands.json:2158` |
-| `builtin.dash` | `dash` | - | write | no |  | Types a dash with a space either side. | `commands.json:566` |
-| `builtin.delete` | `delete` | - | write | no |  | Deletes selected text or item. | `commands.json:2212` |
-| `builtin.delete_file` | `delete file` | - | write | no |  | Deletes selected file/item. | `commands.json:1779` |
-| `builtin.delete_line` | `delete line` | - | write | no |  | Selects and delete entire line. | `commands.json:843` |
-| `builtin.delete_next_word` | `delete next word` | - | write | no |  | Deletes the word to the right of the cursor. | `commands.json:1684` |
-| `builtin.delete_selection` | `delete selection` | - | write | no |  | Deletes selected text. | `commands.json:2218` |
-| `builtin.delete_word` | `delete word` | - | write | no |  | Deletes previous word. | `commands.json:604` |
-| `builtin.display_settings` | `display settings` | - | ui | yes |  | Opens display settings (text size, resolution). | `commands.json:2140` |
-| `builtin.do_not_disturb` | `do not disturb` | - | ui | yes |  | Opens focus assist settings. | `commands.json:2090` |
-| `builtin.double_click` | `double click` | - | write | no |  | Double-clicks the left mouse button where the pointer is. | `commands.json:428` |
-| `builtin.duplicate_tab` | `duplicate tab` | - | write | no |  | Opens a second copy of the browser tab you are on. | `commands.json:1420` |
-| `builtin.ease_of_access` | `ease of access` | - | ui | yes |  | Opens accessibility settings. | `commands.json:2069` |
-| `builtin.ellipsis` | `ellipsis` | - | write | no |  | Types three dots at the cursor. | `commands.json:573` |
-| `builtin.emoji` | `emoji` | - | ui | yes |  | Opens emoji picker. | `commands.json:805` |
-| `builtin.enter` | `enter` | - | write | no |  | Presses Enter key. | `commands.json:2224` |
+| `builtin.daily_note` | `daily note` | - | write | no |  | Opens today's daily note in Obsidian. | `commands.json:1122` |
+| `builtin.dark_mode` | `dark mode` | - | ui | yes |  | Opens color/theme settings (toggle dark mode). | `commands.json:2138` |
+| `builtin.dash` | `dash` | - | write | no |  | Types a dash with a space either side. | `commands.json:546` |
+| `builtin.delete` | `delete` | - | write | no |  | Deletes selected text or item. | `commands.json:2192` |
+| `builtin.delete_file` | `delete file` | - | write | no |  | Deletes selected file/item. | `commands.json:1759` |
+| `builtin.delete_line` | `delete line` | - | write | no |  | Selects and delete entire line. | `commands.json:823` |
+| `builtin.delete_next_word` | `delete next word` | - | write | no |  | Deletes the word to the right of the cursor. | `commands.json:1664` |
+| `builtin.delete_selection` | `delete selection` | - | write | no |  | Deletes selected text. | `commands.json:2198` |
+| `builtin.delete_word` | `delete word` | - | write | no |  | Deletes previous word. | `commands.json:584` |
+| `builtin.display_settings` | `display settings` | - | ui | yes |  | Opens display settings (text size, resolution). | `commands.json:2120` |
+| `builtin.do_not_disturb` | `do not disturb` | - | ui | yes |  | Opens focus assist settings. | `commands.json:2070` |
+| `builtin.duplicate_tab` | `duplicate tab` | - | write | no |  | Opens a second copy of the browser tab you are on. | `commands.json:1400` |
+| `builtin.ease_of_access` | `ease of access` | - | ui | yes |  | Opens accessibility settings. | `commands.json:2049` |
+| `builtin.ellipsis` | `ellipsis` | - | write | no |  | Types three dots at the cursor. | `commands.json:553` |
+| `builtin.emoji` | `emoji` | - | ui | yes |  | Opens emoji picker. | `commands.json:785` |
+| `builtin.enter` | `enter` | - | write | no |  | Presses Enter key. | `commands.json:2204` |
 | `builtin.escape` | `escape` | - | ui | yes |  | Presses the Escape key. | `commands.json:324` |
-| `builtin.exclamation_mark` | `exclamation mark` | - | write | no |  | Types an exclamation mark at the cursor. | `commands.json:475` |
-| `builtin.exclamation_point` | `exclamation point` | - | write | no |  | Types an exclamation mark at the cursor. | `commands.json:482` |
-| `builtin.eye_control` | `eye control` | - | ui | yes |  | Opens eye control settings (requires compatible eye tracker). | `commands.json:2039` |
-| `builtin.file_properties` | `file properties` | - | write | no |  | Opens file properties. | `commands.json:1817` |
-| `builtin.focus_view` | `focus view` | - | ui | yes |  | Toggles immersive reader / reading view (Edge). | `commands.json:2096` |
-| `builtin.follow_link` | `follow link` | - | write | no |  | Follows the Obsidian link under the cursor. | `commands.json:1085` |
-| `builtin.full_screen` | `full screen` | - | ui | yes |  | Toggles full screen. | `commands.json:729` |
-| `builtin.full_stop` | `full stop` | - | write | no |  | Types a full stop at the cursor. | `commands.json:455` |
-| `builtin.game_bar` | `game bar` | - | ui | yes |  | Opens Xbox Game Bar. | `commands.json:1753` |
+| `builtin.exclamation_mark` | `exclamation mark` | - | write | no |  | Types an exclamation mark at the cursor. | `commands.json:455` |
+| `builtin.exclamation_point` | `exclamation point` | - | write | no |  | Types an exclamation mark at the cursor. | `commands.json:462` |
+| `builtin.eye_control` | `eye control` | - | ui | yes |  | Opens eye control settings (requires compatible eye tracker). | `commands.json:2019` |
+| `builtin.file_properties` | `file properties` | - | write | no |  | Opens file properties. | `commands.json:1797` |
+| `builtin.focus_view` | `focus view` | - | ui | yes |  | Toggles immersive reader / reading view (Edge). | `commands.json:2076` |
+| `builtin.follow_link` | `follow link` | - | write | no |  | Follows the Obsidian link under the cursor. | `commands.json:1065` |
+| `builtin.full_screen` | `full screen` | - | ui | yes |  | Toggles full screen. | `commands.json:709` |
+| `builtin.full_stop` | `full stop` | - | write | no |  | Types a full stop at the cursor. | `commands.json:435` |
+| `builtin.game_bar` | `game bar` | - | ui | yes |  | Opens Xbox Game Bar. | `commands.json:1733` |
 | `builtin.go_back` | `go back` | - | ui | yes |  | Goes back one page in the browser. | `commands.json:217` |
 | `builtin.go_forward` | `go forward` | - | ui | yes |  | Goes forward one page in the browser. | `commands.json:226` |
-| `builtin.go_to_address_bar` | `go to address bar` | - | ui | yes |  | Focuses browser address bar. | `commands.json:1369` |
-| `builtin.go_to_arcana` | `go to arcana` | - | ui | yes |  | Opens The Arcana / morneis.com. | `commands.json:1544` |
-| `builtin.go_to_document_end` | `go to document end` | - | ui | yes |  | Moves cursor to document end. | `commands.json:1619` |
-| `builtin.go_to_document_start` | `go to document start` | - | ui | yes |  | Moves cursor to document start. | `commands.json:1610` |
-| `builtin.go_up_folder` | `go up folder` | - | ui | yes |  | Moves up one folder in File Explorer. | `commands.json:1831` |
-| `builtin.graph_view` | `graph view` | - | ui | yes |  | Opens Obsidian's graph view of how your notes link together. | `commands.json:1031` |
-| `builtin.hard_refresh` | `hard refresh` | - | ui | yes |  | Reloads the page and ignores anything the browser had cached. | `commands.json:1468` |
-| `builtin.heading_one` | `heading one` | - | ui | yes |  | Applies Heading 1 style (Google Docs/Word). | `commands.json:1703` |
-| `builtin.heading_three` | `heading three` | - | ui | yes |  | Applies Heading 3 style. | `commands.json:1723` |
-| `builtin.heading_two` | `heading two` | - | ui | yes |  | Applies Heading 2 style. | `commands.json:1713` |
-| `builtin.hide_commands` | `hide commands` | - | ui | yes |  | Takes the command reference overlay off the screen. | `commands.json:2206` |
-| `builtin.high_contrast` | `high contrast` | - | ui | yes |  | Toggles high contrast mode. | `commands.json:1927` |
-| `builtin.highlight_text` | `highlight text` | - | ui | yes |  | Highlights the selected text in Obsidian. | `commands.json:1114` |
+| `builtin.go_to_address_bar` | `go to address bar` | - | ui | yes |  | Focuses browser address bar. | `commands.json:1349` |
+| `builtin.go_to_arcana` | `go to arcana` | - | ui | yes |  | Opens The Arcana / morneis.com. | `commands.json:1524` |
+| `builtin.go_to_document_end` | `go to document end` | - | ui | yes |  | Moves cursor to document end. | `commands.json:1599` |
+| `builtin.go_to_document_start` | `go to document start` | - | ui | yes |  | Moves cursor to document start. | `commands.json:1590` |
+| `builtin.go_up_folder` | `go up folder` | - | ui | yes |  | Moves up one folder in File Explorer. | `commands.json:1811` |
+| `builtin.graph_view` | `graph view` | - | ui | yes |  | Opens Obsidian's graph view of how your notes link together. | `commands.json:1011` |
+| `builtin.hard_refresh` | `hard refresh` | - | ui | yes |  | Reloads the page and ignores anything the browser had cached. | `commands.json:1448` |
+| `builtin.heading_one` | `heading one` | - | ui | yes |  | Applies Heading 1 style (Google Docs/Word). | `commands.json:1683` |
+| `builtin.heading_three` | `heading three` | - | ui | yes |  | Applies Heading 3 style. | `commands.json:1703` |
+| `builtin.heading_two` | `heading two` | - | ui | yes |  | Applies Heading 2 style. | `commands.json:1693` |
+| `builtin.hide_commands` | `hide commands` | - | ui | yes |  | Takes the command reference overlay off the screen. | `commands.json:2186` |
+| `builtin.high_contrast` | `high contrast` | - | ui | yes |  | Toggles high contrast mode. | `commands.json:1907` |
+| `builtin.highlight_text` | `highlight text` | - | ui | yes |  | Highlights the selected text in Obsidian. | `commands.json:1094` |
 | `builtin.hold_forward` | `hold forward` | - | write | no |  | Holds W key down (for gaming). | `commands.json:394` |
 | `builtin.hold_shift` | `hold shift` | - | ui | yes |  | Holds Shift key down. | `commands.json:408` |
-| `builtin.hyphen` | `hyphen` | - | write | no |  | Types a hyphen at the cursor. | `commands.json:559` |
-| `builtin.immersive_reader` | `immersive reader` | - | ui | yes |  | Toggles immersive reader in Edge (clean reading mode). | `commands.json:2104` |
-| `builtin.indent_line` | `indent line` | - | ui | yes |  | Indents the current line in Obsidian. | `commands.json:1162` |
-| `builtin.insert_link` | `insert link` | - | write | yes |  | Inserts a link at the cursor in Obsidian. | `commands.json:1076` |
-| `builtin.invert_colors` | `invert colors` | - | ui | yes |  | Opens color filter settings. | `commands.json:1947` |
-| `builtin.italic` | `italic` | - | ui | yes |  | Toggles italic text. | `commands.json:773` |
+| `builtin.hyphen` | `hyphen` | - | write | no |  | Types a hyphen at the cursor. | `commands.json:539` |
+| `builtin.immersive_reader` | `immersive reader` | - | ui | yes |  | Toggles immersive reader in Edge (clean reading mode). | `commands.json:2084` |
+| `builtin.indent_line` | `indent line` | - | ui | yes |  | Indents the current line in Obsidian. | `commands.json:1142` |
+| `builtin.insert_link` | `insert link` | - | write | yes |  | Inserts a link at the cursor in Obsidian. | `commands.json:1056` |
+| `builtin.invert_colors` | `invert colors` | - | ui | yes |  | Opens color filter settings. | `commands.json:1927` |
+| `builtin.italic` | `italic` | - | ui | yes |  | Toggles italic text. | `commands.json:753` |
 | `builtin.jump_five_times` | `jump five times` | - | write | no |  | Presses spacebar 5 times for repeated jumps. | `commands.json:3` |
-| `builtin.last_tab` | `last tab` | - | ui | yes |  | Switches to last tab. | `commands.json:1505` |
-| `builtin.left_click` | `left click` | - | write | no |  | Clicks the left mouse button where the pointer is. | `commands.json:434` |
-| `builtin.live_captions` | `live captions` | - | ui | yes |  | Toggles live captions (transcribes any audio on screen). | `commands.json:1953` |
-| `builtin.lock_computer` | `lock computer` | - | ui | yes |  | Locks the computer. | `commands.json:654` |
-| `builtin.lock_screen` | `lock screen` | - | ui | yes |  | Locks the computer. | `commands.json:645` |
-| `builtin.make_text_bigger` | `make text bigger` | - | ui | yes |  | Opens text size / visual accessibility settings. | `commands.json:2152` |
+| `builtin.last_tab` | `last tab` | - | ui | yes |  | Switches to last tab. | `commands.json:1485` |
+| `builtin.live_captions` | `live captions` | - | ui | yes |  | Toggles live captions (transcribes any audio on screen). | `commands.json:1933` |
+| `builtin.lock_computer` | `lock computer` | - | ui | yes |  | Locks the computer. | `commands.json:634` |
+| `builtin.lock_screen` | `lock screen` | - | ui | yes |  | Locks the computer. | `commands.json:625` |
+| `builtin.make_text_bigger` | `make text bigger` | - | ui | yes |  | Opens text size / visual accessibility settings. | `commands.json:2132` |
 | `builtin.maximize` | `maximize` | - | ui | yes |  | Maximises window. | `commands.json:70` |
 | `builtin.minimize` | `minimize` | - | ui | yes |  | Minimises window. | `commands.json:61` |
 | `builtin.minimize_all` | `minimize all` | - | ui | yes |  | Minimises all windows (show desktop). | `commands.json:88` |
 | `builtin.minimize_everything` | `minimize everything` | - | ui | yes |  | Minimises all windows (show desktop). | `commands.json:97` |
-| `builtin.mono_audio` | `mono audio` | - | ui | yes |  | Opens audio accessibility settings (mono audio, visual alerts). | `commands.json:1973` |
-| `builtin.mouse_keys` | `mouse keys` | - | ui | yes |  | Opens mouse keys settings (control mouse with numpad). | `commands.json:2021` |
-| `builtin.move_to_left_monitor` | `move to left monitor` | - | ui | yes |  | Moves active window one monitor to the left. | `commands.json:2254` |
-| `builtin.move_to_next_monitor` | `move to next monitor` | - | ui | yes |  | Moves active window one monitor to the right. | `commands.json:2264` |
-| `builtin.move_to_right_monitor` | `move to right monitor` | - | ui | yes |  | Moves active window one monitor to the right. | `commands.json:2244` |
-| `builtin.mute_tab` | `mute tab` | - | ui | yes |  | Mutes the sound coming from the Chrome tab you are on. | `commands.json:1441` |
-| `builtin.my_github` | `my github` | - | ui | yes |  | Opens your GitHub profile. | `commands.json:1574` |
-| `builtin.navigate_back` | `navigate back` | - | ui | yes |  | Goes back to the note you were reading before in Obsidian. | `commands.json:1094` |
-| `builtin.navigate_forward` | `navigate forward` | - | ui | yes |  | Goes forward again through the Obsidian notes you have visited. | `commands.json:1104` |
-| `builtin.new_folder` | `new folder` | - | write | yes |  | Creates new folder (in Explorer). | `commands.json:1796` |
-| `builtin.new_line` | `new line` | - | write | yes |  | Starts a new line, without a blank line between. | `commands.json:580` |
-| `builtin.new_note` | `new note` | - | write | yes |  | Creates a new note in Obsidian. | `commands.json:948` |
-| `builtin.new_paragraph` | `new paragraph` | - | write | yes |  | Starts a new paragraph, with a blank line between. | `commands.json:586` |
+| `builtin.mono_audio` | `mono audio` | - | ui | yes |  | Opens audio accessibility settings (mono audio, visual alerts). | `commands.json:1953` |
+| `builtin.mouse_keys` | `mouse keys` | - | ui | yes |  | Opens mouse keys settings (control mouse with numpad). | `commands.json:2001` |
+| `builtin.move_to_left_monitor` | `move to left monitor` | - | ui | yes |  | Moves active window one monitor to the left. | `commands.json:2234` |
+| `builtin.move_to_next_monitor` | `move to next monitor` | - | ui | yes |  | Moves active window one monitor to the right. | `commands.json:2244` |
+| `builtin.move_to_right_monitor` | `move to right monitor` | - | ui | yes |  | Moves active window one monitor to the right. | `commands.json:2224` |
+| `builtin.mute_tab` | `mute tab` | - | ui | yes |  | Mutes the sound coming from the Chrome tab you are on. | `commands.json:1421` |
+| `builtin.my_github` | `my github` | - | ui | yes |  | Opens your GitHub profile. | `commands.json:1554` |
+| `builtin.navigate_back` | `navigate back` | - | ui | yes |  | Goes back to the note you were reading before in Obsidian. | `commands.json:1074` |
+| `builtin.navigate_forward` | `navigate forward` | - | ui | yes |  | Goes forward again through the Obsidian notes you have visited. | `commands.json:1084` |
+| `builtin.new_folder` | `new folder` | - | write | yes |  | Creates new folder (in Explorer). | `commands.json:1776` |
+| `builtin.new_line` | `new line` | - | write | yes |  | Starts a new line, without a blank line between. | `commands.json:560` |
+| `builtin.new_note` | `new note` | - | write | yes |  | Creates a new note in Obsidian. | `commands.json:928` |
+| `builtin.new_paragraph` | `new paragraph` | - | write | yes |  | Starts a new paragraph, with a blank line between. | `commands.json:566` |
 | `builtin.new_tab` | `new tab` | - | ui | yes |  | Opens new browser tab. | `commands.json:116` |
-| `builtin.new_virtual_desktop` | `new virtual desktop` | - | write | yes |  | Creates new virtual desktop. | `commands.json:1272` |
+| `builtin.new_virtual_desktop` | `new virtual desktop` | - | write | yes |  | Creates new virtual desktop. | `commands.json:1252` |
 | `builtin.next_field` | `next field` | - | ui | yes |  | Moves focus to the next field. | `commands.json:338` |
 | `builtin.next_tab` | `next tab` | - | ui | yes |  | Switches to next tab. | `commands.json:174` |
-| `builtin.night_light` | `night light` | - | ui | yes |  | Opens night light settings (reduce blue light). | `commands.json:2134` |
-| `builtin.normal_text` | `normal text` | - | ui | yes |  | Applies Normal/Body text style. | `commands.json:1733` |
-| `builtin.notifications` | `notifications` | - | ui | yes |  | Opens notification center. | `commands.json:814` |
-| `builtin.obsidian_help` | `obsidian help` | - | ui | yes |  | Opens Obsidian's help. | `commands.json:1124` |
-| `builtin.obsidian_new_note` | `obsidian new note` | - | write | no |  | Creates a new note in Obsidian. | `commands.json:957` |
-| `builtin.obsidian_search` | `obsidian search` | - | ui | yes |  | Searches every note in your Obsidian vault. | `commands.json:993` |
-| `builtin.obsidian_settings` | `obsidian settings` | - | ui | yes |  | Opens Obsidian's settings. | `commands.json:1067` |
-| `builtin.on_screen_keyboard` | `on screen keyboard` | - | write | no |  | Opens on-screen keyboard. | `commands.json:1985` |
-| `builtin.open_anthropic` | `open anthropic` | - | ui | yes |  | Opens Anthropic website. | `commands.json:1598` |
-| `builtin.open_arc` | `open arc` | - | ui | yes |  | Opens ARC adversarial review pipeline. | `commands.json:912` |
-| `builtin.open_arcana` | `open arcana` | - | ui | yes |  | Opens The Arcana / morneis.com. | `commands.json:1538` |
-| `builtin.open_bookmarks` | `open bookmarks` | - | write | no |  | Opens bookmarks manager. | `commands.json:1401` |
-| `builtin.open_bracket` | `open bracket` | - | write | no |  | Types an opening square bracket at the cursor. | `commands.json:545` |
-| `builtin.open_calculator` | `open calculator` | - | ui | yes |  | Opens the Windows Calculator. | `commands.json:669` |
-| `builtin.open_chatgpt` | `open chatgpt` | - | ui | yes |  | Opens ChatGPT in browser. | `commands.json:918` |
+| `builtin.night_light` | `night light` | - | ui | yes |  | Opens night light settings (reduce blue light). | `commands.json:2114` |
+| `builtin.normal_text` | `normal text` | - | ui | yes |  | Applies Normal/Body text style. | `commands.json:1713` |
+| `builtin.notifications` | `notifications` | - | ui | yes |  | Opens notification center. | `commands.json:794` |
+| `builtin.obsidian_help` | `obsidian help` | - | ui | yes |  | Opens Obsidian's help. | `commands.json:1104` |
+| `builtin.obsidian_new_note` | `obsidian new note` | - | write | no |  | Creates a new note in Obsidian. | `commands.json:937` |
+| `builtin.obsidian_search` | `obsidian search` | - | ui | yes |  | Searches every note in your Obsidian vault. | `commands.json:973` |
+| `builtin.obsidian_settings` | `obsidian settings` | - | ui | yes |  | Opens Obsidian's settings. | `commands.json:1047` |
+| `builtin.on_screen_keyboard` | `on screen keyboard` | - | write | no |  | Opens on-screen keyboard. | `commands.json:1965` |
+| `builtin.open_anthropic` | `open anthropic` | - | ui | yes |  | Opens Anthropic website. | `commands.json:1578` |
+| `builtin.open_arc` | `open arc` | - | ui | yes |  | Opens ARC adversarial review pipeline. | `commands.json:892` |
+| `builtin.open_arcana` | `open arcana` | - | ui | yes |  | Opens The Arcana / morneis.com. | `commands.json:1518` |
+| `builtin.open_bookmarks` | `open bookmarks` | - | write | no |  | Opens bookmarks manager. | `commands.json:1381` |
+| `builtin.open_bracket` | `open bracket` | - | write | no |  | Types an opening square bracket at the cursor. | `commands.json:525` |
+| `builtin.open_calculator` | `open calculator` | - | ui | yes |  | Opens the Windows Calculator. | `commands.json:649` |
+| `builtin.open_chatgpt` | `open chatgpt` | - | ui | yes |  | Opens ChatGPT in browser. | `commands.json:898` |
 | `builtin.open_chrome` | `open chrome` | - | ui | yes |  | Opens Google Chrome. | `commands.json:34` |
-| `builtin.open_claude` | `open claude` | - | ui | yes |  | Opens Claude in browser (desktop app not installed). | `commands.json:882` |
-| `builtin.open_claude_docs` | `open claude docs` | - | ui | yes |  | Opens Claude documentation. | `commands.json:1604` |
-| `builtin.open_claude_web` | `open claude web` | - | ui | yes |  | Opens Claude in browser. | `commands.json:894` |
-| `builtin.open_control_panel` | `open control panel` | - | ui | yes |  | Opens the Windows Control Panel. | `commands.json:1342` |
-| `builtin.open_device_manager` | `open device manager` | - | ui | yes |  | Opens Device Manager, where Windows lists your hardware. | `commands.json:1312` |
-| `builtin.open_devtools` | `open devtools` | - | ui | yes |  | Opens browser developer tools. | `commands.json:1460` |
-| `builtin.open_discord` | `open discord` | - | ui | yes |  | Opens the Discord desktop app. | `commands.json:1192` |
-| `builtin.open_disk_management` | `open disk management` | - | ui | yes |  | Opens Disk Management, where Windows lists your drives and partitions. | `commands.json:1336` |
-| `builtin.open_display_settings` | `open display settings` | - | ui | yes |  | Opens the Windows display settings, for resolution and scaling. | `commands.json:1354` |
-| `builtin.open_downloads` | `open downloads` | - | ui | yes |  | Opens browser downloads. | `commands.json:1378` |
+| `builtin.open_claude` | `open claude` | - | ui | yes |  | Opens Claude in browser (desktop app not installed). | `commands.json:862` |
+| `builtin.open_claude_docs` | `open claude docs` | - | ui | yes |  | Opens Claude documentation. | `commands.json:1584` |
+| `builtin.open_claude_web` | `open claude web` | - | ui | yes |  | Opens Claude in browser. | `commands.json:874` |
+| `builtin.open_control_panel` | `open control panel` | - | ui | yes |  | Opens the Windows Control Panel. | `commands.json:1322` |
+| `builtin.open_device_manager` | `open device manager` | - | ui | yes |  | Opens Device Manager, where Windows lists your hardware. | `commands.json:1292` |
+| `builtin.open_devtools` | `open devtools` | - | ui | yes |  | Opens browser developer tools. | `commands.json:1440` |
+| `builtin.open_discord` | `open discord` | - | ui | yes |  | Opens the Discord desktop app. | `commands.json:1172` |
+| `builtin.open_disk_management` | `open disk management` | - | ui | yes |  | Opens Disk Management, where Windows lists your drives and partitions. | `commands.json:1316` |
+| `builtin.open_display_settings` | `open display settings` | - | ui | yes |  | Opens the Windows display settings, for resolution and scaling. | `commands.json:1334` |
+| `builtin.open_downloads` | `open downloads` | - | ui | yes |  | Opens browser downloads. | `commands.json:1358` |
 | `builtin.open_edge` | `open edge` | - | ui | yes |  | Opens Microsoft Edge. | `commands.json:46` |
-| `builtin.open_event_viewer` | `open event viewer` | - | ui | yes |  | Opens Event Viewer, the Windows system log. | `commands.json:1318` |
-| `builtin.open_file_explorer` | `open file explorer` | - | ui | yes |  | Opens a new File Explorer window. | `commands.json:675` |
-| `builtin.open_files` | `open files` | - | ui | yes |  | Opens File Explorer. | `commands.json:684` |
+| `builtin.open_event_viewer` | `open event viewer` | - | ui | yes |  | Opens Event Viewer, the Windows system log. | `commands.json:1298` |
+| `builtin.open_file_explorer` | `open file explorer` | - | ui | yes |  | Opens a new File Explorer window. | `commands.json:655` |
+| `builtin.open_files` | `open files` | - | ui | yes |  | Opens File Explorer. | `commands.json:664` |
 | `builtin.open_firefox` | `open firefox` | - | ui | yes |  | Opens the Firefox browser. | `commands.json:40` |
-| `builtin.open_gemini` | `open gemini` | - | ui | yes |  | Opens Gemini in browser. | `commands.json:924` |
-| `builtin.open_github` | `open github` | - | ui | yes |  | Opens github.com in your default browser. | `commands.json:1568` |
-| `builtin.open_graph` | `open graph` | - | ui | yes |  | Opens Obsidian's graph view of how your notes link together. | `commands.json:1040` |
-| `builtin.open_history` | `open history` | - | ui | yes |  | Opens browser history. | `commands.json:1387` |
-| `builtin.open_hugging_face` | `open hugging face` | - | ui | yes |  | Opens huggingface.co in your default browser. | `commands.json:1592` |
-| `builtin.open_jaws` | `open jaws` | - | ui | yes |  | Opens the JAWS product page, because JAWS is not installed here. | `commands.json:2128` |
-| `builtin.open_keyboard` | `open keyboard` | - | write | no |  | Opens on-screen keyboard. | `commands.json:1995` |
-| `builtin.open_log` | `open log` | - | ui | yes |  | Opens the Samsara log file in Notepad. | `commands.json:2500` |
-| `builtin.open_magnifier` | `open magnifier` | - | ui | yes |  | Opens Windows Magnifier. | `commands.json:1849` |
-| `builtin.open_midjourney` | `open midjourney` | - | ui | yes |  | Opens Midjourney in browser. | `commands.json:1532` |
-| `builtin.open_note` | `open note` | - | write | no |  | Opens Obsidian's quick switcher to jump to a note by name. | `commands.json:975` |
-| `builtin.open_notepad` | `open notepad` | - | ui | yes |  | Opens Notepad with a blank document. | `commands.json:663` |
-| `builtin.open_nvda` | `open nvda` | - | ui | yes |  | Opens NVDA screen reader (free, must be installed). | `commands.json:2122` |
-| `builtin.open_obsidian` | `open obsidian` | - | ui | yes |  | Opens the Obsidian notes app. | `commands.json:942` |
-| `builtin.open_paint` | `open paint` | - | ui | yes |  | Opens MS Paint. | `commands.json:1210` |
-| `builtin.open_parenthesis` | `open parenthesis` | - | write | no |  | Types an opening bracket at the cursor. | `commands.json:531` |
-| `builtin.open_perplexity` | `open perplexity` | - | ui | yes |  | Opens Perplexity in browser. | `commands.json:930` |
-| `builtin.open_quote` | `open quote` | - | write | no |  | Types an opening quotation mark at the cursor. | `commands.json:517` |
-| `builtin.open_registry` | `open registry` | - | ui | yes |  | Opens Registry Editor. | `commands.json:1330` |
-| `builtin.open_samsara_page` | `open samsara page` | - | ui | yes |  | Opens Samsara landing page. | `commands.json:1550` |
-| `builtin.open_services` | `open services` | - | ui | yes |  | Opens the Windows Services console. | `commands.json:1324` |
+| `builtin.open_gemini` | `open gemini` | - | ui | yes |  | Opens Gemini in browser. | `commands.json:904` |
+| `builtin.open_github` | `open github` | - | ui | yes |  | Opens github.com in your default browser. | `commands.json:1548` |
+| `builtin.open_graph` | `open graph` | - | ui | yes |  | Opens Obsidian's graph view of how your notes link together. | `commands.json:1020` |
+| `builtin.open_history` | `open history` | - | ui | yes |  | Opens browser history. | `commands.json:1367` |
+| `builtin.open_hugging_face` | `open hugging face` | - | ui | yes |  | Opens huggingface.co in your default browser. | `commands.json:1572` |
+| `builtin.open_jaws` | `open jaws` | - | ui | yes |  | Opens the JAWS product page, because JAWS is not installed here. | `commands.json:2108` |
+| `builtin.open_keyboard` | `open keyboard` | - | write | no |  | Opens on-screen keyboard. | `commands.json:1975` |
+| `builtin.open_log` | `open log` | - | ui | yes |  | Opens the Samsara log file in Notepad. | `commands.json:2480` |
+| `builtin.open_magnifier` | `open magnifier` | - | ui | yes |  | Opens Windows Magnifier. | `commands.json:1829` |
+| `builtin.open_midjourney` | `open midjourney` | - | ui | yes |  | Opens Midjourney in browser. | `commands.json:1512` |
+| `builtin.open_note` | `open note` | - | write | no |  | Opens Obsidian's quick switcher to jump to a note by name. | `commands.json:955` |
+| `builtin.open_notepad` | `open notepad` | - | ui | yes |  | Opens Notepad with a blank document. | `commands.json:643` |
+| `builtin.open_nvda` | `open nvda` | - | ui | yes |  | Opens NVDA screen reader (free, must be installed). | `commands.json:2102` |
+| `builtin.open_obsidian` | `open obsidian` | - | ui | yes |  | Opens the Obsidian notes app. | `commands.json:922` |
+| `builtin.open_paint` | `open paint` | - | ui | yes |  | Opens MS Paint. | `commands.json:1190` |
+| `builtin.open_parenthesis` | `open parenthesis` | - | write | no |  | Types an opening bracket at the cursor. | `commands.json:511` |
+| `builtin.open_perplexity` | `open perplexity` | - | ui | yes |  | Opens Perplexity in browser. | `commands.json:910` |
+| `builtin.open_quote` | `open quote` | - | write | no |  | Types an opening quotation mark at the cursor. | `commands.json:497` |
+| `builtin.open_registry` | `open registry` | - | ui | yes |  | Opens Registry Editor. | `commands.json:1310` |
+| `builtin.open_samsara_page` | `open samsara page` | - | ui | yes |  | Opens Samsara landing page. | `commands.json:1530` |
+| `builtin.open_services` | `open services` | - | ui | yes |  | Opens the Windows Services console. | `commands.json:1304` |
 | `builtin.open_settings` | `open settings` | - | ui | yes |  | Opens Windows Settings. | `commands.json:277` |
-| `builtin.open_sound_settings` | `open sound settings` | - | ui | yes |  | Opens the Windows sound settings, for input and output devices. | `commands.json:1348` |
-| `builtin.open_spotify` | `open spotify` | - | ui | yes |  | Opens the Spotify desktop app. | `commands.json:1198` |
-| `builtin.open_steam` | `open steam` | - | ui | yes |  | Opens the Steam desktop app. | `commands.json:1204` |
-| `builtin.open_terminal` | `open terminal` | - | ui | yes |  | Opens Windows Terminal. | `commands.json:867` |
-| `builtin.open_twitch` | `open twitch` | - | ui | yes |  | Opens Twitch in browser. | `commands.json:2458` |
-| `builtin.open_twitch_directory` | `open twitch directory` | - | ui | yes |  | Opens Twitch browse / directory. | `commands.json:2464` |
-| `builtin.open_twitch_following` | `open twitch following` | - | ui | yes |  | Opens Twitch channels you follow. | `commands.json:2470` |
-| `builtin.open_vs_code` | `open vs code` | - | ui | yes |  | Opens the VS Code download page, because VS Code is not installed here. | `commands.json:1186` |
-| `builtin.open_warp` | `open warp` | - | ui | yes |  | Opens Warp terminal. | `commands.json:1180` |
+| `builtin.open_sound_settings` | `open sound settings` | - | ui | yes |  | Opens the Windows sound settings, for input and output devices. | `commands.json:1328` |
+| `builtin.open_spotify` | `open spotify` | - | ui | yes |  | Opens the Spotify desktop app. | `commands.json:1178` |
+| `builtin.open_steam` | `open steam` | - | ui | yes |  | Opens the Steam desktop app. | `commands.json:1184` |
+| `builtin.open_terminal` | `open terminal` | - | ui | yes |  | Opens Windows Terminal. | `commands.json:847` |
+| `builtin.open_twitch` | `open twitch` | - | ui | yes |  | Opens Twitch in browser. | `commands.json:2438` |
+| `builtin.open_twitch_directory` | `open twitch directory` | - | ui | yes |  | Opens Twitch browse / directory. | `commands.json:2444` |
+| `builtin.open_twitch_following` | `open twitch following` | - | ui | yes |  | Opens Twitch channels you follow. | `commands.json:2450` |
+| `builtin.open_vs_code` | `open vs code` | - | ui | yes |  | Opens the VS Code download page, because VS Code is not installed here. | `commands.json:1166` |
+| `builtin.open_warp` | `open warp` | - | ui | yes |  | Opens Warp terminal. | `commands.json:1160` |
 | `builtin.other_window` | `other window` | - | ui | yes |  | Switches to the previously active window. | `commands.json:371` |
 | `builtin.paste` | `paste` | - | write | yes |  | Pastes from clipboard. | `commands.json:262` |
-| `builtin.period` | `period` | - | write | no |  | Types a full stop at the cursor. | `commands.json:448` |
-| `builtin.permanent_delete` | `permanent delete` | - | destructive | no |  | Deletes the selected file outright, without sending it to the recycle bin. | `commands.json:1787` |
-| `builtin.pin_tab` | `pin tab` | - | write | no |  | Pins the Edge tab you are on so it stays at the front of the bar. | `commands.json:1450` |
-| `builtin.pointer_settings` | `pointer settings` | - | ui | yes |  | Opens mouse pointer size and color settings. | `commands.json:2027` |
+| `builtin.period` | `period` | - | write | no |  | Types a full stop at the cursor. | `commands.json:428` |
+| `builtin.permanent_delete` | `permanent delete` | - | destructive | no |  | Deletes the selected file outright, without sending it to the recycle bin. | `commands.json:1767` |
+| `builtin.pin_tab` | `pin tab` | - | write | no |  | Pins the Edge tab you are on so it stays at the front of the bar. | `commands.json:1430` |
+| `builtin.pointer_settings` | `pointer settings` | - | ui | yes |  | Opens mouse pointer size and color settings. | `commands.json:2007` |
 | `builtin.press_e` | `press e` | - | write | no |  | Presses E key once. | `commands.json:380` |
 | `builtin.press_space` | `press space` | - | write | no |  | Presses Spacebar once. | `commands.json:387` |
 | `builtin.press_tab` | `press tab` | - | ui | yes |  | Moves focus to the next field. | `commands.json:332` |
-| `builtin.preview_pane` | `preview pane` | - | ui | yes |  | Toggles preview pane in Explorer. | `commands.json:1840` |
+| `builtin.preview_pane` | `preview pane` | - | ui | yes |  | Toggles preview pane in Explorer. | `commands.json:1820` |
 | `builtin.previous_field` | `previous field` | - | ui | yes |  | Moves focus to the previous field. | `commands.json:344` |
 | `builtin.previous_tab` | `previous tab` | - | ui | yes |  | Switches to previous tab. | `commands.json:183` |
-| `builtin.print` | `print` | - | write | no |  | Opens print dialog. | `commands.json:791` |
-| `builtin.private_window` | `private window` | - | write | no |  | Opens private/incognito window. | `commands.json:1514` |
-| `builtin.question_mark` | `question mark` | - | write | no |  | Types a question mark at the cursor. | `commands.json:468` |
-| `builtin.quick_switcher` | `quick switcher` | - | write | no |  | Opens Obsidian's quick switcher to jump to a note by name. | `commands.json:966` |
-| `builtin.quote` | `quote` | - | write | no |  | Types a double quotation mark at the cursor. | `commands.json:510` |
-| `builtin.read_aloud` | `read aloud` | - | ui | yes |  | Starts Read Aloud in Edge browser. | `commands.json:2112` |
-| `builtin.read_next_sentence` | `read next sentence` | - | write | no |  | Has Windows Magnifier read the next sentence aloud. | `commands.json:1877` |
-| `builtin.read_previous_sentence` | `read previous sentence` | - | ui | yes |  | Has Windows Magnifier read the previous sentence aloud. | `commands.json:1887` |
-| `builtin.read_this` | `read this` | - | write | no |  | Has Windows Magnifier start reading aloud from the cursor. | `commands.json:1867` |
-| `builtin.reading_mode` | `reading mode` | - | ui | yes |  | Switches Obsidian between editing a note and reading it. | `commands.json:1058` |
-| `builtin.reading_view` | `reading view` | - | ui | yes |  | Toggles reading view (Edge). | `commands.json:1524` |
-| `builtin.record_screen` | `record screen` | - | ui | yes |  | Starts or stops the Xbox Game Bar screen recording. | `commands.json:1743` |
+| `builtin.print` | `print` | - | write | no |  | Opens print dialog. | `commands.json:771` |
+| `builtin.private_window` | `private window` | - | write | no |  | Opens private/incognito window. | `commands.json:1494` |
+| `builtin.question_mark` | `question mark` | - | write | no |  | Types a question mark at the cursor. | `commands.json:448` |
+| `builtin.quick_switcher` | `quick switcher` | - | write | no |  | Opens Obsidian's quick switcher to jump to a note by name. | `commands.json:946` |
+| `builtin.quote` | `quote` | - | write | no |  | Types a double quotation mark at the cursor. | `commands.json:490` |
+| `builtin.read_aloud` | `read aloud` | - | ui | yes |  | Starts Read Aloud in Edge browser. | `commands.json:2092` |
+| `builtin.read_next_sentence` | `read next sentence` | - | write | no |  | Has Windows Magnifier read the next sentence aloud. | `commands.json:1857` |
+| `builtin.read_previous_sentence` | `read previous sentence` | - | ui | yes |  | Has Windows Magnifier read the previous sentence aloud. | `commands.json:1867` |
+| `builtin.read_this` | `read this` | - | write | no |  | Has Windows Magnifier start reading aloud from the cursor. | `commands.json:1847` |
+| `builtin.reading_mode` | `reading mode` | - | ui | yes |  | Switches Obsidian between editing a note and reading it. | `commands.json:1038` |
+| `builtin.reading_view` | `reading view` | - | ui | yes |  | Toggles reading view (Edge). | `commands.json:1504` |
+| `builtin.record_screen` | `record screen` | - | ui | yes |  | Starts or stops the Xbox Game Bar screen recording. | `commands.json:1723` |
 | `builtin.redo` | `redo` | - | write | yes |  | Redoes last action. | `commands.json:298` |
 | `builtin.refresh_page` | `refresh page` | - | ui | yes |  | Refreshes current page. | `commands.json:193` |
 | `builtin.release_all` | `release all` | - | ui | yes |  | Releases all held keys. | `commands.json:422` |
 | `builtin.release_shift` | `release shift` | - | ui | yes |  | Releases Shift key. | `commands.json:415` |
-| `builtin.remove_file` | `remove file` | - | write | no |  | Removes a file (preferred over 'delete file' to avoid collision with 'delete line'). | `commands.json:2450` |
-| `builtin.rename_file` | `rename file` | - | ui | yes |  | Renames the file you have selected. | `commands.json:1771` |
+| `builtin.remove_file` | `remove file` | - | write | no |  | Removes a file (preferred over 'delete file' to avoid collision with 'delete line'). | `commands.json:2430` |
+| `builtin.rename_file` | `rename file` | - | ui | yes |  | Renames the file you have selected. | `commands.json:1751` |
 | `builtin.reopen_tab` | `reopen tab` | - | ui | yes |  | Reopens closed tab. | `commands.json:153` |
-| `builtin.repeat` | `repeat` | - | ui | yes |  | Repeats the last executed command. | `commands.json:2230` |
-| `builtin.replace_in_note` | `replace in note` | - | ui | yes |  | Opens search and replace in the Obsidian note you are in. | `commands.json:1022` |
-| `builtin.report_a_bug` | `report a bug` | - | ui | yes |  | Opens the structured Samsara problem report form. | `commands.json:1556` |
-| `builtin.reset_zoom` | `reset zoom` | - | ui | yes |  | Resets zoom to default. | `commands.json:755` |
-| `builtin.restore_window` | `restore window` | - | ui | yes |  | Un-maximises the focused window so it can be moved. | `commands.json:2379` |
-| `builtin.right_click` | `right click` | - | write | no |  | Clicks the right mouse button where the pointer is. | `commands.json:441` |
-| `builtin.run_claude_code` | `run claude code` | - | ui | yes |  | Launches Claude Code in terminal. | `commands.json:906` |
-| `builtin.run_dialog` | `run dialog` | - | ui | yes |  | Opens Run dialog. | `commands.json:1225` |
+| `builtin.repeat` | `repeat` | - | ui | yes |  | Repeats the last executed command. | `commands.json:2210` |
+| `builtin.replace_in_note` | `replace in note` | - | ui | yes |  | Opens search and replace in the Obsidian note you are in. | `commands.json:1002` |
+| `builtin.report_a_bug` | `report a bug` | - | ui | yes |  | Opens the structured Samsara problem report form. | `commands.json:1536` |
+| `builtin.reset_zoom` | `reset zoom` | - | ui | yes |  | Resets zoom to default. | `commands.json:735` |
+| `builtin.restore_window` | `restore window` | - | ui | yes |  | Un-maximises the focused window so it can be moved. | `commands.json:2359` |
+| `builtin.run_claude_code` | `run claude code` | - | ui | yes |  | Launches Claude Code in terminal. | `commands.json:886` |
+| `builtin.run_dialog` | `run dialog` | - | ui | yes |  | Opens Run dialog. | `commands.json:1205` |
 | `builtin.run_tutorial` | `run tutorial` | - | ui | yes |  | Opens the interactive Samsara tutorial. | `commands.json:292` |
-| `builtin.samsara_repo` | `samsara repo` | - | ui | yes |  | Opens Samsara GitHub repo. | `commands.json:1580` |
+| `builtin.samsara_repo` | `samsara repo` | - | ui | yes |  | Opens Samsara GitHub repo. | `commands.json:1560` |
 | `builtin.save` | `save` | - | write | no |  | Saves current file. | `commands.json:307` |
-| `builtin.scratch_everything` | `scratch everything` | - | destructive | no | yes | Throws away the whole hands-free draft, asking you first. | `commands.json:2506` |
-| `builtin.scratch_that` | `scratch that` | - | write | no | yes | Removes the last pasted dictation. | `commands.json:619` |
-| `builtin.screenshot` | `screenshot` | - | ui | yes |  | Opens screenshot snip tool. | `commands.json:635` |
+| `builtin.scratch_everything` | `scratch everything` | - | destructive | no | yes | Throws away the whole hands-free draft, asking you first. | `commands.json:2486` |
+| `builtin.scratch_that` | `scratch that` | - | write | no | yes | Removes the last pasted dictation. | `commands.json:599` |
+| `builtin.screenshot` | `screenshot` | - | ui | yes |  | Opens screenshot snip tool. | `commands.json:615` |
 | `builtin.scroll_to_bottom` | `scroll to bottom` | - | ui | yes |  | Scrolls to bottom of page. | `commands.json:209` |
 | `builtin.scroll_to_top` | `scroll to top` | - | ui | yes |  | Scrolls to top of page. | `commands.json:201` |
-| `builtin.search_all_notes` | `search all notes` | - | ui | yes |  | Searches every note in your Obsidian vault. | `commands.json:1003` |
-| `builtin.search_this_note` | `search this note` | - | ui | yes |  | Searches inside the Obsidian note you are in. | `commands.json:1013` |
-| `builtin.search_windows` | `search windows` | - | ui | yes |  | Opens Windows search. | `commands.json:1243` |
+| `builtin.search_all_notes` | `search all notes` | - | ui | yes |  | Searches every note in your Obsidian vault. | `commands.json:983` |
+| `builtin.search_this_note` | `search this note` | - | ui | yes |  | Searches inside the Obsidian note you are in. | `commands.json:993` |
+| `builtin.search_windows` | `search windows` | - | ui | yes |  | Opens Windows search. | `commands.json:1223` |
 | `builtin.select_all` | `select all` | - | ui | yes |  | Selects all text. | `commands.json:235` |
-| `builtin.select_to_document_end` | `select to document end` | - | ui | yes |  | Selects to end of document. | `commands.json:1664` |
-| `builtin.select_to_document_start` | `select to document start` | - | ui | yes |  | Selects to start of document. | `commands.json:1674` |
-| `builtin.select_to_end` | `select to end` | - | ui | yes |  | Selects to end of line. | `commands.json:1646` |
-| `builtin.select_to_start` | `select to start` | - | ui | yes |  | Selects to start of line. | `commands.json:1655` |
-| `builtin.select_word_left` | `select word left` | - | ui | yes |  | Selects word to the left. | `commands.json:823` |
-| `builtin.select_word_right` | `select word right` | - | ui | yes |  | Selects word to the right. | `commands.json:833` |
-| `builtin.semicolon` | `semicolon` | - | write | no |  | Types a semicolon at the cursor. | `commands.json:496` |
-| `builtin.send_feedback` | `send feedback` | - | ui | yes |  | Opens the Samsara beta feedback form. | `commands.json:1562` |
-| `builtin.send_maximized_left` | `send maximized left` | - | ui | yes |  | Moves the focused window to the screen on the left, still maximised. | `commands.json:2419` |
-| `builtin.send_maximized_right` | `send maximized right` | - | ui | yes |  | Moves the focused window to the screen on the right, still maximised. | `commands.json:2388` |
-| `builtin.send_to_far_left` | `send to far left` | - | ui | yes |  | Moves active window to the far-left monitor (2 steps left). | `commands.json:2298` |
-| `builtin.send_to_far_right` | `send to far right` | - | ui | yes |  | Moves active window to the far-right monitor (2 steps right). | `commands.json:2274` |
-| `builtin.send_to_main_monitor` | `send to main monitor` | - | ui | yes |  | Moves active window to the main (far-left) monitor. | `commands.json:2355` |
-| `builtin.send_to_middle_monitor` | `send to middle monitor` | - | ui | yes |  | Moves the focused window to the middle screen. | `commands.json:2322` |
-| `builtin.show_commands` | `show commands` | - | ui | yes |  | Puts the command reference overlay on the screen. | `commands.json:2200` |
+| `builtin.select_to_document_end` | `select to document end` | - | ui | yes |  | Selects to end of document. | `commands.json:1644` |
+| `builtin.select_to_document_start` | `select to document start` | - | ui | yes |  | Selects to start of document. | `commands.json:1654` |
+| `builtin.select_to_end` | `select to end` | - | ui | yes |  | Selects to end of line. | `commands.json:1626` |
+| `builtin.select_to_start` | `select to start` | - | ui | yes |  | Selects to start of line. | `commands.json:1635` |
+| `builtin.select_word_left` | `select word left` | - | ui | yes |  | Selects word to the left. | `commands.json:803` |
+| `builtin.select_word_right` | `select word right` | - | ui | yes |  | Selects word to the right. | `commands.json:813` |
+| `builtin.semicolon` | `semicolon` | - | write | no |  | Types a semicolon at the cursor. | `commands.json:476` |
+| `builtin.send_feedback` | `send feedback` | - | ui | yes |  | Opens the Samsara beta feedback form. | `commands.json:1542` |
+| `builtin.send_maximized_left` | `send maximized left` | - | ui | yes |  | Moves the focused window to the screen on the left, still maximised. | `commands.json:2399` |
+| `builtin.send_maximized_right` | `send maximized right` | - | ui | yes |  | Moves the focused window to the screen on the right, still maximised. | `commands.json:2368` |
+| `builtin.send_to_far_left` | `send to far left` | - | ui | yes |  | Moves active window to the far-left monitor (2 steps left). | `commands.json:2278` |
+| `builtin.send_to_far_right` | `send to far right` | - | ui | yes |  | Moves active window to the far-right monitor (2 steps right). | `commands.json:2254` |
+| `builtin.send_to_main_monitor` | `send to main monitor` | - | ui | yes |  | Moves active window to the main (far-left) monitor. | `commands.json:2335` |
+| `builtin.send_to_middle_monitor` | `send to middle monitor` | - | ui | yes |  | Moves the focused window to the middle screen. | `commands.json:2302` |
+| `builtin.show_commands` | `show commands` | - | ui | yes |  | Puts the command reference overlay on the screen. | `commands.json:2180` |
 | `builtin.show_desktop` | `show desktop` | - | ui | yes |  | Minimises every window to show the desktop. | `commands.json:79` |
 | `builtin.show_tutorial` | `show tutorial` | - | ui | yes |  | Opens the interactive Samsara tutorial. | `commands.json:286` |
-| `builtin.smaller_text` | `smaller text` | - | ui | yes |  | Makes the text smaller in the app you are using. | `commands.json:2191` |
-| `builtin.snap_left` | `snap left` | - | ui | yes |  | Snaps window to left half. | `commands.json:711` |
-| `builtin.snap_right` | `snap right` | - | ui | yes |  | Snaps window to right half. | `commands.json:720` |
-| `builtin.snap_top_left` | `snap top left` | - | ui | yes |  | Snaps window to top-left quarter. | `commands.json:1292` |
-| `builtin.snap_top_right` | `snap top right` | - | ui | yes |  | Snaps window to top-right quarter. | `commands.json:1302` |
-| `builtin.space` | `space` | - | write | no |  | Types a single space at the cursor. | `commands.json:592` |
-| `builtin.speech_recognition` | `speech recognition` | - | ui | yes |  | Opens Windows Speech Recognition settings. | `commands.json:2054` |
-| `builtin.start_captions` | `start captions` | - | ui | yes |  | Toggles Windows live captions. | `commands.json:1963` |
-| `builtin.start_listening` | `start listening` | - | ui | yes |  | Starts Samsara recording. | `commands.json:2176` |
-| `builtin.start_narrator` | `start narrator` | - | write | no |  | Starts or stop Windows Narrator (screen reader). | `commands.json:1907` |
-| `builtin.steam_downloads` | `steam downloads` | - | ui | yes |  | Opens Steam downloads view. | `commands.json:2494` |
-| `builtin.steam_friends` | `steam friends` | - | ui | yes |  | Opens Steam friends list. | `commands.json:2482` |
-| `builtin.steam_library` | `steam library` | - | ui | yes |  | Opens Steam library view. | `commands.json:2476` |
-| `builtin.steam_store` | `steam store` | - | ui | yes |  | Opens Steam store. | `commands.json:2488` |
-| `builtin.sticky_keys` | `sticky keys` | - | ui | yes |  | Opens sticky keys settings (press modifier keys one at a time). | `commands.json:2015` |
+| `builtin.smaller_text` | `smaller text` | - | ui | yes |  | Makes the text smaller in the app you are using. | `commands.json:2171` |
+| `builtin.snap_left` | `snap left` | - | ui | yes |  | Snaps window to left half. | `commands.json:691` |
+| `builtin.snap_right` | `snap right` | - | ui | yes |  | Snaps window to right half. | `commands.json:700` |
+| `builtin.snap_top_left` | `snap top left` | - | ui | yes |  | Snaps window to top-left quarter. | `commands.json:1272` |
+| `builtin.snap_top_right` | `snap top right` | - | ui | yes |  | Snaps window to top-right quarter. | `commands.json:1282` |
+| `builtin.space` | `space` | - | write | no |  | Types a single space at the cursor. | `commands.json:572` |
+| `builtin.speech_recognition` | `speech recognition` | - | ui | yes |  | Opens Windows Speech Recognition settings. | `commands.json:2034` |
+| `builtin.start_captions` | `start captions` | - | ui | yes |  | Toggles Windows live captions. | `commands.json:1943` |
+| `builtin.start_listening` | `start listening` | - | ui | yes |  | Starts Samsara recording. | `commands.json:2156` |
+| `builtin.start_narrator` | `start narrator` | - | write | no |  | Starts or stop Windows Narrator (screen reader). | `commands.json:1887` |
+| `builtin.steam_downloads` | `steam downloads` | - | ui | yes |  | Opens Steam downloads view. | `commands.json:2474` |
+| `builtin.steam_friends` | `steam friends` | - | ui | yes |  | Opens Steam friends list. | `commands.json:2462` |
+| `builtin.steam_library` | `steam library` | - | ui | yes |  | Opens Steam library view. | `commands.json:2456` |
+| `builtin.steam_store` | `steam store` | - | ui | yes |  | Opens Steam store. | `commands.json:2468` |
+| `builtin.sticky_keys` | `sticky keys` | - | ui | yes |  | Opens sticky keys settings (press modifier keys one at a time). | `commands.json:1995` |
 | `builtin.stop_forward` | `stop forward` | - | write | no |  | Releases W key. | `commands.json:401` |
-| `builtin.stop_narrator` | `stop narrator` | - | write | no |  | Starts or stop Windows Narrator. | `commands.json:1917` |
-| `builtin.stop_reading` | `stop reading` | - | write | no |  | Stops Windows Magnifier reading aloud. | `commands.json:1897` |
-| `builtin.strikethrough` | `strikethrough` | - | ui | yes |  | Toggles strikethrough (Google Docs). | `commands.json:1693` |
+| `builtin.stop_narrator` | `stop narrator` | - | write | no |  | Starts or stop Windows Narrator. | `commands.json:1897` |
+| `builtin.stop_reading` | `stop reading` | - | write | no |  | Stops Windows Magnifier reading aloud. | `commands.json:1877` |
+| `builtin.strikethrough` | `strikethrough` | - | ui | yes |  | Toggles strikethrough (Google Docs). | `commands.json:1673` |
 | `builtin.submit` | `submit` | - | write | no |  | Presses Enter. | `commands.json:316` |
-| `builtin.switch_app` | `switch app` | - | ui | yes |  | Switches to next window. | `commands.json:702` |
-| `builtin.switch_window` | `switch window` | - | ui | yes |  | Switches to next window. | `commands.json:693` |
-| `builtin.system_info` | `system info` | - | ui | yes |  | Opens system properties. | `commands.json:1216` |
-| `builtin.tab_one` | `tab one` | - | ui | yes |  | Switches to tab 1. | `commands.json:1478` |
-| `builtin.tab_three` | `tab three` | - | ui | yes |  | Switches to tab 3. | `commands.json:1496` |
-| `builtin.tab_two` | `tab two` | - | ui | yes |  | Switches to tab 2. | `commands.json:1487` |
-| `builtin.take_a_screenshot` | `take a screenshot` | - | ui | yes |  | Opens screenshot snip tool. | `commands.json:625` |
+| `builtin.switch_app` | `switch app` | - | ui | yes |  | Switches to next window. | `commands.json:682` |
+| `builtin.switch_window` | `switch window` | - | ui | yes |  | Switches to next window. | `commands.json:673` |
+| `builtin.system_info` | `system info` | - | ui | yes |  | Opens system properties. | `commands.json:1196` |
+| `builtin.tab_one` | `tab one` | - | ui | yes |  | Switches to tab 1. | `commands.json:1458` |
+| `builtin.tab_three` | `tab three` | - | ui | yes |  | Switches to tab 3. | `commands.json:1476` |
+| `builtin.tab_two` | `tab two` | - | ui | yes |  | Switches to tab 2. | `commands.json:1467` |
+| `builtin.take_a_screenshot` | `take a screenshot` | - | ui | yes |  | Opens screenshot snip tool. | `commands.json:605` |
 | `builtin.task_manager` | `task manager` | - | ui | yes |  | Opens Task Manager. | `commands.json:106` |
-| `builtin.text_cursor_settings` | `text cursor settings` | - | ui | yes |  | Opens text cursor settings (thickness, color indicator). | `commands.json:2078` |
-| `builtin.text_size` | `text size` | - | ui | yes |  | Opens text size settings. | `commands.json:2146` |
-| `builtin.todays_note` | `todays note` | - | write | no |  | Opens today's daily note in Obsidian, if the Daily Notes plugin is on. | `commands.json:1132` |
-| `builtin.toggle_left_sidebar` | `toggle left sidebar` | - | ui | yes |  | Shows or hides Obsidian's left sidebar. | `commands.json:1152` |
-| `builtin.toggle_preview` | `toggle preview` | - | ui | yes |  | Switches Obsidian between editing a note and reading it. | `commands.json:1049` |
-| `builtin.transcribe_file` | `transcribe file` | - | ui | yes |  | Opens the window for transcribing an audio file you already have. | `commands.json:2512` |
-| `builtin.type_this` | `type this` | - | ui | yes |  | Starts Samsara dictation (alias). | `commands.json:2164` |
-| `builtin.underline` | `underline` | - | ui | yes |  | Toggles underline text. | `commands.json:782` |
+| `builtin.text_cursor_settings` | `text cursor settings` | - | ui | yes |  | Opens text cursor settings (thickness, color indicator). | `commands.json:2058` |
+| `builtin.text_size` | `text size` | - | ui | yes |  | Opens text size settings. | `commands.json:2126` |
+| `builtin.todays_note` | `todays note` | - | write | no |  | Opens today's daily note in Obsidian, if the Daily Notes plugin is on. | `commands.json:1112` |
+| `builtin.toggle_left_sidebar` | `toggle left sidebar` | - | ui | yes |  | Shows or hides Obsidian's left sidebar. | `commands.json:1132` |
+| `builtin.toggle_preview` | `toggle preview` | - | ui | yes |  | Switches Obsidian between editing a note and reading it. | `commands.json:1029` |
+| `builtin.transcribe_file` | `transcribe file` | - | ui | yes |  | Opens the window for transcribing an audio file you already have. | `commands.json:2492` |
+| `builtin.type_this` | `type this` | - | ui | yes |  | Starts Samsara dictation (alias). | `commands.json:2144` |
+| `builtin.underline` | `underline` | - | ui | yes |  | Toggles underline text. | `commands.json:762` |
 | `builtin.undo` | `undo` | - | write | yes |  | Removes the last pasted dictation. | `commands.json:271` |
-| `builtin.undo_that` | `undo that` | - | write | yes |  | Removes the last pasted dictation. | `commands.json:613` |
-| `builtin.unindent_line` | `unindent line` | - | ui | yes |  | Unindents the current line in Obsidian. | `commands.json:1171` |
-| `builtin.virtual_desktop_left` | `virtual desktop left` | - | ui | yes |  | Switches to left virtual desktop. | `commands.json:1252` |
-| `builtin.virtual_desktop_right` | `virtual desktop right` | - | ui | yes |  | Switches to right virtual desktop. | `commands.json:1262` |
-| `builtin.virtual_keyboard` | `virtual keyboard` | - | write | no |  | Opens on-screen keyboard. | `commands.json:2005` |
-| `builtin.visual_notifications` | `visual notifications` | - | ui | yes |  | Opens audio/visual notification settings. | `commands.json:1979` |
-| `builtin.windows_voice_typing` | `windows voice typing` | - | ui | yes |  | Opens Windows voice typing. | `commands.json:2045` |
-| `builtin.word_left` | `word left` | - | ui | yes |  | Moves cursor one word left. | `commands.json:1628` |
-| `builtin.word_right` | `word right` | - | ui | yes |  | Moves cursor one word right. | `commands.json:1637` |
-| `builtin.zoom_in` | `zoom in` | - | ui | yes |  | Zooms Windows Magnifier in. | `commands.json:737` |
-| `builtin.zoom_out` | `zoom out` | - | ui | yes |  | Zooms Windows Magnifier out. | `commands.json:746` |
+| `builtin.undo_that` | `undo that` | - | write | yes |  | Removes the last pasted dictation. | `commands.json:593` |
+| `builtin.unindent_line` | `unindent line` | - | ui | yes |  | Unindents the current line in Obsidian. | `commands.json:1151` |
+| `builtin.virtual_desktop_left` | `virtual desktop left` | - | ui | yes |  | Switches to left virtual desktop. | `commands.json:1232` |
+| `builtin.virtual_desktop_right` | `virtual desktop right` | - | ui | yes |  | Switches to right virtual desktop. | `commands.json:1242` |
+| `builtin.virtual_keyboard` | `virtual keyboard` | - | write | no |  | Opens on-screen keyboard. | `commands.json:1985` |
+| `builtin.visual_notifications` | `visual notifications` | - | ui | yes |  | Opens audio/visual notification settings. | `commands.json:1959` |
+| `builtin.windows_voice_typing` | `windows voice typing` | - | ui | yes |  | Opens Windows voice typing. | `commands.json:2025` |
+| `builtin.word_left` | `word left` | - | ui | yes |  | Moves cursor one word left. | `commands.json:1608` |
+| `builtin.word_right` | `word right` | - | ui | yes |  | Moves cursor one word right. | `commands.json:1617` |
+| `builtin.zoom_in` | `zoom in` | - | ui | yes |  | Zooms Windows Magnifier in. | `commands.json:717` |
+| `builtin.zoom_out` | `zoom out` | - | ui | yes |  | Zooms Windows Magnifier out. | `commands.json:726` |
 
 ## core_utils (5)
 
@@ -407,14 +404,14 @@ Columns: canonical id; every phrase the registry maps to it; args as name:type (
 
 | canonical id | phrases | args | risk | undo | whole | description | source |
 |---|---|---|---|---|---|---|---|
-| `health_tracker.clear_health_log` | `clear health log`, `delete health log`, `reset health log`, `wipe health log` | - | destructive | no |  | Deletes every entry in your health log. | `plugins/commands/health_tracker.py:330` |
-| `health_tracker.export_health_log` | `download health log`, `export health`, `export health log`, `health csv`, `save health log` | - | write | no |  | Saves your whole health log to a CSV file. | `plugins/commands/health_tracker.py:295` |
-| `health_tracker.health_summary` | `health report`, `health summary`, `how am i doing`, `how am i feeling`, `how is my pain`, `how was my day`, `how was my week`, `hows my pain`, `pain summary` | text:text | read | yes |  | Reads out a summary of what you have logged recently. | `plugins/commands/health_tracker.py:206` |
-| `health_tracker.pain_level` | `log pain`, `my pain is`, `pain at`, `pain is`, `pain level` | remainder:text | write | no |  | Logs a pain level, such as pain level six, with an optional place. | `plugins/commands/health_tracker.py:112` |
-| `health_tracker.read_health_log` | `health entries`, `health log`, `read health`, `read health log`, `read my health`, `what did i log` | - | read | yes |  | Reads out what you have logged today. | `plugins/commands/health_tracker.py:273` |
-| `health_tracker.symptom` | `i feel`, `im feeling`, `log symptom`, `symptom`, `symptoms` | remainder:text | write | no |  | Logs a symptom in your own words. | `plugins/commands/health_tracker.py:183` |
-| `health_tracker.took` | `just took`, `log med`, `log medication`, `medication`, `popped`, `popped a`, `take`, `took` | remainder:text | write | no |  | Logs a medication you have just taken. | `plugins/commands/health_tracker.py:149` |
-| `health_tracker.undo_health_log` | `delete last health`, `remove last health`, `undo health`, `undo health entry`, `undo health log` | - | destructive | no |  | Deletes the last thing you logged. | `plugins/commands/health_tracker.py:310` |
+| `health_tracker.clear_health_log` | `clear health log`, `delete health log`, `reset health log`, `wipe health log` | - | destructive | no |  | Deletes every entry in your health log. | `plugins/commands/health_tracker.py:343` |
+| `health_tracker.export_health_log` | `download health log`, `export health`, `export health log`, `health csv`, `save health log` | - | write | no |  | Saves your whole health log to a CSV file. | `plugins/commands/health_tracker.py:308` |
+| `health_tracker.health_summary` | `health report`, `health summary`, `how am i doing`, `how am i feeling`, `how is my pain`, `how was my day`, `how was my week`, `hows my pain`, `pain summary` | text:text | read | yes |  | Reads out a summary of what you have logged recently. | `plugins/commands/health_tracker.py:207` |
+| `health_tracker.pain_level` | `log pain`, `my pain is`, `pain at`, `pain is`, `pain level` | remainder:text | write | no |  | Logs a pain level, such as pain level six, with an optional place. | `plugins/commands/health_tracker.py:113` |
+| `health_tracker.read_health_log` | `health entries`, `health log`, `read health`, `read health log`, `read my health`, `what did i log` | - | read | yes |  | Reads out what you have logged today. | `plugins/commands/health_tracker.py:281` |
+| `health_tracker.symptom` | `i feel`, `im feeling`, `log symptom`, `symptom`, `symptoms` | remainder:text | write | no |  | Logs a symptom in your own words. | `plugins/commands/health_tracker.py:184` |
+| `health_tracker.took` | `just took`, `log med`, `log medication`, `medication`, `popped`, `popped a`, `take`, `took` | remainder:text | write | no |  | Logs a medication you have just taken. | `plugins/commands/health_tracker.py:150` |
+| `health_tracker.undo_health_log` | `delete last health`, `remove last health`, `undo health`, `undo health entry`, `undo health log` | - | destructive | no |  | Deletes the last thing you logged. | `plugins/commands/health_tracker.py:323` |
 
 ## hyperion_lights (5)
 
@@ -481,11 +478,11 @@ Columns: canonical id; every phrase the registry maps to it; args as name:type (
 
 | canonical id | phrases | args | risk | undo | whole | description | source |
 |---|---|---|---|---|---|---|---|
-| `reminders.cancel_all_reminders` | `cancel all reminders`, `clear all reminders`, `clear reminders`, `remove all reminders` | - | destructive | no |  | Cancels every reminder you have set. | `plugins/commands/reminders.py:262` |
-| `reminders.cancel_reminder` | `cancel reminder`, `delete reminder`, `remove reminder` | text:text | destructive | no |  | Cancels the reminder you name. | `plugins/commands/reminders.py:218` |
-| `reminders.read_reminders` | `list reminders`, `read reminders`, `what reminders do i have` | - | read | yes |  | Reads out the reminders you have set. | `plugins/commands/reminders.py:190` |
-| `reminders.remind_me_to` | `create reminder`, `remind me to`, `set a reminder for` | text:text | write | no |  | Sets a reminder from what you say, such as remind me to stretch at four. | `plugins/commands/reminders.py:127` |
-| `reminders.show_reminders` | `reminder overview`, `reminder status`, `show reminders` | - | read | yes |  | Puts your reminders on the screen. | `plugins/commands/reminders.py:286` |
+| `reminders.cancel_all_reminders` | `cancel all reminders`, `clear all reminders`, `clear reminders`, `remove all reminders` | - | destructive | no |  | Cancels every reminder you have set. | `plugins/commands/reminders.py:267` |
+| `reminders.cancel_reminder` | `cancel reminder`, `delete reminder`, `remove reminder` | text:text | destructive | no |  | Cancels the reminder you name. | `plugins/commands/reminders.py:223` |
+| `reminders.read_reminders` | `list reminders`, `read reminders`, `what reminders do i have` | - | read | yes |  | Reads out the reminders you have set. | `plugins/commands/reminders.py:191` |
+| `reminders.remind_me_to` | `create reminder`, `remind me to`, `set a reminder for` | text:text | write | no |  | Sets a reminder from what you say, such as remind me to stretch at four. | `plugins/commands/reminders.py:128` |
+| `reminders.show_reminders` | `reminder overview`, `reminder status`, `show reminders` | - | read | yes |  | Puts your reminders on the screen. | `plugins/commands/reminders.py:291` |
 
 ## screen_gif (3)
 
@@ -522,20 +519,23 @@ Columns: canonical id; every phrase the registry maps to it; args as name:type (
 |---|---|---|---|---|---|---|---|
 | `session_mode_commands.retype_that` | `retype it`, `retype last`, `retype that` | - | ui | yes |  | Types the last thing Samsara held back because the window had changed. | `plugins/commands/session_mode_commands.py:11` |
 
-## show_numbers (10)
+## show_numbers (13)
 
 | canonical id | phrases | args | risk | undo | whole | description | source |
 |---|---|---|---|---|---|---|---|
-| `show_numbers.click` | `click`, `press`, `tap` | label:int | write | no |  | Clicks the numbered thing you name, such as click seven. | `plugins/commands/show_numbers.py:2120` |
-| `show_numbers.grid_back` | `grid back`, `grid up`, `undo grid` | - | read | yes |  | Steps the mouse grid back one refinement, after a misheard number. *(Live only while mouse_grid.visible.)* | `plugins/commands/show_numbers.py:1994` |
-| `show_numbers.hide_grid` | `cancel grid`, `close grid`, `grid off`, `hide grid` | - | read | yes |  | Closes the mouse grid. *(Live only while mouse_grid.visible.)* | `plugins/commands/show_numbers.py:1981` |
-| `show_numbers.hide_numbers` | `clear labels`, `dismiss numbers`, `hide`, `hide labels`, `hide numbers` | - | ui | yes |  | Clears the numbered labels from the screen. | `plugins/commands/show_numbers.py:2087` |
-| `show_numbers.mouse_grid` | `grid`, `mouse grid`, `mousegrid`, `show grid` | text:text | read | yes |  | Puts a numbered grid on the screen for pointing at anything. | `plugins/commands/show_numbers.py:1951` |
-| `show_numbers.move_here` | `just move`, `move here`, `move mouse here`, `park here` | - | read | yes |  | Moves the pointer to the current grid cell and closes the grid, without clicking. *(Live only while mouse_grid.visible.)* | `plugins/commands/show_numbers.py:2009` |
-| `show_numbers.overlay_grid` | `grid test`, `overlay grid`, `overlay grid test` | - | ui | yes |  | Draws five test labels across the screen, to check the overlay paints. | `plugins/commands/show_numbers.py:1661` |
-| `show_numbers.refresh_numbers` | `refresh`, `refresh numbers`, `update numbers` | - | ui | yes |  | Rescans the focused window and redraws the numbered labels. | `plugins/commands/show_numbers.py:2098` |
-| `show_numbers.show_numbers` | `label things`, `show`, `show clickable`, `show labels`, `show numbers` | - | read | yes |  | Numbers everything clickable in the focused window so you can name one. | `plugins/commands/show_numbers.py:2026` |
-| `show_numbers.show_overlay_test` | `overlay test`, `show numbers debug`, `show overlay test` | - | ui | yes |  | Draws four test labels, to check the overlay can paint on this screen. | `plugins/commands/show_numbers.py:1550` |
+| `show_numbers.click` | `click`, `press`, `tap` | label:int | write | no |  | Clicks the numbered thing you name, such as click seven. *(Live only with an argument while show_numbers.visible.)* | `plugins/commands/show_numbers.py:2126` |
+| `show_numbers.double_click` | `double click` | label:int | write | no |  | double click *(Live only with an argument while show_numbers.visible.)* | `plugins/commands/show_numbers.py:2279` |
+| `show_numbers.grid_back` | `grid back`, `grid up`, `undo grid` | - | read | yes |  | Steps the mouse grid back one refinement, after a misheard number. *(Live only while mouse_grid.visible.)* | `plugins/commands/show_numbers.py:2000` |
+| `show_numbers.hide_grid` | `cancel grid`, `close grid`, `grid off`, `hide grid` | - | read | yes |  | Closes the mouse grid. *(Live only while mouse_grid.visible.)* | `plugins/commands/show_numbers.py:1987` |
+| `show_numbers.hide_numbers` | `clear labels`, `dismiss numbers`, `hide`, `hide labels`, `hide numbers` | - | ui | yes |  | Clears the numbered labels from the screen. | `plugins/commands/show_numbers.py:2093` |
+| `show_numbers.left_click` | `left click` | label:int | write | no |  | left click *(Live only with an argument while show_numbers.visible.)* | `plugins/commands/show_numbers.py:2265` |
+| `show_numbers.mouse_grid` | `grid`, `mouse grid`, `mousegrid`, `show grid` | text:text | read | yes |  | Puts a numbered grid on the screen for pointing at anything. | `plugins/commands/show_numbers.py:1957` |
+| `show_numbers.move_here` | `just move`, `move here`, `move mouse here`, `park here` | - | read | yes |  | Moves the pointer to the current grid cell and closes the grid, without clicking. *(Live only while mouse_grid.visible.)* | `plugins/commands/show_numbers.py:2015` |
+| `show_numbers.overlay_grid` | `grid test`, `overlay grid`, `overlay grid test` | - | ui | yes |  | Draws five test labels across the screen, to check the overlay paints. | `plugins/commands/show_numbers.py:1667` |
+| `show_numbers.refresh_numbers` | `refresh`, `refresh numbers`, `update numbers` | - | ui | yes |  | Rescans the focused window and redraws the numbered labels. | `plugins/commands/show_numbers.py:2104` |
+| `show_numbers.right_click` | `right click` | label:int | write | no |  | right click *(Live only with an argument while show_numbers.visible.)* | `plugins/commands/show_numbers.py:2272` |
+| `show_numbers.show_numbers` | `label things`, `show`, `show clickable`, `show labels`, `show numbers` | - | read | yes |  | Numbers everything clickable in the focused window so you can name one. | `plugins/commands/show_numbers.py:2032` |
+| `show_numbers.show_overlay_test` | `overlay test`, `show numbers debug`, `show overlay test` | - | ui | yes |  | Draws four test labels, to check the overlay can paint on this screen. | `plugins/commands/show_numbers.py:1556` |
 
 ## smart_actions (3)
 
@@ -576,13 +576,13 @@ Columns: canonical id; every phrase the registry maps to it; args as name:type (
 
 | canonical id | phrases | args | risk | undo | whole | description | source |
 |---|---|---|---|---|---|---|---|
-| `tasks.add_to_list` | `add task`, `add to list`, `add to tasks`, `add to the list`, `new task`, `todo` | remainder:text | write | yes |  | Adds what you say next to your task list. | `plugins/commands/tasks.py:56` |
-| `tasks.clear_completed` | `clear completed`, `clear done tasks`, `remove completed` | - | destructive | no |  | Deletes every task already marked as done. | `plugins/commands/tasks.py:145` |
-| `tasks.complete_task` | `check task`, `complete task`, `done task`, `finish task`, `task complete` | task_number:int | write | no |  | Marks the task you name as done. | `plugins/commands/tasks.py:99` |
-| `tasks.hide_tasks` | `close task list`, `close tasks`, `hide tasks` | - | ui | yes |  | Takes the task list off the screen. | `plugins/commands/tasks.py:86` |
-| `tasks.read_tasks` | `list tasks`, `read my tasks`, `read tasks`, `what are my tasks` | - | read | yes |  | Reads out the tasks you have not finished. | `plugins/commands/tasks.py:162` |
-| `tasks.remove_task` | `delete task`, `remove task` | task_number:int | destructive | no |  | Deletes the task you name from the list. | `plugins/commands/tasks.py:122` |
-| `tasks.show_tasks` | `open tasks`, `show my tasks`, `show task list`, `show tasks`, `task list` | - | ui | yes |  | Puts your task list on the screen. | `plugins/commands/tasks.py:74` |
+| `tasks.add_to_list` | `add task`, `add to list`, `add to tasks`, `add to the list`, `new task`, `todo` | remainder:text | write | yes |  | Adds what you say next to your task list. | `plugins/commands/tasks.py:57` |
+| `tasks.clear_completed` | `clear completed`, `clear done tasks`, `remove completed` | - | destructive | no |  | Deletes every task already marked as done. | `plugins/commands/tasks.py:146` |
+| `tasks.complete_task` | `check task`, `complete task`, `done task`, `finish task`, `task complete` | task_number:int | write | no |  | Marks the task you name as done. | `plugins/commands/tasks.py:100` |
+| `tasks.hide_tasks` | `close task list`, `close tasks`, `hide tasks` | - | ui | yes |  | Takes the task list off the screen. | `plugins/commands/tasks.py:87` |
+| `tasks.read_tasks` | `list tasks`, `read my tasks`, `read tasks`, `what are my tasks` | - | read | yes |  | Reads out the tasks you have not finished. | `plugins/commands/tasks.py:163` |
+| `tasks.remove_task` | `delete task`, `remove task` | task_number:int | destructive | no |  | Deletes the task you name from the list. | `plugins/commands/tasks.py:123` |
+| `tasks.show_tasks` | `open tasks`, `show my tasks`, `show task list`, `show tasks`, `task list` | - | ui | yes |  | Puts your task list on the screen. | `plugins/commands/tasks.py:75` |
 
 ## text_marker (3)
 
@@ -631,46 +631,46 @@ Columns: canonical id; every phrase the registry maps to it; args as name:type (
 
 | canonical id | phrases | args | risk | undo | whole | description | source |
 |---|---|---|---|---|---|---|---|
-| `window_cube.cube_copy` | `cube copy`, `cube copy into` | numbers:int | write | no |  | Copies the text from one numbered window into another. | `plugins/commands/window_cube.py:478` |
+| `window_cube.cube_copy` | `cube copy`, `cube copy into` | numbers:int | write | no |  | Copies the text from one numbered window into another. | `plugins/commands/window_cube.py:484` |
 | `window_cube.cube_page` | `cube page`, `cube page one`, `cube page two` | page:int | ui | yes |  | Shows the next page of the numbered window grid, or the page you name. | `plugins/commands/window_cube.py:360` |
-| `window_cube.cube_tile` | `cube tile`, `cube tile and` | numbers:int | ui | yes |  | Arranges the numbered windows you name side by side. | `plugins/commands/window_cube.py:493` |
-| `window_cube.eight` | `8`, `eight` | - | ui | yes |  | Switches to window 8 in the numbered grid. *(Live only while the window cube is on screen.)* | `plugins/commands/window_cube.py:398` |
-| `window_cube.five` | `5`, `five` | - | ui | yes |  | Switches to window 5 in the numbered grid. *(Live only while the window cube is on screen.)* | `plugins/commands/window_cube.py:398` |
-| `window_cube.four` | `4`, `four` | - | ui | yes |  | Switches to window 4 in the numbered grid. *(Live only while the window cube is on screen.)* | `plugins/commands/window_cube.py:398` |
+| `window_cube.cube_tile` | `cube tile`, `cube tile and` | numbers:int | ui | yes |  | Arranges the numbered windows you name side by side. | `plugins/commands/window_cube.py:499` |
+| `window_cube.eight` | `8`, `eight` | - | ui | yes |  | Switches to window 8 in the numbered grid. *(Live only while the window cube is on screen.)* | `plugins/commands/window_cube.py:404` |
+| `window_cube.five` | `5`, `five` | - | ui | yes |  | Switches to window 5 in the numbered grid. *(Live only while the window cube is on screen.)* | `plugins/commands/window_cube.py:404` |
+| `window_cube.four` | `4`, `four` | - | ui | yes |  | Switches to window 4 in the numbered grid. *(Live only while the window cube is on screen.)* | `plugins/commands/window_cube.py:404` |
 | `window_cube.hide_cube` | `hide cube`, `unpin cube`, `unpin windows` | - | ui | yes |  | Takes the numbered window grid off the screen. | `plugins/commands/window_cube.py:328` |
-| `window_cube.nine` | `9`, `nine` | - | ui | yes |  | Switches to window 9 in the numbered grid. *(Live only while the window cube is on screen.)* | `plugins/commands/window_cube.py:398` |
-| `window_cube.one` | `1`, `one` | - | ui | yes |  | Switches to window 1 in the numbered grid. *(Live only while the window cube is on screen.)* | `plugins/commands/window_cube.py:398` |
+| `window_cube.nine` | `9`, `nine` | - | ui | yes |  | Switches to window 9 in the numbered grid. *(Live only while the window cube is on screen.)* | `plugins/commands/window_cube.py:404` |
+| `window_cube.one` | `1`, `one` | - | ui | yes |  | Switches to window 1 in the numbered grid. *(Live only while the window cube is on screen.)* | `plugins/commands/window_cube.py:404` |
 | `window_cube.refresh_cube` | `refresh cube`, `rescan cube`, `update cube` | text:text | ui | yes |  | Rescans your open windows and redraws the numbered grid. | `plugins/commands/window_cube.py:346` |
-| `window_cube.seven` | `7`, `seven` | - | ui | yes |  | Switches to window 7 in the numbered grid. *(Live only while the window cube is on screen.)* | `plugins/commands/window_cube.py:398` |
+| `window_cube.seven` | `7`, `seven` | - | ui | yes |  | Switches to window 7 in the numbered grid. *(Live only while the window cube is on screen.)* | `plugins/commands/window_cube.py:404` |
 | `window_cube.show_cube` | `pin cube`, `pin windows`, `show cube` | - | ui | yes |  | Pins a numbered grid of your open windows to the screen. | `plugins/commands/window_cube.py:312` |
-| `window_cube.six` | `6`, `six` | - | ui | yes |  | Switches to window 6 in the numbered grid. *(Live only while the window cube is on screen.)* | `plugins/commands/window_cube.py:398` |
-| `window_cube.three` | `3`, `three` | - | ui | yes |  | Switches to window 3 in the numbered grid. *(Live only while the window cube is on screen.)* | `plugins/commands/window_cube.py:398` |
-| `window_cube.two` | `2`, `two` | - | ui | yes |  | Switches to window 2 in the numbered grid. *(Live only while the window cube is on screen.)* | `plugins/commands/window_cube.py:398` |
-| `window_cube.window_eight` | `window 8`, `window eight` | - | ui | yes |  | Switches to window 8 in the numbered grid. | `plugins/commands/window_cube.py:413` |
-| `window_cube.window_five` | `window 5`, `window five` | - | ui | yes |  | Switches to window 5 in the numbered grid. | `plugins/commands/window_cube.py:413` |
-| `window_cube.window_four` | `window 4`, `window four` | - | ui | yes |  | Switches to window 4 in the numbered grid. | `plugins/commands/window_cube.py:413` |
-| `window_cube.window_nine` | `window 9`, `window nine` | - | ui | yes |  | Switches to window 9 in the numbered grid. | `plugins/commands/window_cube.py:413` |
-| `window_cube.window_one` | `window 1`, `window one` | - | ui | yes |  | Switches to window 1 in the numbered grid. | `plugins/commands/window_cube.py:413` |
-| `window_cube.window_seven` | `window 7`, `window seven` | - | ui | yes |  | Switches to window 7 in the numbered grid. | `plugins/commands/window_cube.py:413` |
-| `window_cube.window_six` | `window 6`, `window six` | - | ui | yes |  | Switches to window 6 in the numbered grid. | `plugins/commands/window_cube.py:413` |
-| `window_cube.window_three` | `window 3`, `window three` | - | ui | yes |  | Switches to window 3 in the numbered grid. | `plugins/commands/window_cube.py:413` |
-| `window_cube.window_two` | `window 2`, `window two` | - | ui | yes |  | Switches to window 2 in the numbered grid. | `plugins/commands/window_cube.py:413` |
+| `window_cube.six` | `6`, `six` | - | ui | yes |  | Switches to window 6 in the numbered grid. *(Live only while the window cube is on screen.)* | `plugins/commands/window_cube.py:404` |
+| `window_cube.three` | `3`, `three` | - | ui | yes |  | Switches to window 3 in the numbered grid. *(Live only while the window cube is on screen.)* | `plugins/commands/window_cube.py:404` |
+| `window_cube.two` | `2`, `two` | - | ui | yes |  | Switches to window 2 in the numbered grid. *(Live only while the window cube is on screen.)* | `plugins/commands/window_cube.py:404` |
+| `window_cube.window_eight` | `window 8`, `window eight` | - | ui | yes |  | Switches to window 8 in the numbered grid. | `plugins/commands/window_cube.py:419` |
+| `window_cube.window_five` | `window 5`, `window five` | - | ui | yes |  | Switches to window 5 in the numbered grid. | `plugins/commands/window_cube.py:419` |
+| `window_cube.window_four` | `window 4`, `window four` | - | ui | yes |  | Switches to window 4 in the numbered grid. | `plugins/commands/window_cube.py:419` |
+| `window_cube.window_nine` | `window 9`, `window nine` | - | ui | yes |  | Switches to window 9 in the numbered grid. | `plugins/commands/window_cube.py:419` |
+| `window_cube.window_one` | `window 1`, `window one` | - | ui | yes |  | Switches to window 1 in the numbered grid. | `plugins/commands/window_cube.py:419` |
+| `window_cube.window_seven` | `window 7`, `window seven` | - | ui | yes |  | Switches to window 7 in the numbered grid. | `plugins/commands/window_cube.py:419` |
+| `window_cube.window_six` | `window 6`, `window six` | - | ui | yes |  | Switches to window 6 in the numbered grid. | `plugins/commands/window_cube.py:419` |
+| `window_cube.window_three` | `window 3`, `window three` | - | ui | yes |  | Switches to window 3 in the numbered grid. | `plugins/commands/window_cube.py:419` |
+| `window_cube.window_two` | `window 2`, `window two` | - | ui | yes |  | Switches to window 2 in the numbered grid. | `plugins/commands/window_cube.py:419` |
 
 ## window_switcher (11)
 
 | canonical id | phrases | args | risk | undo | whole | description | source |
 |---|---|---|---|---|---|---|---|
-| `window_switcher.hide_windows` | `dismiss windows`, `hide window labels`, `hide windows` | - | ui | yes |  | Clears the window letters from the screen. | `plugins/commands/window_switcher.py:953` |
-| `window_switcher.read_windows` | `list windows`, `read windows`, `what windows` | - | read | yes |  | Reads out the open windows and their letters. | `plugins/commands/window_switcher.py:970` |
-| `window_switcher.show_windows` | `label windows`, `show windows`, `window labels` | - | read | yes |  | Labels every open window with a letter so you can name one out loud. | `plugins/commands/window_switcher.py:613` |
-| `window_switcher.window_bring` | `bring forward`, `bring window`, `window bring` | label:nato_letter | ui | yes |  | Moves the window with the letter you name to the screen you are on. | `plugins/commands/window_switcher.py:677` |
-| `window_switcher.window_close` | `window close` | label:nato_letter | write | no |  | Closes the window with the letter you name, asking it to save first. | `plugins/commands/window_switcher.py:804` |
-| `window_switcher.window_copy` | `copy from`, `copy from window`, `window copy` | labels:nato_letter | write | no |  | Copies the text from one lettered window into another. | `plugins/commands/window_switcher.py:835` |
-| `window_switcher.window_move` | `move window`, `window move` | label:nato_letter, monitor:monitor | ui | yes |  | Moves the window with the letter you name to another screen. | `plugins/commands/window_switcher.py:703` |
-| `window_switcher.window_mute` | `mute window`, `window mute` | label:nato_letter | ui | yes |  | Mutes the audio coming from the window with the letter you name. | `plugins/commands/window_switcher.py:755` |
-| `window_switcher.window_switch` | `go to window`, `switch to window`, `window focus`, `window switch` | label:nato_letter | ui | yes |  | Brings the window with the letter you name to the front. | `plugins/commands/window_switcher.py:650` |
-| `window_switcher.window_tile` | `tile windows`, `window tile` | labels:nato_letter | ui | yes |  | Arranges the lettered windows you name side by side. | `plugins/commands/window_switcher.py:890` |
-| `window_switcher.window_unmute` | `unmute window`, `window unmute` | label:nato_letter | ui | yes |  | Unmutes the audio from the window with the letter you name. | `plugins/commands/window_switcher.py:778` |
+| `window_switcher.hide_windows` | `dismiss windows`, `hide window labels`, `hide windows` | - | ui | yes |  | Clears the window letters from the screen. | `plugins/commands/window_switcher.py:999` |
+| `window_switcher.read_windows` | `list windows`, `read windows`, `what windows` | - | read | yes |  | Reads out the open windows and their letters. | `plugins/commands/window_switcher.py:1016` |
+| `window_switcher.show_windows` | `label windows`, `show windows`, `window labels` | - | read | yes |  | Labels every open window with a letter so you can name one out loud. | `plugins/commands/window_switcher.py:659` |
+| `window_switcher.window_bring` | `bring forward`, `bring window`, `window bring` | label:nato_letter | ui | yes |  | Moves the window with the letter you name to the screen you are on. | `plugins/commands/window_switcher.py:723` |
+| `window_switcher.window_close` | `window close` | label:nato_letter | write | no |  | Closes the window with the letter you name, asking it to save first. | `plugins/commands/window_switcher.py:850` |
+| `window_switcher.window_copy` | `copy from`, `copy from window`, `window copy` | labels:nato_letter | write | no |  | Copies the text from one lettered window into another. | `plugins/commands/window_switcher.py:881` |
+| `window_switcher.window_move` | `move window`, `window move` | label:nato_letter, monitor:monitor | ui | yes |  | Moves the window with the letter you name to another screen. | `plugins/commands/window_switcher.py:749` |
+| `window_switcher.window_mute` | `mute window`, `window mute` | label:nato_letter | ui | yes |  | Mutes the audio coming from the window with the letter you name. | `plugins/commands/window_switcher.py:801` |
+| `window_switcher.window_switch` | `go to window`, `switch to window`, `window focus`, `window switch` | label:nato_letter | ui | yes |  | Brings the window with the letter you name to the front. | `plugins/commands/window_switcher.py:696` |
+| `window_switcher.window_tile` | `tile windows`, `window tile` | labels:nato_letter | ui | yes |  | Arranges the lettered windows you name side by side. | `plugins/commands/window_switcher.py:936` |
+| `window_switcher.window_unmute` | `unmute window`, `window unmute` | label:nato_letter | ui | yes |  | Unmutes the audio from the window with the letter you name. | `plugins/commands/window_switcher.py:824` |
 
 ## windows (12)
 
