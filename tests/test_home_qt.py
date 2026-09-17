@@ -31,7 +31,7 @@ import pytest
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
 from PySide6.QtCore import Qt, QTimer
-from PySide6.QtGui import QFontMetrics
+from PySide6.QtGui import QFont, QFontDatabase, QFontMetrics
 from PySide6.QtWidgets import QPushButton, QWidget
 
 from samsara import command_catalog, command_scope
@@ -80,6 +80,24 @@ class _WakeConsumer:
 
     def __init__(self, running=True):
         self.running = running
+
+
+@pytest.fixture(scope="session", autouse=True)
+def _native_home_font(qapp):
+    """Make offscreen metrics match the Windows face Samsara actually uses.
+
+    PySide's offscreen plugin ships without a font directory in this env and
+    substitutes a face that measures ``Guides & tutorials`` at 306 px rather
+    than the native Segoe UI 136 px.  The resulting one-column Home is a test
+    backend artefact, not the 900 x 650 Windows layout this file protects.
+    """
+    font_path = Path(os.environ.get("WINDIR", r"C:\\Windows")) / "Fonts" / "segoeui.ttf"
+    assert font_path.is_file(), f"Samsara's Windows UI font is missing: {font_path}"
+    assert QFontDatabase.addApplicationFont(str(font_path)) >= 0
+    previous = QFont(qapp.font())
+    qapp.setFont(QFont("Segoe UI", 9))
+    yield
+    qapp.setFont(previous)
 
 
 @pytest.fixture(autouse=True)
@@ -972,11 +990,11 @@ class TestTheExampleIsStationaryAndComplete:
         would not fit, it walks past it."""
         records = [
             {"canonical_id": "p.short", "phrase": "go back", "risk": "ui",
-             "aliases": [], "args": [], "scope": None},
+             "pack": "utilities", "aliases": [], "args": [], "scope": None},
             {"canonical_id": "p.long", "phrase": self.LONG, "risk": "ui",
-             "aliases": [], "args": [], "scope": None},
+             "pack": "utilities", "aliases": [], "args": [], "scope": None},
             {"canonical_id": "p.short2", "phrase": "scroll down", "risk": "ui",
-             "aliases": [], "args": [], "scope": None},
+             "pack": "utilities", "aliases": [], "args": [], "scope": None},
         ]
         strip = self._strip(qapp, width=420, records=records)
         assert self.LONG in strip.phrases, "it is in the pool"
@@ -1025,7 +1043,7 @@ class TestTheExampleIsStationaryAndComplete:
 
     def test_one_example_hides_the_arrows_rather_than_offering_a_dead_step(self, qapp):
         records = [{"canonical_id": "p.one", "phrase": "go back", "risk": "ui",
-                    "aliases": [], "args": [], "scope": None}]
+                    "pack": "utilities", "aliases": [], "args": [], "scope": None}]
         strip = self._strip(qapp, records=records)
         assert strip.phrases == ["go back"]
         assert not strip.prev_button.isVisible()
