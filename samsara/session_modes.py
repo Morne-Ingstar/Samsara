@@ -1510,6 +1510,10 @@ def outcome_chip(kind: str, detail: Optional[dict] = None) -> "tuple[str, str] |
         if detail.get("pack"):
             return (f"pack off: {_short(detail['pack'])}", "warning")
         return ("MISS", "error")
+    if kind == "personal_alias_offer":
+        missed = _short(detail.get("miss"))
+        canonical = _short(detail.get("canonical"))
+        return (f"Save '{missed}' as another way to say '{canonical}'? — say save alias", "pending")
     if kind == "command_awaiting_confirmation":
         verb = _first_two_words(detail.get("phrase"))
         text = f"{verb}? yes or no" if verb else "yes or no?"

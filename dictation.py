@@ -8236,6 +8236,19 @@ class DictationApp:
             _ready_chip = getattr(self, '_show_ava_readiness_chip', None)
             if _ready_chip is not None:
                 _ready_chip()
+        # Queue 198: this is the one cross-utterance seam. It sees the MISS
+        # outcome and the next final outcome, while DICTATE outcomes remain
+        # ineligible inside command_catalog.personal_alias_offer_after_outcome.
+        try:
+            from samsara.command_catalog import personal_alias_offer_after_outcome
+            offer = personal_alias_offer_after_outcome(self, outcome, text)
+            if offer:
+                from samsara.session_modes import outcome_chip
+                chip = outcome_chip("personal_alias_offer", offer)
+                if chip:
+                    self._show_outcome_chip(*chip, 8000)
+        except Exception as exc:
+            logger.warning("[ALIASES] Offer state failed: %s", exc)
         if outcome.kind != "empty":
             self._touch_session_activity()
 
