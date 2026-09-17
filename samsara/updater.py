@@ -965,7 +965,7 @@ try {{
     exit 5
 }}
 
-Write-UpdateStatus 'waiting' 'Waiting for Samsara to close.'
+    Write-UpdateStatus 'waiting' 'Waiting for Samsara to close.'
 $deadline = (Get-Date).AddSeconds(120)
 while ((Get-Process -Id {int(current_pid)} -ErrorAction SilentlyContinue) -and ((Get-Date) -lt $deadline)) {{
     Start-Sleep -Milliseconds 250
@@ -979,6 +979,40 @@ if (Get-Process -Id {int(current_pid)} -ErrorAction SilentlyContinue) {{
 $oldMoved = $false
 $newProcess = $null
 try {{
+    # Preflight the staged build while the known-good installation is still
+    # untouched.  The app writes staged_health through reconcile_update_on_startup
+    # only after its normal startup health point is reached.
+    Write-UpdateStatus 'staging_health' 'Testing the verified update before replacing Samsara.'
+    $newProcess = Start-Process -FilePath (Join-Path $staged $executable) -WorkingDirectory $staged -PassThru
+    $stagedDeadline = (Get-Date).AddSeconds(180)
+    while ((Get-Date) -lt $stagedDeadline) {{
+        try {{
+            $currentStatus = Get-Content -LiteralPath $status -Raw | ConvertFrom-Json
+            if (($currentStatus.state -eq 'staged_healthy') -or
+                ($currentStatus.state -eq 'installed') -or
+                ($currentStatus.state -eq 'reported')) {{
+                break
+            }}
+        }} catch {{}}
+        if ($newProcess.HasExited) {{
+            throw 'The staged Samsara closed before startup completed.'
+        }}
+        Start-Sleep -Milliseconds 500
+        $newProcess.Refresh()
+    }}
+    if ((Get-Date) -ge $stagedDeadline) {{
+        throw 'The staged Samsara did not confirm a healthy startup within 180 seconds.'
+    }}
+    if (($null -ne $newProcess) -and (-not $newProcess.HasExited)) {{
+        Stop-Process -Id $newProcess.Id -Force -ErrorAction Stop
+        $stopDeadline = (Get-Date).AddSeconds(10)
+        while (Get-Process -Id $newProcess.Id -ErrorAction SilentlyContinue) {{
+            if ((Get-Date) -ge $stopDeadline) {{ throw 'The staged Samsara did not close after preflight.' }}
+            Start-Sleep -Milliseconds 100
+        }}
+    }}
+    $newProcess = $null
+    Write-UpdateStatus 'awaiting_confirmation' 'The verified update passed pre-install startup health; replacing Samsara.'
     Assert-NotReparsePoint $install $installParent
     Move-Item -LiteralPath $install -Destination $rollback
     $oldMoved = $true
@@ -1016,6 +1050,12 @@ try {{
                 while ((Get-Process -Id $newProcess.Id -ErrorAction SilentlyContinue) -and ((Get-Date) -lt $stopDeadline)) {{
                     Start-Sleep -Milliseconds 100
                 }}
+            }}
+            # Validate the rollback source immediately before using it.  Do
+            # not remove the current tree unless the known-good tree is still
+            # a real directory that can be restored.
+            if (-not (Test-Path -LiteralPath $rollback -PathType Container)) {{
+                throw 'The known-good rollback directory is missing or invalid.'
             }}
             if (Test-Path -LiteralPath $install) {{
                 Assert-NotReparsePoint $install $installParent
@@ -1358,6 +1398,8 @@ def reconcile_update_on_startup(
     known_states = {
         "ready",
         "waiting",
+        "staging_health",
+        "staged_healthy",
         "awaiting_confirmation",
         "installed",
         "failed",
@@ -1370,7 +1412,7 @@ def reconcile_update_on_startup(
         return _quarantine_status(status_path, f"Unknown update status {state!r}.")
     if now is None:
         now = time.time()
-    if state in {"ready", "waiting", "awaiting_confirmation"} and _status_is_stale(
+    if state in {"ready", "waiting", "staging_health", "awaiting_confirmation"} and _status_is_stale(
         payload, now
     ):
         return _quarantine_status(
@@ -1428,6 +1470,64 @@ def reconcile_update_on_startup(
                 f"Leftover update cleanup is still pending: {exc}",
                 tag,
             )
+        return status
+    if state == "staging_health":
+        # The helper deliberately launches the payload before moving the
+        # known-good tree.  Only that exact, sibling staging directory may
+        # acknowledge the preflight; a status file from another process is
+        # quarantined rather than trusted.
+        install = _frozen_install_dir()
+        try:
+            recorded_install = Path(str(payload.get("install_dir", ""))).resolve()
+            if recorded_install == install:
+                raise UpdateError("The staged health status belongs to the active installation.")
+            staged = _validated_recorded_path(
+                payload.get("staged_dir"),
+                recorded_install.parent,
+                f".{recorded_install.name}-update-",
+            )
+            workspace = _validated_recorded_path(
+                payload.get("workspace_dir"),
+                recorded_install.parent,
+                f".{recorded_install.name}-update-",
+            )
+            rollback = _validated_recorded_path(
+                payload.get("rollback_dir"),
+                recorded_install.parent,
+                f".{recorded_install.name}-rollback-",
+            )
+            if staged.parent != workspace or staged.name != "payload":
+                raise UpdateError("The staged health path is malformed.")
+            if staged.is_symlink() or workspace.is_symlink() or rollback.is_symlink():
+                raise UpdateError("An update health path became a symbolic link.")
+            if _frozen_install_dir() != staged:
+                raise UpdateError("The running payload does not match the staged health path.")
+            if not (staged / "Samsara.exe").is_file():
+                raise UpdateError("The staged Samsara.exe is missing.")
+            healthy = UpdateStatus(
+                "staged_healthy",
+                "The verified update passed pre-install startup health.",
+                tag,
+            )
+            _write_status(
+                status_path, healthy.state, healthy.message, healthy.tag,
+                extra_fields={
+                    "install_dir": str(recorded_install),
+                    "staged_dir": str(staged),
+                    "rollback_dir": str(rollback),
+                    "workspace_dir": str(workspace),
+                },
+            )
+            return healthy
+        except Exception as exc:
+            return _quarantine_status(
+                status_path,
+                f"The staged update started, but status validation failed: {exc}",
+            )
+    if state == "staged_healthy":
+        # The helper consumes this handshake and performs the swap.  The
+        # staged process can see it on a subsequent startup poll, but the
+        # active installation must never surface it as an installed update.
         return status
     if state == "installed":
         # The status string alone cannot tell "the detached helper already
