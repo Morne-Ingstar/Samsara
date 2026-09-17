@@ -30,11 +30,11 @@ from samsara.session_modes import (
 
 REPO = Path(__file__).resolve().parent.parent
 
-#: Schema v2 (queue 93) adds rules_version / blocked / forced, so one log can
-#: hold rows decided by different execution rules and a later read can tell
-#: them apart. Still no title, no audio, no path.
+#: Schema v2 has additive rule and shadow-parser fields. The reader keys off
+#: `would`, so old rows remain readable. Still no title, no audio, no path.
 EXPECTED_KEYS = {"v", "ts", "text", "delivery", "would", "confidence", "tier", "elapsed_us",
-                 "t12_us", "suggestions", "chain", "app", "rules_version", "blocked", "forced"}
+                 "t12_us", "suggestions", "chain", "app", "rules_version", "blocked", "forced",
+                 "literal", "grammar2"}
 
 #: The DICTATE regression corpus: ordinary dictation (incl. phrases that look
 #: like commands), the look-alike commit words, control phrases, a hands-free
@@ -99,11 +99,13 @@ def _manager(buffered):
 
 
 def _state(mgr):
-    """Every non-callable session attribute, deep-copied and rendered."""
+    """Every comparable non-callable session attribute, deep-copied and rendered."""
     snapshot = {}
     for name, value in sorted(vars(mgr).items()):
         if callable(value) and not isinstance(value, (list, dict, set, tuple)):
             continue
+        if name == "_dispatch_lock":
+            continue                            # synchronization, not session state
         snapshot[name] = repr(copy.deepcopy(value)) if not name.startswith("_stack") else repr(
             [(i.kind, i.payload, i.mode, i.extra) for i in getattr(value, "_items", [])] or value)
     return snapshot

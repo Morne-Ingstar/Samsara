@@ -48,6 +48,10 @@ Line schema (v2 -- v1 rows are still readable; the reader keys off `would`):
                  has always CLAIMED to test this and has always tested the
                  penalty instead; queue 127 records the difference so it can
                  be counted rather than assumed. Nothing gates on it.
+    grammar2     queue 193's independent grammar verdict: parse count, first
+                 canonical id and arguments, and its own elapsed microseconds.
+                 This is additive evidence only; it never changes `tier` or
+                 `would`, and an unavailable catalog records an empty verdict.
     suggestions  [canonical_id, ...] for suggest, else []
     chain        [canonical_id, ...] for an "and"/"then" chain, else []
     app          focused process image name ("warp.exe") or null -- NEVER a window title
@@ -166,8 +170,33 @@ def would_have_done(resolution) -> str:
     return "miss"
 
 
+def _empty_grammar2() -> dict:
+    return {"count": 0, "canonical_id": None, "args": {}, "elapsed_us": 0}
+
+
+def grammar2_verdict(text: str, catalog) -> dict:
+    """Record queue 193's parser result without involving dispatch.
+
+    `catalog` is IntentResolver.records, the same immutable-in-practice live
+    catalog the existing shadow resolver has already used.  Keeping this
+    separate from resolve's elapsed time lets a later reader compare the two
+    verdicts without changing the established latency measurement.
+    """
+    if catalog is None:
+        return _empty_grammar2()
+    t0 = time.perf_counter()
+    from samsara import grammar  # noqa: PLC0415
+    parses = grammar.parse(text, catalog)
+    elapsed_us = int((time.perf_counter() - t0) * 1_000_000)
+    if not parses:
+        return {"count": 0, "canonical_id": None, "args": {}, "elapsed_us": elapsed_us}
+    canonical_id, args, _span, _confidence = parses[0]
+    return {"count": len(parses), "canonical_id": canonical_id, "args": dict(args),
+            "elapsed_us": elapsed_us}
+
+
 def build_entry(text: str, delivery: str, resolution, *, elapsed_us: int, app: Optional[str],
-                when: datetime, error: Optional[str] = None) -> dict:
+                when: datetime, error: Optional[str] = None, grammar2: Optional[dict] = None) -> dict:
     entry = {
         "v": SCHEMA_VERSION,
         "ts": when.isoformat(timespec="milliseconds"),
@@ -184,6 +213,7 @@ def build_entry(text: str, delivery: str, resolution, *, elapsed_us: int, app: O
         "blocked": getattr(resolution, "blocked", None) if resolution is not None else None,
         "forced": bool(getattr(resolution, "forced", False)) if resolution is not None else False,
         "literal": bool(getattr(resolution, "literal", False)) if resolution is not None else False,
+        "grammar2": grammar2 if grammar2 is not None else _empty_grammar2(),
         "app": app,
     }
     if error:
@@ -292,8 +322,14 @@ class IntentShadow:
                     error = type(exc).__name__
                     self._count_error("resolve", exc)
             elapsed_us = int((time.perf_counter() - t0) * 1_000_000)
+            grammar2 = _empty_grammar2()
+            if resolver is not None:
+                try:
+                    grammar2 = grammar2_verdict(text, getattr(resolver, "records", None))
+                except Exception as exc:
+                    self._count_error("grammar2", exc)
             entry = build_entry(text, delivery, resolution, elapsed_us=elapsed_us,
-                                app=app, when=when, error=error)
+                                app=app, when=when, error=error, grammar2=grammar2)
             folder = shadow_dir(config)
             folder.mkdir(parents=True, exist_ok=True)
             path = folder / f"intent-{when:%Y-%m-%d}.jsonl"
