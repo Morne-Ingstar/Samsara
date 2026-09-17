@@ -62,6 +62,13 @@ def catalog_rows(commands: list | None) -> list | None:
     return rows
 
 
+def rows_for_packs(rows: list[dict], pack_ids) -> list[dict]:
+    """Rows visible in a pack-scoped cheat sheet; ``None`` keeps all rows."""
+    if pack_ids is None:
+        return list(rows)
+    return [row for row in rows if row.get("pack", "core") in pack_ids]
+
+
 def plugin_label(plugin: str) -> str:
     return "Built-in" if plugin == "builtin" else plugin.replace("_", " ").title()
 
@@ -282,6 +289,7 @@ class CommandCheatSheetQt:
         self._window: "_CheatSheetWindow | None" = None
         self._init_posted = False
         self._visible = False
+        self._pending_pack_scope = None
 
     # ----------------------------------------------------------------
     # Public API (callable from any thread)
@@ -289,9 +297,20 @@ class CommandCheatSheetQt:
 
     def show(self):
         self._visible = True
+        self._pending_pack_scope = None
         if self._window is not None:
-            qt_runtime.post(self._window.show)
-            qt_runtime.post(self._window.raise_)
+            qt_runtime.post(lambda: self._show_with_pack_scope(None))
+        elif not self._init_posted:
+            self._init_posted = True
+            qt_runtime.post(self._init_window)
+
+    def show_scoped(self, pack_ids):
+        """Show only ``pack_ids``; safe to call from the session worker."""
+        self._visible = True
+        scope = frozenset(pack_ids)
+        self._pending_pack_scope = scope
+        if self._window is not None:
+            qt_runtime.post(lambda: self._show_with_pack_scope(scope))
         elif not self._init_posted:
             self._init_posted = True
             qt_runtime.post(self._init_window)
@@ -327,7 +346,14 @@ class CommandCheatSheetQt:
         self._window = _CheatSheetWindow(
             self._execute_cb, self._commands_cb, self._palette_path
         )
+        self._window.set_pack_scope(self._pending_pack_scope)
         self._window.show()
+
+    def _show_with_pack_scope(self, pack_ids):
+        """Apply scope and raise the sheet on the Qt thread."""
+        self._window.set_pack_scope(pack_ids)
+        self._window.show()
+        self._window.raise_()
 
 
 # ---------------------------------------------------------------------------
@@ -584,6 +610,7 @@ class _CheatSheetWindow(QMainWindow):
         self._commands_cb = commands_cb
         self._palette_path = palette_path
         self._all: List[dict] = []
+        self._pack_scope = None
         self._pinned: set = set()
         self._live_only = True
         self._active_category = "All"
@@ -711,6 +738,17 @@ class _CheatSheetWindow(QMainWindow):
     # Commands
     # ----------------------------------------------------------------
 
+    def set_pack_scope(self, pack_ids):
+        """Restrict this open sheet to catalog rows in ``pack_ids``.
+
+        ``None`` is the normal, unscoped command-reference view.
+        """
+        scope = None if pack_ids is None else frozenset(pack_ids)
+        if scope == self._pack_scope:
+            return
+        self._pack_scope = scope
+        self.refresh_commands()
+
     def refresh_commands(self):
         try:
             live = self._commands_cb()
@@ -723,7 +761,8 @@ class _CheatSheetWindow(QMainWindow):
             logger.warning(f"[CHEATSHEET] command catalog unavailable: {exc}")
             rows = None
         self._catalog_available = rows is not None
-        self._all = annotate_scope(_annotate_disabled(rows or [], _disabled_packs()), _scope_context())
+        annotated = annotate_scope(_annotate_disabled(rows or [], _disabled_packs()), _scope_context())
+        self._all = rows_for_packs(annotated, self._pack_scope)
         self._unavailable.setVisible(not self._catalog_available)
         self._list.setVisible(self._catalog_available)
         self._category_bar.setVisible(self._catalog_available)
