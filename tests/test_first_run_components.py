@@ -136,6 +136,7 @@ class TestFetchComponentsMain:
         assert "PROGRESS wake-word-models" in out and "[PASS] cuda-pack: installed" in out
         assert (world["downloads"] / "wake-word-models.installed").read_text().split()[0] == \
             world["manifest"]["components"][1]["sha256"]
+        assert (world["downloads"] / "manifest.json").exists()
         assert not any(p.suffix == ".part" for p in world["downloads"].iterdir())
         # a second run finds them installed and does nothing
         rc, out = self._run(world, "wake-word-models")
