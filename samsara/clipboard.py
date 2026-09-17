@@ -455,7 +455,7 @@ def _save_clipboard_impl() -> "ClipboardSnapshot":
     # restore (the mirror image of the CF_DIB -> CF_BITMAP synthesis this
     # module already relies on -- see module docstring). Dropping the
     # redundant legacy copies here shrinks the restore window (fewer
-    # formats for restore's atomic prepare phase to allocate) without
+    # formats for restore's prepare phase to allocate) without
     # losing anything actually restorable.
     if is_nonempty_payload(saved.get(CF_UNICODETEXT)):
         for legacy_fmt in (CF_TEXT, CF_OEMTEXT, CF_LOCALE):
@@ -579,12 +579,27 @@ def _restore_clipboard_impl(saved: Dict[int, bytes]) -> bool:
 
     GMEM_MOVEABLE = 0x0002
 
-    # Atomic restore, phase 1: allocate+lock+memcpy EVERY saved format
-    # before touching the live clipboard at all. If any one of them fails,
-    # free everything prepared so far and bail without ever calling
-    # OpenClipboard/EmptyClipboard -- leaving the clipboard's current
-    # (prior) content untouched beats an EmptyClipboard() followed by only
-    # a partial restore.
+    # Prepare every handle before touching the live clipboard. If any one
+    # allocation fails, free everything prepared so far and leave the
+    # current clipboard alone. This narrows the destructive window, but
+    # Win32 clipboard replacement is not a transaction.
+    def prepare_handle(raw):
+        h = _kernel32.GlobalAlloc(GMEM_MOVEABLE, len(raw))
+        if not h:
+            raise OSError(f"GlobalAlloc({len(raw)} bytes) returned NULL")
+        ptr = _kernel32.GlobalLock(h)
+        if not ptr:
+            _kernel32.GlobalFree(h)
+            raise OSError("GlobalLock returned NULL")
+        try:
+            ctypes.memmove(ptr, raw, len(raw))
+        finally:
+            _kernel32.GlobalUnlock(h)
+        return h
+
+    # If any one handle fails to prepare, free everything prepared so far and
+    # bail without ever calling OpenClipboard/EmptyClipboard. Leaving the
+    # current content untouched beats a partial restore.
     prepared = []
     skipped = 0
     for fmt, raw in saved.items():
@@ -595,22 +610,9 @@ def _restore_clipboard_impl(saved: Dict[int, bytes]) -> bool:
             skipped += 1
             continue
         try:
-            h = _kernel32.GlobalAlloc(GMEM_MOVEABLE, len(raw))
-            if not h:
-                raise OSError(f"GlobalAlloc({len(raw)} bytes) returned NULL")
-
-            ptr = _kernel32.GlobalLock(h)
-            if not ptr:
-                _kernel32.GlobalFree(h)
-                raise OSError("GlobalLock returned NULL")
-            try:
-                ctypes.memmove(ptr, raw, len(raw))
-            finally:
-                _kernel32.GlobalUnlock(h)
-
-            prepared.append((fmt, h))
+            prepared.append((fmt, prepare_handle(raw)))
         except Exception as e:
-            _log_error(f"Failed to prepare clipboard format {fmt} for restore -- aborting restore atomically", e)
+            _log_error(f"Failed to prepare clipboard format {fmt} for restore -- leaving clipboard unchanged", e)
             for _fmt, handle in prepared:
                 _kernel32.GlobalFree(handle)
             return False
@@ -618,8 +620,8 @@ def _restore_clipboard_impl(saved: Dict[int, bytes]) -> bool:
     if not prepared:
         return True  # everything saved was empty/unrestorable -- nothing to do, not a failure
 
-    # Atomic restore, phase 2: every handle exists now -- only past this
-    # point do we touch the live clipboard.
+    # Every handle exists now; only past this point do we touch the live
+    # clipboard. SetClipboardData can still fail after EmptyClipboard.
     if not _open_clipboard_with_retry():
         _log_error("Could not open clipboard for restore after retries")
         for _fmt, handle in prepared:
@@ -649,12 +651,51 @@ def _restore_clipboard_impl(saved: Dict[int, bytes]) -> bool:
             if _user32.SetClipboardData(fmt, h):
                 restored_count += 1
             else:
-                # SetClipboardData failed -- free that one handle and keep
-                # going with the rest (unlike phase 1, a single Set failure
-                # here doesn't invalidate the handles already handed off).
                 _kernel32.GlobalFree(h)
-                skipped += 1
+                # The first SetClipboardData failure is especially dangerous:
+                # EmptyClipboard has already removed the user's data. Retry
+                # with a newly allocated handle, then rebuild the snapshot if
+                # the retry also fails.
+                try:
+                    retry = prepare_handle(saved[fmt])
+                except Exception as e:
+                    _log_error(f"Failed to prepare retry for clipboard format {fmt}", e)
+                    retry = None
+                if retry and _user32.SetClipboardData(fmt, retry):
+                    restored_count += 1
+                    logger.warning("[CLIP] SetClipboardData failed once for %s; retry succeeded", format_label(fmt))
+                    continue
+                if retry:
+                    _kernel32.GlobalFree(retry)
+
                 failed.append(fmt)
+                # We cannot roll back Win32 clipboard changes atomically, but
+                # we can make a fresh best-effort replacement from the saved
+                # snapshot before reporting failure. This also removes any
+                # partial formats already handed to the clipboard.
+                recovery = []
+                try:
+                    for recovery_fmt, raw in saved.items():
+                        if is_nonempty_payload(raw):
+                            recovery.append((recovery_fmt, prepare_handle(raw)))
+                except Exception as e:
+                    _log_error("Failed to prepare snapshot recovery after SetClipboardData failure", e)
+                    for _recovery_fmt, handle in recovery:
+                        _kernel32.GlobalFree(handle)
+                    recovery = []
+                if recovery:
+                    _user32.EmptyClipboard()
+                    recovery_failed = []
+                    for recovery_fmt, handle in recovery:
+                        if not _user32.SetClipboardData(recovery_fmt, handle):
+                            _kernel32.GlobalFree(handle)
+                            recovery_failed.append(recovery_fmt)
+                    if not recovery_failed:
+                        logger.warning("[CLIP] restored snapshot after SetClipboardData failure")
+                        return True
+                    failed.extend(recovery_failed)
+                skipped += 1
+                break
     finally:
         _user32.CloseClipboard()
 
