@@ -707,12 +707,21 @@ class _TrainingWindow(QMainWindow):
         self._level_bar = QProgressBar()
         self._level_bar.setRange(0, 100)
         self._level_bar.setTextVisible(False)
-        self._level_bar.setFixedHeight(28)
+        self._level_bar.setFixedHeight(16)
         ml.addWidget(self._level_bar)
 
         self._level_label = QLabel("Volume: 0%")
         self._level_label.setStyleSheet(f"color:{theme.TEXT_SECONDARY};font-size:{theme.TYPE_MIN}px;")
-        ml.addWidget(self._level_label)
+        self._level_state_label = QLabel("Quiet")
+        self._level_state_label.setMinimumWidth(72)
+        self._level_state_label.setStyleSheet(
+            f"color:{theme.TEXT_PRIMARY};font-size:{theme.TYPE_MIN}px;font-weight:bold;"
+        )
+        level_text_row = QHBoxLayout()
+        level_text_row.setSpacing(10)
+        level_text_row.addWidget(self._level_label, stretch=1)
+        level_text_row.addWidget(self._level_state_label)
+        ml.addLayout(level_text_row)
 
         btn_row = QHBoxLayout()
         self._monitor_btn = QPushButton("Start Monitoring")
@@ -852,29 +861,40 @@ class _TrainingWindow(QMainWindow):
         self._tr._monitoring = False
         self._monitor_btn.setText("Start Monitoring")
         self._level_bar.setValue(0)
+        self._level_bar.setFixedHeight(28)
         self._level_label.setText(f"Microphone error: {message}")
+        self._level_state_label.setText("Unavailable")
         self._level_label.setStyleSheet(f"color:{theme.ERROR};font-size:{theme.TYPE_MIN}px;font-weight:bold;")
 
     def _stop_monitoring(self):
         self._tr._monitoring = False
         self._monitor_btn.setText("Start Monitoring")
         self._level_bar.setValue(0)
+        self._level_bar.setFixedHeight(16)
         self._level_label.setText("Volume: 0%")
+        self._level_state_label.setText("Quiet")
         self._level_label.setStyleSheet(f"color:{theme.TEXT_SECONDARY};font-size:{theme.TYPE_MIN}px;")
 
     def _on_level(self, level: float):
         self._level_bar.setValue(int(level))
         if level < 30:
             chunk_color = theme.ERROR
+            zone_label, meter_height = "Quiet", 16
         elif level < 70:
             chunk_color = theme.SUCCESS
+            zone_label, meter_height = "Good", 24
         else:
             chunk_color = theme.WARNING
+            zone_label, meter_height = "Loud", 32
+        # The meter's height is a shape cue that survives colour loss. Keep
+        # the named zone beside the raw percentage as the primary cue.
+        self._level_bar.setFixedHeight(meter_height)
         self._level_bar.setStyleSheet(
             f"QProgressBar{{background:{theme.BG1};border:1px solid {theme.BORDER};border-radius:4px;}}"
             f"QProgressBar::chunk{{background:{chunk_color};border-radius:3px;}}"
         )
         self._level_label.setText(f"Volume: {int(level)}%")
+        self._level_state_label.setText(zone_label)
 
     def _test_phrase(self, phrase: str, idx: int):
         self._phrase_results[idx].setText("...")
