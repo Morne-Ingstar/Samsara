@@ -14,27 +14,6 @@ from samsara.log import get_logger
 
 logger = get_logger(__name__)
 
-# ---------------------------------------------------------------------------
-# Per-app suggestion map for "what can I say"
-# ---------------------------------------------------------------------------
-
-_APP_SUGGESTIONS = {
-    'chrome.exe':   "Try 'new tab', 'close tab', 'find tab', 'show numbers', 'scroll down', 'go to address bar'.",
-    'msedge.exe':   "Try 'new tab', 'close tab', 'find tab', 'show numbers', 'scroll down', 'go to address bar'.",
-    'firefox.exe':  "Try 'new tab', 'close tab', 'find tab', 'show numbers', 'scroll down', 'go to address bar'.",
-    'code.exe':     "Try 'save', 'undo', 'select all', 'show numbers', 'scroll down'.",
-    'discord.exe':  "Try 'scroll down', 'show numbers', 'mute'.",
-    'slack.exe':    "Try 'scroll down', 'show numbers'.",
-    'notepad.exe':  "Try 'select all', 'undo', 'save'.",
-    'explorer.exe': "Try 'show numbers', 'scroll down'.",
-}
-
-_FALLBACK_SUGGESTION = (
-    "Try 'show numbers' to click by voice, 'scroll down', 'undo', 'select all'."
-    " Say 'open cheat sheet' for the full list."
-)
-
-
 def speak_if_available(app, text):
     if hasattr(app, 'audio_coordinator') and app.audio_coordinator:
         try:
@@ -146,14 +125,31 @@ def reload_config(app, remainder="", **kwargs):
     risk_class="read",
 )
 def what_can_i_say(app, remainder="", **kwargs):
-    """Reads out the commands that work in the app you are using."""
+    """Opens the catalog-backed commands for the focused application."""
+    from samsara.command_packs import pack_for_exe
     try:
         from samsara.handlers import _get_foreground_exe_lower
         exe = _get_foreground_exe_lower()
-        msg = _APP_SUGGESTIONS.get(exe or '', _FALLBACK_SUGGESTION)
     except Exception:
-        msg = _FALLBACK_SUGGESTION
-    speak_if_available(app, msg)
+        exe = None
+
+    from samsara.ui import qt_runtime
+    from samsara.ui.command_marquee import EXAMPLE_ALLOWED_PACKS
+
+    allowed_packs = set(EXAMPLE_ALLOWED_PACKS)
+    focused_pack = pack_for_exe(exe)
+    if focused_pack is not None:
+        allowed_packs.add(focused_pack)
+
+    def _show_scoped_sheet():
+        cheat_sheet = getattr(app, "cheat_sheet", None)
+        if cheat_sheet is not None:
+            cheat_sheet.show_scoped(allowed_packs)
+
+    # Voice commands arrive from the session worker; the cheat sheet belongs
+    # to the shared Qt runtime thread.
+    qt_runtime.post(_show_scoped_sheet)
+    speak_if_available(app, "Showing what you can say here.")
     return True
 
 

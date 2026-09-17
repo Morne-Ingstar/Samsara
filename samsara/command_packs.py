@@ -157,6 +157,41 @@ PACKS = {
 }
 
 
+#: Focused applications whose command pack adds relevant commands to the
+#: universal cheat-sheet view.  This is deliberately an explicit, small map:
+#: pack membership is command metadata, while an executable is the reliable
+#: focused-app signal available to the voice-command worker.
+EXE_TO_PACK = {
+    "brave.exe": "browsers",
+    "chrome.exe": "browsers",
+    "firefox.exe": "browsers",
+    "msedge.exe": "browsers",
+    "opera.exe": "browsers",
+    "vivaldi.exe": "browsers",
+    "code.exe": "text-editing",
+    "notepad++.exe": "text-editing",
+    "notepad.exe": "text-editing",
+    "winword.exe": "text-editing",
+    "discord.exe": "discord",
+    "flashprint.exe": "3d-printing",
+    "hyperion.ng.exe": "smart-home",
+    "lmstudio.exe": "ai",
+    "obs64.exe": "screen-capture",
+    "ollama.exe": "ai",
+    "sharex.exe": "screen-capture",
+    "spotify.exe": "media",
+    "steam.exe": "gaming",
+    "stremio.exe": "stremio",
+    "vlc.exe": "media",
+    "wmplayer.exe": "media",
+}
+
+
+def pack_for_exe(exe: str | None) -> str | None:
+    """Return the focused application's command pack, if it has one."""
+    return EXE_TO_PACK.get(str(exe or "").lower())
+
+
 def get_enabled_packs(config: dict) -> set:
     """Return the set of pack names that are currently enabled.
 

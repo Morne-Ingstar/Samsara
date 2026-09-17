@@ -5528,7 +5528,7 @@
       "pack": "core",
       "plugin": "core_utils",
       "risk": "write",
-      "source": "plugins/commands/core_utils.py:101",
+      "source": "plugins/commands/core_utils.py:80",
       "undoable": false,
       "verb": "check",
       "whole_utterance": false
@@ -5548,9 +5548,33 @@
       "pack": "core",
       "plugin": "core_utils",
       "risk": "ui",
-      "source": "plugins/commands/core_utils.py:119",
+      "source": "plugins/commands/core_utils.py:98",
       "undoable": true,
       "verb": "reload",
+      "whole_utterance": false
+    },
+    {
+      "aliases": [
+        "reset floating windows",
+        "reset window positions"
+      ],
+      "args": [
+        {
+          "name": "text",
+          "required": false,
+          "type": "text"
+        }
+      ],
+      "canonical_id": "core_utils.reset_floating_windows",
+      "description": "Restores both floating windows to their default positions.",
+      "kind": "plugin",
+      "object": "floating_windows",
+      "pack": "core",
+      "plugin": "core_utils",
+      "risk": "ui",
+      "source": "plugins/commands/core_utils.py:174",
+      "undoable": true,
+      "verb": "reset",
       "whole_utterance": false
     },
     {
@@ -5567,7 +5591,7 @@
       "pack": "core",
       "plugin": "core_utils",
       "risk": "write",
-      "source": "plugins/commands/core_utils.py:160",
+      "source": "plugins/commands/core_utils.py:156",
       "undoable": false,
       "verb": "reset",
       "whole_utterance": false
@@ -5586,7 +5610,7 @@
       "pack": "core",
       "plugin": "core_utils",
       "risk": "destructive",
-      "source": "plugins/commands/core_utils.py:65",
+      "source": "plugins/commands/core_utils.py:44",
       "undoable": false,
       "verb": "restart",
       "whole_utterance": false
@@ -5600,13 +5624,13 @@
       ],
       "args": [],
       "canonical_id": "core_utils.what_can_i_say",
-      "description": "Reads out the commands that work in the app you are using.",
+      "description": "Opens the catalog-backed commands for the focused application.",
       "kind": "plugin",
       "object": "can_i_say",
       "pack": "core",
       "plugin": "core_utils",
       "risk": "read",
-      "source": "plugins/commands/core_utils.py:142",
+      "source": "plugins/commands/core_utils.py:121",
       "undoable": true,
       "verb": "what",
       "whole_utterance": false
