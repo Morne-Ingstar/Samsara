@@ -855,6 +855,7 @@ class SamsaraTrayQt(QObject):
 
             maybe_start_automatic_update_check(
                 self._app, self._show_update_available,
+                on_error=self._show_automatic_update_failure,
             )
         except Exception as exc:
             logger.warning("[UPDATE] Could not schedule automatic check: %s", exc)
@@ -902,6 +903,13 @@ class SamsaraTrayQt(QObject):
             "open the tray menu to install it.",
             QSystemTrayIcon.MessageIcon.Information,
             12000,
+        )
+
+    def _show_automatic_update_failure(self, error):
+        self._report_action_failure(
+            "Automatic update check",
+            "Couldn't check for updates automatically; Samsara was not changed. "
+            f"Check your connection and try again. ({error})",
         )
 
     def _on_message_clicked(self):

@@ -248,6 +248,45 @@ def test_opted_in_automatic_check_is_daily_and_marshals_result_to_qt(monkeypatch
     available.assert_called_once_with(release)
 
 
+def test_automatic_check_failure_is_reported_once_on_qt_thread(monkeypatch):
+    workers = []
+    posted = []
+    errors = []
+    app = SimpleNamespace(
+        config={"updates": {"automatic_checks": True}},
+        update_config_and_save=Mock(),
+    )
+    monkeypatch.setattr(update_qt, "_automatic_check_failure_reported", False)
+    monkeypatch.setattr(update_qt, "is_frozen_build", lambda: True)
+    monkeypatch.setattr(update_qt, "update_unavailable_reason", lambda: None)
+    monkeypatch.setattr(update_qt.time, "time", lambda: 100_000.0)
+    monkeypatch.setattr(
+        update_qt, "check_for_update", Mock(side_effect=OSError("offline")),
+    )
+    monkeypatch.setattr(update_qt.qt_runtime, "post", posted.append)
+    monkeypatch.setattr(
+        update_qt.thread_registry,
+        "spawn",
+        lambda name, target, daemon=True: workers.append(target),
+    )
+
+    assert update_qt.maybe_start_automatic_update_check(
+        app, Mock(), on_error=errors.append,
+    ) is True
+    workers[0]()
+    assert len(posted) == 1
+    posted[0]()
+    assert errors == ["offline"]
+
+    app.config["updates"]["last_check_epoch"] = 0.0
+    assert update_qt.maybe_start_automatic_update_check(
+        app, Mock(), on_error=errors.append,
+    ) is True
+    workers[1]()
+    assert len(posted) == 1
+    assert errors == ["offline"]
+
+
 def test_tray_update_action_changes_to_install_and_notifies(qapp, monkeypatch):
     monkeypatch.setattr(
         update_qt, "maybe_start_automatic_update_check", lambda *_args: False,
@@ -260,8 +299,9 @@ def test_tray_update_action_changes_to_install_and_notifies(qapp, monkeypatch):
     try:
         tray._rebuild_menu()
         tools = next(a.menu() for a in tray._menu.actions() if a.text() == "Tools")
-        assert "Check for Updates…" in _texts(tools)
-        assert "Check for Updates…" not in _texts(tray._menu)
+        assert "Updates unavailable…" in _texts(tools)
+        assert "Check for Updates…" not in _texts(tools)
+        assert "Updates unavailable…" not in _texts(tray._menu)
 
         release = _release()
         tray._show_update_available(release)
@@ -325,7 +365,11 @@ def test_tray_confirms_update_only_after_full_startup(qapp, monkeypatch):
         tray._poll_startup_health()
 
         reconcile.assert_called_once_with()
-        automatic.assert_called_once_with(app, tray._show_update_available)
+        automatic.assert_called_once_with(
+            app,
+            tray._show_update_available,
+            on_error=tray._show_automatic_update_failure,
+        )
         assert message.call_args.args[:2] == (
             "Samsara updated", "Updated to Samsara v0.22.1.",
         )
