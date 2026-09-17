@@ -658,6 +658,8 @@ class SamsaraTrayQt(QObject):
     def __init__(self, app):
         super().__init__()
         self._app  = app
+        self._tooltip_base = "Samsara"
+        self._ready_ladder = None
         self._available_update = None
         self._tray = QSystemTrayIcon()
         self._menu = QMenu()
@@ -678,6 +680,8 @@ class SamsaraTrayQt(QObject):
         except Exception as e:
             logger.debug(f"__init__: {e}")
         self._tray.setToolTip("Samsara")
+        self._attach_ready_ladder()
+        self._refresh_ready_tooltip()
         self._tray.show()
 
         # A visible tray is not proof that startup succeeded: Whisper, CUDA,
@@ -724,7 +728,54 @@ class SamsaraTrayQt(QObject):
 
     @title.setter
     def title(self, text: str):
-        self._tooltip_sig.emit(str(text))
+        self._tooltip_base = str(text)
+        self._refresh_ready_tooltip()
+
+    def _attach_ready_ladder(self):
+        """Use boot's shared readiness facts; this is tooltip-only UI state."""
+        try:
+            from samsara.boot import active_ready_ladder
+            from samsara import ava_readiness
+            self._ready_ladder = active_ready_ladder()
+            if self._ready_ladder is not None:
+                ava_readiness.tracker.add_listener(self._on_ava_readiness_changed)
+        except Exception as exc:
+            logger.debug("[TRAY] ready ladder unavailable: %s", exc)
+
+    def _on_ava_readiness_changed(self, _old, new):
+        if self._ready_ladder is not None:
+            self._ready_ladder.set_ava_readiness(new)
+        self._refresh_ready_tooltip(sync=False)
+
+    def _sync_ready_ladder(self):
+        ladder = self._ready_ladder
+        if ladder is None:
+            return False
+        changed = False
+        config = getattr(self._app, "config", {}) or {}
+        if not config.get("wake_word_enabled", False):
+            changed |= ladder.set_wake_state("off")
+        else:
+            wake_state = getattr(self._app, "wake_ready_state", lambda: "loading")()
+            changed |= ladder.set_wake_state(wake_state)
+        if getattr(self._app, "model_loaded", False):
+            changed |= ladder.set_hotkey_ready()
+        try:
+            from samsara import ava_readiness
+            changed |= ladder.set_ava_readiness(ava_readiness.readiness_for(self._app))
+        except Exception as exc:
+            logger.debug("[TRAY] Ava readiness unavailable: %s", exc)
+        return changed
+
+    def _refresh_ready_tooltip(self, *, sync=True):
+        if sync:
+            self._sync_ready_ladder()
+        ladder = self._ready_ladder
+        if ladder is None:
+            self._tooltip_sig.emit(self._tooltip_base)
+            return
+        lines = "\n".join(text for _key, text, _state in ladder.snapshot())
+        self._tooltip_sig.emit(f"{self._tooltip_base}\n{lines}")
 
     def notify_warning(self, title: str, text: str) -> None:
         """Show a warning balloon (thread-safe). Used by the mouse-hotkey fallback (35)."""
@@ -773,6 +824,8 @@ class SamsaraTrayQt(QObject):
 
     def _poll_startup_health(self):
         """Confirm a replacement only after the whole app is operational."""
+        if self._sync_ready_ladder():
+            self._refresh_ready_tooltip(sync=False)
         if self._startup_health_done:
             return
         if bool(vars(self._app).get("_startup_failed", False)):

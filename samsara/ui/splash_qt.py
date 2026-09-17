@@ -63,6 +63,7 @@ class _SplashWidget(QWidget):
 
     _status_sig = Signal(str)
     _detail_sig = Signal(str)
+    _ready_ladder_sig = Signal(object)
     _progress_sig = Signal(object)
     _reduced_motion_sig = Signal(bool)
     _error_sig = Signal(str, str)
@@ -99,6 +100,11 @@ class _SplashWidget(QWidget):
 
         self._status = "Starting Samsara"
         self._detail = "Preparing voice services..."
+        self._ready_ladder = (
+            ("hotkey: loading\u2026", "loading"),
+            ("wake: checking\u2026", "checking"),
+            ("Ava: checking\u2026", "checking"),
+        )
         self._progress: float | None = None
         self._reduced_motion = _system_reduced_motion()
         self._error = False
@@ -119,6 +125,7 @@ class _SplashWidget(QWidget):
 
         self._status_sig.connect(self._set_status)
         self._detail_sig.connect(self._set_detail)
+        self._ready_ladder_sig.connect(self._set_ready_ladder)
         self._progress_sig.connect(self._set_progress)
         self._reduced_motion_sig.connect(self._set_reduced_motion)
         self._error_sig.connect(self._set_error)
@@ -170,6 +177,11 @@ class _SplashWidget(QWidget):
     @Slot(str)
     def _set_status(self, text: str):
         self._status = str(text).strip() or "Starting Samsara"
+        self.update()
+
+    @Slot(object)
+    def _set_ready_ladder(self, lines):
+        self._ready_ladder = tuple((str(text), str(state)) for text, state in lines)
         self.update()
 
     @Slot(str)
@@ -393,6 +405,14 @@ class _SplashWidget(QWidget):
                          Qt.AlignmentFlag.AlignHCenter | Qt.AlignmentFlag.AlignVCenter,
                          "De-articulating Splines.")
 
+        for index, (line, state) in enumerate(self._ready_ladder):
+            line_color = theme.SUCCESS if state == "ready" else theme.WARNING if state == "offline" else theme.ICON_IDLE
+            painter.setPen(_color(line_color, 225))
+            painter.setFont(theme.qfont(theme.TYPE_MIN, weight=QFont.Weight.DemiBold))
+            painter.drawText(QRectF(230.0, 282.0 + index * 19.0, 300.0, 18.0),
+                             Qt.AlignmentFlag.AlignHCenter | Qt.AlignmentFlag.AlignVCenter,
+                             line)
+
         status_color = theme.ERROR if self._error else theme.TEXT_PRIMARY
         painter.setPen(_color(status_color))
         painter.setFont(theme.qfont(theme.TYPE_HEADING, weight=QFont.Weight.DemiBold))
@@ -442,6 +462,7 @@ class SplashScreenQt:
         self._start_time = time.time()
         self._widget: _SplashWidget | None = None
         self._widget_ready = threading.Event()
+        self._ready_ladder_observer = None
 
         qt_runtime.ensure_started()
         qt_runtime.post(self._create_widget)
@@ -462,6 +483,19 @@ class SplashScreenQt:
         widget = self._widget
         if widget is not None:
             widget._status_sig.emit(str(text))
+        observer = self._ready_ladder_observer
+        if observer is not None:
+            observer(str(text))
+
+    def set_ready_ladder_observer(self, observer):
+        """Observe status milestones without coupling this Qt facade to boot."""
+        self._ready_ladder_observer = observer
+
+    def set_ready_ladder(self, lines):
+        """Set text-labelled capability states. Thread-safe."""
+        widget = self._widget
+        if widget is not None:
+            widget._ready_ladder_sig.emit(tuple(lines))
 
     def set_detail(self, text: str):
         """Update the smaller explanatory line. Thread-safe."""
