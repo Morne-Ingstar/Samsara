@@ -26,9 +26,12 @@ You need **Windows 10 or 11 and a microphone**. The packaged app includes
 Python; you do not need to install it. A CPU is enough to get started.
 Compatible NVIDIA GPUs can use the optional [CUDA add-on](Docs/CUDA.md).
 
-1. Open the [Windows download page](https://github.com/Morne-Ingstar/Samsara/releases/latest)
-   and download **`Samsara-Windows-<version>.zip`**, not GitHub's source-code archives.
-2. Extract the ZIP and run **Samsara.exe** from the extracted folder.
+1. Open the [Windows download page](https://github.com/Morne-Ingstar/Samsara/releases/latest).
+   Choose the **installer** for a normal Windows install with a Start-menu
+   shortcut and uninstall entry, or the **ZIP** for a portable extracted folder;
+   do not download GitHub's source-code archives.
+2. Run the installer, or extract the ZIP and run **Samsara.exe** from the
+   extracted folder.
 3. Follow the setup wizard to select your microphone and download a
    transcription model. An internet connection is needed for those downloads.
 4. Try a sentence in a blank note. The default hold-to-dictate shortcut is
@@ -37,6 +40,10 @@ Compatible NVIDIA GPUs can use the optional [CUDA add-on](Docs/CUDA.md).
 
 Hotkeys and listening behavior are configurable. The in-app Quick Reference
 shows your bindings. [Open the full quick start →](Docs/QUICKSTART.md)
+
+In a Hands Free Dictate session, say **“finish”** to commit the staged text.
+After saying **“show numbers,”** name a target: **“click 7,” “right click 7,”**
+or **“double click 7.”**
 
 ### Which version should I use?
 
