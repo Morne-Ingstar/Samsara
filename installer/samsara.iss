@@ -269,15 +269,20 @@ end;
 
 procedure CurStepChanged(CurStep: TSetupStep);
 var
-  Params, ComponentsDir: String;
+  Params, ComponentsDir, ManifestPath: String;
   ResultCode: Integer;
 begin
   if CurStep = ssPostInstall then begin
     if ExpandConstant('{param:NoFetch|0}') <> '0' then exit;
     FetchRequested := SelectedComponentIds();
     if FetchRequested = '' then exit;
-    Params := '--fetch-components ' + FetchRequested + ' --manifest "{#ManifestUrl}" --progress-window';
+    ManifestPath := ExpandConstant('{#ManifestUrl}');
     ComponentsDir := ExpandConstant('{param:ComponentsDir|}');
+    if ComponentsDir <> '' then begin
+      if FileExists(AddBackslash(ComponentsDir) + 'manifest.json') then
+        ManifestPath := AddBackslash(ComponentsDir) + 'manifest.json';
+    end;
+    Params := '--fetch-components ' + FetchRequested + ' --manifest "' + ManifestPath + '" --progress-window';
     if ComponentsDir <> '' then
       Params := Params + ' --components-dir "' + ComponentsDir + '"';
     Log('Fetching components: ' + Params);
