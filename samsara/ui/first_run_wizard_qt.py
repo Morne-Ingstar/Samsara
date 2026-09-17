@@ -687,6 +687,7 @@ class _WizardWindow(QMainWindow):
         self._meter_rms_holder: list = [0.0]
         self._last_meter_rms: float = 0.0
         self._meter_passed: bool = False
+        self._mic_capture_ready: bool = False
 
         self._components_page = None
         self._pages = [
@@ -1103,6 +1104,7 @@ class _WizardWindow(QMainWindow):
 
         # Start level meter on microphone step
         if _STEPS[self._step][0] == "Microphone":
+            self._next_btn.setEnabled(False)
             self._start_meter()
 
         # List whatever is still missing every time the page is entered
@@ -1111,6 +1113,11 @@ class _WizardWindow(QMainWindow):
 
     def _go_next(self):
         self._collect_step()
+        if _STEPS[self._step][0] == "Microphone" and not self._mic_capture_ready:
+            if self._mic_status:
+                self._mic_status.setText("Select a working microphone before continuing.")
+                self._mic_status.setStyleSheet(f"color:{theme.WARNING};font-size:{theme.TYPE_MIN}px;")
+            return
         if _STEPS[self._step][0] == "Use Case":
             self._apply_use_case_defaults()
         if self._step == len(_STEPS) - 1:
@@ -1189,6 +1196,8 @@ class _WizardWindow(QMainWindow):
             self._tip_lbl.parentWidget().setVisible(bool(tip))
 
     def _finish(self):
+        if self._config.get('microphone') is None:
+            return
         self._collect_step()
         self._config['first_run_complete'] = True
         if self._no_hints_cb is not None and self._no_hints_cb.isChecked():
@@ -1212,10 +1221,9 @@ class _WizardWindow(QMainWindow):
 
     def closeEvent(self, event):
         self._stop_meter()
-        # Ensure result is always set before signalling done.
-        if self.result is None:
-            self._config['first_run_complete'] = True
-            self.result = _finalize_config(self._config)
+        # A window close is a cancel, not a successful first run. The caller
+        # keeps its existing config (or generates defaults) and can retry the
+        # wizard on the next launch.
         self._finished.emit(self.result)
         event.accept()
 
@@ -1365,15 +1373,25 @@ class _WizardWindow(QMainWindow):
         """Start (or restart) the level meter for the currently selected mic."""
         self._stop_meter()  # idempotent — tears down any existing resources
         if self._meter is None:
+            self._mic_capture_ready = False
+            self._next_btn.setEnabled(False)
             return
 
         mic_id = self._get_current_mic_id()
+        if mic_id is None:
+            self._mic_capture_ready = False
+            if self._mic_status:
+                self._mic_status.setText("Select a working microphone before continuing.")
+                self._mic_status.setStyleSheet(f"color:{theme.WARNING};font-size:{theme.TYPE_MIN}px;")
+            self._next_btn.setEnabled(False)
+            return
 
         from samsara.audio_engine.guide_capture import RingLevelMeter, running_engine
         ace = running_engine(self._samsara_app)
 
         if ace is not None:
             self._meter_ace_reader = RingLevelMeter(ace, "wizard-meter")
+            self._mic_capture_ready = True
             print("[WIZARD] Meter: ACE ring consumer")
         else:
             # ACE engine not yet started (typical at first-run — wizard runs
@@ -1382,6 +1400,8 @@ class _WizardWindow(QMainWindow):
             # in _stop_meter() when the mic step is exited.
             print(f"[WIZARD] Meter: transient sounddevice stream (device={mic_id!r})")
             self._meter_stream = self._open_meter_stream(mic_id)
+            self._mic_capture_ready = self._meter_stream is not None
+        self._next_btn.setEnabled(self._mic_capture_ready)
 
         timer = QTimer(self)
         timer.setInterval(40)
@@ -1414,6 +1434,7 @@ class _WizardWindow(QMainWindow):
         self._meter_rms_holder = [0.0]
         self._last_meter_rms = 0.0
         self._meter_passed = False
+        self._mic_capture_ready = False
         if self._meter is not None:
             self._meter.reset()
         if self._mic_status is not None:
