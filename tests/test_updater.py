@@ -919,6 +919,29 @@ def test_stale_transient_status_is_quarantined(tmp_path, monkeypatch):
     assert list((home / "updates").glob("last_update.invalid-*.json"))
 
 
+def test_startup_reconciliation_confirms_staged_health_handshake(tmp_path, monkeypatch):
+    release, install, _home, opener = _prepare_inputs(tmp_path, monkeypatch)
+    prepared = updater.prepare_update(release, install, opener=opener)
+    updater._write_status(
+        prepared.status_path,
+        "staging_health",
+        "Testing staged payload",
+        prepared.tag,
+        prepared,
+    )
+    monkeypatch.setattr(updater, "_frozen_install_dir", lambda: prepared.staged_dir)
+
+    status = updater.reconcile_update_on_startup()
+
+    assert status == updater.UpdateStatus(
+        "staged_healthy",
+        "The verified update passed pre-install startup health.",
+        prepared.tag,
+    )
+    payload = json.loads(prepared.status_path.read_text(encoding="utf-8"))
+    assert payload["state"] == "staged_healthy"
+
+
 def test_release_workflow_publishes_zip_checksum_asset():
     workflow = (
         Path(__file__).parents[1] / ".github" / "workflows" / "release.yml"
