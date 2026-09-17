@@ -958,6 +958,12 @@ class TestSessionModeManagerDispatch:
         outcome = mgr.dispatch_utterance("scratch that", GOOD_SIGNALS)
         assert outcome.kind == "scratch_refuse"
         mocks["remove_chars"].assert_not_called()
+        assert mgr.stack_depth == 1
+
+        mocks["foreground"].return_value = "notepad.exe"
+        retry = mgr.dispatch_utterance("scratch that", GOOD_SIGNALS)
+        assert retry.kind == "scratch_success"
+        mocks["remove_chars"].assert_called_once_with(len("Hello world"))
 
     def test_scratch_that_refuses_on_hwnd_mismatch_even_with_same_exe(self, manager_factory):
         # Same exe name (notepad.exe) on both sides -- the exe-name check
