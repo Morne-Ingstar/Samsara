@@ -1492,22 +1492,21 @@ def reconcile_update_on_startup(
             recorded_install = Path(str(payload.get("install_dir", ""))).resolve()
             if recorded_install == install:
                 raise UpdateError("The staged health status belongs to the active installation.")
-            staged = _validated_recorded_path(
-                payload.get("staged_dir"),
-                recorded_install.parent,
-                f".{recorded_install.name}-update-",
-            )
             workspace = _validated_recorded_path(
                 payload.get("workspace_dir"),
                 recorded_install.parent,
                 f".{recorded_install.name}-update-",
             )
+            staged_value = payload.get("staged_dir")
+            if not isinstance(staged_value, str) or not staged_value:
+                raise UpdateError("The previous update status is missing the staged path.")
+            staged = Path(staged_value).resolve()
             rollback = _validated_recorded_path(
                 payload.get("rollback_dir"),
                 recorded_install.parent,
                 f".{recorded_install.name}-rollback-",
             )
-            if staged.parent != workspace or staged.name != "payload":
+            if staged != (workspace / "payload").resolve():
                 raise UpdateError("The staged health path is malformed.")
             if staged.is_symlink() or workspace.is_symlink() or rollback.is_symlink():
                 raise UpdateError("An update health path became a symbolic link.")
