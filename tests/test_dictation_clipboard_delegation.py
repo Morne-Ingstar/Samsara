@@ -54,6 +54,7 @@ def test_success_delegates_to_sequence_guarded_path(monkeypatch):
         paste_delay=dictation.CLIPBOARD_PASTE_DELAY,
         restore_delay=0.23,
         before_paste=ANY,
+        incomplete_snapshot_fallback=ANY,
     )
     app._record_undoable_paste.assert_called_once_with(
         "dictated text", target_hwnd=4242,
@@ -71,3 +72,19 @@ def test_failed_central_paste_does_not_record_success(monkeypatch):
 
     app._record_undoable_paste.assert_not_called()
     app.adaptive_learner.record_transcription.assert_not_called()
+
+
+def test_incomplete_clipboard_snapshot_uses_typed_delivery_only_for_typed_targets(monkeypatch):
+    app = _app()
+    app._foreground_wants_typed_injection = lambda: True
+    monkeypatch.setattr(dictation, "_get_foreground_hwnd", lambda: 4242)
+    monkeypatch.setattr(dictation, "type_text_unicode", lambda text: text == "retained text")
+
+    def _central(*_args, incomplete_snapshot_fallback=None, **_kwargs):
+        assert incomplete_snapshot_fallback is not None
+        return incomplete_snapshot_fallback()
+
+    monkeypatch.setattr(dictation, "paste_with_preservation", _central)
+
+    assert app._paste_preserving_clipboard("retained text") is True
+    app._record_undoable_paste.assert_called_once_with("retained text", target_hwnd=4242)

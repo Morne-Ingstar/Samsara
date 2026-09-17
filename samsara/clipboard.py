@@ -339,14 +339,16 @@ def save_clipboard() -> "ClipboardSnapshot":
 
     Returns:
         Dict mapping format ID to raw bytes data.
-        Empty dict if clipboard is empty or on error. Never raises --
-        a clipboard-save failure must never block a dictation paste.
+        Empty dict if clipboard is empty. A save error is marked incomplete so
+        callers never replace clipboard content they could not preserve.
     """
     try:
         return _save_clipboard_impl()
     except Exception as e:
         _log_error("save_clipboard failed unexpectedly", e)
-        return ClipboardSnapshot()
+        failed = ClipboardSnapshot()
+        failed.lost[0] = "clipboard snapshot failed"
+        return failed
 
 
 def _save_clipboard_impl() -> "ClipboardSnapshot":
@@ -695,6 +697,7 @@ def paste_with_preservation(
     paste_delay: float = CLIPBOARD_PASTE_DELAY,
     restore_delay: float = CLIPBOARD_RESTORE_DELAY,
     before_paste: Optional[Callable[[], bool]] = None,
+    incomplete_snapshot_fallback: Optional[Callable[[], bool]] = None,
 ) -> bool:
     """
     Paste text via clipboard while preserving original clipboard content.
@@ -707,6 +710,8 @@ def paste_with_preservation(
         restore_delay: Delay after pasting before restoring clipboard (seconds)
         before_paste: Optional fail-closed focus guard, evaluated immediately
             before Ctrl+V after clipboard preparation and paste delay.
+        incomplete_snapshot_fallback: Optional typed-input delivery callable
+            used only when the current clipboard cannot be restored exactly.
 
     Returns:
         True if paste was successful
@@ -722,14 +727,24 @@ def paste_with_preservation(
         return False
 
     with clipboard_lock:
-        # save_clipboard() never raises (see above), but the paste itself
-        # must proceed even if something upstream of that guarantee still
-        # goes wrong -- clipboard preservation must never block dictation.
+        # The clipboard is user data, not a disposable transport buffer. Do
+        # not overwrite a snapshot that cannot be restored exactly.
         try:
             saved = save_clipboard()
         except Exception as e:
             _log_error("Unexpected error saving clipboard before paste", e)
-            saved = {}
+            saved = ClipboardSnapshot()
+            saved.lost[0] = "clipboard snapshot failed"
+
+        if isinstance(saved, ClipboardSnapshot) and not saved.complete:
+            _log_error("clipboard paste refused because the original content cannot be restored: "
+                       + saved.describe_lost())
+            if incomplete_snapshot_fallback is not None:
+                try:
+                    return bool(incomplete_snapshot_fallback())
+                except Exception as e:
+                    _log_error("typed fallback after incomplete clipboard snapshot failed", e)
+            return False
 
         try:
             # Copy the text to paste

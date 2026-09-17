@@ -11300,6 +11300,14 @@ class DictationApp:
             paste_target['hwnd'] = _get_foreground_hwnd()
             return True
 
+        typed_fallback_used = {"value": False}
+
+        def _typed_fallback_without_clipboard():
+            if not self._foreground_wants_typed_injection() or not _capture_target_before_paste():
+                return False
+            typed_fallback_used["value"] = type_text_unicode(text)
+            return typed_fallback_used["value"]
+
         # Keep one clipboard implementation. The centralized path captures
         # the clipboard sequence number immediately after Samsara's copy, so
         # an unrelated copy made during the paste window is never overwritten
@@ -11309,6 +11317,7 @@ class DictationApp:
             paste_delay=CLIPBOARD_PASTE_DELAY,
             restore_delay=delay,
             before_paste=_capture_target_before_paste,
+            incomplete_snapshot_fallback=_typed_fallback_without_clipboard,
         )
         if paste_ok:
             self._record_undoable_paste(
@@ -11316,7 +11325,8 @@ class DictationApp:
             )
             self.adaptive_learner.record_transcription(text)
             logger.info(
-                "[PASTE] Ctrl+V sent chars=%d hwnd=%r",
+                "[TYPE] Unicode fallback sent chars=%d hwnd=%r" if typed_fallback_used["value"]
+                else "[PASTE] Ctrl+V sent chars=%d hwnd=%r",
                 len(text), _get_foreground_hwnd(),
             )
         else:
