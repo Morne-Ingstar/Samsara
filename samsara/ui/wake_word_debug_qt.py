@@ -282,6 +282,9 @@ class _DebugWindow(QMainWindow):
         self._end_lbl   = self._kv_row(lay, "End word:",     end_txt,         end_col)
         self._mode_lbl  = self._kv_row(lay, "Dict. mode:",   "None",          theme.TEXT_SECONDARY)
         self._timer_lbl = self._kv_row(lay, "Timer:",        "--",            theme.TEXT_SECONDARY)
+        self._timer_state_lbl = self._kv_row(
+            lay, "Timer state:", "Not active", theme.TEXT_SECONDARY
+        )
         self._flow_lbl  = self._kv_row(lay, "Flow:",         "Idle",          theme.TEXT_SECONDARY, wrap=True)
         self._heard_lbl = self._kv_row(lay, "Last heard:",   "(nothing yet)", theme.TEXT_SECONDARY, wrap=True)
         return card
@@ -737,6 +740,15 @@ class _DebugWindow(QMainWindow):
     def _set_timer(self, text: str, color: str):
         self._timer_lbl.setText(text)
         self._timer_lbl.setStyleSheet(f"color: {color}; background: transparent;")
+        if text == "--":
+            state = "Not active"
+        elif text == "0.0s":
+            state = "Expired"
+        elif color == theme.ERROR:
+            state = "Ending soon"
+        else:
+            state = "Time available"
+        self._timer_state_lbl.setText(state)
 
     @Slot(bool)
     def _set_buttons(self, running: bool):
