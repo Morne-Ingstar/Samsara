@@ -454,13 +454,10 @@ a { color: inherit; text-decoration: none; }
 
 
 .hero {
-
-
-
-
-
-
-    min-height: 100vh;
+    /* 2026-09-16: the beta callout sits above this section, so the first
+       screen is shared. Subtracting its height keeps "Voice control for
+       hands that hurt" on the first screen instead of pushing it under. */
+    min-height: calc(100vh - 72px);
 
 
 
@@ -2903,6 +2900,59 @@ section {
 
 
 
+/* ==== BETA CALLOUT (2026-09-16) ==== */
+/* Wide, short, above the hero: it must not push "Voice control for hands
+   that hurt" off the first screen. Teal-on-dark rather than a yellow
+   highlight -- it reads as the site's own accent, not a browser warning. */
+.beta-callout {
+    background: linear-gradient(90deg, rgba(94,234,212,0.16), rgba(94,234,212,0.07));
+    border-bottom: 1px solid var(--accent-border);
+    padding: 14px 40px;
+}
+.beta-callout-inner {
+    max-width: 1080px;
+    margin: 0 auto;
+    display: flex;
+    align-items: center;
+    gap: 18px;
+    flex-wrap: wrap;
+    justify-content: center;
+}
+.beta-callout-lead {
+    font-family: var(--mono);
+    font-size: 14px;
+    color: var(--accent);
+    letter-spacing: 0.02em;
+    margin: 0;
+    white-space: nowrap;
+}
+.beta-callout-body {
+    font-size: 14px;
+    line-height: 1.5;
+    color: var(--text);
+    margin: 0;
+    flex: 1 1 520px;
+    min-width: 280px;
+}
+.beta-callout-btn {
+    font-family: var(--mono);
+    font-size: 13px;
+    font-weight: 600;
+    color: var(--bg);
+    background: var(--accent);
+    border-radius: 6px;
+    padding: 9px 16px;
+    white-space: nowrap;
+    transition: transform 0.15s, filter 0.15s;
+}
+.beta-callout-btn:hover { filter: brightness(1.1); transform: translateY(-1px); }
+@media (max-width: 720px) {
+    .beta-callout { padding: 12px 20px; }
+    .beta-callout-inner { gap: 10px; }
+    .beta-callout-lead, .beta-callout-body { text-align: center; }
+    .beta-callout-body { font-size: 13px; }
+}
+
 /* ==== DOWNLOAD ==== */
 
 
@@ -5125,13 +5175,16 @@ footer a { color: var(--accent); }
 
 
 
+<!-- BETA CALLOUT (2026-09-16) -->
+<section class="beta-callout">
+    <div class="beta-callout-inner">
+        <p class="beta-callout-lead"><strong>Samsara needs beta testers.</strong></p>
+        <p class="beta-callout-body">This is free software I have laboured on intensely, and its sole intention is to get into the hands of people who need it. That is virtually impossible without funding. Beta testing gets you free favour points with me and my deepest appreciation &mdash; and potentially an app that saves you a lot of time and pain. Thank you.</p>
+        <a class="beta-callout-btn" href="https://github.com/Morne-Ingstar/Samsara/releases/tag/v0.23.0-beta.1">Download the beta &rarr;</a>
+    </div>
+</section>
+
 <!-- HERO -->
-
-
-
-
-
-
 <section class="hero">
 
 
