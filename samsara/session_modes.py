@@ -1334,7 +1334,7 @@ class HandsFreeCommandMatch:
 class DispatchOutcome:
     kind: str
     # one of: "empty" | "abort" | "scratch_success" | "scratch_refuse" |
-    # "mode_switch" | "prefix_switch_failed" | "command_executed" (it ran,
+    # "mode_switch" | "mode_switch_failed" | "prefix_switch_failed" | "command_executed" (it ran,
     # or its handler accepted the work) | "command_awaiting_confirmation" (held
     # for a yes/no; nothing ran) |
     # "command_failed" | "stopped" | "pending_reply" |
@@ -1562,7 +1562,7 @@ def outcome_chip(kind: str, detail: Optional[dict] = None) -> "tuple[str, str] |
         return (f"{CHIP_ARROW} {mode}" if mode else CHIP_ARROW, "accent")
 
     if kind in ("ava_entry_failed", "hands_free_command_failed",
-                "dictate_commit_failed", "prefix_switch_failed"):
+                "dictate_commit_failed", "mode_switch_failed", "prefix_switch_failed"):
         text = f"{CHIP_CROSS} {_reason(kind, detail)}"
         if kind == "hands_free_command_failed":
             text = _command_chip_label(text, detail.get("phrase"))
@@ -2792,7 +2792,16 @@ class SessionModeManager:
             committed = self._commit_dictate_buffer(target_mode=None)
             if committed.kind != "dictate_committed":
                 return committed
-        self._switch_mode(switch.target_mode)
+        mode_change_error = self._switch_mode(switch.target_mode)
+        if mode_change_error is not None:
+            return DispatchOutcome(
+                kind="mode_switch_failed",
+                detail={
+                    "mode": switch.target_mode,
+                    "reverted_to": prior_mode,
+                    "error": mode_change_error,
+                },
+            )
         if switch.is_prefix and switch.payload.strip():
             try:
                 return self._dispatch_in_mode(switch.payload)
@@ -2808,13 +2817,9 @@ class SessionModeManager:
                     kind="prefix_switch_failed",
                     detail={"mode": switch.target_mode, "reverted_to": prior_mode, "error": str(exc)},
                 )
-        detail = {"mode": switch.target_mode}
-        side_effect_error = getattr(self, "_last_mode_change_error", None)
-        if side_effect_error:
-            detail["side_effect_error"] = side_effect_error
-        return DispatchOutcome(kind="mode_switch", detail=detail)
+        return DispatchOutcome(kind="mode_switch", detail={"mode": switch.target_mode})
 
-    def _switch_mode(self, new_mode: SessionMode) -> None:
+    def _switch_mode(self, new_mode: SessionMode) -> Optional[str]:
         prior_mode = self.mode
         log.info("[SESSION] mode change %s -> %s", prior_mode.value, new_mode.value)
 
@@ -2840,23 +2845,31 @@ class SessionModeManager:
         self.mode = new_mode
         self._last_mode_change_error = None
         if self._on_mode_change:
-            # Queue 60: side effects (earcon, mode overlay, DICTATE preview
-            # teardown) run here, on the utterance thread. A failing one must
-            # not propagate out of dispatch_utterance and leave the caller
-            # guessing: the mode change stands (it is the state every later
-            # utterance routes on), the failure is logged and earconed, and
-            # _do_switch reports it on the outcome.
+            # The callback drives the visible lane badge and preview. It is
+            # part of the mode transaction: retaining the new routing state
+            # after it fails can leave DICTATE on screen while COMMAND owns
+            # the next utterance. Re-present the prior lane after rollback so
+            # an error after a queued target update cannot leave the badge stale.
             try:
                 self._on_mode_change(new_mode)
             except Exception as exc:
-                self._last_mode_change_error = f"{type(exc).__name__}: {exc}"
-                log.exception("[SESSION] mode change %s -> %s: side effects failed; mode is %s",
-                              prior_mode.value, new_mode.value, new_mode.value)
+                error = f"{type(exc).__name__}: {exc}"
+                self.mode = prior_mode
+                self._last_mode_change_error = None
+                log.exception("[SESSION] mode change %s -> %s failed; reverted to %s",
+                              prior_mode.value, new_mode.value, prior_mode.value)
+                try:
+                    self._on_mode_change(prior_mode)
+                except Exception:
+                    log.exception("[SESSION] mode rollback presentation failed for %s",
+                                  prior_mode.value)
                 if self._on_switch_dispatch_error:
                     try:
                         self._on_switch_dispatch_error(exc)
                     except Exception:
                         log.exception("[SESSION] mode change error feedback failed")
+                return error
+        return None
 
     def force_mode(self, new_mode: SessionMode) -> None:
         """Apply a non-utterance-driven mode change."""
