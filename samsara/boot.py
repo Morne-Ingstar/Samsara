@@ -35,6 +35,100 @@ from pathlib import Path
 logger = logging.getLogger("Samsara")
 
 
+class ReadyLadder:
+    """The three independently-available capabilities shown during boot.
+
+    This deliberately lives before the application object exists.  The splash
+    observes the established boot status stream for hotkey readiness; the tray
+    supplies the later wake and Ava observations once it has the application.
+    No readiness check performs I/O on the boot path.
+    """
+
+    _LABELS = {"hotkey": "hotkey", "wake": "wake", "ava": "Ava"}
+
+    def __init__(self, clock=None):
+        self._clock = clock or time.perf_counter
+        self._started = self._clock()
+        self._lock = threading.RLock()
+        self._states = {"hotkey": "loading", "wake": "checking", "ava": "checking"}
+        self._ready_at = {}
+        self._splash = None
+
+    def snapshot(self):
+        """Return ``(capability, visible text, state)`` in ladder order."""
+        with self._lock:
+            result = []
+            for key in ("hotkey", "wake", "ava"):
+                state = self._states[key]
+                label = self._LABELS[key]
+                if state == "ready":
+                    ready_at = self._ready_at.get(key)
+                    seconds = (ready_at if ready_at is not None else self._clock()) - self._started
+                    text = f"{label}: ready \u2713 {seconds:.1f} s"
+                elif state == "off":
+                    text = f"{label}: off"
+                elif state == "offline":
+                    text = f"{label}: offline"
+                else:
+                    text = f"{label}: {state}\u2026"
+                result.append((key, text, state))
+            return tuple(result)
+
+    def lines(self):
+        return tuple((text, state) for _key, text, state in self.snapshot())
+
+    def attach_splash(self, splash):
+        with self._lock:
+            self._splash = splash
+        self._publish()
+
+    def observe_status(self, status):
+        """Receive the existing status that follows ACE and key-listener setup."""
+        if str(status).strip() == "Speech model ready...":
+            self.set_hotkey_ready()
+
+    def set_hotkey_ready(self):
+        return self._set("hotkey", "ready")
+
+    def set_wake_state(self, state):
+        return self._set("wake", "off" if state == "off" else
+                         "ready" if state == "ready" else "loading")
+
+    def set_ava_readiness(self, readiness):
+        state = str(getattr(readiness, "state", readiness)).lower()
+        if state not in {"ready", "warming", "offline"}:
+            state = "checking"
+        return self._set("ava", state)
+
+    def _set(self, key, state):
+        with self._lock:
+            if self._states[key] == state:
+                return False
+            self._states[key] = state
+            if state == "ready":
+                self._ready_at[key] = self._clock()
+        self._publish()
+        return True
+
+    def _publish(self):
+        with self._lock:
+            splash = self._splash
+            lines = self.lines()
+        if splash is not None and hasattr(splash, "set_ready_ladder"):
+            try:
+                splash.set_ready_ladder(lines)
+            except Exception as exc:
+                logger.debug("[BOOT] ready ladder splash update failed: %s", exc)
+
+
+_ready_ladder = None
+
+
+def active_ready_ladder():
+    """Return this process's boot ladder for the tray after it is created."""
+    return _ready_ladder
+
+
 def _enable_faulthandler(log_dir):
     """Dump every thread's Python stack to <SAMSARA_HOME>/logs/faulthandler.log
     on a native crash (access violation, SIGSEGV/SIGFPE/SIGILL/SIGABRT).
@@ -797,9 +891,14 @@ def apply_early_theme():
 
 def create_splash():
     """__main__: build the splash (on this, the main thread, as before) and return it."""
+    global _ready_ladder
     _t = time.perf_counter()
     from samsara.ui.splash_qt import SplashScreenQt
     splash = SplashScreenQt()
+    _ready_ladder = ReadyLadder()
+    _ready_ladder.attach_splash(splash)
+    if hasattr(splash, "set_ready_ladder_observer"):
+        splash.set_ready_ladder_observer(_ready_ladder.observe_status)
     _dt = (time.perf_counter() - _t) * 1000
     logger.debug(f"[BOOT-DIAG] splash init (SplashScreenQt): {_dt:.0f}ms")
     if _dt > 5000:
