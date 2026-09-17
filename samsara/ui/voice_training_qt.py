@@ -19,6 +19,7 @@ import sys
 import threading
 import time
 import unicodedata
+from datetime import date
 from pathlib import Path
 from typing import List, Tuple
 
@@ -256,7 +257,64 @@ class VoiceTrainingQt:
                     logger.warning("[STORE] Could not persist bundled default dictionary")
             except (OSError, ValueError, TypeError) as exc:
                 logger.warning("[STORE] Could not load bundled default dictionary: %s", exc)
+        self._migrate_legacy_user_corrections(training_file)
         self._rebuild_corrections_pattern()
+
+    def _migrate_legacy_user_corrections(self, training_file: Path) -> None:
+        """Move pre-783d728 Corrections-tab entries into the live store.
+
+        The old panel stored deterministic corrections beside the config in
+        user_corrections.json. Archive that legacy file after a one-time merge
+        rather than deleting it. Existing authoritative corrections win,
+        including case-insensitive duplicates.
+        """
+        legacy_file = training_file.with_name('user_corrections.json')
+        if not legacy_file.exists():
+            return
+
+        try:
+            with open(legacy_file, 'r', encoding='utf-8') as f:
+                legacy_data = json.load(f)
+        except (OSError, ValueError, TypeError) as exc:
+            logger.warning("[STORE] Could not migrate legacy user corrections: %s", exc)
+            return
+
+        if not isinstance(legacy_data, dict):
+            logger.warning("[STORE] Could not migrate legacy user corrections: expected an object")
+            return
+
+        existing_keys = {
+            unicodedata.normalize('NFC', str(key)).lower()
+            for key in self.corrections_dict
+        }
+        migrated = 0
+        for wrong, right in legacy_data.items():
+            wrong, right = str(wrong).strip(), str(right).strip()
+            normalized_wrong = unicodedata.normalize('NFC', wrong).lower()
+            if wrong and right and normalized_wrong not in existing_keys:
+                self.corrections_dict[wrong] = right
+                existing_keys.add(normalized_wrong)
+                migrated += 1
+
+        if not self.save_training_data():
+            logger.warning("[STORE] Could not save migrated legacy user corrections")
+            return
+
+        archive = legacy_file.with_name(
+            f"user_corrections.json.migrated-{date.today().isoformat()}"
+        )
+        suffix = 2
+        while archive.exists():
+            archive = legacy_file.with_name(
+                f"user_corrections.json.migrated-{date.today().isoformat()}-{suffix}"
+            )
+            suffix += 1
+        try:
+            legacy_file.replace(archive)
+        except OSError as exc:
+            logger.warning("[STORE] Migrated %d legacy corrections but could not archive the source: %s", migrated, exc)
+            return
+        logger.info("[STORE] Migrated %d legacy user corrections to training_data.json", migrated)
 
     @staticmethod
     def _bundled_default_dictionary_path() -> Path:
