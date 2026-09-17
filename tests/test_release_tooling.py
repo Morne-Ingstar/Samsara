@@ -13,32 +13,64 @@ from tools.release_manifest import tracked_tree_datas
 from tools.release_preflight import git_release_blockers, samsara_process_reason
 
 
-def _write_version_files(root: Path, package: str, bridge: str) -> None:
+def _write_version_files(root: Path, package: str, bridge: str | None = None) -> None:
     package_dir = root / "samsara"
     package_dir.mkdir()
     (package_dir / "__init__.py").write_text(
         f'__version__ = "{package}"\n', encoding="utf-8"
     )
-    (package_dir / "smart_actions_bridge.py").write_text(
-        f'SAMSARA_VERSION = "{bridge}"\n', encoding="utf-8"
+    bridge_source = (
+        "import samsara\nSAMSARA_VERSION = samsara.__version__\n"
+        if bridge is None else f'SAMSARA_VERSION = "{bridge}"\n'
     )
+    (package_dir / "smart_actions_bridge.py").write_text(bridge_source, encoding="utf-8")
 
 
 def test_release_version_accepts_matching_tag_and_embedded_versions(tmp_path):
-    _write_version_files(tmp_path, "0.22.0", "0.22.0")
+    _write_version_files(tmp_path, "0.22.0")
     assert check_versions(tmp_path, "v0.22.0") == "0.22.0"
 
 
 @pytest.mark.parametrize(
     ("package", "bridge", "expected"),
-    [("0.22.0", "0.21.1", None), ("0.22.0", "0.22.0", "v0.23.0")],
+    [("0.22.0", "0.21.1", None), ("0.22.0", None, "v0.23.0")],
 )
 def test_release_version_rejects_any_identity_mismatch(
     tmp_path, package, bridge, expected
 ):
     _write_version_files(tmp_path, package, bridge)
-    with pytest.raises(ValueError, match="mismatch"):
+    with pytest.raises(ValueError, match="mismatch|derive"):
         check_versions(tmp_path, expected)
+
+
+def test_smart_actions_reports_a_bumped_package_version(monkeypatch):
+    import json
+    import samsara
+    import samsara.smart_actions_bridge as bridge_module
+
+    captured = {}
+
+    class _FakeResp:
+        def read(self):
+            return b'{"reply": "ok"}'
+
+        def __enter__(self):
+            return self
+
+        def __exit__(self, *args):
+            return None
+
+    def _urlopen(req, timeout=None):
+        captured["body"] = json.loads(req.data.decode("utf-8"))
+        return _FakeResp()
+
+    monkeypatch.setattr(samsara, "__version__", "9.9.9-test")
+    bridge = bridge_module.SmartActionsBridge({"endpoint_url": "http://example.test"})
+    monkeypatch.setattr("urllib.request.urlopen", _urlopen)
+
+    bridge.send("hello", "test")
+
+    assert captured["body"]["samsara_version"] == "9.9.9-test"
 
 
 def test_release_manifest_uses_git_index_not_untracked_files(tmp_path):

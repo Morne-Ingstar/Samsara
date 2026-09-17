@@ -15,10 +15,12 @@ import urllib.request
 import uuid
 from typing import Any, Dict, List, Optional
 
+import samsara
+
 logger = logging.getLogger(__name__)
 
 CONTRACT_VERSION = 1
-SAMSARA_VERSION = "0.30.0-beta.1"
+SAMSARA_VERSION = samsara.__version__
 
 
 def _default_available_tools() -> List[str]:
@@ -71,7 +73,7 @@ class SmartActionsBridge:
             'observations': list(observations) if observations else [],
             'available_tools': available_tools if available_tools is not None
                                else _default_available_tools(),
-            'samsara_version': SAMSARA_VERSION,
+            'samsara_version': samsara.__version__,
         }
 
         body = json.dumps(payload).encode('utf-8')

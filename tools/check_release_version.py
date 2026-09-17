@@ -24,6 +24,32 @@ def _string_assignment(path: Path, variable: str) -> str:
     raise ValueError(f"{variable} is not a non-empty string assignment in {path}")
 
 
+def _derived_version_assignment(path: Path, variable: str) -> None:
+    """Require a bridge version assignment derived from package __version__."""
+    tree = ast.parse(path.read_text(encoding="utf-8"), filename=str(path))
+    for node in tree.body:
+        if not isinstance(node, ast.Assign):
+            continue
+        if not any(isinstance(target, ast.Name) and target.id == variable for target in node.targets):
+            continue
+        value = node.value
+        if isinstance(value, ast.Name) and value.id == "__version__":
+            return
+        if (
+            isinstance(value, ast.Attribute)
+            and value.attr == "__version__"
+            and isinstance(value.value, ast.Name)
+            and value.value.id == "samsara"
+        ):
+            return
+        raise ValueError(
+            f"{variable} must derive from samsara.__version__ in {path}"
+        )
+    raise ValueError(
+        f"{variable} must derive from samsara.__version__ in {path}"
+    )
+
+
 def normalize_version(value: str) -> str:
     value = value.strip()
     return value[1:] if value.lower().startswith("v") else value
@@ -32,14 +58,9 @@ def normalize_version(value: str) -> str:
 def check_versions(project_root: str | Path, expected: str | None = None) -> str:
     root = Path(project_root)
     package_version = _string_assignment(root / "samsara" / "__init__.py", "__version__")
-    bridge_version = _string_assignment(
+    _derived_version_assignment(
         root / "samsara" / "smart_actions_bridge.py", "SAMSARA_VERSION"
     )
-    if package_version != bridge_version:
-        raise ValueError(
-            f"version mismatch: samsara.__version__={package_version!r}, "
-            f"Smart Actions={bridge_version!r}"
-        )
     if expected is not None and normalize_version(expected) != package_version:
         raise ValueError(
             f"release identity mismatch: tag/build={expected!r}, embedded={package_version!r}"
