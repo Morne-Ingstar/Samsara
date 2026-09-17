@@ -40,6 +40,9 @@ _logger = logging.getLogger("Samsara")
 # Never applies once the window has actually shown -- a user genuinely
 # taking their time in the wizard is never timed out.
 _WIZARD_SHOW_TIMEOUT_S = 120.0
+MIC_ACCESS_DENIED_MESSAGE = (
+    "Microphone access was denied — enable Windows microphone privacy and press Refresh"
+)  # OWNER COPY — REVIEW
 
 # ---------------------------------------------------------------------------
 # Hotkey capture button (self-contained, no import from settings_qt)
@@ -1401,6 +1404,9 @@ class _WizardWindow(QMainWindow):
             print(f"[WIZARD] Meter: transient sounddevice stream (device={mic_id!r})")
             self._meter_stream = self._open_meter_stream(mic_id)
             self._mic_capture_ready = self._meter_stream is not None
+            if self._meter_stream is None:
+                self._next_btn.setEnabled(False)
+                return
         self._next_btn.setEnabled(self._mic_capture_ready)
 
         timer = QTimer(self)
@@ -1463,6 +1469,14 @@ class _WizardWindow(QMainWindow):
             return stream
         except Exception as exc:
             print(f"[WIZARD] Meter stream error: {exc}")
+            if self._mic_status is not None:
+                message = (
+                    MIC_ACCESS_DENIED_MESSAGE
+                    if isinstance(exc, PermissionError) or "denied" in str(exc).lower()
+                    else "Microphone could not be opened — press Refresh"
+                )
+                self._mic_status.setText(message)
+                self._mic_status.setStyleSheet(f"color:{theme.WARNING};font-size:{theme.TYPE_MIN}px;")
             return None
 
     def _meter_tick(self):
