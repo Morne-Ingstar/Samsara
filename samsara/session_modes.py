@@ -1361,6 +1361,13 @@ class DispatchOutcome:
     detail: dict = field(default_factory=dict)
 
 
+@dataclass(frozen=True)
+class InjectionDelivery:
+    """Text sent by an injector, plus whether the target accepted it."""
+    text: str
+    confirmed: bool
+
+
 # ---------------------------------------------------------------------------
 # Outcome chip vocabulary -- what the listening indicator SAYS happened
 # ---------------------------------------------------------------------------
@@ -1694,7 +1701,8 @@ ForegroundHwndResolver = Callable[[], Optional[int]]
 # Buffered commits pass a second callable that must be checked immediately
 # before the injector emits its paste keystroke. Legacy/unbuffered paths still
 # call the injector with text only.
-InjectFn = Callable[..., Union[bool, str, None]]
+# InjectionDelivery carries the same text plus explicit target acknowledgement.
+InjectFn = Callable[..., Union[bool, str, InjectionDelivery, None]]
 RemoveCharsFn = Callable[[int], None]
 CommandDispatchFn = Callable[[str], CommandDispatchResult]
 HandsFreeCommandProbeFn = Callable[[str], Optional[HandsFreeCommandMatch]]
@@ -3276,18 +3284,28 @@ class SessionModeManager:
         # stage_buffer, so scratch-that and any "the staged text" AVA
         # reference reflect what was really typed. Legacy bool/None-returning
         # injectors keep today's behavior (record the pre-formatting text).
-        final_text = delivered if isinstance(delivered, str) else final_text
+        delivery_confirmed = True
+        if isinstance(delivered, InjectionDelivery):
+            final_text = delivered.text
+            delivery_confirmed = delivered.confirmed
+        elif isinstance(delivered, str):
+            final_text = delivered
+        if not delivery_confirmed:
+            delivery_unverified = True
+            log.warning("[SESSION] DICTATE Ctrl+V shortcut sent without target acknowledgement; "
+                        "scratch-that is not armed")
 
         self._dictate_pending_buffer = ""
         self._dictate_pending_audio = []
         self._stage_buffer = final_text
         self._last_dictate_ended_terminal = None
-        self._stack.push(StackItem(
-            kind="dictation_chunk", payload=final_text, mode=SessionMode.DICTATE,
-            timestamp=self._clock(),
-            extra={"target_process": self._dictate_target_process,
-                   "hwnd": current_hwnd},
-        ))
+        if not delivery_unverified:
+            self._stack.push(StackItem(
+                kind="dictation_chunk", payload=final_text, mode=SessionMode.DICTATE,
+                timestamp=self._clock(),
+                extra={"target_process": self._dictate_target_process,
+                       "hwnd": current_hwnd},
+            ))
         # A completed thought must not end the persistent DICTATE lane. Drop
         # only its focus lock; the next staged chunk captures whichever text
         # box is focused then.
@@ -3301,6 +3319,8 @@ class SessionModeManager:
             # but this must never read as a plain "typed" success.
             detail["delivery_unverified"] = True
             detail["integrity"] = self._describe_verdict(verdict)
+            if not delivery_confirmed:
+                detail["delivery"] = "shortcut_sent_without_target_acknowledgement"
         return DispatchOutcome(kind="dictate_committed", detail=detail)
 
     def _dispatch_ava(self, text: str) -> DispatchOutcome:

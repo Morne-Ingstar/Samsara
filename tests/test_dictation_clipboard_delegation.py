@@ -35,7 +35,7 @@ def _app():
     return app
 
 
-def test_success_delegates_to_sequence_guarded_path(monkeypatch):
+def test_shortcut_only_delivery_is_not_recorded_as_undoable(monkeypatch):
     app = _app()
     monkeypatch.setattr(dictation, "_get_foreground_hwnd", lambda: 4242)
 
@@ -56,10 +56,18 @@ def test_success_delegates_to_sequence_guarded_path(monkeypatch):
         before_paste=ANY,
         incomplete_snapshot_fallback=ANY,
     )
-    app._record_undoable_paste.assert_called_once_with(
-        "dictated text", target_hwnd=4242,
-    )
-    app.adaptive_learner.record_transcription.assert_called_once_with("dictated text")
+    app._record_undoable_paste.assert_not_called()
+    app.adaptive_learner.record_transcription.assert_not_called()
+
+
+def test_session_call_gets_explicit_unconfirmed_shortcut_result(monkeypatch):
+    app = _app()
+    monkeypatch.setattr(dictation, "_get_foreground_hwnd", lambda: 4242)
+    monkeypatch.setattr(dictation, "paste_with_preservation", Mock(return_value=True))
+
+    assert app._paste_preserving_clipboard(
+        "dictated text", return_delivery_confirmation=True,
+    ) == (True, False)
 
 
 def test_failed_central_paste_does_not_record_success(monkeypatch):

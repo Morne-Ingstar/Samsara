@@ -452,7 +452,7 @@ from samsara.handlers import _get_foreground_exe_lower, _get_foreground_hwnd
 from samsara.runtime import thread_registry
 from samsara.audio_engine.wake_dispatch import TranscriptionOwners, WakeDispatchQueue
 from samsara.session_modes import (
-    SessionMode, SessionModeManager, UtteranceSignals, CommandDispatchResult,
+    SessionMode, SessionModeManager, UtteranceSignals, CommandDispatchResult, InjectionDelivery,
     HandsFreeCommandMatch, PendingTextPolicy, normalize_utterance,
     GLOBAL_SESSION_EXIT_PHRASES, resolve_ava_invocations, is_scratch_that,
     # Queue 106: the control-phrase exemption in _is_dictate_context_echo
@@ -6358,9 +6358,10 @@ class DictationApp:
                 logger.exception(f'[SESSION] DICTATE commit formatting failed: {e}')
                 return False
 
-            paste_ok = self._paste_preserving_clipboard(
+            paste_ok, delivery_confirmed = self._paste_preserving_clipboard(
                 formatted,
                 before_paste=commit_focus_guard,
+                return_delivery_confirmation=True,
             )
             if not paste_ok:
                 return False
@@ -6376,7 +6377,7 @@ class DictationApp:
                     entry_type="dictation",
                 )
                 self._notify_main_window(display)
-            return formatted
+            return InjectionDelivery(formatted, confirmed=delivery_confirmed)
 
         def _remove_chars_fn(n: int) -> bool:
             # Queue 50 (ARC audit5b): was n x pyautogui.hotkey('shift','left')
@@ -11230,16 +11231,19 @@ class DictationApp:
         except Exception:
             return None
 
-    def _paste_preserving_clipboard(self, text, before_paste=None):
+    def _paste_preserving_clipboard(self, text, before_paste=None, return_delivery_confirmation=False):
         """Paste text via clipboard while preserving the user's original clipboard content."""
         # Queue 50: the single delivery chokepoint (hold, wake, session commit)
         # refuses a window Windows will not let us type into. Callers with
         # their own announcement (session outcome, hold path) check earlier;
         # this guard makes every other lane fail honestly instead of "pasting".
+        def _result(sent, confirmed):
+            return (sent, confirmed) if return_delivery_confirmation else sent
+
         _verdict = injection_safety.window_integrity()
         if _verdict.blocked:
             logger.warning("[INJECT] delivery refused: foreground window is elevated (%s)", _verdict.describe())
-            return False
+            return _result(False, False)
         delay = self.config.get('clipboard_delay', CLIPBOARD_RESTORE_DELAY)
         paste_target = {'hwnd': None}
 
@@ -11263,7 +11267,7 @@ class DictationApp:
                     target_process=self._flight_foreground_process_name(),
                     chars=len(text), result='cancelled_target_changed',
                 )
-                return False
+                return _result(False, False)
             typed_hwnd = _get_foreground_hwnd()
             if type_text_unicode(text):
                 self._record_undoable_paste(text, target_hwnd=typed_hwnd)
@@ -11276,7 +11280,7 @@ class DictationApp:
                     target_process=self._flight_foreground_process_name(),
                     chars=len(text), result='ok',
                 )
-                return True
+                return _result(True, True)
             logger.warning(
                 "[TYPE] Typed injection failed; falling back to clipboard paste"
             )
@@ -11319,7 +11323,8 @@ class DictationApp:
             before_paste=_capture_target_before_paste,
             incomplete_snapshot_fallback=_typed_fallback_without_clipboard,
         )
-        if paste_ok:
+        delivery_confirmed = bool(typed_fallback_used["value"])
+        if paste_ok and delivery_confirmed:
             self._record_undoable_paste(
                 text, target_hwnd=paste_target['hwnd'],
             )
@@ -11329,6 +11334,8 @@ class DictationApp:
                 else "[PASTE] Ctrl+V sent chars=%d hwnd=%r",
                 len(text), _get_foreground_hwnd(),
             )
+        elif paste_ok:
+            logger.warning("[PASTE] Ctrl+V shortcut sent without target acknowledgement; undo is not armed")
         else:
             logger.error("[PASTE] Ctrl+V delivery failed; text retained by caller when possible")
         flight_recorder.record(
@@ -11339,7 +11346,7 @@ class DictationApp:
             target_process=self._flight_foreground_process_name(),
             chars=len(text), result='ok' if paste_ok else 'failed',
         )
-        return paste_ok
+        return _result(paste_ok, delivery_confirmed)
 
     def _deliver_text_to_focused_editor(self, text):
         # backspace removes focus-primer char; assumes empty input box at session start
