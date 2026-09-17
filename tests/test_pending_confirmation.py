@@ -135,6 +135,40 @@ class TestRecord:
         executor.process_text("yes", app, force_commands=True)
         assert len(effects) == 1
 
+    def test_stale_schedule_does_not_displace_a_live_pending_operation(self, app, executor):
+        live = _propose_delete(app, executor)
+        outcome = ask_ollama.handle_response(
+            app, "CONFIRM stale schedule.\nSCHEDULE 30 switch window",
+            original_text="repeat switch window", generation=6)
+        assert outcome.state == "stale" and outcome.reason == "stale"
+        assert ep.pending_operation() is live
+        assert live.approved is None and live.cancel_reason is None
+
+    def test_schedule_is_user_confirmed_pending_operation(self, app, executor, monkeypatch):
+        started = []
+        monkeypatch.setattr(ask_ollama, "_start_schedule",
+                            lambda app_, task: started.append(dict(task)))
+        outcome = ask_ollama.handle_response(
+            app, "CONFIRM repeat it.\nSCHEDULE 300 switch window",
+            original_text="repeat switch window", generation=7)
+        record = ask_ollama.get_pending_action()
+        op = ep.pending_operation()
+        assert outcome.state == "queued"
+        assert record["type"] == "schedule" and record["op"] is op
+        assert op is not None and op.generation == 7
+
+        real_exists = ask_ollama.execution_policy.command_exists
+        monkeypatch.setattr(ask_ollama.execution_policy, "command_exists",
+                            lambda cid, **kw: cid == "yes" or real_exists(cid, **kw))
+        model = ask_ollama.handle_response(
+            app, "CONFIRM acknowledgement.\nACTION yes", original_text="x", generation=7)
+        assert model.state == "refused" and model.reason == "not_offered"
+        assert started == [] and ep.pending_operation() is op and op.approved is None
+
+        ask_ollama.handle_ava_confirm(app)
+        assert op.approved is True and ep.pending_operation() is None
+        assert len(started) == 1 and started[0]["command"] == "switch window"
+
 
 # ---------------------------------------------------------------------------
 # What counts as a yes

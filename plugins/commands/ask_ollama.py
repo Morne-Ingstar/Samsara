@@ -1519,6 +1519,10 @@ def handle_response(app, response, original_text=None, *, generation=None):
         if command_name not in names:
             status = "menu unavailable" if menu is None else "not offered"
             logger.warning("[AVA-GATE] refused model ACTION %r: %s", command_name, status)
+            execution_policy._emit(
+                app, Invocation(command_name, route=Route.MODEL, generation=generation,
+                                source_text=original_text or ""),
+                execution_policy.Denied("not_offered", detail=status))
             speak(app, "That wasn't one of the commands I offered.")
             return TurnOutcome("action", "refused", reason="not_offered", name=command_name)
 
@@ -1601,17 +1605,32 @@ def handle_response(app, response, original_text=None, *, generation=None):
         what = parsed["command"] or (f"press {parsed['key']}" if parsed["key"] else "that")
         confirm_text = (f"Repeat {execution_policy._template_value(what)} every "
                         f"{int(parsed['interval_seconds'])} seconds?")
-        with _pending_action_lock:
-            _pending_action = {
-                "type": "schedule",
-                "interval_seconds": parsed["interval_seconds"],
-                "command": parsed["command"],
-                "key": parsed["key"],
-                "confirm_text": confirm_text,
-                "original_text": original_text or "",
-                "generation": generation,
-                "expires": time.time() + 30,
-            }
+        task = {
+            "interval_seconds": parsed["interval_seconds"],
+            "command": parsed["command"],
+            "key": parsed["key"],
+            "confirm_text": confirm_text,
+            "original_text": original_text or "",
+            "generation": generation,
+        }
+        inv = Invocation("schedule", {
+            "interval_seconds": task["interval_seconds"],
+            "command": task["command"],
+            "key": task["key"],
+        }, Route.MODEL, generation, source_text=task["original_text"])
+        if not execution_policy.is_fresh(app, generation):
+            logger.warning("[AVA SCHEDULER] dropped stale schedule (generation %r)", generation)
+            return TurnOutcome("schedule", "stale", reason="stale", name=str(what))
+
+        def _approve(_op):
+            _start_schedule(app, task)
+            speak(app, f"Scheduled. {confirm_text}")
+
+        execution_policy.stage_pending(
+            app, inv, confirm_text, on_approve=_approve,
+            extra={"interval_seconds": task["interval_seconds"],
+                   "scheduled_command": task["command"], "key": task["key"]},
+            record_type="schedule")
         speak(app, confirm_text + " -- say yes to confirm, or say ava cancel.")
         return TurnOutcome("schedule", "queued", name=str(what))
 
@@ -2588,13 +2607,6 @@ def handle_ava_confirm(app, remainder="", **kwargs):
                 speak(app, "Done.")
         except Exception as e:
             speak(app, f"Command failed: {e}")
-
-    elif action["type"] == "schedule":
-        with _pending_action_lock:
-            _pending_action = None
-        _start_schedule(app, action)
-        _track_alias_uses(action.get("original_text", ""))
-        speak(app, f"Scheduled. {action['confirm_text']}")
 
     elif action["type"] == "alias_replace":
         with _pending_action_lock:

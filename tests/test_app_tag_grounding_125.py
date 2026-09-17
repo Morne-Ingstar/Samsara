@@ -219,6 +219,7 @@ class TestInventionIsRefused:
         assert outcome.state == "refused" and outcome.reason == "not_offered"
         assert app.command_executor.calls == []
         assert any("ava forget" in record.message for record in caplog.records)
+        assert ("Blocked: ava forget", "error") in [call.args for call in app._show_outcome_chip.call_args_list]
 
     def test_a_menu_listed_action_still_executes(self):
         app = _app(menu=["next tab"])
