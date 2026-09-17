@@ -805,6 +805,11 @@ SETTINGS_SCHEMA = {
         "default": False,
         "tab": "ava",
     },
+    "ava.consent": {
+        "type": "dict",
+        "default": {"version": 0, "accepted_at": None, "cloud_version": None},
+        "tab": "ava",
+    },
     "ava_invocations": {
         # Exact whole-utterance phrases that switch into Ava mode -- see
         # samsara/session_modes.py's match_ava_invocation(). No settings-UI

@@ -29,7 +29,7 @@ from samsara.constants import (
     DEFAULT_WAKE_PHRASE,
     DEFAULT_WAKE_PHRASE_OPTIONS,
 )
-from samsara.ui import theme
+from samsara.ui import ava_consent_qt, theme
 
 from samsara.ui.settings_qt import (
     _CMD_BUTTON_KEY_TO_LABEL,
@@ -978,6 +978,35 @@ class ModesPage:
             self._setting_row("Enable Ava mode", _AVA_MODE_ENABLED_DESC, ava_enabled_cb, control_width=220)
         )
 
+        def _confirm_ava_enable(checked, checkbox):
+            if not checked:
+                return
+            effective = dict(self.app.config)
+            ava_cfg = dict(effective.get("ava", {}) or {})
+            staged = getattr(self, "_ava_consent_staged", None)
+            if staged is not None:
+                ava_cfg["consent"] = staged
+            effective["ava"] = ava_cfg
+            cloud_checkbox = self._widgets.get("cloud_enabled")
+            cloud_enabled = bool(cloud_checkbox and cloud_checkbox.isChecked())
+            cloud_enabled = cloud_enabled or bool(
+                (self.app.config.get("cloud_llm", {}) or {}).get("enabled", False))
+            if not ava_consent_qt.consent_required(effective, cloud_enabled=cloud_enabled):
+                return
+            was_blocked = checkbox.blockSignals(True)
+            checkbox.setChecked(False)
+            checkbox.blockSignals(was_blocked)
+            consent = ava_consent_qt.request_consent(
+                self, effective, cloud_enabled=cloud_enabled)
+            if consent is not None:
+                self._ava_consent_staged = consent
+                checkbox.setChecked(True)
+
+        ava_enabled_cb.clicked.connect(
+            lambda checked: _confirm_ava_enable(checked, ava_enabled_cb))
+        ai_enabled.clicked.connect(
+            lambda checked: _confirm_ava_enable(checked, ai_enabled))
+
         # 08d: the runtime resolves ava_mode_key with _get_pynput_command_key
         # (single named keys only) -- a captured combo used to disable Ava
         # silently. Same option list as the Ava Command Session key.
@@ -1262,6 +1291,12 @@ class ModesPage:
                 ai_cfg_out['queue_depth_cap'] = self._widgets['ava_cmd_queue_depth'].value()
                 ai_cfg_out['miss_limit']      = self._widgets['ava_cmd_miss_limit'].value()
                 updates['ava_command_session'] = ai_cfg_out
+
+            staged_consent = getattr(self, "_ava_consent_staged", None)
+            if staged_consent is not None:
+                ava_cfg = dict(_acc.get("ava", self.app.config.get("ava", {})) or {})
+                ava_cfg["consent"] = staged_consent
+                updates["ava"] = ava_cfg
 
             return updates
         self._save_fns.append(_save)
