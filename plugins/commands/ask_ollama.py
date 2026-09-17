@@ -1503,8 +1503,12 @@ def handle_response(app, response, original_text=None, *, generation=None):
         # ava_command_session's gate only covers the command-session route,
         # and handle_ask_ava / handle_is_it_safe reach here without it.
         #
+        executor = getattr(app, "command_executor", None)
+        if executor is None:
+            speak(app, "Command executor unavailable.")
+            return TurnOutcome("action", "failed", reason="no_executor", name=command_name)
         if not execution_policy.command_exists(command_name, app=app,
-                                               executor=getattr(app, "command_executor", None)):
+                                               executor=executor):
             logger.info("[AVA-GATE] %r is not a command at all -- invented", command_name)
             speak(app, "I don't have a command called that.")
             return TurnOutcome("action", "refused", reason="not_a_command",
@@ -1535,10 +1539,6 @@ def handle_response(app, response, original_text=None, *, generation=None):
             return TurnOutcome("action", "refused", reason="ungrounded",
                                name=command_name)
 
-        executor = getattr(app, "command_executor", None)
-        if executor is None:
-            speak(app, "Command executor unavailable.")
-            return TurnOutcome("action", "failed", reason="no_executor", name=command_name)
         # ONE execution API (queue 107): execute_canonical authorizes
         # (route=model), runs a read/ui tool builtin OR plugin, stages
         # write/destructive/unknown for "yes", or refuses -- and says which.
