@@ -73,12 +73,12 @@ def test_a_suggestion_never_claims_a_single_word_either(resolver):
 
 def test_a_one_word_command_does_not_execute_through_a_longer_utterance(resolver):
     """Reaching windows.bring through its ONE-WORD alias "get" in "Get rid of
-    the demo." is a single word triggering a command. Logged as executing on
-    2026-09-15. This is rule 1 doing exactly what it was built for, and it is
-    unchanged by queue 127: the evidence is the form the user spoke."""
+    the demo." must not execute. Queue 127 removed the obsolete canonical-word
+    count leg from rule 1, so this multi-word utterance is now a non-resolved
+    suggestion rather than a one-word-command block."""
     res = resolver.resolve("Get rid of the demo.")
-    assert res.kind != rs.RESOLVED
-    assert res.blocked == rs.BLOCK_ONE_WORD_COMMAND
+    assert (res.kind, res.canonical_id) == (rs.SUGGEST, "windows.bring")
+    assert res.blocked is None
 
 
 # ---------------------------------------------------------------------------
