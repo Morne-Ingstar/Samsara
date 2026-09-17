@@ -34,7 +34,7 @@ from samsara.config_transfer import (
     load_config_export,
     merge_import,
 )
-from samsara.ui import theme
+from samsara.ui import ava_captions_qt
 from samsara.ui import theme
 from samsara.ui_scale import UI_SCALE_OPTIONS, ui_scale_label
 
@@ -130,6 +130,32 @@ class GeneralPage:
             "Dark, light, or follow Windows. Applies immediately.",
             theme_combo,
             width=260,
+        )
+
+        # Queue 176 -- the first disability-support mode. Captions are the
+        # feature; muting Ava's audio is a separate choice on top of it, so
+        # the default is "show the text AND keep the voice". The mute row
+        # reads as an addition to the row above it, not an alternative.
+        ava_captions = QCheckBox()
+        ava_captions.setChecked(ava_captions_qt.captions_enabled(self.app.config))
+        ava_captions.setAccessibleName("Show Ava captions")
+        self._widgets['ava_captions'] = ava_captions
+        _add_row(
+            accessibility_layout,
+            "Ava captions",
+            "Show what Ava says in a window you can move. Audio stays on.",
+            ava_captions,
+        )
+
+        ava_mute_audio = QCheckBox()
+        ava_mute_audio.setChecked(ava_captions_qt.ava_audio_muted(self.app.config))
+        ava_mute_audio.setAccessibleName("Mute Ava's voice")
+        self._widgets['ava_mute_audio'] = ava_mute_audio
+        _add_row(
+            accessibility_layout,
+            "Mute Ava's voice",
+            "Read Ava instead of hearing her. Command sounds are unaffected.",
+            ava_mute_audio,
         )
 
         # ---- Card: Audio -------------------------------------------------
@@ -559,10 +585,21 @@ class GeneralPage:
             stored_updates = self.app.config.get('updates', {})
             if not isinstance(stored_updates, dict):
                 stored_updates = {}
+            stored_access = self.app.config.get('accessibility', {})
+            if not isinstance(stored_access, dict):
+                stored_access = {}
             updates = {
                 'ui_scale':          UI_SCALE_OPTIONS[self._widgets['ui_scale_combo'].currentText()],
                 'ui':                {**(self.app.config.get('ui') or {}),
                                       'theme': self._widgets['theme_combo'].currentData()},
+                # Merged onto whatever else lives under `accessibility` --
+                # the caption panel writes its dragged position into the
+                # same block and must not be reset by an unrelated save.
+                'accessibility': {
+                    **stored_access,
+                    'ava_captions':   self._widgets['ava_captions'].isChecked(),
+                    'ava_mute_audio': self._widgets['ava_mute_audio'].isChecked(),
+                },
                 'auto_paste':         self._widgets['auto_paste'].isChecked(),
                 'add_trailing_space': self._widgets['trailing_space'].isChecked(),
                 'auto_capitalize':    self._widgets['auto_capitalize'].isChecked(),
@@ -587,6 +624,13 @@ class GeneralPage:
             hints = getattr(self.app, 'hints', None)
             if hints is not None:
                 hints.set_enabled(self._widgets['hints_enabled'].isChecked())
+
+            # Switching captions off takes down a panel that is already up,
+            # instead of leaving it to linger past the moment the user said
+            # they did not want it. Turning them ON shows nothing: the next
+            # thing Ava says is what a caption is for.
+            if not self._widgets['ava_captions'].isChecked():
+                ava_captions_qt.hide_captions()
 
             # currentData() (userData set at addItem() time -- see
             # _populate_devices-equivalent block above) rather than the

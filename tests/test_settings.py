@@ -615,6 +615,14 @@ class TestApplyAndCloseSnapshot:
         # section so a future sibling key survives a save; with an empty
         # starting config there is nothing to preserve.
         expected['ui'] = {'theme': 'dark'}
+        # Queue 176 delta: the General page's Accessibility section gained the
+        # two Ava-captions controls, so Apply writes their defaults. Both are
+        # OFF -- captions are a mode the user opts into, and Ava keeps her
+        # voice until someone asks for silence. The page writes the whole
+        # `accessibility` section so the caption panel's own dragged position
+        # survives a save; with an empty starting config there is nothing to
+        # preserve.
+        expected['accessibility'] = {'ava_captions': False, 'ava_mute_audio': False}
         # Queue 158 delta: the Advanced page exposes the two-stage
         # hands-free duck values. The schema defaults mirror dictation.py's
         # live fallback values and are persisted with the ordinary ducking

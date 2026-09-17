@@ -57,6 +57,13 @@ KEYS_BEFORE_SPLIT = {
         # rather than being dropped, which is why both appear here.
         'ui.idle_animation', 'ui.theme',
         'ui_scale', 'updates.automatic_checks',
+        # Queue 176: Ava captions and Ava audio mute, the two controls of the
+        # first accessibility mode. Same reason as `ui` above -- the page
+        # writes the whole `accessibility` section so the caption panel's
+        # dragged position (written by the panel itself, not by Settings)
+        # survives a save instead of being dropped.
+        'accessibility.ava_captions', 'accessibility.ava_mute_audio',
+        'accessibility.ava_captions_linger_s', 'accessibility.ava_captions_position',
     ],
     "_build_modes_tab": [
         'ava_command_session.backend', 'ava_command_session.enabled',
