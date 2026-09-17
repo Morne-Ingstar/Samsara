@@ -20,9 +20,9 @@ The rules it keeps, unchanged from 89:
   * Source of truth is the catalog (commands_catalog.json via
     command_catalog.guidance_catalog), never a hand-written list. If the
     catalog cannot be read the strip shows nothing at all.
-  * Only safe phrases: nothing destructive, nothing needing an argument,
-    no whole-utterance control word, nothing from a hardware pack, and
-    nothing scoped to an app that is not live right now (queue 68 scopes).
+  * Only safe, universal phrases: nothing destructive, nothing needing an
+    argument, no whole-utterance control word, and nothing outside the
+    catalog's universal pack allow-list.
   * The strip never takes focus and never announces a new sentence: the
     example label is NoFocus and its accessible name is updated in place,
     which a screen reader does not speak. Only the two arrows are in the
@@ -70,23 +70,28 @@ PHRASE_COUNT = 12
 #: Risk classes safe to show: reading the screen or moving the UI. Never
 #: "write", never "destructive".
 SAFE_RISKS = frozenset({"read", "ui"})
-#: Catalog PACKS whose commands drive physical hardware, excluded whatever
-#: their risk class says (queue 95).
+#: Catalog packs whose examples are useful on a first screen regardless of
+#: optional integrations.  This is deliberately an allow-list: a new plugin,
+#: app integration, or hardware pack is excluded until its pack has been
+#: judged suitable for an invitation to a new user.
 #:
-#: An example is an invitation to try the phrase right now, and the risk
-#: classes only describe what the command does to the SCREEN. "print me a
-#: gun" is a real FlashForge command, honestly classed "ui" -- it needs no
-#: argument, destroys nothing on the machine, and so passed every filter
-#: here and greeted first-time users. What it actually does is start a
-#: physical machine heating and moving in the owner's room, which is not
-#: something to suggest to somebody who has just opened the app.
-#:
-#: Excluded by PACK, not by plugin name or phrase: the pack is the catalog's
-#: own grouping, so a second printer or a new smart-home plugin is excluded
-#: the day it lands without anybody remembering to edit this file. Software
-#: that merely plays or pauses what is already on the user's own screen
-#: (the "media" and "stremio" packs) is not hardware and stays in.
-HARDWARE_PACKS = frozenset({"3d-printing", "smart-home"})
+#: Pack names are catalog data, not inferred from plugin filenames.  The
+#: groups cover Samsara controls (core/session/window-cube-numbers), dictation
+#: and text work (core/text-editing), windows (window-management), system and
+#: audio controls (utilities/accessibility/audio), and navigation/click
+#: controls (browsers/mouse).
+EXAMPLE_ALLOWED_PACKS = frozenset({
+    "accessibility",
+    "audio",
+    "browsers",
+    "core",
+    "mouse",
+    "session",
+    "text-editing",
+    "utilities",
+    "window-cube-numbers",
+    "window-management",
+})
 
 
 def _live(record: dict, ctx) -> bool:
@@ -109,8 +114,8 @@ def example_phrases(records, *, ctx=None, count: int = PHRASE_COUNT,
     Safe only: risk in SAFE_RISKS, not a whole utterance, no required
     argument, not a demo/sample plugin or a network verb (the same
     exclusions command_catalog.pick_examples applies to "try saying"
-    examples), not from a hardware pack (queue 95, see HARDWARE_PACKS),
-    and live for `ctx` (queue 68).
+    examples), from EXAMPLE_ALLOWED_PACKS only, and live for `ctx` (queue
+    68).
 
     Unchanged from the marquee it replaces: 111 changed how one example is
     SHOWN, and deliberately did not widen the pool it is drawn from.
@@ -120,7 +125,7 @@ def example_phrases(records, *, ctx=None, count: int = PHRASE_COUNT,
     for record in records or []:
         if record.get("risk") not in SAFE_RISKS:
             continue
-        if record.get("pack") in HARDWARE_PACKS:
+        if record.get("pack") not in EXAMPLE_ALLOWED_PACKS:
             continue
         if record.get("whole_utterance"):
             continue
