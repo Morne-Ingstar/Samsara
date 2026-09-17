@@ -218,8 +218,9 @@ class TestTargetBinding:
         op = ep.stage_pending(app, inv, "Permanent delete?", on_approve=lambda o: ran.append(o),
                               targets=dict(window), target_probe=lambda: dict(window))
         window["hwnd"] = 99                                 # same app, different window
-        assert ep.answer_pending(app, "yes") == "refused:target changed"
-        assert ran == [] and op.cancel_reason == "target changed"
+        reason = "target changed: a different window is in front now"
+        assert ep.answer_pending(app, "yes") == f"refused:{reason}"
+        assert ran == [] and op.cancel_reason == reason
 
     def test_yes_is_accepted_when_the_target_is_unchanged(self, app):
         window = {"hwnd": 42, "rev": 1}
