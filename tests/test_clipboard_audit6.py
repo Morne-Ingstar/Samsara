@@ -235,6 +235,16 @@ def test_files_copied_in_explorer_survive_a_dictation_paste(fake, target):
     assert fake.formats == original, "the file list must come back byte-identical"
 
 
+def test_incomplete_file_snapshot_refuses_to_replace_explorer_copy(fake, target):
+    original = {CF_HDROP: _dropfiles(r"C:\Users\me\large-file-list.txt")}
+    fake.formats = dict(original)
+    fake.size_override[CF_HDROP] = 101 * 1024 * 1024
+
+    assert paste_with_preservation("the dictated sentence", paste_delay=0, restore_delay=0) is False
+    assert target.pasted == []
+    assert fake.formats == original
+
+
 # ---------------------------------------------------------------------------
 # Issue 2: sequence-number guard
 # ---------------------------------------------------------------------------
