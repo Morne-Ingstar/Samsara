@@ -471,7 +471,7 @@ def _make_progress_window(count: int):
         from PySide6.QtWidgets import QApplication, QProgressDialog  # noqa: PLC0415
     except Exception:  # noqa: BLE001
         return None
-    app = QApplication.instance() or QApplication([])
+    app = QApplication.instance()
 
     class _UI:
         def __init__(self):

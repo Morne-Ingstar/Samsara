@@ -27,6 +27,7 @@ import pytest
 
 from samsara.session_modes import (
     RECOVER_DRAFT_PHRASES,
+    SPOKEN_NOTICES_EVERYTHING,
     SessionMode,
     SessionModeManager,
     UtteranceSignals,
@@ -413,9 +414,18 @@ class TestEmptySlotNeverReportsSuccess:
         outcome = manager.dispatch_utterance("bring back my draft", GOOD_SIGNALS)
 
         assert outcome.kind == "dictate_recover_nothing"
-        assert "no draft to bring back" in " ".join(manager.spoken)
+        assert "no draft to bring back" not in " ".join(manager.spoken)
         assert outcome_chip("dictate_recover_nothing", {}) == (
             "nothing to bring back", "warning")
+
+    def test_the_acknowledgement_is_spoken_when_everything_is_allowed(self):
+        manager = _make_recovery_manager()
+        manager.set_spoken_notices(SPOKEN_NOTICES_EVERYTHING)
+
+        outcome = manager.dispatch_utterance("bring back my draft", GOOD_SIGNALS)
+
+        assert outcome.kind == "dictate_recover_nothing"
+        assert "no draft to bring back" in " ".join(manager.spoken)
 
     @pytest.mark.parametrize("phrase", RECOVER_DRAFT_PHRASES)
     def test_the_phrase_is_never_left_in_the_box_as_dictation(self, phrase):

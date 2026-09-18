@@ -2,18 +2,38 @@
 
 The formatting-pipeline tests below (buffered-DICTATE commit onward) guard
 the actual bug this file is named for: unified toggle-session DICTATE used
-to stage raw Whisper chunks and paste them untouched on "end", bypassing
+to stage raw Whisper chunks and paste them untouched on the commit phrase, bypassing
 process_transcription/clean_text/smart_correct/formatting-tokens entirely.
 The fix reuses that SAME pipeline (see dictation.py's _inject_fn, wired as
 SessionModeManager's inject_fn) exactly once over the complete accumulated
 text at commit -- never per natural-pause chunk.
 """
 
+import threading
 from types import SimpleNamespace
 from unittest.mock import ANY, Mock, call, patch
 
+import pytest
+
+from samsara import injection_safety
+from samsara import session_modes as sm
 from samsara.audio_engine.wake_consumer import WakeConsumer
-from samsara.session_modes import SessionMode, UtteranceSignals
+from samsara.session_modes import DEFAULT_DICTATE_COMMIT_PHRASE, SessionMode, UtteranceSignals
+
+
+@pytest.fixture(autouse=True)
+def _configured_commit_phrase(monkeypatch):
+    original = sm.DICTATE_COMMIT_PHRASE
+    sm.set_commit_phrase(DEFAULT_DICTATE_COMMIT_PHRASE)
+    monkeypatch.setattr(
+        injection_safety,
+        "window_integrity",
+        lambda: injection_safety.IntegrityVerdict(
+            injection_safety.OK, 0x2000, 0x2000, "test", "test", 0.0
+        ),
+    )
+    yield
+    sm.set_commit_phrase(original)
 
 
 def _app(*, mode=SessionMode.DICTATE, command_mode_active=True, app_state="asleep"):
@@ -101,6 +121,7 @@ def _buffered_dictation_app(config_overrides=None):
     app = DictationApp.__new__(DictationApp)
     app._session_mode_manager = None
     app._dictate_preview = None
+    app.model_lock = threading.Lock()
     app.config = {
         "wake_word_config": {"wake_abort_phrase": ["cancel", "abort"]},
         "formatting_tokens": {"enabled": True},
@@ -108,12 +129,13 @@ def _buffered_dictation_app(config_overrides=None):
         "auto_capitalize": True,
         "format_numbers": True,
         "cleanup_mode": "clean",
+        "verbatim": {"enabled": False},
         "smart_corrections": {"enabled": False, "modes": {"wake": True}},
         "enable_case_formatters": False,
     }
     if config_overrides:
         app.config.update(config_overrides)
-    app._paste_preserving_clipboard = Mock(return_value=True)
+    app._paste_preserving_clipboard = Mock(return_value=(True, True))
     app.add_to_history = Mock()
     app._log_history = Mock()
     app._notify_main_window = Mock()
@@ -123,9 +145,9 @@ def _buffered_dictation_app(config_overrides=None):
     return app
 
 
-def _dictate_and_end(app, chunks):
+def _dictate_and_commit(app, chunks):
     """Dispatch each chunk into DICTATE (natural pauses -- staged, nothing
-    pasted), then commit with the sole-word "end". Returns
+    pasted), then commit with the configured phrase. Returns
     (session_mode_manager, final_dispatch_outcome)."""
     signals = UtteranceSignals(has_contiguous_speech=True, compression_ratios=(1.2,))
     with patch("dictation._get_foreground_exe_lower", return_value="codex.exe"), \
@@ -137,23 +159,25 @@ def _dictate_and_end(app, chunks):
             assert outcome.kind == "dictate_staged", (
                 f"chunk {chunk!r} did not stage cleanly: {outcome.kind}"
             )
-        outcome = manager.dispatch_utterance("end", signals)
+        outcome = manager.dispatch_utterance(DEFAULT_DICTATE_COMMIT_PHRASE, signals)
     return manager, outcome
 
 
 def test_buffered_session_commit_records_legacy_and_sqlite_history():
-    """Natural pauses stage without pasting (req 1); "end" commits once,
+    """Natural pauses stage without pasting (req 1); the commit phrase commits once,
     and history/notify/paste all see the same finalized text (req 7).
 
     Expected text is "One complete thought.": format_numbers is on in the
     default test config, and since queue 55 a prose "one" stays a word (it
     used to be pasted as "1 complete thought.", the owner's reported bug)."""
     app = _buffered_dictation_app()
-    manager, outcome = _dictate_and_end(app, ["One complete thought."])
+    manager, outcome = _dictate_and_commit(app, ["One complete thought."])
 
     assert outcome.kind == "dictate_committed"
     assert manager.mode is SessionMode.DICTATE
-    app._paste_preserving_clipboard.assert_called_once_with("One complete thought.", before_paste=ANY)
+    app._paste_preserving_clipboard.assert_called_once_with(
+        "One complete thought.", before_paste=ANY, return_delivery_confirmation=True,
+    )
     app.add_to_history.assert_called_once_with("One complete thought.", is_command=False)
     assert app._log_history.call_args.kwargs["mode"] == "dictate"
     app._notify_main_window.assert_called_once_with("One complete thought.")
@@ -170,7 +194,7 @@ def test_staged_chunks_create_no_history_until_one_successful_paste():
         manager.dispatch_utterance("second part", signals)
         app.add_to_history.assert_not_called()
         app._log_history.assert_not_called()
-        outcome = manager.dispatch_utterance("end", signals)
+        outcome = manager.dispatch_utterance(DEFAULT_DICTATE_COMMIT_PHRASE, signals)
 
     assert outcome.kind == "dictate_committed"
     app.add_to_history.assert_called_once()
@@ -183,12 +207,14 @@ def test_staged_chunks_create_no_history_until_one_successful_paste():
 # via dictation.py's _inject_fn; none of this duplicates that logic.
 # ---------------------------------------------------------------------------
 
-def test_lowercase_chunk_gets_capitalized_and_punctuated_on_end():
-    """'this is a test' + 'end' pastes 'This is a test.'"""
+def test_lowercase_chunk_gets_capitalized_and_punctuated_on_commit():
+    """'this is a test' + the configured commit phrase pastes 'This is a test.'"""
     app = _buffered_dictation_app()
-    manager, outcome = _dictate_and_end(app, ["this is a test"])
+    manager, outcome = _dictate_and_commit(app, ["this is a test"])
     assert outcome.kind == "dictate_committed"
-    app._paste_preserving_clipboard.assert_called_once_with("This is a test.", before_paste=ANY)
+    app._paste_preserving_clipboard.assert_called_once_with(
+        "This is a test.", before_paste=ANY, return_delivery_confirmation=True,
+    )
 
 
 def test_two_chunks_join_into_one_thought_not_two_forced_sentences():
@@ -196,31 +222,35 @@ def test_two_chunks_join_into_one_thought_not_two_forced_sentences():
     capital, one terminal period -- not two sentences forced at the chunk
     boundary (req 4: no formatting per silence-bounded chunk)."""
     app = _buffered_dictation_app()
-    manager, outcome = _dictate_and_end(app, ["Hello there", "How are you today"])
+    manager, outcome = _dictate_and_commit(app, ["Hello there", "How are you today"])
     assert outcome.kind == "dictate_committed"
     app._paste_preserving_clipboard.assert_called_once_with(
         "Hello there how are you today.",
         before_paste=ANY,
+        return_delivery_confirmation=True,
     )
 
 
 def test_existing_commas_and_apostrophes_survive():
     """req 5: punctuation Whisper already produced is preserved."""
     app = _buffered_dictation_app()
-    manager, outcome = _dictate_and_end(app, ["it's raining, and cold"])
+    manager, outcome = _dictate_and_commit(app, ["it's raining, and cold"])
     assert outcome.kind == "dictate_committed"
     app._paste_preserving_clipboard.assert_called_once_with(
         "It's raining, and cold.",
         before_paste=ANY,
+        return_delivery_confirmation=True,
     )
 
 
 def test_verbatim_mode_adds_no_capitalization_or_terminal_punctuation():
     """req 3/4: cleanup_mode=verbatim must not gain a capital or a period."""
     app = _buffered_dictation_app({"cleanup_mode": "verbatim", "auto_capitalize": False})
-    manager, outcome = _dictate_and_end(app, ["print the value"])
+    manager, outcome = _dictate_and_commit(app, ["print the value"])
     assert outcome.kind == "dictate_committed"
-    app._paste_preserving_clipboard.assert_called_once_with("print the value", before_paste=ANY)
+    app._paste_preserving_clipboard.assert_called_once_with(
+        "print the value", before_paste=ANY, return_delivery_confirmation=True,
+    )
 
 
 def test_formatting_tokens_applied_exactly_once():
@@ -228,9 +258,11 @@ def test_formatting_tokens_applied_exactly_once():
     LAST pipeline step (after cleanup added the terminal period), not
     substituted per chunk and not substituted twice."""
     app = _buffered_dictation_app()
-    manager, outcome = _dictate_and_end(app, ["hello new line world"])
+    manager, outcome = _dictate_and_commit(app, ["hello new line world"])
     assert outcome.kind == "dictate_committed"
-    app._paste_preserving_clipboard.assert_called_once_with("Hello\nworld.", before_paste=ANY)
+    app._paste_preserving_clipboard.assert_called_once_with(
+        "Hello\nworld.", before_paste=ANY, return_delivery_confirmation=True,
+    )
 
 
 def test_enabled_smart_corrections_receives_complete_thought_once():
@@ -240,13 +272,15 @@ def test_enabled_smart_corrections_receives_complete_thought_once():
         "smart_corrections": {"enabled": True, "modes": {"wake": True}},
     })
     with patch("dictation.smart_correct", return_value="mocked result.") as mock_sc:
-        manager, outcome = _dictate_and_end(app, ["first part", "second part"])
+        manager, outcome = _dictate_and_commit(app, ["first part", "second part"])
 
     assert outcome.kind == "dictate_committed"
     mock_sc.assert_called_once()
     called_text = mock_sc.call_args[0][0].lower()
     assert "first part" in called_text and "second part" in called_text
-    app._paste_preserving_clipboard.assert_called_once_with("mocked result.", before_paste=ANY)
+    app._paste_preserving_clipboard.assert_called_once_with(
+        "mocked result.", before_paste=ANY, return_delivery_confirmation=True,
+    )
 
 
 def test_disabled_smart_corrections_never_called():
@@ -255,7 +289,7 @@ def test_disabled_smart_corrections_never_called():
         "smart_corrections": {"enabled": True, "modes": {"wake": False}},
     })
     with patch("dictation.smart_correct") as mock_sc:
-        manager, outcome = _dictate_and_end(app, ["hello there"])
+        manager, outcome = _dictate_and_commit(app, ["hello there"])
 
     assert outcome.kind == "dictate_committed"
     mock_sc.assert_not_called()
@@ -265,7 +299,7 @@ def test_history_display_and_paste_share_finalized_text_raw_text_is_pre_cleanup(
     """req 7/8: history/display/paste/notify all get the same finalized
     text; raw_text keeps the pre-cleanup accumulated text separately."""
     app = _buffered_dictation_app()
-    manager, outcome = _dictate_and_end(app, ["um this is a test"])
+    manager, outcome = _dictate_and_commit(app, ["um this is a test"])
     assert outcome.kind == "dictate_committed"
 
     pasted = app._paste_preserving_clipboard.call_args[0][0]
@@ -283,8 +317,8 @@ def test_paste_failure_retains_pending_buffer_and_plays_error_earcon():
     """req 9: a failed commit keeps the buffer, stays in DICTATE, and plays
     the existing error earcon rather than losing the dictated thought."""
     app = _buffered_dictation_app()
-    app._paste_preserving_clipboard = Mock(return_value=False)
-    manager, outcome = _dictate_and_end(app, ["this will fail to paste"])
+    app._paste_preserving_clipboard = Mock(return_value=(False, False))
+    manager, outcome = _dictate_and_commit(app, ["this will fail to paste"])
 
     assert outcome.kind == "dictate_commit_failed"
     assert manager.mode == SessionMode.DICTATE
@@ -294,7 +328,7 @@ def test_paste_failure_retains_pending_buffer_and_plays_error_earcon():
 
 
 def test_the_end_and_weekend_remain_ordinary_dictated_text():
-    """req: sole-word 'end' matching must not misfire on 'the end' or
+    """req: the configured commit phrase must not misfire on 'the end' or
     'weekend' -- both stay staged as ordinary text, never committed."""
     app = _buffered_dictation_app()
     signals = UtteranceSignals(has_contiguous_speech=True, compression_ratios=(1.2,))
