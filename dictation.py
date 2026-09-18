@@ -2767,7 +2767,6 @@ class DictationApp:
             "premium_license": "",
             # New nested wake word config
             "wake_word_config": {
-                "enabled": True,
                 "phrase": "jarvis",
                 "phrase_options": ["jarvis", "hey jarvis", "computer", "hey computer", "samsa", "hey samsa"],
                 "quick_silence_timeout": 1.0,
