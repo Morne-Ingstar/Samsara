@@ -163,6 +163,96 @@ def what_can_i_say(app, remainder="", **kwargs):
     speak_if_available(app, "Showing what you can say here.")
     return True
 
+def _history_value(row, key, default=""):
+    """Read a history row without requiring a particular row implementation."""
+    try:
+        return row[key]
+    except (KeyError, IndexError, TypeError):
+        getter = getattr(row, "get", None)
+        return getter(key, default) if callable(getter) else default
+
+
+def _last_utterance(app):
+    """Return (kind, text) for the latest committed command or dictation.
+
+    HistoryStore is the shared last-utterance record used by the history/Home
+    readers. The live delivery field is preferred for dictation because it is
+    the exact post-formatting string sent through the paste chokepoint.
+    """
+    store = getattr(app, "history_store", None)
+    query = getattr(store, "query", None)
+    if callable(query):
+        try:
+            rows = query(limit=20)
+        except Exception as exc:
+            logger.debug("[READBACK] history lookup failed: %s", exc)
+            rows = []
+        for row in rows or ():
+            entry_type = str(_history_value(row, "entry_type", "dictation") or "dictation").lower()
+            status = str(_history_value(row, "status", "success") or "success").lower()
+            if entry_type in ("command", "wake_command"):
+                name = str(_history_value(row, "matched_command", "") or "").strip()
+                if not name:
+                    name = str(_history_value(row, "display_text", "") or "").strip()
+                if name:
+                    try:
+                        from samsara import outcome_ring
+                        name = outcome_ring.canonical_command_label_for_phrase(name, name)
+                    except Exception:
+                        pass
+                    return "command", name
+            elif entry_type == "dictation" and status == "success":
+                live = getattr(app, "_last_dictation_text", None)
+                if isinstance(live, str) and live.strip():
+                    return "dictation", live
+                text = _history_value(row, "display_text", "")
+                if isinstance(text, str) and text.strip():
+                    return "dictation", text
+
+    live = getattr(app, "_last_dictation_text", None)
+    if isinstance(live, str) and live.strip():
+        return "dictation", live
+    return "nothing", ""
+
+
+@command(
+    "read that back",
+    aliases=["read it back", "what did you type", "read my last dictation"],
+    pack="accessibility",
+    risk_class="read",
+    ai_composable=False,
+)
+def read_that_back(app, remainder="", **kwargs):
+    """Reads the latest committed dictation or command aloud for accessibility."""
+    kind, text = _last_utterance(app)
+    if kind == "command":
+        spoken = f"The last thing was a command: {text}"
+    elif kind == "dictation":
+        spoken = text
+    else:
+        spoken = "Nothing dictated yet."
+
+    show = getattr(app, "_show_outcome_chip", None)
+    if callable(show):
+        try:
+            show("Reading back", "accent")
+        except Exception as exc:
+            logger.debug("[READBACK] chip failed: %s", exc)
+
+    coordinator = getattr(app, "audio_coordinator", None)
+    if coordinator is not None:
+        coordinator.speak(
+            spoken,
+            category="dictation_readback",
+            interruptible=True,
+        )
+    else:
+        engine = getattr(app, "tts_engine", None)
+        if engine is not None:
+            engine.speak(spoken)
+    return True
+
+
 
 @command(
     "reset hints",
