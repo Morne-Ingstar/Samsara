@@ -2309,6 +2309,7 @@ class DictatePreviewSession:
                 manager.set_correction_undo_fn(self._undo_last_correction)
             except Exception as exc:
                 logger.debug(f"[DICTATE-PREVIEW] correction/scroll wiring unavailable: {exc}")
+        self._show_parked_draft(manager)
         # Read here, on the caller's thread, never on the Qt thread.
         self._overlay.idle_hints = load_idle_hints()
         self._overlay.show()
@@ -2510,6 +2511,20 @@ class DictatePreviewSession:
                 logger.debug(f"[DICTATE-PREVIEW] draft unreadable: {exc}")
                 return
         self._finalized = [buffer] if buffer.strip() else []
+
+    def _show_parked_draft(self, manager=None) -> None:
+        """Restore a session-exit draft before accepting new DICTATE text.
+
+        Session exit is deliberately non-destructive: the manager retains the
+        staged draft, then its next DICTATE reset restores it.  The preview
+        must make that restored state explicit so the next utterance never
+        appears to append to an invisible old draft.
+        """
+        self._resync_from_draft(manager)
+        if self._finalized:
+            words = len(self._finalized[0].split())
+            self._set_prompt(f"{words} words waiting — say finish to paste, or clear")
+            self._render("")
 
     def _undo_last_correction(self) -> dict:
         """"forget that correction": removes an accepted dictionary entry, or

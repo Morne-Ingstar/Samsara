@@ -6107,6 +6107,10 @@ class DictationApp:
             # the combined hands-free lane; reset's COMMAND default remains
             # for legacy direct callers and the optional command-only lane.
             if self._session_mode_manager is not None:
+                retain = getattr(self._session_mode_manager, 'retain_draft', None)
+                parked = retain() if callable(retain) else 0
+                if parked:
+                    logger.info('[DICTATE-PREVIEW] parked %d-char draft at session exit', parked)
                 self._session_mode_manager.reset()
             if is_toggle_session:
                 # Release this session's hold on the WakeConsumer pipeline
