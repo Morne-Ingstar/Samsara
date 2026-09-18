@@ -1,9 +1,5 @@
-"""Focused, offscreen-safe tests for the code-native Qt startup splash."""
-
-import os
+"""Focused real-platform tests for the code-native Qt startup splash."""
 from pathlib import Path
-
-os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
 
 import pytest
 
@@ -83,7 +79,7 @@ def test_close_holds_completed_state_briefly(app):
     widget._begin_close()
     assert widget.isVisible()  # close is deferred for the completion hold
 
-    widget._completion_started_ms = widget._elapsed.elapsed() - _COMPLETION_HOLD_MS
+    widget._completion_started_ms = widget._now_ms() - _COMPLETION_HOLD_MS
     widget._begin_close()
     app.processEvents()
     assert not isValid(widget)
@@ -117,7 +113,7 @@ def test_centre_is_the_brand_mark_drawn_by_the_shared_routine(app, monkeypatch):
     widget._paint_vortex(painter, 1.0)
     painter.end()
     assert [c[:2] for c in calls] == [("listening", "asleep")] * 2
-    assert calls[1][2] > calls[0][2]                        # it spins
+    assert calls[1][2] == calls[0][2] == 0.0                # ring alone moves
     source = Path(splash_module.__file__).read_text(encoding="utf-8")
     assert "theme.RECORDING" not in source and "theme.BRAND_RED" not in source
     widget.close()

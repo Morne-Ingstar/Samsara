@@ -37,6 +37,9 @@ _LOGICAL_W = 760.0
 _LOGICAL_H = 430.0
 _DISPLAY_SCALE = 0.85
 _SIGNATURE_TEXT = "A Morne Ingstar Production"
+_DETAIL_DELAY_MS = 8_000
+_REASSURANCE_DELAY_MS = 15_000
+_TRAY_LOGICAL = (24.0, 322.0, 712.0, 94.0)
 
 
 def _color(value: str, alpha: int = 255) -> QColor:
@@ -70,7 +73,7 @@ class _SplashWidget(QWidget):
     _complete_sig = Signal(str, str)
     _close_sig = Signal()
 
-    def __init__(self):
+    def __init__(self, clock_ms=None):
         super().__init__(
             None,
             Qt.WindowType.FramelessWindowHint
@@ -114,6 +117,7 @@ class _SplashWidget(QWidget):
 
         self._elapsed = QElapsedTimer()
         self._elapsed.start()
+        self._clock_ms = clock_ms or self._elapsed.elapsed
         self._frame_timer = QTimer(self)
         self._frame_timer.setTimerType(Qt.TimerType.PreciseTimer)
         self._frame_timer.setInterval(33)  # hard cap at about 30 fps
@@ -164,7 +168,7 @@ class _SplashWidget(QWidget):
 
     @Slot()
     def _on_frame(self):
-        now = self._elapsed.elapsed()
+        now = self._now_ms()
         if self._fade_started_ms is not None:
             fraction = min(1.0, (now - self._fade_started_ms) / 260.0)
             self.setWindowOpacity(1.0 - fraction)
@@ -228,7 +232,7 @@ class _SplashWidget(QWidget):
         self._progress = 1.0
         self._status = text.strip() or "Samsara ready"
         self._detail = detail.strip()
-        self._completion_started_ms = self._elapsed.elapsed()
+        self._completion_started_ms = self._now_ms()
         if not self._reduced_motion and self.isVisible():
             self._frame_timer.start()
         self.update()
@@ -236,7 +240,7 @@ class _SplashWidget(QWidget):
     @Slot()
     def _begin_close(self):
         if self._completion_started_ms is not None:
-            completion_age = self._elapsed.elapsed() - self._completion_started_ms
+            completion_age = self._now_ms() - self._completion_started_ms
             remaining = _COMPLETION_HOLD_MS - completion_age
             if remaining > 0:
                 QTimer.singleShot(remaining, self._begin_close)
@@ -244,31 +248,60 @@ class _SplashWidget(QWidget):
         if self._reduced_motion or not self.isVisible():
             self.close()
             return
-        self._fade_started_ms = self._elapsed.elapsed()
+        self._fade_started_ms = self._now_ms()
         self._frame_timer.start()
+
+    def _now_ms(self) -> int:
+        return int(self._clock_ms())
+
+    def _compact(self) -> bool:
+        return self.width() <= 442 or self.height() <= 250
+
+    def _layout(self) -> dict[str, QRectF]:
+        if self._compact():
+            return {"word": QRectF(24, 8, self.width()-48, 34), "tag": QRectF(24, 44, self.width()-48, 22),
+                    "ring": QRectF(self.width()/2-32, 75, 64, 64), "mark": QRectF(self.width()/2-22, 85, 44, 44),
+                    "status": QRectF(24, 148, self.width()-48, 24), "strip": QRectF(24, 176, self.width()-48, 22),
+                    "support": QRectF(24, 200, self.width()-48, 22), "credit": QRectF(24, 226, self.width()-48, 18)}
+        return {"word": QRectF(24, 14, self.width()-48, 46), "tag": QRectF(24, 64, self.width()-48, 24),
+                "ring": QRectF(self.width()/2-64, 104, 128, 128), "mark": QRectF(self.width()/2-45, 123, 90, 90),
+                "status": QRectF(24, 248, self.width()-48, 26), "strip": QRectF(24, 280, self.width()-48, 24),
+                "support": QRectF(24, 308, self.width()-48, 24), "credit": QRectF(24, 336, self.width()-48, 18)}
+
+    def _support_text(self) -> str:
+        if self._error or self._detail and self._now_ms() >= _DETAIL_DELAY_MS:
+            return self._detail
+        if self._now_ms() >= _REASSURANCE_DELAY_MS:
+            return "Still starting — preparing voice services."
+        return ""
+
+    @staticmethod
+    def _segment(line: str, state: str, *, detailed: bool = False) -> tuple[str, str]:
+        name = line.split(":", 1)[0].split()[0].title() or "Service"
+        if state == "ready":
+            return (f"{name} ✓ Ready" if detailed else f"{name} ✓"), theme.SUCCESS
+        if state in {"offline", "unavailable", "error"}:
+            return f"{name} × Unavailable", theme.ERROR
+        return (f"{name} ◌ Working" if detailed else f"{name} ◌"), theme.WARNING
 
     def paintEvent(self, event):  # noqa: N802 - Qt API
         del event
         painter = QPainter(self)
         painter.setRenderHint(QPainter.RenderHint.Antialiasing, True)
         painter.setRenderHint(QPainter.RenderHint.TextAntialiasing, True)
-        painter.scale(self.width() / _LOGICAL_W, self.height() / _LOGICAL_H)
         self._paint_panel(painter)
 
-        motion_s = 0.0 if self._reduced_motion else self._elapsed.elapsed() / 1000.0
-        self._paint_knotwork(painter)
-        self._paint_vortex(painter, motion_s)
-        self._paint_progress(painter, motion_s)
-        self._paint_left_sigil(painter, motion_s)
-        self._paint_right_sigil(painter, motion_s)
+        motion_s = 0.0 if self._reduced_motion else self._now_ms() / 1000.0
+        layout = self._layout()
+        self._paint_vortex(painter, motion_s, layout["mark"])
+        self._paint_progress(painter, motion_s, layout["ring"])
         self._paint_text(painter)
-        self._paint_completion_bloom(painter)
         painter.end()
 
     @staticmethod
     def _paint_panel(painter: QPainter):
-        panel = QRectF(7.0, 7.0, 746.0, 416.0)
-        gradient = QLinearGradient(0.0, 0.0, _LOGICAL_W, _LOGICAL_H)
+        panel = QRectF(7.0, 7.0, painter.device().width() - 14.0, painter.device().height() - 14.0)
+        gradient = QLinearGradient(0.0, 0.0, panel.width(), panel.height())
         # The existing cool surface ladder (theme BG2 -> BG1 -> BG0).
         gradient.setColorAt(0.0, _color(theme.BG2, 252))
         gradient.setColorAt(0.56, _color(theme.BG1, 252))
@@ -291,20 +324,19 @@ class _SplashWidget(QWidget):
     _MARK_SIZE = 150.0
     _MARK_SPIN_DEG_PER_S = 42.0
 
-    def _paint_vortex(self, painter: QPainter, seconds: float):
+    def _paint_vortex(self, painter: QPainter, seconds: float, rect: QRectF | None = None):
         """The Samsara mark at the centre, drawn by the shared routine
         (tray_qt.paint_mark); the wheel spins while startup works."""
-        centre = QPointF(380.0, 213.0)
-        half = self._MARK_SIZE / 2.0
-        rect = QRectF(centre.x() - half, centre.y() - half, self._MARK_SIZE, self._MARK_SIZE)
+        rect = rect or self._layout()["mark"]
         capture, eye = self._MARK
-        paint_mark(painter, rect, capture, eye, rotation=seconds * self._MARK_SPIN_DEG_PER_S)
+        paint_mark(painter, rect, capture, eye, rotation=0.0)
 
-    def _paint_progress(self, painter: QPainter, seconds: float):
-        ring = QRectF(266.0, 99.0, 228.0, 228.0)
+    def _paint_progress(self, painter: QPainter, seconds: float, ring: QRectF | None = None):
+        ring = ring or self._layout()["ring"]
         painter.save()
         painter.setBrush(Qt.BrushStyle.NoBrush)
-        painter.setPen(QPen(_color(theme.ICON_IDLE, 70), 7.0, Qt.PenStyle.SolidLine,
+        stroke = 3.0 if self._compact() else 5.0
+        painter.setPen(QPen(_color(theme.ICON_IDLE, 110), stroke, Qt.PenStyle.SolidLine,
                             Qt.PenCapStyle.RoundCap))
         painter.drawArc(ring, 0, 360 * 16)
 
@@ -321,10 +353,10 @@ class _SplashWidget(QWidget):
             start = 90.0
             active = theme.SUCCESS if self._complete else theme.ACCENT
 
-        painter.setPen(QPen(_color(active, 30), 15.0, Qt.PenStyle.SolidLine,
+        painter.setPen(QPen(_color(active, 35), stroke + 6.0, Qt.PenStyle.SolidLine,
                             Qt.PenCapStyle.RoundCap))
         painter.drawArc(ring, round(start * 16), round(-span * 16))
-        painter.setPen(QPen(_color(active, 225), 5.0, Qt.PenStyle.SolidLine,
+        painter.setPen(QPen(_color(active), stroke, Qt.PenStyle.SolidLine,
                             Qt.PenCapStyle.RoundCap))
         painter.drawArc(ring, round(start * 16), round(-span * 16))
         painter.restore()
@@ -393,25 +425,31 @@ class _SplashWidget(QWidget):
 
     def _paint_text(self, painter: QPainter):
         painter.save()
+        layout = self._layout()
         painter.setPen(_color(theme.ACCENT))
-        painter.setFont(theme.qfont(theme.TYPE_HERO, "Segoe UI Variable Display", QFont.Weight.DemiBold))
-        painter.drawText(QRectF(0.0, 21.0, _LOGICAL_W, 47.0),
+        painter.setFont(theme.qfont(28 if self._compact() else theme.TYPE_HERO, "Segoe UI Variable Display", QFont.Weight.DemiBold))
+        painter.drawText(layout["word"],
                          Qt.AlignmentFlag.AlignHCenter | Qt.AlignmentFlag.AlignVCenter,
                          "Samsara")
 
-        painter.setPen(_color(theme.ICON_IDLE, 190))
+        painter.setPen(_color(theme.ICON_IDLE))
         painter.setFont(theme.qfont(theme.TYPE_BODY, weight=QFont.Weight.Normal, italic=True))
-        painter.drawText(QRectF(0.0, 67.0, _LOGICAL_W, 25.0),
+        painter.drawText(layout["tag"],
                          Qt.AlignmentFlag.AlignHCenter | Qt.AlignmentFlag.AlignVCenter,
                          "De-articulating Splines.")
 
-        for index, (line, state) in enumerate(self._ready_ladder):
-            line_color = theme.SUCCESS if state == "ready" else theme.WARNING if state == "offline" else theme.ICON_IDLE
-            painter.setPen(_color(line_color, 225))
+        strip = layout["strip"]
+        cell_width = (strip.width() - 16.0) / 3.0
+        for index, (line, state) in enumerate(self._ready_ladder[:3]):
+            label, line_color = self._segment(
+                line, "unavailable" if self._error else state,
+                detailed=self._error or state in {"offline", "unavailable", "error"},
+            )
+            painter.setPen(_color(line_color))
             painter.setFont(theme.qfont(theme.TYPE_MIN, weight=QFont.Weight.DemiBold))
-            painter.drawText(QRectF(230.0, 282.0 + index * 19.0, 300.0, 18.0),
+            painter.drawText(QRectF(strip.x() + index * (cell_width + 8.0), strip.y(), cell_width, strip.height()),
                              Qt.AlignmentFlag.AlignHCenter | Qt.AlignmentFlag.AlignVCenter,
-                             line)
+                             label)
 
         status_color = theme.ERROR if self._error else theme.TEXT_PRIMARY
         painter.setPen(_color(status_color))
@@ -419,21 +457,21 @@ class _SplashWidget(QWidget):
         status = self._status
         if self._progress is not None and not self._complete and not self._error:
             status = f"{status}  [{round(self._progress * 100)}%]"
-        painter.drawText(QRectF(145.0, 355.0, 470.0, 31.0),
+        painter.drawText(layout["status"],
                          Qt.AlignmentFlag.AlignHCenter | Qt.AlignmentFlag.AlignVCenter,
                          status)
 
-        painter.setPen(_color(theme.ICON_IDLE, 190))
-        painter.setFont(theme.qfont(theme.TYPE_MIN))
-        painter.drawText(QRectF(135.0, 386.0, 490.0, 24.0),
-                         Qt.AlignmentFlag.AlignHCenter | Qt.AlignmentFlag.AlignTop,
-                         self._detail)
+        support = self._support_text()
+        if support:
+            painter.setPen(_color(theme.ICON_IDLE))
+            painter.setFont(theme.qfont(theme.TYPE_BODY))
+            painter.drawText(layout["support"], Qt.AlignmentFlag.AlignHCenter | Qt.AlignmentFlag.AlignVCenter, support)
 
         # A deliberately quiet maker's mark, tucked inside the panel corner.
-        signature_font = theme.qfont(theme.TYPE_HEADING)
+        signature_font = theme.qfont(theme.TYPE_MIN)
         painter.setFont(signature_font)
-        painter.setPen(_color(theme.ICON_IDLE, 65))
-        painter.drawText(QRectF(445.0, 388.0, 290.0, 32.0),
+        painter.setPen(_color(theme.ICON_IDLE))
+        painter.drawText(layout["credit"],
                          Qt.AlignmentFlag.AlignRight | Qt.AlignmentFlag.AlignBottom,
                          _SIGNATURE_TEXT)
         painter.restore()
