@@ -136,6 +136,19 @@ def row_text(row: dict) -> str:
         text += "  [" + ", ".join(tags) + "]"
     return text
 
+
+def _row_is_personal_alias(row: dict) -> bool:
+    """Whether the visible aliases mark this row as user-owned."""
+    return any(str(alias).endswith(" (yours)")
+               for alias in row.get("shown_aliases", ()))
+
+
+def _row_text_colour(row: dict) -> str:
+    """Text role for a command row, including the personal-alias cue."""
+    if not row.get("live", True) or _row_is_personal_alias(row):
+        return theme.TEXT_SECONDARY
+    return theme.TEXT_PRIMARY
+
 # ---------------------------------------------------------------------------
 # Colour: every value comes from samsara/ui/theme.py (queue 78). This window
 # used to carry its own eight-colour palette, copied from the Tkinter version
@@ -816,8 +829,7 @@ class _CheatSheetWindow(QMainWindow):
             if cmd.get("scope_note"):
                 tooltip += f"\nWorks {cmd['scope_note']}" + ("" if cmd.get("live", True) else " -- not live here")
             item.setToolTip(tooltip.strip())
-            item.setForeground(theme.qcolor(
-                theme.TEXT_PRIMARY if cmd.get("live", True) else theme.TEXT_SECONDARY))
+            item.setForeground(theme.qcolor(_row_text_colour(cmd)))
             self._list.addItem(item)
         self._list.blockSignals(False)
 

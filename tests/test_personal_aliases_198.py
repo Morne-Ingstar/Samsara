@@ -89,6 +89,35 @@ def test_catalog_marks_personal_aliases_as_yours(tmp_path, monkeypatch):
     ]
 
 
+def test_cheatsheet_personal_alias_row_carries_muted_foreground_role(
+        qapp, monkeypatch, tmp_path):
+    from PySide6.QtCore import Qt
+    from samsara.ui import command_cheatsheet_qt as cheatsheet
+    from samsara.ui import theme
+
+    row = {
+        "phrase": "tab one",
+        "aliases": ["tab one", "tab won"],
+        "shown_aliases": ["tab won (yours)"],
+        "canonical_id": "builtin.tab_one",
+        "plugin": "builtin",
+        "pack": "core",
+        "risk": "ui",
+        "whole_utterance": False,
+    }
+    monkeypatch.setattr(cheatsheet, "catalog_rows", lambda _commands: [row])
+    monkeypatch.setattr(cheatsheet, "_disabled_packs", lambda: set())
+    win = cheatsheet._CheatSheetWindow(
+        lambda _phrase: None, lambda: object(), tmp_path / "palette.json")
+    try:
+        item = win._list.item(0)
+        assert "tab won (yours)" in item.text()
+        assert item.data(Qt.ItemDataRole.ForegroundRole) == theme.qcolor(
+            theme.TEXT_SECONDARY)
+    finally:
+        win.deleteLater()
+
+
 def test_boot_loader_and_voice_handler_install_and_remove_aliases(tmp_path, monkeypatch):
     from plugins.commands import core_utils
     from samsara import plugin_commands
