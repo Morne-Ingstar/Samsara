@@ -575,4 +575,4 @@ def _write_gesture_component(output: Path) -> None:
 
 
 from samsara import __version__  # noqa: E402
-_write_gesture_component(app_dir / 'dist' / f'Samsara-GestureControl-{__version__}.zip')
+_write_gesture_component(app_dir / 'dist' / f'Samsara-GestureControl-v{__version__}.zip')
