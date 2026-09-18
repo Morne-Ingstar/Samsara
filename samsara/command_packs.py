@@ -88,12 +88,6 @@ PACKS = {
         'always_on': False,
         'default_enabled': False,
     },
-    'mouse': {
-        'label': 'Mouse Control',
-        'description': 'Left click, right click, double click by voice',
-        'always_on': False,
-        'default_enabled': False,
-    },
     'audio': {
         'label': 'Audio Devices',
         'description': 'Switch between speakers, headset, earbuds',
@@ -132,7 +126,7 @@ PACKS = {
     },
     'discord': {
         'label': 'Discord',
-        'description': 'Send messages to Discord channels via webhook',
+        'description': 'Needs a Discord webhook — Set up',
         'always_on': False,
         'default_enabled': False,
     },
