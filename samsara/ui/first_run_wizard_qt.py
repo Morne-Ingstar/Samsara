@@ -784,7 +784,7 @@ class _WizardWindow(QMainWindow):
 
         note = QLabel("Setup is quick. You can change everything later in Settings.")
         note.setWordWrap(True)
-        note.setStyleSheet(f"color:{theme.TEXT_SECONDARY};font-size:{theme.TYPE_MIN}px;")
+        note.setStyleSheet(f"color:{theme.TEXT_SECONDARY};font-size:{theme.TYPE_BODY}px;")
         lay.addWidget(note)
         lay.addStretch()
         return w
@@ -828,7 +828,7 @@ class _WizardWindow(QMainWindow):
             name_lbl.setStyleSheet(f"font-weight:600;font-size:{theme.TYPE_BODY}px;color:{theme.TEXT_PRIMARY};")
             desc_lbl = QLabel(desc)
             desc_lbl.setWordWrap(True)
-            desc_lbl.setStyleSheet(f"color:{theme.TEXT_SECONDARY};font-size:{theme.TYPE_MIN}px;")
+            desc_lbl.setStyleSheet(f"color:{theme.TEXT_SECONDARY};font-size:{theme.TYPE_BODY}px;")
             text_col.addWidget(name_lbl)
             text_col.addWidget(desc_lbl)
             cl.addLayout(text_col, stretch=1)
@@ -869,14 +869,14 @@ class _WizardWindow(QMainWindow):
 
         lay.addSpacing(8)
         meter_lbl = QLabel("Input Level")
-        meter_lbl.setStyleSheet(f"color:{theme.TEXT_SECONDARY};font-size:{theme.TYPE_MIN}px;")
+        meter_lbl.setStyleSheet(f"color:{theme.TEXT_SECONDARY};font-size:{theme.TYPE_BODY}px;")
         lay.addWidget(meter_lbl)
 
         self._meter = _MicLevelMeter()
         lay.addWidget(self._meter)
 
         self._mic_status = QLabel("Speak to test your microphone")
-        self._mic_status.setStyleSheet(f"color:{theme.TEXT_SECONDARY};font-size:{theme.TYPE_MIN}px;")
+        self._mic_status.setStyleSheet(f"color:{theme.TEXT_SECONDARY};font-size:{theme.TYPE_BODY}px;")
         lay.addWidget(self._mic_status)
 
         lay.addStretch()
@@ -915,7 +915,7 @@ class _WizardWindow(QMainWindow):
             name_lbl = QLabel(title)
             name_lbl.setStyleSheet(f"font-weight:600;font-size:{theme.TYPE_BODY}px;color:{theme.TEXT_PRIMARY};")
             desc_lbl = QLabel(desc)
-            desc_lbl.setStyleSheet(f"color:{theme.TEXT_SECONDARY};font-size:{theme.TYPE_MIN}px;")
+            desc_lbl.setStyleSheet(f"color:{theme.TEXT_SECONDARY};font-size:{theme.TYPE_BODY}px;")
             text_col.addWidget(name_lbl)
             text_col.addWidget(desc_lbl)
             cl.addLayout(text_col, stretch=1)
@@ -924,7 +924,7 @@ class _WizardWindow(QMainWindow):
 
         note = QLabel("The model downloads on first use (once). You can change it later in Settings.")
         note.setWordWrap(True)
-        note.setStyleSheet(f"color:{theme.TEXT_SECONDARY};font-size:{theme.TYPE_MIN}px;")
+        note.setStyleSheet(f"color:{theme.TEXT_SECONDARY};font-size:{theme.TYPE_BODY}px;")
         lay.addWidget(note)
         lay.addStretch()
         return w
@@ -959,7 +959,7 @@ class _WizardWindow(QMainWindow):
             name_lbl = QLabel(label)
             name_lbl.setStyleSheet(f"font-weight:600;font-size:{theme.TYPE_BODY}px;color:{theme.TEXT_PRIMARY};")
             desc_lbl = QLabel(desc)
-            desc_lbl.setStyleSheet(f"color:{theme.TEXT_SECONDARY};font-size:{theme.TYPE_MIN}px;")
+            desc_lbl.setStyleSheet(f"color:{theme.TEXT_SECONDARY};font-size:{theme.TYPE_BODY}px;")
             left.addWidget(name_lbl)
             left.addWidget(desc_lbl)
             row.addLayout(left, stretch=1)
@@ -971,7 +971,7 @@ class _WizardWindow(QMainWindow):
 
         builtin_note = QLabel(_builtin_hotkeys_text(self._config))
         builtin_note.setWordWrap(True)
-        builtin_note.setStyleSheet(f"color:{theme.TEXT_SECONDARY};font-size:{theme.TYPE_MIN}px;")
+        builtin_note.setStyleSheet(f"color:{theme.TEXT_SECONDARY};font-size:{theme.TYPE_BODY}px;")
         lay.addWidget(builtin_note)
 
         # Separator
@@ -987,7 +987,7 @@ class _WizardWindow(QMainWindow):
         ww_left.addWidget(QLabel("Wake Word Phrase"))
         self._ww_desc = QLabel('Say "Jarvis" or "Hey Jarvis" to activate voice commands')
         self._ww_desc.setWordWrap(True)
-        self._ww_desc.setStyleSheet(f"color:{theme.TEXT_SECONDARY};font-size:{theme.TYPE_MIN}px;")
+        self._ww_desc.setStyleSheet(f"color:{theme.TEXT_SECONDARY};font-size:{theme.TYPE_BODY}px;")
         ww_left.addWidget(self._ww_desc)
         ww_row.addLayout(ww_left, stretch=1)
 
@@ -1003,13 +1003,13 @@ class _WizardWindow(QMainWindow):
             "Wake word is off for your setup — turn it on anytime in Settings."
         )
         self._ww_off_note.setWordWrap(True)
-        self._ww_off_note.setStyleSheet(f"color:{theme.TEXT_SECONDARY};font-size:{theme.TYPE_MIN}px;font-style:italic;")
+        self._ww_off_note.setStyleSheet(f"color:{theme.TEXT_SECONDARY};font-size:{theme.TYPE_BODY}px;font-style:italic;")
         self._ww_off_note.setVisible(False)
         lay.addWidget(self._ww_off_note)
 
         coming = QLabel(_wake_options_text(DEFAULT_WAKE_PHRASE))
         coming.setWordWrap(True)
-        coming.setStyleSheet(f"color:{theme.TEXT_SECONDARY};font-size:{theme.TYPE_MIN}px;")
+        coming.setStyleSheet(f"color:{theme.TEXT_SECONDARY};font-size:{theme.TYPE_BODY}px;")
         lay.addWidget(coming)
         lay.addStretch()
         scroll.setWidget(inner)
@@ -1043,7 +1043,7 @@ class _WizardWindow(QMainWindow):
         tf_lay.setContentsMargins(16, 12, 16, 12)
         self._tip_lbl = QLabel("")
         self._tip_lbl.setWordWrap(True)
-        self._tip_lbl.setStyleSheet(f"color:{theme.TEXT_PRIMARY};font-size:{theme.TYPE_MIN}px;")
+        self._tip_lbl.setStyleSheet(f"color:{theme.TEXT_PRIMARY};font-size:{theme.TYPE_BODY}px;")
         tf_lay.addWidget(self._tip_lbl)
         lay.addWidget(tip_frame)
 
@@ -1052,12 +1052,12 @@ class _WizardWindow(QMainWindow):
             "Look for the Samsara tray icon to get started."
         )
         note.setWordWrap(True)
-        note.setStyleSheet(f"color:{theme.TEXT_SECONDARY};font-size:{theme.TYPE_MIN}px;")
+        note.setStyleSheet(f"color:{theme.TEXT_SECONDARY};font-size:{theme.TYPE_BODY}px;")
         lay.addWidget(note)
         lay.addSpacing(12)
 
         self._no_hints_cb = QCheckBox("Don't show me hints (you can re-enable this in Settings)")
-        self._no_hints_cb.setStyleSheet(f"color:{theme.TEXT_SECONDARY};font-size:{theme.TYPE_MIN}px;")
+        self._no_hints_cb.setStyleSheet(f"color:{theme.TEXT_SECONDARY};font-size:{theme.TYPE_BODY}px;")
         lay.addWidget(self._no_hints_cb)
 
         lay.addStretch()
@@ -1119,7 +1119,7 @@ class _WizardWindow(QMainWindow):
         if _STEPS[self._step][0] == "Microphone" and not self._mic_capture_ready:
             if self._mic_status:
                 self._mic_status.setText("Select a working microphone before continuing.")
-                self._mic_status.setStyleSheet(f"color:{theme.WARNING};font-size:{theme.TYPE_MIN}px;")
+                self._mic_status.setStyleSheet(f"color:{theme.WARNING};font-size:{theme.TYPE_BODY}px;")
             return
         if _STEPS[self._step][0] == "Use Case":
             self._apply_use_case_defaults()
@@ -1298,7 +1298,7 @@ class _WizardWindow(QMainWindow):
         self._stop_meter()
         if self._mic_status:
             self._mic_status.setText("Refreshing devices…")
-            self._mic_status.setStyleSheet(f"color:{theme.TEXT_SECONDARY};font-size:{theme.TYPE_MIN}px;")
+            self._mic_status.setStyleSheet(f"color:{theme.TEXT_SECONDARY};font-size:{theme.TYPE_BODY}px;")
         if self._app_ready():
             self._refresh_mics_via_app()
         else:
@@ -1385,7 +1385,7 @@ class _WizardWindow(QMainWindow):
             self._mic_capture_ready = False
             if self._mic_status:
                 self._mic_status.setText("Select a working microphone before continuing.")
-                self._mic_status.setStyleSheet(f"color:{theme.WARNING};font-size:{theme.TYPE_MIN}px;")
+                self._mic_status.setStyleSheet(f"color:{theme.WARNING};font-size:{theme.TYPE_BODY}px;")
             self._next_btn.setEnabled(False)
             return
 
@@ -1445,7 +1445,7 @@ class _WizardWindow(QMainWindow):
             self._meter.reset()
         if self._mic_status is not None:
             self._mic_status.setText("Speak to test your microphone")
-            self._mic_status.setStyleSheet(f"color:{theme.TEXT_SECONDARY};font-size:{theme.TYPE_MIN}px;")
+            self._mic_status.setStyleSheet(f"color:{theme.TEXT_SECONDARY};font-size:{theme.TYPE_BODY}px;")
 
     def _open_meter_stream(self, device_id):
         """Open a minimal transient InputStream for meter-only use."""
@@ -1476,7 +1476,7 @@ class _WizardWindow(QMainWindow):
                     else "Microphone could not be opened — press Refresh"
                 )
                 self._mic_status.setText(message)
-                self._mic_status.setStyleSheet(f"color:{theme.WARNING};font-size:{theme.TYPE_MIN}px;")
+                self._mic_status.setStyleSheet(f"color:{theme.WARNING};font-size:{theme.TYPE_BODY}px;")
             return None
 
     def _meter_tick(self):
@@ -1507,7 +1507,7 @@ class _WizardWindow(QMainWindow):
         if mapped > 0.15:   # ~0.003 raw RMS — any real audio above noise floor
             self._meter_passed = True
             self._mic_status.setText("Microphone active")
-            self._mic_status.setStyleSheet(f"color:{theme.ACCENT};font-size:{theme.TYPE_MIN}px;")
+            self._mic_status.setStyleSheet(f"color:{theme.ACCENT};font-size:{theme.TYPE_BODY}px;")
 
     def _on_mic_result(self, msg: str, color: str):
         if msg == "_load_done_":
@@ -1522,7 +1522,7 @@ class _WizardWindow(QMainWindow):
         if msg == "__refresh_skipped__":
             if self._mic_status:
                 self._mic_status.setText("Stop dictation elsewhere to refresh devices.")
-                self._mic_status.setStyleSheet(f"color:{theme.WARNING};font-size:{theme.TYPE_MIN}px;")
+                self._mic_status.setStyleSheet(f"color:{theme.WARNING};font-size:{theme.TYPE_BODY}px;")
             # We stopped our own meter before attempting the refresh --
             # restart it since the refresh didn't happen (nothing else will).
             if _STEPS[self._step][0] == "Microphone":
@@ -1530,7 +1530,7 @@ class _WizardWindow(QMainWindow):
             return
         if self._mic_status:
             self._mic_status.setText(msg)
-            self._mic_status.setStyleSheet(f"color:{color};font-size:{theme.TYPE_MIN}px;")
+            self._mic_status.setStyleSheet(f"color:{color};font-size:{theme.TYPE_BODY}px;")
 
     def _populate_mic_combo(self, preserve_selection: bool = False):
         if self._mic_combo is None:
@@ -1547,7 +1547,7 @@ class _WizardWindow(QMainWindow):
                     self._mic_combo.setCurrentIndex(idx)
             if self._mic_status:
                 self._mic_status.setText("Speak to test your microphone")
-                self._mic_status.setStyleSheet(f"color:{theme.TEXT_SECONDARY};font-size:{theme.TYPE_MIN}px;")
+                self._mic_status.setStyleSheet(f"color:{theme.TEXT_SECONDARY};font-size:{theme.TYPE_BODY}px;")
         else:
             if self._mic_scan_error is not None:
                 self._mic_combo.addItem("Couldn't scan audio devices — press Refresh")
@@ -1556,7 +1556,7 @@ class _WizardWindow(QMainWindow):
                         f"Mic scan failed ({self._mic_scan_error})",
                     )
                     self._mic_status.setStyleSheet(
-                        f"color:{theme.WARNING};font-size:{theme.TYPE_MIN}px;",
+                        f"color:{theme.WARNING};font-size:{theme.TYPE_BODY}px;",
                     )
             else:
                 self._mic_combo.addItem("No microphones detected")
