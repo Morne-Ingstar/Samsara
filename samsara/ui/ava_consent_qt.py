@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from datetime import datetime, timezone
+from samsara.ai_preferences import accept_consent, consent_covers, provider_for
 
 from PySide6.QtCore import Qt
 from PySide6.QtWidgets import QDialog, QHBoxLayout, QLabel, QPushButton, QVBoxLayout
@@ -10,7 +10,7 @@ from PySide6.QtWidgets import QDialog, QHBoxLayout, QLabel, QPushButton, QVBoxLa
 from samsara.ui import theme
 
 
-CONSENT_VERSION = 1
+CONSENT_VERSION = 2
 
 # OWNER COPY — REVIEW
 CONSENT_TEXT = """Turning Ava on
@@ -26,13 +26,17 @@ Local AI never leaves this computer.
 You're in charge. Turn Ava off any time."""
 
 
-def consent_required(config: dict | None, *, cloud_enabled: bool = False) -> bool:
+def consent_required(config: dict | None, *, cloud_enabled: bool = False,
+                     features=("ava",), provider=None) -> bool:
     """Whether the current facts require the user to acknowledge Ava again."""
     ava = (config or {}).get("ava", {})
     consent = ava.get("consent", {}) if isinstance(ava, dict) else {}
-    if not isinstance(consent, dict) or consent.get("version") != CONSENT_VERSION:
+    try:
+        destination = provider or provider_for(config or {}, "cloud" if cloud_enabled else "local")
+    except (ValueError, TypeError):
         return True
-    return cloud_enabled and consent.get("cloud_version") != CONSENT_VERSION
+    return not consent_covers(consent, features=features, provider=destination,
+                              cloud=cloud_enabled, version=CONSENT_VERSION)
 
 
 def accepted_consent(
@@ -40,16 +44,13 @@ def accepted_consent(
     *,
     cloud_enabled: bool = False,
     accepted_at: str | None = None,
+    features=("ava",),
+    provider=None,
 ) -> dict:
     """Return the persisted consent record after an explicit acknowledgement."""
-    ava = (config or {}).get("ava", {})
-    old = ava.get("consent", {}) if isinstance(ava, dict) else {}
-    old = old if isinstance(old, dict) else {}
-    return {
-        "version": CONSENT_VERSION,
-        "accepted_at": accepted_at or datetime.now(timezone.utc).isoformat(),
-        "cloud_version": CONSENT_VERSION if cloud_enabled else old.get("cloud_version"),
-    }
+    destination = provider or provider_for(config or {}, "cloud" if cloud_enabled else "local")
+    return accept_consent(config or {}, features=features, provider=destination,
+                          cloud=cloud_enabled, accepted_at=accepted_at, version=CONSENT_VERSION)
 
 
 class AvaConsentDialog(QDialog):
