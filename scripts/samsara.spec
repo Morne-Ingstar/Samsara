@@ -584,6 +584,13 @@ def _write_gesture_component(output: Path) -> None:
             for distribution_name in _GESTURE_DISTRIBUTIONS:
                 distribution = metadata.distribution(distribution_name)
                 for relative in distribution.files or ():
+                    # Some wheels list console-script launchers outside
+                    # site-packages (for example ../../Scripts/fonttools.exe).
+                    # They are neither importable component contents nor safe
+                    # archive members for the verified installer.
+                    relative = Path(relative)
+                    if relative.is_absolute() or ".." in relative.parts:
+                        continue
                     source = Path(distribution.locate_file(relative))
                     if not source.is_file():
                         continue
