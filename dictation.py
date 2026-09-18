@@ -2866,6 +2866,7 @@ class DictationApp:
             #     restores to true full volume.
             "ducking": {
                 "enabled": False,
+                "recording_mode": "duck",
                 "level": 0.2,
                 "hands_free_enabled": True,
                 "hands_free_level": 0.15,
@@ -3150,6 +3151,7 @@ class DictationApp:
 
                 self._migrate_command_matching_enabled_flag()
                 self._migrate_ai_command_mode_config()
+                self._migrate_recording_media_mode()
             finally:
                 self._config_migration_save = False
 
@@ -3452,6 +3454,20 @@ class DictationApp:
             if 'send_policy' in profile or 'mode' not in profile or 'send_word' not in profile:
                 return False
         return True
+
+    def _migrate_recording_media_mode(self):
+        """Fold the legacy recording-duck switches into one lane policy."""
+        ducking_cfg = self.config.setdefault('ducking', {})
+        if 'recording_mode' in ducking_cfg:
+            return
+        hold_ducks = bool(self.config.get('capture_duck_hold_enabled', True))
+        ordinary_ducks = bool(ducking_cfg.get('enabled', False))
+        ducking_cfg['recording_mode'] = 'duck' if hold_ducks or ordinary_ducks else 'off'
+        self.save_config()
+        logger.info(
+            '[MIGRATE] recording media: hold_duck=%s ordinary_duck=%s -> %s',
+            hold_ducks, ordinary_ducks, ducking_cfg['recording_mode'],
+        )
 
     def _migrate_command_matching_enabled_flag(self):
         """Migrate the legacy top-level 'command_mode_enabled' flag into
@@ -8037,6 +8053,11 @@ class DictationApp:
         restore. Called from WakeConsumer at speech onset; never calls,
         and is never called by, any session-end/exit path."""
         cfg = self.config.get('ducking', {}) or {}
+        if cfg.get('recording_mode', 'duck') != 'duck':
+            audio_ducking.start_recording_media(
+                cfg.get('recording_mode', 'off'), cfg.get('level', 0.2),
+            )
+            return owner_token if owner_token is not None else 0
         if not cfg.get('hands_free_enabled', True):
             return owner_token
         level = float(cfg.get('hands_free_level', 0.15))
@@ -8126,6 +8147,9 @@ class DictationApp:
         stop-then-immediately-restart flicker. Call in a finally-shape at
         every close-capable path (see wake_consumer.py) so this always fires,
         even if processing raised."""
+        if (self.config.get('ducking', {}) or {}).get('recording_mode', 'duck') != 'duck':
+            audio_ducking.restore()
+            return
         try:
             with self._hands_free_duck_lock:
                 if owner_token is None or owner_token not in self._hands_free_capture_duck_owners:
@@ -10950,10 +10974,12 @@ class DictationApp:
         this is the single place config is consulted so every call site
         (hotkey start_recording, wake-session start) stays in sync."""
         ducking_cfg = self.config.get('ducking', {}) or {}
-        if ducking_cfg.get('enabled', False):
-            audio_ducking.duck(ducking_cfg.get('level', 0.2))
-        else:
-            flight_recorder.record('ducker.op', op='start', noop=True, reason='disabled_in_config')
+        mode = ducking_cfg.get(
+            'recording_mode',
+            'duck' if (self.config.get('capture_duck_hold_enabled', True)
+                       or ducking_cfg.get('enabled', False)) else 'off',
+        )
+        audio_ducking.start_recording_media(mode, ducking_cfg.get('level', 0.2))
 
     def _restore_audio(self):
         """Counterpart to _duck_audio -- always safe to call even if
@@ -10993,6 +11019,14 @@ class DictationApp:
         """Reuse capture ownership; wait for synchronous volume acknowledgements."""
         self._hold_capture_duck_confirmed_at = None
         cfg = self.config.get('ducking', {}) or {}
+        media_mode = cfg.get(
+            'recording_mode',
+            'duck' if (self.config.get('capture_duck_hold_enabled', True)
+                       or cfg.get('enabled', False)) else 'off',
+        )
+        if media_mode != 'duck':
+            audio_ducking.start_recording_media(media_mode, cfg.get('level', 0.2))
+            return
         if (not self.config.get('capture_duck_hold_enabled', True)
                 or not cfg.get('hands_free_enabled', True)
                 or float(cfg.get('hands_free_level', 0.15)) >= 1.0):
@@ -11894,7 +11928,10 @@ class DictationApp:
             try:
                 self._cancel_recording_impl()
             finally:
-                self._close_hold_capture_duck()
+                try:
+                    self._restore_audio()
+                finally:
+                    self._close_hold_capture_duck()
 
     def _cancel_recording_impl(self):
         """Cancel recording without transcribing"""
