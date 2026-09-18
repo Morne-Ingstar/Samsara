@@ -95,12 +95,15 @@ echo.
 echo [14] Running frozen import inventory against an isolated temp profile...
 set "IMPORT_HOME=%TEMP%\samsara_import_%RANDOM%%RANDOM%"
 set "IMPORT_LOG=%TEMP%\samsara_import_%RANDOM%%RANDOM%.log"
+set "IMPORT_MARKER=%TEMP%\samsara_import_%RANDOM%%RANDOM%.ok"
 mkdir "%IMPORT_HOME%" >nul 2>nul
 set "SAMSARA_HOME_DIR=%IMPORT_HOME%"
 set "SAMSARA_FROZEN_IMPORT_CHECK=1"
+set "SAMSARA_FROZEN_IMPORT_MARKER=%IMPORT_MARKER%"
 dist\Samsara\Samsara.exe > "%IMPORT_LOG%" 2>&1
 set "IMPORT_RESULT=%ERRORLEVEL%"
 set "SAMSARA_FROZEN_IMPORT_CHECK="
+set "SAMSARA_FROZEN_IMPORT_MARKER="
 set "SAMSARA_HOME_DIR="
 rmdir /s /q "%IMPORT_HOME%"
 if not "%IMPORT_RESULT%"=="0" (
@@ -108,12 +111,12 @@ if not "%IMPORT_RESULT%"=="0" (
     if exist "%IMPORT_LOG%" type "%IMPORT_LOG%"
     exit /b %IMPORT_RESULT%
 )
-findstr /c:"[FROZEN-IMPORT] PASS" "%IMPORT_LOG%" >nul
-if errorlevel 1 (
-    echo [CHECK-14] FAIL -- frozen import inventory did not report PASS
+if not exist "%IMPORT_MARKER%" (
+    echo [CHECK-14] FAIL -- frozen import inventory did not write its PASS marker
     if exist "%IMPORT_LOG%" type "%IMPORT_LOG%"
     exit /b 1
 )
+del "%IMPORT_MARKER%" >nul 2>nul
 echo [CHECK-14] PASS -- every Samsara/plugin/Qt inventory module imported
 
 echo.

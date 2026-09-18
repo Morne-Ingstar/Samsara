@@ -60,7 +60,10 @@ if os.environ.get("SAMSARA_FROZEN_IMPORT_CHECK") == "1":
     except BaseException:
         traceback.print_exc()
         os._exit(1)
-    print("[FROZEN-IMPORT] PASS")
+    marker = os.environ.get("SAMSARA_FROZEN_IMPORT_MARKER")
+    if marker:
+        with open(marker, "w", encoding="utf-8") as handle:
+            handle.write("PASS\n")
     os._exit(0)
 ''', encoding='utf-8')
 
