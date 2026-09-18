@@ -24,9 +24,9 @@ interface; see the release choices below.*
 
 You need **Windows 10 or 11 and a microphone**. The packaged app includes
 Python; you do not need to install it. A CPU is enough to get started.
-Compatible NVIDIA GPUs can use the optional [CUDA add-on](Docs/CUDA.md).
+Compatible NVIDIA GPUs can use the optional [CUDA add-on](https://morneis.com/samsara/docs/cuda/).
 
-1. Open the [Windows download page](https://github.com/Morne-Ingstar/Samsara/releases/latest).
+1. Open the [Samsara install page](https://morneis.com/samsara/install/).
    Choose the **installer** for a normal Windows install with a Start-menu
    shortcut and uninstall entry, or the **ZIP** for a portable extracted folder;
    do not download GitHub's source-code archives.
@@ -39,7 +39,7 @@ Compatible NVIDIA GPUs can use the optional [CUDA add-on](Docs/CUDA.md).
    configure **Hands Free** or wake-word listening in Settings.
 
 Hotkeys and listening behavior are configurable. The in-app Quick Reference
-shows your bindings. [Open the full quick start →](Docs/QUICKSTART.md)
+shows your bindings. [Open the full quick start →](https://morneis.com/samsara/docs/quick-start/)
 
 In a Hands Free Dictate session, say **“finish”** to commit the staged text.
 After saying **“show numbers,”** name a target: **“click 7,” “right click 7,”**
@@ -76,7 +76,7 @@ explore your setup.
 
 Optional integrations cover reminders, health logs, music, smart-home
 devices, and more. They are not required for dictation.
-[Explore the command reference →](Docs/VOICE_COMMANDS.md)
+[Explore the command reference →](https://morneis.com/samsara/docs/commands/)
 
 ## Privacy and practical limits
 
@@ -126,13 +126,13 @@ A few things to expect:
 
 ## Documentation and contributing
 
-- **Using Samsara:** [Quick start](Docs/QUICKSTART.md) ·
-  [Voice commands](Docs/VOICE_COMMANDS.md) ·
-  [Hands-free modes](Docs/HANDS_FREE_MODES.md) ·
-  [NVIDIA acceleration](Docs/CUDA.md)
+- **Using Samsara:** [Quick start](https://morneis.com/samsara/docs/quick-start/) ·
+  [Voice commands](https://morneis.com/samsara/docs/commands/) ·
+  [Hands-free modes](https://morneis.com/samsara/docs/hands-free/) ·
+  [NVIDIA acceleration](https://morneis.com/samsara/docs/cuda/)
 - **Understanding your data:** [Privacy and local storage](PRIVACY.md)
-- **Building and extending:** [Run from source](Docs/QUICKSTART.md#from-source) ·
-  [Custom commands and plugins](Docs/CUSTOM_COMMANDS.md) ·
+- **Building and extending:** [Run from source](https://morneis.com/samsara/docs/quick-start/#from-source) ·
+  [Custom commands and plugins](https://morneis.com/samsara/docs/custom-commands/) ·
   [Architecture](Docs/ARCHITECTURE.md)
 - **Following development:** [Release history](CHANGELOG.md) ·
   [Issues](https://github.com/Morne-Ingstar/Samsara/issues)
