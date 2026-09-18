@@ -235,7 +235,8 @@ class ContinuousConsumer:
 
         # Thresholds (same config keys as the legacy continuous_audio_callback)
         speech_threshold  = app.config.get('continuous_speech_threshold', DEFAULT_SPEECH_THRESHOLD)
-        silence_threshold = app.config.get('silence_threshold', DEFAULT_SILENCE_TIMEOUT)
+        from samsara.speech_pace import effective_value
+        silence_threshold = effective_value(app.config, 'silence_threshold', DEFAULT_SILENCE_TIMEOUT)
         trigger = app.config.get('continuous_commit_trigger', DEFAULT_CONTINUOUS_COMMIT_TRIGGER)
 
         if rms > speech_threshold:
@@ -288,7 +289,8 @@ class ContinuousConsumer:
         min_speech_duration).
         """
         app = self._app
-        min_speech = app.config.get('min_speech_duration', DEFAULT_MIN_SPEECH_DURATION)
+        from samsara.speech_pace import effective_value
+        min_speech = effective_value(app.config, 'min_speech_duration', DEFAULT_MIN_SPEECH_DURATION)
 
         with self._frames_lock:
             speech_duration = len(self._speech_frames) * (FRAME_MS / 1000.0)

@@ -433,6 +433,21 @@ class ModesPage:
         )
         layout.addWidget(hands_free_card)
 
+        pace_combo = QComboBox()
+        pace_options = {
+            "standard": "Standard — keeps your current pause timings.",
+            "relaxed": "Relaxed — gives pauses between phrases more room.",
+            "unhurried": "Unhurried — allows long pauses before finishing speech.",
+            "custom": "Custom — uses the advanced timing values you choose.",
+        }
+        pace_combo.addItems(list(pace_options.values()))
+        accessibility = cfg.get('accessibility', {}) or {}
+        selected_pace = str(accessibility.get('speech_pace', 'standard'))
+        pace_combo.setCurrentText(pace_options.get(selected_pace, pace_options['standard']))
+        self._widgets['speech_pace'] = pace_combo
+        _add_row(hands_free_layout, "Speech pace", "Choose how much room Samsara gives pauses in speech.",
+                 pace_combo, width=340)
+
         cmd_enabled_cb = QCheckBox()
         cmd_enabled_cb.setChecked(bool(cmd_cfg.get('enabled', False)))
         self._widgets['cmd_tab_enabled'] = cmd_enabled_cb
@@ -1241,6 +1256,12 @@ class ModesPage:
 
             if 'mode' in self._widgets:
                 updates['mode'] = self._widgets['mode'].currentText()
+            if 'speech_pace' in self._widgets:
+                accessibility = dict(updates.get('accessibility', self.app.config.get('accessibility', {})) or {})
+                accessibility['speech_pace'] = next(
+                    key for key, label in pace_options.items()
+                    if label == self._widgets['speech_pace'].currentText())
+                updates['accessibility'] = accessibility
             if 'wake_word_enabled' in self._widgets:
                 updates['wake_word_enabled'] = self._widgets['wake_word_enabled'].isChecked()
 
