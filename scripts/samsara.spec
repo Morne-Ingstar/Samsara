@@ -52,11 +52,23 @@ import pkgutil
 import traceback
 
 def _pass():
+    _finish("PASS\n", 0)
+
+
+def _fail():
+    # This hook runs in a windowed executable.  Never let a check exception
+    # reach PyInstaller's bootloader: that creates an owner-facing modal
+    # dialog and leaves automated smoke blocked behind it.
+    traceback.print_exc()
+    _finish("FAIL\n", 1)
+
+
+def _finish(result, exit_code):
     marker = os.environ.get("SAMSARA_FROZEN_IMPORT_MARKER")
     if marker:
         with open(marker, "w", encoding="utf-8") as handle:
-            handle.write("PASS\n")
-    os._exit(0)
+            handle.write(result)
+    os._exit(exit_code)
 
 
 if os.environ.get("SAMSARA_FROZEN_IMPORT_CHECK") == "1":
@@ -68,39 +80,46 @@ if os.environ.get("SAMSARA_FROZEN_IMPORT_CHECK") == "1":
         for name in names:
             importlib.import_module(name)
     except BaseException:
-        traceback.print_exc()
-        os._exit(1)
+        _fail()
     _pass()
 
 if os.environ.get("SAMSARA_GESTURE_COMPONENT_CHECK") == "missing":
-    from samsara.components import ComponentNotInstalled
-    from samsara.vision.camera_service import CameraService
     try:
+        from samsara.components import ComponentNotInstalled
+        from samsara.vision.camera_service import CameraService
         CameraService().start()
     except ComponentNotInstalled as exc:
         print(f"[GESTURE-CHECK] {exc}")
         _pass()
-    raise RuntimeError("gesture component unexpectedly present in core build")
+    except BaseException:
+        _fail()
+    try:
+        raise RuntimeError("gesture component unexpectedly present in core build")
+    except BaseException:
+        _fail()
 
 if os.environ.get("SAMSARA_GESTURE_COMPONENT_CHECK") == "installed":
-    import cv2  # noqa: F401
-    import mediapipe  # noqa: F401
-    from samsara.vision.gesture_loop import GestureLoop
+    try:
+        import cv2  # noqa: F401
+        import mediapipe  # noqa: F401
+        from samsara.vision.gesture_loop import GestureLoop
 
-    class _Reader:
-        def get(self, timeout=0.1):
-            return None
+        class _Reader:
+            def get(self, timeout=0.1):
+                return None
 
-    class _Camera:
-        def subscribe(self):
-            return _Reader()
-        def unsubscribe(self, _reader):
-            return None
+        class _Camera:
+            def subscribe(self):
+                return _Reader()
+            def unsubscribe(self, _reader):
+                return None
 
-    loop = GestureLoop(object(), _Camera(), {})
-    loop.start()
-    loop.stop()
-    print("[GESTURE-CHECK] installed component imports and gesture loop starts")
+        loop = GestureLoop(object(), _Camera(), {})
+        loop.start()
+        loop.stop()
+        print("[GESTURE-CHECK] installed component imports and gesture loop starts")
+    except BaseException:
+        _fail()
     _pass()
 ''', encoding='utf-8')
 
@@ -545,6 +564,10 @@ if _CV2_DISTRIBUTION is None:
 _GESTURE_DISTRIBUTIONS = (
     'mediapipe', _CV2_DISTRIBUTION, 'absl-py', 'protobuf',
     'flatbuffers', 'attrs', 'six', 'packaging',
+    # MediaPipe's current solutions API imports drawing_utils, which imports
+    # matplotlib.  These are its wheel dependencies that are not core.
+    'matplotlib', 'contourpy', 'cycler', 'fonttools', 'kiwisolver',
+    'pillow', 'pyparsing', 'python-dateutil',
 )
 
 
